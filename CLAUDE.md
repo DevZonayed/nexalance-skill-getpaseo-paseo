@@ -23,7 +23,7 @@ This is an npm workspace monorepo:
 - **packages/server**: The Paseo daemon that runs on your machine. Manages agent processes, provides WebSocket API for real-time streaming, and exposes an MCP server for agent control.
 - **packages/app**: Cross-platform client (Expo). Connects to one or more servers, displays agent output, handles voice input, and sends push notifications.
 - **packages/cli**: The `paseo` CLI that is used to manage the deamon, and acts as a client to it with  Docker-style commands like `paseo run/ls/logs/wait`
-- **packages/website**: Marketing site at paseo.dev (TanStack Router + Cloudflare Workers).
+- **packages/website**: Marketing site at paseo.sh (TanStack Router + Cloudflare Workers).
 
 ## Development Server
 
