@@ -26,11 +26,11 @@ function GettingStarted() {
       <section className="space-y-4">
         <h2 className="text-xl font-medium">Installation</h2>
         <p className="text-white/60">
-          Install the server globally and run it on your machine:
+          Install the CLI globally and run it on your machine:
         </p>
         <div className="bg-card border border-border rounded-lg p-4 font-mono text-sm">
           <span className="text-muted-foreground select-none">$ </span>
-          <span>npm install -g @paseohq/server</span>
+          <span>npm install -g @getpaseo/cli</span>
         </div>
         <div className="bg-card border border-border rounded-lg p-4 font-mono text-sm">
           <span className="text-muted-foreground select-none">$ </span>
