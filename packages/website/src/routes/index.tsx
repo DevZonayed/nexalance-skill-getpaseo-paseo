@@ -142,7 +142,7 @@ function Features() {
         />
         <Feature
           title="Git integration"
-          description="Run agents in isolated worktrees. Review diffs and ship directly from the app."
+          description="Manage agents in isolated worktrees. Review diffs and ship directly from the app."
         />
         <Feature
           title="Open source"
