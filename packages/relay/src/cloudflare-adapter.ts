@@ -75,6 +75,45 @@ export class RelayDurableObject {
 
   }
 
+  private hasServerDataSocket(clientId: string): boolean {
+    try {
+      return this.state.getWebSockets(`server:${clientId}`).length > 0;
+    } catch {
+      return false;
+    }
+  }
+
+  private nudgeOrResetControlForClient(clientId: string): void {
+    // If the daemon's control WS becomes half-open, the DO can't reliably detect it via ws.send errors
+    // (Cloudflare may accept writes even if the other side is no longer reading).
+    //
+    // Instead, observe whether the daemon reacts by opening the per-client server-data socket.
+    // If it doesn't, nudge with a sync message; if still no reaction, force-close the control
+    // socket(s) so the daemon reconnects.
+    const initialDelayMs = 10_000;
+    const secondDelayMs = 5_000;
+
+    setTimeout(() => {
+      if (this.hasServerDataSocket(clientId)) return;
+
+      // First nudge: send a full sync list.
+      this.notifyControls({ type: "sync", clientIds: this.listConnectedClientIds() });
+
+      setTimeout(() => {
+        if (this.hasServerDataSocket(clientId)) return;
+
+        // Still nothing: assume control is stuck and force a reconnect.
+        for (const ws of this.state.getWebSockets("server-control")) {
+          try {
+            ws.close(1011, "Control unresponsive");
+          } catch {
+            // ignore
+          }
+        }
+      }, secondDelayMs);
+    }, initialDelayMs);
+  }
+
   private bufferClientFrame(clientId: string, message: string | ArrayBuffer): void {
     const existing = this.pendingClientFrames.get(clientId) ?? [];
     existing.push(message);
@@ -209,6 +248,7 @@ export class RelayDurableObject {
 
     if (role === "client") {
       this.notifyControls({ type: "client_connected", clientId });
+      this.nudgeOrResetControlForClient(clientId);
     }
 
     if (isServerControl) {
