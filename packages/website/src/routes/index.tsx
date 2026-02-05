@@ -279,8 +279,7 @@ function Story() {
           Anthropic and OpenAI added coding agents to their mobile apps since I
           started working on this, but they force you into cloud sandboxes where
           you lose your whole setup. I also like testing different agents, so
-          locking myself to a single harness or model wasn't an option. Other apps
-          exist but I wasn't happy with their UX, security, or business model.
+          locking myself to a single harness or model wasn't an option.
         </p>
       </div>
     </div>
