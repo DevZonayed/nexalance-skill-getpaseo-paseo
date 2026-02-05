@@ -6,7 +6,8 @@
 
 <p align="center">Manage coding agents from your phone and desktop.</p>
 
-> ⚠️ **Early development** — Features may break or change without notice. Use at your own risk.
+> [!WARNING]
+> **Early development** — Features may break or change without notice. Use at your own risk.
 
 Paseo is a self-hosted daemon for Claude Code, Codex, and OpenCode. Agents run on your machine with your full dev environment. Connect from phone, desktop, or web.
 
