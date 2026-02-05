@@ -1,5 +1,5 @@
 use std::sync::atomic::{AtomicU64, Ordering};
-use tauri::menu::{Menu, MenuItemBuilder, Submenu};
+use tauri::menu::{Menu, MenuItemBuilder, MenuItemKind, PredefinedMenuItem, Submenu};
 use tauri::Manager;
 use tauri::WebviewWindow;
 
@@ -29,7 +29,13 @@ pub fn run() {
                 )?;
             }
 
-            // Build the View menu with zoom controls
+            // Start from Tauri's default menu so macOS standard shortcuts (Cmd+A/C/V/etc)
+            // keep working. Then inject our zoom controls into a View menu.
+            //
+            // On macOS in particular, a custom menu that omits Edit items can break
+            // responder-chain shortcuts across the whole app.
+            let menu = Menu::default(app.handle())?;
+
             let zoom_in = MenuItemBuilder::with_id("zoom_in", "Zoom In")
                 .accelerator("CmdOrCtrl+=")
                 .build(app)?;
@@ -40,14 +46,45 @@ pub fn run() {
                 .accelerator("CmdOrCtrl+0")
                 .build(app)?;
 
-            let view_menu = Submenu::with_items(
-                app,
-                "View",
-                true,
-                &[&zoom_in, &zoom_out, &zoom_reset],
-            )?;
+            let separator = PredefinedMenuItem::separator(app.handle())?;
 
-            let menu = Menu::with_items(app, &[&view_menu])?;
+            // On macOS, Tauri's default menu already has a "View" submenu (with Fullscreen).
+            // Insert our zoom items at the top so we don't duplicate the submenu.
+            #[cfg(target_os = "macos")]
+            {
+                let mut view_submenu: Option<Submenu<_>> = None;
+                for item in menu.items()? {
+                    if let MenuItemKind::Submenu(submenu) = item {
+                        if submenu.text()? == "View" {
+                            view_submenu = Some(submenu);
+                            break;
+                        }
+                    }
+                }
+
+                if let Some(view) = view_submenu {
+                    // Zoom controls first, then keep existing items (e.g. Fullscreen).
+                    view.insert_items(&[&zoom_in, &zoom_out, &zoom_reset, &separator], 0)?;
+                } else {
+                    // Fallback: if the default menu ever changes, create a View menu.
+                    let view_menu = Submenu::with_items(
+                        app,
+                        "View",
+                        true,
+                        &[&zoom_in, &zoom_out, &zoom_reset, &separator],
+                    )?;
+                    menu.append(&view_menu)?;
+                }
+            }
+
+            // Non-macOS: default menu doesn't include a View menu, so add it.
+            #[cfg(not(target_os = "macos"))]
+            {
+                let view_menu =
+                    Submenu::with_items(app, "View", true, &[&zoom_in, &zoom_out, &zoom_reset])?;
+                menu.append(&view_menu)?;
+            }
+
             app.set_menu(menu)?;
 
             let window = app.get_webview_window("main").unwrap();
