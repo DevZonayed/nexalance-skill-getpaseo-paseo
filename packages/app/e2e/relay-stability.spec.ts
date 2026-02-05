@@ -1,6 +1,6 @@
 import { test, expect } from './fixtures';
 
-test('connects via relay when direct endpoints fail', async ({ page }) => {
+test('relay connection stays stable across multiple tabs', async ({ page }) => {
   const relayPort = process.env.E2E_RELAY_PORT;
   const serverId = process.env.E2E_SERVER_ID;
   const daemonPublicKeyB64 = process.env.E2E_RELAY_DAEMON_PUBLIC_KEY;
@@ -25,7 +25,7 @@ test('connects via relay when direct endpoints fail', async ({ page }) => {
     updatedAt: nowIso,
   };
 
-  // Override the default fixture seeding for this test.
+  // Use relay by making the direct endpoint intentionally fail.
   await page.goto('/settings');
   await page.evaluate((daemon) => {
     const nonce = localStorage.getItem('@paseo:e2e-seed-nonce') ?? '1';
@@ -35,8 +35,23 @@ test('connects via relay when direct endpoints fail', async ({ page }) => {
   }, host);
   await page.reload();
 
-  // Should eventually connect through the relay connection.
   const card = page.getByTestId(`daemon-card-${serverId}`);
   await expect(card.getByText('Relay', { exact: true })).toBeVisible({ timeout: 20000 });
   await expect(card.getByText('Online', { exact: true })).toBeVisible({ timeout: 20000 });
+
+  // Open a second tab. It should be able to connect independently without forcing disconnect churn.
+  const page2 = await page.context().newPage();
+  await page2.route(/:(6767)\b/, (route) => route.abort());
+  await page2.routeWebSocket(/:(6767)\b/, async (ws) => {
+    await ws.close({ code: 1008, reason: 'Blocked connection to localhost:6767 during e2e.' });
+  });
+  await page2.goto('/settings');
+  const card2 = page2.getByTestId(`daemon-card-${serverId}`);
+  await expect(card2.getByText('Relay', { exact: true })).toBeVisible({ timeout: 20000 });
+  await expect(card2.getByText('Online', { exact: true })).toBeVisible({ timeout: 20000 });
+
+  // Stability window: keep both tabs open and ensure they remain online.
+  await page.waitForTimeout(30_000);
+  await expect(card.getByText('Online', { exact: true })).toBeVisible();
+  await expect(card2.getByText('Online', { exact: true })).toBeVisible();
 });
