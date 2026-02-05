@@ -22,22 +22,33 @@ function Home() {
     <CursorFieldProvider>
       {/* Hero section with background image */}
       <div
-        className="relative min-h-[80vh] bg-cover bg-center bg-no-repeat overflow-hidden"
+        className="relative bg-cover bg-center bg-no-repeat"
         style={{ backgroundImage: 'url(/hero-bg.jpg)' }}
       >
         <div className="absolute inset-0 bg-background/80" />
         <div className="absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-black to-transparent" />
 
-        <div className="relative p-6 md:p-20 max-w-3xl mx-auto">
+        <div className="relative p-6 md:px-20 md:pt-20 md:pb-2 max-w-3xl mx-auto">
           <Nav />
           <Hero />
           <GetStarted />
         </div>
+
+        {/* Mockup - inside hero so it's above the gradient, positioned to overflow into black section */}
+        <div className="relative px-6 md:px-8 pb-8 md:pb-16 md:mb-[-200px]">
+          <div className="max-w-5xl mx-auto">
+            <img
+              src="/paseo-mockup.png"
+              alt="Paseo app showing agent management interface"
+              className="w-full rounded-lg shadow-2xl"
+            />
+          </div>
+        </div>
       </div>
 
-      {/* Content section with black background */}
+      {/* Content section */}
       <div className="bg-black">
-        <main className="p-6 md:p-20 max-w-3xl mx-auto">
+        <main className="p-6 md:p-20 md:pt-56 max-w-3xl mx-auto">
           <Features />
           <Story />
           <FAQ />
@@ -170,26 +181,8 @@ function Feature({
 
 function GetStarted() {
   return (
-    <div className="pt-10 space-y-6">
-      <div className="space-y-4">
-        <Step number={1}>
-          <p className="text-sm">Install and run the daemon</p>
-          <CodeBlock>npm install -g @getpaseo/cli && paseo</CodeBlock>
-        </Step>
-        <Step number={2}>
-          <p className="text-sm pt-0.5">
-            Open the app and connect to your daemon
-          </p>
-        </Step>
-        <Step number={3}>
-          <p className="text-sm pt-0.5">
-            Start managing your agents from anywhere
-          </p>
-        </Step>
-      </div>
-      <p className="text-sm text-white/70 pt-2">
-        Free and open source. Works on iOS, Android, web, and desktop.
-      </p>
+    <div className="pt-10">
+      <CodeBlock>npm install -g @getpaseo/cli && paseo</CodeBlock>
     </div>
   )
 }
