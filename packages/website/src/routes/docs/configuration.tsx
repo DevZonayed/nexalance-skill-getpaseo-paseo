@@ -17,7 +17,7 @@ function Configuration() {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-3xl font-medium font-serif mb-4">Configuration</h1>
+        <h1 className="text-3xl font-medium font-title mb-4">Configuration</h1>
         <p className="text-white/60 leading-relaxed">
           Paseo loads configuration from a single JSON file in your Paseo home directory, with optional
           environment variable and CLI overrides.

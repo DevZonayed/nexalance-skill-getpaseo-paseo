@@ -1,5 +1,10 @@
 @import 'tailwindcss';
 
+/* Title font - centralized for easy changes */
+.font-title {
+  font-family: inherit;
+}
+
 /* Inline code styling - applies to code elements not inside pre blocks */
 :not(pre) > code {
   background-color: var(--color-muted);
@@ -9,8 +14,6 @@
 }
 
 @theme {
-  --font-serif: 'Playfair Display', serif;
-
   --color-background: #0a0a0a;
   --color-foreground: #fafafa;
   --color-muted: #262626;

@@ -17,7 +17,7 @@ function GettingStarted() {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-3xl font-medium font-serif mb-4">Getting Started</h1>
+        <h1 className="text-3xl font-medium font-title mb-4">Getting Started</h1>
         <p className="text-white/60 leading-relaxed">
           Paseo connects to your local development environment and lets you manage your coding agents from anywhere.
         </p>

@@ -17,7 +17,7 @@ function BestPractices() {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-3xl font-medium font-serif mb-4">Best Practices</h1>
+        <h1 className="text-3xl font-medium font-title mb-4">Best Practices</h1>
         <p className="text-white/60 leading-relaxed">
           What I've learned from using Paseo daily. Not rules, just patterns
           that have worked for me.

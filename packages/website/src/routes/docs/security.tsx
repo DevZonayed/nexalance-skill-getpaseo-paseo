@@ -26,7 +26,7 @@ function Security() {
   return (
     <div className="space-y-10">
       <div>
-        <h1 className="text-3xl font-medium font-serif mb-4">Security</h1>
+        <h1 className="text-3xl font-medium font-title mb-4">Security</h1>
         <p className="text-white/60 leading-relaxed">
           Paseo follows a client-server architecture, similar to Docker. The daemon runs on your
           machine and manages your coding agents. Clients (the mobile app, CLI, or web interface)
