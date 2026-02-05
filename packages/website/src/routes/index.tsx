@@ -6,7 +6,7 @@ import '~/styles.css'
 export const Route = createFileRoute('/')({
   head: () => ({
     meta: [
-      { title: 'Paseo – Run coding agents on your machines, from desktop and phone' },
+      { title: 'Paseo – Manage coding agents from your phone and desktop' },
       {
         name: 'description',
         content:
