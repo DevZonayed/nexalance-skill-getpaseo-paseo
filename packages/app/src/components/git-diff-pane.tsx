@@ -16,7 +16,7 @@ import { ScrollView, type ScrollView as ScrollViewType } from "react-native-gest
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Linking from "expo-linking";
-import { ChevronDown, ChevronRight, GitBranch, MoreVertical, ArrowLeftRight, ListChevronsDownUp, ListChevronsUpDown } from "lucide-react-native";
+import { Archive, ChevronDown, ChevronRight, GitBranch, MoreVertical, ArrowLeftRight, ListChevronsDownUp, ListChevronsUpDown } from "lucide-react-native";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useSessionStore } from "@/stores/session-store";
 import {
@@ -75,7 +75,7 @@ interface GitAction {
   disabled: boolean;
   status: ActionStatus;
   description?: string;
-  destructive?: boolean;
+  icon?: ReactElement;
   handler: () => void;
 }
 
@@ -1048,7 +1048,7 @@ export function GitDiffPane({ serverId, agentId, cwd }: GitDiffPaneProps) {
         successLabel: "Archived",
         disabled: archiveDisabled,
         status: archiveAction.status,
-        destructive: true,
+        icon: <Archive size={16} color={theme.colors.foregroundMuted} />,
         handler: archiveAction.trigger,
       });
     }
@@ -1198,7 +1198,7 @@ export function GitDiffPane({ serverId, agentId, cwd }: GitDiffPaneProps) {
                     <DropdownMenuItem
                       key={action.id}
                       testID={`changes-menu-${action.id}`}
-                      destructive={action.destructive}
+                      leading={action.icon}
                       disabled={action.disabled}
                       status={action.status}
                       pendingLabel={action.pendingLabel}

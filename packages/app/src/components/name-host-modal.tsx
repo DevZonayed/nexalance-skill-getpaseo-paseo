@@ -1,8 +1,7 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Text, TextInput, View } from "react-native";
-import { BottomSheetTextInput } from "@gorhom/bottom-sheet";
-import { StyleSheet, UnistylesRuntime, useUnistyles } from "react-native-unistyles";
-import { AdaptiveModalSheet } from "./adaptive-modal-sheet";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Text, View } from "react-native";
+import { StyleSheet, useUnistyles } from "react-native-unistyles";
+import { AdaptiveModalSheet, AdaptiveTextInput } from "./adaptive-modal-sheet";
 import { Button } from "@/components/ui/button";
 
 const styles = StyleSheet.create((theme) => ({
@@ -45,8 +44,6 @@ export interface NameHostModalProps {
 
 export function NameHostModal({ visible, serverId, hostname, onSkip, onSave }: NameHostModalProps) {
   const { theme } = useUnistyles();
-  const isMobile = UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
-  const InputComponent = useMemo(() => (isMobile ? BottomSheetTextInput : TextInput), [isMobile]);
 
   const [label, setLabel] = useState("");
   const hasEditedRef = useRef(false);
@@ -91,7 +88,7 @@ export function NameHostModal({ visible, serverId, hostname, onSkip, onSave }: N
 
       <View style={styles.field}>
         <Text style={styles.label}>Label</Text>
-        <InputComponent
+        <AdaptiveTextInput
           value={label}
           onChangeText={handleChange}
           placeholder={suggested}

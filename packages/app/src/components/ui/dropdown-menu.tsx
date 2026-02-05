@@ -470,12 +470,11 @@ export function DropdownMenuItem({
         }
         onSelect?.();
       }}
-      style={({ pressed }) => [
+      style={({ pressed, hovered }) => [
         styles.item,
         selected ? (selectedVariant === "accent" ? styles.itemSelectedAccent : styles.itemSelected) : null,
-        destructive && !isSuccess ? styles.itemDestructive : null,
         isDisabled ? styles.itemDisabled : null,
-        pressed && !isDisabled ? styles.itemPressed : null,
+        (hovered || pressed) && !isDisabled ? styles.itemHovered : null,
       ]}
     >
       {showSelectedCheck ? (
@@ -527,7 +526,7 @@ const styles = StyleSheet.create((theme) => ({
   content: {
     backgroundColor: theme.colors.surface0,
     borderWidth: 1,
-    borderColor: theme.colors.borderAccent,
+    borderColor: theme.colors.border,
     borderRadius: theme.borderRadius.lg,
     overflow: "hidden",
     shadowColor: "#000",
@@ -567,7 +566,7 @@ const styles = StyleSheet.create((theme) => ({
     paddingHorizontal: theme.spacing[3],
     paddingVertical: theme.spacing[2],
   },
-  itemPressed: {
+  itemHovered: {
     backgroundColor: theme.colors.surface2,
   },
   itemSelected: {
@@ -579,13 +578,10 @@ const styles = StyleSheet.create((theme) => ({
   itemDisabled: {
     opacity: 0.5,
   },
-  itemDestructive: {
-    backgroundColor: "rgba(248, 81, 73, 0.08)",
-  },
   itemText: {
     fontSize: theme.fontSize.sm,
     color: theme.colors.foreground,
-    fontWeight: theme.fontWeight.medium,
+    fontWeight: theme.fontWeight.normal,
   },
   itemTextDestructive: {
     color: theme.colors.destructive,

@@ -1,12 +1,11 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { Alert, Text, TextInput, View } from "react-native";
 import { StyleSheet, UnistylesRuntime, useUnistyles } from "react-native-unistyles";
-import { BottomSheetTextInput } from "@gorhom/bottom-sheet";
 import { Link2 } from "lucide-react-native";
 import { useDaemonRegistry, type HostProfile } from "@/contexts/daemon-registry-context";
 import { normalizeHostPort } from "@/utils/daemon-endpoints";
 import { DaemonConnectionTestError, probeDaemonEndpoint } from "@/utils/test-daemon-connection";
-import { AdaptiveModalSheet } from "./adaptive-modal-sheet";
+import { AdaptiveModalSheet, AdaptiveTextInput } from "./adaptive-modal-sheet";
 import { Button } from "@/components/ui/button";
 
 const styles = StyleSheet.create((theme) => ({
@@ -134,7 +133,6 @@ export function AddHostModal({ visible, onClose, onCancel, onSaved, targetServer
   const isMobile =
     UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
 
-  const InputComponent = useMemo(() => (isMobile ? BottomSheetTextInput : TextInput), [isMobile]);
   const hostInputRef = useRef<TextInput>(null);
 
   const [endpointRaw, setEndpointRaw] = useState("");
@@ -223,8 +221,8 @@ export function AddHostModal({ visible, onClose, onCancel, onSaved, targetServer
 
       <View style={styles.field}>
         <Text style={styles.label}>Host</Text>
-        <InputComponent
-          ref={hostInputRef as any}
+        <AdaptiveTextInput
+          ref={hostInputRef}
           value={endpointRaw}
           onChangeText={setEndpointRaw}
           placeholder="host:6767"

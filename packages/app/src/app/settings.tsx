@@ -13,7 +13,7 @@ import { router, useLocalSearchParams } from "expo-router";
 import Constants from "expo-constants";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, UnistylesRuntime, useUnistyles } from "react-native-unistyles";
-import { Sun, Moon, Monitor, MoreVertical, Globe } from "lucide-react-native";
+import { Sun, Moon, Monitor, MoreVertical, Globe, Trash2, Pencil, RotateCw } from "lucide-react-native";
 import { useAppSettings, type AppSettings } from "@/hooks/use-settings";
 import { useDaemonRegistry, type HostProfile } from "@/contexts/daemon-registry-context";
 import { useDaemonConnections, type ActiveConnection, type ConnectionStatus } from "@/contexts/daemon-connections-context";
@@ -34,7 +34,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
-import { AdaptiveModalSheet } from "@/components/adaptive-modal-sheet";
+import { AdaptiveModalSheet, AdaptiveTextInput } from "@/components/adaptive-modal-sheet";
 
 const delay = (ms: number) =>
   new Promise<void>((resolve) => {
@@ -119,7 +119,7 @@ const styles = StyleSheet.create((theme) => ({
   hostHeaderRight: {
     flexDirection: "row",
     alignItems: "center",
-    gap: theme.spacing[2],
+    gap: theme.spacing[1],
     flexShrink: 0,
   },
   hostLabel: {
@@ -142,6 +142,13 @@ const styles = StyleSheet.create((theme) => ({
     paddingVertical: 4,
     borderRadius: theme.borderRadius.full,
   },
+  statusPillMobile: {
+    alignItems: "center",
+    justifyContent: "center",
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+  },
   statusDot: {
     width: 6,
     height: 6,
@@ -162,6 +169,11 @@ const styles = StyleSheet.create((theme) => ({
     borderColor: theme.colors.border,
     backgroundColor: theme.colors.surface3,
     maxWidth: 170,
+  },
+  connectionPillMobile: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderRadius: theme.borderRadius.full,
   },
   connectionText: {
     fontSize: theme.fontSize.xs,
@@ -744,7 +756,7 @@ export default function SettingsScreen() {
           >
             <View style={styles.formField}>
               <Text style={styles.label}>Label</Text>
-              <TextInput
+              <AdaptiveTextInput
                 style={styles.input}
                 value={editLabel}
                 onChangeText={setEditLabel}
@@ -792,26 +804,6 @@ export default function SettingsScreen() {
                     );
                   })}
                 </View>
-              </View>
-            ) : null}
-
-            {editingDaemon ? (
-              <View style={styles.formField}>
-                <Button
-                  variant="default"
-                  size="sm"
-                  style={{ alignSelf: "flex-start" }}
-                  onPress={() => {
-                    const serverId = editingDaemon.serverId;
-                    handleCloseEditDaemon();
-                    setAddConnectionTargetServerId(serverId);
-                    setPendingEditReopenServerId(serverId);
-                    setIsAddHostMethodVisible(true);
-                  }}
-                  testID="edit-host-add-connection"
-                >
-                  Add connection
-                </Button>
               </View>
             ) : null}
 
@@ -1060,17 +1052,21 @@ function DaemonCard({
         <View style={styles.hostHeaderRow}>
           <Text style={styles.hostLabel} numberOfLines={1}>{daemon.label}</Text>
           <View style={styles.hostHeaderRight}>
-            <View style={[styles.statusPill, { backgroundColor: statusPillBg }]}>
+            <View style={[Platform.OS === "web" ? styles.statusPill : styles.statusPillMobile, { backgroundColor: statusPillBg }]}>
               <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
-              <Text style={[styles.statusText, { color: statusColor }]}>{badgeText}</Text>
+              {Platform.OS === "web" ? (
+                <Text style={[styles.statusText, { color: statusColor }]}>{badgeText}</Text>
+              ) : null}
             </View>
 
             {connectionBadge ? (
-              <View style={styles.connectionPill}>
+              <View style={Platform.OS === "web" ? styles.connectionPill : styles.connectionPillMobile}>
                 {connectionBadge.icon}
-                <Text style={styles.connectionText} numberOfLines={1}>
-                  {connectionBadge.text}
-                </Text>
+                {Platform.OS === "web" ? (
+                  <Text style={styles.connectionText} numberOfLines={1}>
+                    {connectionBadge.text}
+                  </Text>
+                ) : null}
               </View>
             ) : null}
 
@@ -1087,23 +1083,29 @@ function DaemonCard({
                 <MoreVertical size={16} color={theme.colors.foregroundMuted} />
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" width={220} testID={`daemon-menu-content-${daemon.serverId}`}>
-                <DropdownMenuItem onSelect={() => onEdit(daemon)} testID={`daemon-menu-edit-${daemon.serverId}`}>
+                <DropdownMenuItem
+                  onSelect={() => onEdit(daemon)}
+                  leading={<Pencil size={16} color={theme.colors.foregroundMuted} />}
+                  testID={`daemon-menu-edit-${daemon.serverId}`}
+                >
                   Edit
                 </DropdownMenuItem>
-                <DropdownMenuItem destructive onSelect={() => onRemove(daemon)} testID={`daemon-menu-remove-${daemon.serverId}`}>
-                  Remove
-                </DropdownMenuItem>
-
-                <DropdownMenuSeparator />
-                <DropdownMenuLabel>Advanced</DropdownMenuLabel>
                 <DropdownMenuItem
                   onSelect={handleRestartPress}
+                  leading={<RotateCw size={16} color={theme.colors.foregroundMuted} />}
                   status={isRestarting ? "pending" : "idle"}
                   pendingLabel="Restarting..."
                   disabled={!daemonClient || !isConnectedRef.current}
                   testID={`daemon-menu-restart-${daemon.serverId}`}
                 >
                   Restart daemon
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onSelect={() => onRemove(daemon)}
+                  leading={<Trash2 size={16} color={theme.colors.foregroundMuted} />}
+                  testID={`daemon-menu-remove-${daemon.serverId}`}
+                >
+                  Remove
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>

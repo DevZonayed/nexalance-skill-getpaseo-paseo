@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { forwardRef, useCallback, useEffect, useMemo, useRef } from "react";
 import type { ReactNode } from "react";
 import { createPortal } from "react-dom";
 import {
@@ -7,14 +7,17 @@ import {
   Pressable,
   ScrollView,
   Text,
+  TextInput,
   View,
 } from "react-native";
+import type { TextInputProps } from "react-native";
 import { StyleSheet, UnistylesRuntime, useUnistyles } from "react-native-unistyles";
 import { getOverlayRoot, OVERLAY_Z } from "../lib/overlay-root";
 import {
   BottomSheetModal,
   BottomSheetBackdrop,
   BottomSheetScrollView,
+  BottomSheetTextInput,
   type BottomSheetBackgroundProps,
 } from "@gorhom/bottom-sheet";
 import { X } from "lucide-react-native";
@@ -244,3 +247,20 @@ export function AdaptiveModalSheet({
     </Modal>
   );
 }
+
+/**
+ * TextInput that automatically uses BottomSheetTextInput on mobile
+ * for proper keyboard dodging in AdaptiveModalSheet.
+ */
+export const AdaptiveTextInput = forwardRef<TextInput, TextInputProps>(
+  function AdaptiveTextInput(props, ref) {
+    const isMobile =
+      UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
+
+    if (isMobile) {
+      return <BottomSheetTextInput ref={ref as any} {...props} />;
+    }
+
+    return <TextInput ref={ref} {...props} />;
+  }
+);

@@ -113,7 +113,6 @@ export function AgentStatusBar({ agentId, serverId }: AgentStatusBarProps) {
                 <DropdownMenuItem
                   key={mode.id}
                   selected={isActive}
-                  selectedVariant="accent"
                   description={mode.description}
                   onSelect={() => handleModeChange(mode.id)}
                 >
@@ -155,7 +154,6 @@ export function AgentStatusBar({ agentId, serverId }: AgentStatusBarProps) {
                   <DropdownMenuItem
                     key={model.id}
                     selected={isActive}
-                    selectedVariant="accent"
                     description={model.description}
                     onSelect={() => {
                       if (!client) {
@@ -202,7 +200,6 @@ export function AgentStatusBar({ agentId, serverId }: AgentStatusBarProps) {
                     <DropdownMenuItem
                       key={opt.id}
                       selected={isActive}
-                      selectedVariant="accent"
                       description={opt.description}
                       onSelect={() => {
                         if (!client) {
@@ -222,7 +219,6 @@ export function AgentStatusBar({ agentId, serverId }: AgentStatusBarProps) {
               </DropdownMenuContent>
             </DropdownMenu>
           )}
-
         </>
       )}
 
@@ -271,7 +267,6 @@ export function AgentStatusBar({ agentId, serverId }: AgentStatusBarProps) {
                       <DropdownMenuItem
                         key={model.id}
                         selected={isActive}
-                        selectedVariant="accent"
                         description={model.description}
                         onSelect={() => {
                           if (!client) {
@@ -314,7 +309,6 @@ export function AgentStatusBar({ agentId, serverId }: AgentStatusBarProps) {
                         <DropdownMenuItem
                           key={opt.id}
                           selected={isActive}
-                          selectedVariant="accent"
                           description={opt.description}
                           onSelect={() => {
                             if (!client) {

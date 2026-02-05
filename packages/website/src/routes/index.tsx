@@ -26,17 +26,17 @@ function Home() {
         style={{ backgroundImage: 'url(/hero-bg.jpg)' }}
       >
         <div className="absolute inset-0 bg-background/90" />
-        <div className="absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-black to-transparent" />
+        <div className="absolute inset-x-0 bottom-0 h-64 bg-gradient-to-t from-black to-transparent" />
 
-        <div className="relative p-6 md:px-20 md:pt-20 md:pb-2 max-w-3xl mx-auto">
+        <div className="relative p-6 pb-10 md:px-20 md:pt-20 md:pb-12 max-w-3xl mx-auto">
           <Nav />
           <Hero />
           <GetStarted />
         </div>
 
         {/* Mockup - inside hero so it's above the gradient, positioned to overflow into black section */}
-        <div className="relative px-6 md:px-8 pb-8 md:pb-16 md:mb-[-200px]">
-          <div className="max-w-5xl mx-auto">
+        <div className="relative px-6 md:px-8 pb-8 md:pb-16">
+          <div className="max-w-6xl mx-auto">
             <img
               src="/paseo-mockup.png"
               alt="Paseo app showing agent management interface"
@@ -48,7 +48,7 @@ function Home() {
 
       {/* Content section */}
       <div className="bg-black">
-        <main className="p-6 md:p-20 md:pt-56 max-w-3xl mx-auto">
+        <main className="p-6 md:p-20 md:pt-8 max-w-3xl mx-auto">
           <Features />
           <Story />
           <FAQ />

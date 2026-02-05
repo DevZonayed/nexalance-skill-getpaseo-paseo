@@ -1,12 +1,11 @@
-import { useCallback, useMemo, useState } from "react";
-import { Alert, Text, TextInput, View } from "react-native";
+import { useCallback, useState } from "react";
+import { Alert, Text, View } from "react-native";
 import { StyleSheet, UnistylesRuntime, useUnistyles } from "react-native-unistyles";
-import { BottomSheetTextInput } from "@gorhom/bottom-sheet";
 import { Link } from "lucide-react-native";
 import { useDaemonRegistry, type HostProfile } from "@/contexts/daemon-registry-context";
 import { decodeOfferFragmentPayload } from "@/utils/daemon-endpoints";
 import { ConnectionOfferSchema } from "@server/shared/connection-offer";
-import { AdaptiveModalSheet } from "./adaptive-modal-sheet";
+import { AdaptiveModalSheet, AdaptiveTextInput } from "./adaptive-modal-sheet";
 import { Button } from "@/components/ui/button";
 
 const styles = StyleSheet.create((theme) => ({
@@ -55,7 +54,6 @@ export function PairLinkModal({ visible, onClose, onCancel, onSaved, targetServe
   const { daemons, upsertDaemonFromOfferUrl } = useDaemonRegistry();
   const isMobile =
     UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
-  const InputComponent = useMemo(() => (isMobile ? BottomSheetTextInput : TextInput), [isMobile]);
 
   const [offerUrl, setOfferUrl] = useState("");
   const [isSaving, setIsSaving] = useState(false);
@@ -143,7 +141,7 @@ export function PairLinkModal({ visible, onClose, onCancel, onSaved, targetServe
 
       <View style={styles.field}>
         <Text style={styles.label}>Pairing link</Text>
-        <InputComponent
+        <AdaptiveTextInput
           testID="pair-link-input"
           nativeID="pair-link-input"
           accessibilityLabel="pair-link-input"
