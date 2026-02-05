@@ -73,7 +73,7 @@ function GettingStarted() {
           </li>
           <li>
             <a
-              href="https://github.com/opencode-ai/opencode"
+              href="https://github.com/anomalyco/opencode"
               target="_blank"
               rel="noopener noreferrer"
               className="underline hover:text-white/80"
