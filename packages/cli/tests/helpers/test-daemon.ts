@@ -102,7 +102,7 @@ function sleep(ms: number): Promise<void> {
  * Start a test daemon programmatically using the server's bootstrap API
  *
  * This starts the daemon in a separate process using the CLI's daemon start command
- * with isolated PASEO_HOME and PASEO_PORT environment variables.
+ * with isolated PASEO_HOME and PASEO_LISTEN environment variables.
  */
 export async function startTestDaemon(options?: {
   port?: number
@@ -128,7 +128,6 @@ export async function startTestDaemon(options?: {
       ...process.env,
       PASEO_HOME: paseoHome,
       PASEO_LISTEN: `127.0.0.1:${port}`,
-      PASEO_PORT: String(port),
       // Disable relay for tests
       PASEO_RELAY_ENABLED: 'false',
       // Force no TTY to prevent QR code output

@@ -76,15 +76,13 @@ STT_MODEL=whisper-1        # Optional: override to gpt-4o-transcribe, etc.
 STT_CONFIDENCE_THRESHOLD=-3.0  # Optional: reject low-confidence clips
 STT_DEBUG_AUDIO_DIR=.stt-debug # Optional: persist raw dictation audio for debugging
 PASEO_HOME=~/.paseo        # Runtime state directory (agents/, etc.)
-PASEO_PORT=6767            # Voice server + MCP port (falls back to 6767)
-PORT=3000                  # Server port
-NODE_ENV=development       # Environment
+PASEO_LISTEN=127.0.0.1:6767  # Listen address (host:port or /path/to/socket)
 ```
 
-`PASEO_HOME` defaults to `~/.paseo` and isolates runtime artifacts like `agents/`. `PASEO_PORT` takes precedence over `PORT` and controls both the HTTP server and MCP endpoint. For blue/green testing you can run a parallel server without touching production state:
+`PASEO_HOME` defaults to `~/.paseo` and isolates runtime artifacts like `agents/`. `PASEO_LISTEN` controls the daemon listen address. For blue/green testing you can run a parallel server without touching production state:
 
 ```bash
-PASEO_HOME=~/.paseo-blue PASEO_PORT=7777 npm run dev
+PASEO_HOME=~/.paseo-blue PASEO_LISTEN=127.0.0.1:7777 npm run dev
 ```
 
 ## Tech Stack

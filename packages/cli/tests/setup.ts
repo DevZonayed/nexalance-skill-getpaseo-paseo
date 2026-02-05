@@ -72,7 +72,7 @@ export async function startDaemon(
   paseoHome: string
 ): Promise<ProcessPromise> {
   $.verbose = false
-  const daemon = $`PASEO_HOME=${paseoHome} PASEO_PORT=${port} paseo daemon start --foreground`.nothrow()
+  const daemon = $`PASEO_HOME=${paseoHome} PASEO_LISTEN=127.0.0.1:${port} paseo daemon start --foreground`.nothrow()
   return daemon
 }
 

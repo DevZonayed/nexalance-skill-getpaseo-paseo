@@ -6,7 +6,7 @@
  *   npx tsx packages/server/src/server/daemon-e2e/checkout-debug.ts [agentIdOrCwd1] [agentIdOrCwd2]
  *
  * To test against a different daemon:
- *   PASEO_PORT=7777 npx tsx packages/server/src/server/daemon-e2e/checkout-debug.ts
+ *   PASEO_LISTEN=127.0.0.1:7777 npx tsx packages/server/src/server/daemon-e2e/checkout-debug.ts
  */
 
 import { WebSocket } from "ws";
@@ -30,8 +30,8 @@ class LoggingWebSocket extends OriginalWebSocket {
 }
 
 const PASEO_HOME = process.env.PASEO_HOME ?? `${os.homedir()}/.paseo`;
-const PASEO_PORT = process.env.PASEO_PORT ?? "6767";
-const DAEMON_URL = `ws://127.0.0.1:${PASEO_PORT}/ws`;
+const PASEO_LISTEN = process.env.PASEO_LISTEN ?? "127.0.0.1:6767";
+const DAEMON_URL = `ws://${PASEO_LISTEN}/ws`;
 
 async function testMultiAgentSequence() {
   console.log("\n=== Testing multi-agent checkout sequence ===");
