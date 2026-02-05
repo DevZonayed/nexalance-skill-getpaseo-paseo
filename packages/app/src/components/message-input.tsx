@@ -657,7 +657,6 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
         <DictationOverlay
           volume={dictationVolume}
           duration={dictationDuration}
-          transcript={dictationPartialTranscript}
           isRecording={isDictating}
           isProcessing={isDictationProcessing}
           status={dictationStatus}
