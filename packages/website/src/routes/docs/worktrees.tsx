@@ -74,8 +74,7 @@ function Worktrees() {
         <h2 className="text-xl font-medium">Branches</h2>
         <p className="text-white/60 leading-relaxed">
           When you create a worktree, Paseo generates a random directory name. The branch name
-          is set when you first launch an agent. You can specify a branch name, or Paseo will
-          generate one for you.
+          is set when you first launch an agent — Paseo generates one automatically.
         </p>
         <p className="text-white/60 leading-relaxed">
           This means the worktree directory and branch are independent. You can rename the
