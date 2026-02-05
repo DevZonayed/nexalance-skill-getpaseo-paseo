@@ -308,10 +308,11 @@ function FAQ() {
         </FAQItem>
         <FAQItem question="What's the business model?">There isn't one.</FAQItem>
         <FAQItem question="Isn't this just more screen time?">
-          I won't pretend this can't be misused. But for me it means less time
-          at my desk, not more. I brainstorm whole features with voice. I kick
-          off work at my desk, then check in from my phone during a walk. I see
-          what an agent needs, send a voice reply, and put my phone away.
+          I won't pretend this can't be misused to squeeze every minute of your
+          day into work. But for me it means less time at my desk, not more. I
+          brainstorm whole features with voice. I kick off work at my desk, then
+          check in from my phone during a walk. I see what an agent needs, send
+          a voice reply, and put my phone away.
         </FAQItem>
         <FAQItem question="What does Paseo mean?">
           Stroll, in Spanish. 🚶
