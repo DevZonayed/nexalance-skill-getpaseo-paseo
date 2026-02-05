@@ -136,6 +136,9 @@ export async function createPaseoDaemon(
   // CORS - allow same-origin + configured origins
   const allowedOrigins = new Set([
     ...config.corsAllowedOrigins,
+    // Tauri desktop app WebView origin (used for fetch/WebSocket in production builds).
+    // This origin can't be produced by normal websites, so it's safe to allow by default.
+    "tauri://localhost",
     // For TCP, add localhost variants
     ...(listenTarget.type === "tcp"
       ? [

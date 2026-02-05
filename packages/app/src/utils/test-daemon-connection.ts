@@ -1,6 +1,7 @@
 import { DaemonClient } from "@server/client/daemon-client";
 import type { ConnectionState } from "@server/client/daemon-client";
 import { buildDaemonWebSocketUrl } from "./daemon-endpoints";
+import { createTauriWebSocketTransportFactory } from "./tauri-daemon-transport";
 
 function normalizeNonEmptyString(value: unknown): string | null {
   if (typeof value !== "string") return null;
@@ -45,9 +46,11 @@ export async function probeDaemonEndpoint(
   const timeoutMs = options?.timeoutMs ?? 6000;
   const url = buildDaemonWebSocketUrl(endpoint);
 
+  const tauriTransportFactory = createTauriWebSocketTransportFactory();
   const client = new DaemonClient({
     url,
     suppressSendErrors: true,
+    ...(tauriTransportFactory ? { transportFactory: tauriTransportFactory } : {}),
   });
 
   try {
