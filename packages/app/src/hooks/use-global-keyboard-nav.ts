@@ -89,11 +89,18 @@ export function useGlobalKeyboardNav({
       const key = event.key ?? "";
       const lowerKey = key.toLowerCase();
 
-      if (key === "Alt") {
+      if (key === "Alt" && !event.shiftKey) {
         useKeyboardNavStore.getState().setAltDown(true);
       }
-      if (isTauri && (key === "Meta" || key === "Control")) {
+      if (isTauri && (key === "Meta" || key === "Control") && !event.shiftKey) {
         useKeyboardNavStore.getState().setCmdOrCtrlDown(true);
+      }
+      // If shift is pressed while a modifier is held, hide the badges
+      if (key === "Shift") {
+        const state = useKeyboardNavStore.getState();
+        if (state.altDown || state.cmdOrCtrlDown) {
+          state.resetModifiers();
+        }
       }
 
       // Cmd+B: toggle sidebar

@@ -26,7 +26,7 @@ import { deriveSidebarShortcutAgentKeys } from "@/utils/sidebar-shortcuts";
 import { AdaptiveModalSheet } from "@/components/adaptive-modal-sheet";
 
 const DESKTOP_SIDEBAR_WIDTH = 320;
-const SIDEBAR_AGENT_LIMIT = 15;
+const SIDEBAR_AGENT_LIMIT = 50; // temporary for screenshots
 
 interface SlidingSidebarProps {
   selectedAgentId?: string;
@@ -83,12 +83,8 @@ export function SlidingSidebar({ selectedAgentId }: SlidingSidebarProps) {
     });
   }, [agents]);
 
-  const limitedAgents = useMemo(
-    () => sortedAgents.slice(0, SIDEBAR_AGENT_LIMIT),
-    [sortedAgents]
-  );
-
-  const sidebarSections = useSidebarAgentSections(limitedAgents);
+  // Pass all agents to grouping, limit is applied inside groupAgents per-project
+  const sidebarSections = useSidebarAgentSections(sortedAgents);
   const collapsedProjectKeys = useSidebarCollapsedSectionsStore((s) => s.collapsedProjectKeys);
   const setSidebarShortcutAgentKeys = useKeyboardNavStore((s) => s.setSidebarShortcutAgentKeys);
   const sidebarShortcutAgentKeys = useMemo(() => {
@@ -294,7 +290,7 @@ export function SlidingSidebar({ selectedAgentId }: SlidingSidebarProps) {
 
               {/* Middle: scrollable agent list */}
               <GroupedAgentList
-                agents={limitedAgents}
+                agents={sortedAgents}
                 isRefreshing={isManualRefresh && isRevalidating}
                 onRefresh={handleRefresh}
                 selectedAgentId={selectedAgentId}
@@ -420,7 +416,7 @@ export function SlidingSidebar({ selectedAgentId }: SlidingSidebarProps) {
 
       {/* Middle: scrollable agent list */}
       <GroupedAgentList
-        agents={limitedAgents}
+        agents={sortedAgents}
         isRefreshing={isManualRefresh && isRevalidating}
         onRefresh={handleRefresh}
         selectedAgentId={selectedAgentId}
