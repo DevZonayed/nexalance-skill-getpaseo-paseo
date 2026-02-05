@@ -7,6 +7,7 @@ export const Route = createFileRoute('/docs')({
 
 const navigation = [
   { name: 'Getting started', href: '/docs' },
+  { name: 'CLI', href: '/docs/cli' },
   { name: 'Configuration', href: '/docs/configuration' },
   { name: 'Security', href: '/docs/security' },
   { name: 'Best practices', href: '/docs/best-practices' },
