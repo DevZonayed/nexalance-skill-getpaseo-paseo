@@ -6,6 +6,8 @@
 
 <p align="center">Manage coding agents from your phone and desktop.</p>
 
+---
+
 > [!WARNING]
 > **Early development** — Features may break or change without notice. Use at your own risk.
 
