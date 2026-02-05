@@ -272,8 +272,8 @@ function Story() {
         </p>
         <p>
           I started building a simple app to manage agents via voice. I continued
-          adding features as I needed them, and slowly ended up building what
-          Paseo is today.
+          adding features as I needed them, and it slowly turned into what Paseo
+          is today.
         </p>
         <p>
           Anthropic and OpenAI added coding agents to their mobile apps since I
