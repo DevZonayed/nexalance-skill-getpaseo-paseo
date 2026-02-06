@@ -1,39 +1,23 @@
 import type { Command } from 'commander'
-import type { CommandOptions, ListResult, OutputSchema, CommandError } from '../../output/index.js'
+import { connectToDaemon } from '../../utils/client.js'
+import type { CommandOptions, ListResult, OutputSchema } from '../../output/index.js'
 
 /** Model list item for display */
 export interface ModelListItem {
   model: string
   id: string
+  description: string
 }
 
-/** Static model data by provider */
-const MODELS_BY_PROVIDER: Record<string, ModelListItem[]> = {
-  claude: [
-    { model: 'Claude Sonnet 4', id: 'claude-sonnet-4-20250514' },
-    { model: 'Claude Opus 4', id: 'claude-opus-4-20250514' },
-    { model: 'Claude Haiku 3.5', id: 'claude-3-5-haiku-20241022' },
-  ],
-  codex: [
-    { model: 'o3-mini', id: 'o3-mini' },
-    { model: 'o4-mini', id: 'o4-mini' },
-  ],
-  opencode: [
-    // opencode uses claude or codex under the hood
-    { model: 'Claude Sonnet 4', id: 'claude-sonnet-4-20250514' },
-    { model: 'Claude Opus 4', id: 'claude-opus-4-20250514' },
-    { model: 'Claude Haiku 3.5', id: 'claude-3-5-haiku-20241022' },
-    { model: 'o3-mini', id: 'o3-mini' },
-    { model: 'o4-mini', id: 'o4-mini' },
-  ],
-}
+const VALID_PROVIDERS = ['claude', 'codex', 'opencode']
 
 /** Schema for provider models output */
 export const providerModelsSchema: OutputSchema<ModelListItem> = {
   idField: 'id',
   columns: [
-    { header: 'MODEL', field: 'model', width: 30 },
     { header: 'ID', field: 'id', width: 30 },
+    { header: 'MODEL', field: 'model', width: 30 },
+    { header: 'DESCRIPTION', field: 'description', width: 40 },
   ],
 }
 
@@ -45,25 +29,42 @@ export interface ProviderModelsOptions extends CommandOptions {
 
 export async function runModelsCommand(
   provider: string,
-  _options: ProviderModelsOptions,
+  options: ProviderModelsOptions,
   _command: Command
 ): Promise<ProviderModelsResult> {
   const normalizedProvider = provider.toLowerCase()
-  const models = MODELS_BY_PROVIDER[normalizedProvider]
 
-  if (!models) {
-    const validProviders = Object.keys(MODELS_BY_PROVIDER).join(', ')
-    const error: CommandError = {
+  if (!VALID_PROVIDERS.includes(normalizedProvider)) {
+    throw {
       code: 'UNKNOWN_PROVIDER',
       message: `Unknown provider: ${provider}`,
-      details: `Valid providers: ${validProviders}`,
+      details: `Valid providers: ${VALID_PROVIDERS.join(', ')}`,
     }
-    throw error
   }
 
-  return {
-    type: 'list',
-    data: models,
-    schema: providerModelsSchema,
+  const client = await connectToDaemon({ host: options.host })
+  try {
+    const result = await client.listProviderModels(normalizedProvider)
+
+    if (result.error) {
+      throw {
+        code: 'PROVIDER_ERROR',
+        message: `Failed to fetch models for ${provider}: ${result.error}`,
+      }
+    }
+
+    const models: ModelListItem[] = (result.models ?? []).map((m) => ({
+      model: m.label,
+      id: m.id,
+      description: m.description ?? '',
+    }))
+
+    return {
+      type: 'list',
+      data: models,
+      schema: providerModelsSchema,
+    }
+  } finally {
+    await client.close()
   }
 }

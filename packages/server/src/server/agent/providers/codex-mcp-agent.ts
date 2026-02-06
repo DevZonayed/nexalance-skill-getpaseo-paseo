@@ -5097,10 +5097,20 @@ async function findRolloutFile(
   return null;
 }
 
-const RolloutContentItemSchema = z.object({
-  type: z.string(),
-  text: z.string(),
-}).passthrough();
+const RolloutContentItemSchema = z
+  .union([
+    z.object({ type: z.literal("input_text"), text: z.string() }),
+    z.object({ type: z.literal("output_text"), text: z.string() }),
+    z.object({ type: z.literal("reasoning_text"), text: z.string() }),
+    z.object({ type: z.literal("text"), text: z.string() }),
+    z
+      .object({
+        type: z.string(),
+        text: z.string().optional(),
+        message: z.string().optional(),
+      })
+      .passthrough(),
+  ]);
 
 const RolloutContentArraySchema = z.array(RolloutContentItemSchema);
 
@@ -5116,77 +5126,131 @@ function extractContentTextByType(content: unknown, itemType: string): string {
     .trim();
 }
 
-const RolloutResponsePayloadSchema = z.object({
-  type: z.string().optional(),
-  role: z.string().optional(),
+const RolloutResponseMessagePayloadSchema = z.object({
+  type: z.literal("message"),
+  role: z.enum(["user", "assistant"]).optional(),
   content: z.unknown().optional(),
-  name: z.string().optional(),
-  call_id: z.string().optional(),
-  arguments: z.string().optional(),
-  output: z.string().optional(),
+});
+
+const RolloutResponseReasoningPayloadSchema = z.object({
+  type: z.literal("reasoning"),
+  content: z.unknown().optional(),
   summary: z.array(z.object({ text: z.string().optional() })).optional(),
   text: z.string().optional(),
 });
 
-const RolloutEventPayloadSchema = z.object({
-  type: z.string().optional(),
+const RolloutResponseFunctionCallPayloadSchema = z.object({
+  type: z.literal("function_call"),
+  name: z.string().optional(),
+  call_id: z.string().optional(),
+  arguments: z.string().optional(),
+});
+
+const RolloutResponseCustomToolCallPayloadSchema = z.object({
+  type: z.literal("custom_tool_call"),
+  name: z.string().optional(),
+  call_id: z.string().optional(),
+  arguments: z.string().optional(),
+});
+
+const RolloutResponseFunctionCallOutputPayloadSchema = z.object({
+  type: z.literal("function_call_output"),
+  call_id: z.string().optional(),
+  output: z.string().optional(),
+});
+
+const RolloutEventAgentReasoningPayloadSchema = z.object({
+  type: z.literal("agent_reasoning"),
   text: z.string().optional(),
-  message: z.string().optional(),
 });
 
-const RolloutEntrySchema = z.object({
-  type: z.enum(["response_item", "event_msg"]),
-  payload: z.unknown().optional(),
+const RolloutEventAgentMessagePayloadSchema = z.object({
+  type: z.literal("agent_message"),
+  message: z
+    .union([
+      z.string(),
+      z
+        .object({
+          role: z.string().optional(),
+          message: z.string().optional(),
+          text: z.string().optional(),
+        })
+        .passthrough(),
+    ])
+    .optional(),
 });
 
-type RolloutEntry = z.infer<typeof RolloutEntrySchema>;
-type RolloutResponsePayload = z.infer<typeof RolloutResponsePayloadSchema>;
+const RolloutEventUserMessagePayloadSchema = z.object({
+  type: z.literal("user_message"),
+  message: z
+    .union([
+      z.string(),
+      z
+        .object({
+          role: z.string().optional(),
+          message: z.string().optional(),
+          text: z.string().optional(),
+        })
+        .passthrough(),
+    ])
+    .optional(),
+});
 
-function parseRolloutEntryFromLine(line: string): RolloutEntry | null {
-  if (!line) {
-    return null;
-  }
-  try {
-    const parsed = JSON.parse(line);
-    const result = RolloutEntrySchema.safeParse(parsed);
-    if (result.success) {
-      return result.data;
-    }
-    if (
-      parsed &&
-      typeof parsed === "object" &&
-      typeof (parsed as { output?: unknown }).output === "string"
-    ) {
-      return parseRolloutEntryFromLine((parsed as { output: string }).output);
-    }
-  } catch {
-    return null;
-  }
-  return null;
-}
+type RolloutResponseReasoningPayload = z.infer<
+  typeof RolloutResponseReasoningPayloadSchema
+>;
+type ParsedRolloutRecord =
+  | { kind: "timeline"; item: AgentTimelineItem }
+  | { kind: "call"; name: string; callId?: string; input?: unknown }
+  | { kind: "output"; callId: string; output: string }
+  | { kind: "ignore" };
+
+const RolloutMessageContentSchema = z
+  .union([
+    z.string().transform((content) => content.trim()),
+    z.array(
+      z
+        .object({
+          text: z.string().optional(),
+          message: z.string().optional(),
+        })
+        .passthrough()
+    ).transform((content) =>
+      content
+        .map((block) => block.text ?? block.message ?? "")
+        .map((text) => text.trim())
+        .filter(Boolean)
+        .join("\n")
+        .trim()
+    ),
+  ]);
 
 function extractMessageText(content: unknown): string {
-  if (!Array.isArray(content)) {
+  const parsed = RolloutMessageContentSchema.safeParse(content);
+  if (!parsed.success) {
     return "";
   }
-  const parts: string[] = [];
-  for (const block of content) {
-    if (!block || typeof block !== "object") {
-      continue;
-    }
-    const record = block as Record<string, unknown>;
-    const text = typeof record.text === "string" ? record.text : undefined;
-    if (text && text.trim()) {
-      parts.push(text.trim());
-      continue;
-    }
-    const message =
-      typeof record.message === "string" ? record.message : undefined;
-    if (message && message.trim()) {
-      parts.push(message.trim());
-    }
+  return parsed.data;
+}
+
+const RolloutEventMessageTextSchema = z
+  .union([
+    z.string(),
+    z
+      .object({
+        message: z.string().optional(),
+        text: z.string().optional(),
+      })
+      .passthrough()
+      .transform((message) => message.message ?? message.text ?? ""),
+  ]);
+
+function extractEventMessageText(message: unknown): string {
+  const parsed = RolloutEventMessageTextSchema.safeParse(message);
+  if (!parsed.success) {
+    return "";
   }
-  return parts.join("\n").trim();
+  return parsed.data;
 }
 
 function isSyntheticRolloutUserMessage(text: string): boolean {
@@ -5207,10 +5271,10 @@ function isSyntheticRolloutUserMessage(text: string): boolean {
   return false;
 }
 
-function extractReasoningText(payload: RolloutResponsePayload): string {
-  if (Array.isArray(payload?.summary)) {
+function extractReasoningText(payload: RolloutResponseReasoningPayload): string {
+  if (Array.isArray(payload.summary)) {
     const text = payload.summary
-      .map((item) => (item && typeof item.text === "string" ? item.text : ""))
+      .map((item) => item.text ?? "")
       .filter(Boolean)
       .join("\n")
       .trim();
@@ -5218,16 +5282,116 @@ function extractReasoningText(payload: RolloutResponsePayload): string {
       return text;
     }
   }
-  // Handle content array with reasoning_text items
   const contentText = extractContentTextByType(payload.content, "reasoning_text");
   if (contentText) {
     return contentText;
   }
-  if (typeof payload?.text === "string") {
+  if (typeof payload.text === "string") {
     return payload.text;
   }
   return "";
 }
+
+function parseJsonLikeString(value: string): unknown {
+  try {
+    return JSON.parse(value);
+  } catch {
+    return value;
+  }
+}
+
+const FunctionCallInputNormalizationSchema = z
+  .union([
+    z.object({ cmd: z.string() }).transform((input) => ({ name: "Bash", input: { command: input.cmd } })),
+    z
+      .object({ command: z.array(z.string()) })
+      .transform((input) => ({ name: "Bash", input: { command: input.command[2] ?? "" } })),
+    z.unknown().transform((input) => ({ name: "unknown", input })),
+  ]);
+
+const RolloutResponseRecordSchema = z
+  .union([
+    RolloutResponseMessagePayloadSchema.transform((payload): ParsedRolloutRecord => {
+      const text = extractMessageText(payload.content);
+      const itemType = payload.role === "assistant" ? "assistant_message" : "user_message";
+      const shouldEmit = text.length > 0 && (itemType !== "user_message" || !isSyntheticRolloutUserMessage(text));
+      return shouldEmit
+        ? { kind: "timeline", item: { type: itemType, text } }
+        : { kind: "ignore" };
+    }),
+    RolloutResponseReasoningPayloadSchema.transform((payload): ParsedRolloutRecord => {
+      const text = extractReasoningText(payload);
+      return text.length > 0
+        ? { kind: "timeline", item: { type: "reasoning", text } }
+        : { kind: "ignore" };
+    }),
+    z
+      .union([
+        RolloutResponseFunctionCallPayloadSchema,
+        RolloutResponseCustomToolCallPayloadSchema,
+      ])
+      .transform((payload): ParsedRolloutRecord => {
+        const rawName = payload.name ?? "unknown";
+        const parsedArguments = payload.arguments ? parseJsonLikeString(payload.arguments) : undefined;
+        const normalized =
+          rawName === "exec_command" || rawName === "shell"
+            ? FunctionCallInputNormalizationSchema.parse(parsedArguments)
+            : { name: rawName, input: parsedArguments };
+        const skip = rawName === "write_stdin";
+        return skip
+          ? { kind: "ignore" }
+          : {
+              kind: "call",
+              name: normalized.name,
+              callId: payload.call_id,
+              input: normalized.input,
+            };
+      }),
+    RolloutResponseFunctionCallOutputPayloadSchema.transform(
+      (payload): ParsedRolloutRecord =>
+        payload.call_id && payload.output
+          ? { kind: "output", callId: payload.call_id, output: payload.output }
+          : { kind: "ignore" }
+    ),
+    z.unknown().transform((): ParsedRolloutRecord => ({ kind: "ignore" })),
+  ]);
+
+const RolloutEventRecordSchema = z
+  .union([
+    RolloutEventAgentReasoningPayloadSchema.transform(
+      (payload): ParsedRolloutRecord =>
+        payload.text
+          ? { kind: "timeline", item: { type: "reasoning", text: payload.text } }
+          : { kind: "ignore" }
+    ),
+    RolloutEventAgentMessagePayloadSchema.transform((payload): ParsedRolloutRecord => {
+      const text = extractEventMessageText(payload.message);
+      return text.length > 0
+        ? { kind: "timeline", item: { type: "assistant_message", text } }
+        : { kind: "ignore" };
+    }),
+    RolloutEventUserMessagePayloadSchema.transform((payload): ParsedRolloutRecord => {
+      const text = extractEventMessageText(payload.message);
+      const shouldEmit = text.length > 0 && !isSyntheticRolloutUserMessage(text);
+      return shouldEmit
+        ? { kind: "timeline", item: { type: "user_message", text } }
+        : { kind: "ignore" };
+    }),
+    z.unknown().transform((): ParsedRolloutRecord => ({ kind: "ignore" })),
+  ]);
+
+const RolloutRecordSchema = z
+  .object({
+    type: z.enum(["response_item", "event_msg"]),
+    payload: z.unknown().optional(),
+    item: z.unknown().optional(),
+    msg: z.unknown().optional(),
+  })
+  .transform((entry) =>
+    entry.type === "response_item"
+      ? RolloutResponseRecordSchema.parse(entry.payload ?? entry.item)
+      : RolloutEventRecordSchema.parse(entry.payload ?? entry.msg)
+  );
 
 function parseJsonRolloutTimeline(
   parsed: unknown
@@ -5244,25 +5408,28 @@ function parseJsonRolloutTimeline(
     if (!entry || typeof entry !== "object") {
       continue;
     }
-    const record = entry as Record<string, unknown>;
-    const type = record.type;
-    if (type === "message") {
-      const role = record.role;
-      const text = extractMessageText(record.content);
-      if (!text || typeof role !== "string") {
+    const messagePayloadResult =
+      RolloutResponseMessagePayloadSchema.safeParse(entry);
+    if (messagePayloadResult.success) {
+      const payload = messagePayloadResult.data;
+      const text = extractMessageText(payload.content);
+      if (!text) {
         continue;
       }
-      if (role === "assistant") {
+      if (payload.role === "assistant") {
         timeline.push({ type: "assistant_message", text });
-      } else if (role === "user") {
+      } else if (payload.role === "user") {
         if (!isSyntheticRolloutUserMessage(text)) {
           timeline.push({ type: "user_message", text });
         }
       }
       continue;
     }
-    if (type === "reasoning") {
-      const text = extractReasoningText(record as RolloutResponsePayload);
+
+    const reasoningPayloadResult =
+      RolloutResponseReasoningPayloadSchema.safeParse(entry);
+    if (reasoningPayloadResult.success) {
+      const text = extractReasoningText(reasoningPayloadResult.data);
       if (text) {
         timeline.push({ type: "reasoning", text });
       }
@@ -5294,126 +5461,39 @@ export async function parseRolloutFile(
     .map((line) => line.trim())
     .filter(Boolean);
 
-  // First pass: collect function_call_output entries by call_id
-  const outputsByCallId = new Map<string, string>();
-  for (const line of lines) {
-    const entry = parseRolloutEntryFromLine(line);
-    if (!entry || entry.type !== "response_item") continue;
-    const payloadResult = RolloutResponsePayloadSchema.safeParse(entry.payload);
-    if (!payloadResult.success) continue;
-    const payload = payloadResult.data;
-    if (payload.type === "function_call_output" && payload.call_id && payload.output) {
-      outputsByCallId.set(payload.call_id, payload.output);
-    }
-  }
-
-  // Second pass: build timeline
-  const timeline: AgentTimelineItem[] = [];
-
-  for (const line of lines) {
-    const entry = parseRolloutEntryFromLine(line);
-    if (!entry) continue;
-
-    if (entry.type === "response_item") {
-      const payloadResult = RolloutResponsePayloadSchema.safeParse(entry.payload);
-      if (!payloadResult.success) continue;
-      const payload = payloadResult.data;
-
-      switch (payload.type) {
-        case "message": {
-          const text = extractMessageText(payload.content);
-          if (text) {
-            if (payload.role === "assistant") {
-              timeline.push({ type: "assistant_message", text });
-            } else if (payload.role === "user") {
-              if (!isSyntheticRolloutUserMessage(text)) {
-                timeline.push({ type: "user_message", text });
-              }
-            }
-          }
-          break;
-        }
-        case "reasoning": {
-          const text = extractReasoningText(payload);
-          if (text) {
-            timeline.push({ type: "reasoning", text });
-          }
-          break;
-        }
-        case "function_call":
-        case "custom_tool_call": {
-          const rawName = payload.name ?? "unknown";
-          const callId = payload.call_id;
-
-          // Skip internal polling calls
-          if (rawName === "write_stdin") {
-            break;
-          }
-
-          let input: unknown;
-          if (payload.arguments) {
-            try {
-              input = JSON.parse(payload.arguments);
-            } catch {
-              input = payload.arguments;
-            }
-          }
-
-          // Map exec_command and shell to Bash with normalized input
-          let name = rawName;
-          if (rawName === "exec_command" && input && typeof input === "object") {
-            const execInput = input as { cmd?: string };
-            if (execInput.cmd) {
-              name = "Bash";
-              input = { command: execInput.cmd };
-            }
-          } else if (rawName === "shell" && input && typeof input === "object") {
-            // Older format: { command: ["bash", "-lc", "actual cmd"], workdir: "..." }
-            const shellInput = input as { command?: string[] };
-            if (Array.isArray(shellInput.command) && shellInput.command.length >= 3) {
-              name = "Bash";
-              // command[2] is the actual shell command after "bash -lc"
-              input = { command: shellInput.command[2] };
-            }
-          }
-
-          // Attach output if available
-          const output = callId ? outputsByCallId.get(callId) : undefined;
-
-          timeline.push({
-            type: "tool_call",
-            name,
-            callId,
-            status: "completed",
-            input,
-            ...(output ? { output } : {}),
-          });
-          break;
-        }
-        case "function_call_output":
-          // Already processed in first pass
-          break;
-        default:
-          break;
+  const parsedRecords = lines
+    .map((line) => {
+      try {
+        return JSON.parse(line);
+      } catch {
+        return null;
       }
-    } else if (entry.type === "event_msg") {
-      const payloadResult = RolloutEventPayloadSchema.safeParse(entry.payload);
-      if (!payloadResult.success) continue;
-      const payload = payloadResult.data;
+    })
+    .filter((record): record is unknown => record !== null)
+    .map((record) => RolloutRecordSchema.safeParse(record))
+    .filter((result): result is { success: true; data: ParsedRolloutRecord } => result.success)
+    .map((result) => result.data);
 
-      if (payload.type === "agent_reasoning" && payload.text) {
-        timeline.push({ type: "reasoning", text: payload.text });
-      } else if (payload.type === "agent_message" && payload.message) {
-        timeline.push({ type: "assistant_message", text: payload.message });
-      } else if (payload.type === "user_message" && payload.message) {
-        if (!isSyntheticRolloutUserMessage(payload.message)) {
-          timeline.push({ type: "user_message", text: payload.message });
-        }
-      }
-    }
-  }
+  const outputsByCallId = parsedRecords
+    .filter((record): record is Extract<ParsedRolloutRecord, { kind: "output" }> => record.kind === "output")
+    .reduce((map, record) => map.set(record.callId, record.output), new Map<string, string>());
 
-  return timeline;
+  return parsedRecords.flatMap((record): AgentTimelineItem[] =>
+    record.kind === "timeline"
+      ? [record.item]
+      : record.kind === "call"
+        ? [
+            {
+              type: "tool_call",
+              name: record.name,
+              callId: record.callId,
+              status: "completed",
+              input: record.input,
+              output: record.callId ? outputsByCallId.get(record.callId) : undefined,
+            },
+          ]
+        : []
+  );
 }
 
 type CodexPersistedTimelineOptions = {

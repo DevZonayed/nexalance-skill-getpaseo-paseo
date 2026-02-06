@@ -494,4 +494,125 @@ describe("AgentManager", () => {
     const updatedAgent = manager.getAgent(snapshot.id);
     expect(updatedAgent?.currentModeId).toBe("acceptEdits");
   });
+
+  test("close during in-flight stream does not clear persistence sessionId", async () => {
+    const workdir = mkdtempSync(join(tmpdir(), "agent-manager-test-"));
+    const storagePath = join(workdir, "agents");
+    const storage = new AgentStorage(storagePath, logger);
+
+    class CloseRaceSession implements AgentSession {
+      readonly provider = "codex" as const;
+      readonly capabilities = TEST_CAPABILITIES;
+      readonly id = randomUUID();
+      private threadId: string | null = this.id;
+      private releaseStream: (() => void) | null = null;
+      private closed = false;
+
+      async run(): Promise<AgentRunResult> {
+        return { sessionId: this.id, finalText: "", timeline: [] };
+      }
+
+      async *stream(): AsyncGenerator<AgentStreamEvent> {
+        yield { type: "turn_started", provider: this.provider };
+        if (!this.closed) {
+          await new Promise<void>((resolve) => {
+            this.releaseStream = resolve;
+          });
+        }
+        yield { type: "turn_canceled", provider: this.provider, reason: "closed" };
+      }
+
+      async *streamHistory(): AsyncGenerator<AgentStreamEvent> {}
+
+      async getRuntimeInfo() {
+        return {
+          provider: this.provider,
+          sessionId: this.threadId,
+          model: null,
+          modeId: null,
+        };
+      }
+
+      async getAvailableModes() {
+        return [];
+      }
+
+      async getCurrentMode() {
+        return null;
+      }
+
+      async setMode(): Promise<void> {}
+
+      getPendingPermissions() {
+        return [];
+      }
+
+      async respondToPermission(): Promise<void> {}
+
+      describePersistence() {
+        if (!this.threadId) {
+          return null;
+        }
+        return { provider: this.provider, sessionId: this.threadId };
+      }
+
+      async interrupt(): Promise<void> {}
+
+      async close(): Promise<void> {
+        this.closed = true;
+        this.threadId = null;
+        this.releaseStream?.();
+      }
+    }
+
+    class CloseRaceClient implements AgentClient {
+      readonly provider = "codex" as const;
+      readonly capabilities = TEST_CAPABILITIES;
+
+      async isAvailable(): Promise<boolean> {
+        return true;
+      }
+
+      async createSession(): Promise<AgentSession> {
+        return new CloseRaceSession();
+      }
+
+      async resumeSession(): Promise<AgentSession> {
+        return new CloseRaceSession();
+      }
+    }
+
+    const manager = new AgentManager({
+      clients: {
+        codex: new CloseRaceClient(),
+      },
+      registry: storage,
+      logger,
+      idFactory: () => "close-race-agent",
+    });
+
+    const snapshot = await manager.createAgent({
+      provider: "codex",
+      cwd: workdir,
+    });
+
+    const stream = manager.streamAgent(snapshot.id, "hello");
+    await stream.next();
+
+    await manager.closeAgent(snapshot.id);
+
+    // Drain stream finalizer path after close().
+    while (true) {
+      const next = await stream.next();
+      if (next.done) {
+        break;
+      }
+    }
+
+    await manager.flush();
+    await storage.flush();
+
+    const persisted = await storage.get(snapshot.id);
+    expect(persisted?.persistence?.sessionId).toBe(snapshot.persistence?.sessionId);
+  });
 });

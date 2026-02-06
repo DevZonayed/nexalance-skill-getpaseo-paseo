@@ -98,11 +98,11 @@ function Hero() {
   return (
     <div className="space-y-6">
       <h1 className="text-3xl md:text-5xl font-medium tracking-tight">
-        Manage coding agents from your phone and desktop
+        Run Codex and Claude Code locally from your phone and desktop
       </h1>
       <p className="text-white/70 text-lg leading-relaxed">
-        Agents run on your machine with your full dev environment. Connect from
-        phone, desktop, or web.
+        Use your full dev environment on your own machine. Use voice to check
+        in, reply, and keep work moving from your phone.
       </p>
     </div>
   )
@@ -337,4 +337,3 @@ function FAQItem({
     </details>
   )
 }
-
