@@ -8,6 +8,10 @@ import { activateKeepAwakeAsync, deactivateKeepAwake } from "expo-keep-awake";
 
 const VOICE_CONVERSATION_ID_STORAGE_KEY = "@paseo:voice-conversation-id";
 const KEEP_AWAKE_TAG = "paseo:voice";
+const VOICE_VAD_VOLUME_THRESHOLD = 0.18;
+const VOICE_VAD_SILENCE_DURATION_MS = 1400;
+const VOICE_VAD_SPEECH_CONFIRMATION_MS = 120;
+const VOICE_VAD_DETECTION_GRACE_PERIOD_MS = 700;
 
 interface VoiceContextValue {
   isVoiceMode: boolean;
@@ -123,10 +127,10 @@ export function VoiceProvider({ children }: VoiceProviderProps) {
         console.error("[Voice] Cannot handle error - setMessages not available from SessionState");
       }
     },
-    volumeThreshold: 0.3,
-    silenceDuration: 2000,
-    speechConfirmationDuration: 300,
-    detectionGracePeriod: 200,
+    volumeThreshold: VOICE_VAD_VOLUME_THRESHOLD,
+    silenceDuration: VOICE_VAD_SILENCE_DURATION_MS,
+    speechConfirmationDuration: VOICE_VAD_SPEECH_CONFIRMATION_MS,
+    detectionGracePeriod: VOICE_VAD_DETECTION_GRACE_PERIOD_MS,
   });
 
   useEffect(() => {
