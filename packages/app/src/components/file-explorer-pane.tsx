@@ -36,7 +36,11 @@ import {
   MoreVertical,
   X,
 } from "lucide-react-native";
-import type { ExplorerEntry, ExplorerFile } from "@/stores/session-store";
+import type {
+  AgentFileExplorerState,
+  ExplorerEntry,
+  ExplorerFile,
+} from "@/stores/session-store";
 import { useDaemonConnections } from "@/contexts/daemon-connections-context";
 import { useSessionStore } from "@/stores/session-store";
 import { useDownloadStore } from "@/stores/download-store";
@@ -312,6 +316,11 @@ export function FileExplorerPane({ serverId, agentId }: FileExplorerPaneProps) {
   const showInitialLoading =
     !directories.has(".") &&
     Boolean(isExplorerLoading && pendingRequest?.mode === "list" && pendingRequest?.path === ".");
+  const showBackFromError = Boolean(error && selectedEntryPath);
+  const errorRecoveryPath = useMemo(
+    () => getErrorRecoveryPath(explorerState),
+    [explorerState]
+  );
 
   const shouldShowInlinePreview = !isMobile && Boolean(selectedEntryPath);
   const minTreeWidth = 220;
@@ -475,6 +484,17 @@ export function FileExplorerPane({ serverId, agentId }: FileExplorerPaneProps) {
     []
   );
 
+  const handleBackFromError = useCallback(() => {
+    if (!agentId || !requestDirectoryListing) {
+      return;
+    }
+    selectExplorerEntry(agentId, null);
+    requestDirectoryListing(agentId, errorRecoveryPath, {
+      recordHistory: false,
+      setCurrentPath: true,
+    });
+  }, [agentId, errorRecoveryPath, requestDirectoryListing, selectExplorerEntry]);
+
   if (!agentExists) {
     return (
       <View style={styles.centerState}>
@@ -491,19 +511,26 @@ export function FileExplorerPane({ serverId, agentId }: FileExplorerPaneProps) {
       {error ? (
         <View style={styles.centerState}>
           <Text style={styles.errorText}>{error}</Text>
-          <Pressable
-            style={styles.retryButton}
-            onPress={() => {
-              if (agentId) {
-                requestDirectoryListing(agentId, ".", {
-                  recordHistory: false,
-                  setCurrentPath: false,
-                });
-              }
-            }}
-          >
-            <Text style={styles.retryButtonText}>Retry</Text>
-          </Pressable>
+          <View style={styles.errorActions}>
+            {showBackFromError ? (
+              <Pressable style={styles.retryButton} onPress={handleBackFromError}>
+                <Text style={styles.retryButtonText}>Back</Text>
+              </Pressable>
+            ) : null}
+            <Pressable
+              style={styles.retryButton}
+              onPress={() => {
+                if (agentId) {
+                  requestDirectoryListing(agentId, ".", {
+                    recordHistory: false,
+                    setCurrentPath: false,
+                  });
+                }
+              }}
+            >
+              <Text style={styles.retryButtonText}>Retry</Text>
+            </Pressable>
+          </View>
         </View>
       ) : showInitialLoading ? (
         <View style={styles.centerState}>
@@ -960,6 +987,21 @@ function getAncestorDirectories(directory: string): string[] {
   return ancestors;
 }
 
+function getErrorRecoveryPath(state: AgentFileExplorerState | undefined): string {
+  if (!state) {
+    return ".";
+  }
+
+  const currentHistoryPath =
+    state.history.length > 0 ? state.history[state.history.length - 1] : null;
+  const candidate = currentHistoryPath ?? state.lastVisitedPath ?? state.currentPath;
+
+  if (!candidate || candidate.length === 0) {
+    return ".";
+  }
+  return candidate;
+}
+
 const styles = StyleSheet.create((theme) => ({
   container: {
     flex: 1,
@@ -1064,6 +1106,11 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.sm,
     fontWeight: theme.fontWeight.semibold,
+  },
+  errorActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[2],
   },
   emptyText: {
     color: theme.colors.foregroundMuted,
