@@ -127,6 +127,7 @@ export function FileExplorerPane({ serverId, agentId }: FileExplorerPaneProps) {
   const [menuAnchor, setMenuAnchor] = useState({ top: 0, left: 0 });
   const [menuHeight, setMenuHeight] = useState(0);
   const [containerWidth, setContainerWidth] = useState(0);
+  const wasInlinePreviewVisibleRef = useRef(false);
 
   // Bottom sheet for file preview (mobile)
   const previewSheetRef = useRef<BottomSheetModal>(null);
@@ -337,6 +338,7 @@ export function FileExplorerPane({ serverId, agentId }: FileExplorerPaneProps) {
 
   useEffect(() => {
     if (!shouldShowInlinePreview) {
+      wasInlinePreviewVisibleRef.current = false;
       return;
     }
     if (containerWidth <= 0) {
@@ -345,12 +347,16 @@ export function FileExplorerPane({ serverId, agentId }: FileExplorerPaneProps) {
 
     const available = Math.max(0, containerWidth);
     const maxTree = Math.max(minTreeWidth, available - minPreviewWidth);
-    const desired = Math.round(available * safeSplitRatio);
+    const isOpeningInlinePreview = !wasInlinePreviewVisibleRef.current;
+    const desired = isOpeningInlinePreview
+      ? Math.round(available * safeSplitRatio)
+      : splitTreeWidth.value;
     const clamped = Math.max(minTreeWidth, Math.min(maxTree, desired));
 
     splitAvailableWidth.value = available;
     splitMaxTreeWidth.value = maxTree;
     splitTreeWidth.value = clamped;
+    wasInlinePreviewVisibleRef.current = true;
   }, [
     containerWidth,
     minPreviewWidth,
@@ -380,7 +386,7 @@ export function FileExplorerPane({ serverId, agentId }: FileExplorerPaneProps) {
         splitStartTreeWidth.value = splitTreeWidth.value;
       })
       .onUpdate((event) => {
-        const nextWidth = splitStartTreeWidth.value + event.translationX;
+        const nextWidth = splitStartTreeWidth.value - event.translationX;
         const clamped = Math.max(
           minTreeWidth,
           Math.min(splitMaxTreeWidth.value, nextWidth)
@@ -543,43 +549,8 @@ export function FileExplorerPane({ serverId, agentId }: FileExplorerPaneProps) {
         </View>
       ) : (
         <View style={styles.desktopSplit}>
-          <Animated.View
-            style={[
-              styles.treePane,
-              shouldShowInlinePreview
-                ? [styles.treePaneWithPreview, { minWidth: minTreeWidth }, treePaneAnimatedStyle]
-                : styles.treePaneFill,
-            ]}
-          >
-            <View style={styles.paneHeader} testID="files-pane-header">
-              <View style={styles.paneHeaderLeft} />
-              <Pressable style={styles.sortButton} onPress={handleSortCycle}>
-                <Text style={styles.sortButtonText}>{currentSortLabel}</Text>
-              </Pressable>
-            </View>
-            <FlatList
-              style={styles.treeList}
-              data={treeRows}
-              renderItem={renderTreeRow}
-              keyExtractor={(row) => row.entry.path}
-              contentContainerStyle={styles.entriesContent}
-              initialNumToRender={24}
-              maxToRenderPerBatch={40}
-              windowSize={12}
-            />
-          </Animated.View>
-
           {shouldShowInlinePreview ? (
             <View style={styles.previewPane}>
-              <GestureDetector gesture={splitResizeGesture}>
-                <View
-                  style={[
-                    styles.splitResizeHandle,
-                    Platform.OS === "web" && ({ cursor: "col-resize" } as any),
-                    Platform.OS === "web" && ({ touchAction: "none", userSelect: "none" } as any),
-                  ]}
-                />
-              </GestureDetector>
               <View style={styles.paneHeader} testID="preview-pane-header">
                 <Text style={styles.previewHeaderText} numberOfLines={1}>
                   {selectedEntryPath?.split("/").pop() ?? "Preview"}
@@ -606,6 +577,62 @@ export function FileExplorerPane({ serverId, agentId }: FileExplorerPaneProps) {
               <FilePreviewBody preview={preview} isLoading={isPreviewLoading} variant="inline" />
             </View>
           ) : null}
+
+          {shouldShowInlinePreview ? (
+            <Animated.View
+              style={[
+                styles.treePane,
+                styles.treePaneWithPreview,
+                { minWidth: minTreeWidth },
+                treePaneAnimatedStyle,
+              ]}
+            >
+              <GestureDetector gesture={splitResizeGesture}>
+                <View
+                  style={[
+                    styles.splitResizeHandle,
+                    Platform.OS === "web" && ({ cursor: "col-resize" } as any),
+                    Platform.OS === "web" && ({ touchAction: "none", userSelect: "none" } as any),
+                  ]}
+                />
+              </GestureDetector>
+              <View style={styles.paneHeader} testID="files-pane-header">
+                <View style={styles.paneHeaderLeft} />
+                <Pressable style={styles.sortButton} onPress={handleSortCycle}>
+                  <Text style={styles.sortButtonText}>{currentSortLabel}</Text>
+                </Pressable>
+              </View>
+              <FlatList
+                style={styles.treeList}
+                data={treeRows}
+                renderItem={renderTreeRow}
+                keyExtractor={(row) => row.entry.path}
+                contentContainerStyle={styles.entriesContent}
+                initialNumToRender={24}
+                maxToRenderPerBatch={40}
+                windowSize={12}
+              />
+            </Animated.View>
+          ) : (
+            <View style={[styles.treePane, styles.treePaneFill]}>
+              <View style={styles.paneHeader} testID="files-pane-header">
+                <View style={styles.paneHeaderLeft} />
+                <Pressable style={styles.sortButton} onPress={handleSortCycle}>
+                  <Text style={styles.sortButtonText}>{currentSortLabel}</Text>
+                </Pressable>
+              </View>
+              <FlatList
+                style={styles.treeList}
+                data={treeRows}
+                renderItem={renderTreeRow}
+                keyExtractor={(row) => row.entry.path}
+                contentContainerStyle={styles.entriesContent}
+                initialNumToRender={24}
+                maxToRenderPerBatch={40}
+                windowSize={12}
+              />
+            </View>
+          )}
         </View>
       )}
 
@@ -1014,6 +1041,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   treePane: {
     minWidth: 0,
+    position: "relative",
   },
   treePaneFill: {
     flex: 1,
@@ -1022,6 +1050,8 @@ const styles = StyleSheet.create((theme) => ({
     flex: 0,
     flexGrow: 0,
     flexShrink: 0,
+    borderLeftWidth: 1,
+    borderLeftColor: theme.colors.border,
   },
   splitResizeHandle: {
     position: "absolute",
@@ -1034,9 +1064,6 @@ const styles = StyleSheet.create((theme) => ({
   previewPane: {
     flex: 1,
     minWidth: 0,
-    position: "relative",
-    borderLeftWidth: 1,
-    borderLeftColor: theme.colors.border,
   },
   paneHeader: {
     flexDirection: "row",
@@ -1121,7 +1148,7 @@ const styles = StyleSheet.create((theme) => ({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingVertical: theme.spacing[1],
+    paddingVertical: 2,
     paddingRight: theme.spacing[2],
   },
   entryRowActive: {
@@ -1143,8 +1170,8 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.sm,
   },
   menuButton: {
-    width: 36,
-    height: 36,
+    width: 30,
+    height: 30,
     borderRadius: theme.borderRadius.full,
     alignItems: "center",
     justifyContent: "center",
