@@ -33,6 +33,7 @@ import { Dirent } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import readline from "node:readline";
+import { loadCodexPersistedTimeline } from "./codex-mcp-agent.js";
 
 
 const DEFAULT_TIMEOUT_MS = 14 * 24 * 60 * 60 * 1000;
@@ -1086,22 +1087,40 @@ class CodexAppServerAgentSession implements AgentSession {
   private async loadPersistedHistory(): Promise<void> {
     if (!this.client || !this.currentThreadId) return;
     try {
+      let rolloutTimeline: AgentTimelineItem[] = [];
+      try {
+        rolloutTimeline = await loadCodexPersistedTimeline(
+          this.currentThreadId,
+          undefined,
+          this.logger
+        );
+      } catch {
+        rolloutTimeline = [];
+      }
+
       const response = (await this.client.request("thread/read", {
         threadId: this.currentThreadId,
         includeTurns: true,
       })) as { thread?: { turns?: Array<{ items?: any[] }> } };
       const thread = response?.thread;
-      if (!thread || !Array.isArray(thread.turns)) return;
-      const timeline: AgentTimelineItem[] = [];
-      for (const turn of thread.turns) {
-        const items = Array.isArray(turn.items) ? turn.items : [];
-        for (const item of items) {
-          const timelineItem = threadItemToTimeline(item, { cwd: this.config.cwd ?? null });
-          if (timelineItem) {
-            timeline.push(timelineItem);
+      const threadTimeline: AgentTimelineItem[] = [];
+      if (thread && Array.isArray(thread.turns)) {
+        for (const turn of thread.turns) {
+          const items = Array.isArray(turn.items) ? turn.items : [];
+          for (const item of items) {
+            const timelineItem = threadItemToTimeline(item, {
+              cwd: this.config.cwd ?? null,
+            });
+            if (timelineItem) {
+              threadTimeline.push(timelineItem);
+            }
           }
         }
       }
+
+      const timeline =
+        rolloutTimeline.length > 0 ? rolloutTimeline : threadTimeline;
+
       if (timeline.length > 0) {
         this.persistedHistory = timeline;
         this.historyPending = true;
@@ -1775,19 +1794,27 @@ export class CodexAppServerAgentClient implements AgentClient {
         const title = thread.preview ?? null;
         let timeline: AgentTimelineItem[] = [];
         try {
+          const rolloutTimeline = await loadCodexPersistedTimeline(
+            threadId,
+            undefined,
+            this.logger
+          );
           const read = (await client.request("thread/read", {
             threadId,
             includeTurns: true,
           })) as { thread?: { turns?: Array<{ items?: any[] }> } };
           const turns = read.thread?.turns ?? [];
-          const items: AgentTimelineItem[] = [];
+          const itemsFromThreadRead: AgentTimelineItem[] = [];
           for (const turn of turns) {
             for (const item of turn.items ?? []) {
               const timelineItem = threadItemToTimeline(item, { cwd });
-              if (timelineItem) items.push(timelineItem);
+              if (timelineItem) itemsFromThreadRead.push(timelineItem);
             }
           }
-          timeline = items;
+          timeline =
+            rolloutTimeline.length > 0
+              ? rolloutTimeline
+              : itemsFromThreadRead;
         } catch {
           timeline = [];
         }

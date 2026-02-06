@@ -601,13 +601,17 @@ export class AgentManager {
       mutableAgent.pendingRun = null;
       mutableAgent.lifecycle = error ? "error" : "idle";
       mutableAgent.lastError = error;
-      mutableAgent.persistence = attachPersistenceCwd(
+      const persistenceHandle =
         mutableAgent.session.describePersistence() ??
-          (mutableAgent.runtimeInfo?.sessionId
-            ? { provider: mutableAgent.provider, sessionId: mutableAgent.runtimeInfo.sessionId }
-            : null),
-        mutableAgent.cwd
-      );
+        (mutableAgent.runtimeInfo?.sessionId
+          ? { provider: mutableAgent.provider, sessionId: mutableAgent.runtimeInfo.sessionId }
+          : null);
+      if (persistenceHandle) {
+        mutableAgent.persistence = attachPersistenceCwd(
+          persistenceHandle,
+          mutableAgent.cwd
+        );
+      }
       this.emitState(mutableAgent);
     };
 
@@ -1113,7 +1117,12 @@ export class AgentManager {
       case "thread_started":
         // Update persistence with the new session ID from the provider.
         // persistence.sessionId is the single source of truth for session identity.
-        agent.persistence = attachPersistenceCwd(agent.session.describePersistence(), agent.cwd);
+        {
+          const handle = agent.session.describePersistence();
+          if (handle) {
+            agent.persistence = attachPersistenceCwd(handle, agent.cwd);
+          }
+        }
         break;
       case "timeline":
         this.recordTimeline(agent, event.item);

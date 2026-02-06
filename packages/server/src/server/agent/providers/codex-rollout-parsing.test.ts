@@ -216,6 +216,79 @@ describe("codex rollout parsing", () => {
         text: "Let me think about this.",
       });
     });
+
+    test("parses legacy response_item shape using item", async () => {
+      const rolloutPath = join(tmpDir, "rollout.jsonl");
+      const lines = [
+        JSON.stringify({
+          timestamp: "2026-01-22T07:08:54.378Z",
+          type: "response_item",
+          item: {
+            type: "function_call",
+            name: "exec_command",
+            arguments: '{"cmd":"echo hello"}',
+            call_id: "call_legacy_1",
+          },
+        }),
+        JSON.stringify({
+          timestamp: "2026-01-22T07:09:01.785Z",
+          type: "response_item",
+          item: {
+            type: "function_call_output",
+            call_id: "call_legacy_1",
+            output: "hello",
+          },
+        }),
+      ];
+      writeFileSync(rolloutPath, lines.join("\n") + "\n");
+
+      const timeline = await parseRolloutFile(rolloutPath);
+      const toolCalls = timeline.filter((i) => i.type === "tool_call");
+      expect(toolCalls.length).toBe(1);
+      expect(toolCalls[0]).toMatchObject({
+        type: "tool_call",
+        name: "Bash",
+        callId: "call_legacy_1",
+        input: { command: "echo hello" },
+        output: "hello",
+      });
+    });
+
+    test("parses legacy event_msg shape using msg", async () => {
+      const rolloutPath = join(tmpDir, "rollout.jsonl");
+      const lines = [
+        JSON.stringify({
+          timestamp: "2026-01-22T07:08:54.378Z",
+          type: "event_msg",
+          msg: {
+            type: "agent_reasoning",
+            text: "thinking",
+          },
+        }),
+        JSON.stringify({
+          timestamp: "2026-01-22T07:08:54.378Z",
+          type: "event_msg",
+          msg: {
+            type: "agent_message",
+            message: { role: "assistant", message: "done" },
+          },
+        }),
+        JSON.stringify({
+          timestamp: "2026-01-22T07:08:54.378Z",
+          type: "event_msg",
+          msg: {
+            type: "user_message",
+            message: { role: "user", message: "question" },
+          },
+        }),
+      ];
+      writeFileSync(rolloutPath, lines.join("\n") + "\n");
+
+      const timeline = await parseRolloutFile(rolloutPath);
+      expect(timeline).toContainEqual({ type: "reasoning", text: "thinking" });
+      expect(timeline).toContainEqual({ type: "assistant_message", text: "done" });
+      expect(timeline).toContainEqual({ type: "user_message", text: "question" });
+    });
   });
 
   describe("complex conversation", () => {
