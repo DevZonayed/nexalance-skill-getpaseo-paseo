@@ -2,6 +2,7 @@ import type { AgentTimelineItem } from "./agent-sdk-types.js";
 import { extractPrincipalParam } from "../../utils/tool-call-parsers.js";
 
 const DEFAULT_MAX_ITEMS = 40;
+const MAX_TOOL_INPUT_CHARS = 400;
 
 function appendText(buffer: string, text: string): string {
   const normalized = text.trim();
@@ -23,6 +24,34 @@ function flushBuffers(lines: string[], buffers: { message: string; thought: stri
   }
   buffers.message = "";
   buffers.thought = "";
+}
+
+function isLikelyMcpToolCall(name: string): boolean {
+  const normalized = name.toLowerCase();
+  return (
+    normalized.includes("mcp") ||
+    normalized.includes("paseo") ||
+    normalized.includes("__") ||
+    normalized === "speak"
+  );
+}
+
+function formatToolInputJson(input: unknown): string | null {
+  if (input === undefined) {
+    return null;
+  }
+  try {
+    const encoded = JSON.stringify(input);
+    if (!encoded) {
+      return null;
+    }
+    if (encoded.length <= MAX_TOOL_INPUT_CHARS) {
+      return encoded;
+    }
+    return `${encoded.slice(0, MAX_TOOL_INPUT_CHARS)}...`;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -127,6 +156,11 @@ export function curateAgentActivity(
         break;
       case "tool_call": {
         flushBuffers(lines, buffers);
+        const inputJson = formatToolInputJson(item.input);
+        if (isLikelyMcpToolCall(item.name) && inputJson) {
+          lines.push(`[${item.name}] ${inputJson}`);
+          break;
+        }
         const principal = extractPrincipalParam(item.input);
         if (principal) {
           lines.push(`[${item.name}] ${principal}`);

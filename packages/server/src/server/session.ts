@@ -63,6 +63,7 @@ import { AgentManager } from "./agent/agent-manager.js";
 import type { ManagedAgent } from "./agent/agent-manager.js";
 import { scheduleAgentMetadataGeneration } from "./agent/agent-metadata-generator.js";
 import { toAgentPayload } from "./agent/agent-projections.js";
+import { validateWorkingDirectoryExists } from "./agent/working-directory-validation.js";
 import {
   StructuredAgentResponseError,
   generateStructuredAgentResponse,
@@ -298,6 +299,7 @@ export class Session {
   // Voice mode state
   private isVoiceMode = false;
   private speechInProgress = false;
+  // OpenRouter voice-only conversation storage identifier.
   private voiceConversationId: string | null = null;
 
   private readonly dictationStreamManager: DictationStreamManager;
@@ -1400,6 +1402,16 @@ export class Session {
       }
 
       this.isVoiceMode = true;
+      if (this.voiceLlmProvider !== "openrouter") {
+        this.voiceConversationId = null;
+        this.voiceAssistantAgentId = voiceConversationId;
+        this.sessionLogger.info(
+          { voiceAssistantAgentId: this.voiceAssistantAgentId },
+          "Voice conversation enabled (agent-backed)"
+        );
+        return;
+      }
+
       this.voiceConversationId = voiceConversationId;
 
       const loaded = await this.voiceConversationStore.load(
@@ -1416,6 +1428,14 @@ export class Session {
     }
 
     this.isVoiceMode = false;
+    if (this.voiceLlmProvider !== "openrouter") {
+      this.sessionLogger.info(
+        { voiceAssistantAgentId: this.voiceAssistantAgentId },
+        "Voice conversation disabled (agent-backed)"
+      );
+      return;
+    }
+
     const idToPersist = this.voiceConversationId;
     if (idToPersist) {
       try {
@@ -1548,21 +1568,7 @@ export class Session {
     try {
       // Validate that the working directory exists
       const resolvedCwd = expandTilde(config.cwd);
-      try {
-        const stats = await stat(resolvedCwd);
-        if (!stats.isDirectory()) {
-          throw new Error(
-            `Working directory is not a directory: ${config.cwd}`
-          );
-        }
-      } catch (statError: any) {
-        if (statError.code === "ENOENT") {
-          throw new Error(
-            `Working directory does not exist: ${config.cwd}`
-          );
-        }
-        throw statError;
-      }
+      await validateWorkingDirectoryExists(resolvedCwd);
 
       const { sessionConfig, worktreeConfig } = await this.buildAgentSessionConfig(
         config,
@@ -4653,11 +4659,20 @@ export class Session {
       if (existing) {
         return existing.id;
       }
-      this.voiceAssistantAgentId = null;
+      try {
+        const hydrated = await this.ensureAgentLoaded(this.voiceAssistantAgentId);
+        this.voiceAssistantAgentId = hydrated.id;
+        return hydrated.id;
+      } catch (error) {
+        this.sessionLogger.debug(
+          { err: error, voiceAssistantAgentId: this.voiceAssistantAgentId },
+          "Voice assistant agent not found in active/persisted state; creating new session"
+        );
+      }
     }
 
     const provider = this.resolveVoiceAgentProvider();
-    const voiceAgentId = `voice-${uuidv4()}`;
+    const voiceAgentId = this.voiceAssistantAgentId ?? uuidv4();
     const cwd = join(this.paseoHome, "voice-agent-workspace");
     await mkdir(cwd, { recursive: true });
 

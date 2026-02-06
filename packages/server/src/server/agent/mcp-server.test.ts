@@ -1,4 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
+import { mkdtemp, mkdir, rm } from "node:fs/promises";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 
 import { createTestLogger } from "../../test-utils/test-logger.js";
 import { createAgentMcpServer } from "./mcp-server.js";
@@ -48,6 +51,7 @@ function createTestDeps(): TestDeps {
 
 describe("create_agent MCP tool", () => {
   const logger = createTestLogger();
+  const existingCwd = process.cwd();
 
   it("requires a concise title no longer than 60 characters", async () => {
     const { agentManager, agentStorage } = createTestDeps();
@@ -56,7 +60,7 @@ describe("create_agent MCP tool", () => {
     expect(tool).toBeDefined();
 
     const missingTitle = await tool.inputSchema.safeParseAsync({
-      cwd: "/tmp/repo",
+      cwd: existingCwd,
       initialMode: "default",
       initialPrompt: "test",
     });
@@ -64,7 +68,7 @@ describe("create_agent MCP tool", () => {
     expect(missingTitle.error.issues[0].path).toEqual(["title"]);
 
     const tooLong = await tool.inputSchema.safeParseAsync({
-      cwd: "/tmp/repo",
+      cwd: existingCwd,
       initialMode: "default",
       title: "x".repeat(61),
       initialPrompt: "test",
@@ -73,7 +77,7 @@ describe("create_agent MCP tool", () => {
     expect(tooLong.error.issues[0].path).toEqual(["title"]);
 
     const ok = await tool.inputSchema.safeParseAsync({
-      cwd: "/tmp/repo",
+      cwd: existingCwd,
       initialMode: "default",
       title: "Short title",
       initialPrompt: "test",
@@ -86,12 +90,26 @@ describe("create_agent MCP tool", () => {
     const server = await createAgentMcpServer({ agentManager, agentStorage, logger });
     const tool = (server as any)._registeredTools["create_agent"];
     const parsed = await tool.inputSchema.safeParseAsync({
-      cwd: "/tmp/repo",
+      cwd: existingCwd,
       initialMode: "default",
       title: "Short title",
     });
     expect(parsed.success).toBe(false);
     expect(parsed.error.issues.some((issue: { path: string[] }) => issue.path[0] === "initialPrompt")).toBe(true);
+  });
+
+  it("fails immediately when cwd does not exist", async () => {
+    const { agentManager, agentStorage } = createTestDeps();
+    const server = await createAgentMcpServer({ agentManager, agentStorage, logger });
+    const tool = (server as any)._registeredTools["create_agent"];
+
+    await expect(
+      tool.callback({
+        cwd: "/path/that/does/not/exist",
+        title: "Short title",
+        initialPrompt: "Do work",
+      })
+    ).rejects.toThrow("Working directory does not exist");
   });
 
   it("passes caller-provided titles directly into createAgent", async () => {
@@ -108,14 +126,14 @@ describe("create_agent MCP tool", () => {
     const server = await createAgentMcpServer({ agentManager, agentStorage, logger });
     const tool = (server as any)._registeredTools["create_agent"];
     await tool.callback({
-      cwd: "/tmp/repo",
+      cwd: existingCwd,
       title: "  Fix auth bug  ",
       initialPrompt: "Do work",
     });
 
     expect(spies.agentManager.createAgent).toHaveBeenCalledWith(
       expect.objectContaining({
-        cwd: "/tmp/repo",
+        cwd: existingCwd,
         title: "Fix auth bug",
       }),
       undefined,
@@ -137,7 +155,7 @@ describe("create_agent MCP tool", () => {
     const server = await createAgentMcpServer({ agentManager, agentStorage, logger });
     const tool = (server as any)._registeredTools["create_agent"];
     await tool.callback({
-      cwd: "/tmp/repo",
+      cwd: existingCwd,
       title: "  Fix auth  ",
       initialPrompt: "Do work",
     });
@@ -153,15 +171,18 @@ describe("create_agent MCP tool", () => {
 
   it("allows caller agents to override cwd and applies caller context labels", async () => {
     const { agentManager, agentStorage, spies } = createTestDeps();
+    const baseDir = await mkdtemp(join(tmpdir(), "paseo-mcp-test-"));
+    const subdir = join(baseDir, "subdir");
+    await mkdir(subdir, { recursive: true });
     spies.agentManager.getAgent.mockReturnValue({
       id: "voice-agent",
-      cwd: "/tmp/voice",
+      cwd: baseDir,
       provider: "codex",
       currentModeId: "full-access",
     } as ManagedAgent);
     spies.agentManager.createAgent.mockResolvedValue({
       id: "child-agent",
-      cwd: "/tmp/voice/subdir",
+      cwd: subdir,
       lifecycle: "idle",
       currentModeId: null,
       availableModes: [],
@@ -189,11 +210,12 @@ describe("create_agent MCP tool", () => {
 
     expect(spies.agentManager.createAgent).toHaveBeenCalledWith(
       expect.objectContaining({
-        cwd: "/tmp/voice/subdir",
+        cwd: subdir,
       }),
       undefined,
       { labels: { ui: "true" } }
     );
+    await rm(baseDir, { recursive: true, force: true });
   });
 });
 
