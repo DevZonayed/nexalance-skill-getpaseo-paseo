@@ -4672,7 +4672,6 @@ export class Session {
       cwd,
       modeId: VOICE_AGENT_DEFAULT_MODE[provider],
       ...(model ? { model } : {}),
-      internal: true,
       mcpServers: {
         paseo: {
           type: "http",
