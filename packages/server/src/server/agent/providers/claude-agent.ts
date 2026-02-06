@@ -113,6 +113,7 @@ type ClaudeAgentClientOptions = {
 
 type ClaudeAgentSessionOptions = {
   defaults?: { agents?: Record<string, AgentDefinition> };
+  claudePath: string | null;
   handle?: AgentPersistenceHandle;
   logger: Logger;
 };
@@ -315,16 +316,23 @@ export class ClaudeAgentClient implements AgentClient {
 
   private readonly defaults?: { agents?: Record<string, AgentDefinition> };
   private readonly logger: Logger;
+  private readonly claudePath: string | null;
 
   constructor(options: ClaudeAgentClientOptions) {
     this.defaults = options.defaults;
     this.logger = options.logger.child({ module: "agent", provider: "claude" });
+    try {
+      this.claudePath = execSync("which claude", { encoding: "utf8" }).trim() || null;
+    } catch {
+      this.claudePath = null;
+    }
   }
 
   async createSession(config: AgentSessionConfig): Promise<AgentSession> {
     const claudeConfig = this.assertConfig(config);
     return new ClaudeAgentSession(claudeConfig, {
       defaults: this.defaults,
+      claudePath: this.claudePath,
       logger: this.logger,
     });
   }
@@ -342,6 +350,7 @@ export class ClaudeAgentClient implements AgentClient {
     const claudeConfig = this.assertConfig(mergedConfig);
     return new ClaudeAgentSession(claudeConfig, {
       defaults: this.defaults,
+      claudePath: this.claudePath,
       handle,
       logger: this.logger,
     });
@@ -353,6 +362,7 @@ export class ClaudeAgentClient implements AgentClient {
       cwd: options?.cwd ?? process.cwd(),
       permissionMode: "plan",
       includePartialMessages: false,
+      ...(this.claudePath ? { pathToClaudeCodeExecutable: this.claudePath } : {}),
     };
 
     const claudeQuery = query({ prompt, options: claudeOptions });
@@ -407,12 +417,7 @@ export class ClaudeAgentClient implements AgentClient {
   }
 
   async isAvailable(): Promise<boolean> {
-    try {
-      const claudePath = execSync("which claude", { encoding: "utf8" }).trim();
-      return Boolean(claudePath);
-    } catch {
-      return false;
-    }
+    return this.claudePath !== null;
   }
 
   private assertConfig(config: AgentSessionConfig): ClaudeAgentConfig {
@@ -429,6 +434,7 @@ class ClaudeAgentSession implements AgentSession {
 
   private readonly config: ClaudeAgentConfig;
   private readonly defaults?: { agents?: Record<string, AgentDefinition> };
+  private readonly claudePath: string | null;
   private readonly logger: Logger;
   private query: Query | null = null;
   private input: Pushable<SDKUserMessage> | null = null;
@@ -464,6 +470,7 @@ class ClaudeAgentSession implements AgentSession {
   ) {
     this.config = config;
     this.defaults = options.defaults;
+    this.claudePath = options.claudePath;
     this.logger = options.logger;
     const handle = options.handle;
 
@@ -880,6 +887,7 @@ class ClaudeAgentSession implements AgentSession {
       permissionMode: this.currentMode,
       agents: this.defaults?.agents,
       canUseTool: this.handlePermissionRequest,
+      ...(this.claudePath ? { pathToClaudeCodeExecutable: this.claudePath } : {}),
       // Use Claude Code preset system prompt and load CLAUDE.md files
       // Append orchestrator mode instructions for agents
       systemPrompt: {
