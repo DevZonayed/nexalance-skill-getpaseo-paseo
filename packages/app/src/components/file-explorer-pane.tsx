@@ -3,15 +3,12 @@ import {
   ActivityIndicator,
   FlatList,
   Image as RNImage,
-  LayoutChangeEvent,
   ListRenderItemInfo,
-  Modal,
   Pressable,
   ScrollView as RNScrollView,
   Text,
   View,
   Platform,
-  useWindowDimensions,
 } from "react-native";
 import { ScrollView, Gesture, GestureDetector } from "react-native-gesture-handler";
 import { StyleSheet, UnistylesRuntime, useUnistyles } from "react-native-unistyles";
@@ -28,6 +25,8 @@ import {
   BottomSheetBackdrop,
 } from "@gorhom/bottom-sheet";
 import {
+  Copy,
+  Download,
   File,
   FileText,
   Folder,
@@ -44,6 +43,13 @@ import type {
 import { useDaemonConnections } from "@/contexts/daemon-connections-context";
 import { useSessionStore } from "@/stores/session-store";
 import { useDownloadStore } from "@/stores/download-store";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { useFileExplorerActions } from "@/hooks/use-file-explorer-actions";
 import {
   usePanelStore,
@@ -74,7 +80,6 @@ export function FileExplorerPane({ serverId, agentId }: FileExplorerPaneProps) {
   const { theme } = useUnistyles();
   const isMobile =
     UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
-  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
 
   const { connectionStates } = useDaemonConnections();
   const daemonProfile = connectionStates.get(serverId)?.daemon;
@@ -123,9 +128,6 @@ export function FileExplorerPane({ serverId, agentId }: FileExplorerPaneProps) {
   );
 
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(() => new Set(["."]));
-  const [menuEntry, setMenuEntry] = useState<ExplorerEntry | null>(null);
-  const [menuAnchor, setMenuAnchor] = useState({ top: 0, left: 0 });
-  const [menuHeight, setMenuHeight] = useState(0);
   const [containerWidth, setContainerWidth] = useState(0);
   const wasInlinePreviewVisibleRef = useRef(false);
 
@@ -236,26 +238,6 @@ export function FileExplorerPane({ serverId, agentId }: FileExplorerPaneProps) {
     await Clipboard.setStringAsync(path);
   }, []);
 
-  const handleOpenMenu = useCallback((entry: ExplorerEntry, event: any) => {
-    event.stopPropagation();
-    const { pageX, pageY } = event.nativeEvent ?? {};
-    setMenuAnchor({
-      left: typeof pageX === "number" ? pageX : 0,
-      top: typeof pageY === "number" ? pageY : 0,
-    });
-    setMenuEntry(entry);
-  }, []);
-
-  const handleCloseMenu = useCallback(() => {
-    setMenuEntry(null);
-    setMenuHeight(0);
-  }, []);
-
-  const handleMenuLayout = useCallback((event: LayoutChangeEvent) => {
-    const { height } = event.nativeEvent.layout;
-    setMenuHeight((current) => (current === height ? current : height));
-  }, []);
-
   const startDownload = useDownloadStore((state) => state.startDownload);
   const handleDownloadEntry = useCallback(
     (entry: ExplorerEntry) => {
@@ -274,23 +256,6 @@ export function FileExplorerPane({ serverId, agentId }: FileExplorerPaneProps) {
     },
     [agentId, serverId, daemonProfile, requestFileDownloadToken, startDownload]
   );
-
-  const menuPosition = useMemo(() => {
-    if (!menuEntry) {
-      return null;
-    }
-    const menuWidth = 240;
-    const horizontalPadding = theme.spacing[2];
-    const verticalPadding = theme.spacing[2];
-    const maxLeft = Math.max(horizontalPadding, windowWidth - menuWidth - horizontalPadding);
-    const maxTop = Math.max(verticalPadding, windowHeight - menuHeight - verticalPadding);
-    const left = Math.min(
-      Math.max(menuAnchor.left - menuWidth + horizontalPadding, horizontalPadding),
-      maxLeft
-    );
-    const top = Math.min(Math.max(menuAnchor.top + verticalPadding, verticalPadding), maxTop);
-    return { top, left, width: menuWidth };
-  }, [menuAnchor.left, menuAnchor.top, menuEntry, menuHeight, theme.spacing, windowHeight, windowWidth]);
 
   const handleSortCycle = useCallback(() => {
     const currentIndex = SORT_OPTIONS.findIndex((opt) => opt.value === sortOption);
@@ -445,23 +410,55 @@ export function FileExplorerPane({ serverId, agentId }: FileExplorerPaneProps) {
               {entry.name}
             </Text>
           </View>
-          <Pressable
-            onPress={(event) => handleOpenMenu(entry, event)}
-            hitSlop={8}
-            style={({ hovered, pressed }) => [
-              styles.menuButton,
-              (hovered || pressed) && styles.menuButtonActive,
-            ]}
-          >
-            <MoreVertical size={16} color={theme.colors.foregroundMuted} />
-          </Pressable>
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              hitSlop={8}
+              onPressIn={(event) => event.stopPropagation?.()}
+              style={({ hovered, pressed, open }) => [
+                styles.menuButton,
+                (hovered || pressed || open) && styles.menuButtonActive,
+              ]}
+            >
+              <MoreVertical size={16} color={theme.colors.foregroundMuted} />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" width={220}>
+              <View style={styles.contextMetaBlock}>
+                <View style={styles.contextMetaRow}>
+                  <Text style={styles.contextMetaLabel}>Size</Text>
+                  <Text style={styles.contextMetaValue}>{formatFileSize({ size: entry.size })}</Text>
+                </View>
+                <View style={styles.contextMetaRow}>
+                  <Text style={styles.contextMetaLabel}>Modified</Text>
+                  <Text style={styles.contextMetaValue}>{formatTimeAgo(new Date(entry.modifiedAt))}</Text>
+                </View>
+              </View>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                leading={<Copy size={14} color={theme.colors.foregroundMuted} />}
+                onSelect={() => {
+                  void handleCopyPath(entry.path);
+                }}
+              >
+                Copy path
+              </DropdownMenuItem>
+              {entry.kind === "file" ? (
+                <DropdownMenuItem
+                  leading={<Download size={14} color={theme.colors.foregroundMuted} />}
+                  onSelect={() => handleDownloadEntry(entry)}
+                >
+                  Download
+                </DropdownMenuItem>
+              ) : null}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </Pressable>
       );
     },
     [
       expandedPaths,
       handleEntryPress,
-      handleOpenMenu,
+      handleCopyPath,
+      handleDownloadEntry,
       isDirectoryLoading,
       selectedEntryPath,
       theme.colors,
@@ -636,67 +633,6 @@ export function FileExplorerPane({ serverId, agentId }: FileExplorerPaneProps) {
         </View>
       )}
 
-      <Modal
-        visible={Boolean(menuEntry)}
-        animationType="fade"
-        transparent={true}
-        onRequestClose={handleCloseMenu}
-      >
-        <View style={styles.menuOverlay}>
-          <Pressable style={styles.menuBackdrop} onPress={handleCloseMenu} />
-          {menuEntry && menuPosition ? (
-            <View
-              style={[
-                styles.entryMenu,
-                {
-                  position: "absolute",
-                  top: menuPosition.top,
-                  left: menuPosition.left,
-                  width: menuPosition.width,
-                },
-              ]}
-              onLayout={handleMenuLayout}
-            >
-              <View style={styles.entryMenuHeader}>
-                <Text style={styles.entryMenuMeta}>
-                  {formatFileSize({ size: menuEntry.size })}
-                </Text>
-                <Text style={styles.entryMenuMeta}>
-                  {formatTimeAgo(new Date(menuEntry.modifiedAt))}
-                </Text>
-              </View>
-              <View style={styles.entryMenuDivider} />
-              <Pressable
-                style={({ hovered, pressed }) => [
-                  styles.entryMenuItem,
-                  (hovered || pressed) && styles.entryMenuItemHovered,
-                ]}
-                onPress={() => {
-                  handleCopyPath(menuEntry.path);
-                  handleCloseMenu();
-                }}
-              >
-                <Text style={styles.entryMenuText}>Copy path</Text>
-              </Pressable>
-              {menuEntry.kind === "file" ? (
-                <Pressable
-                  style={({ hovered, pressed }) => [
-                    styles.entryMenuItem,
-                    (hovered || pressed) && styles.entryMenuItemHovered,
-                  ]}
-                  onPress={async () => {
-                    handleCloseMenu();
-                    handleDownloadEntry(menuEntry);
-                  }}
-                >
-                  <Text style={styles.entryMenuText}>Download</Text>
-                </Pressable>
-              ) : null}
-            </View>
-          ) : null}
-        </View>
-      </Modal>
-
       {isMobile ? (
         <BottomSheetModal
           ref={previewSheetRef}
@@ -809,7 +745,7 @@ function FilePreviewBody({
   return (
     <View style={styles.sheetCenterState}>
       <Text style={styles.emptyText}>Binary preview unavailable</Text>
-      <Text style={styles.entryMenuMeta}>{formatFileSize({ size: preview.size })}</Text>
+      <Text style={styles.binaryMetaText}>{formatFileSize({ size: preview.size })}</Text>
     </View>
   );
 }
@@ -1144,6 +1080,10 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.base,
     textAlign: "center",
   },
+  binaryMetaText: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.sm,
+  },
   entryRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -1179,52 +1119,24 @@ const styles = StyleSheet.create((theme) => ({
   menuButtonActive: {
     backgroundColor: theme.colors.surface2,
   },
-  menuOverlay: {
-    flex: 1,
+  contextMetaBlock: {
+    paddingVertical: theme.spacing[1],
   },
-  menuBackdrop: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0, 0, 0, 0.2)",
-  },
-  entryMenu: {
-    borderRadius: theme.borderRadius.lg,
-    backgroundColor: theme.colors.surface1,
-    overflow: "hidden",
-    ...(Platform.OS === "web"
-      ? ({ boxShadow: "0 10px 30px rgba(0, 0, 0, 0.35)" } as any)
-      : {
-          shadowColor: "#000",
-          shadowOpacity: 0.35,
-          shadowRadius: 16,
-          shadowOffset: { width: 0, height: 10 },
-          elevation: 14,
-        }),
-  },
-  entryMenuHeader: {
+  contextMetaRow: {
     flexDirection: "row",
+    alignItems: "center",
     justifyContent: "space-between",
-    paddingVertical: theme.spacing[3],
-    paddingHorizontal: theme.spacing[4],
+    minHeight: 32,
+    paddingHorizontal: theme.spacing[3],
   },
-  entryMenuMeta: {
-    color: theme.colors.foregroundMuted,
+  contextMetaLabel: {
     fontSize: theme.fontSize.sm,
+    color: theme.colors.foregroundMuted,
   },
-  entryMenuDivider: {
-    height: 1,
-    backgroundColor: theme.colors.border,
-  },
-  entryMenuItem: {
-    paddingVertical: theme.spacing[4],
-    paddingHorizontal: theme.spacing[4],
-  },
-  entryMenuItemHovered: {
-    backgroundColor: theme.colors.surface2,
-  },
-  entryMenuText: {
+  contextMetaValue: {
+    fontSize: theme.fontSize.sm,
     color: theme.colors.foreground,
-    fontSize: theme.fontSize.lg,
-    fontWeight: theme.fontWeight.semibold,
+    fontWeight: theme.fontWeight.medium,
   },
   previewHeaderText: {
     flex: 1,

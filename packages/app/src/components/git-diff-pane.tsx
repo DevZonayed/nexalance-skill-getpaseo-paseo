@@ -15,7 +15,7 @@ import { ScrollView, type ScrollView as ScrollViewType } from "react-native-gest
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Linking from "expo-linking";
-import { Archive, ChevronDown, ChevronRight, GitBranch, MoreVertical, ArrowLeftRight, ListChevronsDownUp, ListChevronsUpDown } from "lucide-react-native";
+import { Archive, ChevronDown, ChevronRight, GitBranch, MoreVertical, ListChevronsDownUp, ListChevronsUpDown } from "lucide-react-native";
 import { useCheckoutGitActionsStore } from "@/stores/checkout-git-actions-store";
 import {
   useCheckoutDiffQuery,
@@ -741,6 +741,14 @@ export function GitDiffPane({ serverId, agentId, cwd }: GitDiffPaneProps) {
     const trimmed = baseRef.replace(/^refs\/(heads|remotes)\//, "").trim();
     return trimmed.startsWith("origin/") ? trimmed.slice("origin/".length) : trimmed;
   }, [baseRef]);
+  const committedDiffDescription = useMemo(() => {
+    if (!branchLabel || !baseRefLabel) {
+      return undefined;
+    }
+    return branchLabel === baseRefLabel
+      ? undefined
+      : `${branchLabel} -> ${baseRefLabel}`;
+  }, [baseRefLabel, branchLabel]);
   const commitDisabled = actionsDisabled || commitStatus === "pending";
   const prDisabled = actionsDisabled || prCreateStatus === "pending";
   const mergeDisabled =
@@ -1101,25 +1109,45 @@ export function GitDiffPane({ serverId, agentId, cwd }: GitDiffPaneProps) {
       {isGit ? (
         <View style={styles.diffStatusContainer}>
           <View style={styles.diffStatusInner}>
-            <Pressable
-              style={({ hovered, pressed }) => [
-                styles.diffStatusRow,
-                (hovered || pressed) && styles.diffStatusRowHovered,
-              ]}
-              testID="changes-diff-status"
-              onPress={() => setDiffModeOverride(diffMode === "uncommitted" ? "base" : "uncommitted")}
-            >
-              {({ hovered, pressed }) => (
-                <>
-                  <Text style={styles.diffStatusText}>
-                    {diffMode === "uncommitted" ? "Uncommitted" : "Committed"}
-                  </Text>
-                  {(hovered || pressed) ? (
-                    <ArrowLeftRight size={12} color={theme.colors.foregroundMuted} />
-                  ) : null}
-                </>
-            )}
-            </Pressable>
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                style={({ hovered, pressed, open }) => [
+                  styles.diffModeTrigger,
+                  hovered && styles.diffModeTriggerHovered,
+                  (pressed || open) && styles.diffModeTriggerPressed,
+                ]}
+                testID="changes-diff-status"
+                accessibilityRole="button"
+                accessibilityLabel="Diff mode"
+              >
+                <Text style={styles.diffStatusText}>
+                  {diffMode === "uncommitted" ? "Uncommitted" : "Committed"}
+                </Text>
+                <ChevronDown size={12} color={theme.colors.foregroundMuted} />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                align="start"
+                width={260}
+                testID="changes-diff-status-menu"
+              >
+                <DropdownMenuItem
+                  testID="changes-diff-mode-uncommitted"
+                  selected={diffMode === "uncommitted"}
+                  onSelect={() => setDiffModeOverride("uncommitted")}
+                >
+                  Uncommitted
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  testID="changes-diff-mode-committed"
+                  selected={diffMode === "base"}
+                  description={committedDiffDescription}
+                  onSelect={() => setDiffModeOverride("base")}
+                >
+                  Committed
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
             {files.length > 0 ? (
               <Pressable
                 style={({ hovered, pressed }) => [
@@ -1193,7 +1221,7 @@ const styles = StyleSheet.create((theme) => ({
     justifyContent: "space-between",
     paddingRight: theme.spacing[3],
   },
-  diffStatusRow: {
+  diffModeTrigger: {
     flexDirection: "row",
     alignItems: "center",
     gap: theme.spacing[1],
@@ -1203,6 +1231,12 @@ const styles = StyleSheet.create((theme) => ({
     paddingHorizontal: theme.spacing[1],
     paddingVertical: theme.spacing[1],
     borderRadius: theme.borderRadius.base,
+  },
+  diffModeTriggerHovered: {
+    backgroundColor: theme.colors.surface2,
+  },
+  diffModeTriggerPressed: {
+    backgroundColor: theme.colors.surface2,
   },
   diffStatusRowHovered: {
     backgroundColor: theme.colors.surface2,
