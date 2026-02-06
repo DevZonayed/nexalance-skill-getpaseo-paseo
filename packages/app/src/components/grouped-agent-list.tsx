@@ -204,6 +204,7 @@ function GroupedAgentRow({
 }: GroupedAgentRowProps) {
   const { theme } = useUnistyles();
   const [isHovered, setIsHovered] = useState(false);
+  const [isArchiveHovered, setIsArchiveHovered] = useState(false);
   const [isArchiveConfirmVisible, setIsArchiveConfirmVisible] = useState(false);
   const hoverOutTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -228,6 +229,7 @@ function GroupedAgentRow({
     clearHoverOutTimeout();
     hoverOutTimeoutRef.current = setTimeout(() => {
       setIsHovered(false);
+      setIsArchiveHovered(false);
       setIsArchiveConfirmVisible(false);
     }, 50);
   }, [clearHoverOutTimeout]);
@@ -246,7 +248,9 @@ function GroupedAgentRow({
     : null;
 
   const canArchive = agent.status !== "running" && !agent.requiresAttention;
-  const showArchive = canArchive && shortcutNumber === null && (isHovered || isArchiveConfirmVisible);
+  const showArchive = canArchive &&
+    shortcutNumber === null &&
+    (isHovered || isArchiveHovered || isArchiveConfirmVisible);
 
   return (
     <Pressable
@@ -293,6 +297,14 @@ function GroupedAgentRow({
                 styles.branchBadge,
                 isArchiveConfirmVisible && styles.archiveConfirmBadge,
               ]}
+              onHoverIn={() => {
+                clearHoverOutTimeout();
+                setIsHovered(true);
+                setIsArchiveHovered(true);
+              }}
+              onHoverOut={() => {
+                setIsArchiveHovered(false);
+              }}
               onPress={(e) => {
                 e.stopPropagation();
                 if (!isArchiveConfirmVisible) {
