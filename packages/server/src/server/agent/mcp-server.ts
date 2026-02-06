@@ -1,9 +1,12 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { homedir } from "node:os";
-import { resolve } from "node:path";
 import { ensureValidJson } from "../json-utils.js";
 import type { Logger } from "pino";
+import type { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/protocol.js";
+import type {
+  ServerNotification,
+  ServerRequest,
+} from "@modelcontextprotocol/sdk/types.js";
 
 import type {
   AgentPromptInput,
@@ -32,6 +35,7 @@ import type {
   VoiceCallerContext,
   VoiceSpeakHandler,
 } from "../voice-types.js";
+import { expandUserPath, resolvePathFromBase } from "../path-utils.js";
 
 export interface AgentMcpServerOptions {
   agentManager: AgentManager;
@@ -115,11 +119,25 @@ const AgentStatusEnum = z.enum([
 // 50 seconds - surface friendly message before SDK tool timeout (~60s)
 const AGENT_WAIT_TIMEOUT_MS = 50000;
 
-function expandPath(path: string): string {
-  if (path.startsWith("~/") || path === "~") {
-    return resolve(homedir(), path.slice(2));
+type McpToolContext = RequestHandlerExtra<ServerRequest, ServerNotification>;
+
+function resolveChildAgentCwd(params: {
+  parentCwd: string;
+  requestedCwd?: string;
+  lockedCwd?: string;
+  allowCustomCwd: boolean;
+}): string {
+  const lockedCwd = params.lockedCwd?.trim();
+  if (lockedCwd) {
+    return expandUserPath(lockedCwd);
   }
-  return resolve(path);
+
+  const requestedCwd = params.requestedCwd?.trim();
+  if (!requestedCwd || !params.allowCustomCwd) {
+    return params.parentCwd;
+  }
+
+  return resolvePathFromBase(params.parentCwd, requestedCwd);
 }
 
 /**
@@ -369,6 +387,11 @@ export async function createAgentMcpServer(
   const createAgentInputSchema = callerAgentId
     ? agentToAgentInputSchema
     : topLevelInputSchema;
+  const agentToAgentCreateAgentArgsSchema = z.object(agentToAgentInputSchema);
+  const topLevelCreateAgentArgsSchema = z.object({
+    ...topLevelInputSchema,
+    initialMode: topLevelInputSchema.initialMode.optional(),
+  });
 
   if (options.enableVoiceTools || callerContext?.enableVoiceTools) {
     server.registerTool(
@@ -388,7 +411,7 @@ export async function createAgentMcpServer(
           ok: z.boolean(),
         },
       },
-      async (args, context) => {
+      async (args, context?: McpToolContext) => {
         if (!callerAgentId) {
           throw new Error("speak is only available to agent-scoped MCP sessions");
         }
@@ -399,7 +422,7 @@ export async function createAgentMcpServer(
         await handler({
           text: args.text,
           callerAgentId,
-          signal: (context as { signal?: AbortSignal } | undefined)?.signal,
+          signal: context?.signal,
         });
         return {
           content: [],
@@ -434,44 +457,31 @@ export async function createAgentMcpServer(
       },
     },
     async (args: unknown) => {
-      const {
-        agentType,
-        initialPrompt,
-        background = false,
-        title,
-      } = args as {
-        cwd?: string;
-        agentType?: AgentProvider;
-        initialPrompt: string;
-        initialMode?: string;
-        worktreeName?: string;
-        background?: boolean;
-        title: string;
-      };
+      let provider: AgentProvider;
+      let initialPrompt: string;
+      let background = false;
+      let normalizedTitle: string | null;
 
       let resolvedCwd: string;
       let resolvedMode: string | undefined;
 
       if (callerAgentId) {
+        const callerArgs = agentToAgentCreateAgentArgsSchema.parse(args);
+        provider = callerArgs.agentType ?? "claude";
+        initialPrompt = callerArgs.initialPrompt;
+        background = callerArgs.background ?? false;
+        normalizedTitle = callerArgs.title.trim();
+
         const parentAgent = agentManager.getAgent(callerAgentId);
         if (!parentAgent) {
           throw new Error(`Parent agent ${callerAgentId} not found`);
         }
-        const callerArgs = args as unknown as { cwd?: string };
-        const requestedCwd = callerArgs.cwd?.trim();
-        const lockedCwd = callerContext?.lockedCwd?.trim();
-        if (lockedCwd) {
-          resolvedCwd = expandPath(lockedCwd);
-        } else if (requestedCwd && (callerContext?.allowCustomCwd ?? true)) {
-          resolvedCwd =
-            requestedCwd.startsWith("/") || requestedCwd.startsWith("~")
-              ? expandPath(requestedCwd)
-              : resolve(parentAgent.cwd, requestedCwd);
-        } else {
-          resolvedCwd = parentAgent.cwd;
-        }
-
-        const provider: AgentProvider = agentType ?? "claude";
+        resolvedCwd = resolveChildAgentCwd({
+          parentCwd: parentAgent.cwd,
+          requestedCwd: callerArgs.cwd,
+          lockedCwd: callerContext?.lockedCwd,
+          allowCustomCwd: callerContext?.allowCustomCwd ?? true,
+        });
         const parentMode = parentAgent.currentModeId;
         if (parentMode) {
           resolvedMode = mapModeAcrossProviders(
@@ -481,12 +491,11 @@ export async function createAgentMcpServer(
           );
         }
       } else {
-        const topLevelArgs = args as unknown as {
-          cwd: string;
-          initialMode: string;
-          worktreeName?: string;
-          baseBranch?: string;
-        };
+        const topLevelArgs = topLevelCreateAgentArgsSchema.parse(args);
+        provider = topLevelArgs.agentType ?? "claude";
+        initialPrompt = topLevelArgs.initialPrompt;
+        background = topLevelArgs.background ?? false;
+        normalizedTitle = topLevelArgs.title.trim();
         const {
           cwd,
           initialMode,
@@ -494,7 +503,7 @@ export async function createAgentMcpServer(
           baseBranch,
         } = topLevelArgs;
 
-        resolvedCwd = expandPath(cwd);
+        resolvedCwd = expandUserPath(cwd);
 
         if (worktreeName) {
           if (!baseBranch) {
@@ -513,8 +522,6 @@ export async function createAgentMcpServer(
         resolvedMode = initialMode;
       }
 
-      const provider: AgentProvider = agentType ?? "claude";
-      const normalizedTitle = title?.trim() ?? null;
       const childAgentDefaultLabels =
         callerAgentId && callerContext?.childAgentDefaultLabels
           ? callerContext.childAgentDefaultLabels

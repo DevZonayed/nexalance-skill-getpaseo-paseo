@@ -29,24 +29,48 @@ import {
   DEFAULT_LOCAL_STT_MODEL,
   DEFAULT_LOCAL_TTS_MODEL,
   DEFAULT_OPENAI_REALTIME_TRANSCRIPTION_MODEL,
-  type SpeechProviderId,
-} from "./speech-types.js";
+  DEFAULT_OPENAI_TTS_MODEL,
+} from "./speech-defaults.js";
+import type { SpeechProviderId } from "./speech-types.js";
 
 type LocalSttEngine =
   | { kind: "offline"; engine: SherpaOfflineRecognizerEngine }
   | { kind: "online"; engine: SherpaOnlineRecognizerEngine };
 
-function buildModelDownloadHint(modelsDir: string, modelId: SherpaOnnxModelId): string {
-  return `Run: tsx packages/server/scripts/download-speech-models.ts --models-dir '${modelsDir}' --model '${modelId}'`;
-}
-
-function resolveSpeechProviders(
-  speechConfig: PaseoSpeechConfig | null
-): {
+type RequestedSpeechProviders = {
   dictationSttProvider: SpeechProviderId;
   voiceSttProvider: SpeechProviderId;
   voiceTtsProvider: SpeechProviderId;
-} {
+};
+
+type ResolvedLocalModels = {
+  dictationLocalSttModel: LocalSttModelId;
+  voiceLocalSttModel: LocalSttModelId;
+  voiceLocalTtsModel: LocalTtsModelId;
+};
+
+type OpenAiCredentialState = {
+  openaiSttApiKey: string | undefined;
+  openaiTtsApiKey: string | undefined;
+  openaiDictationApiKey: string | undefined;
+};
+
+type InitializedLocalSpeech = {
+  sttService: SpeechToTextProvider | null;
+  ttsService: TextToSpeechProvider | null;
+  dictationSttService: SpeechToTextProvider | null;
+  localVoiceTtsProvider: TextToSpeechProvider | null;
+  localSttEngines: Map<LocalSttModelId, LocalSttEngine>;
+  requiredLocalModelIds: SherpaOnnxModelId[];
+};
+
+function buildModelDownloadHint(modelId: SherpaOnnxModelId): string {
+  return `Use 'paseo speech download --model ${modelId}' to download this model.`;
+}
+
+function resolveRequestedSpeechProviders(
+  speechConfig: PaseoSpeechConfig | null
+): RequestedSpeechProviders {
   return {
     dictationSttProvider: speechConfig?.dictationSttProvider ?? "local",
     voiceSttProvider: speechConfig?.voiceSttProvider ?? "local",
@@ -54,13 +78,9 @@ function resolveSpeechProviders(
   };
 }
 
-function resolveLocalModels(
+function resolveConfiguredLocalModels(
   speechConfig: PaseoSpeechConfig | null
-): {
-  dictationLocalSttModel: LocalSttModelId;
-  voiceLocalSttModel: LocalSttModelId;
-  voiceLocalTtsModel: LocalTtsModelId;
-} {
+): ResolvedLocalModels {
   return {
     dictationLocalSttModel: LocalSttModelIdSchema.parse(
       speechConfig?.dictationLocalSttModel ?? DEFAULT_LOCAL_STT_MODEL
@@ -74,12 +94,8 @@ function resolveLocalModels(
   };
 }
 
-function computeDefaultLocalModelIds(params: {
-  providers: {
-    dictationSttProvider: SpeechProviderId;
-    voiceSttProvider: SpeechProviderId;
-    voiceTtsProvider: SpeechProviderId;
-  };
+function computeRequiredLocalModelIds(params: {
+  providers: RequestedSpeechProviders;
   models: {
     dictationLocalSttModel: SherpaOnnxModelId;
     voiceLocalSttModel: SherpaOnnxModelId;
@@ -97,6 +113,50 @@ function computeDefaultLocalModelIds(params: {
     ids.add(params.models.voiceLocalTtsModel);
   }
   return Array.from(ids);
+}
+
+function resolveOpenAiCredentials(openaiConfig?: PaseoOpenAIConfig): OpenAiCredentialState {
+  const openaiApiKey = openaiConfig?.apiKey;
+  return {
+    openaiSttApiKey: openaiConfig?.stt?.apiKey ?? openaiApiKey,
+    openaiTtsApiKey: openaiConfig?.tts?.apiKey ?? openaiApiKey,
+    openaiDictationApiKey: openaiApiKey,
+  };
+}
+
+function validateOpenAiCredentialRequirements(params: {
+  providers: RequestedSpeechProviders;
+  openAiCredentials: OpenAiCredentialState;
+  logger: Logger;
+}): void {
+  const { providers, openAiCredentials, logger } = params;
+  const missingOpenAiCredentialsFor: string[] = [];
+  if (providers.voiceSttProvider === "openai" && !openAiCredentials.openaiSttApiKey) {
+    missingOpenAiCredentialsFor.push("voice.stt");
+  }
+  if (providers.voiceTtsProvider === "openai" && !openAiCredentials.openaiTtsApiKey) {
+    missingOpenAiCredentialsFor.push("voice.tts");
+  }
+  if (providers.dictationSttProvider === "openai" && !openAiCredentials.openaiDictationApiKey) {
+    missingOpenAiCredentialsFor.push("dictation.stt");
+  }
+
+  if (missingOpenAiCredentialsFor.length > 0) {
+    logger.error(
+      {
+        requestedProviders: {
+          dictationStt: providers.dictationSttProvider,
+          voiceStt: providers.voiceSttProvider,
+          voiceTts: providers.voiceTtsProvider,
+        },
+        missingOpenAiCredentialsFor,
+      },
+      "Invalid speech configuration: OpenAI provider selected but credentials are missing"
+    );
+    throw new Error(
+      `Missing OpenAI credentials for configured speech features: ${missingOpenAiCredentialsFor.join(", ")}`
+    );
+  }
 }
 
 async function createLocalSttEngine(params: {
@@ -172,95 +232,25 @@ async function createLocalSttEngine(params: {
   throw new Error(`Unsupported local STT model '${modelId}'`);
 }
 
-export type InitializedSpeechRuntime = {
-  sttService: SpeechToTextProvider | null;
-  ttsService: TextToSpeechProvider | null;
-  dictationSttService: SpeechToTextProvider | null;
-  cleanup: () => void;
-  localModelConfig: {
-    modelsDir: string;
-    defaultModelIds: SherpaOnnxModelId[];
-  } | null;
-};
-
-export async function initializeSpeechRuntime(params: {
+async function initializeLocalSpeechServices(params: {
+  providers: RequestedSpeechProviders;
+  localConfig: NonNullable<PaseoSpeechConfig["local"]> | null;
+  localModels: ResolvedLocalModels;
+  speechConfig: PaseoSpeechConfig | null;
   logger: Logger;
-  openaiConfig?: PaseoOpenAIConfig;
-  speechConfig?: PaseoSpeechConfig;
-}): Promise<InitializedSpeechRuntime> {
-  const logger = params.logger;
-  const speechConfig = params.speechConfig ?? null;
-  const localConfig = speechConfig?.local ?? null;
-  const openaiConfig = params.openaiConfig;
+}): Promise<InitializedLocalSpeech> {
+  const { providers, localConfig, localModels, speechConfig, logger } = params;
 
-  const providers = resolveSpeechProviders(speechConfig);
-  const localModels = resolveLocalModels(speechConfig);
+  const sttServices = {
+    sttService: null as SpeechToTextProvider | null,
+    ttsService: null as TextToSpeechProvider | null,
+    dictationSttService: null as SpeechToTextProvider | null,
+  };
 
-  const wantsLocalDictation = providers.dictationSttProvider === "local";
-  const wantsLocalVoiceStt = providers.voiceSttProvider === "local";
-  const wantsLocalVoiceTts = providers.voiceTtsProvider === "local";
-
-  const openaiApiKey = openaiConfig?.apiKey;
-  const openaiSttApiKey = openaiConfig?.stt?.apiKey ?? openaiApiKey;
-  const openaiTtsApiKey = openaiConfig?.tts?.apiKey ?? openaiApiKey;
-  const openaiDictationApiKey = openaiApiKey;
-
-  const missingOpenAiCredentialsFor: string[] = [];
-  if (providers.voiceSttProvider === "openai" && !openaiSttApiKey) {
-    missingOpenAiCredentialsFor.push("voice.stt");
-  }
-  if (providers.voiceTtsProvider === "openai" && !openaiTtsApiKey) {
-    missingOpenAiCredentialsFor.push("voice.tts");
-  }
-  if (providers.dictationSttProvider === "openai" && !openaiDictationApiKey) {
-    missingOpenAiCredentialsFor.push("dictation.stt");
-  }
-  if (missingOpenAiCredentialsFor.length > 0) {
-    logger.error(
-      {
-        requestedProviders: {
-          dictationStt: providers.dictationSttProvider,
-          voiceStt: providers.voiceSttProvider,
-          voiceTts: providers.voiceTtsProvider,
-        },
-        missingOpenAiCredentialsFor,
-      },
-      "Invalid speech configuration: OpenAI provider selected but credentials are missing"
-    );
-    throw new Error(
-      `Missing OpenAI credentials for configured speech features: ${missingOpenAiCredentialsFor.join(", ")}`
-    );
-  }
-
-  logger.info(
-    {
-      requestedProviders: {
-        dictationStt: providers.dictationSttProvider,
-        voiceStt: providers.voiceSttProvider,
-        voiceTts: providers.voiceTtsProvider,
-      },
-      availability: {
-        openai: {
-          stt: Boolean(openaiSttApiKey),
-          tts: Boolean(openaiTtsApiKey),
-          dictationStt: Boolean(openaiDictationApiKey),
-        },
-        local: {
-          configured: Boolean(localConfig),
-          modelsDir: localConfig?.modelsDir ?? null,
-          autoDownload: localConfig?.autoDownload ?? null,
-        },
-      },
-    },
-    "Speech provider reconciliation started"
-  );
-
-  let sttService: SpeechToTextProvider | null = null;
-  let ttsService: TextToSpeechProvider | null = null;
-  let dictationSttService: SpeechToTextProvider | null = null;
+  const localSttEngines = new Map<LocalSttModelId, LocalSttEngine>();
   let localVoiceTtsProvider: TextToSpeechProvider | null = null;
 
-  const requiredLocalModelIds = computeDefaultLocalModelIds({
+  const requiredLocalModelIds = computeRequiredLocalModelIds({
     providers,
     models: localModels,
   });
@@ -289,15 +279,14 @@ export async function initializeSpeechRuntime(params: {
           modelIds: requiredLocalModelIds,
           autoDownload: localConfig.autoDownload ?? true,
           hint:
-            "Run: npm run dev --workspace=@getpaseo/server, then run: " +
-            "`tsx packages/server/scripts/download-speech-models.ts --models-dir <DIR> --model <MODEL_ID>`",
+            "Use `paseo speech models` to inspect status and " +
+            "`paseo speech download --model <MODEL_ID>` to fetch missing models.",
         },
         "Failed to ensure local speech models"
       );
     }
   }
 
-  const localSttEngines = new Map<LocalSttModelId, LocalSttEngine>();
   const getLocalSttEngine = async (
     modelId: LocalSttModelId
   ): Promise<LocalSttEngine | null> => {
@@ -322,7 +311,7 @@ export async function initializeSpeechRuntime(params: {
           err,
           modelsDir: localConfig.modelsDir,
           modelId,
-          hint: buildModelDownloadHint(localConfig.modelsDir, modelId),
+          hint: buildModelDownloadHint(modelId),
         },
         "Failed to initialize local STT engine (models missing or invalid)"
       );
@@ -330,7 +319,7 @@ export async function initializeSpeechRuntime(params: {
     }
   };
 
-  if (wantsLocalVoiceStt) {
+  if (providers.voiceSttProvider === "local") {
     if (!localConfig) {
       logger.warn(
         { configured: false },
@@ -339,14 +328,14 @@ export async function initializeSpeechRuntime(params: {
     } else {
       const voiceEngine = await getLocalSttEngine(localModels.voiceLocalSttModel);
       if (voiceEngine?.kind === "offline") {
-        sttService = new SherpaOnnxParakeetSTT({ engine: voiceEngine.engine }, logger);
+        sttServices.sttService = new SherpaOnnxParakeetSTT({ engine: voiceEngine.engine }, logger);
       } else if (voiceEngine?.kind === "online") {
-        sttService = new SherpaOnnxSTT({ engine: voiceEngine.engine }, logger);
+        sttServices.sttService = new SherpaOnnxSTT({ engine: voiceEngine.engine }, logger);
       }
     }
   }
 
-  if (wantsLocalDictation) {
+  if (providers.dictationSttProvider === "local") {
     if (!localConfig) {
       logger.warn(
         { configured: false },
@@ -355,13 +344,13 @@ export async function initializeSpeechRuntime(params: {
     } else {
       const dictationEngine = await getLocalSttEngine(localModels.dictationLocalSttModel);
       if (dictationEngine?.kind === "offline") {
-        dictationSttService = {
+        sttServices.dictationSttService = {
           id: "local",
           createSession: () =>
             new SherpaParakeetRealtimeTranscriptionSession({ engine: dictationEngine.engine }),
         };
       } else if (dictationEngine?.kind === "online") {
-        dictationSttService = {
+        sttServices.dictationSttService = {
           id: "local",
           createSession: () => new SherpaRealtimeTranscriptionSession({ engine: dictationEngine.engine }),
         };
@@ -369,7 +358,7 @@ export async function initializeSpeechRuntime(params: {
     }
   }
 
-  if (wantsLocalVoiceTts) {
+  if (providers.voiceTtsProvider === "local") {
     if (!localConfig) {
       logger.warn(
         { configured: false },
@@ -399,14 +388,14 @@ export async function initializeSpeechRuntime(params: {
             logger
           );
         }
-        ttsService = localVoiceTtsProvider;
+        sttServices.ttsService = localVoiceTtsProvider;
       } catch (err) {
         logger.error(
           {
             err,
             modelsDir: localConfig.modelsDir,
             modelId: localModels.voiceLocalTtsModel,
-            hint: buildModelDownloadHint(localConfig.modelsDir, localModels.voiceLocalTtsModel),
+            hint: buildModelDownloadHint(localModels.voiceLocalTtsModel),
           },
           "Failed to initialize local TTS engine (models missing or invalid)"
         );
@@ -414,34 +403,65 @@ export async function initializeSpeechRuntime(params: {
     }
   }
 
+  return {
+    ...sttServices,
+    localVoiceTtsProvider,
+    localSttEngines,
+    requiredLocalModelIds,
+  };
+}
+
+function initializeOpenAiSpeechServices(params: {
+  providers: RequestedSpeechProviders;
+  openaiConfig?: PaseoOpenAIConfig;
+  openAiCredentials: OpenAiCredentialState;
+  existing: {
+    sttService: SpeechToTextProvider | null;
+    ttsService: TextToSpeechProvider | null;
+    dictationSttService: SpeechToTextProvider | null;
+  };
+  logger: Logger;
+}): {
+  sttService: SpeechToTextProvider | null;
+  ttsService: TextToSpeechProvider | null;
+  dictationSttService: SpeechToTextProvider | null;
+} {
+  const { providers, openaiConfig, openAiCredentials, existing, logger } = params;
+
+  let sttService = existing.sttService;
+  let ttsService = existing.ttsService;
+  let dictationSttService = existing.dictationSttService;
+
   const needsOpenAiStt = !sttService && providers.voiceSttProvider === "openai";
   const needsOpenAiTts = !ttsService && providers.voiceTtsProvider === "openai";
   const needsOpenAiDictation = !dictationSttService && providers.dictationSttProvider === "openai";
 
   if (
     (needsOpenAiStt || needsOpenAiTts || needsOpenAiDictation) &&
-    (openaiSttApiKey || openaiTtsApiKey || openaiDictationApiKey)
+    (openAiCredentials.openaiSttApiKey ||
+      openAiCredentials.openaiTtsApiKey ||
+      openAiCredentials.openaiDictationApiKey)
   ) {
     logger.info("OpenAI speech provider initialized");
 
-    if (needsOpenAiStt && openaiSttApiKey) {
+    if (needsOpenAiStt && openAiCredentials.openaiSttApiKey) {
       const { apiKey: _sttApiKey, ...sttConfig } = openaiConfig?.stt ?? {};
       sttService = new OpenAISTT(
         {
-          apiKey: openaiSttApiKey,
+          apiKey: openAiCredentials.openaiSttApiKey,
           ...sttConfig,
         },
         logger
       );
     }
 
-    if (needsOpenAiTts && openaiTtsApiKey) {
+    if (needsOpenAiTts && openAiCredentials.openaiTtsApiKey) {
       const { apiKey: _ttsApiKey, ...ttsConfig } = openaiConfig?.tts ?? {};
       ttsService = new OpenAITTS(
         {
-          apiKey: openaiTtsApiKey,
+          apiKey: openAiCredentials.openaiTtsApiKey,
           voice: "alloy",
-          model: "tts-1",
+          model: DEFAULT_OPENAI_TTS_MODEL,
           responseFormat: "pcm",
           ...ttsConfig,
         },
@@ -449,12 +469,13 @@ export async function initializeSpeechRuntime(params: {
       );
     }
 
-    if (needsOpenAiDictation && openaiDictationApiKey) {
+    const dictationApiKey = openAiCredentials.openaiDictationApiKey;
+    if (needsOpenAiDictation && dictationApiKey) {
       dictationSttService = {
         id: "openai",
         createSession: ({ logger: sessionLogger, language, prompt }) =>
           new OpenAIRealtimeTranscriptionSession({
-            apiKey: openaiDictationApiKey,
+            apiKey: dictationApiKey,
             logger: sessionLogger,
             transcriptionModel:
               openaiConfig?.realtimeTranscriptionModel
@@ -469,15 +490,101 @@ export async function initializeSpeechRuntime(params: {
     logger.warn("OpenAI speech providers are configured but credentials are missing");
   }
 
+  return {
+    sttService,
+    ttsService,
+    dictationSttService,
+  };
+}
+
+export type InitializedSpeechRuntime = {
+  sttService: SpeechToTextProvider | null;
+  ttsService: TextToSpeechProvider | null;
+  dictationSttService: SpeechToTextProvider | null;
+  cleanup: () => void;
+  localModelConfig: {
+    modelsDir: string;
+    defaultModelIds: SherpaOnnxModelId[];
+  } | null;
+};
+
+export async function initializeSpeechRuntime(params: {
+  logger: Logger;
+  openaiConfig?: PaseoOpenAIConfig;
+  speechConfig?: PaseoSpeechConfig;
+}): Promise<InitializedSpeechRuntime> {
+  const logger = params.logger;
+  const speechConfig = params.speechConfig ?? null;
+  const localConfig = speechConfig?.local ?? null;
+  const openaiConfig = params.openaiConfig;
+
+  const providers = resolveRequestedSpeechProviders(speechConfig);
+  const localModels = resolveConfiguredLocalModels(speechConfig);
+  const openAiCredentials = resolveOpenAiCredentials(openaiConfig);
+
+  validateOpenAiCredentialRequirements({
+    providers,
+    openAiCredentials,
+    logger,
+  });
+
+  logger.info(
+    {
+      requestedProviders: {
+        dictationStt: providers.dictationSttProvider,
+        voiceStt: providers.voiceSttProvider,
+        voiceTts: providers.voiceTtsProvider,
+      },
+      availability: {
+        openai: {
+          stt: Boolean(openAiCredentials.openaiSttApiKey),
+          tts: Boolean(openAiCredentials.openaiTtsApiKey),
+          dictationStt: Boolean(openAiCredentials.openaiDictationApiKey),
+        },
+        local: {
+          configured: Boolean(localConfig),
+          modelsDir: localConfig?.modelsDir ?? null,
+          autoDownload: localConfig?.autoDownload ?? null,
+        },
+      },
+    },
+    "Speech provider reconciliation started"
+  );
+
+  const localSpeech = await initializeLocalSpeechServices({
+    providers,
+    localConfig,
+    localModels,
+    speechConfig,
+    logger,
+  });
+
+  const openAiSpeech = initializeOpenAiSpeechServices({
+    providers,
+    openaiConfig,
+    openAiCredentials,
+    existing: {
+      sttService: localSpeech.sttService,
+      ttsService: localSpeech.ttsService,
+      dictationSttService: localSpeech.dictationSttService,
+    },
+    logger,
+  });
+
   const effectiveProviders = {
-    dictationStt: dictationSttService?.id ?? "unavailable",
-    voiceStt: sttService?.id ?? "unavailable",
-    voiceTts: !ttsService ? "unavailable" : ttsService === localVoiceTtsProvider ? "local" : "openai",
+    dictationStt: openAiSpeech.dictationSttService?.id ?? "unavailable",
+    voiceStt: openAiSpeech.sttService?.id ?? "unavailable",
+    voiceTts:
+      !openAiSpeech.ttsService
+        ? "unavailable"
+        : openAiSpeech.ttsService === localSpeech.localVoiceTtsProvider
+          ? "local"
+          : "openai",
   };
   const unavailableFeatures = [
-    !dictationSttService ? "dictation.stt" : null,
-    !sttService ? "voice.stt" : null,
-    !ttsService ? "voice.tts" : null,
+    !openAiSpeech.dictationSttService ? "dictation.stt" : null,
+    !openAiSpeech.sttService ? "voice.stt" : null,
+    !openAiSpeech.ttsService ? "voice.tts" : null,
   ].filter((feature): feature is string => feature !== null);
 
   if (unavailableFeatures.length > 0) {
@@ -504,25 +611,25 @@ export async function initializeSpeechRuntime(params: {
   );
 
   const cleanup = () => {
-    const maybeFreeable = localVoiceTtsProvider as unknown as { free?: () => void } | null;
+    const maybeFreeable = localSpeech.localVoiceTtsProvider as unknown as { free?: () => void } | null;
     if (typeof maybeFreeable?.free === "function") {
       maybeFreeable.free();
     }
-    for (const engine of localSttEngines.values()) {
+    for (const engine of localSpeech.localSttEngines.values()) {
       engine.engine.free();
     }
   };
 
   return {
-    sttService,
-    ttsService,
-    dictationSttService,
+    sttService: openAiSpeech.sttService,
+    ttsService: openAiSpeech.ttsService,
+    dictationSttService: openAiSpeech.dictationSttService,
     cleanup,
     localModelConfig:
       localConfig
         ? {
             modelsDir: localConfig.modelsDir,
-            defaultModelIds: requiredLocalModelIds,
+            defaultModelIds: localSpeech.requiredLocalModelIds,
           }
         : null,
   };

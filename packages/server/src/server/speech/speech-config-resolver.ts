@@ -1,104 +1,172 @@
 import path from "node:path";
 
-import type { STTConfig } from "./providers/openai/stt.js";
-import type { TTSConfig } from "./providers/openai/tts.js";
+import { z } from "zod";
+
 import type { PersistedConfig } from "../persisted-config.js";
 import type { PaseoOpenAIConfig, PaseoSpeechConfig } from "../bootstrap.js";
-import { LocalSttModelIdSchema, LocalTtsModelIdSchema } from "./providers/local/sherpa/model-catalog.js";
+import {
+  LocalSttModelIdSchema,
+  LocalTtsModelIdSchema,
+} from "./providers/local/sherpa/model-catalog.js";
 import {
   DEFAULT_LOCAL_STT_MODEL,
   DEFAULT_LOCAL_TTS_MODEL,
   DEFAULT_OPENAI_REALTIME_TRANSCRIPTION_MODEL,
-  type SpeechProviderId,
-} from "./speech-types.js";
+  DEFAULT_OPENAI_TTS_MODEL,
+} from "./speech-defaults.js";
+import { SpeechProviderIdSchema } from "./speech-types.js";
+
 const DEFAULT_LOCAL_MODELS_SUBDIR = path.join("models", "local-speech");
-const DEFAULT_OPENAI_TTS_MODEL: TTSConfig["model"] = "tts-1";
 
-function parseSpeechProviderId(value: unknown): SpeechProviderId | null {
-  if (typeof value !== "string") return null;
+const OpenAiTtsVoiceSchema = z.enum([
+  "alloy",
+  "echo",
+  "fable",
+  "onyx",
+  "nova",
+  "shimmer",
+]);
+
+const OpenAiTtsModelSchema = z.enum(["tts-1", "tts-1-hd"]);
+
+const OptionalSpeechProviderSchema = z.preprocess((value) => {
+  if (typeof value !== "string") {
+    return value;
+  }
   const normalized = value.trim().toLowerCase();
-  if (!normalized) return null;
-  if (normalized === "openai") return "openai";
-  if (normalized === "local") return "local";
-  return null;
-}
+  return normalized.length > 0 ? normalized : undefined;
+}, SpeechProviderIdSchema.optional());
 
-function parseBooleanFlag(value: string | undefined): boolean | null {
-  if (value === undefined) return null;
+const OptionalBooleanFlagSchema = z.preprocess((value) => {
+  if (typeof value === "boolean") {
+    return value;
+  }
+  if (typeof value !== "string") {
+    return value;
+  }
   const normalized = value.trim().toLowerCase();
-  if (normalized === "1" || normalized === "true" || normalized === "yes") return true;
-  if (normalized === "0" || normalized === "false" || normalized === "no") return false;
-  return null;
-}
+  if (normalized === "1" || normalized === "true" || normalized === "yes") {
+    return true;
+  }
+  if (normalized === "0" || normalized === "false" || normalized === "no") {
+    return false;
+  }
+  return undefined;
+}, z.boolean().optional());
 
-function parseNumberOrUndefined(value: string | undefined): number | undefined {
-  if (value === undefined) return undefined;
+const OptionalFiniteNumberSchema = z.preprocess((value) => {
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : undefined;
+  }
+  if (typeof value !== "string") {
+    return value;
+  }
   const parsed = Number.parseFloat(value);
   return Number.isFinite(parsed) ? parsed : undefined;
-}
+}, z.number().optional());
 
-function parseIntOrUndefined(value: string | undefined): number | undefined {
-  if (value === undefined) return undefined;
+const OptionalIntegerSchema = z.preprocess((value) => {
+  if (typeof value === "number") {
+    return Number.isInteger(value) ? value : undefined;
+  }
+  if (typeof value !== "string") {
+    return value;
+  }
   const parsed = Number.parseInt(value, 10);
   return Number.isFinite(parsed) ? parsed : undefined;
-}
+}, z.number().int().optional());
 
-function parseOpenAiConfig(
-  env: NodeJS.ProcessEnv,
-  persisted: PersistedConfig,
-  providers: {
-    dictationSttProvider: SpeechProviderId;
-    voiceSttProvider: SpeechProviderId;
-    voiceTtsProvider: SpeechProviderId;
+const OptionalTrimmedStringSchema = z.preprocess((value) => {
+  if (typeof value !== "string") {
+    return value;
   }
-): PaseoOpenAIConfig | undefined {
-  const apiKey = env.OPENAI_API_KEY ?? persisted.providers?.openai?.apiKey;
-  if (!apiKey) return undefined;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}, z.string().optional());
 
-  const sttConfidenceThreshold = parseNumberOrUndefined(env.STT_CONFIDENCE_THRESHOLD)
-    ?? persisted.features?.dictation?.stt?.confidenceThreshold;
+const ResolvedSpeechConfigSchema = z
+  .object({
+    dictationSttProvider: OptionalSpeechProviderSchema.default("local"),
+    voiceSttProvider: OptionalSpeechProviderSchema.default("local"),
+    voiceTtsProvider: OptionalSpeechProviderSchema.default("local"),
+    localModelsDir: z.string().trim().min(1),
+    localAutoDownload: OptionalBooleanFlagSchema.default(true),
+    dictationLocalSttModel: LocalSttModelIdSchema.default(DEFAULT_LOCAL_STT_MODEL),
+    voiceLocalSttModel: LocalSttModelIdSchema.default(DEFAULT_LOCAL_STT_MODEL),
+    voiceLocalTtsModel: LocalTtsModelIdSchema.default(DEFAULT_LOCAL_TTS_MODEL),
+    voiceLocalTtsSpeakerId: OptionalIntegerSchema,
+    voiceLocalTtsSpeed: OptionalFiniteNumberSchema,
+    anyLocalRequested: z.boolean(),
+    openaiApiKey: OptionalTrimmedStringSchema,
+    openaiSttConfidenceThreshold: OptionalFiniteNumberSchema,
+    openaiSttModel: OptionalTrimmedStringSchema,
+    openaiTtsVoice: z.preprocess((value) => {
+      if (typeof value !== "string") {
+        return value;
+      }
+      const normalized = value.trim().toLowerCase();
+      return normalized.length > 0 ? normalized : undefined;
+    }, OpenAiTtsVoiceSchema.default("alloy")),
+    openaiTtsModel: z.preprocess((value) => {
+      if (typeof value !== "string") {
+        return value;
+      }
+      const normalized = value.trim().toLowerCase();
+      return normalized.length > 0 ? normalized : undefined;
+    }, OpenAiTtsModelSchema.default(DEFAULT_OPENAI_TTS_MODEL)),
+    openaiRealtimeTranscriptionModel: OptionalTrimmedStringSchema.default(
+      DEFAULT_OPENAI_REALTIME_TRANSCRIPTION_MODEL
+    ),
+  })
+  .transform((input): { openai: PaseoOpenAIConfig | undefined; speech: PaseoSpeechConfig } => {
+    const openai = input.openaiApiKey
+      ? {
+          apiKey: input.openaiApiKey,
+          stt: {
+            apiKey: input.openaiApiKey,
+            ...(input.openaiSttConfidenceThreshold !== undefined
+              ? { confidenceThreshold: input.openaiSttConfidenceThreshold }
+              : {}),
+            ...(input.openaiSttModel
+              ? { model: input.openaiSttModel }
+              : {}),
+          },
+          tts: {
+            apiKey: input.openaiApiKey,
+            voice: input.openaiTtsVoice,
+            model: input.openaiTtsModel,
+            responseFormat: "pcm" as const,
+          },
+          realtimeTranscriptionModel: input.openaiRealtimeTranscriptionModel,
+        }
+      : undefined;
 
-  const sttModel = (
-    env.STT_MODEL
-    ?? (providers.voiceSttProvider === "openai" ? persisted.features?.voiceMode?.stt?.model : undefined)
-    ?? (providers.dictationSttProvider === "openai" ? persisted.features?.dictation?.stt?.model : undefined)
-  ) as STTConfig["model"] | undefined;
-
-  const ttsVoice = (
-    env.TTS_VOICE
-    || (providers.voiceTtsProvider === "openai" ? persisted.features?.voiceMode?.tts?.voice : undefined)
-    || "alloy"
-  ) as TTSConfig["voice"];
-  const ttsModelRaw =
-    env.TTS_MODEL
-    || (providers.voiceTtsProvider === "openai" ? persisted.features?.voiceMode?.tts?.model : undefined)
-    || DEFAULT_OPENAI_TTS_MODEL;
-  const ttsModel: TTSConfig["model"] =
-    ttsModelRaw === "tts-1" || ttsModelRaw === "tts-1-hd" ? ttsModelRaw : DEFAULT_OPENAI_TTS_MODEL;
-
-  const realtimeTranscriptionModel =
-    env.OPENAI_REALTIME_TRANSCRIPTION_MODEL
-    || (providers.dictationSttProvider === "openai"
-      ? persisted.features?.dictation?.stt?.model
-      : undefined)
-    || DEFAULT_OPENAI_REALTIME_TRANSCRIPTION_MODEL;
-
-  return {
-    apiKey,
-    stt: {
-      apiKey,
-      ...(sttConfidenceThreshold !== undefined ? { confidenceThreshold: sttConfidenceThreshold } : {}),
-      ...(sttModel ? { model: sttModel } : {}),
-    },
-    tts: {
-      apiKey,
-      voice: ttsVoice,
-      model: ttsModel,
-      responseFormat: "pcm",
-    },
-    realtimeTranscriptionModel,
-  };
-}
+    return {
+      openai,
+      speech: {
+        dictationSttProvider: input.dictationSttProvider,
+        voiceSttProvider: input.voiceSttProvider,
+        voiceTtsProvider: input.voiceTtsProvider,
+        ...(input.anyLocalRequested
+          ? {
+              local: {
+                modelsDir: input.localModelsDir,
+                autoDownload: input.localAutoDownload,
+              },
+            }
+          : {}),
+        dictationLocalSttModel: input.dictationLocalSttModel,
+        voiceLocalSttModel: input.voiceLocalSttModel,
+        voiceLocalTtsModel: input.voiceLocalTtsModel,
+        ...(input.voiceLocalTtsSpeakerId !== undefined
+          ? { voiceLocalTtsSpeakerId: input.voiceLocalTtsSpeakerId }
+          : {}),
+        ...(input.voiceLocalTtsSpeed !== undefined
+          ? { voiceLocalTtsSpeed: input.voiceLocalTtsSpeed }
+          : {}),
+      },
+    };
+  });
 
 export function resolveSpeechConfig(params: {
   paseoHome: string;
@@ -111,18 +179,18 @@ export function resolveSpeechConfig(params: {
   const { paseoHome, env, persisted } = params;
 
   const dictationSttProvider =
-    parseSpeechProviderId(env.PASEO_DICTATION_STT_PROVIDER)
-    ?? parseSpeechProviderId(persisted.features?.dictation?.stt?.provider)
+    env.PASEO_DICTATION_STT_PROVIDER
+    ?? persisted.features?.dictation?.stt?.provider
     ?? "local";
 
   const voiceSttProvider =
-    parseSpeechProviderId(env.PASEO_VOICE_STT_PROVIDER)
-    ?? parseSpeechProviderId(persisted.features?.voiceMode?.stt?.provider)
+    env.PASEO_VOICE_STT_PROVIDER
+    ?? persisted.features?.voiceMode?.stt?.provider
     ?? "local";
 
   const voiceTtsProvider =
-    parseSpeechProviderId(env.PASEO_VOICE_TTS_PROVIDER)
-    ?? parseSpeechProviderId(persisted.features?.voiceMode?.tts?.provider)
+    env.PASEO_VOICE_TTS_PROVIDER
+    ?? persisted.features?.voiceMode?.tts?.provider
     ?? "local";
 
   const anyLocalRequested =
@@ -132,65 +200,65 @@ export function resolveSpeechConfig(params: {
     env.PASEO_LOCAL_MODELS_DIR !== undefined ||
     persisted.providers?.local !== undefined;
 
-  const localModelsDir =
-    env.PASEO_LOCAL_MODELS_DIR
-    ?? persisted.providers?.local?.modelsDir
-    ?? path.join(paseoHome, DEFAULT_LOCAL_MODELS_SUBDIR);
-
-  const localAutoDownload =
-    parseBooleanFlag(env.PASEO_LOCAL_AUTO_DOWNLOAD)
-    ?? persisted.providers?.local?.autoDownload
-    ?? true;
-
-  const dictationLocalSttModel = LocalSttModelIdSchema.parse(
-    env.PASEO_DICTATION_LOCAL_STT_MODEL
-    ?? persisted.features?.dictation?.stt?.model
-    ?? DEFAULT_LOCAL_STT_MODEL
-  );
-
-  const voiceLocalSttModel = LocalSttModelIdSchema.parse(
-    env.PASEO_VOICE_LOCAL_STT_MODEL
-    ?? persisted.features?.voiceMode?.stt?.model
-    ?? DEFAULT_LOCAL_STT_MODEL
-  );
-
-  const voiceLocalTtsModel = LocalTtsModelIdSchema.parse(
-    env.PASEO_VOICE_LOCAL_TTS_MODEL
-    ?? persisted.features?.voiceMode?.tts?.model
-    ?? DEFAULT_LOCAL_TTS_MODEL
-  );
-
-  const voiceLocalTtsSpeakerId =
-    parseIntOrUndefined(env.PASEO_VOICE_LOCAL_TTS_SPEAKER_ID)
-    ?? persisted.features?.voiceMode?.tts?.speakerId;
-
-  const voiceLocalTtsSpeed =
-    parseNumberOrUndefined(env.PASEO_VOICE_LOCAL_TTS_SPEED)
-    ?? persisted.features?.voiceMode?.tts?.speed;
-
-  return {
-    openai: parseOpenAiConfig(env, persisted, {
-      dictationSttProvider,
-      voiceSttProvider,
-      voiceTtsProvider,
-    }),
-    speech: {
-      dictationSttProvider,
-      voiceSttProvider,
-      voiceTtsProvider,
-      ...(anyLocalRequested
-        ? {
-            local: {
-              modelsDir: localModelsDir.trim(),
-              autoDownload: localAutoDownload,
-            },
-          }
-        : {}),
-      dictationLocalSttModel,
-      voiceLocalSttModel,
-      voiceLocalTtsModel,
-      ...(voiceLocalTtsSpeakerId !== undefined ? { voiceLocalTtsSpeakerId } : {}),
-      ...(voiceLocalTtsSpeed !== undefined ? { voiceLocalTtsSpeed } : {}),
-    },
-  };
+  return ResolvedSpeechConfigSchema.parse({
+    dictationSttProvider,
+    voiceSttProvider,
+    voiceTtsProvider,
+    localModelsDir:
+      env.PASEO_LOCAL_MODELS_DIR
+      ?? persisted.providers?.local?.modelsDir
+      ?? path.join(paseoHome, DEFAULT_LOCAL_MODELS_SUBDIR),
+    localAutoDownload:
+      env.PASEO_LOCAL_AUTO_DOWNLOAD
+      ?? persisted.providers?.local?.autoDownload,
+    dictationLocalSttModel:
+      env.PASEO_DICTATION_LOCAL_STT_MODEL
+      ?? persisted.features?.dictation?.stt?.model
+      ?? DEFAULT_LOCAL_STT_MODEL,
+    voiceLocalSttModel:
+      env.PASEO_VOICE_LOCAL_STT_MODEL
+      ?? persisted.features?.voiceMode?.stt?.model
+      ?? DEFAULT_LOCAL_STT_MODEL,
+    voiceLocalTtsModel:
+      env.PASEO_VOICE_LOCAL_TTS_MODEL
+      ?? persisted.features?.voiceMode?.tts?.model
+      ?? DEFAULT_LOCAL_TTS_MODEL,
+    voiceLocalTtsSpeakerId:
+      env.PASEO_VOICE_LOCAL_TTS_SPEAKER_ID
+      ?? persisted.features?.voiceMode?.tts?.speakerId,
+    voiceLocalTtsSpeed:
+      env.PASEO_VOICE_LOCAL_TTS_SPEED
+      ?? persisted.features?.voiceMode?.tts?.speed,
+    anyLocalRequested,
+    openaiApiKey: env.OPENAI_API_KEY ?? persisted.providers?.openai?.apiKey,
+    openaiSttConfidenceThreshold:
+      env.STT_CONFIDENCE_THRESHOLD
+      ?? persisted.features?.dictation?.stt?.confidenceThreshold,
+    openaiSttModel:
+      env.STT_MODEL
+      ?? (voiceSttProvider === "openai"
+        ? persisted.features?.voiceMode?.stt?.model
+        : undefined)
+      ?? (dictationSttProvider === "openai"
+        ? persisted.features?.dictation?.stt?.model
+        : undefined),
+    openaiTtsVoice:
+      env.TTS_VOICE
+      ?? (voiceTtsProvider === "openai"
+        ? persisted.features?.voiceMode?.tts?.voice
+        : undefined)
+      ?? "alloy",
+    openaiTtsModel:
+      env.TTS_MODEL
+      ?? (voiceTtsProvider === "openai"
+        ? persisted.features?.voiceMode?.tts?.model
+        : undefined)
+      ?? DEFAULT_OPENAI_TTS_MODEL,
+    openaiRealtimeTranscriptionModel:
+      env.OPENAI_REALTIME_TRANSCRIPTION_MODEL
+      ?? (dictationSttProvider === "openai"
+        ? persisted.features?.dictation?.stt?.model
+        : undefined)
+      ?? DEFAULT_OPENAI_REALTIME_TRANSCRIPTION_MODEL,
+  });
 }
