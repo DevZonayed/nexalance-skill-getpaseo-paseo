@@ -1,8 +1,8 @@
 import path from "node:path";
 
 import type { PaseoDaemonConfig } from "./bootstrap.js";
-import type { STTConfig } from "./agent/stt-openai.js";
-import type { TTSConfig } from "./agent/tts-openai.js";
+import type { STTConfig } from "./speech/providers/openai/stt.js";
+import type { TTSConfig } from "./speech/providers/openai/tts.js";
 import { loadPersistedConfig } from "./persisted-config.js";
 import {
   mergeAllowedHosts,
@@ -76,6 +76,49 @@ function parseOpenAIConfig(
   };
 }
 
+function parseSpeechProviderId(value: unknown): "openai" | "local" | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const normalized = value.trim().toLowerCase();
+  if (!normalized) {
+    return null;
+  }
+  if (normalized === "openai") return "openai";
+  if (normalized === "local") return "local";
+  return null;
+}
+
+function normalizeSherpaSttPreset(value: string): string {
+  const raw = value.trim();
+  const normalized = raw.toLowerCase();
+  if (normalized === "zipformer" || normalized === "zipformer-bilingual") {
+    return "zipformer-bilingual-zh-en-2023-02-20";
+  }
+  if (normalized === "paraformer") {
+    return "paraformer-bilingual-zh-en";
+  }
+  if (normalized === "parakeet" || normalized === "parakeet-v3" || normalized === "parakeet-tdt") {
+    return "parakeet-tdt-0.6b-v3-int8";
+  }
+  return raw;
+}
+
+function normalizeSherpaTtsPreset(value: string): string {
+  const raw = value.trim();
+  const normalized = raw.toLowerCase();
+  if (normalized === "pocket" || normalized === "pocket-tts") {
+    return "pocket-tts-onnx-int8";
+  }
+  if (normalized === "kitten") {
+    return "kitten-nano-en-v0_1-fp16";
+  }
+  if (normalized === "kokoro") {
+    return "kokoro-en-v0_19";
+  }
+  return raw;
+}
+
 export function loadConfig(
   paseoHome: string,
   options?: {
@@ -137,6 +180,70 @@ export function loadConfig(
     voiceTtsVoice: persisted.features?.voiceMode?.tts?.voice,
   });
 
+  const dictationSttProvider =
+    parseSpeechProviderId(env.PASEO_DICTATION_STT_PROVIDER) ??
+    parseSpeechProviderId(persisted.features?.dictation?.stt?.provider) ??
+    "local";
+
+  const voiceSttProvider =
+    parseSpeechProviderId(env.PASEO_VOICE_STT_PROVIDER) ??
+    parseSpeechProviderId(persisted.features?.voiceMode?.stt?.provider) ??
+    "local";
+
+  const voiceTtsProvider =
+    parseSpeechProviderId(env.PASEO_VOICE_TTS_PROVIDER) ??
+    parseSpeechProviderId(persisted.features?.voiceMode?.tts?.provider) ??
+    "local";
+
+  const shouldConfigureSherpa =
+    dictationSttProvider === "local" ||
+    voiceSttProvider === "local" ||
+    voiceTtsProvider === "local" ||
+    typeof env.PASEO_SHERPA_ONNX_MODELS_DIR === "string" ||
+    Boolean(persisted.providers?.sherpaOnnx);
+
+  const sherpaModelsDir =
+    (env.PASEO_SHERPA_ONNX_MODELS_DIR ?? persisted.providers?.sherpaOnnx?.modelsDir)?.trim() ||
+    path.join(paseoHome, "models", "sherpa-onnx");
+
+  const sherpaOnnx = shouldConfigureSherpa
+    ? {
+        modelsDir: sherpaModelsDir,
+        autoDownload:
+          env.PASEO_SHERPA_ONNX_AUTO_DOWNLOAD !== undefined
+            ? env.PASEO_SHERPA_ONNX_AUTO_DOWNLOAD === "1"
+            : persisted.providers?.sherpaOnnx?.autoDownload ??
+              // In tests we should never hit the network unexpectedly.
+              Boolean(env.VITEST) === false,
+        stt: {
+          preset: normalizeSherpaSttPreset(
+            (env.PASEO_SHERPA_STT_PRESET ?? persisted.providers?.sherpaOnnx?.stt?.preset)?.trim() ||
+              (persisted.features?.voiceMode?.stt?.preset ??
+                persisted.features?.dictation?.stt?.preset)?.trim() ||
+              "zipformer-bilingual-zh-en-2023-02-20"
+          ),
+        },
+        tts: {
+          preset: normalizeSherpaTtsPreset(
+            (env.PASEO_SHERPA_TTS_PRESET ??
+              persisted.providers?.sherpaOnnx?.tts?.preset ??
+              persisted.features?.voiceMode?.tts?.preset)?.trim() ||
+              (env.VITEST ? "kitten-nano-en-v0_1-fp16" : "pocket-tts-onnx-int8")
+          ),
+          speakerId:
+            env.PASEO_SHERPA_TTS_SPEAKER_ID !== undefined
+              ? Number.parseInt(env.PASEO_SHERPA_TTS_SPEAKER_ID, 10)
+              : persisted.providers?.sherpaOnnx?.tts?.speakerId ??
+                persisted.features?.voiceMode?.tts?.speakerId,
+          speed:
+            env.PASEO_SHERPA_TTS_SPEED !== undefined
+              ? Number.parseFloat(env.PASEO_SHERPA_TTS_SPEED)
+              : persisted.providers?.sherpaOnnx?.tts?.speed ??
+                persisted.features?.voiceMode?.tts?.speed,
+        },
+      }
+    : undefined;
+
   const openrouterApiKey =
     env.OPENROUTER_API_KEY ?? persisted.providers?.openrouter?.apiKey ?? null;
   const voiceLlmModel = persisted.features?.voiceMode?.llm?.model ?? null;
@@ -158,6 +265,12 @@ export function loadConfig(
     relayPublicEndpoint,
     appBaseUrl,
     openai,
+    speech: {
+      dictationSttProvider,
+      voiceSttProvider,
+      voiceTtsProvider,
+      ...(sherpaOnnx ? { sherpaOnnx } : {}),
+    },
     openrouterApiKey,
     voiceLlmModel,
   };

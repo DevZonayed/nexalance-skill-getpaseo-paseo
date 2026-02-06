@@ -17,19 +17,52 @@ const ProviderCredentialsSchema = z
   })
   .strict();
 
+const SherpaOnnxProviderSchema = z
+  .object({
+    modelsDir: z.string().min(1).optional(),
+    autoDownload: z.boolean().optional(),
+    stt: z
+      .object({
+        preset: z.string().min(1).optional(),
+      })
+      .strict()
+      .optional(),
+    tts: z
+      .object({
+        preset: z.string().min(1).optional(),
+        speakerId: z.number().int().optional(),
+        speed: z.number().optional(),
+      })
+      .strict()
+      .optional(),
+  })
+  .strict();
+
 const ProvidersSchema = z
   .object({
     openai: ProviderCredentialsSchema.optional(),
     openrouter: ProviderCredentialsSchema.optional(),
+    sherpaOnnx: SherpaOnnxProviderSchema.optional(),
   })
   .strict();
+
+const SpeechProviderIdSchema = z.preprocess(
+  (value) => {
+    if (typeof value !== "string") {
+      return value;
+    }
+    return value.trim().toLowerCase();
+  },
+  z.enum(["openai", "local"])
+);
 
 const FeatureDictationSchema = z
   .object({
     stt: z
       .object({
-        provider: z.enum(["openai"]).optional(),
+        provider: SpeechProviderIdSchema.optional(),
         model: z.string().min(1).optional(),
+        preset: z.string().min(1).optional(),
         confidenceThreshold: z.number().optional(),
       })
       .strict()
@@ -48,16 +81,20 @@ const FeatureVoiceModeSchema = z
       .optional(),
     stt: z
       .object({
-        provider: z.enum(["openai"]).optional(),
+        provider: SpeechProviderIdSchema.optional(),
         model: z.string().min(1).optional(),
+        preset: z.string().min(1).optional(),
       })
       .strict()
       .optional(),
     tts: z
       .object({
-        provider: z.enum(["openai"]).optional(),
+        provider: SpeechProviderIdSchema.optional(),
         model: z.enum(["tts-1", "tts-1-hd"]).optional(),
         voice: z.enum(["alloy", "echo", "fable", "onyx", "nova", "shimmer"]).optional(),
+        preset: z.string().min(1).optional(),
+        speakerId: z.number().int().optional(),
+        speed: z.number().optional(),
       })
       .strict()
       .optional(),

@@ -489,6 +489,17 @@ export const ListProviderModelsRequestMessageSchema = z.object({
   requestId: z.string(),
 });
 
+export const SpeechModelsListRequestSchema = z.object({
+  type: z.literal("speech_models_list_request"),
+  requestId: z.string(),
+});
+
+export const SpeechModelsDownloadRequestSchema = z.object({
+  type: z.literal("speech_models_download_request"),
+  modelIds: z.array(z.string()).optional(),
+  requestId: z.string(),
+});
+
 export const ResumeAgentRequestMessageSchema = z.object({
   type: z.literal("resume_agent_request"),
   handle: AgentPersistenceHandleSchema,
@@ -887,6 +898,8 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   DictationStreamCancelMessageSchema,
   CreateAgentRequestMessageSchema,
   ListProviderModelsRequestMessageSchema,
+  SpeechModelsListRequestSchema,
+  SpeechModelsDownloadRequestSchema,
   ResumeAgentRequestMessageSchema,
   RefreshAgentRequestMessageSchema,
   CancelAgentRequestMessageSchema,
@@ -1518,6 +1531,34 @@ export const ListProviderModelsResponseMessageSchema = z.object({
   }),
 });
 
+export const SpeechModelsListResponseSchema = z.object({
+  type: z.literal("speech_models_list_response"),
+  payload: z.object({
+    modelsDir: z.string(),
+    models: z.array(
+      z.object({
+        id: z.string(),
+        kind: z.string(),
+        description: z.string(),
+        modelDir: z.string(),
+        isDownloaded: z.boolean(),
+        missingFiles: z.array(z.string()).optional(),
+      })
+    ),
+    requestId: z.string(),
+  }),
+});
+
+export const SpeechModelsDownloadResponseSchema = z.object({
+  type: z.literal("speech_models_download_response"),
+  payload: z.object({
+    modelsDir: z.string(),
+    downloadedModelIds: z.array(z.string()),
+    error: z.string().nullable(),
+    requestId: z.string(),
+  }),
+});
+
 const AgentSlashCommandSchema = z.object({
   name: z.string(),
   description: z.string(),
@@ -1673,6 +1714,8 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   ProjectIconResponseSchema,
   FileDownloadTokenResponseSchema,
   ListProviderModelsResponseMessageSchema,
+  SpeechModelsListResponseSchema,
+  SpeechModelsDownloadResponseSchema,
   ListCommandsResponseSchema,
   ExecuteCommandResponseSchema,
   ListTerminalsResponseSchema,
@@ -1727,6 +1770,8 @@ export type AgentDeletedMessage = z.infer<typeof AgentDeletedMessageSchema>;
 export type ListProviderModelsResponseMessage = z.infer<
   typeof ListProviderModelsResponseMessageSchema
 >;
+export type SpeechModelsListResponse = z.infer<typeof SpeechModelsListResponseSchema>;
+export type SpeechModelsDownloadResponse = z.infer<typeof SpeechModelsDownloadResponseSchema>;
 export type InitializeAgentResponseMessage = z.infer<typeof InitializeAgentResponseMessageSchema>;
 
 // Type exports for payload types
@@ -1746,6 +1791,10 @@ export type DictationStreamCancelMessage = z.infer<typeof DictationStreamCancelM
 export type CreateAgentRequestMessage = z.infer<typeof CreateAgentRequestMessageSchema>;
 export type ListProviderModelsRequestMessage = z.infer<
   typeof ListProviderModelsRequestMessageSchema
+>;
+export type SpeechModelsListRequestMessage = z.infer<typeof SpeechModelsListRequestSchema>;
+export type SpeechModelsDownloadRequestMessage = z.infer<
+  typeof SpeechModelsDownloadRequestSchema
 >;
 export type ResumeAgentRequestMessage = z.infer<typeof ResumeAgentRequestMessageSchema>;
 export type DeleteAgentRequestMessage = z.infer<typeof DeleteAgentRequestMessageSchema>;

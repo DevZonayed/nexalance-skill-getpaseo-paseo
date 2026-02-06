@@ -1,6 +1,9 @@
 import type pino from "pino";
 import OpenAI from "openai";
-import { Readable } from "stream";
+import { Readable } from "node:stream";
+import type { SpeechStreamResult, TextToSpeechProvider } from "../../speech-provider.js";
+
+export type { SpeechStreamResult };
 
 export interface TTSConfig {
   apiKey: string;
@@ -9,12 +12,7 @@ export interface TTSConfig {
   responseFormat?: "mp3" | "opus" | "aac" | "flac" | "wav" | "pcm";
 }
 
-export interface SpeechStreamResult {
-  stream: Readable;
-  format: string;
-}
-
-export class OpenAITTS {
+export class OpenAITTS implements TextToSpeechProvider {
   private readonly openaiClient: OpenAI;
   private readonly config: TTSConfig;
   private readonly logger: pino.Logger;

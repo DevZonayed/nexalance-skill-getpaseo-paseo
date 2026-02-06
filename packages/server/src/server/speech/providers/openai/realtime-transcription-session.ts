@@ -1,6 +1,7 @@
 import type pino from "pino";
 import WebSocket from "ws";
 import { EventEmitter } from "node:events";
+import type { StreamingTranscriptionSession } from "../../speech-provider.js";
 
 type OpenAITurnDetection =
   | null
@@ -60,7 +61,11 @@ type OpenAIServerEvent =
     }
   | { type: "error"; error?: { message?: string } };
 
-export class OpenAIRealtimeTranscriptionSession extends EventEmitter {
+export class OpenAIRealtimeTranscriptionSession
+  extends EventEmitter
+  implements StreamingTranscriptionSession
+{
+  public readonly requiredSampleRate = 24000;
   private readonly apiKey: string;
   private readonly logger: pino.Logger;
   private readonly transcriptionModel: string;
@@ -161,8 +166,8 @@ export class OpenAIRealtimeTranscriptionSession extends EventEmitter {
 
         if (event.type === "input_audio_buffer.committed") {
           this.emit("committed", {
-            itemId: event.item_id,
-            previousItemId: event.previous_item_id,
+            segmentId: event.item_id,
+            previousSegmentId: event.previous_item_id,
           });
           return;
         }
@@ -182,13 +187,13 @@ export class OpenAIRealtimeTranscriptionSession extends EventEmitter {
           const prev = this.partialByItemId.get(event.item_id) ?? "";
           const next = replaceDelta ? event.delta : prev + event.delta;
           this.partialByItemId.set(event.item_id, next);
-          this.emit("transcript", { itemId: event.item_id, transcript: next, isFinal: false });
+          this.emit("transcript", { segmentId: event.item_id, transcript: next, isFinal: false });
           return;
         }
 
         if (event.type === "conversation.item.input_audio_transcription.completed") {
           this.partialByItemId.set(event.item_id, event.transcript);
-          this.emit("transcript", { itemId: event.item_id, transcript: event.transcript, isFinal: true });
+          this.emit("transcript", { segmentId: event.item_id, transcript: event.transcript, isFinal: true });
           return;
         }
 
@@ -218,10 +223,11 @@ export class OpenAIRealtimeTranscriptionSession extends EventEmitter {
     return this.ready;
   }
 
-  public appendPcm16Base64(base64Audio: string): void {
+  public appendPcm16(pcm16le: Buffer): void {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
       throw new Error("OpenAI realtime websocket not connected");
     }
+    const base64Audio = pcm16le.toString("base64");
     const event: OpenAIClientEvent = { type: "input_audio_buffer.append", audio: base64Audio };
     this.ws.send(JSON.stringify(event));
   }

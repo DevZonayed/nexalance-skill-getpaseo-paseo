@@ -3,6 +3,7 @@ import { createAgentCommand } from './commands/agent/index.js'
 import { createDaemonCommand } from './commands/daemon/index.js'
 import { createPermitCommand } from './commands/permit/index.js'
 import { createProviderCommand } from './commands/provider/index.js'
+import { createSpeechCommand } from './commands/speech/index.js'
 import { createWorktreeCommand } from './commands/worktree/index.js'
 import { runLsCommand } from './commands/agent/ls.js'
 import { runRunCommand } from './commands/agent/run.js'
@@ -133,6 +134,9 @@ export function createCli(): Command {
 
   // Provider commands
   program.addCommand(createProviderCommand())
+
+  // Speech model commands
+  program.addCommand(createSpeechCommand())
 
   // Worktree commands
   program.addCommand(createWorktreeCommand())

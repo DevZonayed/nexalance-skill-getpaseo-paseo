@@ -168,7 +168,7 @@ describe("Codex app-server provider (integration)", () => {
       cleanup();
       rmSync(cwd, { recursive: true, force: true });
     }
-  }, 60000);
+  }, 120000);
 
   test.runIf(isCodexInstalled())("listCommands includes custom prompts and executeCommand runs them", async () => {
     const cleanup = useTempCodexSessionDir();

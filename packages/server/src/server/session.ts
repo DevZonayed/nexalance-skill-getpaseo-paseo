@@ -33,8 +33,7 @@ import { getSystemPrompt } from "./agent/system-prompt.js";
 import { getAllTools } from "./agent/llm-openai.js";
 import { TTSManager } from "./agent/tts-manager.js";
 import { STTManager } from "./agent/stt-manager.js";
-import type { OpenAISTT } from "./agent/stt-openai.js";
-import type { OpenAITTS } from "./agent/tts-openai.js";
+import type { SpeechToTextProvider, TextToSpeechProvider } from "./speech/speech-provider.js";
 import { maybePersistTtsDebugAudio } from "./agent/tts-debug.js";
 import { isPaseoDictationDebugEnabled } from "./agent/recordings-debug.js";
 import {
@@ -106,6 +105,14 @@ import {
 } from "../utils/checkout-git.js";
 import { getProjectIcon } from "../utils/project-icon.js";
 import { expandTilde } from "../utils/path.js";
+import {
+  ensureSherpaOnnxModels,
+  getSherpaOnnxModelDir,
+} from "./speech/providers/local/sherpa/model-downloader.js";
+import {
+  listSherpaOnnxModels,
+  type SherpaOnnxModelId,
+} from "./speech/providers/local/sherpa/model-catalog.js";
 import type pino from "pino";
 
 const execAsync = promisify(exec);
@@ -325,8 +332,8 @@ export class Session {
     agentManager: AgentManager,
     agentStorage: AgentStorage,
     createAgentMcpTransport: AgentMcpTransportFactory,
-    stt: OpenAISTT | null,
-    tts: OpenAITTS | null,
+    stt: SpeechToTextProvider | null,
+    tts: TextToSpeechProvider | null,
     terminalManager: TerminalManager | null,
     voiceConversationStore: VoiceConversationStore,
     voice?: {
@@ -334,8 +341,8 @@ export class Session {
       voiceLlmModel?: string | null;
     },
     dictation?: {
-      openaiApiKey?: string | null;
       finalTimeoutMs?: number;
+      stt?: SpeechToTextProvider | null;
     }
   ) {
     this.clientId = clientId;
@@ -366,7 +373,7 @@ export class Session {
       logger: this.sessionLogger,
       sessionId: this.sessionId,
       emit: (msg) => this.emit(msg as unknown as SessionOutboundMessage),
-      openaiApiKey: dictation?.openaiApiKey ?? null,
+      stt: dictation?.stt ?? null,
       finalTimeoutMs: dictation?.finalTimeoutMs,
     });
 
@@ -989,6 +996,14 @@ export class Session {
 
         case "list_provider_models_request":
           await this.handleListProviderModelsRequest(msg);
+          break;
+
+        case "speech_models_list_request":
+          await this.handleSpeechModelsListRequest(msg);
+          break;
+
+        case "speech_models_download_request":
+          await this.handleSpeechModelsDownloadRequest(msg);
           break;
 
         case "clear_agent_attention":
@@ -1920,6 +1935,114 @@ export class Session {
           provider: msg.provider,
           error: (error as Error)?.message ?? String(error),
           fetchedAt,
+          requestId: msg.requestId,
+        },
+      });
+    }
+  }
+
+  private async handleSpeechModelsListRequest(
+    msg: Extract<SessionInboundMessage, { type: "speech_models_list_request" }>
+  ): Promise<void> {
+    const modelsDir =
+      process.env.PASEO_SHERPA_ONNX_MODELS_DIR?.trim() ||
+      join(this.paseoHome, "models", "sherpa-onnx");
+
+    const models = await Promise.all(
+      listSherpaOnnxModels().map(async (model) => {
+        const modelDir = getSherpaOnnxModelDir(modelsDir, model.id);
+        const missingFiles: string[] = [];
+        for (const rel of model.requiredFiles) {
+          const filePath = join(modelDir, rel);
+          try {
+            const fileStat = await stat(filePath);
+            if (fileStat.isDirectory()) {
+              continue;
+            }
+            if (!fileStat.isFile() || fileStat.size <= 0) {
+              missingFiles.push(rel);
+            }
+          } catch {
+            missingFiles.push(rel);
+          }
+        }
+
+        return {
+          id: model.id,
+          kind: model.kind,
+          description: model.description,
+          modelDir,
+          isDownloaded: missingFiles.length === 0,
+          ...(missingFiles.length > 0 ? { missingFiles } : {}),
+        };
+      })
+    );
+
+    this.emit({
+      type: "speech_models_list_response",
+      payload: {
+        modelsDir,
+        models,
+        requestId: msg.requestId,
+      },
+    });
+  }
+
+  private async handleSpeechModelsDownloadRequest(
+    msg: Extract<SessionInboundMessage, { type: "speech_models_download_request" }>
+  ): Promise<void> {
+    const modelsDir =
+      process.env.PASEO_SHERPA_ONNX_MODELS_DIR?.trim() ||
+      join(this.paseoHome, "models", "sherpa-onnx");
+
+    const modelIdsRaw =
+      msg.modelIds && msg.modelIds.length > 0
+        ? msg.modelIds
+        : [
+            process.env.PASEO_SHERPA_STT_PRESET ?? "zipformer-bilingual-zh-en-2023-02-20",
+            process.env.PASEO_SHERPA_TTS_PRESET ?? "pocket-tts-onnx-int8",
+          ];
+
+    const allModelIds = new Set(listSherpaOnnxModels().map((m) => m.id));
+    const invalid = modelIdsRaw.filter((id) => !allModelIds.has(id as SherpaOnnxModelId));
+    if (invalid.length > 0) {
+      this.emit({
+        type: "speech_models_download_response",
+        payload: {
+          modelsDir,
+          downloadedModelIds: [],
+          error: `Unknown speech model id(s): ${invalid.join(", ")}`,
+          requestId: msg.requestId,
+        },
+      });
+      return;
+    }
+
+    const modelIds = modelIdsRaw as SherpaOnnxModelId[];
+    try {
+      await ensureSherpaOnnxModels({
+        modelsDir,
+        modelIds,
+        autoDownload: true,
+        logger: this.sessionLogger,
+      });
+      this.emit({
+        type: "speech_models_download_response",
+        payload: {
+          modelsDir,
+          downloadedModelIds: modelIds,
+          error: null,
+          requestId: msg.requestId,
+        },
+      });
+    } catch (error) {
+      this.sessionLogger.error({ err: error, modelIds }, "Failed to download speech models");
+      this.emit({
+        type: "speech_models_download_response",
+        payload: {
+          modelsDir,
+          downloadedModelIds: [],
+          error: error instanceof Error ? error.message : String(error),
           requestId: msg.requestId,
         },
       });
