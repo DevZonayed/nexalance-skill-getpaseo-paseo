@@ -77,6 +77,8 @@ import { acquirePidLock, releasePidLock } from "./pid-lock.js";
 import { isHostAllowed, type AllowedHostsConfig } from "./allowed-hosts.js";
 
 type AgentMcpTransportMap = Map<string, StreamableHTTPServerTransport>;
+type VoiceAgentProvider = "claude" | "codex" | "opencode";
+const VOICE_AGENT_FALLBACK_ORDER: VoiceAgentProvider[] = ["claude", "codex", "opencode"];
 
 export type PaseoOpenAIConfig = {
   apiKey?: string;
@@ -121,6 +123,8 @@ export type PaseoDaemonConfig = {
   openai?: PaseoOpenAIConfig;
   speech?: PaseoSpeechConfig;
   openrouterApiKey?: string | null;
+  voiceLlmProvider?: "openrouter" | "local-agent" | "claude" | "codex" | "opencode" | null;
+  voiceLlmProviderExplicit?: boolean;
   voiceLlmModel?: string | null;
   dictationFinalTimeoutMs?: number;
   downloadTokenTtlMs?: number;
@@ -282,12 +286,88 @@ export async function createPaseoDaemon(
     `Agent registry loaded (${persistedRecords.length} record${persistedRecords.length === 1 ? "" : "s"}); agents will initialize on demand`
   );
 
+  const requestedVoiceLlmProvider = config.voiceLlmProvider ?? null;
+  const voiceLlmProviderExplicit = config.voiceLlmProviderExplicit ?? false;
+  logger.info(
+    {
+      requestedVoiceLlmProvider,
+      voiceLlmProviderExplicit,
+    },
+    "Voice LLM provider reconciliation started"
+  );
+
+  const providerClients = createAllClients(logger);
+  const voiceLlmAvailability: Record<VoiceAgentProvider, boolean> = {
+    claude: false,
+    codex: false,
+    opencode: false,
+  };
+  for (const provider of VOICE_AGENT_FALLBACK_ORDER) {
+    try {
+      voiceLlmAvailability[provider] = await providerClients[provider].isAvailable();
+    } catch (error) {
+      logger.warn({ err: error, provider }, "Voice LLM provider availability check failed");
+      voiceLlmAvailability[provider] = false;
+    }
+  }
+
+  const voiceLlmDefaultProvider =
+    VOICE_AGENT_FALLBACK_ORDER.find((provider) => voiceLlmAvailability[provider]) ?? null;
+
+  if (requestedVoiceLlmProvider === "openrouter") {
+    const openrouterApiKey =
+      config.openrouterApiKey ?? process.env.OPENROUTER_API_KEY ?? null;
+    if (!openrouterApiKey) {
+      logger.error("voiceMode.llm.provider is openrouter but no OpenRouter API key is configured");
+      throw new Error("Missing OpenRouter API key for voiceMode.llm.provider=openrouter");
+    }
+  } else if (
+    requestedVoiceLlmProvider === "claude" ||
+    requestedVoiceLlmProvider === "codex" ||
+    requestedVoiceLlmProvider === "opencode"
+  ) {
+    if (!voiceLlmAvailability[requestedVoiceLlmProvider]) {
+      logger.error(
+        { provider: requestedVoiceLlmProvider, voiceLlmAvailability },
+        "Configured voice LLM provider is unavailable"
+      );
+      throw new Error(`Configured voice LLM provider '${requestedVoiceLlmProvider}' is unavailable`);
+    }
+  } else if (!voiceLlmDefaultProvider) {
+    logger.error(
+      { requestedVoiceLlmProvider, voiceLlmAvailability },
+      "No local voice LLM provider available for fallback"
+    );
+    throw new Error("No local voice LLM provider available (claude/codex/opencode)");
+  }
+
+  logger.info(
+    {
+      requestedVoiceLlmProvider,
+      voiceLlmProviderExplicit,
+      voiceLlmAvailability,
+      voiceLlmDefaultProvider,
+    },
+    "Voice LLM provider reconciliation completed"
+  );
+  if (listenTarget.type !== "tcp" && requestedVoiceLlmProvider !== "openrouter") {
+    logger.error(
+      { listen: config.listen, requestedVoiceLlmProvider },
+      "Local voice agent mode requires TCP listen target for HTTP MCP bridge"
+    );
+    throw new Error("Local voice agent mode requires TCP listen target");
+  }
+  let wsServer: VoiceAssistantWebSocketServer | null = null;
+
   // Create in-memory transport for Session's Agent MCP client (voice assistant tools)
   const createInMemoryAgentMcpTransport = async (): Promise<InMemoryTransport> => {
     const agentMcpServer = await createAgentMcpServer({
       agentManager,
       agentStorage,
       paseoHome: config.paseoHome,
+      enableVoiceTools: false,
+      resolveSpeakHandler: (callerAgentId) => wsServer?.resolveVoiceSpeakHandler(callerAgentId) ?? null,
+      resolveCallerContext: (callerAgentId) => wsServer?.resolveVoiceCallerContext(callerAgentId) ?? null,
       logger,
     });
 
@@ -309,6 +389,9 @@ export async function createPaseoDaemon(
         agentStorage,
         paseoHome: config.paseoHome,
         callerAgentId,
+        enableVoiceTools: false,
+        resolveSpeakHandler: (agentId) => wsServer?.resolveVoiceSpeakHandler(agentId) ?? null,
+        resolveCallerContext: (agentId) => wsServer?.resolveVoiceCallerContext(agentId) ?? null,
         logger,
       });
 
@@ -792,7 +875,12 @@ export async function createPaseoDaemon(
     );
   }
 
-  const wsServer = new VoiceAssistantWebSocketServer(
+  const voiceAgentMcpUrl =
+    listenTarget.type === "tcp"
+      ? `http://127.0.0.1:${listenTarget.port}/mcp/agents`
+      : null;
+
+  wsServer = new VoiceAssistantWebSocketServer(
     httpServer,
     logger,
     serverId,
@@ -806,7 +894,12 @@ export async function createPaseoDaemon(
     terminalManager,
     {
       openrouterApiKey: config.openrouterApiKey ?? null,
+      voiceLlmProvider: config.voiceLlmProvider ?? null,
+      voiceLlmProviderExplicit,
+      voiceLlmDefaultProvider,
       voiceLlmModel: config.voiceLlmModel ?? null,
+      voiceLlmAvailability,
+      voiceAgentMcpUrl,
     },
     {
       finalTimeoutMs: config.dictationFinalTimeoutMs,
@@ -870,7 +963,12 @@ export async function createPaseoDaemon(
               relayTransport?.stop().catch(() => undefined);
               relayTransport = startRelayTransport({
                 logger,
-                attachSocket: (ws) => wsServer.attachExternalSocket(ws),
+                attachSocket: (ws) => {
+                  if (!wsServer) {
+                    throw new Error("WebSocket server not initialized");
+                  }
+                  return wsServer.attachExternalSocket(ws);
+                },
                 relayEndpoint,
                 serverId,
                 daemonKeyPair: daemonKeyPair.keyPair,
@@ -911,7 +1009,9 @@ export async function createPaseoDaemon(
     sherpaOnline?.free();
     sherpaOffline?.free();
     await relayTransport?.stop().catch(() => undefined);
-    await wsServer.close();
+    if (wsServer) {
+      await wsServer.close();
+    }
     await new Promise<void>((resolve) => {
       httpServer.close(() => resolve());
     });

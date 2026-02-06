@@ -13,6 +13,14 @@ import {
 const DEFAULT_PORT = 6767;
 const DEFAULT_RELAY_ENDPOINT = "relay.paseo.sh:443";
 const DEFAULT_APP_BASE_URL = "https://app.paseo.sh";
+const VOICE_LLM_PROVIDER_IDS = [
+  "openrouter",
+  "local-agent",
+  "claude",
+  "codex",
+  "opencode",
+] as const;
+type VoiceLlmProviderId = (typeof VOICE_LLM_PROVIDER_IDS)[number];
 
 function getDefaultListen(): string {
   // Main HTTP server defaults to TCP
@@ -87,6 +95,19 @@ function parseSpeechProviderId(value: unknown): "openai" | "local" | null {
   if (normalized === "openai") return "openai";
   if (normalized === "local") return "local";
   return null;
+}
+
+function parseVoiceLlmProviderId(value: unknown): VoiceLlmProviderId | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const normalized = value.trim().toLowerCase();
+  if (!normalized) {
+    return null;
+  }
+  return (VOICE_LLM_PROVIDER_IDS as readonly string[]).includes(normalized)
+    ? (normalized as VoiceLlmProviderId)
+    : null;
 }
 
 function normalizeSherpaSttPreset(value: string): string {
@@ -246,6 +267,13 @@ export function loadConfig(
 
   const openrouterApiKey =
     env.OPENROUTER_API_KEY ?? persisted.providers?.openrouter?.apiKey ?? null;
+  const envVoiceLlmProvider = parseVoiceLlmProviderId(env.PASEO_VOICE_LLM_PROVIDER);
+  const persistedVoiceLlmProvider = parseVoiceLlmProviderId(
+    persisted.features?.voiceMode?.llm?.provider
+  );
+  const voiceLlmProvider = envVoiceLlmProvider ?? persistedVoiceLlmProvider ?? null;
+  const voiceLlmProviderExplicit =
+    envVoiceLlmProvider !== null || persistedVoiceLlmProvider !== null;
   const voiceLlmModel = persisted.features?.voiceMode?.llm?.model ?? null;
 
   return {
@@ -272,6 +300,8 @@ export function loadConfig(
       ...(sherpaOnnx ? { sherpaOnnx } : {}),
     },
     openrouterApiKey,
+    voiceLlmProvider,
+    voiceLlmProviderExplicit,
     voiceLlmModel,
   };
 }

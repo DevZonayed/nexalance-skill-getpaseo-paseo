@@ -74,7 +74,9 @@ const FeatureVoiceModeSchema = z
   .object({
     llm: z
       .object({
-        provider: z.enum(["openrouter"]).optional(),
+        provider: z
+          .enum(["openrouter", "local-agent", "claude", "codex", "opencode"])
+          .optional(),
         model: z.string().min(1).optional(),
       })
       .strict()

@@ -49,6 +49,15 @@ import { experimental_createMCPClient } from "ai";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 
 export type AgentMcpTransportFactory = () => Promise<Transport>;
+type VoiceLlmProvider = "openrouter" | "local-agent" | "claude" | "codex" | "opencode";
+type VoiceAgentProvider = Exclude<VoiceLlmProvider, "openrouter" | "local-agent">;
+type VoiceSpeakHandler = (params: { text: string; callerAgentId: string; signal?: AbortSignal }) => Promise<void>;
+type VoiceCallerContext = {
+  childAgentDefaultLabels?: Record<string, string>;
+  lockedCwd?: string;
+  allowCustomCwd?: boolean;
+  enableVoiceTools?: boolean;
+};
 import { buildProviderRegistry } from "./agent/provider-registry.js";
 import { AgentManager } from "./agent/agent-manager.js";
 import type { ManagedAgent } from "./agent/agent-manager.js";
@@ -59,6 +68,7 @@ import {
   generateStructuredAgentResponse,
 } from "./agent/agent-response-loop.js";
 import type {
+  AgentPermissionRequest,
   AgentPermissionResponse,
   AgentPromptContentBlock,
   AgentPromptInput,
@@ -130,6 +140,24 @@ const RESTART_EXIT_DELAY_MS = 250;
  * Uses Claude Haiku for speed and cost efficiency.
  */
 const AUTO_GEN_MODEL = "haiku";
+const VOICE_AGENT_FALLBACK_ORDER: VoiceAgentProvider[] = ["claude", "codex", "opencode"];
+const VOICE_AGENT_DEFAULT_MODE: Record<VoiceAgentProvider, string> = {
+  claude: "default",
+  codex: "read-only",
+  opencode: "default",
+};
+const VOICE_AGENT_DEFAULT_MODEL: Partial<Record<VoiceAgentProvider, string>> = {
+  claude: "haiku",
+  codex: "gpt-5.2-mini",
+};
+const VOICE_AGENT_SYSTEM_INSTRUCTION = [
+  "You are the Paseo voice assistant.",
+  "The user cannot see your chat messages or tool calls.",
+  "Always narrate everything through the speak tool.",
+  "Use concise plain language suitable for speech output.",
+  "Never use bash, file-edit, or web tools directly.",
+  "Only use the paseo MCP tools.",
+].join(" ");
 
 type ProcessingPhase = "idle" | "transcribing" | "llm";
 
@@ -320,7 +348,23 @@ export class Session {
   private readonly terminalManager: TerminalManager | null;
   private terminalSubscriptions: Map<string, () => void> = new Map();
   private readonly openrouterApiKey: string | null;
+  private readonly voiceLlmProvider: VoiceLlmProvider | null;
+  private readonly voiceLlmProviderExplicit: boolean;
+  private readonly voiceLlmDefaultProvider: VoiceAgentProvider | null;
   private readonly voiceLlmModel: string | null;
+  private readonly voiceLlmAvailability: Record<VoiceAgentProvider, boolean> | null;
+  private readonly voiceAgentMcpUrl: string | null;
+  private readonly registerVoiceSpeakHandler?: (
+    agentId: string,
+    handler: VoiceSpeakHandler
+  ) => void;
+  private readonly unregisterVoiceSpeakHandler?: (agentId: string) => void;
+  private readonly registerVoiceCallerContext?: (
+    agentId: string,
+    context: VoiceCallerContext
+  ) => void;
+  private readonly unregisterVoiceCallerContext?: (agentId: string) => void;
+  private voiceAssistantAgentId: string | null = null;
 
   constructor(
     clientId: string,
@@ -338,7 +382,18 @@ export class Session {
     voiceConversationStore: VoiceConversationStore,
     voice?: {
       openrouterApiKey?: string | null;
+      voiceLlmProvider?: VoiceLlmProvider | null;
+      voiceLlmProviderExplicit?: boolean;
+      voiceLlmDefaultProvider?: VoiceAgentProvider | null;
       voiceLlmModel?: string | null;
+      voiceLlmAvailability?: Record<VoiceAgentProvider, boolean> | null;
+      voiceAgentMcpUrl?: string | null;
+    },
+    voiceBridge?: {
+      registerVoiceSpeakHandler?: (agentId: string, handler: VoiceSpeakHandler) => void;
+      unregisterVoiceSpeakHandler?: (agentId: string) => void;
+      registerVoiceCallerContext?: (agentId: string, context: VoiceCallerContext) => void;
+      unregisterVoiceCallerContext?: (agentId: string) => void;
     },
     dictation?: {
       finalTimeoutMs?: number;
@@ -357,7 +412,16 @@ export class Session {
     this.terminalManager = terminalManager;
     this.voiceConversationStore = voiceConversationStore;
     this.openrouterApiKey = voice?.openrouterApiKey ?? null;
+    this.voiceLlmProvider = voice?.voiceLlmProvider ?? null;
+    this.voiceLlmProviderExplicit = voice?.voiceLlmProviderExplicit ?? false;
+    this.voiceLlmDefaultProvider = voice?.voiceLlmDefaultProvider ?? null;
     this.voiceLlmModel = voice?.voiceLlmModel ?? null;
+    this.voiceLlmAvailability = voice?.voiceLlmAvailability ?? null;
+    this.voiceAgentMcpUrl = voice?.voiceAgentMcpUrl ?? null;
+    this.registerVoiceSpeakHandler = voiceBridge?.registerVoiceSpeakHandler;
+    this.unregisterVoiceSpeakHandler = voiceBridge?.unregisterVoiceSpeakHandler;
+    this.registerVoiceCallerContext = voiceBridge?.registerVoiceCallerContext;
+    this.unregisterVoiceCallerContext = voiceBridge?.unregisterVoiceCallerContext;
     this.abortController = new AbortController();
     this.sessionLogger = logger.child({
       module: "session",
@@ -4241,7 +4305,7 @@ export class Session {
     this.messages.push({ role: "user", content: text });
 
     // Process through LLM (TTS enabled in voice mode for voice conversations)
-    this.currentStreamPromise = this.processWithLLM(this.isVoiceMode);
+    this.currentStreamPromise = this.processWithLLM(this.isVoiceMode, text);
     await this.currentStreamPromise;
   }
 
@@ -4518,7 +4582,7 @@ export class Session {
       // Set phase to LLM and process (TTS enabled in voice mode for voice conversations)
       this.clearSpeechInProgress("transcription complete");
       this.setPhase("llm");
-      this.currentStreamPromise = this.processWithLLM(this.isVoiceMode);
+      this.currentStreamPromise = this.processWithLLM(this.isVoiceMode, result.text);
       await this.currentStreamPromise;
       this.setPhase("idle");
     } catch (error: any) {
@@ -4538,9 +4602,248 @@ export class Session {
   }
 
   /**
+   * Resolve the effective voice LLM provider.
+   * - explicit provider => strict
+   * - local-agent / unset => fallback order
+   */
+  private resolveVoiceAgentProvider(): VoiceAgentProvider {
+    const configured = this.voiceLlmProvider;
+    const availability = this.voiceLlmAvailability ?? {
+      claude: true,
+      codex: true,
+      opencode: true,
+    };
+
+    if (configured === "openrouter") {
+      throw new Error("voiceLlmProvider=openrouter cannot be used in local-agent flow");
+    }
+
+    if (configured === "claude" || configured === "codex" || configured === "opencode") {
+      if (!availability[configured]) {
+        throw new Error(`Configured voice LLM provider '${configured}' is unavailable`);
+      }
+      return configured;
+    }
+
+    const fallbackOrder =
+      this.voiceLlmDefaultProvider && availability[this.voiceLlmDefaultProvider]
+        ? [this.voiceLlmDefaultProvider, ...VOICE_AGENT_FALLBACK_ORDER.filter((id) => id !== this.voiceLlmDefaultProvider)]
+        : VOICE_AGENT_FALLBACK_ORDER;
+
+    for (const provider of fallbackOrder) {
+      if (availability[provider]) {
+        return provider;
+      }
+    }
+
+    throw new Error("No local voice LLM provider is available (claude/codex/opencode)");
+  }
+
+  private getVoiceAgentModel(provider: VoiceAgentProvider): string | undefined {
+    const configured = this.voiceLlmModel?.trim();
+    if (configured) {
+      return configured;
+    }
+    return VOICE_AGENT_DEFAULT_MODEL[provider];
+  }
+
+  private async ensureVoiceAssistantAgent(): Promise<string> {
+    if (this.voiceAssistantAgentId) {
+      const existing = this.agentManager.getAgent(this.voiceAssistantAgentId);
+      if (existing) {
+        return existing.id;
+      }
+      this.voiceAssistantAgentId = null;
+    }
+
+    const provider = this.resolveVoiceAgentProvider();
+    const voiceAgentId = `voice-${uuidv4()}`;
+    const cwd = join(this.paseoHome, "voice-agent-workspace");
+    await mkdir(cwd, { recursive: true });
+
+    const mcpUrl = this.voiceAgentMcpUrl;
+    if (!mcpUrl) {
+      throw new Error("Voice MCP URL is not configured");
+    }
+
+    const model = this.getVoiceAgentModel(provider);
+    const config: AgentSessionConfig = {
+      provider,
+      cwd,
+      modeId: VOICE_AGENT_DEFAULT_MODE[provider],
+      ...(model ? { model } : {}),
+      internal: true,
+      mcpServers: {
+        paseo: {
+          type: "http",
+          url: `${mcpUrl}?callerAgentId=${encodeURIComponent(voiceAgentId)}`,
+        },
+      },
+    };
+
+    const created = await this.agentManager.createAgent(config, voiceAgentId, {
+      labels: {
+        surface: "voice",
+        ui: "false",
+      },
+    });
+    this.voiceAssistantAgentId = created.id;
+
+    this.registerVoiceSpeakHandler?.(created.id, async ({ text, signal }) => {
+      const abortSignal = signal ?? this.abortController.signal;
+      await this.ttsManager.generateAndWaitForPlayback(
+        text,
+        (msg) => this.emit(msg),
+        abortSignal,
+        true
+      );
+      this.emit({
+        type: "activity_log",
+        payload: {
+          id: uuidv4(),
+          timestamp: new Date(),
+          type: "assistant",
+          content: text,
+        },
+      });
+    });
+    this.registerVoiceCallerContext?.(created.id, {
+      childAgentDefaultLabels: { ui: "true" },
+      allowCustomCwd: true,
+      enableVoiceTools: true,
+    });
+
+    this.sessionLogger.info(
+      {
+        voiceAssistantAgentId: created.id,
+        provider,
+        model: model ?? null,
+        providerExplicit: this.voiceLlmProviderExplicit,
+      },
+      "Voice assistant agent initialized"
+    );
+    return created.id;
+  }
+
+  private buildVoiceAgentPrompt(userText: string): string {
+    return [
+      VOICE_AGENT_SYSTEM_INSTRUCTION,
+      "",
+      `User said: ${userText.trim()}`,
+    ].join("\n");
+  }
+
+  private shouldAllowVoicePermission(request: AgentPermissionRequest): boolean {
+    const name = request.name.toLowerCase();
+    if (name.includes("mcp") || name.includes("paseo") || name.includes("speak")) {
+      return true;
+    }
+    if (name === "codextool") {
+      const metadata = request.metadata ?? {};
+      const rawQuestions = metadata.questions;
+      if (Array.isArray(rawQuestions)) {
+        const text = JSON.stringify(rawQuestions).toLowerCase();
+        return text.includes("mcp") || text.includes("paseo") || text.includes("speak");
+      }
+      return false;
+    }
+    return false;
+  }
+
+  private async processWithVoiceAgent(userText: string): Promise<void> {
+    const agentId = await this.ensureVoiceAssistantAgent();
+
+    await this.interruptAgentIfRunning(agentId);
+
+    const prompt = this.buildVoiceAgentPrompt(userText);
+    this.agentManager.recordUserMessage(agentId, userText);
+
+    let sawSpeakToolCall = false;
+    const assistantTextChunks: string[] = [];
+    const iterator = this.agentManager.streamAgent(agentId, prompt);
+    for await (const event of iterator) {
+      if (event.type === "turn_failed") {
+        throw new Error(event.error);
+      }
+      if (event.type === "timeline") {
+        if (event.item.type === "tool_call" && typeof event.item.name === "string") {
+          if (event.item.name.toLowerCase().includes("speak")) {
+            sawSpeakToolCall = true;
+          }
+        }
+        if (event.item.type === "assistant_message" && event.item.text.trim().length > 0) {
+          assistantTextChunks.push(event.item.text.trim());
+        }
+      }
+      if (event.type === "permission_requested") {
+        if (this.shouldAllowVoicePermission(event.request)) {
+          await this.agentManager.respondToPermission(agentId, event.request.id, {
+            behavior: "allow",
+          });
+        } else {
+          await this.agentManager.respondToPermission(agentId, event.request.id, {
+            behavior: "deny",
+            message: "Voice assistant policy only allows MCP paseo tools.",
+            interrupt: true,
+          });
+          throw new Error(
+            `Voice assistant denied non-MCP tool request: ${event.request.name}`
+          );
+        }
+      }
+    }
+
+    if (!sawSpeakToolCall && assistantTextChunks.length > 0) {
+      const fallbackText = assistantTextChunks.join(" ").trim();
+      await this.ttsManager.generateAndWaitForPlayback(
+        fallbackText,
+        (msg) => this.emit(msg),
+        this.abortController.signal,
+        true
+      );
+      this.emit({
+        type: "activity_log",
+        payload: {
+          id: uuidv4(),
+          timestamp: new Date(),
+          type: "assistant",
+          content: fallbackText,
+        },
+      });
+      this.sessionLogger.warn(
+        { voiceAssistantAgentId: agentId },
+        "Voice agent responded without speak tool; used fallback TTS from assistant text"
+      );
+    }
+  }
+
+  /**
    * Process user message through LLM with streaming and tool execution
    */
-  private async processWithLLM(enableTTS: boolean): Promise<void> {
+  private async processWithLLM(enableTTS: boolean, latestUserText?: string): Promise<void> {
+    if (enableTTS && this.voiceLlmProvider !== "openrouter") {
+      const text =
+        typeof latestUserText === "string" && latestUserText.trim().length > 0
+          ? latestUserText
+          : (() => {
+              const lastUser = [...this.messages]
+                .reverse()
+                .find((message) => message.role === "user");
+              if (!lastUser) {
+                return "";
+              }
+              return typeof lastUser.content === "string"
+                ? lastUser.content
+                : JSON.stringify(lastUser.content);
+            })();
+      const normalized = text.trim();
+      if (!normalized) {
+        return;
+      }
+      await this.processWithVoiceAgent(normalized);
+      return;
+    }
+
     let assistantResponse = "";
     let pendingTTS: Promise<void> | null = null;
     let textBuffer = "";
@@ -5178,6 +5481,21 @@ export class Session {
       }
       this.agentMcpClient = null;
       this.agentTools = null;
+    }
+
+    if (this.voiceAssistantAgentId) {
+      try {
+        await this.agentManager.closeAgent(this.voiceAssistantAgentId);
+      } catch (error) {
+        this.sessionLogger.warn(
+          { err: error, voiceAssistantAgentId: this.voiceAssistantAgentId },
+          "Failed to close voice assistant agent"
+        );
+      } finally {
+        this.unregisterVoiceSpeakHandler?.(this.voiceAssistantAgentId);
+        this.unregisterVoiceCallerContext?.(this.voiceAssistantAgentId);
+        this.voiceAssistantAgentId = null;
+      }
     }
 
     // Unsubscribe from all terminals

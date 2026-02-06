@@ -9,8 +9,15 @@ import { createTestPaseoDaemon } from "./test-utils/paseo-daemon.js";
 import { createTestAgentClients } from "./test-utils/fake-agent-client.js";
 
 describe("paseo daemon bootstrap", () => {
-  test("starts and serves health endpoint", async () => {
-    const daemonHandle = await createTestPaseoDaemon();
+  test.runIf(Boolean(process.env.OPENAI_API_KEY))("starts and serves health endpoint", async () => {
+    const daemonHandle = await createTestPaseoDaemon({
+      openai: { apiKey: process.env.OPENAI_API_KEY! },
+      speech: {
+        dictationSttProvider: "openai",
+        voiceSttProvider: "openai",
+        voiceTtsProvider: "openai",
+      },
+    });
     try {
       const response = await fetch(
         `http://127.0.0.1:${daemonHandle.port}/api/health`,

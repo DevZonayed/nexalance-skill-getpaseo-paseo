@@ -21,6 +21,10 @@ type TestPaseoDaemonOptions = {
   cleanup?: boolean;
   openai?: PaseoOpenAIConfig;
   speech?: PaseoSpeechConfig;
+  openrouterApiKey?: string | null;
+  voiceLlmProvider?: PaseoDaemonConfig["voiceLlmProvider"];
+  voiceLlmProviderExplicit?: boolean;
+  voiceLlmModel?: string | null;
   dictationFinalTimeoutMs?: number;
 };
 
@@ -78,7 +82,10 @@ export async function createTestPaseoDaemon(
       appBaseUrl: "https://app.paseo.sh",
       openai: options.openai,
       speech: options.speech,
-      openrouterApiKey: null,
+      openrouterApiKey: options.openrouterApiKey ?? null,
+      voiceLlmProvider: options.voiceLlmProvider ?? null,
+      voiceLlmProviderExplicit: options.voiceLlmProviderExplicit ?? false,
+      voiceLlmModel: options.voiceLlmModel ?? null,
       dictationFinalTimeoutMs: options.dictationFinalTimeoutMs,
       downloadTokenTtlMs: options.downloadTokenTtlMs,
     };

@@ -23,6 +23,7 @@ import { VoiceConversationStore } from "./voice-conversation-store.js";
 import type { SpeechToTextProvider, TextToSpeechProvider } from "./speech/speech-provider.js";
 
 export type AgentMcpTransportFactory = () => Promise<Transport>;
+type VoiceAgentProvider = "claude" | "codex" | "opencode";
 
 type WebSocketServerConfig = {
   allowedOrigins: Set<string>;
@@ -76,8 +77,26 @@ export class VoiceAssistantWebSocketServer {
   } | null;
   private readonly voice: {
     openrouterApiKey?: string | null;
+    voiceLlmProvider?: "openrouter" | "local-agent" | "claude" | "codex" | "opencode" | null;
+    voiceLlmProviderExplicit?: boolean;
+    voiceLlmDefaultProvider?: VoiceAgentProvider | null;
     voiceLlmModel?: string | null;
+    voiceLlmAvailability?: Record<VoiceAgentProvider, boolean> | null;
+    voiceAgentMcpUrl?: string | null;
   } | null;
+  private readonly voiceSpeakHandlers = new Map<
+    string,
+    (params: { text: string; callerAgentId: string; signal?: AbortSignal }) => Promise<void>
+  >();
+  private readonly voiceCallerContexts = new Map<
+    string,
+    {
+      childAgentDefaultLabels?: Record<string, string>;
+      lockedCwd?: string;
+      allowCustomCwd?: boolean;
+      enableVoiceTools?: boolean;
+    }
+  >();
 
   constructor(
     server: HTTPServer,
@@ -93,7 +112,12 @@ export class VoiceAssistantWebSocketServer {
     terminalManager?: TerminalManager | null,
     voice?: {
       openrouterApiKey?: string | null;
+      voiceLlmProvider?: "openrouter" | "local-agent" | "claude" | "codex" | "opencode" | null;
+      voiceLlmProviderExplicit?: boolean;
+      voiceLlmDefaultProvider?: VoiceAgentProvider | null;
       voiceLlmModel?: string | null;
+      voiceLlmAvailability?: Record<VoiceAgentProvider, boolean> | null;
+      voiceAgentMcpUrl?: string | null;
     },
     dictation?: {
       finalTimeoutMs?: number;
@@ -225,6 +249,20 @@ export class VoiceAssistantWebSocketServer {
       this.terminalManager,
       this.voiceConversationStore,
       this.voice ?? undefined,
+      {
+        registerVoiceSpeakHandler: (agentId, handler) => {
+          this.voiceSpeakHandlers.set(agentId, handler);
+        },
+        unregisterVoiceSpeakHandler: (agentId) => {
+          this.voiceSpeakHandlers.delete(agentId);
+        },
+        registerVoiceCallerContext: (agentId, context) => {
+          this.voiceCallerContexts.set(agentId, context);
+        },
+        unregisterVoiceCallerContext: (agentId) => {
+          this.voiceCallerContexts.delete(agentId);
+        },
+      },
       this.dictation ?? undefined
     );
 
@@ -261,6 +299,23 @@ export class VoiceAssistantWebSocketServer {
       connectionLogger.error({ err }, "Client error");
       await this.detachSocket(ws, connectionLogger, clientId);
     });
+  }
+
+  public resolveVoiceSpeakHandler(
+    callerAgentId: string
+  ): ((params: { text: string; callerAgentId: string; signal?: AbortSignal }) => Promise<void>) | null {
+    return this.voiceSpeakHandlers.get(callerAgentId) ?? null;
+  }
+
+  public resolveVoiceCallerContext(
+    callerAgentId: string
+  ): {
+    childAgentDefaultLabels?: Record<string, string>;
+    lockedCwd?: string;
+    allowCustomCwd?: boolean;
+    enableVoiceTools?: boolean;
+  } | null {
+    return this.voiceCallerContexts.get(callerAgentId) ?? null;
   }
 
   private async detachSocket(
