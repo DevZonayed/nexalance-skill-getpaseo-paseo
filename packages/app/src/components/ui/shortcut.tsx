@@ -24,14 +24,14 @@ const styles = StyleSheet.create((theme) => ({
   root: {
     paddingHorizontal: theme.spacing[1],
     paddingVertical: 2,
-    borderRadius: theme.borderRadius.sm,
+    borderRadius: theme.borderRadius.md,
     backgroundColor: theme.colors.surface2,
     borderWidth: theme.borderWidth[1],
     borderColor: theme.colors.borderAccent,
   },
   text: {
     fontSize: theme.fontSize.xs,
-    fontWeight: theme.fontWeight.medium,
-    color: theme.colors.foreground,
+    fontWeight: theme.fontWeight.normal,
+    color: theme.colors.foregroundMuted,
   },
 }));

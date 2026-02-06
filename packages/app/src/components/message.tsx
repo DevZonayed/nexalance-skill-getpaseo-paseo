@@ -327,8 +327,8 @@ const expandableBadgeStylesheet = StyleSheet.create((theme) => ({
   pressable: {
     borderRadius: theme.borderRadius.lg,
     borderWidth: theme.borderWidth[1],
-    borderColor: theme.colors.borderAccent,
-    backgroundColor: theme.colors.surface2,
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.surface1,
     paddingHorizontal: theme.spacing[2],
     paddingVertical: theme.spacing[1],
   },
@@ -350,6 +350,7 @@ const expandableBadgeStylesheet = StyleSheet.create((theme) => ({
   },
   label: {
     color: theme.colors.foreground,
+    opacity: 0.88,
     fontSize: theme.fontSize.base,
     fontWeight: theme.fontWeight.normal,
     flexShrink: 0,
@@ -373,7 +374,7 @@ const expandableBadgeStylesheet = StyleSheet.create((theme) => ({
     borderBottomRightRadius: theme.borderRadius.lg,
     borderWidth: theme.borderWidth[1],
     borderTopWidth: 0,
-    borderColor: theme.colors.borderAccent,
+    borderColor: theme.colors.border,
     backgroundColor: theme.colors.surface1,
     padding: 0,
     gap: 0,
@@ -986,32 +987,34 @@ const ExpandableBadge = memo(function ExpandableBadge({
           isExpanded && expandableBadgeStylesheet.pressableExpanded,
         ]}
       >
-        <View style={expandableBadgeStylesheet.headerRow}>
-          <View style={expandableBadgeStylesheet.iconBadge}>{iconNode}</View>
-          <Text style={expandableBadgeStylesheet.label} numberOfLines={1}>
-            {label}
-          </Text>
-          {secondaryLabel ? (
-            <Text
-              style={expandableBadgeStylesheet.secondaryLabel}
-              numberOfLines={1}
-            >
-              {secondaryLabel}
+        {({ hovered }) => (
+          <View style={expandableBadgeStylesheet.headerRow}>
+            <View style={expandableBadgeStylesheet.iconBadge}>{iconNode}</View>
+            <Text style={expandableBadgeStylesheet.label} numberOfLines={1}>
+              {label}
             </Text>
-          ) : (
-            <View style={expandableBadgeStylesheet.spacer} />
-          )}
-          {hasDetails ? (
-            <ChevronRight
-              size={14}
-              color={theme.colors.foregroundMuted}
-              style={[
-                expandableBadgeStylesheet.chevron,
-                { transform: [{ rotate: isExpanded ? "90deg" : "0deg" }] },
-              ]}
-            />
-          ) : null}
-        </View>
+            {secondaryLabel ? (
+              <Text
+                style={expandableBadgeStylesheet.secondaryLabel}
+                numberOfLines={1}
+              >
+                {secondaryLabel}
+              </Text>
+            ) : (
+              <View style={expandableBadgeStylesheet.spacer} />
+            )}
+            {hasDetails && hovered ? (
+              <ChevronRight
+                size={14}
+                color={theme.colors.foregroundMuted}
+                style={[
+                  expandableBadgeStylesheet.chevron,
+                  { transform: [{ rotate: isExpanded ? "90deg" : "0deg" }] },
+                ]}
+              />
+            ) : null}
+          </View>
+        )}
       </Pressable>
       {detailContent ? (
         <View style={expandableBadgeStylesheet.detailWrapper}>

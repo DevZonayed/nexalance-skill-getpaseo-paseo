@@ -45,7 +45,7 @@ export function HeaderToggleButton({
       <TooltipContent testID={tooltipTestID} side={tooltipSide} align="center" offset={8}>
         <View style={styles.tooltipRow}>
           <Text style={styles.tooltipText}>{tooltipLabel}</Text>
-          <Shortcut keys={tooltipKeys} style={styles.shortcut} textStyle={styles.shortcutText} />
+          <Shortcut keys={tooltipKeys} style={styles.shortcut} />
         </View>
       </TooltipContent>
     </Tooltip>
@@ -72,8 +72,5 @@ const styles = StyleSheet.create((theme) => ({
   shortcut: {
     backgroundColor: theme.colors.surface3,
     borderColor: theme.colors.borderAccent,
-  },
-  shortcutText: {
-    color: theme.colors.popoverForeground,
   },
 }));
