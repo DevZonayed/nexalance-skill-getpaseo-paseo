@@ -51,11 +51,7 @@ const SpeechProviderIdSchema = z.preprocess(
     if (typeof value !== "string") {
       return value;
     }
-    const normalized = value.trim().toLowerCase();
-    if (normalized === "sherpa" || normalized === "sherpa-onnx") {
-      return "local";
-    }
-    return normalized;
+    return value.trim().toLowerCase();
   },
   z.enum(["openai", "local"])
 );

@@ -85,9 +85,7 @@ function parseSpeechProviderId(value: unknown): "openai" | "local" | null {
     return null;
   }
   if (normalized === "openai") return "openai";
-  if (normalized === "sherpa" || normalized === "sherpa-onnx" || normalized === "local") {
-    return "local";
-  }
+  if (normalized === "local") return "local";
   return null;
 }
 
