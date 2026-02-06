@@ -32,44 +32,29 @@ export type { LocalSpeechModelId, LocalSttModelId, LocalTtsModelId };
 
 const DEFAULT_LOCAL_MODELS_SUBDIR = path.join("models", "local-speech");
 
-const OptionalBooleanFlagSchema = z.preprocess((value) => {
-  if (typeof value === "boolean") {
-    return value;
-  }
-  if (typeof value !== "string") {
-    return value;
-  }
-  const normalized = value.trim().toLowerCase();
-  if (normalized === "1" || normalized === "true" || normalized === "yes") {
-    return true;
-  }
-  if (normalized === "0" || normalized === "false" || normalized === "no") {
-    return false;
-  }
-  return undefined;
-}, z.boolean().optional());
+const BooleanStringSchema = z
+  .string()
+  .trim()
+  .toLowerCase()
+  .pipe(z.enum(["1", "0", "true", "false", "yes", "no"]))
+  .transform((value) => value === "1" || value === "true" || value === "yes");
 
-const OptionalFiniteNumberSchema = z.preprocess((value) => {
-  if (typeof value === "number") {
-    return Number.isFinite(value) ? value : undefined;
-  }
-  if (typeof value !== "string") {
-    return value;
-  }
-  const parsed = Number.parseFloat(value);
-  return Number.isFinite(parsed) ? parsed : undefined;
-}, z.number().optional());
+const OptionalBooleanFlagSchema = z
+  .union([z.boolean(), BooleanStringSchema])
+  .optional();
 
-const OptionalIntegerSchema = z.preprocess((value) => {
-  if (typeof value === "number") {
-    return Number.isInteger(value) ? value : undefined;
-  }
-  if (typeof value !== "string") {
-    return value;
-  }
-  const parsed = Number.parseInt(value, 10);
-  return Number.isFinite(parsed) ? parsed : undefined;
-}, z.number().int().optional());
+const NumberLikeSchema = z.union([
+  z.number(),
+  z.string().trim().min(1),
+]);
+
+const OptionalFiniteNumberSchema = NumberLikeSchema
+  .pipe(z.coerce.number().finite())
+  .optional();
+
+const OptionalIntegerSchema = NumberLikeSchema
+  .pipe(z.coerce.number().int())
+  .optional();
 
 const LocalSpeechResolutionSchema = z.object({
   includeProviderConfig: z.boolean(),

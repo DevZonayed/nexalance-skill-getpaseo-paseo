@@ -166,18 +166,20 @@ function buildAliasMap<T extends string>(modelIds: readonly T[]): Record<string,
 function createAliasedModelIdSchema<T extends string>(params: {
   modelIds: readonly T[];
   aliases: Record<string, T>;
-}): z.ZodType<T> {
+}): z.ZodType<T, z.ZodTypeDef, string> {
   const validIds = new Set(params.modelIds);
-  return z.preprocess((value) => {
-    if (typeof value !== "string") {
-      return value;
-    }
-    const normalized = value.trim().toLowerCase();
-    if (!normalized) {
-      return value;
-    }
-    return params.aliases[normalized] ?? normalized;
-  }, z.string().refine((value): value is T => validIds.has(value as T))) as z.ZodType<T>;
+  return z
+    .string()
+    .trim()
+    .toLowerCase()
+    .refine(
+      (value): value is T =>
+        validIds.has(value as T) || Object.prototype.hasOwnProperty.call(params.aliases, value),
+      {
+        message: "Invalid model id",
+      }
+    )
+    .transform((value) => params.aliases[value] ?? (value as T));
 }
 
 const STT_MODEL_ALIASES = buildAliasMap(LOCAL_STT_MODEL_IDS);

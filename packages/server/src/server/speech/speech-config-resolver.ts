@@ -9,13 +9,12 @@ import {
   type RequestedSpeechProviders,
 } from "./speech-types.js";
 
-const OptionalSpeechProviderSchema = z.preprocess((value) => {
-  if (typeof value !== "string") {
-    return value;
-  }
-  const normalized = value.trim().toLowerCase();
-  return normalized.length > 0 ? normalized : undefined;
-}, SpeechProviderIdSchema.optional());
+const OptionalSpeechProviderSchema = z
+  .string()
+  .trim()
+  .toLowerCase()
+  .pipe(SpeechProviderIdSchema)
+  .optional();
 
 const RequestedSpeechProvidersSchema = z.object({
   dictationSttProvider: OptionalSpeechProviderSchema.default("local"),

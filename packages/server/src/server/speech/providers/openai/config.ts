@@ -26,43 +26,33 @@ const OpenAiTtsVoiceSchema = z.enum([
 
 const OpenAiTtsModelSchema = z.enum(["tts-1", "tts-1-hd"]);
 
-const OptionalFiniteNumberSchema = z.preprocess((value) => {
-  if (typeof value === "number") {
-    return Number.isFinite(value) ? value : undefined;
-  }
-  if (typeof value !== "string") {
-    return value;
-  }
-  const parsed = Number.parseFloat(value);
-  return Number.isFinite(parsed) ? parsed : undefined;
-}, z.number().optional());
+const NumberLikeSchema = z.union([
+  z.number(),
+  z.string().trim().min(1),
+]);
 
-const OptionalTrimmedStringSchema = z.preprocess((value) => {
-  if (typeof value !== "string") {
-    return value;
-  }
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : undefined;
-}, z.string().optional());
+const OptionalFiniteNumberSchema = NumberLikeSchema
+  .pipe(z.coerce.number().finite())
+  .optional();
+
+const OptionalTrimmedStringSchema = z.string().trim().min(1).optional();
 
 const OpenAiSpeechResolutionSchema = z.object({
   apiKey: OptionalTrimmedStringSchema,
   sttConfidenceThreshold: OptionalFiniteNumberSchema,
   sttModel: OptionalTrimmedStringSchema,
-  ttsVoice: z.preprocess((value) => {
-    if (typeof value !== "string") {
-      return value;
-    }
-    const normalized = value.trim().toLowerCase();
-    return normalized.length > 0 ? normalized : undefined;
-  }, OpenAiTtsVoiceSchema.default("alloy")),
-  ttsModel: z.preprocess((value) => {
-    if (typeof value !== "string") {
-      return value;
-    }
-    const normalized = value.trim().toLowerCase();
-    return normalized.length > 0 ? normalized : undefined;
-  }, OpenAiTtsModelSchema.default(DEFAULT_OPENAI_TTS_MODEL)),
+  ttsVoice: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .pipe(OpenAiTtsVoiceSchema)
+    .default("alloy"),
+  ttsModel: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .pipe(OpenAiTtsModelSchema)
+    .default(DEFAULT_OPENAI_TTS_MODEL),
   realtimeTranscriptionModel: OptionalTrimmedStringSchema.default(
     DEFAULT_OPENAI_REALTIME_TRANSCRIPTION_MODEL
   ),
