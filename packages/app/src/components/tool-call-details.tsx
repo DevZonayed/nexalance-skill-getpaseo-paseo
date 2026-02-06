@@ -1,6 +1,6 @@
 import React, { useMemo, ReactNode } from "react";
-import { View, Text } from "react-native";
-import { ScrollView } from "react-native-gesture-handler";
+import { View, Text, Platform, ScrollView as RNScrollView } from "react-native";
+import { ScrollView as GHScrollView } from "react-native-gesture-handler";
 import { StyleSheet } from "react-native-unistyles";
 import { Fonts } from "@/constants/theme";
 import { getNowMs, isPerfLoggingEnabled, perfLog } from "@/utils/perf";
@@ -12,6 +12,8 @@ import {
 } from "@/utils/tool-call-parsers";
 import { DiffViewer } from "./diff-viewer";
 import { getCodeInsets } from "./code-insets";
+
+const ScrollView = Platform.OS === "web" ? RNScrollView : GHScrollView;
 
 // ---- Types ----
 

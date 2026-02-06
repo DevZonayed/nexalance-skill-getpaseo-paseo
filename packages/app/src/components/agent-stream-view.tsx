@@ -108,6 +108,7 @@ export function AgentStreamView({
   const hasAutoScrolledOnce = useRef(false);
   const isNearBottomRef = useRef(true);
   const streamItemCountRef = useRef(0);
+  const [expandedInlineToolCallIds, setExpandedInlineToolCallIds] = useState<Set<string>>(new Set());
   const openFileExplorer = usePanelStore((state) => state.openFileExplorer);
   const setExplorerTab = usePanelStore((state) => state.setExplorerTab);
 
@@ -137,6 +138,7 @@ export function AgentStreamView({
     hasScrolledInitially.current = false;
     hasAutoScrolledOnce.current = false;
     isNearBottomRef.current = true;
+    setExpandedInlineToolCallIds(new Set());
   }, [agentId]);
 
   const handleInlinePathPress = useCallback(
@@ -289,6 +291,21 @@ export function AgentStreamView({
 
   const renderStreamItemContent = useCallback(
     (item: StreamItem, index: number) => {
+      const handleInlineDetailsExpandedChange = (expanded: boolean) => {
+        if (Platform.OS !== "web") {
+          return;
+        }
+        setExpandedInlineToolCallIds((previous) => {
+          const next = new Set(previous);
+          if (expanded) {
+            next.add(item.id);
+          } else {
+            next.delete(item.id);
+          }
+          return next;
+        });
+      };
+
       switch (item.kind) {
         case "user_message": {
           // In inverted list: index+1 is the item above, index-1 is below.
@@ -326,6 +343,7 @@ export function AgentStreamView({
               args={item.text}
               status={item.status === "ready" ? "completed" : "executing"}
               isLastInSequence={isLastInSequence}
+              onInlineDetailsExpandedChange={handleInlineDetailsExpandedChange}
             />
           );
         }
@@ -348,6 +366,7 @@ export function AgentStreamView({
                 status={data.status as "executing" | "completed" | "failed"}
                 cwd={agent.cwd}
                 isLastInSequence={isLastInSequence}
+                onInlineDetailsExpandedChange={handleInlineDetailsExpandedChange}
               />
             );
           }
@@ -360,6 +379,7 @@ export function AgentStreamView({
               result={data.result}
               status={data.status}
               isLastInSequence={isLastInSequence}
+              onInlineDetailsExpandedChange={handleInlineDetailsExpandedChange}
             />
           );
         }
@@ -651,6 +671,7 @@ export function AgentStreamView({
               }
               initialNumToRender={12}
               windowSize={10}
+              scrollEnabled={Platform.OS !== "web" || expandedInlineToolCallIds.size === 0}
               inverted
             />
           </MessageOuterSpacingProvider>

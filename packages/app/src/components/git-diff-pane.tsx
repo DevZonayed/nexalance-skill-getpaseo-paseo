@@ -5,11 +5,10 @@ import {
   Text,
   ActivityIndicator,
   Pressable,
-  SectionList,
+  FlatList,
   Platform,
   type NativeSyntheticEvent,
   type NativeScrollEvent,
-  type SectionListRenderItem,
 } from "react-native";
 import { ScrollView, type ScrollView as ScrollViewType } from "react-native-gesture-handler";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
@@ -18,7 +17,7 @@ import * as Linking from "expo-linking";
 import {
   Archive,
   ChevronDown,
-  ChevronRight,
+
   GitBranch,
   GitCommitHorizontal,
   GitMerge,
@@ -221,7 +220,6 @@ const DiffFileHeader = memo(function DiffFileHeader({
   onToggle,
   testID,
 }: DiffFileSectionProps) {
-  const { theme } = useUnistyles();
   const expandStartRef = useRef<number | null>(null);
 
   const { hunkCount, lineCount, tokenCount } = useMemo(() => {
@@ -305,17 +303,6 @@ const DiffFileHeader = memo(function DiffFileHeader({
         onPress={toggleExpanded}
       >
         <View style={styles.fileHeaderLeft}>
-          <View
-            style={[
-              styles.chevronContainer,
-              isExpanded && styles.chevronExpanded,
-            ]}
-          >
-            <ChevronRight
-              size={16}
-              color={theme.colors.foregroundMuted}
-            />
-          </View>
           <Text style={styles.fileName}>{file.path.split("/").pop()}</Text>
           <Text style={styles.fileDir} numberOfLines={1}>
             {file.path.includes("/")
@@ -425,13 +412,9 @@ interface GitDiffPaneProps {
   cwd: string;
 }
 
-type GitDiffSection = {
-  key: string;
-  index: number;
-  file: ParsedDiffFile;
-  isExpanded: boolean;
-  data: ParsedDiffFile[];
-};
+type DiffFlatItem =
+  | { type: "header"; file: ParsedDiffFile; fileIndex: number; isExpanded: boolean }
+  | { type: "body"; file: ParsedDiffFile; fileIndex: number };
 
 export function GitDiffPane({ serverId, agentId, cwd }: GitDiffPaneProps) {
   const { theme } = useUnistyles();
@@ -557,17 +540,19 @@ export function GitDiffPane({ serverId, agentId, cwd }: GitDiffPaneProps) {
     }));
   }, []);
 
-  const diffSections = useMemo((): GitDiffSection[] => {
-    return files.map((file, index) => {
+  const { flatItems, stickyHeaderIndices } = useMemo(() => {
+    const items: DiffFlatItem[] = [];
+    const stickyIndices: number[] = [];
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
       const isExpanded = expandedByPath[file.path] ?? false;
-      return {
-        key: file.path,
-        index,
-        file,
-        isExpanded,
-        data: isExpanded ? [file] : [],
-      };
-    });
+      stickyIndices.push(items.length);
+      items.push({ type: "header", file, fileIndex: i, isExpanded });
+      if (isExpanded) {
+        items.push({ type: "body", file, fileIndex: i });
+      }
+    }
+    return { flatItems: items, stickyHeaderIndices: stickyIndices };
   }, [files, expandedByPath]);
 
   const allExpanded = useMemo(() => {
@@ -714,26 +699,29 @@ export function GitDiffPane({ serverId, agentId, cwd }: GitDiffPaneProps) {
       });
   }, [runArchiveWorktree, router, serverId, cwd, status?.cwd]);
 
-  const renderFileBody: SectionListRenderItem<ParsedDiffFile, GitDiffSection> = useCallback(
-    ({ item, section }) => (
-      <DiffFileBody file={item} testID={`diff-file-${section.index}-body`} />
-    ),
-    []
-  );
-
-  const renderSectionHeader = useCallback(
-    ({ section }: { section: GitDiffSection }) => (
-      <DiffFileHeader
-        file={section.file}
-        isExpanded={section.isExpanded}
-        onToggle={handleToggleExpanded}
-        testID={`diff-file-${section.index}`}
-      />
-    ),
+  const renderFlatItem = useCallback(
+    ({ item }: { item: DiffFlatItem }) => {
+      if (item.type === "header") {
+        return (
+          <DiffFileHeader
+            file={item.file}
+            isExpanded={item.isExpanded}
+            onToggle={handleToggleExpanded}
+            testID={`diff-file-${item.fileIndex}`}
+          />
+        );
+      }
+      return (
+        <DiffFileBody file={item.file} testID={`diff-file-${item.fileIndex}-body`} />
+      );
+    },
     [handleToggleExpanded]
   );
 
-  const keyExtractor = useCallback((item: ParsedDiffFile) => item.path, []);
+  const flatKeyExtractor = useCallback(
+    (item: DiffFlatItem) => `${item.type}-${item.file.path}`,
+    []
+  );
 
   const hasChanges = files.length > 0;
   const diffErrorMessage =
@@ -819,20 +807,19 @@ export function GitDiffPane({ serverId, agentId, cwd }: GitDiffPaneProps) {
     );
   } else {
     bodyContent = (
-      <SectionList
-        sections={diffSections}
-        renderItem={renderFileBody}
-        renderSectionHeader={renderSectionHeader}
-        keyExtractor={keyExtractor}
-        stickySectionHeadersEnabled
+      <FlatList
+        data={flatItems}
+        renderItem={renderFlatItem}
+        keyExtractor={flatKeyExtractor}
+        stickyHeaderIndices={stickyHeaderIndices}
         extraData={expandedByPath}
         style={styles.scrollView}
         contentContainerStyle={styles.contentContainer}
         testID="git-diff-scroll"
         onRefresh={handleRefresh}
         refreshing={isManualRefresh && isDiffFetching}
-        initialNumToRender={3}
-        maxToRenderPerBatch={3}
+        initialNumToRender={6}
+        maxToRenderPerBatch={6}
         windowSize={5}
       />
     );
@@ -1444,11 +1431,11 @@ const styles = StyleSheet.create((theme) => ({
     overflow: "hidden",
     backgroundColor: theme.colors.surface2,
     borderBottomWidth: 1,
-    borderBottomColor: theme.colors.borderAccent,
+    borderBottomColor: theme.colors.border,
   },
   fileSectionHeaderContainer: {
     overflow: "hidden",
-    backgroundColor: theme.colors.surface2,
+    backgroundColor: theme.colors.surface1,
   },
   fileSectionBodyContainer: {
     overflow: "hidden",
@@ -1456,16 +1443,17 @@ const styles = StyleSheet.create((theme) => ({
   },
   fileSectionBorder: {
     borderBottomWidth: 1,
-    borderBottomColor: theme.colors.borderAccent,
+    borderBottomColor: theme.colors.border,
   },
   fileHeader: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: theme.spacing[2],
+    paddingLeft: theme.spacing[3],
+    paddingRight: theme.spacing[2],
     paddingVertical: theme.spacing[2],
     gap: theme.spacing[1],
-    backgroundColor: theme.colors.surface2,
+    backgroundColor: theme.colors.surface1,
     zIndex: 2,
     elevation: 2,
   },
@@ -1484,12 +1472,6 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     gap: theme.spacing[1],
     flexShrink: 0,
-  },
-  chevronContainer: {
-    transform: [{ rotate: "0deg" }],
-  },
-  chevronExpanded: {
-    transform: [{ rotate: "90deg" }],
   },
   fileName: {
     fontSize: theme.fontSize.sm,

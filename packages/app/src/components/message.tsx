@@ -883,6 +883,7 @@ interface ExpandableBadgeProps {
   isExpanded: boolean;
   style?: StyleProp<ViewStyle>;
   onToggle?: () => void;
+  onDetailHoverChange?: (hovered: boolean) => void;
   renderDetails?: () => ReactNode;
   isLoading?: boolean;
   isError?: boolean;
@@ -898,6 +899,7 @@ const ExpandableBadge = memo(function ExpandableBadge({
   icon,
   isExpanded,
   onToggle,
+  onDetailHoverChange,
   renderDetails,
   isLoading = false,
   isError = false,
@@ -1017,9 +1019,13 @@ const ExpandableBadge = memo(function ExpandableBadge({
         )}
       </Pressable>
       {detailContent ? (
-        <View style={expandableBadgeStylesheet.detailWrapper}>
+        <Pressable
+          style={expandableBadgeStylesheet.detailWrapper}
+          onHoverIn={() => onDetailHoverChange?.(true)}
+          onHoverOut={() => onDetailHoverChange?.(false)}
+        >
           {detailContent}
-        </View>
+        </Pressable>
       ) : null}
     </View>
   );
@@ -1034,6 +1040,8 @@ interface ToolCallProps {
   cwd?: string;
   isLastInSequence?: boolean;
   disableOuterSpacing?: boolean;
+  onInlineDetailsHoverChange?: (hovered: boolean) => void;
+  onInlineDetailsExpandedChange?: (expanded: boolean) => void;
 }
 
 // Icon mapping for tool kinds
@@ -1070,6 +1078,8 @@ export const ToolCall = memo(function ToolCall({
   cwd,
   isLastInSequence = false,
   disableOuterSpacing,
+  onInlineDetailsHoverChange,
+  onInlineDetailsExpandedChange,
 }: ToolCallProps) {
   const { openToolCall } = useToolCallSheet();
   const [isExpanded, setIsExpanded] = useState(false);
@@ -1144,6 +1154,33 @@ export const ToolCall = memo(function ToolCall({
     }
   }, [isExpanded, isMobile, toolName, kind]);
 
+  useEffect(() => {
+    if (!onInlineDetailsHoverChange || isMobile || isExpanded) {
+      return;
+    }
+    onInlineDetailsHoverChange(false);
+  }, [isExpanded, isMobile, onInlineDetailsHoverChange]);
+
+  useEffect(() => {
+    if (!onInlineDetailsExpandedChange) {
+      return;
+    }
+    if (isMobile) {
+      onInlineDetailsExpandedChange(false);
+      return;
+    }
+    onInlineDetailsExpandedChange(isExpanded);
+  }, [isExpanded, isMobile, onInlineDetailsExpandedChange]);
+
+  useEffect(() => {
+    if (!onInlineDetailsExpandedChange) {
+      return;
+    }
+    return () => {
+      onInlineDetailsExpandedChange(false);
+    };
+  }, [onInlineDetailsExpandedChange]);
+
   // Render inline details for desktop
   const renderDetails = useCallback(() => {
     if (isMobile) return null;
@@ -1169,6 +1206,7 @@ export const ToolCall = memo(function ToolCall({
       isError={status === "failed"}
       isLastInSequence={isLastInSequence}
       disableOuterSpacing={disableOuterSpacing}
+      onDetailHoverChange={onInlineDetailsHoverChange}
     />
   );
 });
