@@ -72,7 +72,7 @@ function waitForSignal<T>(
     test(
       "routes voice turns through local agent speak tool",
       async () => {
-        await ctx.client.setVoiceConversation(true, randomUUID());
+        await ctx.client.setVoiceMode(true, randomUUID());
 
         const audioPromise = waitForSignal<{ chunkId: string }>(120000, (resolve, reject) => {
           const offAudio = ctx.client.on("audio_output", (msg) => {

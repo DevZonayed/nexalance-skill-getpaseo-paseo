@@ -2,11 +2,8 @@ import { createContext, useContext, useState, ReactNode, useCallback, useEffect,
 import { useSpeechmaticsAudio } from "@/hooks/use-speechmatics-audio";
 import type { SessionState } from "@/stores/session-store";
 import { useSessionStore } from "@/stores/session-store";
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import { randomUUID } from "expo-crypto";
 import { activateKeepAwakeAsync, deactivateKeepAwake } from "expo-keep-awake";
 
-const VOICE_CONVERSATION_ID_STORAGE_KEY = "@paseo:voice-conversation-id";
 const KEEP_AWAKE_TAG = "paseo:voice";
 const VOICE_VAD_VOLUME_THRESHOLD = 0.18;
 const VOICE_VAD_SILENCE_DURATION_MS = 1400;
@@ -170,18 +167,9 @@ export function VoiceProvider({ children }: VoiceProviderProps) {
         console.log("[Voice] Mode enabled");
 
         if (session?.client) {
-          let voiceConversationId =
-            (await AsyncStorage.getItem(VOICE_CONVERSATION_ID_STORAGE_KEY)) ?? null;
-          if (!voiceConversationId) {
-            voiceConversationId = randomUUID();
-            await AsyncStorage.setItem(
-              VOICE_CONVERSATION_ID_STORAGE_KEY,
-              voiceConversationId
-            );
-          }
-          await session.client.setVoiceConversation(true, voiceConversationId);
+          await session.client.setVoiceMode(true);
         } else {
-          console.warn("[Voice] setVoiceConversation skipped: daemon unavailable");
+          console.warn("[Voice] setVoiceMode skipped: daemon unavailable");
         }
       } catch (error: any) {
         console.error("[Voice] Failed to start:", error);
@@ -204,9 +192,9 @@ export function VoiceProvider({ children }: VoiceProviderProps) {
       console.log("[Voice] Mode disabled");
 
       if (session?.client) {
-        await session.client.setVoiceConversation(false);
+        await session.client.setVoiceMode(false);
       } else {
-        console.warn("[Voice] setVoiceConversation skipped: daemon unavailable");
+        console.warn("[Voice] setVoiceMode skipped: daemon unavailable");
       }
     } catch (error: any) {
       console.error("[Voice] Failed to stop:", error);

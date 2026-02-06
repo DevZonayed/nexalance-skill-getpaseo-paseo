@@ -182,7 +182,7 @@ const MIN_STREAMING_SEGMENT_BYTES = Math.round(
   PCM_BYTES_PER_MS * MIN_STREAMING_SEGMENT_DURATION_MS
 );
 const SAFE_GIT_REF_PATTERN = /^[A-Za-z0-9._\/-]+$/;
-const VoiceConversationIdSchema = z.string().uuid();
+const VoiceAgentIdSchema = z.string().uuid();
 
 interface AudioBufferState {
   chunks: Buffer[];
@@ -876,21 +876,6 @@ export class Session {
           }
           break;
 
-        case "load_voice_conversation_request":
-          await this.handleLoadVoiceConversation(msg.voiceConversationId, msg.requestId);
-          break;
-
-        case "list_voice_conversations_request":
-          await this.handleListVoiceConversations(msg.requestId);
-          break;
-
-        case "delete_voice_conversation_request":
-          await this.handleDeleteVoiceConversation(
-            msg.voiceConversationId,
-            msg.requestId
-          );
-          break;
-
         case "delete_agent_request":
           await this.handleDeleteAgentRequest(msg.agentId, msg.requestId);
           break;
@@ -899,8 +884,8 @@ export class Session {
           await this.handleArchiveAgentRequest(msg.agentId, msg.requestId);
           break;
 
-        case "set_voice_conversation":
-          await this.handleSetVoiceConversation(msg.enabled, msg.voiceConversationId);
+        case "set_voice_mode":
+          await this.handleSetVoiceMode(msg.enabled, msg.voiceAgentId);
           break;
 
         case "send_agent_message_request":
@@ -1155,138 +1140,6 @@ export class Session {
     }
   }
 
-  /**
-   * Load a voice conversation into this session (best-effort).
-   */
-  public async handleLoadVoiceConversation(
-    voiceConversationId: string,
-    requestId: string
-  ): Promise<void> {
-    const normalizedVoiceConversationId = this.parseVoiceConversationId(
-      voiceConversationId,
-      "load_voice_conversation_request"
-    );
-    this.voiceAssistantAgentId = normalizedVoiceConversationId;
-
-    this.emit({
-      type: "voice_conversation_loaded",
-      payload: {
-        voiceConversationId: normalizedVoiceConversationId,
-        messageCount: 0,
-        requestId,
-      },
-    });
-  }
-
-  /**
-   * List all voice conversations
-   */
-  public async handleListVoiceConversations(requestId: string): Promise<void> {
-    try {
-      const agents = await this.agentStorage.list();
-      const conversations = agents
-        .filter(
-          (agent) =>
-            agent.labels?.surface === "voice" &&
-            !agent.archivedAt &&
-            !agent.internal
-        )
-        .map((agent) => ({
-          id: agent.id,
-          lastUpdated: new Date(
-            agent.lastActivityAt ?? agent.updatedAt
-          ).toISOString(),
-          messageCount: 0,
-        }))
-        .sort(
-          (a, b) =>
-            new Date(b.lastUpdated).getTime() -
-            new Date(a.lastUpdated).getTime()
-        );
-      this.emit({
-        type: "list_voice_conversations_response",
-        payload: {
-          conversations,
-          requestId,
-        },
-      });
-    } catch (error: any) {
-      this.sessionLogger.error(
-        { err: error },
-        "Failed to list voice conversations"
-      );
-      this.emit({
-        type: "activity_log",
-        payload: {
-          id: uuidv4(),
-          timestamp: new Date(),
-          type: "error",
-          content: `Failed to list voice conversations: ${error.message}`,
-        },
-      });
-    }
-  }
-
-  /**
-   * Delete a voice conversation
-   */
-  public async handleDeleteVoiceConversation(
-    voiceConversationId: string,
-    requestId: string
-  ): Promise<void> {
-    const normalizedVoiceConversationId = this.parseVoiceConversationId(
-      voiceConversationId,
-      "delete_voice_conversation_request"
-    );
-    try {
-      const record = await this.agentStorage.get(normalizedVoiceConversationId);
-      if (!record || record.labels?.surface !== "voice") {
-        this.emit({
-          type: "delete_voice_conversation_response",
-          payload: {
-            voiceConversationId: normalizedVoiceConversationId,
-            success: false,
-            error: "Voice conversation not found",
-            requestId,
-          },
-        });
-        return;
-      }
-
-      const live = this.agentManager.getAgent(normalizedVoiceConversationId);
-      if (live) {
-        await this.agentManager.closeAgent(normalizedVoiceConversationId);
-      }
-      await this.agentStorage.remove(normalizedVoiceConversationId);
-      this.emit({
-        type: "delete_voice_conversation_response",
-        payload: {
-          voiceConversationId: normalizedVoiceConversationId,
-          success: true,
-          requestId,
-        },
-      });
-      this.sessionLogger.info(
-        { voiceConversationId: normalizedVoiceConversationId },
-        `Deleted voice conversation ${normalizedVoiceConversationId}`
-      );
-    } catch (error: any) {
-      this.sessionLogger.error(
-        { err: error, voiceConversationId: normalizedVoiceConversationId },
-        `Failed to delete voice conversation ${normalizedVoiceConversationId}`
-      );
-      this.emit({
-        type: "delete_voice_conversation_response",
-        payload: {
-          voiceConversationId: normalizedVoiceConversationId,
-          success: false,
-          error: error.message,
-          requestId,
-        },
-      });
-    }
-  }
-
   private async handleRestartServerRequest(
     requestId: string,
     reason?: string
@@ -1410,28 +1263,30 @@ export class Session {
   /**
    * Handle voice mode toggle
    */
-  private async handleSetVoiceConversation(
+  private async handleSetVoiceMode(
     enabled: boolean,
-    voiceConversationId?: string
+    voiceAgentId?: string
   ): Promise<void> {
     if (enabled) {
-      const candidateVoiceConversationId =
-        voiceConversationId && voiceConversationId.trim().length > 0
-          ? voiceConversationId
-          : uuidv4();
-      const normalizedVoiceConversationId = this.parseVoiceConversationId(
-        candidateVoiceConversationId,
-        "set_voice_conversation"
-      );
+      let normalizedVoiceAgentId: string | null = null;
+      if (voiceAgentId && voiceAgentId.trim().length > 0) {
+        normalizedVoiceAgentId = this.parseVoiceAgentId(
+          voiceAgentId,
+          "set_voice_mode"
+        );
+      } else {
+        normalizedVoiceAgentId = await this.findExistingVoiceAssistantAgentId();
+      }
 
       this.isVoiceMode = true;
-      this.voiceAssistantAgentId = normalizedVoiceConversationId;
+      this.voiceAssistantAgentId = normalizedVoiceAgentId;
       this.sessionLogger.info(
         {
           voiceAssistantAgentId: this.voiceAssistantAgentId,
-          generatedConversationId: !voiceConversationId,
+          resumedVoiceAgent: Boolean(normalizedVoiceAgentId),
+          providedVoiceAgentId: Boolean(voiceAgentId?.trim()),
         },
-        "Voice conversation enabled (agent-backed)"
+        "Voice mode enabled (agent-backed)"
       );
       return;
     }
@@ -1439,16 +1294,43 @@ export class Session {
     this.isVoiceMode = false;
     this.sessionLogger.info(
       { voiceAssistantAgentId: this.voiceAssistantAgentId },
-      "Voice conversation disabled (agent-backed)"
+      "Voice mode disabled (agent-backed)"
     );
   }
 
-  private parseVoiceConversationId(rawId: string, source: string): string {
-    const parsed = VoiceConversationIdSchema.safeParse(rawId.trim());
+  private parseVoiceAgentId(rawId: string, source: string): string {
+    const parsed = VoiceAgentIdSchema.safeParse(rawId.trim());
     if (!parsed.success) {
-      throw new Error(`${source}: voiceConversationId must be a UUID`);
+      throw new Error(`${source}: voiceAgentId must be a UUID`);
     }
     return parsed.data;
+  }
+
+  private async findExistingVoiceAssistantAgentId(): Promise<string | null> {
+    const scopedCandidates = await this.listAgentPayloads({
+      labels: {
+        surface: "voice",
+        voiceClientId: this.clientId,
+      },
+    });
+    const fallbackCandidates = await this.listAgentPayloads({
+      labels: { surface: "voice" },
+    });
+    const available = [
+      ...scopedCandidates,
+      ...fallbackCandidates.filter(
+        (candidate) => !scopedCandidates.some((scoped) => scoped.id === candidate.id)
+      ),
+    ].filter((agent) => !agent.archivedAt);
+    if (available.length === 0) {
+      return null;
+    }
+    available.sort((left, right) => {
+      const leftTime = Date.parse(left.updatedAt);
+      const rightTime = Date.parse(right.updatedAt);
+      return (Number.isFinite(rightTime) ? rightTime : 0) - (Number.isFinite(leftTime) ? leftTime : 0);
+    });
+    return available[0]?.id ?? null;
   }
 
   /**
@@ -4562,7 +4444,7 @@ export class Session {
         },
       });
 
-      // Set phase to LLM and process (TTS enabled in voice mode for voice conversations)
+      // Set phase to LLM and process (TTS enabled in voice mode for voice agents)
       this.clearSpeechInProgress("transcription complete");
       this.setPhase("llm");
       this.currentStreamPromise = this.processVoiceTurn(this.isVoiceMode, result.text);
@@ -4635,6 +4517,7 @@ export class Session {
       labels: {
         surface: "voice",
         ui: "false",
+        voiceClientId: this.clientId,
       },
     });
     this.voiceAssistantAgentId = created.id;

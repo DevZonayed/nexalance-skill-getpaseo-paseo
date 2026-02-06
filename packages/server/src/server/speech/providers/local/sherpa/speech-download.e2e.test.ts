@@ -191,7 +191,7 @@ describe("speech models (download E2E)", () => {
           };
         });
 
-        await ctx.client.setVoiceConversation(true, randomUUID());
+        await ctx.client.setVoiceMode(true, randomUUID());
         for (let offset = 0; offset < pcm16.length; offset += chunkBytes) {
           const chunk = pcm16.subarray(offset, Math.min(pcm16.length, offset + chunkBytes));
           const isLast = offset + chunkBytes >= pcm16.length;
@@ -201,7 +201,7 @@ describe("speech models (download E2E)", () => {
         if (voiceText.length > 0) {
           expect(voiceText).toContain("voice note");
         }
-        await ctx.client.setVoiceConversation(false);
+        await ctx.client.setVoiceMode(false);
 
         // Streaming TTS: generate locally from downloaded model and validate chunking.
         const ttsText = "This is a voice note.";

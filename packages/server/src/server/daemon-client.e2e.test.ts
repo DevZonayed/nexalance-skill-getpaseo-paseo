@@ -144,22 +144,18 @@ describe("daemon client E2E", () => {
   test("handles session actions", async () => {
     expect(ctx.client.isConnected).toBe(true);
 
-    const voiceConversationId = randomUUID();
-    const loadResult = await ctx.client.loadVoiceConversation(voiceConversationId);
-    expect(loadResult.voiceConversationId).toBe(voiceConversationId);
-    expect(typeof loadResult.messageCount).toBe("number");
-
     const agents = await ctx.client.fetchAgents();
     expect(Array.isArray(agents)).toBe(true);
 
-    const listResult = await ctx.client.listVoiceConversations();
-    expect(Array.isArray(listResult.conversations)).toBe(true);
+    const voiceAgents = await ctx.client.fetchAgents({
+      filter: { labels: { surface: "voice" } },
+    });
+    expect(Array.isArray(voiceAgents)).toBe(true);
 
-    const missingId = randomUUID();
-    const deleteResult = await ctx.client.deleteVoiceConversation(missingId);
-    expect(deleteResult.voiceConversationId).toBe(missingId);
-    expect(deleteResult.success).toBe(false);
-    expect(deleteResult.error).toBeTruthy();
+    await expect(ctx.client.setVoiceMode(true)).resolves.toBeUndefined();
+    await expect(ctx.client.setVoiceMode(false)).resolves.toBeUndefined();
+
+    await ctx.client.deleteAgent(randomUUID());
   }, 30000);
 
   test("emits server_info on websocket connect", async () => {
@@ -185,19 +181,23 @@ describe("daemon client E2E", () => {
     await client.close();
   }, 15000);
 
-  test("matches request IDs for concurrent session requests", async () => {
-    const firstRequestId = `list-${Date.now()}-a`;
-    const secondRequestId = `list-${Date.now()}-b`;
+  test("handles concurrent filtered agent fetch requests", async () => {
+    const firstRequestId = `fetch-${Date.now()}-a`;
+    const secondRequestId = `fetch-${Date.now()}-b`;
 
     const [first, second] = await Promise.all([
-      ctx.client.listVoiceConversations(firstRequestId),
-      ctx.client.listVoiceConversations(secondRequestId),
+      ctx.client.fetchAgents({
+        requestId: firstRequestId,
+        filter: { labels: { surface: "voice" } },
+      }),
+      ctx.client.fetchAgents({
+        requestId: secondRequestId,
+        filter: { labels: { surface: "voice" } },
+      }),
     ]);
 
-    expect(Array.isArray(first.conversations)).toBe(true);
-    expect(Array.isArray(second.conversations)).toBe(true);
-    expect(first.requestId).toBe(firstRequestId);
-    expect(second.requestId).toBe(secondRequestId);
+    expect(Array.isArray(first)).toBe(true);
+    expect(Array.isArray(second)).toBe(true);
   }, 15000);
 
   test(
@@ -380,7 +380,7 @@ describe("daemon client E2E", () => {
       expect(sawAssistantMessage).toBe(true);
       expect(sawRawAssistantMessage).toBe(true);
 
-      await ctx.client.setVoiceConversation(false);
+      await ctx.client.setVoiceMode(false);
 
       await ctx.client.abortRequest();
       await ctx.client.audioPlayed("audio-1");
@@ -594,7 +594,7 @@ describe("daemon client E2E", () => {
   test(
     "does not process non-voice turns through the voice agent path",
     async () => {
-      await ctx.client.setVoiceConversation(false);
+      await ctx.client.setVoiceMode(false);
 
       let sawTranscriptLog = false;
       let sawAssistantChunk = false;
@@ -643,7 +643,7 @@ describe("daemon client E2E", () => {
   speechTest(
     "voice mode buffers audio until isLast and emits transcription_result",
     async () => {
-      await ctx.client.setVoiceConversation(true, randomUUID());
+      await ctx.client.setVoiceMode(true, randomUUID());
 
       const transcription = waitForSignal(30_000, (resolve) => {
         const unsubscribe = ctx.client.on("transcription_result", (message) => {
@@ -738,7 +738,7 @@ describe("daemon client E2E", () => {
         }
       } finally {
         await Promise.allSettled([transcription, errorSignal]);
-        await ctx.client.setVoiceConversation(false);
+        await ctx.client.setVoiceMode(false);
       }
     },
     90_000
