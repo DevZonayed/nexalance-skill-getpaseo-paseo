@@ -10,20 +10,16 @@ import {
   Platform,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { StyleSheet, useUnistyles } from "react-native-unistyles";
+import { StyleSheet, UnistylesRuntime, useUnistyles } from "react-native-unistyles";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useReanimatedKeyboardAnimation } from "react-native-keyboard-controller";
 import Animated, { useAnimatedStyle, useSharedValue } from "react-native-reanimated";
-import { Monitor } from "lucide-react-native";
-import { MenuHeader } from "@/components/headers/menu-header";
+import { Folder, GitBranch, Menu, Monitor, PanelLeft } from "lucide-react-native";
+import { HeaderToggleButton } from "@/components/headers/header-toggle-button";
 import { AgentInputArea } from "@/components/agent-input-area";
 import { AgentStreamView } from "@/components/agent-stream-view";
-import {
-  DropdownSheet,
-  GitOptionsSection,
-  WorkingDirectoryDropdown,
-  AgentConfigRow,
-} from "@/components/agent-form/agent-form-dropdowns";
+import { AgentConfigRow, FormSelectTrigger } from "@/components/agent-form/agent-form-dropdowns";
+import { Combobox } from "@/components/ui/combobox";
 import { FileDropZone } from "@/components/file-drop-zone";
 import { useQuery } from "@tanstack/react-query";
 import { useAgentFormState, type CreateAgentInitialValues } from "@/hooks/use-agent-form-state";
@@ -34,6 +30,7 @@ import {
 import { useDaemonConnections } from "@/contexts/daemon-connections-context";
 import { useDaemonRegistry } from "@/contexts/daemon-registry-context";
 import { formatConnectionStatus } from "@/utils/daemons";
+import { usePanelStore } from "@/stores/panel-store";
 import { useSessionStore } from "@/stores/session-store";
 import { useCreateFlowStore } from "@/stores/create-flow-store";
 import { MAX_CONTENT_WIDTH } from "@/constants/layout";
@@ -123,6 +120,9 @@ export function DraftAgentScreen({
   const insets = useSafeAreaInsets();
   const { connectionStates } = useDaemonConnections();
   const { daemons } = useDaemonRegistry();
+  const mobileView = usePanelStore((state) => state.mobileView);
+  const desktopAgentListOpen = usePanelStore((state) => state.desktop.agentListOpen);
+  const toggleAgentList = usePanelStore((state) => state.toggleAgentList);
   const params = useLocalSearchParams<DraftAgentParams>();
 
   const { height: keyboardHeight } = useReanimatedKeyboardAnimation();
@@ -204,15 +204,26 @@ export function DraftAgentScreen({
     : undefined;
   const hostLabel =
     hostEntry?.daemon.label ?? selectedServerId ?? "Select host";
-  const hostStatus = hostEntry?.status
-    ? formatConnectionStatus(hostEntry.status)
-    : undefined;
+  const isMobile =
+    UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
+  const isSidebarOpen = isMobile ? mobileView === "agent-list" : desktopAgentListOpen;
+  const SidebarIcon = isMobile ? Menu : PanelLeft;
+  const sidebarIconColor = !isMobile && isSidebarOpen
+    ? theme.colors.foreground
+    : theme.colors.foregroundMuted;
 
-  const [openDropdown, setOpenDropdown] = useState<"host" | null>(null);
+  const [isHostOpen, setIsHostOpen] = useState(false);
   const [worktreeMode, setWorktreeMode] = useState<"none" | "create" | "attach">("none");
   const [baseBranch, setBaseBranch] = useState("");
   const [worktreeSlug, setWorktreeSlug] = useState("");
   const [selectedWorktreePath, setSelectedWorktreePath] = useState("");
+  const [isWorkingDirOpen, setIsWorkingDirOpen] = useState(false);
+  const [isWorktreePickerOpen, setIsWorktreePickerOpen] = useState(false);
+  const [isBranchOpen, setIsBranchOpen] = useState(false);
+  const hostAnchorRef = useRef<View>(null);
+  const workingDirAnchorRef = useRef<View>(null);
+  const worktreeAnchorRef = useRef<View>(null);
+  const branchAnchorRef = useRef<View>(null);
   const addImagesRef = useRef<((images: ImageAttachment[]) => void) | null>(null);
   const setPendingCreateAttempt = useCreateFlowStore((state) => state.setPending);
   const updatePendingAgentId = useCreateFlowStore((state) => state.updateAgentId);
@@ -276,15 +287,26 @@ export function DraftAgentScreen({
   const handleAddImagesCallback = useCallback((addImages: (images: ImageAttachment[]) => void) => {
     addImagesRef.current = addImages;
   }, []);
-  const openDropdownSheet = useCallback((key: "host") => {
-    setOpenDropdown(key);
-  }, []);
-  const closeDropdown = useCallback(() => {
-    setOpenDropdown(null);
-  }, []);
   const sessionAgents = useSessionStore((state) =>
     selectedServerId ? state.sessions[selectedServerId]?.agents : undefined
   );
+  const worktreePathLastCreatedAt = useMemo(() => {
+    const map = new Map<string, number>();
+    if (!sessionAgents) {
+      return map;
+    }
+    sessionAgents.forEach((agent) => {
+      if (!agent.cwd) {
+        return;
+      }
+      const ts = agent.createdAt.getTime();
+      const prev = map.get(agent.cwd);
+      if (!prev || ts > prev) {
+        map.set(agent.cwd, ts);
+      }
+    });
+    return map;
+  }, [sessionAgents]);
   const agentWorkingDirSuggestions = useMemo(() => {
     if (!selectedServerId || !sessionAgents) {
       return [];
@@ -346,7 +368,6 @@ export function DraftAgentScreen({
   });
 
   const checkout = checkoutStatusQuery.data ?? null;
-  const refetchCheckoutStatus = checkoutStatusQuery.refetch;
   const checkoutQueryError =
     checkoutStatusQuery.error instanceof Error ? checkoutStatusQuery.error.message : null;
   const checkoutPayloadError = checkout?.error ? checkout.error.message : null;
@@ -398,7 +419,6 @@ export function DraftAgentScreen({
       return payload.worktrees ?? [];
     },
     enabled:
-      isAttachWorktree &&
       Boolean(worktreeListRoot || trimmedWorkingDir) &&
       !repoAvailabilityError &&
       Boolean(sessionClient) &&
@@ -409,17 +429,23 @@ export function DraftAgentScreen({
     refetchOnMount: "always",
   });
   const worktreeOptions = useMemo(() => {
-    return (worktreeListQuery.data ?? []).map((worktree) => ({
+    const options = (worktreeListQuery.data ?? []).map((worktree) => ({
       path: worktree.worktreePath,
       label: worktree.branchName ?? worktree.head ?? "Unknown branch",
     }));
-  }, [worktreeListQuery.data]);
+    return options.sort((a, b) => {
+      const aTs = worktreePathLastCreatedAt.get(a.path) ?? 0;
+      const bTs = worktreePathLastCreatedAt.get(b.path) ?? 0;
+      if (aTs !== bTs) {
+        return bTs - aTs;
+      }
+      return a.label.localeCompare(b.label);
+    });
+  }, [worktreeListQuery.data, worktreePathLastCreatedAt]);
   const worktreeOptionsError =
     worktreeListQuery.error instanceof Error ? worktreeListQuery.error.message : null;
   const worktreeOptionsStatus: "idle" | "loading" | "ready" | "error" =
-    !isAttachWorktree
-      ? "idle"
-      : worktreeListQuery.isPending || worktreeListQuery.isFetching
+    worktreeListQuery.isPending || worktreeListQuery.isFetching
       ? "loading"
       : worktreeListQuery.isError
       ? "error"
@@ -431,22 +457,6 @@ export function DraftAgentScreen({
     !selectedWorktreePath
       ? "Select a worktree to attach"
       : null;
-
-  const handleWorktreeModeChange = useCallback(
-    (mode: "none" | "create" | "attach") => {
-      setWorktreeMode(mode);
-      if (mode === "create" && !worktreeSlug) {
-        setWorktreeSlug(createNameId());
-      }
-      if (mode !== "attach") {
-        setSelectedWorktreePath("");
-      }
-      if (mode !== "none") {
-        refetchCheckoutStatus();
-      }
-    },
-    [worktreeSlug, refetchCheckoutStatus]
-  );
 
   const validateWorktreeName = useCallback(
     (name: string): { valid: boolean; error?: string } => {
@@ -578,6 +588,59 @@ export function DraftAgentScreen({
       setSelectedWorktreePath("");
     }
   }, [isNonGitDirectory, worktreeMode]);
+
+  const selectedWorktreeLabel =
+    worktreeOptions.find((option) => option.path === selectedWorktreePath)?.label ?? "";
+  const worktreeTriggerValue =
+    worktreeMode === "create"
+      ? "Create new worktree"
+      : selectedWorktreeLabel || "Select worktree";
+  const hostOptions = useMemo(
+    () =>
+      Array.from(connectionStates.values()).map(({ daemon, status }) => ({
+        id: daemon.serverId,
+        label: daemon.label?.trim() ? daemon.label : daemon.serverId,
+        description: formatConnectionStatus(status),
+      })),
+    [connectionStates]
+  );
+  const worktreeComboOptions = useMemo(
+    () => [
+      {
+        id: "__create_new__",
+        label: "Create new worktree",
+        description: "Create a new isolated worktree",
+      },
+      {
+        id: "__none__",
+        label: "None",
+        description: "Do not use a worktree",
+      },
+      ...worktreeOptions.map((option) => ({
+        id: option.path,
+        label: option.label,
+        description: option.path,
+      })),
+    ],
+    [worktreeOptions]
+  );
+
+  const branchComboOptions = useMemo(() => {
+    const branchSet = new Set<string>();
+    const currentBranch = checkout?.isGit ? checkout.currentBranch?.trim() : null;
+    if (currentBranch && currentBranch !== "HEAD") {
+      branchSet.add(currentBranch);
+    }
+    if (baseBranch.trim()) {
+      branchSet.add(baseBranch.trim());
+    }
+    for (const option of worktreeOptions) {
+      if (option.label) {
+        branchSet.add(option.label);
+      }
+    }
+    return Array.from(branchSet).map((name) => ({ id: name, label: name }));
+  }, [baseBranch, checkout, worktreeOptions]);
 
   const createAgentClient = useSessionStore((state) =>
     selectedServerId ? state.sessions[selectedServerId]?.client ?? null : null
@@ -823,27 +886,27 @@ export function DraftAgentScreen({
     <FileDropZone onFilesDropped={handleFilesDropped}>
       <View style={styles.container}>
         <View style={styles.agentPanel}>
-          <MenuHeader
-            title="New agent"
-            rightContent={
-              <Pressable
-                style={styles.hostBadge}
-                onPress={() => openDropdownSheet("host")}
-              >
-                <Monitor size={14} color={theme.colors.foregroundMuted} />
-                <Text style={styles.hostBadgeLabel}>{hostLabel}</Text>
-                <View
-                  style={[
-                    styles.hostStatusDot,
-                    hostEntry?.status === "online" && styles.hostStatusDotOnline,
-                  ]}
-                />
-                {hostStatus ? (
-                  <Text style={styles.hostBadgeStatus}>{hostStatus}</Text>
-                ) : null}
-              </Pressable>
-            }
-          />
+          <View
+            style={[
+              styles.menuToggleContainer,
+              isMobile ? { paddingTop: insets.top + theme.spacing[2] } : null,
+            ]}
+          >
+            <HeaderToggleButton
+              onPress={toggleAgentList}
+              tooltipLabel="Toggle sidebar"
+              tooltipKeys={["mod", "B"]}
+              tooltipSide="right"
+              testID="menu-button"
+              nativeID="menu-button"
+              accessible
+              accessibilityRole="button"
+              accessibilityLabel={isSidebarOpen ? "Close menu" : "Open menu"}
+              accessibilityState={{ expanded: isSidebarOpen }}
+            >
+              <SidebarIcon size={isMobile ? 20 : 16} color={sidebarIconColor} />
+            </HeaderToggleButton>
+          </View>
 
         <Animated.View style={[styles.contentContainer, animatedKeyboardStyle]}>
         {machine.tag === "creating" && draftAgent && selectedServerId ? (
@@ -859,13 +922,29 @@ export function DraftAgentScreen({
         ) : (
         <ScrollView style={styles.scrollView} contentContainerStyle={styles.configScrollContent}>
           <View style={styles.configSection}>
-            <WorkingDirectoryDropdown
-              workingDir={workingDir}
-              errorMessage=""
-              disabled={false}
-              suggestedPaths={agentWorkingDirSuggestions}
-              onSelectPath={setWorkingDirFromUser}
-            />
+            <View style={styles.topSelectorRow}>
+              <FormSelectTrigger
+                controlRef={workingDirAnchorRef}
+                containerStyle={styles.topSelectorPrimary}
+                label="Working directory"
+                value={workingDir}
+                placeholder="/path/to/project"
+                onPress={() => setIsWorkingDirOpen(true)}
+                icon={<Folder size={16} color={theme.colors.foregroundMuted} />}
+                showLabel={false}
+                valueEllipsizeMode="middle"
+              />
+              <FormSelectTrigger
+                controlRef={hostAnchorRef}
+                containerStyle={styles.topSelectorSecondary}
+                label="Host"
+                value={hostLabel}
+                placeholder="Select host"
+                onPress={() => setIsHostOpen(true)}
+                icon={<Monitor size={16} color={theme.colors.foregroundMuted} />}
+                showLabel={false}
+              />
+            </View>
             {isDirectoryNotExists && (
               <View style={styles.warningContainer}>
                 <Text style={styles.warningText}>
@@ -873,6 +952,36 @@ export function DraftAgentScreen({
                 </Text>
               </View>
             )}
+            {trimmedWorkingDir.length > 0 && !isNonGitDirectory ? (
+              <View style={styles.topSelectorRow}>
+                <FormSelectTrigger
+                  controlRef={worktreeAnchorRef}
+                  containerStyle={
+                    worktreeMode === "create" ? styles.halfSelector : styles.topSelectorPrimary
+                  }
+                  label="Worktree"
+                  value={worktreeTriggerValue}
+                  placeholder="Select worktree"
+                  onPress={() => setIsWorktreePickerOpen(true)}
+                  icon={<GitBranch size={16} color={theme.colors.foregroundMuted} />}
+                  showLabel={false}
+                  valueEllipsizeMode="middle"
+                />
+                {worktreeMode === "create" ? (
+                  <FormSelectTrigger
+                    controlRef={branchAnchorRef}
+                    containerStyle={styles.halfSelector}
+                    label="Base branch"
+                    value={baseBranch}
+                    placeholder="From branch"
+                    onPress={() => setIsBranchOpen(true)}
+                    disabled={repoInfoStatus === "loading"}
+                    icon={<GitBranch size={16} color={theme.colors.foregroundMuted} />}
+                    showLabel={false}
+                  />
+                ) : null}
+              </View>
+            ) : null}
             <AgentConfigRow
               providerDefinitions={providerDefinitions}
               selectedProvider={selectedProvider}
@@ -885,65 +994,89 @@ export function DraftAgentScreen({
               isModelLoading={isModelLoading}
               onSelectModel={setModelFromUser}
             />
-            {trimmedWorkingDir.length > 0 && !isNonGitDirectory ? (
-              <GitOptionsSection
-                worktreeMode={worktreeMode}
-                onWorktreeModeChange={handleWorktreeModeChange}
-                worktreeSlug={worktreeSlug}
-                currentBranch={checkout?.isGit ? checkout.currentBranch ?? null : null}
-                baseBranch={baseBranch}
-                onBaseBranchChange={handleBaseBranchChange}
-                status={repoInfoStatus}
-                repoError={repoInfoError}
-                gitValidationError={gitBlockingError}
-                baseBranchError={baseBranchError}
-                worktreeOptions={worktreeOptions}
-                selectedWorktreePath={selectedWorktreePath}
-                worktreeOptionsStatus={worktreeOptionsStatus}
-                worktreeOptionsError={worktreeOptionsError}
-                attachWorktreeError={attachWorktreeError}
-                onSelectWorktreePath={handleSelectWorktreePath}
-              />
-            ) : null}
+            {baseBranchError ? <Text style={styles.errorInlineText}>{baseBranchError}</Text> : null}
+            {repoInfoError ? <Text style={styles.errorInlineText}>{repoInfoError}</Text> : null}
+            {gitBlockingError ? <Text style={styles.errorInlineText}>{gitBlockingError}</Text> : null}
+            {attachWorktreeError ? <Text style={styles.errorInlineText}>{attachWorktreeError}</Text> : null}
+            {worktreeOptionsError ? <Text style={styles.errorInlineText}>{worktreeOptionsError}</Text> : null}
           </View>
-          <DropdownSheet
+          <Combobox
+            options={hostOptions}
+            value={selectedServerId ?? ""}
+            onSelect={(serverId) => setSelectedServerIdFromUser(serverId)}
             title="Host"
-            visible={openDropdown === "host"}
-            onClose={closeDropdown}
-          >
-            {connectionStates.size === 0 ? (
-              <Text style={styles.dropdownHelper}>
-                No hosts available yet.
-              </Text>
-            ) : (
-              <View style={styles.dropdownSheetList}>
-                {Array.from(connectionStates.values()).map(({ daemon, status }) => {
-                  const isSelected = daemon.serverId === selectedServerId;
-                  const label = daemon.label?.trim() ? daemon.label : daemon.serverId;
-                  return (
-                    <Pressable
-                      key={daemon.serverId}
-                      style={[
-                        styles.dropdownSheetOption,
-                        isSelected && styles.dropdownSheetOptionSelected,
-                      ]}
-                      onPress={() => {
-                        setSelectedServerIdFromUser(daemon.serverId);
-                        closeDropdown();
-                      }}
-                    >
-                      <Text style={styles.dropdownSheetOptionLabel}>
-                        {label}
-                      </Text>
-                      <Text style={styles.dropdownSheetOptionDescription}>
-                        {formatConnectionStatus(status)}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
-            )}
-          </DropdownSheet>
+            searchPlaceholder="Search hosts..."
+            open={isHostOpen}
+            onOpenChange={setIsHostOpen}
+            anchorRef={hostAnchorRef}
+          />
+
+          <Combobox
+            options={worktreeComboOptions}
+            value={
+              worktreeMode === "create"
+                ? "__create_new__"
+                : worktreeMode === "attach"
+                ? selectedWorktreePath
+                : "__none__"
+            }
+            onSelect={(id) => {
+              if (id === "__create_new__") {
+                setWorktreeMode("create");
+                if (!worktreeSlug) {
+                  setWorktreeSlug(createNameId());
+                }
+                setSelectedWorktreePath("");
+                return;
+              }
+              if (id === "__none__") {
+                setWorktreeMode("none");
+                setSelectedWorktreePath("");
+                return;
+              }
+              handleSelectWorktreePath(id);
+              setWorktreeMode("attach");
+            }}
+            title="Select worktree"
+            searchPlaceholder="Search worktrees..."
+            open={isWorktreePickerOpen}
+            onOpenChange={setIsWorktreePickerOpen}
+            emptyText="No worktrees found"
+            anchorRef={worktreeAnchorRef}
+          />
+
+          <Combobox
+            options={agentWorkingDirSuggestions.map((path) => ({ id: path, label: path }))}
+            value={workingDir}
+            onSelect={setWorkingDirFromUser}
+            searchPlaceholder="/path/to/project"
+            emptyText={
+              agentWorkingDirSuggestions.length > 0
+                ? "No agent directories match your search."
+                : "We'll suggest directories from agents on this host once they exist."
+            }
+            allowCustomValue
+            customValuePrefix="Use"
+            customValueDescription="Launch the agent in this directory"
+            title="Working directory"
+            open={isWorkingDirOpen}
+            onOpenChange={setIsWorkingDirOpen}
+            anchorRef={workingDirAnchorRef}
+          />
+
+          <Combobox
+            options={branchComboOptions}
+            value={baseBranch}
+            onSelect={handleBaseBranchChange}
+            searchPlaceholder="Choose a base branch..."
+            allowCustomValue
+            customValuePrefix="Use"
+            customValueDescription="Use this branch name"
+            title="Select base branch"
+            open={isBranchOpen}
+            onOpenChange={setIsBranchOpen}
+            anchorRef={branchAnchorRef}
+          />
 
           {formErrorMessage ? (
             <View style={styles.errorContainer}>
@@ -980,6 +1113,11 @@ const styles = StyleSheet.create((theme) => ({
   agentPanel: {
     flex: 1,
   },
+  menuToggleContainer: {
+    paddingHorizontal: theme.spacing[2],
+    paddingTop: theme.spacing[2],
+    alignItems: "flex-start",
+  },
   contentContainer: {
     flex: 1,
     overflow: "hidden",
@@ -998,7 +1136,7 @@ const styles = StyleSheet.create((theme) => ({
     justifyContent: "flex-end",
   },
   configSection: {
-    paddingHorizontal: theme.spacing[4],
+    paddingHorizontal: theme.spacing[0],
     paddingTop: theme.spacing[3],
     paddingBottom: theme.spacing[4],
     gap: theme.spacing[2],
@@ -1006,46 +1144,31 @@ const styles = StyleSheet.create((theme) => ({
     alignSelf: "center",
     width: "100%",
   },
-  dropdownHelper: {
-    fontSize: theme.fontSize.sm,
-    color: theme.colors.foregroundMuted,
+  topSelectorRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[2],
   },
-  dropdownSheetList: {
-    marginTop: theme.spacing[3],
+  topSelectorPrimary: {
+    flex: 7,
   },
-  dropdownSheetOption: {
-    paddingVertical: theme.spacing[3],
-    paddingHorizontal: theme.spacing[4],
-    borderRadius: theme.borderRadius.lg,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    backgroundColor: theme.colors.surface0,
-    marginBottom: theme.spacing[2],
+  topSelectorSecondary: {
+    flex: 3,
   },
-  dropdownSheetOptionSelected: {
-    borderColor: theme.colors.palette.blue[400],
-    backgroundColor: "rgba(59, 130, 246, 0.18)",
-  },
-  dropdownSheetOptionLabel: {
-    color: theme.colors.foreground,
-    fontWeight: theme.fontWeight.semibold,
-  },
-  dropdownSheetOptionDescription: {
-    color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.sm,
-    marginTop: theme.spacing[1],
+  halfSelector: {
+    flex: 1,
   },
   errorContainer: {
     paddingHorizontal: theme.spacing[4],
     paddingVertical: theme.spacing[3],
-    marginHorizontal: theme.spacing[4],
+    marginHorizontal: theme.spacing[0],
     marginBottom: theme.spacing[2],
     borderRadius: theme.borderRadius.lg,
     backgroundColor: theme.colors.destructive,
   },
   errorText: {
     color: theme.colors.destructiveForeground,
-    fontSize: theme.fontSize.sm,
+    fontSize: theme.fontSize.base,
   },
   warningContainer: {
     paddingHorizontal: theme.spacing[3],
@@ -1055,35 +1178,11 @@ const styles = StyleSheet.create((theme) => ({
   },
   warningText: {
     color: "#000000",
-    fontSize: theme.fontSize.sm,
+    fontSize: theme.fontSize.base,
     fontWeight: theme.fontWeight.semibold,
   },
-  hostBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing[2],
-    paddingHorizontal: theme.spacing[3],
-    paddingVertical: theme.spacing[2],
-    backgroundColor: theme.colors.surface2,
-    borderRadius: theme.borderRadius.full,
-  },
-  hostBadgeLabel: {
-    color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
-    fontWeight: theme.fontWeight.semibold,
-  },
-  hostBadgeStatus: {
-    color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
-    fontWeight: theme.fontWeight.medium,
-  },
-  hostStatusDot: {
-    width: 6,
-    height: 6,
-    borderRadius: theme.borderRadius.full,
-    backgroundColor: theme.colors.foregroundMuted,
-  },
-  hostStatusDotOnline: {
-    backgroundColor: theme.colors.palette.green[500],
+  errorInlineText: {
+    color: theme.colors.palette.red[500],
+    fontSize: theme.fontSize.base,
   },
 }));

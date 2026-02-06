@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   Platform,
 } from "react-native";
+import type { StyleProp, ViewStyle, TextProps } from "react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import {
   BottomSheetModal,
@@ -16,7 +17,7 @@ import {
   BottomSheetBackgroundProps,
 } from "@gorhom/bottom-sheet";
 import Animated from "react-native-reanimated";
-import { ChevronDown, ChevronRight, Pencil, Check, X } from "lucide-react-native";
+import { ChevronDown, ChevronRight, Pencil, Check, X, Bot, Brain, Shield } from "lucide-react-native";
 import { theme as defaultTheme } from "@/styles/theme";
 import type {
   AgentMode,
@@ -312,6 +313,8 @@ interface ComboSelectProps {
   allowCustomValue?: boolean;
   isLoading?: boolean;
   onSelect: (id: string) => void;
+  icon?: ReactElement;
+  showLabel?: boolean;
 }
 
 export function ComboSelect({
@@ -324,6 +327,8 @@ export function ComboSelect({
   allowCustomValue = false,
   isLoading,
   onSelect,
+  icon,
+  showLabel = true,
 }: ComboSelectProps): ReactElement {
   const [isOpen, setIsOpen] = useState(false);
   const anchorRef = useRef<View>(null);
@@ -336,7 +341,7 @@ export function ComboSelect({
 
   return (
     <>
-      <CompactSelectField
+      <FormSelectTrigger
         label={label}
         value={displayValue}
         placeholder={placeholder}
@@ -344,6 +349,8 @@ export function ComboSelect({
         disabled={disabled}
         isLoading={isLoading}
         controlRef={anchorRef}
+        icon={icon}
+        showLabel={showLabel}
       />
       <Combobox
         options={options}
@@ -368,9 +375,14 @@ interface CompactSelectFieldProps {
   disabled?: boolean;
   isLoading?: boolean;
   controlRef?: React.RefObject<View | null>;
+  icon?: ReactElement;
+  showLabel?: boolean;
+  containerStyle?: StyleProp<ViewStyle>;
+  valueEllipsizeMode?: TextProps["ellipsizeMode"];
+  testID?: string;
 }
 
-function CompactSelectField({
+export function FormSelectTrigger({
   label,
   value,
   placeholder,
@@ -378,6 +390,11 @@ function CompactSelectField({
   disabled,
   isLoading,
   controlRef,
+  icon,
+  showLabel = true,
+  containerStyle,
+  valueEllipsizeMode,
+  testID,
 }: CompactSelectFieldProps): ReactElement {
   const getWebKey = useCallback((event: unknown): string | null => {
     if (!event || typeof event !== "object") return null;
@@ -411,25 +428,38 @@ function CompactSelectField({
     <Pressable
       ref={controlRef}
       onPress={onPress}
+      testID={testID}
       // @ts-ignore - tabIndex is web-only
       tabIndex={0}
       accessibilityRole="button"
       // @ts-ignore - onKeyDown is web-only
       onKeyDown={handleKeyDown}
       disabled={disabled}
-      style={[styles.compactSelectControl, disabled && styles.compactSelectControlDisabled]}
+      style={[
+        styles.compactSelectControl,
+        !showLabel && styles.compactSelectControlInline,
+        containerStyle,
+        disabled && styles.compactSelectControlDisabled,
+      ]}
     >
-      <Text style={styles.compactSelectLabel}>{label}</Text>
-      {isLoading ? (
-        <ActivityIndicator size="small" color={defaultTheme.colors.foregroundMuted} />
-      ) : (
-        <Text
-          style={value ? styles.compactSelectValue : styles.compactSelectPlaceholder}
-          numberOfLines={1}
-        >
-          {value || placeholder || "Select..."}
-        </Text>
-      )}
+      {icon ? <View style={styles.compactSelectLeading}>{icon}</View> : null}
+      <View style={styles.compactSelectValueContainer}>
+        {showLabel ? (
+          <Text style={styles.compactSelectLabel}>{label}</Text>
+        ) : null}
+        {isLoading ? (
+          <ActivityIndicator size="small" color={defaultTheme.colors.foregroundMuted} />
+        ) : (
+          <Text
+            style={value ? styles.compactSelectValue : styles.compactSelectPlaceholder}
+            numberOfLines={1}
+            ellipsizeMode={valueEllipsizeMode}
+          >
+            {value || placeholder || "Select..."}
+          </Text>
+        )}
+      </View>
+      <ChevronDown size={16} color={defaultTheme.colors.foregroundMuted} />
     </Pressable>
   );
 }
@@ -466,31 +496,28 @@ export function AgentConfigRow({
       providerDefinitions.map((def) => ({
         id: def.id,
         label: def.label,
-        description: def.description,
       })),
     [providerDefinitions]
   );
 
   const modeSelectOptions: ComboSelectOption[] = useMemo(() => {
     if (modeOptions.length === 0) {
-      return [{ id: "", label: "Default", description: "Provider default mode" }];
+      return [{ id: "", label: "Default" }];
     }
     return modeOptions.map((mode) => ({
       id: mode.id,
       label: mode.label,
-      description: mode.description,
     }));
   }, [modeOptions]);
 
   const modelSelectOptions: ComboSelectOption[] = useMemo(() => {
     const opts: ComboSelectOption[] = [
-      { id: "", label: "Auto", description: "Provider default model" },
+      { id: "", label: "Auto" },
     ];
     for (const model of models) {
       opts.push({
         id: model.id,
         label: model.label,
-        description: model.description,
       });
     }
     return opts;
@@ -502,18 +529,20 @@ export function AgentConfigRow({
     <View style={styles.agentConfigRow}>
       <View style={styles.agentConfigColumn}>
         <ComboSelect
-          label="PROVIDER"
+          label="Provider"
           title="Select provider"
           value={selectedProvider}
           options={providerOptions}
           placeholder="Select..."
           disabled={disabled}
           onSelect={onSelectProvider}
+          icon={<Bot size={16} color={defaultTheme.colors.foregroundMuted} />}
+          showLabel={false}
         />
       </View>
       <View style={styles.agentConfigColumn}>
         <ComboSelect
-          label="MODEL"
+          label="Model"
           title="Select model"
           value={selectedModel}
           options={modelSelectOptions}
@@ -521,17 +550,21 @@ export function AgentConfigRow({
           disabled={disabled}
           isLoading={isModelLoading}
           onSelect={onSelectModel}
+          icon={<Brain size={16} color={defaultTheme.colors.foregroundMuted} />}
+          showLabel={false}
         />
       </View>
       <View style={styles.agentConfigColumn}>
         <ComboSelect
-          label="MODE"
+          label="Mode"
           title="Select mode"
           value={effectiveSelectedMode}
           options={modeSelectOptions}
           placeholder="Default"
           disabled={disabled || modeOptions.length === 0}
           onSelect={onSelectMode}
+          icon={<Shield size={16} color={defaultTheme.colors.foregroundMuted} />}
+          showLabel={false}
         />
       </View>
     </View>
@@ -563,7 +596,6 @@ export function AssistantDropdown({
       providerDefinitions.map((def) => ({
         id: def.id,
         label: def.label,
-        description: def.description,
       })),
     [providerDefinitions]
   );
@@ -1405,26 +1437,46 @@ const styles = StyleSheet.create((theme) => ({
     borderWidth: theme.borderWidth[1],
     borderColor: theme.colors.border,
     borderRadius: theme.borderRadius.lg,
-    paddingVertical: theme.spacing[2],
+    paddingVertical: theme.spacing[1],
     paddingHorizontal: theme.spacing[3],
+    gap: theme.spacing[1],
+  },
+  compactSelectControlInline: {
+    minHeight: 40,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     gap: theme.spacing[1],
   },
   compactSelectControlDisabled: {
     opacity: theme.opacity[50],
   },
+  compactSelectTopRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[1],
+  },
+  compactSelectLeading: {
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: theme.spacing[1],
+  },
+  compactSelectValueContainer: {
+    flex: 1,
+    minWidth: 0,
+    gap: theme.spacing[1],
+  },
   compactSelectLabel: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     fontWeight: theme.fontWeight.medium,
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
   },
   compactSelectValue: {
     color: theme.colors.foreground,
-    fontSize: theme.fontSize.sm,
+    fontSize: theme.fontSize.base,
   },
   compactSelectPlaceholder: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.sm,
+    fontSize: theme.fontSize.base,
   },
 }));

@@ -117,7 +117,7 @@ const lightSemanticColors = {
 
   // Borders - shifted one step lighter
   border: "#e4e4e7",         // (was zinc-200, now zinc-200 - keep for contrast)
-  borderAccent: "#e4e4e7",   // (was zinc-300, now zinc-200)
+  borderAccent: "#ececf1",   // Softer accent border for low-emphasis outlines
 
   // Brand
   accent: "#20744A",
@@ -141,7 +141,7 @@ const lightSemanticColors = {
   secondaryForeground: "#09090b",
   muted: "#f4f4f5",
   mutedForeground: "#71717a",
-  accentBorder: "#e4e4e7",
+  accentBorder: "#ececf1",
   input: "#f4f4f5",
   ring: "#18181b",
 } as const;
@@ -159,7 +159,7 @@ const darkSemanticColors = {
 
   // Borders
   border: "#27272a",
-  borderAccent: "#3f3f46",
+  borderAccent: "#34343a",
 
   // Brand
   accent: "#20744A",
@@ -183,7 +183,7 @@ const darkSemanticColors = {
   secondaryForeground: "#fafafa",
   muted: "#27272a",
   mutedForeground: "#a1a1aa",
-  accentBorder: "#3f3f46",
+  accentBorder: "#34343a",
   input: "#27272a",
   ring: "#d4d4d8",
 } as const;

@@ -20,13 +20,7 @@ import {
 } from "@gorhom/bottom-sheet";
 import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
 import { Check, Search } from "lucide-react-native";
-import {
-  flip,
-  offset as floatingOffset,
-  shift,
-  size as floatingSize,
-  useFloating,
-} from "@floating-ui/react-native";
+import { flip, offset as floatingOffset, shift, size as floatingSize, useFloating } from "@floating-ui/react-native";
 import { getNextActiveIndex } from "./combobox-keyboard";
 
 const IS_WEB = Platform.OS === "web";
@@ -132,21 +126,24 @@ export function ComboboxItem({
     <Pressable
       testID={testID}
       onPress={onPress}
-      style={({ pressed }) => [
+      style={({ pressed, hovered = false }) => [
         styles.comboboxItem,
+        hovered && styles.comboboxItemHovered,
         pressed && styles.comboboxItemPressed,
         active && styles.comboboxItemActive,
       ]}
     >
-      <View style={styles.comboboxItemCheckSlot}>
-        {selected ? <Check size={16} color={theme.colors.foreground} /> : null}
-      </View>
       <View style={styles.comboboxItemContent}>
         <Text numberOfLines={1} style={styles.comboboxItemLabel}>{label}</Text>
         {description ? (
           <Text numberOfLines={2} style={styles.comboboxItemDescription}>{description}</Text>
         ) : null}
       </View>
+      {selected ? (
+        <View style={styles.comboboxItemTrailingSlot}>
+          <Check size={16} color={theme.colors.foregroundMuted} />
+        </View>
+      ) : null}
     </Pressable>
   );
 }
@@ -214,8 +211,8 @@ export function Combobox({
 
   const middleware = useMemo(
     () => [
-      floatingOffset({ mainAxis: 4 }),
-      flip({ padding: collisionPadding }),
+      floatingOffset(Platform.OS === "web" ? 0 : 4),
+      ...(Platform.OS === "web" ? [] : [flip({ padding: collisionPadding })]),
       shift({ padding: collisionPadding }),
       floatingSize({
         padding: collisionPadding,
@@ -238,7 +235,7 @@ export function Combobox({
   );
 
   const { refs, floatingStyles, update } = useFloating({
-    placement: "bottom-start",
+    placement: Platform.OS === "web" ? "top-start" : "bottom-start",
     middleware,
     sameScrollView: false,
     elements: {
@@ -551,10 +548,14 @@ const styles = StyleSheet.create((theme) => ({
   searchInputContainer: {
     flexDirection: "row",
     alignItems: "center",
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.border,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.surface1,
+    borderRadius: theme.borderRadius.lg,
     paddingHorizontal: theme.spacing[3],
-    marginBottom: theme.spacing[1],
+    marginHorizontal: theme.spacing[2],
+    marginBottom: theme.spacing[2],
+    marginTop: theme.spacing[1],
     gap: theme.spacing[2],
   },
   searchInput: {
@@ -571,17 +572,27 @@ const styles = StyleSheet.create((theme) => ({
     paddingHorizontal: theme.spacing[3],
     paddingVertical: theme.spacing[2],
     borderRadius: theme.borderRadius.md,
+    ...(IS_WEB
+      ? {}
+      : {
+          marginHorizontal: theme.spacing[1],
+          marginBottom: theme.spacing[1],
+        }),
+  },
+  comboboxItemHovered: {
+    backgroundColor: theme.colors.surface1,
   },
   comboboxItemPressed: {
-    backgroundColor: theme.colors.surface2,
+    backgroundColor: theme.colors.surface1,
   },
   comboboxItemActive: {
-    backgroundColor: theme.colors.surface2,
+    backgroundColor: theme.colors.surface1,
   },
-  comboboxItemCheckSlot: {
+  comboboxItemTrailingSlot: {
     width: 16,
     alignItems: "center",
     justifyContent: "center",
+    marginLeft: "auto",
   },
   comboboxItemContent: {
     flex: 1,
@@ -603,7 +614,7 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.sm,
   },
   bottomSheetBackground: {
-    backgroundColor: theme.colors.surface2,
+    backgroundColor: theme.colors.surface0,
     borderTopLeftRadius: theme.borderRadius["2xl"],
     borderTopRightRadius: theme.borderRadius["2xl"],
   },
@@ -616,13 +627,14 @@ const styles = StyleSheet.create((theme) => ({
   },
   comboboxTitle: {
     fontSize: theme.fontSize.lg,
-    fontWeight: theme.fontWeight.semibold,
+    fontWeight: theme.fontWeight.medium,
     color: theme.colors.foreground,
-    textAlign: "center",
+    textAlign: "left",
   },
   comboboxScrollContent: {
     paddingBottom: theme.spacing[8],
-    paddingHorizontal: theme.spacing[1],
+    paddingHorizontal: theme.spacing[2],
+    paddingTop: theme.spacing[1],
   },
   desktopOverlay: {
     flex: 1,
@@ -638,7 +650,7 @@ const styles = StyleSheet.create((theme) => ({
     backgroundColor: theme.colors.surface0,
     borderRadius: theme.borderRadius.lg,
     borderWidth: 1,
-    borderColor: theme.colors.borderAccent,
+    borderColor: theme.colors.border,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.2,

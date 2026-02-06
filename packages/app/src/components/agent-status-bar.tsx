@@ -6,7 +6,6 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuLabel,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { AdaptiveModalSheet } from "@/components/adaptive-modal-sheet";
@@ -67,7 +66,9 @@ export function AgentStatusBar({ agentId, serverId }: AgentStatusBarProps) {
     return models.find((m) => m.id === agent.model) ?? null;
   }, [models, agent.model]);
 
-  const displayModel = selectedModel?.label ?? agent.model ?? "default";
+  const displayModel = selectedModel
+    ? selectedModel.label
+    : agent.model ?? "default";
 
   const thinkingOptions = selectedModel?.thinkingOptions ?? null;
   const selectedThinkingId =
@@ -106,14 +107,12 @@ export function AgentStatusBar({ agentId, serverId }: AgentStatusBarProps) {
             maxWidth={dropdownMaxWidth}
             testID="agent-mode-menu"
           >
-            <DropdownMenuLabel>Mode</DropdownMenuLabel>
             {agent.availableModes.map((mode) => {
               const isActive = mode.id === agent.currentModeId;
               return (
                 <DropdownMenuItem
                   key={mode.id}
                   selected={isActive}
-                  description={mode.description}
                   onSelect={() => handleModeChange(mode.id)}
                 >
                   {mode.label}
@@ -147,14 +146,12 @@ export function AgentStatusBar({ agentId, serverId }: AgentStatusBarProps) {
               maxWidth={dropdownMaxWidth}
               testID="agent-model-menu"
             >
-              <DropdownMenuLabel>Model</DropdownMenuLabel>
               {models?.map((model) => {
                 const isActive = model.id === agent.model;
                 return (
                   <DropdownMenuItem
                     key={model.id}
                     selected={isActive}
-                    description={model.description}
                     onSelect={() => {
                       if (!client) {
                         return;
@@ -193,14 +190,12 @@ export function AgentStatusBar({ agentId, serverId }: AgentStatusBarProps) {
                 maxWidth={dropdownMaxWidth}
                 testID="agent-thinking-menu"
               >
-                <DropdownMenuLabel>Thinking</DropdownMenuLabel>
                 {thinkingOptions.map((opt) => {
                   const isActive = opt.id === selectedThinkingId;
                   return (
                     <DropdownMenuItem
                       key={opt.id}
                       selected={isActive}
-                      description={opt.description}
                       onSelect={() => {
                         if (!client) {
                           return;
@@ -245,7 +240,6 @@ export function AgentStatusBar({ agentId, serverId }: AgentStatusBarProps) {
             testID="agent-preferences-sheet"
           >
             <View style={styles.sheetSection}>
-              <Text style={styles.sheetLabel}>Model</Text>
               <DropdownMenu>
                 <DropdownMenuTrigger
                   style={({ pressed }) => [
@@ -260,14 +254,12 @@ export function AgentStatusBar({ agentId, serverId }: AgentStatusBarProps) {
                   <ChevronDown size={16} color={theme.colors.foregroundMuted} />
                 </DropdownMenuTrigger>
                 <DropdownMenuContent side="top" align="start">
-                  <DropdownMenuLabel>Model</DropdownMenuLabel>
                   {models?.map((model) => {
                     const isActive = model.id === agent.model;
                     return (
                       <DropdownMenuItem
                         key={model.id}
                         selected={isActive}
-                        description={model.description}
                         onSelect={() => {
                           if (!client) {
                             return;
@@ -287,7 +279,6 @@ export function AgentStatusBar({ agentId, serverId }: AgentStatusBarProps) {
 
             {thinkingOptions && thinkingOptions.length > 1 && (
               <View style={styles.sheetSection}>
-                <Text style={styles.sheetLabel}>Thinking</Text>
                 <DropdownMenu>
                   <DropdownMenuTrigger
                     style={({ pressed }) => [
@@ -298,21 +289,19 @@ export function AgentStatusBar({ agentId, serverId }: AgentStatusBarProps) {
                     accessibilityLabel="Select thinking option"
                     testID="agent-preferences-thinking"
                   >
-                    <Text style={styles.sheetSelectText}>{displayThinking}</Text>
-                    <ChevronDown size={16} color={theme.colors.foregroundMuted} />
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent side="top" align="start">
-                    <DropdownMenuLabel>Thinking</DropdownMenuLabel>
-                    {thinkingOptions.map((opt) => {
-                      const isActive = opt.id === selectedThinkingId;
-                      return (
-                        <DropdownMenuItem
-                          key={opt.id}
-                          selected={isActive}
-                          description={opt.description}
-                          onSelect={() => {
-                            if (!client) {
-                              return;
+                  <Text style={styles.sheetSelectText}>{displayThinking}</Text>
+                  <ChevronDown size={16} color={theme.colors.foregroundMuted} />
+                </DropdownMenuTrigger>
+                <DropdownMenuContent side="top" align="start">
+                  {thinkingOptions.map((opt) => {
+                    const isActive = opt.id === selectedThinkingId;
+                    return (
+                      <DropdownMenuItem
+                        key={opt.id}
+                        selected={isActive}
+                        onSelect={() => {
+                          if (!client) {
+                            return;
                             }
                             void client
                               .setAgentThinkingOption(agentId, opt.id === "default" ? null : opt.id)
@@ -361,7 +350,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   modeBadgeText: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     fontWeight: theme.fontWeight.normal,
   },
   prefsButton: {
@@ -377,11 +366,6 @@ const styles = StyleSheet.create((theme) => ({
   },
   sheetSection: {
     gap: theme.spacing[2],
-  },
-  sheetLabel: {
-    color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.sm,
-    fontWeight: theme.fontWeight.semibold,
   },
   sheetSelect: {
     flexDirection: "row",
@@ -401,7 +385,7 @@ const styles = StyleSheet.create((theme) => ({
   sheetSelectText: {
     flex: 1,
     color: theme.colors.foreground,
-    fontSize: theme.fontSize.sm,
+    fontSize: theme.fontSize.base,
     fontWeight: theme.fontWeight.semibold,
   },
 }));

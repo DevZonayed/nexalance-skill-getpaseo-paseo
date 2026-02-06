@@ -63,6 +63,21 @@ interface TurnContext {
   streamedReasoningThisTurn: boolean;
 }
 
+function normalizeClaudeModelLabel(model: ModelInfo): string {
+  const fallback = model.displayName?.trim() || model.value;
+  const prefix = model.description?.split(/[·•]/)[0]?.trim() || "";
+  if (!prefix) return fallback;
+
+  // Prefer concrete versioned labels from description (e.g. "Opus 4.6",
+  // "Sonnet 4.5"), especially when displayName is generic like
+  // "Default (recommended)".
+  if (/\d/.test(prefix)) {
+    return prefix;
+  }
+
+  return fallback;
+}
+
 const CLAUDE_CAPABILITIES: AgentCapabilityFlags = {
   supportsStreaming: true,
   supportsSessionPersistence: true,
@@ -371,7 +386,7 @@ export class ClaudeAgentClient implements AgentClient {
       return models.map((model) => ({
         provider: "claude" as const,
         id: model.value,
-        label: model.displayName,
+        label: normalizeClaudeModelLabel(model),
         description: model.description,
         thinkingOptions: [
           { id: "off", label: "Off", isDefault: true },

@@ -1050,14 +1050,24 @@ export function GitDiffPane({ serverId, agentId, cwd }: GitDiffPaneProps) {
                   accessibilityRole="button"
                   accessibilityLabel={gitActions.primary.label}
                 >
-                  {gitActions.primary.status === "pending" ? (
-                    <ActivityIndicator size="small" color={theme.colors.foreground} style={styles.splitButtonSpinner} />
-                  ) : (
-                    <View style={styles.splitButtonContent}>
+                  <View style={styles.splitButtonPrimaryInner}>
+                    <View
+                      style={[
+                        styles.splitButtonContent,
+                        gitActions.primary.status === "pending" && styles.splitButtonContentHidden,
+                      ]}
+                    >
                       {gitActions.primary.icon}
                       <Text style={styles.splitButtonText}>{getActionDisplayLabel(gitActions.primary)}</Text>
                     </View>
-                  )}
+                    {gitActions.primary.status === "pending" ? (
+                      <ActivityIndicator
+                        size="small"
+                        color={theme.colors.foreground}
+                        style={styles.splitButtonSpinnerOverlay}
+                      />
+                    ) : null}
+                  </View>
                 </Pressable>
                 {gitActions.secondary.length > 0 ? (
                   <DropdownMenu>
@@ -1292,15 +1302,21 @@ const styles = StyleSheet.create((theme) => ({
   },
   splitButtonPrimary: {
     paddingHorizontal: theme.spacing[3],
-    paddingVertical: theme.spacing[2],
+    paddingVertical: theme.spacing[1],
+    justifyContent: "center",
+    position: "relative",
+  },
+  splitButtonPrimaryInner: {
+    position: "relative",
+    alignItems: "center",
     justifyContent: "center",
   },
   splitButtonPrimaryDisabled: {
     opacity: 0.6,
   },
   splitButtonText: {
-    fontSize: theme.fontSize.xs,
-    lineHeight: theme.fontSize.xs * 1.5,
+    fontSize: theme.fontSize.sm,
+    lineHeight: theme.fontSize.sm * 1.5,
     color: theme.colors.foreground,
     fontWeight: theme.fontWeight.medium,
   },
@@ -1310,9 +1326,12 @@ const styles = StyleSheet.create((theme) => ({
     justifyContent: "center",
     gap: theme.spacing[2],
   },
-  splitButtonSpinner: {
-    height: theme.fontSize.xs * 1.5,
-    width: theme.fontSize.xs * 1.5,
+  splitButtonContentHidden: {
+    opacity: 0,
+  },
+  splitButtonSpinnerOverlay: {
+    position: "absolute",
+    transform: [{ scale: 0.8 }],
   },
   splitButtonCaret: {
     width: 36,

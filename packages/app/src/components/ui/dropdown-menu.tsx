@@ -458,6 +458,9 @@ export function DropdownMenuItem({
     label = successLabel;
   }
 
+  const trailingContent =
+    trailing ?? (!showSelectedCheck && selected ? <Check size={16} color={theme.colors.foregroundMuted} /> : null);
+
   return (
     <Pressable
       testID={testID}
@@ -473,8 +476,12 @@ export function DropdownMenuItem({
       style={({ pressed, hovered }) => [
         styles.item,
         selected ? (selectedVariant === "accent" ? styles.itemSelectedAccent : styles.itemSelected) : null,
+        selected && (hovered || pressed) && selectedVariant !== "accent"
+          ? styles.itemSelectedInteractive
+          : null,
         isDisabled ? styles.itemDisabled : null,
-        (hovered || pressed) && !isDisabled ? styles.itemHovered : null,
+        hovered && !pressed && !isDisabled ? styles.itemHovered : null,
+        pressed && !isDisabled ? styles.itemPressed : null,
       ]}
     >
       {showSelectedCheck ? (
@@ -507,7 +514,7 @@ export function DropdownMenuItem({
           </Text>
         ) : null}
       </View>
-      {trailing ? <View style={styles.trailingSlot}>{trailing}</View> : null}
+      {trailingContent ? <View style={styles.trailingSlot}>{trailingContent}</View> : null}
     </Pressable>
   );
 }
@@ -565,12 +572,20 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[2],
     paddingHorizontal: theme.spacing[3],
     paddingVertical: theme.spacing[2],
+    borderWidth: theme.borderWidth[1],
+    borderColor: "transparent",
   },
   itemHovered: {
-    backgroundColor: theme.colors.surface2,
+    backgroundColor: theme.colors.surface1,
+  },
+  itemPressed: {
+    backgroundColor: theme.colors.surface1,
   },
   itemSelected: {
-    backgroundColor: theme.colors.surface2,
+    backgroundColor: theme.colors.surface1,
+  },
+  itemSelectedInteractive: {
+    backgroundColor: theme.colors.surface1,
   },
   itemSelectedAccent: {
     backgroundColor: theme.colors.accent,
