@@ -115,6 +115,7 @@ export const SHERPA_ONNX_MODEL_CATALOG = {
 } as const satisfies Record<string, SherpaOnnxCatalogEntry>;
 
 export type SherpaOnnxModelId = keyof typeof SHERPA_ONNX_MODEL_CATALOG;
+export type LocalSpeechModelId = SherpaOnnxModelId;
 
 type ModelIdByKind<K extends SherpaOnnxModelKind> = {
   [Id in SherpaOnnxModelId]: (typeof SHERPA_ONNX_MODEL_CATALOG)[Id]["kind"] extends K

@@ -41,8 +41,8 @@ function parseListenString(listen: string): ListenTarget {
 
 import { VoiceAssistantWebSocketServer } from "./websocket-server.js";
 import { DownloadTokenStore } from "./file-download/token-store.js";
-import type { STTConfig } from "./speech/providers/openai/stt.js";
-import type { TTSConfig } from "./speech/providers/openai/tts.js";
+import type { OpenAiSpeechProviderConfig } from "./speech/providers/openai/config.js";
+import type { LocalSpeechProviderConfig } from "./speech/providers/local/config.js";
 import { initializeSpeechRuntime } from "./speech/speech-runtime.js";
 import { AgentManager } from "./agent/agent-manager.js";
 import { AgentStorage } from "./agent/agent-storage.js";
@@ -101,17 +101,8 @@ function resolveVoiceMcpBridgeCommand(logger: Logger): { command: string; baseAr
   return resolved;
 }
 
-export type PaseoOpenAIConfig = {
-  apiKey?: string;
-  stt?: Partial<STTConfig> & { apiKey?: string };
-  tts?: Partial<TTSConfig> & { apiKey?: string };
-  realtimeTranscriptionModel?: string;
-};
-
-export type PaseoLocalSpeechConfig = {
-  modelsDir: string;
-  autoDownload?: boolean;
-};
+export type PaseoOpenAIConfig = OpenAiSpeechProviderConfig;
+export type PaseoLocalSpeechConfig = LocalSpeechProviderConfig;
 
 export type PaseoSpeechConfig = {
   dictationSttProvider?: "openai" | "local";

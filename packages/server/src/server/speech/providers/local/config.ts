@@ -1,0 +1,176 @@
+import path from "node:path";
+
+import { z } from "zod";
+
+import type { PersistedConfig } from "../../../persisted-config.js";
+import type { RequestedSpeechProviders } from "../../speech-types.js";
+import {
+  DEFAULT_LOCAL_STT_MODEL,
+  DEFAULT_LOCAL_TTS_MODEL,
+  LocalSttModelIdSchema,
+  LocalTtsModelIdSchema,
+  type LocalSpeechModelId,
+  type LocalSttModelId,
+  type LocalTtsModelId,
+} from "./sherpa/model-catalog.js";
+
+export type LocalSpeechProviderConfig = {
+  modelsDir: string;
+  autoDownload?: boolean;
+};
+
+export type ResolvedLocalSpeechConfig = {
+  local: LocalSpeechProviderConfig | undefined;
+  dictationLocalSttModel: LocalSttModelId;
+  voiceLocalSttModel: LocalSttModelId;
+  voiceLocalTtsModel: LocalTtsModelId;
+  voiceLocalTtsSpeakerId?: number;
+  voiceLocalTtsSpeed?: number;
+};
+
+export type { LocalSpeechModelId, LocalSttModelId, LocalTtsModelId };
+
+const DEFAULT_LOCAL_MODELS_SUBDIR = path.join("models", "local-speech");
+
+const OptionalBooleanFlagSchema = z.preprocess((value) => {
+  if (typeof value === "boolean") {
+    return value;
+  }
+  if (typeof value !== "string") {
+    return value;
+  }
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "1" || normalized === "true" || normalized === "yes") {
+    return true;
+  }
+  if (normalized === "0" || normalized === "false" || normalized === "no") {
+    return false;
+  }
+  return undefined;
+}, z.boolean().optional());
+
+const OptionalFiniteNumberSchema = z.preprocess((value) => {
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : undefined;
+  }
+  if (typeof value !== "string") {
+    return value;
+  }
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}, z.number().optional());
+
+const OptionalIntegerSchema = z.preprocess((value) => {
+  if (typeof value === "number") {
+    return Number.isInteger(value) ? value : undefined;
+  }
+  if (typeof value !== "string") {
+    return value;
+  }
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}, z.number().int().optional());
+
+const LocalSpeechResolutionSchema = z.object({
+  includeProviderConfig: z.boolean(),
+  modelsDir: z.string().trim().min(1),
+  autoDownload: OptionalBooleanFlagSchema.default(true),
+  dictationLocalSttModel: LocalSttModelIdSchema.default(DEFAULT_LOCAL_STT_MODEL),
+  voiceLocalSttModel: LocalSttModelIdSchema.default(DEFAULT_LOCAL_STT_MODEL),
+  voiceLocalTtsModel: LocalTtsModelIdSchema.default(DEFAULT_LOCAL_TTS_MODEL),
+  voiceLocalTtsSpeakerId: OptionalIntegerSchema,
+  voiceLocalTtsSpeed: OptionalFiniteNumberSchema,
+});
+
+function persistedLocalFeatureModel(
+  provider: RequestedSpeechProviders[keyof RequestedSpeechProviders],
+  model: string | undefined
+): string | undefined {
+  if (provider !== "local") {
+    return undefined;
+  }
+  return model;
+}
+
+function shouldIncludeLocalProviderConfig(params: {
+  providers: RequestedSpeechProviders;
+  env: NodeJS.ProcessEnv;
+  persisted: PersistedConfig;
+}): boolean {
+  const localRequestedByFeature =
+    params.providers.dictationSttProvider === "local" ||
+    params.providers.voiceSttProvider === "local" ||
+    params.providers.voiceTtsProvider === "local";
+
+  return (
+    localRequestedByFeature ||
+    params.env.PASEO_LOCAL_MODELS_DIR !== undefined ||
+    params.persisted.providers?.local !== undefined
+  );
+}
+
+export function resolveLocalSpeechConfig(params: {
+  paseoHome: string;
+  env: NodeJS.ProcessEnv;
+  persisted: PersistedConfig;
+  providers: RequestedSpeechProviders;
+}): ResolvedLocalSpeechConfig {
+  const includeProviderConfig = shouldIncludeLocalProviderConfig(params);
+
+  const parsed = LocalSpeechResolutionSchema.parse({
+    includeProviderConfig,
+    modelsDir:
+      params.env.PASEO_LOCAL_MODELS_DIR ??
+      params.persisted.providers?.local?.modelsDir ??
+      path.join(params.paseoHome, DEFAULT_LOCAL_MODELS_SUBDIR),
+    autoDownload:
+      params.env.PASEO_LOCAL_AUTO_DOWNLOAD ??
+      params.persisted.providers?.local?.autoDownload,
+    dictationLocalSttModel:
+      params.env.PASEO_DICTATION_LOCAL_STT_MODEL ??
+      persistedLocalFeatureModel(
+        params.providers.dictationSttProvider,
+        params.persisted.features?.dictation?.stt?.model
+      ) ??
+      DEFAULT_LOCAL_STT_MODEL,
+    voiceLocalSttModel:
+      params.env.PASEO_VOICE_LOCAL_STT_MODEL ??
+      persistedLocalFeatureModel(
+        params.providers.voiceSttProvider,
+        params.persisted.features?.voiceMode?.stt?.model
+      ) ??
+      DEFAULT_LOCAL_STT_MODEL,
+    voiceLocalTtsModel:
+      params.env.PASEO_VOICE_LOCAL_TTS_MODEL ??
+      persistedLocalFeatureModel(
+        params.providers.voiceTtsProvider,
+        params.persisted.features?.voiceMode?.tts?.model
+      ) ??
+      DEFAULT_LOCAL_TTS_MODEL,
+    voiceLocalTtsSpeakerId:
+      params.env.PASEO_VOICE_LOCAL_TTS_SPEAKER_ID ??
+      params.persisted.features?.voiceMode?.tts?.speakerId,
+    voiceLocalTtsSpeed:
+      params.env.PASEO_VOICE_LOCAL_TTS_SPEED ??
+      params.persisted.features?.voiceMode?.tts?.speed,
+  });
+
+  return {
+    local:
+      parsed.includeProviderConfig
+        ? {
+            modelsDir: parsed.modelsDir,
+            autoDownload: parsed.autoDownload,
+          }
+        : undefined,
+    dictationLocalSttModel: parsed.dictationLocalSttModel,
+    voiceLocalSttModel: parsed.voiceLocalSttModel,
+    voiceLocalTtsModel: parsed.voiceLocalTtsModel,
+    ...(parsed.voiceLocalTtsSpeakerId !== undefined
+      ? { voiceLocalTtsSpeakerId: parsed.voiceLocalTtsSpeakerId }
+      : {}),
+    ...(parsed.voiceLocalTtsSpeed !== undefined
+      ? { voiceLocalTtsSpeed: parsed.voiceLocalTtsSpeed }
+      : {}),
+  };
+}
