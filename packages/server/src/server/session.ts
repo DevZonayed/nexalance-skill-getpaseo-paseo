@@ -339,6 +339,8 @@ export class Session {
   private readonly voiceLlmProviderExplicit: boolean;
   private readonly voiceLlmModel: string | null;
   private readonly voiceAgentMcpStdio: VoiceMcpStdioConfig | null;
+  private readonly localSpeechModelsDir: string;
+  private readonly defaultLocalSpeechModelIds: SherpaOnnxModelId[];
   private readonly registerVoiceSpeakHandler?: (
     agentId: string,
     handler: VoiceSpeakHandler
@@ -380,6 +382,10 @@ export class Session {
     dictation?: {
       finalTimeoutMs?: number;
       stt?: SpeechToTextProvider | null;
+      localModels?: {
+        modelsDir: string;
+        defaultModelIds: SherpaOnnxModelId[];
+      };
     }
   ) {
     this.clientId = clientId;
@@ -397,6 +403,15 @@ export class Session {
     this.voiceLlmProviderExplicit = voice?.voiceLlmProviderExplicit ?? false;
     this.voiceLlmModel = voice?.voiceLlmModel ?? null;
     this.voiceAgentMcpStdio = voice?.voiceAgentMcpStdio ?? null;
+    const configuredModelsDir = dictation?.localModels?.modelsDir?.trim();
+    this.localSpeechModelsDir =
+      configuredModelsDir && configuredModelsDir.length > 0
+        ? configuredModelsDir
+        : join(this.paseoHome, "models", "local-speech");
+    this.defaultLocalSpeechModelIds =
+      dictation?.localModels?.defaultModelIds && dictation.localModels.defaultModelIds.length > 0
+        ? [...new Set(dictation.localModels.defaultModelIds)]
+        : ["parakeet-tdt-0.6b-v3-int8", "pocket-tts-onnx-int8"];
     this.registerVoiceSpeakHandler = voiceBridge?.registerVoiceSpeakHandler;
     this.unregisterVoiceSpeakHandler = voiceBridge?.unregisterVoiceSpeakHandler;
     this.registerVoiceCallerContext = voiceBridge?.registerVoiceCallerContext;
@@ -1957,9 +1972,7 @@ export class Session {
   private async handleSpeechModelsListRequest(
     msg: Extract<SessionInboundMessage, { type: "speech_models_list_request" }>
   ): Promise<void> {
-    const modelsDir =
-      process.env.PASEO_SHERPA_ONNX_MODELS_DIR?.trim() ||
-      join(this.paseoHome, "models", "sherpa-onnx");
+    const modelsDir = this.localSpeechModelsDir;
 
     const models = await Promise.all(
       listSherpaOnnxModels().map(async (model) => {
@@ -2004,17 +2017,12 @@ export class Session {
   private async handleSpeechModelsDownloadRequest(
     msg: Extract<SessionInboundMessage, { type: "speech_models_download_request" }>
   ): Promise<void> {
-    const modelsDir =
-      process.env.PASEO_SHERPA_ONNX_MODELS_DIR?.trim() ||
-      join(this.paseoHome, "models", "sherpa-onnx");
+    const modelsDir = this.localSpeechModelsDir;
 
     const modelIdsRaw =
       msg.modelIds && msg.modelIds.length > 0
         ? msg.modelIds
-        : [
-            process.env.PASEO_SHERPA_STT_PRESET ?? "zipformer-bilingual-zh-en-2023-02-20",
-            process.env.PASEO_SHERPA_TTS_PRESET ?? "pocket-tts-onnx-int8",
-          ];
+        : this.defaultLocalSpeechModelIds;
 
     const allModelIds = new Set(listSherpaOnnxModels().map((m) => m.id));
     const invalid = modelIdsRaw.filter((id) => !allModelIds.has(id as SherpaOnnxModelId));

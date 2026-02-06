@@ -41,20 +41,9 @@ function parseListenString(listen: string): ListenTarget {
 
 import { VoiceAssistantWebSocketServer } from "./websocket-server.js";
 import { DownloadTokenStore } from "./file-download/token-store.js";
-import { OpenAISTT, type STTConfig } from "./speech/providers/openai/stt.js";
-import { OpenAITTS, type TTSConfig } from "./speech/providers/openai/tts.js";
-import { OpenAIRealtimeTranscriptionSession } from "./speech/providers/openai/realtime-transcription-session.js";
-import type { SpeechToTextProvider, TextToSpeechProvider } from "./speech/speech-provider.js";
-import { SherpaOnlineRecognizerEngine } from "./speech/providers/local/sherpa/sherpa-online-recognizer.js";
-import { SherpaOfflineRecognizerEngine } from "./speech/providers/local/sherpa/sherpa-offline-recognizer.js";
-import { SherpaOnnxSTT } from "./speech/providers/local/sherpa/sherpa-stt.js";
-import { SherpaOnnxParakeetSTT } from "./speech/providers/local/sherpa/sherpa-parakeet-stt.js";
-import { SherpaOnnxTTS } from "./speech/providers/local/sherpa/sherpa-tts.js";
-import { SherpaRealtimeTranscriptionSession } from "./speech/providers/local/sherpa/sherpa-realtime-session.js";
-import { SherpaParakeetRealtimeTranscriptionSession } from "./speech/providers/local/sherpa/sherpa-parakeet-realtime-session.js";
-import { ensureSherpaOnnxModels, getSherpaOnnxModelDir } from "./speech/providers/local/sherpa/model-downloader.js";
-import type { SherpaOnnxModelId } from "./speech/providers/local/sherpa/model-catalog.js";
-import { PocketTtsOnnxTTS } from "./speech/providers/local/pocket/pocket-tts-onnx.js";
+import type { STTConfig } from "./speech/providers/openai/stt.js";
+import type { TTSConfig } from "./speech/providers/openai/tts.js";
+import { initializeSpeechRuntime } from "./speech/speech-runtime.js";
 import { AgentManager } from "./agent/agent-manager.js";
 import { AgentStorage } from "./agent/agent-storage.js";
 import { attachAgentStoragePersistence } from "./persistence-hooks.js";
@@ -108,26 +97,24 @@ export type PaseoOpenAIConfig = {
   apiKey?: string;
   stt?: Partial<STTConfig> & { apiKey?: string };
   tts?: Partial<TTSConfig> & { apiKey?: string };
+  realtimeTranscriptionModel?: string;
 };
 
-export type PaseoSherpaOnnxConfig = {
+export type PaseoLocalSpeechConfig = {
   modelsDir: string;
   autoDownload?: boolean;
-  stt?: {
-    preset?: string;
-  };
-  tts?: {
-    preset?: string;
-    speakerId?: number;
-    speed?: number;
-  };
 };
 
 export type PaseoSpeechConfig = {
   dictationSttProvider?: "openai" | "local";
   voiceSttProvider?: "openai" | "local";
   voiceTtsProvider?: "openai" | "local";
-  sherpaOnnx?: PaseoSherpaOnnxConfig;
+  local?: PaseoLocalSpeechConfig;
+  dictationLocalSttModel?: string;
+  voiceLocalSttModel?: string;
+  voiceLocalTtsModel?: string;
+  voiceLocalTtsSpeakerId?: number;
+  voiceLocalTtsSpeed?: number;
 };
 
 export type PaseoDaemonConfig = {
@@ -551,384 +538,17 @@ export async function createPaseoDaemon(
       });
     },
   });
-
-
-  let sttService: SpeechToTextProvider | null = null;
-  let ttsService: TextToSpeechProvider | null = null;
-  let dictationSttService: SpeechToTextProvider | null = null;
-
-  let sherpaOnline: SherpaOnlineRecognizerEngine | null = null;
-  let sherpaOffline: SherpaOfflineRecognizerEngine | null = null;
-  let sherpaTts: TextToSpeechProvider | null = null;
-
-  const openaiApiKey = config.openai?.apiKey;
-  const speechConfig = config.speech ?? null;
-  const sherpaConfig = speechConfig?.sherpaOnnx ?? null;
-
-  const voiceSttProvider = speechConfig?.voiceSttProvider ?? "local";
-  const voiceTtsProvider = speechConfig?.voiceTtsProvider ?? "local";
-  const dictationSttProvider = speechConfig?.dictationSttProvider ?? "local";
-
-  const wantsLocalDictation = dictationSttProvider === "local";
-  const wantsLocalVoiceStt = voiceSttProvider === "local";
-  const wantsLocalVoiceTts = voiceTtsProvider === "local";
-
-  const openaiSttApiKey = config.openai?.stt?.apiKey ?? openaiApiKey;
-  const openaiTtsApiKey = config.openai?.tts?.apiKey ?? openaiApiKey;
-  const openaiDictationApiKey = openaiApiKey;
-
-  const missingOpenAiCredentialsFor: string[] = [];
-  if (voiceSttProvider === "openai" && !openaiSttApiKey) {
-    missingOpenAiCredentialsFor.push("voice.stt");
-  }
-  if (voiceTtsProvider === "openai" && !openaiTtsApiKey) {
-    missingOpenAiCredentialsFor.push("voice.tts");
-  }
-  if (dictationSttProvider === "openai" && !openaiDictationApiKey) {
-    missingOpenAiCredentialsFor.push("dictation.stt");
-  }
-
-  if (missingOpenAiCredentialsFor.length > 0) {
-    logger.error(
-      {
-        requestedProviders: {
-          dictationStt: dictationSttProvider,
-          voiceStt: voiceSttProvider,
-          voiceTts: voiceTtsProvider,
-        },
-        missingOpenAiCredentialsFor,
-      },
-      "Invalid speech configuration: OpenAI provider selected but credentials are missing"
-    );
-    throw new Error(
-      `Missing OpenAI credentials for configured speech features: ${missingOpenAiCredentialsFor.join(", ")}`
-    );
-  }
-
-  logger.info(
-    {
-      requestedProviders: {
-        dictationStt: dictationSttProvider,
-        voiceStt: voiceSttProvider,
-        voiceTts: voiceTtsProvider,
-      },
-      availability: {
-        openai: {
-          stt: Boolean(openaiSttApiKey),
-          tts: Boolean(openaiTtsApiKey),
-          dictationStt: Boolean(openaiDictationApiKey),
-        },
-        local: {
-          configured: Boolean(sherpaConfig),
-          modelsDir: sherpaConfig?.modelsDir ?? null,
-          autoDownload: sherpaConfig?.autoDownload ?? null,
-        },
-      },
-    },
-    "Speech provider reconciliation started"
-  );
-
-  if ((wantsLocalDictation || wantsLocalVoiceStt || wantsLocalVoiceTts) && sherpaConfig) {
-    const autoDownload = sherpaConfig.autoDownload ?? (process.env.VITEST ? false : true);
-    let sttPreset = (sherpaConfig.stt?.preset ?? "parakeet-tdt-0.6b-v3-int8").trim();
-    if (
-      sttPreset !== "zipformer-bilingual-zh-en-2023-02-20" &&
-      sttPreset !== "paraformer-bilingual-zh-en" &&
-      sttPreset !== "parakeet-tdt-0.6b-v3-int8"
-    ) {
-      throw new Error(`Unknown local STT preset: ${sttPreset}`);
-    }
-
-    let ttsPreset = (sherpaConfig.tts?.preset ?? "pocket-tts-onnx-int8").trim();
-    if (
-      ttsPreset !== "kitten-nano-en-v0_1-fp16" &&
-      ttsPreset !== "kokoro-en-v0_19" &&
-      ttsPreset !== "pocket-tts-onnx-int8"
-    ) {
-      throw new Error(`Unknown local TTS preset: ${ttsPreset}`);
-    }
-
-    const modelIds: SherpaOnnxModelId[] = [];
-    if (wantsLocalDictation || wantsLocalVoiceStt) {
-      modelIds.push(sttPreset as SherpaOnnxModelId);
-    }
-    if (wantsLocalVoiceTts) {
-      modelIds.push(ttsPreset as SherpaOnnxModelId);
-    }
-
-    try {
-      logger.info(
-        {
-          modelsDir: sherpaConfig.modelsDir,
-          modelIds,
-          autoDownload,
-        },
-        "Ensuring local speech models"
-      );
-      await ensureSherpaOnnxModels({
-        modelsDir: sherpaConfig.modelsDir,
-        modelIds,
-        autoDownload,
-        logger,
-      });
-    } catch (err) {
-      logger.error(
-        {
-          err,
-          modelsDir: sherpaConfig.modelsDir,
-          autoDownload,
-          hint:
-            "Run: npm run dev --workspace=@getpaseo/server, then run: " +
-            "`tsx packages/server/scripts/download-speech-models.ts --models-dir <DIR> --model <MODEL_ID>`",
-        },
-        "Failed to ensure local speech models"
-      );
-    }
-  }
-
-  if ((wantsLocalDictation || wantsLocalVoiceStt) && sherpaConfig) {
-    let preset = (sherpaConfig.stt?.preset ?? "parakeet-tdt-0.6b-v3-int8").trim();
-    if (
-      preset !== "zipformer-bilingual-zh-en-2023-02-20" &&
-      preset !== "paraformer-bilingual-zh-en" &&
-      preset !== "parakeet-tdt-0.6b-v3-int8"
-    ) {
-      throw new Error(`Unknown local STT preset: ${preset}`);
-    }
-    const base = sherpaConfig.modelsDir;
-
-    try {
-      if (preset === "parakeet-tdt-0.6b-v3-int8") {
-        const modelDir = getSherpaOnnxModelDir(base, "parakeet-tdt-0.6b-v3-int8");
-        sherpaOffline = new SherpaOfflineRecognizerEngine(
-          {
-            model: {
-              kind: "nemo_transducer",
-              encoder: `${modelDir}/encoder.int8.onnx`,
-              decoder: `${modelDir}/decoder.int8.onnx`,
-              joiner: `${modelDir}/joiner.int8.onnx`,
-              tokens: `${modelDir}/tokens.txt`,
-            },
-            numThreads: 2,
-            debug: 0,
-          },
-          logger
-        );
-      } else {
-        const model =
-          preset === "paraformer-bilingual-zh-en"
-            ? {
-                kind: "paraformer" as const,
-                encoder: `${base}/sherpa-onnx-streaming-paraformer-bilingual-zh-en/encoder.int8.onnx`,
-                decoder: `${base}/sherpa-onnx-streaming-paraformer-bilingual-zh-en/decoder.int8.onnx`,
-                tokens: `${base}/sherpa-onnx-streaming-paraformer-bilingual-zh-en/tokens.txt`,
-              }
-            : {
-                kind: "transducer" as const,
-                encoder: `${base}/sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20/encoder-epoch-99-avg-1.onnx`,
-                decoder: `${base}/sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20/decoder-epoch-99-avg-1.onnx`,
-                joiner: `${base}/sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20/joiner-epoch-99-avg-1.onnx`,
-                tokens: `${base}/sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20/tokens.txt`,
-                modelType: "zipformer",
-              };
-
-        sherpaOnline = new SherpaOnlineRecognizerEngine(
-          {
-            model,
-            numThreads: 1,
-            debug: 0,
-          },
-          logger
-        );
-      }
-    } catch (err) {
-      logger.error(
-        {
-          err,
-          modelsDir: sherpaConfig.modelsDir,
-          preset,
-          hint: `Run: tsx packages/server/scripts/download-speech-models.ts --models-dir '${sherpaConfig.modelsDir}' --model '${preset}'`,
-        },
-        "Failed to initialize Sherpa STT (models missing or invalid)"
-      );
-      sherpaOnline = null;
-      sherpaOffline = null;
-    }
-  } else if (wantsLocalDictation || wantsLocalVoiceStt) {
-    logger.warn(
-      { configured: Boolean(sherpaConfig) },
-      "Local STT selected but local provider config is missing; STT will be unavailable"
-    );
-  }
-
-  if (wantsLocalVoiceTts && sherpaConfig) {
-    let preset = (sherpaConfig.tts?.preset ?? "pocket-tts-onnx-int8").trim();
-    if (
-      preset !== "kitten-nano-en-v0_1-fp16" &&
-      preset !== "kokoro-en-v0_19" &&
-      preset !== "pocket-tts-onnx-int8"
-    ) {
-      throw new Error(`Unknown local TTS preset: ${preset}`);
-    }
-    try {
-      if (preset === "pocket-tts-onnx-int8") {
-        const modelDir = getSherpaOnnxModelDir(sherpaConfig.modelsDir, "pocket-tts-onnx-int8");
-        sherpaTts = await PocketTtsOnnxTTS.create(
-          {
-            modelDir,
-            precision: "int8",
-            targetChunkMs: 50,
-          },
-          logger
-        );
-      } else {
-        const modelDir = `${sherpaConfig.modelsDir}/${preset}`;
-        sherpaTts = new SherpaOnnxTTS(
-          {
-            preset: preset as any,
-            modelDir,
-            speakerId: sherpaConfig.tts?.speakerId,
-            speed: sherpaConfig.tts?.speed,
-          },
-          logger
-        );
-      }
-    } catch (err) {
-      logger.error(
-        {
-          err,
-          preset,
-          hint: `Run: tsx packages/server/scripts/download-speech-models.ts --models-dir '${sherpaConfig.modelsDir}' --model '${preset}'`,
-        },
-        "Failed to initialize Sherpa TTS (models missing or invalid)"
-      );
-      sherpaTts = null;
-    }
-  } else if (wantsLocalVoiceTts) {
-    logger.warn(
-      { configured: Boolean(sherpaConfig) },
-      "Local TTS selected but local provider config is missing; TTS will be unavailable"
-    );
-  }
-
-  if (wantsLocalVoiceStt && sherpaOffline) {
-    sttService = new SherpaOnnxParakeetSTT({ engine: sherpaOffline }, logger);
-  } else if (wantsLocalVoiceStt && sherpaOnline) {
-    sttService = new SherpaOnnxSTT({ engine: sherpaOnline }, logger);
-  }
-
-  if (wantsLocalVoiceTts && sherpaTts) {
-    ttsService = sherpaTts;
-  }
-
-  if (wantsLocalDictation && sherpaOnline) {
-    dictationSttService = {
-      id: "local",
-      createSession: () => new SherpaRealtimeTranscriptionSession({ engine: sherpaOnline! }),
-    };
-  } else if (wantsLocalDictation && sherpaOffline) {
-    dictationSttService = {
-      id: "local",
-      createSession: () =>
-        new SherpaParakeetRealtimeTranscriptionSession({ engine: sherpaOffline! }),
-    };
-  }
-
-  const needsOpenAiStt = !sttService && voiceSttProvider === "openai";
-  const needsOpenAiTts = !ttsService && voiceTtsProvider === "openai";
-  const needsOpenAiDictation = dictationSttProvider === "openai";
-
-  if (
-    (needsOpenAiStt || needsOpenAiTts || needsOpenAiDictation) &&
-    (openaiSttApiKey || openaiTtsApiKey || openaiDictationApiKey)
-  ) {
-    logger.info("OpenAI speech provider initialized");
-
-    if (needsOpenAiStt) {
-      if (openaiSttApiKey) {
-        const { apiKey: _sttApiKey, ...sttConfig } = config.openai?.stt ?? {};
-        sttService = new OpenAISTT(
-          {
-            apiKey: openaiSttApiKey,
-            ...sttConfig,
-          },
-          logger
-        );
-      }
-    }
-
-    if (needsOpenAiTts) {
-      if (openaiTtsApiKey) {
-        const { apiKey: _ttsApiKey, ...ttsConfig } = config.openai?.tts ?? {};
-        ttsService = new OpenAITTS(
-          {
-            apiKey: openaiTtsApiKey,
-            voice: "alloy",
-            model: "tts-1",
-            responseFormat: "pcm",
-            ...ttsConfig,
-          },
-          logger
-        );
-      }
-    }
-
-    if (needsOpenAiDictation) {
-      const transcriptionModel =
-        process.env.OPENAI_REALTIME_TRANSCRIPTION_MODEL ?? "gpt-4o-transcribe";
-
-      dictationSttService = {
-        id: "openai",
-        createSession: ({ logger: sessionLogger, language, prompt }) =>
-          new OpenAIRealtimeTranscriptionSession({
-            apiKey: openaiDictationApiKey!,
-            logger: sessionLogger,
-            transcriptionModel,
-            ...(language ? { language } : {}),
-            ...(prompt ? { prompt } : {}),
-            turnDetection: null,
-          }),
-      };
-    }
-  } else if (needsOpenAiStt || needsOpenAiTts || needsOpenAiDictation) {
-    logger.warn("OPENAI_API_KEY not set - OpenAI STT/TTS/dictation is unavailable");
-  }
-
-  const effectiveProviders = {
-    dictationStt: dictationSttService?.id ?? "unavailable",
-    voiceStt: sttService?.id ?? "unavailable",
-    voiceTts: !ttsService ? "unavailable" : ttsService === sherpaTts ? "local" : "openai",
-  };
-  const unavailableFeatures = [
-    !dictationSttService ? "dictation.stt" : null,
-    !sttService ? "voice.stt" : null,
-    !ttsService ? "voice.tts" : null,
-  ].filter((feature): feature is string => feature !== null);
-
-  if (unavailableFeatures.length > 0) {
-    logger.error(
-      {
-        requestedProviders: {
-          dictationStt: dictationSttProvider,
-          voiceStt: voiceSttProvider,
-          voiceTts: voiceTtsProvider,
-        },
-        effectiveProviders,
-        unavailableFeatures,
-      },
-      "Speech provider reconciliation failed: configured features are unavailable"
-    );
-    throw new Error(
-      `Configured speech features unavailable: ${unavailableFeatures.join(", ")}`
-    );
-  } else {
-    logger.info(
-      {
-        effectiveProviders,
-      },
-      "Speech provider reconciliation completed"
-    );
-  }
+  const {
+    sttService,
+    ttsService,
+    dictationSttService,
+    cleanup: cleanupSpeechRuntime,
+    localModelConfig,
+  } = await initializeSpeechRuntime({
+    logger,
+    openaiConfig: config.openai,
+    speechConfig: config.speech,
+  });
 
   wsServer = new VoiceAssistantWebSocketServer(
     httpServer,
@@ -962,6 +582,7 @@ export async function createPaseoDaemon(
     {
       finalTimeoutMs: config.dictationFinalTimeoutMs,
       stt: dictationSttService,
+      localModels: localModelConfig ?? undefined,
     }
   );
 
@@ -1064,11 +685,7 @@ export async function createPaseoDaemon(
     await agentStorage.flush().catch(() => undefined);
     await shutdownProviders(logger);
     terminalManager.killAll();
-    if (sherpaTts && typeof (sherpaTts as any).free === "function") {
-      (sherpaTts as any).free();
-    }
-    sherpaOnline?.free();
-    sherpaOffline?.free();
+    cleanupSpeechRuntime();
     await relayTransport?.stop().catch(() => undefined);
     if (wsServer) {
       await wsServer.close();

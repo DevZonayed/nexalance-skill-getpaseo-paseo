@@ -1,3 +1,5 @@
+import { z } from "zod";
+
 export type SherpaOnnxModelKind = "stt-online" | "stt-offline" | "tts";
 
 export type SherpaOnnxModelId =
@@ -7,6 +9,50 @@ export type SherpaOnnxModelId =
   | "kitten-nano-en-v0_1-fp16"
   | "kokoro-en-v0_19"
   | "pocket-tts-onnx-int8";
+
+export const LOCAL_STT_MODEL_IDS = [
+  "zipformer-bilingual-zh-en-2023-02-20",
+  "paraformer-bilingual-zh-en",
+  "parakeet-tdt-0.6b-v3-int8",
+] as const;
+export type LocalSttModelId = (typeof LOCAL_STT_MODEL_IDS)[number];
+
+export const LOCAL_TTS_MODEL_IDS = [
+  "kitten-nano-en-v0_1-fp16",
+  "kokoro-en-v0_19",
+  "pocket-tts-onnx-int8",
+] as const;
+export type LocalTtsModelId = (typeof LOCAL_TTS_MODEL_IDS)[number];
+
+const STT_MODEL_ALIASES: Record<string, (typeof LOCAL_STT_MODEL_IDS)[number]> = {
+  zipformer: "zipformer-bilingual-zh-en-2023-02-20",
+  "zipformer-bilingual": "zipformer-bilingual-zh-en-2023-02-20",
+  paraformer: "paraformer-bilingual-zh-en",
+  parakeet: "parakeet-tdt-0.6b-v3-int8",
+  "parakeet-v3": "parakeet-tdt-0.6b-v3-int8",
+  "parakeet-tdt": "parakeet-tdt-0.6b-v3-int8",
+};
+
+const TTS_MODEL_ALIASES: Record<string, (typeof LOCAL_TTS_MODEL_IDS)[number]> = {
+  pocket: "pocket-tts-onnx-int8",
+  "pocket-tts": "pocket-tts-onnx-int8",
+  kitten: "kitten-nano-en-v0_1-fp16",
+  kokoro: "kokoro-en-v0_19",
+};
+
+export const LocalSttModelIdSchema = z.preprocess((value) => {
+  if (typeof value !== "string") return value;
+  const normalized = value.trim().toLowerCase();
+  if (!normalized) return value;
+  return STT_MODEL_ALIASES[normalized] ?? normalized;
+}, z.enum(LOCAL_STT_MODEL_IDS));
+
+export const LocalTtsModelIdSchema = z.preprocess((value) => {
+  if (typeof value !== "string") return value;
+  const normalized = value.trim().toLowerCase();
+  if (!normalized) return value;
+  return TTS_MODEL_ALIASES[normalized] ?? normalized;
+}, z.enum(LOCAL_TTS_MODEL_IDS));
 
 export type SherpaOnnxModelSpec = {
   id: SherpaOnnxModelId;

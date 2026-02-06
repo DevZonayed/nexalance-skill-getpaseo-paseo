@@ -20,6 +20,7 @@ import type { AgentProvider } from "./agent/agent-sdk-types.js";
 import { PushTokenStore } from "./push/token-store.js";
 import { PushService } from "./push/push-service.js";
 import type { SpeechToTextProvider, TextToSpeechProvider } from "./speech/speech-provider.js";
+import type { SherpaOnnxModelId } from "./speech/providers/local/sherpa/model-catalog.js";
 
 export type AgentMcpTransportFactory = () => Promise<Transport>;
 type VoiceMcpStdioConfig = {
@@ -76,6 +77,10 @@ export class VoiceAssistantWebSocketServer {
   private readonly dictation: {
     finalTimeoutMs?: number;
     stt?: SpeechToTextProvider | null;
+    localModels?: {
+      modelsDir: string;
+      defaultModelIds: SherpaOnnxModelId[];
+    };
   } | null;
   private readonly voice: {
     voiceLlmProvider?: AgentProvider | null;
@@ -120,6 +125,10 @@ export class VoiceAssistantWebSocketServer {
     dictation?: {
       finalTimeoutMs?: number;
       stt?: SpeechToTextProvider | null;
+      localModels?: {
+        modelsDir: string;
+        defaultModelIds: SherpaOnnxModelId[];
+      };
     }
   ) {
     this.logger = logger.child({ module: "websocket-server" });

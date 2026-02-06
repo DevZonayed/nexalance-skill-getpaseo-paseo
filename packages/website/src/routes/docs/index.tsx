@@ -87,22 +87,25 @@ function GettingStarted() {
       <section className="space-y-4">
         <h2 className="text-xl font-medium">Voice Setup</h2>
         <p className="text-white/60">
-          Voice supports two providers: local (default) and OpenAI. Local uses ONNX models and will
-          download missing model files automatically at daemon startup.
+          Paseo includes first-class voice support with a local-first architecture and configurable speech
+          providers.
         </p>
-        <div className="bg-card border border-border rounded-lg p-4 font-mono text-sm">
-          <span className="text-muted-foreground select-none">$ </span>
-          <span>export OPENAI_API_KEY=your-key-here</span>
-        </div>
         <p className="text-white/60">
-          Set <code className="font-mono">OPENAI_API_KEY</code> if you want OpenAI speech providers.
-          For local defaults and model presets, see Configuration.
+          For architecture, local model behavior, and provider configuration, see the Voice docs page.
         </p>
+        <a href="/docs/voice" className="underline hover:text-white/80">
+          Voice docs
+        </a>
       </section>
 
       <section className="space-y-4">
         <h2 className="text-xl font-medium">Next</h2>
         <ul className="text-white/60 space-y-2 list-disc list-inside">
+          <li>
+            <a href="/docs/voice" className="underline hover:text-white/80">
+              Voice
+            </a>
+          </li>
           <li>
             <a href="/docs/configuration" className="underline hover:text-white/80">
               Configuration

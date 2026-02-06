@@ -96,7 +96,7 @@ describe("speech models (download E2E)", () => {
       const set = getModelSet();
 
       const paseoHomeRoot = mkdtempSync(path.join(tmpdir(), "paseo-speech-download-"));
-      const modelsDir = path.join(paseoHomeRoot, ".paseo", "models", "sherpa-onnx");
+      const modelsDir = path.join(paseoHomeRoot, ".paseo", "models", "local-speech");
 
       const modelIds: SherpaOnnxModelId[] =
         set === "parakeet-pocket"
@@ -117,12 +117,20 @@ describe("speech models (download E2E)", () => {
           dictationSttProvider: "local",
           voiceSttProvider: "local",
           voiceTtsProvider: "local",
-          sherpaOnnx: {
+          local: {
             modelsDir,
             autoDownload: false,
-            stt: { preset: set === "parakeet-pocket" ? "parakeet-tdt-0.6b-v3-int8" : "zipformer-bilingual-zh-en-2023-02-20" },
-            tts: { preset: set === "parakeet-pocket" ? "pocket-tts-onnx-int8" : "kitten-nano-en-v0_1-fp16" },
           },
+          dictationLocalSttModel:
+            set === "parakeet-pocket"
+              ? "parakeet-tdt-0.6b-v3-int8"
+              : "zipformer-bilingual-zh-en-2023-02-20",
+          voiceLocalSttModel:
+            set === "parakeet-pocket"
+              ? "parakeet-tdt-0.6b-v3-int8"
+              : "zipformer-bilingual-zh-en-2023-02-20",
+          voiceLocalTtsModel:
+            set === "parakeet-pocket" ? "pocket-tts-onnx-int8" : "kitten-nano-en-v0_1-fp16",
         },
       });
 

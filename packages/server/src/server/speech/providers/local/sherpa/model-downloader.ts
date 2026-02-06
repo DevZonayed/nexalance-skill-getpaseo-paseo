@@ -110,7 +110,7 @@ export async function ensureSherpaOnnxModel(options: EnsureSherpaOnnxModelOption
   if (!options.autoDownload) {
     throw new Error(
       `Missing sherpa-onnx model files for ${options.modelId} in ${modelDir}. ` +
-        `Set PASEO_SHERPA_ONNX_AUTO_DOWNLOAD=1 to auto-download.`
+        `Set PASEO_LOCAL_AUTO_DOWNLOAD=1 to auto-download.`
     );
   }
 

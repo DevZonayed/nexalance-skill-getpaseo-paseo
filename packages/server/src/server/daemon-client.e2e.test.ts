@@ -18,9 +18,9 @@ import {
 
 const openaiApiKey = process.env.OPENAI_API_KEY ?? null;
 
-const sherpaModelsDir =
-  process.env.PASEO_SHERPA_ONNX_MODELS_DIR ??
-  path.join(homedir(), ".paseo", "models", "sherpa-onnx");
+const localModelsDir =
+  process.env.PASEO_LOCAL_MODELS_DIR ??
+  path.join(homedir(), ".paseo", "models", "local-speech");
 
 function hasSherpaZipformerModels(modelsDir: string): boolean {
   return (
@@ -49,7 +49,7 @@ function hasSherpaKittenModels(modelsDir: string): boolean {
   );
 }
 
-const hasLocalSpeech = hasSherpaZipformerModels(sherpaModelsDir) && hasSherpaKittenModels(sherpaModelsDir);
+const hasLocalSpeech = hasSherpaZipformerModels(localModelsDir) && hasSherpaKittenModels(localModelsDir);
 const hasAnySpeech = hasLocalSpeech || Boolean(openaiApiKey);
 const speechTest = hasAnySpeech ? test : test.skip;
 
@@ -102,15 +102,17 @@ describe("daemon client E2E", () => {
           dictationSttProvider: "local" as const,
           voiceSttProvider: "local" as const,
           voiceTtsProvider: "local" as const,
-          sherpaOnnx: {
-            modelsDir: sherpaModelsDir,
-            stt: {
-              preset: process.env.PASEO_SHERPA_STT_PRESET ?? "zipformer-bilingual-zh-en-2023-02-20",
-            },
-            tts: {
-              preset: process.env.PASEO_SHERPA_TTS_PRESET ?? "kitten-nano-en-v0_1-fp16",
-            },
+          local: {
+            modelsDir: localModelsDir,
           },
+          dictationLocalSttModel:
+            process.env.PASEO_DICTATION_LOCAL_STT_MODEL ??
+            "zipformer-bilingual-zh-en-2023-02-20",
+          voiceLocalSttModel:
+            process.env.PASEO_VOICE_LOCAL_STT_MODEL ??
+            "zipformer-bilingual-zh-en-2023-02-20",
+          voiceLocalTtsModel:
+            process.env.PASEO_VOICE_LOCAL_TTS_MODEL ?? "kitten-nano-en-v0_1-fp16",
         };
 
     ctx = await createDaemonTestContext({
