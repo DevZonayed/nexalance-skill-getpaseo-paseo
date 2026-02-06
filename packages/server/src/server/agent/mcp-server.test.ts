@@ -98,8 +98,11 @@ describe("create_agent MCP tool", () => {
     expect(parsed.error.issues.some((issue: { path: string[] }) => issue.path[0] === "initialPrompt")).toBe(true);
   });
 
-  it("fails immediately when cwd does not exist", async () => {
-    const { agentManager, agentStorage } = createTestDeps();
+  it("surfaces createAgent validation failures", async () => {
+    const { agentManager, agentStorage, spies } = createTestDeps();
+    spies.agentManager.createAgent.mockRejectedValue(
+      new Error("Working directory does not exist: /path/that/does/not/exist")
+    );
     const server = await createAgentMcpServer({ agentManager, agentStorage, logger });
     const tool = (server as any)._registeredTools["create_agent"];
 

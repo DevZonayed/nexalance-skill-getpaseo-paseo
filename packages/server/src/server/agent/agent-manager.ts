@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { resolve } from "node:path";
+import { stat } from "node:fs/promises";
 import {
   AGENT_LIFECYCLE_STATUSES,
   type AgentLifecycleStatus,
@@ -1319,6 +1320,20 @@ export class AgentManager {
     // Always resolve cwd to absolute path for consistent history file lookup
     if (normalized.cwd) {
       normalized.cwd = resolve(normalized.cwd);
+      try {
+        const cwdStats = await stat(normalized.cwd);
+        if (!cwdStats.isDirectory()) {
+          throw new Error(`Working directory is not a directory: ${normalized.cwd}`);
+        }
+      } catch (error) {
+        if (error instanceof Error && "code" in error && (error as NodeJS.ErrnoException).code === "ENOENT") {
+          throw new Error(`Working directory does not exist: ${normalized.cwd}`);
+        }
+        if (error instanceof Error) {
+          throw error;
+        }
+        throw new Error(`Failed to access working directory: ${normalized.cwd}`);
+      }
     }
 
     if (typeof normalized.model === "string") {

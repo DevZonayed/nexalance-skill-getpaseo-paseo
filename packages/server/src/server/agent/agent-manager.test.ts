@@ -129,6 +129,26 @@ describe("AgentManager", () => {
     expect(snapshot.model).toBeUndefined();
   });
 
+  test("createAgent fails when cwd does not exist", async () => {
+    const workdir = mkdtempSync(join(tmpdir(), "agent-manager-test-"));
+    const storagePath = join(workdir, "agents");
+    const storage = new AgentStorage(storagePath, logger);
+    const manager = new AgentManager({
+      clients: {
+        codex: new TestAgentClient(),
+      },
+      registry: storage,
+      logger,
+    });
+
+    await expect(
+      manager.createAgent({
+        provider: "codex",
+        cwd: join(workdir, "does-not-exist"),
+      })
+    ).rejects.toThrow("Working directory does not exist");
+  });
+
   test("createAgent persists provided title before returning", async () => {
     const workdir = mkdtempSync(join(tmpdir(), "agent-manager-test-"));
     const storagePath = join(workdir, "agents");

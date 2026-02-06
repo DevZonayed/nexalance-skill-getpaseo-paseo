@@ -19,7 +19,6 @@ import { Session } from "./session.js";
 import type { AgentProvider } from "./agent/agent-sdk-types.js";
 import { PushTokenStore } from "./push/token-store.js";
 import { PushService } from "./push/push-service.js";
-import { VoiceConversationStore } from "./voice-conversation-store.js";
 import type { SpeechToTextProvider, TextToSpeechProvider } from "./speech/speech-provider.js";
 
 export type AgentMcpTransportFactory = () => Promise<Transport>;
@@ -70,7 +69,6 @@ export class VoiceAssistantWebSocketServer {
   private readonly stt: SpeechToTextProvider | null;
   private readonly tts: TextToSpeechProvider | null;
   private readonly terminalManager: TerminalManager | null;
-  private readonly voiceConversationStore: VoiceConversationStore;
   private readonly dictation: {
     finalTimeoutMs?: number;
     stt?: SpeechToTextProvider | null;
@@ -134,9 +132,6 @@ export class VoiceAssistantWebSocketServer {
     this.stt = speech?.stt ?? null;
     this.tts = speech?.tts ?? null;
     this.terminalManager = terminalManager ?? null;
-    this.voiceConversationStore = new VoiceConversationStore(
-      join(paseoHome, "voice-conversations")
-    );
     this.voice = voice ?? null;
     this.dictation = dictation ?? null;
 
@@ -247,7 +242,6 @@ export class VoiceAssistantWebSocketServer {
       this.stt,
       this.tts,
       this.terminalManager,
-      this.voiceConversationStore,
       this.voice ?? undefined,
       {
         registerVoiceSpeakHandler: (agentId, handler) => {

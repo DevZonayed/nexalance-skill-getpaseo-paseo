@@ -39,7 +39,6 @@ import { isPaseoDictationDebugEnabled } from "./agent/recordings-debug.js";
 import {
   DictationStreamManager,
 } from "./dictation/dictation-stream-manager.js";
-import type { VoiceConversationStore } from "./voice-conversation-store.js";
 import {
   buildConfigOverrides,
   buildSessionConfig,
@@ -63,7 +62,6 @@ import { AgentManager } from "./agent/agent-manager.js";
 import type { ManagedAgent } from "./agent/agent-manager.js";
 import { scheduleAgentMetadataGeneration } from "./agent/agent-metadata-generator.js";
 import { toAgentPayload } from "./agent/agent-projections.js";
-import { validateWorkingDirectoryExists } from "./agent/working-directory-validation.js";
 import {
   StructuredAgentResponseError,
   generateStructuredAgentResponse,
@@ -288,7 +286,6 @@ export class Session {
   private readonly sessionId: string;
   private readonly onMessage: (msg: SessionOutboundMessage) => void;
   private readonly sessionLogger: pino.Logger;
-  private readonly voiceConversationStore: VoiceConversationStore;
   private readonly paseoHome: string;
 
   // State machine
@@ -299,8 +296,6 @@ export class Session {
   // Voice mode state
   private isVoiceMode = false;
   private speechInProgress = false;
-  // OpenRouter voice-only conversation storage identifier.
-  private voiceConversationId: string | null = null;
 
   private readonly dictationStreamManager: DictationStreamManager;
 
@@ -381,7 +376,6 @@ export class Session {
     stt: SpeechToTextProvider | null,
     tts: TextToSpeechProvider | null,
     terminalManager: TerminalManager | null,
-    voiceConversationStore: VoiceConversationStore,
     voice?: {
       openrouterApiKey?: string | null;
       voiceLlmProvider?: VoiceLlmProvider | null;
@@ -412,7 +406,6 @@ export class Session {
     this.agentStorage = agentStorage;
     this.createAgentMcpTransport = createAgentMcpTransport;
     this.terminalManager = terminalManager;
-    this.voiceConversationStore = voiceConversationStore;
     this.openrouterApiKey = voice?.openrouterApiKey ?? null;
     this.voiceLlmProvider = voice?.voiceLlmProvider ?? null;
     this.voiceLlmProviderExplicit = voice?.voiceLlmProviderExplicit ?? false;
@@ -1179,7 +1172,7 @@ export class Session {
     requestId: string
   ): Promise<void> {
     if (this.voiceLlmProvider === "openrouter") {
-      this.voiceConversationId = null;
+      this.voiceAssistantAgentId = null;
       this.messages = [];
       this.emit({
         type: "voice_conversation_loaded",
@@ -1191,20 +1184,13 @@ export class Session {
       });
       return;
     }
-
-    const loaded = await this.voiceConversationStore.load(
-      this.sessionLogger,
-      voiceConversationId
-    );
-
-    this.voiceConversationId = voiceConversationId;
-    this.messages = loaded ?? [];
+    this.voiceAssistantAgentId = voiceConversationId;
 
     this.emit({
       type: "voice_conversation_loaded",
       payload: {
         voiceConversationId,
-        messageCount: this.messages.length,
+        messageCount: 0,
         requestId,
       },
     });
@@ -1214,27 +1200,31 @@ export class Session {
    * List all voice conversations
    */
   public async handleListVoiceConversations(requestId: string): Promise<void> {
-    if (this.voiceLlmProvider === "openrouter") {
-      this.emit({
-        type: "list_voice_conversations_response",
-        payload: {
-          conversations: [],
-          requestId,
-        },
-      });
-      return;
-    }
-
     try {
-      const conversations = await this.voiceConversationStore.list(this.sessionLogger);
+      const agents = await this.agentStorage.list();
+      const conversations = agents
+        .filter(
+          (agent) =>
+            agent.labels?.surface === "voice" &&
+            !agent.archivedAt &&
+            !agent.internal
+        )
+        .map((agent) => ({
+          id: agent.id,
+          lastUpdated: new Date(
+            agent.lastActivityAt ?? agent.updatedAt
+          ).toISOString(),
+          messageCount: 0,
+        }))
+        .sort(
+          (a, b) =>
+            new Date(b.lastUpdated).getTime() -
+            new Date(a.lastUpdated).getTime()
+        );
       this.emit({
         type: "list_voice_conversations_response",
         payload: {
-          conversations: conversations.map((conv) => ({
-            id: conv.id,
-            lastUpdated: conv.lastUpdated.toISOString(),
-            messageCount: conv.messageCount,
-          })),
+          conversations,
           requestId,
         },
       });
@@ -1262,20 +1252,26 @@ export class Session {
     voiceConversationId: string,
     requestId: string
   ): Promise<void> {
-    if (this.voiceLlmProvider === "openrouter") {
-      this.emit({
-        type: "delete_voice_conversation_response",
-        payload: {
-          voiceConversationId,
-          success: true,
-          requestId,
-        },
-      });
-      return;
-    }
-
     try {
-      await this.voiceConversationStore.delete(this.sessionLogger, voiceConversationId);
+      const record = await this.agentStorage.get(voiceConversationId);
+      if (!record || record.labels?.surface !== "voice") {
+        this.emit({
+          type: "delete_voice_conversation_response",
+          payload: {
+            voiceConversationId,
+            success: false,
+            error: "Voice conversation not found",
+            requestId,
+          },
+        });
+        return;
+      }
+
+      const live = this.agentManager.getAgent(voiceConversationId);
+      if (live) {
+        await this.agentManager.closeAgent(voiceConversationId);
+      }
+      await this.agentStorage.remove(voiceConversationId);
       this.emit({
         type: "delete_voice_conversation_response",
         payload: {
@@ -1440,7 +1436,6 @@ export class Session {
 
       this.isVoiceMode = true;
       if (this.voiceLlmProvider !== "openrouter") {
-        this.voiceConversationId = null;
         this.voiceAssistantAgentId = voiceConversationId;
         this.sessionLogger.info(
           { voiceAssistantAgentId: this.voiceAssistantAgentId },
@@ -1449,8 +1444,8 @@ export class Session {
         return;
       }
 
-      // OpenRouter voice mode is always ephemeral: no out-of-band persistence.
-      this.voiceConversationId = null;
+      // OpenRouter voice mode is always ephemeral.
+      this.voiceAssistantAgentId = null;
       this.messages = [];
 
       this.sessionLogger.info(
@@ -1468,7 +1463,7 @@ export class Session {
       );
       return;
     }
-    this.voiceConversationId = null;
+    this.voiceAssistantAgentId = null;
     this.sessionLogger.info("Voice conversation disabled");
   }
 
@@ -1586,10 +1581,6 @@ export class Session {
     );
 
     try {
-      // Validate that the working directory exists
-      const resolvedCwd = expandTilde(config.cwd);
-      await validateWorkingDirectoryExists(resolvedCwd);
-
       const { sessionConfig, worktreeConfig } = await this.buildAgentSessionConfig(
         config,
         git,
@@ -5436,11 +5427,11 @@ export class Session {
       const dumpDir = join(process.cwd(), ".debug.conversations");
       await mkdir(dumpDir, { recursive: true });
 
-      const filename = `${this.voiceConversationId ?? this.sessionId}-${this.turnIndex}.json`;
+      const filename = `${this.sessionId}-${this.turnIndex}.json`;
       const filepath = join(dumpDir, filename);
 
       const dump = {
-        voiceConversationId: this.voiceConversationId,
+        voiceAssistantAgentId: this.voiceAssistantAgentId,
         sessionId: this.sessionId,
         turnIndex: this.turnIndex,
         timestamp: new Date().toISOString(),

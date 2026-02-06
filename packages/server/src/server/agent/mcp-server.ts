@@ -28,7 +28,6 @@ import { AgentStorage } from "./agent-storage.js";
 import { createWorktree } from "../../utils/worktree.js";
 import { WaitForAgentTracker } from "./wait-for-agent-tracker.js";
 import { scheduleAgentMetadataGeneration } from "./agent-metadata-generator.js";
-import { validateWorkingDirectoryExists } from "./working-directory-validation.js";
 
 export interface AgentMcpServerOptions {
   agentManager: AgentManager;
@@ -497,7 +496,6 @@ export async function createAgentMcpServer(
         } = topLevelArgs;
 
         resolvedCwd = expandPath(cwd);
-        await validateWorkingDirectoryExists(resolvedCwd);
 
         if (worktreeName) {
           if (!baseBranch) {
@@ -515,7 +513,6 @@ export async function createAgentMcpServer(
 
         resolvedMode = initialMode;
       }
-      await validateWorkingDirectoryExists(resolvedCwd);
 
       const provider: AgentProvider = agentType ?? "claude";
       const normalizedTitle = title?.trim() ?? null;
