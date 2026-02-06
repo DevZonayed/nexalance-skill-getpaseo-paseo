@@ -396,14 +396,23 @@ export function AgentStreamView({
       }
 
       const gapBelow = getGapBelow(item, index);
+      const nextItem = flatListData[index - 1];
+      const isEndOfAssistantTurn =
+        item.kind === "assistant_message" &&
+        (nextItem?.kind === "user_message" ||
+          (nextItem === undefined && agent.status !== "running"));
+      const getTurnContent = () => collectAssistantTurnContent(flatListData, index);
 
       return (
         <View style={[stylesheet.streamItemWrapper, { marginBottom: gapBelow }]}>
           {content}
+          {isEndOfAssistantTurn ? (
+            <TurnCopyButton getContent={getTurnContent} />
+          ) : null}
         </View>
       );
     },
-    [getGapBelow, renderStreamItemContent]
+    [getGapBelow, renderStreamItemContent, flatListData, agent.status]
   );
 
   const pendingPermissionItems = useMemo(
@@ -483,18 +492,7 @@ export function AgentStreamView({
   }, [agentId, pendingPermissionItems.length, streamHead, streamItems]);
 
   const showWorkingIndicator = agent.status === "running";
-  const newestItem = flatListData[0] ?? null;
-  const latestTurnContent = useMemo(() => {
-    if (flatListData.length === 0) {
-      return "";
-    }
-    return collectAssistantTurnContent(flatListData, 0);
-  }, [flatListData]);
-  const showCopyButton =
-    agent.status !== "running" &&
-    newestItem?.kind === "assistant_message" &&
-    latestTurnContent.trim().length > 0;
-  const showBottomBar = showWorkingIndicator || showCopyButton || isVoiceMode;
+  const showBottomBar = showWorkingIndicator || isVoiceMode;
 
   const listHeaderComponent = useMemo(() => {
     const hasPermissions = pendingPermissionItems.length > 0;
@@ -504,11 +502,7 @@ export function AgentStreamView({
       return null;
     }
 
-    const leftContent = showWorkingIndicator ? (
-      <WorkingIndicator />
-    ) : showCopyButton ? (
-      <TurnCopyButton getContent={() => latestTurnContent} />
-    ) : null;
+    const leftContent = showWorkingIndicator ? <WorkingIndicator /> : null;
 
     return (
       <View style={stylesheet.contentWrapper}>
@@ -564,8 +558,6 @@ export function AgentStreamView({
     renderStreamItemContent,
     tightGap,
     showBottomBar,
-    showCopyButton,
-    latestTurnContent,
     isVoiceMode,
   ]);
 
@@ -574,14 +566,12 @@ export function AgentStreamView({
       pendingPermissionCount: pendingPermissionItems.length,
       showWorkingIndicator,
       showBottomBar,
-      showCopyButton,
       isVoiceMode,
     }),
     [
       pendingPermissionItems.length,
       showWorkingIndicator,
       showBottomBar,
-      showCopyButton,
       isVoiceMode,
     ]
   );

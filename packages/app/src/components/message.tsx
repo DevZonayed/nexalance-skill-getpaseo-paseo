@@ -99,6 +99,10 @@ const userMessageStylesheet = StyleSheet.create((theme) => ({
     justifyContent: "flex-end",
     paddingHorizontal: theme.spacing[2],
   },
+  content: {
+    alignItems: "flex-end",
+    maxWidth: "100%",
+  },
   containerSpacing: {
     marginBottom: theme.spacing[1],
   },
@@ -123,21 +127,16 @@ const userMessageStylesheet = StyleSheet.create((theme) => ({
     lineHeight: 22,
     overflowWrap: "anywhere",
   },
-  bubblePressed: {
-    opacity: 0.85,
-  },
-  copiedTagContainer: {
-    marginTop: theme.spacing[1],
-    marginRight: theme.spacing[4],
+  copyButton: {
     alignSelf: "flex-end",
-    backgroundColor: theme.colors.surface2,
-    borderRadius: theme.borderRadius.base,
-    paddingHorizontal: theme.spacing[2],
-    paddingVertical: 4,
+    padding: theme.spacing[1],
+    marginTop: theme.spacing[2],
   },
-  copiedTagText: {
-    color: theme.colors.foreground,
-    fontSize: theme.fontSize.xs,
+  copyButtonHidden: {
+    opacity: 0,
+  },
+  copyButtonVisible: {
+    opacity: 1,
   },
 }));
 
@@ -150,34 +149,6 @@ export const UserMessage = memo(function UserMessage({
 }: UserMessageProps) {
   const resolvedDisableOuterSpacing =
     useDisableOuterSpacing(disableOuterSpacing);
-  const [copied, setCopied] = useState(false);
-  const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const handleLongPress = useCallback(async () => {
-    if (!message) {
-      return;
-    }
-
-    await Clipboard.setStringAsync(message);
-    setCopied(true);
-
-    if (copyTimeoutRef.current) {
-      clearTimeout(copyTimeoutRef.current);
-    }
-
-    copyTimeoutRef.current = setTimeout(() => {
-      setCopied(false);
-      copyTimeoutRef.current = null;
-    }, 1500);
-  }, [message]);
-
-  useEffect(() => {
-    return () => {
-      if (copyTimeoutRef.current) {
-        clearTimeout(copyTimeoutRef.current);
-      }
-    };
-  }, []);
 
   return (
     <View
@@ -192,26 +163,30 @@ export const UserMessage = memo(function UserMessage({
         ],
       ]}
     >
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Copy message"
-        accessibilityHint="Long press to copy this message"
-        delayLongPress={250}
-        onLongPress={handleLongPress}
-        style={({ pressed }) => [
-          userMessageStylesheet.bubble,
-          pressed ? userMessageStylesheet.bubblePressed : null,
-        ]}
-      >
-        <Text style={userMessageStylesheet.text}>{message}</Text>
+      <Pressable style={userMessageStylesheet.content}>
+        {({ hovered }) => {
+          const showCopyButton = Platform.OS !== "web" || hovered;
+          return (
+            <>
+              <View style={userMessageStylesheet.bubble}>
+                <Text selectable style={userMessageStylesheet.text}>
+                  {message}
+                </Text>
+              </View>
+              <TurnCopyButton
+                getContent={() => message}
+                containerStyle={[
+                  userMessageStylesheet.copyButton,
+                  showCopyButton
+                    ? userMessageStylesheet.copyButtonVisible
+                    : userMessageStylesheet.copyButtonHidden,
+                ]}
+                accessibilityLabel="Copy message"
+              />
+            </>
+          );
+        }}
       </Pressable>
-      {copied && (
-        <View style={userMessageStylesheet.copiedTagContainer}>
-          <Text style={userMessageStylesheet.copiedTagText}>
-            Copied to clipboard
-          </Text>
-        </View>
-      )}
     </View>
   );
 });
@@ -225,7 +200,7 @@ interface AssistantMessageProps {
 
 export const assistantMessageStylesheet = StyleSheet.create((theme) => ({
   container: {
-    paddingHorizontal: theme.spacing[4],
+    paddingHorizontal: theme.spacing[2],
     paddingVertical: theme.spacing[3],
   },
   containerSpacing: {
@@ -261,6 +236,7 @@ const turnCopyButtonStylesheet = StyleSheet.create((theme) => ({
   container: {
     alignSelf: "flex-start",
     padding: theme.spacing[2],
+    paddingTop: 0,
   },
   iconColor: {
     color: theme.colors.foregroundMuted,
@@ -272,10 +248,16 @@ const turnCopyButtonStylesheet = StyleSheet.create((theme) => ({
 
 interface TurnCopyButtonProps {
   getContent: () => string;
+  containerStyle?: StyleProp<ViewStyle>;
+  accessibilityLabel?: string;
+  copiedAccessibilityLabel?: string;
 }
 
 export const TurnCopyButton = memo(function TurnCopyButton({
   getContent,
+  containerStyle,
+  accessibilityLabel,
+  copiedAccessibilityLabel,
 }: TurnCopyButtonProps) {
   const [copied, setCopied] = useState(false);
   const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -310,9 +292,13 @@ export const TurnCopyButton = memo(function TurnCopyButton({
   return (
     <Pressable
       onPress={handleCopy}
-      style={turnCopyButtonStylesheet.container}
+      style={[turnCopyButtonStylesheet.container, containerStyle]}
       accessibilityRole="button"
-      accessibilityLabel={copied ? "Copied" : "Copy turn"}
+      accessibilityLabel={
+        copied
+          ? (copiedAccessibilityLabel ?? "Copied")
+          : (accessibilityLabel ?? "Copy turn")
+      }
     >
       {({ hovered }) => {
         const iconColor = hovered
