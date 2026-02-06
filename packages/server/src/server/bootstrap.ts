@@ -40,20 +40,20 @@ function parseListenString(listen: string): ListenTarget {
 
 import { VoiceAssistantWebSocketServer } from "./websocket-server.js";
 import { DownloadTokenStore } from "./file-download/token-store.js";
-import { OpenAISTT, type STTConfig } from "./agent/stt-openai.js";
-import { OpenAITTS, type TTSConfig } from "./agent/tts-openai.js";
+import { OpenAISTT, type STTConfig } from "./speech/providers/openai/stt.js";
+import { OpenAITTS, type TTSConfig } from "./speech/providers/openai/tts.js";
+import { OpenAIRealtimeTranscriptionSession } from "./speech/providers/openai/realtime-transcription-session.js";
 import type { SpeechToTextProvider, TextToSpeechProvider } from "./speech/speech-provider.js";
-import type { RealtimeTranscriptionSessionFactory } from "./dictation/dictation-stream-manager.js";
-import { SherpaOnlineRecognizerEngine } from "./speech/sherpa/sherpa-online-recognizer.js";
-import { SherpaOfflineRecognizerEngine } from "./speech/sherpa/sherpa-offline-recognizer.js";
-import { SherpaOnnxSTT } from "./speech/sherpa/sherpa-stt.js";
-import { SherpaOnnxParakeetSTT } from "./speech/sherpa/sherpa-parakeet-stt.js";
-import { SherpaOnnxTTS } from "./speech/sherpa/sherpa-tts.js";
-import { SherpaRealtimeTranscriptionSession } from "./speech/sherpa/sherpa-realtime-session.js";
-import { SherpaParakeetRealtimeTranscriptionSession } from "./speech/sherpa/sherpa-parakeet-realtime-session.js";
-import { ensureSherpaOnnxModels, getSherpaOnnxModelDir } from "./speech/sherpa/model-downloader.js";
-import type { SherpaOnnxModelId } from "./speech/sherpa/model-catalog.js";
-import { PocketTtsOnnxTTS } from "./speech/pocket/pocket-tts-onnx.js";
+import { SherpaOnlineRecognizerEngine } from "./speech/providers/local/sherpa/sherpa-online-recognizer.js";
+import { SherpaOfflineRecognizerEngine } from "./speech/providers/local/sherpa/sherpa-offline-recognizer.js";
+import { SherpaOnnxSTT } from "./speech/providers/local/sherpa/sherpa-stt.js";
+import { SherpaOnnxParakeetSTT } from "./speech/providers/local/sherpa/sherpa-parakeet-stt.js";
+import { SherpaOnnxTTS } from "./speech/providers/local/sherpa/sherpa-tts.js";
+import { SherpaRealtimeTranscriptionSession } from "./speech/providers/local/sherpa/sherpa-realtime-session.js";
+import { SherpaParakeetRealtimeTranscriptionSession } from "./speech/providers/local/sherpa/sherpa-parakeet-realtime-session.js";
+import { ensureSherpaOnnxModels, getSherpaOnnxModelDir } from "./speech/providers/local/sherpa/model-downloader.js";
+import type { SherpaOnnxModelId } from "./speech/providers/local/sherpa/model-catalog.js";
+import { PocketTtsOnnxTTS } from "./speech/providers/local/pocket/pocket-tts-onnx.js";
 import { AgentManager } from "./agent/agent-manager.js";
 import { AgentStorage } from "./agent/agent-storage.js";
 import { attachAgentStoragePersistence } from "./persistence-hooks.js";
@@ -98,9 +98,9 @@ export type PaseoSherpaOnnxConfig = {
 };
 
 export type PaseoSpeechConfig = {
-  dictationSttProvider?: "openai" | "sherpa";
-  voiceSttProvider?: "openai" | "sherpa";
-  voiceTtsProvider?: "openai" | "sherpa";
+  dictationSttProvider?: "openai" | "local";
+  voiceSttProvider?: "openai" | "local";
+  voiceTtsProvider?: "openai" | "local";
   sherpaOnnx?: PaseoSherpaOnnxConfig;
 };
 
@@ -417,7 +417,7 @@ export async function createPaseoDaemon(
 
   let sttService: SpeechToTextProvider | null = null;
   let ttsService: TextToSpeechProvider | null = null;
-  let dictationSessionFactory: RealtimeTranscriptionSessionFactory | undefined;
+  let dictationSttService: SpeechToTextProvider | null = null;
 
   let sherpaOnline: SherpaOnlineRecognizerEngine | null = null;
   let sherpaOffline: SherpaOfflineRecognizerEngine | null = null;
@@ -427,11 +427,11 @@ export async function createPaseoDaemon(
   const speechConfig = config.speech ?? null;
   const sherpaConfig = speechConfig?.sherpaOnnx ?? null;
 
-  const wantsSherpaDictation = (speechConfig?.dictationSttProvider ?? "openai") === "sherpa";
-  const wantsSherpaVoiceStt = (speechConfig?.voiceSttProvider ?? "openai") === "sherpa";
-  const wantsSherpaVoiceTts = (speechConfig?.voiceTtsProvider ?? "openai") === "sherpa";
+  const wantsLocalDictation = (speechConfig?.dictationSttProvider ?? "openai") === "local";
+  const wantsLocalVoiceStt = (speechConfig?.voiceSttProvider ?? "openai") === "local";
+  const wantsLocalVoiceTts = (speechConfig?.voiceTtsProvider ?? "openai") === "local";
 
-  if ((wantsSherpaDictation || wantsSherpaVoiceStt || wantsSherpaVoiceTts) && sherpaConfig) {
+  if ((wantsLocalDictation || wantsLocalVoiceStt || wantsLocalVoiceTts) && sherpaConfig) {
     const autoDownload = sherpaConfig.autoDownload ?? (process.env.VITEST ? false : true);
     let sttPreset = (sherpaConfig.stt?.preset ?? "zipformer-bilingual-zh-en-2023-02-20").trim();
     if (
@@ -460,10 +460,10 @@ export async function createPaseoDaemon(
     }
 
     const modelIds: SherpaOnnxModelId[] = [];
-    if (wantsSherpaDictation || wantsSherpaVoiceStt) {
+    if (wantsLocalDictation || wantsLocalVoiceStt) {
       modelIds.push(sttPreset as SherpaOnnxModelId);
     }
-    if (wantsSherpaVoiceTts) {
+    if (wantsLocalVoiceTts) {
       modelIds.push(ttsPreset as SherpaOnnxModelId);
     }
 
@@ -489,7 +489,7 @@ export async function createPaseoDaemon(
     }
   }
 
-  if ((wantsSherpaDictation || wantsSherpaVoiceStt) && sherpaConfig) {
+  if ((wantsLocalDictation || wantsLocalVoiceStt) && sherpaConfig) {
     let preset = (sherpaConfig.stt?.preset ?? "zipformer-bilingual-zh-en-2023-02-20").trim();
     if (
       preset !== "zipformer-bilingual-zh-en-2023-02-20" &&
@@ -561,14 +561,14 @@ export async function createPaseoDaemon(
       sherpaOnline = null;
       sherpaOffline = null;
     }
-  } else if (wantsSherpaDictation || wantsSherpaVoiceStt) {
+  } else if (wantsLocalDictation || wantsLocalVoiceStt) {
     logger.warn(
       { configured: Boolean(sherpaConfig) },
       "Sherpa STT selected but no sherpaOnnx config found; STT will be unavailable"
     );
   }
 
-  if (wantsSherpaVoiceTts && sherpaConfig) {
+  if (wantsLocalVoiceTts && sherpaConfig) {
     let preset = (sherpaConfig.tts?.preset ?? "pocket-tts-onnx-int8").trim();
     if (
       preset !== "kitten-nano-en-v0_1-fp16" &&
@@ -615,27 +615,34 @@ export async function createPaseoDaemon(
       );
       sherpaTts = null;
     }
-  } else if (wantsSherpaVoiceTts) {
+  } else if (wantsLocalVoiceTts) {
     logger.warn(
       { configured: Boolean(sherpaConfig) },
       "Sherpa TTS selected but no sherpaOnnx config found; TTS will be unavailable"
     );
   }
 
-  if (wantsSherpaVoiceStt && sherpaOffline) {
+  if (wantsLocalVoiceStt && sherpaOffline) {
     sttService = new SherpaOnnxParakeetSTT({ engine: sherpaOffline }, logger);
-  } else if (wantsSherpaVoiceStt && sherpaOnline) {
+  } else if (wantsLocalVoiceStt && sherpaOnline) {
     sttService = new SherpaOnnxSTT({ engine: sherpaOnline }, logger);
   }
 
-  if (wantsSherpaVoiceTts && sherpaTts) {
+  if (wantsLocalVoiceTts && sherpaTts) {
     ttsService = sherpaTts;
   }
 
-  if (wantsSherpaDictation && sherpaOnline) {
-    dictationSessionFactory = () => new SherpaRealtimeTranscriptionSession({ engine: sherpaOnline! });
-  } else if (wantsSherpaDictation && sherpaOffline) {
-    dictationSessionFactory = () => new SherpaParakeetRealtimeTranscriptionSession({ engine: sherpaOffline! });
+  if (wantsLocalDictation && sherpaOnline) {
+    dictationSttService = {
+      id: "local",
+      createSession: () => new SherpaRealtimeTranscriptionSession({ engine: sherpaOnline! }),
+    };
+  } else if (wantsLocalDictation && sherpaOffline) {
+    dictationSttService = {
+      id: "local",
+      createSession: () =>
+        new SherpaParakeetRealtimeTranscriptionSession({ engine: sherpaOffline! }),
+    };
   }
 
   const voiceSttProvider = speechConfig?.voiceSttProvider ?? "openai";
@@ -645,10 +652,10 @@ export async function createPaseoDaemon(
   const needsOpenAiStt = !sttService && voiceSttProvider === "openai";
   const needsOpenAiTts = !ttsService && voiceTtsProvider === "openai";
   const needsOpenAiDictation =
-    dictationSttProvider === "openai" || (dictationSttProvider === "sherpa" && !dictationSessionFactory);
+    dictationSttProvider === "openai" || (dictationSttProvider === "local" && !dictationSttService);
 
-  const fallbackOpenAiStt = !sttService && voiceSttProvider === "sherpa" && Boolean(openaiApiKey);
-  const fallbackOpenAiTts = !ttsService && voiceTtsProvider === "sherpa" && Boolean(openaiApiKey);
+  const fallbackOpenAiStt = !sttService && voiceSttProvider === "local" && Boolean(openaiApiKey);
+  const fallbackOpenAiTts = !ttsService && voiceTtsProvider === "local" && Boolean(openaiApiKey);
 
   if ((needsOpenAiStt || needsOpenAiTts || needsOpenAiDictation || fallbackOpenAiStt || fallbackOpenAiTts) && openaiApiKey) {
     logger.info("OpenAI client initialized");
@@ -689,6 +696,25 @@ export async function createPaseoDaemon(
         );
       }
     }
+
+    if (needsOpenAiDictation) {
+      const dictationApiKey = config.openai?.apiKey ?? openaiApiKey;
+      const transcriptionModel =
+        process.env.OPENAI_REALTIME_TRANSCRIPTION_MODEL ?? "gpt-4o-transcribe";
+
+      dictationSttService = {
+        id: "openai",
+        createSession: ({ logger: sessionLogger, language, prompt }) =>
+          new OpenAIRealtimeTranscriptionSession({
+            apiKey: dictationApiKey,
+            logger: sessionLogger,
+            transcriptionModel,
+            ...(language ? { language } : {}),
+            ...(prompt ? { prompt } : {}),
+            turnDetection: null,
+          }),
+      };
+    }
   } else if (needsOpenAiStt || needsOpenAiTts || needsOpenAiDictation || fallbackOpenAiStt || fallbackOpenAiTts) {
     logger.warn("OPENAI_API_KEY not set - OpenAI STT/TTS/dictation fallback is unavailable");
   }
@@ -710,9 +736,8 @@ export async function createPaseoDaemon(
       voiceLlmModel: config.voiceLlmModel ?? null,
     },
     {
-      openaiApiKey: config.openai?.apiKey ?? null,
       finalTimeoutMs: config.dictationFinalTimeoutMs,
-      ...(dictationSessionFactory ? { sessionFactory: dictationSessionFactory } : {}),
+      stt: dictationSttService,
     }
   );
 

@@ -1,7 +1,7 @@
 import { resolvePaseoHome } from "../src/server/paseo-home.js";
 import { createRootLogger } from "../src/server/logger.js";
-import { ensureSherpaOnnxModels } from "../src/server/speech/sherpa/model-downloader.js";
-import type { SherpaOnnxModelId } from "../src/server/speech/sherpa/model-catalog.js";
+import { ensureSherpaOnnxModels } from "../src/server/speech/providers/local/sherpa/model-downloader.js";
+import type { SherpaOnnxModelId } from "../src/server/speech/providers/local/sherpa/model-catalog.js";
 
 function parseArgs(argv: string[]): { modelsDir: string; modelIds: SherpaOnnxModelId[] } {
   const home = resolvePaseoHome();

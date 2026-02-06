@@ -96,9 +96,9 @@ describe("daemon client E2E", () => {
       dictationFinalTimeoutMs: 5000,
       ...(openaiApiKey ? { openai: { apiKey: openaiApiKey } } : {}),
       speech: {
-        dictationSttProvider: "sherpa",
-        voiceSttProvider: "sherpa",
-        voiceTtsProvider: "sherpa",
+        dictationSttProvider: "local",
+        voiceSttProvider: "local",
+        voiceTtsProvider: "local",
         sherpaOnnx: {
           modelsDir: sherpaModelsDir,
           stt: {

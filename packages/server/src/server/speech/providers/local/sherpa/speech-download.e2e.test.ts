@@ -6,8 +6,8 @@ import pino from "pino";
 
 import { ensureSherpaOnnxModels, getSherpaOnnxModelDir } from "./model-downloader.js";
 import type { SherpaOnnxModelId } from "./model-catalog.js";
-import { createDaemonTestContext } from "../../test-utils/index.js";
-import { parsePcm16MonoWav, wordSimilarity } from "../../test-utils/dictation-e2e.js";
+import { createDaemonTestContext } from "../../../../test-utils/index.js";
+import { parsePcm16MonoWav, wordSimilarity } from "../../../../test-utils/dictation-e2e.js";
 import { SherpaOnnxTTS } from "./sherpa-tts.js";
 import { PocketTtsOnnxTTS } from "../pocket/pocket-tts-onnx.js";
 import { SherpaOnlineRecognizerEngine } from "./sherpa-online-recognizer.js";
@@ -114,9 +114,9 @@ describe("speech models (download E2E)", () => {
         paseoHomeRoot,
         dictationFinalTimeoutMs: 8000,
         speech: {
-          dictationSttProvider: "sherpa",
-          voiceSttProvider: "sherpa",
-          voiceTtsProvider: "sherpa",
+          dictationSttProvider: "local",
+          voiceSttProvider: "local",
+          voiceTtsProvider: "local",
           sherpaOnnx: {
             modelsDir,
             autoDownload: false,

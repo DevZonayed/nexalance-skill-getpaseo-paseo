@@ -2,8 +2,8 @@ import type pino from "pino";
 import { Readable } from "node:stream";
 import { existsSync } from "node:fs";
 
-import type { SpeechStreamResult, TextToSpeechProvider } from "../speech-provider.js";
-import { chunkBuffer, float32ToPcm16le } from "../audio.js";
+import type { SpeechStreamResult, TextToSpeechProvider } from "../../../speech-provider.js";
+import { chunkBuffer, float32ToPcm16le } from "../../../audio.js";
 import { loadSherpaOnnx } from "./sherpa-onnx-loader.js";
 
 export type SherpaTtsPreset = "kokoro-en-v0_19" | "kitten-nano-en-v0_1-fp16";

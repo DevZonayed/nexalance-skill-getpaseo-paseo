@@ -46,11 +46,25 @@ const ProvidersSchema = z
   })
   .strict();
 
+const SpeechProviderIdSchema = z.preprocess(
+  (value) => {
+    if (typeof value !== "string") {
+      return value;
+    }
+    const normalized = value.trim().toLowerCase();
+    if (normalized === "sherpa" || normalized === "sherpa-onnx") {
+      return "local";
+    }
+    return normalized;
+  },
+  z.enum(["openai", "local"])
+);
+
 const FeatureDictationSchema = z
   .object({
     stt: z
       .object({
-        provider: z.enum(["openai", "sherpa"]).optional(),
+        provider: SpeechProviderIdSchema.optional(),
         model: z.string().min(1).optional(),
         preset: z.string().min(1).optional(),
         confidenceThreshold: z.number().optional(),
@@ -71,7 +85,7 @@ const FeatureVoiceModeSchema = z
       .optional(),
     stt: z
       .object({
-        provider: z.enum(["openai", "sherpa"]).optional(),
+        provider: SpeechProviderIdSchema.optional(),
         model: z.string().min(1).optional(),
         preset: z.string().min(1).optional(),
       })
@@ -79,7 +93,7 @@ const FeatureVoiceModeSchema = z
       .optional(),
     tts: z
       .object({
-        provider: z.enum(["openai", "sherpa"]).optional(),
+        provider: SpeechProviderIdSchema.optional(),
         model: z.enum(["tts-1", "tts-1-hd"]).optional(),
         voice: z.enum(["alloy", "echo", "fable", "onyx", "nova", "shimmer"]).optional(),
         preset: z.string().min(1).optional(),

@@ -1,26 +1,28 @@
 import { EventEmitter } from "node:events";
 import { v4 as uuidv4 } from "uuid";
 
-import type { RealtimeTranscriptionSession } from "../../dictation/dictation-stream-manager.js";
-import { pcm16lePeakAbs, pcm16leToFloat32 } from "../audio.js";
+import type { StreamingTranscriptionSession } from "../../../speech-provider.js";
+import { pcm16lePeakAbs, pcm16leToFloat32 } from "../../../audio.js";
 import { SherpaOnlineRecognizerEngine } from "./sherpa-online-recognizer.js";
 
 export class SherpaRealtimeTranscriptionSession
   extends EventEmitter
-  implements RealtimeTranscriptionSession
+  implements StreamingTranscriptionSession
 {
   private readonly engine: SherpaOnlineRecognizerEngine;
   private stream: any | null = null;
   private connected = false;
 
-  private currentItemId: string | null = null;
-  private previousItemId: string | null = null;
+  public readonly requiredSampleRate: number;
+  private currentSegmentId: string | null = null;
+  private previousSegmentId: string | null = null;
   private lastPartialText = "";
   private readonly tailPaddingMs: number;
 
   constructor(params: { engine: SherpaOnlineRecognizerEngine; tailPaddingMs?: number }) {
     super();
     this.engine = params.engine;
+    this.requiredSampleRate = this.engine.sampleRate;
     this.tailPaddingMs = params.tailPaddingMs ?? 500;
   }
 
@@ -29,19 +31,18 @@ export class SherpaRealtimeTranscriptionSession
       return;
     }
     this.stream = this.engine.createStream();
-    this.currentItemId = uuidv4();
+    this.currentSegmentId = uuidv4();
     this.connected = true;
   }
 
-  appendPcm16Base64(base64Audio: string): void {
-    if (!this.connected || !this.stream || !this.currentItemId) {
+  appendPcm16(pcm16le: Buffer): void {
+    if (!this.connected || !this.stream || !this.currentSegmentId) {
       this.emit("error", new Error("Sherpa realtime session not connected"));
       return;
     }
 
     try {
-      const pcm16 = Buffer.from(base64Audio, "base64");
-      const peak = pcm16lePeakAbs(pcm16);
+      const peak = pcm16lePeakAbs(pcm16le);
       const peakFloat = peak / 32768.0;
       const targetPeak = 0.6;
       const maxGain = 50;
@@ -49,7 +50,7 @@ export class SherpaRealtimeTranscriptionSession
         peakFloat > 0 && peakFloat < targetPeak
           ? Math.min(maxGain, targetPeak / peakFloat)
           : 1;
-      const floatSamples = pcm16leToFloat32(pcm16, gain);
+      const floatSamples = pcm16leToFloat32(pcm16le, gain);
       this.stream.acceptWaveform(this.engine.sampleRate, floatSamples);
 
       while (this.engine.recognizer.isReady(this.stream)) {
@@ -59,7 +60,11 @@ export class SherpaRealtimeTranscriptionSession
       const text = String(this.engine.recognizer.getResult(this.stream)?.text ?? "").trim();
       if (text !== this.lastPartialText) {
         this.lastPartialText = text;
-        this.emit("transcript", { itemId: this.currentItemId, transcript: text, isFinal: false });
+        this.emit("transcript", {
+          segmentId: this.currentSegmentId,
+          transcript: text,
+          isFinal: false,
+        });
       }
     } catch (err) {
       this.emit("error", err instanceof Error ? err : new Error(String(err)));
@@ -67,7 +72,7 @@ export class SherpaRealtimeTranscriptionSession
   }
 
   commit(): void {
-    if (!this.connected || !this.stream || !this.currentItemId) {
+    if (!this.connected || !this.stream || !this.currentSegmentId) {
       this.emit("error", new Error("Sherpa realtime session not connected"));
       return;
     }
@@ -83,14 +88,14 @@ export class SherpaRealtimeTranscriptionSession
       }
 
       const finalText = String(this.engine.recognizer.getResult(this.stream)?.text ?? "").trim();
-      const itemId = this.currentItemId;
-      const previousItemId = this.previousItemId;
+      const segmentId = this.currentSegmentId;
+      const previousSegmentId = this.previousSegmentId;
 
-      this.emit("committed", { itemId, previousItemId });
-      this.emit("transcript", { itemId, transcript: finalText, isFinal: true });
+      this.emit("committed", { segmentId, previousSegmentId });
+      this.emit("transcript", { segmentId, transcript: finalText, isFinal: true });
 
-      this.previousItemId = itemId;
-      this.currentItemId = uuidv4();
+      this.previousSegmentId = segmentId;
+      this.currentSegmentId = uuidv4();
       this.lastPartialText = "";
       this.engine.recognizer.reset(this.stream);
     } catch (err) {
@@ -104,7 +109,7 @@ export class SherpaRealtimeTranscriptionSession
     }
     try {
       this.engine.recognizer.reset(this.stream);
-      this.currentItemId = uuidv4();
+      this.currentSegmentId = uuidv4();
       this.lastPartialText = "";
     } catch (err) {
       this.emit("error", err instanceof Error ? err : new Error(String(err)));

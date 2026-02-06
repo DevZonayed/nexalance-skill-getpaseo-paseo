@@ -1,8 +1,14 @@
+import { EventEmitter } from "node:events";
+import { v4 as uuidv4 } from "uuid";
 import type pino from "pino";
 
-import type { SpeechToTextProvider, TranscriptionResult } from "../speech-provider.js";
-import { Pcm16MonoResampler } from "../../agent/pcm16-resampler.js";
-import { parsePcm16MonoWav, parsePcmRateFromFormat, pcm16lePeakAbs, pcm16leToFloat32 } from "../audio.js";
+import type {
+  SpeechToTextProvider,
+  StreamingTranscriptionSession,
+  TranscriptionResult,
+} from "../../../speech-provider.js";
+import { Pcm16MonoResampler } from "../../../../agent/pcm16-resampler.js";
+import { parsePcm16MonoWav, parsePcmRateFromFormat, pcm16lePeakAbs, pcm16leToFloat32 } from "../../../audio.js";
 import { SherpaOnlineRecognizerEngine } from "./sherpa-online-recognizer.js";
 
 export type SherpaSttConfig = {
@@ -16,6 +22,7 @@ export class SherpaOnnxSTT implements SpeechToTextProvider {
   private readonly silencePeakThreshold: number;
   private readonly tailPaddingMs: number;
   private readonly logger: pino.Logger;
+  public readonly id = "local" as const;
 
   constructor(config: SherpaSttConfig, logger: pino.Logger) {
     this.engine = config.engine;
@@ -24,7 +31,78 @@ export class SherpaOnnxSTT implements SpeechToTextProvider {
     this.logger = logger.child({ module: "speech", provider: "sherpa-onnx", component: "stt" });
   }
 
-  async transcribeAudio(audioBuffer: Buffer, format: string): Promise<TranscriptionResult> {
+  public createSession(params: {
+    logger: pino.Logger;
+    language?: string;
+    prompt?: string;
+  }): StreamingTranscriptionSession {
+    const emitter = new EventEmitter();
+    void params;
+    const requiredSampleRate = this.engine.sampleRate;
+    let connected = false;
+    let segmentId = uuidv4();
+    let previousSegmentId: string | null = null;
+    let pcm16: Buffer = Buffer.alloc(0);
+
+    return {
+      requiredSampleRate,
+      async connect() {
+        connected = true;
+      },
+      appendPcm16(chunk: Buffer) {
+        if (!connected) {
+          (emitter as any).emit("error", new Error("STT session not connected"));
+          return;
+        }
+        pcm16 = pcm16.length === 0 ? chunk : Buffer.concat([pcm16, chunk]);
+      },
+      commit: () => {
+        if (!connected) {
+          (emitter as any).emit("error", new Error("STT session not connected"));
+          return;
+        }
+
+        const committedId = segmentId;
+        const prev = previousSegmentId;
+        (emitter as any).emit("committed", { segmentId: committedId, previousSegmentId: prev });
+
+        void (async () => {
+          try {
+            const rt = await this.transcribeAudio(pcm16, `audio/pcm;rate=${requiredSampleRate}`);
+            (emitter as any).emit("transcript", {
+              segmentId: committedId,
+              transcript: rt.text,
+              isFinal: true,
+              language: rt.language,
+              logprobs: rt.logprobs,
+              avgLogprob: rt.avgLogprob,
+              isLowConfidence: rt.isLowConfidence,
+            });
+          } catch (err) {
+            (emitter as any).emit("error", err);
+          } finally {
+            previousSegmentId = committedId;
+            segmentId = uuidv4();
+            pcm16 = Buffer.alloc(0);
+          }
+        })();
+      },
+      clear() {
+        pcm16 = Buffer.alloc(0);
+        segmentId = uuidv4();
+      },
+      close() {
+        connected = false;
+        pcm16 = Buffer.alloc(0);
+      },
+      on(event: any, handler: any) {
+        emitter.on(event, handler);
+        return undefined;
+      },
+    };
+  }
+
+  public async transcribeAudio(audioBuffer: Buffer, format: string): Promise<TranscriptionResult> {
     const start = Date.now();
 
     let inputRate: number;

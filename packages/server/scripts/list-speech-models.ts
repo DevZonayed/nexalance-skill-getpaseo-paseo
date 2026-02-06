@@ -1,4 +1,4 @@
-import { listSherpaOnnxModels } from "../src/server/speech/sherpa/model-catalog.js";
+import { listSherpaOnnxModels } from "../src/server/speech/providers/local/sherpa/model-catalog.js";
 
 const models = listSherpaOnnxModels()
   .slice()
@@ -8,4 +8,3 @@ for (const m of models) {
   // eslint-disable-next-line no-console
   console.log(`${m.kind}\t${m.id}\t${m.description}`);
 }
-

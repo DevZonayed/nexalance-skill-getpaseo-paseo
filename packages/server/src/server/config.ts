@@ -1,8 +1,8 @@
 import path from "node:path";
 
 import type { PaseoDaemonConfig } from "./bootstrap.js";
-import type { STTConfig } from "./agent/stt-openai.js";
-import type { TTSConfig } from "./agent/tts-openai.js";
+import type { STTConfig } from "./speech/providers/openai/stt.js";
+import type { TTSConfig } from "./speech/providers/openai/tts.js";
 import { loadPersistedConfig } from "./persisted-config.js";
 import {
   mergeAllowedHosts,
@@ -76,7 +76,7 @@ function parseOpenAIConfig(
   };
 }
 
-function parseSpeechProviderId(value: unknown): "openai" | "sherpa" | null {
+function parseSpeechProviderId(value: unknown): "openai" | "local" | null {
   if (typeof value !== "string") {
     return null;
   }
@@ -86,7 +86,7 @@ function parseSpeechProviderId(value: unknown): "openai" | "sherpa" | null {
   }
   if (normalized === "openai") return "openai";
   if (normalized === "sherpa" || normalized === "sherpa-onnx" || normalized === "local") {
-    return "sherpa";
+    return "local";
   }
   return null;
 }
@@ -185,22 +185,22 @@ export function loadConfig(
   const dictationSttProvider =
     parseSpeechProviderId(env.PASEO_DICTATION_STT_PROVIDER) ??
     parseSpeechProviderId(persisted.features?.dictation?.stt?.provider) ??
-    "sherpa";
+    "local";
 
   const voiceSttProvider =
     parseSpeechProviderId(env.PASEO_VOICE_STT_PROVIDER) ??
     parseSpeechProviderId(persisted.features?.voiceMode?.stt?.provider) ??
-    "sherpa";
+    "local";
 
   const voiceTtsProvider =
     parseSpeechProviderId(env.PASEO_VOICE_TTS_PROVIDER) ??
     parseSpeechProviderId(persisted.features?.voiceMode?.tts?.provider) ??
-    "sherpa";
+    "local";
 
   const shouldConfigureSherpa =
-    dictationSttProvider === "sherpa" ||
-    voiceSttProvider === "sherpa" ||
-    voiceTtsProvider === "sherpa" ||
+    dictationSttProvider === "local" ||
+    voiceSttProvider === "local" ||
+    voiceTtsProvider === "local" ||
     typeof env.PASEO_SHERPA_ONNX_MODELS_DIR === "string" ||
     Boolean(persisted.providers?.sherpaOnnx);
 

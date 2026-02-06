@@ -1,22 +1,23 @@
 import { EventEmitter } from "node:events";
 import { v4 as uuidv4 } from "uuid";
 
-import type { RealtimeTranscriptionSession } from "../../dictation/dictation-stream-manager.js";
-import { pcm16lePeakAbs, pcm16leToFloat32 } from "../audio.js";
+import type { StreamingTranscriptionSession } from "../../../speech-provider.js";
+import { pcm16lePeakAbs, pcm16leToFloat32 } from "../../../audio.js";
 import { SherpaOfflineRecognizerEngine } from "./sherpa-offline-recognizer.js";
 
 export class SherpaParakeetRealtimeTranscriptionSession
   extends EventEmitter
-  implements RealtimeTranscriptionSession
+  implements StreamingTranscriptionSession
 {
   private readonly engine: SherpaOfflineRecognizerEngine;
   private connected = false;
 
-  private currentItemId: string | null = null;
-  private previousItemId: string | null = null;
+  public readonly requiredSampleRate: number;
+  private currentSegmentId: string | null = null;
+  private previousSegmentId: string | null = null;
   private lastPartialText = "";
 
-  private pcm16 = Buffer.alloc(0);
+  private pcm16: Buffer = Buffer.alloc(0);
   private lastDecodeAt = 0;
   private decoding = false;
   private pendingDecode = false;
@@ -25,6 +26,7 @@ export class SherpaParakeetRealtimeTranscriptionSession
   constructor(params: { engine: SherpaOfflineRecognizerEngine; minDecodeIntervalMs?: number }) {
     super();
     this.engine = params.engine;
+    this.requiredSampleRate = this.engine.sampleRate;
     this.minDecodeIntervalMs = params.minDecodeIntervalMs ?? 350;
   }
 
@@ -32,18 +34,17 @@ export class SherpaParakeetRealtimeTranscriptionSession
     if (this.connected) {
       return;
     }
-    this.currentItemId = uuidv4();
+    this.currentSegmentId = uuidv4();
     this.connected = true;
   }
 
-  appendPcm16Base64(base64Audio: string): void {
-    if (!this.connected || !this.currentItemId) {
+  appendPcm16(chunk: Buffer): void {
+    if (!this.connected || !this.currentSegmentId) {
       this.emit("error", new Error("Parakeet realtime session not connected"));
       return;
     }
 
     try {
-      const chunk = Buffer.from(base64Audio, "base64");
       this.pcm16 = this.pcm16.length === 0 ? chunk : Buffer.concat([this.pcm16, chunk]);
       void this.maybeDecode(false);
     } catch (err) {
@@ -52,7 +53,7 @@ export class SherpaParakeetRealtimeTranscriptionSession
   }
 
   commit(): void {
-    if (!this.connected || !this.currentItemId) {
+    if (!this.connected || !this.currentSegmentId) {
       this.emit("error", new Error("Parakeet realtime session not connected"));
       return;
     }
@@ -61,14 +62,14 @@ export class SherpaParakeetRealtimeTranscriptionSession
       try {
         await this.maybeDecode(true);
         const finalText = this.lastPartialText;
-        const itemId = this.currentItemId!;
-        const previousItemId = this.previousItemId;
+        const segmentId = this.currentSegmentId!;
+        const previousSegmentId = this.previousSegmentId;
 
-        this.emit("committed", { itemId, previousItemId });
-        this.emit("transcript", { itemId, transcript: finalText, isFinal: true });
+        this.emit("committed", { segmentId, previousSegmentId });
+        this.emit("transcript", { segmentId, transcript: finalText, isFinal: true });
 
-        this.previousItemId = itemId;
-        this.currentItemId = uuidv4();
+        this.previousSegmentId = segmentId;
+        this.currentSegmentId = uuidv4();
         this.lastPartialText = "";
         this.pcm16 = Buffer.alloc(0);
       } catch (err) {
@@ -82,18 +83,18 @@ export class SherpaParakeetRealtimeTranscriptionSession
       return;
     }
     this.pcm16 = Buffer.alloc(0);
-    this.currentItemId = uuidv4();
+    this.currentSegmentId = uuidv4();
     this.lastPartialText = "";
   }
 
   close(): void {
     this.connected = false;
-    this.currentItemId = null;
+    this.currentSegmentId = null;
     this.pcm16 = Buffer.alloc(0);
   }
 
   private async maybeDecode(force: boolean): Promise<void> {
-    if (!this.connected || !this.currentItemId) {
+    if (!this.connected || !this.currentSegmentId) {
       return;
     }
 
@@ -113,7 +114,7 @@ export class SherpaParakeetRealtimeTranscriptionSession
       this.lastDecodeAt = Date.now();
       if (text !== this.lastPartialText) {
         this.lastPartialText = text;
-        this.emit("transcript", { itemId: this.currentItemId, transcript: text, isFinal: false });
+        this.emit("transcript", { segmentId: this.currentSegmentId, transcript: text, isFinal: false });
       }
     } finally {
       this.decoding = false;

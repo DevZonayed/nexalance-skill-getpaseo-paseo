@@ -3,9 +3,9 @@ import { readFile } from "node:fs/promises";
 import { Readable } from "node:stream";
 import type pino from "pino";
 
-import type { SpeechStreamResult, TextToSpeechProvider } from "../speech-provider.js";
-import { chunkBuffer, float32ToPcm16le, parsePcm16MonoWav, pcm16leToFloat32 } from "../audio.js";
-import { Pcm16MonoResampler } from "../../agent/pcm16-resampler.js";
+import type { SpeechStreamResult, TextToSpeechProvider } from "../../../speech-provider.js";
+import { chunkBuffer, float32ToPcm16le, parsePcm16MonoWav, pcm16leToFloat32 } from "../../../audio.js";
+import { Pcm16MonoResampler } from "../../../../agent/pcm16-resampler.js";
 
 type OrtModule = typeof import("onnxruntime-node");
 type OrtSession = import("onnxruntime-node").InferenceSession;

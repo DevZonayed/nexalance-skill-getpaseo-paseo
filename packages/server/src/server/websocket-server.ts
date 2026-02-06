@@ -21,7 +21,6 @@ import { PushTokenStore } from "./push/token-store.js";
 import { PushService } from "./push/push-service.js";
 import { VoiceConversationStore } from "./voice-conversation-store.js";
 import type { SpeechToTextProvider, TextToSpeechProvider } from "./speech/speech-provider.js";
-import type { RealtimeTranscriptionSessionFactory } from "./dictation/dictation-stream-manager.js";
 
 export type AgentMcpTransportFactory = () => Promise<Transport>;
 
@@ -72,9 +71,8 @@ export class VoiceAssistantWebSocketServer {
   private readonly terminalManager: TerminalManager | null;
   private readonly voiceConversationStore: VoiceConversationStore;
   private readonly dictation: {
-    openaiApiKey?: string | null;
     finalTimeoutMs?: number;
-    sessionFactory?: RealtimeTranscriptionSessionFactory;
+    stt?: SpeechToTextProvider | null;
   } | null;
   private readonly voice: {
     openrouterApiKey?: string | null;
@@ -98,9 +96,8 @@ export class VoiceAssistantWebSocketServer {
       voiceLlmModel?: string | null;
     },
     dictation?: {
-      openaiApiKey?: string | null;
       finalTimeoutMs?: number;
-      sessionFactory?: RealtimeTranscriptionSessionFactory;
+      stt?: SpeechToTextProvider | null;
     }
   ) {
     this.logger = logger.child({ module: "websocket-server" });

@@ -36,6 +36,8 @@ import type {
   ExecuteCommandResponse,
   ListVoiceConversationsResponseMessage,
   ListProviderModelsResponseMessage,
+  SpeechModelsListResponse,
+  SpeechModelsDownloadResponse,
   ListTerminalsResponse,
   CreateTerminalResponse,
   SubscribeTerminalResponse,
@@ -201,6 +203,8 @@ type PaseoWorktreeArchivePayload = PaseoWorktreeArchiveResponse["payload"];
 type FileExplorerPayload = FileExplorerResponse["payload"];
 type FileDownloadTokenPayload = FileDownloadTokenResponse["payload"];
 type ListProviderModelsPayload = ListProviderModelsResponseMessage["payload"];
+type SpeechModelsListPayload = SpeechModelsListResponse["payload"];
+type SpeechModelsDownloadPayload = SpeechModelsDownloadResponse["payload"];
 type ListCommandsPayload = ListCommandsResponse["payload"];
 type ExecuteCommandPayload = ExecuteCommandResponse["payload"];
 type AgentPermissionResolvedPayload = AgentPermissionResolvedMessage["payload"];
@@ -2004,6 +2008,55 @@ export class DaemonClient {
       options: { skipQueue: true },
       select: (msg) => {
         if (msg.type !== "list_provider_models_response") {
+          return null;
+        }
+        if (msg.payload.requestId !== resolvedRequestId) {
+          return null;
+        }
+        return msg.payload;
+      },
+    });
+  }
+
+  async listSpeechModels(requestId?: string): Promise<SpeechModelsListPayload> {
+    const resolvedRequestId = this.createRequestId(requestId);
+    const message = SessionInboundMessageSchema.parse({
+      type: "speech_models_list_request",
+      requestId: resolvedRequestId,
+    });
+    return this.sendRequest({
+      requestId: resolvedRequestId,
+      message,
+      timeout: 30000,
+      options: { skipQueue: true },
+      select: (msg) => {
+        if (msg.type !== "speech_models_list_response") {
+          return null;
+        }
+        if (msg.payload.requestId !== resolvedRequestId) {
+          return null;
+        }
+        return msg.payload;
+      },
+    });
+  }
+
+  async downloadSpeechModels(
+    options?: { modelIds?: string[]; requestId?: string }
+  ): Promise<SpeechModelsDownloadPayload> {
+    const resolvedRequestId = this.createRequestId(options?.requestId);
+    const message = SessionInboundMessageSchema.parse({
+      type: "speech_models_download_request",
+      modelIds: options?.modelIds,
+      requestId: resolvedRequestId,
+    });
+    return this.sendRequest({
+      requestId: resolvedRequestId,
+      message,
+      timeout: 30 * 60 * 1000,
+      options: { skipQueue: true },
+      select: (msg) => {
+        if (msg.type !== "speech_models_download_response") {
           return null;
         }
         if (msg.payload.requestId !== resolvedRequestId) {
