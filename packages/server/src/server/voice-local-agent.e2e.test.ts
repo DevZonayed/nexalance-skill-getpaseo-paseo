@@ -58,7 +58,7 @@ function waitForSignal<T>(
         },
         voiceLlmProvider: "codex",
         voiceLlmProviderExplicit: true,
-        voiceLlmModel: "gpt-5.2-mini",
+        voiceLlmModel: "gpt-5.1-codex-mini",
       });
     }, 120000);
 

@@ -39,6 +39,7 @@ function createManagedAgent(
     modeId: configOverrides.modeId ?? "plan",
     model: configOverrides.model ?? "gpt-5.1",
     extra: configOverrides.extra ?? { claude: { maxThinkingTokens: 1024 } },
+    mcpServers: configOverrides.mcpServers,
   };
   const session =
     lifecycle === "closed"
@@ -119,6 +120,13 @@ describe("AgentStorage", () => {
           modeId: "coding",
           model: "gpt-5.1",
           extra: { claude: { maxThinkingTokens: 1024 } },
+          mcpServers: {
+            paseo: {
+              type: "stdio",
+              command: "node",
+              args: ["/tmp/mcp-stdio-socket-bridge-cli.mjs", "--socket", "/tmp/test.sock"],
+            },
+          },
         },
       })
     );
@@ -129,6 +137,13 @@ describe("AgentStorage", () => {
     expect(record.provider).toBe("claude");
     expect(record.config?.modeId).toBe("coding");
     expect(record.config?.model).toBe("gpt-5.1");
+    expect(record.config?.mcpServers).toEqual({
+      paseo: {
+        type: "stdio",
+        command: "node",
+        args: ["/tmp/mcp-stdio-socket-bridge-cli.mjs", "--socket", "/tmp/test.sock"],
+      },
+    });
     expect(record.lastModeId).toBe("coding");
     expect(record.lastStatus).toBe("idle");
 

@@ -89,7 +89,7 @@ export const AGENT_PROVIDER_DEFINITIONS: AgentProviderDefinition[] = [
     voice: {
       enabled: true,
       defaultModeId: "read-only",
-      defaultModel: "gpt-5.2-mini",
+      defaultModel: "gpt-5.1-codex-mini",
     },
   },
   {

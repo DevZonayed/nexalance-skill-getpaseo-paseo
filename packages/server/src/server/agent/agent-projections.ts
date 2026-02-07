@@ -129,6 +129,9 @@ function buildSerializableConfig(
   if (extra !== undefined) {
     serializable.extra = extra;
   }
+  if (config.mcpServers) {
+    serializable.mcpServers = config.mcpServers;
+  }
   return Object.keys(serializable).length ? serializable : null;
 }
 

@@ -8,16 +8,15 @@ import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import pino from "pino";
 
-import { createVoiceMcpBridgeSocketServer } from "./voice-mcp-bridge.js";
+import { createVoiceMcpSocketBridgeManager } from "./voice-mcp-bridge.js";
 
 describe("voice MCP bridge", () => {
-  test("proxies stdio MCP messages through unix socket bridge", async () => {
+  test("proxies stdio MCP bytes through per-agent unix socket bridge", async () => {
     const tmpRoot = await mkdtemp(path.join(os.tmpdir(), "paseo-voice-mcp-bridge-"));
-    const socketPath = path.join(tmpRoot, "voice-mcp.sock");
     const callerAgentId = "voice-agent-bridge-test";
 
-    const bridge = createVoiceMcpBridgeSocketServer({
-      socketPath,
+    const bridgeManager = createVoiceMcpSocketBridgeManager({
+      runtimeDir: tmpRoot,
       logger: pino({ level: "silent" }),
       createAgentMcpServerForCaller: async (callerId) => {
         const server = new McpServer({
@@ -53,21 +52,16 @@ describe("voice MCP bridge", () => {
       },
     });
 
-    await bridge.start();
+    const socketPath = await bridgeManager.ensureBridgeForCaller(callerAgentId);
 
-    const tsxBin = path.resolve(process.cwd(), "../../node_modules/.bin/tsx");
-    const serverIndex = path.resolve(process.cwd(), "src/server/index.ts");
+    const bridgeScript = path.resolve(process.cwd(), "scripts/mcp-stdio-socket-bridge-cli.mjs");
 
     const transport = new StdioClientTransport({
       command: process.execPath,
       args: [
-        tsxBin,
-        serverIndex,
-        "__paseo_voice_mcp_bridge",
+        bridgeScript,
         "--socket",
         socketPath,
-        "--caller-agent-id",
-        callerAgentId,
       ],
     });
 
@@ -86,7 +80,7 @@ describe("voice MCP bridge", () => {
       expect(payload?.callerAgentId).toBe(callerAgentId);
     } finally {
       await client.close();
-      await bridge.stop();
+      await bridgeManager.stop();
       await rm(tmpRoot, { recursive: true, force: true });
     }
   }, 30_000);

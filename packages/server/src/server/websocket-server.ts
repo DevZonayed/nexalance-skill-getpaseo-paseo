@@ -88,6 +88,8 @@ export class VoiceAssistantWebSocketServer {
     voiceLlmProviderExplicit?: boolean;
     voiceLlmModel?: string | null;
     voiceAgentMcpStdio?: VoiceMcpStdioConfig | null;
+    ensureVoiceMcpSocketForAgent?: (agentId: string) => Promise<string>;
+    removeVoiceMcpSocketForAgent?: (agentId: string) => Promise<void>;
   } | null;
   private readonly voiceSpeakHandlers = new Map<
     string,
@@ -113,6 +115,8 @@ export class VoiceAssistantWebSocketServer {
       voiceLlmProviderExplicit?: boolean;
       voiceLlmModel?: string | null;
       voiceAgentMcpStdio?: VoiceMcpStdioConfig | null;
+      ensureVoiceMcpSocketForAgent?: (agentId: string) => Promise<string>;
+      removeVoiceMcpSocketForAgent?: (agentId: string) => Promise<void>;
     },
     dictation?: {
       finalTimeoutMs?: number;
@@ -257,6 +261,8 @@ export class VoiceAssistantWebSocketServer {
         unregisterVoiceCallerContext: (agentId) => {
           this.voiceCallerContexts.delete(agentId);
         },
+        ensureVoiceMcpSocketForAgent: this.voice?.ensureVoiceMcpSocketForAgent,
+        removeVoiceMcpSocketForAgent: this.voice?.removeVoiceMcpSocketForAgent,
       },
       dictation: this.dictation ?? undefined,
     });

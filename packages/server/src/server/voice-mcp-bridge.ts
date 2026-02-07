@@ -2,336 +2,147 @@ import net from "node:net";
 import path from "node:path";
 import { mkdir, rm } from "node:fs/promises";
 import type { Logger } from "pino";
-import pino from "pino";
-import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
-import type { JSONRPCMessage } from "@modelcontextprotocol/sdk/types.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 
+type BridgeServer = {
+  connect: (transport: StdioServerTransport) => Promise<void>;
+  close?: () => Promise<void>;
+};
 
-type BridgeEnvelope =
-  | { type: "init"; callerAgentId: string }
-  | { type: "mcp"; message: JSONRPCMessage }
-  | { type: "ready" }
-  | { type: "error"; message: string };
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
-
-function parseEnvelope(raw: string): BridgeEnvelope {
-  const parsed = JSON.parse(raw);
-  if (!isRecord(parsed) || typeof parsed.type !== "string") {
-    throw new Error("Invalid bridge envelope");
-  }
-  if (parsed.type === "init") {
-    const callerAgentId = typeof parsed.callerAgentId === "string" ? parsed.callerAgentId.trim() : "";
-    if (!callerAgentId) {
-      throw new Error("Invalid init payload: callerAgentId is required");
-    }
-    return { type: "init", callerAgentId };
-  }
-  if (parsed.type === "mcp") {
-    if (!("message" in parsed)) {
-      throw new Error("Invalid mcp payload: message is required");
-    }
-    return { type: "mcp", message: parsed.message as JSONRPCMessage };
-  }
-  if (parsed.type === "ready") return { type: "ready" };
-  if (parsed.type === "error") {
-    return { type: "error", message: typeof parsed.message === "string" ? parsed.message : "Unknown error" };
-  }
-  throw new Error(`Unknown envelope type: ${parsed.type}`);
-}
-
-function encodeEnvelope(envelope: BridgeEnvelope): string {
-  return `${JSON.stringify(envelope)}\n`;
-}
-
-export type VoiceMcpBridgeSocketServer = {
+type BridgeEntry = {
   socketPath: string;
-  start: () => Promise<void>;
+  server: net.Server;
+  sockets: Set<net.Socket>;
+};
+
+export type VoiceMcpSocketBridgeManager = {
+  ensureBridgeForCaller: (callerAgentId: string) => Promise<string>;
+  removeBridgeForCaller: (callerAgentId: string) => Promise<void>;
   stop: () => Promise<void>;
 };
 
-export function createVoiceMcpBridgeSocketServer(params: {
-  socketPath: string;
+function toSocketName(callerAgentId: string): string {
+  return `voice-mcp-${callerAgentId}.sock`;
+}
+
+export function createVoiceMcpSocketBridgeManager(params: {
+  runtimeDir: string;
   logger: Logger;
-  createAgentMcpServerForCaller: (callerAgentId: string) => Promise<{ connect: (transport: InMemoryTransport) => Promise<void>; close?: () => Promise<void> }>;
-}): VoiceMcpBridgeSocketServer {
+  createAgentMcpServerForCaller: (callerAgentId: string) => Promise<BridgeServer>;
+}): VoiceMcpSocketBridgeManager {
   const logger = params.logger.child({ module: "voice-mcp-bridge" });
-  const sockets = new Set<net.Socket>();
+  const entries = new Map<string, BridgeEntry>();
+  const pendingCreates = new Map<string, Promise<string>>();
 
-  const server = net.createServer((socket) => {
-    sockets.add(socket);
-    const connectionLogger = logger.child({ component: "connection" });
-    let readBuffer = "";
-    let initialized = false;
-    let clientTransport: InMemoryTransport | null = null;
-    let mcpServer: { close?: () => Promise<void> } | null = null;
+  const ensureBridgeForCaller = async (callerAgentId: string): Promise<string> => {
+    const existing = entries.get(callerAgentId);
+    if (existing) {
+      return existing.socketPath;
+    }
 
-    const send = (payload: BridgeEnvelope) => {
-      socket.write(encodeEnvelope(payload));
-    };
+    const pending = pendingCreates.get(callerAgentId);
+    if (pending) {
+      return pending;
+    }
 
-    const fail = (message: string) => {
-      send({ type: "error", message });
-      socket.end();
-    };
+    const createPromise = (async () => {
+      const socketPath = path.join(params.runtimeDir, toSocketName(callerAgentId));
+      const sockets = new Set<net.Socket>();
+      const server = net.createServer((socket) => {
+        sockets.add(socket);
+        const connectionLogger = logger.child({ callerAgentId, component: "connection" });
 
-    const cleanup = async () => {
-      sockets.delete(socket);
-      const closeTasks: Promise<unknown>[] = [];
-      if (clientTransport) {
-        closeTasks.push(clientTransport.close().catch(() => undefined));
-      }
-      if (mcpServer?.close) {
-        closeTasks.push(mcpServer.close().catch(() => undefined));
-      }
-      await Promise.all(closeTasks);
-    };
+        let mcpServer: BridgeServer | null = null;
+        let transport: StdioServerTransport | null = null;
 
-    socket.on("data", (chunk) => {
-      readBuffer += chunk.toString("utf8");
-      while (true) {
-        const newlineIndex = readBuffer.indexOf("\n");
-        if (newlineIndex < 0) break;
-        const line = readBuffer.slice(0, newlineIndex).trim();
-        readBuffer = readBuffer.slice(newlineIndex + 1);
-        if (!line) continue;
+        const cleanup = async () => {
+          sockets.delete(socket);
+          await Promise.all([
+            transport?.close().catch(() => undefined),
+            mcpServer?.close?.().catch(() => undefined),
+          ]);
+        };
 
-        let message: BridgeEnvelope;
-        try {
-          message = parseEnvelope(line);
-        } catch (error) {
-          fail(error instanceof Error ? error.message : String(error));
-          return;
-        }
+        socket.on("error", (error) => {
+          connectionLogger.error({ err: error }, "Voice MCP bridge socket error");
+        });
+        socket.on("close", () => {
+          void cleanup();
+        });
 
-        if (message.type === "init") {
-          if (initialized) {
-            fail("Bridge already initialized");
-            return;
+        void (async () => {
+          try {
+            mcpServer = await params.createAgentMcpServerForCaller(callerAgentId);
+            transport = new StdioServerTransport(socket, socket);
+            await mcpServer.connect(transport);
+          } catch (error) {
+            connectionLogger.error(
+              { err: error, callerAgentId },
+              "Failed to initialize stream-level MCP bridge connection"
+            );
+            socket.destroy();
           }
-          initialized = true;
-          void (async () => {
-            try {
-              const [proxyClient, proxyServer] = InMemoryTransport.createLinkedPair();
-              const serverInstance = await params.createAgentMcpServerForCaller(message.callerAgentId);
-              await serverInstance.connect(proxyServer);
-              await proxyClient.start();
-              proxyClient.onmessage = (jsonrpcMessage) => {
-                send({ type: "mcp", message: jsonrpcMessage });
-              };
-              clientTransport = proxyClient;
-              mcpServer = serverInstance;
-              send({ type: "ready" });
-            } catch (error) {
-              connectionLogger.error({ err: error }, "Failed to initialize voice MCP bridge connection");
-              fail(error instanceof Error ? error.message : String(error));
-            }
-          })();
-          continue;
-        }
+        })();
+      });
 
-        if (message.type === "mcp") {
-          if (!clientTransport) {
-            fail("Bridge is not initialized");
-            return;
-          }
-          void clientTransport.send(message.message).catch((error) => {
-            connectionLogger.error({ err: error }, "Failed to forward MCP message");
-            fail(error instanceof Error ? error.message : String(error));
-          });
-          continue;
-        }
-      }
-    });
-
-    socket.on("error", (error) => {
-      connectionLogger.error({ err: error }, "Voice MCP bridge socket error");
-    });
-    socket.on("close", () => {
-      void cleanup();
-    });
-  });
-
-  return {
-    socketPath: params.socketPath,
-    async start() {
-      await mkdir(path.dirname(params.socketPath), { recursive: true });
-      await rm(params.socketPath, { force: true }).catch(() => undefined);
+      await mkdir(params.runtimeDir, { recursive: true });
+      await rm(socketPath, { force: true }).catch(() => undefined);
       await new Promise<void>((resolve, reject) => {
         server.once("error", reject);
-        server.listen(params.socketPath, () => {
+        server.listen(socketPath, () => {
           server.off("error", reject);
           resolve();
         });
       });
-      logger.info({ socketPath: params.socketPath }, "Voice MCP bridge socket server listening");
-    },
-    async stop() {
-      for (const socket of sockets) {
-        socket.destroy();
-      }
-      await new Promise<void>((resolve, reject) => {
-        server.close((error) => {
-          if (error) reject(error);
-          else resolve();
-        });
-      });
-      await rm(params.socketPath, { force: true }).catch(() => undefined);
-    },
+
+      entries.set(callerAgentId, { socketPath, server, sockets });
+      logger.info(
+        { callerAgentId, socketPath },
+        "Voice MCP per-agent socket bridge listening"
+      );
+      return socketPath;
+    })();
+
+    pendingCreates.set(callerAgentId, createPromise);
+    try {
+      return await createPromise;
+    } finally {
+      pendingCreates.delete(callerAgentId);
+    }
   };
-}
 
-function parseBridgeCliArgs(argv: string[]): { socketPath: string; callerAgentId: string } {
-  let socketPath: string | null = null;
-  let callerAgentId: string | null = null;
-
-  for (let index = 0; index < argv.length; index += 1) {
-    const arg = argv[index];
-    if (arg === "--socket") {
-      socketPath = argv[index + 1] ?? null;
-      index += 1;
-      continue;
+  const removeBridgeForCaller = async (callerAgentId: string): Promise<void> => {
+    const entry = entries.get(callerAgentId);
+    if (!entry) {
+      return;
     }
-    if (arg === "--caller-agent-id") {
-      callerAgentId = argv[index + 1] ?? null;
-      index += 1;
-      continue;
-    }
-  }
+    entries.delete(callerAgentId);
 
-  if (!socketPath?.trim()) {
-    throw new Error("Missing required --socket <path>");
-  }
-  if (!callerAgentId?.trim()) {
-    throw new Error("Missing required --caller-agent-id <id>");
-  }
+    for (const socket of entry.sockets) {
+      socket.destroy();
+    }
+    await new Promise<void>((resolve, reject) => {
+      entry.server.close((error) => {
+        if (error) reject(error);
+        else resolve();
+      });
+    });
+    await rm(entry.socketPath, { force: true }).catch(() => undefined);
+    logger.info({ callerAgentId, socketPath: entry.socketPath }, "Voice MCP socket bridge removed");
+  };
+
+  const stop = async (): Promise<void> => {
+    const activeCallerIds = Array.from(entries.keys());
+    for (const callerAgentId of activeCallerIds) {
+      await removeBridgeForCaller(callerAgentId).catch((error) => {
+        logger.warn({ err: error, callerAgentId }, "Failed to stop voice MCP socket bridge");
+      });
+    }
+  };
 
   return {
-    socketPath: socketPath.trim(),
-    callerAgentId: callerAgentId.trim(),
+    ensureBridgeForCaller,
+    removeBridgeForCaller,
+    stop,
   };
-}
-
-export async function runVoiceMcpBridgeCli(argv: string[], logger?: Logger): Promise<void> {
-  const bridgeLogger = logger ?? pino({ level: "error" });
-  const parsed = parseBridgeCliArgs(argv);
-
-  const socket = net.createConnection(parsed.socketPath);
-  const stdioTransport = new StdioServerTransport(process.stdin, process.stdout);
-  let socketBuffer = "";
-  let stdioStarted = false;
-  const pendingMcpMessages: JSONRPCMessage[] = [];
-
-  let resolveReady: (() => void) | null = null;
-  let rejectReady: ((error: Error) => void) | null = null;
-  const readyPromise = new Promise<void>((resolve, reject) => {
-    resolveReady = () => {
-      resolveReady = null;
-      rejectReady = null;
-      resolve();
-    };
-    rejectReady = (error: Error) => {
-      resolveReady = null;
-      rejectReady = null;
-      reject(error);
-    };
-  });
-
-  const failReady = (message: string) => {
-    if (rejectReady) {
-      rejectReady(new Error(message));
-    }
-  };
-
-  const sendEnvelope = (payload: BridgeEnvelope) => {
-    socket.write(encodeEnvelope(payload));
-  };
-
-  socket.on("data", (chunk) => {
-    socketBuffer += chunk.toString("utf8");
-    while (true) {
-      const newlineIndex = socketBuffer.indexOf("\n");
-      if (newlineIndex < 0) break;
-      const line = socketBuffer.slice(0, newlineIndex).trim();
-      socketBuffer = socketBuffer.slice(newlineIndex + 1);
-      if (!line) continue;
-
-      let envelope: BridgeEnvelope;
-      try {
-        envelope = parseEnvelope(line);
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        bridgeLogger.error({ err: error }, "Failed to parse voice MCP bridge envelope");
-        failReady(`Failed to parse voice MCP bridge envelope: ${message}`);
-        socket.destroy();
-        return;
-      }
-      if (envelope.type === "ready") {
-        resolveReady?.();
-        continue;
-      }
-      if (envelope.type === "error") {
-        failReady(`Voice MCP bridge error: ${envelope.message}`);
-        socket.destroy();
-        return;
-      }
-      if (envelope.type === "mcp") {
-        if (!stdioStarted) {
-          pendingMcpMessages.push(envelope.message);
-          continue;
-        }
-        void stdioTransport.send(envelope.message).catch((error) => {
-          bridgeLogger.error({ err: error }, "Failed to forward MCP message to stdio transport");
-          socket.destroy();
-        });
-      }
-    }
-  });
-
-  socket.on("error", (error) => {
-    bridgeLogger.error({ err: error }, "Voice MCP bridge socket client error");
-    failReady(`Voice MCP bridge socket client error: ${error.message}`);
-  });
-
-  await new Promise<void>((resolve, reject) => {
-    socket.once("connect", () => resolve());
-    socket.once("error", reject);
-  });
-
-  sendEnvelope({ type: "init", callerAgentId: parsed.callerAgentId });
-
-  const readyTimeoutPromise = new Promise<void>((_, reject) => {
-    const timeout = setTimeout(() => {
-      reject(new Error("Timed out waiting for voice MCP bridge initialization"));
-    }, 10000);
-    readyPromise.finally(() => clearTimeout(timeout)).catch(() => undefined);
-  });
-  await Promise.race([readyPromise, readyTimeoutPromise]);
-
-  stdioTransport.onmessage = (message) => {
-    sendEnvelope({ type: "mcp", message });
-  };
-  stdioTransport.onerror = (error) => {
-    bridgeLogger.error({ err: error }, "Voice MCP stdio transport error");
-    socket.destroy();
-  };
-  stdioTransport.onclose = () => {
-    socket.end();
-  };
-
-  await stdioTransport.start();
-  stdioStarted = true;
-  for (const message of pendingMcpMessages) {
-    await stdioTransport.send(message);
-  }
-
-  await new Promise<void>((resolve) => {
-    socket.once("close", () => resolve());
-    process.stdin.once("end", () => resolve());
-  });
-
-  await stdioTransport.close().catch(() => undefined);
 }

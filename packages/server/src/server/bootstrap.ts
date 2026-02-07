@@ -67,39 +67,29 @@ import type {
 import { AGENT_PROVIDER_DEFINITIONS } from "./agent/provider-manifest.js";
 import { acquirePidLock, releasePidLock } from "./pid-lock.js";
 import { isHostAllowed, type AllowedHostsConfig } from "./allowed-hosts.js";
-import { createVoiceMcpBridgeSocketServer, type VoiceMcpBridgeSocketServer } from "./voice-mcp-bridge.js";
+import {
+  createVoiceMcpSocketBridgeManager,
+  type VoiceMcpSocketBridgeManager,
+} from "./voice-mcp-bridge.js";
+import { resolveVoiceMcpBridgeFromRuntime } from "./voice-mcp-bridge-command.js";
 
 type AgentMcpTransportMap = Map<string, StreamableHTTPServerTransport>;
 
 function resolveVoiceMcpBridgeCommand(logger: Logger): { command: string; baseArgs: string[] } {
-  const explicit = process.env.PASEO_BIN_PATH?.trim();
-  if (explicit) {
-    const resolved = { command: explicit, baseArgs: ["__paseo_voice_mcp_bridge"] };
-    logger.info({ source: "PASEO_BIN_PATH", command: resolved.command, baseArgs: resolved.baseArgs }, "Resolved voice MCP bridge command");
-    return resolved;
-  }
-
-  const argv1 = process.argv[1]?.trim();
-  if (!argv1) {
-    logger.warn("Could not resolve argv[1] for voice MCP bridge; falling back to 'paseo'");
-    const resolved = { command: "paseo", baseArgs: ["__paseo_voice_mcp_bridge"] };
-    logger.info({ source: "fallback", command: resolved.command, baseArgs: resolved.baseArgs }, "Resolved voice MCP bridge command");
-    return resolved;
-  }
-
-  const base = path.basename(argv1).toLowerCase();
-  if (base.includes("tsx") && process.argv[2]) {
-    const resolved = {
-      command: process.execPath,
-      baseArgs: [argv1, process.argv[2], "__paseo_voice_mcp_bridge"],
-    };
-    logger.info({ source: "tsx", command: resolved.command, baseArgs: resolved.baseArgs }, "Resolved voice MCP bridge command");
-    return resolved;
-  }
-
-  const resolved = { command: argv1, baseArgs: ["__paseo_voice_mcp_bridge"] };
-  logger.info({ source: "argv", command: resolved.command, baseArgs: resolved.baseArgs }, "Resolved voice MCP bridge command");
-  return resolved;
+  const decision = resolveVoiceMcpBridgeFromRuntime({
+    bootstrapModuleUrl: import.meta.url,
+    execPath: process.execPath,
+    explicitScriptPath: process.env.PASEO_MCP_STDIO_SOCKET_BRIDGE_SCRIPT,
+  });
+  logger.info(
+    {
+      source: decision.source,
+      command: decision.resolved.command,
+      baseArgs: decision.resolved.baseArgs,
+    },
+    "Resolved voice MCP bridge command"
+  );
+  return decision.resolved;
 }
 
 export type PaseoOpenAIConfig = OpenAiSpeechProviderConfig;
@@ -382,7 +372,7 @@ export async function createPaseoDaemon(
     "Voice LLM provider reconciliation completed"
   );
   let wsServer: VoiceAssistantWebSocketServer | null = null;
-  let voiceMcpBridgeServer: VoiceMcpBridgeSocketServer | null = null;
+  let voiceMcpBridgeManager: VoiceMcpSocketBridgeManager | null = null;
 
   // Create in-memory transport for Session's Agent MCP client (voice assistant tools)
   const createInMemoryAgentMcpTransport = async (): Promise<InMemoryTransport> => {
@@ -522,10 +512,10 @@ export async function createPaseoDaemon(
     logger.info("Agent MCP HTTP endpoint disabled");
   }
 
-  const voiceMcpSocketPath = path.join(config.paseoHome, "runtime", "voice-mcp.sock");
+  const voiceMcpSocketDir = path.join(config.paseoHome, "runtime", "voice-mcp");
   const voiceMcpBridgeCommand = resolveVoiceMcpBridgeCommand(logger);
-  voiceMcpBridgeServer = createVoiceMcpBridgeSocketServer({
-    socketPath: voiceMcpSocketPath,
+  voiceMcpBridgeManager = createVoiceMcpSocketBridgeManager({
+    runtimeDir: voiceMcpSocketDir,
     logger,
     createAgentMcpServerForCaller: async (callerAgentId) => {
       return createAgentMcpServer({
@@ -571,15 +561,16 @@ export async function createPaseoDaemon(
       voiceLlmModel: resolvedVoiceLlmModel,
       voiceAgentMcpStdio: {
         command: voiceMcpBridgeCommand.command,
-        baseArgs: [
-          ...voiceMcpBridgeCommand.baseArgs,
-          "--socket",
-          voiceMcpSocketPath,
-        ],
+        baseArgs: [...voiceMcpBridgeCommand.baseArgs],
         env: {
           PASEO_HOME: config.paseoHome,
         },
       },
+      ensureVoiceMcpSocketForAgent: (agentId) =>
+        voiceMcpBridgeManager?.ensureBridgeForCaller(agentId) ??
+        Promise.reject(new Error("Voice MCP bridge manager is not initialized")),
+      removeVoiceMcpSocketForAgent: (agentId) =>
+        voiceMcpBridgeManager?.removeBridgeForCaller(agentId) ?? Promise.resolve(),
     },
     {
       finalTimeoutMs: config.dictationFinalTimeoutMs,
@@ -675,9 +666,6 @@ export async function createPaseoDaemon(
         httpServer.listen(listenTarget.path);
       }
     });
-    if (voiceMcpBridgeServer) {
-      await voiceMcpBridgeServer.start();
-    }
   };
 
   const stop = async () => {
@@ -692,8 +680,8 @@ export async function createPaseoDaemon(
     if (wsServer) {
       await wsServer.close();
     }
-    if (voiceMcpBridgeServer) {
-      await voiceMcpBridgeServer.stop().catch(() => undefined);
+    if (voiceMcpBridgeManager) {
+      await voiceMcpBridgeManager.stop().catch(() => undefined);
     }
     await new Promise<void>((resolve) => {
       httpServer.close(() => resolve());
