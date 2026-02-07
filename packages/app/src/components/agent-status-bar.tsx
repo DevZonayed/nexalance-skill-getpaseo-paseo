@@ -71,12 +71,16 @@ export function AgentStatusBar({ agentId, serverId }: AgentStatusBarProps) {
     : agent.model ?? "default";
 
   const thinkingOptions = selectedModel?.thinkingOptions ?? null;
+  const explicitThinkingId =
+    agent.thinkingOptionId && agent.thinkingOptionId !== "default"
+      ? agent.thinkingOptionId
+      : null;
   const selectedThinkingId =
-    agent.thinkingOptionId ??
-    selectedModel?.defaultThinkingOptionId ??
-    "default";
+    explicitThinkingId ?? selectedModel?.defaultThinkingOptionId ?? null;
   const selectedThinking = thinkingOptions?.find((o) => o.id === selectedThinkingId) ?? null;
-  const displayThinking = selectedThinking?.label ?? selectedThinkingId ?? "default";
+  const displayThinking =
+    selectedThinking?.label ??
+    (selectedThinkingId === "default" ? "Model default" : selectedThinkingId ?? "auto");
 
   return (
     <View style={styles.container}>
@@ -201,7 +205,7 @@ export function AgentStatusBar({ agentId, serverId }: AgentStatusBarProps) {
                           return;
                         }
                         void client
-                          .setAgentThinkingOption(agentId, opt.id === "default" ? null : opt.id)
+                          .setAgentThinkingOption(agentId, opt.id)
                           .catch((error) => {
                             console.warn("[AgentStatusBar] setAgentThinkingOption failed", error);
                           });
@@ -289,22 +293,22 @@ export function AgentStatusBar({ agentId, serverId }: AgentStatusBarProps) {
                     accessibilityLabel="Select thinking option"
                     testID="agent-preferences-thinking"
                   >
-                  <Text style={styles.sheetSelectText}>{displayThinking}</Text>
-                  <ChevronDown size={16} color={theme.colors.foregroundMuted} />
-                </DropdownMenuTrigger>
-                <DropdownMenuContent side="top" align="start">
-                  {thinkingOptions.map((opt) => {
-                    const isActive = opt.id === selectedThinkingId;
-                    return (
-                      <DropdownMenuItem
-                        key={opt.id}
-                        selected={isActive}
-                        onSelect={() => {
-                          if (!client) {
-                            return;
+                    <Text style={styles.sheetSelectText}>{displayThinking}</Text>
+                    <ChevronDown size={16} color={theme.colors.foregroundMuted} />
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent side="top" align="start">
+                    {thinkingOptions.map((opt) => {
+                      const isActive = opt.id === selectedThinkingId;
+                      return (
+                        <DropdownMenuItem
+                          key={opt.id}
+                          selected={isActive}
+                          onSelect={() => {
+                            if (!client) {
+                              return;
                             }
                             void client
-                              .setAgentThinkingOption(agentId, opt.id === "default" ? null : opt.id)
+                              .setAgentThinkingOption(agentId, opt.id)
                               .catch((error) => {
                                 console.warn("[AgentStatusBar] setAgentThinkingOption failed", error);
                               });

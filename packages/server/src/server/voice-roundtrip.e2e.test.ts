@@ -9,7 +9,6 @@ import {
   createDaemonTestContext,
   type DaemonTestContext,
 } from "./test-utils/index.js";
-import { getFullAccessConfig, type AgentProvider } from "./daemon-e2e/agent-configs.js";
 import { OpenAITTS } from "./speech/providers/openai/tts.js";
 import { OpenAISTT } from "./speech/providers/openai/stt.js";
 import { STTManager } from "./agent/stt-manager.js";
@@ -17,6 +16,37 @@ import { STTManager } from "./agent/stt-manager.js";
 const openaiApiKey = process.env.OPENAI_API_KEY ?? null;
 const shouldRun = process.env.PASEO_VOICE_ROUNDTRIP_E2E === "1" && Boolean(openaiApiKey);
 const speechTest = shouldRun ? test : test.skip;
+
+type VoiceRoundtripProvider = "claude" | "codex" | "opencode";
+
+function getVoiceRoundtripConfig(provider: VoiceRoundtripProvider): {
+  provider: VoiceRoundtripProvider;
+  model: string;
+  modeId: string;
+  thinkingOptionId?: string;
+} {
+  switch (provider) {
+    case "claude":
+      return {
+        provider: "claude",
+        model: "haiku",
+        modeId: "bypassPermissions",
+      };
+    case "codex":
+      return {
+        provider: "codex",
+        model: "gpt-5.1-codex-mini",
+        modeId: "full-access",
+        thinkingOptionId: "low",
+      };
+    case "opencode":
+      return {
+        provider: "opencode",
+        model: "opencode/gpt-5-nano",
+        modeId: "default",
+      };
+  }
+}
 
 function waitForSignal<T>(
   timeoutMs: number,
@@ -98,7 +128,7 @@ describe("voice roundtrip e2e", () => {
     await ctx.cleanup();
   }, 60000);
 
-  for (const targetProvider of ["claude", "codex"] as const satisfies AgentProvider[]) {
+  for (const targetProvider of ["claude", "codex", "opencode"] as const satisfies VoiceRoundtripProvider[]) {
     speechTest(
       `full roundtrip (${targetProvider}): voice input audio -> voice agent -> output audio -> transcribed output`,
       async () => {
@@ -128,7 +158,7 @@ describe("voice roundtrip e2e", () => {
         30000,
         ctx.client.createAgent({
           config: {
-            ...getFullAccessConfig(targetProvider),
+            ...getVoiceRoundtripConfig(targetProvider),
             cwd: voiceCwd,
           },
         })

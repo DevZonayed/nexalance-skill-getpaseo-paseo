@@ -292,7 +292,7 @@ export class OpenCodeAgentClient implements AgentClient {
       for (const [modelId, model] of Object.entries(provider.models)) {
         const rawVariants = model.variants ? Object.keys(model.variants) : [];
         const thinkingOptions = [
-          { id: "default", label: "Default", isDefault: true },
+          { id: "default", label: "Model default", isDefault: true },
           ...rawVariants.map((id) => ({ id, label: id })),
         ];
 

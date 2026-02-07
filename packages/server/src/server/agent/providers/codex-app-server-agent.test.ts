@@ -90,6 +90,49 @@ async function waitForFileToContainText(
   return null;
 }
 
+function readRolloutTurnContextEfforts(rolloutPath: string): string[] {
+  const lines = readFileSync(rolloutPath, "utf8")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+
+  const efforts: string[] = [];
+  for (const line of lines) {
+    let parsed: {
+      type?: string;
+      payload?: {
+        effort?: string;
+        reasoning_effort?: string;
+        collaboration_mode?: { settings?: { reasoning_effort?: string } };
+      };
+    } | null = null;
+    try {
+      parsed = JSON.parse(line) as {
+        type?: string;
+        payload?: {
+          effort?: string;
+          reasoning_effort?: string;
+          collaboration_mode?: { settings?: { reasoning_effort?: string } };
+        };
+      };
+    } catch {
+      continue;
+    }
+
+    if (parsed?.type !== "turn_context") continue;
+    const effort =
+      parsed.payload?.effort ??
+      parsed.payload?.reasoning_effort ??
+      parsed.payload?.collaboration_mode?.settings?.reasoning_effort ??
+      null;
+    if (typeof effort === "string" && effort.length > 0) {
+      efforts.push(effort);
+    }
+  }
+
+  return efforts;
+}
+
 describe("Codex app-server provider (integration)", () => {
   const logger = createTestLogger();
 
@@ -116,6 +159,28 @@ describe("Codex app-server provider (integration)", () => {
     const models = await client.listModels();
     expect(models.some((model) => model.id.includes("gpt-5.1-codex"))).toBe(true);
   }, 30000);
+
+  test.runIf(isCodexInstalled())(
+    "listModels exposes concrete thinking options (no synthetic default id)",
+    async () => {
+      const client = new CodexAppServerAgentClient(logger);
+      const models = await client.listModels();
+
+      for (const model of models) {
+        const options = model.thinkingOptions ?? [];
+        for (const option of options) {
+          expect(option.id).not.toBe("default");
+        }
+
+        if (options.length > 0) {
+          const defaultThinkingId = model.defaultThinkingOptionId;
+          expect(typeof defaultThinkingId).toBe("string");
+          expect(options.some((option) => option.id === defaultThinkingId)).toBe(true);
+        }
+      }
+    },
+    30000
+  );
 
   test.runIf(isCodexInstalled())("accepts image prompt blocks without request validation errors", async () => {
     const cleanup = useTempCodexSessionDir();
@@ -169,6 +234,78 @@ describe("Codex app-server provider (integration)", () => {
       rmSync(cwd, { recursive: true, force: true });
     }
   }, 120000);
+
+  test.runIf(isCodexInstalled())(
+    "thinking option changes round-trip through Codex app-server turn context",
+    async () => {
+      const cleanup = useTempCodexSessionDir();
+      const cwd = tmpCwd("codex-thinking-roundtrip-");
+      let session: Awaited<ReturnType<CodexAppServerAgentClient["createSession"]>> | null = null;
+
+      try {
+        const client = new CodexAppServerAgentClient(logger);
+        const models = await client.listModels();
+        const modelWithThinking = models.find((m) => (m.thinkingOptions?.length ?? 0) > 1);
+        if (!modelWithThinking) {
+          throw new Error("No Codex model with at least two non-default thinking options");
+        }
+
+        const defaultThinkingId = modelWithThinking.defaultThinkingOptionId ?? null;
+        const thinkingIds = (modelWithThinking.thinkingOptions ?? []).map((opt) => opt.id);
+        if (thinkingIds.length < 2) {
+          throw new Error("No Codex model with at least two non-default thinking options");
+        }
+        const initialThinkingId = defaultThinkingId ?? thinkingIds[0]!;
+        const switchedThinkingId =
+          thinkingIds.find((id) => id !== initialThinkingId) ?? thinkingIds[0]!;
+
+        session = await client.createSession({
+          provider: "codex",
+          cwd,
+          modeId: "auto",
+          model: modelWithThinking.id,
+          thinkingOptionId: initialThinkingId,
+        });
+
+        await session.run("Reply with exactly OK.");
+        await session.setThinkingOption?.(switchedThinkingId);
+        await session.run("Reply with exactly OK.");
+
+        const internal = session as unknown as {
+          client?: {
+            request: (method: string, params: unknown) => Promise<unknown>;
+          };
+          currentThreadId?: string | null;
+        };
+        const threadId = internal.currentThreadId;
+        const codexClient = internal.client;
+        if (!threadId || !codexClient) {
+          throw new Error("Codex session did not initialize app-server client/thread");
+        }
+
+        const threadRead = (await codexClient.request("thread/read", {
+          threadId,
+          includeTurns: true,
+        })) as { thread?: { path?: string } };
+        const rolloutPath = threadRead.thread?.path;
+        if (!rolloutPath) {
+          throw new Error("Codex app-server did not return rollout path");
+        }
+
+        const efforts = readRolloutTurnContextEfforts(rolloutPath);
+        const initialIndex = efforts.lastIndexOf(initialThinkingId);
+        const switchedIndex = efforts.lastIndexOf(switchedThinkingId);
+
+        expect(initialIndex).toBeGreaterThanOrEqual(0);
+        expect(switchedIndex).toBeGreaterThan(initialIndex);
+      } finally {
+        await session?.close().catch(() => undefined);
+        cleanup();
+        rmSync(cwd, { recursive: true, force: true });
+      }
+    },
+    120000
+  );
 
   test.runIf(isCodexInstalled())("round-trips a stdio MCP tool call", async () => {
     const cleanup = useTempCodexSessionDir();

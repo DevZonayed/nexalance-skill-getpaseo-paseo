@@ -184,8 +184,10 @@ describe("daemon E2E", () => {
         if (!modelWithOptions) {
           throw new Error("No Codex model with thinkingOptions returned");
         }
+        const defaultThinkingId = modelWithOptions.defaultThinkingOptionId ?? "default";
         const nonDefault =
-          modelWithOptions.thinkingOptions?.find((o) => o.id !== "default")?.id ??
+          modelWithOptions.thinkingOptions?.find((o) => o.id !== defaultThinkingId)?.id ??
+          modelWithOptions.thinkingOptions?.[0]?.id ??
           null;
         if (!nonDefault) {
           throw new Error("No non-default Codex thinking option found");
@@ -240,8 +242,10 @@ describe("daemon E2E", () => {
           model: modelWithThinkingOptions.id,
         });
 
+        const defaultThinkingId = modelWithThinkingOptions.defaultThinkingOptionId ?? "default";
         const thinkingId =
-          modelWithThinkingOptions.thinkingOptions?.find((o) => o.id !== "default")?.id ??
+          modelWithThinkingOptions.thinkingOptions?.find((o) => o.id !== defaultThinkingId)?.id ??
+          modelWithThinkingOptions.thinkingOptions?.[0]?.id ??
           null;
         if (!thinkingId) {
           throw new Error("No non-default OpenCode thinking option found");
