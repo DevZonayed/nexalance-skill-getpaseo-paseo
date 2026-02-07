@@ -23,12 +23,14 @@
     "format:check": "prettier --check .",
     "start": "npm run start --workspace=@getpaseo/server",
     "android": "npm run android --workspace=@getpaseo/app",
-    "android:release": "ANDROID_VARIANT=productionRelease npm run android --workspace=@getpaseo/app",
-    "android:dev-release": "ANDROID_VARIANT=devRelease npm run android --workspace=@getpaseo/app",
+    "android:fast": "npm run android:fast --workspace=@getpaseo/app",
+    "android:debug": "npm run android:debug --workspace=@getpaseo/app",
+    "android:prod": "npm run android:prod --workspace=@getpaseo/app",
+    "android:release": "npm run android:prod --workspace=@getpaseo/app",
     "ios": "npm run ios --workspace=@getpaseo/app",
     "web": "npm run web --workspace=@getpaseo/app",
-    "desktop": "npm run dev --workspace=@getpaseo/desktop",
-    "desktop:build": "npm run build --workspace=@getpaseo/desktop",
+    "dev:desktop": "npm run dev --workspace=@getpaseo/desktop",
+    "build:desktop": "npm run build --workspace=@getpaseo/desktop",
     "cli": "npx tsx packages/cli/src/index.js"
   },
   "devDependencies": {

@@ -357,7 +357,7 @@ describe("curateAgentActivity", () => {
       ];
 
       const result = curateAgentActivity(timeline);
-      expect(result).toBe('[speak] {"text":"hello from voice"}');
+      expect(result).toBe('[Speak] {"text":"hello from voice"}');
     });
 
     test("shows MCP tool input JSON", () => {
@@ -389,7 +389,22 @@ describe("curateAgentActivity", () => {
       ];
 
       const result = curateAgentActivity(timeline);
-      expect(result).toBe('[paseo_voice.speak] {"text":"hello from namespaced tool"}');
+      expect(result).toBe('[Speak] {"text":"hello from namespaced tool"}');
+    });
+
+    test("shows claude mcp speak tool input as Speak", () => {
+      const timeline: AgentTimelineItem[] = [
+        {
+          type: "tool_call",
+          callId: "m3",
+          name: "mcp__paseo_voice__speak",
+          input: { text: "hello from claude mcp" },
+          status: "completed",
+        },
+      ];
+
+      const result = curateAgentActivity(timeline);
+      expect(result).toBe('[Speak] {"text":"hello from claude mcp"}');
     });
   });
 });

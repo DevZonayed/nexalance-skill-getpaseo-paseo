@@ -57,7 +57,7 @@ export function isVoicePermissionAllowed(request: AgentPermissionRequest): boole
     return false;
   }
 
-  const mentionsAllowedTooling = containsAny(metadataText, ALLOWED_TOKEN_SET);
+  const mentionsAllowedTooling = containsAny(metadataText, SPEAK_TOKEN_SET);
   const mentionsDeniedTooling = containsAny(metadataText, DENIED_TOKEN_SET);
   return mentionsAllowedTooling && !mentionsDeniedTooling;
 }

@@ -1350,7 +1350,15 @@ class CodexAppServerAgentSession implements AgentSession {
       if (ids.includes(this.currentThreadId)) {
         return;
       }
-      await this.client.request("thread/resume", { threadId: this.currentThreadId });
+      const params: Record<string, unknown> = { threadId: this.currentThreadId };
+      if (this.config.systemPrompt?.trim()) {
+        params.developerInstructions = this.config.systemPrompt.trim();
+      }
+      const codexConfig = this.buildCodexInnerConfig();
+      if (codexConfig) {
+        params.config = codexConfig;
+      }
+      await this.client.request("thread/resume", params);
     } catch (error) {
       this.logger.warn({ error }, "Failed to resume Codex thread, starting new thread");
       this.currentThreadId = null;
@@ -1437,6 +1445,13 @@ class CodexAppServerAgentSession implements AgentSession {
       }
       if (options?.outputSchema) {
         params.outputSchema = options.outputSchema;
+      }
+      if (this.config.systemPrompt?.trim()) {
+        params.developerInstructions = this.config.systemPrompt.trim();
+      }
+      const codexConfig = this.buildCodexInnerConfig();
+      if (codexConfig) {
+        params.config = codexConfig;
       }
 
       await this.client.request("turn/start", params, TURN_START_TIMEOUT_MS);
@@ -1707,6 +1722,25 @@ class CodexAppServerAgentSession implements AgentSession {
     const preset = MODE_PRESETS[this.currentMode] ?? MODE_PRESETS[DEFAULT_CODEX_MODE_ID];
     const approvalPolicy = this.config.approvalPolicy ?? preset.approvalPolicy;
     const sandbox = this.config.sandboxMode ?? preset.sandbox;
+    const innerConfig = this.buildCodexInnerConfig();
+    const response = (await this.client.request("thread/start", {
+      model,
+      cwd: this.config.cwd ?? null,
+      approvalPolicy,
+      sandbox,
+      ...(this.config.systemPrompt?.trim()
+        ? { developerInstructions: this.config.systemPrompt.trim() }
+        : {}),
+      ...(innerConfig ? { config: innerConfig } : {}),
+    })) as CodexThreadStartResponse;
+    const threadId = response?.thread?.id;
+    if (!threadId) {
+      throw new Error("Codex app-server did not return thread id");
+    }
+    this.currentThreadId = threadId;
+  }
+
+  private buildCodexInnerConfig(): Record<string, unknown> | null {
     const innerConfig: Record<string, unknown> = {};
     if (this.config.mcpServers) {
       const mcpServers: Record<string, CodexMcpServerConfig> = {};
@@ -1718,21 +1752,7 @@ class CodexAppServerAgentSession implements AgentSession {
     if (this.config.extra?.codex) {
       Object.assign(innerConfig, this.config.extra.codex);
     }
-    const response = (await this.client.request("thread/start", {
-      model,
-      cwd: this.config.cwd ?? null,
-      approvalPolicy,
-      sandbox,
-      ...(this.config.systemPrompt?.trim()
-        ? { developerInstructions: this.config.systemPrompt.trim() }
-        : {}),
-      ...(Object.keys(innerConfig).length > 0 ? { config: innerConfig } : {}),
-    })) as CodexThreadStartResponse;
-    const threadId = response?.thread?.id;
-    if (!threadId) {
-      throw new Error("Codex app-server did not return thread id");
-    }
-    this.currentThreadId = threadId;
+    return Object.keys(innerConfig).length > 0 ? innerConfig : null;
   }
 
   private async buildUserInput(prompt: AgentPromptInput): Promise<unknown[]> {

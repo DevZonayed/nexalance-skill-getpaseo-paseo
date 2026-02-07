@@ -1,5 +1,5 @@
 import type { AgentTimelineItem } from "./agent-sdk-types.js";
-import { extractPrincipalParam } from "../../utils/tool-call-parsers.js";
+import { extractPrincipalParam, normalizeToolDisplayName } from "../../utils/tool-call-parsers.js";
 import { isLikelyExternalToolName } from "./tool-name-normalization.js";
 
 const DEFAULT_MAX_ITEMS = 40;
@@ -147,16 +147,17 @@ export function curateAgentActivity(
         break;
       case "tool_call": {
         flushBuffers(lines, buffers);
+        const displayName = normalizeToolDisplayName(item.name);
         const inputJson = formatToolInputJson(item.input);
         if (isLikelyExternalToolName(item.name) && inputJson) {
-          lines.push(`[${item.name}] ${inputJson}`);
+          lines.push(`[${displayName}] ${inputJson}`);
           break;
         }
         const principal = extractPrincipalParam(item.input);
         if (principal) {
-          lines.push(`[${item.name}] ${principal}`);
+          lines.push(`[${displayName}] ${principal}`);
         } else {
-          lines.push(`[${item.name}]`);
+          lines.push(`[${displayName}]`);
         }
         break;
       }

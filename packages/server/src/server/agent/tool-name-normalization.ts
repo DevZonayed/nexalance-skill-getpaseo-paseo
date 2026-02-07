@@ -1,5 +1,5 @@
 const TOOL_TOKEN_REGEX = /[a-z0-9]+/g;
-const NAMESPACE_SEPARATOR_REGEX = /[.:/]|__/;
+const STANDARD_NAMESPACE_SEPARATOR_REGEX = /[.:/]/;
 
 export function normalizeToolName(name: string): string {
   return name.trim().toLowerCase();
@@ -20,7 +20,23 @@ export function isSpeakToolName(name: string): boolean {
 }
 
 export function isLikelyNamespacedToolName(name: string): boolean {
-  return NAMESPACE_SEPARATOR_REGEX.test(normalizeToolName(name));
+  const normalized = normalizeToolName(name);
+  if (STANDARD_NAMESPACE_SEPARATOR_REGEX.test(normalized)) {
+    return true;
+  }
+  if (!normalized.includes("__")) {
+    return false;
+  }
+
+  // Keep `__` handling strict to avoid false positives on arbitrary custom names.
+  const segments = normalized.split("__").filter((segment) => segment.length > 0);
+  if (segments.length >= 3) {
+    return true;
+  }
+  if (segments.length === 2 && segments[1]!.includes("_")) {
+    return true;
+  }
+  return false;
 }
 
 export function isLikelyExternalToolName(name: string): boolean {

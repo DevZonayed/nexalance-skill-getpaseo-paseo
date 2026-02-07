@@ -63,6 +63,21 @@ export function stripCwdPrefix(filePath: string, cwd?: string): string {
 // This is used for display purposes to show the actual command being run.
 const SHELL_WRAPPER_PREFIX_PATTERN = /^\/bin\/(?:zsh|bash|sh)\s+(?:-[a-zA-Z]+\s+)?/;
 const CD_AND_PATTERN = /^cd\s+(?:"[^"]+"|'[^']+'|\S+)\s+&&\s+/;
+const TOOL_TOKEN_REGEX = /[a-z0-9]+/g;
+
+export function normalizeToolDisplayName(toolName: string): string {
+  const normalized = toolName.trim().toLowerCase();
+  if (!normalized) {
+    return toolName;
+  }
+
+  const tokens = normalized.match(TOOL_TOKEN_REGEX) ?? [];
+  const leaf = tokens[tokens.length - 1];
+  if (leaf === "speak") {
+    return "Speak";
+  }
+  return toolName;
+}
 
 export function stripShellWrapperPrefix(command: string): string {
   const prefixMatch = command.match(SHELL_WRAPPER_PREFIX_PATTERN);

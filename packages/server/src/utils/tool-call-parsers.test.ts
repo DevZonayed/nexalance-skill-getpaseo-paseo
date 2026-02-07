@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 import {
   stripShellWrapperPrefix,
   extractPrincipalParam,
+  normalizeToolDisplayName,
   stripCwdPrefix,
 } from "./tool-call-parsers.js";
 
@@ -87,6 +88,26 @@ describe("extractPrincipalParam", () => {
 
   test("returns undefined for empty object", () => {
     expect(extractPrincipalParam({})).toBeUndefined();
+  });
+});
+
+describe("normalizeToolDisplayName", () => {
+  test("normalizes plain speak name", () => {
+    expect(normalizeToolDisplayName("speak")).toBe("Speak");
+  });
+
+  test("normalizes codex namespaced speak name", () => {
+    expect(normalizeToolDisplayName("paseo_voice.speak")).toBe("Speak");
+  });
+
+  test("normalizes claude mcp speak name", () => {
+    expect(normalizeToolDisplayName("mcp__paseo_voice__speak")).toBe("Speak");
+  });
+
+  test("keeps non-speak names unchanged", () => {
+    expect(normalizeToolDisplayName("paseo__create_agent")).toBe(
+      "paseo__create_agent"
+    );
   });
 });
 

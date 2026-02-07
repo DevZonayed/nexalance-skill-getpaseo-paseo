@@ -3,20 +3,36 @@
     "version": ">= 14.0.0"
   },
   "build": {
-    "development": {
+    "debug": {
       "developmentClient": true,
       "distribution": "internal",
-      "channel": "development"
+      "channel": "debug",
+      "env": {
+        "APP_VARIANT": "debug"
+      },
+      "android": {
+        "gradleCommand": ":app:assembleDebug"
+      }
     },
-    "preview": {
+    "fast": {
+      "developmentClient": true,
       "distribution": "internal",
-      "channel": "preview"
+      "channel": "fast",
+      "env": {
+        "APP_VARIANT": "fast"
+      },
+      "android": {
+        "gradleCommand": ":app:assembleDebugOptimized"
+      }
     },
-    "production": {
-      "channel": "production"
+    "prod": {
+      "channel": "production",
+      "env": {
+        "APP_VARIANT": "prod"
+      }
     }
   },
   "submit": {
-    "production": {}
+    "prod": {}
   }
 }

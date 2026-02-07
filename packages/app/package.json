@@ -5,8 +5,11 @@
   "scripts": {
     "start": "expo start",
     "reset-project": "node ./scripts/reset-project.js",
-    "android": "ANDROID_VARIANT=${ANDROID_VARIANT:-devDebug} expo run:android --variant=${ANDROID_VARIANT:-devDebug}",
-    "android:release": "ANDROID_VARIANT=${ANDROID_VARIANT:-productionRelease} expo run:android --variant=${ANDROID_VARIANT:-productionRelease}",
+    "android": "npm run android:fast",
+    "android:fast": "APP_VARIANT=fast expo run:android --variant=debugOptimized",
+    "android:debug": "APP_VARIANT=debug expo run:android --variant=debug",
+    "android:prod": "APP_VARIANT=prod expo run:android --variant=release",
+    "android:release": "npm run android:prod",
     "ios": "expo run:ios",
     "ios:release": "expo run:ios --configuration Release",
     "web": "expo start --web",

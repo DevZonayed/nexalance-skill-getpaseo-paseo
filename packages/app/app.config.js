@@ -1,11 +1,26 @@
-// App name and package ID are controlled by Gradle product flavors (dev/production)
-// See plugins/with-android-product-flavors.js for flavor configuration
-
 const pkg = require("./package.json");
+const appVariant = process.env.APP_VARIANT ?? "prod";
+
+const variants = {
+  prod: {
+    name: "Paseo",
+    packageId: "sh.paseo",
+  },
+  debug: {
+    name: "Paseo Debug",
+    packageId: "sh.paseo.debug",
+  },
+  fast: {
+    name: "Paseo Dev",
+    packageId: "sh.paseo.dev",
+  },
+};
+
+const variant = variants[appVariant] ?? variants.prod;
 
 export default {
   expo: {
-    name: "Paseo",
+    name: variant.name,
     slug: "voice-mobile",
     version: pkg.version,
     orientation: "portrait",
@@ -26,7 +41,7 @@ export default {
           "This app needs access to the microphone for voice commands.",
         ITSAppUsesNonExemptEncryption: false,
       },
-      bundleIdentifier: "sh.paseo",
+      bundleIdentifier: variant.packageId,
     },
     android: {
       adaptiveIcon: {
@@ -45,8 +60,7 @@ export default {
         "CAMERA",
         "android.permission.CAMERA",
       ],
-      // Base package - Gradle product flavors override this per variant
-      package: "sh.paseo",
+      package: variant.packageId,
     },
     web: {
       output: "single",
@@ -91,7 +105,6 @@ export default {
           },
         },
       ],
-      "./plugins/with-android-product-flavors",
     ],
     experiments: {
       typedRoutes: true,
