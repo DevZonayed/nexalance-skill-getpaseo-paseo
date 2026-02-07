@@ -23,6 +23,7 @@ import type {
   AgentUsage,
   ListModelsOptions,
   ListPersistedAgentsOptions,
+  McpServerConfig,
   PersistedAgentDescriptor,
 } from "../agent-sdk-types.js";
 
@@ -44,6 +45,58 @@ const DEFAULT_MODES: AgentMode[] = [
 ];
 
 type OpenCodeAgentConfig = AgentSessionConfig & { provider: "opencode" };
+
+type OpenCodeMcpConfig =
+  | {
+      type: "local";
+      command: string[];
+      environment?: Record<string, string>;
+      enabled?: boolean;
+    }
+  | {
+      type: "remote";
+      url: string;
+      headers?: Record<string, string>;
+      enabled?: boolean;
+    };
+
+const MCP_ALREADY_PRESENT_ERROR_TOKENS = ["already", "exists", "connected"] as const;
+
+function toOpenCodeMcpConfig(config: McpServerConfig): OpenCodeMcpConfig {
+  if (config.type === "stdio") {
+    return {
+      type: "local",
+      command: [config.command, ...(config.args ?? [])],
+      ...(config.env ? { environment: config.env } : {}),
+      enabled: true,
+    };
+  }
+
+  return {
+    type: "remote",
+    url: config.url,
+    ...(config.headers ? { headers: config.headers } : {}),
+    enabled: true,
+  };
+}
+
+function stringifyUnknownError(error: unknown): string {
+  if (typeof error === "string") {
+    return error;
+  }
+  try {
+    return JSON.stringify(error);
+  } catch {
+    return String(error);
+  }
+}
+
+function isAlreadyPresentMcpError(error: unknown): boolean {
+  const normalized = stringifyUnknownError(error).toLowerCase();
+  return MCP_ALREADY_PRESENT_ERROR_TOKENS.some((token) =>
+    normalized.includes(token)
+  );
+}
 
 async function findAvailablePort(): Promise<number> {
   return new Promise((resolve, reject) => {
@@ -354,6 +407,8 @@ class OpenCodeAgentSession implements AgentSession {
   private pendingPermissions = new Map<string, AgentPermissionRequest>();
   private abortController: AbortController | null = null;
   private accumulatedUsage: AgentUsage = {};
+  private mcpConfigured = false;
+  private mcpSetupPromise: Promise<void> | null = null;
   /** Tracks the role of each message by ID to distinguish user from assistant messages */
   private messageRoles = new Map<string, "user" | "assistant">();
 
@@ -426,6 +481,7 @@ class OpenCodeAgentSession implements AgentSession {
     _options?: AgentRunOptions
   ): AsyncGenerator<AgentStreamEvent> {
     this.abortController = new AbortController();
+    await this.ensureMcpServersConfigured();
 
     const parts = this.buildPromptParts(prompt);
     const model = this.parseModel(this.config.model);
@@ -438,6 +494,7 @@ class OpenCodeAgentSession implements AgentSession {
       sessionID: this.sessionId,
       directory: this.config.cwd,
       parts,
+      ...(this.config.systemPrompt ? { system: this.config.systemPrompt } : {}),
       ...(model ? { model } : {}),
       ...(effectiveVariant ? { variant: effectiveVariant } : {}),
     });
@@ -646,6 +703,78 @@ class OpenCodeAgentSession implements AgentSession {
       return { providerID: parts[0], modelID: parts.slice(1).join("/") };
     }
     return { providerID: "opencode", modelID: model };
+  }
+
+  private async ensureMcpServersConfigured(): Promise<void> {
+    if (this.mcpConfigured) {
+      return;
+    }
+
+    const mcpServers = this.config.mcpServers;
+    if (!mcpServers || Object.keys(mcpServers).length === 0) {
+      this.mcpConfigured = true;
+      return;
+    }
+
+    if (!this.mcpSetupPromise) {
+      this.mcpSetupPromise = this.configureMcpServers(mcpServers);
+    }
+
+    try {
+      await this.mcpSetupPromise;
+      this.mcpConfigured = true;
+    } catch (error) {
+      this.mcpSetupPromise = null;
+      throw error;
+    }
+  }
+
+  private async configureMcpServers(
+    mcpServers: Record<string, McpServerConfig>
+  ): Promise<void> {
+    for (const [name, serverConfig] of Object.entries(mcpServers)) {
+      const mappedConfig = toOpenCodeMcpConfig(serverConfig);
+      await this.registerMcpServer(name, mappedConfig);
+    }
+  }
+
+  private async registerMcpServer(
+    name: string,
+    config: OpenCodeMcpConfig
+  ): Promise<void> {
+    await this.runMcpOperation("add", name, () =>
+      this.client.mcp.add({
+        directory: this.config.cwd,
+        name,
+        config,
+      })
+    );
+    await this.runMcpOperation("connect", name, () =>
+      this.client.mcp.connect({
+        directory: this.config.cwd,
+        name,
+      })
+    );
+  }
+
+  private async runMcpOperation(
+    operation: "add" | "connect",
+    name: string,
+    run: () => Promise<{ error?: unknown }>
+  ): Promise<void> {
+    const response = await run();
+    const error = response.error;
+    if (!error) {
+      return;
+    }
+
+    if (isAlreadyPresentMcpError(error)) {
+      return;
+    }
+
+    throw new Error(
+      `Failed to ${operation} OpenCode MCP server '${name}': ${stringifyUnknownError(error)}`
+    );
   }
 
   private translateEvent(event: unknown): AgentStreamEvent[] {

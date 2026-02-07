@@ -13,7 +13,7 @@ import { View, ActivityIndicator, Text } from "react-native";
 import { UnistylesRuntime, useUnistyles } from "react-native-unistyles";
 import { darkTheme } from "@/styles/theme";
 import { DaemonRegistryProvider, useDaemonRegistry } from "@/contexts/daemon-registry-context";
-import { DaemonConnectionsProvider } from "@/contexts/daemon-connections-context";
+import { DaemonConnectionsProvider, useDaemonConnections } from "@/contexts/daemon-connections-context";
 import { MultiDaemonSessionHost } from "@/components/multi-daemon-session-host";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { useState, useEffect, type ReactNode, useMemo, useRef } from "react";
@@ -253,7 +253,52 @@ function AppContainer({ children, selectedAgentId }: AppContainerProps) {
 function ProvidersWrapper({ children }: { children: ReactNode }) {
   const { settings, isLoading: settingsLoading } = useAppSettings();
   const { daemons, isLoading: registryLoading, upsertDaemonFromOfferUrl } = useDaemonRegistry();
+  const { connectionStates } = useDaemonConnections();
   const isLoading = settingsLoading || registryLoading;
+
+  const isInitialConnectionPending = useMemo(() => {
+    if (daemons.length === 0) return false;
+    return daemons.some((daemon) => {
+      const record = connectionStates.get(daemon.serverId);
+      if (!record) return true;
+      if (record.hasEverReceivedAgentList) return false;
+      return (
+        record.status === "idle" ||
+        record.status === "connecting" ||
+        (record.status === "online" && !record.agentListReady)
+      );
+    });
+  }, [daemons, connectionStates]);
+
+  const [connectionTimedOut, setConnectionTimedOut] = useState(false);
+
+  useEffect(() => {
+    if (!isInitialConnectionPending) {
+      setConnectionTimedOut(false);
+      return;
+    }
+    const timer = setTimeout(() => setConnectionTimedOut(true), 5000);
+    return () => clearTimeout(timer);
+  }, [isInitialConnectionPending]);
+
+  const connectingMessage = useMemo(() => {
+    if (!isInitialConnectionPending) return null;
+    const pending = daemons.filter((daemon) => {
+      const record = connectionStates.get(daemon.serverId);
+      if (!record) return true;
+      if (record.hasEverReceivedAgentList) return false;
+      return (
+        record.status === "idle" ||
+        record.status === "connecting" ||
+        (record.status === "online" && !record.agentListReady)
+      );
+    });
+    if (pending.length === 1) {
+      const label = pending[0].label?.trim();
+      return label ? `Connecting to ${label}...` : "Connecting...";
+    }
+    return "Connecting...";
+  }, [isInitialConnectionPending, daemons, connectionStates]);
 
   // Apply theme setting on mount and when it changes
   useEffect(() => {
@@ -268,6 +313,10 @@ function ProvidersWrapper({ children }: { children: ReactNode }) {
 
   if (isLoading) {
     return <LoadingView />;
+  }
+
+  if (connectingMessage && !connectionTimedOut) {
+    return <LoadingView message={connectingMessage} />;
   }
 
   return (
@@ -339,7 +388,7 @@ function AppWithSidebar({ children }: { children: ReactNode }) {
   );
 }
 
-function LoadingView() {
+function LoadingView({ message }: { message?: string } = {}) {
   return (
     <View
       style={{
@@ -350,6 +399,17 @@ function LoadingView() {
       }}
     >
       <ActivityIndicator size="large" color={darkTheme.colors.foreground} />
+      {message ? (
+        <Text
+          style={{
+            color: darkTheme.colors.foregroundMuted,
+            marginTop: 16,
+            fontSize: 14,
+          }}
+        >
+          {message}
+        </Text>
+      ) : null}
     </View>
   );
 }
