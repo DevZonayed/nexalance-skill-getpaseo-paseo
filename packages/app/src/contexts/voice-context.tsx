@@ -3,13 +3,9 @@ import { useSpeechmaticsAudio } from "@/hooks/use-speechmatics-audio";
 import type { SessionState } from "@/stores/session-store";
 import { useSessionStore } from "@/stores/session-store";
 import { activateKeepAwakeAsync, deactivateKeepAwake } from "expo-keep-awake";
+import { REALTIME_VOICE_VAD_CONFIG } from "@/voice/realtime-voice-config";
 
 const KEEP_AWAKE_TAG = "paseo:voice";
-const VOICE_VAD_VOLUME_THRESHOLD = 0.18;
-const VOICE_VAD_SILENCE_DURATION_MS = 1400;
-const VOICE_VAD_SPEECH_CONFIRMATION_MS = 120;
-const VOICE_VAD_DETECTION_GRACE_PERIOD_MS = 700;
-
 interface VoiceContextValue {
   isVoiceMode: boolean;
   isVoiceSwitching: boolean;
@@ -137,10 +133,10 @@ export function VoiceProvider({ children }: VoiceProviderProps) {
         console.error("[Voice] Cannot handle error - setMessages not available from SessionState");
       }
     },
-    volumeThreshold: VOICE_VAD_VOLUME_THRESHOLD,
-    silenceDuration: VOICE_VAD_SILENCE_DURATION_MS,
-    speechConfirmationDuration: VOICE_VAD_SPEECH_CONFIRMATION_MS,
-    detectionGracePeriod: VOICE_VAD_DETECTION_GRACE_PERIOD_MS,
+    volumeThreshold: REALTIME_VOICE_VAD_CONFIG.volumeThreshold,
+    silenceDuration: REALTIME_VOICE_VAD_CONFIG.silenceDurationMs,
+    speechConfirmationDuration: REALTIME_VOICE_VAD_CONFIG.speechConfirmationMs,
+    detectionGracePeriod: REALTIME_VOICE_VAD_CONFIG.detectionGracePeriodMs,
   });
 
   useEffect(() => {

@@ -102,6 +102,39 @@ Get the session ID from the agent JSON file (`persistence.sessionId`), then:
 
 Take screenshots like this: `adb exec-out screencap -p > screenshot.png`
 
+### Android variants (vanilla Expo)
+
+Use `APP_VARIANT` in `packages/app/app.config.js` to control app name + package ID (no custom Gradle flavor plugin):
+
+- `prod` -> app name `Paseo`, package `sh.paseo`
+- `debug` -> app name `Paseo Debug`, package `sh.paseo.debug`
+- `fast` -> app name `Paseo Dev`, package `sh.paseo.dev`
+
+EAS profiles live in `packages/app/eas.json` as `prod`, `debug`, and `fast`.
+
+`fast` uses Android `debugOptimized` for better runtime performance while still supporting Metro/Fast Refresh.
+
+### Local build + install (Android device)
+
+From `packages/app`:
+
+```bash
+# prod (release)
+APP_VARIANT=prod npx expo prebuild --platform android --clean --no-install
+(cd android && ./gradlew app:assembleRelease)
+adb install -r android/app/build/outputs/apk/release/app-release.apk
+
+# debug (full debug tooling)
+APP_VARIANT=debug npx expo prebuild --platform android --clean --no-install
+(cd android && ./gradlew app:assembleDebug)
+adb install -r android/app/build/outputs/apk/debug/app-debug.apk
+
+# fast (debugOptimized + Metro/Fast Refresh)
+APP_VARIANT=fast npx expo prebuild --platform android --clean --no-install
+(cd android && ./gradlew app:assembleDebugOptimized)
+adb install -r android/app/build/outputs/apk/debugOptimized/app-debugOptimized.apk
+```
+
 ## Testing with Playwright MCP
 
 **CRITICAL:** When asked to test the app, you MUST use the Playwright MCP connecting to Metro at `http://localhost:8081`.
