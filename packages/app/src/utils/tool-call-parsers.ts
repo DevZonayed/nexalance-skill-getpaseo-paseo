@@ -1,6 +1,9 @@
 import stripAnsi from "strip-ansi";
 import { z } from "zod";
-import { stripShellWrapperPrefix } from "@getpaseo/server/utils/tool-call-parsers";
+import {
+  normalizeToolDisplayName,
+  stripShellWrapperPrefix,
+} from "@getpaseo/server/utils/tool-call-parsers";
 import { getNowMs, isPerfLoggingEnabled, perfLog } from "./perf";
 
 const TOOL_CALL_DIFF_LOG_TAG = "[ToolCallDiff]";
@@ -1203,7 +1206,9 @@ const ToolCallDisplaySchema = z
     result: z.unknown(),
   })
   .transform((data) => {
-    const normalizedToolName = TOOL_NAME_MAP[data.toolName] ?? data.toolName;
+    const normalizedToolName = normalizeToolDisplayName(
+      TOOL_NAME_MAP[data.toolName] ?? data.toolName
+    );
 
     // Handle thinking - input is the thinking text content
     if (data.toolName === "thinking") {

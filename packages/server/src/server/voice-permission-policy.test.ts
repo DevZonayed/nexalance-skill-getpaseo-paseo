@@ -43,24 +43,12 @@ describe("isVoicePermissionAllowed", () => {
     expect(result).toBe(false);
   });
 
-  test("allows wrapper tools when metadata references speak", () => {
-    const allowed = isVoicePermissionAllowed(
-      buildRequest({
-        name: "codextool",
-        metadata: {
-          questions: [{ question: "Allow codextool to call paseo_voice.speak for user feedback?" }],
-        },
-      })
-    );
-    expect(allowed).toBe(true);
-  });
-
-  test("denies codextool when metadata includes shell-like operations", () => {
+  test("denies wrapper tools even when metadata references speak", () => {
     const denied = isVoicePermissionAllowed(
       buildRequest({
         name: "codextool",
         metadata: {
-          questions: [{ question: "Allow codextool to execute shell command?" }],
+          questions: [{ question: "Allow codextool to call paseo_voice.speak for user feedback?" }],
         },
       })
     );

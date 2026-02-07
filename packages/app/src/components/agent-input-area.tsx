@@ -4,7 +4,6 @@ import {
   Text,
   ActivityIndicator,
   Platform,
-  Alert,
 } from "react-native";
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
@@ -425,15 +424,10 @@ export function AgentInputArea({
       return;
     }
     if (voice.isVoiceModeForAgent(serverId, agentId)) {
-      void voice.stopVoice().catch((error) => {
-        console.error("[AgentInputArea] Failed to stop voice mode", error);
-        Alert.alert("Voice failed", "Unable to stop realtime voice mode.");
-      });
       return;
     }
     void voice.startVoice(serverId, agentId).catch((error) => {
       console.error("[AgentInputArea] Failed to start voice mode", error);
-      Alert.alert("Voice failed", "Unable to start realtime voice mode.");
     });
   }, [agentId, isConnected, serverId, voice]);
 
@@ -543,29 +537,26 @@ export function AgentInputArea({
 
   const rightContent = (
     <View style={styles.rightControls}>
-      <Pressable
-        onPress={handleToggleRealtimeVoice}
-        disabled={!isConnected || voice?.isVoiceSwitching}
-        accessibilityLabel={
-          isVoiceModeForAgent ? "Disable realtime voice mode" : "Enable realtime voice mode"
-        }
-        accessibilityRole="button"
-        style={[
-          styles.realtimeVoiceButton as any,
-          isVoiceModeForAgent ? (styles.realtimeVoiceButtonActive as any) : undefined,
-          (!isConnected || voice?.isVoiceSwitching
-            ? styles.buttonDisabled
-            : undefined) as any,
-        ]}
-      >
-        {voice?.isVoiceSwitching ? (
-          <ActivityIndicator size="small" color="white" />
-        ) : isVoiceModeForAgent ? (
-          <Square size={16} color="white" fill="white" />
-        ) : (
-          <AudioLines size={18} color={theme.colors.foreground} />
-        )}
-      </Pressable>
+      {!isVoiceModeForAgent ? (
+        <Pressable
+          onPress={handleToggleRealtimeVoice}
+          disabled={!isConnected || voice?.isVoiceSwitching}
+          accessibilityLabel="Enable realtime voice mode"
+          accessibilityRole="button"
+          style={[
+            styles.realtimeVoiceButton as any,
+            (!isConnected || voice?.isVoiceSwitching
+              ? styles.buttonDisabled
+              : undefined) as any,
+          ]}
+        >
+          {voice?.isVoiceSwitching ? (
+            <ActivityIndicator size="small" color="white" />
+          ) : (
+            <AudioLines size={18} color={theme.colors.foreground} />
+          )}
+        </Pressable>
+      ) : null}
       {cancelButton}
     </View>
   );

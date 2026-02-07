@@ -25,6 +25,8 @@
     "android": "npm run android --workspace=@getpaseo/app",
     "android:fast": "npm run android:fast --workspace=@getpaseo/app",
     "android:debug": "npm run android:debug --workspace=@getpaseo/app",
+    "android:fast:build": "npm run android:fast:build --workspace=@getpaseo/app",
+    "android:debug:build": "npm run android:debug:build --workspace=@getpaseo/app",
     "android:prod": "npm run android:prod --workspace=@getpaseo/app",
     "android:release": "npm run android:prod --workspace=@getpaseo/app",
     "ios": "npm run ios --workspace=@getpaseo/app",

@@ -135,6 +135,27 @@ APP_VARIANT=fast npx expo prebuild --platform android --clean --no-install
 adb install -r android/app/build/outputs/apk/debugOptimized/app-debugOptimized.apk
 ```
 
+### Android dev + build scripts (Metro-enabled)
+
+From repo root:
+
+```bash
+# Run on phone (installs/launches variant and sets debug_http_host)
+npm run android:fast
+npm run android:debug
+
+# Build APKs (for shipping over the wire)
+npm run android:fast:build
+npm run android:debug:build
+```
+
+Notes:
+- Both dev variants are Metro-enabled by default and set `debug_http_host` via adb.
+- Default Metro endpoint is `localhost:8080`.
+- If `localhost:8080` is not running but `localhost:8081` is, scripts auto-fallback to `localhost:8081`.
+- For localhost endpoints, scripts also run `adb reverse tcp:<port> tcp:<port>` automatically.
+- Override with `METRO_ENDPOINT=host:port` (for example `METRO_ENDPOINT=192.168.1.25:8081`).
+
 ## Testing with Playwright MCP
 
 **CRITICAL:** When asked to test the app, you MUST use the Playwright MCP connecting to Metro at `http://localhost:8081`.

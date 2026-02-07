@@ -111,6 +111,18 @@ describe("parseToolCallDisplay", () => {
     expect(display.toolName).toBe("Read");
   });
 
+  test("normalizes tool names - paseo_voice.speak to Speak", () => {
+    const input = { text: "hello from namespaced speak" };
+    const display = parseToolCallDisplay("paseo_voice.speak", input, undefined);
+    expect(display.toolName).toBe("Speak");
+  });
+
+  test("normalizes tool names - mcp__paseo_voice__speak to Speak", () => {
+    const input = { text: "hello from claude mcp speak" };
+    const display = parseToolCallDisplay("mcp__paseo_voice__speak", input, undefined);
+    expect(display.toolName).toBe("Speak");
+  });
+
   test("preserves unknown tool names", () => {
     const input = { some_arg: "value" };
     const display = parseToolCallDisplay("MyCustomTool", input, undefined);

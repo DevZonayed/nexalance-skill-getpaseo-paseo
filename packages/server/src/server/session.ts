@@ -54,7 +54,6 @@ import {
   generateStructuredAgentResponse,
 } from "./agent/agent-response-loop.js";
 import type {
-  AgentPermissionRequest,
   AgentPermissionResponse,
   AgentPromptContentBlock,
   AgentPromptInput,
@@ -194,15 +193,10 @@ const MIN_STREAMING_SEGMENT_BYTES = Math.round(
 const SAFE_GIT_REF_PATTERN = /^[A-Za-z0-9._\/-]+$/;
 const AgentIdSchema = z.string().uuid();
 const VOICE_MCP_SERVER_NAME = "paseo_voice";
-const VOICE_MODE_ENFORCED_MODE_ID: Partial<Record<AgentProvider, string>> = {
-  claude: "default",
-  codex: "read-only",
-};
 
 type VoiceModeBaseConfig = {
   systemPrompt?: string;
   mcpServers?: Record<string, McpServerConfig>;
-  modeId?: string;
 };
 
 interface AudioBufferState {
@@ -1408,10 +1402,6 @@ export class Session {
     };
   }
 
-  private getVoiceModeEnforcedModeId(provider: AgentProvider): string | undefined {
-    return VOICE_MODE_ENFORCED_MODE_ID[provider];
-  }
-
   private async enableVoiceModeForAgent(agentId: string): Promise<string> {
     const ensureVoiceSocket = this.ensureVoiceMcpSocketForAgent;
     if (!ensureVoiceSocket) {
@@ -1426,14 +1416,11 @@ export class Session {
     const baseConfig: VoiceModeBaseConfig = {
       systemPrompt: existing.config.systemPrompt,
       mcpServers: this.cloneMcpServers(existing.config.mcpServers),
-      modeId: existing.config.modeId,
     };
     this.voiceModeBaseConfig = baseConfig;
-    const voiceModeId = this.getVoiceModeEnforcedModeId(existing.config.provider);
     const refreshOverrides: Partial<AgentSessionConfig> = {
       systemPrompt: this.buildVoiceModeSystemPrompt(baseConfig.systemPrompt),
       mcpServers: this.buildVoiceModeMcpServers(baseConfig.mcpServers, socketPath),
-      ...(voiceModeId ? { modeId: voiceModeId } : {}),
     };
 
     try {
@@ -1475,7 +1462,6 @@ export class Session {
         await this.agentManager.refreshAgentFromPersistence(agentId, {
           systemPrompt: baseConfig.systemPrompt,
           mcpServers: this.cloneMcpServers(baseConfig.mcpServers),
-          modeId: baseConfig.modeId,
         });
       } catch (error) {
         this.sessionLogger.warn(
@@ -4658,10 +4644,6 @@ export class Session {
     ].join("\n");
   }
 
-  private shouldAllowVoicePermission(request: AgentPermissionRequest): boolean {
-    return isVoicePermissionAllowed(request);
-  }
-
   private async processWithVoiceAgent(
     agentId: string,
     userText: string
@@ -4703,19 +4685,14 @@ export class Session {
         }
       }
       if (event.type === "permission_requested") {
-        if (this.shouldAllowVoicePermission(event.request)) {
+        if (isVoicePermissionAllowed(event.request)) {
           await this.agentManager.respondToPermission(agentId, event.request.id, {
             behavior: "allow",
           });
         } else {
-          await this.agentManager.respondToPermission(agentId, event.request.id, {
-            behavior: "deny",
-            message: "Voice assistant policy only allows the speak tool.",
-            interrupt: true,
-          });
-          this.sessionLogger.warn(
+          this.sessionLogger.info(
             { agentId, requestName: event.request.name, requestId: event.request.id },
-            "Voice assistant denied non-speak permission request"
+            "Voice assistant left non-speak permission request for user decision"
           );
         }
       }
