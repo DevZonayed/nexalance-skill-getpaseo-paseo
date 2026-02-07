@@ -1,22 +1,18 @@
 const pkg = require("./package.json");
-const appVariant = process.env.APP_VARIANT ?? "prod";
+const appVariant = process.env.APP_VARIANT ?? "production";
 
 const variants = {
-  prod: {
+  production: {
     name: "Paseo",
     packageId: "sh.paseo",
   },
-  debug: {
-    name: "Paseo Debug",
-    packageId: "sh.paseo.debug",
-  },
-  fast: {
+  development: {
     name: "Paseo Dev",
     packageId: "sh.paseo.dev",
   },
 };
 
-const variant = variants[appVariant] ?? variants.prod;
+const variant = variants[appVariant] ?? variants.production;
 
 export default {
   expo: {

@@ -106,55 +106,33 @@ Take screenshots like this: `adb exec-out screencap -p > screenshot.png`
 
 Use `APP_VARIANT` in `packages/app/app.config.js` to control app name + package ID (no custom Gradle flavor plugin):
 
-- `prod` -> app name `Paseo`, package `sh.paseo`
-- `debug` -> app name `Paseo Debug`, package `sh.paseo.debug`
-- `fast` -> app name `Paseo Dev`, package `sh.paseo.dev`
+- `production` -> app name `Paseo`, package `sh.paseo`
+- `development` -> app name `Paseo Dev`, package `sh.paseo.dev`
 
-EAS profiles live in `packages/app/eas.json` as `prod`, `debug`, and `fast`.
+EAS profiles live in `packages/app/eas.json` as `development` and `production`.
 
-`fast` uses Android `debugOptimized` for better runtime performance while still supporting Metro/Fast Refresh.
+`development` uses Android `debug`.
 
 ### Local build + install (Android device)
 
 From `packages/app`:
 
 ```bash
-# prod (release)
-APP_VARIANT=prod npx expo prebuild --platform android --clean --no-install
-(cd android && ./gradlew app:assembleRelease)
-adb install -r android/app/build/outputs/apk/release/app-release.apk
+# development (debug)
+APP_VARIANT=development npx expo run:android --variant=debug
 
-# debug (full debug tooling)
-APP_VARIANT=debug npx expo prebuild --platform android --clean --no-install
-(cd android && ./gradlew app:assembleDebug)
-adb install -r android/app/build/outputs/apk/debug/app-debug.apk
-
-# fast (debugOptimized + Metro/Fast Refresh)
-APP_VARIANT=fast npx expo prebuild --platform android --clean --no-install
-(cd android && ./gradlew app:assembleDebugOptimized)
-adb install -r android/app/build/outputs/apk/debugOptimized/app-debugOptimized.apk
+# production (release)
+APP_VARIANT=production npx expo run:android --variant=release
 ```
-
-### Android dev + build scripts (Metro-enabled)
 
 From repo root:
 
 ```bash
-# Run on phone (installs/launches variant and sets debug_http_host)
-npm run android:fast
-npm run android:debug
-
-# Build APKs (for shipping over the wire)
-npm run android:fast:build
-npm run android:debug:build
+npm run android:development
+npm run android:production
 ```
 
-Notes:
-- Both dev variants are Metro-enabled by default and set `debug_http_host` via adb.
-- Default Metro endpoint is `localhost:8080`.
-- If `localhost:8080` is not running but `localhost:8081` is, scripts auto-fallback to `localhost:8081`.
-- For localhost endpoints, scripts also run `adb reverse tcp:<port> tcp:<port>` automatically.
-- Override with `METRO_ENDPOINT=host:port` (for example `METRO_ENDPOINT=192.168.1.25:8081`).
+`npm run android:prod` and `npm run android:release` are aliases for `npm run android:production`.
 
 ## Testing with Playwright MCP
 
