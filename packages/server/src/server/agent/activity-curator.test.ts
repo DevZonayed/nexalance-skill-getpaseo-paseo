@@ -310,7 +310,7 @@ describe("curateAgentActivity", () => {
 
       const result = curateAgentActivity(timeline);
 
-      expect(result).toBe("[Bash] npm test");
+      expect(result).toBe("[Shell] npm test");
     });
 
     test("extracts pattern from Glob tool", () => {
@@ -405,6 +405,186 @@ describe("curateAgentActivity", () => {
 
       const result = curateAgentActivity(timeline);
       expect(result).toBe('[Speak] {"text":"hello from claude mcp"}');
+    });
+
+    test("extracts description from Task tool", () => {
+      const timeline: AgentTimelineItem[] = [
+        {
+          type: "tool_call",
+          callId: "task-1",
+          name: "Task",
+          input: { description: "Explore the codebase" },
+          status: "completed",
+        },
+      ];
+
+      const result = curateAgentActivity(timeline);
+      expect(result).toBe("[Task] Explore the codebase");
+    });
+  });
+
+  describe("Task tool collapse with sub-agent activity", () => {
+    test("collapses Task metadata updates into single entry showing latest activity", () => {
+      const timeline: AgentTimelineItem[] = [
+        { type: "user_message", text: "Investigate the bug" },
+        {
+          type: "tool_call",
+          callId: "task-1",
+          name: "Task",
+          input: { description: "Explore the codebase" },
+          status: "pending",
+        },
+        // Sub-agent activity updates (same callId, metadata-only)
+        {
+          type: "tool_call",
+          callId: "task-1",
+          name: "Task",
+          metadata: { subAgentActivity: "Read" },
+        },
+        {
+          type: "tool_call",
+          callId: "task-1",
+          name: "Task",
+          metadata: { subAgentActivity: "Grep" },
+        },
+        {
+          type: "tool_call",
+          callId: "task-1",
+          name: "Task",
+          metadata: { subAgentActivity: "Edit" },
+        },
+      ];
+
+      const result = curateAgentActivity(timeline);
+      const lines = result.split("\n");
+
+      // Task should appear only once (collapsed by callId)
+      const taskLines = lines.filter((l) => l.includes("[Task]"));
+      expect(taskLines).toHaveLength(1);
+
+      // The last metadata update wins — subAgentActivity "Edit" takes priority
+      expect(taskLines[0]).toBe("[Task] Edit");
+    });
+
+    test("sub-agent tool calls do NOT appear as separate timeline entries", () => {
+      // This simulates the full flow: handleSidechainMessage only emits
+      // Task metadata updates, never individual sub-agent tool calls.
+      // So the timeline should only contain the Task call, not Read/Bash/Edit.
+      const timeline: AgentTimelineItem[] = [
+        {
+          type: "tool_call",
+          callId: "task-1",
+          name: "Task",
+          input: { description: "Fix the bug" },
+          status: "pending",
+        },
+        // These are the metadata-only updates from handleSidechainMessage
+        {
+          type: "tool_call",
+          callId: "task-1",
+          name: "Task",
+          metadata: { subAgentActivity: "Read" },
+        },
+        {
+          type: "tool_call",
+          callId: "task-1",
+          name: "Task",
+          metadata: { subAgentActivity: "Bash" },
+        },
+        // Task completes
+        {
+          type: "tool_call",
+          callId: "task-1",
+          name: "Task",
+          input: { description: "Fix the bug" },
+          output: { result: "Bug fixed successfully" },
+          status: "completed",
+        },
+      ];
+
+      const result = curateAgentActivity(timeline);
+      const lines = result.split("\n");
+
+      // No individual Read/Bash lines — only the Task
+      expect(lines.filter((l) => l.includes("[Read]"))).toHaveLength(0);
+      expect(lines.filter((l) => l.includes("[Shell]"))).toHaveLength(0);
+
+      // One Task entry with the final completed state
+      const taskLines = lines.filter((l) => l.includes("[Task]"));
+      expect(taskLines).toHaveLength(1);
+      expect(taskLines[0]).toBe("[Task] Fix the bug");
+    });
+
+    test("multiple concurrent Task calls are tracked independently", () => {
+      const timeline: AgentTimelineItem[] = [
+        {
+          type: "tool_call",
+          callId: "task-a",
+          name: "Task",
+          input: { description: "Research API docs" },
+          status: "pending",
+        },
+        {
+          type: "tool_call",
+          callId: "task-b",
+          name: "Task",
+          input: { description: "Run tests" },
+          status: "pending",
+        },
+        // Activity updates for each
+        {
+          type: "tool_call",
+          callId: "task-a",
+          name: "Task",
+          metadata: { subAgentActivity: "WebFetch" },
+        },
+        {
+          type: "tool_call",
+          callId: "task-b",
+          name: "Task",
+          metadata: { subAgentActivity: "Bash" },
+        },
+      ];
+
+      const result = curateAgentActivity(timeline);
+      const lines = result.split("\n");
+
+      const taskLines = lines.filter((l) => l.includes("[Task]"));
+      expect(taskLines).toHaveLength(2);
+      // Last update for each callId wins
+      expect(taskLines[0]).toBe("[Task] WebFetch");
+      expect(taskLines[1]).toBe("[Task] Bash");
+    });
+  });
+
+  describe("compaction", () => {
+    test("renders compaction as [Compacted]", () => {
+      const timeline: AgentTimelineItem[] = [
+        { type: "assistant_message", text: "Working on it..." },
+        { type: "compaction", status: "completed", trigger: "auto", preTokens: 168000 },
+        { type: "assistant_message", text: "Continuing after compaction" },
+      ];
+
+      const result = curateAgentActivity(timeline);
+      const lines = result.split("\n");
+      expect(lines).toContain("[Compacted]");
+      expect(lines.indexOf("[Compacted]")).toBeGreaterThan(0);
+    });
+
+    test("compaction flushes preceding buffers", () => {
+      const timeline: AgentTimelineItem[] = [
+        { type: "assistant_message", text: "Before" },
+        { type: "reasoning", text: "Thinking..." },
+        { type: "compaction", status: "completed", trigger: "auto" },
+        { type: "assistant_message", text: "After" },
+      ];
+
+      const result = curateAgentActivity(timeline);
+      const lines = result.split("\n");
+      const compactIdx = lines.indexOf("[Compacted]");
+      expect(compactIdx).toBeGreaterThan(-1);
+      expect(lines.slice(0, compactIdx).some((l) => l.includes("Before"))).toBe(true);
+      expect(lines.slice(0, compactIdx).some((l) => l.includes("Thinking"))).toBe(true);
     });
   });
 });

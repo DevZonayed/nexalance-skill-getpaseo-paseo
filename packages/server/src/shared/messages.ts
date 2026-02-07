@@ -170,6 +170,7 @@ export const AgentTimelineItemPayloadSchema: z.ZodType<AgentTimelineItem> =
       input: z.unknown().optional(),
       output: z.unknown().optional(),
       error: z.unknown().optional(),
+      metadata: z.record(z.unknown()).optional(),
     }),
     z.object({
       type: z.literal("todo"),
@@ -183,6 +184,12 @@ export const AgentTimelineItemPayloadSchema: z.ZodType<AgentTimelineItem> =
     z.object({
       type: z.literal("error"),
       message: z.string(),
+    }),
+    z.object({
+      type: z.literal("compaction"),
+      status: z.enum(["loading", "completed"]),
+      trigger: z.enum(["auto", "manual"]).optional(),
+      preTokens: z.number().optional(),
     }),
   ]);
 

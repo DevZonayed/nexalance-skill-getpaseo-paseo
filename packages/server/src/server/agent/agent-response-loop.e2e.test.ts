@@ -20,7 +20,7 @@ const CODEX_TEST_THINKING_OPTION_ID = "low";
 
 const hasOpenAICredentials = !!process.env.OPENAI_API_KEY;
 const hasClaudeCredentials =
-  !!process.env.CLAUDE_SESSION_TOKEN || !!process.env.ANTHROPIC_API_KEY;
+  !!process.env.CLAUDE_CODE_OAUTH_TOKEN || !!process.env.ANTHROPIC_API_KEY;
 const shouldRun = !process.env.CI && (hasOpenAICredentials || hasClaudeCredentials);
 
 type AgentMcpServerHandle = {

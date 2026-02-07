@@ -15,7 +15,7 @@ import type { AgentSession, AgentSessionConfig, AgentSlashCommand } from "../age
 import { createTestLogger } from "../../../test-utils/test-logger.js";
 
 const hasClaudeCredentials =
-  !!process.env.CLAUDE_SESSION_TOKEN || !!process.env.ANTHROPIC_API_KEY;
+  !!process.env.CLAUDE_CODE_OAUTH_TOKEN || !!process.env.ANTHROPIC_API_KEY;
 
 (hasClaudeCredentials ? describe : describe.skip)("ClaudeAgentSession Commands", () => {
   let client: ClaudeAgentClient;

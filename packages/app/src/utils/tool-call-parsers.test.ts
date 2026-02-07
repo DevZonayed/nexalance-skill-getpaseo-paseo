@@ -2,7 +2,7 @@ import { describe, test, expect } from "vitest";
 import {
   extractKeyValuePairs,
   parseToolCallDisplay,
-  type ToolCallDisplay,
+  type ToolCallDisplayInfo,
 } from "./tool-call-parsers";
 
 describe("tool-call-parsers - real runtime shapes", () => {
@@ -38,30 +38,29 @@ describe("tool-call-parsers - real runtime shapes", () => {
 });
 
 describe("parseToolCallDisplay", () => {
-  test("parses completed bash tool call into shell type", () => {
+  test("parses completed bash tool call into shell detail", () => {
     const input = { command: "pwd", description: "Print working directory" };
-    const result = { type: "command", command: "pwd", output: "/some/path" };
+    const output = { type: "command", command: "pwd", output: "/some/path" };
 
-    const display: ToolCallDisplay = parseToolCallDisplay("Bash", input, result);
-    expect(display.type).toBe("shell");
-    expect(display.toolName).toBe("Shell");
-    if (display.type === "shell") {
-      expect(display.command).toBe("pwd");
-      expect(display.output).toBe("/some/path");
+    const info: ToolCallDisplayInfo = parseToolCallDisplay({ name: "Bash", input, output });
+    expect(info.detail.type).toBe("shell");
+    expect(info.displayName).toBe("Shell");
+    if (info.detail.type === "shell") {
+      expect(info.detail.command).toBe("pwd");
+      expect(info.detail.output).toBe("/some/path");
     }
   });
 
-  test("parses pending bash tool call into shell type with empty output", () => {
+  test("parses pending bash tool call into shell detail with empty output", () => {
     // When tool is pending, we have input but no result yet
     const input = { command: "pwd", description: "Print working directory" };
-    const result = undefined;
 
-    const display: ToolCallDisplay = parseToolCallDisplay("Bash", input, result);
-    expect(display.type).toBe("shell");
-    expect(display.toolName).toBe("Shell");
-    if (display.type === "shell") {
-      expect(display.command).toBe("pwd");
-      expect(display.output).toBe("");
+    const info: ToolCallDisplayInfo = parseToolCallDisplay({ name: "Bash", input });
+    expect(info.detail.type).toBe("shell");
+    expect(info.displayName).toBe("Shell");
+    if (info.detail.type === "shell") {
+      expect(info.detail.command).toBe("pwd");
+      expect(info.detail.output).toBe("");
     }
   });
 
@@ -71,10 +70,10 @@ describe("parseToolCallDisplay", () => {
         '/bin/zsh -lc "cd /Users/me/dev/paseo && nl -ba packages/app/src/utils/tool-call-parsers.test.ts | sed -n \'150,260p\'"',
     };
 
-    const display: ToolCallDisplay = parseToolCallDisplay("shell", input, undefined);
-    expect(display.type).toBe("shell");
-    if (display.type === "shell") {
-      expect(display.command).toBe(
+    const info: ToolCallDisplayInfo = parseToolCallDisplay({ name: "shell", input });
+    expect(info.detail.type).toBe("shell");
+    if (info.detail.type === "shell") {
+      expect(info.detail.command).toBe(
         "nl -ba packages/app/src/utils/tool-call-parsers.test.ts | sed -n '150,260p'"
       );
     }
@@ -82,100 +81,100 @@ describe("parseToolCallDisplay", () => {
 
   test("handles command as array", () => {
     const input = { command: ["git", "status"] };
-    const result = { type: "command", output: "On branch main" };
+    const output = { type: "command", output: "On branch main" };
 
-    const display: ToolCallDisplay = parseToolCallDisplay("shell", input, result);
-    expect(display.type).toBe("shell");
-    expect(display.toolName).toBe("Shell");
-    if (display.type === "shell") {
-      expect(display.command).toBe("git status");
-      expect(display.output).toBe("On branch main");
+    const info: ToolCallDisplayInfo = parseToolCallDisplay({ name: "shell", input, output });
+    expect(info.detail.type).toBe("shell");
+    expect(info.displayName).toBe("Shell");
+    if (info.detail.type === "shell") {
+      expect(info.detail.command).toBe("git status");
+      expect(info.detail.output).toBe("On branch main");
     }
   });
 
   test("normalizes tool names - shell to Shell", () => {
     const input = { command: "pwd" };
-    const display = parseToolCallDisplay("shell", input, undefined);
-    expect(display.toolName).toBe("Shell");
+    const info = parseToolCallDisplay({ name: "shell", input });
+    expect(info.displayName).toBe("Shell");
   });
 
   test("normalizes tool names - Bash to Shell", () => {
     const input = { command: "pwd" };
-    const display = parseToolCallDisplay("Bash", input, undefined);
-    expect(display.toolName).toBe("Shell");
+    const info = parseToolCallDisplay({ name: "Bash", input });
+    expect(info.displayName).toBe("Shell");
   });
 
   test("normalizes tool names - read_file to Read", () => {
     const input = { file_path: "/some/file.txt" };
-    const display = parseToolCallDisplay("read_file", input, undefined);
-    expect(display.toolName).toBe("Read");
+    const info = parseToolCallDisplay({ name: "read_file", input });
+    expect(info.displayName).toBe("Read");
   });
 
   test("normalizes tool names - paseo_voice.speak to Speak", () => {
     const input = { text: "hello from namespaced speak" };
-    const display = parseToolCallDisplay("paseo_voice.speak", input, undefined);
-    expect(display.toolName).toBe("Speak");
+    const info = parseToolCallDisplay({ name: "paseo_voice.speak", input });
+    expect(info.displayName).toBe("Speak");
   });
 
   test("normalizes tool names - mcp__paseo_voice__speak to Speak", () => {
     const input = { text: "hello from claude mcp speak" };
-    const display = parseToolCallDisplay("mcp__paseo_voice__speak", input, undefined);
-    expect(display.toolName).toBe("Speak");
+    const info = parseToolCallDisplay({ name: "mcp__paseo_voice__speak", input });
+    expect(info.displayName).toBe("Speak");
   });
 
   test("preserves unknown tool names", () => {
     const input = { some_arg: "value" };
-    const display = parseToolCallDisplay("MyCustomTool", input, undefined);
-    expect(display.toolName).toBe("MyCustomTool");
+    const info = parseToolCallDisplay({ name: "MyCustomTool", input });
+    expect(info.displayName).toBe("MyCustomTool");
   });
 
-  test("parses non-command tool call into generic type", () => {
+  test("parses non-command tool call into generic detail", () => {
     const input = { file_path: "/some/file.txt" };
-    const result = { content: "file contents here", lineCount: 42 };
+    const output = { content: "file contents here", lineCount: 42 };
 
-    const display: ToolCallDisplay = parseToolCallDisplay("SomeTool", input, result);
-    expect(display.type).toBe("generic");
-    if (display.type === "generic") {
-      expect(display.input).toContainEqual({ key: "file_path", value: "/some/file.txt" });
-      expect(display.output).toContainEqual({ key: "content", value: "file contents here" });
-      expect(display.output).toContainEqual({ key: "lineCount", value: "42" });
+    const info: ToolCallDisplayInfo = parseToolCallDisplay({ name: "SomeTool", input, output });
+    expect(info.detail.type).toBe("generic");
+    if (info.detail.type === "generic") {
+      expect(info.detail.input).toContainEqual({ key: "file_path", value: "/some/file.txt" });
+      expect(info.detail.output).toContainEqual({ key: "content", value: "file contents here" });
+      expect(info.detail.output).toContainEqual({ key: "lineCount", value: "42" });
     }
   });
 
   test("handles file_write output as generic", () => {
     const input = { file_path: "/some/file.txt", content: "new content" };
-    const result = { type: "file_write", filePath: "/some/file.txt" };
+    const output = { type: "file_write", filePath: "/some/file.txt" };
 
-    const display: ToolCallDisplay = parseToolCallDisplay("Write", input, result);
-    expect(display.type).toBe("generic");
+    const info: ToolCallDisplayInfo = parseToolCallDisplay({ name: "Write", input, output });
+    expect(info.detail.type).toBe("generic");
   });
 
-  test("handles undefined input and result gracefully", () => {
-    const display: ToolCallDisplay = parseToolCallDisplay("unknown", undefined, undefined);
-    expect(display.type).toBe("generic");
-    if (display.type === "generic") {
-      expect(display.input).toEqual([]);
-      expect(display.output).toEqual([]);
+  test("handles undefined input and output gracefully", () => {
+    const info: ToolCallDisplayInfo = parseToolCallDisplay({ name: "unknown" });
+    expect(info.detail.type).toBe("generic");
+    if (info.detail.type === "generic") {
+      expect(info.detail.input).toEqual([]);
+      expect(info.detail.output).toEqual([]);
     }
   });
 
-  test("parses edit tool call into edit type with old_string/new_string", () => {
+  test("parses edit tool call into edit detail with old_string/new_string", () => {
     const input = {
       file_path: "/some/file.txt",
       old_string: "const foo = 1;",
       new_string: "const foo = 2;",
     };
-    const result = {
+    const output = {
       type: "file_edit",
       filePath: "/some/file.txt",
     };
 
-    const display: ToolCallDisplay = parseToolCallDisplay("Edit", input, result);
-    expect(display.type).toBe("edit");
-    if (display.type === "edit") {
-      expect(display.filePath).toBe("/some/file.txt");
-      expect(display.oldString).toBe("const foo = 1;");
-      expect(display.newString).toBe("const foo = 2;");
+    const info: ToolCallDisplayInfo = parseToolCallDisplay({ name: "Edit", input, output });
+    expect(info.detail.type).toBe("edit");
+    if (info.detail.type === "edit") {
+      expect(info.detail.filePath).toBe("/some/file.txt");
+      expect(info.detail.oldString).toBe("const foo = 1;");
+      expect(info.detail.newString).toBe("const foo = 2;");
     }
   });
 
@@ -185,14 +184,13 @@ describe("parseToolCallDisplay", () => {
       old_str: "line 1",
       new_str: "line 2",
     };
-    const result = undefined;
 
-    const display: ToolCallDisplay = parseToolCallDisplay("Edit", input, result);
-    expect(display.type).toBe("edit");
-    if (display.type === "edit") {
-      expect(display.filePath).toBe("/some/file.txt");
-      expect(display.oldString).toBe("line 1");
-      expect(display.newString).toBe("line 2");
+    const info: ToolCallDisplayInfo = parseToolCallDisplay({ name: "Edit", input });
+    expect(info.detail.type).toBe("edit");
+    if (info.detail.type === "edit") {
+      expect(info.detail.filePath).toBe("/some/file.txt");
+      expect(info.detail.oldString).toBe("line 1");
+      expect(info.detail.newString).toBe("line 2");
     }
   });
 
@@ -203,18 +201,18 @@ describe("parseToolCallDisplay", () => {
       new_string: "new content",
     };
 
-    const display: ToolCallDisplay = parseToolCallDisplay("Edit", input, undefined);
-    expect(display.type).toBe("edit");
-    if (display.type === "edit") {
-      expect(display.filePath).toBe("/some/file.txt");
-      expect(display.oldString).toBe("old content");
-      expect(display.newString).toBe("new content");
+    const info: ToolCallDisplayInfo = parseToolCallDisplay({ name: "Edit", input });
+    expect(info.detail.type).toBe("edit");
+    if (info.detail.type === "edit") {
+      expect(info.detail.filePath).toBe("/some/file.txt");
+      expect(info.detail.oldString).toBe("old content");
+      expect(info.detail.newString).toBe("new content");
     }
   });
 });
 
 describe("parseToolCallDisplay - apply_patch (Codex)", () => {
-  test("parses apply_patch into edit type with unified diff", () => {
+  test("parses apply_patch into edit detail with unified diff", () => {
     const input = {
       files: [
         {
@@ -223,7 +221,7 @@ describe("parseToolCallDisplay - apply_patch (Codex)", () => {
         },
       ],
     };
-    const result = {
+    const output = {
       files: [
         {
           path: "/Users/me/dev/blankpage/editor/.tasks/578561c8.md",
@@ -235,18 +233,18 @@ describe("parseToolCallDisplay - apply_patch (Codex)", () => {
       success: true,
     };
 
-    const display = parseToolCallDisplay("apply_patch", input, result);
-    expect(display.type).toBe("edit");
-    expect(display.toolName).toBe("Edit");
-    if (display.type === "edit") {
-      expect(display.filePath).toBe("/Users/me/dev/blankpage/editor/.tasks/578561c8.md");
-      expect(display.unifiedDiff).toBe("@@ -15,3 +15,2 @@\n-This task defines the **design philosophy**\n+This task defines the **updated philosophy**");
-      expect(display.oldString).toBe("");
-      expect(display.newString).toBe("");
+    const info = parseToolCallDisplay({ name: "apply_patch", input, output });
+    expect(info.detail.type).toBe("edit");
+    expect(info.displayName).toBe("Edit");
+    if (info.detail.type === "edit") {
+      expect(info.detail.filePath).toBe("/Users/me/dev/blankpage/editor/.tasks/578561c8.md");
+      expect(info.detail.unifiedDiff).toBe("@@ -15,3 +15,2 @@\n-This task defines the **design philosophy**\n+This task defines the **updated philosophy**");
+      expect(info.detail.oldString).toBe("");
+      expect(info.detail.newString).toBe("");
     }
   });
 
-  test("parses apply_patch with kind object (type/move_path) into edit type", () => {
+  test("parses apply_patch with kind object (type/move_path) into edit detail", () => {
     const input = {
       files: [
         {
@@ -255,7 +253,7 @@ describe("parseToolCallDisplay - apply_patch (Codex)", () => {
         },
       ],
     };
-    const result = {
+    const output = {
       files: [
         {
           path: "/Users/me/.paseo/worktrees/paseo/naive-zebra/packages/server/src/server/daemon-keypair.ts",
@@ -266,14 +264,14 @@ describe("parseToolCallDisplay - apply_patch (Codex)", () => {
       success: true,
     };
 
-    const display = parseToolCallDisplay("apply_patch", input, result);
-    expect(display.type).toBe("edit");
-    expect(display.toolName).toBe("Edit");
-    if (display.type === "edit") {
-      expect(display.filePath).toBe(
+    const info = parseToolCallDisplay({ name: "apply_patch", input, output });
+    expect(info.detail.type).toBe("edit");
+    expect(info.displayName).toBe("Edit");
+    if (info.detail.type === "edit") {
+      expect(info.detail.filePath).toBe(
         "/Users/me/.paseo/worktrees/paseo/naive-zebra/packages/server/src/server/daemon-keypair.ts"
       );
-      expect(display.unifiedDiff).toBe("@@ -1,1 +1,1 @@\n-foo\n+bar");
+      expect(info.detail.unifiedDiff).toBe("@@ -1,1 +1,1 @@\n-foo\n+bar");
     }
   });
 
@@ -286,7 +284,7 @@ describe("parseToolCallDisplay - apply_patch (Codex)", () => {
         },
       ],
     };
-    const result = {
+    const output = {
       files: [
         {
           path: "/some/old-path.txt",
@@ -297,11 +295,11 @@ describe("parseToolCallDisplay - apply_patch (Codex)", () => {
       success: true,
     };
 
-    const display = parseToolCallDisplay("apply_patch", input, result);
-    expect(display.type).toBe("edit");
-    if (display.type === "edit") {
-      expect(display.filePath).toBe("/some/new-path.txt");
-      expect(display.unifiedDiff).toBe("@@ -1,1 +1,1 @@\n-old\n+new");
+    const info = parseToolCallDisplay({ name: "apply_patch", input, output });
+    expect(info.detail.type).toBe("edit");
+    if (info.detail.type === "edit") {
+      expect(info.detail.filePath).toBe("/some/new-path.txt");
+      expect(info.detail.unifiedDiff).toBe("@@ -1,1 +1,1 @@\n-old\n+new");
     }
   });
 
@@ -315,12 +313,12 @@ describe("parseToolCallDisplay - apply_patch (Codex)", () => {
       ],
     };
 
-    const display = parseToolCallDisplay("apply_patch", input, undefined);
-    expect(display.type).toBe("edit");
-    expect(display.toolName).toBe("Edit");
-    if (display.type === "edit") {
-      expect(display.filePath).toBe("/some/file.txt");
-      expect(display.unifiedDiff).toBeUndefined();
+    const info = parseToolCallDisplay({ name: "apply_patch", input });
+    expect(info.detail.type).toBe("edit");
+    expect(info.displayName).toBe("Edit");
+    if (info.detail.type === "edit") {
+      expect(info.detail.filePath).toBe("/some/file.txt");
+      expect(info.detail.unifiedDiff).toBeUndefined();
     }
   });
 
@@ -331,7 +329,7 @@ describe("parseToolCallDisplay - apply_patch (Codex)", () => {
         { path: "/second/file.txt", kind: "create" },
       ],
     };
-    const result = {
+    const output = {
       files: [
         { path: "/first/file.txt", patch: "@@ -1 +1 @@\n-old\n+new", kind: "update" },
         { path: "/second/file.txt", patch: "@@ -0,0 +1 @@\n+content", kind: "create" },
@@ -339,32 +337,32 @@ describe("parseToolCallDisplay - apply_patch (Codex)", () => {
       success: true,
     };
 
-    const display = parseToolCallDisplay("apply_patch", input, result);
-    expect(display.type).toBe("edit");
-    if (display.type === "edit") {
-      expect(display.filePath).toBe("/first/file.txt");
-      expect(display.unifiedDiff).toBe("@@ -1 +1 @@\n-old\n+new");
+    const info = parseToolCallDisplay({ name: "apply_patch", input, output });
+    expect(info.detail.type).toBe("edit");
+    if (info.detail.type === "edit") {
+      expect(info.detail.filePath).toBe("/first/file.txt");
+      expect(info.detail.unifiedDiff).toBe("@@ -1 +1 @@\n-old\n+new");
     }
   });
 });
 
 describe("parseToolCallDisplay - read_file (Codex)", () => {
-  test("parses Codex read_file into read type", () => {
+  test("parses Codex read_file into read detail", () => {
     const input = {
       path: "/Users/me/dev/blankpage/editor/.tasks/578561c8.md",
     };
-    const result = {
+    const output = {
       type: "read_file",
       path: "/Users/me/dev/blankpage/editor/.tasks/578561c8.md",
       content: "260  - Source: `**bold**|`\n261  - Action: `Shift+ArrowLeft`",
     };
 
-    const display = parseToolCallDisplay("read_file", input, result);
-    expect(display.type).toBe("read");
-    expect(display.toolName).toBe("Read");
-    if (display.type === "read") {
-      expect(display.filePath).toBe("/Users/me/dev/blankpage/editor/.tasks/578561c8.md");
-      expect(display.content).toBe("260  - Source: `**bold**|`\n261  - Action: `Shift+ArrowLeft`");
+    const info = parseToolCallDisplay({ name: "read_file", input, output });
+    expect(info.detail.type).toBe("read");
+    expect(info.displayName).toBe("Read");
+    if (info.detail.type === "read") {
+      expect(info.detail.filePath).toBe("/Users/me/dev/blankpage/editor/.tasks/578561c8.md");
+      expect(info.detail.content).toBe("260  - Source: `**bold**|`\n261  - Action: `Shift+ArrowLeft`");
     }
   });
 
@@ -373,9 +371,9 @@ describe("parseToolCallDisplay - read_file (Codex)", () => {
       path: "/some/file.txt",
     };
 
-    const display = parseToolCallDisplay("read_file", input, undefined);
+    const info = parseToolCallDisplay({ name: "read_file", input });
     // Without result, it can't match the schema so falls through to generic
-    expect(display.type).toBe("generic");
-    expect(display.toolName).toBe("Read");
+    expect(info.detail.type).toBe("generic");
+    expect(info.displayName).toBe("Read");
   });
 });

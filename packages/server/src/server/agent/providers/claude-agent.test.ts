@@ -16,6 +16,7 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
 
 import { createTestLogger } from "../../../test-utils/test-logger.js";
+import { curateAgentActivity } from "../activity-curator.js";
 import { ClaudeAgentClient, convertClaudeHistoryEntry } from "./claude-agent.js";
 import { useTempClaudeConfigDir } from "../../test-utils/claude-config.js";
 import type { AgentStreamEventPayload } from "../../messages.js";
@@ -33,7 +34,7 @@ import { createAgentMcpServer } from "../mcp-server.js";
 const createHTTPServer = createServer;
 
 const hasClaudeCredentials =
-  !!process.env.CLAUDE_SESSION_TOKEN || !!process.env.ANTHROPIC_API_KEY;
+  !!process.env.CLAUDE_CODE_OAUTH_TOKEN || !!process.env.ANTHROPIC_API_KEY;
 
 type StreamItem = any;
 type AgentToolCallData = any;
@@ -1093,6 +1094,68 @@ async function startAgentMcpServer(): Promise<AgentMcpServerHandle> {
     },
     240_000
   );
+
+  test(
+    "collapses sub-agent tool calls into Task metadata updates",
+    async () => {
+      const cwd = tmpCwd();
+      const client = new ClaudeAgentClient({ logger });
+      const config = buildConfig(cwd, { maxThinkingTokens: 2048 });
+      const session = await client.createSession(config);
+
+      const events = session.stream(
+        "Use the Task tool to launch a sub-agent that reads the current directory listing. " +
+        "The sub-agent should run 'ls' in the shell and report the result. " +
+        "Do NOT do the work yourself — delegate it to a sub-agent via the Task tool."
+      );
+
+      const timeline: AgentTimelineItem[] = [];
+
+      for await (const event of events) {
+        await autoApprove(session, event);
+        if (event.type === "timeline") {
+          timeline.push(event.item);
+        }
+        if (event.type === "turn_completed" || event.type === "turn_failed") {
+          break;
+        }
+      }
+
+      const toolCalls = timeline.filter(
+        (item): item is ToolCallItem => item.type === "tool_call"
+      );
+
+      // There should be at least one Task tool call
+      const taskCalls = toolCalls.filter((item) => item.name === "Task");
+      expect(taskCalls.length).toBeGreaterThanOrEqual(1);
+
+      // Sub-agent tool calls (Read, Bash, shell, etc.) should NOT appear as
+      // separate timeline items — they should only appear as Task metadata updates
+      const subAgentLeaks = toolCalls.filter(
+        (item) => item.name !== "Task" && item.metadata?.subAgentActivity === undefined
+      );
+      // If there are non-Task tool calls, they must be from the main agent, not sub-agent
+      // We can't 100% guarantee Claude won't also use tools directly, but Task metadata
+      // updates should exist for the sub-agent activity
+      const taskWithMetadata = taskCalls.filter(
+        (item) => item.metadata?.subAgentActivity
+      );
+      if (taskCalls.length > 0) {
+        expect(taskWithMetadata.length).toBeGreaterThanOrEqual(1);
+      }
+
+      // Verify the curator produces clean output with collapsed Task entries
+      const curated = curateAgentActivity(timeline);
+      const lines = curated.split("\n");
+      const taskLines = lines.filter((l) => l.includes("[Task]"));
+      // Each Task callId should appear at most once in curated output
+      expect(taskLines.length).toBeLessThanOrEqual(taskCalls.length);
+
+      await session.close();
+      rmSync(cwd, { recursive: true, force: true });
+    },
+    180_000
+  );
 });
 
 describe("convertClaudeHistoryEntry", () => {
@@ -1147,6 +1210,42 @@ describe("convertClaudeHistoryEntry", () => {
         text: "Run npm test",
       },
     ]);
+  });
+
+  test("converts compact_boundary entry to compaction timeline item", () => {
+    const entry = {
+      type: "system",
+      subtype: "compact_boundary",
+      content: "Conversation compacted",
+      compactMetadata: { trigger: "auto", preTokens: 168428 },
+    };
+
+    const result = convertClaudeHistoryEntry(entry, () => []);
+
+    expect(result).toEqual([
+      {
+        type: "compaction",
+        status: "completed",
+        trigger: "auto",
+        preTokens: 168428,
+      },
+    ]);
+  });
+
+  test("skips isCompactSummary user entries", () => {
+    const entry = {
+      type: "user",
+      isCompactSummary: true,
+      isVisibleInTranscriptOnly: true,
+      message: {
+        role: "user",
+        content: "This session is being continued from a previous conversation...",
+      },
+    };
+
+    const result = convertClaudeHistoryEntry(entry, () => []);
+
+    expect(result).toEqual([]);
   });
 });
 

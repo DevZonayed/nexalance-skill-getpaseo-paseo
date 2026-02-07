@@ -1,9 +1,4 @@
-import stripAnsi from "strip-ansi";
 import { z } from "zod";
-import {
-  normalizeToolDisplayName,
-  stripShellWrapperPrefix,
-} from "@getpaseo/server/utils/tool-call-parsers";
 import { getNowMs, isPerfLoggingEnabled, perfLog } from "./perf";
 
 const TOOL_CALL_DIFF_LOG_TAG = "[ToolCallDiff]";
@@ -893,14 +888,6 @@ export interface KeyValuePair {
   value: string;
 }
 
-const WrappedOutputSchema = z
-  .object({ output: z.record(z.unknown()) })
-  .transform((data) => data.output);
-
-const DirectRecordSchema = z.record(z.unknown());
-
-const ToolResultRecordSchema = z.union([WrappedOutputSchema, DirectRecordSchema]);
-
 function stringifyValue(value: unknown): string {
   if (value === null) {
     return "null";
@@ -921,6 +908,14 @@ function stringifyValue(value: unknown): string {
   }
 }
 
+const WrappedOutputSchema = z
+  .object({ output: z.record(z.unknown()) })
+  .transform((data) => data.output);
+
+const DirectRecordSchema = z.record(z.unknown());
+
+const ToolResultRecordSchema = z.union([WrappedOutputSchema, DirectRecordSchema]);
+
 export function extractKeyValuePairs(result: unknown): KeyValuePair[] {
   const parsed = ToolResultRecordSchema.safeParse(result);
   if (!parsed.success) {
@@ -932,331 +927,6 @@ export function extractKeyValuePairs(result: unknown): KeyValuePair[] {
     key,
     value: stringifyValue(value),
   }));
-}
-
-// ---- Tool Call Display Discriminated Union ----
-
-const KeyValuePairsSchema = z.record(z.unknown()).transform((data) =>
-  Object.entries(data).map(([key, value]) => ({
-    key,
-    value: stringifyValue(value),
-  }))
-);
-
-// Shell input: { command: "pwd", description?: "..." }
-const ShellInputSchema = z.object({
-  command: z.union([z.string(), z.array(z.string())]),
-}).passthrough();
-
-// Shell result (when completed): { type: "command", command: "pwd", output: "..." }
-const ShellResultSchema = z.object({
-  type: z.literal("command"),
-  output: z.string(),
-}).passthrough();
-
-// Shell error result: { type: "tool_result", content: "Exit code 128\n...", is_error: true }
-const ShellErrorResultSchema = z.object({
-  type: z.literal("tool_result"),
-  content: z.string(),
-  is_error: z.literal(true),
-}).passthrough();
-
-// Shell tool call display schema
-const ShellToolCallSchema = z
-  .object({
-    input: ShellInputSchema,
-    result: z.unknown(),
-  })
-  .transform((data) => {
-    const commandRaw = Array.isArray(data.input.command)
-      ? data.input.command.join(" ")
-      : data.input.command;
-    const command = stripShellWrapperPrefix(commandRaw);
-
-    // Try parsing as success result first
-    const resultParsed = ShellResultSchema.safeParse(data.result);
-    if (resultParsed.success) {
-      return {
-        type: "shell" as const,
-        command,
-        output: stripAnsi(resultParsed.data.output),
-      };
-    }
-
-    // Try parsing as error result
-    const errorParsed = ShellErrorResultSchema.safeParse(data.result);
-    if (errorParsed.success) {
-      return {
-        type: "shell" as const,
-        command,
-        output: stripAnsi(errorParsed.data.content),
-      };
-    }
-
-    return {
-      type: "shell" as const,
-      command,
-      output: "",
-    };
-  });
-
-// Edit input: { file_path: string, old_string: string, new_string: string }
-// Also supports old_str/new_str variants
-const EditInputSchema = z.union([
-  z.object({
-    file_path: z.string(),
-    old_string: z.string(),
-    new_string: z.string(),
-  }).passthrough(),
-  z.object({
-    file_path: z.string(),
-    old_str: z.string(),
-    new_str: z.string(),
-  }).passthrough(),
-]);
-
-// Edit result: { type: "file_edit", filePath: string, oldContent?: string, newContent?: string }
-const EditResultSchema = z.object({
-  type: z.literal("file_edit"),
-  filePath: z.string(),
-  oldContent: z.string().optional(),
-  newContent: z.string().optional(),
-}).passthrough();
-
-// Edit tool call display schema
-const EditToolCallSchema = z
-  .object({
-    input: EditInputSchema,
-    result: z.unknown(),
-  })
-  .transform((data): { type: "edit"; filePath: string; oldString: string; newString: string; unifiedDiff?: string } => {
-    const filePath = data.input.file_path;
-    const oldString = "old_string" in data.input
-      ? (data.input as { old_string: string }).old_string
-      : (data.input as { old_str: string }).old_str;
-    const newString = "new_string" in data.input
-      ? (data.input as { new_string: string }).new_string
-      : (data.input as { new_str: string }).new_str;
-
-    return {
-      type: "edit",
-      filePath,
-      oldString,
-      newString,
-    };
-  });
-
-const ApplyPatchFileKindSchema = z
-  .union([
-    z.string(),
-    z
-      .object({
-        type: z.string().optional(),
-        move_path: z.string().nullable().optional(),
-        movePath: z.string().nullable().optional(),
-      })
-      .passthrough(),
-  ])
-  .optional();
-
-function getApplyPatchMovePath(kind: unknown): string | undefined {
-  if (!kind || typeof kind !== "object") return undefined;
-  const record = kind as Record<string, unknown>;
-  const movePath = typeof record.movePath === "string" ? record.movePath : undefined;
-  const movePathSnake =
-    typeof record.move_path === "string" ? record.move_path : undefined;
-  return movePath ?? movePathSnake ?? undefined;
-}
-
-// Codex apply_patch input: { files: [{ path: string, kind: string | object }] }
-const ApplyPatchInputSchema = z.object({
-  files: z.array(z.object({
-    path: z.string(),
-    kind: ApplyPatchFileKindSchema,
-  })).min(1),
-}).passthrough();
-
-// Codex apply_patch result: { files: [{ path: string, patch: string, kind: string | object }], message: string, success: boolean }
-const ApplyPatchResultSchema = z.object({
-  files: z.array(z.object({
-    path: z.string(),
-    patch: z.string().optional(),
-    kind: ApplyPatchFileKindSchema,
-  })).optional(),
-  message: z.string().optional(),
-  success: z.boolean().optional(),
-}).passthrough();
-
-// Apply patch tool call display schema - transforms to edit type with unified diff
-const ApplyPatchToolCallSchema = z
-  .object({
-    input: ApplyPatchInputSchema,
-    result: z.unknown(),
-  })
-  .transform((data): { type: "edit"; filePath: string; oldString: string; newString: string; unifiedDiff?: string } => {
-    const firstFile = data.input.files[0];
-    const movePath = getApplyPatchMovePath(firstFile.kind);
-    const filePath = movePath ?? firstFile.path;
-
-    // Try to get the patch from the result
-    const resultParsed = ApplyPatchResultSchema.safeParse(data.result);
-    let unifiedDiff: string | undefined;
-    if (resultParsed.success && resultParsed.data.files) {
-      const matchPaths = new Set<string>([firstFile.path]);
-      if (movePath) matchPaths.add(movePath);
-
-      const resultFile =
-        resultParsed.data.files.find((f) => matchPaths.has(f.path)) ??
-        resultParsed.data.files[0];
-      unifiedDiff = resultFile?.patch;
-    }
-
-    return {
-      type: "edit",
-      filePath,
-      oldString: "",
-      newString: "",
-      unifiedDiff,
-    };
-  });
-
-// Read input: { file_path: string, offset?: number, limit?: number }
-const ReadInputSchema = z.object({
-  file_path: z.string(),
-  offset: z.number().optional(),
-  limit: z.number().optional(),
-}).passthrough();
-
-// Read result: { type: "file_read", filePath: string, content: string }
-const ReadResultSchema = z.object({
-  type: z.literal("file_read"),
-  filePath: z.string(),
-  content: z.string(),
-}).passthrough();
-
-// Read tool call display schema (Claude)
-const ReadToolCallSchema = z
-  .object({
-    input: ReadInputSchema,
-    result: ReadResultSchema,
-  })
-  .transform((data): { type: "read"; filePath: string; content: string; offset?: number; limit?: number } => ({
-    type: "read",
-    filePath: data.input.file_path,
-    content: data.result.content,
-    offset: data.input.offset,
-    limit: data.input.limit,
-  }));
-
-// Codex read_file input: { path: string }
-const CodexReadInputSchema = z.object({
-  path: z.string(),
-}).passthrough();
-
-// Codex read_file result: { type: "read_file", path: string, content: string }
-const CodexReadResultSchema = z.object({
-  type: z.literal("read_file"),
-  path: z.string(),
-  content: z.string(),
-}).passthrough();
-
-// Codex read_file tool call display schema
-const CodexReadToolCallSchema = z
-  .object({
-    input: CodexReadInputSchema,
-    result: CodexReadResultSchema,
-  })
-  .transform((data): { type: "read"; filePath: string; content: string; offset?: number; limit?: number } => ({
-    type: "read",
-    filePath: data.input.path,
-    content: data.result.content,
-  }));
-
-// Generic tool call display schema (fallback)
-const GenericToolCallSchema = z
-  .object({
-    input: z.unknown(),
-    result: z.unknown(),
-  })
-  .transform((data) => {
-    const inputPairs = KeyValuePairsSchema.safeParse(data.input);
-    const resultPairs = KeyValuePairsSchema.safeParse(data.result);
-
-    return {
-      type: "generic" as const,
-      input: inputPairs.success ? inputPairs.data : [],
-      output: resultPairs.success ? resultPairs.data : [],
-    };
-  });
-
-// Normalizes tool names for consistent display across agents
-const TOOL_NAME_MAP: Record<string, string> = {
-  shell: "Shell",
-  Bash: "Shell",
-  read_file: "Read",
-  apply_patch: "Edit",
-  paseo_worktree_setup: "Setup",
-  thinking: "Thinking",
-};
-
-const ToolCallDisplaySchema = z
-  .object({
-    toolName: z.string(),
-    input: z.unknown(),
-    result: z.unknown(),
-  })
-  .transform((data) => {
-    const normalizedToolName = normalizeToolDisplayName(
-      TOOL_NAME_MAP[data.toolName] ?? data.toolName
-    );
-
-    // Handle thinking - input is the thinking text content
-    if (data.toolName === "thinking") {
-      const content = typeof data.input === "string" ? data.input : "";
-      return {
-        type: "thinking" as const,
-        content,
-        toolName: normalizedToolName,
-      };
-    }
-
-    // Try each schema in order
-    const shellParsed = ShellToolCallSchema.safeParse({ input: data.input, result: data.result });
-    if (shellParsed.success) {
-      return { ...shellParsed.data, toolName: normalizedToolName };
-    }
-
-    const editParsed = EditToolCallSchema.safeParse({ input: data.input, result: data.result });
-    if (editParsed.success) {
-      return { ...editParsed.data, toolName: normalizedToolName };
-    }
-
-    // Codex apply_patch - try before read since it also uses files array
-    const applyPatchParsed = ApplyPatchToolCallSchema.safeParse({ input: data.input, result: data.result });
-    if (applyPatchParsed.success) {
-      return { ...applyPatchParsed.data, toolName: normalizedToolName };
-    }
-
-    const readParsed = ReadToolCallSchema.safeParse({ input: data.input, result: data.result });
-    if (readParsed.success) {
-      return { ...readParsed.data, toolName: normalizedToolName };
-    }
-
-    // Codex read_file
-    const codexReadParsed = CodexReadToolCallSchema.safeParse({ input: data.input, result: data.result });
-    if (codexReadParsed.success) {
-      return { ...codexReadParsed.data, toolName: normalizedToolName };
-    }
-
-    // Fallback to generic
-    const genericParsed = GenericToolCallSchema.parse({ input: data.input, result: data.result });
-    return { ...genericParsed, toolName: normalizedToolName };
-  });
-
-export type ToolCallDisplay = z.infer<typeof ToolCallDisplaySchema>;
-
-export function parseToolCallDisplay(toolName: string, input: unknown, result: unknown): ToolCallDisplay {
-  return ToolCallDisplaySchema.parse({ toolName, input, result });
 }
 
 // ---- Task Extraction (cross-provider) ----
@@ -1338,11 +1008,18 @@ export function extractTaskEntriesFromToolCall(
   return null;
 }
 
-// ---- Principal Parameter Extraction ----
-// Re-export from server to avoid drift
+// ---- Unified Tool Call Display ----
+// Re-export from server — single source of truth
 export {
-  extractPrincipalParam,
+  parseToolCallDisplay,
   stripCwdPrefix,
   extractTodos,
+  normalizeToolDisplayName,
+  stripShellWrapperPrefix,
+  type ToolCallInput,
+  type ToolCallDisplayInfo,
+  type ToolCallDetail,
+  type ToolCallKind,
   type TodoItem,
+  type KeyValuePair as ServerKeyValuePair,
 } from "@getpaseo/server/utils/tool-call-parsers";

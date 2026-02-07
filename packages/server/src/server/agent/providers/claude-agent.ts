@@ -481,6 +481,8 @@ class ClaudeAgentSession implements AgentSession {
   private activeTurnPromise: Promise<void> | null = null;
   private cachedRuntimeInfo: AgentRuntimeInfo | null = null;
   private lastOptionsModel: string | null = null;
+  private activeSidechains = new Map<string, string>();
+  private compacting = false;
 
   constructor(
     config: ClaudeAgentConfig,
@@ -1120,16 +1122,103 @@ class ClaudeAgentSession implements AgentSession {
     }
   }
 
+  private handleSidechainMessage(
+    message: SDKMessage,
+    parentToolUseId: string
+  ): AgentStreamEvent[] {
+    let toolName: string | undefined;
+
+    if (message.type === "assistant") {
+      const content = message.message?.content;
+      if (Array.isArray(content)) {
+        for (const block of content) {
+          if (isClaudeContentChunk(block) &&
+            (block.type === "tool_use" || block.type === "mcp_tool_use" || block.type === "server_tool_use") &&
+            typeof block.name === "string"
+          ) {
+            toolName = block.name;
+            break;
+          }
+        }
+      }
+    } else if (message.type === "stream_event") {
+      const event = message.event;
+      if (event.type === "content_block_start") {
+        const cb = isClaudeContentChunk(event.content_block) ? event.content_block : null;
+        if (cb?.type === "tool_use" && typeof cb.name === "string") {
+          toolName = cb.name;
+        }
+      }
+    } else if (message.type === "tool_progress") {
+      toolName = message.tool_name;
+    }
+
+    if (!toolName) {
+      return [];
+    }
+
+    const prev = this.activeSidechains.get(parentToolUseId);
+    if (prev === toolName) {
+      return [];
+    }
+    this.activeSidechains.set(parentToolUseId, toolName);
+
+    return [{
+      type: "timeline",
+      item: {
+        type: "tool_call",
+        name: "Task",
+        callId: parentToolUseId,
+        metadata: { subAgentActivity: toolName },
+      },
+      provider: "claude",
+    }];
+  }
+
   private translateMessageToEvents(message: SDKMessage, turnContext: TurnContext): AgentStreamEvent[] {
+    const parentToolUseId = "parent_tool_use_id" in message
+      ? (message as { parent_tool_use_id: string | null }).parent_tool_use_id
+      : null;
+    if (parentToolUseId) {
+      return this.handleSidechainMessage(message, parentToolUseId);
+    }
+
     const events: AgentStreamEvent[] = [];
 
     switch (message.type) {
       case "system":
         if (message.subtype === "init") {
           this.handleSystemMessage(message);
+        } else if (message.subtype === "status") {
+          const status = (message as { status?: string }).status;
+          if (status === "compacting") {
+            this.compacting = true;
+            events.push({
+              type: "timeline",
+              item: { type: "compaction", status: "loading" },
+              provider: "claude",
+            });
+          }
+        } else if (message.subtype === "compact_boundary") {
+          const meta = (message as Record<string, unknown>).compact_metadata as
+            { trigger?: string; pre_tokens?: number } | undefined;
+          events.push({
+            type: "timeline",
+            item: {
+              type: "compaction",
+              status: "completed",
+              trigger: meta?.trigger === "manual" ? "manual" : "auto",
+              preTokens: meta?.pre_tokens,
+            },
+            provider: "claude",
+          });
         }
         break;
       case "user": {
+        if (this.compacting) {
+          this.compacting = false;
+          break;
+        }
         const content = message.message?.content;
         if (typeof content === "string" && content.length > 0) {
           // String content from user messages (e.g., local command output)
@@ -1916,6 +2005,19 @@ export function convertClaudeHistoryEntry(
   entry: any,
   mapBlocks: (content: string | ClaudeContentChunk[]) => AgentTimelineItem[]
 ): AgentTimelineItem[] {
+  if (entry.type === "system" && entry.subtype === "compact_boundary") {
+    return [{
+      type: "compaction",
+      status: "completed",
+      trigger: entry.compactMetadata?.trigger === "manual" ? "manual" : "auto",
+      preTokens: entry.compactMetadata?.preTokens,
+    }];
+  }
+
+  if (entry.isCompactSummary) {
+    return [];
+  }
+
   const message = entry?.message;
   if (!message || !("content" in message)) {
     return [];

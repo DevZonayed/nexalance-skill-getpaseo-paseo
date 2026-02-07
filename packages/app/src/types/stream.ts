@@ -59,7 +59,8 @@ export type StreamItem =
   | ThoughtItem
   | ToolCallItem
   | TodoListItem
-  | ActivityLogItem;
+  | ActivityLogItem
+  | CompactionItem;
 
 export interface UserMessageItem {
   kind: "user_message";
@@ -107,6 +108,7 @@ export interface AgentToolCallData {
   parsedEdits?: EditEntry[];
   parsedReads?: ReadEntry[];
   parsedCommand?: CommandDetails | null;
+  metadata?: Record<string, unknown>;
 }
 
 export type ToolCallPayload =
@@ -139,6 +141,15 @@ export interface ActivityLogItem {
   activityType: ActivityLogType;
   message: string;
   metadata?: Record<string, unknown>;
+}
+
+export interface CompactionItem {
+  kind: "compaction";
+  id: string;
+  timestamp: Date;
+  status: "loading" | "completed";
+  trigger?: "auto" | "manual";
+  preTokens?: number;
 }
 
 export type TodoEntry = { text: string; completed: boolean };
@@ -407,6 +418,10 @@ function appendAgentToolCall(
   if (existingIndex >= 0) {
     const next = [...state];
     const existing = next[existingIndex] as AgentToolCallItem;
+    const mergedInput =
+      payloadData.input !== undefined
+        ? payloadData.input
+        : existing.payload.data.input;
     const mergedResult =
       payloadData.result !== undefined
         ? payloadData.result
@@ -419,6 +434,10 @@ function appendAgentToolCall(
       existing.payload.data.status,
       payloadData.status ?? existing.payload.data.status ?? "executing"
     );
+    const mergedMetadata =
+      payloadData.metadata || existing.payload.data.metadata
+        ? { ...existing.payload.data.metadata, ...payloadData.metadata }
+        : undefined;
     const parsed = computeParsedToolPayload(mergedResult);
     next[existingIndex] = {
       ...existing,
@@ -429,8 +448,10 @@ function appendAgentToolCall(
           ...existing.payload.data,
           ...payloadData,
           status: mergedStatus,
+          input: mergedInput,
           result: mergedResult,
           error: mergedError,
+          metadata: mergedMetadata,
           callId: payloadData.callId ?? existing.payload.data.callId,
           parsedEdits: parsed.parsedEdits ?? existing.payload.data.parsedEdits,
           parsedReads: parsed.parsedReads ?? existing.payload.data.parsedReads,
@@ -799,6 +820,7 @@ export function reduceStreamUpdate(
               input: item.input,
               result: item.output,
               error: item.error,
+              metadata: item.metadata,
             },
             timestamp
           );
@@ -823,6 +845,34 @@ export function reduceStreamUpdate(
             message: formatErrorMessage(item.message ?? "Unknown error"),
           };
           nextState = appendActivityLog(state, activity);
+          break;
+        }
+        case "compaction": {
+          if (item.status === "completed") {
+            const loadingIdx = state.findIndex(
+              (s) => s.kind === "compaction" && s.status === "loading"
+            );
+            if (loadingIdx >= 0) {
+              const existing = state[loadingIdx] as CompactionItem;
+              const updated: CompactionItem = {
+                ...existing,
+                status: "completed",
+                trigger: item.trigger,
+                preTokens: item.preTokens,
+              };
+              nextState = [...state.slice(0, loadingIdx), updated, ...state.slice(loadingIdx + 1)];
+              break;
+            }
+          }
+          const compaction: CompactionItem = {
+            kind: "compaction",
+            id: createTimelineId("compaction", item.status, timestamp),
+            timestamp,
+            status: item.status,
+            trigger: item.trigger,
+            preTokens: item.preTokens,
+          };
+          nextState = [...state, compaction];
           break;
         }
         default:

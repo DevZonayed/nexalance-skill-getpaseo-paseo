@@ -1,5 +1,5 @@
 import type { AgentTimelineItem } from "./agent-sdk-types.js";
-import { extractPrincipalParam, normalizeToolDisplayName } from "../../utils/tool-call-parsers.js";
+import { parseToolCallDisplay } from "../../utils/tool-call-parsers.js";
 import { isLikelyExternalToolName } from "./tool-name-normalization.js";
 
 const DEFAULT_MAX_ITEMS = 40;
@@ -89,7 +89,18 @@ function collapseTimeline(items: AgentTimelineItem[]): AgentTimelineItem[] {
     } else if (item.type === "tool_call" && item.callId) {
       flushAssistant();
       flushReasoning();
-      toolCallMap.set(item.callId, item);
+      const existing = toolCallMap.get(item.callId);
+      if (existing && existing.type === "tool_call") {
+        toolCallMap.set(item.callId, {
+          ...existing,
+          ...item,
+          input: item.input ?? existing.input,
+          output: item.output ?? existing.output,
+          metadata: item.metadata,
+        });
+      } else {
+        toolCallMap.set(item.callId, item);
+      }
     } else if (item.type === "tool_call") {
       flushAssistant();
       flushReasoning();
@@ -147,15 +158,14 @@ export function curateAgentActivity(
         break;
       case "tool_call": {
         flushBuffers(lines, buffers);
-        const displayName = normalizeToolDisplayName(item.name);
         const inputJson = formatToolInputJson(item.input);
+        const { displayName, summary } = parseToolCallDisplay({ name: item.name, input: item.input, metadata: item.metadata });
         if (isLikelyExternalToolName(item.name) && inputJson) {
           lines.push(`[${displayName}] ${inputJson}`);
           break;
         }
-        const principal = extractPrincipalParam(item.input);
-        if (principal) {
-          lines.push(`[${displayName}] ${principal}`);
+        if (summary) {
+          lines.push(`[${displayName}] ${summary}`);
         } else {
           lines.push(`[${displayName}]`);
         }
@@ -172,6 +182,10 @@ export function curateAgentActivity(
       case "error":
         flushBuffers(lines, buffers);
         lines.push(`[Error] ${item.message}`);
+        break;
+      case "compaction":
+        flushBuffers(lines, buffers);
+        lines.push("[Compacted]");
         break;
     }
   }

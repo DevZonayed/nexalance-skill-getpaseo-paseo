@@ -3,169 +3,46 @@ import { View, Text, Platform, ScrollView as RNScrollView } from "react-native";
 import { ScrollView as GHScrollView } from "react-native-gesture-handler";
 import { StyleSheet } from "react-native-unistyles";
 import { Fonts } from "@/constants/theme";
-import { getNowMs, isPerfLoggingEnabled, perfLog } from "@/utils/perf";
 import {
-  parseToolCallDisplay,
   buildLineDiff,
   parseUnifiedDiff,
-  type ToolCallDisplay,
+  type ToolCallDetail,
 } from "@/utils/tool-call-parsers";
 import { DiffViewer } from "./diff-viewer";
 import { getCodeInsets } from "./code-insets";
 
 const ScrollView = Platform.OS === "web" ? RNScrollView : GHScrollView;
 
-// ---- Types ----
-
-export interface ToolCallDetailsData {
-  toolName: string;
-  args?: unknown;
-  result?: unknown;
-  error?: unknown;
-}
-
-const TOOL_CALL_DETAILS_LOG_TAG = "[ToolCallDetails]";
-const TOOL_CALL_DETAILS_DURATION_THRESHOLD_MS = 8;
-const TOOL_CALL_DETAILS_SIZE_THRESHOLD = 20000;
-
-type ToolCallDisplaySummary = {
-  displayType: ToolCallDisplay["type"];
-  totalChars: number;
-  detail: Record<string, unknown>;
-};
-
-function summarizeToolCallDisplay(display: ToolCallDisplay): ToolCallDisplaySummary {
-  switch (display.type) {
-    case "shell": {
-      const commandLength = display.command.length;
-      const outputLength = display.output.length;
-      return {
-        displayType: display.type,
-        totalChars: commandLength + outputLength,
-        detail: {
-          commandLength,
-          outputLength,
-        },
-      };
-    }
-    case "edit": {
-      const oldLength = display.oldString.length;
-      const newLength = display.newString.length;
-      return {
-        displayType: display.type,
-        totalChars: oldLength + newLength,
-        detail: {
-          filePath: display.filePath,
-          oldLength,
-          newLength,
-        },
-      };
-    }
-    case "read": {
-      const contentLength = display.content.length;
-      return {
-        displayType: display.type,
-        totalChars: contentLength,
-        detail: {
-          filePath: display.filePath,
-          contentLength,
-          offset: display.offset,
-          limit: display.limit,
-        },
-      };
-    }
-    case "generic": {
-      const inputPairs = display.input.length;
-      const outputPairs = display.output.length;
-      const inputChars = display.input.reduce((sum, pair) => sum + pair.value.length, 0);
-      const outputChars = display.output.reduce((sum, pair) => sum + pair.value.length, 0);
-      return {
-        displayType: display.type,
-        totalChars: inputChars + outputChars,
-        detail: {
-          inputPairs,
-          outputPairs,
-          inputChars,
-          outputChars,
-        },
-      };
-    }
-    case "thinking": {
-      const contentLength = display.content.length;
-      return {
-        displayType: display.type,
-        totalChars: contentLength,
-        detail: { contentLength },
-      };
-    }
-    default:
-      return assertNever(display);
-  }
-}
-
-// ---- Helper ----
-
-function assertNever(value: never): never {
-  throw new Error(`Unhandled tool call display: ${JSON.stringify(value)}`);
-}
-
-function formatValue(value: unknown): string {
-  if (value === undefined) {
-    return "";
-  }
-  if (typeof value === "string") {
-    return value;
-  }
-  // Extract content from tool_result objects
-  if (
-    typeof value === "object" &&
-    value !== null &&
-    "type" in value &&
-    (value as { type: string }).type === "tool_result" &&
-    "content" in value
-  ) {
-    const content = (value as { content: unknown }).content;
-    if (typeof content === "string") {
-      return content;
-    }
-  }
-  try {
-    return JSON.stringify(value, null, 2);
-  } catch {
-    return String(value);
-  }
-}
-
 // ---- Content Component ----
 
 interface ToolCallDetailsContentProps {
-  display: ToolCallDisplay;
+  detail: ToolCallDetail;
   errorText?: string;
   maxHeight?: number;
 }
 
 export function ToolCallDetailsContent({
-  display,
+  detail,
   errorText,
   maxHeight = 300,
 }: ToolCallDetailsContentProps) {
   // Compute diff lines for edit type
   const diffLines = useMemo(() => {
-    if (display.type !== "edit") return undefined;
+    if (detail.type !== "edit") return undefined;
     // Use pre-computed unified diff if available (e.g., from apply_patch)
-    if (display.unifiedDiff) {
-      return parseUnifiedDiff(display.unifiedDiff);
+    if (detail.unifiedDiff) {
+      return parseUnifiedDiff(detail.unifiedDiff);
     }
-    return buildLineDiff(display.oldString, display.newString);
-  }, [display]);
+    return buildLineDiff(detail.oldString, detail.newString);
+  }, [detail]);
 
   const sections: ReactNode[] = [];
-  const isFullBleed = display.type === "edit" || display.type === "shell";
+  const isFullBleed = detail.type === "edit" || detail.type === "shell";
   const codeBlockStyle = isFullBleed ? styles.fullBleedBlock : styles.diffContainer;
 
-  if (display.type === "shell") {
-    const command = display.command.replace(/\n+$/, "");
-    const output = display.output.replace(/^\n+/, "");
+  if (detail.type === "shell") {
+    const command = detail.command.replace(/\n+$/, "");
+    const output = detail.output.replace(/^\n+/, "");
     const hasOutput = output.length > 0;
     sections.push(
       <View key="shell" style={styles.section}>
@@ -194,7 +71,7 @@ export function ToolCallDetailsContent({
         </View>
       </View>
     );
-  } else if (display.type === "edit") {
+  } else if (detail.type === "edit") {
     sections.push(
       <View key="edit" style={styles.section}>
         {diffLines ? (
@@ -204,17 +81,17 @@ export function ToolCallDetailsContent({
         ) : null}
       </View>
     );
-  } else if (display.type === "read") {
+  } else if (detail.type === "read") {
     sections.push(
       <View key="read" style={styles.section}>
-        {(display.offset !== undefined || display.limit !== undefined) ? (
+        {(detail.offset !== undefined || detail.limit !== undefined) ? (
           <Text style={styles.rangeText}>
-            {display.offset !== undefined ? `Offset: ${display.offset}` : ""}
-            {display.offset !== undefined && display.limit !== undefined ? " • " : ""}
-            {display.limit !== undefined ? `Limit: ${display.limit}` : ""}
+            {detail.offset !== undefined ? `Offset: ${detail.offset}` : ""}
+            {detail.offset !== undefined && detail.limit !== undefined ? " • " : ""}
+            {detail.limit !== undefined ? `Limit: ${detail.limit}` : ""}
           </Text>
         ) : null}
-        {display.content ? (
+        {detail.content ? (
           <ScrollView
             style={[styles.scrollArea, { maxHeight }]}
             contentContainerStyle={styles.scrollContent}
@@ -226,13 +103,13 @@ export function ToolCallDetailsContent({
               nestedScrollEnabled
               showsHorizontalScrollIndicator={true}
             >
-              <Text selectable style={styles.scrollText}>{display.content}</Text>
+              <Text selectable style={styles.scrollText}>{detail.content}</Text>
             </ScrollView>
           </ScrollView>
         ) : null}
       </View>
     );
-  } else if (display.type === "thinking") {
+  } else if (detail.type === "thinking") {
     // Thinking: display the content as plain text
     sections.push(
       <View key="thinking" style={styles.section}>
@@ -242,19 +119,19 @@ export function ToolCallDetailsContent({
           nestedScrollEnabled
           showsVerticalScrollIndicator={true}
         >
-          <Text selectable style={styles.scrollText}>{display.content}</Text>
+          <Text selectable style={styles.scrollText}>{detail.content}</Text>
         </ScrollView>
       </View>
     );
   } else {
     // Generic tool: show input/output as key-value pairs
-    if (display.input.length > 0) {
+    if (detail.input.length > 0) {
       sections.push(
         <View key="input-header" style={styles.groupHeader}>
           <Text style={styles.groupHeaderText}>Input</Text>
         </View>
       );
-      display.input.forEach((pair, index) => {
+      detail.input.forEach((pair, index) => {
         sections.push(
           <View key={`input-${index}-${pair.key}`} style={styles.section}>
             <Text style={styles.sectionTitle}>{pair.key}</Text>
@@ -272,13 +149,13 @@ export function ToolCallDetailsContent({
       });
     }
 
-    if (display.output.length > 0) {
+    if (detail.output.length > 0) {
       sections.push(
         <View key="output-header" style={styles.groupHeader}>
           <Text style={styles.groupHeaderText}>Output</Text>
         </View>
       );
-      display.output.forEach((pair, index) => {
+      detail.output.forEach((pair, index) => {
         sections.push(
           <View key={`output-${index}-${pair.key}`} style={styles.section}>
             <Text style={styles.sectionTitle}>{pair.key}</Text>
@@ -328,37 +205,6 @@ export function ToolCallDetailsContent({
       {sections}
     </View>
   );
-}
-
-// ---- Hook for parsing tool call data ----
-
-export function useToolCallDetails(data: ToolCallDetailsData) {
-  const { toolName, args, result, error } = data;
-
-  return useMemo(() => {
-    const shouldLog = isPerfLoggingEnabled();
-    const startMs = shouldLog ? getNowMs() : 0;
-    const display = parseToolCallDisplay(toolName, args, result);
-    const errorText = error !== undefined ? formatValue(error) : undefined;
-    if (shouldLog) {
-      const durationMs = getNowMs() - startMs;
-      const summary = summarizeToolCallDisplay(display);
-      if (
-        durationMs >= TOOL_CALL_DETAILS_DURATION_THRESHOLD_MS ||
-        summary.totalChars >= TOOL_CALL_DETAILS_SIZE_THRESHOLD
-      ) {
-        perfLog(TOOL_CALL_DETAILS_LOG_TAG, {
-          event: "parse",
-          durationMs: Math.round(durationMs),
-          displayType: summary.displayType,
-          totalChars: summary.totalChars,
-          errorLength: errorText ? errorText.length : 0,
-          ...summary.detail,
-        });
-      }
-    }
-    return { display, errorText };
-  }, [toolName, args, result, error]);
 }
 
 // ---- Styles ----

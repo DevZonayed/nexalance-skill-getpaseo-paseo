@@ -35,6 +35,7 @@ import {
   ActivityLog,
   ToolCall,
   TodoListCard,
+  CompactionMarker,
   TurnCopyButton,
   MessageOuterSpacingProvider,
   type InlinePathTarget,
@@ -366,6 +367,7 @@ export function AgentStreamView({
                 error={data.error}
                 status={data.status as "executing" | "completed" | "failed"}
                 cwd={agent.cwd}
+                metadata={data.metadata}
                 isLastInSequence={isLastInSequence}
                 onInlineDetailsExpandedChange={handleInlineDetailsExpandedChange}
               />
@@ -399,6 +401,14 @@ export function AgentStreamView({
           return (
             <TodoListCard
               items={item.items}
+            />
+          );
+
+        case "compaction":
+          return (
+            <CompactionMarker
+              status={item.status}
+              preTokens={item.preTokens}
             />
           );
 
@@ -897,7 +907,7 @@ function PermissionRequestCard({
     if (isPlanRequest) {
       return null;
     }
-    return parseToolCallDisplay(request.name ?? "unknown", request.input, null);
+    return parseToolCallDisplay({ name: request.name ?? "unknown", input: request.input });
   }, [isPlanRequest, request.name, request.input]);
 
   const markdownStyles = useMemo(() => createMarkdownStyles(theme), [theme]);
@@ -1116,7 +1126,7 @@ function PermissionRequestCard({
       ) : null}
 
       {!isPlanRequest && toolCallDisplay ? (
-        <ToolCallDetailsContent display={toolCallDisplay} maxHeight={200} />
+        <ToolCallDetailsContent detail={toolCallDisplay.detail} maxHeight={200} />
       ) : null}
 
       <Text

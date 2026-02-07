@@ -124,7 +124,15 @@ export interface ToolCallTimelineItem {
   input?: unknown;
   output?: unknown;
   error?: unknown;
+  metadata?: Record<string, unknown>;
 }
+
+export type CompactionTimelineItem = {
+  type: "compaction";
+  status: "loading" | "completed";
+  trigger?: "auto" | "manual";
+  preTokens?: number;
+};
 
 export type AgentTimelineItem =
   | { type: "user_message"; text: string; messageId?: string }
@@ -132,7 +140,8 @@ export type AgentTimelineItem =
   | { type: "reasoning"; text: string }
   | ToolCallTimelineItem
   | { type: "todo"; items: { text: string; completed: boolean }[] }
-  | { type: "error"; message: string };
+  | { type: "error"; message: string }
+  | CompactionTimelineItem;
 
 export type AgentStreamEvent =
   | { type: "thread_started"; sessionId: string; provider: AgentProvider }

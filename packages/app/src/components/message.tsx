@@ -3,6 +3,7 @@ import {
   Text,
   Pressable,
   Animated,
+  ActivityIndicator,
   StyleProp,
   ViewStyle,
   Platform,
@@ -38,8 +39,10 @@ import {
   SquareTerminal,
   Search,
   Brain,
+  Bot,
   Copy,
   TriangleAlertIcon,
+  Scissors,
 } from "lucide-react-native";
 import {
   StyleSheet,
@@ -53,16 +56,13 @@ import {
 import { Colors, Fonts } from "@/constants/theme";
 import * as Clipboard from "expo-clipboard";
 import type { TodoEntry } from "@/types/stream";
-import { extractPrincipalParam } from "@/utils/tool-call-parsers";
+import { parseToolCallDisplay, type ToolCallKind } from "@/utils/tool-call-parsers";
 import { getNowMs, isPerfLoggingEnabled, perfLog } from "@/utils/perf";
 import { parseInlinePathToken, type InlinePathTarget } from "@/utils/inline-path";
 export type { InlinePathTarget } from "@/utils/inline-path";
 import { resolveToolCallPreview } from "./tool-call-preview";
 import { useToolCallSheet } from "./tool-call-sheet";
-import {
-  ToolCallDetailsContent,
-  useToolCallDetails,
-} from "./tool-call-details";
+import { ToolCallDetailsContent } from "./tool-call-details";
 
 interface UserMessageProps {
   message: string;
@@ -767,6 +767,63 @@ export const ActivityLog = memo(function ActivityLog({
   );
 });
 
+interface CompactionMarkerProps {
+  status: "loading" | "completed";
+  preTokens?: number;
+}
+
+const compactionStylesheet = StyleSheet.create((theme) => ({
+  container: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: theme.spacing[3],
+    paddingHorizontal: theme.spacing[4],
+    gap: theme.spacing[2],
+  },
+  line: {
+    flex: 1,
+    height: 1,
+    backgroundColor: theme.colors.border,
+  },
+  label: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[2],
+  },
+  text: {
+    fontFamily: Fonts.mono,
+    fontSize: 11,
+    color: theme.colors.foregroundMuted,
+  },
+}));
+
+export const CompactionMarker = memo(function CompactionMarker({
+  status,
+  preTokens,
+}: CompactionMarkerProps) {
+  const label =
+    status === "loading"
+      ? "Compacting..."
+      : preTokens
+        ? `Context compacted (${Math.round(preTokens / 1000)}K tokens)`
+        : "Context compacted";
+
+  return (
+    <View style={compactionStylesheet.container}>
+      <View style={compactionStylesheet.line} />
+      <View style={compactionStylesheet.label}>
+        {status === "loading" ? (
+          <ActivityIndicator size="small" color="#a1a1aa" />
+        ) : (
+          <Scissors size={12} color="#a1a1aa" />
+        )}
+        <Text style={compactionStylesheet.text}>{label}</Text>
+      </View>
+      <View style={compactionStylesheet.line} />
+    </View>
+  );
+});
+
 interface TodoListCardProps {
   items: TodoEntry[];
   disableOuterSpacing?: boolean;
@@ -1038,6 +1095,7 @@ interface ToolCallProps {
   error?: any;
   status: "executing" | "completed" | "failed";
   cwd?: string;
+  metadata?: Record<string, unknown>;
   isLastInSequence?: boolean;
   disableOuterSpacing?: boolean;
   onInlineDetailsHoverChange?: (hovered: boolean) => void;
@@ -1051,23 +1109,11 @@ const toolKindIcons: Record<string, any> = {
   execute: SquareTerminal,
   search: Search,
   thinking: Brain,
+  agent: Bot,
 };
 const TOOL_CALL_LOG_TAG = "[ToolCall]";
 const TOOL_CALL_COMMIT_THRESHOLD_MS = 16;
 
-// Derive tool kind from tool name for icon selection
-function getToolKindFromName(toolName: string): string {
-  const lower = toolName.toLowerCase();
-  if (lower === "thinking") return "thinking";
-  if (lower === "read" || lower === "read_file" || lower.startsWith("read"))
-    return "read";
-  if (lower === "edit" || lower === "write" || lower === "apply_patch")
-    return "edit";
-  if (lower === "bash" || lower === "shell") return "execute";
-  if (lower === "grep" || lower === "glob" || lower === "web_search")
-    return "search";
-  return "tool";
-}
 
 export const ToolCall = memo(function ToolCall({
   toolName,
@@ -1076,6 +1122,7 @@ export const ToolCall = memo(function ToolCall({
   error,
   status,
   cwd,
+  metadata,
   isLastInSequence = false,
   disableOuterSpacing,
   onInlineDetailsHoverChange,
@@ -1090,42 +1137,27 @@ export const ToolCall = memo(function ToolCall({
     UnistylesRuntime.breakpoint === "xs" ||
     UnistylesRuntime.breakpoint === "sm";
 
-  const kind = getToolKindFromName(toolName);
-  const IconComponent = toolKindIcons[kind] || Wrench;
-
-  // Extract principal param for secondary label (memoized)
-  const principalParam = useMemo(
-    () => extractPrincipalParam(args, cwd),
-    [args, cwd]
+  const displayInfo = useMemo(
+    () => parseToolCallDisplay({ name: toolName, input: args, output: result, error, metadata, cwd }),
+    [toolName, args, result, error, metadata, cwd]
   );
+  const { kind, displayName, summary, detail, errorText } = displayInfo;
+  const IconComponent = toolKindIcons[kind] || Wrench;
 
   // Check if there's any content to display
   const hasDetails =
     args !== undefined || result !== undefined || error !== undefined;
-
-  // Parse tool call details for inline rendering
-  const { display, errorText } = useToolCallDetails({ toolName, args, result, error });
 
   const handleToggle = useCallback(() => {
     if (!isMobile && isPerfLoggingEnabled()) {
       toggleStartRef.current = getNowMs();
     }
     if (isMobile) {
-      // Mobile: open bottom sheet
-      openToolCall({
-        toolName,
-        kind,
-        status,
-        args,
-        result,
-        error,
-        cwd,
-      });
+      openToolCall(displayInfo);
     } else {
-      // Desktop: toggle inline expansion
       setIsExpanded((prev) => !prev);
     }
-  }, [isMobile, openToolCall, toolName, kind, status, args, result, error, cwd]);
+  }, [isMobile, openToolCall, displayInfo]);
 
   useEffect(() => {
     if (isMobile || !isPerfLoggingEnabled()) {
@@ -1184,14 +1216,14 @@ export const ToolCall = memo(function ToolCall({
   // Render inline details for desktop
   const renderDetails = useCallback(() => {
     if (isMobile) return null;
-    return <ToolCallDetailsContent display={display} errorText={errorText} maxHeight={400} />;
-  }, [isMobile, display, errorText]);
+    return <ToolCallDetailsContent detail={detail} errorText={errorText} maxHeight={400} />;
+  }, [isMobile, detail, errorText]);
 
   return (
     <ExpandableBadge
       testID="tool-call-badge"
-      label={display.toolName}
-      secondaryLabel={principalParam}
+      label={displayName}
+      secondaryLabel={summary}
       icon={IconComponent}
       isExpanded={!isMobile && isExpanded}
       onToggle={hasDetails ? handleToggle : undefined}
