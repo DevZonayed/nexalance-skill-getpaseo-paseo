@@ -1,5 +1,6 @@
 import type { AgentTimelineItem } from "./agent-sdk-types.js";
 import { extractPrincipalParam } from "../../utils/tool-call-parsers.js";
+import { isLikelyExternalToolName } from "./tool-name-normalization.js";
 
 const DEFAULT_MAX_ITEMS = 40;
 const MAX_TOOL_INPUT_CHARS = 400;
@@ -24,17 +25,6 @@ function flushBuffers(lines: string[], buffers: { message: string; thought: stri
   }
   buffers.message = "";
   buffers.thought = "";
-}
-
-function isLikelyMcpToolCall(name: string): boolean {
-  const normalized = name.toLowerCase();
-  return (
-    normalized === "speak" ||
-    normalized.startsWith("mcp") ||
-    normalized.includes("mcp__") ||
-    normalized.startsWith("paseo") ||
-    normalized.includes("paseo__")
-  );
 }
 
 function formatToolInputJson(input: unknown): string | null {
@@ -158,7 +148,7 @@ export function curateAgentActivity(
       case "tool_call": {
         flushBuffers(lines, buffers);
         const inputJson = formatToolInputJson(item.input);
-        if (isLikelyMcpToolCall(item.name) && inputJson) {
+        if (isLikelyExternalToolName(item.name) && inputJson) {
           lines.push(`[${item.name}] ${inputJson}`);
           break;
         }

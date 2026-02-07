@@ -376,5 +376,20 @@ describe("curateAgentActivity", () => {
         '[paseo__create_agent] {"cwd":"/tmp/repo","initialPrompt":"do the thing"}'
       );
     });
+
+    test("shows namespaced tool input JSON regardless of prefix format", () => {
+      const timeline: AgentTimelineItem[] = [
+        {
+          type: "tool_call",
+          callId: "m2",
+          name: "paseo_voice.speak",
+          input: { text: "hello from namespaced tool" },
+          status: "completed",
+        },
+      ];
+
+      const result = curateAgentActivity(timeline);
+      expect(result).toBe('[paseo_voice.speak] {"text":"hello from namespaced tool"}');
+    });
   });
 });

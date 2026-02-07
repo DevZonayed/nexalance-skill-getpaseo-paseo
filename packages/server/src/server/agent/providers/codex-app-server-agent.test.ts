@@ -170,6 +170,77 @@ describe("Codex app-server provider (integration)", () => {
     }
   }, 120000);
 
+  test.runIf(isCodexInstalled())("round-trips a stdio MCP tool call", async () => {
+    const cleanup = useTempCodexSessionDir();
+    const cwd = tmpCwd("codex-mcp-roundtrip-");
+    const token = `MCP_ROUNDTRIP_${Date.now()}`;
+    const mcpScriptPath = path.resolve(process.cwd(), "scripts", "mcp-echo-test-server.mjs");
+
+    try {
+      const client = new CodexAppServerAgentClient(logger);
+      const session = await client.createSession({
+        provider: "codex",
+        cwd,
+        modeId: "read-only",
+        model: CODEX_TEST_MODEL,
+        thinkingOptionId: CODEX_TEST_THINKING_OPTION_ID,
+        mcpServers: {
+          paseo_test: {
+            type: "stdio",
+            command: process.execPath,
+            args: [mcpScriptPath],
+          },
+        },
+      });
+
+      const result = await session.run(
+        [
+          "You must call the MCP tool named paseo_test.echo exactly once.",
+          `Call it with text: ${token}`,
+          "Do not use shell or any non-MCP tools.",
+          "After the tool call, respond with exactly the tool output text.",
+        ].join(" ")
+      );
+      await session.close();
+
+      const toolCalls = result.timeline.filter(
+        (item): item is Extract<AgentTimelineItem, { type: "tool_call" }> =>
+          item.type === "tool_call"
+      );
+      const toolNames = toolCalls.map((item) => item.name);
+      const distinctMcpCalls = new Map<string, Extract<AgentTimelineItem, { type: "tool_call" }>>();
+      for (const call of toolCalls) {
+        if (call.name !== "paseo_test.echo") {
+          continue;
+        }
+        const key = String(call.callId ?? `${call.name}:${JSON.stringify(call.input ?? {})}`);
+        const existing = distinctMcpCalls.get(key);
+        if (!existing || call.status === "completed") {
+          distinctMcpCalls.set(key, call);
+        }
+      }
+
+      // Hard assertion: exactly one distinct call of the exact MCP tool.
+      expect(toolNames.every((name) => name === "paseo_test.echo")).toBe(true);
+      expect(distinctMcpCalls.size).toBe(1);
+      const mcpToolCall = Array.from(distinctMcpCalls.values())[0]!;
+      expect(mcpToolCall.name).toBe("paseo_test.echo");
+      expect(mcpToolCall.status).toBe("completed");
+
+      // Hard assertion: no non-MCP tools in this run.
+      expect(toolNames.every((name) => name === "paseo_test.echo")).toBe(true);
+      expect(toolNames.some((name) => name.toLowerCase().includes("shell"))).toBe(false);
+
+      // Hard assertion: roundtrip token must be present in the MCP tool I/O.
+      expect(JSON.stringify(mcpToolCall.input ?? {})).toContain(token);
+      expect(JSON.stringify(mcpToolCall.output ?? {})).toContain(`ECHO:${token}`);
+      expect(result.finalText).toContain(`ECHO:${token}`);
+    } finally {
+      cleanup();
+      rmSync(cwd, { recursive: true, force: true });
+    }
+  }, 120000);
+
   test.runIf(isCodexInstalled())("listCommands includes custom prompts and executeCommand runs them", async () => {
     const cleanup = useTempCodexSessionDir();
     const codexHome = process.env.CODEX_HOME ?? path.join(os.homedir(), ".codex");

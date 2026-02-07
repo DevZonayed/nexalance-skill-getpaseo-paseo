@@ -2,7 +2,7 @@ import { describe, test, expect, beforeEach, afterEach } from "vitest";
 import { rmSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { parseRolloutFile } from "./codex-mcp-agent.js";
+import { parseRolloutFile } from "./codex-rollout-timeline.js";
 
 describe("codex rollout parsing", () => {
   let tmpDir: string;

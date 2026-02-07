@@ -34,7 +34,7 @@ import os from "node:os";
 import path from "node:path";
 import readline from "node:readline";
 import { z } from "zod";
-import { loadCodexPersistedTimeline } from "./codex-mcp-agent.js";
+import { loadCodexPersistedTimeline } from "./codex-rollout-timeline.js";
 
 
 const DEFAULT_TIMEOUT_MS = 14 * 24 * 60 * 60 * 1000;

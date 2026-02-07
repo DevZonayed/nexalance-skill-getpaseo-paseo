@@ -21,6 +21,7 @@ import type {
   ListModelsOptions,
 } from "../agent/agent-sdk-types.js";
 import type { AgentPermissionRequest, AgentPermissionResponse } from "../agent/agent-sdk-types.js";
+import { isLikelyExternalToolName } from "../agent/tool-name-normalization.js";
 
 const TEST_CAPABILITIES: AgentCapabilityFlags = {
   supportsStreaming: true,
@@ -656,7 +657,7 @@ class FakeAgentSession implements AgentSession {
       return false;
     }
 
-    if (toolName.startsWith("mcp__")) {
+    if (isLikelyExternalToolName(toolName)) {
       return true;
     }
 

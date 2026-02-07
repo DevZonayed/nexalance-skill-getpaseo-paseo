@@ -14,14 +14,20 @@ function buildRequest(partial: Partial<AgentPermissionRequest>): AgentPermission
 }
 
 describe("isVoicePermissionAllowed", () => {
-  test("allows speak tool", () => {
+  test("allows direct speak tool names across provider conventions", () => {
     const result = isVoicePermissionAllowed(
       buildRequest({ name: "speak" })
     );
     expect(result).toBe(true);
+    expect(
+      isVoicePermissionAllowed(buildRequest({ name: "paseo_voice.speak" }))
+    ).toBe(true);
+    expect(
+      isVoicePermissionAllowed(buildRequest({ name: "mcp__paseo_voice__speak" }))
+    ).toBe(true);
   });
 
-  test("denies explicit MCP/paseo tool names", () => {
+  test("denies non-speak tool names", () => {
     expect(
       isVoicePermissionAllowed(buildRequest({ name: "mcp__paseo__create_agent" }))
     ).toBe(false);
@@ -37,12 +43,12 @@ describe("isVoicePermissionAllowed", () => {
     expect(result).toBe(false);
   });
 
-  test("allows codextool only when metadata references speak", () => {
+  test("allows wrapper tools when metadata references speak", () => {
     const allowed = isVoicePermissionAllowed(
       buildRequest({
         name: "codextool",
         metadata: {
-          questions: [{ question: "Allow codextool to call speak for user feedback?" }],
+          questions: [{ question: "Allow codextool to call paseo_voice.speak for user feedback?" }],
         },
       })
     );

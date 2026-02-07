@@ -1,20 +1,22 @@
 import type { AgentPermissionRequest } from "./agent/agent-sdk-types.js";
+import { isSpeakToolName } from "./agent/tool-name-normalization.js";
 
-const ALLOWED_TOKEN_SET = ["speak"];
+const SPEAK_TOKEN_SET = ["speak"];
 const DENIED_TOKEN_SET = [
-  "mcp",
-  "paseo",
   "bash",
   "shell",
   "terminal",
-  "command",
-  "execute",
+  "apply_patch",
   "edit",
-  "write",
-  "read",
-  "fetch",
-  "http",
-  "web",
+  "read_file",
+  "write_file",
+  "delete_file",
+  "web_search",
+  "fetch_url",
+  "create_agent",
+  "list_agents",
+  "kill_agent",
+  "wait_for_agent",
 ];
 
 function containsAny(text: string, tokens: readonly string[]): boolean {
@@ -40,15 +42,14 @@ export function isVoicePermissionAllowed(request: AgentPermissionRequest): boole
     return false;
   }
 
-  if (normalizedName === "speak") {
+  if (isSpeakToolName(normalizedName)) {
     return true;
   }
 
-  if (normalizedName !== "codextool") {
-    return false;
-  }
-
   const metadataText = stringifyMetadata({
+    name: request.name,
+    title: request.title ?? null,
+    description: request.description ?? null,
     metadata: request.metadata ?? null,
     input: request.input ?? null,
   });
