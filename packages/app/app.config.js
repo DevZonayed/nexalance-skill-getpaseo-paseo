@@ -7,8 +7,8 @@ const variants = {
     packageId: "sh.paseo",
   },
   development: {
-    name: "Paseo Dev",
-    packageId: "sh.paseo.dev",
+    name: "Paseo Debug",
+    packageId: "sh.paseo.debug",
   },
 };
 

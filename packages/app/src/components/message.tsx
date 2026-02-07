@@ -791,8 +791,8 @@ const compactionStylesheet = StyleSheet.create((theme) => ({
     gap: theme.spacing[2],
   },
   text: {
-    fontFamily: Fonts.mono,
-    fontSize: 11,
+    fontFamily: Fonts.sans,
+    fontSize: 13,
     color: theme.colors.foregroundMuted,
   },
 }));

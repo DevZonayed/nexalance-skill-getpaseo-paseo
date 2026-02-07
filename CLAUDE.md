@@ -107,7 +107,7 @@ Take screenshots like this: `adb exec-out screencap -p > screenshot.png`
 Use `APP_VARIANT` in `packages/app/app.config.js` to control app name + package ID (no custom Gradle flavor plugin):
 
 - `production` -> app name `Paseo`, package `sh.paseo`
-- `development` -> app name `Paseo Dev`, package `sh.paseo.dev`
+- `development` -> app name `Paseo Debug`, package `sh.paseo.debug`
 
 EAS profiles live in `packages/app/eas.json` as `development` and `production`.
 
@@ -119,9 +119,11 @@ From `packages/app`:
 
 ```bash
 # development (debug)
+APP_VARIANT=development npx expo prebuild --platform android --clean --non-interactive
 APP_VARIANT=development npx expo run:android --variant=debug
 
 # production (release)
+APP_VARIANT=production npx expo prebuild --platform android --clean --non-interactive
 APP_VARIANT=production npx expo run:android --variant=release
 ```
 
