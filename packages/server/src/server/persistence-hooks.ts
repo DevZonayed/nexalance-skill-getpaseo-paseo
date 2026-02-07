@@ -56,6 +56,7 @@ export function buildConfigOverrides(
     thinkingOptionId: record.config?.thinkingOptionId ?? undefined,
     title: record.title ?? undefined,
     extra: record.config?.extra ?? undefined,
+    systemPrompt: record.config?.systemPrompt ?? undefined,
     mcpServers: record.config?.mcpServers ?? undefined,
   };
 }
@@ -75,6 +76,7 @@ export function buildSessionConfig(
     thinkingOptionId: overrides.thinkingOptionId,
     title: overrides.title,
     extra: overrides.extra,
+    systemPrompt: overrides.systemPrompt,
     mcpServers: overrides.mcpServers,
   };
 }

@@ -270,6 +270,9 @@ function coerceSessionMetadata(metadata: AgentMetadata | undefined): Partial<Age
       result.extra = extra;
     }
   }
+  if (typeof metadata.systemPrompt === "string") {
+    result.systemPrompt = metadata.systemPrompt;
+  }
   if (isMcpServersRecord(metadata.mcpServers)) {
     result.mcpServers = metadata.mcpServers;
   }

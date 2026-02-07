@@ -39,6 +39,7 @@ function createManagedAgent(
     modeId: configOverrides.modeId ?? "plan",
     model: configOverrides.model ?? "gpt-5.1",
     extra: configOverrides.extra ?? { claude: { maxThinkingTokens: 1024 } },
+    systemPrompt: configOverrides.systemPrompt,
     mcpServers: configOverrides.mcpServers,
   };
   const session =
@@ -119,6 +120,7 @@ describe("AgentStorage", () => {
         config: {
           modeId: "coding",
           model: "gpt-5.1",
+          systemPrompt: "Be terse and explicit.",
           extra: { claude: { maxThinkingTokens: 1024 } },
           mcpServers: {
             paseo: {
@@ -137,6 +139,7 @@ describe("AgentStorage", () => {
     expect(record.provider).toBe("claude");
     expect(record.config?.modeId).toBe("coding");
     expect(record.config?.model).toBe("gpt-5.1");
+    expect(record.config?.systemPrompt).toBe("Be terse and explicit.");
     expect(record.config?.mcpServers).toEqual({
       paseo: {
         type: "stdio",

@@ -129,6 +129,9 @@ function buildSerializableConfig(
   if (extra !== undefined) {
     serializable.extra = extra;
   }
+  if (config.systemPrompt) {
+    serializable.systemPrompt = config.systemPrompt;
+  }
   if (config.mcpServers) {
     serializable.mcpServers = config.mcpServers;
   }

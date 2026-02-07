@@ -15,6 +15,7 @@ const SERIALIZABLE_CONFIG_SCHEMA = z
     model: z.string().nullable().optional(),
     thinkingOptionId: z.string().nullable().optional(),
     extra: z.record(z.any()).nullable().optional(),
+    systemPrompt: z.string().nullable().optional(),
     mcpServers: z.record(z.any()).nullable().optional(),
   })
   .nullable()
@@ -62,7 +63,7 @@ const STORED_AGENT_SCHEMA = z.object({
 
 export type SerializableAgentConfig = Pick<
   AgentSessionConfig,
-  "modeId" | "model" | "thinkingOptionId" | "extra" | "mcpServers"
+  "modeId" | "model" | "thinkingOptionId" | "extra" | "systemPrompt" | "mcpServers"
 >;
 
 export type StoredAgentRecord = z.infer<typeof STORED_AGENT_SCHEMA>;

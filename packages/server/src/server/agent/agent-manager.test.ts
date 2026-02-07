@@ -9,6 +9,7 @@ import { AgentManager } from "./agent-manager.js";
 import { AgentStorage } from "./agent-storage.js";
 import type {
   AgentClient,
+  AgentPersistenceHandle,
   AgentRunResult,
   AgentSession,
   AgentSessionConfig,
@@ -147,6 +148,99 @@ describe("AgentManager", () => {
         cwd: join(workdir, "does-not-exist"),
       })
     ).rejects.toThrow("Working directory does not exist");
+  });
+
+  test("resumeAgent keeps metadata config and applies systemPrompt/mcpServers overrides", async () => {
+    const workdir = mkdtempSync(join(tmpdir(), "agent-manager-resume-"));
+    const storagePath = join(workdir, "agents");
+    const storage = new AgentStorage(storagePath, logger);
+
+    class ResumeCaptureClient implements AgentClient {
+      readonly provider = "codex" as const;
+      readonly capabilities = TEST_CAPABILITIES;
+      lastResumeOverrides: Partial<AgentSessionConfig> | undefined;
+
+      async isAvailable(): Promise<boolean> {
+        return true;
+      }
+
+      async createSession(config: AgentSessionConfig): Promise<AgentSession> {
+        return new TestAgentSession(config);
+      }
+
+      async resumeSession(
+        handle: AgentPersistenceHandle,
+        overrides?: Partial<AgentSessionConfig>
+      ): Promise<AgentSession> {
+        this.lastResumeOverrides = overrides;
+        const metadata = (handle.metadata ?? {}) as Partial<AgentSessionConfig>;
+        const merged: AgentSessionConfig = {
+          ...metadata,
+          ...overrides,
+          provider: "codex",
+          cwd: overrides?.cwd ?? metadata.cwd ?? process.cwd(),
+        };
+        return new TestAgentSession(merged);
+      }
+    }
+
+    const client = new ResumeCaptureClient();
+    const manager = new AgentManager({
+      clients: {
+        codex: client,
+      },
+      registry: storage,
+      logger,
+      idFactory: () => "00000000-0000-4000-8000-000000000106",
+    });
+
+    const handle: AgentPersistenceHandle = {
+      provider: "codex",
+      sessionId: "resume-session-1",
+      metadata: {
+        provider: "codex",
+        cwd: workdir,
+        systemPrompt: "old prompt",
+        mcpServers: {
+          legacy: {
+            type: "stdio",
+            command: "legacy-bridge",
+            args: ["/tmp/legacy.sock"],
+          },
+        },
+      },
+    };
+
+    const resumed = await manager.resumeAgent(handle, {
+      cwd: workdir,
+      systemPrompt: "new prompt",
+      mcpServers: {
+        paseo: {
+          type: "stdio",
+          command: "node",
+          args: ["/tmp/mcp-bridge.mjs", "--socket", "/tmp/paseo.sock"],
+        },
+      },
+    });
+
+    expect(resumed.config.systemPrompt).toBe("new prompt");
+    expect(resumed.config.mcpServers).toEqual({
+      paseo: {
+        type: "stdio",
+        command: "node",
+        args: ["/tmp/mcp-bridge.mjs", "--socket", "/tmp/paseo.sock"],
+      },
+    });
+    expect(client.lastResumeOverrides).toMatchObject({
+      systemPrompt: "new prompt",
+      mcpServers: {
+        paseo: {
+          type: "stdio",
+          command: "node",
+          args: ["/tmp/mcp-bridge.mjs", "--socket", "/tmp/paseo.sock"],
+        },
+      },
+    });
   });
 
   test("createAgent fails when generated agent ID is not a UUID", async () => {

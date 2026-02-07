@@ -105,6 +105,7 @@ const AgentSessionConfigSchema = z.object({
     })
     .partial()
     .optional(),
+  systemPrompt: z.string().optional(),
   mcpServers: z.record(McpServerConfigSchema).optional(),
 });
 

@@ -1961,6 +1961,7 @@ const AgentSessionConfigSchema = z
     networkAccess: z.boolean().optional(),
     webSearch: z.boolean().optional(),
     extra: AgentSessionExtraSchema.optional(),
+    systemPrompt: z.string().optional(),
     mcpServers: z.record(McpServerConfigSchema).optional(),
   })
   .passthrough();

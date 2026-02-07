@@ -1597,6 +1597,9 @@ class CodexAppServerAgentSession implements AgentSession {
         modeId: this.currentMode,
         model: this.config.model ?? null,
         thinkingOptionId,
+        extra: this.config.extra,
+        systemPrompt: this.config.systemPrompt,
+        mcpServers: this.config.mcpServers,
       },
     };
   }

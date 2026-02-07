@@ -4,6 +4,8 @@ import type { ManagedAgent } from "./agent/agent-manager.js";
 import type { StoredAgentRecord } from "./agent/agent-storage.js";
 import {
   attachAgentStoragePersistence,
+  buildConfigOverrides,
+  buildSessionConfig,
 } from "./persistence-hooks.js";
 import type {
   AgentPermissionRequest,
@@ -139,5 +141,73 @@ describe("persistence hooks", () => {
       event: { type: "timeline", item: { type: "assistant_message", text: "hi" } },
     });
     expect(applySnapshot).toHaveBeenCalledTimes(1);
+  });
+
+  test("buildConfigOverrides carries systemPrompt and mcpServers", () => {
+    const record = createRecord({
+      title: "Voice agent",
+      config: {
+        modeId: "default",
+        model: "gpt-5.1-codex-mini",
+        thinkingOptionId: "minimal",
+        systemPrompt: "Use speak first.",
+        mcpServers: {
+          paseo: {
+            type: "stdio",
+            command: "node",
+            args: ["/tmp/bridge.mjs", "--socket", "/tmp/agent.sock"],
+          },
+        },
+      },
+    });
+
+    expect(buildConfigOverrides(record)).toMatchObject({
+      cwd: "/tmp/project",
+      modeId: "plan",
+      model: "gpt-5.1-codex-mini",
+      thinkingOptionId: "minimal",
+      title: "Voice agent",
+      systemPrompt: "Use speak first.",
+      mcpServers: {
+        paseo: {
+          type: "stdio",
+          command: "node",
+          args: ["/tmp/bridge.mjs", "--socket", "/tmp/agent.sock"],
+        },
+      },
+    });
+  });
+
+  test("buildSessionConfig includes persisted systemPrompt and mcpServers", () => {
+    const record = createRecord({
+      provider: "codex",
+      config: {
+        modeId: "default",
+        model: "gpt-5.1-codex-mini",
+        systemPrompt: "Confirm and speak first.",
+        mcpServers: {
+          paseo: {
+            type: "stdio",
+            command: "node",
+            args: ["/tmp/bridge.mjs", "--socket", "/tmp/agent.sock"],
+          },
+        },
+      },
+    });
+
+    expect(buildSessionConfig(record)).toMatchObject({
+      provider: "codex",
+      cwd: "/tmp/project",
+      modeId: "plan",
+      model: "gpt-5.1-codex-mini",
+      systemPrompt: "Confirm and speak first.",
+      mcpServers: {
+        paseo: {
+          type: "stdio",
+          command: "node",
+          args: ["/tmp/bridge.mjs", "--socket", "/tmp/agent.sock"],
+        },
+      },
+    });
   });
 });
