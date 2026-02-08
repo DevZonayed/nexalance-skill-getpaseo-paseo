@@ -19,7 +19,7 @@ import {
   forwardRef,
 } from "react";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
-import { Mic, MicOff, ArrowUp, Paperclip, X, Square } from "lucide-react-native";
+import { Mic, MicOff, ArrowUp, Paperclip, Plus, X, Square } from "lucide-react-native";
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -367,17 +367,26 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
     const payload = {
       text: trimmed,
       images: images.length > 0 ? images : undefined,
+      forceSend: isAgentRunning || undefined,
     };
-    if (isAgentRunning && onQueue) {
-      onQueue(payload);
-      onChangeText("");
-    } else {
-      onSubmit(payload);
-    }
-    // Reset input height
+    onSubmit(payload);
     inputHeightRef.current = MIN_INPUT_HEIGHT;
     setInputHeight(MIN_INPUT_HEIGHT);
-  }, [value, images, onSubmit, onChangeText, isAgentRunning, onQueue]);
+  }, [value, images, onSubmit, isAgentRunning]);
+
+  const handleQueueMessage = useCallback(() => {
+    if (!onQueue) return;
+    const trimmed = value.trim();
+    if (!trimmed && images.length === 0) return;
+    const payload = {
+      text: trimmed,
+      images: images.length > 0 ? images : undefined,
+    };
+    onQueue(payload);
+    onChangeText("");
+    inputHeightRef.current = MIN_INPUT_HEIGHT;
+    setInputHeight(MIN_INPUT_HEIGHT);
+  }, [value, images, onQueue, onChangeText]);
 
   // Web input height measurement
   function isTextAreaLike(v: unknown): v is TextAreaHandle {
@@ -509,24 +518,15 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
     // Shift+Enter: add newline (default behavior, don't intercept)
     if (shiftKey) return;
 
-    // Cmd+Enter (Mac) or Ctrl+Enter (Windows/Linux): force send immediately
-    if (metaKey || ctrlKey) {
+    // Cmd+Enter (Mac) or Ctrl+Enter (Windows/Linux): queue when agent is running
+    if ((metaKey || ctrlKey) && isAgentRunning && onQueue) {
       if (isSubmitDisabled || isSubmitLoading || disabled) return;
       event.preventDefault();
-      const trimmed = value.trim();
-      if (!trimmed && images.length === 0) return;
-      const payload = {
-        text: trimmed,
-        images: images.length > 0 ? images : undefined,
-        forceSend: true,
-      };
-      onSubmit(payload);
-      inputHeightRef.current = MIN_INPUT_HEIGHT;
-      setInputHeight(MIN_INPUT_HEIGHT);
+      handleQueueMessage();
       return;
     }
 
-    // Plain Enter: normal send (respects queue behavior)
+    // Enter: send (interrupts agent if running)
     if (isSubmitDisabled || isSubmitLoading || disabled) return;
     event.preventDefault();
     handleSendMessage();
@@ -658,6 +658,20 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
               )}
             </Pressable>
             {rightContent}
+            {shouldShowSendButton && isAgentRunning && onQueue && (
+              <Pressable
+                onPress={handleQueueMessage}
+                disabled={!isConnected || disabled}
+                accessibilityLabel="Queue message"
+                accessibilityRole="button"
+                style={[
+                  styles.queueButton,
+                  (!isConnected || disabled) && styles.buttonDisabled,
+                ]}
+              >
+                <Plus size={20} color="white" />
+              </Pressable>
+            )}
             {shouldShowSendButton && (
               <Pressable
                 onPress={handleSendMessage}
@@ -667,6 +681,8 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
                   isSubmitLoading ||
                   disabled
                 }
+                accessibilityLabel={isAgentRunning ? "Send and interrupt" : "Send message"}
+                accessibilityRole="button"
                 style={[
                   styles.sendButton,
                   (!isConnected ||
@@ -805,7 +821,7 @@ const styles = StyleSheet.create(((theme: any) => ({
   },
   leftButtonGroup: {
     flexDirection: "row",
-    alignItems: "flex-end",
+    alignItems: "center",
     gap: theme.spacing[2],
   },
   rightButtonGroup: {
@@ -814,8 +830,9 @@ const styles = StyleSheet.create(((theme: any) => ({
     gap: theme.spacing[2],
   },
   attachButton: {
-    width: 20,
-    height: 20,
+    width: 34,
+    height: 34,
+    borderRadius: theme.borderRadius.full,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -828,6 +845,14 @@ const styles = StyleSheet.create(((theme: any) => ({
   },
   voiceButtonRecording: {
     backgroundColor: theme.colors.destructive,
+  },
+  queueButton: {
+    width: 34,
+    height: 34,
+    borderRadius: theme.borderRadius.full,
+    backgroundColor: theme.colors.surface1,
+    alignItems: "center",
+    justifyContent: "center",
   },
   sendButton: {
     width: 34,

@@ -3,6 +3,7 @@ import {
   Text,
   Pressable,
   ActivityIndicator,
+  LayoutChangeEvent,
   StyleProp,
   ViewStyle,
   Platform,
@@ -26,6 +27,12 @@ import Animated, {
   Easing,
   cancelAnimation,
 } from "react-native-reanimated";
+import Svg, {
+  Defs,
+  LinearGradient,
+  Stop,
+  Rect,
+} from "react-native-svg";
 import Markdown, { MarkdownIt } from "react-native-markdown-display";
 import * as Linking from "expo-linking";
 import {
@@ -36,7 +43,6 @@ import {
   FileText,
   ChevronRight,
   ChevronDown,
-  Loader2,
   Check,
   CheckSquare,
   X,
@@ -348,6 +354,7 @@ const expandableBadgeStylesheet = StyleSheet.create((theme) => ({
     backgroundColor: theme.colors.surface1,
     paddingHorizontal: theme.spacing[2],
     paddingVertical: theme.spacing[1],
+    overflow: "hidden",
   },
   pressablePressed: {
     opacity: 0.9,
@@ -355,6 +362,12 @@ const expandableBadgeStylesheet = StyleSheet.create((theme) => ({
   headerRow: {
     flexDirection: "row",
     alignItems: "center",
+  },
+  labelRow: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    overflow: "hidden",
   },
   iconBadge: {
     width: 22,
@@ -402,6 +415,12 @@ const expandableBadgeStylesheet = StyleSheet.create((theme) => ({
   pressableExpanded: {
     borderBottomLeftRadius: 0,
     borderBottomRightRadius: 0,
+  },
+  shimmerOverlay: {
+    position: "absolute",
+    top: 0,
+    bottom: 0,
+    width: 100,
   },
 }));
 
@@ -987,23 +1006,38 @@ const ExpandableBadge = memo(function ExpandableBadge({
   const hasDetails = Boolean(renderDetails);
   const detailContent = hasDetails && isExpanded ? renderDetails?.() : null;
 
-  const rotation = useSharedValue(0);
+  const [badgeWidth, setBadgeWidth] = useState(0);
+  const handleLayout = useCallback((e: LayoutChangeEvent) => {
+    setBadgeWidth(e.nativeEvent.layout.width);
+  }, []);
+
+  const shimmer = useSharedValue(-1);
 
   useEffect(() => {
     if (isLoading) {
-      rotation.value = 0;
-      rotation.value = withRepeat(
-        withTiming(360, { duration: 1400, easing: Easing.linear }),
+      shimmer.value = -1;
+      shimmer.value = withRepeat(
+        withTiming(1, { duration: 2400, easing: Easing.bezier(0.4, 0, 0.6, 1) }),
         -1
       );
     } else {
-      cancelAnimation(rotation);
+      cancelAnimation(shimmer);
+      shimmer.value = -1;
     }
   }, [isLoading]);
 
-  const spinStyle = useAnimatedStyle(() => ({
-    transform: [{ rotate: `${rotation.value}deg` }],
-  }));
+  const shimmerBandWidth = 100;
+  const shimmerStyle = useAnimatedStyle(() => {
+    const travel = badgeWidth + shimmerBandWidth;
+    return {
+      transform: [
+        {
+          translateX:
+            -shimmerBandWidth + ((shimmer.value + 1) / 2) * travel,
+        },
+      ],
+    };
+  });
 
   const IconComponent = icon;
   const iconColor = isError
@@ -1011,13 +1045,7 @@ const ExpandableBadge = memo(function ExpandableBadge({
     : theme.colors.mutedForeground;
 
   let iconNode: ReactNode = null;
-  if (isLoading) {
-    iconNode = (
-      <Animated.View style={spinStyle}>
-        <Loader2 size={12} color={iconColor} />
-      </Animated.View>
-    );
-  } else if (isError) {
+  if (isError) {
     iconNode = <TriangleAlertIcon size={12} color={iconColor} opacity={0.8} />;
   } else if (IconComponent) {
     iconNode = <IconComponent size={12} color={iconColor} />;
@@ -1037,6 +1065,7 @@ const ExpandableBadge = memo(function ExpandableBadge({
     >
       <Pressable
         onPress={hasDetails ? onToggle : undefined}
+        onLayout={handleLayout}
         disabled={!hasDetails}
         accessibilityRole={hasDetails ? "button" : undefined}
         accessibilityState={hasDetails ? { expanded: isExpanded } : undefined}
@@ -1049,32 +1078,60 @@ const ExpandableBadge = memo(function ExpandableBadge({
         ]}
       >
         {({ hovered }) => (
-          <View style={expandableBadgeStylesheet.headerRow}>
-            <View style={expandableBadgeStylesheet.iconBadge}>{iconNode}</View>
-            <Text style={expandableBadgeStylesheet.label} numberOfLines={1}>
-              {label}
-            </Text>
-            {secondaryLabel ? (
-              <Text
-                style={expandableBadgeStylesheet.secondaryLabel}
-                numberOfLines={1}
-              >
-                {secondaryLabel}
-              </Text>
-            ) : (
-              <View style={expandableBadgeStylesheet.spacer} />
-            )}
-            {hasDetails && hovered ? (
-              <ChevronRight
-                size={14}
-                color={theme.colors.foregroundMuted}
-                style={[
-                  expandableBadgeStylesheet.chevron,
-                  { transform: [{ rotate: isExpanded ? "90deg" : "0deg" }] },
-                ]}
-              />
-            ) : null}
-          </View>
+          <>
+            <View style={expandableBadgeStylesheet.headerRow}>
+              <View style={expandableBadgeStylesheet.iconBadge}>{iconNode}</View>
+              <View style={expandableBadgeStylesheet.labelRow}>
+                <Text style={expandableBadgeStylesheet.label} numberOfLines={1}>
+                  {label}
+                </Text>
+                {secondaryLabel ? (
+                  <Text
+                    style={expandableBadgeStylesheet.secondaryLabel}
+                    numberOfLines={1}
+                  >
+                    {secondaryLabel}
+                  </Text>
+                ) : (
+                  <View style={expandableBadgeStylesheet.spacer} />
+                )}
+                {isLoading && badgeWidth > 0 ? (
+                  <Animated.View
+                    pointerEvents="none"
+                    style={[expandableBadgeStylesheet.shimmerOverlay, shimmerStyle]}
+                  >
+                    <Svg width="100%" height="100%" preserveAspectRatio="none">
+                      <Defs>
+                        <LinearGradient
+                          id="shimmerGrad"
+                          x1="0"
+                          y1="0"
+                          x2="1"
+                          y2="0"
+                        >
+                          <Stop offset="0" stopColor={theme.colors.surface1} stopOpacity="0" />
+                          <Stop offset="0.35" stopColor={theme.colors.surface1} stopOpacity="1" />
+                          <Stop offset="0.65" stopColor={theme.colors.surface1} stopOpacity="1" />
+                          <Stop offset="1" stopColor={theme.colors.surface1} stopOpacity="0" />
+                        </LinearGradient>
+                      </Defs>
+                      <Rect width="100%" height="100%" fill="url(#shimmerGrad)" />
+                    </Svg>
+                  </Animated.View>
+                ) : null}
+              </View>
+              {hasDetails && hovered ? (
+                <ChevronRight
+                  size={14}
+                  color={theme.colors.foregroundMuted}
+                  style={[
+                    expandableBadgeStylesheet.chevron,
+                    { transform: [{ rotate: isExpanded ? "90deg" : "0deg" }] },
+                  ]}
+                />
+              ) : null}
+            </View>
+          </>
         )}
       </Pressable>
       {detailContent ? (

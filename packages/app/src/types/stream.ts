@@ -235,6 +235,18 @@ function appendAssistantMessage(
     return [...state.slice(0, -1), updated];
   }
 
+  // If the last item is a user_message (optimistic append to head during
+  // interrupt), look one further back for the streaming assistant_message.
+  const secondLast = state[state.length - 2];
+  if (last?.kind === "user_message" && secondLast?.kind === "assistant_message") {
+    const updated: AssistantMessageItem = {
+      ...(secondLast as AssistantMessageItem),
+      text: `${secondLast.text}${chunk}`,
+      timestamp,
+    };
+    return [...state.slice(0, -2), updated, last];
+  }
+
   if (!hasContent) {
     return state;
   }
@@ -1011,15 +1023,27 @@ function shouldFlushHead(
     return false;
   }
 
-  const lastHeadItem = head[head.length - 1];
-
   // If incoming is not streamable, flush current head
   if (!isStreamableKind(incomingKind)) {
     return true;
   }
 
-  // If incoming kind is different from current head kind, flush
-  if (lastHeadItem.kind !== incomingKind) {
+  // Find the last streamable item in head (skip trailing non-streamable
+  // items like an optimistic user_message appended during interrupt).
+  let lastStreamable: StreamItem | undefined;
+  for (let i = head.length - 1; i >= 0; i--) {
+    if (isStreamableKind(head[i].kind)) {
+      lastStreamable = head[i];
+      break;
+    }
+  }
+
+  if (!lastStreamable) {
+    return true;
+  }
+
+  // If incoming kind is different from current head's streamable kind, flush
+  if (lastStreamable.kind !== incomingKind) {
     return true;
   }
 

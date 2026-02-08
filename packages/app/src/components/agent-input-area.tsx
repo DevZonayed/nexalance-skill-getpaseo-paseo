@@ -13,7 +13,7 @@ import { useReanimatedKeyboardAnimation } from "react-native-keyboard-controller
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useIsFocused } from "@react-navigation/native";
 import { FOOTER_HEIGHT, MAX_CONTENT_WIDTH } from "@/constants/layout";
-import { generateMessageId } from "@/types/stream";
+import { generateMessageId, type StreamItem } from "@/types/stream";
 import { AgentStatusBar } from "./agent-status-bar";
 import { useImageAttachmentPicker } from "@/hooks/use-image-attachment-picker";
 import { useSessionStore } from "@/stores/session-store";
@@ -94,6 +94,7 @@ export function AgentInputArea({
 
   const setQueuedMessages = useSessionStore((state) => state.setQueuedMessages);
   const setAgentStreamTail = useSessionStore((state) => state.setAgentStreamTail);
+  const setAgentStreamHead = useSessionStore((state) => state.setAgentStreamHead);
 
   const [internalInput, setInternalInput] = useState("");
   const userInput = value ?? internalInput;
@@ -184,18 +185,32 @@ export function AgentInputArea({
       }
 
       const messageId = generateMessageId();
-      setAgentStreamTail(serverId, (prev) => {
-        const currentStream = prev.get(agentId) || [];
-        const nextItem: any = {
-          kind: "user_message",
-          id: messageId,
-          text,
-          timestamp: new Date(),
-        };
-        const updated = new Map(prev);
-        updated.set(agentId, [...currentStream, nextItem]);
-        return updated;
-      });
+      const userMessage: StreamItem = {
+        kind: "user_message",
+        id: messageId,
+        text,
+        timestamp: new Date(),
+      };
+
+      // Append to head if streaming (keeps the user message with the current
+      // turn so late text_deltas still find the existing assistant_message).
+      // Otherwise append to tail.
+      const currentHead = useSessionStore.getState().sessions[serverId]?.agentStreamHead?.get(agentId);
+      if (currentHead && currentHead.length > 0) {
+        setAgentStreamHead(serverId, (prev) => {
+          const head = prev.get(agentId) || [];
+          const updated = new Map(prev);
+          updated.set(agentId, [...head, userMessage]);
+          return updated;
+        });
+      } else {
+        setAgentStreamTail(serverId, (prev) => {
+          const currentStream = prev.get(agentId) || [];
+          const updated = new Map(prev);
+          updated.set(agentId, [...currentStream, userMessage]);
+          return updated;
+        });
+      }
 
       const imagesData = await encodeImages(images);
       await client.sendAgentMessage(agentId, text, {
@@ -203,13 +218,22 @@ export function AgentInputArea({
         ...(imagesData && imagesData.length > 0 ? { images: imagesData } : {}),
       });
     };
-  }, [client, serverId, setAgentStreamTail]);
+  }, [client, serverId, setAgentStreamTail, setAgentStreamHead]);
 
   useEffect(() => {
     onSubmitMessageRef.current = onSubmitMessage;
   }, [onSubmitMessage]);
 
   const isAgentRunning = agent?.status === "running";
+
+  const prevIsAgentRunningRef = useRef(isAgentRunning);
+  useEffect(() => {
+    const wasRunning = prevIsAgentRunningRef.current;
+    prevIsAgentRunningRef.current = isAgentRunning;
+    if (!wasRunning && isAgentRunning && isProcessing) {
+      setIsProcessing(false);
+    }
+  }, [isAgentRunning, isProcessing]);
 
   const updateQueue = useCallback(
     (updater: (current: QueuedMessage[]) => QueuedMessage[]) => {
@@ -296,7 +320,6 @@ export function AgentInputArea({
       setSendError(
         error instanceof Error ? error.message : "Failed to send message"
       );
-    } finally {
       setIsProcessing(false);
     }
   }
@@ -539,7 +562,9 @@ export function AgentInputArea({
     ]
   );
 
-  const cancelButton = isAgentRunning ? (
+  const hasSendableContent = userInput.trim().length > 0 || selectedImages.length > 0;
+
+  const cancelButton = isAgentRunning && !hasSendableContent ? (
     <Pressable
       onPress={handleCancelAgent}
       disabled={!isConnected || isCancellingAgent}

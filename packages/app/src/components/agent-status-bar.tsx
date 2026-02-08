@@ -82,10 +82,15 @@ export function AgentStatusBar({ agentId, serverId }: AgentStatusBarProps) {
     selectedThinking?.label ??
     (selectedThinkingId === "default" ? "Model default" : selectedThinkingId ?? "auto");
 
+  const displayMode =
+    agent.availableModes?.find((m) => m.id === agent.currentModeId)?.label ||
+    agent.currentModeId ||
+    "default";
+
   return (
-    <View style={styles.container}>
-      {/* Agent Mode Badge */}
-      {agent.availableModes && agent.availableModes.length > 0 && (
+    <View style={[styles.container, IS_WEB && { marginBottom: -theme.spacing[1] }]}>
+      {/* Agent Mode Badge (desktop only — on mobile, mode is in the preferences sheet) */}
+      {IS_WEB && agent.availableModes && agent.availableModes.length > 0 && (
         <DropdownMenu>
           <DropdownMenuTrigger
             style={({ pressed, hovered, open }) => [
@@ -234,7 +239,7 @@ export function AgentStatusBar({ agentId, serverId }: AgentStatusBarProps) {
             accessibilityLabel="Agent preferences"
             testID="agent-preferences-button"
           >
-            <SlidersHorizontal size={16} color={theme.colors.foregroundMuted} />
+            <SlidersHorizontal size={20} color={theme.colors.foreground} />
           </Pressable>
 
           <AdaptiveModalSheet
@@ -243,6 +248,39 @@ export function AgentStatusBar({ agentId, serverId }: AgentStatusBarProps) {
             onClose={() => setPrefsOpen(false)}
             testID="agent-preferences-sheet"
           >
+            {agent.availableModes && agent.availableModes.length > 0 && (
+              <View style={styles.sheetSection}>
+                <DropdownMenu>
+                  <DropdownMenuTrigger
+                    style={({ pressed }) => [
+                      styles.sheetSelect,
+                      pressed && styles.sheetSelectPressed,
+                    ]}
+                    accessibilityRole="button"
+                    accessibilityLabel="Select agent mode"
+                    testID="agent-preferences-mode"
+                  >
+                    <Text style={styles.sheetSelectText}>{displayMode}</Text>
+                    <ChevronDown size={16} color={theme.colors.foregroundMuted} />
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent side="top" align="start">
+                    {agent.availableModes.map((mode) => {
+                      const isActive = mode.id === agent.currentModeId;
+                      return (
+                        <DropdownMenuItem
+                          key={mode.id}
+                          selected={isActive}
+                          onSelect={() => handleModeChange(mode.id)}
+                        >
+                          {mode.label}
+                        </DropdownMenuItem>
+                      );
+                    })}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </View>
+            )}
+
             <View style={styles.sheetSection}>
               <DropdownMenu>
                 <DropdownMenuTrigger
@@ -335,7 +373,6 @@ const styles = StyleSheet.create((theme) => ({
     flexDirection: "row",
     alignItems: "center",
     gap: theme.spacing[1],
-    marginBottom: -theme.spacing[1],
   },
   modeBadge: {
     flexDirection: "row",
@@ -358,12 +395,11 @@ const styles = StyleSheet.create((theme) => ({
     fontWeight: theme.fontWeight.normal,
   },
   prefsButton: {
-    width: 32,
-    height: 32,
-    borderRadius: theme.borderRadius["2xl"],
+    width: 34,
+    height: 34,
+    borderRadius: theme.borderRadius.full,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: theme.colors.surface2,
   },
   prefsButtonPressed: {
     backgroundColor: theme.colors.surface0,
