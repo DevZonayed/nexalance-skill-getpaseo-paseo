@@ -2,6 +2,7 @@ import { exec, execFile, spawn } from "child_process";
 import { promisify } from "util";
 import { resolve, dirname, basename } from "path";
 import { realpathSync } from "fs";
+import { open as openFile, stat as statFile } from "fs/promises";
 import type { ParsedDiffFile } from "../server/utils/diff-highlighter.js";
 import { parseAndHighlightDiff } from "../server/utils/diff-highlighter.js";
 import { isPaseoOwnedWorktreeCwd } from "./worktree.js";
@@ -18,13 +19,6 @@ const SMALL_OUTPUT_MAX_BUFFER = 20 * 1024 * 1024; // 20MB
 
 async function execGit(command: string, options: { cwd: string; env?: NodeJS.ProcessEnv }): Promise<{ stdout: string; stderr: string }> {
   return execAsync(command, { ...options, maxBuffer: SMALL_OUTPUT_MAX_BUFFER });
-}
-
-async function execGitFile(
-  args: string[],
-  options: { cwd: string; env?: NodeJS.ProcessEnv }
-): Promise<{ stdout: string; stderr: string }> {
-  return execFileAsync("git", args, { ...options, maxBuffer: SMALL_OUTPUT_MAX_BUFFER });
 }
 
 type LimitedTextResult = {
@@ -190,10 +184,20 @@ async function tryResolveMergeBase(cwd: string, baseRef: string): Promise<string
 
 type FileStat = { additions: number; deletions: number; isBinary: boolean } | null;
 
-async function tryGetNumstat(cwd: string, args: string[]): Promise<FileStat> {
+async function tryGetNumstat(
+  cwd: string,
+  args: string[]
+): Promise<FileStat> {
   try {
-    const { stdout } = await execGitFile(args, { cwd, env: READ_ONLY_GIT_ENV });
-    const line = stdout.trim().split("\n").map((l) => l.trim()).filter(Boolean)[0] ?? "";
+    const { text } = await spawnLimitedText({
+      cmd: "git",
+      args,
+      cwd,
+      env: READ_ONLY_GIT_ENV,
+      maxBytes: 64 * 1024,
+      acceptExitCodes: [0],
+    });
+    const line = text.trim().split("\n").map((l) => l.trim()).filter(Boolean)[0] ?? "";
     if (!line) return null;
     const [aRaw, dRaw] = line.split(/\s+/);
     if (!aRaw || !dRaw) return null;
@@ -634,6 +638,65 @@ async function getAheadOfOrigin(cwd: string, currentBranch: string): Promise<num
 
 const PER_FILE_DIFF_MAX_BYTES = 1024 * 1024; // 1MB
 const TOTAL_DIFF_MAX_BYTES = 2 * 1024 * 1024; // 2MB
+const UNTRACKED_BINARY_SNIFF_BYTES = 16 * 1024;
+
+async function isLikelyBinaryFile(absolutePath: string): Promise<boolean> {
+  const handle = await openFile(absolutePath, "r");
+  try {
+    const buffer = Buffer.allocUnsafe(UNTRACKED_BINARY_SNIFF_BYTES);
+    const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
+    if (bytesRead === 0) {
+      return false;
+    }
+
+    let suspicious = 0;
+    for (let i = 0; i < bytesRead; i += 1) {
+      const byte = buffer[i];
+      if (byte === 0) {
+        return true;
+      }
+      // Treat control bytes as suspicious while allowing common whitespace.
+      if (byte < 7 || (byte > 14 && byte < 32) || byte === 127) {
+        suspicious += 1;
+      }
+    }
+
+    return suspicious / bytesRead > 0.3;
+  } finally {
+    await handle.close();
+  }
+}
+
+async function inspectUntrackedFile(
+  cwd: string,
+  relativePath: string
+): Promise<{ stat: FileStat; truncated: boolean }> {
+  const absolutePath = resolve(cwd, relativePath);
+  const metadata = await statFile(absolutePath);
+
+  if (!metadata.isFile()) {
+    return { stat: null, truncated: false };
+  }
+
+  if (await isLikelyBinaryFile(absolutePath)) {
+    return {
+      stat: { additions: 0, deletions: 0, isBinary: true },
+      truncated: false,
+    };
+  }
+
+  if (metadata.size > PER_FILE_DIFF_MAX_BYTES) {
+    return {
+      stat: { additions: 0, deletions: 0, isBinary: false },
+      truncated: true,
+    };
+  }
+
+  return {
+    stat: { additions: 0, deletions: 0, isBinary: false },
+    truncated: false,
+  };
+}
 
 function buildPlaceholderParsedDiffFile(
   change: CheckoutFileChange,
@@ -655,16 +718,16 @@ async function getPerFileDiffText(
   ref: string,
   change: CheckoutFileChange
 ): Promise<{ text: string; truncated: boolean; stat: FileStat }> {
-  const stat: FileStat =
-    change.isUntracked
-      ? null
-      : await tryGetNumstat(cwd, ["diff", "--numstat", ref, "--", change.path]);
-
-  if (stat?.isBinary) {
-    return { text: "", truncated: false, stat };
-  }
-
   if (change.isUntracked) {
+    try {
+      const inspected = await inspectUntrackedFile(cwd, change.path);
+      if (inspected.stat?.isBinary || inspected.truncated) {
+        return { text: "", truncated: inspected.truncated, stat: inspected.stat };
+      }
+    } catch {
+      // Fall through to git diff path if metadata probing fails.
+    }
+
     const result = await spawnLimitedText({
       cmd: "git",
       args: ["diff", "--no-index", "/dev/null", "--", change.path],
@@ -673,7 +736,16 @@ async function getPerFileDiffText(
       maxBytes: PER_FILE_DIFF_MAX_BYTES,
       acceptExitCodes: [0, 1],
     });
-    return { text: result.text, truncated: result.truncated, stat };
+    return {
+      text: result.text,
+      truncated: result.truncated,
+      stat: { additions: 0, deletions: 0, isBinary: false },
+    };
+  }
+
+  const stat = await tryGetNumstat(cwd, ["diff", "--numstat", ref, "--", change.path]);
+  if (stat?.isBinary) {
+    return { text: "", truncated: false, stat };
   }
 
   const result = await spawnLimitedText({

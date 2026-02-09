@@ -132,6 +132,36 @@ describe("checkout git utilities", () => {
     );
   });
 
+  it("short-circuits untracked binary files", async () => {
+    const binaryPath = join(repoDir, "blob.bin");
+    writeFileSync(binaryPath, Buffer.from([0x00, 0xff, 0x10, 0x80, 0x00, 0x7f, 0x00]));
+
+    const diff = await getCheckoutDiff(repoDir, {
+      mode: "uncommitted",
+      includeStructured: true,
+    });
+
+    const entry = diff.structured?.find((file) => file.path === "blob.bin");
+    expect(entry).toBeTruthy();
+    expect(entry?.status).toBe("binary");
+    expect(diff.diff).toContain("# blob.bin: binary diff omitted");
+  });
+
+  it("marks untracked oversized files as too_large", async () => {
+    const large = Array.from({ length: 240_000 }, (_, i) => `line ${i}`).join("\n") + "\n";
+    writeFileSync(join(repoDir, "untracked-large.txt"), large);
+
+    const diff = await getCheckoutDiff(repoDir, {
+      mode: "uncommitted",
+      includeStructured: true,
+    });
+
+    const entry = diff.structured?.find((file) => file.path === "untracked-large.txt");
+    expect(entry).toBeTruthy();
+    expect(entry?.status).toBe("too_large");
+    expect(diff.diff).toContain("# untracked-large.txt: diff too large omitted");
+  });
+
   it("handles status/diff/commit in a .paseo worktree", async () => {
     const result = await createWorktree({
       branchName: "main",
