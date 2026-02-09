@@ -31,6 +31,8 @@ import { encodeImages } from "@/utils/encode-images";
 import { useKeyboardNavStore } from "@/stores/keyboard-nav-store";
 import { focusWithRetries } from "@/utils/web-focus";
 import { useVoiceOptional } from "@/contexts/voice-context";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Shortcut } from "@/components/ui/shortcut";
 
 type QueuedMessage = {
   id: string;
@@ -512,10 +514,23 @@ export function AgentInputArea({
     },
     [setUserInput]
   );
+  const hasSendableContent = userInput.trim().length > 0 || selectedImages.length > 0;
 
   // Handle keyboard navigation for command autocomplete
   const handleCommandKeyPress = useCallback(
     (event: { key: string; preventDefault: () => void }) => {
+      if (
+        event.key === "Escape" &&
+        isAgentRunning &&
+        !hasSendableContent &&
+        !isCancellingAgent &&
+        isConnected
+      ) {
+        event.preventDefault();
+        handleCancelAgent();
+        return true;
+      }
+
       if (!showCommandAutocomplete || filteredCommands.length === 0) {
         return false;
       }
@@ -558,54 +573,72 @@ export function AgentInputArea({
       filteredCommands,
       commandSelectedIndex,
       handleCommandSelect,
+      hasSendableContent,
+      isAgentRunning,
+      isCancellingAgent,
+      isConnected,
       setUserInput,
     ]
   );
 
-  const hasSendableContent = userInput.trim().length > 0 || selectedImages.length > 0;
-
   const cancelButton = isAgentRunning && !hasSendableContent ? (
-    <Pressable
-      onPress={handleCancelAgent}
-      disabled={!isConnected || isCancellingAgent}
-      accessibilityLabel={isCancellingAgent ? "Canceling agent" : "Stop agent"}
-      accessibilityRole="button"
-      style={[
-        styles.cancelButton as any,
-        (!isConnected || isCancellingAgent
-          ? styles.buttonDisabled
-          : undefined) as any,
-      ]}
-    >
-      {isCancellingAgent ? (
-        <ActivityIndicator size="small" color="white" />
-      ) : (
-        <Square size={18} color="white" fill="white" />
-      )}
-    </Pressable>
+    <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
+      <TooltipTrigger
+        onPress={handleCancelAgent}
+        disabled={!isConnected || isCancellingAgent}
+        accessibilityLabel={isCancellingAgent ? "Canceling agent" : "Stop agent"}
+        accessibilityRole="button"
+        style={[
+          styles.cancelButton as any,
+          (!isConnected || isCancellingAgent
+            ? styles.buttonDisabled
+            : undefined) as any,
+        ]}
+      >
+        {isCancellingAgent ? (
+          <ActivityIndicator size="small" color="white" />
+        ) : (
+          <Square size={18} color="white" fill="white" />
+        )}
+      </TooltipTrigger>
+      <TooltipContent side="top" align="center" offset={8}>
+        <View style={styles.tooltipRow}>
+          <Text style={styles.tooltipText}>Interrupt</Text>
+          <Shortcut keys={["Esc"]} style={styles.tooltipShortcut} />
+        </View>
+      </TooltipContent>
+    </Tooltip>
   ) : null;
 
   const rightContent = (
     <View style={styles.rightControls}>
       {!isVoiceModeForAgent ? (
-        <Pressable
-          onPress={handleToggleRealtimeVoice}
-          disabled={!isConnected || voice?.isVoiceSwitching}
-          accessibilityLabel="Enable realtime voice mode"
-          accessibilityRole="button"
-          style={[
-            styles.realtimeVoiceButton as any,
-            (!isConnected || voice?.isVoiceSwitching
-              ? styles.buttonDisabled
-              : undefined) as any,
-          ]}
-        >
-          {voice?.isVoiceSwitching ? (
-            <ActivityIndicator size="small" color="white" />
-          ) : (
-            <AudioLines size={18} color={theme.colors.foreground} />
-          )}
-        </Pressable>
+        <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
+          <TooltipTrigger
+            onPress={handleToggleRealtimeVoice}
+            disabled={!isConnected || voice?.isVoiceSwitching}
+            accessibilityLabel="Enable Voice mode"
+            accessibilityRole="button"
+            style={[
+              styles.realtimeVoiceButton as any,
+              (!isConnected || voice?.isVoiceSwitching
+                ? styles.buttonDisabled
+                : undefined) as any,
+            ]}
+          >
+            {voice?.isVoiceSwitching ? (
+              <ActivityIndicator size="small" color="white" />
+            ) : (
+              <AudioLines size={18} color={theme.colors.foreground} />
+            )}
+          </TooltipTrigger>
+          <TooltipContent side="top" align="center" offset={8}>
+            <View style={styles.tooltipRow}>
+              <Text style={styles.tooltipText}>Voice mode</Text>
+              <Shortcut keys={["mod", "shift", "D"]} style={styles.tooltipShortcut} />
+            </View>
+          </TooltipContent>
+        </Tooltip>
       ) : null}
       {cancelButton}
     </View>
@@ -647,7 +680,7 @@ export function AgentInputArea({
                       onPress={() => handleSendQueuedNow(item.id)}
                       style={[styles.queueActionButton, styles.queueSendButton]}
                     >
-                      <ArrowUp size={14} color={theme.colors.background} />
+                      <ArrowUp size={14} color="white" />
                     </Pressable>
                   </View>
                 </View>
@@ -752,6 +785,19 @@ const styles = StyleSheet.create(((theme: Theme) => ({
     backgroundColor: theme.colors.palette.green[600],
     borderColor: theme.colors.palette.green[800],
   },
+  tooltipRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[2],
+  },
+  tooltipText: {
+    fontSize: theme.fontSize.sm,
+    color: theme.colors.popoverForeground,
+  },
+  tooltipShortcut: {
+    backgroundColor: theme.colors.surface3,
+    borderColor: theme.colors.borderAccent,
+  },
   buttonDisabled: {
     opacity: 0.5,
   },
@@ -765,7 +811,7 @@ const styles = StyleSheet.create(((theme: Theme) => ({
     justifyContent: "space-between",
     paddingHorizontal: theme.spacing[3],
     paddingVertical: theme.spacing[2],
-    backgroundColor: theme.colors.surface2,
+    backgroundColor: theme.colors.surface1,
     borderRadius: theme.borderRadius.lg,
     borderWidth: theme.borderWidth[1],
     borderColor: theme.colors.border,
@@ -790,7 +836,7 @@ const styles = StyleSheet.create(((theme: Theme) => ({
     backgroundColor: theme.colors.surface2,
   },
   queueSendButton: {
-    backgroundColor: theme.colors.palette.blue[600],
+    backgroundColor: theme.colors.accent,
   },
   sendErrorText: {
     color: theme.colors.palette.red[500],

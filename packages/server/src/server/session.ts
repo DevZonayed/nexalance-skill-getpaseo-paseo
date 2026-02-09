@@ -68,6 +68,11 @@ import type {
 } from "./agent/agent-sdk-types.js";
 import { AgentStorage, type StoredAgentRecord } from "./agent/agent-storage.js";
 import { isValidAgentProvider, AGENT_PROVIDER_IDS } from "./agent/provider-manifest.js";
+import {
+  buildVoiceAgentMcpServerConfig,
+  buildVoiceModeSystemPrompt,
+  stripVoiceModeSystemPrompt,
+} from "./voice-config.js";
 import { isVoicePermissionAllowed } from "./voice-permission-policy.js";
 import {
   listDirectoryEntries,
@@ -130,18 +135,6 @@ const MAX_AGENTS_PER_PROJECT = 5;
  * Uses Claude Haiku for speed and cost efficiency.
  */
 const AUTO_GEN_MODEL = "haiku";
-const VOICE_AGENT_SYSTEM_INSTRUCTION = [
-  "You are the Paseo voice assistant.",
-  "The user cannot see your chat messages or tool calls.",
-  "Always use the speak tool for all user-facing communication.",
-  "Before calling any non-speak tool, first call speak with a short acknowledgement of what you heard and what you will do next.",
-  "For long-running work, use speak to provide progress updates before and during execution.",
-  "Treat the user input as transcribed speech and confirm intent in your first speak response to catch transcription errors early.",
-  "If the transcription seems incomplete, cut off, or ambiguous, ask a clarifying question via speak before taking action.",
-  "Use concise plain language suitable for speech output.",
-  "Never use bash, file-edit, or web tools directly.",
-  "Only use the paseo MCP tools.",
-].join(" ");
 
 function deriveRemoteProjectKey(remoteUrl: string | null): string | null {
   if (!remoteUrl) {
@@ -220,25 +213,6 @@ function escapeXmlText(value: string): string {
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
-}
-
-export function buildVoiceAgentMcpServerConfig(params: {
-  command: string;
-  baseArgs: string[];
-  socketPath: string;
-  env?: Record<string, string>;
-}): {
-  type: "stdio";
-  command: string;
-  args: string[];
-  env?: Record<string, string>;
-} {
-  return {
-    type: "stdio",
-    command: params.command,
-    args: [...params.baseArgs, "--socket", params.socketPath],
-    ...(params.env ? { env: params.env } : {}),
-  };
 }
 
 type ProcessingPhase = "idle" | "transcribing" | "llm";
@@ -1541,13 +1515,6 @@ export class Session {
     return JSON.parse(JSON.stringify(servers)) as Record<string, McpServerConfig>;
   }
 
-  private buildVoiceModeSystemPrompt(existing?: string): string {
-    const chunks = [existing?.trim(), VOICE_AGENT_SYSTEM_INSTRUCTION].filter(
-      (value): value is string => Boolean(value && value.length > 0)
-    );
-    return chunks.join("\n\n");
-  }
-
   private buildVoiceModeMcpServers(
     existing: Record<string, McpServerConfig> | undefined,
     socketPath: string
@@ -1579,12 +1546,12 @@ export class Session {
     this.registerVoiceBridgeForAgent(agentId);
 
     const baseConfig: VoiceModeBaseConfig = {
-      systemPrompt: existing.config.systemPrompt,
+      systemPrompt: stripVoiceModeSystemPrompt(existing.config.systemPrompt),
       mcpServers: this.cloneMcpServers(existing.config.mcpServers),
     };
     this.voiceModeBaseConfig = baseConfig;
     const refreshOverrides: Partial<AgentSessionConfig> = {
-      systemPrompt: this.buildVoiceModeSystemPrompt(baseConfig.systemPrompt),
+      systemPrompt: buildVoiceModeSystemPrompt(baseConfig.systemPrompt, true),
       mcpServers: this.buildVoiceModeMcpServers(baseConfig.mcpServers, socketPath),
     };
 
@@ -1625,7 +1592,7 @@ export class Session {
       const baseConfig = this.voiceModeBaseConfig;
       try {
         await this.agentManager.refreshAgentFromPersistence(agentId, {
-          systemPrompt: baseConfig.systemPrompt,
+          systemPrompt: buildVoiceModeSystemPrompt(baseConfig.systemPrompt, false),
           mcpServers: this.cloneMcpServers(baseConfig.mcpServers),
         });
       } catch (error) {

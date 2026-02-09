@@ -377,14 +377,14 @@ const styles = StyleSheet.create((theme) => ({
   modeBadge: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: theme.colors.surface2,
+    backgroundColor: "transparent",
     gap: theme.spacing[1],
     paddingHorizontal: theme.spacing[2],
     paddingVertical: theme.spacing[1],
     borderRadius: theme.borderRadius["2xl"],
   },
   modeBadgeHovered: {
-    backgroundColor: theme.colors.surface1,
+    backgroundColor: theme.colors.surface2,
   },
   modeBadgePressed: {
     backgroundColor: theme.colors.surface0,

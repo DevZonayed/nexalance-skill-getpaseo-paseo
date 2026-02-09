@@ -1,5 +1,6 @@
 import {
   View,
+  Text,
   TextInput,
   Pressable,
   ActivityIndicator,
@@ -31,6 +32,8 @@ import { RealtimeVoiceOverlay } from "./realtime-voice-overlay";
 import type { DaemonClient } from "@server/client/daemon-client";
 import { usePanelStore } from "@/stores/panel-store";
 import { useVoiceOptional } from "@/contexts/voice-context";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Shortcut } from "@/components/ui/shortcut";
 
 export interface ImageAttachment {
   uri: string;
@@ -217,6 +220,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
     const socketConnected = client?.isConnected ?? false;
     return socketConnected;
   }, [client]);
+  const isConnected = client?.isConnected ?? false;
 
   const {
     isRecording: isDictating,
@@ -263,9 +267,39 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
     sendAfterTranscriptRef.current = false;
   }, [dictationStatus, isDictating, isDictationProcessing]);
 
-  // Cmd+D to start/submit dictation, Escape to cancel
+  // Cmd+D to start/submit dictation, Cmd+Shift+D toggles realtime voice, Escape cancels dictation
   useEffect(() => {
     if (!IS_WEB) return;
+    const toggleRealtimeVoice = () => {
+      if (!voice || !voiceServerId || !voiceAgentId || !isConnected || disabled) {
+        return;
+      }
+      if (voice.isVoiceSwitching) {
+        return;
+      }
+      if (voice.isVoiceModeForAgent(voiceServerId, voiceAgentId)) {
+        const tasks: Promise<unknown>[] = [];
+        if (isAgentRunning && client) {
+          tasks.push(client.cancelAgent(voiceAgentId));
+        }
+        tasks.push(voice.stopVoice());
+        void Promise.allSettled(tasks).then((results) => {
+          results.forEach((result) => {
+            if (result.status === "rejected") {
+              console.error(
+                "[MessageInput] Failed to stop realtime voice",
+                result.reason
+              );
+            }
+          });
+        });
+        return;
+      }
+      void voice.startVoice(voiceServerId, voiceAgentId).catch((error) => {
+        console.error("[MessageInput] Failed to start realtime voice", error);
+      });
+    };
+
     const resolveNativeInput = (): unknown => {
       const current = textInputRef.current as any;
       if (!current) return null;
@@ -280,12 +314,32 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       if (!isScreenFocused && !isInputFocusedRef.current && !isFromInput) {
         return;
       }
+      const isMod = event.metaKey || event.ctrlKey;
+      const isKeyD = event.code === "KeyD" || event.key.toLowerCase() === "d";
+
+      if (isMod && event.shiftKey && isKeyD && !event.repeat) {
+        event.preventDefault();
+        toggleRealtimeVoice();
+        return;
+      }
+
+      if (
+        isRealtimeVoiceForCurrentAgent &&
+        !event.metaKey &&
+        !event.ctrlKey &&
+        !event.altKey &&
+        !event.shiftKey &&
+        (event.code === "Space" || event.key === " ") &&
+        !event.repeat
+      ) {
+        event.preventDefault();
+        voice?.toggleMute();
+        return;
+      }
+
       const dictating = isDictatingRef.current;
       // Cmd+D: start dictation or submit if already dictating
-      if (
-        (event.metaKey || event.ctrlKey) &&
-        (event.code === "KeyD" || event.key.toLowerCase() === "d")
-      ) {
+      if (isMod && isKeyD) {
         event.preventDefault();
         if (dictating) {
           sendAfterTranscriptRef.current = true;
@@ -303,7 +357,20 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
     }
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [cancelDictation, confirmDictation, isScreenFocused, startDictation]);
+  }, [
+    cancelDictation,
+    client,
+    confirmDictation,
+    disabled,
+    isAgentRunning,
+    isConnected,
+    isRealtimeVoiceForCurrentAgent,
+    isScreenFocused,
+    startDictation,
+    voiceAgentId,
+    voiceServerId,
+    voice,
+  ]);
 
   // Animate overlay
   useEffect(() => {
@@ -380,6 +447,29 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       }
     });
   }, [client, isAgentRunning, isRealtimeVoiceForCurrentAgent, voice, voiceAgentId]);
+
+  const handleToggleRealtimeVoiceShortcut = useCallback(() => {
+    if (!voice || !voiceServerId || !voiceAgentId || !isConnected || disabled) {
+      return;
+    }
+    if (voice.isVoiceSwitching) {
+      return;
+    }
+    if (voice.isVoiceModeForAgent(voiceServerId, voiceAgentId)) {
+      void handleStopRealtimeVoice();
+      return;
+    }
+    void voice.startVoice(voiceServerId, voiceAgentId).catch((error) => {
+      console.error("[MessageInput] Failed to start realtime voice", error);
+    });
+  }, [
+    disabled,
+    handleStopRealtimeVoice,
+    isConnected,
+    voice,
+    voiceAgentId,
+    voiceServerId,
+  ]);
 
   const handleSendMessage = useCallback(() => {
     const trimmed = value.trim();
@@ -514,6 +604,13 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       return;
     }
 
+    // Cmd+Shift+D or Ctrl+Shift+D: toggle realtime voice mode
+    if ((metaKey || ctrlKey) && shiftKey && key === "d") {
+      event.preventDefault();
+      handleToggleRealtimeVoiceShortcut();
+      return;
+    }
+
     // Cmd+D or Ctrl+D: start dictation or submit if already dictating
     if ((metaKey || ctrlKey) && key === "d") {
       event.preventDefault();
@@ -530,6 +627,18 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
     if (event.nativeEvent.key === "Escape" && isDictating) {
       event.preventDefault();
       cancelDictation();
+      return;
+    }
+
+    if (
+      isRealtimeVoiceForCurrentAgent &&
+      !metaKey &&
+      !ctrlKey &&
+      !shiftKey &&
+      event.nativeEvent.key === " "
+    ) {
+      event.preventDefault();
+      voice?.toggleMute();
       return;
     }
 
@@ -555,7 +664,6 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
   const hasImages = images.length > 0;
   const hasSendableContent = value.trim().length > 0 || hasImages;
   const shouldShowSendButton = hasSendableContent || isSubmitLoading;
-  const isConnected = client?.isConnected ?? false;
 
   return (
     <View style={styles.container}>
@@ -636,90 +744,130 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
           {/* Left: attachment button + leftContent slot */}
           <View style={styles.leftButtonGroup}>
             {onPickImages && (
-              <Pressable
-                onPress={onPickImages}
-                disabled={!isConnected || disabled}
-                style={[
-                  styles.attachButton,
-                  (!isConnected || disabled) && styles.buttonDisabled,
-                ]}
-              >
-                <Paperclip size={20} color={theme.colors.foreground} />
-              </Pressable>
+              <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
+                <TooltipTrigger
+                  onPress={onPickImages}
+                  disabled={!isConnected || disabled}
+                  accessibilityLabel="Attach images"
+                  accessibilityRole="button"
+                  style={[
+                    styles.attachButton,
+                    (!isConnected || disabled) && styles.buttonDisabled,
+                  ]}
+                >
+                  <Paperclip size={20} color={theme.colors.foreground} />
+                </TooltipTrigger>
+                <TooltipContent side="top" align="center" offset={8}>
+                  <Text style={styles.tooltipText}>Attach images</Text>
+                </TooltipContent>
+              </Tooltip>
             )}
             {leftContent}
           </View>
 
           {/* Right: voice button, contextual button (realtime/send/cancel) */}
           <View style={styles.rightButtonGroup}>
-            <Pressable
-              onPress={handleVoicePress}
-              disabled={!isConnected || disabled}
-              accessibilityRole="button"
-              accessibilityLabel={
-                isRealtimeVoiceForCurrentAgent
-                  ? voice?.isMuted
-                    ? "Unmute realtime voice"
-                    : "Mute realtime voice"
-                  : isDictating
-                    ? "Stop dictation"
-                    : "Start dictation"
-              }
-              style={[
-                styles.voiceButton,
-                (!isConnected || disabled) && styles.buttonDisabled,
-                isDictating && styles.voiceButtonRecording,
-              ]}
-            >
-              {isDictating ? (
-                <Square size={14} color="white" fill="white" />
-              ) : isRealtimeVoiceForCurrentAgent && voice?.isMuted ? (
-                <MicOff size={20} color={theme.colors.foreground} />
-              ) : (
-                <Mic size={20} color={theme.colors.foreground} />
-              )}
-            </Pressable>
+            <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
+              <TooltipTrigger
+                onPress={handleVoicePress}
+                disabled={!isConnected || disabled}
+                accessibilityRole="button"
+                accessibilityLabel={
+                  isRealtimeVoiceForCurrentAgent
+                    ? voice?.isMuted
+                      ? "Unmute Voice mode"
+                      : "Mute Voice mode"
+                    : isDictating
+                      ? "Stop dictation"
+                      : "Start dictation"
+                }
+                style={[
+                  styles.voiceButton,
+                  (!isConnected || disabled) && styles.buttonDisabled,
+                  isDictating && styles.voiceButtonRecording,
+                ]}
+              >
+                {isDictating ? (
+                  <Square size={14} color="white" fill="white" />
+                ) : isRealtimeVoiceForCurrentAgent && voice?.isMuted ? (
+                  <MicOff size={20} color={theme.colors.foreground} />
+                ) : (
+                  <Mic size={20} color={theme.colors.foreground} />
+                )}
+              </TooltipTrigger>
+              <TooltipContent side="top" align="center" offset={8}>
+                <View style={styles.tooltipRow}>
+                  <Text style={styles.tooltipText}>
+                    {isRealtimeVoiceForCurrentAgent
+                      ? voice?.isMuted
+                        ? "Unmute voice"
+                        : "Mute voice"
+                      : "Dictation"}
+                  </Text>
+                  <Shortcut
+                    keys={isRealtimeVoiceForCurrentAgent ? ["Space"] : ["mod", "D"]}
+                    style={styles.tooltipShortcut}
+                  />
+                </View>
+              </TooltipContent>
+            </Tooltip>
             {rightContent}
             {shouldShowSendButton && isAgentRunning && onQueue && (
-              <Pressable
-                onPress={handleQueueMessage}
-                disabled={!isConnected || disabled}
-                accessibilityLabel="Queue message"
-                accessibilityRole="button"
-                style={[
-                  styles.queueButton,
-                  (!isConnected || disabled) && styles.buttonDisabled,
-                ]}
-              >
-                <Plus size={20} color="white" />
-              </Pressable>
+              <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
+                <TooltipTrigger
+                  onPress={handleQueueMessage}
+                  disabled={!isConnected || disabled}
+                  accessibilityLabel="Queue message"
+                  accessibilityRole="button"
+                  style={[
+                    styles.queueButton,
+                    (!isConnected || disabled) && styles.buttonDisabled,
+                  ]}
+                >
+                  <Plus size={20} color="white" />
+                </TooltipTrigger>
+                <TooltipContent side="top" align="center" offset={8}>
+                  <View style={styles.tooltipRow}>
+                    <Text style={styles.tooltipText}>Queue</Text>
+                    <Shortcut keys={["mod", "Enter"]} style={styles.tooltipShortcut} />
+                  </View>
+                </TooltipContent>
+              </Tooltip>
             )}
             {shouldShowSendButton && (
-              <Pressable
-                onPress={handleSendMessage}
-                disabled={
-                  !isConnected ||
-                  isSubmitDisabled ||
-                  isSubmitLoading ||
-                  disabled
-                }
-                accessibilityLabel={isAgentRunning ? "Send and interrupt" : "Send message"}
-                accessibilityRole="button"
-                style={[
-                  styles.sendButton,
-                  (!isConnected ||
+              <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
+                <TooltipTrigger
+                  onPress={handleSendMessage}
+                  disabled={
+                    !isConnected ||
                     isSubmitDisabled ||
                     isSubmitLoading ||
-                    disabled) &&
-                    styles.buttonDisabled,
-                ]}
-              >
-                {isSubmitLoading ? (
-                  <ActivityIndicator size="small" color="white" />
-                ) : (
-                  <ArrowUp size={20} color="white" />
-                )}
-              </Pressable>
+                    disabled
+                  }
+                  accessibilityLabel={isAgentRunning ? "Send and interrupt" : "Send message"}
+                  accessibilityRole="button"
+                  style={[
+                    styles.sendButton,
+                    (!isConnected ||
+                      isSubmitDisabled ||
+                      isSubmitLoading ||
+                      disabled) &&
+                      styles.buttonDisabled,
+                  ]}
+                >
+                  {isSubmitLoading ? (
+                    <ActivityIndicator size="small" color="white" />
+                  ) : (
+                    <ArrowUp size={20} color="white" />
+                  )}
+                </TooltipTrigger>
+                <TooltipContent side="top" align="center" offset={8}>
+                  <View style={styles.tooltipRow}>
+                    <Text style={styles.tooltipText}>Send</Text>
+                    <Shortcut keys={["Enter"]} style={styles.tooltipShortcut} />
+                  </View>
+                </TooltipContent>
+              </Tooltip>
             )}
           </View>
         </View>
@@ -775,7 +923,7 @@ const styles = StyleSheet.create(((theme: any) => ({
   inputWrapper: {
     flexDirection: "column",
     gap: theme.spacing[3],
-    backgroundColor: theme.colors.surface2,
+    backgroundColor: theme.colors.surface1,
     borderWidth: theme.borderWidth[1],
     borderColor: theme.colors.borderAccent,
     borderRadius: theme.borderRadius["2xl"],
@@ -897,6 +1045,19 @@ const styles = StyleSheet.create(((theme: any) => ({
     backgroundColor: theme.colors.accent,
     alignItems: "center",
     justifyContent: "center",
+  },
+  tooltipRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[2],
+  },
+  tooltipText: {
+    fontSize: theme.fontSize.sm,
+    color: theme.colors.popoverForeground,
+  },
+  tooltipShortcut: {
+    backgroundColor: theme.colors.surface3,
+    borderColor: theme.colors.borderAccent,
   },
   buttonDisabled: {
     opacity: 0.5,
