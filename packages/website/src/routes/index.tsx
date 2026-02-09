@@ -20,14 +20,8 @@ export const Route = createFileRoute('/')({
 function Home() {
   return (
     <CursorFieldProvider>
-      {/* Hero section with background image */}
-      <div
-        className="relative bg-cover bg-center bg-no-repeat"
-        style={{ backgroundImage: 'url(/hero-bg.jpg)' }}
-      >
-        <div className="absolute inset-0 bg-background/90" />
-        <div className="absolute inset-x-0 bottom-0 h-64 bg-gradient-to-t from-black to-transparent" />
-
+      {/* Hero section */}
+      <div className="relative">
         <div className="relative p-6 pb-10 md:px-20 md:pt-20 md:pb-12 max-w-3xl mx-auto">
           <Nav />
           <Hero />
@@ -139,8 +133,8 @@ function Features() {
           description="Connect to multiple daemons and see all your agents in one place."
         />
         <Feature
-          title="Voice input"
-          description="Dictate prompts when you're away from your keyboard."
+          title="First-class voice"
+          description="Real-time voice conversations and dictation. Talk to your agent, hear responses, and orchestrate work hands-free."
         />
         <Feature
           title="Optional relay"
