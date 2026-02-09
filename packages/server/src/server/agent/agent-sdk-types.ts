@@ -133,15 +133,18 @@ export type ToolCallDetail =
   | {
       type: "search";
       query: string;
+    }
+  | {
+      type: "unknown";
+      rawInput: unknown | null;
+      rawOutput: unknown | null;
     };
 
 type ToolCallBase = {
   type: "tool_call";
   callId: string;
   name: string;
-  input: unknown | null;
-  output: unknown | null;
-  detail?: ToolCallDetail;
+  detail: ToolCallDetail;
   metadata?: Record<string, unknown>;
 };
 
@@ -194,7 +197,6 @@ export type AgentStreamEvent =
   | { type: "turn_failed"; provider: AgentProvider; error: string }
   | { type: "turn_canceled"; provider: AgentProvider; reason: string }
   | { type: "timeline"; item: AgentTimelineItem; provider: AgentProvider }
-  | { type: "provider_event"; provider: AgentProvider; raw: unknown }
   | { type: "permission_requested"; provider: AgentProvider; request: AgentPermissionRequest }
   | {
       type: "permission_resolved";
