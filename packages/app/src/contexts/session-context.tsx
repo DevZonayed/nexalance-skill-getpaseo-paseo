@@ -750,142 +750,25 @@ export function SessionProvider({
     }
     hasRequestedInitialSnapshotRef.current = true;
 
-    const MAX_RETRIES = 3;
-    const RETRY_DELAY_MS = 2000;
-
-    let cancelled = false;
-
-    const hydrateAgents = async () => {
-      for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-        try {
-          if (!agentUpdatesSubscriptionIdRef.current) {
-            agentUpdatesSubscriptionIdRef.current = client.subscribeAgentUpdates({
-              subscriptionId: `app:${serverId}`,
-              filter: { labels: { ui: "true" } },
-            });
-          }
-
-          const agentsList = await client.fetchAgents({
-            filter: { labels: { ui: "true" } },
-          });
-          if (cancelled) {
-            return;
-          }
-
-          setInitializingAgents(serverId, new Map());
-
-          const agents = new Map();
-          const pendingPermissions = new Map();
-          const agentLastActivity = new Map();
-
-          for (const agentSnapshot of agentsList) {
-            const agent = normalizeAgentSnapshot(agentSnapshot, serverId);
-            agents.set(agent.id, agent);
-            agentLastActivity.set(agent.id, agent.lastActivityAt);
-            for (const request of agent.pendingPermissions) {
-              const key = derivePendingPermissionKey(agent.id, request);
-              pendingPermissions.set(key, { key, agentId: agent.id, request });
-            }
-          }
-
-          setAgents(serverId, agents);
-
-          for (const [agentId, timestamp] of agentLastActivity.entries()) {
-            setAgentLastActivity(agentId, timestamp);
-          }
-
-          setPendingPermissions(serverId, pendingPermissions);
-          setAgentStreamTail(serverId, (prev) => {
-            if (prev.size === 0) {
-              return prev;
-            }
-
-            const validAgentIds = new Set(agentsList.map((snapshot) => snapshot.id));
-            let changed = false;
-            const next = new Map(prev);
-
-            for (const agentId of prev.keys()) {
-              if (!validAgentIds.has(agentId)) {
-                next.delete(agentId);
-                changed = true;
-              }
-            }
-
-            return changed ? next : prev;
-          });
-          setAgentStreamHead(serverId, (prev) => {
-            if (prev.size === 0) {
-              return prev;
-            }
-
-            const validAgentIds = new Set(agentsList.map((snapshot) => snapshot.id));
-            let changed = false;
-            const next = new Map(prev);
-
-            for (const agentId of prev.keys()) {
-              if (!validAgentIds.has(agentId)) {
-                next.delete(agentId);
-                changed = true;
-              }
-            }
-
-            return changed ? next : prev;
-          });
-          setInitializingAgents(serverId, (prev) => {
-            if (prev.size === 0) {
-              return prev;
-            }
-
-            const validAgentIds = new Set(agentsList.map((snapshot) => snapshot.id));
-            let changed = false;
-            const next = new Map(prev);
-
-            for (const agentId of prev.keys()) {
-              if (!validAgentIds.has(agentId)) {
-                next.delete(agentId);
-                changed = true;
-              }
-            }
-
-            return changed ? next : prev;
-          });
-
-          setHasHydratedAgents(serverId, true);
-          updateConnectionStatus(serverId, {
-            status: "online",
-            lastOnlineAt: new Date().toISOString(),
-            agentListReady: true,
-          });
-          return;
-        } catch (err) {
-          if (attempt < MAX_RETRIES) {
-            console.warn(
-              `[Session] fetchAgents failed, retrying in ${RETRY_DELAY_MS}ms`,
-              { serverId, attempt: attempt + 1, maxRetries: MAX_RETRIES, err }
-            );
-            await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS));
-            continue;
-          }
-
-          console.error(`[Session] fetchAgents failed after ${MAX_RETRIES} retries`, {
-            serverId,
-            err,
-          });
-          setHasHydratedAgents(serverId, true);
-          updateConnectionStatus(serverId, {
-            status: "online",
-            lastOnlineAt: new Date().toISOString(),
-            agentListReady: true,
-          });
-          return;
-        }
+    try {
+      if (!agentUpdatesSubscriptionIdRef.current) {
+        agentUpdatesSubscriptionIdRef.current = client.subscribeAgentUpdates({
+          subscriptionId: `app:${serverId}`,
+          filter: { labels: { ui: "true" } },
+        });
       }
-    };
+    } catch (err) {
+      console.error("[Session] subscribeAgentUpdates failed", { serverId, err });
+    }
 
-    void hydrateAgents();
-    return () => {
-      cancelled = true;
-    };
+    // Session bootstrap is now fully event-driven for agent lists.
+    setInitializingAgents(serverId, new Map());
+    setHasHydratedAgents(serverId, true);
+    updateConnectionStatus(serverId, {
+      status: "online",
+      lastOnlineAt: new Date().toISOString(),
+      agentListReady: true,
+    });
   }, [connectionSnapshot.isConnected, client, serverId, setHasHydratedAgents, updateConnectionStatus]);
 
   // Daemon message handlers - directly update Zustand store
@@ -1902,54 +1785,6 @@ export function SessionProvider({
     },
     [directoryListingMutation, updateExplorerState]
   );
-
-  const refreshSession = useCallback(() => {
-    console.log(`[Session] Manual refresh requested for ${serverId}`);
-    if (!client) {
-      console.warn("[Session] refreshSession skipped: daemon unavailable");
-      return;
-    }
-    void (async () => {
-      try {
-        const agentsList = await client.fetchAgents({
-          filter: { labels: { ui: "true" } },
-        });
-
-        setInitializingAgents(serverId, new Map());
-
-        const agents = new Map();
-        const pendingPermissions = new Map();
-        const agentLastActivity = new Map();
-
-        for (const agentSnapshot of agentsList) {
-          const agent = normalizeAgentSnapshot(agentSnapshot, serverId);
-          agents.set(agent.id, agent);
-          agentLastActivity.set(agent.id, agent.lastActivityAt);
-          for (const request of agent.pendingPermissions) {
-            const key = derivePendingPermissionKey(agent.id, request);
-            pendingPermissions.set(key, { key, agentId: agent.id, request });
-          }
-        }
-
-        setAgents(serverId, agents);
-        for (const [agentId, timestamp] of agentLastActivity.entries()) {
-          setAgentLastActivity(agentId, timestamp);
-        }
-        setPendingPermissions(serverId, pendingPermissions);
-      } catch (error: any) {
-        console.error("[Session] Failed to refresh agents:", error);
-      }
-    })();
-  }, [
-    client,
-    derivePendingPermissionKey,
-    normalizeAgentSnapshot,
-    serverId,
-    setAgentLastActivity,
-    setAgents,
-    setInitializingAgents,
-    setPendingPermissions,
-  ]);
 
   // Cleanup on unmount
   useEffect(() => {

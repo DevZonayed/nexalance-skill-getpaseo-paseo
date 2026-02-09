@@ -6,10 +6,6 @@ import { useSessionStore, type Agent } from "@/stores/session-store";
 import type { AggregatedAgent } from "@/hooks/use-aggregated-agents";
 import { normalizeAgentSnapshot } from "@/utils/agent-snapshots";
 import {
-  deriveProjectKey,
-  deriveProjectName,
-} from "@/utils/agent-grouping";
-import {
   useSectionOrderStore,
   sortProjectsByStoredOrder,
 } from "@/stores/section-order-store";
@@ -206,18 +202,23 @@ export function useSidebarAgentsGrouped(options?: {
         if (live.archivedAt || live.labels.ui !== "true") {
           continue;
         }
+        if (!live.projectPlacement) {
+          // Ignore fetchAgents-hydrated snapshots for sidebar placement.
+          // Sidebar should derive placement from grouped RPC or project-enriched agent_update.
+          continue;
+        }
         const agentKey = `${serverId}:${live.id}`;
         if (seenAgentKeys.has(agentKey)) {
           continue;
         }
 
         const livePlacement = live.projectPlacement;
-        const projectKey = livePlacement?.projectKey ?? deriveProjectKey(live.cwd);
+        const projectKey = livePlacement.projectKey;
         const existing: MutableSidebarGroup =
           groupsByKey.get(projectKey) ??
           {
             projectKey,
-            projectName: livePlacement?.projectName ?? deriveProjectName(projectKey),
+            projectName: livePlacement.projectName,
             agents: [],
           };
         existing.agents.push(
@@ -227,9 +228,7 @@ export function useSidebarAgentsGrouped(options?: {
             serverLabel,
           })
         );
-        if (livePlacement) {
-          checkoutLookup.set(agentKey, livePlacement.checkout);
-        }
+        checkoutLookup.set(agentKey, livePlacement.checkout);
         groupsByKey.set(projectKey, existing);
       }
     }
