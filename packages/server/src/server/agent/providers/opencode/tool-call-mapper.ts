@@ -81,10 +81,8 @@ export function mapOpencodeToolCall(params: OpencodeToolCallParams): ToolCallTim
       callId,
       name: parsedParams.toolName,
       status: "failed",
-      input,
-      output,
+      detail,
       error: parsedParams.error ?? { message: "Tool call failed" },
-      ...(detail ? { detail } : {}),
       ...(parsedParams.metadata ? { metadata: parsedParams.metadata } : {}),
     };
   }
@@ -94,10 +92,8 @@ export function mapOpencodeToolCall(params: OpencodeToolCallParams): ToolCallTim
     callId,
     name: parsedParams.toolName,
     status,
-    input,
-    output,
+    detail,
     error: null,
-    ...(detail ? { detail } : {}),
     ...(parsedParams.metadata ? { metadata: parsedParams.metadata } : {}),
   };
 }

@@ -248,8 +248,8 @@ class FakeAgentSession implements AgentSession {
           status: "running",
           detail: {
             type: "unknown",
-            rawInput: tool.input ?? null,
-            rawOutput: null,
+            input: tool.input ?? null,
+            output: null,
           },
           error: null,
         },
@@ -332,8 +332,8 @@ class FakeAgentSession implements AgentSession {
           status: "completed",
           detail: {
             type: "unknown",
-            rawInput: tool.input ?? null,
-            rawOutput: toolOutput ?? { ok: true },
+            input: tool.input ?? null,
+            output: toolOutput ?? { ok: true },
           },
           error: null,
         },

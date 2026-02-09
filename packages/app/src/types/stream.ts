@@ -353,20 +353,20 @@ function mergeToolCallDetail(existing: ToolCallDetail, incoming: ToolCallDetail)
   if (existing.type === "unknown" && incoming.type === "unknown") {
     return {
       type: "unknown",
-      rawInput: mergeUnknownValue(existing.rawInput, incoming.rawInput),
-      rawOutput: mergeUnknownValue(existing.rawOutput, incoming.rawOutput),
+      input: mergeUnknownValue(existing.input, incoming.input),
+      output: mergeUnknownValue(existing.output, incoming.output),
     };
   }
 
   if (existing.type === incoming.type) {
-    return { ...existing, ...incoming };
+    return { ...existing, ...incoming } as ToolCallDetail;
   }
 
   return incoming;
 }
 
-function rawInputFromDetail(detail: ToolCallDetail): unknown | null {
-  return detail.type === "unknown" ? detail.rawInput : null;
+function inputFromUnknownDetail(detail: ToolCallDetail): unknown | null {
+  return detail.type === "unknown" ? detail.input : null;
 }
 
 function mergeAgentToolCallStatus(
@@ -552,7 +552,7 @@ export function reduceStreamUpdate(
             // as Tasks when possible and otherwise hide it to avoid a stuck loading tool call.
             const tasks = extractTaskEntriesFromToolCall(
               item.name,
-              rawInputFromDetail(item.detail)
+              inputFromUnknownDetail(item.detail)
             );
             if (tasks) {
               nextState = appendTodoList(
@@ -570,7 +570,7 @@ export function reduceStreamUpdate(
 
           const tasks = extractTaskEntriesFromToolCall(
             item.name,
-            rawInputFromDetail(item.detail)
+            inputFromUnknownDetail(item.detail)
           );
           if (tasks) {
             nextState = appendTodoList(

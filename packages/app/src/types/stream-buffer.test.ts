@@ -28,8 +28,8 @@ const toolCallEvent = (): AgentStreamEventPayload => ({
     status: "running",
     detail: {
       type: "unknown",
-      rawInput: { command: "echo hi" },
-      rawOutput: null,
+      input: { command: "echo hi" },
+      output: null,
     },
     error: null,
   },

@@ -134,15 +134,19 @@ export function deriveCodexToolDetail(params: {
   input: unknown;
   output: unknown;
   cwd?: string | null;
-}): ToolCallDetail | undefined {
+}): ToolCallDetail {
   const parsed = CodexKnownToolDetailSchema.safeParse({
     name: params.name,
     input: params.input,
     output: params.output,
     cwd: params.cwd ?? null,
   });
-  if (!parsed.success) {
-    return undefined;
+  if (parsed.success && parsed.data) {
+    return parsed.data;
   }
-  return parsed.data;
+  return {
+    type: "unknown",
+    input: params.input ?? null,
+    output: params.output ?? null,
+  };
 }

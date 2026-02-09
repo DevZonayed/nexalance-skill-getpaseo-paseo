@@ -97,7 +97,7 @@ function extractToolCommand(detail: unknown): string | null {
     return detail.command;
   }
   if (detail.type === "unknown") {
-    return extractCommandText(detail.rawInput);
+    return extractCommandText(detail.input);
   }
   return null;
 }
@@ -245,7 +245,6 @@ async function startAgentMcpServer(): Promise<AgentMcpServerHandle> {
   let hydrateStreamState: (updates: unknown[]) => unknown = () => {
     throw new Error("hydrateStreamState not initialized");
   };
-  let isAgentToolCallItem: (item: unknown) => boolean = () => false;
   let agentMcpServer: AgentMcpServerHandle;
   let restoreClaudeConfigDir: (() => void) | null = null;
   const buildConfig = (
@@ -271,7 +270,6 @@ async function startAgentMcpServer(): Promise<AgentMcpServerHandle> {
   beforeAll(async () => {
     const stream = await import("../../../../../app/src/types/stream.js");
     hydrateStreamState = stream.hydrateStreamState as typeof hydrateStreamState;
-    isAgentToolCallItem = stream.isAgentToolCallItem as typeof isAgentToolCallItem;
   });
   beforeAll(async () => {
     agentMcpServer = await startAgentMcpServer();
@@ -450,8 +448,8 @@ async function startAgentMcpServer(): Promise<AgentMcpServerHandle> {
         }
         if (item.detail.type === "unknown") {
           return (
-            rawContainsText(item.detail.rawInput, "tool-test.txt") ||
-            rawContainsText(item.detail.rawOutput, "tool-test.txt")
+            rawContainsText(item.detail.input, "tool-test.txt") ||
+            rawContainsText(item.detail.output, "tool-test.txt")
           );
         }
         return rawContainsText(item.detail, "tool-test.txt");
@@ -1330,10 +1328,18 @@ function stateIncludesUserMessage(state: StreamItem[], marker: string): boolean 
 }
 
 function extractAgentToolSnapshots(state: StreamItem[]): ToolSnapshot[] {
-  return state.filter(isAgentToolCallItem).map((item) => ({
-    key: buildToolSnapshotKey(item.payload.data, item.id),
-    data: item.payload.data,
-  }));
+  return state
+    .filter(
+      (item): item is { kind: "tool_call"; id: string; payload: { source: "agent"; data: AgentToolCallData } } =>
+        Boolean(item) &&
+        item.kind === "tool_call" &&
+        item.payload?.source === "agent" &&
+        item.payload?.data
+    )
+    .map((item) => ({
+      key: buildToolSnapshotKey(item.payload.data, item.id),
+      data: item.payload.data,
+    }));
 }
 
 function buildToolSnapshotKey(data: AgentToolCallData, fallbackId: string): string {

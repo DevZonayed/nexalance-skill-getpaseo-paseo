@@ -2092,11 +2092,11 @@ export class Session {
         status: "running",
         detail: {
           type: "unknown",
-          rawInput: {
+          input: {
             worktreePath: worktree.worktreePath,
             branchName: worktree.branchName,
           },
-          rawOutput: null,
+          output: null,
         },
         error: null,
       });
@@ -2117,11 +2117,11 @@ export class Session {
         status: "completed",
         detail: {
           type: "unknown",
-          rawInput: {
+          input: {
             worktreePath: worktree.worktreePath,
             branchName: worktree.branchName,
           },
-          rawOutput: {
+          output: {
             worktreePath: worktree.worktreePath,
             commands: results.map((result) => ({
               command: result.command,
@@ -2145,11 +2145,11 @@ export class Session {
         status: "failed",
         detail: {
           type: "unknown",
-          rawInput: {
+          input: {
             worktreePath: worktree.worktreePath,
             branchName: worktree.branchName,
           },
-          rawOutput: {
+          output: {
             worktreePath: worktree.worktreePath,
             commands: results.map((result) => ({
               command: result.command,

@@ -42,8 +42,8 @@ function canonicalToolTimeline(params: {
 }): AgentStreamEventPayload {
   const detail: ToolCallDetail = params.detail ?? {
     type: "unknown",
-    rawInput: params.input ?? null,
-    rawOutput: params.output ?? null,
+    input: params.input ?? null,
+    output: params.output ?? null,
   };
 
   const baseItem = {
@@ -150,8 +150,8 @@ describe("stream reducer canonical tool calls", () => {
     assert.strictEqual(tools[0].payload.data.status, "completed");
     assert.deepStrictEqual(tools[0].payload.data.detail, {
       type: "unknown",
-      rawInput: { command: "pwd" },
-      rawOutput: {
+      input: { command: "pwd" },
+      output: {
         output: "/tmp/repo\n",
         exitCode: 0,
       },
@@ -282,8 +282,8 @@ describe("stream reducer canonical tool calls", () => {
     assert.ok(tool);
     assert.deepStrictEqual(tool.payload.data.detail, {
       type: "unknown",
-      rawInput: { path: "README.md" },
-      rawOutput: { content: "hello" },
+      input: { path: "README.md" },
+      output: { content: "hello" },
     });
     assert.strictEqual(tool.payload.data.status, "completed");
   });

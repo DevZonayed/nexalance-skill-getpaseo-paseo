@@ -71,18 +71,18 @@ function mergeToolDetail(existing: ToolCallDetail, incoming: ToolCallDetail): To
   if (existing.type === "unknown" && incoming.type === "unknown") {
     return {
       type: "unknown",
-      rawInput: mergeUnknownValue(existing.rawInput, incoming.rawInput),
-      rawOutput: mergeUnknownValue(existing.rawOutput, incoming.rawOutput),
+      input: mergeUnknownValue(existing.input, incoming.input),
+      output: mergeUnknownValue(existing.output, incoming.output),
     };
   }
   if (existing.type === incoming.type) {
-    return { ...existing, ...incoming };
+    return { ...existing, ...incoming } as ToolCallDetail;
   }
   return incoming;
 }
 
-function rawInputFromDetail(detail: ToolCallDetail): unknown {
-  return detail.type === "unknown" ? detail.rawInput : null;
+function inputFromUnknownDetail(detail: ToolCallDetail): unknown {
+  return detail.type === "unknown" ? detail.input : null;
 }
 
 /**
@@ -203,7 +203,7 @@ export function curateAgentActivity(
         break;
       case "tool_call": {
         flushBuffers(lines, buffers);
-        const inputJson = formatToolInputJson(rawInputFromDetail(item.detail));
+        const inputJson = formatToolInputJson(inputFromUnknownDetail(item.detail));
         const display = buildToolCallDisplayModel({
           name: item.name,
           status: item.status,

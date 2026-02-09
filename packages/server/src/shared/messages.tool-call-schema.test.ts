@@ -64,8 +64,17 @@ describe("shared messages tool_call schema", () => {
       error: null,
     });
 
+    const withTopLevelInputOutput = AgentTimelineItemPayloadSchema.safeParse({
+      ...canonicalBase(),
+      status: "running",
+      error: null,
+      input: { command: "pwd" },
+      output: { exitCode: 0 },
+    });
+
     expect(missingCallId.success).toBe(false);
     expect(unknownStatus.success).toBe(false);
+    expect(withTopLevelInputOutput.success).toBe(false);
   });
 
   it("rejects legacy status/error combinations without normalization", () => {

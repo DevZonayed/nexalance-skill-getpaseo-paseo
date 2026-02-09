@@ -106,23 +106,23 @@ function MergedToolCallItem({ item }: { item: MergedToolCall }) {
 
       {isExpanded && (
         <View style={stylesheet.toolContent}>
-          {item.rawInput && (
+          {item.input && (
             <View style={stylesheet.section}>
               <Text style={stylesheet.sectionTitle}>Input:</Text>
               <Text style={stylesheet.code}>
-                {JSON.stringify(item.rawInput, null, 2)}
+                {JSON.stringify(item.input, null, 2)}
               </Text>
             </View>
           )}
-          {item.rawOutput && (
+          {item.output && (
             <View style={stylesheet.section}>
               <Text style={stylesheet.sectionTitle}>Output:</Text>
               <Text style={stylesheet.code}>
-                {JSON.stringify(item.rawOutput, null, 2)}
+                {JSON.stringify(item.output, null, 2)}
               </Text>
             </View>
           )}
-          {!item.rawInput && !item.rawOutput && (
+          {!item.input && !item.output && (
             <Text style={stylesheet.emptyText}>
               No details available
             </Text>

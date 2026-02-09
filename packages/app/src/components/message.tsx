@@ -1198,8 +1198,8 @@ export const ToolCall = memo(function ToolCall({
     if (args !== undefined || result !== undefined) {
       return {
         type: "unknown",
-        rawInput: args ?? null,
-        rawOutput: result ?? null,
+        input: args ?? null,
+        output: result ?? null,
       };
     }
     return undefined;
@@ -1208,8 +1208,8 @@ export const ToolCall = memo(function ToolCall({
   const displayDetail =
     effectiveDetail ?? {
       type: "unknown",
-      rawInput: null,
-      rawOutput: null,
+      input: null,
+      output: null,
     };
 
   const displayModel = useMemo(
@@ -1235,8 +1235,8 @@ export const ToolCall = memo(function ToolCall({
     Boolean(error) ||
     (effectiveDetail
       ? effectiveDetail.type !== "unknown" ||
-        effectiveDetail.rawInput !== null ||
-        effectiveDetail.rawOutput !== null
+        effectiveDetail.input !== null ||
+        effectiveDetail.output !== null
       : false);
 
   const handleToggle = useCallback(() => {

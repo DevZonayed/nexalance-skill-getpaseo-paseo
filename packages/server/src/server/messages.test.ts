@@ -50,6 +50,36 @@ describe("serializeAgentStreamEvent", () => {
     expect(serialized.item.error).toBeNull();
   });
 
+  test("passes unknown-detail tool_call payloads through unchanged", () => {
+    const event: AgentStreamEvent = {
+      type: "timeline",
+      provider: "codex",
+      item: {
+        type: "tool_call",
+        callId: "call_unknown",
+        name: "paseo_voice.speak",
+        status: "completed",
+        detail: {
+          type: "unknown",
+          input: { text: "hello" },
+          output: { ok: true },
+        },
+        error: null,
+      },
+    };
+
+    const serialized = serializeAgentStreamEvent(event);
+    expect(serialized).not.toBeNull();
+    if (!serialized || serialized.type !== "timeline" || serialized.item.type !== "tool_call") {
+      throw new Error("Expected timeline.tool_call event");
+    }
+    expect(serialized.item.detail).toEqual({
+      type: "unknown",
+      input: { text: "hello" },
+      output: { ok: true },
+    });
+  });
+
   test("drops invalid legacy tool_call items", () => {
     const event = {
       type: "timeline",
@@ -61,8 +91,8 @@ describe("serializeAgentStreamEvent", () => {
         status: "inProgress",
         detail: {
           type: "unknown",
-          rawInput: { command: "pwd" },
-          rawOutput: null,
+          input: { command: "pwd" },
+          output: null,
         },
       },
     } satisfies unknown;

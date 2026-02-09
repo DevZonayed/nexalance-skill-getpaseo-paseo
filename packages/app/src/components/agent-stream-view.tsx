@@ -1101,8 +1101,8 @@ function PermissionRequestCard({
         <ToolCallDetailsContent
           detail={{
             type: "unknown",
-            rawInput: request.input ?? null,
-            rawOutput: null,
+            input: request.input ?? null,
+            output: null,
           }}
           maxHeight={200}
         />

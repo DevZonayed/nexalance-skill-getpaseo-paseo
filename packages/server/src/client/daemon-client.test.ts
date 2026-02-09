@@ -344,8 +344,8 @@ describe("DaemonClient", () => {
               status: "inProgress",
               detail: {
                 type: "unknown",
-                rawInput: { command: "pwd" },
-                rawOutput: null,
+                input: { command: "pwd" },
+                output: null,
               },
             },
           },

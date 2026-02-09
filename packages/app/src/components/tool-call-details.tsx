@@ -139,8 +139,8 @@ export function ToolCallDetailsContent({
     );
   } else if (detail?.type === "unknown") {
     const sectionsFromTopLevel = [
-      { title: "Input", value: detail.rawInput },
-      { title: "Output", value: detail.rawOutput },
+      { title: "Input", value: detail.input },
+      { title: "Output", value: detail.output },
     ].filter((entry) => entry.value !== null && entry.value !== undefined);
 
     for (const section of sectionsFromTopLevel) {

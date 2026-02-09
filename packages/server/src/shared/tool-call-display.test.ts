@@ -28,8 +28,8 @@ describe("shared tool-call display mapping", () => {
       error: null,
       detail: {
         type: "unknown",
-        rawInput: { command: "npm test" },
-        rawOutput: null,
+        input: { command: "npm test" },
+        output: null,
       },
     });
 
@@ -45,8 +45,8 @@ describe("shared tool-call display mapping", () => {
       error: null,
       detail: {
         type: "unknown",
-        rawInput: null,
-        rawOutput: null,
+        input: null,
+        output: null,
       },
       metadata: {
         subAgentActivity: "Running tests",
@@ -66,8 +66,8 @@ describe("shared tool-call display mapping", () => {
       error: { message: "boom" },
       detail: {
         type: "unknown",
-        rawInput: null,
-        rawOutput: null,
+        input: null,
+        output: null,
       },
     });
 

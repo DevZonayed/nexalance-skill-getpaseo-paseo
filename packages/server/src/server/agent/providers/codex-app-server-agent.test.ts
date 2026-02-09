@@ -48,35 +48,43 @@ function useTempCodexSessionDir(): () => void {
 }
 
 function hasShellCommand(item: AgentTimelineItem, commandFragment: string): boolean {
-  if (item.type !== "tool_call" || item.name !== "shell") return false;
+  if (item.type !== "tool_call") return false;
   if (item.detail.type === "shell") {
     return item.detail.command.includes(commandFragment);
   }
   const unknownInput =
-    item.detail.type === "unknown" && typeof item.detail.rawInput === "object" && item.detail.rawInput
-      ? (item.detail.rawInput as { command?: string })
+    item.detail.type === "unknown" && typeof item.detail.input === "object" && item.detail.input
+      ? (item.detail.input as { command?: string | string[]; cmd?: string | string[] })
       : undefined;
-  const command = unknownInput?.command ?? "";
+  const commandValue = unknownInput?.command ?? unknownInput?.cmd;
+  const command =
+    typeof commandValue === "string"
+      ? commandValue
+      : Array.isArray(commandValue)
+        ? commandValue.filter((value): value is string => typeof value === "string").join(" ")
+        : "";
   return command.includes(commandFragment);
 }
 
 function hasApplyPatchFile(item: AgentTimelineItem, fileName: string): boolean {
-  if (item.type !== "tool_call" || item.name !== "apply_patch") return false;
+  if (item.type !== "tool_call") return false;
   if (item.detail.type === "edit") {
     return item.detail.filePath === fileName || (item.detail.unifiedDiff?.includes(fileName) ?? false);
   }
   const unknownInput =
-    item.detail.type === "unknown" && typeof item.detail.rawInput === "object" && item.detail.rawInput
-      ? (item.detail.rawInput as { files?: Array<{ path?: string }> })
+    item.detail.type === "unknown" && typeof item.detail.input === "object" && item.detail.input
+      ? (item.detail.input as { path?: string; file_path?: string; filePath?: string; files?: Array<{ path?: string }> })
       : undefined;
   const unknownOutput =
-    item.detail.type === "unknown" && typeof item.detail.rawOutput === "object" && item.detail.rawOutput
-      ? (item.detail.rawOutput as { files?: Array<{ path?: string; patch?: string }>; diff?: string })
+    item.detail.type === "unknown" && typeof item.detail.output === "object" && item.detail.output
+      ? (item.detail.output as { path?: string; file_path?: string; filePath?: string; files?: Array<{ path?: string; patch?: string }>; diff?: string })
       : undefined;
+  const inputPath = unknownInput?.path ?? unknownInput?.file_path ?? unknownInput?.filePath;
+  const outputPath = unknownOutput?.path ?? unknownOutput?.file_path ?? unknownOutput?.filePath;
   const inInput = (unknownInput?.files ?? []).some((file) => file?.path === fileName);
   const inOutput = (unknownOutput?.files ?? []).some((file) => file?.path === fileName);
   const inDiff = typeof unknownOutput?.diff === "string" && unknownOutput.diff.includes(fileName);
-  return inInput || inOutput || inDiff;
+  return inInput || inOutput || inDiff || inputPath === fileName || outputPath === fileName;
 }
 
 async function waitForFileToContainText(
@@ -363,7 +371,7 @@ describe("Codex app-server provider (integration)", () => {
         if (call.name !== "paseo_test.echo") {
           continue;
         }
-        const key = String(call.callId ?? `${call.name}:${JSON.stringify(call.input ?? {})}`);
+        const key = String(call.callId ?? `${call.name}:${JSON.stringify(call.detail)}`);
         const existing = distinctMcpCalls.get(key);
         if (!existing || call.status === "completed") {
           distinctMcpCalls.set(key, call);
@@ -382,8 +390,9 @@ describe("Codex app-server provider (integration)", () => {
       expect(toolNames.some((name) => name.toLowerCase().includes("shell"))).toBe(false);
 
       // Hard assertion: roundtrip token must be present in the MCP tool I/O.
-      expect(JSON.stringify(mcpToolCall.input ?? {})).toContain(token);
-      expect(JSON.stringify(mcpToolCall.output ?? {})).toContain(`ECHO:${token}`);
+      const mcpDetail = mcpToolCall.detail.type === "unknown" ? mcpToolCall.detail : null;
+      expect(JSON.stringify(mcpDetail?.input ?? {})).toContain(token);
+      expect(JSON.stringify(mcpDetail?.output ?? {})).toContain(`ECHO:${token}`);
       expect(result.finalText).toContain(`ECHO:${token}`);
     } finally {
       cleanup();
@@ -496,7 +505,7 @@ describe("Codex app-server provider (integration)", () => {
       }
       expect(sawPermission || timelineItems.length > 0).toBe(true);
       expect(
-        timelineItems.some((item) => item.type === "tool_call" && item.name === "shell")
+        timelineItems.some((item) => hasShellCommand(item, "printf"))
       ).toBe(true);
       expect(existsSync(filePath)).toBe(true);
       expect(readFileSync(filePath, "utf8")).toContain("ok");
@@ -629,12 +638,10 @@ describe("Codex app-server provider (integration)", () => {
         expect(shellItem?.type).toBe("tool_call");
         expect(patchItem?.type).toBe("tool_call");
         if (shellItem?.type === "tool_call") {
-          expect(shellItem.name).toBe("shell");
-          expect(shellItem.input).toBeTruthy();
+          expect(hasShellCommand(shellItem, "printf")).toBe(true);
         }
         if (patchItem?.type === "tool_call") {
-          expect(patchItem.name).toBe("apply_patch");
-          expect(patchItem.input || patchItem.output).toBeTruthy();
+          expect(hasApplyPatchFile(patchItem, "patch.txt")).toBe(true);
         }
       } finally {
         cleanup();
@@ -698,7 +705,6 @@ describe("Codex app-server provider (integration)", () => {
           if (
             event.type === "timeline" &&
             event.item.type === "tool_call" &&
-            event.item.name === "shell" &&
             hasShellCommand(event.item, "sleep 60")
           ) {
             sawSleepCommand = true;

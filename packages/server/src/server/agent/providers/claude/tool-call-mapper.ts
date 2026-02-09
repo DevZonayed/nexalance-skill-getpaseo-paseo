@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import type { ToolCallDetail, ToolCallTimelineItem } from "../../agent-sdk-types.js";
+import type { ToolCallTimelineItem } from "../../agent-sdk-types.js";
 import { coerceToolCallId } from "../tool-call-mapper-utils.js";
 import { deriveClaudeToolDetail } from "./tool-call-detail-parser.js";
 
@@ -38,9 +38,7 @@ function coerceCallId(callId: string | null | undefined, name: string, input: un
 function buildBase(params: MapperParams): {
   callId: string;
   name: string;
-  input: unknown | null;
-  output: unknown | null;
-  detail?: ToolCallDetail;
+  detail: Extract<ToolCallTimelineItem, { type: "tool_call" }>["detail"];
   metadata?: Record<string, unknown>;
 } {
   const parsedParams = ClaudeMapperParamsSchema.parse(params);
@@ -51,9 +49,7 @@ function buildBase(params: MapperParams): {
   return {
     callId: coerceCallId(parsedParams.callId, parsedParams.name, input),
     name: parsedParams.name,
-    input,
-    output,
-    ...(detail ? { detail } : {}),
+    detail,
     ...(parsedParams.metadata ? { metadata: parsedParams.metadata } : {}),
   };
 }

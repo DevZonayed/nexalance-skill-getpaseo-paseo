@@ -140,10 +140,8 @@ function buildToolCall(params: {
   callId: string;
   name: string;
   status: ToolCallTimelineItem["status"];
-  input: unknown | null;
-  output: unknown | null;
   error: unknown | null;
-  detail?: ToolCallDetail;
+  detail: ToolCallDetail;
   metadata?: Record<string, unknown>;
 }): ToolCallTimelineItem {
   if (params.status === "failed") {
@@ -152,10 +150,8 @@ function buildToolCall(params: {
       callId: params.callId,
       name: params.name,
       status: "failed",
-      input: params.input,
-      output: params.output,
       error: params.error ?? { message: "Tool call failed" },
-      ...(params.detail ? { detail: params.detail } : {}),
+      detail: params.detail,
       ...(params.metadata ? { metadata: params.metadata } : {}),
     };
   }
@@ -165,10 +161,8 @@ function buildToolCall(params: {
     callId: params.callId,
     name: params.name,
     status: params.status,
-    input: params.input,
-    output: params.output,
     error: null,
-    ...(params.detail ? { detail: params.detail } : {}),
+    detail: params.detail,
     ...(params.metadata ? { metadata: params.metadata } : {}),
   };
 }
@@ -221,7 +215,11 @@ function mapCommandExecutionItem(
         ...(item.aggregatedOutput ? { output: item.aggregatedOutput } : {}),
         ...(item.exitCode !== undefined ? { exitCode: item.exitCode } : {}),
       }
-    : undefined;
+    : {
+        type: "unknown" as const,
+        input,
+        output,
+      };
 
   const name = "shell";
   const callId = coerceCallId(item.id, name, input);
@@ -232,10 +230,8 @@ function mapCommandExecutionItem(
     callId,
     name,
     status,
-    input,
-    output,
     error,
-    ...(detail ? { detail } : {}),
+    detail,
   });
 }
 
@@ -290,7 +286,11 @@ function mapFileChangeItem(
         filePath: firstFile.path,
         ...(firstFile.diff !== undefined ? { unifiedDiff: truncateDiffText(firstFile.diff) } : {}),
       }
-    : undefined;
+    : {
+        type: "unknown" as const,
+        input,
+        output,
+      };
 
   const name = "apply_patch";
   const callId = coerceCallId(item.id, name, input);
@@ -301,10 +301,8 @@ function mapFileChangeItem(
     callId,
     name,
     status,
-    input,
-    output,
     error,
-    ...(detail ? { detail } : {}),
+    detail,
   });
 }
 
@@ -330,10 +328,8 @@ function mapMcpToolCallItem(
     callId,
     name,
     status,
-    input,
-    output,
     error,
-    ...(detail ? { detail } : {}),
+    detail,
   });
 }
 
@@ -349,16 +345,18 @@ function mapWebSearchItem(item: z.infer<typeof CodexWebSearchItemSchema>): ToolC
         type: "search" as const,
         query: item.query,
       }
-    : undefined;
+    : {
+        type: "unknown" as const,
+        input,
+        output,
+      };
 
   return buildToolCall({
     callId,
     name,
     status,
-    input,
-    output,
     error,
-    ...(detail ? { detail } : {}),
+    detail,
   });
 }
 
@@ -420,9 +418,7 @@ export function mapCodexRolloutToolCall(params: {
     callId,
     name: parsed.name,
     status,
-    input,
-    output,
     error,
-    ...(detail ? { detail } : {}),
+    detail,
   });
 }

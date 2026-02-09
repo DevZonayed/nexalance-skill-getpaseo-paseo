@@ -190,8 +190,8 @@ const ToolCallDetailPayloadSchema: z.ZodType<ToolCallDetail> = z.discriminatedUn
   }),
   z.object({
     type: z.literal("unknown"),
-    rawInput: UnknownValueSchema,
-    rawOutput: UnknownValueSchema,
+    input: UnknownValueSchema,
+    output: UnknownValueSchema,
   }),
 ]);
 
@@ -201,7 +201,7 @@ const ToolCallBasePayloadSchema = z.object({
   name: z.string(),
   detail: ToolCallDetailPayloadSchema,
   metadata: z.record(z.unknown()).optional(),
-});
+}).strict();
 
 const ToolCallRunningPayloadSchema = ToolCallBasePayloadSchema.extend({
   status: z.literal("running"),

@@ -45,8 +45,8 @@ describe("tool-call-display", () => {
       error: null,
       detail: {
         type: "unknown",
-        rawInput: null,
-        rawOutput: null,
+        input: null,
+        output: null,
       },
       metadata: {
         subAgentActivity: "Running tests",
@@ -66,8 +66,8 @@ describe("tool-call-display", () => {
       error: null,
       detail: {
         type: "unknown",
-        rawInput: null,
-        rawOutput: null,
+        input: null,
+        output: null,
       },
     });
 
@@ -83,8 +83,8 @@ describe("tool-call-display", () => {
       error: null,
       detail: {
         type: "unknown",
-        rawInput: { command: "npm run test" },
-        rawOutput: null,
+        input: { command: "npm run test" },
+        output: null,
       },
     });
 
@@ -100,8 +100,8 @@ describe("tool-call-display", () => {
       error: { message: "boom" },
       detail: {
         type: "unknown",
-        rawInput: { command: "false" },
-        rawOutput: null,
+        input: { command: "false" },
+        output: null,
       },
     });
 

@@ -187,8 +187,8 @@ describe("claude tool-call mapper", () => {
     expect(item.error).toBeNull();
     expect(item.detail).toEqual({
       type: "unknown",
-      rawInput: { foo: "bar" },
-      rawOutput: { ok: true },
+      input: { foo: "bar" },
+      output: { ok: true },
     });
   });
 });

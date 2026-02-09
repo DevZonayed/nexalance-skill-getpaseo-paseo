@@ -54,14 +54,18 @@ export function deriveClaudeToolDetail(
   name: string,
   input: unknown,
   output: unknown
-): ToolCallDetail | undefined {
+): ToolCallDetail {
   const parsed = ClaudeKnownToolDetailSchema.safeParse({
     name,
     input,
     output,
   });
-  if (!parsed.success) {
-    return undefined;
+  if (parsed.success && parsed.data) {
+    return parsed.data;
   }
-  return parsed.data;
+  return {
+    type: "unknown",
+    input: input ?? null,
+    output: output ?? null,
+  };
 }

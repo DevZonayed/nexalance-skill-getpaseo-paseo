@@ -41,8 +41,8 @@ export interface ToolCall {
   title: string;
   status?: 'pending' | 'in_progress' | 'completed' | 'failed';
   toolKind?: 'read' | 'edit' | 'delete' | 'move' | 'search' | 'execute' | 'think' | 'fetch' | 'switch_mode' | 'other';
-  rawInput?: Record<string, unknown>;
-  rawOutput?: Record<string, unknown>;
+  input?: Record<string, unknown>;
+  output?: Record<string, unknown>;
   content?: unknown[];
   locations?: unknown[];
 }
@@ -53,8 +53,8 @@ export interface ToolCallUpdate {
   title?: string | null;
   status?: 'pending' | 'in_progress' | 'completed' | 'failed' | null;
   toolKind?: 'read' | 'edit' | 'delete' | 'move' | 'search' | 'execute' | 'think' | 'fetch' | 'switch_mode' | 'other' | null;
-  rawInput?: Record<string, unknown>;
-  rawOutput?: Record<string, unknown>;
+  input?: Record<string, unknown>;
+  output?: Record<string, unknown>;
   content?: unknown[] | null;
   locations?: unknown[] | null;
 }
@@ -109,8 +109,8 @@ export interface MergedToolCall {
   title: string;
   status: 'pending' | 'in_progress' | 'completed' | 'failed';
   toolKind?: 'read' | 'edit' | 'delete' | 'move' | 'search' | 'execute' | 'think' | 'fetch' | 'switch_mode' | 'other';
-  rawInput?: Record<string, unknown>;
-  rawOutput?: Record<string, unknown>;
+  input?: Record<string, unknown>;
+  output?: Record<string, unknown>;
   content?: unknown[];
   locations?: unknown[];
   startTimestamp: Date;
@@ -137,8 +137,8 @@ export function groupActivities(activities: AgentActivity[]): Array<GroupedTextM
     title: string;
     status: 'pending' | 'in_progress' | 'completed' | 'failed';
     toolKind?: 'read' | 'edit' | 'delete' | 'move' | 'search' | 'execute' | 'think' | 'fetch' | 'switch_mode' | 'other';
-    rawInput?: Record<string, unknown>;
-    rawOutput?: Record<string, unknown>;
+    input?: Record<string, unknown>;
+    output?: Record<string, unknown>;
     content?: unknown[];
     locations?: unknown[];
     startTimestamp: Date;
@@ -210,8 +210,8 @@ export function groupActivities(activities: AgentActivity[]): Array<GroupedTextM
             title: update.title,
             status: update.status || 'pending',
             toolKind: update.toolKind,
-            rawInput: update.rawInput,
-            rawOutput: update.rawOutput,
+            input: update.input,
+            output: update.output,
             content: update.content,
             locations: update.locations,
             startTimestamp: activity.timestamp,
@@ -223,8 +223,8 @@ export function groupActivities(activities: AgentActivity[]): Array<GroupedTextM
           existing.title = update.title;
           if (update.status) existing.status = update.status;
           if (update.toolKind) existing.toolKind = update.toolKind;
-          if (update.rawInput) existing.rawInput = update.rawInput;
-          if (update.rawOutput) existing.rawOutput = update.rawOutput;
+          if (update.input) existing.input = update.input;
+          if (update.output) existing.output = update.output;
           if (update.content) existing.content = update.content;
           if (update.locations) existing.locations = update.locations;
           existing.endTimestamp = activity.timestamp;
@@ -236,8 +236,8 @@ export function groupActivities(activities: AgentActivity[]): Array<GroupedTextM
           if (update.title) existing.title = update.title;
           if (update.status) existing.status = update.status;
           if (update.toolKind) existing.toolKind = update.toolKind;
-          if (update.rawInput) existing.rawInput = { ...existing.rawInput, ...update.rawInput };
-          if (update.rawOutput) existing.rawOutput = { ...existing.rawOutput, ...update.rawOutput };
+          if (update.input) existing.input = { ...existing.input, ...update.input };
+          if (update.output) existing.output = { ...existing.output, ...update.output };
           if (update.content) existing.content = update.content;
           if (update.locations) existing.locations = update.locations;
           existing.endTimestamp = activity.timestamp;
@@ -251,8 +251,8 @@ export function groupActivities(activities: AgentActivity[]): Array<GroupedTextM
             title: update.title || 'Tool Call',
             status: update.status || 'pending',
             toolKind: update.toolKind || undefined,
-            rawInput: update.rawInput,
-            rawOutput: update.rawOutput,
+            input: update.input,
+            output: update.output,
             content: update.content || undefined,
             locations: update.locations || undefined,
             startTimestamp: activity.timestamp,
@@ -280,8 +280,8 @@ export function groupActivities(activities: AgentActivity[]): Array<GroupedTextM
       title: toolCall.title,
       status: toolCall.status,
       toolKind: toolCall.toolKind,
-      rawInput: toolCall.rawInput,
-      rawOutput: toolCall.rawOutput,
+      input: toolCall.input,
+      output: toolCall.output,
       content: toolCall.content,
       locations: toolCall.locations,
       startTimestamp: toolCall.startTimestamp,

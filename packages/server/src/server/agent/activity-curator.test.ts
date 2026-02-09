@@ -16,8 +16,8 @@ function toolCallItem(params: {
   const detail =
     params.detail ?? {
       type: "unknown" as const,
-      rawInput: params.input ?? null,
-      rawOutput: params.output ?? null,
+      input: params.input ?? null,
+      output: params.output ?? null,
     };
   return {
     type: "tool_call",
