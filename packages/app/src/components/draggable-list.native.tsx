@@ -1,5 +1,5 @@
 import { RefreshControl } from "react-native";
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 import DraggableFlatList, {
   type RenderItemParams,
 } from "react-native-draggable-flatlist";
@@ -28,6 +28,7 @@ export function DraggableList<T>({
   waitFor,
 }: DraggableListProps<T>) {
   const { theme } = useUnistyles();
+  const [isDragging, setIsDragging] = useState(false);
 
   // Pass the ref directly to DraggableFlatList - it handles the gesture coordination
   // The ref may not have .current set yet, but that's okay - DraggableFlatList will
@@ -50,10 +51,21 @@ export function DraggableList<T>({
 
   const handleDragEnd = useCallback(
     ({ data: newData }: { data: T[] }) => {
+      setIsDragging(false);
       onDragEnd(newData);
     },
     [onDragEnd]
   );
+
+  const handleDragBegin = useCallback(() => {
+    setIsDragging(true);
+  }, []);
+
+  const handleRelease = useCallback(() => {
+    setIsDragging(false);
+  }, []);
+
+  const showRefreshControl = Boolean(onRefresh) && (!isDragging || Boolean(refreshing));
 
   return (
     <DraggableFlatList
@@ -71,10 +83,12 @@ export function DraggableList<T>({
       simultaneousHandlers={simultaneousHandlers}
       // Higher activationDistance prevents drag from interfering with nested onLongPress handlers
       activationDistance={20}
+      onDragBegin={handleDragBegin}
+      onRelease={handleRelease}
       // @ts-expect-error - waitFor is supported by RNGH FlatList but not typed in DraggableFlatList
       waitFor={waitFor}
       refreshControl={
-        onRefresh ? (
+        showRefreshControl ? (
           <RefreshControl
             refreshing={refreshing ?? false}
             onRefresh={onRefresh}

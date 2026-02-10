@@ -254,7 +254,7 @@ export function createMarkdownStyles(theme: Theme) {
       color: theme.colors.foregroundMuted,
       marginRight: 4,
       fontSize: theme.fontSize.base,
-      fontWeight: theme.fontWeight.semibold,
+      fontWeight: theme.fontWeight.normal,
       lineHeight: 22,
       minWidth: 12,
     },

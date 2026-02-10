@@ -1,9 +1,11 @@
 {
   "name": "@getpaseo/relay",
   "version": "0.1.0",
-  "private": true,
   "description": "Paseo relay for bridging daemon and client connections",
   "type": "module",
+  "publishConfig": {
+    "access": "public"
+  },
   "types": "./dist/index.d.ts",
   "files": [
     "dist"

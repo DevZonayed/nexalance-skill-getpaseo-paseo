@@ -125,8 +125,8 @@ export function SlidingSidebar({ selectedAgentId }: SlidingSidebarProps) {
     if (isMobile) {
       translateX.value = -windowWidth;
       backdropOpacity.value = 0;
+      closeToAgent();
     }
-    closeToAgent();
     router.push("/agents");
   }, [backdropOpacity, closeToAgent, isMobile, translateX, windowWidth]);
 

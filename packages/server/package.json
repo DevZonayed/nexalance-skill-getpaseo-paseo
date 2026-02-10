@@ -1,9 +1,11 @@
 {
   "name": "@getpaseo/server",
   "version": "0.1.0",
-  "private": true,
   "description": "Paseo backend server",
   "type": "module",
+  "publishConfig": {
+    "access": "public"
+  },
   "types": "./dist/server/server/exports.d.ts",
   "files": [
     "dist/server",
@@ -49,7 +51,8 @@
     "test:e2e:mobile": "playwright test --project='Mobile Chrome'"
   },
   "dependencies": {
-    "@getpaseo/relay": "*",
+    "@anthropic-ai/claude-agent-sdk": "^0.2.11",
+    "@getpaseo/relay": "0.1.0",
     "@ai-sdk/openai": "2.0.52",
     "@deepgram/sdk": "^3.4.0",
     "@lezer/common": "^1.5.0",

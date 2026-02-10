@@ -53,6 +53,7 @@ import { ToolCallSheetProvider } from "./tool-call-sheet";
 import { createMarkdownStyles } from "@/styles/markdown-styles";
 import { MAX_CONTENT_WIDTH } from "@/constants/layout";
 import { isPerfLoggingEnabled, measurePayload, perfLog } from "@/utils/perf";
+import { getMarkdownListMarker } from "@/utils/markdown-list";
 
 const isUserMessageItem = (item?: StreamItem) => item?.kind === "user_message";
 const isToolSequenceItem = (item?: StreamItem) =>
@@ -973,9 +974,7 @@ function PermissionRequestCard({
         parent: any,
         styles: any
       ) => {
-        const isOrdered = parent?.type === "ordered_list";
-        const index = parent?.children?.indexOf(node) ?? 0;
-        const bullet = isOrdered ? `${index + 1}.` : "•";
+        const { isOrdered, marker } = getMarkdownListMarker(node, parent);
         const iconStyle = isOrdered
           ? styles.ordered_list_icon
           : styles.bullet_list_icon;
@@ -985,7 +984,7 @@ function PermissionRequestCard({
 
         return (
           <View key={node.key} style={[styles.list_item, { flexShrink: 0 }]}>
-            <Text style={iconStyle}>{bullet}</Text>
+            <Text style={iconStyle}>{marker}</Text>
             <Text
               style={[contentStyle, { flex: 1, flexShrink: 1, minWidth: 0 }]}
             >

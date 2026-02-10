@@ -31,7 +31,14 @@
     "web": "npm run web --workspace=@getpaseo/app",
     "dev:desktop": "npm run dev --workspace=@getpaseo/desktop",
     "build:desktop": "npm run build --workspace=@getpaseo/desktop",
-    "cli": "npx tsx packages/cli/src/index.js"
+    "cli": "npx tsx packages/cli/src/index.js",
+    "version:sync-internal": "node scripts/sync-workspace-versions.mjs",
+    "version:all:patch": "npm version patch --workspaces --include-workspace-root --no-git-tag-version && npm run version:sync-internal && npm install --package-lock-only",
+    "version:all:minor": "npm version minor --workspaces --include-workspace-root --no-git-tag-version && npm run version:sync-internal && npm install --package-lock-only",
+    "version:all:major": "npm version major --workspaces --include-workspace-root --no-git-tag-version && npm run version:sync-internal && npm install --package-lock-only",
+    "release:check": "npm run typecheck --workspace=@getpaseo/relay && npm run typecheck --workspace=@getpaseo/server && npm run typecheck --workspace=@getpaseo/cli && npm run build --workspace=@getpaseo/relay && npm run build --workspace=@getpaseo/server && npm run build --workspace=@getpaseo/cli && npm pack --dry-run --workspace=@getpaseo/relay && npm pack --dry-run --workspace=@getpaseo/server && npm pack --dry-run --workspace=@getpaseo/cli",
+    "release:publish:dry-run": "npm publish --dry-run --workspace=@getpaseo/relay --access public && npm publish --dry-run --workspace=@getpaseo/server --access public && npm publish --dry-run --workspace=@getpaseo/cli --access public",
+    "release:publish": "npm publish --workspace=@getpaseo/relay --access public && npm publish --workspace=@getpaseo/server --access public && npm publish --workspace=@getpaseo/cli --access public"
   },
   "devDependencies": {
     "concurrently": "^9.2.1",

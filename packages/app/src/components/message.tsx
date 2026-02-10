@@ -3,7 +3,7 @@ import {
   Text,
   Pressable,
   ActivityIndicator,
-  LayoutChangeEvent,
+  type LayoutChangeEvent,
   StyleProp,
   ViewStyle,
   Platform,
@@ -19,22 +19,9 @@ import {
   useContext,
 } from "react";
 import type { ReactNode, ComponentType } from "react";
-import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withRepeat,
-  withTiming,
-  Easing,
-  cancelAnimation,
-} from "react-native-reanimated";
-import Svg, {
-  Defs,
-  LinearGradient,
-  Stop,
-  Rect,
-} from "react-native-svg";
 import Markdown, { MarkdownIt } from "react-native-markdown-display";
 import * as Linking from "expo-linking";
+import MaskedView from "@react-native-masked-view/masked-view";
 import {
   Circle,
   Info,
@@ -55,6 +42,20 @@ import {
   useUnistyles,
   UnistylesRuntime,
 } from "react-native-unistyles";
+import Animated, {
+  Easing,
+  cancelAnimation,
+  useAnimatedStyle,
+  useSharedValue,
+  withRepeat,
+  withTiming,
+} from "react-native-reanimated";
+import Svg, {
+  Defs,
+  LinearGradient as SvgLinearGradient,
+  Rect,
+  Stop,
+} from "react-native-svg";
 import { theme } from "@/styles/theme";
 import {
   createMarkdownStyles,
@@ -69,6 +70,7 @@ import {
 import { resolveToolCallIcon } from "@/utils/tool-call-icon";
 import { getNowMs, isPerfLoggingEnabled, perfLog } from "@/utils/perf";
 import { parseInlinePathToken, type InlinePathTarget } from "@/utils/inline-path";
+import { getMarkdownListMarker } from "@/utils/markdown-list";
 export type { InlinePathTarget } from "@/utils/inline-path";
 import { useToolCallSheet } from "./tool-call-sheet";
 import { ToolCallDetailsContent } from "./tool-call-details";
@@ -100,6 +102,45 @@ export function MessageOuterSpacingProvider({
 function useDisableOuterSpacing(disableOuterSpacing: boolean | undefined) {
   const contextValue = useContext(MessageOuterSpacingContext);
   return disableOuterSpacing ?? contextValue;
+}
+
+const WEB_TOOLCALL_SHIMMER_KEYFRAME_ID = "paseo-toolcall-shimmer-keyframes";
+const WEB_TOOLCALL_SHIMMER_ANIMATION_NAME = "paseo-toolcall-shimmer";
+const WEB_TOOLCALL_SHIMMER_KEYFRAME_CSS = `
+  @keyframes ${WEB_TOOLCALL_SHIMMER_ANIMATION_NAME} {
+    0% {
+      background-position: var(--paseo-shimmer-start, -200px) 0;
+    }
+    100% {
+      background-position: var(--paseo-shimmer-end, 200px) 0;
+    }
+  }
+`;
+let webToolCallShimmerRegistered = false;
+
+function ensureWebToolCallShimmerKeyframes() {
+  if (Platform.OS !== "web") {
+    return;
+  }
+  if (typeof document === "undefined") {
+    return;
+  }
+  const existing = document.getElementById(WEB_TOOLCALL_SHIMMER_KEYFRAME_ID);
+  if (existing) {
+    if (existing.textContent !== WEB_TOOLCALL_SHIMMER_KEYFRAME_CSS) {
+      existing.textContent = WEB_TOOLCALL_SHIMMER_KEYFRAME_CSS;
+    }
+    webToolCallShimmerRegistered = true;
+    return;
+  }
+  if (webToolCallShimmerRegistered) {
+    return;
+  }
+  const styleElement = document.createElement("style");
+  styleElement.id = WEB_TOOLCALL_SHIMMER_KEYFRAME_ID;
+  styleElement.textContent = WEB_TOOLCALL_SHIMMER_KEYFRAME_CSS;
+  document.head.appendChild(styleElement);
+  webToolCallShimmerRegistered = true;
 }
 
 const userMessageStylesheet = StyleSheet.create((theme) => ({
@@ -381,12 +422,22 @@ const expandableBadgeStylesheet = StyleSheet.create((theme) => ({
     fontWeight: theme.fontWeight.normal,
     flexShrink: 0,
   },
+  labelLoading: {
+    color: theme.colors.foreground,
+    opacity: 0.72,
+  },
   secondaryLabel: {
     flex: 1,
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.base,
     fontWeight: theme.fontWeight.normal,
     marginLeft: theme.spacing[2],
+  },
+  shimmerText: {
+    color: "transparent",
+    fontSize: theme.fontSize.base,
+    fontWeight: theme.fontWeight.normal,
+    flexShrink: 1,
   },
   spacer: {
     flex: 1,
@@ -414,7 +465,32 @@ const expandableBadgeStylesheet = StyleSheet.create((theme) => ({
   shimmerOverlay: {
     position: "absolute",
     top: 0,
+    right: 0,
     bottom: 0,
+    left: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    overflow: "hidden",
+  },
+  shimmerMaskRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    width: "100%",
+    height: "100%",
+  },
+  nativeShimmerTrack: {
+    position: "absolute",
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    overflow: "hidden",
+  },
+  nativeShimmerPeak: {
+    position: "absolute",
+    top: 0,
+    bottom: 0,
+    left: 0,
   },
 }));
 
@@ -562,9 +638,7 @@ export const AssistantMessage = memo(function AssistantMessage({
         parent: any,
         styles: any
       ) => {
-        const isOrdered = parent?.type === "ordered_list";
-        const index = parent?.children?.indexOf(node) ?? 0;
-        const bullet = isOrdered ? `${index + 1}.` : "•";
+        const { isOrdered, marker } = getMarkdownListMarker(node, parent);
         const iconStyle = isOrdered
           ? styles.ordered_list_icon
           : styles.bullet_list_icon;
@@ -574,7 +648,7 @@ export const AssistantMessage = memo(function AssistantMessage({
 
         return (
           <View key={node.key} style={styles.list_item}>
-            <Text style={iconStyle}>{bullet}</Text>
+            <Text style={iconStyle}>{marker}</Text>
             <View
               style={[contentStyle, { flex: 1, flexShrink: 1, minWidth: 0 }]}
             >
@@ -997,41 +1071,167 @@ const ExpandableBadge = memo(function ExpandableBadge({
   const { theme } = useUnistyles();
   const resolvedDisableOuterSpacing =
     useDisableOuterSpacing(disableOuterSpacing);
-  const hasDetails = Boolean(renderDetails);
-  const detailContent = hasDetails && isExpanded ? renderDetails?.() : null;
+  const isInteractive = Boolean(onToggle);
+  const hasDetailContent = Boolean(renderDetails);
+  const detailContent =
+    hasDetailContent && isExpanded ? renderDetails?.() : null;
 
-  const [badgeWidth, setBadgeWidth] = useState(0);
-  const handleLayout = useCallback((e: LayoutChangeEvent) => {
-    setBadgeWidth(e.nativeEvent.layout.width);
-  }, []);
+  const nativeGradientIdRef = useRef(
+    `shimmer-gradient-${Math.random().toString(36).substring(2, 9)}`
+  );
+  const [labelRowWidth, setLabelRowWidth] = useState(0);
+  const [labelRowHeight, setLabelRowHeight] = useState(0);
+  const [labelOffsetX, setLabelOffsetX] = useState(0);
+  const [labelWidth, setLabelWidth] = useState(0);
+  const [secondaryOffsetX, setSecondaryOffsetX] = useState(0);
+  const [secondaryWidth, setSecondaryWidth] = useState(0);
+  const shimmerTranslateX = useSharedValue(0);
 
-  const shimmer = useSharedValue(-1);
+  const totalShimmerChars =
+    label.trim().length + (secondaryLabel?.trim().length ?? 0);
+  const shortTextDurationAdjustment = totalShimmerChars <= 12 ? 0.25 : 0;
+  const shimmerDuration = Math.max(
+    1,
+    Math.min(2.3, 1.25 + totalShimmerChars * 0.008 - shortTextDurationAdjustment)
+  );
+  const nativeShimmerPeakWidth = Math.max(
+    32,
+    Math.min(120, labelRowWidth > 0 ? labelRowWidth * 0.28 : 0)
+  );
+  const isWebShimmer = isLoading && Platform.OS === "web";
+  const shouldMeasureWebShimmer = isWebShimmer;
+  const shouldMeasureNativeShimmer = isLoading && Platform.OS !== "web";
+  const isNativeShimmer =
+    shouldMeasureNativeShimmer &&
+    labelRowWidth > 0 &&
+    labelRowHeight > 0;
+  const webShimmerSpanStartX = labelOffsetX;
+  const webShimmerSpanEndX = secondaryLabel
+    ? secondaryOffsetX + secondaryWidth
+    : labelOffsetX + labelWidth;
+  const webShimmerSpanWidth = Math.max(
+    1,
+    webShimmerSpanEndX - webShimmerSpanStartX
+  );
+  const webShimmerPeakWidth = Math.max(
+    42,
+    Math.min(120, webShimmerSpanWidth * 0.22)
+  );
+  const webShimmerTrackStart = webShimmerSpanStartX - webShimmerPeakWidth;
+  const webShimmerTrackEnd = webShimmerSpanEndX;
+
+  const handleLabelRowLayout = useCallback((event: LayoutChangeEvent) => {
+    if (!shouldMeasureNativeShimmer) {
+      return;
+    }
+    const { width, height } = event.nativeEvent.layout;
+    setLabelRowWidth((previous) =>
+      Math.abs(previous - width) > 0.5 ? width : previous
+    );
+    setLabelRowHeight((previous) =>
+      Math.abs(previous - height) > 0.5 ? height : previous
+    );
+  }, [shouldMeasureNativeShimmer]);
+
+  const handleLabelLayout = useCallback((event: LayoutChangeEvent) => {
+    if (!shouldMeasureWebShimmer) {
+      return;
+    }
+    const { x, width } = event.nativeEvent.layout;
+    setLabelOffsetX((previous) =>
+      Math.abs(previous - x) > 0.5 ? x : previous
+    );
+    setLabelWidth((previous) =>
+      Math.abs(previous - width) > 0.5 ? width : previous
+    );
+  }, [shouldMeasureWebShimmer]);
+
+  const handleSecondaryLayout = useCallback((event: LayoutChangeEvent) => {
+    if (!shouldMeasureWebShimmer || !secondaryLabel) {
+      return;
+    }
+    const { x, width } = event.nativeEvent.layout;
+    setSecondaryOffsetX((previous) =>
+      Math.abs(previous - x) > 0.5 ? x : previous
+    );
+    setSecondaryWidth((previous) =>
+      Math.abs(previous - width) > 0.5 ? width : previous
+    );
+  }, [shouldMeasureWebShimmer, secondaryLabel]);
 
   useEffect(() => {
-    if (isLoading) {
-      shimmer.value = -1;
-      shimmer.value = withRepeat(
-        withTiming(1, { duration: 2400, easing: Easing.bezier(0.4, 0, 0.6, 1) }),
-        -1
-      );
-    } else {
-      cancelAnimation(shimmer);
-      shimmer.value = -1;
+    if (!isWebShimmer) {
+      return;
     }
-  }, [isLoading]);
+    ensureWebToolCallShimmerKeyframes();
+  }, [isWebShimmer]);
 
-  const shimmerBandWidth = 18;
-  const shimmerStyle = useAnimatedStyle(() => {
-    const travel = badgeWidth + shimmerBandWidth;
-    return {
-      transform: [
-        {
-          translateX:
-            -shimmerBandWidth + ((shimmer.value + 1) / 2) * travel,
-        },
-      ],
+  useEffect(() => {
+    if (!isNativeShimmer) {
+      cancelAnimation(shimmerTranslateX);
+      shimmerTranslateX.value = -nativeShimmerPeakWidth;
+      return;
+    }
+    const startPosition = -nativeShimmerPeakWidth;
+    const endPosition = labelRowWidth + nativeShimmerPeakWidth;
+    shimmerTranslateX.value = startPosition;
+    shimmerTranslateX.value = withRepeat(
+      withTiming(endPosition, {
+        duration: shimmerDuration * 1000,
+        easing: Easing.linear,
+      }),
+      -1,
+      false
+    );
+    return () => {
+      cancelAnimation(shimmerTranslateX);
     };
-  });
+  }, [
+    isNativeShimmer,
+    labelRowWidth,
+    nativeShimmerPeakWidth,
+    shimmerDuration,
+    shimmerTranslateX,
+  ]);
+
+  const nativeShimmerPeakStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: shimmerTranslateX.value }],
+  }));
+
+  const shimmerGradient =
+    "linear-gradient(90deg, rgba(255, 255, 255, 0) 0%, rgba(255, 255, 255, 0.45) 24%, #ffffff 40%, #ffffff 60%, rgba(255, 255, 255, 0.45) 76%, rgba(255, 255, 255, 0) 100%)";
+
+  const shimmerLabelStyle = isWebShimmer
+    ? ({
+        opacity: 1,
+        color: "transparent",
+        backgroundImage: shimmerGradient,
+        backgroundSize: `${webShimmerPeakWidth}px 100%`,
+        backgroundRepeat: "no-repeat",
+        backgroundClip: "text",
+        WebkitBackgroundClip: "text",
+        WebkitTextFillColor: "transparent",
+        animation: `${WEB_TOOLCALL_SHIMMER_ANIMATION_NAME} ${shimmerDuration}s linear infinite`,
+        "--paseo-shimmer-start": `${webShimmerTrackStart - labelOffsetX}px`,
+        "--paseo-shimmer-end": `${webShimmerTrackEnd - labelOffsetX}px`,
+      } as never)
+    : null;
+
+  const shimmerSecondaryStyle = isWebShimmer
+    ? ({
+        opacity: 1,
+        color: "transparent",
+        backgroundImage: shimmerGradient,
+        backgroundSize: `${webShimmerPeakWidth}px 100%`,
+        backgroundRepeat: "no-repeat",
+        backgroundClip: "text",
+        WebkitBackgroundClip: "text",
+        WebkitTextFillColor: "transparent",
+        animation: `${WEB_TOOLCALL_SHIMMER_ANIMATION_NAME} ${shimmerDuration}s linear infinite`,
+        "--paseo-shimmer-start": `${webShimmerTrackStart - secondaryOffsetX}px`,
+        "--paseo-shimmer-end": `${webShimmerTrackEnd - secondaryOffsetX}px`,
+      } as never)
+    : null;
 
   const IconComponent = icon;
   const iconColor = isError
@@ -1058,14 +1258,13 @@ const ExpandableBadge = memo(function ExpandableBadge({
       testID={testID}
     >
       <Pressable
-        onPress={hasDetails ? onToggle : undefined}
-        onLayout={handleLayout}
-        disabled={!hasDetails}
-        accessibilityRole={hasDetails ? "button" : undefined}
-        accessibilityState={hasDetails ? { expanded: isExpanded } : undefined}
+        onPress={isInteractive ? onToggle : undefined}
+        disabled={!isInteractive}
+        accessibilityRole={isInteractive ? "button" : undefined}
+        accessibilityState={isInteractive ? { expanded: isExpanded } : undefined}
         style={({ pressed }) => [
           expandableBadgeStylesheet.pressable,
-          pressed && hasDetails
+          pressed && isInteractive
             ? expandableBadgeStylesheet.pressablePressed
             : null,
           isExpanded && expandableBadgeStylesheet.pressableExpanded,
@@ -1075,53 +1274,147 @@ const ExpandableBadge = memo(function ExpandableBadge({
           <>
             <View style={expandableBadgeStylesheet.headerRow}>
               <View style={expandableBadgeStylesheet.iconBadge}>{iconNode}</View>
-              <View style={expandableBadgeStylesheet.labelRow}>
-                <Text style={expandableBadgeStylesheet.label} numberOfLines={1}>
+              <View
+                style={expandableBadgeStylesheet.labelRow}
+                onLayout={shouldMeasureNativeShimmer ? handleLabelRowLayout : undefined}
+              >
+                <Text
+                  style={[
+                    expandableBadgeStylesheet.label,
+                    isLoading && expandableBadgeStylesheet.labelLoading,
+                  ]}
+                  numberOfLines={1}
+                  onLayout={shouldMeasureWebShimmer ? handleLabelLayout : undefined}
+                >
                   {label}
                 </Text>
                 {secondaryLabel ? (
                   <Text
                     style={expandableBadgeStylesheet.secondaryLabel}
                     numberOfLines={1}
+                    onLayout={shouldMeasureWebShimmer ? handleSecondaryLayout : undefined}
                   >
                     {secondaryLabel}
                   </Text>
                 ) : (
                   <View style={expandableBadgeStylesheet.spacer} />
                 )}
-                {isLoading && badgeWidth > 0 ? (
-                  <Animated.View
+                {isWebShimmer ? (
+                  <View
+                    style={expandableBadgeStylesheet.shimmerOverlay}
                     pointerEvents="none"
-                    style={[
-                      expandableBadgeStylesheet.shimmerOverlay,
-                      { width: shimmerBandWidth },
-                      shimmerStyle,
-                    ]}
                   >
-                    <Svg width="100%" height="100%" preserveAspectRatio="none">
-                      <Defs>
-                        <LinearGradient
-                          id="shimmerGrad"
-                          x1="0"
-                          y1="0"
-                          x2="1"
-                          y2="0"
+                    <Text
+                      style={[
+                        expandableBadgeStylesheet.label,
+                        isLoading && expandableBadgeStylesheet.labelLoading,
+                        expandableBadgeStylesheet.shimmerText,
+                        shimmerLabelStyle,
+                      ]}
+                      numberOfLines={1}
+                    >
+                      {label}
+                    </Text>
+                    {secondaryLabel ? (
+                      <Text
+                        style={[
+                          expandableBadgeStylesheet.secondaryLabel,
+                          expandableBadgeStylesheet.shimmerText,
+                          shimmerSecondaryStyle,
+                        ]}
+                        numberOfLines={1}
+                      >
+                        {secondaryLabel}
+                      </Text>
+                    ) : (
+                      <View style={expandableBadgeStylesheet.spacer} />
+                    )}
+                  </View>
+                ) : null}
+                {isNativeShimmer ? (
+                  <View
+                    style={expandableBadgeStylesheet.shimmerOverlay}
+                    pointerEvents="none"
+                  >
+                    <MaskedView
+                      style={[
+                        expandableBadgeStylesheet.nativeShimmerTrack,
+                        { width: labelRowWidth, height: labelRowHeight },
+                      ]}
+                      maskElement={
+                        <View
+                          style={[
+                            expandableBadgeStylesheet.shimmerMaskRow,
+                            { width: labelRowWidth, height: labelRowHeight },
+                          ]}
                         >
-                          <Stop offset="0" stopColor={theme.colors.surface1} stopOpacity="0" />
-                          <Stop offset="0.42" stopColor={theme.colors.surface1} stopOpacity="0" />
-                          <Stop offset="0.48" stopColor={theme.colors.surface1} stopOpacity="0.35" />
-                          <Stop offset="0.5" stopColor={theme.colors.surface1} stopOpacity="1" />
-                          <Stop offset="0.52" stopColor={theme.colors.surface1} stopOpacity="0.35" />
-                          <Stop offset="0.58" stopColor={theme.colors.surface1} stopOpacity="0" />
-                          <Stop offset="1" stopColor={theme.colors.surface1} stopOpacity="0" />
-                        </LinearGradient>
-                      </Defs>
-                      <Rect width="100%" height="100%" fill="url(#shimmerGrad)" />
-                    </Svg>
-                  </Animated.View>
+                          <Text
+                            style={[
+                              expandableBadgeStylesheet.label,
+                              { color: "#000000", opacity: 1 },
+                            ]}
+                            numberOfLines={1}
+                          >
+                            {label}
+                          </Text>
+                          {secondaryLabel ? (
+                            <Text
+                              style={[
+                                expandableBadgeStylesheet.secondaryLabel,
+                                { color: "#000000", opacity: 1 },
+                              ]}
+                              numberOfLines={1}
+                            >
+                              {secondaryLabel}
+                            </Text>
+                          ) : (
+                            <View style={expandableBadgeStylesheet.spacer} />
+                          )}
+                        </View>
+                      }
+                    >
+                      <View
+                        style={[
+                          expandableBadgeStylesheet.nativeShimmerTrack,
+                          { width: labelRowWidth, height: labelRowHeight },
+                        ]}
+                      >
+                        <Animated.View
+                          style={[
+                            expandableBadgeStylesheet.nativeShimmerPeak,
+                            nativeShimmerPeakStyle,
+                            { width: nativeShimmerPeakWidth, height: labelRowHeight },
+                          ]}
+                        >
+                          <Svg width="100%" height="100%" preserveAspectRatio="none">
+                            <Defs>
+                              <SvgLinearGradient
+                                id={nativeGradientIdRef.current}
+                                x1="0%"
+                                y1="0%"
+                                x2="100%"
+                                y2="0%"
+                              >
+                                <Stop offset="0%" stopColor="#ffffff" stopOpacity={0} />
+                                <Stop offset="50%" stopColor="#ffffff" stopOpacity={1} />
+                                <Stop offset="100%" stopColor="#ffffff" stopOpacity={0} />
+                              </SvgLinearGradient>
+                            </Defs>
+                            <Rect
+                              x="0"
+                              y="0"
+                              width="100%"
+                              height="100%"
+                              fill={`url(#${nativeGradientIdRef.current})`}
+                            />
+                          </Svg>
+                        </Animated.View>
+                      </View>
+                    </MaskedView>
+                  </View>
                 ) : null}
               </View>
-              {hasDetails && hovered ? (
+              {isInteractive && hovered ? (
                 <ChevronRight
                   size={14}
                   color={theme.colors.foregroundMuted}
@@ -1146,7 +1439,28 @@ const ExpandableBadge = memo(function ExpandableBadge({
       ) : null}
     </View>
   );
-});
+}, areExpandableBadgePropsEqual);
+
+function areExpandableBadgePropsEqual(
+  previous: ExpandableBadgeProps,
+  next: ExpandableBadgeProps
+) {
+  if (previous.label !== next.label) return false;
+  if (previous.secondaryLabel !== next.secondaryLabel) return false;
+  if (previous.icon !== next.icon) return false;
+  if (previous.isExpanded !== next.isExpanded) return false;
+  if (previous.style !== next.style) return false;
+  if (previous.isLoading !== next.isLoading) return false;
+  if (previous.isError !== next.isError) return false;
+  if (previous.isLastInSequence !== next.isLastInSequence) return false;
+  if (previous.disableOuterSpacing !== next.disableOuterSpacing) return false;
+  if (previous.testID !== next.testID) return false;
+  if (Boolean(previous.onToggle) !== Boolean(next.onToggle)) return false;
+  if (previous.isExpanded && previous.renderDetails !== next.renderDetails) {
+    return false;
+  }
+  return true;
+}
 
 interface ToolCallProps {
   toolName: string;
@@ -1329,18 +1643,26 @@ export const ToolCall = memo(function ToolCall({
       icon={IconComponent}
       isExpanded={!isMobile && isExpanded}
       onToggle={hasDetails ? handleToggle : undefined}
-      renderDetails={
-        hasDetails && !isMobile
-          ? renderDetails
-          : hasDetails
-            ? () => null
-            : undefined
-      }
-      isLoading={status === "executing" || status === "running"}
+      renderDetails={hasDetails && !isMobile ? renderDetails : undefined}
+      isLoading={status === "running" || status === "executing"}
       isError={status === "failed"}
       isLastInSequence={isLastInSequence}
       disableOuterSpacing={disableOuterSpacing}
       onDetailHoverChange={onInlineDetailsHoverChange}
     />
   );
-});
+}, areToolCallPropsEqual);
+
+function areToolCallPropsEqual(previous: ToolCallProps, next: ToolCallProps) {
+  if (previous.toolName !== next.toolName) return false;
+  if (previous.args !== next.args) return false;
+  if (previous.result !== next.result) return false;
+  if (previous.error !== next.error) return false;
+  if (previous.status !== next.status) return false;
+  if (previous.detail !== next.detail) return false;
+  if (previous.cwd !== next.cwd) return false;
+  if (previous.metadata !== next.metadata) return false;
+  if (previous.isLastInSequence !== next.isLastInSequence) return false;
+  if (previous.disableOuterSpacing !== next.disableOuterSpacing) return false;
+  return true;
+}
