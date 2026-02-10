@@ -411,4 +411,56 @@ describe("codex tool-call mapper", () => {
       expect(item.detail.newString).toBeUndefined();
     }
   });
+
+  it("maps fileChange patch alias fields into edit unified diff detail", () => {
+    const item = mapCodexToolCallFromThreadItem(
+      {
+        type: "fileChange",
+        id: "codex-file-change-patch-alias",
+        status: "completed",
+        changes: [
+          {
+            path: "/tmp/repo/src/from-patch-alias.ts",
+            kind: "modify",
+            patch: "@@\n-oldAlias\n+newAlias\n",
+          },
+        ],
+      },
+      { cwd: "/tmp/repo" }
+    );
+
+    expect(item?.detail?.type).toBe("edit");
+    if (item?.detail?.type === "edit") {
+      expect(item.detail.filePath).toBe("src/from-patch-alias.ts");
+      expect(item.detail.unifiedDiff).toContain("-oldAlias");
+      expect(item.detail.unifiedDiff).toContain("+newAlias");
+      expect(item.detail.newString).toBeUndefined();
+    }
+  });
+
+  it("maps fileChange unifiedDiff alias fields into edit unified diff detail", () => {
+    const item = mapCodexToolCallFromThreadItem(
+      {
+        type: "fileChange",
+        id: "codex-file-change-unified-diff-alias",
+        status: "completed",
+        changes: [
+          {
+            path: "/tmp/repo/src/from-unified-diff-alias.ts",
+            kind: "modify",
+            unified_diff: "@@\n-beforeAlias\n+afterAlias\n",
+          },
+        ],
+      },
+      { cwd: "/tmp/repo" }
+    );
+
+    expect(item?.detail?.type).toBe("edit");
+    if (item?.detail?.type === "edit") {
+      expect(item.detail.filePath).toBe("src/from-unified-diff-alias.ts");
+      expect(item.detail.unifiedDiff).toContain("-beforeAlias");
+      expect(item.detail.unifiedDiff).toContain("+afterAlias");
+      expect(item.detail.newString).toBeUndefined();
+    }
+  });
 });

@@ -59,7 +59,11 @@ const CodexFileChangeItemSchema = z
             path: z.string().optional(),
             kind: z.string().optional(),
             diff: z.string().optional(),
+            patch: z.string().optional(),
+            unified_diff: z.string().optional(),
+            unifiedDiff: z.string().optional(),
             content: z.string().optional(),
+            newString: z.string().optional(),
           })
           .passthrough()
       )
@@ -303,6 +307,15 @@ function asPatchOrContentFields(text: string | undefined): { patch?: string; con
     return { patch: truncateDiffText(classified.text) };
   }
   return { content: text };
+}
+
+function pickFirstPatchLikeString(values: unknown[]): string | undefined {
+  for (const value of values) {
+    if (typeof value === "string" && value.length > 0) {
+      return value;
+    }
+  }
+  return undefined;
 }
 
 function removePatchLikeFields(input: Record<string, unknown>): Record<string, unknown> {
@@ -560,7 +573,14 @@ function mapFileChangeItem(
       return {
         path: pathValue,
         kind: change.kind,
-        diff: change.diff ?? change.content,
+        diff: pickFirstPatchLikeString([
+          change.diff,
+          change.patch,
+          change.unified_diff,
+          change.unifiedDiff,
+          change.content,
+          change.newString,
+        ]),
       };
     })
     .filter((change) => change.path !== undefined);

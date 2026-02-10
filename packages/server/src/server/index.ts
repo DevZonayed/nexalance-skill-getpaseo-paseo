@@ -34,7 +34,16 @@ async function main() {
     config.mcpEnabled = false;
   }
 
-  const daemon = await createPaseoDaemon(config, logger);
+  let daemon;
+  try {
+    daemon = await createPaseoDaemon(config, logger);
+  } catch (err) {
+    if (err instanceof PidLockError) {
+      logger.error({ pid: err.existingLock?.pid }, err.message);
+      process.exit(1);
+    }
+    throw err;
+  }
 
   try {
     await daemon.start();

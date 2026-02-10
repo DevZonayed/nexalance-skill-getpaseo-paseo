@@ -38,6 +38,11 @@ import { useTrafficLightPadding } from "@/utils/tauri-window";
 import { CommandCenter } from "@/components/command-center";
 import { useGlobalKeyboardNav } from "@/hooks/use-global-keyboard-nav";
 import { queryClient } from "@/query/query-client";
+import {
+  WEB_NOTIFICATION_CLICK_EVENT,
+  type WebNotificationClickDetail,
+} from "@/utils/os-notifications";
+import { buildNotificationRoute } from "@/utils/notification-routing";
 
 polyfillCrypto();
 
@@ -47,7 +52,24 @@ function PushNotificationRouter() {
 
   useEffect(() => {
     if (Platform.OS === "web") {
-      return;
+      const target = globalThis as unknown as EventTarget;
+      const openFromWebClick = (event: Event) => {
+        const customEvent = event as CustomEvent<WebNotificationClickDetail>;
+        const route = buildNotificationRoute(customEvent.detail?.data);
+        event.preventDefault();
+        router.push(route as any);
+      };
+
+      target.addEventListener(
+        WEB_NOTIFICATION_CLICK_EVENT,
+        openFromWebClick as EventListener
+      );
+      return () => {
+        target.removeEventListener(
+          WEB_NOTIFICATION_CLICK_EVENT,
+          openFromWebClick as EventListener
+        );
+      };
     }
 
     Notifications.setNotificationHandler({
@@ -71,14 +93,7 @@ function PushNotificationRouter() {
       const data = response.notification.request.content.data as
         | Record<string, unknown>
         | undefined;
-      const agentId = typeof data?.agentId === "string" ? data.agentId : null;
-
-      if (agentId) {
-        // Legacy route resolves agent -> host once sessions reconnect.
-        router.push(`/agent/${agentId}` as any);
-      } else {
-        router.push("/agents" as any);
-      }
+      router.push(buildNotificationRoute(data) as any);
     };
 
     const subscription =

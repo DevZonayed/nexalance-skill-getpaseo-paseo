@@ -708,6 +708,27 @@ type CodexPatchFileChange = {
   content?: string;
 };
 
+function extractPatchLikeText(value: unknown): string | undefined {
+  if (!value || typeof value !== "object") {
+    return undefined;
+  }
+  const record = value as Record<string, unknown>;
+  const candidates = [
+    record.diff,
+    record.patch,
+    record.unified_diff,
+    record.unifiedDiff,
+    record.content,
+    record.newString,
+  ];
+  for (const candidate of candidates) {
+    if (typeof candidate === "string" && candidate.length > 0) {
+      return candidate;
+    }
+  }
+  return undefined;
+}
+
 function normalizeCodexThreadItemType(rawType: string | undefined): string | undefined {
   if (!rawType) {
     return rawType;
@@ -780,20 +801,60 @@ function parseCodexPatchChanges(changes: unknown): CodexPatchFileChange[] {
   if (!changes || typeof changes !== "object") {
     return [];
   }
-  return Object.entries(changes as Record<string, unknown>)
+
+  if (Array.isArray(changes)) {
+    return changes
+      .map((entry): CodexPatchFileChange | null => {
+        if (!entry || typeof entry !== "object") {
+          return null;
+        }
+        const record = entry as Record<string, unknown>;
+        const pathValue =
+          typeof record.path === "string" && record.path.trim().length > 0
+            ? record.path.trim()
+            : "";
+        if (!pathValue) {
+          return null;
+        }
+        return {
+          path: pathValue,
+          kind:
+            (typeof record.kind === "string" && record.kind) ||
+            (typeof record.type === "string" && record.type) ||
+            undefined,
+          content: extractPatchLikeText(record),
+        };
+      })
+      .filter((entry): entry is CodexPatchFileChange => entry !== null);
+  }
+
+  const recordChanges = changes as Record<string, unknown>;
+  if (typeof recordChanges.path === "string" && recordChanges.path.trim().length > 0) {
+    return [
+      {
+        path: recordChanges.path.trim(),
+        kind:
+          (typeof recordChanges.kind === "string" && recordChanges.kind) ||
+          (typeof recordChanges.type === "string" && recordChanges.type) ||
+          undefined,
+        content: extractPatchLikeText(recordChanges),
+      },
+    ];
+  }
+
+  return Object.entries(recordChanges)
     .map(([path, value]): CodexPatchFileChange | null => {
       const normalizedPath = path.trim();
       if (!normalizedPath) {
         return null;
       }
-      const parsed =
-        value && typeof value === "object"
-          ? (value as { type?: unknown; content?: unknown })
-          : null;
       return {
         path: normalizedPath,
-        kind: typeof parsed?.type === "string" ? parsed.type : undefined,
-        content: typeof parsed?.content === "string" ? parsed.content : undefined,
+        kind:
+          value && typeof value === "object" && typeof (value as { type?: unknown }).type === "string"
+            ? ((value as { type?: string }).type ?? undefined)
+            : undefined,
+        content: extractPatchLikeText(value),
       };
     })
     .filter((entry): entry is CodexPatchFileChange => entry !== null);
@@ -820,6 +881,46 @@ function toRunningToolCall(item: ToolCallTimelineItem): ToolCallTimelineItem {
     status: "running",
     error: null,
   };
+}
+
+function isEditToolCallWithoutContent(item: ToolCallTimelineItem): boolean {
+  if (item.type !== "tool_call") {
+    return false;
+  }
+  if (item.detail.type !== "edit") {
+    return false;
+  }
+  const hasDiff =
+    typeof item.detail.unifiedDiff === "string" &&
+    item.detail.unifiedDiff.trim().length > 0;
+  const hasNewString =
+    typeof item.detail.newString === "string" &&
+    item.detail.newString.trim().length > 0;
+  return !hasDiff && !hasNewString;
+}
+
+function decodeCodexOutputDeltaChunk(chunk: string): string {
+  const trimmed = chunk.trim();
+  if (trimmed.length === 0) {
+    return chunk;
+  }
+  if (!/^[A-Za-z0-9+/=]+$/.test(trimmed) || trimmed.length % 4 !== 0) {
+    return chunk;
+  }
+
+  try {
+    const decoded = Buffer.from(trimmed, "base64").toString("utf8");
+    if (decoded.length === 0) {
+      return chunk;
+    }
+    const normalizedInput = trimmed.replace(/=+$/, "");
+    const normalizedRoundTrip = Buffer.from(decoded, "utf8")
+      .toString("base64")
+      .replace(/=+$/, "");
+    return normalizedRoundTrip === normalizedInput ? decoded : chunk;
+  } catch {
+    return chunk;
+  }
 }
 
 function mapCodexExecNotificationToToolCall(params: {
@@ -881,10 +982,10 @@ function mapCodexPatchNotificationToToolCall(params: {
 }): ToolCallTimelineItem {
   const files = parseCodexPatchChanges(params.changes);
   const firstPath = files[0]?.path;
-  const firstContent = files
+  const firstPatchText = files
     .map((file) => file.content?.trim())
     .find((value): value is string => typeof value === "string" && value.length > 0);
-  const patchText = params.latestUnifiedDiff?.trim() || firstContent;
+  const patchText = params.latestUnifiedDiff?.trim() || firstPatchText;
   const patchFields = codexPatchTextFields(patchText);
   const mapped = mapCodexRolloutToolCall({
     callId: params.callId ?? null,
@@ -907,7 +1008,7 @@ function mapCodexPatchNotificationToToolCall(params: {
                 files: files.map((file) => ({
                   path: file.path,
                   ...(file.kind ? { kind: file.kind } : {}),
-                  ...patchFields,
+                  ...codexPatchTextFields(file.content ?? patchText),
                 })),
               }
             : {}),
@@ -1138,6 +1239,18 @@ const CodexEventExecCommandEndNotificationSchema = z.object({
     .passthrough(),
 }).passthrough();
 
+const CodexEventExecCommandOutputDeltaNotificationSchema = z.object({
+  msg: z
+    .object({
+      type: z.literal("exec_command_output_delta"),
+      call_id: z.string().optional(),
+      stream: z.string().optional(),
+      chunk: z.string().optional(),
+      delta: z.string().optional(),
+    })
+    .passthrough(),
+}).passthrough();
+
 const CodexEventPatchApplyBeginNotificationSchema = z.object({
   msg: z
     .object({
@@ -1159,6 +1272,12 @@ const CodexEventPatchApplyEndNotificationSchema = z.object({
       success: z.boolean().optional(),
     })
     .passthrough(),
+}).passthrough();
+
+const ItemFileChangeOutputDeltaNotificationSchema = z.object({
+  itemId: z.string(),
+  delta: z.string().optional(),
+  chunk: z.string().optional(),
 }).passthrough();
 
 const CodexEventTurnDiffNotificationSchema = z.object({
@@ -1207,6 +1326,12 @@ type ParsedCodexNotification =
       stderr: string | null;
     }
   | {
+      kind: "exec_command_output_delta";
+      callId: string | null;
+      stream: string | null;
+      chunk: string | null;
+    }
+  | {
       kind: "patch_apply_started";
       callId: string | null;
       changes: unknown;
@@ -1218,6 +1343,11 @@ type ParsedCodexNotification =
       stdout: string | null;
       stderr: string | null;
       success: boolean | null;
+    }
+  | {
+      kind: "file_change_output_delta";
+      itemId: string;
+      delta: string | null;
     }
   | { kind: "invalid_payload"; method: string; params: unknown }
   | { kind: "unknown_method"; method: string; params: unknown };
@@ -1371,6 +1501,23 @@ const CodexNotificationSchema = z.union([
     ({ method, params }): ParsedCodexNotification => ({ kind: "invalid_payload", method, params })
   ),
   z.object({
+    method: z.literal("codex/event/exec_command_output_delta"),
+    params: CodexEventExecCommandOutputDeltaNotificationSchema,
+  }).transform(
+    ({ params }): ParsedCodexNotification => ({
+      kind: "exec_command_output_delta",
+      callId: params.msg.call_id ?? null,
+      stream: params.msg.stream ?? null,
+      chunk: params.msg.chunk ?? params.msg.delta ?? null,
+    })
+  ),
+  z.object({
+    method: z.literal("codex/event/exec_command_output_delta"),
+    params: z.unknown(),
+  }).transform(
+    ({ method, params }): ParsedCodexNotification => ({ kind: "invalid_payload", method, params })
+  ),
+  z.object({
     method: z.literal("codex/event/patch_apply_begin"),
     params: CodexEventPatchApplyBeginNotificationSchema,
   }).transform(
@@ -1397,6 +1544,19 @@ const CodexNotificationSchema = z.union([
     })
   ),
   z.object({ method: z.literal("codex/event/patch_apply_end"), params: z.unknown() }).transform(
+    ({ method, params }): ParsedCodexNotification => ({ kind: "invalid_payload", method, params })
+  ),
+  z.object({
+    method: z.literal("item/fileChange/outputDelta"),
+    params: ItemFileChangeOutputDeltaNotificationSchema,
+  }).transform(
+    ({ params }): ParsedCodexNotification => ({
+      kind: "file_change_output_delta",
+      itemId: params.itemId,
+      delta: params.delta ?? params.chunk ?? null,
+    })
+  ),
+  z.object({ method: z.literal("item/fileChange/outputDelta"), params: z.unknown() }).transform(
     ({ method, params }): ParsedCodexNotification => ({ kind: "invalid_payload", method, params })
   ),
   z.object({
@@ -1539,6 +1699,10 @@ export async function codexAppServerTurnInputFromPrompt(
   return output;
 }
 
+export const __codexAppServerInternals = {
+  mapCodexPatchNotificationToToolCall,
+};
+
 class CodexAppServerAgentSession implements AgentSession {
   readonly provider = CODEX_PROVIDER;
   readonly capabilities = CODEX_APP_SERVER_CAPABILITIES;
@@ -1565,10 +1729,13 @@ class CodexAppServerAgentSession implements AgentSession {
   private resolvedPermissionRequests = new Set<string>();
   private pendingAgentMessages = new Map<string, string>();
   private pendingReasoning = new Map<string, string[]>();
+  private pendingCommandOutputDeltas = new Map<string, string[]>();
+  private pendingFileChangeOutputDeltas = new Map<string, string[]>();
   private emittedItemStartedIds = new Set<string>();
   private emittedItemCompletedIds = new Set<string>();
   private warnedUnknownNotificationMethods = new Set<string>();
   private warnedInvalidNotificationPayloads = new Set<string>();
+  private warnedIncompleteEditToolCallIds = new Set<string>();
   private latestTurnUnifiedDiff: string | null = null;
   private latestUsage: AgentUsage | undefined;
   private connected = false;
@@ -1757,6 +1924,9 @@ class CodexAppServerAgentSession implements AgentSession {
               cwd: this.config.cwd ?? null,
             });
             if (timelineItem) {
+              if (timelineItem.type === "tool_call") {
+                this.warnOnIncompleteEditToolCall(timelineItem, "thread_read", item);
+              }
               threadTimeline.push(timelineItem);
             }
           }
@@ -2255,6 +2425,9 @@ class CodexAppServerAgentSession implements AgentSession {
       this.latestTurnUnifiedDiff = null;
       this.emittedItemStartedIds.clear();
       this.emittedItemCompletedIds.clear();
+      this.pendingCommandOutputDeltas.clear();
+      this.pendingFileChangeOutputDeltas.clear();
+      this.warnedIncompleteEditToolCallIds.clear();
       this.emitEvent({ type: "turn_started", provider: CODEX_PROVIDER });
       return;
     }
@@ -2274,6 +2447,9 @@ class CodexAppServerAgentSession implements AgentSession {
       this.latestTurnUnifiedDiff = null;
       this.emittedItemStartedIds.clear();
       this.emittedItemCompletedIds.clear();
+      this.pendingCommandOutputDeltas.clear();
+      this.pendingFileChangeOutputDeltas.clear();
+      this.warnedIncompleteEditToolCallIds.clear();
       this.eventQueue?.end();
       return;
     }
@@ -2321,7 +2497,25 @@ class CodexAppServerAgentSession implements AgentSession {
       return;
     }
 
+    if (parsed.kind === "exec_command_output_delta") {
+      this.appendOutputDeltaChunk(
+        this.pendingCommandOutputDeltas,
+        parsed.callId,
+        parsed.chunk,
+        { decodeBase64: true }
+      );
+      return;
+    }
+
+    if (parsed.kind === "file_change_output_delta") {
+      this.appendOutputDeltaChunk(this.pendingFileChangeOutputDeltas, parsed.itemId, parsed.delta);
+      return;
+    }
+
     if (parsed.kind === "exec_command_started") {
+      if (parsed.callId) {
+        this.pendingCommandOutputDeltas.delete(parsed.callId);
+      }
       const timelineItem = mapCodexExecNotificationToToolCall({
         callId: parsed.callId,
         command: parsed.command,
@@ -2335,11 +2529,15 @@ class CodexAppServerAgentSession implements AgentSession {
     }
 
     if (parsed.kind === "exec_command_completed") {
+      const bufferedOutput = this.consumeOutputDelta(
+        this.pendingCommandOutputDeltas,
+        parsed.callId
+      );
       const timelineItem = mapCodexExecNotificationToToolCall({
         callId: parsed.callId,
         command: parsed.command,
         cwd: parsed.cwd ?? this.config.cwd ?? null,
-        output: parsed.output,
+        output: parsed.output ?? bufferedOutput,
         exitCode: parsed.exitCode,
         success: parsed.success,
         stderr: parsed.stderr,
@@ -2352,6 +2550,9 @@ class CodexAppServerAgentSession implements AgentSession {
     }
 
     if (parsed.kind === "patch_apply_started") {
+      if (parsed.callId) {
+        this.pendingFileChangeOutputDeltas.delete(parsed.callId);
+      }
       const timelineItem = mapCodexPatchNotificationToToolCall({
         callId: parsed.callId,
         changes: parsed.changes,
@@ -2359,20 +2560,33 @@ class CodexAppServerAgentSession implements AgentSession {
         latestUnifiedDiff: this.latestTurnUnifiedDiff,
         running: true,
       });
+      this.warnOnIncompleteEditToolCall(timelineItem, "patch_apply_started", {
+        callId: parsed.callId,
+        changes: parsed.changes,
+      });
       this.emitEvent({ type: "timeline", provider: CODEX_PROVIDER, item: timelineItem });
       return;
     }
 
     if (parsed.kind === "patch_apply_completed") {
+      const bufferedOutput = this.consumeOutputDelta(
+        this.pendingFileChangeOutputDeltas,
+        parsed.callId
+      );
       const timelineItem = mapCodexPatchNotificationToToolCall({
         callId: parsed.callId,
         changes: parsed.changes,
         cwd: this.config.cwd ?? null,
-        stdout: parsed.stdout,
+        stdout: parsed.stdout ?? bufferedOutput,
         stderr: parsed.stderr,
         success: parsed.success,
         latestUnifiedDiff: this.latestTurnUnifiedDiff,
         running: false,
+      });
+      this.warnOnIncompleteEditToolCall(timelineItem, "patch_apply_completed", {
+        callId: parsed.callId,
+        changes: parsed.changes,
+        stdout: parsed.stdout,
       });
       this.emitEvent({ type: "timeline", provider: CODEX_PROVIDER, item: timelineItem });
       return;
@@ -2406,10 +2620,15 @@ class CodexAppServerAgentSession implements AgentSession {
             timelineItem.text = buffered.join("");
           }
         }
+        if (timelineItem.type === "tool_call") {
+          this.warnOnIncompleteEditToolCall(timelineItem, "item_completed", parsed.item);
+        }
         this.emitEvent({ type: "timeline", provider: CODEX_PROVIDER, item: timelineItem });
         if (itemId) {
           this.emittedItemCompletedIds.add(itemId);
           this.emittedItemStartedIds.delete(itemId);
+          this.pendingCommandOutputDeltas.delete(itemId);
+          this.pendingFileChangeOutputDeltas.delete(itemId);
         }
       }
       return;
@@ -2428,9 +2647,12 @@ class CodexAppServerAgentSession implements AgentSession {
         if (itemId && this.emittedItemStartedIds.has(itemId)) {
           return;
         }
+        this.warnOnIncompleteEditToolCall(timelineItem, "item_started", parsed.item);
         this.emitEvent({ type: "timeline", provider: CODEX_PROVIDER, item: timelineItem });
         if (itemId) {
           this.emittedItemStartedIds.add(itemId);
+          this.pendingCommandOutputDeltas.delete(itemId);
+          this.pendingFileChangeOutputDeltas.delete(itemId);
         }
       }
       return;
@@ -2461,6 +2683,62 @@ class CodexAppServerAgentSession implements AgentSession {
     this.logger.warn(
       { method, params },
       "Invalid Codex app-server notification payload"
+    );
+  }
+
+  private appendOutputDeltaChunk(
+    store: Map<string, string[]>,
+    id: string | null | undefined,
+    chunk: string | null | undefined,
+    options?: { decodeBase64?: boolean }
+  ): void {
+    if (!id || !chunk) {
+      return;
+    }
+    const normalized = options?.decodeBase64 ? decodeCodexOutputDeltaChunk(chunk) : chunk;
+    if (!normalized.length) {
+      return;
+    }
+    const prev = store.get(id) ?? [];
+    prev.push(normalized);
+    store.set(id, prev);
+  }
+
+  private consumeOutputDelta(store: Map<string, string[]>, id: string | null | undefined): string | null {
+    if (!id) {
+      return null;
+    }
+    const buffered = store.get(id);
+    if (!buffered || buffered.length === 0) {
+      return null;
+    }
+    store.delete(id);
+    return buffered.join("");
+  }
+
+  private warnOnIncompleteEditToolCall(
+    item: ToolCallTimelineItem,
+    source: string,
+    payload: unknown
+  ): void {
+    if (!isEditToolCallWithoutContent(item)) {
+      return;
+    }
+    const warnKey = `${source}:${item.callId}`;
+    if (this.warnedIncompleteEditToolCallIds.has(warnKey)) {
+      return;
+    }
+    this.warnedIncompleteEditToolCallIds.add(warnKey);
+    this.logger.warn(
+      {
+        source,
+        callId: item.callId,
+        status: item.status,
+        name: item.name,
+        detail: item.detail,
+        payload,
+      },
+      "Codex edit tool call is missing diff/content fields"
     );
   }
 

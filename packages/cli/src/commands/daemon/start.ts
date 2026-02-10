@@ -1,5 +1,8 @@
 import { Command } from 'commander'
 import chalk from 'chalk'
+import { spawn } from 'node:child_process'
+import { closeSync, openSync, readFileSync } from 'node:fs'
+import path from 'node:path'
 import {
   createPaseoDaemon,
   loadConfig,
@@ -11,16 +14,34 @@ import type { CliConfigOverrides } from '@getpaseo/server'
 
 interface StartOptions {
   port?: string
+  listen?: string
   home?: string
   foreground?: boolean
-  noRelay?: boolean
-  noMcp?: boolean
+  relay?: boolean
+  mcp?: boolean
   allowedHosts?: string
 }
+
+interface DetachedStartupReady {
+  exitedEarly: false
+}
+
+interface DetachedStartupExited {
+  exitedEarly: true
+  code: number | null
+  signal: NodeJS.Signals | null
+  error?: Error
+}
+
+type DetachedStartupResult = DetachedStartupReady | DetachedStartupExited
+
+const DETACHED_STARTUP_GRACE_MS = 1200
+const DAEMON_LOG_FILENAME = 'daemon.log'
 
 export function startCommand(): Command {
   return new Command('start')
     .description('Start the Paseo daemon')
+    .option('--listen <listen>', 'Listen target (host:port, port, or unix socket path)')
     .option('--port <port>', 'Port to listen on (default: 6767)')
     .option('--home <path>', 'Paseo home directory (default: ~/.paseo)')
     .option('--foreground', 'Run in foreground (don\'t daemonize)')
@@ -35,7 +56,133 @@ export function startCommand(): Command {
     })
 }
 
+function buildForegroundArgs(options: StartOptions): string[] {
+  const args = ['daemon', 'start', '--foreground']
+
+  if (options.listen) {
+    args.push('--listen', options.listen)
+  } else if (options.port) {
+    args.push('--port', options.port)
+  }
+
+  if (options.home) {
+    args.push('--home', options.home)
+  }
+
+  if (options.relay === false) {
+    args.push('--no-relay')
+  }
+
+  if (options.mcp === false) {
+    args.push('--no-mcp')
+  }
+
+  if (options.allowedHosts) {
+    args.push('--allowed-hosts', options.allowedHosts)
+  }
+
+  return args
+}
+
+function tailFile(filePath: string, lines = 30): string | null {
+  try {
+    const content = readFileSync(filePath, 'utf-8')
+    return content.split('\n').filter(Boolean).slice(-lines).join('\n')
+  } catch {
+    return null
+  }
+}
+
+async function runDetachedStart(options: StartOptions): Promise<void> {
+  const childEnv: NodeJS.ProcessEnv = { ...process.env }
+  if (options.home) {
+    childEnv.PASEO_HOME = options.home
+  }
+
+  const paseoHome = resolvePaseoHome(childEnv)
+  const logPath = path.join(paseoHome, DAEMON_LOG_FILENAME)
+
+  const cliEntry = process.argv[1]
+  if (!cliEntry) {
+    throw new Error('Unable to determine CLI entrypoint for detached daemon start')
+  }
+
+  const logFd = openSync(logPath, 'a')
+
+  try {
+    const child = spawn(
+      process.execPath,
+      [...process.execArgv, cliEntry, ...buildForegroundArgs(options)],
+      {
+        detached: true,
+        env: childEnv,
+        stdio: ['ignore', logFd, logFd],
+      }
+    )
+
+    child.unref()
+
+    const startup = await new Promise<DetachedStartupResult>((resolve) => {
+      let settled = false
+
+      const finish = (value: DetachedStartupResult) => {
+        if (settled) return
+        settled = true
+        resolve(value)
+      }
+
+      const timer = setTimeout(() => finish({ exitedEarly: false }), DETACHED_STARTUP_GRACE_MS)
+
+      child.once('error', (error) => {
+        clearTimeout(timer)
+        finish({ exitedEarly: true, code: null, signal: null, error })
+      })
+
+      child.once('exit', (code, signal) => {
+        clearTimeout(timer)
+        finish({ exitedEarly: true, code, signal })
+      })
+    })
+
+    if (startup.exitedEarly) {
+      const reason = startup.error
+        ? startup.error.message
+        : `exit code ${startup.code ?? 'unknown'}${startup.signal ? ` (${startup.signal})` : ''}`
+      const recentLogs = tailFile(logPath)
+      throw new Error(
+        [
+          `Daemon failed to start in background (${reason}).`,
+          recentLogs ? `Recent daemon logs:\n${recentLogs}` : null,
+        ]
+          .filter(Boolean)
+          .join('\n\n')
+      )
+    }
+
+    console.log(chalk.green(`Daemon starting in background (PID ${child.pid ?? 'unknown'}).`))
+    console.log(chalk.dim(`Logs: ${logPath}`))
+  } finally {
+    closeSync(logFd)
+  }
+}
+
 async function runStart(options: StartOptions): Promise<void> {
+  if (options.listen && options.port) {
+    console.error(chalk.red('Cannot use --listen and --port together'))
+    process.exit(1)
+  }
+
+  if (!options.foreground) {
+    try {
+      await runDetachedStart(options)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      console.error(chalk.red(message))
+      process.exit(1)
+    }
+    return
+  }
+
   // Set environment variables based on CLI options
   if (options.home) {
     process.env.PASEO_HOME = options.home
@@ -46,11 +193,13 @@ async function runStart(options: StartOptions): Promise<void> {
   let config: ReturnType<typeof loadConfig>
   const cliOverrides: CliConfigOverrides = {}
 
-  if (options.port) {
+  if (options.listen) {
+    cliOverrides.listen = options.listen
+  } else if (options.port) {
     cliOverrides.listen = `127.0.0.1:${options.port}`
   }
 
-  if (options.noRelay) {
+  if (options.relay === false) {
     cliOverrides.relayEnabled = false
   }
 
@@ -62,7 +211,7 @@ async function runStart(options: StartOptions): Promise<void> {
         : raw.split(',').map(h => h.trim()).filter(Boolean)
   }
 
-  if (options.noMcp) {
+  if (options.mcp === false) {
     cliOverrides.mcpEnabled = false
   }
 
@@ -77,13 +226,14 @@ async function runStart(options: StartOptions): Promise<void> {
     process.exit(1)
   }
 
-  // For now, only foreground mode is supported
-  // TODO: Implement daemonization in a future phase
-  if (!options.foreground) {
-    console.log(chalk.yellow('Note: Background daemon mode not yet implemented. Running in foreground.'))
+  let daemon: Awaited<ReturnType<typeof createPaseoDaemon>>
+  try {
+    daemon = await createPaseoDaemon(config, logger)
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    console.error(chalk.red(`Failed to initialize daemon: ${message}`))
+    process.exit(1)
   }
-
-  const daemon = await createPaseoDaemon(config, logger)
 
   // Handle graceful shutdown
   let shuttingDown = false

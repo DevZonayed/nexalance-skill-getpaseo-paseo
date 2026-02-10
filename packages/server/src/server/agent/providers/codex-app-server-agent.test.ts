@@ -5,18 +5,20 @@ import os from "node:os";
 import path from "node:path";
 
 import {
+  __codexAppServerInternals,
   CodexAppServerAgentClient,
   codexAppServerTurnInputFromPrompt,
 } from "./codex-app-server-agent.js";
 import { createTestLogger } from "../../../test-utils/test-logger.js";
+import { agentConfigs } from "../../daemon-e2e/agent-configs.js";
 import type {
   AgentPermissionRequest,
   AgentPromptContentBlock,
   AgentTimelineItem,
 } from "../agent-sdk-types.js";
 
-const CODEX_TEST_MODEL = "gpt-5.1-codex-mini";
-const CODEX_TEST_THINKING_OPTION_ID = "low";
+const CODEX_TEST_MODEL = agentConfigs.codex.model;
+const CODEX_TEST_THINKING_OPTION_ID = agentConfigs.codex.thinkingOptionId;
 const ONE_BY_ONE_PNG_BASE64 =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+X1r0AAAAASUVORK5CYII=";
 
@@ -85,6 +87,29 @@ function hasApplyPatchFile(item: AgentTimelineItem, fileName: string): boolean {
   const inOutput = (unknownOutput?.files ?? []).some((file) => file?.path === fileName);
   const inDiff = typeof unknownOutput?.diff === "string" && unknownOutput.diff.includes(fileName);
   return inInput || inOutput || inDiff || inputPath === fileName || outputPath === fileName;
+}
+
+function buildStrictApplyPatchPrompt(
+  patch: string,
+  completionToken: string,
+  options?: { includePermissionStep?: boolean }
+): string {
+  const lines = [
+    "You are running an automated integration test.",
+    "Required behavior:",
+    "- Call the apply_patch tool exactly once using the patch below.",
+    "- Do not call shell, Bash, exec_command, write_file, or any other tool.",
+    "- Do not ask for confirmation in text or via any tool call.",
+  ];
+  if (options?.includePermissionStep) {
+    lines.push(
+      "- If permission is required, wait for approval and then continue with the same apply_patch call."
+    );
+  }
+  lines.push("Patch to apply exactly:");
+  lines.push(patch);
+  lines.push(`After successful apply_patch completion, reply exactly ${completionToken}.`);
+  return lines.join("\n");
 }
 
 async function waitForFileToContainText(
@@ -175,6 +200,50 @@ describe("Codex app-server provider (integration)", () => {
     }
   });
 
+  test("maps patch notifications with array-style changes and alias diff keys", () => {
+    const item = __codexAppServerInternals.mapCodexPatchNotificationToToolCall({
+      callId: "patch-array-alias",
+      changes: [
+        {
+          path: "/tmp/repo/src/array-alias.ts",
+          kind: "modify",
+          unified_diff: "@@\n-old\n+new\n",
+        },
+      ],
+      cwd: "/tmp/repo",
+      running: false,
+    });
+
+    expect(item.detail.type).toBe("edit");
+    if (item.detail.type === "edit") {
+      expect(item.detail.filePath).toBe("src/array-alias.ts");
+      expect(item.detail.unifiedDiff).toContain("-old");
+      expect(item.detail.unifiedDiff).toContain("+new");
+      expect(item.detail.newString).toBeUndefined();
+    }
+  });
+
+  test("maps patch notifications with object-style single change payloads", () => {
+    const item = __codexAppServerInternals.mapCodexPatchNotificationToToolCall({
+      callId: "patch-object-single",
+      changes: {
+        path: "/tmp/repo/src/object-single.ts",
+        kind: "modify",
+        patch: "@@\n-before\n+after\n",
+      },
+      cwd: "/tmp/repo",
+      running: false,
+    });
+
+    expect(item.detail.type).toBe("edit");
+    if (item.detail.type === "edit") {
+      expect(item.detail.filePath).toBe("src/object-single.ts");
+      expect(item.detail.unifiedDiff).toContain("-before");
+      expect(item.detail.unifiedDiff).toContain("+after");
+      expect(item.detail.newString).toBeUndefined();
+    }
+  });
+
   test.runIf(isCodexInstalled())("listModels returns live Codex models", async () => {
     const client = new CodexAppServerAgentClient(logger);
     const models = await client.listModels();
@@ -209,19 +278,28 @@ describe("Codex app-server provider (integration)", () => {
       const codexHome = tmpCwd("codex-home-defaults-");
       const prevCodexHome = process.env.CODEX_HOME;
       process.env.CODEX_HOME = codexHome;
-      writeFileSync(
-        path.join(codexHome, "config.toml"),
-        [
-          'model = "gpt-5.3-codex"',
-          'model_reasoning_effort = "xhigh"',
-        ].join("\n"),
-        "utf8"
-      );
 
       try {
         const client = new CodexAppServerAgentClient(logger);
+        const baselineModels = await client.listModels();
+        const baselineDefaultModel =
+          baselineModels.find((model) => model.isDefault) ?? baselineModels[0];
+        expect(baselineDefaultModel).toBeDefined();
+        const configuredModelId = baselineDefaultModel?.id;
+        expect(typeof configuredModelId).toBe("string");
+        expect((configuredModelId ?? "").length).toBeGreaterThan(0);
+
+        writeFileSync(
+          path.join(codexHome, "config.toml"),
+          [
+            `model = "${configuredModelId}"`,
+            'model_reasoning_effort = "xhigh"',
+          ].join("\n"),
+          "utf8"
+        );
+
         const models = await client.listModels();
-        const configuredModel = models.find((model) => model.id === "gpt-5.3-codex");
+        const configuredModel = models.find((model) => model.id === configuredModelId);
         expect(configuredModel).toBeDefined();
         expect(configuredModel?.isDefault).toBe(true);
         expect(configuredModel?.defaultThinkingOptionId).toBe("xhigh");
@@ -703,14 +781,9 @@ describe("Codex app-server provider (integration)", () => {
           "*** End Patch",
         ].join("\n");
         const patchEvents = session.stream(
-          [
-            "Use the apply_patch tool and nothing else.",
-            "Do not use the shell tool for file changes.",
-            "Do not respond with any message until the apply_patch tool completes.",
-            "Apply the following patch exactly:",
-            patch,
-            "After it completes, reply PATCH_DONE.",
-          ].join("\n")
+          buildStrictApplyPatchPrompt(patch, "PATCH_DONE", {
+            includePermissionStep: true,
+          })
         );
 
         for await (const event of patchEvents) {
@@ -801,13 +874,9 @@ describe("Codex app-server provider (integration)", () => {
           "*** End Patch",
         ].join("\n");
         const events = session.stream(
-          [
-            "Use the apply_patch tool and nothing else.",
-            "Do not use shell or any other file-edit tool.",
-            "Apply this patch exactly:",
-            patch,
-            "After tool completion, reply PATCH_DONE.",
-          ].join("\n")
+          buildStrictApplyPatchPrompt(patch, "PATCH_DONE", {
+            includePermissionStep: true,
+          })
         );
 
         for await (const event of events) {
@@ -1252,14 +1321,9 @@ describe("Codex app-server provider (integration)", () => {
         "*** End Patch",
       ].join("\n");
       const events = session.stream(
-        [
-          "Use the apply_patch tool and nothing else.",
-          "If you need approval before writing files, request approval first.",
-          "Do not respond with any message until the apply_patch tool completes.",
-          "Apply the following patch exactly:",
-          patch,
-          "After approval, reply FILE_DONE.",
-        ].join("\n")
+        buildStrictApplyPatchPrompt(patch, "FILE_DONE", {
+          includePermissionStep: true,
+        })
       );
 
       let failure: string | null = null;
@@ -1298,7 +1362,19 @@ describe("Codex app-server provider (integration)", () => {
         expect(sawPermissionResolved).toBe(true);
       }
       const sawPatch = timelineItems.some((item) => hasApplyPatchFile(item, "approval-test.txt"));
-      expect(sawPatch).toBe(true);
+      if (!sawPatch) {
+        const toolCalls = timelineItems
+          .filter((item): item is Extract<AgentTimelineItem, { type: "tool_call" }> => item.type === "tool_call")
+          .map((item) => ({
+            name: item.name,
+            status: item.status,
+            callId: item.callId,
+            detail: item.detail,
+          }));
+        throw new Error(
+          `Did not observe apply_patch timeline detail for approval-test.txt. Tool calls: ${JSON.stringify(toolCalls)}`
+        );
+      }
 
       const text = await waitForFileToContainText(targetPath, "ok", { timeoutMs: 10000 });
       if (!text) {

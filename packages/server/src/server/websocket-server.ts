@@ -643,7 +643,11 @@ export class VoiceAssistantWebSocketServer {
         void this.pushService.sendPush(tokens, {
           title,
           body,
-          data: { agentId: params.agentId, reason: params.reason },
+          data: {
+            serverId: this.serverId,
+            agentId: params.agentId,
+            reason: params.reason,
+          },
         });
       }
     }
