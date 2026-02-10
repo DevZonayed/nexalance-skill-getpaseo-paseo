@@ -1,24 +1,26 @@
 import type { Command } from 'commander'
-import { resolvePaseoHome } from '@getpaseo/server'
-import { tryConnectToDaemon, getDaemonHost } from '../../utils/client.js'
-import type { CommandOptions, ListResult, OutputSchema, CommandError } from '../../output/index.js'
+import { tryConnectToDaemon } from '../../utils/client.js'
+import type { CommandOptions, ListResult, OutputSchema } from '../../output/index.js'
+import { resolveLocalDaemonState, resolveTcpHostFromListen } from './local-daemon.js'
 
-/** Status data for the daemon */
 interface DaemonStatus {
-  status: 'running' | 'stopped'
-  host: string
+  status: 'running' | 'stopped' | 'unresponsive'
   home: string
-  runningAgents: number
-  idleAgents: number
+  listen: string
+  pid: number | null
+  startedAt: string | null
+  owner: string | null
+  logPath: string
+  runningAgents: number | null
+  idleAgents: number | null
+  note?: string
 }
 
-/** Key-value row for table display */
 interface StatusRow {
   key: string
   value: string
 }
 
-/** Schema for key-value display with custom serialization for JSON/YAML */
 function createStatusSchema(status: DaemonStatus): OutputSchema<StatusRow> {
   return {
     idField: 'key',
@@ -28,28 +30,60 @@ function createStatusSchema(status: DaemonStatus): OutputSchema<StatusRow> {
         header: 'VALUE',
         field: 'value',
         color: (_, item) => {
-          if (item.key === 'Status') {
-            return item.value === 'running' ? 'green' : 'red'
+          if (item.key !== 'Status') {
+            return undefined
           }
-          return undefined
+          if (item.value === 'running') {
+            return 'green'
+          }
+          if (item.value === 'unresponsive') {
+            return 'yellow'
+          }
+          return 'red'
         },
       },
     ],
-    // For JSON/YAML, return the structured status object (not key-value rows)
-    // The serializer receives each item, but we want the whole object
-    // So we return null for individual items and handle it at the result level
-    serialize: (_item) => status,
+    serialize: () => status,
   }
 }
 
-/** Convert status to key-value rows for table display */
 function toStatusRows(status: DaemonStatus): StatusRow[] {
-  return [
+  const rows: StatusRow[] = [
     { key: 'Status', value: status.status },
-    { key: 'Host', value: status.host },
     { key: 'Home', value: status.home },
-    { key: 'Agents', value: `${status.runningAgents} running, ${status.idleAgents} idle` },
+    { key: 'Listen', value: status.listen },
+    { key: 'PID', value: status.pid === null ? '-' : String(status.pid) },
+    { key: 'Started', value: status.startedAt ?? '-' },
+    { key: 'Owner', value: status.owner ?? '-' },
+    { key: 'Logs', value: status.logPath },
   ]
+
+  if (status.runningAgents !== null && status.idleAgents !== null) {
+    rows.push({
+      key: 'Agents',
+      value: `${status.runningAgents} running, ${status.idleAgents} idle`,
+    })
+  } else {
+    rows.push({
+      key: 'Agents',
+      value: 'Unavailable (daemon API not reachable)',
+    })
+  }
+
+  if (status.note) {
+    rows.push({ key: 'Note', value: status.note })
+  }
+
+  return rows
+}
+
+function resolveOwnerLabel(uid: number | undefined, hostname: string | undefined): string | null {
+  if (uid === undefined && !hostname) {
+    return null
+  }
+  const uidPart = uid === undefined ? '?' : String(uid)
+  const hostPart = hostname ?? 'unknown-host'
+  return `${uidPart}@${hostPart}`
 }
 
 export type StatusResult = ListResult<StatusRow>
@@ -58,49 +92,59 @@ export async function runStatusCommand(
   options: CommandOptions,
   _command: Command
 ): Promise<StatusResult> {
-  const connectOptions = { host: options.host as string | undefined }
-  const host = getDaemonHost(connectOptions)
-  const client = await tryConnectToDaemon(connectOptions)
+  const home = typeof options.home === 'string' ? options.home : undefined
+  const state = resolveLocalDaemonState({ home })
 
-  if (!client) {
-    const error: CommandError = {
-      code: 'DAEMON_NOT_RUNNING',
-      message: `Daemon is not running (tried to connect to ${host})`,
-      details: 'Start the daemon with: paseo daemon start',
-    }
-    throw error
+  const owner = resolveOwnerLabel(state.pidInfo?.uid, state.pidInfo?.hostname)
+  let status: DaemonStatus['status'] = state.running ? 'running' : 'stopped'
+  let runningAgents: number | null = null
+  let idleAgents: number | null = null
+  let note: string | undefined
+
+  if (!state.running && state.stalePidFile && state.pidInfo) {
+    note = `Stale PID file found for PID ${state.pidInfo.pid}`
   }
 
-  try {
-    const agents = await client.fetchAgents()
-    const runningAgents = agents.filter((a) => a.status === 'running')
-    const idleAgents = agents.filter((a) => a.status === 'idle')
-
-    // Get paseo home for display
-    const paseoHome = resolvePaseoHome()
-
-    const status: DaemonStatus = {
-      status: 'running',
-      host,
-      home: paseoHome,
-      runningAgents: runningAgents.length,
-      idleAgents: idleAgents.length,
+  if (state.running) {
+    const host = resolveTcpHostFromListen(state.listen)
+    if (host) {
+      const client = await tryConnectToDaemon({ host, timeout: 1500 })
+      if (client) {
+        try {
+          const agents = await client.fetchAgents()
+          runningAgents = agents.filter(a => a.status === 'running').length
+          idleAgents = agents.filter(a => a.status === 'idle').length
+        } catch {
+          status = 'unresponsive'
+          note = `Daemon PID is running but API requests to ${host} failed`
+        } finally {
+          await client.close().catch(() => {})
+        }
+      } else {
+        status = 'unresponsive'
+        note = `Daemon PID is running but websocket at ${host} is not reachable`
+      }
+    } else {
+      note = 'Daemon is configured for unix socket listen; API probe skipped'
     }
+  }
 
-    await client.close()
+  const daemonStatus: DaemonStatus = {
+    status,
+    home: state.home,
+    listen: state.listen,
+    pid: state.pidInfo?.pid ?? null,
+    startedAt: state.pidInfo?.startedAt ?? null,
+    owner,
+    logPath: state.logPath,
+    runningAgents,
+    idleAgents,
+    note,
+  }
 
-    return {
-      type: 'list',
-      data: toStatusRows(status),
-      schema: createStatusSchema(status),
-    }
-  } catch (err) {
-    await client.close().catch(() => {})
-    const message = err instanceof Error ? err.message : String(err)
-    const error: CommandError = {
-      code: 'STATUS_FAILED',
-      message: `Failed to get status: ${message}`,
-    }
-    throw error
+  return {
+    type: 'list',
+    data: toStatusRows(daemonStatus),
+    schema: createStatusSchema(daemonStatus),
   }
 }

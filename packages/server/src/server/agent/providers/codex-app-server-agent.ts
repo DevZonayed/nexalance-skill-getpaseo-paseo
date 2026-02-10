@@ -977,7 +977,6 @@ function mapCodexPatchNotificationToToolCall(params: {
   stdout?: string | null;
   stderr?: string | null;
   success?: boolean | null;
-  latestUnifiedDiff?: string | null;
   running: boolean;
 }): ToolCallTimelineItem {
   const files = parseCodexPatchChanges(params.changes);
@@ -985,7 +984,7 @@ function mapCodexPatchNotificationToToolCall(params: {
   const firstPatchText = files
     .map((file) => file.content?.trim())
     .find((value): value is string => typeof value === "string" && value.length > 0);
-  const patchText = params.latestUnifiedDiff?.trim() || firstPatchText;
+  const patchText = firstPatchText;
   const patchFields = codexPatchTextFields(patchText);
   const mapped = mapCodexRolloutToolCall({
     callId: params.callId ?? null,
@@ -1736,7 +1735,6 @@ class CodexAppServerAgentSession implements AgentSession {
   private warnedUnknownNotificationMethods = new Set<string>();
   private warnedInvalidNotificationPayloads = new Set<string>();
   private warnedIncompleteEditToolCallIds = new Set<string>();
-  private latestTurnUnifiedDiff: string | null = null;
   private latestUsage: AgentUsage | undefined;
   private connected = false;
   private collaborationModes: Array<{
@@ -2422,7 +2420,6 @@ class CodexAppServerAgentSession implements AgentSession {
 
     if (parsed.kind === "turn_started") {
       this.currentTurnId = parsed.turnId;
-      this.latestTurnUnifiedDiff = null;
       this.emittedItemStartedIds.clear();
       this.emittedItemCompletedIds.clear();
       this.pendingCommandOutputDeltas.clear();
@@ -2444,7 +2441,6 @@ class CodexAppServerAgentSession implements AgentSession {
       } else {
         this.emitEvent({ type: "turn_completed", provider: CODEX_PROVIDER, usage: this.latestUsage });
       }
-      this.latestTurnUnifiedDiff = null;
       this.emittedItemStartedIds.clear();
       this.emittedItemCompletedIds.clear();
       this.pendingCommandOutputDeltas.clear();
@@ -2470,8 +2466,6 @@ class CodexAppServerAgentSession implements AgentSession {
     }
 
     if (parsed.kind === "diff_updated") {
-      const trimmedDiff = parsed.diff.trim();
-      this.latestTurnUnifiedDiff = trimmedDiff.length > 0 ? trimmedDiff : null;
       // NOTE: Codex app-server emits frequent `turn/diff/updated` notifications
       // containing a full accumulated unified diff for the *entire turn*.
       // This is not a concrete file-change tool call; it is progress telemetry.
@@ -2557,7 +2551,6 @@ class CodexAppServerAgentSession implements AgentSession {
         callId: parsed.callId,
         changes: parsed.changes,
         cwd: this.config.cwd ?? null,
-        latestUnifiedDiff: this.latestTurnUnifiedDiff,
         running: true,
       });
       this.warnOnIncompleteEditToolCall(timelineItem, "patch_apply_started", {
@@ -2580,7 +2573,6 @@ class CodexAppServerAgentSession implements AgentSession {
         stdout: parsed.stdout ?? bufferedOutput,
         stderr: parsed.stderr,
         success: parsed.success,
-        latestUnifiedDiff: this.latestTurnUnifiedDiff,
         running: false,
       });
       this.warnOnIncompleteEditToolCall(timelineItem, "patch_apply_completed", {

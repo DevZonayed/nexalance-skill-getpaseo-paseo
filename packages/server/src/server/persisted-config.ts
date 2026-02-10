@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { z } from "zod";
 import { AGENT_PROVIDER_IDS } from "./agent/provider-manifest.js";
@@ -157,10 +157,18 @@ export function loadPersistedConfig(
 ): PersistedConfig {
   const log = getLogger(logger);
   const configPath = getConfigPath(paseoHome);
+  const defaultConfig = PersistedConfigSchema.parse({});
 
   if (!existsSync(configPath)) {
-    log?.info(`No config file at ${configPath}, using defaults`);
-    return PersistedConfigSchema.parse({});
+    try {
+      mkdirSync(path.dirname(configPath), { recursive: true });
+      writeFileSync(configPath, JSON.stringify(defaultConfig, null, 2) + "\n");
+      log?.info(`Initialized config file at ${configPath}`);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      throw new Error(`[Config] Failed to initialize ${configPath}: ${message}`);
+    }
+    return defaultConfig;
   }
 
   let raw: string;

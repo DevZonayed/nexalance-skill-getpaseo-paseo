@@ -1,8 +1,5 @@
 import { Command } from 'commander'
 import chalk from 'chalk'
-import { spawn } from 'node:child_process'
-import { closeSync, openSync, readFileSync } from 'node:fs'
-import path from 'node:path'
 import {
   createPaseoDaemon,
   loadConfig,
@@ -11,36 +8,16 @@ import {
   loadPersistedConfig,
 } from '@getpaseo/server'
 import type { CliConfigOverrides } from '@getpaseo/server'
+import {
+  startLocalDaemonDetached,
+  type DaemonStartOptions as StartOptions,
+} from './local-daemon.js'
 
-interface StartOptions {
-  port?: string
-  listen?: string
-  home?: string
-  foreground?: boolean
-  relay?: boolean
-  mcp?: boolean
-  allowedHosts?: string
-}
-
-interface DetachedStartupReady {
-  exitedEarly: false
-}
-
-interface DetachedStartupExited {
-  exitedEarly: true
-  code: number | null
-  signal: NodeJS.Signals | null
-  error?: Error
-}
-
-type DetachedStartupResult = DetachedStartupReady | DetachedStartupExited
-
-const DETACHED_STARTUP_GRACE_MS = 1200
-const DAEMON_LOG_FILENAME = 'daemon.log'
+export type { DaemonStartOptions as StartOptions } from './local-daemon.js'
 
 export function startCommand(): Command {
   return new Command('start')
-    .description('Start the Paseo daemon')
+    .description('Start the local Paseo daemon')
     .option('--listen <listen>', 'Listen target (host:port, port, or unix socket path)')
     .option('--port <port>', 'Port to listen on (default: 6767)')
     .option('--home <path>', 'Paseo home directory (default: ~/.paseo)')
@@ -49,148 +26,14 @@ export function startCommand(): Command {
     .option('--no-mcp', 'Disable the Agent MCP HTTP endpoint')
     .option(
       '--allowed-hosts <hosts>',
-      'Comma-separated list of allowed Host header values (Vite-style; e.g., "localhost,.example.com" or "true")'
+      'Comma-separated Host allowlist values (example: "localhost,.example.com" or "true")'
     )
     .action(async (options: StartOptions) => {
       await runStart(options)
     })
 }
 
-function buildForegroundArgs(options: StartOptions): string[] {
-  const args = ['daemon', 'start', '--foreground']
-
-  if (options.listen) {
-    args.push('--listen', options.listen)
-  } else if (options.port) {
-    args.push('--port', options.port)
-  }
-
-  if (options.home) {
-    args.push('--home', options.home)
-  }
-
-  if (options.relay === false) {
-    args.push('--no-relay')
-  }
-
-  if (options.mcp === false) {
-    args.push('--no-mcp')
-  }
-
-  if (options.allowedHosts) {
-    args.push('--allowed-hosts', options.allowedHosts)
-  }
-
-  return args
-}
-
-function tailFile(filePath: string, lines = 30): string | null {
-  try {
-    const content = readFileSync(filePath, 'utf-8')
-    return content.split('\n').filter(Boolean).slice(-lines).join('\n')
-  } catch {
-    return null
-  }
-}
-
-async function runDetachedStart(options: StartOptions): Promise<void> {
-  const childEnv: NodeJS.ProcessEnv = { ...process.env }
-  if (options.home) {
-    childEnv.PASEO_HOME = options.home
-  }
-
-  const paseoHome = resolvePaseoHome(childEnv)
-  const logPath = path.join(paseoHome, DAEMON_LOG_FILENAME)
-
-  const cliEntry = process.argv[1]
-  if (!cliEntry) {
-    throw new Error('Unable to determine CLI entrypoint for detached daemon start')
-  }
-
-  const logFd = openSync(logPath, 'a')
-
-  try {
-    const child = spawn(
-      process.execPath,
-      [...process.execArgv, cliEntry, ...buildForegroundArgs(options)],
-      {
-        detached: true,
-        env: childEnv,
-        stdio: ['ignore', logFd, logFd],
-      }
-    )
-
-    child.unref()
-
-    const startup = await new Promise<DetachedStartupResult>((resolve) => {
-      let settled = false
-
-      const finish = (value: DetachedStartupResult) => {
-        if (settled) return
-        settled = true
-        resolve(value)
-      }
-
-      const timer = setTimeout(() => finish({ exitedEarly: false }), DETACHED_STARTUP_GRACE_MS)
-
-      child.once('error', (error) => {
-        clearTimeout(timer)
-        finish({ exitedEarly: true, code: null, signal: null, error })
-      })
-
-      child.once('exit', (code, signal) => {
-        clearTimeout(timer)
-        finish({ exitedEarly: true, code, signal })
-      })
-    })
-
-    if (startup.exitedEarly) {
-      const reason = startup.error
-        ? startup.error.message
-        : `exit code ${startup.code ?? 'unknown'}${startup.signal ? ` (${startup.signal})` : ''}`
-      const recentLogs = tailFile(logPath)
-      throw new Error(
-        [
-          `Daemon failed to start in background (${reason}).`,
-          recentLogs ? `Recent daemon logs:\n${recentLogs}` : null,
-        ]
-          .filter(Boolean)
-          .join('\n\n')
-      )
-    }
-
-    console.log(chalk.green(`Daemon starting in background (PID ${child.pid ?? 'unknown'}).`))
-    console.log(chalk.dim(`Logs: ${logPath}`))
-  } finally {
-    closeSync(logFd)
-  }
-}
-
-async function runStart(options: StartOptions): Promise<void> {
-  if (options.listen && options.port) {
-    console.error(chalk.red('Cannot use --listen and --port together'))
-    process.exit(1)
-  }
-
-  if (!options.foreground) {
-    try {
-      await runDetachedStart(options)
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
-      console.error(chalk.red(message))
-      process.exit(1)
-    }
-    return
-  }
-
-  // Set environment variables based on CLI options
-  if (options.home) {
-    process.env.PASEO_HOME = options.home
-  }
-
-  let paseoHome: string
-  let logger: ReturnType<typeof createRootLogger>
-  let config: ReturnType<typeof loadConfig>
+function toCliOverrides(options: StartOptions): CliConfigOverrides {
   const cliOverrides: CliConfigOverrides = {}
 
   if (options.listen) {
@@ -215,11 +58,41 @@ async function runStart(options: StartOptions): Promise<void> {
     cliOverrides.mcpEnabled = false
   }
 
+  return cliOverrides
+}
+
+export async function runStart(options: StartOptions): Promise<void> {
+  if (options.listen && options.port) {
+    console.error(chalk.red('Cannot use --listen and --port together'))
+    process.exit(1)
+  }
+
+  if (!options.foreground) {
+    try {
+      const startup = await startLocalDaemonDetached(options)
+      console.log(chalk.green(`Daemon starting in background (PID ${startup.pid ?? 'unknown'}).`))
+      console.log(chalk.dim(`Logs: ${startup.logPath}`))
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      console.error(chalk.red(message))
+      process.exit(1)
+    }
+    return
+  }
+
+  if (options.home) {
+    process.env.PASEO_HOME = options.home
+  }
+
+  let paseoHome: string
+  let logger: ReturnType<typeof createRootLogger>
+  let config: ReturnType<typeof loadConfig>
+
   try {
     paseoHome = resolvePaseoHome()
     const persistedConfig = loadPersistedConfig(paseoHome)
     logger = createRootLogger(persistedConfig)
-    config = loadConfig(paseoHome, { cli: cliOverrides })
+    config = loadConfig(paseoHome, { cli: toCliOverrides(options) })
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     console.error(chalk.red(message))
@@ -235,7 +108,6 @@ async function runStart(options: StartOptions): Promise<void> {
     process.exit(1)
   }
 
-  // Handle graceful shutdown
   let shuttingDown = false
   const handleShutdown = async (signal: string) => {
     if (shuttingDown) {

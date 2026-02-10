@@ -1,14 +1,33 @@
 {
   "name": "@getpaseo/relay",
   "version": "0.1.0",
+  "private": true,
   "description": "Paseo relay for bridging daemon and client connections",
   "type": "module",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
   "exports": {
-    ".": "./src/index.ts",
-    "./e2ee": "./src/e2ee.ts",
-    "./cloudflare": "./src/cloudflare-adapter.ts"
+    ".": {
+      "types": "./dist/index.d.ts",
+      "node": "./dist/index.js",
+      "default": "./src/index.ts"
+    },
+    "./e2ee": {
+      "types": "./dist/e2ee.d.ts",
+      "node": "./dist/e2ee.js",
+      "default": "./src/e2ee.ts"
+    },
+    "./cloudflare": {
+      "types": "./dist/cloudflare-adapter.d.ts",
+      "node": "./dist/cloudflare-adapter.js",
+      "default": "./src/cloudflare-adapter.ts"
+    }
   },
   "scripts": {
+    "build": "node -e \"require('node:fs').rmSync('dist',{ recursive: true, force: true })\" && tsc -p tsconfig.json --incremental false",
+    "prepack": "npm run build",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest"

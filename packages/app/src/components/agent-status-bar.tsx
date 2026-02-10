@@ -189,7 +189,7 @@ export function AgentStatusBar({ agentId, serverId }: AgentStatusBarProps) {
                 accessibilityLabel="Select thinking option"
                 testID="agent-thinking-selector"
               >
-                <Brain size={12} color={theme.colors.foregroundMuted} />
+                <Brain size={12} color={theme.colors.foregroundMuted} style={{ marginTop: 1 }} />
                 <Text style={styles.modeBadgeText}>{displayThinking}</Text>
                 <ChevronDown size={14} color={theme.colors.foregroundMuted} />
               </DropdownMenuTrigger>

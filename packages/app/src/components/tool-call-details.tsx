@@ -19,13 +19,17 @@ interface ToolCallDetailsContentProps {
   detail?: ToolCallDetail;
   errorText?: string;
   maxHeight?: number;
+  fillAvailableHeight?: boolean;
 }
 
 export function ToolCallDetailsContent({
   detail,
   errorText,
-  maxHeight = 300,
+  maxHeight,
+  fillAvailableHeight = false,
 }: ToolCallDetailsContentProps) {
+  const resolvedMaxHeight = fillAvailableHeight ? undefined : (maxHeight ?? 300);
+
   // Compute diff lines for edit type
   const diffLines = useMemo(() => {
     if (!detail || detail.type !== "edit") return undefined;
@@ -39,6 +43,12 @@ export function ToolCallDetailsContent({
   const sections: ReactNode[] = [];
   const isFullBleed =
     detail?.type === "edit" || detail?.type === "shell" || detail?.type === "write";
+  const shouldFill =
+    fillAvailableHeight &&
+    (detail?.type === "shell" ||
+      detail?.type === "edit" ||
+      detail?.type === "write" ||
+      detail?.type === "read");
   const codeBlockStyle = isFullBleed ? styles.fullBleedBlock : styles.diffContainer;
 
   if (detail?.type === "shell") {
@@ -46,10 +56,17 @@ export function ToolCallDetailsContent({
     const commandOutput = (detail.output ?? "").replace(/^\n+/, "");
     const hasOutput = commandOutput.length > 0;
     sections.push(
-      <View key="shell" style={styles.section}>
-        <View style={codeBlockStyle}>
+      <View
+        key="shell"
+        style={[styles.section, shouldFill && styles.fillHeight]}
+      >
+        <View style={[codeBlockStyle, shouldFill && styles.fillHeight]}>
           <ScrollView
-            style={[styles.codeVerticalScroll, { maxHeight }]}
+            style={[
+              styles.codeVerticalScroll,
+              resolvedMaxHeight !== undefined && { maxHeight: resolvedMaxHeight },
+              shouldFill && styles.fillHeight,
+            ]}
             contentContainerStyle={styles.codeVerticalContent}
             nestedScrollEnabled
             showsVerticalScrollIndicator
@@ -74,20 +91,34 @@ export function ToolCallDetailsContent({
     );
   } else if (detail?.type === "edit") {
     sections.push(
-      <View key="edit" style={styles.section}>
+      <View
+        key="edit"
+        style={[styles.section, shouldFill && styles.fillHeight]}
+      >
         {diffLines ? (
-          <View style={codeBlockStyle}>
-            <DiffViewer diffLines={diffLines} maxHeight={maxHeight} />
+          <View style={[codeBlockStyle, shouldFill && styles.fillHeight]}>
+            <DiffViewer
+              diffLines={diffLines}
+              maxHeight={resolvedMaxHeight}
+              fillAvailableHeight={shouldFill}
+            />
           </View>
         ) : null}
       </View>
     );
   } else if (detail?.type === "write") {
     sections.push(
-      <View key="write" style={styles.section}>
+      <View
+        key="write"
+        style={[styles.section, shouldFill && styles.fillHeight]}
+      >
         {detail.content ? (
           <ScrollView
-            style={[styles.scrollArea, { maxHeight }]}
+            style={[
+              styles.scrollArea,
+              resolvedMaxHeight !== undefined && { maxHeight: resolvedMaxHeight },
+              shouldFill && styles.fillHeight,
+            ]}
             contentContainerStyle={styles.scrollContent}
             nestedScrollEnabled
             showsVerticalScrollIndicator={true}
@@ -104,18 +135,18 @@ export function ToolCallDetailsContent({
       </View>
     );
   } else if (detail?.type === "read") {
-    sections.push(
-      <View key="read" style={styles.section}>
-        {(detail.offset !== undefined || detail.limit !== undefined) ? (
-          <Text style={styles.rangeText}>
-            {detail.offset !== undefined ? `Offset: ${detail.offset}` : ""}
-            {detail.offset !== undefined && detail.limit !== undefined ? " • " : ""}
-            {detail.limit !== undefined ? `Limit: ${detail.limit}` : ""}
-          </Text>
-        ) : null}
-        {detail.content ? (
+    if (detail.content) {
+      sections.push(
+        <View
+          key="read"
+          style={[styles.section, shouldFill && styles.fillHeight]}
+        >
           <ScrollView
-            style={[styles.scrollArea, { maxHeight }]}
+            style={[
+              styles.scrollArea,
+              resolvedMaxHeight !== undefined && { maxHeight: resolvedMaxHeight },
+              shouldFill && styles.fillHeight,
+            ]}
             contentContainerStyle={styles.scrollContent}
             nestedScrollEnabled
             showsVerticalScrollIndicator={true}
@@ -128,9 +159,9 @@ export function ToolCallDetailsContent({
               <Text selectable style={styles.scrollText}>{detail.content}</Text>
             </ScrollView>
           </ScrollView>
-        ) : null}
-      </View>
-    );
+        </View>
+      );
+    }
   } else if (detail?.type === "search") {
     sections.push(
       <View key="search" style={styles.section}>
@@ -145,16 +176,8 @@ export function ToolCallDetailsContent({
 
     if (plainInputText !== null) {
       sections.push(
-        <View key="unknown-plain-text" style={styles.section}>
-          <ScrollView
-            horizontal
-            nestedScrollEnabled
-            style={styles.jsonScroll}
-            contentContainerStyle={styles.jsonContent}
-            showsHorizontalScrollIndicator={true}
-          >
-            <Text selectable style={styles.scrollText}>{plainInputText}</Text>
-          </ScrollView>
+        <View key="unknown-plain-text" style={styles.plainTextSection}>
+          <Text selectable style={styles.scrollText}>{plainInputText}</Text>
         </View>
       );
     } else {
@@ -225,7 +248,12 @@ export function ToolCallDetailsContent({
   }
 
   return (
-    <View style={isFullBleed ? styles.fullBleedContainer : styles.paddedContainer}>
+    <View
+      style={[
+        isFullBleed ? styles.fullBleedContainer : styles.paddedContainer,
+        shouldFill && styles.fillHeight,
+      ]}
+    >
       {sections}
     </View>
   );
@@ -239,7 +267,7 @@ const styles = StyleSheet.create((theme) => {
   return {
     paddedContainer: {
       gap: theme.spacing[4],
-      padding: theme.spacing[2],
+      padding: 0,
     },
     fullBleedContainer: {
       gap: theme.spacing[2],
@@ -249,19 +277,26 @@ const styles = StyleSheet.create((theme) => {
     flexDirection: "row",
     alignItems: "center",
     gap: theme.spacing[2],
-    paddingBottom: theme.spacing[1],
+    paddingHorizontal: theme.spacing[3],
+    paddingVertical: theme.spacing[2],
     borderBottomWidth: theme.borderWidth[1],
     borderBottomColor: theme.colors.border,
   },
   groupHeaderText: {
-    color: theme.colors.primary,
+    color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.sm,
-    fontWeight: theme.fontWeight.bold,
-    textTransform: "uppercase",
-    letterSpacing: 1,
+    fontWeight: theme.fontWeight.normal,
   },
-  section: {
+    section: {
+      gap: theme.spacing[2],
+    },
+    fillHeight: {
+      flex: 1,
+      minHeight: 0,
+    },
+  plainTextSection: {
     gap: theme.spacing[2],
+    padding: theme.spacing[3],
   },
   sectionTitle: {
     color: theme.colors.foregroundMuted,

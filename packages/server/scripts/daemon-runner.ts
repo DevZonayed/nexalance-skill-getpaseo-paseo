@@ -25,12 +25,12 @@ function resolveWorkerExecArgv(): string[] {
 }
 
 runSupervisor({
-  name: "DevRunner",
-  startupMessage: "Starting server worker (crash restarts enabled)",
+  name: "DaemonRunner",
+  startupMessage: "Starting daemon worker (IPC restart enabled)",
   resolveWorkerEntry,
   workerArgs: process.argv.slice(2),
   workerEnv: process.env,
   workerExecArgv: resolveWorkerExecArgv(),
-  restartOnCrash: true,
+  restartOnCrash: false,
   shutdownReasons: ["cli_shutdown"],
 });

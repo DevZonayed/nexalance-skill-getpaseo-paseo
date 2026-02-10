@@ -12,9 +12,15 @@ interface DiffViewerProps {
   diffLines: DiffLine[];
   maxHeight?: number;
   emptyLabel?: string;
+  fillAvailableHeight?: boolean;
 }
 
-export function DiffViewer({ diffLines, maxHeight = 280, emptyLabel = "No changes to display" }: DiffViewerProps) {
+export function DiffViewer({
+  diffLines,
+  maxHeight,
+  emptyLabel = "No changes to display",
+  fillAvailableHeight = false,
+}: DiffViewerProps) {
   const [scrollViewWidth, setScrollViewWidth] = React.useState(0);
 
   if (!diffLines.length) {
@@ -27,7 +33,11 @@ export function DiffViewer({ diffLines, maxHeight = 280, emptyLabel = "No change
 
   return (
     <ScrollView
-      style={[styles.verticalScroll, { maxHeight }]}
+      style={[
+        styles.verticalScroll,
+        maxHeight !== undefined && { maxHeight },
+        fillAvailableHeight && styles.fillHeight,
+      ]}
       contentContainerStyle={styles.verticalContent}
       nestedScrollEnabled
       showsVerticalScrollIndicator
@@ -94,6 +104,10 @@ const styles = StyleSheet.create((theme) => {
 
   return {
     verticalScroll: {},
+    fillHeight: {
+      flex: 1,
+      minHeight: 0,
+    },
     verticalContent: {
       flexGrow: 1,
       paddingBottom: insets.extraBottom,

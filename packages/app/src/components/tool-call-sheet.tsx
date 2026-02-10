@@ -157,6 +157,7 @@ function ToolCallSheetContent({ data, onClose }: ToolCallSheetContentProps) {
         <ToolCallDetailsContent
           detail={detail}
           errorText={errorText}
+          fillAvailableHeight
         />
       </BottomSheetScrollView>
     </View>
@@ -208,9 +209,11 @@ const styles = StyleSheet.create((theme) => ({
   },
   content: {
     flex: 1,
+    minHeight: 0,
     backgroundColor: theme.colors.surface2,
   },
   contentContainer: {
     padding: 0,
+    flexGrow: 1,
   },
 }));

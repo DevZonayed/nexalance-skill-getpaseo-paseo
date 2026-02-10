@@ -690,12 +690,6 @@ function AgentScreenContent({
         <MenuHeader title="Agent" />
         <View style={styles.errorContainer}>
           <ActivityIndicator size="small" color={theme.colors.foregroundMuted} />
-          <Text style={styles.loadingText}>Loading agent…</Text>
-          {missingAgentState.kind === "error" ? (
-            <Text style={styles.loadingSubtext} numberOfLines={2}>
-              {missingAgentState.message}
-            </Text>
-          ) : null}
         </View>
       </View>
     );
@@ -905,7 +899,6 @@ function AgentScreenContent({
             {shouldBlockForHistorySync ? (
               <View style={styles.loadingContainer}>
                 <ActivityIndicator size="large" color={theme.colors.primary} />
-                <Text style={styles.loadingText}>Loading agent...</Text>
               </View>
             ) : (
               <ReanimatedAnimated.View
@@ -1060,13 +1053,6 @@ const styles = StyleSheet.create((theme) => ({
   loadingText: {
     fontSize: theme.fontSize.base,
     color: theme.colors.foregroundMuted,
-  },
-  loadingSubtext: {
-    marginTop: theme.spacing[1],
-    textAlign: "center",
-    fontSize: theme.fontSize.xs,
-    color: theme.colors.foregroundMuted,
-    paddingHorizontal: theme.spacing[6],
   },
   centerState: {
     flex: 1,

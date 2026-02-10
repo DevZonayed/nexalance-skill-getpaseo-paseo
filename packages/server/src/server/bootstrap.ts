@@ -147,18 +147,22 @@ export async function createPaseoDaemon(
     );
   }
 
-  const serverId = getOrCreateServerId(config.paseoHome, { logger });
-  const daemonKeyPair = await loadOrCreateDaemonKeyPair(config.paseoHome, logger);
-  let relayTransport: RelayTransportController | null = null;
+  // Acquire PID lock before expensive bootstrap work so duplicate starts fail immediately.
+  await acquirePidLock(config.paseoHome, config.listen);
 
-  const staticDir = config.staticDir;
-  const downloadTokenTtlMs = config.downloadTokenTtlMs ?? 60000;
+  try {
+    const serverId = getOrCreateServerId(config.paseoHome, { logger });
+    const daemonKeyPair = await loadOrCreateDaemonKeyPair(config.paseoHome, logger);
+    let relayTransport: RelayTransportController | null = null;
 
-  const downloadTokenStore = new DownloadTokenStore({ ttlMs: downloadTokenTtlMs });
+    const staticDir = config.staticDir;
+    const downloadTokenTtlMs = config.downloadTokenTtlMs ?? 60000;
 
-  const listenTarget = parseListenString(config.listen);
+    const downloadTokenStore = new DownloadTokenStore({ ttlMs: downloadTokenTtlMs });
 
-  const app = express();
+    const listenTarget = parseListenString(config.listen);
+
+    const app = express();
 
   // Host allowlist / DNS rebinding protection (vite-like semantics).
   // For non-TCP (unix sockets), skip host validation.
@@ -495,12 +499,9 @@ export async function createPaseoDaemon(
     }
   );
 
-  const start = async () => {
-    // Acquire PID lock
-    await acquirePidLock(config.paseoHome, config.listen);
-
-    // Start main HTTP server
-    await new Promise<void>((resolve, reject) => {
+    const start = async () => {
+      // Start main HTTP server
+      await new Promise<void>((resolve, reject) => {
       const onError = (err: Error) => {
         httpServer.off("listening", onListening);
         reject(err);
@@ -581,43 +582,47 @@ export async function createPaseoDaemon(
         }
         httpServer.listen(listenTarget.path);
       }
-    });
-  };
+      });
+    };
 
-  const stop = async () => {
-    await closeAllAgents(logger, agentManager);
-    await agentManager.flush().catch(() => undefined);
-    detachAgentStoragePersistence();
-    await agentStorage.flush().catch(() => undefined);
-    await shutdownProviders(logger);
-    terminalManager.killAll();
-    cleanupSpeechRuntime();
-    await relayTransport?.stop().catch(() => undefined);
-    if (wsServer) {
-      await wsServer.close();
-    }
-    if (voiceMcpBridgeManager) {
-      await voiceMcpBridgeManager.stop().catch(() => undefined);
-    }
-    await new Promise<void>((resolve) => {
-      httpServer.close(() => resolve());
-    });
-    // Clean up socket files
-    if (listenTarget.type === "socket" && existsSync(listenTarget.path)) {
-      unlinkSync(listenTarget.path);
-    }
-    // Release PID lock
-    await releasePidLock(config.paseoHome);
-  };
+    const stop = async () => {
+      await closeAllAgents(logger, agentManager);
+      await agentManager.flush().catch(() => undefined);
+      detachAgentStoragePersistence();
+      await agentStorage.flush().catch(() => undefined);
+      await shutdownProviders(logger);
+      terminalManager.killAll();
+      cleanupSpeechRuntime();
+      await relayTransport?.stop().catch(() => undefined);
+      if (wsServer) {
+        await wsServer.close();
+      }
+      if (voiceMcpBridgeManager) {
+        await voiceMcpBridgeManager.stop().catch(() => undefined);
+      }
+      await new Promise<void>((resolve) => {
+        httpServer.close(() => resolve());
+      });
+      // Clean up socket files
+      if (listenTarget.type === "socket" && existsSync(listenTarget.path)) {
+        unlinkSync(listenTarget.path);
+      }
+      // Release PID lock
+      await releasePidLock(config.paseoHome);
+    };
 
-  return {
-    config,
-    agentManager,
-    agentStorage,
-    terminalManager,
-    start,
-    stop,
-  };
+    return {
+      config,
+      agentManager,
+      agentStorage,
+      terminalManager,
+      start,
+      stop,
+    };
+  } catch (err) {
+    await releasePidLock(config.paseoHome).catch(() => undefined);
+    throw err;
+  }
 }
 
 async function closeAllAgents(

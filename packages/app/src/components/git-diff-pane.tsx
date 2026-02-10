@@ -223,6 +223,9 @@ const DiffFileHeader = memo(function DiffFileHeader({
   testID,
 }: DiffFileSectionProps) {
   const expandStartRef = useRef<number | null>(null);
+  const layoutYRef = useRef<number | null>(null);
+  const pressHandledRef = useRef(false);
+  const pressInRef = useRef<{ ts: number; pageX: number; pageY: number } | null>(null);
 
   const { hunkCount, lineCount, tokenCount } = useMemo(() => {
     let totalLines = 0;
@@ -247,6 +250,7 @@ const DiffFileHeader = memo(function DiffFileHeader({
     tokenCount >= DIFF_FILE_LOG_TOKEN_THRESHOLD;
 
   const toggleExpanded = useCallback(() => {
+    pressHandledRef.current = true;
     if (isPerfLoggingEnabled() && shouldLogFileMetrics) {
       expandStartRef.current = getNowMs();
       perfLog(DIFF_FILE_LOG_TAG, {
@@ -295,6 +299,7 @@ const DiffFileHeader = memo(function DiffFileHeader({
         !isExpanded && styles.fileSectionBorder,
       ]}
       onLayout={(event) => {
+        layoutYRef.current = event.nativeEvent.layout.y;
         onHeaderHeightChange?.(file.path, event.nativeEvent.layout.height);
       }}
       testID={testID}
@@ -305,6 +310,34 @@ const DiffFileHeader = memo(function DiffFileHeader({
           styles.fileHeader,
           pressed && styles.fileHeaderPressed,
         ]}
+        // Android: prevent parent pan/scroll gestures from canceling the tap release.
+        cancelable={false}
+        onPressIn={(event) => {
+          pressHandledRef.current = false;
+          pressInRef.current = {
+            ts: Date.now(),
+            pageX: event.nativeEvent.pageX,
+            pageY: event.nativeEvent.pageY,
+          };
+        }}
+        onPressOut={(event) => {
+          if (
+            Platform.OS !== "web" &&
+            !pressHandledRef.current &&
+            layoutYRef.current === 0 &&
+            pressInRef.current
+          ) {
+            const durationMs = Date.now() - pressInRef.current.ts;
+            const dx = event.nativeEvent.pageX - pressInRef.current.pageX;
+            const dy = event.nativeEvent.pageY - pressInRef.current.pageY;
+            const distance = Math.hypot(dx, dy);
+            // Sticky headers on Android can emit pressIn/pressOut without onPress.
+            // Treat short, low-movement interactions as taps.
+            if (durationMs <= 500 && distance <= 12) {
+              toggleExpanded();
+            }
+          }
+        }}
         onPress={toggleExpanded}
       >
         <View style={styles.fileHeaderLeft}>
@@ -562,8 +595,10 @@ export function GitDiffPane({ serverId, agentId, cwd }: GitDiffPaneProps) {
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
       const isExpanded = expandedByPath[file.path] ?? false;
-      stickyIndices.push(items.length);
       items.push({ type: "header", file, fileIndex: i, isExpanded });
+      if (isExpanded) {
+        stickyIndices.push(items.length - 1);
+      }
       if (isExpanded) {
         items.push({ type: "body", file, fileIndex: i });
       }
@@ -607,6 +642,7 @@ export function GitDiffPane({ serverId, agentId, cwd }: GitDiffPaneProps) {
   const handleToggleExpanded = useCallback(
     (path: string) => {
       const isCurrentlyExpanded = expandedByPath[path] ?? false;
+      const nextExpanded = !isCurrentlyExpanded;
       const targetOffset = isCurrentlyExpanded ? computeHeaderOffset(path) : null;
 
       // Anchor to the clicked header before collapsing so visual context is preserved.
@@ -619,7 +655,9 @@ export function GitDiffPane({ serverId, agentId, cwd }: GitDiffPaneProps) {
 
       setExpandedByPath((prev) => ({
         ...prev,
-        [path]: !prev[path],
+        // Use a deterministic target value (instead of toggling from prev) so duplicate
+        // onPress events from sticky headers on Android can't flip back immediately.
+        [path]: nextExpanded,
       }));
     },
     [computeHeaderOffset, expandedByPath]

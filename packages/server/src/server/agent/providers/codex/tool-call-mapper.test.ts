@@ -463,4 +463,38 @@ describe("codex tool-call mapper", () => {
       expect(item.detail.newString).toBeUndefined();
     }
   });
+
+  it("maps path-only fileChange payloads to unknown detail instead of empty edit detail", () => {
+    const item = mapCodexToolCallFromThreadItem(
+      {
+        type: "fileChange",
+        id: "codex-file-change-path-only",
+        status: "completed",
+        changes: [{ path: "/tmp/repo/src/path-only.ts", kind: "modify" }],
+      },
+      { cwd: "/tmp/repo" }
+    );
+
+    expect(item?.detail.type).toBe("unknown");
+    if (item?.detail.type === "unknown") {
+      expect(item.detail.input).toEqual({
+        files: [{ path: "src/path-only.ts", kind: "modify" }],
+      });
+    }
+  });
+
+  it("maps path-only apply_patch rollout payloads to unknown detail instead of empty edit detail", () => {
+    const item = mapCodexRolloutToolCall({
+      callId: "codex-call-apply-path-only",
+      name: "apply_patch",
+      input: { path: "/tmp/repo/src/path-only-rollout.ts" },
+      output: { files: [{ path: "/tmp/repo/src/path-only-rollout.ts", kind: "modify" }] },
+      cwd: "/tmp/repo",
+    });
+
+    expect(item.detail.type).toBe("unknown");
+    if (item.detail.type === "unknown") {
+      expect(item.detail.input).toEqual({ path: "/tmp/repo/src/path-only-rollout.ts" });
+    }
+  });
 });

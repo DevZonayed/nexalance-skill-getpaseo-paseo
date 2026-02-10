@@ -309,6 +309,17 @@ function asPatchOrContentFields(text: string | undefined): { patch?: string; con
   return { content: text };
 }
 
+function hasRenderableEditContent(detail: ToolCallDetail): boolean {
+  if (detail.type !== "edit") {
+    return false;
+  }
+  return (
+    (typeof detail.unifiedDiff === "string" && detail.unifiedDiff.length > 0) ||
+    (typeof detail.newString === "string" && detail.newString.length > 0) ||
+    (typeof detail.oldString === "string" && detail.oldString.length > 0)
+  );
+}
+
 function pickFirstPatchLikeString(values: unknown[]): string | undefined {
   for (const value of values) {
     if (typeof value === "string" && value.length > 0) {
@@ -610,11 +621,18 @@ function mapFileChangeItem(
 
   const firstFile = files[0];
   const firstTextFields = asEditTextFields(firstFile?.diff);
+  const hasFirstTextFields = Object.keys(firstTextFields).length > 0;
   const detail = firstFile?.path
-    ? {
+    ? hasFirstTextFields
+      ? {
         type: "edit" as const,
         filePath: firstFile.path,
         ...firstTextFields,
+      }
+      : {
+        type: "unknown" as const,
+        input,
+        output,
       }
     : {
         type: "unknown" as const,
@@ -754,6 +772,13 @@ export function mapCodexRolloutToolCall(params: {
     if (fallbackDetail) {
       detail = fallbackDetail;
     }
+  }
+  if (detail.type === "edit" && !hasRenderableEditContent(detail)) {
+    detail = {
+      type: "unknown",
+      input,
+      output,
+    };
   }
 
   return buildToolCall({

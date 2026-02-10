@@ -401,7 +401,6 @@ const expandableBadgeStylesheet = StyleSheet.create((theme) => ({
     borderWidth: theme.borderWidth[1],
     borderTopWidth: 0,
     borderColor: theme.colors.border,
-    backgroundColor: theme.colors.surface1,
     padding: 0,
     gap: 0,
     flexShrink: 1,

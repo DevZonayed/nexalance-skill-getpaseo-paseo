@@ -5,6 +5,9 @@ import { createPermitCommand } from './commands/permit/index.js'
 import { createProviderCommand } from './commands/provider/index.js'
 import { createSpeechCommand } from './commands/speech/index.js'
 import { createWorktreeCommand } from './commands/worktree/index.js'
+import { startCommand as daemonStartCommand } from './commands/daemon/start.js'
+import { runStatusCommand as runDaemonStatusCommand } from './commands/daemon/status.js'
+import { runRestartCommand as runDaemonRestartCommand } from './commands/daemon/restart.js'
 import { runLsCommand } from './commands/agent/ls.js'
 import { runRunCommand } from './commands/agent/run.js'
 import { runLogsCommand } from './commands/agent/logs.js'
@@ -122,6 +125,33 @@ export function createCli(): Command {
     .option('--json', 'Output in JSON format')
     .option('--host <host>', 'Daemon host:port (default: localhost:6767)')
     .action(withOutput(runWaitCommand))
+
+  // Top-level local daemon shortcuts
+  program.addCommand(daemonStartCommand())
+
+  program
+    .command('status')
+    .description('Show local daemon status (alias for "paseo daemon status")')
+    .option('--json', 'Output in JSON format')
+    .option('--home <path>', 'Paseo home directory (default: ~/.paseo)')
+    .action(withOutput(runDaemonStatusCommand))
+
+  program
+    .command('restart')
+    .description('Restart local daemon (alias for "paseo daemon restart")')
+    .option('--json', 'Output in JSON format')
+    .option('--home <path>', 'Paseo home directory (default: ~/.paseo)')
+    .option('--timeout <seconds>', 'Wait timeout before force step (default: 15)')
+    .option('--force', 'Send SIGKILL if graceful stop times out')
+    .option('--listen <listen>', 'Listen target for restarted daemon (host:port, port, or unix socket)')
+    .option('--port <port>', 'Port for restarted daemon listen target')
+    .option('--no-relay', 'Disable relay on restarted daemon')
+    .option('--no-mcp', 'Disable Agent MCP on restarted daemon')
+    .option(
+      '--allowed-hosts <hosts>',
+      'Comma-separated Host allowlist values (example: "localhost,.example.com" or "true")'
+    )
+    .action(withOutput(runDaemonRestartCommand))
 
   // Advanced agent commands (less common operations)
   program.addCommand(createAgentCommand())
