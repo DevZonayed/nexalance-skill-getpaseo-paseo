@@ -151,6 +151,185 @@ describe("DaemonClient", () => {
     });
   });
 
+  test("subscribes to checkout diff updates via RPC handshake", async () => {
+    const logger = createMockLogger();
+    const mock = createMockTransport();
+
+    const client = new DaemonClient({
+      url: "ws://test",
+      logger,
+      reconnect: { enabled: false },
+      transportFactory: () => mock.transport,
+    });
+    clients.push(client);
+
+    const connectPromise = client.connect();
+    mock.triggerOpen();
+    await connectPromise;
+
+    const promise = client.subscribeCheckoutDiff(
+      "/tmp/project",
+      { mode: "uncommitted" },
+      { subscriptionId: "checkout-sub-1" }
+    );
+
+    expect(mock.sent).toHaveLength(1);
+    const request = JSON.parse(mock.sent[0]) as {
+      type: "session";
+      message: {
+        type: "subscribe_checkout_diff_request";
+        subscriptionId: string;
+        cwd: string;
+        compare: { mode: "uncommitted" | "base"; baseRef?: string };
+        requestId: string;
+      };
+    };
+    expect(request.message.type).toBe("subscribe_checkout_diff_request");
+    expect(request.message.subscriptionId).toBe("checkout-sub-1");
+    expect(request.message.cwd).toBe("/tmp/project");
+    expect(request.message.compare).toEqual({ mode: "uncommitted" });
+
+    mock.triggerMessage(
+      JSON.stringify({
+        type: "session",
+        message: {
+          type: "subscribe_checkout_diff_response",
+          payload: {
+            subscriptionId: "checkout-sub-1",
+            cwd: "/tmp/project",
+            files: [],
+            error: null,
+            requestId: request.message.requestId,
+          },
+        },
+      })
+    );
+
+    await expect(promise).resolves.toEqual({
+      subscriptionId: "checkout-sub-1",
+      cwd: "/tmp/project",
+      files: [],
+      error: null,
+      requestId: request.message.requestId,
+    });
+  });
+
+  test("getCheckoutDiff uses one-shot subscription protocol", async () => {
+    const logger = createMockLogger();
+    const mock = createMockTransport();
+
+    const client = new DaemonClient({
+      url: "ws://test",
+      logger,
+      reconnect: { enabled: false },
+      transportFactory: () => mock.transport,
+    });
+    clients.push(client);
+
+    const connectPromise = client.connect();
+    mock.triggerOpen();
+    await connectPromise;
+
+    const promise = client.getCheckoutDiff("/tmp/project", { mode: "base", baseRef: "main" });
+
+    expect(mock.sent).toHaveLength(1);
+    const subscribeRequest = JSON.parse(mock.sent[0]) as {
+      type: "session";
+      message: {
+        type: "subscribe_checkout_diff_request";
+        subscriptionId: string;
+        cwd: string;
+        compare: { mode: "uncommitted" | "base"; baseRef?: string };
+        requestId: string;
+      };
+    };
+    expect(subscribeRequest.message.type).toBe("subscribe_checkout_diff_request");
+    expect(subscribeRequest.message.cwd).toBe("/tmp/project");
+    expect(subscribeRequest.message.compare).toEqual({ mode: "base", baseRef: "main" });
+
+    mock.triggerMessage(
+      JSON.stringify({
+        type: "session",
+        message: {
+          type: "subscribe_checkout_diff_response",
+          payload: {
+            subscriptionId: subscribeRequest.message.subscriptionId,
+            cwd: "/tmp/project",
+            files: [],
+            error: null,
+            requestId: subscribeRequest.message.requestId,
+          },
+        },
+      })
+    );
+
+    await expect(promise).resolves.toEqual({
+      cwd: "/tmp/project",
+      files: [],
+      error: null,
+      requestId: subscribeRequest.message.requestId,
+    });
+
+    expect(mock.sent).toHaveLength(2);
+    const unsubscribeRequest = JSON.parse(mock.sent[1]) as {
+      type: "session";
+      message: {
+        type: "unsubscribe_checkout_diff_request";
+        subscriptionId: string;
+      };
+    };
+    expect(unsubscribeRequest.message.type).toBe("unsubscribe_checkout_diff_request");
+    expect(unsubscribeRequest.message.subscriptionId).toBe(
+      subscribeRequest.message.subscriptionId
+    );
+  });
+
+  test("resubscribes checkout diff streams after reconnect", async () => {
+    const logger = createMockLogger();
+    const mock = createMockTransport();
+
+    const client = new DaemonClient({
+      url: "ws://test",
+      logger,
+      reconnect: { enabled: false },
+      transportFactory: () => mock.transport,
+    });
+    clients.push(client);
+
+    const internal = client as unknown as {
+      checkoutDiffSubscriptions: Map<
+        string,
+        { cwd: string; compare: { mode: "uncommitted" | "base"; baseRef?: string } }
+      >;
+    };
+    internal.checkoutDiffSubscriptions.set("checkout-sub-1", {
+      cwd: "/tmp/project",
+      compare: { mode: "base", baseRef: "main" },
+    });
+
+    const connectPromise = client.connect();
+    mock.triggerOpen();
+    await connectPromise;
+
+    expect(mock.sent).toHaveLength(1);
+    const request = JSON.parse(mock.sent[0]) as {
+      type: "session";
+      message: {
+        type: "subscribe_checkout_diff_request";
+        subscriptionId: string;
+        cwd: string;
+        compare: { mode: "uncommitted" | "base"; baseRef?: string };
+        requestId: string;
+      };
+    };
+    expect(request.message.type).toBe("subscribe_checkout_diff_request");
+    expect(request.message.subscriptionId).toBe("checkout-sub-1");
+    expect(request.message.cwd).toBe("/tmp/project");
+    expect(request.message.compare).toEqual({ mode: "base", baseRef: "main" });
+    expect(typeof request.message.requestId).toBe("string");
+    expect(request.message.requestId.length).toBeGreaterThan(0);
+  });
+
   test("fetches project-grouped agents via RPC", async () => {
     const logger = createMockLogger();
     const mock = createMockTransport();
