@@ -6,6 +6,10 @@
 
 <p align="center">Manage coding agents from your phone and desktop.</p>
 
+<p align="center">
+  <img src="https://paseo.sh/paseo-mockup.png" alt="Paseo app screenshot" width="100%">
+</p>
+
 ---
 
 > [!WARNING]

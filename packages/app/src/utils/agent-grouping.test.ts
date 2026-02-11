@@ -43,7 +43,7 @@ describe("groupAgents", () => {
     ];
 
     const { activeGroups } = groupAgents(agents, {
-      getRemoteUrl: () => "git@github.com:moboudra/paseo.git",
+      getRemoteUrl: () => "git@github.com:getpaseo/paseo.git",
     });
 
     expect(activeGroups).toHaveLength(1);

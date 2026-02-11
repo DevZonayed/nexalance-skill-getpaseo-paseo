@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Paseo Desktop"
 authors = ["moboudra"]
 license = "MIT"
-repository = "https://github.com/moboudra/paseo"
+repository = "https://github.com/getpaseo/paseo"
 edition = "2021"
 rust-version = "1.77.2"
 
