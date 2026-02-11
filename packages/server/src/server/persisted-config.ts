@@ -144,6 +144,21 @@ export const PersistedConfigSchema = z
 export type PersistedConfig = z.infer<typeof PersistedConfigSchema>;
 
 const CONFIG_FILENAME = "config.json";
+const DEFAULT_PERSISTED_CONFIG: PersistedConfig = PersistedConfigSchema.parse({
+  version: 1,
+  daemon: {
+    listen: "127.0.0.1:6767",
+    cors: {
+      allowedOrigins: ["https://app.paseo.sh"],
+    },
+    relay: {
+      enabled: true,
+    },
+  },
+  app: {
+    baseUrl: "https://app.paseo.sh",
+  },
+});
 
 type LoggerLike = {
   child(bindings: Record<string, unknown>): LoggerLike;
@@ -164,18 +179,16 @@ export function loadPersistedConfig(
 ): PersistedConfig {
   const log = getLogger(logger);
   const configPath = getConfigPath(paseoHome);
-  const defaultConfig = PersistedConfigSchema.parse({});
 
   if (!existsSync(configPath)) {
     try {
       mkdirSync(path.dirname(configPath), { recursive: true });
-      writeFileSync(configPath, JSON.stringify(defaultConfig, null, 2) + "\n");
+      writeFileSync(configPath, JSON.stringify(DEFAULT_PERSISTED_CONFIG, null, 2) + "\n");
       log?.info(`Initialized config file at ${configPath}`);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       throw new Error(`[Config] Failed to initialize ${configPath}: ${message}`);
     }
-    return defaultConfig;
   }
 
   let raw: string;
