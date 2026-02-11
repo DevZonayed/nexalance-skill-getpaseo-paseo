@@ -452,6 +452,121 @@ describe("AgentManager", () => {
     expect(refreshed?.runtimeInfo?.model).toBe("gpt-5.2-codex");
   });
 
+  test("runAgent assembles finalText from trailing assistant chunks", async () => {
+    const workdir = mkdtempSync(join(tmpdir(), "agent-manager-test-"));
+    const storagePath = join(workdir, "agents");
+    const storage = new AgentStorage(storagePath, logger);
+    const expectedFinalText =
+      "```json\n{\"message\":\"Reserve space for archive button in sidebar agent list\"}\n```";
+
+    class ChunkedAssistantSession implements AgentSession {
+      readonly provider = "codex" as const;
+      readonly capabilities = TEST_CAPABILITIES;
+      readonly id = randomUUID();
+
+      async run(): Promise<AgentRunResult> {
+        return {
+          sessionId: this.id,
+          finalText: "",
+          timeline: [],
+        };
+      }
+
+      async *stream(): AsyncGenerator<AgentStreamEvent> {
+        yield { type: "turn_started", provider: this.provider };
+        yield {
+          type: "timeline",
+          provider: this.provider,
+          item: {
+            type: "assistant_message",
+            text: "```json\n{\"message\":\"Reserve space for archive button in side",
+          },
+        };
+        yield {
+          type: "timeline",
+          provider: this.provider,
+          item: {
+            type: "assistant_message",
+            text: "bar agent list\"}\n```",
+          },
+        };
+        yield { type: "turn_completed", provider: this.provider };
+      }
+
+      async *streamHistory(): AsyncGenerator<AgentStreamEvent> {}
+
+      async getRuntimeInfo() {
+        return {
+          provider: this.provider,
+          sessionId: this.id,
+          model: null,
+          modeId: null,
+        };
+      }
+
+      async getAvailableModes() {
+        return [];
+      }
+
+      async getCurrentMode() {
+        return null;
+      }
+
+      async setMode(): Promise<void> {}
+
+      getPendingPermissions() {
+        return [];
+      }
+
+      async respondToPermission(): Promise<void> {}
+
+      describePersistence() {
+        return {
+          provider: this.provider,
+          sessionId: this.id,
+        };
+      }
+
+      async interrupt(): Promise<void> {}
+
+      async close(): Promise<void> {}
+    }
+
+    class ChunkedAssistantClient implements AgentClient {
+      readonly provider = "codex" as const;
+      readonly capabilities = TEST_CAPABILITIES;
+
+      async isAvailable(): Promise<boolean> {
+        return true;
+      }
+
+      async createSession(): Promise<AgentSession> {
+        return new ChunkedAssistantSession();
+      }
+
+      async resumeSession(): Promise<AgentSession> {
+        return new ChunkedAssistantSession();
+      }
+    }
+
+    const manager = new AgentManager({
+      clients: {
+        codex: new ChunkedAssistantClient(),
+      },
+      registry: storage,
+      logger,
+      idFactory: () => "00000000-0000-4000-8000-000000000113",
+    });
+
+    const snapshot = await manager.createAgent({
+      provider: "codex",
+      cwd: workdir,
+    });
+
+    const result = await manager.runAgent(snapshot.id, "generate commit message");
+    expect(result.finalText).toBe(expectedFinalText);
+  });
+
   test("listAgents excludes internal agents", async () => {
     const workdir = mkdtempSync(join(tmpdir(), "agent-manager-test-"));
     const storagePath = join(workdir, "agents");

@@ -558,9 +558,6 @@ export class AgentManager {
     for await (const event of events) {
       if (event.type === "timeline") {
         timeline.push(event.item);
-        if (event.item.type === "assistant_message") {
-          finalText = event.item.text;
-        }
       } else if (event.type === "turn_completed") {
         usage = event.usage;
       } else if (event.type === "turn_failed") {
@@ -569,6 +566,8 @@ export class AgentManager {
         canceled = true;
       }
     }
+
+    finalText = this.getLastAssistantMessageFromTimeline(timeline) ?? "";
 
     const agent = this.requireAgent(agentId);
     const sessionId = agent.persistence?.sessionId;
@@ -869,10 +868,16 @@ export class AgentManager {
       return null;
     }
 
+    return this.getLastAssistantMessageFromTimeline(agent.timeline);
+  }
+
+  private getLastAssistantMessageFromTimeline(
+    timeline: readonly AgentTimelineItem[]
+  ): string | null {
     // Collect the last contiguous assistant messages (Claude streams chunks)
     const chunks: string[] = [];
-    for (let i = agent.timeline.length - 1; i >= 0; i--) {
-      const item = agent.timeline[i];
+    for (let i = timeline.length - 1; i >= 0; i--) {
+      const item = timeline[i];
       if (item.type !== "assistant_message") {
         if (chunks.length) {
           break;
