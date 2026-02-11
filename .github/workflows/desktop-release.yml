@@ -20,20 +20,7 @@ jobs:
   publish-tauri:
     permissions:
       contents: write
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - platform: macos-latest # for Arm based macs (M1 and above).
-            args: '--target aarch64-apple-darwin'
-          - platform: macos-latest # for Intel based macs.
-            args: '--target x86_64-apple-darwin'
-          - platform: ubuntu-22.04
-            args: ''
-          - platform: windows-latest
-            args: ''
-
-    runs-on: ${{ matrix.platform }}
+    runs-on: macos-latest
     env:
       RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
 
@@ -54,13 +41,7 @@ jobs:
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
-
-      - name: Install system dependencies (ubuntu only)
-        if: matrix.platform == 'ubuntu-22.04'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+          targets: aarch64-apple-darwin
 
       - name: Install JS dependencies
         run: npm install --workspace=@getpaseo/app --workspace=@getpaseo/desktop --include-workspace-root
@@ -110,7 +91,7 @@ jobs:
           NODE
 
       - name: Build and publish Tauri release
-        uses: tauri-apps/tauri-action@v0.6.1
+        uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -120,4 +101,4 @@ jobs:
           releaseBody: See the assets to download and install this version.
           releaseDraft: false
           prerelease: false
-          args: ${{ matrix.args }}
+          args: --target aarch64-apple-darwin
