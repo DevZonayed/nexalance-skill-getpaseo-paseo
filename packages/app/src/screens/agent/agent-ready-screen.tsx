@@ -553,7 +553,10 @@ function AgentScreenContent({
     if (!isConnected) {
       return;
     }
-    if (!needsAuthoritativeSync) {
+    // On native clients, daemon stream forwarding is focused-agent only, so switching
+    // agents can leave timeline gaps unless we explicitly request a snapshot.
+    const shouldSyncOnEntry = needsAuthoritativeSync || Platform.OS !== "web";
+    if (!shouldSyncOnEntry) {
       return;
     }
 
@@ -563,7 +566,12 @@ function AgentScreenContent({
         error,
       });
     });
-  }, [resolvedAgentId, ensureAgentIsInitialized, isConnected, needsAuthoritativeSync]);
+  }, [
+    resolvedAgentId,
+    ensureAgentIsInitialized,
+    isConnected,
+    needsAuthoritativeSync,
+  ]);
 
   useEffect(() => {
     // Clear stale resolution state when route target changes.

@@ -63,10 +63,15 @@ export function VoiceProvider({ children }: VoiceProviderProps) {
   const lastVoiceModeSyncedClientRef = useRef<SessionState["client"] | null>(null);
   const voiceTransportReadyRef = useRef(false);
   const voiceResyncInFlightRef = useRef(false);
+  const silenceGraceStartMsRef = useRef<number | null>(null);
+  const vadStateRef = useRef<{ isDetecting: boolean; isSpeaking: boolean }>({
+    isDetecting: false,
+    isSpeaking: false,
+  });
 
   const realtimeAudio = useSpeechmaticsAudio({
     onSpeechStart: () => {
-      console.log("[Voice] Speech detected");
+      console.log("[Voice] Segment started (speech confirmed)");
       // Stop audio playback if playing
       const session = realtimeSessionRef.current;
       const sessionAudioPlayer = session?.audioPlayer ?? null;
@@ -93,7 +98,16 @@ export function VoiceProvider({ children }: VoiceProviderProps) {
       }
     },
     onSpeechEnd: () => {
-      console.log("[Voice] Speech ended");
+      const silenceMs =
+        silenceGraceStartMsRef.current === null
+          ? null
+          : Date.now() - silenceGraceStartMsRef.current;
+      if (silenceMs === null) {
+        console.log("[Voice] Segment finalized");
+      } else {
+        console.log("[Voice] Segment finalized", { silenceMs });
+      }
+      silenceGraceStartMsRef.current = null;
     },
     onAudioSegment: ({ audioData, isLast }) => {
       if (!voiceTransportReadyRef.current) {
@@ -134,6 +148,7 @@ export function VoiceProvider({ children }: VoiceProviderProps) {
       }
     },
     volumeThreshold: REALTIME_VOICE_VAD_CONFIG.volumeThreshold,
+    confirmedDropGracePeriod: REALTIME_VOICE_VAD_CONFIG.confirmedDropGracePeriodMs,
     silenceDuration: REALTIME_VOICE_VAD_CONFIG.silenceDurationMs,
     speechConfirmationDuration: REALTIME_VOICE_VAD_CONFIG.speechConfirmationMs,
     detectionGracePeriod: REALTIME_VOICE_VAD_CONFIG.detectionGracePeriodMs,
@@ -142,6 +157,40 @@ export function VoiceProvider({ children }: VoiceProviderProps) {
   useEffect(() => {
     realtimeSessionRef.current = activeSession;
   }, [activeSession]);
+
+  useEffect(() => {
+    const next = {
+      isDetecting: realtimeAudio.isDetecting,
+      isSpeaking: realtimeAudio.isSpeaking,
+    };
+    const prev = vadStateRef.current;
+
+    if (!isVoiceMode) {
+      silenceGraceStartMsRef.current = null;
+      vadStateRef.current = next;
+      return;
+    }
+
+    // Confirmed speech dropped below threshold: grace window starts.
+    if (prev.isSpeaking && !next.isSpeaking && next.isDetecting) {
+      silenceGraceStartMsRef.current = Date.now();
+      console.log("[Voice] Grace started (speech dropped below threshold)");
+    }
+
+    // User resumed speaking before grace timeout elapsed.
+    if (!prev.isSpeaking && next.isSpeaking && silenceGraceStartMsRef.current !== null) {
+      const resumedAfterMs = Date.now() - silenceGraceStartMsRef.current;
+      console.log("[Voice] Speech resumed during grace", { resumedAfterMs });
+      silenceGraceStartMsRef.current = null;
+    }
+
+    // Fully idle (neither detecting nor speaking).
+    if (!next.isDetecting && !next.isSpeaking) {
+      silenceGraceStartMsRef.current = null;
+    }
+
+    vadStateRef.current = next;
+  }, [isVoiceMode, realtimeAudio.isDetecting, realtimeAudio.isSpeaking]);
 
   useEffect(() => {
     const connected = activeSession?.connection.isConnected ?? false;

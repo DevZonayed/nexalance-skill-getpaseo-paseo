@@ -74,6 +74,7 @@ export const SHERPA_ONNX_MODEL_CATALOG = {
     requiredFiles: ["model.onnx", "voices.bin", "tokens.txt", "espeak-ng-data"],
     description: "Kokoro TTS (higher quality; larger).",
     aliases: ["kokoro"],
+    defaultFor: "tts",
   },
   "pocket-tts-onnx-int8": {
     kind: "tts",
@@ -119,7 +120,6 @@ export const SHERPA_ONNX_MODEL_CATALOG = {
     ],
     description: "Pocket TTS ONNX (INT8) with streaming decode support (via onnxruntime).",
     aliases: ["pocket", "pocket-tts"],
-    defaultFor: "tts",
   },
 } as const satisfies Record<string, SherpaOnnxCatalogEntry>;
 

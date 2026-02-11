@@ -18,6 +18,78 @@ function tmpCwd(): string {
 const CODEX_TEST_MODEL = "gpt-5.1-codex-mini";
 const CODEX_TEST_THINKING_OPTION_ID = "low";
 
+type ToolCallItem = Extract<AgentTimelineItem, { type: "tool_call" }>;
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return null;
+  }
+  return value as Record<string, unknown>;
+}
+
+function commandFromRawInput(value: unknown): string | null {
+  const record = asRecord(value);
+  if (!record) {
+    return null;
+  }
+
+  const commandValue = record.command ?? record.cmd;
+  if (typeof commandValue === "string" && commandValue.length > 0) {
+    return commandValue;
+  }
+  if (Array.isArray(commandValue)) {
+    const parts = commandValue.filter((entry): entry is string => typeof entry === "string");
+    if (parts.length > 0) {
+      return parts.join(" ");
+    }
+  }
+  return null;
+}
+
+function commandFromToolCallDetail(detail: ToolCallItem["detail"]): string | null {
+  if (detail.type === "shell") {
+    return detail.command;
+  }
+  if (detail.type === "unknown") {
+    return commandFromRawInput(detail.input);
+  }
+  return null;
+}
+
+function extractPathFromPayload(value: unknown): string | null {
+  const record = asRecord(value);
+  if (!record) {
+    return null;
+  }
+
+  const directPath = record.path ?? record.file_path ?? record.filePath;
+  if (typeof directPath === "string" && directPath.length > 0) {
+    return directPath;
+  }
+
+  if (Array.isArray(record.files)) {
+    for (const file of record.files) {
+      const fileRecord = asRecord(file);
+      const filePath = fileRecord?.path;
+      if (typeof filePath === "string" && filePath.length > 0) {
+        return filePath;
+      }
+    }
+  }
+
+  return null;
+}
+
+function pathFromToolCallDetail(detail: ToolCallItem["detail"]): string | null {
+  if (detail.type === "read" || detail.type === "edit" || detail.type === "write") {
+    return detail.filePath;
+  }
+  if (detail.type === "unknown") {
+    return extractPathFromPayload(detail.input) ?? extractPathFromPayload(detail.output);
+  }
+  return null;
+}
+
 describe("daemon E2E", () => {
   let ctx: DaemonTestContext;
 
@@ -34,9 +106,9 @@ describe("daemon E2E", () => {
     function extractToolCalls(
       queue: SessionOutboundMessage[],
       agentId: string
-    ): AgentTimelineItem[] {
-      const byCallId = new Map<string, AgentTimelineItem>();
-      const noCallId: AgentTimelineItem[] = [];
+    ): ToolCallItem[] {
+      const byCallId = new Map<string, ToolCallItem>();
+      const noCallId: ToolCallItem[] = [];
 
       for (const m of queue) {
         if (
@@ -58,9 +130,9 @@ describe("daemon E2E", () => {
     }
 
     // Helper to log tool call structure in a consistent format
-    function logToolCall(prefix: string, tc: AgentTimelineItem): void {
-      if (tc.type !== "tool_call") return;
-
+    function logToolCall(prefix: string, tc: ToolCallItem): void {
+      void prefix;
+      void tc;
     }
 
     test(
@@ -92,10 +164,15 @@ describe("daemon E2E", () => {
           logToolCall("CLAUDE_READ", tc);
         }
 
-        const readCall = toolCalls.find((tc) => tc.type === "tool_call" && tc.name === "Read");
+        const readCall = toolCalls.find((tc) => tc.name === "Read");
         expect(readCall).toBeDefined();
         expect(readCall?.name).toBe("Read");
-        expect(readCall?.input).toBeDefined();
+        expect(readCall?.detail).toBeDefined();
+        const readPath = readCall ? pathFromToolCallDetail(readCall.detail) : null;
+        expect(readPath).toBeTruthy();
+        if (readPath) {
+          expect(readPath).toContain("/etc/hosts");
+        }
 
         await ctx.client.deleteAgent(agent.id);
         collector.unsubscribe();
@@ -133,13 +210,15 @@ describe("daemon E2E", () => {
           logToolCall("CLAUDE_BASH", tc);
         }
 
-        const bashCall = toolCalls.find((tc) => tc.type === "tool_call" && tc.name === "Bash");
+        const bashCall = toolCalls.find((tc) => tc.name === "Bash");
         expect(bashCall).toBeDefined();
         expect(bashCall?.name).toBe("Bash");
-        expect(bashCall?.input).toBeDefined();
-        // Command text should be in input.command
-        const bashInput = bashCall?.input as { command?: string } | undefined;
-        expect(bashInput?.command).toContain("echo");
+        expect(bashCall?.detail).toBeDefined();
+        const command = bashCall ? commandFromToolCallDetail(bashCall.detail) : null;
+        expect(command).toBeTruthy();
+        if (command) {
+          expect(command).toContain("echo");
+        }
 
         await ctx.client.deleteAgent(agent.id);
         collector.unsubscribe();
@@ -179,9 +258,17 @@ describe("daemon E2E", () => {
           logToolCall("CLAUDE_EDIT", tc);
         }
 
-        const editCall = toolCalls.find((tc) => tc.type === "tool_call" && tc.name === "Edit");
+        const editCall = toolCalls.find((tc) => tc.name === "Edit");
         expect(editCall).toBeDefined();
-        expect(editCall?.input).toBeDefined();
+        expect(editCall?.detail).toBeDefined();
+        const editPath = editCall ? pathFromToolCallDetail(editCall.detail) : null;
+        if (editPath) {
+          expect(editPath).toBe(testFile);
+        } else if (editCall?.detail.type === "unknown") {
+          expect(editCall.detail.input ?? editCall.detail.output).toBeTruthy();
+        } else {
+          expect(editCall?.detail.type).toBe("edit");
+        }
 
         await ctx.client.deleteAgent(agent.id);
         collector.unsubscribe();
@@ -219,15 +306,12 @@ describe("daemon E2E", () => {
           logToolCall("CODEX_SHELL", tc);
         }
 
-        const shellCalls = toolCalls.filter(
-          (tc) => tc.type === "tool_call" && tc.name === "shell"
-        );
+        const shellCalls = toolCalls.filter((tc) => tc.name === "shell");
         expect(shellCalls.length).toBeGreaterThan(0);
 
         const echoCall = shellCalls.find((tc) => {
-          const shellInput = tc.input as { command?: string } | undefined;
-          return typeof shellInput?.command === "string" &&
-            shellInput.command.includes("echo");
+          const command = commandFromToolCallDetail(tc.detail);
+          return typeof command === "string" && command.includes("echo");
         });
         expect(echoCall).toBeDefined();
 

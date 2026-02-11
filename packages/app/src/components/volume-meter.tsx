@@ -24,7 +24,6 @@ interface VolumeMeterProps {
 export function VolumeMeter({
   volume,
   isMuted = false,
-  isDetecting = false,
   isSpeaking = false,
   orientation = "vertical",
   variant = "default",
@@ -146,9 +145,9 @@ export function VolumeMeter({
 
   // Create animated styles unconditionally at top level
   const line1Style = useAnimatedStyle(() => {
-    const isActive = isDetecting || isSpeaking;
+    const isActive = isSpeaking;
     const baseOpacity = isMuted ? 0.3 : isActive ? 0.9 : 0.5;
-    const volumeBoost = isMuted ? 0 : volume * 0.3;
+    const volumeBoost = isMuted || !isActive ? 0 : volume * 0.3;
     return {
       height: line1Height.value * (isMuted || volume > 0.001 ? 1 : line1Pulse.value),
       opacity: baseOpacity + volumeBoost,
@@ -156,9 +155,9 @@ export function VolumeMeter({
   });
 
   const line2Style = useAnimatedStyle(() => {
-    const isActive = isDetecting || isSpeaking;
+    const isActive = isSpeaking;
     const baseOpacity = isMuted ? 0.3 : isActive ? 0.9 : 0.5;
-    const volumeBoost = isMuted ? 0 : volume * 0.3;
+    const volumeBoost = isMuted || !isActive ? 0 : volume * 0.3;
     return {
       height: line2Height.value * (isMuted || volume > 0.001 ? 1 : line2Pulse.value),
       opacity: baseOpacity + volumeBoost,
@@ -166,9 +165,9 @@ export function VolumeMeter({
   });
 
   const line3Style = useAnimatedStyle(() => {
-    const isActive = isDetecting || isSpeaking;
+    const isActive = isSpeaking;
     const baseOpacity = isMuted ? 0.3 : isActive ? 0.9 : 0.5;
-    const volumeBoost = isMuted ? 0 : volume * 0.3;
+    const volumeBoost = isMuted || !isActive ? 0 : volume * 0.3;
     return {
       height: line3Height.value * (isMuted || volume > 0.001 ? 1 : line3Pulse.value),
       opacity: baseOpacity + volumeBoost,

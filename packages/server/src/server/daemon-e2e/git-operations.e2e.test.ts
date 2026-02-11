@@ -424,7 +424,10 @@ describe("daemon E2E", () => {
         );
 
         expect(completed.callId).toBeTruthy();
-        expect(completed.output).toBeTruthy();
+        expect(completed.detail.type).toBe("unknown");
+        if (completed.detail.type === "unknown") {
+          expect(completed.detail.output).toBeTruthy();
+        }
         expect(existsSync(path.join(agent.cwd, "setup-done.txt"))).toBe(true);
 
         await ctx.client.deleteAgent(agent.id);
@@ -507,7 +510,7 @@ describe("daemon E2E", () => {
 
         expect(existsSync(path.join(agent.cwd, "setup-start.txt"))).toBe(true);
 
-        const output = failed.output as any;
+        const output = failed.detail.type === "unknown" ? failed.detail.output as any : undefined;
         const commands = output?.commands as any[] | undefined;
         expect(Array.isArray(commands)).toBe(true);
         expect(commands?.[0]?.exitCode).toBe(7);

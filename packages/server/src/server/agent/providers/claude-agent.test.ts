@@ -825,6 +825,7 @@ async function startAgentMcpServer(): Promise<AgentMcpServerHandle> {
       // Wait for history file to be written
       const historyPaths = getClaudeHistoryPaths(cwd, handle!.sessionId);
       expect(await waitForHistoryFile(historyPaths)).toBe(true);
+      expect(await waitForHistoryContains(historyPaths, secretWord)).toBe(true);
 
       // Resume and verify context is preserved
       const resumed = await client.resumeSession(handle!, { cwd });
@@ -1079,6 +1080,7 @@ async function startAgentMcpServer(): Promise<AgentMcpServerHandle> {
 
         const historyPaths = getClaudeHistoryPaths(cwd, sessionId!);
         expect(await waitForHistoryFile(historyPaths)).toBe(true);
+        expect(await waitForHistoryContains(historyPaths, "HYDRATION_PROOF_LINE_TWO")).toBe(true);
 
         const resumed = await client.resumeSession(handle!, { cwd });
         const hydrationUpdates: StreamHydrationUpdate[] = [];
@@ -1179,6 +1181,7 @@ async function startAgentMcpServer(): Promise<AgentMcpServerHandle> {
 
         const historyPaths = getClaudeHistoryPaths(cwd, sessionId!);
         expect(await waitForHistoryFile(historyPaths)).toBe(true);
+        expect(await waitForHistoryContains(historyPaths, promptMarker)).toBe(true);
 
         const resumed = await client.resumeSession(handle!, { cwd });
         const hydrationUpdates: StreamHydrationUpdate[] = [];
@@ -1522,6 +1525,43 @@ async function waitForHistoryFile(historyPaths: string | string[], timeoutMs = 1
     await new Promise((resolve) => setTimeout(resolve, 250));
   }
   return candidates.some((entry) => existsSync(entry));
+}
+
+async function waitForHistoryContains(
+  historyPaths: string | string[],
+  marker: string,
+  timeoutMs = 15_000
+): Promise<boolean> {
+  const candidates = Array.isArray(historyPaths)
+    ? Array.from(new Set(historyPaths))
+    : [historyPaths];
+  const deadline = Date.now() + timeoutMs;
+
+  const hasMarker = (): boolean => {
+    for (const historyPath of candidates) {
+      if (!existsSync(historyPath)) {
+        continue;
+      }
+      try {
+        const content = readFileSync(historyPath, "utf8");
+        if (content.includes(marker)) {
+          return true;
+        }
+      } catch {
+        // History file may still be mid-write; retry.
+      }
+    }
+    return false;
+  };
+
+  while (Date.now() < deadline) {
+    if (hasMarker()) {
+      return true;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+
+  return hasMarker();
 }
 
 function rawContainsText(raw: unknown, text: string, depth = 0): boolean {

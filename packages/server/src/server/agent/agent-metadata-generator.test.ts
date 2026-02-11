@@ -82,7 +82,7 @@ function initGitRepo(repoDir: string): void {
         modeId: "auto",
         cwd: repoDir,
         title: "Main Agent",
-      }, "metadata-title-agent");
+      }, "4e0a4508-e522-4fe9-8384-cf3bf889f16d");
 
       await generateAndApplyAgentMetadata({
         agentManager: manager,
@@ -122,7 +122,7 @@ function initGitRepo(repoDir: string): void {
         modeId: "auto",
         cwd: worktree.worktreePath,
         title: "Worktree Agent",
-      }, "metadata-branch-agent");
+      }, "32bb765d-f637-44a2-9820-f2efd5261418");
 
       await generateAndApplyAgentMetadata({
         agentManager: manager,

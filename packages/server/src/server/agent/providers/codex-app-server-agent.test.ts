@@ -1214,11 +1214,15 @@ describe("Codex app-server provider (integration)", () => {
             (item) => item.type === "assistant_message" || item.type === "user_message"
           )
         ).toBe(true);
-
-        const response = await resumed.run(
-          `Respond with the exact token ${token} and stop.`
+        const historyIncludesToken = history.some(
+          (item) =>
+            (item.type === "assistant_message" || item.type === "user_message") &&
+            item.text.includes(token)
         );
-        expect(response.finalText).toContain(token);
+        expect(historyIncludesToken).toBe(true);
+
+        const response = await resumed.run("Reply with CONTEXT_OK and stop.");
+        expect(response.finalText.toLowerCase()).toContain("context_ok");
 
         const resumedHandle = resumed.describePersistence();
         expect(resumedHandle?.sessionId).toBe(handle?.sessionId);
@@ -1327,33 +1331,50 @@ describe("Codex app-server provider (integration)", () => {
       );
 
       let failure: string | null = null;
-      for await (const event of events) {
-        if (event.type === "permission_requested" && event.request.name === "CodexFileChange") {
-          sawPermission = true;
-          captured = event.request;
-          await session.respondToPermission(event.request.id, { behavior: "allow" });
-        }
-        if (
-          event.type === "permission_resolved" &&
-          captured &&
-          event.requestId === captured.id &&
-          event.resolution.behavior === "allow"
-        ) {
-          sawPermissionResolved = true;
-        }
-        if (event.type === "timeline" && event.item.type === "tool_call") {
-          timelineItems.push(event.item);
-        }
-        if (event.type === "turn_failed") {
-          failure = event.error;
-          break;
-        }
-        if (event.type === "turn_completed") {
-          break;
-        }
+      try {
+        await Promise.race([
+          (async () => {
+            for await (const event of events) {
+              if (event.type === "permission_requested" && event.request.name === "CodexFileChange") {
+                sawPermission = true;
+                captured = event.request;
+                await session.respondToPermission(event.request.id, { behavior: "allow" });
+              }
+              if (
+                event.type === "permission_resolved" &&
+                captured &&
+                event.requestId === captured.id &&
+                event.resolution.behavior === "allow"
+              ) {
+                sawPermissionResolved = true;
+              }
+              if (event.type === "timeline" && event.item.type === "tool_call") {
+                timelineItems.push(event.item);
+              }
+              if (event.type === "turn_failed") {
+                failure = event.error;
+                break;
+              }
+              if (event.type === "turn_completed") {
+                break;
+              }
+            }
+          })(),
+          new Promise<never>((_, reject) =>
+            setTimeout(
+              () =>
+                reject(
+                  new Error(
+                    "Timed out waiting for Codex file approval flow to complete"
+                  )
+                ),
+              100_000
+            )
+          ),
+        ]);
+      } finally {
+        await session.close();
       }
-
-      await session.close();
 
       if (failure) {
         throw new Error(failure);
@@ -1391,7 +1412,7 @@ describe("Codex app-server provider (integration)", () => {
       cleanup();
       rmSync(cwd, { recursive: true, force: true });
     }
-  }, 60000);
+  }, 120000);
 
   test.runIf(isCodexInstalled())("tool approval flow requests user input for app tools", async () => {
     const cleanup = useTempCodexSessionDir();

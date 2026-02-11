@@ -144,6 +144,10 @@ export function resolveLocalSpeechConfig(params: {
       params.persisted.features?.voiceMode?.tts?.speed,
   });
 
+  const resolvedVoiceTtsSpeakerId =
+    parsed.voiceLocalTtsSpeakerId ??
+    (parsed.voiceLocalTtsModel === "kokoro-en-v0_19" ? 0 : undefined);
+
   return {
     local:
       parsed.includeProviderConfig
@@ -154,8 +158,8 @@ export function resolveLocalSpeechConfig(params: {
               dictationStt: parsed.dictationLocalSttModel,
               voiceStt: parsed.voiceLocalSttModel,
               voiceTts: parsed.voiceLocalTtsModel,
-              ...(parsed.voiceLocalTtsSpeakerId !== undefined
-                ? { voiceTtsSpeakerId: parsed.voiceLocalTtsSpeakerId }
+              ...(resolvedVoiceTtsSpeakerId !== undefined
+                ? { voiceTtsSpeakerId: resolvedVoiceTtsSpeakerId }
                 : {}),
               ...(parsed.voiceLocalTtsSpeed !== undefined
                 ? { voiceTtsSpeed: parsed.voiceLocalTtsSpeed }

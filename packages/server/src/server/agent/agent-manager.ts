@@ -371,7 +371,9 @@ export class AgentManager {
     );
   }
 
-  async resumeAgent(
+  // Reconstruct an agent from provider persistence. Callers should explicitly
+  // hydrate timeline history after resume.
+  async resumeAgentFromPersistence(
     handle: AgentPersistenceHandle,
     overrides?: Partial<AgentSessionConfig>,
     agentId?: string,
@@ -384,7 +386,7 @@ export class AgentManager {
   ): Promise<ManagedAgent> {
     const resolvedAgentId = validateAgentId(
       agentId ?? this.idFactory(),
-      "resumeAgent"
+      "resumeAgentFromPersistence"
     );
     const metadata = (handle.metadata ?? {}) as Partial<AgentSessionConfig>;
     const mergedConfig = {
@@ -407,11 +409,18 @@ export class AgentManager {
     );
   }
 
-  async refreshAgentFromPersistence(
+  // Hot-reload an active agent session with config overrides while preserving
+  // in-memory timeline state.
+  async reloadAgentSession(
     agentId: string,
     overrides?: Partial<AgentSessionConfig>
   ): Promise<ManagedAgent> {
     const existing = this.requireAgent(agentId);
+    const preservedTimeline = [...existing.timeline];
+    const preservedHistoryPrimed = existing.historyPrimed;
+    const preservedLastUsage = existing.lastUsage;
+    const preservedLastError = existing.lastError;
+    const preservedAttention = existing.attention;
     const handle = existing.persistence;
     const provider = handle?.provider ?? existing.provider;
     const client = this.requireClient(provider);
@@ -437,12 +446,17 @@ export class AgentManager {
       );
     }
 
-    // Preserve existing labels during refresh
+    // Preserve existing labels and timeline during reload.
     return this.registerSession(session, normalizedConfig, agentId, {
       labels: existing.labels,
       createdAt: existing.createdAt,
       updatedAt: existing.updatedAt,
       lastUserMessageAt: existing.lastUserMessageAt,
+      timeline: preservedTimeline,
+      historyPrimed: preservedHistoryPrimed,
+      lastUsage: preservedLastUsage,
+      lastError: preservedLastError,
+      attention: preservedAttention,
     });
   }
 
@@ -844,9 +858,9 @@ export class AgentManager {
     return iterator.done ? null : iterator.value;
   }
 
-  async primeAgentHistory(agentId: string): Promise<void> {
+  async hydrateTimelineFromProvider(agentId: string): Promise<void> {
     const agent = this.requireAgent(agentId);
-    await this.primeHistory(agent);
+    await this.hydrateTimeline(agent);
   }
 
   private getLastAssistantMessage(agentId: string): string | null {
@@ -1033,6 +1047,11 @@ export class AgentManager {
       updatedAt?: Date;
       lastUserMessageAt?: Date | null;
       labels?: Record<string, string>;
+      timeline?: AgentTimelineItem[];
+      historyPrimed?: boolean;
+      lastUsage?: AgentUsage;
+      lastError?: string;
+      attention?: AttentionState;
     }
   ): Promise<ManagedAgent> {
     const resolvedAgentId = validateAgentId(agentId, "registerSession");
@@ -1056,11 +1075,22 @@ export class AgentManager {
       currentModeId: null,
       pendingPermissions: new Map(),
       pendingRun: null,
-      timeline: [],
+      timeline: options?.timeline ? [...options.timeline] : [],
       persistence: attachPersistenceCwd(session.describePersistence(), config.cwd),
-      historyPrimed: false,
+      historyPrimed: options?.historyPrimed ?? false,
       lastUserMessageAt: options?.lastUserMessageAt ?? null,
-      attention: { requiresAttention: false },
+      lastUsage: options?.lastUsage,
+      lastError: options?.lastError,
+      attention:
+        options?.attention != null
+          ? options.attention.requiresAttention
+            ? {
+                requiresAttention: true,
+                attentionReason: options.attention.attentionReason,
+                attentionTimestamp: new Date(options.attention.attentionTimestamp),
+              }
+            : { requiresAttention: false }
+          : { requiresAttention: false },
       internal: config.internal ?? false,
       labels: options?.labels ?? {},
     } as ActiveManagedAgent;
@@ -1144,7 +1174,7 @@ export class AgentManager {
     }
   }
 
-  private async primeHistory(agent: ActiveManagedAgent): Promise<void> {
+  private async hydrateTimeline(agent: ActiveManagedAgent): Promise<void> {
     if (agent.historyPrimed) {
       return;
     }

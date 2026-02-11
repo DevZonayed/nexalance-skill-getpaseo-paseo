@@ -19,6 +19,8 @@ export interface SpeechmaticsAudioConfig {
   /** When true, stream microphone PCM continuously without VAD gating. */
   enableContinuousStreaming?: boolean;
   volumeThreshold: number; // Volume threshold for speech detection (0-1)
+  /** ms dip debounce before VAD transitions from confirmed speaking to non-speaking */
+  confirmedDropGracePeriod?: number;
   silenceDuration: number; // ms of silence before ending segment
   speechConfirmationDuration: number; // ms of sustained speech before confirming
   detectionGracePeriod: number; // ms grace period for volume dips during detection
@@ -83,6 +85,7 @@ export function useSpeechmaticsAudio(
       {
         enableContinuousStreaming,
         volumeThreshold: config.volumeThreshold,
+        confirmedDropGracePeriodMs: config.confirmedDropGracePeriod,
         silenceDurationMs: config.silenceDuration,
         speechConfirmationMs: config.speechConfirmationDuration,
         detectionGracePeriodMs: config.detectionGracePeriod,
@@ -101,6 +104,7 @@ export function useSpeechmaticsAudio(
     segmenterRef.current?.updateConfig({
       enableContinuousStreaming,
       volumeThreshold: config.volumeThreshold,
+      confirmedDropGracePeriodMs: config.confirmedDropGracePeriod,
       silenceDurationMs: config.silenceDuration,
       speechConfirmationMs: config.speechConfirmationDuration,
       detectionGracePeriodMs: config.detectionGracePeriod,
@@ -108,6 +112,7 @@ export function useSpeechmaticsAudio(
   }, [
     enableContinuousStreaming,
     config.volumeThreshold,
+    config.confirmedDropGracePeriod,
     config.silenceDuration,
     config.speechConfirmationDuration,
     config.detectionGracePeriod,

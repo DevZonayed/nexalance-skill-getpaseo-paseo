@@ -209,14 +209,7 @@ function deriveProjectGroupingName(projectKey: string): string {
   return segments[segments.length - 1] || projectKey;
 }
 
-function escapeXmlText(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-}
-
-type ProcessingPhase = "idle" | "transcribing" | "llm";
+type ProcessingPhase = "idle" | "transcribing";
 
 type NormalizedGitOptions = {
   baseBranch?: string;
@@ -392,7 +385,6 @@ export class Session {
   // State machine
   private abortController: AbortController;
   private processingPhase: ProcessingPhase = "idle";
-  private currentStreamPromise: Promise<void> | null = null;
 
   // Voice mode state
   private isVoiceMode = false;
@@ -424,9 +416,6 @@ export class Session {
     string,
     { format: string; chunks: Buffer[] }
   >();
-
-  // Conversation history
-  private turnIndex = 0;
 
   // Per-session managers
   private readonly ttsManager: TTSManager;
@@ -519,7 +508,7 @@ export class Session {
     this.defaultLocalSpeechModelIds =
       dictation?.localModels?.defaultModelIds && dictation.localModels.defaultModelIds.length > 0
         ? [...new Set(dictation.localModels.defaultModelIds)]
-        : ["parakeet-tdt-0.6b-v2-int8", "pocket-tts-onnx-int8"];
+        : ["parakeet-tdt-0.6b-v2-int8", "kokoro-en-v0_19"];
     this.registerVoiceSpeakHandler = voiceBridge?.registerVoiceSpeakHandler;
     this.unregisterVoiceSpeakHandler = voiceBridge?.unregisterVoiceSpeakHandler;
     this.registerVoiceCallerContext = voiceBridge?.registerVoiceCallerContext;
@@ -641,6 +630,19 @@ export class Session {
     }
   }
 
+  private hasActiveAgentRun(agentId: string | null): boolean {
+    if (!agentId) {
+      return false;
+    }
+
+    const snapshot = this.agentManager.getAgent(agentId);
+    if (!snapshot) {
+      return false;
+    }
+
+    return snapshot.lifecycle === "running" || Boolean(snapshot.pendingRun);
+  }
+
   /**
    * Start streaming an agent run and forward results via the websocket broadcast
    */
@@ -737,6 +739,29 @@ export class Session {
         if (event.type === "agent_state") {
           void this.forwardAgentUpdate(event.agent);
           return;
+        }
+
+        if (
+          this.isVoiceMode &&
+          this.voiceModeAgentId === event.agentId &&
+          event.event.type === "permission_requested" &&
+          isVoicePermissionAllowed(event.event.request)
+        ) {
+          const requestId = event.event.request.id;
+          void this.agentManager
+            .respondToPermission(event.agentId, requestId, {
+              behavior: "allow",
+            })
+            .catch((error) => {
+              this.sessionLogger.warn(
+                {
+                  err: error,
+                  agentId: event.agentId,
+                  requestId,
+                },
+                "Failed to auto-allow speak tool permission in voice mode"
+              );
+            });
         }
 
         // Reduce bandwidth/CPU on mobile: only forward high-frequency agent stream events
@@ -874,7 +899,7 @@ export class Session {
       const handle = toAgentPersistenceHandle(this.sessionLogger, record.persistence);
       let snapshot: ManagedAgent;
       if (handle) {
-        snapshot = await this.agentManager.resumeAgent(
+        snapshot = await this.agentManager.resumeAgentFromPersistence(
           handle,
           buildConfigOverrides(record),
           agentId,
@@ -885,7 +910,7 @@ export class Session {
         snapshot = await this.agentManager.createAgent(config, agentId, { labels: record.labels });
       }
 
-      await this.agentManager.primeAgentHistory(agentId);
+      await this.agentManager.hydrateTimelineFromProvider(agentId);
       return this.agentManager.getAgent(agentId) ?? snapshot;
     })();
 
@@ -1592,7 +1617,7 @@ export class Session {
     };
 
     try {
-      const refreshed = await this.agentManager.refreshAgentFromPersistence(
+      const refreshed = await this.agentManager.reloadAgentSession(
         agentId,
         refreshOverrides
       );
@@ -1630,7 +1655,7 @@ export class Session {
     if (restoreAgentConfig && this.voiceModeBaseConfig) {
       const baseConfig = this.voiceModeBaseConfig;
       try {
-        await this.agentManager.refreshAgentFromPersistence(agentId, {
+        await this.agentManager.reloadAgentSession(agentId, {
           systemPrompt: buildVoiceModeSystemPrompt(baseConfig.systemPrompt, false),
           mcpServers: this.cloneMcpServers(baseConfig.mcpServers),
         });
@@ -2110,11 +2135,11 @@ export class Session {
       `Resuming agent ${handle.sessionId} (${handle.provider})`
     );
     try {
-      const snapshot = await this.agentManager.resumeAgent(
+      const snapshot = await this.agentManager.resumeAgentFromPersistence(
         handle,
         overrides
       );
-      await this.agentManager.primeAgentHistory(snapshot.id);
+      await this.agentManager.hydrateTimelineFromProvider(snapshot.id);
       await this.forwardAgentUpdate(snapshot);
       const timelineSize = this.emitAgentTimelineSnapshot(snapshot);
       if (requestId) {
@@ -2165,7 +2190,7 @@ export class Session {
       if (existing) {
         await this.interruptAgentIfRunning(agentId);
         if (existing.persistence) {
-          snapshot = await this.agentManager.refreshAgentFromPersistence(
+          snapshot = await this.agentManager.reloadAgentSession(
             agentId
           );
         } else {
@@ -2182,14 +2207,14 @@ export class Session {
             `Agent ${agentId} cannot be refreshed because it lacks persistence`
           );
         }
-        snapshot = await this.agentManager.resumeAgent(
+        snapshot = await this.agentManager.resumeAgentFromPersistence(
           handle,
           buildConfigOverrides(record),
           agentId,
           extractTimestamps(record)
         );
       }
-      await this.agentManager.primeAgentHistory(agentId);
+      await this.agentManager.hydrateTimelineFromProvider(agentId);
       await this.forwardAgentUpdate(snapshot);
       const timelineSize = this.emitAgentTimelineSnapshot(snapshot);
       if (requestId) {
@@ -5076,12 +5101,6 @@ export class Session {
     // Has content - abort any in-progress stream now
     this.createAbortController();
 
-    // Wait for aborted stream to finish cleanup (save partial response)
-    if (this.currentStreamPromise) {
-      this.sessionLogger.debug("Waiting for aborted stream to finish cleanup");
-      await this.currentStreamPromise;
-    }
-
     if (result.debugRecordingPath) {
       this.emit({
         type: "activity_log",
@@ -5114,19 +5133,27 @@ export class Session {
     });
 
     this.clearSpeechInProgress("transcription complete");
+    this.setPhase("idle");
     if (!this.isVoiceMode) {
       this.sessionLogger.debug(
         { requestId: result.requestId },
         "Skipping voice agent processing because voice mode is disabled"
       );
-      this.setPhase("idle");
       return;
     }
 
-    this.setPhase("llm");
-    this.currentStreamPromise = this.processVoiceTurn(result.text);
-    await this.currentStreamPromise;
-    this.setPhase("idle");
+    const agentId = this.voiceModeAgentId;
+    if (!agentId) {
+      this.sessionLogger.warn(
+        { requestId: result.requestId },
+        "Skipping voice agent processing because no agent is currently voice-enabled"
+      );
+      return;
+    }
+
+    // Route voice utterances through the same send path as regular text input:
+    // interrupt-if-running, record message, then start a new stream.
+    await this.handleSendAgentMessage(agentId, result.text);
   }
 
   private registerVoiceBridgeForAgent(agentId: string): void {
@@ -5168,109 +5195,6 @@ export class Session {
     });
   }
 
-  private buildVoiceAgentPrompt(userText: string): string {
-    const transcription = escapeXmlText(userText.trim());
-    return [
-      "<voice_transcription>",
-      transcription,
-      "</voice_transcription>",
-    ].join("\n");
-  }
-
-  private async processWithVoiceAgent(
-    agentId: string,
-    userText: string
-  ): Promise<void> {
-    await this.ensureAgentLoaded(agentId);
-    await this.interruptAgentIfRunning(agentId);
-
-    this.sessionLogger.info(
-      {
-        agentId,
-        userTextLength: userText.length,
-        userTextPreview: userText.slice(0, 160),
-      },
-      "Starting voice agent turn"
-    );
-
-    const prompt = this.buildVoiceAgentPrompt(userText);
-    this.agentManager.recordUserMessage(agentId, userText);
-
-    let sawSpeakToolCall = false;
-    const iterator = this.agentManager.streamAgent(agentId, prompt);
-    for await (const event of iterator) {
-      if (event.type === "turn_failed") {
-        throw new Error(event.error);
-      }
-      if (event.type === "timeline") {
-        if (event.item.type === "tool_call" && typeof event.item.name === "string") {
-          this.sessionLogger.info(
-            {
-              agentId,
-              toolName: event.item.name,
-              callId: event.item.callId,
-            },
-            "Voice agent timeline tool call"
-          );
-          if (event.item.name.toLowerCase().includes("speak")) {
-            sawSpeakToolCall = true;
-          }
-        }
-      }
-      if (event.type === "permission_requested") {
-        if (isVoicePermissionAllowed(event.request)) {
-          await this.agentManager.respondToPermission(agentId, event.request.id, {
-            behavior: "allow",
-          });
-        } else {
-          this.sessionLogger.info(
-            { agentId, requestName: event.request.name, requestId: event.request.id },
-            "Voice assistant left non-speak permission request for user decision"
-          );
-        }
-      }
-    }
-
-    if (!sawSpeakToolCall) {
-      this.sessionLogger.warn(
-        { agentId },
-        "Voice agent turn completed without speak tool call; no audio playback emitted"
-      );
-    } else {
-      this.sessionLogger.info(
-        { agentId },
-        "Voice agent turn included speak tool call"
-      );
-    }
-  }
-
-  /**
-   * Process user message through LLM with streaming and tool execution
-   */
-  private async processVoiceTurn(latestUserText?: string): Promise<void> {
-    try {
-      if (!this.isVoiceMode) {
-        this.sessionLogger.warn("Ignoring processVoiceTurn call while voice mode is disabled");
-        return;
-      }
-      const agentId = this.voiceModeAgentId;
-      if (!agentId) {
-        this.sessionLogger.warn(
-          "Ignoring processVoiceTurn call because no agent is currently voice-enabled"
-        );
-        return;
-      }
-      const normalized = (latestUserText ?? "").trim();
-      if (!normalized) {
-        return;
-      }
-      await this.processWithVoiceAgent(agentId, normalized);
-    } finally {
-      this.turnIndex++;
-      this.currentStreamPromise = null;
-    }
-  }
-
   /**
    * Handle abort request from client
    */
@@ -5280,29 +5204,32 @@ export class Session {
       `Abort request, phase: ${this.processingPhase}`
     );
 
-    if (this.processingPhase === "llm") {
-      // Already in LLM phase - abort and wait for cleanup
-      this.abortController.abort();
-      this.sessionLogger.debug("Aborted LLM processing");
+    this.abortController.abort();
+    this.ttsManager.cancelPendingPlaybacks("abort request");
 
-      // Wait for stream to finish saving partial response
-      if (this.currentStreamPromise) {
-        this.sessionLogger.debug("Waiting for stream cleanup after abort");
-        await this.currentStreamPromise;
+    // Voice abort should always interrupt active agent output immediately.
+    if (this.isVoiceMode && this.voiceModeAgentId) {
+      try {
+        await this.interruptAgentIfRunning(this.voiceModeAgentId);
+      } catch (error) {
+        this.sessionLogger.warn(
+          { err: error, agentId: this.voiceModeAgentId },
+          "Failed to interrupt active voice-mode agent on abort"
+        );
       }
+    }
 
-      // Reset phase to idle
-      this.setPhase("idle");
-
-      // Clear any pending segments and timeouts
-      this.pendingAudioSegments = [];
-      this.clearBufferTimeout();
-    } else if (this.processingPhase === "transcribing") {
+    if (this.processingPhase === "transcribing") {
       // Still in STT phase - we'll buffer the next audio
       this.sessionLogger.debug("Will buffer next audio (currently transcribing)");
       // Phase stays as 'transcribing', handleAudioChunk will handle buffering
+      return;
     }
-    // If idle, nothing to do
+
+    // Reset phase to idle and clear pending non-voice buffers.
+    this.setPhase("idle");
+    this.pendingAudioSegments = [];
+    this.clearBufferTimeout();
   }
 
   /**
@@ -5313,7 +5240,7 @@ export class Session {
   }
 
   /**
-   * Mark speech detection start and abort any active playback/LLM
+   * Mark speech detection start and abort any active playback/agent run.
    */
   private async handleVoiceSpeechStart(): Promise<void> {
     if (this.speechInProgress) {
@@ -5322,11 +5249,10 @@ export class Session {
 
     const chunkReceivedAt = Date.now();
     const phaseBeforeAbort = this.processingPhase;
-    const hadActiveStream = Boolean(this.currentStreamPromise);
+    const hadActiveStream = this.hasActiveAgentRun(this.voiceModeAgentId);
 
     this.speechInProgress = true;
-    this.sessionLogger.debug("Voice speech detected – aborting playback and LLM");
-    this.ttsManager.cancelPendingPlaybacks("voice speech detected");
+    this.sessionLogger.debug("Voice speech detected – aborting playback and active agent run");
 
     if (this.pendingAudioSegments.length > 0) {
       this.sessionLogger.debug(

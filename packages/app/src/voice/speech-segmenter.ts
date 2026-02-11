@@ -5,6 +5,8 @@ export type SpeechSegment = { audioData: string; isLast: boolean };
 export type SpeechSegmenterConfig = {
   enableContinuousStreaming: boolean;
   volumeThreshold: number; // 0..1
+  volumeReleaseThreshold?: number; // 0..1; lower threshold used to keep active speech from dropping out
+  confirmedDropGracePeriodMs?: number; // ms dip debounce before leaving confirmed speaking
   silenceDurationMs: number;
   speechConfirmationMs: number;
   detectionGracePeriodMs: number;
@@ -58,6 +60,7 @@ export class SpeechSegmenter {
 
   private speechDetectionStartMs: number | null = null;
   private detectionSilenceStartMs: number | null = null;
+  private confirmedDropStartMs: number | null = null;
   private silenceStartMs: number | null = null;
   private isSpeaking = false;
   private isDetecting = false;
@@ -67,8 +70,14 @@ export class SpeechSegmenter {
   private minChunkBytes: number;
 
   constructor(config: SpeechSegmenterConfig, callbacks: SpeechSegmenterCallbacks = {}) {
+    const volumeReleaseThreshold = this.resolveVolumeReleaseThreshold(
+      config.volumeThreshold,
+      config.volumeReleaseThreshold
+    );
     this.config = {
       ...config,
+      volumeReleaseThreshold,
+      confirmedDropGracePeriodMs: config.confirmedDropGracePeriodMs ?? 250,
       minChunkDurationMs: config.minChunkDurationMs ?? 1000,
       pcmSampleRate: config.pcmSampleRate ?? 16000,
       pcmChannels: config.pcmChannels ?? 1,
@@ -81,8 +90,14 @@ export class SpeechSegmenter {
   }
 
   updateConfig(next: SpeechSegmenterConfig): void {
+    const volumeReleaseThreshold = this.resolveVolumeReleaseThreshold(
+      next.volumeThreshold,
+      next.volumeReleaseThreshold
+    );
     this.config = {
       ...next,
+      volumeReleaseThreshold,
+      confirmedDropGracePeriodMs: next.confirmedDropGracePeriodMs ?? this.config.confirmedDropGracePeriodMs,
       minChunkDurationMs: next.minChunkDurationMs ?? this.config.minChunkDurationMs,
       pcmSampleRate: next.pcmSampleRate ?? this.config.pcmSampleRate,
       pcmChannels: next.pcmChannels ?? this.config.pcmChannels,
@@ -107,11 +122,16 @@ export class SpeechSegmenter {
     return this.isDetecting;
   }
 
+  getVolumeReleaseThreshold(): number {
+    return this.config.volumeReleaseThreshold;
+  }
+
   reset(): void {
     this.audioBuffer = [];
     this.bufferedBytes = 0;
     this.speechDetectionStartMs = null;
     this.detectionSilenceStartMs = null;
+    this.confirmedDropStartMs = null;
     this.silenceStartMs = null;
     this.isSpeaking = false;
     this.isDetecting = false;
@@ -170,79 +190,103 @@ export class SpeechSegmenter {
       return;
     }
 
-    const speechDetected = volume > this.config.volumeThreshold;
+    const speechDetectedForStart = volume > this.config.volumeThreshold;
+    const speechDetectedForContinue = volume > this.config.volumeReleaseThreshold;
 
-    if (speechDetected && !this.isSpeaking && !this.speechConfirmed) {
-      // Initial detection phase.
-      if (this.speechDetectionStartMs === null) {
-        this.speechDetectionStartMs = nowMs;
-        this.detectionSilenceStartMs = null;
-        this.audioBuffer = [];
-        this.bufferedBytes = 0;
-        this.setDetecting(true);
-        return;
-      }
-
-      // Volume is back above threshold - reset grace period.
-      this.detectionSilenceStartMs = null;
-
-      const speechDuration = nowMs - this.speechDetectionStartMs;
-      if (speechDuration >= this.config.speechConfirmationMs) {
-        this.speechConfirmed = true;
-        this.silenceStartMs = null;
-        this.setDetecting(false);
-        this.setSpeaking(true);
-        this.callbacks.onSpeechStart?.();
-      }
-      return;
-    }
-
-    if (speechDetected && this.isSpeaking && this.speechConfirmed) {
-      // Continuing confirmed speech.
-      this.silenceStartMs = null;
-      return;
-    }
-
-    if (!speechDetected && !this.speechConfirmed && this.speechDetectionStartMs !== null) {
-      // Volume dropped during detection phase - apply grace period.
-      if (this.detectionSilenceStartMs === null) {
-        this.detectionSilenceStartMs = nowMs;
-        return;
-      }
-
-      const graceDuration = nowMs - this.detectionSilenceStartMs;
-      if (graceDuration >= this.config.detectionGracePeriodMs) {
-        // Cancel detection.
-        this.speechDetectionStartMs = null;
-        this.detectionSilenceStartMs = null;
-        this.audioBuffer = [];
-        this.bufferedBytes = 0;
-        this.setDetecting(false);
-      }
-      return;
-    }
-
-    if (!speechDetected && this.isSpeaking && this.speechConfirmed) {
-      // Potential speech END.
-      if (this.silenceStartMs === null) {
-        this.silenceStartMs = nowMs;
-        return;
-      }
-
-      const silenceDuration = nowMs - this.silenceStartMs;
-      if (silenceDuration >= this.config.silenceDurationMs) {
-        // Speech END confirmed.
-        this.speechConfirmed = false;
-        this.speechDetectionStartMs = null;
-        this.silenceStartMs = null;
-        this.setSpeaking(false);
-        this.callbacks.onSpeechEnd?.();
-        if (this.audioBuffer.length === 0) {
-          // Important: downstream expects an explicit segment boundary marker.
-          this.callbacks.onAudioSegment?.({ audioData: "", isLast: true });
-        } else {
-          this.flush(true);
+    if (!this.speechConfirmed) {
+      if (speechDetectedForStart) {
+        // Initial detection phase.
+        this.confirmedDropStartMs = null;
+        if (this.speechDetectionStartMs === null) {
+          this.speechDetectionStartMs = nowMs;
+          this.detectionSilenceStartMs = null;
+          this.audioBuffer = [];
+          this.bufferedBytes = 0;
+          this.setDetecting(true);
+          this.setSpeaking(true);
+          return;
         }
+
+        // Volume is back above threshold - reset grace period.
+        this.detectionSilenceStartMs = null;
+        this.setSpeaking(true);
+
+        const speechDuration = nowMs - this.speechDetectionStartMs;
+        if (speechDuration >= this.config.speechConfirmationMs) {
+          this.speechConfirmed = true;
+          this.silenceStartMs = null;
+          this.setDetecting(false);
+          this.callbacks.onSpeechStart?.();
+        }
+        return;
+      }
+
+      if (this.speechDetectionStartMs !== null) {
+        // Volume dropped during detection phase - apply grace period.
+        if (this.detectionSilenceStartMs === null) {
+          this.detectionSilenceStartMs = nowMs;
+          this.setSpeaking(false);
+          return;
+        }
+
+        const graceDuration = nowMs - this.detectionSilenceStartMs;
+        if (graceDuration >= this.config.detectionGracePeriodMs) {
+          // Cancel detection.
+          this.speechDetectionStartMs = null;
+          this.detectionSilenceStartMs = null;
+          this.confirmedDropStartMs = null;
+          this.audioBuffer = [];
+          this.bufferedBytes = 0;
+          this.setDetecting(false);
+          this.setSpeaking(false);
+        }
+      }
+      return;
+    }
+
+    if (speechDetectedForContinue) {
+      // Continuing confirmed speech (or resuming during silence grace).
+      this.confirmedDropStartMs = null;
+      this.silenceStartMs = null;
+      this.setDetecting(false);
+      this.setSpeaking(true);
+      return;
+    }
+
+    if (this.confirmedDropStartMs === null) {
+      this.confirmedDropStartMs = nowMs;
+      return;
+    }
+
+    const confirmedDropDuration = nowMs - this.confirmedDropStartMs;
+    if (confirmedDropDuration < this.config.confirmedDropGracePeriodMs) {
+      return;
+    }
+
+    // Potential speech END while utterance remains open.
+    if (this.silenceStartMs === null) {
+      this.silenceStartMs = nowMs;
+      this.setDetecting(true);
+      this.setSpeaking(false);
+      return;
+    }
+
+    const silenceDuration = nowMs - this.silenceStartMs;
+    if (silenceDuration >= this.config.silenceDurationMs) {
+      // Speech END confirmed.
+      this.speechConfirmed = false;
+      this.speechDetectionStartMs = null;
+      this.detectionSilenceStartMs = null;
+      this.confirmedDropStartMs = null;
+      this.silenceStartMs = null;
+      this.setDetecting(false);
+      this.setSpeaking(false);
+      this.callbacks.onSpeechEnd?.();
+      if (this.audioBuffer.length === 0) {
+        // Important: downstream expects an explicit segment boundary marker.
+        this.callbacks.onAudioSegment?.({ audioData: "", isLast: true });
+      } else {
+        this.flush(true);
       }
     }
   }
@@ -281,5 +325,14 @@ export class SpeechSegmenter {
         (this.config.pcmBitsPerSample / 8)) /
       1000;
     this.minChunkBytes = Math.round(this.pcmBytesPerMs * this.config.minChunkDurationMs);
+  }
+
+  private resolveVolumeReleaseThreshold(
+    volumeThreshold: number,
+    configured?: number
+  ): number {
+    const defaultReleaseThreshold = volumeThreshold * 0.4;
+    const raw = configured ?? defaultReleaseThreshold;
+    return Math.max(0, Math.min(raw, volumeThreshold));
   }
 }

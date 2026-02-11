@@ -36,12 +36,14 @@ describe("resolveSpeechConfig", () => {
       models: {
         dictationStt: "parakeet-tdt-0.6b-v2-int8",
         voiceStt: "parakeet-tdt-0.6b-v2-int8",
-        voiceTts: "pocket-tts-onnx-int8",
+        voiceTts: "kokoro-en-v0_19",
+        voiceTtsSpeakerId: 0,
       },
     });
     expect(result.speech.local?.models.dictationStt).toBe("parakeet-tdt-0.6b-v2-int8");
     expect(result.speech.local?.models.voiceStt).toBe("parakeet-tdt-0.6b-v2-int8");
-    expect(result.speech.local?.models.voiceTts).toBe("pocket-tts-onnx-int8");
+    expect(result.speech.local?.models.voiceTts).toBe("kokoro-en-v0_19");
+    expect(result.speech.local?.models.voiceTtsSpeakerId).toBe(0);
   });
 
   test("resolves feature-scoped local model env vars", () => {
@@ -122,6 +124,7 @@ describe("resolveSpeechConfig", () => {
 
     expect(result.speech.local?.models.dictationStt).toBe("parakeet-tdt-0.6b-v2-int8");
     expect(result.speech.local?.models.voiceStt).toBe("parakeet-tdt-0.6b-v2-int8");
-    expect(result.speech.local?.models.voiceTts).toBe("pocket-tts-onnx-int8");
+    expect(result.speech.local?.models.voiceTts).toBe("kokoro-en-v0_19");
+    expect(result.speech.local?.models.voiceTtsSpeakerId).toBe(0);
   });
 });

@@ -51,7 +51,7 @@ function VoiceDocs() {
         <h2 className="text-xl font-medium">Local Speech</h2>
         <p className="text-white/60 leading-relaxed">
           Local speech defaults to model IDs <code className="font-mono">parakeet-tdt-0.6b-v3-int8</code>{' '}
-          (STT) and <code className="font-mono">pocket-tts-onnx-int8</code> (TTS).
+          (STT) and <code className="font-mono">kokoro-en-v0_19</code> (TTS, speaker 0 / voice 00).
         </p>
         <p className="text-white/60 leading-relaxed">
           Missing models are downloaded at daemon startup into{' '}
@@ -66,7 +66,7 @@ function VoiceDocs() {
     "voiceMode": {
       "llm": { "provider": "claude", "model": "haiku" },
       "stt": { "provider": "local", "model": "parakeet-tdt-0.6b-v3-int8" },
-      "tts": { "provider": "local", "model": "pocket-tts-onnx-int8" }
+      "tts": { "provider": "local", "model": "kokoro-en-v0_19", "speakerId": 0 }
     }
   },
   "providers": {

@@ -10,6 +10,8 @@ export interface SpeechmaticsAudioConfig {
   /** When true, stream microphone PCM continuously without VAD gating. */
   enableContinuousStreaming?: boolean;
   volumeThreshold: number; // 0-1
+  /** ms dip debounce before VAD transitions from confirmed speaking to non-speaking */
+  confirmedDropGracePeriod?: number;
   silenceDuration: number; // ms of silence before ending segment
   speechConfirmationDuration: number; // ms of sustained speech before confirming
   detectionGracePeriod: number; // ms grace period for volume dips during detection
@@ -100,6 +102,7 @@ export function useSpeechmaticsAudio(config: SpeechmaticsAudioConfig): Speechmat
       {
         enableContinuousStreaming,
         volumeThreshold: config.volumeThreshold,
+        confirmedDropGracePeriodMs: config.confirmedDropGracePeriod,
         silenceDurationMs: config.silenceDuration,
         speechConfirmationMs: config.speechConfirmationDuration,
         detectionGracePeriodMs: config.detectionGracePeriod,
@@ -118,6 +121,7 @@ export function useSpeechmaticsAudio(config: SpeechmaticsAudioConfig): Speechmat
     segmenterRef.current?.updateConfig({
       enableContinuousStreaming,
       volumeThreshold: config.volumeThreshold,
+      confirmedDropGracePeriodMs: config.confirmedDropGracePeriod,
       silenceDurationMs: config.silenceDuration,
       speechConfirmationMs: config.speechConfirmationDuration,
       detectionGracePeriodMs: config.detectionGracePeriod,
@@ -125,6 +129,7 @@ export function useSpeechmaticsAudio(config: SpeechmaticsAudioConfig): Speechmat
   }, [
     enableContinuousStreaming,
     config.volumeThreshold,
+    config.confirmedDropGracePeriod,
     config.silenceDuration,
     config.speechConfirmationDuration,
     config.detectionGracePeriod,
@@ -150,6 +155,21 @@ export function useSpeechmaticsAudio(config: SpeechmaticsAudioConfig): Speechmat
   useEffect(() => {
     isMutedRef.current = isMuted;
   }, [isMuted]);
+
+  const vadConfigRef = useRef({
+    volumeThreshold: config.volumeThreshold,
+  });
+  useEffect(() => {
+    vadConfigRef.current = {
+      volumeThreshold: config.volumeThreshold,
+    };
+  }, [config.volumeThreshold]);
+
+  const vadLogRef = useRef({
+    lastLogMs: 0,
+    lastSpeaking: false,
+    lastDetecting: false,
+  });
 
   // Update segment duration timer
   useEffect(() => {
@@ -288,6 +308,30 @@ export function useSpeechmaticsAudio(config: SpeechmaticsAudioConfig): Speechmat
 
         const nowMs = Date.now();
         segmenterRef.current?.pushVolumeLevel(normalized, nowMs);
+        const segmenter = segmenterRef.current;
+        if (segmenter) {
+          const speakingNow = segmenter.getIsSpeaking();
+          const detectingNow = segmenter.getIsDetecting();
+          const shouldLog =
+            nowMs - vadLogRef.current.lastLogMs >= 150 ||
+            speakingNow !== vadLogRef.current.lastSpeaking ||
+            detectingNow !== vadLogRef.current.lastDetecting;
+          if (shouldLog) {
+            const threshold = vadConfigRef.current.volumeThreshold;
+            const releaseThreshold = segmenter.getVolumeReleaseThreshold();
+            console.log("[Voice][Web][VAD] level", {
+              volume: Number(normalized.toFixed(3)),
+              threshold: Number(threshold.toFixed(3)),
+              releaseThreshold: Number(releaseThreshold.toFixed(3)),
+              confirmedDropGraceMs: config.confirmedDropGracePeriod ?? 250,
+              isSpeaking: speakingNow,
+              isDetecting: detectingNow,
+            });
+            vadLogRef.current.lastLogMs = nowMs;
+            vadLogRef.current.lastSpeaking = speakingNow;
+            vadLogRef.current.lastDetecting = detectingNow;
+          }
+        }
 
         const pcm16 = resampleToPcm16(input, context.sampleRate, 16000);
         const pcmBytes = new Uint8Array(pcm16.buffer, pcm16.byteOffset, pcm16.byteLength);
@@ -347,4 +391,3 @@ export function useSpeechmaticsAudio(config: SpeechmaticsAudioConfig): Speechmat
     [start, stop, toggleMute, isActive, isSpeaking, isDetecting, isMuted, volume, segmentDuration]
   );
 }
-

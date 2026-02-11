@@ -150,7 +150,7 @@ describe("AgentManager", () => {
     ).rejects.toThrow("Working directory does not exist");
   });
 
-  test("resumeAgent keeps metadata config and applies systemPrompt/mcpServers overrides", async () => {
+  test("resumeAgentFromPersistence keeps metadata config and applies systemPrompt/mcpServers overrides", async () => {
     const workdir = mkdtempSync(join(tmpdir(), "agent-manager-resume-"));
     const storagePath = join(workdir, "agents");
     const storage = new AgentStorage(storagePath, logger);
@@ -211,7 +211,7 @@ describe("AgentManager", () => {
       },
     };
 
-    const resumed = await manager.resumeAgent(handle, {
+    const resumed = await manager.resumeAgentFromPersistence(handle, {
       cwd: workdir,
       systemPrompt: "new prompt",
       mcpServers: {
@@ -241,6 +241,92 @@ describe("AgentManager", () => {
         },
       },
     });
+  });
+
+  test("reloadAgentSession preserves timeline and does not force history replay", async () => {
+    const workdir = mkdtempSync(join(tmpdir(), "agent-manager-reload-"));
+    const storagePath = join(workdir, "agents");
+    const storage = new AgentStorage(storagePath, logger);
+
+    class HistoryProbeSession extends TestAgentSession {
+      constructor(
+        config: AgentSessionConfig,
+        private readonly historyText: string | null
+      ) {
+        super(config);
+      }
+
+      async *streamHistory(): AsyncGenerator<AgentStreamEvent> {
+        if (!this.historyText) {
+          return;
+        }
+        yield {
+          type: "timeline",
+          provider: this.provider,
+          item: { type: "assistant_message", text: this.historyText },
+        };
+      }
+    }
+
+    class HistoryProbeClient implements AgentClient {
+      readonly provider = "codex" as const;
+      readonly capabilities = TEST_CAPABILITIES;
+
+      async isAvailable(): Promise<boolean> {
+        return true;
+      }
+
+      async createSession(config: AgentSessionConfig): Promise<AgentSession> {
+        return new HistoryProbeSession(config, null);
+      }
+
+      async resumeSession(
+        handle: AgentPersistenceHandle,
+        overrides?: Partial<AgentSessionConfig>
+      ): Promise<AgentSession> {
+        const metadata = (handle.metadata ?? {}) as Partial<AgentSessionConfig>;
+        const merged: AgentSessionConfig = {
+          ...metadata,
+          ...overrides,
+          provider: "codex",
+          cwd: overrides?.cwd ?? metadata.cwd ?? process.cwd(),
+        };
+        return new HistoryProbeSession(merged, "history replay from provider");
+      }
+    }
+
+    const manager = new AgentManager({
+      clients: {
+        codex: new HistoryProbeClient(),
+      },
+      registry: storage,
+      logger,
+      idFactory: () => "00000000-0000-4000-8000-000000000113",
+    });
+
+    const snapshot = await manager.createAgent({
+      provider: "codex",
+      cwd: workdir,
+    });
+
+    await manager.appendTimelineItem(snapshot.id, {
+      type: "assistant_message",
+      text: "keep this timeline in memory",
+    });
+    await manager.hydrateTimelineFromProvider(snapshot.id);
+    const beforeReload = manager.getTimeline(snapshot.id);
+    expect(beforeReload).toHaveLength(1);
+
+    await manager.reloadAgentSession(snapshot.id, {
+      systemPrompt: "reloaded prompt",
+    });
+    const afterReload = manager.getTimeline(snapshot.id);
+    expect(afterReload).toEqual(beforeReload);
+
+    // If reload resets historyPrimed, this would replay provider history and append another item.
+    await manager.hydrateTimelineFromProvider(snapshot.id);
+    const afterHydrate = manager.getTimeline(snapshot.id);
+    expect(afterHydrate).toEqual(beforeReload);
   });
 
   test("createAgent fails when generated agent ID is not a UUID", async () => {

@@ -400,6 +400,7 @@ export function DraftAgentScreen({
   const checkoutQueryError =
     checkoutStatusQuery.error instanceof Error ? checkoutStatusQuery.error.message : null;
   const checkoutPayloadError = checkout?.error ? checkout.error.message : null;
+  const isGitDirectory = checkoutStatusQuery.isSuccess && checkout?.isGit === true;
 
   const isNonGitDirectory =
     Boolean(trimmedWorkingDir) &&
@@ -430,7 +431,7 @@ export function DraftAgentScreen({
   const isCreateWorktree = worktreeMode === "create";
   const isAttachWorktree = worktreeMode === "attach";
 
-  const worktreeListRoot = checkout?.repoRoot ?? trimmedWorkingDir;
+  const worktreeListRoot = checkout?.isGit ? checkout.repoRoot : "";
   const worktreeListQuery = useQuery({
     queryKey: ["paseoWorktreeList", selectedServerId, worktreeListRoot],
     queryFn: async () => {
@@ -448,7 +449,8 @@ export function DraftAgentScreen({
       return payload.worktrees ?? [];
     },
     enabled:
-      Boolean(worktreeListRoot || trimmedWorkingDir) &&
+      isGitDirectory &&
+      Boolean(worktreeListRoot) &&
       !repoAvailabilityError &&
       Boolean(sessionClient) &&
       isConnected &&
@@ -551,6 +553,7 @@ export function DraftAgentScreen({
     },
     enabled:
       isCreateWorktree &&
+      isGitDirectory &&
       !isNonGitDirectory &&
       Boolean(baseBranch) &&
       Boolean(trimmedWorkingDir) &&
