@@ -52,7 +52,6 @@ import { createAgentMcpServer } from "./agent/mcp-server.js";
 import { createAllClients, shutdownProviders } from "./agent/provider-registry.js";
 import { createTerminalManager, type TerminalManager } from "../terminal/terminal-manager.js";
 import {
-  buildOfferEndpoints,
   createConnectionOfferV2,
   encodeOfferToFragmentUrl,
 } from "./connection-offer.js";
@@ -524,20 +523,6 @@ export async function createPaseoDaemon(
             const relayPublicEndpoint = config.relayPublicEndpoint ?? relayEndpoint;
             const appBaseUrl = config.appBaseUrl ?? "https://app.paseo.sh";
 
-            const directEndpoints = buildOfferEndpoints({
-              listenHost: listenTarget.host,
-              port: listenTarget.port,
-            });
-
-            logger.info(
-              {
-                serverId,
-                endpoints: directEndpoints,
-                wsUrls: directEndpoints.map((endpoint) => `ws://${endpoint}/ws`),
-              },
-              "direct_connect"
-            );
-
             if (relayEnabled) {
               const offer = await createConnectionOfferV2({
                 serverId,
@@ -547,8 +532,6 @@ export async function createPaseoDaemon(
 
               const url = encodeOfferToFragmentUrl({ offer, appBaseUrl });
               logger.info({ url }, "pairing_offer");
-            } else {
-              logger.info("relay_disabled");
             }
 
             if (relayEnabled) {

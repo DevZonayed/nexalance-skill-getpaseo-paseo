@@ -76,11 +76,15 @@ See [paseo.sh/docs](https://paseo.sh/docs) for full documentation.
 Desktop app binaries are built and attached to a GitHub Release when you push a version tag (for example `v0.1.0` or `desktop-v0.1.0`).
 
 ```bash
-git tag v0.1.0
-git push origin v0.1.0
+npm run version:all:patch
+npm run release:push
 ```
 
-If you prefer, `npm version` can be used to create and push a version tag.
+For the full package release flow, use:
+
+```bash
+npm run release:patch
+```
 
 This triggers the `Desktop Release` workflow (`.github/workflows/desktop-release.yml`).
 

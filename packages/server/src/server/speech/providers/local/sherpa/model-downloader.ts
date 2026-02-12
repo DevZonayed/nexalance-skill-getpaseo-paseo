@@ -1,7 +1,7 @@
 import { createWriteStream } from "node:fs";
 import { mkdir, rename, rm, stat } from "node:fs/promises";
 import path from "node:path";
-import { Readable, Transform } from "node:stream";
+import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { spawn } from "node:child_process";
 import type pino from "pino";
@@ -39,31 +39,13 @@ async function hasRequiredFiles(modelDir: string, requiredFiles: string[]): Prom
   return true;
 }
 
-const UNKNOWN_SIZE_PROGRESS_BYTES_STEP = 5 * 1024 * 1024;
-const UNKNOWN_SIZE_PROGRESS_MS_STEP = 1000;
-
 type DownloadToFileOptions = {
   url: string;
   outputPath: string;
-  logger: pino.Logger;
-  modelId: SherpaOnnxModelId;
-  artifact: string;
 };
 
-function parseContentLength(res: Response): number | null {
-  const raw = res.headers.get("content-length");
-  if (!raw) {
-    return null;
-  }
-  const parsed = Number.parseInt(raw, 10);
-  if (!Number.isFinite(parsed) || parsed <= 0) {
-    return null;
-  }
-  return parsed;
-}
-
 async function downloadToFile(options: DownloadToFileOptions): Promise<void> {
-  const { url, outputPath, logger, modelId, artifact } = options;
+  const { url, outputPath } = options;
   const res = await fetch(url);
   if (!res.ok) {
     throw new Error(`Failed to download ${url}: ${res.status} ${res.statusText}`);
@@ -76,62 +58,9 @@ async function downloadToFile(options: DownloadToFileOptions): Promise<void> {
   await mkdir(path.dirname(outputPath), { recursive: true });
 
   const nodeStream = Readable.fromWeb(res.body as any);
-  const totalBytes = parseContentLength(res);
-
-  let downloadedBytes = 0;
-  let lastLoggedPct = -1;
-  let lastLoggedBytes = 0;
-  let lastLoggedAt = 0;
-
-  const logProgress = (force: boolean): void => {
-    const pct =
-      totalBytes && totalBytes > 0
-        ? Math.min(100, Math.floor((downloadedBytes * 100) / totalBytes))
-        : null;
-
-    if (!force) {
-      if (pct !== null) {
-        if (pct <= lastLoggedPct) {
-          return;
-        }
-      } else {
-        const now = Date.now();
-        const advancedBytes = downloadedBytes - lastLoggedBytes;
-        if (advancedBytes < UNKNOWN_SIZE_PROGRESS_BYTES_STEP && now - lastLoggedAt < UNKNOWN_SIZE_PROGRESS_MS_STEP) {
-          return;
-        }
-      }
-    }
-
-    logger.info(
-      {
-        modelId,
-        artifact,
-        url,
-        downloadedBytes,
-        totalBytes,
-        pct,
-      },
-      "Downloading model artifact"
-    );
-    lastLoggedPct = pct ?? -1;
-    lastLoggedBytes = downloadedBytes;
-    lastLoggedAt = Date.now();
-  };
-
-  logProgress(false);
-
-  const progressStream = new Transform({
-    transform(chunk: Buffer, _encoding, callback) {
-      downloadedBytes += chunk.length;
-      logProgress(false);
-      callback(null, chunk);
-    },
-  });
 
   try {
-    await pipeline(nodeStream, progressStream, createWriteStream(tmpPath));
-    logProgress(true);
+    await pipeline(nodeStream, createWriteStream(tmpPath));
     await rename(tmpPath, outputPath);
   } catch (error) {
     await rm(tmpPath, { force: true }).catch(() => undefined);
@@ -194,9 +123,6 @@ export async function ensureSherpaOnnxModel(options: EnsureSherpaOnnxModelOption
         await downloadToFile({
           url: spec.archiveUrl,
           outputPath: archivePath,
-          logger,
-          modelId: options.modelId,
-          artifact: archiveFilename,
         });
       }
 
@@ -251,9 +177,6 @@ export async function ensureSherpaOnnxModel(options: EnsureSherpaOnnxModelOption
         await downloadToFile({
           url: file.url,
           outputPath: dst,
-          logger,
-          modelId: options.modelId,
-          artifact: file.relPath,
         });
       }
 

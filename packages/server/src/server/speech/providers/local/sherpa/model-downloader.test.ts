@@ -54,15 +54,15 @@ describe("sherpa model downloader", () => {
     ).rejects.toThrow(/auto-download/i);
   });
 
-  test("ensureSherpaOnnxModel logs artifact download progress", async () => {
+  test("ensureSherpaOnnxModel logs lifecycle events without progress spam", async () => {
     const modelsDir = makeTmpDir();
-    const progressLogs: Array<Record<string, unknown>> = [];
+    const infoMessages: string[] = [];
 
     const loggerWithSpy = {
       child: () => loggerWithSpy,
-      info: (obj?: unknown, msg?: string) => {
-        if (msg === "Downloading model artifact" && obj && typeof obj === "object") {
-          progressLogs.push(obj as Record<string, unknown>);
+      info: (_obj?: unknown, msg?: string) => {
+        if (typeof msg === "string") {
+          infoMessages.push(msg);
         }
       },
       error: () => undefined,
@@ -90,9 +90,8 @@ describe("sherpa model downloader", () => {
     }
 
     expect(fetchMock).toHaveBeenCalled();
-    expect(progressLogs.length).toBeGreaterThan(0);
-    const final = progressLogs.at(-1);
-    expect(final?.modelId).toBe("pocket-tts-onnx-int8");
-    expect(final?.pct).toBe(100);
+    expect(infoMessages).toContain("Starting model download");
+    expect(infoMessages).toContain("Model download completed");
+    expect(infoMessages).not.toContain("Downloading model artifact");
   });
 });

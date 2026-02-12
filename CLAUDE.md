@@ -150,21 +150,22 @@ Run `npx expo-doctor` to diagnose version mismatches and native module issues.
 
 ## Release playbook
 
-Use the scripted release flow from repo root. Avoid manual version bumps or publish commands unless debugging.
+Use the scripted release flow from repo root. Avoid manual version bumps, manual tags, or ad hoc publish commands unless debugging.
 
 ```bash
-# 1) bump all workspaces and refresh workspace links
-npm run version:all:patch
+# Recommended: full patch release (bump, check, publish, push branch+tag)
+npm run release:patch
 
-# 2) run release gate checks (typecheck, build, pack dry-run)
+# Manual, step-by-step fallback:
+npm run version:all:patch  # npm version across all workspaces (creates commit + local tag)
 npm run release:check
-
-# 3) publish relay/server/cli packages
 npm run release:publish
+npm run release:push       # pushes HEAD and current version tag (triggers desktop release)
 ```
 
 Notes:
-- `release:prepare` is part of the flow and refreshes workspace `node_modules` links to prevent stale local package types during release checks.
+- `version:all:*` uses `npm version` with workspace support and runs the root `version` lifecycle script to sync internal `@getpaseo/*` dependency versions before the release commit/tag is created.
+- `release:prepare` refreshes workspace `node_modules` links to prevent stale local package types during release checks.
 - If `release:publish` fails after a successful publish of one workspace, re-run `npm run release:publish`; npm will skip already-published versions and continue where possible.
 
 ## Orchestrator Mode

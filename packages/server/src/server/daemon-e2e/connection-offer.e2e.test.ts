@@ -197,10 +197,10 @@ describe("ConnectionOfferV2 (daemon E2E)", () => {
       });
 
       try {
-        const directConnect = await new Promise<{ endpoints: string[] }>((resolve, reject) => {
+        const sawListeningLog = await new Promise<boolean>((resolve, reject) => {
           const timeout = setTimeout(() => {
             proc.kill();
-            reject(new Error("timed out waiting for direct_connect log"));
+            reject(new Error("timed out waiting for server listening log"));
           }, 15000);
 
           const onData = (data: Buffer) => {
@@ -213,16 +213,12 @@ describe("ConnectionOfferV2 (daemon E2E)", () => {
                 reject(new Error("unexpected pairing_offer log when --no-relay is set"));
                 return;
               }
-              if (!line.includes("direct_connect")) continue;
+
               try {
-                const parsed = JSON.parse(line) as { msg?: string; endpoints?: unknown };
-                if (parsed.msg !== "direct_connect") continue;
-                const endpoints = Array.isArray(parsed.endpoints)
-                  ? parsed.endpoints.filter((v) => typeof v === "string")
-                  : [];
-                if (endpoints.length === 0) continue;
+                const parsed = JSON.parse(line) as { msg?: string };
+                if (parsed.msg !== `Server listening on http://0.0.0.0:${port}`) continue;
                 clearTimeout(timeout);
-                resolve({ endpoints });
+                resolve(true);
                 return;
               } catch {
                 // ignore
@@ -243,8 +239,7 @@ describe("ConnectionOfferV2 (daemon E2E)", () => {
           });
         });
 
-        expect(directConnect.endpoints).toContain(`localhost:${port}`);
-        expect(directConnect.endpoints).toContain(`192.168.1.12:${port}`);
+        expect(sawListeningLog).toBe(true);
       } catch (err) {
         throw new Error(
           `failed; stdout so far:\\n${stdoutLines.join("")}\\n\\n${String(err)}`
