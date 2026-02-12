@@ -41,7 +41,7 @@ export function useFileExplorerActions(serverId: string) {
   );
 
   const requestDirectoryListing = useCallback(
-    (
+    async (
       agentId: string,
       path: string,
       options?: { recordHistory?: boolean; setCurrentPath?: boolean }
@@ -77,42 +77,40 @@ export function useFileExplorerActions(serverId: string) {
         return;
       }
 
-      void client
-        .exploreFileSystem(agentId, normalizedPath, "list")
-        .then((payload) => {
-          updateExplorerState(agentId, (state) => {
-            const nextState: AgentFileExplorerState = {
-              ...state,
-              isLoading: false,
-              lastError: payload.error ?? null,
-              pendingRequest: null,
-              directories: state.directories,
-              files: state.files,
-            };
-
-            if (!payload.error && payload.directory) {
-              const directories = new Map(state.directories);
-              directories.set(payload.directory.path, payload.directory);
-              nextState.directories = directories;
-            }
-
-            return nextState;
-          });
-        })
-        .catch((error) => {
-          updateExplorerState(agentId, (state) => ({
+      try {
+        const payload = await client.exploreFileSystem(agentId, normalizedPath, "list");
+        updateExplorerState(agentId, (state) => {
+          const nextState: AgentFileExplorerState = {
             ...state,
             isLoading: false,
-            lastError: error instanceof Error ? error.message : "Failed to list directory",
+            lastError: payload.error ?? null,
             pendingRequest: null,
-          }));
+            directories: state.directories,
+            files: state.files,
+          };
+
+          if (!payload.error && payload.directory) {
+            const directories = new Map(state.directories);
+            directories.set(payload.directory.path, payload.directory);
+            nextState.directories = directories;
+          }
+
+          return nextState;
         });
+      } catch (error) {
+        updateExplorerState(agentId, (state) => ({
+          ...state,
+          isLoading: false,
+          lastError: error instanceof Error ? error.message : "Failed to list directory",
+          pendingRequest: null,
+        }));
+      }
     },
     [client, updateExplorerState]
   );
 
   const requestFilePreview = useCallback(
-    (agentId: string, path: string) => {
+    async (agentId: string, path: string) => {
       const normalizedPath = path && path.length > 0 ? path : ".";
       updateExplorerState(agentId, (state) => ({
         ...state,
@@ -131,36 +129,34 @@ export function useFileExplorerActions(serverId: string) {
         return;
       }
 
-      void client
-        .exploreFileSystem(agentId, normalizedPath, "file")
-        .then((payload) => {
-          updateExplorerState(agentId, (state) => {
-            const nextState: AgentFileExplorerState = {
-              ...state,
-              isLoading: false,
-              pendingRequest: null,
-              directories: state.directories,
-              files: state.files,
-            };
-
-            if (!payload.error && payload.file) {
-              const files = new Map(state.files);
-              files.set(payload.file.path, payload.file);
-              nextState.files = files;
-            } else if (payload.error) {
-              nextState.lastError = payload.error;
-            }
-
-            return nextState;
-          });
-        })
-        .catch(() => {
-          updateExplorerState(agentId, (state) => ({
+      try {
+        const payload = await client.exploreFileSystem(agentId, normalizedPath, "file");
+        updateExplorerState(agentId, (state) => {
+          const nextState: AgentFileExplorerState = {
             ...state,
             isLoading: false,
             pendingRequest: null,
-          }));
+            directories: state.directories,
+            files: state.files,
+          };
+
+          if (!payload.error && payload.file) {
+            const files = new Map(state.files);
+            files.set(payload.file.path, payload.file);
+            nextState.files = files;
+          } else if (payload.error) {
+            nextState.lastError = payload.error;
+          }
+
+          return nextState;
         });
+      } catch {
+        updateExplorerState(agentId, (state) => ({
+          ...state,
+          isLoading: false,
+          pendingRequest: null,
+        }));
+      }
     },
     [client, updateExplorerState]
   );

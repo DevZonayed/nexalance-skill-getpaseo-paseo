@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import {
   ActivityIndicator,
   FlatList,
@@ -264,25 +265,35 @@ export function FileExplorerPane({ serverId, agentId }: FileExplorerPaneProps) {
     setSortOption(SORT_OPTIONS[nextIndex].value);
   }, [sortOption, setSortOption]);
 
-  const handleRefresh = useCallback(() => {
-    if (!agentId || !requestDirectoryListing) {
-      return;
-    }
-    // Refresh the root directory
-    requestDirectoryListing(agentId, ".", { recordHistory: false, setCurrentPath: false });
-
-    // Also refresh any expanded directories
-    expandedPaths.forEach((path) => {
-      if (path !== ".") {
-        requestDirectoryListing(agentId, path, { recordHistory: false, setCurrentPath: false });
+  const { refetch: refetchExplorer, isFetching: isRefreshFetching } = useQuery({
+    queryKey: ["fileExplorerRefresh", serverId, agentId],
+    queryFn: async () => {
+      if (!agentId) {
+        return null;
       }
-    });
 
-    // Refresh the preview if a file is selected
-    if (selectedEntryPath && requestFilePreview) {
-      requestFilePreview(agentId, selectedEntryPath);
-    }
-  }, [agentId, expandedPaths, requestDirectoryListing, requestFilePreview, selectedEntryPath]);
+      const directoryPaths = Array.from(expandedPaths);
+      if (!directoryPaths.includes(".")) {
+        directoryPaths.unshift(".");
+      }
+
+      await Promise.all([
+        ...directoryPaths.map((path) =>
+          requestDirectoryListing(agentId, path, {
+            recordHistory: false,
+            setCurrentPath: false,
+          })
+        ),
+        ...(selectedEntryPath ? [requestFilePreview(agentId, selectedEntryPath)] : []),
+      ]);
+      return null;
+    },
+    enabled: false,
+  });
+
+  const handleRefresh = useCallback(() => {
+    void refetchExplorer();
+  }, [refetchExplorer]);
 
   const currentSortLabel = SORT_OPTIONS.find((opt) => opt.value === sortOption)?.label ?? "Name";
 
@@ -627,15 +638,20 @@ export function FileExplorerPane({ serverId, agentId }: FileExplorerPaneProps) {
                 <View style={styles.paneHeaderRight}>
                   <Pressable
                     onPress={handleRefresh}
+                    disabled={isRefreshFetching}
                     hitSlop={8}
                     style={({ hovered, pressed }) => [
                       styles.iconButton,
                       (hovered || pressed) && styles.iconButtonHovered,
+                      pressed && styles.iconButtonPressed,
+                      isRefreshFetching && styles.iconButtonLoading,
                     ]}
                     accessibilityRole="button"
                     accessibilityLabel="Refresh files"
                   >
-                    <RotateCw size={16} color={theme.colors.foregroundMuted} />
+                    <View style={isRefreshFetching ? styles.refreshIconLoading : undefined}>
+                      <RotateCw size={16} color={theme.colors.foregroundMuted} />
+                    </View>
                   </Pressable>
                   <Pressable style={styles.sortButton} onPress={handleSortCycle}>
                     <Text style={styles.sortButtonText}>{currentSortLabel}</Text>
@@ -660,15 +676,20 @@ export function FileExplorerPane({ serverId, agentId }: FileExplorerPaneProps) {
                 <View style={styles.paneHeaderRight}>
                   <Pressable
                     onPress={handleRefresh}
+                    disabled={isRefreshFetching}
                     hitSlop={8}
                     style={({ hovered, pressed }) => [
                       styles.iconButton,
                       (hovered || pressed) && styles.iconButtonHovered,
+                      pressed && styles.iconButtonPressed,
+                      isRefreshFetching && styles.iconButtonLoading,
                     ]}
                     accessibilityRole="button"
                     accessibilityLabel="Refresh files"
                   >
-                    <RotateCw size={16} color={theme.colors.foregroundMuted} />
+                    <View style={isRefreshFetching ? styles.refreshIconLoading : undefined}>
+                      <RotateCw size={16} color={theme.colors.foregroundMuted} />
+                    </View>
                   </Pressable>
                   <Pressable style={styles.sortButton} onPress={handleSortCycle}>
                     <Text style={styles.sortButtonText}>{currentSortLabel}</Text>
@@ -1220,6 +1241,16 @@ const styles = StyleSheet.create((theme) => ({
   },
   iconButtonHovered: {
     backgroundColor: theme.colors.surface2,
+  },
+  iconButtonPressed: {
+    opacity: 0.8,
+    transform: [{ scale: 0.96 }],
+  },
+  iconButtonLoading: {
+    opacity: 0.8,
+  },
+  refreshIconLoading: {
+    opacity: 0.55,
   },
   previewContent: {
     flex: 1,
