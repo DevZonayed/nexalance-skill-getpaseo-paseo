@@ -43,6 +43,7 @@ export function createAgentCommand(): Command {
     .option('--cwd <path>', 'Working directory (default: current)')
     .option('--label <key=value>', 'Add label(s) to the agent (can be used multiple times)', collectMultiple, [])
     .option('--ui', 'Mark as UI agent (equivalent to --label ui=true)')
+    .option('--output-schema <schema>', 'Output JSON matching the provided schema file path or inline JSON schema')
     .option('--json', 'Output in JSON format')
     .option('--host <host>', 'Daemon host:port (default: localhost:6767)')
     .action(withOutput(runRunCommand))

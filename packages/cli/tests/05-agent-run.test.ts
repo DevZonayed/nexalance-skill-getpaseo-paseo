@@ -22,7 +22,7 @@
 
 import assert from 'node:assert'
 import { $ } from 'zx'
-import { mkdtemp, rm } from 'fs/promises'
+import { mkdtemp, rm, writeFile } from 'fs/promises'
 import { tmpdir } from 'os'
 import { join } from 'path'
 
@@ -33,6 +33,18 @@ console.log('=== Run Command Tests ===\n')
 // Get random port that's definitely not in use (never 6767)
 const port = 10000 + Math.floor(Math.random() * 50000)
 const paseoHome = await mkdtemp(join(tmpdir(), 'paseo-test-home-'))
+const schemaPath = join(paseoHome, 'run-output-schema.json')
+await writeFile(
+  schemaPath,
+  JSON.stringify({
+    type: 'object',
+    properties: {
+      status: { type: 'string' },
+    },
+    required: ['status'],
+    additionalProperties: false,
+  })
+)
 
 try {
   // Test 1: run --help shows options
@@ -46,6 +58,7 @@ try {
     assert(result.stdout.includes('--provider'), 'help should mention --provider option')
     assert(result.stdout.includes('--mode'), 'help should mention --mode option')
     assert(result.stdout.includes('--cwd'), 'help should mention --cwd option')
+    assert(result.stdout.includes('--output-schema'), 'help should mention --output-schema option')
     assert(result.stdout.includes('--host'), 'help should mention --host option')
     assert(result.stdout.includes('<prompt>'), 'help should mention prompt argument')
     console.log('✓ run --help shows options\n')
@@ -138,9 +151,34 @@ try {
     console.log('✓ run --cwd flag is accepted\n')
   }
 
-  // Test 9: -q (quiet) flag is accepted with run
+  // Test 9: run --output-schema flag is accepted
   {
-    console.log('Test 9: -q (quiet) flag is accepted with run')
+    console.log('Test 9: run --output-schema flag is accepted')
+    const result =
+      await $`PASEO_HOST=localhost:${port} PASEO_HOME=${paseoHome} npx paseo run --output-schema ${schemaPath} "test prompt"`.nothrow()
+    const output = result.stdout + result.stderr
+    assert(!output.includes('unknown option'), 'should accept --output-schema flag')
+    assert(!output.includes('error: option'), 'should not have option parsing error')
+    console.log('✓ run --output-schema flag is accepted\n')
+  }
+
+  // Test 10: run --output-schema cannot be used with --detach
+  {
+    console.log('Test 10: run --output-schema cannot be used with --detach')
+    const result =
+      await $`PASEO_HOST=localhost:${port} PASEO_HOME=${paseoHome} npx paseo run -d --output-schema ${schemaPath} "test prompt"`.nothrow()
+    assert.notStrictEqual(result.exitCode, 0, 'should fail with --detach and --output-schema')
+    const output = result.stdout + result.stderr
+    assert(
+      output.includes('--output-schema cannot be used with --detach'),
+      'error should explain detach incompatibility'
+    )
+    console.log('✓ run --output-schema cannot be used with --detach\n')
+  }
+
+  // Test 11: -q (quiet) flag is accepted with run
+  {
+    console.log('Test 11: -q (quiet) flag is accepted with run')
     const result =
       await $`PASEO_HOST=localhost:${port} PASEO_HOME=${paseoHome} npx paseo -q run -d "test prompt"`.nothrow()
     const output = result.stdout + result.stderr
@@ -149,9 +187,9 @@ try {
     console.log('✓ -q (quiet) flag is accepted with run\n')
   }
 
-  // Test 10: Combined flags work together
+  // Test 12: Combined flags work together
   {
-    console.log('Test 10: Combined flags work together')
+    console.log('Test 12: Combined flags work together')
     const result =
       await $`PASEO_HOST=localhost:${port} PASEO_HOME=${paseoHome} npx paseo -q run -d --name "test-fixer" --provider claude --mode bypass --cwd /tmp "Fix the tests"`.nothrow()
     const output = result.stdout + result.stderr
@@ -160,9 +198,9 @@ try {
     console.log('✓ Combined flags work together\n')
   }
 
-  // Test 11: paseo --help shows run command
+  // Test 13: paseo --help shows run command
   {
-    console.log('Test 11: paseo --help shows run command')
+    console.log('Test 13: paseo --help shows run command')
     const result = await $`npx paseo --help`.nothrow()
     assert.strictEqual(result.exitCode, 0, 'paseo --help should exit 0')
     assert(result.stdout.includes('run'), 'help should mention run command')

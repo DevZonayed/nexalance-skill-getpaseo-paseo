@@ -63,6 +63,7 @@ import type {
   AgentPermissionResponse,
   AgentPromptContentBlock,
   AgentPromptInput,
+  AgentRunOptions,
   McpServerConfig,
   AgentSessionConfig,
   AgentStreamEvent,
@@ -683,7 +684,8 @@ export class Session {
    */
   private startAgentStream(
     agentId: string,
-    prompt: AgentPromptInput
+    prompt: AgentPromptInput,
+    runOptions?: AgentRunOptions
   ): { ok: true } | { ok: false; error: string } {
     this.sessionLogger.info(
       { agentId },
@@ -692,7 +694,7 @@ export class Session {
 
     let iterator: AsyncGenerator<AgentStreamEvent>;
     try {
-      iterator = this.agentManager.streamAgent(agentId, prompt);
+      iterator = this.agentManager.streamAgent(agentId, prompt, runOptions);
     } catch (error) {
       this.handleAgentRunError(agentId, error, "Failed to start agent run");
       const message =
@@ -2040,7 +2042,8 @@ export class Session {
     agentId: string,
     text: string,
     messageId?: string,
-    images?: Array<{ data: string; mimeType: string }>
+    images?: Array<{ data: string; mimeType: string }>,
+    runOptions?: AgentRunOptions
   ): Promise<void> {
     this.sessionLogger.info(
       { agentId, textPreview: text.substring(0, 50), imageCount: images?.length ?? 0 },
@@ -2080,7 +2083,7 @@ export class Session {
       );
     }
 
-    this.startAgentStream(agentId, prompt);
+    this.startAgentStream(agentId, prompt, runOptions);
   }
 
   /**
@@ -2128,7 +2131,7 @@ export class Session {
   private async handleCreateAgentRequest(
     msg: Extract<SessionInboundMessage, { type: "create_agent_request" }>
   ): Promise<void> {
-    const { config, worktreeName, requestId, initialPrompt, git, images, labels } = msg;
+    const { config, worktreeName, requestId, initialPrompt, outputSchema, git, images, labels } = msg;
     this.sessionLogger.info(
       { cwd: config.cwd, provider: config.provider, worktreeName },
       `Creating agent in ${config.cwd} (${config.provider})${
@@ -2167,7 +2170,8 @@ export class Session {
             snapshot.id,
             trimmedPrompt,
             uuidv4(),
-            images
+            images,
+            outputSchema ? { outputSchema } : undefined
           );
         } catch (promptError) {
           this.sessionLogger.error(
@@ -4868,7 +4872,7 @@ export class Session {
     if (!resolved.ok) {
       this.emit({
         type: "wait_for_finish_response",
-        payload: { requestId, status: "error", final: null, error: resolved.error },
+        payload: { requestId, status: "error", final: null, error: resolved.error, lastMessage: null },
       });
       return;
     }
@@ -4885,6 +4889,7 @@ export class Session {
             status: "error",
             final: null,
             error: `Agent not found: ${agentId}`,
+            lastMessage: null,
           },
         });
         return;
@@ -4898,7 +4903,7 @@ export class Session {
             : "idle";
       this.emit({
         type: "wait_for_finish_response",
-        payload: { requestId, status, final, error: null },
+        payload: { requestId, status, final, error: null, lastMessage: null },
       });
       return;
     }
@@ -4928,7 +4933,7 @@ export class Session {
 
       this.emit({
         type: "wait_for_finish_response",
-        payload: { requestId, status, final, error: null },
+        payload: { requestId, status, final, error: null, lastMessage: result.lastMessage },
       });
     } catch (error) {
       const isAbort =
@@ -4946,6 +4951,7 @@ export class Session {
             status: "error",
             final,
             error: message,
+            lastMessage: null,
           },
         });
         return;
@@ -4957,7 +4963,7 @@ export class Session {
       }
       this.emit({
         type: "wait_for_finish_response",
-        payload: { requestId, status: "timeout", final, error: null },
+        payload: { requestId, status: "timeout", final, error: null, lastMessage: null },
       });
     } finally {
       clearTimeout(timeoutHandle);

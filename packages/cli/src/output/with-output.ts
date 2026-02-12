@@ -31,6 +31,18 @@ function normalizeFormat(raw: unknown): OutputOptions['format'] {
 
 /** Extract output options from command options */
 function extractOutputOptions(options: CommandOptions): OutputOptions {
+  const hasStructuredOutputSchema =
+    typeof options.outputSchema === 'string' && options.outputSchema.trim().length > 0
+
+  if (hasStructuredOutputSchema) {
+    return {
+      format: 'json',
+      quiet: false,
+      noHeaders: options.headers === false,
+      noColor: options.color === false,
+    }
+  }
+
   return {
     format: options.json ? 'json' : normalizeFormat(options.format ?? defaultOutputOptions.format),
     quiet: options.quiet ?? defaultOutputOptions.quiet,
