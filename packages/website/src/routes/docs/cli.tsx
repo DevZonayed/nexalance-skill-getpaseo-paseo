@@ -64,11 +64,22 @@ paseo stop <id>                      # Stop an agent`}</pre>
           <pre className="text-white/80">{`paseo run "implement user authentication"
 paseo run --provider codex "refactor the API layer"
 paseo run --detach "run the full test suite"  # background
-paseo run --worktree feature-x "implement feature X"`}</pre>
+paseo run --worktree feature-x "implement feature X"
+paseo run --output-schema schema.json "extract release notes"
+paseo run --output-schema '{"type":"object","properties":{"summary":{"type":"string"}},"required":["summary"]}' "summarize release notes"`}</pre>
         </Code>
         <p className="text-white/60 leading-relaxed">
           The <code className="font-mono">--worktree</code> flag creates the agent in an isolated git
           worktree, useful for parallel feature development.
+        </p>
+        <p className="text-white/60 leading-relaxed">
+          Use <code className="font-mono">--output-schema</code> to return only matching JSON output.
+          You can pass a schema file path or an inline JSON schema object.
+          This mode cannot be used with <code className="font-mono">--detach</code>.
+        </p>
+        <p className="text-white/60 leading-relaxed">
+          By default, <code className="font-mono">paseo run</code> waits for completion. Use{' '}
+          <code className="font-mono">--detach</code> to run in the background.
         </p>
       </section>
 
@@ -187,6 +198,21 @@ paseo daemon stop              # Stop the daemon`}</pre>
 paseo run --detach "implement the API" --name api-agent
 paseo wait api-agent
 paseo logs api-agent --tail 5`}</pre>
+        </Code>
+        <p className="text-white/60 leading-relaxed">
+          Simple implement + verify loop:
+        </p>
+        <Code>
+          <pre className="text-white/80">{`# Requires jq
+while true; do
+  paseo run --provider codex "make the tests pass" >/dev/null
+
+  verdict=$(paseo run --provider claude --output-schema '{"type":"object","properties":{"criteria_met":{"type":"boolean"}},"required":["criteria_met"],"additionalProperties":false}' "ensure tests all pass")
+  if echo "$verdict" | jq -e '.criteria_met == true' >/dev/null; then
+    echo "criteria met"
+    break
+  fi
+done`}</pre>
         </Code>
         <p className="text-white/60 leading-relaxed">
           This pattern enables hierarchical task decomposition — a lead agent can break down work,

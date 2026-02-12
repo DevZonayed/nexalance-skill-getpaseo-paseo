@@ -169,6 +169,7 @@ export type CreateAgentRequestOptions = {
   provider?: AgentProvider;
   cwd?: string;
   initialPrompt?: string;
+  outputSchema?: Record<string, unknown>;
   images?: CreateAgentRequestMessage["images"];
   git?: GitSetupOptions;
   worktreeName?: string;
@@ -224,6 +225,7 @@ export type WaitForFinishResult = {
   status: "idle" | "error" | "permission" | "timeout";
   final: AgentSnapshotPayload | null;
   error: string | null;
+  lastMessage: string | null;
 };
 
 type Waiter<T> = {
@@ -984,6 +986,7 @@ export class DaemonClient {
       requestId,
       config,
       ...(options.initialPrompt ? { initialPrompt: options.initialPrompt } : {}),
+      ...(options.outputSchema ? { outputSchema: options.outputSchema } : {}),
       ...(options.images && options.images.length > 0
         ? { images: options.images }
         : {}),
@@ -2260,6 +2263,7 @@ export class DaemonClient {
       status: payload.status,
       final: payload.final,
       error: payload.error,
+      lastMessage: payload.lastMessage,
     };
   }
 

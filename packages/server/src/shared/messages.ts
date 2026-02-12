@@ -548,6 +548,7 @@ export const CreateAgentRequestMessageSchema = z.object({
   config: AgentSessionConfigSchema,
   worktreeName: z.string().optional(),
   initialPrompt: z.string().optional(),
+  outputSchema: z.record(z.unknown()).optional(),
   images: z.array(z.object({
     data: z.string(), // base64 encoded image
     mimeType: z.string(), // e.g., "image/jpeg", "image/png"
@@ -1360,6 +1361,7 @@ export const WaitForFinishResponseMessageSchema = z.object({
     status: z.enum(["idle", "error", "permission", "timeout"]),
     final: AgentSnapshotPayloadSchema.nullable(),
     error: z.string().nullable(),
+    lastMessage: z.string().nullable(),
   }),
 });
 
