@@ -1,6 +1,6 @@
 {
   "name": "paseo",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "private": true,
   "workspaces": [
     "packages/server",
@@ -33,10 +33,11 @@
     "build:desktop": "npm run build --workspace=@getpaseo/desktop",
     "cli": "npx tsx packages/cli/src/index.js",
     "version:sync-internal": "node scripts/sync-workspace-versions.mjs",
-    "version:all:patch": "npm version patch --workspaces --include-workspace-root --no-git-tag-version && npm run version:sync-internal && npm install --package-lock-only",
-    "version:all:minor": "npm version minor --workspaces --include-workspace-root --no-git-tag-version && npm run version:sync-internal && npm install --package-lock-only",
-    "version:all:major": "npm version major --workspaces --include-workspace-root --no-git-tag-version && npm run version:sync-internal && npm install --package-lock-only",
-    "release:check": "npm run typecheck --workspace=@getpaseo/relay && npm run typecheck --workspace=@getpaseo/server && npm run typecheck --workspace=@getpaseo/cli && npm run build --workspace=@getpaseo/relay && npm run build --workspace=@getpaseo/server && npm run build --workspace=@getpaseo/cli && npm pack --dry-run --workspace=@getpaseo/relay && npm pack --dry-run --workspace=@getpaseo/server && npm pack --dry-run --workspace=@getpaseo/cli",
+    "release:prepare": "npm install --workspaces --include-workspace-root",
+    "version:all:patch": "npm version patch --workspaces --include-workspace-root --no-git-tag-version && npm run version:sync-internal && npm run release:prepare",
+    "version:all:minor": "npm version minor --workspaces --include-workspace-root --no-git-tag-version && npm run version:sync-internal && npm run release:prepare",
+    "version:all:major": "npm version major --workspaces --include-workspace-root --no-git-tag-version && npm run version:sync-internal && npm run release:prepare",
+    "release:check": "npm run release:prepare && npm run typecheck --workspace=@getpaseo/relay && npm run typecheck --workspace=@getpaseo/server && npm run typecheck --workspace=@getpaseo/cli && npm run build --workspace=@getpaseo/relay && npm run build --workspace=@getpaseo/server && npm run build --workspace=@getpaseo/cli && npm pack --dry-run --workspace=@getpaseo/relay && npm pack --dry-run --workspace=@getpaseo/server && npm pack --dry-run --workspace=@getpaseo/cli",
     "release:publish:dry-run": "npm publish --dry-run --workspace=@getpaseo/relay --access public && npm publish --dry-run --workspace=@getpaseo/server --access public && npm publish --dry-run --workspace=@getpaseo/cli --access public",
     "release:publish": "npm publish --workspace=@getpaseo/relay --access public && npm publish --workspace=@getpaseo/server --access public && npm publish --workspace=@getpaseo/cli --access public"
   },

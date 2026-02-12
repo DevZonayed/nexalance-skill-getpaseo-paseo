@@ -148,6 +148,25 @@ Use the Playwright MCP to test the app in Metro web. Navigate to `http://localho
 
 Run `npx expo-doctor` to diagnose version mismatches and native module issues.
 
+## Release playbook
+
+Use the scripted release flow from repo root. Avoid manual version bumps or publish commands unless debugging.
+
+```bash
+# 1) bump all workspaces and refresh workspace links
+npm run version:all:patch
+
+# 2) run release gate checks (typecheck, build, pack dry-run)
+npm run release:check
+
+# 3) publish relay/server/cli packages
+npm run release:publish
+```
+
+Notes:
+- `release:prepare` is part of the flow and refreshes workspace `node_modules` links to prevent stale local package types during release checks.
+- If `release:publish` fails after a successful publish of one workspace, re-run `npm run release:publish`; npm will skip already-published versions and continue where possible.
+
 ## Orchestrator Mode
 
 - **When agent control tool calls fail**, make sure you list agents before trying to launch another one. It could just be a wait timeout.
