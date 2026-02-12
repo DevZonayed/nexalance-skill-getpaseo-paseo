@@ -1,7 +1,6 @@
 import { z } from "zod";
 
 import type { ToolCallTimelineItem } from "../../agent-sdk-types.js";
-import { coerceToolCallId } from "../tool-call-mapper-utils.js";
 import { deriveClaudeToolDetail } from "./tool-call-detail-parser.js";
 
 type MapperParams = {
@@ -12,87 +11,170 @@ type MapperParams = {
   metadata?: Record<string, unknown>;
 };
 
-const ClaudeMapperParamsSchema = z
+const ClaudeToolCallStatusSchema = z.enum([
+  "running",
+  "completed",
+  "failed",
+  "canceled",
+]);
+
+const ClaudeRawToolCallSchema = z
   .object({
     callId: z.string().optional().nullable(),
     name: z.string().min(1),
     input: z.unknown().optional(),
     output: z.unknown().optional(),
-    metadata: z.record(z.unknown()).optional(),
+    metadata: z.record(z.string(), z.unknown()).optional(),
+    error: z.unknown().nullable().optional(),
+    status: ClaudeToolCallStatusSchema,
   })
   .passthrough();
 
-const ClaudeFailedMapperParamsSchema = ClaudeMapperParamsSchema.extend({
-  error: z.unknown(),
+const ClaudeToolCallPass1Schema = ClaudeRawToolCallSchema.transform((raw) => ({
+  callId:
+    typeof raw.callId === "string" && raw.callId.trim().length > 0
+      ? raw.callId
+      : null,
+  name: raw.name.trim(),
+  input: raw.input ?? null,
+  output: raw.output ?? null,
+  metadata: raw.metadata,
+  error: raw.error ?? null,
+  status: raw.status,
+}));
+
+const ClaudeToolCallPass2BaseSchema = z.object({
+  callId: z.string().min(1),
+  name: z.string().min(1),
+  input: z.unknown().nullable(),
+  output: z.unknown().nullable(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
+  error: z.unknown().nullable(),
+  status: ClaudeToolCallStatusSchema,
+  toolKind: z.enum(["speak", "other"]),
 });
 
-function coerceCallId(callId: string | null | undefined, name: string, input: unknown): string {
-  return coerceToolCallId({
-    providerPrefix: "claude",
-    rawCallId: callId,
-    toolName: name,
-    input,
+const ClaudeToolCallPass2InputSchema = ClaudeToolCallPass2BaseSchema.omit({
+  toolKind: true,
+});
+
+const ClaudeToolCallPass2EnvelopeSchema = z.union([
+  ClaudeToolCallPass2InputSchema.extend({
+    name: z.literal("mcp__paseo__speak"),
+  }).transform((normalized) => ({
+    ...normalized,
+    name: normalized.name.trim(),
+    toolKind: "speak" as const,
+  })),
+  ClaudeToolCallPass2InputSchema.transform((normalized) => ({
+    ...normalized,
+    name: normalized.name.trim(),
+    toolKind: "other" as const,
+  })),
+]);
+
+const ClaudeToolCallPass2Schema = z.discriminatedUnion("toolKind", [
+  ClaudeToolCallPass2BaseSchema.extend({
+    toolKind: z.literal("speak"),
+    name: z.literal("mcp__paseo__speak"),
+  }).transform((normalized): ToolCallTimelineItem => {
+    const name = "speak" as const;
+    const detail = deriveClaudeToolDetail(name, normalized.input, normalized.output);
+    if (normalized.status === "failed") {
+      return {
+        type: "tool_call",
+        callId: normalized.callId,
+        name,
+        detail,
+        status: "failed",
+        error: normalized.error ?? { message: "Tool call failed" },
+        ...(normalized.metadata ? { metadata: normalized.metadata } : {}),
+      };
+    }
+    return {
+      type: "tool_call",
+      callId: normalized.callId,
+      name,
+      detail,
+      status: normalized.status,
+      error: null,
+      ...(normalized.metadata ? { metadata: normalized.metadata } : {}),
+    };
+  }),
+  ClaudeToolCallPass2BaseSchema.extend({
+    toolKind: z.literal("other"),
+  }).transform((normalized): ToolCallTimelineItem => {
+    const detail = deriveClaudeToolDetail(normalized.name, normalized.input, normalized.output);
+    if (normalized.status === "failed") {
+      return {
+        type: "tool_call",
+        callId: normalized.callId,
+        name: normalized.name,
+        detail,
+        status: "failed",
+        error: normalized.error ?? { message: "Tool call failed" },
+        ...(normalized.metadata ? { metadata: normalized.metadata } : {}),
+      };
+    }
+    return {
+      type: "tool_call",
+      callId: normalized.callId,
+      name: normalized.name,
+      detail,
+      status: normalized.status,
+      error: null,
+      ...(normalized.metadata ? { metadata: normalized.metadata } : {}),
+    };
+  }),
+]);
+
+function mapClaudeToolCall(
+  params: MapperParams,
+  status: z.infer<typeof ClaudeToolCallStatusSchema>,
+  error: unknown | null
+): ToolCallTimelineItem | null {
+  const pass1 = ClaudeToolCallPass1Schema.safeParse({
+    ...params,
+    status,
+    error,
   });
+  if (!pass1.success) {
+    return null;
+  }
+
+  const pass2Envelope = ClaudeToolCallPass2EnvelopeSchema.safeParse(pass1.data);
+  if (!pass2Envelope.success) {
+    return null;
+  }
+
+  const pass2 = ClaudeToolCallPass2Schema.safeParse(pass2Envelope.data);
+  if (!pass2.success) {
+    return null;
+  }
+
+  return pass2.data;
 }
 
-function buildBase(params: MapperParams): {
-  callId: string;
-  name: string;
-  detail: Extract<ToolCallTimelineItem, { type: "tool_call" }>["detail"];
-  metadata?: Record<string, unknown>;
-} {
-  const parsedParams = ClaudeMapperParamsSchema.parse(params);
-  const input = parsedParams.input ?? null;
-  const output = parsedParams.output ?? null;
-  const detail = deriveClaudeToolDetail(parsedParams.name, input, output);
-
-  return {
-    callId: coerceCallId(parsedParams.callId, parsedParams.name, input),
-    name: parsedParams.name,
-    detail,
-    ...(parsedParams.metadata ? { metadata: parsedParams.metadata } : {}),
-  };
+export function mapClaudeRunningToolCall(
+  params: MapperParams
+): ToolCallTimelineItem | null {
+  return mapClaudeToolCall(params, "running", null);
 }
 
-export function mapClaudeRunningToolCall(params: MapperParams): ToolCallTimelineItem {
-  const base = buildBase(params);
-  return {
-    type: "tool_call",
-    ...base,
-    status: "running",
-    error: null,
-  };
-}
-
-export function mapClaudeCompletedToolCall(params: MapperParams): ToolCallTimelineItem {
-  const base = buildBase(params);
-  return {
-    type: "tool_call",
-    ...base,
-    status: "completed",
-    error: null,
-  };
+export function mapClaudeCompletedToolCall(
+  params: MapperParams
+): ToolCallTimelineItem | null {
+  return mapClaudeToolCall(params, "completed", null);
 }
 
 export function mapClaudeFailedToolCall(
   params: MapperParams & { error: unknown }
-): ToolCallTimelineItem {
-  const parsedParams = ClaudeFailedMapperParamsSchema.parse(params);
-  const base = buildBase(parsedParams);
-  return {
-    type: "tool_call",
-    ...base,
-    status: "failed",
-    error: parsedParams.error,
-  };
+): ToolCallTimelineItem | null {
+  return mapClaudeToolCall(params, "failed", params.error);
 }
 
-export function mapClaudeCanceledToolCall(params: MapperParams): ToolCallTimelineItem {
-  const base = buildBase(params);
-  return {
-    type: "tool_call",
-    ...base,
-    status: "canceled",
-    error: null,
-  };
+export function mapClaudeCanceledToolCall(
+  params: MapperParams
+): ToolCallTimelineItem | null {
+  return mapClaudeToolCall(params, "canceled", null);
 }
