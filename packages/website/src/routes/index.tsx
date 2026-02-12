@@ -180,18 +180,26 @@ function Feature({
 
 function GetStarted() {
   return (
-    <div className="pt-10">
-      <div className="flex flex-col sm:flex-row gap-3 mb-4">
+    <div className="pt-10 space-y-4">
+      <CodeBlock>npm install -g @getpaseo/cli && paseo</CodeBlock>
+      <div className="flex flex-col sm:flex-row gap-3">
         <a
           href="https://github.com/getpaseo/paseo/releases/latest"
           target="_blank"
           rel="noopener noreferrer"
-          className="inline-flex items-center justify-center rounded-lg bg-white text-black px-4 py-2 text-sm font-medium hover:bg-white/90 transition-colors"
+          className="inline-flex items-center justify-center rounded-lg border border-white/20 px-4 py-2 text-sm font-medium text-white hover:bg-white/10 transition-colors"
         >
           Download for Mac
         </a>
+        <a
+          href="https://app.paseo.sh"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center justify-center rounded-lg border border-white/20 px-4 py-2 text-sm font-medium text-white hover:bg-white/10 transition-colors"
+        >
+          Launch Web App
+        </a>
       </div>
-      <CodeBlock>npm install -g @getpaseo/cli && paseo</CodeBlock>
     </div>
   )
 }
