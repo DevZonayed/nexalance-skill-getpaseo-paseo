@@ -167,6 +167,7 @@ Notes:
 - `version:all:*` uses `npm version` with workspace support and runs the root `version` lifecycle script to sync internal `@getpaseo/*` dependency versions before the release commit/tag is created.
 - `release:prepare` refreshes workspace `node_modules` links to prevent stale local package types during release checks.
 - If `release:publish` fails after a successful publish of one workspace, re-run `npm run release:publish`; npm will skip already-published versions and continue where possible.
+- After each release, update the website Mac download CTA URL to the new version tag in `packages/website/src/routes/index.tsx`.
 
 ## Orchestrator Mode
 
