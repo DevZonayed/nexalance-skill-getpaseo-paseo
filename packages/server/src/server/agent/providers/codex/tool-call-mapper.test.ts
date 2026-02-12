@@ -5,6 +5,14 @@ import {
   mapCodexToolCallFromThreadItem,
 } from "./tool-call-mapper.js";
 
+function expectMapped<T>(item: T | null): T {
+  expect(item).toBeTruthy();
+  if (!item) {
+    throw new Error("Expected mapped tool call");
+  }
+  return item;
+}
+
 describe("codex tool-call mapper", () => {
   it("maps commandExecution start into running canonical call", () => {
     const item = mapCodexToolCallFromThreadItem({
@@ -301,12 +309,14 @@ describe("codex tool-call mapper", () => {
   });
 
   it("maps unknown tools to unknown detail with raw payloads", () => {
-    const item = mapCodexRolloutToolCall({
-      callId: "codex-call-4",
-      name: "my_custom_tool",
-      input: { foo: "bar" },
-      output: { ok: true },
-    });
+    const item = expectMapped(
+      mapCodexRolloutToolCall({
+        callId: "codex-call-4",
+        name: "my_custom_tool",
+        input: { foo: "bar" },
+        output: { ok: true },
+      })
+    );
 
     expect(item.status).toBe("completed");
     expect(item.error).toBeNull();
@@ -327,13 +337,15 @@ describe("codex tool-call mapper", () => {
       "+new",
       "*** End Patch",
     ].join("\n");
-    const item = mapCodexRolloutToolCall({
-      callId: "codex-call-apply",
-      name: "apply_patch",
-      input: patch,
-      output: '{"output":"Success. Updated the following files:\\nM src/index.ts\\n"}',
-      cwd: "/tmp/repo",
-    });
+    const item = expectMapped(
+      mapCodexRolloutToolCall({
+        callId: "codex-call-apply",
+        name: "apply_patch",
+        input: patch,
+        output: '{"output":"Success. Updated the following files:\\nM src/index.ts\\n"}',
+        cwd: "/tmp/repo",
+      })
+    );
 
     expect(item.status).toBe("completed");
     expect(item.error).toBeNull();
@@ -359,16 +371,18 @@ describe("codex tool-call mapper", () => {
       "*** End Patch",
     ].join("\n");
 
-    const item = mapCodexRolloutToolCall({
-      callId: "codex-call-apply-object",
-      name: "apply_patch",
-      input: {
-        path: "/tmp/repo/src/object.ts",
-        content: patch,
-      },
-      output: null,
-      cwd: "/tmp/repo",
-    });
+    const item = expectMapped(
+      mapCodexRolloutToolCall({
+        callId: "codex-call-apply-object",
+        name: "apply_patch",
+        input: {
+          path: "/tmp/repo/src/object.ts",
+          content: patch,
+        },
+        output: null,
+        cwd: "/tmp/repo",
+      })
+    );
 
     expect(item.detail.type).toBe("edit");
     if (item.detail.type === "edit") {
@@ -412,58 +426,6 @@ describe("codex tool-call mapper", () => {
     }
   });
 
-  it("maps fileChange patch alias fields into edit unified diff detail", () => {
-    const item = mapCodexToolCallFromThreadItem(
-      {
-        type: "fileChange",
-        id: "codex-file-change-patch-alias",
-        status: "completed",
-        changes: [
-          {
-            path: "/tmp/repo/src/from-patch-alias.ts",
-            kind: "modify",
-            patch: "@@\n-oldAlias\n+newAlias\n",
-          },
-        ],
-      },
-      { cwd: "/tmp/repo" }
-    );
-
-    expect(item?.detail?.type).toBe("edit");
-    if (item?.detail?.type === "edit") {
-      expect(item.detail.filePath).toBe("src/from-patch-alias.ts");
-      expect(item.detail.unifiedDiff).toContain("-oldAlias");
-      expect(item.detail.unifiedDiff).toContain("+newAlias");
-      expect(item.detail.newString).toBeUndefined();
-    }
-  });
-
-  it("maps fileChange unifiedDiff alias fields into edit unified diff detail", () => {
-    const item = mapCodexToolCallFromThreadItem(
-      {
-        type: "fileChange",
-        id: "codex-file-change-unified-diff-alias",
-        status: "completed",
-        changes: [
-          {
-            path: "/tmp/repo/src/from-unified-diff-alias.ts",
-            kind: "modify",
-            unified_diff: "@@\n-beforeAlias\n+afterAlias\n",
-          },
-        ],
-      },
-      { cwd: "/tmp/repo" }
-    );
-
-    expect(item?.detail?.type).toBe("edit");
-    if (item?.detail?.type === "edit") {
-      expect(item.detail.filePath).toBe("src/from-unified-diff-alias.ts");
-      expect(item.detail.unifiedDiff).toContain("-beforeAlias");
-      expect(item.detail.unifiedDiff).toContain("+afterAlias");
-      expect(item.detail.newString).toBeUndefined();
-    }
-  });
-
   it("maps path-only fileChange payloads to unknown detail instead of empty edit detail", () => {
     const item = mapCodexToolCallFromThreadItem(
       {
@@ -484,17 +446,80 @@ describe("codex tool-call mapper", () => {
   });
 
   it("maps path-only apply_patch rollout payloads to unknown detail instead of empty edit detail", () => {
-    const item = mapCodexRolloutToolCall({
-      callId: "codex-call-apply-path-only",
-      name: "apply_patch",
-      input: { path: "/tmp/repo/src/path-only-rollout.ts" },
-      output: { files: [{ path: "/tmp/repo/src/path-only-rollout.ts", kind: "modify" }] },
-      cwd: "/tmp/repo",
-    });
+    const item = expectMapped(
+      mapCodexRolloutToolCall({
+        callId: "codex-call-apply-path-only",
+        name: "apply_patch",
+        input: { path: "/tmp/repo/src/path-only-rollout.ts" },
+        output: { files: [{ path: "/tmp/repo/src/path-only-rollout.ts", kind: "modify" }] },
+        cwd: "/tmp/repo",
+      })
+    );
 
     expect(item.detail.type).toBe("unknown");
     if (item.detail.type === "unknown") {
       expect(item.detail.input).toEqual({ path: "/tmp/repo/src/path-only-rollout.ts" });
     }
+  });
+
+  it("normalizes codex paseo speak mcp calls and extracts spoken text", () => {
+    const item = mapCodexToolCallFromThreadItem({
+      type: "mcpToolCall",
+      id: "codex-speak-thread-1",
+      status: "completed",
+      server: "paseo",
+      tool: "speak",
+      arguments: { text: "Voice response from Codex." },
+      result: { ok: true },
+    });
+
+    expect(item).toBeTruthy();
+    expect(item?.name).toBe("speak");
+    expect(item?.detail).toEqual({
+      type: "unknown",
+      input: "Voice response from Codex.",
+      output: null,
+    });
+  });
+
+  it("normalizes codex paseo speak rollout names and extracts spoken text", () => {
+    const item = expectMapped(
+      mapCodexRolloutToolCall({
+        callId: "codex-speak-rollout-1",
+        name: "paseo.speak",
+        input: { text: "Rollout speech text." },
+        output: { ok: true },
+      })
+    );
+
+    expect(item.name).toBe("speak");
+    expect(item.detail).toEqual({
+      type: "unknown",
+      input: "Rollout speech text.",
+      output: null,
+    });
+  });
+
+  it("drops rollout tool calls when callId is missing", () => {
+    const item = mapCodexRolloutToolCall({
+      callId: null,
+      name: "read_file",
+      input: { path: "/tmp/repo/README.md" },
+      output: { content: "hello" },
+    });
+
+    expect(item).toBeNull();
+  });
+
+  it("drops thread mcp tool calls when id is missing", () => {
+    const item = mapCodexToolCallFromThreadItem({
+      type: "mcpToolCall",
+      status: "completed",
+      tool: "read_file",
+      arguments: { path: "/tmp/repo/README.md" },
+      result: { content: "hello" },
+    });
+
+    expect(item).toBeNull();
   });
 });

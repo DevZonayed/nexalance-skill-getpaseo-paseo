@@ -24,23 +24,43 @@ export type CodexToolDetailContext = {
   cwd?: string | null;
 };
 
-export const CODEX_BUILTIN_TOOL_NAMES = new Set([
-  "shell",
-  "bash",
-  "exec",
-  "exec_command",
-  "command",
-  "read",
-  "read_file",
-  "write",
-  "write_file",
-  "create_file",
-  "edit",
-  "apply_patch",
-  "apply_diff",
-  "web_search",
-  "search",
-]);
+const CodexToolEnvelopeSchema = z
+  .object({
+    name: z.string().min(1),
+    input: z.unknown().nullable(),
+    output: z.unknown().nullable(),
+    cwd: z.string().nullable().optional(),
+  })
+  .passthrough();
+
+const CodexSpeakToolDetailSchema = z
+  .object({
+    name: z.literal("speak"),
+    input: z
+      .union([
+        z.string().transform((text) => ({ text })),
+        z.object({ text: z.string() }).passthrough(),
+      ])
+      .nullable(),
+    output: z.unknown().nullable(),
+    cwd: z.string().nullable().optional(),
+  })
+  .transform(({ input }) => {
+    const text = input?.text?.trim() ?? "";
+    if (!text) {
+      return undefined;
+    }
+    return {
+      type: "unknown",
+      input: text,
+      output: null,
+    } satisfies ToolCallDetail;
+  });
+
+const CodexLooseEditOutputSchema = z.unknown().transform((value) => {
+  const parsed = ToolEditOutputSchema.safeParse(value);
+  return parsed.success ? parsed.data : null;
+});
 
 export function normalizeCodexFilePath(
   filePath: string,
@@ -60,7 +80,7 @@ function normalizePathForCwd(cwd: string | null): (filePath: string) => string |
   return (filePath) => normalizeCodexFilePath(filePath, cwd);
 }
 
-const CodexKnownToolDetailSchema = z.union([
+const CodexToolDetailPass2Schema = z.union([
   toolDetailBranchByNameWithCwd("Bash", ToolShellInputSchema, ToolShellOutputSchema, (input, output) =>
     toShellToolDetail(input, output)
   ),
@@ -82,14 +102,22 @@ const CodexKnownToolDetailSchema = z.union([
   toolDetailBranchByNameWithCwd("command", ToolShellInputSchema, ToolShellOutputSchema, (input, output) =>
     toShellToolDetail(input, output)
   ),
-  toolDetailBranchByNameWithCwd("read", ToolReadInputSchema, ToolReadOutputWithPathSchema, (input, output, cwd) =>
-    toReadToolDetail(input, output, { normalizePath: normalizePathForCwd(cwd) })
-  ),
+  toolDetailBranchByNameWithCwd("read", ToolReadInputSchema, z.unknown(), (input, output, cwd) => {
+    const parsedOutput = ToolReadOutputWithPathSchema.safeParse(output);
+    return toReadToolDetail(input, parsedOutput.success ? parsedOutput.data : null, {
+      normalizePath: normalizePathForCwd(cwd),
+    });
+  }),
   toolDetailBranchByNameWithCwd(
     "read_file",
     ToolReadInputSchema,
-    ToolReadOutputWithPathSchema,
-    (input, output, cwd) => toReadToolDetail(input, output, { normalizePath: normalizePathForCwd(cwd) })
+    z.unknown(),
+    (input, output, cwd) => {
+      const parsedOutput = ToolReadOutputWithPathSchema.safeParse(output);
+      return toReadToolDetail(input, parsedOutput.success ? parsedOutput.data : null, {
+        normalizePath: normalizePathForCwd(cwd),
+      });
+    }
   ),
   toolDetailBranchByNameWithCwd("write", ToolWriteInputSchema, ToolWriteOutputSchema, (input, output, cwd) =>
     toWriteToolDetail(input, output, { normalizePath: normalizePathForCwd(cwd) })
@@ -106,19 +134,19 @@ const CodexKnownToolDetailSchema = z.union([
     ToolWriteOutputSchema,
     (input, output, cwd) => toWriteToolDetail(input, output, { normalizePath: normalizePathForCwd(cwd) })
   ),
-  toolDetailBranchByNameWithCwd("edit", ToolEditInputSchema, ToolEditOutputSchema, (input, output, cwd) =>
+  toolDetailBranchByNameWithCwd("edit", ToolEditInputSchema, CodexLooseEditOutputSchema, (input, output, cwd) =>
     toEditToolDetail(input, output, { normalizePath: normalizePathForCwd(cwd) })
   ),
   toolDetailBranchByNameWithCwd(
     "apply_patch",
     ToolEditInputSchema,
-    ToolEditOutputSchema,
+    CodexLooseEditOutputSchema,
     (input, output, cwd) => toEditToolDetail(input, output, { normalizePath: normalizePathForCwd(cwd) })
   ),
   toolDetailBranchByNameWithCwd(
     "apply_diff",
     ToolEditInputSchema,
-    ToolEditOutputSchema,
+    CodexLooseEditOutputSchema,
     (input, output, cwd) => toEditToolDetail(input, output, { normalizePath: normalizePathForCwd(cwd) })
   ),
   toolDetailBranchByNameWithCwd("search", ToolSearchInputSchema, z.unknown(), (input) =>
@@ -127,6 +155,7 @@ const CodexKnownToolDetailSchema = z.union([
   toolDetailBranchByNameWithCwd("web_search", ToolSearchInputSchema, z.unknown(), (input) =>
     toSearchToolDetail(input)
   ),
+  CodexSpeakToolDetailSchema,
 ]);
 
 export function deriveCodexToolDetail(params: {
@@ -135,18 +164,28 @@ export function deriveCodexToolDetail(params: {
   output: unknown;
   cwd?: string | null;
 }): ToolCallDetail {
-  const parsed = CodexKnownToolDetailSchema.safeParse({
+  const pass1 = CodexToolEnvelopeSchema.safeParse({
     name: params.name,
-    input: params.input,
-    output: params.output,
-    cwd: params.cwd ?? null,
-  });
-  if (parsed.success && parsed.data) {
-    return parsed.data;
-  }
-  return {
-    type: "unknown",
     input: params.input ?? null,
     output: params.output ?? null,
+    cwd: params.cwd ?? null,
+  });
+  if (!pass1.success) {
+    return {
+      type: "unknown",
+      input: params.input ?? null,
+      output: params.output ?? null,
+    };
+  }
+
+  const pass2 = CodexToolDetailPass2Schema.safeParse(pass1.data);
+  if (pass2.success && pass2.data) {
+    return pass2.data;
+  }
+
+  return {
+    type: "unknown",
+    input: pass1.data.input,
+    output: pass1.data.output,
   };
 }
