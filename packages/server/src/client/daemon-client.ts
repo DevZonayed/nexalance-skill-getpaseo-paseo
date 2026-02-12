@@ -1074,6 +1074,40 @@ export class DaemonClient {
     return { archivedAt: result.archivedAt };
   }
 
+  async updateAgent(
+    agentId: string,
+    updates: { name?: string; labels?: Record<string, string> }
+  ): Promise<void> {
+    const requestId = this.createRequestId();
+    const message = SessionInboundMessageSchema.parse({
+      type: "update_agent_request",
+      agentId,
+      ...(updates.name !== undefined ? { name: updates.name } : {}),
+      ...(updates.labels && Object.keys(updates.labels).length > 0
+        ? { labels: updates.labels }
+        : {}),
+      requestId,
+    });
+    const payload = await this.sendRequest({
+      requestId,
+      message,
+      timeout: 10000,
+      options: { skipQueue: true },
+      select: (msg) => {
+        if (msg.type !== "update_agent_response") {
+          return null;
+        }
+        if (msg.payload.requestId !== requestId) {
+          return null;
+        }
+        return msg.payload;
+      },
+    });
+    if (!payload.accepted) {
+      throw new Error(payload.error ?? "updateAgent rejected");
+    }
+  }
+
   async resumeAgent(
     handle: AgentPersistenceHandle,
     overrides?: Partial<AgentSessionConfig>

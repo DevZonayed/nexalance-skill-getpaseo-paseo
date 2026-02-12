@@ -422,6 +422,14 @@ export const ArchiveAgentRequestMessageSchema = z.object({
   requestId: z.string(),
 });
 
+export const UpdateAgentRequestMessageSchema = z.object({
+  type: z.literal("update_agent_request"),
+  agentId: z.string(),
+  name: z.string().optional(),
+  labels: z.record(z.string()).optional(),
+  requestId: z.string(),
+});
+
 export const SetVoiceModeMessageSchema = z.object({
   type: z.literal("set_voice_mode"),
   enabled: z.boolean(),
@@ -652,6 +660,16 @@ export const SetAgentThinkingRequestMessageSchema = z.object({
 
 export const SetAgentThinkingResponseMessageSchema = z.object({
   type: z.literal("set_agent_thinking_response"),
+  payload: z.object({
+    requestId: z.string(),
+    agentId: z.string(),
+    accepted: z.boolean(),
+    error: z.string().nullable(),
+  }),
+});
+
+export const UpdateAgentResponseMessageSchema = z.object({
+  type: z.literal("update_agent_response"),
   payload: z.object({
     requestId: z.string(),
     agentId: z.string(),
@@ -971,6 +989,7 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   UnsubscribeAgentUpdatesMessageSchema,
   DeleteAgentRequestMessageSchema,
   ArchiveAgentRequestMessageSchema,
+  UpdateAgentRequestMessageSchema,
   SetVoiceModeMessageSchema,
   SendAgentMessageRequestSchema,
   WaitForFinishRequestSchema,
@@ -1809,6 +1828,7 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   SetAgentModeResponseMessageSchema,
   SetAgentModelResponseMessageSchema,
   SetAgentThinkingResponseMessageSchema,
+  UpdateAgentResponseMessageSchema,
   WaitForFinishResponseMessageSchema,
   AgentPermissionRequestMessageSchema,
   AgentPermissionResolvedMessageSchema,
@@ -1878,6 +1898,7 @@ export type SendAgentMessageResponseMessage = z.infer<
 export type SetVoiceModeResponseMessage = z.infer<
   typeof SetVoiceModeResponseMessageSchema
 >;
+export type UpdateAgentResponseMessage = z.infer<typeof UpdateAgentResponseMessageSchema>;
 export type WaitForFinishResponseMessage = z.infer<
   typeof WaitForFinishResponseMessageSchema
 >;
@@ -1917,6 +1938,7 @@ export type SpeechModelsDownloadRequestMessage = z.infer<
 >;
 export type ResumeAgentRequestMessage = z.infer<typeof ResumeAgentRequestMessageSchema>;
 export type DeleteAgentRequestMessage = z.infer<typeof DeleteAgentRequestMessageSchema>;
+export type UpdateAgentRequestMessage = z.infer<typeof UpdateAgentRequestMessageSchema>;
 export type InitializeAgentRequestMessage = z.infer<typeof InitializeAgentRequestMessageSchema>;
 export type SetAgentModeRequestMessage = z.infer<typeof SetAgentModeRequestMessageSchema>;
 export type SetAgentModelRequestMessage = z.infer<typeof SetAgentModelRequestMessageSchema>;

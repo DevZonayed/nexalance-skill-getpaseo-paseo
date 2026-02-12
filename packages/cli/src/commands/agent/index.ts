@@ -9,6 +9,7 @@ import { runSendCommand } from './send.js'
 import { runInspectCommand } from './inspect.js'
 import { runWaitCommand } from './wait.js'
 import { runAttachCommand } from './attach.js'
+import { runUpdateCommand } from './update.js'
 import { withOutput } from '../../output/index.js'
 
 export function createAgentCommand(): Command {
@@ -119,6 +120,21 @@ export function createAgentCommand(): Command {
     .option('--json', 'Output in JSON format')
     .option('--host <host>', 'Daemon host:port (default: localhost:6767)')
     .action(withOutput(runArchiveCommand))
+
+  agent
+    .command('update')
+    .description("Update an agent's metadata")
+    .argument('<id>', 'Agent ID (or prefix)')
+    .option('--name <name>', "Update the agent's display name")
+    .option(
+      '--label <label>',
+      'Add/set label(s) on the agent (can be used multiple times or comma-separated)',
+      collectMultiple,
+      []
+    )
+    .option('--json', 'Output in JSON format')
+    .option('--host <host>', 'Daemon host:port (default: localhost:6767)')
+    .action(withOutput(runUpdateCommand))
 
   return agent
 }

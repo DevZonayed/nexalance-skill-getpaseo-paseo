@@ -1125,6 +1125,15 @@ export class Session {
           await this.handleArchiveAgentRequest(msg.agentId, msg.requestId);
           break;
 
+        case "update_agent_request":
+          await this.handleUpdateAgentRequest(
+            msg.agentId,
+            msg.name,
+            msg.labels,
+            msg.requestId
+          );
+          break;
+
         case "set_voice_mode":
           await this.handleSetVoiceMode(msg.enabled, msg.agentId, msg.requestId);
           break;
@@ -1504,6 +1513,88 @@ export class Session {
         requestId,
       },
     });
+  }
+
+  private async handleUpdateAgentRequest(
+    agentId: string,
+    name: string | undefined,
+    labels: Record<string, string> | undefined,
+    requestId: string
+  ): Promise<void> {
+    this.sessionLogger.info(
+      { agentId, requestId, hasName: typeof name === "string", labelCount: labels ? Object.keys(labels).length : 0 },
+      "session: update_agent_request"
+    );
+
+    const normalizedName = name?.trim();
+    const normalizedLabels =
+      labels && Object.keys(labels).length > 0 ? labels : undefined;
+
+    if (!normalizedName && !normalizedLabels) {
+      this.emit({
+        type: "update_agent_response",
+        payload: {
+          requestId,
+          agentId,
+          accepted: false,
+          error: "Nothing to update (provide name and/or labels)",
+        },
+      });
+      return;
+    }
+
+    try {
+      const liveAgent = this.agentManager.getAgent(agentId);
+      if (liveAgent) {
+        if (normalizedName) {
+          await this.agentManager.setTitle(agentId, normalizedName);
+        }
+        if (normalizedLabels) {
+          await this.agentManager.setLabels(agentId, normalizedLabels);
+        }
+      } else {
+        const existing = await this.agentStorage.get(agentId);
+        if (!existing) {
+          throw new Error(`Agent not found: ${agentId}`);
+        }
+
+        await this.agentStorage.upsert({
+          ...existing,
+          ...(normalizedName ? { title: normalizedName } : {}),
+          ...(normalizedLabels
+            ? { labels: { ...existing.labels, ...normalizedLabels } }
+            : {}),
+        });
+      }
+
+      this.emit({
+        type: "update_agent_response",
+        payload: { requestId, agentId, accepted: true, error: null },
+      });
+    } catch (error: any) {
+      this.sessionLogger.error(
+        { err: error, agentId, requestId },
+        "session: update_agent_request error"
+      );
+      this.emit({
+        type: "activity_log",
+        payload: {
+          id: uuidv4(),
+          timestamp: new Date(),
+          type: "error",
+          content: `Failed to update agent: ${error.message}`,
+        },
+      });
+      this.emit({
+        type: "update_agent_response",
+        payload: {
+          requestId,
+          agentId,
+          accepted: false,
+          error: error?.message ? String(error.message) : "Failed to update agent",
+        },
+      });
+    }
   }
 
   /**

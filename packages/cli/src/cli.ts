@@ -16,6 +16,7 @@ import { runSendCommand } from './commands/agent/send.js'
 import { runInspectCommand } from './commands/agent/inspect.js'
 import { runWaitCommand } from './commands/agent/wait.js'
 import { runAttachCommand } from './commands/agent/attach.js'
+import { runUpdateCommand } from './commands/agent/update.js'
 import { withOutput } from './output/index.js'
 
 const VERSION = '0.1.0'
@@ -124,6 +125,21 @@ export function createCli(): Command {
     .option('--json', 'Output in JSON format')
     .option('--host <host>', 'Daemon host:port (default: localhost:6767)')
     .action(withOutput(runWaitCommand))
+
+  program
+    .command('update')
+    .description('Update an agent (alias for "paseo agent update")')
+    .argument('<id>', 'Agent ID (or prefix)')
+    .option('--name <name>', "Update the agent's display name")
+    .option(
+      '--label <label>',
+      'Add/set label(s) on the agent (can be used multiple times or comma-separated)',
+      collectMultiple,
+      []
+    )
+    .option('--json', 'Output in JSON format')
+    .option('--host <host>', 'Daemon host:port (default: localhost:6767)')
+    .action(withOutput(runUpdateCommand))
 
   // Top-level local daemon shortcuts
   program.addCommand(daemonStartCommand())

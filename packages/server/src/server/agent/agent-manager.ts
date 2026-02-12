@@ -527,6 +527,16 @@ export class AgentManager {
     this.emitState(agent);
   }
 
+  async setLabels(
+    agentId: string,
+    labels: Record<string, string>
+  ): Promise<void> {
+    const agent = this.requireAgent(agentId);
+    agent.labels = { ...agent.labels, ...labels };
+    await this.persistSnapshot(agent);
+    this.emitState(agent);
+  }
+
   notifyAgentState(agentId: string): void {
     const agent = this.agents.get(agentId);
     if (!agent || agent.internal) {
