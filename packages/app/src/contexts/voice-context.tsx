@@ -64,38 +64,63 @@ export function VoiceProvider({ children }: VoiceProviderProps) {
   const voiceTransportReadyRef = useRef(false);
   const voiceResyncInFlightRef = useRef(false);
   const silenceGraceStartMsRef = useRef<number | null>(null);
+  const speechInterruptTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const speechInterruptStartMsRef = useRef<number | null>(null);
+  const speechStartInterruptSentRef = useRef(false);
+  const isVoiceModeRef = useRef(false);
   const vadStateRef = useRef<{ isDetecting: boolean; isSpeaking: boolean }>({
     isDetecting: false,
     isSpeaking: false,
   });
 
+  const clearSpeechStartInterruptTimer = useCallback((reason: string) => {
+    const timer = speechInterruptTimerRef.current;
+    if (timer) {
+      clearTimeout(timer);
+      speechInterruptTimerRef.current = null;
+      const startedAt = speechInterruptStartMsRef.current;
+      speechInterruptStartMsRef.current = null;
+      if (startedAt !== null) {
+        console.log("[Voice] Cleared speech-start interrupt timer", {
+          reason,
+          elapsedMs: Date.now() - startedAt,
+        });
+      } else {
+        console.log("[Voice] Cleared speech-start interrupt timer", { reason });
+      }
+      return;
+    }
+    speechInterruptStartMsRef.current = null;
+  }, []);
+
+  const interruptActiveVoiceTurn = useCallback((source: string) => {
+    const session = realtimeSessionRef.current;
+    const sessionAudioPlayer = session?.audioPlayer ?? null;
+    const sessionClient = session?.client ?? null;
+    const sessionIsPlayingAudio = session?.isPlayingAudio ?? false;
+
+    if (sessionIsPlayingAudio && sessionAudioPlayer) {
+      if (bargeInPlaybackStopRef.current === null) {
+        bargeInPlaybackStopRef.current = Date.now();
+      }
+      sessionAudioPlayer.stop();
+    }
+
+    try {
+      if (sessionClient) {
+        void sessionClient.abortRequest().catch((error) => {
+          console.error("[Voice] Failed to send abort_request:", error);
+        });
+      }
+      console.log("[Voice] Sent abort_request before streaming audio", { source });
+    } catch (error) {
+      console.error("[Voice] Failed to send abort_request:", error);
+    }
+  }, []);
+
   const realtimeAudio = useSpeechmaticsAudio({
     onSpeechStart: () => {
       console.log("[Voice] Segment started (speech confirmed)");
-      // Stop audio playback if playing
-      const session = realtimeSessionRef.current;
-      const sessionAudioPlayer = session?.audioPlayer ?? null;
-      const sessionClient = session?.client ?? null;
-      const sessionIsPlayingAudio = session?.isPlayingAudio ?? false;
-
-      if (sessionIsPlayingAudio && sessionAudioPlayer) {
-        if (bargeInPlaybackStopRef.current === null) {
-          bargeInPlaybackStopRef.current = Date.now();
-        }
-        sessionAudioPlayer.stop();
-      }
-
-      // Abort any in-flight orchestrator turn before the new speech segment streams
-      try {
-        if (sessionClient) {
-          void sessionClient.abortRequest().catch((error) => {
-            console.error("[Voice] Failed to send abort_request:", error);
-          });
-        }
-        console.log("[Voice] Sent abort_request before streaming audio");
-      } catch (error) {
-        console.error("[Voice] Failed to send abort_request:", error);
-      }
     },
     onSpeechEnd: () => {
       const silenceMs =
@@ -108,6 +133,8 @@ export function VoiceProvider({ children }: VoiceProviderProps) {
         console.log("[Voice] Segment finalized", { silenceMs });
       }
       silenceGraceStartMsRef.current = null;
+      clearSpeechStartInterruptTimer("speech ended");
+      speechStartInterruptSentRef.current = false;
     },
     onAudioSegment: ({ audioData, isLast }) => {
       if (!voiceTransportReadyRef.current) {
@@ -159,6 +186,58 @@ export function VoiceProvider({ children }: VoiceProviderProps) {
   }, [activeSession]);
 
   useEffect(() => {
+    isVoiceModeRef.current = isVoiceMode;
+  }, [isVoiceMode]);
+
+  useEffect(() => {
+    if (!isVoiceMode) {
+      clearSpeechStartInterruptTimer("voice mode disabled");
+      speechStartInterruptSentRef.current = false;
+      return;
+    }
+
+    if (realtimeAudio.isSpeaking) {
+      if (
+        speechStartInterruptSentRef.current ||
+        speechInterruptTimerRef.current !== null
+      ) {
+        return;
+      }
+      speechInterruptStartMsRef.current = Date.now();
+      speechInterruptTimerRef.current = setTimeout(() => {
+        speechInterruptTimerRef.current = null;
+        speechInterruptStartMsRef.current = null;
+        if (
+          !isVoiceModeRef.current ||
+          !vadStateRef.current.isSpeaking ||
+          speechStartInterruptSentRef.current
+        ) {
+          return;
+        }
+        speechStartInterruptSentRef.current = true;
+        console.log("[Voice] Speech persisted beyond grace; interrupting turn", {
+          graceMs: REALTIME_VOICE_VAD_CONFIG.interruptGracePeriodMs,
+        });
+        interruptActiveVoiceTurn("speech_start_grace_elapsed");
+      }, REALTIME_VOICE_VAD_CONFIG.interruptGracePeriodMs);
+      return;
+    }
+
+    clearSpeechStartInterruptTimer("speech stopped before grace");
+  }, [
+    clearSpeechStartInterruptTimer,
+    interruptActiveVoiceTurn,
+    isVoiceMode,
+    realtimeAudio.isSpeaking,
+  ]);
+
+  useEffect(() => {
+    return () => {
+      clearSpeechStartInterruptTimer("voice provider unmounted");
+    };
+  }, [clearSpeechStartInterruptTimer]);
+
+  useEffect(() => {
     const next = {
       isDetecting: realtimeAudio.isDetecting,
       isSpeaking: realtimeAudio.isSpeaking,
@@ -187,6 +266,7 @@ export function VoiceProvider({ children }: VoiceProviderProps) {
     // Fully idle (neither detecting nor speaking).
     if (!next.isDetecting && !next.isSpeaking) {
       silenceGraceStartMsRef.current = null;
+      speechStartInterruptSentRef.current = false;
     }
 
     vadStateRef.current = next;

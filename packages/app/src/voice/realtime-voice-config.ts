@@ -9,4 +9,6 @@ export const REALTIME_VOICE_VAD_CONFIG = {
   silenceDurationMs: 2000,
   speechConfirmationMs: 120,
   detectionGracePeriodMs: 700,
+  // Delay speech-start interrupts to ignore transient noise triggers.
+  interruptGracePeriodMs: 1000,
 } as const;
