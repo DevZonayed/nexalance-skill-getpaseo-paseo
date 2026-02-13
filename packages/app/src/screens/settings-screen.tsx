@@ -405,7 +405,8 @@ const styles = StyleSheet.create((theme) => ({
 export default function SettingsScreen() {
   const { theme } = useUnistyles();
   const insets = useSafeAreaInsets();
-  const params = useLocalSearchParams<{ editHost?: string }>();
+  const params = useLocalSearchParams<{ editHost?: string; serverId?: string }>();
+  const routeServerId = typeof params.serverId === "string" ? params.serverId.trim() : "";
   const { settings, isLoading: settingsLoading, updateSettings, resetSettings } = useAppSettings();
   const {
     daemons,
@@ -674,16 +675,19 @@ export default function SettingsScreen() {
               setIsAddHostMethodVisible(false);
               setIsPasteLinkVisible(true);
             }}
-	            onScanQr={() => {
-	              const targetServerId = addConnectionTargetServerId;
-	              const source = targetServerId ? "editHost" : "settings";
-	              closeAddConnectionFlow();
-	              router.push({
-	                pathname: "/pair-scan",
-	                params: targetServerId ? { source, targetServerId } : { source },
-	              });
-	            }}
-	          />
+            onScanQr={() => {
+              const targetServerId = addConnectionTargetServerId;
+              const source = targetServerId ? "editHost" : "settings";
+              const sourceServerId = routeServerId || targetServerId || undefined;
+              closeAddConnectionFlow();
+              router.push({
+                pathname: "/pair-scan",
+                params: targetServerId
+                    ? { source, targetServerId, sourceServerId }
+                    : { source, sourceServerId },
+              });
+            }}
+          />
 
           <AddHostModal
             visible={isDirectHostVisible}

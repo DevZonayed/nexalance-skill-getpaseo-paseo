@@ -4,9 +4,13 @@ import { StyleSheet } from "react-native-unistyles";
 import { BackHeader } from "@/components/headers/back-header";
 import { AgentList } from "@/components/agent-list";
 import { useAllAgentsList } from "@/hooks/use-all-agents-list";
+import { buildHostAgentDraftRoute } from "@/utils/host-routes";
+import { router } from "expo-router";
 
-export default function AgentsScreen() {
-  const { agents, isRevalidating, refreshAll } = useAllAgentsList();
+export function AgentsScreen({ serverId }: { serverId: string }) {
+  const { agents, isRevalidating, refreshAll } = useAllAgentsList({
+    serverId,
+  });
 
   // Track user-initiated refresh to avoid showing spinner on background revalidation
   const [isManualRefresh, setIsManualRefresh] = useState(false);
@@ -33,7 +37,10 @@ export default function AgentsScreen() {
 
   return (
     <View style={styles.container}>
-      <BackHeader title="All agents" />
+      <BackHeader
+        title="All agents"
+        onBack={() => router.replace(buildHostAgentDraftRoute(serverId) as any)}
+      />
       <AgentList
         agents={sortedAgents}
         showCheckoutInfo={false}

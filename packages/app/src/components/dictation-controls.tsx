@@ -1,6 +1,6 @@
 import { View, Text, Pressable, ActivityIndicator } from "react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
-import { X, ArrowUp, RefreshCcw, Check, Mic } from "lucide-react-native";
+import { X, ArrowUp, RefreshCcw, Check, Mic, Pencil } from "lucide-react-native";
 import { VolumeMeter } from "./volume-meter";
 import { FOOTER_HEIGHT } from "@/constants/layout";
 import type { DictationStatus } from "@/hooks/use-dictation";
@@ -233,7 +233,7 @@ export function DictationOverlay({
                 { backgroundColor: "rgba(255, 255, 255, 0.25)" },
               ]}
             >
-              <Check
+              <Pencil
                 size={20}
                 color={theme.colors.palette.white}
                 strokeWidth={2.5}

@@ -11,6 +11,10 @@ import { NameHostModal } from "@/components/name-host-modal";
 import { decodeOfferFragmentPayload, normalizeHostPort } from "@/utils/daemon-endpoints";
 import { probeConnection } from "@/utils/test-daemon-connection";
 import { ConnectionOfferSchema } from "@server/shared/connection-offer";
+import {
+  buildHostAgentDraftRoute,
+  buildHostSettingsRoute,
+} from "@/utils/host-routes";
 
 const styles = StyleSheet.create((theme) => ({
   container: {
@@ -138,8 +142,14 @@ export default function PairScanScreen() {
   const { theme } = useUnistyles();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const params = useLocalSearchParams<{ source?: string; targetServerId?: string }>();
+  const params = useLocalSearchParams<{
+    source?: string;
+    sourceServerId?: string;
+    targetServerId?: string;
+  }>();
   const source = typeof params.source === "string" ? params.source : "settings";
+  const sourceServerId =
+    typeof params.sourceServerId === "string" ? params.sourceServerId : null;
   const targetServerId = typeof params.targetServerId === "string" ? params.targetServerId : null;
   const { daemons, upsertDaemonFromOfferUrl, updateHost } = useDaemonRegistry();
 
@@ -160,34 +170,47 @@ export default function PairScanScreen() {
   const returnToSource = useCallback(
     (serverId: string) => {
       if (source === "onboarding") {
-        router.replace({ pathname: "/", params: { serverId } });
+        router.replace(buildHostAgentDraftRoute(serverId) as any);
         return;
       }
       if (source === "editHost" && targetServerId) {
-        router.replace({ pathname: "/settings", params: { editHost: targetServerId } });
+        const settingsServerId = sourceServerId ?? targetServerId;
+        router.replace({
+          pathname: buildHostSettingsRoute(settingsServerId),
+          params: { editHost: targetServerId },
+        } as any);
         return;
       }
       // settings (default): return to previous screen
       try {
         router.back();
       } catch {
-        router.replace("/settings");
+        const settingsServerId = sourceServerId ?? serverId;
+        router.replace(buildHostSettingsRoute(settingsServerId) as any);
       }
     },
-    [router, source, targetServerId]
+    [router, source, sourceServerId, targetServerId]
   );
 
   const closeToSource = useCallback(() => {
     if (source === "editHost" && targetServerId) {
-      router.replace({ pathname: "/settings", params: { editHost: targetServerId } });
+      const settingsServerId = sourceServerId ?? targetServerId;
+      router.replace({
+        pathname: buildHostSettingsRoute(settingsServerId),
+        params: { editHost: targetServerId },
+      } as any);
       return;
     }
     try {
       router.back();
     } catch {
-      router.replace("/settings");
+      if (sourceServerId) {
+        router.replace(buildHostSettingsRoute(sourceServerId) as any);
+        return;
+      }
+      router.replace("/" as any);
     }
-  }, [router, source, targetServerId]);
+  }, [router, source, sourceServerId, targetServerId]);
 
   useEffect(() => {
     if (Platform.OS === "web") return;

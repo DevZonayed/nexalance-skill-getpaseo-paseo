@@ -43,6 +43,10 @@ import {
   type WebNotificationClickDetail,
 } from "@/utils/os-notifications";
 import { buildNotificationRoute } from "@/utils/notification-routing";
+import {
+  buildHostAgentDraftRoute,
+  parseHostAgentRouteFromPathname,
+} from "@/utils/host-routes";
 
 polyfillCrypto();
 
@@ -268,52 +272,7 @@ function AppContainer({ children, selectedAgentId }: AppContainerProps) {
 function ProvidersWrapper({ children }: { children: ReactNode }) {
   const { settings, isLoading: settingsLoading } = useAppSettings();
   const { daemons, isLoading: registryLoading, upsertDaemonFromOfferUrl } = useDaemonRegistry();
-  const { connectionStates } = useDaemonConnections();
   const isLoading = settingsLoading || registryLoading;
-
-  const isInitialConnectionPending = useMemo(() => {
-    if (daemons.length === 0) return false;
-    return daemons.some((daemon) => {
-      const record = connectionStates.get(daemon.serverId);
-      if (!record) return true;
-      if (record.hasEverReceivedAgentList) return false;
-      return (
-        record.status === "idle" ||
-        record.status === "connecting" ||
-        (record.status === "online" && !record.agentListReady)
-      );
-    });
-  }, [daemons, connectionStates]);
-
-  const [connectionTimedOut, setConnectionTimedOut] = useState(false);
-
-  useEffect(() => {
-    if (!isInitialConnectionPending) {
-      setConnectionTimedOut(false);
-      return;
-    }
-    const timer = setTimeout(() => setConnectionTimedOut(true), 5000);
-    return () => clearTimeout(timer);
-  }, [isInitialConnectionPending]);
-
-  const connectingMessage = useMemo(() => {
-    if (!isInitialConnectionPending) return null;
-    const pending = daemons.filter((daemon) => {
-      const record = connectionStates.get(daemon.serverId);
-      if (!record) return true;
-      if (record.hasEverReceivedAgentList) return false;
-      return (
-        record.status === "idle" ||
-        record.status === "connecting" ||
-        (record.status === "online" && !record.agentListReady)
-      );
-    });
-    if (pending.length === 1) {
-      const label = pending[0].label?.trim();
-      return label ? `Connecting to ${label}...` : "Connecting...";
-    }
-    return "Connecting...";
-  }, [isInitialConnectionPending, daemons, connectionStates]);
 
   // Apply theme setting on mount and when it changes
   useEffect(() => {
@@ -328,10 +287,6 @@ function ProvidersWrapper({ children }: { children: ReactNode }) {
 
   if (isLoading) {
     return <LoadingView />;
-  }
-
-  if (connectingMessage && !connectionTimedOut) {
-    return <LoadingView message={connectingMessage} />;
   }
 
   return (
@@ -359,7 +314,7 @@ function OfferLinkListener({
           if (cancelled) return;
           const serverId = (profile as any)?.serverId;
           if (typeof serverId !== "string" || !serverId) return;
-          router.replace({ pathname: "/", params: { serverId } });
+          router.replace(buildHostAgentDraftRoute(serverId) as any);
         })
         .catch((error) => {
           if (cancelled) return;
@@ -389,13 +344,8 @@ function AppWithSidebar({ children }: { children: ReactNode }) {
   // Parse selectedAgentKey directly from pathname
   // useLocalSearchParams doesn't update when navigating between same-pattern routes
   const selectedAgentKey = useMemo(() => {
-    // Match /agent/[serverId]/[agentId] pattern
-    const match = pathname.match(/^\/agent\/([^/]+)\/([^/]+)\/?$/);
-    if (match) {
-      const [, serverId, agentId] = match;
-      return `${serverId}:${agentId}`;
-    }
-    return undefined;
+    const match = parseHostAgentRouteFromPathname(pathname);
+    return match ? `${match.serverId}:${match.agentId}` : undefined;
   }, [pathname]);
 
   return (
@@ -478,14 +428,14 @@ export default function RootLayout() {
                                 }}
                               >
                                 <Stack.Screen name="index" />
-                                <Stack.Screen name="agents" />
-                                <Stack.Screen name="agent" />
-                                <Stack.Screen name="agent/[id]" options={{ gestureEnabled: false }} />
                                 <Stack.Screen
-                                  name="agent/[serverId]/[agentId]"
+                                  name="h/[serverId]/agent/[agentId]"
                                   options={{ gestureEnabled: false }}
                                 />
-                                <Stack.Screen name="settings" />
+                                <Stack.Screen name="h/[serverId]/index" />
+                                <Stack.Screen name="h/[serverId]/agent/index" />
+                                <Stack.Screen name="h/[serverId]/agents" />
+                                <Stack.Screen name="h/[serverId]/settings" />
                                 <Stack.Screen name="pair-scan" />
                               </Stack>
                             </AppWithSidebar>

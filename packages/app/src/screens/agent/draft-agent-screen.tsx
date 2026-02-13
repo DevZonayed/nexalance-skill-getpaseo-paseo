@@ -14,7 +14,7 @@ import { StyleSheet, UnistylesRuntime, useUnistyles } from "react-native-unistyl
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useReanimatedKeyboardAnimation } from "react-native-keyboard-controller";
 import Animated, { useAnimatedStyle, useSharedValue } from "react-native-reanimated";
-import { Folder, GitBranch, Menu, Monitor, PanelLeft } from "lucide-react-native";
+import { Folder, GitBranch, Menu, PanelLeft } from "lucide-react-native";
 import { HeaderToggleButton } from "@/components/headers/header-toggle-button";
 import { AgentInputArea } from "@/components/agent-input-area";
 import { AgentStreamView } from "@/components/agent-stream-view";
@@ -29,7 +29,6 @@ import {
 } from "@/hooks/use-checkout-status-query";
 import { useDaemonConnections } from "@/contexts/daemon-connections-context";
 import { useDaemonRegistry } from "@/contexts/daemon-registry-context";
-import { formatConnectionStatus } from "@/utils/daemons";
 import { buildBranchComboOptions, normalizeBranchOptionName } from "@/utils/branch-suggestions";
 import { shortenPath } from "@/utils/shorten-path";
 import { usePanelStore } from "@/stores/panel-store";
@@ -47,6 +46,7 @@ import type {
   AgentSessionConfig,
 } from "@server/server/agent/agent-sdk-types";
 import { AGENT_PROVIDER_DEFINITIONS } from "@server/server/agent/provider-manifest";
+import { buildHostAgentDetailRoute } from "@/utils/host-routes";
 
 const DRAFT_AGENT_ID = "__new_agent__";
 const EMPTY_PENDING_PERMISSIONS = new Map();
@@ -112,11 +112,13 @@ type DraftAgentParams = {
 type DraftAgentScreenProps = {
   isVisible?: boolean;
   onCreateFlowActiveChange?: (active: boolean) => void;
+  forcedServerId?: string;
 };
 
 export function DraftAgentScreen({
   isVisible = true,
   onCreateFlowActiveChange,
+  forcedServerId,
 }: DraftAgentScreenProps = {}) {
   const { theme } = useUnistyles();
   const router = useRouter();
@@ -144,7 +146,11 @@ export function DraftAgentScreen({
     };
   });
 
-  const resolvedServerId = getParamValue(params.serverId);
+  const forcedServerIdParam = forcedServerId?.trim();
+  const resolvedServerId =
+    forcedServerIdParam && forcedServerIdParam.length > 0
+      ? forcedServerIdParam
+      : getParamValue(params.serverId);
   const resolvedProvider = getValidProvider(getParamValue(params.provider));
   const resolvedMode = getValidMode(resolvedProvider, getParamValue(params.modeId));
   const resolvedModel = getParamValue(params.model);
@@ -215,25 +221,9 @@ export function DraftAgentScreen({
     isCreateFlow: true,
     onlineServerIds,
   });
-  const daemonLabelByServerId = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const daemon of daemons) {
-      const label = daemon.label?.trim();
-      map.set(daemon.serverId, label && label.length > 0 ? label : daemon.serverId);
-    }
-    return map;
-  }, [daemons]);
   const hostEntry = selectedServerId
     ? connectionStates.get(selectedServerId)
     : undefined;
-  const selectedDaemonLabel = selectedServerId
-    ? daemonLabelByServerId.get(selectedServerId)
-    : null;
-  const hostLabel =
-    selectedDaemonLabel ??
-    hostEntry?.daemon.label ??
-    selectedServerId ??
-    "Select host";
   const isMobile =
     UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
   const isSidebarOpen = isMobile ? mobileView === "agent-list" : desktopAgentListOpen;
@@ -242,7 +232,6 @@ export function DraftAgentScreen({
     ? theme.colors.foreground
     : theme.colors.foregroundMuted;
 
-  const [isHostOpen, setIsHostOpen] = useState(false);
   const [worktreeMode, setWorktreeMode] = useState<"none" | "create" | "attach">("none");
   const [baseBranch, setBaseBranch] = useState("");
   const [worktreeSlug, setWorktreeSlug] = useState("");
@@ -252,7 +241,6 @@ export function DraftAgentScreen({
   const [isBranchOpen, setIsBranchOpen] = useState(false);
   const [branchSearchQuery, setBranchSearchQuery] = useState("");
   const [debouncedBranchSearchQuery, setDebouncedBranchSearchQuery] = useState("");
-  const hostAnchorRef = useRef<View>(null);
   const workingDirAnchorRef = useRef<View>(null);
   const worktreeAnchorRef = useRef<View>(null);
   const branchAnchorRef = useRef<View>(null);
@@ -670,17 +658,6 @@ export function DraftAgentScreen({
     worktreeMode === "create"
       ? "Create new worktree"
       : selectedWorktreeLabel || "Select worktree";
-  const hostOptions = useMemo(
-    () =>
-      daemons.map((daemon) => ({
-        id: daemon.serverId,
-        label: daemonLabelByServerId.get(daemon.serverId) ?? daemon.serverId,
-        description: formatConnectionStatus(
-          connectionStates.get(daemon.serverId)?.status ?? "idle"
-        ),
-      })),
-    [connectionStates, daemonLabelByServerId, daemons]
-  );
   const worktreeComboOptions = useMemo(
     () => [
       {
@@ -930,7 +907,9 @@ export function DraftAgentScreen({
         const agentId = (result as { id?: string })?.id;
         if (agentId && selectedServerId) {
           updatePendingAgentId(agentId);
-          router.replace(`/agent/${selectedServerId}/${agentId}` as any);
+          router.replace(
+            buildHostAgentDetailRoute(selectedServerId, agentId) as any
+          );
           return;
         }
 
@@ -1031,7 +1010,7 @@ export function DraftAgentScreen({
             <View style={isMobile ? styles.stackedSelectorGroup : styles.topSelectorRow}>
               <FormSelectTrigger
                 controlRef={workingDirAnchorRef}
-                containerStyle={isMobile ? styles.fullSelector : styles.topSelectorPrimary}
+                containerStyle={styles.fullSelector}
                 label="Working directory"
                 value={displayWorkingDir}
                 placeholder="/path/to/project"
@@ -1039,16 +1018,6 @@ export function DraftAgentScreen({
                 icon={<Folder size={16} color={theme.colors.foregroundMuted} />}
                 showLabel={false}
                 valueEllipsizeMode="middle"
-              />
-              <FormSelectTrigger
-                controlRef={hostAnchorRef}
-                containerStyle={isMobile ? styles.fullSelector : styles.topSelectorSecondary}
-                label="Host"
-                value={hostLabel}
-                placeholder="Select host"
-                onPress={() => setIsHostOpen(true)}
-                icon={<Monitor size={16} color={theme.colors.foregroundMuted} />}
-                showLabel={false}
               />
             </View>
             {isDirectoryNotExists && (
@@ -1117,17 +1086,6 @@ export function DraftAgentScreen({
             {attachWorktreeError ? <Text style={styles.errorInlineText}>{attachWorktreeError}</Text> : null}
             {worktreeOptionsError ? <Text style={styles.errorInlineText}>{worktreeOptionsError}</Text> : null}
           </View>
-          <Combobox
-            options={hostOptions}
-            value={selectedServerId ?? ""}
-            onSelect={(serverId) => setSelectedServerIdFromUser(serverId)}
-            title="Host"
-            searchPlaceholder="Search hosts..."
-            open={isHostOpen}
-            onOpenChange={setIsHostOpen}
-            anchorRef={hostAnchorRef}
-          />
-
           <Combobox
             options={worktreeComboOptions}
             value={

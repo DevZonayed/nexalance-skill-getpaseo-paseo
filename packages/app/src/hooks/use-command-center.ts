@@ -17,6 +17,12 @@ import {
   buildNewAgentRoute,
   resolveNewAgentWorkingDir,
 } from "@/utils/new-agent-routing";
+import {
+  buildHostAgentDetailRoute,
+  buildHostSettingsRoute,
+  parseHostAgentRouteFromPathname,
+  parseServerIdFromPathname,
+} from "@/utils/host-routes";
 import type { ShortcutKey } from "@/utils/format-shortcut";
 import { focusWithRetries } from "@/utils/web-focus";
 
@@ -46,19 +52,17 @@ function sortAgents(left: AggregatedAgent, right: AggregatedAgent): number {
 }
 
 function parseAgentKeyFromPathname(pathname: string): string | null {
-  const match = pathname.match(/^\/agent\/([^/]+)\/([^/]+)/);
-  if (!match) return null;
-  return `${match[1]}:${match[2]}`;
+  const match = parseHostAgentRouteFromPathname(pathname);
+  if (!match) {
+    return null;
+  }
+  return `${match.serverId}:${match.agentId}`;
 }
 
 function parseAgentRouteFromPathname(
   pathname: string
 ): { serverId: string; agentId: string } | null {
-  const match = pathname.match(/^\/agent\/([^/]+)\/([^/]+)/);
-  if (!match) return null;
-  const [, serverId, agentId] = match;
-  if (!serverId || !agentId) return null;
-  return { serverId, agentId };
+  return parseHostAgentRouteFromPathname(pathname);
 }
 
 type CommandCenterActionDefinition = {
@@ -67,7 +71,7 @@ type CommandCenterActionDefinition = {
   icon?: "plus" | "settings";
   shortcutKeys?: ShortcutKey[];
   keywords: string[];
-  buildRoute: (params: { newAgentRoute: string }) => string;
+  buildRoute: (params: { newAgentRoute: string; settingsRoute: string }) => string;
 };
 
 const COMMAND_CENTER_ACTIONS: readonly CommandCenterActionDefinition[] = [
@@ -84,7 +88,7 @@ const COMMAND_CENTER_ACTIONS: readonly CommandCenterActionDefinition[] = [
     title: "Settings",
     icon: "settings",
     keywords: ["settings", "preferences", "config", "configuration"],
-    buildRoute: () => "/settings",
+    buildRoute: ({ settingsRoute }) => settingsRoute,
   },
 ];
 
@@ -137,22 +141,26 @@ export function useCommandCenter() {
     return filtered;
   }, [agents, query]);
 
+  const fallbackServerId = agents[0]?.serverId ?? null;
+
   const agentKeyFromPathname = useMemo(
     () => parseAgentKeyFromPathname(pathname),
     [pathname]
   );
 
   const newAgentRoute = useMemo(() => {
+    const serverIdFromPath =
+      parseServerIdFromPathname(pathname) ?? fallbackServerId;
     const routeAgent = parseAgentRouteFromPathname(pathname);
     if (!routeAgent) {
-      return "/agent";
+      return serverIdFromPath ? buildNewAgentRoute(serverIdFromPath) : "/";
     }
 
     const { serverId, agentId } = routeAgent;
     const currentAgent = useSessionStore.getState().sessions[serverId]?.agents?.get(agentId);
     const cwd = currentAgent?.cwd?.trim();
     if (!cwd) {
-      return "/agent";
+      return buildNewAgentRoute(serverId);
     }
 
     const checkout =
@@ -160,8 +168,14 @@ export function useCommandCenter() {
         checkoutStatusQueryKey(serverId, cwd)
       ) ?? null;
     const workingDir = resolveNewAgentWorkingDir(cwd, checkout);
-    return buildNewAgentRoute(workingDir);
-  }, [pathname]);
+    return buildNewAgentRoute(serverId, workingDir);
+  }, [fallbackServerId, pathname]);
+
+  const settingsRoute = useMemo(() => {
+    const serverIdFromPath =
+      parseServerIdFromPathname(pathname) ?? fallbackServerId;
+    return serverIdFromPath ? buildHostSettingsRoute(serverIdFromPath) : "/";
+  }, [fallbackServerId, pathname]);
 
   const actionItems = useMemo(() => {
     return COMMAND_CENTER_ACTIONS.filter((action) =>
@@ -171,10 +185,10 @@ export function useCommandCenter() {
       id: action.id,
       title: action.title,
       icon: action.icon,
-      route: action.buildRoute({ newAgentRoute }),
+      route: action.buildRoute({ newAgentRoute, settingsRoute }),
       shortcutKeys: action.shortcutKeys,
     }));
-  }, [newAgentRoute, query]);
+  }, [newAgentRoute, query, settingsRoute]);
 
   const items = useMemo(() => {
     const next: CommandCenterItem[] = [];
@@ -203,14 +217,14 @@ export function useCommandCenter() {
       const session = useSessionStore.getState().sessions[agent.serverId];
       session?.client?.clearAgentAttention(agent.id);
 
-      const shouldReplace = pathname.startsWith("/agent/");
+      const shouldReplace = Boolean(parseHostAgentRouteFromPathname(pathname));
       const navigate = shouldReplace ? router.replace : router.push;
 
       requestFocusChatInput(agentKey(agent));
       // Don't restore focus back to the prior element after we navigate.
       clearCommandCenterFocusRestoreElement();
       setOpen(false);
-      navigate(`/agent/${agent.serverId}/${agent.id}` as any);
+      navigate(buildHostAgentDetailRoute(agent.serverId, agent.id) as any);
     },
     [pathname, requestFocusChatInput, setOpen]
   );

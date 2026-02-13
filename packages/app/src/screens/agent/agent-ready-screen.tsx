@@ -70,6 +70,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { buildHostAgentDraftRoute } from "@/utils/host-routes";
 
 const DROPDOWN_WIDTH = 220;
 const EMPTY_STREAM_ITEMS: StreamItem[] = [];
@@ -124,7 +125,11 @@ export function AgentReadyScreen({
         targetMs: 300,
       });
     }
-    router.replace("/agent" as any);
+    if (targetServerId) {
+      router.replace(buildHostAgentDraftRoute(targetServerId) as any);
+      return;
+    }
+    router.replace("/" as any);
   }, [resolvedAgentId, resolvedServerId, router]);
 
   const focusServerId = resolvedServerId;

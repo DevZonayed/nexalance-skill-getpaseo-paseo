@@ -28,6 +28,10 @@ import {
   buildAgentNavigationKey,
   startNavigationTiming,
 } from "@/utils/navigation-timing";
+import {
+  buildHostAgentDetailRoute,
+  parseHostAgentRouteFromPathname,
+} from "@/utils/host-routes";
 
 interface AgentListProps {
   agents: AggregatedAgent[];
@@ -114,12 +118,12 @@ export function AgentList({
         params: { serverId, agentId },
       });
 
-      const shouldReplace = pathname.startsWith("/agent/");
+      const shouldReplace = Boolean(parseHostAgentRouteFromPathname(pathname));
       const navigate = shouldReplace ? router.replace : router.push;
 
       onAgentSelect?.();
 
-      navigate(`/agent/${serverId}/${agentId}` as any);
+      navigate(buildHostAgentDetailRoute(serverId, agentId) as any);
     },
     [isActionSheetVisible, pathname, onAgentSelect]
   );

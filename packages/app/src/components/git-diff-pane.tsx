@@ -49,6 +49,7 @@ import {
   type ActionStatus,
 } from "@/components/ui/dropdown-menu";
 import { GitHubIcon } from "@/components/icons/github-icon";
+import { buildHostAgentDraftRoute } from "@/utils/host-routes";
 
 // =============================================================================
 // Git Actions Data Structure
@@ -800,7 +801,7 @@ export function GitDiffPane({ serverId, agentId, cwd }: GitDiffPaneProps) {
     setActionError(null);
     void runArchiveWorktree({ serverId, cwd, worktreePath })
       .then(() => {
-        router.replace("/agent" as any);
+        router.replace(buildHostAgentDraftRoute(serverId) as any);
       })
       .catch((err) => {
         const message = err instanceof Error ? err.message : "Failed to archive worktree";

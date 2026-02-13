@@ -3,13 +3,11 @@ import {
   useDaemonRegistry,
   type HostProfile,
 } from "@/contexts/daemon-registry-context";
-import { useDaemonConnections } from "@/contexts/daemon-connections-context";
 import {
   buildDaemonWebSocketUrl,
   buildRelayWebSocketUrl,
 } from "@/utils/daemon-endpoints";
-import { probeConnection } from "@/utils/test-daemon-connection";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo } from "react";
 import type { ActiveConnection } from "@/contexts/daemon-connections-context";
 
 type Candidate = {
@@ -67,119 +65,16 @@ function buildCandidates(host: HostProfile): Candidate[] {
 }
 
 function ManagedDaemonSession({ daemon }: { daemon: HostProfile }) {
-  const { connectionStates } = useDaemonConnections();
-  const { updateHost } = useDaemonRegistry();
-
   const candidates = useMemo(() => buildCandidates(daemon), [daemon]);
-  const [activeIndex, setActiveIndex] = useState(0);
-  const active = candidates[activeIndex] ?? candidates[0] ?? null;
+  const active =
+    candidates.find((candidate) => candidate.connectionId === daemon.preferredConnectionId) ??
+    candidates[0] ??
+    null;
   const activeUrl = active?.url ?? null;
-
-  const lastAttemptedUrlRef = useRef<string | null>(null);
-  const pendingPreferenceWriteRef = useRef(false);
-  const upgradeProbeInFlightRef = useRef(false);
-
-  useEffect(() => {
-    if (!activeUrl) {
-      return;
-    }
-    // If the active URL fell out of the candidate set (e.g. endpoints updated), snap back.
-    const idx = candidates.findIndex((c) => c.url === activeUrl);
-    if (idx === -1) {
-      setActiveIndex(0);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [candidates.map((c) => c.url).join("|")]);
 
   if (!activeUrl) {
     return null;
   }
-
-  const connection = connectionStates.get(daemon.serverId);
-  const status = connection?.status ?? "idle";
-  const lastError = connection?.lastError ?? null;
-
-  useEffect(() => {
-    if (!connection) return;
-
-    if (status === "online") {
-      if (!active) return;
-      if (pendingPreferenceWriteRef.current) return;
-      if (daemon.preferredConnectionId === active.connectionId) return;
-
-      pendingPreferenceWriteRef.current = true;
-      void updateHost(daemon.serverId, {
-        preferredConnectionId: active.connectionId,
-      }).finally(() => {
-        pendingPreferenceWriteRef.current = false;
-      });
-      return;
-    }
-
-    if ((status === "error" || (status === "offline" && lastError)) && candidates.length > 1) {
-      if (lastAttemptedUrlRef.current === activeUrl) {
-        return;
-      }
-      lastAttemptedUrlRef.current = activeUrl;
-      if (activeIndex < candidates.length - 1) {
-        setActiveIndex((idx) => Math.min(idx + 1, candidates.length - 1));
-      }
-    }
-  }, [
-    active,
-    activeIndex,
-    activeUrl,
-    candidates.length,
-    daemon.preferredConnectionId,
-    daemon.serverId,
-    lastError,
-    status,
-    updateHost,
-    connection,
-  ]);
-
-  useEffect(() => {
-    if (!connection) return;
-    if (status !== "online") return;
-    if (activeIndex === 0) return;
-
-    const best = candidates[0];
-    if (!best) return;
-    if (best.activeConnection.type !== "direct") return;
-
-    const intervalMs = 15_000;
-    let cancelled = false;
-
-    const attemptUpgrade = async () => {
-      if (cancelled) return;
-      if (upgradeProbeInFlightRef.current) return;
-      if (activeIndex === 0) return;
-
-      upgradeProbeInFlightRef.current = true;
-      try {
-        const { serverId } = await probeConnection(
-          { id: "probe", type: "direct", endpoint: best.activeConnection.endpoint },
-          { timeoutMs: 2000 },
-        );
-        if (cancelled) return;
-        if (serverId !== daemon.serverId) return;
-
-        lastAttemptedUrlRef.current = null;
-        setActiveIndex(0);
-      } catch {
-        // ignore - we'll retry periodically
-      } finally {
-        upgradeProbeInFlightRef.current = false;
-      }
-    };
-
-    void attemptUpgrade();
-    const interval = setInterval(() => void attemptUpgrade(), intervalMs);
-    return () => {
-      cancelled = true;
-      clearInterval(interval);
-    };
-  }, [activeIndex, candidates, connection, daemon.serverId, status]);
 
   return (
     <SessionProvider

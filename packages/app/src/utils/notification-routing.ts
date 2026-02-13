@@ -1,3 +1,8 @@
+import {
+  buildHostAgentDetailRoute,
+  buildHostAgentDraftRoute,
+} from "@/utils/host-routes";
+
 type NotificationData = Record<string, unknown> | null | undefined;
 
 function readNonEmptyString(
@@ -25,10 +30,10 @@ export function resolveNotificationTarget(data: NotificationData): {
 export function buildNotificationRoute(data: NotificationData): string {
   const { serverId, agentId } = resolveNotificationTarget(data);
   if (serverId && agentId) {
-    return `/agent/${encodeURIComponent(serverId)}/${encodeURIComponent(agentId)}`;
+    return buildHostAgentDetailRoute(serverId, agentId);
   }
-  if (agentId) {
-    return `/agent/${encodeURIComponent(agentId)}`;
+  if (serverId) {
+    return buildHostAgentDraftRoute(serverId);
   }
-  return "/agents";
+  return "/";
 }

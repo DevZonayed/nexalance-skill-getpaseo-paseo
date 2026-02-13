@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo } from "react";
-import { useQueries, useQueryClient } from "@tanstack/react-query";
-import { useShallow } from "zustand/shallow";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useDaemonConnections } from "@/contexts/daemon-connections-context";
 import { useSessionStore, type Agent } from "@/stores/session-store";
 import type { AggregatedAgent } from "@/hooks/use-aggregated-agents";
@@ -15,7 +14,8 @@ const SIDEBAR_GROUPS_STALE_TIME = 15_000;
 const SIDEBAR_GROUPS_REFETCH_INTERVAL = 10_000;
 const MAX_AGENTS_PER_PROJECT = 5;
 
-type SidebarGroupsPayload = FetchAgentsGroupedByProjectResponseMessage["payload"];
+type SidebarGroupsPayload =
+  FetchAgentsGroupedByProjectResponseMessage["payload"];
 export type SidebarCheckoutLite =
   SidebarGroupsPayload["groups"][number]["agents"][number]["checkout"];
 type MutableSidebarGroup = {
@@ -68,95 +68,63 @@ function toAggregatedAgent(params: {
 
 export function useSidebarAgentsGrouped(options?: {
   isOpen?: boolean;
+  serverId?: string | null;
 }): SidebarAgentsGroupedResult {
   const { connectionStates } = useDaemonConnections();
   const queryClient = useQueryClient();
   const isOpen = options?.isOpen ?? true;
+  const serverId = useMemo(() => {
+    const value = options?.serverId;
+    return typeof value === "string" && value.trim().length > 0
+      ? value.trim()
+      : null;
+  }, [options?.serverId]);
 
-  const sessionClients = useSessionStore(
-    useShallow((state) => {
-      const result: Record<
-        string,
-        NonNullable<typeof state.sessions[string]["client"]> | null
-      > = {};
-      for (const [serverId, session] of Object.entries(state.sessions)) {
-        result[serverId] = session.client ?? null;
+  const session = useSessionStore((state) =>
+    serverId ? state.sessions[serverId] : undefined
+  );
+  const client = session?.client ?? null;
+  const liveAgents = session?.agents ?? null;
+  const isConnected = session?.connection.isConnected ?? false;
+  const canFetch = Boolean(serverId && client && isConnected);
+
+  const groupedQuery = useQuery({
+    queryKey: ["sidebarAgentsGrouped", serverId] as const,
+    queryFn: async () => {
+      if (!client) {
+        throw new Error("Daemon client not available");
       }
-      return result;
-    })
-  );
-
-  const sessionAgents = useSessionStore(
-    useShallow((state) => {
-      const result: Record<string, Map<string, Agent> | undefined> = {};
-      for (const [serverId, session] of Object.entries(state.sessions)) {
-        result[serverId] = session.agents;
-      }
-      return result;
-    })
-  );
-
-  const sessionConnections = useSessionStore(
-    useShallow((state) => {
-      const result: Record<string, boolean> = {};
-      for (const [serverId, session] of Object.entries(state.sessions)) {
-        result[serverId] = session.connection.isConnected;
-      }
-      return result;
-    })
-  );
-
-  const serverEntries = useMemo(
-    () =>
-      Object.keys(sessionClients).map((serverId) => ({
-        serverId,
-        client: sessionClients[serverId] ?? null,
-        isConnected: sessionConnections[serverId] ?? false,
-      })),
-    [sessionClients, sessionConnections]
-  );
-
-  const groupedQueries = useQueries({
-    queries: serverEntries.map(({ serverId, client, isConnected }) => ({
-      queryKey: ["sidebarAgentsGrouped", serverId] as const,
-      queryFn: async () => {
-        if (!client) {
-          throw new Error("Daemon client not available");
-        }
-        return await client.fetchAgentsGroupedByProject({
-          filter: { labels: { ui: "true" } },
-        });
-      },
-      enabled: Boolean(client) && isConnected,
-      staleTime: SIDEBAR_GROUPS_STALE_TIME,
-      refetchInterval: isOpen ? SIDEBAR_GROUPS_REFETCH_INTERVAL : false,
-      refetchIntervalInBackground: isOpen,
-      refetchOnMount: "always" as const,
-    })),
+      return await client.fetchAgentsGroupedByProject({
+        filter: { labels: { ui: "true" } },
+      });
+    },
+    enabled: canFetch,
+    staleTime: SIDEBAR_GROUPS_STALE_TIME,
+    refetchInterval: isOpen ? SIDEBAR_GROUPS_REFETCH_INTERVAL : false,
+    refetchIntervalInBackground: isOpen,
+    refetchOnMount: "always" as const,
   });
 
   const projectOrder = useSectionOrderStore((state) => state.projectOrder);
   const setProjectOrder = useSectionOrderStore((state) => state.setProjectOrder);
 
   const { sections, checkoutByAgentKey, hasAnyData } = useMemo(() => {
+    if (!serverId) {
+      return {
+        sections: [] as SidebarSectionData[],
+        checkoutByAgentKey: new Map<string, SidebarCheckoutLite>(),
+        hasAnyData: false,
+      };
+    }
+
     const groupsByKey = new Map<string, MutableSidebarGroup>();
     const checkoutLookup = new Map<string, SidebarCheckoutLite>();
     const seenAgentKeys = new Set<string>();
-    const groupedFetchReadyByServer = new Map<string, boolean>();
+    const payload = groupedQuery.data as SidebarGroupsPayload | undefined;
+    const groupedFetchReady = groupedQuery.isFetched;
+    const serverLabel = connectionStates.get(serverId)?.daemon.label ?? serverId;
 
-    for (let idx = 0; idx < serverEntries.length; idx++) {
-      const { serverId } = serverEntries[idx] ?? {};
-      if (!serverId) {
-        continue;
-      }
-      groupedFetchReadyByServer.set(serverId, groupedQueries[idx]?.isFetched ?? false);
-      const payload = groupedQueries[idx]?.data as SidebarGroupsPayload | undefined;
-      if (!payload) {
-        continue;
-      }
-      const serverLabel = connectionStates.get(serverId)?.daemon.label ?? serverId;
-      const liveAgents = sessionAgents[serverId];
-
+    if (payload) {
       for (const group of payload.groups) {
         const existing: MutableSidebarGroup =
           groupsByKey.get(group.projectKey) ??
@@ -180,7 +148,10 @@ export function useSidebarAgentsGrouped(options?: {
 
           const agentKey = `${serverId}:${entry.agent.id}`;
           seenAgentKeys.add(agentKey);
-          checkoutLookup.set(agentKey, live?.projectPlacement?.checkout ?? entry.checkout);
+          checkoutLookup.set(
+            agentKey,
+            live?.projectPlacement?.checkout ?? entry.checkout
+          );
           existing.agents.push(nextAgent);
         }
 
@@ -188,16 +159,7 @@ export function useSidebarAgentsGrouped(options?: {
       }
     }
 
-    for (const { serverId } of serverEntries) {
-      if (!groupedFetchReadyByServer.get(serverId)) {
-        continue;
-      }
-      const serverLabel = connectionStates.get(serverId)?.daemon.label ?? serverId;
-      const liveAgents = sessionAgents[serverId];
-      if (!liveAgents) {
-        continue;
-      }
-
+    if (groupedFetchReady && liveAgents) {
       for (const live of liveAgents.values()) {
         if (live.archivedAt || live.labels.ui !== "true") {
           continue;
@@ -270,7 +232,14 @@ export function useSidebarAgentsGrouped(options?: {
       checkoutByAgentKey: checkoutLookup,
       hasAnyData: nextSections.length > 0,
     };
-  }, [serverEntries, groupedQueries, connectionStates, sessionAgents, projectOrder]);
+  }, [
+    connectionStates,
+    groupedQuery.data,
+    groupedQuery.isFetched,
+    liveAgents,
+    projectOrder,
+    serverId,
+  ]);
 
   useEffect(() => {
     const currentKeys = sections.map((section) => section.projectKey);
@@ -282,16 +251,16 @@ export function useSidebarAgentsGrouped(options?: {
   }, [sections, projectOrder, setProjectOrder]);
 
   const refreshAll = useCallback(() => {
-    for (const { serverId } of serverEntries) {
-      void queryClient.invalidateQueries({
-        queryKey: ["sidebarAgentsGrouped", serverId],
-      });
+    if (!serverId) {
+      return;
     }
-  }, [queryClient, serverEntries]);
+    void queryClient.invalidateQueries({
+      queryKey: ["sidebarAgentsGrouped", serverId],
+    });
+  }, [queryClient, serverId]);
 
-  const isFetching = groupedQueries.some(
-    (query) => query.isPending || query.isFetching
-  );
+  const isFetching =
+    canFetch && (groupedQuery.isPending || groupedQuery.isFetching);
   const isInitialLoad = isFetching && !hasAnyData;
   const isRevalidating = isFetching && hasAnyData;
 
@@ -304,3 +273,4 @@ export function useSidebarAgentsGrouped(options?: {
     refreshAll,
   };
 }
+

@@ -1,4 +1,5 @@
 import type { CheckoutStatusPayload } from "@/hooks/use-checkout-status-query";
+import { buildHostAgentDraftRoute } from "@/utils/host-routes";
 
 export function resolveNewAgentWorkingDir(
   cwd: string,
@@ -7,10 +8,17 @@ export function resolveNewAgentWorkingDir(
   return (checkout?.isPaseoOwnedWorktree ? checkout.mainRepoRoot : null) ?? cwd;
 }
 
-export function buildNewAgentRoute(workingDir?: string | null): string {
+export function buildNewAgentRoute(
+  serverId: string,
+  workingDir?: string | null
+): string {
+  const baseRoute = buildHostAgentDraftRoute(serverId);
+  if (baseRoute === "/") {
+    return baseRoute;
+  }
   const trimmedWorkingDir = workingDir?.trim();
   if (!trimmedWorkingDir) {
-    return "/agent";
+    return baseRoute;
   }
-  return `/agent?workingDir=${encodeURIComponent(trimmedWorkingDir)}`;
+  return `${baseRoute}?workingDir=${encodeURIComponent(trimmedWorkingDir)}`;
 }

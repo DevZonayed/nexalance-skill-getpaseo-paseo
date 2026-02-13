@@ -15,6 +15,11 @@ import {
   buildNewAgentRoute,
   resolveNewAgentWorkingDir,
 } from "@/utils/new-agent-routing";
+import {
+  buildHostAgentDetailRoute,
+  parseHostAgentRouteFromPathname,
+  parseServerIdFromPathname,
+} from "@/utils/host-routes";
 
 export function useGlobalKeyboardNav({
   enabled,
@@ -86,18 +91,20 @@ export function useGlobalKeyboardNav({
       }
       const { serverId, agentId } = parsed;
 
-      const shouldReplace = pathname.startsWith("/agent/");
+      const shouldReplace = Boolean(parseHostAgentRouteFromPathname(pathname));
       const navigate = shouldReplace ? router.replace : router.push;
-      navigate(`/agent/${serverId}/${agentId}` as any);
+      navigate(buildHostAgentDetailRoute(serverId, agentId) as any);
     };
 
     const navigateToNewAgent = () => {
-      let target = "/agent";
+      let targetServerId = parseServerIdFromPathname(pathname);
+      let targetWorkingDir: string | null = null;
       if (selectedAgentId) {
         const separatorIndex = selectedAgentId.indexOf(":");
         if (separatorIndex > 0) {
           const serverId = selectedAgentId.slice(0, separatorIndex);
           const agentId = selectedAgentId.slice(separatorIndex + 1);
+          targetServerId = serverId;
           const agent = useSessionStore.getState().sessions[serverId]?.agents?.get(agentId);
           const cwd = agent?.cwd?.trim();
           if (cwd) {
@@ -105,13 +112,21 @@ export function useGlobalKeyboardNav({
               queryClient.getQueryData<CheckoutStatusPayload>(
                 checkoutStatusQueryKey(serverId, cwd)
               ) ?? null;
-            const workingDir = resolveNewAgentWorkingDir(cwd, checkout);
-            target = buildNewAgentRoute(workingDir);
+            targetWorkingDir = resolveNewAgentWorkingDir(cwd, checkout);
           }
         }
       }
 
-      router.push(target as any);
+      if (!targetServerId) {
+        const sessionServerIds = Object.keys(useSessionStore.getState().sessions);
+        targetServerId = sessionServerIds[0] ?? null;
+      }
+
+      if (!targetServerId) {
+        return;
+      }
+
+      router.push(buildNewAgentRoute(targetServerId, targetWorkingDir) as any);
     };
 
     const handleKeyDown = (event: KeyboardEvent) => {

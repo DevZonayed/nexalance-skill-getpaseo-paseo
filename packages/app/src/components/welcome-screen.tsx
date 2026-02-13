@@ -9,6 +9,7 @@ import { useSessionStore } from "@/stores/session-store";
 import { AddHostModal } from "./add-host-modal";
 import { PairLinkModal } from "./pair-link-modal";
 import { NameHostModal } from "./name-host-modal";
+import { buildHostAgentDraftRoute } from "@/utils/host-routes";
 
 const styles = StyleSheet.create((theme) => ({
   container: {
@@ -90,7 +91,7 @@ export function WelcomeScreen({ onHostAdded }: WelcomeScreenProps) {
 
   const finishOnboarding = useCallback(
     (serverId: string) => {
-      router.replace({ pathname: "/", params: { serverId } });
+      router.replace(buildHostAgentDraftRoute(serverId) as any);
     },
     [router]
   );

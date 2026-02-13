@@ -1,6 +1,5 @@
 import { useCallback, useMemo } from "react";
-import { useQueries, useQueryClient } from "@tanstack/react-query";
-import { useShallow } from "zustand/shallow";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useDaemonConnections } from "@/contexts/daemon-connections-context";
 import { useSessionStore, type Agent } from "@/stores/session-store";
 import type { AggregatedAgent, AggregatedAgentsResult } from "@/hooks/use-aggregated-agents";
@@ -31,106 +30,69 @@ function toAggregatedAgent(params: {
   };
 }
 
-export function useAllAgentsList(): AggregatedAgentsResult {
+export function useAllAgentsList(options?: {
+  serverId?: string | null;
+}): AggregatedAgentsResult {
   const { connectionStates } = useDaemonConnections();
   const queryClient = useQueryClient();
+  const serverId = useMemo(() => {
+    const value = options?.serverId;
+    return typeof value === "string" && value.trim().length > 0
+      ? value.trim()
+      : null;
+  }, [options?.serverId]);
 
-  const sessionClients = useSessionStore(
-    useShallow((state) => {
-      const result: Record<
-        string,
-        NonNullable<typeof state.sessions[string]["client"]> | null
-      > = {};
-      for (const [serverId, session] of Object.entries(state.sessions)) {
-        result[serverId] = session.client ?? null;
+  const session = useSessionStore((state) =>
+    serverId ? state.sessions[serverId] : undefined
+  );
+  const client = session?.client ?? null;
+  const isConnected = session?.connection.isConnected ?? false;
+  const liveAgents = session?.agents ?? null;
+  const canFetch = Boolean(serverId && client && isConnected);
+
+  const agentsQuery = useQuery({
+    queryKey: ["allAgents", serverId] as const,
+    queryFn: async () => {
+      if (!client) {
+        throw new Error("Daemon client not available");
       }
-      return result;
-    })
-  );
-
-  const sessionConnections = useSessionStore(
-    useShallow((state) => {
-      const result: Record<string, boolean> = {};
-      for (const [serverId, session] of Object.entries(state.sessions)) {
-        result[serverId] = session.connection.isConnected;
-      }
-      return result;
-    })
-  );
-
-  const liveAgents = useSessionStore(
-    useShallow((state) => {
-      const result: Record<string, Map<string, Agent> | undefined> = {};
-      for (const [serverId, session] of Object.entries(state.sessions)) {
-        result[serverId] = session.agents;
-      }
-      return result;
-    })
-  );
-
-  const serverEntries = useMemo(
-    () =>
-      Object.keys(sessionClients).map((serverId) => ({
-        serverId,
-        client: sessionClients[serverId] ?? null,
-        isConnected: sessionConnections[serverId] ?? false,
-      })),
-    [sessionClients, sessionConnections]
-  );
-
-  const queries = useQueries({
-    queries: serverEntries.map(({ serverId, client, isConnected }) => ({
-      queryKey: ["allAgents", serverId] as const,
-      queryFn: async () => {
-        if (!client) {
-          throw new Error("Daemon client not available");
-        }
-        return await client.fetchAgents();
-      },
-      enabled: Boolean(client) && isConnected,
-      staleTime: ALL_AGENTS_STALE_TIME,
-      refetchOnMount: "always" as const,
-    })),
+      return await client.fetchAgents();
+    },
+    enabled: canFetch,
+    staleTime: ALL_AGENTS_STALE_TIME,
+    refetchOnMount: "always" as const,
   });
 
   const refreshAll = useCallback(() => {
-    for (const { serverId } of serverEntries) {
-      void queryClient.invalidateQueries({
-        queryKey: ["allAgents", serverId],
-      });
+    if (!serverId) {
+      return;
     }
-  }, [queryClient, serverEntries]);
+    void queryClient.invalidateQueries({
+      queryKey: ["allAgents", serverId],
+    });
+  }, [queryClient, serverId]);
 
   const agents = useMemo(() => {
-    const all: AggregatedAgent[] = [];
+    if (!serverId) {
+      return [];
+    }
+    const data = agentsQuery.data ?? [];
+    const serverLabel = connectionStates.get(serverId)?.daemon.label ?? serverId;
+    const list: AggregatedAgent[] = [];
 
-    for (let idx = 0; idx < serverEntries.length; idx++) {
-      const entry = serverEntries[idx];
-      if (!entry) {
-        continue;
-      }
-      const data = queries[idx]?.data;
-      if (!data) {
-        continue;
-      }
-      const serverLabel =
-        connectionStates.get(entry.serverId)?.daemon.label ?? entry.serverId;
-      const liveById = liveAgents[entry.serverId];
-
-      for (const snapshot of data) {
-        const normalized = normalizeAgentSnapshot(snapshot, entry.serverId);
-        const live = liveById?.get(snapshot.id);
-        all.push(
-          toAggregatedAgent({
-            source: live ?? normalized,
-            serverId: entry.serverId,
-            serverLabel,
-          })
-        );
-      }
+    for (const snapshot of data) {
+      const normalized = normalizeAgentSnapshot(snapshot, serverId);
+      const live = liveAgents?.get(snapshot.id);
+      list.push(
+        toAggregatedAgent({
+          source: live ?? normalized,
+          serverId,
+          serverLabel,
+        })
+      );
     }
 
-    all.sort((left, right) => {
+    list.sort((left, right) => {
       const leftRunning = left.status === "running";
       const rightRunning = right.status === "running";
       if (leftRunning && !rightRunning) {
@@ -142,10 +104,11 @@ export function useAllAgentsList(): AggregatedAgentsResult {
       return right.lastActivityAt.getTime() - left.lastActivityAt.getTime();
     });
 
-    return all;
-  }, [serverEntries, queries, connectionStates, liveAgents]);
+    return list;
+  }, [agentsQuery.data, connectionStates, liveAgents, serverId]);
 
-  const isFetching = queries.some((query) => query.isPending || query.isFetching);
+  const isFetching =
+    canFetch && (agentsQuery.isPending || agentsQuery.isFetching);
   const isInitialLoad = isFetching && agents.length === 0;
   const isRevalidating = isFetching && agents.length > 0;
 

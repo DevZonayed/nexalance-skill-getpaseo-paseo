@@ -7,14 +7,14 @@ import {
 } from "./new-agent-routing";
 
 describe("buildNewAgentRoute", () => {
-  it("falls back to /agent when no working directory is provided", () => {
-    expect(buildNewAgentRoute(undefined)).toBe("/agent");
-    expect(buildNewAgentRoute("   ")).toBe("/agent");
+  it("falls back to host-scoped draft route when no working directory is provided", () => {
+    expect(buildNewAgentRoute("srv-1", undefined)).toBe("/h/srv-1/agent");
+    expect(buildNewAgentRoute("srv-1", "   ")).toBe("/h/srv-1/agent");
   });
 
   it("encodes the working directory query parameter", () => {
-    expect(buildNewAgentRoute("/Users/me/dev/paseo")).toBe(
-      "/agent?workingDir=%2FUsers%2Fme%2Fdev%2Fpaseo"
+    expect(buildNewAgentRoute("srv-1", "/Users/me/dev/paseo")).toBe(
+      "/h/srv-1/agent?workingDir=%2FUsers%2Fme%2Fdev%2Fpaseo"
     );
   });
 });

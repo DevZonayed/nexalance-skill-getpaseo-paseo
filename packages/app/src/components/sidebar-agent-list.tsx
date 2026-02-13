@@ -32,6 +32,11 @@ import {
   startNavigationTiming,
 } from "@/utils/navigation-timing";
 import {
+  buildHostAgentDetailRoute,
+  parseHostAgentRouteFromPathname,
+} from "@/utils/host-routes";
+import { buildNewAgentRoute } from "@/utils/new-agent-routing";
+import {
   useSectionOrderStore,
 } from "@/stores/section-order-store";
 import { useProjectIconQuery } from "@/hooks/use-project-icon-query";
@@ -63,7 +68,7 @@ interface SectionHeaderProps {
   checkout: SidebarCheckoutLite | null;
   isCollapsed: boolean;
   onToggle: () => void;
-  onCreateAgent: (workingDir: string) => void;
+  onCreateAgent: (serverId: string, workingDir: string) => void;
   onDrag: () => void;
   isDragging: boolean;
 }
@@ -109,11 +114,12 @@ function SectionHeader({
   const handleCreatePress = useCallback(
     (e: { stopPropagation: () => void }) => {
       e.stopPropagation();
-      if (createAgentWorkingDir) {
-        onCreateAgent(createAgentWorkingDir);
+      const serverId = section.firstAgentServerId;
+      if (createAgentWorkingDir && serverId) {
+        onCreateAgent(serverId, createAgentWorkingDir);
       }
     },
-    [onCreateAgent, createAgentWorkingDir]
+    [onCreateAgent, createAgentWorkingDir, section.firstAgentServerId]
   );
 
   return (
@@ -405,12 +411,12 @@ export function SidebarAgentList({
         params: { serverId, agentId },
       });
 
-      const shouldReplace = pathname.startsWith("/agent/");
+      const shouldReplace = Boolean(parseHostAgentRouteFromPathname(pathname));
       const navigate = shouldReplace ? router.replace : router.push;
 
       onAgentSelect?.();
 
-      navigate(`/agent/${serverId}/${agentId}` as any);
+      navigate(buildHostAgentDetailRoute(serverId, agentId) as any);
     },
     [isActionSheetVisible, pathname, onAgentSelect]
   );
@@ -432,9 +438,9 @@ export function SidebarAgentList({
   }, [actionAgent, actionClient]);
 
   const handleCreateAgentInProject = useCallback(
-    (workingDir: string) => {
+    (serverId: string, workingDir: string) => {
       onAgentSelect?.();
-      router.push(`/agent?workingDir=${encodeURIComponent(workingDir)}` as any);
+      router.push(buildNewAgentRoute(serverId, workingDir) as any);
     },
     [onAgentSelect]
   );

@@ -7,6 +7,10 @@ import { BackHeader } from "@/components/headers/back-header";
 import { useSessionDirectory } from "@/hooks/use-session-directory";
 import { useDaemonConnections } from "@/contexts/daemon-connections-context";
 import type { Agent } from "@/contexts/session-context";
+import {
+  buildHostAgentDetailRoute,
+  buildHostAgentDraftRoute,
+} from "@/utils/host-routes";
 
 type AgentMatch = {
   serverId: string;
@@ -50,16 +54,21 @@ export function LegacyAgentIdScreen({ agentId }: { agentId: string }) {
       return;
     }
     const match = matches[0];
-    router.replace(`/agent/${match.serverId}/${match.agent.id}` as any);
+    router.replace(buildHostAgentDetailRoute(match.serverId, match.agent.id) as any);
   }, [isRedirecting, matches, router]);
 
   const handleGoDraft = useCallback(() => {
-    router.replace("/agent" as any);
-  }, [router]);
+    const firstMatchServerId = matches[0]?.serverId ?? null;
+    if (firstMatchServerId) {
+      router.replace(buildHostAgentDraftRoute(firstMatchServerId) as any);
+      return;
+    }
+    router.replace("/" as any);
+  }, [matches, router]);
 
   const handleSelectMatch = useCallback(
     (match: AgentMatch) => {
-      router.replace(`/agent/${match.serverId}/${match.agent.id}` as any);
+      router.replace(buildHostAgentDetailRoute(match.serverId, match.agent.id) as any);
     },
     [router]
   );

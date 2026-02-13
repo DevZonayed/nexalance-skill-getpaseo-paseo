@@ -33,16 +33,17 @@ describe("resolveNotificationTarget", () => {
 describe("buildNotificationRoute", () => {
   it("routes directly to server-scoped agent path when both ids are present", () => {
     expect(buildNotificationRoute({ serverId: "srv-1", agentId: "agent-1" })).toBe(
-      "/agent/srv-1/agent-1"
+      "/h/srv-1/agent/agent-1"
     );
   });
 
-  it("falls back to legacy agent route when serverId is absent", () => {
-    expect(buildNotificationRoute({ agentId: "agent-legacy" })).toBe("/agent/agent-legacy");
+  it("falls back to host-scoped draft route when only serverId is present", () => {
+    expect(buildNotificationRoute({ serverId: "srv-only" })).toBe("/h/srv-only/agent");
   });
 
-  it("falls back to agents list when no agent id is present", () => {
-    expect(buildNotificationRoute({ serverId: "srv-only" })).toBe("/agents");
+  it("falls back to root when no server id is present", () => {
+    expect(buildNotificationRoute({ agentId: "agent-legacy" })).toBe("/");
+    expect(buildNotificationRoute(undefined)).toBe("/");
   });
 
   it("encodes path segments", () => {
@@ -51,6 +52,6 @@ describe("buildNotificationRoute", () => {
         serverId: "srv/with/slash",
         agentId: "agent with space",
       })
-    ).toBe("/agent/srv%2Fwith%2Fslash/agent%20with%20space");
+    ).toBe("/h/srv%2Fwith%2Fslash/agent/agent%20with%20space");
   });
 });

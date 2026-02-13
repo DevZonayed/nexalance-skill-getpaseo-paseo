@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState, useEffect } from "react";
+import { useCallback, useMemo, useState, useEffect, useRef } from "react";
 import { View, Pressable, Text, Platform } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, {
@@ -10,7 +10,7 @@ import Animated, {
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import { StyleSheet, UnistylesRuntime, useUnistyles } from "react-native-unistyles";
 import { Plus, Settings, Users } from "lucide-react-native";
-import { router } from "expo-router";
+import { router, usePathname } from "expo-router";
 import { usePanelStore } from "@/stores/panel-store";
 import { SidebarAgentList } from "./sidebar-agent-list";
 import { SidebarAgentListSkeleton } from "./sidebar-agent-list-skeleton";
@@ -20,6 +20,17 @@ import { useTauriDragHandlers, useTrafficLightPadding } from "@/utils/tauri-wind
 import { useSidebarCollapsedSectionsStore } from "@/stores/sidebar-collapsed-sections-store";
 import { useKeyboardNavStore } from "@/stores/keyboard-nav-store";
 import { deriveSidebarShortcutAgentKeys } from "@/utils/sidebar-shortcuts";
+import { Combobox } from "@/components/ui/combobox";
+import { useDaemonRegistry } from "@/contexts/daemon-registry-context";
+import { useDaemonConnections } from "@/contexts/daemon-connections-context";
+import { formatConnectionStatus } from "@/utils/daemons";
+import {
+  buildHostAgentDraftRoute,
+  buildHostAgentsRoute,
+  buildHostSettingsRoute,
+  mapPathnameToServer,
+  parseServerIdFromPathname,
+} from "@/utils/host-routes";
 
 const DESKTOP_SIDEBAR_WIDTH = 320;
 
@@ -35,6 +46,42 @@ export function SlidingSidebar({ selectedAgentId }: SlidingSidebarProps) {
   const mobileView = usePanelStore((state) => state.mobileView);
   const desktopAgentListOpen = usePanelStore((state) => state.desktop.agentListOpen);
   const closeToAgent = usePanelStore((state) => state.closeToAgent);
+  const pathname = usePathname();
+  const { daemons } = useDaemonRegistry();
+  const { connectionStates } = useDaemonConnections();
+  const activeServerIdFromPath = useMemo(
+    () => parseServerIdFromPathname(pathname),
+    [pathname]
+  );
+  const activeServerId = activeServerIdFromPath ?? daemons[0]?.serverId ?? null;
+  const activeHostLabel = useMemo(() => {
+    if (!activeServerId) return "No host";
+    const daemon = daemons.find((entry) => entry.serverId === activeServerId);
+    const trimmed = daemon?.label?.trim();
+    return trimmed && trimmed.length > 0 ? trimmed : activeServerId;
+  }, [activeServerId, daemons]);
+  const activeHostStatus = activeServerId
+    ? (connectionStates.get(activeServerId)?.status ?? "idle")
+    : "idle";
+  const activeHostStatusColor =
+    activeHostStatus === "online"
+      ? theme.colors.palette.green[400]
+      : activeHostStatus === "connecting"
+        ? theme.colors.palette.amber[500]
+        : theme.colors.palette.red[500];
+  const hostOptions = useMemo(
+    () =>
+      daemons.map((daemon) => ({
+        id: daemon.serverId,
+        label: daemon.label?.trim() || daemon.serverId,
+        description: formatConnectionStatus(
+          connectionStates.get(daemon.serverId)?.status ?? "idle"
+        ),
+      })),
+    [connectionStates, daemons]
+  );
+  const hostTriggerRef = useRef<View>(null);
+  const [isHostPickerOpen, setIsHostPickerOpen] = useState(false);
 
   // Derive isOpen from the unified panel state
   const isOpen = isMobile ? mobileView === "agent-list" : desktopAgentListOpen;
@@ -45,7 +92,7 @@ export function SlidingSidebar({ selectedAgentId }: SlidingSidebarProps) {
     isInitialLoad,
     isRevalidating,
     refreshAll,
-  } = useSidebarAgentsGrouped({ isOpen });
+  } = useSidebarAgentsGrouped({ isOpen, serverId: activeServerId });
   const {
     translateX,
     backdropOpacity,
@@ -88,8 +135,11 @@ export function SlidingSidebar({ selectedAgentId }: SlidingSidebarProps) {
   }, [closeToAgent]);
 
   const handleCreateAgentClean = useCallback(() => {
-    router.push("/agent" as any);
-  }, []);
+    if (!activeServerId) {
+      return;
+    }
+    router.push(buildHostAgentDraftRoute(activeServerId) as any);
+  }, [activeServerId]);
 
   // Mobile: close sidebar and navigate
   const handleCreateAgentCleanMobile = useCallback(() => {
@@ -104,14 +154,20 @@ export function SlidingSidebar({ selectedAgentId }: SlidingSidebarProps) {
 
   // Mobile: close sidebar and navigate
   const handleSettingsMobile = useCallback(() => {
+    if (!activeServerId) {
+      return;
+    }
     closeToAgent();
-    router.push("/settings");
-  }, [closeToAgent]);
+    router.push(buildHostSettingsRoute(activeServerId) as any);
+  }, [activeServerId, closeToAgent]);
 
   // Desktop: just navigate, don't close
   const handleSettingsDesktop = useCallback(() => {
-    router.push("/settings");
-  }, []);
+    if (!activeServerId) {
+      return;
+    }
+    router.push(buildHostSettingsRoute(activeServerId) as any);
+  }, [activeServerId]);
 
   // Mobile: close sidebar when agent is selected
   // Snap immediately since navigation interrupts animations
@@ -122,13 +178,35 @@ export function SlidingSidebar({ selectedAgentId }: SlidingSidebarProps) {
   }, [closeToAgent, translateX, backdropOpacity, windowWidth]);
 
   const handleViewMore = useCallback(() => {
+    if (!activeServerId) {
+      return;
+    }
     if (isMobile) {
       translateX.value = -windowWidth;
       backdropOpacity.value = 0;
       closeToAgent();
     }
-    router.push("/agents");
-  }, [backdropOpacity, closeToAgent, isMobile, translateX, windowWidth]);
+    router.push(buildHostAgentsRoute(activeServerId) as any);
+  }, [
+    activeServerId,
+    backdropOpacity,
+    closeToAgent,
+    isMobile,
+    translateX,
+    windowWidth,
+  ]);
+
+  const handleHostSelect = useCallback(
+    (nextServerId: string) => {
+      if (!nextServerId) {
+        return;
+      }
+      const nextPath = mapPathnameToServer(pathname, nextServerId);
+      setIsHostPickerOpen(false);
+      router.push(nextPath as any);
+    },
+    [pathname]
+  );
 
   // Close gesture (swipe left to close when sidebar is open)
   // Only activates on leftward swipe, fails on rightward or vertical movement
@@ -206,18 +284,46 @@ export function SlidingSidebar({ selectedAgentId }: SlidingSidebarProps) {
             <View style={styles.sidebarContent} pointerEvents="auto">
               {/* Header */}
               <View style={styles.sidebarHeader}>
-                <Pressable
-                  style={styles.newAgentButton}
-                  testID="sidebar-new-agent"
-                  onPress={handleCreateAgentCleanMobile}
-                >
-                  {({ hovered }) => (
-                    <>
-                      <Plus size={18} color={hovered ? theme.colors.foreground : theme.colors.foregroundMuted} />
-                      <Text style={[styles.newAgentButtonText, hovered && styles.newAgentButtonTextHovered]}>New agent</Text>
-                    </>
-                  )}
-                </Pressable>
+                <View style={styles.sidebarHeaderRow}>
+                  <Pressable
+                    style={styles.newAgentButton}
+                    testID="sidebar-new-agent"
+                    onPress={handleCreateAgentCleanMobile}
+                  >
+                    {({ hovered }) => (
+                      <>
+                        <Plus size={18} color={hovered ? theme.colors.foreground : theme.colors.foregroundMuted} />
+                        <Text style={[styles.newAgentButtonText, hovered && styles.newAgentButtonTextHovered]}>New agent</Text>
+                      </>
+                    )}
+                  </Pressable>
+                  <Pressable
+                    ref={hostTriggerRef}
+                    style={styles.hostTrigger}
+                    onPress={() => setIsHostPickerOpen(true)}
+                    disabled={hostOptions.length === 0}
+                  >
+                    <View
+                      style={[
+                        styles.hostStatusDot,
+                        { backgroundColor: activeHostStatusColor },
+                      ]}
+                    />
+                    <Text style={styles.hostTriggerText} numberOfLines={1}>
+                      {activeHostLabel}
+                    </Text>
+                  </Pressable>
+                </View>
+                <Combobox
+                  options={hostOptions}
+                  value={activeServerId ?? ""}
+                  onSelect={handleHostSelect}
+                  title="Switch host"
+                  searchPlaceholder="Search hosts..."
+                  open={isHostPickerOpen}
+                  onOpenChange={setIsHostPickerOpen}
+                  anchorRef={hostTriggerRef}
+                />
               </View>
 
               {/* Middle: scrollable agent list */}
@@ -286,18 +392,46 @@ export function SlidingSidebar({ selectedAgentId }: SlidingSidebarProps) {
         style={[styles.sidebarHeader, { paddingTop: trafficLightPadding.top || styles.sidebarHeader.paddingTop }]}
         {...dragHandlers}
       >
-        <Pressable
-          style={styles.newAgentButton}
-          testID="sidebar-new-agent"
-          onPress={handleCreateAgentCleanDesktop}
-        >
-          {({ hovered }) => (
-            <>
-              <Plus size={18} color={hovered ? theme.colors.foreground : theme.colors.foregroundMuted} />
-              <Text style={[styles.newAgentButtonText, hovered && styles.newAgentButtonTextHovered]}>New agent</Text>
-            </>
-          )}
-        </Pressable>
+        <View style={styles.sidebarHeaderRow}>
+          <Pressable
+            style={styles.newAgentButton}
+            testID="sidebar-new-agent"
+            onPress={handleCreateAgentCleanDesktop}
+          >
+            {({ hovered }) => (
+              <>
+                <Plus size={18} color={hovered ? theme.colors.foreground : theme.colors.foregroundMuted} />
+                <Text style={[styles.newAgentButtonText, hovered && styles.newAgentButtonTextHovered]}>New agent</Text>
+              </>
+            )}
+          </Pressable>
+          <Pressable
+            ref={hostTriggerRef}
+            style={styles.hostTrigger}
+            onPress={() => setIsHostPickerOpen(true)}
+            disabled={hostOptions.length === 0}
+          >
+            <View
+              style={[
+                styles.hostStatusDot,
+                { backgroundColor: activeHostStatusColor },
+              ]}
+            />
+            <Text style={styles.hostTriggerText} numberOfLines={1}>
+              {activeHostLabel}
+            </Text>
+          </Pressable>
+        </View>
+        <Combobox
+          options={hostOptions}
+          value={activeServerId ?? ""}
+          onSelect={handleHostSelect}
+          title="Switch host"
+          searchPlaceholder="Search hosts..."
+          open={isHostPickerOpen}
+          onOpenChange={setIsHostPickerOpen}
+          anchorRef={hostTriggerRef}
+        />
       </View>
 
       {/* Middle: scrollable agent list */}
@@ -383,12 +517,19 @@ const styles = StyleSheet.create((theme) => ({
     borderBottomColor: theme.colors.border,
     userSelect: "none",
   },
+  sidebarHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: theme.spacing[2],
+  },
   newAgentButton: {
     flexDirection: "row",
     alignItems: "center",
     gap: theme.spacing[2],
     paddingVertical: theme.spacing[1],
     paddingHorizontal: theme.spacing[1],
+    flexShrink: 0,
   },
   newAgentButtonHovered: {},
   newAgentButtonText: {
@@ -398,6 +539,25 @@ const styles = StyleSheet.create((theme) => ({
   },
   newAgentButtonTextHovered: {
     color: theme.colors.foreground,
+  },
+  hostTrigger: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    gap: theme.spacing[2],
+    minWidth: 0,
+    maxWidth: "55%",
+    paddingVertical: theme.spacing[1],
+    paddingHorizontal: theme.spacing[1],
+  },
+  hostStatusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: theme.borderRadius.full,
+  },
+  hostTriggerText: {
+    fontSize: theme.fontSize.sm,
+    color: theme.colors.foregroundMuted,
   },
   sidebarFooter: {
     flexDirection: "row",

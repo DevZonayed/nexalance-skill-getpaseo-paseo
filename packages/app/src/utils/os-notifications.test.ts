@@ -161,6 +161,6 @@ describe("sendOsNotification", () => {
     expect(clicked.onclick).toBeTypeOf("function");
     clicked.onclick?.({} as Event);
 
-    expect(assign).toHaveBeenCalledWith("/agent/srv%20with%20space/agent%2F1");
+    expect(assign).toHaveBeenCalledWith("/h/srv%20with%20space/agent/agent%2F1");
   });
 });
