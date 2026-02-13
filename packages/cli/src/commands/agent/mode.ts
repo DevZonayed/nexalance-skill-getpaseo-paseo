@@ -37,6 +37,12 @@ export interface AgentModeOptions extends CommandOptions {
   list?: boolean
 }
 
+const missingModeError = (): CommandError => ({
+  code: 'MISSING_ARGUMENT',
+  message: 'Mode argument required unless --list is specified',
+  details: 'Usage: paseo agent mode <id> <mode> | paseo agent mode --list <id>',
+})
+
 // This command returns two different data shapes (set result vs mode list).
 // Keep `any` here to match the existing output wrapper generic contract.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -53,12 +59,7 @@ export async function runModeCommand(
 
   // Validate arguments
   if (!options.list && !normalizedMode) {
-    const error: CommandError = {
-      code: 'MISSING_ARGUMENT',
-      message: 'Mode argument required unless --list is specified',
-      details: 'Usage: paseo agent mode <id> <mode> | paseo agent mode --list <id>',
-    }
-    throw error
+    throw missingModeError()
   }
 
   let client: Awaited<ReturnType<typeof connectToDaemon>> | undefined
@@ -90,27 +91,22 @@ export async function runModeCommand(
         data: items,
         schema: modeListSchema,
       }
-    } else {
-      if (!normalizedMode) {
-        const error: CommandError = {
-          code: 'MISSING_ARGUMENT',
-          message: 'Mode argument required unless --list is specified',
-          details: 'Usage: paseo agent mode <id> <mode> | paseo agent mode --list <id>',
-        }
-        throw error
-      }
+    }
 
-      // Set the agent mode
-      await client.setAgentMode(resolvedId, normalizedMode)
+    if (!normalizedMode) {
+      throw missingModeError()
+    }
 
-      return {
-        type: 'single',
-        data: {
-          agentId: resolvedId.slice(0, 7),
-          mode: normalizedMode,
-        },
-        schema: setModeSchema,
-      }
+    // Set the agent mode
+    await client.setAgentMode(resolvedId, normalizedMode)
+
+    return {
+      type: 'single',
+      data: {
+        agentId: resolvedId.slice(0, 7),
+        mode: normalizedMode,
+      },
+      schema: setModeSchema,
     }
   } catch (err) {
     // Re-throw if it's already a CommandError

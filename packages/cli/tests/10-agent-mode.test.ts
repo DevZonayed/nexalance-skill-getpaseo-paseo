@@ -125,12 +125,10 @@ try {
     // Should fail because mode is required unless --list is specified
     assert.notStrictEqual(result.exitCode, 0, 'should fail without mode argument')
     const output = result.stdout + result.stderr
-    const hasError =
-      output.toLowerCase().includes('missing') ||
-      output.toLowerCase().includes('required') ||
-      output.toLowerCase().includes('mode') ||
-      output.toLowerCase().includes('daemon') // If daemon error comes first, that's also valid
-    assert(hasError, 'error should mention missing mode or connection issue')
+    assert(
+      output.includes('Mode argument required unless --list is specified'),
+      'error should mention missing mode argument'
+    )
     console.log('✓ agent mode requires mode argument when not using --list\n')
   }
 } finally {
