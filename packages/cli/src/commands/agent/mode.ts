@@ -37,6 +37,8 @@ export interface AgentModeOptions extends CommandOptions {
   list?: boolean
 }
 
+// This command returns two different data shapes (set result vs mode list).
+// Keep `any` here to match the existing output wrapper generic contract.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type AgentModeResult = AnyCommandResult<any>
 
@@ -46,10 +48,11 @@ export async function runModeCommand(
   options: AgentModeOptions,
   _command: Command
 ): Promise<AgentModeResult> {
+  const normalizedMode = mode?.trim()
   const host = getDaemonHost({ host: options.host as string | undefined })
 
   // Validate arguments
-  if (!options.list && !mode) {
+  if (!options.list && !normalizedMode) {
     const error: CommandError = {
       code: 'MISSING_ARGUMENT',
       message: 'Mode argument required unless --list is specified',
@@ -58,20 +61,9 @@ export async function runModeCommand(
     throw error
   }
 
-  let client
+  let client: Awaited<ReturnType<typeof connectToDaemon>> | undefined
   try {
     client = await connectToDaemon({ host: options.host as string | undefined })
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err)
-    const error: CommandError = {
-      code: 'DAEMON_NOT_RUNNING',
-      message: `Cannot connect to daemon at ${host}: ${message}`,
-      details: 'Start the daemon with: paseo daemon start',
-    }
-    throw error
-  }
-
-  try {
     const agent = await client.fetchAgent(id)
     if (!agent) {
       const error: CommandError = {
@@ -87,8 +79,6 @@ export async function runModeCommand(
       // List available modes for this agent
       const availableModes = agent.availableModes ?? []
 
-      await client.close()
-
       const items: AgentMode[] = availableModes.map((m) => ({
         id: m.id,
         label: m.label,
@@ -101,31 +91,52 @@ export async function runModeCommand(
         schema: modeListSchema,
       }
     } else {
-      // Set the agent mode
-      await client.setAgentMode(resolvedId, mode!)
+      if (!normalizedMode) {
+        const error: CommandError = {
+          code: 'MISSING_ARGUMENT',
+          message: 'Mode argument required unless --list is specified',
+          details: 'Usage: paseo agent mode <id> <mode> | paseo agent mode --list <id>',
+        }
+        throw error
+      }
 
-      await client.close()
+      // Set the agent mode
+      await client.setAgentMode(resolvedId, normalizedMode)
 
       return {
         type: 'single',
         data: {
           agentId: resolvedId.slice(0, 7),
-          mode: mode!,
+          mode: normalizedMode,
         },
         schema: setModeSchema,
       }
     }
   } catch (err) {
-    await client.close().catch(() => {})
     // Re-throw if it's already a CommandError
     if (err && typeof err === 'object' && 'code' in err) {
       throw err
     }
+
+    if (!client) {
+      const message = err instanceof Error ? err.message : String(err)
+      const error: CommandError = {
+        code: 'DAEMON_NOT_RUNNING',
+        message: `Cannot connect to daemon at ${host}: ${message}`,
+        details: 'Start the daemon with: paseo daemon start',
+      }
+      throw error
+    }
+
     const message = err instanceof Error ? err.message : String(err)
     const error: CommandError = {
       code: 'MODE_OPERATION_FAILED',
       message: `Failed to ${options.list ? 'list modes' : 'set mode'}: ${message}`,
     }
     throw error
+  } finally {
+    if (client) {
+      await client.close().catch(() => {})
+    }
   }
 }
