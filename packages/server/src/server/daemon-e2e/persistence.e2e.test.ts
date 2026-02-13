@@ -4,7 +4,6 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { createDaemonTestContext, type DaemonTestContext } from "../test-utils/index.js";
-import type { AgentTimelineItem } from "../agent/agent-sdk-types.js";
 import type { SessionOutboundMessage } from "../messages.js";
 
 function tmpCwd(): string {
@@ -116,9 +115,12 @@ describe("daemon E2E - persistence", () => {
           messages.push(message);
         });
 
-        await ctx.client.initializeAgent(agentId);
-
-        const timelineItems = extractTimelineSnapshotItems(messages, agentId);
+        const timeline = await ctx.client.fetchAgentTimeline(agentId, {
+          direction: "tail",
+          limit: 0,
+          projection: "canonical",
+        });
+        const timelineItems = timeline.entries.map((entry) => entry.item);
         expect(timelineItems.length).toBeGreaterThan(0);
         expect(timelineItems.some((item) => item.type === "assistant_message")).toBe(true);
       } finally {
@@ -144,19 +146,4 @@ function extractAssistantText(queue: SessionOutboundMessage[], agentId: string):
     }
   }
   return parts.join("");
-}
-
-function extractTimelineSnapshotItems(queue: SessionOutboundMessage[], agentId: string): AgentTimelineItem[] {
-  const items: AgentTimelineItem[] = [];
-  for (const m of queue) {
-    if (m.type !== "agent_stream_snapshot") continue;
-    if ((m.payload as { agentId: string }).agentId !== agentId) continue;
-    const events = (m.payload as { events: Array<{ event: { type: string; item?: AgentTimelineItem } }> }).events;
-    for (const e of events) {
-      if (e.event.type === "timeline" && e.event.item) {
-        items.push(e.event.item);
-      }
-    }
-  }
-  return items;
 }

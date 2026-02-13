@@ -60,9 +60,14 @@ export type AgentMcpTransportFactory = () => Promise<Transport>;
 import { buildProviderRegistry } from "./agent/provider-registry.js";
 import type { AgentProviderRuntimeSettingsMap } from "./agent/provider-launch-config.js";
 import { AgentManager } from "./agent/agent-manager.js";
-import type { ManagedAgent } from "./agent/agent-manager.js";
+import type {
+  AgentTimelineCursor,
+  AgentTimelineFetchDirection,
+  ManagedAgent,
+} from "./agent/agent-manager.js";
 import { scheduleAgentMetadataGeneration } from "./agent/agent-metadata-generator.js";
 import { toAgentPayload } from "./agent/agent-projections.js";
+import { projectTimelineRows, type TimelineProjectionMode } from "./agent/timeline-projection.js";
 import {
   StructuredAgentResponseError,
   generateStructuredAgentResponse,
@@ -839,9 +844,7 @@ export class Session {
 
         // Reduce bandwidth/CPU on mobile: only forward high-frequency agent stream events
         // for the focused agent, with a short grace window while backgrounded.
-        //
-        // History catch-up is handled via explicit `initialize_agent_request` which emits a
-        // batched `agent_stream_snapshot`.
+        // History catch-up is handled via pull-based `fetch_agent_timeline_request`.
         const activity = this.clientActivity;
         if (activity?.deviceType === "mobile") {
           if (!activity.focusedAgentId) {
@@ -867,6 +870,8 @@ export class Session {
           agentId: event.agentId,
           event: serializedEvent,
           timestamp: new Date().toISOString(),
+          ...(typeof event.seq === "number" ? { seq: event.seq } : {}),
+          ...(typeof event.epoch === "string" ? { epoch: event.epoch } : {}),
         } as const;
 
         this.emit({
@@ -1224,17 +1229,17 @@ export class Session {
           await this.handleRefreshAgentRequest(msg);
           break;
 
-      case "cancel_agent_request":
-        await this.handleCancelAgentRequest(msg.agentId);
-        break;
+        case "cancel_agent_request":
+          await this.handleCancelAgentRequest(msg.agentId);
+          break;
 
         case "restart_server_request":
           await this.handleRestartServerRequest(msg.requestId, msg.reason);
           break;
 
-      case "initialize_agent_request":
-        await this.handleInitializeAgentRequest(msg.agentId, msg.requestId);
-        break;
+        case "fetch_agent_timeline_request":
+          await this.handleFetchAgentTimelineRequest(msg);
+          break;
 
         case "set_agent_mode_request":
           await this.handleSetAgentModeRequest(msg.agentId, msg.modeId, msg.requestId);
@@ -2201,45 +2206,6 @@ export class Session {
   }
 
   /**
-   * Handle on-demand agent initialization request from client
-   */
-  private async handleInitializeAgentRequest(
-    agentId: string,
-    requestId: string
-  ): Promise<void> {
-    try {
-      const snapshot = await this.ensureAgentLoaded(agentId);
-      await this.forwardAgentUpdate(snapshot);
-
-      // Send timeline snapshot after hydration (if any)
-      const timelineSize = this.emitAgentTimelineSnapshot(snapshot);
-
-      this.emit({
-        type: "initialize_agent_request",
-        payload: {
-          agentId,
-          agentStatus: snapshot.lifecycle,
-          timelineSize,
-          requestId,
-        },
-      });
-    } catch (error: any) {
-      this.sessionLogger.error(
-        { err: error, agentId },
-        `Failed to initialize agent ${agentId}`
-      );
-      this.emit({
-        type: "initialize_agent_request",
-        payload: {
-          agentId,
-          requestId,
-          error: error?.message ?? "Failed to initialize agent",
-        },
-      });
-    }
-  }
-
-  /**
    * Handle create agent request
    */
   private async handleCreateAgentRequest(
@@ -2383,7 +2349,7 @@ export class Session {
       );
       await this.agentManager.hydrateTimelineFromProvider(snapshot.id);
       await this.forwardAgentUpdate(snapshot);
-      const timelineSize = this.emitAgentTimelineSnapshot(snapshot);
+      const timelineSize = this.agentManager.getTimeline(snapshot.id).length;
       if (requestId) {
         const agentPayload = await this.getAgentPayloadById(snapshot.id);
         if (!agentPayload) {
@@ -2458,7 +2424,7 @@ export class Session {
       }
       await this.agentManager.hydrateTimelineFromProvider(agentId);
       await this.forwardAgentUpdate(snapshot);
-      const timelineSize = this.emitAgentTimelineSnapshot(snapshot);
+      const timelineSize = this.agentManager.getTimeline(agentId).length;
       if (requestId) {
         this.emit({
           type: "status",
@@ -4925,6 +4891,92 @@ export class Session {
     });
   }
 
+  private async handleFetchAgentTimelineRequest(
+    msg: Extract<SessionInboundMessage, { type: "fetch_agent_timeline_request" }>
+  ): Promise<void> {
+    const direction: AgentTimelineFetchDirection =
+      msg.direction ?? (msg.cursor ? "after" : "tail");
+    const projection: TimelineProjectionMode = msg.projection ?? "projected";
+    const limit = msg.limit ?? (direction === "after" ? 0 : undefined);
+    const cursor: AgentTimelineCursor | undefined = msg.cursor
+      ? {
+          epoch: msg.cursor.epoch,
+          seq: msg.cursor.seq,
+        }
+      : undefined;
+
+    try {
+      const snapshot = await this.ensureAgentLoaded(msg.agentId);
+
+      const timeline = this.agentManager.fetchTimeline(msg.agentId, {
+        direction,
+        cursor,
+        limit,
+      });
+
+      const projected = projectTimelineRows(
+        timeline.rows,
+        snapshot.provider,
+        projection
+      );
+
+      const firstRow = timeline.rows[0];
+      const lastRow = timeline.rows[timeline.rows.length - 1];
+      const startCursor = firstRow
+        ? { epoch: timeline.epoch, seq: firstRow.seq }
+        : null;
+      const endCursor = lastRow
+        ? { epoch: timeline.epoch, seq: lastRow.seq }
+        : null;
+
+      this.emit({
+        type: "fetch_agent_timeline_response",
+        payload: {
+          requestId: msg.requestId,
+          agentId: msg.agentId,
+          direction,
+          projection,
+          epoch: timeline.epoch,
+          reset: timeline.reset,
+          staleCursor: timeline.staleCursor,
+          gap: timeline.gap,
+          window: timeline.window,
+          startCursor,
+          endCursor,
+          hasOlder: timeline.hasOlder,
+          hasNewer: timeline.hasNewer,
+          entries: projected,
+          error: null,
+        },
+      });
+    } catch (error) {
+      this.sessionLogger.error(
+        { err: error, agentId: msg.agentId },
+        "Failed to handle fetch_agent_timeline_request"
+      );
+      this.emit({
+        type: "fetch_agent_timeline_response",
+        payload: {
+          requestId: msg.requestId,
+          agentId: msg.agentId,
+          direction,
+          projection,
+          epoch: "",
+          reset: false,
+          staleCursor: false,
+          gap: false,
+          window: { minSeq: 0, maxSeq: 0, nextSeq: 0 },
+          startCursor: null,
+          endCursor: null,
+          hasOlder: false,
+          hasNewer: false,
+          entries: [],
+          error: error instanceof Error ? error.message : String(error),
+        },
+      });
+    }
+  }
+
   private async handleSendAgentMessageRequest(
     msg: Extract<SessionInboundMessage, { type: "send_agent_message_request" }>
   ): Promise<void> {
@@ -5123,33 +5175,6 @@ export class Session {
     } finally {
       clearTimeout(timeoutHandle);
     }
-  }
-
-  private emitAgentTimelineSnapshot(agent: ManagedAgent): number {
-    const timeline = this.agentManager.getTimeline(agent.id);
-    const events = timeline.flatMap((item) => {
-      const serializedEvent = serializeAgentStreamEvent({
-        type: "timeline",
-        provider: agent.provider,
-        item,
-      });
-      if (!serializedEvent) {
-        return [];
-      }
-      return [
-        {
-          event: serializedEvent,
-          timestamp: new Date().toISOString(),
-        },
-      ];
-    });
-
-    this.emit({
-      type: "agent_stream_snapshot",
-      payload: { agentId: agent.id, events },
-    });
-
-    return timeline.length;
   }
 
   /**

@@ -1,4 +1,3 @@
-import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, expectTypeOf, test, vi } from "vitest";
 import { DaemonClient, type DaemonTransport } from "./daemon-client";
 import {
@@ -58,11 +57,6 @@ function createMockTransport() {
     triggerError: (event?: unknown) => onError(event),
     triggerMessage: (data: unknown) => onMessage(data),
   };
-}
-
-function loadLegacySnapshotFixture(): unknown {
-  const url = new URL("../shared/__fixtures__/legacy-agent-stream-snapshot-inProgress.json", import.meta.url);
-  return JSON.parse(readFileSync(url, "utf8"));
 }
 
 function wrapSessionMessage(message: unknown): string {
@@ -930,7 +924,7 @@ describe("DaemonClient", () => {
     expect(logger.warn).toHaveBeenCalled();
   });
 
-  test("parses canonical agent_stream_snapshot tool_call payloads without crashing", async () => {
+  test("parses canonical fetch_agent_timeline_response payloads without crashing", async () => {
     const logger = createMockLogger();
     const mock = createMockTransport();
 
@@ -947,35 +941,49 @@ describe("DaemonClient", () => {
     await connectPromise;
 
     const received: unknown[] = [];
-    const unsubscribe = client.on("agent_stream_snapshot", (msg) => {
+    const unsubscribe = client.on("fetch_agent_timeline_response", (msg) => {
       received.push(msg);
     });
 
     mock.triggerMessage(
       wrapSessionMessage({
-        type: "agent_stream_snapshot",
+        type: "fetch_agent_timeline_response",
         payload: {
+          requestId: "req-1",
           agentId: "agent_cli",
-          events: [
+          direction: "tail",
+          projection: "projected",
+          epoch: "epoch-1",
+          reset: false,
+          staleCursor: false,
+          gap: false,
+          window: { minSeq: 1, maxSeq: 1, nextSeq: 2 },
+          startCursor: { epoch: "epoch-1", seq: 1 },
+          endCursor: { epoch: "epoch-1", seq: 1 },
+          hasOlder: false,
+          hasNewer: false,
+          entries: [
             {
               timestamp: "2026-02-08T20:20:00.000Z",
-              event: {
-                type: "timeline",
-                provider: "codex",
-                item: {
-                  type: "tool_call",
-                  callId: "call_cli_snapshot",
-                  name: "shell",
-                  status: "running",
-                  detail: {
-                    type: "shell",
-                    command: "pwd",
-                  },
-                  error: null,
+              provider: "codex",
+              seqStart: 1,
+              seqEnd: 1,
+              sourceSeqRanges: [{ startSeq: 1, endSeq: 1 }],
+              collapsed: [],
+              item: {
+                type: "tool_call",
+                callId: "call_cli_snapshot",
+                name: "shell",
+                status: "running",
+                detail: {
+                  type: "shell",
+                  command: "pwd",
                 },
+                error: null,
               },
             },
           ],
+          error: null,
         },
       })
     );
@@ -983,35 +991,32 @@ describe("DaemonClient", () => {
     unsubscribe();
 
     expect(received).toHaveLength(1);
-    const snapshotMsg = received[0] as {
+    const timelineMsg = received[0] as {
       payload: {
-        events: Array<{
-          event: {
-            type: "timeline";
-            item: {
-              type: "tool_call";
-              status: string;
-              error: unknown;
-              detail: {
-                type: string;
-              };
+        entries: Array<{
+          item: {
+            type: "tool_call";
+            status: string;
+            error: unknown;
+            detail: {
+              type: string;
             };
           };
         }>;
       };
     };
 
-    const firstTimeline = snapshotMsg.payload.events[0]?.event;
-    expect(firstTimeline?.type).toBe("timeline");
-    if (firstTimeline?.type === "timeline" && firstTimeline.item.type === "tool_call") {
-      expect(firstTimeline.item.status).toBe("running");
-      expect(firstTimeline.item.error).toBeNull();
-      expect(firstTimeline.item.detail.type).toBe("shell");
+    const firstEntry = timelineMsg.payload.entries[0];
+    expect(firstEntry?.item.type).toBe("tool_call");
+    if (firstEntry?.item.type === "tool_call") {
+      expect(firstEntry.item.status).toBe("running");
+      expect(firstEntry.item.error).toBeNull();
+      expect(firstEntry.item.detail.type).toBe("shell");
     }
     expect(logger.warn).not.toHaveBeenCalled();
   });
 
-  test("drops legacy agent_stream_snapshot tool_call payloads and logs validation warning", async () => {
+  test("drops invalid fetch_agent_timeline_response tool_call payloads and logs validation warning", async () => {
     const logger = createMockLogger();
     const mock = createMockTransport();
 
@@ -1028,12 +1033,52 @@ describe("DaemonClient", () => {
     await connectPromise;
 
     const received: unknown[] = [];
-    const unsubscribe = client.on("agent_stream_snapshot", (msg) => {
+    const unsubscribe = client.on("fetch_agent_timeline_response", (msg) => {
       received.push(msg);
     });
 
-    const snapshot = loadLegacySnapshotFixture();
-    mock.triggerMessage(wrapSessionMessage(snapshot));
+    mock.triggerMessage(
+      wrapSessionMessage({
+        type: "fetch_agent_timeline_response",
+        payload: {
+          requestId: "req-invalid",
+          agentId: "agent_cli",
+          direction: "tail",
+          projection: "projected",
+          epoch: "epoch-1",
+          reset: false,
+          staleCursor: false,
+          gap: false,
+          window: { minSeq: 1, maxSeq: 1, nextSeq: 2 },
+          startCursor: { epoch: "epoch-1", seq: 1 },
+          endCursor: { epoch: "epoch-1", seq: 1 },
+          hasOlder: false,
+          hasNewer: false,
+          entries: [
+            {
+              timestamp: "2026-02-08T20:20:00.000Z",
+              provider: "codex",
+              seqStart: 1,
+              seqEnd: 1,
+              sourceSeqRanges: [{ startSeq: 1, endSeq: 1 }],
+              collapsed: [],
+              item: {
+                type: "tool_call",
+                callId: "call_cli_invalid",
+                name: "shell",
+                status: "inProgress",
+                detail: {
+                  type: "unknown",
+                  input: { command: "pwd" },
+                  output: null,
+                },
+              },
+            },
+          ],
+          error: null,
+        },
+      })
+    );
 
     unsubscribe();
 

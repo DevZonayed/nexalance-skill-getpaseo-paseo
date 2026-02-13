@@ -1751,6 +1751,8 @@ class CodexAppServerAgentSession implements AgentSession {
   private pendingReasoning = new Map<string, string[]>();
   private pendingCommandOutputDeltas = new Map<string, string[]>();
   private pendingFileChangeOutputDeltas = new Map<string, string[]>();
+  private emittedExecCommandStartedCallIds = new Set<string>();
+  private emittedExecCommandCompletedCallIds = new Set<string>();
   private emittedItemStartedIds = new Set<string>();
   private emittedItemCompletedIds = new Set<string>();
   private warnedUnknownNotificationMethods = new Set<string>();
@@ -2440,6 +2442,8 @@ class CodexAppServerAgentSession implements AgentSession {
       this.currentTurnId = parsed.turnId;
       this.emittedItemStartedIds.clear();
       this.emittedItemCompletedIds.clear();
+      this.emittedExecCommandStartedCallIds.clear();
+      this.emittedExecCommandCompletedCallIds.clear();
       this.pendingCommandOutputDeltas.clear();
       this.pendingFileChangeOutputDeltas.clear();
       this.warnedIncompleteEditToolCallIds.clear();
@@ -2461,6 +2465,8 @@ class CodexAppServerAgentSession implements AgentSession {
       }
       this.emittedItemStartedIds.clear();
       this.emittedItemCompletedIds.clear();
+      this.emittedExecCommandStartedCallIds.clear();
+      this.emittedExecCommandCompletedCallIds.clear();
       this.pendingCommandOutputDeltas.clear();
       this.pendingFileChangeOutputDeltas.clear();
       this.warnedIncompleteEditToolCallIds.clear();
@@ -2526,6 +2532,7 @@ class CodexAppServerAgentSession implements AgentSession {
 
     if (parsed.kind === "exec_command_started") {
       if (parsed.callId) {
+        this.emittedExecCommandStartedCallIds.add(parsed.callId);
         this.pendingCommandOutputDeltas.delete(parsed.callId);
       }
       const timelineItem = mapCodexExecNotificationToToolCall({
@@ -2556,6 +2563,7 @@ class CodexAppServerAgentSession implements AgentSession {
         running: false,
       });
       if (timelineItem) {
+        this.emittedExecCommandCompletedCallIds.add(timelineItem.callId);
         this.emitEvent({ type: "timeline", provider: CODEX_PROVIDER, item: timelineItem });
       }
       return;
@@ -2618,7 +2626,21 @@ class CodexAppServerAgentSession implements AgentSession {
         cwd: this.config.cwd ?? null,
       });
       if (timelineItem) {
+        const normalizedItemType = normalizeCodexThreadItemType(
+          typeof parsed.item.type === "string" ? parsed.item.type : undefined
+        );
         const itemId = parsed.item.id;
+        // For commandExecution items, codex/event/exec_command_* is authoritative.
+        // Keep item/completed as fallback only when no exec_command completion was seen.
+        if (
+          timelineItem.type === "tool_call" &&
+          normalizedItemType === "commandExecution"
+        ) {
+          const callId = timelineItem.callId || itemId;
+          if (callId && this.emittedExecCommandCompletedCallIds.has(callId)) {
+            return;
+          }
+        }
         if (itemId && this.emittedItemCompletedIds.has(itemId)) {
           return;
         }
@@ -2657,7 +2679,16 @@ class CodexAppServerAgentSession implements AgentSession {
         cwd: this.config.cwd ?? null,
       });
       if (timelineItem && timelineItem.type === "tool_call") {
+        const normalizedItemType = normalizeCodexThreadItemType(
+          typeof parsed.item.type === "string" ? parsed.item.type : undefined
+        );
         const itemId = parsed.item.id;
+        if (normalizedItemType === "commandExecution") {
+          const callId = timelineItem.callId || itemId;
+          if (callId && this.emittedExecCommandStartedCallIds.has(callId)) {
+            return;
+          }
+        }
         if (itemId && this.emittedItemStartedIds.has(itemId)) {
           return;
         }

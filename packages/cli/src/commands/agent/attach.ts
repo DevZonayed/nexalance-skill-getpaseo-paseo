@@ -1,9 +1,9 @@
 import type { Command } from 'commander'
 import { connectToDaemon, getDaemonHost } from '../../utils/client.js'
+import { fetchProjectedTimelineItems } from '../../utils/timeline.js'
 import type {
   DaemonClient,
   AgentStreamMessage,
-  AgentStreamSnapshotMessage,
   AgentStreamEventPayload,
   AgentTimelineItem,
 } from '@getpaseo/server'
@@ -131,36 +131,18 @@ export async function runAttachCommand(
     console.log(`Attaching to agent ${resolvedId.substring(0, 7)}...`)
     console.log(`(Press Ctrl+C to detach)\n`)
 
-    // Get existing output from snapshot
-    const snapshotPromise = new Promise<void>((resolve) => {
-      const timeout = setTimeout(() => resolve(), 5000)
-
-      const unsubscribe = client.on('agent_stream_snapshot', (msg: unknown) => {
-        const message = msg as AgentStreamSnapshotMessage
-        if (message.type !== 'agent_stream_snapshot') return
-        if (message.payload.agentId !== resolvedId) return
-
-        clearTimeout(timeout)
-        unsubscribe()
-
-        // Print recent events from snapshot
-        for (const e of message.payload.events) {
-          printStreamEvent(e.event)
-        }
-
-        resolve()
-      })
-    })
-
-    // Initialize agent to trigger snapshot
+    // Print existing output from timeline fetch.
     try {
-      await client.initializeAgent(resolvedId)
-    } catch {
-      // Agent might already be initialized, continue
+      const timelineItems = await fetchProjectedTimelineItems({
+        client,
+        agentId: resolvedId,
+      })
+      for (const item of timelineItems) {
+        printTimelineItem(item)
+      }
+    } catch (error) {
+      console.warn('Warning: failed to fetch existing timeline', error)
     }
-
-    // Wait for snapshot
-    await snapshotPromise
 
     // Subscribe to new events
     const unsubscribe = client.on('agent_stream', (msg: unknown) => {

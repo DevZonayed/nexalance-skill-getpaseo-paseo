@@ -61,25 +61,35 @@ describe("daemon E2E", () => {
         // Clear captured messages before the "click" action
         messages.length = 0;
 
-        // Simulate clicking on the agent (initialize_agent_request)
-        // This is what happens when the user opens an agent in the UI
-        const refreshedState = await ctx.client.initializeAgent(agent.id);
+        // Simulate opening the agent in the UI:
+        // fetch timeline window + fetch current agent snapshot.
+        await ctx.client.fetchAgentTimeline(agent.id, {
+          direction: "tail",
+          limit: 200,
+          projection: "projected",
+        });
+        const refreshedState = await ctx.client.fetchAgent(agent.id);
 
         // Verify agent is still idle
-        expect(refreshedState.status).toBe("idle");
+        expect(refreshedState?.status).toBe("idle");
 
         // CRITICAL: The timestamp should NOT have changed
         // Just opening/clicking an agent should not update its updatedAt
-        expect(refreshedState.updatedAt).toBe(initialUpdatedAt);
+        expect(refreshedState?.updatedAt).toBe(initialUpdatedAt);
 
         // Also clear attention (what happens when opening an agent with notification)
         await ctx.client.clearAgentAttention(agent.id);
 
         // Get the state again after clearing attention
-        const stateAfterClear = await ctx.client.initializeAgent(agent.id);
+        await ctx.client.fetchAgentTimeline(agent.id, {
+          direction: "tail",
+          limit: 200,
+          projection: "projected",
+        });
+        const stateAfterClear = await ctx.client.fetchAgent(agent.id);
 
         // Timestamp should STILL not have changed
-        expect(stateAfterClear.updatedAt).toBe(initialUpdatedAt);
+        expect(stateAfterClear?.updatedAt).toBe(initialUpdatedAt);
 
         // Cleanup
         rmSync(cwd, { recursive: true, force: true });

@@ -1062,6 +1062,126 @@ describe("Codex app-server provider (integration)", () => {
   );
 
   test.runIf(isCodexInstalled())(
+    "prefers exec_command notifications over mirrored item/completed for shell tool calls",
+    async () => {
+      const cleanup = useTempCodexSessionDir();
+      const cwd = tmpCwd("codex-command-lifecycle-dedupe-");
+
+      try {
+        const client = new CodexAppServerAgentClient(logger);
+        const session = await client.createSession({
+          provider: "codex",
+          cwd,
+          modeId: "full-access",
+          approvalPolicy: "never",
+          model: CODEX_TEST_MODEL,
+          thinkingOptionId: CODEX_TEST_THINKING_OPTION_ID,
+        });
+
+        const commandLifecycleByCallId = new Map<string, { execEnd: boolean; itemCompleted: boolean }>();
+        const rawClient = (session as any).client as
+          | {
+              notificationHandler?: (method: string, params: unknown) => void;
+              setNotificationHandler?: (handler: (method: string, params: unknown) => void) => void;
+            }
+          | null;
+        const originalHandler = rawClient?.notificationHandler;
+        rawClient?.setNotificationHandler?.((method: string, params: unknown) => {
+          if (method === "codex/event/exec_command_end") {
+            const callId =
+              params &&
+              typeof params === "object" &&
+              "msg" in (params as Record<string, unknown>) &&
+              typeof (params as { msg?: { call_id?: unknown } }).msg?.call_id === "string"
+                ? ((params as { msg?: { call_id?: string } }).msg?.call_id ?? null)
+                : null;
+            if (callId) {
+              const existing = commandLifecycleByCallId.get(callId) ?? {
+                execEnd: false,
+                itemCompleted: false,
+              };
+              existing.execEnd = true;
+              commandLifecycleByCallId.set(callId, existing);
+            }
+          }
+          if (method === "item/completed") {
+            const item =
+              params && typeof params === "object"
+                ? ((params as { item?: { id?: unknown; type?: unknown } }).item ?? null)
+                : null;
+            const itemId = typeof item?.id === "string" ? item.id : null;
+            const normalizedType =
+              typeof item?.type === "string"
+                ? item.type.replace(/[._-]/g, "").toLowerCase()
+                : "";
+            if (itemId && normalizedType === "commandexecution") {
+              const existing = commandLifecycleByCallId.get(itemId) ?? {
+                execEnd: false,
+                itemCompleted: false,
+              };
+              existing.itemCompleted = true;
+              commandLifecycleByCallId.set(itemId, existing);
+            }
+          }
+          originalHandler?.(method, params);
+        });
+
+        const marker = "PASEO_COMMAND_DEDUPE_CHECK_4D0E96C8";
+        const shellCalls: Array<{
+          callId: string;
+          status: string;
+          output: string;
+        }> = [];
+        let failure: string | null = null;
+        for await (const event of session.stream(
+          `Run exactly this shell command and then reply exactly DONE: printf '${marker}\\n'`
+        )) {
+          if (event.type === "timeline" && event.item.type === "tool_call" && event.item.name === "shell") {
+            const output = event.item.detail.type === "shell" ? event.item.detail.output ?? "" : "";
+            shellCalls.push({
+              callId: event.item.callId,
+              status: event.item.status,
+              output,
+            });
+          }
+          if (event.type === "turn_failed") {
+            failure = event.error;
+            break;
+          }
+          if (event.type === "turn_completed") {
+            break;
+          }
+        }
+
+        await session.close();
+        if (failure) {
+          throw new Error(failure);
+        }
+
+        const targetCall = shellCalls.find(
+          (entry) => entry.status === "completed" && entry.output.includes(marker)
+        );
+        expect(targetCall).toBeDefined();
+        if (!targetCall) {
+          return;
+        }
+        const lifecycle = commandLifecycleByCallId.get(targetCall.callId);
+        expect(lifecycle?.execEnd).toBe(true);
+        expect(lifecycle?.itemCompleted).toBe(true);
+
+        const statusesForCall = shellCalls
+          .filter((entry) => entry.callId === targetCall.callId)
+          .map((entry) => entry.status);
+        expect(statusesForCall.filter((status) => status === "completed").length).toBe(1);
+      } finally {
+        cleanup();
+        rmSync(cwd, { recursive: true, force: true });
+      }
+    },
+    120000
+  );
+
+  test.runIf(isCodexInstalled())(
     "interrupts long-running commands and emits a canceled turn",
     async () => {
       const cleanup = useTempCodexSessionDir();

@@ -35,7 +35,13 @@ export { AGENT_LIFECYCLE_STATUSES, type AgentLifecycleStatus };
 
 export type AgentManagerEvent =
   | { type: "agent_state"; agent: ManagedAgent }
-  | { type: "agent_stream"; agentId: string; event: AgentStreamEvent };
+  | {
+      type: "agent_stream";
+      agentId: string;
+      event: AgentStreamEvent;
+      seq?: number;
+      epoch?: string;
+    };
 
 export type AgentSubscriber = (event: AgentManagerEvent) => void;
 
@@ -84,6 +90,48 @@ export type WaitForAgentStartOptions = {
   signal?: AbortSignal;
 };
 
+export type AgentTimelineRow = {
+  seq: number;
+  timestamp: string;
+  item: AgentTimelineItem;
+};
+
+export type AgentTimelineCursor = {
+  epoch: string;
+  seq: number;
+};
+
+export type AgentTimelineFetchDirection = "tail" | "before" | "after";
+
+export type AgentTimelineFetchOptions = {
+  direction?: AgentTimelineFetchDirection;
+  cursor?: AgentTimelineCursor;
+  /**
+   * Number of canonical rows to return.
+   * - undefined: manager default
+   * - 0: all rows in the selected window
+   */
+  limit?: number;
+};
+
+export type AgentTimelineWindow = {
+  minSeq: number;
+  maxSeq: number;
+  nextSeq: number;
+};
+
+export type AgentTimelineFetchResult = {
+  epoch: string;
+  direction: AgentTimelineFetchDirection;
+  reset: boolean;
+  staleCursor: boolean;
+  gap: boolean;
+  window: AgentTimelineWindow;
+  hasOlder: boolean;
+  hasNewer: boolean;
+  rows: AgentTimelineRow[];
+};
+
 type AttentionState =
   | { requiresAttention: false }
   | {
@@ -105,6 +153,9 @@ type ManagedAgentBase = {
   currentModeId: string | null;
   pendingPermissions: Map<string, AgentPermissionRequest>;
   timeline: AgentTimelineItem[];
+  timelineRows: AgentTimelineRow[];
+  timelineEpoch: string;
+  timelineNextSeq: number;
   persistence: AgentPersistenceHandle | null;
   historyPrimed: boolean;
   lastUserMessageAt: Date | null;
@@ -187,6 +238,7 @@ type SubscriptionRecord = {
 };
 
 const DEFAULT_MAX_TIMELINE_ITEMS = 2000;
+const DEFAULT_TIMELINE_FETCH_LIMIT = 200;
 const BUSY_STATUSES: AgentLifecycleStatus[] = [
   "initializing",
   "running",
@@ -386,6 +438,153 @@ export class AgentManager {
     return [...agent.timeline];
   }
 
+  getTimelineRows(id: string): AgentTimelineRow[] {
+    const agent = this.requireAgent(id);
+    const { rows } = this.ensureTimelineState(agent);
+    return rows.map((row) => ({ ...row }));
+  }
+
+  fetchTimeline(
+    id: string,
+    options?: AgentTimelineFetchOptions
+  ): AgentTimelineFetchResult {
+    const agent = this.requireAgent(id);
+    const {
+      rows,
+      epoch,
+      nextSeq,
+      minSeq,
+      maxSeq,
+    } = this.ensureTimelineState(agent);
+    const direction = options?.direction ?? "tail";
+    const requestedLimit = options?.limit;
+    const limit =
+      requestedLimit === undefined
+        ? DEFAULT_TIMELINE_FETCH_LIMIT
+        : Math.max(0, Math.floor(requestedLimit));
+    const cursor = options?.cursor;
+
+    const window: AgentTimelineWindow = { minSeq, maxSeq, nextSeq };
+
+    if (cursor && cursor.epoch !== epoch) {
+      return {
+        epoch,
+        direction,
+        reset: true,
+        staleCursor: true,
+        gap: false,
+        window,
+        hasOlder: false,
+        hasNewer: false,
+        rows: rows.map((row) => ({ ...row })),
+      };
+    }
+
+    const selectAll = limit === 0;
+    const cloneRows = (items: AgentTimelineRow[]) => items.map((row) => ({ ...row }));
+
+    if (direction === "after" && cursor && rows.length > 0 && cursor.seq < minSeq - 1) {
+      return {
+        epoch,
+        direction,
+        reset: true,
+        staleCursor: false,
+        gap: true,
+        window,
+        hasOlder: false,
+        hasNewer: false,
+        rows: cloneRows(rows),
+      };
+    }
+
+    if (rows.length === 0) {
+      return {
+        epoch,
+        direction,
+        reset: false,
+        staleCursor: false,
+        gap: false,
+        window,
+        hasOlder: false,
+        hasNewer: false,
+        rows: [],
+      };
+    }
+
+    if (direction === "tail") {
+      const selected =
+        selectAll || limit >= rows.length ? rows : rows.slice(rows.length - limit);
+      const hasOlder = selected.length > 0 && selected[0]!.seq > minSeq;
+      return {
+        epoch,
+        direction,
+        reset: false,
+        staleCursor: false,
+        gap: false,
+        window,
+        hasOlder,
+        hasNewer: false,
+        rows: cloneRows(selected),
+      };
+    }
+
+    if (direction === "after") {
+      const baseSeq = cursor?.seq ?? 0;
+      const startIdx = rows.findIndex((row) => row.seq > baseSeq);
+      if (startIdx < 0) {
+        return {
+          epoch,
+          direction,
+          reset: false,
+          staleCursor: false,
+          gap: false,
+          window,
+          hasOlder: baseSeq >= minSeq,
+          hasNewer: false,
+          rows: [],
+        };
+      }
+
+      const selected =
+        selectAll ? rows.slice(startIdx) : rows.slice(startIdx, startIdx + limit);
+      const lastSelected = selected[selected.length - 1];
+      return {
+        epoch,
+        direction,
+        reset: false,
+        staleCursor: false,
+        gap: false,
+        window,
+        hasOlder: selected[0]!.seq > minSeq,
+        hasNewer: Boolean(lastSelected && lastSelected.seq < maxSeq),
+        rows: cloneRows(selected),
+      };
+    }
+
+    // direction === "before"
+    const beforeSeq = cursor?.seq ?? nextSeq;
+    const endExclusive = rows.findIndex((row) => row.seq >= beforeSeq);
+    const boundedRows =
+      endExclusive < 0 ? rows : rows.slice(0, endExclusive);
+    const selected =
+      selectAll || limit >= boundedRows.length
+        ? boundedRows
+        : boundedRows.slice(boundedRows.length - limit);
+    const hasOlder = selected.length > 0 && selected[0]!.seq > minSeq;
+    const hasNewer = endExclusive >= 0;
+    return {
+      epoch,
+      direction,
+      reset: false,
+      staleCursor: false,
+      gap: false,
+      window,
+      hasOlder,
+      hasNewer,
+      rows: cloneRows(selected),
+    };
+  }
+
   async createAgent(
     config: AgentSessionConfig,
     agentId?: string,
@@ -459,7 +658,11 @@ export class AgentManager {
     overrides?: Partial<AgentSessionConfig>
   ): Promise<ManagedAgent> {
     const existing = this.requireAgent(agentId);
+    const timelineState = this.ensureTimelineState(existing);
     const preservedTimeline = [...existing.timeline];
+    const preservedTimelineRows = timelineState.rows.map((row) => ({ ...row }));
+    const preservedTimelineEpoch = timelineState.epoch;
+    const preservedTimelineNextSeq = timelineState.nextSeq;
     const preservedHistoryPrimed = existing.historyPrimed;
     const preservedLastUsage = existing.lastUsage;
     const preservedLastError = existing.lastError;
@@ -496,6 +699,9 @@ export class AgentManager {
       updatedAt: existing.updatedAt,
       lastUserMessageAt: existing.lastUserMessageAt,
       timeline: preservedTimeline,
+      timelineRows: preservedTimelineRows,
+      timelineEpoch: preservedTimelineEpoch,
+      timelineNextSeq: preservedTimelineNextSeq,
       historyPrimed: preservedHistoryPrimed,
       lastUsage: preservedLastUsage,
       lastError: preservedLastError,
@@ -651,11 +857,14 @@ export class AgentManager {
     };
     agent.updatedAt = new Date();
     agent.lastUserMessageAt = agent.updatedAt;
-    this.recordTimeline(agent, item);
+    const row = this.recordTimeline(agent, item);
     this.dispatchStream(agentId, {
       type: "timeline",
       item,
       provider: agent.provider,
+    }, {
+      seq: row.seq,
+      epoch: this.ensureTimelineState(agent).epoch,
     });
     this.emitState(agent);
   }
@@ -663,11 +872,14 @@ export class AgentManager {
   async appendTimelineItem(agentId: string, item: AgentTimelineItem): Promise<void> {
     const agent = this.requireAgent(agentId);
     agent.updatedAt = new Date();
-    this.recordTimeline(agent, item);
+    const row = this.recordTimeline(agent, item);
     this.dispatchStream(agentId, {
       type: "timeline",
       item,
       provider: agent.provider,
+    }, {
+      seq: row.seq,
+      epoch: this.ensureTimelineState(agent).epoch,
     });
     await this.persistSnapshot(agent);
   }
@@ -1106,6 +1318,9 @@ export class AgentManager {
       lastUserMessageAt?: Date | null;
       labels?: Record<string, string>;
       timeline?: AgentTimelineItem[];
+      timelineRows?: AgentTimelineRow[];
+      timelineEpoch?: string;
+      timelineNextSeq?: number;
       historyPrimed?: boolean;
       lastUsage?: AgentUsage;
       lastError?: string;
@@ -1118,6 +1333,21 @@ export class AgentManager {
     }
 
     const now = new Date();
+    const initialTimeline = options?.timeline ? [...options.timeline] : [];
+    const initialTimelineRows =
+      options?.timelineRows?.length
+        ? options.timelineRows.map((row) => ({ ...row }))
+        : this.buildTimelineRowsFromItems(
+            initialTimeline,
+            options?.timelineNextSeq ?? 1,
+            (options?.updatedAt ?? options?.createdAt ?? now).toISOString()
+          );
+    const derivedNextSeq =
+      options?.timelineNextSeq ??
+      (initialTimelineRows.length
+        ? initialTimelineRows[initialTimelineRows.length - 1]!.seq + 1
+        : 1);
+
     const managed = {
       id: resolvedAgentId,
       provider: config.provider,
@@ -1133,7 +1363,10 @@ export class AgentManager {
       currentModeId: null,
       pendingPermissions: new Map(),
       pendingRun: null,
-      timeline: options?.timeline ? [...options.timeline] : [],
+      timeline: initialTimeline,
+      timelineRows: initialTimelineRows,
+      timelineEpoch: options?.timelineEpoch ?? randomUUID(),
+      timelineNextSeq: derivedNextSeq,
       persistence: attachPersistenceCwd(session.describePersistence(), config.cwd),
       historyPrimed: options?.historyPrimed ?? false,
       lastUserMessageAt: options?.lastUserMessageAt ?? null,
@@ -1167,6 +1400,44 @@ export class AgentManager {
     await this.persistSnapshot(managed);
     this.emitState(managed);
     return { ...managed };
+  }
+
+  private buildTimelineRowsFromItems(
+    items: readonly AgentTimelineItem[],
+    startSeq: number,
+    timestamp: string
+  ): AgentTimelineRow[] {
+    let nextSeq = startSeq;
+    return items.map((item) => {
+      const row: AgentTimelineRow = {
+        seq: nextSeq,
+        timestamp,
+        item,
+      };
+      nextSeq += 1;
+      return row;
+    });
+  }
+
+  private ensureTimelineState(agent: ManagedAgent): {
+    rows: AgentTimelineRow[];
+    epoch: string;
+    nextSeq: number;
+    minSeq: number;
+    maxSeq: number;
+  } {
+    const minSeq = agent.timelineRows.length ? agent.timelineRows[0]!.seq : 0;
+    const maxSeq = agent.timelineRows.length
+      ? agent.timelineRows[agent.timelineRows.length - 1]!.seq
+      : 0;
+
+    return {
+      rows: agent.timelineRows,
+      epoch: agent.timelineEpoch,
+      nextSeq: agent.timelineNextSeq,
+      minSeq,
+      maxSeq,
+    };
   }
 
   private async persistSnapshot(
@@ -1256,6 +1527,8 @@ export class AgentManager {
       agent.updatedAt = new Date();
     }
 
+    let timelineRow: AgentTimelineRow | null = null;
+
     switch (event.type) {
       case "thread_started":
         // Update persistence with the new session ID from the provider.
@@ -1268,7 +1541,7 @@ export class AgentManager {
         }
         break;
       case "timeline":
-        this.recordTimeline(agent, event.item);
+        timelineRow = this.recordTimeline(agent, event.item);
         if (
           !options?.fromHistory &&
           event.item.type === "user_message"
@@ -1325,17 +1598,35 @@ export class AgentManager {
     }
 
     // Skip dispatching individual stream events during history replay.
-    // The caller will send a batched agent_stream_snapshot after priming.
     if (!options?.fromHistory) {
-      this.dispatchStream(agent.id, event);
+      this.dispatchStream(agent.id, event, timelineRow
+        ? {
+            seq: timelineRow.seq,
+            epoch: this.ensureTimelineState(agent).epoch,
+          }
+        : undefined);
     }
   }
 
-  private recordTimeline(agent: ManagedAgent, item: AgentTimelineItem): void {
+  private recordTimeline(
+    agent: ManagedAgent,
+    item: AgentTimelineItem
+  ): AgentTimelineRow {
+    const timelineState = this.ensureTimelineState(agent);
+    const row: AgentTimelineRow = {
+      seq: timelineState.nextSeq,
+      timestamp: new Date().toISOString(),
+      item,
+    };
+    agent.timelineNextSeq = timelineState.nextSeq + 1;
     agent.timeline.push(item);
+    timelineState.rows.push(row);
     if (agent.timeline.length > this.maxTimelineItems) {
-      agent.timeline.splice(0, agent.timeline.length - this.maxTimelineItems);
+      const removeCount = agent.timeline.length - this.maxTimelineItems;
+      agent.timeline.splice(0, removeCount);
+      timelineState.rows.splice(0, removeCount);
     }
+    return row;
   }
 
   private emitState(agent: ManagedAgent): void {
@@ -1439,8 +1730,12 @@ export class AgentManager {
     });
   }
 
-  private dispatchStream(agentId: string, event: AgentStreamEvent): void {
-    this.dispatch({ type: "agent_stream", agentId, event });
+  private dispatchStream(
+    agentId: string,
+    event: AgentStreamEvent,
+    metadata?: { seq?: number; epoch?: string }
+  ): void {
+    this.dispatch({ type: "agent_stream", agentId, event, ...metadata });
   }
 
   private dispatch(event: AgentManagerEvent): void {

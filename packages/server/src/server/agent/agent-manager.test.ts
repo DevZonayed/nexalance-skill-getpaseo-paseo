@@ -351,6 +351,120 @@ describe("AgentManager", () => {
     expect(afterHydrate).toEqual(beforeReload);
   });
 
+  test("fetchTimeline returns full timeline with reset when cursor epoch is stale", async () => {
+    const workdir = mkdtempSync(join(tmpdir(), "agent-manager-timeline-stale-"));
+    const storagePath = join(workdir, "agents");
+    const storage = new AgentStorage(storagePath, logger);
+    const manager = new AgentManager({
+      clients: {
+        codex: new TestAgentClient(),
+      },
+      registry: storage,
+      logger,
+      idFactory: () => "00000000-0000-4000-8000-000000000118",
+    });
+
+    const snapshot = await manager.createAgent({
+      provider: "codex",
+      cwd: workdir,
+    });
+
+    await manager.appendTimelineItem(snapshot.id, {
+      type: "assistant_message",
+      text: "one",
+    });
+    await manager.appendTimelineItem(snapshot.id, {
+      type: "assistant_message",
+      text: "two",
+    });
+    await manager.appendTimelineItem(snapshot.id, {
+      type: "assistant_message",
+      text: "three",
+    });
+
+    const baseline = manager.fetchTimeline(snapshot.id, {
+      direction: "tail",
+      limit: 2,
+    });
+    expect(baseline.rows).toHaveLength(2);
+
+    const result = manager.fetchTimeline(snapshot.id, {
+      direction: "after",
+      cursor: {
+        epoch: "stale-epoch",
+        seq: baseline.rows[baseline.rows.length - 1]!.seq,
+      },
+      limit: 1,
+    });
+
+    expect(result.reset).toBe(true);
+    expect(result.staleCursor).toBe(true);
+    expect(result.gap).toBe(false);
+    expect(result.rows).toHaveLength(3);
+    expect(result.rows[0]?.seq).toBe(1);
+    expect(result.rows[result.rows.length - 1]?.seq).toBe(3);
+  });
+
+  test("fetchTimeline returns full timeline with reset when cursor seq falls behind retention window", async () => {
+    const workdir = mkdtempSync(join(tmpdir(), "agent-manager-timeline-gap-"));
+    const storagePath = join(workdir, "agents");
+    const storage = new AgentStorage(storagePath, logger);
+    const manager = new AgentManager({
+      clients: {
+        codex: new TestAgentClient(),
+      },
+      registry: storage,
+      logger,
+      maxTimelineItems: 2,
+      idFactory: () => "00000000-0000-4000-8000-000000000119",
+    });
+
+    const snapshot = await manager.createAgent({
+      provider: "codex",
+      cwd: workdir,
+    });
+
+    await manager.appendTimelineItem(snapshot.id, {
+      type: "assistant_message",
+      text: "first",
+    });
+    await manager.appendTimelineItem(snapshot.id, {
+      type: "assistant_message",
+      text: "second",
+    });
+    await manager.appendTimelineItem(snapshot.id, {
+      type: "assistant_message",
+      text: "third",
+    });
+    await manager.appendTimelineItem(snapshot.id, {
+      type: "assistant_message",
+      text: "fourth",
+    });
+
+    const fresh = manager.fetchTimeline(snapshot.id, {
+      direction: "tail",
+      limit: 0,
+    });
+    expect(fresh.window.minSeq).toBe(3);
+    expect(fresh.window.maxSeq).toBe(4);
+
+    const result = manager.fetchTimeline(snapshot.id, {
+      direction: "after",
+      cursor: {
+        epoch: fresh.epoch,
+        seq: 1,
+      },
+      limit: 10,
+    });
+
+    expect(result.reset).toBe(true);
+    expect(result.staleCursor).toBe(false);
+    expect(result.gap).toBe(true);
+    expect(result.rows).toHaveLength(2);
+    expect(result.rows[0]?.seq).toBe(3);
+    expect(result.rows[1]?.seq).toBe(4);
+  });
+
   test("createAgent fails when generated agent ID is not a UUID", async () => {
     const workdir = mkdtempSync(join(tmpdir(), "agent-manager-test-"));
     const storagePath = join(workdir, "agents");

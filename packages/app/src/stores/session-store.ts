@@ -157,6 +157,12 @@ export type DaemonServerInfo = {
   hostname: string | null;
 };
 
+export interface AgentTimelineCursorState {
+  epoch: string;
+  startSeq: number;
+  endSeq: number;
+}
+
 // Per-session state
 export interface SessionState {
   serverId: string;
@@ -189,6 +195,7 @@ export interface SessionState {
   // Stream state (head/tail model)
   agentStreamTail: Map<string, StreamItem[]>;
   agentStreamHead: Map<string, StreamItem[]>;
+  agentTimelineCursor: Map<string, AgentTimelineCursorState>;
   historySyncGeneration: number;
   agentHistorySyncGeneration: Map<string, number>;
 
@@ -240,6 +247,12 @@ interface SessionStoreActions {
   setAgentStreamTail: (serverId: string, state: Map<string, StreamItem[]> | ((prev: Map<string, StreamItem[]>) => Map<string, StreamItem[]>)) => void;
   setAgentStreamHead: (serverId: string, state: Map<string, StreamItem[]> | ((prev: Map<string, StreamItem[]>) => Map<string, StreamItem[]>)) => void;
   clearAgentStreamHead: (serverId: string, agentId: string) => void;
+  setAgentTimelineCursor: (
+    serverId: string,
+    state:
+      | Map<string, AgentTimelineCursorState>
+      | ((prev: Map<string, AgentTimelineCursorState>) => Map<string, AgentTimelineCursorState>)
+  ) => void;
   bumpHistorySyncGeneration: (serverId: string) => void;
   markAgentHistorySynchronized: (serverId: string, agentId: string) => void;
 
@@ -321,6 +334,7 @@ function createInitialSessionState(serverId: string, client: DaemonClient, audio
     currentAssistantMessage: "",
     agentStreamTail: new Map(),
     agentStreamHead: new Map(),
+    agentTimelineCursor: new Map(),
     historySyncGeneration: 0,
     agentHistorySyncGeneration: new Map(),
     initializingAgents: new Map(),
@@ -598,6 +612,30 @@ export const useSessionStore = create<SessionStore>()(
           sessions: {
             ...prev.sessions,
             [serverId]: { ...session, agentStreamHead: nextHead },
+          },
+        };
+      });
+    },
+
+    setAgentTimelineCursor: (serverId, state) => {
+      set((prev) => {
+        const session = prev.sessions[serverId];
+        if (!session) {
+          return prev;
+        }
+        const nextState =
+          typeof state === "function" ? state(session.agentTimelineCursor) : state;
+        if (session.agentTimelineCursor === nextState) {
+          return prev;
+        }
+        logSessionStoreUpdate("setAgentTimelineCursor", serverId, {
+          agentCount: nextState.size,
+        });
+        return {
+          ...prev,
+          sessions: {
+            ...prev.sessions,
+            [serverId]: { ...session, agentTimelineCursor: nextState },
           },
         };
       });

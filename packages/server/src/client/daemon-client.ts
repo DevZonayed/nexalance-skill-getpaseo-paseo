@@ -15,6 +15,7 @@ import type {
   CreateAgentRequestMessage,
   FileDownloadTokenResponse,
   FileExplorerResponse,
+  FetchAgentTimelineResponseMessage,
   GitSetupOptions,
   CheckoutStatusResponse,
   CheckoutCommitResponse,
@@ -139,6 +140,8 @@ export type DaemonEvent =
       agentId: string;
       event: AgentStreamEventPayload;
       timestamp: string;
+      seq?: number;
+      epoch?: string;
     }
   | { type: "status"; payload: { status: string } & Record<string, unknown> }
   | { type: "agent_deleted"; agentId: string }
@@ -235,6 +238,20 @@ type TerminalOutputPayload = TerminalOutput["payload"];
 type KillTerminalPayload = KillTerminalResponse["payload"];
 type AttachTerminalStreamPayload = AttachTerminalStreamResponse["payload"];
 type DetachTerminalStreamPayload = DetachTerminalStreamResponse["payload"];
+export type FetchAgentTimelinePayload = FetchAgentTimelineResponseMessage["payload"];
+
+export type FetchAgentTimelineDirection = FetchAgentTimelinePayload["direction"];
+export type FetchAgentTimelineProjection = FetchAgentTimelinePayload["projection"];
+export type FetchAgentTimelineCursor = NonNullable<
+  FetchAgentTimelinePayload["startCursor"]
+>;
+export type FetchAgentTimelineOptions = {
+  direction?: FetchAgentTimelineDirection;
+  cursor?: FetchAgentTimelineCursor;
+  limit?: number;
+  projection?: FetchAgentTimelineProjection;
+  requestId?: string;
+};
 
 export type TerminalStreamChunk = {
   streamId: number;
@@ -1244,23 +1261,28 @@ export class DaemonClient {
     });
   }
 
-  async initializeAgent(
+  async fetchAgentTimeline(
     agentId: string,
-    requestId?: string
-  ): Promise<AgentSnapshotPayload> {
-    const resolvedRequestId = this.createRequestId(requestId);
+    options: FetchAgentTimelineOptions = {}
+  ): Promise<FetchAgentTimelinePayload> {
+    const resolvedRequestId = this.createRequestId(options.requestId);
     const message = SessionInboundMessageSchema.parse({
-      type: "initialize_agent_request",
+      type: "fetch_agent_timeline_request",
       agentId,
       requestId: resolvedRequestId,
+      ...(options.direction ? { direction: options.direction } : {}),
+      ...(options.cursor ? { cursor: options.cursor } : {}),
+      ...(typeof options.limit === "number" ? { limit: options.limit } : {}),
+      ...(options.projection ? { projection: options.projection } : {}),
     });
+
     const payload = await this.sendRequest({
       requestId: resolvedRequestId,
       message,
-      timeout: 10000,
+      timeout: 15000,
       options: { skipQueue: true },
       select: (msg) => {
-        if (msg.type !== "initialize_agent_request") {
+        if (msg.type !== "fetch_agent_timeline_response") {
           return null;
         }
         if (msg.payload.requestId !== resolvedRequestId) {
@@ -1269,14 +1291,12 @@ export class DaemonClient {
         return msg.payload;
       },
     });
+
     if (payload.error) {
       throw new Error(payload.error);
     }
-    const agent = await this.fetchAgent(agentId);
-    if (!agent) {
-      throw new Error(`Agent not found after initialize: ${agentId}`);
-    }
-    return agent;
+
+    return payload;
   }
 
   // ============================================================================
@@ -3079,6 +3099,8 @@ export class DaemonClient {
           agentId: msg.payload.agentId,
           event: msg.payload.event,
           timestamp: msg.payload.timestamp,
+          ...(typeof msg.payload.seq === "number" ? { seq: msg.payload.seq } : {}),
+          ...(typeof msg.payload.epoch === "string" ? { epoch: msg.payload.epoch } : {}),
         };
       case "status":
         return { type: "status", payload: msg.payload };

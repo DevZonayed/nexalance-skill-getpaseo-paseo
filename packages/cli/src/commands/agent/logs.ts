@@ -1,10 +1,10 @@
 import type { Command } from 'commander'
 import { connectToDaemon, getDaemonHost } from '../../utils/client.js'
 import type { CommandOptions } from '../../output/index.js'
+import { fetchProjectedTimelineItems } from '../../utils/timeline.js'
 import type {
   DaemonClient,
   AgentStreamMessage,
-  AgentStreamSnapshotMessage,
   AgentTimelineItem,
 } from '@getpaseo/server'
 import { curateAgentActivity } from '@getpaseo/server'
@@ -54,19 +54,6 @@ function matchesFilter(item: AgentTimelineItem, filter?: string): boolean {
   }
 }
 
-/**
- * Extract timeline items from an agent_stream_snapshot message
- */
-function extractTimelineFromSnapshot(message: AgentStreamSnapshotMessage): AgentTimelineItem[] {
-  const items: AgentTimelineItem[] = []
-  for (const e of message.payload.events) {
-    if (e.event.type === 'timeline') {
-      items.push(e.event.item)
-    }
-  }
-  return items
-}
-
 export async function runLogsCommand(
   id: string,
   options: AgentLogsOptions,
@@ -112,31 +99,11 @@ export async function runLogsCommand(
       return
     }
 
-    // For non-follow mode, initialize the agent to get timeline snapshot
-    // Set up handler for timeline events before initializing
-    const snapshotPromise = new Promise<AgentTimelineItem[]>((resolve) => {
-      const timeout = setTimeout(() => resolve([]), 10000)
-
-      const unsubscribe = client.on('agent_stream_snapshot', (msg: unknown) => {
-        const message = msg as AgentStreamSnapshotMessage
-        if (message.type !== 'agent_stream_snapshot') return
-        if (message.payload.agentId !== resolvedId) return
-
-        clearTimeout(timeout)
-        unsubscribe()
-        resolve(extractTimelineFromSnapshot(message))
-      })
+    // Fetch timeline directly via cursor RPC.
+    let timelineItems = await fetchProjectedTimelineItems({
+      client,
+      agentId: resolvedId,
     })
-
-    // Initialize agent to trigger timeline snapshot
-    try {
-      await client.initializeAgent(resolvedId)
-    } catch {
-      // Agent might already be initialized, continue to collect from queue
-    }
-
-    // Get timeline from snapshot
-    let timelineItems = await snapshotPromise
 
     // Apply filter
     if (options.filter) {
@@ -179,30 +146,11 @@ async function runFollowMode(
   const DEFAULT_FOLLOW_TAIL = 10
   const tailCount = parseTailCount(options.tail) ?? DEFAULT_FOLLOW_TAIL
 
-  // First, get existing timeline
-  const snapshotPromise = new Promise<AgentTimelineItem[]>((resolve) => {
-    const timeout = setTimeout(() => resolve([]), 10000)
-
-    const unsubscribe = client.on('agent_stream_snapshot', (msg: unknown) => {
-      const message = msg as AgentStreamSnapshotMessage
-      if (message.type !== 'agent_stream_snapshot') return
-      if (message.payload.agentId !== agentId) return
-
-      clearTimeout(timeout)
-      unsubscribe()
-      resolve(extractTimelineFromSnapshot(message))
-    })
+  // First, get existing timeline.
+  let existingItems = await fetchProjectedTimelineItems({
+    client,
+    agentId,
   })
-
-  // Initialize agent to trigger timeline snapshot
-  try {
-    await client.initializeAgent(agentId)
-  } catch {
-    // Agent might already be initialized
-  }
-
-  // Get existing timeline
-  let existingItems = await snapshotPromise
 
   // Apply filter to existing items
   if (options.filter) {

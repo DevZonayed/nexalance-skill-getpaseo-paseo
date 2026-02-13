@@ -31,5 +31,4 @@ export type {
   AgentSnapshotPayload,
   AgentStreamEventPayload,
   AgentStreamMessage,
-  AgentStreamSnapshotMessage,
 } from "../shared/messages.js";

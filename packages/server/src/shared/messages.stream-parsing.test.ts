@@ -1,24 +1,48 @@
-import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 import {
   AgentStreamMessageSchema,
-  AgentStreamSnapshotMessageSchema,
+  FetchAgentTimelineResponseMessageSchema,
   SessionInboundMessageSchema,
   SessionOutboundMessageSchema,
   WSOutboundMessageSchema,
 } from "./messages.js";
 
-function loadFixture(name: string): unknown {
-  const url = new URL(`./__fixtures__/${name}`, import.meta.url);
-  return JSON.parse(readFileSync(url, "utf8"));
-}
-
 describe("shared messages stream parsing", () => {
-  it("rejects legacy inProgress tool_call snapshots", () => {
-    const fixture = loadFixture("legacy-agent-stream-snapshot-inProgress.json");
-    const parsed = AgentStreamSnapshotMessageSchema.safeParse(fixture);
-    expect(parsed.success).toBe(false);
+  it("parses representative fetch_agent_timeline_response payload", () => {
+    const parsed = FetchAgentTimelineResponseMessageSchema.parse({
+      type: "fetch_agent_timeline_response",
+      payload: {
+        requestId: "req-1",
+        agentId: "agent_live",
+        direction: "tail",
+        projection: "projected",
+        epoch: "epoch-1",
+        reset: false,
+        staleCursor: false,
+        gap: false,
+        window: { minSeq: 1, maxSeq: 2, nextSeq: 3 },
+        startCursor: { epoch: "epoch-1", seq: 1 },
+        endCursor: { epoch: "epoch-1", seq: 2 },
+        hasOlder: false,
+        hasNewer: false,
+        entries: [
+          {
+            provider: "codex",
+            item: { type: "assistant_message", text: "hello" },
+            timestamp: "2026-02-08T20:10:00.000Z",
+            seqStart: 1,
+            seqEnd: 2,
+            sourceSeqRanges: [{ startSeq: 1, endSeq: 2 }],
+            collapsed: ["assistant_merge"],
+          },
+        ],
+        error: null,
+      },
+    });
+
+    expect(parsed.payload.entries).toHaveLength(1);
+    expect(parsed.payload.entries[0]?.item.type).toBe("assistant_message");
   });
 
   it("parses representative agent_stream tool_call event", () => {
@@ -54,12 +78,14 @@ describe("shared messages stream parsing", () => {
     }
   });
 
-  it("rejects websocket envelope for agent_stream_snapshot with legacy status", () => {
-    const fixture = loadFixture("legacy-agent-stream-snapshot-inProgress.json") as {
-      type: "agent_stream_snapshot";
-      payload: unknown;
+  it("rejects websocket envelope for removed agent_stream_snapshot message type", () => {
+    const fixture = {
+      type: "agent_stream_snapshot",
+      payload: {
+        agentId: "agent-legacy",
+        events: [],
+      },
     };
-
     const wrapped = WSOutboundMessageSchema.safeParse({
       type: "session",
       message: fixture,

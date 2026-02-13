@@ -605,22 +605,21 @@ export const RestartServerRequestMessageSchema = z.object({
   requestId: z.string(),
 });
 
-export const InitializeAgentRequestMessageSchema = z.object({
-  type: z.literal("initialize_agent_request"),
-  agentId: z.string(),
-  requestId: z.string(),
+export const AgentTimelineCursorSchema = z.object({
+  epoch: z.string(),
+  seq: z.number().int().nonnegative(),
 });
 
-export const InitializeAgentResponseMessageSchema = z.object({
-  // Response shares the same type literal as the request for simple requestId matching
-  type: z.literal("initialize_agent_request"),
-  payload: z.object({
-    agentId: z.string(),
-    agentStatus: z.string().optional(),
-    timelineSize: z.number().optional(),
-    requestId: z.string(),
-    error: z.string().optional(),
-  }),
+export const FetchAgentTimelineRequestMessageSchema = z.object({
+  type: z.literal("fetch_agent_timeline_request"),
+  agentId: z.string(),
+  requestId: z.string(),
+  direction: z.enum(["tail", "before", "after"]).optional(),
+  cursor: AgentTimelineCursorSchema.optional(),
+  // 0 means "all matching rows for this query window".
+  limit: z.number().int().nonnegative().optional(),
+  // Default should be projected for app timeline loading.
+  projection: z.enum(["projected", "canonical"]).optional(),
 });
 
 export const SetAgentModeRequestMessageSchema = z.object({
@@ -1023,7 +1022,7 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   RefreshAgentRequestMessageSchema,
   CancelAgentRequestMessageSchema,
   RestartServerRequestMessageSchema,
-  InitializeAgentRequestMessageSchema,
+  FetchAgentTimelineRequestMessageSchema,
   SetAgentModeRequestMessageSchema,
   SetAgentModelRequestMessageSchema,
   SetAgentThinkingRequestMessageSchema,
@@ -1316,19 +1315,9 @@ export const AgentStreamMessageSchema = z.object({
     agentId: z.string(),
     event: AgentStreamEventPayloadSchema,
     timestamp: z.string(),
-  }),
-});
-
-export const AgentStreamSnapshotMessageSchema = z.object({
-  type: z.literal("agent_stream_snapshot"),
-  payload: z.object({
-    agentId: z.string(),
-    events: z.array(
-      z.object({
-        event: AgentStreamEventPayloadSchema,
-        timestamp: z.string(),
-      })
-    ),
+    // Present for timeline events. Maps 1:1 to canonical in-memory timeline rows.
+    seq: z.number().int().nonnegative().optional(),
+    epoch: z.string().optional(),
   }),
 });
 
@@ -1380,6 +1369,46 @@ export const FetchAgentResponseMessageSchema = z.object({
   payload: z.object({
     requestId: z.string(),
     agent: AgentSnapshotPayloadSchema.nullable(),
+    error: z.string().nullable(),
+  }),
+});
+
+const AgentTimelineSeqRangeSchema = z.object({
+  startSeq: z.number().int().nonnegative(),
+  endSeq: z.number().int().nonnegative(),
+});
+
+export const AgentTimelineEntryPayloadSchema = z.object({
+  provider: AgentProviderSchema,
+  item: AgentTimelineItemPayloadSchema,
+  timestamp: z.string(),
+  seqStart: z.number().int().nonnegative(),
+  seqEnd: z.number().int().nonnegative(),
+  sourceSeqRanges: z.array(AgentTimelineSeqRangeSchema),
+  collapsed: z.array(z.enum(["assistant_merge", "tool_lifecycle"])),
+});
+
+export const FetchAgentTimelineResponseMessageSchema = z.object({
+  type: z.literal("fetch_agent_timeline_response"),
+  payload: z.object({
+    requestId: z.string(),
+    agentId: z.string(),
+    direction: z.enum(["tail", "before", "after"]),
+    projection: z.enum(["projected", "canonical"]),
+    epoch: z.string(),
+    reset: z.boolean(),
+    staleCursor: z.boolean(),
+    gap: z.boolean(),
+    window: z.object({
+      minSeq: z.number().int().nonnegative(),
+      maxSeq: z.number().int().nonnegative(),
+      nextSeq: z.number().int().nonnegative(),
+    }),
+    startCursor: AgentTimelineCursorSchema.nullable(),
+    endCursor: AgentTimelineCursorSchema.nullable(),
+    hasOlder: z.boolean(),
+    hasNewer: z.boolean(),
+    entries: z.array(AgentTimelineEntryPayloadSchema),
     error: z.string().nullable(),
   }),
 });
@@ -1880,15 +1909,14 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   StatusMessageSchema,
   PongMessageSchema,
   RpcErrorMessageSchema,
-  InitializeAgentResponseMessageSchema,
   ArtifactMessageSchema,
   AgentUpdateMessageSchema,
   AgentStreamMessageSchema,
-  AgentStreamSnapshotMessageSchema,
   AgentStatusMessageSchema,
   FetchAgentsResponseMessageSchema,
   FetchAgentsGroupedByProjectResponseMessageSchema,
   FetchAgentResponseMessageSchema,
+  FetchAgentTimelineResponseMessageSchema,
   SendAgentMessageResponseMessageSchema,
   SetVoiceModeResponseMessageSchema,
   SetAgentModeResponseMessageSchema,
@@ -1946,9 +1974,6 @@ export type RpcErrorMessage = z.infer<typeof RpcErrorMessageSchema>;
 export type ArtifactMessage = z.infer<typeof ArtifactMessageSchema>;
 export type AgentUpdateMessage = z.infer<typeof AgentUpdateMessageSchema>;
 export type AgentStreamMessage = z.infer<typeof AgentStreamMessageSchema>;
-export type AgentStreamSnapshotMessage = z.infer<
-  typeof AgentStreamSnapshotMessageSchema
->;
 export type AgentStatusMessage = z.infer<typeof AgentStatusMessageSchema>;
 export type ProjectCheckoutLitePayload = z.infer<typeof ProjectCheckoutLitePayloadSchema>;
 export type ProjectPlacementPayload = z.infer<typeof ProjectPlacementPayloadSchema>;
@@ -1960,6 +1985,9 @@ export type FetchAgentsGroupedByProjectResponseMessage = z.infer<
 >;
 export type FetchAgentResponseMessage = z.infer<
   typeof FetchAgentResponseMessageSchema
+>;
+export type FetchAgentTimelineResponseMessage = z.infer<
+  typeof FetchAgentTimelineResponseMessageSchema
 >;
 export type SendAgentMessageResponseMessage = z.infer<
   typeof SendAgentMessageResponseMessageSchema
@@ -1982,7 +2010,6 @@ export type ListAvailableProvidersResponse = z.infer<
 >;
 export type SpeechModelsListResponse = z.infer<typeof SpeechModelsListResponseSchema>;
 export type SpeechModelsDownloadResponse = z.infer<typeof SpeechModelsDownloadResponseSchema>;
-export type InitializeAgentResponseMessage = z.infer<typeof InitializeAgentResponseMessageSchema>;
 
 // Type exports for payload types
 export type ActivityLogPayload = z.infer<typeof ActivityLogPayloadSchema>;
@@ -2014,7 +2041,6 @@ export type SpeechModelsDownloadRequestMessage = z.infer<
 export type ResumeAgentRequestMessage = z.infer<typeof ResumeAgentRequestMessageSchema>;
 export type DeleteAgentRequestMessage = z.infer<typeof DeleteAgentRequestMessageSchema>;
 export type UpdateAgentRequestMessage = z.infer<typeof UpdateAgentRequestMessageSchema>;
-export type InitializeAgentRequestMessage = z.infer<typeof InitializeAgentRequestMessageSchema>;
 export type SetAgentModeRequestMessage = z.infer<typeof SetAgentModeRequestMessageSchema>;
 export type SetAgentModelRequestMessage = z.infer<typeof SetAgentModelRequestMessageSchema>;
 export type SetAgentThinkingRequestMessage = z.infer<typeof SetAgentThinkingRequestMessageSchema>;

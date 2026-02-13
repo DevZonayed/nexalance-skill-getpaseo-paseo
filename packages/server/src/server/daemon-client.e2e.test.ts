@@ -335,8 +335,12 @@ describe("daemon client E2E", () => {
         agent.id
       );
 
-      const initResult = await ctx.client.initializeAgent(agent.id);
-      expect(initResult.id).toBe(agent.id);
+      const timelineResult = await ctx.client.fetchAgentTimeline(agent.id, {
+        direction: "tail",
+        limit: 1,
+        projection: "projected",
+      });
+      expect(timelineResult.agentId).toBe(agent.id);
 
       const nextMode = agent.availableModes.find(
         (mode) => mode.id !== agent.currentModeId
@@ -577,22 +581,12 @@ describe("daemon client E2E", () => {
       await ctx.client.sendMessage(agent.id, "Say 'hello' and nothing else");
       await ctx.client.waitForFinish(agent.id, 120000);
 
-      const snapshotPromise = waitForSignal(15000, (resolve) => {
-        const unsubscribe = ctx.client.on("agent_stream_snapshot", (message) => {
-          if (message.type !== "agent_stream_snapshot") {
-            return;
-          }
-          if (message.payload.agentId !== agent.id) {
-            return;
-          }
-          resolve(message);
-        });
-        return unsubscribe;
+      const timeline = await ctx.client.fetchAgentTimeline(agent.id, {
+        direction: "tail",
+        limit: 0,
+        projection: "projected",
       });
-
-      await ctx.client.initializeAgent(agent.id);
-      const snapshot = await snapshotPromise;
-      expect(snapshot.payload.events.length).toBeGreaterThan(0);
+      expect(timeline.entries.length).toBeGreaterThan(0);
 
       await ctx.client.deleteAgent(agent.id);
       rmSync(cwd, { recursive: true, force: true });

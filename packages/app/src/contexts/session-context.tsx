@@ -9,6 +9,7 @@ import {
   applyStreamEvent,
   generateMessageId,
   hydrateStreamState,
+  reduceStreamUpdate,
   type StreamItem,
 } from "@/types/stream";
 import type {
@@ -303,6 +304,9 @@ export function SessionProvider({
   const clearAgentStreamHead = useSessionStore(
     (state) => state.clearAgentStreamHead
   );
+  const setAgentTimelineCursor = useSessionStore(
+    (state) => state.setAgentTimelineCursor
+  );
   const setInitializingAgents = useSessionStore(
     (state) => state.setInitializingAgents
   );
@@ -371,7 +375,7 @@ export function SessionProvider({
       ) => Promise<void>)
     | null
   >(null);
-  const hasRequestedInitialSnapshotRef = useRef(false);
+  const hasBootstrappedAgentUpdatesRef = useRef(false);
   const agentUpdatesSubscriptionIdRef = useRef<string | null>(null);
   const sessionStateTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
     null
@@ -580,6 +584,15 @@ export function SessionProvider({
           return next;
         });
 
+        setAgentTimelineCursor(serverId, (prev) => {
+          if (!prev.has(agentId)) {
+            return prev;
+          }
+          const next = new Map(prev);
+          next.delete(agentId);
+          return next;
+        });
+
         return;
       }
 
@@ -644,6 +657,7 @@ export function SessionProvider({
       setAgentLastActivity,
       setPendingPermissions,
       setQueuedMessages,
+      setAgentTimelineCursor,
     ]
   );
 
@@ -664,18 +678,6 @@ export function SessionProvider({
     },
     [serverId, setFileExplorer]
   );
-
-  const refreshAgentMutation = useMutation({
-    mutationFn: async ({ agentId }: { agentId: string }) => {
-      if (!agentId) {
-        throw new Error("Agent id is required");
-      }
-      if (!client) {
-        throw new Error("Daemon client unavailable");
-      }
-      return await client.refreshAgent(agentId);
-    },
-  });
 
   const directoryListingMutation = useMutation({
     mutationFn: async ({ agentId, path }: { agentId: string; path: string }) => {
@@ -740,9 +742,109 @@ export function SessionProvider({
     },
   });
 
+  const applyTimelineResponse = useCallback(
+    (
+      payload: Extract<
+        SessionOutboundMessage,
+        { type: "fetch_agent_timeline_response" }
+      >["payload"]
+    ) => {
+      const agentId = payload.agentId;
+      const initKey = getInitKey(serverId, agentId);
+
+      if (payload.error) {
+        setInitializingAgents(serverId, (prev) => {
+          if (prev.get(agentId) !== true) {
+            return prev;
+          }
+          const next = new Map(prev);
+          next.set(agentId, false);
+          return next;
+        });
+        rejectInitDeferred(initKey, new Error(payload.error));
+        return;
+      }
+
+      const hydratedEvents: Array<{
+        event: AgentStreamEventPayload;
+        timestamp: Date;
+      }> = payload.entries.map((entry) => ({
+        event: {
+          type: "timeline",
+          provider: entry.provider,
+          item: entry.item,
+        },
+        timestamp: new Date(entry.timestamp),
+      }));
+
+      const replace = payload.reset || payload.direction !== "after";
+      if (replace) {
+        const hydrated = hydrateStreamState(hydratedEvents);
+        setAgentStreamTail(serverId, (prev) => {
+          const next = new Map(prev);
+          next.set(agentId, hydrated);
+          return next;
+        });
+        clearAgentStreamHead(serverId, agentId);
+      } else if (hydratedEvents.length > 0) {
+        setAgentStreamTail(serverId, (prev) => {
+          const next = new Map(prev);
+          const current = next.get(agentId) ?? [];
+          const updated = hydratedEvents.reduce<StreamItem[]>(
+            (state, { event, timestamp }) => reduceStreamUpdate(state, event, timestamp),
+            current
+          );
+          next.set(agentId, updated);
+          return next;
+        });
+      }
+
+      setAgentTimelineCursor(serverId, (prev) => {
+        const next = new Map(prev);
+        if (payload.startCursor && payload.endCursor) {
+          next.set(agentId, {
+            epoch: payload.epoch,
+            startSeq: payload.startCursor.seq,
+            endSeq: payload.endCursor.seq,
+          });
+        } else if (payload.reset) {
+          next.delete(agentId);
+        }
+        return next;
+      });
+
+      const deferredUpdate = pendingAgentUpdatesRef.current.get(agentId);
+      pendingAgentUpdatesRef.current.delete(agentId);
+      if (deferredUpdate) {
+        applyAgentUpdatePayload(deferredUpdate);
+      }
+
+      setInitializingAgents(serverId, (prev) => {
+        if (prev.get(agentId) !== true) {
+          return prev;
+        }
+        const next = new Map(prev);
+        next.set(agentId, false);
+        return next;
+      });
+
+      resolveInitDeferred(initKey);
+      markAgentHistorySynchronized(serverId, agentId);
+    },
+    [
+      applyAgentUpdatePayload,
+      clearAgentStreamHead,
+      markAgentHistorySynchronized,
+      serverId,
+      setAgentStreamTail,
+      setAgentTimelineCursor,
+      setInitializingAgents,
+    ]
+  );
+
   useEffect(() => {
     if (!connectionSnapshot.isConnected) {
-      hasRequestedInitialSnapshotRef.current = false;
+      hasBootstrappedAgentUpdatesRef.current = false;
       const subscriptionId = agentUpdatesSubscriptionIdRef.current;
       if (subscriptionId && client) {
         try {
@@ -754,10 +856,10 @@ export function SessionProvider({
       agentUpdatesSubscriptionIdRef.current = null;
       return;
     }
-    if (hasRequestedInitialSnapshotRef.current) {
+    if (hasBootstrappedAgentUpdatesRef.current) {
       return;
     }
-    hasRequestedInitialSnapshotRef.current = true;
+    hasBootstrappedAgentUpdatesRef.current = true;
 
     try {
       if (!agentUpdatesSubscriptionIdRef.current) {
@@ -803,7 +905,7 @@ export function SessionProvider({
 
     const unsubAgentStream = client.on("agent_stream", (message) => {
       if (message.type !== "agent_stream") return;
-      const { agentId, event, timestamp } = message.payload;
+      const { agentId, event, timestamp, seq, epoch } = message.payload;
       const parsedTimestamp = new Date(timestamp);
 
       if (event.type === "attention_required") {
@@ -846,51 +948,37 @@ export function SessionProvider({
         });
       }
 
+      if (
+        event.type === "timeline" &&
+        typeof seq === "number" &&
+        typeof epoch === "string"
+      ) {
+        setAgentTimelineCursor(serverId, (prev) => {
+          const current = prev.get(agentId);
+          const next = new Map(prev);
+          if (!current || current.epoch !== epoch) {
+            next.set(agentId, { epoch, startSeq: seq, endSeq: seq });
+            return next;
+          }
+          next.set(agentId, {
+            epoch,
+            startSeq: Math.min(current.startSeq, seq),
+            endSeq: Math.max(current.endSeq, seq),
+          });
+          return next;
+        });
+      }
+
       // NOTE: We don't update lastActivityAt on every stream event to prevent
       // cascading rerenders. The agent_update handler updates agent.lastActivityAt
       // on status changes, which is sufficient for sorting and display purposes.
     });
 
-    const unsubAgentStreamSnapshot = client.on(
-      "agent_stream_snapshot",
+    const unsubAgentTimeline = client.on(
+      "fetch_agent_timeline_response",
       (message) => {
-        if (message.type !== "agent_stream_snapshot") return;
-        const { agentId, events } = message.payload;
-
-        const hydrated = hydrateStreamState(
-          events.map(({ event, timestamp }) => ({
-            event: event as AgentStreamEventPayload,
-            timestamp: new Date(timestamp),
-          }))
-        );
-        const initKey = getInitKey(serverId, agentId);
-        const hasInFlightHistorySync = Boolean(getInitDeferred(initKey));
-
-        setAgentStreamTail(serverId, (prev) => {
-          const next = new Map(prev);
-          next.set(agentId, hydrated);
-          return next;
-        });
-        clearAgentStreamHead(serverId, agentId);
-
-        const deferredUpdate = pendingAgentUpdatesRef.current.get(agentId);
-        pendingAgentUpdatesRef.current.delete(agentId);
-        if (hasInFlightHistorySync && deferredUpdate) {
-          applyAgentUpdatePayload(deferredUpdate);
-        }
-
-        setInitializingAgents(serverId, (prev) => {
-          if (prev.get(agentId) !== true) {
-            return prev;
-          }
-          const next = new Map(prev);
-          next.set(agentId, false);
-          return next;
-        });
-
-        // Resolve the initialization promise (even for empty history)
-        resolveInitDeferred(initKey);
-        markAgentHistorySynchronized(serverId, agentId);
+        if (message.type !== "fetch_agent_timeline_response") return;
+        applyTimelineResponse(message.payload);
       }
     );
 
@@ -1233,6 +1321,14 @@ export function SessionProvider({
         return next;
       });
       clearAgentStreamHead(serverId, agentId);
+      setAgentTimelineCursor(serverId, (prev) => {
+        if (!prev.has(agentId)) {
+          return prev;
+        }
+        const next = new Map(prev);
+        next.delete(agentId);
+        return next;
+      });
 
       // Remove draft input
       clearDraftInput(agentId);
@@ -1292,7 +1388,7 @@ export function SessionProvider({
     return () => {
       unsubAgentUpdate();
       unsubAgentStream();
-      unsubAgentStreamSnapshot();
+      unsubAgentTimeline();
       unsubStatus();
       unsubPermissionRequest();
       unsubPermissionResolved();
@@ -1313,6 +1409,7 @@ export function SessionProvider({
     setAgentStreamTail,
     setAgentStreamHead,
     clearAgentStreamHead,
+    setAgentTimelineCursor,
     setInitializingAgents,
     setAgents,
     setAgentLastActivity,
@@ -1323,62 +1420,8 @@ export function SessionProvider({
     clearDraftInput,
     notifyAgentAttention,
     applyAgentUpdatePayload,
-    markAgentHistorySynchronized,
+    applyTimelineResponse,
   ]);
-
-  const initializeAgent = useCallback(
-    ({ agentId, requestId }: { agentId: string; requestId?: string }) => {
-      setInitializingAgents(serverId, (prev) => {
-        const next = new Map(prev);
-        next.set(agentId, true);
-        return next;
-      });
-
-      if (!client) {
-        console.warn("[Session] initializeAgent skipped: daemon unavailable");
-        setInitializingAgents(serverId, (prev) => {
-          const next = new Map(prev);
-          next.set(agentId, false);
-          return next;
-        });
-        return;
-      }
-
-      client
-        .initializeAgent(agentId, requestId)
-        .catch((error) => {
-          console.warn("[Session] initializeAgent failed", { agentId, error });
-          setInitializingAgents(serverId, (prev) => {
-            const next = new Map(prev);
-            next.set(agentId, false);
-            return next;
-          });
-        });
-    },
-    [serverId, client, setInitializingAgents]
-  );
-
-  const refreshAgent = useCallback(
-    ({ agentId }: { agentId: string }) => {
-      setInitializingAgents(serverId, (prev) => {
-        const next = new Map(prev);
-        next.set(agentId, true);
-        return next;
-      });
-
-      refreshAgentMutation
-        .mutateAsync({ agentId })
-        .catch((error) => {
-          console.warn("[Session] refreshAgent failed", { agentId, error });
-          setInitializingAgents(serverId, (prev) => {
-            const next = new Map(prev);
-            next.set(agentId, false);
-            return next;
-          });
-        });
-    },
-    [serverId, refreshAgentMutation, setInitializingAgents]
-  );
 
   const sendAgentMessage = useCallback(
     async (

@@ -1,5 +1,6 @@
 import { useCallback } from "react";
 import { useSessionStore } from "@/stores/session-store";
+import type { FetchAgentTimelineOptions } from "@server/client/daemon-client";
 import {
   attachInitTimeout,
   createInitDeferred,
@@ -9,10 +10,49 @@ import {
 } from "@/utils/agent-initialization";
 
 const INIT_TIMEOUT_MS = 5 * 60_000;
+const DEFAULT_INITIAL_TIMELINE_LIMIT = 200;
+
+type TimelineCursorState = {
+  epoch: string;
+  endSeq: number;
+};
+
+function buildInitialTimelineRequest(
+  cursor: TimelineCursorState | undefined
+): FetchAgentTimelineOptions {
+  if (!cursor) {
+    return {
+      direction: "tail",
+      limit: DEFAULT_INITIAL_TIMELINE_LIMIT,
+      projection: "projected",
+    };
+  }
+
+  return {
+    direction: "after",
+    cursor: { epoch: cursor.epoch, seq: cursor.endSeq },
+    // Catch up all missing canonical rows by default.
+    limit: 0,
+    projection: "projected",
+  };
+}
 
 export function useAgentInitialization(serverId: string) {
   const client = useSessionStore((state) => state.sessions[serverId]?.client ?? null);
   const setInitializingAgents = useSessionStore((state) => state.setInitializingAgents);
+  const setAgentInitializing = useCallback(
+    (agentId: string, initializing: boolean) => {
+      setInitializingAgents(serverId, (prev) => {
+        if (prev.get(agentId) === initializing) {
+          return prev;
+        }
+        const next = new Map(prev);
+        next.set(agentId, initializing);
+        return next;
+      });
+    },
+    [serverId, setInitializingAgents]
+  );
 
   const ensureAgentIsInitialized = useCallback(
     (agentId: string): Promise<void> => {
@@ -24,14 +64,7 @@ export function useAgentInitialization(serverId: string) {
 
       const deferred = createInitDeferred(key);
       const timeoutId = setTimeout(() => {
-        setInitializingAgents(serverId, (prev) => {
-          if (prev.get(agentId) !== true) {
-            return prev;
-          }
-          const next = new Map(prev);
-          next.set(agentId, false);
-          return next;
-        });
+        setAgentInitializing(agentId, false);
         rejectInitDeferred(
           key,
           new Error(
@@ -41,34 +74,26 @@ export function useAgentInitialization(serverId: string) {
       }, INIT_TIMEOUT_MS);
       attachInitTimeout(key, timeoutId);
 
-      setInitializingAgents(serverId, (prev) => {
-        const next = new Map(prev);
-        next.set(agentId, true);
-        return next;
-      });
+      setAgentInitializing(agentId, true);
 
       if (!client) {
-        setInitializingAgents(serverId, (prev) => {
-          const next = new Map(prev);
-          next.set(agentId, false);
-          return next;
-        });
+        setAgentInitializing(agentId, false);
         rejectInitDeferred(key, new Error("Host is not connected"));
         return deferred.promise;
       }
 
+      const session = useSessionStore.getState().sessions[serverId];
+      const cursor = session?.agentTimelineCursor.get(agentId);
+      const timelineRequest = buildInitialTimelineRequest(cursor);
+
       client
-        .initializeAgent(agentId)
+        .fetchAgentTimeline(agentId, timelineRequest)
         .then(() => {
-          // No-op: the actual "timeline hydrated" signal is the `agent_stream_snapshot`
-          // message, handled in SessionContext.
+          // No-op: hydration completion is handled by SessionContext
+          // when it processes fetch_agent_timeline_response.
         })
         .catch((error) => {
-          setInitializingAgents(serverId, (prev) => {
-            const next = new Map(prev);
-            next.set(agentId, false);
-            return next;
-          });
+          setAgentInitializing(agentId, false);
           rejectInitDeferred(
             key,
             error instanceof Error ? error : new Error(String(error))
@@ -77,7 +102,7 @@ export function useAgentInitialization(serverId: string) {
 
       return deferred.promise;
     },
-    [client, serverId, setInitializingAgents]
+    [client, serverId, setAgentInitializing]
   );
 
   const refreshAgent = useCallback(
@@ -85,24 +110,21 @@ export function useAgentInitialization(serverId: string) {
       if (!client) {
         throw new Error("Host is not connected");
       }
-      setInitializingAgents(serverId, (prev) => {
-        const next = new Map(prev);
-        next.set(agentId, true);
-        return next;
-      });
+      setAgentInitializing(agentId, true);
 
       try {
         await client.refreshAgent(agentId);
-      } catch (error) {
-        setInitializingAgents(serverId, (prev) => {
-          const next = new Map(prev);
-          next.set(agentId, false);
-          return next;
+        await client.fetchAgentTimeline(agentId, {
+          direction: "tail",
+          limit: DEFAULT_INITIAL_TIMELINE_LIMIT,
+          projection: "projected",
         });
+      } catch (error) {
+        setAgentInitializing(agentId, false);
         throw error;
       }
     },
-    [client, serverId, setInitializingAgents]
+    [client, setAgentInitializing]
   );
 
   return { ensureAgentIsInitialized, refreshAgent };
