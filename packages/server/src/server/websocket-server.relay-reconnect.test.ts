@@ -1,4 +1,11 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import {
+  BinaryMuxChannel,
+  TerminalBinaryMessageType,
+  asUint8Array,
+  decodeBinaryMuxFrame,
+  encodeBinaryMuxFrame,
+} from "../shared/binary-mux.js";
 
 const wsModuleMock = vi.hoisted(() => {
   class MockWebSocketServer {
@@ -28,6 +35,7 @@ const sessionMock = vi.hoisted(() => {
   class MockSession {
     cleanup = vi.fn(async () => {});
     handleMessage = vi.fn(async () => {});
+    handleBinaryFrame = vi.fn((_frame: unknown) => {});
     getClientActivity = vi.fn(() => null);
     readonly args: Record<string, unknown>;
 
@@ -71,7 +79,7 @@ import {
 
 class MockSocket {
   readyState = 1;
-  sent: string[] = [];
+  sent: unknown[] = [];
   private listeners = new Map<string, Array<(...args: any[]) => void>>();
 
   on(event: "message" | "close" | "error", listener: (...args: any[]) => void): void {
@@ -88,7 +96,7 @@ class MockSocket {
     this.on(event, wrapped);
   }
 
-  send(data: string): void {
+  send(data: unknown): void {
     this.sent.push(data);
   }
 
@@ -193,6 +201,92 @@ describe("relay external socket reconnect behavior", () => {
     socket1.emit("close", 1006, "");
     await vi.advanceTimersByTimeAsync(90_000);
     expect(session.cleanup).toHaveBeenCalledTimes(1);
+
+    await server.close();
+  });
+
+  test("routes inbound binary mux frames to session.handleBinaryFrame", async () => {
+    const server = createServer();
+    const metadata: ExternalSocketMetadata = {
+      transport: "relay",
+      externalSessionKey: "relay:client-binary-inbound",
+    };
+
+    const socket = new MockSocket();
+    await server.attachExternalSocket(socket, metadata);
+    expect(sessionMock.instances).toHaveLength(1);
+    const session = sessionMock.instances[0]!;
+
+    socket.emit(
+      "message",
+      Buffer.from(
+        encodeBinaryMuxFrame({
+          channel: BinaryMuxChannel.Terminal,
+          messageType: TerminalBinaryMessageType.InputUtf8,
+          streamId: 9,
+          offset: 0,
+          payload: new TextEncoder().encode("ls\r"),
+        })
+      )
+    );
+    await Promise.resolve();
+
+    expect(session.handleBinaryFrame).toHaveBeenCalledTimes(1);
+    const frame = session.handleBinaryFrame.mock.calls[0]?.[0] as {
+      channel: number;
+      messageType: number;
+      streamId: number;
+      offset: number;
+    };
+    expect(frame.channel).toBe(BinaryMuxChannel.Terminal);
+    expect(frame.messageType).toBe(TerminalBinaryMessageType.InputUtf8);
+    expect(frame.streamId).toBe(9);
+    expect(frame.offset).toBe(0);
+
+    await server.close();
+  });
+
+  test("sends outbound binary mux frames from session over websocket", async () => {
+    const server = createServer();
+    const metadata: ExternalSocketMetadata = {
+      transport: "relay",
+      externalSessionKey: "relay:client-binary-outbound",
+    };
+
+    const socket = new MockSocket();
+    await server.attachExternalSocket(socket, metadata);
+    expect(sessionMock.instances).toHaveLength(1);
+    const session = sessionMock.instances[0]!;
+
+    const onBinaryMessage = session.args.onBinaryMessage as
+      | ((frame: {
+          channel: number;
+          messageType: number;
+          streamId: number;
+          offset: number;
+          payload?: Uint8Array;
+        }) => void)
+      | undefined;
+    expect(onBinaryMessage).toBeTypeOf("function");
+
+    onBinaryMessage?.({
+      channel: BinaryMuxChannel.Terminal,
+      messageType: TerminalBinaryMessageType.OutputUtf8,
+      streamId: 11,
+      offset: 42,
+      payload: new TextEncoder().encode("ok"),
+    });
+
+    expect(socket.sent).toHaveLength(2);
+    const binaryPayload = asUint8Array(socket.sent[1]);
+    expect(binaryPayload).not.toBeNull();
+    const frame = decodeBinaryMuxFrame(binaryPayload!);
+    expect(frame).not.toBeNull();
+    expect(frame!.channel).toBe(BinaryMuxChannel.Terminal);
+    expect(frame!.messageType).toBe(TerminalBinaryMessageType.OutputUtf8);
+    expect(frame!.streamId).toBe(11);
+    expect(frame!.offset).toBe(42);
+    expect(new TextDecoder().decode(frame!.payload ?? new Uint8Array())).toBe("ok");
 
     await server.close();
   });

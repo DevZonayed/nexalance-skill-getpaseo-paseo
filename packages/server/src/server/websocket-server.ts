@@ -13,6 +13,11 @@ import {
   type WSOutboundMessage,
   wrapSessionMessage,
 } from "./messages.js";
+import {
+  asUint8Array,
+  decodeBinaryMuxFrame,
+  encodeBinaryMuxFrame,
+} from "../shared/binary-mux.js";
 import type { AllowedHostsConfig } from "./allowed-hosts.js";
 import { isHostAllowed } from "./allowed-hosts.js";
 import { Session } from "./session.js";
@@ -54,7 +59,7 @@ function bufferFromWsData(data: Buffer | ArrayBuffer | Buffer[] | string): Buffe
 
 type WebSocketLike = {
   readyState: number;
-  send: (data: string) => void;
+  send: (data: string | Uint8Array | ArrayBuffer) => void;
   close: (code?: number, reason?: string) => void;
   on: (event: "message" | "close" | "error", listener: (...args: any[]) => void) => void;
   once: (event: "close" | "error", listener: (...args: any[]) => void) => void;
@@ -253,6 +258,16 @@ export class VoiceAssistantWebSocketServer {
     }
   }
 
+  private sendBinaryToClient(
+    ws: WebSocketLike,
+    frame: Parameters<typeof encodeBinaryMuxFrame>[0]
+  ): void {
+    if (ws.readyState !== 1) {
+      return;
+    }
+    ws.send(encodeBinaryMuxFrame(frame));
+  }
+
   private async attachSocket(
     ws: WebSocketLike,
     _request?: unknown,
@@ -300,6 +315,9 @@ export class VoiceAssistantWebSocketServer {
       clientId,
       onMessage: (msg) => {
         this.sendToClient(socketRef.current, wrapSessionMessage(msg));
+      },
+      onBinaryMessage: (frame) => {
+        this.sendBinaryToClient(socketRef.current, frame);
       },
       logger: connectionLogger.child({ module: "session" }),
       downloadTokenStore: this.downloadTokenStore,
@@ -481,6 +499,19 @@ export class VoiceAssistantWebSocketServer {
   ): Promise<void> {
     try {
       const buffer = bufferFromWsData(data);
+      const asBytes = asUint8Array(buffer);
+      if (asBytes) {
+        const frame = decodeBinaryMuxFrame(asBytes);
+        if (frame) {
+          const connection = this.sessions.get(ws);
+          if (!connection) {
+            this.logger.error("No session found for client");
+            return;
+          }
+          connection.session.handleBinaryFrame(frame);
+          return;
+        }
+      }
       const parsed = JSON.parse(buffer.toString());
       const parsedMessage = WSInboundMessageSchema.safeParse(parsed);
       if (!parsedMessage.success) {

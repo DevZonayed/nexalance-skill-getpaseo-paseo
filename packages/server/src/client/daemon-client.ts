@@ -39,6 +39,8 @@ import type {
   SubscribeTerminalResponse,
   TerminalOutput,
   KillTerminalResponse,
+  AttachTerminalStreamResponse,
+  DetachTerminalStreamResponse,
   TerminalInput,
   SessionInboundMessage,
   SessionOutboundMessage,
@@ -57,6 +59,19 @@ import {
   type Transport as RelayTransport,
 } from "@getpaseo/relay/e2ee";
 import { isRelayClientWebSocketUrl } from "../shared/daemon-endpoints.js";
+import {
+  asUint8Array,
+  decodeBinaryMuxFrame,
+  encodeBinaryMuxFrame,
+  BinaryMuxChannel,
+  TerminalBinaryFlags,
+  TerminalBinaryMessageType,
+  type BinaryMuxFrame,
+} from "../shared/binary-mux.js";
+import {
+  encodeTerminalKeyInput,
+  type TerminalKeyInput,
+} from "../shared/terminal-key-input.js";
 
 export interface Logger {
   debug(obj: object, msg?: string): void;
@@ -73,7 +88,7 @@ const consoleLogger: Logger = {
 };
 
 export type DaemonTransport = {
-  send: (data: string) => void;
+  send: (data: string | Uint8Array | ArrayBuffer) => void;
   close: (code?: number, reason?: string) => void;
   onMessage: (handler: (data: unknown) => void) => () => void;
   onOpen: (handler: () => void) => () => void;
@@ -93,8 +108,9 @@ export type WebSocketFactory = (
 
 export type WebSocketLike = {
   readyState: number;
-  send: (data: string) => void;
+  send: (data: string | Uint8Array | ArrayBuffer) => void;
   close: (code?: number, reason?: string) => void;
+  binaryType?: string;
   on?: (event: string, listener: (...args: any[]) => void) => void;
   off?: (event: string, listener: (...args: any[]) => void) => void;
   removeListener?: (event: string, listener: (...args: any[]) => void) => void;
@@ -217,6 +233,24 @@ type CreateTerminalPayload = CreateTerminalResponse["payload"];
 type SubscribeTerminalPayload = SubscribeTerminalResponse["payload"];
 type TerminalOutputPayload = TerminalOutput["payload"];
 type KillTerminalPayload = KillTerminalResponse["payload"];
+type AttachTerminalStreamPayload = AttachTerminalStreamResponse["payload"];
+type DetachTerminalStreamPayload = DetachTerminalStreamResponse["payload"];
+
+export type TerminalStreamChunk = {
+  streamId: number;
+  offset: number;
+  endOffset: number;
+  replay: boolean;
+  data: Uint8Array;
+};
+
+type BufferedTerminalStreamQueue = {
+  chunks: TerminalStreamChunk[];
+  bytes: number;
+};
+
+const TERMINAL_STREAM_MAX_BUFFERED_CHUNKS = 2048;
+const TERMINAL_STREAM_MAX_BUFFERED_BYTES = 2 * 1024 * 1024;
 
 type AgentRefreshedStatusPayload = z.infer<
   typeof AgentRefreshedStatusPayloadSchema
@@ -321,6 +355,12 @@ export class DaemonClient {
   private logger: Logger;
   private pendingSendQueue: PendingSend[] = [];
   private relayClientId: string | null = null;
+  private terminalStreamHandlers: Map<
+    number,
+    Set<(chunk: TerminalStreamChunk) => void>
+  > = new Map();
+  private bufferedTerminalStreamChunks: Map<number, BufferedTerminalStreamQueue> = new Map();
+  private terminalStreamAckOffsets: Map<number, number> = new Map();
 
   constructor(private config: DaemonClientConfig) {
     this.logger = config.logger ?? consoleLogger;
@@ -538,6 +578,9 @@ export class DaemonClient {
     }
     this.disposeTransport(1000, "Client closed");
     this.clearWaiters(new Error("Daemon client closed"));
+    this.terminalStreamHandlers.clear();
+    this.bufferedTerminalStreamChunks.clear();
+    this.terminalStreamAckOffsets.clear();
     this.updateConnectionState({
       status: "disconnected",
       reason: "client_closed",
@@ -648,6 +691,23 @@ export class DaemonClient {
     const payload = SessionInboundMessageSchema.parse(message);
     try {
       this.transport.send(JSON.stringify({ type: "session", message: payload }));
+    } catch (error) {
+      if (this.config.suppressSendErrors) {
+        return;
+      }
+      throw error instanceof Error ? error : new Error(String(error));
+    }
+  }
+
+  private sendBinaryFrame(frame: BinaryMuxFrame): void {
+    if (!this.transport || this.connectionState.status !== "connected") {
+      if (this.config.suppressSendErrors) {
+        return;
+      }
+      throw new Error(`Transport not connected (status: ${this.connectionState.status})`);
+    }
+    try {
+      this.transport.send(encodeBinaryMuxFrame(frame));
     } catch (error) {
       if (this.config.suppressSendErrors) {
         return;
@@ -2569,6 +2629,159 @@ export class DaemonClient {
     });
   }
 
+  async attachTerminalStream(
+    terminalId: string,
+    options?: {
+      resumeOffset?: number;
+      rows?: number;
+      cols?: number;
+    },
+    requestId?: string
+  ): Promise<AttachTerminalStreamPayload> {
+    const resolvedRequestId = this.createRequestId(requestId);
+    const message = SessionInboundMessageSchema.parse({
+      type: "attach_terminal_stream_request",
+      terminalId,
+      requestId: resolvedRequestId,
+      ...(options?.resumeOffset !== undefined ? { resumeOffset: options.resumeOffset } : {}),
+      ...(options?.rows !== undefined ? { rows: options.rows } : {}),
+      ...(options?.cols !== undefined ? { cols: options.cols } : {}),
+    });
+    return this.sendRequest({
+      requestId: resolvedRequestId,
+      message,
+      timeout: 10000,
+      options: { skipQueue: true },
+      select: (msg) => {
+        if (msg.type !== "attach_terminal_stream_response") {
+          return null;
+        }
+        if (msg.payload.requestId !== resolvedRequestId) {
+          return null;
+        }
+        return msg.payload;
+      },
+    });
+  }
+
+  async detachTerminalStream(
+    streamId: number,
+    requestId?: string
+  ): Promise<DetachTerminalStreamPayload> {
+    const resolvedRequestId = this.createRequestId(requestId);
+    const message = SessionInboundMessageSchema.parse({
+      type: "detach_terminal_stream_request",
+      streamId,
+      requestId: resolvedRequestId,
+    });
+    const payload = await this.sendRequest({
+      requestId: resolvedRequestId,
+      message,
+      timeout: 10000,
+      options: { skipQueue: true },
+      select: (msg) => {
+        if (msg.type !== "detach_terminal_stream_response") {
+          return null;
+        }
+        if (msg.payload.requestId !== resolvedRequestId) {
+          return null;
+        }
+        return msg.payload;
+      },
+    });
+    this.terminalStreamHandlers.delete(streamId);
+    this.bufferedTerminalStreamChunks.delete(streamId);
+    this.terminalStreamAckOffsets.delete(streamId);
+    return payload;
+  }
+
+  onTerminalStreamData(
+    streamId: number,
+    handler: (chunk: TerminalStreamChunk) => void
+  ): () => void {
+    if (!this.terminalStreamHandlers.has(streamId)) {
+      this.terminalStreamHandlers.set(streamId, new Set());
+    }
+    const handlers = this.terminalStreamHandlers.get(streamId)!;
+    handlers.add(handler);
+
+    const buffered = this.bufferedTerminalStreamChunks.get(streamId);
+    if (buffered && buffered.chunks.length > 0) {
+      for (const chunk of buffered.chunks) {
+        try {
+          handler(chunk);
+          this.maybeAckTerminalStreamChunk(streamId, chunk.endOffset);
+        } catch {
+          // no-op
+        }
+      }
+      this.bufferedTerminalStreamChunks.delete(streamId);
+    }
+
+    return () => {
+      handlers.delete(handler);
+      if (handlers.size === 0) {
+        this.terminalStreamHandlers.delete(streamId);
+      }
+    };
+  }
+
+  async waitForTerminalStreamData(
+    streamId: number,
+    predicate: (chunk: TerminalStreamChunk) => boolean,
+    timeout = 5000
+  ): Promise<TerminalStreamChunk> {
+    return new Promise<TerminalStreamChunk>((resolve, reject) => {
+      const timeoutHandle = setTimeout(() => {
+        unsubscribe();
+        reject(new Error(`Timeout waiting for terminal stream data (${timeout}ms)`));
+      }, timeout);
+
+      const unsubscribe = this.onTerminalStreamData(streamId, (chunk) => {
+        if (!predicate(chunk)) {
+          return;
+        }
+        clearTimeout(timeoutHandle);
+        unsubscribe();
+        resolve(chunk);
+      });
+    });
+  }
+
+  sendTerminalStreamInput(streamId: number, data: string | Uint8Array): void {
+    const payload = typeof data === "string" ? encodeUtf8String(data) : data;
+    this.sendBinaryFrame({
+      channel: BinaryMuxChannel.Terminal,
+      messageType: TerminalBinaryMessageType.InputUtf8,
+      streamId,
+      offset: 0,
+      payload,
+    });
+  }
+
+  sendTerminalStreamKey(streamId: number, input: TerminalKeyInput): void {
+    const encoded = encodeTerminalKeyInput(input);
+    if (!encoded) {
+      return;
+    }
+    this.sendTerminalStreamInput(streamId, encoded);
+  }
+
+  sendTerminalStreamAck(streamId: number, offset: number): void {
+    const normalizedOffset = Math.max(0, Math.floor(offset));
+    const previousAck = this.terminalStreamAckOffsets.get(streamId) ?? -1;
+    if (normalizedOffset > previousAck) {
+      this.terminalStreamAckOffsets.set(streamId, normalizedOffset);
+    }
+    this.sendBinaryFrame({
+      channel: BinaryMuxChannel.Terminal,
+      messageType: TerminalBinaryMessageType.Ack,
+      streamId,
+      offset: normalizedOffset,
+      payload: new Uint8Array(0),
+    });
+  }
+
   async waitForTerminalOutput(
     terminalId: string,
     timeout = 5000
@@ -2628,6 +2841,14 @@ export class DaemonClient {
       data && typeof data === "object" && "data" in data
         ? (data as { data: unknown }).data
         : data;
+    const rawBytes = asUint8Array(rawData);
+    if (rawBytes) {
+      const frame = decodeBinaryMuxFrame(rawBytes);
+      if (frame) {
+        this.handleBinaryFrame(frame);
+        return;
+      }
+    }
     const payload = decodeMessageData(rawData);
     if (!payload) {
       return;
@@ -2652,6 +2873,75 @@ export class DaemonClient {
     }
 
     this.handleSessionMessage(parsed.data.message);
+  }
+
+  private handleBinaryFrame(frame: BinaryMuxFrame): void {
+    if (
+      frame.channel === BinaryMuxChannel.Terminal &&
+      frame.messageType === TerminalBinaryMessageType.OutputUtf8
+    ) {
+      const handlers = this.terminalStreamHandlers.get(frame.streamId);
+      const chunk: TerminalStreamChunk = {
+        streamId: frame.streamId,
+        offset: frame.offset,
+        endOffset: frame.offset + (frame.payload?.byteLength ?? 0),
+        replay: Boolean((frame.flags ?? 0) & TerminalBinaryFlags.Replay),
+        data: frame.payload ?? new Uint8Array(0),
+      };
+      if (!handlers || handlers.size === 0) {
+        const queue = this.bufferedTerminalStreamChunks.get(frame.streamId) ?? {
+          chunks: [],
+          bytes: 0,
+        };
+        queue.chunks.push(chunk);
+        queue.bytes += chunk.data.byteLength;
+        while (
+          queue.chunks.length > TERMINAL_STREAM_MAX_BUFFERED_CHUNKS ||
+          queue.bytes > TERMINAL_STREAM_MAX_BUFFERED_BYTES
+        ) {
+          const removed = queue.chunks.shift();
+          if (!removed) {
+            break;
+          }
+          queue.bytes -= removed.data.byteLength;
+          if (queue.bytes < 0) {
+            queue.bytes = 0;
+          }
+        }
+        this.bufferedTerminalStreamChunks.set(frame.streamId, queue);
+        return;
+      }
+      let delivered = false;
+      for (const handler of handlers) {
+        try {
+          handler(chunk);
+          delivered = true;
+        } catch {
+          // no-op
+        }
+      }
+      if (delivered) {
+        this.maybeAckTerminalStreamChunk(frame.streamId, chunk.endOffset);
+      }
+      return;
+    }
+  }
+
+  private maybeAckTerminalStreamChunk(streamId: number, endOffset: number): void {
+    if (!Number.isFinite(endOffset) || endOffset < 0) {
+      return;
+    }
+    const normalizedEndOffset = Math.floor(endOffset);
+    const previousAck = this.terminalStreamAckOffsets.get(streamId) ?? -1;
+    if (normalizedEndOffset <= previousAck) {
+      return;
+    }
+    this.terminalStreamAckOffsets.set(streamId, normalizedEndOffset);
+    try {
+      this.sendTerminalStreamAck(streamId, normalizedEndOffset);
+    } catch {
+      // no-op
+    }
   }
 
   private updateConnectionState(next: ConnectionState): void {
@@ -2694,6 +2984,9 @@ export class DaemonClient {
     // and responses from the previous connection will never arrive.
     this.clearWaiters(new Error(reason ?? "Connection lost"));
     this.rejectPendingSendQueue(new Error(reason ?? "Connection lost"));
+    this.terminalStreamHandlers.clear();
+    this.bufferedTerminalStreamChunks.clear();
+    this.terminalStreamAckOffsets.clear();
 
     this.updateConnectionState({
       status: "disconnected",
@@ -2709,6 +3002,12 @@ export class DaemonClient {
   }
 
   private handleSessionMessage(msg: SessionOutboundMessage): void {
+    if (msg.type === "terminal_stream_exit") {
+      this.terminalStreamHandlers.delete(msg.payload.streamId);
+      this.bufferedTerminalStreamChunks.delete(msg.payload.streamId);
+      this.terminalStreamAckOffsets.delete(msg.payload.streamId);
+    }
+
     if (this.rawMessageListeners.size > 0) {
       for (const handler of this.rawMessageListeners) {
         try {
@@ -2904,6 +3203,13 @@ function createWebSocketTransportFactory(
 ): DaemonTransportFactory {
   return ({ url, headers }) => {
     const ws = factory(url, { headers });
+    if ("binaryType" in ws) {
+      try {
+        ws.binaryType = "arraybuffer";
+      } catch {
+        // no-op
+      }
+    }
     return {
       send: (data) => {
         if (typeof ws.readyState === "number" && ws.readyState !== 1) {
@@ -2997,16 +3303,23 @@ function createEncryptedTransport(
         base.send(data);
         return;
       }
+      if (ArrayBuffer.isView(data)) {
+        const view = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+        const out = new Uint8Array(view.byteLength);
+        out.set(view);
+        base.send(out.buffer);
+        return;
+      }
       if (data instanceof ArrayBuffer) {
         if (typeof TextDecoder !== "undefined") {
-          base.send(new TextDecoder().decode(data));
+          base.send(data);
           return;
         }
         if (typeof Buffer !== "undefined") {
-          base.send(Buffer.from(data).toString("utf8"));
+          base.send(data);
           return;
         }
-        base.send(String(data));
+        base.send(data);
         return;
       }
       base.send(String(data));
@@ -3055,7 +3368,20 @@ function createEncryptedTransport(
       if (!channel) {
         throw new Error("Encrypted channel not ready");
       }
-      void channel.send(data).catch((error) => {
+      const outbound =
+        typeof data === "string"
+          ? data
+          : data instanceof ArrayBuffer
+            ? data
+            : ArrayBuffer.isView(data)
+              ? (() => {
+                  const view = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+                  const out = new Uint8Array(view.byteLength);
+                  out.set(view);
+                  return out.buffer;
+                })()
+              : String(data);
+      void channel.send(outbound).catch((error) => {
         emitError(error);
       });
     },
@@ -3238,6 +3564,20 @@ function decodeMessageData(data: unknown): string | null {
     return (data as { toString: () => string }).toString();
   }
   return null;
+}
+
+function encodeUtf8String(value: string): Uint8Array {
+  if (typeof TextEncoder !== "undefined") {
+    return new TextEncoder().encode(value);
+  }
+  if (typeof Buffer !== "undefined") {
+    return new Uint8Array(Buffer.from(value, "utf8"));
+  }
+  const out = new Uint8Array(value.length);
+  for (let i = 0; i < value.length; i++) {
+    out[i] = value.charCodeAt(i) & 0xff;
+  }
+  return out;
 }
 
 function resolveAgentConfig(options: CreateAgentRequestOptions): AgentSessionConfig {

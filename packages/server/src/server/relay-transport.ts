@@ -25,7 +25,7 @@ export type RelayTransportController = {
 
 type RelaySocketLike = {
   readyState: number;
-  send: (data: string) => void;
+  send: (data: string | Uint8Array | ArrayBuffer) => void;
   close: (code?: number, reason?: string) => void;
   on: (event: "message" | "close" | "error", listener: (...args: any[]) => void) => void;
   once: (event: "close" | "error", listener: (...args: any[]) => void) => void;
@@ -436,7 +436,20 @@ function createEncryptedSocket(
       return readyState;
     },
     send: (data) => {
-      void channel.send(data).catch((error) => {
+      const outbound =
+        typeof data === "string"
+          ? data
+          : data instanceof ArrayBuffer
+            ? data
+            : ArrayBuffer.isView(data)
+              ? (() => {
+                  const view = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+                  const out = new Uint8Array(view.byteLength);
+                  out.set(view);
+                  return out.buffer;
+                })()
+              : String(data);
+      void channel.send(outbound).catch((error) => {
         emitter.emit("error", error);
       });
     },

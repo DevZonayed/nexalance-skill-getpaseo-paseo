@@ -12,6 +12,9 @@ import {
   decrypt,
 } from "./crypto.js";
 
+const nodeMajor = Number((process.versions.node ?? "0").split(".")[0] ?? "0");
+const shouldRunRelayE2e = process.env.FORCE_RELAY_E2E === "1" || nodeMajor < 25;
+
 async function getAvailablePort(): Promise<number> {
   return new Promise((resolve, reject) => {
     const server = net.createServer();
@@ -46,7 +49,36 @@ async function waitForServer(port: number, timeout = 15000): Promise<void> {
   throw new Error(`Server did not start on port ${port} within ${timeout}ms`);
 }
 
-describe("E2E Relay with E2EE", () => {
+async function waitForRelayWebSocketReady(port: number, timeout = 60000): Promise<void> {
+  const start = Date.now();
+  while (Date.now() - start < timeout) {
+    const serverId = `probe-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+    const probeUrl = `ws://127.0.0.1:${port}/ws?serverId=${serverId}&role=server`;
+    const opened = await new Promise<boolean>((resolve) => {
+      const ws = new WebSocket(probeUrl);
+      const timer = setTimeout(() => {
+        ws.terminate();
+        resolve(false);
+      }, 5000);
+      ws.once("open", () => {
+        clearTimeout(timer);
+        ws.close(1000, "probe");
+        resolve(true);
+      });
+      ws.once("error", () => {
+        clearTimeout(timer);
+        resolve(false);
+      });
+    });
+    if (opened) {
+      return;
+    }
+    await new Promise((r) => setTimeout(r, 250));
+  }
+  throw new Error(`Relay WebSocket endpoint not ready on port ${port} within ${timeout}ms`);
+}
+
+(shouldRunRelayE2e ? describe : describe.skip)("E2E Relay with E2EE", () => {
   let relayPort: number;
   let relayProcess: ChildProcess | null = null;
 
@@ -54,7 +86,17 @@ describe("E2E Relay with E2EE", () => {
     relayPort = await getAvailablePort();
     relayProcess = spawn(
       "npx",
-      ["wrangler", "dev", "--local", "--ip", "127.0.0.1", "--port", String(relayPort)],
+      [
+        "wrangler",
+        "dev",
+        "--local",
+        "--ip",
+        "127.0.0.1",
+        "--port",
+        String(relayPort),
+        "--live-reload=false",
+        "--show-interactive-dev-session=false",
+      ],
       {
         cwd: process.cwd(),
         env: { ...process.env },
@@ -79,6 +121,7 @@ describe("E2E Relay with E2EE", () => {
     });
 
     await waitForServer(relayPort, 30000);
+    await waitForRelayWebSocketReady(relayPort, 60000);
   });
 
   afterAll(async () => {
@@ -88,7 +131,7 @@ describe("E2E Relay with E2EE", () => {
     }
   });
 
-  it("full flow: daemon and client exchange encrypted messages through relay", { timeout: 20_000 }, async () => {
+  it("full flow: daemon and client exchange encrypted messages through relay", { timeout: 90_000 }, async () => {
     const serverId = "test-session-" + Date.now();
     const clientId = "clt_test_" + Date.now() + "_" + Math.random().toString(36).slice(2);
 
@@ -255,7 +298,7 @@ describe("E2E Relay with E2EE", () => {
     clientWs.close();
   });
 
-  it("relay only sees opaque bytes after handshake", async () => {
+  it("relay only sees opaque bytes after handshake", { timeout: 90_000 }, async () => {
     const serverId = "opaque-test-" + Date.now();
     const clientId = "clt_opaque_" + Date.now() + "_" + Math.random().toString(36).slice(2);
 

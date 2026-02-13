@@ -17,6 +17,18 @@ type TauriWebSocketModule = {
   connect(url: string, config?: unknown): Promise<TauriWebSocketConnection>;
 };
 
+function toTauriOutgoingMessage(
+  data: string | Uint8Array | ArrayBuffer
+): string | number[] {
+  if (typeof data === "string") {
+    return data;
+  }
+  if (data instanceof ArrayBuffer) {
+    return Array.from(new Uint8Array(data));
+  }
+  return Array.from(data);
+}
+
 function isTauriEnvironment(): boolean {
   return typeof window !== "undefined" && (window as any).__TAURI__ !== undefined;
 }
@@ -49,7 +61,7 @@ export function createTauriWebSocketTransportFactory(): DaemonTransportFactory |
     const errorHandlers = new Set<(event?: unknown) => void>();
     const messageHandlers = new Set<(data: unknown) => void>();
 
-    const pendingSends: string[] = [];
+    const pendingSends: Array<string | number[]> = [];
     let closeRequested: { code?: number; reason?: string } | null = null;
 
     const emitOpen = () => {
@@ -131,6 +143,10 @@ export function createTauriWebSocketTransportFactory(): DaemonTransportFactory |
             emitMessage({ data: msg.data });
             return;
           }
+          if (msg.type === "Binary") {
+            emitMessage({ data: new Uint8Array(msg.data) });
+            return;
+          }
           if (msg.type === "Close") {
             emitClose(msg.data ?? undefined);
             return;
@@ -168,11 +184,12 @@ export function createTauriWebSocketTransportFactory(): DaemonTransportFactory |
     const transport: DaemonTransport = {
       send: (data) => {
         if (disposed) return;
+        const outgoing = toTauriOutgoingMessage(data);
         if (!ws) {
-          pendingSends.push(data);
+          pendingSends.push(outgoing);
           return;
         }
-        void ws.send(data).catch((error) => emitError(error));
+        void ws.send(outgoing).catch((error) => emitError(error));
       },
       close: (code?: number, reason?: string) => {
         if (disposed) return;

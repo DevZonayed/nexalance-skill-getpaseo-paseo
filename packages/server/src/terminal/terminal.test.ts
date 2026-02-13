@@ -429,6 +429,91 @@ describe("Terminal", () => {
     });
   });
 
+  describe("raw output stream", () => {
+    it("streams raw output chunks with byte offsets", async () => {
+      const session = trackSession(
+        await createTerminal({
+          cwd: "/tmp",
+          shell: "/bin/sh",
+          env: { PS1: "$ " },
+        })
+      );
+
+      await waitForLines(session, ["$"]);
+
+      const chunks: Array<{ data: string; startOffset: number; endOffset: number }> = [];
+      const sub = session.subscribeRaw((chunk) => {
+        chunks.push({
+          data: chunk.data,
+          startOffset: chunk.startOffset,
+          endOffset: chunk.endOffset,
+        });
+      });
+
+      session.send({ type: "input", data: "echo raw-stream\r" });
+      await waitForLines(session, ["$ echo raw-stream", "raw-stream", "$"]);
+
+      expect(chunks.length).toBeGreaterThan(0);
+      expect(chunks[chunks.length - 1].endOffset).toBe(session.getOutputOffset());
+      for (let i = 1; i < chunks.length; i++) {
+        expect(chunks[i].startOffset).toBe(chunks[i - 1].endOffset);
+      }
+
+      sub.unsubscribe();
+    });
+
+    it("replays buffered output from offset", async () => {
+      const session = trackSession(
+        await createTerminal({
+          cwd: "/tmp",
+          shell: "/bin/sh",
+          env: { PS1: "$ " },
+        })
+      );
+
+      await waitForLines(session, ["$"]);
+
+      const seen: Array<{ data: string; endOffset: number; replay: boolean }> = [];
+      const firstSub = session.subscribeRaw((chunk) => {
+        seen.push({
+          data: chunk.data,
+          endOffset: chunk.endOffset,
+          replay: chunk.replay,
+        });
+      });
+
+      session.send({ type: "input", data: "echo before-detach\r" });
+      await waitForLines(session, ["$ echo before-detach", "before-detach", "$"]);
+
+      const resumeOffset = seen[seen.length - 1]?.endOffset ?? 0;
+      firstSub.unsubscribe();
+
+      session.send({ type: "input", data: "echo after-detach\r" });
+      await waitForLines(session, [
+        "$ echo before-detach",
+        "before-detach",
+        "$ echo after-detach",
+        "after-detach",
+        "$",
+      ]);
+
+      const replayed: string[] = [];
+      const secondSub = session.subscribeRaw(
+        (chunk) => {
+          if (chunk.replay) {
+            replayed.push(chunk.data);
+          }
+        },
+        { fromOffset: resumeOffset }
+      );
+
+      const replayText = replayed.join("");
+      expect(replayText).toContain("after-detach");
+      expect(secondSub.replayedFrom).toBeGreaterThanOrEqual(resumeOffset);
+      secondSub.unsubscribe();
+    });
+  });
+
   describe("getState", () => {
     it("returns current terminal state with grid", async () => {
       const session = trackSession(

@@ -2,13 +2,44 @@ import { describe, test, expect, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, rmSync } from "fs";
 import { tmpdir } from "os";
 import path from "path";
+import WebSocket from "ws";
 import {
   createDaemonTestContext,
   type DaemonTestContext,
 } from "../test-utils/index.js";
+import {
+  BinaryMuxChannel,
+  TerminalBinaryMessageType,
+  decodeBinaryMuxFrame,
+  encodeBinaryMuxFrame,
+} from "../../shared/binary-mux.js";
+
+const decoder = new TextDecoder();
 
 function tmpCwd(): string {
   return mkdtempSync(path.join(tmpdir(), "daemon-terminal-e2e-"));
+}
+
+async function waitForCondition(
+  predicate: () => boolean,
+  timeoutMs: number,
+  intervalMs = 25
+): Promise<void> {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    if (predicate()) {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+  }
+  throw new Error(`Timed out after ${timeoutMs}ms waiting for condition`);
+}
+
+function percentile(values: number[], p: number): number {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const index = Math.min(sorted.length - 1, Math.ceil((p / 100) * sorted.length) - 1);
+  return sorted[index];
 }
 
 const shouldRun = !process.env.CI;
@@ -242,6 +273,288 @@ const shouldRun = !process.env.CI;
       }
 
       ctx.client.unsubscribeTerminal(terminalId);
+      rmSync(cwd, { recursive: true, force: true });
+    },
+    30000
+  );
+
+  test(
+    "streams terminal output over binary mux and supports modifier keys",
+    async () => {
+      const cwd = tmpCwd();
+      const list = await ctx.client.listTerminals(cwd);
+      const terminalId = list.terminals[0].id;
+
+      const attach = await ctx.client.attachTerminalStream(terminalId, { rows: 24, cols: 80 });
+      expect(attach.error).toBeNull();
+      expect(attach.streamId).toBeTypeOf("number");
+      const streamId = attach.streamId!;
+
+      let text = "";
+      const unsubscribe = ctx.client.onTerminalStreamData(streamId, (chunk) => {
+        text += decoder.decode(chunk.data, { stream: true });
+      });
+
+      ctx.client.sendTerminalStreamInput(streamId, "echo binary-stream\r");
+      await waitForCondition(() => text.includes("binary-stream"), 10000);
+
+      ctx.client.sendTerminalStreamInput(streamId, "cat -v\r");
+      await waitForCondition(() => text.includes("cat -v"), 10000);
+
+      // Ctrl+B is the default tmux prefix; cat -v should render it as ^B.
+      ctx.client.sendTerminalStreamKey(streamId, { key: "b", ctrl: true });
+      ctx.client.sendTerminalStreamInput(streamId, "\r");
+      await waitForCondition(() => text.includes("^B"), 10000);
+
+      // Stop cat
+      ctx.client.sendTerminalStreamKey(streamId, { key: "c", ctrl: true });
+
+      const detach = await ctx.client.detachTerminalStream(streamId);
+      expect(detach.success).toBe(true);
+      unsubscribe();
+      rmSync(cwd, { recursive: true, force: true });
+    },
+    30000
+  );
+
+  test(
+    "replays detached terminal output from resume offset (scrollback continuity)",
+    async () => {
+      const cwd = tmpCwd();
+      const list = await ctx.client.listTerminals(cwd);
+      const terminalId = list.terminals[0].id;
+
+      const attach = await ctx.client.attachTerminalStream(terminalId, { rows: 24, cols: 80 });
+      expect(attach.error).toBeNull();
+      const streamId = attach.streamId!;
+
+      let output = "";
+      let latestOffset = attach.currentOffset;
+      const unsubscribe = ctx.client.onTerminalStreamData(streamId, (chunk) => {
+        output += decoder.decode(chunk.data, { stream: true });
+        latestOffset = chunk.endOffset;
+      });
+
+      ctx.client.sendTerminalStreamInput(streamId, "echo before-detach\r");
+      await waitForCondition(() => output.includes("before-detach"), 10000);
+
+      const firstDetach = await ctx.client.detachTerminalStream(streamId);
+      expect(firstDetach.success).toBe(true);
+      unsubscribe();
+
+      // Terminal keeps running while hidden, stream is detached.
+      ctx.client.sendTerminalInput(terminalId, { type: "input", data: "echo while-detached\r" });
+      await new Promise((resolve) => setTimeout(resolve, 300));
+
+      const resumed = await ctx.client.attachTerminalStream(terminalId, {
+        resumeOffset: latestOffset,
+      });
+      expect(resumed.error).toBeNull();
+      expect(resumed.streamId).toBeTypeOf("number");
+      expect(resumed.reset).toBe(false);
+
+      let replayedText = "";
+      const resumedUnsub = ctx.client.onTerminalStreamData(resumed.streamId!, (chunk) => {
+        if (chunk.replay) {
+          replayedText += decoder.decode(chunk.data, { stream: true });
+        }
+      });
+
+      await waitForCondition(() => replayedText.includes("while-detached"), 10000);
+
+      const secondDetach = await ctx.client.detachTerminalStream(resumed.streamId!);
+      expect(secondDetach.success).toBe(true);
+      resumedUnsub();
+      rmSync(cwd, { recursive: true, force: true });
+    },
+    30000
+  );
+
+  test(
+    "applies stream backpressure window until client ack advances",
+    async () => {
+      const cwd = tmpCwd();
+      const list = await ctx.client.listTerminals(cwd);
+      const terminalId = list.terminals[0].id;
+
+      const ws = new WebSocket(`ws://127.0.0.1:${ctx.daemon.port}/ws`);
+      await new Promise<void>((resolve, reject) => {
+        ws.once("open", () => resolve());
+        ws.once("error", reject);
+      });
+
+      const attachRequestId = `attach-${Date.now()}`;
+      const detachRequestId = `detach-${Date.now()}`;
+      let streamId: number | null = null;
+      let latestEndOffset = 0;
+      let outputBytes = 0;
+
+      const streamReady = new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          reject(new Error("Timed out waiting for attach_terminal_stream_response"));
+        }, 10000);
+
+        ws.on("message", (raw) => {
+          if (Array.isArray(raw)) {
+            raw = Buffer.concat(raw.map((part) => (Buffer.isBuffer(part) ? part : Buffer.from(part))));
+          }
+          if (typeof raw !== "string" && !Buffer.isBuffer(raw)) {
+            return;
+          }
+          const text = typeof raw === "string" ? raw : raw.toString("utf8");
+          try {
+            const parsed = JSON.parse(text) as {
+              type?: string;
+              message?: {
+                type?: string;
+                payload?: { streamId?: number | null; requestId?: string };
+              };
+            };
+            if (
+              parsed.type === "session" &&
+              parsed.message?.type === "attach_terminal_stream_response" &&
+              parsed.message.payload?.requestId === attachRequestId
+            ) {
+              const nextStreamId = parsed.message.payload.streamId;
+              if (typeof nextStreamId === "number") {
+                streamId = nextStreamId;
+                clearTimeout(timeout);
+                resolve();
+              }
+            }
+          } catch {
+            // Ignore non-JSON payloads (binary mux frames).
+          }
+        });
+      });
+
+      ws.on("message", (raw) => {
+        if (typeof raw === "string") {
+          return;
+        }
+        if (Array.isArray(raw)) {
+          raw = Buffer.concat(raw.map((part) => (Buffer.isBuffer(part) ? part : Buffer.from(part))));
+        }
+        const bytes = Buffer.isBuffer(raw)
+          ? new Uint8Array(raw.buffer, raw.byteOffset, raw.byteLength)
+          : new Uint8Array(raw as ArrayBuffer);
+        const frame = decodeBinaryMuxFrame(bytes);
+        if (
+          !frame ||
+          frame.channel !== BinaryMuxChannel.Terminal ||
+          frame.messageType !== TerminalBinaryMessageType.OutputUtf8
+        ) {
+          return;
+        }
+        const chunkBytes = frame.payload?.byteLength ?? 0;
+        outputBytes += chunkBytes;
+        latestEndOffset = frame.offset + chunkBytes;
+      });
+
+      ws.send(
+        JSON.stringify({
+          type: "session",
+          message: {
+            type: "attach_terminal_stream_request",
+            terminalId,
+            requestId: attachRequestId,
+          },
+        })
+      );
+      await streamReady;
+      expect(streamId).toBeTypeOf("number");
+
+      ws.send(
+        JSON.stringify({
+          type: "session",
+          message: {
+            type: "terminal_input",
+            terminalId,
+            message: {
+              type: "input",
+              data: "head -c 1048576 /dev/zero | tr '\\0' 'A'\r",
+            },
+          },
+        })
+      );
+
+      await waitForCondition(() => outputBytes > 0, 10000);
+      await new Promise((resolve) => setTimeout(resolve, 800));
+      const beforeAckBytes = outputBytes;
+      expect(beforeAckBytes).toBeGreaterThan(0);
+      expect(beforeAckBytes).toBeLessThan(320 * 1024);
+      expect(latestEndOffset).toBeGreaterThan(0);
+
+      ws.send(
+        encodeBinaryMuxFrame({
+          channel: BinaryMuxChannel.Terminal,
+          messageType: TerminalBinaryMessageType.Ack,
+          streamId: streamId!,
+          offset: latestEndOffset,
+          payload: new Uint8Array(0),
+        })
+      );
+
+      await waitForCondition(() => outputBytes > beforeAckBytes, 10000);
+
+      ws.send(
+        JSON.stringify({
+          type: "session",
+          message: {
+            type: "detach_terminal_stream_request",
+            streamId,
+            requestId: detachRequestId,
+          },
+        })
+      );
+
+      ws.close();
+      rmSync(cwd, { recursive: true, force: true });
+    },
+    30000
+  );
+
+  test(
+    "measures local terminal round-trip latency via daemon client stream",
+    async () => {
+      const cwd = tmpCwd();
+      const list = await ctx.client.listTerminals(cwd);
+      const terminalId = list.terminals[0].id;
+
+      const attach = await ctx.client.attachTerminalStream(terminalId);
+      expect(attach.error).toBeNull();
+      const streamId = attach.streamId!;
+
+      let output = "";
+      const unsubscribe = ctx.client.onTerminalStreamData(streamId, (chunk) => {
+        output += decoder.decode(chunk.data, { stream: true });
+      });
+
+      const samplesMs: number[] = [];
+      const iterations = 8;
+      for (let i = 0; i < iterations; i++) {
+        const marker = `PASEO_LAT_${i}_${Date.now()}`;
+        const start = performance.now();
+        ctx.client.sendTerminalStreamInput(streamId, `echo ${marker}\r`);
+        await waitForCondition(() => output.includes(marker), 10000);
+        samplesMs.push(performance.now() - start);
+      }
+
+      const p50 = percentile(samplesMs, 50);
+      const p95 = percentile(samplesMs, 95);
+
+      expect(samplesMs).toHaveLength(iterations);
+      // Localhost budget should be tight; keep margin for test noise.
+      expect(p95).toBeLessThan(350);
+
+      // Emit measurements for diagnosis when this test regresses.
+      console.log(
+        `[terminal-latency] samples=${samplesMs.map((n) => n.toFixed(1)).join(",")} p50=${p50.toFixed(1)}ms p95=${p95.toFixed(1)}ms`
+      );
+
+      const detach = await ctx.client.detachTerminalStream(streamId);
+      expect(detach.success).toBe(true);
+      unsubscribe();
       rmSync(cwd, { recursive: true, force: true });
     },
     30000

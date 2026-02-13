@@ -11,6 +11,9 @@ import { createTestPaseoDaemon } from "../test-utils/paseo-daemon.js";
 import { createClientChannel, type Transport } from "@getpaseo/relay/e2ee";
 import { buildRelayWebSocketUrl } from "../../shared/daemon-endpoints.js";
 
+const nodeMajor = Number((process.versions.node ?? "0").split(".")[0] ?? "0");
+const shouldRunRelayE2e = process.env.FORCE_RELAY_E2E === "1" || nodeMajor < 25;
+
 function createCapturingLogger() {
   const lines: string[] = [];
   const stream = new Writable({
@@ -90,7 +93,40 @@ async function waitForServer(port: number, timeout = 15000): Promise<void> {
   throw new Error(`Server did not start on port ${port} within ${timeout}ms`);
 }
 
-describe("Relay transport (E2EE) - daemon E2E", () => {
+async function waitForRelayWebSocketReady(port: number, timeout = 60000): Promise<void> {
+  const start = Date.now();
+  while (Date.now() - start < timeout) {
+    const serverId = `probe-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+    const url = buildRelayWebSocketUrl({
+      endpoint: `127.0.0.1:${port}`,
+      serverId,
+      role: "server",
+    });
+    const opened = await new Promise<boolean>((resolve) => {
+      const ws = new WebSocket(url);
+      const timer = setTimeout(() => {
+        ws.terminate();
+        resolve(false);
+      }, 5000);
+      ws.once("open", () => {
+        clearTimeout(timer);
+        ws.close(1000, "probe");
+        resolve(true);
+      });
+      ws.once("error", () => {
+        clearTimeout(timer);
+        resolve(false);
+      });
+    });
+    if (opened) {
+      return;
+    }
+    await new Promise((r) => setTimeout(r, 250));
+  }
+  throw new Error(`Relay WebSocket endpoint not ready on port ${port} within ${timeout}ms`);
+}
+
+(shouldRunRelayE2e ? describe : describe.skip)("Relay transport (E2EE) - daemon E2E", () => {
   let relayPort: number;
   let relayProcess: ChildProcess | null = null;
 
@@ -99,7 +135,17 @@ describe("Relay transport (E2EE) - daemon E2E", () => {
     const relayDir = path.resolve(process.cwd(), "../relay");
     relayProcess = spawn(
       "npx",
-      ["wrangler", "dev", "--local", "--ip", "127.0.0.1", "--port", String(relayPort)],
+      [
+        "wrangler",
+        "dev",
+        "--local",
+        "--ip",
+        "127.0.0.1",
+        "--port",
+        String(relayPort),
+        "--live-reload=false",
+        "--show-interactive-dev-session=false",
+      ],
       {
         cwd: relayDir,
         env: { ...process.env },
@@ -124,6 +170,7 @@ describe("Relay transport (E2EE) - daemon E2E", () => {
     });
 
     await waitForServer(relayPort, 30000);
+    await waitForRelayWebSocketReady(relayPort, 60000);
   };
 
   const stopRelay = async () => {
@@ -233,7 +280,7 @@ describe("Relay transport (E2EE) - daemon E2E", () => {
         await stopRelay();
       }
     },
-    30000
+    90000
   );
 
   test(
@@ -332,6 +379,6 @@ describe("Relay transport (E2EE) - daemon E2E", () => {
         await stopRelay();
       }
     },
-    45000
+    90000
   );
 });

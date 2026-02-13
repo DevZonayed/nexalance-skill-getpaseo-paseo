@@ -23,8 +23,9 @@ function createNodeWebSocketFactory() {
   return (url: string, options?: { headers?: Record<string, string> }) => {
     return new WebSocket(url, { headers: options?.headers }) as unknown as {
       readyState: number
-      send: (data: string) => void
+      send: (data: string | Uint8Array | ArrayBuffer) => void
       close: (code?: number, reason?: string) => void
+      binaryType?: string
       on: (event: string, listener: (...args: unknown[]) => void) => void
       off: (event: string, listener: (...args: unknown[]) => void) => void
     }
