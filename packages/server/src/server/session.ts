@@ -131,7 +131,7 @@ import {
   type LocalSpeechModelId,
 } from "./speech/providers/local/models.js";
 import type { Resolvable } from "./speech/provider-resolver.js";
-import type { SpeechReadinessSnapshot } from "./speech/speech-runtime.js";
+import type { SpeechReadinessSnapshot, SpeechReadinessState } from "./speech/speech-runtime.js";
 import type pino from "pino";
 
 const execAsync = promisify(exec);
@@ -356,6 +356,12 @@ type VoiceFeatureUnavailableContext = {
   message: string;
   retryable: boolean;
   missingModelIds: LocalSpeechModelId[];
+};
+
+type VoiceFeatureUnavailableResponseMetadata = {
+  reasonCode?: SpeechReadinessSnapshot["voiceFeature"]["reasonCode"];
+  retryable?: boolean;
+  missingModelIds?: LocalSpeechModelId[];
 };
 
 class VoiceFeatureUnavailableError extends Error {
@@ -1759,13 +1765,36 @@ export class Session {
   }
 
   private toVoiceFeatureUnavailableContext(
-    state: SpeechReadinessSnapshot["voiceFeature"]
+    state: SpeechReadinessState
   ): VoiceFeatureUnavailableContext {
     return {
       reasonCode: state.reasonCode,
       message: state.message,
       retryable: state.retryable,
       missingModelIds: [...state.missingModelIds],
+    };
+  }
+
+  private resolveModeReadinessState(
+    readiness: SpeechReadinessSnapshot,
+    mode: "voice_mode" | "dictation"
+  ): SpeechReadinessState {
+    if (mode === "voice_mode") {
+      return readiness.realtimeVoice;
+    }
+    return readiness.dictation;
+  }
+
+  private getVoiceFeatureUnavailableResponseMetadata(
+    error: unknown
+  ): VoiceFeatureUnavailableResponseMetadata {
+    if (!(error instanceof VoiceFeatureUnavailableError)) {
+      return {};
+    }
+    return {
+      reasonCode: error.reasonCode,
+      retryable: error.retryable,
+      missingModelIds: error.missingModelIds,
     };
   }
 
@@ -1777,27 +1806,15 @@ export class Session {
       return null;
     }
 
-    if (mode === "voice_mode") {
-      if (!readiness.realtimeVoice.enabled) {
-        return this.toVoiceFeatureUnavailableContext(readiness.realtimeVoice);
-      }
-      if (!readiness.voiceFeature.available) {
-        return this.toVoiceFeatureUnavailableContext(readiness.voiceFeature);
-      }
-      if (!readiness.realtimeVoice.available) {
-        return this.toVoiceFeatureUnavailableContext(readiness.realtimeVoice);
-      }
-      return null;
-    }
-
-    if (!readiness.dictation.enabled) {
-      return this.toVoiceFeatureUnavailableContext(readiness.dictation);
+    const modeReadiness = this.resolveModeReadinessState(readiness, mode);
+    if (!modeReadiness.enabled) {
+      return this.toVoiceFeatureUnavailableContext(modeReadiness);
     }
     if (!readiness.voiceFeature.available) {
       return this.toVoiceFeatureUnavailableContext(readiness.voiceFeature);
     }
-    if (!readiness.dictation.available) {
-      return this.toVoiceFeatureUnavailableContext(readiness.dictation);
+    if (!modeReadiness.available) {
+      return this.toVoiceFeatureUnavailableContext(modeReadiness);
     }
     return null;
   }
@@ -1875,14 +1892,7 @@ export class Session {
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : "Failed to set voice mode";
-      const unavailable =
-        error instanceof VoiceFeatureUnavailableError
-          ? {
-              reasonCode: error.reasonCode,
-              retryable: error.retryable,
-              missingModelIds: error.missingModelIds,
-            }
-          : null;
+      const unavailable = this.getVoiceFeatureUnavailableResponseMetadata(error);
       this.sessionLogger.error(
         {
           err: error,
@@ -1900,9 +1910,7 @@ export class Session {
             agentId: this.voiceModeAgentId,
             accepted: false,
             error: errorMessage,
-            ...(unavailable ? { reasonCode: unavailable.reasonCode } : {}),
-            ...(unavailable ? { retryable: unavailable.retryable } : {}),
-            ...(unavailable ? { missingModelIds: unavailable.missingModelIds } : {}),
+            ...unavailable,
           },
         });
         return;
