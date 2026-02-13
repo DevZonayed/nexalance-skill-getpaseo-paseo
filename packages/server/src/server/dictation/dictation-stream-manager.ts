@@ -11,6 +11,7 @@ import type {
   SpeechToTextProvider,
   StreamingTranscriptionSession,
 } from "../speech/speech-provider.js";
+import { toResolver, type Resolvable } from "../speech/provider-resolver.js";
 import { parsePcmRateFromFormat, pcm16lePeakAbs } from "../speech/audio.js";
 
 const PCM_CHANNELS = 1;
@@ -126,19 +127,14 @@ export class DictationStreamManager {
     logger: pino.Logger;
     emit: (msg: DictationStreamOutboundMessage) => void;
     sessionId: string;
-    stt: SpeechToTextProvider | null | (() => SpeechToTextProvider | null);
+    stt: Resolvable<SpeechToTextProvider | null>;
     finalTimeoutMs?: number;
     autoCommitSeconds?: number;
   }) {
     this.logger = params.logger.child({ component: "dictation-stream-manager" });
     this.emit = params.emit;
     this.sessionId = params.sessionId;
-    if (typeof params.stt === "function") {
-      this.resolveStt = params.stt;
-    } else {
-      const sttProvider = params.stt;
-      this.resolveStt = () => sttProvider;
-    }
+    this.resolveStt = toResolver(params.stt);
     this.finalTimeoutMs = params.finalTimeoutMs ?? DEFAULT_DICTATION_FINAL_TIMEOUT_MS;
     this.autoCommitSeconds =
       params.autoCommitSeconds ??

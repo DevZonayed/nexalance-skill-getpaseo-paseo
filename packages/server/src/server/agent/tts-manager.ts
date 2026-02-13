@@ -1,6 +1,7 @@
 import type pino from "pino";
 import { v4 as uuidv4 } from "uuid";
 import type { TextToSpeechProvider } from "../speech/speech-provider.js";
+import { toResolver, type Resolvable } from "../speech/provider-resolver.js";
 import type { SessionOutboundMessage } from "../messages.js";
 
 interface PendingPlayback {
@@ -100,10 +101,10 @@ export class TTSManager {
   constructor(
     sessionId: string,
     logger: pino.Logger,
-    tts: TextToSpeechProvider | null | (() => TextToSpeechProvider | null)
+    tts: Resolvable<TextToSpeechProvider | null>
   ) {
     this.logger = logger.child({ module: "agent", component: "tts-manager", sessionId });
-    this.resolveTts = typeof tts === "function" ? tts : () => tts;
+    this.resolveTts = toResolver(tts);
   }
 
   /**

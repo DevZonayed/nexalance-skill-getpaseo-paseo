@@ -1,5 +1,6 @@
 import type pino from "pino";
 import type { SpeechToTextProvider, TranscriptionResult } from "../speech/speech-provider.js";
+import { toResolver, type Resolvable } from "../speech/provider-resolver.js";
 import { maybePersistDebugAudio } from "./stt-debug.js";
 import { parsePcm16MonoWav, parsePcmRateFromFormat } from "../speech/audio.js";
 import { Pcm16MonoResampler } from "./pcm16-resampler.js";
@@ -44,11 +45,11 @@ export class STTManager {
   constructor(
     sessionId: string,
     logger: pino.Logger,
-    stt: SpeechToTextProvider | null | (() => SpeechToTextProvider | null)
+    stt: Resolvable<SpeechToTextProvider | null>
   ) {
     this.sessionId = sessionId;
     this.logger = logger.child({ module: "agent", component: "stt-manager", sessionId });
-    this.resolveStt = typeof stt === "function" ? stt : () => stt;
+    this.resolveStt = toResolver(stt);
   }
 
   /**

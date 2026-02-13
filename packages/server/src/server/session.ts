@@ -130,6 +130,7 @@ import {
   listLocalSpeechModels,
   type LocalSpeechModelId,
 } from "./speech/providers/local/models.js";
+import type { Resolvable } from "./speech/provider-resolver.js";
 import type { SpeechReadinessSnapshot } from "./speech/speech-runtime.js";
 import type pino from "pino";
 
@@ -324,8 +325,8 @@ export type SessionOptions = {
   agentManager: AgentManager;
   agentStorage: AgentStorage;
   createAgentMcpTransport: AgentMcpTransportFactory;
-  stt: SpeechToTextProvider | null | (() => SpeechToTextProvider | null);
-  tts: TextToSpeechProvider | null | (() => TextToSpeechProvider | null);
+  stt: Resolvable<SpeechToTextProvider | null>;
+  tts: Resolvable<TextToSpeechProvider | null>;
   terminalManager: TerminalManager | null;
   voice?: {
     voiceAgentMcpStdio?: VoiceMcpStdioConfig | null;
@@ -340,7 +341,7 @@ export type SessionOptions = {
   };
   dictation?: {
     finalTimeoutMs?: number;
-    stt?: SpeechToTextProvider | null | (() => SpeechToTextProvider | null);
+    stt?: Resolvable<SpeechToTextProvider | null>;
     localModels?: {
       modelsDir: string;
       defaultModelIds: LocalSpeechModelId[];
