@@ -996,12 +996,6 @@ export function SessionProvider({
         });
         return;
       }
-      if (status === "agent_initialized" && "agentId" in message.payload) {
-        console.log("[Session] status agent_initialized", {
-          agentId: (message.payload as any).agentId,
-          requestId: (message.payload as any).requestId,
-        });
-      }
     });
 
     const unsubPermissionRequest = client.on(

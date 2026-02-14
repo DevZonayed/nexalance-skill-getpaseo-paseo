@@ -64,6 +64,10 @@ import { useAgentInitialization } from "@/hooks/use-agent-initialization";
 import { useToast } from "@/contexts/toast-context";
 import { getInitDeferred, getInitKey } from "@/utils/agent-initialization";
 import {
+  derivePendingPermissionKey,
+  normalizeAgentSnapshot,
+} from "@/utils/agent-snapshots";
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -369,6 +373,10 @@ function AgentScreenContent({
   const allPendingPermissions = useSessionStore(
     (state) => state.sessions[serverId]?.pendingPermissions
   );
+  const setAgents = useSessionStore((state) => state.setAgents);
+  const setPendingPermissions = useSessionStore(
+    (state) => state.setPendingPermissions
+  );
   const pendingPermissions = useMemo(() => {
     if (!allPendingPermissions || !resolvedAgentId) return new Map();
     const filtered = new Map();
@@ -662,7 +670,46 @@ function AgentScreenContent({
     const attemptToken = ++initAttemptTokenRef.current;
 
     ensureAgentIsInitialized(resolvedAgentId)
-      .then(() => {
+      .then(async () => {
+        if (attemptToken !== initAttemptTokenRef.current) {
+          return;
+        }
+        const currentAgent = useSessionStore
+          .getState()
+          .sessions[serverId]
+          ?.agents.get(resolvedAgentId);
+        if (!currentAgent && client) {
+          const snapshot = await client.fetchAgent(resolvedAgentId);
+          if (attemptToken !== initAttemptTokenRef.current) {
+            return;
+          }
+          if (!snapshot) {
+            setMissingAgentState({
+              kind: "not_found",
+              message: `Agent not found: ${resolvedAgentId}`,
+            });
+            return;
+          }
+          const normalized = normalizeAgentSnapshot(snapshot, serverId);
+          setAgents(serverId, (prev) => {
+            const next = new Map(prev);
+            next.set(normalized.id, normalized);
+            return next;
+          });
+          setPendingPermissions(serverId, (prev) => {
+            const next = new Map(prev);
+            for (const [key, pending] of next.entries()) {
+              if (pending.agentId === normalized.id) {
+                next.delete(key);
+              }
+            }
+            for (const request of normalized.pendingPermissions) {
+              const key = derivePendingPermissionKey(normalized.id, request);
+              next.set(key, { key, agentId: normalized.id, request });
+            }
+            return next;
+          });
+        }
         if (attemptToken !== initAttemptTokenRef.current) {
           return;
         }
@@ -681,10 +728,14 @@ function AgentScreenContent({
       });
   }, [
     agent,
+    client,
     ensureAgentIsInitialized,
     isConnected,
     missingAgentState.kind,
     resolvedAgentId,
+    serverId,
+    setAgents,
+    setPendingPermissions,
     shouldUseOptimisticStream,
   ]);
 
@@ -750,6 +801,17 @@ function AgentScreenContent({
           <MenuHeader title="Agent" />
           <View style={styles.errorContainer}>
             <Text style={styles.errorText}>Agent not found</Text>
+          </View>
+        </View>
+      );
+    }
+    if (missingAgentState.kind === "error") {
+      return (
+        <View style={styles.container} testID="agent-load-error">
+          <MenuHeader title="Agent" />
+          <View style={styles.errorContainer}>
+            <Text style={styles.errorText}>Failed to load agent</Text>
+            <Text style={styles.statusText}>{missingAgentState.message}</Text>
           </View>
         </View>
       );

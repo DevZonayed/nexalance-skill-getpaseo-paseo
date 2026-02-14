@@ -104,9 +104,11 @@ export function createEncryptedTransport(
         onerror: (error) => emitError(error),
       });
     } catch (error) {
-      logger.warn({ err: error }, "relay_e2ee_handshake_failed");
+      logger.warn({ err: normalizeTransportError(error) }, "relay_e2ee_handshake_failed");
       emitError(error);
-      base.close(1011, "E2EE handshake failed");
+      // Browser WebSocket.close only accepts 1000 or 3000-4999.
+      // Use an app-defined code so this path works in browser and Node runtimes.
+      base.close(4001, "E2EE handshake failed");
     }
   };
 
@@ -188,4 +190,15 @@ function invokeHandler<TArgs extends unknown[]>(
   } catch {
     // no-op
   }
+}
+
+function normalizeTransportError(error: unknown): Record<string, string> {
+  if (error instanceof Error) {
+    return {
+      name: error.name,
+      message: error.message,
+      ...(typeof error.stack === "string" ? { stack: error.stack } : {}),
+    };
+  }
+  return { message: String(error) };
 }

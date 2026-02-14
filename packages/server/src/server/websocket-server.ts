@@ -185,10 +185,14 @@ export class VoiceAssistantWebSocketServer {
       server,
       path: "/ws",
       verifyClient: ({ req }, callback) => {
-        const origin = req.headers.origin;
-        const requestHost = typeof req.headers.host === "string" ? req.headers.host : null;
+        const requestMetadata = extractSocketRequestMetadata(req);
+        const origin = requestMetadata.origin;
+        const requestHost = requestMetadata.host ?? null;
         if (requestHost && !isHostAllowed(requestHost, allowedHosts)) {
-          this.logger.warn({ host: requestHost }, "Rejected connection from disallowed host");
+          this.logger.warn(
+            { ...requestMetadata, host: requestHost },
+            "Rejected connection from disallowed host"
+          );
           callback(false, 403, "Host not allowed");
           return;
         }
@@ -200,7 +204,10 @@ export class VoiceAssistantWebSocketServer {
         if (!origin || allowedOrigins.has(origin) || sameOrigin) {
           callback(true);
         } else {
-          this.logger.warn({ origin }, "Rejected connection from origin");
+          this.logger.warn(
+            { ...requestMetadata, origin },
+            "Rejected connection from origin"
+          );
           callback(false, 403, "Origin not allowed");
         }
       },
@@ -282,7 +289,7 @@ export class VoiceAssistantWebSocketServer {
 
   private async attachSocket(
     ws: WebSocketLike,
-    _request?: unknown,
+    request?: unknown,
     metadata?: ExternalSocketMetadata
   ): Promise<void> {
     const externalSessionKey =
@@ -320,7 +327,24 @@ export class VoiceAssistantWebSocketServer {
     }
 
     const clientId = `client-${++this.clientIdCounter}`;
-    const connectionLogger = this.logger.child({ clientId });
+    const requestMetadata = extractSocketRequestMetadata(request);
+    const connectionLoggerFields: Record<string, string> = {
+      clientId,
+      transport: externalSessionKey ? "relay" : "direct",
+    };
+    if (requestMetadata.host) {
+      connectionLoggerFields.host = requestMetadata.host;
+    }
+    if (requestMetadata.origin) {
+      connectionLoggerFields.origin = requestMetadata.origin;
+    }
+    if (requestMetadata.userAgent) {
+      connectionLoggerFields.userAgent = requestMetadata.userAgent;
+    }
+    if (requestMetadata.remoteAddress) {
+      connectionLoggerFields.remoteAddress = requestMetadata.remoteAddress;
+    }
+    const connectionLogger = this.logger.child(connectionLoggerFields);
     const socketRef = { current: ws };
 
     const session = new Session({
@@ -510,17 +534,17 @@ export class VoiceAssistantWebSocketServer {
     data: Buffer | ArrayBuffer | Buffer[] | string
   ): Promise<void> {
     try {
+      const activeConnection = this.sessions.get(ws);
       const buffer = bufferFromWsData(data);
       const asBytes = asUint8Array(buffer);
       if (asBytes) {
         const frame = decodeBinaryMuxFrame(asBytes);
         if (frame) {
-          const connection = this.sessions.get(ws);
-          if (!connection) {
+          if (!activeConnection) {
             this.logger.error("No session found for client");
             return;
           }
-          connection.session.handleBinaryFrame(frame);
+          activeConnection.session.handleBinaryFrame(frame);
           return;
         }
       }
@@ -535,8 +559,10 @@ export class VoiceAssistantWebSocketServer {
           "type" in parsed &&
           (parsed as { type?: unknown }).type === "session";
 
-        this.logger.warn(
+        const log = activeConnection?.connectionLogger ?? this.logger;
+        log.warn(
           {
+            clientId: activeConnection?.clientId,
             requestId: requestInfo?.requestId,
             requestType: requestInfo?.requestType,
             error: parsedMessage.error.message,
@@ -585,14 +611,13 @@ export class VoiceAssistantWebSocketServer {
         return;
       }
 
-      const connection = this.sessions.get(ws);
-      if (!connection) {
+      if (!activeConnection) {
         this.logger.error("No session found for client");
         return;
       }
 
       if (message.type === "session") {
-        await connection.session.handleMessage(message.message);
+        await activeConnection.session.handleMessage(message.message);
       }
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error));
@@ -749,6 +774,49 @@ export class VoiceAssistantWebSocketServer {
       this.sendToClient(ws, message);
     }
   }
+}
+
+type SocketRequestMetadata = {
+  host?: string;
+  origin?: string;
+  userAgent?: string;
+  remoteAddress?: string;
+};
+
+function extractSocketRequestMetadata(request: unknown): SocketRequestMetadata {
+  if (!request || typeof request !== "object") {
+    return {};
+  }
+
+  const record = request as {
+    headers?: {
+      host?: unknown;
+      origin?: unknown;
+      "user-agent"?: unknown;
+    };
+    socket?: {
+      remoteAddress?: unknown;
+    };
+  };
+
+  const host = typeof record.headers?.host === "string" ? record.headers.host : undefined;
+  const origin =
+    typeof record.headers?.origin === "string" ? record.headers.origin : undefined;
+  const userAgent =
+    typeof record.headers?.["user-agent"] === "string"
+      ? record.headers["user-agent"]
+      : undefined;
+  const remoteAddress =
+    typeof record.socket?.remoteAddress === "string"
+      ? record.socket.remoteAddress
+      : undefined;
+
+  return {
+    ...(host ? { host } : {}),
+    ...(origin ? { origin } : {}),
+    ...(userAgent ? { userAgent } : {}),
+    ...(remoteAddress ? { remoteAddress } : {}),
+  };
 }
 
 function stringifyCloseReason(reason: unknown): string | null {

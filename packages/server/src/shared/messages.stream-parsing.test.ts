@@ -78,6 +78,28 @@ describe("shared messages stream parsing", () => {
     }
   });
 
+  it("rejects removed initialize_agent_request inbound payload", () => {
+    const parsed = SessionInboundMessageSchema.safeParse({
+      type: "initialize_agent_request",
+      agentId: "agent-legacy",
+      requestId: "req-legacy-1",
+    });
+    expect(parsed.success).toBe(false);
+  });
+
+  it("rejects removed initialize_agent_request outbound payload", () => {
+    const parsed = SessionOutboundMessageSchema.safeParse({
+      type: "initialize_agent_request",
+      payload: {
+        requestId: "req-legacy-1",
+        agentId: "agent-legacy",
+        agentStatus: "running",
+        timelineSize: 12,
+      },
+    });
+    expect(parsed.success).toBe(false);
+  });
+
   it("rejects websocket envelope for removed agent_stream_snapshot message type", () => {
     const fixture = {
       type: "agent_stream_snapshot",

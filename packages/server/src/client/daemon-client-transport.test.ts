@@ -1,5 +1,6 @@
 import { describe, expect, test, vi } from "vitest";
 import {
+  createEncryptedTransport,
   createWebSocketTransportFactory,
   decodeMessageData,
   describeTransportClose,
@@ -8,7 +9,48 @@ import {
   extractRelayMessageData,
 } from "./daemon-client-transport.js";
 
+const createClientChannelMock = vi.hoisted(() => vi.fn());
+
+vi.mock("@getpaseo/relay/e2ee", () => ({
+  createClientChannel: createClientChannelMock,
+}));
+
 describe("daemon-client transport helpers", () => {
+  test("createEncryptedTransport closes handshake failures with browser-safe code", async () => {
+    createClientChannelMock.mockReset();
+    createClientChannelMock.mockRejectedValueOnce(new Error("handshake failed"));
+
+    let openHandler: (() => void) | null = null;
+    const close = vi.fn();
+
+    createEncryptedTransport(
+      {
+        send: vi.fn(),
+        close,
+        onOpen: (handler) => {
+          openHandler = handler;
+          return () => {
+            if (openHandler === handler) {
+              openHandler = null;
+            }
+          };
+        },
+        onClose: () => () => {},
+        onError: () => () => {},
+        onMessage: () => () => {},
+      },
+      "daemon-public-key",
+      { warn: vi.fn() }
+    );
+
+    expect(openHandler).not.toBeNull();
+    openHandler?.();
+
+    await vi.waitFor(() => {
+      expect(close).toHaveBeenCalledWith(4001, "E2EE handshake failed");
+    });
+  });
+
   test("createWebSocketTransportFactory forwards sends when socket is open", () => {
     const addEventListener = vi.fn();
     const removeEventListener = vi.fn();
