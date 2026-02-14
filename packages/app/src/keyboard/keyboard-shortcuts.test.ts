@@ -31,6 +31,32 @@ function shortcutContext(
 }
 
 describe("keyboard-shortcuts", () => {
+  it("matches question-mark shortcut to toggle the shortcuts dialog", () => {
+    const match = resolveKeyboardShortcut({
+      event: keyboardEvent({
+        key: "?",
+        code: "Slash",
+        shiftKey: true,
+      }),
+      context: shortcutContext({ focusScope: "other" }),
+    });
+
+    expect(match?.action).toBe("shortcuts.dialog.toggle");
+  });
+
+  it("does not match question-mark shortcut inside editable scopes", () => {
+    const match = resolveKeyboardShortcut({
+      event: keyboardEvent({
+        key: "?",
+        code: "Slash",
+        shiftKey: true,
+      }),
+      context: shortcutContext({ focusScope: "message-input" }),
+    });
+
+    expect(match).toBeNull();
+  });
+
   it("matches Cmd+B sidebar toggle on macOS", () => {
     const match = resolveKeyboardShortcut({
       event: keyboardEvent({
@@ -95,6 +121,31 @@ describe("keyboard-shortcuts", () => {
     });
 
     expect(match).toBeNull();
+  });
+
+  it("keeps space typing available in message input", () => {
+    const match = resolveKeyboardShortcut({
+      event: keyboardEvent({
+        key: " ",
+        code: "Space",
+      }),
+      context: shortcutContext({ focusScope: "message-input" }),
+    });
+
+    expect(match).toBeNull();
+  });
+
+  it("routes space to voice mute toggle outside editable scopes", () => {
+    const match = resolveKeyboardShortcut({
+      event: keyboardEvent({
+        key: " ",
+        code: "Space",
+      }),
+      context: shortcutContext({ focusScope: "other" }),
+    });
+
+    expect(match?.action).toBe("message-input.action");
+    expect(match?.payload).toEqual({ kind: "voice-mute-toggle" });
   });
 
   it("parses Alt+digit sidebar shortcut payload", () => {

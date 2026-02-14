@@ -179,6 +179,11 @@ export function useKeyboardShortcuts({
           store.setCommandCenterOpen(!store.commandCenterOpen);
           return true;
         }
+        case "shortcuts.dialog.toggle": {
+          const store = useKeyboardShortcutsStore.getState();
+          store.setShortcutsDialogOpen(!store.shortcutsDialogOpen);
+          return true;
+        }
         case "message-input.action":
           if (!input.payload || typeof input.payload !== "object" || !("kind" in input.payload)) {
             return false;

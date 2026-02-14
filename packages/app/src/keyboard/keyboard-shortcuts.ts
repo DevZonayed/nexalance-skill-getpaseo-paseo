@@ -55,6 +55,17 @@ function hasDigit(event: KeyboardEvent): boolean {
   return parseDigit(event) !== null;
 }
 
+function isQuestionMarkShortcut(event: KeyboardEvent): boolean {
+  return (
+    !event.metaKey &&
+    !event.ctrlKey &&
+    !event.altKey &&
+    event.shiftKey &&
+    !event.repeat &&
+    (event.key === "?" || event.code === "Slash")
+  );
+}
+
 function withMessageInputAction(
   kind: MessageInputKeyboardActionKind
 ): (event: KeyboardEvent) => KeyboardShortcutPayload {
@@ -91,6 +102,12 @@ const SHORTCUT_BINDINGS: readonly KeyboardShortcutBinding[] = [
       !event.shiftKey &&
       (event.code === "KeyK" || event.key.toLowerCase() === "k"),
     when: () => true,
+  },
+  {
+    id: "shortcuts-dialog-toggle-question-mark",
+    action: "shortcuts.dialog.toggle",
+    matches: isQuestionMarkShortcut,
+    when: (context) => context.focusScope === "other",
   },
   {
     id: "sidebar-toggle-left-mac-cmd-b",
@@ -179,7 +196,7 @@ const SHORTCUT_BINDINGS: readonly KeyboardShortcutBinding[] = [
       !event.repeat,
     payload: withMessageInputAction("voice-mute-toggle"),
     when: (context) =>
-      !context.commandCenterOpen && context.focusScope !== "terminal",
+      !context.commandCenterOpen && context.focusScope === "other",
   },
   {
     id: "sidebar-shortcut-alt-digit",

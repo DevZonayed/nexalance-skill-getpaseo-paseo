@@ -18,6 +18,7 @@ export type KeyboardActionId =
   | "sidebar.toggle.right"
   | "sidebar.navigate.shortcut"
   | "command-center.toggle"
+  | "shortcuts.dialog.toggle"
   | "message-input.action";
 
 export type KeyboardShortcutPayload =

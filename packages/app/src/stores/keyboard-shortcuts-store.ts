@@ -9,6 +9,7 @@ export type MessageInputActionRequest = {
 
 interface KeyboardShortcutsState {
   commandCenterOpen: boolean;
+  shortcutsDialogOpen: boolean;
   altDown: boolean;
   cmdOrCtrlDown: boolean;
   /** Sidebar-visible agent keys (up to 9), in top-to-bottom visual order. */
@@ -16,6 +17,7 @@ interface KeyboardShortcutsState {
   messageInputActionRequest: MessageInputActionRequest | null;
 
   setCommandCenterOpen: (open: boolean) => void;
+  setShortcutsDialogOpen: (open: boolean) => void;
   setAltDown: (down: boolean) => void;
   setCmdOrCtrlDown: (down: boolean) => void;
   setSidebarShortcutAgentKeys: (keys: string[]) => void;
@@ -31,12 +33,14 @@ interface KeyboardShortcutsState {
 export const useKeyboardShortcutsStore = create<KeyboardShortcutsState>(
   (set, get) => ({
     commandCenterOpen: false,
+    shortcutsDialogOpen: false,
     altDown: false,
     cmdOrCtrlDown: false,
     sidebarShortcutAgentKeys: [],
     messageInputActionRequest: null,
 
     setCommandCenterOpen: (open) => set({ commandCenterOpen: open }),
+    setShortcutsDialogOpen: (open) => set({ shortcutsDialogOpen: open }),
     setAltDown: (down) => set({ altDown: down }),
     setCmdOrCtrlDown: (down) => set({ cmdOrCtrlDown: down }),
     setSidebarShortcutAgentKeys: (keys) => set({ sidebarShortcutAgentKeys: keys }),

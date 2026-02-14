@@ -36,6 +36,7 @@ import {
 import { getIsTauri, getIsTauriMac } from "@/constants/layout";
 import { useTrafficLightPadding } from "@/utils/tauri-window";
 import { CommandCenter } from "@/components/command-center";
+import { KeyboardShortcutsDialog } from "@/components/keyboard-shortcuts-dialog";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { queryClient } from "@/query/query-client";
 import {
@@ -255,6 +256,7 @@ function AppContainer({ children, selectedAgentId }: AppContainerProps) {
       {isMobile && chromeEnabled && <SlidingSidebar selectedAgentId={selectedAgentId} />}
       <DownloadToast />
       <CommandCenter />
+      <KeyboardShortcutsDialog />
     </View>
   );
 
