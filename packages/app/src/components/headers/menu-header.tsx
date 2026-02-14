@@ -5,6 +5,7 @@ import { Menu, PanelLeft } from "lucide-react-native";
 import { ScreenHeader } from "./screen-header";
 import { HeaderToggleButton } from "./header-toggle-button";
 import { usePanelStore } from "@/stores/panel-store";
+import { getShortcutOs } from "@/utils/shortcut-platform";
 
 interface MenuHeaderProps {
   title?: string;
@@ -18,6 +19,7 @@ export function MenuHeader({ title, rightContent }: MenuHeaderProps) {
   const mobileView = usePanelStore((state) => state.mobileView);
   const desktopAgentListOpen = usePanelStore((state) => state.desktop.agentListOpen);
   const toggleAgentList = usePanelStore((state) => state.toggleAgentList);
+  const toggleShortcutKeys = getShortcutOs() === "mac" ? ["mod", "B"] : ["mod", "."];
 
   const isOpen = isMobile ? mobileView === "agent-list" : desktopAgentListOpen;
   const MenuIcon = isMobile ? Menu : PanelLeft;
@@ -32,7 +34,7 @@ export function MenuHeader({ title, rightContent }: MenuHeaderProps) {
           <HeaderToggleButton
             onPress={toggleAgentList}
             tooltipLabel="Toggle sidebar"
-            tooltipKeys={["mod", "B"]}
+            tooltipKeys={toggleShortcutKeys}
             tooltipSide="right"
             testID="menu-button"
             nativeID="menu-button"

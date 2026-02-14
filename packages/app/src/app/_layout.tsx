@@ -36,7 +36,7 @@ import {
 import { getIsTauri, getIsTauriMac } from "@/constants/layout";
 import { useTrafficLightPadding } from "@/utils/tauri-window";
 import { CommandCenter } from "@/components/command-center";
-import { useGlobalKeyboardNav } from "@/hooks/use-global-keyboard-nav";
+import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { queryClient } from "@/query/query-client";
 import {
   WEB_NOTIFICATION_CLICK_EVENT,
@@ -147,7 +147,7 @@ function AppContainer({ children, selectedAgentId }: AppContainerProps) {
   const openGestureEnabled =
     chromeEnabled && isMobile && mobileView === "agent";
 
-  useGlobalKeyboardNav({
+  useKeyboardShortcuts({
     enabled: chromeEnabled,
     isMobile,
     toggleAgentList,

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { TextInput } from "react-native";
 import { router, usePathname } from "expo-router";
-import { useKeyboardNavStore } from "@/stores/keyboard-nav-store";
+import { useKeyboardShortcutsStore } from "@/stores/keyboard-shortcuts-store";
 import { useAggregatedAgents, type AggregatedAgent } from "@/hooks/use-aggregated-agents";
 import { useSessionStore } from "@/stores/session-store";
 import {
@@ -126,9 +126,11 @@ export type CommandCenterItem =
 export function useCommandCenter() {
   const pathname = usePathname();
   const { agents } = useAggregatedAgents();
-  const open = useKeyboardNavStore((s) => s.commandCenterOpen);
-  const setOpen = useKeyboardNavStore((s) => s.setCommandCenterOpen);
-  const requestFocusChatInput = useKeyboardNavStore((s) => s.requestFocusChatInput);
+  const open = useKeyboardShortcutsStore((s) => s.commandCenterOpen);
+  const setOpen = useKeyboardShortcutsStore((s) => s.setCommandCenterOpen);
+  const requestMessageInputAction = useKeyboardShortcutsStore(
+    (s) => s.requestMessageInputAction
+  );
   const inputRef = useRef<TextInput>(null);
   const didNavigateRef = useRef(false);
   const prevOpenRef = useRef(open);
@@ -220,13 +222,16 @@ export function useCommandCenter() {
       const shouldReplace = Boolean(parseHostAgentRouteFromPathname(pathname));
       const navigate = shouldReplace ? router.replace : router.push;
 
-      requestFocusChatInput(agentKey(agent));
+      requestMessageInputAction({
+        agentKey: agentKey(agent),
+        kind: "focus",
+      });
       // Don't restore focus back to the prior element after we navigate.
       clearCommandCenterFocusRestoreElement();
       setOpen(false);
       navigate(buildHostAgentDetailRoute(agent.serverId, agent.id) as any);
     },
-    [pathname, requestFocusChatInput, setOpen]
+    [pathname, requestMessageInputAction, setOpen]
   );
 
   const handleSelectAction = useCallback((action: CommandCenterActionItem) => {
@@ -267,7 +272,10 @@ export function useCommandCenter() {
           isFocused,
           onTimeout: () => {
             if (agentKeyFromPathname) {
-              requestFocusChatInput(agentKeyFromPathname);
+              requestMessageInputAction({
+                agentKey: agentKeyFromPathname,
+                kind: "focus",
+              });
             }
           },
         });
@@ -283,7 +291,7 @@ export function useCommandCenter() {
       inputRef.current?.focus();
     }, 0);
     return () => clearTimeout(id);
-  }, [agentKeyFromPathname, open, requestFocusChatInput]);
+  }, [agentKeyFromPathname, open, requestMessageInputAction]);
 
   useEffect(() => {
     if (!open) return;

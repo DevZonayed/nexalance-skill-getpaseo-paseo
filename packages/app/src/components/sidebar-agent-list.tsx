@@ -45,7 +45,7 @@ import {
   type SidebarSectionData,
 } from "@/hooks/use-sidebar-agents-grouped";
 import { useSidebarCollapsedSectionsStore } from "@/stores/sidebar-collapsed-sections-store";
-import { useKeyboardNavStore } from "@/stores/keyboard-nav-store";
+import { useKeyboardShortcutsStore } from "@/stores/keyboard-shortcuts-store";
 import { getIsTauri } from "@/constants/layout";
 import { AgentStatusDot } from "@/components/agent-status-dot";
 
@@ -370,9 +370,11 @@ export function SidebarAgentList({
   const collapsedProjectKeys = useSidebarCollapsedSectionsStore((s) => s.collapsedProjectKeys);
   const toggleProjectCollapsed = useSidebarCollapsedSectionsStore((s) => s.toggleProjectCollapsed);
 
-  const altDown = useKeyboardNavStore((s) => s.altDown);
-  const cmdOrCtrlDown = useKeyboardNavStore((s) => s.cmdOrCtrlDown);
-  const sidebarShortcutAgentKeys = useKeyboardNavStore((s) => s.sidebarShortcutAgentKeys);
+  const altDown = useKeyboardShortcutsStore((s) => s.altDown);
+  const cmdOrCtrlDown = useKeyboardShortcutsStore((s) => s.cmdOrCtrlDown);
+  const sidebarShortcutAgentKeys = useKeyboardShortcutsStore(
+    (s) => s.sidebarShortcutAgentKeys
+  );
   const isTauri = getIsTauri();
   const showShortcutBadges = altDown || (isTauri && cmdOrCtrlDown);
   const shortcutIndexByAgentKey = useMemo(() => {

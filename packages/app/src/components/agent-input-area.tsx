@@ -28,7 +28,7 @@ import { Theme } from "@/styles/theme";
 import { CommandAutocomplete } from "./command-autocomplete";
 import { useAgentCommandsQuery } from "@/hooks/use-agent-commands-query";
 import { encodeImages } from "@/utils/encode-images";
-import { useKeyboardNavStore } from "@/stores/keyboard-nav-store";
+import { useKeyboardShortcutsStore } from "@/stores/keyboard-shortcuts-store";
 import { focusWithRetries } from "@/utils/web-focus";
 import { useVoiceOptional } from "@/contexts/voice-context";
 import { useToast } from "@/contexts/toast-context";
@@ -74,8 +74,12 @@ export function AgentInputArea({
   const insets = useSafeAreaInsets();
   const { height: keyboardHeight } = useReanimatedKeyboardAnimation();
   const isScreenFocused = useIsFocused();
-  const focusChatInputRequest = useKeyboardNavStore((s) => s.focusChatInputRequest);
-  const clearFocusChatInputRequest = useKeyboardNavStore((s) => s.clearFocusChatInputRequest);
+  const messageInputActionRequest = useKeyboardShortcutsStore(
+    (s) => s.messageInputActionRequest
+  );
+  const clearMessageInputActionRequest = useKeyboardShortcutsStore(
+    (s) => s.clearMessageInputActionRequest
+  );
 
   const client = useSessionStore(
     (state) => state.sessions[serverId]?.client ?? null
@@ -108,7 +112,7 @@ export function AgentInputArea({
   const [isCancellingAgent, setIsCancellingAgent] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
   const [commandSelectedIndex, setCommandSelectedIndex] = useState(0);
-  const lastHandledFocusRequestIdRef = useRef<number | null>(null);
+  const lastHandledMessageInputActionRequestIdRef = useRef<number | null>(null);
 
   // Command autocomplete logic
   const showCommandAutocomplete = userInput.startsWith("/") && !userInput.includes(" ");
@@ -400,21 +404,36 @@ export function AgentInputArea({
     saveDraftInput(agentId, { text: userInput, images: selectedImages });
   }, [agentId, userInput, selectedImages, getDraftInput, saveDraftInput]);
 
-  // When switching agents from the command center, auto-focus the input on web.
+  // Keyboard-dispatched message-input actions are routed through store requests.
   useEffect(() => {
-    if (Platform.OS !== "web") return;
     if (!isScreenFocused) return;
-    if (!focusChatInputRequest) return;
+    if (!messageInputActionRequest) return;
 
     const currentKey = `${serverId}:${agentId}`;
-    if (focusChatInputRequest.agentKey !== currentKey) {
+    if (messageInputActionRequest.agentKey !== currentKey) {
       return;
     }
 
-    if (lastHandledFocusRequestIdRef.current === focusChatInputRequest.id) {
+    if (
+      lastHandledMessageInputActionRequestIdRef.current ===
+      messageInputActionRequest.id
+    ) {
       return;
     }
-    lastHandledFocusRequestIdRef.current = focusChatInputRequest.id;
+    lastHandledMessageInputActionRequestIdRef.current =
+      messageInputActionRequest.id;
+
+    if (messageInputActionRequest.kind !== "focus") {
+      messageInputRef.current?.runKeyboardAction(messageInputActionRequest.kind);
+      clearMessageInputActionRequest(messageInputActionRequest.id);
+      return;
+    }
+
+    if (Platform.OS !== "web") {
+      messageInputRef.current?.focus();
+      clearMessageInputActionRequest(messageInputActionRequest.id);
+      return;
+    }
 
     return focusWithRetries({
       focus: () => messageInputRef.current?.focus(),
@@ -424,14 +443,16 @@ export function AgentInputArea({
           typeof document !== "undefined" ? document.activeElement : null;
         return Boolean(el) && active === el;
       },
-      onSuccess: () => clearFocusChatInputRequest(),
-      onTimeout: () => clearFocusChatInputRequest(),
+      onSuccess: () =>
+        clearMessageInputActionRequest(messageInputActionRequest.id),
+      onTimeout: () =>
+        clearMessageInputActionRequest(messageInputActionRequest.id),
     });
   }, [
     agentId,
-    clearFocusChatInputRequest,
-    focusChatInputRequest,
+    clearMessageInputActionRequest,
     isScreenFocused,
+    messageInputActionRequest,
     serverId,
   ]);
 

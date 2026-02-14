@@ -48,9 +48,13 @@ export function CommandCenter() {
       <View style={styles.overlay}>
         <Pressable style={styles.backdrop} onPress={handleClose} />
 
-        <View style={[styles.panel, { borderColor: theme.colors.border, backgroundColor: theme.colors.surface0 }]}>
+        <View
+          testID="command-center-panel"
+          style={[styles.panel, { borderColor: theme.colors.border, backgroundColor: theme.colors.surface0 }]}
+        >
           <View style={[styles.header, { borderBottomColor: theme.colors.border }]}>
             <TextInput
+              testID="command-center-input"
               ref={inputRef}
               value={query}
               onChangeText={setQuery}

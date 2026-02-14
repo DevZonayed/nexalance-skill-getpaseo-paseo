@@ -18,7 +18,7 @@ import { useSidebarAgentsGrouped } from "@/hooks/use-sidebar-agents-grouped";
 import { useSidebarAnimation } from "@/contexts/sidebar-animation-context";
 import { useTauriDragHandlers, useTrafficLightPadding } from "@/utils/tauri-window";
 import { useSidebarCollapsedSectionsStore } from "@/stores/sidebar-collapsed-sections-store";
-import { useKeyboardNavStore } from "@/stores/keyboard-nav-store";
+import { useKeyboardShortcutsStore } from "@/stores/keyboard-shortcuts-store";
 import { deriveSidebarShortcutAgentKeys } from "@/utils/sidebar-shortcuts";
 import { Combobox } from "@/components/ui/combobox";
 import { useDaemonRegistry } from "@/contexts/daemon-registry-context";
@@ -121,7 +121,9 @@ export function SlidingSidebar({ selectedAgentId }: SlidingSidebarProps) {
   }, [isRevalidating, isManualRefresh]);
 
   const collapsedProjectKeys = useSidebarCollapsedSectionsStore((s) => s.collapsedProjectKeys);
-  const setSidebarShortcutAgentKeys = useKeyboardNavStore((s) => s.setSidebarShortcutAgentKeys);
+  const setSidebarShortcutAgentKeys = useKeyboardShortcutsStore(
+    (s) => s.setSidebarShortcutAgentKeys
+  );
   const sidebarShortcutAgentKeys = useMemo(() => {
     return deriveSidebarShortcutAgentKeys(sections, collapsedProjectKeys, 9);
   }, [collapsedProjectKeys, sections]);

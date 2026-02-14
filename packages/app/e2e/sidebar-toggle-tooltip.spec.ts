@@ -14,7 +14,7 @@ test('sidebar toggle shows tooltip on the right', async ({ page }) => {
   const tooltip = page.getByTestId('menu-button-tooltip');
   await expect(tooltip).toBeVisible();
   await expect(tooltip).toContainText('Toggle sidebar');
-  await expect(tooltip).toContainText(/⌘B|Ctrl\+B/);
+  await expect(tooltip).toContainText(/⌘B|Ctrl\+\./);
   await page.waitForTimeout(250);
   await expect(tooltip).toBeVisible();
 

@@ -30,13 +30,13 @@ import { useDictation } from "@/hooks/use-dictation";
 import { DictationOverlay } from "./dictation-controls";
 import { RealtimeVoiceOverlay } from "./realtime-voice-overlay";
 import type { DaemonClient } from "@server/client/daemon-client";
-import { usePanelStore } from "@/stores/panel-store";
 import { useSessionStore } from "@/stores/session-store";
 import { useVoiceOptional } from "@/contexts/voice-context";
 import { useToast } from "@/contexts/toast-context";
 import { resolveVoiceUnavailableMessage } from "@/utils/server-info-capabilities";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Shortcut } from "@/components/ui/shortcut";
+import type { MessageInputKeyboardActionKind } from "@/keyboard/actions";
 
 export interface ImageAttachment {
   uri: string;
@@ -82,6 +82,7 @@ export interface MessageInputProps {
 export interface MessageInputRef {
   focus: () => void;
   blur: () => void;
+  runKeyboardAction: (action: MessageInputKeyboardActionKind) => void;
   /**
    * Web-only: return the underlying DOM element for focus assertions/retries.
    * May return null if not mounted or on native.
@@ -138,8 +139,6 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
     const { theme } = useUnistyles();
     const toast = useToast();
     const voice = useVoiceOptional();
-    const toggleAgentList = usePanelStore((state) => state.toggleAgentList);
-    const toggleFileExplorer = usePanelStore((state) => state.toggleFileExplorer);
   const [inputHeight, setInputHeight] = useState(MIN_INPUT_HEIGHT);
   const textInputRef = useRef<
     TextInput | (TextInput & { getNativeRef?: () => unknown }) | null
@@ -152,6 +151,40 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       },
       blur: () => {
         textInputRef.current?.blur?.();
+      },
+      runKeyboardAction: (action) => {
+        if (action === "focus") {
+          textInputRef.current?.focus();
+          return;
+        }
+
+        if (action === "voice-toggle") {
+          handleToggleRealtimeVoiceShortcut();
+          return;
+        }
+
+        if (action === "voice-mute-toggle") {
+          if (isRealtimeVoiceForCurrentAgent) {
+            voice?.toggleMute();
+          }
+          return;
+        }
+
+        if (action === "dictation-cancel") {
+          if (isDictatingRef.current) {
+            cancelDictation();
+          }
+          return;
+        }
+
+        if (action === "dictation-toggle") {
+          if (isDictatingRef.current) {
+            sendAfterTranscriptRef.current = true;
+            confirmDictation();
+          } else {
+            void startDictationIfAvailable();
+          }
+        }
       },
       getNativeElement: () => {
         if (!IS_WEB) return null;
@@ -294,121 +327,6 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
     }
     await startDictation();
   }, [dictationUnavailableMessage, startDictation, toast]);
-
-  // Cmd+D to start/submit dictation, Cmd+Shift+D toggles realtime voice, Escape cancels dictation
-  useEffect(() => {
-    if (!IS_WEB) return;
-    const toggleRealtimeVoice = () => {
-      if (!voice || !voiceServerId || !voiceAgentId || !isConnected || disabled) {
-        return;
-      }
-      if (voice.isVoiceSwitching) {
-        return;
-      }
-      if (voice.isVoiceModeForAgent(voiceServerId, voiceAgentId)) {
-        const tasks: Promise<unknown>[] = [];
-        if (isAgentRunning && client) {
-          tasks.push(client.cancelAgent(voiceAgentId));
-        }
-        tasks.push(voice.stopVoice());
-        void Promise.allSettled(tasks).then((results) => {
-          results.forEach((result) => {
-            if (result.status === "rejected") {
-              console.error(
-                "[MessageInput] Failed to stop realtime voice",
-                result.reason
-              );
-            }
-          });
-        });
-        return;
-      }
-      void voice.startVoice(voiceServerId, voiceAgentId).catch((error) => {
-        console.error("[MessageInput] Failed to start realtime voice", error);
-        const message =
-          error instanceof Error
-            ? error.message
-            : typeof error === "string"
-              ? error
-              : null;
-        if (message && message.trim().length > 0) {
-          toast.error(message);
-        }
-      });
-    };
-
-    const resolveNativeInput = (): unknown => {
-      const current = textInputRef.current as any;
-      if (!current) return null;
-      if (typeof current.getNativeRef === "function") {
-        return current.getNativeRef();
-      }
-      return current;
-    };
-    function handleKeyDown(event: KeyboardEvent) {
-      const nativeInput = resolveNativeInput();
-      const isFromInput = Boolean(nativeInput && event.target === nativeInput);
-      if (!isScreenFocused && !isInputFocusedRef.current && !isFromInput) {
-        return;
-      }
-      const isMod = event.metaKey || event.ctrlKey;
-      const isKeyD = event.code === "KeyD" || event.key.toLowerCase() === "d";
-
-      if (isMod && event.shiftKey && isKeyD && !event.repeat) {
-        event.preventDefault();
-        toggleRealtimeVoice();
-        return;
-      }
-
-      if (
-        isRealtimeVoiceForCurrentAgent &&
-        !event.metaKey &&
-        !event.ctrlKey &&
-        !event.altKey &&
-        !event.shiftKey &&
-        (event.code === "Space" || event.key === " ") &&
-        !event.repeat
-      ) {
-        event.preventDefault();
-        voice?.toggleMute();
-        return;
-      }
-
-      const dictating = isDictatingRef.current;
-      // Cmd+D: start dictation or submit if already dictating
-      if (isMod && isKeyD) {
-        event.preventDefault();
-        if (dictating) {
-          sendAfterTranscriptRef.current = true;
-          confirmDictation();
-        } else {
-          void startDictationIfAvailable();
-        }
-        return;
-      }
-      // Escape: cancel dictation
-      if (event.key === "Escape" && dictating) {
-        event.preventDefault();
-        cancelDictation();
-      }
-    }
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [
-    cancelDictation,
-    client,
-    confirmDictation,
-    disabled,
-    isAgentRunning,
-    isConnected,
-    isRealtimeVoiceForCurrentAgent,
-    isScreenFocused,
-    startDictationIfAvailable,
-    toast,
-    voiceAgentId,
-    voiceServerId,
-    voice,
-  ]);
 
   // Animate overlay
   useEffect(() => {
@@ -636,60 +554,6 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
 
     const { shiftKey, metaKey, ctrlKey } = event.nativeEvent;
 
-    const key = event.nativeEvent.key.toLowerCase();
-
-    // Cmd+B or Ctrl+B: toggle sidebar
-    if ((metaKey || ctrlKey) && key === "b") {
-      event.preventDefault();
-      toggleAgentList();
-      return;
-    }
-
-    // Cmd+E or Ctrl+E: toggle explorer sidebar
-    if ((metaKey || ctrlKey) && key === "e") {
-      event.preventDefault();
-      toggleFileExplorer();
-      return;
-    }
-
-    // Cmd+Shift+D or Ctrl+Shift+D: toggle realtime voice mode
-    if ((metaKey || ctrlKey) && shiftKey && key === "d") {
-      event.preventDefault();
-      handleToggleRealtimeVoiceShortcut();
-      return;
-    }
-
-    // Cmd+D or Ctrl+D: start dictation or submit if already dictating
-    if ((metaKey || ctrlKey) && key === "d") {
-      event.preventDefault();
-      if (isDictating) {
-        sendAfterTranscriptRef.current = true;
-        confirmDictation();
-      } else {
-        void startDictationIfAvailable();
-      }
-      return;
-    }
-
-    // Escape: cancel dictation
-    if (event.nativeEvent.key === "Escape" && isDictating) {
-      event.preventDefault();
-      cancelDictation();
-      return;
-    }
-
-    if (
-      isRealtimeVoiceForCurrentAgent &&
-      !metaKey &&
-      !ctrlKey &&
-      !shiftKey &&
-      event.nativeEvent.key === " "
-    ) {
-      event.preventDefault();
-      voice?.toggleMute();
-      return;
-    }
-
     if (event.nativeEvent.key !== "Enter") return;
 
     // Shift+Enter: add newline (default behavior, don't intercept)
@@ -714,7 +578,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
   const shouldShowSendButton = hasSendableContent || isSubmitLoading;
 
   return (
-    <View style={styles.container}>
+    <View style={styles.container} testID="message-input-root">
       {/* Regular input */}
       <Animated.View style={[styles.inputWrapper, inputAnimatedStyle]}>
         {/* Image preview pills */}

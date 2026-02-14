@@ -95,6 +95,24 @@ async function openTerminalsPanel(page: Page): Promise<void> {
   });
 }
 
+async function getDesktopAgentSidebarOpen(page: Page): Promise<boolean | null> {
+  return await page.evaluate(() => {
+    const raw = localStorage.getItem("panel-state");
+    if (!raw) {
+      return null;
+    }
+    try {
+      const parsed = JSON.parse(raw) as {
+        state?: { desktop?: { agentListOpen?: boolean } };
+      };
+      const value = parsed?.state?.desktop?.agentListOpen;
+      return typeof value === "boolean" ? value : null;
+    } catch {
+      return null;
+    }
+  });
+}
+
 
 async function selectNewestTerminalTab(page: Page): Promise<void> {
   const tabs = page.locator('[data-testid^="terminal-tab-"]');
@@ -251,6 +269,75 @@ test("terminals are shared by agents on the same cwd", async ({ page }) => {
     await expect(page.getByTestId("terminal-surface").first()).toContainText(sharedMarker, {
       timeout: 30000,
     });
+  } finally {
+    await repo.cleanup();
+  }
+});
+
+test("terminal captures escape and ctrl+c key input", async ({ page }) => {
+  const repo = await createTempGitRepo("paseo-e2e-terminal-keys-");
+
+  try {
+    await openNewAgentDraft(page);
+    await setWorkingDirectory(page, repo.path);
+    await ensureHostSelected(page);
+    await createAgent(page, "Terminal key combo capture");
+
+    await openTerminalsPanel(page);
+
+    const surface = page.getByTestId("terminal-surface").first();
+    await expect(surface).toBeVisible({ timeout: 30000 });
+    await surface.click({ force: true });
+
+    await page.keyboard.type("cat -v", { delay: 1 });
+    await page.keyboard.press("Enter");
+    await expect(surface).toContainText("cat -v", { timeout: 30000 });
+
+    await page.keyboard.press("Escape");
+    await expect(surface).toContainText("^[", { timeout: 30000 });
+
+    await page.keyboard.press("Control+C");
+    await expect(surface).toContainText("^C", { timeout: 30000 });
+
+    await page.keyboard.press("Control+B");
+    await expect(surface).toContainText("^B", { timeout: 30000 });
+
+    const marker = `terminal-key-capture-${Date.now()}`;
+    await page.keyboard.type(`echo ${marker}`, { delay: 1 });
+    await page.keyboard.press("Enter");
+    await expect(surface).toContainText(marker, { timeout: 30000 });
+  } finally {
+    await repo.cleanup();
+  }
+});
+
+test("Cmd+B toggles sidebar even when terminal is focused", async ({ page }) => {
+  const repo = await createTempGitRepo("paseo-e2e-terminal-cmd-b-");
+
+  try {
+    await openNewAgentDraft(page);
+    await setWorkingDirectory(page, repo.path);
+    await ensureHostSelected(page);
+    await createAgent(page, "Terminal Cmd+B");
+
+    await openTerminalsPanel(page);
+    const surface = page.getByTestId("terminal-surface").first();
+    await expect(surface).toBeVisible({ timeout: 30000 });
+    await surface.click({ force: true });
+
+    await expect
+      .poll(async () => await getDesktopAgentSidebarOpen(page), { timeout: 30000 })
+      .toBe(true);
+
+    await page.keyboard.press("Meta+B");
+    await expect
+      .poll(async () => await getDesktopAgentSidebarOpen(page), { timeout: 30000 })
+      .toBe(false);
+
+    await page.keyboard.press("Meta+B");
+    await expect
+      .poll(async () => await getDesktopAgentSidebarOpen(page), { timeout: 30000 })
+      .toBe(true);
   } finally {
     await repo.cleanup();
   }
