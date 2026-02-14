@@ -3,15 +3,15 @@
 /**
  * Phase 2: Daemon Command Tests
  *
- * Tests daemon commands - currently focused on error cases and help
- * since daemon start may not be fully working yet.
+ * Tests daemon commands with an isolated PASEO_HOME.
  *
  * Tests:
  * - daemon --help shows subcommands
  * - daemon pair prints a local pairing link without requiring a running daemon
- * - daemon status fails gracefully when daemon not running
- * - daemon status --json outputs valid JSON (even for errors)
+ * - daemon status reports stopped when daemon not running
+ * - daemon status --json outputs valid JSON
  * - daemon stop handles daemon not running gracefully
+ * - daemon restart starts the daemon and can be cleaned up
  */
 
 import assert from 'node:assert'
@@ -24,7 +24,7 @@ $.verbose = false
 
 console.log('=== Daemon Commands ===\n')
 
-// Get random port that's definitely not in use (never 6767)
+// Keep restart off default 6767 to avoid collisions with any existing daemon.
 const port = 10000 + Math.floor(Math.random() * 50000)
 const paseoHome = await mkdtemp(join(tmpdir(), 'paseo-test-home-'))
 
@@ -53,87 +53,60 @@ try {
     console.log('✓ daemon pair prints local pairing URL\n')
   }
 
-  // Test 3: daemon status fails gracefully when daemon not running
+  // Test 3: daemon status reports stopped when daemon not running
   {
-    console.log('Test 3: daemon status fails gracefully when not running')
+    console.log('Test 3: daemon status reports stopped when not running')
     const result =
-      await $`PASEO_HOST=localhost:${port} PASEO_HOME=${paseoHome} npx paseo daemon status`.nothrow()
-    assert.notStrictEqual(result.exitCode, 0, 'should fail when daemon not running')
-    // The error should mention something about daemon not running or connection
-    const output = result.stdout + result.stderr
-    const hasDaemonError =
-      output.toLowerCase().includes('daemon') ||
-      output.toLowerCase().includes('connect') ||
-      output.toLowerCase().includes('running')
-    assert(hasDaemonError, 'error message should mention daemon/connect/running')
-    console.log('✓ daemon status fails gracefully when not running\n')
+      await $`PASEO_HOME=${paseoHome} npx paseo daemon status`.nothrow()
+    assert.strictEqual(result.exitCode, 0, 'status should succeed when daemon is stopped')
+    const output = result.stdout.toLowerCase()
+    assert(output.includes('status'), 'status table should include Status row')
+    assert(output.includes('stopped'), 'status should report stopped')
+    console.log('✓ daemon status reports stopped when not running\n')
   }
 
-  // Test 4: daemon status --json outputs valid JSON (even for errors)
+  // Test 4: daemon status --json outputs valid JSON
   {
     console.log('Test 4: daemon status --json outputs JSON')
     const result =
-      await $`PASEO_HOST=localhost:${port} PASEO_HOME=${paseoHome} npx paseo daemon status --json`.nothrow()
-    // Should still fail (daemon not running)
-    assert.notStrictEqual(result.exitCode, 0, 'should fail when daemon not running')
-    // But output should be valid JSON
-    const output = result.stdout.trim()
-    if (output.length > 0) {
-      try {
-        JSON.parse(output)
-        console.log('✓ daemon status --json outputs valid JSON\n')
-      } catch {
-        // If stdout is empty, check if stderr has the error (acceptable for now)
-        console.log('✓ daemon status --json handled error (output may be in stderr)\n')
-      }
-    } else {
-      // Empty stdout is acceptable if error is in stderr
-      console.log('✓ daemon status --json handled error gracefully\n')
-    }
+      await $`PASEO_HOME=${paseoHome} npx paseo daemon status --json`.nothrow()
+    assert.strictEqual(result.exitCode, 0, '--json status should succeed')
+    const status = JSON.parse(result.stdout)
+    assert.strictEqual(status.status, 'stopped', 'json status should report stopped')
+    assert.strictEqual(status.home, paseoHome, 'json status should reflect the isolated home')
+    console.log('✓ daemon status --json outputs valid JSON\n')
   }
 
   // Test 5: daemon stop handles daemon not running gracefully
   {
     console.log('Test 5: daemon stop handles daemon not running')
     const result =
-      await $`PASEO_HOST=localhost:${port} PASEO_HOME=${paseoHome} npx paseo daemon stop`.nothrow()
-    // Stop should succeed even if daemon not running (idempotent)
-    // OR it should fail gracefully with a clear message
+      await $`PASEO_HOME=${paseoHome} npx paseo daemon stop`.nothrow()
+    // Stop should succeed even if daemon is not running (idempotent).
+    assert.strictEqual(result.exitCode, 0, 'stop should succeed when daemon not running')
     const output = result.stdout + result.stderr
-    if (result.exitCode === 0) {
-      // If it succeeds, it should mention the daemon wasn't running
-      const mentionsNotRunning =
-        output.toLowerCase().includes('not running') ||
-        output.toLowerCase().includes('was not running')
-      assert(mentionsNotRunning, 'success output should mention daemon was not running')
-      console.log('✓ daemon stop succeeds gracefully when daemon not running\n')
-    } else {
-      // If it fails, error should be clear
-      const hasError =
-        output.toLowerCase().includes('daemon') ||
-        output.toLowerCase().includes('connect') ||
-        output.toLowerCase().includes('not running')
-      assert(hasError, 'error message should be clear about daemon state')
-      console.log('✓ daemon stop fails gracefully when daemon not running\n')
-    }
+    const mentionsNotRunning =
+      output.toLowerCase().includes('not running') ||
+      output.toLowerCase().includes('was not running')
+    assert(mentionsNotRunning, 'output should mention daemon was not running')
+    console.log('✓ daemon stop succeeds gracefully when daemon not running\n')
   }
 
-  // Test 6: daemon restart fails when daemon not running
+  // Test 6: daemon restart starts daemon and can be stopped
   {
-    console.log('Test 6: daemon restart fails when daemon not running')
+    console.log('Test 6: daemon restart starts daemon and can be stopped')
     const result =
-      await $`PASEO_HOST=localhost:${port} PASEO_HOME=${paseoHome} npx paseo daemon restart`.nothrow()
-    // Restart should fail when daemon not running (can't restart something that's not running)
-    assert.notStrictEqual(result.exitCode, 0, 'should fail when daemon not running')
-    const output = result.stdout + result.stderr
-    const hasError =
-      output.toLowerCase().includes('daemon') ||
-      output.toLowerCase().includes('not running') ||
-      output.toLowerCase().includes('connect')
-    assert(hasError, 'error message should mention daemon state')
-    console.log('✓ daemon restart fails appropriately when daemon not running\n')
+      await $`PASEO_HOME=${paseoHome} npx paseo daemon restart --port ${String(port)}`.nothrow()
+    assert.strictEqual(result.exitCode, 0, 'restart should succeed even when previously stopped')
+    assert(result.stdout.toLowerCase().includes('restarted'), 'output should report restart')
+
+    const cleanup = await $`PASEO_HOME=${paseoHome} npx paseo daemon stop --force`.nothrow()
+    assert.strictEqual(cleanup.exitCode, 0, 'cleanup stop should succeed after restart')
+    console.log('✓ daemon restart starts and stop cleanup succeeds\n')
   }
 } finally {
+  // Best-effort daemon cleanup in case assertions fail before explicit stop.
+  await $`PASEO_HOME=${paseoHome} npx paseo daemon stop --force`.nothrow()
   // Clean up temp directory
   await rm(paseoHome, { recursive: true, force: true })
 }
