@@ -159,9 +159,11 @@ export function useDictation(options: UseDictationOptions): UseDictationResult {
       if (!isRecordingRef.current) {
         return;
       }
-      void startNewStream("reconnect");
+      void startNewStream("reconnect").catch((error) => {
+        reportError(error, "Failed to restart dictation stream after reconnect");
+      });
     });
-  }, [client, startNewStream]);
+  }, [client, reportError, startNewStream]);
 
   useEffect(() => {
     if (!client) {
@@ -260,7 +262,7 @@ export function useDictation(options: UseDictationOptions): UseDictationResult {
     try {
       await audio.start();
       if (client?.isConnected) {
-        void startNewStream("start");
+        await startNewStream("start");
       }
       isRecordingRef.current = true;
       setIsRecording(true);
@@ -268,9 +270,11 @@ export function useDictation(options: UseDictationOptions): UseDictationResult {
         startDurationTracking();
       }
     } catch (err) {
+      await audio.stop().catch(() => undefined);
       stopDurationTracking();
       isRecordingRef.current = false;
       setIsRecording(false);
+      setStatus("idle");
       reportError(err, "Failed to start dictation");
     } finally {
       actionGateRef.current.starting = false;

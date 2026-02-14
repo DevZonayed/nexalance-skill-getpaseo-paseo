@@ -1168,6 +1168,59 @@ export const DictationStreamErrorMessageSchema = z.object({
   }),
 });
 
+export const ServerCapabilityStateSchema = z.object({
+  enabled: z.boolean(),
+  reason: z.string(),
+});
+
+export const ServerVoiceCapabilitiesSchema = z.object({
+  dictation: ServerCapabilityStateSchema,
+  voice: ServerCapabilityStateSchema,
+});
+
+export const ServerCapabilitiesSchema = z
+  .object({
+    voice: ServerVoiceCapabilitiesSchema.optional(),
+  })
+  .passthrough();
+
+const ServerInfoHostnameSchema = z
+  .unknown()
+  .transform((value): string | null => {
+    if (typeof value !== "string") {
+      return null;
+    }
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  });
+
+const ServerCapabilitiesFromUnknownSchema = z
+  .unknown()
+  .optional()
+  .transform((value): z.infer<typeof ServerCapabilitiesSchema> | undefined => {
+    if (value === undefined) {
+      return undefined;
+    }
+    const parsed = ServerCapabilitiesSchema.safeParse(value);
+    if (!parsed.success) {
+      return undefined;
+    }
+    return parsed.data;
+  });
+
+export const ServerInfoStatusPayloadSchema = z
+  .object({
+    status: z.literal("server_info"),
+    serverId: z.string().trim().min(1),
+    hostname: ServerInfoHostnameSchema.optional(),
+    capabilities: ServerCapabilitiesFromUnknownSchema,
+  })
+  .passthrough()
+  .transform((payload) => ({
+    ...payload,
+    hostname: payload.hostname ?? null,
+  }));
+
 export const StatusMessageSchema = z.object({
   type: z.literal("status"),
   payload: z
@@ -1975,6 +2028,10 @@ export type AssistantChunkMessage = z.infer<typeof AssistantChunkMessageSchema>;
 export type AudioOutputMessage = z.infer<typeof AudioOutputMessageSchema>;
 export type TranscriptionResultMessage = z.infer<typeof TranscriptionResultMessageSchema>;
 export type StatusMessage = z.infer<typeof StatusMessageSchema>;
+export type ServerCapabilityState = z.infer<typeof ServerCapabilityStateSchema>;
+export type ServerVoiceCapabilities = z.infer<typeof ServerVoiceCapabilitiesSchema>;
+export type ServerCapabilities = z.infer<typeof ServerCapabilitiesSchema>;
+export type ServerInfoStatusPayload = z.infer<typeof ServerInfoStatusPayloadSchema>;
 export type RpcErrorMessage = z.infer<typeof RpcErrorMessageSchema>;
 export type ArtifactMessage = z.infer<typeof ArtifactMessageSchema>;
 export type AgentUpdateMessage = z.infer<typeof AgentUpdateMessageSchema>;
@@ -2188,4 +2245,14 @@ export function wrapSessionMessage(
     type: "session",
     message: sessionMsg,
   };
+}
+
+export function parseServerInfoStatusPayload(
+  payload: unknown
+): ServerInfoStatusPayload | null {
+  const parsed = ServerInfoStatusPayloadSchema.safeParse(payload);
+  if (!parsed.success) {
+    return null;
+  }
+  return parsed.data;
 }

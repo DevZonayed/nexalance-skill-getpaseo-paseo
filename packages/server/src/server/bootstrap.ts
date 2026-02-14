@@ -299,6 +299,7 @@ export async function createPaseoDaemon(
   );
   let wsServer: VoiceAssistantWebSocketServer | null = null;
   let voiceMcpBridgeManager: VoiceMcpSocketBridgeManager | null = null;
+  let unsubscribeSpeechReadiness: (() => void) | null = null;
 
   // Create in-memory transport for Session's Agent MCP client (voice assistant tools)
   const createInMemoryAgentMcpTransport = async (): Promise<InMemoryTransport> => {
@@ -461,6 +462,7 @@ export async function createPaseoDaemon(
     resolveVoiceTts,
     resolveDictationStt,
     getSpeechReadiness,
+    subscribeSpeechReadiness,
     cleanup: cleanupSpeechRuntime,
     localModelConfig,
   } = await initializeSpeechRuntime({
@@ -503,6 +505,9 @@ export async function createPaseoDaemon(
     },
     config.agentProviderSettings
   );
+  unsubscribeSpeechReadiness = subscribeSpeechReadiness((snapshot) => {
+    wsServer?.publishSpeechReadiness(snapshot);
+  });
 
     const start = async () => {
       // Start main HTTP server
@@ -582,6 +587,8 @@ export async function createPaseoDaemon(
         runtimeSettings: config.agentProviderSettings,
       });
       terminalManager.killAll();
+      unsubscribeSpeechReadiness?.();
+      unsubscribeSpeechReadiness = null;
       cleanupSpeechRuntime();
       await relayTransport?.stop().catch(() => undefined);
       if (wsServer) {

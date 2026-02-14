@@ -32,7 +32,9 @@ import { DictationOverlay } from "./dictation-controls";
 import { RealtimeVoiceOverlay } from "./realtime-voice-overlay";
 import type { DaemonClient } from "@server/client/daemon-client";
 import { usePanelStore } from "@/stores/panel-store";
+import { useSessionStore } from "@/stores/session-store";
 import { useVoiceOptional } from "@/contexts/voice-context";
+import { resolveVoiceUnavailableMessage } from "@/utils/server-info-capabilities";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Shortcut } from "@/components/ui/shortcut";
 
@@ -167,6 +169,17 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
     const overlayTransition = useSharedValue(0);
     const sendAfterTranscriptRef = useRef(false);
     const valueRef = useRef(value);
+    const serverInfo = useSessionStore(
+      useCallback(
+        (state) => {
+          if (!voiceServerId) {
+            return null;
+          }
+          return state.sessions[voiceServerId]?.serverInfo ?? null;
+        },
+        [voiceServerId]
+      )
+    );
 
   useEffect(() => {
     valueRef.current = value;
@@ -212,10 +225,15 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
     console.error("[MessageInput] Dictation error:", error);
   }, []);
 
+  const dictationUnavailableMessage = resolveVoiceUnavailableMessage({
+    serverInfo,
+    mode: "dictation",
+  });
+
   const canStartDictation = useCallback(() => {
     const socketConnected = client?.isConnected ?? false;
-    return socketConnected && !disabled;
-  }, [client, disabled]);
+    return socketConnected && !disabled && !dictationUnavailableMessage;
+  }, [client, disabled, dictationUnavailableMessage]);
 
   const canConfirmDictation = useCallback(() => {
     const socketConnected = client?.isConnected ?? false;
@@ -268,6 +286,14 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
     sendAfterTranscriptRef.current = false;
   }, [dictationStatus, isDictating, isDictationProcessing]);
 
+  const startDictationIfAvailable = useCallback(async () => {
+    if (dictationUnavailableMessage) {
+      Alert.alert("Dictation unavailable", dictationUnavailableMessage);
+      return;
+    }
+    await startDictation();
+  }, [dictationUnavailableMessage, startDictation]);
+
   // Cmd+D to start/submit dictation, Cmd+Shift+D toggles realtime voice, Escape cancels dictation
   useEffect(() => {
     if (!IS_WEB) return;
@@ -298,7 +324,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       }
       void voice.startVoice(voiceServerId, voiceAgentId).catch((error) => {
         console.error("[MessageInput] Failed to start realtime voice", error);
-        const message = error instanceof Error ? error.message : "Voice features are not available right now.";
+        const message = error instanceof Error ? error.message : String(error);
         Alert.alert("Voice unavailable", message);
       });
     };
@@ -348,7 +374,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
           sendAfterTranscriptRef.current = true;
           confirmDictation();
         } else {
-          startDictation();
+          void startDictationIfAvailable();
         }
         return;
       }
@@ -369,7 +395,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
     isConnected,
     isRealtimeVoiceForCurrentAgent,
     isScreenFocused,
-    startDictation,
+    startDictationIfAvailable,
     voiceAgentId,
     voiceServerId,
     voice,
@@ -400,13 +426,13 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
     if (isDictating) {
       await cancelDictation();
     } else {
-      await startDictation();
+      await startDictationIfAvailable();
     }
   }, [
     cancelDictation,
     isDictating,
     isRealtimeVoiceForCurrentAgent,
-    startDictation,
+    startDictationIfAvailable,
     voice,
   ]);
 
@@ -464,7 +490,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
     }
     void voice.startVoice(voiceServerId, voiceAgentId).catch((error) => {
       console.error("[MessageInput] Failed to start realtime voice", error);
-      const message = error instanceof Error ? error.message : "Voice features are not available right now.";
+      const message = error instanceof Error ? error.message : String(error);
       Alert.alert("Voice unavailable", message);
     });
   }, [
@@ -623,7 +649,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
         sendAfterTranscriptRef.current = true;
         confirmDictation();
       } else {
-        startDictation();
+        void startDictationIfAvailable();
       }
       return;
     }

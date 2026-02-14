@@ -11,6 +11,7 @@ import {
   DaemonClient,
 } from "./test-utils/index.js";
 import { getFullAccessConfig, getAskModeConfig } from "./daemon-e2e/agent-configs.js";
+import { parseServerInfoStatusPayload } from "./messages.js";
 import {
   chunkPcm16,
   parsePcm16MonoWav,
@@ -175,10 +176,9 @@ describe("daemon client E2E", () => {
     const infoPromise = waitForSignal<{ serverId: string }>(5000, (resolve) => {
       const unsubscribe = client.on("status", (message) => {
         if (message.type !== "status") return;
-        const payload = message.payload as { status?: unknown; serverId?: unknown };
-        if (payload.status !== "server_info") return;
-        if (typeof payload.serverId !== "string" || payload.serverId.trim().length === 0) return;
-        resolve({ serverId: payload.serverId.trim() });
+        const payload = parseServerInfoStatusPayload(message.payload);
+        if (!payload) return;
+        resolve({ serverId: payload.serverId });
       });
       return unsubscribe;
     });

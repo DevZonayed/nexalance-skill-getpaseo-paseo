@@ -9,7 +9,10 @@ import type { DownloadTokenStore } from "./file-download/token-store.js";
 import type { TerminalManager } from "../terminal/terminal-manager.js";
 import type pino from "pino";
 import {
+  type ServerInfoStatusPayload,
   WSInboundMessageSchema,
+  type ServerCapabilityState,
+  type ServerCapabilities,
   type WSOutboundMessage,
   wrapSessionMessage,
 } from "./messages.js";
@@ -50,6 +53,37 @@ type WebSocketServerConfig = {
   allowedOrigins: Set<string>;
   allowedHosts?: AllowedHostsConfig;
 };
+
+function toServerCapabilityState(
+  state: SpeechReadinessSnapshot["dictation"]
+): ServerCapabilityState {
+  return {
+    enabled: state.enabled,
+    reason: state.available ? "" : state.message,
+  };
+}
+
+function buildServerCapabilities(params: {
+  readiness: SpeechReadinessSnapshot | null;
+}): ServerCapabilities | undefined {
+  const readiness = params.readiness;
+  if (!readiness) {
+    return undefined;
+  }
+  return {
+    voice: {
+      dictation: toServerCapabilityState(readiness.dictation),
+      voice: toServerCapabilityState(readiness.realtimeVoice),
+    },
+  };
+}
+
+function areServerCapabilitiesEqual(
+  current: ServerCapabilities | undefined,
+  next: ServerCapabilities | undefined
+): boolean {
+  return JSON.stringify(current ?? null) === JSON.stringify(next ?? null);
+}
 
 function bufferFromWsData(data: Buffer | ArrayBuffer | Buffer[] | string): Buffer {
   if (typeof data === "string") return Buffer.from(data, "utf8");
@@ -123,6 +157,7 @@ export class VoiceAssistantWebSocketServer {
   >();
   private readonly voiceCallerContexts = new Map<string, VoiceCallerContext>();
   private readonly agentProviderRuntimeSettings: AgentProviderRuntimeSettingsMap | undefined;
+  private serverCapabilities: ServerCapabilities | undefined;
 
   constructor(
     server: HTTPServer,
@@ -168,6 +203,9 @@ export class VoiceAssistantWebSocketServer {
     this.voice = voice ?? null;
     this.dictation = dictation ?? null;
     this.agentProviderRuntimeSettings = agentProviderRuntimeSettings;
+    this.serverCapabilities = buildServerCapabilities({
+      readiness: this.dictation?.getSpeechReadiness?.() ?? null,
+    });
 
     const pushLogger = this.logger.child({ module: "push" });
     this.pushTokenStore = new PushTokenStore(
@@ -228,6 +266,21 @@ export class VoiceAssistantWebSocketServer {
         ws.send(payload);
       }
     }
+  }
+
+  public publishSpeechReadiness(readiness: SpeechReadinessSnapshot | null): void {
+    this.updateServerCapabilities(buildServerCapabilities({ readiness }));
+  }
+
+  public updateServerCapabilities(
+    capabilities: ServerCapabilities | null | undefined
+  ): void {
+    const next = capabilities ?? undefined;
+    if (areServerCapabilitiesEqual(this.serverCapabilities, next)) {
+      return;
+    }
+    this.serverCapabilities = next;
+    this.broadcastServerInfo();
   }
 
   public async attachExternalSocket(
@@ -410,17 +463,31 @@ export class VoiceAssistantWebSocketServer {
     this.bindSocketHandlers(ws, connection);
   }
 
+  private buildServerInfoStatusPayload(): ServerInfoStatusPayload {
+    return {
+      status: "server_info",
+      serverId: this.serverId,
+      hostname: getHostname(),
+      ...(this.serverCapabilities ? { capabilities: this.serverCapabilities } : {}),
+    };
+  }
+
+  private broadcastServerInfo(): void {
+    this.broadcast(
+      wrapSessionMessage({
+        type: "status",
+        payload: this.buildServerInfoStatusPayload(),
+      })
+    );
+  }
+
   private sendServerInfo(ws: WebSocketLike): void {
     // Advertise stable server identity immediately on connect (used for URL/shareable IDs).
     this.sendToClient(
       ws,
       wrapSessionMessage({
         type: "status",
-        payload: {
-          status: "server_info",
-          serverId: this.serverId,
-          hostname: getHostname(),
-        },
+        payload: this.buildServerInfoStatusPayload(),
       })
     );
   }

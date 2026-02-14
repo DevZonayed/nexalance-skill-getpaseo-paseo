@@ -18,6 +18,7 @@ import type {
   AgentStreamEventPayload,
   SessionOutboundMessage,
 } from "@server/shared/messages";
+import { parseServerInfoStatusPayload } from "@server/shared/messages";
 import type { AgentLifecycleStatus } from "@server/shared/agent-lifecycle";
 import type { AgentPermissionRequest } from "@server/server/agent/agent-sdk-types";
 import type { DaemonClient, ConnectionState } from "@server/client/daemon-client";
@@ -984,15 +985,14 @@ export function SessionProvider({
 
     const unsubStatus = client.on("status", (message) => {
       if (message.type !== "status") return;
-      const status = message.payload.status;
-      if (status === "server_info") {
-        const payload = message.payload as any;
-        const rawServerId = typeof payload.serverId === "string" ? payload.serverId.trim() : "";
-        if (!rawServerId) return;
-        const rawHostname = typeof payload.hostname === "string" ? payload.hostname.trim() : "";
+      const serverInfo = parseServerInfoStatusPayload(message.payload);
+      if (serverInfo) {
         updateSessionServerInfo(serverId, {
-          serverId: rawServerId,
-          hostname: rawHostname.length > 0 ? rawHostname : null,
+          serverId: serverInfo.serverId,
+          hostname: serverInfo.hostname,
+          ...(serverInfo.capabilities
+            ? { capabilities: serverInfo.capabilities }
+            : {}),
         });
         return;
       }

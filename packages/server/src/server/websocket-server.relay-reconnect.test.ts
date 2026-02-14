@@ -76,6 +76,8 @@ import {
   VoiceAssistantWebSocketServer,
   type ExternalSocketMetadata,
 } from "./websocket-server";
+import { parseServerInfoStatusPayload } from "./messages.js";
+import type { SpeechReadinessSnapshot } from "./speech/speech-runtime.js";
 
 class MockSocket {
   readyState = 1;
@@ -133,7 +135,8 @@ function createLogger() {
   return logger;
 }
 
-function createServer() {
+function createServer(options?: { speechReadiness?: SpeechReadinessSnapshot | null }) {
+  const speechReadiness = options?.speechReadiness ?? null;
   return new VoiceAssistantWebSocketServer(
     {} as any,
     createLogger() as any,
@@ -146,8 +149,52 @@ function createServer() {
     {} as any,
     "/tmp/paseo-test",
     async () => ({} as any),
-    { allowedOrigins: new Set() }
+    { allowedOrigins: new Set() },
+    undefined,
+    undefined,
+    undefined,
+    speechReadiness
+      ? {
+          getSpeechReadiness: () => speechReadiness,
+        }
+      : undefined
   );
+}
+
+function createReadySpeechReadinessSnapshot(): SpeechReadinessSnapshot {
+  return {
+    generatedAt: "2026-02-14T00:00:00.000Z",
+    requiredLocalModelIds: [],
+    missingLocalModelIds: [],
+    download: {
+      inProgress: false,
+      error: null,
+    },
+    dictation: {
+      enabled: true,
+      available: true,
+      reasonCode: "ready",
+      message: "Dictation is ready.",
+      retryable: false,
+      missingModelIds: [],
+    },
+    realtimeVoice: {
+      enabled: true,
+      available: true,
+      reasonCode: "ready",
+      message: "Realtime voice is ready.",
+      retryable: false,
+      missingModelIds: [],
+    },
+    voiceFeature: {
+      enabled: true,
+      available: true,
+      reasonCode: "ready",
+      message: "Voice features are ready.",
+      retryable: false,
+      missingModelIds: [],
+    },
+  };
 }
 
 describe("relay external socket reconnect behavior", () => {
@@ -201,6 +248,72 @@ describe("relay external socket reconnect behavior", () => {
     socket1.emit("close", 1006, "");
     await vi.advanceTimersByTimeAsync(90_000);
     expect(session.cleanup).toHaveBeenCalledTimes(1);
+
+    await server.close();
+  });
+
+  test("includes voice capabilities in server_info when speech readiness exists", async () => {
+    const speechReadiness = createReadySpeechReadinessSnapshot();
+    const server = createServer({ speechReadiness });
+    const metadata: ExternalSocketMetadata = {
+      transport: "relay",
+      externalSessionKey: "relay:client-server-info-capabilities",
+    };
+
+    const socket = new MockSocket();
+    await server.attachExternalSocket(socket, metadata);
+
+    expect(socket.sent).toHaveLength(1);
+    expect(typeof socket.sent[0]).toBe("string");
+    const envelope = JSON.parse(socket.sent[0] as string) as {
+      type?: unknown;
+      message?: {
+        type?: unknown;
+        payload?: unknown;
+      };
+    };
+    expect(envelope.type).toBe("session");
+    expect(envelope.message?.type).toBe("status");
+
+    const payload = parseServerInfoStatusPayload(envelope.message?.payload);
+    expect(payload?.status).toBe("server_info");
+    expect(payload?.capabilities?.voice?.dictation.enabled).toBe(
+      speechReadiness.dictation.enabled
+    );
+    expect(payload?.capabilities?.voice?.dictation.reason).toBe("");
+    expect(payload?.capabilities?.voice?.voice.enabled).toBe(
+      speechReadiness.realtimeVoice.enabled
+    );
+    expect(payload?.capabilities?.voice?.voice.reason).toBe("");
+
+    await server.close();
+  });
+
+  test("broadcasts updated server_info when capabilities change", async () => {
+    const server = createServer();
+    const metadata: ExternalSocketMetadata = {
+      transport: "relay",
+      externalSessionKey: "relay:client-server-info-broadcast",
+    };
+
+    const socket = new MockSocket();
+    await server.attachExternalSocket(socket, metadata);
+    expect(socket.sent).toHaveLength(1);
+
+    const speechReadiness = createReadySpeechReadinessSnapshot();
+    server.publishSpeechReadiness(speechReadiness);
+    expect(socket.sent).toHaveLength(2);
+
+    const secondEnvelope = JSON.parse(socket.sent[1] as string) as {
+      message?: { payload?: unknown };
+    };
+    const secondPayload = parseServerInfoStatusPayload(secondEnvelope.message?.payload);
+    expect(secondPayload?.capabilities?.voice?.dictation.enabled).toBe(true);
+    expect(secondPayload?.capabilities?.voice?.voice.enabled).toBe(true);
+
+    // Same readiness should not produce another server_info broadcast.
+    server.publishSpeechReadiness(speechReadiness);
+    expect(socket.sent).toHaveLength(2);
 
     await server.close();
   });

@@ -2,6 +2,7 @@ import { createContext, useContext, useState, ReactNode, useCallback, useEffect,
 import { useSpeechmaticsAudio } from "@/hooks/use-speechmatics-audio";
 import type { SessionState } from "@/stores/session-store";
 import { useSessionStore } from "@/stores/session-store";
+import { resolveVoiceUnavailableMessage } from "@/utils/server-info-capabilities";
 import { activateKeepAwakeAsync, deactivateKeepAwake } from "expo-keep-awake";
 import { REALTIME_VOICE_VAD_CONFIG } from "@/voice/realtime-voice-config";
 
@@ -333,6 +334,13 @@ export function VoiceProvider({ children }: VoiceProviderProps) {
       const session = getSession(serverId) ?? null;
       if (!session) {
         throw new Error(`Host ${serverId} is not connected`);
+      }
+      const unavailableMessage = resolveVoiceUnavailableMessage({
+        serverInfo: session.serverInfo,
+        mode: "voice",
+      });
+      if (unavailableMessage) {
+        throw new Error(unavailableMessage);
       }
 
       setIsVoiceSwitching(true);

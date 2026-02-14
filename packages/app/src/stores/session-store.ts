@@ -21,6 +21,7 @@ import type {
   FileDownloadTokenResponse,
   GitSetupOptions,
   ProjectPlacementPayload,
+  ServerCapabilities,
 } from "@server/shared/messages";
 import { isPerfLoggingEnabled, measurePayload, perfLog } from "@/utils/perf";
 
@@ -155,6 +156,7 @@ export interface DaemonConnectionSnapshot {
 export type DaemonServerInfo = {
   serverId: string;
   hostname: string | null;
+  capabilities?: ServerCapabilities;
 };
 
 export interface AgentTimelineCursorState {
@@ -345,6 +347,13 @@ function createInitialSessionState(serverId: string, client: DaemonClient, audio
   };
 }
 
+function areServerCapabilitiesEqual(
+  current: ServerCapabilities | undefined,
+  next: ServerCapabilities | undefined
+): boolean {
+  return JSON.stringify(current ?? null) === JSON.stringify(next ?? null);
+}
+
 export const useSessionStore = create<SessionStore>()(
   subscribeWithSelector((set, get) => ({
     sessions: {},
@@ -446,8 +455,14 @@ export const useSessionStore = create<SessionStore>()(
 
         const nextHostname = info.hostname?.trim() || null;
         const prevHostname = session.serverInfo?.hostname?.trim() || null;
+        const nextCapabilities = info.capabilities;
+        const prevCapabilities = session.serverInfo?.capabilities;
 
-        if (session.serverInfo?.serverId === info.serverId && prevHostname === nextHostname) {
+        if (
+          session.serverInfo?.serverId === info.serverId &&
+          prevHostname === nextHostname &&
+          areServerCapabilitiesEqual(prevCapabilities, nextCapabilities)
+        ) {
           return prev;
         }
 
@@ -462,7 +477,11 @@ export const useSessionStore = create<SessionStore>()(
             ...prev.sessions,
             [serverId]: {
               ...session,
-              serverInfo: { serverId: info.serverId, hostname: nextHostname },
+              serverInfo: {
+                serverId: info.serverId,
+                hostname: nextHostname,
+                ...(nextCapabilities ? { capabilities: nextCapabilities } : {}),
+              },
             },
           },
         };

@@ -86,7 +86,11 @@ export class DictationStreamSender {
     }
 
     if (!this.dictationId) {
-      void this.restartStream("enqueue");
+      if (!this.startPromise) {
+        void this.restartStream("enqueue").catch((error) => {
+          console.error("[DictationStreamSender] Failed to start stream from enqueue", error);
+        });
+      }
       return;
     }
 

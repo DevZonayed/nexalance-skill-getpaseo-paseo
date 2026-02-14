@@ -1,5 +1,6 @@
 import { DaemonClient } from "@server/client/daemon-client";
 import type { DaemonClientConfig } from "@server/client/daemon-client";
+import { parseServerInfoStatusPayload } from "@server/shared/messages";
 import type { HostConnection } from "@/contexts/daemon-registry-context";
 import { buildDaemonWebSocketUrl, buildRelayWebSocketUrl } from "./daemon-endpoints";
 import { createTauriWebSocketTransportFactory } from "./tauri-daemon-transport";
@@ -116,15 +117,10 @@ function connectAndProbe(
 
     unsubscribeStatus = client.on("status", (message) => {
       if (message.type !== "status") return;
-      const payload = message.payload as { status?: unknown; serverId?: unknown; hostname?: unknown };
-      if (payload?.status !== "server_info") return;
-      const raw = typeof payload.serverId === "string" ? payload.serverId.trim() : "";
-      if (!raw) return;
-      serverId = raw;
-      hostname = typeof payload.hostname === "string" ? payload.hostname.trim() : null;
-      if (hostname && hostname.length === 0) {
-        hostname = null;
-      }
+      const payload = parseServerInfoStatusPayload(message.payload);
+      if (!payload) return;
+      serverId = payload.serverId;
+      hostname = payload.hostname;
       maybeFinishOk();
     });
 

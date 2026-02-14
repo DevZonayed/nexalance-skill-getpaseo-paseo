@@ -308,6 +308,9 @@ export type InitializedSpeechRuntime = {
   resolveVoiceTts: () => TextToSpeechProvider | null;
   resolveDictationStt: () => SpeechToTextProvider | null;
   getSpeechReadiness: () => SpeechReadinessSnapshot;
+  subscribeSpeechReadiness: (
+    listener: (snapshot: SpeechReadinessSnapshot) => void
+  ) => () => void;
   cleanup: () => void;
   localModelConfig: {
     modelsDir: string;
@@ -359,6 +362,9 @@ export async function initializeSpeechRuntime(params: {
   let stopped = false;
   let monitorTimeout: ReturnType<typeof setTimeout> | null = null;
   let reconcileInFlight: Promise<void> | null = null;
+  const readinessListeners = new Set<(snapshot: SpeechReadinessSnapshot) => void>();
+  let lastReadinessFingerprint: string | null = null;
+  let lastPublishedReadinessSnapshot: SpeechReadinessSnapshot | null = null;
 
   const computeReadinessSnapshot = (): SpeechReadinessSnapshot => {
     const realtimeVoice = buildRealtimeVoiceReadiness({
@@ -395,6 +401,54 @@ export async function initializeSpeechRuntime(params: {
       voiceFeature: {
         ...voiceFeature,
       },
+    };
+  };
+
+  const readinessFingerprint = (snapshot: SpeechReadinessSnapshot): string =>
+    JSON.stringify({
+      ...snapshot,
+      generatedAt: "",
+    });
+
+  const publishReadinessIfChanged = (): void => {
+    const snapshot = computeReadinessSnapshot();
+    const fingerprint = readinessFingerprint(snapshot);
+    if (fingerprint === lastReadinessFingerprint) {
+      return;
+    }
+    lastReadinessFingerprint = fingerprint;
+    lastPublishedReadinessSnapshot = snapshot;
+    for (const listener of readinessListeners) {
+      try {
+        listener(snapshot);
+      } catch (error) {
+        logger.warn(
+          { err: error },
+          "Speech readiness listener threw an error"
+        );
+      }
+    }
+  };
+
+  const subscribeSpeechReadiness = (
+    listener: (snapshot: SpeechReadinessSnapshot) => void
+  ): (() => void) => {
+    readinessListeners.add(listener);
+    const snapshot = lastPublishedReadinessSnapshot ?? computeReadinessSnapshot();
+    if (!lastPublishedReadinessSnapshot) {
+      lastPublishedReadinessSnapshot = snapshot;
+      lastReadinessFingerprint = readinessFingerprint(snapshot);
+    }
+    try {
+      listener(snapshot);
+    } catch (error) {
+      logger.warn(
+        { err: error },
+        "Speech readiness listener threw an error during subscribe"
+      );
+    }
+    return () => {
+      readinessListeners.delete(listener);
     };
   };
 
@@ -470,12 +524,14 @@ export async function initializeSpeechRuntime(params: {
   const runReconcile = async (params: { modelEnsureAutoDownload: boolean }): Promise<void> => {
     if (reconcileInFlight) {
       await reconcileInFlight;
+      publishReadinessIfChanged();
       return;
     }
     reconcileInFlight = reconcileServices(params.modelEnsureAutoDownload).finally(() => {
       reconcileInFlight = null;
     });
     await reconcileInFlight;
+    publishReadinessIfChanged();
   };
 
   const scheduleMonitor = (): void => {
@@ -500,6 +556,7 @@ export async function initializeSpeechRuntime(params: {
 
     backgroundDownloadInProgress = true;
     backgroundDownloadError = null;
+    publishReadinessIfChanged();
 
     logger.info(
       {
@@ -521,6 +578,7 @@ export async function initializeSpeechRuntime(params: {
         backgroundDownloadError = null;
       } catch (error) {
         backgroundDownloadError = error instanceof Error ? error.message : String(error);
+        publishReadinessIfChanged();
         logger.error(
           {
             err: error,
@@ -533,6 +591,7 @@ export async function initializeSpeechRuntime(params: {
         await refreshMissingLocalModels().catch((error) => {
           logger.warn({ err: error }, "Failed to refresh local speech model status after download");
         });
+        publishReadinessIfChanged();
         scheduleMonitor();
       }
     })();
@@ -565,6 +624,7 @@ export async function initializeSpeechRuntime(params: {
     } catch (error) {
       logger.warn({ err: error }, "Speech runtime monitor tick failed");
     } finally {
+      publishReadinessIfChanged();
       scheduleMonitor();
     }
   };
@@ -591,7 +651,9 @@ export async function initializeSpeechRuntime(params: {
     resolveVoiceStt: () => sttService,
     resolveVoiceTts: () => ttsService,
     resolveDictationStt: () => dictationSttService,
-    getSpeechReadiness: () => computeReadinessSnapshot(),
+    getSpeechReadiness: () =>
+      lastPublishedReadinessSnapshot ?? computeReadinessSnapshot(),
+    subscribeSpeechReadiness,
     cleanup,
     localModelConfig,
   };
