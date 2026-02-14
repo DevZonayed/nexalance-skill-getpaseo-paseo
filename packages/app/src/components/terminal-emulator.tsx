@@ -5,6 +5,14 @@ import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
 import type { DOMProps } from "expo/dom";
 import "@xterm/xterm/css/xterm.css";
+import {
+  type PendingTerminalModifiers,
+  isTerminalModifierDomKey,
+  mergeTerminalModifiers,
+  normalizeDomTerminalKey,
+  normalizeTerminalTransportKey,
+  shouldInterceptDomTerminalKey,
+} from "../utils/terminal-keys";
 
 interface TerminalEmulatorProps {
   dom?: DOMProps;
@@ -16,36 +24,22 @@ interface TerminalEmulatorProps {
   cursorColor?: string;
   onInput?: (data: string) => Promise<void> | void;
   onResize?: (rows: number, cols: number) => Promise<void> | void;
+  onTerminalKey?: (input: {
+    key: string;
+    ctrl: boolean;
+    shift: boolean;
+    alt: boolean;
+    meta: boolean;
+  }) => Promise<void> | void;
+  onPendingModifiersConsumed?: () => Promise<void> | void;
+  pendingModifiers?: PendingTerminalModifiers;
+  focusRequestToken?: number;
 }
 
 declare global {
   interface Window {
     __paseoTerminal?: Terminal;
   }
-}
-
-function isTerminalDebugEnabled(): boolean {
-  const explicit = (
-    globalThis as {
-      __PASEO_TERMINAL_DEBUG?: unknown;
-    }
-  ).__PASEO_TERMINAL_DEBUG;
-  if (typeof explicit === "boolean") {
-    return explicit;
-  }
-  const devFlag = (globalThis as { __DEV__?: unknown }).__DEV__;
-  return devFlag === true;
-}
-
-function logTerminalDebug(message: string, payload?: Record<string, unknown>): void {
-  if (!isTerminalDebugEnabled()) {
-    return;
-  }
-  if (payload) {
-    console.log(`[TerminalDebug][DOM] ${message}`, payload);
-    return;
-  }
-  console.log(`[TerminalDebug][DOM] ${message}`);
 }
 
 export default function TerminalEmulator({
@@ -57,6 +51,10 @@ export default function TerminalEmulator({
   cursorColor = "#e6e6e6",
   onInput,
   onResize,
+  onTerminalKey,
+  onPendingModifiersConsumed,
+  pendingModifiers = { ctrl: false, shift: false, alt: false },
+  focusRequestToken = 0,
 }: TerminalEmulatorProps) {
   const rootRef = useRef<HTMLDivElement | null>(null);
   const hostRef = useRef<HTMLDivElement | null>(null);
@@ -65,6 +63,11 @@ export default function TerminalEmulator({
   const lastSizeRef = useRef<{ rows: number; cols: number } | null>(null);
   const onInputRef = useRef<TerminalEmulatorProps["onInput"]>(onInput);
   const onResizeRef = useRef<TerminalEmulatorProps["onResize"]>(onResize);
+  const onTerminalKeyRef = useRef<TerminalEmulatorProps["onTerminalKey"]>(onTerminalKey);
+  const onPendingModifiersConsumedRef = useRef<
+    TerminalEmulatorProps["onPendingModifiersConsumed"]
+  >(onPendingModifiersConsumed);
+  const pendingModifiersRef = useRef<PendingTerminalModifiers>(pendingModifiers);
 
   useEffect(() => {
     onInputRef.current = onInput;
@@ -75,17 +78,23 @@ export default function TerminalEmulator({
   }, [onResize]);
 
   useEffect(() => {
+    onTerminalKeyRef.current = onTerminalKey;
+  }, [onTerminalKey]);
+
+  useEffect(() => {
+    onPendingModifiersConsumedRef.current = onPendingModifiersConsumed;
+  }, [onPendingModifiersConsumed]);
+
+  useEffect(() => {
+    pendingModifiersRef.current = pendingModifiers;
+  }, [pendingModifiers]);
+
+  useEffect(() => {
     const host = hostRef.current;
     const root = rootRef.current;
     if (!host || !root) {
       return;
     }
-
-    logTerminalDebug("mount", {
-      streamKey,
-      hasOnInput: Boolean(onInputRef.current),
-      hasOnResize: Boolean(onResizeRef.current),
-    });
 
     renderedOutputRef.current = "";
     lastSizeRef.current = null;
@@ -146,6 +155,7 @@ export default function TerminalEmulator({
     }
 
     const viewportElement = host.querySelector<HTMLElement>(".xterm-viewport");
+    const screenElement = host.querySelector<HTMLElement>(".xterm-screen");
     const previousViewportOverscroll = viewportElement?.style.overscrollBehavior ?? "";
     const previousViewportTouchAction = viewportElement?.style.touchAction ?? "";
     const previousViewportOverflowY = viewportElement?.style.overflowY ?? "";
@@ -154,12 +164,18 @@ export default function TerminalEmulator({
     const previousViewportWebkitOverflowScrolling =
       viewportElement?.style.getPropertyValue("-webkit-overflow-scrolling") ?? "";
     if (viewportElement) {
-      viewportElement.style.overscrollBehavior = "contain";
+      viewportElement.style.overscrollBehavior = "none";
       viewportElement.style.touchAction = "pan-y";
       viewportElement.style.overflowY = "auto";
       viewportElement.style.overflowX = "hidden";
       viewportElement.style.pointerEvents = "auto";
       viewportElement.style.setProperty("-webkit-overflow-scrolling", "touch");
+    }
+    const previousScreenPointerEvents = screenElement?.style.pointerEvents ?? "";
+    if (screenElement) {
+      // xterm renders the screen layer above the viewport. Disable hit-testing on that layer
+      // so touch drags can reach the scrollable viewport on mobile.
+      screenElement.style.pointerEvents = "none";
     }
 
     terminalRef.current = terminal;
@@ -174,7 +190,6 @@ export default function TerminalEmulator({
       try {
         fitAddon.fit();
       } catch {
-        logTerminalDebug("fit failed");
         return;
       }
 
@@ -186,14 +201,6 @@ export default function TerminalEmulator({
       }
 
       lastSizeRef.current = { rows, cols };
-      const rootRect = root.getBoundingClientRect();
-      logTerminalDebug("fit+resize", {
-        force,
-        rows,
-        cols,
-        rootWidth: Math.round(rootRect.width),
-        rootHeight: Math.round(rootRect.height),
-      });
       void handler(rows, cols);
     };
 
@@ -204,63 +211,155 @@ export default function TerminalEmulator({
       if (!handler) {
         return;
       }
-      logTerminalDebug("input", {
-        length: data.length,
-        preview: data.slice(0, 20),
-      });
       void handler(data);
     });
 
-    let lastScrollLogTs = 0;
-    let lastWheelLogTs = 0;
-    let lastTouchMoveLogTs = 0;
+    terminal.attachCustomKeyEventHandler((event) => {
+      if (event.type !== "keydown" || event.isComposing) {
+        return true;
+      }
 
-    const viewportScrollHandler = () => {
-      const now = Date.now();
-      if (now - lastScrollLogTs < 120) {
-        return;
+      const normalizedKey = normalizeDomTerminalKey(event.key);
+      if (!normalizedKey || isTerminalModifierDomKey(event.key)) {
+        return true;
       }
-      lastScrollLogTs = now;
-      logTerminalDebug("viewport scroll", {
-        baseY: terminal.buffer.active.baseY,
-        viewportY: terminal.buffer.active.viewportY,
-      });
-    };
-    const viewportWheelHandler = (event: WheelEvent) => {
-      const now = Date.now();
-      if (now - lastWheelLogTs < 120) {
-        return;
-      }
-      lastWheelLogTs = now;
-      logTerminalDebug("viewport wheel", {
-        deltaY: event.deltaY,
-        deltaX: event.deltaX,
-      });
-    };
-    const viewportTouchStartHandler = (event: TouchEvent) => {
-      logTerminalDebug("viewport touchstart", {
-        touches: event.touches.length,
-      });
-    };
-    const viewportTouchMoveHandler = (event: TouchEvent) => {
-      const now = Date.now();
-      if (now - lastTouchMoveLogTs < 120) {
-        return;
-      }
-      lastTouchMoveLogTs = now;
-      logTerminalDebug("viewport touchmove", {
-        touches: event.touches.length,
-      });
-    };
 
-    viewportElement?.addEventListener("scroll", viewportScrollHandler, { passive: true });
-    viewportElement?.addEventListener("wheel", viewportWheelHandler, { passive: true });
-    viewportElement?.addEventListener("touchstart", viewportTouchStartHandler, {
-      passive: true,
+      const pending = pendingModifiersRef.current;
+      if (
+        !shouldInterceptDomTerminalKey({
+          key: normalizedKey,
+          ctrlKey: event.ctrlKey,
+          altKey: event.altKey,
+          pendingModifiers: pending,
+        })
+      ) {
+        return true;
+      }
+
+      const modifiers = mergeTerminalModifiers({
+        pendingModifiers: pending,
+        ctrlKey: event.ctrlKey,
+        shiftKey: event.shiftKey,
+        altKey: event.altKey,
+        metaKey: event.metaKey,
+      });
+
+      const keyPayload = {
+        key: normalizeTerminalTransportKey(normalizedKey),
+        ...modifiers,
+      };
+      onTerminalKeyRef.current?.(keyPayload);
+
+      if (pending.ctrl || pending.shift || pending.alt) {
+        onPendingModifiersConsumedRef.current?.();
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+      return false;
     });
-    viewportElement?.addEventListener("touchmove", viewportTouchMoveHandler, {
-      passive: true,
-    });
+
+    let touchScrollRemainderPx = 0;
+    const touchScrollLineHeightPx = (() => {
+      const row = host.querySelector<HTMLElement>(".xterm-rows > div");
+      const measured = row?.getBoundingClientRect().height;
+      return measured && measured > 0 ? measured : 18;
+    })();
+    const activeTouchRef: {
+      identifier: number;
+      startX: number;
+      startY: number;
+      lastX: number;
+      lastY: number;
+      mode: "vertical" | "horizontal" | null;
+    } = {
+      identifier: -1,
+      startX: 0,
+      startY: 0,
+      lastX: 0,
+      lastY: 0,
+      mode: null,
+    };
+    const rootTouchStartHandler = (event: TouchEvent) => {
+      if (event.touches.length !== 1) {
+        touchScrollRemainderPx = 0;
+        activeTouchRef.identifier = -1;
+        activeTouchRef.mode = null;
+        return;
+      }
+      const touch = event.touches[0];
+      if (!touch) {
+        touchScrollRemainderPx = 0;
+        activeTouchRef.identifier = -1;
+        activeTouchRef.mode = null;
+        return;
+      }
+      activeTouchRef.identifier = touch.identifier;
+      activeTouchRef.startX = touch.clientX;
+      activeTouchRef.startY = touch.clientY;
+      activeTouchRef.lastX = touch.clientX;
+      activeTouchRef.lastY = touch.clientY;
+      activeTouchRef.mode = null;
+      touchScrollRemainderPx = 0;
+    };
+    const rootTouchMoveHandler = (event: TouchEvent) => {
+      if (event.touches.length !== 1) {
+        return;
+      }
+      const touch = Array.from(event.touches).find(
+        (candidate) => candidate.identifier === activeTouchRef.identifier
+      );
+      if (!touch) {
+        return;
+      }
+
+      const totalDeltaX = touch.clientX - activeTouchRef.startX;
+      const totalDeltaY = touch.clientY - activeTouchRef.startY;
+      if (activeTouchRef.mode === null) {
+        const absX = Math.abs(totalDeltaX);
+        const absY = Math.abs(totalDeltaY);
+        if (absX > 8 || absY > 8) {
+          activeTouchRef.mode = absY >= absX ? "vertical" : "horizontal";
+        }
+      }
+
+      const deltaY = touch.clientY - activeTouchRef.lastY;
+      activeTouchRef.lastX = touch.clientX;
+      activeTouchRef.lastY = touch.clientY;
+
+      if (activeTouchRef.mode !== "vertical") {
+        return;
+      }
+
+      // Manual vertical touch scrolling fallback for xterm's layered DOM.
+      touchScrollRemainderPx += deltaY;
+      const lineDelta = Math.trunc(touchScrollRemainderPx / touchScrollLineHeightPx);
+      if (lineDelta !== 0) {
+        const appliedLineDelta = -lineDelta;
+        terminal.scrollLines(appliedLineDelta);
+        touchScrollRemainderPx -= lineDelta * touchScrollLineHeightPx;
+      }
+      event.preventDefault();
+    };
+    const rootTouchEndHandler = (event: TouchEvent) => {
+      const changed = Array.from(event.changedTouches).some(
+        (touch) => touch.identifier === activeTouchRef.identifier
+      );
+      if (changed || event.touches.length === 0) {
+        touchScrollRemainderPx = 0;
+        activeTouchRef.identifier = -1;
+        activeTouchRef.mode = null;
+      }
+    };
+    const rootTouchCancelHandler = () => {
+      touchScrollRemainderPx = 0;
+      activeTouchRef.identifier = -1;
+      activeTouchRef.mode = null;
+    };
+    root.addEventListener("touchstart", rootTouchStartHandler, { passive: true });
+    root.addEventListener("touchmove", rootTouchMoveHandler, { passive: false });
+    root.addEventListener("touchend", rootTouchEndHandler, { passive: true });
+    root.addEventListener("touchcancel", rootTouchCancelHandler, { passive: true });
 
     const resizeObserver = new ResizeObserver(() => {
       fitAndEmitResize();
@@ -293,10 +392,10 @@ export default function TerminalEmulator({
       window.removeEventListener("resize", windowResizeHandler);
       visualViewport?.removeEventListener("resize", visualViewportResizeHandler);
       window.clearInterval(fitInterval);
-      viewportElement?.removeEventListener("scroll", viewportScrollHandler);
-      viewportElement?.removeEventListener("wheel", viewportWheelHandler);
-      viewportElement?.removeEventListener("touchstart", viewportTouchStartHandler);
-      viewportElement?.removeEventListener("touchmove", viewportTouchMoveHandler);
+      root.removeEventListener("touchstart", rootTouchStartHandler);
+      root.removeEventListener("touchmove", rootTouchMoveHandler);
+      root.removeEventListener("touchend", rootTouchEndHandler);
+      root.removeEventListener("touchcancel", rootTouchCancelHandler);
 
       fitAddon.dispose();
       terminal.dispose();
@@ -328,12 +427,14 @@ export default function TerminalEmulator({
           previousViewportWebkitOverflowScrolling
         );
       }
+      if (screenElement) {
+        screenElement.style.pointerEvents = previousScreenPointerEvents;
+      }
 
       terminalRef.current = null;
       if (window.__paseoTerminal === terminal) {
         window.__paseoTerminal = undefined;
       }
-      logTerminalDebug("unmount", { streamKey });
       renderedOutputRef.current = "";
       lastSizeRef.current = null;
     };
@@ -366,6 +467,13 @@ export default function TerminalEmulator({
     renderedOutputRef.current = outputText;
   }, [outputText]);
 
+  useEffect(() => {
+    if (focusRequestToken <= 0) {
+      return;
+    }
+    terminalRef.current?.focus();
+  }, [focusRequestToken]);
+
   return (
     <div
       ref={rootRef}
@@ -384,7 +492,6 @@ export default function TerminalEmulator({
         overscrollBehavior: "none",
       }}
       onPointerDown={() => {
-        logTerminalDebug("root pointerdown", { streamKey });
         terminalRef.current?.focus();
       }}
     >

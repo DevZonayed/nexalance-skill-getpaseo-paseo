@@ -144,6 +144,8 @@ function AppContainer({ children, selectedAgentId }: AppContainerProps) {
       ? mobileView === "agent-list"
       : desktopAgentListOpen
     : false;
+  const openGestureEnabled =
+    chromeEnabled && isMobile && mobileView === "agent";
 
   useGlobalKeyboardNav({
     enabled: chromeEnabled,
@@ -169,7 +171,7 @@ function AppContainer({ children, selectedAgentId }: AppContainerProps) {
   const openGesture = useMemo(
     () =>
       Gesture.Pan()
-        .enabled(chromeEnabled && isMobile && !isOpen)
+        .enabled(openGestureEnabled)
         .manualActivation(true)
         // Fail if 10px vertical movement happens first (allow vertical scroll)
         .failOffsetY([-10, 10])
@@ -225,9 +227,7 @@ function AppContainer({ children, selectedAgentId }: AppContainerProps) {
           isGesturing.value = false;
         }),
     [
-      chromeEnabled,
-      isMobile,
-      isOpen,
+      openGestureEnabled,
       windowWidth,
       translateX,
       backdropOpacity,

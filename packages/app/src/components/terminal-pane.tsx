@@ -2,17 +2,19 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ActivityIndicator,
-  type LayoutChangeEvent,
   Pressable,
   ScrollView,
   Text,
   View,
 } from "react-native";
 import { Plus, RefreshCw } from "lucide-react-native";
-import { NativeViewGestureHandler } from "react-native-gesture-handler";
 import { StyleSheet, UnistylesRuntime, useUnistyles } from "react-native-unistyles";
 import { useSessionStore } from "@/stores/session-store";
-import { useExplorerSidebarAnimation } from "@/contexts/explorer-sidebar-animation-context";
+import {
+  hasPendingTerminalModifiers,
+  mapTerminalDataToKey,
+  normalizeTerminalTransportKey,
+} from "@/utils/terminal-keys";
 import TerminalEmulator from "./terminal-emulator";
 
 interface TerminalPaneProps {
@@ -46,47 +48,20 @@ type ModifierState = {
   alt: boolean;
 };
 
+const EMPTY_MODIFIERS: ModifierState = {
+  ctrl: false,
+  shift: false,
+  alt: false,
+};
+
 function terminalScopeKey(serverId: string, cwd: string): string {
   return `${serverId}:${cwd}`;
-}
-
-function isTerminalDebugEnabled(): boolean {
-  const explicit = (
-    globalThis as {
-      __PASEO_TERMINAL_DEBUG?: unknown;
-    }
-  ).__PASEO_TERMINAL_DEBUG;
-  if (typeof explicit === "boolean") {
-    return explicit;
-  }
-  const devFlag = (globalThis as { __DEV__?: unknown }).__DEV__;
-  return devFlag === true;
-}
-
-function logTerminalDebug(message: string, payload?: Record<string, unknown>): void {
-  if (!isTerminalDebugEnabled()) {
-    return;
-  }
-  if (payload) {
-    console.log("[TerminalDebug][Pane] " + message, payload);
-    return;
-  }
-  console.log("[TerminalDebug][Pane] " + message);
 }
 
 export function TerminalPane({ serverId, cwd }: TerminalPaneProps) {
   const { theme } = useUnistyles();
   const isMobile =
     UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
-
-  // Optional when rendered inside the mobile explorer sidebar gesture context.
-  let closeGestureRef: React.MutableRefObject<any> | undefined;
-  try {
-    const animation = useExplorerSidebarAnimation();
-    closeGestureRef = animation.closeGestureRef;
-  } catch {
-    // Terminal pane can render outside explorer sidebar during isolated tests.
-  }
 
   const queryClient = useQueryClient();
   const client = useSessionStore((state) => state.sessions[serverId]?.client ?? null);
@@ -108,11 +83,8 @@ export function TerminalPane({ serverId, cwd }: TerminalPaneProps) {
   } | null>(null);
   const [isAttaching, setIsAttaching] = useState(false);
   const [streamError, setStreamError] = useState<string | null>(null);
-  const [modifiers, setModifiers] = useState<ModifierState>({
-    ctrl: false,
-    shift: false,
-    alt: false,
-  });
+  const [modifiers, setModifiers] = useState<ModifierState>(EMPTY_MODIFIERS);
+  const [focusRequestToken, setFocusRequestToken] = useState(0);
 
   const terminalsQuery = useQuery({
     queryKey: ["terminals", serverId, cwd] as const,
@@ -287,48 +259,6 @@ export function TerminalPane({ serverId, cwd }: TerminalPaneProps) {
     [terminals, selectedTerminalId]
   );
 
-  const waitForCloseGesture = Boolean(isMobile && closeGestureRef?.current);
-
-  useEffect(() => {
-    logTerminalDebug("render state", {
-      scopeKey,
-      isMobile,
-      terminals: terminals.length,
-      selectedTerminalId,
-      activeStreamId,
-      isAttaching,
-      waitForCloseGesture,
-    });
-  }, [
-    activeStreamId,
-    isAttaching,
-    isMobile,
-    scopeKey,
-    selectedTerminalId,
-    terminals.length,
-    waitForCloseGesture,
-  ]);
-
-  const handleOutputLayout = useCallback(
-    (event: LayoutChangeEvent) => {
-      const { width, height } = event.nativeEvent.layout;
-      logTerminalDebug("output layout", {
-        width: Math.round(width),
-        height: Math.round(height),
-        selectedTerminalId,
-      });
-    },
-    [selectedTerminalId]
-  );
-
-  const handleTerminalLayout = useCallback((event: LayoutChangeEvent) => {
-    const { width, height } = event.nativeEvent.layout;
-    logTerminalDebug("terminal container layout", {
-      width: Math.round(width),
-      height: Math.round(height),
-    });
-  }, []);
-
   const currentOutput = selectedTerminalId
     ? (outputByTerminalId.get(selectedTerminalId) ?? "")
     : "";
@@ -341,18 +271,80 @@ export function TerminalPane({ serverId, cwd }: TerminalPaneProps) {
     createTerminalMutation.mutate();
   }, [createTerminalMutation]);
 
-  const handleTerminalData = useCallback(
-    async (data: string) => {
-      if (!client || activeStreamId === null || data.length === 0) {
-        return;
+  const requestTerminalFocus = useCallback(() => {
+    setFocusRequestToken((current) => current + 1);
+  }, []);
+
+  const clearPendingModifiers = useCallback(() => {
+    setModifiers({ ...EMPTY_MODIFIERS });
+  }, []);
+
+  const sendTerminalKey = useCallback(
+    (
+      input: {
+        key: string;
+        ctrl: boolean;
+        shift: boolean;
+        alt: boolean;
+        meta?: boolean;
       }
-      logTerminalDebug("send input", {
-        length: data.length,
-        preview: data.slice(0, 24),
+    ): boolean => {
+      if (!client || activeStreamId === null) {
+        return false;
+      }
+
+      const normalizedKey = normalizeTerminalTransportKey(input.key);
+      client.sendTerminalStreamKey(activeStreamId, {
+        key: normalizedKey,
+        ctrl: input.ctrl,
+        shift: input.shift,
+        alt: input.alt,
+        meta: input.meta,
       });
-      client.sendTerminalStreamInput(activeStreamId, data);
+      return true;
     },
     [client, activeStreamId]
+  );
+
+  const handleTerminalData = useCallback(
+    async (data: string) => {
+      if (data.length === 0) {
+        return;
+      }
+
+      if (hasPendingTerminalModifiers(modifiers)) {
+        const mappedKey = mapTerminalDataToKey(data);
+        if (
+          mappedKey &&
+          sendTerminalKey(
+            {
+              key: mappedKey,
+              ctrl: modifiers.ctrl,
+              shift: modifiers.shift,
+              alt: modifiers.alt,
+              meta: false,
+            }
+          )
+        ) {
+          clearPendingModifiers();
+          return;
+        }
+      }
+
+      if (!client || activeStreamId === null) {
+        return;
+      }
+      client.sendTerminalStreamInput(activeStreamId, data);
+    },
+    [
+      activeStreamId,
+      clearPendingModifiers,
+      client,
+      modifiers.alt,
+      modifiers.ctrl,
+      modifiers.shift,
+      sendTerminalKey,
+    ]
   );
 
   const handleTerminalResize = useCallback(
@@ -370,11 +362,6 @@ export function TerminalPane({ serverId, cwd }: TerminalPaneProps) {
       ) {
         return;
       }
-      logTerminalDebug("send resize", {
-        rows: normalizedRows,
-        cols: normalizedCols,
-        selectedTerminalId,
-      });
       lastReportedSizeRef.current = { rows: normalizedRows, cols: normalizedCols };
       client.sendTerminalInput(selectedTerminalId, {
         type: "resize",
@@ -385,30 +372,51 @@ export function TerminalPane({ serverId, cwd }: TerminalPaneProps) {
     [client, selectedTerminalId]
   );
 
-  const toggleModifier = useCallback((modifier: keyof ModifierState) => {
-    setModifiers((current) => ({ ...current, [modifier]: !current[modifier] }));
-  }, []);
+  const handleTerminalKey = useCallback(
+    async (input: {
+      key: string;
+      ctrl: boolean;
+      shift: boolean;
+      alt: boolean;
+      meta: boolean;
+    }) => {
+      sendTerminalKey(input);
+    },
+    [sendTerminalKey]
+  );
+
+  const handlePendingModifiersConsumed = useCallback(() => {
+    clearPendingModifiers();
+  }, [clearPendingModifiers]);
+
+  const toggleModifier = useCallback(
+    (modifier: keyof ModifierState) => {
+      setModifiers((current) => ({ ...current, [modifier]: !current[modifier] }));
+      requestTerminalFocus();
+    },
+    [requestTerminalFocus]
+  );
 
   const sendVirtualKey = useCallback(
     (key: string) => {
-      if (!client || activeStreamId === null) {
-        return;
-      }
-      client.sendTerminalStreamKey(activeStreamId, {
-        key: key.length === 1 ? key.toLowerCase() : key,
-        ctrl: modifiers.ctrl,
-        shift: modifiers.shift,
-        alt: modifiers.alt,
-      });
-      logTerminalDebug("send virtual key", {
+      sendTerminalKey({
         key,
         ctrl: modifiers.ctrl,
         shift: modifiers.shift,
         alt: modifiers.alt,
+        meta: false,
       });
-      setModifiers({ ctrl: false, shift: false, alt: false });
+      clearPendingModifiers();
+      requestTerminalFocus();
     },
-    [client, activeStreamId, modifiers.alt, modifiers.ctrl, modifiers.shift]
+    [
+      clearPendingModifiers,
+      modifiers.alt,
+      modifiers.ctrl,
+      modifiers.shift,
+      requestTerminalFocus,
+      sendTerminalKey,
+    ]
   );
 
   if (!client || !isConnected) {
@@ -492,32 +500,34 @@ export function TerminalPane({ serverId, cwd }: TerminalPaneProps) {
         </View>
       </View>
 
-      <View style={styles.outputContainer} onLayout={handleOutputLayout}>
+      <View style={styles.outputContainer}>
         {selectedTerminal ? (
-          <NativeViewGestureHandler
-            disallowInterruption={false}
-            waitFor={waitForCloseGesture ? closeGestureRef : undefined}
-          >
-            <View style={styles.terminalGestureContainer} onLayout={handleTerminalLayout}>
-              <TerminalEmulator
-                dom={{
-                  style: { flex: 1 },
-                  matchContents: false,
-                  scrollEnabled: true,
-                  nestedScrollEnabled: true,
-                  overScrollMode: "never",
-                }}
-                streamKey={`${scopeKey}:${selectedTerminal.id}:${activeStreamId ?? "none"}`}
-                outputText={currentOutput}
-                testId="terminal-surface"
-                backgroundColor={theme.colors.background}
-                foregroundColor={theme.colors.foreground}
-                cursorColor={theme.colors.foreground}
-                onInput={handleTerminalData}
-                onResize={handleTerminalResize}
-              />
-            </View>
-          </NativeViewGestureHandler>
+          <View style={styles.terminalGestureContainer}>
+            <TerminalEmulator
+              dom={{
+                style: { flex: 1 },
+                matchContents: false,
+                scrollEnabled: true,
+                nestedScrollEnabled: true,
+                overScrollMode: "never",
+                bounces: false,
+                automaticallyAdjustContentInsets: false,
+                contentInsetAdjustmentBehavior: "never",
+              }}
+              streamKey={`${scopeKey}:${selectedTerminal.id}:${activeStreamId ?? "none"}`}
+              outputText={currentOutput}
+              testId="terminal-surface"
+              backgroundColor={theme.colors.background}
+              foregroundColor={theme.colors.foreground}
+              cursorColor={theme.colors.foreground}
+              onInput={handleTerminalData}
+              onResize={handleTerminalResize}
+              onTerminalKey={handleTerminalKey}
+              onPendingModifiersConsumed={handlePendingModifiersConsumed}
+              pendingModifiers={modifiers}
+              focusRequestToken={focusRequestToken}
+            />
+          </View>
         ) : (
           <View style={styles.centerState}>
             <Text style={styles.stateText}>No terminal selected</Text>

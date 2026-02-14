@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef } from "react";
 import { View, Text, Pressable, Platform, useWindowDimensions } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, {
-  useAnimatedReaction,
   useAnimatedStyle,
   useSharedValue,
   runOnJS,
@@ -25,29 +24,16 @@ import { FileExplorerPane } from "./file-explorer-pane";
 import { TerminalPane } from "./terminal-pane";
 
 const MIN_CHAT_WIDTH = 400;
+const IOS_KEYBOARD_INSET_MIN_HEIGHT = 120;
 
-function isTerminalDebugEnabled(): boolean {
-  const explicit = (
-    globalThis as {
-      __PASEO_TERMINAL_DEBUG?: unknown;
-    }
-  ).__PASEO_TERMINAL_DEBUG;
-  if (typeof explicit === "boolean") {
-    return explicit;
+function resolveKeyboardShift(rawHeight: number, inset: number): number {
+  "worklet";
+  // iOS can report a small accessory/prediction bar height during touch focus.
+  // Treat that as non-keyboard so terminal scroll gestures don't "bounce" the layout.
+  if (Platform.OS === "ios" && rawHeight < IOS_KEYBOARD_INSET_MIN_HEIGHT) {
+    return 0;
   }
-  const devFlag = (globalThis as { __DEV__?: unknown }).__DEV__;
-  return devFlag === true;
-}
-
-function logTerminalDebug(message: string, payload?: Record<string, unknown>): void {
-  if (!isTerminalDebugEnabled()) {
-    return;
-  }
-  if (payload) {
-    console.log("[TerminalDebug][ExplorerSidebar] " + message, payload);
-    return;
-  }
-  console.log("[TerminalDebug][ExplorerSidebar] " + message);
+  return Math.max(0, rawHeight - inset);
 }
 
 interface ExplorerSidebarProps {
@@ -69,10 +55,10 @@ export function ExplorerSidebar({ serverId, agentId, cwd }: ExplorerSidebarProps
   const setExplorerTab = usePanelStore((state) => state.setExplorerTab);
   const setExplorerWidth = usePanelStore((state) => state.setExplorerWidth);
   const { width: viewportWidth } = useWindowDimensions();
-  const terminalDebugEnabled = isTerminalDebugEnabled();
   const { height: keyboardHeight } = useReanimatedKeyboardAnimation();
   const bottomInset = useSharedValue(insets.bottom);
-  const closeGestureLastLogX = useSharedValue(0);
+  const closeTouchStartX = useSharedValue(0);
+  const closeTouchStartY = useSharedValue(0);
 
   useEffect(() => {
     bottomInset.value = insets.bottom;
@@ -112,38 +98,7 @@ export function ExplorerSidebar({ serverId, agentId, cwd }: ExplorerSidebarProps
     closeToAgent();
   }, [closeToAgent]);
 
-  const logCloseGesture = useCallback(
-    (phase: string, payload?: Record<string, unknown>) => {
-      logTerminalDebug("close gesture " + phase, {
-        isMobile,
-        isOpen,
-        explorerTab,
-        ...(payload ?? {}),
-      });
-    },
-    [explorerTab, isMobile, isOpen]
-  );
-
-  const logKeyboardInset = useCallback(
-    (rawHeight: number, shift: number, inset: number) => {
-      logTerminalDebug("keyboard inset", {
-        rawHeight: Math.round(rawHeight),
-        shift: Math.round(shift),
-        inset: Math.round(inset),
-        isMobile,
-        isOpen,
-        explorerTab,
-      });
-    },
-    [explorerTab, isMobile, isOpen]
-  );
-
-  useEffect(() => {
-    if (!terminalDebugEnabled) {
-      return;
-    }
-    logTerminalDebug("close gesture config", { isMobile, isOpen, explorerTab });
-  }, [explorerTab, isMobile, isOpen, terminalDebugEnabled]);
+  const enableSidebarCloseGesture = isMobile && isOpen;
 
   const handleTabPress = useCallback(
     (tab: ExplorerTab) => {
@@ -152,47 +107,52 @@ export function ExplorerSidebar({ serverId, agentId, cwd }: ExplorerSidebarProps
     [setExplorerTab]
   );
 
-  useAnimatedReaction(
-    () => {
-      const rawHeight = Math.abs(keyboardHeight.value);
-      return {
-        rawHeight,
-        shift: Math.max(0, rawHeight - bottomInset.value),
-        inset: bottomInset.value,
-      };
-    },
-    (next, previous) => {
-      if (!terminalDebugEnabled) {
-        return;
-      }
-      if (
-        previous &&
-        Math.abs(previous.shift - next.shift) < 4 &&
-        Math.abs(previous.rawHeight - next.rawHeight) < 4
-      ) {
-        return;
-      }
-      runOnJS(logKeyboardInset)(next.rawHeight, next.shift, next.inset);
-    }
-  );
-
   // Swipe gesture to close (swipe right on mobile)
   const closeGesture = useMemo(
     () =>
       Gesture.Pan()
         .withRef(closeGestureRef)
-        .enabled(isMobile && isOpen)
-        // Only activate on rightward swipe (positive X), fail on leftward or vertical
-        // This allows ScrollViews using waitFor to scroll left normally
-        .activeOffsetX(15)
-        .failOffsetX(-10)
-        .failOffsetY([-10, 10])
+        .enabled(enableSidebarCloseGesture)
+        // Use manual activation so child views (e.g. WebView terminals) keep touch streams
+        // unless we detect an intentional right-swipe close.
+        .manualActivation(true)
+        .onTouchesDown((event) => {
+          const touch = event.changedTouches[0];
+          if (!touch) {
+            return;
+          }
+          closeTouchStartX.value = touch.absoluteX;
+          closeTouchStartY.value = touch.absoluteY;
+        })
+        .onTouchesMove((event, stateManager) => {
+          const touch = event.changedTouches[0];
+          if (!touch || event.numberOfTouches !== 1) {
+            stateManager.fail();
+            return;
+          }
+
+          const deltaX = touch.absoluteX - closeTouchStartX.value;
+          const deltaY = touch.absoluteY - closeTouchStartY.value;
+          const absDeltaX = Math.abs(deltaX);
+          const absDeltaY = Math.abs(deltaY);
+
+          // Fail quickly on clear leftward or vertical intent so child views keep control.
+          if (deltaX <= -10) {
+            stateManager.fail();
+            return;
+          }
+          if (absDeltaY > 10 && absDeltaY > absDeltaX) {
+            stateManager.fail();
+            return;
+          }
+
+          // Activate only on intentional rightward movement.
+          if (deltaX >= 15 && absDeltaX > absDeltaY) {
+            stateManager.activate();
+          }
+        })
         .onStart(() => {
           isGesturing.value = true;
-          if (terminalDebugEnabled) {
-            closeGestureLastLogX.value = 0;
-            runOnJS(logCloseGesture)("start", { windowWidth: Math.round(windowWidth) });
-          }
         })
         .onUpdate((event) => {
           // Right sidebar: swipe right to close (positive translationX)
@@ -200,30 +160,11 @@ export function ExplorerSidebar({ serverId, agentId, cwd }: ExplorerSidebarProps
           translateX.value = newTranslateX;
           const progress = 1 - newTranslateX / windowWidth;
           backdropOpacity.value = Math.max(0, Math.min(1, progress));
-
-          if (
-            terminalDebugEnabled &&
-            Math.abs(newTranslateX - closeGestureLastLogX.value) >= 80
-          ) {
-            closeGestureLastLogX.value = newTranslateX;
-            runOnJS(logCloseGesture)("update", {
-              translationX: Math.round(event.translationX),
-              appliedTranslateX: Math.round(newTranslateX),
-              velocityX: Math.round(event.velocityX),
-            });
-          }
         })
         .onEnd((event) => {
           isGesturing.value = false;
           const shouldClose =
             event.translationX > windowWidth / 3 || event.velocityX > 500;
-          if (terminalDebugEnabled) {
-            runOnJS(logCloseGesture)("end", {
-              translationX: Math.round(event.translationX),
-              velocityX: Math.round(event.velocityX),
-              shouldClose,
-            });
-          }
           if (shouldClose) {
             animateToClose();
             runOnJS(handleClose)();
@@ -233,25 +174,19 @@ export function ExplorerSidebar({ serverId, agentId, cwd }: ExplorerSidebarProps
         })
         .onFinalize(() => {
           isGesturing.value = false;
-          if (terminalDebugEnabled) {
-            runOnJS(logCloseGesture)("finalize");
-          }
         }),
     [
-      isMobile,
-      isOpen,
-      explorerTab,
+      enableSidebarCloseGesture,
       windowWidth,
       translateX,
       backdropOpacity,
       animateToOpen,
       animateToClose,
       handleClose,
-      logCloseGesture,
       isGesturing,
       closeGestureRef,
-      closeGestureLastLogX,
-      terminalDebugEnabled,
+      closeTouchStartX,
+      closeTouchStartY,
     ]
   );
 
@@ -295,7 +230,7 @@ export function ExplorerSidebar({ serverId, agentId, cwd }: ExplorerSidebarProps
 
   const mobileKeyboardInsetStyle = useAnimatedStyle(() => {
     const absoluteHeight = Math.abs(keyboardHeight.value);
-    const shift = Math.max(0, absoluteHeight - bottomInset.value);
+    const shift = resolveKeyboardShift(absoluteHeight, bottomInset.value);
     return {
       paddingBottom: bottomInset.value + shift,
     };
