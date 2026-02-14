@@ -1,4 +1,6 @@
 import type { Command } from 'commander'
+import { homedir } from 'node:os'
+import { basename, join, sep } from 'node:path'
 import { connectToDaemon, getDaemonHost } from '../../utils/client.js'
 import type { CommandOptions, ListResult, OutputSchema, CommandError } from '../../output/index.js'
 
@@ -21,9 +23,20 @@ function shortenPath(path: string): string {
 
 /** Extract worktree name from path */
 function extractWorktreeName(path: string): string {
-  // ~/.paseo/worktrees/<repo>/<name> -> name
-  const parts = path.split('/')
-  return parts[parts.length - 1] ?? path
+  return basename(path)
+}
+
+export function resolvePaseoHomePath(): string {
+  return process.env.PASEO_HOME ?? join(homedir(), '.paseo')
+}
+
+export function resolvePaseoWorktreesDir(): string {
+  return join(resolvePaseoHomePath(), 'worktrees')
+}
+
+function isAgentInManagedWorktree(agentCwd: string): boolean {
+  const worktreesDir = resolvePaseoWorktreesDir()
+  return agentCwd === worktreesDir || agentCwd.startsWith(worktreesDir + sep)
 }
 
 /** Schema for worktree ls output */
@@ -81,10 +94,7 @@ export async function runLsCommand(
     // Build a map of worktree paths to agent IDs
     const worktreeAgentMap = new Map<string, string>()
     for (const agent of agents) {
-      // Check if agent cwd is under ~/.paseo/worktrees/
-      const paseoHome = process.env.PASEO_HOME ?? (process.env.HOME + '/.paseo')
-      const worktreesDir = paseoHome + '/worktrees/'
-      if (agent.cwd.startsWith(worktreesDir)) {
+      if (isAgentInManagedWorktree(agent.cwd)) {
         worktreeAgentMap.set(agent.cwd, agent.id.slice(0, 7))
       }
     }
