@@ -16,16 +16,25 @@ import { SidebarAgentList } from "./sidebar-agent-list";
 import { SidebarAgentListSkeleton } from "./sidebar-agent-list-skeleton";
 import { useSidebarAgentsGrouped } from "@/hooks/use-sidebar-agents-grouped";
 import { useSidebarAnimation } from "@/contexts/sidebar-animation-context";
-import { useTauriDragHandlers, useTrafficLightPadding } from "@/utils/tauri-window";
-import { useSidebarCollapsedSectionsStore } from "@/stores/sidebar-collapsed-sections-store";
+import { useTauriDragHandlers } from "@/utils/tauri-window";
 import { useKeyboardShortcutsStore } from "@/stores/keyboard-shortcuts-store";
-import { deriveSidebarShortcutAgentKeys } from "@/utils/sidebar-shortcuts";
 import { Combobox } from "@/components/ui/combobox";
 import { useDaemonRegistry } from "@/contexts/daemon-registry-context";
 import { useDaemonConnections } from "@/contexts/daemon-connections-context";
+import { useSessionStore } from "@/stores/session-store";
 import { formatConnectionStatus } from "@/utils/daemons";
+import { HEADER_INNER_HEIGHT, HEADER_INNER_HEIGHT_MOBILE } from "@/constants/layout";
 import {
-  buildHostAgentDraftRoute,
+  checkoutStatusQueryKey,
+  type CheckoutStatusPayload,
+} from "@/hooks/use-checkout-status-query";
+import { queryClient } from "@/query/query-client";
+import {
+  buildNewAgentRoute,
+  resolveNewAgentWorkingDir,
+  resolveSelectedAgentForNewAgent,
+} from "@/utils/new-agent-routing";
+import {
   buildHostAgentsRoute,
   buildHostSettingsRoute,
   mapPathnameToServer,
@@ -85,14 +94,23 @@ export function SlidingSidebar({ selectedAgentId }: SlidingSidebarProps) {
 
   // Derive isOpen from the unified panel state
   const isOpen = isMobile ? mobileView === "agent-list" : desktopAgentListOpen;
+  const [selectedProjectKeys, setSelectedProjectKeys] = useState<string[]>([]);
 
   const {
-    sections,
-    checkoutByAgentKey,
+    entries,
+    projectOptions,
+    hasMoreEntries,
     isInitialLoad,
     isRevalidating,
     refreshAll,
-  } = useSidebarAgentsGrouped({ isOpen, serverId: activeServerId });
+  } = useSidebarAgentsGrouped({
+    isOpen,
+    serverId: activeServerId,
+    selectedProjectKeys,
+  });
+  useEffect(() => {
+    setSelectedProjectKeys([]);
+  }, [activeServerId]);
   const {
     translateX,
     backdropOpacity,
@@ -102,7 +120,6 @@ export function SlidingSidebar({ selectedAgentId }: SlidingSidebarProps) {
     isGesturing,
     closeGestureRef,
   } = useSidebarAnimation();
-  const trafficLightPadding = useTrafficLightPadding();
   const dragHandlers = useTauriDragHandlers();
 
   // Track user-initiated refresh to avoid showing spinner on background revalidation
@@ -120,13 +137,12 @@ export function SlidingSidebar({ selectedAgentId }: SlidingSidebarProps) {
     }
   }, [isRevalidating, isManualRefresh]);
 
-  const collapsedProjectKeys = useSidebarCollapsedSectionsStore((s) => s.collapsedProjectKeys);
   const setSidebarShortcutAgentKeys = useKeyboardShortcutsStore(
     (s) => s.setSidebarShortcutAgentKeys
   );
   const sidebarShortcutAgentKeys = useMemo(() => {
-    return deriveSidebarShortcutAgentKeys(sections, collapsedProjectKeys, 9);
-  }, [collapsedProjectKeys, sections]);
+    return entries.slice(0, 9).map((entry) => `${entry.agent.serverId}:${entry.agent.id}`);
+  }, [entries]);
 
   useEffect(() => {
     setSidebarShortcutAgentKeys(sidebarShortcutAgentKeys);
@@ -137,11 +153,34 @@ export function SlidingSidebar({ selectedAgentId }: SlidingSidebarProps) {
   }, [closeToAgent]);
 
   const handleCreateAgentClean = useCallback(() => {
-    if (!activeServerId) {
+    let targetServerId = activeServerId;
+    let targetWorkingDir: string | null = null;
+
+    const selectedAgent = resolveSelectedAgentForNewAgent({
+      pathname,
+      selectedAgentId,
+    });
+    if (selectedAgent) {
+      targetServerId = selectedAgent.serverId;
+      const agent = useSessionStore
+        .getState()
+        .sessions[selectedAgent.serverId]
+        ?.agents?.get(selectedAgent.agentId);
+      const cwd = agent?.cwd?.trim();
+      if (cwd) {
+        const checkout =
+          queryClient.getQueryData<CheckoutStatusPayload>(
+            checkoutStatusQueryKey(selectedAgent.serverId, cwd)
+          ) ?? null;
+        targetWorkingDir = resolveNewAgentWorkingDir(cwd, checkout);
+      }
+    }
+
+    if (!targetServerId) {
       return;
     }
-    router.push(buildHostAgentDraftRoute(activeServerId) as any);
-  }, [activeServerId]);
+    router.push(buildNewAgentRoute(targetServerId, targetWorkingDir) as any);
+  }, [activeServerId, pathname, selectedAgentId]);
 
   // Mobile: close sidebar and navigate
   const handleCreateAgentCleanMobile = useCallback(() => {
@@ -197,6 +236,27 @@ export function SlidingSidebar({ selectedAgentId }: SlidingSidebarProps) {
     translateX,
     windowWidth,
   ]);
+
+  const listFooterComponent = useMemo(() => {
+    if (!hasMoreEntries) {
+      return null;
+    }
+
+    return (
+      <Pressable style={styles.listViewMoreButton} onPress={handleViewMore}>
+        {({ hovered }) => (
+          <Text
+            style={[
+              styles.listViewMoreButtonText,
+              hovered && styles.listViewMoreButtonTextHovered,
+            ]}
+          >
+            View more
+          </Text>
+        )}
+      </Pressable>
+    );
+  }, [handleViewMore, hasMoreEntries]);
 
   const handleHostSelect = useCallback(
     (nextServerId: string) => {
@@ -299,9 +359,36 @@ export function SlidingSidebar({ selectedAgentId }: SlidingSidebarProps) {
                       </>
                     )}
                   </Pressable>
+                </View>
+              </View>
+
+              {/* Middle: scrollable agent list */}
+              {isInitialLoad ? (
+                <SidebarAgentListSkeleton />
+              ) : (
+                <SidebarAgentList
+                  entries={entries}
+                  projectOptions={projectOptions}
+                  selectedProjectKeys={selectedProjectKeys}
+                  onSelectedProjectKeysChange={setSelectedProjectKeys}
+                  isRefreshing={isManualRefresh && isRevalidating}
+                  onRefresh={handleRefresh}
+                  listFooterComponent={listFooterComponent}
+                  selectedAgentId={selectedAgentId}
+                  onAgentSelect={handleAgentSelectMobile}
+                  parentGestureRef={closeGestureRef}
+                />
+              )}
+
+              {/* Footer */}
+              <View style={styles.sidebarFooter}>
+                <View style={styles.footerHostSlot}>
                   <Pressable
                     ref={hostTriggerRef}
-                    style={styles.hostTrigger}
+                    style={({ hovered = false }) => [
+                      styles.hostTrigger,
+                      hovered && styles.hostTriggerHovered,
+                    ]}
                     onPress={() => setIsHostPickerOpen(true)}
                     disabled={hostOptions.length === 0}
                   >
@@ -316,64 +403,53 @@ export function SlidingSidebar({ selectedAgentId }: SlidingSidebarProps) {
                     </Text>
                   </Pressable>
                 </View>
+                <View style={styles.footerIconRow}>
+                  <Pressable
+                    style={styles.footerIconButton}
+                    testID="sidebar-all-agents"
+                    nativeID="sidebar-all-agents"
+                    collapsable={false}
+                    accessible
+                    accessibilityLabel="All agents"
+                    accessibilityRole="button"
+                    onPress={handleViewMore}
+                  >
+                    {({ hovered }) => (
+                      <Users
+                        size={20}
+                        color={hovered ? theme.colors.foreground : theme.colors.foregroundMuted}
+                      />
+                    )}
+                  </Pressable>
+                  <Pressable
+                    style={styles.footerIconButton}
+                    testID="sidebar-settings"
+                    nativeID="sidebar-settings"
+                    collapsable={false}
+                    accessible
+                    accessibilityLabel="Settings"
+                    accessibilityRole="button"
+                    onPress={handleSettingsMobile}
+                  >
+                    {({ hovered }) => (
+                      <Settings
+                        size={20}
+                        color={hovered ? theme.colors.foreground : theme.colors.foregroundMuted}
+                      />
+                    )}
+                  </Pressable>
+                </View>
                 <Combobox
                   options={hostOptions}
                   value={activeServerId ?? ""}
                   onSelect={handleHostSelect}
+                  searchable={false}
                   title="Switch host"
                   searchPlaceholder="Search hosts..."
                   open={isHostPickerOpen}
                   onOpenChange={setIsHostPickerOpen}
                   anchorRef={hostTriggerRef}
                 />
-              </View>
-
-              {/* Middle: scrollable agent list */}
-              {isInitialLoad ? (
-                <SidebarAgentListSkeleton />
-              ) : (
-                <SidebarAgentList
-                  sections={sections}
-                  checkoutByAgentKey={checkoutByAgentKey}
-                  isRefreshing={isManualRefresh && isRevalidating}
-                  onRefresh={handleRefresh}
-                  selectedAgentId={selectedAgentId}
-                  onAgentSelect={handleAgentSelectMobile}
-                  parentGestureRef={closeGestureRef}
-                />
-              )}
-
-              {/* Footer */}
-              <View style={styles.sidebarFooter}>
-                <Pressable
-                  style={styles.footerButton}
-                  onPress={handleViewMore}
-                >
-                  {({ hovered }) => (
-                    <>
-                      <Users size={18} color={hovered ? theme.colors.foreground : theme.colors.foregroundMuted} />
-                      <Text style={[styles.footerButtonText, hovered && styles.footerButtonTextHovered]}>
-                        All agents
-                      </Text>
-                    </>
-                  )}
-                </Pressable>
-                <View style={styles.footerIconRow}>
-                <Pressable
-                  style={styles.footerIconButton}
-                  testID="sidebar-settings"
-                  nativeID="sidebar-settings"
-                  collapsable={false}
-                  accessible
-                  accessibilityLabel="Settings"
-                  accessibilityRole="button"
-                  onPress={handleSettingsMobile}
-                >
-                  {({ hovered }) => (
-                    <Settings size={20} color={hovered ? theme.colors.foreground : theme.colors.foregroundMuted} />
-                  )}
-                </Pressable>
-                </View>
               </View>
             </View>
           </Animated.View>
@@ -389,11 +465,7 @@ export function SlidingSidebar({ selectedAgentId }: SlidingSidebarProps) {
 
   return (
     <View style={[styles.desktopSidebar, { width: DESKTOP_SIDEBAR_WIDTH }]}>
-      {/* Header: New Agent button - top padding area is draggable on Tauri */}
-      <View
-        style={[styles.sidebarHeader, { paddingTop: trafficLightPadding.top || styles.sidebarHeader.paddingTop }]}
-        {...dragHandlers}
-      >
+      <View style={styles.sidebarHeader} {...dragHandlers}>
         <View style={styles.sidebarHeaderRow}>
           <Pressable
             style={styles.newAgentButton}
@@ -403,13 +475,38 @@ export function SlidingSidebar({ selectedAgentId }: SlidingSidebarProps) {
             {({ hovered }) => (
               <>
                 <Plus size={18} color={hovered ? theme.colors.foreground : theme.colors.foregroundMuted} />
-                <Text style={[styles.newAgentButtonText, hovered && styles.newAgentButtonTextHovered]}>New agent</Text>
+              <Text style={[styles.newAgentButtonText, hovered && styles.newAgentButtonTextHovered]}>New agent</Text>
               </>
             )}
           </Pressable>
+        </View>
+      </View>
+
+      {/* Middle: scrollable agent list */}
+      {isInitialLoad ? (
+        <SidebarAgentListSkeleton />
+      ) : (
+        <SidebarAgentList
+          entries={entries}
+          projectOptions={projectOptions}
+          selectedProjectKeys={selectedProjectKeys}
+          onSelectedProjectKeysChange={setSelectedProjectKeys}
+          isRefreshing={isManualRefresh && isRevalidating}
+          onRefresh={handleRefresh}
+          listFooterComponent={listFooterComponent}
+          selectedAgentId={selectedAgentId}
+        />
+      )}
+
+      {/* Footer */}
+      <View style={styles.sidebarFooter}>
+        <View style={styles.footerHostSlot}>
           <Pressable
             ref={hostTriggerRef}
-            style={styles.hostTrigger}
+            style={({ hovered = false }) => [
+              styles.hostTrigger,
+              hovered && styles.hostTriggerHovered,
+            ]}
             onPress={() => setIsHostPickerOpen(true)}
             disabled={hostOptions.length === 0}
           >
@@ -424,47 +521,24 @@ export function SlidingSidebar({ selectedAgentId }: SlidingSidebarProps) {
             </Text>
           </Pressable>
         </View>
-        <Combobox
-          options={hostOptions}
-          value={activeServerId ?? ""}
-          onSelect={handleHostSelect}
-          title="Switch host"
-          searchPlaceholder="Search hosts..."
-          open={isHostPickerOpen}
-          onOpenChange={setIsHostPickerOpen}
-          anchorRef={hostTriggerRef}
-        />
-      </View>
-
-      {/* Middle: scrollable agent list */}
-      {isInitialLoad ? (
-        <SidebarAgentListSkeleton />
-      ) : (
-        <SidebarAgentList
-          sections={sections}
-          checkoutByAgentKey={checkoutByAgentKey}
-          isRefreshing={isManualRefresh && isRevalidating}
-          onRefresh={handleRefresh}
-          selectedAgentId={selectedAgentId}
-        />
-      )}
-
-      {/* Footer */}
-      <View style={styles.sidebarFooter}>
-        <Pressable
-          style={styles.footerButton}
-          onPress={handleViewMore}
-        >
-          {({ hovered }) => (
-            <>
-              <Users size={18} color={hovered ? theme.colors.foreground : theme.colors.foregroundMuted} />
-              <Text style={[styles.footerButtonText, hovered && styles.footerButtonTextHovered]}>
-                All agents
-              </Text>
-            </>
-          )}
-        </Pressable>
         <View style={styles.footerIconRow}>
+          <Pressable
+            style={styles.footerIconButton}
+            testID="sidebar-all-agents"
+            nativeID="sidebar-all-agents"
+            collapsable={false}
+            accessible
+            accessibilityLabel="All agents"
+            accessibilityRole="button"
+            onPress={handleViewMore}
+          >
+            {({ hovered }) => (
+              <Users
+                size={20}
+                color={hovered ? theme.colors.foreground : theme.colors.foregroundMuted}
+              />
+            )}
+          </Pressable>
           <Pressable
             style={styles.footerIconButton}
             testID="sidebar-settings"
@@ -480,6 +554,17 @@ export function SlidingSidebar({ selectedAgentId }: SlidingSidebarProps) {
             )}
           </Pressable>
         </View>
+        <Combobox
+          options={hostOptions}
+          value={activeServerId ?? ""}
+          onSelect={handleHostSelect}
+          searchable={false}
+          title="Switch host"
+          searchPlaceholder="Search hosts..."
+          open={isHostPickerOpen}
+          onOpenChange={setIsHostPickerOpen}
+          anchorRef={hostTriggerRef}
+        />
       </View>
     </View>
   );
@@ -512,9 +597,12 @@ const styles = StyleSheet.create((theme) => ({
     backgroundColor: theme.colors.surface0,
   },
   sidebarHeader: {
-    paddingHorizontal: theme.spacing[4],
-    paddingTop: theme.spacing[4],
-    paddingBottom: theme.spacing[3],
+    height: {
+      xs: HEADER_INNER_HEIGHT_MOBILE,
+      md: HEADER_INNER_HEIGHT,
+    },
+    paddingHorizontal: theme.spacing[2],
+    justifyContent: "center",
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.border,
     userSelect: "none",
@@ -522,7 +610,7 @@ const styles = StyleSheet.create((theme) => ({
   sidebarHeaderRow: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
+    justifyContent: "flex-start",
     gap: theme.spacing[2],
   },
   newAgentButton: {
@@ -545,12 +633,18 @@ const styles = StyleSheet.create((theme) => ({
   hostTrigger: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "flex-end",
+    justifyContent: "flex-start",
     gap: theme.spacing[2],
     minWidth: 0,
-    maxWidth: "55%",
     paddingVertical: theme.spacing[1],
-    paddingHorizontal: theme.spacing[1],
+    paddingHorizontal: theme.spacing[2],
+    borderRadius: theme.borderRadius.lg,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.surface1,
+  },
+  hostTriggerHovered: {
+    borderColor: theme.colors.borderAccent,
   },
   hostStatusDot: {
     width: 8,
@@ -560,6 +654,8 @@ const styles = StyleSheet.create((theme) => ({
   hostTriggerText: {
     fontSize: theme.fontSize.sm,
     color: theme.colors.foregroundMuted,
+    flexShrink: 1,
+    minWidth: 0,
   },
   sidebarFooter: {
     flexDirection: "row",
@@ -570,28 +666,43 @@ const styles = StyleSheet.create((theme) => ({
     borderTopWidth: 1,
     borderTopColor: theme.colors.border,
   },
+  footerHostSlot: {
+    flexGrow: 0,
+    flexShrink: 1,
+    minWidth: 0,
+    marginRight: theme.spacing[2],
+  },
   footerIconRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: theme.spacing[3],
-  },
-  footerButton: {
-    flexDirection: "row",
-    alignItems: "center",
     gap: theme.spacing[2],
-    paddingVertical: theme.spacing[1],
-    paddingHorizontal: theme.spacing[1],
+    flexShrink: 0,
   },
   footerIconButton: {
+    width: 28,
+    height: 28,
+    alignItems: "center",
+    justifyContent: "center",
     paddingVertical: theme.spacing[1],
     paddingHorizontal: theme.spacing[1],
   },
-  footerButtonText: {
-    fontSize: theme.fontSize.base,
-    fontWeight: theme.fontWeight.normal,
+  listViewMoreButton: {
+    marginTop: theme.spacing[2],
+    marginHorizontal: theme.spacing[2],
+    marginBottom: theme.spacing[1],
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    borderRadius: theme.borderRadius.full,
+    backgroundColor: theme.colors.surface1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: theme.spacing[2],
+  },
+  listViewMoreButtonText: {
+    fontSize: theme.fontSize.sm,
     color: theme.colors.foregroundMuted,
   },
-  footerButtonTextHovered: {
+  listViewMoreButtonTextHovered: {
     color: theme.colors.foreground,
   },
   hostPickerList: {

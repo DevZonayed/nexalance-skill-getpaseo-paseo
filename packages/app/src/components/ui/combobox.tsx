@@ -36,6 +36,7 @@ export interface ComboboxProps {
   value: string;
   onSelect: (id: string) => void;
   onSearchQueryChange?: (query: string) => void;
+  searchable?: boolean;
   placeholder?: string;
   searchPlaceholder?: string;
   emptyText?: string;
@@ -45,6 +46,7 @@ export interface ComboboxProps {
   title?: string;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
+  desktopPlacement?: "top-start" | "bottom-start";
   anchorRef: React.RefObject<View | null>;
   children?: ReactNode;
 }
@@ -158,6 +160,7 @@ export function Combobox({
   value,
   onSelect,
   onSearchQueryChange,
+  searchable = true,
   placeholder = "Search...",
   searchPlaceholder,
   emptyText = "No options match your search.",
@@ -167,6 +170,7 @@ export function Combobox({
   title = "Select",
   open,
   onOpenChange,
+  desktopPlacement = "top-start",
   anchorRef,
   children,
 }: ComboboxProps): ReactElement {
@@ -245,7 +249,7 @@ export function Combobox({
   );
 
   const { refs, floatingStyles, update } = useFloating({
-    placement: Platform.OS === "web" ? "top-start" : "bottom-start",
+    placement: Platform.OS === "web" ? desktopPlacement : "bottom-start",
     middleware,
     sameScrollView: false,
     elements: {
@@ -261,7 +265,7 @@ export function Combobox({
     }
     const raf = requestAnimationFrame(() => update());
     return () => cancelAnimationFrame(raf);
-  }, [isMobile, update, isOpen]);
+  }, [desktopPlacement, isMobile, update, isOpen]);
 
   useEffect(() => {
     if (!isMobile) return;
@@ -293,7 +297,7 @@ export function Combobox({
     []
   );
 
-  const normalizedSearch = searchQuery.trim().toLowerCase();
+  const normalizedSearch = searchable ? searchQuery.trim().toLowerCase() : "";
   const filteredOptions = useMemo(() => {
     if (!normalizedSearch) {
       return options;
@@ -308,6 +312,7 @@ export function Combobox({
 
   const sanitizedSearchValue = searchQuery.trim();
   const showCustomOption =
+    searchable &&
     allowCustomValue &&
     sanitizedSearchValue.length > 0 &&
     !options.some(
@@ -463,7 +468,7 @@ export function Combobox({
 
   const content = children ?? (
     <>
-      {searchInput}
+      {searchable ? searchInput : null}
       {optionsList}
     </>
   );
@@ -537,7 +542,7 @@ export function Combobox({
             </ScrollView>
           ) : (
             <>
-              {searchInput}
+              {searchable ? searchInput : null}
               <ScrollView
                 contentContainerStyle={styles.desktopScrollContent}
                 keyboardShouldPersistTaps="handled"
@@ -581,7 +586,7 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[2],
     paddingHorizontal: theme.spacing[3],
     paddingVertical: theme.spacing[2],
-    borderRadius: theme.borderRadius.md,
+    borderRadius: 0,
     ...(IS_WEB
       ? {}
       : {

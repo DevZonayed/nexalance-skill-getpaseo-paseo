@@ -56,7 +56,9 @@ export function useAllAgentsList(options?: {
       if (!client) {
         throw new Error("Daemon client not available");
       }
-      return await client.fetchAgents();
+      return await client.fetchAgents({
+        filter: { labels: { ui: "true" } },
+      });
     },
     enabled: canFetch,
     staleTime: ALL_AGENTS_STALE_TIME,
@@ -76,11 +78,12 @@ export function useAllAgentsList(options?: {
     if (!serverId) {
       return [];
     }
-    const data = agentsQuery.data ?? [];
+    const data = agentsQuery.data?.entries ?? [];
     const serverLabel = connectionStates.get(serverId)?.daemon.label ?? serverId;
     const list: AggregatedAgent[] = [];
 
-    for (const snapshot of data) {
+    for (const entry of data) {
+      const snapshot = entry.agent;
       const normalized = normalizeAgentSnapshot(snapshot, serverId);
       const live = liveAgents?.get(snapshot.id);
       list.push(

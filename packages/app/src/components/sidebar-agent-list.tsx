@@ -2,11 +2,10 @@ import {
   View,
   Text,
   Pressable,
-  Modal,
   Image,
   Platform,
 } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useQueries } from "@tanstack/react-query";
 import {
   useCallback,
   useMemo,
@@ -19,13 +18,11 @@ import {
 import { router, usePathname } from "expo-router";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { type GestureType } from "react-native-gesture-handler";
-import { Archive, ChevronDown, ChevronRight, Plus } from "lucide-react-native";
+import { Archive, Check, ChevronDown } from "lucide-react-native";
 import {
   DraggableList,
   type DraggableRenderItemInfo,
 } from "./draggable-list";
-import { parseRepoNameFromRemoteUrl, parseRepoShortNameFromRemoteUrl } from "@/utils/agent-grouping";
-import { type AggregatedAgent } from "@/hooks/use-aggregated-agents";
 import { useSessionStore } from "@/stores/session-store";
 import {
   buildAgentNavigationKey,
@@ -35,25 +32,27 @@ import {
   buildHostAgentDetailRoute,
   parseHostAgentRouteFromPathname,
 } from "@/utils/host-routes";
-import { buildNewAgentRoute } from "@/utils/new-agent-routing";
+import { projectIconQueryKey } from "@/hooks/use-project-icon-query";
 import {
-  useSectionOrderStore,
-} from "@/stores/section-order-store";
-import { useProjectIconQuery } from "@/hooks/use-project-icon-query";
-import {
-  type SidebarCheckoutLite,
-  type SidebarSectionData,
+  type SidebarAgentListEntry,
+  type SidebarProjectOption,
 } from "@/hooks/use-sidebar-agents-grouped";
-import { useSidebarCollapsedSectionsStore } from "@/stores/sidebar-collapsed-sections-store";
 import { useKeyboardShortcutsStore } from "@/stores/keyboard-shortcuts-store";
 import { getIsTauri } from "@/constants/layout";
 import { AgentStatusDot } from "@/components/agent-status-dot";
+import { Combobox } from "@/components/ui/combobox";
+import { parseSidebarAgentKey } from "@/utils/sidebar-shortcuts";
+import { parseRepoNameFromRemoteUrl } from "@/utils/agent-grouping";
+import { formatTimeAgo } from "@/utils/time";
+import { isSidebarActiveAgent } from "@/utils/sidebar-agent-state";
 
-type SectionData = SidebarSectionData;
+type EntryData = SidebarAgentListEntry;
 
 interface SidebarAgentListProps {
-  sections: SidebarSectionData[];
-  checkoutByAgentKey: Map<string, SidebarCheckoutLite>;
+  entries: SidebarAgentListEntry[];
+  projectOptions: SidebarProjectOption[];
+  selectedProjectKeys: string[];
+  onSelectedProjectKeysChange: (keys: string[]) => void;
   isRefreshing?: boolean;
   onRefresh?: () => void;
   selectedAgentId?: string;
@@ -63,151 +62,117 @@ interface SidebarAgentListProps {
   parentGestureRef?: MutableRefObject<GestureType | undefined>;
 }
 
-interface SectionHeaderProps {
-  section: SectionData;
-  checkout: SidebarCheckoutLite | null;
-  isCollapsed: boolean;
-  onToggle: () => void;
-  onCreateAgent: (serverId: string, workingDir: string) => void;
-  onDrag: () => void;
-  isDragging: boolean;
+interface ProjectFilterOptionRowProps {
+  option: SidebarProjectOption;
+  selected: boolean;
+  iconDataUri: string | null;
+  displayName: string;
+  onToggle: (projectKey: string) => void;
 }
 
-function SectionHeader({
-  section,
-  checkout,
-  isCollapsed,
+function ProjectFilterOptionRow({
+  option,
+  selected,
+  iconDataUri,
+  displayName,
   onToggle,
-  onCreateAgent,
-  onDrag,
-  isDragging,
-}: SectionHeaderProps) {
+}: ProjectFilterOptionRowProps) {
   const { theme } = useUnistyles();
-  const [isHovered, setIsHovered] = useState(false);
-
-  // Get project icon
-  const iconQuery = useProjectIconQuery({
-    serverId: section.firstAgentServerId ?? "",
-    cwd: section.workingDir ?? "",
-  });
-  const icon = iconQuery.icon;
-
-  // Derive display title: prefer repo name from remote URL, fallback to path-based name
-  let displayTitle = section.title;
-  if (checkout?.isGit && checkout.remoteUrl) {
-    const isGitHubRemote =
-      checkout.remoteUrl.includes("github.com") ||
-      checkout.remoteUrl.includes("git@github.com:");
-
-    const repoName = isGitHubRemote
-      ? parseRepoNameFromRemoteUrl(checkout.remoteUrl)
-      : parseRepoShortNameFromRemoteUrl(checkout.remoteUrl);
-
-    if (repoName) {
-      displayTitle = repoName;
-    }
-  }
-
-  const createAgentWorkingDir =
-    (checkout?.isPaseoOwnedWorktree ? checkout.mainRepoRoot : null) ?? section.workingDir;
-
-  const handleCreatePress = useCallback(
-    (e: { stopPropagation: () => void }) => {
-      e.stopPropagation();
-      const serverId = section.firstAgentServerId;
-      if (createAgentWorkingDir && serverId) {
-        onCreateAgent(serverId, createAgentWorkingDir);
-      }
-    },
-    [onCreateAgent, createAgentWorkingDir, section.firstAgentServerId]
-  );
 
   return (
     <Pressable
-      style={({ pressed }) => [
-        styles.sectionHeader,
-        isHovered && styles.sectionHeaderHovered,
-        pressed && styles.sectionHeaderPressed,
-        !isCollapsed && styles.sectionHeaderExpanded,
-        isDragging && styles.sectionHeaderDragging,
-        Platform.OS === "web" && ({ cursor: "grab" } as any),
+      style={({ pressed, hovered = false }) => [
+        styles.filterOption,
+        hovered && styles.filterOptionHovered,
+        pressed && styles.filterOptionPressed,
       ]}
-      onPress={onToggle}
-      onLongPress={onDrag}
-      delayLongPress={200}
-      onHoverIn={() => setIsHovered(true)}
-      onHoverOut={() => setIsHovered(false)}
+      onPress={() => onToggle(option.projectKey)}
     >
-      <View style={styles.sectionHeaderLeft}>
-        <View style={styles.chevron}>
-          {isCollapsed ? (
-            <ChevronRight size={14} color={theme.colors.foregroundMuted} />
-          ) : (
-            <ChevronDown size={14} color={theme.colors.foregroundMuted} />
-          )}
-        </View>
-        {icon ? (
+      <View style={styles.filterOptionLeft}>
+        {iconDataUri ? (
           <Image
-            source={{ uri: `data:${icon.mimeType};base64,${icon.data}` }}
+            source={{ uri: iconDataUri }}
             style={styles.projectIcon}
           />
         ) : (
-          <View style={styles.projectIconPlaceholder}>
-            <Text style={styles.projectIconPlaceholderText}>
-              {(section.workingDir?.split("/").pop() ?? displayTitle).charAt(0).toUpperCase()}
+          <View style={styles.projectIconFallback}>
+            <Text style={styles.projectIconFallbackText}>
+              {displayName.charAt(0).toUpperCase()}
             </Text>
           </View>
         )}
-        <Text style={styles.sectionTitle} numberOfLines={1}>
-          {displayTitle}
+        <Text style={styles.filterOptionLabel} numberOfLines={1}>
+          {displayName}
         </Text>
       </View>
-      <View style={styles.sectionHeaderRight}>
-        {createAgentWorkingDir && (
-          <Pressable
-            style={styles.createAgentButton}
-            onPress={handleCreatePress}
-            hitSlop={20}
-            onStartShouldSetResponder={() => true}
-            onStartShouldSetResponderCapture={() => true}
-          >
-            {({ hovered, pressed }) => (
-              <Plus
-                size={18}
-                color={hovered || pressed ? theme.colors.foreground : theme.colors.foregroundMuted}
-              />
-            )}
-          </Pressable>
-        )}
+
+      <View style={styles.filterOptionRight}>
+        {option.activeCount > 0 ? (
+          <Text style={styles.filterOptionCount}>{option.activeCount}</Text>
+        ) : null}
+        {selected ? <Check size={14} color={theme.colors.foregroundMuted} /> : null}
       </View>
     </Pressable>
   );
 }
 
 interface SidebarAgentRowProps {
-  agent: AggregatedAgent;
-  checkout: SidebarCheckoutLite | null;
+  entry: SidebarAgentListEntry;
+  projectDisplayName: string;
+  projectIconDataUri: string | null;
   isSelected: boolean;
+  isInSelectionMode: boolean;
+  isBatchSelected: boolean;
   shortcutNumber: number | null;
   onPress: () => void;
   onLongPress: () => void;
-  onArchive: (e: { stopPropagation: () => void }) => void;
+  onArchive: () => void;
+  onToggleBatch: () => void;
+}
+
+function resolveBranchLabel(entry: SidebarAgentListEntry): string | null {
+  const checkout = entry.project.checkout;
+  if (!checkout.isGit) {
+    return null;
+  }
+  const branch = checkout.currentBranch;
+  if (!branch || branch === "HEAD" || branch === "main") {
+    return null;
+  }
+  return branch;
 }
 
 function SidebarAgentRow({
-  agent,
-  checkout,
+  entry,
+  projectDisplayName,
+  projectIconDataUri,
   isSelected,
+  isInSelectionMode,
+  isBatchSelected,
   shortcutNumber,
   onPress,
   onLongPress,
   onArchive,
+  onToggleBatch,
 }: SidebarAgentRowProps) {
   const { theme } = useUnistyles();
   const [isHovered, setIsHovered] = useState(false);
   const [isArchiveHovered, setIsArchiveHovered] = useState(false);
   const [isArchiveConfirmVisible, setIsArchiveConfirmVisible] = useState(false);
   const hoverOutTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const branchLabel = resolveBranchLabel(entry);
+  const relativeCreatedAt = formatTimeAgo(entry.agent.createdAt);
+  const isActive = isSidebarActiveAgent({
+    status: entry.agent.status,
+    requiresAttention: entry.agent.requiresAttention,
+    attentionReason: entry.agent.attentionReason,
+  });
+  const shouldApplyInactiveStyles = !isActive && !isSelected;
+  const showArchive =
+    !isInSelectionMode &&
+    shortcutNumber === null &&
+    (isHovered || isArchiveHovered || isArchiveConfirmVisible);
 
   const clearHoverOutTimeout = useCallback(() => {
     if (!hoverOutTimeoutRef.current) {
@@ -234,127 +199,232 @@ function SidebarAgentRow({
       setIsArchiveConfirmVisible(false);
     }, 50);
   }, [clearHoverOutTimeout]);
-  const activeBranchLabel = checkout?.isGit
-    ? ((checkout.currentBranch && checkout.currentBranch !== "HEAD"
-        ? checkout.currentBranch
-        : null) ??
-      "git")
-    : null;
-
-  const canArchive = agent.status !== "running" && !agent.requiresAttention;
-  const showArchive = canArchive &&
-    shortcutNumber === null &&
-    (isHovered || isArchiveHovered || isArchiveConfirmVisible);
-  const reserveArchiveSlot = canArchive && shortcutNumber === null && !activeBranchLabel;
 
   return (
     <Pressable
       style={({ pressed }) => [
         styles.agentItem,
-        !isSelected && styles.agentItemUnselected,
         isSelected && styles.agentItemSelected,
         isHovered && styles.agentItemHovered,
         pressed && styles.agentItemPressed,
       ]}
       onPress={onPress}
+      onLongPress={onLongPress}
       onPressIn={() => {
         if (Platform.OS !== "web") {
           return;
         }
         handleHoverIn();
       }}
-      onLongPress={onLongPress}
       onHoverIn={handleHoverIn}
       onHoverOut={handleHoverOut}
-      testID={`agent-row-${agent.serverId}-${agent.id}`}
+      testID={`agent-row-${entry.agent.serverId}-${entry.agent.id}`}
     >
-      <View style={styles.agentContent}>
-        <View style={styles.row}>
-          <AgentStatusDot status={agent.status} requiresAttention={agent.requiresAttention} />
-          <Text
+      <View style={styles.agentRowTop}>
+        {isInSelectionMode ? (
+          <Pressable
+            onPress={(event) => {
+              event.stopPropagation();
+              onToggleBatch();
+            }}
             style={[
-              styles.agentTitle,
-              (isSelected || isHovered) && styles.agentTitleHighlighted,
+              styles.checkbox,
+              isBatchSelected && styles.checkboxSelected,
             ]}
-            numberOfLines={1}
           >
-            {agent.title || "New agent"}
-          </Text>
-          {shortcutNumber !== null ? (
-            <View style={styles.branchBadge}>
-              <Text style={styles.branchBadgeText} numberOfLines={1}>
-                {shortcutNumber}
-              </Text>
-            </View>
-          ) : showArchive ? (
-            <Pressable
-              style={[
-                styles.branchBadge,
-                isArchiveConfirmVisible && styles.archiveConfirmBadge,
-              ]}
-              onHoverIn={() => {
-                clearHoverOutTimeout();
-                setIsHovered(true);
-                setIsArchiveHovered(true);
-              }}
-              onHoverOut={() => {
-                setIsArchiveHovered(false);
-              }}
-              onPress={(e) => {
-                e.stopPropagation();
-                if (!isArchiveConfirmVisible) {
-                  setIsArchiveConfirmVisible(true);
-                  return;
-                }
-                onArchive(e);
-                setIsArchiveConfirmVisible(false);
-              }}
-              testID={
-                isArchiveConfirmVisible
-                  ? `agent-archive-confirm-${agent.serverId}-${agent.id}`
-                  : `agent-archive-${agent.serverId}-${agent.id}`
+            {isBatchSelected ? (
+              <Check size={12} color={theme.colors.primaryForeground} />
+            ) : null}
+          </Pressable>
+        ) : (
+          <AgentStatusDot
+            status={entry.agent.status}
+            requiresAttention={entry.agent.requiresAttention}
+          />
+        )}
+
+        <Text
+          style={[
+            styles.agentTitle,
+            shouldApplyInactiveStyles && styles.agentTitleInactive,
+            isSelected && styles.agentTitleSelected,
+          ]}
+          numberOfLines={1}
+        >
+          {entry.agent.title || "New agent"}
+        </Text>
+
+        {showArchive ? (
+          <Pressable
+            onHoverIn={() => {
+              clearHoverOutTimeout();
+              setIsHovered(true);
+              setIsArchiveHovered(true);
+            }}
+            onHoverOut={() => {
+              setIsArchiveHovered(false);
+            }}
+            onPress={(event) => {
+              event.stopPropagation();
+              if (!isArchiveConfirmVisible) {
+                setIsArchiveConfirmVisible(true);
+                return;
               }
-            >
-              {({ hovered: archiveHovered }) =>
-                isArchiveConfirmVisible ? (
-                  <Text
-                    style={[
-                      styles.branchBadgeText,
-                      styles.archiveConfirmText,
-                      archiveHovered && styles.archiveConfirmTextHovered,
-                    ]}
-                    numberOfLines={1}
-                  >
-                    Confirm
-                  </Text>
-                ) : (
-                  <Archive
-                    size={12}
-                    color={
-                      archiveHovered ? theme.colors.foreground : theme.colors.foregroundMuted
-                    }
-                  />
-                )
-              }
-            </Pressable>
-          ) : activeBranchLabel ? (
-            <View style={styles.branchBadge}>
-              <Text style={styles.branchBadgeText} numberOfLines={1}>
-                {activeBranchLabel}
-              </Text>
-            </View>
-          ) : reserveArchiveSlot ? (
-            <View style={[styles.branchBadge, styles.branchBadgePlaceholder]} />
-          ) : null}
-        </View>
+              onArchive();
+              setIsArchiveConfirmVisible(false);
+            }}
+            style={styles.archiveButton}
+            testID={
+              isArchiveConfirmVisible
+                ? `agent-archive-confirm-${entry.agent.serverId}-${entry.agent.id}`
+                : `agent-archive-${entry.agent.serverId}-${entry.agent.id}`
+            }
+          >
+            {({ hovered: archiveHovered }) =>
+              isArchiveConfirmVisible ? (
+                <Check size={12} color={theme.colors.foreground} />
+              ) : (
+                <Archive
+                  size={12}
+                  color={
+                    archiveHovered
+                      ? theme.colors.foreground
+                      : theme.colors.foregroundMuted
+                  }
+                />
+              )
+            }
+          </Pressable>
+        ) : (
+          <Text style={styles.relativeTimeText}>{relativeCreatedAt}</Text>
+        )}
+
+        {shortcutNumber !== null && !isInSelectionMode ? (
+          <View style={styles.shortcutBadge}>
+            <Text style={styles.shortcutBadgeText}>{shortcutNumber}</Text>
+          </View>
+        ) : null}
+
+      </View>
+
+      <View style={styles.agentMetaRow}>
+        {projectIconDataUri ? (
+          <Image
+            source={{ uri: projectIconDataUri }}
+            style={[
+              styles.agentMetaProjectIcon,
+              shouldApplyInactiveStyles && styles.agentMetaProjectIconInactive,
+            ]}
+          />
+        ) : (
+          <View
+            style={[
+              styles.projectIconFallback,
+              shouldApplyInactiveStyles && styles.projectIconFallbackInactive,
+            ]}
+          >
+            <Text style={styles.projectIconFallbackText}>
+              {projectDisplayName.charAt(0).toUpperCase()}
+            </Text>
+          </View>
+        )}
+        <Text style={styles.agentMetaProjectName} numberOfLines={1}>
+          {projectDisplayName}
+        </Text>
+        {branchLabel ? (
+          <View
+            style={[
+              styles.agentMetaBranchBadge,
+              isSelected && styles.agentMetaBranchBadgeSelected,
+            ]}
+          >
+            <Text style={styles.agentMetaBranchText} numberOfLines={1}>
+              {branchLabel}
+            </Text>
+          </View>
+        ) : null}
       </View>
     </Pressable>
   );
 }
 
+function deriveShortcutIndexByAgentKey(sidebarShortcutAgentKeys: string[]) {
+  const map = new Map<string, number>();
+  for (let i = 0; i < sidebarShortcutAgentKeys.length; i += 1) {
+    const key = sidebarShortcutAgentKeys[i];
+    if (!key) continue;
+    map.set(key, i + 1);
+  }
+  return map;
+}
+
+function resolveSelectedProjectLabel(input: {
+  selectedProjectKeys: string[];
+  projectOptions: SidebarProjectOption[];
+}): string {
+  if (input.selectedProjectKeys.length === 0) {
+    return "Project";
+  }
+  if (input.selectedProjectKeys.length === 1) {
+    const selected = input.projectOptions.find(
+      (option) => option.projectKey === input.selectedProjectKeys[0]
+    );
+    if (selected) {
+      return deriveProjectDisplayName({
+        projectKey: selected.projectKey,
+        projectName: selected.projectName,
+        remoteUrl: null,
+      });
+    }
+    return deriveProjectDisplayName({
+      projectKey: input.selectedProjectKeys[0] ?? "",
+      projectName: "",
+      remoteUrl: null,
+    });
+  }
+  return "Projects";
+}
+
+function deriveProjectDisplayName(input: {
+  projectKey: string;
+  projectName: string;
+  remoteUrl: string | null;
+}): string {
+  const remoteRepoName = parseRepoNameFromRemoteUrl(input.remoteUrl);
+  if (remoteRepoName) {
+    return remoteRepoName;
+  }
+
+  const githubPrefix = "remote:github.com/";
+  if (input.projectKey.startsWith(githubPrefix)) {
+    return input.projectKey.slice(githubPrefix.length);
+  }
+
+  if (input.projectKey.startsWith("remote:")) {
+    const withoutPrefix = input.projectKey.slice("remote:".length);
+    const slashIdx = withoutPrefix.indexOf("/");
+    if (slashIdx >= 0) {
+      const remotePath = withoutPrefix.slice(slashIdx + 1).trim();
+      if (remotePath.length > 0) {
+        return remotePath;
+      }
+    }
+    return withoutPrefix;
+  }
+
+  const trimmedProjectName = input.projectName.trim();
+  if (trimmedProjectName.length > 0) {
+    return trimmedProjectName;
+  }
+
+  return input.projectKey;
+}
+
 export function SidebarAgentList({
-  sections,
-  checkoutByAgentKey,
+  entries,
+  projectOptions,
+  selectedProjectKeys,
+  onSelectedProjectKeysChange,
   isRefreshing = false,
   onRefresh,
   selectedAgentId,
@@ -364,11 +434,11 @@ export function SidebarAgentList({
 }: SidebarAgentListProps) {
   const { theme } = useUnistyles();
   const pathname = usePathname();
-  const insets = useSafeAreaInsets();
-  const [actionAgent, setActionAgent] = useState<AggregatedAgent | null>(null);
+  const [isProjectFilterOpen, setIsProjectFilterOpen] = useState(false);
+  const projectFilterAnchorRef = useRef<View>(null);
 
-  const collapsedProjectKeys = useSidebarCollapsedSectionsStore((s) => s.collapsedProjectKeys);
-  const toggleProjectCollapsed = useSidebarCollapsedSectionsStore((s) => s.toggleProjectCollapsed);
+  const [isSelectionMode, setIsSelectionMode] = useState(false);
+  const [selectedBatchKeys, setSelectedBatchKeys] = useState<Set<string>>(new Set());
 
   const altDown = useKeyboardShortcutsStore((s) => s.altDown);
   const cmdOrCtrlDown = useKeyboardShortcutsStore((s) => s.cmdOrCtrlDown);
@@ -376,174 +446,388 @@ export function SidebarAgentList({
     (s) => s.sidebarShortcutAgentKeys
   );
   const isTauri = getIsTauri();
-  const showShortcutBadges = altDown || (isTauri && cmdOrCtrlDown);
-  const shortcutIndexByAgentKey = useMemo(() => {
-    const map = new Map<string, number>();
-    for (let i = 0; i < sidebarShortcutAgentKeys.length; i++) {
-      const key = sidebarShortcutAgentKeys[i];
-      if (!key) continue;
-      map.set(key, i + 1);
-    }
-    return map;
-  }, [sidebarShortcutAgentKeys]);
-
-  const actionClient = useSessionStore((state) =>
-    actionAgent?.serverId ? state.sessions[actionAgent.serverId]?.client ?? null : null
+  const showShortcutBadges = !isSelectionMode && (altDown || (isTauri && cmdOrCtrlDown));
+  const shortcutIndexByAgentKey = useMemo(
+    () => deriveShortcutIndexByAgentKey(sidebarShortcutAgentKeys),
+    [sidebarShortcutAgentKeys]
   );
 
-  const isActionSheetVisible = actionAgent !== null;
-  const isActionDaemonUnavailable = Boolean(actionAgent?.serverId && !actionClient);
+  const selectedProjectLabel = useMemo(
+    () => resolveSelectedProjectLabel({ selectedProjectKeys, projectOptions }),
+    [projectOptions, selectedProjectKeys]
+  );
+
+  const selectedProjectOption = useMemo(() => {
+    if (selectedProjectKeys.length !== 1) {
+      return null;
+    }
+    return (
+      projectOptions.find((option) => option.projectKey === selectedProjectKeys[0]) ?? null
+    );
+  }, [projectOptions, selectedProjectKeys]);
+
+  const sessions = useSessionStore((state) => state.sessions);
+  const projectIconRequests = useMemo(() => {
+    const unique = new Map<string, { serverId: string; cwd: string }>();
+    for (const option of projectOptions) {
+      if (!option.serverId || !option.workingDir) {
+        continue;
+      }
+      unique.set(`${option.serverId}:${option.workingDir}`, {
+        serverId: option.serverId,
+        cwd: option.workingDir,
+      });
+    }
+    for (const entry of entries) {
+      const serverId = entry.agent.serverId;
+      const cwd = entry.project.checkout.cwd;
+      if (!serverId || !cwd) {
+        continue;
+      }
+      unique.set(`${serverId}:${cwd}`, { serverId, cwd });
+    }
+    return Array.from(unique.values());
+  }, [entries, projectOptions]);
+
+  const projectIconQueries = useQueries({
+    queries: projectIconRequests.map((request) => ({
+      queryKey: projectIconQueryKey(request.serverId, request.cwd),
+      queryFn: async () => {
+        const client =
+          useSessionStore.getState().sessions[request.serverId]?.client ?? null;
+        if (!client) {
+          return null;
+        }
+        const result = await client.requestProjectIcon(request.cwd);
+        return result.icon;
+      },
+      enabled: Boolean(
+        sessions[request.serverId]?.client &&
+          sessions[request.serverId]?.connection.isConnected &&
+          request.cwd
+      ),
+      staleTime: Infinity,
+      gcTime: 1000 * 60 * 60,
+      refetchOnMount: false,
+      refetchOnWindowFocus: false,
+      refetchOnReconnect: false,
+    })),
+  });
+
+  const projectIconByQueryKey = useMemo(() => {
+    const map = new Map<string, string | null>();
+    for (let i = 0; i < projectIconRequests.length; i += 1) {
+      const request = projectIconRequests[i];
+      if (!request) {
+        continue;
+      }
+      const icon = projectIconQueries[i]?.data ?? null;
+      const dataUri = icon
+        ? `data:${icon.mimeType};base64,${icon.data}`
+        : null;
+      map.set(`${request.serverId}:${request.cwd}`, dataUri);
+    }
+    return map;
+  }, [projectIconQueries, projectIconRequests]);
+
+  const projectIconByProjectKey = useMemo(() => {
+    const map = new Map<string, string | null>();
+    for (const option of projectOptions) {
+      map.set(
+        option.projectKey,
+        projectIconByQueryKey.get(`${option.serverId}:${option.workingDir}`) ?? null
+      );
+    }
+    for (const entry of entries) {
+      if (map.has(entry.project.projectKey)) {
+        continue;
+      }
+      map.set(
+        entry.project.projectKey,
+        projectIconByQueryKey.get(
+          `${entry.agent.serverId}:${entry.project.checkout.cwd}`
+        ) ?? null
+      );
+    }
+    return map;
+  }, [entries, projectIconByQueryKey, projectOptions]);
+
+  const selectedProjectIconUri = useMemo(() => {
+    if (!selectedProjectOption) {
+      return null;
+    }
+    return projectIconByProjectKey.get(selectedProjectOption.projectKey) ?? null;
+  }, [projectIconByProjectKey, selectedProjectOption]);
+
+  const handleToggleProject = useCallback(
+    (projectKey: string) => {
+      const next = new Set(selectedProjectKeys);
+      if (next.has(projectKey)) {
+        next.delete(projectKey);
+      } else {
+        next.add(projectKey);
+      }
+      onSelectedProjectKeysChange(Array.from(next));
+    },
+    [onSelectedProjectKeysChange, selectedProjectKeys]
+  );
+
+  const handleClearProjectFilter = useCallback(() => {
+    onSelectedProjectKeysChange([]);
+  }, [onSelectedProjectKeysChange]);
 
   const handleAgentPress = useCallback(
-    (serverId: string, agentId: string) => {
-      if (isActionSheetVisible) {
+    (entry: SidebarAgentListEntry) => {
+      const key = `${entry.agent.serverId}:${entry.agent.id}`;
+      if (isSelectionMode) {
+        setSelectedBatchKeys((prev) => {
+          const next = new Set(prev);
+          if (next.has(key)) {
+            next.delete(key);
+          } else {
+            next.add(key);
+          }
+          return next;
+        });
         return;
       }
 
-      // Clear attention flag when opening agent
-      const session = useSessionStore.getState().sessions[serverId];
+      const session = useSessionStore.getState().sessions[entry.agent.serverId];
       if (session?.client) {
-        session.client.clearAgentAttention(agentId);
+        session.client.clearAgentAttention(entry.agent.id);
       }
 
-      const navigationKey = buildAgentNavigationKey(serverId, agentId);
+      const navigationKey = buildAgentNavigationKey(entry.agent.serverId, entry.agent.id);
       startNavigationTiming(navigationKey, {
         from: "home",
         to: "agent",
-        params: { serverId, agentId },
+        params: { serverId: entry.agent.serverId, agentId: entry.agent.id },
       });
 
       const shouldReplace = Boolean(parseHostAgentRouteFromPathname(pathname));
       const navigate = shouldReplace ? router.replace : router.push;
 
       onAgentSelect?.();
-
-      navigate(buildHostAgentDetailRoute(serverId, agentId) as any);
+      navigate(buildHostAgentDetailRoute(entry.agent.serverId, entry.agent.id) as any);
     },
-    [isActionSheetVisible, pathname, onAgentSelect]
+    [isSelectionMode, onAgentSelect, pathname]
   );
 
-  const handleAgentLongPress = useCallback((agent: AggregatedAgent) => {
-    setActionAgent(agent);
+  const handleAgentLongPress = useCallback((entry: SidebarAgentListEntry) => {
+    const key = `${entry.agent.serverId}:${entry.agent.id}`;
+    setIsSelectionMode(true);
+    setSelectedBatchKeys(new Set([key]));
   }, []);
 
-  const handleCloseActionSheet = useCallback(() => {
-    setActionAgent(null);
-  }, []);
-
-  const handleArchiveFromSheet = useCallback(() => {
-    if (!actionAgent || !actionClient) {
+  const handleArchiveSingle = useCallback((entry: SidebarAgentListEntry) => {
+    const client = useSessionStore.getState().sessions[entry.agent.serverId]?.client ?? null;
+    if (!client) {
       return;
     }
-    void actionClient.archiveAgent(actionAgent.id);
-    setActionAgent(null);
-  }, [actionAgent, actionClient]);
+    void client.archiveAgent(entry.agent.id).catch((error) => {
+      console.warn("[archive_agent] failed", error);
+    });
+  }, []);
 
-  const handleCreateAgentInProject = useCallback(
-    (serverId: string, workingDir: string) => {
-      onAgentSelect?.();
-      router.push(buildNewAgentRoute(serverId, workingDir) as any);
-    },
-    [onAgentSelect]
-  );
+  const handleArchiveBatch = useCallback(() => {
+    if (selectedBatchKeys.size === 0) {
+      setIsSelectionMode(false);
+      return;
+    }
 
-  // Section order from store
-  const setProjectOrder = useSectionOrderStore((state) => state.setProjectOrder);
-
-  const handleDragEnd = useCallback(
-    (newData: SectionData[]) => {
-      const newOrder = newData.map((section) => section.projectKey);
-      setProjectOrder(newOrder);
-    },
-    [setProjectOrder]
-  );
-
-  const handleArchiveAgent = useCallback(
-    (e: { stopPropagation: () => void }, agent: AggregatedAgent) => {
-      e.stopPropagation();
-      const session = useSessionStore.getState().sessions[agent.serverId];
-      const client = session?.client ?? null;
-      if (client) {
-        void client.archiveAgent(agent.id).catch((error) => {
-          console.warn("[archive_agent] failed", error);
-        });
+    const requests: Promise<void>[] = [];
+    const store = useSessionStore.getState();
+    for (const key of selectedBatchKeys) {
+      const parsed = parseSidebarAgentKey(key);
+      if (!parsed) {
+        continue;
       }
-    },
-    []
-  );
+      const client = store.sessions[parsed.serverId]?.client ?? null;
+      if (!client) {
+        continue;
+      }
+      requests.push(
+        client
+          .archiveAgent(parsed.agentId)
+          .then(() => undefined)
+          .catch((error) => {
+            console.warn("[archive_agent_batch] failed", { key, error });
+          })
+      );
+    }
 
-  const renderSection = useCallback(
-    ({ item: section, drag, isActive }: DraggableRenderItemInfo<SectionData>) => {
-      const isCollapsed = collapsedProjectKeys.has(section.projectKey);
-      const firstAgent = section.agents[0];
-      const firstAgentKey = firstAgent
-        ? `${firstAgent.serverId}:${firstAgent.id}`
-        : null;
-      const firstAgentCheckout = firstAgentKey
-        ? (checkoutByAgentKey.get(firstAgentKey) ?? null)
-        : null;
+    void Promise.all(requests).finally(() => {
+      setSelectedBatchKeys(new Set());
+      setIsSelectionMode(false);
+    });
+  }, [selectedBatchKeys]);
 
+  const handleSelectionBack = useCallback(() => {
+    setSelectedBatchKeys(new Set());
+    setIsSelectionMode(false);
+  }, []);
+
+  const renderRow = useCallback(
+    ({ item }: DraggableRenderItemInfo<EntryData>) => {
+      const key = `${item.agent.serverId}:${item.agent.id}`;
+      const projectDisplayName = deriveProjectDisplayName({
+        projectKey: item.project.projectKey,
+        projectName: item.project.projectName,
+        remoteUrl: item.project.checkout.remoteUrl,
+      });
       return (
-        <View style={[styles.sectionContainer, isActive && styles.sectionDragging]}>
-          <SectionHeader
-            section={section}
-            checkout={firstAgentCheckout}
-            isCollapsed={isCollapsed}
-            onToggle={() => toggleProjectCollapsed(section.projectKey)}
-            onCreateAgent={handleCreateAgentInProject}
-            onDrag={drag}
-            isDragging={isActive}
-          />
-          {!isCollapsed &&
-            section.agents.map((agent) => (
-              <SidebarAgentRow
-                key={`${agent.serverId}:${agent.id}`}
-                agent={agent}
-                checkout={
-                  checkoutByAgentKey.get(`${agent.serverId}:${agent.id}`) ?? null
-                }
-                isSelected={selectedAgentId === `${agent.serverId}:${agent.id}`}
-                shortcutNumber={
-                  showShortcutBadges
-                    ? (shortcutIndexByAgentKey.get(`${agent.serverId}:${agent.id}`) ?? null)
-                    : null
-                }
-                onPress={() => handleAgentPress(agent.serverId, agent.id)}
-                onLongPress={() => handleAgentLongPress(agent)}
-                onArchive={(e) => handleArchiveAgent(e, agent)}
-              />
-            ))}
-        </View>
+        <SidebarAgentRow
+          entry={item}
+          projectDisplayName={projectDisplayName}
+          projectIconDataUri={
+            projectIconByProjectKey.get(item.project.projectKey) ?? null
+          }
+          isSelected={selectedAgentId === key}
+          isInSelectionMode={isSelectionMode}
+          isBatchSelected={selectedBatchKeys.has(key)}
+          shortcutNumber={
+            showShortcutBadges ? (shortcutIndexByAgentKey.get(key) ?? null) : null
+          }
+          onPress={() => handleAgentPress(item)}
+          onLongPress={() => handleAgentLongPress(item)}
+          onArchive={() => handleArchiveSingle(item)}
+          onToggleBatch={() => {
+            setSelectedBatchKeys((prev) => {
+              const next = new Set(prev);
+              if (next.has(key)) {
+                next.delete(key);
+              } else {
+                next.add(key);
+              }
+              return next;
+            });
+          }}
+        />
       );
     },
     [
-      collapsedProjectKeys,
       handleAgentLongPress,
       handleAgentPress,
-      handleArchiveAgent,
-      handleCreateAgentInProject,
-      checkoutByAgentKey,
+      handleArchiveSingle,
+      isSelectionMode,
       selectedAgentId,
-      showShortcutBadges,
+      selectedBatchKeys,
       shortcutIndexByAgentKey,
-      toggleProjectCollapsed,
+      showShortcutBadges,
+      projectIconByProjectKey,
     ]
   );
 
   const keyExtractor = useCallback(
-    (section: SectionData) => section.key,
+    (entry: EntryData) => `${entry.agent.serverId}:${entry.agent.id}`,
     []
   );
 
   return (
-    <>
+    <View style={styles.container}>
+      <View style={styles.filtersRow}>
+        <Pressable
+          ref={projectFilterAnchorRef}
+          style={({ hovered = false, pressed }) => [
+            styles.filterTrigger,
+            (selectedProjectKeys.length > 0 || hovered || pressed) &&
+              styles.filterTriggerActive,
+          ]}
+          onPress={() => setIsProjectFilterOpen(true)}
+        >
+          {({ hovered = false, pressed }) => {
+            const isInteracting = hovered || pressed;
+            const showActiveForeground =
+              selectedProjectKeys.length > 0 || isInteracting;
+            return (
+              <>
+                {selectedProjectKeys.length === 1 && selectedProjectIconUri ? (
+                  <Image
+                    source={{
+                      uri: selectedProjectIconUri,
+                    }}
+                    style={styles.selectedProjectIcon}
+                  />
+                ) : selectedProjectKeys.length > 1 ? (
+                  <View style={styles.projectCountBadge}>
+                    <Text style={styles.projectCountBadgeText}>
+                      {selectedProjectKeys.length}
+                    </Text>
+                  </View>
+                ) : null}
+                <Text
+                  style={[
+                    styles.filterTriggerText,
+                    !showActiveForeground && styles.filterTriggerTextMuted,
+                  ]}
+                  numberOfLines={1}
+                >
+                  {selectedProjectLabel}
+                </Text>
+                <ChevronDown
+                  size={14}
+                  color={
+                    showActiveForeground
+                      ? theme.colors.foreground
+                      : theme.colors.foregroundMuted
+                  }
+                />
+              </>
+            );
+          }}
+        </Pressable>
+
+        {selectedProjectKeys.length > 0 ? (
+          <Pressable style={styles.clearFilterButton} onPress={handleClearProjectFilter}>
+            <Text style={styles.clearFilterText}>Clear</Text>
+          </Pressable>
+        ) : null}
+
+        <Combobox
+          options={[]}
+          value=""
+          onSelect={() => {}}
+          title="Filter by project"
+          placeholder="Search projects"
+          searchPlaceholder="Search projects"
+          desktopPlacement="bottom-start"
+          open={isProjectFilterOpen}
+          onOpenChange={setIsProjectFilterOpen}
+          anchorRef={projectFilterAnchorRef}
+        >
+          <View style={styles.filterOptionsList}>
+            {projectOptions.length === 0 ? (
+              <Text style={styles.filterEmptyText}>No projects</Text>
+            ) : (
+              projectOptions.map((option) => (
+                <ProjectFilterOptionRow
+                  key={option.projectKey}
+                  option={option}
+                  selected={selectedProjectKeys.includes(option.projectKey)}
+                  iconDataUri={projectIconByProjectKey.get(option.projectKey) ?? null}
+                  displayName={deriveProjectDisplayName({
+                    projectKey: option.projectKey,
+                    projectName: option.projectName,
+                    remoteUrl: null,
+                  })}
+                  onToggle={handleToggleProject}
+                />
+              ))
+            )}
+          </View>
+        </Combobox>
+      </View>
+
       <DraggableList
-        data={sections}
+        data={entries}
         style={styles.list}
-        contentContainerStyle={styles.listContent}
+        contentContainerStyle={[
+          styles.listContent,
+          isSelectionMode ? styles.listContentSelectionMode : null,
+        ]}
         keyExtractor={keyExtractor}
-        renderItem={renderSection}
-        onDragEnd={handleDragEnd}
+        renderItem={renderRow}
+        onDragEnd={() => {}}
         showsVerticalScrollIndicator={false}
         ListFooterComponent={listFooterComponent}
         refreshing={isRefreshing}
@@ -551,151 +835,171 @@ export function SidebarAgentList({
         simultaneousGestureRef={parentGestureRef}
       />
 
-      <Modal
-        visible={isActionSheetVisible}
-        animationType="fade"
-        transparent
-        onRequestClose={handleCloseActionSheet}
-      >
-        <View style={styles.sheetOverlay}>
+      {isSelectionMode ? (
+        <View style={styles.selectionBar}>
+          <Pressable style={styles.selectionAction} onPress={handleSelectionBack}>
+            <Text style={styles.selectionActionText}>Back</Text>
+          </Pressable>
           <Pressable
-            style={styles.sheetBackdrop}
-            onPress={handleCloseActionSheet}
-          />
-          <View style={[styles.sheetContainer, { paddingBottom: Math.max(insets.bottom, theme.spacing[6]) }]}>
-            <View style={styles.sheetHandle} />
-            <Text style={styles.sheetTitle}>
-              {isActionDaemonUnavailable
-                ? "Host offline"
-                : "Archive this agent?"}
-            </Text>
-            <View style={styles.sheetButtonRow}>
-              <Pressable
-                style={[styles.sheetButton, styles.sheetCancelButton]}
-                onPress={handleCloseActionSheet}
-                testID="agent-action-cancel"
-              >
-                <Text style={styles.sheetCancelText}>Cancel</Text>
-              </Pressable>
-              <Pressable
-                disabled={isActionDaemonUnavailable}
-                style={[styles.sheetButton, styles.sheetArchiveButton]}
-                onPress={handleArchiveFromSheet}
-                testID="agent-action-archive"
-              >
-                <Text
-                  style={[
-                    styles.sheetArchiveText,
-                    isActionDaemonUnavailable && styles.sheetArchiveTextDisabled,
-                  ]}
-                >
-                  Archive
-                </Text>
-              </Pressable>
-            </View>
-          </View>
+            style={[
+              styles.selectionAction,
+              styles.selectionArchiveAction,
+              selectedBatchKeys.size === 0 && styles.selectionArchiveActionDisabled,
+            ]}
+            disabled={selectedBatchKeys.size === 0}
+            onPress={handleArchiveBatch}
+          >
+            <Text style={styles.selectionArchiveActionText}>Archive</Text>
+          </Pressable>
         </View>
-      </Modal>
-    </>
+      ) : null}
+    </View>
   );
 }
 
 const styles = StyleSheet.create((theme) => ({
-  list: {
+  container: {
     flex: 1,
   },
-  listContent: {
+  filtersRow: {
+    paddingHorizontal: theme.spacing[3],
     paddingTop: theme.spacing[2],
-    paddingBottom: theme.spacing[4],
+    paddingBottom: theme.spacing[2],
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[2],
   },
-  sectionHeader: {
+  filterTrigger: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[2],
+    alignSelf: "flex-start",
+    maxWidth: 260,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    borderRadius: theme.borderRadius.full,
+    paddingHorizontal: theme.spacing[3],
+    paddingVertical: theme.spacing[1],
+    backgroundColor: theme.colors.surface1,
+  },
+  filterTriggerActive: {
+    borderColor: theme.colors.borderAccent,
+  },
+  filterTriggerText: {
+    color: theme.colors.foreground,
+    fontSize: theme.fontSize.sm,
+    maxWidth: 180,
+  },
+  filterTriggerTextMuted: {
+    color: theme.colors.foregroundMuted,
+  },
+  selectedProjectIcon: {
+    width: 14,
+    height: 14,
+    borderRadius: theme.borderRadius.sm,
+  },
+  projectCountBadge: {
+    minWidth: 16,
+    height: 16,
+    borderRadius: theme.borderRadius.full,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 4,
+    backgroundColor: theme.colors.surface2,
+  },
+  projectCountBadgeText: {
+    fontSize: theme.fontSize.xs,
+    color: theme.colors.foregroundMuted,
+  },
+  clearFilterButton: {
+    paddingHorizontal: theme.spacing[2],
+    paddingVertical: theme.spacing[1],
+  },
+  clearFilterText: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.sm,
+  },
+  filterOptionsList: {
+    gap: theme.spacing[1],
+  },
+  filterEmptyText: {
+    color: theme.colors.foregroundMuted,
+    textAlign: "center",
+    paddingVertical: theme.spacing[4],
+  },
+  filterOption: {
+    paddingVertical: theme.spacing[2],
+    paddingHorizontal: theme.spacing[2],
+    borderRadius: 0,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingVertical: theme.spacing[2],
-    paddingHorizontal: theme.spacing[3],
-    marginTop: theme.spacing[2],
-    borderRadius: theme.borderRadius.md,
-  },
-  sectionHeaderHovered: {
-    backgroundColor: theme.colors.surface1,
-  },
-  sectionHeaderPressed: {
-    backgroundColor: theme.colors.surface2,
-  },
-  sectionHeaderExpanded: {
-    marginBottom: theme.spacing[2],
-  },
-  sectionHeaderDragging: {
-    backgroundColor: theme.colors.surface2,
-  },
-  sectionContainer: {
-    marginHorizontal: theme.spacing[2],
-    marginBottom: theme.spacing[2],
-  },
-  sectionDragging: {
-    opacity: 0.9,
-    transform: [{ scale: 1.02 }],
-  },
-  chevron: {
-    opacity: 0.5,
-  },
-  sectionHeaderLeft: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "flex-start",
-    flex: 1,
-    minWidth: 0,
     gap: theme.spacing[2],
   },
+  filterOptionHovered: {
+    backgroundColor: theme.colors.surface1,
+  },
+  filterOptionPressed: {
+    backgroundColor: theme.colors.surface2,
+  },
+  filterOptionLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[2],
+    flex: 1,
+    minWidth: 0,
+  },
+  filterOptionRight: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[2],
+    flexShrink: 0,
+  },
+  filterOptionLabel: {
+    color: theme.colors.foreground,
+    fontSize: theme.fontSize.sm,
+    flex: 1,
+  },
+  filterOptionCount: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.xs,
+  },
   projectIcon: {
-    width: 16,
-    height: 16,
+    width: 14,
+    height: 14,
     borderRadius: theme.borderRadius.sm,
   },
-  projectIconPlaceholder: {
-    width: 16,
-    height: 16,
+  projectIconFallback: {
+    width: 14,
+    height: 14,
     borderRadius: theme.borderRadius.sm,
     borderWidth: 1,
     borderColor: theme.colors.border,
     alignItems: "center",
     justifyContent: "center",
   },
-  projectIconPlaceholderText: {
-    fontSize: 10,
-    fontWeight: "500",
+  projectIconFallbackInactive: {
+    opacity: 0.5,
+  },
+  projectIconFallbackText: {
     color: theme.colors.foregroundMuted,
+    fontSize: 9,
   },
-  sectionHeaderRight: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: theme.spacing[2],
-    marginLeft: theme.spacing[2],
-  },
-  createAgentButton: {
-    width: 18,
-    height: 18,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  sectionTitle: {
-    fontSize: theme.fontSize.sm,
-    fontWeight: "normal",
-    color: theme.colors.foregroundMuted,
+  list: {
     flex: 1,
-    textAlign: "left",
+  },
+  listContent: {
+    paddingHorizontal: theme.spacing[2],
+    paddingBottom: theme.spacing[4],
+  },
+  listContentSelectionMode: {
+    paddingBottom: theme.spacing[16],
   },
   agentItem: {
     paddingVertical: theme.spacing[2],
     paddingHorizontal: theme.spacing[3],
-    marginLeft: theme.spacing[1],
     borderRadius: theme.borderRadius.lg,
     marginBottom: theme.spacing[1],
-  },
-  agentItemUnselected: {
-    opacity: 1,
   },
   agentItemSelected: {
     backgroundColor: theme.colors.surface2,
@@ -706,129 +1010,136 @@ const styles = StyleSheet.create((theme) => ({
   agentItemPressed: {
     backgroundColor: theme.colors.surface2,
   },
-  agentContent: {
-    flex: 1,
-    gap: theme.spacing[0],
-  },
-  row: {
+  agentRowTop: {
     flexDirection: "row",
     alignItems: "center",
     gap: theme.spacing[2],
+    minHeight: 20,
   },
-  agentTitle: {
-    flex: 1,
-    fontSize: theme.fontSize.base,
-    fontWeight: "400",
-    color: theme.colors.foreground,
-    opacity: 0.8,
-  },
-  archiveButton: {
-    alignItems: "center",
-    justifyContent: "center",
-    marginLeft: theme.spacing[1],
-  },
-  branchBadge: {
-    minWidth: 20,
-    maxWidth: "40%",
-    height: 20,
-    paddingHorizontal: theme.spacing[2],
-    borderRadius: theme.borderRadius.md,
+  checkbox: {
+    width: 16,
+    height: 16,
+    borderRadius: theme.borderRadius.sm,
     borderWidth: 1,
     borderColor: theme.colors.border,
     alignItems: "center",
     justifyContent: "center",
   },
-  branchBadgeText: {
-    fontSize: theme.fontSize.xs,
+  checkboxSelected: {
+    backgroundColor: theme.colors.primary,
+    borderColor: theme.colors.primary,
+  },
+  agentTitle: {
+    flex: 1,
+    fontSize: theme.fontSize.base,
+    color: theme.colors.foreground,
+    opacity: 0.85,
+  },
+  agentTitleInactive: {
     color: theme.colors.foregroundMuted,
-    lineHeight: 12,
   },
-  branchBadgePlaceholder: {
-    opacity: 0,
-    borderColor: "transparent",
-  },
-  archiveConfirmBadge: {
-    minWidth: 76,
-    maxWidth: 9999,
-    flexShrink: 0,
-  },
-  archiveConfirmText: {
-    color: theme.colors.foreground,
-  },
-  archiveConfirmTextHovered: {
-    opacity: 0.9,
-  },
-  agentTitleHighlighted: {
-    color: theme.colors.foreground,
+  agentTitleSelected: {
     opacity: 1,
   },
-  secondaryRow: {
-    fontSize: theme.fontSize.sm,
-    fontWeight: "300",
+  relativeTimeText: {
     color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.xs,
   },
-  sheetOverlay: {
-    flex: 1,
-    justifyContent: "flex-end",
-  },
-  sheetBackdrop: {
-    position: "absolute",
-    top: 0,
-    right: 0,
-    bottom: 0,
-    left: 0,
-    backgroundColor: "rgba(0,0,0,0.35)",
-  },
-  sheetContainer: {
-    backgroundColor: theme.colors.surface2,
-    borderTopLeftRadius: theme.borderRadius["2xl"],
-    borderTopRightRadius: theme.borderRadius["2xl"],
-    paddingHorizontal: theme.spacing[6],
-    paddingTop: theme.spacing[4],
-    gap: theme.spacing[4],
-  },
-  sheetHandle: {
-    alignSelf: "center",
-    width: 40,
-    height: 4,
-    borderRadius: theme.borderRadius.full,
-    backgroundColor: theme.colors.foregroundMuted,
-    opacity: 0.3,
-  },
-  sheetTitle: {
-    fontSize: theme.fontSize.lg,
-    fontWeight: theme.fontWeight.semibold,
-    color: theme.colors.foreground,
-    textAlign: "center",
-  },
-  sheetButtonRow: {
-    flexDirection: "row",
-    gap: theme.spacing[3],
-  },
-  sheetButton: {
-    flex: 1,
-    borderRadius: theme.borderRadius.lg,
-    paddingVertical: theme.spacing[4],
+  shortcutBadge: {
+    minWidth: 20,
+    height: 20,
+    borderRadius: theme.borderRadius.md,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
     alignItems: "center",
     justifyContent: "center",
+    paddingHorizontal: theme.spacing[1],
   },
-  sheetArchiveButton: {
-    backgroundColor: theme.colors.primary,
+  shortcutBadgeText: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.xs,
   },
-  sheetArchiveText: {
-    color: theme.colors.primaryForeground,
-    fontWeight: theme.fontWeight.semibold,
-    fontSize: theme.fontSize.base,
+  archiveButton: {
+    minWidth: 24,
+    height: 20,
+    borderRadius: theme.borderRadius.md,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: theme.spacing[1],
   },
-  sheetArchiveTextDisabled: {
+  agentMetaRow: {
+    marginTop: theme.spacing[1],
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[2],
+  },
+  agentMetaProjectIcon: {
+    width: 14,
+    height: 14,
+    borderRadius: theme.borderRadius.sm,
+  },
+  agentMetaProjectIconInactive: {
     opacity: 0.5,
   },
-  sheetCancelButton: {
+  agentMetaProjectName: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.xs,
+    flexShrink: 1,
+    minWidth: 0,
+  },
+  agentMetaBranchBadge: {
+    borderRadius: theme.borderRadius.full,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    paddingHorizontal: theme.spacing[1],
+    paddingVertical: 1,
+    flexShrink: 0,
+  },
+  agentMetaBranchBadgeSelected: {
+    borderColor: theme.colors.borderAccent,
+  },
+  agentMetaBranchText: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.xs,
+  },
+  selectionBar: {
+    position: "absolute",
+    left: theme.spacing[2],
+    right: theme.spacing[2],
+    bottom: theme.spacing[2],
+    borderRadius: theme.borderRadius.xl,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.surface2,
+    padding: theme.spacing[2],
+    flexDirection: "row",
+    gap: theme.spacing[2],
+  },
+  selectionAction: {
+    flex: 1,
+    borderRadius: theme.borderRadius.lg,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: theme.spacing[2],
     backgroundColor: theme.colors.surface1,
   },
-  sheetCancelText: {
+  selectionActionText: {
     color: theme.colors.foreground,
-    fontWeight: theme.fontWeight.semibold,
-    fontSize: theme.fontSize.base,
+    fontSize: theme.fontSize.sm,
+  },
+  selectionArchiveAction: {
+    backgroundColor: theme.colors.primary,
+    borderColor: theme.colors.primary,
+  },
+  selectionArchiveActionDisabled: {
+    opacity: 0.5,
+  },
+  selectionArchiveActionText: {
+    color: theme.colors.primaryForeground,
+    fontSize: theme.fontSize.sm,
   },
 }));

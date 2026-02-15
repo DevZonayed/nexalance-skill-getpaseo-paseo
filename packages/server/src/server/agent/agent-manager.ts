@@ -953,6 +953,9 @@ export class AgentManager {
 
     agent.pendingRun = streamForwarder;
     agent.lifecycle = "running";
+    // Bump updatedAt when lifecycle changes so downstream consumers can
+    // deterministically order idle->running transitions.
+    agent.updatedAt = new Date();
     self.emitState(agent);
 
     return streamForwarder;

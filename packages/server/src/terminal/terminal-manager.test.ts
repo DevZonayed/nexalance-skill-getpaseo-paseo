@@ -1,6 +1,21 @@
 import { describe, it, expect, afterEach } from "vitest";
 import { createTerminalManager, type TerminalManager } from "./terminal-manager.js";
 
+async function waitForCondition(
+  predicate: () => boolean,
+  timeoutMs: number,
+  intervalMs = 25
+): Promise<void> {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    if (predicate()) {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+  }
+  throw new Error(`Timed out after ${timeoutMs}ms waiting for condition`);
+}
+
 describe("TerminalManager", () => {
   let manager: TerminalManager;
 
@@ -136,6 +151,21 @@ describe("TerminalManager", () => {
       manager = createTerminalManager();
       expect(() => manager.killTerminal("unknown-id")).not.toThrow();
     });
+
+    it("auto-removes terminal when shell exits", async () => {
+      manager = createTerminalManager();
+      const terminals = await manager.getTerminals("/tmp");
+      const exitedId = terminals[0].id;
+      terminals[0].send({ type: "input", data: "\u0004" });
+
+      await waitForCondition(() => manager.getTerminal(exitedId) === undefined, 10000);
+
+      expect(manager.getTerminal(exitedId)).toBeUndefined();
+
+      const remaining = await manager.getTerminals("/tmp");
+      expect(remaining).toHaveLength(1);
+      expect(remaining[0].id).not.toBe(exitedId);
+    });
   });
 
   describe("listDirectories", () => {
@@ -161,12 +191,14 @@ describe("TerminalManager", () => {
       manager = createTerminalManager();
       const tmpTerminals = await manager.getTerminals("/tmp");
       const homeTerminals = await manager.getTerminals("/home");
+      const tmpId = tmpTerminals[0].id;
+      const homeId = homeTerminals[0].id;
 
       manager.killAll();
 
       expect(manager.listDirectories()).toEqual([]);
-      expect(manager.getTerminal(tmpTerminals[0].id)).toBeUndefined();
-      expect(manager.getTerminal(homeTerminals[0].id)).toBeUndefined();
+      expect(manager.getTerminal(tmpId)).toBeUndefined();
+      expect(manager.getTerminal(homeId)).toBeUndefined();
     });
   });
 });

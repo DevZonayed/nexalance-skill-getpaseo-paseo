@@ -28,6 +28,7 @@ import {
   type ProjectPlacementPayload,
 } from "./messages.js";
 import type { TerminalManager } from "../terminal/terminal-manager.js";
+import type { TerminalSession } from "../terminal/terminal.js";
 import {
   BinaryMuxChannel,
   TerminalBinaryFlags,
@@ -148,8 +149,6 @@ const pendingAgentInitializations = new Map<string, Promise<ManagedAgent>>();
 let restartRequested = false;
 const DEFAULT_AGENT_PROVIDER = AGENT_PROVIDER_IDS[0];
 const RESTART_EXIT_DELAY_MS = 250;
-const PROJECT_PLACEMENT_CACHE_TTL_MS = 10_000;
-const MAX_AGENTS_PER_PROJECT = 5;
 const CHECKOUT_DIFF_WATCH_DEBOUNCE_MS = 150;
 const CHECKOUT_DIFF_FALLBACK_REFRESH_MS = 5_000;
 const TERMINAL_STREAM_WINDOW_BYTES = 256 * 1024;
@@ -279,6 +278,30 @@ type TerminalStreamPendingChunk = {
   endOffset: number;
   replay: boolean;
 };
+
+type FetchAgentsRequestMessage = Extract<
+  SessionInboundMessage,
+  { type: "fetch_agents_request" }
+>;
+type FetchAgentsRequestSort = NonNullable<FetchAgentsRequestMessage["sort"]>[number];
+type FetchAgentsResponsePayload = Extract<
+  SessionOutboundMessage,
+  { type: "fetch_agents_response" }
+>["payload"];
+type FetchAgentsResponseEntry = FetchAgentsResponsePayload["entries"][number];
+type FetchAgentsResponsePageInfo = FetchAgentsResponsePayload["pageInfo"];
+type FetchAgentsCursor = {
+  sort: FetchAgentsRequestSort[];
+  values: Record<string, string | number | null>;
+  id: string;
+};
+
+class SessionRequestError extends Error {
+  constructor(readonly code: string, message: string) {
+    super(message);
+    this.name = "SessionRequestError";
+  }
+}
 
 const PCM_SAMPLE_RATE = 16000;
 const PCM_CHANNELS = 1;
@@ -524,10 +547,6 @@ export class Session {
         filter?: { labels?: Record<string, string>; agentId?: string };
       }
     | null = null;
-  private readonly projectPlacementCache = new Map<
-    string,
-    { expiresAt: number; promise: Promise<ProjectPlacementPayload> }
-  >();
   private clientActivity: {
     deviceType: "web" | "mobile";
     focusedAgentId: string | null;
@@ -538,6 +557,7 @@ export class Session {
   private readonly MOBILE_BACKGROUND_STREAM_GRACE_MS = 60_000;
   private readonly terminalManager: TerminalManager | null;
   private terminalSubscriptions: Map<string, () => void> = new Map();
+  private terminalExitSubscriptions: Map<string, () => void> = new Map();
   private readonly terminalStreams = new Map<
     number,
     {
@@ -1111,21 +1131,6 @@ export class Session {
     };
   }
 
-  private getProjectPlacement(cwd: string): Promise<ProjectPlacementPayload> {
-    const now = Date.now();
-    const cached = this.projectPlacementCache.get(cwd);
-    if (cached && cached.expiresAt > now) {
-      return cached.promise;
-    }
-
-    const promise = this.buildProjectPlacement(cwd);
-    this.projectPlacementCache.set(cwd, {
-      expiresAt: now + PROJECT_PLACEMENT_CACHE_TTL_MS,
-      promise,
-    });
-    return promise;
-  }
-
   private async forwardAgentUpdate(agent: ManagedAgent): Promise<void> {
     try {
       const subscription = this.agentUpdatesSubscription;
@@ -1137,7 +1142,7 @@ export class Session {
       const matches = this.matchesAgentFilter(payload, subscription.filter);
 
       if (matches) {
-        const project = await this.getProjectPlacement(payload.cwd);
+        const project = await this.buildProjectPlacement(payload.cwd);
         this.emit({
           type: "agent_update",
           payload: { kind: "upsert", agent: payload, project },
@@ -1173,11 +1178,7 @@ export class Session {
           break;
 
         case "fetch_agents_request":
-          await this.handleFetchAgents(msg.requestId, msg.filter);
-          break;
-
-        case "fetch_agents_grouped_by_project_request":
-          await this.handleFetchAgentsGroupedByProject(msg.requestId, msg.filter);
+          await this.handleFetchAgents(msg);
           break;
 
         case "fetch_agent_request":
@@ -4876,102 +4877,320 @@ export class Session {
     return this.buildStoredAgentPayload(record);
   }
 
-  private async handleFetchAgents(
-    requestId: string,
-    filter?: { labels?: Record<string, string> }
-  ): Promise<void> {
-    try {
-      const agents = await this.listAgentPayloads(filter);
-      this.emit({
-        type: "fetch_agents_response",
-        payload: { requestId, agents },
-      });
-    } catch (error) {
-      this.sessionLogger.error({ err: error }, "Failed to handle fetch_agents_request");
-      this.emit({
-        type: "fetch_agents_response",
-        payload: { requestId, agents: [] },
-      });
-    }
-  }
-
-  private async listAgentsGroupedByProjectPayload(filter?: {
-    labels?: Record<string, string>;
-  }): Promise<Array<{
-    projectKey: string;
-    projectName: string;
-    agents: Array<{
-      agent: AgentSnapshotPayload;
-      checkout: ProjectCheckoutLitePayload;
-    }>;
-  }>> {
-    const agents = await this.listAgentPayloads(filter);
-    const visibleAgents = agents
-      .filter((agent) => !agent.archivedAt)
-      .sort(
-        (left, right) =>
-          Date.parse(right.updatedAt || "") - Date.parse(left.updatedAt || "")
-      );
-
-    const grouped = new Map<
-      string,
-      {
-        projectKey: string;
-        projectName: string;
-        agents: Array<{
-          agent: AgentSnapshotPayload;
-          checkout: ProjectCheckoutLitePayload;
-        }>;
-      }
-    >();
-
-    // Warm project placement status for all visible roots up front to avoid serial N+1 latency.
-    for (const agent of visibleAgents) {
-      void this.getProjectPlacement(agent.cwd);
+  private normalizeFetchAgentsSort(
+    sort: FetchAgentsRequestSort[] | undefined
+  ): FetchAgentsRequestSort[] {
+    const fallback: FetchAgentsRequestSort[] = [
+      { key: "updated_at", direction: "desc" },
+    ];
+    if (!sort || sort.length === 0) {
+      return fallback;
     }
 
-    for (const agent of visibleAgents) {
-      const project = await this.getProjectPlacement(agent.cwd);
-      const projectKey = project.projectKey;
-
-      let group = grouped.get(projectKey);
-      if (!group) {
-        group = {
-          projectKey,
-          projectName: project.projectName,
-          agents: [],
-        };
-        grouped.set(projectKey, group);
-      }
-
-      if (group.agents.length >= MAX_AGENTS_PER_PROJECT) {
+    const deduped: FetchAgentsRequestSort[] = [];
+    const seen = new Set<string>();
+    for (const entry of sort) {
+      if (seen.has(entry.key)) {
         continue;
       }
-
-      group.agents.push({ agent, checkout: project.checkout });
+      seen.add(entry.key);
+      deduped.push(entry);
     }
-
-    return Array.from(grouped.values());
+    return deduped.length > 0 ? deduped : fallback;
   }
 
-  private async handleFetchAgentsGroupedByProject(
-    requestId: string,
-    filter?: { labels?: Record<string, string> }
+  private getStatusPriority(agent: AgentSnapshotPayload): number {
+    const requiresAttention = agent.requiresAttention ?? false;
+    const attentionReason = agent.attentionReason ?? null;
+    if (requiresAttention && attentionReason === "permission") {
+      return 0;
+    }
+    if (agent.status === "error" || attentionReason === "error") {
+      return 1;
+    }
+    if (agent.status === "running") {
+      return 2;
+    }
+    if (agent.status === "initializing") {
+      return 3;
+    }
+    return 4;
+  }
+
+  private getFetchAgentsSortValue(
+    entry: FetchAgentsResponseEntry,
+    key: FetchAgentsRequestSort["key"]
+  ): string | number | null {
+    switch (key) {
+      case "status_priority":
+        return this.getStatusPriority(entry.agent);
+      case "created_at":
+        return Date.parse(entry.agent.createdAt);
+      case "updated_at":
+        return Date.parse(entry.agent.updatedAt);
+      case "title":
+        return entry.agent.title?.toLocaleLowerCase() ?? "";
+    }
+  }
+
+  private compareSortValues(
+    left: string | number | null,
+    right: string | number | null
+  ): number {
+    if (left === right) {
+      return 0;
+    }
+    if (left === null) {
+      return -1;
+    }
+    if (right === null) {
+      return 1;
+    }
+    if (typeof left === "number" && typeof right === "number") {
+      return left < right ? -1 : 1;
+    }
+    return String(left).localeCompare(String(right));
+  }
+
+  private compareFetchAgentsEntries(
+    left: FetchAgentsResponseEntry,
+    right: FetchAgentsResponseEntry,
+    sort: FetchAgentsRequestSort[]
+  ): number {
+    for (const spec of sort) {
+      const leftValue = this.getFetchAgentsSortValue(left, spec.key);
+      const rightValue = this.getFetchAgentsSortValue(right, spec.key);
+      const base = this.compareSortValues(leftValue, rightValue);
+      if (base === 0) {
+        continue;
+      }
+      return spec.direction === "asc" ? base : -base;
+    }
+    return left.agent.id.localeCompare(right.agent.id);
+  }
+
+  private encodeFetchAgentsCursor(
+    entry: FetchAgentsResponseEntry,
+    sort: FetchAgentsRequestSort[]
+  ): string {
+    const values: Record<string, string | number | null> = {};
+    for (const spec of sort) {
+      values[spec.key] = this.getFetchAgentsSortValue(entry, spec.key);
+    }
+    return Buffer.from(
+      JSON.stringify({
+        sort,
+        values,
+        id: entry.agent.id,
+      }),
+      "utf8"
+    ).toString("base64url");
+  }
+
+  private decodeFetchAgentsCursor(
+    cursor: string,
+    sort: FetchAgentsRequestSort[]
+  ): FetchAgentsCursor {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(Buffer.from(cursor, "base64url").toString("utf8"));
+    } catch {
+      throw new SessionRequestError("invalid_cursor", "Invalid fetch_agents cursor");
+    }
+
+    if (!parsed || typeof parsed !== "object") {
+      throw new SessionRequestError("invalid_cursor", "Invalid fetch_agents cursor");
+    }
+
+    const payload = parsed as {
+      sort?: unknown;
+      values?: unknown;
+      id?: unknown;
+    };
+
+    if (!Array.isArray(payload.sort) || typeof payload.id !== "string") {
+      throw new SessionRequestError("invalid_cursor", "Invalid fetch_agents cursor");
+    }
+    if (!payload.values || typeof payload.values !== "object") {
+      throw new SessionRequestError("invalid_cursor", "Invalid fetch_agents cursor");
+    }
+
+    const cursorSort: FetchAgentsRequestSort[] = [];
+    for (const item of payload.sort) {
+      if (
+        !item ||
+        typeof item !== "object" ||
+        typeof (item as { key?: unknown }).key !== "string" ||
+        typeof (item as { direction?: unknown }).direction !== "string"
+      ) {
+        throw new SessionRequestError("invalid_cursor", "Invalid fetch_agents cursor");
+      }
+
+      const key = (item as { key: string }).key;
+      const direction = (item as { direction: string }).direction;
+      if (
+        (key !== "status_priority" &&
+          key !== "created_at" &&
+          key !== "updated_at" &&
+          key !== "title") ||
+        (direction !== "asc" && direction !== "desc")
+      ) {
+        throw new SessionRequestError("invalid_cursor", "Invalid fetch_agents cursor");
+      }
+      cursorSort.push({ key, direction });
+    }
+
+    if (
+      cursorSort.length !== sort.length ||
+      cursorSort.some(
+        (entry, index) =>
+          entry.key !== sort[index]?.key ||
+          entry.direction !== sort[index]?.direction
+      )
+    ) {
+      throw new SessionRequestError(
+        "invalid_cursor",
+        "fetch_agents cursor does not match current sort"
+      );
+    }
+
+    return {
+      sort: cursorSort,
+      values: payload.values as Record<string, string | number | null>,
+      id: payload.id,
+    };
+  }
+
+  private compareEntryWithCursor(
+    entry: FetchAgentsResponseEntry,
+    cursor: FetchAgentsCursor,
+    sort: FetchAgentsRequestSort[]
+  ): number {
+    for (const spec of sort) {
+      const leftValue = this.getFetchAgentsSortValue(entry, spec.key);
+      const rightValue =
+        cursor.values[spec.key] !== undefined ? cursor.values[spec.key] ?? null : null;
+      const base = this.compareSortValues(leftValue, rightValue);
+      if (base === 0) {
+        continue;
+      }
+      return spec.direction === "asc" ? base : -base;
+    }
+    return entry.agent.id.localeCompare(cursor.id);
+  }
+
+  private async listFetchAgentsEntries(
+    request: Extract<SessionInboundMessage, { type: "fetch_agents_request" }>
+  ): Promise<{
+    entries: FetchAgentsResponseEntry[];
+    pageInfo: FetchAgentsResponsePageInfo;
+  }> {
+    const filter = request.filter;
+    const sort = this.normalizeFetchAgentsSort(request.sort);
+    const includeArchived = filter?.includeArchived ?? false;
+
+    let agents = await this.listAgentPayloads({
+      labels: filter?.labels,
+    });
+
+    if (!includeArchived) {
+      agents = agents.filter((agent) => !agent.archivedAt);
+    }
+
+    if (filter?.statuses && filter.statuses.length > 0) {
+      const statuses = new Set(filter.statuses);
+      agents = agents.filter((agent) => statuses.has(agent.status));
+    }
+
+    if (typeof filter?.requiresAttention === "boolean") {
+      agents = agents.filter(
+        (agent) =>
+          (agent.requiresAttention ?? false) === filter.requiresAttention
+      );
+    }
+
+    const placementByCwd = new Map<string, Promise<ProjectPlacementPayload>>();
+    const getPlacement = (cwd: string): Promise<ProjectPlacementPayload> => {
+      const existing = placementByCwd.get(cwd);
+      if (existing) {
+        return existing;
+      }
+      const placementPromise = this.buildProjectPlacement(cwd);
+      placementByCwd.set(cwd, placementPromise);
+      return placementPromise;
+    };
+
+    let entries = await Promise.all(
+      agents.map(async (agent) => ({
+        agent,
+        project: await getPlacement(agent.cwd),
+      }))
+    );
+
+    if (filter?.projectKeys && filter.projectKeys.length > 0) {
+      const projectKeys = new Set(filter.projectKeys.filter((item) => item.trim().length > 0));
+      entries = entries.filter((entry) => projectKeys.has(entry.project.projectKey));
+    }
+
+    entries.sort((left, right) =>
+      this.compareFetchAgentsEntries(left, right, sort)
+    );
+
+    const cursorToken = request.page?.cursor;
+    if (cursorToken) {
+      const cursor = this.decodeFetchAgentsCursor(cursorToken, sort);
+      entries = entries.filter(
+        (entry) => this.compareEntryWithCursor(entry, cursor, sort) > 0
+      );
+    }
+
+    const limit = request.page?.limit ?? entries.length;
+    const pagedEntries = entries.slice(0, limit);
+    const hasMore = entries.length > limit;
+    const nextCursor =
+      hasMore && pagedEntries.length > 0
+        ? this.encodeFetchAgentsCursor(
+            pagedEntries[pagedEntries.length - 1],
+            sort
+          )
+        : null;
+
+    return {
+      entries: pagedEntries,
+      pageInfo: {
+        nextCursor,
+        prevCursor: request.page?.cursor ?? null,
+        hasMore,
+      },
+    };
+  }
+
+  private async handleFetchAgents(
+    request: Extract<SessionInboundMessage, { type: "fetch_agents_request" }>
   ): Promise<void> {
     try {
-      const groups = await this.listAgentsGroupedByProjectPayload(filter);
+      const payload = await this.listFetchAgentsEntries(request);
       this.emit({
-        type: "fetch_agents_grouped_by_project_response",
-        payload: { requestId, groups },
+        type: "fetch_agents_response",
+        payload: {
+          requestId: request.requestId,
+          ...payload,
+        },
       });
     } catch (error) {
-      this.sessionLogger.error(
-        { err: error },
-        "Failed to handle fetch_agents_grouped_by_project_request"
-      );
+      const code =
+        error instanceof SessionRequestError ? error.code : "fetch_agents_failed";
+      const message =
+        error instanceof Error ? error.message : "Failed to fetch agents";
+      this.sessionLogger.error({ err: error }, "Failed to handle fetch_agents_request");
       this.emit({
-        type: "fetch_agents_grouped_by_project_response",
-        payload: { requestId, groups: [] },
+        type: "rpc_error",
+        payload: {
+          requestId: request.requestId,
+          requestType: request.type,
+          error: message,
+          code,
+        },
       });
     }
   }
@@ -5962,6 +6181,10 @@ export class Session {
       unsubscribe();
     }
     this.terminalSubscriptions.clear();
+    for (const unsubscribeExit of this.terminalExitSubscriptions.values()) {
+      unsubscribeExit();
+    }
+    this.terminalExitSubscriptions.clear();
     this.detachAllTerminalStreams({ emitExit: false });
 
     for (const target of this.checkoutDiffTargets.values()) {
@@ -5974,6 +6197,43 @@ export class Session {
   // ============================================================================
   // Terminal Handlers
   // ============================================================================
+
+  private ensureTerminalExitSubscription(terminal: TerminalSession): void {
+    if (this.terminalExitSubscriptions.has(terminal.id)) {
+      return;
+    }
+
+    const unsubscribeExit = terminal.onExit(() => {
+      this.handleTerminalExited(terminal.id);
+    });
+    this.terminalExitSubscriptions.set(terminal.id, unsubscribeExit);
+  }
+
+  private handleTerminalExited(terminalId: string): void {
+    const unsubscribeExit = this.terminalExitSubscriptions.get(terminalId);
+    if (unsubscribeExit) {
+      unsubscribeExit();
+      this.terminalExitSubscriptions.delete(terminalId);
+    }
+
+    const unsubscribe = this.terminalSubscriptions.get(terminalId);
+    if (unsubscribe) {
+      try {
+        unsubscribe();
+      } catch (error) {
+        this.sessionLogger.warn(
+          { err: error, terminalId },
+          "Failed to unsubscribe terminal after process exit"
+        );
+      }
+      this.terminalSubscriptions.delete(terminalId);
+    }
+
+    const streamId = this.terminalStreamByTerminalId.get(terminalId);
+    if (typeof streamId === "number") {
+      this.detachTerminalStream(streamId, { emitExit: true });
+    }
+  }
 
   private async handleListTerminalsRequest(msg: ListTerminalsRequest): Promise<void> {
     if (!this.terminalManager) {
@@ -5990,6 +6250,9 @@ export class Session {
 
     try {
       const terminals = await this.terminalManager.getTerminals(msg.cwd);
+      for (const terminal of terminals) {
+        this.ensureTerminalExitSubscription(terminal);
+      }
       this.emit({
         type: "list_terminals_response",
         payload: {
@@ -6029,6 +6292,7 @@ export class Session {
         cwd: msg.cwd,
         name: msg.name,
       });
+      this.ensureTerminalExitSubscription(session);
       this.emit({
         type: "create_terminal_response",
         payload: {
@@ -6077,6 +6341,7 @@ export class Session {
       });
       return;
     }
+    this.ensureTerminalExitSubscription(session);
 
     // Unsubscribe from previous subscription if any
     const existing = this.terminalSubscriptions.get(msg.terminalId);
@@ -6128,6 +6393,7 @@ export class Session {
       this.sessionLogger.warn({ terminalId: msg.terminalId }, "Terminal not found for input");
       return;
     }
+    this.ensureTerminalExitSubscription(session);
 
     session.send(msg.message);
   }

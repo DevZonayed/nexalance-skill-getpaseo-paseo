@@ -318,6 +318,44 @@ const shouldRun = !process.env.CI;
   );
 
   test(
+    "emits terminal_stream_exit and removes terminal when shell exits",
+    async () => {
+      const cwd = tmpCwd();
+      const list = await ctx.client.listTerminals(cwd);
+      const terminalId = list.terminals[0].id;
+
+      const attach = await ctx.client.attachTerminalStream(terminalId, { rows: 24, cols: 80 });
+      expect(attach.error).toBeNull();
+      const streamId = attach.streamId!;
+
+      let sawExit = false;
+      const unsubscribeExit = ctx.client.on("terminal_stream_exit", (message) => {
+        if (message.type !== "terminal_stream_exit") {
+          return;
+        }
+        if (
+          message.payload.terminalId === terminalId &&
+          message.payload.streamId === streamId
+        ) {
+          sawExit = true;
+        }
+      });
+
+      ctx.client.sendTerminalStreamKey(streamId, { key: "d", ctrl: true });
+
+      await waitForCondition(() => sawExit, 10000);
+
+      const next = await ctx.client.listTerminals(cwd);
+      expect(next.terminals).toHaveLength(1);
+      expect(next.terminals[0].id).not.toBe(terminalId);
+
+      unsubscribeExit();
+      rmSync(cwd, { recursive: true, force: true });
+    },
+    30000
+  );
+
+  test(
     "replays detached terminal output from resume offset (scrollback continuity)",
     async () => {
       const cwd = tmpCwd();

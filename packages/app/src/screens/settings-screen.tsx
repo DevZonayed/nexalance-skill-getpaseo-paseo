@@ -85,7 +85,6 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.xs,
     fontWeight: theme.fontWeight.normal,
     letterSpacing: 0.4,
-    textTransform: "uppercase",
     marginBottom: theme.spacing[2],
   },
   input: {
@@ -180,8 +179,19 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.foregroundMuted,
     flexShrink: 1,
   },
-  hostCardPressed: {
-    opacity: 0.85,
+  hostSettingsButton: {
+    width: 28,
+    height: 28,
+    borderRadius: theme.borderRadius.md,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "transparent",
+    backgroundColor: "transparent",
+    marginLeft: theme.spacing[2],
+  },
+  hostSettingsButtonActive: {
+    backgroundColor: theme.colors.surface3,
   },
   advancedTrigger: {
     flexDirection: "row",
@@ -646,7 +656,7 @@ export default function SettingsScreen() {
                     connectionStatus={connectionStatus}
                     activeConnection={activeConnection}
                     lastError={lastConnectionError}
-                    onPress={handleEditDaemon}
+                    onOpenSettings={handleEditDaemon}
                   />
                 );
               })
@@ -885,8 +895,6 @@ function HostDetailModal({
 }: HostDetailModalProps) {
   const { theme } = useUnistyles();
   const [draftLabel, setDraftLabel] = useState("");
-  const [isDraftLabelDirty, setIsDraftLabelDirty] = useState(false);
-  const activeServerIdRef = useRef<string | null>(null);
   const [pendingRemoveConnection, setPendingRemoveConnection] = useState<{ serverId: string; connectionId: string; title: string } | null>(null);
   const [isRemovingConnection, setIsRemovingConnection] = useState(false);
 
@@ -1033,28 +1041,18 @@ function HostDetailModal({
 
   const handleDraftLabelChange = useCallback((nextValue: string) => {
     setDraftLabel(nextValue);
-    setIsDraftLabelDirty(true);
   }, []);
 
   useEffect(() => {
     if (!visible || !host) return;
-    const hostChanged = activeServerIdRef.current !== host.serverId;
-    if (hostChanged) {
-      setDraftLabel(host.label ?? "");
-      setIsDraftLabelDirty(false);
-      activeServerIdRef.current = host.serverId;
-      return;
-    }
-    if (!isDraftLabelDirty) {
-      setDraftLabel(host.label ?? "");
-    }
-  }, [visible, host?.serverId, host?.label, isDraftLabelDirty]);
+    // Initialize once per modal open / host switch; keep user edits fully local while typing.
+    setDraftLabel(host.label ?? "");
+  }, [visible, host?.serverId]);
 
   useEffect(() => {
     if (!visible) {
-      activeServerIdRef.current = null;
       setIsRestarting(false);
-      setIsDraftLabelDirty(false);
+      setDraftLabel("");
     }
   }, [visible]);
 
@@ -1304,7 +1302,7 @@ interface DaemonCardProps {
   connectionStatus: ConnectionStatus;
   activeConnection: ActiveConnection | null;
   lastError: string | null;
-  onPress: (daemon: HostProfile) => void;
+  onOpenSettings: (daemon: HostProfile) => void;
 }
 
 function DaemonCard({
@@ -1312,7 +1310,7 @@ function DaemonCard({
   connectionStatus,
   activeConnection,
   lastError,
-  onPress,
+  onOpenSettings,
 }: DaemonCardProps) {
   const { theme } = useUnistyles();
   const statusLabel = formatConnectionStatus(connectionStatus);
@@ -1347,12 +1345,9 @@ function DaemonCard({
   })();
 
   return (
-    <Pressable
-      style={({ pressed }) => [styles.hostCard, pressed && styles.hostCardPressed]}
-      onPress={() => onPress(daemon)}
+    <View
+      style={styles.hostCard}
       testID={`daemon-card-${daemon.serverId}`}
-      accessibilityRole="button"
-      accessibilityLabel={`${daemon.label}, ${statusLabel}`}
     >
       <View style={styles.hostCardContent}>
         <View style={styles.hostHeaderRow}>
@@ -1375,10 +1370,28 @@ function DaemonCard({
                 ) : null}
               </View>
             ) : null}
+
+            <Pressable
+              style={({ pressed, hovered }) => [
+                styles.hostSettingsButton,
+                (pressed || hovered) && styles.hostSettingsButtonActive,
+              ]}
+              onPress={() => onOpenSettings(daemon)}
+              testID={`daemon-card-settings-${daemon.serverId}`}
+              accessibilityRole="button"
+              accessibilityLabel={`Open settings for ${daemon.label}`}
+            >
+              {({ pressed, hovered }) => (
+                <Settings
+                  size={16}
+                  color={pressed || hovered ? theme.colors.foreground : theme.colors.foregroundMuted}
+                />
+              )}
+            </Pressable>
           </View>
         </View>
         {connectionError ? <Text style={styles.hostError}>{connectionError}</Text> : null}
       </View>
-    </Pressable>
+    </View>
   );
 }

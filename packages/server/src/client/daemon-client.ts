@@ -244,10 +244,19 @@ type AgentRefreshedStatusPayload = z.infer<
 type RestartRequestedStatusPayload = z.infer<
   typeof RestartRequestedStatusPayloadSchema
 >;
-type FetchAgentsGroupedByProjectPayload = Extract<
+type FetchAgentsPayload = Extract<
   SessionOutboundMessage,
-  { type: "fetch_agents_grouped_by_project_response" }
+  { type: "fetch_agents_response" }
 >["payload"];
+type FetchAgentsRequest = Extract<
+  SessionInboundMessage,
+  { type: "fetch_agents_request" }
+>;
+export type FetchAgentsOptions = Omit<FetchAgentsRequest, "type" | "requestId"> & {
+  requestId?: string;
+};
+export type FetchAgentsEntry = FetchAgentsPayload["entries"][number];
+export type FetchAgentsPageInfo = FetchAgentsPayload["pageInfo"];
 
 export type WaitForFinishResult = {
   status: "idle" | "error" | "permission" | "timeout";
@@ -976,15 +985,14 @@ export class DaemonClient {
   // Agent RPCs (requestId-correlated)
   // ============================================================================
 
-  async fetchAgents(options?: {
-    filter?: { labels?: Record<string, string> };
-    requestId?: string;
-  }): Promise<AgentSnapshotPayload[]> {
+  async fetchAgents(options?: FetchAgentsOptions): Promise<FetchAgentsPayload> {
     const resolvedRequestId = this.createRequestId(options?.requestId);
     const message = SessionInboundMessageSchema.parse({
       type: "fetch_agents_request",
       requestId: resolvedRequestId,
       ...(options?.filter ? { filter: options.filter } : {}),
+      ...(options?.sort ? { sort: options.sort } : {}),
+      ...(options?.page ? { page: options.page } : {}),
     });
     return this.sendRequest({
       requestId: resolvedRequestId,
@@ -993,33 +1001,6 @@ export class DaemonClient {
       options: { skipQueue: true },
       select: (msg) => {
         if (msg.type !== "fetch_agents_response") {
-          return null;
-        }
-        if (msg.payload.requestId !== resolvedRequestId) {
-          return null;
-        }
-        return msg.payload.agents;
-      },
-    });
-  }
-
-  async fetchAgentsGroupedByProject(options?: {
-    filter?: { labels?: Record<string, string> };
-    requestId?: string;
-  }): Promise<FetchAgentsGroupedByProjectPayload> {
-    const resolvedRequestId = this.createRequestId(options?.requestId);
-    const message = SessionInboundMessageSchema.parse({
-      type: "fetch_agents_grouped_by_project_request",
-      requestId: resolvedRequestId,
-      ...(options?.filter ? { filter: options.filter } : {}),
-    });
-    return this.sendRequest({
-      requestId: resolvedRequestId,
-      message,
-      timeout: 15000,
-      options: { skipQueue: true },
-      select: (msg) => {
-        if (msg.type !== "fetch_agents_grouped_by_project_response") {
           return null;
         }
         if (msg.payload.requestId !== resolvedRequestId) {

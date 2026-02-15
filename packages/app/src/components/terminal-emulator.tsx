@@ -384,7 +384,6 @@ export default function TerminalEmulator({
       terminal.write(outputText);
       renderedOutputRef.current = outputText;
     }
-    terminal.focus();
 
     return () => {
       inputDisposable.dispose();

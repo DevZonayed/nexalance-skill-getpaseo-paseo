@@ -111,7 +111,8 @@ export async function runStatusCommand(
       const client = await tryConnectToDaemon({ host, timeout: 1500 })
       if (client) {
         try {
-          const agents = await client.fetchAgents()
+          const agentsPayload = await client.fetchAgents({ filter: { includeArchived: true } })
+          const agents = agentsPayload.entries.map((entry) => entry.agent)
           runningAgents = agents.filter(a => a.status === 'running').length
           idleAgents = agents.filter(a => a.status === 'idle').length
         } catch {

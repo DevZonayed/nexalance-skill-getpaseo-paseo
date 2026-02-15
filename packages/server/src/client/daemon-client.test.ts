@@ -455,7 +455,7 @@ describe("DaemonClient", () => {
     expect(request.message.requestId.length).toBeGreaterThan(0);
   });
 
-  test("fetches project-grouped agents via RPC", async () => {
+  test("fetches agents via RPC with filters, sort, and pagination", async () => {
     const logger = createMockLogger();
     const mock = createMockTransport();
 
@@ -471,29 +471,49 @@ describe("DaemonClient", () => {
     mock.triggerOpen();
     await connectPromise;
 
-    const promise = client.fetchAgentsGroupedByProject({
+    const promise = client.fetchAgents({
       filter: { labels: { ui: "true" } },
+      sort: [
+        { key: "status_priority", direction: "asc" },
+        { key: "created_at", direction: "desc" },
+      ],
+      page: { limit: 25, cursor: "cursor-1" },
     });
 
     expect(mock.sent).toHaveLength(1);
     const request = JSON.parse(mock.sent[0]) as {
       type: "session";
       message: {
-        type: "fetch_agents_grouped_by_project_request";
+        type: "fetch_agents_request";
         requestId: string;
         filter?: { labels?: Record<string, string> };
+        sort?: Array<{
+          key: "status_priority" | "created_at" | "updated_at" | "title";
+          direction: "asc" | "desc";
+        }>;
+        page?: { limit: number; cursor?: string };
       };
     };
-    expect(request.message.type).toBe("fetch_agents_grouped_by_project_request");
+    expect(request.message.type).toBe("fetch_agents_request");
+    expect(request.message.sort).toEqual([
+      { key: "status_priority", direction: "asc" },
+      { key: "created_at", direction: "desc" },
+    ]);
+    expect(request.message.page).toEqual({ limit: 25, cursor: "cursor-1" });
 
     mock.triggerMessage(
       JSON.stringify({
         type: "session",
         message: {
-          type: "fetch_agents_grouped_by_project_response",
+          type: "fetch_agents_response",
           payload: {
             requestId: request.message.requestId,
-            groups: [],
+            entries: [],
+            pageInfo: {
+              nextCursor: null,
+              prevCursor: "cursor-1",
+              hasMore: false,
+            },
           },
         },
       })
@@ -501,7 +521,12 @@ describe("DaemonClient", () => {
 
     await expect(promise).resolves.toEqual({
       requestId: request.message.requestId,
-      groups: [],
+      entries: [],
+      pageInfo: {
+        nextCursor: null,
+        prevCursor: "cursor-1",
+        hasMore: false,
+      },
     });
   });
 

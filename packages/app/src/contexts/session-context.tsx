@@ -605,6 +605,10 @@ export function SessionProvider({
       console.log("[Session] Agent update:", agent.id, agent.status);
 
       setAgents(serverId, (prev) => {
+        const current = prev.get(agent.id);
+        if (current && agent.updatedAt.getTime() < current.updatedAt.getTime()) {
+          return prev;
+        }
         const next = new Map(prev);
         next.set(agent.id, agent);
         return next;

@@ -64,6 +64,7 @@ export interface TerminalSession {
   cwd: string;
   send(msg: ClientMessage): void;
   subscribe(listener: (msg: ServerMessage) => void): () => void;
+  onExit(listener: () => void): () => void;
   subscribeRaw(
     listener: (chunk: TerminalRawChunk) => void,
     options?: { fromOffset?: number }
@@ -190,6 +191,7 @@ export async function createTerminal(options: CreateTerminalOptions): Promise<Te
   const id = randomUUID();
   const listeners = new Set<(msg: ServerMessage) => void>();
   const rawListeners = new Set<(chunk: TerminalRawChunk) => void>();
+  const exitListeners = new Set<() => void>();
   const rawOutputChunks: Array<{
     startOffset: number;
     endOffset: number;
@@ -199,6 +201,8 @@ export async function createTerminal(options: CreateTerminalOptions): Promise<Te
   let rawBufferBytes = 0;
   let outputOffset = 0;
   let killed = false;
+  let disposed = false;
+  let exitEmitted = false;
 
   // Create xterm.js headless terminal
   const terminal = new Terminal({
@@ -220,6 +224,32 @@ export async function createTerminal(options: CreateTerminalOptions): Promise<Te
       TERM: "xterm-256color",
     },
   });
+
+  function emitExit(): void {
+    if (exitEmitted) {
+      return;
+    }
+    exitEmitted = true;
+    for (const listener of Array.from(exitListeners)) {
+      try {
+        listener();
+      } catch {
+        // no-op
+      }
+    }
+    exitListeners.clear();
+  }
+
+  function disposeResources(): void {
+    if (disposed) {
+      return;
+    }
+    disposed = true;
+    terminal.dispose();
+    listeners.clear();
+    rawListeners.clear();
+    exitListeners.clear();
+  }
 
   function appendRawOutputChunk(data: string): void {
     const chunkBytes = Buffer.byteLength(data);
@@ -292,6 +322,8 @@ export async function createTerminal(options: CreateTerminalOptions): Promise<Te
 
   ptyProcess.onExit(() => {
     killed = true;
+    emitExit();
+    disposeResources();
   });
 
   function getState(): TerminalState {
@@ -340,6 +372,24 @@ export async function createTerminal(options: CreateTerminalOptions): Promise<Te
     };
   }
 
+  function onExit(listener: () => void): () => void {
+    if (killed) {
+      queueMicrotask(() => {
+        try {
+          listener();
+        } catch {
+          // no-op
+        }
+      });
+      return () => {};
+    }
+
+    exitListeners.add(listener);
+    return () => {
+      exitListeners.delete(listener);
+    };
+  }
+
   function subscribeRaw(
     listener: (chunk: TerminalRawChunk) => void,
     options?: { fromOffset?: number }
@@ -380,11 +430,12 @@ export async function createTerminal(options: CreateTerminalOptions): Promise<Te
   }
 
   function kill(): void {
-    if (killed) return;
-    killed = true;
-    ptyProcess.kill();
-    terminal.dispose();
-    rawListeners.clear();
+    if (!killed) {
+      killed = true;
+      ptyProcess.kill();
+      emitExit();
+    }
+    disposeResources();
   }
 
   // Small delay to let shell initialize
@@ -396,6 +447,7 @@ export async function createTerminal(options: CreateTerminalOptions): Promise<Te
     cwd,
       send,
       subscribe,
+      onExit,
       subscribeRaw,
       getOutputOffset,
       getState,

@@ -53,7 +53,8 @@ export async function runStopCommand(
   }
 
   try {
-    let agents = await client.fetchAgents()
+    const fetchPayload = await client.fetchAgents({ filter: { includeArchived: true } })
+    let agents = fetchPayload.entries.map((entry) => entry.agent)
     const stoppedIds: string[] = []
 
     if (options.all) {

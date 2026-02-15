@@ -123,6 +123,16 @@ async function selectNewestTerminalTab(page: Page): Promise<void> {
   await tabs.last().click();
 }
 
+async function getFirstTerminalTabTestId(page: Page): Promise<string> {
+  const firstTab = page.locator('[data-testid^="terminal-tab-"]').first();
+  await expect(firstTab).toBeVisible({ timeout: 30000 });
+  const value = await firstTab.getAttribute("data-testid");
+  if (!value) {
+    throw new Error("Expected terminal tab test id");
+  }
+  return value;
+}
+
 async function runTerminalCommand(page: Page, command: string, expectedText: string): Promise<void> {
   const surface = page.getByTestId("terminal-surface").first();
   await expect(surface).toBeVisible({ timeout: 30000 });
@@ -226,6 +236,39 @@ test("Terminals tab creates multiple terminals and streams command output", asyn
 
     const markerTwo = `terminal-smoke-two-${Date.now()}`;
     await runTerminalCommand(page, `echo ${markerTwo}`, markerTwo);
+  } finally {
+    await repo.cleanup();
+  }
+});
+
+test("terminal tab is removed when shell exits", async ({ page }) => {
+  const repo = await createTempGitRepo("paseo-e2e-terminal-exit-");
+
+  try {
+    await openNewAgentDraft(page);
+    await setWorkingDirectory(page, repo.path);
+    await ensureHostSelected(page);
+    await createAgent(page, "Terminal exit flow");
+
+    await openTerminalsPanel(page);
+
+    const exitedTabTestId = await getFirstTerminalTabTestId(page);
+
+    const surface = page.getByTestId("terminal-surface").first();
+    await expect(surface).toBeVisible({ timeout: 30000 });
+    await surface.click({ force: true });
+    await page.keyboard.type("exit", { delay: 1 });
+    await page.keyboard.press("Enter");
+
+    await expect(page.getByTestId(exitedTabTestId)).toHaveCount(0, {
+      timeout: 30000,
+    });
+
+    await expect(page.locator('[data-testid^="terminal-tab-"]').first()).toBeVisible({
+      timeout: 30000,
+    });
+    const nextTabTestId = await getFirstTerminalTabTestId(page);
+    expect(nextTabTestId).not.toBe(exitedTabTestId);
   } finally {
     await repo.cleanup();
   }

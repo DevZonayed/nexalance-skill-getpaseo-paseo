@@ -1,53 +1,129 @@
-import { useCallback, useEffect, useMemo } from "react";
+import { useCallback, useMemo } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useDaemonConnections } from "@/contexts/daemon-connections-context";
 import { useSessionStore, type Agent } from "@/stores/session-store";
 import type { AggregatedAgent } from "@/hooks/use-aggregated-agents";
 import { normalizeAgentSnapshot } from "@/utils/agent-snapshots";
 import {
-  useSectionOrderStore,
-  sortProjectsByStoredOrder,
-} from "@/stores/section-order-store";
-import type { FetchAgentsGroupedByProjectResponseMessage } from "@server/shared/messages";
+  deriveSidebarStateBucket,
+  isSidebarActiveAgent,
+} from "@/utils/sidebar-agent-state";
+import type { ProjectPlacementPayload } from "@server/shared/messages";
 
-const SIDEBAR_GROUPS_STALE_TIME = 15_000;
-const SIDEBAR_GROUPS_REFETCH_INTERVAL = 10_000;
-const MAX_AGENTS_PER_PROJECT = 5;
+const SIDEBAR_AGENTS_STALE_TIME = 15_000;
+const SIDEBAR_AGENTS_REFETCH_INTERVAL = 10_000;
+const SIDEBAR_DONE_FILL_TARGET = 50;
 
-type SidebarGroupsPayload =
-  FetchAgentsGroupedByProjectResponseMessage["payload"];
-export type SidebarCheckoutLite =
-  SidebarGroupsPayload["groups"][number]["agents"][number]["checkout"];
-type MutableSidebarGroup = {
+export interface SidebarProjectOption {
   projectKey: string;
   projectName: string;
-  agents: AggregatedAgent[];
-};
+  activeCount: number;
+  totalCount: number;
+  serverId: string;
+  workingDir: string;
+}
 
-export interface SidebarSectionData {
-  key: string;
-  projectKey: string;
-  title: string;
-  agents: AggregatedAgent[];
-  firstAgentServerId?: string;
-  firstAgentId?: string;
-  workingDir?: string;
+export interface SidebarAgentListEntry {
+  agent: AggregatedAgent & { createdAt: Date };
+  project: ProjectPlacementPayload;
 }
 
 export interface SidebarAgentsGroupedResult {
-  sections: SidebarSectionData[];
-  checkoutByAgentKey: Map<string, SidebarCheckoutLite>;
+  entries: SidebarAgentListEntry[];
+  projectOptions: SidebarProjectOption[];
+  hasMoreEntries: boolean;
   isLoading: boolean;
   isInitialLoad: boolean;
   isRevalidating: boolean;
   refreshAll: () => void;
 }
 
+function compareByLastActivityDesc(
+  left: SidebarAgentListEntry,
+  right: SidebarAgentListEntry
+): number {
+  return right.agent.lastActivityAt.getTime() - left.agent.lastActivityAt.getTime();
+}
+
+function compareByTitleAsc(
+  left: SidebarAgentListEntry,
+  right: SidebarAgentListEntry
+): number {
+  const leftTitle = (left.agent.title?.trim() || "New agent").toLocaleLowerCase();
+  const rightTitle = (right.agent.title?.trim() || "New agent").toLocaleLowerCase();
+  const titleCmp = leftTitle.localeCompare(rightTitle, undefined, {
+    numeric: true,
+    sensitivity: "base",
+  });
+  if (titleCmp !== 0) {
+    return titleCmp;
+  }
+
+  // Deterministic tie-breaker so running rows stay stable while status updates stream.
+  return left.agent.id.localeCompare(right.agent.id, undefined, {
+    numeric: true,
+    sensitivity: "base",
+  });
+}
+
+function applySidebarDefaultOrdering(
+  entries: SidebarAgentListEntry[]
+): { entries: SidebarAgentListEntry[]; hasMore: boolean } {
+  const needsInput: SidebarAgentListEntry[] = [];
+  const failed: SidebarAgentListEntry[] = [];
+  const running: SidebarAgentListEntry[] = [];
+  const attention: SidebarAgentListEntry[] = [];
+  const done: SidebarAgentListEntry[] = [];
+
+  for (const entry of entries) {
+    const bucket = deriveSidebarStateBucket({
+      status: entry.agent.status,
+      requiresAttention: entry.agent.requiresAttention,
+      attentionReason: entry.agent.attentionReason,
+    });
+    if (bucket === "needs_input") {
+      needsInput.push(entry);
+      continue;
+    }
+    if (bucket === "failed") {
+      failed.push(entry);
+      continue;
+    }
+    if (bucket === "running") {
+      running.push(entry);
+      continue;
+    }
+    if (bucket === "attention") {
+      attention.push(entry);
+      continue;
+    }
+    done.push(entry);
+  }
+
+  needsInput.sort(compareByLastActivityDesc);
+  failed.sort(compareByLastActivityDesc);
+  running.sort(compareByTitleAsc);
+  attention.sort(compareByLastActivityDesc);
+  done.sort(compareByLastActivityDesc);
+
+  const active = [...needsInput, ...failed, ...running, ...attention];
+  if (active.length >= SIDEBAR_DONE_FILL_TARGET) {
+    return { entries: active, hasMore: done.length > 0 };
+  }
+
+  const remainingDoneSlots = SIDEBAR_DONE_FILL_TARGET - active.length;
+  const shownDone = done.slice(0, remainingDoneSlots);
+  return {
+    entries: [...active, ...shownDone],
+    hasMore: done.length > shownDone.length,
+  };
+}
+
 function toAggregatedAgent(params: {
   source: Agent | ReturnType<typeof normalizeAgentSnapshot>;
   serverId: string;
   serverLabel: string;
-}): AggregatedAgent {
+}): AggregatedAgent & { createdAt: Date } {
   const source = params.source;
   return {
     id: source.id,
@@ -55,6 +131,7 @@ function toAggregatedAgent(params: {
     serverLabel: params.serverLabel,
     title: source.title ?? null,
     status: source.status,
+    createdAt: source.createdAt,
     lastActivityAt: source.lastActivityAt,
     cwd: source.cwd,
     provider: source.provider,
@@ -69,6 +146,7 @@ function toAggregatedAgent(params: {
 export function useSidebarAgentsGrouped(options?: {
   isOpen?: boolean;
   serverId?: string | null;
+  selectedProjectKeys?: string[];
 }): SidebarAgentsGroupedResult {
   const { connectionStates } = useDaemonConnections();
   const queryClient = useQueryClient();
@@ -79,6 +157,15 @@ export function useSidebarAgentsGrouped(options?: {
       ? value.trim()
       : null;
   }, [options?.serverId]);
+  const selectedProjectKeys = useMemo(
+    () =>
+      new Set(
+        (options?.selectedProjectKeys ?? [])
+          .map((item) => item.trim())
+          .filter((item) => item.length > 0)
+      ),
+    [options?.selectedProjectKeys]
+  );
 
   const session = useSessionStore((state) =>
     serverId ? state.sessions[serverId] : undefined
@@ -88,189 +175,160 @@ export function useSidebarAgentsGrouped(options?: {
   const isConnected = session?.connection.isConnected ?? false;
   const canFetch = Boolean(serverId && client && isConnected);
 
-  const groupedQuery = useQuery({
-    queryKey: ["sidebarAgentsGrouped", serverId] as const,
+  const agentsQuery = useQuery({
+    queryKey: ["sidebarAgentsList", serverId] as const,
     queryFn: async () => {
       if (!client) {
         throw new Error("Daemon client not available");
       }
-      return await client.fetchAgentsGroupedByProject({
+      return await client.fetchAgents({
         filter: { labels: { ui: "true" } },
+        sort: [
+          { key: "status_priority", direction: "asc" },
+          { key: "updated_at", direction: "desc" },
+        ],
       });
     },
     enabled: canFetch,
-    staleTime: SIDEBAR_GROUPS_STALE_TIME,
-    refetchInterval: isOpen ? SIDEBAR_GROUPS_REFETCH_INTERVAL : false,
+    staleTime: SIDEBAR_AGENTS_STALE_TIME,
+    refetchInterval: isOpen ? SIDEBAR_AGENTS_REFETCH_INTERVAL : false,
     refetchIntervalInBackground: isOpen,
     refetchOnMount: "always" as const,
   });
 
-  const projectOrder = useSectionOrderStore((state) => state.projectOrder);
-  const setProjectOrder = useSectionOrderStore((state) => state.setProjectOrder);
-
-  const { sections, checkoutByAgentKey, hasAnyData } = useMemo(() => {
+  const { entries, projectOptions, hasAnyData, hasMoreEntries } = useMemo(() => {
     if (!serverId) {
       return {
-        sections: [] as SidebarSectionData[],
-        checkoutByAgentKey: new Map<string, SidebarCheckoutLite>(),
+        entries: [] as SidebarAgentListEntry[],
+        projectOptions: [] as SidebarProjectOption[],
         hasAnyData: false,
+        hasMoreEntries: false,
       };
     }
 
-    const groupsByKey = new Map<string, MutableSidebarGroup>();
-    const checkoutLookup = new Map<string, SidebarCheckoutLite>();
-    const seenAgentKeys = new Set<string>();
-    const payload = groupedQuery.data as SidebarGroupsPayload | undefined;
-    const groupedFetchReady = groupedQuery.isFetched;
     const serverLabel = connectionStates.get(serverId)?.daemon.label ?? serverId;
+    const seenAgentIds = new Set<string>();
+    const byProject = new Map<string, SidebarProjectOption>();
+    const mergedEntries: SidebarAgentListEntry[] = [];
 
-    if (payload) {
-      for (const group of payload.groups) {
-        const existing: MutableSidebarGroup =
-          groupsByKey.get(group.projectKey) ??
-          {
-            projectKey: group.projectKey,
-            projectName: group.projectName,
-            agents: [],
-          };
-
-        for (const entry of group.agents) {
-          const normalized = normalizeAgentSnapshot(entry.agent, serverId);
-          const live = liveAgents?.get(entry.agent.id);
-          const nextAgent = toAggregatedAgent({
-            source: live ?? normalized,
-            serverId,
-            serverLabel,
-          });
-          if (nextAgent.archivedAt) {
-            continue;
-          }
-
-          const agentKey = `${serverId}:${entry.agent.id}`;
-          seenAgentKeys.add(agentKey);
-          checkoutLookup.set(
-            agentKey,
-            live?.projectPlacement?.checkout ?? entry.checkout
-          );
-          existing.agents.push(nextAgent);
-        }
-
-        groupsByKey.set(group.projectKey, existing);
+    const pushEntry = (entry: SidebarAgentListEntry): void => {
+      if (entry.agent.archivedAt) {
+        return;
       }
+      const dedupeKey = `${entry.agent.serverId}:${entry.agent.id}`;
+      if (seenAgentIds.has(dedupeKey)) {
+        return;
+      }
+      seenAgentIds.add(dedupeKey);
+      mergedEntries.push(entry);
+
+      const existing = byProject.get(entry.project.projectKey);
+      const isActive = isSidebarActiveAgent({
+        status: entry.agent.status,
+        requiresAttention: entry.agent.requiresAttention,
+        attentionReason: entry.agent.attentionReason,
+      });
+      if (existing) {
+        existing.totalCount += 1;
+        if (isActive) {
+          existing.activeCount += 1;
+        }
+        return;
+      }
+
+      byProject.set(entry.project.projectKey, {
+        projectKey: entry.project.projectKey,
+        projectName: entry.project.projectName,
+        activeCount: isActive ? 1 : 0,
+        totalCount: 1,
+        serverId,
+        workingDir: entry.project.checkout.cwd,
+      });
+    };
+
+    const fetchedEntries = agentsQuery.data?.entries ?? [];
+    for (const fetchedEntry of fetchedEntries) {
+      const normalized = normalizeAgentSnapshot(fetchedEntry.agent, serverId);
+      const live = liveAgents?.get(fetchedEntry.agent.id);
+      const project = live?.projectPlacement ?? fetchedEntry.project;
+      if (!project) {
+        continue;
+      }
+      const agent = toAggregatedAgent({
+        source: live ?? normalized,
+        serverId,
+        serverLabel,
+      });
+      pushEntry({ agent, project });
     }
 
-    if (groupedFetchReady && liveAgents) {
+    if (liveAgents) {
       for (const live of liveAgents.values()) {
         if (live.archivedAt || live.labels.ui !== "true") {
           continue;
         }
         if (!live.projectPlacement) {
-          // Ignore fetchAgents-hydrated snapshots for sidebar placement.
-          // Sidebar should derive placement from grouped RPC or project-enriched agent_update.
           continue;
         }
-        const agentKey = `${serverId}:${live.id}`;
-        if (seenAgentKeys.has(agentKey)) {
-          continue;
-        }
-
-        const livePlacement = live.projectPlacement;
-        const projectKey = livePlacement.projectKey;
-        const existing: MutableSidebarGroup =
-          groupsByKey.get(projectKey) ??
-          {
-            projectKey,
-            projectName: livePlacement.projectName,
-            agents: [],
-          };
-        existing.agents.push(
-          toAggregatedAgent({
-            source: live,
-            serverId,
-            serverLabel,
-          })
-        );
-        checkoutLookup.set(agentKey, livePlacement.checkout);
-        groupsByKey.set(projectKey, existing);
+        const agent = toAggregatedAgent({
+          source: live,
+          serverId,
+          serverLabel,
+        });
+        pushEntry({ agent, project: live.projectPlacement });
       }
     }
 
-    const sortedGroups = Array.from(groupsByKey.values())
-      .map((group) => {
-        const agents = [...group.agents].sort(
-          (left, right) =>
-            right.lastActivityAt.getTime() - left.lastActivityAt.getTime()
-        );
-        return {
-          ...group,
-          agents: agents.slice(0, MAX_AGENTS_PER_PROJECT),
-        };
-      })
-      .filter((group) => group.agents.length > 0)
-      .sort((left, right) => {
-        const leftRecent = left.agents[0]?.lastActivityAt.getTime() ?? 0;
-        const rightRecent = right.agents[0]?.lastActivityAt.getTime() ?? 0;
-        return rightRecent - leftRecent;
-      });
+    const filteredEntries =
+      selectedProjectKeys.size > 0
+        ? mergedEntries.filter((entry) =>
+            selectedProjectKeys.has(entry.project.projectKey)
+          )
+        : mergedEntries;
 
-    const orderedGroups = sortProjectsByStoredOrder(sortedGroups, projectOrder);
-    const nextSections = orderedGroups.map((group) => {
-      const firstAgent = group.agents[0];
-      return {
-        key: `project:${group.projectKey}`,
-        projectKey: group.projectKey,
-        title: group.projectName,
-        agents: group.agents,
-        firstAgentServerId: firstAgent?.serverId,
-        firstAgentId: firstAgent?.id,
-        workingDir: firstAgent?.cwd,
-      };
+    const ordered = applySidebarDefaultOrdering(filteredEntries);
+    const options = Array.from(byProject.values()).sort((left, right) => {
+      if (left.activeCount !== right.activeCount) {
+        return right.activeCount - left.activeCount;
+      }
+      return left.projectName.localeCompare(right.projectName);
     });
 
     return {
-      sections: nextSections,
-      checkoutByAgentKey: checkoutLookup,
-      hasAnyData: nextSections.length > 0,
+      entries: ordered.entries,
+      projectOptions: options,
+      hasAnyData: ordered.entries.length > 0,
+      hasMoreEntries: ordered.hasMore,
     };
   }, [
+    agentsQuery.data?.entries,
     connectionStates,
-    groupedQuery.data,
-    groupedQuery.isFetched,
     liveAgents,
-    projectOrder,
+    selectedProjectKeys,
     serverId,
   ]);
-
-  useEffect(() => {
-    const currentKeys = sections.map((section) => section.projectKey);
-    const storedKeys = new Set(projectOrder);
-    const newKeys = currentKeys.filter((key) => !storedKeys.has(key));
-    if (newKeys.length > 0) {
-      setProjectOrder([...projectOrder, ...newKeys]);
-    }
-  }, [sections, projectOrder, setProjectOrder]);
 
   const refreshAll = useCallback(() => {
     if (!serverId) {
       return;
     }
     void queryClient.invalidateQueries({
-      queryKey: ["sidebarAgentsGrouped", serverId],
+      queryKey: ["sidebarAgentsList", serverId],
     });
   }, [queryClient, serverId]);
 
   const isFetching =
-    canFetch && (groupedQuery.isPending || groupedQuery.isFetching);
+    canFetch && (agentsQuery.isPending || agentsQuery.isFetching);
   const isInitialLoad = isFetching && !hasAnyData;
   const isRevalidating = isFetching && hasAnyData;
 
   return {
-    sections,
-    checkoutByAgentKey,
+    entries,
+    projectOptions,
+    hasMoreEntries,
     isLoading: isFetching,
     isInitialLoad,
     isRevalidating,
     refreshAll,
   };
 }
-

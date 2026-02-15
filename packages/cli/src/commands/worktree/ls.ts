@@ -76,7 +76,8 @@ export async function runLsCommand(
   }
 
   try {
-    const agents = await client.fetchAgents()
+    const agentsPayload = await client.fetchAgents({ filter: { includeArchived: true } })
+    const agents = agentsPayload.entries.map((entry) => entry.agent)
 
     // Get worktree list from daemon
     const response = await client.getPaseoWorktreeList({})

@@ -7,7 +7,13 @@ import {
   Text,
   View,
 } from "react-native";
-import { Plus, RefreshCw } from "lucide-react-native";
+import { Plus, X } from "lucide-react-native";
+import Svg, {
+  Defs,
+  LinearGradient as SvgLinearGradient,
+  Rect,
+  Stop,
+} from "react-native-svg";
 import { StyleSheet, UnistylesRuntime, useUnistyles } from "react-native-unistyles";
 import { useSessionStore } from "@/stores/session-store";
 import {
@@ -23,6 +29,7 @@ interface TerminalPaneProps {
 }
 
 const MAX_OUTPUT_CHARS = 200_000;
+const TERMINAL_TAB_MAX_WIDTH = 220;
 
 const MODIFIER_LABELS = {
   ctrl: "Ctrl",
@@ -58,6 +65,29 @@ function terminalScopeKey(serverId: string, cwd: string): string {
   return `${serverId}:${cwd}`;
 }
 
+function TerminalCloseGradient({ color, gradientId }: { color: string; gradientId: string }) {
+  return (
+    <View style={styles.terminalTabCloseGradient} pointerEvents="none">
+      <Svg width="100%" height="100%" preserveAspectRatio="none">
+        <Defs>
+          <SvgLinearGradient
+            id={gradientId}
+            x1="0%"
+            y1="0%"
+            x2="100%"
+            y2="0%"
+          >
+            <Stop offset="0%" stopColor={color} stopOpacity={0} />
+            <Stop offset="10%" stopColor={color} stopOpacity={1} />
+            <Stop offset="100%" stopColor={color} stopOpacity={1} />
+          </SvgLinearGradient>
+        </Defs>
+        <Rect x="0" y="0" width="100%" height="100%" fill={`url(#${gradientId})`} />
+      </Svg>
+    </View>
+  );
+}
+
 export function TerminalPane({ serverId, cwd }: TerminalPaneProps) {
   const { theme } = useUnistyles();
   const isMobile =
@@ -85,6 +115,62 @@ export function TerminalPane({ serverId, cwd }: TerminalPaneProps) {
   const [streamError, setStreamError] = useState<string | null>(null);
   const [modifiers, setModifiers] = useState<ModifierState>(EMPTY_MODIFIERS);
   const [focusRequestToken, setFocusRequestToken] = useState(0);
+  const [hoveredTerminalId, setHoveredTerminalId] = useState<string | null>(null);
+  const [hoveredCloseTerminalId, setHoveredCloseTerminalId] = useState<string | null>(
+    null
+  );
+  const hoverOutTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const selectedTerminalIdRef = useRef<string | null>(selectedTerminalId);
+
+  useEffect(() => {
+    selectedTerminalIdRef.current = selectedTerminalId;
+  }, [selectedTerminalId]);
+
+  const clearHoverOutTimeout = useCallback(() => {
+    if (!hoverOutTimeoutRef.current) {
+      return;
+    }
+    clearTimeout(hoverOutTimeoutRef.current);
+    hoverOutTimeoutRef.current = null;
+  }, []);
+
+  const handleTerminalTabHoverIn = useCallback(
+    (terminalId: string) => {
+      clearHoverOutTimeout();
+      setHoveredTerminalId(terminalId);
+    },
+    [clearHoverOutTimeout]
+  );
+
+  const handleTerminalTabHoverOut = useCallback(
+    (terminalId: string) => {
+      clearHoverOutTimeout();
+      hoverOutTimeoutRef.current = setTimeout(() => {
+        setHoveredTerminalId((current) => (current === terminalId ? null : current));
+        setHoveredCloseTerminalId((current) =>
+          current === terminalId ? null : current
+        );
+      }, 50);
+    },
+    [clearHoverOutTimeout]
+  );
+
+  const handleTerminalCloseHoverIn = useCallback(
+    (terminalId: string) => {
+      clearHoverOutTimeout();
+      setHoveredTerminalId(terminalId);
+      setHoveredCloseTerminalId(terminalId);
+    },
+    [clearHoverOutTimeout]
+  );
+
+  const handleTerminalCloseHoverOut = useCallback((terminalId: string) => {
+    setHoveredCloseTerminalId((current) => (current === terminalId ? null : current));
+  }, []);
+
+  useEffect(() => {
+    return () => clearHoverOutTimeout();
+  }, [clearHoverOutTimeout]);
 
   const terminalsQuery = useQuery({
     queryKey: ["terminals", serverId, cwd] as const,
@@ -100,6 +186,42 @@ export function TerminalPane({ serverId, cwd }: TerminalPaneProps) {
 
   const terminals = terminalsQuery.data?.terminals ?? [];
 
+  useEffect(() => {
+    if (!client || !isConnected) {
+      return;
+    }
+
+    return client.on("terminal_stream_exit", (message) => {
+      if (message.type !== "terminal_stream_exit") {
+        return;
+      }
+
+      const exitedTerminalId = message.payload.terminalId;
+      if (!exitedTerminalId) {
+        return;
+      }
+
+      if (selectedTerminalIdRef.current === exitedTerminalId) {
+        setSelectedTerminalId((current) =>
+          current === exitedTerminalId ? null : current
+        );
+        setActiveStream((current) =>
+          current?.terminalId === exitedTerminalId ? null : current
+        );
+        setIsAttaching(false);
+        setModifiers({ ...EMPTY_MODIFIERS });
+      }
+
+      void queryClient.invalidateQueries({
+        queryKey: ["terminals", serverId, cwd],
+      });
+      void queryClient.refetchQueries({
+        queryKey: ["terminals", serverId, cwd],
+        type: "active",
+      });
+    });
+  }, [client, cwd, isConnected, queryClient, serverId]);
+
   const createTerminalMutation = useMutation({
     mutationFn: async () => {
       if (!client) {
@@ -114,6 +236,39 @@ export function TerminalPane({ serverId, cwd }: TerminalPaneProps) {
       }
       void queryClient.invalidateQueries({
         queryKey: ["terminals", serverId, cwd],
+      });
+    },
+  });
+
+  const killTerminalMutation = useMutation({
+    mutationFn: async (terminalId: string) => {
+      if (!client) {
+        throw new Error("Host is not connected");
+      }
+      const payload = await client.killTerminal(terminalId);
+      if (!payload.success) {
+        throw new Error("Unable to close terminal");
+      }
+      return payload;
+    },
+    onSuccess: (_, terminalId) => {
+      setHoveredTerminalId((current) => (current === terminalId ? null : current));
+      if (selectedTerminalIdRef.current === terminalId) {
+        setSelectedTerminalId((current) =>
+          current === terminalId ? null : current
+        );
+        setActiveStream((current) =>
+          current?.terminalId === terminalId ? null : current
+        );
+        setIsAttaching(false);
+        setModifiers({ ...EMPTY_MODIFIERS });
+      }
+      void queryClient.invalidateQueries({
+        queryKey: ["terminals", serverId, cwd],
+      });
+      void queryClient.refetchQueries({
+        queryKey: ["terminals", serverId, cwd],
+        type: "active",
       });
     },
   });
@@ -263,13 +418,22 @@ export function TerminalPane({ serverId, cwd }: TerminalPaneProps) {
     ? (outputByTerminalId.get(selectedTerminalId) ?? "")
     : "";
 
-  const handleRefresh = useCallback(() => {
-    void terminalsQuery.refetch();
-  }, [terminalsQuery]);
-
   const handleCreateTerminal = useCallback(() => {
     createTerminalMutation.mutate();
   }, [createTerminalMutation]);
+
+  const handleCloseTerminal = useCallback(
+    (terminalId: string) => {
+      if (
+        killTerminalMutation.isPending &&
+        killTerminalMutation.variables === terminalId
+      ) {
+        return;
+      }
+      killTerminalMutation.mutate(terminalId);
+    },
+    [killTerminalMutation]
+  );
 
   const requestTerminalFocus = useCallback(() => {
     setFocusRequestToken((current) => current + 1);
@@ -430,12 +594,15 @@ export function TerminalPane({ serverId, cwd }: TerminalPaneProps) {
   const queryError =
     terminalsQuery.error instanceof Error ? terminalsQuery.error.message : null;
   const isCreating = createTerminalMutation.isPending;
-  const isRefreshing = terminalsQuery.isFetching;
   const createError =
     createTerminalMutation.error instanceof Error
       ? createTerminalMutation.error.message
       : null;
-  const combinedError = streamError ?? createError ?? queryError;
+  const closeError =
+    killTerminalMutation.error instanceof Error
+      ? killTerminalMutation.error.message
+      : null;
+  const combinedError = streamError ?? closeError ?? createError ?? queryError;
 
   return (
     <View style={styles.container}>
@@ -448,40 +615,82 @@ export function TerminalPane({ serverId, cwd }: TerminalPaneProps) {
         >
           {terminals.map((terminal) => {
             const isActive = terminal.id === selectedTerminalId;
+            const isTabHovered = hoveredTerminalId === terminal.id;
+            const isCloseHovered = hoveredCloseTerminalId === terminal.id;
+            const isClosingTerminal =
+              killTerminalMutation.isPending &&
+              killTerminalMutation.variables === terminal.id;
+            const shouldShowCloseButton =
+              isTabHovered || isCloseHovered || isClosingTerminal;
+            const gradientId = `terminal-close-gradient-${terminal.id.replace(
+              /[^a-zA-Z0-9_-]/g,
+              "-"
+            )}`;
             return (
               <Pressable
                 key={terminal.id}
                 testID={`terminal-tab-${terminal.id}`}
                 onPress={() => setSelectedTerminalId(terminal.id)}
+                onHoverIn={() => handleTerminalTabHoverIn(terminal.id)}
+                onHoverOut={() => handleTerminalTabHoverOut(terminal.id)}
                 style={({ pressed, hovered }) => [
                   styles.terminalTab,
                   isActive && styles.terminalTabActive,
+                  shouldShowCloseButton && styles.terminalTabHovered,
                   (pressed || hovered) && styles.terminalTabHovered,
                 ]}
               >
-                <Text style={[styles.terminalTabText, isActive && styles.terminalTabTextActive]}>
+                <Text
+                  style={[styles.terminalTabText, isActive && styles.terminalTabTextActive]}
+                  numberOfLines={1}
+                  ellipsizeMode="tail"
+                >
                   {terminal.name}
                 </Text>
+                <Pressable
+                  testID={`terminal-close-${terminal.id}`}
+                  pointerEvents={shouldShowCloseButton ? "auto" : "none"}
+                  disabled={!shouldShowCloseButton || isClosingTerminal}
+                  onHoverIn={() => handleTerminalCloseHoverIn(terminal.id)}
+                  onHoverOut={() => handleTerminalCloseHoverOut(terminal.id)}
+                  onPress={(event) => {
+                    event.stopPropagation();
+                    handleCloseTerminal(terminal.id);
+                  }}
+                  style={({ hovered, pressed }) => [
+                    styles.terminalTabCloseButton,
+                    shouldShowCloseButton
+                      ? styles.terminalTabCloseButtonShown
+                      : styles.terminalTabCloseButtonHidden,
+                  ]}
+                >
+                  {({ hovered = false, pressed = false }) => {
+                    const iconColor =
+                      hovered || pressed
+                        ? theme.colors.foreground
+                        : theme.colors.foregroundMuted;
+                    return (
+                      <>
+                        <TerminalCloseGradient
+                          color={theme.colors.surface2}
+                          gradientId={gradientId}
+                        />
+                        <View style={styles.terminalTabCloseIcon}>
+                          {isClosingTerminal ? (
+                            <ActivityIndicator size={12} color={iconColor} />
+                          ) : (
+                            <X size={12} color={iconColor} />
+                          )}
+                        </View>
+                      </>
+                    );
+                  }}
+                </Pressable>
               </Pressable>
             );
           })}
         </ScrollView>
         <View style={styles.headerActions}>
-          <Pressable
-            testID="terminals-refresh-button"
-            onPress={handleRefresh}
-            disabled={isRefreshing}
-            style={({ hovered, pressed }) => [
-              styles.headerIconButton,
-              (hovered || pressed) && styles.headerIconButtonHovered,
-            ]}
-          >
-            {isRefreshing ? (
-              <ActivityIndicator size="small" color={theme.colors.foregroundMuted} />
-            ) : (
-              <RefreshCw size={16} color={theme.colors.foregroundMuted} />
-            )}
-          </Pressable>
           <Pressable
             testID="terminals-create-button"
             onPress={handleCreateTerminal}
@@ -605,9 +814,9 @@ const styles = StyleSheet.create((theme) => ({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: theme.spacing[2],
-    paddingHorizontal: theme.spacing[2],
-    paddingVertical: theme.spacing[2],
+    gap: theme.spacing[1],
+    paddingHorizontal: theme.spacing[1],
+    paddingVertical: theme.spacing[1],
   },
   tabsScroll: {
     flex: 1,
@@ -620,27 +829,59 @@ const styles = StyleSheet.create((theme) => ({
     paddingRight: theme.spacing[2],
   },
   terminalTab: {
-    borderWidth: 1,
-    borderColor: theme.colors.border,
     borderRadius: theme.borderRadius.md,
     paddingHorizontal: theme.spacing[3],
     paddingVertical: theme.spacing[2],
-    backgroundColor: theme.colors.surface1,
+    justifyContent: "center",
+    maxWidth: TERMINAL_TAB_MAX_WIDTH,
+    minWidth: 96,
+    overflow: "hidden",
+    position: "relative",
   },
   terminalTabHovered: {
     backgroundColor: theme.colors.surface2,
   },
   terminalTabActive: {
-    borderColor: theme.colors.primary,
     backgroundColor: theme.colors.surface2,
   },
   terminalTabText: {
+    minWidth: 0,
+    flexShrink: 1,
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.sm,
+    fontWeight: theme.fontWeight.normal,
   },
   terminalTabTextActive: {
     color: theme.colors.foreground,
-    fontWeight: theme.fontWeight.medium,
+  },
+  terminalTabCloseButton: {
+    position: "absolute",
+    right: 0,
+    top: 0,
+    bottom: 0,
+    width: 32,
+    borderRadius: theme.borderRadius.sm,
+    alignItems: "flex-end",
+    justifyContent: "center",
+    paddingRight: theme.spacing[2],
+  },
+  terminalTabCloseButtonShown: {
+    opacity: 1,
+  },
+  terminalTabCloseButtonHidden: {
+    opacity: 0,
+  },
+  terminalTabCloseGradient: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: theme.borderRadius.sm,
+    overflow: "hidden",
+    zIndex: 0,
+  },
+  terminalTabCloseIcon: {
+    position: "relative",
+    zIndex: 1,
+    alignItems: "center",
+    justifyContent: "center",
   },
   headerActions: {
     flexDirection: "row",

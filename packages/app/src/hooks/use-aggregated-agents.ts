@@ -57,7 +57,7 @@ export function useAggregatedAgents(): AggregatedAgentsResult {
           const pendingPermissions = new Map();
           const agentLastActivity = new Map();
 
-          for (const snapshot of agentsList) {
+          for (const { agent: snapshot } of agentsList.entries) {
             const agent = normalizeAgentSnapshot(snapshot, serverId);
             agents.set(agent.id, agent);
             agentLastActivity.set(agent.id, agent.lastActivityAt);

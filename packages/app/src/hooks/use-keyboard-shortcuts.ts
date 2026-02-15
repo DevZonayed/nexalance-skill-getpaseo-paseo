@@ -13,6 +13,7 @@ import {
 import { queryClient } from "@/query/query-client";
 import {
   buildNewAgentRoute,
+  resolveSelectedAgentForNewAgent,
   resolveNewAgentWorkingDir,
 } from "@/utils/new-agent-routing";
 import {
@@ -95,21 +96,23 @@ export function useKeyboardShortcuts({
     const navigateToNewAgent = (): boolean => {
       let targetServerId = parseServerIdFromPathname(pathname);
       let targetWorkingDir: string | null = null;
-      if (selectedAgentId) {
-        const separatorIndex = selectedAgentId.indexOf(":");
-        if (separatorIndex > 0) {
-          const serverId = selectedAgentId.slice(0, separatorIndex);
-          const agentId = selectedAgentId.slice(separatorIndex + 1);
-          targetServerId = serverId;
-          const agent = useSessionStore.getState().sessions[serverId]?.agents?.get(agentId);
-          const cwd = agent?.cwd?.trim();
-          if (cwd) {
-            const checkout =
-              queryClient.getQueryData<CheckoutStatusPayload>(
-                checkoutStatusQueryKey(serverId, cwd)
-              ) ?? null;
-            targetWorkingDir = resolveNewAgentWorkingDir(cwd, checkout);
-          }
+      const selectedAgent = resolveSelectedAgentForNewAgent({
+        pathname,
+        selectedAgentId,
+      });
+      if (selectedAgent) {
+        targetServerId = selectedAgent.serverId;
+        const agent = useSessionStore
+          .getState()
+          .sessions[selectedAgent.serverId]
+          ?.agents?.get(selectedAgent.agentId);
+        const cwd = agent?.cwd?.trim();
+        if (cwd) {
+          const checkout =
+            queryClient.getQueryData<CheckoutStatusPayload>(
+              checkoutStatusQueryKey(selectedAgent.serverId, cwd)
+            ) ?? null;
+          targetWorkingDir = resolveNewAgentWorkingDir(cwd, checkout);
         }
       }
 

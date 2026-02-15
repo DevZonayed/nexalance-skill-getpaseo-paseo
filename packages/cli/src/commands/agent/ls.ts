@@ -111,7 +111,10 @@ export async function runLsCommand(
   }
 
   try {
-    let agents = await client.fetchAgents()
+    const fetchPayload = await client.fetchAgents({
+      filter: options.all ? { includeArchived: true } : undefined,
+    })
+    let agents = fetchPayload.entries.map((entry) => entry.agent)
 
     // By default, exclude archived agents. `-a` includes them.
     if (!options.all) {
