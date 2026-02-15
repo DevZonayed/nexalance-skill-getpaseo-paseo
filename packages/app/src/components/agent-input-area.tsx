@@ -611,7 +611,7 @@ export function AgentInputArea({
     ]
   );
 
-  const cancelButton = isAgentRunning && !hasSendableContent ? (
+  const cancelButton = isAgentRunning && !hasSendableContent && !isProcessing ? (
     <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
       <TooltipTrigger
         onPress={handleCancelAgent}
@@ -755,6 +755,7 @@ export function AgentInputArea({
             voiceAgentId={agentId}
             isAgentRunning={isAgentRunning}
             onQueue={handleQueue}
+            onSubmitLoadingPress={isAgentRunning ? handleCancelAgent : undefined}
             onKeyPress={handleCommandKeyPress}
           />
         </View>

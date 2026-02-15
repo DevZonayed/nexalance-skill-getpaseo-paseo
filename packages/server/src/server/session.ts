@@ -2311,7 +2311,10 @@ export class Session {
     const prompt = this.buildAgentPrompt(text, images);
 
     try {
-      this.agentManager.recordUserMessage(agentId, text, { messageId });
+      this.agentManager.recordUserMessage(agentId, text, {
+        messageId,
+        emitState: false,
+      });
     } catch (error) {
       this.sessionLogger.error(
         { err: error, agentId },
@@ -5244,7 +5247,10 @@ export class Session {
       await this.interruptAgentIfRunning(agentId);
 
       try {
-        this.agentManager.recordUserMessage(agentId, msg.text, { messageId: msg.messageId });
+        this.agentManager.recordUserMessage(agentId, msg.text, {
+          messageId: msg.messageId,
+          emitState: false,
+        });
       } catch (error) {
         this.sessionLogger.error(
           { err: error, agentId },

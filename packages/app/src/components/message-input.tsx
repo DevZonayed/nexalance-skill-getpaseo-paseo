@@ -75,6 +75,8 @@ export interface MessageInputProps {
   isAgentRunning?: boolean;
   /** Callback for queue button when agent is running */
   onQueue?: (payload: MessagePayload) => void;
+  /** Optional handler used when submit button is in loading state. */
+  onSubmitLoadingPress?: () => void;
   /** Intercept key press events before default handling. Return true to prevent default. */
   onKeyPress?: (event: { key: string; preventDefault: () => void }) => boolean;
 }
@@ -132,6 +134,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       voiceAgentId,
       isAgentRunning = false,
       onQueue,
+      onSubmitLoadingPress,
       onKeyPress: onKeyPressCallback,
     },
     ref
@@ -576,6 +579,16 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
   const hasImages = images.length > 0;
   const hasSendableContent = value.trim().length > 0 || hasImages;
   const shouldShowSendButton = hasSendableContent || isSubmitLoading;
+  const canPressLoadingButton =
+    isSubmitLoading && typeof onSubmitLoadingPress === "function";
+  const isSendButtonDisabled =
+    disabled ||
+    (!canPressLoadingButton && (isSubmitDisabled || isSubmitLoading));
+  const submitAccessibilityLabel = canPressLoadingButton
+    ? "Interrupt agent"
+    : isAgentRunning
+      ? "Send and interrupt"
+      : "Send message";
 
   return (
     <View style={styles.container} testID="message-input-root">
@@ -724,7 +737,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
               </TooltipContent>
             </Tooltip>
             {rightContent}
-            {shouldShowSendButton && isAgentRunning && onQueue && (
+            {hasSendableContent && isAgentRunning && onQueue && (
               <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
                 <TooltipTrigger
                   onPress={handleQueueMessage}
@@ -748,22 +761,17 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
             )}
             {shouldShowSendButton && (
               <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
-              <TooltipTrigger
-                onPress={handleSendMessage}
-                disabled={
-                    isSubmitDisabled ||
-                    isSubmitLoading ||
-                    disabled
+                <TooltipTrigger
+                  onPress={
+                    canPressLoadingButton ? onSubmitLoadingPress : handleSendMessage
                   }
-                accessibilityLabel={isAgentRunning ? "Send and interrupt" : "Send message"}
-                accessibilityRole="button"
-                style={[
-                  styles.sendButton,
-                    (isSubmitDisabled ||
-                      isSubmitLoading ||
-                      disabled) &&
-                      styles.buttonDisabled,
-                ]}
+                  disabled={isSendButtonDisabled}
+                  accessibilityLabel={submitAccessibilityLabel}
+                  accessibilityRole="button"
+                  style={[
+                    styles.sendButton,
+                    isSendButtonDisabled && styles.buttonDisabled,
+                  ]}
                 >
                   {isSubmitLoading ? (
                     <ActivityIndicator size="small" color="white" />

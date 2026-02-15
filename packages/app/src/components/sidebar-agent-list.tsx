@@ -1032,17 +1032,19 @@ const styles = StyleSheet.create((theme) => ({
   agentTitle: {
     flex: 1,
     fontSize: theme.fontSize.base,
+    fontWeight: theme.fontWeight.normal,
     color: theme.colors.foreground,
-    opacity: 0.85,
+    opacity: 1,
   },
   agentTitleInactive: {
-    color: theme.colors.foregroundMuted,
+    opacity: 0.8,
   },
   agentTitleSelected: {
     opacity: 1,
   },
   relativeTimeText: {
     color: theme.colors.foregroundMuted,
+    opacity: 0.78,
     fontSize: theme.fontSize.xs,
   },
   shortcutBadge: {
@@ -1084,7 +1086,8 @@ const styles = StyleSheet.create((theme) => ({
     opacity: 0.5,
   },
   agentMetaProjectName: {
-    color: theme.colors.foregroundMuted,
+    color: theme.colors.foreground,
+    opacity: 0.78,
     fontSize: theme.fontSize.xs,
     flexShrink: 1,
     minWidth: 0,
@@ -1101,7 +1104,8 @@ const styles = StyleSheet.create((theme) => ({
     borderColor: theme.colors.borderAccent,
   },
   agentMetaBranchText: {
-    color: theme.colors.foregroundMuted,
+    color: theme.colors.foreground,
+    opacity: 0.76,
     fontSize: theme.fontSize.xs,
   },
   selectionBar: {

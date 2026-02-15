@@ -374,7 +374,9 @@ export async function createAgentManagementMcpServer(
         });
 
         try {
-          agentManager.recordUserMessage(snapshot.id, trimmedPrompt);
+          agentManager.recordUserMessage(snapshot.id, trimmedPrompt, {
+            emitState: false,
+          });
         } catch (error) {
           childLogger.error(
             { err: error, agentId: snapshot.id },
@@ -599,7 +601,9 @@ export async function createAgentManagementMcpServer(
       }
 
       try {
-        agentManager.recordUserMessage(agentId, prompt);
+        agentManager.recordUserMessage(agentId, prompt, {
+          emitState: false,
+        });
       } catch (error) {
         childLogger.error(
           { err: error, agentId },

@@ -37,6 +37,19 @@ export interface BinaryMuxFrame {
 }
 
 export function asUint8Array(data: unknown): Uint8Array | null {
+  if (typeof data === "string") {
+    if (typeof TextEncoder !== "undefined") {
+      return new TextEncoder().encode(data);
+    }
+    if (typeof Buffer !== "undefined") {
+      return new Uint8Array(Buffer.from(data, "utf8"));
+    }
+    const out = new Uint8Array(data.length);
+    for (let i = 0; i < data.length; i += 1) {
+      out[i] = data.charCodeAt(i) & 0xff;
+    }
+    return out;
+  }
   if (data instanceof Uint8Array) {
     return data;
   }

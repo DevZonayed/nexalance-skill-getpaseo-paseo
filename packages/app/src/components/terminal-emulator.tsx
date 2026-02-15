@@ -26,6 +26,7 @@ interface TerminalEmulatorProps {
     meta: boolean;
   }) => Promise<void> | void;
   onPendingModifiersConsumed?: () => Promise<void> | void;
+  onOutputChunkConsumed?: (sequence: number) => Promise<void> | void;
   pendingModifiers?: PendingTerminalModifiers;
   focusRequestToken?: number;
 }
@@ -47,6 +48,7 @@ export default function TerminalEmulator({
   onResize,
   onTerminalKey,
   onPendingModifiersConsumed,
+  onOutputChunkConsumed,
   pendingModifiers = { ctrl: false, shift: false, alt: false },
   focusRequestToken = 0,
 }: TerminalEmulatorProps) {
@@ -108,19 +110,30 @@ export default function TerminalEmulator({
 
   useEffect(() => {
     const runtime = runtimeRef.current;
-    if (!runtime) {
-      return;
-    }
-
     if (outputChunkSequence <= 0) {
       return;
     }
-    if (outputChunkText.length === 0) {
-      runtime.clear();
+
+    if (!runtime) {
+      onOutputChunkConsumed?.(outputChunkSequence);
       return;
     }
-    runtime.write({ text: outputChunkText });
-  }, [outputChunkSequence, outputChunkText]);
+
+    if (outputChunkText.length === 0) {
+      runtime.clear({
+        onCommitted: () => {
+          onOutputChunkConsumed?.(outputChunkSequence);
+        },
+      });
+      return;
+    }
+    runtime.write({
+      text: outputChunkText,
+      onCommitted: () => {
+        onOutputChunkConsumed?.(outputChunkSequence);
+      },
+    });
+  }, [onOutputChunkConsumed, outputChunkSequence, outputChunkText]);
 
   useEffect(() => {
     if (focusRequestToken <= 0) {

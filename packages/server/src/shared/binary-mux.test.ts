@@ -3,6 +3,7 @@ import {
   BinaryMuxChannel,
   TerminalBinaryFlags,
   TerminalBinaryMessageType,
+  asUint8Array,
   decodeBinaryMuxFrame,
   encodeBinaryMuxFrame,
 } from "./binary-mux.js";
@@ -39,5 +40,11 @@ describe("binary mux frame codec", () => {
     });
     const tampered = encoded.slice(0, encoded.byteLength - 1);
     expect(decodeBinaryMuxFrame(tampered)).toBeNull();
+  });
+
+  it("converts UTF-8 string payloads to bytes", () => {
+    const bytes = asUint8Array("hello");
+    expect(bytes).not.toBeNull();
+    expect(Array.from(bytes ?? [])).toEqual(Array.from(new TextEncoder().encode("hello")));
   });
 });

@@ -40,7 +40,18 @@ describe("TerminalStreamManager", () => {
 
     expect(seen).toEqual(["hello"]);
     expect(sendAck).toHaveBeenCalledTimes(1);
-    expect(sendAck).toHaveBeenCalledWith({ streamId: 7, offset: 9 });
+  });
+
+  test("acks buffered chunks even while no subscriber is attached", () => {
+    const sendAck = vi.fn();
+    const manager = new TerminalStreamManager({ sendAck });
+
+    manager.receiveChunk({
+      chunk: createChunk({ streamId: 2, offset: 0, data: "abc" }),
+    });
+
+    expect(sendAck).toHaveBeenCalledTimes(1);
+    expect(sendAck).toHaveBeenCalledWith({ streamId: 2, offset: 3 });
   });
 
   test("does not ack when every handler throws", () => {

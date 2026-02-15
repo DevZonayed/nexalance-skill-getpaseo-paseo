@@ -51,6 +51,12 @@ type TerminalEmulatorRuntimeDisposables = {
   disposeTerminal: () => void;
 };
 
+type TerminalOutputOperation = {
+  type: "write" | "clear";
+  text: string;
+  onCommitted?: () => void;
+};
+
 declare global {
   interface Window {
     __paseoTerminal?: Terminal;
@@ -59,6 +65,7 @@ declare global {
 
 const DEFAULT_TOUCH_SCROLL_LINE_HEIGHT_PX = 18;
 const FIT_TIMEOUT_DELAYS_MS = [0, 16, 48, 120, 250, 500, 1_000, 2_000];
+const OUTPUT_OPERATION_TIMEOUT_MS = 5_000;
 
 export class TerminalEmulatorRuntime {
   private callbacks: TerminalEmulatorRuntimeCallbacks = {};
@@ -71,8 +78,9 @@ export class TerminalEmulatorRuntime {
   private fitAddon: FitAddon | null = null;
   private lastSize: { rows: number; cols: number } | null = null;
   private cleanup: (() => void) | null = null;
-  private pendingWriteText = "";
-  private isWriteFlushQueued = false;
+  private outputOperations: TerminalOutputOperation[] = [];
+  private inFlightOutputOperation: TerminalOutputOperation | null = null;
+  private inFlightOutputOperationTimeout: ReturnType<typeof setTimeout> | null = null;
 
   setCallbacks(input: { callbacks: TerminalEmulatorRuntimeCallbacks }): void {
     this.callbacks = input.callbacks;
@@ -287,6 +295,8 @@ export class TerminalEmulatorRuntime {
       });
     }
 
+    this.processOutputQueue();
+
     const disposables: TerminalEmulatorRuntimeDisposables = {
       disposeInput: () => {
         inputDisposable.dispose();
@@ -338,30 +348,39 @@ export class TerminalEmulatorRuntime {
     };
   }
 
-  write(input: { text: string }): void {
-    if (!this.terminal || input.text.length === 0) {
+  write(input: { text: string; onCommitted?: () => void }): void {
+    if (input.text.length === 0) {
+      input.onCommitted?.();
       return;
     }
-    this.pendingWriteText += input.text;
+    this.outputOperations.push({
+      type: "write",
+      text: input.text,
+      ...(input.onCommitted ? { onCommitted: input.onCommitted } : {}),
+    });
     terminalDebugLog({
       scope: "emulator-runtime",
       event: "output:enqueue",
       details: {
         chunkLength: input.text.length,
-        queueLength: this.pendingWriteText.length,
+        queueLength: this.outputOperations.length,
         preview: summarizeTerminalText({ text: input.text, maxChars: 64 }),
       },
     });
-    this.scheduleWriteFlush();
+    this.processOutputQueue();
   }
 
-  clear(): void {
-    this.pendingWriteText = "";
+  clear(input?: { onCommitted?: () => void }): void {
+    this.outputOperations.push({
+      type: "clear",
+      text: "",
+      ...(input?.onCommitted ? { onCommitted: input.onCommitted } : {}),
+    });
     terminalDebugLog({
       scope: "emulator-runtime",
       event: "output:clear",
     });
-    this.terminal?.reset();
+    this.processOutputQueue();
   }
 
   focus(): void {
@@ -373,11 +392,19 @@ export class TerminalEmulatorRuntime {
       scope: "emulator-runtime",
       event: "mount:unmount",
       details: {
-        pendingWriteLength: this.pendingWriteText.length,
+        pendingWriteOperations: this.outputOperations.length,
       },
     });
-    this.pendingWriteText = "";
-    this.isWriteFlushQueued = false;
+    this.clearInFlightOutputTimeout();
+    const inFlightOperation = this.inFlightOutputOperation;
+    this.inFlightOutputOperation = null;
+    if (inFlightOperation?.onCommitted) {
+      inFlightOperation.onCommitted();
+    }
+    const pendingOperations = this.outputOperations.splice(0, this.outputOperations.length);
+    for (const operation of pendingOperations) {
+      operation.onCommitted?.();
+    }
 
     this.cleanup?.();
     this.cleanup = null;
@@ -389,24 +416,39 @@ export class TerminalEmulatorRuntime {
     this.lastSize = null;
   }
 
-  private scheduleWriteFlush(): void {
-    if (this.isWriteFlushQueued) {
+  private processOutputQueue(): void {
+    if (this.inFlightOutputOperation) {
       return;
     }
 
-    this.isWriteFlushQueued = true;
-    queueMicrotask(() => {
-      this.isWriteFlushQueued = false;
-      this.flushWriteQueue();
-    });
-  }
-
-  private flushWriteQueue(): void {
-    if (!this.terminal || this.pendingWriteText.length === 0) {
+    const terminal = this.terminal;
+    if (!terminal) {
       return;
     }
-    const text = this.pendingWriteText;
-    this.pendingWriteText = "";
+
+    const operation = this.outputOperations.shift();
+    if (!operation) {
+      return;
+    }
+
+    this.inFlightOutputOperation = operation;
+    const finalizeOperation = (expectedOperation: TerminalOutputOperation) => {
+      if (this.inFlightOutputOperation !== expectedOperation) {
+        return;
+      }
+      this.inFlightOutputOperation = null;
+      this.clearInFlightOutputTimeout();
+      expectedOperation.onCommitted?.();
+      this.processOutputQueue();
+    };
+
+    if (operation.type === "clear") {
+      terminal.reset();
+      finalizeOperation(operation);
+      return;
+    }
+
+    const text = operation.text;
     terminalDebugLog({
       scope: "emulator-runtime",
       event: "output:flush",
@@ -415,7 +457,33 @@ export class TerminalEmulatorRuntime {
         preview: summarizeTerminalText({ text, maxChars: 96 }),
       },
     });
-    this.terminal.write(text);
+    this.inFlightOutputOperationTimeout = setTimeout(() => {
+      terminalDebugLog({
+        scope: "emulator-runtime",
+        event: "output:flush-timeout",
+        details: {
+          length: text.length,
+          preview: summarizeTerminalText({ text, maxChars: 96 }),
+        },
+      });
+      finalizeOperation(operation);
+    }, OUTPUT_OPERATION_TIMEOUT_MS);
+
+    try {
+      terminal.write(text, () => {
+        finalizeOperation(operation);
+      });
+    } catch {
+      finalizeOperation(operation);
+    }
+  }
+
+  private clearInFlightOutputTimeout(): void {
+    if (!this.inFlightOutputOperationTimeout) {
+      return;
+    }
+    clearTimeout(this.inFlightOutputOperationTimeout);
+    this.inFlightOutputOperationTimeout = null;
   }
 
   private applyDocumentBoundsStyles(input: { root: HTMLDivElement }): () => void {

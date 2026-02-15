@@ -753,6 +753,48 @@ describe("DaemonClient", () => {
     unsubscribe();
   });
 
+  test("handles terminal binary frames delivered as UTF-8 strings", async () => {
+    const logger = createMockLogger();
+    const mock = createMockTransport();
+
+    const client = new DaemonClient({
+      url: "ws://test",
+      logger,
+      reconnect: { enabled: false },
+      transportFactory: () => mock.transport,
+    });
+    clients.push(client);
+
+    const connectPromise = client.connect();
+    mock.triggerOpen();
+    await connectPromise;
+
+    const seen: string[] = [];
+    client.onTerminalStreamData(11, (chunk) => {
+      seen.push(new TextDecoder().decode(chunk.data));
+    });
+
+    const payload = new TextEncoder().encode("ls\r\n");
+    const frame = encodeBinaryMuxFrame({
+      channel: BinaryMuxChannel.Terminal,
+      messageType: TerminalBinaryMessageType.OutputUtf8,
+      streamId: 11,
+      offset: 0,
+      payload,
+    });
+    const frameAsString = new TextDecoder("utf-8", { fatal: true }).decode(frame);
+
+    mock.triggerMessage(frameAsString);
+
+    expect(seen).toEqual(["ls\r\n"]);
+    expect(mock.sent).toHaveLength(1);
+    const ackFrame = decodeBinaryMuxFrame(asUint8Array(mock.sent[0])!);
+    expect(ackFrame?.channel).toBe(BinaryMuxChannel.Terminal);
+    expect(ackFrame?.messageType).toBe(TerminalBinaryMessageType.Ack);
+    expect(ackFrame?.streamId).toBe(11);
+    expect(ackFrame?.offset).toBe(4);
+  });
+
   test("acks buffered terminal chunks when handler is attached", async () => {
     const logger = createMockLogger();
     const mock = createMockTransport();

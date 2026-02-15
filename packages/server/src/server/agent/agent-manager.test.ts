@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { mkdtempSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -586,6 +586,74 @@ describe("AgentManager", () => {
 
     const refreshed = manager.getAgent(snapshot.id);
     expect(refreshed?.runtimeInfo?.model).toBe("gpt-5.2-codex");
+  });
+
+  test("keeps updatedAt monotonic when user message and run start happen in the same millisecond", async () => {
+    const workdir = mkdtempSync(join(tmpdir(), "agent-manager-test-"));
+    const storagePath = join(workdir, "agents");
+    const storage = new AgentStorage(storagePath, logger);
+    const manager = new AgentManager({
+      clients: {
+        codex: new TestAgentClient(),
+      },
+      registry: storage,
+      logger,
+      idFactory: () => "00000000-0000-4000-8000-000000000120",
+    });
+
+    const snapshot = await manager.createAgent({
+      provider: "codex",
+      cwd: workdir,
+    });
+
+    const nowSpy = vi.spyOn(Date, "now").mockReturnValue(1_750_000_000_000);
+    try {
+      manager.recordUserMessage(snapshot.id, "hello");
+      const afterMessage = manager.getAgent(snapshot.id);
+      expect(afterMessage).toBeDefined();
+      const messageUpdatedAt = afterMessage!.updatedAt.getTime();
+
+      const stream = manager.streamAgent(snapshot.id, "hello");
+      const afterRunStart = manager.getAgent(snapshot.id);
+      expect(afterRunStart).toBeDefined();
+      expect(afterRunStart!.updatedAt.getTime()).toBeGreaterThan(messageUpdatedAt);
+
+      await stream.return(undefined);
+    } finally {
+      nowSpy.mockRestore();
+    }
+  });
+
+  test("recordUserMessage can skip emitting agent_state when run start will emit running", async () => {
+    const workdir = mkdtempSync(join(tmpdir(), "agent-manager-test-"));
+    const storagePath = join(workdir, "agents");
+    const storage = new AgentStorage(storagePath, logger);
+    const manager = new AgentManager({
+      clients: {
+        codex: new TestAgentClient(),
+      },
+      registry: storage,
+      logger,
+      idFactory: () => "00000000-0000-4000-8000-000000000121",
+    });
+
+    const snapshot = await manager.createAgent({
+      provider: "codex",
+      cwd: workdir,
+    });
+
+    const lifecycleUpdates: string[] = [];
+    manager.subscribe((event) => {
+      if (event.type !== "agent_state" || event.agent.id !== snapshot.id) {
+        return;
+      }
+      lifecycleUpdates.push(event.agent.lifecycle);
+    });
+    lifecycleUpdates.length = 0;
+
+    manager.recordUserMessage(snapshot.id, "hello", { emitState: false });
+
+    expect(lifecycleUpdates).toEqual([]);
   });
 
   test("runAgent assembles finalText from trailing assistant chunks", async () => {
