@@ -8,6 +8,7 @@ import {
   normalizeTerminalTransportKey,
   shouldInterceptDomTerminalKey,
 } from "@/utils/terminal-keys";
+import { summarizeTerminalText, terminalDebugLog } from "./terminal-debug";
 
 export type TerminalEmulatorRuntimeTheme = {
   backgroundColor: string;
@@ -82,6 +83,13 @@ export class TerminalEmulatorRuntime {
   }
 
   mount(input: TerminalEmulatorRuntimeMountInput): void {
+    terminalDebugLog({
+      scope: "emulator-runtime",
+      event: "mount:start",
+      details: {
+        initialOutputLength: input.initialOutputText.length,
+      },
+    });
     this.unmount();
 
     input.host.innerHTML = "";
@@ -138,6 +146,15 @@ export class TerminalEmulatorRuntime {
       }
 
       this.lastSize = { rows: nextRows, cols: nextCols };
+      terminalDebugLog({
+        scope: "emulator-runtime",
+        event: "resize:emit",
+        details: {
+          rows: nextRows,
+          cols: nextCols,
+          force,
+        },
+      });
       this.callbacks.onResize?.({
         rows: nextRows,
         cols: nextCols,
@@ -147,6 +164,14 @@ export class TerminalEmulatorRuntime {
     fitAndEmitResize(true);
 
     const inputDisposable = terminal.onData((data) => {
+      terminalDebugLog({
+        scope: "emulator-runtime",
+        event: "input:onData",
+        details: {
+          length: data.length,
+          preview: summarizeTerminalText({ text: data, maxChars: 64 }),
+        },
+      });
       this.callbacks.onInput?.(data);
     });
 
@@ -181,6 +206,17 @@ export class TerminalEmulatorRuntime {
       this.callbacks.onTerminalKey?.({
         key: normalizeTerminalTransportKey(normalizedKey),
         ...modifiers,
+      });
+      terminalDebugLog({
+        scope: "emulator-runtime",
+        event: "key:intercepted",
+        details: {
+          key: normalizedKey,
+          ctrl: modifiers.ctrl,
+          shift: modifiers.shift,
+          alt: modifiers.alt,
+          meta: modifiers.meta,
+        },
       });
 
       if (this.pendingModifiers.ctrl || this.pendingModifiers.shift || this.pendingModifiers.alt) {
@@ -238,6 +274,17 @@ export class TerminalEmulatorRuntime {
 
     if (input.initialOutputText.length > 0) {
       terminal.write(input.initialOutputText);
+      terminalDebugLog({
+        scope: "emulator-runtime",
+        event: "output:initial-write",
+        details: {
+          length: input.initialOutputText.length,
+          preview: summarizeTerminalText({
+            text: input.initialOutputText,
+            maxChars: 96,
+          }),
+        },
+      });
     }
 
     const disposables: TerminalEmulatorRuntimeDisposables = {
@@ -296,11 +343,24 @@ export class TerminalEmulatorRuntime {
       return;
     }
     this.pendingWriteText += input.text;
+    terminalDebugLog({
+      scope: "emulator-runtime",
+      event: "output:enqueue",
+      details: {
+        chunkLength: input.text.length,
+        queueLength: this.pendingWriteText.length,
+        preview: summarizeTerminalText({ text: input.text, maxChars: 64 }),
+      },
+    });
     this.scheduleWriteFlush();
   }
 
   clear(): void {
     this.pendingWriteText = "";
+    terminalDebugLog({
+      scope: "emulator-runtime",
+      event: "output:clear",
+    });
     this.terminal?.reset();
   }
 
@@ -309,6 +369,13 @@ export class TerminalEmulatorRuntime {
   }
 
   unmount(): void {
+    terminalDebugLog({
+      scope: "emulator-runtime",
+      event: "mount:unmount",
+      details: {
+        pendingWriteLength: this.pendingWriteText.length,
+      },
+    });
     this.pendingWriteText = "";
     this.isWriteFlushQueued = false;
 
@@ -340,6 +407,14 @@ export class TerminalEmulatorRuntime {
     }
     const text = this.pendingWriteText;
     this.pendingWriteText = "";
+    terminalDebugLog({
+      scope: "emulator-runtime",
+      event: "output:flush",
+      details: {
+        length: text.length,
+        preview: summarizeTerminalText({ text, maxChars: 96 }),
+      },
+    });
     this.terminal.write(text);
   }
 

@@ -4,6 +4,7 @@ import {
   readTerminalOutputBuffer,
   type TerminalOutputBuffer,
 } from "@/utils/terminal-output-buffer";
+import { summarizeTerminalText, terminalDebugLog } from "./terminal-debug";
 
 export type TerminalOutputChunk = {
   sequence: number;
@@ -50,6 +51,14 @@ export class TerminalOutputPump {
       return;
     }
 
+    terminalDebugLog({
+      scope: "output-pump",
+      event: "selected-terminal:set",
+      details: {
+        previousTerminalId: this.selectedTerminalId,
+        nextTerminalId: input.terminalId,
+      },
+    });
     this.clearSelectedChunkFlushTimer();
     this.selectedChunkAccumulator = "";
     this.selectedTerminalId = input.terminalId;
@@ -77,6 +86,16 @@ export class TerminalOutputPump {
     }
 
     this.selectedChunkAccumulator += input.text;
+    terminalDebugLog({
+      scope: "output-pump",
+      event: "selected-terminal:accumulate",
+      details: {
+        terminalId: input.terminalId,
+        appendedLength: input.text.length,
+        accumulatorLength: this.selectedChunkAccumulator.length,
+        preview: summarizeTerminalText({ text: input.text, maxChars: 80 }),
+      },
+    });
     this.scheduleSelectedChunkFlush();
   }
 
@@ -134,6 +153,15 @@ export class TerminalOutputPump {
 
     const text = this.selectedChunkAccumulator;
     this.selectedChunkAccumulator = "";
+    terminalDebugLog({
+      scope: "output-pump",
+      event: "selected-terminal:flush",
+      details: {
+        terminalId: this.selectedTerminalId,
+        textLength: text.length,
+        preview: summarizeTerminalText({ text, maxChars: 96 }),
+      },
+    });
     this.emitSelectedChunk({ text });
   }
 

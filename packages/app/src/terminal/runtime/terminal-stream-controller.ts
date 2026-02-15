@@ -6,6 +6,7 @@ import {
   waitForDuration,
   withPromiseTimeout,
 } from "@/utils/terminal-attach";
+import { summarizeTerminalText, terminalDebugLog } from "./terminal-debug";
 
 export type TerminalStreamControllerAttachPayload = {
   streamId: number | null;
@@ -100,6 +101,14 @@ export class TerminalStreamController {
     if (this.isDisposed) {
       return;
     }
+    terminalDebugLog({
+      scope: "stream-controller",
+      event: "terminal:set",
+      details: {
+        previousTerminalId: this.selectedTerminalId,
+        nextTerminalId: input.terminalId,
+      },
+    });
 
     const nextTerminalId = input.terminalId;
     const previousTerminalId = this.selectedTerminalId;
@@ -144,6 +153,14 @@ export class TerminalStreamController {
     if (this.isDisposed) {
       return;
     }
+    terminalDebugLog({
+      scope: "stream-controller",
+      event: "stream:exit",
+      details: {
+        terminalId: input.terminalId,
+        streamId: input.streamId,
+      },
+    });
 
     const activeStream = this.activeStream;
     if (!activeStream) {
@@ -217,6 +234,16 @@ export class TerminalStreamController {
       if (!this.isAttachGenerationCurrent({ generation: input.generation, terminalId: input.terminalId })) {
         return;
       }
+      terminalDebugLog({
+        scope: "stream-controller",
+        event: "attach:attempt",
+        details: {
+          terminalId: input.terminalId,
+          generation: input.generation,
+          attempt,
+          maxAttachAttempts,
+        },
+      });
 
       try {
         const preferredSize = this.options.getPreferredSize();
@@ -244,6 +271,15 @@ export class TerminalStreamController {
 
         if (attachPayload.error || typeof attachPayload.streamId !== "number") {
           lastErrorMessage = attachPayload.error ?? "Unable to attach terminal stream";
+          terminalDebugLog({
+            scope: "stream-controller",
+            event: "attach:response-error",
+            details: {
+              terminalId: input.terminalId,
+              attempt,
+              error: lastErrorMessage,
+            },
+          });
           const hasRemainingAttempts = attempt < maxAttachAttempts - 1;
           if (hasRemainingAttempts && isRetryableError({ message: lastErrorMessage })) {
             await waitForDelay({ durationMs: getRetryDelayMs({ attempt }) });
@@ -287,6 +323,16 @@ export class TerminalStreamController {
           decoder,
           unsubscribe,
         };
+        terminalDebugLog({
+          scope: "stream-controller",
+          event: "attach:success",
+          details: {
+            terminalId: input.terminalId,
+            streamId,
+            currentOffset: attachPayload.currentOffset,
+            reset: attachPayload.reset,
+          },
+        });
         this.updateStatus({
           terminalId: input.terminalId,
           streamId,
@@ -297,6 +343,15 @@ export class TerminalStreamController {
       } catch (error) {
         lastErrorMessage =
           error instanceof Error ? error.message : "Unable to attach terminal stream";
+        terminalDebugLog({
+          scope: "stream-controller",
+          event: "attach:exception",
+          details: {
+            terminalId: input.terminalId,
+            attempt,
+            error: lastErrorMessage,
+          },
+        });
         const hasRemainingAttempts = attempt < maxAttachAttempts - 1;
         if (hasRemainingAttempts && isRetryableError({ message: lastErrorMessage })) {
           await waitForDelay({ durationMs: getRetryDelayMs({ attempt }) });
@@ -345,6 +400,18 @@ export class TerminalStreamController {
     if (text.length === 0) {
       return;
     }
+    terminalDebugLog({
+      scope: "stream-controller",
+      event: "stream:chunk",
+      details: {
+        terminalId: input.terminalId,
+        streamId: input.streamId,
+        endOffset: input.chunk.endOffset,
+        byteLength: input.chunk.data.byteLength,
+        textLength: text.length,
+        preview: summarizeTerminalText({ text, maxChars: 96 }),
+      },
+    });
 
     this.options.onChunk({
       terminalId: input.terminalId,
@@ -357,6 +424,15 @@ export class TerminalStreamController {
     if (!activeStream) {
       return;
     }
+    terminalDebugLog({
+      scope: "stream-controller",
+      event: "stream:detach",
+      details: {
+        terminalId: activeStream.terminalId,
+        streamId: activeStream.streamId,
+        shouldDetach: input.shouldDetach,
+      },
+    });
     this.activeStream = null;
 
     try {
@@ -403,7 +479,16 @@ export class TerminalStreamController {
 
   private updateStatus(status: TerminalStreamControllerStatus): void {
     this.status = status;
+    terminalDebugLog({
+      scope: "stream-controller",
+      event: "status:update",
+      details: {
+        terminalId: status.terminalId,
+        streamId: status.streamId,
+        isAttaching: status.isAttaching,
+        error: status.error,
+      },
+    });
     this.options.onStatusChange?.(status);
   }
 }
-

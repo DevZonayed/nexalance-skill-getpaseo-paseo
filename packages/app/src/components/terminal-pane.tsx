@@ -29,6 +29,10 @@ import {
   TerminalStreamController,
   type TerminalStreamControllerStatus,
 } from "@/terminal/runtime/terminal-stream-controller";
+import {
+  summarizeTerminalText,
+  terminalDebugLog,
+} from "@/terminal/runtime/terminal-debug";
 import TerminalEmulator from "./terminal-emulator";
 
 interface TerminalPaneProps {
@@ -459,10 +463,32 @@ export function TerminalPane({ serverId, cwd }: TerminalPaneProps) {
       }
     ): boolean => {
       if (!client || activeStreamId === null) {
+        terminalDebugLog({
+          scope: "terminal-pane",
+          event: "input:key:drop-no-stream",
+          details: {
+            key: input.key,
+            ctrl: input.ctrl,
+            shift: input.shift,
+            alt: input.alt,
+            activeStreamId,
+          },
+        });
         return false;
       }
 
       const normalizedKey = normalizeTerminalTransportKey(input.key);
+      terminalDebugLog({
+        scope: "terminal-pane",
+        event: "input:key:send",
+        details: {
+          key: normalizedKey,
+          ctrl: input.ctrl,
+          shift: input.shift,
+          alt: input.alt,
+          activeStreamId,
+        },
+      });
       client.sendTerminalStreamKey(activeStreamId, {
         key: normalizedKey,
         ctrl: input.ctrl,
@@ -480,6 +506,15 @@ export function TerminalPane({ serverId, cwd }: TerminalPaneProps) {
       if (data.length === 0) {
         return;
       }
+      terminalDebugLog({
+        scope: "terminal-pane",
+        event: "input:data:received",
+        details: {
+          length: data.length,
+          preview: summarizeTerminalText({ text: data, maxChars: 80 }),
+          activeStreamId,
+        },
+      });
 
       if (hasPendingTerminalModifiers(modifiers)) {
         const pendingResolution = resolvePendingModifierDataInput({
@@ -507,8 +542,25 @@ export function TerminalPane({ serverId, cwd }: TerminalPaneProps) {
       }
 
       if (!client || activeStreamId === null) {
+        terminalDebugLog({
+          scope: "terminal-pane",
+          event: "input:data:drop-no-stream",
+          details: {
+            length: data.length,
+            preview: summarizeTerminalText({ text: data, maxChars: 80 }),
+          },
+        });
         return;
       }
+      terminalDebugLog({
+        scope: "terminal-pane",
+        event: "input:data:send",
+        details: {
+          length: data.length,
+          preview: summarizeTerminalText({ text: data, maxChars: 80 }),
+          activeStreamId,
+        },
+      });
       client.sendTerminalStreamInput(activeStreamId, data);
     },
     [
@@ -539,6 +591,15 @@ export function TerminalPane({ serverId, cwd }: TerminalPaneProps) {
         return;
       }
       lastReportedSizeRef.current = { rows: normalizedRows, cols: normalizedCols };
+      terminalDebugLog({
+        scope: "terminal-pane",
+        event: "display:resize:send",
+        details: {
+          terminalId: selectedTerminalId,
+          rows: normalizedRows,
+          cols: normalizedCols,
+        },
+      });
       client.sendTerminalInput(selectedTerminalId, {
         type: "resize",
         rows: normalizedRows,
