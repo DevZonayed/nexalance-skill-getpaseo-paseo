@@ -71,7 +71,7 @@ PASEO_SPEECH_E2E_DOWNLOAD=1 PASEO_SPEECH_E2E_MODEL_SET=parakeet-pocket \
 
 See [paseo.sh/docs](https://paseo.sh/docs) for full documentation.
 
-## Desktop releases
+## Releases
 
 Desktop app binaries are built and attached to a GitHub Release when you push a version tag (for example `v0.1.0` or `desktop-v0.1.0`).
 
@@ -86,7 +86,23 @@ For the full package release flow, use:
 npm run release:patch
 ```
 
-This triggers the `Desktop Release` workflow (`.github/workflows/desktop-release.yml`).
+`npm run release:patch` bumps all workspace versions together, publishes npm packages (`@getpaseo/relay`, `@getpaseo/server`, `@getpaseo/cli`), and pushes the matching `v*` tag.
+
+The tag triggers:
+- GitHub `Desktop Release` workflow (`.github/workflows/desktop-release.yml`)
+- Expo EAS mobile workflow (`packages/app/.eas/workflows/release-mobile.yml`) to build + submit Android/iOS
+
+Useful monitoring commands after a release push:
+
+```bash
+# Desktop (GitHub Actions)
+gh run list --workflow "Desktop Release" --limit 10
+gh run watch <run-id>
+
+# Mobile (EAS Workflows)
+cd packages/app && npx eas workflow:runs --workflow release-mobile.yml --limit 10
+cd packages/app && npx eas workflow:view <run-id>
+```
 
 ## License
 
