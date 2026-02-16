@@ -545,7 +545,9 @@ export const AssistantMessage = memo(function AssistantMessage({
     } else {
       void Linking.openURL(url);
     }
-    return true;
+    // react-native-markdown-display opens the link itself when this returns true.
+    // We already handled it above, so return false to avoid duplicate opens.
+    return false;
   }, []);
 
   const markdownRules = useMemo(() => {
