@@ -222,7 +222,7 @@ function GetStarted() {
           className="inline-flex items-center justify-center gap-2 rounded-lg border border-white/20 px-4 py-2 text-sm font-medium text-white hover:bg-white/10 transition-colors"
         >
           <AppleIcon className="h-4 w-4" />
-          Request iOS
+          iOS
         </a>
         <a
           href="https://docs.google.com/forms/d/e/1FAIpQLSfNU20RV0SnM_B9XOHTtMLv7fUWQkjsXH1d6ihZRGbHewCuOQ/viewform"
@@ -231,7 +231,7 @@ function GetStarted() {
           className="inline-flex items-center justify-center gap-2 rounded-lg border border-white/20 px-4 py-2 text-sm font-medium text-white hover:bg-white/10 transition-colors"
         >
           <AndroidIcon className="h-4 w-4" />
-          Request Android
+          Android
         </a>
       </div>
     </div>
