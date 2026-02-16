@@ -186,7 +186,7 @@ npm run release:push       # pushes HEAD and current version tag (triggers deskt
 ```
 
 Notes:
-- `version:all:*` uses `npm version` with workspace support and runs the root `version` lifecycle script to sync internal `@getpaseo/*` dependency versions before the release commit/tag is created.
+- `version:all:*` bumps the root package version and runs the root `version` lifecycle script to sync workspace versions and internal `@getpaseo/*` dependency versions before the release commit/tag is created.
 - `release:prepare` refreshes workspace `node_modules` links to prevent stale local package types during release checks.
 - If `release:publish` fails after a successful publish of one workspace, re-run `npm run release:publish`; npm will skip already-published versions and continue where possible.
 - If a user asks to "release paseo" (without specifying major/minor), treat it as a patch release and run `npm run release:patch`.
