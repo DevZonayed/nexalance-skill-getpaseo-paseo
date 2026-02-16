@@ -76,6 +76,34 @@ describe("tool-call-display", () => {
     });
   });
 
+  it("builds display model from worktree setup detail", () => {
+    const display = buildToolCallDisplayModel({
+      name: "paseo_worktree_setup",
+      status: "running",
+      error: null,
+      detail: {
+        type: "worktree_setup",
+        worktreePath: "/tmp/repo/.paseo/worktrees/repo/branch",
+        branchName: "feature-branch",
+        log: "==> [1/1] Running: npm install\n",
+        commands: [
+          {
+            index: 1,
+            command: "npm install",
+            cwd: "/tmp/repo/.paseo/worktrees/repo/branch",
+            status: "running",
+            exitCode: null,
+          },
+        ],
+      },
+    });
+
+    expect(display).toEqual({
+      displayName: "Worktree Setup",
+      summary: "feature-branch",
+    });
+  });
+
   it("does not derive command summary from unknown raw detail", () => {
     const display = buildToolCallDisplayModel({
       name: "exec_command",

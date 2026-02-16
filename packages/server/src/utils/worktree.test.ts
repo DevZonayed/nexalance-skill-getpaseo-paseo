@@ -5,6 +5,8 @@ import {
   getWorktreeTerminalSpecs,
   isPaseoOwnedWorktreeCwd,
   listPaseoWorktrees,
+  type WorktreeSetupCommandProgressEvent,
+  runWorktreeSetupCommands,
   slugify,
 } from "./worktree";
 import { getPaseoWorktreeMetadataPath } from "./worktree-metadata.js";
@@ -231,6 +233,36 @@ describe("createWorktree", () => {
 
     expect(existsSync(result.worktreePath)).toBe(true);
     expect(existsSync(join(result.worktreePath, "setup.log"))).toBe(false);
+  });
+
+  it("streams setup command progress events while commands are executing", async () => {
+    const paseoConfig = {
+      worktree: {
+        setup: [
+          'echo "first line"; echo "second line" 1>&2',
+        ],
+      },
+    };
+    writeFileSync(join(repoDir, "paseo.json"), JSON.stringify(paseoConfig));
+    execSync(
+      "git add paseo.json && git -c commit.gpgsign=false commit -m 'add streaming setup'",
+      { cwd: repoDir }
+    );
+
+    const progressEvents: WorktreeSetupCommandProgressEvent[] = [];
+    const results = await runWorktreeSetupCommands({
+      worktreePath: repoDir,
+      branchName: "main",
+      cleanupOnFailure: false,
+      onEvent: (event) => {
+        progressEvents.push(event);
+      },
+    });
+
+    expect(results).toHaveLength(1);
+    expect(progressEvents.some((event) => event.type === "command_started")).toBe(true);
+    expect(progressEvents.some((event) => event.type === "output")).toBe(true);
+    expect(progressEvents.some((event) => event.type === "command_completed")).toBe(true);
   });
 
   it("cleans up worktree if setup command fails", async () => {

@@ -1,4 +1,4 @@
-import { exec } from "child_process";
+import { exec, spawn } from "child_process";
 import { promisify } from "util";
 import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync } from "fs";
 import { join, basename, dirname, resolve, sep } from "path";
@@ -32,7 +32,37 @@ export type WorktreeSetupCommandResult = {
   stdout: string;
   stderr: string;
   exitCode: number | null;
+  durationMs: number;
 };
+
+export type WorktreeSetupCommandProgressEvent =
+  | {
+      type: "command_started";
+      index: number;
+      total: number;
+      command: string;
+      cwd: string;
+    }
+  | {
+      type: "output";
+      index: number;
+      total: number;
+      command: string;
+      cwd: string;
+      stream: "stdout" | "stderr";
+      chunk: string;
+    }
+  | {
+      type: "command_completed";
+      index: number;
+      total: number;
+      command: string;
+      cwd: string;
+      exitCode: number | null;
+      durationMs: number;
+      stdout: string;
+      stderr: string;
+    };
 
 export interface WorktreeTerminalConfig {
   name?: string;
@@ -153,6 +183,7 @@ async function execSetupCommand(
   command: string,
   options: { cwd: string; env: NodeJS.ProcessEnv }
 ): Promise<WorktreeSetupCommandResult> {
+  const startedAt = Date.now();
   try {
     const { stdout, stderr } = await execAsync(command, {
       cwd: options.cwd,
@@ -165,6 +196,7 @@ async function execSetupCommand(
       stdout: stdout ?? "",
       stderr: stderr ?? "",
       exitCode: 0,
+      durationMs: Date.now() - startedAt,
     };
   } catch (error: any) {
     return {
@@ -175,8 +207,103 @@ async function execSetupCommand(
         error?.stderr ??
         (error instanceof Error ? error.message : String(error)),
       exitCode: typeof error?.code === "number" ? error.code : null,
+      durationMs: Date.now() - startedAt,
     };
   }
+}
+
+async function execSetupCommandStreamed(options: {
+  command: string;
+  cwd: string;
+  env: NodeJS.ProcessEnv;
+  index: number;
+  total: number;
+  onEvent?: (event: WorktreeSetupCommandProgressEvent) => void;
+}): Promise<WorktreeSetupCommandResult> {
+  return new Promise((resolve) => {
+    const startedAt = Date.now();
+    const stdoutChunks: string[] = [];
+    const stderrChunks: string[] = [];
+    let settled = false;
+
+    const finish = (exitCode: number | null) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      const result: WorktreeSetupCommandResult = {
+        command: options.command,
+        cwd: options.cwd,
+        stdout: stdoutChunks.join(""),
+        stderr: stderrChunks.join(""),
+        exitCode,
+        durationMs: Date.now() - startedAt,
+      };
+      options.onEvent?.({
+        type: "command_completed",
+        index: options.index,
+        total: options.total,
+        command: options.command,
+        cwd: options.cwd,
+        exitCode: result.exitCode,
+        durationMs: result.durationMs,
+        stdout: result.stdout,
+        stderr: result.stderr,
+      });
+      resolve(result);
+    };
+
+    options.onEvent?.({
+      type: "command_started",
+      index: options.index,
+      total: options.total,
+      command: options.command,
+      cwd: options.cwd,
+    });
+
+    const child = spawn("/bin/bash", ["-lc", options.command], {
+      cwd: options.cwd,
+      env: options.env,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+
+    child.stdout?.on("data", (chunk: Buffer | string) => {
+      const text = chunk.toString();
+      stdoutChunks.push(text);
+      options.onEvent?.({
+        type: "output",
+        index: options.index,
+        total: options.total,
+        command: options.command,
+        cwd: options.cwd,
+        stream: "stdout",
+        chunk: text,
+      });
+    });
+
+    child.stderr?.on("data", (chunk: Buffer | string) => {
+      const text = chunk.toString();
+      stderrChunks.push(text);
+      options.onEvent?.({
+        type: "output",
+        index: options.index,
+        total: options.total,
+        command: options.command,
+        cwd: options.cwd,
+        stream: "stderr",
+        chunk: text,
+      });
+    });
+
+    child.on("error", (error) => {
+      stderrChunks.push(error instanceof Error ? error.message : String(error));
+      finish(null);
+    });
+
+    child.on("close", (code) => {
+      finish(typeof code === "number" ? code : null);
+    });
+  });
 }
 
 async function getAvailablePort(): Promise<number> {
@@ -233,6 +360,7 @@ export async function runWorktreeSetupCommands(options: {
   branchName: string;
   cleanupOnFailure: boolean;
   repoRootPath?: string;
+  onEvent?: (event: WorktreeSetupCommandProgressEvent) => void;
 }): Promise<WorktreeSetupCommandResult[]> {
   // Read paseo.json from the worktree (it will have the same content as the source repo)
   const setupCommands = getWorktreeSetupCommands(options.worktreePath);
@@ -258,11 +386,20 @@ export async function runWorktreeSetupCommands(options: {
   };
 
   const results: WorktreeSetupCommandResult[] = [];
-  for (const cmd of setupCommands) {
-    const result = await execSetupCommand(cmd, {
-      cwd: options.worktreePath,
-      env: setupEnv,
-    });
+  for (const [index, cmd] of setupCommands.entries()) {
+    const result = options.onEvent
+      ? await execSetupCommandStreamed({
+          command: cmd,
+          cwd: options.worktreePath,
+          env: setupEnv,
+          index: index + 1,
+          total: setupCommands.length,
+          onEvent: options.onEvent,
+        })
+      : await execSetupCommand(cmd, {
+          cwd: options.worktreePath,
+          env: setupEnv,
+        });
     results.push(result);
 
     if (result.exitCode !== 0) {

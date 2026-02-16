@@ -59,6 +59,34 @@ describe("shared tool-call display mapping", () => {
     });
   });
 
+  it("builds display model for worktree setup detail", () => {
+    const display = buildToolCallDisplayModel({
+      name: "paseo_worktree_setup",
+      status: "running",
+      error: null,
+      detail: {
+        type: "worktree_setup",
+        worktreePath: "/tmp/repo/.paseo/worktrees/repo/branch",
+        branchName: "feature-branch",
+        log: "==> [1/1] Running: npm install\n",
+        commands: [
+          {
+            index: 1,
+            command: "npm install",
+            cwd: "/tmp/repo/.paseo/worktrees/repo/branch",
+            status: "running",
+            exitCode: null,
+          },
+        ],
+      },
+    });
+
+    expect(display).toEqual({
+      displayName: "Worktree Setup",
+      summary: "feature-branch",
+    });
+  });
+
   it("provides errorText for failed calls", () => {
     const display = buildToolCallDisplayModel({
       name: "shell",

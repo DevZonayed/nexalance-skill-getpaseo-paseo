@@ -14,8 +14,8 @@ import { StyleSheet, UnistylesRuntime, useUnistyles } from "react-native-unistyl
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useReanimatedKeyboardAnimation } from "react-native-keyboard-controller";
 import Animated, { useAnimatedStyle, useSharedValue } from "react-native-reanimated";
-import { Folder, GitBranch, Menu, PanelLeft } from "lucide-react-native";
-import { HeaderToggleButton } from "@/components/headers/header-toggle-button";
+import { Folder, GitBranch } from "lucide-react-native";
+import { SidebarMenuToggle } from "@/components/headers/menu-header";
 import { AgentInputArea } from "@/components/agent-input-area";
 import { AgentStreamView } from "@/components/agent-stream-view";
 import { AgentConfigRow, FormSelectTrigger } from "@/components/agent-form/agent-form-dropdowns";
@@ -31,7 +31,6 @@ import { useDaemonConnections } from "@/contexts/daemon-connections-context";
 import { useDaemonRegistry } from "@/contexts/daemon-registry-context";
 import { buildBranchComboOptions, normalizeBranchOptionName } from "@/utils/branch-suggestions";
 import { shortenPath } from "@/utils/shorten-path";
-import { usePanelStore } from "@/stores/panel-store";
 import { useSessionStore } from "@/stores/session-store";
 import { useCreateFlowStore } from "@/stores/create-flow-store";
 import { MAX_CONTENT_WIDTH } from "@/constants/layout";
@@ -125,9 +124,6 @@ export function DraftAgentScreen({
   const insets = useSafeAreaInsets();
   const { connectionStates } = useDaemonConnections();
   const { daemons } = useDaemonRegistry();
-  const mobileView = usePanelStore((state) => state.mobileView);
-  const desktopAgentListOpen = usePanelStore((state) => state.desktop.agentListOpen);
-  const toggleAgentList = usePanelStore((state) => state.toggleAgentList);
   const params = useLocalSearchParams<DraftAgentParams>();
 
   const { height: keyboardHeight } = useReanimatedKeyboardAnimation();
@@ -226,11 +222,6 @@ export function DraftAgentScreen({
     : undefined;
   const isMobile =
     UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
-  const isSidebarOpen = isMobile ? mobileView === "agent-list" : desktopAgentListOpen;
-  const SidebarIcon = isMobile ? Menu : PanelLeft;
-  const sidebarIconColor = !isMobile && isSidebarOpen
-    ? theme.colors.foreground
-    : theme.colors.foregroundMuted;
 
   const [worktreeMode, setWorktreeMode] = useState<"none" | "create" | "attach">("none");
   const [baseBranch, setBaseBranch] = useState("");
@@ -977,20 +968,7 @@ export function DraftAgentScreen({
               isMobile ? { paddingTop: insets.top + theme.spacing[2] } : null,
             ]}
           >
-            <HeaderToggleButton
-              onPress={toggleAgentList}
-              tooltipLabel="Toggle sidebar"
-              tooltipKeys={["mod", "B"]}
-              tooltipSide="right"
-              testID="menu-button"
-              nativeID="menu-button"
-              accessible
-              accessibilityRole="button"
-              accessibilityLabel={isSidebarOpen ? "Close menu" : "Open menu"}
-              accessibilityState={{ expanded: isSidebarOpen }}
-            >
-              <SidebarIcon size={isMobile ? 20 : 16} color={sidebarIconColor} />
-            </HeaderToggleButton>
+            <SidebarMenuToggle />
           </View>
 
         <Animated.View style={[styles.contentContainer, animatedKeyboardStyle]}>

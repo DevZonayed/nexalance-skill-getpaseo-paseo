@@ -1,5 +1,18 @@
 import { createTerminal, type TerminalSession } from "./terminal.js";
 
+export interface TerminalListItem {
+  id: string;
+  name: string;
+  cwd: string;
+}
+
+export interface TerminalsChangedEvent {
+  cwd: string;
+  terminals: TerminalListItem[];
+}
+
+export type TerminalsChangedListener = (input: TerminalsChangedEvent) => void;
+
 export interface TerminalManager {
   getTerminals(cwd: string): Promise<TerminalSession[]>;
   createTerminal(options: { cwd: string; name?: string }): Promise<TerminalSession>;
@@ -7,12 +20,14 @@ export interface TerminalManager {
   killTerminal(id: string): void;
   listDirectories(): string[];
   killAll(): void;
+  subscribeTerminalsChanged(listener: TerminalsChangedListener): () => void;
 }
 
 export function createTerminalManager(): TerminalManager {
   const terminalsByCwd = new Map<string, TerminalSession[]>();
   const terminalsById = new Map<string, TerminalSession>();
   const terminalExitUnsubscribeById = new Map<string, () => void>();
+  const terminalsChangedListeners = new Set<TerminalsChangedListener>();
 
   function assertAbsolutePath(cwd: string): void {
     if (!cwd.startsWith("/")) {
@@ -48,6 +63,8 @@ export function createTerminalManager(): TerminalManager {
     if (options.kill) {
       session.kill();
     }
+
+    emitTerminalsChanged({ cwd: session.cwd });
   }
 
   function registerSession(session: TerminalSession): TerminalSession {
@@ -57,6 +74,36 @@ export function createTerminalManager(): TerminalManager {
     });
     terminalExitUnsubscribeById.set(session.id, unsubscribeExit);
     return session;
+  }
+
+  function toTerminalListItem(input: { session: TerminalSession }): TerminalListItem {
+    return {
+      id: input.session.id,
+      name: input.session.name,
+      cwd: input.session.cwd,
+    };
+  }
+
+  function emitTerminalsChanged(input: { cwd: string }): void {
+    if (terminalsChangedListeners.size === 0) {
+      return;
+    }
+
+    const terminals = (terminalsByCwd.get(input.cwd) ?? []).map((session) =>
+      toTerminalListItem({ session })
+    );
+    const event: TerminalsChangedEvent = {
+      cwd: input.cwd,
+      terminals,
+    };
+
+    for (const listener of terminalsChangedListeners) {
+      try {
+        listener(event);
+      } catch {
+        // no-op
+      }
+    }
   }
 
   return {
@@ -70,6 +117,7 @@ export function createTerminalManager(): TerminalManager {
         );
         terminals = [session];
         terminalsByCwd.set(cwd, terminals);
+        emitTerminalsChanged({ cwd });
       }
       return terminals;
     },
@@ -88,6 +136,7 @@ export function createTerminalManager(): TerminalManager {
 
       terminals.push(session);
       terminalsByCwd.set(options.cwd, terminals);
+      emitTerminalsChanged({ cwd: options.cwd });
 
       return session;
     },
@@ -108,6 +157,13 @@ export function createTerminalManager(): TerminalManager {
       for (const id of Array.from(terminalsById.keys())) {
         removeSessionById(id, { kill: true });
       }
+    },
+
+    subscribeTerminalsChanged(listener: TerminalsChangedListener): () => void {
+      terminalsChangedListeners.add(listener);
+      return () => {
+        terminalsChangedListeners.delete(listener);
+      };
     },
   };
 }

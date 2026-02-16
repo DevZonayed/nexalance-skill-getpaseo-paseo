@@ -356,6 +356,7 @@ export class DaemonClient {
     string,
     { cwd: string; compare: { mode: "uncommitted" | "base"; baseRef?: string } }
   >();
+  private terminalDirectorySubscriptions = new Set<string>();
   private logger: Logger;
   private pendingSendQueue: PendingSend[] = [];
   private relayClientId: string | null = null;
@@ -474,6 +475,7 @@ export class DaemonClient {
           this.updateConnectionState({ status: "connected" });
           this.resubscribeAgentUpdates();
           this.resubscribeCheckoutDiffSubscriptions();
+          this.resubscribeTerminalDirectorySubscriptions();
           this.flushPendingSendQueue();
           this.resolveConnect();
         }),
@@ -1090,6 +1092,18 @@ export class DaemonClient {
         requestId: this.createRequestId(),
       });
       this.sendSessionMessage(message);
+    }
+  }
+
+  private resubscribeTerminalDirectorySubscriptions(): void {
+    if (this.terminalDirectorySubscriptions.size === 0) {
+      return;
+    }
+    for (const cwd of this.terminalDirectorySubscriptions) {
+      this.sendSessionMessage({
+        type: "subscribe_terminals_request",
+        cwd,
+      });
     }
   }
 
@@ -2313,6 +2327,28 @@ export class DaemonClient {
   // ============================================================================
   // Terminals
   // ============================================================================
+
+  subscribeTerminals(input: { cwd: string }): void {
+    this.terminalDirectorySubscriptions.add(input.cwd);
+    if (!this.transport || this.connectionState.status !== "connected") {
+      return;
+    }
+    this.sendSessionMessage({
+      type: "subscribe_terminals_request",
+      cwd: input.cwd,
+    });
+  }
+
+  unsubscribeTerminals(input: { cwd: string }): void {
+    this.terminalDirectorySubscriptions.delete(input.cwd);
+    if (!this.transport || this.connectionState.status !== "connected") {
+      return;
+    }
+    this.sendSessionMessage({
+      type: "unsubscribe_terminals_request",
+      cwd: input.cwd,
+    });
+  }
 
   async listTerminals(
     cwd: string,

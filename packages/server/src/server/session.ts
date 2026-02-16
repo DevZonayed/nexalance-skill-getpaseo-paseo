@@ -15,6 +15,8 @@ import {
   type FileDownloadTokenRequest,
   type GitSetupOptions,
   type ListTerminalsRequest,
+  type SubscribeTerminalsRequest,
+  type UnsubscribeTerminalsRequest,
   type CreateTerminalRequest,
   type SubscribeTerminalRequest,
   type UnsubscribeTerminalRequest,
@@ -27,7 +29,10 @@ import {
   type ProjectCheckoutLitePayload,
   type ProjectPlacementPayload,
 } from "./messages.js";
-import type { TerminalManager } from "../terminal/terminal-manager.js";
+import type {
+  TerminalManager,
+  TerminalsChangedEvent,
+} from "../terminal/terminal-manager.js";
 import type { TerminalSession } from "../terminal/terminal.js";
 import {
   BinaryMuxChannel,
@@ -68,7 +73,10 @@ import type {
 } from "./agent/agent-manager.js";
 import { scheduleAgentMetadataGeneration } from "./agent/agent-metadata-generator.js";
 import { toAgentPayload } from "./agent/agent-projections.js";
-import { appendTimelineItemIfAgentKnown } from "./agent/timeline-append.js";
+import {
+  appendTimelineItemIfAgentKnown,
+  emitLiveTimelineItemIfAgentKnown,
+} from "./agent/timeline-append.js";
 import { projectTimelineRows, type TimelineProjectionMode } from "./agent/timeline-projection.js";
 import {
   StructuredAgentResponseError,
@@ -559,6 +567,8 @@ export class Session {
   } | null = null;
   private readonly MOBILE_BACKGROUND_STREAM_GRACE_MS = 60_000;
   private readonly terminalManager: TerminalManager | null;
+  private readonly subscribedTerminalDirectories = new Set<string>();
+  private unsubscribeTerminalsChanged: (() => void) | null = null;
   private terminalSubscriptions: Map<string, () => void> = new Map();
   private terminalExitSubscriptions: Map<string, () => void> = new Map();
   private readonly terminalStreams = new Map<
@@ -627,6 +637,11 @@ export class Session {
     this.agentStorage = agentStorage;
     this.createAgentMcpTransport = createAgentMcpTransport;
     this.terminalManager = terminalManager;
+    if (this.terminalManager) {
+      this.unsubscribeTerminalsChanged = this.terminalManager.subscribeTerminalsChanged(
+        (event) => this.handleTerminalsChanged(event)
+      );
+    }
     this.voiceAgentMcpStdio = voice?.voiceAgentMcpStdio ?? null;
     const configuredModelsDir = dictation?.localModels?.modelsDir?.trim();
     this.localSpeechModelsDir =
@@ -1437,6 +1452,14 @@ export class Session {
 
         case "register_push_token":
           this.handleRegisterPushToken(msg.token);
+          break;
+
+        case "subscribe_terminals_request":
+          this.handleSubscribeTerminalsRequest(msg);
+          break;
+
+        case "unsubscribe_terminals_request":
+          this.handleUnsubscribeTerminalsRequest(msg);
           break;
 
         case "list_terminals_request":
@@ -2413,6 +2436,12 @@ export class Session {
           terminalManager: this.terminalManager,
           appendTimelineItem: (item) =>
             appendTimelineItemIfAgentKnown({
+              agentManager: this.agentManager,
+              agentId: snapshot.id,
+              item,
+            }),
+          emitLiveTimelineItem: (item) =>
+            emitLiveTimelineItemIfAgentKnown({
               agentManager: this.agentManager,
               agentId: snapshot.id,
               item,
@@ -6097,6 +6126,12 @@ export class Session {
     this.isVoiceMode = false;
 
     // Unsubscribe from all terminals
+    if (this.unsubscribeTerminalsChanged) {
+      this.unsubscribeTerminalsChanged();
+      this.unsubscribeTerminalsChanged = null;
+    }
+    this.subscribedTerminalDirectories.clear();
+
     for (const unsubscribe of this.terminalSubscriptions.values()) {
       unsubscribe();
     }
@@ -6152,6 +6187,81 @@ export class Session {
     const streamId = this.terminalStreamByTerminalId.get(terminalId);
     if (typeof streamId === "number") {
       this.detachTerminalStream(streamId, { emitExit: true });
+    }
+  }
+
+  private emitTerminalsChangedSnapshot(input: {
+    cwd: string;
+    terminals: Array<{ id: string; name: string }>;
+  }): void {
+    this.emit({
+      type: "terminals_changed",
+      payload: {
+        cwd: input.cwd,
+        terminals: input.terminals,
+      },
+    });
+  }
+
+  private handleTerminalsChanged(event: TerminalsChangedEvent): void {
+    if (!this.subscribedTerminalDirectories.has(event.cwd)) {
+      return;
+    }
+
+    this.emitTerminalsChangedSnapshot({
+      cwd: event.cwd,
+      terminals: event.terminals.map((terminal) => ({
+        id: terminal.id,
+        name: terminal.name,
+      })),
+    });
+  }
+
+  private handleSubscribeTerminalsRequest(msg: SubscribeTerminalsRequest): void {
+    this.subscribedTerminalDirectories.add(msg.cwd);
+    void this.emitInitialTerminalsChangedSnapshot(msg.cwd);
+  }
+
+  private handleUnsubscribeTerminalsRequest(msg: UnsubscribeTerminalsRequest): void {
+    this.subscribedTerminalDirectories.delete(msg.cwd);
+  }
+
+  private async emitInitialTerminalsChangedSnapshot(cwd: string): Promise<void> {
+    if (!this.terminalManager || !this.subscribedTerminalDirectories.has(cwd)) {
+      return;
+    }
+
+    const hadDirectoryBeforeSubscribe = this.terminalManager
+      .listDirectories()
+      .includes(cwd);
+
+    try {
+      const terminals = await this.terminalManager.getTerminals(cwd);
+      for (const terminal of terminals) {
+        this.ensureTerminalExitSubscription(terminal);
+      }
+
+      // New directories auto-create Terminal 1, which already emits through
+      // terminal-manager change listeners.
+      if (!hadDirectoryBeforeSubscribe) {
+        return;
+      }
+      if (!this.subscribedTerminalDirectories.has(cwd)) {
+        return;
+      }
+
+      this.emitTerminalsChangedSnapshot({
+        cwd,
+        terminals: terminals.map((terminal) => ({
+          id: terminal.id,
+          name: terminal.name,
+        })),
+      });
+    } catch (error) {
+      this.sessionLogger.warn(
+        { err: error, cwd },
+        "Failed to emit initial terminal snapshot"
+      );
     }
   }
 

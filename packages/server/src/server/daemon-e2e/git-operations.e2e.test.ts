@@ -397,9 +397,10 @@ describe("daemon E2E", () => {
         );
 
         expect(completed.callId).toBeTruthy();
-        expect(completed.detail.type).toBe("unknown");
-        if (completed.detail.type === "unknown") {
-          expect(completed.detail.output).toBeTruthy();
+        expect(completed.detail.type).toBe("worktree_setup");
+        if (completed.detail.type === "worktree_setup") {
+          expect(completed.detail.commands.length).toBeGreaterThan(0);
+          expect(completed.detail.log.length).toBeGreaterThan(0);
         }
         expect(existsSync(path.join(agent.cwd, "setup-done.txt"))).toBe(true);
 
@@ -595,10 +596,12 @@ describe("daemon E2E", () => {
         expect(existsSync(path.join(agent.cwd, "setup-start.txt"))).toBe(true);
         expect(existsSync(path.join(agent.cwd, "should-not-run.txt"))).toBe(false);
 
-        const output = failed.detail.type === "unknown" ? failed.detail.output as any : undefined;
-        const commands = output?.commands as any[] | undefined;
-        expect(Array.isArray(commands)).toBe(true);
-        expect(commands?.[0]?.exitCode).toBe(7);
+        expect(failed.detail.type).toBe("worktree_setup");
+        if (failed.detail.type === "worktree_setup") {
+          expect(Array.isArray(failed.detail.commands)).toBe(true);
+          expect(failed.detail.commands[0]?.exitCode).toBe(7);
+          expect(failed.detail.log).toContain("Exit 7");
+        }
 
         await ctx.client.deleteAgent(agent.id);
         rmSync(repoRoot, { recursive: true, force: true });

@@ -19,6 +19,7 @@ const TOOL_DETAIL_ICONS: Record<ToolCallDetail["type"], ToolCallIconComponent> =
   edit: Pencil,
   write: Pencil,
   search: Search,
+  worktree_setup: SquareTerminal,
   unknown: Wrench,
 };
 

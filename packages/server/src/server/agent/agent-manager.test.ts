@@ -405,6 +405,66 @@ describe("AgentManager", () => {
     expect(result.rows[result.rows.length - 1]?.seq).toBe(3);
   });
 
+  test("emits live timeline updates without recording canonical timeline rows", async () => {
+    const workdir = mkdtempSync(join(tmpdir(), "agent-manager-live-timeline-"));
+    const storagePath = join(workdir, "agents");
+    const storage = new AgentStorage(storagePath, logger);
+    const manager = new AgentManager({
+      clients: {
+        codex: new TestAgentClient(),
+      },
+      registry: storage,
+      logger,
+      idFactory: () => "00000000-0000-4000-8000-000000000120",
+    });
+
+    const snapshot = await manager.createAgent({
+      provider: "codex",
+      cwd: workdir,
+    });
+
+    const streamEvents: Array<{
+      seq?: number;
+      epoch?: string;
+      eventType?: string;
+      itemType?: string;
+    }> = [];
+    manager.subscribe(
+      (event) => {
+        if (event.type !== "agent_stream") {
+          return;
+        }
+        streamEvents.push({
+          seq: event.seq,
+          epoch: event.epoch,
+          eventType: event.event.type,
+          itemType: event.event.type === "timeline" ? event.event.item.type : undefined,
+        });
+      },
+      { agentId: snapshot.id, replayState: false }
+    );
+
+    await manager.emitLiveTimelineItem(snapshot.id, {
+      type: "assistant_message",
+      text: "live-only update",
+    });
+
+    expect(streamEvents).toHaveLength(1);
+    expect(streamEvents[0]).toMatchObject({
+      eventType: "timeline",
+      itemType: "assistant_message",
+    });
+    expect(streamEvents[0]?.seq).toBeUndefined();
+    expect(streamEvents[0]?.epoch).toBeUndefined();
+
+    expect(manager.getTimeline(snapshot.id)).toEqual([]);
+    const fetched = manager.fetchTimeline(snapshot.id, {
+      direction: "tail",
+      limit: 0,
+    });
+    expect(fetched.rows).toEqual([]);
+  });
+
   test("fetchTimeline returns full timeline with reset when cursor seq falls behind retention window", async () => {
     const workdir = mkdtempSync(join(tmpdir(), "agent-manager-timeline-gap-"));
     const storagePath = join(workdir, "agents");

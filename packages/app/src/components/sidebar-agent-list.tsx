@@ -1089,8 +1089,7 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.foreground,
     opacity: 0.78,
     fontSize: theme.fontSize.xs,
-    flexShrink: 1,
-    minWidth: 0,
+    flexShrink: 0,
   },
   agentMetaBranchBadge: {
     borderRadius: theme.borderRadius.full,
@@ -1098,7 +1097,8 @@ const styles = StyleSheet.create((theme) => ({
     borderColor: theme.colors.border,
     paddingHorizontal: theme.spacing[1],
     paddingVertical: 1,
-    flexShrink: 0,
+    flexShrink: 1,
+    minWidth: 0,
   },
   agentMetaBranchBadgeSelected: {
     borderColor: theme.colors.borderAccent,
@@ -1107,6 +1107,8 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.foreground,
     opacity: 0.76,
     fontSize: theme.fontSize.xs,
+    flexShrink: 1,
+    minWidth: 0,
   },
   selectionBar: {
     position: "absolute",

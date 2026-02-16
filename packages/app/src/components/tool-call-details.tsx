@@ -89,6 +89,43 @@ export function ToolCallDetailsContent({
         </View>
       </View>
     );
+  } else if (detail?.type === "worktree_setup") {
+    const setupLog = detail.log.replace(/^\n+/, "");
+    const hasLog = setupLog.length > 0;
+    sections.push(
+      <View
+        key="worktree-setup"
+        style={[styles.section, shouldFill && styles.fillHeight]}
+      >
+        <View style={[codeBlockStyle, shouldFill && styles.fillHeight]}>
+          <ScrollView
+            style={[
+              styles.codeVerticalScroll,
+              resolvedMaxHeight !== undefined && { maxHeight: resolvedMaxHeight },
+              shouldFill && styles.fillHeight,
+            ]}
+            contentContainerStyle={styles.codeVerticalContent}
+            nestedScrollEnabled
+            showsVerticalScrollIndicator
+          >
+            <ScrollView
+              horizontal
+              nestedScrollEnabled
+              showsHorizontalScrollIndicator
+              contentContainerStyle={styles.codeHorizontalContent}
+            >
+              <View style={styles.codeLine}>
+                <Text selectable style={styles.scrollText}>
+                  {hasLog
+                    ? setupLog
+                    : `Preparing worktree ${detail.branchName} at ${detail.worktreePath}`}
+                </Text>
+              </View>
+            </ScrollView>
+          </ScrollView>
+        </View>
+      </View>
+    );
   } else if (detail?.type === "edit") {
     sections.push(
       <View

@@ -290,6 +290,35 @@ export function TerminalPane({ serverId, cwd }: TerminalPaneProps) {
     });
   }, [client, cwd, isConnected, queryClient, serverId]);
 
+  useEffect(() => {
+    if (!client || !isConnected || !cwd.startsWith("/")) {
+      return;
+    }
+
+    const unsubscribe = client.on("terminals_changed", (message) => {
+      if (message.type !== "terminals_changed") {
+        return;
+      }
+      if (message.payload.cwd !== cwd) {
+        return;
+      }
+      void queryClient.invalidateQueries({
+        queryKey: ["terminals", serverId, cwd],
+      });
+      void queryClient.refetchQueries({
+        queryKey: ["terminals", serverId, cwd],
+        type: "active",
+      });
+    });
+
+    client.subscribeTerminals({ cwd });
+
+    return () => {
+      unsubscribe();
+      client.unsubscribeTerminals({ cwd });
+    };
+  }, [client, cwd, isConnected, queryClient, serverId]);
+
   const createTerminalMutation = useMutation({
     mutationFn: async () => {
       if (!client) {

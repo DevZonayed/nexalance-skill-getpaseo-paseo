@@ -189,6 +189,23 @@ const ToolCallDetailPayloadSchema: z.ZodType<ToolCallDetail> = z.discriminatedUn
     query: z.string(),
   }),
   z.object({
+    type: z.literal("worktree_setup"),
+    worktreePath: z.string(),
+    branchName: z.string(),
+    log: z.string(),
+    commands: z.array(
+      z.object({
+        index: z.number().int().positive(),
+        command: z.string(),
+        cwd: z.string(),
+        status: z.enum(["running", "completed", "failed"]),
+        exitCode: z.number().nullable(),
+        durationMs: z.number().nonnegative().optional(),
+      })
+    ),
+    truncated: z.boolean().optional(),
+  }),
+  z.object({
     type: z.literal("unknown"),
     input: UnknownValueSchema,
     output: UnknownValueSchema,
@@ -948,6 +965,16 @@ export const ListTerminalsRequestSchema = z.object({
   requestId: z.string(),
 });
 
+export const SubscribeTerminalsRequestSchema = z.object({
+  type: z.literal("subscribe_terminals_request"),
+  cwd: z.string(),
+});
+
+export const UnsubscribeTerminalsRequestSchema = z.object({
+  type: z.literal("unsubscribe_terminals_request"),
+  cwd: z.string(),
+});
+
 export const CreateTerminalRequestSchema = z.object({
   type: z.literal("create_terminal_request"),
   cwd: z.string(),
@@ -1060,6 +1087,8 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   ExecuteCommandRequestSchema,
   RegisterPushTokenMessageSchema,
   ListTerminalsRequestSchema,
+  SubscribeTerminalsRequestSchema,
+  UnsubscribeTerminalsRequestSchema,
   CreateTerminalRequestSchema,
   SubscribeTerminalRequestSchema,
   UnsubscribeTerminalRequestSchema,
@@ -1885,6 +1914,14 @@ export const ListTerminalsResponseSchema = z.object({
   }),
 });
 
+export const TerminalsChangedSchema = z.object({
+  type: z.literal("terminals_changed"),
+  payload: z.object({
+    cwd: z.string(),
+    terminals: z.array(TerminalInfoSchema.omit({ cwd: true })),
+  }),
+});
+
 export const CreateTerminalResponseSchema = z.object({
   type: z.literal("create_terminal_response"),
   payload: z.object({
@@ -2006,6 +2043,7 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   ListCommandsResponseSchema,
   ExecuteCommandResponseSchema,
   ListTerminalsResponseSchema,
+  TerminalsChangedSchema,
   CreateTerminalResponseSchema,
   SubscribeTerminalResponseSchema,
   TerminalOutputSchema,
@@ -2149,6 +2187,9 @@ export type RegisterPushTokenMessage = z.infer<typeof RegisterPushTokenMessageSc
 // Terminal message types
 export type ListTerminalsRequest = z.infer<typeof ListTerminalsRequestSchema>;
 export type ListTerminalsResponse = z.infer<typeof ListTerminalsResponseSchema>;
+export type SubscribeTerminalsRequest = z.infer<typeof SubscribeTerminalsRequestSchema>;
+export type UnsubscribeTerminalsRequest = z.infer<typeof UnsubscribeTerminalsRequestSchema>;
+export type TerminalsChanged = z.infer<typeof TerminalsChangedSchema>;
 export type CreateTerminalRequest = z.infer<typeof CreateTerminalRequestSchema>;
 export type CreateTerminalResponse = z.infer<typeof CreateTerminalResponseSchema>;
 export type SubscribeTerminalRequest = z.infer<typeof SubscribeTerminalRequestSchema>;

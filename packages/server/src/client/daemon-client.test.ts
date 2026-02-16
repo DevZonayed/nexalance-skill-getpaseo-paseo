@@ -1236,4 +1236,89 @@ describe("DaemonClient", () => {
     expect(received).toHaveLength(0);
     expect(logger.warn).toHaveBeenCalled();
   });
+
+  test("sends subscribe/unsubscribe terminals messages", async () => {
+    const logger = createMockLogger();
+    const mock = createMockTransport();
+
+    const client = new DaemonClient({
+      url: "ws://test",
+      logger,
+      reconnect: { enabled: false },
+      transportFactory: () => mock.transport,
+    });
+    clients.push(client);
+
+    const connectPromise = client.connect();
+    mock.triggerOpen();
+    await connectPromise;
+
+    client.subscribeTerminals({ cwd: "/tmp/project" });
+    client.unsubscribeTerminals({ cwd: "/tmp/project" });
+
+    expect(mock.sent).toHaveLength(2);
+    expect(JSON.parse(String(mock.sent[0]))).toEqual({
+      type: "session",
+      message: {
+        type: "subscribe_terminals_request",
+        cwd: "/tmp/project",
+      },
+    });
+    expect(JSON.parse(String(mock.sent[1]))).toEqual({
+      type: "session",
+      message: {
+        type: "unsubscribe_terminals_request",
+        cwd: "/tmp/project",
+      },
+    });
+  });
+
+  test("dispatches terminals_changed events to typed listeners", async () => {
+    const logger = createMockLogger();
+    const mock = createMockTransport();
+
+    const client = new DaemonClient({
+      url: "ws://test",
+      logger,
+      reconnect: { enabled: false },
+      transportFactory: () => mock.transport,
+    });
+    clients.push(client);
+
+    const connectPromise = client.connect();
+    mock.triggerOpen();
+    await connectPromise;
+
+    const received: Array<{ cwd: string; names: string[] }> = [];
+    const unsubscribe = client.on("terminals_changed", (message) => {
+      received.push({
+        cwd: message.payload.cwd,
+        names: message.payload.terminals.map((terminal) => terminal.name),
+      });
+    });
+
+    mock.triggerMessage(
+      wrapSessionMessage({
+        type: "terminals_changed",
+        payload: {
+          cwd: "/tmp/project",
+          terminals: [
+            {
+              id: "term-1",
+              name: "Dev Server",
+            },
+          ],
+        },
+      })
+    );
+
+    unsubscribe();
+
+    expect(received).toEqual([
+      {
+        cwd: "/tmp/project",
+        names: ["Dev Server"],
+      },
+    ]);
+  });
 });

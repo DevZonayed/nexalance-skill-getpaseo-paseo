@@ -135,6 +135,21 @@ export type ToolCallDetail =
       query: string;
     }
   | {
+      type: "worktree_setup";
+      worktreePath: string;
+      branchName: string;
+      log: string;
+      commands: Array<{
+        index: number;
+        command: string;
+        cwd: string;
+        status: "running" | "completed" | "failed";
+        exitCode: number | null;
+        durationMs?: number;
+      }>;
+      truncated?: boolean;
+    }
+  | {
       type: "unknown";
       input: unknown | null;
       output: unknown | null;

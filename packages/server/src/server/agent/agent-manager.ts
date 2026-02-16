@@ -895,6 +895,19 @@ export class AgentManager {
     await this.persistSnapshot(agent);
   }
 
+  async emitLiveTimelineItem(
+    agentId: string,
+    item: AgentTimelineItem
+  ): Promise<void> {
+    const agent = this.requireAgent(agentId);
+    this.touchUpdatedAt(agent);
+    this.dispatchStream(agentId, {
+      type: "timeline",
+      item,
+      provider: agent.provider,
+    });
+  }
+
   streamAgent(
     agentId: string,
     prompt: AgentPromptInput,

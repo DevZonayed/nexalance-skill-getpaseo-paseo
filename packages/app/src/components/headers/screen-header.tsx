@@ -16,7 +16,12 @@ interface ScreenHeaderProps {
  * Shared frame for the home/back headers so we only maintain padding, border,
  * and safe-area logic in one place.
  */
-export function ScreenHeader({ left, right, leftStyle, rightStyle }: ScreenHeaderProps) {
+export function ScreenHeader({
+  left,
+  right,
+  leftStyle,
+  rightStyle,
+}: ScreenHeaderProps) {
   const insets = useSafeAreaInsets();
   const isMobile = UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
   // Only add extra padding on mobile for better touch targets; on desktop, only use safe area insets

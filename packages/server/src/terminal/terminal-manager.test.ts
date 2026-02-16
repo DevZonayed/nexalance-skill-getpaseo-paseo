@@ -201,4 +201,52 @@ describe("TerminalManager", () => {
       expect(manager.getTerminal(homeId)).toBeUndefined();
     });
   });
+
+  describe("subscribeTerminalsChanged", () => {
+    it("emits cwd snapshots when terminals are created", async () => {
+      manager = createTerminalManager();
+      const snapshots: Array<{ cwd: string; terminalNames: string[] }> = [];
+      const unsubscribe = manager.subscribeTerminalsChanged((input) => {
+        snapshots.push({
+          cwd: input.cwd,
+          terminalNames: input.terminals.map((terminal) => terminal.name),
+        });
+      });
+
+      await manager.getTerminals("/tmp");
+      await manager.createTerminal({ cwd: "/tmp", name: "Dev Server" });
+
+      expect(snapshots).toContainEqual({
+        cwd: "/tmp",
+        terminalNames: ["Terminal 1"],
+      });
+      expect(snapshots).toContainEqual({
+        cwd: "/tmp",
+        terminalNames: ["Terminal 1", "Dev Server"],
+      });
+
+      unsubscribe();
+    });
+
+    it("emits empty snapshot when last terminal is removed", async () => {
+      manager = createTerminalManager();
+      const snapshots: Array<{ cwd: string; terminalCount: number }> = [];
+      const unsubscribe = manager.subscribeTerminalsChanged((input) => {
+        snapshots.push({
+          cwd: input.cwd,
+          terminalCount: input.terminals.length,
+        });
+      });
+
+      const terminals = await manager.getTerminals("/tmp");
+      manager.killTerminal(terminals[0].id);
+
+      expect(snapshots).toContainEqual({
+        cwd: "/tmp",
+        terminalCount: 0,
+      });
+
+      unsubscribe();
+    });
+  });
 });
