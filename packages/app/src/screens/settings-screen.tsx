@@ -76,7 +76,6 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.xs,
     fontWeight: theme.fontWeight.normal,
     letterSpacing: 0.6,
-    textTransform: "uppercase",
     marginBottom: theme.spacing[3],
     marginLeft: theme.spacing[1],
   },
