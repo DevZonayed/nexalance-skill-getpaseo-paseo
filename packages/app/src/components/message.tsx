@@ -1,6 +1,7 @@
 import {
   View,
   Text,
+  Image,
   Pressable,
   ActivityIndicator,
   type LayoutChangeEvent,
@@ -62,7 +63,7 @@ import {
 } from "@/styles/markdown-styles";
 import { Colors, Fonts } from "@/constants/theme";
 import * as Clipboard from "expo-clipboard";
-import type { TodoEntry } from "@/types/stream";
+import type { TodoEntry, UserMessageImageAttachment } from "@/types/stream";
 import type { ToolCallDetail } from "@server/server/agent/agent-sdk-types";
 import {
   buildToolCallDisplayModel,
@@ -77,6 +78,7 @@ import { ToolCallDetailsContent } from "./tool-call-details";
 
 interface UserMessageProps {
   message: string;
+  images?: UserMessageImageAttachment[];
   timestamp: number;
   isFirstInGroup?: boolean;
   isLastInGroup?: boolean;
@@ -177,6 +179,24 @@ const userMessageStylesheet = StyleSheet.create((theme) => ({
     lineHeight: 22,
     overflowWrap: "anywhere",
   },
+  imagePreviewContainer: {
+    flexDirection: "row",
+    gap: theme.spacing[2],
+    flexWrap: "wrap",
+  },
+  imagePreviewSpacing: {
+    marginBottom: theme.spacing[2],
+  },
+  imagePill: {
+    borderRadius: theme.borderRadius.md,
+    borderWidth: 1,
+    borderColor: theme.colors.borderAccent,
+    overflow: "hidden",
+  },
+  imageThumbnail: {
+    width: 48,
+    height: 48,
+  },
   copyButton: {
     alignSelf: "flex-end",
     padding: theme.spacing[1],
@@ -192,6 +212,7 @@ const userMessageStylesheet = StyleSheet.create((theme) => ({
 
 export const UserMessage = memo(function UserMessage({
   message,
+  images = [],
   timestamp,
   isFirstInGroup = true,
   isLastInGroup = true,
@@ -201,8 +222,10 @@ export const UserMessage = memo(function UserMessage({
   const [copyButtonHovered, setCopyButtonHovered] = useState(false);
   const resolvedDisableOuterSpacing =
     useDisableOuterSpacing(disableOuterSpacing);
+  const hasText = message.trim().length > 0;
+  const hasImages = images.length > 0;
   const showCopyButton =
-    Platform.OS !== "web" || messageHovered || copyButtonHovered;
+    hasText && (Platform.OS !== "web" || messageHovered || copyButtonHovered);
 
   return (
     <View
@@ -227,21 +250,45 @@ export const UserMessage = memo(function UserMessage({
         }
       >
         <View style={userMessageStylesheet.bubble}>
-          <Text selectable style={userMessageStylesheet.text}>
-            {message}
-          </Text>
+          {hasImages ? (
+            <View
+              style={[
+                userMessageStylesheet.imagePreviewContainer,
+                hasText ? userMessageStylesheet.imagePreviewSpacing : undefined,
+              ]}
+            >
+              {images.map((image, index) => (
+                <View
+                  key={`${image.uri}-${index}`}
+                  style={userMessageStylesheet.imagePill}
+                >
+                  <Image
+                    source={{ uri: image.uri }}
+                    style={userMessageStylesheet.imageThumbnail}
+                  />
+                </View>
+              ))}
+            </View>
+          ) : null}
+          {hasText ? (
+            <Text selectable style={userMessageStylesheet.text}>
+              {message}
+            </Text>
+          ) : null}
         </View>
-        <TurnCopyButton
-          getContent={() => message}
-          containerStyle={[
-            userMessageStylesheet.copyButton,
-            showCopyButton
-              ? userMessageStylesheet.copyButtonVisible
-              : userMessageStylesheet.copyButtonHidden,
-          ]}
-          accessibilityLabel="Copy message"
-          onHoverChange={setCopyButtonHovered}
-        />
+        {hasText ? (
+          <TurnCopyButton
+            getContent={() => message}
+            containerStyle={[
+              userMessageStylesheet.copyButton,
+              showCopyButton
+                ? userMessageStylesheet.copyButtonVisible
+                : userMessageStylesheet.copyButtonHidden,
+            ]}
+            accessibilityLabel="Copy message"
+            onHoverChange={setCopyButtonHovered}
+          />
+        ) : null}
       </Pressable>
     </View>
   );

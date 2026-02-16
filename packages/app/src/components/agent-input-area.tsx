@@ -198,6 +198,7 @@ export function AgentInputArea({
         id: messageId,
         text,
         timestamp: new Date(),
+        ...(images && images.length > 0 ? { images } : {}),
       };
 
       // Append to head if streaming (keeps the user message with the current

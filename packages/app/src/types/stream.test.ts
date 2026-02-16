@@ -3,6 +3,7 @@ import { describe, it } from "vitest";
 
 import {
   hydrateStreamState,
+  reduceStreamUpdate,
   type AgentToolCallItem,
   type StreamItem,
   isAgentToolCallItem,
@@ -398,5 +399,42 @@ describe("stream reducer canonical tool calls", () => {
     assert.strictEqual(tools.length, 0);
     assert.ok(todos);
     assert.strictEqual(todos.items[0]?.text, "Task 1");
+  });
+
+  it("preserves optimistic user message images when authoritative user message arrives", () => {
+    const messageId = "msg-user-images";
+    const optimisticImages = [
+      { uri: "file:///tmp/optimistic.jpg", mimeType: "image/jpeg" },
+    ];
+    const initialState: StreamItem[] = [
+      {
+        kind: "user_message",
+        id: messageId,
+        text: "Analyze this image",
+        timestamp: new Date("2025-01-01T11:10:00Z"),
+        images: optimisticImages,
+      },
+    ];
+    const event: AgentStreamEventPayload = {
+      type: "timeline",
+      provider: "claude",
+      item: {
+        type: "user_message",
+        text: "Analyze this image",
+        messageId,
+      },
+    };
+    const authoritativeTimestamp = new Date("2025-01-01T11:10:01Z");
+
+    const state = reduceStreamUpdate(initialState, event, authoritativeTimestamp);
+    const message = state.find((item) => item.kind === "user_message");
+
+    assert.ok(message);
+    assert.strictEqual(message.id, messageId);
+    assert.deepStrictEqual(message.images, optimisticImages);
+    assert.strictEqual(
+      message.timestamp.getTime(),
+      authoritativeTimestamp.getTime()
+    );
   });
 });

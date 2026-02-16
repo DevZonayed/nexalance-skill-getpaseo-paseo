@@ -314,6 +314,7 @@ export function AgentStreamView({
           return (
             <UserMessage
               message={item.text}
+              images={item.images}
               timestamp={item.timestamp.getTime()}
               isFirstInGroup={isFirstInGroup}
               isLastInGroup={isLastInGroup}

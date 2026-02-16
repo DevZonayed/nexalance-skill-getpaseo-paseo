@@ -59,11 +59,17 @@ export type StreamItem =
   | ActivityLogItem
   | CompactionItem;
 
+export interface UserMessageImageAttachment {
+  uri: string;
+  mimeType: string;
+}
+
 export interface UserMessageItem {
   kind: "user_message";
   id: string;
   text: string;
   timestamp: Date;
+  images?: UserMessageImageAttachment[];
 }
 
 export interface AssistantMessageItem {
@@ -198,12 +204,20 @@ function appendUserMessage(
   const existingIndex = state.findIndex(
     (entry) => entry.kind === "user_message" && entry.id === entryId
   );
+  const existing =
+    existingIndex >= 0 && state[existingIndex]?.kind === "user_message"
+      ? state[existingIndex]
+      : null;
+  const preservedImages = existing?.images;
 
   const nextItem: UserMessageItem = {
     kind: "user_message",
     id: entryId,
     text: chunk,
     timestamp,
+    ...(preservedImages && preservedImages.length > 0
+      ? { images: preservedImages }
+      : {}),
   };
 
   if (existingIndex >= 0) {

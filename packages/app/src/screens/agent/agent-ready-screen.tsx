@@ -72,6 +72,7 @@ import {
   derivePendingPermissionKey,
   normalizeAgentSnapshot,
 } from "@/utils/agent-snapshots";
+import { mergePendingCreateImages } from "@/utils/pending-create-images";
 import type { FetchAgentsEntry } from "@server/client/daemon-client";
 import {
   DropdownMenu,
@@ -492,6 +493,7 @@ function AgentScreenContent({
     (state) => state.sessions[serverId]?.pendingPermissions
   );
   const setAgents = useSessionStore((state) => state.setAgents);
+  const setAgentStreamTail = useSessionStore((state) => state.setAgentStreamTail);
   const setPendingPermissions = useSessionStore(
     (state) => state.setPendingPermissions
   );
@@ -637,6 +639,9 @@ function AgentScreenContent({
         id: pendingCreate.messageId,
         text: pendingCreate.text,
         timestamp: new Date(pendingCreate.timestamp),
+        ...(pendingCreate.images && pendingCreate.images.length > 0
+          ? { images: pendingCreate.images }
+          : {}),
       },
     ];
   }, [isPendingCreateForRoute, pendingCreate]);
@@ -718,6 +723,32 @@ function AgentScreenContent({
         (item.id === pendingCreate.messageId || item.text === pendingCreate.text)
     );
     if (agent && hasUserMessage) {
+      if (
+        resolvedAgentId &&
+        pendingCreate.images &&
+        pendingCreate.images.length > 0
+      ) {
+        setAgentStreamTail(serverId, (prev) => {
+          const current = prev.get(resolvedAgentId);
+          if (!current) {
+            return prev;
+          }
+
+          const merged = mergePendingCreateImages({
+            streamItems: current,
+            messageId: pendingCreate.messageId,
+            text: pendingCreate.text,
+            images: pendingCreate.images,
+          });
+          if (merged === current) {
+            return prev;
+          }
+
+          const next = new Map(prev);
+          next.set(resolvedAgentId, merged);
+          return next;
+        });
+      }
       clearPendingCreate();
     }
   }, [
@@ -725,6 +756,9 @@ function AgentScreenContent({
     clearPendingCreate,
     isPendingCreateForRoute,
     pendingCreate,
+    resolvedAgentId,
+    serverId,
+    setAgentStreamTail,
     streamItems,
   ]);
 
