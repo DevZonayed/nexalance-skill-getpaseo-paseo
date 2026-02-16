@@ -102,6 +102,11 @@ function GettingStarted() {
         <h2 className="text-xl font-medium">Next</h2>
         <ul className="text-white/60 space-y-2 list-disc list-inside">
           <li>
+            <a href="/docs/updates" className="underline hover:text-white/80">
+              Updates
+            </a>
+          </li>
+          <li>
             <a href="/docs/voice" className="underline hover:text-white/80">
               Voice
             </a>
