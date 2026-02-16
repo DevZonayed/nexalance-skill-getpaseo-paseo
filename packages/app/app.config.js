@@ -5,10 +5,14 @@ const variants = {
   production: {
     name: "Paseo",
     packageId: "sh.paseo",
+    googleServicesFile: "./.secrets/google-services.prod.json",
+    googleServiceInfoPlist: "./.secrets/GoogleService-Info.prod.plist",
   },
   development: {
     name: "Paseo Debug",
     packageId: "sh.paseo.debug",
+    googleServicesFile: "./.secrets/google-services.debug.json",
+    googleServiceInfoPlist: "./.secrets/GoogleService-Info.debug.plist",
   },
 };
 
@@ -38,6 +42,7 @@ export default {
         ITSAppUsesNonExemptEncryption: false,
       },
       bundleIdentifier: variant.packageId,
+      googleServicesFile: variant.googleServiceInfoPlist,
     },
     android: {
       adaptiveIcon: {
@@ -57,6 +62,7 @@ export default {
         "android.permission.CAMERA",
       ],
       package: variant.packageId,
+      googleServicesFile: variant.googleServicesFile,
     },
     web: {
       output: "single",
