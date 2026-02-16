@@ -1,5 +1,12 @@
 import { createRequire } from "node:module";
 import path from "node:path";
+import { existsSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import {
+  applySherpaLoaderEnv,
+  resolveSherpaLoaderEnv,
+  sherpaPlatformPackageName,
+} from "./sherpa-runtime-env.js";
 
 export type SherpaOnnxNodeModule = {
   OfflineRecognizer: new (config: any) => any;
@@ -9,21 +16,77 @@ export type SherpaOnnxNodeModule = {
 
 let cached: SherpaOnnxNodeModule | null = null;
 
-function platformArch(): string {
-  const platform = process.platform === "win32" ? "win" : process.platform;
-  return `${platform}-${process.arch}`;
+type LoadAttempt = {
+  target: string;
+  error: unknown;
+};
+
+function appendAttempt(attempts: LoadAttempt[], target: string, error: unknown): void {
+  attempts.push({ target, error });
 }
 
-function prependLibraryPath(
-  envKey: "DYLD_LIBRARY_PATH" | "LD_LIBRARY_PATH" | "PATH",
-  dir: string
-): void {
-  const current = process.env[envKey] ?? "";
-  const parts = current.split(path.delimiter).filter(Boolean);
-  if (parts.includes(dir)) {
+function formatError(error: unknown): string {
+  if (!error) {
+    return "unknown error";
+  }
+  if (error instanceof Error) {
+    return error.message;
+  }
+  return String(error);
+}
+
+function maybePatchLinuxAddonRunpath(addonPath: string): void {
+  if (process.platform !== "linux") {
     return;
   }
-  process.env[envKey] = [dir, ...parts].join(path.delimiter);
+  const patchelfCheck = spawnSync("patchelf", ["--version"], {
+    stdio: "ignore",
+  });
+  if (patchelfCheck.status !== 0) {
+    return;
+  }
+
+  const currentRpath = spawnSync("patchelf", ["--print-rpath", addonPath], {
+    encoding: "utf8",
+  });
+  if (currentRpath.status !== 0) {
+    return;
+  }
+  const rpath = (currentRpath.stdout ?? "").trim();
+  if (rpath.includes("$ORIGIN")) {
+    return;
+  }
+
+  spawnSync("patchelf", ["--set-rpath", "$ORIGIN", addonPath], {
+    stdio: "ignore",
+  });
+}
+
+function loadWithRequire(
+  requireFn: NodeRequire,
+  target: string,
+  attempts: LoadAttempt[]
+): SherpaOnnxNodeModule | null {
+  try {
+    return requireFn(target) as SherpaOnnxNodeModule;
+  } catch (error) {
+    appendAttempt(attempts, target, error);
+    return null;
+  }
+}
+
+function buildFailure(attempts: LoadAttempt[], pkgName: string): Error {
+  const details = attempts
+    .map((attempt) => `- ${attempt.target}: ${formatError(attempt.error)}`)
+    .join("\n");
+  const message = [
+    `Failed to load sherpa-onnx-node for ${process.platform}-${process.arch}.`,
+    `Node ${process.version} (ABI ${process.versions.modules}).`,
+    `Platform package: ${pkgName}.`,
+    "Load attempts:",
+    details || "- (no attempts made)",
+  ].join("\n");
+  return new Error(message);
 }
 
 export function loadSherpaOnnxNode(): SherpaOnnxNodeModule {
@@ -32,26 +95,41 @@ export function loadSherpaOnnxNode(): SherpaOnnxNodeModule {
   }
 
   const require = createRequire(import.meta.url);
+  const attempts: LoadAttempt[] = [];
 
-  // sherpa-onnx-node depends on a platform-specific package (e.g. sherpa-onnx-darwin-arm64)
-  // that contains the native addon and shared libraries. Ensure the OS loader path includes it.
-  const arch = platformArch();
-  const pkgName = `sherpa-onnx-${arch}`;
-
-  try {
-    const pkgJson = require.resolve(`${pkgName}/package.json`);
-    const pkgDir = path.dirname(pkgJson);
-    if (process.platform === "darwin") {
-      prependLibraryPath("DYLD_LIBRARY_PATH", pkgDir);
-    } else if (process.platform === "linux") {
-      prependLibraryPath("LD_LIBRARY_PATH", pkgDir);
-    } else if (process.platform === "win32") {
-      prependLibraryPath("PATH", pkgDir);
-    }
-  } catch {
-    // Best effort - if the platform package isn't present, require() below will throw a useful error.
+  // Pass through upstream support matrix first.
+  const direct = loadWithRequire(require, "sherpa-onnx-node", attempts);
+  if (direct) {
+    cached = direct;
+    return cached;
   }
 
-  cached = require("sherpa-onnx-node") as SherpaOnnxNodeModule;
-  return cached;
+  // sherpa-onnx-node depends on a platform-specific package (e.g. sherpa-onnx-darwin-arm64)
+  // that contains the native addon and shared libraries.
+  const pkgName = sherpaPlatformPackageName();
+  const resolvedEnv = resolveSherpaLoaderEnv();
+  const platformPkgDir = resolvedEnv?.libDir ?? null;
+
+  if (platformPkgDir) {
+    applySherpaLoaderEnv(process.env);
+    const addonPath = path.join(platformPkgDir, "sherpa-onnx.node");
+
+    if (existsSync(addonPath)) {
+      const byPath = loadWithRequire(require, addonPath, attempts);
+      if (byPath) {
+        cached = byPath;
+        return cached;
+      }
+
+      // Linux fallback for broken prebuilt RUNPATHs.
+      maybePatchLinuxAddonRunpath(addonPath);
+      const afterPatch = loadWithRequire(require, addonPath, attempts);
+      if (afterPatch) {
+        cached = afterPatch;
+        return cached;
+      }
+    }
+  }
+
+  throw buildFailure(attempts, pkgName);
 }

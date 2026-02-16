@@ -12,6 +12,7 @@ import {
   startLocalDaemonDetached,
   type DaemonStartOptions as StartOptions,
 } from './local-daemon.js'
+import { reexecWithSherpaLoaderEnvIfNeeded } from './sherpa-env.js'
 import { getErrorMessage } from '../../utils/errors.js'
 
 export type { DaemonStartOptions as StartOptions } from './local-daemon.js'
@@ -78,6 +79,8 @@ export async function runStart(options: StartOptions): Promise<void> {
     }
     return
   }
+
+  reexecWithSherpaLoaderEnvIfNeeded()
 
   if (options.home) {
     process.env.PASEO_HOME = options.home

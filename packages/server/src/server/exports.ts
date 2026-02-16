@@ -13,6 +13,15 @@ export {
   type LocalSttModelId,
   type LocalTtsModelId,
 } from "./speech/providers/local/models.js";
+export {
+  applySherpaLoaderEnv,
+  resolveSherpaLoaderEnv,
+  sherpaLoaderEnvKey,
+  sherpaPlatformArch,
+  sherpaPlatformPackageName,
+  type SherpaLoaderEnvKey,
+  type SherpaLoaderEnvResolution,
+} from "./speech/providers/local/sherpa/sherpa-runtime-env.js";
 
 // Agent SDK types for CLI commands
 export type {

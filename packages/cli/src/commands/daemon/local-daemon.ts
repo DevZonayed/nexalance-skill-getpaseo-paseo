@@ -3,6 +3,7 @@ import { closeSync, existsSync, openSync, readFileSync, rmSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import path from 'node:path'
 import { loadConfig, resolvePaseoHome } from '@getpaseo/server'
+import { applySherpaLoaderEnv } from './sherpa-env.js'
 
 export interface DaemonStartOptions {
   port?: string
@@ -280,6 +281,7 @@ export async function startLocalDaemonDetached(
   }
 
   const childEnv: NodeJS.ProcessEnv = { ...process.env }
+  applySherpaLoaderEnv(childEnv)
   if (options.home) {
     childEnv.PASEO_HOME = options.home
   }
