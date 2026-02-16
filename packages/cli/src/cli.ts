@@ -1,4 +1,5 @@
 import { Command } from 'commander'
+import { createRequire } from 'node:module'
 import { createAgentCommand } from './commands/agent/index.js'
 import { createDaemonCommand } from './commands/daemon/index.js'
 import { createPermitCommand } from './commands/permit/index.js'
@@ -20,7 +21,9 @@ import { runUpdateCommand } from './commands/agent/update.js'
 import { withOutput } from './output/index.js'
 import { onboardCommand } from './commands/onboard.js'
 
-const VERSION = '0.1.0'
+const require = createRequire(import.meta.url)
+const packageJson = require('../package.json') as { version?: string }
+const VERSION = typeof packageJson.version === 'string' ? packageJson.version : '0.0.0'
 
 // Helper function to collect multiple option values into an array
 function collectMultiple(value: string, previous: string[]): string[] {
