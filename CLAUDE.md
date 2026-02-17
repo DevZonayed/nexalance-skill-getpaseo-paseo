@@ -139,6 +139,7 @@ npm run android:production
 ### Cloud build + submit (EAS Workflows)
 
 Tag pushes like `v0.1.0` trigger `packages/app/.eas/workflows/release-mobile.yml` on Expo servers.
+Tag pushes like `v0.1.0` also trigger `.github/workflows/android-apk-release.yml` on GitHub Actions to publish an APK asset on the matching GitHub Release.
 
 That workflow does:
 - Build iOS with the `production` profile
@@ -182,7 +183,7 @@ npm run release:patch
 npm run version:all:patch  # npm version across all workspaces (creates commit + local tag)
 npm run release:check
 npm run release:publish
-npm run release:push       # pushes HEAD and current version tag (triggers desktop + EAS mobile workflows)
+npm run release:push       # pushes HEAD and current version tag (triggers desktop + Android APK + EAS mobile workflows)
 ```
 
 Notes:
@@ -196,6 +197,7 @@ Notes:
 Release completion checklist:
 - `npm run release:patch` completes successfully.
 - GitHub `Desktop Release` workflow for the new `v*` tag is green.
+- GitHub `Android APK Release` workflow for the same tag is green.
 - EAS `release-mobile.yml` workflow for the same tag is green (Expo queues can take longer on the free plan).
 
 ## Orchestrator Mode
