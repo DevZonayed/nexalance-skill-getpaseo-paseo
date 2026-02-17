@@ -1183,6 +1183,31 @@ export class Session {
     }
   }
 
+  private async emitCurrentAgentUpdatesForSubscription(): Promise<void> {
+    const subscription = this.agentUpdatesSubscription;
+    if (!subscription) {
+      return;
+    }
+
+    try {
+      const agents = await this.listAgentPayloads({
+        labels: subscription.filter?.labels,
+      });
+      for (const agent of agents) {
+        const project = await this.buildProjectPlacement(agent.cwd);
+        this.emit({
+          type: "agent_update",
+          payload: { kind: "upsert", agent, project },
+        });
+      }
+    } catch (error) {
+      this.sessionLogger.error(
+        { err: error },
+        "Failed to emit current agent updates for subscription bootstrap"
+      );
+    }
+  }
+
   /**
    * Main entry point for processing session messages
    */
@@ -1214,6 +1239,7 @@ export class Session {
             subscriptionId: msg.subscriptionId,
             filter: msg.filter,
           };
+          await this.emitCurrentAgentUpdatesForSubscription();
           break;
 
         case "unsubscribe_agent_updates":

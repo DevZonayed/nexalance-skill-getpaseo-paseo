@@ -233,15 +233,38 @@ export function AgentInputArea({
   }, [onSubmitMessage]);
 
   const isAgentRunning = agent?.status === "running";
+  const agentUpdatedAtMs = agent?.updatedAt?.getTime() ?? 0;
 
   const prevIsAgentRunningRef = useRef(isAgentRunning);
+  const latestAgentUpdatedAtRef = useRef(agentUpdatedAtMs);
   useEffect(() => {
+    const previousUpdatedAt = latestAgentUpdatedAtRef.current;
+    if (agentUpdatedAtMs < previousUpdatedAt) {
+      return;
+    }
+
     const wasRunning = prevIsAgentRunningRef.current;
+    let shouldClearProcessing = false;
+
+    if (isProcessing) {
+      const hasEnteredRunning = !wasRunning && isAgentRunning;
+      const hasFreshRunningUpdateWhileRunning =
+        wasRunning && isAgentRunning && agentUpdatedAtMs > previousUpdatedAt;
+      const hasStoppedRunning = wasRunning && !isAgentRunning;
+
+      shouldClearProcessing =
+        hasEnteredRunning ||
+        hasFreshRunningUpdateWhileRunning ||
+        hasStoppedRunning;
+    }
+
     prevIsAgentRunningRef.current = isAgentRunning;
-    if (!wasRunning && isAgentRunning && isProcessing) {
+    latestAgentUpdatedAtRef.current = agentUpdatedAtMs;
+
+    if (shouldClearProcessing) {
       setIsProcessing(false);
     }
-  }, [isAgentRunning, isProcessing]);
+  }, [agentUpdatedAtMs, isAgentRunning, isProcessing]);
 
   const updateQueue = useCallback(
     (updater: (current: QueuedMessage[]) => QueuedMessage[]) => {
