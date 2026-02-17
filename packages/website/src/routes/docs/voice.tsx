@@ -55,7 +55,7 @@ function VoiceDocs() {
         </p>
         <p className="text-white/60 leading-relaxed">
           Missing models are downloaded at daemon startup into{' '}
-          <code className="font-mono">$PASEO_HOME/models/local-speech</code> when auto-download is enabled.
+          <code className="font-mono">$PASEO_HOME/models/local-speech</code>.
           Downloads happen only for missing files.
         </p>
         <pre className="bg-card border border-border rounded-lg p-4 font-mono text-sm overflow-x-auto text-white/80">
@@ -71,8 +71,7 @@ function VoiceDocs() {
   },
   "providers": {
     "local": {
-      "modelsDir": "~/.paseo/models/local-speech",
-      "autoDownload": true
+      "modelsDir": "~/.paseo/models/local-speech"
     }
   }
 }`}
@@ -107,7 +106,7 @@ function VoiceDocs() {
         <ul className="text-white/60 space-y-2 list-disc list-inside">
           <li><code className="font-mono">OPENAI_API_KEY</code> — OpenAI speech credentials</li>
           <li><code className="font-mono">PASEO_VOICE_LLM_PROVIDER</code> — voice agent provider override</li>
-          <li><code className="font-mono">PASEO_LOCAL_MODELS_DIR</code>, <code className="font-mono">PASEO_LOCAL_AUTO_DOWNLOAD</code> — local model storage and download policy</li>
+          <li><code className="font-mono">PASEO_LOCAL_MODELS_DIR</code> — local model storage directory</li>
           <li><code className="font-mono">PASEO_DICTATION_LOCAL_STT_MODEL</code> — local dictation STT model ID</li>
           <li><code className="font-mono">PASEO_VOICE_LOCAL_STT_MODEL</code>, <code className="font-mono">PASEO_VOICE_LOCAL_TTS_MODEL</code> — local voice STT/TTS model IDs</li>
           <li><code className="font-mono">PASEO_VOICE_LOCAL_TTS_SPEAKER_ID</code>, <code className="font-mono">PASEO_VOICE_LOCAL_TTS_SPEED</code> — optional local voice TTS tuning</li>

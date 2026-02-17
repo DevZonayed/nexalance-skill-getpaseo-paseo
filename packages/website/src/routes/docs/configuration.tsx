@@ -177,7 +177,7 @@ docker run --rm -i \\
           <li><code className="font-mono">OPENAI_API_KEY</code> — override OpenAI provider key</li>
           <li><code className="font-mono">PASEO_VOICE_LLM_PROVIDER</code> — override voice LLM provider (<code className="font-mono">claude</code>, <code className="font-mono">codex</code>, <code className="font-mono">opencode</code>)</li>
           <li><code className="font-mono">PASEO_DICTATION_STT_PROVIDER</code>, <code className="font-mono">PASEO_VOICE_STT_PROVIDER</code>, <code className="font-mono">PASEO_VOICE_TTS_PROVIDER</code> — override voice provider selection (<code className="font-mono">local</code> or <code className="font-mono">openai</code>)</li>
-          <li><code className="font-mono">PASEO_LOCAL_MODELS_DIR</code> and <code className="font-mono">PASEO_LOCAL_AUTO_DOWNLOAD</code> — control local model directory and download behavior</li>
+          <li><code className="font-mono">PASEO_LOCAL_MODELS_DIR</code> — control local model directory</li>
           <li><code className="font-mono">PASEO_DICTATION_LOCAL_STT_MODEL</code> — override local dictation STT model</li>
           <li><code className="font-mono">PASEO_VOICE_LOCAL_STT_MODEL</code>, <code className="font-mono">PASEO_VOICE_LOCAL_TTS_MODEL</code> — override local voice STT/TTS models</li>
           <li><code className="font-mono">PASEO_VOICE_LOCAL_TTS_SPEAKER_ID</code>, <code className="font-mono">PASEO_VOICE_LOCAL_TTS_SPEED</code> — optional local voice TTS tuning</li>

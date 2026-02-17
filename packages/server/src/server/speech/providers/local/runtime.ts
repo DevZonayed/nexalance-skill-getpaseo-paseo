@@ -36,7 +36,6 @@ type ResolvedLocalModels = {
 type LocalSpeechAvailability = {
   configured: boolean;
   modelsDir: string | null;
-  autoDownload: boolean | null;
 };
 
 export type InitializedLocalSpeech = {
@@ -79,7 +78,6 @@ export function getLocalSpeechAvailability(
   return {
     configured: Boolean(localConfig),
     modelsDir: localConfig?.modelsDir ?? null,
-    autoDownload: localConfig?.autoDownload ?? null,
   };
 }
 
@@ -186,12 +184,10 @@ export async function initializeLocalSpeechServices(params: {
   providers: RequestedSpeechProviders;
   speechConfig: PaseoSpeechConfig | null;
   logger: Logger;
-  modelEnsureAutoDownload?: boolean;
 }): Promise<InitializedLocalSpeech> {
   const { providers, logger, speechConfig } = params;
   const localConfig = speechConfig?.local ?? null;
   const localModels = resolveConfiguredLocalModels(speechConfig);
-  const modelEnsureAutoDownload = params.modelEnsureAutoDownload ?? (localConfig?.autoDownload ?? true);
 
   let sttService: SpeechToTextProvider | null = null;
   let ttsService: TextToSpeechProvider | null = null;
@@ -209,28 +205,25 @@ export async function initializeLocalSpeechServices(params: {
         {
           modelsDir: localConfig.modelsDir,
           modelIds: requiredLocalModelIds,
-          autoDownload: modelEnsureAutoDownload,
         },
         "Ensuring local speech models"
       );
       await ensureLocalSpeechModels({
         modelsDir: localConfig.modelsDir,
         modelIds: requiredLocalModelIds,
-        autoDownload: modelEnsureAutoDownload,
         logger,
       });
     } catch (err) {
-      logger.error(
+      logger.warn(
         {
           err,
           modelsDir: localConfig.modelsDir,
           modelIds: requiredLocalModelIds,
-          autoDownload: modelEnsureAutoDownload,
           hint:
             "Use `paseo speech models` to inspect status and " +
             "`paseo speech download --model <MODEL_ID>` to fetch missing models.",
         },
-        "Failed to ensure local speech models"
+        "Local speech model bootstrap failed"
       );
     }
   }
@@ -256,14 +249,14 @@ export async function initializeLocalSpeechServices(params: {
       localSttEngines.set(modelId, created);
       return created;
     } catch (err) {
-      logger.error(
+      logger.warn(
         {
           err,
           modelsDir: localConfig.modelsDir,
           modelId,
           hint: buildModelDownloadHint(modelId),
         },
-        "Failed to initialize local STT engine (models missing or invalid)"
+        "Local STT engine unavailable"
       );
       return null;
     }
@@ -340,14 +333,14 @@ export async function initializeLocalSpeechServices(params: {
         }
         ttsService = localVoiceTtsProvider;
       } catch (err) {
-        logger.error(
+        logger.warn(
           {
             err,
             modelsDir: localConfig.modelsDir,
             modelId: localModels.voiceLocalTtsModel,
             hint: buildModelDownloadHint(localModels.voiceLocalTtsModel),
           },
-          "Failed to initialize local TTS engine (models missing or invalid)"
+          "Local TTS engine unavailable"
         );
       }
     }

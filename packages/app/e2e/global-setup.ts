@@ -156,7 +156,6 @@ export default async function globalSetup() {
       // Keep e2e bootstrap fast and deterministic; terminal/sidebar tests do not need speech.
       PASEO_DICTATION_ENABLED: "0",
       PASEO_VOICE_MODE_ENABLED: "0",
-      PASEO_LOCAL_AUTO_DOWNLOAD: "0",
       NODE_ENV: 'development',
     },
     stdio: ['ignore', 'pipe', 'pipe'],

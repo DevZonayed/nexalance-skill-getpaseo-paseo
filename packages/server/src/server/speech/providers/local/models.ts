@@ -36,13 +36,11 @@ export function getLocalSpeechModelDir(modelsDir: string, modelId: LocalSpeechMo
 export async function ensureLocalSpeechModels(options: {
   modelsDir: string;
   modelIds: LocalSpeechModelId[];
-  autoDownload?: boolean;
   logger: import("pino").Logger;
 }): Promise<Record<LocalSpeechModelId, string>> {
   return ensureSherpaOnnxModels({
     modelsDir: options.modelsDir,
     modelIds: options.modelIds,
-    autoDownload: options.autoDownload ?? true,
     logger: options.logger,
   });
 }

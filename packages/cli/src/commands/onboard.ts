@@ -25,9 +25,6 @@ interface OnboardOptions extends DaemonStartOptions {
 }
 
 type OnboardPersistedConfig = PersistedConfig & {
-  providers?: PersistedConfig['providers'] & {
-    local?: PersistedConfig['providers'] extends { local?: infer T } ? T : { autoDownload?: boolean }
-  }
   features?: PersistedConfig['features'] & {
     dictation?: PersistedConfig['features'] extends { dictation?: infer T }
       ? T & { enabled?: boolean }
@@ -103,13 +100,6 @@ function savePersistedConfig(paseoHome: string, config: OnboardPersistedConfig):
 function applyVoiceSelection(config: OnboardPersistedConfig, enabled: boolean): OnboardPersistedConfig {
   return {
     ...config,
-    providers: {
-      ...config.providers,
-      local: {
-        ...config.providers?.local,
-        autoDownload: enabled,
-      },
-    },
     features: {
       ...config.features,
       dictation: {
@@ -366,7 +356,7 @@ export async function runOnboard(options: OnboardOptions): Promise<void> {
   const config = loadConfig(paseoHome, { cli: toCliOverrides(options) })
 
   const voiceStatus = voiceEnabled
-    ? 'Voice features enabled. Local speech models will download in the background if missing.'
+    ? 'Voice features enabled. Local speech models will be downloaded automatically if missing.'
     : 'Voice features disabled. Local speech models will not be downloaded.'
   log.message(voiceStatus)
 

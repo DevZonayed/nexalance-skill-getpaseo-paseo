@@ -186,7 +186,8 @@ describe("ConnectionOfferV2 (daemon E2E)", () => {
         PASEO_HOME: tempHome,
         PASEO_LISTEN: `0.0.0.0:${port}`,
         OPENAI_API_KEY: "",
-        PASEO_LOCAL_AUTO_DOWNLOAD: "0",
+        PASEO_DICTATION_ENABLED: "0",
+        PASEO_VOICE_MODE_ENABLED: "0",
         PASEO_LOG_FORMAT: "json",
       };
 

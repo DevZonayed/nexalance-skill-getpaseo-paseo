@@ -1,6 +1,12 @@
 import { fileURLToPath } from "url";
 import { existsSync } from "node:fs";
+import dotenv from "dotenv";
 import { runSupervisor } from "./supervisor.js";
+
+dotenv.config({
+  path: fileURLToPath(new URL("../.env", import.meta.url)),
+  quiet: true,
+});
 
 const WORKER_ENTRY = fileURLToPath(new URL("../src/server/index.ts", import.meta.url));
 if (!existsSync(WORKER_ENTRY)) {

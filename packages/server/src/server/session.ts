@@ -2879,7 +2879,6 @@ export class Session {
       await ensureLocalSpeechModels({
         modelsDir,
         modelIds,
-        autoDownload: true,
         logger: this.sessionLogger,
       });
       this.emit({

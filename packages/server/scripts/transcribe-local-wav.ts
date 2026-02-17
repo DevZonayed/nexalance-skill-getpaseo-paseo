@@ -18,12 +18,11 @@ type CliOptions = {
   outPath?: string;
   model: LocalSttModelId;
   modelsDir: string;
-  autoDownload: boolean;
 };
 
 function usage(): string {
   return [
-    "Usage: npm run speech:transcribe:local -- <wavPath> [--out <outPath>] [--model <modelId>] [--models-dir <dir>] [--no-auto-download]",
+    "Usage: npm run speech:transcribe:local -- <wavPath> [--out <outPath>] [--model <modelId>] [--models-dir <dir>]",
     "",
     "Examples:",
     "  npm run speech:transcribe:local -- ./sample.wav",
@@ -52,7 +51,6 @@ function parseArgs(argv: string[]): CliOptions {
   let outPath: string | undefined;
   let model = LocalSttModelIdSchema.parse(process.env.PASEO_LOCAL_STT_MODEL ?? DEFAULT_LOCAL_STT_MODEL);
   let modelsDir = defaultModelsDir;
-  let autoDownload = true;
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
@@ -87,11 +85,6 @@ function parseArgs(argv: string[]): CliOptions {
       continue;
     }
 
-    if (arg === "--no-auto-download") {
-      autoDownload = false;
-      continue;
-    }
-
     if (arg.startsWith("-")) {
       throw new Error(`Unknown option: ${arg}`);
     }
@@ -108,7 +101,6 @@ function parseArgs(argv: string[]): CliOptions {
     ...(outPath ? { outPath } : {}),
     model,
     modelsDir,
-    autoDownload,
   };
 }
 
@@ -139,7 +131,6 @@ async function main(): Promise<void> {
       providers,
       local: {
         modelsDir: options.modelsDir,
-        autoDownload: options.autoDownload,
         models: {
           dictationStt: options.model,
           voiceStt: options.model,

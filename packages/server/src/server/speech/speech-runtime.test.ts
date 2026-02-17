@@ -79,7 +79,6 @@ describe("initializeSpeechRuntime readiness", () => {
       availability: {
         configured: false,
         modelsDir: null,
-        autoDownload: null,
       },
       cleanup: () => {},
     });
@@ -115,7 +114,6 @@ describe("initializeSpeechRuntime readiness", () => {
       availability: {
         configured: false,
         modelsDir: null,
-        autoDownload: null,
       },
       cleanup: () => {},
     });
