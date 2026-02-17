@@ -3501,24 +3501,8 @@ export class Session {
       }
 
       if (!agent && draftConfig) {
-        const provider = draftConfig.provider;
-        const client = this.providerRegistry[provider].createClient(this.sessionLogger);
-        const available = await client.isAvailable();
-        if (!available) {
-          this.emit({
-            type: "list_commands_response",
-            payload: {
-              agentId,
-              commands: [],
-              error: `Provider '${provider}' is not available`,
-              requestId,
-            },
-          });
-          return;
-        }
-
         const sessionConfig: AgentSessionConfig = {
-          provider,
+          provider: draftConfig.provider,
           cwd: expandTilde(draftConfig.cwd),
           ...(draftConfig.modeId ? { modeId: draftConfig.modeId } : {}),
           ...(draftConfig.model ? { model: draftConfig.model } : {}),
@@ -3527,41 +3511,16 @@ export class Session {
             : {}),
         };
 
-        const ephemeralSession = await client.createSession(sessionConfig);
-        try {
-          if (!ephemeralSession.listCommands) {
-            this.emit({
-              type: "list_commands_response",
-              payload: {
-                agentId,
-                commands: [],
-                error: `Provider '${provider}' does not support listing commands`,
-                requestId,
-              },
-            });
-            return;
-          }
-
-          const commands = await ephemeralSession.listCommands();
-          this.emit({
-            type: "list_commands_response",
-            payload: {
-              agentId,
-              commands,
-              error: null,
-              requestId,
-            },
-          });
-        } finally {
-          try {
-            await ephemeralSession.close();
-          } catch (closeError) {
-            this.sessionLogger.warn(
-              { err: closeError, provider, agentId },
-              "Failed to close ephemeral command listing session"
-            );
-          }
-        }
+        const commands = await this.agentManager.listDraftCommands(sessionConfig);
+        this.emit({
+          type: "list_commands_response",
+          payload: {
+            agentId,
+            commands,
+            error: null,
+            requestId,
+          },
+        });
         return;
       }
 
