@@ -885,6 +885,9 @@ export function WorkingDirectoryDropdown({
         onSelect={onSelectPath}
         searchPlaceholder="Search directories..."
         emptyText={emptyText}
+        allowCustomValue
+        customValuePrefix=""
+        customValueKind="directory"
         optionsPosition="above-search"
         title="Working directory"
         open={isOpen}

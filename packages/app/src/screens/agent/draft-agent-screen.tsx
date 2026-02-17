@@ -1191,6 +1191,9 @@ export function DraftAgentScreen({
             onSearchQueryChange={setWorkingDirSearchQuery}
             searchPlaceholder="Search directories..."
             emptyText={workingDirEmptyText}
+            allowCustomValue
+            customValuePrefix=""
+            customValueKind="directory"
             optionsPosition="above-search"
             title="Working directory"
             open={isWorkingDirOpen}

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
 import {
   View,
@@ -9,6 +9,7 @@ import {
   ScrollView,
   Platform,
   StatusBar,
+  useWindowDimensions,
 } from "react-native";
 import { StyleSheet, UnistylesRuntime, useUnistyles } from "react-native-unistyles";
 import {
@@ -22,15 +23,17 @@ import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
 import { Check, Folder, Search } from "lucide-react-native";
 import { flip, offset as floatingOffset, shift, size as floatingSize, useFloating } from "@floating-ui/react-native";
 import { getNextActiveIndex } from "./combobox-keyboard";
+import {
+  buildVisibleComboboxOptions,
+  getComboboxFallbackIndex,
+  orderVisibleComboboxOptions,
+  shouldShowCustomComboboxOption,
+} from "./combobox-options";
+import type { ComboboxOptionModel } from "./combobox-options";
 
 const IS_WEB = Platform.OS === "web";
 
-export interface ComboboxOption {
-  id: string;
-  label: string;
-  description?: string;
-  kind?: "directory";
-}
+export type ComboboxOption = ComboboxOptionModel;
 
 export interface ComboboxProps {
   options: ComboboxOption[];
@@ -181,7 +184,7 @@ export function ComboboxItem({
 }
 
 export function ComboboxEmpty({ children }: { children: ReactNode }): ReactElement {
-  return <Text style={styles.emptyText}>{children}</Text>;
+  return <Text testID="combobox-empty-text" style={styles.emptyText}>{children}</Text>;
 }
 
 export function Combobox({
@@ -210,13 +213,18 @@ export function Combobox({
     UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
   const effectiveOptionsPosition =
     isMobile ? "below-search" : optionsPosition;
+  const isDesktopAboveSearch =
+    !isMobile && Platform.OS === "web" && effectiveOptionsPosition === "above-search";
+  const { height: windowHeight } = useWindowDimensions();
   const bottomSheetRef = useRef<BottomSheetModal>(null);
   const snapPoints = useMemo(() => ["60%", "90%"], []);
   const [availableSize, setAvailableSize] = useState<{ width?: number; height?: number } | null>(null);
   const [referenceWidth, setReferenceWidth] = useState<number | null>(null);
+  const [referenceTop, setReferenceTop] = useState<number | null>(null);
   const [referenceAtOrigin, setReferenceAtOrigin] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [activeIndex, setActiveIndex] = useState<number>(-1);
+  const desktopOptionsScrollRef = useRef<ScrollView>(null);
 
   const isControlled = typeof open === "boolean";
   const [internalOpen, setInternalOpen] = useState(false);
@@ -262,7 +270,7 @@ export function Combobox({
     () => [
       floatingOffset(Platform.OS === "web" ? 0 : 4),
       ...(Platform.OS === "web" ? [] : [flip({ padding: collisionPadding })]),
-      shift({ padding: collisionPadding }),
+      ...(isDesktopAboveSearch ? [] : [shift({ padding: collisionPadding })]),
       floatingSize({
         padding: collisionPadding,
         apply({ availableWidth, availableHeight, rects }) {
@@ -280,7 +288,7 @@ export function Combobox({
         },
       }),
     ],
-    [collisionPadding]
+    [collisionPadding, isDesktopAboveSearch]
   );
 
   const { refs, floatingStyles, update } = useFloating({
@@ -305,30 +313,49 @@ export function Combobox({
   useEffect(() => {
     if (!isOpen || isMobile) {
       setReferenceAtOrigin(false);
+      setReferenceTop(null);
       return;
     }
 
     const referenceEl = anchorRef.current;
     if (!referenceEl) {
       setReferenceAtOrigin(false);
+      setReferenceTop(null);
       return;
     }
 
-    referenceEl.measureInWindow((x, y) => {
-      setReferenceAtOrigin(Math.abs(x) <= 1 && Math.abs(y) <= 1);
-    });
-  }, [anchorRef, isMobile, isOpen]);
+    const measure = () => {
+      referenceEl.measureInWindow((x, y) => {
+        setReferenceAtOrigin(Math.abs(x) <= 1 && Math.abs(y) <= 1);
+        setReferenceTop((prev) => (prev === y ? prev : y));
+      });
+    };
+
+    measure();
+    const raf = requestAnimationFrame(measure);
+    return () => cancelAnimationFrame(raf);
+  }, [anchorRef, isMobile, isOpen, searchQuery, windowHeight]);
 
   const floatingTop = toNumericStyleValue(floatingStyles.top);
   const floatingLeft = toNumericStyleValue(floatingStyles.left);
+  const desktopAboveSearchBottom =
+    isDesktopAboveSearch && referenceTop !== null
+      ? Math.max(windowHeight - referenceTop, collisionPadding)
+      : null;
   const hasResolvedDesktopPosition =
     referenceWidth !== null &&
-    floatingTop !== null &&
     floatingLeft !== null &&
-    (floatingTop !== 0 || floatingLeft !== 0 || referenceAtOrigin);
+    (isDesktopAboveSearch ? desktopAboveSearchBottom !== null : floatingTop !== null) &&
+    ((floatingTop ?? 0) !== 0 || floatingLeft !== 0 || referenceAtOrigin);
   const shouldHideDesktopContent =
     desktopPreventInitialFlash && !hasResolvedDesktopPosition;
   const shouldUseDesktopFade = !desktopPreventInitialFlash;
+  const desktopPositionStyle = isDesktopAboveSearch
+    ? {
+        left: floatingLeft ?? 0,
+        bottom: desktopAboveSearchBottom ?? 0,
+      }
+    : floatingStyles;
 
   useEffect(() => {
     if (!isMobile) return;
@@ -361,76 +388,75 @@ export function Combobox({
   );
 
   const normalizedSearch = searchable ? searchQuery.trim().toLowerCase() : "";
-  const filteredOptions = useMemo(() => {
-    if (!normalizedSearch) {
-      return options;
-    }
-    return options.filter(
-      (opt) =>
-        opt.label.toLowerCase().includes(normalizedSearch) ||
-        opt.id.toLowerCase().includes(normalizedSearch) ||
-        opt.description?.toLowerCase().includes(normalizedSearch)
-    );
-  }, [options, normalizedSearch]);
-
   const sanitizedSearchValue = searchQuery.trim();
-  const showCustomOption =
-    searchable &&
-    allowCustomValue &&
-    sanitizedSearchValue.length > 0 &&
-    !options.some(
-      (opt) =>
-        opt.id.toLowerCase() === sanitizedSearchValue.toLowerCase() ||
-        opt.label.toLowerCase() === sanitizedSearchValue.toLowerCase()
-    );
+  const showCustomOption = useMemo(
+    () =>
+      shouldShowCustomComboboxOption({
+        options,
+        searchQuery,
+        searchable,
+        allowCustomValue,
+      }),
+    [allowCustomValue, options, searchQuery, searchable]
+  );
 
-  const visibleOptions = useMemo(() => {
-    const next: Array<{
-      id: string;
-      label: string;
-      description?: string;
-      kind?: "directory";
-    }> = [];
+  const visibleOptions = useMemo(
+    () =>
+      buildVisibleComboboxOptions({
+        options,
+        searchQuery,
+        searchable,
+        allowCustomValue,
+        customValuePrefix,
+        customValueDescription,
+        customValueKind,
+      }),
+    [
+      allowCustomValue,
+      customValueDescription,
+      customValueKind,
+      customValuePrefix,
+      options,
+      searchQuery,
+      searchable,
+    ]
+  );
 
-    if (showCustomOption) {
-      const trimmedPrefix = customValuePrefix.trim();
-      const customLabel =
-        trimmedPrefix.length > 0
-          ? `${trimmedPrefix} "${sanitizedSearchValue}"`
-          : sanitizedSearchValue;
-      next.push({
-        id: sanitizedSearchValue,
-        label: customLabel,
-        description: customValueDescription,
-        kind: customValueKind,
-      });
+  const orderedVisibleOptions = useMemo(
+    () => orderVisibleComboboxOptions(visibleOptions, effectiveOptionsPosition),
+    [effectiveOptionsPosition, visibleOptions]
+  );
+
+  const pinDesktopOptionsToBottom = useCallback(() => {
+    if (isMobile || effectiveOptionsPosition !== "above-search") {
+      return;
     }
+    desktopOptionsScrollRef.current?.scrollToEnd({ animated: false });
+    requestAnimationFrame(() => {
+      desktopOptionsScrollRef.current?.scrollToEnd({ animated: false });
+    });
+  }, [effectiveOptionsPosition, isMobile]);
 
-    for (const opt of filteredOptions) {
-      next.push({
-        id: opt.id,
-        label: opt.label,
-        description: opt.description,
-        kind: opt.kind,
-      });
+  const handleDesktopOptionsContentSizeChange = useCallback(() => {
+    if (!isOpen) {
+      return;
     }
+    pinDesktopOptionsToBottom();
+  }, [isOpen, pinDesktopOptionsToBottom]);
 
-    return next;
-  }, [
-    customValueDescription,
-    customValueKind,
-    customValuePrefix,
-    filteredOptions,
-    sanitizedSearchValue,
-    showCustomOption,
-  ]);
-
-  const orderedVisibleOptions = useMemo(() => {
-    if (effectiveOptionsPosition !== "above-search") {
-      return visibleOptions;
+  useEffect(() => {
+    if (!isOpen) {
+      return;
     }
-    return [...visibleOptions].reverse();
-  }, [effectiveOptionsPosition, visibleOptions]);
+    pinDesktopOptionsToBottom();
+  }, [isOpen, orderedVisibleOptions, pinDesktopOptionsToBottom]);
+
+  useLayoutEffect(() => {
+    if (!isOpen || isMobile) {
+      return;
+    }
+    void update();
+  }, [isOpen, isMobile, orderedVisibleOptions.length, searchQuery, update]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -441,8 +467,10 @@ export function Combobox({
       return;
     }
 
-    const fallbackIndex =
-      effectiveOptionsPosition === "above-search" ? orderedVisibleOptions.length - 1 : 0;
+    const fallbackIndex = getComboboxFallbackIndex(
+      orderedVisibleOptions.length,
+      effectiveOptionsPosition
+    );
 
     if (normalizedSearch) {
       setActiveIndex(fallbackIndex);
@@ -607,6 +635,7 @@ export function Combobox({
       <View ref={refs.setOffsetParent} collapsable={false} style={styles.desktopOverlay}>
         <Pressable style={styles.desktopBackdrop} onPress={handleClose} />
         <Animated.View
+          testID="combobox-desktop-container"
           entering={shouldUseDesktopFade ? FadeIn.duration(100) : undefined}
           exiting={shouldUseDesktopFade ? FadeOut.duration(100) : undefined}
           style={[
@@ -616,7 +645,7 @@ export function Combobox({
               minWidth: referenceWidth ?? 200,
               maxWidth: 400,
             },
-            floatingStyles,
+            desktopPositionStyle,
             shouldHideDesktopContent ? { opacity: 0 } : null,
             typeof availableSize?.height === "number" ? { maxHeight: Math.min(availableSize.height, 400) } : null,
           ]}
@@ -635,15 +664,32 @@ export function Combobox({
             </ScrollView>
           ) : (
             <>
+              {effectiveOptionsPosition === "above-search" ? (
+                <ScrollView
+                  ref={desktopOptionsScrollRef}
+                  contentContainerStyle={[
+                    styles.desktopScrollContent,
+                    styles.desktopScrollContentAboveSearch,
+                  ]}
+                  keyboardShouldPersistTaps="handled"
+                  showsVerticalScrollIndicator={false}
+                  style={styles.desktopScroll}
+                  onContentSizeChange={handleDesktopOptionsContentSizeChange}
+                >
+                  {optionsList}
+                </ScrollView>
+              ) : null}
               {searchable ? searchInput : null}
-              <ScrollView
-                contentContainerStyle={styles.desktopScrollContent}
-                keyboardShouldPersistTaps="handled"
-                showsVerticalScrollIndicator={false}
-                style={styles.desktopScroll}
-              >
-                {optionsList}
-              </ScrollView>
+              {effectiveOptionsPosition === "below-search" ? (
+                <ScrollView
+                  contentContainerStyle={styles.desktopScrollContent}
+                  keyboardShouldPersistTaps="handled"
+                  showsVerticalScrollIndicator={false}
+                  style={styles.desktopScroll}
+                >
+                  {optionsList}
+                </ScrollView>
+              ) : null}
             </>
           )}
         </Animated.View>
@@ -773,9 +819,14 @@ const styles = StyleSheet.create((theme) => ({
     overflow: "hidden",
   },
   desktopScroll: {
-    maxHeight: 400,
+    flexShrink: 1,
+    minHeight: 0,
   },
   desktopScrollContent: {
     paddingVertical: theme.spacing[1],
+  },
+  desktopScrollContentAboveSearch: {
+    flexGrow: 1,
+    justifyContent: "flex-end",
   },
 }));
