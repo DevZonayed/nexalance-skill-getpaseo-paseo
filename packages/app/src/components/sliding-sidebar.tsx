@@ -325,8 +325,9 @@ export function SlidingSidebar({ selectedAgentId }: SlidingSidebarProps) {
 
 
   // Render mobile sidebar
-  // On web, use "auto" instead of "box-none" because web's pointer-events: none blocks scroll
-  const overlayPointerEvents = Platform.OS === "web" ? "auto" : "box-none";
+  // On web, keep the overlay interactive only while the sidebar is open.
+  // This preserves swipe/scroll behavior without blocking taps when closed.
+  const overlayPointerEvents = Platform.OS === "web" ? (isOpen ? "auto" : "none") : "box-none";
   if (isMobile) {
     return (
       <View style={StyleSheet.absoluteFillObject} pointerEvents={overlayPointerEvents}>
