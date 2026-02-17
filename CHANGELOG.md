@@ -1,0 +1,73 @@
+# Changelog
+
+## [0.1.7] - 2026-02-16
+### Added
+- Improved agent workspace flows with better directory suggestions.
+- Added iOS TestFlight and Android app access request forms on the website.
+
+### Improved
+- Unified daemon startup behavior between dev and CLI paths for more predictable local runs.
+- Improved website app download and update guidance.
+
+### Fixed
+- Prevented an initial desktop combobox `0,0` position flash.
+- Fixed CLI version output issues.
+- Hardened server runtime loading for local speech dependencies.
+
+## [0.1.6] - 2026-02-16
+### Notes
+- No major visible product changes in this patch release.
+
+## [0.1.5] - 2026-02-16
+### Added
+- Added terminal reattach support and better worktree terminal handling.
+- Added global keyboard shortcut help in the app.
+- Added sidebar host filtering and improved agent workflow controls.
+
+### Improved
+- Improved worktree setup visibility by streaming setup progress.
+- Improved terminal streaming reliability and lifecycle handling.
+- Preserved explorer tab state so context survives navigation better.
+
+## [0.1.4] - 2026-02-14
+### Added
+- Added voice capability status reporting in the client.
+- Added background local speech model downloads with runtime gating.
+- Added adaptive dictation finish timing based on server-provided budgets.
+- Added relay reconnect behavior with grace periods and branch suggestions.
+
+### Improved
+- Improved connection selection and agent hydration reliability.
+- Improved timeline loading with cursor-based fetch behavior.
+- Improved first-run experience by bootstrapping a default localhost connection.
+- Improved inline code rendering by auto-linkifying URLs.
+
+### Fixed
+- Fixed Linux checkout diff watch behavior to avoid recursive watches.
+- Fixed stale relay client timer behavior.
+- Fixed unnecessary git diff header auto-scroll on collapse.
+
+## [0.1.3] - 2026-02-12
+### Added
+- Added CLI onboarding command.
+- Added CLI `--output-schema` support for structured agent output.
+- Added CLI agent metadata update support for names and labels.
+- Added provider availability detection with normalization of legacy default model IDs.
+
+### Improved
+- Improved file explorer refresh feedback and unresolved checkout fallback handling.
+- Added better voice interrupt handling with a speech-start grace period.
+- Improved CLI defaults to list all non-archived agents by default.
+- Improved website UX with clearer install CTA and privacy policy access.
+
+### Fixed
+- Fixed dev runner entry issues and sherpa TTS initialization behavior.
+
+## [0.1.2] - 2026-02-11
+### Notes
+- No major visible product changes in this patch release.
+
+## [0.1.1] - 2026-02-11
+
+### Added
+- Initial `0.1.x` release line.
