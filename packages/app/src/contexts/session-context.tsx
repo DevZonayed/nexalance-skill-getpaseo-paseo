@@ -1,10 +1,11 @@
 import { useRef, ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { AppState, Platform } from "react-native";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useDaemonClient } from "@/hooks/use-daemon-client";
 import { useAudioPlayer } from "@/hooks/use-audio-player";
 import { useClientActivity } from "@/hooks/use-client-activity";
 import { usePushTokenRegistration } from "@/hooks/use-push-token-registration";
+import { clearArchiveAgentPending } from "@/hooks/use-archive-agent";
 import {
   applyStreamEvent,
   generateMessageId,
@@ -219,6 +220,7 @@ export function SessionProvider({
   activeConnection,
   daemonPublicKeyB64,
 }: SessionProviderProps) {
+  const queryClient = useQueryClient();
   const client = useDaemonClient(serverUrl, { daemonPublicKeyB64 });
   const [connectionSnapshot, setConnectionSnapshot] =
     useState<DaemonConnectionSnapshot>(() =>
@@ -480,6 +482,7 @@ export function SessionProvider({
         const agentId = update.agentId;
         previousAgentStatusRef.current.delete(agentId);
         pendingAgentUpdatesRef.current.delete(agentId);
+        clearArchiveAgentPending({ queryClient, serverId, agentId });
 
         setAgents(serverId, (prev) => {
           if (!prev.has(agentId)) {
@@ -543,6 +546,14 @@ export function SessionProvider({
         return next;
       });
 
+      if (agent.archivedAt) {
+        clearArchiveAgentPending({
+          queryClient,
+          serverId,
+          agentId: agent.id,
+        });
+      }
+
       // Update agentLastActivity slice (top-level)
       setAgentLastActivity(agent.id, agent.lastActivityAt);
 
@@ -586,6 +597,7 @@ export function SessionProvider({
       previousAgentStatusRef.current.set(agent.id, agent.status);
     },
     [
+      queryClient,
       serverId,
       setAgents,
       setAgentLastActivity,
@@ -1268,6 +1280,7 @@ export function SessionProvider({
       const { agentId } = message.payload;
       console.log("[Session] Agent deleted:", agentId);
       pendingAgentUpdatesRef.current.delete(agentId);
+      clearArchiveAgentPending({ queryClient, serverId, agentId });
 
       setAgents(serverId, (prev) => {
         if (!prev.has(agentId)) {
@@ -1349,6 +1362,7 @@ export function SessionProvider({
       }
       const { agentId, archivedAt } = message.payload;
       console.log("[Session] Agent archived:", agentId);
+      clearArchiveAgentPending({ queryClient, serverId, agentId });
 
       setAgents(serverId, (prev) => {
         const existing = prev.get(agentId);
@@ -1381,6 +1395,7 @@ export function SessionProvider({
   }, [
     client,
     audioPlayer,
+    queryClient,
     serverId,
     setIsPlayingAudio,
     setMessages,
