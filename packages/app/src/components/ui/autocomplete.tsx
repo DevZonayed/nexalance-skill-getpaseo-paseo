@@ -1,25 +1,27 @@
-import { useCallback, useEffect, useRef } from "react";
-import { ScrollView, Text, View, Pressable, type LayoutChangeEvent } from "react-native";
-import { StyleSheet } from "react-native-unistyles";
-import { Theme } from "@/styles/theme";
-import { getAutocompleteScrollOffset } from "./autocomplete-utils";
+import { useCallback, useEffect, useRef } from 'react'
+import { ScrollView, Text, View, Pressable, type LayoutChangeEvent } from 'react-native'
+import { StyleSheet, useUnistyles } from 'react-native-unistyles'
+import { File, Folder } from 'lucide-react-native'
+import { Theme } from '@/styles/theme'
+import { getAutocompleteScrollOffset } from './autocomplete-utils'
 
 export interface AutocompleteOption {
-  id: string;
-  label: string;
-  detail?: string;
-  description?: string;
+  id: string
+  label: string
+  detail?: string
+  description?: string
+  kind?: 'command' | 'file' | 'directory'
 }
 
 interface AutocompleteProps {
-  options: readonly AutocompleteOption[];
-  selectedIndex: number;
-  onSelect: (option: AutocompleteOption) => void;
-  isLoading?: boolean;
-  errorMessage?: string;
-  loadingText?: string;
-  emptyText?: string;
-  maxHeight?: number;
+  options: readonly AutocompleteOption[]
+  selectedIndex: number
+  onSelect: (option: AutocompleteOption) => void
+  isLoading?: boolean
+  errorMessage?: string
+  loadingText?: string
+  emptyText?: string
+  maxHeight?: number
 }
 
 export function Autocomplete({
@@ -28,23 +30,24 @@ export function Autocomplete({
   onSelect,
   isLoading = false,
   errorMessage,
-  loadingText = "Loading...",
-  emptyText = "No results found",
+  loadingText = 'Loading...',
+  emptyText = 'No results found',
   maxHeight = 220,
 }: AutocompleteProps) {
-  const scrollRef = useRef<ScrollView>(null);
-  const rowLayoutsRef = useRef<Map<number, { top: number; height: number }>>(new Map());
-  const viewportHeightRef = useRef(0);
-  const scrollOffsetRef = useRef(0);
+  const { theme } = useUnistyles()
+  const scrollRef = useRef<ScrollView>(null)
+  const rowLayoutsRef = useRef<Map<number, { top: number; height: number }>>(new Map())
+  const viewportHeightRef = useRef(0)
+  const scrollOffsetRef = useRef(0)
 
   const ensureActiveItemVisible = useCallback(() => {
     if (selectedIndex < 0) {
-      return;
+      return
     }
 
-    const layout = rowLayoutsRef.current.get(selectedIndex);
+    const layout = rowLayoutsRef.current.get(selectedIndex)
     if (!layout) {
-      return;
+      return
     }
 
     const nextOffset = getAutocompleteScrollOffset({
@@ -52,60 +55,60 @@ export function Autocomplete({
       viewportHeight: viewportHeightRef.current,
       itemTop: layout.top,
       itemHeight: layout.height,
-    });
+    })
 
     if (Math.abs(nextOffset - scrollOffsetRef.current) < 1) {
-      return;
+      return
     }
 
-    scrollOffsetRef.current = nextOffset;
-    scrollRef.current?.scrollTo({ y: nextOffset, animated: false });
-  }, [selectedIndex]);
+    scrollOffsetRef.current = nextOffset
+    scrollRef.current?.scrollTo({ y: nextOffset, animated: false })
+  }, [selectedIndex])
 
   const pinToBottom = useCallback(() => {
-    scrollRef.current?.scrollToEnd({ animated: false });
+    scrollRef.current?.scrollToEnd({ animated: false })
     requestAnimationFrame(() => {
-      scrollRef.current?.scrollToEnd({ animated: false });
-    });
-  }, []);
+      scrollRef.current?.scrollToEnd({ animated: false })
+    })
+  }, [])
 
   useEffect(() => {
-    rowLayoutsRef.current.clear();
-    scrollOffsetRef.current = 0;
-  }, [options]);
+    rowLayoutsRef.current.clear()
+    scrollOffsetRef.current = 0
+  }, [options])
 
   useEffect(() => {
     if (options.length === 0) {
-      return;
+      return
     }
-    pinToBottom();
-  }, [options, pinToBottom]);
+    pinToBottom()
+  }, [options, pinToBottom])
 
   useEffect(() => {
-    const raf = requestAnimationFrame(ensureActiveItemVisible);
+    const raf = requestAnimationFrame(ensureActiveItemVisible)
     return () => {
-      cancelAnimationFrame(raf);
-    };
-  }, [ensureActiveItemVisible, options.length]);
+      cancelAnimationFrame(raf)
+    }
+  }, [ensureActiveItemVisible, options.length])
 
   const handleScrollViewLayout = useCallback(
     (event: LayoutChangeEvent) => {
-      viewportHeightRef.current = event.nativeEvent.layout.height;
-      ensureActiveItemVisible();
+      viewportHeightRef.current = event.nativeEvent.layout.height
+      ensureActiveItemVisible()
     },
     [ensureActiveItemVisible]
-  );
+  )
 
   const handleRowLayout = useCallback(
     (index: number, event: LayoutChangeEvent) => {
       rowLayoutsRef.current.set(index, {
         top: event.nativeEvent.layout.y,
         height: event.nativeEvent.layout.height,
-      });
-      ensureActiveItemVisible();
+      })
+      ensureActiveItemVisible()
     },
     [ensureActiveItemVisible]
-  );
+  )
 
   if (isLoading) {
     return (
@@ -114,7 +117,7 @@ export function Autocomplete({
           <Text style={styles.emptyText}>{loadingText}</Text>
         </View>
       </View>
-    );
+    )
   }
 
   if (errorMessage) {
@@ -124,7 +127,7 @@ export function Autocomplete({
           <Text style={styles.emptyText}>Error: {errorMessage}</Text>
         </View>
       </View>
-    );
+    )
   }
 
   if (options.length === 0) {
@@ -134,7 +137,7 @@ export function Autocomplete({
           <Text style={styles.emptyText}>{emptyText}</Text>
         </View>
       </View>
-    );
+    )
   }
 
   return (
@@ -144,7 +147,7 @@ export function Autocomplete({
         onLayout={handleScrollViewLayout}
         onContentSizeChange={pinToBottom}
         onScroll={(event) => {
-          scrollOffsetRef.current = event.nativeEvent.contentOffset.y;
+          scrollOffsetRef.current = event.nativeEvent.contentOffset.y
         }}
         scrollEventThrottle={16}
         style={styles.scrollView}
@@ -152,7 +155,7 @@ export function Autocomplete({
         keyboardShouldPersistTaps="always"
       >
         {options.map((option, index) => {
-          const isSelected = index === selectedIndex;
+          const isSelected = index === selectedIndex
           return (
             <Pressable
               key={option.id}
@@ -163,12 +166,19 @@ export function Autocomplete({
                 (hovered || pressed || isSelected) && styles.itemActive,
               ]}
             >
+              {option.kind === 'directory' || option.kind === 'file' ? (
+                <View style={styles.itemLeading}>
+                  {option.kind === 'directory' ? (
+                    <Folder size={14} color={theme.colors.foregroundMuted} />
+                  ) : (
+                    <File size={14} color={theme.colors.foregroundMuted} />
+                  )}
+                </View>
+              ) : null}
               <View style={styles.itemMain}>
                 <View style={styles.itemHeader}>
                   <Text style={styles.itemLabel}>{option.label}</Text>
-                  {option.detail ? (
-                    <Text style={styles.itemDetail}>{option.detail}</Text>
-                  ) : null}
+                  {option.detail ? <Text style={styles.itemDetail}>{option.detail}</Text> : null}
                 </View>
                 {option.description ? (
                   <Text style={styles.itemDescription} numberOfLines={1}>
@@ -177,11 +187,11 @@ export function Autocomplete({
                 ) : null}
               </View>
             </Pressable>
-          );
+          )
         })}
       </ScrollView>
     </View>
-  );
+  )
 }
 
 const styles = StyleSheet.create(((theme: Theme) => ({
@@ -190,7 +200,7 @@ const styles = StyleSheet.create(((theme: Theme) => ({
     borderWidth: theme.borderWidth[1],
     borderColor: theme.colors.border,
     borderRadius: theme.borderRadius.lg,
-    overflow: "hidden",
+    overflow: 'hidden',
   },
   scrollView: {
     flexGrow: 0,
@@ -200,11 +210,17 @@ const styles = StyleSheet.create(((theme: Theme) => ({
     paddingVertical: theme.spacing[1],
   },
   item: {
-    flexDirection: "row",
-    alignItems: "center",
+    flexDirection: 'row',
+    alignItems: 'center',
     minHeight: 36,
     paddingHorizontal: theme.spacing[3],
     paddingVertical: theme.spacing[2],
+  },
+  itemLeading: {
+    width: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: theme.spacing[1],
   },
   itemActive: {
     backgroundColor: theme.colors.surface1,
@@ -214,8 +230,8 @@ const styles = StyleSheet.create(((theme: Theme) => ({
     minWidth: 0,
   },
   itemHeader: {
-    flexDirection: "row",
-    alignItems: "center",
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: theme.spacing[2],
   },
   itemLabel: {
@@ -240,4 +256,4 @@ const styles = StyleSheet.create(((theme: Theme) => ({
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.sm,
   },
-})) as any) as Record<string, any>;
+})) as any) as Record<string, any>
