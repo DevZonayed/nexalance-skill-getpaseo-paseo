@@ -129,6 +129,17 @@ describe("searchHomeDirectories", () => {
 
     expect(results).toContain(path.join(homeDir, "projects"));
     expect(results).toContain(path.join(homeDir, "documents"));
+    expect(results).not.toContain(path.join(homeDir, ".hidden"));
+  });
+
+  it("does not return hidden directories during tree search", async () => {
+    const results = await searchHomeDirectories({
+      homeDir,
+      query: "cache",
+      limit: 20,
+    });
+
+    expect(results).not.toContain(path.join(homeDir, ".hidden", "cache"));
   });
 
   it("does not return paths that escape home through symlinks", async () => {

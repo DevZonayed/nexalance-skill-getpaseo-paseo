@@ -386,6 +386,9 @@ async function listChildDirectories(input: {
   );
   const entries: ChildDirectoryEntry[] = [];
   for (const dirent of dirents) {
+    if (isHiddenDirectoryName(dirent.name)) {
+      continue;
+    }
     if (!dirent.isDirectory() && !dirent.isSymbolicLink()) {
       continue;
     }
@@ -427,6 +430,10 @@ async function resolveDirectoryCandidate(input: {
     return null;
   }
   return resolved;
+}
+
+function isHiddenDirectoryName(name: string): boolean {
+  return name.startsWith(".");
 }
 
 function setDirectoryListCache(cacheKey: string, entry: DirectoryListCacheEntry): void {
