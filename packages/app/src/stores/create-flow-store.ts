@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import type { UserMessageImageAttachment } from "@/types/stream";
 
 type PendingCreateAttempt = {
   serverId: string;
@@ -6,6 +7,7 @@ type PendingCreateAttempt = {
   messageId: string;
   text: string;
   timestamp: number;
+  images?: UserMessageImageAttachment[];
 };
 
 type CreateFlowState = {
@@ -24,4 +26,3 @@ export const useCreateFlowStore = create<CreateFlowState>((set) => ({
     ),
   clear: () => set({ pending: null }),
 }));
-

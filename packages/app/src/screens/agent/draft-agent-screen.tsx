@@ -40,8 +40,11 @@ import { useCreateFlowStore } from "@/stores/create-flow-store";
 import { MAX_CONTENT_WIDTH } from "@/constants/layout";
 import { WelcomeScreen } from "@/components/welcome-screen";
 import type { Agent } from "@/contexts/session-context";
-import type { StreamItem } from "@/types/stream";
-import { generateMessageId } from "@/types/stream";
+import {
+  generateMessageId,
+  type StreamItem,
+  type UserMessageImageAttachment,
+} from "@/types/stream";
 import { encodeImages } from "@/utils/encode-images";
 import type {
   AgentProvider,
@@ -262,6 +265,7 @@ export function DraftAgentScreen({
     messageId: string;
     text: string;
     timestamp: Date;
+    images?: UserMessageImageAttachment[];
   };
 
   type DraftAgentMachineState =
@@ -831,6 +835,9 @@ export function DraftAgentScreen({
         id: machine.attempt.messageId,
         text: machine.attempt.text,
         timestamp: machine.attempt.timestamp,
+        ...(machine.attempt.images && machine.attempt.images.length > 0
+          ? { images: machine.attempt.images }
+          : {}),
       },
     ];
   }, [machine]);
@@ -893,7 +900,7 @@ export function DraftAgentScreen({
       images,
     }: {
       text: string;
-      images?: Array<{ uri: string; mimeType: string }>;
+      images?: UserMessageImageAttachment[];
     }) => {
       if (isSubmitting) {
         throw new Error("Already loading");
@@ -952,6 +959,7 @@ export function DraftAgentScreen({
         messageId: generateMessageId(),
         text: trimmedPrompt,
         timestamp: new Date(),
+        ...(images && images.length > 0 ? { images } : {}),
       };
       setPendingCreateAttempt({
         serverId: selectedServerId,
@@ -959,6 +967,9 @@ export function DraftAgentScreen({
         messageId: attempt.messageId,
         text: attempt.text,
         timestamp: attempt.timestamp.getTime(),
+        ...(attempt.images && attempt.images.length > 0
+          ? { images: attempt.images }
+          : {}),
       });
       const modeId =
         modeOptions.length > 0 && selectedMode !== "" ? selectedMode : undefined;
