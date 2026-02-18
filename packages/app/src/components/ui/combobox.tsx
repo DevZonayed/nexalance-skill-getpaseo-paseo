@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import type { ReactElement, ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import type { ReactElement, ReactNode } from 'react'
 import {
   View,
   Text,
@@ -10,87 +10,88 @@ import {
   Platform,
   StatusBar,
   useWindowDimensions,
-} from "react-native";
-import { StyleSheet, UnistylesRuntime, useUnistyles } from "react-native-unistyles";
+} from 'react-native'
+import { StyleSheet, UnistylesRuntime, useUnistyles } from 'react-native-unistyles'
 import {
   BottomSheetModal,
   BottomSheetScrollView,
   BottomSheetBackdrop,
   BottomSheetTextInput,
   BottomSheetBackgroundProps,
-} from "@gorhom/bottom-sheet";
-import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
-import { Check, Folder, Search } from "lucide-react-native";
-import { flip, offset as floatingOffset, shift, size as floatingSize, useFloating } from "@floating-ui/react-native";
-import { getNextActiveIndex } from "./combobox-keyboard";
+} from '@gorhom/bottom-sheet'
+import Animated, { FadeIn, FadeOut } from 'react-native-reanimated'
+import { Check, File, Folder, Search } from 'lucide-react-native'
+import {
+  flip,
+  offset as floatingOffset,
+  shift,
+  size as floatingSize,
+  useFloating,
+} from '@floating-ui/react-native'
+import { getNextActiveIndex } from './combobox-keyboard'
 import {
   buildVisibleComboboxOptions,
   getComboboxFallbackIndex,
   orderVisibleComboboxOptions,
   shouldShowCustomComboboxOption,
-} from "./combobox-options";
-import type { ComboboxOptionModel } from "./combobox-options";
+} from './combobox-options'
+import type { ComboboxOptionModel } from './combobox-options'
 
-const IS_WEB = Platform.OS === "web";
+const IS_WEB = Platform.OS === 'web'
 
-export type ComboboxOption = ComboboxOptionModel;
+export type ComboboxOption = ComboboxOptionModel
 
 export interface ComboboxProps {
-  options: ComboboxOption[];
-  value: string;
-  onSelect: (id: string) => void;
-  onSearchQueryChange?: (query: string) => void;
-  searchable?: boolean;
-  placeholder?: string;
-  searchPlaceholder?: string;
-  emptyText?: string;
-  allowCustomValue?: boolean;
-  customValuePrefix?: string;
-  customValueDescription?: string;
-  customValueKind?: "directory";
-  optionsPosition?: "below-search" | "above-search";
-  title?: string;
-  open?: boolean;
-  onOpenChange?: (open: boolean) => void;
-  desktopPlacement?: "top-start" | "bottom-start";
+  options: ComboboxOption[]
+  value: string
+  onSelect: (id: string) => void
+  onSearchQueryChange?: (query: string) => void
+  searchable?: boolean
+  placeholder?: string
+  searchPlaceholder?: string
+  emptyText?: string
+  allowCustomValue?: boolean
+  customValuePrefix?: string
+  customValueDescription?: string
+  customValueKind?: 'directory' | 'file'
+  optionsPosition?: 'below-search' | 'above-search'
+  title?: string
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
+  desktopPlacement?: 'top-start' | 'bottom-start'
   /**
    * Prevents an initial frame at 0,0 by hiding desktop content until floating
    * coordinates resolve. This intentionally disables fade enter/exit animation
    * for that combobox instance to avoid animation overriding hidden opacity.
    */
-  desktopPreventInitialFlash?: boolean;
-  anchorRef: React.RefObject<View | null>;
-  children?: ReactNode;
+  desktopPreventInitialFlash?: boolean
+  anchorRef: React.RefObject<View | null>
+  children?: ReactNode
 }
 
 function toNumericStyleValue(value: unknown): number | null {
-  if (typeof value === "number" && Number.isFinite(value)) {
-    return value;
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value
   }
-  if (typeof value === "string") {
-    const parsed = Number.parseFloat(value);
+  if (typeof value === 'string') {
+    const parsed = Number.parseFloat(value)
     if (Number.isFinite(parsed)) {
-      return parsed;
+      return parsed
     }
   }
-  return null;
+  return null
 }
 
 function ComboboxSheetBackground({ style }: BottomSheetBackgroundProps) {
-  return (
-    <Animated.View
-      pointerEvents="none"
-      style={[style, styles.bottomSheetBackground]}
-    />
-  );
+  return <Animated.View pointerEvents="none" style={[style, styles.bottomSheetBackground]} />
 }
 
 interface SearchInputProps {
-  placeholder: string;
-  value: string;
-  onChangeText: (text: string) => void;
-  onSubmitEditing?: () => void;
-  autoFocus?: boolean;
+  placeholder: string
+  value: string
+  onChangeText: (text: string) => void
+  onSubmitEditing?: () => void
+  autoFocus?: boolean
 }
 
 function SearchInput({
@@ -100,18 +101,18 @@ function SearchInput({
   onSubmitEditing,
   autoFocus = false,
 }: SearchInputProps): ReactElement {
-  const { theme } = useUnistyles();
-  const inputRef = useRef<TextInput>(null);
-  const InputComponent = Platform.OS === "web" ? TextInput : BottomSheetTextInput;
+  const { theme } = useUnistyles()
+  const inputRef = useRef<TextInput>(null)
+  const InputComponent = Platform.OS === 'web' ? TextInput : BottomSheetTextInput
 
   useEffect(() => {
     if (autoFocus && IS_WEB && inputRef.current) {
       const timer = setTimeout(() => {
-        inputRef.current?.focus();
-      }, 50);
-      return () => clearTimeout(timer);
+        inputRef.current?.focus()
+      }, 50)
+      return () => clearTimeout(timer)
     }
-  }, [autoFocus]);
+  }, [autoFocus])
 
   return (
     <View style={styles.searchInputContainer}>
@@ -119,7 +120,7 @@ function SearchInput({
       <InputComponent
         ref={inputRef as any}
         // @ts-expect-error - outlineStyle is web-only
-        style={[styles.searchInput, IS_WEB && { outlineStyle: "none" }]}
+        style={[styles.searchInput, IS_WEB && { outlineStyle: 'none' }]}
         placeholder={placeholder}
         placeholderTextColor={theme.colors.foregroundMuted}
         value={value}
@@ -129,17 +130,17 @@ function SearchInput({
         onSubmitEditing={onSubmitEditing}
       />
     </View>
-  );
+  )
 }
 
 export interface ComboboxItemProps {
-  label: string;
-  description?: string;
-  kind?: "directory";
-  selected?: boolean;
-  active?: boolean;
-  onPress: () => void;
-  testID?: string;
+  label: string
+  description?: string
+  kind?: 'directory' | 'file'
+  selected?: boolean
+  active?: boolean
+  onPress: () => void
+  testID?: string
 }
 
 export function ComboboxItem({
@@ -151,7 +152,7 @@ export function ComboboxItem({
   onPress,
   testID,
 }: ComboboxItemProps): ReactElement {
-  const { theme } = useUnistyles();
+  const { theme } = useUnistyles()
   return (
     <Pressable
       testID={testID}
@@ -163,15 +164,23 @@ export function ComboboxItem({
         active && styles.comboboxItemActive,
       ]}
     >
-      {kind === "directory" ? (
+      {kind === 'directory' || kind === 'file' ? (
         <View style={styles.comboboxItemLeadingSlot}>
-          <Folder size={16} color={theme.colors.foregroundMuted} />
+          {kind === 'directory' ? (
+            <Folder size={16} color={theme.colors.foregroundMuted} />
+          ) : (
+            <File size={16} color={theme.colors.foregroundMuted} />
+          )}
         </View>
       ) : null}
       <View style={styles.comboboxItemContent}>
-        <Text numberOfLines={1} style={styles.comboboxItemLabel}>{label}</Text>
+        <Text numberOfLines={1} style={styles.comboboxItemLabel}>
+          {label}
+        </Text>
         {description ? (
-          <Text numberOfLines={2} style={styles.comboboxItemDescription}>{description}</Text>
+          <Text numberOfLines={2} style={styles.comboboxItemDescription}>
+            {description}
+          </Text>
         ) : null}
       </View>
       {selected ? (
@@ -180,11 +189,15 @@ export function ComboboxItem({
         </View>
       ) : null}
     </Pressable>
-  );
+  )
 }
 
 export function ComboboxEmpty({ children }: { children: ReactNode }): ReactElement {
-  return <Text testID="combobox-empty-text" style={styles.emptyText}>{children}</Text>;
+  return (
+    <Text testID="combobox-empty-text" style={styles.emptyText}>
+      {children}
+    </Text>
+  )
 }
 
 export function Combobox({
@@ -193,202 +206,196 @@ export function Combobox({
   onSelect,
   onSearchQueryChange,
   searchable = true,
-  placeholder = "Search...",
+  placeholder = 'Search...',
   searchPlaceholder,
-  emptyText = "No options match your search.",
+  emptyText = 'No options match your search.',
   allowCustomValue = false,
-  customValuePrefix = "Use",
+  customValuePrefix = 'Use',
   customValueDescription,
   customValueKind,
-  optionsPosition = "below-search",
-  title = "Select",
+  optionsPosition = 'below-search',
+  title = 'Select',
   open,
   onOpenChange,
-  desktopPlacement = "top-start",
+  desktopPlacement = 'top-start',
   desktopPreventInitialFlash = true,
   anchorRef,
   children,
 }: ComboboxProps): ReactElement {
-  const isMobile =
-    UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
-  const effectiveOptionsPosition =
-    isMobile ? "below-search" : optionsPosition;
+  const isMobile = UnistylesRuntime.breakpoint === 'xs' || UnistylesRuntime.breakpoint === 'sm'
+  const effectiveOptionsPosition = isMobile ? 'below-search' : optionsPosition
   const isDesktopAboveSearch =
-    !isMobile && Platform.OS === "web" && effectiveOptionsPosition === "above-search";
-  const { height: windowHeight } = useWindowDimensions();
-  const bottomSheetRef = useRef<BottomSheetModal>(null);
-  const snapPoints = useMemo(() => ["60%", "90%"], []);
-  const [availableSize, setAvailableSize] = useState<{ width?: number; height?: number } | null>(null);
-  const [referenceWidth, setReferenceWidth] = useState<number | null>(null);
-  const [referenceTop, setReferenceTop] = useState<number | null>(null);
-  const [referenceAtOrigin, setReferenceAtOrigin] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [activeIndex, setActiveIndex] = useState<number>(-1);
-  const desktopOptionsScrollRef = useRef<ScrollView>(null);
+    !isMobile && Platform.OS === 'web' && effectiveOptionsPosition === 'above-search'
+  const { height: windowHeight } = useWindowDimensions()
+  const bottomSheetRef = useRef<BottomSheetModal>(null)
+  const snapPoints = useMemo(() => ['60%', '90%'], [])
+  const [availableSize, setAvailableSize] = useState<{ width?: number; height?: number } | null>(
+    null
+  )
+  const [referenceWidth, setReferenceWidth] = useState<number | null>(null)
+  const [referenceTop, setReferenceTop] = useState<number | null>(null)
+  const [referenceAtOrigin, setReferenceAtOrigin] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [activeIndex, setActiveIndex] = useState<number>(-1)
+  const desktopOptionsScrollRef = useRef<ScrollView>(null)
 
-  const isControlled = typeof open === "boolean";
-  const [internalOpen, setInternalOpen] = useState(false);
-  const isOpen = isControlled ? open : internalOpen;
+  const isControlled = typeof open === 'boolean'
+  const [internalOpen, setInternalOpen] = useState(false)
+  const isOpen = isControlled ? open : internalOpen
 
   const setOpen = useCallback(
     (nextOpen: boolean) => {
       if (!isControlled) {
-        setInternalOpen(nextOpen);
+        setInternalOpen(nextOpen)
       }
-      onOpenChange?.(nextOpen);
+      onOpenChange?.(nextOpen)
     },
     [isControlled, onOpenChange]
-  );
+  )
 
   const setSearchQueryWithCallback = useCallback(
     (nextQuery: string) => {
-      setSearchQuery(nextQuery);
-      onSearchQueryChange?.(nextQuery);
+      setSearchQuery(nextQuery)
+      onSearchQueryChange?.(nextQuery)
     },
     [onSearchQueryChange]
-  );
+  )
 
   const handleClose = useCallback(() => {
-    setOpen(false);
-    setSearchQueryWithCallback("");
-  }, [setOpen, setSearchQueryWithCallback]);
+    setOpen(false)
+    setSearchQueryWithCallback('')
+  }, [setOpen, setSearchQueryWithCallback])
 
   useEffect(() => {
     if (isOpen) {
-      setSearchQueryWithCallback("");
+      setSearchQueryWithCallback('')
     }
-  }, [isOpen, setSearchQueryWithCallback]);
+  }, [isOpen, setSearchQueryWithCallback])
 
   const collisionPadding = useMemo(() => {
-    const basePadding = 16;
-    if (Platform.OS !== "android") return basePadding;
-    const statusBarHeight = StatusBar.currentHeight ?? 0;
-    return Math.max(basePadding, statusBarHeight + basePadding);
-  }, []);
+    const basePadding = 16
+    if (Platform.OS !== 'android') return basePadding
+    const statusBarHeight = StatusBar.currentHeight ?? 0
+    return Math.max(basePadding, statusBarHeight + basePadding)
+  }, [])
 
   const middleware = useMemo(
     () => [
-      floatingOffset(Platform.OS === "web" ? 0 : 4),
-      ...(Platform.OS === "web" ? [] : [flip({ padding: collisionPadding })]),
+      floatingOffset(Platform.OS === 'web' ? 0 : 4),
+      ...(Platform.OS === 'web' ? [] : [flip({ padding: collisionPadding })]),
       ...(isDesktopAboveSearch ? [] : [shift({ padding: collisionPadding })]),
       floatingSize({
         padding: collisionPadding,
         apply({ availableWidth, availableHeight, rects }) {
           setAvailableSize((prev) => {
-            const next = { width: availableWidth, height: availableHeight };
-            if (!prev) return next;
-            if (prev.width === next.width && prev.height === next.height) return prev;
-            return next;
-          });
+            const next = { width: availableWidth, height: availableHeight }
+            if (!prev) return next
+            if (prev.width === next.width && prev.height === next.height) return prev
+            return next
+          })
           setReferenceWidth((prev) => {
-            const next = rects.reference.width;
-            if (prev === next) return prev;
-            return next;
-          });
+            const next = rects.reference.width
+            if (prev === next) return prev
+            return next
+          })
         },
       }),
     ],
     [collisionPadding, isDesktopAboveSearch]
-  );
+  )
 
   const { refs, floatingStyles, update } = useFloating({
-    placement: Platform.OS === "web" ? desktopPlacement : "bottom-start",
+    placement: Platform.OS === 'web' ? desktopPlacement : 'bottom-start',
     middleware,
     sameScrollView: false,
     elements: {
       reference: anchorRef.current ?? undefined,
     },
-  });
+  })
 
   useEffect(() => {
     if (!isOpen || isMobile) {
-      setAvailableSize(null);
-      setReferenceWidth(null);
-      return;
+      setAvailableSize(null)
+      setReferenceWidth(null)
+      return
     }
-    const raf = requestAnimationFrame(() => void update());
-    return () => cancelAnimationFrame(raf);
-  }, [desktopPlacement, isMobile, update, isOpen]);
+    const raf = requestAnimationFrame(() => void update())
+    return () => cancelAnimationFrame(raf)
+  }, [desktopPlacement, isMobile, update, isOpen])
 
   useEffect(() => {
     if (!isOpen || isMobile) {
-      setReferenceAtOrigin(false);
-      setReferenceTop(null);
-      return;
+      setReferenceAtOrigin(false)
+      setReferenceTop(null)
+      return
     }
 
-    const referenceEl = anchorRef.current;
+    const referenceEl = anchorRef.current
     if (!referenceEl) {
-      setReferenceAtOrigin(false);
-      setReferenceTop(null);
-      return;
+      setReferenceAtOrigin(false)
+      setReferenceTop(null)
+      return
     }
 
     const measure = () => {
       referenceEl.measureInWindow((x, y) => {
-        setReferenceAtOrigin(Math.abs(x) <= 1 && Math.abs(y) <= 1);
-        setReferenceTop((prev) => (prev === y ? prev : y));
-      });
-    };
+        setReferenceAtOrigin(Math.abs(x) <= 1 && Math.abs(y) <= 1)
+        setReferenceTop((prev) => (prev === y ? prev : y))
+      })
+    }
 
-    measure();
-    const raf = requestAnimationFrame(measure);
-    return () => cancelAnimationFrame(raf);
-  }, [anchorRef, isMobile, isOpen, searchQuery, windowHeight]);
+    measure()
+    const raf = requestAnimationFrame(measure)
+    return () => cancelAnimationFrame(raf)
+  }, [anchorRef, isMobile, isOpen, searchQuery, windowHeight])
 
-  const floatingTop = toNumericStyleValue(floatingStyles.top);
-  const floatingLeft = toNumericStyleValue(floatingStyles.left);
+  const floatingTop = toNumericStyleValue(floatingStyles.top)
+  const floatingLeft = toNumericStyleValue(floatingStyles.left)
   const desktopAboveSearchBottom =
     isDesktopAboveSearch && referenceTop !== null
       ? Math.max(windowHeight - referenceTop, collisionPadding)
-      : null;
+      : null
   const hasResolvedDesktopPosition =
     referenceWidth !== null &&
     floatingLeft !== null &&
     (isDesktopAboveSearch ? desktopAboveSearchBottom !== null : floatingTop !== null) &&
-    ((floatingTop ?? 0) !== 0 || floatingLeft !== 0 || referenceAtOrigin);
-  const shouldHideDesktopContent =
-    desktopPreventInitialFlash && !hasResolvedDesktopPosition;
-  const shouldUseDesktopFade = !desktopPreventInitialFlash;
+    ((floatingTop ?? 0) !== 0 || floatingLeft !== 0 || referenceAtOrigin)
+  const shouldHideDesktopContent = desktopPreventInitialFlash && !hasResolvedDesktopPosition
+  const shouldUseDesktopFade = !desktopPreventInitialFlash
   const desktopPositionStyle = isDesktopAboveSearch
     ? {
         left: floatingLeft ?? 0,
         bottom: desktopAboveSearchBottom ?? 0,
       }
-    : floatingStyles;
+    : floatingStyles
 
   useEffect(() => {
-    if (!isMobile) return;
+    if (!isMobile) return
     if (isOpen) {
-      bottomSheetRef.current?.present();
+      bottomSheetRef.current?.present()
     } else {
-      bottomSheetRef.current?.dismiss();
+      bottomSheetRef.current?.dismiss()
     }
-  }, [isOpen, isMobile]);
+  }, [isOpen, isMobile])
 
   const handleSheetChange = useCallback(
     (index: number) => {
       if (index === -1) {
-        handleClose();
+        handleClose()
       }
     },
     [handleClose]
-  );
+  )
 
   const renderBackdrop = useCallback(
     (props: React.ComponentProps<typeof BottomSheetBackdrop>) => (
-      <BottomSheetBackdrop
-        {...props}
-        disappearsOnIndex={-1}
-        appearsOnIndex={0}
-        opacity={0.45}
-      />
+      <BottomSheetBackdrop {...props} disappearsOnIndex={-1} appearsOnIndex={0} opacity={0.45} />
     ),
     []
-  );
+  )
 
-  const normalizedSearch = searchable ? searchQuery.trim().toLowerCase() : "";
-  const sanitizedSearchValue = searchQuery.trim();
+  const normalizedSearch = searchable ? searchQuery.trim().toLowerCase() : ''
+  const sanitizedSearchValue = searchQuery.trim()
   const showCustomOption = useMemo(
     () =>
       shouldShowCustomComboboxOption({
@@ -398,7 +405,7 @@ export function Combobox({
         allowCustomValue,
       }),
     [allowCustomValue, options, searchQuery, searchable]
-  );
+  )
 
   const visibleOptions = useMemo(
     () =>
@@ -420,139 +427,132 @@ export function Combobox({
       searchQuery,
       searchable,
     ]
-  );
+  )
 
   const orderedVisibleOptions = useMemo(
     () => orderVisibleComboboxOptions(visibleOptions, effectiveOptionsPosition),
     [effectiveOptionsPosition, visibleOptions]
-  );
+  )
 
   const pinDesktopOptionsToBottom = useCallback(() => {
-    if (isMobile || effectiveOptionsPosition !== "above-search") {
-      return;
+    if (isMobile || effectiveOptionsPosition !== 'above-search') {
+      return
     }
-    desktopOptionsScrollRef.current?.scrollToEnd({ animated: false });
+    desktopOptionsScrollRef.current?.scrollToEnd({ animated: false })
     requestAnimationFrame(() => {
-      desktopOptionsScrollRef.current?.scrollToEnd({ animated: false });
-    });
-  }, [effectiveOptionsPosition, isMobile]);
+      desktopOptionsScrollRef.current?.scrollToEnd({ animated: false })
+    })
+  }, [effectiveOptionsPosition, isMobile])
 
   const handleDesktopOptionsContentSizeChange = useCallback(() => {
     if (!isOpen) {
-      return;
+      return
     }
-    pinDesktopOptionsToBottom();
-  }, [isOpen, pinDesktopOptionsToBottom]);
+    pinDesktopOptionsToBottom()
+  }, [isOpen, pinDesktopOptionsToBottom])
 
   useEffect(() => {
     if (!isOpen) {
-      return;
+      return
     }
-    pinDesktopOptionsToBottom();
-  }, [isOpen, orderedVisibleOptions, pinDesktopOptionsToBottom]);
+    pinDesktopOptionsToBottom()
+  }, [isOpen, orderedVisibleOptions, pinDesktopOptionsToBottom])
 
   useLayoutEffect(() => {
     if (!isOpen || isMobile) {
-      return;
+      return
     }
-    void update();
-  }, [isOpen, isMobile, orderedVisibleOptions.length, searchQuery, update]);
+    void update()
+  }, [isOpen, isMobile, orderedVisibleOptions.length, searchQuery, update])
 
   useEffect(() => {
-    if (!isOpen) return;
-    if (!IS_WEB && isMobile) return;
+    if (!isOpen) return
+    if (!IS_WEB && isMobile) return
 
     if (orderedVisibleOptions.length === 0) {
-      setActiveIndex(-1);
-      return;
+      setActiveIndex(-1)
+      return
     }
 
     const fallbackIndex = getComboboxFallbackIndex(
       orderedVisibleOptions.length,
       effectiveOptionsPosition
-    );
+    )
 
     if (normalizedSearch) {
-      setActiveIndex(fallbackIndex);
-      return;
+      setActiveIndex(fallbackIndex)
+      return
     }
 
-    const selectedIndex = orderedVisibleOptions.findIndex((opt) => opt.id === value);
-    setActiveIndex(selectedIndex >= 0 ? selectedIndex : fallbackIndex);
-  }, [
-    effectiveOptionsPosition,
-    isMobile,
-    isOpen,
-    normalizedSearch,
-    value,
-    orderedVisibleOptions,
-  ]);
+    const selectedIndex = orderedVisibleOptions.findIndex((opt) => opt.id === value)
+    setActiveIndex(selectedIndex >= 0 ? selectedIndex : fallbackIndex)
+  }, [effectiveOptionsPosition, isMobile, isOpen, normalizedSearch, value, orderedVisibleOptions])
 
   const handleSelect = useCallback(
     (id: string) => {
-      onSelect(id);
-      handleClose();
+      onSelect(id)
+      handleClose()
     },
     [handleClose, onSelect]
-  );
+  )
 
   const handleSubmitSearch = useCallback(() => {
     if (showCustomOption) {
-      handleSelect(sanitizedSearchValue);
+      handleSelect(sanitizedSearchValue)
     }
-  }, [handleSelect, sanitizedSearchValue, showCustomOption]);
+  }, [handleSelect, sanitizedSearchValue, showCustomOption])
 
   const handleDesktopKey = useCallback(
-    (key: "ArrowDown" | "ArrowUp" | "Enter" | "Escape", event?: KeyboardEvent) => {
-      if (!isOpen) return;
-      if (!IS_WEB && isMobile) return;
+    (key: 'ArrowDown' | 'ArrowUp' | 'Enter' | 'Escape', event?: KeyboardEvent) => {
+      if (!isOpen) return
+      if (!IS_WEB && isMobile) return
 
-      if (key === "ArrowDown" || key === "ArrowUp") {
-        event?.preventDefault();
+      if (key === 'ArrowDown' || key === 'ArrowUp') {
+        event?.preventDefault()
         setActiveIndex((currentIndex) =>
           getNextActiveIndex({
             currentIndex,
             itemCount: orderedVisibleOptions.length,
             key,
           })
-        );
-        return;
+        )
+        return
       }
 
-      if (key === "Enter") {
-        if (orderedVisibleOptions.length === 0) return;
-        event?.preventDefault();
+      if (key === 'Enter') {
+        if (orderedVisibleOptions.length === 0) return
+        event?.preventDefault()
         const index =
-          activeIndex >= 0 && activeIndex < orderedVisibleOptions.length ? activeIndex : 0;
-        handleSelect(orderedVisibleOptions[index]!.id);
-        return;
+          activeIndex >= 0 && activeIndex < orderedVisibleOptions.length ? activeIndex : 0
+        handleSelect(orderedVisibleOptions[index]!.id)
+        return
       }
 
-      if (key === "Escape") {
-        event?.preventDefault();
-        handleClose();
+      if (key === 'Escape') {
+        event?.preventDefault()
+        handleClose()
       }
     },
     [activeIndex, handleClose, handleSelect, isMobile, isOpen, orderedVisibleOptions]
-  );
+  )
 
   useEffect(() => {
-    if (!IS_WEB || !isOpen) return;
+    if (!IS_WEB || !isOpen) return
 
     const handler = (event: KeyboardEvent) => {
-      const key = event.key;
-      if (key !== "ArrowDown" && key !== "ArrowUp" && key !== "Enter" && key !== "Escape") {
-        return;
+      const key = event.key
+      if (key !== 'ArrowDown' && key !== 'ArrowUp' && key !== 'Enter' && key !== 'Escape') {
+        return
       }
-      handleDesktopKey(key, event);
-    };
+      handleDesktopKey(key, event)
+    }
 
     // react-native-web's TextInput can stop propagation on key events, so listen in capture phase.
-    window.addEventListener("keydown", handler, true);
+    window.addEventListener('keydown', handler, true)
     return () => {
-      window.removeEventListener("keydown", handler, true);
-    };
-  }, [handleDesktopKey, isOpen]);
+      window.removeEventListener('keydown', handler, true)
+    }
+  }, [handleDesktopKey, isOpen])
 
   const searchInput = (
     <SearchInput
@@ -562,7 +562,7 @@ export function Combobox({
       onSubmitEditing={handleSubmitSearch}
       autoFocus={!isMobile}
     />
-  );
+  )
 
   const optionsList = (
     <>
@@ -582,17 +582,17 @@ export function Combobox({
         <ComboboxEmpty>{emptyText}</ComboboxEmpty>
       )}
     </>
-  );
+  )
 
   const defaultContent = (
     <>
-      {effectiveOptionsPosition === "above-search" ? optionsList : null}
+      {effectiveOptionsPosition === 'above-search' ? optionsList : null}
       {searchable ? searchInput : null}
-      {effectiveOptionsPosition === "below-search" ? optionsList : null}
+      {effectiveOptionsPosition === 'below-search' ? optionsList : null}
     </>
-  );
+  )
 
-  const content = children ?? defaultContent;
+  const content = children ?? defaultContent
 
   if (isMobile) {
     return (
@@ -620,18 +620,13 @@ export function Combobox({
           {content}
         </BottomSheetScrollView>
       </BottomSheetModal>
-    );
+    )
   }
 
-  if (!isOpen) return <></>;
+  if (!isOpen) return <></>
 
   return (
-    <Modal
-      transparent
-      animationType="none"
-      visible={isOpen}
-      onRequestClose={handleClose}
-    >
+    <Modal transparent animationType="none" visible={isOpen} onRequestClose={handleClose}>
       <View ref={refs.setOffsetParent} collapsable={false} style={styles.desktopOverlay}>
         <Pressable style={styles.desktopBackdrop} onPress={handleClose} />
         <Animated.View
@@ -641,13 +636,15 @@ export function Combobox({
           style={[
             styles.desktopContainer,
             {
-              position: "absolute",
+              position: 'absolute',
               minWidth: referenceWidth ?? 200,
               maxWidth: 400,
             },
             desktopPositionStyle,
             shouldHideDesktopContent ? { opacity: 0 } : null,
-            typeof availableSize?.height === "number" ? { maxHeight: Math.min(availableSize.height, 400) } : null,
+            typeof availableSize?.height === 'number'
+              ? { maxHeight: Math.min(availableSize.height, 400) }
+              : null,
           ]}
           ref={refs.setFloating}
           collapsable={false}
@@ -664,7 +661,7 @@ export function Combobox({
             </ScrollView>
           ) : (
             <>
-              {effectiveOptionsPosition === "above-search" ? (
+              {effectiveOptionsPosition === 'above-search' ? (
                 <ScrollView
                   ref={desktopOptionsScrollRef}
                   contentContainerStyle={[
@@ -680,7 +677,7 @@ export function Combobox({
                 </ScrollView>
               ) : null}
               {searchable ? searchInput : null}
-              {effectiveOptionsPosition === "below-search" ? (
+              {effectiveOptionsPosition === 'below-search' ? (
                 <ScrollView
                   contentContainerStyle={styles.desktopScrollContent}
                   keyboardShouldPersistTaps="handled"
@@ -695,13 +692,13 @@ export function Combobox({
         </Animated.View>
       </View>
     </Modal>
-  );
+  )
 }
 
 const styles = StyleSheet.create((theme) => ({
   searchInputContainer: {
-    flexDirection: "row",
-    alignItems: "center",
+    flexDirection: 'row',
+    alignItems: 'center',
     borderWidth: 1,
     borderColor: theme.colors.border,
     backgroundColor: theme.colors.surface1,
@@ -719,8 +716,8 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.sm,
   },
   comboboxItem: {
-    flexDirection: "row",
-    alignItems: "center",
+    flexDirection: 'row',
+    alignItems: 'center',
     minHeight: 36,
     gap: theme.spacing[2],
     paddingHorizontal: theme.spacing[3],
@@ -744,9 +741,9 @@ const styles = StyleSheet.create((theme) => ({
   },
   comboboxItemTrailingSlot: {
     width: 16,
-    alignItems: "center",
-    justifyContent: "center",
-    marginLeft: "auto",
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 'auto',
   },
   comboboxItemContent: {
     flex: 1,
@@ -754,8 +751,8 @@ const styles = StyleSheet.create((theme) => ({
   },
   comboboxItemLeadingSlot: {
     width: 16,
-    alignItems: "center",
-    justifyContent: "center",
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   comboboxItemLabel: {
     fontSize: theme.fontSize.sm,
@@ -774,8 +771,8 @@ const styles = StyleSheet.create((theme) => ({
   },
   bottomSheetBackground: {
     backgroundColor: theme.colors.surface0,
-    borderTopLeftRadius: theme.borderRadius["2xl"],
-    borderTopRightRadius: theme.borderRadius["2xl"],
+    borderTopLeftRadius: theme.borderRadius['2xl'],
+    borderTopRightRadius: theme.borderRadius['2xl'],
   },
   bottomSheetHandle: {
     backgroundColor: theme.colors.palette.zinc[600],
@@ -788,7 +785,7 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.lg,
     fontWeight: theme.fontWeight.medium,
     color: theme.colors.foreground,
-    textAlign: "left",
+    textAlign: 'left',
   },
   comboboxScrollContent: {
     paddingBottom: theme.spacing[8],
@@ -799,7 +796,7 @@ const styles = StyleSheet.create((theme) => ({
     flex: 1,
   },
   desktopBackdrop: {
-    position: "absolute",
+    position: 'absolute',
     top: 0,
     right: 0,
     bottom: 0,
@@ -810,13 +807,13 @@ const styles = StyleSheet.create((theme) => ({
     borderRadius: theme.borderRadius.lg,
     borderWidth: 1,
     borderColor: theme.colors.border,
-    shadowColor: "#000",
+    shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.2,
     shadowRadius: 8,
     elevation: 8,
     maxHeight: 400,
-    overflow: "hidden",
+    overflow: 'hidden',
   },
   desktopScroll: {
     flexShrink: 1,
@@ -827,6 +824,6 @@ const styles = StyleSheet.create((theme) => ({
   },
   desktopScrollContentAboveSearch: {
     flexGrow: 1,
-    justifyContent: "flex-end",
+    justifyContent: 'flex-end',
   },
-}));
+}))
