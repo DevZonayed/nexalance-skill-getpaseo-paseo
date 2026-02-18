@@ -34,6 +34,10 @@ import { useSessionStore } from "@/stores/session-store";
 import { useVoiceOptional } from "@/contexts/voice-context";
 import { useToast } from "@/contexts/toast-context";
 import { resolveVoiceUnavailableMessage } from "@/utils/server-info-capabilities";
+import {
+  collectImageFilesFromClipboardData,
+  filesToImageAttachments,
+} from "@/utils/image-attachments-from-files";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Shortcut } from "@/components/ui/shortcut";
 import type { MessageInputKeyboardActionKind } from "@/keyboard/actions";
@@ -58,6 +62,7 @@ export interface MessageInputProps {
   isSubmitLoading?: boolean;
   images?: ImageAttachment[];
   onPickImages?: () => void;
+  onAddImages?: (images: ImageAttachment[]) => void;
   onRemoveImage?: (index: number) => void;
   client: DaemonClient | null;
   placeholder?: string;
@@ -122,6 +127,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       isSubmitLoading = false,
       images = [],
       onPickImages,
+      onAddImages,
       onRemoveImage,
       client,
       placeholder = "Message...",
@@ -142,11 +148,11 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
     const { theme } = useUnistyles();
     const toast = useToast();
     const voice = useVoiceOptional();
-  const [inputHeight, setInputHeight] = useState(MIN_INPUT_HEIGHT);
-  const textInputRef = useRef<
-    TextInput | (TextInput & { getNativeRef?: () => unknown }) | null
-  >(null);
-  const isInputFocusedRef = useRef(false);
+    const [inputHeight, setInputHeight] = useState(MIN_INPUT_HEIGHT);
+    const textInputRef = useRef<
+      TextInput | (TextInput & { getNativeRef?: () => unknown }) | null
+    >(null);
+    const isInputFocusedRef = useRef(false);
 
     useImperativeHandle(ref, () => ({
       focus: () => {
@@ -218,19 +224,19 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       )
     );
 
-  useEffect(() => {
-    valueRef.current = value;
-  }, [value]);
+    useEffect(() => {
+      valueRef.current = value;
+    }, [value]);
 
-  // Autofocus on web when autoFocus prop is true
-  useEffect(() => {
-    if (!IS_WEB || !autoFocus) return;
-    // Use requestAnimationFrame to ensure DOM is ready
-    const rafId = requestAnimationFrame(() => {
-      textInputRef.current?.focus();
-    });
-    return () => cancelAnimationFrame(rafId);
-  }, [autoFocus]);
+    // Autofocus on web when autoFocus prop is true
+    useEffect(() => {
+      if (!IS_WEB || !autoFocus) return;
+      // Use requestAnimationFrame to ensure DOM is ready
+      const rafId = requestAnimationFrame(() => {
+        textInputRef.current?.focus();
+      });
+      return () => cancelAnimationFrame(rafId);
+    }, [autoFocus]);
 
   const handleDictationTranscript = useCallback(
     (text: string, _meta: { requestId: string }) => {
@@ -472,7 +478,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
     return typeof v === "object" && v !== null && "scrollHeight" in v;
   }
 
-  function getWebTextArea(): TextAreaHandle | null {
+  const getWebTextArea = useCallback((): TextAreaHandle | null => {
     const ref = textInputRef.current;
     if (!ref) return null;
     if (typeof (ref as any).getNativeRef === "function") {
@@ -481,9 +487,62 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
     }
     if (isTextAreaLike(ref)) return ref;
     return null;
-  }
+  }, []);
 
-  function measureWebInputHeight(source: string): boolean {
+  useEffect(() => {
+    if (!IS_WEB || !onAddImages) {
+      return;
+    }
+
+    const textarea = getWebTextArea();
+    if (
+      !textarea ||
+      typeof (textarea as any).addEventListener !== "function" ||
+      typeof (textarea as any).removeEventListener !== "function"
+    ) {
+      return;
+    }
+
+    let disposed = false;
+    const handlePaste = (event: ClipboardEvent) => {
+      if (!isConnected || disabled || isDictating || isRealtimeVoiceForCurrentAgent) {
+        return;
+      }
+
+      const imageFiles = collectImageFilesFromClipboardData(event.clipboardData);
+      if (imageFiles.length === 0) {
+        return;
+      }
+
+      event.preventDefault();
+
+      void filesToImageAttachments(imageFiles)
+        .then((attachments) => {
+          if (disposed || attachments.length === 0) {
+            return;
+          }
+          onAddImages(attachments);
+        })
+        .catch((error) => {
+          console.error("[MessageInput] Failed to process pasted images:", error);
+        });
+    };
+
+    (textarea as any).addEventListener("paste", handlePaste);
+    return () => {
+      disposed = true;
+      (textarea as any).removeEventListener("paste", handlePaste);
+    };
+  }, [
+    disabled,
+    isConnected,
+    isDictating,
+    isRealtimeVoiceForCurrentAgent,
+    getWebTextArea,
+    onAddImages,
+  ]);
+
+  function measureWebInputHeight(_source: string): boolean {
     if (!IS_WEB) return false;
     const textarea = getWebTextArea();
     if (!textarea || typeof textarea.scrollHeight !== "number") return false;
@@ -596,10 +655,14 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       <Animated.View style={[styles.inputWrapper, inputAnimatedStyle]}>
         {/* Image preview pills */}
         {hasImages && (
-          <View style={styles.imagePreviewContainer}>
+          <View
+            style={styles.imagePreviewContainer}
+            testID="message-input-image-preview"
+          >
             {images.map((image, index) => (
               <Pressable
                 key={`${image.uri}-${index}`}
+                testID="message-input-image-pill"
                 style={styles.imagePill}
                 onPress={onRemoveImage ? () => onRemoveImage(index) : undefined}
               >

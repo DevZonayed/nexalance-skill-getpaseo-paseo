@@ -711,6 +711,7 @@ export function AgentInputArea({
             isSubmitLoading={isProcessing || isSubmitLoading}
             images={selectedImages}
             onPickImages={handlePickImage}
+            onAddImages={addImages}
             onRemoveImage={handleRemoveImage}
             client={client}
             placeholder="Message agent..."
