@@ -18,7 +18,6 @@ import {
 } from "@/utils/new-agent-routing";
 import {
   buildHostAgentDetailRoute,
-  parseHostAgentDraftRouteFromPathname,
   parseHostAgentRouteFromPathname,
   parseServerIdFromPathname,
 } from "@/utils/host-routes";
@@ -26,28 +25,13 @@ import {
   type MessageInputKeyboardActionKind,
   type KeyboardShortcutPayload,
 } from "@/keyboard/actions";
+import {
+  canToggleFileExplorerShortcut,
+  resolveSelectedOrRouteAgentKey,
+} from "@/keyboard/keyboard-shortcut-routing";
 import { resolveKeyboardShortcut } from "@/keyboard/keyboard-shortcuts";
 import { resolveKeyboardFocusScope } from "@/keyboard/focus-scope";
 import { getShortcutOs } from "@/utils/shortcut-platform";
-
-function resolveSelectedOrRouteAgentKey(input: {
-  selectedAgentId?: string;
-  pathname: string;
-}): string | null {
-  const DRAFT_AGENT_ID = "__new_agent__";
-  if (input.selectedAgentId) {
-    return input.selectedAgentId;
-  }
-  const route = parseHostAgentRouteFromPathname(input.pathname);
-  if (!route) {
-    const draftRoute = parseHostAgentDraftRouteFromPathname(input.pathname);
-    if (!draftRoute) {
-      return null;
-    }
-    return `${draftRoute.serverId}:${DRAFT_AGENT_ID}`;
-  }
-  return `${route.serverId}:${route.agentId}`;
-}
 
 export function useKeyboardShortcuts({
   enabled,
@@ -161,7 +145,16 @@ export function useKeyboardShortcuts({
           toggleAgentList();
           return true;
         case "sidebar.toggle.right":
-          if (!selectedAgentId || !toggleFileExplorer) {
+          if (!toggleFileExplorer) {
+            return false;
+          }
+          if (
+            !canToggleFileExplorerShortcut({
+              selectedAgentId,
+              pathname,
+              toggleFileExplorer,
+            })
+          ) {
             return false;
           }
           toggleFileExplorer();
@@ -234,7 +227,11 @@ export function useKeyboardShortcuts({
           isTauri,
           focusScope,
           commandCenterOpen: store.commandCenterOpen,
-          hasSelectedAgent: Boolean(selectedAgentId && toggleFileExplorer),
+          hasSelectedAgent: canToggleFileExplorerShortcut({
+            selectedAgentId,
+            pathname,
+            toggleFileExplorer,
+          }),
         },
       });
       if (!match) {
