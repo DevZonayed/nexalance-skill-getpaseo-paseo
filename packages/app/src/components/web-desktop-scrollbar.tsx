@@ -1,8 +1,7 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   PanResponder,
   Platform,
-  Pressable,
   View,
   type LayoutChangeEvent,
   type NativeScrollEvent,
@@ -15,6 +14,25 @@ import {
 } from "./web-desktop-scrollbar.math";
 
 const METRICS_EPSILON = 0.5;
+const HANDLE_WIDTH_IDLE = 6;
+const HANDLE_WIDTH_ACTIVE = 9;
+const HANDLE_GRAB_WIDTH = 18;
+const HANDLE_GRAB_VERTICAL_PADDING = 8;
+const HANDLE_OPACITY_VISIBLE = 0.62;
+const HANDLE_OPACITY_HOVERED = 0.78;
+const HANDLE_OPACITY_DRAGGING = 0.9;
+const HANDLE_FADE_DURATION_MS = 220;
+const HANDLE_WIDTH_TRANSITION_DURATION_MS = 240;
+const HANDLE_SCROLL_VISIBILITY_MS = 1200;
+
+function readClientY(event: any): number | null {
+  const value =
+    event?.nativeEvent?.clientY ??
+    event?.clientY ??
+    event?.nativeEvent?.pageY ??
+    event?.pageY;
+  return typeof value === "number" ? value : null;
+}
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
@@ -107,9 +125,19 @@ export function WebDesktopScrollbarOverlay({
   inverted = false,
 }: WebDesktopScrollbarOverlayProps) {
   const { theme } = useUnistyles();
-  const [isHovered, setIsHovered] = useState(false);
+  const [isHandleHovered, setIsHandleHovered] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
+  const [isScrollVisible, setIsScrollVisible] = useState(false);
   const dragStartOffsetRef = useRef(0);
+  const dragStartClientYRef = useRef(0);
+  const scrollVisibilityTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastObservedOffsetRef = useRef<number | null>(null);
+  const geometryRef = useRef({
+    maxHandleOffset: 0,
+    maxScrollOffset: 0,
+  });
+  const onScrollToOffsetRef = useRef(onScrollToOffset);
+  const isWeb = Platform.OS === "web";
 
   const maxScrollOffset = Math.max(0, metrics.contentSize - metrics.viewportSize);
   const normalizedOffset = inverted
@@ -126,70 +154,237 @@ export function WebDesktopScrollbarOverlay({
     [metrics.contentSize, metrics.viewportSize, normalizedOffset]
   );
 
-  const panResponder = useMemo(
-    () =>
-      PanResponder.create({
-        onStartShouldSetPanResponder: () => true,
-        onMoveShouldSetPanResponder: () => true,
-        onPanResponderGrant: () => {
-          dragStartOffsetRef.current = normalizedOffset;
-          setIsDragging(true);
-        },
-        onPanResponderMove: (_event, gestureState) => {
-          const nextNormalizedOffset = computeScrollOffsetFromDragDelta({
-            startOffset: dragStartOffsetRef.current,
-            dragDelta: gestureState.dy,
-            maxScrollOffset: geometry.maxScrollOffset,
-            maxHandleOffset: geometry.maxHandleOffset,
-          });
-          const nextOffset = inverted
-            ? geometry.maxScrollOffset - nextNormalizedOffset
-            : nextNormalizedOffset;
-          onScrollToOffset(nextOffset);
-        },
-        onPanResponderRelease: () => {
-          setIsDragging(false);
-        },
-        onPanResponderTerminate: () => {
-          setIsDragging(false);
-        },
-      }),
-    [
-      geometry.maxHandleOffset,
-      geometry.maxScrollOffset,
-      inverted,
-      normalizedOffset,
-      onScrollToOffset,
-    ]
+  useEffect(() => {
+    geometryRef.current = {
+      maxHandleOffset: geometry.maxHandleOffset,
+      maxScrollOffset: geometry.maxScrollOffset,
+    };
+  }, [geometry.maxHandleOffset, geometry.maxScrollOffset]);
+
+  useEffect(() => {
+    onScrollToOffsetRef.current = onScrollToOffset;
+  }, [onScrollToOffset]);
+
+  const clearScrollVisibilityTimeout = useCallback(() => {
+    if (scrollVisibilityTimeoutRef.current === null) {
+      return;
+    }
+    clearTimeout(scrollVisibilityTimeoutRef.current);
+    scrollVisibilityTimeoutRef.current = null;
+  }, []);
+
+  const revealScrollbarFromScroll = useCallback(() => {
+    setIsScrollVisible(true);
+    clearScrollVisibilityTimeout();
+    scrollVisibilityTimeoutRef.current = setTimeout(() => {
+      setIsScrollVisible(false);
+      scrollVisibilityTimeoutRef.current = null;
+    }, HANDLE_SCROLL_VISIBILITY_MS);
+  }, [clearScrollVisibilityTimeout]);
+
+  useEffect(() => {
+    if (!enabled || !geometry.isVisible) {
+      setIsScrollVisible(false);
+      clearScrollVisibilityTimeout();
+      lastObservedOffsetRef.current = null;
+      return;
+    }
+
+    const previousOffset = lastObservedOffsetRef.current;
+    lastObservedOffsetRef.current = normalizedOffset;
+    if (previousOffset === null) {
+      return;
+    }
+    if (Math.abs(normalizedOffset - previousOffset) <= METRICS_EPSILON) {
+      return;
+    }
+    revealScrollbarFromScroll();
+  }, [
+    clearScrollVisibilityTimeout,
+    enabled,
+    geometry.isVisible,
+    normalizedOffset,
+    revealScrollbarFromScroll,
+  ]);
+
+  useEffect(
+    () => () => {
+      clearScrollVisibilityTimeout();
+    },
+    [clearScrollVisibilityTimeout]
   );
+
+  const applyDragDelta = useCallback(
+    (dragDelta: number) => {
+      const currentGeometry = geometryRef.current;
+      const nextNormalizedOffset = computeScrollOffsetFromDragDelta({
+        startOffset: dragStartOffsetRef.current,
+        dragDelta,
+        maxScrollOffset: currentGeometry.maxScrollOffset,
+        maxHandleOffset: currentGeometry.maxHandleOffset,
+      });
+      const nextOffset = inverted
+        ? currentGeometry.maxScrollOffset - nextNormalizedOffset
+        : nextNormalizedOffset;
+      onScrollToOffsetRef.current(nextOffset);
+    },
+    [inverted]
+  );
+
+  const panResponder = useMemo(() => {
+    if (isWeb) {
+      return null;
+    }
+
+    return PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderTerminationRequest: () => false,
+      onPanResponderGrant: () => {
+        dragStartOffsetRef.current = normalizedOffset;
+        setIsDragging(true);
+      },
+      onPanResponderMove: (_event, gestureState) => {
+        applyDragDelta(gestureState.dy);
+      },
+      onPanResponderRelease: () => {
+        setIsDragging(false);
+      },
+      onPanResponderTerminate: () => {
+        setIsDragging(false);
+      },
+    });
+  }, [applyDragDelta, isWeb, normalizedOffset]);
+
+  const startWebDrag = useCallback(
+    (event: any) => {
+      if (!isWeb) {
+        return;
+      }
+      const clientY = readClientY(event);
+      if (clientY === null) {
+        return;
+      }
+      event?.preventDefault?.();
+      event?.stopPropagation?.();
+      event?.nativeEvent?.preventDefault?.();
+      dragStartOffsetRef.current = normalizedOffset;
+      dragStartClientYRef.current = clientY;
+      setIsDragging(true);
+    },
+    [isWeb, normalizedOffset]
+  );
+
+  const handleGrabHoverIn = useCallback(() => {
+    if (!isScrollVisible && !isDragging) {
+      return;
+    }
+    setIsHandleHovered(true);
+  }, [isDragging, isScrollVisible]);
+
+  const handleGrabHoverOut = useCallback(() => {
+    setIsHandleHovered(false);
+  }, []);
+
+  useEffect(() => {
+    if (!isWeb || !isDragging) {
+      return;
+    }
+
+    const handlePointerMove = (event: PointerEvent) => {
+      const dragDelta = event.clientY - dragStartClientYRef.current;
+      applyDragDelta(dragDelta);
+    };
+
+    const stopDragging = () => {
+      setIsDragging(false);
+    };
+
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointerup", stopDragging);
+    window.addEventListener("pointercancel", stopDragging);
+
+    return () => {
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", stopDragging);
+      window.removeEventListener("pointercancel", stopDragging);
+    };
+  }, [applyDragDelta, isDragging, isWeb]);
 
   if (!enabled || !geometry.isVisible) {
     return null;
   }
 
-  const handleOpacity = isDragging ? 0.52 : isHovered ? 0.4 : 0.28;
-  const handleColor =
-    isDragging || isHovered
-      ? theme.colors.foreground
-      : theme.colors.foregroundMuted;
+  const handleVisible = isDragging || isScrollVisible || isHandleHovered;
+  const handleOpacity = isDragging
+    ? HANDLE_OPACITY_DRAGGING
+    : isHandleHovered
+      ? HANDLE_OPACITY_HOVERED
+      : isScrollVisible
+        ? HANDLE_OPACITY_VISIBLE
+        : 0;
+  const handleWidth = isDragging || isHandleHovered ? HANDLE_WIDTH_ACTIVE : HANDLE_WIDTH_IDLE;
+  const isDark = theme.colors.surface0 === "#18181c";
+  const handleColor = isDark
+    ? theme.colors.palette.zinc[500]
+    : theme.colors.palette.zinc[700];
+  const handleCursor = isDragging ? "grabbing" : "grab";
+  const grabAreaTop = Math.max(0, geometry.handleOffset - HANDLE_GRAB_VERTICAL_PADDING);
+  const grabAreaHeight = Math.min(
+    metrics.viewportSize - grabAreaTop,
+    geometry.handleSize + HANDLE_GRAB_VERTICAL_PADDING * 2
+  );
 
   return (
     <View style={styles.overlay} pointerEvents="box-none">
-      <Pressable
+      <View
+        style={[
+          styles.handleGrabArea,
+          {
+            top: grabAreaTop,
+            height: grabAreaHeight,
+          },
+          isWeb &&
+            ({
+              cursor: handleCursor,
+              touchAction: "none",
+              userSelect: "none",
+            } as any),
+        ]}
+        pointerEvents={handleVisible ? "auto" : "none"}
+        {...(panResponder?.panHandlers ?? {})}
+        {...(isWeb
+          ? ({
+              onPointerDown: startWebDrag,
+              onPointerEnter: handleGrabHoverIn,
+              onPointerLeave: handleGrabHoverOut,
+              onMouseEnter: handleGrabHoverIn,
+              onMouseLeave: handleGrabHoverOut,
+            } as any)
+          : null)}
+      />
+      <View
         style={[
           styles.handle,
           {
             top: geometry.handleOffset,
             height: geometry.handleSize,
+            width: handleWidth,
             backgroundColor: handleColor,
             opacity: handleOpacity,
           },
-          Platform.OS === "web" &&
-            ({ cursor: "grab", touchAction: "none", userSelect: "none" } as any),
+          isWeb &&
+            ({
+              cursor: handleCursor,
+              touchAction: "none",
+              userSelect: "none",
+              transitionProperty: "opacity, width, background-color",
+              transitionDuration: `${HANDLE_FADE_DURATION_MS}ms, ${HANDLE_WIDTH_TRANSITION_DURATION_MS}ms, ${HANDLE_FADE_DURATION_MS}ms`,
+              transitionTimingFunction:
+                "ease-out, cubic-bezier(0.22, 0.75, 0.2, 1), ease-out",
+            } as any),
         ]}
-        onHoverIn={() => setIsHovered(true)}
-        onHoverOut={() => setIsHovered(false)}
-        {...panResponder.panHandlers}
+        pointerEvents="none"
       />
     </View>
   );
@@ -208,7 +403,12 @@ const styles = StyleSheet.create(() => ({
   },
   handle: {
     position: "absolute",
-    width: 6,
+    width: HANDLE_WIDTH_IDLE,
     borderRadius: 999,
+  },
+  handleGrabArea: {
+    position: "absolute",
+    right: -3,
+    width: HANDLE_GRAB_WIDTH,
   },
 }));
