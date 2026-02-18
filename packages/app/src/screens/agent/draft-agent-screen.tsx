@@ -1,69 +1,56 @@
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
-import { createNameId } from "mnemonic-id";
-import type { ImageAttachment } from "@/components/message-input";
-import {
-  View,
-  Text,
-  Pressable,
-  ScrollView,
-  Keyboard,
-  Platform,
-} from "react-native";
-import { useLocalSearchParams, useRouter } from "expo-router";
-import { StyleSheet, UnistylesRuntime, useUnistyles } from "react-native-unistyles";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useReanimatedKeyboardAnimation } from "react-native-keyboard-controller";
-import { Gesture, GestureDetector } from "react-native-gesture-handler";
-import Animated, { runOnJS, useAnimatedStyle, useSharedValue } from "react-native-reanimated";
-import { Folder, GitBranch, PanelRight } from "lucide-react-native";
-import { SidebarMenuToggle } from "@/components/headers/menu-header";
-import { HeaderToggleButton } from "@/components/headers/header-toggle-button";
-import { AgentInputArea } from "@/components/agent-input-area";
-import { AgentStreamView } from "@/components/agent-stream-view";
-import { AgentConfigRow, FormSelectTrigger } from "@/components/agent-form/agent-form-dropdowns";
-import { ExplorerSidebar } from "@/components/explorer-sidebar";
-import { Combobox } from "@/components/ui/combobox";
-import { FileDropZone } from "@/components/file-drop-zone";
-import { useQuery } from "@tanstack/react-query";
-import { useAgentFormState, type CreateAgentInitialValues } from "@/hooks/use-agent-form-state";
-import type { DraftCommandConfig } from "@/hooks/use-agent-commands-query";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
+import { createNameId } from 'mnemonic-id'
+import type { ImageAttachment } from '@/components/message-input'
+import { View, Text, Pressable, ScrollView, Keyboard, Platform } from 'react-native'
+import { useLocalSearchParams, useRouter } from 'expo-router'
+import { StyleSheet, UnistylesRuntime, useUnistyles } from 'react-native-unistyles'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
+import { useReanimatedKeyboardAnimation } from 'react-native-keyboard-controller'
+import { Gesture, GestureDetector } from 'react-native-gesture-handler'
+import Animated, { runOnJS, useAnimatedStyle, useSharedValue } from 'react-native-reanimated'
+import { Folder, GitBranch, PanelRight } from 'lucide-react-native'
+import { SidebarMenuToggle } from '@/components/headers/menu-header'
+import { HeaderToggleButton } from '@/components/headers/header-toggle-button'
+import { AgentInputArea } from '@/components/agent-input-area'
+import { AgentStreamView } from '@/components/agent-stream-view'
+import { AgentConfigRow, FormSelectTrigger } from '@/components/agent-form/agent-form-dropdowns'
+import { ExplorerSidebar } from '@/components/explorer-sidebar'
+import { Combobox } from '@/components/ui/combobox'
+import { FileDropZone } from '@/components/file-drop-zone'
+import { useQuery } from '@tanstack/react-query'
+import { useAgentFormState, type CreateAgentInitialValues } from '@/hooks/use-agent-form-state'
+import type { DraftCommandConfig } from '@/hooks/use-agent-commands-query'
 import {
   CHECKOUT_STATUS_STALE_TIME,
   checkoutStatusQueryKey,
-} from "@/hooks/use-checkout-status-query";
-import { useAllAgentsList } from "@/hooks/use-all-agents-list";
-import { useDaemonConnections } from "@/contexts/daemon-connections-context";
-import { useDaemonRegistry } from "@/contexts/daemon-registry-context";
-import { buildBranchComboOptions, normalizeBranchOptionName } from "@/utils/branch-suggestions";
-import { shortenPath } from "@/utils/shorten-path";
-import { collectAgentWorkingDirectorySuggestions } from "@/utils/agent-working-directory-suggestions";
-import { buildWorkingDirectorySuggestions } from "@/utils/working-directory-suggestions";
-import { useSessionStore } from "@/stores/session-store";
-import { useCreateFlowStore } from "@/stores/create-flow-store";
-import {
-  ExplorerSidebarAnimationProvider,
-} from "@/contexts/explorer-sidebar-animation-context";
-import { usePanelStore, type ExplorerCheckoutContext } from "@/stores/panel-store";
-import { MAX_CONTENT_WIDTH } from "@/constants/layout";
-import { WelcomeScreen } from "@/components/welcome-screen";
-import type { Agent } from "@/contexts/session-context";
-import {
-  generateMessageId,
-  type StreamItem,
-  type UserMessageImageAttachment,
-} from "@/types/stream";
-import { encodeImages } from "@/utils/encode-images";
+} from '@/hooks/use-checkout-status-query'
+import { useAllAgentsList } from '@/hooks/use-all-agents-list'
+import { useDaemonConnections } from '@/contexts/daemon-connections-context'
+import { useDaemonRegistry } from '@/contexts/daemon-registry-context'
+import { buildBranchComboOptions, normalizeBranchOptionName } from '@/utils/branch-suggestions'
+import { shortenPath } from '@/utils/shorten-path'
+import { collectAgentWorkingDirectorySuggestions } from '@/utils/agent-working-directory-suggestions'
+import { buildWorkingDirectorySuggestions } from '@/utils/working-directory-suggestions'
+import { useSessionStore } from '@/stores/session-store'
+import { useCreateFlowStore } from '@/stores/create-flow-store'
+import { ExplorerSidebarAnimationProvider } from '@/contexts/explorer-sidebar-animation-context'
+import { usePanelStore, type ExplorerCheckoutContext } from '@/stores/panel-store'
+import { MAX_CONTENT_WIDTH } from '@/constants/layout'
+import { WelcomeScreen } from '@/components/welcome-screen'
+import type { Agent } from '@/contexts/session-context'
+import { generateMessageId, type StreamItem, type UserMessageImageAttachment } from '@/types/stream'
+import { encodeImages } from '@/utils/encode-images'
 import type {
   AgentProvider,
   AgentCapabilityFlags,
   AgentSessionConfig,
-} from "@server/server/agent/agent-sdk-types";
-import { AGENT_PROVIDER_DEFINITIONS } from "@server/server/agent/provider-manifest";
-import { buildHostAgentDetailRoute } from "@/utils/host-routes";
+} from '@server/server/agent/agent-sdk-types'
+import { AGENT_PROVIDER_DEFINITIONS } from '@server/server/agent/provider-manifest'
+import { buildHostAgentDetailRoute } from '@/utils/host-routes'
 
-const DRAFT_AGENT_ID = "__new_agent__";
-const EMPTY_PENDING_PERMISSIONS = new Map();
-const EMPTY_STREAM_ITEMS: StreamItem[] = [];
+const DRAFT_AGENT_ID = '__new_agent__'
+const EMPTY_PENDING_PERMISSIONS = new Map()
+const EMPTY_STREAM_ITEMS: StreamItem[] = []
 const DRAFT_CAPABILITIES: AgentCapabilityFlags = {
   supportsStreaming: true,
   supportsSessionPersistence: false,
@@ -71,62 +58,57 @@ const DRAFT_CAPABILITIES: AgentCapabilityFlags = {
   supportsMcpServers: false,
   supportsReasoningStream: false,
   supportsToolInvocations: false,
-};
+}
 const PROVIDER_DEFINITION_MAP = new Map(
   AGENT_PROVIDER_DEFINITIONS.map((definition) => [definition.id, definition])
-);
+)
 
 function getParamValue(value: string | string[] | undefined) {
-  if (typeof value === "string") {
-    const trimmed = value.trim();
-    return trimmed.length > 0 ? trimmed : undefined;
+  if (typeof value === 'string') {
+    const trimmed = value.trim()
+    return trimmed.length > 0 ? trimmed : undefined
   }
   if (Array.isArray(value)) {
     for (const entry of value) {
-      const trimmed = entry.trim();
+      const trimmed = entry.trim()
       if (trimmed.length > 0) {
-        return trimmed;
+        return trimmed
       }
     }
   }
-  return undefined;
+  return undefined
 }
 
 function getValidProvider(value: string | undefined) {
   if (!value) {
-    return undefined;
+    return undefined
   }
-  return PROVIDER_DEFINITION_MAP.has(value as AgentProvider)
-    ? (value as AgentProvider)
-    : undefined;
+  return PROVIDER_DEFINITION_MAP.has(value as AgentProvider) ? (value as AgentProvider) : undefined
 }
 
-function getValidMode(
-  provider: AgentProvider | undefined,
-  value: string | undefined
-) {
+function getValidMode(provider: AgentProvider | undefined, value: string | undefined) {
   if (!provider || !value) {
-    return undefined;
+    return undefined
   }
-  const definition = PROVIDER_DEFINITION_MAP.get(provider);
-  const modes = definition?.modes ?? [];
-  return modes.some((mode) => mode.id === value) ? value : undefined;
+  const definition = PROVIDER_DEFINITION_MAP.get(provider)
+  const modes = definition?.modes ?? []
+  return modes.some((mode) => mode.id === value) ? value : undefined
 }
 
 type DraftAgentParams = {
-  serverId?: string;
-  provider?: string;
-  modeId?: string;
-  model?: string;
-  thinkingOptionId?: string;
-  workingDir?: string;
-};
+  serverId?: string
+  provider?: string
+  modeId?: string
+  model?: string
+  thinkingOptionId?: string
+  workingDir?: string
+}
 
 type DraftAgentScreenProps = {
-  isVisible?: boolean;
-  onCreateFlowActiveChange?: (active: boolean) => void;
-  forcedServerId?: string;
-};
+  isVisible?: boolean
+  onCreateFlowActiveChange?: (active: boolean) => void
+  forcedServerId?: string
+}
 
 export function DraftAgentScreen({
   isVisible = true,
@@ -141,7 +123,7 @@ export function DraftAgentScreen({
         forcedServerId={forcedServerId}
       />
     </ExplorerSidebarAnimationProvider>
-  );
+  )
 }
 
 function DraftAgentScreenContent({
@@ -149,75 +131,69 @@ function DraftAgentScreenContent({
   onCreateFlowActiveChange,
   forcedServerId,
 }: DraftAgentScreenProps = {}) {
-  const { theme } = useUnistyles();
-  const router = useRouter();
-  const insets = useSafeAreaInsets();
-  const { connectionStates } = useDaemonConnections();
-  const { daemons } = useDaemonRegistry();
-  const params = useLocalSearchParams<DraftAgentParams>();
+  const { theme } = useUnistyles()
+  const router = useRouter()
+  const insets = useSafeAreaInsets()
+  const { connectionStates } = useDaemonConnections()
+  const { daemons } = useDaemonRegistry()
+  const params = useLocalSearchParams<DraftAgentParams>()
 
-  const { height: keyboardHeight } = useReanimatedKeyboardAnimation();
-  const bottomInset = useSharedValue(insets.bottom);
+  const { height: keyboardHeight } = useReanimatedKeyboardAnimation()
+  const bottomInset = useSharedValue(insets.bottom)
 
   useEffect(() => {
-    bottomInset.value = insets.bottom;
-  }, [insets.bottom, bottomInset]);
+    bottomInset.value = insets.bottom
+  }, [insets.bottom, bottomInset])
 
   const animatedKeyboardStyle = useAnimatedStyle(() => {
-    "worklet";
-    const absoluteHeight = Math.abs(keyboardHeight.value);
-    const shift = Math.max(0, absoluteHeight - bottomInset.value);
+    'worklet'
+    const absoluteHeight = Math.abs(keyboardHeight.value)
+    const shift = Math.max(0, absoluteHeight - bottomInset.value)
     return {
       transform: [{ translateY: -shift }],
-    };
-  });
+    }
+  })
 
-  const forcedServerIdParam = forcedServerId?.trim();
+  const forcedServerIdParam = forcedServerId?.trim()
   const resolvedServerId =
     forcedServerIdParam && forcedServerIdParam.length > 0
       ? forcedServerIdParam
-      : getParamValue(params.serverId);
-  const resolvedProvider = getValidProvider(getParamValue(params.provider));
-  const resolvedMode = getValidMode(resolvedProvider, getParamValue(params.modeId));
-  const resolvedModel = getParamValue(params.model);
-  const resolvedThinkingOptionId = getParamValue(params.thinkingOptionId);
-  const resolvedWorkingDir = getParamValue(params.workingDir);
+      : getParamValue(params.serverId)
+  const resolvedProvider = getValidProvider(getParamValue(params.provider))
+  const resolvedMode = getValidMode(resolvedProvider, getParamValue(params.modeId))
+  const resolvedModel = getParamValue(params.model)
+  const resolvedThinkingOptionId = getParamValue(params.thinkingOptionId)
+  const resolvedWorkingDir = getParamValue(params.workingDir)
 
   const onlineServerIds = useMemo(() => {
-    if (daemons.length === 0) return [];
-    const out: string[] = [];
+    if (daemons.length === 0) return []
+    const out: string[] = []
     for (const daemon of daemons) {
-      const status = connectionStates.get(daemon.serverId)?.status ?? "idle";
-      if (status === "online") out.push(daemon.serverId);
+      const status = connectionStates.get(daemon.serverId)?.status ?? 'idle'
+      if (status === 'online') out.push(daemon.serverId)
     }
-    return out;
-  }, [connectionStates, daemons]);
+    return out
+  }, [connectionStates, daemons])
 
   const initialValues = useMemo((): CreateAgentInitialValues => {
-    const values: CreateAgentInitialValues = {};
+    const values: CreateAgentInitialValues = {}
     if (resolvedWorkingDir) {
-      values.workingDir = resolvedWorkingDir;
+      values.workingDir = resolvedWorkingDir
     }
     if (resolvedProvider) {
-      values.provider = resolvedProvider;
+      values.provider = resolvedProvider
     }
     if (resolvedMode) {
-      values.modeId = resolvedMode;
+      values.modeId = resolvedMode
     }
     if (resolvedModel) {
-      values.model = resolvedModel;
+      values.model = resolvedModel
     }
     if (resolvedThinkingOptionId) {
-      values.thinkingOptionId = resolvedThinkingOptionId;
+      values.thinkingOptionId = resolvedThinkingOptionId
     }
-    return values;
-  }, [
-    resolvedMode,
-    resolvedModel,
-    resolvedProvider,
-    resolvedThinkingOptionId,
-    resolvedWorkingDir,
-  ]);
+    return values
+  }, [resolvedMode, resolvedModel, resolvedProvider, resolvedThinkingOptionId, resolvedWorkingDir])
 
   const {
     selectedServerId,
@@ -246,134 +222,131 @@ function DraftAgentScreenContent({
     isVisible,
     isCreateFlow: true,
     onlineServerIds,
-  });
-  const hostEntry = selectedServerId
-    ? connectionStates.get(selectedServerId)
-    : undefined;
-  const isMobile =
-    UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
-  const mobileView = usePanelStore((state) => state.mobileView);
-  const desktopFileExplorerOpen = usePanelStore((state) => state.desktop.fileExplorerOpen);
-  const toggleFileExplorer = usePanelStore((state) => state.toggleFileExplorer);
-  const openFileExplorer = usePanelStore((state) => state.openFileExplorer);
-  const closeFileExplorer = usePanelStore((state) => state.closeFileExplorer);
-  const setActiveExplorerCheckout = usePanelStore((state) => state.setActiveExplorerCheckout);
+  })
+  const hostEntry = selectedServerId ? connectionStates.get(selectedServerId) : undefined
+  const isMobile = UnistylesRuntime.breakpoint === 'xs' || UnistylesRuntime.breakpoint === 'sm'
+  const mobileView = usePanelStore((state) => state.mobileView)
+  const desktopFileExplorerOpen = usePanelStore((state) => state.desktop.fileExplorerOpen)
+  const toggleFileExplorer = usePanelStore((state) => state.toggleFileExplorer)
+  const openFileExplorer = usePanelStore((state) => state.openFileExplorer)
+  const closeFileExplorer = usePanelStore((state) => state.closeFileExplorer)
+  const setActiveExplorerCheckout = usePanelStore((state) => state.setActiveExplorerCheckout)
   const activateExplorerTabForCheckout = usePanelStore(
     (state) => state.activateExplorerTabForCheckout
-  );
-  const isExplorerOpen = isMobile ? mobileView === "file-explorer" : desktopFileExplorerOpen;
+  )
+  const isExplorerOpen = isMobile ? mobileView === 'file-explorer' : desktopFileExplorerOpen
 
-  const [worktreeMode, setWorktreeMode] = useState<"none" | "create" | "attach">("none");
-  const [baseBranch, setBaseBranch] = useState("");
-  const [worktreeSlug, setWorktreeSlug] = useState("");
-  const [selectedWorktreePath, setSelectedWorktreePath] = useState("");
-  const [isWorkingDirOpen, setIsWorkingDirOpen] = useState(false);
-  const [isWorktreePickerOpen, setIsWorktreePickerOpen] = useState(false);
-  const [isBranchOpen, setIsBranchOpen] = useState(false);
-  const [branchSearchQuery, setBranchSearchQuery] = useState("");
-  const [debouncedBranchSearchQuery, setDebouncedBranchSearchQuery] = useState("");
-  const [workingDirSearchQuery, setWorkingDirSearchQuery] = useState("");
-  const [debouncedWorkingDirSearchQuery, setDebouncedWorkingDirSearchQuery] = useState("");
-  const workingDirAnchorRef = useRef<View>(null);
-  const worktreeAnchorRef = useRef<View>(null);
-  const branchAnchorRef = useRef<View>(null);
-  const addImagesRef = useRef<((images: ImageAttachment[]) => void) | null>(null);
-  const setPendingCreateAttempt = useCreateFlowStore((state) => state.setPending);
-  const updatePendingAgentId = useCreateFlowStore((state) => state.updateAgentId);
-  const clearPendingCreateAttempt = useCreateFlowStore((state) => state.clear);
-
-  useEffect(() => {
-    const trimmed = branchSearchQuery.trim();
-    const timer = setTimeout(() => setDebouncedBranchSearchQuery(trimmed), 180);
-    return () => clearTimeout(timer);
-  }, [branchSearchQuery]);
+  const [worktreeMode, setWorktreeMode] = useState<'none' | 'create' | 'attach'>('none')
+  const [baseBranch, setBaseBranch] = useState('')
+  const [worktreeSlug, setWorktreeSlug] = useState('')
+  const [selectedWorktreePath, setSelectedWorktreePath] = useState('')
+  const [isWorkingDirOpen, setIsWorkingDirOpen] = useState(false)
+  const [isWorktreePickerOpen, setIsWorktreePickerOpen] = useState(false)
+  const [isBranchOpen, setIsBranchOpen] = useState(false)
+  const [branchSearchQuery, setBranchSearchQuery] = useState('')
+  const [debouncedBranchSearchQuery, setDebouncedBranchSearchQuery] = useState('')
+  const [workingDirSearchQuery, setWorkingDirSearchQuery] = useState('')
+  const [debouncedWorkingDirSearchQuery, setDebouncedWorkingDirSearchQuery] = useState('')
+  const workingDirAnchorRef = useRef<View>(null)
+  const worktreeAnchorRef = useRef<View>(null)
+  const branchAnchorRef = useRef<View>(null)
+  const addImagesRef = useRef<((images: ImageAttachment[]) => void) | null>(null)
+  const setPendingCreateAttempt = useCreateFlowStore((state) => state.setPending)
+  const updatePendingAgentId = useCreateFlowStore((state) => state.updateAgentId)
+  const clearPendingCreateAttempt = useCreateFlowStore((state) => state.clear)
 
   useEffect(() => {
-    const trimmed = workingDirSearchQuery.trim();
-    const timer = setTimeout(() => setDebouncedWorkingDirSearchQuery(trimmed), 180);
-    return () => clearTimeout(timer);
-  }, [workingDirSearchQuery]);
+    const trimmed = branchSearchQuery.trim()
+    const timer = setTimeout(() => setDebouncedBranchSearchQuery(trimmed), 180)
+    return () => clearTimeout(timer)
+  }, [branchSearchQuery])
+
+  useEffect(() => {
+    const trimmed = workingDirSearchQuery.trim()
+    const timer = setTimeout(() => setDebouncedWorkingDirSearchQuery(trimmed), 180)
+    return () => clearTimeout(timer)
+  }, [workingDirSearchQuery])
 
   type CreateAttempt = {
-    messageId: string;
-    text: string;
-    timestamp: Date;
-    images?: UserMessageImageAttachment[];
-  };
+    messageId: string
+    text: string
+    timestamp: Date
+    images?: UserMessageImageAttachment[]
+  }
 
   type DraftAgentMachineState =
-    | { tag: "draft"; promptText: string; errorMessage: string }
-    | { tag: "creating"; attempt: CreateAttempt };
+    | { tag: 'draft'; promptText: string; errorMessage: string }
+    | { tag: 'creating'; attempt: CreateAttempt }
 
   type DraftAgentMachineEvent =
-    | { type: "DRAFT_SET_PROMPT"; text: string }
-    | { type: "DRAFT_SET_ERROR"; message: string }
-    | { type: "SUBMIT"; attempt: CreateAttempt }
-    | { type: "CREATE_FAILED"; message: string };
+    | { type: 'DRAFT_SET_PROMPT'; text: string }
+    | { type: 'DRAFT_SET_ERROR'; message: string }
+    | { type: 'SUBMIT'; attempt: CreateAttempt }
+    | { type: 'CREATE_FAILED'; message: string }
 
   function assertNever(value: never): never {
-    throw new Error(`Unhandled state: ${JSON.stringify(value)}`);
+    throw new Error(`Unhandled state: ${JSON.stringify(value)}`)
   }
 
   const [machine, dispatch] = useReducer(
     (state: DraftAgentMachineState, event: DraftAgentMachineEvent): DraftAgentMachineState => {
       switch (event.type) {
-        case "DRAFT_SET_PROMPT": {
-          if (state.tag !== "draft") {
-            return state;
+        case 'DRAFT_SET_PROMPT': {
+          if (state.tag !== 'draft') {
+            return state
           }
-          return { ...state, promptText: event.text };
+          return { ...state, promptText: event.text }
         }
-        case "DRAFT_SET_ERROR": {
-          if (state.tag !== "draft") {
-            return state;
+        case 'DRAFT_SET_ERROR': {
+          if (state.tag !== 'draft') {
+            return state
           }
-          return { ...state, errorMessage: event.message };
+          return { ...state, errorMessage: event.message }
         }
-        case "SUBMIT": {
-          return { tag: "creating", attempt: event.attempt };
+        case 'SUBMIT': {
+          return { tag: 'creating', attempt: event.attempt }
         }
-        case "CREATE_FAILED": {
-          if (state.tag !== "creating") {
-            return state;
+        case 'CREATE_FAILED': {
+          if (state.tag !== 'creating') {
+            return state
           }
-          return { tag: "draft", promptText: state.attempt.text, errorMessage: event.message };
+          return { tag: 'draft', promptText: state.attempt.text, errorMessage: event.message }
         }
         default:
-          return assertNever(event);
+          return assertNever(event)
       }
     },
-    { tag: "draft", promptText: "", errorMessage: "" }
-  );
+    { tag: 'draft', promptText: '', errorMessage: '' }
+  )
 
   const handleFilesDropped = useCallback((files: ImageAttachment[]) => {
-    addImagesRef.current?.(files);
-  }, []);
+    addImagesRef.current?.(files)
+  }, [])
 
   const handleAddImagesCallback = useCallback((addImages: (images: ImageAttachment[]) => void) => {
-    addImagesRef.current = addImages;
-  }, []);
+    addImagesRef.current = addImages
+  }, [])
   const sessionAgents = useSessionStore((state) =>
     selectedServerId ? state.sessions[selectedServerId]?.agents : undefined
-  );
-  const { agents: allAgents } = useAllAgentsList({ serverId: selectedServerId });
+  )
+  const { agents: allAgents } = useAllAgentsList({ serverId: selectedServerId })
   const worktreePathLastCreatedAt = useMemo(() => {
-    const map = new Map<string, number>();
+    const map = new Map<string, number>()
     if (!sessionAgents) {
-      return map;
+      return map
     }
     sessionAgents.forEach((agent) => {
       if (!agent.cwd) {
-        return;
+        return
       }
-      const ts = agent.createdAt.getTime();
-      const prev = map.get(agent.cwd);
+      const ts = agent.createdAt.getTime()
+      const prev = map.get(agent.cwd)
       if (!prev || ts > prev) {
-        map.set(agent.cwd, ts);
+        map.set(agent.cwd, ts)
       }
-    });
-    return map;
-  }, [sessionAgents]);
+    })
+    return map
+  }, [sessionAgents])
   const agentWorkingDirSuggestions = useMemo(() => {
     const liveSources = sessionAgents
       ? Array.from(sessionAgents.values()).map((agent) => ({
@@ -381,46 +354,39 @@ function DraftAgentScreenContent({
           createdAt: agent.createdAt,
           lastActivityAt: agent.lastActivityAt,
         }))
-      : [];
+      : []
     const fetchedSources = allAgents.map((agent) => ({
       cwd: agent.cwd,
       lastActivityAt: agent.lastActivityAt,
-    }));
+    }))
 
-    return collectAgentWorkingDirectorySuggestions([
-      ...liveSources,
-      ...fetchedSources,
-    ]);
-  }, [allAgents, sessionAgents]);
+    return collectAgentWorkingDirectorySuggestions([...liveSources, ...fetchedSources])
+  }, [allAgents, sessionAgents])
 
   const sessionClient = useSessionStore((state) =>
-    selectedServerId ? state.sessions[selectedServerId]?.client ?? null : null
-  );
+    selectedServerId ? (state.sessions[selectedServerId]?.client ?? null) : null
+  )
   const isConnected = useSessionStore((state) =>
-    selectedServerId
-      ? state.sessions[selectedServerId]?.connection.isConnected ?? false
-      : false
-  );
-  const trimmedWorkingDir = workingDir.trim();
-  const shouldInspectRepo = trimmedWorkingDir.length > 0;
+    selectedServerId ? (state.sessions[selectedServerId]?.connection.isConnected ?? false) : false
+  )
+  const trimmedWorkingDir = workingDir.trim()
+  const shouldInspectRepo = trimmedWorkingDir.length > 0
   const daemonAvailabilityError =
-    !selectedServerId || hostEntry?.status !== "online"
-      ? "Host is offline"
-      : null;
+    !selectedServerId || hostEntry?.status !== 'online' ? 'Host is offline' : null
   const repoAvailabilityError =
-    shouldInspectRepo && (!hostEntry || hostEntry.status !== "online" || !isConnected)
-      ? daemonAvailabilityError ??
-        "Repository details will load automatically once the selected host is back online."
-      : null;
+    shouldInspectRepo && (!hostEntry || hostEntry.status !== 'online' || !isConnected)
+      ? (daemonAvailabilityError ??
+        'Repository details will load automatically once the selected host is back online.')
+      : null
 
   const checkoutStatusQuery = useQuery({
-    queryKey: checkoutStatusQueryKey(selectedServerId ?? "", trimmedWorkingDir),
+    queryKey: checkoutStatusQueryKey(selectedServerId ?? '', trimmedWorkingDir),
     queryFn: async () => {
-      const client = sessionClient;
+      const client = sessionClient
       if (!client) {
-        throw new Error("Daemon client unavailable");
+        throw new Error('Daemon client unavailable')
       }
-      return await client.getCheckoutStatus(trimmedWorkingDir);
+      return await client.getCheckoutStatus(trimmedWorkingDir)
     },
     enabled:
       Boolean(selectedServerId) &&
@@ -430,60 +396,60 @@ function DraftAgentScreenContent({
       isConnected,
     retry: false,
     staleTime: CHECKOUT_STATUS_STALE_TIME,
-    refetchOnMount: "always",
-  });
+    refetchOnMount: 'always',
+  })
 
-  const checkout = checkoutStatusQuery.data ?? null;
+  const checkout = checkoutStatusQuery.data ?? null
   const checkoutQueryError =
-    checkoutStatusQuery.error instanceof Error ? checkoutStatusQuery.error.message : null;
-  const checkoutPayloadError = checkout?.error ? checkout.error.message : null;
-  const isGitDirectory = checkoutStatusQuery.isSuccess && checkout?.isGit === true;
+    checkoutStatusQuery.error instanceof Error ? checkoutStatusQuery.error.message : null
+  const checkoutPayloadError = checkout?.error ? checkout.error.message : null
+  const isGitDirectory = checkoutStatusQuery.isSuccess && checkout?.isGit === true
 
   const isNonGitDirectory =
     Boolean(trimmedWorkingDir) &&
     checkoutStatusQuery.isSuccess &&
     checkout?.isGit === false &&
-    checkout?.error == null;
+    checkout?.error == null
 
   const isDirectoryNotExists =
     checkoutStatusQuery.isError &&
-    /does not exist|no such file or directory|ENOENT/i.test(checkoutQueryError ?? "");
+    /does not exist|no such file or directory|ENOENT/i.test(checkoutQueryError ?? '')
 
-  const repoInfoStatus: "idle" | "loading" | "ready" | "error" = !shouldInspectRepo
-    ? "idle"
+  const repoInfoStatus: 'idle' | 'loading' | 'ready' | 'error' = !shouldInspectRepo
+    ? 'idle'
     : repoAvailabilityError
-      ? "error"
+      ? 'error'
       : checkoutStatusQuery.isPending || checkoutStatusQuery.isFetching
-        ? "loading"
+        ? 'loading'
         : checkoutStatusQuery.isError || Boolean(checkoutPayloadError)
-          ? "error"
+          ? 'error'
           : checkout?.isGit
-            ? "ready"
-            : "idle";
+            ? 'ready'
+            : 'idle'
 
   const repoInfoError =
     repoAvailabilityError ??
     (checkoutStatusQuery.isError ? checkoutQueryError : null) ??
-    checkoutPayloadError;
-  const isCreateWorktree = worktreeMode === "create";
-  const isAttachWorktree = worktreeMode === "attach";
+    checkoutPayloadError
+  const isCreateWorktree = worktreeMode === 'create'
+  const isAttachWorktree = worktreeMode === 'attach'
 
-  const worktreeListRoot = checkout?.isGit ? checkout.repoRoot : "";
+  const worktreeListRoot = checkout?.isGit ? checkout.repoRoot : ''
   const worktreeListQuery = useQuery({
-    queryKey: ["paseoWorktreeList", selectedServerId, worktreeListRoot],
+    queryKey: ['paseoWorktreeList', selectedServerId, worktreeListRoot],
     queryFn: async () => {
-      const client = sessionClient;
+      const client = sessionClient
       if (!client) {
-        throw new Error("Daemon client unavailable");
+        throw new Error('Daemon client unavailable')
       }
       const payload = await client.getPaseoWorktreeList({
         repoRoot: worktreeListRoot || undefined,
         cwd: worktreeListRoot ? undefined : trimmedWorkingDir || undefined,
-      });
+      })
       if (payload.error) {
-        throw new Error(payload.error.message);
+        throw new Error(payload.error.message)
       }
-      return payload.worktrees ?? [];
+      return payload.worktrees ?? []
     },
     enabled:
       isGitDirectory &&
@@ -494,59 +460,59 @@ function DraftAgentScreenContent({
       !isNonGitDirectory,
     retry: false,
     staleTime: 0,
-    refetchOnMount: "always",
-  });
+    refetchOnMount: 'always',
+  })
   const worktreeOptions = useMemo(() => {
     const options = (worktreeListQuery.data ?? []).map((worktree) => ({
       path: worktree.worktreePath,
-      label: worktree.branchName ?? worktree.head ?? "Unknown branch",
-    }));
+      label: worktree.branchName ?? worktree.head ?? 'Unknown branch',
+    }))
     return options.sort((a, b) => {
-      const aTs = worktreePathLastCreatedAt.get(a.path) ?? 0;
-      const bTs = worktreePathLastCreatedAt.get(b.path) ?? 0;
+      const aTs = worktreePathLastCreatedAt.get(a.path) ?? 0
+      const bTs = worktreePathLastCreatedAt.get(b.path) ?? 0
       if (aTs !== bTs) {
-        return bTs - aTs;
+        return bTs - aTs
       }
-      return a.label.localeCompare(b.label);
-    });
-  }, [worktreeListQuery.data, worktreePathLastCreatedAt]);
+      return a.label.localeCompare(b.label)
+    })
+  }, [worktreeListQuery.data, worktreePathLastCreatedAt])
   const worktreeOptionsError =
-    worktreeListQuery.error instanceof Error ? worktreeListQuery.error.message : null;
-  const worktreeOptionsStatus: "idle" | "loading" | "ready" | "error" =
+    worktreeListQuery.error instanceof Error ? worktreeListQuery.error.message : null
+  const worktreeOptionsStatus: 'idle' | 'loading' | 'ready' | 'error' =
     worktreeListQuery.isPending || worktreeListQuery.isFetching
-      ? "loading"
+      ? 'loading'
       : worktreeListQuery.isError
-      ? "error"
-      : "ready";
+        ? 'error'
+        : 'ready'
   const attachWorktreeError =
     isAttachWorktree &&
-    worktreeOptionsStatus === "ready" &&
+    worktreeOptionsStatus === 'ready' &&
     worktreeOptions.length > 0 &&
     !selectedWorktreePath
-      ? "Select a worktree to attach"
-      : null;
+      ? 'Select a worktree to attach'
+      : null
 
   const branchSuggestionsQuery = useQuery({
     queryKey: [
-      "branchSuggestions",
+      'branchSuggestions',
       selectedServerId,
       trimmedWorkingDir,
       debouncedBranchSearchQuery,
     ],
     queryFn: async () => {
-      const client = sessionClient;
+      const client = sessionClient
       if (!client) {
-        throw new Error("Daemon client unavailable");
+        throw new Error('Daemon client unavailable')
       }
       const payload = await client.getBranchSuggestions({
-        cwd: trimmedWorkingDir || ".",
+        cwd: trimmedWorkingDir || '.',
         query: debouncedBranchSearchQuery || undefined,
         limit: 50,
-      });
+      })
       if (payload.error) {
-        throw new Error(payload.error);
+        throw new Error(payload.error)
       }
-      return payload.branches ?? [];
+      return payload.branches ?? []
     },
     enabled:
       isCreateWorktree &&
@@ -558,27 +524,30 @@ function DraftAgentScreenContent({
       isConnected,
     retry: false,
     staleTime: 15_000,
-  });
+  })
 
   const directorySuggestionsQuery = useQuery({
-    queryKey: [
-      "directorySuggestions",
-      selectedServerId,
-      debouncedWorkingDirSearchQuery,
-    ],
+    queryKey: ['directorySuggestions', selectedServerId, debouncedWorkingDirSearchQuery],
     queryFn: async () => {
-      const client = sessionClient;
+      const client = sessionClient
       if (!client) {
-        throw new Error("Daemon client unavailable");
+        throw new Error('Daemon client unavailable')
       }
       const payload = await client.getDirectorySuggestions({
         query: debouncedWorkingDirSearchQuery,
         limit: 50,
-      });
+        includeDirectories: true,
+        includeFiles: false,
+      })
       if (payload.error) {
-        throw new Error(payload.error);
+        throw new Error(payload.error)
       }
-      return payload.directories ?? [];
+      if (payload.entries.length > 0) {
+        return payload.entries
+          .filter((entry) => entry.kind === 'directory')
+          .map((entry) => entry.path)
+      }
+      return payload.directories ?? []
     },
     enabled:
       Boolean(debouncedWorkingDirSearchQuery) &&
@@ -588,69 +557,61 @@ function DraftAgentScreenContent({
       isConnected,
     retry: false,
     staleTime: 15_000,
-  });
+  })
 
-  const validateWorktreeName = useCallback(
-    (name: string): { valid: boolean; error?: string } => {
-      if (!name) {
-        return { valid: true };
+  const validateWorktreeName = useCallback((name: string): { valid: boolean; error?: string } => {
+    if (!name) {
+      return { valid: true }
+    }
+    if (name.length > 100) {
+      return {
+        valid: false,
+        error: 'Worktree name too long (max 100 characters)',
       }
-      if (name.length > 100) {
-        return {
-          valid: false,
-          error: "Worktree name too long (max 100 characters)",
-        };
+    }
+    if (!/^[a-z0-9-/]+$/.test(name)) {
+      return {
+        valid: false,
+        error: 'Must contain only lowercase letters, numbers, hyphens, and forward slashes',
       }
-      if (!/^[a-z0-9-/]+$/.test(name)) {
-        return {
-          valid: false,
-          error: "Must contain only lowercase letters, numbers, hyphens, and forward slashes",
-        };
-      }
-      if (name.startsWith("-") || name.endsWith("-")) {
-        return { valid: false, error: "Cannot start or end with a hyphen" };
-      }
-      if (name.includes("--")) {
-        return { valid: false, error: "Cannot have consecutive hyphens" };
-      }
-      return { valid: true };
-    },
-    []
-  );
+    }
+    if (name.startsWith('-') || name.endsWith('-')) {
+      return { valid: false, error: 'Cannot start or end with a hyphen' }
+    }
+    if (name.includes('--')) {
+      return { valid: false, error: 'Cannot have consecutive hyphens' }
+    }
+    return { valid: true }
+  }, [])
 
   const gitBlockingError = useMemo(() => {
     if (!isCreateWorktree || isNonGitDirectory) {
-      return null;
+      return null
     }
     if (!worktreeSlug) {
-      return null;
+      return null
     }
-    const validation = validateWorktreeName(worktreeSlug);
+    const validation = validateWorktreeName(worktreeSlug)
     if (!validation.valid) {
       return `Invalid worktree name: ${
-        validation.error ?? "Must use lowercase letters, numbers, or hyphens"
-      }`;
+        validation.error ?? 'Must use lowercase letters, numbers, or hyphens'
+      }`
     }
-    return null;
-  }, [
-    isCreateWorktree,
-    isNonGitDirectory,
-    worktreeSlug,
-    validateWorktreeName,
-  ]);
+    return null
+  }, [isCreateWorktree, isNonGitDirectory, worktreeSlug, validateWorktreeName])
 
   // Validate branch exists (checks local first, then remote)
   const branchValidationQuery = useQuery({
-    queryKey: ["validateBranch", selectedServerId, trimmedWorkingDir, baseBranch],
+    queryKey: ['validateBranch', selectedServerId, trimmedWorkingDir, baseBranch],
     queryFn: async () => {
-      const client = sessionClient;
+      const client = sessionClient
       if (!client) {
-        throw new Error("Daemon client unavailable");
+        throw new Error('Daemon client unavailable')
       }
       return client.validateBranch({
-        cwd: trimmedWorkingDir || ".",
+        cwd: trimmedWorkingDir || '.',
         branchName: baseBranch,
-      });
+      })
     },
     enabled:
       isCreateWorktree &&
@@ -662,119 +623,102 @@ function DraftAgentScreenContent({
       isConnected,
     retry: false,
     staleTime: 30_000,
-  });
+  })
 
   const baseBranchError = useMemo(() => {
     if (!isCreateWorktree || isNonGitDirectory) {
-      return null;
+      return null
     }
     if (!baseBranch) {
-      return "Base branch is required";
+      return 'Base branch is required'
     }
     // While validating, don't show error
     if (branchValidationQuery.isPending || branchValidationQuery.isFetching) {
-      return null;
+      return null
     }
     // If validation query errored, show generic error
     if (branchValidationQuery.isError) {
-      return "Failed to validate branch";
+      return 'Failed to validate branch'
     }
     // If validation completed and branch doesn't exist
-    const validationResult = branchValidationQuery.data;
+    const validationResult = branchValidationQuery.data
     if (validationResult && !validationResult.exists) {
-      return `Branch "${baseBranch}" not found in repository`;
+      return `Branch "${baseBranch}" not found in repository`
     }
-    return null;
-  }, [isCreateWorktree, isNonGitDirectory, baseBranch, branchValidationQuery]);
+    return null
+  }, [isCreateWorktree, isNonGitDirectory, baseBranch, branchValidationQuery])
 
   const handleBaseBranchChange = useCallback((value: string) => {
-    setBaseBranch(value);
-  }, []);
+    setBaseBranch(value)
+  }, [])
 
-  const handleSelectWorktreePath = useCallback(
-    (path: string) => {
-      setSelectedWorktreePath(path);
-    },
-    []
-  );
+  const handleSelectWorktreePath = useCallback((path: string) => {
+    setSelectedWorktreePath(path)
+  }, [])
 
   useEffect(() => {
     if (!isCreateWorktree || isNonGitDirectory) {
-      return;
+      return
     }
     if (baseBranch) {
-      return;
+      return
     }
-    const current = checkout?.isGit ? checkout.currentBranch?.trim() : null;
-    if (!current || current === "HEAD") {
-      return;
+    const current = checkout?.isGit ? checkout.currentBranch?.trim() : null
+    if (!current || current === 'HEAD') {
+      return
     }
     if (current) {
-      setBaseBranch(current);
+      setBaseBranch(current)
     }
-  }, [isCreateWorktree, isNonGitDirectory, baseBranch, checkout]);
+  }, [isCreateWorktree, isNonGitDirectory, baseBranch, checkout])
 
   useEffect(() => {
-    if (isNonGitDirectory && worktreeMode !== "none") {
-      setWorktreeMode("none");
-      setSelectedWorktreePath("");
+    if (isNonGitDirectory && worktreeMode !== 'none') {
+      setWorktreeMode('none')
+      setSelectedWorktreePath('')
     }
-  }, [isNonGitDirectory, worktreeMode]);
+  }, [isNonGitDirectory, worktreeMode])
 
   const selectedWorktreeLabel =
-    worktreeOptions.find((option) => option.path === selectedWorktreePath)?.label ?? "";
+    worktreeOptions.find((option) => option.path === selectedWorktreePath)?.label ?? ''
   const explorerCwd = useMemo(
-    () =>
-      (
-        isAttachWorktree && selectedWorktreePath ? selectedWorktreePath : workingDir
-      ).trim(),
+    () => (isAttachWorktree && selectedWorktreePath ? selectedWorktreePath : workingDir).trim(),
     [isAttachWorktree, selectedWorktreePath, workingDir]
-  );
+  )
   const draftExplorerCheckout = useMemo<ExplorerCheckoutContext | null>(() => {
     if (!selectedServerId || !explorerCwd) {
-      return null;
+      return null
     }
     return {
       serverId: selectedServerId,
       cwd: explorerCwd,
       isGit: isAttachWorktree && selectedWorktreePath ? true : checkout?.isGit === true,
-    };
-  }, [
-    selectedServerId,
-    explorerCwd,
-    isAttachWorktree,
-    selectedWorktreePath,
-    checkout?.isGit,
-  ]);
-  const canOpenExplorer = draftExplorerCheckout !== null;
+    }
+  }, [selectedServerId, explorerCwd, isAttachWorktree, selectedWorktreePath, checkout?.isGit])
+  const canOpenExplorer = draftExplorerCheckout !== null
   const openExplorerForDraftCheckout = useCallback(() => {
     if (!draftExplorerCheckout) {
-      return;
+      return
     }
-    activateExplorerTabForCheckout(draftExplorerCheckout);
-    openFileExplorer();
-  }, [activateExplorerTabForCheckout, draftExplorerCheckout, openFileExplorer]);
+    activateExplorerTabForCheckout(draftExplorerCheckout)
+    openFileExplorer()
+  }, [activateExplorerTabForCheckout, draftExplorerCheckout, openFileExplorer])
   const handleToggleExplorer = useCallback(() => {
     if (!canOpenExplorer) {
-      return;
+      return
     }
     if (isExplorerOpen) {
-      toggleFileExplorer();
-      return;
+      toggleFileExplorer()
+      return
     }
-    openExplorerForDraftCheckout();
-  }, [
-    canOpenExplorer,
-    isExplorerOpen,
-    openExplorerForDraftCheckout,
-    toggleFileExplorer,
-  ]);
+    openExplorerForDraftCheckout()
+  }, [canOpenExplorer, isExplorerOpen, openExplorerForDraftCheckout, toggleFileExplorer])
   const handleOpenExplorerFromGesture = useCallback(() => {
     if (!canOpenExplorer) {
-      return;
+      return
     }
-    openExplorerForDraftCheckout();
-  }, [canOpenExplorer, openExplorerForDraftCheckout]);
+    openExplorerForDraftCheckout()
+  }, [canOpenExplorer, openExplorerForDraftCheckout])
   const explorerOpenGesture = useMemo(
     () =>
       Gesture.Pan()
@@ -782,18 +726,18 @@ function DraftAgentScreenContent({
         .activeOffsetX(-15)
         .failOffsetY([-10, 10])
         .onEnd((event) => {
-          const shouldOpen = event.translationX < -80 || event.velocityX < -500;
+          const shouldOpen = event.translationX < -80 || event.velocityX < -500
           if (shouldOpen) {
-            runOnJS(handleOpenExplorerFromGesture)();
+            runOnJS(handleOpenExplorerFromGesture)()
           }
         }),
     [canOpenExplorer, handleOpenExplorerFromGesture, isExplorerOpen, isMobile]
-  );
-  const hasWorkingDirectorySearch = debouncedWorkingDirSearchQuery.length > 0;
+  )
+  const hasWorkingDirectorySearch = debouncedWorkingDirSearchQuery.length > 0
   const workingDirSearchError =
     directorySuggestionsQuery.error instanceof Error
       ? directorySuggestionsQuery.error.message
-      : null;
+      : null
   const workingDirSuggestionPaths = useMemo(
     () =>
       buildWorkingDirectorySuggestions({
@@ -807,46 +751,40 @@ function DraftAgentScreenContent({
       hasWorkingDirectorySearch,
       workingDirSearchQuery,
     ]
-  );
+  )
   const workingDirComboOptions = useMemo(
     () =>
       workingDirSuggestionPaths.map((path) => ({
         id: path,
         label: shortenPath(path),
-        kind: "directory" as const,
+        kind: 'directory' as const,
       })),
     [workingDirSuggestionPaths]
-  );
+  )
   const workingDirEmptyText = useMemo(() => {
     if (hasWorkingDirectorySearch) {
       if (workingDirSearchError) {
-        return "Failed to search directories on this host.";
+        return 'Failed to search directories on this host.'
       }
-      return "No directories match your search.";
+      return 'No directories match your search.'
     }
 
     return agentWorkingDirSuggestions.length > 0
-      ? "No agent directories match your search."
-      : "We'll suggest directories from agents on this host once they exist.";
-  }, [
-    agentWorkingDirSuggestions.length,
-    hasWorkingDirectorySearch,
-    workingDirSearchError,
-  ]);
-  const displayWorkingDir = shortenPath(workingDir);
+      ? 'No agent directories match your search.'
+      : "We'll suggest directories from agents on this host once they exist."
+  }, [agentWorkingDirSuggestions.length, hasWorkingDirectorySearch, workingDirSearchError])
+  const displayWorkingDir = shortenPath(workingDir)
   const worktreeTriggerValue =
-    worktreeMode === "create"
-      ? "Create new worktree"
-      : selectedWorktreeLabel || "Select worktree";
+    worktreeMode === 'create' ? 'Create new worktree' : selectedWorktreeLabel || 'Select worktree'
   const worktreeComboOptions = useMemo(
     () => [
       {
-        id: "__none__",
-        label: "None",
+        id: '__none__',
+        label: 'None',
       },
       {
-        id: "__create_new__",
-        label: "Create new worktree",
+        id: '__create_new__',
+        label: 'Create new worktree',
       },
       ...worktreeOptions.map((option) => ({
         id: option.path,
@@ -855,7 +793,7 @@ function DraftAgentScreenContent({
       })),
     ],
     [worktreeOptions]
-  );
+  )
 
   const branchComboOptions = useMemo(() => {
     const options = buildBranchComboOptions({
@@ -864,51 +802,45 @@ function DraftAgentScreenContent({
       baseRef: checkout?.isGit ? checkout.baseRef : null,
       typedBaseBranch: baseBranch,
       worktreeBranchLabels: worktreeOptions.map((option) => option.label),
-    });
+    })
 
-    const normalizedQuery = normalizeBranchOptionName(branchSearchQuery)?.toLowerCase() ?? "";
+    const normalizedQuery = normalizeBranchOptionName(branchSearchQuery)?.toLowerCase() ?? ''
     if (!normalizedQuery) {
-      return options;
+      return options
     }
 
     return options.sort((a, b) => {
-      const aLower = a.label.toLowerCase();
-      const bLower = b.label.toLowerCase();
-      const aPrefix = aLower.startsWith(normalizedQuery);
-      const bPrefix = bLower.startsWith(normalizedQuery);
+      const aLower = a.label.toLowerCase()
+      const bLower = b.label.toLowerCase()
+      const aPrefix = aLower.startsWith(normalizedQuery)
+      const bPrefix = bLower.startsWith(normalizedQuery)
       if (aPrefix !== bPrefix) {
-        return aPrefix ? -1 : 1;
+        return aPrefix ? -1 : 1
       }
-      return aLower.localeCompare(bLower);
-    });
-  }, [
-    baseBranch,
-    branchSearchQuery,
-    branchSuggestionsQuery.data,
-    checkout,
-    worktreeOptions,
-  ]);
+      return aLower.localeCompare(bLower)
+    })
+  }, [baseBranch, branchSearchQuery, branchSuggestionsQuery.data, checkout, worktreeOptions])
 
   const createAgentClient = useSessionStore((state) =>
-    selectedServerId ? state.sessions[selectedServerId]?.client ?? null : null
-  );
+    selectedServerId ? (state.sessions[selectedServerId]?.client ?? null) : null
+  )
   const draftCommandConfig = useMemo<DraftCommandConfig | undefined>(() => {
     const cwd = (
       isAttachWorktree && selectedWorktreePath ? selectedWorktreePath : workingDir
-    ).trim();
+    ).trim()
     if (!cwd) {
-      return undefined;
+      return undefined
     }
 
     return {
       provider: selectedProvider,
       cwd,
-      ...(modeOptions.length > 0 && selectedMode !== "" ? { modeId: selectedMode } : {}),
+      ...(modeOptions.length > 0 && selectedMode !== '' ? { modeId: selectedMode } : {}),
       ...(selectedModel.trim() ? { model: selectedModel.trim() } : {}),
       ...(selectedThinkingOptionId.trim()
         ? { thinkingOptionId: selectedThinkingOptionId.trim() }
         : {}),
-    };
+    }
   }, [
     isAttachWorktree,
     modeOptions.length,
@@ -918,19 +850,19 @@ function DraftAgentScreenContent({
     selectedThinkingOptionId,
     selectedWorktreePath,
     workingDir,
-  ]);
+  ])
 
-  const promptValue = machine.tag === "draft" ? machine.promptText : "";
-  const formErrorMessage = machine.tag === "draft" ? machine.errorMessage : "";
-  const isSubmitting = machine.tag === "creating";
+  const promptValue = machine.tag === 'draft' ? machine.promptText : ''
+  const formErrorMessage = machine.tag === 'draft' ? machine.errorMessage : ''
+  const isSubmitting = machine.tag === 'creating'
 
   const optimisticStreamItems = useMemo<StreamItem[]>(() => {
-    if (machine.tag !== "creating") {
-      return EMPTY_STREAM_ITEMS;
+    if (machine.tag !== 'creating') {
+      return EMPTY_STREAM_ITEMS
     }
     return [
       {
-        kind: "user_message",
+        kind: 'user_message',
         id: machine.attempt.messageId,
         text: machine.attempt.text,
         timestamp: machine.attempt.timestamp,
@@ -938,26 +870,27 @@ function DraftAgentScreenContent({
           ? { images: machine.attempt.images }
           : {}),
       },
-    ];
-  }, [machine]);
+    ]
+  }, [machine])
 
   const draftAgent = useMemo<Agent | null>(() => {
-    if (machine.tag !== "creating") {
-      return null;
+    if (machine.tag !== 'creating') {
+      return null
     }
-    const serverId = selectedServerId ?? "";
-    const now = machine.attempt.timestamp;
-    const cwd = (isAttachWorktree && selectedWorktreePath ? selectedWorktreePath : workingDir).trim() || ".";
-    const provider = selectedProvider;
-    const model = selectedModel.trim() || null;
-    const thinkingOptionId = selectedThinkingOptionId.trim() || null;
-    const modeId = modeOptions.length > 0 && selectedMode !== "" ? selectedMode : null;
+    const serverId = selectedServerId ?? ''
+    const now = machine.attempt.timestamp
+    const cwd =
+      (isAttachWorktree && selectedWorktreePath ? selectedWorktreePath : workingDir).trim() || '.'
+    const provider = selectedProvider
+    const model = selectedModel.trim() || null
+    const thinkingOptionId = selectedThinkingOptionId.trim() || null
+    const modeId = modeOptions.length > 0 && selectedMode !== '' ? selectedMode : null
 
     return {
       serverId,
       id: DRAFT_AGENT_ID,
       provider,
-      status: "running",
+      status: 'running',
       createdAt: now,
       updatedAt: now,
       lastUserMessageAt: now,
@@ -973,15 +906,15 @@ function DraftAgentScreenContent({
         model,
         modeId,
       },
-      title: "New agent",
+      title: 'New agent',
       cwd,
       model,
       thinkingOptionId,
       labels: {},
-    };
+    }
   }, [
     machine.tag,
-    machine.tag === "creating" ? machine.attempt.timestamp : null,
+    machine.tag === 'creating' ? machine.attempt.timestamp : null,
     isAttachWorktree,
     modeOptions.length,
     selectedMode,
@@ -991,123 +924,110 @@ function DraftAgentScreenContent({
     selectedServerId,
     selectedWorktreePath,
     workingDir,
-  ]);
+  ])
   useEffect(() => {
-    setActiveExplorerCheckout(draftExplorerCheckout);
-  }, [draftExplorerCheckout, setActiveExplorerCheckout]);
+    setActiveExplorerCheckout(draftExplorerCheckout)
+  }, [draftExplorerCheckout, setActiveExplorerCheckout])
   useEffect(() => {
     if (!draftExplorerCheckout) {
-      return;
+      return
     }
-    activateExplorerTabForCheckout(draftExplorerCheckout);
-  }, [activateExplorerTabForCheckout, draftExplorerCheckout]);
+    activateExplorerTabForCheckout(draftExplorerCheckout)
+  }, [activateExplorerTabForCheckout, draftExplorerCheckout])
   useEffect(() => {
     if (canOpenExplorer || !isExplorerOpen) {
-      return;
+      return
     }
-    closeFileExplorer();
-  }, [canOpenExplorer, closeFileExplorer, isExplorerOpen]);
+    closeFileExplorer()
+  }, [canOpenExplorer, closeFileExplorer, isExplorerOpen])
   useEffect(() => {
     return () => {
-      setActiveExplorerCheckout(null);
-    };
-  }, [setActiveExplorerCheckout]);
+      setActiveExplorerCheckout(null)
+    }
+  }, [setActiveExplorerCheckout])
 
   const handleCreateFromInput = useCallback(
-    async ({
-      text,
-      images,
-    }: {
-      text: string;
-      images?: UserMessageImageAttachment[];
-    }) => {
+    async ({ text, images }: { text: string; images?: UserMessageImageAttachment[] }) => {
       if (isSubmitting) {
-        throw new Error("Already loading");
+        throw new Error('Already loading')
       }
-      dispatch({ type: "DRAFT_SET_ERROR", message: "" });
-      const trimmedPath = workingDir.trim();
-      const trimmedPrompt = text.trim();
+      dispatch({ type: 'DRAFT_SET_ERROR', message: '' })
+      const trimmedPath = workingDir.trim()
+      const trimmedPrompt = text.trim()
       const resolvedWorkingDir =
-        isAttachWorktree && selectedWorktreePath
-          ? selectedWorktreePath
-          : trimmedPath;
+        isAttachWorktree && selectedWorktreePath ? selectedWorktreePath : trimmedPath
       if (!trimmedPath) {
-        dispatch({ type: "DRAFT_SET_ERROR", message: "Working directory is required" });
-        throw new Error("Working directory is required");
+        dispatch({ type: 'DRAFT_SET_ERROR', message: 'Working directory is required' })
+        throw new Error('Working directory is required')
       }
       if (isDirectoryNotExists) {
         dispatch({
-          type: "DRAFT_SET_ERROR",
-          message: "Working directory does not exist on the selected host",
-        });
-        throw new Error("Working directory does not exist on the selected host");
+          type: 'DRAFT_SET_ERROR',
+          message: 'Working directory does not exist on the selected host',
+        })
+        throw new Error('Working directory does not exist on the selected host')
       }
       if (!trimmedPrompt) {
-        dispatch({ type: "DRAFT_SET_ERROR", message: "Initial prompt is required" });
-        throw new Error("Initial prompt is required");
+        dispatch({ type: 'DRAFT_SET_ERROR', message: 'Initial prompt is required' })
+        throw new Error('Initial prompt is required')
       }
       if (!selectedServerId) {
-        dispatch({ type: "DRAFT_SET_ERROR", message: "No host selected" });
-        throw new Error("No host selected");
+        dispatch({ type: 'DRAFT_SET_ERROR', message: 'No host selected' })
+        throw new Error('No host selected')
       }
       if (providerDefinitions.length === 0) {
         dispatch({
-          type: "DRAFT_SET_ERROR",
-          message: "No available providers on the selected host",
-        });
-        throw new Error("No available providers on the selected host");
+          type: 'DRAFT_SET_ERROR',
+          message: 'No available providers on the selected host',
+        })
+        throw new Error('No available providers on the selected host')
       }
       if (gitBlockingError) {
-        dispatch({ type: "DRAFT_SET_ERROR", message: gitBlockingError });
-        throw new Error(gitBlockingError);
+        dispatch({ type: 'DRAFT_SET_ERROR', message: gitBlockingError })
+        throw new Error(gitBlockingError)
       }
       if (isAttachWorktree && !selectedWorktreePath) {
-        const message = "Select a worktree to attach";
-        dispatch({ type: "DRAFT_SET_ERROR", message });
-        throw new Error(message);
+        const message = 'Select a worktree to attach'
+        dispatch({ type: 'DRAFT_SET_ERROR', message })
+        throw new Error(message)
       }
       if (baseBranchError) {
-        dispatch({ type: "DRAFT_SET_ERROR", message: baseBranchError });
-        throw new Error(baseBranchError);
+        dispatch({ type: 'DRAFT_SET_ERROR', message: baseBranchError })
+        throw new Error(baseBranchError)
       }
       if (!createAgentClient) {
-        dispatch({ type: "DRAFT_SET_ERROR", message: "Host is not connected" });
-        throw new Error("Host is not connected");
+        dispatch({ type: 'DRAFT_SET_ERROR', message: 'Host is not connected' })
+        throw new Error('Host is not connected')
       }
       const attempt = {
         messageId: generateMessageId(),
         text: trimmedPrompt,
         timestamp: new Date(),
         ...(images && images.length > 0 ? { images } : {}),
-      };
+      }
       setPendingCreateAttempt({
         serverId: selectedServerId,
         agentId: null,
         messageId: attempt.messageId,
         text: attempt.text,
         timestamp: attempt.timestamp.getTime(),
-        ...(attempt.images && attempt.images.length > 0
-          ? { images: attempt.images }
-          : {}),
-      });
-      const modeId =
-        modeOptions.length > 0 && selectedMode !== "" ? selectedMode : undefined;
-      const trimmedModel = selectedModel.trim();
-      const trimmedThinkingOptionId = selectedThinkingOptionId.trim();
+        ...(attempt.images && attempt.images.length > 0 ? { images: attempt.images } : {}),
+      })
+      const modeId = modeOptions.length > 0 && selectedMode !== '' ? selectedMode : undefined
+      const trimmedModel = selectedModel.trim()
+      const trimmedThinkingOptionId = selectedThinkingOptionId.trim()
       const config: AgentSessionConfig = {
         provider: selectedProvider,
         cwd: resolvedWorkingDir,
         ...(modeId ? { modeId } : {}),
         ...(trimmedModel ? { model: trimmedModel } : {}),
-        ...(trimmedThinkingOptionId
-          ? { thinkingOptionId: trimmedThinkingOptionId }
-          : {}),
-      };
-      const effectiveBaseBranch = baseBranch.trim();
+        ...(trimmedThinkingOptionId ? { thinkingOptionId: trimmedThinkingOptionId } : {}),
+      }
+      const effectiveBaseBranch = baseBranch.trim()
       const effectiveWorktreeSlug =
-        isCreateWorktree && !worktreeSlug ? createNameId() : worktreeSlug;
+        isCreateWorktree && !worktreeSlug ? createNameId() : worktreeSlug
       if (isCreateWorktree && !worktreeSlug && effectiveWorktreeSlug) {
-        setWorktreeSlug(effectiveWorktreeSlug);
+        setWorktreeSlug(effectiveWorktreeSlug)
       }
       const gitOptions =
         isCreateWorktree && !isNonGitDirectory && effectiveWorktreeSlug
@@ -1118,48 +1038,46 @@ function DraftAgentScreenContent({
               worktreeSlug: effectiveWorktreeSlug,
               baseBranch: effectiveBaseBranch,
             }
-          : undefined;
+          : undefined
 
-      void persistFormPreferences();
-      if (Platform.OS === "web") {
-        (document.activeElement as HTMLElement | null)?.blur?.();
+      void persistFormPreferences()
+      if (Platform.OS === 'web') {
+        ;(document.activeElement as HTMLElement | null)?.blur?.()
       }
-      Keyboard.dismiss();
-      dispatch({ type: "SUBMIT", attempt });
-      onCreateFlowActiveChange?.(true);
+      Keyboard.dismiss()
+      dispatch({ type: 'SUBMIT', attempt })
+      onCreateFlowActiveChange?.(true)
 
       try {
-        const imagesData = await encodeImages(images);
+        const imagesData = await encodeImages(images)
         const result = await createAgentClient.createAgent({
           config,
-          labels: { ui: "true" },
+          labels: { ui: 'true' },
           initialPrompt: trimmedPrompt,
           ...(imagesData && imagesData.length > 0 ? { images: imagesData } : {}),
           git: gitOptions,
-        });
+        })
 
-        const agentId = (result as { id?: string })?.id;
+        const agentId = (result as { id?: string })?.id
         if (agentId && selectedServerId) {
-          updatePendingAgentId(agentId);
-          router.replace(
-            buildHostAgentDetailRoute(selectedServerId, agentId) as any
-          );
-          return;
+          updatePendingAgentId(agentId)
+          router.replace(buildHostAgentDetailRoute(selectedServerId, agentId) as any)
+          return
         }
 
         dispatch({
-          type: "CREATE_FAILED",
-          message: "Failed to create agent",
-        });
-        onCreateFlowActiveChange?.(false);
-        clearPendingCreateAttempt();
-        throw new Error("Failed to create agent");
+          type: 'CREATE_FAILED',
+          message: 'Failed to create agent',
+        })
+        onCreateFlowActiveChange?.(false)
+        clearPendingCreateAttempt()
+        throw new Error('Failed to create agent')
       } catch (error) {
-        const message = error instanceof Error ? error.message : "Failed to create agent";
-        dispatch({ type: "CREATE_FAILED", message });
-        onCreateFlowActiveChange?.(false);
-        clearPendingCreateAttempt();
-        throw error; // Re-throw so AgentInputArea knows it failed
+        const message = error instanceof Error ? error.message : 'Failed to create agent'
+        dispatch({ type: 'CREATE_FAILED', message })
+        onCreateFlowActiveChange?.(false)
+        clearPendingCreateAttempt()
+        throw error // Re-throw so AgentInputArea knows it failed
       }
     },
     [
@@ -1189,20 +1107,20 @@ function DraftAgentScreenContent({
       isSubmitting,
       onCreateFlowActiveChange,
     ]
-  );
+  )
 
   if (daemons.length === 0) {
     return (
       <WelcomeScreen
         onHostAdded={(profile) => {
-          setSelectedServerIdFromUser(profile.serverId);
+          setSelectedServerIdFromUser(profile.serverId)
         }}
       />
-    );
+    )
   }
 
-  const explorerServerId = draftExplorerCheckout?.serverId ?? null;
-  const explorerIsGit = draftExplorerCheckout?.isGit ?? false;
+  const explorerServerId = draftExplorerCheckout?.serverId ?? null
+  const explorerIsGit = draftExplorerCheckout?.isGit ?? false
   const mainContent = (
     <View style={styles.container}>
       <View style={styles.outerContainer}>
@@ -1219,21 +1137,17 @@ function DraftAgentScreenContent({
                 <HeaderToggleButton
                   onPress={handleToggleExplorer}
                   tooltipLabel="Toggle explorer"
-                  tooltipKeys={["mod", "E"]}
+                  tooltipKeys={['mod', 'E']}
                   tooltipSide="left"
                   style={styles.menuButton}
                   accessible
                   accessibilityRole="button"
-                  accessibilityLabel={isExplorerOpen ? "Close explorer" : "Open explorer"}
+                  accessibilityLabel={isExplorerOpen ? 'Close explorer' : 'Open explorer'}
                   accessibilityState={{ expanded: isExplorerOpen }}
                 >
                   <PanelRight
                     size={16}
-                    color={
-                      isExplorerOpen
-                        ? theme.colors.foreground
-                        : theme.colors.foregroundMuted
-                    }
+                    color={isExplorerOpen ? theme.colors.foreground : theme.colors.foregroundMuted}
                   />
                 </HeaderToggleButton>
               ) : null}
@@ -1241,7 +1155,7 @@ function DraftAgentScreenContent({
           </View>
 
           <Animated.View style={[styles.contentContainer, animatedKeyboardStyle]}>
-            {machine.tag === "creating" && draftAgent && selectedServerId ? (
+            {machine.tag === 'creating' && draftAgent && selectedServerId ? (
               <View style={styles.streamContainer}>
                 <AgentStreamView
                   agentId={DRAFT_AGENT_ID}
@@ -1304,7 +1218,7 @@ function DraftAgentScreenContent({
                         containerStyle={
                           isMobile
                             ? styles.fullSelector
-                            : worktreeMode === "create"
+                            : worktreeMode === 'create'
                               ? styles.halfSelector
                               : styles.topSelectorPrimary
                         }
@@ -1316,7 +1230,7 @@ function DraftAgentScreenContent({
                         showLabel={false}
                         valueEllipsizeMode="middle"
                       />
-                      {worktreeMode === "create" ? (
+                      {worktreeMode === 'create' ? (
                         <FormSelectTrigger
                           controlRef={branchAnchorRef}
                           containerStyle={isMobile ? styles.fullSelector : styles.halfSelector}
@@ -1324,44 +1238,54 @@ function DraftAgentScreenContent({
                           value={baseBranch}
                           placeholder="From branch"
                           onPress={() => setIsBranchOpen(true)}
-                          disabled={repoInfoStatus === "loading"}
+                          disabled={repoInfoStatus === 'loading'}
                           icon={<GitBranch size={16} color={theme.colors.foregroundMuted} />}
                           showLabel={false}
                         />
                       ) : null}
                     </View>
                   ) : null}
-                  {baseBranchError ? <Text style={styles.errorInlineText}>{baseBranchError}</Text> : null}
-                  {repoInfoError ? <Text style={styles.errorInlineText}>{repoInfoError}</Text> : null}
-                  {gitBlockingError ? <Text style={styles.errorInlineText}>{gitBlockingError}</Text> : null}
-                  {attachWorktreeError ? <Text style={styles.errorInlineText}>{attachWorktreeError}</Text> : null}
-                  {worktreeOptionsError ? <Text style={styles.errorInlineText}>{worktreeOptionsError}</Text> : null}
+                  {baseBranchError ? (
+                    <Text style={styles.errorInlineText}>{baseBranchError}</Text>
+                  ) : null}
+                  {repoInfoError ? (
+                    <Text style={styles.errorInlineText}>{repoInfoError}</Text>
+                  ) : null}
+                  {gitBlockingError ? (
+                    <Text style={styles.errorInlineText}>{gitBlockingError}</Text>
+                  ) : null}
+                  {attachWorktreeError ? (
+                    <Text style={styles.errorInlineText}>{attachWorktreeError}</Text>
+                  ) : null}
+                  {worktreeOptionsError ? (
+                    <Text style={styles.errorInlineText}>{worktreeOptionsError}</Text>
+                  ) : null}
                 </View>
                 <Combobox
                   options={worktreeComboOptions}
                   value={
-                    worktreeMode === "create"
-                      ? "__create_new__"
-                      : worktreeMode === "attach"
+                    worktreeMode === 'create'
+                      ? '__create_new__'
+                      : worktreeMode === 'attach'
                         ? selectedWorktreePath
-                        : "__none__"
+                        : '__none__'
                   }
                   onSelect={(id) => {
-                    if (id === "__create_new__") {
-                      setWorktreeMode("create");
+                    if (id === '__create_new__') {
+                      setWorktreeMode('create')
                       if (!worktreeSlug) {
-                        setWorktreeSlug(createNameId());
+                        setWorktreeSlug(createNameId())
                       }
-                      setSelectedWorktreePath("");
-                      return;
+                      setSelectedWorktreePath('')
+                      return
                     }
-                    if (id === "__none__") {
-                      setWorktreeMode("none");
-                      setSelectedWorktreePath("");
-                      return;
+                    if (id === '__none__') {
+                      setWorktreeMode('none')
+                      setSelectedWorktreePath('')
+                      return
                     }
-                    handleSelectWorktreePath(id);
-                    setWorktreeMode("attach");
+                    handleSelectWorktreePath(id)
+                    setWorktreeMode('attach')
                   }}
                   title="Select worktree"
                   searchPlaceholder="Search worktrees..."
@@ -1400,9 +1324,9 @@ function DraftAgentScreenContent({
                   title="Select base branch"
                   open={isBranchOpen}
                   onOpenChange={(nextOpen) => {
-                    setIsBranchOpen(nextOpen);
+                    setIsBranchOpen(nextOpen)
                     if (!nextOpen) {
-                      setBranchSearchQuery("");
+                      setBranchSearchQuery('')
                     }
                   }}
                   anchorRef={branchAnchorRef}
@@ -1419,13 +1343,13 @@ function DraftAgentScreenContent({
           <View style={styles.inputAreaWrapper}>
             <AgentInputArea
               agentId={DRAFT_AGENT_ID}
-              serverId={selectedServerId ?? ""}
+              serverId={selectedServerId ?? ''}
               onSubmitMessage={handleCreateFromInput}
               isSubmitLoading={isSubmitting}
               blurOnSubmit={true}
               value={promptValue}
-              onChangeText={(next) => dispatch({ type: "DRAFT_SET_PROMPT", text: next })}
-              autoFocus={machine.tag === "draft"}
+              onChangeText={(next) => dispatch({ type: 'DRAFT_SET_PROMPT', text: next })}
+              autoFocus={machine.tag === 'draft'}
               onAddImages={handleAddImagesCallback}
               commandDraftConfig={draftCommandConfig}
             />
@@ -1442,7 +1366,7 @@ function DraftAgentScreenContent({
         ) : null}
       </View>
     </View>
-  );
+  )
 
   return (
     <FileDropZone onFilesDropped={handleFilesDropped}>
@@ -1465,7 +1389,7 @@ function DraftAgentScreenContent({
         ) : null}
       </>
     </FileDropZone>
-  );
+  )
 }
 
 const styles = StyleSheet.create((theme) => ({
@@ -1475,7 +1399,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   outerContainer: {
     flex: 1,
-    flexDirection: "row",
+    flexDirection: 'row',
   },
   agentPanel: {
     flex: 1,
@@ -1485,17 +1409,17 @@ const styles = StyleSheet.create((theme) => ({
     paddingTop: theme.spacing[2],
   },
   menuToggleRow: {
-    width: "100%",
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
   menuButton: {
     marginLeft: theme.spacing[2],
   },
   contentContainer: {
     flex: 1,
-    overflow: "hidden",
+    overflow: 'hidden',
   },
   scrollView: {
     flex: 1,
@@ -1508,7 +1432,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   configScrollContent: {
     flexGrow: 1,
-    justifyContent: "flex-end",
+    justifyContent: 'flex-end',
   },
   configSection: {
     paddingHorizontal: {
@@ -1519,19 +1443,19 @@ const styles = StyleSheet.create((theme) => ({
     paddingBottom: theme.spacing[4],
     gap: theme.spacing[2],
     maxWidth: MAX_CONTENT_WIDTH,
-    alignSelf: "center",
-    width: "100%",
+    alignSelf: 'center',
+    width: '100%',
   },
   topSelectorRow: {
-    flexDirection: "row",
-    alignItems: "center",
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: theme.spacing[2],
   },
   stackedSelectorGroup: {
     gap: theme.spacing[2],
   },
   fullSelector: {
-    width: "100%",
+    width: '100%',
   },
   formSeparator: {
     height: theme.borderWidth[1],
@@ -1571,7 +1495,7 @@ const styles = StyleSheet.create((theme) => ({
     backgroundColor: theme.colors.palette.yellow[400],
   },
   warningText: {
-    color: "#000000",
+    color: '#000000',
     fontSize: theme.fontSize.base,
     fontWeight: theme.fontWeight.semibold,
   },
@@ -1579,4 +1503,4 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.palette.red[500],
     fontSize: theme.fontSize.base,
   },
-}));
+}))
