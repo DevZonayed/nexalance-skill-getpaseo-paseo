@@ -83,6 +83,10 @@ export function buildToolCallDisplayModel(input: ToolCallDisplayInput): ToolCall
       displayName = "Search";
       summary = input.detail.query;
       break;
+    case "worktree_setup":
+      displayName = "Worktree Setup";
+      summary = input.detail.branchName;
+      break;
     case "unknown":
       break;
   }

@@ -63,7 +63,7 @@ import type {
   AgentProvider,
 } from "./agent/agent-sdk-types.js";
 import type { AgentProviderRuntimeSettingsMap } from "./agent/provider-launch-config.js";
-import { acquirePidLock, releasePidLock, isLocked, PidLockError } from "./pid-lock.js";
+import { acquirePidLock, releasePidLock } from "./pid-lock.js";
 import { isHostAllowed, type AllowedHostsConfig } from "./allowed-hosts.js";
 import {
   createVoiceMcpSocketBridgeManager,
@@ -136,16 +136,6 @@ export async function createPaseoDaemon(
   rootLogger: Logger
 ): Promise<PaseoDaemon> {
   const logger = rootLogger.child({ module: "bootstrap" });
-
-  // Fail fast before expensive bootstrap (speech/runtime/model checks) if another daemon is active.
-  const lockState = await isLocked(config.paseoHome);
-  if (lockState.locked) {
-    const existingLock = lockState.info;
-    throw new PidLockError(
-      `Another Paseo daemon is already running (PID ${existingLock?.pid ?? "unknown"}, started ${existingLock?.startedAt ?? "unknown"})`,
-      existingLock
-    );
-  }
 
   // Acquire PID lock before expensive bootstrap work so duplicate starts fail immediately.
   await acquirePidLock(config.paseoHome, config.listen);

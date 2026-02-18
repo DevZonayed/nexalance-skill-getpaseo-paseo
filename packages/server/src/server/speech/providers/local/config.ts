@@ -24,7 +24,6 @@ export type LocalSpeechModelConfig = {
 
 export type LocalSpeechProviderConfig = {
   modelsDir: string;
-  autoDownload?: boolean;
   models: LocalSpeechModelConfig;
 };
 
@@ -35,17 +34,6 @@ export type ResolvedLocalSpeechConfig = {
 export type { LocalSpeechModelId, LocalSttModelId, LocalTtsModelId };
 
 const DEFAULT_LOCAL_MODELS_SUBDIR = path.join("models", "local-speech");
-
-const BooleanStringSchema = z
-  .string()
-  .trim()
-  .toLowerCase()
-  .pipe(z.enum(["1", "0", "true", "false", "yes", "no"]))
-  .transform((value) => value === "1" || value === "true" || value === "yes");
-
-const OptionalBooleanFlagSchema = z
-  .union([z.boolean(), BooleanStringSchema])
-  .optional();
 
 const NumberLikeSchema = z.union([
   z.number(),
@@ -63,7 +51,6 @@ const OptionalIntegerSchema = NumberLikeSchema
 const LocalSpeechResolutionSchema = z.object({
   includeProviderConfig: z.boolean(),
   modelsDir: z.string().trim().min(1),
-  autoDownload: OptionalBooleanFlagSchema.default(true),
   dictationLocalSttModel: LocalSttModelIdSchema.default(DEFAULT_LOCAL_STT_MODEL),
   voiceLocalSttModel: LocalSttModelIdSchema.default(DEFAULT_LOCAL_STT_MODEL),
   voiceLocalTtsModel: LocalTtsModelIdSchema.default(DEFAULT_LOCAL_TTS_MODEL),
@@ -98,7 +85,7 @@ function shouldIncludeLocalProviderConfig(params: {
   return (
     localRequestedByFeature ||
     params.env.PASEO_LOCAL_MODELS_DIR !== undefined ||
-    params.persisted.providers?.local !== undefined
+    params.persisted.providers?.local?.modelsDir !== undefined
   );
 }
 
@@ -116,9 +103,6 @@ export function resolveLocalSpeechConfig(params: {
       params.env.PASEO_LOCAL_MODELS_DIR ??
       params.persisted.providers?.local?.modelsDir ??
       path.join(params.paseoHome, DEFAULT_LOCAL_MODELS_SUBDIR),
-    autoDownload:
-      params.env.PASEO_LOCAL_AUTO_DOWNLOAD ??
-      params.persisted.providers?.local?.autoDownload,
     dictationLocalSttModel:
       params.env.PASEO_DICTATION_LOCAL_STT_MODEL ??
       persistedLocalFeatureModel(
@@ -160,7 +144,6 @@ export function resolveLocalSpeechConfig(params: {
       parsed.includeProviderConfig
         ? {
             modelsDir: parsed.modelsDir,
-            autoDownload: parsed.autoDownload,
             models: {
               dictationStt: parsed.dictationLocalSttModel,
               voiceStt: parsed.voiceLocalSttModel,

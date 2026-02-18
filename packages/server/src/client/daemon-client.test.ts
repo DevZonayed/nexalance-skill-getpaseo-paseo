@@ -347,6 +347,63 @@ describe("DaemonClient", () => {
     });
   });
 
+  test("requests directory suggestions via RPC", async () => {
+    const logger = createMockLogger();
+    const mock = createMockTransport();
+
+    const client = new DaemonClient({
+      url: "ws://test",
+      logger,
+      reconnect: { enabled: false },
+      transportFactory: () => mock.transport,
+    });
+    clients.push(client);
+
+    const connectPromise = client.connect();
+    mock.triggerOpen();
+    await connectPromise;
+
+    const promise = client.getDirectorySuggestions(
+      { query: "proj", limit: 10 },
+      "req-directories"
+    );
+
+    expect(mock.sent).toHaveLength(1);
+    const request = JSON.parse(mock.sent[0]) as {
+      type: "session";
+      message: {
+        type: "directory_suggestions_request";
+        query: string;
+        limit?: number;
+        requestId: string;
+      };
+    };
+    expect(request.message.type).toBe("directory_suggestions_request");
+    expect(request.message.query).toBe("proj");
+    expect(request.message.limit).toBe(10);
+    expect(request.message.requestId).toBe("req-directories");
+
+    mock.triggerMessage(
+      JSON.stringify({
+        type: "session",
+        message: {
+          type: "directory_suggestions_response",
+          payload: {
+            directories: ["/Users/test/projects/paseo"],
+            error: null,
+            requestId: "req-directories",
+          },
+        },
+      })
+    );
+
+    await expect(promise).resolves.toEqual({
+      directories: ["/Users/test/projects/paseo"],
+      error: null,
+      requestId: "req-directories",
+    });
+  });
+
   test("requests checkout merge from base via RPC", async () => {
     const logger = createMockLogger();
     const mock = createMockTransport();
@@ -478,6 +535,7 @@ describe("DaemonClient", () => {
         { key: "created_at", direction: "desc" },
       ],
       page: { limit: 25, cursor: "cursor-1" },
+      subscribe: { subscriptionId: "sub-1" },
     });
 
     expect(mock.sent).toHaveLength(1);
@@ -492,6 +550,7 @@ describe("DaemonClient", () => {
           direction: "asc" | "desc";
         }>;
         page?: { limit: number; cursor?: string };
+        subscribe?: { subscriptionId?: string };
       };
     };
     expect(request.message.type).toBe("fetch_agents_request");
@@ -500,6 +559,7 @@ describe("DaemonClient", () => {
       { key: "created_at", direction: "desc" },
     ]);
     expect(request.message.page).toEqual({ limit: 25, cursor: "cursor-1" });
+    expect(request.message.subscribe).toEqual({ subscriptionId: "sub-1" });
 
     mock.triggerMessage(
       JSON.stringify({
@@ -508,6 +568,7 @@ describe("DaemonClient", () => {
           type: "fetch_agents_response",
           payload: {
             requestId: request.message.requestId,
+            subscriptionId: "sub-1",
             entries: [],
             pageInfo: {
               nextCursor: null,
@@ -521,6 +582,7 @@ describe("DaemonClient", () => {
 
     await expect(promise).resolves.toEqual({
       requestId: request.message.requestId,
+      subscriptionId: "sub-1",
       entries: [],
       pageInfo: {
         nextCursor: null,
@@ -707,6 +769,139 @@ describe("DaemonClient", () => {
     });
   });
 
+  test("lists commands with draft config via RPC", async () => {
+    const logger = createMockLogger();
+    const mock = createMockTransport();
+
+    const client = new DaemonClient({
+      url: "ws://test",
+      logger,
+      reconnect: { enabled: false },
+      transportFactory: () => mock.transport,
+    });
+    clients.push(client);
+
+    const connectPromise = client.connect();
+    mock.triggerOpen();
+    await connectPromise;
+
+    const promise = client.listCommands("__new_agent__", {
+      draftConfig: {
+        provider: "codex",
+        cwd: "/tmp/project",
+        modeId: "bypassPermissions",
+        model: "gpt-5",
+        thinkingOptionId: "off",
+      },
+    });
+    expect(mock.sent).toHaveLength(1);
+
+    const request = JSON.parse(mock.sent[0]) as {
+      type: "session";
+      message: {
+        type: "list_commands_request";
+        agentId: string;
+        draftConfig?: {
+          provider: string;
+          cwd: string;
+          modeId?: string;
+          model?: string;
+          thinkingOptionId?: string;
+        };
+        requestId: string;
+      };
+    };
+    expect(request.message.type).toBe("list_commands_request");
+    expect(request.message.agentId).toBe("__new_agent__");
+    expect(request.message.draftConfig).toEqual({
+      provider: "codex",
+      cwd: "/tmp/project",
+      modeId: "bypassPermissions",
+      model: "gpt-5",
+      thinkingOptionId: "off",
+    });
+
+    mock.triggerMessage(
+      JSON.stringify({
+        type: "session",
+        message: {
+          type: "list_commands_response",
+          payload: {
+            agentId: "__new_agent__",
+            commands: [
+              { name: "help", description: "Show help", argumentHint: "" },
+            ],
+            error: null,
+            requestId: request.message.requestId,
+          },
+        },
+      })
+    );
+
+    await expect(promise).resolves.toEqual({
+      agentId: "__new_agent__",
+      commands: [{ name: "help", description: "Show help", argumentHint: "" }],
+      error: null,
+      requestId: request.message.requestId,
+    });
+  });
+
+  test("lists commands with legacy requestId signature via RPC", async () => {
+    const logger = createMockLogger();
+    const mock = createMockTransport();
+
+    const client = new DaemonClient({
+      url: "ws://test",
+      logger,
+      reconnect: { enabled: false },
+      transportFactory: () => mock.transport,
+    });
+    clients.push(client);
+
+    const connectPromise = client.connect();
+    mock.triggerOpen();
+    await connectPromise;
+
+    const promise = client.listCommands("agent-1", "req-legacy");
+    expect(mock.sent).toHaveLength(1);
+
+    const request = JSON.parse(mock.sent[0]) as {
+      type: "session";
+      message: {
+        type: "list_commands_request";
+        agentId: string;
+        draftConfig?: unknown;
+        requestId: string;
+      };
+    };
+    expect(request.message.type).toBe("list_commands_request");
+    expect(request.message.agentId).toBe("agent-1");
+    expect(request.message.requestId).toBe("req-legacy");
+    expect(request.message.draftConfig).toBeUndefined();
+
+    mock.triggerMessage(
+      JSON.stringify({
+        type: "session",
+        message: {
+          type: "list_commands_response",
+          payload: {
+            agentId: "agent-1",
+            commands: [],
+            error: null,
+            requestId: "req-legacy",
+          },
+        },
+      })
+    );
+
+    await expect(promise).resolves.toEqual({
+      agentId: "agent-1",
+      commands: [],
+      error: null,
+      requestId: "req-legacy",
+    });
+  });
+
   test("auto-acks terminal stream chunks after delivery", async () => {
     const logger = createMockLogger();
     const mock = createMockTransport();
@@ -751,6 +946,48 @@ describe("DaemonClient", () => {
     expect(ackFrame!.streamId).toBe(7);
     expect(ackFrame!.offset).toBe(15);
     unsubscribe();
+  });
+
+  test("handles terminal binary frames delivered as UTF-8 strings", async () => {
+    const logger = createMockLogger();
+    const mock = createMockTransport();
+
+    const client = new DaemonClient({
+      url: "ws://test",
+      logger,
+      reconnect: { enabled: false },
+      transportFactory: () => mock.transport,
+    });
+    clients.push(client);
+
+    const connectPromise = client.connect();
+    mock.triggerOpen();
+    await connectPromise;
+
+    const seen: string[] = [];
+    client.onTerminalStreamData(11, (chunk) => {
+      seen.push(new TextDecoder().decode(chunk.data));
+    });
+
+    const payload = new TextEncoder().encode("ls\r\n");
+    const frame = encodeBinaryMuxFrame({
+      channel: BinaryMuxChannel.Terminal,
+      messageType: TerminalBinaryMessageType.OutputUtf8,
+      streamId: 11,
+      offset: 0,
+      payload,
+    });
+    const frameAsString = new TextDecoder("utf-8", { fatal: true }).decode(frame);
+
+    mock.triggerMessage(frameAsString);
+
+    expect(seen).toEqual(["ls\r\n"]);
+    expect(mock.sent).toHaveLength(1);
+    const ackFrame = decodeBinaryMuxFrame(asUint8Array(mock.sent[0])!);
+    expect(ackFrame?.channel).toBe(BinaryMuxChannel.Terminal);
+    expect(ackFrame?.messageType).toBe(TerminalBinaryMessageType.Ack);
+    expect(ackFrame?.streamId).toBe(11);
+    expect(ackFrame?.offset).toBe(4);
   });
 
   test("acks buffered terminal chunks when handler is attached", async () => {
@@ -1193,5 +1430,90 @@ describe("DaemonClient", () => {
 
     expect(received).toHaveLength(0);
     expect(logger.warn).toHaveBeenCalled();
+  });
+
+  test("sends subscribe/unsubscribe terminals messages", async () => {
+    const logger = createMockLogger();
+    const mock = createMockTransport();
+
+    const client = new DaemonClient({
+      url: "ws://test",
+      logger,
+      reconnect: { enabled: false },
+      transportFactory: () => mock.transport,
+    });
+    clients.push(client);
+
+    const connectPromise = client.connect();
+    mock.triggerOpen();
+    await connectPromise;
+
+    client.subscribeTerminals({ cwd: "/tmp/project" });
+    client.unsubscribeTerminals({ cwd: "/tmp/project" });
+
+    expect(mock.sent).toHaveLength(2);
+    expect(JSON.parse(String(mock.sent[0]))).toEqual({
+      type: "session",
+      message: {
+        type: "subscribe_terminals_request",
+        cwd: "/tmp/project",
+      },
+    });
+    expect(JSON.parse(String(mock.sent[1]))).toEqual({
+      type: "session",
+      message: {
+        type: "unsubscribe_terminals_request",
+        cwd: "/tmp/project",
+      },
+    });
+  });
+
+  test("dispatches terminals_changed events to typed listeners", async () => {
+    const logger = createMockLogger();
+    const mock = createMockTransport();
+
+    const client = new DaemonClient({
+      url: "ws://test",
+      logger,
+      reconnect: { enabled: false },
+      transportFactory: () => mock.transport,
+    });
+    clients.push(client);
+
+    const connectPromise = client.connect();
+    mock.triggerOpen();
+    await connectPromise;
+
+    const received: Array<{ cwd: string; names: string[] }> = [];
+    const unsubscribe = client.on("terminals_changed", (message) => {
+      received.push({
+        cwd: message.payload.cwd,
+        names: message.payload.terminals.map((terminal) => terminal.name),
+      });
+    });
+
+    mock.triggerMessage(
+      wrapSessionMessage({
+        type: "terminals_changed",
+        payload: {
+          cwd: "/tmp/project",
+          terminals: [
+            {
+              id: "term-1",
+              name: "Dev Server",
+            },
+          ],
+        },
+      })
+    );
+
+    unsubscribe();
+
+    expect(received).toEqual([
+      {
+        cwd: "/tmp/project",
+        names: ["Dev Server"],
+      },
+    ]);
   });
 });

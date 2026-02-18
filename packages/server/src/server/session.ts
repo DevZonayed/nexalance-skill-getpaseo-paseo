@@ -4,6 +4,7 @@ import { stat } from "fs/promises";
 import { exec } from "child_process";
 import { promisify } from "util";
 import { join, resolve, sep } from "path";
+import { homedir } from "node:os";
 import { z } from "zod";
 import type { ToolSet } from "ai";
 import {
@@ -15,6 +16,8 @@ import {
   type FileDownloadTokenRequest,
   type GitSetupOptions,
   type ListTerminalsRequest,
+  type SubscribeTerminalsRequest,
+  type UnsubscribeTerminalsRequest,
   type CreateTerminalRequest,
   type SubscribeTerminalRequest,
   type UnsubscribeTerminalRequest,
@@ -24,10 +27,14 @@ import {
   type DetachTerminalStreamRequest,
   type SubscribeCheckoutDiffRequest,
   type UnsubscribeCheckoutDiffRequest,
+  type DirectorySuggestionsRequest,
   type ProjectCheckoutLitePayload,
   type ProjectPlacementPayload,
 } from "./messages.js";
-import type { TerminalManager } from "../terminal/terminal-manager.js";
+import type {
+  TerminalManager,
+  TerminalsChangedEvent,
+} from "../terminal/terminal-manager.js";
 import type { TerminalSession } from "../terminal/terminal.js";
 import {
   BinaryMuxChannel,
@@ -68,11 +75,16 @@ import type {
 } from "./agent/agent-manager.js";
 import { scheduleAgentMetadataGeneration } from "./agent/agent-metadata-generator.js";
 import { toAgentPayload } from "./agent/agent-projections.js";
-import { appendTimelineItemIfAgentKnown } from "./agent/timeline-append.js";
+import {
+  appendTimelineItemIfAgentKnown,
+  emitLiveTimelineItemIfAgentKnown,
+} from "./agent/timeline-append.js";
 import { projectTimelineRows, type TimelineProjectionMode } from "./agent/timeline-projection.js";
 import {
+  DEFAULT_STRUCTURED_GENERATION_PROVIDERS,
+  StructuredAgentFallbackError,
   StructuredAgentResponseError,
-  generateStructuredAgentResponse,
+  generateStructuredAgentResponseWithFallback,
 } from "./agent/agent-response-loop.js";
 import type {
   AgentPermissionResponse,
@@ -130,6 +142,7 @@ import {
 } from "../utils/checkout-git.js";
 import { getProjectIcon } from "../utils/project-icon.js";
 import { expandTilde } from "../utils/path.js";
+import { searchHomeDirectories } from "../utils/directory-suggestions.js";
 import {
   ensureLocalSpeechModels,
   getLocalSpeechModelDir,
@@ -154,12 +167,6 @@ const CHECKOUT_DIFF_FALLBACK_REFRESH_MS = 5_000;
 const TERMINAL_STREAM_WINDOW_BYTES = 256 * 1024;
 const TERMINAL_STREAM_MAX_PENDING_BYTES = 2 * 1024 * 1024;
 const TERMINAL_STREAM_MAX_PENDING_CHUNKS = 2048;
-
-/**
- * Default model used for auto-generating commit messages and PR descriptions.
- * Uses Claude Haiku for speed and cost efficiency.
- */
-const AUTO_GEN_MODEL = "haiku";
 
 function deriveRemoteProjectKey(remoteUrl: string | null): string | null {
   if (!remoteUrl) {
@@ -286,6 +293,7 @@ type FetchAgentsRequestMessage = Extract<
   SessionInboundMessage,
   { type: "fetch_agents_request" }
 >;
+type FetchAgentsRequestFilter = NonNullable<FetchAgentsRequestMessage["filter"]>;
 type FetchAgentsRequestSort = NonNullable<FetchAgentsRequestMessage["sort"]>[number];
 type FetchAgentsResponsePayload = Extract<
   SessionOutboundMessage,
@@ -293,6 +301,17 @@ type FetchAgentsResponsePayload = Extract<
 >["payload"];
 type FetchAgentsResponseEntry = FetchAgentsResponsePayload["entries"][number];
 type FetchAgentsResponsePageInfo = FetchAgentsResponsePayload["pageInfo"];
+type AgentUpdatePayload = Extract<
+  SessionOutboundMessage,
+  { type: "agent_update" }
+>["payload"];
+type AgentUpdatesFilter = FetchAgentsRequestFilter;
+type AgentUpdatesSubscriptionState = {
+  subscriptionId: string;
+  filter?: AgentUpdatesFilter;
+  isBootstrapping: boolean;
+  pendingUpdatesByAgentId: Map<string, AgentUpdatePayload>;
+};
 type FetchAgentsCursor = {
   sort: FetchAgentsRequestSort[];
   values: Record<string, string | number | null>;
@@ -544,12 +563,7 @@ export class Session {
   private readonly pushTokenStore: PushTokenStore;
   private readonly providerRegistry: ReturnType<typeof buildProviderRegistry>;
   private unsubscribeAgentEvents: (() => void) | null = null;
-  private agentUpdatesSubscription:
-    | {
-        subscriptionId: string;
-        filter?: { labels?: Record<string, string>; agentId?: string };
-      }
-    | null = null;
+  private agentUpdatesSubscription: AgentUpdatesSubscriptionState | null = null;
   private clientActivity: {
     deviceType: "web" | "mobile";
     focusedAgentId: string | null;
@@ -559,6 +573,8 @@ export class Session {
   } | null = null;
   private readonly MOBILE_BACKGROUND_STREAM_GRACE_MS = 60_000;
   private readonly terminalManager: TerminalManager | null;
+  private readonly subscribedTerminalDirectories = new Set<string>();
+  private unsubscribeTerminalsChanged: (() => void) | null = null;
   private terminalSubscriptions: Map<string, () => void> = new Map();
   private terminalExitSubscriptions: Map<string, () => void> = new Map();
   private readonly terminalStreams = new Map<
@@ -627,6 +643,11 @@ export class Session {
     this.agentStorage = agentStorage;
     this.createAgentMcpTransport = createAgentMcpTransport;
     this.terminalManager = terminalManager;
+    if (this.terminalManager) {
+      this.unsubscribeTerminalsChanged = this.terminalManager.subscribeTerminalsChanged(
+        (event) => this.handleTerminalsChanged(event)
+      );
+    }
     this.voiceAgentMcpStdio = voice?.voiceAgentMcpStdio ?? null;
     const configuredModelsDir = dictation?.localModels?.modelsDir?.trim();
     this.localSpeechModelsDir =
@@ -1067,19 +1088,105 @@ export class Session {
     }
   }
 
-  private matchesAgentFilter(
-    agent: AgentSnapshotPayload,
-    filter?: { labels?: Record<string, string>; agentId?: string }
-  ): boolean {
-    if (filter?.agentId && agent.id !== filter.agentId) {
+  private matchesAgentFilter(options: {
+    agent: AgentSnapshotPayload;
+    project: ProjectPlacementPayload;
+    filter?: AgentUpdatesFilter;
+  }): boolean {
+    const { agent, project, filter } = options;
+
+    if (filter?.labels) {
+      const matchesLabels = Object.entries(filter.labels).every(
+        ([key, value]) => agent.labels[key] === value
+      );
+      if (!matchesLabels) {
+        return false;
+      }
+    }
+
+    const includeArchived = filter?.includeArchived ?? false;
+    if (!includeArchived && agent.archivedAt) {
       return false;
     }
-    if (!filter?.labels) {
-      return true;
+
+    if (filter?.statuses && filter.statuses.length > 0) {
+      const statuses = new Set(filter.statuses);
+      if (!statuses.has(agent.status)) {
+        return false;
+      }
     }
-    return Object.entries(filter.labels).every(
-      ([key, value]) => agent.labels[key] === value
-    );
+
+    if (typeof filter?.requiresAttention === "boolean") {
+      const requiresAttention = agent.requiresAttention ?? false;
+      if (requiresAttention !== filter.requiresAttention) {
+        return false;
+      }
+    }
+
+    if (filter?.projectKeys && filter.projectKeys.length > 0) {
+      const projectKeys = new Set(
+        filter.projectKeys.filter((item) => item.trim().length > 0)
+      );
+      if (projectKeys.size > 0 && !projectKeys.has(project.projectKey)) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  private getAgentUpdateTargetId(update: AgentUpdatePayload): string {
+    return update.kind === "remove" ? update.agentId : update.agent.id;
+  }
+
+  private bufferOrEmitAgentUpdate(
+    subscription: AgentUpdatesSubscriptionState,
+    payload: AgentUpdatePayload
+  ): void {
+    if (subscription.isBootstrapping) {
+      subscription.pendingUpdatesByAgentId.set(
+        this.getAgentUpdateTargetId(payload),
+        payload
+      );
+      return;
+    }
+
+    this.emit({
+      type: "agent_update",
+      payload,
+    });
+  }
+
+  private flushBootstrappedAgentUpdates(options?: {
+    snapshotUpdatedAtByAgentId?: Map<string, number>;
+  }): void {
+    const subscription = this.agentUpdatesSubscription;
+    if (!subscription || !subscription.isBootstrapping) {
+      return;
+    }
+
+    subscription.isBootstrapping = false;
+    const pending = Array.from(subscription.pendingUpdatesByAgentId.values());
+    subscription.pendingUpdatesByAgentId.clear();
+
+    for (const payload of pending) {
+      if (payload.kind === "upsert") {
+        const snapshotUpdatedAt = options?.snapshotUpdatedAtByAgentId?.get(
+          payload.agent.id
+        );
+        if (typeof snapshotUpdatedAt === "number") {
+          const updateUpdatedAt = Date.parse(payload.agent.updatedAt);
+          if (!Number.isNaN(updateUpdatedAt) && updateUpdatedAt <= snapshotUpdatedAt) {
+            continue;
+          }
+        }
+      }
+
+      this.emit({
+        type: "agent_update",
+        payload,
+      });
+    }
   }
 
   private buildFallbackProjectCheckout(cwd: string): ProjectCheckoutLitePayload {
@@ -1145,20 +1252,25 @@ export class Session {
       }
 
       const payload = await this.buildAgentPayload(agent);
-      const matches = this.matchesAgentFilter(payload, subscription.filter);
+      const project = await this.buildProjectPlacement(payload.cwd);
+      const matches = this.matchesAgentFilter({
+        agent: payload,
+        project,
+        filter: subscription.filter,
+      });
 
       if (matches) {
-        const project = await this.buildProjectPlacement(payload.cwd);
-        this.emit({
-          type: "agent_update",
-          payload: { kind: "upsert", agent: payload, project },
+        this.bufferOrEmitAgentUpdate(subscription, {
+          kind: "upsert",
+          agent: payload,
+          project,
         });
         return;
       }
 
-      this.emit({
-        type: "agent_update",
-        payload: { kind: "remove", agentId: payload.id },
+      this.bufferOrEmitAgentUpdate(subscription, {
+        kind: "remove",
+        agentId: payload.id,
       });
     } catch (error) {
       this.sessionLogger.error({ err: error }, "Failed to emit agent update");
@@ -1189,21 +1301,6 @@ export class Session {
 
         case "fetch_agent_request":
           await this.handleFetchAgent(msg.agentId, msg.requestId);
-          break;
-
-        case "subscribe_agent_updates":
-          this.agentUpdatesSubscription = {
-            subscriptionId: msg.subscriptionId,
-            filter: msg.filter,
-          };
-          break;
-
-        case "unsubscribe_agent_updates":
-          if (
-            this.agentUpdatesSubscription?.subscriptionId === msg.subscriptionId
-          ) {
-            this.agentUpdatesSubscription = null;
-          }
           break;
 
         case "delete_agent_request":
@@ -1332,6 +1429,10 @@ export class Session {
           await this.handleBranchSuggestionsRequest(msg);
           break;
 
+        case "directory_suggestions_request":
+          await this.handleDirectorySuggestionsRequest(msg);
+          break;
+
         case "subscribe_checkout_diff_request":
           await this.handleSubscribeCheckoutDiffRequest(msg);
           break;
@@ -1423,7 +1524,7 @@ export class Session {
         }
 
         case "list_commands_request":
-          await this.handleListCommandsRequest(msg.agentId, msg.requestId);
+          await this.handleListCommandsRequest(msg);
           break;
 
         case "execute_command_request":
@@ -1437,6 +1538,14 @@ export class Session {
 
         case "register_push_token":
           this.handleRegisterPushToken(msg.token);
+          break;
+
+        case "subscribe_terminals_request":
+          this.handleSubscribeTerminalsRequest(msg);
+          break;
+
+        case "unsubscribe_terminals_request":
+          this.handleUnsubscribeTerminalsRequest(msg);
           break;
 
         case "list_terminals_request":
@@ -1650,9 +1759,9 @@ export class Session {
     });
 
     if (this.agentUpdatesSubscription) {
-      this.emit({
-        type: "agent_update",
-        payload: { kind: "remove", agentId },
+      this.bufferOrEmitAgentUpdate(this.agentUpdatesSubscription, {
+        kind: "remove",
+        agentId,
       });
     }
   }
@@ -2311,7 +2420,10 @@ export class Session {
     const prompt = this.buildAgentPrompt(text, images);
 
     try {
-      this.agentManager.recordUserMessage(agentId, text, { messageId });
+      this.agentManager.recordUserMessage(agentId, text, {
+        messageId,
+        emitState: false,
+      });
     } catch (error) {
       this.sessionLogger.error(
         { err: error, agentId },
@@ -2410,6 +2522,12 @@ export class Session {
           terminalManager: this.terminalManager,
           appendTimelineItem: (item) =>
             appendTimelineItemIfAgentKnown({
+              agentManager: this.agentManager,
+              agentId: snapshot.id,
+              item,
+            }),
+          emitLiveTimelineItem: (item) =>
+            emitLiveTimelineItemIfAgentKnown({
               agentManager: this.agentManager,
               agentId: snapshot.id,
               item,
@@ -2814,7 +2932,6 @@ export class Session {
       await ensureLocalSpeechModels({
         modelsDir,
         modelIds,
-        autoDownload: true,
         logger: this.sessionLogger,
       });
       this.emit({
@@ -2978,23 +3095,25 @@ export class Session {
       patch.length > 0 ? patch : "(No diff available)",
     ].join("\n");
     try {
-      const result = await generateStructuredAgentResponse({
+      const result = await generateStructuredAgentResponseWithFallback({
         manager: this.agentManager,
-        agentConfig: {
-          provider: "claude",
-          model: AUTO_GEN_MODEL,
-          cwd,
-          title: "Commit generator",
-          internal: true,
-        },
+        cwd,
         prompt,
         schema,
         schemaName: "CommitMessage",
         maxRetries: 2,
+        providers: DEFAULT_STRUCTURED_GENERATION_PROVIDERS,
+        agentConfigOverrides: {
+          title: "Commit generator",
+          internal: true,
+        },
       });
       return result.message;
     } catch (error) {
-      if (error instanceof StructuredAgentResponseError) {
+      if (
+        error instanceof StructuredAgentResponseError ||
+        error instanceof StructuredAgentFallbackError
+      ) {
         return "Update files";
       }
       throw error;
@@ -3043,22 +3162,24 @@ export class Session {
       patch.length > 0 ? patch : "(No diff available)",
     ].join("\n");
     try {
-      return await generateStructuredAgentResponse({
+      return await generateStructuredAgentResponseWithFallback({
         manager: this.agentManager,
-        agentConfig: {
-          provider: "claude",
-          model: AUTO_GEN_MODEL,
-          cwd,
-          title: "PR generator",
-          internal: true,
-        },
+        cwd,
         prompt,
         schema,
         schemaName: "PullRequest",
         maxRetries: 2,
+        providers: DEFAULT_STRUCTURED_GENERATION_PROVIDERS,
+        agentConfigOverrides: {
+          title: "PR generator",
+          internal: true,
+        },
       });
     } catch (error) {
-      if (error instanceof StructuredAgentResponseError) {
+      if (
+        error instanceof StructuredAgentResponseError ||
+        error instanceof StructuredAgentFallbackError
+      ) {
         return {
           title: "Update changes",
           body: "Automated PR generated by Paseo.",
@@ -3352,9 +3473,12 @@ export class Session {
   /**
    * Handle list commands request for an agent
    */
-  private async handleListCommandsRequest(agentId: string, requestId: string): Promise<void> {
+  private async handleListCommandsRequest(
+    msg: Extract<SessionInboundMessage, { type: "list_commands_request" }>
+  ): Promise<void> {
+    const { agentId, requestId, draftConfig } = msg;
     this.sessionLogger.debug(
-      { agentId },
+      { agentId, draftConfig },
       `Handling list commands request for agent ${agentId}`
     );
 
@@ -3362,47 +3486,59 @@ export class Session {
       const agents = this.agentManager.listAgents();
       const agent = agents.find((a) => a.id === agentId);
 
-      if (!agent) {
+      if (agent?.session?.listCommands) {
+        const commands = await agent.session.listCommands();
         this.emit({
           type: "list_commands_response",
           payload: {
             agentId,
-            commands: [],
-            error: `Agent not found: ${agentId}`,
+            commands,
+            error: null,
             requestId,
           },
         });
         return;
       }
 
-      const session = agent.session;
-      if (!session || !session.listCommands) {
+      if (!agent && draftConfig) {
+        const sessionConfig: AgentSessionConfig = {
+          provider: draftConfig.provider,
+          cwd: expandTilde(draftConfig.cwd),
+          ...(draftConfig.modeId ? { modeId: draftConfig.modeId } : {}),
+          ...(draftConfig.model ? { model: draftConfig.model } : {}),
+          ...(draftConfig.thinkingOptionId
+            ? { thinkingOptionId: draftConfig.thinkingOptionId }
+            : {}),
+        };
+
+        const commands = await this.agentManager.listDraftCommands(sessionConfig);
         this.emit({
           type: "list_commands_response",
           payload: {
             agentId,
-            commands: [],
-            error: `Agent does not support listing commands`,
+            commands,
+            error: null,
             requestId,
           },
         });
         return;
       }
-
-      const commands = await session.listCommands();
 
       this.emit({
         type: "list_commands_response",
         payload: {
           agentId,
-          commands,
-          error: null,
+          commands: [],
+          error: agent
+            ? `Agent does not support listing commands`
+            : `Agent not found: ${agentId}`,
           requestId,
         },
       });
+
     } catch (error: any) {
       this.sessionLogger.error(
-        { err: error, agentId },
+        { err: error, agentId, draftConfig },
         "Failed to list commands"
       );
       this.emit({
@@ -3531,9 +3667,10 @@ export class Session {
     msg: Extract<SessionInboundMessage, { type: "checkout_status_request" }>
   ): Promise<void> {
     const { cwd, requestId } = msg;
+    const resolvedCwd = expandTilde(cwd);
 
     try {
-      const status = await getCheckoutStatus(cwd, { paseoHome: this.paseoHome });
+      const status = await getCheckoutStatus(resolvedCwd, { paseoHome: this.paseoHome });
       if (!status.isGit) {
         this.emit({
           type: "checkout_status_response",
@@ -3715,6 +3852,37 @@ export class Session {
         type: "branch_suggestions_response",
         payload: {
           branches: [],
+          error: error instanceof Error ? error.message : String(error),
+          requestId,
+        },
+      });
+    }
+  }
+
+  private async handleDirectorySuggestionsRequest(
+    msg: DirectorySuggestionsRequest
+  ): Promise<void> {
+    const { query, limit, requestId } = msg;
+
+    try {
+      const directories = await searchHomeDirectories({
+        homeDir: process.env.HOME ?? homedir(),
+        query,
+        limit,
+      });
+      this.emit({
+        type: "directory_suggestions_response",
+        payload: {
+          directories,
+          error: null,
+          requestId,
+        },
+      });
+    } catch (error) {
+      this.emit({
+        type: "directory_suggestions_response",
+        payload: {
+          directories: [],
           error: error instanceof Error ? error.message : String(error),
           requestId,
         },
@@ -4452,11 +4620,13 @@ export class Session {
         }
       }
 
-	      await deletePaseoWorktree({
-	        cwd: repoRoot,
-	        worktreePath: targetPath,
-	        paseoHome: this.paseoHome,
-	      });
+      await this.killTerminalsUnderPath(targetPath);
+
+      await deletePaseoWorktree({
+        cwd: repoRoot,
+        worktreePath: targetPath,
+        paseoHome: this.paseoHome,
+      });
 
       for (const agentId of removedAgents) {
         this.emit({
@@ -5001,27 +5171,10 @@ export class Session {
   }> {
     const filter = request.filter;
     const sort = this.normalizeFetchAgentsSort(request.sort);
-    const includeArchived = filter?.includeArchived ?? false;
 
-    let agents = await this.listAgentPayloads({
+    const agents = await this.listAgentPayloads({
       labels: filter?.labels,
     });
-
-    if (!includeArchived) {
-      agents = agents.filter((agent) => !agent.archivedAt);
-    }
-
-    if (filter?.statuses && filter.statuses.length > 0) {
-      const statuses = new Set(filter.statuses);
-      agents = agents.filter((agent) => statuses.has(agent.status));
-    }
-
-    if (typeof filter?.requiresAttention === "boolean") {
-      agents = agents.filter(
-        (agent) =>
-          (agent.requiresAttention ?? false) === filter.requiresAttention
-      );
-    }
 
     const placementByCwd = new Map<string, Promise<ProjectPlacementPayload>>();
     const getPlacement = (cwd: string): Promise<ProjectPlacementPayload> => {
@@ -5040,11 +5193,13 @@ export class Session {
         project: await getPlacement(agent.cwd),
       }))
     );
-
-    if (filter?.projectKeys && filter.projectKeys.length > 0) {
-      const projectKeys = new Set(filter.projectKeys.filter((item) => item.trim().length > 0));
-      entries = entries.filter((entry) => projectKeys.has(entry.project.projectKey));
-    }
+    entries = entries.filter((entry) =>
+      this.matchesAgentFilter({
+        agent: entry.agent,
+        project: entry.project,
+        filter,
+      })
+    );
 
     entries.sort((left, right) =>
       this.compareFetchAgentsEntries(left, right, sort)
@@ -5082,16 +5237,55 @@ export class Session {
   private async handleFetchAgents(
     request: Extract<SessionInboundMessage, { type: "fetch_agents_request" }>
   ): Promise<void> {
+    const requestedSubscriptionId = request.subscribe?.subscriptionId?.trim();
+    const subscriptionId =
+      request.subscribe
+        ? requestedSubscriptionId && requestedSubscriptionId.length > 0
+          ? requestedSubscriptionId
+          : uuidv4()
+        : null;
+
     try {
+      if (subscriptionId) {
+        this.agentUpdatesSubscription = {
+          subscriptionId,
+          filter: request.filter,
+          isBootstrapping: true,
+          pendingUpdatesByAgentId: new Map(),
+        };
+      }
+
       const payload = await this.listFetchAgentsEntries(request);
+      const snapshotUpdatedAtByAgentId = new Map<string, number>();
+      for (const entry of payload.entries) {
+        const parsedUpdatedAt = Date.parse(entry.agent.updatedAt);
+        if (!Number.isNaN(parsedUpdatedAt)) {
+          snapshotUpdatedAtByAgentId.set(entry.agent.id, parsedUpdatedAt);
+        }
+      }
+
       this.emit({
         type: "fetch_agents_response",
         payload: {
           requestId: request.requestId,
+          ...(subscriptionId ? { subscriptionId } : {}),
           ...payload,
         },
       });
+
+      if (
+        subscriptionId &&
+        this.agentUpdatesSubscription?.subscriptionId === subscriptionId
+      ) {
+        this.flushBootstrappedAgentUpdates({ snapshotUpdatedAtByAgentId });
+      }
     } catch (error) {
+      if (
+        subscriptionId &&
+        this.agentUpdatesSubscription?.subscriptionId === subscriptionId
+      ) {
+        this.agentUpdatesSubscription = null;
+      }
       const code =
         error instanceof SessionRequestError ? error.code : "fetch_agents_failed";
       const message =
@@ -5244,7 +5438,10 @@ export class Session {
       await this.interruptAgentIfRunning(agentId);
 
       try {
-        this.agentManager.recordUserMessage(agentId, msg.text, { messageId: msg.messageId });
+        this.agentManager.recordUserMessage(agentId, msg.text, {
+          messageId: msg.messageId,
+          emitState: false,
+        });
       } catch (error) {
         this.sessionLogger.error(
           { err: error, agentId },
@@ -6091,6 +6288,12 @@ export class Session {
     this.isVoiceMode = false;
 
     // Unsubscribe from all terminals
+    if (this.unsubscribeTerminalsChanged) {
+      this.unsubscribeTerminalsChanged();
+      this.unsubscribeTerminalsChanged = null;
+    }
+    this.subscribedTerminalDirectories.clear();
+
     for (const unsubscribe of this.terminalSubscriptions.values()) {
       unsubscribe();
     }
@@ -6146,6 +6349,81 @@ export class Session {
     const streamId = this.terminalStreamByTerminalId.get(terminalId);
     if (typeof streamId === "number") {
       this.detachTerminalStream(streamId, { emitExit: true });
+    }
+  }
+
+  private emitTerminalsChangedSnapshot(input: {
+    cwd: string;
+    terminals: Array<{ id: string; name: string }>;
+  }): void {
+    this.emit({
+      type: "terminals_changed",
+      payload: {
+        cwd: input.cwd,
+        terminals: input.terminals,
+      },
+    });
+  }
+
+  private handleTerminalsChanged(event: TerminalsChangedEvent): void {
+    if (!this.subscribedTerminalDirectories.has(event.cwd)) {
+      return;
+    }
+
+    this.emitTerminalsChangedSnapshot({
+      cwd: event.cwd,
+      terminals: event.terminals.map((terminal) => ({
+        id: terminal.id,
+        name: terminal.name,
+      })),
+    });
+  }
+
+  private handleSubscribeTerminalsRequest(msg: SubscribeTerminalsRequest): void {
+    this.subscribedTerminalDirectories.add(msg.cwd);
+    void this.emitInitialTerminalsChangedSnapshot(msg.cwd);
+  }
+
+  private handleUnsubscribeTerminalsRequest(msg: UnsubscribeTerminalsRequest): void {
+    this.subscribedTerminalDirectories.delete(msg.cwd);
+  }
+
+  private async emitInitialTerminalsChangedSnapshot(cwd: string): Promise<void> {
+    if (!this.terminalManager || !this.subscribedTerminalDirectories.has(cwd)) {
+      return;
+    }
+
+    const hadDirectoryBeforeSubscribe = this.terminalManager
+      .listDirectories()
+      .includes(cwd);
+
+    try {
+      const terminals = await this.terminalManager.getTerminals(cwd);
+      for (const terminal of terminals) {
+        this.ensureTerminalExitSubscription(terminal);
+      }
+
+      // New directories auto-create Terminal 1, which already emits through
+      // terminal-manager change listeners.
+      if (!hadDirectoryBeforeSubscribe) {
+        return;
+      }
+      if (!this.subscribedTerminalDirectories.has(cwd)) {
+        return;
+      }
+
+      this.emitTerminalsChangedSnapshot({
+        cwd,
+        terminals: terminals.map((terminal) => ({
+          id: terminal.id,
+          name: terminal.name,
+        })),
+      });
+    } catch (error) {
+      this.sessionLogger.warn(
+        { err: error, cwd },
+        "Failed to emit initial terminal snapshot"
+      );
     }
   }
 
@@ -6312,6 +6590,56 @@ export class Session {
     session.send(msg.message);
   }
 
+  private killTrackedTerminal(terminalId: string, options?: { emitExit: boolean }): void {
+    const unsubscribe = this.terminalSubscriptions.get(terminalId);
+    if (unsubscribe) {
+      unsubscribe();
+      this.terminalSubscriptions.delete(terminalId);
+    }
+
+    const streamId = this.terminalStreamByTerminalId.get(terminalId);
+    if (typeof streamId === "number") {
+      this.detachTerminalStream(streamId, { emitExit: options?.emitExit ?? true });
+    }
+
+    this.terminalManager?.killTerminal(terminalId);
+  }
+
+  private async killTerminalsUnderPath(rootPath: string): Promise<void> {
+    if (!this.terminalManager) {
+      return;
+    }
+
+    const cleanupErrors: Array<{ cwd: string; message: string }> = [];
+    const terminalDirectories = [...this.terminalManager.listDirectories()];
+    for (const terminalCwd of terminalDirectories) {
+      if (!this.isPathWithinRoot(rootPath, terminalCwd)) {
+        continue;
+      }
+
+      try {
+        const terminals = await this.terminalManager.getTerminals(terminalCwd);
+        for (const terminal of [...terminals]) {
+          this.killTrackedTerminal(terminal.id, { emitExit: true });
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        cleanupErrors.push({ cwd: terminalCwd, message });
+        this.sessionLogger.warn(
+          { err: error, cwd: terminalCwd },
+          "Failed to clean up worktree terminals during archive"
+        );
+      }
+    }
+
+    if (cleanupErrors.length > 0) {
+      const details = cleanupErrors
+        .map((entry) => `${entry.cwd}: ${entry.message}`)
+        .join("; ");
+      throw new Error(`Failed to clean up worktree terminals during archive (${details})`);
+    }
+  }
+
   private async handleKillTerminalRequest(msg: KillTerminalRequest): Promise<void> {
     if (!this.terminalManager) {
       this.emit({
@@ -6325,19 +6653,7 @@ export class Session {
       return;
     }
 
-    // Unsubscribe first
-    const unsubscribe = this.terminalSubscriptions.get(msg.terminalId);
-    if (unsubscribe) {
-      unsubscribe();
-      this.terminalSubscriptions.delete(msg.terminalId);
-    }
-
-    const streamId = this.terminalStreamByTerminalId.get(msg.terminalId);
-    if (typeof streamId === "number") {
-      this.detachTerminalStream(streamId, { emitExit: true });
-    }
-
-    this.terminalManager.killTerminal(msg.terminalId);
+    this.killTrackedTerminal(msg.terminalId, { emitExit: true });
     this.emit({
       type: "kill_terminal_response",
       payload: {

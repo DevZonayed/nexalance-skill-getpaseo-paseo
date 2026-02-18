@@ -26,7 +26,10 @@ import {
 } from "./message-input";
 import { Theme } from "@/styles/theme";
 import { CommandAutocomplete } from "./command-autocomplete";
-import { useAgentCommandsQuery } from "@/hooks/use-agent-commands-query";
+import {
+  useAgentCommandsQuery,
+  type DraftCommandConfig,
+} from "@/hooks/use-agent-commands-query";
 import { encodeImages } from "@/utils/encode-images";
 import { useKeyboardShortcutsStore } from "@/stores/keyboard-shortcuts-store";
 import { focusWithRetries } from "@/utils/web-focus";
@@ -55,6 +58,8 @@ interface AgentInputAreaProps {
   autoFocus?: boolean;
   /** Callback to expose the addImages function to parent components */
   onAddImages?: (addImages: (images: ImageAttachment[]) => void) => void;
+  /** Optional draft context for listing commands before an agent exists. */
+  commandDraftConfig?: DraftCommandConfig;
 }
 
 const EMPTY_ARRAY: readonly QueuedMessage[] = [];
@@ -69,6 +74,7 @@ export function AgentInputArea({
   onChangeText,
   autoFocus = false,
   onAddImages,
+  commandDraftConfig,
 }: AgentInputAreaProps) {
   const { theme } = useUnistyles();
   const insets = useSafeAreaInsets();
@@ -117,13 +123,39 @@ export function AgentInputArea({
   // Command autocomplete logic
   const showCommandAutocomplete = userInput.startsWith("/") && !userInput.includes(" ");
   const commandFilter = showCommandAutocomplete ? userInput.slice(1) : "";
+  const normalizedCommandDraftConfig = useMemo(() => {
+    if (!commandDraftConfig) {
+      return undefined;
+    }
 
-  // Prefetch commands when agent is available (not on new agent screen)
+    const cwd = commandDraftConfig.cwd.trim();
+    if (!cwd) {
+      return undefined;
+    }
+
+    const modeId = commandDraftConfig.modeId?.trim() ?? "";
+    const model = commandDraftConfig.model?.trim() ?? "";
+    const thinkingOptionId = commandDraftConfig.thinkingOptionId?.trim() ?? "";
+    return {
+      provider: commandDraftConfig.provider,
+      cwd,
+      ...(modeId ? { modeId } : {}),
+      ...(model ? { model } : {}),
+      ...(thinkingOptionId ? { thinkingOptionId } : {}),
+    };
+  }, [commandDraftConfig]);
+
+  // Prefetch commands for real agents and for draft screens when context is available.
   const isRealAgent = agentId && !agentId.startsWith("__");
+  const commandQueryDraftConfig = isRealAgent
+    ? undefined
+    : normalizedCommandDraftConfig;
+  const canLoadCommands = Boolean(serverId) && (isRealAgent || !!commandQueryDraftConfig);
   const { commands } = useAgentCommandsQuery({
     serverId,
     agentId,
-    enabled: !!isRealAgent && !!serverId,
+    enabled: canLoadCommands,
+    draftConfig: commandQueryDraftConfig,
   });
 
   // Filter commands for keyboard navigation
@@ -234,15 +266,38 @@ export function AgentInputArea({
   }, [onSubmitMessage]);
 
   const isAgentRunning = agent?.status === "running";
+  const agentUpdatedAtMs = agent?.updatedAt?.getTime() ?? 0;
 
   const prevIsAgentRunningRef = useRef(isAgentRunning);
+  const latestAgentUpdatedAtRef = useRef(agentUpdatedAtMs);
   useEffect(() => {
+    const previousUpdatedAt = latestAgentUpdatedAtRef.current;
+    if (agentUpdatedAtMs < previousUpdatedAt) {
+      return;
+    }
+
     const wasRunning = prevIsAgentRunningRef.current;
+    let shouldClearProcessing = false;
+
+    if (isProcessing) {
+      const hasEnteredRunning = !wasRunning && isAgentRunning;
+      const hasFreshRunningUpdateWhileRunning =
+        wasRunning && isAgentRunning && agentUpdatedAtMs > previousUpdatedAt;
+      const hasStoppedRunning = wasRunning && !isAgentRunning;
+
+      shouldClearProcessing =
+        hasEnteredRunning ||
+        hasFreshRunningUpdateWhileRunning ||
+        hasStoppedRunning;
+    }
+
     prevIsAgentRunningRef.current = isAgentRunning;
-    if (!wasRunning && isAgentRunning && isProcessing) {
+    latestAgentUpdatedAtRef.current = agentUpdatedAtMs;
+
+    if (shouldClearProcessing) {
       setIsProcessing(false);
     }
-  }, [isAgentRunning, isProcessing]);
+  }, [agentUpdatedAtMs, isAgentRunning, isProcessing]);
 
   const updateQueue = useCallback(
     (updater: (current: QueuedMessage[]) => QueuedMessage[]) => {
@@ -612,7 +667,7 @@ export function AgentInputArea({
     ]
   );
 
-  const cancelButton = isAgentRunning && !hasSendableContent ? (
+  const cancelButton = isAgentRunning && !hasSendableContent && !isProcessing ? (
     <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
       <TooltipTrigger
         onPress={handleCancelAgent}
@@ -720,13 +775,14 @@ export function AgentInputArea({
           )}
 
           {/* Command autocomplete dropdown */}
-          {showCommandAutocomplete && isRealAgent && (
+          {showCommandAutocomplete && canLoadCommands && (
             <CommandAutocomplete
               serverId={serverId}
               agentId={agentId}
               filter={commandFilter}
               selectedIndex={commandSelectedIndex}
               onSelect={handleCommandSelect}
+              draftConfig={commandQueryDraftConfig}
             />
           )}
 
@@ -756,6 +812,7 @@ export function AgentInputArea({
             voiceAgentId={agentId}
             isAgentRunning={isAgentRunning}
             onQueue={handleQueue}
+            onSubmitLoadingPress={isAgentRunning ? handleCancelAgent : undefined}
             onKeyPress={handleCommandKeyPress}
           />
         </View>

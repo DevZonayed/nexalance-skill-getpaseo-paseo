@@ -11,7 +11,6 @@ import { getSherpaOnnxModelSpec, type SherpaOnnxModelId } from "./model-catalog.
 export type EnsureSherpaOnnxModelOptions = {
   modelsDir: string;
   modelId: SherpaOnnxModelId;
-  autoDownload: boolean;
   logger: pino.Logger;
 };
 
@@ -102,13 +101,6 @@ export async function ensureSherpaOnnxModel(options: EnsureSherpaOnnxModelOption
   const modelDir = path.join(options.modelsDir, spec.extractedDir);
   if (await hasRequiredFiles(modelDir, spec.requiredFiles)) {
     return modelDir;
-  }
-
-  if (!options.autoDownload) {
-    throw new Error(
-      `Missing local speech model files for ${options.modelId} in ${modelDir}. ` +
-        `Set PASEO_LOCAL_AUTO_DOWNLOAD=1 to auto-download.`
-    );
   }
 
   logger.info({ modelsDir: options.modelsDir }, "Starting model download");
@@ -207,7 +199,6 @@ export async function ensureSherpaOnnxModel(options: EnsureSherpaOnnxModelOption
 export async function ensureSherpaOnnxModels(options: {
   modelsDir: string;
   modelIds: SherpaOnnxModelId[];
-  autoDownload: boolean;
   logger: pino.Logger;
 }): Promise<Record<SherpaOnnxModelId, string>> {
   const uniq = Array.from(new Set(options.modelIds));
@@ -216,7 +207,6 @@ export async function ensureSherpaOnnxModels(options: {
     out[id] = await ensureSherpaOnnxModel({
       modelsDir: options.modelsDir,
       modelId: id,
-      autoDownload: options.autoDownload,
       logger: options.logger,
     });
   }

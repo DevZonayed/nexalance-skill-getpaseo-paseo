@@ -26,6 +26,7 @@ import type {
   CheckoutPrStatusResponse,
   ValidateBranchResponse,
   BranchSuggestionsResponse,
+  DirectorySuggestionsResponse,
   PaseoWorktreeListResponse,
   PaseoWorktreeArchiveResponse,
   ProjectIconResponse,
@@ -197,6 +198,7 @@ type CheckoutPrCreatePayload = CheckoutPrCreateResponse["payload"];
 type CheckoutPrStatusPayload = CheckoutPrStatusResponse["payload"];
 type ValidateBranchPayload = ValidateBranchResponse["payload"];
 type BranchSuggestionsPayload = BranchSuggestionsResponse["payload"];
+type DirectorySuggestionsPayload = DirectorySuggestionsResponse["payload"];
 type PaseoWorktreeListPayload = PaseoWorktreeListResponse["payload"];
 type PaseoWorktreeArchivePayload = PaseoWorktreeArchiveResponse["payload"];
 type FileExplorerPayload = FileExplorerResponse["payload"];
@@ -207,6 +209,14 @@ type SpeechModelsListPayload = SpeechModelsListResponse["payload"];
 type SpeechModelsDownloadPayload = SpeechModelsDownloadResponse["payload"];
 type ListCommandsPayload = ListCommandsResponse["payload"];
 type ExecuteCommandPayload = ExecuteCommandResponse["payload"];
+type ListCommandsDraftConfig = Pick<
+  AgentSessionConfig,
+  "provider" | "cwd" | "modeId" | "model" | "thinkingOptionId"
+>;
+type ListCommandsOptions = {
+  requestId?: string;
+  draftConfig?: ListCommandsDraftConfig;
+};
 type SetVoiceModePayload = Extract<
   SessionOutboundMessage,
   { type: "set_voice_mode_response" }
@@ -348,14 +358,11 @@ export class DaemonClient {
   private connectReject: ((error: Error) => void) | null = null;
   private lastErrorValue: string | null = null;
   private connectionState: ConnectionState = { status: "idle" };
-  private agentUpdateSubscriptions = new Map<
-    string,
-    { labels?: Record<string, string>; agentId?: string } | undefined
-  >();
   private checkoutDiffSubscriptions = new Map<
     string,
     { cwd: string; compare: { mode: "uncommitted" | "base"; baseRef?: string } }
   >();
+  private terminalDirectorySubscriptions = new Set<string>();
   private logger: Logger;
   private pendingSendQueue: PendingSend[] = [];
   private relayClientId: string | null = null;
@@ -472,8 +479,8 @@ export class DaemonClient {
           this.lastErrorValue = null;
           this.reconnectAttempt = 0;
           this.updateConnectionState({ status: "connected" });
-          this.resubscribeAgentUpdates();
           this.resubscribeCheckoutDiffSubscriptions();
+          this.resubscribeTerminalDirectorySubscriptions();
           this.flushPendingSendQueue();
           this.resolveConnect();
         }),
@@ -993,6 +1000,7 @@ export class DaemonClient {
       ...(options?.filter ? { filter: options.filter } : {}),
       ...(options?.sort ? { sort: options.sort } : {}),
       ...(options?.page ? { page: options.page } : {}),
+      ...(options?.subscribe ? { subscribe: options.subscribe } : {}),
     });
     return this.sendRequest({
       requestId: resolvedRequestId,
@@ -1039,44 +1047,6 @@ export class DaemonClient {
     return payload.agent;
   }
 
-  subscribeAgentUpdates(options?: {
-    subscriptionId?: string;
-    filter?: { labels?: Record<string, string>; agentId?: string };
-  }): string {
-    const subscriptionId = options?.subscriptionId ?? crypto.randomUUID();
-    this.agentUpdateSubscriptions.set(subscriptionId, options?.filter);
-    const message = SessionInboundMessageSchema.parse({
-      type: "subscribe_agent_updates",
-      subscriptionId,
-      ...(options?.filter ? { filter: options.filter } : {}),
-    });
-    this.sendSessionMessage(message);
-    return subscriptionId;
-  }
-
-  unsubscribeAgentUpdates(subscriptionId: string): void {
-    this.agentUpdateSubscriptions.delete(subscriptionId);
-    const message = SessionInboundMessageSchema.parse({
-      type: "unsubscribe_agent_updates",
-      subscriptionId,
-    });
-    this.sendSessionMessage(message);
-  }
-
-  private resubscribeAgentUpdates(): void {
-    if (this.agentUpdateSubscriptions.size === 0) {
-      return;
-    }
-    for (const [subscriptionId, filter] of this.agentUpdateSubscriptions) {
-      const message = SessionInboundMessageSchema.parse({
-        type: "subscribe_agent_updates",
-        subscriptionId,
-        ...(filter ? { filter } : {}),
-      });
-      this.sendSessionMessage(message);
-    }
-  }
-
   private resubscribeCheckoutDiffSubscriptions(): void {
     if (this.checkoutDiffSubscriptions.size === 0) {
       return;
@@ -1090,6 +1060,18 @@ export class DaemonClient {
         requestId: this.createRequestId(),
       });
       this.sendSessionMessage(message);
+    }
+  }
+
+  private resubscribeTerminalDirectorySubscriptions(): void {
+    if (this.terminalDirectorySubscriptions.size === 0) {
+      return;
+    }
+    for (const cwd of this.terminalDirectorySubscriptions) {
+      this.sendSessionMessage({
+        type: "subscribe_terminals_request",
+        cwd,
+      });
     }
   }
 
@@ -2068,6 +2050,22 @@ export class DaemonClient {
     });
   }
 
+  async getDirectorySuggestions(
+    options: { query: string; limit?: number },
+    requestId?: string
+  ): Promise<DirectorySuggestionsPayload> {
+    return this.sendCorrelatedSessionRequest({
+      requestId,
+      message: {
+        type: "directory_suggestions_request",
+        query: options.query,
+        limit: options.limit,
+      },
+      responseType: "directory_suggestions_response",
+      timeout: 10000,
+    });
+  }
+
   // ============================================================================
   // File Explorer
   // ============================================================================
@@ -2181,15 +2179,30 @@ export class DaemonClient {
     });
   }
 
+  async listCommands(agentId: string, requestId?: string): Promise<ListCommandsPayload>;
   async listCommands(
     agentId: string,
-    requestId?: string
+    options?: ListCommandsOptions
+  ): Promise<ListCommandsPayload>;
+  async listCommands(
+    agentId: string,
+    requestIdOrOptions?: string | ListCommandsOptions
   ): Promise<ListCommandsPayload> {
+    const requestId =
+      typeof requestIdOrOptions === "string"
+        ? requestIdOrOptions
+        : requestIdOrOptions?.requestId;
+    const draftConfig =
+      typeof requestIdOrOptions === "string"
+        ? undefined
+        : requestIdOrOptions?.draftConfig;
+
     return this.sendCorrelatedSessionRequest({
       requestId,
       message: {
         type: "list_commands_request",
         agentId,
+        ...(draftConfig ? { draftConfig } : {}),
       },
       responseType: "list_commands_response",
       timeout: 30000,
@@ -2313,6 +2326,28 @@ export class DaemonClient {
   // ============================================================================
   // Terminals
   // ============================================================================
+
+  subscribeTerminals(input: { cwd: string }): void {
+    this.terminalDirectorySubscriptions.add(input.cwd);
+    if (!this.transport || this.connectionState.status !== "connected") {
+      return;
+    }
+    this.sendSessionMessage({
+      type: "subscribe_terminals_request",
+      cwd: input.cwd,
+    });
+  }
+
+  unsubscribeTerminals(input: { cwd: string }): void {
+    this.terminalDirectorySubscriptions.delete(input.cwd);
+    if (!this.transport || this.connectionState.status !== "connected") {
+      return;
+    }
+    this.sendSessionMessage({
+      type: "unsubscribe_terminals_request",
+      cwd: input.cwd,
+    });
+  }
 
   async listTerminals(
     cwd: string,

@@ -46,7 +46,10 @@ import { toAgentPayload } from "./agent-projections.js";
 import { curateAgentActivity } from "./activity-curator.js";
 import { AGENT_PROVIDER_DEFINITIONS } from "./provider-registry.js";
 import { AgentStorage } from "./agent-storage.js";
-import { appendTimelineItemIfAgentKnown } from "./timeline-append.js";
+import {
+  appendTimelineItemIfAgentKnown,
+  emitLiveTimelineItemIfAgentKnown,
+} from "./timeline-append.js";
 import { type WorktreeConfig } from "../../utils/worktree.js";
 import { WaitForAgentTracker } from "./wait-for-agent-tracker.js";
 import { scheduleAgentMetadataGeneration } from "./agent-metadata-generator.js";
@@ -357,6 +360,12 @@ export async function createAgentManagementMcpServer(
               agentId: snapshot.id,
               item,
             }),
+          emitLiveTimelineItem: (item) =>
+            emitLiveTimelineItemIfAgentKnown({
+              agentManager,
+              agentId: snapshot.id,
+              item,
+            }),
           logger: childLogger,
         });
       }
@@ -374,7 +383,9 @@ export async function createAgentManagementMcpServer(
         });
 
         try {
-          agentManager.recordUserMessage(snapshot.id, trimmedPrompt);
+          agentManager.recordUserMessage(snapshot.id, trimmedPrompt, {
+            emitState: false,
+          });
         } catch (error) {
           childLogger.error(
             { err: error, agentId: snapshot.id },
@@ -599,7 +610,9 @@ export async function createAgentManagementMcpServer(
       }
 
       try {
-        agentManager.recordUserMessage(agentId, prompt);
+        agentManager.recordUserMessage(agentId, prompt, {
+          emitState: false,
+        });
       } catch (error) {
         childLogger.error(
           { err: error, agentId },

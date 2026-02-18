@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useFocusEffect } from "@react-navigation/native";
 import {
   ActivityIndicator,
   Pressable,
@@ -15,16 +16,19 @@ import Svg, {
   Stop,
 } from "react-native-svg";
 import { StyleSheet, UnistylesRuntime, useUnistyles } from "react-native-unistyles";
+import type { ListTerminalsResponse } from "@server/shared/messages";
 import { useSessionStore } from "@/stores/session-store";
 import {
   hasPendingTerminalModifiers,
   normalizeTerminalTransportKey,
   resolvePendingModifierDataInput,
 } from "@/utils/terminal-keys";
+import { upsertTerminalListEntry } from "@/utils/terminal-list";
 import {
   TerminalOutputPump,
   type TerminalOutputChunk,
 } from "@/terminal/runtime/terminal-output-pump";
+import { TerminalOutputDeliveryQueue } from "@/terminal/runtime/terminal-output-delivery-queue";
 import {
   TerminalStreamController,
   type TerminalStreamControllerStatus,
@@ -42,6 +46,7 @@ interface TerminalPaneProps {
 
 const MAX_OUTPUT_CHARS = 200_000;
 const TERMINAL_TAB_MAX_WIDTH = 220;
+const TERMINAL_REFIT_DELAYS_MS = [0, 48, 144, 320];
 
 const MODIFIER_LABELS = {
   ctrl: "Ctrl",
@@ -71,6 +76,24 @@ type TerminalOutputChunkState = {
   sequence: number;
   text: string;
 };
+
+type PendingTerminalInput =
+  | {
+      type: "data";
+      data: string;
+    }
+  | {
+      type: "key";
+      input: {
+        key: string;
+        ctrl: boolean;
+        shift: boolean;
+        alt: boolean;
+        meta?: boolean;
+      };
+    };
+
+type ListTerminalsPayload = ListTerminalsResponse["payload"];
 
 const EMPTY_MODIFIERS: ModifierState = {
   ctrl: false,
@@ -117,10 +140,12 @@ export function TerminalPane({ serverId, cwd }: TerminalPaneProps) {
   );
 
   const scopeKey = useMemo(() => terminalScopeKey({ serverId, cwd }), [serverId, cwd]);
+  const terminalsQueryKey = useMemo(() => ["terminals", serverId, cwd] as const, [cwd, serverId]);
   const selectedTerminalByScopeRef = useRef<Map<string, string>>(new Map());
   const lastReportedSizeRef = useRef<{ rows: number; cols: number } | null>(null);
   const streamControllerRef = useRef<TerminalStreamController | null>(null);
   const outputPumpRef = useRef<TerminalOutputPump | null>(null);
+  const outputDeliveryQueueRef = useRef<TerminalOutputDeliveryQueue | null>(null);
 
   const [selectedTerminalId, setSelectedTerminalId] = useState<string | null>(null);
   const [selectedOutputChunk, setSelectedOutputChunk] = useState<TerminalOutputChunkState>({
@@ -136,22 +161,40 @@ export function TerminalPane({ serverId, cwd }: TerminalPaneProps) {
   const [streamError, setStreamError] = useState<string | null>(null);
   const [modifiers, setModifiers] = useState<ModifierState>(EMPTY_MODIFIERS);
   const [focusRequestToken, setFocusRequestToken] = useState(0);
+  const [resizeRequestToken, setResizeRequestToken] = useState(0);
   const [hoveredTerminalId, setHoveredTerminalId] = useState<string | null>(null);
   const [hoveredCloseTerminalId, setHoveredCloseTerminalId] = useState<string | null>(
     null
   );
   const hoverOutTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const selectedTerminalIdRef = useRef<string | null>(selectedTerminalId);
+  const pendingTerminalInputRef = useRef<PendingTerminalInput[]>([]);
 
   useEffect(() => {
     selectedTerminalIdRef.current = selectedTerminalId;
   }, [selectedTerminalId]);
 
   useEffect(() => {
+    const outputDeliveryQueue = new TerminalOutputDeliveryQueue({
+      onDeliver: (chunk) => {
+        setSelectedOutputChunk(chunk);
+      },
+    });
+    outputDeliveryQueueRef.current = outputDeliveryQueue;
+
+    return () => {
+      if (outputDeliveryQueueRef.current === outputDeliveryQueue) {
+        outputDeliveryQueueRef.current = null;
+      }
+      outputDeliveryQueue.reset();
+    };
+  }, []);
+
+  useEffect(() => {
     const outputPump = new TerminalOutputPump({
       maxOutputChars: MAX_OUTPUT_CHARS,
       onSelectedOutputChunk: (chunk: TerminalOutputChunk) => {
-        setSelectedOutputChunk(chunk);
+        outputDeliveryQueueRef.current?.enqueue(chunk);
       },
     });
     outputPumpRef.current = outputPump;
@@ -210,8 +253,36 @@ export function TerminalPane({ serverId, cwd }: TerminalPaneProps) {
     return () => clearHoverOutTimeout();
   }, [clearHoverOutTimeout]);
 
+  const requestTerminalFocus = useCallback(() => {
+    setFocusRequestToken((current) => current + 1);
+  }, []);
+  const requestTerminalReflow = useCallback(() => {
+    setResizeRequestToken((current) => current + 1);
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!selectedTerminalId) {
+        return;
+      }
+      // Navigation transitions can temporarily report stale dimensions.
+      // Pulse forced refits so xterm fills the pane when returning to an agent.
+      const timeoutHandles = TERMINAL_REFIT_DELAYS_MS.map((delayMs) =>
+        setTimeout(() => {
+          requestTerminalReflow();
+        }, delayMs)
+      );
+
+      return () => {
+        for (const handle of timeoutHandles) {
+          clearTimeout(handle);
+        }
+      };
+    }, [requestTerminalReflow, selectedTerminalId])
+  );
+
   const terminalsQuery = useQuery({
-    queryKey: ["terminals", serverId, cwd] as const,
+    queryKey: terminalsQueryKey,
     enabled: Boolean(client && isConnected && cwd.startsWith("/")),
     queryFn: async () => {
       if (!client) {
@@ -246,14 +317,43 @@ export function TerminalPane({ serverId, cwd }: TerminalPaneProps) {
       setModifiers({ ...EMPTY_MODIFIERS });
 
       void queryClient.invalidateQueries({
-        queryKey: ["terminals", serverId, cwd],
+        queryKey: terminalsQueryKey,
       });
       void queryClient.refetchQueries({
-        queryKey: ["terminals", serverId, cwd],
+        queryKey: terminalsQueryKey,
         type: "active",
       });
     });
-  }, [client, cwd, isConnected, queryClient, serverId]);
+  }, [client, isConnected, queryClient, terminalsQueryKey]);
+
+  useEffect(() => {
+    if (!client || !isConnected || !cwd.startsWith("/")) {
+      return;
+    }
+
+    const unsubscribe = client.on("terminals_changed", (message) => {
+      if (message.type !== "terminals_changed") {
+        return;
+      }
+      if (message.payload.cwd !== cwd) {
+        return;
+      }
+      void queryClient.invalidateQueries({
+        queryKey: terminalsQueryKey,
+      });
+      void queryClient.refetchQueries({
+        queryKey: terminalsQueryKey,
+        type: "active",
+      });
+    });
+
+    client.subscribeTerminals({ cwd });
+
+    return () => {
+      unsubscribe();
+      client.unsubscribeTerminals({ cwd });
+    };
+  }, [client, cwd, isConnected, queryClient, terminalsQueryKey]);
 
   const createTerminalMutation = useMutation({
     mutationFn: async () => {
@@ -263,12 +363,26 @@ export function TerminalPane({ serverId, cwd }: TerminalPaneProps) {
       return await client.createTerminal(cwd);
     },
     onSuccess: (payload) => {
-      if (payload.terminal) {
-        selectedTerminalByScopeRef.current.set(scopeKey, payload.terminal.id);
-        setSelectedTerminalId(payload.terminal.id);
+      const createdTerminal = payload.terminal;
+      if (createdTerminal) {
+        queryClient.setQueryData<ListTerminalsPayload>(terminalsQueryKey, (current) => {
+          const nextTerminals = upsertTerminalListEntry({
+            terminals: current?.terminals ?? [],
+            terminal: createdTerminal,
+          });
+
+          return {
+            cwd: current?.cwd ?? cwd,
+            terminals: nextTerminals,
+            requestId: current?.requestId ?? `terminal-create-${createdTerminal.id}`,
+          };
+        });
+        selectedTerminalByScopeRef.current.set(scopeKey, createdTerminal.id);
+        setSelectedTerminalId(createdTerminal.id);
+        requestTerminalFocus();
       }
       void queryClient.invalidateQueries({
-        queryKey: ["terminals", serverId, cwd],
+        queryKey: terminalsQueryKey,
       });
     },
   });
@@ -294,10 +408,10 @@ export function TerminalPane({ serverId, cwd }: TerminalPaneProps) {
         setModifiers({ ...EMPTY_MODIFIERS });
       }
       void queryClient.invalidateQueries({
-        queryKey: ["terminals", serverId, cwd],
+        queryKey: terminalsQueryKey,
       });
       void queryClient.refetchQueries({
-        queryKey: ["terminals", serverId, cwd],
+        queryKey: terminalsQueryKey,
         type: "active",
       });
     },
@@ -405,6 +519,9 @@ export function TerminalPane({ serverId, cwd }: TerminalPaneProps) {
   }, [client, handleStreamControllerStatus, isConnected]);
 
   useEffect(() => {
+    outputDeliveryQueueRef.current?.reset();
+    pendingTerminalInputRef.current = [];
+    setSelectedOutputChunk({ sequence: 0, text: "" });
     outputPumpRef.current?.setSelectedTerminal({
       terminalId: selectedTerminalId,
     });
@@ -422,6 +539,9 @@ export function TerminalPane({ serverId, cwd }: TerminalPaneProps) {
     activeStream && activeStream.terminalId === selectedTerminalId
       ? activeStream.streamId
       : null;
+  const getCurrentActiveStreamId = useCallback(() => {
+    return streamControllerRef.current?.getActiveStreamId() ?? null;
+  }, []);
 
   const selectedTerminal = useMemo(
     () => terminals.find((terminal) => terminal.id === selectedTerminalId) ?? null,
@@ -430,6 +550,42 @@ export function TerminalPane({ serverId, cwd }: TerminalPaneProps) {
   const handleCreateTerminal = useCallback(() => {
     createTerminalMutation.mutate();
   }, [createTerminalMutation]);
+
+  const enqueuePendingTerminalInput = useCallback((entry: PendingTerminalInput) => {
+    const queue = pendingTerminalInputRef.current;
+    queue.push(entry);
+    if (queue.length > 512) {
+      queue.splice(0, queue.length - 512);
+    }
+  }, []);
+
+  const flushPendingTerminalInput = useCallback(() => {
+    if (!client) {
+      return;
+    }
+    const currentStreamId = getCurrentActiveStreamId();
+    if (currentStreamId === null) {
+      return;
+    }
+    const queue = pendingTerminalInputRef.current;
+    if (queue.length === 0) {
+      return;
+    }
+
+    const pending = queue.splice(0, queue.length);
+
+    for (const entry of pending) {
+      if (entry.type === "data") {
+        client.sendTerminalStreamInput(currentStreamId, entry.data);
+        continue;
+      }
+      client.sendTerminalStreamKey(currentStreamId, entry.input);
+    }
+  }, [client, getCurrentActiveStreamId]);
+
+  useEffect(() => {
+    flushPendingTerminalInput();
+  }, [activeStreamId, flushPendingTerminalInput]);
 
   const handleCloseTerminal = useCallback(
     (terminalId: string) => {
@@ -443,10 +599,6 @@ export function TerminalPane({ serverId, cwd }: TerminalPaneProps) {
     },
     [killTerminalMutation]
   );
-
-  const requestTerminalFocus = useCallback(() => {
-    setFocusRequestToken((current) => current + 1);
-  }, []);
 
   const clearPendingModifiers = useCallback(() => {
     setModifiers({ ...EMPTY_MODIFIERS });
@@ -462,19 +614,19 @@ export function TerminalPane({ serverId, cwd }: TerminalPaneProps) {
         meta?: boolean;
       }
     ): boolean => {
-      if (!client || activeStreamId === null) {
-        terminalDebugLog({
-          scope: "terminal-pane",
-          event: "input:key:drop-no-stream",
-          details: {
-            key: input.key,
+      const currentStreamId = getCurrentActiveStreamId();
+      if (!client || currentStreamId === null) {
+        enqueuePendingTerminalInput({
+          type: "key",
+          input: {
+            key: normalizeTerminalTransportKey(input.key),
             ctrl: input.ctrl,
             shift: input.shift,
             alt: input.alt,
-            activeStreamId,
+            meta: input.meta,
           },
         });
-        return false;
+        return true;
       }
 
       const normalizedKey = normalizeTerminalTransportKey(input.key);
@@ -486,10 +638,10 @@ export function TerminalPane({ serverId, cwd }: TerminalPaneProps) {
           ctrl: input.ctrl,
           shift: input.shift,
           alt: input.alt,
-          activeStreamId,
+          activeStreamId: currentStreamId,
         },
       });
-      client.sendTerminalStreamKey(activeStreamId, {
+      client.sendTerminalStreamKey(currentStreamId, {
         key: normalizedKey,
         ctrl: input.ctrl,
         shift: input.shift,
@@ -498,7 +650,7 @@ export function TerminalPane({ serverId, cwd }: TerminalPaneProps) {
       });
       return true;
     },
-    [client, activeStreamId]
+    [client, enqueuePendingTerminalInput, getCurrentActiveStreamId]
   );
 
   const handleTerminalData = useCallback(
@@ -506,13 +658,14 @@ export function TerminalPane({ serverId, cwd }: TerminalPaneProps) {
       if (data.length === 0) {
         return;
       }
+      const currentStreamId = getCurrentActiveStreamId();
       terminalDebugLog({
         scope: "terminal-pane",
         event: "input:data:received",
         details: {
           length: data.length,
           preview: summarizeTerminalText({ text: data, maxChars: 80 }),
-          activeStreamId,
+          activeStreamId: currentStreamId,
         },
       });
 
@@ -541,14 +694,10 @@ export function TerminalPane({ serverId, cwd }: TerminalPaneProps) {
         }
       }
 
-      if (!client || activeStreamId === null) {
-        terminalDebugLog({
-          scope: "terminal-pane",
-          event: "input:data:drop-no-stream",
-          details: {
-            length: data.length,
-            preview: summarizeTerminalText({ text: data, maxChars: 80 }),
-          },
+      if (!client || currentStreamId === null) {
+        enqueuePendingTerminalInput({
+          type: "data",
+          data,
         });
         return;
       }
@@ -558,19 +707,20 @@ export function TerminalPane({ serverId, cwd }: TerminalPaneProps) {
         details: {
           length: data.length,
           preview: summarizeTerminalText({ text: data, maxChars: 80 }),
-          activeStreamId,
+          activeStreamId: currentStreamId,
         },
       });
-      client.sendTerminalStreamInput(activeStreamId, data);
+      client.sendTerminalStreamInput(currentStreamId, data);
     },
     [
-      activeStreamId,
       clearPendingModifiers,
       client,
+      getCurrentActiveStreamId,
       modifiers.alt,
       modifiers.ctrl,
       modifiers.shift,
       sendTerminalKey,
+      enqueuePendingTerminalInput,
     ]
   );
 
@@ -625,6 +775,10 @@ export function TerminalPane({ serverId, cwd }: TerminalPaneProps) {
   const handlePendingModifiersConsumed = useCallback(() => {
     clearPendingModifiers();
   }, [clearPendingModifiers]);
+
+  const handleOutputChunkConsumed = useCallback((sequence: number) => {
+    outputDeliveryQueueRef.current?.consume({ sequence });
+  }, []);
 
   const toggleModifier = useCallback(
     (modifier: keyof ModifierState) => {
@@ -808,8 +962,10 @@ export function TerminalPane({ serverId, cwd }: TerminalPaneProps) {
               onResize={handleTerminalResize}
               onTerminalKey={handleTerminalKey}
               onPendingModifiersConsumed={handlePendingModifiersConsumed}
+              onOutputChunkConsumed={handleOutputChunkConsumed}
               pendingModifiers={modifiers}
               focusRequestToken={focusRequestToken}
+              resizeRequestToken={resizeRequestToken}
             />
           </View>
         ) : (
@@ -819,7 +975,11 @@ export function TerminalPane({ serverId, cwd }: TerminalPaneProps) {
         )}
 
         {isAttaching ? (
-          <View style={styles.attachOverlay} testID="terminal-attach-loading">
+          <View
+            style={styles.attachOverlay}
+            pointerEvents="none"
+            testID="terminal-attach-loading"
+          >
             <ActivityIndicator size="small" color={theme.colors.foregroundMuted} />
           </View>
         ) : null}

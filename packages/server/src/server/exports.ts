@@ -13,6 +13,15 @@ export {
   type LocalSttModelId,
   type LocalTtsModelId,
 } from "./speech/providers/local/models.js";
+export {
+  applySherpaLoaderEnv,
+  resolveSherpaLoaderEnv,
+  sherpaLoaderEnvKey,
+  sherpaPlatformArch,
+  sherpaPlatformPackageName,
+  type SherpaLoaderEnvKey,
+  type SherpaLoaderEnvResolution,
+} from "./speech/providers/local/sherpa/sherpa-runtime-env.js";
 
 // Agent SDK types for CLI commands
 export type {
@@ -25,6 +34,20 @@ export type {
 
 // Agent activity curator for CLI logs
 export { curateAgentActivity } from "./agent/activity-curator.js";
+export {
+  getStructuredAgentResponse,
+  StructuredAgentResponseError,
+  StructuredAgentFallbackError,
+  DEFAULT_STRUCTURED_GENERATION_PROVIDERS,
+  generateStructuredAgentResponseWithFallback,
+  type AgentCaller,
+  type JsonSchema,
+  type StructuredGenerationAttempt,
+  type StructuredGenerationProvider,
+  type StructuredAgentGenerationOptions,
+  type StructuredAgentGenerationWithFallbackOptions,
+  type StructuredAgentResponseOptions,
+} from "./agent/agent-response-loop.js";
 
 // WebSocket message types for CLI streaming
 export type {

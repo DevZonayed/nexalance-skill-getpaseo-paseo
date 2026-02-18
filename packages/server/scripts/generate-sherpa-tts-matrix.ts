@@ -284,7 +284,6 @@ logger.info(
 await ensureLocalSpeechModels({
   modelsDir: options.modelsDir,
   modelIds: options.modelIds,
-  autoDownload: true,
   logger,
 });
 

@@ -1,17 +1,22 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import {
   createWorktree,
+  deriveWorktreeProjectHash,
   deletePaseoWorktree,
   getWorktreeTerminalSpecs,
   isPaseoOwnedWorktreeCwd,
   listPaseoWorktrees,
+  resolveWorktreeRuntimeEnv,
+  type WorktreeSetupCommandProgressEvent,
+  runWorktreeSetupCommands,
   slugify,
 } from "./worktree";
 import { getPaseoWorktreeMetadataPath } from "./worktree-metadata.js";
 import { execSync } from "child_process";
 import { mkdtempSync, rmSync, existsSync, realpathSync, writeFileSync, readFileSync } from "fs";
-import { join } from "path";
+import { dirname, join } from "path";
 import { tmpdir } from "os";
+import net from "node:net";
 
 describe("createWorktree", () => {
   let tempDir: string;
@@ -39,6 +44,7 @@ describe("createWorktree", () => {
   });
 
   it("creates a worktree for the current branch (main)", async () => {
+    const projectHash = await deriveWorktreeProjectHash(repoDir);
     const result = await createWorktree({
       branchName: "main",
       cwd: repoDir,
@@ -48,7 +54,7 @@ describe("createWorktree", () => {
     });
 
     expect(result.worktreePath).toBe(
-      join(paseoHome, "worktrees", "test-repo", "hello-world")
+      join(paseoHome, "worktrees", projectHash, "hello-world")
     );
     expect(existsSync(result.worktreePath)).toBe(true);
     expect(existsSync(join(result.worktreePath, "file.txt"))).toBe(true);
@@ -82,7 +88,14 @@ describe("createWorktree", () => {
       paseoHome: varPaseoHome,
     });
 
-    const privateWorktreePath = join(privateTempDir, "paseo-home", "worktrees", "test-repo", "realpath-test");
+    const projectHash = await deriveWorktreeProjectHash(varRepoDir);
+    const privateWorktreePath = join(
+      privateTempDir,
+      "paseo-home",
+      "worktrees",
+      projectHash,
+      "realpath-test"
+    );
     expect(existsSync(privateWorktreePath)).toBe(true);
 
     const ownership = await isPaseoOwnedWorktreeCwd(privateWorktreePath, { paseoHome: varPaseoHome });
@@ -91,7 +104,22 @@ describe("createWorktree", () => {
     rmSync(varTempDir, { recursive: true, force: true });
   });
 
+  it("reports repoRoot as the repository root for paseo-owned worktrees", async () => {
+    const result = await createWorktree({
+      branchName: "main",
+      cwd: repoDir,
+      baseBranch: "main",
+      worktreeSlug: "repo-root-check",
+      paseoHome,
+    });
+
+    const ownership = await isPaseoOwnedWorktreeCwd(result.worktreePath, { paseoHome });
+    expect(ownership.allowed).toBe(true);
+    expect(ownership.repoRoot).toBe(repoDir);
+  });
+
   it("creates a worktree with a new branch", async () => {
+    const projectHash = await deriveWorktreeProjectHash(repoDir);
     const result = await createWorktree({
       branchName: "feature-branch",
       cwd: repoDir,
@@ -101,7 +129,7 @@ describe("createWorktree", () => {
     });
 
     expect(result.worktreePath).toBe(
-      join(paseoHome, "worktrees", "test-repo", "my-feature")
+      join(paseoHome, "worktrees", projectHash, "my-feature")
     );
     expect(existsSync(result.worktreePath)).toBe(true);
 
@@ -127,6 +155,7 @@ describe("createWorktree", () => {
   });
 
   it("handles branch name collision by adding suffix", async () => {
+    const projectHash = await deriveWorktreeProjectHash(repoDir);
     // Create a branch named "hello" first
     execSync("git branch hello", { cwd: repoDir });
 
@@ -140,7 +169,7 @@ describe("createWorktree", () => {
 
     // Should create branch "hello-1" since "hello" exists
     expect(result.worktreePath).toBe(
-      join(paseoHome, "worktrees", "test-repo", "hello")
+      join(paseoHome, "worktrees", projectHash, "hello")
     );
     expect(existsSync(result.worktreePath)).toBe(true);
 
@@ -231,6 +260,98 @@ describe("createWorktree", () => {
 
     expect(existsSync(result.worktreePath)).toBe(true);
     expect(existsSync(join(result.worktreePath, "setup.log"))).toBe(false);
+  });
+
+  it("streams setup command progress events while commands are executing", async () => {
+    const paseoConfig = {
+      worktree: {
+        setup: [
+          'echo "first line"; echo "second line" 1>&2',
+        ],
+      },
+    };
+    writeFileSync(join(repoDir, "paseo.json"), JSON.stringify(paseoConfig));
+    execSync(
+      "git add paseo.json && git -c commit.gpgsign=false commit -m 'add streaming setup'",
+      { cwd: repoDir }
+    );
+
+    const progressEvents: WorktreeSetupCommandProgressEvent[] = [];
+    const results = await runWorktreeSetupCommands({
+      worktreePath: repoDir,
+      branchName: "main",
+      cleanupOnFailure: false,
+      onEvent: (event) => {
+        progressEvents.push(event);
+      },
+    });
+
+    expect(results).toHaveLength(1);
+    expect(progressEvents.some((event) => event.type === "command_started")).toBe(true);
+    expect(progressEvents.some((event) => event.type === "output")).toBe(true);
+    expect(progressEvents.some((event) => event.type === "command_completed")).toBe(true);
+  });
+
+  it("reuses persisted worktree runtime port across resolutions", async () => {
+    const result = await createWorktree({
+      branchName: "main",
+      cwd: repoDir,
+      baseBranch: "main",
+      worktreeSlug: "runtime-env-port-reuse",
+      runSetup: false,
+      paseoHome,
+    });
+
+    const first = await resolveWorktreeRuntimeEnv({
+      worktreePath: result.worktreePath,
+      branchName: result.branchName,
+    });
+    const second = await resolveWorktreeRuntimeEnv({
+      worktreePath: result.worktreePath,
+      branchName: result.branchName,
+    });
+
+    expect(second.PASEO_WORKTREE_PORT).toBe(first.PASEO_WORKTREE_PORT);
+  });
+
+  it("fails runtime env resolution when persisted port is in use", async () => {
+    const result = await createWorktree({
+      branchName: "main",
+      cwd: repoDir,
+      baseBranch: "main",
+      worktreeSlug: "runtime-env-port-conflict",
+      runSetup: false,
+      paseoHome,
+    });
+
+    const env = await resolveWorktreeRuntimeEnv({
+      worktreePath: result.worktreePath,
+      branchName: result.branchName,
+    });
+    const port = Number(env.PASEO_WORKTREE_PORT);
+
+    const server = net.createServer();
+    await new Promise<void>((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(port, () => resolve());
+    });
+
+    await expect(
+      resolveWorktreeRuntimeEnv({
+        worktreePath: result.worktreePath,
+        branchName: result.branchName,
+      })
+    ).rejects.toThrow(`Persisted worktree port ${port} is already in use`);
+
+    await new Promise<void>((resolve, reject) => {
+      server.close((error) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+        resolve();
+      });
+    });
   });
 
   it("cleans up worktree if setup command fails", async () => {
@@ -325,7 +446,47 @@ describe("paseo worktree manager", () => {
     rmSync(tempDir, { recursive: true, force: true });
   });
 
-  it("lists and deletes paseo worktrees under ~/.paseo/worktrees/{project}", async () => {
+  it("isolates worktree roots for repositories that share the same directory name", async () => {
+    const repoA = join(tempDir, "team-a", "test-repo");
+    const repoB = join(tempDir, "team-b", "test-repo");
+
+    for (const repo of [repoA, repoB]) {
+      execSync(`mkdir -p ${repo}`);
+      execSync("git init -b main", { cwd: repo });
+      execSync("git config user.email 'test@test.com'", { cwd: repo });
+      execSync("git config user.name 'Test'", { cwd: repo });
+      execSync("echo 'hello' > file.txt", { cwd: repo });
+      execSync("git add .", { cwd: repo });
+      execSync("git -c commit.gpgsign=false commit -m 'initial'", { cwd: repo });
+    }
+
+    const fromRepoA = await createWorktree({
+      branchName: "main",
+      cwd: repoA,
+      baseBranch: "main",
+      worktreeSlug: "alpha",
+      paseoHome,
+    });
+    const fromRepoB = await createWorktree({
+      branchName: "main",
+      cwd: repoB,
+      baseBranch: "main",
+      worktreeSlug: "alpha",
+      paseoHome,
+    });
+
+    expect(dirname(fromRepoA.worktreePath)).not.toBe(dirname(fromRepoB.worktreePath));
+    expect(fromRepoA.worktreePath.endsWith("alpha-1")).toBe(false);
+    expect(fromRepoB.worktreePath.endsWith("alpha-1")).toBe(false);
+
+    const repoAWorktrees = await listPaseoWorktrees({ cwd: repoA, paseoHome });
+    const repoBWorktrees = await listPaseoWorktrees({ cwd: repoB, paseoHome });
+
+    expect(repoAWorktrees.map((entry) => entry.path)).toEqual([fromRepoA.worktreePath]);
+    expect(repoBWorktrees.map((entry) => entry.path)).toEqual([fromRepoB.worktreePath]);
+  });
+
+  it("lists and deletes paseo worktrees under ~/.paseo/worktrees/{hash}", async () => {
     const first = await createWorktree({
       branchName: "main",
       cwd: repoDir,

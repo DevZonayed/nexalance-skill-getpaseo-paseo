@@ -10,13 +10,16 @@ import { summarizeTerminalText, terminalDebugLog } from "./terminal-debug";
 
 export type TerminalStreamControllerAttachPayload = {
   streamId: number | null;
+  replayedFrom?: number;
   currentOffset: number;
   reset: boolean;
   error?: string | null;
 };
 
 export type TerminalStreamControllerChunk = {
+  offset: number;
   endOffset: number;
+  replay?: boolean;
   data: Uint8Array;
 };
 
@@ -71,6 +74,8 @@ type TerminalStreamControllerActiveStream = {
   terminalId: string;
   streamId: number;
   decoder: TextDecoder;
+  nextExpectedOffset: number | null;
+  catchUpEndOffset: number | null;
   unsubscribe: () => void;
 };
 
@@ -308,6 +313,37 @@ export class TerminalStreamController {
 
         const decoder = new TextDecoder();
         const streamId = attachPayload.streamId;
+        const replayedFromOffset =
+          typeof attachPayload.replayedFrom === "number"
+            ? Math.max(0, Math.floor(attachPayload.replayedFrom))
+            : null;
+        const currentOffset = Math.max(
+          0,
+          Math.floor(attachPayload.currentOffset)
+        );
+        const shouldResetForReplayBootstrap =
+          typeof resumeOffset !== "number" &&
+          typeof replayedFromOffset === "number" &&
+          replayedFromOffset < currentOffset;
+        if (shouldResetForReplayBootstrap) {
+          this.options.onReset?.({ terminalId: input.terminalId });
+        }
+        const startExpectedOffset =
+          replayedFromOffset ??
+          (typeof resumeOffset === "number"
+            ? Math.max(0, Math.floor(resumeOffset))
+            : currentOffset);
+        const catchUpEndOffset = currentOffset;
+
+        const activeStream: TerminalStreamControllerActiveStream = {
+          terminalId: input.terminalId,
+          streamId,
+          decoder,
+          nextExpectedOffset: startExpectedOffset,
+          catchUpEndOffset,
+          unsubscribe: () => {},
+        };
+        this.activeStream = activeStream;
         const unsubscribe = this.options.client.onTerminalStreamData(streamId, (chunk) => {
           this.handleChunk({
             terminalId: input.terminalId,
@@ -316,21 +352,22 @@ export class TerminalStreamController {
             decoder,
           });
         });
-
-        this.activeStream = {
-          terminalId: input.terminalId,
-          streamId,
-          decoder,
-          unsubscribe,
-        };
+        if (this.activeStream === activeStream) {
+          activeStream.unsubscribe = unsubscribe;
+        } else {
+          unsubscribe();
+        }
         terminalDebugLog({
           scope: "stream-controller",
           event: "attach:success",
           details: {
             terminalId: input.terminalId,
             streamId,
+            replayedFrom: attachPayload.replayedFrom ?? null,
+            requestedResumeOffset: resumeOffset ?? null,
             currentOffset: attachPayload.currentOffset,
             reset: attachPayload.reset,
+            bootstrapReset: shouldResetForReplayBootstrap,
           },
         });
         this.updateStatus({
@@ -390,9 +427,54 @@ export class TerminalStreamController {
       return;
     }
 
+    const chunkOffset = Number.isFinite(input.chunk.offset)
+      ? Math.max(0, Math.floor(input.chunk.offset))
+      : 0;
+    const chunkEndOffset = Number.isFinite(input.chunk.endOffset)
+      ? Math.max(0, Math.floor(input.chunk.endOffset))
+      : chunkOffset;
+    if (chunkEndOffset < chunkOffset) {
+      return;
+    }
+
+    const expectedOffset = activeStream.nextExpectedOffset;
+    if (typeof expectedOffset === "number") {
+      if (chunkEndOffset <= expectedOffset) {
+        return;
+      }
+      if (chunkOffset !== expectedOffset) {
+        const catchUpEndOffset = activeStream.catchUpEndOffset;
+        const canSkipReplayGap =
+          chunkOffset > expectedOffset &&
+          typeof catchUpEndOffset === "number" &&
+          expectedOffset < catchUpEndOffset &&
+          chunkOffset <= catchUpEndOffset;
+
+        if (canSkipReplayGap) {
+          activeStream.nextExpectedOffset = chunkOffset;
+        } else {
+          this.recoverFromStreamGap({
+            terminalId: input.terminalId,
+            streamId: input.streamId,
+            expectedOffset,
+            observedOffset: chunkOffset,
+          });
+          return;
+        }
+      }
+    }
+
+    if (
+      typeof activeStream.catchUpEndOffset === "number" &&
+      chunkEndOffset >= activeStream.catchUpEndOffset
+    ) {
+      activeStream.catchUpEndOffset = null;
+    }
+
+    activeStream.nextExpectedOffset = chunkEndOffset;
     updateTerminalResumeOffset({
       terminalId: input.terminalId,
-      offset: input.chunk.endOffset,
+      offset: chunkEndOffset,
       resumeOffsetByTerminalId: this.resumeOffsetByTerminalId,
     });
 
@@ -406,7 +488,9 @@ export class TerminalStreamController {
       details: {
         terminalId: input.terminalId,
         streamId: input.streamId,
-        endOffset: input.chunk.endOffset,
+        offset: chunkOffset,
+        endOffset: chunkEndOffset,
+        replay: Boolean(input.chunk.replay),
         byteLength: input.chunk.data.byteLength,
         textLength: text.length,
         preview: summarizeTerminalText({ text, maxChars: 96 }),
@@ -416,6 +500,46 @@ export class TerminalStreamController {
     this.options.onChunk({
       terminalId: input.terminalId,
       text,
+    });
+  }
+
+  private recoverFromStreamGap(input: {
+    terminalId: string;
+    streamId: number;
+    expectedOffset: number;
+    observedOffset: number;
+  }): void {
+    const activeStream = this.activeStream;
+    if (!activeStream) {
+      return;
+    }
+    if (activeStream.streamId !== input.streamId || activeStream.terminalId !== input.terminalId) {
+      return;
+    }
+    if (this.selectedTerminalId !== input.terminalId) {
+      return;
+    }
+
+    updateTerminalResumeOffset({
+      terminalId: input.terminalId,
+      offset: input.expectedOffset,
+      resumeOffsetByTerminalId: this.resumeOffsetByTerminalId,
+    });
+
+    this.attachGeneration += 1;
+    const generation = this.attachGeneration;
+
+    void this.detachActiveStream({ shouldDetach: true });
+    this.updateStatus({
+      terminalId: input.terminalId,
+      streamId: null,
+      isAttaching: true,
+      error:
+        this.options.reconnectErrorMessage ?? DEFAULT_RECONNECT_ERROR_MESSAGE,
+    });
+    void this.attachTerminal({
+      terminalId: input.terminalId,
+      generation,
     });
   }
 

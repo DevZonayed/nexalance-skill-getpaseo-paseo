@@ -21,3 +21,18 @@ export async function appendTimelineItemIfAgentKnown(
     throw error;
   }
 }
+
+export async function emitLiveTimelineItemIfAgentKnown(
+  options: AppendTimelineItemIfAgentKnownOptions
+): Promise<boolean> {
+  try {
+    await options.agentManager.emitLiveTimelineItem(options.agentId, options.item);
+    return true;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (message.includes("Unknown agent")) {
+      return false;
+    }
+    throw error;
+  }
+}

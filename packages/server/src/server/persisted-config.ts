@@ -22,7 +22,6 @@ const ProviderCredentialsSchema = z
 const LocalSpeechProviderSchema = z
   .object({
     modelsDir: z.string().min(1).optional(),
-    autoDownload: z.boolean().optional(),
   })
   .strict();
 
@@ -175,6 +174,34 @@ function getLogger(logger: LoggerLike | undefined): LoggerLike | undefined {
   return logger?.child({ module: "config" });
 }
 
+function stripDeprecatedLocalSpeechConfigFields(parsed: unknown): unknown {
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return parsed;
+  }
+
+  const root = { ...(parsed as Record<string, unknown>) };
+  const providers = root.providers;
+  if (!providers || typeof providers !== "object" || Array.isArray(providers)) {
+    return root;
+  }
+
+  const providersRecord = { ...(providers as Record<string, unknown>) };
+  const local = providersRecord.local;
+  if (!local || typeof local !== "object" || Array.isArray(local)) {
+    root.providers = providersRecord;
+    return root;
+  }
+
+  const localRecord = { ...(local as Record<string, unknown>) };
+  if ("autoDownload" in localRecord) {
+    delete localRecord.autoDownload;
+  }
+
+  providersRecord.local = localRecord;
+  root.providers = providersRecord;
+  return root;
+}
+
 export function loadPersistedConfig(
   paseoHome: string,
   logger?: LoggerLike
@@ -209,7 +236,8 @@ export function loadPersistedConfig(
     throw new Error(`[Config] Invalid JSON in ${configPath}: ${message}`);
   }
 
-  const result = PersistedConfigSchema.safeParse(parsed);
+  const migrated = stripDeprecatedLocalSpeechConfigFields(parsed);
+  const result = PersistedConfigSchema.safeParse(migrated);
   if (!result.success) {
     const issues = result.error.issues
       .map((i) => `  - ${i.path.join(".")}: ${i.message}`)

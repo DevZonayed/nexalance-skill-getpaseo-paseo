@@ -16,7 +16,7 @@ import { SidebarAgentList } from "./sidebar-agent-list";
 import { SidebarAgentListSkeleton } from "./sidebar-agent-list-skeleton";
 import { useSidebarAgentsGrouped } from "@/hooks/use-sidebar-agents-grouped";
 import { useSidebarAnimation } from "@/contexts/sidebar-animation-context";
-import { useTauriDragHandlers } from "@/utils/tauri-window";
+import { useTauriDragHandlers, useTrafficLightPadding } from "@/utils/tauri-window";
 import { useKeyboardShortcutsStore } from "@/stores/keyboard-shortcuts-store";
 import { Combobox } from "@/components/ui/combobox";
 import { useDaemonRegistry } from "@/contexts/daemon-registry-context";
@@ -121,6 +121,7 @@ export function SlidingSidebar({ selectedAgentId }: SlidingSidebarProps) {
     closeGestureRef,
   } = useSidebarAnimation();
   const dragHandlers = useTauriDragHandlers();
+  const trafficLightPadding = useTrafficLightPadding();
 
   // Track user-initiated refresh to avoid showing spinner on background revalidation
   const [isManualRefresh, setIsManualRefresh] = useState(false);
@@ -324,8 +325,9 @@ export function SlidingSidebar({ selectedAgentId }: SlidingSidebarProps) {
 
 
   // Render mobile sidebar
-  // On web, use "auto" instead of "box-none" because web's pointer-events: none blocks scroll
-  const overlayPointerEvents = Platform.OS === "web" ? "auto" : "box-none";
+  // On web, keep the overlay interactive only while the sidebar is open.
+  // This preserves swipe/scroll behavior without blocking taps when closed.
+  const overlayPointerEvents = Platform.OS === "web" ? (isOpen ? "auto" : "none") : "box-none";
   if (isMobile) {
     return (
       <View style={StyleSheet.absoluteFillObject} pointerEvents={overlayPointerEvents}>
@@ -465,7 +467,10 @@ export function SlidingSidebar({ selectedAgentId }: SlidingSidebarProps) {
 
   return (
     <View style={[styles.desktopSidebar, { width: DESKTOP_SIDEBAR_WIDTH }]}>
-      <View style={styles.sidebarHeader} {...dragHandlers}>
+      <View
+        style={[styles.sidebarHeader, { paddingLeft: theme.spacing[2] + trafficLightPadding.left }]}
+        {...dragHandlers}
+      >
         <View style={styles.sidebarHeaderRow}>
           <Pressable
             style={styles.newAgentButton}

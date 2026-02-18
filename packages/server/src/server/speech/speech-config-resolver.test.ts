@@ -35,7 +35,6 @@ describe("resolveSpeechConfig", () => {
     });
     expect(result.speech.local).toEqual({
       modelsDir: path.join(paseoHome, "models", "local-speech"),
-      autoDownload: true,
       models: {
         dictationStt: "parakeet-tdt-0.6b-v2-int8",
         voiceStt: "parakeet-tdt-0.6b-v2-int8",
@@ -67,7 +66,6 @@ describe("resolveSpeechConfig", () => {
       PASEO_VOICE_LOCAL_TTS_SPEAKER_ID: "5",
       PASEO_VOICE_LOCAL_TTS_SPEED: "1.35",
       PASEO_LOCAL_MODELS_DIR: "/tmp/models",
-      PASEO_LOCAL_AUTO_DOWNLOAD: "0",
       OPENAI_API_KEY: "env-key",
       PASEO_VOICE_STT_PROVIDER: "openai",
       PASEO_DICTATION_STT_PROVIDER: "local",
@@ -82,7 +80,6 @@ describe("resolveSpeechConfig", () => {
 
     expect(result.speech.local).toEqual({
       modelsDir: "/tmp/models",
-      autoDownload: false,
       models: {
         dictationStt: "zipformer-bilingual-zh-en-2023-02-20",
         voiceStt: "parakeet-tdt-0.6b-v3-int8",

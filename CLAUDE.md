@@ -109,7 +109,7 @@ Use `APP_VARIANT` in `packages/app/app.config.js` to control app name + package 
 - `production` -> app name `Paseo`, package `sh.paseo`
 - `development` -> app name `Paseo Debug`, package `sh.paseo.debug`
 
-EAS profiles live in `packages/app/eas.json` as `development` and `production`.
+EAS profiles live in `packages/app/eas.json` as `development`, `production`, and `production-apk`.
 
 `development` uses Android `debug`.
 
@@ -136,6 +136,29 @@ npm run android:production
 
 `npm run android:prod` and `npm run android:release` are aliases for `npm run android:production`.
 
+### Cloud build + submit (EAS Workflows)
+
+Tag pushes like `v0.1.0` trigger `packages/app/.eas/workflows/release-mobile.yml` on Expo servers.
+Tag pushes like `v0.1.0` also trigger `.github/workflows/android-apk-release.yml` on GitHub Actions to publish an APK asset on the matching GitHub Release.
+
+That workflow does:
+- Build iOS with the `production` profile
+- Build Android with the `production` profile
+- Submit each build with the `production` submit profile
+
+Useful commands:
+
+```bash
+# List recent mobile workflow runs
+cd packages/app && npx eas workflow:runs --workflow release-mobile.yml --limit 10
+
+# Inspect one run (jobs, status, outputs)
+cd packages/app && npx eas workflow:view <run-id>
+
+# Stream logs for all steps in one failed job
+cd packages/app && npx eas workflow:logs <job-id> --non-interactive --all-steps
+```
+
 ## Testing with Playwright MCP
 
 **CRITICAL:** When asked to test the app, you MUST use the Playwright MCP connecting to Metro at `http://localhost:8081`.
@@ -160,14 +183,22 @@ npm run release:patch
 npm run version:all:patch  # npm version across all workspaces (creates commit + local tag)
 npm run release:check
 npm run release:publish
-npm run release:push       # pushes HEAD and current version tag (triggers desktop release)
+npm run release:push       # pushes HEAD and current version tag (triggers desktop + Android APK + EAS mobile workflows)
 ```
 
 Notes:
-- `version:all:*` uses `npm version` with workspace support and runs the root `version` lifecycle script to sync internal `@getpaseo/*` dependency versions before the release commit/tag is created.
+- `version:all:*` bumps the root package version and runs the root `version` lifecycle script to sync workspace versions and internal `@getpaseo/*` dependency versions before the release commit/tag is created.
 - `release:prepare` refreshes workspace `node_modules` links to prevent stale local package types during release checks.
 - If `release:publish` fails after a successful publish of one workspace, re-run `npm run release:publish`; npm will skip already-published versions and continue where possible.
-- After each release, update the website Mac download CTA URL to the new version tag in `packages/website/src/routes/index.tsx`.
+- If a user asks to "release paseo" (without specifying major/minor), treat it as a patch release and run `npm run release:patch`.
+- All workspaces share one version by design. Keep versions synchronized and release together.
+- The website Mac download CTA URL is derived from `packages/website/package.json` version at build time, so no manual update is required after release.
+
+Release completion checklist:
+- `npm run release:patch` completes successfully.
+- GitHub `Desktop Release` workflow for the new `v*` tag is green.
+- GitHub `Android APK Release` workflow for the same tag is green.
+- EAS `release-mobile.yml` workflow for the same tag is green (Expo queues can take longer on the free plan).
 
 ## Orchestrator Mode
 

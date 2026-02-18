@@ -1,14 +1,46 @@
+const fs = require("node:fs");
+const path = require("node:path");
 const pkg = require("./package.json");
 const appVariant = process.env.APP_VARIANT ?? "production";
+
+function resolveSecretFile(params) {
+  const fromEnv = process.env[params.envKey];
+  if (typeof fromEnv === "string" && fromEnv.trim().length > 0) {
+    return fromEnv.trim();
+  }
+
+  const fallbackAbsolutePath = path.resolve(__dirname, params.fallbackRelativePath);
+  if (fs.existsSync(fallbackAbsolutePath)) {
+    return params.fallbackRelativePath;
+  }
+
+  return undefined;
+}
 
 const variants = {
   production: {
     name: "Paseo",
     packageId: "sh.paseo",
+    googleServicesFile: resolveSecretFile({
+      envKey: "GOOGLE_SERVICES_FILE_PROD",
+      fallbackRelativePath: "./.secrets/google-services.prod.json",
+    }),
+    googleServiceInfoPlist: resolveSecretFile({
+      envKey: "GOOGLE_SERVICE_INFO_PLIST_PROD",
+      fallbackRelativePath: "./.secrets/GoogleService-Info.prod.plist",
+    }),
   },
   development: {
     name: "Paseo Debug",
     packageId: "sh.paseo.debug",
+    googleServicesFile: resolveSecretFile({
+      envKey: "GOOGLE_SERVICES_FILE_DEBUG",
+      fallbackRelativePath: "./.secrets/google-services.debug.json",
+    }),
+    googleServiceInfoPlist: resolveSecretFile({
+      envKey: "GOOGLE_SERVICE_INFO_PLIST_DEBUG",
+      fallbackRelativePath: "./.secrets/GoogleService-Info.debug.plist",
+    }),
   },
 };
 
@@ -38,6 +70,9 @@ export default {
         ITSAppUsesNonExemptEncryption: false,
       },
       bundleIdentifier: variant.packageId,
+      ...(variant.googleServiceInfoPlist
+        ? { googleServicesFile: variant.googleServiceInfoPlist }
+        : {}),
     },
     android: {
       adaptiveIcon: {
@@ -57,6 +92,9 @@ export default {
         "android.permission.CAMERA",
       ],
       package: variant.packageId,
+      ...(variant.googleServicesFile
+        ? { googleServicesFile: variant.googleServicesFile }
+        : {}),
     },
     web: {
       output: "single",

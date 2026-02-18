@@ -1,10 +1,17 @@
-import { exec } from "child_process";
+import { exec, spawn } from "child_process";
 import { promisify } from "util";
 import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync } from "fs";
 import { join, basename, dirname, resolve, sep } from "path";
 import net from "node:net";
+import { createHash } from "node:crypto";
 import { createNameId } from "mnemonic-id";
-import { normalizeBaseRefName, writePaseoWorktreeMetadata } from "./worktree-metadata.js";
+import {
+  normalizeBaseRefName,
+  readPaseoWorktreeMetadata,
+  readPaseoWorktreeRuntimePort,
+  writePaseoWorktreeMetadata,
+  writePaseoWorktreeRuntimeMetadata,
+} from "./worktree-metadata.js";
 import { resolvePaseoHome } from "../server/paseo-home.js";
 
 interface PaseoConfig {
@@ -26,13 +33,51 @@ export interface WorktreeConfig {
   worktreePath: string;
 }
 
+export type WorktreeRuntimeEnv = {
+  PASEO_SOURCE_CHECKOUT_PATH: string;
+  PASEO_ROOT_PATH: string;
+  PASEO_WORKTREE_PATH: string;
+  PASEO_BRANCH_NAME: string;
+  PASEO_WORKTREE_PORT: string;
+};
+
 export type WorktreeSetupCommandResult = {
   command: string;
   cwd: string;
   stdout: string;
   stderr: string;
   exitCode: number | null;
+  durationMs: number;
 };
+
+export type WorktreeSetupCommandProgressEvent =
+  | {
+      type: "command_started";
+      index: number;
+      total: number;
+      command: string;
+      cwd: string;
+    }
+  | {
+      type: "output";
+      index: number;
+      total: number;
+      command: string;
+      cwd: string;
+      stream: "stdout" | "stderr";
+      chunk: string;
+    }
+  | {
+      type: "command_completed";
+      index: number;
+      total: number;
+      command: string;
+      cwd: string;
+      exitCode: number | null;
+      durationMs: number;
+      stdout: string;
+      stderr: string;
+    };
 
 export interface WorktreeTerminalConfig {
   name?: string;
@@ -153,6 +198,7 @@ async function execSetupCommand(
   command: string,
   options: { cwd: string; env: NodeJS.ProcessEnv }
 ): Promise<WorktreeSetupCommandResult> {
+  const startedAt = Date.now();
   try {
     const { stdout, stderr } = await execAsync(command, {
       cwd: options.cwd,
@@ -165,6 +211,7 @@ async function execSetupCommand(
       stdout: stdout ?? "",
       stderr: stderr ?? "",
       exitCode: 0,
+      durationMs: Date.now() - startedAt,
     };
   } catch (error: any) {
     return {
@@ -175,8 +222,103 @@ async function execSetupCommand(
         error?.stderr ??
         (error instanceof Error ? error.message : String(error)),
       exitCode: typeof error?.code === "number" ? error.code : null,
+      durationMs: Date.now() - startedAt,
     };
   }
+}
+
+async function execSetupCommandStreamed(options: {
+  command: string;
+  cwd: string;
+  env: NodeJS.ProcessEnv;
+  index: number;
+  total: number;
+  onEvent?: (event: WorktreeSetupCommandProgressEvent) => void;
+}): Promise<WorktreeSetupCommandResult> {
+  return new Promise((resolve) => {
+    const startedAt = Date.now();
+    const stdoutChunks: string[] = [];
+    const stderrChunks: string[] = [];
+    let settled = false;
+
+    const finish = (exitCode: number | null) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      const result: WorktreeSetupCommandResult = {
+        command: options.command,
+        cwd: options.cwd,
+        stdout: stdoutChunks.join(""),
+        stderr: stderrChunks.join(""),
+        exitCode,
+        durationMs: Date.now() - startedAt,
+      };
+      options.onEvent?.({
+        type: "command_completed",
+        index: options.index,
+        total: options.total,
+        command: options.command,
+        cwd: options.cwd,
+        exitCode: result.exitCode,
+        durationMs: result.durationMs,
+        stdout: result.stdout,
+        stderr: result.stderr,
+      });
+      resolve(result);
+    };
+
+    options.onEvent?.({
+      type: "command_started",
+      index: options.index,
+      total: options.total,
+      command: options.command,
+      cwd: options.cwd,
+    });
+
+    const child = spawn("/bin/bash", ["-lc", options.command], {
+      cwd: options.cwd,
+      env: options.env,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+
+    child.stdout?.on("data", (chunk: Buffer | string) => {
+      const text = chunk.toString();
+      stdoutChunks.push(text);
+      options.onEvent?.({
+        type: "output",
+        index: options.index,
+        total: options.total,
+        command: options.command,
+        cwd: options.cwd,
+        stream: "stdout",
+        chunk: text,
+      });
+    });
+
+    child.stderr?.on("data", (chunk: Buffer | string) => {
+      const text = chunk.toString();
+      stderrChunks.push(text);
+      options.onEvent?.({
+        type: "output",
+        index: options.index,
+        total: options.total,
+        command: options.command,
+        cwd: options.cwd,
+        stream: "stderr",
+        chunk: text,
+      });
+    });
+
+    child.on("error", (error) => {
+      stderrChunks.push(error instanceof Error ? error.message : String(error));
+      finish(null);
+    });
+
+    child.on("close", (code) => {
+      finish(typeof code === "number" ? code : null);
+    });
+  });
 }
 
 async function getAvailablePort(): Promise<number> {
@@ -195,6 +337,29 @@ async function getAvailablePort(): Promise<number> {
           return;
         }
         resolve(address.port);
+      });
+    });
+  });
+}
+
+async function assertPortAvailable(port: number): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    const server = net.createServer();
+    server.once("error", (error: NodeJS.ErrnoException) => {
+      const message = error?.code === "EADDRINUSE"
+        ? `Persisted worktree port ${port} is already in use`
+        : error instanceof Error
+          ? error.message
+          : String(error);
+      reject(new Error(message));
+    });
+    server.listen(port, () => {
+      server.close((error) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+        resolve();
       });
     });
   });
@@ -233,6 +398,8 @@ export async function runWorktreeSetupCommands(options: {
   branchName: string;
   cleanupOnFailure: boolean;
   repoRootPath?: string;
+  runtimeEnv?: WorktreeRuntimeEnv;
+  onEvent?: (event: WorktreeSetupCommandProgressEvent) => void;
 }): Promise<WorktreeSetupCommandResult[]> {
   // Read paseo.json from the worktree (it will have the same content as the source repo)
   const setupCommands = getWorktreeSetupCommands(options.worktreePath);
@@ -240,29 +407,33 @@ export async function runWorktreeSetupCommands(options: {
     return [];
   }
 
-  const repoRootPath =
-    options.repoRootPath ?? (await inferRepoRootPathFromWorktreePath(options.worktreePath));
-  const worktreePort = await getAvailablePort();
-
+  const runtimeEnv =
+    options.runtimeEnv ??
+    (await resolveWorktreeRuntimeEnv({
+      worktreePath: options.worktreePath,
+      branchName: options.branchName,
+      ...(options.repoRootPath ? { repoRootPath: options.repoRootPath } : {}),
+    }));
   const setupEnv = {
     ...process.env,
-    // Source checkout path is the original git repo root (shared across worktrees), not the
-    // worktree itself. This allows setup scripts to copy local files (e.g. .env) from the
-    // source checkout.
-    PASEO_SOURCE_CHECKOUT_PATH: repoRootPath,
-    // Backward-compatible alias.
-    PASEO_ROOT_PATH: repoRootPath,
-    PASEO_WORKTREE_PATH: options.worktreePath,
-    PASEO_BRANCH_NAME: options.branchName,
-    PASEO_WORKTREE_PORT: String(worktreePort),
+    ...runtimeEnv,
   };
 
   const results: WorktreeSetupCommandResult[] = [];
-  for (const cmd of setupCommands) {
-    const result = await execSetupCommand(cmd, {
-      cwd: options.worktreePath,
-      env: setupEnv,
-    });
+  for (const [index, cmd] of setupCommands.entries()) {
+    const result = options.onEvent
+      ? await execSetupCommandStreamed({
+          command: cmd,
+          cwd: options.worktreePath,
+          env: setupEnv,
+          index: index + 1,
+          total: setupCommands.length,
+          onEvent: options.onEvent,
+        })
+      : await execSetupCommand(cmd, {
+          cwd: options.worktreePath,
+          env: setupEnv,
+        });
     results.push(result);
 
     if (result.exitCode !== 0) {
@@ -300,6 +471,40 @@ async function resolveBranchNameForWorktreePath(worktreePath: string): Promise<s
   }
 
   return basename(worktreePath);
+}
+
+export async function resolveWorktreeRuntimeEnv(options: {
+  worktreePath: string;
+  branchName?: string;
+  repoRootPath?: string;
+}): Promise<WorktreeRuntimeEnv> {
+  const repoRootPath =
+    options.repoRootPath ?? (await inferRepoRootPathFromWorktreePath(options.worktreePath));
+  const branchName =
+    options.branchName ?? (await resolveBranchNameForWorktreePath(options.worktreePath));
+
+  let worktreePort = readPaseoWorktreeRuntimePort(options.worktreePath);
+  if (worktreePort === null) {
+    worktreePort = await getAvailablePort();
+    const metadata = readPaseoWorktreeMetadata(options.worktreePath);
+    if (metadata) {
+      writePaseoWorktreeRuntimeMetadata(options.worktreePath, { worktreePort });
+    }
+  } else {
+    await assertPortAvailable(worktreePort);
+  }
+
+  return {
+    // Source checkout path is the original git repo root (shared across worktrees), not the
+    // worktree itself. This allows setup scripts to copy local files (e.g. .env) from the
+    // source checkout.
+    PASEO_SOURCE_CHECKOUT_PATH: repoRootPath,
+    // Backward-compatible alias.
+    PASEO_ROOT_PATH: repoRootPath,
+    PASEO_WORKTREE_PATH: options.worktreePath,
+    PASEO_BRANCH_NAME: branchName,
+    PASEO_WORKTREE_PORT: String(worktreePort),
+  };
 }
 
 export async function runWorktreeDestroyCommands(options: {
@@ -435,91 +640,37 @@ function generateWorktreeSlug(): string {
   return createNameId();
 }
 
-function tryParseGitRemote(remoteUrl: string): { host?: string; path: string } | null {
-  const cleaned = remoteUrl.trim().replace(/\.git$/i, "");
-  if (!cleaned) {
-    return null;
-  }
+const WORKTREE_PROJECT_HASH_LENGTH = 8;
 
-  if (cleaned.includes("://")) {
-    try {
-      const url = new URL(cleaned);
-      return { host: url.hostname, path: url.pathname.replace(/^\/+/, "") };
-    } catch {
-      // fall through
-    }
+function deriveShortAlphanumericHash(value: string): string {
+  const digest = createHash("sha256").update(value).digest();
+  let hashValue = 0n;
+  for (let index = 0; index < 8; index += 1) {
+    hashValue = (hashValue << 8n) | BigInt(digest[index] ?? 0);
   }
-
-  // Support scp-like syntax: git@github.com:owner/repo
-  const scpMatch = cleaned.match(/^(?:.+@)?([^:]+):(.+)$/);
-  if (scpMatch?.[2]) {
-    return { host: scpMatch[1], path: scpMatch[2].replace(/^\/+/, "") };
-  }
-
-  return { path: cleaned.replace(/^\/+/, "") };
+  return hashValue
+    .toString(36)
+    .padStart(13, "0")
+    .slice(0, WORKTREE_PROJECT_HASH_LENGTH);
 }
 
-function inferProjectNameFromRemote(remoteUrl: string): string | null {
-  const parsed = tryParseGitRemote(remoteUrl);
-  if (!parsed?.path) {
-    return null;
-  }
-  const segments = parsed.path.split("/").filter((segment) => segment.length > 0);
-  if (segments.length === 0) {
-    return null;
-  }
-  return segments[segments.length - 1] ?? null;
-}
-
-async function detectWorktreeProject(cwd: string): Promise<string> {
-  // First try to get project name from remote URL (consistent across worktrees)
+export async function deriveWorktreeProjectHash(cwd: string): Promise<string> {
   try {
-    const { stdout } = await execAsync("git config --get remote.origin.url", {
-      cwd,
-      env: READ_ONLY_GIT_ENV,
-    });
-    const remote = stdout.trim();
-    if (remote) {
-      const inferred = inferProjectNameFromRemote(remote);
-      if (inferred) {
-        const projected = slugify(inferred);
-        if (projected) {
-          return projected;
-        }
-      }
-    }
+    const commonDir = await getGitCommonDir(cwd);
+    const normalizedCommonDir = normalizePathForOwnership(commonDir);
+    const repoRoot = basename(normalizedCommonDir) === ".git"
+      ? dirname(normalizedCommonDir)
+      : normalizedCommonDir;
+    return deriveShortAlphanumericHash(repoRoot);
   } catch {
-    // ignore
-  }
-
-  // Fallback: derive from git common dir parent (works for both main checkout and worktrees)
-  // For normal repos: .git -> parent is repo root
-  // For bare repos: the bare repo dir itself
-  // For worktrees: common dir points to main repo's .git
-  try {
-    const { stdout } = await execAsync("git rev-parse --git-common-dir", {
-      cwd,
-      env: READ_ONLY_GIT_ENV,
-    });
-    const commonDir = stdout.trim();
-    const normalized = realpathSync(commonDir);
-    // If common dir ends with .git, use its parent. Otherwise use its parent too (bare repo case).
-    const repoRoot = basename(normalized) === ".git" ? dirname(normalized) : dirname(normalized);
-    return slugify(basename(repoRoot));
-  } catch {
-    // Last resort: use cwd
-    try {
-      return slugify(basename(realpathSync(cwd)));
-    } catch {
-      return slugify(basename(cwd));
-    }
+    return deriveShortAlphanumericHash(normalizePathForOwnership(cwd));
   }
 }
 
 async function getPaseoWorktreesRoot(cwd: string, paseoHome?: string): Promise<string> {
   const home = paseoHome ? resolve(paseoHome) : resolvePaseoHome();
-  const project = await detectWorktreeProject(cwd);
-  return join(home, "worktrees", project);
+  const projectHash = await deriveWorktreeProjectHash(cwd);
+  return join(home, "worktrees", projectHash);
 }
 
 function normalizePathForOwnership(input: string): string {
@@ -530,11 +681,19 @@ function normalizePathForOwnership(input: string): string {
   }
 }
 
+function resolveRepoRootFromGitCommonDir(commonDir: string): string {
+  const normalizedCommonDir = normalizePathForOwnership(commonDir);
+  return basename(normalizedCommonDir) === ".git"
+    ? dirname(normalizedCommonDir)
+    : normalizedCommonDir;
+}
+
 export async function isPaseoOwnedWorktreeCwd(
   cwd: string,
   options?: { paseoHome?: string }
 ): Promise<PaseoWorktreeOwnership> {
   const gitCommonDir = await getGitCommonDir(cwd);
+  const repoRoot = resolveRepoRootFromGitCommonDir(gitCommonDir);
   const worktreesRoot = await getPaseoWorktreesRoot(cwd, options?.paseoHome);
   const resolvedRoot = normalizePathForOwnership(worktreesRoot) + sep;
   const resolvedCwd = normalizePathForOwnership(cwd);
@@ -542,7 +701,7 @@ export async function isPaseoOwnedWorktreeCwd(
   if (!resolvedCwd.startsWith(resolvedRoot)) {
     return {
       allowed: false,
-      repoRoot: gitCommonDir,
+      repoRoot,
       worktreeRoot: worktreesRoot,
       worktreePath: resolvedCwd,
     };
@@ -555,7 +714,7 @@ export async function isPaseoOwnedWorktreeCwd(
   });
   return {
     allowed,
-    repoRoot: gitCommonDir,
+    repoRoot,
     worktreeRoot: worktreesRoot,
     worktreePath: resolvedCwd,
   };

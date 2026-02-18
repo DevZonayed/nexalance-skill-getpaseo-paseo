@@ -173,7 +173,8 @@ export const setWorkingDirectory = async (page: Page, directory: string) => {
     .first();
   await expect(workingDirectorySelect).toBeVisible({ timeout: 30000 });
 
-  const input = page.getByRole('textbox', { name: '/path/to/project' });
+  const legacyInput = page.getByRole('textbox', { name: '/path/to/project' }).first();
+  const directorySearchInput = page.getByRole('textbox', { name: /search directories/i }).first();
   const worktreePicker = page.getByTestId('worktree-attach-picker');
   const worktreeSheetTitle = page.getByText('Select worktree', { exact: true });
   const closeBottomSheet = async () => {
@@ -218,29 +219,54 @@ export const setWorkingDirectory = async (page: Page, directory: string) => {
 
   await closeWorktreeSheetIfOpen();
 
-  if (!(await input.isVisible())) {
+  const pickerInputVisible = async () =>
+    (await directorySearchInput.isVisible().catch(() => false)) ||
+    (await legacyInput.isVisible().catch(() => false));
+
+  if (!(await pickerInputVisible())) {
     await closeBottomSheet();
     await workingDirectorySelect.click({ force: true });
-    if (!(await input.isVisible())) {
+    if (!(await pickerInputVisible())) {
       await closeBottomSheet();
       await workingDirectorySelect.click({ force: true });
     }
-    await expect(input).toBeVisible();
+    await expect
+      .poll(async () => pickerInputVisible(), { timeout: 10000 })
+      .toBe(true);
   }
 
   const trimmedDirectory = directory.replace(/\/+$/, '');
-  await input.fill(trimmedDirectory);
-  await input.press('Enter');
+  const activeInput =
+    (await directorySearchInput.isVisible().catch(() => false))
+      ? directorySearchInput
+      : legacyInput;
 
-  // Desktop web supports selecting via Enter; mobile may require clicking the explicit option.
-  const useOption = page.getByTestId('working-directory-custom-option').first();
-  if (await useOption.isVisible().catch(() => false)) {
-    await expect(useOption).toContainText(`Use "${trimmedDirectory}"`);
-    await useOption.click({ force: true });
+  await activeInput.fill(trimmedDirectory);
+
+  if (activeInput === directorySearchInput) {
+    // Combobox custom rows can be either plain path labels or prefixed labels.
+    const plainOption = page
+      .getByText(new RegExp(`^${escapeRegex(trimmedDirectory)}$`, 'i'))
+      .first();
+    const prefixedUseOption = page
+      .getByText(new RegExp(`^Use "${escapeRegex(trimmedDirectory)}"$`, 'i'))
+      .first();
+
+    if (await plainOption.isVisible().catch(() => false)) {
+      await plainOption.click({ force: true });
+    } else if (await prefixedUseOption.isVisible().catch(() => false)) {
+      await prefixedUseOption.click({ force: true });
+    } else {
+      // Fallback: accept highlighted option (directory suggestion).
+      await activeInput.press('Enter');
+    }
+  } else {
+    // Legacy path picker fallback.
+    await activeInput.press('Enter');
   }
 
-  // Wait for the sheet to close after clicking "Use"
-  await expect(input).not.toBeVisible({ timeout: 10000 });
+  // Wait for picker to close.
+  await expect(activeInput).not.toBeVisible({ timeout: 10000 });
 
   const directoryCandidates = new Set<string>([trimmedDirectory]);
   if (trimmedDirectory.startsWith('/var/')) {

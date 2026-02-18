@@ -26,8 +26,10 @@ interface TerminalEmulatorProps {
     meta: boolean;
   }) => Promise<void> | void;
   onPendingModifiersConsumed?: () => Promise<void> | void;
+  onOutputChunkConsumed?: (sequence: number) => Promise<void> | void;
   pendingModifiers?: PendingTerminalModifiers;
   focusRequestToken?: number;
+  resizeRequestToken?: number;
 }
 
 declare global {
@@ -47,8 +49,10 @@ export default function TerminalEmulator({
   onResize,
   onTerminalKey,
   onPendingModifiersConsumed,
+  onOutputChunkConsumed,
   pendingModifiers = { ctrl: false, shift: false, alt: false },
   focusRequestToken = 0,
+  resizeRequestToken = 0,
 }: TerminalEmulatorProps) {
   const rootRef = useRef<HTMLDivElement | null>(null);
   const hostRef = useRef<HTMLDivElement | null>(null);
@@ -108,19 +112,30 @@ export default function TerminalEmulator({
 
   useEffect(() => {
     const runtime = runtimeRef.current;
-    if (!runtime) {
-      return;
-    }
-
     if (outputChunkSequence <= 0) {
       return;
     }
-    if (outputChunkText.length === 0) {
-      runtime.clear();
+
+    if (!runtime) {
+      onOutputChunkConsumed?.(outputChunkSequence);
       return;
     }
-    runtime.write({ text: outputChunkText });
-  }, [outputChunkSequence, outputChunkText]);
+
+    if (outputChunkText.length === 0) {
+      runtime.clear({
+        onCommitted: () => {
+          onOutputChunkConsumed?.(outputChunkSequence);
+        },
+      });
+      return;
+    }
+    runtime.write({
+      text: outputChunkText,
+      onCommitted: () => {
+        onOutputChunkConsumed?.(outputChunkSequence);
+      },
+    });
+  }, [onOutputChunkConsumed, outputChunkSequence, outputChunkText]);
 
   useEffect(() => {
     if (focusRequestToken <= 0) {
@@ -128,6 +143,13 @@ export default function TerminalEmulator({
     }
     runtimeRef.current?.focus();
   }, [focusRequestToken]);
+
+  useEffect(() => {
+    if (resizeRequestToken <= 0) {
+      return;
+    }
+    runtimeRef.current?.resize({ force: true });
+  }, [resizeRequestToken]);
 
   return (
     <div

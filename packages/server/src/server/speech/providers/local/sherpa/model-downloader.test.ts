@@ -35,23 +35,10 @@ describe("sherpa model downloader", () => {
     const out = await ensureSherpaOnnxModel({
       modelsDir,
       modelId: "kitten-nano-en-v0_1-fp16",
-      autoDownload: false,
       logger,
     });
 
     expect(out).toBe(modelDir);
-  });
-
-  test("ensureSherpaOnnxModel throws when missing and autoDownload is false", async () => {
-    const modelsDir = makeTmpDir();
-    await expect(
-      ensureSherpaOnnxModel({
-        modelsDir,
-        modelId: "zipformer-bilingual-zh-en-2023-02-20",
-        autoDownload: false,
-        logger,
-      })
-    ).rejects.toThrow(/auto-download/i);
   });
 
   test("ensureSherpaOnnxModel logs lifecycle events without progress spam", async () => {
@@ -82,7 +69,6 @@ describe("sherpa model downloader", () => {
       await ensureSherpaOnnxModel({
         modelsDir,
         modelId: "pocket-tts-onnx-int8",
-        autoDownload: true,
         logger: loggerWithSpy,
       });
     } finally {

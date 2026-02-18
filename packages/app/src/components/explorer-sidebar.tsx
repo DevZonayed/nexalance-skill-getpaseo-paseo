@@ -240,8 +240,9 @@ export function ExplorerSidebar({ serverId, agentId, cwd, isGit }: ExplorerSideb
     width: resizeWidth.value,
   }));
 
-  // Mobile: full-screen overlay with gesture
-  const overlayPointerEvents = Platform.OS === "web" ? "auto" : "box-none";
+  // Mobile: full-screen overlay with gesture.
+  // On web, keep it interactive only while open so closed sidebars don't eat taps.
+  const overlayPointerEvents = Platform.OS === "web" ? (isOpen ? "auto" : "none") : "box-none";
 
   if (isMobile) {
     return (

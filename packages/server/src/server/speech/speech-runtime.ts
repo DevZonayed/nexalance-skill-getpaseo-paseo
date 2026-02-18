@@ -205,7 +205,6 @@ function buildVoiceFeatureReadiness(params: {
   missingLocalModelIds: LocalSpeechModelId[];
   backgroundDownloadInProgress: boolean;
   backgroundDownloadError: string | null;
-  localAutoDownloadEnabled: boolean;
 }): SpeechReadinessState {
   const enabled = params.realtimeVoice.enabled || params.dictation.enabled;
   if (!enabled) {
@@ -246,7 +245,7 @@ function buildVoiceFeatureReadiness(params: {
       available: false,
       reasonCode: "models_missing",
       message: `Voice features are unavailable: missing local models (${joinModelIds(missingModelIds)}).`,
-      retryable: params.localAutoDownloadEnabled,
+      retryable: true,
       missingModelIds,
     };
   }
@@ -328,7 +327,6 @@ export async function initializeSpeechRuntime(params: {
   const openaiConfig = params.openaiConfig;
   const providers = resolveRequestedSpeechProviders(speechConfig);
   const requestedProviders = describeRequestedProviders(providers);
-  const localAutoDownloadEnabled = speechConfig?.local?.autoDownload ?? true;
 
   validateOpenAiCredentialRequirements({
     providers,
@@ -382,7 +380,6 @@ export async function initializeSpeechRuntime(params: {
       missingLocalModelIds,
       backgroundDownloadInProgress,
       backgroundDownloadError,
-      localAutoDownloadEnabled,
     });
     return {
       generatedAt: new Date().toISOString(),
@@ -459,12 +456,11 @@ export async function initializeSpeechRuntime(params: {
     });
   };
 
-  const reconcileServices = async (modelEnsureAutoDownload: boolean): Promise<void> => {
+  const reconcileServices = async (): Promise<void> => {
     const nextLocalSpeech = await initializeLocalSpeechServices({
       providers,
       speechConfig,
       logger,
-      modelEnsureAutoDownload,
     });
     const nextOpenAiSpeech = initializeOpenAiSpeechServices({
       providers,
@@ -521,13 +517,13 @@ export async function initializeSpeechRuntime(params: {
     }
   };
 
-  const runReconcile = async (params: { modelEnsureAutoDownload: boolean }): Promise<void> => {
+  const runReconcile = async (): Promise<void> => {
     if (reconcileInFlight) {
       await reconcileInFlight;
       publishReadinessIfChanged();
       return;
     }
-    reconcileInFlight = reconcileServices(params.modelEnsureAutoDownload).finally(() => {
+    reconcileInFlight = reconcileServices().finally(() => {
       reconcileInFlight = null;
     });
     await reconcileInFlight;
@@ -550,7 +546,7 @@ export async function initializeSpeechRuntime(params: {
     }
     const modelsDir = localModelConfig?.modelsDir ?? null;
     const modelIds = [...missingLocalModelIds];
-    if (!modelsDir || modelIds.length === 0 || !localAutoDownloadEnabled) {
+    if (!modelsDir || modelIds.length === 0) {
       return;
     }
 
@@ -571,10 +567,9 @@ export async function initializeSpeechRuntime(params: {
         await ensureLocalSpeechModels({
           modelsDir,
           modelIds,
-          autoDownload: true,
           logger,
         });
-        await runReconcile({ modelEnsureAutoDownload: false });
+        await runReconcile();
         backgroundDownloadError = null;
       } catch (error) {
         backgroundDownloadError = error instanceof Error ? error.message : String(error);
@@ -610,12 +605,11 @@ export async function initializeSpeechRuntime(params: {
         missingLocalModelIds.length === 0 &&
         !backgroundDownloadInProgress
       ) {
-        await runReconcile({ modelEnsureAutoDownload: false });
+        await runReconcile();
       }
 
       if (
         missingLocalModelIds.length > 0 &&
-        localAutoDownloadEnabled &&
         !backgroundDownloadInProgress &&
         !backgroundDownloadError
       ) {
@@ -629,10 +623,10 @@ export async function initializeSpeechRuntime(params: {
     }
   };
 
-  await runReconcile({ modelEnsureAutoDownload: false });
+  await runReconcile();
   const snapshot = computeReadinessSnapshot();
   if (snapshot.voiceFeature.enabled && !snapshot.voiceFeature.available) {
-    if (missingLocalModelIds.length > 0 && localAutoDownloadEnabled) {
+    if (missingLocalModelIds.length > 0) {
       startBackgroundDownload();
     }
     scheduleMonitor();

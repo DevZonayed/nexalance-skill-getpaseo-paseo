@@ -189,6 +189,23 @@ const ToolCallDetailPayloadSchema: z.ZodType<ToolCallDetail> = z.discriminatedUn
     query: z.string(),
   }),
   z.object({
+    type: z.literal("worktree_setup"),
+    worktreePath: z.string(),
+    branchName: z.string(),
+    log: z.string(),
+    commands: z.array(
+      z.object({
+        index: z.number().int().positive(),
+        command: z.string(),
+        cwd: z.string(),
+        status: z.enum(["running", "completed", "failed"]),
+        exitCode: z.number().nullable(),
+        durationMs: z.number().nonnegative().optional(),
+      })
+    ),
+    truncated: z.boolean().optional(),
+  }),
+  z.object({
     type: z.literal("unknown"),
     input: UnknownValueSchema,
     output: UnknownValueSchema,
@@ -388,26 +405,12 @@ export const AudioPlayedMessageSchema = z.object({
   id: z.string(),
 });
 
-export const RequestAgentListMessageSchema = z.object({
-  type: z.literal("request_agent_list"),
-  requestId: z.string(),
-  filter: z.object({
-    labels: z.record(z.string()).optional(),
-  }).optional(),
-});
-
-export const SubscribeAgentUpdatesMessageSchema = z.object({
-  type: z.literal("subscribe_agent_updates"),
-  subscriptionId: z.string(),
-  filter: z.object({
-    labels: z.record(z.string()).optional(),
-    agentId: z.string().optional(),
-  }).optional(),
-});
-
-export const UnsubscribeAgentUpdatesMessageSchema = z.object({
-  type: z.literal("unsubscribe_agent_updates"),
-  subscriptionId: z.string(),
+const AgentDirectoryFilterSchema = z.object({
+  labels: z.record(z.string()).optional(),
+  projectKeys: z.array(z.string()).optional(),
+  statuses: z.array(AgentStatusSchema).optional(),
+  includeArchived: z.boolean().optional(),
+  requiresAttention: z.boolean().optional(),
 });
 
 export const DeleteAgentRequestMessageSchema = z.object({
@@ -455,15 +458,7 @@ export const SendAgentMessageSchema = z.object({
 export const FetchAgentsRequestMessageSchema = z.object({
   type: z.literal("fetch_agents_request"),
   requestId: z.string(),
-  filter: z
-    .object({
-      labels: z.record(z.string()).optional(),
-      projectKeys: z.array(z.string()).optional(),
-      statuses: z.array(AgentStatusSchema).optional(),
-      includeArchived: z.boolean().optional(),
-      requiresAttention: z.boolean().optional(),
-    })
-    .optional(),
+  filter: AgentDirectoryFilterSchema.optional(),
   sort: z
     .array(
       z.object({
@@ -476,6 +471,11 @@ export const FetchAgentsRequestMessageSchema = z.object({
     .object({
       limit: z.number().int().positive().max(1000),
       cursor: z.string().min(1).optional(),
+    })
+    .optional(),
+  subscribe: z
+    .object({
+      subscriptionId: z.string().optional(),
     })
     .optional(),
 });
@@ -809,6 +809,13 @@ export const BranchSuggestionsRequestSchema = z.object({
   requestId: z.string(),
 });
 
+export const DirectorySuggestionsRequestSchema = z.object({
+  type: z.literal("directory_suggestions_request"),
+  query: z.string(),
+  limit: z.number().int().min(1).max(100).optional(),
+  requestId: z.string(),
+});
+
 export const PaseoWorktreeListRequestSchema = z.object({
   type: z.literal("paseo_worktree_list_request"),
   cwd: z.string().optional(),
@@ -919,9 +926,18 @@ export const PingMessageSchema = z.object({
   clientSentAt: z.number().int().optional(),
 });
 
+const ListCommandsDraftConfigSchema = z.object({
+  provider: AgentProviderSchema,
+  cwd: z.string(),
+  modeId: z.string().optional(),
+  model: z.string().optional(),
+  thinkingOptionId: z.string().optional(),
+});
+
 export const ListCommandsRequestSchema = z.object({
   type: z.literal("list_commands_request"),
   agentId: z.string(),
+  draftConfig: ListCommandsDraftConfigSchema.optional(),
   requestId: z.string(),
 });
 
@@ -946,6 +962,16 @@ export const ListTerminalsRequestSchema = z.object({
   type: z.literal("list_terminals_request"),
   cwd: z.string(),
   requestId: z.string(),
+});
+
+export const SubscribeTerminalsRequestSchema = z.object({
+  type: z.literal("subscribe_terminals_request"),
+  cwd: z.string(),
+});
+
+export const UnsubscribeTerminalsRequestSchema = z.object({
+  type: z.literal("unsubscribe_terminals_request"),
+  cwd: z.string(),
 });
 
 export const CreateTerminalRequestSchema = z.object({
@@ -1011,8 +1037,6 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   AudioPlayedMessageSchema,
   FetchAgentsRequestMessageSchema,
   FetchAgentRequestMessageSchema,
-  SubscribeAgentUpdatesMessageSchema,
-  UnsubscribeAgentUpdatesMessageSchema,
   DeleteAgentRequestMessageSchema,
   ArchiveAgentRequestMessageSchema,
   UpdateAgentRequestMessageSchema,
@@ -1048,6 +1072,7 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   CheckoutPrStatusRequestSchema,
   ValidateBranchRequestSchema,
   BranchSuggestionsRequestSchema,
+  DirectorySuggestionsRequestSchema,
   PaseoWorktreeListRequestSchema,
   PaseoWorktreeArchiveRequestSchema,
   FileExplorerRequestSchema,
@@ -1060,6 +1085,8 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   ExecuteCommandRequestSchema,
   RegisterPushTokenMessageSchema,
   ListTerminalsRequestSchema,
+  SubscribeTerminalsRequestSchema,
+  UnsubscribeTerminalsRequestSchema,
   CreateTerminalRequestSchema,
   SubscribeTerminalRequestSchema,
   UnsubscribeTerminalRequestSchema,
@@ -1406,6 +1433,7 @@ export const FetchAgentsResponseMessageSchema = z.object({
   type: z.literal("fetch_agents_response"),
   payload: z.object({
     requestId: z.string(),
+    subscriptionId: z.string().nullable().optional(),
     entries: z.array(
       z.object({
         agent: AgentSnapshotPayloadSchema,
@@ -1693,6 +1721,15 @@ export const BranchSuggestionsResponseSchema = z.object({
   }),
 });
 
+export const DirectorySuggestionsResponseSchema = z.object({
+  type: z.literal("directory_suggestions_response"),
+  payload: z.object({
+    directories: z.array(z.string()),
+    error: z.string().nullable(),
+    requestId: z.string(),
+  }),
+});
+
 const PaseoWorktreeSchema = z.object({
   worktreePath: z.string(),
   branchName: z.string().nullable().optional(),
@@ -1885,6 +1922,14 @@ export const ListTerminalsResponseSchema = z.object({
   }),
 });
 
+export const TerminalsChangedSchema = z.object({
+  type: z.literal("terminals_changed"),
+  payload: z.object({
+    cwd: z.string(),
+    terminals: z.array(TerminalInfoSchema.omit({ cwd: true })),
+  }),
+});
+
 export const CreateTerminalResponseSchema = z.object({
   type: z.literal("create_terminal_response"),
   payload: z.object({
@@ -1994,6 +2039,7 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   CheckoutPrStatusResponseSchema,
   ValidateBranchResponseSchema,
   BranchSuggestionsResponseSchema,
+  DirectorySuggestionsResponseSchema,
   PaseoWorktreeListResponseSchema,
   PaseoWorktreeArchiveResponseSchema,
   FileExplorerResponseSchema,
@@ -2006,6 +2052,7 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   ListCommandsResponseSchema,
   ExecuteCommandResponseSchema,
   ListTerminalsResponseSchema,
+  TerminalsChangedSchema,
   CreateTerminalResponseSchema,
   SubscribeTerminalResponseSchema,
   TerminalOutputSchema,
@@ -2126,6 +2173,8 @@ export type ValidateBranchRequest = z.infer<typeof ValidateBranchRequestSchema>;
 export type ValidateBranchResponse = z.infer<typeof ValidateBranchResponseSchema>;
 export type BranchSuggestionsRequest = z.infer<typeof BranchSuggestionsRequestSchema>;
 export type BranchSuggestionsResponse = z.infer<typeof BranchSuggestionsResponseSchema>;
+export type DirectorySuggestionsRequest = z.infer<typeof DirectorySuggestionsRequestSchema>;
+export type DirectorySuggestionsResponse = z.infer<typeof DirectorySuggestionsResponseSchema>;
 export type PaseoWorktreeListRequest = z.infer<typeof PaseoWorktreeListRequestSchema>;
 export type PaseoWorktreeListResponse = z.infer<typeof PaseoWorktreeListResponseSchema>;
 export type PaseoWorktreeArchiveRequest = z.infer<typeof PaseoWorktreeArchiveRequestSchema>;
@@ -2149,6 +2198,9 @@ export type RegisterPushTokenMessage = z.infer<typeof RegisterPushTokenMessageSc
 // Terminal message types
 export type ListTerminalsRequest = z.infer<typeof ListTerminalsRequestSchema>;
 export type ListTerminalsResponse = z.infer<typeof ListTerminalsResponseSchema>;
+export type SubscribeTerminalsRequest = z.infer<typeof SubscribeTerminalsRequestSchema>;
+export type UnsubscribeTerminalsRequest = z.infer<typeof UnsubscribeTerminalsRequestSchema>;
+export type TerminalsChanged = z.infer<typeof TerminalsChangedSchema>;
 export type CreateTerminalRequest = z.infer<typeof CreateTerminalRequestSchema>;
 export type CreateTerminalResponse = z.infer<typeof CreateTerminalResponseSchema>;
 export type SubscribeTerminalRequest = z.infer<typeof SubscribeTerminalRequestSchema>;

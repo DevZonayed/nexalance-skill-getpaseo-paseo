@@ -46,14 +46,10 @@ try {
       dictation?: { enabled?: boolean }
       voiceMode?: { enabled?: boolean }
     }
-    providers?: {
-      local?: { autoDownload?: boolean }
-    }
   }
 
   assert.strictEqual(config.features?.dictation?.enabled, false, 'dictation.enabled should be false')
   assert.strictEqual(config.features?.voiceMode?.enabled, false, 'voiceMode.enabled should be false')
-  assert.strictEqual(config.providers?.local?.autoDownload, false, 'local.autoDownload should be false')
   const daemonLog = await readFile(join(paseoHome, 'daemon.log'), 'utf-8')
   assert(
     !daemonLog.includes('Ensuring local speech models'),

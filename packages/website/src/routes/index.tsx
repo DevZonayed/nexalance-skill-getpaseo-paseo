@@ -1,7 +1,11 @@
 import * as React from 'react'
 import { createFileRoute } from '@tanstack/react-router'
 import { CursorFieldProvider } from '~/components/butterfly'
+import websitePackage from '../../package.json'
 import '~/styles.css'
+
+const desktopVersion = websitePackage.version
+const macDownloadHref = `https://github.com/getpaseo/paseo/releases/download/v${desktopVersion}/Paseo_${desktopVersion}_aarch64.dmg`
 
 export const Route = createFileRoute('/')({
   head: () => ({
@@ -108,7 +112,7 @@ function Hero() {
   return (
     <div className="space-y-6">
       <h1 className="text-3xl md:text-5xl font-medium tracking-tight">
-        Run Codex and Claude Code locally from your phone and desktop
+        Run Codex and Claude Code on your machine from your phone and desktop
       </h1>
       <p className="text-white/70 text-lg leading-relaxed">
         Bring your dev environment anywhere, with voice support built in.
@@ -194,7 +198,7 @@ function GetStarted() {
       <CodeBlock>npm install -g @getpaseo/cli && paseo</CodeBlock>
       <div className="flex flex-col sm:flex-row gap-3">
         <a
-          href="https://github.com/getpaseo/paseo/releases/download/v0.1.2/Paseo_0.1.2_aarch64.dmg"
+          href={macDownloadHref}
           target="_blank"
           rel="noopener noreferrer"
           className="inline-flex items-center justify-center gap-2 rounded-lg border border-white/20 px-4 py-2 text-sm font-medium text-white hover:bg-white/10 transition-colors"
@@ -211,6 +215,24 @@ function GetStarted() {
           <GlobeIcon className="h-4 w-4" />
           Launch Web App
         </a>
+        <a
+          href="https://testflight.apple.com/join/Y5HpSQjJ"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center justify-center gap-2 rounded-lg border border-white/20 px-4 py-2 text-sm font-medium text-white hover:bg-white/10 transition-colors"
+        >
+          <AppleIcon className="h-4 w-4" />
+          iOS
+        </a>
+        <a
+          href="https://docs.google.com/forms/d/e/1FAIpQLSfNU20RV0SnM_B9XOHTtMLv7fUWQkjsXH1d6ihZRGbHewCuOQ/viewform"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center justify-center gap-2 rounded-lg border border-white/20 px-4 py-2 text-sm font-medium text-white hover:bg-white/10 transition-colors"
+        >
+          <AndroidIcon className="h-4 w-4" />
+          Android
+        </a>
       </div>
     </div>
   )
@@ -226,6 +248,20 @@ function AppleIcon(props: React.SVGProps<SVGSVGElement>) {
       {...props}
     >
       <path d="M1393 1215q-39 125-123 250q-129 196-257 196q-49 0-140-32q-86-32-151-32q-61 0-142 33q-81 34-132 34q-152 0-301-259Q0 1144 0 902q0-228 113-374q113-144 284-144q72 0 177 30q104 30 138 30q45 0 143-34q102-34 173-34q119 0 213 65q52 36 104 100q-79 67-114 118q-65 94-65 207q0 124 69 223t158 126M1017 42q0 61-29 136q-30 75-93 138q-54 54-108 72q-37 11-104 17q3-149 78-257Q835 41 1011 0q1 3 2.5 11t2.5 11q0 4 .5 10t.5 10" />
+    </svg>
+  )
+}
+
+function AndroidIcon(props: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 512 512"
+      fill="currentColor"
+      aria-hidden="true"
+      {...props}
+    >
+      <path d="M380.91,199l42.47-73.57a8.63,8.63,0,0,0-3.12-11.76,8.52,8.52,0,0,0-11.71,3.12l-43,74.52c-32.83-15-69.78-23.35-109.52-23.35s-76.69,8.36-109.52,23.35l-43-74.52a8.6,8.6,0,1,0-14.88,8.64L131,199C57.8,238.64,8.19,312.77,0,399.55H512C503.81,312.77,454.2,238.64,380.91,199ZM138.45,327.65a21.46,21.46,0,1,1,21.46-21.46A21.47,21.47,0,0,1,138.45,327.65Zm235,0A21.46,21.46,0,1,1,395,306.19,21.47,21.47,0,0,1,373.49,327.65Z" />
     </svg>
   )
 }

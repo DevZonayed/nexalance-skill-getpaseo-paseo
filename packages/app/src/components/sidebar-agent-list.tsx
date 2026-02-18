@@ -592,11 +592,6 @@ export function SidebarAgentList({
         return;
       }
 
-      const session = useSessionStore.getState().sessions[entry.agent.serverId];
-      if (session?.client) {
-        session.client.clearAgentAttention(entry.agent.id);
-      }
-
       const navigationKey = buildAgentNavigationKey(entry.agent.serverId, entry.agent.id);
       startNavigationTiming(navigationKey, {
         from: "home",
@@ -1032,17 +1027,19 @@ const styles = StyleSheet.create((theme) => ({
   agentTitle: {
     flex: 1,
     fontSize: theme.fontSize.base,
+    fontWeight: theme.fontWeight.normal,
     color: theme.colors.foreground,
-    opacity: 0.85,
+    opacity: 1,
   },
   agentTitleInactive: {
-    color: theme.colors.foregroundMuted,
+    opacity: 0.8,
   },
   agentTitleSelected: {
     opacity: 1,
   },
   relativeTimeText: {
     color: theme.colors.foregroundMuted,
+    opacity: 0.78,
     fontSize: theme.fontSize.xs,
   },
   shortcutBadge: {
@@ -1084,10 +1081,10 @@ const styles = StyleSheet.create((theme) => ({
     opacity: 0.5,
   },
   agentMetaProjectName: {
-    color: theme.colors.foregroundMuted,
+    color: theme.colors.foreground,
+    opacity: 0.78,
     fontSize: theme.fontSize.xs,
-    flexShrink: 1,
-    minWidth: 0,
+    flexShrink: 0,
   },
   agentMetaBranchBadge: {
     borderRadius: theme.borderRadius.full,
@@ -1095,14 +1092,18 @@ const styles = StyleSheet.create((theme) => ({
     borderColor: theme.colors.border,
     paddingHorizontal: theme.spacing[1],
     paddingVertical: 1,
-    flexShrink: 0,
+    flexShrink: 1,
+    minWidth: 0,
   },
   agentMetaBranchBadgeSelected: {
     borderColor: theme.colors.borderAccent,
   },
   agentMetaBranchText: {
-    color: theme.colors.foregroundMuted,
+    color: theme.colors.foreground,
+    opacity: 0.76,
     fontSize: theme.fontSize.xs,
+    flexShrink: 1,
+    minWidth: 0,
   },
   selectionBar: {
     position: "absolute",

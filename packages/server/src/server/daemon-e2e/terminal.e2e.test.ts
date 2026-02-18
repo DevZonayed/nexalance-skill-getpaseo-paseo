@@ -98,6 +98,42 @@ const shouldRun = !process.env.CI;
   );
 
   test(
+    "emits terminals_changed for subscribed cwd when terminals are created",
+    async () => {
+      const cwd = tmpCwd();
+      await ctx.client.listTerminals(cwd);
+
+      const snapshots: Array<{ cwd: string; names: string[] }> = [];
+      const unsubscribe = ctx.client.on("terminals_changed", (message) => {
+        if (message.type !== "terminals_changed") {
+          return;
+        }
+        snapshots.push({
+          cwd: message.payload.cwd,
+          names: message.payload.terminals.map((terminal) => terminal.name),
+        });
+      });
+
+      ctx.client.subscribeTerminals({ cwd });
+      await ctx.client.createTerminal(cwd, "Dev Server");
+
+      await waitForCondition(
+        () =>
+          snapshots.some(
+            (snapshot) =>
+              snapshot.cwd === cwd && snapshot.names.includes("Dev Server")
+          ),
+        10000
+      );
+
+      ctx.client.unsubscribeTerminals({ cwd });
+      unsubscribe();
+      rmSync(cwd, { recursive: true, force: true });
+    },
+    30000
+  );
+
+  test(
     "subscribes to terminal and receives state",
     async () => {
       const cwd = tmpCwd();

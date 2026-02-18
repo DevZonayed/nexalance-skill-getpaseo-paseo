@@ -11,7 +11,11 @@ interface BackHeaderProps {
   onBack?: () => void;
 }
 
-export function BackHeader({ title, rightContent, onBack }: BackHeaderProps) {
+export function BackHeader({
+  title,
+  rightContent,
+  onBack,
+}: BackHeaderProps) {
   const { theme } = useUnistyles();
 
   return (

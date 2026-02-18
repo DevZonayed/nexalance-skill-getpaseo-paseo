@@ -883,11 +883,12 @@ export function WorkingDirectoryDropdown({
         options={options}
         value={workingDir}
         onSelect={onSelectPath}
-        searchPlaceholder="/path/to/project"
+        searchPlaceholder="Search directories..."
         emptyText={emptyText}
         allowCustomValue
-        customValuePrefix="Use"
-        customValueDescription="Launch the agent in this directory"
+        customValuePrefix=""
+        customValueKind="directory"
+        optionsPosition="above-search"
         title="Working directory"
         open={isOpen}
         onOpenChange={handleOpenChange}

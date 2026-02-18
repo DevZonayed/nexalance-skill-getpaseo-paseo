@@ -42,5 +42,5 @@ function parseArgs(argv: string[]): { modelsDir: string; modelIds: LocalSpeechMo
 const logger = createRootLogger({ level: "info", format: "pretty" });
 
 const { modelsDir, modelIds } = parseArgs(process.argv.slice(2));
-await ensureLocalSpeechModels({ modelsDir, modelIds, autoDownload: true, logger });
+await ensureLocalSpeechModels({ modelsDir, modelIds, logger });
 logger.info({ modelsDir, modelIds }, "Done downloading speech models");

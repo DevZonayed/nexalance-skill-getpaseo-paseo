@@ -106,7 +106,6 @@ describe("speech models (download E2E)", () => {
       await ensureSherpaOnnxModels({
         modelsDir,
         modelIds,
-        autoDownload: true,
         logger,
       });
 
@@ -121,7 +120,6 @@ describe("speech models (download E2E)", () => {
           },
           local: {
             modelsDir,
-            autoDownload: false,
             models: {
               dictationStt:
                 set === "parakeet-pocket"

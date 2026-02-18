@@ -11,6 +11,7 @@ import { z } from "zod";
 import type {
   AgentCapabilityFlags,
   AgentClient,
+  AgentSlashCommand,
   AgentMode,
   AgentPermissionRequest,
   AgentPermissionResponse,
@@ -307,6 +308,15 @@ export class AgentManager {
     this.onAgentAttention = callback;
   }
 
+  private touchUpdatedAt(agent: ManagedAgent): Date {
+    const nowMs = Date.now();
+    const previousMs = agent.updatedAt.getTime();
+    const nextMs = nowMs > previousMs ? nowMs : previousMs + 1;
+    const next = new Date(nextMs);
+    agent.updatedAt = next;
+    return next;
+  }
+
   subscribe(callback: AgentSubscriber, options?: SubscribeOptions): () => void {
     const targetAgentId =
       options?.agentId == null
@@ -426,6 +436,36 @@ export class AgentManager {
     });
 
     return Promise.all(checks);
+  }
+
+  async listDraftCommands(config: AgentSessionConfig): Promise<AgentSlashCommand[]> {
+    const normalizedConfig = await this.normalizeConfig(config);
+    const client = this.requireClient(normalizedConfig.provider);
+    const available = await client.isAvailable();
+    if (!available) {
+      throw new Error(
+        `Provider '${normalizedConfig.provider}' is not available. Please ensure the CLI is installed.`
+      );
+    }
+
+    const session = await client.createSession(normalizedConfig);
+    try {
+      if (!session.listCommands) {
+        throw new Error(
+          `Provider '${normalizedConfig.provider}' does not support listing commands`
+        );
+      }
+      return await session.listCommands();
+    } finally {
+      try {
+        await session.close();
+      } catch (error) {
+        this.logger.warn(
+          { err: error, provider: normalizedConfig.provider },
+          "Failed to close draft command listing session"
+        );
+      }
+    }
   }
 
   getAgent(id: string): ManagedAgent | null {
@@ -657,7 +697,11 @@ export class AgentManager {
     agentId: string,
     overrides?: Partial<AgentSessionConfig>
   ): Promise<ManagedAgent> {
-    const existing = this.requireAgent(agentId);
+    let existing = this.requireAgent(agentId);
+    if (existing.lifecycle === "running" || existing.pendingRun) {
+      await this.cancelAgentRun(agentId);
+      existing = this.requireAgent(agentId);
+    }
     const timelineState = this.ensureTimelineState(existing);
     const preservedTimeline = [...existing.timeline];
     const preservedTimelineRows = timelineState.rows.map((row) => ({ ...row }));
@@ -847,7 +891,7 @@ export class AgentManager {
   recordUserMessage(
     agentId: string,
     text: string,
-    options?: { messageId?: string }
+    options?: { messageId?: string; emitState?: boolean }
   ): void {
     const agent = this.requireAgent(agentId);
     const item: AgentTimelineItem = {
@@ -855,8 +899,8 @@ export class AgentManager {
       text,
       messageId: options?.messageId,
     };
-    agent.updatedAt = new Date();
-    agent.lastUserMessageAt = agent.updatedAt;
+    const updatedAt = this.touchUpdatedAt(agent);
+    agent.lastUserMessageAt = updatedAt;
     const row = this.recordTimeline(agent, item);
     this.dispatchStream(agentId, {
       type: "timeline",
@@ -866,12 +910,14 @@ export class AgentManager {
       seq: row.seq,
       epoch: this.ensureTimelineState(agent).epoch,
     });
-    this.emitState(agent);
+    if (options?.emitState !== false) {
+      this.emitState(agent);
+    }
   }
 
   async appendTimelineItem(agentId: string, item: AgentTimelineItem): Promise<void> {
     const agent = this.requireAgent(agentId);
-    agent.updatedAt = new Date();
+    this.touchUpdatedAt(agent);
     const row = this.recordTimeline(agent, item);
     this.dispatchStream(agentId, {
       type: "timeline",
@@ -882,6 +928,19 @@ export class AgentManager {
       epoch: this.ensureTimelineState(agent).epoch,
     });
     await this.persistSnapshot(agent);
+  }
+
+  async emitLiveTimelineItem(
+    agentId: string,
+    item: AgentTimelineItem
+  ): Promise<void> {
+    const agent = this.requireAgent(agentId);
+    this.touchUpdatedAt(agent);
+    this.dispatchStream(agentId, {
+      type: "timeline",
+      item,
+      provider: agent.provider,
+    });
   }
 
   streamAgent(
@@ -955,7 +1014,7 @@ export class AgentManager {
     agent.lifecycle = "running";
     // Bump updatedAt when lifecycle changes so downstream consumers can
     // deterministically order idle->running transitions.
-    agent.updatedAt = new Date();
+    this.touchUpdatedAt(agent);
     self.emitState(agent);
 
     return streamForwarder;
@@ -1527,7 +1586,7 @@ export class AgentManager {
   ): void {
     // Only update timestamp for live events, not history replay
     if (!options?.fromHistory) {
-      agent.updatedAt = new Date();
+      this.touchUpdatedAt(agent);
     }
 
     let timelineRow: AgentTimelineRow | null = null;
@@ -1537,9 +1596,13 @@ export class AgentManager {
         // Update persistence with the new session ID from the provider.
         // persistence.sessionId is the single source of truth for session identity.
         {
+          const previousSessionId = agent.persistence?.sessionId ?? null;
           const handle = agent.session.describePersistence();
           if (handle) {
             agent.persistence = attachPersistenceCwd(handle, agent.cwd);
+            if (agent.persistence?.sessionId !== previousSessionId) {
+              this.emitState(agent);
+            }
           }
         }
         break;
