@@ -1087,11 +1087,6 @@ class ClaudeAgentSession implements AgentSession {
     invocation: SlashCommandInvocation
   ): AsyncGenerator<AgentStreamEvent> {
     yield { type: "turn_started", provider: "claude" };
-    yield {
-      type: "timeline",
-      provider: "claude",
-      item: { type: "user_message", text: invocation.rawInput },
-    };
 
     try {
       const rewindAttempt = await this.attemptRewind(invocation.args);
