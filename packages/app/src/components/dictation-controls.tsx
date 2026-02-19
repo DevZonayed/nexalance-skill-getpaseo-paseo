@@ -58,7 +58,7 @@ export function DictationControls({
         accessibilityLabel="Start voice dictation"
         style={[styles.micButton, disabled && styles.buttonDisabled]}
       >
-        <Mic size={16} color={theme.colors.foreground} />
+        <Mic size={theme.iconSize.md} color={theme.colors.foreground} />
       </Pressable>
     );
   }
@@ -88,7 +88,7 @@ export function DictationControls({
             actionsDisabled && !isFailed ? styles.buttonDisabled : undefined,
           ]}
         >
-          <X size={14} color={theme.colors.foreground} />
+          <X size={theme.iconSize.sm} color={theme.colors.foreground} />
         </Pressable>
         {actionsDisabled ? (
           <View style={styles.loadingContainer}>
@@ -100,7 +100,7 @@ export function DictationControls({
             accessibilityLabel="Retry dictation"
             style={[styles.actionButton, styles.actionButtonConfirm]}
           >
-            <RefreshCcw size={14} color={theme.colors.surface0} />
+            <RefreshCcw size={theme.iconSize.sm} color={theme.colors.surface0} />
           </Pressable>
         ) : (
           <>
@@ -109,14 +109,14 @@ export function DictationControls({
               accessibilityLabel="Insert transcription"
               style={[styles.actionButton, styles.actionButtonSecondary]}
             >
-              <Check size={14} color={theme.colors.foreground} />
+              <Check size={theme.iconSize.sm} color={theme.colors.foreground} />
             </Pressable>
             <Pressable
               onPress={onAcceptAndSend}
               accessibilityLabel="Insert transcription and send"
               style={[styles.actionButton, styles.actionButtonConfirm]}
             >
-              <ArrowUp size={14} color={theme.colors.surface0} />
+              <ArrowUp size={theme.iconSize.sm} color={theme.colors.surface0} />
             </Pressable>
           </>
         )}
@@ -167,7 +167,7 @@ export function DictationOverlay({
           actionsDisabled && !isFailed && overlayStyles.buttonDisabled,
         ]}
       >
-        <X size={20} color={theme.colors.palette.white} strokeWidth={2.5} />
+        <X size={theme.iconSize.lg} color={theme.colors.palette.white} strokeWidth={2.5} />
       </Pressable>
 
       <View style={overlayStyles.centerContainer}>
@@ -219,7 +219,7 @@ export function DictationOverlay({
             ]}
           >
             <RefreshCcw
-              size={20}
+              size={theme.iconSize.lg}
               color={theme.colors.accent}
               strokeWidth={2.5}
             />
@@ -234,7 +234,7 @@ export function DictationOverlay({
               ]}
             >
               <Pencil
-                size={20}
+                size={theme.iconSize.lg}
                 color={theme.colors.palette.white}
                 strokeWidth={2.5}
               />
@@ -247,7 +247,7 @@ export function DictationOverlay({
               ]}
             >
               <ArrowUp
-                size={20}
+                size={theme.iconSize.lg}
                 color={theme.colors.accent}
                 strokeWidth={2.5}
               />

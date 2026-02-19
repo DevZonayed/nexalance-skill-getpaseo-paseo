@@ -562,7 +562,7 @@ export function AgentInputArea({
           {isCancellingAgent ? (
             <ActivityIndicator size="small" color="white" />
           ) : (
-            <Square size={18} color="white" fill="white" />
+            <Square size={theme.iconSize.lg} color="white" fill="white" />
           )}
         </TooltipTrigger>
         <TooltipContent side="top" align="center" offset={8}>
@@ -591,7 +591,7 @@ export function AgentInputArea({
             {voice?.isVoiceSwitching ? (
               <ActivityIndicator size="small" color="white" />
             ) : (
-              <AudioLines size={18} color={theme.colors.foreground} />
+              <AudioLines size={theme.iconSize.lg} color={theme.colors.foreground} />
             )}
           </TooltipTrigger>
           <TooltipContent side="top" align="center" offset={8}>
@@ -628,13 +628,13 @@ export function AgentInputArea({
                       onPress={() => handleEditQueuedMessage(item.id)}
                       style={styles.queueActionButton}
                     >
-                      <Pencil size={14} color={theme.colors.foreground} />
+                      <Pencil size={theme.iconSize.sm} color={theme.colors.foreground} />
                     </Pressable>
                     <Pressable
                       onPress={() => handleSendQueuedNow(item.id)}
                       style={[styles.queueActionButton, styles.queueSendButton]}
                     >
-                      <ArrowUp size={14} color="white" />
+                      <ArrowUp size={theme.iconSize.sm} color="white" />
                     </Pressable>
                   </View>
                 </View>

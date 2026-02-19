@@ -97,7 +97,7 @@ export function DropdownField({
         >
           {value || placeholder}
         </Text>
-        <ChevronDown size={16} color={defaultTheme.colors.foregroundMuted} />
+        <ChevronDown size={defaultTheme.iconSize.md} color={defaultTheme.colors.foregroundMuted} />
       </Pressable>
       {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
       {warningMessage ? <Text style={styles.warningText}>{warningMessage}</Text> : null}
@@ -196,7 +196,7 @@ export function SelectField({
             {value || placeholder || "Select..."}
           </Text>
         </View>
-        <ChevronRight size={20} color={defaultTheme.colors.foregroundMuted} />
+        <ChevronRight size={defaultTheme.iconSize.lg} color={defaultTheme.colors.foregroundMuted} />
       </Pressable>
       {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
       {warningMessage ? <Text style={styles.warningText}>{warningMessage}</Text> : null}
@@ -289,7 +289,7 @@ export function DropdownSheet({
           hitSlop={10}
           testID="dropdown-sheet-close"
         >
-          <X size={18} color={defaultTheme.colors.foregroundMuted} />
+          <X size={defaultTheme.iconSize.md} color={defaultTheme.colors.foregroundMuted} />
         </Pressable>
       </View>
       <BottomSheetScrollView
@@ -477,7 +477,7 @@ export function FormSelectTrigger({
           </Text>
         )}
       </View>
-      <ChevronDown size={16} color={defaultTheme.colors.foregroundMuted} />
+      <ChevronDown size={defaultTheme.iconSize.md} color={defaultTheme.colors.foregroundMuted} />
     </Pressable>
   );
 }
@@ -571,7 +571,7 @@ export function AgentConfigRow({
           placeholder={providerOptions.length > 0 ? "Select..." : "No providers available"}
           disabled={disabled || providerOptions.length === 0}
           onSelect={onSelectProvider}
-          icon={<Bot size={16} color={defaultTheme.colors.foregroundMuted} />}
+          icon={<Bot size={defaultTheme.iconSize.md} color={defaultTheme.colors.foregroundMuted} />}
           showLabel={false}
         />
       </View>
@@ -585,7 +585,7 @@ export function AgentConfigRow({
           disabled={disabled}
           isLoading={isModelLoading}
           onSelect={onSelectModel}
-          icon={<Brain size={16} color={defaultTheme.colors.foregroundMuted} />}
+          icon={<Brain size={defaultTheme.iconSize.md} color={defaultTheme.colors.foregroundMuted} />}
           showLabel={false}
         />
       </View>
@@ -598,7 +598,7 @@ export function AgentConfigRow({
           placeholder="Default"
           disabled={disabled || modeOptions.length === 0}
           onSelect={onSelectMode}
-          icon={<Shield size={16} color={defaultTheme.colors.foregroundMuted} />}
+          icon={<Shield size={defaultTheme.iconSize.md} color={defaultTheme.colors.foregroundMuted} />}
           showLabel={false}
         />
       </View>
@@ -612,7 +612,7 @@ export function AgentConfigRow({
             placeholder="Select..."
             disabled={disabled}
             onSelect={onSelectThinkingOption}
-            icon={<Brain size={16} color={defaultTheme.colors.foregroundMuted} />}
+            icon={<Brain size={defaultTheme.iconSize.md} color={defaultTheme.colors.foregroundMuted} />}
             showLabel={false}
           />
         </View>
@@ -1120,16 +1120,16 @@ export function GitOptionsSection({
                 onSubmitEditing={handleConfirmEdit}
               />
               <Pressable onPress={handleConfirmEdit} hitSlop={8} style={styles.baseBranchIconButton}>
-                <Check size={16} color={defaultTheme.colors.palette.green[500]} />
+                <Check size={defaultTheme.iconSize.md} color={defaultTheme.colors.palette.green[500]} />
               </Pressable>
               <Pressable onPress={handleCancelEdit} hitSlop={8} style={styles.baseBranchIconButton}>
-                <X size={16} color={defaultTheme.colors.foregroundMuted} />
+                <X size={defaultTheme.iconSize.md} color={defaultTheme.colors.foregroundMuted} />
               </Pressable>
             </View>
           ) : (
             <Pressable onPress={handleStartEdit} style={styles.baseBranchValueRow}>
               <Text style={styles.baseBranchValue}>{displayBranch}</Text>
-              <Pencil size={14} color={defaultTheme.colors.foregroundMuted} />
+              <Pencil size={defaultTheme.iconSize.sm} color={defaultTheme.colors.foregroundMuted} />
             </Pressable>
           )}
         </View>

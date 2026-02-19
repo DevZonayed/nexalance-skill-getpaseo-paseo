@@ -215,6 +215,13 @@ const commonTheme = {
     "4xl": 34,
   },
 
+  iconSize: {
+    xs: 12,
+    sm: 14,
+    md: 16,
+    lg: 20,
+  },
+
   fontWeight: {
     normal: "normal" as const,
     medium: "500" as const,

@@ -3,11 +3,12 @@ import { createNameId } from 'mnemonic-id'
 import type { ImageAttachment } from '@/components/message-input'
 import { View, Text, Pressable, ScrollView, Keyboard, Platform } from 'react-native'
 import { useLocalSearchParams, useRouter } from 'expo-router'
+import { useIsFocused } from '@react-navigation/native'
 import { StyleSheet, UnistylesRuntime, useUnistyles } from 'react-native-unistyles'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useReanimatedKeyboardAnimation } from 'react-native-keyboard-controller'
-import { Gesture, GestureDetector } from 'react-native-gesture-handler'
-import Animated, { runOnJS, useAnimatedStyle, useSharedValue } from 'react-native-reanimated'
+import { GestureDetector } from 'react-native-gesture-handler'
+import Animated, { useAnimatedStyle, useSharedValue } from 'react-native-reanimated'
 import { Folder, GitBranch, PanelRight } from 'lucide-react-native'
 import { SidebarMenuToggle } from '@/components/headers/menu-header'
 import { HeaderToggleButton } from '@/components/headers/header-toggle-button'
@@ -31,6 +32,7 @@ import { buildBranchComboOptions, normalizeBranchOptionName } from '@/utils/bran
 import { shortenPath } from '@/utils/shorten-path'
 import { collectAgentWorkingDirectorySuggestions } from '@/utils/agent-working-directory-suggestions'
 import { buildWorkingDirectorySuggestions } from '@/utils/working-directory-suggestions'
+import { useExplorerOpenGesture } from '@/hooks/use-explorer-open-gesture'
 import { useSessionStore } from '@/stores/session-store'
 import { useCreateFlowStore } from '@/stores/create-flow-store'
 import { ExplorerSidebarAnimationProvider } from '@/contexts/explorer-sidebar-animation-context'
@@ -131,6 +133,7 @@ function DraftAgentScreenContent({
   onCreateFlowActiveChange,
   forcedServerId,
 }: DraftAgentScreenProps = {}) {
+  const isFocused = useIsFocused()
   const { theme } = useUnistyles()
   const router = useRouter()
   const insets = useSafeAreaInsets()
@@ -713,26 +716,10 @@ function DraftAgentScreenContent({
     }
     openExplorerForDraftCheckout()
   }, [canOpenExplorer, isExplorerOpen, openExplorerForDraftCheckout, toggleFileExplorer])
-  const handleOpenExplorerFromGesture = useCallback(() => {
-    if (!canOpenExplorer) {
-      return
-    }
-    openExplorerForDraftCheckout()
-  }, [canOpenExplorer, openExplorerForDraftCheckout])
-  const explorerOpenGesture = useMemo(
-    () =>
-      Gesture.Pan()
-        .enabled(isMobile && !isExplorerOpen && canOpenExplorer)
-        .activeOffsetX(-15)
-        .failOffsetY([-10, 10])
-        .onEnd((event) => {
-          const shouldOpen = event.translationX < -80 || event.velocityX < -500
-          if (shouldOpen) {
-            runOnJS(handleOpenExplorerFromGesture)()
-          }
-        }),
-    [canOpenExplorer, handleOpenExplorerFromGesture, isExplorerOpen, isMobile]
-  )
+  const explorerOpenGesture = useExplorerOpenGesture({
+    enabled: isMobile && mobileView === 'agent' && canOpenExplorer,
+    onOpen: openExplorerForDraftCheckout,
+  })
   const hasWorkingDirectorySearch = debouncedWorkingDirSearchQuery.length > 0
   const workingDirSearchError =
     directorySuggestionsQuery.error instanceof Error
@@ -926,20 +913,23 @@ function DraftAgentScreenContent({
     workingDir,
   ])
   useEffect(() => {
+    if (!isFocused) {
+      return
+    }
     setActiveExplorerCheckout(draftExplorerCheckout)
-  }, [draftExplorerCheckout, setActiveExplorerCheckout])
+  }, [draftExplorerCheckout, isFocused, setActiveExplorerCheckout])
   useEffect(() => {
-    if (!draftExplorerCheckout) {
+    if (!isFocused || !draftExplorerCheckout) {
       return
     }
     activateExplorerTabForCheckout(draftExplorerCheckout)
-  }, [activateExplorerTabForCheckout, draftExplorerCheckout])
+  }, [activateExplorerTabForCheckout, draftExplorerCheckout, isFocused])
   useEffect(() => {
-    if (canOpenExplorer || !isExplorerOpen) {
+    if (!isFocused || canOpenExplorer || !isExplorerOpen) {
       return
     }
     closeFileExplorer()
-  }, [canOpenExplorer, closeFileExplorer, isExplorerOpen])
+  }, [canOpenExplorer, closeFileExplorer, isExplorerOpen, isFocused])
   useEffect(() => {
     return () => {
       setActiveExplorerCheckout(null)
@@ -1146,7 +1136,7 @@ function DraftAgentScreenContent({
                   accessibilityState={{ expanded: isExplorerOpen }}
                 >
                   <PanelRight
-                    size={16}
+                    size={theme.iconSize.md}
                     color={isExplorerOpen ? theme.colors.foreground : theme.colors.foregroundMuted}
                   />
                 </HeaderToggleButton>
@@ -1179,7 +1169,7 @@ function DraftAgentScreenContent({
                       value={displayWorkingDir}
                       placeholder="/path/to/project"
                       onPress={() => setIsWorkingDirOpen(true)}
-                      icon={<Folder size={16} color={theme.colors.foregroundMuted} />}
+                      icon={<Folder size={theme.iconSize.md} color={theme.colors.foregroundMuted} />}
                       showLabel={false}
                       valueEllipsizeMode="middle"
                       testID="working-directory-select"
@@ -1226,7 +1216,7 @@ function DraftAgentScreenContent({
                         value={worktreeTriggerValue}
                         placeholder="Select worktree"
                         onPress={() => setIsWorktreePickerOpen(true)}
-                        icon={<GitBranch size={16} color={theme.colors.foregroundMuted} />}
+                        icon={<GitBranch size={theme.iconSize.md} color={theme.colors.foregroundMuted} />}
                         showLabel={false}
                         valueEllipsizeMode="middle"
                       />
@@ -1239,7 +1229,7 @@ function DraftAgentScreenContent({
                           placeholder="From branch"
                           onPress={() => setIsBranchOpen(true)}
                           disabled={repoInfoStatus === 'loading'}
-                          icon={<GitBranch size={16} color={theme.colors.foregroundMuted} />}
+                          icon={<GitBranch size={theme.iconSize.md} color={theme.colors.foregroundMuted} />}
                           showLabel={false}
                         />
                       ) : null}

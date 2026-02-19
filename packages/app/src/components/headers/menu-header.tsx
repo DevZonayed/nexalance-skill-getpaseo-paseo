@@ -75,7 +75,7 @@ export function SidebarMenuToggle({
       {isMobile ? (
         <MobileMenuIcon color={menuIconColor} />
       ) : (
-        <PanelLeft size={16} color={menuIconColor} />
+        <PanelLeft size={theme.iconSize.md} color={menuIconColor} />
       )}
     </HeaderToggleButton>
   );

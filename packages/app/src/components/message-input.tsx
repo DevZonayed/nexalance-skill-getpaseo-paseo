@@ -645,7 +645,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
                           (hovered || !IS_WEB) && styles.removeImageButtonVisible,
                         ]}
                       >
-                        <X size={16} color="white" />
+                        <X size={theme.iconSize.md} color="white" />
                       </View>
                     )}
                   </>
@@ -703,7 +703,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
                   accessibilityRole="button"
                   style={[styles.attachButton, (!isConnected || disabled) && styles.buttonDisabled]}
                 >
-                  <Paperclip size={20} color={theme.colors.foreground} />
+                  <Paperclip size={theme.iconSize.lg} color={theme.colors.foreground} />
                 </TooltipTrigger>
                 <TooltipContent side="top" align="center" offset={8}>
                   <Text style={styles.tooltipText}>Attach images</Text>
@@ -736,11 +736,11 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
                 ]}
               >
                 {isDictating ? (
-                  <Square size={14} color="white" fill="white" />
+                  <Square size={theme.iconSize.lg} color="white" fill="white" />
                 ) : isRealtimeVoiceForCurrentAgent && voice?.isMuted ? (
-                  <MicOff size={20} color={theme.colors.foreground} />
+                  <MicOff size={theme.iconSize.lg} color={theme.colors.foreground} />
                 ) : (
-                  <Mic size={20} color={theme.colors.foreground} />
+                  <Mic size={theme.iconSize.lg} color={theme.colors.foreground} />
                 )}
               </TooltipTrigger>
               <TooltipContent side="top" align="center" offset={8}>
@@ -769,7 +769,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
                   accessibilityRole="button"
                   style={[styles.queueButton, (!isConnected || disabled) && styles.buttonDisabled]}
                 >
-                  <Plus size={20} color="white" />
+                  <Plus size={theme.iconSize.lg} color="white" />
                 </TooltipTrigger>
                 <TooltipContent side="top" align="center" offset={8}>
                   <View style={styles.tooltipRow}>
@@ -791,7 +791,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
                   {isSubmitLoading ? (
                     <ActivityIndicator size="small" color="white" />
                   ) : (
-                    <ArrowUp size={20} color="white" />
+                    <ArrowUp size={theme.iconSize.lg} color="white" />
                   )}
                 </TooltipTrigger>
                 <TooltipContent side="top" align="center" offset={8}>

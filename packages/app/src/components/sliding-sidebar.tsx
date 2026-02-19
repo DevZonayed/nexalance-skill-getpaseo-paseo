@@ -356,7 +356,10 @@ export function SlidingSidebar({ selectedAgentId }: SlidingSidebarProps) {
                   >
                     {({ hovered }) => (
                       <>
-                        <Plus size={18} color={hovered ? theme.colors.foreground : theme.colors.foregroundMuted} />
+                        <Plus
+                          size={theme.iconSize.md}
+                          color={hovered ? theme.colors.foreground : theme.colors.foregroundMuted}
+                        />
                         <Text style={[styles.newAgentButtonText, hovered && styles.newAgentButtonTextHovered]}>New agent</Text>
                       </>
                     )}
@@ -418,7 +421,7 @@ export function SlidingSidebar({ selectedAgentId }: SlidingSidebarProps) {
                   >
                     {({ hovered }) => (
                       <Users
-                        size={20}
+                        size={theme.iconSize.lg}
                         color={hovered ? theme.colors.foreground : theme.colors.foregroundMuted}
                       />
                     )}
@@ -435,7 +438,7 @@ export function SlidingSidebar({ selectedAgentId }: SlidingSidebarProps) {
                   >
                     {({ hovered }) => (
                       <Settings
-                        size={20}
+                        size={theme.iconSize.lg}
                         color={hovered ? theme.colors.foreground : theme.colors.foregroundMuted}
                       />
                     )}
@@ -479,7 +482,10 @@ export function SlidingSidebar({ selectedAgentId }: SlidingSidebarProps) {
           >
             {({ hovered }) => (
               <>
-                <Plus size={18} color={hovered ? theme.colors.foreground : theme.colors.foregroundMuted} />
+                <Plus
+                  size={theme.iconSize.md}
+                  color={hovered ? theme.colors.foreground : theme.colors.foregroundMuted}
+                />
               <Text style={[styles.newAgentButtonText, hovered && styles.newAgentButtonTextHovered]}>New agent</Text>
               </>
             )}
@@ -539,7 +545,7 @@ export function SlidingSidebar({ selectedAgentId }: SlidingSidebarProps) {
           >
             {({ hovered }) => (
               <Users
-                size={20}
+                size={theme.iconSize.lg}
                 color={hovered ? theme.colors.foreground : theme.colors.foregroundMuted}
               />
             )}
@@ -555,7 +561,10 @@ export function SlidingSidebar({ selectedAgentId }: SlidingSidebarProps) {
             onPress={handleSettingsDesktop}
           >
             {({ hovered }) => (
-              <Settings size={20} color={hovered ? theme.colors.foreground : theme.colors.foregroundMuted} />
+              <Settings
+                size={theme.iconSize.lg}
+                color={hovered ? theme.colors.foreground : theme.colors.foregroundMuted}
+              />
             )}
           </Pressable>
         </View>

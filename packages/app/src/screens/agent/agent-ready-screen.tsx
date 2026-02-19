@@ -17,11 +17,8 @@ import { useQueryClient } from "@tanstack/react-query";
 import ReanimatedAnimated, {
   useAnimatedStyle,
   useSharedValue,
-  runOnJS,
-  interpolate,
-  Extrapolation,
 } from "react-native-reanimated";
-import { Gesture, GestureDetector } from "react-native-gesture-handler";
+import { GestureDetector } from "react-native-gesture-handler";
 import { StyleSheet, UnistylesRuntime, useUnistyles } from "react-native-unistyles";
 import {
   MoreVertical,
@@ -41,7 +38,6 @@ import { FileDropZone } from "@/components/file-drop-zone";
 import type { ImageAttachment } from "@/components/message-input";
 import {
   ExplorerSidebarAnimationProvider,
-  useExplorerSidebarAnimation,
 } from "@/contexts/explorer-sidebar-animation-context";
 import { usePanelStore } from "@/stores/panel-store";
 import { useDaemonConnections } from "@/contexts/daemon-connections-context";
@@ -76,6 +72,7 @@ import {
 import { mergePendingCreateImages } from "@/utils/pending-create-images";
 import { shouldClearAgentAttentionOnView } from "@/utils/agent-attention";
 import type { FetchAgentsEntry } from "@server/client/daemon-client";
+import { useExplorerOpenGesture } from "@/hooks/use-explorer-open-gesture";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -90,6 +87,14 @@ const DROPDOWN_WIDTH = 220;
 const EMPTY_STREAM_ITEMS: StreamItem[] = [];
 const RECONNECT_NOTICE_DELAY_MS = 10_000;
 const CONNECTED_NOTICE_DURATION_MS = 2_500;
+const IS_DEV = Boolean((globalThis as { __DEV__?: boolean }).__DEV__);
+
+function logAgentExplorer(event: string, details: Record<string, unknown>): void {
+  if (!IS_DEV) {
+    return;
+  }
+  console.log(`[AgentExplorer] ${event}`, details);
+}
 
 export function AgentReadyScreen({
   serverId,
@@ -324,31 +329,27 @@ function AgentScreenContent({
   }, [resolveCachedCheckoutIsGit, resolvedAgentId, checkout?.isGit, serverId]);
   const openExplorerForActiveCheckout = useCallback(() => {
     const checkoutContext = resolveCurrentExplorerCheckout();
+    logAgentExplorer("openExplorerForActiveCheckout", {
+      hasCheckoutContext: Boolean(checkoutContext),
+      checkoutContext,
+    });
     if (checkoutContext) {
       activateExplorerTabForCheckout(checkoutContext);
     }
     openFileExplorer();
   }, [activateExplorerTabForCheckout, openFileExplorer, resolveCurrentExplorerCheckout]);
   const handleToggleExplorer = useCallback(() => {
+    logAgentExplorer("handleToggleExplorer", {
+      isExplorerOpen,
+      mobileView,
+      isMobile,
+    });
     if (isExplorerOpen) {
       toggleFileExplorer();
       return;
     }
     openExplorerForActiveCheckout();
-  }, [isExplorerOpen, openExplorerForActiveCheckout, toggleFileExplorer]);
-
-  const {
-    translateX: explorerTranslateX,
-    backdropOpacity: explorerBackdropOpacity,
-    windowWidth: explorerWindowWidth,
-    animateToOpen: animateExplorerToOpen,
-    animateToClose: animateExplorerToClose,
-    isGesturing: isExplorerGesturing,
-  } = useExplorerSidebarAnimation();
-  const handleOpenExplorerFromGesture = useCallback(() => {
-    openExplorerForActiveCheckout();
-    animateExplorerToOpen();
-  }, [animateExplorerToOpen, openExplorerForActiveCheckout]);
+  }, [isExplorerOpen, isMobile, mobileView, openExplorerForActiveCheckout, toggleFileExplorer]);
 
   useEffect(() => {
     if (Platform.OS !== "web") {
@@ -360,53 +361,10 @@ function AgentScreenContent({
   }, [serverId, agentId]);
 
   // Swipe-left gesture to open explorer sidebar on mobile
-  const explorerOpenGesture = useMemo(
-    () =>
-      Gesture.Pan()
-        .enabled(isMobile && !isExplorerOpen)
-        // Only activate after 15px horizontal movement to the left (negative)
-        .activeOffsetX(-15)
-        // Fail if 10px vertical movement happens first (allow vertical scroll)
-        .failOffsetY([-10, 10])
-        .onStart(() => {
-          isExplorerGesturing.value = true;
-        })
-        .onUpdate((event) => {
-          // Right sidebar: start from closed position (+windowWidth) and move towards 0
-          // Swiping left means negative translationX
-          const newTranslateX = Math.max(0, explorerWindowWidth + event.translationX);
-          explorerTranslateX.value = newTranslateX;
-          explorerBackdropOpacity.value = interpolate(
-            newTranslateX,
-            [explorerWindowWidth, 0],
-            [0, 1],
-            Extrapolation.CLAMP
-          );
-        })
-        .onEnd((event) => {
-          isExplorerGesturing.value = false;
-          // Open if dragged more than 1/3 of window or fast swipe left
-          const shouldOpen = event.translationX < -explorerWindowWidth / 3 || event.velocityX < -500;
-          if (shouldOpen) {
-            runOnJS(handleOpenExplorerFromGesture)();
-          } else {
-            animateExplorerToClose();
-          }
-        })
-        .onFinalize(() => {
-          isExplorerGesturing.value = false;
-        }),
-    [
-      isMobile,
-      isExplorerOpen,
-      explorerWindowWidth,
-      explorerTranslateX,
-      explorerBackdropOpacity,
-      animateExplorerToClose,
-      handleOpenExplorerFromGesture,
-      isExplorerGesturing,
-    ]
-  );
+  const explorerOpenGesture = useExplorerOpenGesture({
+    enabled: isMobile && mobileView === "agent",
+    onOpen: openExplorerForActiveCheckout,
+  });
 
   // Handle hardware back button - close explorer sidebar first, then navigate back
   useEffect(() => {
@@ -947,7 +905,7 @@ function AgentScreenContent({
         await Clipboard.setStringAsync(value);
         toast.show(`Copied ${label}`, {
           variant: "success",
-          icon: <CheckCircle2 size={16} color={theme.colors.primary} />,
+          icon: <CheckCircle2 size={theme.iconSize.md} color={theme.colors.primary} />,
         });
       } catch {
         toast.error("Copy failed");
@@ -1015,7 +973,7 @@ function AgentScreenContent({
                 {isMobile ? (
                   checkout?.isGit ? (
                     <GitBranch
-                      size={20}
+                      size={theme.iconSize.lg}
                       color={
                         isExplorerOpen
                           ? theme.colors.foreground
@@ -1024,7 +982,7 @@ function AgentScreenContent({
                     />
                   ) : (
                     <Folder
-                      size={20}
+                      size={theme.iconSize.lg}
                       color={
                         isExplorerOpen
                           ? theme.colors.foreground
@@ -1034,7 +992,7 @@ function AgentScreenContent({
                   )
                 ) : (
                   <PanelRight
-                    size={16}
+                    size={theme.iconSize.md}
                     color={
                       isExplorerOpen
                         ? theme.colors.foreground
@@ -1051,7 +1009,10 @@ function AgentScreenContent({
                 }}
               >
                 <DropdownMenuTrigger testID="agent-overflow-menu" style={styles.menuButton}>
-                  <MoreVertical size={isMobile ? 20 : 16} color={theme.colors.foregroundMuted} />
+                  <MoreVertical
+                    size={isMobile ? theme.iconSize.lg : theme.iconSize.md}
+                    color={theme.colors.foregroundMuted}
+                  />
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" width={DROPDOWN_WIDTH} testID="agent-overflow-content">
                   <View style={styles.menuMetaContainer}>
@@ -1170,7 +1131,7 @@ function AgentScreenContent({
                   <DropdownMenuSeparator />
 
                   <DropdownMenuItem
-                    leading={<RotateCcw size={16} color={theme.colors.foreground} />}
+                    leading={<RotateCcw size={theme.iconSize.md} color={theme.colors.foreground} />}
                     disabled={isInitializing || shouldBlockForHistorySync}
                     trailing={
                       isInitializing ? (
@@ -1202,7 +1163,7 @@ function AgentScreenContent({
             >
               {showConnectedNotice ? (
                 <CheckCircle2
-                  size={14}
+                  size={theme.iconSize.sm}
                   color={theme.colors.palette.green[600]}
                 />
               ) : null}

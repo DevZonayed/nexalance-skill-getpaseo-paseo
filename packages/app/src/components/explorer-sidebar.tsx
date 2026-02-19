@@ -24,6 +24,14 @@ import { TerminalPane } from "./terminal-pane";
 
 const MIN_CHAT_WIDTH = 400;
 const IOS_KEYBOARD_INSET_MIN_HEIGHT = 120;
+const IS_DEV = Boolean((globalThis as { __DEV__?: boolean }).__DEV__);
+
+function logExplorerSidebar(event: string, details: Record<string, unknown>): void {
+  if (!IS_DEV) {
+    return;
+  }
+  console.log(`[ExplorerSidebar] ${event}`, details);
+}
 
 function resolveKeyboardShift(rawHeight: number, inset: number): number {
   "worklet";
@@ -94,9 +102,18 @@ export function ExplorerSidebar({ serverId, agentId, cwd, isGit }: ExplorerSideb
   const startWidthRef = useRef(explorerWidth);
   const resizeWidth = useSharedValue(explorerWidth);
 
-  const handleClose = useCallback(() => {
-    closeToAgent();
-  }, [closeToAgent]);
+  const handleClose = useCallback(
+    (reason: string) => {
+      logExplorerSidebar("handleClose", {
+        reason,
+        isOpen,
+        mobileView,
+        desktopFileExplorerOpen,
+      });
+      closeToAgent();
+    },
+    [closeToAgent, desktopFileExplorerOpen, isOpen, mobileView]
+  );
 
   const enableSidebarCloseGesture = isMobile && isOpen;
 
@@ -165,9 +182,15 @@ export function ExplorerSidebar({ serverId, agentId, cwd, isGit }: ExplorerSideb
           isGesturing.value = false;
           const shouldClose =
             event.translationX > windowWidth / 3 || event.velocityX > 500;
+          runOnJS(logExplorerSidebar)("closeGestureEnd", {
+            translationX: event.translationX,
+            velocityX: event.velocityX,
+            shouldClose,
+            windowWidth,
+          });
           if (shouldClose) {
             animateToClose();
-            runOnJS(handleClose)();
+            runOnJS(handleClose)("swipe-close-gesture");
           } else {
             animateToOpen();
           }
@@ -249,7 +272,10 @@ export function ExplorerSidebar({ serverId, agentId, cwd, isGit }: ExplorerSideb
       <View style={StyleSheet.absoluteFillObject} pointerEvents={overlayPointerEvents}>
         {/* Backdrop */}
         <Animated.View style={[styles.backdrop, backdropAnimatedStyle]}>
-          <Pressable style={styles.backdropPressable} onPress={handleClose} />
+          <Pressable
+            style={styles.backdropPressable}
+            onPress={() => handleClose("backdrop-press")}
+          />
         </Animated.View>
 
         <GestureDetector gesture={closeGesture} touchAction="pan-y">
@@ -265,7 +291,7 @@ export function ExplorerSidebar({ serverId, agentId, cwd, isGit }: ExplorerSideb
             <SidebarContent
               activeTab={explorerTab}
               onTabPress={handleTabPress}
-              onClose={handleClose}
+              onClose={() => handleClose("header-close-button")}
               serverId={serverId}
               agentId={agentId}
               cwd={cwd}
@@ -298,7 +324,7 @@ export function ExplorerSidebar({ serverId, agentId, cwd, isGit }: ExplorerSideb
       <SidebarContent
         activeTab={explorerTab}
         onTabPress={handleTabPress}
-        onClose={handleClose}
+        onClose={() => handleClose("desktop-close-button")}
         serverId={serverId}
         agentId={agentId}
         cwd={cwd}

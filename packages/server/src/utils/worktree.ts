@@ -692,7 +692,15 @@ export async function isPaseoOwnedWorktreeCwd(
   cwd: string,
   options?: { paseoHome?: string }
 ): Promise<PaseoWorktreeOwnership> {
-  const gitCommonDir = await getGitCommonDir(cwd);
+  let gitCommonDir: string;
+  try {
+    gitCommonDir = await getGitCommonDir(cwd);
+  } catch {
+    return {
+      allowed: false,
+      worktreePath: normalizePathForOwnership(cwd),
+    };
+  }
   const repoRoot = resolveRepoRootFromGitCommonDir(gitCommonDir);
   const worktreesRoot = await getPaseoWorktreesRoot(cwd, options?.paseoHome);
   const resolvedRoot = normalizePathForOwnership(worktreesRoot) + sep;

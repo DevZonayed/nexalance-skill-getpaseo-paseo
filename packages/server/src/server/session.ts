@@ -1675,21 +1675,31 @@ export class Session {
     this.sessionLogger.info({ agentId }, `Archiving agent ${agentId}`)
 
     const archivedAt = new Date().toISOString()
-    let archivedRecord: StoredAgentRecord | null = null
 
-    try {
-      const existing = await this.agentStorage.get(agentId)
-      if (existing) {
-        archivedRecord = {
-          ...existing,
-          archivedAt,
-        }
-        await this.agentStorage.upsert(archivedRecord)
+    const existing = await this.agentStorage.get(agentId)
+    let archivedRecord: StoredAgentRecord | null = existing
+    if (!archivedRecord) {
+      const liveAgent = this.agentManager.getAgent(agentId)
+      if (!liveAgent) {
+        throw new Error(`Agent not found: ${agentId}`)
       }
-      this.agentManager.notifyAgentState(agentId)
-    } catch (error: any) {
-      this.sessionLogger.error({ err: error, agentId }, `Failed to archive agent ${agentId}`)
+
+      await this.agentStorage.applySnapshot(liveAgent, {
+        title: liveAgent.config.title ?? null,
+        internal: liveAgent.internal,
+      })
+      archivedRecord = await this.agentStorage.get(agentId)
+      if (!archivedRecord) {
+        throw new Error(`Agent not found in storage after snapshot: ${agentId}`)
+      }
     }
+
+    archivedRecord = {
+      ...archivedRecord,
+      archivedAt,
+    }
+    await this.agentStorage.upsert(archivedRecord)
+    this.agentManager.notifyAgentState(agentId)
 
     this.emit({
       type: 'agent_archived',
@@ -1700,13 +1710,11 @@ export class Session {
       },
     })
 
-    if (archivedRecord) {
-      await this.maybeArchiveWorktreeAfterLastAgentArchived({
-        archivedAgentId: agentId,
-        archivedAgentCwd: archivedRecord.cwd,
-        requestId,
-      })
-    }
+    await this.maybeArchiveWorktreeAfterLastAgentArchived({
+      archivedAgentId: agentId,
+      archivedAgentCwd: archivedRecord.cwd,
+      requestId,
+    })
   }
 
   private async handleUpdateAgentRequest(

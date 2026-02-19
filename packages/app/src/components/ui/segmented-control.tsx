@@ -38,7 +38,7 @@ export function SegmentedControl<T extends string>({
   const { theme } = useUnistyles();
   const segmentSizeStyle = size === "sm" ? styles.segmentSm : styles.segmentMd;
   const labelSizeStyle = size === "sm" ? styles.labelSm : styles.labelMd;
-  const iconSize = size === "sm" ? 14 : 16;
+  const iconSize = size === "sm" ? theme.iconSize.sm : theme.iconSize.md;
 
   return (
     <View style={[styles.container, style]} testID={testID}>

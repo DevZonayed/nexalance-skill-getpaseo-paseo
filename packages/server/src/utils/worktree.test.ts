@@ -118,6 +118,16 @@ describe("createWorktree", () => {
     expect(ownership.repoRoot).toBe(repoDir);
   });
 
+  it("treats non-git directories as non-worktrees without throwing", async () => {
+    const nonGitDir = join(tempDir, "not-a-repo");
+    execSync(`mkdir -p ${nonGitDir}`);
+
+    const ownership = await isPaseoOwnedWorktreeCwd(nonGitDir, { paseoHome });
+
+    expect(ownership.allowed).toBe(false);
+    expect(ownership.worktreePath).toBe(realpathSync(nonGitDir));
+  });
+
   it("creates a worktree with a new branch", async () => {
     const projectHash = await deriveWorktreeProjectHash(repoDir);
     const result = await createWorktree({

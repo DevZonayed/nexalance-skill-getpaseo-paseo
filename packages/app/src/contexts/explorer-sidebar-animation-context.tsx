@@ -12,6 +12,17 @@ import { usePanelStore } from "@/stores/panel-store";
 
 const ANIMATION_DURATION = 220;
 const ANIMATION_EASING = Easing.bezier(0.25, 0.1, 0.25, 1);
+const IS_DEV = Boolean((globalThis as { __DEV__?: boolean }).__DEV__);
+
+function logExplorerAnimation(
+  event: string,
+  details: Record<string, unknown>
+): void {
+  if (!IS_DEV) {
+    return;
+  }
+  console.log(`[ExplorerAnimation] ${event}`, details);
+}
 
 interface ExplorerSidebarAnimationContextValue {
   translateX: SharedValue<number>;
@@ -50,12 +61,27 @@ export function ExplorerSidebarAnimationProvider({ children }: { children: React
     if (prevIsOpen.current === isOpen) {
       return;
     }
+    const previousIsOpen = prevIsOpen.current;
     prevIsOpen.current = isOpen;
 
     // Don't animate if we're in the middle of a gesture - the gesture handler will handle it
     if (isGesturing.value) {
+      logExplorerAnimation("sync-skipped-during-gesture", {
+        previousIsOpen,
+        nextIsOpen: isOpen,
+        mobileView,
+        desktopFileExplorerOpen,
+      });
       return;
     }
+
+    logExplorerAnimation("sync-state-change", {
+      previousIsOpen,
+      nextIsOpen: isOpen,
+      mobileView,
+      desktopFileExplorerOpen,
+      windowWidth,
+    });
 
     if (isOpen) {
       translateX.value = withTiming(0, {
@@ -76,7 +102,15 @@ export function ExplorerSidebarAnimationProvider({ children }: { children: React
         easing: ANIMATION_EASING,
       });
     }
-  }, [isOpen, translateX, backdropOpacity, windowWidth, isGesturing]);
+  }, [
+    isOpen,
+    translateX,
+    backdropOpacity,
+    windowWidth,
+    isGesturing,
+    mobileView,
+    desktopFileExplorerOpen,
+  ]);
 
   const animateToOpen = () => {
     "worklet";

@@ -51,4 +51,19 @@ describe("useArchiveAgent", () => {
       })
     ).toBe(false);
   });
+
+  it("removes an archived agent from cached list payloads", () => {
+    const payload = {
+      entries: [
+        { agent: { id: "agent-1" } },
+        { agent: { id: "agent-2" } },
+      ],
+      pageInfo: { hasMore: false },
+    };
+
+    const next = __private__.removeAgentFromListPayload(payload, "agent-1");
+
+    expect(next.entries).toEqual([{ agent: { id: "agent-2" } }]);
+    expect(next.pageInfo).toEqual({ hasMore: false });
+  });
 });

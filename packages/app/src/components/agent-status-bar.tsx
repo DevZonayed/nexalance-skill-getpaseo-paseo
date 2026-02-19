@@ -118,7 +118,7 @@ export function AgentStatusBar({ agentId, serverId }: AgentStatusBarProps) {
                 agent.currentModeId ||
                 "default"}
             </Text>
-            <ChevronDown size={14} color={theme.colors.foregroundMuted} />
+            <ChevronDown size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
           </DropdownMenuTrigger>
           <DropdownMenuContent
             side="top"
@@ -157,7 +157,7 @@ export function AgentStatusBar({ agentId, serverId }: AgentStatusBarProps) {
               testID="agent-model-selector"
             >
               <Text style={styles.modeBadgeText}>{displayModel}</Text>
-              <ChevronDown size={14} color={theme.colors.foregroundMuted} />
+              <ChevronDown size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
             </DropdownMenuTrigger>
             <DropdownMenuContent
               side="top"
@@ -199,9 +199,13 @@ export function AgentStatusBar({ agentId, serverId }: AgentStatusBarProps) {
                 accessibilityLabel="Select thinking option"
                 testID="agent-thinking-selector"
               >
-                <Brain size={12} color={theme.colors.foregroundMuted} style={{ marginTop: 1 }} />
+                <Brain
+                  size={theme.iconSize.xs}
+                  color={theme.colors.foregroundMuted}
+                  style={{ marginTop: 1 }}
+                />
                 <Text style={styles.modeBadgeText}>{displayThinking}</Text>
-                <ChevronDown size={14} color={theme.colors.foregroundMuted} />
+                <ChevronDown size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
               </DropdownMenuTrigger>
               <DropdownMenuContent
                 side="top"
@@ -249,7 +253,7 @@ export function AgentStatusBar({ agentId, serverId }: AgentStatusBarProps) {
             accessibilityLabel="Agent preferences"
             testID="agent-preferences-button"
           >
-            <SlidersHorizontal size={20} color={theme.colors.foreground} />
+            <SlidersHorizontal size={theme.iconSize.lg} color={theme.colors.foreground} />
           </Pressable>
 
           <AdaptiveModalSheet
@@ -271,7 +275,7 @@ export function AgentStatusBar({ agentId, serverId }: AgentStatusBarProps) {
                     testID="agent-preferences-mode"
                   >
                     <Text style={styles.sheetSelectText}>{displayMode}</Text>
-                    <ChevronDown size={16} color={theme.colors.foregroundMuted} />
+                    <ChevronDown size={theme.iconSize.md} color={theme.colors.foregroundMuted} />
                   </DropdownMenuTrigger>
                   <DropdownMenuContent side="top" align="start">
                     {agent.availableModes.map((mode) => {
@@ -303,7 +307,7 @@ export function AgentStatusBar({ agentId, serverId }: AgentStatusBarProps) {
                   testID="agent-preferences-model"
                 >
                   <Text style={styles.sheetSelectText}>{displayModel}</Text>
-                  <ChevronDown size={16} color={theme.colors.foregroundMuted} />
+                  <ChevronDown size={theme.iconSize.md} color={theme.colors.foregroundMuted} />
                 </DropdownMenuTrigger>
                 <DropdownMenuContent side="top" align="start">
                   {models?.map((model) => {
@@ -342,7 +346,7 @@ export function AgentStatusBar({ agentId, serverId }: AgentStatusBarProps) {
                     testID="agent-preferences-thinking"
                   >
                     <Text style={styles.sheetSelectText}>{displayThinking}</Text>
-                    <ChevronDown size={16} color={theme.colors.foregroundMuted} />
+                    <ChevronDown size={theme.iconSize.md} color={theme.colors.foregroundMuted} />
                   </DropdownMenuTrigger>
                   <DropdownMenuContent side="top" align="start">
                     {thinkingOptions.map((opt) => {

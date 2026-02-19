@@ -168,6 +168,34 @@ describe("daemon client E2E", () => {
     rmSync(cwd, { recursive: true, force: true });
   }, 30000);
 
+  test("archives agents and excludes them from default listings", async () => {
+    const cwd = tmpCwd();
+    try {
+      const created = await ctx.client.createAgent({
+        config: {
+          ...getFullAccessConfig("codex"),
+          cwd,
+        },
+      });
+
+      await ctx.client.archiveAgent(created.id);
+
+      const active = await ctx.client.fetchAgents();
+      expect(active.entries.some((entry) => entry.agent.id === created.id)).toBe(false);
+
+      const withArchived = await ctx.client.fetchAgents({
+        filter: { includeArchived: true },
+      });
+      expect(withArchived.entries.some((entry) => entry.agent.id === created.id)).toBe(true);
+    } finally {
+      rmSync(cwd, { recursive: true, force: true });
+    }
+  }, 30000);
+
+  test("returns rpc error when archiving an unknown agent id", async () => {
+    await expect(ctx.client.archiveAgent(randomUUID())).rejects.toThrow();
+  }, 10000);
+
   test("returns home-scoped directory suggestions", async () => {
     const insideHomeDir = mkdtempSync(path.join(homedir(), "paseo-dir-suggestion-"));
     const outsideHomeDir = mkdtempSync(path.join(tmpdir(), "paseo-dir-suggestion-outside-"));

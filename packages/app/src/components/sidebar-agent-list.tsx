@@ -116,7 +116,7 @@ function ProjectFilterOptionRow({
         {option.activeCount > 0 ? (
           <Text style={styles.filterOptionCount}>{option.activeCount}</Text>
         ) : null}
-        {selected ? <Check size={14} color={theme.colors.foregroundMuted} /> : null}
+        {selected ? <Check size={theme.iconSize.sm} color={theme.colors.foregroundMuted} /> : null}
       </View>
     </Pressable>
   );
@@ -247,7 +247,7 @@ function SidebarAgentRow({
             ]}
           >
             {isBatchSelected ? (
-              <Check size={12} color={theme.colors.primaryForeground} />
+              <Check size={theme.iconSize.xs} color={theme.colors.primaryForeground} />
             ) : null}
           </Pressable>
         ) : (
@@ -301,10 +301,10 @@ function SidebarAgentRow({
               isArchiving ? (
                 <ActivityIndicator size="small" color={theme.colors.foreground} />
               ) : isArchiveConfirmVisible ? (
-                <Check size={12} color={theme.colors.foreground} />
+                <Check size={theme.iconSize.xs} color={theme.colors.foreground} />
               ) : (
                 <Archive
-                  size={12}
+                  size={theme.iconSize.xs}
                   color={
                     archiveHovered
                       ? theme.colors.foreground
@@ -785,7 +785,7 @@ export function SidebarAgentList({
                   {selectedProjectLabel}
                 </Text>
                 <ChevronDown
-                  size={14}
+                  size={theme.iconSize.sm}
                   color={
                     showActiveForeground
                       ? theme.colors.foreground
@@ -916,13 +916,13 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.foregroundMuted,
   },
   selectedProjectIcon: {
-    width: 14,
-    height: 14,
+    width: theme.iconSize.sm,
+    height: theme.iconSize.sm,
     borderRadius: theme.borderRadius.sm,
   },
   projectCountBadge: {
-    minWidth: 16,
-    height: 16,
+    minWidth: theme.iconSize.md,
+    height: theme.iconSize.md,
     borderRadius: theme.borderRadius.full,
     alignItems: "center",
     justifyContent: "center",
@@ -987,13 +987,13 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.xs,
   },
   projectIcon: {
-    width: 14,
-    height: 14,
+    width: theme.iconSize.sm,
+    height: theme.iconSize.sm,
     borderRadius: theme.borderRadius.sm,
   },
   projectIconFallback: {
-    width: 14,
-    height: 14,
+    width: theme.iconSize.sm,
+    height: theme.iconSize.sm,
     borderRadius: theme.borderRadius.sm,
     borderWidth: 1,
     borderColor: theme.colors.border,
@@ -1039,8 +1039,8 @@ const styles = StyleSheet.create((theme) => ({
     minHeight: 20,
   },
   checkbox: {
-    width: 16,
-    height: 16,
+    width: theme.iconSize.md,
+    height: theme.iconSize.md,
     borderRadius: theme.borderRadius.sm,
     borderWidth: 1,
     borderColor: theme.colors.border,
@@ -1100,8 +1100,8 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[2],
   },
   agentMetaProjectIcon: {
-    width: 14,
-    height: 14,
+    width: theme.iconSize.sm,
+    height: theme.iconSize.sm,
     borderRadius: theme.borderRadius.sm,
   },
   agentMetaProjectIconInactive: {

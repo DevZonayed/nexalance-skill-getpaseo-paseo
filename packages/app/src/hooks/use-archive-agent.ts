@@ -20,6 +20,10 @@ interface IsAgentArchivingInput extends ArchiveAgentInput {
   queryClient: QueryClient;
 }
 
+interface AgentsListQueryData {
+  entries?: Array<{ agent?: { id?: string | null } | null } | null>;
+}
+
 function toArchiveKey(input: ArchiveAgentInput): string {
   const serverId = input.serverId.trim();
   const agentId = input.agentId.trim();
@@ -73,6 +77,66 @@ function isAgentArchiving(input: IsAgentArchivingInput): boolean {
   return Boolean(readPendingState(input.queryClient)[key]);
 }
 
+function removeAgentFromListPayload<T extends AgentsListQueryData | undefined>(
+  payload: T,
+  agentId: string
+): T {
+  if (!payload || !Array.isArray(payload.entries) || !agentId) {
+    return payload;
+  }
+  const filtered = payload.entries.filter((entry) => entry?.agent?.id !== agentId);
+  if (filtered.length === payload.entries.length) {
+    return payload;
+  }
+  return {
+    ...payload,
+    entries: filtered,
+  } as T;
+}
+
+function removeAgentFromCachedLists(
+  queryClient: QueryClient,
+  input: ArchiveAgentInput
+): void {
+  const agentId = input.agentId.trim();
+  if (!agentId) {
+    return;
+  }
+
+  queryClient.setQueryData<AgentsListQueryData | undefined>(
+    ["sidebarAgentsList", input.serverId],
+    (current) => removeAgentFromListPayload(current, agentId)
+  );
+  queryClient.setQueryData<AgentsListQueryData | undefined>(
+    ["allAgents", input.serverId],
+    (current) => removeAgentFromListPayload(current, agentId)
+  );
+}
+
+function markAgentArchivedInStore(input: ArchiveAgentInput & { archivedAt: string }): void {
+  const archivedAt = new Date(input.archivedAt);
+  if (Number.isNaN(archivedAt.getTime())) {
+    return;
+  }
+
+  const setAgents = useSessionStore.getState().setAgents;
+  setAgents(input.serverId, (prev) => {
+    const existing = prev.get(input.agentId);
+    if (!existing) {
+      return prev;
+    }
+    if (existing.archivedAt && existing.archivedAt.getTime() === archivedAt.getTime()) {
+      return prev;
+    }
+    const next = new Map(prev);
+    next.set(input.agentId, {
+      ...existing,
+      archivedAt,
+    });
+    return next;
+  });
+}
+
 export function clearArchiveAgentPending(input: IsAgentArchivingInput): void {
   setAgentArchiving({
     ...input,
@@ -92,12 +156,12 @@ export function useArchiveAgent() {
   });
 
   const archiveMutation = useMutation({
-    mutationFn: async (input: ArchiveAgentInput) => {
+    mutationFn: async (input: ArchiveAgentInput): Promise<{ archivedAt: string }> => {
       const client = useSessionStore.getState().sessions[input.serverId]?.client ?? null;
       if (!client) {
         throw new Error("Daemon client not available");
       }
-      await client.archiveAgent(input.agentId);
+      return await client.archiveAgent(input.agentId);
     },
     onMutate: (input) => {
       setAgentArchiving({
@@ -107,7 +171,21 @@ export function useArchiveAgent() {
         isArchiving: true,
       });
     },
-    onError: (_error, input) => {
+    onSuccess: (result, input) => {
+      markAgentArchivedInStore({
+        serverId: input.serverId,
+        agentId: input.agentId,
+        archivedAt: result.archivedAt,
+      });
+      removeAgentFromCachedLists(queryClient, input);
+      void queryClient.invalidateQueries({
+        queryKey: ["sidebarAgentsList", input.serverId],
+      });
+      void queryClient.invalidateQueries({
+        queryKey: ["allAgents", input.serverId],
+      });
+    },
+    onSettled: (_result, _error, input) => {
       clearArchiveAgentPending({
         queryClient,
         serverId: input.serverId,
@@ -154,4 +232,5 @@ export const __private__ = {
   readPendingState,
   setAgentArchiving,
   isAgentArchiving,
+  removeAgentFromListPayload,
 };

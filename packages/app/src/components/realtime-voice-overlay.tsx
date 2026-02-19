@@ -54,9 +54,9 @@ export function RealtimeVoiceOverlay({
           ]}
         >
           {isMuted ? (
-            <MicOff size={20} color={theme.colors.palette.white} strokeWidth={2.5} />
+            <MicOff size={theme.iconSize.lg} color={theme.colors.palette.white} strokeWidth={2.5} />
           ) : (
-            <Mic size={20} color={theme.colors.foreground} strokeWidth={2.5} />
+            <Mic size={theme.iconSize.lg} color={theme.colors.foreground} strokeWidth={2.5} />
           )}
         </Pressable>
 
@@ -75,7 +75,7 @@ export function RealtimeVoiceOverlay({
             <ActivityIndicator size="small" color={theme.colors.palette.white} />
           ) : (
             <Square
-              size={20}
+              size={theme.iconSize.lg}
               color={theme.colors.palette.white}
               fill={theme.colors.palette.white}
               strokeWidth={2.5}
