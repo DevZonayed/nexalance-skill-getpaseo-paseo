@@ -15,7 +15,7 @@ export type ConnectionState =
 
 export type ConnectionStatus = ConnectionState["status"];
 
-type ConnectionStateUpdate =
+export type ConnectionStateUpdate =
   | { status: "idle" }
   | { status: "connecting"; activeConnection?: ActiveConnection | null; lastOnlineAt?: string | null }
   | { status: "online"; activeConnection?: ActiveConnection | null; lastOnlineAt: string; agentListReady?: boolean }
