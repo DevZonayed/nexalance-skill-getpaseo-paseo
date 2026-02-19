@@ -49,6 +49,7 @@ import type {
 } from '@server/server/agent/agent-sdk-types'
 import { AGENT_PROVIDER_DEFINITIONS } from '@server/server/agent/provider-manifest'
 import { buildHostAgentDetailRoute } from '@/utils/host-routes'
+import { useTauriDragHandlers } from '@/utils/tauri-window'
 
 const DRAFT_AGENT_ID = '__new_agent__'
 const EMPTY_PENDING_PERMISSIONS = new Map()
@@ -237,6 +238,7 @@ function DraftAgentScreenContent({
   const activateExplorerTabForCheckout = usePanelStore(
     (state) => state.activateExplorerTabForCheckout
   )
+  const tauriDragHandlers = useTauriDragHandlers()
   const isExplorerOpen = isMobile ? mobileView === 'file-explorer' : desktopFileExplorerOpen
 
   const [worktreeMode, setWorktreeMode] = useState<'none' | 'create' | 'attach'>('none')
@@ -1112,7 +1114,7 @@ function DraftAgentScreenContent({
   const explorerServerId = draftExplorerCheckout?.serverId ?? null
   const explorerIsGit = draftExplorerCheckout?.isGit ?? false
   const mainContent = (
-    <View style={styles.container}>
+    <View style={styles.container} {...tauriDragHandlers}>
       <View style={styles.outerContainer}>
         <View style={styles.agentPanel}>
           <View

@@ -4,6 +4,18 @@ import { getIsTauriMac, TAURI_TRAFFIC_LIGHT_WIDTH, TAURI_TRAFFIC_LIGHT_HEIGHT } 
 import { getCurrentTauriWindow, getTauri, isTauriEnvironment } from "@/utils/tauri";
 
 let tauriWindow: any = null;
+const NON_DRAGGABLE_SELECTOR = [
+  "button",
+  "a",
+  "input",
+  "textarea",
+  "select",
+  "[role='button']",
+  "[role='link']",
+  "[role='textbox']",
+  "[role='combobox']",
+  "[contenteditable='true']",
+].join(", ");
 
 async function getTauriWindow() {
   if (tauriWindow) return tauriWindow;
@@ -82,9 +94,10 @@ export function useTauriDragHandlers() {
     onMouseDown: (e: React.MouseEvent) => {
       // Only handle primary button, ignore if clicking on interactive elements.
       // Tauri docs recommend using `e.detail` on mousedown for double-click maximize.
+      if (e.defaultPrevented) return;
       if (typeof e.buttons === "number" ? e.buttons !== 1 : e.button !== 0) return;
-      const target = e.target as HTMLElement;
-      if (target.closest("button, a, input, [role='button']")) return;
+      const target = e.target instanceof Element ? e.target : null;
+      if (target?.closest(NON_DRAGGABLE_SELECTOR)) return;
 
       // Prevent text selection when dragging
       e.preventDefault();
