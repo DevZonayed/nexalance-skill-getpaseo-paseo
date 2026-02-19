@@ -195,6 +195,7 @@ Notes:
 - The website Mac download CTA URL is derived from `packages/website/package.json` version at build time, so no manual update is required after release.
 
 Release completion checklist:
+- Manually update CHANGELOG.md with release notes, between current release vs previous one, use Git commands to figure out what changed
 - `npm run release:patch` completes successfully.
 - GitHub `Desktop Release` workflow for the new `v*` tag is green.
 - GitHub `Android APK Release` workflow for the same tag is green.
