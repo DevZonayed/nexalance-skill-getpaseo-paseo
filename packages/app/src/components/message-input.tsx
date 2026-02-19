@@ -290,7 +290,8 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
     onError: handleDictationError,
     canStart: canStartDictation,
     canConfirm: canConfirmDictation,
-    autoStopWhenHidden: { isVisible: isScreenFocused },
+    autoStopWhenHidden:
+      Platform.OS === 'web' ? undefined : { isVisible: isScreenFocused },
     enableDuration: true,
   })
 

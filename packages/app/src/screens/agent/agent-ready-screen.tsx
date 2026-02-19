@@ -63,6 +63,10 @@ import {
 } from "@/hooks/use-checkout-status-query";
 import { useAgentInitialization } from "@/hooks/use-agent-initialization";
 import { useArchiveAgent } from "@/hooks/use-archive-agent";
+import {
+  useAgentScreenStateMachine,
+  type AgentScreenMissingState,
+} from "@/hooks/use-agent-screen-state-machine";
 import { useToast } from "@/contexts/toast-context";
 import { getInitDeferred, getInitKey } from "@/utils/agent-initialization";
 import {
@@ -85,8 +89,6 @@ import type { ExplorerCheckoutContext } from "@/stores/panel-store";
 
 const DROPDOWN_WIDTH = 220;
 const EMPTY_STREAM_ITEMS: StreamItem[] = [];
-const RECONNECT_NOTICE_DELAY_MS = 10_000;
-const CONNECTED_NOTICE_DURATION_MS = 2_500;
 const IS_DEV = Boolean((globalThis as { __DEV__?: boolean }).__DEV__);
 
 function logAgentExplorer(event: string, details: Record<string, unknown>): void {
@@ -198,12 +200,6 @@ type AgentScreenContentProps = {
   agentId?: string;
   connectionStatus: ConnectionStatus;
 };
-
-type MissingAgentState =
-  | { kind: "idle" }
-  | { kind: "resolving" }
-  | { kind: "not_found"; message: string }
-  | { kind: "error"; message: string };
 
 function toErrorMessage(error: unknown): string {
   if (error instanceof Error) {
@@ -479,14 +475,10 @@ function AgentScreenContent({
     (state) => state.sessions[serverId]?.focusedAgentId ?? null
   );
   const { ensureAgentIsInitialized, refreshAgent } = useAgentInitialization(serverId);
-  const [missingAgentState, setMissingAgentState] = useState<MissingAgentState>({
+  const [missingAgentState, setMissingAgentState] = useState<AgentScreenMissingState>({
     kind: "idle",
   });
-  const [showReconnectNotice, setShowReconnectNotice] = useState(false);
-  const [dismissedReconnectNotice, setDismissedReconnectNotice] = useState(false);
-  const [showConnectedNotice, setShowConnectedNotice] = useState(false);
-  const reconnectNoticeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const connectedNoticeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const reconnectToastArmedRef = useRef(false);
   const initAttemptTokenRef = useRef(0);
   const setFocusedAgentId = useCallback(
     (agentId: string | null) => {
@@ -511,58 +503,43 @@ function AgentScreenContent({
     };
   });
 
-  const agentModel = extractAgentModel(agent);
-  const modelDisplayValue = agentModel ?? "Unknown";
-
   useEffect(() => {
-    if (reconnectNoticeTimeoutRef.current) {
-      clearTimeout(reconnectNoticeTimeoutRef.current);
-      reconnectNoticeTimeoutRef.current = null;
-    }
-
     if (connectionStatus === "online") {
-      if (showReconnectNotice || dismissedReconnectNotice) {
-        setShowConnectedNotice(true);
-      }
-      setShowReconnectNotice(false);
-      setDismissedReconnectNotice(false);
+      reconnectToastArmedRef.current = false;
       return;
     }
-
-    setShowConnectedNotice(false);
-    if (!showReconnectNotice && !dismissedReconnectNotice) {
-      reconnectNoticeTimeoutRef.current = setTimeout(() => {
-        setShowReconnectNotice(true);
-      }, RECONNECT_NOTICE_DELAY_MS);
+    if (connectionStatus === "idle") {
+      return;
     }
-
-    return () => {
-      if (reconnectNoticeTimeoutRef.current) {
-        clearTimeout(reconnectNoticeTimeoutRef.current);
-        reconnectNoticeTimeoutRef.current = null;
-      }
-    };
-  }, [connectionStatus, dismissedReconnectNotice, showReconnectNotice]);
+    if (!reconnectToastArmedRef.current) {
+      reconnectToastArmedRef.current = true;
+      toast.show("Reconnecting...", {
+        durationMs: 2200,
+        testID: "agent-reconnecting-toast",
+      });
+    }
+  }, [connectionStatus, toast]);
 
   useEffect(() => {
-    if (!showConnectedNotice) {
-      if (connectedNoticeTimeoutRef.current) {
-        clearTimeout(connectedNoticeTimeoutRef.current);
-        connectedNoticeTimeoutRef.current = null;
-      }
+    if (missingAgentState.kind !== "error") {
       return;
     }
-    connectedNoticeTimeoutRef.current = setTimeout(() => {
-      setShowConnectedNotice(false);
-      connectedNoticeTimeoutRef.current = null;
-    }, CONNECTED_NOTICE_DURATION_MS);
-    return () => {
-      if (connectedNoticeTimeoutRef.current) {
-        clearTimeout(connectedNoticeTimeoutRef.current);
-        connectedNoticeTimeoutRef.current = null;
+    toast.error("Failed to refresh agent. Retrying in background.");
+  }, [missingAgentState.kind, toast]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!resolvedAgentId || !isConnected) {
+        return;
       }
-    };
-  }, [showConnectedNotice]);
+      ensureAgentIsInitialized(resolvedAgentId).catch((error) => {
+        console.warn("[AgentScreen] focus sync failed", {
+          agentId: resolvedAgentId,
+          error,
+        });
+      });
+    }, [ensureAgentIsInitialized, isConnected, resolvedAgentId])
+  );
 
   const isGitCheckout = activeExplorerCheckout?.isGit ?? false;
   const isArchivingCurrentAgent = Boolean(
@@ -646,7 +623,6 @@ function AgentScreenContent({
   }, [optimisticStreamItems, streamItems]);
 
   const shouldUseOptimisticStream = isPendingCreateForRoute && optimisticStreamItems.length > 0;
-  const shouldBlockForHistorySync = !shouldUseOptimisticStream && (needsAuthoritativeSync || isHistorySyncing);
 
   const placeholderAgent: Agent | null = useMemo(() => {
     if (!shouldUseOptimisticStream || !resolvedAgentId) {
@@ -687,9 +663,26 @@ function AgentScreenContent({
     };
   }, [resolvedAgentId, serverId, shouldUseOptimisticStream]);
 
-  const effectiveAgent = agent ?? placeholderAgent;
-  const providerLabel = (effectiveAgent?.provider ?? "Provider").replace(/^\w/, (m) =>
-    m.toUpperCase()
+  const viewState = useAgentScreenStateMachine({
+    routeKey: `${serverId}:${resolvedAgentId ?? ""}`,
+    input: {
+      agent: agent ?? null,
+      placeholderAgent,
+      missingAgentState,
+      isConnected,
+      isArchivingCurrentAgent,
+      isHistorySyncing,
+      needsAuthoritativeSync,
+      shouldUseOptimisticStream,
+    },
+  });
+
+  const effectiveAgent = viewState.tag === "ready" ? viewState.agent : null;
+  const agentModel = extractAgentModel(effectiveAgent ?? agent);
+  const modelDisplayValue = agentModel ?? "Unknown";
+  const providerLabel = (effectiveAgent?.provider ?? "Provider").replace(
+    /^\w/,
+    (m) => m.toUpperCase()
   );
   const providerSessionId =
     effectiveAgent?.runtimeInfo?.sessionId ?? effectiveAgent?.persistence?.sessionId ?? null;
@@ -931,34 +924,44 @@ function AgentScreenContent({
     [theme.colors.primary, toast]
   );
 
-  if (!effectiveAgent) {
-    if (missingAgentState.kind === "not_found") {
-      return (
-        <View style={styles.container} testID="agent-not-found">
-          <MenuHeader title="Agent" />
-          <View style={styles.errorContainer}>
-            <Text style={styles.errorText}>Agent not found</Text>
-          </View>
-        </View>
-      );
-    }
-    if (missingAgentState.kind === "error") {
-      return (
-        <View style={styles.container} testID="agent-load-error">
-          <MenuHeader title="Agent" />
-          <View style={styles.errorContainer}>
-            <Text style={styles.errorText}>Failed to load agent</Text>
-            <Text style={styles.statusText}>{missingAgentState.message}</Text>
-          </View>
-        </View>
-      );
-    }
+  const syncBannerMessage =
+    viewState.tag !== "ready"
+      ? null
+      : viewState.syncStatus === "catching_up"
+        ? "Refreshing agent history..."
+        : viewState.syncStatus === "sync_error"
+          ? "Refresh delayed. Retrying in background."
+          : null;
 
+  if (viewState.tag === "not_found") {
+    return (
+      <View style={styles.container} testID="agent-not-found">
+        <MenuHeader title="Agent" />
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorText}>Agent not found</Text>
+        </View>
+      </View>
+    );
+  }
+
+  if (viewState.tag === "error") {
+    return (
+      <View style={styles.container} testID="agent-load-error">
+        <MenuHeader title="Agent" />
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorText}>Failed to load agent</Text>
+          <Text style={styles.statusText}>{viewState.message}</Text>
+        </View>
+      </View>
+    );
+  }
+
+  if (viewState.tag === "boot" || !effectiveAgent) {
     return (
       <View style={styles.container} testID="agent-loading">
         <MenuHeader title="Agent" />
         <View style={styles.errorContainer}>
-          <ActivityIndicator size="small" color={theme.colors.foregroundMuted} />
+          <ActivityIndicator size="large" color={theme.colors.foregroundMuted} />
         </View>
       </View>
     );
@@ -968,7 +971,7 @@ function AgentScreenContent({
     <View style={styles.outerContainer}>
       <FileDropZone
         onFilesDropped={handleFilesDropped}
-        disabled={isInitializing || shouldBlockForHistorySync || isArchivingCurrentAgent}
+        disabled={isArchivingCurrentAgent}
       >
       <View style={styles.container}>
         {/* Header */}
@@ -1149,7 +1152,7 @@ function AgentScreenContent({
 
                   <DropdownMenuItem
                     leading={<RotateCcw size={theme.iconSize.md} color={theme.colors.foreground} />}
-                    disabled={isInitializing || shouldBlockForHistorySync}
+                    disabled={isInitializing}
                     trailing={
                       isInitializing ? (
                         <ActivityIndicator
@@ -1169,75 +1172,31 @@ function AgentScreenContent({
           }
         />
 
-          {(showReconnectNotice || showConnectedNotice) && (
-            <View
-              style={[
-                styles.connectionNotice,
-                showReconnectNotice
-                  ? styles.connectionNoticeReconnecting
-                  : styles.connectionNoticeConnected,
-              ]}
-            >
-              {showConnectedNotice ? (
-                <CheckCircle2
-                  size={theme.iconSize.sm}
-                  color={theme.colors.palette.green[600]}
-                />
-              ) : null}
-              <Text
-                style={[
-                  styles.connectionNoticeText,
-                  showReconnectNotice
-                    ? styles.connectionNoticeTextReconnecting
-                    : styles.connectionNoticeTextConnected,
-                ]}
-              >
-                {showReconnectNotice ? "Reconnecting..." : "Connected"}
-              </Text>
-              {showReconnectNotice ? (
-                <Pressable
-                  onPress={() => {
-                    setShowReconnectNotice(false);
-                    setDismissedReconnectNotice(true);
-                  }}
-                  style={styles.connectionNoticeDismiss}
-                  accessibilityRole="button"
-                  accessibilityLabel="Dismiss reconnecting notice"
-                >
-                  <Text style={styles.connectionNoticeDismissText}>Dismiss</Text>
-                </Pressable>
-              ) : null}
+          {syncBannerMessage ? (
+            <View style={styles.syncBanner} testID="agent-sync-banner">
+              <Text style={styles.syncBannerText}>{syncBannerMessage}</Text>
             </View>
-          )}
+          ) : null}
 
           {/* Content Area with Keyboard Animation */}
           <View style={styles.contentContainer}>
-            {shouldBlockForHistorySync ? (
-              <View style={styles.loadingContainer}>
-                <ActivityIndicator size="large" color={theme.colors.primary} />
-              </View>
-            ) : (
-              <ReanimatedAnimated.View
-                style={[styles.content, animatedKeyboardStyle]}
-              >
-                <AgentStreamView
-                  agentId={effectiveAgent.id}
-                  serverId={serverId}
-                  agent={effectiveAgent}
-                  streamItems={
-                    shouldUseOptimisticStream ? mergedStreamItems : streamItems
-                  }
-                  pendingPermissions={pendingPermissions}
-                />
-              </ReanimatedAnimated.View>
-            )}
+            <ReanimatedAnimated.View
+              style={[styles.content, animatedKeyboardStyle]}
+            >
+              <AgentStreamView
+                agentId={effectiveAgent.id}
+                serverId={serverId}
+                agent={effectiveAgent}
+                streamItems={
+                  shouldUseOptimisticStream ? mergedStreamItems : streamItems
+                }
+                pendingPermissions={pendingPermissions}
+              />
+            </ReanimatedAnimated.View>
           </View>
 
           {/* Agent Input Area */}
-          {agent &&
-            resolvedAgentId &&
-            !shouldBlockForHistorySync &&
-            !isArchivingCurrentAgent && (
+          {resolvedAgentId && !isArchivingCurrentAgent && (
             <AgentInputArea
               agentId={resolvedAgentId}
               serverId={serverId}
@@ -1377,57 +1336,23 @@ const styles = StyleSheet.create((theme) => ({
     flex: 1,
     overflow: "hidden",
   },
-  connectionNotice: {
+  syncBanner: {
     marginHorizontal: theme.spacing[4],
     marginTop: theme.spacing[1],
     marginBottom: theme.spacing[2],
-    minHeight: 32,
     borderRadius: theme.borderRadius.full,
+    paddingVertical: theme.spacing[2],
     paddingHorizontal: theme.spacing[3],
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing[2],
-  },
-  connectionNoticeReconnecting: {
-    backgroundColor: `${theme.colors.palette.yellow[400]}22`,
     borderWidth: theme.borderWidth[1],
-    borderColor: theme.colors.palette.yellow[400],
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.surface1,
   },
-  connectionNoticeConnected: {
-    backgroundColor: theme.colors.palette.green[100],
-    borderWidth: theme.borderWidth[1],
-    borderColor: theme.colors.palette.green[400],
-  },
-  connectionNoticeText: {
+  syncBannerText: {
     fontSize: theme.fontSize.sm,
-    fontWeight: theme.fontWeight.medium,
-  },
-  connectionNoticeTextReconnecting: {
-    color: theme.colors.foreground,
-  },
-  connectionNoticeTextConnected: {
-    color: theme.colors.palette.green[800],
-  },
-  connectionNoticeDismiss: {
-    marginLeft: "auto",
-    paddingVertical: theme.spacing[1],
-    paddingHorizontal: theme.spacing[2],
-    borderRadius: theme.borderRadius.full,
-    backgroundColor: theme.colors.surface0,
-  },
-  connectionNoticeDismissText: {
-    fontSize: theme.fontSize.xs,
-    fontWeight: theme.fontWeight.medium,
     color: theme.colors.foregroundMuted,
   },
   content: {
     flex: 1,
-  },
-  loadingContainer: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 16,
   },
   archivingOverlay: {
     position: "absolute",
