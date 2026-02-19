@@ -21,9 +21,11 @@ const HANDLE_GRAB_VERTICAL_PADDING = 8;
 const HANDLE_OPACITY_VISIBLE = 0.62;
 const HANDLE_OPACITY_HOVERED = 0.78;
 const HANDLE_OPACITY_DRAGGING = 0.9;
+const HANDLE_TRAVEL_TRANSITION_DURATION_MS = 90;
 const HANDLE_FADE_DURATION_MS = 220;
 const HANDLE_WIDTH_TRANSITION_DURATION_MS = 240;
 const HANDLE_SCROLL_VISIBILITY_MS = 1200;
+const HANDLE_SCROLL_ACTIVE_MS = 110;
 
 function readClientY(event: any): number | null {
   const value =
@@ -128,9 +130,11 @@ export function WebDesktopScrollbarOverlay({
   const [isHandleHovered, setIsHandleHovered] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [isScrollVisible, setIsScrollVisible] = useState(false);
+  const [isScrollActive, setIsScrollActive] = useState(false);
   const dragStartOffsetRef = useRef(0);
   const dragStartClientYRef = useRef(0);
   const scrollVisibilityTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scrollActiveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastObservedOffsetRef = useRef<number | null>(null);
   const geometryRef = useRef({
     maxHandleOffset: 0,
@@ -143,6 +147,7 @@ export function WebDesktopScrollbarOverlay({
   const normalizedOffset = inverted
     ? Math.max(0, maxScrollOffset - clamp(metrics.offset, 0, maxScrollOffset))
     : clamp(metrics.offset, 0, maxScrollOffset);
+  const normalizedOffsetRef = useRef(normalizedOffset);
 
   const geometry = useMemo(
     () =>
@@ -165,12 +170,24 @@ export function WebDesktopScrollbarOverlay({
     onScrollToOffsetRef.current = onScrollToOffset;
   }, [onScrollToOffset]);
 
+  useEffect(() => {
+    normalizedOffsetRef.current = normalizedOffset;
+  }, [normalizedOffset]);
+
   const clearScrollVisibilityTimeout = useCallback(() => {
     if (scrollVisibilityTimeoutRef.current === null) {
       return;
     }
     clearTimeout(scrollVisibilityTimeoutRef.current);
     scrollVisibilityTimeoutRef.current = null;
+  }, []);
+
+  const clearScrollActiveTimeout = useCallback(() => {
+    if (scrollActiveTimeoutRef.current === null) {
+      return;
+    }
+    clearTimeout(scrollActiveTimeoutRef.current);
+    scrollActiveTimeoutRef.current = null;
   }, []);
 
   const revealScrollbarFromScroll = useCallback(() => {
@@ -182,10 +199,21 @@ export function WebDesktopScrollbarOverlay({
     }, HANDLE_SCROLL_VISIBILITY_MS);
   }, [clearScrollVisibilityTimeout]);
 
+  const markScrollActivity = useCallback(() => {
+    setIsScrollActive(true);
+    clearScrollActiveTimeout();
+    scrollActiveTimeoutRef.current = setTimeout(() => {
+      setIsScrollActive(false);
+      scrollActiveTimeoutRef.current = null;
+    }, HANDLE_SCROLL_ACTIVE_MS);
+  }, [clearScrollActiveTimeout]);
+
   useEffect(() => {
     if (!enabled || !geometry.isVisible) {
       setIsScrollVisible(false);
+      setIsScrollActive(false);
       clearScrollVisibilityTimeout();
+      clearScrollActiveTimeout();
       lastObservedOffsetRef.current = null;
       return;
     }
@@ -199,19 +227,23 @@ export function WebDesktopScrollbarOverlay({
       return;
     }
     revealScrollbarFromScroll();
+    markScrollActivity();
   }, [
+    clearScrollActiveTimeout,
     clearScrollVisibilityTimeout,
     enabled,
     geometry.isVisible,
+    markScrollActivity,
     normalizedOffset,
     revealScrollbarFromScroll,
   ]);
 
   useEffect(
     () => () => {
+      clearScrollActiveTimeout();
       clearScrollVisibilityTimeout();
     },
-    [clearScrollVisibilityTimeout]
+    [clearScrollActiveTimeout, clearScrollVisibilityTimeout]
   );
 
   const applyDragDelta = useCallback(
@@ -241,7 +273,7 @@ export function WebDesktopScrollbarOverlay({
       onMoveShouldSetPanResponder: () => true,
       onPanResponderTerminationRequest: () => false,
       onPanResponderGrant: () => {
-        dragStartOffsetRef.current = normalizedOffset;
+        dragStartOffsetRef.current = normalizedOffsetRef.current;
         setIsDragging(true);
       },
       onPanResponderMove: (_event, gestureState) => {
@@ -254,7 +286,7 @@ export function WebDesktopScrollbarOverlay({
         setIsDragging(false);
       },
     });
-  }, [applyDragDelta, isWeb, normalizedOffset]);
+  }, [applyDragDelta, isWeb]);
 
   const startWebDrag = useCallback(
     (event: any) => {
@@ -268,11 +300,11 @@ export function WebDesktopScrollbarOverlay({
       event?.preventDefault?.();
       event?.stopPropagation?.();
       event?.nativeEvent?.preventDefault?.();
-      dragStartOffsetRef.current = normalizedOffset;
+      dragStartOffsetRef.current = normalizedOffsetRef.current;
       dragStartClientYRef.current = clientY;
       setIsDragging(true);
     },
-    [isWeb, normalizedOffset]
+    [isWeb]
   );
 
   const handleGrabHoverIn = useCallback(() => {
@@ -329,26 +361,33 @@ export function WebDesktopScrollbarOverlay({
     ? theme.colors.palette.zinc[500]
     : theme.colors.palette.zinc[700];
   const handleCursor = isDragging ? "grabbing" : "grab";
-  const grabAreaTop = Math.max(0, geometry.handleOffset - HANDLE_GRAB_VERTICAL_PADDING);
-  const grabAreaHeight = Math.min(
-    metrics.viewportSize - grabAreaTop,
+  const handleTravelDurationMs =
+    isDragging || isScrollActive ? 0 : HANDLE_TRAVEL_TRANSITION_DURATION_MS;
+  const thumbRegionOffset = Math.max(0, geometry.handleOffset - HANDLE_GRAB_VERTICAL_PADDING);
+  const thumbRegionHeight = Math.min(
+    metrics.viewportSize - thumbRegionOffset,
     geometry.handleSize + HANDLE_GRAB_VERTICAL_PADDING * 2
   );
+  const handleInsetTop = Math.max(0, (thumbRegionHeight - geometry.handleSize) / 2);
 
   return (
     <View style={styles.overlay} pointerEvents="box-none">
       <View
         style={[
-          styles.handleGrabArea,
+          styles.thumbRegion,
           {
-            top: grabAreaTop,
-            height: grabAreaHeight,
+            top: 0,
+            height: thumbRegionHeight,
+            transform: [{ translateY: thumbRegionOffset }],
           },
           isWeb &&
             ({
               cursor: handleCursor,
               touchAction: "none",
               userSelect: "none",
+              transitionProperty: "transform",
+              transitionDuration: `${handleTravelDurationMs}ms`,
+              transitionTimingFunction: "linear",
             } as any),
         ]}
         pointerEvents={handleVisible ? "auto" : "none"}
@@ -362,30 +401,28 @@ export function WebDesktopScrollbarOverlay({
               onMouseLeave: handleGrabHoverOut,
             } as any)
           : null)}
-      />
-      <View
-        style={[
-          styles.handle,
-          {
-            top: geometry.handleOffset,
-            height: geometry.handleSize,
-            width: handleWidth,
-            backgroundColor: handleColor,
-            opacity: handleOpacity,
-          },
-          isWeb &&
-            ({
-              cursor: handleCursor,
-              touchAction: "none",
-              userSelect: "none",
-              transitionProperty: "opacity, width, background-color",
-              transitionDuration: `${HANDLE_FADE_DURATION_MS}ms, ${HANDLE_WIDTH_TRANSITION_DURATION_MS}ms, ${HANDLE_FADE_DURATION_MS}ms`,
-              transitionTimingFunction:
-                "ease-out, cubic-bezier(0.22, 0.75, 0.2, 1), ease-out",
-            } as any),
-        ]}
-        pointerEvents="none"
-      />
+      >
+        <View
+          style={[
+            styles.handle,
+            {
+              marginTop: handleInsetTop,
+              height: geometry.handleSize,
+              width: handleWidth,
+              backgroundColor: handleColor,
+              opacity: handleOpacity,
+            },
+            isWeb &&
+              ({
+                transitionProperty: "opacity, width, background-color",
+                transitionDuration: `${HANDLE_FADE_DURATION_MS}ms, ${HANDLE_WIDTH_TRANSITION_DURATION_MS}ms, ${HANDLE_FADE_DURATION_MS}ms`,
+                transitionTimingFunction:
+                  "ease-out, cubic-bezier(0.22, 0.75, 0.2, 1), ease-out",
+              } as any),
+          ]}
+          pointerEvents="none"
+        />
+      </View>
     </View>
   );
 }
@@ -402,11 +439,11 @@ const styles = StyleSheet.create(() => ({
     zIndex: 10,
   },
   handle: {
-    position: "absolute",
     width: HANDLE_WIDTH_IDLE,
     borderRadius: 999,
+    alignSelf: "center",
   },
-  handleGrabArea: {
+  thumbRegion: {
     position: "absolute",
     right: -3,
     width: HANDLE_GRAB_WIDTH,

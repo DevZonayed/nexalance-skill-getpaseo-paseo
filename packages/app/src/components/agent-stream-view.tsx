@@ -703,7 +703,6 @@ export function AgentStreamView({
                 offset: nextOffset,
                 animated: false,
               });
-              streamScrollbarMetrics.setOffset(nextOffset);
             }}
           />
 

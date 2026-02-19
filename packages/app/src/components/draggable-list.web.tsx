@@ -210,7 +210,6 @@ export function DraggableList<T>({
         metrics={scrollbarMetrics}
         onScrollToOffset={(nextOffset) => {
           scrollViewRef.current?.scrollTo({ y: nextOffset, animated: false });
-          scrollbarMetrics.setOffset(nextOffset);
         }}
       />
     </View>

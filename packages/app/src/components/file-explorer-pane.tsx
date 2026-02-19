@@ -764,7 +764,6 @@ export function FileExplorerPane({ serverId, agentId }: FileExplorerPaneProps) {
                     offset: nextOffset,
                     animated: false,
                   });
-                  treeScrollbarMetrics.setOffset(nextOffset);
                 }}
               />
             </Animated.View>
@@ -827,7 +826,6 @@ export function FileExplorerPane({ serverId, agentId }: FileExplorerPaneProps) {
                     offset: nextOffset,
                     animated: false,
                   });
-                  treeScrollbarMetrics.setOffset(nextOffset);
                 }}
               />
             </View>

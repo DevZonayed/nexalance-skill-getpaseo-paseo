@@ -1413,7 +1413,6 @@ export function GitDiffPane({ serverId, agentId, cwd }: GitDiffPaneProps) {
               offset: nextOffset,
               animated: false,
             });
-            diffScrollbarMetrics.setOffset(nextOffset);
           }}
         />
       </View>
