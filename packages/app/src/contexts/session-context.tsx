@@ -29,7 +29,6 @@ import type { AgentLifecycleStatus } from "@server/shared/agent-lifecycle";
 import type { DaemonClient, ConnectionState } from "@server/client/daemon-client";
 import { File } from "expo-file-system";
 import { useDaemonConnections } from "./daemon-connections-context";
-import type { ActiveConnection } from "./daemon-connections-context";
 import {
   useSessionStore,
   type Agent,
@@ -204,24 +203,66 @@ const pushHistory = (history: string[], path: string): string[] => {
   return [...normalizedHistory, path];
 };
 
-interface SessionProviderProps {
+interface SessionProviderSharedProps {
   children: ReactNode;
-  serverUrl: string;
   serverId: string;
-  activeConnection: ActiveConnection | null;
+}
+
+interface SessionProviderUrlProps extends SessionProviderSharedProps {
+  serverUrl: string;
   daemonPublicKeyB64?: string;
 }
 
-// SessionProvider: Daemon client message handler that updates Zustand store
-export function SessionProvider({
+interface SessionProviderClientProps extends SessionProviderSharedProps {
+  client: DaemonClient;
+}
+
+export type SessionProviderProps = SessionProviderUrlProps | SessionProviderClientProps;
+
+function SessionProviderWithUrl({
   children,
-  serverUrl,
   serverId,
-  activeConnection,
+  serverUrl,
   daemonPublicKeyB64,
-}: SessionProviderProps) {
-  const queryClient = useQueryClient();
+}: SessionProviderUrlProps) {
   const client = useDaemonClient(serverUrl, { daemonPublicKeyB64 });
+  return (
+    <SessionProviderInternal
+      children={children}
+      serverId={serverId}
+      client={client}
+    />
+  );
+}
+
+function SessionProviderWithClient({
+  children,
+  serverId,
+  client,
+}: SessionProviderClientProps) {
+  return (
+    <SessionProviderInternal
+      children={children}
+      serverId={serverId}
+      client={client}
+    />
+  );
+}
+
+// SessionProvider: Daemon client message handler that updates Zustand store
+export function SessionProvider(props: SessionProviderProps) {
+  if ("client" in props) {
+    return <SessionProviderWithClient {...props} />;
+  }
+  return <SessionProviderWithUrl {...props} />;
+}
+
+function SessionProviderInternal({
+  children,
+  serverId,
+  client,
+}: SessionProviderClientProps) {
+  const queryClient = useQueryClient();
   const [connectionSnapshot, setConnectionSnapshot] =
     useState<DaemonConnectionSnapshot>(() =>
       mapConnectionState(client.getConnectionState(), client.lastError)
@@ -442,41 +483,6 @@ export function SessionProvider({
     updateSessionClient(serverId, client);
   }, [serverId, client, updateSessionClient]);
 
-  // Connection status tracking
-  useEffect(() => {
-    if (connectionSnapshot.isConnected) {
-      updateConnectionStatus(serverId, {
-        status: "online",
-        activeConnection,
-        lastOnlineAt: new Date().toISOString(),
-      });
-      return;
-    }
-
-    if (connectionSnapshot.isConnecting) {
-      updateConnectionStatus(serverId, { status: "connecting", activeConnection });
-      return;
-    }
-
-    if (connectionSnapshot.lastError) {
-      updateConnectionStatus(serverId, {
-        status: "error",
-        activeConnection,
-        lastError: connectionSnapshot.lastError,
-      });
-      return;
-    }
-
-    updateConnectionStatus(serverId, { status: "offline", activeConnection });
-  }, [
-    serverId,
-    updateConnectionStatus,
-    connectionSnapshot.isConnected,
-    connectionSnapshot.isConnecting,
-    connectionSnapshot.lastError,
-    activeConnection,
-  ]);
-
   // If the client drops mid-initialization, clear pending flags
   useEffect(() => {
     if (!connectionSnapshot.isConnected) {
@@ -615,12 +621,6 @@ export function SessionProvider({
       setAgentTimelineCursor,
     ]
   );
-
-  useEffect(() => {
-    return () => {
-      updateConnectionStatus(serverId, { status: "offline", activeConnection, lastError: null });
-    };
-  }, [serverId, updateConnectionStatus, activeConnection]);
 
   const updateExplorerState = useCallback(
     (agentId: string, updater: (state: any) => any) => {
