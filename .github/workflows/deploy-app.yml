@@ -2,11 +2,8 @@ name: Deploy App
 
 on:
   push:
-    branches: [main]
-    paths:
-      - 'packages/app/**'
-      - 'packages/server/src/**'
-      - '.github/workflows/deploy-app.yml'
+    tags:
+      - 'v*'
   workflow_dispatch:
 
 jobs:
