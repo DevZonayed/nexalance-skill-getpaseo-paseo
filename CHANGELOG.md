@@ -1,5 +1,36 @@
 # Changelog
 
+## [0.1.14] - 2026-02-19
+### Added
+- Added Claude `/rewind` command support.
+- Added slash command access in the draft agent composer.
+- Added `@` workspace file autocomplete in chat prompts.
+- Added support for pasting images directly into prompt attachments.
+- Added optimistic image previews for pending user message attachments.
+- Added shared desktop/web overlay scroll handles, including file preview panes.
+
+### Improved
+- Improved worktree flow after shipping, including better merged PR detection.
+- Improved draft workflow by enabling the explorer sidebar immediately after CWD selection.
+- Improved new worktree-agent defaults by prefilling CWD to the main repository.
+- Improved desktop command autocomplete behavior to match combobox interactions.
+- Improved git sync UX by simplifying sync labels and only showing Sync when a branch diverges from origin.
+- Improved desktop settings and permissions UX in Tauri.
+- Improved scrollbar visibility, drag interactions, tracking, and animation timing on web/desktop.
+
+### Fixed
+- Fixed worktree archive/setup lifecycle issues, including terminal cleanup and archive timing.
+- Fixed worktree path collisions by hashing CWD for collision-safe worktree roots.
+- Fixed terminal sizing when switching back to an agent session.
+- Fixed accidental terminal closure risk by adding confirmation for running shell commands.
+- Fixed archive loading-state consistency across the sidebar and agent screen.
+- Fixed autocomplete popover stability and workspace suggestion ranking.
+- Fixed dictation timeouts caused by dangling non-final segments.
+- Fixed server lock ownership when spawned as a child process by using parent PID ownership.
+- Fixed hidden directory leakage in server CWD suggestions.
+- Fixed agent attention notification payload consistency across providers.
+- Fixed daemon version badge visibility in settings when daemon version data is unavailable.
+
 ## [0.1.9] - 2026-02-17
 ### Improved
 - Unified structured-output generation through a single shared schema-validation and retry pipeline.

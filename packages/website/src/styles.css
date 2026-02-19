@@ -13,6 +13,68 @@
   font-size: 0.875em;
 }
 
+/* Markdown rendering styles for /changelog */
+.changelog-markdown {
+  color: rgba(250, 250, 250, 0.82);
+  line-height: 1.7;
+}
+
+.changelog-markdown h1 {
+  color: var(--color-foreground);
+  font-size: 2rem;
+  line-height: 1.2;
+  font-weight: 600;
+  margin-bottom: 1rem;
+}
+
+.changelog-markdown h2 {
+  color: var(--color-foreground);
+  font-size: 1.5rem;
+  line-height: 1.3;
+  font-weight: 600;
+  margin-top: 2rem;
+  margin-bottom: 0.75rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.changelog-markdown h3 {
+  color: var(--color-foreground);
+  font-size: 1.125rem;
+  line-height: 1.4;
+  font-weight: 600;
+  margin-top: 1.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.changelog-markdown p {
+  margin-top: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.changelog-markdown ul {
+  list-style: disc;
+  margin-left: 1.25rem;
+  margin-top: 0.75rem;
+  margin-bottom: 0.75rem;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.changelog-markdown li {
+  padding-left: 0.125rem;
+}
+
+.changelog-markdown a {
+  color: var(--color-foreground);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.changelog-markdown a:hover {
+  color: rgba(250, 250, 250, 0.8);
+}
+
 @theme {
   --color-background: #0a0a0a;
   --color-foreground: #fafafa;

@@ -87,6 +87,12 @@ function Nav() {
           Docs
         </a>
         <a
+          href="/changelog"
+          className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+        >
+          Changelog
+        </a>
+        <a
           href="https://github.com/getpaseo/paseo"
           target="_blank"
           rel="noopener noreferrer"
