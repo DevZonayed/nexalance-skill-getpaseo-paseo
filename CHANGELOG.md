@@ -2,14 +2,11 @@
 
 ## 0.1.15 - 2026-02-19
 ### Improved
-- Improved website release visibility with a public changelog page plus cleaner GitHub navigation and changelog heading presentation.
-- Improved website onboarding by redesigning the homepage get-started flow into a clearer two-step experience.
 - Improved app draft/new-agent UX by simplifying working directory placeholder and empty-state messaging and enabling drag interactions in previously unhandled draft areas on Tauri.
-- Improved sidebar structure by renaming `Sidebar` to `LeftSidebar` and hiding empty filter groups.
 
 ### Fixed
 - Fixed archived-agent navigation by redirecting archived agent routes to draft.
-- Fixed duplicate `/rewind` user-message behavior and added an end-to-end regression test.
+- Fixed duplicate `/rewind` user-message behavior.
 
 ### CI / Docs
 - Updated release automation to sync GitHub release notes from `CHANGELOG.md`.
