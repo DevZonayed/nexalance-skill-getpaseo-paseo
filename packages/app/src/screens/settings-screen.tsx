@@ -432,26 +432,15 @@ function resolveAppVersion(): string | null {
   return null;
 }
 
-function formatVersionBadgeText(params: { daemonVersion: string | null; appVersion: string | null }): string {
-  const appVersion = params.appVersion?.trim();
-  if (!appVersion) {
-    if (Platform.OS === "web") {
-      return "App version unavailable";
-    }
-    return "App unavailable";
-  }
-
-  const daemonVersion = params.daemonVersion?.trim();
+function formatDaemonVersionBadge(version: string | null): string | null {
+  const daemonVersion = version?.trim();
   if (!daemonVersion) {
-    if (Platform.OS === "web") {
-      return `Daemon unavailable | App ${appVersion}`;
-    }
-    return `D unavailable | A ${appVersion}`;
+    return null;
   }
-  if (Platform.OS === "web") {
-    return `Daemon ${daemonVersion} | App ${appVersion}`;
+  if (daemonVersion.startsWith("v")) {
+    return daemonVersion;
   }
-  return `D ${daemonVersion} | A ${appVersion}`;
+  return `v${daemonVersion}`;
 }
 
 export default function SettingsScreen() {
@@ -741,7 +730,6 @@ export default function SettingsScreen() {
                   <DaemonCard
                     key={daemon.serverId}
                     daemon={daemon}
-                    appVersion={appVersion}
                     connectionStatus={connectionStatus}
                     activeConnection={activeConnection}
                     lastError={lastConnectionError}
@@ -876,7 +864,6 @@ export default function SettingsScreen() {
           <HostDetailModal
             visible={Boolean(editingDaemonLive)}
             host={editingDaemonLive}
-            appVersion={appVersion}
             connectionStatus={editingServerId ? (connectionStates.get(editingServerId)?.status ?? "idle") : "idle"}
             activeConnection={editingServerId ? (connectionStates.get(editingServerId)?.activeConnection ?? null) : null}
             lastError={editingServerId ? (connectionStates.get(editingServerId)?.lastError ?? null) : null}
@@ -949,7 +936,7 @@ export default function SettingsScreen() {
                   accessibilityRole="button"
                   accessibilityLabel="Refresh desktop permissions"
                 >
-                  <RotateCw size={16} color={theme.colors.foregroundMuted} />
+                  <RotateCw size={theme.iconSize.md} color={theme.colors.foregroundMuted} />
                 </Pressable>
               </View>
               <View style={styles.audioCard}>
@@ -995,7 +982,6 @@ export default function SettingsScreen() {
 interface HostDetailModalProps {
   visible: boolean;
   host: HostProfile | null;
-  appVersion: string | null;
   connectionStatus: ConnectionStatus;
   activeConnection: ActiveConnection | null;
   lastError: string | null;
@@ -1013,7 +999,6 @@ interface HostDetailModalProps {
 function HostDetailModal({
   visible,
   host,
-  appVersion,
   connectionStatus,
   activeConnection,
   lastError,
@@ -1157,14 +1142,14 @@ function HostDetailModal({
   const connectionBadge = (() => {
     if (!activeConnection) return null;
     if (activeConnection.type === "relay") {
-      return { icon: <Globe size={12} color={theme.colors.foregroundMuted} />, text: "Relay" };
+      return { icon: <Globe size={theme.iconSize.xs} color={theme.colors.foregroundMuted} />, text: "Relay" };
     }
     return {
-      icon: <Monitor size={12} color={theme.colors.foregroundMuted} />,
+      icon: <Monitor size={theme.iconSize.xs} color={theme.colors.foregroundMuted} />,
       text: activeConnection.display,
     };
   })();
-  const versionBadgeText = formatVersionBadgeText({ daemonVersion, appVersion });
+  const versionBadgeText = formatDaemonVersionBadge(daemonVersion);
   const connectionError = typeof lastError === "string" && lastError.trim().length > 0 ? lastError.trim() : null;
 
   const handleDraftLabelChange = useCallback((nextValue: string) => {
@@ -1206,11 +1191,13 @@ function HostDetailModal({
               </Text>
             </View>
           ) : null}
-          <View style={styles.versionPill}>
-            <Text style={styles.connectionText} numberOfLines={1}>
-              {versionBadgeText}
-            </Text>
-          </View>
+          {versionBadgeText ? (
+            <View style={styles.versionPill}>
+              <Text style={styles.connectionText} numberOfLines={1}>
+                {versionBadgeText}
+              </Text>
+            </View>
+          ) : null}
         </View>
         {connectionError ? (
           <Text style={{ color: theme.colors.palette.red[300], fontSize: theme.fontSize.xs }}>
@@ -1274,13 +1261,13 @@ function HostDetailModal({
                   pressed && { opacity: 0.85 },
                 ]}
               >
-                <Settings size={14} color={theme.colors.foregroundMuted} />
+                <Settings size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
                 <Text style={styles.advancedTriggerText}>Advanced</Text>
               </DropdownMenuTrigger>
               <DropdownMenuContent side="top" align="start" width={220}>
                 <DropdownMenuItem
                   onSelect={handleRestartPress}
-                  leading={<RotateCw size={16} color={theme.colors.foregroundMuted} />}
+                  leading={<RotateCw size={theme.iconSize.md} color={theme.colors.foregroundMuted} />}
                   status={isRestarting ? "pending" : "idle"}
                   pendingLabel="Restarting..."
                   disabled={!daemonClient || !isConnectedRef.current}
@@ -1289,7 +1276,7 @@ function HostDetailModal({
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   onSelect={() => { if (host) onRemoveHost(host); }}
-                  leading={<Trash2 size={16} color={theme.colors.destructive} />}
+                  leading={<Trash2 size={theme.iconSize.md} color={theme.colors.destructive} />}
                 >
                   Remove host
                 </DropdownMenuItem>
@@ -1402,7 +1389,7 @@ function DesktopPermissionRow({
       <View style={styles.permissionRowActions}>
         {isGranted ? (
           <View style={styles.permissionStatusPill}>
-            <Check size={14} color={theme.colors.foregroundMuted} />
+            <Check size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
             <Text style={styles.permissionStatusText}>Granted</Text>
           </View>
         ) : (
@@ -1486,7 +1473,6 @@ function ConnectionRow({
 
 interface DaemonCardProps {
   daemon: HostProfile;
-  appVersion: string | null;
   connectionStatus: ConnectionStatus;
   activeConnection: ActiveConnection | null;
   lastError: string | null;
@@ -1495,7 +1481,6 @@ interface DaemonCardProps {
 
 function DaemonCard({
   daemon,
-  appVersion,
   connectionStatus,
   activeConnection,
   lastError,
@@ -1531,14 +1516,14 @@ function DaemonCard({
   const connectionBadge = (() => {
     if (!activeConnection) return null;
     if (activeConnection.type === "relay") {
-      return { icon: <Globe size={12} color={theme.colors.foregroundMuted} />, text: "Relay" };
+      return { icon: <Globe size={theme.iconSize.xs} color={theme.colors.foregroundMuted} />, text: "Relay" };
     }
     return {
-      icon: <Monitor size={12} color={theme.colors.foregroundMuted} />,
+      icon: <Monitor size={theme.iconSize.xs} color={theme.colors.foregroundMuted} />,
       text: activeConnection.display,
     };
   })();
-  const versionBadgeText = formatVersionBadgeText({ daemonVersion, appVersion });
+  const versionBadgeText = formatDaemonVersionBadge(daemonVersion);
 
   return (
     <View
@@ -1566,11 +1551,13 @@ function DaemonCard({
                 ) : null}
               </View>
             ) : null}
-            <View style={styles.versionPill}>
-              <Text style={styles.connectionText} numberOfLines={1}>
-                {versionBadgeText}
-              </Text>
-            </View>
+            {versionBadgeText ? (
+              <View style={styles.versionPill}>
+                <Text style={styles.connectionText} numberOfLines={1}>
+                  {versionBadgeText}
+                </Text>
+              </View>
+            ) : null}
 
             <Pressable
               style={({ pressed, hovered }) => [
@@ -1584,7 +1571,7 @@ function DaemonCard({
             >
               {({ pressed, hovered }) => (
                 <Settings
-                  size={16}
+                  size={theme.iconSize.md}
                   color={pressed || hovered ? theme.colors.foreground : theme.colors.foregroundMuted}
                 />
               )}
