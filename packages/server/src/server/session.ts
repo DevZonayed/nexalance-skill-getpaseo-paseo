@@ -1674,6 +1674,10 @@ export class Session {
   private async handleArchiveAgentRequest(agentId: string, requestId: string): Promise<void> {
     this.sessionLogger.info({ agentId }, `Archiving agent ${agentId}`)
 
+    if (this.agentManager.getAgent(agentId)) {
+      await this.interruptAgentIfRunning(agentId)
+    }
+
     const archivedAt = new Date().toISOString()
 
     const existing = await this.agentStorage.get(agentId)
@@ -1715,6 +1719,11 @@ export class Session {
       archivedAgentCwd: archivedRecord.cwd,
       requestId,
     })
+  }
+
+  private async getArchivedAt(agentId: string): Promise<string | null> {
+    const record = await this.agentStorage.get(agentId)
+    return record?.archivedAt ?? null
   }
 
   private async handleUpdateAgentRequest(
@@ -2305,6 +2314,16 @@ export class Session {
       await this.ensureAgentLoaded(agentId)
     } catch (error) {
       this.handleAgentRunError(agentId, error, 'Failed to initialize agent before sending prompt')
+      return
+    }
+
+    const archivedAt = await this.getArchivedAt(agentId)
+    if (archivedAt) {
+      this.handleAgentRunError(
+        agentId,
+        new Error(`Agent ${agentId} is archived`),
+        'Refusing to send prompt to archived agent'
+      )
       return
     }
 
@@ -5249,6 +5268,20 @@ export class Session {
 
     try {
       const agentId = resolved.agentId
+
+      const archivedAt = await this.getArchivedAt(agentId)
+      if (archivedAt) {
+        this.emit({
+          type: 'send_agent_message_response',
+          payload: {
+            requestId: msg.requestId,
+            agentId,
+            accepted: false,
+            error: `Agent ${agentId} is archived`,
+          },
+        })
+        return
+      }
 
       await this.ensureAgentLoaded(agentId)
       await this.interruptAgentIfRunning(agentId)

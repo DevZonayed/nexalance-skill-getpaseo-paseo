@@ -196,6 +196,64 @@ describe("daemon client E2E", () => {
     await expect(ctx.client.archiveAgent(randomUUID())).rejects.toThrow();
   }, 10000);
 
+  test("interrupts a running agent before archiving", async () => {
+    const cwd = tmpCwd();
+    try {
+      const created = await ctx.client.createAgent({
+        config: {
+          ...getFullAccessConfig("codex"),
+          cwd,
+        },
+      });
+
+      await ctx.client.sendMessage(
+        created.id,
+        "Use your shell tool to run `sleep 30` and then confirm when done."
+      );
+      await ctx.client.waitForAgentUpsert(
+        created.id,
+        (snapshot) => snapshot.status === "running",
+        15000
+      );
+
+      const result = await ctx.client.archiveAgent(created.id);
+      expect(result.archivedAt).toBeTruthy();
+
+      const archived = await ctx.client.fetchAgent(created.id);
+      expect(archived).not.toBeNull();
+      expect(archived?.archivedAt).toBeTruthy();
+      expect(archived?.status).not.toBe("running");
+
+      const runningAgents = await ctx.client.fetchAgents({
+        filter: { includeArchived: true, statuses: ["running"] },
+      });
+      expect(
+        runningAgents.entries.some((entry) => entry.agent.id === created.id)
+      ).toBe(false);
+    } finally {
+      rmSync(cwd, { recursive: true, force: true });
+    }
+  }, 60000);
+
+  test("rejects send_agent_message for archived agents", async () => {
+    const cwd = tmpCwd();
+    try {
+      const created = await ctx.client.createAgent({
+        config: {
+          ...getFullAccessConfig("codex"),
+          cwd,
+        },
+      });
+
+      await ctx.client.archiveAgent(created.id);
+      await expect(
+        ctx.client.sendMessage(created.id, "Say hello and nothing else")
+      ).rejects.toThrow("archived");
+    } finally {
+      rmSync(cwd, { recursive: true, force: true });
+    }
+  }, 30000);
+
   test("returns home-scoped directory suggestions", async () => {
     const insideHomeDir = mkdtempSync(path.join(homedir(), "paseo-dir-suggestion-"));
     const outsideHomeDir = mkdtempSync(path.join(tmpdir(), "paseo-dir-suggestion-outside-"));

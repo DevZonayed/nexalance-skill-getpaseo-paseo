@@ -117,7 +117,7 @@ export function createAgentCommand(): Command {
     .command('archive')
     .description('Archive an agent (soft-delete)')
     .argument('<id>', 'Agent ID (or prefix)')
-    .option('--force', 'Force archive running agent')
+    .option('--force', 'Force archive running agent (interrupts active run first)')
     .option('--json', 'Output in JSON format')
     .option('--host <host>', 'Daemon host:port (default: localhost:6767)')
     .action(withOutput(runArchiveCommand))
