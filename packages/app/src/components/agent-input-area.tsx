@@ -503,8 +503,7 @@ export function AgentInputArea({
 
     updateQueue((current) => current.filter((q) => q.id !== id))
 
-    // Cancels current agent run before sending queued prompt
-    handleCancelAgent()
+    // Reuse the regular send path; server-side send atomically interrupts any active run.
     try {
       await submitMessage(item.text, item.images)
     } catch (error) {
