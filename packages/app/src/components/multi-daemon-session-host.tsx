@@ -24,7 +24,7 @@ function ManagedDaemonSession({ daemon }: { daemon: HostProfile }) {
     );
   }, [daemon.serverId, hasConnectionRecord, snapshot, updateConnectionStatus]);
 
-  if (!snapshot?.activeConnection || !client) {
+  if (!client) {
     return null;
   }
 

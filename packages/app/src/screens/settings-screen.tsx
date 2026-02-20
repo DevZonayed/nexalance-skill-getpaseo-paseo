@@ -22,6 +22,7 @@ import { measureConnectionLatency } from "@/utils/test-daemon-connection";
 import { confirmDialog } from "@/utils/confirm-dialog";
 import { MenuHeader } from "@/components/headers/menu-header";
 import { useSessionStore } from "@/stores/session-store";
+import { useHostRuntimeSession } from "@/runtime/host-runtime";
 import { AddHostMethodModal } from "@/components/add-host-method-modal";
 import { AddHostModal } from "@/components/add-host-modal";
 import { PairLinkModal } from "@/components/pair-link-modal";
@@ -1035,10 +1036,11 @@ function HostDetailModal({
   );
 
   // Restart logic (moved from DaemonCard)
-  const daemonClient = useSessionStore((state) => host ? (state.sessions[host.serverId]?.client ?? null) : null);
-  const daemonConnection = useSessionStore((state) => host ? (state.sessions[host.serverId]?.connection ?? null) : null);
+  const { client: runtimeClient, isConnected } = useHostRuntimeSession(
+    host?.serverId ?? ""
+  );
+  const daemonClient = runtimeClient;
   const daemonVersion = useSessionStore((state) => host ? (state.sessions[host.serverId]?.serverInfo?.version ?? null) : null);
-  const isConnected = daemonConnection?.isConnected ?? false;
   const isConnectedRef = useRef(isConnected);
   const [isRestarting, setIsRestarting] = useState(false);
 

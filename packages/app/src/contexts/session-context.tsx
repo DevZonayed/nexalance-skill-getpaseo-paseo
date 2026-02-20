@@ -33,7 +33,6 @@ import {
   useSessionStore,
   type Agent,
   type SessionState,
-  type DaemonConnectionSnapshot,
 } from "@/stores/session-store";
 import { useDraftStore } from "@/stores/draft-store";
 import type { AgentDirectoryEntry } from "@/types/agent-directory";
@@ -74,6 +73,12 @@ const derivePendingPermissionKey = (
 
 const HISTORY_STALE_AFTER_MS = 60_000;
 
+type SessionConnectionSnapshot = {
+  isConnected: boolean;
+  isConnecting: boolean;
+  lastError: string | null;
+};
+
 const findLatestAssistantMessageText = (items: StreamItem[]): string | null => {
   for (let i = items.length - 1; i >= 0; i -= 1) {
     const item = items[i];
@@ -87,7 +92,7 @@ const findLatestAssistantMessageText = (items: StreamItem[]): string | null => {
 const mapConnectionState = (
   state: ConnectionState,
   lastError: string | null
-): DaemonConnectionSnapshot => ({
+): SessionConnectionSnapshot => ({
   isConnected: state.status === "connected",
   isConnecting: state.status === "connecting",
   lastError: state.status === "disconnected" ? state.reason ?? lastError : null,
@@ -264,10 +269,10 @@ function SessionProviderInternal({
 }: SessionProviderClientProps) {
   const queryClient = useQueryClient();
   const [connectionSnapshot, setConnectionSnapshot] =
-    useState<DaemonConnectionSnapshot>(() =>
+    useState<SessionConnectionSnapshot>(() =>
       mapConnectionState(client.getConnectionState(), client.lastError)
     );
-  const { updateConnectionStatus } = useDaemonConnections();
+  const { markAgentListReady } = useDaemonConnections();
 
   // Zustand store actions
   const initializeSession = useSessionStore((state) => state.initializeSession);
@@ -312,9 +317,6 @@ function SessionProviderInternal({
   const clearDraftInput = useDraftStore((state) => state.clearDraftInput);
   const setQueuedMessages = useSessionStore((state) => state.setQueuedMessages);
   const updateSessionClient = useSessionStore((state) => state.updateSessionClient);
-  const updateSessionConnection = useSessionStore(
-    (state) => state.updateSessionConnection
-  );
   const updateSessionServerInfo = useSessionStore((state) => state.updateSessionServerInfo);
 
   // Track focused agent for heartbeat
@@ -469,10 +471,6 @@ function SessionProviderInternal({
     }
     wasConnectedRef.current = connectionSnapshot.isConnected;
   }, [serverId, connectionSnapshot.isConnected, bumpHistorySyncGeneration]);
-
-  useEffect(() => {
-    updateSessionConnection(serverId, connectionSnapshot);
-  }, [serverId, connectionSnapshot, updateSessionConnection]);
 
   // Initialize session in store
   useEffect(() => {
@@ -855,11 +853,7 @@ function SessionProviderInternal({
         setPendingPermissions(serverId, nextPendingPermissions);
         setInitializingAgents(serverId, new Map());
         setHasHydratedAgents(serverId, true);
-        updateConnectionStatus(serverId, {
-          status: "online",
-          lastOnlineAt: new Date().toISOString(),
-          agentListReady: true,
-        });
+        markAgentListReady(serverId, true);
       } catch (err) {
         if (cancelled) {
           return;
@@ -885,7 +879,7 @@ function SessionProviderInternal({
     setHasHydratedAgents,
     setInitializingAgents,
     setPendingPermissions,
-    updateConnectionStatus,
+    markAgentListReady,
   ]);
 
   // Daemon message handlers - directly update Zustand store
@@ -1420,7 +1414,6 @@ function SessionProviderInternal({
     setPendingPermissions,
     setFileExplorer,
     setHasHydratedAgents,
-    updateConnectionStatus,
     clearDraftInput,
     notifyAgentAttention,
     applyAgentUpdatePayload,

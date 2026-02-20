@@ -41,8 +41,11 @@ import {
 } from "@/contexts/explorer-sidebar-animation-context";
 import { usePanelStore } from "@/stores/panel-store";
 import { useDaemonConnections } from "@/contexts/daemon-connections-context";
-import type { ConnectionStatus } from "@/contexts/daemon-connections-context";
 import { useSessionStore } from "@/stores/session-store";
+import {
+  useHostRuntimeSession,
+  type HostRuntimeConnectionStatus,
+} from "@/runtime/host-runtime";
 import { useCreateFlowStore } from "@/stores/create-flow-store";
 import type { Agent } from "@/contexts/session-context";
 import type { StreamItem } from "@/types/stream";
@@ -75,7 +78,7 @@ import {
 } from "@/utils/agent-snapshots";
 import { mergePendingCreateImages } from "@/utils/pending-create-images";
 import { shouldClearAgentAttentionOnView } from "@/utils/agent-attention";
-import type { FetchAgentsEntry } from "@server/client/daemon-client";
+import type { DaemonClient, FetchAgentsEntry } from "@server/client/daemon-client";
 import { useExplorerOpenGesture } from "@/hooks/use-explorer-open-gesture";
 import {
   DropdownMenu,
@@ -109,11 +112,12 @@ export function AgentReadyScreen({
   const resolvedAgentId = agentId?.trim() || undefined;
   const resolvedServerId = serverId?.trim() || undefined;
   const { connectionStates } = useDaemonConnections();
-
-  // Check if session exists for this serverId
-  const hasSession = useSessionStore((state) =>
-    resolvedServerId ? !!state.sessions[resolvedServerId] : false
-  );
+  const runtimeServerId = resolvedServerId ?? "";
+  const {
+    snapshot: runtimeSnapshot,
+    client: runtimeClient,
+    isConnected: runtimeIsConnected,
+  } = useHostRuntimeSession(runtimeServerId);
 
   const connectionServerId = resolvedServerId ?? null;
   const connection = connectionServerId
@@ -122,9 +126,11 @@ export function AgentReadyScreen({
   const serverLabel =
     connection?.daemon.label ?? connectionServerId ?? "Selected host";
   const isUnknownDaemon = Boolean(connectionServerId && !connection);
-  const connectionStatus =
-    connection?.status ?? (isUnknownDaemon ? "offline" : "idle");
-  const lastConnectionError = connection?.lastError ?? null;
+  const connectionStatus: HostRuntimeConnectionStatus =
+    runtimeSnapshot?.connectionStatus ??
+    (isUnknownDaemon ? "offline" : "idle");
+  const lastConnectionError = runtimeSnapshot?.lastError ?? null;
+  const isRuntimeSessionAvailable = Boolean(resolvedServerId && runtimeClient);
 
   const handleBackToHome = useCallback(() => {
     const targetServerId = resolvedServerId;
@@ -154,7 +160,9 @@ export function AgentReadyScreen({
   }, [resolvedAgentId, resolvedServerId, router]);
 
   const focusServerId = resolvedServerId;
-  const navigationStatus = hasSession ? "ready" : "session_unavailable";
+  const navigationStatus = isRuntimeSessionAvailable
+    ? "ready"
+    : "session_unavailable";
 
   useFocusEffect(
     useCallback(() => {
@@ -172,7 +180,7 @@ export function AgentReadyScreen({
     }, [focusServerId, navigationStatus, resolvedAgentId])
   );
 
-  if (!hasSession || !resolvedServerId) {
+  if (!resolvedServerId || !runtimeClient) {
     return (
       <AgentSessionUnavailableState
         onBack={handleBackToHome}
@@ -189,6 +197,8 @@ export function AgentReadyScreen({
       <AgentScreenContent
         serverId={resolvedServerId}
         agentId={resolvedAgentId}
+        client={runtimeClient}
+        isConnected={runtimeIsConnected}
         connectionStatus={connectionStatus}
       />
     </ExplorerSidebarAnimationProvider>
@@ -198,7 +208,9 @@ export function AgentReadyScreen({
 type AgentScreenContentProps = {
   serverId: string;
   agentId?: string;
-  connectionStatus: ConnectionStatus;
+  client: DaemonClient;
+  isConnected: boolean;
+  connectionStatus: HostRuntimeConnectionStatus;
 };
 
 function toErrorMessage(error: unknown): string {
@@ -215,6 +227,8 @@ function isNotFoundErrorMessage(message: string): boolean {
 function AgentScreenContent({
   serverId,
   agentId,
+  client,
+  isConnected,
   connectionStatus,
 }: AgentScreenContentProps) {
   const { theme } = useUnistyles();
@@ -465,16 +479,16 @@ function AgentScreenContent({
     return filtered;
   }, [allPendingPermissions, resolvedAgentId]);
 
-  const client = useSessionStore(
-    (state) => state.sessions[serverId]?.client ?? null
-  );
-  const isConnected = useSessionStore(
-    (state) => state.sessions[serverId]?.connection.isConnected ?? false
+  const hasSession = useSessionStore(
+    (state) => Boolean(state.sessions[serverId])
   );
   const focusedAgentId = useSessionStore(
     (state) => state.sessions[serverId]?.focusedAgentId ?? null
   );
-  const { ensureAgentIsInitialized, refreshAgent } = useAgentInitialization(serverId);
+  const { ensureAgentIsInitialized, refreshAgent } = useAgentInitialization({
+    serverId,
+    client: hasSession ? client : null,
+  });
   const [missingAgentState, setMissingAgentState] = useState<AgentScreenMissingState>({
     kind: "idle",
   });
@@ -529,7 +543,7 @@ function AgentScreenContent({
 
   useFocusEffect(
     useCallback(() => {
-      if (!resolvedAgentId || !isConnected) {
+      if (!resolvedAgentId || !isConnected || !hasSession) {
         return;
       }
       ensureAgentIsInitialized(resolvedAgentId).catch((error) => {
@@ -538,7 +552,7 @@ function AgentScreenContent({
           error,
         });
       });
-    }, [ensureAgentIsInitialized, isConnected, resolvedAgentId])
+    }, [ensureAgentIsInitialized, hasSession, isConnected, resolvedAgentId])
   );
 
   const isGitCheckout = activeExplorerCheckout?.isGit ?? false;
@@ -745,7 +759,7 @@ function AgentScreenContent({
       return;
     }
 
-    if (!isConnected) {
+    if (!isConnected || !hasSession) {
       return;
     }
     // On native clients, daemon stream forwarding is focused-agent only, so switching
@@ -764,6 +778,7 @@ function AgentScreenContent({
   }, [
     resolvedAgentId,
     ensureAgentIsInitialized,
+    hasSession,
     isConnected,
     needsAuthoritativeSync,
   ]);
@@ -784,7 +799,7 @@ function AgentScreenContent({
       }
       return;
     }
-    if (!isConnected) {
+    if (!isConnected || !hasSession) {
       return;
     }
     if (missingAgentState.kind === "resolving" || missingAgentState.kind === "not_found") {
@@ -855,6 +870,7 @@ function AgentScreenContent({
     agent,
     client,
     ensureAgentIsInitialized,
+    hasSession,
     isConnected,
     missingAgentState.kind,
     resolvedAgentId,
@@ -898,13 +914,13 @@ function AgentScreenContent({
   ]);
 
   const handleRefreshAgent = useCallback(() => {
-    if (!resolvedAgentId) {
+    if (!resolvedAgentId || !hasSession) {
       return;
     }
     void refreshAgent(resolvedAgentId).catch((error) => {
       console.warn("[AgentScreen] refreshAgent failed", { agentId: resolvedAgentId, error });
     });
-  }, [resolvedAgentId, refreshAgent]);
+  }, [hasSession, refreshAgent, resolvedAgentId]);
 
   const handleCopyMeta = useCallback(
     async (label: string, value: string | null | undefined) => {
@@ -1262,7 +1278,7 @@ function AgentSessionUnavailableState({
 }: {
   onBack: () => void;
   serverLabel: string;
-  connectionStatus: ConnectionStatus;
+  connectionStatus: HostRuntimeConnectionStatus;
   lastError: string | null;
   isUnknownDaemon?: boolean;
 }) {
@@ -1285,19 +1301,24 @@ function AgentSessionUnavailableState({
   }
 
   const isConnecting = connectionStatus === "connecting";
+  const isPreparingSession = connectionStatus === "online";
 
   return (
     <View style={styles.container}>
       <BackHeader title="Agent" onBack={onBack} />
       <View style={styles.centerState}>
-        {isConnecting ? (
+        {isConnecting || isPreparingSession ? (
           <>
             <ActivityIndicator size="large" />
             <Text style={styles.loadingText}>
-              Connecting to {serverLabel}...
+              {isPreparingSession
+                ? `Preparing ${serverLabel} session...`
+                : `Connecting to ${serverLabel}...`}
             </Text>
             <Text style={styles.statusText}>
-              We will show this agent once the host is online.
+              {isPreparingSession
+                ? "We will show this agent in a moment."
+                : "We will show this agent once the host is online."}
             </Text>
           </>
         ) : (

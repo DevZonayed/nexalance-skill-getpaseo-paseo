@@ -35,6 +35,7 @@ import { buildWorkingDirectorySuggestions } from '@/utils/working-directory-sugg
 import { useExplorerOpenGesture } from '@/hooks/use-explorer-open-gesture'
 import { useSessionStore } from '@/stores/session-store'
 import { useCreateFlowStore } from '@/stores/create-flow-store'
+import { useHostRuntimeSession } from '@/runtime/host-runtime'
 import { ExplorerSidebarAnimationProvider } from '@/contexts/explorer-sidebar-animation-context'
 import { usePanelStore, type ExplorerCheckoutContext } from '@/stores/panel-store'
 import { MAX_CONTENT_WIDTH } from '@/constants/layout'
@@ -368,18 +369,16 @@ function DraftAgentScreenContent({
     return collectAgentWorkingDirectorySuggestions([...liveSources, ...fetchedSources])
   }, [allAgents, sessionAgents])
 
-  const sessionClient = useSessionStore((state) =>
-    selectedServerId ? (state.sessions[selectedServerId]?.client ?? null) : null
+  const { client: runtimeClient, isConnected: isHostOnline } = useHostRuntimeSession(
+    selectedServerId ?? ''
   )
-  const isConnected = useSessionStore((state) =>
-    selectedServerId ? (state.sessions[selectedServerId]?.connection.isConnected ?? false) : false
-  )
+  const sessionClient = runtimeClient
   const trimmedWorkingDir = workingDir.trim()
   const shouldInspectRepo = trimmedWorkingDir.length > 0
   const daemonAvailabilityError =
-    !selectedServerId || hostEntry?.status !== 'online' ? 'Host is offline' : null
+    !selectedServerId || !isHostOnline ? 'Host is offline' : null
   const repoAvailabilityError =
-    shouldInspectRepo && (!hostEntry || hostEntry.status !== 'online' || !isConnected)
+    shouldInspectRepo && !isHostOnline
       ? (daemonAvailabilityError ??
         'Repository details will load automatically once the selected host is back online.')
       : null
@@ -398,7 +397,7 @@ function DraftAgentScreenContent({
       Boolean(trimmedWorkingDir) &&
       !repoAvailabilityError &&
       Boolean(sessionClient) &&
-      isConnected,
+      isHostOnline,
     retry: false,
     staleTime: CHECKOUT_STATUS_STALE_TIME,
     refetchOnMount: 'always',
@@ -461,7 +460,7 @@ function DraftAgentScreenContent({
       Boolean(worktreeListRoot) &&
       !repoAvailabilityError &&
       Boolean(sessionClient) &&
-      isConnected &&
+      isHostOnline &&
       !isNonGitDirectory,
     retry: false,
     staleTime: 0,
@@ -526,7 +525,7 @@ function DraftAgentScreenContent({
       Boolean(trimmedWorkingDir) &&
       !repoAvailabilityError &&
       Boolean(sessionClient) &&
-      isConnected,
+      isHostOnline,
     retry: false,
     staleTime: 15_000,
   })
@@ -559,7 +558,7 @@ function DraftAgentScreenContent({
       Boolean(selectedServerId) &&
       !daemonAvailabilityError &&
       Boolean(sessionClient) &&
-      isConnected,
+      isHostOnline,
     retry: false,
     staleTime: 15_000,
   })
@@ -625,7 +624,7 @@ function DraftAgentScreenContent({
       Boolean(baseBranch) &&
       Boolean(trimmedWorkingDir) &&
       Boolean(sessionClient) &&
-      isConnected,
+      isHostOnline,
     retry: false,
     staleTime: 30_000,
   })
@@ -810,9 +809,7 @@ function DraftAgentScreenContent({
     })
   }, [baseBranch, branchSearchQuery, branchSuggestionsQuery.data, checkout, worktreeOptions])
 
-  const createAgentClient = useSessionStore((state) =>
-    selectedServerId ? (state.sessions[selectedServerId]?.client ?? null) : null
-  )
+  const createAgentClient = sessionClient
   const draftCommandConfig = useMemo<DraftCommandConfig | undefined>(() => {
     const cwd = (
       isAttachWorktree && selectedWorktreePath ? selectedWorktreePath : workingDir

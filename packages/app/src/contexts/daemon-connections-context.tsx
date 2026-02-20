@@ -18,7 +18,7 @@ export type ConnectionStatus = ConnectionState["status"];
 export type ConnectionStateUpdate =
   | { status: "idle" }
   | { status: "connecting"; activeConnection?: ActiveConnection | null; lastOnlineAt?: string | null }
-  | { status: "online"; activeConnection?: ActiveConnection | null; lastOnlineAt: string; agentListReady?: boolean }
+  | { status: "online"; activeConnection?: ActiveConnection | null; lastOnlineAt: string }
   | { status: "offline"; activeConnection?: ActiveConnection | null; lastError?: string | null; lastOnlineAt?: string | null }
   | { status: "error"; activeConnection?: ActiveConnection | null; lastError: string; lastOnlineAt?: string | null };
 
@@ -30,6 +30,7 @@ interface DaemonConnectionsContextValue {
   connectionStates: Map<string, DaemonConnectionRecord>;
   isLoading: boolean;
   updateConnectionStatus: (serverId: string, update: ConnectionStateUpdate) => void;
+  markAgentListReady: (serverId: string, ready: boolean) => void;
 }
 
 const DaemonConnectionsContext = createContext<DaemonConnectionsContextValue | null>(null);
@@ -69,7 +70,8 @@ function resolveNextConnectionState(
         hasEverReceivedAgentList: existing.hasEverReceivedAgentList ?? false,
       };
     case "online":
-      const currentAgentListReady = update.agentListReady ?? (existing.status === "online" ? existing.agentListReady : false);
+      const currentAgentListReady =
+        existing.status === "online" ? existing.agentListReady : false;
 
       return {
         status: "online",
@@ -173,10 +175,37 @@ export function DaemonConnectionsProvider({ children }: { children: ReactNode })
     []
   );
 
+  const markAgentListReady = useCallback((serverId: string, ready: boolean) => {
+    setConnectionStates((prev) => {
+      const existing = prev.get(serverId);
+      if (!existing) {
+        return prev;
+      }
+      if (existing.status !== "online") {
+        return prev;
+      }
+      if (
+        existing.agentListReady === ready &&
+        (ready ? existing.hasEverReceivedAgentList : true)
+      ) {
+        return prev;
+      }
+      const next = new Map(prev);
+      next.set(serverId, {
+        ...existing,
+        agentListReady: ready,
+        hasEverReceivedAgentList:
+          ready || existing.hasEverReceivedAgentList,
+      });
+      return next;
+    });
+  }, []);
+
   const value: DaemonConnectionsContextValue = {
     connectionStates,
     isLoading: registryLoading,
     updateConnectionStatus,
+    markAgentListReady,
   };
 
   return (

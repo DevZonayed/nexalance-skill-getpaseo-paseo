@@ -147,12 +147,6 @@ export interface AgentFileExplorerState {
   selectedEntryPath: string | null;
 }
 
-export interface DaemonConnectionSnapshot {
-  isConnected: boolean;
-  isConnecting: boolean;
-  lastError: string | null;
-}
-
 export type DaemonServerInfo = {
   serverId: string;
   hostname: string | null;
@@ -172,9 +166,6 @@ export interface SessionState {
 
   // Daemon client (immutable reference)
   client: DaemonClient | null;
-
-  // Connection snapshot (mutable)
-  connection: DaemonConnectionSnapshot;
 
   // Server metadata (from server_info handshake)
   serverInfo: DaemonServerInfo | null;
@@ -233,7 +224,6 @@ interface SessionStoreActions {
   clearSession: (serverId: string) => void;
   getSession: (serverId: string) => SessionState | undefined;
   updateSessionClient: (serverId: string, client: DaemonClient) => void;
-  updateSessionConnection: (serverId: string, connection: DaemonConnectionSnapshot) => void;
   updateSessionServerInfo: (serverId: string, info: DaemonServerInfo) => void;
 
   // Audio state
@@ -309,25 +299,11 @@ function logSessionStoreUpdate(
   });
 }
 
-
-function createDefaultConnectionSnapshot(client?: DaemonClient | null): DaemonConnectionSnapshot {
-  if (!client) {
-    return { isConnected: false, isConnecting: false, lastError: null };
-  }
-  const state = client.getConnectionState();
-  return {
-    isConnected: state.status === "connected",
-    isConnecting: state.status === "connecting",
-    lastError: state.status === "disconnected" ? state.reason ?? client.lastError ?? null : null,
-  };
-}
-
 // Helper to create initial session state
 function createInitialSessionState(serverId: string, client: DaemonClient, audioPlayer: ReturnType<typeof useAudioPlayer>): SessionState {
   return {
     serverId,
     client,
-    connection: createDefaultConnectionSnapshot(client),
     serverInfo: null,
     audioPlayer,
     hasHydratedAgents: false,
@@ -414,33 +390,6 @@ export const useSessionStore = create<SessionStore>()(
             [serverId]: {
               ...session,
               client,
-            },
-          },
-        };
-      });
-    },
-
-    updateSessionConnection: (serverId, connection) => {
-      set((prev) => {
-        const session = prev.sessions[serverId];
-        if (!session) {
-          return prev;
-        }
-        if (
-          session.connection.isConnected === connection.isConnected &&
-          session.connection.isConnecting === connection.isConnecting &&
-          session.connection.lastError === connection.lastError
-        ) {
-          return prev;
-        }
-        logSessionStoreUpdate("updateSessionConnection", serverId, connection);
-        return {
-          ...prev,
-          sessions: {
-            ...prev.sessions,
-            [serverId]: {
-              ...session,
-              connection,
             },
           },
         };

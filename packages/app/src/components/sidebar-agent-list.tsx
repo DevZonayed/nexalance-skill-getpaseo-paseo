@@ -28,7 +28,10 @@ import {
   DraggableList,
   type DraggableRenderItemInfo,
 } from "./draggable-list";
-import { useSessionStore } from "@/stores/session-store";
+import {
+  getHostRuntimeStore,
+  isHostRuntimeConnected,
+} from "@/runtime/host-runtime";
 import {
   buildAgentNavigationKey,
   startNavigationTiming,
@@ -490,7 +493,6 @@ export function SidebarAgentList({
   }, [projectOptions, selectedProjectKeys]);
   const showProjectFilters = projectOptions.length > 0;
 
-  const sessions = useSessionStore((state) => state.sessions);
   const projectIconRequests = useMemo(() => {
     const unique = new Map<string, { serverId: string; cwd: string }>();
     for (const option of projectOptions) {
@@ -517,8 +519,7 @@ export function SidebarAgentList({
     queries: projectIconRequests.map((request) => ({
       queryKey: projectIconQueryKey(request.serverId, request.cwd),
       queryFn: async () => {
-        const client =
-          useSessionStore.getState().sessions[request.serverId]?.client ?? null;
+        const client = getHostRuntimeStore().getClient(request.serverId);
         if (!client) {
           return null;
         }
@@ -526,8 +527,10 @@ export function SidebarAgentList({
         return result.icon;
       },
       enabled: Boolean(
-        sessions[request.serverId]?.client &&
-          sessions[request.serverId]?.connection.isConnected &&
+        getHostRuntimeStore().getClient(request.serverId) &&
+          isHostRuntimeConnected(
+            getHostRuntimeStore().getSnapshot(request.serverId)
+          ) &&
           request.cwd
       ),
       staleTime: Infinity,

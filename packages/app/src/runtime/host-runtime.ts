@@ -32,6 +32,12 @@ export type HostRuntimeSnapshot = {
   clientGeneration: number;
 };
 
+export function isHostRuntimeConnected(
+  snapshot: HostRuntimeSnapshot | null
+): boolean {
+  return snapshot?.connectionStatus === "online";
+}
+
 export type HostRuntimeControllerDeps = {
   createClient: (input: {
     host: HostProfile;
@@ -564,6 +570,7 @@ export function useHostRuntimeSnapshot(
 export function useHostRuntimeSession(serverId: string): {
   snapshot: HostRuntimeSnapshot | null;
   client: DaemonClient | null;
+  isConnected: boolean;
 } {
   const store = getHostRuntimeStore();
   const snapshot = useHostRuntimeSnapshot(serverId);
@@ -571,6 +578,7 @@ export function useHostRuntimeSession(serverId: string): {
     () => ({
       snapshot,
       client: store.getClient(serverId),
+      isConnected: isHostRuntimeConnected(snapshot),
     }),
     [serverId, snapshot, store]
   );

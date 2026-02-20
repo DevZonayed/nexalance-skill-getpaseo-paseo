@@ -2,6 +2,7 @@ import { useCallback, useMemo } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useDaemonConnections } from "@/contexts/daemon-connections-context";
 import { useSessionStore, type Agent } from "@/stores/session-store";
+import { useHostRuntimeSession } from "@/runtime/host-runtime";
 import type { AggregatedAgent } from "@/hooks/use-aggregated-agents";
 import { normalizeAgentSnapshot } from "@/utils/agent-snapshots";
 import {
@@ -170,9 +171,8 @@ export function useSidebarAgentsGrouped(options?: {
   const session = useSessionStore((state) =>
     serverId ? state.sessions[serverId] : undefined
   );
-  const client = session?.client ?? null;
+  const { client, isConnected } = useHostRuntimeSession(serverId ?? "");
   const liveAgents = session?.agents ?? null;
-  const isConnected = session?.connection.isConnected ?? false;
   const canFetch = Boolean(serverId && client && isConnected);
 
   const agentsQuery = useQuery({
