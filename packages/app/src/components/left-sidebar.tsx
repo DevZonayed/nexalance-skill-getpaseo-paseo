@@ -1,4 +1,11 @@
-import { useCallback, useMemo, useState, useEffect, useRef } from "react";
+import {
+  useCallback,
+  useMemo,
+  useState,
+  useEffect,
+  useRef,
+  useSyncExternalStore,
+} from "react";
 import { View, Pressable, Text, Platform } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, {
@@ -20,7 +27,7 @@ import { useTauriDragHandlers, useTrafficLightPadding } from "@/utils/tauri-wind
 import { useKeyboardShortcutsStore } from "@/stores/keyboard-shortcuts-store";
 import { Combobox } from "@/components/ui/combobox";
 import { useDaemonRegistry } from "@/contexts/daemon-registry-context";
-import { useDaemonConnections } from "@/contexts/daemon-connections-context";
+import { getHostRuntimeStore } from "@/runtime/host-runtime";
 import { useSessionStore } from "@/stores/session-store";
 import { formatConnectionStatus } from "@/utils/daemons";
 import { HEADER_INNER_HEIGHT, HEADER_INNER_HEIGHT_MOBILE } from "@/constants/layout";
@@ -57,7 +64,12 @@ export function LeftSidebar({ selectedAgentId }: LeftSidebarProps) {
   const closeToAgent = usePanelStore((state) => state.closeToAgent);
   const pathname = usePathname();
   const { daemons } = useDaemonRegistry();
-  const { connectionStates } = useDaemonConnections();
+  const runtime = getHostRuntimeStore();
+  const runtimeVersion = useSyncExternalStore(
+    (onStoreChange) => runtime.subscribeAll(onStoreChange),
+    () => runtime.getVersion(),
+    () => runtime.getVersion()
+  );
   const activeServerIdFromPath = useMemo(
     () => parseServerIdFromPathname(pathname),
     [pathname]
@@ -70,7 +82,7 @@ export function LeftSidebar({ selectedAgentId }: LeftSidebarProps) {
     return trimmed && trimmed.length > 0 ? trimmed : activeServerId;
   }, [activeServerId, daemons]);
   const activeHostStatus = activeServerId
-    ? (connectionStates.get(activeServerId)?.status ?? "idle")
+    ? runtime.getSnapshot(activeServerId)?.connectionStatus ?? "connecting"
     : "idle";
   const activeHostStatusColor =
     activeHostStatus === "online"
@@ -84,10 +96,10 @@ export function LeftSidebar({ selectedAgentId }: LeftSidebarProps) {
         id: daemon.serverId,
         label: daemon.label?.trim() || daemon.serverId,
         description: formatConnectionStatus(
-          connectionStates.get(daemon.serverId)?.status ?? "idle"
+          runtime.getSnapshot(daemon.serverId)?.connectionStatus ?? "connecting"
         ),
       })),
-    [connectionStates, daemons]
+    [daemons, runtime, runtimeVersion]
   );
   const hostTriggerRef = useRef<View>(null);
   const [isHostPickerOpen, setIsHostPickerOpen] = useState(false);

@@ -1,6 +1,6 @@
-import { useMemo, useCallback } from "react";
+import { useMemo, useCallback, useSyncExternalStore } from "react";
 import { useShallow } from "zustand/shallow";
-import { useDaemonConnections } from "@/contexts/daemon-connections-context";
+import { useDaemonRegistry } from "@/contexts/daemon-registry-context";
 import { useSessionStore } from "@/stores/session-store";
 import type { AgentDirectoryEntry } from "@/types/agent-directory";
 import type { Agent } from "@/stores/session-store";
@@ -20,8 +20,13 @@ export interface AggregatedAgentsResult {
 }
 
 export function useAggregatedAgents(): AggregatedAgentsResult {
-  const { connectionStates } = useDaemonConnections();
+  const { daemons } = useDaemonRegistry();
   const runtime = getHostRuntimeStore();
+  const runtimeVersion = useSyncExternalStore(
+    (onStoreChange) => runtime.subscribeAll(onStoreChange),
+    () => runtime.getVersion(),
+    () => runtime.getVersion()
+  );
 
   const sessionAgents = useSessionStore(
     useShallow((state) => {
@@ -39,13 +44,16 @@ export function useAggregatedAgents(): AggregatedAgentsResult {
 
   const result = useMemo(() => {
     const allAgents: AggregatedAgent[] = [];
+    const serverLabelById = new Map(
+      daemons.map((daemon) => [daemon.serverId, daemon.label] as const)
+    );
 
     // Derive agent directory from all sessions
     for (const [serverId, agents] of Object.entries(sessionAgents)) {
       if (!agents || agents.size === 0) {
         continue;
       }
-      const serverLabel = connectionStates.get(serverId)?.daemon.label ?? serverId;
+      const serverLabel = serverLabelById.get(serverId) ?? serverId;
       for (const agent of agents.values()) {
         const nextAgent: AggregatedAgent = {
           id: agent.id,
@@ -85,11 +93,12 @@ export function useAggregatedAgents(): AggregatedAgentsResult {
     const hasAnyData = allAgents.length > 0;
 
     // Align list loading with the runtime directory-sync machine.
-    const isLoading = Array.from(connectionStates.values()).some(
-      (connection) =>
-        connection.agentDirectoryStatus === "initial_loading" ||
-        connection.agentDirectoryStatus === "revalidating"
-    );
+    const isLoading = daemons.some((daemon) => {
+      const status =
+        runtime.getSnapshot(daemon.serverId)?.agentDirectoryStatus ??
+        "initial_loading";
+      return status === "initial_loading" || status === "revalidating";
+    });
     const isInitialLoad = isLoading && !hasAnyData;
     const isRevalidating = isLoading && hasAnyData;
 
@@ -99,7 +108,7 @@ export function useAggregatedAgents(): AggregatedAgentsResult {
       isInitialLoad,
       isRevalidating,
     };
-  }, [sessionAgents, connectionStates]);
+  }, [daemons, runtime, runtimeVersion, sessionAgents]);
 
   return {
     ...result,

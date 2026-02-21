@@ -1,5 +1,5 @@
 import { useCallback, useMemo } from "react";
-import { useDaemonConnections } from "@/contexts/daemon-connections-context";
+import { useDaemonRegistry } from "@/contexts/daemon-registry-context";
 import { useSessionStore, type Agent } from "@/stores/session-store";
 import {
   getHostRuntimeStore,
@@ -149,7 +149,7 @@ export function useSidebarAgentsList(options?: {
   serverId?: string | null;
   selectedProjectFilterKeys?: string[];
 }): SidebarAgentsListResult {
-  const { connectionStates } = useDaemonConnections();
+  const { daemons } = useDaemonRegistry();
   const runtime = getHostRuntimeStore();
   const serverId = useMemo(() => {
     const value = options?.serverId;
@@ -184,7 +184,8 @@ export function useSidebarAgentsList(options?: {
       };
     }
 
-    const serverLabel = connectionStates.get(serverId)?.daemon.label ?? serverId;
+    const serverLabel =
+      daemons.find((daemon) => daemon.serverId === serverId)?.label ?? serverId;
     const seenAgentIds = new Set<string>();
     const byProject = new Map<string, SidebarProjectFilterOption>();
     const mergedEntries: SidebarAgentListEntry[] = [];
@@ -261,7 +262,7 @@ export function useSidebarAgentsList(options?: {
       hasAnyData: ordered.entries.length > 0,
       hasMoreEntries: ordered.hasMore,
     };
-  }, [connectionStates, liveAgents, selectedProjectFilterKeys, serverId]);
+  }, [daemons, liveAgents, selectedProjectFilterKeys, serverId]);
 
   const refreshAll = useCallback(() => {
     if (!serverId || snapshot?.connectionStatus !== "online") {

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState, useSyncExternalStore } from 'react'
 import { createNameId } from 'mnemonic-id'
 import type { ImageAttachment } from '@/components/message-input'
 import { View, Text, Pressable, ScrollView, Keyboard, Platform } from 'react-native'
@@ -26,7 +26,6 @@ import {
   checkoutStatusQueryKey,
 } from '@/hooks/use-checkout-status-query'
 import { useAllAgentsList } from '@/hooks/use-all-agents-list'
-import { useDaemonConnections } from '@/contexts/daemon-connections-context'
 import { useDaemonRegistry } from '@/contexts/daemon-registry-context'
 import { buildBranchComboOptions, normalizeBranchOptionName } from '@/utils/branch-suggestions'
 import { shortenPath } from '@/utils/shorten-path'
@@ -35,7 +34,7 @@ import { buildWorkingDirectorySuggestions } from '@/utils/working-directory-sugg
 import { useExplorerOpenGesture } from '@/hooks/use-explorer-open-gesture'
 import { useSessionStore } from '@/stores/session-store'
 import { useCreateFlowStore } from '@/stores/create-flow-store'
-import { useHostRuntimeSession } from '@/runtime/host-runtime'
+import { getHostRuntimeStore, useHostRuntimeSession } from '@/runtime/host-runtime'
 import { ExplorerSidebarAnimationProvider } from '@/contexts/explorer-sidebar-animation-context'
 import { usePanelStore, type ExplorerCheckoutContext } from '@/stores/panel-store'
 import { MAX_CONTENT_WIDTH } from '@/constants/layout'
@@ -139,8 +138,13 @@ function DraftAgentScreenContent({
   const { theme } = useUnistyles()
   const router = useRouter()
   const insets = useSafeAreaInsets()
-  const { connectionStates } = useDaemonConnections()
   const { daemons } = useDaemonRegistry()
+  const runtime = getHostRuntimeStore()
+  const runtimeVersion = useSyncExternalStore(
+    (onStoreChange) => runtime.subscribeAll(onStoreChange),
+    () => runtime.getVersion(),
+    () => runtime.getVersion()
+  )
   const params = useLocalSearchParams<DraftAgentParams>()
 
   const { height: keyboardHeight } = useReanimatedKeyboardAnimation()
@@ -174,11 +178,11 @@ function DraftAgentScreenContent({
     if (daemons.length === 0) return []
     const out: string[] = []
     for (const daemon of daemons) {
-      const status = connectionStates.get(daemon.serverId)?.status ?? 'idle'
+      const status = runtime.getSnapshot(daemon.serverId)?.connectionStatus ?? 'connecting'
       if (status === 'online') out.push(daemon.serverId)
     }
     return out
-  }, [connectionStates, daemons])
+  }, [daemons, runtime, runtimeVersion])
 
   const initialValues = useMemo((): CreateAgentInitialValues => {
     const values: CreateAgentInitialValues = {}
@@ -228,7 +232,6 @@ function DraftAgentScreenContent({
     isCreateFlow: true,
     onlineServerIds,
   })
-  const hostEntry = selectedServerId ? connectionStates.get(selectedServerId) : undefined
   const isMobile = UnistylesRuntime.breakpoint === 'xs' || UnistylesRuntime.breakpoint === 'sm'
   const mobileView = usePanelStore((state) => state.mobileView)
   const desktopFileExplorerOpen = usePanelStore((state) => state.desktop.fileExplorerOpen)

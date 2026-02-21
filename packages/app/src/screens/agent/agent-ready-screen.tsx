@@ -40,7 +40,7 @@ import {
   ExplorerSidebarAnimationProvider,
 } from "@/contexts/explorer-sidebar-animation-context";
 import { usePanelStore } from "@/stores/panel-store";
-import { useDaemonConnections } from "@/contexts/daemon-connections-context";
+import { useDaemonRegistry } from "@/contexts/daemon-registry-context";
 import { useSessionStore } from "@/stores/session-store";
 import {
   useHostRuntimeSession,
@@ -112,7 +112,7 @@ export function AgentReadyScreen({
   const router = useRouter();
   const resolvedAgentId = agentId?.trim() || undefined;
   const resolvedServerId = serverId?.trim() || undefined;
-  const { connectionStates } = useDaemonConnections();
+  const { daemons } = useDaemonRegistry();
   const runtimeServerId = resolvedServerId ?? "";
   const {
     snapshot: runtimeSnapshot,
@@ -121,12 +121,12 @@ export function AgentReadyScreen({
   } = useHostRuntimeSession(runtimeServerId);
 
   const connectionServerId = resolvedServerId ?? null;
-  const connection = connectionServerId
-    ? connectionStates.get(connectionServerId)
+  const daemon = connectionServerId
+    ? daemons.find((entry) => entry.serverId === connectionServerId) ?? null
     : null;
   const serverLabel =
-    connection?.daemon.label ?? connectionServerId ?? "Selected host";
-  const isUnknownDaemon = Boolean(connectionServerId && !connection);
+    daemon?.label ?? connectionServerId ?? "Selected host";
+  const isUnknownDaemon = Boolean(connectionServerId && !daemon);
   const connectionStatus: HostRuntimeConnectionStatus =
     runtimeSnapshot?.connectionStatus ??
     (isUnknownDaemon ? "offline" : "connecting");

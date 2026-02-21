@@ -1,5 +1,5 @@
 import { useCallback, useMemo } from "react";
-import { useDaemonConnections } from "@/contexts/daemon-connections-context";
+import { useDaemonRegistry } from "@/contexts/daemon-registry-context";
 import { useSessionStore, type Agent } from "@/stores/session-store";
 import {
   getHostRuntimeStore,
@@ -37,7 +37,7 @@ function toAggregatedAgent(params: {
 export function useAllAgentsList(options?: {
   serverId?: string | null;
 }): AggregatedAgentsResult {
-  const { connectionStates } = useDaemonConnections();
+  const { daemons } = useDaemonRegistry();
   const runtime = getHostRuntimeStore();
 
   const serverId = useMemo(() => {
@@ -64,7 +64,8 @@ export function useAllAgentsList(options?: {
     if (!serverId || !liveAgents) {
       return [];
     }
-    const serverLabel = connectionStates.get(serverId)?.daemon.label ?? serverId;
+    const serverLabel =
+      daemons.find((daemon) => daemon.serverId === serverId)?.label ?? serverId;
     const list: AggregatedAgent[] = [];
 
     for (const agent of liveAgents.values()) {
@@ -95,7 +96,7 @@ export function useAllAgentsList(options?: {
     });
 
     return list;
-  }, [connectionStates, liveAgents, serverId]);
+  }, [daemons, liveAgents, serverId]);
 
   const isDirectoryLoading = Boolean(serverId && isHostRuntimeDirectoryLoading(snapshot));
   const isInitialLoad = isDirectoryLoading && agents.length === 0;

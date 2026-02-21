@@ -5,7 +5,6 @@ import {
   type FetchAgentsOptions,
 } from "@server/client/daemon-client";
 import type { HostConnection, HostProfile } from "@/contexts/daemon-registry-context";
-import type { ActiveConnection } from "@/contexts/daemon-connections-context";
 import {
   buildDaemonWebSocketUrl,
   buildRelayWebSocketUrl,
@@ -27,6 +26,10 @@ export type HostRuntimeConnectionStatus =
   | "online"
   | "offline"
   | "error";
+
+export type ActiveConnection =
+  | { type: "direct"; endpoint: string; display: string }
+  | { type: "relay"; endpoint: string; display: "relay" };
 
 export type HostRuntimeAgentDirectoryStatus =
   | "idle"

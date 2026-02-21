@@ -13,7 +13,6 @@ import { View, ActivityIndicator, Text } from "react-native";
 import { UnistylesRuntime, useUnistyles } from "react-native-unistyles";
 import { darkTheme } from "@/styles/theme";
 import { DaemonRegistryProvider, useDaemonRegistry } from "@/contexts/daemon-registry-context";
-import { DaemonConnectionsProvider, useDaemonConnections } from "@/contexts/daemon-connections-context";
 import { MultiDaemonSessionHost } from "@/components/multi-daemon-session-host";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { useState, useEffect, type ReactNode, useMemo, useRef } from "react";
@@ -449,37 +448,35 @@ export default function RootLayout() {
             <BottomSheetModalProvider>
               <QueryProvider>
                 <DaemonRegistryProvider>
-                  <DaemonConnectionsProvider>
-                    <PushNotificationRouter />
-                    <MultiDaemonSessionHost />
-                    <ProvidersWrapper>
-                      <SidebarAnimationProvider>
-                        <HorizontalScrollProvider>
-                          <ToastProvider>
-                            <AppWithSidebar>
-                              <Stack
-                                screenOptions={{
-                                  headerShown: false,
-                                  animation: "none",
-                                }}
-                              >
-                                <Stack.Screen name="index" />
-                                <Stack.Screen
-                                  name="h/[serverId]/agent/[agentId]"
-                                  options={{ gestureEnabled: false }}
-                                />
-                                <Stack.Screen name="h/[serverId]/index" />
-                                <Stack.Screen name="h/[serverId]/agent/index" />
-                                <Stack.Screen name="h/[serverId]/agents" />
-                                <Stack.Screen name="h/[serverId]/settings" />
-                                <Stack.Screen name="pair-scan" />
-                              </Stack>
-                            </AppWithSidebar>
-                          </ToastProvider>
-                        </HorizontalScrollProvider>
-                      </SidebarAnimationProvider>
-                    </ProvidersWrapper>
-                  </DaemonConnectionsProvider>
+                  <PushNotificationRouter />
+                  <MultiDaemonSessionHost />
+                  <ProvidersWrapper>
+                    <SidebarAnimationProvider>
+                      <HorizontalScrollProvider>
+                        <ToastProvider>
+                          <AppWithSidebar>
+                            <Stack
+                              screenOptions={{
+                                headerShown: false,
+                                animation: "none",
+                              }}
+                            >
+                              <Stack.Screen name="index" />
+                              <Stack.Screen
+                                name="h/[serverId]/agent/[agentId]"
+                                options={{ gestureEnabled: false }}
+                              />
+                              <Stack.Screen name="h/[serverId]/index" />
+                              <Stack.Screen name="h/[serverId]/agent/index" />
+                              <Stack.Screen name="h/[serverId]/agents" />
+                              <Stack.Screen name="h/[serverId]/settings" />
+                              <Stack.Screen name="pair-scan" />
+                            </Stack>
+                          </AppWithSidebar>
+                        </ToastProvider>
+                      </HorizontalScrollProvider>
+                    </SidebarAnimationProvider>
+                  </ProvidersWrapper>
                 </DaemonRegistryProvider>
               </QueryProvider>
             </BottomSheetModalProvider>
