@@ -445,8 +445,6 @@ function SessionProviderInternal({
         }),
       };
 
-      console.log("[Session] Agent update:", agent.id, agent.status);
-
       setAgents(serverId, (prev) => {
         const current = prev.get(agent.id);
         if (current && agent.updatedAt.getTime() < current.updatedAt.getTime()) {
@@ -469,15 +467,53 @@ function SessionProviderInternal({
       setAgentLastActivity(agent.id, agent.lastActivityAt);
 
       setPendingPermissions(serverId, (prev) => {
-        const next = new Map(prev);
-        for (const [key, pending] of Array.from(next.entries())) {
+        const existingKeysForAgent: string[] = [];
+        for (const [key, pending] of prev.entries()) {
           if (pending.agentId === agent.id) {
-            next.delete(key);
+            existingKeysForAgent.push(key);
           }
         }
-        for (const request of agent.pendingPermissions) {
-          const key = derivePendingPermissionKey(agent.id, request);
-          next.set(key, { key, agentId: agent.id, request });
+
+        const nextEntries = agent.pendingPermissions.map((request) => ({
+          key: derivePendingPermissionKey(agent.id, request),
+          agentId: agent.id,
+          request,
+        }));
+
+        let changed = existingKeysForAgent.length !== nextEntries.length;
+        if (!changed) {
+          const existingKeySet = new Set(existingKeysForAgent);
+          for (const entry of nextEntries) {
+            const existing = prev.get(entry.key);
+            if (!existingKeySet.has(entry.key) || !existing) {
+              changed = true;
+              break;
+            }
+
+            const currentRequest = existing.request;
+            if (
+              currentRequest.id !== entry.request.id ||
+              currentRequest.kind !== entry.request.kind ||
+              currentRequest.name !== entry.request.name ||
+              currentRequest.title !== entry.request.title ||
+              currentRequest.description !== entry.request.description
+            ) {
+              changed = true;
+              break;
+            }
+          }
+        }
+
+        if (!changed) {
+          return prev;
+        }
+
+        const next = new Map(prev);
+        for (const key of existingKeysForAgent) {
+          next.delete(key);
+        }
+        for (const entry of nextEntries) {
+          next.set(entry.key, entry);
         }
         return next;
       });

@@ -1,4 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { appendFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 
 import { createTestLogger } from "../../../test-utils/test-logger.js";
 import { ClaudeAgentClient } from "./claude-agent.js";
@@ -47,6 +50,23 @@ function buildUsage() {
     input_tokens: 1,
     cache_read_input_tokens: 0,
     output_tokens: 1,
+  };
+}
+
+function createPromptUuidReader(prompt: AsyncIterable<unknown>) {
+  const iterator = prompt[Symbol.asyncIterator]();
+  let cached: Promise<string | null> | null = null;
+  return async () => {
+    if (!cached) {
+      cached = iterator.next().then((next) => {
+        if (next.done) {
+          return null;
+        }
+        const value = next.value as { uuid?: unknown } | undefined;
+        return typeof value?.uuid === "string" ? value.uuid : null;
+      });
+    }
+    return cached;
   };
 }
 
@@ -108,7 +128,8 @@ function buildFirstQueryMock(
   };
 }
 
-function buildSecondQueryMock(): QueryMock {
+function buildSecondQueryMock(prompt: AsyncIterable<unknown>): QueryMock {
+  const readPromptUuid = createPromptUuidReader(prompt);
   let step = 0;
   return {
     next: vi.fn(async () => {
@@ -127,6 +148,21 @@ function buildSecondQueryMock(): QueryMock {
       }
       if (step === 1) {
         step += 1;
+        const promptUuid = (await readPromptUuid()) ?? "missing-prompt-uuid";
+        return {
+          done: false,
+          value: {
+            type: "user",
+            message: { role: "user", content: "second prompt" },
+            parent_tool_use_id: null,
+            uuid: promptUuid,
+            session_id: "interrupt-regression-session",
+            isReplay: true,
+          },
+        };
+      }
+      if (step === 2) {
+        step += 1;
         return {
           done: false,
           value: {
@@ -137,7 +173,7 @@ function buildSecondQueryMock(): QueryMock {
           },
         };
       }
-      if (step === 2) {
+      if (step === 3) {
         step += 1;
         return {
           done: false,
@@ -188,22 +224,49 @@ function collectAssistantText(events: AgentStreamEvent[]): string {
     .join("");
 }
 
+function createTimedIteratorReader<T>(params: { iterator: AsyncIterator<T> }) {
+  const { iterator } = params;
+  let pendingNext: Promise<IteratorResult<T>> | null = null;
+
+  return {
+    async nextWithTimeout(timeoutMs: number): Promise<IteratorResult<T>> {
+      if (!pendingNext) {
+        pendingNext = iterator.next();
+      }
+      const timeout = new Promise<null>((resolve) => {
+        setTimeout(() => resolve(null), timeoutMs);
+      });
+      const outcome = await Promise.race([
+        pendingNext.then((result) => ({ kind: "result" as const, result })),
+        timeout.then(() => ({ kind: "timeout" as const })),
+      ]);
+      if (outcome.kind === "timeout") {
+        throw new Error("Timed out waiting for live event");
+      }
+      pendingNext = null;
+      return outcome.result;
+    },
+  };
+}
+
 describe("ClaudeAgentSession interrupt restart regression", () => {
   beforeEach(() => {
     const allowOldAssistant = deferred<void>();
     let queryCreateCount = 0;
 
-    sdkMocks.query.mockImplementation(() => {
-      queryCreateCount += 1;
-      if (queryCreateCount === 1) {
-        const mock = buildFirstQueryMock(allowOldAssistant.promise);
-        sdkMocks.firstQuery = mock;
+    sdkMocks.query.mockImplementation(
+      ({ prompt }: { prompt: AsyncIterable<unknown> }) => {
+        queryCreateCount += 1;
+        if (queryCreateCount === 1) {
+          const mock = buildFirstQueryMock(allowOldAssistant.promise);
+          sdkMocks.firstQuery = mock;
+          return mock;
+        }
+        const mock = buildSecondQueryMock(prompt);
+        sdkMocks.secondQuery = mock;
         return mock;
       }
-      const mock = buildSecondQueryMock();
-      sdkMocks.secondQuery = mock;
-      return mock;
-    });
+    );
     sdkMocks.releaseOldAssistant = () => allowOldAssistant.resolve();
   });
 
@@ -238,5 +301,383 @@ describe("ClaudeAgentSession interrupt restart regression", () => {
 
     await firstTurn.return?.();
     await session.close();
+  });
+
+  test("ignores stale task-notification assistant/result events queued before the current prompt", async () => {
+    const logger = createTestLogger();
+
+    sdkMocks.query.mockImplementation(({ prompt }: { prompt: AsyncIterable<unknown> }) => {
+      const readPromptUuid = createPromptUuidReader(prompt);
+      let step = 0;
+      return {
+        next: vi.fn(async () => {
+          if (step === 0) {
+            step += 1;
+            return {
+              done: false,
+              value: {
+                type: "system",
+                subtype: "init",
+                session_id: "task-notification-session",
+                permissionMode: "default",
+                model: "opus",
+              },
+            };
+          }
+          if (step === 1) {
+            step += 1;
+            return {
+              done: false,
+              value: {
+                type: "system",
+                subtype: "task_notification",
+                task_id: "task-123",
+                status: "completed",
+                output_file: "/tmp/task-123.txt",
+                summary: "Codex agent is done",
+                session_id: "task-notification-session",
+                uuid: "task-note-1",
+              },
+            };
+          }
+          if (step === 2) {
+            step += 1;
+            return {
+              done: false,
+              value: {
+                type: "assistant",
+                message: {
+                  content: "STALE_TASK_NOTIFICATION_RESPONSE",
+                },
+              },
+            };
+          }
+          if (step === 3) {
+            step += 1;
+            return {
+              done: false,
+              value: {
+                type: "result",
+                subtype: "success",
+                usage: buildUsage(),
+                total_cost_usd: 0,
+              },
+            };
+          }
+          if (step === 4) {
+            step += 1;
+            const promptUuid = (await readPromptUuid()) ?? "missing-prompt-uuid";
+            return {
+              done: false,
+              value: {
+                type: "user",
+                message: { role: "user", content: "current prompt" },
+                parent_tool_use_id: null,
+                uuid: promptUuid,
+                session_id: "task-notification-session",
+                isReplay: true,
+              },
+            };
+          }
+          if (step === 5) {
+            step += 1;
+            return {
+              done: false,
+              value: {
+                type: "assistant",
+                message: {
+                  content: "CURRENT_PROMPT_RESPONSE",
+                },
+              },
+            };
+          }
+          if (step === 6) {
+            step += 1;
+            return {
+              done: false,
+              value: {
+                type: "result",
+                subtype: "success",
+                usage: buildUsage(),
+                total_cost_usd: 0,
+              },
+            };
+          }
+          return { done: true, value: undefined };
+        }),
+        interrupt: vi.fn(async () => undefined),
+        return: vi.fn(async () => undefined),
+        setPermissionMode: vi.fn(async () => undefined),
+        setModel: vi.fn(async () => undefined),
+        supportedModels: vi.fn(async () => [{ value: "opus", displayName: "Opus" }]),
+        supportedCommands: vi.fn(async () => []),
+        rewindFiles: vi.fn(async () => ({ canRewind: true })),
+      } satisfies QueryMock;
+    });
+
+    const client = new ClaudeAgentClient({ logger });
+    const session = await client.createSession({
+      provider: "claude",
+      cwd: process.cwd(),
+    });
+
+    const events = await collectUntilTerminal(session.stream("current prompt"));
+    const assistantText = collectAssistantText(events);
+
+    expect(assistantText).toContain("CURRENT_PROMPT_RESPONSE");
+    expect(assistantText).not.toContain("STALE_TASK_NOTIFICATION_RESPONSE");
+
+    await session.close();
+  });
+
+  test("does not terminate the current prompt on a stale pre-prompt result event", async () => {
+    const logger = createTestLogger();
+
+    sdkMocks.query.mockImplementation(({ prompt }: { prompt: AsyncIterable<unknown> }) => {
+      const readPromptUuid = createPromptUuidReader(prompt);
+      let step = 0;
+      return {
+        next: vi.fn(async () => {
+          if (step === 0) {
+            step += 1;
+            return {
+              done: false,
+              value: {
+                type: "system",
+                subtype: "init",
+                session_id: "stale-result-session",
+                permissionMode: "default",
+                model: "opus",
+              },
+            };
+          }
+          if (step === 1) {
+            step += 1;
+            return {
+              done: false,
+              value: {
+                type: "result",
+                subtype: "success",
+                usage: buildUsage(),
+                total_cost_usd: 0,
+              },
+            };
+          }
+          if (step === 2) {
+            step += 1;
+            const promptUuid = (await readPromptUuid()) ?? "missing-prompt-uuid";
+            return {
+              done: false,
+              value: {
+                type: "user",
+                message: { role: "user", content: "current prompt" },
+                parent_tool_use_id: null,
+                uuid: promptUuid,
+                session_id: "stale-result-session",
+                isReplay: true,
+              },
+            };
+          }
+          if (step === 3) {
+            step += 1;
+            return {
+              done: false,
+              value: {
+                type: "assistant",
+                message: {
+                  content: "FRESH_AFTER_STALE_RESULT",
+                },
+              },
+            };
+          }
+          if (step === 4) {
+            step += 1;
+            return {
+              done: false,
+              value: {
+                type: "result",
+                subtype: "success",
+                usage: buildUsage(),
+                total_cost_usd: 0,
+              },
+            };
+          }
+          return { done: true, value: undefined };
+        }),
+        interrupt: vi.fn(async () => undefined),
+        return: vi.fn(async () => undefined),
+        setPermissionMode: vi.fn(async () => undefined),
+        setModel: vi.fn(async () => undefined),
+        supportedModels: vi.fn(async () => [{ value: "opus", displayName: "Opus" }]),
+        supportedCommands: vi.fn(async () => []),
+        rewindFiles: vi.fn(async () => ({ canRewind: true })),
+      } satisfies QueryMock;
+    });
+
+    const client = new ClaudeAgentClient({ logger });
+    const session = await client.createSession({
+      provider: "claude",
+      cwd: process.cwd(),
+    });
+
+    const events = await collectUntilTerminal(session.stream("current prompt"));
+    const assistantText = collectAssistantText(events);
+
+    expect(assistantText).toContain("FRESH_AFTER_STALE_RESULT");
+
+    await session.close();
+  });
+
+  test("emits autonomous live events from history tail when Claude wakes itself", async () => {
+    const logger = createTestLogger();
+    const projectDir = mkdtempSync(path.join(tmpdir(), "claude-live-tail-project-"));
+    const configDir = mkdtempSync(path.join(tmpdir(), "claude-live-tail-config-"));
+    const previousClaudeConfigDir = process.env.CLAUDE_CONFIG_DIR;
+    process.env.CLAUDE_CONFIG_DIR = configDir;
+
+    sdkMocks.query.mockImplementation(() => {
+      let step = 0;
+      return {
+        next: vi.fn(async () => {
+          if (step === 0) {
+            step += 1;
+            return {
+              done: false,
+              value: {
+                type: "system",
+                subtype: "init",
+                session_id: "live-autonomous-session",
+                permissionMode: "default",
+                model: "opus",
+              },
+            };
+          }
+          if (step === 1) {
+            step += 1;
+            return {
+              done: false,
+              value: {
+                type: "result",
+                subtype: "success",
+                usage: buildUsage(),
+                total_cost_usd: 0,
+              },
+            };
+          }
+          return { done: true, value: undefined };
+        }),
+        interrupt: vi.fn(async () => undefined),
+        return: vi.fn(async () => undefined),
+        setPermissionMode: vi.fn(async () => undefined),
+        setModel: vi.fn(async () => undefined),
+        supportedModels: vi.fn(async () => [{ value: "opus", displayName: "Opus" }]),
+        supportedCommands: vi.fn(async () => []),
+        rewindFiles: vi.fn(async () => ({ canRewind: true })),
+      } satisfies QueryMock;
+    });
+
+    try {
+      const client = new ClaudeAgentClient({ logger });
+      const session = await client.createSession({
+        provider: "claude",
+        cwd: projectDir,
+      });
+
+      await collectUntilTerminal(session.stream("seed prompt"));
+      expect(session.describePersistence()?.sessionId).toBe(
+        "live-autonomous-session"
+      );
+
+      const sanitizedCwd = projectDir.replace(/[\\/\.]/g, "-").replace(/_/g, "-");
+      const historyDir = path.join(configDir, "projects", sanitizedCwd);
+      mkdirSync(historyDir, { recursive: true });
+      const historyPath = path.join(historyDir, "live-autonomous-session.jsonl");
+      writeFileSync(historyPath, "", "utf8");
+
+      const liveIterator = (
+        session as unknown as {
+          streamLiveEvents: () => AsyncGenerator<AgentStreamEvent>;
+        }
+      ).streamLiveEvents();
+      const timedReader = createTimedIteratorReader({ iterator: liveIterator });
+      const appendAutonomousBurst = (suffix: string) => {
+        appendFileSync(
+          historyPath,
+          `${JSON.stringify({
+            type: "system",
+            subtype: "task_notification",
+            task_id: `task-${suffix}`,
+            status: "completed",
+            output_file: "/tmp/out.txt",
+            summary: "Background task finished",
+            uuid: `task-note-uuid-${suffix}`,
+            session_id: "live-autonomous-session",
+          })}\n`
+        );
+        appendFileSync(
+          historyPath,
+          `${JSON.stringify({
+            type: "assistant",
+            message: { content: "AUTONOMOUS_WAKE_RESPONSE" },
+            uuid: `assistant-uuid-${suffix}`,
+            session_id: "live-autonomous-session",
+          })}\n`
+        );
+        appendFileSync(
+          historyPath,
+          `${JSON.stringify({
+            type: "result",
+            subtype: "success",
+            usage: buildUsage(),
+            total_cost_usd: 0,
+            uuid: `result-uuid-${suffix}`,
+            session_id: "live-autonomous-session",
+          })}\n`
+        );
+      };
+
+      const liveEvents: AgentStreamEvent[] = [];
+      let completed = false;
+      for (let attempt = 0; attempt < 4 && !completed; attempt += 1) {
+        appendAutonomousBurst(String(attempt));
+        while (liveEvents.length < 12) {
+          let next: IteratorResult<AgentStreamEvent>;
+          try {
+            next = await timedReader.nextWithTimeout(2_000);
+          } catch {
+            break;
+          }
+          if (next.done) {
+            break;
+          }
+          liveEvents.push(next.value);
+          if (next.value.type === "turn_completed") {
+            completed = true;
+            break;
+          }
+        }
+      }
+
+      expect(liveEvents.some((event) => event.type === "turn_started")).toBe(true);
+      expect(
+        liveEvents.some(
+          (event) =>
+            event.type === "timeline" &&
+            event.item.type === "assistant_message" &&
+            event.item.text.includes("AUTONOMOUS_WAKE_RESPONSE")
+        )
+      ).toBe(true);
+      expect(liveEvents.some((event) => event.type === "turn_completed")).toBe(true);
+
+      await session.close();
+    } finally {
+      if (previousClaudeConfigDir === undefined) {
+        delete process.env.CLAUDE_CONFIG_DIR;
+      } else {
+        process.env.CLAUDE_CONFIG_DIR = previousClaudeConfigDir;
+      }
+      rmSync(projectDir, { recursive: true, force: true });
+      rmSync(configDir, { recursive: true, force: true });
+    }
   });
 });

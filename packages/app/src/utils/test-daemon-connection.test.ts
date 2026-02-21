@@ -1,21 +1,19 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
 const daemonClientMock = vi.hoisted(() => {
-  const createdConfigs: Array<{ clientSessionKey?: string; url?: string }> = [];
+  const createdConfigs: Array<{ clientId?: string; url?: string }> = [];
 
   class MockDaemonClient {
-    private statusHandlers = new Set<
-      (
-        message: {
-          type: "status";
-          payload: { status: string; serverId: string; hostname: string | null };
-        }
-      ) => void
-    >();
-
     public lastError: string | null = null;
+    private lastWelcome = {
+      type: "welcome" as const,
+      serverId: "srv_probe_test",
+      hostname: "probe-host" as string | null,
+      version: "0.0.0",
+      resumed: false,
+    };
 
-    constructor(config: { clientSessionKey?: string; url?: string }) {
+    constructor(config: { clientId?: string; url?: string }) {
       createdConfigs.push(config);
     }
 
@@ -23,35 +21,16 @@ const daemonClientMock = vi.hoisted(() => {
       return () => undefined;
     }
 
-    on(
-      event: "status",
-      handler: (
-        message: {
-          type: "status";
-          payload: { status: string; serverId: string; hostname: string | null };
-        }
-      ) => void
-    ): () => void {
-      if (event === "status") {
-        this.statusHandlers.add(handler);
-      }
-      return () => {
-        this.statusHandlers.delete(handler);
-      };
+    on(): () => void {
+      return () => undefined;
     }
 
     async connect(): Promise<void> {
-      const message = {
-        type: "status" as const,
-        payload: {
-          status: "server_info",
-          serverId: "srv_probe_test",
-          hostname: "probe-host",
-        },
-      };
-      for (const handler of this.statusHandlers) {
-        handler(message);
-      }
+      return;
+    }
+
+    getLastWelcomeMessage() {
+      return this.lastWelcome;
     }
 
     async ping(): Promise<{ rttMs: number }> {
@@ -78,7 +57,7 @@ describe("test-daemon-connection probe client identity", () => {
     daemonClientMock.createdConfigs.length = 0;
   });
 
-  it("uses isolated probe clientSessionKey values for direct latency probes", async () => {
+  it("uses isolated probe clientId values for direct latency probes", async () => {
     const mod = await import("./test-daemon-connection");
 
     await mod.measureConnectionLatency({
@@ -93,8 +72,8 @@ describe("test-daemon-connection probe client identity", () => {
     });
 
     const [first, second] = daemonClientMock.createdConfigs;
-    expect(first?.clientSessionKey).toMatch(/^clsk_probe_/);
-    expect(second?.clientSessionKey).toMatch(/^clsk_probe_/);
-    expect(first?.clientSessionKey).not.toBe(second?.clientSessionKey);
+    expect(first?.clientId).toMatch(/^cid_probe_/);
+    expect(second?.clientId).toMatch(/^cid_probe_/);
+    expect(first?.clientId).not.toBe(second?.clientId);
   });
 });

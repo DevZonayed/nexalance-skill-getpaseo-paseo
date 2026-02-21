@@ -9,35 +9,35 @@ vi.mock("@react-native-async-storage/async-storage", () => ({
   default: asyncStorageMock,
 }));
 
-describe("client-session-key", () => {
+describe("client-id", () => {
   beforeEach(() => {
     vi.resetModules();
     asyncStorageMock.getItem.mockReset();
     asyncStorageMock.setItem.mockReset();
   });
 
-  it("returns stored client session key when present", async () => {
-    asyncStorageMock.getItem.mockResolvedValue("clsk_existing");
-    const mod = await import("./client-session-key");
+  it("returns stored client id when present", async () => {
+    asyncStorageMock.getItem.mockResolvedValue("cid_existing");
+    const mod = await import("./client-id");
 
-    const key = await mod.getOrCreateClientSessionKey();
-    expect(key).toBe("clsk_existing");
+    const key = await mod.getOrCreateClientId();
+    expect(key).toBe("cid_existing");
     expect(asyncStorageMock.getItem).toHaveBeenCalledTimes(1);
     expect(asyncStorageMock.setItem).not.toHaveBeenCalled();
   });
 
-  it("creates and persists a client session key when missing", async () => {
+  it("creates and persists a client id when missing", async () => {
     asyncStorageMock.getItem.mockResolvedValue(null);
     asyncStorageMock.setItem.mockResolvedValue();
     vi.spyOn(globalThis.crypto, "randomUUID").mockReturnValue("12345678-1234-1234-1234-1234567890ab");
 
-    const mod = await import("./client-session-key");
-    const key = await mod.getOrCreateClientSessionKey();
+    const mod = await import("./client-id");
+    const key = await mod.getOrCreateClientId();
 
-    expect(key).toBe("clsk_123456781234123412341234567890ab");
+    expect(key).toBe("cid_123456781234123412341234567890ab");
     expect(asyncStorageMock.setItem).toHaveBeenCalledWith(
-      "@paseo:client-session-key-v1",
-      "clsk_123456781234123412341234567890ab"
+      "@paseo:client-id-v1",
+      "cid_123456781234123412341234567890ab"
     );
   });
 });

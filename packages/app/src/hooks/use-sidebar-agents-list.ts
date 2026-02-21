@@ -168,10 +168,9 @@ export function useSidebarAgentsList(options?: {
     [options?.selectedProjectFilterKeys]
   );
 
-  const session = useSessionStore((state) =>
-    serverId ? state.sessions[serverId] : undefined
+  const liveAgents = useSessionStore((state) =>
+    serverId ? state.sessions[serverId]?.agents ?? null : null
   );
-  const liveAgents = session?.agents ?? null;
   const { snapshot } = useHostRuntimeSession(serverId ?? "");
 
   const { entries, projectFilterOptions, hasAnyData, hasMoreEntries } = useMemo(() => {

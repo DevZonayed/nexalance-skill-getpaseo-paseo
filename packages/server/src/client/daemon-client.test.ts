@@ -83,7 +83,8 @@ describe('DaemonClient', () => {
     const mock = createMockTransport()
 
     const client = new DaemonClient({
-      url: 'ws://test?clientSessionKey=clsk_unit_test',
+      url: 'ws://test',
+      clientId: 'clsk_unit_test',
       logger,
       reconnect: { enabled: false },
       transportFactory: () => mock.transport,
@@ -171,7 +172,8 @@ describe('DaemonClient', () => {
     const mock = createMockTransport()
 
     const client = new DaemonClient({
-      url: 'ws://test?clientSessionKey=clsk_unit_test',
+      url: 'ws://test',
+      clientId: 'clsk_unit_test',
       logger,
       reconnect: { enabled: false },
       transportFactory: () => mock.transport,
@@ -197,7 +199,8 @@ describe('DaemonClient', () => {
       const mock = createMockTransport()
 
       const client = new DaemonClient({
-        url: 'ws://test?clientSessionKey=clsk_unit_test',
+        url: 'ws://test',
+        clientId: 'clsk_unit_test',
         logger,
         reconnect: { enabled: false },
         connectTimeoutMs: 100,
@@ -234,7 +237,8 @@ describe('DaemonClient', () => {
       let transportIndex = 0
 
       const client = new DaemonClient({
-        url: 'ws://relay.test/ws?role=client&serverId=srv_test&clientId=clsk_test&v=2',
+        url: 'ws://relay.test/ws?role=client&serverId=srv_test&v=2',
+        clientId: 'clsk_test',
         logger,
         reconnect: {
           enabled: true,
@@ -267,42 +271,24 @@ describe('DaemonClient', () => {
     }
   })
 
-  test('requires explicit relay session identity when URL clientId is missing', () => {
+  test('requires non-empty clientId', () => {
     expect(() => {
       new DaemonClient({
         url: 'ws://relay.test/ws?role=client&serverId=srv_test&v=2',
+        clientId: '',
         reconnect: { enabled: false },
       })
-    }).toThrow('Relay client requires clientSessionKey or URL clientId')
+    }).toThrow('Daemon client requires a non-empty clientId')
   })
 
-  test('rejects relay identity mismatch between URL clientId and clientSessionKey', () => {
-    expect(() => {
-      new DaemonClient({
-        url: 'ws://relay.test/ws?role=client&serverId=srv_test&clientId=clsk_a&v=2',
-        clientSessionKey: 'clsk_b',
-        reconnect: { enabled: false },
-      })
-    }).toThrow('Relay clientId and clientSessionKey must match when both are provided')
-  })
-
-  test('requires explicit direct session identity when URL clientSessionKey is missing', () => {
+  test('requires non-empty clientId for direct connections', () => {
     expect(() => {
       new DaemonClient({
         url: 'ws://127.0.0.1:6767/ws',
+        clientId: '   ',
         reconnect: { enabled: false },
       })
-    }).toThrow('Direct client requires clientSessionKey or URL clientSessionKey')
-  })
-
-  test('rejects direct identity mismatch between URL and config clientSessionKey', () => {
-    expect(() => {
-      new DaemonClient({
-        url: 'ws://127.0.0.1:6767/ws?clientSessionKey=clsk_a',
-        clientSessionKey: 'clsk_b',
-        reconnect: { enabled: false },
-      })
-    }).toThrow('Direct URL clientSessionKey and config clientSessionKey must match when both are provided')
+    }).toThrow('Daemon client requires a non-empty clientId')
   })
 
   test('logs configured runtime generation in connection transition events', async () => {
@@ -310,7 +296,8 @@ describe('DaemonClient', () => {
     const mock = createMockTransport()
 
     const client = new DaemonClient({
-      url: 'ws://test?clientSessionKey=clsk_unit_test',
+      url: 'ws://test',
+      clientId: 'clsk_unit_test',
       logger,
       reconnect: { enabled: false },
       runtimeGeneration: 7,
@@ -336,7 +323,8 @@ describe('DaemonClient', () => {
     const mock = createMockTransport()
 
     const client = new DaemonClient({
-      url: 'ws://test?clientSessionKey=clsk_unit_test',
+      url: 'ws://test',
+      clientId: 'clsk_unit_test',
       logger,
       reconnect: { enabled: false },
       transportFactory: () => mock.transport,
@@ -399,7 +387,8 @@ describe('DaemonClient', () => {
     const mock = createMockTransport()
 
     const client = new DaemonClient({
-      url: 'ws://test?clientSessionKey=clsk_unit_test',
+      url: 'ws://test',
+      clientId: 'clsk_unit_test',
       logger,
       reconnect: { enabled: false },
       transportFactory: () => mock.transport,
@@ -467,7 +456,8 @@ describe('DaemonClient', () => {
     const mock = createMockTransport()
 
     const client = new DaemonClient({
-      url: 'ws://test?clientSessionKey=clsk_unit_test',
+      url: 'ws://test',
+      clientId: 'clsk_unit_test',
       logger,
       reconnect: { enabled: false },
       transportFactory: () => mock.transport,
@@ -526,7 +516,8 @@ describe('DaemonClient', () => {
     const mock = createMockTransport()
 
     const client = new DaemonClient({
-      url: 'ws://test?clientSessionKey=clsk_unit_test',
+      url: 'ws://test',
+      clientId: 'clsk_unit_test',
       logger,
       reconnect: { enabled: false },
       transportFactory: () => mock.transport,
@@ -597,7 +588,8 @@ describe('DaemonClient', () => {
     const mock = createMockTransport()
 
     const client = new DaemonClient({
-      url: 'ws://test?clientSessionKey=clsk_unit_test',
+      url: 'ws://test',
+      clientId: 'clsk_unit_test',
       logger,
       reconnect: { enabled: false },
       transportFactory: () => mock.transport,
@@ -659,7 +651,8 @@ describe('DaemonClient', () => {
     const mock = createMockTransport()
 
     const client = new DaemonClient({
-      url: 'ws://test?clientSessionKey=clsk_unit_test',
+      url: 'ws://test',
+      clientId: 'clsk_unit_test',
       logger,
       reconnect: { enabled: false },
       transportFactory: () => mock.transport,
@@ -705,7 +698,8 @@ describe('DaemonClient', () => {
     const mock = createMockTransport()
 
     const client = new DaemonClient({
-      url: 'ws://test?clientSessionKey=clsk_unit_test',
+      url: 'ws://test',
+      clientId: 'clsk_unit_test',
       logger,
       reconnect: { enabled: false },
       transportFactory: () => mock.transport,
@@ -786,7 +780,8 @@ describe('DaemonClient', () => {
     const mock = createMockTransport()
 
     const client = new DaemonClient({
-      url: 'ws://test?clientSessionKey=clsk_unit_test',
+      url: 'ws://test',
+      clientId: 'clsk_unit_test',
       logger,
       reconnect: { enabled: false },
       transportFactory: () => mock.transport,
@@ -829,7 +824,8 @@ describe('DaemonClient', () => {
     const mock = createMockTransport()
 
     const client = new DaemonClient({
-      url: 'ws://test?clientSessionKey=clsk_unit_test',
+      url: 'ws://test',
+      clientId: 'clsk_unit_test',
       logger,
       reconnect: { enabled: false },
       transportFactory: () => mock.transport,
@@ -881,7 +877,8 @@ describe('DaemonClient', () => {
     })
 
     const client = new DaemonClient({
-      url: 'ws://test?clientSessionKey=clsk_unit_test',
+      url: 'ws://test',
+      clientId: 'clsk_unit_test',
       logger,
       reconnect: { enabled: false },
       transportFactory,
@@ -908,7 +905,8 @@ describe('DaemonClient', () => {
     const mock = createMockTransport()
 
     const client = new DaemonClient({
-      url: 'ws://test?clientSessionKey=clsk_unit_test',
+      url: 'ws://test',
+      clientId: 'clsk_unit_test',
       logger,
       reconnect: { enabled: false },
       transportFactory: () => mock.transport,
@@ -962,7 +960,8 @@ describe('DaemonClient', () => {
     const mock = createMockTransport()
 
     const client = new DaemonClient({
-      url: 'ws://test?clientSessionKey=clsk_unit_test',
+      url: 'ws://test',
+      clientId: 'clsk_unit_test',
       logger,
       reconnect: { enabled: false },
       transportFactory: () => mock.transport,
@@ -1037,7 +1036,8 @@ describe('DaemonClient', () => {
     const mock = createMockTransport()
 
     const client = new DaemonClient({
-      url: 'ws://test?clientSessionKey=clsk_unit_test',
+      url: 'ws://test',
+      clientId: 'clsk_unit_test',
       logger,
       reconnect: { enabled: false },
       transportFactory: () => mock.transport,
@@ -1093,7 +1093,8 @@ describe('DaemonClient', () => {
     const mock = createMockTransport()
 
     const client = new DaemonClient({
-      url: 'ws://test?clientSessionKey=clsk_unit_test',
+      url: 'ws://test',
+      clientId: 'clsk_unit_test',
       logger,
       reconnect: { enabled: false },
       transportFactory: () => mock.transport,
@@ -1139,7 +1140,8 @@ describe('DaemonClient', () => {
     const mock = createMockTransport()
 
     const client = new DaemonClient({
-      url: 'ws://test?clientSessionKey=clsk_unit_test',
+      url: 'ws://test',
+      clientId: 'clsk_unit_test',
       logger,
       reconnect: { enabled: false },
       transportFactory: () => mock.transport,
@@ -1181,7 +1183,8 @@ describe('DaemonClient', () => {
     const mock = createMockTransport()
 
     const client = new DaemonClient({
-      url: 'ws://test?clientSessionKey=clsk_unit_test',
+      url: 'ws://test',
+      clientId: 'clsk_unit_test',
       logger,
       reconnect: { enabled: false },
       transportFactory: () => mock.transport,
@@ -1223,7 +1226,8 @@ describe('DaemonClient', () => {
     const mock = createMockTransport()
 
     const client = new DaemonClient({
-      url: 'ws://test?clientSessionKey=clsk_unit_test',
+      url: 'ws://test',
+      clientId: 'clsk_unit_test',
       logger,
       reconnect: { enabled: false },
       transportFactory: () => mock.transport,
@@ -1285,7 +1289,8 @@ describe('DaemonClient', () => {
     const mock = createMockTransport()
 
     const client = new DaemonClient({
-      url: 'ws://test?clientSessionKey=clsk_unit_test',
+      url: 'ws://test',
+      clientId: 'clsk_unit_test',
       logger,
       reconnect: { enabled: false },
       transportFactory: () => mock.transport,
@@ -1347,7 +1352,8 @@ describe('DaemonClient', () => {
     const mock = createMockTransport()
 
     const client = new DaemonClient({
-      url: 'ws://test?clientSessionKey=clsk_unit_test',
+      url: 'ws://test',
+      clientId: 'clsk_unit_test',
       logger,
       reconnect: { enabled: false },
       transportFactory: () => mock.transport,
@@ -1418,7 +1424,8 @@ describe('DaemonClient', () => {
     const mock = createMockTransport()
 
     const client = new DaemonClient({
-      url: 'ws://test?clientSessionKey=clsk_unit_test',
+      url: 'ws://test',
+      clientId: 'clsk_unit_test',
       logger,
       reconnect: { enabled: false },
       transportFactory: () => mock.transport,
@@ -1470,7 +1477,8 @@ describe('DaemonClient', () => {
     const mock = createMockTransport()
 
     const client = new DaemonClient({
-      url: 'ws://test?clientSessionKey=clsk_unit_test',
+      url: 'ws://test',
+      clientId: 'clsk_unit_test',
       logger,
       reconnect: { enabled: false },
       transportFactory: () => mock.transport,
@@ -1562,7 +1570,8 @@ describe('DaemonClient', () => {
     const mock = createMockTransport()
 
     const client = new DaemonClient({
-      url: 'ws://test?clientSessionKey=clsk_unit_test',
+      url: 'ws://test',
+      clientId: 'clsk_unit_test',
       logger,
       reconnect: { enabled: false },
       transportFactory: () => mock.transport,
@@ -1632,7 +1641,8 @@ describe('DaemonClient', () => {
     const mock = createMockTransport()
 
     const client = new DaemonClient({
-      url: 'ws://test?clientSessionKey=clsk_unit_test',
+      url: 'ws://test',
+      clientId: 'clsk_unit_test',
       logger,
       reconnect: { enabled: false },
       transportFactory: () => mock.transport,
@@ -1668,7 +1678,8 @@ describe('DaemonClient', () => {
     const mock = createMockTransport()
 
     const client = new DaemonClient({
-      url: 'ws://test?clientSessionKey=clsk_unit_test',
+      url: 'ws://test',
+      clientId: 'clsk_unit_test',
       logger,
       reconnect: { enabled: false },
       transportFactory: () => mock.transport,

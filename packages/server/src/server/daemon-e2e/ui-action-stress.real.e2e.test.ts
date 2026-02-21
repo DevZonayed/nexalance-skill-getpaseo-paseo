@@ -382,17 +382,7 @@ async function runUiScenario(params: {
     }
 
     if (action.type === "wait_for_finish") {
-      const startedAt = Date.now();
-      let result = await client.waitForFinish(agentId, action.timeoutMs);
-      while (
-        result.status === "idle" &&
-        result.final?.status === "running" &&
-        Date.now() - startedAt < action.timeoutMs
-      ) {
-        const elapsed = Date.now() - startedAt;
-        const remaining = Math.max(1_000, action.timeoutMs - elapsed);
-        result = await client.waitForFinish(agentId, remaining);
-      }
+      const result = await client.waitForFinish(agentId, action.timeoutMs);
 
       expect(
         result.status,

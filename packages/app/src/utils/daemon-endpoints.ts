@@ -33,7 +33,6 @@ export function decodeOfferFragmentPayload(encoded: string): unknown {
 export function buildRelayWebSocketUrl(params: {
   endpoint: string;
   serverId: string;
-  clientSessionKey?: string;
 }): string {
   return buildSharedRelayWebSocketUrl({ ...params, role: "client" });
 }

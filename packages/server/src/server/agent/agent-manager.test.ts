@@ -16,6 +16,63 @@ import type {
   AgentStreamEvent,
 } from "./agent-sdk-types.js";
 
+type Deferred<T> = {
+  promise: Promise<T>;
+  resolve: (value: T) => void;
+  reject: (reason?: unknown) => void;
+};
+
+function deferred<T>(): Deferred<T> {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
+class EventPushable<T> implements AsyncIterable<T> {
+  private queue: T[] = [];
+  private resolvers: Array<(value: IteratorResult<T, void>) => void> = [];
+  private closed = false;
+
+  push(value: T): void {
+    if (this.closed) {
+      return;
+    }
+    const resolver = this.resolvers.shift();
+    if (resolver) {
+      resolver({ value, done: false });
+      return;
+    }
+    this.queue.push(value);
+  }
+
+  end(): void {
+    this.closed = true;
+    while (this.resolvers.length > 0) {
+      const resolver = this.resolvers.shift();
+      resolver?.({ value: undefined, done: true });
+    }
+  }
+
+  [Symbol.asyncIterator](): AsyncIterator<T> {
+    return {
+      next: () => {
+        if (this.queue.length > 0) {
+          const value = this.queue.shift()!;
+          return Promise.resolve({ value, done: false });
+        }
+        if (this.closed) {
+          return Promise.resolve({ value: undefined, done: true });
+        }
+        return new Promise((resolve) => this.resolvers.push(resolve));
+      },
+    };
+  }
+}
+
 const TEST_CAPABILITIES = {
   supportsStreaming: false,
   supportsSessionPersistence: false,
@@ -790,6 +847,207 @@ describe("AgentManager", () => {
 
     const refreshed = manager.getAgent(snapshot.id);
     expect(refreshed?.runtimeInfo?.model).toBe("gpt-5.2-codex");
+  });
+
+  test("waitForAgentEvent does not resolve idle until pendingRun is cleared", async () => {
+    const workdir = mkdtempSync(join(tmpdir(), "agent-manager-wait-coherence-"));
+    const storagePath = join(workdir, "agents");
+    const storage = new AgentStorage(storagePath, logger);
+    const releaseTurnCompleted = deferred<void>();
+    const releaseStreamEnd = deferred<void>();
+
+    class SlowTerminalSession extends TestAgentSession {
+      override async *stream(): AsyncGenerator<AgentStreamEvent> {
+        yield { type: "turn_started", provider: this.provider };
+        await releaseTurnCompleted.promise;
+        yield { type: "turn_completed", provider: this.provider };
+        await releaseStreamEnd.promise;
+      }
+    }
+
+    class SlowTerminalClient extends TestAgentClient {
+      override async createSession(config: AgentSessionConfig): Promise<AgentSession> {
+        return new SlowTerminalSession(config);
+      }
+    }
+
+    const manager = new AgentManager({
+      clients: {
+        codex: new SlowTerminalClient(),
+      },
+      registry: storage,
+      logger,
+      idFactory: () => "00000000-0000-4000-8000-000000000124",
+    });
+
+    const snapshot = await manager.createAgent({
+      provider: "codex",
+      cwd: workdir,
+    });
+
+    const turnCompletedSeen = new Promise<void>((resolve) => {
+      const unsubscribe = manager.subscribe(
+        (event) => {
+          if (
+            event.type === "agent_stream" &&
+            event.agentId === snapshot.id &&
+            event.event.type === "turn_completed"
+          ) {
+            unsubscribe();
+            resolve();
+          }
+        },
+        { agentId: snapshot.id, replayState: false }
+      );
+    });
+
+    const stream = manager.streamAgent(snapshot.id, "hello");
+    const consumePromise = (async () => {
+      for await (const _event of stream) {
+        // Drain events so manager lifecycle progresses naturally.
+      }
+    })();
+
+    await manager.waitForAgentRunStart(snapshot.id);
+    const waitPromise = manager.waitForAgentEvent(snapshot.id);
+
+    releaseTurnCompleted.resolve();
+    await turnCompletedSeen;
+    const earlyResolution = await Promise.race([
+      waitPromise.then(() => "resolved"),
+      new Promise<"pending">((resolve) => setTimeout(() => resolve("pending"), 50)),
+    ]);
+    expect(earlyResolution).toBe("pending");
+
+    releaseStreamEnd.resolve();
+    const waited = await waitPromise;
+    expect(waited.status).toBe("idle");
+
+    await consumePromise;
+  });
+
+  test("applies live autonomous events while no foreground run is active", async () => {
+    const workdir = mkdtempSync(join(tmpdir(), "agent-manager-live-events-"));
+    const storagePath = join(workdir, "agents");
+    const storage = new AgentStorage(storagePath, logger);
+    const liveEvents = new EventPushable<AgentStreamEvent>();
+
+    class LiveEventSession extends TestAgentSession {
+      async *streamLiveEvents(): AsyncGenerator<AgentStreamEvent> {
+        for await (const event of liveEvents) {
+          yield event;
+        }
+      }
+
+      override async close(): Promise<void> {
+        liveEvents.end();
+      }
+    }
+
+    class LiveEventClient extends TestAgentClient {
+      override async createSession(config: AgentSessionConfig): Promise<AgentSession> {
+        return new LiveEventSession(config);
+      }
+    }
+
+    const manager = new AgentManager({
+      clients: {
+        codex: new LiveEventClient(),
+      },
+      registry: storage,
+      logger,
+      idFactory: () => "00000000-0000-4000-8000-000000000125",
+    });
+
+    const snapshot = await manager.createAgent({
+      provider: "codex",
+      cwd: workdir,
+    });
+
+    const lifecycleUpdates: string[] = [];
+    let sawRunningState = false;
+    let resolveSettled!: () => void;
+    const settled = new Promise<void>((resolve) => {
+      resolveSettled = resolve;
+    });
+    manager.subscribe(
+      (event) => {
+        if (event.type === "agent_state" && event.agent.id === snapshot.id) {
+          lifecycleUpdates.push(event.agent.lifecycle);
+          if (event.agent.lifecycle === "running") {
+            sawRunningState = true;
+          }
+          if (sawRunningState && event.agent.lifecycle === "idle") {
+            resolveSettled();
+          }
+        }
+      },
+      { agentId: snapshot.id, replayState: false }
+    );
+
+    liveEvents.push({ type: "turn_started", provider: "codex" });
+    liveEvents.push({
+      type: "timeline",
+      provider: "codex",
+      item: { type: "assistant_message", text: "AUTONOMOUS_PUMP_MESSAGE" },
+    });
+    liveEvents.push({ type: "turn_completed", provider: "codex" });
+    await settled;
+
+    const updated = manager.getAgent(snapshot.id);
+    expect(updated?.lifecycle).toBe("idle");
+    expect(manager.getTimeline(snapshot.id)).toContainEqual({
+      type: "assistant_message",
+      text: "AUTONOMOUS_PUMP_MESSAGE",
+    });
+    expect(lifecycleUpdates).toContain("running");
+    expect(lifecycleUpdates).toContain("idle");
+  });
+
+  test("waitForAgentEvent waitForActive resolves for autonomous live-event run", async () => {
+    const workdir = mkdtempSync(join(tmpdir(), "agent-manager-live-wait-"));
+    const storagePath = join(workdir, "agents");
+    const storage = new AgentStorage(storagePath, logger);
+    const liveEvents = new EventPushable<AgentStreamEvent>();
+
+    class LiveEventSession extends TestAgentSession {
+      async *streamLiveEvents(): AsyncGenerator<AgentStreamEvent> {
+        for await (const event of liveEvents) {
+          yield event;
+        }
+      }
+
+      override async close(): Promise<void> {
+        liveEvents.end();
+      }
+    }
+
+    class LiveEventClient extends TestAgentClient {
+      override async createSession(config: AgentSessionConfig): Promise<AgentSession> {
+        return new LiveEventSession(config);
+      }
+    }
+
+    const manager = new AgentManager({
+      clients: {
+        codex: new LiveEventClient(),
+      },
+      registry: storage,
+      logger,
+      idFactory: () => "00000000-0000-4000-8000-000000000126",
+    });
+
+    const snapshot = await manager.createAgent({
+      provider: "codex",
+      cwd: workdir,
+    });
+
+    const waitPromise = manager.waitForAgentEvent(snapshot.id, { waitForActive: true });
+    liveEvents.push({ type: "turn_started", provider: "codex" });
+    liveEvents.push({ type: "turn_completed", provider: "codex" });
+
+    const result = await waitPromise;
+    expect(result.status).toBe("idle");
   });
 
   test("keeps updatedAt monotonic when user message and run start happen in the same millisecond", async () => {

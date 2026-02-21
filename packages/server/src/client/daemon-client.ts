@@ -6,6 +6,7 @@ import {
   AgentResumedStatusPayloadSchema,
   RestartRequestedStatusPayloadSchema,
   SessionInboundMessageSchema,
+  type WSWelcomeMessage,
   WSOutboundMessageSchema,
 } from '../shared/messages.js'
 import type {
@@ -144,7 +145,8 @@ export type DaemonEventHandler = (event: DaemonEvent) => void
 
 export type DaemonClientConfig = {
   url: string
-  clientSessionKey?: string
+  clientId: string
+  clientType?: 'mobile' | 'browser' | 'cli' | 'mcp'
   runtimeGeneration?: number | null
   authHeader?: string
   suppressSendErrors?: boolean
@@ -312,7 +314,7 @@ function isWaiterTimeoutError(error: unknown): boolean {
   return error instanceof Error && error.message.startsWith('Timeout waiting for message')
 }
 
-function normalizeClientSessionKey(value: unknown): string | null {
+function normalizeClientId(value: unknown): string | null {
   if (typeof value !== 'string') {
     return null
   }
@@ -390,8 +392,9 @@ export class DaemonClient {
   private terminalStreams: TerminalStreamManager
   private readonly logConnectionPath: 'direct' | 'relay'
   private readonly logServerId: string | null
-  private readonly logClientSessionKeyHash: string
+  private readonly logClientIdHash: string
   private readonly logGeneration: number | null
+  private lastWelcomeMessage: WSWelcomeMessage | null = null
 
   constructor(private config: DaemonClientConfig) {
     this.logger = config.logger ?? consoleLogger
@@ -402,11 +405,16 @@ export class DaemonClient {
     } catch {
       parsedUrlForLog = null
     }
-    const parsedServerIdForLog = normalizeClientSessionKey(
+    const parsedServerIdForLog = normalizeClientId(
       parsedUrlForLog?.searchParams.get('serverId')
     )
     this.logServerId = parsedServerIdForLog ?? parsedUrlForLog?.host ?? null
-    this.logClientSessionKeyHash = 'h_unresolved'
+    const resolvedClientId = normalizeClientId(this.config.clientId)
+    if (!resolvedClientId) {
+      throw new Error('Daemon client requires a non-empty clientId')
+    }
+    this.config.clientId = resolvedClientId
+    this.logClientIdHash = hashForLog(resolvedClientId)
     this.logGeneration =
       typeof this.config.runtimeGeneration === 'number' && Number.isFinite(this.config.runtimeGeneration)
         ? this.config.runtimeGeneration
@@ -422,48 +430,6 @@ export class DaemonClient {
         })
       },
     })
-    const configClientSessionKey = normalizeClientSessionKey(this.config.clientSessionKey)
-    let parsed: URL | null = null
-    try {
-      parsed = new URL(this.config.url)
-    } catch {
-      // ignore - invalid URL will be handled on connect
-    }
-
-    // Relay requires a clientId so the daemon can create an independent
-    // socket + E2EE channel per connected client.
-    if (isRelayClientWebSocketUrl(this.config.url)) {
-      const urlClientId = normalizeClientSessionKey(parsed?.searchParams.get('clientId'))
-      if (urlClientId && configClientSessionKey && configClientSessionKey !== urlClientId) {
-        throw new Error('Relay clientId and clientSessionKey must match when both are provided')
-      }
-      const resolvedClientSessionKey = configClientSessionKey ?? urlClientId
-      if (!resolvedClientSessionKey) {
-        throw new Error('Relay client requires clientSessionKey or URL clientId')
-      }
-      this.config.clientSessionKey = resolvedClientSessionKey
-      this.logClientSessionKeyHash = hashForLog(resolvedClientSessionKey)
-      if (parsed && !urlClientId) {
-        parsed.searchParams.set('clientId', resolvedClientSessionKey)
-        this.config.url = parsed.toString()
-      }
-      return
-    }
-
-    const urlClientSessionKey = normalizeClientSessionKey(parsed?.searchParams.get('clientSessionKey'))
-    if (urlClientSessionKey && configClientSessionKey && configClientSessionKey !== urlClientSessionKey) {
-      throw new Error('Direct URL clientSessionKey and config clientSessionKey must match when both are provided')
-    }
-    const resolvedClientSessionKey = configClientSessionKey ?? urlClientSessionKey
-    if (!resolvedClientSessionKey) {
-      throw new Error('Direct client requires clientSessionKey or URL clientSessionKey')
-    }
-    this.config.clientSessionKey = resolvedClientSessionKey
-    this.logClientSessionKeyHash = hashForLog(resolvedClientSessionKey)
-    if (parsed && !urlClientSessionKey) {
-      parsed.searchParams.set('clientSessionKey', resolvedClientSessionKey)
-      this.config.url = parsed.toString()
-    }
   }
 
   // ============================================================================
@@ -532,8 +498,10 @@ export class DaemonClient {
           logger: this.logger,
         })
       }
-      const transport = transportFactory({ url: this.config.url, headers })
+      const transportUrl = this.resolveTransportUrlForAttempt()
+      const transport = transportFactory({ url: transportUrl, headers })
       this.transport = transport
+      this.lastWelcomeMessage = null
 
       this.updateConnectionState({
         status: 'connecting',
@@ -556,18 +524,12 @@ export class DaemonClient {
 
       this.transportCleanup = [
         transport.onOpen(() => {
-          this.resetConnectTimeout()
           if (this.pendingGenericTransportErrorTimeout) {
             clearTimeout(this.pendingGenericTransportErrorTimeout)
             this.pendingGenericTransportErrorTimeout = null
           }
           this.lastErrorValue = null
-          this.reconnectAttempt = 0
-          this.updateConnectionState({ status: 'connected' }, { event: 'TRANSPORT_OPEN' })
-          this.resubscribeCheckoutDiffSubscriptions()
-          this.resubscribeTerminalDirectorySubscriptions()
-          this.flushPendingSendQueue()
-          this.resolveConnect()
+          this.sendHelloMessage()
         }),
         transport.onClose((event) => {
           this.resetConnectTimeout()
@@ -674,6 +636,7 @@ export class DaemonClient {
     this.clearWaiters(new Error('Daemon client closed'))
     this.rejectPendingSendQueue(new Error('Daemon client closed'))
     this.terminalStreams.clearAll()
+    this.lastWelcomeMessage = null
     this.updateConnectionState(
       { status: 'disposed' },
       { event: 'DISPOSE', reason: 'Client closed', reasonCode: 'disposed' }
@@ -2599,6 +2562,45 @@ export class DaemonClient {
     return requestId ?? crypto.randomUUID()
   }
 
+  getLastWelcomeMessage(): WSWelcomeMessage | null {
+    return this.lastWelcomeMessage
+  }
+
+  private resolveTransportUrlForAttempt(): string {
+    return this.config.url
+  }
+
+  private sendHelloMessage(): void {
+    if (!this.transport) {
+      this.scheduleReconnect({
+        reason: 'Transport unavailable before hello',
+        event: 'HELLO_TRANSPORT_MISSING',
+        reasonCode: 'transport_error',
+      })
+      return
+    }
+
+    try {
+      this.transport.send(
+        JSON.stringify({
+          type: 'hello',
+          clientId: this.config.clientId,
+          clientType: this.config.clientType ?? 'cli',
+          protocolVersion: 1,
+        })
+      )
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Failed to send hello message'
+      this.lastErrorValue = message
+      this.scheduleReconnect({
+        reason: message,
+        event: 'HELLO_SEND_FAILED',
+        reasonCode: 'transport_error',
+      })
+    }
+  }
+
   private disposeTransport(code = 1001, reason = 'Reconnecting'): void {
     this.cleanupTransport()
     if (this.transport) {
@@ -2660,12 +2662,24 @@ export class DaemonClient {
 
     const parsed = WSOutboundMessageSchema.safeParse(parsedJson)
     if (!parsed.success) {
-      const msgType = (parsedJson as { message?: { type?: string } })?.message?.type ?? 'unknown'
+      const msgType = (parsedJson as { type?: string })?.type ?? 'unknown'
       this.logger.warn({ msgType, error: parsed.error.message }, 'Message validation failed')
       return
     }
 
     if (parsed.data.type === 'pong') {
+      return
+    }
+
+    if (parsed.data.type === 'welcome') {
+      this.lastWelcomeMessage = parsed.data
+      this.resetConnectTimeout()
+      this.reconnectAttempt = 0
+      this.updateConnectionState({ status: 'connected' }, { event: 'HELLO_WELCOME' })
+      this.resubscribeCheckoutDiffSubscriptions()
+      this.resubscribeTerminalDirectorySubscriptions()
+      this.flushPendingSendQueue()
+      this.resolveConnect()
       return
     }
 
@@ -2704,7 +2718,7 @@ export class DaemonClient {
     this.logger.info(
       {
         serverId: this.logServerId,
-        clientSessionKeyHash: this.logClientSessionKeyHash,
+        clientIdHash: this.logClientIdHash,
         from: previous.status,
         to: next.status,
         event: metadata?.event ?? 'STATE_UPDATE',
@@ -2745,6 +2759,7 @@ export class DaemonClient {
     this.clearWaiters(new Error(reason ?? 'Connection lost'))
     this.rejectPendingSendQueue(new Error(reason ?? 'Connection lost'))
     this.terminalStreams.clearAll()
+    this.lastWelcomeMessage = null
 
     if (wasDisposed) {
       this.rejectConnect(new Error(reason ?? 'Daemon client is disposed'))

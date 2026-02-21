@@ -11,7 +11,6 @@ import {
   DaemonClient,
 } from "./test-utils/index.js";
 import { getFullAccessConfig, getAskModeConfig } from "./daemon-e2e/agent-configs.js";
-import { parseServerInfoStatusPayload } from "./messages.js";
 import {
   chunkPcm16,
   parsePcm16MonoWav,
@@ -280,24 +279,17 @@ describe("daemon client E2E", () => {
     }
   }, 30000);
 
-  test("emits server_info on websocket connect", async () => {
+  test("receives welcome on websocket connect", async () => {
     const client = new DaemonClient({
       url: `ws://127.0.0.1:${ctx.daemon.port}/ws`,
+      clientId: `cid-e2e-${randomUUID()}`,
+      clientType: "cli",
     });
-
-    const infoPromise = waitForSignal<{ serverId: string }>(5000, (resolve) => {
-      const unsubscribe = client.on("status", (message) => {
-        if (message.type !== "status") return;
-        const payload = parseServerInfoStatusPayload(message.payload);
-        if (!payload) return;
-        resolve({ serverId: payload.serverId });
-      });
-      return unsubscribe;
-    });
-
     await client.connect();
-    const info = await infoPromise;
-    expect(info.serverId.length).toBeGreaterThan(0);
+    const welcome = client.getLastWelcomeMessage();
+    expect(welcome).not.toBeNull();
+    expect(welcome?.serverId.length).toBeGreaterThan(0);
+    expect(typeof welcome?.resumed).toBe("boolean");
 
     await client.close();
   }, 15000);
@@ -315,38 +307,20 @@ describe("daemon client E2E", () => {
 
     const client = new DaemonClient({
       url: `ws://127.0.0.1:${isolatedCtx.daemon.port}/ws`,
+      clientId: `cid-e2e-${randomUUID()}`,
+      clientType: "cli",
     });
 
     try {
-      const infoPromise = waitForSignal<{
-        dictationEnabled: boolean;
-        dictationReason: string;
-        voiceEnabled: boolean;
-        voiceReason: string;
-      }>(5000, (resolve) => {
-        const unsubscribe = client.on("status", (message) => {
-          if (message.type !== "status") return;
-          const payload = parseServerInfoStatusPayload(message.payload);
-          if (!payload) return;
-          const voice = payload.capabilities?.voice;
-          if (!voice) return;
-          resolve({
-            dictationEnabled: voice.dictation.enabled,
-            dictationReason: voice.dictation.reason,
-            voiceEnabled: voice.voice.enabled,
-            voiceReason: voice.voice.reason,
-          });
-        });
-        return unsubscribe;
-      });
-
       await client.connect();
-      const info = await infoPromise;
+      const welcome = client.getLastWelcomeMessage();
+      const voice = welcome?.capabilities?.voice;
+      expect(voice).toBeTruthy();
 
-      expect(info.dictationEnabled).toBe(false);
-      expect(info.dictationReason).toBe("Dictation is disabled in daemon config.");
-      expect(info.voiceEnabled).toBe(false);
-      expect(info.voiceReason).toBe("Realtime voice is disabled in daemon config.");
+      expect(voice?.dictation.enabled).toBe(false);
+      expect(voice?.dictation.reason).toBe("Dictation is disabled in daemon config.");
+      expect(voice?.voice.enabled).toBe(false);
+      expect(voice?.voice.reason).toBe("Realtime voice is disabled in daemon config.");
     } finally {
       await client.close().catch(() => undefined);
       await isolatedCtx.cleanup();

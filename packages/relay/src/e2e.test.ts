@@ -133,7 +133,7 @@ async function waitForRelayWebSocketReady(port: number, timeout = 60000): Promis
 
   it("full flow: daemon and client exchange encrypted messages through relay", { timeout: 90_000 }, async () => {
     const serverId = "test-session-" + Date.now();
-    const clientId = "clt_test_" + Date.now() + "_" + Math.random().toString(36).slice(2);
+    const connectionId = "clt_test_" + Date.now() + "_" + Math.random().toString(36).slice(2);
 
     // === DAEMON SIDE ===
     // Generate keypair (public key goes in QR)
@@ -167,7 +167,7 @@ async function waitForRelayWebSocketReady(port: number, timeout = 60000): Promis
 
     const waitForClientSeen = new Promise<void>((resolve, reject) => {
       const timeout = setTimeout(
-        () => reject(new Error("timed out waiting for client_connected")),
+        () => reject(new Error("timed out waiting for connected")),
         5000
       );
       const onMessage = (raw: unknown) => {
@@ -179,13 +179,13 @@ async function waitForRelayWebSocketReady(port: number, timeout = 60000): Promis
                 ? (raw as any).toString()
                 : "";
           const msg = JSON.parse(text);
-          if (msg?.type === "client_connected" && msg.clientId === clientId) {
+          if (msg?.type === "connected" && msg.connectionId === connectionId) {
             clearTimeout(timeout);
             daemonControlWs.off("message", onMessage);
             resolve();
             return;
           }
-          if (msg?.type === "sync" && Array.isArray(msg.clientIds) && msg.clientIds.includes(clientId)) {
+          if (msg?.type === "sync" && Array.isArray(msg.connectionIds) && msg.connectionIds.includes(connectionId)) {
             clearTimeout(timeout);
             daemonControlWs.off("message", onMessage);
             resolve();
@@ -197,9 +197,9 @@ async function waitForRelayWebSocketReady(port: number, timeout = 60000): Promis
       daemonControlWs.on("message", onMessage);
     });
 
-    // Client connects to relay as "client" role (must include clientId)
+    // Client connects to relay as "client" role (must include connectionId)
     const clientWs = new WebSocket(
-      `ws://127.0.0.1:${relayPort}/ws?serverId=${serverId}&role=client&clientId=${clientId}&v=2`
+      `ws://127.0.0.1:${relayPort}/ws?serverId=${serverId}&role=client&connectionId=${connectionId}&v=2`
     );
 
     await new Promise<void>((resolve, reject) => {
@@ -210,7 +210,7 @@ async function waitForRelayWebSocketReady(port: number, timeout = 60000): Promis
     await waitForClientSeen;
 
     const daemonWs = new WebSocket(
-      `ws://127.0.0.1:${relayPort}/ws?serverId=${serverId}&role=server&clientId=${clientId}&v=2`
+      `ws://127.0.0.1:${relayPort}/ws?serverId=${serverId}&role=server&connectionId=${connectionId}&v=2`
     );
     await new Promise<void>((resolve, reject) => {
       daemonWs.on("open", resolve);
@@ -300,7 +300,7 @@ async function waitForRelayWebSocketReady(port: number, timeout = 60000): Promis
 
   it("relay only sees opaque bytes after handshake", { timeout: 90_000 }, async () => {
     const serverId = "opaque-test-" + Date.now();
-    const clientId = "clt_opaque_" + Date.now() + "_" + Math.random().toString(36).slice(2);
+    const connectionId = "clt_opaque_" + Date.now() + "_" + Math.random().toString(36).slice(2);
 
     // Setup keys
     const daemonKeyPair = await generateKeyPair();
@@ -328,7 +328,7 @@ async function waitForRelayWebSocketReady(port: number, timeout = 60000): Promis
 
     const waitForClientSeen = new Promise<void>((resolve, reject) => {
       const timeout = setTimeout(
-        () => reject(new Error("timed out waiting for client_connected")),
+        () => reject(new Error("timed out waiting for connected")),
         5000
       );
       const onMessage = (raw: unknown) => {
@@ -340,13 +340,13 @@ async function waitForRelayWebSocketReady(port: number, timeout = 60000): Promis
                 ? (raw as any).toString()
                 : "";
           const msg = JSON.parse(text);
-          if (msg?.type === "client_connected" && msg.clientId === clientId) {
+          if (msg?.type === "connected" && msg.connectionId === connectionId) {
             clearTimeout(timeout);
             daemonControlWs.off("message", onMessage);
             resolve();
             return;
           }
-          if (msg?.type === "sync" && Array.isArray(msg.clientIds) && msg.clientIds.includes(clientId)) {
+          if (msg?.type === "sync" && Array.isArray(msg.connectionIds) && msg.connectionIds.includes(connectionId)) {
             clearTimeout(timeout);
             daemonControlWs.off("message", onMessage);
             resolve();
@@ -359,13 +359,13 @@ async function waitForRelayWebSocketReady(port: number, timeout = 60000): Promis
     });
 
     const clientWs = new WebSocket(
-      `ws://127.0.0.1:${relayPort}/ws?serverId=${serverId}&role=client&clientId=${clientId}&v=2`
+      `ws://127.0.0.1:${relayPort}/ws?serverId=${serverId}&role=client&connectionId=${connectionId}&v=2`
     );
     await new Promise<void>((r) => clientWs.on("open", r));
     await waitForClientSeen;
 
     const daemonWs = new WebSocket(
-      `ws://127.0.0.1:${relayPort}/ws?serverId=${serverId}&role=server&clientId=${clientId}&v=2`
+      `ws://127.0.0.1:${relayPort}/ws?serverId=${serverId}&role=server&connectionId=${connectionId}&v=2`
     );
     await new Promise<void>((r) => daemonWs.on("open", r));
 

@@ -29,6 +29,7 @@ import {
   mapClaudeFailedToolCall,
   mapClaudeRunningToolCall,
 } from "./claude/tool-call-mapper.js";
+import { buildToolCallDisplayModel } from "../../../shared/tool-call-display.js";
 
 import type {
   AgentCapabilityFlags,
@@ -341,10 +342,41 @@ type ToolUseCacheEntry = {
   input?: AgentMetadata | null;
 };
 
+type SubAgentActionEntry = {
+  index: number;
+  toolName: string;
+  summary?: string;
+};
+
+type SubAgentActivityState = {
+  subAgentType?: string;
+  description?: string;
+  actions: SubAgentActionEntry[];
+  actionKeys: string[];
+  nextActionIndex: number;
+  actionIndexByKey: Map<string, number>;
+};
+
+type SubAgentActionCandidate = {
+  key: string;
+  toolName: string;
+  input: unknown;
+};
+
 const DEFAULT_PERMISSION_TIMEOUT_MS = 120_000;
+const MAX_SUB_AGENT_LOG_ENTRIES = 200;
+const MAX_SUB_AGENT_SUMMARY_CHARS = 160;
 
 function isMetadata(value: unknown): value is AgentMetadata {
   return typeof value === "object" && value !== null;
+}
+
+function readTrimmedString(value: unknown): string | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
 }
 
 function isMcpServerConfig(value: unknown): value is McpServerConfig {
@@ -684,10 +716,12 @@ class ClaudeAgentSession implements AgentSession {
   private cachedRuntimeInfo: AgentRuntimeInfo | null = null;
   private lastOptionsModel: string | null = null;
   private selectableModelIds: Set<string> | null = null;
-  private activeSidechains = new Map<string, string>();
+  private activeSidechains = new Map<string, SubAgentActivityState>();
   private compacting = false;
   private queryRestartNeeded = false;
   private userMessageIds: string[] = [];
+  private sentUserMessageIds = new Set<string>();
+  private closed = false;
 
   constructor(
     config: ClaudeAgentConfig,
@@ -887,6 +921,88 @@ class ClaudeAgentSession implements AgentSession {
     }
   }
 
+  async *streamLiveEvents(): AsyncGenerator<AgentStreamEvent> {
+    let currentHistoryPath: string | null = null;
+    let lineCursor = 0;
+    let suppressLocalTurn = false;
+    let autonomousTurnActive = false;
+
+    while (!this.closed) {
+      const sessionId = this.claudeSessionId;
+      const historyPath = sessionId ? this.resolveHistoryPath(sessionId) : null;
+      if (!historyPath) {
+        await this.waitForLiveHistoryPoll();
+        continue;
+      }
+
+      let lines: string[];
+      try {
+        const content = fs.readFileSync(historyPath, "utf8");
+        lines = content.split(/\r?\n/).filter((line) => line.trim().length > 0);
+      } catch {
+        await this.waitForLiveHistoryPoll();
+        continue;
+      }
+
+      if (currentHistoryPath !== historyPath) {
+        currentHistoryPath = historyPath;
+        lineCursor = lines.length;
+        suppressLocalTurn = false;
+        autonomousTurnActive = false;
+        await this.waitForLiveHistoryPoll();
+        continue;
+      }
+
+      if (lineCursor > lines.length) {
+        lineCursor = 0;
+      }
+      if (lineCursor === lines.length) {
+        await this.waitForLiveHistoryPoll();
+        continue;
+      }
+
+      const nextLines = lines.slice(lineCursor);
+      lineCursor = lines.length;
+      for (const rawLine of nextLines) {
+        let entry: any;
+        try {
+          entry = JSON.parse(rawLine);
+        } catch {
+          continue;
+        }
+        if (entry?.isSidechain) {
+          continue;
+        }
+
+        if (
+          entry?.type === "user" &&
+          typeof entry.uuid === "string" &&
+          this.sentUserMessageIds.has(entry.uuid)
+        ) {
+          this.sentUserMessageIds.delete(entry.uuid);
+          suppressLocalTurn = true;
+          continue;
+        }
+
+        if (suppressLocalTurn) {
+          if (entry?.type === "result") {
+            suppressLocalTurn = false;
+          }
+          continue;
+        }
+
+        const converted = this.convertLiveHistoryEntryToEvents({
+          entry,
+          autonomousTurnActive,
+        });
+        autonomousTurnActive = converted.autonomousTurnActive;
+        for (const event of converted.events) {
+          yield event;
+        }
+      }
+    }
+  }
+
   async getAvailableModes(): Promise<AgentMode[]> {
     return this.availableModes;
   }
@@ -1018,6 +1134,7 @@ class ClaudeAgentSession implements AgentSession {
   }
 
   async close(): Promise<void> {
+    this.closed = true;
     this.rejectAllPendingPermissions(new Error("Claude session closed"));
     this.input?.end();
     await this.query?.interrupt?.();
@@ -1468,6 +1585,7 @@ class ClaudeAgentSession implements AgentSession {
 
     const messageId = randomUUID();
     this.rememberUserMessageId(messageId);
+    this.sentUserMessageIds.add(messageId);
 
     return {
       type: "user",
@@ -1504,6 +1622,11 @@ class ClaudeAgentSession implements AgentSession {
     }
 
     this.input.push(sdkMessage);
+    const expectedPromptUuid =
+      typeof sdkMessage.uuid === "string" && sdkMessage.uuid.length > 0
+        ? sdkMessage.uuid
+        : null;
+    let promptActivated = expectedPromptUuid === null;
 
     while (true) {
       // Check if this turn has been superseded by a new one.
@@ -1522,6 +1645,35 @@ class ClaudeAgentSession implements AgentSession {
       // Double-check turn ID after awaiting, in case a new turn started while we waited
       if (this.currentTurnId !== turnId) {
         break;
+      }
+
+      // Guard against stale queued events from a prior run (for example,
+      // task-notification side activity): do not treat assistant/result as part
+      // of this prompt until we observe a prompt-owned stream start.
+      if (!promptActivated) {
+        const isTopLevelAssistantStart =
+          value.type === "stream_event" &&
+          (value as { event?: { type?: unknown }; parent_tool_use_id?: unknown }).event
+            ?.type === "message_start" &&
+          ((value as { parent_tool_use_id?: unknown }).parent_tool_use_id ?? null) ===
+            null;
+        if (
+          value.type === "user" &&
+          typeof value.uuid === "string" &&
+          value.uuid === expectedPromptUuid
+        ) {
+          promptActivated = true;
+          continue;
+        }
+        if (isTopLevelAssistantStart) {
+          promptActivated = true;
+        } else if (value.type === "system" && value.subtype === "init") {
+          yield value;
+          continue;
+        }
+        if (!promptActivated) {
+          continue;
+        }
       }
 
       yield value;
@@ -1617,61 +1769,266 @@ class ClaudeAgentSession implements AgentSession {
     message: SDKMessage,
     parentToolUseId: string
   ): AgentStreamEvent[] {
-    let toolName: string | undefined;
+    const state =
+      this.activeSidechains.get(parentToolUseId) ??
+      ({
+        actions: [],
+        actionKeys: [],
+        nextActionIndex: 1,
+        actionIndexByKey: new Map<string, number>(),
+      } satisfies SubAgentActivityState);
+    this.activeSidechains.set(parentToolUseId, state);
 
-    if (message.type === "assistant") {
-      const content = message.message?.content;
-      if (Array.isArray(content)) {
-        for (const block of content) {
-          if (isClaudeContentChunk(block) &&
-            (block.type === "tool_use" || block.type === "mcp_tool_use" || block.type === "server_tool_use") &&
-            typeof block.name === "string"
-          ) {
-            toolName = block.name;
-            break;
-          }
-        }
+    const contextUpdated = this.updateSubAgentContextFromTaskInput(
+      state,
+      parentToolUseId
+    );
+    const actionCandidates = this.extractSubAgentActionCandidates(message);
+    let actionUpdated = false;
+    for (const action of actionCandidates) {
+      if (this.appendSubAgentAction(state, action)) {
+        actionUpdated = true;
       }
-    } else if (message.type === "stream_event") {
-      const event = message.event;
-      if (event.type === "content_block_start") {
-        const cb = isClaudeContentChunk(event.content_block) ? event.content_block : null;
-        if (cb?.type === "tool_use" && typeof cb.name === "string") {
-          toolName = cb.name;
-        }
-      }
-    } else if (message.type === "tool_progress") {
-      toolName = message.tool_name;
     }
 
-    if (!toolName) {
+    if (!contextUpdated && !actionUpdated) {
       return [];
     }
-
-    const prev = this.activeSidechains.get(parentToolUseId);
-    if (prev === toolName) {
-      return [];
-    }
-    this.activeSidechains.set(parentToolUseId, toolName);
 
     const toolCall = mapClaudeRunningToolCall({
       name: "Task",
       callId: parentToolUseId,
       input: null,
       output: null,
-      metadata: { subAgentActivity: toolName },
     });
     if (!toolCall) {
       return [];
     }
 
+    const detail: Extract<AgentTimelineItem, { type: "tool_call" }>["detail"] = {
+      type: "sub_agent",
+      ...(state.subAgentType ? { subAgentType: state.subAgentType } : {}),
+      ...(state.description ? { description: state.description } : {}),
+      log: state.actions
+        .map((action) =>
+          action.summary
+            ? `[${action.toolName}] ${action.summary}`
+            : `[${action.toolName}]`
+        )
+        .join("\n"),
+      actions: state.actions.map((action) => ({
+        index: action.index,
+        toolName: action.toolName,
+        ...(action.summary ? { summary: action.summary } : {}),
+      })),
+    };
+
     return [
       {
         type: "timeline",
-        item: toolCall,
+        item: {
+          ...toolCall,
+          detail,
+        },
         provider: "claude",
       },
     ];
+  }
+
+  private updateSubAgentContextFromTaskInput(
+    state: SubAgentActivityState,
+    parentToolUseId: string
+  ): boolean {
+    const taskInput = this.toolUseCache.get(parentToolUseId)?.input;
+    const nextSubAgentType = this.normalizeSubAgentText(taskInput?.subagent_type);
+    const nextDescription = this.normalizeSubAgentText(taskInput?.description);
+
+    let changed = false;
+    if (nextSubAgentType && nextSubAgentType !== state.subAgentType) {
+      state.subAgentType = nextSubAgentType;
+      changed = true;
+    }
+    if (nextDescription && nextDescription !== state.description) {
+      state.description = nextDescription;
+      changed = true;
+    }
+    return changed;
+  }
+
+  private normalizeSubAgentText(value: unknown): string | undefined {
+    const normalized = readTrimmedString(value)?.replace(/\s+/g, " ");
+    if (!normalized) {
+      return undefined;
+    }
+    if (normalized.length <= MAX_SUB_AGENT_SUMMARY_CHARS) {
+      return normalized;
+    }
+    return `${normalized.slice(0, MAX_SUB_AGENT_SUMMARY_CHARS)}...`;
+  }
+
+  private extractSubAgentActionCandidates(
+    message: SDKMessage
+  ): SubAgentActionCandidate[] {
+    if (message.type === "assistant") {
+      const content = message.message?.content;
+      if (!Array.isArray(content)) {
+        return [];
+      }
+      const actions: SubAgentActionCandidate[] = [];
+      for (const block of content) {
+        if (
+          !isClaudeContentChunk(block) ||
+          !(
+            block.type === "tool_use" ||
+            block.type === "mcp_tool_use" ||
+            block.type === "server_tool_use"
+          ) ||
+          typeof block.name !== "string"
+        ) {
+          continue;
+        }
+        const key =
+          readTrimmedString(block.id) ??
+          `assistant:${block.name}:${actions.length}`;
+        actions.push({
+          key,
+          toolName: block.name,
+          input: block.input ?? null,
+        });
+      }
+      return actions;
+    }
+
+    if (message.type === "stream_event") {
+      const event = message.event;
+      if (event.type !== "content_block_start") {
+        return [];
+      }
+      const block = isClaudeContentChunk(event.content_block)
+        ? event.content_block
+        : null;
+      if (
+        !block ||
+        !(
+          block.type === "tool_use" ||
+          block.type === "mcp_tool_use" ||
+          block.type === "server_tool_use"
+        ) ||
+        typeof block.name !== "string"
+      ) {
+        return [];
+      }
+      const key =
+        readTrimmedString(block.id) ??
+        `stream:${block.name}:${typeof event.index === "number" ? event.index : 0}`;
+      return [
+        {
+          key,
+          toolName: block.name,
+          input: block.input ?? null,
+        },
+      ];
+    }
+
+    if (message.type === "tool_progress") {
+      const toolName = readTrimmedString(message.tool_name);
+      if (!toolName) {
+        return [];
+      }
+      const key =
+        readTrimmedString(message.tool_use_id) ?? `progress:${toolName}`;
+      return [{ key, toolName, input: null }];
+    }
+
+    return [];
+  }
+
+  private appendSubAgentAction(
+    state: SubAgentActivityState,
+    candidate: SubAgentActionCandidate
+  ): boolean {
+    const normalizedToolName = readTrimmedString(candidate.toolName);
+    if (!normalizedToolName) {
+      return false;
+    }
+
+    const summary = this.deriveSubAgentActionSummary(
+      normalizedToolName,
+      candidate.input
+    );
+    const existingIndex = state.actionIndexByKey.get(candidate.key);
+
+    if (existingIndex !== undefined) {
+      const existing = state.actions[existingIndex];
+      if (!existing) {
+        return false;
+      }
+      const nextSummary = existing.summary ?? summary;
+      const unchanged =
+        existing.toolName === normalizedToolName &&
+        existing.summary === nextSummary;
+      if (unchanged) {
+        return false;
+      }
+      state.actions[existingIndex] = {
+        ...existing,
+        toolName: normalizedToolName,
+        ...(nextSummary ? { summary: nextSummary } : {}),
+      };
+      return true;
+    }
+
+    const nextEntry: SubAgentActionEntry = {
+      index: state.nextActionIndex,
+      toolName: normalizedToolName,
+      ...(summary ? { summary } : {}),
+    };
+    state.nextActionIndex += 1;
+    state.actions.push(nextEntry);
+    state.actionKeys.push(candidate.key);
+    this.trimSubAgentTail(state);
+    this.rebuildSubAgentActionIndex(state);
+    return true;
+  }
+
+  private trimSubAgentTail(state: SubAgentActivityState): void {
+    while (state.actions.length > MAX_SUB_AGENT_LOG_ENTRIES) {
+      state.actions.shift();
+      state.actionKeys.shift();
+    }
+  }
+
+  private rebuildSubAgentActionIndex(state: SubAgentActivityState): void {
+    state.actionIndexByKey.clear();
+    for (let index = 0; index < state.actionKeys.length; index += 1) {
+      const key = state.actionKeys[index];
+      if (key) {
+        state.actionIndexByKey.set(key, index);
+      }
+    }
+  }
+
+  private deriveSubAgentActionSummary(
+    toolName: string,
+    input: unknown
+  ): string | undefined {
+    const runningToolCall = mapClaudeRunningToolCall({
+      name: toolName,
+      callId: `sub-agent-summary-${toolName}`,
+      input,
+      output: null,
+    });
+    if (!runningToolCall) {
+      return undefined;
+    }
+    const display = buildToolCallDisplayModel({
+      name: runningToolCall.name,
+      status: runningToolCall.status,
+      error: runningToolCall.error,
+      detail: runningToolCall.detail,
+      metadata: runningToolCall.metadata,
+    });
+    return this.normalizeSubAgentText(display.summary);
   }
 
   private translateMessageToEvents(message: SDKMessage, turnContext: TurnContext): AgentStreamEvent[] {
@@ -1983,6 +2340,7 @@ class ClaudeAgentSession implements AgentSession {
       }
     }
     this.toolUseCache.clear();
+    this.activeSidechains.clear();
   }
 
   private pushToolCall(
@@ -2021,6 +2379,60 @@ class ClaudeAgentSession implements AgentSession {
       pending.reject(error);
       this.pendingPermissions.delete(id);
     }
+  }
+
+  private waitForLiveHistoryPoll(): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, 250));
+  }
+
+  private convertLiveHistoryEntryToEvents(params: {
+    entry: any;
+    autonomousTurnActive: boolean;
+  }): {
+    events: AgentStreamEvent[];
+    autonomousTurnActive: boolean;
+  } {
+    const { entry, autonomousTurnActive } = params;
+    const events: AgentStreamEvent[] = [];
+
+    if (entry?.type === "result") {
+      if (!autonomousTurnActive) {
+        return { events, autonomousTurnActive: false };
+      }
+      const usage =
+        entry && typeof entry === "object" && entry.usage
+          ? this.convertUsage(entry as SDKResultMessage)
+          : undefined;
+      if (entry?.subtype === "success") {
+        events.push({ type: "turn_completed", provider: "claude", usage });
+      } else {
+        const errorMessage =
+          Array.isArray(entry?.errors) && entry.errors.length > 0
+            ? entry.errors.join("\n")
+            : "Claude run failed";
+        events.push({
+          type: "turn_failed",
+          provider: "claude",
+          error: errorMessage,
+        });
+      }
+      return { events, autonomousTurnActive: false };
+    }
+
+    let nextAutonomousActive = autonomousTurnActive;
+    const timelineItems = this.convertHistoryEntry(entry);
+    if (!nextAutonomousActive && timelineItems.length > 0) {
+      events.push({ type: "turn_started", provider: "claude" });
+      nextAutonomousActive = true;
+    }
+    for (const item of timelineItems) {
+      events.push({ type: "timeline", item, provider: "claude" });
+    }
+
+    return {
+      events,
+      autonomousTurnActive: nextAutonomousActive,
+    };
   }
 
   private loadPersistedHistory(sessionId: string) {
@@ -2207,6 +2619,7 @@ class ClaudeAgentSession implements AgentSession {
 
     if (typeof block.tool_use_id === "string") {
       this.toolUseCache.delete(block.tool_use_id);
+      this.activeSidechains.delete(block.tool_use_id);
     }
   }
 

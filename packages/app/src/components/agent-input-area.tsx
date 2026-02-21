@@ -227,6 +227,10 @@ export function AgentInputArea({
   useEffect(() => {
     const previousUpdatedAt = latestAgentUpdatedAtRef.current
     if (agentUpdatedAtMs < previousUpdatedAt) {
+      if (isProcessing && !isAgentRunning) {
+        prevIsAgentRunningRef.current = false
+        setIsProcessing(false)
+      }
       return
     }
 

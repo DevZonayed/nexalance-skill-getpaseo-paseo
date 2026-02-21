@@ -20,9 +20,9 @@ export interface RelaySessionAttachment {
    */
   version?: "1" | "2";
   /**
-   * Unique id for the client connection. Allows the daemon to create an
-   * independent socket + E2EE channel per connected client.
+   * Unique id for the connection. Allows the daemon to create an
+   * independent socket + E2EE channel per connected connection.
    */
-  clientId?: string | null;
+  connectionId?: string | null;
   createdAt: number;
 }

@@ -134,7 +134,7 @@ function makeDeps(
       }
       return value;
     },
-    getClientSessionKey: async () => "clsk_test_runtime",
+    getClientId: async () => "cid_test_runtime",
   };
 }
 
@@ -169,7 +169,7 @@ describe("HostRuntimeController", () => {
       measureLatency: async () => {
         throw new Error("probe unavailable");
       },
-      getClientSessionKey: async () => "clsk_test_runtime",
+      getClientId: async () => "cid_test_runtime",
     };
     const controller = new HostRuntimeController({
       host,
@@ -188,7 +188,7 @@ describe("HostRuntimeController", () => {
     expect(controller.getSnapshot().agentDirectoryStatus).toBe("initial_loading");
   });
 
-  it("passes resolved client session key into created active clients", async () => {
+  it("passes resolved client id into created active clients", async () => {
     const host = makeHost({
       connections: [
         {
@@ -198,23 +198,23 @@ describe("HostRuntimeController", () => {
         },
       ],
     });
-    const seenSessionKeys: string[] = [];
+    const seenClientIds: string[] = [];
     const fakeClient = new FakeDaemonClient();
     const controller = new HostRuntimeController({
       host,
       deps: {
-        createClient: ({ clientSessionKey }) => {
-          seenSessionKeys.push(clientSessionKey);
+        createClient: ({ clientId }) => {
+          seenClientIds.push(clientId);
           return fakeClient as unknown as DaemonClient;
         },
         measureLatency: async () => 10,
-        getClientSessionKey: async () => "clsk_runtime_stable",
+        getClientId: async () => "cid_runtime_stable",
       },
     });
 
     await controller.start({ autoProbe: false });
 
-    expect(seenSessionKeys).toEqual(["clsk_runtime_stable"]);
+    expect(seenClientIds).toEqual(["cid_runtime_stable"]);
     expect(controller.getSnapshot().connectionStatus).toBe("online");
   });
 
@@ -535,7 +535,7 @@ describe("HostRuntimeController", () => {
         return client as unknown as DaemonClient;
       },
       measureLatency: async () => 10,
-      getClientSessionKey: async () => "clsk_test_runtime",
+      getClientId: async () => "cid_test_runtime",
     };
     const controller = new HostRuntimeController({
       host,
@@ -621,7 +621,7 @@ describe("HostRuntimeController", () => {
           }
           throw new Error("unexpected probe call");
         },
-        getClientSessionKey: async () => "clsk_test_runtime",
+        getClientId: async () => "cid_test_runtime",
       },
     });
 
@@ -685,7 +685,7 @@ describe("HostRuntimeController", () => {
           }
           return 10;
         },
-        getClientSessionKey: async () => "clsk_test_runtime",
+        getClientId: async () => "cid_test_runtime",
       },
     });
 
@@ -730,7 +730,7 @@ describe("HostRuntimeStore", () => {
       deps: {
         createClient: () => fakeClient as unknown as DaemonClient,
         measureLatency: async () => 5,
-        getClientSessionKey: async () => "clsk_test_runtime",
+        getClientId: async () => "cid_test_runtime",
       },
     });
 
@@ -772,7 +772,7 @@ describe("HostRuntimeStore", () => {
         measureLatency: async () => {
           throw new Error("probe unavailable");
         },
-        getClientSessionKey: async () => "clsk_test_runtime",
+        getClientId: async () => "cid_test_runtime",
       },
     });
 

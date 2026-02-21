@@ -74,9 +74,9 @@ interface DurableObjectStub {
  * - role=client: app/client socket
  *
  * v2 WebSockets connect in three shapes:
- * - role=server (no clientId): daemon control socket (one per serverId)
- * - role=server&clientId=...: daemon per-client data socket (one per clientId)
- * - role=client&clientId=...: app/client socket (many per clientId)
+ * - role=server (no connectionId): daemon control socket (one per serverId)
+ * - role=server&connectionId=...: daemon per-connection data socket (one per connectionId)
+ * - role=client&connectionId=...: app/client socket (many per connectionId)
  */
 interface CFResponseInit extends ResponseInit {
   webSocket?: WebSocket;
@@ -84,7 +84,7 @@ interface CFResponseInit extends ResponseInit {
 
 export class RelayDurableObject {
   private state: DurableObjectState;
-  private pendingClientFrames = new Map<string, Array<string | ArrayBuffer>>();
+  private pendingFrames = new Map<string, Array<string | ArrayBuffer>>();
 
   constructor(state: DurableObjectState) {
     this.state = state;
@@ -110,42 +110,42 @@ export class RelayDurableObject {
     } as CFResponseInit);
   }
 
-  private hasServerDataSocket(clientId: string): boolean {
+  private hasServerDataSocket(connectionId: string): boolean {
     try {
-      return this.state.getWebSockets(`server:${clientId}`).length > 0;
+      return this.state.getWebSockets(`server:${connectionId}`).length > 0;
     } catch {
       return false;
     }
   }
 
-  private hasClientSocket(clientId: string): boolean {
+  private hasClientSocket(connectionId: string): boolean {
     try {
-      return this.state.getWebSockets(`client:${clientId}`).length > 0;
+      return this.state.getWebSockets(`client:${connectionId}`).length > 0;
     } catch {
       return false;
     }
   }
 
-  private nudgeOrResetControlForClient(clientId: string): void {
+  private nudgeOrResetControlForConnection(connectionId: string): void {
     // If the daemon's control WS becomes half-open, the DO can't reliably detect it via ws.send errors
     // (Cloudflare may accept writes even if the other side is no longer reading).
     //
-    // Instead, observe whether the daemon reacts by opening the per-client server-data socket.
+    // Instead, observe whether the daemon reacts by opening the per-connection server-data socket.
     // If it doesn't, nudge with a sync message; if still no reaction, force-close the control
     // socket(s) so the daemon reconnects.
     const initialDelayMs = 10_000;
     const secondDelayMs = 5_000;
 
     setTimeout(() => {
-      if (!this.hasClientSocket(clientId)) return;
-      if (this.hasServerDataSocket(clientId)) return;
+      if (!this.hasClientSocket(connectionId)) return;
+      if (this.hasServerDataSocket(connectionId)) return;
 
       // First nudge: send a full sync list.
-      this.notifyControls({ type: "sync", clientIds: this.listConnectedClientIds() });
+      this.notifyControls({ type: "sync", connectionIds: this.listConnectedConnectionIds() });
 
       setTimeout(() => {
-        if (!this.hasClientSocket(clientId)) return;
-        if (this.hasServerDataSocket(clientId)) return;
+        if (!this.hasClientSocket(connectionId)) return;
+        if (this.hasServerDataSocket(connectionId)) return;
 
         // Still nothing: assume control is stuck and force a reconnect.
         for (const ws of this.state.getWebSockets("server-control")) {
@@ -159,38 +159,38 @@ export class RelayDurableObject {
     }, initialDelayMs);
   }
 
-  private bufferClientFrame(clientId: string, message: string | ArrayBuffer): void {
-    const existing = this.pendingClientFrames.get(clientId) ?? [];
+  private bufferFrame(connectionId: string, message: string | ArrayBuffer): void {
+    const existing = this.pendingFrames.get(connectionId) ?? [];
     existing.push(message);
     // Prevent unbounded memory growth if a daemon never connects.
     if (existing.length > 200) {
       existing.splice(0, existing.length - 200);
     }
-    this.pendingClientFrames.set(clientId, existing);
+    this.pendingFrames.set(connectionId, existing);
   }
 
-  private flushClientFrames(clientId: string, serverWs: WebSocket): void {
-    const frames = this.pendingClientFrames.get(clientId);
+  private flushFrames(connectionId: string, serverWs: WebSocket): void {
+    const frames = this.pendingFrames.get(connectionId);
     if (!frames || frames.length === 0) return;
-    this.pendingClientFrames.delete(clientId);
+    this.pendingFrames.delete(connectionId);
     for (const frame of frames) {
       try {
         serverWs.send(frame);
       } catch {
         // If we can't flush, re-buffer and let the daemon re-establish.
-        this.bufferClientFrame(clientId, frame);
+        this.bufferFrame(connectionId, frame);
         break;
       }
     }
   }
 
-  private listConnectedClientIds(): string[] {
+  private listConnectedConnectionIds(): string[] {
     const out = new Set<string>();
     for (const ws of this.state.getWebSockets("client")) {
       try {
         const attachment = (ws as WebSocketWithAttachment).deserializeAttachment() as RelaySessionAttachment | null;
-        if (attachment?.role === "client" && typeof attachment.clientId === "string" && attachment.clientId) {
-          out.add(attachment.clientId);
+        if (attachment?.role === "client" && typeof attachment.connectionId === "string" && attachment.connectionId) {
+          out.add(attachment.connectionId);
         }
       } catch {
         // ignore
@@ -230,7 +230,7 @@ export class RelayDurableObject {
       serverId,
       role,
       version: LEGACY_RELAY_VERSION,
-      clientId: null,
+      connectionId: null,
       createdAt: Date.now(),
     };
     (server as WebSocketWithAttachment).serializeAttachment(attachment);
@@ -244,30 +244,30 @@ export class RelayDurableObject {
     request: Request,
     role: ConnectionRole,
     serverId: string,
-    clientId: string
+    connectionId: string
   ): Response {
-    // Clients must provide a clientId so the daemon can create an independent
-    // E2EE channel per client connection.
-    if (role === "client" && !clientId) {
-      return new Response("Missing clientId parameter", { status: 400 });
-    }
-
     const upgradeError = this.requireWebSocketUpgrade(request);
     if (upgradeError) return upgradeError;
 
-    const isServerControl = role === "server" && !clientId;
-    const isServerData = role === "server" && !!clientId;
+    // If a client didn't provide a connectionId, the relay assigns one for routing.
+    const resolvedConnectionId =
+      role === "client" && !connectionId
+        ? `conn_${crypto.randomUUID().replace(/-/g, "").slice(0, 16)}`
+        : connectionId;
+
+    const isServerControl = role === "server" && !resolvedConnectionId;
+    const isServerData = role === "server" && !!resolvedConnectionId;
 
     // Close any existing server-side connection with the same identity.
     // - server-control: single per serverId
-    // - server-data: single per clientId
-    // - client: many sockets per clientId are allowed
+    // - server-data: single per connectionId
+    // - client: many sockets per connectionId are allowed
     if (isServerControl) {
       for (const ws of this.state.getWebSockets("server-control")) {
         ws.close(1008, "Replaced by new connection");
       }
     } else if (isServerData) {
-      for (const ws of this.state.getWebSockets(`server:${clientId}`)) {
+      for (const ws of this.state.getWebSockets(`server:${resolvedConnectionId}`)) {
         ws.close(1008, "Replaced by new connection");
       }
     }
@@ -276,11 +276,11 @@ export class RelayDurableObject {
 
     const tags: string[] = [];
     if (role === "client") {
-      tags.push("client", `client:${clientId}`);
+      tags.push("client", `client:${resolvedConnectionId}`);
     } else if (isServerControl) {
       tags.push("server-control");
     } else {
-      tags.push("server", `server:${clientId}`);
+      tags.push("server", `server:${resolvedConnectionId}`);
     }
 
     this.state.acceptWebSocket(server, tags);
@@ -289,31 +289,31 @@ export class RelayDurableObject {
       serverId,
       role,
       version: CURRENT_RELAY_VERSION,
-      clientId: clientId || null,
+      connectionId: resolvedConnectionId || null,
       createdAt: Date.now(),
     };
     (server as WebSocketWithAttachment).serializeAttachment(attachment);
 
     console.log(
-      `[Relay DO] v2:${role}${isServerControl ? "(control)" : ""}${isServerData ? `(data:${clientId})` : role === "client" ? `(${clientId})` : ""} connected to session ${serverId}`
+      `[Relay DO] v2:${role}${isServerControl ? "(control)" : ""}${isServerData ? `(data:${resolvedConnectionId})` : role === "client" ? `(${resolvedConnectionId})` : ""} connected to session ${serverId}`
     );
 
     if (role === "client") {
-      this.notifyControls({ type: "client_connected", clientId });
-      this.nudgeOrResetControlForClient(clientId);
+      this.notifyControls({ type: "connected", connectionId: resolvedConnectionId });
+      this.nudgeOrResetControlForConnection(resolvedConnectionId);
     }
 
     if (isServerControl) {
-      // Send current client list so the daemon can attach existing clients.
+      // Send current connection list so the daemon can attach existing connections.
       try {
-        server.send(JSON.stringify({ type: "sync", clientIds: this.listConnectedClientIds() }));
+        server.send(JSON.stringify({ type: "sync", connectionIds: this.listConnectedConnectionIds() }));
       } catch {
         // ignore
       }
     }
 
-    if (isServerData && clientId) {
-      this.flushClientFrames(clientId, server);
+    if (isServerData && resolvedConnectionId) {
+      this.flushFrames(resolvedConnectionId, server);
     }
 
     return this.asSwitchingProtocolsResponse(client);
@@ -323,8 +323,8 @@ export class RelayDurableObject {
     const url = new URL(request.url);
     const role = url.searchParams.get("role") as ConnectionRole | null;
     const serverId = url.searchParams.get("serverId");
-    const clientIdRaw = url.searchParams.get("clientId");
-    const clientId = typeof clientIdRaw === "string" ? clientIdRaw.trim() : "";
+    const connectionIdRaw = url.searchParams.get("connectionId");
+    const connectionId = typeof connectionIdRaw === "string" ? connectionIdRaw.trim() : "";
     const version = resolveRelayVersion(url.searchParams.get("v"));
 
     if (!role || (role !== "server" && role !== "client")) {
@@ -343,7 +343,7 @@ export class RelayDurableObject {
       return this.fetchV1(request, role, serverId);
     }
 
-    return this.fetchV2(request, role, serverId, clientId);
+    return this.fetchV2(request, role, serverId, connectionId);
   }
 
   /**
@@ -371,8 +371,8 @@ export class RelayDurableObject {
       return;
     }
 
-    const { role, clientId } = attachment;
-    if (!clientId) {
+    const { role, connectionId } = attachment;
+    if (!connectionId) {
       // Control channel: support simple app-level keepalive.
       if (typeof message === "string") {
         try {
@@ -392,28 +392,28 @@ export class RelayDurableObject {
     }
 
     if (role === "client") {
-      const servers = this.state.getWebSockets(`server:${clientId}`);
+      const servers = this.state.getWebSockets(`server:${connectionId}`);
       if (servers.length === 0) {
-        this.bufferClientFrame(clientId, message);
+        this.bufferFrame(connectionId, message);
         return;
       }
       for (const target of servers) {
         try {
           target.send(message);
         } catch (error) {
-          console.error(`[Relay DO] Failed to forward client->server(${clientId}):`, error);
+          console.error(`[Relay DO] Failed to forward client->server(${connectionId}):`, error);
         }
       }
       return;
     }
 
     // server data socket -> client
-    const targets = this.state.getWebSockets(`client:${clientId}`);
+    const targets = this.state.getWebSockets(`client:${connectionId}`);
     for (const target of targets) {
       try {
         target.send(message);
       } catch (error) {
-        console.error(`[Relay DO] Failed to forward server->client(${clientId}):`, error);
+        console.error(`[Relay DO] Failed to forward server->client(${connectionId}):`, error);
       }
     }
   }
@@ -432,37 +432,37 @@ export class RelayDurableObject {
 
     const version = attachment.version ?? LEGACY_RELAY_VERSION;
     console.log(
-      `[Relay DO] v${version}:${attachment.role}${attachment.clientId ? `(${attachment.clientId})` : ""} disconnected from session ${attachment.serverId} (${code}: ${reason})`
+      `[Relay DO] v${version}:${attachment.role}${attachment.connectionId ? `(${attachment.connectionId})` : ""} disconnected from session ${attachment.serverId} (${code}: ${reason})`
     );
 
     if (version === LEGACY_RELAY_VERSION) {
       return;
     }
 
-    if (attachment.role === "client" && attachment.clientId) {
+    if (attachment.role === "client" && attachment.connectionId) {
       const remainingClientSockets = this.state
-        .getWebSockets(`client:${attachment.clientId}`)
+        .getWebSockets(`client:${attachment.connectionId}`)
         .some((socket) => socket !== ws);
       if (remainingClientSockets) {
         return;
       }
 
-      this.pendingClientFrames.delete(attachment.clientId);
+      this.pendingFrames.delete(attachment.connectionId);
       // Last socket for this session closed: now clean up matching server-data socket.
-      for (const serverWs of this.state.getWebSockets(`server:${attachment.clientId}`)) {
+      for (const serverWs of this.state.getWebSockets(`server:${attachment.connectionId}`)) {
         try {
           serverWs.close(1001, "Client disconnected");
         } catch {
           // ignore
         }
       }
-      this.notifyControls({ type: "client_disconnected", clientId: attachment.clientId });
+      this.notifyControls({ type: "disconnected", connectionId: attachment.connectionId });
       return;
     }
 
-    if (attachment.role === "server" && attachment.clientId) {
+    if (attachment.role === "server" && attachment.connectionId) {
       // Force the client to reconnect and re-handshake when the daemon side drops.
-      for (const clientWs of this.state.getWebSockets(`client:${attachment.clientId}`)) {
+      for (const clientWs of this.state.getWebSockets(`client:${attachment.connectionId}`)) {
         try {
           clientWs.close(1012, "Server disconnected");
         } catch {

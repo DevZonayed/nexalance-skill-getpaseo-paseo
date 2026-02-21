@@ -11,24 +11,24 @@ import {
 
 export type DaemonClientConfig = Omit<
   SharedDaemonClientConfig,
-  "webSocketFactory" | "transportFactory"
+  "webSocketFactory" | "transportFactory" | "clientId"
 >;
 export type CreateAgentOptions = CreateAgentRequestOptions;
 export { type SendMessageOptions, type DaemonEvent, type DaemonEventHandler };
 
 let testClientCounter = 0;
 
-function nextTestClientSessionKey(): string {
+function nextTestClientId(): string {
   testClientCounter += 1;
-  return `clsk_test_client_${testClientCounter}`;
+  return `clid_test_client_${testClientCounter}`;
 }
 
 export class DaemonClient extends SharedDaemonClient {
   constructor(config: DaemonClientConfig) {
-    const clientSessionKey = config.clientSessionKey ?? nextTestClientSessionKey();
+    const clientId = nextTestClientId();
     super({
       ...config,
-      clientSessionKey,
+      clientId,
       webSocketFactory: (url, options) =>
         new WebSocket(url, { headers: options?.headers }) as unknown as WebSocketLike,
     });

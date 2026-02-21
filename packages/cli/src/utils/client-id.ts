@@ -5,31 +5,31 @@ import { homedir } from "node:os";
 
 const CLIENT_SESSION_KEY_FILE = join(
   process.env.PASEO_HOME ?? join(homedir(), ".paseo"),
-  "cli-client-session-key"
+  "cli-client-id"
 );
 
-let cachedClientSessionKey: string | null = null;
+let cachedClientId: string | null = null;
 
-function normalizeClientSessionKey(value: string): string | null {
+function normalizeClientId(value: string): string | null {
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : null;
 }
 
-function generateClientSessionKey(): string {
-  return `clsk_${randomUUID().replace(/-/g, "")}`;
+function generateClientId(): string {
+  return `cid_${randomUUID().replace(/-/g, "")}`;
 }
 
-export async function getOrCreateCliClientSessionKey(): Promise<string> {
-  if (cachedClientSessionKey) {
-    return cachedClientSessionKey;
+export async function getOrCreateCliClientId(): Promise<string> {
+  if (cachedClientId) {
+    return cachedClientId;
   }
 
   try {
-    const existing = normalizeClientSessionKey(
+    const existing = normalizeClientId(
       await readFile(CLIENT_SESSION_KEY_FILE, "utf8")
     );
     if (existing) {
-      cachedClientSessionKey = existing;
+      cachedClientId = existing;
       return existing;
     }
   } catch (error) {
@@ -39,9 +39,9 @@ export async function getOrCreateCliClientSessionKey(): Promise<string> {
     }
   }
 
-  const nextValue = generateClientSessionKey();
+  const nextValue = generateClientId();
   await mkdir(dirname(CLIENT_SESSION_KEY_FILE), { recursive: true });
   await writeFile(CLIENT_SESSION_KEY_FILE, nextValue, { mode: 0o600 });
-  cachedClientSessionKey = nextValue;
+  cachedClientId = nextValue;
   return nextValue;
 }

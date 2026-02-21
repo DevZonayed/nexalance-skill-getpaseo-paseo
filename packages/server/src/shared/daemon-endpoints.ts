@@ -83,28 +83,23 @@ function shouldUseSecureWebSocket(port: number): boolean {
 }
 
 export function buildDaemonWebSocketUrl(
-  endpoint: string,
-  params?: { clientSessionKey?: string }
+  endpoint: string
 ): string {
   const { host, port, isIpv6 } = parseHostPort(endpoint);
   const protocol = shouldUseSecureWebSocket(port) ? "wss" : "ws";
   const hostPart = isIpv6 ? `[${host}]` : host;
-  const url = new URL(`${protocol}://${hostPart}:${port}/ws`);
-  if (
-    typeof params?.clientSessionKey === "string" &&
-    params.clientSessionKey.trim().length > 0
-  ) {
-    url.searchParams.set("clientSessionKey", params.clientSessionKey.trim());
-  }
-  return url.toString();
+  return new URL(`${protocol}://${hostPart}:${port}/ws`).toString();
 }
 
 export function buildRelayWebSocketUrl(params: {
   endpoint: string;
   serverId: string;
   role: RelayRole;
-  clientId?: string;
-  clientSessionKey?: string;
+  /**
+   * Per-connection routing identifier used by the daemon to open server data sockets.
+   * Clients should NOT provide this — the relay assigns a routing ID on connect.
+   */
+  connectionId?: string;
   version?: RelayProtocolVersion | 1 | 2;
 }): string {
   const { host, port, isIpv6 } = parseHostPort(params.endpoint);
@@ -114,16 +109,8 @@ export function buildRelayWebSocketUrl(params: {
   url.searchParams.set("serverId", params.serverId);
   url.searchParams.set("role", params.role);
   url.searchParams.set("v", normalizeRelayProtocolVersion(params.version));
-  if (
-    params.clientId &&
-    params.clientSessionKey &&
-    params.clientId !== params.clientSessionKey
-  ) {
-    throw new Error("clientId and clientSessionKey must match when both are provided");
-  }
-  const resolvedClientId = params.clientId ?? params.clientSessionKey;
-  if (resolvedClientId) {
-    url.searchParams.set("clientId", resolvedClientId);
+  if (params.connectionId) {
+    url.searchParams.set("connectionId", params.connectionId);
   }
   return url.toString();
 }

@@ -10,7 +10,7 @@ import {
   buildRelayWebSocketUrl,
 } from "@/utils/daemon-endpoints";
 import { measureConnectionLatency } from "@/utils/test-daemon-connection";
-import { getOrCreateClientSessionKey } from "@/utils/client-session-key";
+import { getOrCreateClientId } from "@/utils/client-id";
 import {
   selectBestConnection,
   type ConnectionCandidate,
@@ -118,14 +118,14 @@ export type HostRuntimeControllerDeps = {
   createClient: (input: {
     host: HostProfile;
     connection: HostConnection;
-    clientSessionKey: string;
+    clientId: string;
     runtimeGeneration: number;
   }) => DaemonClient;
   measureLatency: (input: {
     host: HostProfile;
     connection: HostConnection;
   }) => Promise<number>;
-  getClientSessionKey: () => Promise<string>;
+  getClientId: () => Promise<string>;
 };
 
 export type HostRuntimeStartOptions = {
@@ -374,11 +374,12 @@ function selectInitialConnectionId(host: HostProfile): string | null {
 
 function createDefaultDeps(): HostRuntimeControllerDeps {
   return {
-    createClient: ({ host, connection, clientSessionKey, runtimeGeneration }) => {
+    createClient: ({ host, connection, clientId, runtimeGeneration }) => {
       const tauriTransportFactory = createTauriWebSocketTransportFactory();
       const base = {
         suppressSendErrors: true,
-        clientSessionKey,
+        clientId,
+        clientType: "mobile" as const,
         runtimeGeneration,
         ...(tauriTransportFactory
           ? { transportFactory: tauriTransportFactory }
@@ -387,7 +388,7 @@ function createDefaultDeps(): HostRuntimeControllerDeps {
       if (connection.type === "direct") {
         return new DaemonClient({
           ...base,
-          url: buildDaemonWebSocketUrl(connection.endpoint, { clientSessionKey }),
+          url: buildDaemonWebSocketUrl(connection.endpoint),
         });
       }
       return new DaemonClient({
@@ -395,7 +396,6 @@ function createDefaultDeps(): HostRuntimeControllerDeps {
         url: buildRelayWebSocketUrl({
           endpoint: connection.relayEndpoint,
           serverId: host.serverId,
-          clientSessionKey,
         }),
         e2ee: {
           enabled: true,
@@ -405,7 +405,7 @@ function createDefaultDeps(): HostRuntimeControllerDeps {
     },
     measureLatency: ({ host, connection }) =>
       measureConnectionLatency(connection, { serverId: host.serverId }),
-    getClientSessionKey: () => getOrCreateClientSessionKey(),
+    getClientId: () => getOrCreateClientId(),
   };
 }
 
@@ -421,8 +421,8 @@ export class HostRuntimeController {
   private started = false;
   private switchCandidateConnectionId: string | null = null;
   private switchCandidateHitCount = 0;
-  private clientSessionKeyPromise: Promise<string> | null = null;
-  private clientSessionKeyHash: string | null = null;
+  private clientIdPromise: Promise<string> | null = null;
+  private clientIdHash: string | null = null;
   private switchRequestVersion = 0;
   private probeRequestVersion = 0;
 
@@ -740,7 +740,7 @@ export class HostRuntimeController {
         : toReasonCode(reason);
     console.info("[HostRuntimeTransition]", {
       serverId: this.host.serverId,
-      clientSessionKeyHash: this.clientSessionKeyHash,
+      clientIdHash: this.clientIdHash,
       from: input.from,
       to: input.to,
       event: event.type,
@@ -782,9 +782,9 @@ export class HostRuntimeController {
     }
     const requestVersion = ++this.switchRequestVersion;
 
-    let clientSessionKey: string;
+    let clientId: string;
     try {
-      clientSessionKey = await this.resolveClientSessionKey();
+      clientId = await this.resolveClientId();
     } catch (error) {
       if (!this.isCurrentSwitchRequest(requestVersion)) {
         return;
@@ -792,7 +792,7 @@ export class HostRuntimeController {
       const message = toErrorMessage(error);
       this.applyConnectionEvent({
         type: "connect_failed",
-        message: `Failed to resolve client session key: ${message}`,
+        message: `Failed to resolve client id: ${message}`,
       });
       this.updateSnapshot({
         ...toSnapshotConnectionPatch(this.connectionMachineState),
@@ -827,7 +827,7 @@ export class HostRuntimeController {
     const client = this.deps.createClient({
       host: this.host,
       connection,
-      clientSessionKey,
+      clientId,
       runtimeGeneration: nextGeneration,
     });
     if (!this.isCurrentSwitchRequest(requestVersion)) {
@@ -910,14 +910,14 @@ export class HostRuntimeController {
     }
   }
 
-  private resolveClientSessionKey(): Promise<string> {
-    if (!this.clientSessionKeyPromise) {
-      this.clientSessionKeyPromise = this.deps.getClientSessionKey().then((value) => {
-        this.clientSessionKeyHash = hashForLog(value);
+  private resolveClientId(): Promise<string> {
+    if (!this.clientIdPromise) {
+      this.clientIdPromise = this.deps.getClientId().then((value) => {
+        this.clientIdHash = hashForLog(value);
         return value;
       });
     }
-    return this.clientSessionKeyPromise;
+    return this.clientIdPromise;
   }
 }
 

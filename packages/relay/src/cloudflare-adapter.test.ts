@@ -69,7 +69,7 @@ async function withMockWebSocketPair(
 }
 
 describe("RelayDurableObject versioning", () => {
-  it("accepts legacy v1 client sockets without clientId", async () => {
+  it("accepts legacy v1 client sockets without connectionId", async () => {
     const { state } = createMockState();
     await withMockWebSocketPair(async () => {
       const relay = new RelayDurableObject(state as any);
@@ -83,13 +83,21 @@ describe("RelayDurableObject versioning", () => {
     });
   });
 
-  it("rejects v2 client sockets when clientId is missing", async () => {
+  it("assigns a connectionId when v2 client connects without one", async () => {
     const { state } = createMockState();
-    const relay = new RelayDurableObject(state as any);
-    const req = new Request("https://relay.test/ws?role=client&serverId=srv_test&v=2");
-    const response = await relay.fetch(req);
-    expect(response.status).toBe(400);
-    await expect(response.text()).resolves.toBe("Missing clientId parameter");
+    await withMockWebSocketPair(async ({ serverWs }) => {
+      const relay = new RelayDurableObject(state as any);
+      const req = new Request("https://relay.test/ws?role=client&serverId=srv_test&v=2", {
+        headers: { Upgrade: "websocket" },
+      });
+      await relay.fetch(req).catch(() => undefined);
+      expect(state.acceptWebSocket).toHaveBeenCalled();
+      const attachment = serverWs.deserializeAttachment();
+      expect(attachment).toMatchObject({
+        role: "client",
+        connectionId: expect.stringMatching(/^conn_/),
+      });
+    });
   });
 });
 
@@ -110,7 +118,7 @@ describe("RelayDurableObject control nudge/reset behavior", () => {
     setTagSockets(`server:${clientId}`, []);
 
     const relay = new RelayDurableObject(state as any);
-    (relay as any).nudgeOrResetControlForClient(clientId);
+    (relay as any).nudgeOrResetControlForConnection(clientId);
 
     vi.advanceTimersByTime(15_000);
 
@@ -124,7 +132,7 @@ describe("RelayDurableObject control nudge/reset behavior", () => {
     const control = createMockSocket();
     const client = createMockSocket({
       role: "client",
-      clientId,
+      connectionId: clientId,
       serverId: "srv_test",
       createdAt: Date.now(),
     });
@@ -136,7 +144,7 @@ describe("RelayDurableObject control nudge/reset behavior", () => {
     setTagSockets(`server:${clientId}`, []);
 
     const relay = new RelayDurableObject(state as any);
-    (relay as any).nudgeOrResetControlForClient(clientId);
+    (relay as any).nudgeOrResetControlForConnection(clientId);
 
     vi.advanceTimersByTime(10_000);
     expect(control.send).toHaveBeenCalledTimes(1);
@@ -145,11 +153,11 @@ describe("RelayDurableObject control nudge/reset behavior", () => {
     expect(control.close).toHaveBeenCalledWith(1011, "Control unresponsive");
   });
 
-  it("does not replace existing client sockets for the same clientId", async () => {
+  it("does not replace existing client sockets for the same connectionId", async () => {
     const existingClient = createMockSocket({
       version: "2",
       role: "client",
-      clientId: "clt_same_session",
+      connectionId: "clt_same_session",
       serverId: "srv_test",
       createdAt: Date.now(),
     });
@@ -160,7 +168,7 @@ describe("RelayDurableObject control nudge/reset behavior", () => {
     await withMockWebSocketPair(async () => {
       const relay = new RelayDurableObject(state as any);
       const req = new Request(
-        "https://relay.test/ws?role=client&serverId=srv_test&clientId=clt_same_session&v=2",
+        "https://relay.test/ws?role=client&serverId=srv_test&connectionId=clt_same_session&v=2",
         {
           headers: {
             Upgrade: "websocket",
@@ -178,14 +186,14 @@ describe("RelayDurableObject control nudge/reset behavior", () => {
     const disconnectedClient = createMockSocket({
       version: "2",
       role: "client",
-      clientId,
+      connectionId: clientId,
       serverId: "srv_test",
       createdAt: Date.now(),
     });
     const stillConnectedClient = createMockSocket({
       version: "2",
       role: "client",
-      clientId,
+      connectionId: clientId,
       serverId: "srv_test",
       createdAt: Date.now(),
     });
@@ -208,7 +216,7 @@ describe("RelayDurableObject control nudge/reset behavior", () => {
 
     expect(serverData.close).not.toHaveBeenCalled();
     expect(control.send).not.toHaveBeenCalledWith(
-      JSON.stringify({ type: "client_disconnected", clientId })
+      JSON.stringify({ type: "disconnected", connectionId: clientId })
     );
   });
 });

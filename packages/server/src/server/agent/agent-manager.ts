@@ -238,6 +238,10 @@ type SubscriptionRecord = {
   agentId: string | null;
 };
 
+type LiveEventStreamingSession = AgentSession & {
+  streamLiveEvents: () => AsyncGenerator<AgentStreamEvent>;
+};
+
 const DEFAULT_MAX_TIMELINE_ITEMS = 2000;
 const DEFAULT_TIMELINE_FETCH_LIMIT = 200;
 const BUSY_STATUSES: AgentLifecycleStatus[] = [
@@ -272,6 +276,16 @@ function validateAgentId(agentId: string, source: string): string {
   return result.data;
 }
 
+function supportsLiveEventStream(
+  session: AgentSession
+): session is LiveEventStreamingSession {
+  return (
+    "streamLiveEvents" in session &&
+    typeof (session as { streamLiveEvents?: unknown }).streamLiveEvents ===
+      "function"
+  );
+}
+
 export class AgentManager {
   private readonly clients = new Map<AgentProvider, AgentClient>();
   private readonly agents = new Map<string, ActiveManagedAgent>();
@@ -281,6 +295,7 @@ export class AgentManager {
   private readonly registry?: AgentStorage;
   private readonly previousStatuses = new Map<string, AgentLifecycleStatus>();
   private readonly backgroundTasks = new Set<Promise<void>>();
+  private readonly liveEventPumps = new Map<string, Promise<void>>();
   private onAgentAttention?: AgentAttentionCallback;
   private logger: Logger;
 
@@ -727,6 +742,7 @@ export class AgentManager {
 
     // Remove the existing agent entry before swapping sessions
     this.agents.delete(agentId);
+    this.liveEventPumps.delete(agentId);
     try {
       await existing.session.close();
     } catch (error) {
@@ -756,6 +772,7 @@ export class AgentManager {
   async closeAgent(agentId: string): Promise<void> {
     const agent = this.requireAgent(agentId);
     this.agents.delete(agentId);
+    this.liveEventPumps.delete(agentId);
     // Clean up previousStatus to prevent memory leak
     this.previousStatuses.delete(agentId);
     const session = agent.session;
@@ -1275,6 +1292,7 @@ export class AgentManager {
 
       let currentStatus: AgentLifecycleStatus = initialStatus;
       let hasStarted = initialBusy || hasPendingRun;
+      let terminalStatusOverride: AgentLifecycleStatus | null = null;
 
       // Bug #3 Fix: Declare unsubscribe and abortHandler upfront so cleanup can reference them
       let unsubscribe: (() => void) | null = null;
@@ -1337,6 +1355,9 @@ export class AgentManager {
               return;
             }
             if (!waitForActive || hasStarted) {
+              if (terminalStatusOverride) {
+                currentStatus = terminalStatusOverride;
+              }
               finish(null);
             }
             return;
@@ -1348,20 +1369,15 @@ export class AgentManager {
               return;
             }
             if (event.event.type === "turn_failed") {
-              currentStatus = "error";
               hasStarted = true;
-              finish(null);
+              terminalStatusOverride = "error";
               return;
             }
             if (event.event.type === "turn_completed") {
-              currentStatus = "idle";
               hasStarted = true;
-              finish(null);
             }
             if (event.event.type === "turn_canceled") {
-              currentStatus = "idle";
               hasStarted = true;
-              finish(null);
             }
           }
         },
@@ -1461,6 +1477,7 @@ export class AgentManager {
     managed.lifecycle = "idle";
     await this.persistSnapshot(managed);
     this.emitState(managed);
+    this.startLiveEventPump(managed);
     return { ...managed };
   }
 
@@ -1619,9 +1636,16 @@ export class AgentManager {
       case "turn_completed":
         agent.lastUsage = event.usage;
         agent.lastError = undefined;
+        if (!agent.pendingRun && agent.lifecycle !== "idle") {
+          (agent as ActiveManagedAgent).lifecycle = "idle";
+          this.emitState(agent);
+        }
         void this.refreshRuntimeInfo(agent);
         break;
       case "turn_failed":
+        if (!agent.pendingRun) {
+          agent.lifecycle = "error";
+        }
         agent.lastError = event.error;
         for (const [requestId] of agent.pendingPermissions) {
           agent.pendingPermissions.delete(requestId);
@@ -1637,6 +1661,9 @@ export class AgentManager {
         this.emitState(agent);
         break;
       case "turn_canceled":
+        if (!agent.pendingRun) {
+          (agent as ActiveManagedAgent).lifecycle = "idle";
+        }
         agent.lastError = undefined;
         for (const [requestId] of agent.pendingPermissions) {
           agent.pendingPermissions.delete(requestId);
@@ -1650,6 +1677,12 @@ export class AgentManager {
           }
         }
         this.emitState(agent);
+        break;
+      case "turn_started":
+        if (!agent.pendingRun) {
+          (agent as ActiveManagedAgent).lifecycle = "running";
+          this.emitState(agent);
+        }
         break;
       case "permission_requested":
         agent.pendingPermissions.set(event.request.id, event.request);
@@ -1887,5 +1920,43 @@ export class AgentManager {
       throw new Error(`Unknown agent '${normalizedId}'`);
     }
     return agent;
+  }
+
+  private startLiveEventPump(agent: ActiveManagedAgent): void {
+    if (!supportsLiveEventStream(agent.session)) {
+      return;
+    }
+    const liveSession = agent.session;
+    if (this.liveEventPumps.has(agent.id)) {
+      return;
+    }
+    const pump = (async () => {
+      try {
+        for await (const event of liveSession.streamLiveEvents()) {
+          const current = this.agents.get(agent.id);
+          if (!current) {
+            break;
+          }
+          // Foreground streamAgent owns live prompt events while running.
+          // Background live-event tailing is for autonomous activity while idle.
+          if (current.pendingRun) {
+            continue;
+          }
+          this.handleStreamEvent(current, event);
+        }
+      } catch (error) {
+        this.logger.warn(
+          { err: error, agentId: agent.id },
+          "Live event pump failed"
+        );
+      }
+    })();
+    this.liveEventPumps.set(agent.id, pump);
+    pump.finally(() => {
+      const current = this.liveEventPumps.get(agent.id);
+      if (current === pump) {
+        this.liveEventPumps.delete(agent.id);
+      }
+    });
   }
 }

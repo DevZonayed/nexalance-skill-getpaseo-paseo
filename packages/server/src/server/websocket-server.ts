@@ -10,6 +10,8 @@ import type { TerminalManager } from "../terminal/terminal-manager.js";
 import type pino from "pino";
 import {
   type ServerInfoStatusPayload,
+  type WSHelloMessage,
+  type WSWelcomeMessage,
   WSInboundMessageSchema,
   type ServerCapabilityState,
   type ServerCapabilities,
@@ -51,7 +53,11 @@ import {
 export type AgentMcpTransportFactory = () => Promise<Transport>;
 export type ExternalSocketMetadata = {
   transport: "relay";
-  externalSessionKey: string;
+};
+
+type PendingConnection = {
+  connectionLogger: pino.Logger;
+  helloTimeout: ReturnType<typeof setTimeout> | null;
 };
 
 type WebSocketServerConfig = {
@@ -152,11 +158,15 @@ type SessionConnection = {
   clientId: string;
   connectionLogger: pino.Logger;
   sockets: Set<WebSocketLike>;
-  externalSessionKey: string | null;
   externalDisconnectCleanupTimeout: ReturnType<typeof setTimeout> | null;
 };
 
 const EXTERNAL_SESSION_DISCONNECT_GRACE_MS = 90_000;
+const HELLO_TIMEOUT_MS = 15_000;
+const WS_CLOSE_HELLO_TIMEOUT = 4001;
+const WS_CLOSE_INVALID_HELLO = 4002;
+const WS_CLOSE_INCOMPATIBLE_PROTOCOL = 4003;
+const WS_PROTOCOL_VERSION = 1;
 
 export class MissingDaemonVersionError extends Error {
   constructor() {
@@ -171,9 +181,9 @@ export class MissingDaemonVersionError extends Error {
 export class VoiceAssistantWebSocketServer {
   private readonly logger: pino.Logger;
   private readonly wss: WebSocketServer;
+  private readonly pendingConnections: Map<WebSocketLike, PendingConnection> = new Map();
   private readonly sessions: Map<WebSocketLike, SessionConnection> = new Map();
   private readonly externalSessionsByKey: Map<string, SessionConnection> = new Map();
-  private clientIdCounter = 0;
   private readonly serverId: string;
   private readonly daemonVersion: string;
   private readonly agentManager: AgentManager;
@@ -334,7 +344,7 @@ export class VoiceAssistantWebSocketServer {
       return;
     }
     this.serverCapabilities = next;
-    this.broadcastServerInfo();
+    this.broadcastCapabilitiesUpdate();
   }
 
   public async attachExternalSocket(
@@ -349,6 +359,14 @@ export class VoiceAssistantWebSocketServer {
       ...this.sessions.values(),
       ...this.externalSessionsByKey.values(),
     ]);
+
+    const pendingSockets = new Set<WebSocketLike>(this.pendingConnections.keys());
+    for (const pending of this.pendingConnections.values()) {
+      if (pending.helloTimeout) {
+        clearTimeout(pending.helloTimeout);
+        pending.helloTimeout = null;
+      }
+    }
 
     const cleanupPromises: Promise<void>[] = [];
     for (const connection of uniqueConnections) {
@@ -372,7 +390,22 @@ export class VoiceAssistantWebSocketServer {
         );
       }
     }
+
+    for (const ws of pendingSockets) {
+      cleanupPromises.push(
+        new Promise<void>((resolve) => {
+          if (ws.readyState === 3) {
+            resolve();
+            return;
+          }
+          ws.once("close", () => resolve());
+          ws.close();
+        })
+      );
+    }
+
     await Promise.all(cleanupPromises);
+    this.pendingConnections.clear();
     this.sessions.clear();
     this.externalSessionsByKey.clear();
     this.wss.close();
@@ -416,61 +449,7 @@ export class VoiceAssistantWebSocketServer {
     metadata?: ExternalSocketMetadata
   ): Promise<void> {
     const requestMetadata = extractSocketRequestMetadata(request);
-    const relayExternalSessionKey =
-      metadata?.transport === "relay" && metadata.externalSessionKey.trim().length > 0
-        ? metadata.externalSessionKey
-        : null;
-    const directExternalSessionKey =
-      typeof requestMetadata.clientSessionKey === "string" &&
-      requestMetadata.clientSessionKey.trim().length > 0
-        ? `session:${requestMetadata.clientSessionKey.trim()}`
-        : null;
-    const externalSessionKey = relayExternalSessionKey ?? directExternalSessionKey;
-
-    if (metadata?.transport !== "relay" && !directExternalSessionKey) {
-      this.logger.warn(
-        {
-          host: requestMetadata.host,
-          origin: requestMetadata.origin,
-          remoteAddress: requestMetadata.remoteAddress,
-        },
-        "Rejected direct connection without clientSessionKey"
-      );
-      try {
-        ws.close(1008, "Missing clientSessionKey");
-      } catch {
-        // ignore close errors
-      }
-      return;
-    }
-
-    if (externalSessionKey) {
-      const existing = this.externalSessionsByKey.get(externalSessionKey);
-      if (existing) {
-        if (existing.externalDisconnectCleanupTimeout) {
-          clearTimeout(existing.externalDisconnectCleanupTimeout);
-          existing.externalDisconnectCleanupTimeout = null;
-        }
-
-        existing.sockets.add(ws);
-        this.sessions.set(ws, existing);
-        this.sendServerInfo(ws);
-        existing.connectionLogger.trace(
-          {
-            clientId: existing.clientId,
-            externalSessionKey,
-            totalSessions: this.sessions.size,
-          },
-          "Client reconnected"
-        );
-        this.bindSocketHandlers(ws, existing);
-        return;
-      }
-    }
-
-    const clientId = `client-${++this.clientIdCounter}`;
     const connectionLoggerFields: Record<string, string> = {
-      clientId,
       transport: metadata?.transport === "relay" ? "relay" : "direct",
     };
     if (requestMetadata.host) {
@@ -486,6 +465,47 @@ export class VoiceAssistantWebSocketServer {
       connectionLoggerFields.remoteAddress = requestMetadata.remoteAddress;
     }
     const connectionLogger = this.logger.child(connectionLoggerFields);
+
+    const pending: PendingConnection = {
+      connectionLogger,
+      helloTimeout: null,
+    };
+    const timeout = setTimeout(() => {
+      if (this.pendingConnections.get(ws) !== pending) {
+        return;
+      }
+      pending.helloTimeout = null;
+      this.pendingConnections.delete(ws);
+      pending.connectionLogger.warn(
+        { timeoutMs: HELLO_TIMEOUT_MS },
+        "Closing connection due to missing hello"
+      );
+      try {
+        ws.close(WS_CLOSE_HELLO_TIMEOUT, "Hello timeout");
+      } catch {
+        // ignore close errors
+      }
+    }, HELLO_TIMEOUT_MS);
+    pending.helloTimeout = timeout;
+    (timeout as unknown as { unref?: () => void }).unref?.();
+
+    this.pendingConnections.set(ws, pending);
+    this.bindSocketHandlers(ws);
+
+    pending.connectionLogger.trace(
+      {
+        totalPendingConnections: this.pendingConnections.size,
+      },
+      "Client connected; awaiting hello"
+    );
+  }
+
+  private createSessionConnection(params: {
+    ws: WebSocketLike;
+    clientId: string;
+    connectionLogger: pino.Logger;
+  }): SessionConnection {
+    const { ws, clientId, connectionLogger } = params;
     let connection: SessionConnection | null = null;
 
     const session = new Session({
@@ -538,23 +558,109 @@ export class VoiceAssistantWebSocketServer {
       clientId,
       connectionLogger,
       sockets: new Set([ws]),
-      externalSessionKey,
       externalDisconnectCleanupTimeout: null,
     };
+    return connection;
+  }
 
-    this.sessions.set(ws, connection);
-    if (externalSessionKey) {
-      this.externalSessionsByKey.set(externalSessionKey, connection);
+  private clearPendingConnection(ws: WebSocketLike): PendingConnection | null {
+    const pending = this.pendingConnections.get(ws);
+    if (!pending) {
+      return null;
+    }
+    if (pending.helloTimeout) {
+      clearTimeout(pending.helloTimeout);
+      pending.helloTimeout = null;
+    }
+    this.pendingConnections.delete(ws);
+    return pending;
+  }
+
+  private buildWelcomeMessage(params: { resumed: boolean }): WSWelcomeMessage {
+    return {
+      type: "welcome",
+      serverId: this.serverId,
+      hostname: getHostname(),
+      version: this.daemonVersion,
+      resumed: params.resumed,
+      ...(this.serverCapabilities ? { capabilities: this.serverCapabilities } : {}),
+    };
+  }
+
+  private handleHello(params: {
+    ws: WebSocketLike;
+    message: WSHelloMessage;
+    pending: PendingConnection;
+  }): void {
+    const { ws, message, pending } = params;
+
+    if (message.protocolVersion !== WS_PROTOCOL_VERSION) {
+      this.clearPendingConnection(ws);
+      pending.connectionLogger.warn(
+        {
+          receivedProtocolVersion: message.protocolVersion,
+          expectedProtocolVersion: WS_PROTOCOL_VERSION,
+        },
+        "Rejected hello due to protocol version mismatch"
+      );
+      try {
+        ws.close(WS_CLOSE_INCOMPATIBLE_PROTOCOL, "Incompatible protocol version");
+      } catch {
+        // ignore close errors
+      }
+      return;
     }
 
-    this.sendServerInfo(ws);
+    const clientId = message.clientId.trim();
+    if (clientId.length === 0) {
+      this.clearPendingConnection(ws);
+      pending.connectionLogger.warn("Rejected hello with empty clientId");
+      try {
+        ws.close(WS_CLOSE_INVALID_HELLO, "Invalid hello");
+      } catch {
+        // ignore close errors
+      }
+      return;
+    }
 
-    connectionLogger.trace(
-      { clientId, externalSessionKey, totalSessions: this.sessions.size },
-      "Client connected"
+    this.clearPendingConnection(ws);
+    const existing = this.externalSessionsByKey.get(clientId);
+    if (existing) {
+      if (existing.externalDisconnectCleanupTimeout) {
+        clearTimeout(existing.externalDisconnectCleanupTimeout);
+        existing.externalDisconnectCleanupTimeout = null;
+      }
+      existing.sockets.add(ws);
+      this.sessions.set(ws, existing);
+      this.sendToClient(ws, this.buildWelcomeMessage({ resumed: true }));
+      existing.connectionLogger.trace(
+        {
+          clientId,
+          resumed: true,
+          totalSessions: this.sessions.size,
+        },
+        "Client connected via hello"
+      );
+      return;
+    }
+
+    const connectionLogger = pending.connectionLogger.child({ clientId });
+    const connection = this.createSessionConnection({
+      ws,
+      clientId,
+      connectionLogger,
+    });
+    this.sessions.set(ws, connection);
+    this.externalSessionsByKey.set(clientId, connection);
+    this.sendToClient(ws, this.buildWelcomeMessage({ resumed: false }));
+    connection.connectionLogger.trace(
+      {
+        clientId,
+        resumed: false,
+        totalSessions: this.sessions.size,
+      },
+      "Client connected via hello"
     );
-
-    this.bindSocketHandlers(ws, connection);
   }
 
   private buildServerInfoStatusPayload(): ServerInfoStatusPayload {
@@ -567,7 +673,7 @@ export class VoiceAssistantWebSocketServer {
     };
   }
 
-  private broadcastServerInfo(): void {
+  private broadcastCapabilitiesUpdate(): void {
     this.broadcast(
       wrapSessionMessage({
         type: "status",
@@ -576,27 +682,13 @@ export class VoiceAssistantWebSocketServer {
     );
   }
 
-  private sendServerInfo(ws: WebSocketLike): void {
-    // Advertise stable server identity immediately on connect (used for URL/shareable IDs).
-    this.sendToClient(
-      ws,
-      wrapSessionMessage({
-        type: "status",
-        payload: this.buildServerInfoStatusPayload(),
-      })
-    );
-  }
-
-  private bindSocketHandlers(
-    ws: WebSocketLike,
-    connection: SessionConnection
-  ): void {
+  private bindSocketHandlers(ws: WebSocketLike): void {
     ws.on("message", (data) => {
       void this.handleRawMessage(ws, data);
     });
 
     ws.on("close", async (code: number, reason: unknown) => {
-      await this.detachSocket(ws, connection, {
+      await this.detachSocket(ws, {
         code: typeof code === "number" ? code : undefined,
         reason,
       });
@@ -604,8 +696,11 @@ export class VoiceAssistantWebSocketServer {
 
     ws.on("error", async (error) => {
       const err = error instanceof Error ? error : new Error(String(error));
-      connection.connectionLogger.error({ err }, "Client error");
-      await this.detachSocket(ws, connection, { error: err });
+      const active = this.sessions.get(ws);
+      const pending = this.pendingConnections.get(ws);
+      const log = active?.connectionLogger ?? pending?.connectionLogger ?? this.logger;
+      log.error({ err }, "Client error");
+      await this.detachSocket(ws, { error: err });
     });
   }
 
@@ -623,19 +718,33 @@ export class VoiceAssistantWebSocketServer {
 
   private async detachSocket(
     ws: WebSocketLike,
-    connection: SessionConnection,
     details: {
       code?: number;
       reason?: unknown;
       error?: Error;
     }
   ): Promise<void> {
-    const activeConnection = this.sessions.get(ws);
-    if (activeConnection !== connection) return;
+    const pending = this.clearPendingConnection(ws);
+    if (pending) {
+      pending.connectionLogger.trace(
+        {
+          code: details.code,
+          reason: stringifyCloseReason(details.reason),
+        },
+        "Pending client disconnected"
+      );
+      return;
+    }
+
+    const connection = this.sessions.get(ws);
+    if (!connection) {
+      return;
+    }
+
     this.sessions.delete(ws);
     connection.sockets.delete(ws);
 
-    if (connection.externalSessionKey && connection.sockets.size === 0) {
+    if (connection.sockets.size === 0) {
       if (connection.externalDisconnectCleanupTimeout) {
         clearTimeout(connection.externalDisconnectCleanupTimeout);
       }
@@ -651,7 +760,6 @@ export class VoiceAssistantWebSocketServer {
       connection.connectionLogger.trace(
         {
           clientId: connection.clientId,
-          externalSessionKey: connection.externalSessionKey,
           code: details.code,
           reason: stringifyCloseReason(details.reason),
           reconnectGraceMs: EXTERNAL_SESSION_DISCONNECT_GRACE_MS,
@@ -690,11 +798,9 @@ export class VoiceAssistantWebSocketServer {
       this.sessions.delete(socket);
     }
     connection.sockets.clear();
-    if (connection.externalSessionKey) {
-      const existing = this.externalSessionsByKey.get(connection.externalSessionKey);
-      if (existing === connection) {
-        this.externalSessionsByKey.delete(connection.externalSessionKey);
-      }
+    const existing = this.externalSessionsByKey.get(connection.clientId);
+    if (existing === connection) {
+      this.externalSessionsByKey.delete(connection.clientId);
     }
 
     connection.connectionLogger.trace(
@@ -708,15 +814,24 @@ export class VoiceAssistantWebSocketServer {
     ws: WebSocketLike,
     data: Buffer | ArrayBuffer | Buffer[] | string
   ): Promise<void> {
+    const activeConnection = this.sessions.get(ws);
+    const pendingConnection = this.pendingConnections.get(ws);
+    const log = activeConnection?.connectionLogger ?? pendingConnection?.connectionLogger ?? this.logger;
+
     try {
-      const activeConnection = this.sessions.get(ws);
       const buffer = bufferFromWsData(data);
       const asBytes = asUint8Array(buffer);
       if (asBytes) {
         const frame = decodeBinaryMuxFrame(asBytes);
         if (frame) {
           if (!activeConnection) {
-            this.logger.error("No session found for client");
+            log.warn("Rejected binary frame before hello");
+            this.clearPendingConnection(ws);
+            try {
+              ws.close(WS_CLOSE_INVALID_HELLO, "Session message before hello");
+            } catch {
+              // ignore close errors
+            }
             return;
           }
           activeConnection.session.handleBinaryFrame(frame);
@@ -726,6 +841,22 @@ export class VoiceAssistantWebSocketServer {
       const parsed = JSON.parse(buffer.toString());
       const parsedMessage = WSInboundMessageSchema.safeParse(parsed);
       if (!parsedMessage.success) {
+        if (pendingConnection) {
+          pendingConnection.connectionLogger.warn(
+            {
+              error: parsedMessage.error.message,
+            },
+            "Rejected pending message before hello"
+          );
+          this.clearPendingConnection(ws);
+          try {
+            ws.close(WS_CLOSE_INVALID_HELLO, "Invalid hello");
+          } catch {
+            // ignore close errors
+          }
+          return;
+        }
+
         const requestInfo = extractRequestInfoFromUnknownWsInbound(parsed);
         const isUnknownSchema =
           requestInfo?.requestId != null &&
@@ -734,7 +865,6 @@ export class VoiceAssistantWebSocketServer {
           "type" in parsed &&
           (parsed as { type?: unknown }).type === "session";
 
-        const log = activeConnection?.connectionLogger ?? this.logger;
         log.warn(
           {
             clientId: activeConnection?.clientId,
@@ -786,8 +916,43 @@ export class VoiceAssistantWebSocketServer {
         return;
       }
 
+      if (pendingConnection) {
+        if (message.type === "hello") {
+          this.handleHello({
+            ws,
+            message,
+            pending: pendingConnection,
+          });
+          return;
+        }
+
+        pendingConnection.connectionLogger.warn(
+          {
+            messageType: message.type,
+          },
+          "Rejected pending message before hello"
+        );
+        this.clearPendingConnection(ws);
+        try {
+          ws.close(WS_CLOSE_INVALID_HELLO, "Session message before hello");
+        } catch {
+          // ignore close errors
+        }
+        return;
+      }
+
       if (!activeConnection) {
-        this.logger.error("No session found for client");
+        this.logger.error("No connection found for websocket");
+        return;
+      }
+
+      if (message.type === "hello") {
+        activeConnection.connectionLogger.warn("Received hello on active connection");
+        try {
+          ws.close(WS_CLOSE_INVALID_HELLO, "Unexpected hello");
+        } catch {
+          // ignore close errors
+        }
         return;
       }
 
@@ -816,7 +981,7 @@ export class VoiceAssistantWebSocketServer {
           ? `${rawPayload.slice(0, 2000)}... (truncated)`
           : rawPayload;
 
-      this.logger.error(
+      log.error(
         {
           err,
           rawPayload: trimmedRawPayload,
@@ -824,6 +989,16 @@ export class VoiceAssistantWebSocketServer {
         },
         "Failed to parse/handle message"
       );
+
+      if (this.pendingConnections.has(ws)) {
+        this.clearPendingConnection(ws);
+        try {
+          ws.close(WS_CLOSE_INVALID_HELLO, "Invalid hello");
+        } catch {
+          // ignore close errors
+        }
+        return;
+      }
 
       const requestInfo = extractRequestInfoFromUnknownWsInbound(parsedPayload);
       if (requestInfo) {
@@ -952,7 +1127,6 @@ type SocketRequestMetadata = {
   origin?: string;
   userAgent?: string;
   remoteAddress?: string;
-  clientSessionKey?: string;
 };
 
 function extractSocketRequestMetadata(request: unknown): SocketRequestMetadata {
@@ -983,30 +1157,12 @@ function extractSocketRequestMetadata(request: unknown): SocketRequestMetadata {
     typeof record.socket?.remoteAddress === "string"
       ? record.socket.remoteAddress
       : undefined;
-  const rawUrl = typeof record.url === "string" ? record.url : null;
-  const clientSessionKey = (() => {
-    if (!rawUrl) {
-      return undefined;
-    }
-    try {
-      const parsed = new URL(rawUrl, "http://localhost");
-      const value = parsed.searchParams.get("clientSessionKey");
-      if (!value) {
-        return undefined;
-      }
-      const trimmed = value.trim();
-      return trimmed.length > 0 ? trimmed : undefined;
-    } catch {
-      return undefined;
-    }
-  })();
 
   return {
     ...(host ? { host } : {}),
     ...(origin ? { origin } : {}),
     ...(userAgent ? { userAgent } : {}),
     ...(remoteAddress ? { remoteAddress } : {}),
-    ...(clientSessionKey ? { clientSessionKey } : {}),
   };
 }
 
