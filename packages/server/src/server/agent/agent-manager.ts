@@ -296,6 +296,7 @@ export class AgentManager {
   private readonly previousStatuses = new Map<string, AgentLifecycleStatus>();
   private readonly backgroundTasks = new Set<Promise<void>>();
   private readonly liveEventPumps = new Map<string, Promise<void>>();
+  private readonly liveEventBacklog = new Map<string, AgentStreamEvent[]>();
   private onAgentAttention?: AgentAttentionCallback;
   private logger: Logger;
 
@@ -743,6 +744,7 @@ export class AgentManager {
     // Remove the existing agent entry before swapping sessions
     this.agents.delete(agentId);
     this.liveEventPumps.delete(agentId);
+    this.liveEventBacklog.delete(agentId);
     try {
       await existing.session.close();
     } catch (error) {
@@ -773,6 +775,7 @@ export class AgentManager {
     const agent = this.requireAgent(agentId);
     this.agents.delete(agentId);
     this.liveEventPumps.delete(agentId);
+    this.liveEventBacklog.delete(agentId);
     // Clean up previousStatus to prevent memory leak
     this.previousStatuses.delete(agentId);
     const session = agent.session;
@@ -1004,6 +1007,7 @@ export class AgentManager {
         );
       }
       this.emitState(mutableAgent);
+      this.flushLiveEventBacklog(mutableAgent);
     };
 
     const self = this;
@@ -1147,7 +1151,11 @@ export class AgentManager {
   async cancelAgentRun(agentId: string): Promise<boolean> {
     const agent = this.requireAgent(agentId);
     const pendingRun = agent.pendingRun;
-    if (!pendingRun || typeof pendingRun.return !== "function") {
+    const hasForegroundPendingRun =
+      Boolean(pendingRun) && typeof pendingRun?.return === "function";
+    const isAutonomousRunning = agent.lifecycle === "running" && !hasForegroundPendingRun;
+
+    if (!hasForegroundPendingRun && !isAutonomousRunning) {
       return false;
     }
 
@@ -1160,16 +1168,18 @@ export class AgentManager {
       );
     }
 
-    try {
-      // Await the generator's .return() to ensure the finally block runs
-      // and pendingRun is properly cleared before we return.
-      await pendingRun.return(undefined as unknown as AgentStreamEvent);
-    } catch (error) {
-      this.logger.error(
-        { err: error, agentId },
-        "Failed to cancel run"
-      );
-      throw error;
+    if (hasForegroundPendingRun && pendingRun) {
+      try {
+        // Await the generator's .return() to ensure the finally block runs
+        // and pendingRun is properly cleared before we return.
+        await pendingRun.return(undefined as unknown as AgentStreamEvent);
+      } catch (error) {
+        this.logger.error(
+          { err: error, agentId },
+          "Failed to cancel run"
+        );
+        throw error;
+      }
     }
 
     // Clear any pending permissions that weren't cleaned up by handleStreamEvent.
@@ -1564,6 +1574,7 @@ export class AgentManager {
       const newInfo = await agent.session.getRuntimeInfo();
       const changed =
         newInfo.model !== agent.runtimeInfo?.model ||
+        newInfo.thinkingOptionId !== agent.runtimeInfo?.thinkingOptionId ||
         newInfo.sessionId !== agent.runtimeInfo?.sessionId ||
         newInfo.modeId !== agent.runtimeInfo?.modeId;
       agent.runtimeInfo = newInfo;
@@ -1926,29 +1937,54 @@ export class AgentManager {
     if (!supportsLiveEventStream(agent.session)) {
       return;
     }
-    const liveSession = agent.session;
     if (this.liveEventPumps.has(agent.id)) {
       return;
     }
     const pump = (async () => {
-      try {
-        for await (const event of liveSession.streamLiveEvents()) {
-          const current = this.agents.get(agent.id);
-          if (!current) {
-            break;
-          }
-          // Foreground streamAgent owns live prompt events while running.
-          // Background live-event tailing is for autonomous activity while idle.
-          if (current.pendingRun) {
-            continue;
-          }
-          this.handleStreamEvent(current, event);
+      while (true) {
+        const current = this.agents.get(agent.id);
+        if (!current) {
+          return;
         }
-      } catch (error) {
-        this.logger.warn(
-          { err: error, agentId: agent.id },
-          "Live event pump failed"
-        );
+        if (!supportsLiveEventStream(current.session)) {
+          return;
+        }
+
+        try {
+          for await (const event of current.session.streamLiveEvents()) {
+            const latest = this.agents.get(agent.id);
+            if (!latest) {
+              return;
+            }
+            // Keep consuming provider events even during an active foreground run,
+            // then replay them immediately once that run settles.
+            if (latest.pendingRun) {
+              this.enqueueLiveEvent(latest.id, event);
+              continue;
+            }
+            this.flushLiveEventBacklog(latest);
+            this.handleStreamEvent(latest, event);
+          }
+          this.logger.warn(
+            { agentId: agent.id },
+            "Live event pump stream ended; restarting"
+          );
+        } catch (error) {
+          this.logger.warn(
+            { err: error, agentId: agent.id },
+            "Live event pump failed"
+          );
+        }
+
+        // Keep pump alive unless the agent is gone.
+        await new Promise((resolve) => setTimeout(resolve, 250));
+        const latest = this.agents.get(agent.id);
+        if (!latest) {
+          return;
+        }
+        if (!latest.pendingRun) {
+          this.flushLiveEventBacklog(latest);
+        }
       }
     })();
     this.liveEventPumps.set(agent.id, pump);
@@ -1958,5 +1994,28 @@ export class AgentManager {
         this.liveEventPumps.delete(agent.id);
       }
     });
+  }
+
+  private enqueueLiveEvent(agentId: string, event: AgentStreamEvent): void {
+    const existing = this.liveEventBacklog.get(agentId);
+    if (existing) {
+      existing.push(event);
+      return;
+    }
+    this.liveEventBacklog.set(agentId, [event]);
+  }
+
+  private flushLiveEventBacklog(agent: ActiveManagedAgent): void {
+    if (agent.pendingRun) {
+      return;
+    }
+    const pending = this.liveEventBacklog.get(agent.id);
+    if (!pending || pending.length === 0) {
+      return;
+    }
+    this.liveEventBacklog.delete(agent.id);
+    for (const event of pending) {
+      this.handleStreamEvent(agent, event);
+    }
   }
 }

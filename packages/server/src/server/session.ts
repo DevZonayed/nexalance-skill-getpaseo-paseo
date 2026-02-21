@@ -63,7 +63,7 @@ import type {
   ManagedAgent,
 } from './agent/agent-manager.js'
 import { scheduleAgentMetadataGeneration } from './agent/agent-metadata-generator.js'
-import { toAgentPayload } from './agent/agent-projections.js'
+import { resolveEffectiveThinkingOptionId, toAgentPayload } from './agent/agent-projections.js'
 import {
   appendTimelineItemIfAgentKnown,
   emitLiveTimelineItemIfAgentKnown,
@@ -953,12 +953,33 @@ export class Session {
     const lastUserMessageAt = record.lastUserMessageAt ? new Date(record.lastUserMessageAt) : null
 
     const provider = coerceAgentProvider(this.sessionLogger, record.provider, record.id)
+    const runtimeInfo = record.runtimeInfo
+      ? {
+          provider: coerceAgentProvider(this.sessionLogger, record.runtimeInfo.provider, record.id),
+          sessionId: record.runtimeInfo.sessionId,
+          ...(Object.prototype.hasOwnProperty.call(record.runtimeInfo, 'model')
+            ? { model: record.runtimeInfo.model ?? null }
+            : {}),
+          ...(Object.prototype.hasOwnProperty.call(record.runtimeInfo, 'thinkingOptionId')
+            ? { thinkingOptionId: record.runtimeInfo.thinkingOptionId ?? null }
+            : {}),
+          ...(Object.prototype.hasOwnProperty.call(record.runtimeInfo, 'modeId')
+            ? { modeId: record.runtimeInfo.modeId ?? null }
+            : {}),
+          ...(record.runtimeInfo.extra ? { extra: record.runtimeInfo.extra } : {}),
+        }
+      : undefined
     return {
       id: record.id,
       provider,
       cwd: record.cwd,
       model: record.config?.model ?? null,
       thinkingOptionId: record.config?.thinkingOptionId ?? null,
+      effectiveThinkingOptionId: resolveEffectiveThinkingOptionId({
+        runtimeInfo,
+        configuredThinkingOptionId: record.config?.thinkingOptionId ?? null,
+      }),
+      ...(runtimeInfo ? { runtimeInfo } : {}),
       createdAt: createdAt.toISOString(),
       updatedAt: updatedAt.toISOString(),
       lastUserMessageAt: lastUserMessageAt ? lastUserMessageAt.toISOString() : null,
@@ -1053,6 +1074,21 @@ export class Session {
     const includeArchived = filter?.includeArchived ?? false
     if (!includeArchived && agent.archivedAt) {
       return false
+    }
+
+    if (filter?.thinkingOptionId !== undefined) {
+      const expectedThinkingOptionId = resolveEffectiveThinkingOptionId({
+        configuredThinkingOptionId: filter.thinkingOptionId ?? null,
+      })
+      const resolvedThinkingOptionId =
+        agent.effectiveThinkingOptionId ??
+        resolveEffectiveThinkingOptionId({
+          runtimeInfo: agent.runtimeInfo,
+          configuredThinkingOptionId: agent.thinkingOptionId ?? null,
+        })
+      if (resolvedThinkingOptionId !== expectedThinkingOptionId) {
+        return false
+      }
     }
 
     if (filter?.statuses && filter.statuses.length > 0) {

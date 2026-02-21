@@ -291,25 +291,25 @@ export function startRelayTransport({
     }, delayMs);
   };
 
-  const ensureClientDataSocket = (routingId: string): void => {
+  const ensureClientDataSocket = (connectionId: string): void => {
     if (stopped) return;
-    if (!routingId) return;
-    if (dataSockets.has(routingId)) return;
+    if (!connectionId) return;
+    if (dataSockets.has(connectionId)) return;
 
     const url = buildRelayWebSocketUrl({
       endpoint: relayEndpoint,
       serverId,
       role: "server",
-      connectionId: routingId,
+      connectionId,
     });
     const socket = new WebSocket(url, { handshakeTimeout: 10_000, perMessageDeflate: false });
-    dataSockets.set(routingId, socket);
+    dataSockets.set(connectionId, socket);
 
     let attached = false;
     const openTimeout = setTimeout(() => {
       if (stopped) return;
       if (socket.readyState === WebSocket.OPEN) return;
-      relayLogger.warn({ url, routingId }, "relay_data_open_timeout_terminating");
+      relayLogger.warn({ url, connectionId }, "relay_data_open_timeout_terminating");
       try {
         socket.terminate();
       } catch {
@@ -319,7 +319,7 @@ export function startRelayTransport({
 
     socket.on("open", () => {
       clearTimeout(openTimeout);
-      relayLogger.info({ url, routingId }, "relay_data_connected");
+      relayLogger.info({ url, connectionId }, "relay_data_connected");
       if (attached) return;
       attached = true;
       const externalMetadata: ExternalSocketMetadata = {
@@ -329,7 +329,7 @@ export function startRelayTransport({
         void attachEncryptedSocket(
           socket,
           daemonKeyPair,
-          relayLogger.child({ routingId }),
+          relayLogger.child({ connectionId }),
           attachSocket,
           externalMetadata
         );
@@ -341,16 +341,16 @@ export function startRelayTransport({
     socket.on("close", (code, reason) => {
       clearTimeout(openTimeout);
       relayLogger.warn(
-        { code, reason: reason?.toString?.(), url, routingId },
+        { code, reason: reason?.toString?.(), url, connectionId },
         "relay_data_disconnected"
       );
-      if (dataSockets.get(routingId) === socket) {
-        dataSockets.delete(routingId);
+      if (dataSockets.get(connectionId) === socket) {
+        dataSockets.delete(connectionId);
       }
     });
 
     socket.on("error", (err) => {
-      relayLogger.warn({ err, url, routingId }, "relay_data_error");
+      relayLogger.warn({ err, url, connectionId }, "relay_data_error");
     });
   };
 

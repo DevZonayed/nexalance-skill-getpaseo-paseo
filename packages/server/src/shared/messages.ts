@@ -366,6 +366,7 @@ const AgentRuntimeInfoSchema: z.ZodType<AgentRuntimeInfo> = z.object({
   provider: AgentProviderSchema,
   sessionId: z.string().nullable(),
   model: z.string().nullable().optional(),
+  thinkingOptionId: z.string().nullable().optional(),
   modeId: z.string().nullable().optional(),
   extra: z.record(z.unknown()).optional(),
 })
@@ -376,6 +377,7 @@ export const AgentSnapshotPayloadSchema = z.object({
   cwd: z.string(),
   model: z.string().nullable(),
   thinkingOptionId: z.string().nullable().optional(),
+  effectiveThinkingOptionId: z.string().nullable().optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
   lastUserMessageAt: z.string().nullable(),
@@ -426,6 +428,7 @@ const AgentDirectoryFilterSchema = z.object({
   statuses: z.array(AgentStatusSchema).optional(),
   includeArchived: z.boolean().optional(),
   requiresAttention: z.boolean().optional(),
+  thinkingOptionId: z.string().nullable().optional(),
 })
 
 export const DeleteAgentRequestMessageSchema = z.object({

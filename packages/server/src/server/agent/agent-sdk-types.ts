@@ -278,6 +278,7 @@ export type AgentRuntimeInfo = {
   provider: AgentProvider;
   sessionId: string | null;
   model?: string | null;
+  thinkingOptionId?: string | null;
   modeId?: string | null;
   extra?: AgentMetadata;
 };

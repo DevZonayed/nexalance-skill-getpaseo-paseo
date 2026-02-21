@@ -1004,6 +1004,86 @@ describe("AgentManager", () => {
     expect(lifecycleUpdates).toContain("idle");
   });
 
+  test("cancelAgentRun can interrupt autonomous running state without a foreground pendingRun", async () => {
+    const workdir = mkdtempSync(join(tmpdir(), "agent-manager-live-cancel-"));
+    const storagePath = join(workdir, "agents");
+    const storage = new AgentStorage(storagePath, logger);
+    const liveEvents = new EventPushable<AgentStreamEvent>();
+
+    class LiveInterruptSession extends TestAgentSession {
+      public interruptCount = 0;
+
+      async *streamLiveEvents(): AsyncGenerator<AgentStreamEvent> {
+        for await (const event of liveEvents) {
+          yield event;
+        }
+      }
+
+      override async interrupt(): Promise<void> {
+        this.interruptCount += 1;
+      }
+
+      override async close(): Promise<void> {
+        liveEvents.end();
+      }
+    }
+
+    class LiveInterruptClient extends TestAgentClient {
+      lastSession: LiveInterruptSession | null = null;
+
+      override async createSession(config: AgentSessionConfig): Promise<AgentSession> {
+        const session = new LiveInterruptSession(config);
+        this.lastSession = session;
+        return session;
+      }
+    }
+
+    const client = new LiveInterruptClient();
+    const manager = new AgentManager({
+      clients: {
+        codex: client,
+      },
+      registry: storage,
+      logger,
+      idFactory: () => "00000000-0000-4000-8000-000000000129",
+    });
+
+    const snapshot = await manager.createAgent({
+      provider: "codex",
+      cwd: workdir,
+    });
+
+    await new Promise<void>((resolve) => {
+      const unsubscribe = manager.subscribe(
+        (event) => {
+          if (event.type !== "agent_state") {
+            return;
+          }
+          if (event.agent.id !== snapshot.id) {
+            return;
+          }
+          if (event.agent.lifecycle !== "running") {
+            return;
+          }
+          unsubscribe();
+          resolve();
+        },
+        { agentId: snapshot.id, replayState: false }
+      );
+      liveEvents.push({ type: "turn_started", provider: "codex" });
+    });
+
+    const beforeCancel = manager.getAgent(snapshot.id);
+    expect(beforeCancel?.lifecycle).toBe("running");
+    expect(Boolean(beforeCancel && "pendingRun" in beforeCancel && beforeCancel.pendingRun)).toBe(
+      false
+    );
+
+    const cancelled = await manager.cancelAgentRun(snapshot.id);
+    expect(cancelled).toBe(true);
+    expect(client.lastSession?.interruptCount).toBe(1);
+  });
+
   test("waitForAgentEvent waitForActive resolves for autonomous live-event run", async () => {
     const workdir = mkdtempSync(join(tmpdir(), "agent-manager-live-wait-"));
     const storagePath = join(workdir, "agents");
@@ -1048,6 +1128,167 @@ describe("AgentManager", () => {
 
     const result = await waitPromise;
     expect(result.status).toBe("idle");
+  });
+
+  test("buffers autonomous live events during foreground run and flushes after run settles", async () => {
+    const workdir = mkdtempSync(join(tmpdir(), "agent-manager-live-buffer-"));
+    const storagePath = join(workdir, "agents");
+    const storage = new AgentStorage(storagePath, logger);
+    const liveEvents = new EventPushable<AgentStreamEvent>();
+    const releaseForeground = deferred<void>();
+
+    class BufferedLiveSession extends TestAgentSession {
+      override async *stream(): AsyncGenerator<AgentStreamEvent> {
+        yield { type: "turn_started", provider: this.provider };
+        await releaseForeground.promise;
+        yield { type: "turn_completed", provider: this.provider };
+      }
+
+      async *streamLiveEvents(): AsyncGenerator<AgentStreamEvent> {
+        for await (const event of liveEvents) {
+          yield event;
+        }
+      }
+
+      override async close(): Promise<void> {
+        liveEvents.end();
+      }
+    }
+
+    class BufferedLiveClient extends TestAgentClient {
+      override async createSession(config: AgentSessionConfig): Promise<AgentSession> {
+        return new BufferedLiveSession(config);
+      }
+    }
+
+    const manager = new AgentManager({
+      clients: {
+        codex: new BufferedLiveClient(),
+      },
+      registry: storage,
+      logger,
+      idFactory: () => "00000000-0000-4000-8000-000000000127",
+    });
+
+    const snapshot = await manager.createAgent({
+      provider: "codex",
+      cwd: workdir,
+    });
+
+    const foreground = manager.streamAgent(snapshot.id, "foreground run");
+    const consumeForeground = (async () => {
+      for await (const _event of foreground) {
+        // Drain foreground stream.
+      }
+    })();
+
+    await manager.waitForAgentRunStart(snapshot.id);
+
+    liveEvents.push({ type: "turn_started", provider: "codex" });
+    liveEvents.push({
+      type: "timeline",
+      provider: "codex",
+      item: { type: "assistant_message", text: "AUTONOMOUS_DURING_FOREGROUND" },
+    });
+    liveEvents.push({ type: "turn_completed", provider: "codex" });
+
+    releaseForeground.resolve();
+    await consumeForeground;
+
+    const updated = manager.getAgent(snapshot.id);
+    expect(updated?.lifecycle).toBe("idle");
+    expect(manager.getTimeline(snapshot.id)).toContainEqual({
+      type: "assistant_message",
+      text: "AUTONOMOUS_DURING_FOREGROUND",
+    });
+  });
+
+  test("restarts live event pump after iterator failure", async () => {
+    const workdir = mkdtempSync(join(tmpdir(), "agent-manager-live-restart-"));
+    const storagePath = join(workdir, "agents");
+    const storage = new AgentStorage(storagePath, logger);
+    const liveEvents = new EventPushable<AgentStreamEvent>();
+
+    class FlakyLiveSession extends TestAgentSession {
+      private attempts = 0;
+
+      async *streamLiveEvents(): AsyncGenerator<AgentStreamEvent> {
+        this.attempts += 1;
+        if (this.attempts === 1) {
+          throw new Error("simulated live iterator failure");
+        }
+        for await (const event of liveEvents) {
+          yield event;
+        }
+      }
+
+      override async close(): Promise<void> {
+        liveEvents.end();
+      }
+    }
+
+    class FlakyLiveClient extends TestAgentClient {
+      override async createSession(config: AgentSessionConfig): Promise<AgentSession> {
+        return new FlakyLiveSession(config);
+      }
+    }
+
+    const manager = new AgentManager({
+      clients: {
+        codex: new FlakyLiveClient(),
+      },
+      registry: storage,
+      logger,
+      idFactory: () => "00000000-0000-4000-8000-000000000128",
+    });
+
+    const snapshot = await manager.createAgent({
+      provider: "codex",
+      cwd: workdir,
+    });
+
+    // Give the first failed stream a chance to restart.
+    await new Promise((resolve) => setTimeout(resolve, 350));
+
+    const assistantSeen = new Promise<void>((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        unsubscribe();
+        reject(new Error("Timed out waiting for restarted live event"));
+      }, 2_000);
+      const unsubscribe = manager.subscribe(
+        (event) => {
+          if (event.type !== "agent_stream" || event.agentId !== snapshot.id) {
+            return;
+          }
+          if (
+            event.event.type === "timeline" &&
+            event.event.item.type === "assistant_message" &&
+            event.event.item.text === "AUTONOMOUS_AFTER_RESTART"
+          ) {
+            clearTimeout(timeout);
+            unsubscribe();
+            resolve();
+          }
+        },
+        { agentId: snapshot.id, replayState: false }
+      );
+    });
+
+    liveEvents.push({ type: "turn_started", provider: "codex" });
+    liveEvents.push({
+      type: "timeline",
+      provider: "codex",
+      item: { type: "assistant_message", text: "AUTONOMOUS_AFTER_RESTART" },
+    });
+    liveEvents.push({ type: "turn_completed", provider: "codex" });
+
+    await assistantSeen;
+    const result = await manager.waitForAgentEvent(snapshot.id);
+    expect(result.status).toBe("idle");
+    expect(manager.getTimeline(snapshot.id)).toContainEqual({
+      type: "assistant_message",
+      text: "AUTONOMOUS_AFTER_RESTART",
+    });
   });
 
   test("keeps updatedAt monotonic when user message and run start happen in the same millisecond", async () => {

@@ -56,6 +56,23 @@ interface E2EEReadyMessage {
   type: "e2ee_ready";
 }
 
+function buildInvalidHelloError(rawText: string, parsed?: unknown): Error {
+  const parsedRecord =
+    parsed && typeof parsed === "object"
+      ? (parsed as Record<string, unknown>)
+      : null;
+  const rawType = parsedRecord?.type;
+  const receivedType =
+    typeof rawType === "string" ? rawType : rawType === undefined ? "undefined" : typeof rawType;
+  const hasKey =
+    typeof parsedRecord?.key === "string" && parsedRecord.key.trim().length > 0;
+  const compact = rawText.replace(/\s+/g, " ").trim();
+  const preview = compact.length > 160 ? `${compact.slice(0, 157)}...` : compact;
+  return new Error(
+    `Invalid hello message (receivedType=${receivedType}, hasKey=${hasKey}, preview=${JSON.stringify(preview)})`
+  );
+}
+
 const HANDSHAKE_RETRY_MS = 1000;
 const MAX_PENDING_SENDS = 200;
 
@@ -154,9 +171,16 @@ export async function createDaemonChannel(
         const helloText =
           typeof data === "string" ? data : new TextDecoder().decode(data);
 
-        const msg = JSON.parse(helloText) as E2EEHelloMessage;
-        if (msg.type !== "e2ee_hello" || !msg.key) {
-          throw new Error("Invalid hello message");
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(helloText);
+        } catch {
+          throw buildInvalidHelloError(helloText);
+        }
+
+        const msg = parsed as Partial<E2EEHelloMessage>;
+        if (msg.type !== "e2ee_hello" || typeof msg.key !== "string" || !msg.key.trim()) {
+          throw buildInvalidHelloError(helloText, parsed);
         }
 
         // Buffer any subsequent messages that arrive while we're doing async

@@ -150,11 +150,9 @@ function SessionProviderWithClient({
   client,
 }: SessionProviderClientProps) {
   return (
-    <SessionProviderInternal
-      children={children}
-      serverId={serverId}
-      client={client}
-    />
+    <SessionProviderInternal serverId={serverId} client={client}>
+      {children}
+    </SessionProviderInternal>
   );
 }
 

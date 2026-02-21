@@ -378,13 +378,7 @@ function DraftAgentScreenContent({
   const sessionClient = runtimeClient
   const trimmedWorkingDir = workingDir.trim()
   const shouldInspectRepo = trimmedWorkingDir.length > 0
-  const daemonAvailabilityError =
-    !selectedServerId || !isHostOnline ? 'Host is offline' : null
-  const repoAvailabilityError =
-    shouldInspectRepo && !isHostOnline
-      ? (daemonAvailabilityError ??
-        'Repository details will load automatically once the selected host is back online.')
-      : null
+  const canQuerySelectedHost = Boolean(selectedServerId) && Boolean(sessionClient) && isHostOnline
 
   const checkoutStatusQuery = useQuery({
     queryKey: checkoutStatusQueryKey(selectedServerId ?? '', trimmedWorkingDir),
@@ -395,12 +389,7 @@ function DraftAgentScreenContent({
       }
       return await client.getCheckoutStatus(trimmedWorkingDir)
     },
-    enabled:
-      Boolean(selectedServerId) &&
-      Boolean(trimmedWorkingDir) &&
-      !repoAvailabilityError &&
-      Boolean(sessionClient) &&
-      isHostOnline,
+    enabled: Boolean(trimmedWorkingDir) && canQuerySelectedHost,
     retry: false,
     staleTime: CHECKOUT_STATUS_STALE_TIME,
     refetchOnMount: 'always',
@@ -424,8 +413,8 @@ function DraftAgentScreenContent({
 
   const repoInfoStatus: 'idle' | 'loading' | 'ready' | 'error' = !shouldInspectRepo
     ? 'idle'
-    : repoAvailabilityError
-      ? 'error'
+    : !canQuerySelectedHost
+      ? 'idle'
       : checkoutStatusQuery.isPending || checkoutStatusQuery.isFetching
         ? 'loading'
         : checkoutStatusQuery.isError || Boolean(checkoutPayloadError)
@@ -435,9 +424,7 @@ function DraftAgentScreenContent({
             : 'idle'
 
   const repoInfoError =
-    repoAvailabilityError ??
-    (checkoutStatusQuery.isError ? checkoutQueryError : null) ??
-    checkoutPayloadError
+    (checkoutStatusQuery.isError ? checkoutQueryError : null) ?? checkoutPayloadError
   const isCreateWorktree = worktreeMode === 'create'
   const isAttachWorktree = worktreeMode === 'attach'
 
@@ -461,9 +448,7 @@ function DraftAgentScreenContent({
     enabled:
       isGitDirectory &&
       Boolean(worktreeListRoot) &&
-      !repoAvailabilityError &&
-      Boolean(sessionClient) &&
-      isHostOnline &&
+      canQuerySelectedHost &&
       !isNonGitDirectory,
     retry: false,
     staleTime: 0,
@@ -526,9 +511,7 @@ function DraftAgentScreenContent({
       isGitDirectory &&
       !isNonGitDirectory &&
       Boolean(trimmedWorkingDir) &&
-      !repoAvailabilityError &&
-      Boolean(sessionClient) &&
-      isHostOnline,
+      canQuerySelectedHost,
     retry: false,
     staleTime: 15_000,
   })
@@ -558,10 +541,7 @@ function DraftAgentScreenContent({
     },
     enabled:
       Boolean(debouncedWorkingDirSearchQuery) &&
-      Boolean(selectedServerId) &&
-      !daemonAvailabilityError &&
-      Boolean(sessionClient) &&
-      isHostOnline,
+      canQuerySelectedHost,
     retry: false,
     staleTime: 15_000,
   })
