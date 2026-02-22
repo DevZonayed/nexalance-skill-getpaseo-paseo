@@ -49,6 +49,7 @@ import {
   parseHostAgentRouteFromPathname,
 } from "@/utils/host-routes";
 import { getTauri } from "@/utils/tauri";
+import { PerfDiagnosticsProvider } from "@/runtime/perf-diagnostics";
 
 polyfillCrypto();
 const IS_DEV = Boolean((globalThis as { __DEV__?: boolean }).__DEV__);
@@ -442,47 +443,49 @@ function MissingDaemonView() {
 export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <PortalProvider>
-        <SafeAreaProvider>
-          <KeyboardProvider>
-            <BottomSheetModalProvider>
-              <QueryProvider>
-                <DaemonRegistryProvider>
-                  <PushNotificationRouter />
-                  <MultiDaemonSessionHost />
-                  <ProvidersWrapper>
-                    <SidebarAnimationProvider>
-                      <HorizontalScrollProvider>
-                        <ToastProvider>
-                          <AppWithSidebar>
-                            <Stack
-                              screenOptions={{
-                                headerShown: false,
-                                animation: "none",
-                              }}
-                            >
-                              <Stack.Screen name="index" />
-                              <Stack.Screen
-                                name="h/[serverId]/agent/[agentId]"
-                                options={{ gestureEnabled: false }}
-                              />
-                              <Stack.Screen name="h/[serverId]/index" />
-                              <Stack.Screen name="h/[serverId]/agent/index" />
-                              <Stack.Screen name="h/[serverId]/agents" />
-                              <Stack.Screen name="h/[serverId]/settings" />
-                              <Stack.Screen name="pair-scan" />
-                            </Stack>
-                          </AppWithSidebar>
-                        </ToastProvider>
-                      </HorizontalScrollProvider>
-                    </SidebarAnimationProvider>
-                  </ProvidersWrapper>
-                </DaemonRegistryProvider>
-              </QueryProvider>
-            </BottomSheetModalProvider>
-          </KeyboardProvider>
-        </SafeAreaProvider>
-      </PortalProvider>
+      <PerfDiagnosticsProvider scope="root_layout">
+        <PortalProvider>
+          <SafeAreaProvider>
+            <KeyboardProvider>
+              <BottomSheetModalProvider>
+                <QueryProvider>
+                  <DaemonRegistryProvider>
+                    <PushNotificationRouter />
+                    <MultiDaemonSessionHost />
+                    <ProvidersWrapper>
+                      <SidebarAnimationProvider>
+                        <HorizontalScrollProvider>
+                          <ToastProvider>
+                            <AppWithSidebar>
+                              <Stack
+                                screenOptions={{
+                                  headerShown: false,
+                                  animation: "none",
+                                }}
+                              >
+                                <Stack.Screen name="index" />
+                                <Stack.Screen
+                                  name="h/[serverId]/agent/[agentId]"
+                                  options={{ gestureEnabled: false }}
+                                />
+                                <Stack.Screen name="h/[serverId]/index" />
+                                <Stack.Screen name="h/[serverId]/agent/index" />
+                                <Stack.Screen name="h/[serverId]/agents" />
+                                <Stack.Screen name="h/[serverId]/settings" />
+                                <Stack.Screen name="pair-scan" />
+                              </Stack>
+                            </AppWithSidebar>
+                          </ToastProvider>
+                        </HorizontalScrollProvider>
+                      </SidebarAnimationProvider>
+                    </ProvidersWrapper>
+                  </DaemonRegistryProvider>
+                </QueryProvider>
+              </BottomSheetModalProvider>
+            </KeyboardProvider>
+          </SafeAreaProvider>
+        </PortalProvider>
+      </PerfDiagnosticsProvider>
     </GestureHandlerRootView>
   );
 }

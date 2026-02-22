@@ -205,6 +205,9 @@ function SessionProviderInternal({
   const setAgentLastActivity = useSessionStore(
     (state) => state.setAgentLastActivity
   );
+  const flushAgentLastActivity = useSessionStore(
+    (state) => state.flushAgentLastActivity
+  );
   const setPendingPermissions = useSessionStore(
     (state) => state.setPendingPermissions
   );
@@ -376,10 +379,11 @@ function SessionProviderInternal({
   // If the client drops mid-initialization, clear pending flags
   useEffect(() => {
     if (!isConnected) {
+      flushAgentLastActivity();
       pendingAgentUpdatesRef.current.clear();
       setInitializingAgents(serverId, new Map());
     }
-  }, [serverId, isConnected, setInitializingAgents]);
+  }, [flushAgentLastActivity, serverId, isConnected, setInitializingAgents]);
 
   const applyAgentUpdatePayload = useCallback(
     (update: AgentUpdatePayload) => {
@@ -430,7 +434,6 @@ function SessionProviderInternal({
           next.delete(agentId);
           return next;
         });
-
         return;
       }
 

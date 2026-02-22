@@ -65,10 +65,26 @@ export function LeftSidebar({ selectedAgentId }: LeftSidebarProps) {
   const pathname = usePathname();
   const { daemons } = useDaemonRegistry();
   const runtime = getHostRuntimeStore();
-  const runtimeVersion = useSyncExternalStore(
+  const runtimeConnectionStatusSignature = useSyncExternalStore(
     (onStoreChange) => runtime.subscribeAll(onStoreChange),
-    () => runtime.getVersion(),
-    () => runtime.getVersion()
+    () =>
+      daemons
+        .map(
+          (daemon) =>
+            `${daemon.serverId}:${
+              runtime.getSnapshot(daemon.serverId)?.connectionStatus ?? "connecting"
+            }`
+        )
+        .join("|"),
+    () =>
+      daemons
+        .map(
+          (daemon) =>
+            `${daemon.serverId}:${
+              runtime.getSnapshot(daemon.serverId)?.connectionStatus ?? "connecting"
+            }`
+        )
+        .join("|")
   );
   const activeServerIdFromPath = useMemo(
     () => parseServerIdFromPathname(pathname),
@@ -99,7 +115,7 @@ export function LeftSidebar({ selectedAgentId }: LeftSidebarProps) {
           runtime.getSnapshot(daemon.serverId)?.connectionStatus ?? "connecting"
         ),
       })),
-    [daemons, runtime, runtimeVersion]
+    [daemons, runtime, runtimeConnectionStatusSignature]
   );
   const hostTriggerRef = useRef<View>(null);
   const [isHostPickerOpen, setIsHostPickerOpen] = useState(false);
@@ -386,6 +402,7 @@ export function LeftSidebar({ selectedAgentId }: LeftSidebarProps) {
                 <SidebarAgentListSkeleton />
               ) : (
                 <SidebarAgentList
+                  isOpen={isOpen}
                   entries={entries}
                   projectFilterOptions={projectFilterOptions}
                   selectedProjectFilterKeys={selectedProjectFilterKeys}
@@ -512,6 +529,7 @@ export function LeftSidebar({ selectedAgentId }: LeftSidebarProps) {
         <SidebarAgentListSkeleton />
       ) : (
         <SidebarAgentList
+          isOpen={isOpen}
           entries={entries}
           projectFilterOptions={projectFilterOptions}
           selectedProjectFilterKeys={selectedProjectFilterKeys}

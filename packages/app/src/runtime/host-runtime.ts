@@ -2,6 +2,7 @@ import { useSyncExternalStore } from "react";
 import {
   DaemonClient,
   type ConnectionState,
+  type DaemonClientDiagnosticsEvent,
   type FetchAgentsOptions,
 } from "@server/client/daemon-client";
 import type { HostConnection, HostProfile } from "@/contexts/daemon-registry-context";
@@ -19,6 +20,10 @@ import {
 import { createTauriWebSocketTransportFactory } from "@/utils/tauri-daemon-transport";
 import { applyFetchedAgentDirectory } from "@/utils/agent-directory-sync";
 import { useSessionStore } from "@/stores/session-store";
+import {
+  recordDaemonClientDiagnostics,
+  recordHostRuntimeCreateClient,
+} from "@/runtime/perf-diagnostics/host-runtime-diagnostics";
 
 export type HostRuntimeConnectionStatus =
   | "idle"
@@ -375,12 +380,22 @@ function selectInitialConnectionId(host: HostProfile): string | null {
 function createDefaultDeps(): HostRuntimeControllerDeps {
   return {
     createClient: ({ host, connection, clientId, runtimeGeneration }) => {
+      recordHostRuntimeCreateClient({
+        serverId: host.serverId,
+        connectionType: connection.type,
+        endpoint:
+          connection.type === "direct"
+            ? connection.endpoint
+            : connection.relayEndpoint,
+      });
       const tauriTransportFactory = createTauriWebSocketTransportFactory();
       const base = {
         suppressSendErrors: true,
         clientId,
         clientType: "mobile" as const,
         runtimeGeneration,
+        onDiagnosticsEvent: (event: DaemonClientDiagnosticsEvent) =>
+          recordDaemonClientDiagnostics(host.serverId, event),
         ...(tauriTransportFactory
           ? { transportFactory: tauriTransportFactory }
           : {}),
@@ -1099,10 +1114,10 @@ export class HostRuntimeStore {
         filter: input.filter ?? { labels: { ui: "true" } },
         ...(input.subscribe ? { subscribe: input.subscribe } : {}),
       });
-      const { agents } = applyFetchedAgentDirectory({
+      const agents = applyFetchedAgentDirectory({
         serverId: input.serverId,
         entries: payload.entries,
-      });
+      }).agents;
       controller.markAgentDirectorySyncReady();
       return {
         agents,

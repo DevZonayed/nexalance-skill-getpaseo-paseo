@@ -1,10 +1,8 @@
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useSyncExternalStore } from "react";
 import { useDaemonRegistry } from "@/contexts/daemon-registry-context";
 import { useSessionStore, type Agent } from "@/stores/session-store";
 import {
   getHostRuntimeStore,
-  isHostRuntimeDirectoryLoading,
-  useHostRuntimeSession,
 } from "@/runtime/host-runtime";
 import type { AggregatedAgent } from "@/hooks/use-aggregated-agents";
 import {
@@ -124,6 +122,7 @@ function toAggregatedAgent(params: {
   source: Agent;
   serverId: string;
   serverLabel: string;
+  lastActivityAt: Date;
 }): AggregatedAgent & { createdAt: Date } {
   const source = params.source;
   return {
@@ -133,7 +132,7 @@ function toAggregatedAgent(params: {
     title: source.title ?? null,
     status: source.status,
     createdAt: source.createdAt,
-    lastActivityAt: source.lastActivityAt,
+    lastActivityAt: params.lastActivityAt,
     cwd: source.cwd,
     provider: source.provider,
     requiresAttention: source.requiresAttention,
@@ -149,14 +148,28 @@ export function useSidebarAgentsList(options?: {
   serverId?: string | null;
   selectedProjectFilterKeys?: string[];
 }): SidebarAgentsListResult {
+  const isSidebarOpen = options?.isOpen ?? true;
   const { daemons } = useDaemonRegistry();
   const runtime = getHostRuntimeStore();
+  const daemonLabelSignature = useMemo(
+    () =>
+      daemons
+        .map((daemon) => `${daemon.serverId}:${daemon.label ?? ""}`)
+        .join("|"),
+    [daemons]
+  );
   const serverId = useMemo(() => {
     const value = options?.serverId;
     return typeof value === "string" && value.trim().length > 0
       ? value.trim()
       : null;
   }, [options?.serverId]);
+  const serverLabel = useMemo(() => {
+    if (!serverId) {
+      return "";
+    }
+    return daemons.find((daemon) => daemon.serverId === serverId)?.label ?? serverId;
+  }, [daemonLabelSignature, serverId]);
 
   const selectedProjectFilterKeys = useMemo(
     () =>
@@ -168,13 +181,40 @@ export function useSidebarAgentsList(options?: {
     [options?.selectedProjectFilterKeys]
   );
 
+  const isActive = Boolean(serverId && isSidebarOpen);
   const liveAgents = useSessionStore((state) =>
-    serverId ? state.sessions[serverId]?.agents ?? null : null
+    isActive && serverId ? state.sessions[serverId]?.agents ?? null : null
   );
-  const { snapshot } = useHostRuntimeSession(serverId ?? "");
+  const agentLastActivity = useSessionStore((state) =>
+    isActive ? state.agentLastActivity : null
+  );
+  const runtimeStatusSignature = useSyncExternalStore(
+    (onStoreChange) =>
+      isActive && serverId ? runtime.subscribe(serverId, onStoreChange) : () => {},
+    () => {
+      if (!isActive || !serverId) {
+        return "idle:idle";
+      }
+      const snapshot = runtime.getSnapshot(serverId);
+      const connectionStatus = snapshot?.connectionStatus ?? "idle";
+      const directoryStatus = snapshot?.agentDirectoryStatus ?? "idle";
+      return `${connectionStatus}:${directoryStatus}`;
+    },
+    () => {
+      if (!isActive || !serverId) {
+        return "idle:idle";
+      }
+      const snapshot = runtime.getSnapshot(serverId);
+      const connectionStatus = snapshot?.connectionStatus ?? "idle";
+      const directoryStatus = snapshot?.agentDirectoryStatus ?? "idle";
+      return `${connectionStatus}:${directoryStatus}`;
+    }
+  );
+  const [connectionStatus = "idle", directoryStatus = "idle"] =
+    runtimeStatusSignature.split(":", 2);
 
   const { entries, projectFilterOptions, hasAnyData, hasMoreEntries } = useMemo(() => {
-    if (!serverId || !liveAgents) {
+    if (!isActive || !serverId || !liveAgents) {
       return {
         entries: [] as SidebarAgentListEntry[],
         projectFilterOptions: [] as SidebarProjectFilterOption[],
@@ -183,8 +223,6 @@ export function useSidebarAgentsList(options?: {
       };
     }
 
-    const serverLabel =
-      daemons.find((daemon) => daemon.serverId === serverId)?.label ?? serverId;
     const seenAgentIds = new Set<string>();
     const byProject = new Map<string, SidebarProjectFilterOption>();
     const mergedEntries: SidebarAgentListEntry[] = [];
@@ -232,10 +270,13 @@ export function useSidebarAgentsList(options?: {
         projectPlacement: live.projectPlacement ?? null,
         cwd: live.cwd,
       });
+      const effectiveLastActivity =
+        agentLastActivity?.get(live.id) ?? live.lastActivityAt;
       const agent = toAggregatedAgent({
         source: live,
         serverId,
         serverLabel,
+        lastActivityAt: effectiveLastActivity,
       });
       pushEntry({ agent, project });
     }
@@ -255,22 +296,26 @@ export function useSidebarAgentsList(options?: {
       return left.projectName.localeCompare(right.projectName);
     });
 
-    return {
+    const result = {
       entries: ordered.entries,
       projectFilterOptions: options,
       hasAnyData: ordered.entries.length > 0,
       hasMoreEntries: ordered.hasMore,
     };
-  }, [daemons, liveAgents, selectedProjectFilterKeys, serverId]);
+    return result;
+  }, [agentLastActivity, isActive, liveAgents, selectedProjectFilterKeys, serverId, serverLabel]);
 
   const refreshAll = useCallback(() => {
-    if (!serverId || snapshot?.connectionStatus !== "online") {
+    if (!isActive || !serverId || connectionStatus !== "online") {
       return;
     }
     void runtime.refreshAgentDirectory({ serverId }).catch(() => undefined);
-  }, [runtime, serverId, snapshot?.connectionStatus]);
+  }, [connectionStatus, isActive, runtime, serverId]);
 
-  const isDirectoryLoading = Boolean(serverId && isHostRuntimeDirectoryLoading(snapshot));
+  const isDirectoryLoading =
+    isActive &&
+    Boolean(serverId) &&
+    (directoryStatus === "initial_loading" || directoryStatus === "revalidating");
   const isInitialLoad = isDirectoryLoading && !hasAnyData;
   const isRevalidating = isDirectoryLoading && hasAnyData;
 
