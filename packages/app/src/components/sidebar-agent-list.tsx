@@ -45,6 +45,7 @@ import {
   type SidebarAgentListEntry,
   type SidebarProjectFilterOption,
 } from "@/hooks/use-sidebar-agents-list";
+import type { ProjectIcon } from "@server/shared/messages";
 import { useKeyboardShortcutsStore } from "@/stores/keyboard-shortcuts-store";
 import { getIsTauri } from "@/constants/layout";
 import { AgentStatusDot } from "@/components/agent-status-dot";
@@ -57,7 +58,15 @@ import { useArchiveAgent } from "@/hooks/use-archive-agent";
 
 type EntryData = SidebarAgentListEntry;
 
+function toProjectIconDataUri(icon: ProjectIcon | null): string | null {
+  if (!icon) {
+    return null;
+  }
+  return `data:${icon.mimeType};base64,${icon.data}`;
+}
+
 interface SidebarAgentListProps {
+  isOpen?: boolean;
   entries: SidebarAgentListEntry[];
   projectFilterOptions: SidebarProjectFilterOption[];
   selectedProjectFilterKeys: string[];
@@ -443,6 +452,7 @@ function deriveProjectDisplayName(input: {
 }
 
 export function SidebarAgentList({
+  isOpen = true,
   entries,
   projectFilterOptions,
   selectedProjectFilterKeys,
@@ -494,6 +504,9 @@ export function SidebarAgentList({
   const showProjectFilters = projectFilterOptions.length > 0;
 
   const projectIconRequests = useMemo(() => {
+    if (!isOpen) {
+      return [];
+    }
     const unique = new Map<string, { serverId: string; cwd: string }>();
     for (const option of projectFilterOptions) {
       if (!option.serverId || !option.workingDir) {
@@ -513,7 +526,7 @@ export function SidebarAgentList({
       unique.set(`${serverId}:${cwd}`, { serverId, cwd });
     }
     return Array.from(unique.values());
-  }, [entries, projectFilterOptions]);
+  }, [entries, isOpen, projectFilterOptions]);
 
   const projectIconQueries = useQueries({
     queries: projectIconRequests.map((request) => ({
@@ -526,8 +539,10 @@ export function SidebarAgentList({
         const result = await client.requestProjectIcon(request.cwd);
         return result.icon;
       },
+      select: toProjectIconDataUri,
       enabled: Boolean(
-        getHostRuntimeStore().getClient(request.serverId) &&
+        isOpen &&
+          getHostRuntimeStore().getClient(request.serverId) &&
           isHostRuntimeConnected(
             getHostRuntimeStore().getSnapshot(request.serverId)
           ) &&
@@ -548,10 +563,7 @@ export function SidebarAgentList({
       if (!request) {
         continue;
       }
-      const icon = projectIconQueries[i]?.data ?? null;
-      const dataUri = icon
-        ? `data:${icon.mimeType};base64,${icon.data}`
-        : null;
+      const dataUri = projectIconQueries[i]?.data ?? null;
       map.set(`${request.serverId}:${request.cwd}`, dataUri);
     }
     return map;
