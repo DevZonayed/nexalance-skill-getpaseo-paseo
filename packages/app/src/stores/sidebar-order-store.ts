@@ -1,99 +1,93 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import { create } from "zustand";
-import { createJSONStorage, persist } from "zustand/middleware";
+import AsyncStorage from '@react-native-async-storage/async-storage'
+import { create } from 'zustand'
+import { createJSONStorage, persist } from 'zustand/middleware'
 
 interface SidebarOrderStoreState {
-  orderByServerId: Record<string, string[]>;
-  getOrder: (serverId: string) => string[];
-  setOrder: (serverId: string, keys: string[]) => void;
-  insertAtTop: (serverId: string, key: string) => void;
-  remove: (serverId: string, key: string) => void;
+  projectOrderByServerId: Record<string, string[]>
+  workspaceOrderByServerAndProject: Record<string, string[]>
+  getProjectOrder: (serverId: string) => string[]
+  setProjectOrder: (serverId: string, keys: string[]) => void
+  getWorkspaceOrder: (serverId: string, projectKey: string) => string[]
+  setWorkspaceOrder: (serverId: string, projectKey: string, keys: string[]) => void
 }
 
 function normalizeKeys(keys: string[]): string[] {
-  const seen = new Set<string>();
-  const normalized: string[] = [];
+  const seen = new Set<string>()
+  const normalized: string[] = []
 
   for (const rawKey of keys) {
-    const key = rawKey.trim();
+    const key = rawKey.trim()
     if (!key || seen.has(key)) {
-      continue;
+      continue
     }
-    seen.add(key);
-    normalized.push(key);
+    seen.add(key)
+    normalized.push(key)
   }
 
-  return normalized;
+  return normalized
+}
+
+function buildWorkspaceScopeKey(serverId: string, projectKey: string): string {
+  return `${serverId.trim()}::${projectKey.trim()}`
 }
 
 export const useSidebarOrderStore = create<SidebarOrderStoreState>()(
   persist(
     (set, get) => ({
-      orderByServerId: {},
-      getOrder: (serverId) => {
-        const key = serverId.trim();
+      projectOrderByServerId: {},
+      workspaceOrderByServerAndProject: {},
+      getProjectOrder: (serverId) => {
+        const key = serverId.trim()
         if (!key) {
-          return [];
+          return []
         }
-        return get().orderByServerId[key] ?? [];
+        return get().projectOrderByServerId[key] ?? []
       },
-      setOrder: (serverId, keys) => {
-        const key = serverId.trim();
+      setProjectOrder: (serverId, keys) => {
+        const key = serverId.trim()
         if (!key) {
-          return;
+          return
         }
-        const normalized = normalizeKeys(keys);
+        const normalized = normalizeKeys(keys)
         set((state) => ({
-          orderByServerId: {
-            ...state.orderByServerId,
+          projectOrderByServerId: {
+            ...state.projectOrderByServerId,
             [key]: normalized,
           },
-        }));
+        }))
       },
-      insertAtTop: (serverId, rawKey) => {
-        const serverKey = serverId.trim();
-        const entryKey = rawKey.trim();
-        if (!serverKey || !entryKey) {
-          return;
+      getWorkspaceOrder: (serverId, projectKey) => {
+        const serverKey = serverId.trim()
+        const projectScope = projectKey.trim()
+        if (!serverKey || !projectScope) {
+          return []
         }
-        set((state) => {
-          const current = state.orderByServerId[serverKey] ?? [];
-          const next = [entryKey, ...current.filter((key) => key !== entryKey)];
-          return {
-            orderByServerId: {
-              ...state.orderByServerId,
-              [serverKey]: next,
-            },
-          };
-        });
+        const scopeKey = buildWorkspaceScopeKey(serverKey, projectScope)
+        return get().workspaceOrderByServerAndProject[scopeKey] ?? []
       },
-      remove: (serverId, rawKey) => {
-        const serverKey = serverId.trim();
-        const entryKey = rawKey.trim();
-        if (!serverKey || !entryKey) {
-          return;
+      setWorkspaceOrder: (serverId, projectKey, keys) => {
+        const serverKey = serverId.trim()
+        const projectScope = projectKey.trim()
+        if (!serverKey || !projectScope) {
+          return
         }
-        set((state) => {
-          const current = state.orderByServerId[serverKey] ?? [];
-          const next = current.filter((key) => key !== entryKey);
-          if (next.length === current.length) {
-            return state;
-          }
-          return {
-            orderByServerId: {
-              ...state.orderByServerId,
-              [serverKey]: next,
-            },
-          };
-        });
+        const scopeKey = buildWorkspaceScopeKey(serverKey, projectScope)
+        const normalized = normalizeKeys(keys)
+        set((state) => ({
+          workspaceOrderByServerAndProject: {
+            ...state.workspaceOrderByServerAndProject,
+            [scopeKey]: normalized,
+          },
+        }))
       },
     }),
     {
-      name: "sidebar-agent-order",
+      name: 'sidebar-project-workspace-order',
       storage: createJSONStorage(() => AsyncStorage),
       partialize: (state) => ({
-        orderByServerId: state.orderByServerId,
+        projectOrderByServerId: state.projectOrderByServerId,
+        workspaceOrderByServerAndProject: state.workspaceOrderByServerAndProject,
       }),
     }
   )
-);
+)

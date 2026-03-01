@@ -44,7 +44,7 @@ describe("panel-store explorer tab resolution", () => {
     ).toBe("files");
   });
 
-  it("restores a stored terminals tab for git checkouts", () => {
+  it("falls back to default when stored tab is invalid", () => {
     const key = buildExplorerCheckoutKey(serverId, cwd)!;
     expect(
       resolveExplorerTabForCheckout({
@@ -52,10 +52,10 @@ describe("panel-store explorer tab resolution", () => {
         cwd,
         isGit: true,
         explorerTabByCheckout: {
-          [key]: "terminals",
+          [key]: "terminals" as any,
         },
       })
-    ).toBe("terminals");
+    ).toBe("changes");
   });
 
   it("coerces stored changes to files for non-git checkouts", () => {

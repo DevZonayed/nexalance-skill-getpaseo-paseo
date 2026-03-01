@@ -105,9 +105,15 @@ function logAgentExplorer(event: string, details: Record<string, unknown>): void
 export function AgentReadyScreen({
   serverId,
   agentId,
+  showHeader = true,
+  showExplorerSidebar = true,
+  wrapWithExplorerSidebarProvider = true,
 }: {
   serverId: string;
   agentId: string;
+  showHeader?: boolean;
+  showExplorerSidebar?: boolean;
+  wrapWithExplorerSidebarProvider?: boolean;
 }) {
   const router = useRouter();
   const resolvedAgentId = agentId?.trim() || undefined;
@@ -193,17 +199,23 @@ export function AgentReadyScreen({
     );
   }
 
-  return (
-    <ExplorerSidebarAnimationProvider>
-      <AgentScreenContent
-        serverId={resolvedServerId}
-        agentId={resolvedAgentId}
-        client={runtimeClient}
-        isConnected={runtimeIsConnected}
-        connectionStatus={connectionStatus}
-      />
-    </ExplorerSidebarAnimationProvider>
+  const content = (
+    <AgentScreenContent
+      serverId={resolvedServerId}
+      agentId={resolvedAgentId}
+      client={runtimeClient}
+      isConnected={runtimeIsConnected}
+      connectionStatus={connectionStatus}
+      showHeader={showHeader}
+      showExplorerSidebar={showExplorerSidebar}
+    />
   );
+
+  if (!wrapWithExplorerSidebarProvider) {
+    return content;
+  }
+
+  return <ExplorerSidebarAnimationProvider>{content}</ExplorerSidebarAnimationProvider>;
 }
 
 type AgentScreenContentProps = {
@@ -212,6 +224,8 @@ type AgentScreenContentProps = {
   client: DaemonClient;
   isConnected: boolean;
   connectionStatus: HostRuntimeConnectionStatus;
+  showHeader: boolean;
+  showExplorerSidebar: boolean;
 };
 
 function toErrorMessage(error: unknown): string {
@@ -231,6 +245,8 @@ function AgentScreenContent({
   client,
   isConnected,
   connectionStatus,
+  showHeader,
+  showExplorerSidebar,
 }: AgentScreenContentProps) {
   const { theme } = useUnistyles();
   const toast = useToast();
@@ -990,7 +1006,7 @@ function AgentScreenContent({
   if (viewState.tag === "not_found") {
     return (
       <View style={styles.container} testID="agent-not-found">
-        <MenuHeader title="Agent" />
+        {showHeader ? <MenuHeader title="Agent" /> : null}
         <View style={styles.errorContainer}>
           <Text style={styles.errorText}>Agent not found</Text>
         </View>
@@ -1001,7 +1017,7 @@ function AgentScreenContent({
   if (viewState.tag === "error") {
     return (
       <View style={styles.container} testID="agent-load-error">
-        <MenuHeader title="Agent" />
+        {showHeader ? <MenuHeader title="Agent" /> : null}
         <View style={styles.errorContainer}>
           <Text style={styles.errorText}>Failed to load agent</Text>
           <Text style={styles.statusText}>{viewState.message}</Text>
@@ -1013,7 +1029,7 @@ function AgentScreenContent({
   if (viewState.tag === "boot" || !effectiveAgent) {
     return (
       <View style={styles.container} testID="agent-loading">
-        <MenuHeader title="Agent" />
+        {showHeader ? <MenuHeader title="Agent" /> : null}
         <View style={styles.errorContainer}>
           <ActivityIndicator size="large" color={theme.colors.foregroundMuted} />
         </View>
@@ -1029,80 +1045,81 @@ function AgentScreenContent({
       >
       <View style={styles.container}>
         {/* Header */}
-        <MenuHeader
-          title={effectiveAgent.title || "Agent"}
-          rightContent={
-            <View style={styles.headerRightContent}>
-              <HeaderToggleButton
-                onPress={handleToggleExplorer}
-                tooltipLabel="Toggle explorer"
-                tooltipKeys={["mod", "E"]}
-                tooltipSide="left"
-                style={styles.menuButton}
-                accessible
-                accessibilityRole="button"
-                accessibilityLabel={isExplorerOpen ? "Close explorer" : "Open explorer"}
-                accessibilityState={{ expanded: isExplorerOpen }}
-              >
-                {isMobile ? (
-                  checkout?.isGit ? (
-                    <GitBranch
-                      size={theme.iconSize.lg}
-                      color={
-                        isExplorerOpen
-                          ? theme.colors.foreground
-                          : theme.colors.foregroundMuted
-                      }
-                    />
+        {showHeader ? (
+          <MenuHeader
+            title={effectiveAgent.title || "Agent"}
+            rightContent={
+              <View style={styles.headerRightContent}>
+                <HeaderToggleButton
+                  onPress={handleToggleExplorer}
+                  tooltipLabel="Toggle explorer"
+                  tooltipKeys={["mod", "E"]}
+                  tooltipSide="left"
+                  style={styles.menuButton}
+                  accessible
+                  accessibilityRole="button"
+                  accessibilityLabel={isExplorerOpen ? "Close explorer" : "Open explorer"}
+                  accessibilityState={{ expanded: isExplorerOpen }}
+                >
+                  {isMobile ? (
+                    checkout?.isGit ? (
+                      <GitBranch
+                        size={theme.iconSize.lg}
+                        color={
+                          isExplorerOpen
+                            ? theme.colors.foreground
+                            : theme.colors.foregroundMuted
+                        }
+                      />
+                    ) : (
+                      <Folder
+                        size={theme.iconSize.lg}
+                        color={
+                          isExplorerOpen
+                            ? theme.colors.foreground
+                            : theme.colors.foregroundMuted
+                        }
+                      />
+                    )
                   ) : (
-                    <Folder
-                      size={theme.iconSize.lg}
+                    <PanelRight
+                      size={theme.iconSize.md}
                       color={
                         isExplorerOpen
                           ? theme.colors.foreground
                           : theme.colors.foregroundMuted
                       }
                     />
-                  )
-                ) : (
-                  <PanelRight
-                    size={theme.iconSize.md}
-                    color={
-                      isExplorerOpen
-                        ? theme.colors.foreground
-                        : theme.colors.foregroundMuted
+                  )}
+                </HeaderToggleButton>
+                <DropdownMenu
+                  onOpenChange={(open) => {
+                    if (open && agent?.cwd) {
+                      checkoutStatusQuery.refresh().catch(() => {});
                     }
-                  />
-                )}
-              </HeaderToggleButton>
-              <DropdownMenu
-                onOpenChange={(open) => {
-                  if (open && agent?.cwd) {
-                    checkoutStatusQuery.refresh().catch(() => {});
-                  }
-                }}
-              >
-                <DropdownMenuTrigger testID="agent-overflow-menu" style={styles.menuButton}>
-                  <MoreVertical
-                    size={isMobile ? theme.iconSize.lg : theme.iconSize.md}
-                    color={theme.colors.foregroundMuted}
-                  />
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" width={DROPDOWN_WIDTH} testID="agent-overflow-content">
-                  <View style={styles.menuMetaContainer} testID="agent-details-sheet">
-                    <Pressable
-                      testID="agent-details-agent-id"
-                      style={({ hovered, pressed }) => [
-                        styles.menuMetaRow,
-                        (hovered || pressed) && styles.menuMetaRowActive,
-                      ]}
-                      onPress={() => {
-                        void handleCopyMeta("Directory", effectiveAgent.cwd);
-                      }}
-                    >
-                      <Text style={styles.menuMetaLabel} numberOfLines={1}>
-                        Directory
-                      </Text>
+                  }}
+                >
+                  <DropdownMenuTrigger testID="agent-overflow-menu" style={styles.menuButton}>
+                    <MoreVertical
+                      size={isMobile ? theme.iconSize.lg : theme.iconSize.md}
+                      color={theme.colors.foregroundMuted}
+                    />
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" width={DROPDOWN_WIDTH} testID="agent-overflow-content">
+                    <View style={styles.menuMetaContainer} testID="agent-details-sheet">
+                      <Pressable
+                        testID="agent-details-agent-id"
+                        style={({ hovered, pressed }) => [
+                          styles.menuMetaRow,
+                          (hovered || pressed) && styles.menuMetaRowActive,
+                        ]}
+                        onPress={() => {
+                          void handleCopyMeta("Directory", effectiveAgent.cwd);
+                        }}
+                      >
+                        <Text style={styles.menuMetaLabel} numberOfLines={1}>
+                          Directory
+                        </Text>
                       <Text
                         testID="agent-details-agent-id-value"
                         style={styles.menuMetaValue}
@@ -1224,11 +1241,12 @@ function AgentScreenContent({
                   >
                     {isInitializing ? "Refreshing..." : "Refresh"}
                   </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </View>
-          }
-        />
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </View>
+            }
+          />
+        ) : null}
 
           {/* Content Area with Keyboard Animation */}
           <View style={styles.contentContainer}>
@@ -1272,14 +1290,14 @@ function AgentScreenContent({
       </FileDropZone>
 
         {/* Explorer Sidebar - Desktop: inline, Mobile: overlay */}
-        {!isMobile && isExplorerOpen && resolvedAgentId && (
+        {showExplorerSidebar && !isMobile && isExplorerOpen && resolvedAgentId ? (
           <ExplorerSidebar
             serverId={serverId}
-            agentId={resolvedAgentId}
-            cwd={effectiveAgent.cwd}
+            workspaceId={effectiveAgent.cwd}
+            workspaceRoot={effectiveAgent.cwd}
             isGit={isGitCheckout}
           />
-        )}
+        ) : null}
 
         {isArchivingCurrentAgent ? (
           <View style={styles.archivingOverlay} testID="agent-archiving-overlay">
@@ -1304,14 +1322,14 @@ function AgentScreenContent({
       )}
 
       {/* Mobile Explorer Sidebar Overlay */}
-      {isMobile && resolvedAgentId && (
+      {showExplorerSidebar && isMobile && resolvedAgentId ? (
         <ExplorerSidebar
           serverId={serverId}
-          agentId={resolvedAgentId}
-          cwd={effectiveAgent.cwd}
+          workspaceId={effectiveAgent.cwd}
+          workspaceRoot={effectiveAgent.cwd}
           isGit={isGitCheckout}
         />
-      )}
+      ) : null}
     </>
   );
 }

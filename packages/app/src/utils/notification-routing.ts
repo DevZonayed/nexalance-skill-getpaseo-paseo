@@ -1,6 +1,6 @@
 import {
+  buildHostDraftRoute,
   buildHostAgentDetailRoute,
-  buildHostAgentDraftRoute,
 } from "@/utils/host-routes";
 
 type NotificationData = Record<string, unknown> | null | undefined;
@@ -33,7 +33,7 @@ export function buildNotificationRoute(data: NotificationData): string {
     return buildHostAgentDetailRoute(serverId, agentId);
   }
   if (serverId) {
-    return buildHostAgentDraftRoute(serverId);
+    return buildHostDraftRoute(serverId);
   }
   return "/";
 }

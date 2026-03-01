@@ -10,13 +10,13 @@ import {
 
 describe("buildNewAgentRoute", () => {
   it("falls back to host-scoped draft route when no working directory is provided", () => {
-    expect(buildNewAgentRoute("srv-1", undefined)).toBe("/h/srv-1/agent");
-    expect(buildNewAgentRoute("srv-1", "   ")).toBe("/h/srv-1/agent");
+    expect(buildNewAgentRoute("srv-1", undefined)).toBe("/h/srv-1/new");
+    expect(buildNewAgentRoute("srv-1", "   ")).toBe("/h/srv-1/new");
   });
 
   it("encodes the working directory query parameter", () => {
     expect(buildNewAgentRoute("srv-1", "/Users/me/dev/paseo")).toBe(
-      "/h/srv-1/agent?workingDir=%2FUsers%2Fme%2Fdev%2Fpaseo"
+      "/h/srv-1/new?workingDir=%2FUsers%2Fme%2Fdev%2Fpaseo"
     );
   });
 });
@@ -77,7 +77,7 @@ describe("resolveSelectedAgentForNewAgent", () => {
   it("prefers the agent in the current route", () => {
     expect(
       resolveSelectedAgentForNewAgent({
-        pathname: "/h/srv-1/agent/agent-2",
+        pathname: "/h/srv-1/workspace/%2Frepo/agent/agent-2",
         selectedAgentId: "srv-9:agent-9",
       })
     ).toEqual({

@@ -60,6 +60,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useFileExplorerActions } from "@/hooks/use-file-explorer-actions";
+import { buildWorkspaceExplorerStateKey } from "@/hooks/use-file-explorer-actions";
 import {
   usePanelStore,
   DEFAULT_EXPLORER_FILES_SPLIT_RATIO,
@@ -81,7 +82,8 @@ const INDENT_PER_LEVEL = 12;
 
 interface FileExplorerPaneProps {
   serverId: string;
-  agentId: string;
+  workspaceId?: string | null;
+  workspaceRoot: string;
 }
 
 interface TreeRow {
@@ -89,7 +91,11 @@ interface TreeRow {
   depth: number;
 }
 
-export function FileExplorerPane({ serverId, agentId }: FileExplorerPaneProps) {
+export function FileExplorerPane({
+  serverId,
+  workspaceId,
+  workspaceRoot,
+}: FileExplorerPaneProps) {
   const { theme } = useUnistyles();
   const isMobile =
     UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
@@ -100,23 +106,40 @@ export function FileExplorerPane({ serverId, agentId }: FileExplorerPaneProps) {
     () => daemons.find((daemon) => daemon.serverId === serverId),
     [daemons, serverId]
   );
-  const agentExists = useSessionStore((state) =>
-    agentId && state.sessions[serverId]
-      ? state.sessions[serverId]?.agents.has(agentId)
-      : false
+  const normalizedWorkspaceRoot = useMemo(
+    () => workspaceRoot.trim(),
+    [workspaceRoot]
   );
+  const workspaceStateKey = useMemo(
+    () =>
+      buildWorkspaceExplorerStateKey({
+        workspaceId,
+        workspaceRoot: normalizedWorkspaceRoot,
+      }),
+    [normalizedWorkspaceRoot, workspaceId]
+  );
+  const workspaceScopeId = useMemo(
+    () => workspaceId?.trim() || normalizedWorkspaceRoot,
+    [normalizedWorkspaceRoot, workspaceId]
+  );
+  const hasWorkspaceScope = Boolean(workspaceStateKey && normalizedWorkspaceRoot);
   const explorerState = useSessionStore((state) =>
-    agentId && state.sessions[serverId]
-      ? state.sessions[serverId]?.fileExplorer.get(agentId)
+    workspaceStateKey && state.sessions[serverId]
+      ? state.sessions[serverId]?.fileExplorer.get(workspaceStateKey)
       : undefined
   );
 
   const {
+    workspaceStateKey: actionsWorkspaceStateKey,
     requestDirectoryListing,
     requestFilePreview,
     requestFileDownloadToken,
     selectExplorerEntry,
-  } = useFileExplorerActions(serverId);
+  } = useFileExplorerActions({
+    serverId,
+    workspaceId,
+    workspaceRoot: normalizedWorkspaceRoot,
+  });
   const sortOption = usePanelStore((state) => state.explorerSortOption);
   const setSortOption = usePanelStore((state) => state.setExplorerSortOption);
   const splitRatio = usePanelStore((state) => state.explorerFilesSplitRatio);
@@ -155,20 +178,29 @@ export function FileExplorerPane({ serverId, agentId }: FileExplorerPaneProps) {
   const previewSnapPoints = useMemo(() => ["70%", "95%"], []);
 
   const hasInitializedRef = useRef(false);
+
   useEffect(() => {
-    if (!agentId || !requestDirectoryListing) {
+    hasInitializedRef.current = false;
+    setExpandedPaths(new Set(["."]));
+  }, [actionsWorkspaceStateKey]);
+
+  useEffect(() => {
+    if (!hasWorkspaceScope) {
       return;
     }
     if (hasInitializedRef.current) {
       return;
     }
     hasInitializedRef.current = true;
-    requestDirectoryListing(agentId, ".", { recordHistory: false, setCurrentPath: false });
-  }, [agentId, requestDirectoryListing]);
+    void requestDirectoryListing(".", {
+      recordHistory: false,
+      setCurrentPath: false,
+    });
+  }, [hasWorkspaceScope, requestDirectoryListing]);
 
   // Expand ancestor directories when a file is selected (e.g., from an inline path click)
   useEffect(() => {
-    if (!agentId || !selectedEntryPath || !requestDirectoryListing) {
+    if (!selectedEntryPath || !hasWorkspaceScope) {
       return;
     }
     const parentDir = getParentDirectory(selectedEntryPath);
@@ -182,10 +214,13 @@ export function FileExplorerPane({ serverId, agentId }: FileExplorerPaneProps) {
 
     ancestors.forEach((path) => {
       if (!directories.has(path)) {
-        requestDirectoryListing(agentId, path, { recordHistory: false, setCurrentPath: false });
+        void requestDirectoryListing(path, {
+          recordHistory: false,
+          setCurrentPath: false,
+        });
       }
     });
-  }, [agentId, directories, requestDirectoryListing, selectedEntryPath]);
+  }, [directories, hasWorkspaceScope, requestDirectoryListing, selectedEntryPath]);
 
   // Open/close preview sheet based on selection
   useEffect(() => {
@@ -200,15 +235,12 @@ export function FileExplorerPane({ serverId, agentId }: FileExplorerPaneProps) {
   }, [isMobile, selectedEntryPath]);
 
   const handleClosePreview = useCallback(() => {
-    if (!agentId) {
-      return;
-    }
-    selectExplorerEntry(agentId, null);
-  }, [agentId, selectExplorerEntry]);
+    selectExplorerEntry(null);
+  }, [selectExplorerEntry]);
 
   const handleToggleDirectory = useCallback(
     (entry: ExplorerEntry) => {
-      if (!agentId || !requestDirectoryListing) {
+      if (!hasWorkspaceScope) {
         return;
       }
 
@@ -225,21 +257,24 @@ export function FileExplorerPane({ serverId, agentId }: FileExplorerPaneProps) {
       });
 
       if (nextExpanded && !directories.has(entry.path)) {
-        requestDirectoryListing(agentId, entry.path, { recordHistory: false, setCurrentPath: false });
+        void requestDirectoryListing(entry.path, {
+          recordHistory: false,
+          setCurrentPath: false,
+        });
       }
     },
-    [agentId, directories, expandedPaths, requestDirectoryListing]
+    [directories, expandedPaths, hasWorkspaceScope, requestDirectoryListing]
   );
 
   const handleOpenFile = useCallback(
     (entry: ExplorerEntry) => {
-      if (!agentId || !requestFilePreview) {
+      if (!hasWorkspaceScope) {
         return;
       }
-      selectExplorerEntry(agentId, entry.path);
-      requestFilePreview(agentId, entry.path);
+      selectExplorerEntry(entry.path);
+      void requestFilePreview(entry.path);
     },
-    [agentId, requestFilePreview, selectExplorerEntry]
+    [hasWorkspaceScope, requestFilePreview, selectExplorerEntry]
   );
 
   const handleEntryPress = useCallback(
@@ -260,20 +295,26 @@ export function FileExplorerPane({ serverId, agentId }: FileExplorerPaneProps) {
   const startDownload = useDownloadStore((state) => state.startDownload);
   const handleDownloadEntry = useCallback(
     (entry: ExplorerEntry) => {
-      if (!agentId || !requestFileDownloadToken || entry.kind !== "file") {
+      if (!workspaceScopeId || entry.kind !== "file") {
         return;
       }
 
       startDownload({
         serverId,
-        agentId,
+        scopeId: workspaceScopeId,
         fileName: entry.name,
         path: entry.path,
         daemonProfile,
-        requestFileDownloadToken,
+        requestFileDownloadToken: (targetPath) => requestFileDownloadToken(targetPath),
       });
     },
-    [agentId, serverId, daemonProfile, requestFileDownloadToken, startDownload]
+    [
+      daemonProfile,
+      requestFileDownloadToken,
+      serverId,
+      startDownload,
+      workspaceScopeId,
+    ]
   );
 
   const handleSortCycle = useCallback(() => {
@@ -283,9 +324,9 @@ export function FileExplorerPane({ serverId, agentId }: FileExplorerPaneProps) {
   }, [sortOption, setSortOption]);
 
   const { refetch: refetchExplorer, isFetching: isRefreshFetching } = useQuery({
-    queryKey: ["fileExplorerRefresh", serverId, agentId],
+    queryKey: ["fileExplorerRefresh", serverId, workspaceStateKey],
     queryFn: async () => {
-      if (!agentId) {
+      if (!hasWorkspaceScope) {
         return null;
       }
 
@@ -296,12 +337,12 @@ export function FileExplorerPane({ serverId, agentId }: FileExplorerPaneProps) {
 
       await Promise.all([
         ...directoryPaths.map((path) =>
-          requestDirectoryListing(agentId, path, {
+          requestDirectoryListing(path, {
             recordHistory: false,
             setCurrentPath: false,
           })
         ),
-        ...(selectedEntryPath ? [requestFilePreview(agentId, selectedEntryPath)] : []),
+        ...(selectedEntryPath ? [requestFilePreview(selectedEntryPath)] : []),
       ]);
       return null;
     },
@@ -587,15 +628,15 @@ export function FileExplorerPane({ serverId, agentId }: FileExplorerPaneProps) {
   );
 
   const handleBackFromError = useCallback(() => {
-    if (!agentId || !requestDirectoryListing) {
+    if (!hasWorkspaceScope) {
       return;
     }
-    selectExplorerEntry(agentId, null);
-    requestDirectoryListing(agentId, errorRecoveryPath, {
+    selectExplorerEntry(null);
+    void requestDirectoryListing(errorRecoveryPath, {
       recordHistory: false,
       setCurrentPath: true,
     });
-  }, [agentId, errorRecoveryPath, requestDirectoryListing, selectExplorerEntry]);
+  }, [errorRecoveryPath, hasWorkspaceScope, requestDirectoryListing, selectExplorerEntry]);
 
   const handleTreeListScroll = useCallback(
     (event: NativeSyntheticEvent<NativeScrollEvent>) => {
@@ -615,10 +656,10 @@ export function FileExplorerPane({ serverId, agentId }: FileExplorerPaneProps) {
     [showDesktopWebScrollbar, treeScrollbarMetrics]
   );
 
-  if (!agentExists) {
+  if (!hasWorkspaceScope) {
     return (
       <View style={styles.centerState}>
-        <Text style={styles.errorText}>Agent not found</Text>
+        <Text style={styles.errorText}>Workspace is unavailable</Text>
       </View>
     );
   }
@@ -640,12 +681,10 @@ export function FileExplorerPane({ serverId, agentId }: FileExplorerPaneProps) {
             <Pressable
               style={styles.retryButton}
               onPress={() => {
-                if (agentId) {
-                  requestDirectoryListing(agentId, ".", {
-                    recordHistory: false,
-                    setCurrentPath: false,
-                  });
-                }
+                void requestDirectoryListing(".", {
+                  recordHistory: false,
+                  setCurrentPath: false,
+                });
               }}
             >
               <Text style={styles.retryButtonText}>Retry</Text>

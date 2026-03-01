@@ -18,7 +18,7 @@ interface DownloadProgress {
 export interface Download {
   id: string;
   serverId: string;
-  agentId: string;
+  scopeId: string;
   fileName: string;
   status: "downloading" | "complete" | "error";
   message?: string;
@@ -32,14 +32,11 @@ interface DownloadState {
 
   startDownload: (params: {
     serverId: string;
-    agentId: string;
+    scopeId: string;
     fileName: string;
     path: string;
     daemonProfile: HostProfile | undefined;
-    requestFileDownloadToken: (
-      agentId: string,
-      path: string
-    ) => Promise<{
+    requestFileDownloadToken: (path: string) => Promise<{
       token: string | null;
       fileName: string | null;
       mimeType: string | null;
@@ -64,7 +61,7 @@ export const useDownloadStore = create<DownloadState>()((set, get) => ({
 
   startDownload: async ({
     serverId,
-    agentId,
+    scopeId,
     fileName,
     path,
     daemonProfile,
@@ -74,7 +71,7 @@ export const useDownloadStore = create<DownloadState>()((set, get) => ({
     const download: Download = {
       id,
       serverId,
-      agentId,
+      scopeId,
       fileName,
       status: "downloading",
       startedAt: Date.now(),
@@ -86,7 +83,7 @@ export const useDownloadStore = create<DownloadState>()((set, get) => ({
     }));
 
     try {
-      const tokenResponse = await requestFileDownloadToken(agentId, path);
+      const tokenResponse = await requestFileDownloadToken(path);
       if (tokenResponse.error || !tokenResponse.token) {
         throw new Error(tokenResponse.error ?? "Failed to request download token.");
       }

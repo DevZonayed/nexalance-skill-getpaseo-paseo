@@ -21,7 +21,6 @@ import { useExplorerSidebarAnimation } from "@/contexts/explorer-sidebar-animati
 import { HEADER_INNER_HEIGHT } from "@/constants/layout";
 import { GitDiffPane } from "./git-diff-pane";
 import { FileExplorerPane } from "./file-explorer-pane";
-import { TerminalPane } from "./terminal-pane";
 
 const MIN_CHAT_WIDTH = 400;
 const IOS_KEYBOARD_INSET_MIN_HEIGHT = 120;
@@ -46,12 +45,17 @@ function resolveKeyboardShift(rawHeight: number, inset: number): number {
 
 interface ExplorerSidebarProps {
   serverId: string;
-  agentId: string;
-  cwd: string;
+  workspaceId?: string | null;
+  workspaceRoot: string;
   isGit: boolean;
 }
 
-export function ExplorerSidebar({ serverId, agentId, cwd, isGit }: ExplorerSidebarProps) {
+export function ExplorerSidebar({
+  serverId,
+  workspaceId,
+  workspaceRoot,
+  isGit,
+}: ExplorerSidebarProps) {
   const { theme } = useUnistyles();
   const isScreenFocused = useIsFocused();
   const insets = useSafeAreaInsets();
@@ -121,9 +125,9 @@ export function ExplorerSidebar({ serverId, agentId, cwd, isGit }: ExplorerSideb
 
   const handleTabPress = useCallback(
     (tab: ExplorerTab) => {
-      setExplorerTabForCheckout({ serverId, cwd, isGit, tab });
+      setExplorerTabForCheckout({ serverId, cwd: workspaceRoot, isGit, tab });
     },
-    [cwd, isGit, serverId, setExplorerTabForCheckout]
+    [isGit, serverId, setExplorerTabForCheckout, workspaceRoot]
   );
 
   // Swipe gesture to close (swipe right on mobile)
@@ -132,7 +136,7 @@ export function ExplorerSidebar({ serverId, agentId, cwd, isGit }: ExplorerSideb
       Gesture.Pan()
         .withRef(closeGestureRef)
         .enabled(enableSidebarCloseGesture)
-        // Use manual activation so child views (e.g. WebView terminals) keep touch streams
+        // Use manual activation so child views keep touch streams
         // unless we detect an intentional right-swipe close.
         .manualActivation(true)
         .onTouchesDown((event) => {
@@ -301,8 +305,8 @@ export function ExplorerSidebar({ serverId, agentId, cwd, isGit }: ExplorerSideb
               onTabPress={handleTabPress}
               onClose={() => handleClose("header-close-button")}
               serverId={serverId}
-              agentId={agentId}
-              cwd={cwd}
+              workspaceId={workspaceId}
+              workspaceRoot={workspaceRoot}
               isGit={isGit}
               isMobile={isMobile}
             />
@@ -334,8 +338,8 @@ export function ExplorerSidebar({ serverId, agentId, cwd, isGit }: ExplorerSideb
         onTabPress={handleTabPress}
         onClose={() => handleClose("desktop-close-button")}
         serverId={serverId}
-        agentId={agentId}
-        cwd={cwd}
+        workspaceId={workspaceId}
+        workspaceRoot={workspaceRoot}
         isGit={isGit}
         isMobile={false}
       />
@@ -348,8 +352,8 @@ interface SidebarContentProps {
   onTabPress: (tab: ExplorerTab) => void;
   onClose: () => void;
   serverId: string;
-  agentId: string;
-  cwd: string;
+  workspaceId?: string | null;
+  workspaceRoot: string;
   isGit: boolean;
   isMobile: boolean;
 }
@@ -359,8 +363,8 @@ function SidebarContent({
   onTabPress,
   onClose,
   serverId,
-  agentId,
-  cwd,
+  workspaceId,
+  workspaceRoot,
   isGit,
   isMobile,
 }: SidebarContentProps) {
@@ -403,20 +407,6 @@ function SidebarContent({
               Files
             </Text>
           </Pressable>
-          <Pressable
-            testID="explorer-tab-terminals"
-            style={[styles.tab, resolvedTab === "terminals" && styles.tabActive]}
-            onPress={() => onTabPress("terminals")}
-          >
-            <Text
-              style={[
-                styles.tabText,
-                resolvedTab === "terminals" && styles.tabTextActive,
-              ]}
-            >
-              Terminals
-            </Text>
-          </Pressable>
         </View>
         <View style={styles.headerRightSection}>
           {isMobile && (
@@ -430,13 +420,18 @@ function SidebarContent({
       {/* Content based on active tab */}
       <View style={styles.contentArea} testID="explorer-content-area">
         {resolvedTab === "changes" && (
-          <GitDiffPane serverId={serverId} agentId={agentId} cwd={cwd} />
+          <GitDiffPane
+            serverId={serverId}
+            workspaceId={workspaceId}
+            cwd={workspaceRoot}
+          />
         )}
         {resolvedTab === "files" && (
-          <FileExplorerPane serverId={serverId} agentId={agentId} />
-        )}
-        {resolvedTab === "terminals" && (
-          <TerminalPane serverId={serverId} cwd={cwd} />
+          <FileExplorerPane
+            serverId={serverId}
+            workspaceId={workspaceId}
+            workspaceRoot={workspaceRoot}
+          />
         )}
       </View>
     </View>

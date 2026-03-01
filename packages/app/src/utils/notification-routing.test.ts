@@ -38,7 +38,7 @@ describe("buildNotificationRoute", () => {
   });
 
   it("falls back to host-scoped draft route when only serverId is present", () => {
-    expect(buildNotificationRoute({ serverId: "srv-only" })).toBe("/h/srv-only/agent");
+    expect(buildNotificationRoute({ serverId: "srv-only" })).toBe("/h/srv-only/new");
   });
 
   it("falls back to root when no server id is present", () => {

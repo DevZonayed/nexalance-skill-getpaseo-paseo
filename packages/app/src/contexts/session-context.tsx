@@ -1,6 +1,6 @@
 import { useRef, ReactNode, useCallback, useEffect, useMemo } from "react";
 import { AppState, Platform } from "react-native";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { useAudioPlayer } from "@/hooks/use-audio-player";
 import { useClientActivity } from "@/hooks/use-client-activity";
 import { usePushTokenRegistration } from "@/hooks/use-push-token-registration";
@@ -162,27 +162,6 @@ export function clearPendingAgentUpdates(serverId: string): void {
   }
 }
 
-const createExplorerState = () => ({
-  directories: new Map(),
-  files: new Map(),
-  isLoading: false,
-  lastError: null,
-  pendingRequest: null,
-  currentPath: ".",
-  history: ["."],
-  lastVisitedPath: ".",
-  selectedEntryPath: null,
-});
-
-const pushHistory = (history: string[], path: string): string[] => {
-  const normalizedHistory = history.length === 0 ? ["."] : history;
-  const last = normalizedHistory[normalizedHistory.length - 1];
-  if (last === path) {
-    return normalizedHistory;
-  }
-  return [...normalizedHistory, path];
-};
-
 interface SessionProviderSharedProps {
   children: ReactNode;
   serverId: string;
@@ -264,7 +243,6 @@ function SessionProviderInternal({
   const setPendingPermissions = useSessionStore(
     (state) => state.setPendingPermissions
   );
-  const setFileExplorer = useSessionStore((state) => state.setFileExplorer);
   const clearDraftInput = useDraftStore((state) => state.clearDraftInput);
   const setQueuedMessages = useSessionStore((state) => state.setQueuedMessages);
   const updateSessionClient = useSessionStore((state) => state.updateSessionClient);
@@ -604,81 +582,6 @@ function SessionProviderInternal({
       setAgentTimelineCursor,
     ]
   );
-
-  const updateExplorerState = useCallback(
-    (agentId: string, updater: (state: any) => any) => {
-      setFileExplorer(serverId, (prev) => {
-        const next = new Map(prev);
-        const current = next.get(agentId) ?? createExplorerState();
-        next.set(agentId, updater(current));
-        return next;
-      });
-    },
-    [serverId, setFileExplorer]
-  );
-
-  const directoryListingMutation = useMutation({
-    mutationFn: async ({ agentId, path }: { agentId: string; path: string }) => {
-      if (!agentId) {
-        throw new Error("Agent id is required");
-      }
-      if (!client) {
-        throw new Error("Daemon client unavailable");
-      }
-      const resolvedPath = path && path.length > 0 ? path : ".";
-      const payload = await client.exploreFileSystem(
-        agentId,
-        resolvedPath,
-        "list"
-      );
-      if (payload.error) {
-        throw new Error(payload.error);
-      }
-      return payload;
-    },
-  });
-
-  const filePreviewMutation = useMutation({
-    mutationFn: async ({ agentId, path }: { agentId: string; path: string }) => {
-      if (!agentId) {
-        throw new Error("Agent id is required");
-      }
-      if (!path) {
-        throw new Error("File path is required");
-      }
-      if (!client) {
-        throw new Error("Daemon client unavailable");
-      }
-      const payload = await client.exploreFileSystem(
-        agentId,
-        path,
-        "file"
-      );
-      if (payload.error) {
-        throw new Error(payload.error);
-      }
-      return payload;
-    },
-  });
-
-  const fileDownloadTokenMutation = useMutation({
-    mutationFn: async ({ agentId, path }: { agentId: string; path: string }) => {
-      if (!agentId) {
-        throw new Error("Agent id is required");
-      }
-      if (!path) {
-        throw new Error("File path is required");
-      }
-      if (!client) {
-        throw new Error("Daemon client unavailable");
-      }
-      const payload = await client.requestDownloadToken(agentId, path);
-      if (payload.error) {
-        throw new Error(payload.error);
-      }
-      return payload;
-    },
-  });
 
   const requestCanonicalCatchUp = useCallback(
     (agentId: string, cursor: { epoch: string; endSeq: number }) => {
@@ -1356,15 +1259,6 @@ function SessionProviderInternal({
         next.delete(agentId);
         return next;
       });
-
-      setFileExplorer(serverId, (prev) => {
-        if (!prev.has(agentId)) {
-          return prev;
-        }
-        const next = new Map(prev);
-        next.delete(agentId);
-        return next;
-      });
     });
 
     const unsubAgentArchived = client.on("agent_archived", (message) => {
@@ -1420,7 +1314,6 @@ function SessionProviderInternal({
     setAgents,
     setAgentLastActivity,
     setPendingPermissions,
-    setFileExplorer,
     setHasHydratedAgents,
     clearDraftInput,
     notifyAgentAttention,
@@ -1655,167 +1548,6 @@ function SessionProviderInternal({
       isSpeakingRef.current = isSpeaking;
     },
     []
-  );
-
-  const requestDirectoryListing = useCallback(
-    (agentId: string, path: string, options?: { recordHistory?: boolean }) => {
-      const normalizedPath = path && path.length > 0 ? path : ".";
-      const shouldRecordHistory = options?.recordHistory ?? true;
-
-      updateExplorerState(agentId, (state: any) => ({
-        ...state,
-        isLoading: true,
-        lastError: null,
-        pendingRequest: { path: normalizedPath, mode: "list" },
-        currentPath: normalizedPath,
-        history: shouldRecordHistory
-          ? pushHistory(state.history, normalizedPath)
-          : state.history,
-        lastVisitedPath: normalizedPath,
-      }));
-
-      directoryListingMutation
-        .mutateAsync({ agentId, path: normalizedPath })
-        .then((payload) => {
-          updateExplorerState(agentId, (state: any) => {
-            const nextState: any = {
-              ...state,
-              isLoading: false,
-              lastError: payload.error ?? null,
-              pendingRequest: null,
-              directories: state.directories,
-              files: state.files,
-            };
-
-            if (!payload.error && payload.directory) {
-              const directories = new Map(state.directories);
-              directories.set(payload.directory.path, payload.directory);
-              nextState.directories = directories;
-            }
-
-            return nextState;
-          });
-        })
-        .catch((error) => {
-          updateExplorerState(agentId, (state: any) => ({
-            ...state,
-            isLoading: false,
-            lastError: error.message,
-            pendingRequest: null,
-          }));
-        });
-    },
-    [directoryListingMutation, updateExplorerState]
-  );
-
-  const requestFilePreview = useCallback(
-    (agentId: string, path: string) => {
-      const normalizedPath = path && path.length > 0 ? path : ".";
-      updateExplorerState(agentId, (state: any) => ({
-        ...state,
-        isLoading: true,
-        pendingRequest: { path: normalizedPath, mode: "file" },
-      }));
-
-      filePreviewMutation
-        .mutateAsync({ agentId, path: normalizedPath })
-        .then((payload) => {
-          updateExplorerState(agentId, (state: any) => {
-            const nextState: any = {
-              ...state,
-              isLoading: false,
-              pendingRequest: null,
-              directories: state.directories,
-              files: state.files,
-            };
-
-            if (!payload.error && payload.file) {
-              const files = new Map(state.files);
-              files.set(payload.file.path, payload.file);
-              nextState.files = files;
-            }
-
-            return nextState;
-          });
-        })
-        .catch((error) => {
-          updateExplorerState(agentId, (state: any) => ({
-            ...state,
-            isLoading: false,
-            pendingRequest: null,
-          }));
-        });
-    },
-    [filePreviewMutation, updateExplorerState]
-  );
-
-  const requestFileDownloadToken = useCallback(
-    (agentId: string, path: string) => {
-      return fileDownloadTokenMutation.mutateAsync({ agentId, path });
-    },
-    [fileDownloadTokenMutation]
-  );
-
-  const navigateExplorerBack = useCallback(
-    (agentId: string) => {
-      let targetPath: string | null = null;
-
-      updateExplorerState(agentId, (state: any) => {
-        if (!state.history || state.history.length <= 1) {
-          return state;
-        }
-
-        const nextHistory = state.history.slice(0, -1);
-        targetPath = nextHistory[nextHistory.length - 1] ?? ".";
-
-        return {
-          ...state,
-          isLoading: true,
-          lastError: null,
-          pendingRequest: { path: targetPath, mode: "list" },
-          currentPath: targetPath,
-          history: nextHistory,
-          lastVisitedPath: targetPath,
-        };
-      });
-
-      if (!targetPath) {
-        return null;
-      }
-
-      directoryListingMutation
-        .mutateAsync({ agentId, path: targetPath })
-        .then((payload) => {
-          updateExplorerState(agentId, (state: any) => {
-            const nextState: any = {
-              ...state,
-              isLoading: false,
-              lastError: payload.error ?? null,
-              pendingRequest: null,
-              directories: state.directories,
-              files: state.files,
-            };
-
-            if (!payload.error && payload.directory) {
-              const directories = new Map(state.directories);
-              directories.set(payload.directory.path, payload.directory);
-              nextState.directories = directories;
-            }
-
-            return nextState;
-          });
-        })
-        .catch((error) => {
-          updateExplorerState(agentId, (state: any) => ({
-            ...state,
-            isLoading: false,
-            lastError: error.message,
-            pendingRequest: null,
-          }));
-        });
-      return targetPath;
-    },
-    [directoryListingMutation, updateExplorerState]
   );
 
   // Cleanup on unmount

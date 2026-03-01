@@ -464,7 +464,7 @@ function DiffFileBody({
 
 interface GitDiffPaneProps {
   serverId: string;
-  agentId: string;
+  workspaceId?: string | null;
   cwd: string;
 }
 
@@ -472,7 +472,7 @@ type DiffFlatItem =
   | { type: "header"; file: ParsedDiffFile; fileIndex: number; isExpanded: boolean }
   | { type: "body"; file: ParsedDiffFile; fileIndex: number };
 
-export function GitDiffPane({ serverId, agentId, cwd }: GitDiffPaneProps) {
+export function GitDiffPane({ serverId, workspaceId, cwd }: GitDiffPaneProps) {
   const { theme } = useUnistyles();
   const isMobile =
     UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
@@ -750,7 +750,7 @@ export function GitDiffPane({ serverId, agentId, cwd }: GitDiffPaneProps) {
     perfLog(DIFF_PANE_LOG_TAG, {
       event: "files_snapshot",
       serverId,
-      agentId,
+      workspaceId: workspaceId ?? cwd,
       fileCount: diffMetrics.fileCount,
       hunkCount: diffMetrics.hunkCount,
       lineCount: diffMetrics.lineCount,
@@ -758,7 +758,7 @@ export function GitDiffPane({ serverId, agentId, cwd }: GitDiffPaneProps) {
       isLoading: isDiffLoading,
       isFetching: isDiffFetching,
     });
-  }, [agentId, diffMetrics, isDiffFetching, isDiffLoading, serverId]);
+  }, [cwd, diffMetrics, isDiffFetching, isDiffLoading, serverId, workspaceId]);
 
   const commitStatus = useCheckoutGitActionsStore((state) =>
     state.getStatus({ serverId, cwd, actionId: "commit" })

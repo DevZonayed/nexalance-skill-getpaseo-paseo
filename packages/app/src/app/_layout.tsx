@@ -45,8 +45,9 @@ import {
 } from "@/utils/os-notifications";
 import { buildNotificationRoute } from "@/utils/notification-routing";
 import {
-  buildHostAgentDraftRoute,
+  buildHostDraftRoute,
   parseHostAgentRouteFromPathname,
+  parseHostWorkspaceAgentRouteFromPathname,
 } from "@/utils/host-routes";
 import { getTauri } from "@/utils/tauri";
 import { PerfDiagnosticsProvider } from "@/runtime/perf-diagnostics";
@@ -350,7 +351,7 @@ function OfferLinkListener({
           if (cancelled) return;
           const serverId = (profile as any)?.serverId;
           if (typeof serverId !== "string" || !serverId) return;
-          router.replace(buildHostAgentDraftRoute(serverId) as any);
+          router.replace(buildHostDraftRoute(serverId) as any);
         })
         .catch((error) => {
           if (cancelled) return;
@@ -380,7 +381,9 @@ function AppWithSidebar({ children }: { children: ReactNode }) {
   // Parse selectedAgentKey directly from pathname
   // useLocalSearchParams doesn't update when navigating between same-pattern routes
   const selectedAgentKey = useMemo(() => {
-    const match = parseHostAgentRouteFromPathname(pathname);
+    const match =
+      parseHostWorkspaceAgentRouteFromPathname(pathname) ??
+      parseHostAgentRouteFromPathname(pathname);
     return match ? `${match.serverId}:${match.agentId}` : undefined;
   }, [pathname]);
 
@@ -465,6 +468,15 @@ export default function RootLayout() {
                               >
                                 <Stack.Screen name="index" />
                                 <Stack.Screen name="settings" />
+                                <Stack.Screen name="h/[serverId]/new" />
+                                <Stack.Screen name="h/[serverId]/workspace/[workspaceId]/index" />
+                                <Stack.Screen
+                                  name="h/[serverId]/workspace/[workspaceId]/agent/[agentId]"
+                                  options={{ gestureEnabled: false }}
+                                />
+                                <Stack.Screen
+                                  name="h/[serverId]/workspace/[workspaceId]/terminal/[terminalId]"
+                                />
                                 <Stack.Screen
                                   name="h/[serverId]/agent/[agentId]"
                                   options={{ gestureEnabled: false }}

@@ -204,16 +204,20 @@ function deriveRemoteProjectKey(remoteUrl: string | null): string | null {
   return `remote:${cleanedHost}/${cleanedPath}`
 }
 
-function deriveProjectGroupingKey(options: { cwd: string; remoteUrl: string | null }): string {
+function deriveProjectGroupingKey(options: {
+  cwd: string
+  remoteUrl: string | null
+  isPaseoOwnedWorktree: boolean
+  mainRepoRoot: string | null
+}): string {
   const remoteKey = deriveRemoteProjectKey(options.remoteUrl)
   if (remoteKey) {
     return remoteKey
   }
 
-  const worktreeMarker = '.paseo/worktrees/'
-  const idx = options.cwd.indexOf(worktreeMarker)
-  if (idx !== -1) {
-    return options.cwd.slice(0, idx).replace(/\/$/, '')
+  const mainRepoRoot = options.mainRepoRoot?.trim()
+  if (options.isPaseoOwnedWorktree && mainRepoRoot) {
+    return mainRepoRoot
   }
 
   return options.cwd
@@ -1225,6 +1229,8 @@ export class Session {
     const projectKey = deriveProjectGroupingKey({
       cwd,
       remoteUrl: checkout.remoteUrl,
+      isPaseoOwnedWorktree: checkout.isPaseoOwnedWorktree,
+      mainRepoRoot: checkout.mainRepoRoot,
     })
     return {
       projectKey,

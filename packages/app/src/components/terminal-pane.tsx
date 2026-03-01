@@ -44,6 +44,10 @@ import TerminalEmulator from "./terminal-emulator";
 interface TerminalPaneProps {
   serverId: string;
   cwd: string;
+  selectedTerminalId?: string | null;
+  onSelectedTerminalIdChange?: (terminalId: string | null) => void;
+  hideHeader?: boolean;
+  manageTerminalDirectorySubscription?: boolean;
 }
 
 const MAX_OUTPUT_CHARS = 200_000;
@@ -130,7 +134,14 @@ function TerminalCloseGradient({ color, gradientId }: { color: string; gradientI
   );
 }
 
-export function TerminalPane({ serverId, cwd }: TerminalPaneProps) {
+export function TerminalPane({
+  serverId,
+  cwd,
+  selectedTerminalId: selectedTerminalIdProp,
+  onSelectedTerminalIdChange,
+  hideHeader = false,
+  manageTerminalDirectorySubscription = true,
+}: TerminalPaneProps) {
   const { theme } = useUnistyles();
   const isMobile =
     UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
@@ -145,8 +156,14 @@ export function TerminalPane({ serverId, cwd }: TerminalPaneProps) {
   const streamControllerRef = useRef<TerminalStreamController | null>(null);
   const outputPumpRef = useRef<TerminalOutputPump | null>(null);
   const outputDeliveryQueueRef = useRef<TerminalOutputDeliveryQueue | null>(null);
+  const isSelectedTerminalControlled =
+    typeof selectedTerminalIdProp !== "undefined";
 
-  const [selectedTerminalId, setSelectedTerminalId] = useState<string | null>(null);
+  const [uncontrolledSelectedTerminalId, setUncontrolledSelectedTerminalId] =
+    useState<string | null>(null);
+  const selectedTerminalId = isSelectedTerminalControlled
+    ? selectedTerminalIdProp ?? null
+    : uncontrolledSelectedTerminalId;
   const [selectedOutputChunk, setSelectedOutputChunk] = useState<TerminalOutputChunkState>({
     sequence: 0,
     text: "",
@@ -182,9 +199,13 @@ export function TerminalPane({ serverId, cwd }: TerminalPaneProps) {
           ? (next as (value: string | null) => string | null)(current)
           : next;
       selectedTerminalIdRef.current = resolved;
-      setSelectedTerminalId(resolved);
+      if (isSelectedTerminalControlled) {
+        onSelectedTerminalIdChange?.(resolved);
+        return;
+      }
+      setUncontrolledSelectedTerminalId(resolved);
     },
-    []
+    [isSelectedTerminalControlled, onSelectedTerminalIdChange]
   );
 
   useEffect(() => {
@@ -344,7 +365,12 @@ export function TerminalPane({ serverId, cwd }: TerminalPaneProps) {
   }, [client, isConnected, queryClient, terminalsQueryKey]);
 
   useEffect(() => {
-    if (!client || !isConnected || !cwd.startsWith("/")) {
+    if (
+      !manageTerminalDirectorySubscription ||
+      !client ||
+      !isConnected ||
+      !cwd.startsWith("/")
+    ) {
       return;
     }
 
@@ -370,7 +396,14 @@ export function TerminalPane({ serverId, cwd }: TerminalPaneProps) {
       unsubscribe();
       client.unsubscribeTerminals({ cwd });
     };
-  }, [client, cwd, isConnected, queryClient, terminalsQueryKey]);
+  }, [
+    client,
+    cwd,
+    isConnected,
+    manageTerminalDirectorySubscription,
+    queryClient,
+    terminalsQueryKey,
+  ]);
 
   const createTerminalMutation = useMutation({
     mutationFn: async () => {
@@ -394,7 +427,9 @@ export function TerminalPane({ serverId, cwd }: TerminalPaneProps) {
             requestId: current?.requestId ?? `terminal-create-${createdTerminal.id}`,
           };
         });
-        selectedTerminalByScopeRef.current.set(scopeKey, createdTerminal.id);
+        if (!isSelectedTerminalControlled) {
+          selectedTerminalByScopeRef.current.set(scopeKey, createdTerminal.id);
+        }
         updateSelectedTerminalId(createdTerminal.id);
         requestTerminalFocus();
       }
@@ -435,15 +470,20 @@ export function TerminalPane({ serverId, cwd }: TerminalPaneProps) {
   });
 
   useEffect(() => {
-    updateSelectedTerminalId(selectedTerminalByScopeRef.current.get(scopeKey) ?? null);
+    if (!isSelectedTerminalControlled) {
+      updateSelectedTerminalId(selectedTerminalByScopeRef.current.get(scopeKey) ?? null);
+    }
     lastReportedSizeRef.current = null;
-  }, [scopeKey, updateSelectedTerminalId]);
+  }, [isSelectedTerminalControlled, scopeKey, updateSelectedTerminalId]);
 
   useEffect(() => {
+    if (isSelectedTerminalControlled) {
+      return;
+    }
     if (selectedTerminalId) {
       selectedTerminalByScopeRef.current.set(scopeKey, selectedTerminalId);
     }
-  }, [scopeKey, selectedTerminalId]);
+  }, [isSelectedTerminalControlled, scopeKey, selectedTerminalId]);
 
   useEffect(() => {
     if (terminals.length === 0) {
@@ -458,7 +498,9 @@ export function TerminalPane({ serverId, cwd }: TerminalPaneProps) {
       return;
     }
 
-    const stored = selectedTerminalByScopeRef.current.get(scopeKey);
+    const stored = isSelectedTerminalControlled
+      ? null
+      : selectedTerminalByScopeRef.current.get(scopeKey);
     if (has(stored)) {
       updateSelectedTerminalId(stored!);
       return;
@@ -466,10 +508,18 @@ export function TerminalPane({ serverId, cwd }: TerminalPaneProps) {
 
     const fallback = terminals[0]?.id ?? null;
     if (fallback) {
-      selectedTerminalByScopeRef.current.set(scopeKey, fallback);
+      if (!isSelectedTerminalControlled) {
+        selectedTerminalByScopeRef.current.set(scopeKey, fallback);
+      }
       updateSelectedTerminalId(fallback);
     }
-  }, [scopeKey, terminals, selectedTerminalId, updateSelectedTerminalId]);
+  }, [
+    isSelectedTerminalControlled,
+    scopeKey,
+    terminals,
+    selectedTerminalId,
+    updateSelectedTerminalId,
+  ]);
 
   useEffect(() => {
     const terminalIds = terminals.map((terminal) => terminal.id);
@@ -911,108 +961,110 @@ export function TerminalPane({ serverId, cwd }: TerminalPaneProps) {
 
   return (
     <View style={styles.container}>
-      <View style={styles.header} testID="terminals-header">
-        <ScrollView
-          horizontal
-          style={styles.tabsScroll}
-          contentContainerStyle={styles.tabsContent}
-          showsHorizontalScrollIndicator={false}
-        >
-          {terminals.map((terminal) => {
-            const isActive = terminal.id === selectedTerminalId;
-            const isTabHovered = hoveredTerminalId === terminal.id;
-            const isCloseHovered = hoveredCloseTerminalId === terminal.id;
-            const isClosingTerminal =
-              killTerminalMutation.isPending &&
-              killTerminalMutation.variables === terminal.id;
-            const shouldShowCloseButton =
-              isTabHovered || isCloseHovered || isClosingTerminal;
-            const gradientId = `terminal-close-gradient-${terminal.id.replace(
-              /[^a-zA-Z0-9_-]/g,
-              "-"
-            )}`;
-            return (
-              <Pressable
-                key={terminal.id}
-                testID={`terminal-tab-${terminal.id}`}
-                onPress={() => updateSelectedTerminalId(terminal.id)}
-                onHoverIn={() => handleTerminalTabHoverIn(terminal.id)}
-                onHoverOut={() => handleTerminalTabHoverOut(terminal.id)}
-                style={({ pressed, hovered }) => [
-                  styles.terminalTab,
-                  isActive && styles.terminalTabActive,
-                  shouldShowCloseButton && styles.terminalTabHovered,
-                  (pressed || hovered) && styles.terminalTabHovered,
-                ]}
-              >
-                <Text
-                  style={[styles.terminalTabText, isActive && styles.terminalTabTextActive]}
-                  numberOfLines={1}
-                  ellipsizeMode="tail"
-                >
-                  {terminal.name}
-                </Text>
+      {!hideHeader ? (
+        <View style={styles.header} testID="terminals-header">
+          <ScrollView
+            horizontal
+            style={styles.tabsScroll}
+            contentContainerStyle={styles.tabsContent}
+            showsHorizontalScrollIndicator={false}
+          >
+            {terminals.map((terminal) => {
+              const isActive = terminal.id === selectedTerminalId;
+              const isTabHovered = hoveredTerminalId === terminal.id;
+              const isCloseHovered = hoveredCloseTerminalId === terminal.id;
+              const isClosingTerminal =
+                killTerminalMutation.isPending &&
+                killTerminalMutation.variables === terminal.id;
+              const shouldShowCloseButton =
+                isTabHovered || isCloseHovered || isClosingTerminal;
+              const gradientId = `terminal-close-gradient-${terminal.id.replace(
+                /[^a-zA-Z0-9_-]/g,
+                "-"
+              )}`;
+              return (
                 <Pressable
-                  testID={`terminal-close-${terminal.id}`}
-                  pointerEvents={shouldShowCloseButton ? "auto" : "none"}
-                  disabled={!shouldShowCloseButton || isClosingTerminal}
-                  onHoverIn={() => handleTerminalCloseHoverIn(terminal.id)}
-                  onHoverOut={() => handleTerminalCloseHoverOut(terminal.id)}
-                  onPress={(event) => {
-                    event.stopPropagation();
-                    void handleCloseTerminal(terminal.id);
-                  }}
-                  style={({ hovered, pressed }) => [
-                    styles.terminalTabCloseButton,
-                    shouldShowCloseButton
-                      ? styles.terminalTabCloseButtonShown
-                      : styles.terminalTabCloseButtonHidden,
+                  key={terminal.id}
+                  testID={`terminal-tab-${terminal.id}`}
+                  onPress={() => updateSelectedTerminalId(terminal.id)}
+                  onHoverIn={() => handleTerminalTabHoverIn(terminal.id)}
+                  onHoverOut={() => handleTerminalTabHoverOut(terminal.id)}
+                  style={({ pressed, hovered }) => [
+                    styles.terminalTab,
+                    isActive && styles.terminalTabActive,
+                    shouldShowCloseButton && styles.terminalTabHovered,
+                    (pressed || hovered) && styles.terminalTabHovered,
                   ]}
                 >
-                  {({ hovered = false, pressed = false }) => {
-                    const iconColor =
-                      hovered || pressed
-                        ? theme.colors.foreground
-                        : theme.colors.foregroundMuted;
-                    return (
-                      <>
-                        <TerminalCloseGradient
-                          color={theme.colors.surface2}
-                          gradientId={gradientId}
-                        />
-                        <View style={styles.terminalTabCloseIcon}>
-                          {isClosingTerminal ? (
-                            <ActivityIndicator size={12} color={iconColor} />
-                          ) : (
-                            <X size={12} color={iconColor} />
-                          )}
-                        </View>
-                      </>
-                    );
-                  }}
+                  <Text
+                    style={[styles.terminalTabText, isActive && styles.terminalTabTextActive]}
+                    numberOfLines={1}
+                    ellipsizeMode="tail"
+                  >
+                    {terminal.name}
+                  </Text>
+                  <Pressable
+                    testID={`terminal-close-${terminal.id}`}
+                    pointerEvents={shouldShowCloseButton ? "auto" : "none"}
+                    disabled={!shouldShowCloseButton || isClosingTerminal}
+                    onHoverIn={() => handleTerminalCloseHoverIn(terminal.id)}
+                    onHoverOut={() => handleTerminalCloseHoverOut(terminal.id)}
+                    onPress={(event) => {
+                      event.stopPropagation();
+                      void handleCloseTerminal(terminal.id);
+                    }}
+                    style={({ hovered, pressed }) => [
+                      styles.terminalTabCloseButton,
+                      shouldShowCloseButton
+                        ? styles.terminalTabCloseButtonShown
+                        : styles.terminalTabCloseButtonHidden,
+                    ]}
+                  >
+                    {({ hovered = false, pressed = false }) => {
+                      const iconColor =
+                        hovered || pressed
+                          ? theme.colors.foreground
+                          : theme.colors.foregroundMuted;
+                      return (
+                        <>
+                          <TerminalCloseGradient
+                            color={theme.colors.surface2}
+                            gradientId={gradientId}
+                          />
+                          <View style={styles.terminalTabCloseIcon}>
+                            {isClosingTerminal ? (
+                              <ActivityIndicator size={12} color={iconColor} />
+                            ) : (
+                              <X size={12} color={iconColor} />
+                            )}
+                          </View>
+                        </>
+                      );
+                    }}
+                  </Pressable>
                 </Pressable>
-              </Pressable>
-            );
-          })}
-        </ScrollView>
-        <View style={styles.headerActions}>
-          <Pressable
-            testID="terminals-create-button"
-            onPress={handleCreateTerminal}
-            disabled={isCreating}
-            style={({ hovered, pressed }) => [
-              styles.headerIconButton,
-              (hovered || pressed) && styles.headerIconButtonHovered,
-            ]}
-          >
-            {isCreating ? (
-              <ActivityIndicator size="small" color={theme.colors.foregroundMuted} />
-            ) : (
-              <Plus size={16} color={theme.colors.foregroundMuted} />
-            )}
-          </Pressable>
+              );
+            })}
+          </ScrollView>
+          <View style={styles.headerActions}>
+            <Pressable
+              testID="terminals-create-button"
+              onPress={handleCreateTerminal}
+              disabled={isCreating}
+              style={({ hovered, pressed }) => [
+                styles.headerIconButton,
+                (hovered || pressed) && styles.headerIconButtonHovered,
+              ]}
+            >
+              {isCreating ? (
+                <ActivityIndicator size="small" color={theme.colors.foregroundMuted} />
+              ) : (
+                <Plus size={16} color={theme.colors.foregroundMuted} />
+              )}
+            </Pressable>
+          </View>
         </View>
-      </View>
+      ) : null}
 
       <View style={styles.outputContainer}>
         {selectedTerminal ? (

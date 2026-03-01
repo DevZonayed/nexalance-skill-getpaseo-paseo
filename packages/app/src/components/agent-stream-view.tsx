@@ -173,8 +173,14 @@ export const AgentStreamView = forwardRef<AgentStreamViewHandle, AgentStreamView
     state.sessions[resolvedServerId]?.agentStreamHead?.get(agentId)
   );
 
+  const workspaceRoot = agent.cwd?.trim() || "";
+  const workspaceId = agent.projectPlacement?.checkout?.cwd ?? workspaceRoot;
   const { requestDirectoryListing, requestFilePreview, selectExplorerEntry } =
-    useFileExplorerActions(resolvedServerId);
+    useFileExplorerActions({
+      serverId: resolvedServerId,
+      workspaceId,
+      workspaceRoot,
+    });
   // Keep entry/exit animations off on Android due to RN dispatchDraw crashes
   // tracked in react-native-reanimated#8422.
   const shouldDisableEntryExitAnimations = Platform.OS === "android";
@@ -204,13 +210,13 @@ export const AgentStreamView = forwardRef<AgentStreamViewHandle, AgentStreamView
         return;
       }
 
-      requestDirectoryListing(agentId, normalized.directory, {
+      void requestDirectoryListing(normalized.directory, {
         recordHistory: false,
         setCurrentPath: false,
       });
       if (normalized.file) {
-        selectExplorerEntry(agentId, normalized.file);
-        requestFilePreview(agentId, normalized.file);
+        selectExplorerEntry(normalized.file);
+        void requestFilePreview(normalized.file);
       }
 
       setExplorerTabForCheckout({
@@ -223,7 +229,6 @@ export const AgentStreamView = forwardRef<AgentStreamViewHandle, AgentStreamView
     },
     [
       agent.cwd,
-      agentId,
       requestDirectoryListing,
       requestFilePreview,
       selectExplorerEntry,

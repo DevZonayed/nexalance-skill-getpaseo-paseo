@@ -34,7 +34,6 @@ import {
 } from "@/utils/navigation-timing";
 import {
   buildHostAgentDetailRoute,
-  parseHostAgentRouteFromPathname,
 } from "@/utils/host-routes";
 
 interface AgentListProps {
@@ -85,7 +84,7 @@ interface AgentListRowProps {
   agent: AggregatedAgent;
   selectedAgentId?: string;
   showCheckoutInfo: boolean;
-  onPress: (serverId: string, agentId: string) => void;
+  onPress: (agent: AggregatedAgent) => void;
   onLongPress: (agent: AggregatedAgent) => void;
 }
 
@@ -117,7 +116,7 @@ function AgentListRow({
         hovered && styles.agentItemHovered,
         pressed && styles.agentItemPressed,
       ]}
-      onPress={() => onPress(agent.serverId, agent.id)}
+      onPress={() => onPress(agent)}
       onLongPress={() => onLongPress(agent)}
       testID={`agent-row-${agent.serverId}-${agent.id}`}
     >
@@ -169,11 +168,13 @@ export function AgentList({
   const isActionDaemonUnavailable = Boolean(actionAgent?.serverId && !actionClient);
 
   const handleAgentPress = useCallback(
-    (serverId: string, agentId: string) => {
+    (agent: AggregatedAgent) => {
       if (isActionSheetVisible) {
         return;
       }
 
+      const serverId = agent.serverId;
+      const agentId = agent.id;
       const navigationKey = buildAgentNavigationKey(serverId, agentId);
       startNavigationTiming(navigationKey, {
         from: "home",
@@ -181,12 +182,12 @@ export function AgentList({
         params: { serverId, agentId },
       });
 
-      const shouldReplace = Boolean(parseHostAgentRouteFromPathname(pathname));
+      const shouldReplace = pathname.startsWith("/h/");
       const navigate = shouldReplace ? router.replace : router.push;
 
       onAgentSelect?.();
 
-      navigate(buildHostAgentDetailRoute(serverId, agentId) as any);
+      navigate(buildHostAgentDetailRoute(serverId, agentId, agent.cwd) as any);
     },
     [isActionSheetVisible, pathname, onAgentSelect]
   );

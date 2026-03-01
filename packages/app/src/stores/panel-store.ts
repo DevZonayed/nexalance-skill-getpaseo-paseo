@@ -336,7 +336,7 @@ export const usePanelStore = create<PanelState>()(
     }),
     {
       name: "panel-state",
-      version: 4,
+      version: 5,
       storage: createJSONStorage(() => AsyncStorage),
       migrate: (persistedState, version) => {
         const state = persistedState as Partial<PanelState> & Record<string, unknown>;
@@ -367,6 +367,10 @@ export const usePanelStore = create<PanelState>()(
           ) {
             state.explorerWidth = DEFAULT_EXPLORER_SIDEBAR_WIDTH;
           }
+        }
+
+        if (!isExplorerTab(state.explorerTab)) {
+          state.explorerTab = "changes";
         }
 
         if (version < 4 || typeof state.explorerTabByCheckout !== "object" || !state.explorerTabByCheckout) {

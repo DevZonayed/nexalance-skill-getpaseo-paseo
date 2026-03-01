@@ -1,70 +1,62 @@
-import {
-  useCallback,
-  useMemo,
-  useState,
-  useEffect,
-  useRef,
-  useSyncExternalStore,
-} from "react";
-import { View, Pressable, Text, Platform } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useCallback, useMemo, useState, useEffect, useRef, useSyncExternalStore } from 'react'
+import { View, Pressable, Text, Platform } from 'react-native'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import Animated, {
   useAnimatedStyle,
   interpolate,
   Extrapolation,
   runOnJS,
-} from "react-native-reanimated";
-import { Gesture, GestureDetector } from "react-native-gesture-handler";
-import { StyleSheet, UnistylesRuntime, useUnistyles } from "react-native-unistyles";
-import { Plus, ListFilter, Settings, Users } from "lucide-react-native";
-import { router, usePathname } from "expo-router";
-import { usePanelStore } from "@/stores/panel-store";
-import { SidebarAgentList } from "./sidebar-agent-list";
-import { SidebarAgentListSkeleton } from "./sidebar-agent-list-skeleton";
-import { useSidebarAgentsList } from "@/hooks/use-sidebar-agents-list";
-import { useSidebarAnimation } from "@/contexts/sidebar-animation-context";
-import { useTauriDragHandlers, useTrafficLightPadding } from "@/utils/tauri-window";
-import { useKeyboardShortcutsStore } from "@/stores/keyboard-shortcuts-store";
-import { Combobox } from "@/components/ui/combobox";
-import { useDaemonRegistry } from "@/contexts/daemon-registry-context";
-import { getHostRuntimeStore } from "@/runtime/host-runtime";
-import { useSessionStore } from "@/stores/session-store";
-import { formatConnectionStatus } from "@/utils/daemons";
-import { HEADER_INNER_HEIGHT, HEADER_INNER_HEIGHT_MOBILE } from "@/constants/layout";
+} from 'react-native-reanimated'
+import { Gesture, GestureDetector } from 'react-native-gesture-handler'
+import { StyleSheet, UnistylesRuntime, useUnistyles } from 'react-native-unistyles'
+import { Plus, Settings, Users } from 'lucide-react-native'
+import { router, usePathname } from 'expo-router'
+import { usePanelStore } from '@/stores/panel-store'
+import { SidebarAgentList } from './sidebar-agent-list'
+import { SidebarAgentListSkeleton } from './sidebar-agent-list-skeleton'
+import { useSidebarAgentsList } from '@/hooks/use-sidebar-agents-list'
+import { useSidebarAnimation } from '@/contexts/sidebar-animation-context'
+import { useTauriDragHandlers, useTrafficLightPadding } from '@/utils/tauri-window'
+import { useKeyboardShortcutsStore } from '@/stores/keyboard-shortcuts-store'
+import { Combobox } from '@/components/ui/combobox'
+import { useDaemonRegistry } from '@/contexts/daemon-registry-context'
+import { getHostRuntimeStore } from '@/runtime/host-runtime'
+import { useSessionStore } from '@/stores/session-store'
+import { formatConnectionStatus } from '@/utils/daemons'
+import { HEADER_INNER_HEIGHT, HEADER_INNER_HEIGHT_MOBILE } from '@/constants/layout'
 import {
   checkoutStatusQueryKey,
   type CheckoutStatusPayload,
-} from "@/hooks/use-checkout-status-query";
-import { queryClient } from "@/query/query-client";
+} from '@/hooks/use-checkout-status-query'
+import { queryClient } from '@/query/query-client'
 import {
   buildNewAgentRoute,
   resolveNewAgentWorkingDir,
   resolveSelectedAgentForNewAgent,
-} from "@/utils/new-agent-routing";
+} from '@/utils/new-agent-routing'
 import {
   buildHostAgentsRoute,
   buildHostSettingsRoute,
   mapPathnameToServer,
   parseServerIdFromPathname,
-} from "@/utils/host-routes";
+} from '@/utils/host-routes'
 
-const DESKTOP_SIDEBAR_WIDTH = 320;
+const DESKTOP_SIDEBAR_WIDTH = 320
 
 interface LeftSidebarProps {
-  selectedAgentId?: string;
+  selectedAgentId?: string
 }
 
 export function LeftSidebar({ selectedAgentId }: LeftSidebarProps) {
-  const { theme } = useUnistyles();
-  const insets = useSafeAreaInsets();
-  const isMobile =
-    UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
-  const mobileView = usePanelStore((state) => state.mobileView);
-  const desktopAgentListOpen = usePanelStore((state) => state.desktop.agentListOpen);
-  const closeToAgent = usePanelStore((state) => state.closeToAgent);
-  const pathname = usePathname();
-  const { daemons } = useDaemonRegistry();
-  const runtime = getHostRuntimeStore();
+  const { theme } = useUnistyles()
+  const insets = useSafeAreaInsets()
+  const isMobile = UnistylesRuntime.breakpoint === 'xs' || UnistylesRuntime.breakpoint === 'sm'
+  const mobileView = usePanelStore((state) => state.mobileView)
+  const desktopAgentListOpen = usePanelStore((state) => state.desktop.agentListOpen)
+  const closeToAgent = usePanelStore((state) => state.closeToAgent)
+  const pathname = usePathname()
+  const { daemons } = useDaemonRegistry()
+  const runtime = getHostRuntimeStore()
   const runtimeConnectionStatusSignature = useSyncExternalStore(
     (onStoreChange) => runtime.subscribeAll(onStoreChange),
     () =>
@@ -72,76 +64,58 @@ export function LeftSidebar({ selectedAgentId }: LeftSidebarProps) {
         .map(
           (daemon) =>
             `${daemon.serverId}:${
-              runtime.getSnapshot(daemon.serverId)?.connectionStatus ?? "connecting"
+              runtime.getSnapshot(daemon.serverId)?.connectionStatus ?? 'connecting'
             }`
         )
-        .join("|"),
+        .join('|'),
     () =>
       daemons
         .map(
           (daemon) =>
             `${daemon.serverId}:${
-              runtime.getSnapshot(daemon.serverId)?.connectionStatus ?? "connecting"
+              runtime.getSnapshot(daemon.serverId)?.connectionStatus ?? 'connecting'
             }`
         )
-        .join("|")
-  );
-  const activeServerIdFromPath = useMemo(
-    () => parseServerIdFromPathname(pathname),
-    [pathname]
-  );
-  const activeServerId = activeServerIdFromPath ?? daemons[0]?.serverId ?? null;
+        .join('|')
+  )
+  const activeServerIdFromPath = useMemo(() => parseServerIdFromPathname(pathname), [pathname])
+  const activeServerId = activeServerIdFromPath ?? daemons[0]?.serverId ?? null
   const activeHostLabel = useMemo(() => {
-    if (!activeServerId) return "No host";
-    const daemon = daemons.find((entry) => entry.serverId === activeServerId);
-    const trimmed = daemon?.label?.trim();
-    return trimmed && trimmed.length > 0 ? trimmed : activeServerId;
-  }, [activeServerId, daemons]);
+    if (!activeServerId) return 'No host'
+    const daemon = daemons.find((entry) => entry.serverId === activeServerId)
+    const trimmed = daemon?.label?.trim()
+    return trimmed && trimmed.length > 0 ? trimmed : activeServerId
+  }, [activeServerId, daemons])
   const activeHostStatus = activeServerId
-    ? runtime.getSnapshot(activeServerId)?.connectionStatus ?? "connecting"
-    : "idle";
+    ? (runtime.getSnapshot(activeServerId)?.connectionStatus ?? 'connecting')
+    : 'idle'
   const activeHostStatusColor =
-    activeHostStatus === "online"
+    activeHostStatus === 'online'
       ? theme.colors.palette.green[400]
-      : activeHostStatus === "connecting"
+      : activeHostStatus === 'connecting'
         ? theme.colors.palette.amber[500]
-        : theme.colors.palette.red[500];
+        : theme.colors.palette.red[500]
   const hostOptions = useMemo(
     () =>
       daemons.map((daemon) => ({
         id: daemon.serverId,
         label: daemon.label?.trim() || daemon.serverId,
         description: formatConnectionStatus(
-          runtime.getSnapshot(daemon.serverId)?.connectionStatus ?? "connecting"
+          runtime.getSnapshot(daemon.serverId)?.connectionStatus ?? 'connecting'
         ),
       })),
     [daemons, runtime, runtimeConnectionStatusSignature]
-  );
-  const hostTriggerRef = useRef<View>(null);
-  const [isHostPickerOpen, setIsHostPickerOpen] = useState(false);
-  const projectFilterAnchorRef = useRef<View>(null);
-  const [isProjectFilterOpen, setIsProjectFilterOpen] = useState(false);
+  )
+  const hostTriggerRef = useRef<View>(null)
+  const [isHostPickerOpen, setIsHostPickerOpen] = useState(false)
 
   // Derive isOpen from the unified panel state
-  const isOpen = isMobile ? mobileView === "agent-list" : desktopAgentListOpen;
-  const [selectedProjectFilterKey, setSelectedProjectFilterKey] = useState<string | null>(
-    null
-  );
+  const isOpen = isMobile ? mobileView === 'agent-list' : desktopAgentListOpen
 
-  const {
-    entries,
-    projectFilterOptions,
-    hasMoreEntries,
-    isInitialLoad,
-    isRevalidating,
-    refreshAll,
-  } = useSidebarAgentsList({
+  const { projects, isInitialLoad, isRevalidating, refreshAll } = useSidebarAgentsList({
     serverId: activeServerId,
-    selectedProjectFilterKey,
-  });
-  useEffect(() => {
-    setSelectedProjectFilterKey(null);
-  }, [activeServerId]);
+    enabled: isOpen,
+  })
   const {
     translateX,
     backdropOpacity,
@@ -150,157 +124,116 @@ export function LeftSidebar({ selectedAgentId }: LeftSidebarProps) {
     animateToClose,
     isGesturing,
     closeGestureRef,
-  } = useSidebarAnimation();
-  const dragHandlers = useTauriDragHandlers();
-  const trafficLightPadding = useTrafficLightPadding();
+  } = useSidebarAnimation()
+  const dragHandlers = useTauriDragHandlers()
+  const trafficLightPadding = useTrafficLightPadding()
 
   // Track user-initiated refresh to avoid showing spinner on background revalidation
-  const [isManualRefresh, setIsManualRefresh] = useState(false);
+  const [isManualRefresh, setIsManualRefresh] = useState(false)
 
   const handleRefresh = useCallback(() => {
-    setIsManualRefresh(true);
-    refreshAll();
-  }, [refreshAll]);
+    setIsManualRefresh(true)
+    refreshAll()
+  }, [refreshAll])
 
   // Reset manual refresh flag when revalidation completes
   useEffect(() => {
     if (!isRevalidating && isManualRefresh) {
-      setIsManualRefresh(false);
+      setIsManualRefresh(false)
     }
-  }, [isRevalidating, isManualRefresh]);
+  }, [isRevalidating, isManualRefresh])
 
   const setSidebarShortcutAgentKeys = useKeyboardShortcutsStore(
     (s) => s.setSidebarShortcutAgentKeys
-  );
-  const sidebarShortcutAgentKeys = useMemo(() => {
-    return entries.slice(0, 9).map((entry) => `${entry.agent.serverId}:${entry.agent.id}`);
-  }, [entries]);
-
+  )
   useEffect(() => {
-    setSidebarShortcutAgentKeys(sidebarShortcutAgentKeys);
-  }, [setSidebarShortcutAgentKeys, sidebarShortcutAgentKeys]);
+    setSidebarShortcutAgentKeys([])
+  }, [setSidebarShortcutAgentKeys])
 
   const handleClose = useCallback(() => {
-    closeToAgent();
-  }, [closeToAgent]);
+    closeToAgent()
+  }, [closeToAgent])
 
   const handleCreateAgentClean = useCallback(() => {
-    let targetServerId = activeServerId;
-    let targetWorkingDir: string | null = null;
+    let targetServerId = activeServerId
+    let targetWorkingDir: string | null = null
 
     const selectedAgent = resolveSelectedAgentForNewAgent({
       pathname,
       selectedAgentId,
-    });
+    })
     if (selectedAgent) {
-      targetServerId = selectedAgent.serverId;
+      targetServerId = selectedAgent.serverId
       const agent = useSessionStore
         .getState()
-        .sessions[selectedAgent.serverId]
-        ?.agents?.get(selectedAgent.agentId);
-      const cwd = agent?.cwd?.trim();
+        .sessions[selectedAgent.serverId]?.agents?.get(selectedAgent.agentId)
+      const cwd = agent?.cwd?.trim()
       if (cwd) {
         const checkout =
           queryClient.getQueryData<CheckoutStatusPayload>(
             checkoutStatusQueryKey(selectedAgent.serverId, cwd)
-          ) ?? null;
-        targetWorkingDir = resolveNewAgentWorkingDir(cwd, checkout);
+          ) ?? null
+        targetWorkingDir = resolveNewAgentWorkingDir(cwd, checkout)
       }
     }
 
     if (!targetServerId) {
-      return;
+      return
     }
-    router.push(buildNewAgentRoute(targetServerId, targetWorkingDir) as any);
-  }, [activeServerId, pathname, selectedAgentId]);
+    router.push(buildNewAgentRoute(targetServerId, targetWorkingDir) as any)
+  }, [activeServerId, pathname, selectedAgentId])
 
   // Mobile: close sidebar and navigate
   const handleCreateAgentCleanMobile = useCallback(() => {
-    closeToAgent();
-    handleCreateAgentClean();
-  }, [closeToAgent, handleCreateAgentClean]);
+    closeToAgent()
+    handleCreateAgentClean()
+  }, [closeToAgent, handleCreateAgentClean])
 
   // Desktop: just navigate, don't close
   const handleCreateAgentCleanDesktop = useCallback(() => {
-    handleCreateAgentClean();
-  }, [handleCreateAgentClean]);
+    handleCreateAgentClean()
+  }, [handleCreateAgentClean])
 
   // Mobile: close sidebar and navigate
   const handleSettingsMobile = useCallback(() => {
     if (!activeServerId) {
-      return;
+      return
     }
-    closeToAgent();
-    router.push(buildHostSettingsRoute(activeServerId) as any);
-  }, [activeServerId, closeToAgent]);
+    closeToAgent()
+    router.push(buildHostSettingsRoute(activeServerId) as any)
+  }, [activeServerId, closeToAgent])
 
   // Desktop: just navigate, don't close
   const handleSettingsDesktop = useCallback(() => {
     if (!activeServerId) {
-      return;
+      return
     }
-    router.push(buildHostSettingsRoute(activeServerId) as any);
-  }, [activeServerId]);
-
-  // Mobile: close sidebar when agent is selected
-  // Snap immediately since navigation interrupts animations
-  const handleAgentSelectMobile = useCallback(() => {
-    translateX.value = -windowWidth;
-    backdropOpacity.value = 0;
-    closeToAgent();
-  }, [closeToAgent, translateX, backdropOpacity, windowWidth]);
+    router.push(buildHostSettingsRoute(activeServerId) as any)
+  }, [activeServerId])
 
   const handleViewMore = useCallback(() => {
     if (!activeServerId) {
-      return;
+      return
     }
     if (isMobile) {
-      translateX.value = -windowWidth;
-      backdropOpacity.value = 0;
-      closeToAgent();
+      translateX.value = -windowWidth
+      backdropOpacity.value = 0
+      closeToAgent()
     }
-    router.push(buildHostAgentsRoute(activeServerId) as any);
-  }, [
-    activeServerId,
-    backdropOpacity,
-    closeToAgent,
-    isMobile,
-    translateX,
-    windowWidth,
-  ]);
-
-  const listFooterComponent = useMemo(() => {
-    if (!hasMoreEntries) {
-      return null;
-    }
-
-    return (
-      <Pressable style={styles.listViewMoreButton} onPress={handleViewMore}>
-        {({ hovered }) => (
-          <Text
-            style={[
-              styles.listViewMoreButtonText,
-              hovered && styles.listViewMoreButtonTextHovered,
-            ]}
-          >
-            View more
-          </Text>
-        )}
-      </Pressable>
-    );
-  }, [handleViewMore, hasMoreEntries]);
+    router.push(buildHostAgentsRoute(activeServerId) as any)
+  }, [activeServerId, backdropOpacity, closeToAgent, isMobile, translateX, windowWidth])
 
   const handleHostSelect = useCallback(
     (nextServerId: string) => {
       if (!nextServerId) {
-        return;
+        return
       }
-      const nextPath = mapPathnameToServer(pathname, nextServerId);
-      setIsHostPickerOpen(false);
-      router.push(nextPath as any);
+      const nextPath = mapPathnameToServer(pathname, nextServerId)
+      setIsHostPickerOpen(false)
+      router.push(nextPath as any)
     },
     [pathname]
-  );
+  )
 
   // Close gesture (swipe left to close when sidebar is open)
   // Only activates on leftward swipe, fails on rightward or vertical movement
@@ -315,50 +248,48 @@ export function LeftSidebar({ selectedAgentId }: LeftSidebarProps) {
     // Fail if vertical movement happens first (allow vertical scroll)
     .failOffsetY([-10, 10])
     .onStart(() => {
-      isGesturing.value = true;
+      isGesturing.value = true
     })
     .onUpdate((event) => {
-      if (!isMobile) return;
+      if (!isMobile) return
       // Only allow swiping left (closing)
-      const newTranslateX = Math.min(0, Math.max(-windowWidth, event.translationX));
-      translateX.value = newTranslateX;
+      const newTranslateX = Math.min(0, Math.max(-windowWidth, event.translationX))
+      translateX.value = newTranslateX
       backdropOpacity.value = interpolate(
         newTranslateX,
         [-windowWidth, 0],
         [0, 1],
         Extrapolation.CLAMP
-      );
+      )
     })
     .onEnd((event) => {
-      isGesturing.value = false;
-      if (!isMobile) return;
-      const shouldClose = event.translationX < -windowWidth / 3 || event.velocityX < -500;
+      isGesturing.value = false
+      if (!isMobile) return
+      const shouldClose = event.translationX < -windowWidth / 3 || event.velocityX < -500
       if (shouldClose) {
-        animateToClose();
-        runOnJS(handleClose)();
+        animateToClose()
+        runOnJS(handleClose)()
       } else {
-        animateToOpen();
+        animateToOpen()
       }
     })
     .onFinalize(() => {
-      isGesturing.value = false;
-    });
-
+      isGesturing.value = false
+    })
 
   const sidebarAnimatedStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: translateX.value }],
-  }));
+  }))
 
   const backdropAnimatedStyle = useAnimatedStyle(() => ({
     opacity: backdropOpacity.value,
-    pointerEvents: backdropOpacity.value > 0.01 ? "auto" : "none",
-  }));
-
+    pointerEvents: backdropOpacity.value > 0.01 ? 'auto' : 'none',
+  }))
 
   // Render mobile sidebar
   // On web, keep the overlay interactive only while the sidebar is open.
   // This preserves swipe/scroll behavior without blocking taps when closed.
-  const overlayPointerEvents = Platform.OS === "web" ? (isOpen ? "auto" : "none") : "box-none";
+  const overlayPointerEvents = Platform.OS === 'web' ? (isOpen ? 'auto' : 'none') : 'box-none'
   if (isMobile) {
     return (
       <View style={StyleSheet.absoluteFillObject} pointerEvents={overlayPointerEvents}>
@@ -391,55 +322,30 @@ export function LeftSidebar({ selectedAgentId }: LeftSidebarProps) {
                           size={theme.iconSize.md}
                           color={hovered ? theme.colors.foreground : theme.colors.foregroundMuted}
                         />
-                        <Text style={[styles.newAgentButtonText, hovered && styles.newAgentButtonTextHovered]}>New agent</Text>
+                        <Text
+                          style={[
+                            styles.newAgentButtonText,
+                            hovered && styles.newAgentButtonTextHovered,
+                          ]}
+                        >
+                          New agent
+                        </Text>
                       </>
                     )}
                   </Pressable>
-                  {projectFilterOptions.length > 0 ? (
-                    <Pressable
-                      ref={projectFilterAnchorRef}
-                      style={[
-                        styles.filterButton,
-                        selectedProjectFilterKey ? styles.filterButtonActive : null,
-                      ]}
-                      onPress={() => setIsProjectFilterOpen(true)}
-                    >
-                      {({ hovered }) => (
-                        <ListFilter
-                          size={theme.iconSize.md}
-                          color={
-                            selectedProjectFilterKey
-                              ? theme.colors.accentForeground
-                              : hovered
-                                ? theme.colors.foreground
-                                : theme.colors.foregroundMuted
-                          }
-                        />
-                      )}
-                    </Pressable>
-                  ) : null}
                 </View>
               </View>
 
-              {/* Middle: scrollable agent list */}
+              {/* Middle: scrollable project/workspace tree */}
               {isInitialLoad ? (
                 <SidebarAgentListSkeleton />
               ) : (
                 <SidebarAgentList
                   isOpen={isOpen}
                   serverId={activeServerId}
-                  entries={entries}
-                  projectFilterOptions={projectFilterOptions}
-                  selectedProjectFilterKey={selectedProjectFilterKey}
-                  onSelectedProjectFilterKeyChange={setSelectedProjectFilterKey}
-                  isProjectFilterOpen={isProjectFilterOpen}
-                  onProjectFilterOpenChange={setIsProjectFilterOpen}
-                  projectFilterAnchorRef={projectFilterAnchorRef}
+                  projects={projects}
                   isRefreshing={isManualRefresh && isRevalidating}
                   onRefresh={handleRefresh}
-                  listFooterComponent={listFooterComponent}
-                  selectedAgentId={selectedAgentId}
-                  onAgentSelect={handleAgentSelectMobile}
                   parentGestureRef={closeGestureRef}
                 />
               )}
@@ -457,10 +363,7 @@ export function LeftSidebar({ selectedAgentId }: LeftSidebarProps) {
                     disabled={hostOptions.length === 0}
                   >
                     <View
-                      style={[
-                        styles.hostStatusDot,
-                        { backgroundColor: activeHostStatusColor },
-                      ]}
+                      style={[styles.hostStatusDot, { backgroundColor: activeHostStatusColor }]}
                     />
                     <Text style={styles.hostTriggerText} numberOfLines={1}>
                       {activeHostLabel}
@@ -505,7 +408,7 @@ export function LeftSidebar({ selectedAgentId }: LeftSidebarProps) {
                 </View>
                 <Combobox
                   options={hostOptions}
-                  value={activeServerId ?? ""}
+                  value={activeServerId ?? ''}
                   onSelect={handleHostSelect}
                   searchable={false}
                   title="Switch host"
@@ -519,12 +422,12 @@ export function LeftSidebar({ selectedAgentId }: LeftSidebarProps) {
           </Animated.View>
         </GestureDetector>
       </View>
-    );
+    )
   }
 
   // Desktop: no edge swipe, just show/hide based on isOpen
   if (!isOpen) {
-    return null;
+    return null
   }
 
   return (
@@ -532,10 +435,7 @@ export function LeftSidebar({ selectedAgentId }: LeftSidebarProps) {
       {trafficLightPadding.top > 0 ? (
         <View style={{ height: trafficLightPadding.top }} {...dragHandlers} />
       ) : null}
-      <View
-        style={styles.sidebarHeader}
-        {...dragHandlers}
-      >
+      <View style={styles.sidebarHeader} {...dragHandlers}>
         <View style={styles.sidebarHeaderRow}>
           <Pressable
             style={styles.newAgentButton}
@@ -548,54 +448,27 @@ export function LeftSidebar({ selectedAgentId }: LeftSidebarProps) {
                   size={theme.iconSize.md}
                   color={hovered ? theme.colors.foreground : theme.colors.foregroundMuted}
                 />
-                <Text style={[styles.newAgentButtonText, hovered && styles.newAgentButtonTextHovered]}>New agent</Text>
+                <Text
+                  style={[styles.newAgentButtonText, hovered && styles.newAgentButtonTextHovered]}
+                >
+                  New agent
+                </Text>
               </>
             )}
           </Pressable>
-          {projectFilterOptions.length > 0 ? (
-            <Pressable
-              ref={projectFilterAnchorRef}
-              style={[
-                styles.filterButton,
-                selectedProjectFilterKey ? styles.filterButtonActive : null,
-              ]}
-              onPress={() => setIsProjectFilterOpen(true)}
-            >
-              {({ hovered }) => (
-                <ListFilter
-                  size={theme.iconSize.md}
-                  color={
-                    selectedProjectFilterKey
-                      ? theme.colors.accentForeground
-                      : hovered
-                        ? theme.colors.foreground
-                        : theme.colors.foregroundMuted
-                  }
-                />
-              )}
-            </Pressable>
-          ) : null}
         </View>
       </View>
 
-      {/* Middle: scrollable agent list */}
+      {/* Middle: scrollable project/workspace tree */}
       {isInitialLoad ? (
         <SidebarAgentListSkeleton />
       ) : (
         <SidebarAgentList
           isOpen={isOpen}
           serverId={activeServerId}
-          entries={entries}
-          projectFilterOptions={projectFilterOptions}
-          selectedProjectFilterKey={selectedProjectFilterKey}
-          onSelectedProjectFilterKeyChange={setSelectedProjectFilterKey}
-          isProjectFilterOpen={isProjectFilterOpen}
-          onProjectFilterOpenChange={setIsProjectFilterOpen}
-          projectFilterAnchorRef={projectFilterAnchorRef}
+          projects={projects}
           isRefreshing={isManualRefresh && isRevalidating}
           onRefresh={handleRefresh}
-          listFooterComponent={listFooterComponent}
-          selectedAgentId={selectedAgentId}
         />
       )}
 
@@ -611,12 +484,7 @@ export function LeftSidebar({ selectedAgentId }: LeftSidebarProps) {
             onPress={() => setIsHostPickerOpen(true)}
             disabled={hostOptions.length === 0}
           >
-            <View
-              style={[
-                styles.hostStatusDot,
-                { backgroundColor: activeHostStatusColor },
-              ]}
-            />
+            <View style={[styles.hostStatusDot, { backgroundColor: activeHostStatusColor }]} />
             <Text style={styles.hostTriggerText} numberOfLines={1}>
               {activeHostLabel}
             </Text>
@@ -660,7 +528,7 @@ export function LeftSidebar({ selectedAgentId }: LeftSidebarProps) {
         </View>
         <Combobox
           options={hostOptions}
-          value={activeServerId ?? ""}
+          value={activeServerId ?? ''}
           onSelect={handleHostSelect}
           searchable={false}
           title="Switch host"
@@ -671,29 +539,29 @@ export function LeftSidebar({ selectedAgentId }: LeftSidebarProps) {
         />
       </View>
     </View>
-  );
+  )
 }
 
 const styles = StyleSheet.create((theme) => ({
   backdrop: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
   },
   backdropPressable: {
     flex: 1,
   },
   mobileSidebar: {
-    position: "absolute",
+    position: 'absolute',
     top: 0,
     left: 0,
     bottom: 0,
     backgroundColor: theme.colors.surface0,
-    overflow: "hidden",
+    overflow: 'hidden',
   },
   sidebarContent: {
     flex: 1,
     minHeight: 0,
-    overflow: "hidden",
+    overflow: 'hidden',
   },
   desktopSidebar: {
     borderRightWidth: 1,
@@ -706,35 +574,24 @@ const styles = StyleSheet.create((theme) => ({
       md: HEADER_INNER_HEIGHT,
     },
     paddingHorizontal: theme.spacing[2],
-    justifyContent: "center",
+    justifyContent: 'center',
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.border,
-    userSelect: "none",
+    userSelect: 'none',
   },
   sidebarHeaderRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     gap: theme.spacing[2],
   },
   newAgentButton: {
-    flexDirection: "row",
-    alignItems: "center",
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: theme.spacing[2],
     paddingVertical: theme.spacing[1],
     paddingHorizontal: theme.spacing[1],
     flexShrink: 0,
-  },
-  filterButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: theme.spacing[1],
-    paddingHorizontal: theme.spacing[1],
-    borderRadius: theme.borderRadius.md,
-  },
-  filterButtonActive: {
-    backgroundColor: theme.colors.accent,
   },
   newAgentButtonHovered: {},
   newAgentButtonText: {
@@ -746,9 +603,9 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.foreground,
   },
   hostTrigger: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "flex-start",
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-start',
     gap: theme.spacing[2],
     minWidth: 0,
     paddingVertical: theme.spacing[1],
@@ -773,9 +630,9 @@ const styles = StyleSheet.create((theme) => ({
     minWidth: 0,
   },
   sidebarFooter: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: theme.spacing[4],
     paddingVertical: theme.spacing[3],
     borderTopWidth: 1,
@@ -788,37 +645,18 @@ const styles = StyleSheet.create((theme) => ({
     marginRight: theme.spacing[2],
   },
   footerIconRow: {
-    flexDirection: "row",
-    alignItems: "center",
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: theme.spacing[2],
     flexShrink: 0,
   },
   footerIconButton: {
     width: 28,
     height: 28,
-    alignItems: "center",
-    justifyContent: "center",
+    alignItems: 'center',
+    justifyContent: 'center',
     paddingVertical: theme.spacing[1],
     paddingHorizontal: theme.spacing[1],
-  },
-  listViewMoreButton: {
-    marginTop: theme.spacing[2],
-    marginHorizontal: theme.spacing[2],
-    marginBottom: theme.spacing[1],
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    borderRadius: theme.borderRadius.full,
-    backgroundColor: theme.colors.surface1,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: theme.spacing[2],
-  },
-  listViewMoreButtonText: {
-    fontSize: theme.fontSize.sm,
-    color: theme.colors.foregroundMuted,
-  },
-  listViewMoreButtonTextHovered: {
-    color: theme.colors.foreground,
   },
   hostPickerList: {
     gap: theme.spacing[2],
@@ -842,10 +680,10 @@ const styles = StyleSheet.create((theme) => ({
     backgroundColor: theme.colors.surface0,
     borderWidth: theme.borderWidth[1],
     borderColor: theme.colors.border,
-    alignItems: "center",
+    alignItems: 'center',
   },
   hostPickerCancelText: {
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.sm,
   },
-}));
+}))

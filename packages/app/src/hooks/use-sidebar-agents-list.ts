@@ -1,378 +1,642 @@
-import { useCallback, useMemo, useSyncExternalStore } from "react";
-import { useDaemonRegistry } from "@/contexts/daemon-registry-context";
-import { useSessionStore, type Agent } from "@/stores/session-store";
-import {
-  getHostRuntimeStore,
-} from "@/runtime/host-runtime";
-import type { AggregatedAgent } from "@/hooks/use-aggregated-agents";
-import {
-  isSidebarActiveAgent,
-} from "@/utils/sidebar-agent-state";
-import type { ProjectPlacementPayload } from "@server/shared/messages";
-import { resolveProjectPlacement } from "@/utils/project-placement";
-import { useSidebarOrderStore } from "@/stores/sidebar-order-store";
+import { useCallback, useMemo, useSyncExternalStore } from 'react'
+import { useQueries } from '@tanstack/react-query'
+import { useSessionStore } from '@/stores/session-store'
+import { getHostRuntimeStore } from '@/runtime/host-runtime'
+import { resolveProjectPlacement } from '@/utils/project-placement'
+import { deriveSidebarStateBucket, type SidebarStateBucket } from '@/utils/sidebar-agent-state'
+import { useSidebarOrderStore } from '@/stores/sidebar-order-store'
+import { checkoutStatusQueryKey } from '@/hooks/use-checkout-status-query'
 
-const SIDEBAR_DONE_FILL_TARGET = 50;
-const EMPTY_ORDER: string[] = [];
+const EMPTY_ORDER: string[] = []
+const EMPTY_PROJECTS: SidebarProjectEntry[] = []
 
-export interface SidebarProjectFilterOption {
-  projectKey: string;
-  projectName: string;
-  activeCount: number;
-  totalCount: number;
-  serverId: string;
-  workingDir: string;
+interface PaseoWorktreeEntry {
+  worktreePath: string
+  createdAt: string
+  branchName?: string | null
+  head?: string | null
 }
 
-export interface SidebarAgentListEntry {
-  agent: AggregatedAgent & { createdAt: Date };
-  project: ProjectPlacementPayload;
+export interface SidebarWorkspaceEntry {
+  workspaceKey: string
+  serverId: string
+  cwd: string
+  branchName: string | null
+  createdAt: Date | null
+  isMainCheckout: boolean
+  isPaseoOwnedWorktree: boolean
+}
+
+export interface SidebarProjectEntry {
+  projectKey: string
+  projectName: string
+  iconWorkingDir: string
+  statusBucket: SidebarStateBucket
+  activeCount: number
+  totalCount: number
+  latestCreatedAt: Date | null
+  workspaces: SidebarWorkspaceEntry[]
 }
 
 export interface SidebarAgentsListResult {
-  entries: SidebarAgentListEntry[];
-  projectFilterOptions: SidebarProjectFilterOption[];
-  hasMoreEntries: boolean;
-  isLoading: boolean;
-  isInitialLoad: boolean;
-  isRevalidating: boolean;
-  refreshAll: () => void;
+  projects: SidebarProjectEntry[]
+  isLoading: boolean
+  isInitialLoad: boolean
+  isRevalidating: boolean
+  refreshAll: () => void
 }
 
-function compareByCreatedAtDesc(
-  left: SidebarAgentListEntry,
-  right: SidebarAgentListEntry
+interface MutableWorkspaceEntry {
+  workspaceKey: string
+  serverId: string
+  cwd: string
+  branchName: string | null
+  createdAt: Date | null
+  isMainCheckout: boolean
+  isPaseoOwnedWorktree: boolean
+}
+
+interface MutableProjectEntry {
+  projectKey: string
+  projectName: string
+  iconWorkingDir: string
+  statusBucket: SidebarStateBucket
+  activeCount: number
+  totalCount: number
+  latestCreatedAt: Date | null
+  repoRoots: Set<string>
+  workspacesByKey: Map<string, MutableWorkspaceEntry>
+}
+
+interface WorktreeRequest {
+  requestKey: string
+  serverId: string
+  projectKey: string
+  repoRoot: string
+}
+
+const SIDEBAR_BUCKET_PRIORITY: Record<SidebarStateBucket, number> = {
+  done: 0,
+  attention: 1,
+  running: 2,
+  failed: 3,
+  needs_input: 4,
+}
+
+function normalizePath(value: string | null | undefined): string {
+  if (typeof value !== 'string') {
+    return ''
+  }
+  return value.trim()
+}
+
+function toWorkspaceKey(serverId: string, cwd: string): string {
+  return `${serverId}:${cwd}`
+}
+
+function coerceBranchName(value: string | null | undefined): string | null {
+  const trimmed = normalizePath(value)
+  return trimmed.length > 0 ? trimmed : null
+}
+
+function maxDate(left: Date | null, right: Date): Date {
+  if (!left || right.getTime() > left.getTime()) {
+    return right
+  }
+  return left
+}
+
+function minDate(left: Date | null, right: Date): Date {
+  if (!left || right.getTime() < left.getTime()) {
+    return right
+  }
+  return left
+}
+
+function aggregateBucket(
+  current: SidebarStateBucket,
+  candidate: SidebarStateBucket
+): SidebarStateBucket {
+  return SIDEBAR_BUCKET_PRIORITY[candidate] > SIDEBAR_BUCKET_PRIORITY[current] ? candidate : current
+}
+
+function compareWorkspaceBaseline(
+  left: SidebarWorkspaceEntry,
+  right: SidebarWorkspaceEntry
 ): number {
-  const createdDelta = right.agent.createdAt.getTime() - left.agent.createdAt.getTime();
-  if (createdDelta !== 0) {
-    return createdDelta;
+  if (left.isMainCheckout !== right.isMainCheckout) {
+    return left.isMainCheckout ? -1 : 1
   }
 
-  const leftTitle = (left.agent.title?.trim() || "New agent").toLocaleLowerCase();
-  const rightTitle = (right.agent.title?.trim() || "New agent").toLocaleLowerCase();
-  const titleDelta = leftTitle.localeCompare(rightTitle, undefined, {
-    numeric: true,
-    sensitivity: "base",
-  });
-  if (titleDelta !== 0) {
-    return titleDelta;
-  }
-
-  return left.agent.id.localeCompare(right.agent.id, undefined, {
-    numeric: true,
-    sensitivity: "base",
-  });
-}
-
-function toSidebarAgentKey(entry: SidebarAgentListEntry): string {
-  return `${entry.agent.serverId}:${entry.agent.id}`;
-}
-
-export function applySidebarUserOrdering(input: {
-  entries: SidebarAgentListEntry[];
-  order: string[];
-}): { entries: SidebarAgentListEntry[]; hasMore: boolean } {
-  const sortedByCreatedAt = [...input.entries].sort(compareByCreatedAtDesc);
-  const entryByKey = new Map<string, SidebarAgentListEntry>();
-  for (const entry of sortedByCreatedAt) {
-    entryByKey.set(toSidebarAgentKey(entry), entry);
-  }
-
-  const prunedOrder: string[] = [];
-  const seenOrderKeys = new Set<string>();
-  for (const key of input.order) {
-    if (!entryByKey.has(key) || seenOrderKeys.has(key)) {
-      continue;
+  if (left.createdAt && right.createdAt) {
+    const dateDelta = right.createdAt.getTime() - left.createdAt.getTime()
+    if (dateDelta !== 0) {
+      return dateDelta
     }
-    seenOrderKeys.add(key);
-    prunedOrder.push(key);
+  } else if (left.createdAt || right.createdAt) {
+    return left.createdAt ? -1 : 1
   }
 
-  const sorted: SidebarAgentListEntry[] = [];
+  const leftBranch = left.branchName ?? ''
+  const rightBranch = right.branchName ?? ''
+  const branchDelta = leftBranch.localeCompare(rightBranch, undefined, {
+    numeric: true,
+    sensitivity: 'base',
+  })
+  if (branchDelta !== 0) {
+    return branchDelta
+  }
+
+  return left.cwd.localeCompare(right.cwd, undefined, {
+    numeric: true,
+    sensitivity: 'base',
+  })
+}
+
+function compareProjectBaseline(left: SidebarProjectEntry, right: SidebarProjectEntry): number {
+  if (left.latestCreatedAt && right.latestCreatedAt) {
+    const dateDelta = right.latestCreatedAt.getTime() - left.latestCreatedAt.getTime()
+    if (dateDelta !== 0) {
+      return dateDelta
+    }
+  } else if (left.latestCreatedAt || right.latestCreatedAt) {
+    return left.latestCreatedAt ? -1 : 1
+  }
+
+  return left.projectName.localeCompare(right.projectName, undefined, {
+    numeric: true,
+    sensitivity: 'base',
+  })
+}
+
+export function applyStoredOrdering<T>(input: {
+  items: T[]
+  storedOrder: string[]
+  getKey: (item: T) => string
+}): T[] {
+  if (input.items.length <= 1 || input.storedOrder.length === 0) {
+    return input.items
+  }
+
+  const itemByKey = new Map<string, T>()
+  for (const item of input.items) {
+    itemByKey.set(input.getKey(item), item)
+  }
+
+  const prunedOrder: string[] = []
+  const seen = new Set<string>()
+  for (const key of input.storedOrder) {
+    if (!itemByKey.has(key) || seen.has(key)) {
+      continue
+    }
+    seen.add(key)
+    prunedOrder.push(key)
+  }
+
   if (prunedOrder.length === 0) {
-    sorted.push(...sortedByCreatedAt);
-  } else {
-    const knownOrderSet = new Set(prunedOrder);
-    let knownOrderIndex = 0;
-    for (const entry of sortedByCreatedAt) {
-      const key = toSidebarAgentKey(entry);
-      if (!knownOrderSet.has(key)) {
-        sorted.push(entry);
-        continue;
-      }
-      const orderedKey = prunedOrder[knownOrderIndex] ?? key;
-      knownOrderIndex += 1;
-      sorted.push(entryByKey.get(orderedKey) ?? entry);
-    }
+    return input.items
   }
 
-  const doneEntries = sorted.filter(
-    (entry) =>
-      !isSidebarActiveAgent({
-        status: entry.agent.status,
-        pendingPermissionCount: entry.agent.pendingPermissionCount,
-        requiresAttention: entry.agent.requiresAttention,
-        attentionReason: entry.agent.attentionReason,
-      })
-  );
-  const visibleDoneKeys = new Set(
-    [...doneEntries]
-      .sort(compareByCreatedAtDesc)
-      .slice(0, SIDEBAR_DONE_FILL_TARGET)
-      .map((entry) => toSidebarAgentKey(entry))
-  );
+  const orderedSet = new Set(prunedOrder)
+  const ordered: T[] = []
+  let orderedIndex = 0
 
-  const visible: SidebarAgentListEntry[] = [];
-  let hiddenDoneCount = 0;
-  for (const entry of sorted) {
-    const key = toSidebarAgentKey(entry);
-    if (
-      isSidebarActiveAgent({
-        status: entry.agent.status,
-        pendingPermissionCount: entry.agent.pendingPermissionCount,
-        requiresAttention: entry.agent.requiresAttention,
-        attentionReason: entry.agent.attentionReason,
-      })
-    ) {
-      visible.push(entry);
-      continue;
+  for (const item of input.items) {
+    const key = input.getKey(item)
+    if (!orderedSet.has(key)) {
+      ordered.push(item)
+      continue
     }
-    if (visibleDoneKeys.has(key)) {
-      visible.push(entry);
-      continue;
-    }
-    hiddenDoneCount += 1;
+
+    const targetKey = prunedOrder[orderedIndex] ?? key
+    orderedIndex += 1
+    ordered.push(itemByKey.get(targetKey) ?? item)
   }
 
-  return {
-    entries: visible,
-    hasMore: hiddenDoneCount > 0,
-  };
+  return ordered
 }
 
-function toAggregatedAgent(params: {
-  source: Agent;
-  serverId: string;
-  serverLabel: string;
-  lastActivityAt: Date;
-}): AggregatedAgent & { createdAt: Date } {
-  const source = params.source;
+function ensureWorkspace(
+  project: MutableProjectEntry,
+  input: {
+    serverId: string
+    cwd: string
+    branchName: string | null
+    createdAt: Date | null
+    isMainCheckout: boolean
+    isPaseoOwnedWorktree: boolean
+  }
+): MutableWorkspaceEntry {
+  const workspaceKey = toWorkspaceKey(input.serverId, input.cwd)
+  const existing = project.workspacesByKey.get(workspaceKey)
+
+  if (existing) {
+    if (!existing.branchName && input.branchName) {
+      existing.branchName = input.branchName
+    }
+    if (input.createdAt) {
+      existing.createdAt = existing.createdAt
+        ? minDate(existing.createdAt, input.createdAt)
+        : input.createdAt
+    }
+    if (input.isMainCheckout) {
+      existing.isMainCheckout = true
+    }
+    if (input.isPaseoOwnedWorktree) {
+      existing.isPaseoOwnedWorktree = true
+    }
+    return existing
+  }
+
+  const workspace: MutableWorkspaceEntry = {
+    workspaceKey,
+    serverId: input.serverId,
+    cwd: input.cwd,
+    branchName: input.branchName,
+    createdAt: input.createdAt,
+    isMainCheckout: input.isMainCheckout,
+    isPaseoOwnedWorktree: input.isPaseoOwnedWorktree,
+  }
+  project.workspacesByKey.set(workspaceKey, workspace)
+  return workspace
+}
+
+function cloneProject(project: MutableProjectEntry): MutableProjectEntry {
   return {
-    id: source.id,
-    serverId: params.serverId,
-    serverLabel: params.serverLabel,
-    title: source.title ?? null,
-    status: source.status,
-    createdAt: source.createdAt,
-    lastActivityAt: params.lastActivityAt,
-    cwd: source.cwd,
-    provider: source.provider,
-    pendingPermissionCount: source.pendingPermissions.length,
-    requiresAttention: source.requiresAttention,
-    attentionReason: source.attentionReason,
-    attentionTimestamp: source.attentionTimestamp ?? null,
-    archivedAt: source.archivedAt ?? null,
-    labels: source.labels,
-  };
+    ...project,
+    repoRoots: new Set(project.repoRoots),
+    workspacesByKey: new Map(
+      Array.from(project.workspacesByKey.entries()).map(([key, workspace]) => [
+        key,
+        { ...workspace },
+      ])
+    ),
+  }
+}
+
+function getWorkspaceOrderScopeKey(serverId: string, projectKey: string): string {
+  return `${serverId.trim()}::${projectKey.trim()}`
 }
 
 export function useSidebarAgentsList(options?: {
-  serverId?: string | null;
-  selectedProjectFilterKey?: string | null;
+  serverId?: string | null
+  enabled?: boolean
 }): SidebarAgentsListResult {
-  const { daemons } = useDaemonRegistry();
-  const runtime = getHostRuntimeStore();
-  const daemonLabelSignature = useMemo(
-    () =>
-      daemons
-        .map((daemon) => `${daemon.serverId}:${daemon.label ?? ""}`)
-        .join("|"),
-    [daemons]
-  );
+  const runtime = getHostRuntimeStore()
+
   const serverId = useMemo(() => {
-    const value = options?.serverId;
-    return typeof value === "string" && value.trim().length > 0
-      ? value.trim()
-      : null;
-  }, [options?.serverId]);
-  const serverLabel = useMemo(() => {
-    if (!serverId) {
-      return "";
-    }
-    return daemons.find((daemon) => daemon.serverId === serverId)?.label ?? serverId;
-  }, [daemonLabelSignature, serverId]);
+    const value = options?.serverId
+    return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null
+  }, [options?.serverId])
+  const enabled = options?.enabled ?? true
 
-  const selectedProjectFilterKey = useMemo(() => {
-    const value = options?.selectedProjectFilterKey;
-    if (typeof value !== "string") {
-      return null;
-    }
-    const trimmed = value.trim();
-    return trimmed.length > 0 ? trimmed : null;
-  }, [options?.selectedProjectFilterKey]);
-  const persistedOrder = useSidebarOrderStore((state) =>
-    serverId ? state.orderByServerId[serverId] ?? EMPTY_ORDER : EMPTY_ORDER
-  );
+  const persistedProjectOrder = useSidebarOrderStore((state) =>
+    serverId ? (state.projectOrderByServerId[serverId] ?? EMPTY_ORDER) : EMPTY_ORDER
+  )
+  const persistedWorkspaceOrderByScope = useSidebarOrderStore((state) =>
+    serverId ? state.workspaceOrderByServerAndProject : {}
+  )
 
-  const isActive = Boolean(serverId);
+  const isActive = Boolean(serverId)
   const liveAgents = useSessionStore((state) =>
-    isActive && serverId ? state.sessions[serverId]?.agents ?? null : null
-  );
-  const agentLastActivity = useSessionStore((state) =>
-    isActive ? state.agentLastActivity : null
-  );
+    isActive && serverId ? (state.sessions[serverId]?.agents ?? null) : null
+  )
+
   const runtimeStatusSignature = useSyncExternalStore(
     (onStoreChange) =>
       isActive && serverId ? runtime.subscribe(serverId, onStoreChange) : () => {},
     () => {
       if (!isActive || !serverId) {
-        return "idle:idle";
+        return 'idle:idle'
       }
-      const snapshot = runtime.getSnapshot(serverId);
-      const connectionStatus = snapshot?.connectionStatus ?? "idle";
-      const directoryStatus = snapshot?.agentDirectoryStatus ?? "idle";
-      return `${connectionStatus}:${directoryStatus}`;
+      const snapshot = runtime.getSnapshot(serverId)
+      const connectionStatus = snapshot?.connectionStatus ?? 'idle'
+      const directoryStatus = snapshot?.agentDirectoryStatus ?? 'idle'
+      return `${connectionStatus}:${directoryStatus}`
     },
     () => {
       if (!isActive || !serverId) {
-        return "idle:idle";
+        return 'idle:idle'
       }
-      const snapshot = runtime.getSnapshot(serverId);
-      const connectionStatus = snapshot?.connectionStatus ?? "idle";
-      const directoryStatus = snapshot?.agentDirectoryStatus ?? "idle";
-      return `${connectionStatus}:${directoryStatus}`;
+      const snapshot = runtime.getSnapshot(serverId)
+      const connectionStatus = snapshot?.connectionStatus ?? 'idle'
+      const directoryStatus = snapshot?.agentDirectoryStatus ?? 'idle'
+      return `${connectionStatus}:${directoryStatus}`
     }
-  );
-  const [connectionStatus = "idle", directoryStatus = "idle"] =
-    runtimeStatusSignature.split(":", 2);
+  )
+  const [connectionStatus = 'idle', directoryStatus = 'idle'] = runtimeStatusSignature.split(':', 2)
 
-  const {
-    entries,
-    projectFilterOptions,
-    hasAnyData,
-    hasMoreEntries,
-  } = useMemo(() => {
+  const base = useMemo(() => {
     if (!isActive || !serverId || !liveAgents) {
       return {
-        entries: [] as SidebarAgentListEntry[],
-        projectFilterOptions: [] as SidebarProjectFilterOption[],
+        projectsByKey: new Map<string, MutableProjectEntry>(),
+        worktreeRequests: [] as WorktreeRequest[],
         hasAnyData: false,
-        hasMoreEntries: false,
-      };
+      }
     }
 
-    const seenAgentIds = new Set<string>();
-    const byProject = new Map<string, SidebarProjectFilterOption>();
-    const mergedEntries: SidebarAgentListEntry[] = [];
+    const projectsByKey = new Map<string, MutableProjectEntry>()
 
-    const pushEntry = (entry: SidebarAgentListEntry): void => {
-      if (entry.agent.archivedAt) {
-        return;
+    for (const sourceAgent of liveAgents.values()) {
+      if (sourceAgent.archivedAt || sourceAgent.labels.ui !== 'true') {
+        continue
       }
-      const dedupeKey = `${entry.agent.serverId}:${entry.agent.id}`;
-      if (seenAgentIds.has(dedupeKey)) {
-        return;
-      }
-      seenAgentIds.add(dedupeKey);
-      mergedEntries.push(entry);
 
-      const existing = byProject.get(entry.project.projectKey);
-      const isActive = isSidebarActiveAgent({
-        status: entry.agent.status,
-        pendingPermissionCount: entry.agent.pendingPermissionCount,
-        requiresAttention: entry.agent.requiresAttention,
-        attentionReason: entry.agent.attentionReason,
-      });
-      if (existing) {
-        existing.totalCount += 1;
-        if (isActive) {
-          existing.activeCount += 1;
+      const placement = resolveProjectPlacement({
+        projectPlacement: sourceAgent.projectPlacement ?? null,
+        cwd: sourceAgent.cwd,
+      })
+      const projectKey = normalizePath(placement.projectKey)
+      if (!projectKey) {
+        continue
+      }
+
+      const checkoutCwd = normalizePath(placement.checkout.cwd || sourceAgent.cwd)
+      if (!checkoutCwd) {
+        continue
+      }
+
+      const projectName = normalizePath(placement.projectName) || projectKey
+      const project =
+        projectsByKey.get(projectKey) ??
+        ({
+          projectKey,
+          projectName,
+          iconWorkingDir: checkoutCwd,
+          statusBucket: 'done',
+          activeCount: 0,
+          totalCount: 0,
+          latestCreatedAt: null,
+          repoRoots: new Set<string>(),
+          workspacesByKey: new Map<string, MutableWorkspaceEntry>(),
+        } satisfies MutableProjectEntry)
+
+      project.totalCount += 1
+      project.latestCreatedAt = maxDate(project.latestCreatedAt, sourceAgent.createdAt)
+      const bucket = deriveSidebarStateBucket({
+        status: sourceAgent.status,
+        pendingPermissionCount: sourceAgent.pendingPermissions.length,
+        requiresAttention: sourceAgent.requiresAttention,
+        attentionReason: sourceAgent.attentionReason,
+      })
+      project.statusBucket = aggregateBucket(project.statusBucket, bucket)
+      if (bucket !== 'done') {
+        project.activeCount += 1
+      }
+
+      const normalizedBranch = coerceBranchName(placement.checkout.currentBranch)
+      const isMainCheckout = placement.checkout.isGit && !placement.checkout.isPaseoOwnedWorktree
+      const workspace = ensureWorkspace(project, {
+        serverId,
+        cwd: checkoutCwd,
+        branchName: normalizedBranch,
+        createdAt: isMainCheckout ? sourceAgent.createdAt : null,
+        isMainCheckout,
+        isPaseoOwnedWorktree: placement.checkout.isPaseoOwnedWorktree,
+      })
+
+      const explicitMainRepoRoot = normalizePath(placement.checkout.mainRepoRoot)
+      if (placement.checkout.isPaseoOwnedWorktree && explicitMainRepoRoot) {
+        project.repoRoots.add(explicitMainRepoRoot)
+        if (!project.iconWorkingDir) {
+          project.iconWorkingDir = explicitMainRepoRoot
         }
-        return;
+      }
+      if (isMainCheckout) {
+        project.repoRoots.add(workspace.cwd)
+        project.iconWorkingDir = workspace.cwd
       }
 
-      byProject.set(entry.project.projectKey, {
-        projectKey: entry.project.projectKey,
-        projectName: entry.project.projectName,
-        activeCount: isActive ? 1 : 0,
-        totalCount: 1,
-        serverId,
-        workingDir: entry.project.checkout.cwd,
-      });
-    };
-
-    for (const live of liveAgents.values()) {
-      if (live.archivedAt || live.labels.ui !== "true") {
-        continue;
+      if (!project.iconWorkingDir) {
+        project.iconWorkingDir = workspace.cwd
       }
-      const project = resolveProjectPlacement({
-        projectPlacement: live.projectPlacement ?? null,
-        cwd: live.cwd,
-      });
-      const effectiveLastActivity =
-        agentLastActivity?.get(live.id) ?? live.lastActivityAt;
-      const agent = toAggregatedAgent({
-        source: live,
-        serverId,
-        serverLabel,
-        lastActivityAt: effectiveLastActivity,
-      });
-      pushEntry({ agent, project });
+
+      projectsByKey.set(projectKey, project)
     }
 
-    const filteredEntries = selectedProjectFilterKey
-      ? mergedEntries.filter(
-          (entry) => entry.project.projectKey === selectedProjectFilterKey
-        )
-      : mergedEntries;
-    const ordered = applySidebarUserOrdering({
-      entries: filteredEntries,
-      order: persistedOrder,
-    });
-    const options = Array.from(byProject.values()).sort((left, right) => {
-      if (left.activeCount !== right.activeCount) {
-        return right.activeCount - left.activeCount;
+    const worktreeRequests: WorktreeRequest[] = []
+    for (const project of projectsByKey.values()) {
+      for (const repoRoot of project.repoRoots) {
+        if (!repoRoot) {
+          continue
+        }
+        const requestKey = `${serverId}:${project.projectKey}:${repoRoot}`
+        worktreeRequests.push({
+          requestKey,
+          serverId,
+          projectKey: project.projectKey,
+          repoRoot,
+        })
       }
-      return left.projectName.localeCompare(right.projectName);
-    });
+    }
+
+    worktreeRequests.sort((left, right) =>
+      left.requestKey.localeCompare(right.requestKey, undefined, {
+        numeric: true,
+        sensitivity: 'base',
+      })
+    )
 
     return {
-      entries: ordered.entries,
-      projectFilterOptions: options,
-      hasAnyData: mergedEntries.length > 0,
-      hasMoreEntries: ordered.hasMore,
-    };
+      projectsByKey,
+      worktreeRequests,
+      hasAnyData: projectsByKey.size > 0,
+    }
+  }, [isActive, liveAgents, serverId])
+
+  const worktreeQueries = useQueries({
+    queries: base.worktreeRequests.map((request) => ({
+      queryKey: ['sidebarPaseoWorktreeList', request.serverId, request.repoRoot],
+      queryFn: async (): Promise<PaseoWorktreeEntry[]> => {
+        const client = runtime.getClient(request.serverId)
+        if (!client) {
+          return []
+        }
+        const payload = await client.getPaseoWorktreeList({
+          repoRoot: request.repoRoot,
+        })
+        if (payload.error) {
+          return []
+        }
+        return payload.worktrees ?? []
+      },
+      enabled:
+        enabled &&
+        isActive &&
+        Boolean(serverId) &&
+        connectionStatus === 'online' &&
+        Boolean(runtime.getClient(request.serverId)) &&
+        request.repoRoot.length > 0,
+      staleTime: 15_000,
+      gcTime: 1000 * 60 * 10,
+      retry: false,
+      refetchOnMount: 'always' as const,
+    })),
+  })
+
+  const repoRootStatusQueries = useQueries({
+    queries: base.worktreeRequests.map((request) => ({
+      queryKey: checkoutStatusQueryKey(request.serverId, request.repoRoot),
+      queryFn: async () => {
+        const client = runtime.getClient(request.serverId)
+        if (!client) {
+          return null
+        }
+        try {
+          return await client.getCheckoutStatus(request.repoRoot)
+        } catch {
+          return null
+        }
+      },
+      enabled:
+        enabled &&
+        isActive &&
+        Boolean(serverId) &&
+        connectionStatus === 'online' &&
+        Boolean(runtime.getClient(request.serverId)) &&
+        request.repoRoot.length > 0,
+      staleTime: 15_000,
+      gcTime: 1000 * 60 * 10,
+      retry: false,
+      refetchOnMount: 'always' as const,
+    })),
+  })
+
+  const projects = useMemo(() => {
+    if (base.projectsByKey.size === 0) {
+      return EMPTY_PROJECTS
+    }
+
+    const projectsByKey = new Map<string, MutableProjectEntry>()
+    for (const [key, project] of base.projectsByKey.entries()) {
+      projectsByKey.set(key, cloneProject(project))
+    }
+
+    for (let i = 0; i < base.worktreeRequests.length; i += 1) {
+      const request = base.worktreeRequests[i]
+      if (!request) {
+        continue
+      }
+
+      const project = projectsByKey.get(request.projectKey)
+      if (!project) {
+        continue
+      }
+
+      const checkout = repoRootStatusQueries[i]?.data ?? null
+      const mainBranchName = coerceBranchName(checkout?.currentBranch)
+
+      ensureWorkspace(project, {
+        serverId: request.serverId,
+        cwd: request.repoRoot,
+        branchName: mainBranchName,
+        createdAt: null,
+        isMainCheckout: true,
+        isPaseoOwnedWorktree: false,
+      })
+
+      const worktrees = worktreeQueries[i]?.data ?? []
+      for (const worktree of worktrees) {
+        const worktreePath = normalizePath(worktree.worktreePath)
+        if (!worktreePath) {
+          continue
+        }
+
+        const createdAt = (() => {
+          const createdAtRaw = worktree.createdAt
+          if (typeof createdAtRaw !== 'string' || createdAtRaw.trim().length === 0) {
+            return null
+          }
+          const parsed = new Date(createdAtRaw)
+          return Number.isNaN(parsed.getTime()) ? null : parsed
+        })()
+
+        ensureWorkspace(project, {
+          serverId: request.serverId,
+          cwd: worktreePath,
+          branchName: coerceBranchName(worktree.branchName) ?? coerceBranchName(worktree.head),
+          createdAt,
+          isMainCheckout: false,
+          isPaseoOwnedWorktree: true,
+        })
+      }
+    }
+
+    const baselineProjects: SidebarProjectEntry[] = Array.from(projectsByKey.values()).map(
+      (project) => {
+        const baselineWorkspaces = Array.from(project.workspacesByKey.values()).map(
+          (workspace) => ({
+            workspaceKey: workspace.workspaceKey,
+            serverId: workspace.serverId,
+            cwd: workspace.cwd,
+            branchName: workspace.branchName,
+            createdAt: workspace.createdAt,
+            isMainCheckout: workspace.isMainCheckout,
+            isPaseoOwnedWorktree: workspace.isPaseoOwnedWorktree,
+          })
+        )
+
+        baselineWorkspaces.sort(compareWorkspaceBaseline)
+
+        const workspaceOrderScopeKey = getWorkspaceOrderScopeKey(serverId ?? '', project.projectKey)
+
+        const orderedWorkspaces = applyStoredOrdering({
+          items: baselineWorkspaces,
+          storedOrder: persistedWorkspaceOrderByScope[workspaceOrderScopeKey] ?? EMPTY_ORDER,
+          getKey: (workspace) => workspace.workspaceKey,
+        })
+
+        return {
+          projectKey: project.projectKey,
+          projectName: project.projectName,
+          iconWorkingDir: project.iconWorkingDir,
+          statusBucket: project.statusBucket,
+          activeCount: project.activeCount,
+          totalCount: project.totalCount,
+          latestCreatedAt: project.latestCreatedAt,
+          workspaces: orderedWorkspaces,
+        }
+      }
+    )
+
+    baselineProjects.sort(compareProjectBaseline)
+
+    return applyStoredOrdering({
+      items: baselineProjects,
+      storedOrder: persistedProjectOrder,
+      getKey: (project) => project.projectKey,
+    })
   }, [
-    agentLastActivity,
+    base.projectsByKey,
+    base.worktreeRequests,
+    connectionStatus,
     isActive,
-    liveAgents,
-    persistedOrder,
-    selectedProjectFilterKey,
+    persistedProjectOrder,
+    persistedWorkspaceOrderByScope,
+    repoRootStatusQueries,
     serverId,
-    serverLabel,
-  ]);
+    worktreeQueries,
+  ])
 
   const refreshAll = useCallback(() => {
-    if (!isActive || !serverId || connectionStatus !== "online") {
-      return;
+    if (!isActive || !serverId || connectionStatus !== 'online') {
+      return
     }
-    void runtime.refreshAgentDirectory({ serverId, page: { limit: 50 } }).catch(() => undefined);
-  }, [connectionStatus, isActive, runtime, serverId]);
+    void runtime.refreshAgentDirectory({ serverId, page: { limit: 50 } }).catch(() => undefined)
+  }, [connectionStatus, isActive, runtime, serverId])
 
   const isDirectoryLoading =
     isActive &&
     Boolean(serverId) &&
-    (directoryStatus === "initial_loading" || directoryStatus === "revalidating");
-  const isInitialLoad = isDirectoryLoading && !hasAnyData;
-  const isRevalidating = isDirectoryLoading && hasAnyData;
+    (directoryStatus === 'initial_loading' || directoryStatus === 'revalidating')
+  const isInitialLoad = isDirectoryLoading && !base.hasAnyData
+  const isRevalidating = isDirectoryLoading && base.hasAnyData
 
   return {
-    entries,
-    projectFilterOptions,
-    hasMoreEntries,
+    projects,
     isLoading: isDirectoryLoading,
     isInitialLoad,
     isRevalidating,
     refreshAll,
-  };
+  }
 }

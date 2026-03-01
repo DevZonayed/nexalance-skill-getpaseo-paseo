@@ -1342,8 +1342,8 @@ function DraftAgentScreenContent({
         {!isMobile && isExplorerOpen && explorerServerId && draftExplorerCheckout ? (
           <ExplorerSidebar
             serverId={explorerServerId}
-            agentId={DRAFT_AGENT_ID}
-            cwd={draftExplorerCheckout.cwd}
+            workspaceId={draftExplorerCheckout.cwd}
+            workspaceRoot={draftExplorerCheckout.cwd}
             isGit={explorerIsGit}
           />
         ) : null}
@@ -1365,8 +1365,8 @@ function DraftAgentScreenContent({
         {isMobile && explorerServerId && draftExplorerCheckout ? (
           <ExplorerSidebar
             serverId={explorerServerId}
-            agentId={DRAFT_AGENT_ID}
-            cwd={draftExplorerCheckout.cwd}
+            workspaceId={draftExplorerCheckout.cwd}
+            workspaceRoot={draftExplorerCheckout.cwd}
             isGit={explorerIsGit}
           />
         ) : null}
