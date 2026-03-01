@@ -23,7 +23,7 @@ import {
   useUnistyles,
 } from "react-native-unistyles";
 import { type GestureType } from "react-native-gesture-handler";
-import { Archive, Check, ChevronDown } from "lucide-react-native";
+import { Archive, Check } from "lucide-react-native";
 import {
   DraggableList,
   type DraggableRenderItemInfo,
@@ -55,6 +55,7 @@ import { parseRepoNameFromRemoteUrl } from "@/utils/agent-grouping";
 import { formatTimeAgo } from "@/utils/time";
 import { isSidebarActiveAgent } from "@/utils/sidebar-agent-state";
 import { useArchiveAgent } from "@/hooks/use-archive-agent";
+import { useSidebarOrderStore } from "@/stores/sidebar-order-store";
 
 type EntryData = SidebarAgentListEntry;
 
@@ -69,8 +70,12 @@ interface SidebarAgentListProps {
   isOpen?: boolean;
   entries: SidebarAgentListEntry[];
   projectFilterOptions: SidebarProjectFilterOption[];
-  selectedProjectFilterKeys: string[];
-  onSelectedProjectFilterKeysChange: (keys: string[]) => void;
+  selectedProjectFilterKey: string | null;
+  onSelectedProjectFilterKeyChange: (key: string | null) => void;
+  isProjectFilterOpen: boolean;
+  onProjectFilterOpenChange: (open: boolean) => void;
+  projectFilterAnchorRef: MutableRefObject<View | null>;
+  serverId: string | null;
   isRefreshing?: boolean;
   onRefresh?: () => void;
   selectedAgentId?: string;
@@ -85,7 +90,7 @@ interface ProjectFilterOptionRowProps {
   selected: boolean;
   iconDataUri: string | null;
   displayName: string;
-  onToggle: (projectKey: string) => void;
+  onSelect: (projectKey: string) => void;
 }
 
 function ProjectFilterOptionRow({
@@ -93,18 +98,17 @@ function ProjectFilterOptionRow({
   selected,
   iconDataUri,
   displayName,
-  onToggle,
+  onSelect,
 }: ProjectFilterOptionRowProps) {
-  const { theme } = useUnistyles();
-
   return (
     <Pressable
       style={({ pressed, hovered = false }) => [
         styles.filterOption,
+        selected && styles.filterOptionSelected,
         hovered && styles.filterOptionHovered,
         pressed && styles.filterOptionPressed,
       ]}
-      onPress={() => onToggle(option.projectKey)}
+      onPress={() => onSelect(option.projectKey)}
     >
       <View style={styles.filterOptionLeft}>
         {iconDataUri ? (
@@ -128,7 +132,6 @@ function ProjectFilterOptionRow({
         {option.activeCount > 0 ? (
           <Text style={styles.filterOptionCount}>{option.activeCount}</Text>
         ) : null}
-        {selected ? <Check size={theme.iconSize.sm} color={theme.colors.foregroundMuted} /> : null}
       </View>
     </Pressable>
   );
@@ -390,33 +393,6 @@ function deriveShortcutIndexByAgentKey(sidebarShortcutAgentKeys: string[]) {
   return map;
 }
 
-function resolveSelectedProjectLabel(input: {
-  selectedProjectFilterKeys: string[];
-  projectFilterOptions: SidebarProjectFilterOption[];
-}): string {
-  if (input.selectedProjectFilterKeys.length === 0) {
-    return "Project";
-  }
-  if (input.selectedProjectFilterKeys.length === 1) {
-    const selected = input.projectFilterOptions.find(
-      (option) => option.projectKey === input.selectedProjectFilterKeys[0]
-    );
-    if (selected) {
-      return deriveProjectDisplayName({
-        projectKey: selected.projectKey,
-        projectName: selected.projectName,
-        remoteUrl: null,
-      });
-    }
-    return deriveProjectDisplayName({
-      projectKey: input.selectedProjectFilterKeys[0] ?? "",
-      projectName: "",
-      remoteUrl: null,
-    });
-  }
-  return "Projects";
-}
-
 function deriveProjectDisplayName(input: {
   projectKey: string;
   projectName: string;
@@ -456,8 +432,12 @@ export function SidebarAgentList({
   isOpen = true,
   entries,
   projectFilterOptions,
-  selectedProjectFilterKeys,
-  onSelectedProjectFilterKeysChange,
+  selectedProjectFilterKey,
+  onSelectedProjectFilterKeyChange,
+  isProjectFilterOpen,
+  onProjectFilterOpenChange,
+  projectFilterAnchorRef,
+  serverId,
   isRefreshing = false,
   onRefresh,
   selectedAgentId,
@@ -470,12 +450,13 @@ export function SidebarAgentList({
   const isMobile =
     UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
   const showDesktopWebScrollbar = Platform.OS === "web" && !isMobile;
-  const [isProjectFilterOpen, setIsProjectFilterOpen] = useState(false);
-  const projectFilterAnchorRef = useRef<View>(null);
 
   const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [selectedBatchKeys, setSelectedBatchKeys] = useState<Set<string>>(new Set());
   const { archiveAgent, isArchivingAgent } = useArchiveAgent();
+  const getSidebarOrder = useSidebarOrderStore((state) => state.getOrder);
+  const setSidebarOrder = useSidebarOrderStore((state) => state.setOrder);
+  const removeSidebarOrderEntry = useSidebarOrderStore((state) => state.remove);
 
   const altDown = useKeyboardShortcutsStore((s) => s.altDown);
   const cmdOrCtrlDown = useKeyboardShortcutsStore((s) => s.cmdOrCtrlDown);
@@ -489,19 +470,6 @@ export function SidebarAgentList({
     [sidebarShortcutAgentKeys]
   );
 
-  const selectedProjectLabel = useMemo(
-    () => resolveSelectedProjectLabel({ selectedProjectFilterKeys, projectFilterOptions }),
-    [projectFilterOptions, selectedProjectFilterKeys]
-  );
-
-  const selectedProjectOption = useMemo(() => {
-    if (selectedProjectFilterKeys.length !== 1) {
-      return null;
-    }
-    return (
-      projectFilterOptions.find((option) => option.projectKey === selectedProjectFilterKeys[0]) ?? null
-    );
-  }, [projectFilterOptions, selectedProjectFilterKeys]);
   const showProjectFilters = projectFilterOptions.length > 0;
 
   const projectIconRequests = useMemo(() => {
@@ -592,29 +560,18 @@ export function SidebarAgentList({
     return map;
   }, [entries, projectIconByQueryKey, projectFilterOptions]);
 
-  const selectedProjectIconUri = useMemo(() => {
-    if (!selectedProjectOption) {
-      return null;
-    }
-    return projectIconByProjectKey.get(selectedProjectOption.projectKey) ?? null;
-  }, [projectIconByProjectKey, selectedProjectOption]);
-
-  const handleToggleProject = useCallback(
+  const handleSelectProject = useCallback(
     (projectKey: string) => {
-      const next = new Set(selectedProjectFilterKeys);
-      if (next.has(projectKey)) {
-        next.delete(projectKey);
-      } else {
-        next.add(projectKey);
-      }
-      onSelectedProjectFilterKeysChange(Array.from(next));
+      onSelectedProjectFilterKeyChange(
+        selectedProjectFilterKey === projectKey ? null : projectKey
+      );
     },
-    [onSelectedProjectFilterKeysChange, selectedProjectFilterKeys]
+    [onSelectedProjectFilterKeyChange, selectedProjectFilterKey]
   );
 
   const handleClearProjectFilter = useCallback(() => {
-    onSelectedProjectFilterKeysChange([]);
-  }, [onSelectedProjectFilterKeysChange]);
+    onSelectedProjectFilterKeyChange(null);
+  }, [onSelectedProjectFilterKeyChange]);
 
   const handleAgentPress = useCallback(
     (entry: SidebarAgentListEntry) => {
@@ -659,11 +616,18 @@ export function SidebarAgentList({
       await archiveAgent({
         serverId: entry.agent.serverId,
         agentId: entry.agent.id,
-      }).catch((error) => {
-        console.warn("[archive_agent] failed", error);
-      });
+      })
+        .then(() => {
+          removeSidebarOrderEntry(
+            entry.agent.serverId,
+            `${entry.agent.serverId}:${entry.agent.id}`
+          );
+        })
+        .catch((error) => {
+          console.warn("[archive_agent] failed", error);
+        });
     },
-    [archiveAgent]
+    [archiveAgent, removeSidebarOrderEntry]
   );
 
   const handleArchiveBatch = useCallback(() => {
@@ -682,9 +646,13 @@ export function SidebarAgentList({
         archiveAgent({
           serverId: parsed.serverId,
           agentId: parsed.agentId,
-        }).catch((error) => {
-          console.warn("[archive_agent_batch] failed", { key, error });
         })
+          .then(() => {
+            removeSidebarOrderEntry(parsed.serverId, key);
+          })
+          .catch((error) => {
+            console.warn("[archive_agent_batch] failed", { key, error });
+          })
       );
     }
 
@@ -692,7 +660,7 @@ export function SidebarAgentList({
       setSelectedBatchKeys(new Set());
       setIsSelectionMode(false);
     });
-  }, [archiveAgent, selectedBatchKeys]);
+  }, [archiveAgent, removeSidebarOrderEntry, selectedBatchKeys]);
 
   const handleSelectionBack = useCallback(() => {
     setSelectedBatchKeys(new Set());
@@ -759,102 +727,68 @@ export function SidebarAgentList({
     (entry: EntryData) => `${entry.agent.serverId}:${entry.agent.id}`,
     []
   );
+  const handleDragEnd = useCallback(
+    (reorderedEntries: SidebarAgentListEntry[]) => {
+      if (!serverId) {
+        return;
+      }
+      const reorderedKeys = reorderedEntries.map(
+        (entry) => `${entry.agent.serverId}:${entry.agent.id}`
+      );
+      const reorderedSet = new Set(reorderedKeys);
+      const remainder = getSidebarOrder(serverId).filter((key) => !reorderedSet.has(key));
+      setSidebarOrder(serverId, [...reorderedKeys, ...remainder]);
+    },
+    [getSidebarOrder, serverId, setSidebarOrder]
+  );
 
   return (
     <View style={styles.container}>
       {showProjectFilters ? (
-        <View style={styles.filtersRow}>
-          <Pressable
-            ref={projectFilterAnchorRef}
-            style={({ hovered = false, pressed }) => [
-              styles.filterTrigger,
-              (selectedProjectFilterKeys.length > 0 || hovered || pressed) &&
-                styles.filterTriggerActive,
-            ]}
-            onPress={() => setIsProjectFilterOpen(true)}
-          >
-            {({ hovered = false, pressed }) => {
-              const isInteracting = hovered || pressed;
-              const showActiveForeground =
-                selectedProjectFilterKeys.length > 0 || isInteracting;
-              return (
-                <>
-                  {selectedProjectFilterKeys.length === 1 && selectedProjectIconUri ? (
-                    <Image
-                      source={{
-                        uri: selectedProjectIconUri,
-                      }}
-                      style={styles.selectedProjectIcon}
-                    />
-                  ) : selectedProjectFilterKeys.length > 1 ? (
-                    <View style={styles.projectCountBadge}>
-                      <Text style={styles.projectCountBadgeText}>
-                        {selectedProjectFilterKeys.length}
-                      </Text>
-                    </View>
-                  ) : null}
-                  <Text
-                    style={[
-                      styles.filterTriggerText,
-                      !showActiveForeground && styles.filterTriggerTextMuted,
-                    ]}
-                    numberOfLines={1}
-                  >
-                    {selectedProjectLabel}
-                  </Text>
-                  <ChevronDown
-                    size={theme.iconSize.sm}
-                    color={
-                      showActiveForeground
-                        ? theme.colors.foreground
-                        : theme.colors.foregroundMuted
-                    }
-                  />
-                </>
-              );
-            }}
-          </Pressable>
-
-          {selectedProjectFilterKeys.length > 0 ? (
-            <Pressable style={styles.clearFilterButton} onPress={handleClearProjectFilter}>
-              <Text style={styles.clearFilterText}>Clear</Text>
+        <Combobox
+          options={[]}
+          value=""
+          onSelect={() => {}}
+          title="Filter by project"
+          placeholder="Search projects"
+          searchPlaceholder="Search projects"
+          desktopPlacement="bottom-start"
+          open={isProjectFilterOpen}
+          onOpenChange={onProjectFilterOpenChange}
+          anchorRef={projectFilterAnchorRef}
+        >
+          <View style={styles.filterOptionsList}>
+            <Pressable
+              style={({ pressed, hovered = false }) => [
+                styles.filterOption,
+                !selectedProjectFilterKey && styles.filterOptionSelected,
+                hovered && styles.filterOptionHovered,
+                pressed && styles.filterOptionPressed,
+              ]}
+              onPress={handleClearProjectFilter}
+            >
+              <Text style={styles.filterOptionLabel}>All projects</Text>
             </Pressable>
-          ) : null}
-
-          <Combobox
-            options={[]}
-            value=""
-            onSelect={() => {}}
-            title="Filter by project"
-            placeholder="Search projects"
-            searchPlaceholder="Search projects"
-            desktopPlacement="bottom-start"
-            open={isProjectFilterOpen}
-            onOpenChange={setIsProjectFilterOpen}
-            anchorRef={projectFilterAnchorRef}
-          >
-            <View style={styles.filterOptionsList}>
-              {projectFilterOptions.length === 0 ? (
-                <Text style={styles.filterEmptyText}>No projects</Text>
-              ) : (
-                projectFilterOptions.map((option) => (
-                  <ProjectFilterOptionRow
-                    key={option.projectKey}
-                    option={option}
-                    selected={selectedProjectFilterKeys.includes(option.projectKey)}
-                    iconDataUri={projectIconByProjectKey.get(option.projectKey) ?? null}
-                    displayName={deriveProjectDisplayName({
-                      projectKey: option.projectKey,
-                      projectName: option.projectName,
-                      remoteUrl: null,
-                    })}
-                    onToggle={handleToggleProject}
-                  />
-                ))
-              )}
-            </View>
-          </Combobox>
-        </View>
+            {projectFilterOptions.length === 0 ? (
+              <Text style={styles.filterEmptyText}>No projects</Text>
+            ) : (
+              projectFilterOptions.map((option) => (
+                <ProjectFilterOptionRow
+                  key={option.projectKey}
+                  option={option}
+                  selected={selectedProjectFilterKey === option.projectKey}
+                  iconDataUri={projectIconByProjectKey.get(option.projectKey) ?? null}
+                  displayName={deriveProjectDisplayName({
+                    projectKey: option.projectKey,
+                    projectName: option.projectName,
+                    remoteUrl: null,
+                  })}
+                  onSelect={handleSelectProject}
+                />
+              ))
+            )}
+          </View>
+        </Combobox>
       ) : null}
 
       <DraggableList
@@ -867,7 +801,7 @@ export function SidebarAgentList({
         testID="sidebar-agent-list-scroll"
         keyExtractor={keyExtractor}
         renderItem={renderRow}
-        onDragEnd={() => {}}
+        onDragEnd={handleDragEnd}
         showsVerticalScrollIndicator={false}
         enableDesktopWebScrollbar={showDesktopWebScrollbar}
         ListFooterComponent={listFooterComponent}
@@ -902,64 +836,6 @@ const styles = StyleSheet.create((theme) => ({
   container: {
     flex: 1,
   },
-  filtersRow: {
-    paddingHorizontal: theme.spacing[3],
-    paddingTop: theme.spacing[2],
-    paddingBottom: theme.spacing[2],
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing[2],
-  },
-  filterTrigger: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing[2],
-    alignSelf: "flex-start",
-    maxWidth: 260,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    borderRadius: theme.borderRadius.full,
-    paddingHorizontal: theme.spacing[3],
-    paddingVertical: theme.spacing[1],
-    backgroundColor: theme.colors.surface1,
-  },
-  filterTriggerActive: {
-    borderColor: theme.colors.borderAccent,
-  },
-  filterTriggerText: {
-    color: theme.colors.foreground,
-    fontSize: theme.fontSize.sm,
-    maxWidth: 180,
-  },
-  filterTriggerTextMuted: {
-    color: theme.colors.foregroundMuted,
-  },
-  selectedProjectIcon: {
-    width: theme.iconSize.sm,
-    height: theme.iconSize.sm,
-    borderRadius: theme.borderRadius.sm,
-  },
-  projectCountBadge: {
-    minWidth: theme.iconSize.md,
-    height: theme.iconSize.md,
-    borderRadius: theme.borderRadius.full,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 4,
-    backgroundColor: theme.colors.surface2,
-  },
-  projectCountBadgeText: {
-    fontSize: theme.fontSize.xs,
-    color: theme.colors.foregroundMuted,
-  },
-  clearFilterButton: {
-    paddingHorizontal: theme.spacing[2],
-    paddingVertical: theme.spacing[1],
-  },
-  clearFilterText: {
-    color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.sm,
-  },
   filterOptionsList: {
     gap: theme.spacing[1],
   },
@@ -981,6 +857,9 @@ const styles = StyleSheet.create((theme) => ({
     backgroundColor: theme.colors.surface1,
   },
   filterOptionPressed: {
+    backgroundColor: theme.colors.surface2,
+  },
+  filterOptionSelected: {
     backgroundColor: theme.colors.surface2,
   },
   filterOptionLeft: {

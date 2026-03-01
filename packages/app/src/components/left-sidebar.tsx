@@ -16,7 +16,7 @@ import Animated, {
 } from "react-native-reanimated";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import { StyleSheet, UnistylesRuntime, useUnistyles } from "react-native-unistyles";
-import { Plus, Settings, Users } from "lucide-react-native";
+import { Plus, ListFilter, Settings, Users } from "lucide-react-native";
 import { router, usePathname } from "expo-router";
 import { usePanelStore } from "@/stores/panel-store";
 import { SidebarAgentList } from "./sidebar-agent-list";
@@ -119,12 +119,14 @@ export function LeftSidebar({ selectedAgentId }: LeftSidebarProps) {
   );
   const hostTriggerRef = useRef<View>(null);
   const [isHostPickerOpen, setIsHostPickerOpen] = useState(false);
+  const projectFilterAnchorRef = useRef<View>(null);
+  const [isProjectFilterOpen, setIsProjectFilterOpen] = useState(false);
 
   // Derive isOpen from the unified panel state
   const isOpen = isMobile ? mobileView === "agent-list" : desktopAgentListOpen;
-  const [selectedProjectFilterKeys, setSelectedProjectFilterKeys] = useState<
-    string[]
-  >([]);
+  const [selectedProjectFilterKey, setSelectedProjectFilterKey] = useState<string | null>(
+    null
+  );
 
   const {
     entries,
@@ -135,10 +137,10 @@ export function LeftSidebar({ selectedAgentId }: LeftSidebarProps) {
     refreshAll,
   } = useSidebarAgentsList({
     serverId: activeServerId,
-    selectedProjectFilterKeys,
+    selectedProjectFilterKey,
   });
   useEffect(() => {
-    setSelectedProjectFilterKeys([]);
+    setSelectedProjectFilterKey(null);
   }, [activeServerId]);
   const {
     translateX,
@@ -393,6 +395,27 @@ export function LeftSidebar({ selectedAgentId }: LeftSidebarProps) {
                       </>
                     )}
                   </Pressable>
+                  {projectFilterOptions.length > 0 ? (
+                    <Pressable
+                      ref={projectFilterAnchorRef}
+                      style={styles.filterButton}
+                      onPress={() => setIsProjectFilterOpen(true)}
+                    >
+                      {({ hovered }) => (
+                        <>
+                          <ListFilter
+                            size={theme.iconSize.md}
+                            color={
+                              (selectedProjectFilterKey || hovered)
+                                ? theme.colors.foreground
+                                : theme.colors.foregroundMuted
+                            }
+                          />
+                          {selectedProjectFilterKey ? <View style={styles.filterActiveDot} /> : null}
+                        </>
+                      )}
+                    </Pressable>
+                  ) : null}
                 </View>
               </View>
 
@@ -402,10 +425,14 @@ export function LeftSidebar({ selectedAgentId }: LeftSidebarProps) {
               ) : (
                 <SidebarAgentList
                   isOpen={isOpen}
+                  serverId={activeServerId}
                   entries={entries}
                   projectFilterOptions={projectFilterOptions}
-                  selectedProjectFilterKeys={selectedProjectFilterKeys}
-                  onSelectedProjectFilterKeysChange={setSelectedProjectFilterKeys}
+                  selectedProjectFilterKey={selectedProjectFilterKey}
+                  onSelectedProjectFilterKeyChange={setSelectedProjectFilterKey}
+                  isProjectFilterOpen={isProjectFilterOpen}
+                  onProjectFilterOpenChange={setIsProjectFilterOpen}
+                  projectFilterAnchorRef={projectFilterAnchorRef}
                   isRefreshing={isManualRefresh && isRevalidating}
                   onRefresh={handleRefresh}
                   listFooterComponent={listFooterComponent}
@@ -500,8 +527,11 @@ export function LeftSidebar({ selectedAgentId }: LeftSidebarProps) {
 
   return (
     <View style={[styles.desktopSidebar, { width: DESKTOP_SIDEBAR_WIDTH }]}>
+      {trafficLightPadding.top > 0 ? (
+        <View style={{ height: trafficLightPadding.top }} {...dragHandlers} />
+      ) : null}
       <View
-        style={[styles.sidebarHeader, { paddingLeft: theme.spacing[2] + trafficLightPadding.left }]}
+        style={styles.sidebarHeader}
         {...dragHandlers}
       >
         <View style={styles.sidebarHeaderRow}>
@@ -516,10 +546,31 @@ export function LeftSidebar({ selectedAgentId }: LeftSidebarProps) {
                   size={theme.iconSize.md}
                   color={hovered ? theme.colors.foreground : theme.colors.foregroundMuted}
                 />
-              <Text style={[styles.newAgentButtonText, hovered && styles.newAgentButtonTextHovered]}>New agent</Text>
+                <Text style={[styles.newAgentButtonText, hovered && styles.newAgentButtonTextHovered]}>New agent</Text>
               </>
             )}
           </Pressable>
+          {projectFilterOptions.length > 0 ? (
+            <Pressable
+              ref={projectFilterAnchorRef}
+              style={styles.filterButton}
+              onPress={() => setIsProjectFilterOpen(true)}
+            >
+              {({ hovered }) => (
+                <>
+                  <ListFilter
+                    size={theme.iconSize.md}
+                    color={
+                      (selectedProjectFilterKey || hovered)
+                        ? theme.colors.foreground
+                        : theme.colors.foregroundMuted
+                    }
+                  />
+                  {selectedProjectFilterKey ? <View style={styles.filterActiveDot} /> : null}
+                </>
+              )}
+            </Pressable>
+          ) : null}
         </View>
       </View>
 
@@ -529,10 +580,14 @@ export function LeftSidebar({ selectedAgentId }: LeftSidebarProps) {
       ) : (
         <SidebarAgentList
           isOpen={isOpen}
+          serverId={activeServerId}
           entries={entries}
           projectFilterOptions={projectFilterOptions}
-          selectedProjectFilterKeys={selectedProjectFilterKeys}
-          onSelectedProjectFilterKeysChange={setSelectedProjectFilterKeys}
+          selectedProjectFilterKey={selectedProjectFilterKey}
+          onSelectedProjectFilterKeyChange={setSelectedProjectFilterKey}
+          isProjectFilterOpen={isProjectFilterOpen}
+          onProjectFilterOpenChange={setIsProjectFilterOpen}
+          projectFilterAnchorRef={projectFilterAnchorRef}
           isRefreshing={isManualRefresh && isRevalidating}
           onRefresh={handleRefresh}
           listFooterComponent={listFooterComponent}
@@ -655,7 +710,7 @@ const styles = StyleSheet.create((theme) => ({
   sidebarHeaderRow: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "flex-start",
+    justifyContent: "space-between",
     gap: theme.spacing[2],
   },
   newAgentButton: {
@@ -665,6 +720,23 @@ const styles = StyleSheet.create((theme) => ({
     paddingVertical: theme.spacing[1],
     paddingHorizontal: theme.spacing[1],
     flexShrink: 0,
+  },
+  filterButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: theme.spacing[1],
+    paddingHorizontal: theme.spacing[1],
+    position: "relative",
+  },
+  filterActiveDot: {
+    width: 8,
+    height: 8,
+    borderRadius: theme.borderRadius.full,
+    backgroundColor: theme.colors.borderAccent,
+    position: "absolute",
+    top: 0,
+    right: -2,
   },
   newAgentButtonHovered: {},
   newAgentButtonText: {

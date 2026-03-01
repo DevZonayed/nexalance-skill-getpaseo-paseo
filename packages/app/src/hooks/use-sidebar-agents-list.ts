@@ -6,13 +6,14 @@ import {
 } from "@/runtime/host-runtime";
 import type { AggregatedAgent } from "@/hooks/use-aggregated-agents";
 import {
-  deriveSidebarStateBucket,
   isSidebarActiveAgent,
 } from "@/utils/sidebar-agent-state";
 import type { ProjectPlacementPayload } from "@server/shared/messages";
 import { resolveProjectPlacement } from "@/utils/project-placement";
+import { useSidebarOrderStore } from "@/stores/sidebar-order-store";
 
 const SIDEBAR_DONE_FILL_TARGET = 50;
+const EMPTY_ORDER: string[] = [];
 
 export interface SidebarProjectFilterOption {
   projectKey: string;
@@ -38,25 +39,23 @@ export interface SidebarAgentsListResult {
   refreshAll: () => void;
 }
 
-function compareByLastActivityDesc(
+function compareByCreatedAtDesc(
   left: SidebarAgentListEntry,
   right: SidebarAgentListEntry
 ): number {
-  return right.agent.lastActivityAt.getTime() - left.agent.lastActivityAt.getTime();
-}
+  const createdDelta = right.agent.createdAt.getTime() - left.agent.createdAt.getTime();
+  if (createdDelta !== 0) {
+    return createdDelta;
+  }
 
-function compareByTitleAsc(
-  left: SidebarAgentListEntry,
-  right: SidebarAgentListEntry
-): number {
   const leftTitle = (left.agent.title?.trim() || "New agent").toLocaleLowerCase();
   const rightTitle = (right.agent.title?.trim() || "New agent").toLocaleLowerCase();
-  const titleCmp = leftTitle.localeCompare(rightTitle, undefined, {
+  const titleDelta = leftTitle.localeCompare(rightTitle, undefined, {
     numeric: true,
     sensitivity: "base",
   });
-  if (titleCmp !== 0) {
-    return titleCmp;
+  if (titleDelta !== 0) {
+    return titleDelta;
   }
 
   return left.agent.id.localeCompare(right.agent.id, undefined, {
@@ -65,50 +64,66 @@ function compareByTitleAsc(
   });
 }
 
-function applySidebarDefaultOrdering(
-  entries: SidebarAgentListEntry[]
-): { entries: SidebarAgentListEntry[]; hasMore: boolean } {
-  const needsInput: SidebarAgentListEntry[] = [];
-  const failed: SidebarAgentListEntry[] = [];
-  const running: SidebarAgentListEntry[] = [];
-  const attention: SidebarAgentListEntry[] = [];
-  const done: SidebarAgentListEntry[] = [];
+function toSidebarAgentKey(entry: SidebarAgentListEntry): string {
+  return `${entry.agent.serverId}:${entry.agent.id}`;
+}
 
-  for (const entry of entries) {
-    const bucket = deriveSidebarStateBucket({
+function applySidebarUserOrdering(input: {
+  entries: SidebarAgentListEntry[];
+  order: string[];
+}): { entries: SidebarAgentListEntry[]; hasMore: boolean } {
+  const entryKeySet = new Set(input.entries.map((entry) => toSidebarAgentKey(entry)));
+  const prunedOrder = input.order.filter((key) => entryKeySet.has(key));
+  const knownOrderSet = new Set(prunedOrder);
+  const newEntries = input.entries
+    .filter((entry) => !knownOrderSet.has(toSidebarAgentKey(entry)))
+    .sort(compareByCreatedAtDesc);
+  const effectiveOrder = [
+    ...newEntries.map((entry) => toSidebarAgentKey(entry)),
+    ...prunedOrder,
+  ];
+  const orderIndexByKey = new Map<string, number>();
+  for (let index = 0; index < effectiveOrder.length; index += 1) {
+    orderIndexByKey.set(effectiveOrder[index] ?? "", index);
+  }
+
+  const sorted = [...input.entries].sort((left, right) => {
+    const leftOrder = orderIndexByKey.get(toSidebarAgentKey(left));
+    const rightOrder = orderIndexByKey.get(toSidebarAgentKey(right));
+
+    if (leftOrder === undefined && rightOrder === undefined) {
+      return compareByCreatedAtDesc(left, right);
+    }
+    if (leftOrder === undefined) {
+      return -1;
+    }
+    if (rightOrder === undefined) {
+      return 1;
+    }
+    return leftOrder - rightOrder;
+  });
+
+  const active: SidebarAgentListEntry[] = [];
+  const done: SidebarAgentListEntry[] = [];
+  for (const entry of sorted) {
+    const isActive = isSidebarActiveAgent({
       status: entry.agent.status,
       pendingPermissionCount: entry.agent.pendingPermissionCount,
       requiresAttention: entry.agent.requiresAttention,
       attentionReason: entry.agent.attentionReason,
     });
-    if (bucket === "needs_input") {
-      needsInput.push(entry);
-      continue;
-    }
-    if (bucket === "failed") {
-      failed.push(entry);
-      continue;
-    }
-    if (bucket === "running") {
-      running.push(entry);
-      continue;
-    }
-    if (bucket === "attention") {
-      attention.push(entry);
+    if (isActive) {
+      active.push(entry);
       continue;
     }
     done.push(entry);
   }
 
-  needsInput.sort(compareByLastActivityDesc);
-  failed.sort(compareByLastActivityDesc);
-  running.sort(compareByTitleAsc);
-  attention.sort(compareByLastActivityDesc);
-  done.sort(compareByLastActivityDesc);
-
-  const active = [...needsInput, ...failed, ...running, ...attention];
   if (active.length >= SIDEBAR_DONE_FILL_TARGET) {
-    return { entries: active, hasMore: done.length > 0 };
+    return {
+      entries: active,
+      hasMore: done.length > 0,
+    };
   }
 
   const remainingDoneSlots = SIDEBAR_DONE_FILL_TARGET - active.length;
@@ -147,7 +162,7 @@ function toAggregatedAgent(params: {
 
 export function useSidebarAgentsList(options?: {
   serverId?: string | null;
-  selectedProjectFilterKeys?: string[];
+  selectedProjectFilterKey?: string | null;
 }): SidebarAgentsListResult {
   const { daemons } = useDaemonRegistry();
   const runtime = getHostRuntimeStore();
@@ -171,14 +186,16 @@ export function useSidebarAgentsList(options?: {
     return daemons.find((daemon) => daemon.serverId === serverId)?.label ?? serverId;
   }, [daemonLabelSignature, serverId]);
 
-  const selectedProjectFilterKeys = useMemo(
-    () =>
-      new Set(
-        (options?.selectedProjectFilterKeys ?? [])
-          .map((item) => item.trim())
-          .filter((item) => item.length > 0)
-      ),
-    [options?.selectedProjectFilterKeys]
+  const selectedProjectFilterKey = useMemo(() => {
+    const value = options?.selectedProjectFilterKey;
+    if (typeof value !== "string") {
+      return null;
+    }
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  }, [options?.selectedProjectFilterKey]);
+  const persistedOrder = useSidebarOrderStore((state) =>
+    serverId ? state.orderByServerId[serverId] ?? EMPTY_ORDER : EMPTY_ORDER
   );
 
   const isActive = Boolean(serverId);
@@ -213,7 +230,12 @@ export function useSidebarAgentsList(options?: {
   const [connectionStatus = "idle", directoryStatus = "idle"] =
     runtimeStatusSignature.split(":", 2);
 
-  const { entries, projectFilterOptions, hasAnyData, hasMoreEntries } = useMemo(() => {
+  const {
+    entries,
+    projectFilterOptions,
+    hasAnyData,
+    hasMoreEntries,
+  } = useMemo(() => {
     if (!isActive || !serverId || !liveAgents) {
       return {
         entries: [] as SidebarAgentListEntry[],
@@ -282,14 +304,15 @@ export function useSidebarAgentsList(options?: {
       pushEntry({ agent, project });
     }
 
-    const filteredEntries =
-      selectedProjectFilterKeys.size > 0
-        ? mergedEntries.filter((entry) =>
-            selectedProjectFilterKeys.has(entry.project.projectKey)
-          )
-        : mergedEntries;
-
-    const ordered = applySidebarDefaultOrdering(filteredEntries);
+    const filteredEntries = selectedProjectFilterKey
+      ? mergedEntries.filter(
+          (entry) => entry.project.projectKey === selectedProjectFilterKey
+        )
+      : mergedEntries;
+    const ordered = applySidebarUserOrdering({
+      entries: filteredEntries,
+      order: persistedOrder,
+    });
     const options = Array.from(byProject.values()).sort((left, right) => {
       if (left.activeCount !== right.activeCount) {
         return right.activeCount - left.activeCount;
@@ -297,14 +320,21 @@ export function useSidebarAgentsList(options?: {
       return left.projectName.localeCompare(right.projectName);
     });
 
-    const result = {
+    return {
       entries: ordered.entries,
       projectFilterOptions: options,
-      hasAnyData: ordered.entries.length > 0,
+      hasAnyData: mergedEntries.length > 0,
       hasMoreEntries: ordered.hasMore,
     };
-    return result;
-  }, [agentLastActivity, isActive, liveAgents, selectedProjectFilterKeys, serverId, serverLabel]);
+  }, [
+    agentLastActivity,
+    isActive,
+    liveAgents,
+    persistedOrder,
+    selectedProjectFilterKey,
+    serverId,
+    serverLabel,
+  ]);
 
   const refreshAll = useCallback(() => {
     if (!isActive || !serverId || connectionStatus !== "online") {
