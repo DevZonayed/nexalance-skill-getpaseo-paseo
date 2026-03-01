@@ -1,5 +1,12 @@
 import type { PropsWithChildren, ReactElement } from "react";
-import { Text, View, type PressableProps, type StyleProp, type ViewStyle } from "react-native";
+import {
+  Platform,
+  Text,
+  View,
+  type PressableProps,
+  type StyleProp,
+  type ViewStyle,
+} from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Shortcut } from "@/components/ui/shortcut";
@@ -29,11 +36,17 @@ export function HeaderToggleButton({
     typeof props.testID === "string" && props.testID.length > 0
       ? `${props.testID}-tooltip`
       : undefined;
+  const expandedState = (props.accessibilityState as { expanded?: boolean } | undefined)?.expanded;
+  const ariaExpandedProps =
+    Platform.OS === "web" && typeof expandedState === "boolean"
+      ? ({ "aria-expanded": expandedState } as any)
+      : null;
 
   return (
     <Tooltip delayDuration={tooltipDelayDuration} enabledOnDesktop enabledOnMobile={false}>
       <TooltipTrigger
         {...props}
+        {...ariaExpandedProps}
         disabled={disabled}
         onPress={(e) => {
           onPress(e);
