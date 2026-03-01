@@ -51,6 +51,7 @@ interface SidebarAgentListProps {
   serverId: string | null
   isRefreshing?: boolean
   onRefresh?: () => void
+  onWorkspacePress?: () => void
   listFooterComponent?: ReactElement | null
   /** Gesture ref for coordinating with parent gestures (e.g., sidebar close) */
   parentGestureRef?: MutableRefObject<GestureType | undefined>
@@ -67,6 +68,7 @@ interface ProjectRowProps {
 
 interface WorkspaceRowProps {
   workspace: SidebarWorkspaceEntry
+  compact?: boolean
   onPress: () => void
   onLongPress: () => void
 }
@@ -107,9 +109,9 @@ function resolveWorkspaceBranchLabel(workspace: SidebarWorkspaceEntry): string {
   return 'Unknown branch'
 }
 
-function resolveWorkspaceCreatedAtLabel(workspace: SidebarWorkspaceEntry): string {
+function resolveWorkspaceCreatedAtLabel(workspace: SidebarWorkspaceEntry): string | null {
   if (!workspace.createdAt) {
-    return 'No agents yet'
+    return null
   }
   return formatTimeAgo(workspace.createdAt)
 }
@@ -195,8 +197,9 @@ function ProjectRow({
   )
 }
 
-function WorkspaceRow({ workspace, onPress, onLongPress }: WorkspaceRowProps) {
+function WorkspaceRow({ workspace, compact = false, onPress, onLongPress }: WorkspaceRowProps) {
   const didLongPressRef = useRef(false)
+  const createdAtLabel = resolveWorkspaceCreatedAtLabel(workspace)
 
   const handlePress = useCallback(() => {
     if (didLongPressRef.current) {
@@ -215,6 +218,7 @@ function WorkspaceRow({ workspace, onPress, onLongPress }: WorkspaceRowProps) {
     <Pressable
       style={({ pressed, hovered = false }) => [
         styles.workspaceRow,
+        compact && styles.workspaceRowCompact,
         hovered && styles.workspaceRowHovered,
         pressed && styles.workspaceRowPressed,
       ]}
@@ -226,9 +230,11 @@ function WorkspaceRow({ workspace, onPress, onLongPress }: WorkspaceRowProps) {
       <Text style={styles.workspaceBranchText} numberOfLines={1}>
         {resolveWorkspaceBranchLabel(workspace)}
       </Text>
-      <Text style={styles.workspaceCreatedAtText} numberOfLines={1}>
-        {resolveWorkspaceCreatedAtLabel(workspace)}
-      </Text>
+      {createdAtLabel ? (
+        <Text style={styles.workspaceCreatedAtText} numberOfLines={1}>
+          {createdAtLabel}
+        </Text>
+      ) : null}
     </Pressable>
   )
 }
@@ -261,6 +267,7 @@ export function SidebarAgentList({
   serverId,
   isRefreshing = false,
   onRefresh,
+  onWorkspacePress,
   listFooterComponent,
   parentGestureRef,
 }: SidebarAgentListProps) {
@@ -268,6 +275,7 @@ export function SidebarAgentList({
   const showDesktopWebScrollbar = Platform.OS === 'web' && !isMobile
   const pathname = usePathname()
   const [collapsedProjectKeys, setCollapsedProjectKeys] = useState<Set<string>>(new Set())
+  const [canonicalResyncNonce, setCanonicalResyncNonce] = useState(0)
 
   const getProjectOrder = useSidebarOrderStore((state) => state.getProjectOrder)
   const setProjectOrder = useSidebarOrderStore((state) => state.setProjectOrder)
@@ -381,7 +389,7 @@ export function SidebarAgentList({
       }
     }
     return next
-  }, [collapsedProjectKeys, projects])
+  }, [canonicalResyncNonce, collapsedProjectKeys, projects])
 
   const toggleProjectCollapsed = useCallback((projectKey: string) => {
     setCollapsedProjectKeys((prev) => {
@@ -417,10 +425,12 @@ export function SidebarAgentList({
       return (
         <WorkspaceRow
           workspace={item.workspace}
+          compact={isMobile}
           onPress={() => {
             if (!serverId) {
               return
             }
+            onWorkspacePress?.()
             navigate(workspaceRoute as any)
           }}
           onLongPress={drag}
@@ -429,6 +439,8 @@ export function SidebarAgentList({
     },
     [
       collapsedProjectKeys,
+      isMobile,
+      onWorkspacePress,
       pathname,
       projectIconByProjectKey,
       serverId,
@@ -444,6 +456,7 @@ export function SidebarAgentList({
         return
       }
 
+      let didPersistOrderChange = false
       const reorderedProjectKeys = reorderedRows
         .filter(
           (row): row is Extract<SidebarTreeRow, { kind: 'project' }> => row.kind === 'project'
@@ -457,6 +470,7 @@ export function SidebarAgentList({
           reorderedVisibleKeys: reorderedProjectKeys,
         })
       ) {
+        didPersistOrderChange = true
         setProjectOrder(
           serverId,
           mergeWithRemainder({
@@ -487,6 +501,7 @@ export function SidebarAgentList({
           continue
         }
 
+        didPersistOrderChange = true
         setWorkspaceOrder(
           serverId,
           projectKey,
@@ -495,6 +510,12 @@ export function SidebarAgentList({
             reorderedVisibleKeys: reorderedWorkspaceKeys,
           })
         )
+      }
+
+      // If persisted ordering did not change, force a local resync so draggable UI state
+      // snaps back to canonical Project -> Workspaces grouping.
+      if (!didPersistOrderChange) {
+        setCanonicalResyncNonce((prev) => prev + 1)
       }
     },
     [getProjectOrder, getWorkspaceOrder, serverId, setProjectOrder, setWorkspaceOrder]
@@ -599,19 +620,20 @@ const styles = StyleSheet.create((theme) => ({
     flexShrink: 0,
   },
   workspaceRow: {
-    minHeight: 32,
+    minHeight: 34,
     marginBottom: theme.spacing[1],
-    marginLeft: theme.spacing[6],
-    paddingVertical: theme.spacing[2],
-    paddingHorizontal: theme.spacing[3],
+    marginLeft: theme.spacing[4],
+    paddingVertical: theme.spacing[1],
+    paddingHorizontal: theme.spacing[2],
     borderRadius: theme.borderRadius.lg,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    backgroundColor: theme.colors.surface0,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: theme.spacing[2],
+  },
+  workspaceRowCompact: {
+    marginLeft: theme.spacing[3],
+    paddingHorizontal: theme.spacing[1],
   },
   workspaceRowHovered: {
     backgroundColor: theme.colors.surface1,

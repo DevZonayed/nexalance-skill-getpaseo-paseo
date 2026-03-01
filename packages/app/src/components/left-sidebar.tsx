@@ -346,6 +346,7 @@ export function LeftSidebar({ selectedAgentId }: LeftSidebarProps) {
                   projects={projects}
                   isRefreshing={isManualRefresh && isRevalidating}
                   onRefresh={handleRefresh}
+                  onWorkspacePress={closeToAgent}
                   parentGestureRef={closeGestureRef}
                 />
               )}
