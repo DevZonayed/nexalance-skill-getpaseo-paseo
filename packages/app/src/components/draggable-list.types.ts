@@ -30,4 +30,6 @@ export interface DraggableListProps<T> {
   simultaneousGestureRef?: MutableRefObject<GestureType | undefined>;
   /** Gesture ref(s) that the list should wait for before handling scroll */
   waitFor?: MutableRefObject<GestureType | undefined> | MutableRefObject<GestureType | undefined>[];
+  /** Called when a drag gesture begins (before items are reordered) */
+  onDragBegin?: () => void;
 }

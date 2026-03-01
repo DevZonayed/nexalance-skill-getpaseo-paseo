@@ -398,21 +398,23 @@ export function LeftSidebar({ selectedAgentId }: LeftSidebarProps) {
                   {projectFilterOptions.length > 0 ? (
                     <Pressable
                       ref={projectFilterAnchorRef}
-                      style={styles.filterButton}
+                      style={[
+                        styles.filterButton,
+                        selectedProjectFilterKey ? styles.filterButtonActive : null,
+                      ]}
                       onPress={() => setIsProjectFilterOpen(true)}
                     >
                       {({ hovered }) => (
-                        <>
-                          <ListFilter
-                            size={theme.iconSize.md}
-                            color={
-                              (selectedProjectFilterKey || hovered)
+                        <ListFilter
+                          size={theme.iconSize.md}
+                          color={
+                            selectedProjectFilterKey
+                              ? theme.colors.accentForeground
+                              : hovered
                                 ? theme.colors.foreground
                                 : theme.colors.foregroundMuted
-                            }
-                          />
-                          {selectedProjectFilterKey ? <View style={styles.filterActiveDot} /> : null}
-                        </>
+                          }
+                        />
                       )}
                     </Pressable>
                   ) : null}
@@ -553,21 +555,23 @@ export function LeftSidebar({ selectedAgentId }: LeftSidebarProps) {
           {projectFilterOptions.length > 0 ? (
             <Pressable
               ref={projectFilterAnchorRef}
-              style={styles.filterButton}
+              style={[
+                styles.filterButton,
+                selectedProjectFilterKey ? styles.filterButtonActive : null,
+              ]}
               onPress={() => setIsProjectFilterOpen(true)}
             >
               {({ hovered }) => (
-                <>
-                  <ListFilter
-                    size={theme.iconSize.md}
-                    color={
-                      (selectedProjectFilterKey || hovered)
+                <ListFilter
+                  size={theme.iconSize.md}
+                  color={
+                    selectedProjectFilterKey
+                      ? theme.colors.accentForeground
+                      : hovered
                         ? theme.colors.foreground
                         : theme.colors.foregroundMuted
-                    }
-                  />
-                  {selectedProjectFilterKey ? <View style={styles.filterActiveDot} /> : null}
-                </>
+                  }
+                />
               )}
             </Pressable>
           ) : null}
@@ -727,16 +731,10 @@ const styles = StyleSheet.create((theme) => ({
     justifyContent: "center",
     paddingVertical: theme.spacing[1],
     paddingHorizontal: theme.spacing[1],
-    position: "relative",
+    borderRadius: theme.borderRadius.md,
   },
-  filterActiveDot: {
-    width: 8,
-    height: 8,
-    borderRadius: theme.borderRadius.full,
-    backgroundColor: theme.colors.borderAccent,
-    position: "absolute",
-    top: 0,
-    right: -2,
+  filterButtonActive: {
+    backgroundColor: theme.colors.accent,
   },
   newAgentButtonHovered: {},
   newAgentButtonText: {

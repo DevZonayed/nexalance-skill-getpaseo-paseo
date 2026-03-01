@@ -23,7 +23,7 @@ import {
   useUnistyles,
 } from "react-native-unistyles";
 import { type GestureType } from "react-native-gesture-handler";
-import { Archive, Check } from "lucide-react-native";
+import { Archive, Check, X } from "lucide-react-native";
 import {
   DraggableList,
   type DraggableRenderItemInfo,
@@ -149,7 +149,6 @@ interface SidebarAgentRowProps {
   onPress: () => void;
   onLongPress: () => void;
   onArchive: () => Promise<void>;
-  onToggleBatch: () => void;
 }
 
 function resolveBranchLabel(entry: SidebarAgentListEntry): string | null {
@@ -176,7 +175,6 @@ function SidebarAgentRow({
   onPress,
   onLongPress,
   onArchive,
-  onToggleBatch,
 }: SidebarAgentRowProps) {
   const { theme } = useUnistyles();
   const [isHovered, setIsHovered] = useState(false);
@@ -240,6 +238,7 @@ function SidebarAgentRow({
       ]}
       onPress={onPress}
       onLongPress={onLongPress}
+      delayLongPress={200}
       onPressIn={() => {
         if (Platform.OS !== "web") {
           return;
@@ -251,27 +250,10 @@ function SidebarAgentRow({
       testID={`agent-row-${entry.agent.serverId}-${entry.agent.id}`}
     >
       <View style={styles.agentRowTop}>
-        {isInSelectionMode ? (
-          <Pressable
-            onPress={(event) => {
-              event.stopPropagation();
-              onToggleBatch();
-            }}
-            style={[
-              styles.checkbox,
-              isBatchSelected && styles.checkboxSelected,
-            ]}
-          >
-            {isBatchSelected ? (
-              <Check size={theme.iconSize.xs} color={theme.colors.primaryForeground} />
-            ) : null}
-          </Pressable>
-        ) : (
-          <AgentStatusDot
-            status={entry.agent.status}
-            requiresAttention={entry.agent.requiresAttention}
-          />
-        )}
+        <AgentStatusDot
+          status={entry.agent.status}
+          requiresAttention={entry.agent.requiresAttention}
+        />
 
         <Text
           style={[
@@ -379,6 +361,16 @@ function SidebarAgentRow({
           </View>
         ) : null}
       </View>
+
+      {isBatchSelected ? (
+        <View style={styles.selectionOverlay} pointerEvents="none">
+          <Check
+            size={theme.iconSize.md}
+            color={theme.colors.accentForeground}
+            strokeWidth={2.5}
+          />
+        </View>
+      ) : null}
     </Pressable>
   );
 }
@@ -607,9 +599,21 @@ export function SidebarAgentList({
 
   const handleAgentLongPress = useCallback((entry: SidebarAgentListEntry) => {
     const key = `${entry.agent.serverId}:${entry.agent.id}`;
+    if (isSelectionMode) {
+      setSelectedBatchKeys((prev) => {
+        const next = new Set(prev);
+        if (next.has(key)) {
+          next.delete(key);
+        } else {
+          next.add(key);
+        }
+        return next;
+      });
+      return;
+    }
     setIsSelectionMode(true);
     setSelectedBatchKeys(new Set([key]));
-  }, []);
+  }, [isSelectionMode]);
 
   const handleArchiveSingle = useCallback(
     async (entry: SidebarAgentListEntry): Promise<void> => {
@@ -667,8 +671,14 @@ export function SidebarAgentList({
     setIsSelectionMode(false);
   }, []);
 
+  const handleListDragBegin = useCallback(() => {
+    // No-op: selection mode is resolved in handleDragEnd based on whether
+    // the item actually moved. This fires synchronously when drag() is called
+    // (i.e., on long press), before we know if the user will drag or release.
+  }, []);
+
   const renderRow = useCallback(
-    ({ item }: DraggableRenderItemInfo<EntryData>) => {
+    ({ item, drag }: DraggableRenderItemInfo<EntryData>) => {
       const key = `${item.agent.serverId}:${item.agent.id}`;
       const projectDisplayName = deriveProjectDisplayName({
         projectKey: item.project.projectKey,
@@ -693,19 +703,11 @@ export function SidebarAgentList({
             showShortcutBadges ? (shortcutIndexByAgentKey.get(key) ?? null) : null
           }
           onPress={() => handleAgentPress(item)}
-          onLongPress={() => handleAgentLongPress(item)}
-          onArchive={() => handleArchiveSingle(item)}
-          onToggleBatch={() => {
-            setSelectedBatchKeys((prev) => {
-              const next = new Set(prev);
-              if (next.has(key)) {
-                next.delete(key);
-              } else {
-                next.add(key);
-              }
-              return next;
-            });
+          onLongPress={() => {
+            drag();
+            handleAgentLongPress(item);
           }}
+          onArchive={() => handleArchiveSingle(item)}
         />
       );
     },
@@ -735,8 +737,18 @@ export function SidebarAgentList({
       const reorderedKeys = reorderedEntries.map(
         (entry) => `${entry.agent.serverId}:${entry.agent.id}`
       );
+      const currentOrder = getSidebarOrder(serverId);
+      const currentVisible = currentOrder.filter((key) =>
+        reorderedKeys.includes(key)
+      );
+      const orderChanged =
+        currentVisible.length !== reorderedKeys.length ||
+        reorderedKeys.some((key, i) => currentVisible[i] !== key);
+      if (!orderChanged) {
+        return;
+      }
       const reorderedSet = new Set(reorderedKeys);
-      const remainder = getSidebarOrder(serverId).filter((key) => !reorderedSet.has(key));
+      const remainder = currentOrder.filter((key) => !reorderedSet.has(key));
       setSidebarOrder(serverId, [...reorderedKeys, ...remainder]);
     },
     [getSidebarOrder, serverId, setSidebarOrder]
@@ -808,24 +820,39 @@ export function SidebarAgentList({
         refreshing={isRefreshing}
         onRefresh={onRefresh}
         simultaneousGestureRef={parentGestureRef}
+        onDragBegin={handleListDragBegin}
       />
 
       {isSelectionMode ? (
         <View style={styles.selectionBar}>
-          <Pressable style={styles.selectionAction} onPress={handleSelectionBack}>
-            <Text style={styles.selectionActionText}>Back</Text>
-          </Pressable>
-          <Pressable
-            style={[
-              styles.selectionAction,
-              styles.selectionArchiveAction,
-              selectedBatchKeys.size === 0 && styles.selectionArchiveActionDisabled,
-            ]}
-            disabled={selectedBatchKeys.size === 0}
-            onPress={handleArchiveBatch}
-          >
-            <Text style={styles.selectionArchiveActionText}>Archive</Text>
-          </Pressable>
+          <Text style={styles.selectionBarCountText}>
+            {selectedBatchKeys.size} selected
+          </Text>
+          <View style={styles.selectionBarActions}>
+            <Pressable
+              style={[
+                styles.selectionBarButton,
+                selectedBatchKeys.size === 0 && styles.selectionBarButtonDisabled,
+              ]}
+              disabled={selectedBatchKeys.size === 0}
+              onPress={handleArchiveBatch}
+            >
+              <Archive
+                size={theme.iconSize.md}
+                color={theme.colors.accentForeground}
+              />
+            </Pressable>
+            <Pressable
+              style={styles.selectionBarButton}
+              onPress={handleSelectionBack}
+            >
+              <X
+                size={theme.iconSize.md}
+                color={theme.colors.accentForeground}
+                strokeWidth={2.5}
+              />
+            </Pressable>
+          </View>
         </View>
       ) : null}
     </View>
@@ -910,6 +937,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   listContent: {
     paddingHorizontal: theme.spacing[2],
+    paddingTop: theme.spacing[2],
     paddingBottom: theme.spacing[4],
   },
   listContentSelectionMode: {
@@ -936,18 +964,18 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[2],
     minHeight: 20,
   },
-  checkbox: {
-    width: theme.iconSize.md,
-    height: theme.iconSize.md,
-    borderRadius: theme.borderRadius.sm,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
+  selectionOverlay: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    borderRadius: theme.borderRadius.lg,
+    borderWidth: 2,
+    borderColor: theme.colors.accent,
+    backgroundColor: `${theme.colors.accent}1F`,
     alignItems: "center",
     justifyContent: "center",
-  },
-  checkboxSelected: {
-    backgroundColor: theme.colors.primary,
-    borderColor: theme.colors.primary,
   },
   agentTitle: {
     flex: 1,
@@ -1035,37 +1063,33 @@ const styles = StyleSheet.create((theme) => ({
     left: theme.spacing[2],
     right: theme.spacing[2],
     bottom: theme.spacing[2],
-    borderRadius: theme.borderRadius.xl,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    backgroundColor: theme.colors.surface2,
-    padding: theme.spacing[2],
+    borderRadius: theme.borderRadius["2xl"],
+    backgroundColor: theme.colors.accent,
+    paddingVertical: theme.spacing[3],
+    paddingHorizontal: theme.spacing[4],
     flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  selectionBarCountText: {
+    color: theme.colors.accentForeground,
+    fontSize: theme.fontSize.sm,
+    fontWeight: theme.fontWeight.semibold,
+  },
+  selectionBarActions: {
+    flexDirection: "row",
+    alignItems: "center",
     gap: theme.spacing[2],
   },
-  selectionAction: {
-    flex: 1,
-    borderRadius: theme.borderRadius.lg,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
+  selectionBarButton: {
+    width: 36,
+    height: 36,
+    borderRadius: theme.borderRadius.full,
+    backgroundColor: "rgba(0, 0, 0, 0.15)",
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: theme.spacing[2],
-    backgroundColor: theme.colors.surface1,
   },
-  selectionActionText: {
-    color: theme.colors.foreground,
-    fontSize: theme.fontSize.sm,
-  },
-  selectionArchiveAction: {
-    backgroundColor: theme.colors.primary,
-    borderColor: theme.colors.primary,
-  },
-  selectionArchiveActionDisabled: {
+  selectionBarButtonDisabled: {
     opacity: 0.5,
-  },
-  selectionArchiveActionText: {
-    color: theme.colors.primaryForeground,
-    fontSize: theme.fontSize.sm,
   },
 }));

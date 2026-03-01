@@ -110,6 +110,7 @@ export function DraggableList<T>({
   showsVerticalScrollIndicator = true,
   enableDesktopWebScrollbar = false,
   // simultaneousGestureRef is native-only, ignored on web
+  onDragBegin,
 }: DraggableListProps<T>) {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [items, setItems] = useState(data);
@@ -134,7 +135,8 @@ export function DraggableList<T>({
 
   const handleDragStart = useCallback((event: DragStartEvent) => {
     setActiveId(String(event.active.id));
-  }, []);
+    onDragBegin?.();
+  }, [onDragBegin]);
 
   const handleDragEnd = useCallback(
     (event: DragEndEvent) => {

@@ -68,69 +68,85 @@ function toSidebarAgentKey(entry: SidebarAgentListEntry): string {
   return `${entry.agent.serverId}:${entry.agent.id}`;
 }
 
-function applySidebarUserOrdering(input: {
+export function applySidebarUserOrdering(input: {
   entries: SidebarAgentListEntry[];
   order: string[];
 }): { entries: SidebarAgentListEntry[]; hasMore: boolean } {
-  const entryKeySet = new Set(input.entries.map((entry) => toSidebarAgentKey(entry)));
-  const prunedOrder = input.order.filter((key) => entryKeySet.has(key));
-  const knownOrderSet = new Set(prunedOrder);
-  const newEntries = input.entries
-    .filter((entry) => !knownOrderSet.has(toSidebarAgentKey(entry)))
-    .sort(compareByCreatedAtDesc);
-  const effectiveOrder = [
-    ...newEntries.map((entry) => toSidebarAgentKey(entry)),
-    ...prunedOrder,
-  ];
-  const orderIndexByKey = new Map<string, number>();
-  for (let index = 0; index < effectiveOrder.length; index += 1) {
-    orderIndexByKey.set(effectiveOrder[index] ?? "", index);
+  const sortedByCreatedAt = [...input.entries].sort(compareByCreatedAtDesc);
+  const entryByKey = new Map<string, SidebarAgentListEntry>();
+  for (const entry of sortedByCreatedAt) {
+    entryByKey.set(toSidebarAgentKey(entry), entry);
   }
 
-  const sorted = [...input.entries].sort((left, right) => {
-    const leftOrder = orderIndexByKey.get(toSidebarAgentKey(left));
-    const rightOrder = orderIndexByKey.get(toSidebarAgentKey(right));
-
-    if (leftOrder === undefined && rightOrder === undefined) {
-      return compareByCreatedAtDesc(left, right);
-    }
-    if (leftOrder === undefined) {
-      return -1;
-    }
-    if (rightOrder === undefined) {
-      return 1;
-    }
-    return leftOrder - rightOrder;
-  });
-
-  const active: SidebarAgentListEntry[] = [];
-  const done: SidebarAgentListEntry[] = [];
-  for (const entry of sorted) {
-    const isActive = isSidebarActiveAgent({
-      status: entry.agent.status,
-      pendingPermissionCount: entry.agent.pendingPermissionCount,
-      requiresAttention: entry.agent.requiresAttention,
-      attentionReason: entry.agent.attentionReason,
-    });
-    if (isActive) {
-      active.push(entry);
+  const prunedOrder: string[] = [];
+  const seenOrderKeys = new Set<string>();
+  for (const key of input.order) {
+    if (!entryByKey.has(key) || seenOrderKeys.has(key)) {
       continue;
     }
-    done.push(entry);
+    seenOrderKeys.add(key);
+    prunedOrder.push(key);
   }
 
-  if (active.length >= SIDEBAR_DONE_FILL_TARGET) {
-    return {
-      entries: active,
-      hasMore: done.length > 0,
-    };
+  const sorted: SidebarAgentListEntry[] = [];
+  if (prunedOrder.length === 0) {
+    sorted.push(...sortedByCreatedAt);
+  } else {
+    const knownOrderSet = new Set(prunedOrder);
+    let knownOrderIndex = 0;
+    for (const entry of sortedByCreatedAt) {
+      const key = toSidebarAgentKey(entry);
+      if (!knownOrderSet.has(key)) {
+        sorted.push(entry);
+        continue;
+      }
+      const orderedKey = prunedOrder[knownOrderIndex] ?? key;
+      knownOrderIndex += 1;
+      sorted.push(entryByKey.get(orderedKey) ?? entry);
+    }
   }
 
-  const remainingDoneSlots = SIDEBAR_DONE_FILL_TARGET - active.length;
-  const shownDone = done.slice(0, remainingDoneSlots);
+  const doneEntries = sorted.filter(
+    (entry) =>
+      !isSidebarActiveAgent({
+        status: entry.agent.status,
+        pendingPermissionCount: entry.agent.pendingPermissionCount,
+        requiresAttention: entry.agent.requiresAttention,
+        attentionReason: entry.agent.attentionReason,
+      })
+  );
+  const visibleDoneKeys = new Set(
+    [...doneEntries]
+      .sort(compareByCreatedAtDesc)
+      .slice(0, SIDEBAR_DONE_FILL_TARGET)
+      .map((entry) => toSidebarAgentKey(entry))
+  );
+
+  const visible: SidebarAgentListEntry[] = [];
+  let hiddenDoneCount = 0;
+  for (const entry of sorted) {
+    const key = toSidebarAgentKey(entry);
+    if (
+      isSidebarActiveAgent({
+        status: entry.agent.status,
+        pendingPermissionCount: entry.agent.pendingPermissionCount,
+        requiresAttention: entry.agent.requiresAttention,
+        attentionReason: entry.agent.attentionReason,
+      })
+    ) {
+      visible.push(entry);
+      continue;
+    }
+    if (visibleDoneKeys.has(key)) {
+      visible.push(entry);
+      continue;
+    }
+    hiddenDoneCount += 1;
+  }
+
   return {
-    entries: [...active, ...shownDone],
-    hasMore: done.length > shownDone.length,
+    entries: visible,
+    hasMore: hiddenDoneCount > 0,
   };
 }
 
