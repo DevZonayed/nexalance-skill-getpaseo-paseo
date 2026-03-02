@@ -94,6 +94,26 @@ export function decodeWorkspaceIdFromPathSegment(workspaceIdSegment: string): st
   return normalizeWorkspaceId(decoded);
 }
 
+export function encodeFilePathForPathSegment(filePath: string): string {
+  const normalized = trimNonEmpty(filePath);
+  if (!normalized) {
+    return "";
+  }
+  return toBase64UrlNoPad(normalized);
+}
+
+export function decodeFilePathFromPathSegment(filePathSegment: string): string | null {
+  const normalizedSegment = trimNonEmpty(filePathSegment);
+  if (!normalizedSegment) {
+    return null;
+  }
+  const decoded = trimNonEmpty(decodeSegment(normalizedSegment));
+  if (!decoded) {
+    return null;
+  }
+  return tryDecodeBase64UrlNoPadUtf8(decoded);
+}
+
 export function parseServerIdFromPathname(pathname: string): string | null {
   const match = pathname.match(/^\/h\/([^/]+)(?:\/|$)/);
   if (!match) {
@@ -211,6 +231,10 @@ export function parseHostWorkspaceRouteFromPathname(
   if (terminalIdx >= 0 && terminalIdx > workspaceIdStart) {
     workspaceIdEnd = Math.min(workspaceIdEnd, terminalIdx);
   }
+  const fileIdx = pathname.lastIndexOf("/file/");
+  if (fileIdx >= 0 && fileIdx > workspaceIdStart) {
+    workspaceIdEnd = Math.min(workspaceIdEnd, fileIdx);
+  }
 
   const rawWorkspaceId = pathname.slice(workspaceIdStart, workspaceIdEnd).replace(/\/+$/, "");
   const workspaceId = decodeWorkspaceIdFromPathSegment(rawWorkspaceId);
@@ -320,6 +344,55 @@ export function parseHostWorkspaceTerminalRouteFromPathname(
   return { serverId, workspaceId, terminalId };
 }
 
+export function parseHostWorkspaceFileRouteFromPathname(
+  pathname: string
+): { serverId: string; workspaceId: string; filePath: string } | null {
+  const prefix = "/h/";
+  if (!pathname.startsWith(prefix)) {
+    return null;
+  }
+
+  const serverIdStart = prefix.length;
+  const serverIdEnd = pathname.indexOf("/", serverIdStart);
+  if (serverIdEnd < 0) {
+    return null;
+  }
+  const rawServerId = pathname.slice(serverIdStart, serverIdEnd);
+  const serverId = trimNonEmpty(decodeSegment(rawServerId));
+  if (!serverId) {
+    return null;
+  }
+
+  const workspacePrefix = "/workspace/";
+  if (!pathname.startsWith(workspacePrefix, serverIdEnd)) {
+    return null;
+  }
+
+  const workspaceIdStart = serverIdEnd + workspacePrefix.length;
+  const fileMarker = "/file/";
+  const fileIdx = pathname.lastIndexOf(fileMarker);
+  if (fileIdx < 0 || fileIdx <= workspaceIdStart) {
+    return null;
+  }
+
+  const rawWorkspaceId = pathname.slice(workspaceIdStart, fileIdx).replace(/\/+$/, "");
+  const workspaceId = decodeWorkspaceIdFromPathSegment(rawWorkspaceId);
+  if (!workspaceId) {
+    return null;
+  }
+
+  const filePathStart = fileIdx + fileMarker.length;
+  const filePathEnd = pathname.indexOf("/", filePathStart);
+  const rawFilePath =
+    filePathEnd < 0 ? pathname.slice(filePathStart) : pathname.slice(filePathStart, filePathEnd);
+  const filePath = decodeFilePathFromPathSegment(rawFilePath);
+  if (!filePath) {
+    return null;
+  }
+
+  return { serverId, workspaceId, filePath };
+}
+
 export function buildHostWorkspaceRoute(
   serverId: string,
   workspaceId: string
@@ -360,6 +433,19 @@ export function buildHostWorkspaceTerminalRoute(
     return "/";
   }
   return `${base}/terminal/${encodeSegment(normalizedTerminalId)}`;
+}
+
+export function buildHostWorkspaceFileRoute(
+  serverId: string,
+  workspaceId: string,
+  filePath: string
+): string {
+  const base = buildHostWorkspaceRoute(serverId, workspaceId);
+  const encodedFilePath = encodeFilePathForPathSegment(filePath);
+  if (base === "/" || !encodedFilePath) {
+    return "/";
+  }
+  return `${base}/file/${encodeSegment(encodedFilePath)}`;
 }
 
 export function buildHostAgentDetailRoute(

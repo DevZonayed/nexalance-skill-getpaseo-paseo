@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import type { DOMProps } from "expo/dom";
 import "@xterm/xterm/css/xterm.css";
+import type { ITheme } from "@xterm/xterm";
 import type { PendingTerminalModifiers } from "../utils/terminal-keys";
 import { TerminalEmulatorRuntime } from "../terminal/runtime/terminal-emulator-runtime";
 
@@ -12,10 +13,9 @@ interface TerminalEmulatorProps {
   initialOutputText: string;
   outputChunkText: string;
   outputChunkSequence: number;
+  outputChunkReplay?: boolean;
   testId?: string;
-  backgroundColor?: string;
-  foregroundColor?: string;
-  cursorColor?: string;
+  xtermTheme?: ITheme;
   swipeGesturesEnabled?: boolean;
   onSwipeLeft?: () => void;
   onSwipeRight?: () => void;
@@ -44,10 +44,13 @@ export default function TerminalEmulator({
   initialOutputText,
   outputChunkText,
   outputChunkSequence,
+  outputChunkReplay = false,
   testId = "terminal-surface",
-  backgroundColor = "#0b0b0b",
-  foregroundColor = "#e6e6e6",
-  cursorColor = "#e6e6e6",
+  xtermTheme = {
+    background: "#0b0b0b",
+    foreground: "#e6e6e6",
+    cursor: "#e6e6e6",
+  },
   swipeGesturesEnabled = false,
   onSwipeLeft,
   onSwipeRight,
@@ -203,11 +206,7 @@ export default function TerminalEmulator({
       root,
       host,
       initialOutputText,
-      theme: {
-        backgroundColor,
-        foregroundColor,
-        cursorColor,
-      },
+      theme: xtermTheme,
     });
     appliedInitialOutputRef.current = initialOutputText;
 
@@ -218,7 +217,7 @@ export default function TerminalEmulator({
       }
       appliedInitialOutputRef.current = null;
     };
-  }, [backgroundColor, cursorColor, foregroundColor, streamKey]);
+  }, [streamKey, xtermTheme]);
 
   useEffect(() => {
     const runtime = runtimeRef.current;
@@ -273,11 +272,12 @@ export default function TerminalEmulator({
     }
     runtime.write({
       text: outputChunkText,
+      suppressInput: outputChunkReplay,
       onCommitted: () => {
         onOutputChunkConsumed?.(outputChunkSequence);
       },
     });
-  }, [onOutputChunkConsumed, outputChunkSequence, outputChunkText]);
+  }, [onOutputChunkConsumed, outputChunkReplay, outputChunkSequence, outputChunkText]);
 
   useEffect(() => {
     if (focusRequestToken <= 0) {
@@ -304,7 +304,7 @@ export default function TerminalEmulator({
         height: "100%",
         minHeight: 0,
         minWidth: 0,
-        backgroundColor,
+        backgroundColor: xtermTheme.background ?? "#0b0b0b",
         overflow: "hidden",
         overscrollBehavior: "none",
         touchAction: "pan-y",

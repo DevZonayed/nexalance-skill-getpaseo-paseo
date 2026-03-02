@@ -4,7 +4,8 @@ import { createJSONStorage, persist } from "zustand/middleware";
 
 export type WorkspaceTabTarget =
   | { kind: "agent"; agentId: string }
-  | { kind: "terminal"; terminalId: string };
+  | { kind: "terminal"; terminalId: string }
+  | { kind: "file"; path: string };
 
 function normalizeKeys(keys: string[]): string[] {
   const seen = new Set<string>();
@@ -49,6 +50,10 @@ function normalizeWorkspaceTab(
       return null;
     }
     return { kind: "terminal", terminalId };
+  }
+  if (value.kind === "file") {
+    // File tabs are session-only; do not persist in workspace tab memory.
+    return null;
   }
   return null;
 }

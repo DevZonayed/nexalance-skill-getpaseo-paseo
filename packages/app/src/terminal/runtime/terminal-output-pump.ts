@@ -9,6 +9,7 @@ import { summarizeTerminalText, terminalDebugLog } from "./terminal-debug";
 export type TerminalOutputChunk = {
   sequence: number;
   text: string;
+  replay: boolean;
 };
 
 export type TerminalOutputPumpOptions = {
@@ -23,6 +24,7 @@ export type TerminalOutputPumpSetSelectedInput = {
 export type TerminalOutputPumpAppendInput = {
   terminalId: string;
   text: string;
+  replay: boolean;
 };
 
 export type TerminalOutputPumpReadInput = {
@@ -42,6 +44,7 @@ export class TerminalOutputPump {
   private selectedTerminalId: string | null = null;
   private selectedChunkSequence = 0;
   private selectedChunkAccumulator = "";
+  private selectedChunkAccumulatorReplay: boolean | null = null;
   private selectedChunkFlushTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(private readonly options: TerminalOutputPumpOptions) {}
@@ -61,6 +64,7 @@ export class TerminalOutputPump {
     });
     this.clearSelectedChunkFlushTimer();
     this.selectedChunkAccumulator = "";
+    this.selectedChunkAccumulatorReplay = null;
     this.selectedTerminalId = input.terminalId;
   }
 
@@ -85,6 +89,18 @@ export class TerminalOutputPump {
       return;
     }
 
+    if (
+      this.selectedChunkAccumulator.length > 0 &&
+      typeof this.selectedChunkAccumulatorReplay === "boolean" &&
+      this.selectedChunkAccumulatorReplay !== input.replay
+    ) {
+      this.flushSelectedChunkAccumulator();
+    }
+
+    if (this.selectedChunkAccumulator.length === 0) {
+      this.selectedChunkAccumulatorReplay = input.replay;
+    }
+
     this.selectedChunkAccumulator += input.text;
     terminalDebugLog({
       scope: "output-pump",
@@ -93,6 +109,7 @@ export class TerminalOutputPump {
         terminalId: input.terminalId,
         appendedLength: input.text.length,
         accumulatorLength: this.selectedChunkAccumulator.length,
+        replay: input.replay,
         preview: summarizeTerminalText({ text: input.text, maxChars: 80 }),
       },
     });
@@ -104,7 +121,8 @@ export class TerminalOutputPump {
     if (this.selectedTerminalId === input.terminalId) {
       this.clearSelectedChunkFlushTimer();
       this.selectedChunkAccumulator = "";
-      this.emitSelectedChunk({ text: "" });
+      this.selectedChunkAccumulatorReplay = null;
+      this.emitSelectedChunk({ text: "", replay: false });
     }
   }
 
@@ -152,24 +170,28 @@ export class TerminalOutputPump {
     }
 
     const text = this.selectedChunkAccumulator;
+    const replay = this.selectedChunkAccumulatorReplay ?? false;
     this.selectedChunkAccumulator = "";
+    this.selectedChunkAccumulatorReplay = null;
     terminalDebugLog({
       scope: "output-pump",
       event: "selected-terminal:flush",
       details: {
         terminalId: this.selectedTerminalId,
         textLength: text.length,
+        replay,
         preview: summarizeTerminalText({ text, maxChars: 96 }),
       },
     });
-    this.emitSelectedChunk({ text });
+    this.emitSelectedChunk({ text, replay });
   }
 
-  private emitSelectedChunk(input: { text: string }): void {
+  private emitSelectedChunk(input: { text: string; replay: boolean }): void {
     this.selectedChunkSequence += 1;
     this.options.onSelectedOutputChunk({
       sequence: this.selectedChunkSequence,
       text: input.text,
+      replay: input.replay,
     });
   }
 

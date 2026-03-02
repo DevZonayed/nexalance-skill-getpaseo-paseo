@@ -57,7 +57,10 @@ function SortableItem<T>({
     // This is a no-op but matches the mobile API
   }, []);
 
-  const baseTransform = CSS.Transform.toString(transform);
+  // See `draggable-list.web.tsx` for details on why we zero out dnd-kit scale.
+  const baseTransform = CSS.Transform.toString(
+    transform && isDragging ? { ...transform, scaleX: 1, scaleY: 1 } : transform
+  );
   const scaleTransform = isDragging ? "scale(1.01)" : "";
   const combinedTransform = [baseTransform, scaleTransform].filter(Boolean).join(" ");
 

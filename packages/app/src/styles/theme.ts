@@ -144,6 +144,33 @@ const lightSemanticColors = {
   accentBorder: "#ececf1",
   input: "#f4f4f5",
   ring: "#18181b",
+
+  terminal: {
+    background: "#ffffff",
+    foreground: "#09090b",
+    cursor: "#09090b",
+    cursorAccent: "#ffffff",
+    selectionBackground: "rgba(0, 0, 0, 0.15)",
+    selectionForeground: "#09090b",
+
+    black: "#09090b",
+    red: "#dc2626",
+    green: "#16a34a",
+    yellow: "#ca8a04",
+    blue: "#2563eb",
+    magenta: "#9333ea",
+    cyan: "#0891b2",
+    white: "#ffffff",
+
+    brightBlack: "#3f3f46",
+    brightRed: "#ef4444",
+    brightGreen: "#22c55e",
+    brightYellow: "#f59e0b",
+    brightBlue: "#3b82f6",
+    brightMagenta: "#a855f7",
+    brightCyan: "#06b6d4",
+    brightWhite: "#fafafa",
+  },
 } as const;
 
 const darkSemanticColors = {
@@ -186,6 +213,33 @@ const darkSemanticColors = {
   accentBorder: "#34343a",
   input: "#27272a",
   ring: "#d4d4d8",
+
+  terminal: {
+    background: "#18181c",
+    foreground: "#fafafa",
+    cursor: "#fafafa",
+    cursorAccent: "#18181c",
+    selectionBackground: "rgba(255, 255, 255, 0.2)",
+    selectionForeground: "#fafafa",
+
+    black: "#121214",
+    red: "#ef4444",
+    green: "#22c55e",
+    yellow: "#f59e0b",
+    blue: "#3b82f6",
+    magenta: "#a855f7",
+    cyan: "#06b6d4",
+    white: "#e4e4e7",
+
+    brightBlack: "#3f3f46",
+    brightRed: "#f87171",
+    brightGreen: "#4ade80",
+    brightYellow: "#fbbf24",
+    brightBlue: "#60a5fa",
+    brightMagenta: "#c084fc",
+    brightCyan: "#22d3ee",
+    brightWhite: "#ffffff",
+  },
 } as const;
 
 const commonTheme = {

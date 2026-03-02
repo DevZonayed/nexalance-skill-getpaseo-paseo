@@ -54,7 +54,7 @@ export type TerminalStreamControllerStatus = {
 export type TerminalStreamControllerOptions = {
   client: TerminalStreamControllerClient;
   getPreferredSize: () => TerminalStreamControllerSize | null;
-  onChunk: (input: { terminalId: string; text: string }) => void;
+  onChunk: (input: { terminalId: string; text: string; replay: boolean }) => void;
   onReset?: (input: { terminalId: string }) => void;
   onStatusChange?: (status: TerminalStreamControllerStatus) => void;
   maxAttachAttempts?: number;
@@ -500,6 +500,7 @@ export class TerminalStreamController {
     this.options.onChunk({
       terminalId: input.terminalId,
       text,
+      replay: Boolean(input.chunk.replay),
     });
   }
 
@@ -565,6 +566,7 @@ export class TerminalStreamController {
         this.options.onChunk({
           terminalId: activeStream.terminalId,
           text: tail,
+          replay: false,
         });
       }
     } catch {

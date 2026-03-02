@@ -3,18 +3,16 @@ import { useQuery } from "@tanstack/react-query";
 import {
   ActivityIndicator,
   FlatList,
-  Image as RNImage,
   ListRenderItemInfo,
   type LayoutChangeEvent,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
   Pressable,
-  ScrollView as RNScrollView,
   Text,
   View,
   Platform,
 } from "react-native";
-import { ScrollView, Gesture, GestureDetector } from "react-native-gesture-handler";
+import { Gesture } from "react-native-gesture-handler";
 import { StyleSheet, UnistylesRuntime, useUnistyles } from "react-native-unistyles";
 import Animated, {
   cancelAnimation,
@@ -27,11 +25,6 @@ import Animated, {
 } from "react-native-reanimated";
 import { Fonts } from "@/constants/theme";
 import * as Clipboard from "expo-clipboard";
-import {
-  BottomSheetModal,
-  BottomSheetScrollView,
-  BottomSheetBackdrop,
-} from "@gorhom/bottom-sheet";
 import {
   Copy,
   Download,
@@ -47,7 +40,6 @@ import {
 import type {
   AgentFileExplorerState,
   ExplorerEntry,
-  ExplorerFile,
 } from "@/stores/session-store";
 import { useDaemonRegistry } from "@/contexts/daemon-registry-context";
 import { useSessionStore } from "@/stores/session-store";
@@ -63,7 +55,6 @@ import { useFileExplorerActions } from "@/hooks/use-file-explorer-actions";
 import { buildWorkspaceExplorerStateKey } from "@/hooks/use-file-explorer-actions";
 import {
   usePanelStore,
-  DEFAULT_EXPLORER_FILES_SPLIT_RATIO,
   type SortOption,
 } from "@/stores/panel-store";
 import { formatTimeAgo } from "@/utils/time";
@@ -80,10 +71,21 @@ const SORT_OPTIONS: { value: SortOption; label: string }[] = [
 
 const INDENT_PER_LEVEL = 12;
 
+function formatFileSize({ size }: { size: number }): string {
+  if (size < 1024) {
+    return `${size} B`;
+  }
+  if (size < 1024 * 1024) {
+    return `${(size / 1024).toFixed(1)} KB`;
+  }
+  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 interface FileExplorerPaneProps {
   serverId: string;
   workspaceId?: string | null;
   workspaceRoot: string;
+  onOpenFile?: (filePath: string) => void;
 }
 
 interface TreeRow {
@@ -95,6 +97,7 @@ export function FileExplorerPane({
   serverId,
   workspaceId,
   workspaceRoot,
+  onOpenFile,
 }: FileExplorerPaneProps) {
   const { theme } = useUnistyles();
   const isMobile =
@@ -132,7 +135,6 @@ export function FileExplorerPane({
   const {
     workspaceStateKey: actionsWorkspaceStateKey,
     requestDirectoryListing,
-    requestFilePreview,
     requestFileDownloadToken,
     selectExplorerEntry,
   } = useFileExplorerActions({
@@ -142,22 +144,12 @@ export function FileExplorerPane({
   });
   const sortOption = usePanelStore((state) => state.explorerSortOption);
   const setSortOption = usePanelStore((state) => state.setExplorerSortOption);
-  const splitRatio = usePanelStore((state) => state.explorerFilesSplitRatio);
-  const setSplitRatio = usePanelStore((state) => state.setExplorerFilesSplitRatio);
 
   const directories = explorerState?.directories ?? new Map();
-  const files = explorerState?.files ?? new Map();
   const pendingRequest = explorerState?.pendingRequest ?? null;
   const isExplorerLoading = explorerState?.isLoading ?? false;
   const error = explorerState?.lastError ?? null;
   const selectedEntryPath = explorerState?.selectedEntryPath ?? null;
-
-  const preview = selectedEntryPath ? files.get(selectedEntryPath) : null;
-  const isPreviewLoading = Boolean(
-    isExplorerLoading &&
-      pendingRequest?.mode === "file" &&
-      pendingRequest?.path === selectedEntryPath
-  );
 
   const isDirectoryLoading = useCallback(
     (path: string) =>
@@ -168,14 +160,8 @@ export function FileExplorerPane({
   );
 
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(() => new Set(["."]));
-  const [containerWidth, setContainerWidth] = useState(0);
-  const wasInlinePreviewVisibleRef = useRef(false);
   const treeListRef = useRef<FlatList<TreeRow>>(null);
   const treeScrollbarMetrics = useWebDesktopScrollbarMetrics();
-
-  // Bottom sheet for file preview (mobile)
-  const previewSheetRef = useRef<BottomSheetModal>(null);
-  const previewSnapPoints = useMemo(() => ["70%", "95%"], []);
 
   const hasInitializedRef = useRef(false);
 
@@ -222,22 +208,6 @@ export function FileExplorerPane({
     });
   }, [directories, hasWorkspaceScope, requestDirectoryListing, selectedEntryPath]);
 
-  // Open/close preview sheet based on selection
-  useEffect(() => {
-    if (!isMobile) {
-      return;
-    }
-    if (selectedEntryPath) {
-      previewSheetRef.current?.present();
-    } else {
-      previewSheetRef.current?.dismiss();
-    }
-  }, [isMobile, selectedEntryPath]);
-
-  const handleClosePreview = useCallback(() => {
-    selectExplorerEntry(null);
-  }, [selectExplorerEntry]);
-
   const handleToggleDirectory = useCallback(
     (entry: ExplorerEntry) => {
       if (!hasWorkspaceScope) {
@@ -272,9 +242,9 @@ export function FileExplorerPane({
         return;
       }
       selectExplorerEntry(entry.path);
-      void requestFilePreview(entry.path);
+      onOpenFile?.(entry.path);
     },
-    [hasWorkspaceScope, requestFilePreview, selectExplorerEntry]
+    [hasWorkspaceScope, onOpenFile, selectExplorerEntry]
   );
 
   const handleEntryPress = useCallback(
@@ -342,7 +312,6 @@ export function FileExplorerPane({
             setCurrentPath: false,
           })
         ),
-        ...(selectedEntryPath ? [requestFilePreview(selectedEntryPath)] : []),
       ]);
       return null;
     },
@@ -419,93 +388,6 @@ export function FileExplorerPane({
     () => getErrorRecoveryPath(explorerState),
     [explorerState]
   );
-
-  const shouldShowInlinePreview = !isMobile && Boolean(selectedEntryPath);
-  const minTreeWidth = 220;
-  const minPreviewWidth = 320;
-
-  const safeSplitRatio = Number.isFinite(splitRatio)
-    ? splitRatio
-    : DEFAULT_EXPLORER_FILES_SPLIT_RATIO;
-
-  const splitAvailableWidth = useSharedValue(0);
-  const splitMaxTreeWidth = useSharedValue(minTreeWidth);
-  const splitTreeWidth = useSharedValue(minTreeWidth);
-  const splitStartTreeWidth = useSharedValue(minTreeWidth);
-
-  useEffect(() => {
-    if (!shouldShowInlinePreview) {
-      wasInlinePreviewVisibleRef.current = false;
-      return;
-    }
-    if (containerWidth <= 0) {
-      return;
-    }
-
-    const available = Math.max(0, containerWidth);
-    const maxTree = Math.max(minTreeWidth, available - minPreviewWidth);
-    const isOpeningInlinePreview = !wasInlinePreviewVisibleRef.current;
-    const desired = isOpeningInlinePreview
-      ? Math.round(available * safeSplitRatio)
-      : splitTreeWidth.value;
-    const clamped = Math.max(minTreeWidth, Math.min(maxTree, desired));
-
-    splitAvailableWidth.value = available;
-    splitMaxTreeWidth.value = maxTree;
-    splitTreeWidth.value = clamped;
-    wasInlinePreviewVisibleRef.current = true;
-  }, [
-    containerWidth,
-    minPreviewWidth,
-    minTreeWidth,
-    safeSplitRatio,
-    shouldShowInlinePreview,
-    splitAvailableWidth,
-    splitMaxTreeWidth,
-    splitTreeWidth,
-  ]);
-
-  const treePaneAnimatedStyle = useAnimatedStyle(() => ({
-    width: splitTreeWidth.value,
-    flexBasis: splitTreeWidth.value,
-    flexGrow: 0,
-    flexShrink: 0,
-  }));
-
-  const splitResizeGesture = useMemo(() => {
-    if (isMobile || !shouldShowInlinePreview) {
-      return Gesture.Pan().enabled(false);
-    }
-
-    return Gesture.Pan()
-      .hitSlop({ left: 12, right: 12, top: 0, bottom: 0 })
-      .onStart(() => {
-        splitStartTreeWidth.value = splitTreeWidth.value;
-      })
-      .onUpdate((event) => {
-        const nextWidth = splitStartTreeWidth.value - event.translationX;
-        const clamped = Math.max(
-          minTreeWidth,
-          Math.min(splitMaxTreeWidth.value, nextWidth)
-        );
-        splitTreeWidth.value = clamped;
-      })
-      .onEnd(() => {
-        const available = splitAvailableWidth.value;
-        const ratio = available > 0 ? splitTreeWidth.value / available : safeSplitRatio;
-        runOnJS(setSplitRatio)(ratio);
-      });
-  }, [
-    isMobile,
-    minTreeWidth,
-    safeSplitRatio,
-    setSplitRatio,
-    shouldShowInlinePreview,
-    splitAvailableWidth,
-    splitMaxTreeWidth,
-    splitStartTreeWidth,
-    splitTreeWidth,
-  ]);
 
   const renderTreeRow = useCallback(
     ({ item }: ListRenderItemInfo<TreeRow>) => {
@@ -606,27 +488,6 @@ export function FileExplorerPane({
     ]
   );
 
-  const handlePreviewSheetChange = useCallback(
-    (index: number) => {
-      if (index === -1) {
-        handleClosePreview();
-      }
-    },
-    [handleClosePreview]
-  );
-
-  const renderPreviewBackdrop = useCallback(
-    (props: React.ComponentProps<typeof BottomSheetBackdrop>) => (
-      <BottomSheetBackdrop
-        {...props}
-        disappearsOnIndex={-1}
-        appearsOnIndex={0}
-        opacity={0.5}
-      />
-    ),
-    []
-  );
-
   const handleBackFromError = useCallback(() => {
     if (!hasWorkspaceScope) {
       return;
@@ -667,7 +528,6 @@ export function FileExplorerPane({
   return (
     <View
       style={styles.container}
-      onLayout={(event) => setContainerWidth(event.nativeEvent.layout.width)}
     >
       {error ? (
         <View style={styles.centerState}>
@@ -701,383 +561,64 @@ export function FileExplorerPane({
           <Text style={styles.emptyText}>No files</Text>
         </View>
       ) : (
-        <View style={styles.desktopSplit}>
-          {shouldShowInlinePreview ? (
-            <View style={styles.previewPane}>
-              <View style={styles.paneHeader} testID="preview-pane-header">
-                <Text style={styles.previewHeaderText} numberOfLines={1}>
-                  {selectedEntryPath?.split("/").pop() ?? "Preview"}
-                </Text>
-                <View style={styles.previewHeaderRight}>
-                  {isPreviewLoading ? (
-                    <ActivityIndicator size="small" color={theme.colors.foregroundMuted} />
-                  ) : null}
-                  <Pressable
-                    onPress={handleClosePreview}
-                    hitSlop={8}
-                    style={({ hovered, pressed }) => [
-                      styles.iconButton,
-                      (hovered || pressed) && styles.iconButtonHovered,
-                    ]}
-                    accessibilityRole="button"
-                    accessibilityLabel="Close preview"
-                  >
-                    <X size={16} color={theme.colors.foregroundMuted} />
-                  </Pressable>
-                </View>
-              </View>
-
-              <FilePreviewBody
-                preview={preview}
-                isLoading={isPreviewLoading}
-                variant="inline"
-                showDesktopWebScrollbar={showDesktopWebScrollbar}
-              />
+        <View style={[styles.treePane, styles.treePaneFill]}>
+          <View style={styles.paneHeader} testID="files-pane-header">
+            <View style={styles.paneHeaderLeft} />
+            <View style={styles.paneHeaderRight}>
+              <Pressable
+                onPress={handleRefresh}
+                disabled={isRefreshFetching}
+                hitSlop={8}
+                style={({ hovered, pressed }) => [
+                  styles.iconButton,
+                  (hovered || pressed) && styles.iconButtonHovered,
+                  pressed && styles.iconButtonPressed,
+                ]}
+                accessibilityRole="button"
+                accessibilityLabel="Refresh files"
+              >
+                <Animated.View style={[styles.refreshIcon, refreshIconAnimatedStyle]}>
+                  <RotateCw size={16} color={theme.colors.foregroundMuted} />
+                </Animated.View>
+              </Pressable>
+              <Pressable style={styles.sortButton} onPress={handleSortCycle}>
+                <Text style={styles.sortButtonText}>{currentSortLabel}</Text>
+              </Pressable>
             </View>
-          ) : null}
-
-          {shouldShowInlinePreview ? (
-            <Animated.View
-              style={[
-                styles.treePane,
-                styles.treePaneWithPreview,
-                { minWidth: minTreeWidth },
-                treePaneAnimatedStyle,
-              ]}
-            >
-              <GestureDetector gesture={splitResizeGesture}>
-                <View
-                  style={[
-                    styles.splitResizeHandle,
-                    Platform.OS === "web" && ({ cursor: "col-resize" } as any),
-                    Platform.OS === "web" && ({ touchAction: "none", userSelect: "none" } as any),
-                  ]}
-                />
-              </GestureDetector>
-              <View style={styles.paneHeader} testID="files-pane-header">
-                <View style={styles.paneHeaderLeft} />
-                <View style={styles.paneHeaderRight}>
-                  <Pressable
-                    onPress={handleRefresh}
-                    disabled={isRefreshFetching}
-                    hitSlop={8}
-                    style={({ hovered, pressed }) => [
-                      styles.iconButton,
-                      (hovered || pressed) && styles.iconButtonHovered,
-                      pressed && styles.iconButtonPressed,
-                    ]}
-                    accessibilityRole="button"
-                    accessibilityLabel="Refresh files"
-                  >
-                    <Animated.View style={[styles.refreshIcon, refreshIconAnimatedStyle]}>
-                      <RotateCw size={16} color={theme.colors.foregroundMuted} />
-                    </Animated.View>
-                  </Pressable>
-                  <Pressable style={styles.sortButton} onPress={handleSortCycle}>
-                    <Text style={styles.sortButtonText}>{currentSortLabel}</Text>
-                  </Pressable>
-                </View>
-              </View>
-              <FlatList
-                ref={treeListRef}
-                style={styles.treeList}
-                data={treeRows}
-                renderItem={renderTreeRow}
-                keyExtractor={(row) => row.entry.path}
-                testID="file-explorer-tree-scroll"
-                contentContainerStyle={styles.entriesContent}
-                onLayout={
-                  showDesktopWebScrollbar ? handleTreeListLayout : undefined
-                }
-                onScroll={
-                  showDesktopWebScrollbar ? handleTreeListScroll : undefined
-                }
-                onContentSizeChange={
-                  showDesktopWebScrollbar
-                    ? treeScrollbarMetrics.onContentSizeChange
-                    : undefined
-                }
-                scrollEventThrottle={showDesktopWebScrollbar ? 16 : undefined}
-                showsVerticalScrollIndicator={!showDesktopWebScrollbar}
-                initialNumToRender={24}
-                maxToRenderPerBatch={40}
-                windowSize={12}
-              />
-              <WebDesktopScrollbarOverlay
-                enabled={showDesktopWebScrollbar}
-                metrics={treeScrollbarMetrics}
-                onScrollToOffset={(nextOffset) => {
-                  treeListRef.current?.scrollToOffset({
-                    offset: nextOffset,
-                    animated: false,
-                  });
-                }}
-              />
-            </Animated.View>
-          ) : (
-            <View style={[styles.treePane, styles.treePaneFill]}>
-              <View style={styles.paneHeader} testID="files-pane-header">
-                <View style={styles.paneHeaderLeft} />
-                <View style={styles.paneHeaderRight}>
-                  <Pressable
-                    onPress={handleRefresh}
-                    disabled={isRefreshFetching}
-                    hitSlop={8}
-                    style={({ hovered, pressed }) => [
-                      styles.iconButton,
-                      (hovered || pressed) && styles.iconButtonHovered,
-                      pressed && styles.iconButtonPressed,
-                    ]}
-                    accessibilityRole="button"
-                    accessibilityLabel="Refresh files"
-                  >
-                    <Animated.View style={[styles.refreshIcon, refreshIconAnimatedStyle]}>
-                      <RotateCw size={16} color={theme.colors.foregroundMuted} />
-                    </Animated.View>
-                  </Pressable>
-                  <Pressable style={styles.sortButton} onPress={handleSortCycle}>
-                    <Text style={styles.sortButtonText}>{currentSortLabel}</Text>
-                  </Pressable>
-                </View>
-              </View>
-              <FlatList
-                ref={treeListRef}
-                style={styles.treeList}
-                data={treeRows}
-                renderItem={renderTreeRow}
-                keyExtractor={(row) => row.entry.path}
-                testID="file-explorer-tree-scroll"
-                contentContainerStyle={styles.entriesContent}
-                onLayout={
-                  showDesktopWebScrollbar ? handleTreeListLayout : undefined
-                }
-                onScroll={
-                  showDesktopWebScrollbar ? handleTreeListScroll : undefined
-                }
-                onContentSizeChange={
-                  showDesktopWebScrollbar
-                    ? treeScrollbarMetrics.onContentSizeChange
-                    : undefined
-                }
-                scrollEventThrottle={showDesktopWebScrollbar ? 16 : undefined}
-                showsVerticalScrollIndicator={!showDesktopWebScrollbar}
-                initialNumToRender={24}
-                maxToRenderPerBatch={40}
-                windowSize={12}
-              />
-              <WebDesktopScrollbarOverlay
-                enabled={showDesktopWebScrollbar}
-                metrics={treeScrollbarMetrics}
-                onScrollToOffset={(nextOffset) => {
-                  treeListRef.current?.scrollToOffset({
-                    offset: nextOffset,
-                    animated: false,
-                  });
-                }}
-              />
-            </View>
-          )}
+          </View>
+          <FlatList
+            ref={treeListRef}
+            style={styles.treeList}
+            data={treeRows}
+            renderItem={renderTreeRow}
+            keyExtractor={(row) => row.entry.path}
+            testID="file-explorer-tree-scroll"
+            contentContainerStyle={styles.entriesContent}
+            onLayout={showDesktopWebScrollbar ? handleTreeListLayout : undefined}
+            onScroll={showDesktopWebScrollbar ? handleTreeListScroll : undefined}
+            onContentSizeChange={
+              showDesktopWebScrollbar ? treeScrollbarMetrics.onContentSizeChange : undefined
+            }
+            scrollEventThrottle={showDesktopWebScrollbar ? 16 : undefined}
+            showsVerticalScrollIndicator={!showDesktopWebScrollbar}
+            initialNumToRender={24}
+            maxToRenderPerBatch={40}
+            windowSize={12}
+          />
+          <WebDesktopScrollbarOverlay
+            enabled={showDesktopWebScrollbar}
+            metrics={treeScrollbarMetrics}
+            onScrollToOffset={(nextOffset) => {
+              treeListRef.current?.scrollToOffset({
+                offset: nextOffset,
+                animated: false,
+              });
+            }}
+          />
         </View>
       )}
-
-      {isMobile ? (
-        <BottomSheetModal
-          ref={previewSheetRef}
-          snapPoints={previewSnapPoints}
-          index={0}
-          enableDynamicSizing={false}
-          onChange={handlePreviewSheetChange}
-          backdropComponent={renderPreviewBackdrop}
-          enablePanDownToClose
-          backgroundStyle={styles.sheetBackground}
-          handleIndicatorStyle={styles.handleIndicator}
-        >
-          <View style={styles.sheetHeader}>
-            <Text style={styles.sheetTitle} numberOfLines={1}>
-              {selectedEntryPath?.split("/").pop() ?? "Preview"}
-            </Text>
-            <Pressable onPress={handleClosePreview} style={styles.sheetCloseButton}>
-              <X size={20} color={theme.colors.foregroundMuted} />
-            </Pressable>
-          </View>
-          <FilePreviewBody
-            preview={preview}
-            isLoading={isPreviewLoading}
-            variant="sheet"
-            showDesktopWebScrollbar={false}
-          />
-        </BottomSheetModal>
-      ) : null}
     </View>
   );
-}
-
-function FilePreviewBody({
-  preview,
-  isLoading,
-  variant,
-  showDesktopWebScrollbar,
-}: {
-  preview: ExplorerFile | null;
-  isLoading: boolean;
-  variant: "inline" | "sheet";
-  showDesktopWebScrollbar: boolean;
-}) {
-  const enablePreviewDesktopScrollbar =
-    variant === "inline" && showDesktopWebScrollbar;
-  const previewScrollRef = useRef<RNScrollView>(null);
-  const previewScrollbarMetrics = useWebDesktopScrollbarMetrics();
-
-  const handlePreviewScroll = useCallback(
-    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
-      if (enablePreviewDesktopScrollbar) {
-        previewScrollbarMetrics.onScroll(event);
-      }
-    },
-    [enablePreviewDesktopScrollbar, previewScrollbarMetrics]
-  );
-
-  const handlePreviewLayout = useCallback(
-    (event: LayoutChangeEvent) => {
-      if (enablePreviewDesktopScrollbar) {
-        previewScrollbarMetrics.onLayout(event);
-      }
-    },
-    [enablePreviewDesktopScrollbar, previewScrollbarMetrics]
-  );
-
-  if (isLoading && !preview) {
-    return (
-      <View style={styles.sheetCenterState}>
-        <ActivityIndicator size="small" />
-        <Text style={styles.loadingText}>Loading file…</Text>
-      </View>
-    );
-  }
-
-  if (!preview) {
-    return (
-      <View style={styles.sheetCenterState}>
-        <Text style={styles.emptyText}>No preview available</Text>
-      </View>
-    );
-  }
-
-  if (preview.kind === "text") {
-    if (variant === "sheet") {
-      return (
-        <BottomSheetScrollView style={styles.previewContent}>
-          <ScrollView
-            horizontal
-            nestedScrollEnabled
-            showsHorizontalScrollIndicator
-            contentContainerStyle={styles.previewCodeScrollContent}
-          >
-            <Text style={styles.codeText}>{preview.content}</Text>
-          </ScrollView>
-        </BottomSheetScrollView>
-      );
-    }
-    return (
-      <View style={styles.previewScrollContainer}>
-        <RNScrollView
-          ref={previewScrollRef}
-          style={styles.previewContent}
-          onLayout={enablePreviewDesktopScrollbar ? handlePreviewLayout : undefined}
-          onScroll={enablePreviewDesktopScrollbar ? handlePreviewScroll : undefined}
-          onContentSizeChange={
-            enablePreviewDesktopScrollbar
-              ? previewScrollbarMetrics.onContentSizeChange
-              : undefined
-          }
-          scrollEventThrottle={enablePreviewDesktopScrollbar ? 16 : undefined}
-          showsVerticalScrollIndicator={!enablePreviewDesktopScrollbar}
-        >
-          <RNScrollView
-            horizontal
-            nestedScrollEnabled
-            showsHorizontalScrollIndicator
-            contentContainerStyle={styles.previewCodeScrollContent}
-          >
-            <Text style={styles.codeText}>{preview.content}</Text>
-          </RNScrollView>
-        </RNScrollView>
-        <WebDesktopScrollbarOverlay
-          enabled={enablePreviewDesktopScrollbar}
-          metrics={previewScrollbarMetrics}
-          onScrollToOffset={(nextOffset) => {
-            previewScrollRef.current?.scrollTo({ y: nextOffset, animated: false });
-          }}
-        />
-      </View>
-    );
-  }
-
-  if (preview.kind === "image" && preview.content) {
-    if (variant === "sheet") {
-      return (
-        <BottomSheetScrollView contentContainerStyle={styles.previewImageScrollContent}>
-          <RNImage
-            source={{
-              uri: `data:${preview.mimeType ?? "image/png"};base64,${preview.content}`,
-            }}
-            style={styles.previewImage}
-            resizeMode="contain"
-          />
-        </BottomSheetScrollView>
-      );
-    }
-    return (
-      <View style={styles.previewScrollContainer}>
-        <RNScrollView
-          ref={previewScrollRef}
-          style={styles.previewContent}
-          contentContainerStyle={styles.previewImageScrollContent}
-          onLayout={enablePreviewDesktopScrollbar ? handlePreviewLayout : undefined}
-          onScroll={enablePreviewDesktopScrollbar ? handlePreviewScroll : undefined}
-          onContentSizeChange={
-            enablePreviewDesktopScrollbar
-              ? previewScrollbarMetrics.onContentSizeChange
-              : undefined
-          }
-          scrollEventThrottle={enablePreviewDesktopScrollbar ? 16 : undefined}
-          showsVerticalScrollIndicator={!enablePreviewDesktopScrollbar}
-        >
-          <RNImage
-            source={{
-              uri: `data:${preview.mimeType ?? "image/png"};base64,${preview.content}`,
-            }}
-            style={styles.previewImage}
-            resizeMode="contain"
-          />
-        </RNScrollView>
-        <WebDesktopScrollbarOverlay
-          enabled={enablePreviewDesktopScrollbar}
-          metrics={previewScrollbarMetrics}
-          onScrollToOffset={(nextOffset) => {
-            previewScrollRef.current?.scrollTo({ y: nextOffset, animated: false });
-          }}
-        />
-      </View>
-    );
-  }
-
-  return (
-    <View style={styles.sheetCenterState}>
-      <Text style={styles.emptyText}>Binary preview unavailable</Text>
-      <Text style={styles.binaryMetaText}>{formatFileSize({ size: preview.size })}</Text>
-    </View>
-  );
-}
-
-function formatFileSize({ size }: { size: number }): string {
-  if (size < 1024) {
-    return `${size} B`;
-  }
-  if (size < 1024 * 1024) {
-    return `${(size / 1024).toFixed(1)} KB`;
-  }
-  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 type EntryDisplayKind = "directory" | "image" | "text" | "other";

@@ -74,7 +74,13 @@ function SortableItem<T>({
     // Trigger drag - handled by dnd-kit's listeners
   };
 
-  const baseTransform = CSS.Transform.toString(transform);
+  // dnd-kit can set `scaleX/scaleY` on the active item when dragging over a
+  // differently-sized droppable. For variable-height rows this can look like
+  // the "ghost" stretches. Keep the dragged item's size stable by zeroing
+  // out the dnd-kit scaling component.
+  const baseTransform = CSS.Transform.toString(
+    transform && isDragging ? { ...transform, scaleX: 1, scaleY: 1 } : transform
+  );
   const scaleTransform = isDragging ? "scale(1.02)" : "";
   const combinedTransform = [baseTransform, scaleTransform].filter(Boolean).join(" ");
 

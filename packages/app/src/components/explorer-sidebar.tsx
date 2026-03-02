@@ -37,6 +37,7 @@ interface ExplorerSidebarProps {
   workspaceId?: string | null;
   workspaceRoot: string;
   isGit: boolean;
+  onOpenFile?: (filePath: string) => void;
 }
 
 export function ExplorerSidebar({
@@ -44,6 +45,7 @@ export function ExplorerSidebar({
   workspaceId,
   workspaceRoot,
   isGit,
+  onOpenFile,
 }: ExplorerSidebarProps) {
   const { theme } = useUnistyles();
   const isScreenFocused = useIsFocused();
@@ -289,6 +291,7 @@ export function ExplorerSidebar({
               workspaceRoot={workspaceRoot}
               isGit={isGit}
               isMobile={isMobile}
+              onOpenFile={onOpenFile}
             />
           </Animated.View>
         </GestureDetector>
@@ -324,6 +327,7 @@ export function ExplorerSidebar({
         workspaceRoot={workspaceRoot}
         isGit={isGit}
         isMobile={false}
+        onOpenFile={onOpenFile}
       />
     </Animated.View>
   );
@@ -338,6 +342,7 @@ interface SidebarContentProps {
   workspaceRoot: string;
   isGit: boolean;
   isMobile: boolean;
+  onOpenFile?: (filePath: string) => void;
 }
 
 function SidebarContent({
@@ -349,6 +354,7 @@ function SidebarContent({
   workspaceRoot,
   isGit,
   isMobile,
+  onOpenFile,
 }: SidebarContentProps) {
   const { theme } = useUnistyles();
   const resolvedTab: ExplorerTab =
@@ -413,6 +419,7 @@ function SidebarContent({
             serverId={serverId}
             workspaceId={workspaceId}
             workspaceRoot={workspaceRoot}
+            onOpenFile={onOpenFile}
           />
         )}
       </View>

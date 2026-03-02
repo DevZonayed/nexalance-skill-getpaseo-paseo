@@ -3,6 +3,7 @@ import { summarizeTerminalText, terminalDebugLog } from "./terminal-debug";
 export type TerminalOutputDeliveryChunk = {
   sequence: number;
   text: string;
+  replay: boolean;
 };
 
 export type TerminalOutputDeliveryQueueOptions = {
@@ -48,7 +49,11 @@ export class TerminalOutputDeliveryQueue {
     }
 
     const lastPendingChunk = this.pendingChunks[this.pendingChunks.length - 1];
-    if (lastPendingChunk && lastPendingChunk.text.length > 0) {
+    if (
+      lastPendingChunk &&
+      lastPendingChunk.text.length > 0 &&
+      lastPendingChunk.replay === chunk.replay
+    ) {
       lastPendingChunk.sequence = chunk.sequence;
       lastPendingChunk.text += chunk.text;
     } else {
@@ -138,6 +143,7 @@ export class TerminalOutputDeliveryQueue {
     this.options.onDeliver({
       sequence: chunk.sequence,
       text: chunk.text,
+      replay: chunk.replay,
     });
   }
 

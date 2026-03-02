@@ -1,12 +1,16 @@
 import { describe, expect, it } from "vitest";
 import {
   buildHostWorkspaceRoute,
+  buildHostWorkspaceFileRoute,
+  decodeFilePathFromPathSegment,
   decodeWorkspaceIdFromPathSegment,
+  encodeFilePathForPathSegment,
   encodeWorkspaceIdForPathSegment,
   parseHostAgentDraftRouteFromPathname,
   parseHostAgentRouteFromPathname,
   parseHostDraftRouteFromPathname,
   parseHostWorkspaceAgentRouteFromPathname,
+  parseHostWorkspaceFileRouteFromPathname,
   parseHostWorkspaceTerminalRouteFromPathname,
   parseHostWorkspaceRouteFromPathname,
 } from "./host-routes";
@@ -54,12 +58,31 @@ describe("workspace route parsing", () => {
     expect(decodeWorkspaceIdFromPathSegment("L3RtcC9yZXBv")).toBe("/tmp/repo");
   });
 
+  it("encodes file paths as base64url (no padding)", () => {
+    const encoded = encodeFilePathForPathSegment("src/index.ts");
+    expect(encoded).toMatch(/^[A-Za-z0-9_-]+$/);
+    expect(decodeFilePathFromPathSegment(encoded)).toBe("src/index.ts");
+  });
+
   it("parses workspace route", () => {
     expect(
       parseHostWorkspaceRouteFromPathname("/h/local/workspace/L3RtcC9yZXBv")
     ).toEqual({
       serverId: "local",
       workspaceId: "/tmp/repo",
+    });
+  });
+
+  it("parses workspace file route", () => {
+    const encodedPath = encodeFilePathForPathSegment("src/index.ts");
+    expect(
+      parseHostWorkspaceFileRouteFromPathname(
+        `/h/local/workspace/L3RtcC9yZXBv/file/${encodedPath}`
+      )
+    ).toEqual({
+      serverId: "local",
+      workspaceId: "/tmp/repo",
+      filePath: "src/index.ts",
     });
   });
 
@@ -102,6 +125,12 @@ describe("workspace route parsing", () => {
   it("builds base64url workspace routes", () => {
     expect(buildHostWorkspaceRoute("local", "/tmp/repo")).toBe(
       "/h/local/workspace/L3RtcC9yZXBv"
+    );
+  });
+
+  it("builds base64url workspace file routes", () => {
+    expect(buildHostWorkspaceFileRoute("local", "/tmp/repo", "src/index.ts")).toBe(
+      `/h/local/workspace/L3RtcC9yZXBv/file/${encodeFilePathForPathSegment("src/index.ts")}`
     );
   });
 });

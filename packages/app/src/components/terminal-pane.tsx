@@ -42,6 +42,7 @@ import {
   terminalDebugLog,
 } from "@/terminal/runtime/terminal-debug";
 import { usePanelStore } from "@/stores/panel-store";
+import { toXtermTheme } from "@/utils/to-xterm-theme";
 import TerminalEmulator from "./terminal-emulator";
 
 interface TerminalPaneProps {
@@ -84,6 +85,7 @@ type ModifierState = {
 type TerminalOutputChunkState = {
   sequence: number;
   text: string;
+  replay: boolean;
 };
 
 type PendingTerminalInput =
@@ -146,6 +148,7 @@ export function TerminalPane({
   manageTerminalDirectorySubscription = true,
 }: TerminalPaneProps) {
   const { theme } = useUnistyles();
+  const xtermTheme = useMemo(() => toXtermTheme(theme.colors.terminal), [theme.colors.terminal]);
   const isMobile =
     UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
   const mobileView = usePanelStore((state) => state.mobileView);
@@ -178,6 +181,7 @@ export function TerminalPane({
   const [selectedOutputChunk, setSelectedOutputChunk] = useState<TerminalOutputChunkState>({
     sequence: 0,
     text: "",
+    replay: false,
   });
   const [selectedOutputSnapshot, setSelectedOutputSnapshot] = useState("");
   const [activeStream, setActiveStream] = useState<{
@@ -600,8 +604,8 @@ export function TerminalPane({
     const controller = new TerminalStreamController({
       client,
       getPreferredSize: () => lastReportedSizeRef.current,
-      onChunk: ({ terminalId, text }) => {
-        outputPump.append({ terminalId, text });
+      onChunk: ({ terminalId, text, replay }) => {
+        outputPump.append({ terminalId, text, replay });
       },
       onReset: ({ terminalId }) => {
         outputPump.clearTerminal({ terminalId });
@@ -626,7 +630,7 @@ export function TerminalPane({
   useEffect(() => {
     outputDeliveryQueueRef.current?.reset();
     pendingTerminalInputRef.current = [];
-    setSelectedOutputChunk({ sequence: 0, text: "" });
+    setSelectedOutputChunk({ sequence: 0, text: "", replay: false });
     outputPumpRef.current?.setSelectedTerminal({
       terminalId: selectedTerminalId,
     });
@@ -1122,10 +1126,9 @@ export function TerminalPane({
               initialOutputText={selectedOutputSnapshot}
               outputChunkText={selectedOutputChunk.text}
               outputChunkSequence={selectedOutputChunk.sequence}
+              outputChunkReplay={selectedOutputChunk.replay}
               testId="terminal-surface"
-              backgroundColor={theme.colors.background}
-              foregroundColor={theme.colors.foreground}
-              cursorColor={theme.colors.foreground}
+              xtermTheme={xtermTheme}
               swipeGesturesEnabled={swipeGesturesEnabled}
               onSwipeRight={() => {
                 if (!swipeGesturesEnabled) {

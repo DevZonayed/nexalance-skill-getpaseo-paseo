@@ -14,11 +14,13 @@ import * as Clipboard from "expo-clipboard";
 import {
   Bot,
   ChevronDown,
+  FileText,
   Folder,
   GitBranch,
   MoreVertical,
   PanelRight,
   Plus,
+  SquareTerminal,
   Terminal,
   X,
 } from "lucide-react-native";
@@ -45,6 +47,7 @@ import {
 } from "@/components/ui/context-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { ExplorerSidebar } from "@/components/explorer-sidebar";
+import { FilePane } from "@/components/file-pane";
 import { TerminalPane } from "@/components/terminal-pane";
 import { SortableInlineList } from "@/components/sortable-inline-list";
 import { ExplorerSidebarAnimationProvider } from "@/contexts/explorer-sidebar-animation-context";
@@ -52,6 +55,7 @@ import { useToast } from "@/contexts/toast-context";
 import { useExplorerOpenGesture } from "@/hooks/use-explorer-open-gesture";
 import { usePanelStore, type ExplorerCheckoutContext } from "@/stores/panel-store";
 import { useSessionStore, type Agent } from "@/stores/session-store";
+import { useWorkspaceFileTabsStore } from "@/stores/workspace-file-tabs-store";
 import {
   buildWorkspaceTabPersistenceKey,
   useWorkspaceTabsStore,
@@ -61,7 +65,9 @@ import {
   buildHostAgentDetailRoute,
   buildHostWorkspaceRoute,
   buildHostWorkspaceAgentRoute,
+  buildHostWorkspaceFileRoute,
   buildHostWorkspaceTerminalRoute,
+  encodeFilePathForPathSegment,
   decodeWorkspaceIdFromPathSegment,
 } from "@/utils/host-routes";
 import { buildNewAgentRoute } from "@/utils/new-agent-routing";
@@ -84,6 +90,7 @@ const DROPDOWN_WIDTH = 220;
 const NEW_TAB_AGENT_OPTION_ID = "__new_tab_agent__";
 const NEW_TAB_TERMINAL_OPTION_ID = "__new_tab_terminal__";
 const EMPTY_TAB_ORDER: string[] = [];
+const EMPTY_OPEN_FILE_PATHS: string[] = [];
 
 type TabAvailability = "available" | "invalid" | "unknown";
 
@@ -108,6 +115,13 @@ type WorkspaceTabDescriptor =
       key: string;
       kind: "terminal";
       terminalId: string;
+      label: string;
+      subtitle: string;
+    }
+  | {
+      key: string;
+      kind: "file";
+      filePath: string;
       label: string;
       subtitle: string;
     };
@@ -219,6 +233,13 @@ function normalizeWorkspaceTab(
     }
     return { kind: "terminal", terminalId };
   }
+  if (value.kind === "file") {
+    const path = trimNonEmpty(value.path);
+    if (!path) {
+      return null;
+    }
+    return { kind: "file", path: path.replace(/\\/g, "/") };
+  }
   return null;
 }
 
@@ -235,6 +256,9 @@ function tabEquals(left: WorkspaceTabTarget | null, right: WorkspaceTabTarget | 
   if (left.kind === "terminal" && right.kind === "terminal") {
     return left.terminalId === right.terminalId;
   }
+  if (left.kind === "file" && right.kind === "file") {
+    return left.path === right.path;
+  }
   return false;
 }
 
@@ -248,6 +272,13 @@ function buildTabRoute(input: {
       input.serverId,
       input.workspaceId,
       input.tab.agentId
+    );
+  }
+  if (input.tab.kind === "file") {
+    return buildHostWorkspaceFileRoute(
+      input.serverId,
+      input.workspaceId,
+      input.tab.path
     );
   }
   return buildHostWorkspaceTerminalRoute(
@@ -269,6 +300,9 @@ function resolveTabAvailability(input: {
       return "unknown";
     }
     return input.agentsById.has(input.tab.agentId) ? "available" : "invalid";
+  }
+  if (input.tab.kind === "file") {
+    return "available";
   }
   if (!input.terminalsHydrated) {
     return "unknown";
@@ -292,6 +326,9 @@ function toWorkspaceTabTarget(
 ): WorkspaceTabTarget {
   if (tab.kind === "agent") {
     return { kind: "agent", agentId: tab.agentId };
+  }
+  if (tab.kind === "file") {
+    return { kind: "file", path: tab.filePath };
   }
   return { kind: "terminal", terminalId: tab.terminalId };
 }
@@ -566,33 +603,6 @@ function WorkspaceScreenContent({
     return map;
   }, [workspaceAgents]);
 
-  const baseTabs = useMemo<WorkspaceTabDescriptor[]>(() => {
-    const next: WorkspaceTabDescriptor[] = [];
-
-    for (const agent of workspaceAgents) {
-      next.push({
-        key: `agent:${agent.id}`,
-        kind: "agent",
-        agentId: agent.id,
-        provider: agent.provider,
-        label: agent.title?.trim() || "New agent",
-        subtitle: `${formatProviderLabel(agent.provider)} agent`,
-      });
-    }
-
-    for (const terminal of terminals) {
-      next.push({
-        key: `terminal:${terminal.id}`,
-        kind: "terminal",
-        terminalId: terminal.id,
-        label: terminal.name,
-        subtitle: "Terminal",
-      });
-    }
-
-    return next;
-  }, [terminals, workspaceAgents]);
-
   const terminalIds = useMemo(() => {
     const set = new Set<string>();
     for (const terminal of terminals) {
@@ -628,6 +638,64 @@ function WorkspaceScreenContent({
   );
   const setTabOrder = useWorkspaceTabsStore((state) => state.setTabOrder);
 
+  const openFileTab = useWorkspaceFileTabsStore((state) => state.openFileTab);
+  const closeFileTab = useWorkspaceFileTabsStore((state) => state.closeFileTab);
+
+  useEffect(() => {
+    if (requestedTab?.kind !== "file") {
+      return;
+    }
+    openFileTab({
+      serverId: normalizedServerId,
+      workspaceId: normalizedWorkspaceId,
+      filePath: requestedTab.path,
+    });
+  }, [normalizedServerId, normalizedWorkspaceId, openFileTab, requestedTab]);
+
+  const openFilePaths = useWorkspaceFileTabsStore((state) =>
+    persistenceKey
+      ? state.openFilePathsByWorkspace[persistenceKey] ?? EMPTY_OPEN_FILE_PATHS
+      : EMPTY_OPEN_FILE_PATHS
+  );
+
+  const baseTabs = useMemo<WorkspaceTabDescriptor[]>(() => {
+    const next: WorkspaceTabDescriptor[] = [];
+
+    for (const agent of workspaceAgents) {
+      next.push({
+        key: `agent:${agent.id}`,
+        kind: "agent",
+        agentId: agent.id,
+        provider: agent.provider,
+        label: agent.title?.trim() || "New agent",
+        subtitle: `${formatProviderLabel(agent.provider)} agent`,
+      });
+    }
+
+    for (const terminal of terminals) {
+      next.push({
+        key: `terminal:${terminal.id}`,
+        kind: "terminal",
+        terminalId: terminal.id,
+        label: terminal.name,
+        subtitle: "Terminal",
+      });
+    }
+
+    for (const filePath of openFilePaths) {
+      const fileName = filePath.split("/").filter(Boolean).pop() ?? filePath;
+      next.push({
+        key: `file:${filePath}`,
+        kind: "file",
+        filePath,
+        label: fileName,
+        subtitle: filePath,
+      });
+    }
+
+    return next;
+  }, [openFilePaths, terminals, workspaceAgents]);
+
   const tabs = useMemo(
     () => applyWorkspaceTabOrder({ tabs: baseTabs, keys: tabOrder }),
     [baseTabs, tabOrder]
@@ -647,6 +715,9 @@ function WorkspaceScreenContent({
     }
     if (first.kind === "agent") {
       return { kind: "agent", agentId: first.agentId };
+    }
+    if (first.kind === "file") {
+      return { kind: "file", path: first.filePath };
     }
     return { kind: "terminal", terminalId: first.terminalId };
   }, [tabs]);
@@ -737,6 +808,13 @@ function WorkspaceScreenContent({
       if (tabEquals(tab, resolvedTab)) {
         return;
       }
+      if (tab.kind === "file") {
+        openFileTab({
+          serverId: normalizedServerId,
+          workspaceId: normalizedWorkspaceId,
+          filePath: tab.path,
+        });
+      }
       const targetRoute = buildTabRoute({
         serverId: normalizedServerId,
         workspaceId: normalizedWorkspaceId,
@@ -752,10 +830,21 @@ function WorkspaceScreenContent({
     [
       normalizedServerId,
       normalizedWorkspaceId,
+      openFileTab,
       resolvedTab,
       router,
       setLastFocusedTab,
     ]
+  );
+
+  const handleOpenFileFromExplorer = useCallback(
+    (filePath: string) => {
+      if (isMobile) {
+        closeToAgent();
+      }
+      navigateToTab({ kind: "file", path: filePath });
+    },
+    [closeToAgent, isMobile, navigateToTab]
   );
 
   useEffect(() => {
@@ -804,6 +893,7 @@ function WorkspaceScreenContent({
   ]);
 
   const [isTabSwitcherOpen, setIsTabSwitcherOpen] = useState(false);
+  const [isNewTerminalHovered, setIsNewTerminalHovered] = useState(false);
   const [hoveredTabKey, setHoveredTabKey] = useState<string | null>(null);
   const [hoveredCloseTabKey, setHoveredCloseTabKey] = useState<string | null>(
     null
@@ -817,6 +907,10 @@ function WorkspaceScreenContent({
         map.set(tab.key, { kind: "agent", agentId: tab.agentId });
         continue;
       }
+      if (tab.kind === "file") {
+        map.set(tab.key, { kind: "file", path: tab.filePath });
+        continue;
+      }
       map.set(tab.key, { kind: "terminal", terminalId: tab.terminalId });
     }
     return map;
@@ -828,6 +922,9 @@ function WorkspaceScreenContent({
     }
     if (resolvedTab.kind === "agent") {
       return `agent:${resolvedTab.agentId}`;
+    }
+    if (resolvedTab.kind === "file") {
+      return `file:${resolvedTab.path}`;
     }
     return `terminal:${resolvedTab.terminalId}`;
   }, [resolvedTab]);
@@ -1036,6 +1133,47 @@ function WorkspaceScreenContent({
     ]
   );
 
+  const handleCloseFileTab = useCallback(
+    (filePath: string) => {
+      const tabKey = `file:${filePath}`;
+      const nextTab = resolvedTab?.kind === "file" && resolvedTab.path === filePath
+        ? getTabAfterClosing(tabKey)
+        : null;
+
+      closeFileTab({
+        serverId: normalizedServerId,
+        workspaceId: normalizedWorkspaceId,
+        filePath,
+      });
+
+      setHoveredTabKey((current) => (current === tabKey ? null : current));
+      setHoveredCloseTabKey((current) => (current === tabKey ? null : current));
+
+      if (nextTab) {
+        navigateToTab(nextTab);
+        return;
+      }
+
+      if (resolvedTab?.kind === "file" && resolvedTab.path === filePath) {
+        router.replace(
+          buildHostWorkspaceRoute(
+            normalizedServerId,
+            normalizedWorkspaceId
+          ) as any
+        );
+      }
+    },
+    [
+      closeFileTab,
+      getTabAfterClosing,
+      navigateToTab,
+      normalizedServerId,
+      normalizedWorkspaceId,
+      resolvedTab,
+      router,
+    ]
+  );
+
   const handleCopyAgentId = useCallback(
     async (agentId: string) => {
       if (!agentId) return;
@@ -1093,22 +1231,33 @@ function WorkspaceScreenContent({
 
       const agentIds: string[] = [];
       const terminalIdsToClose: string[] = [];
+      const filePathsToClose: string[] = [];
       for (const tab of toClose) {
         if (tab.kind === "agent") {
           agentIds.push(tab.agentId);
-        } else {
+        } else if (tab.kind === "terminal") {
           terminalIdsToClose.push(tab.terminalId);
+        } else {
+          filePathsToClose.push(tab.filePath);
         }
       }
 
       const confirmed = await confirmDialog({
         title: "Close tabs to the right?",
         message:
-          agentIds.length > 0 && terminalIdsToClose.length > 0
-            ? `This will archive ${agentIds.length} agent(s) and close ${terminalIdsToClose.length} terminal(s). Any running process in a closed terminal will be stopped immediately.`
-            : terminalIdsToClose.length > 0
-              ? `This will close ${terminalIdsToClose.length} terminal(s). Any running process in a closed terminal will be stopped immediately.`
-              : `This will archive ${agentIds.length} agent(s).`,
+          agentIds.length > 0 && terminalIdsToClose.length > 0 && filePathsToClose.length > 0
+            ? `This will archive ${agentIds.length} agent(s), close ${terminalIdsToClose.length} terminal(s), and close ${filePathsToClose.length} file(s). Any running process in a closed terminal will be stopped immediately.`
+            : agentIds.length > 0 && terminalIdsToClose.length > 0
+              ? `This will archive ${agentIds.length} agent(s) and close ${terminalIdsToClose.length} terminal(s). Any running process in a closed terminal will be stopped immediately.`
+              : terminalIdsToClose.length > 0 && filePathsToClose.length > 0
+                ? `This will close ${terminalIdsToClose.length} terminal(s) and close ${filePathsToClose.length} file(s). Any running process in a closed terminal will be stopped immediately.`
+                : agentIds.length > 0 && filePathsToClose.length > 0
+                  ? `This will archive ${agentIds.length} agent(s) and close ${filePathsToClose.length} file(s).`
+                  : terminalIdsToClose.length > 0
+                    ? `This will close ${terminalIdsToClose.length} terminal(s). Any running process in a closed terminal will be stopped immediately.`
+                    : filePathsToClose.length > 0
+                      ? `This will close ${filePathsToClose.length} file(s).`
+                      : `This will archive ${agentIds.length} agent(s).`,
         confirmLabel: "Close",
         cancelLabel: "Cancel",
         destructive: true,
@@ -1145,11 +1294,21 @@ function WorkspaceScreenContent({
         }
       }
 
+      for (const filePath of filePathsToClose) {
+        closeFileTab({
+          serverId: normalizedServerId,
+          workspaceId: normalizedWorkspaceId,
+          filePath,
+        });
+      }
+
       const resolvedTabKey = resolvedTab?.kind === "agent"
         ? `agent:${resolvedTab.agentId}`
         : resolvedTab?.kind === "terminal"
           ? `terminal:${resolvedTab.terminalId}`
-          : null;
+          : resolvedTab?.kind === "file"
+            ? `file:${resolvedTab.path}`
+            : null;
       const closedKeys = new Set(toClose.map((tab) => tab.key));
       if (resolvedTabKey && closedKeys.has(resolvedTabKey)) {
         const target = tabByKey.get(tabKey);
@@ -1163,9 +1322,11 @@ function WorkspaceScreenContent({
     },
     [
       archiveAgent,
+      closeFileTab,
       killTerminalMutation,
       navigateToTab,
       normalizedServerId,
+      normalizedWorkspaceId,
       queryClient,
       resolvedTab,
       tabByKey,
@@ -1202,6 +1363,16 @@ function WorkspaceScreenContent({
           showHeader={false}
           showExplorerSidebar={false}
           wrapWithExplorerSidebarProvider={false}
+        />
+      );
+    }
+
+    if (resolvedTab.kind === "file") {
+      return (
+        <FilePane
+          serverId={normalizedServerId}
+          workspaceRoot={normalizedWorkspaceId}
+          filePath={resolvedTab.path}
         />
       );
     }
@@ -1342,6 +1513,10 @@ function WorkspaceScreenContent({
                         return <Terminal size={14} color={theme.colors.foreground} />;
                       }
 
+                      if (activeDescriptor.kind === "file") {
+                        return <FileText size={14} color={theme.colors.foreground} />;
+                      }
+
                       const tabAgent = agentsById.get(activeDescriptor.agentId) ?? null;
                       const tabAgentStatusBucket = tabAgent
                         ? deriveSidebarStateBucket({
@@ -1416,6 +1591,8 @@ function WorkspaceScreenContent({
                   <TooltipTrigger
                     testID="workspace-new-terminal-tab"
                     onPress={() => handleSelectNewTabOption(NEW_TAB_TERMINAL_OPTION_ID)}
+                    onHoverIn={() => setIsNewTerminalHovered(true)}
+                    onHoverOut={() => setIsNewTerminalHovered(false)}
                     disabled={createTerminalMutation.isPending}
                     accessibilityRole="button"
                     accessibilityLabel="New terminal tab"
@@ -1429,8 +1606,8 @@ function WorkspaceScreenContent({
                       <ActivityIndicator size="small" color={theme.colors.foregroundMuted} />
                     ) : (
                       <View style={styles.terminalPlusIcon}>
-                        <Terminal size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
-                        <View style={styles.terminalPlusBadge}>
+                        <SquareTerminal size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
+                        <View style={[styles.terminalPlusBadge, isNewTerminalHovered && styles.terminalPlusBadgeHovered]}>
                           <Plus size={10} color={theme.colors.foregroundMuted} />
                         </View>
                       </View>
@@ -1527,6 +1704,8 @@ function WorkspaceScreenContent({
                             />
                           ) : null}
                         </View>
+                      ) : tab.kind === "file" ? (
+                        <FileText size={14} color={iconColor} />
                       ) : (
                         <Terminal size={14} color={iconColor} />
                       );
@@ -1554,6 +1733,10 @@ function WorkspaceScreenContent({
                           onPress={() => {
                             if (tab.kind === "agent") {
                               navigateToTab({ kind: "agent", agentId: tab.agentId });
+                              return;
+                            }
+                            if (tab.kind === "file") {
+                              navigateToTab({ kind: "file", path: tab.filePath });
                               return;
                             }
                             navigateToTab({
@@ -1587,7 +1770,9 @@ function WorkspaceScreenContent({
                             testID={
                               tab.kind === "agent"
                                 ? `workspace-agent-close-${tab.agentId}`
-                                : `workspace-terminal-close-${tab.terminalId}`
+                                : tab.kind === "terminal"
+                                  ? `workspace-terminal-close-${tab.terminalId}`
+                                  : `workspace-file-close-${encodeFilePathForPathSegment(tab.filePath)}`
                             }
                             pointerEvents={shouldShowCloseButton ? "auto" : "none"}
                             disabled={!shouldShowCloseButton || isClosingTab}
@@ -1607,6 +1792,10 @@ function WorkspaceScreenContent({
                               event.stopPropagation?.();
                               if (tab.kind === "agent") {
                                 void handleCloseAgentTab(tab.agentId);
+                                return;
+                              }
+                              if (tab.kind === "file") {
+                                handleCloseFileTab(tab.filePath);
                                 return;
                               }
                               void handleCloseTerminalTab(tab.terminalId);
@@ -1676,6 +1865,10 @@ function WorkspaceScreenContent({
                                 void handleCloseAgentTab(tab.agentId);
                                 return;
                               }
+                              if (tab.kind === "file") {
+                                handleCloseFileTab(tab.filePath);
+                                return;
+                              }
                               void handleCloseTerminalTab(tab.terminalId);
                             }}
                           >
@@ -1709,6 +1902,8 @@ function WorkspaceScreenContent({
                   <TooltipTrigger
                     testID="workspace-new-terminal-tab"
                     onPress={() => handleSelectNewTabOption(NEW_TAB_TERMINAL_OPTION_ID)}
+                    onHoverIn={() => setIsNewTerminalHovered(true)}
+                    onHoverOut={() => setIsNewTerminalHovered(false)}
                     disabled={createTerminalMutation.isPending}
                     accessibilityRole="button"
                     accessibilityLabel="New terminal tab"
@@ -1725,11 +1920,11 @@ function WorkspaceScreenContent({
                       />
                     ) : (
                       <View style={styles.terminalPlusIcon}>
-                        <Terminal
+                        <SquareTerminal
                           size={theme.iconSize.sm}
                           color={theme.colors.foregroundMuted}
                         />
-                        <View style={styles.terminalPlusBadge}>
+                        <View style={[styles.terminalPlusBadge, isNewTerminalHovered && styles.terminalPlusBadgeHovered]}>
                           <Plus size={10} color={theme.colors.foregroundMuted} />
                         </View>
                       </View>
@@ -1759,6 +1954,7 @@ function WorkspaceScreenContent({
           workspaceId={normalizedWorkspaceId}
           workspaceRoot={normalizedWorkspaceId}
           isGit={isGitCheckout}
+          onOpenFile={handleOpenFileFromExplorer}
         />
       </View>
     </View>
@@ -1832,16 +2028,17 @@ const styles = StyleSheet.create((theme) => ({
   },
   terminalPlusBadge: {
     position: "absolute",
-    right: -6,
-    bottom: -6,
-    width: 14,
-    height: 14,
-    borderRadius: 7,
+    right: -5,
+    bottom: -5,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
     backgroundColor: theme.colors.surface1,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
     alignItems: "center",
     justifyContent: "center",
+  },
+  terminalPlusBadgeHovered: {
+    backgroundColor: theme.colors.surface2,
   },
   mobileTabsRow: {
     borderBottomWidth: 1,

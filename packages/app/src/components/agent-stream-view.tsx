@@ -29,6 +29,7 @@ import Markdown from "react-native-markdown-display";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, UnistylesRuntime, useUnistyles } from "react-native-unistyles";
 import { useMutation } from "@tanstack/react-query";
+import { useRouter } from "expo-router";
 import Animated, {
   FadeIn,
   FadeOut,
@@ -81,6 +82,7 @@ import { createMarkdownStyles } from "@/styles/markdown-styles";
 import { MAX_CONTENT_WIDTH } from "@/constants/layout";
 import { isPerfLoggingEnabled, measurePayload, perfLog } from "@/utils/perf";
 import { getMarkdownListMarker } from "@/utils/markdown-list";
+import { buildHostWorkspaceFileRoute } from "@/utils/host-routes";
 
 const isUserMessageItem = (item?: StreamItem) => item?.kind === "user_message";
 const isToolSequenceItem = (item?: StreamItem) =>
@@ -129,6 +131,7 @@ export const AgentStreamView = forwardRef<AgentStreamViewHandle, AgentStreamView
   const scrollViewRef = useRef<ScrollView>(null);
   const bottomAnchorRef = useRef<View>(null);
   const { theme } = useUnistyles();
+  const router = useRouter();
   const isMobile =
     UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
   const streamRenderStrategy = useMemo(
@@ -174,13 +177,12 @@ export const AgentStreamView = forwardRef<AgentStreamViewHandle, AgentStreamView
   );
 
   const workspaceRoot = agent.cwd?.trim() || "";
-  const workspaceId = agent.projectPlacement?.checkout?.cwd ?? workspaceRoot;
-  const { requestDirectoryListing, requestFilePreview, selectExplorerEntry } =
-    useFileExplorerActions({
-      serverId: resolvedServerId,
-      workspaceId,
-      workspaceRoot,
-    });
+  const workspaceId = agent.projectPlacement?.checkout?.cwd?.trim() || workspaceRoot;
+  const { requestDirectoryListing } = useFileExplorerActions({
+    serverId: resolvedServerId,
+    workspaceId,
+    workspaceRoot,
+  });
   // Keep entry/exit animations off on Android due to RN dispatchDraw crashes
   // tracked in react-native-reanimated#8422.
   const shouldDisableEntryExitAnimations = Platform.OS === "android";
@@ -210,14 +212,20 @@ export const AgentStreamView = forwardRef<AgentStreamViewHandle, AgentStreamView
         return;
       }
 
+      if (normalized.file) {
+        const route = buildHostWorkspaceFileRoute(
+          resolvedServerId,
+          workspaceId,
+          normalized.file
+        );
+        router.replace(route as any);
+        return;
+      }
+
       void requestDirectoryListing(normalized.directory, {
         recordHistory: false,
         setCurrentPath: false,
       });
-      if (normalized.file) {
-        selectExplorerEntry(normalized.file);
-        void requestFilePreview(normalized.file);
-      }
 
       setExplorerTabForCheckout({
         serverId: resolvedServerId,
@@ -229,11 +237,12 @@ export const AgentStreamView = forwardRef<AgentStreamViewHandle, AgentStreamView
     },
     [
       agent.cwd,
-      requestDirectoryListing,
-      requestFilePreview,
-      selectExplorerEntry,
-      setExplorerTabForCheckout,
       openFileExplorer,
+      requestDirectoryListing,
+      resolvedServerId,
+      router,
+      setExplorerTabForCheckout,
+      workspaceId,
     ]
   );
 

@@ -1,5 +1,7 @@
 import { FitAddon } from "@xterm/addon-fit";
-import { Terminal } from "@xterm/xterm";
+import { Unicode11Addon } from "@xterm/addon-unicode11";
+import { WebglAddon } from "@xterm/addon-webgl";
+import { Terminal, type ITheme } from "@xterm/xterm";
 import {
   type PendingTerminalModifiers,
   isTerminalModifierDomKey,
@@ -10,17 +12,11 @@ import {
 } from "@/utils/terminal-keys";
 import { summarizeTerminalText, terminalDebugLog } from "./terminal-debug";
 
-export type TerminalEmulatorRuntimeTheme = {
-  backgroundColor: string;
-  foregroundColor: string;
-  cursorColor: string;
-};
-
 export type TerminalEmulatorRuntimeMountInput = {
   root: HTMLDivElement;
   host: HTMLDivElement;
   initialOutputText: string;
-  theme: TerminalEmulatorRuntimeTheme;
+  theme: ITheme;
 };
 
 export type TerminalEmulatorRuntimeCallbacks = {
@@ -48,12 +44,14 @@ type TerminalEmulatorRuntimeDisposables = {
   restoreDocumentStyles: () => void;
   restoreViewportStyles: () => void;
   disposeFitAddon: () => void;
+  disposeWebglAddon: () => void;
   disposeTerminal: () => void;
 };
 
 type TerminalOutputOperation = {
   type: "write" | "clear";
   text: string;
+  suppressInput?: boolean;
   onCommitted?: () => void;
 };
 
@@ -66,6 +64,26 @@ declare global {
 const DEFAULT_TOUCH_SCROLL_LINE_HEIGHT_PX = 18;
 const FIT_TIMEOUT_DELAYS_MS = [0, 16, 48, 120, 250, 500, 1_000, 2_000];
 const OUTPUT_OPERATION_TIMEOUT_MS = 5_000;
+
+const DEFAULT_TERMINAL_FONT_FAMILY = [
+  // Prefer common developer fonts, with Nerd Font variants for prompt/TUI glyphs.
+  "JetBrains Mono",
+  "JetBrainsMono Nerd Font",
+  "JetBrainsMono NF",
+  "MesloLGM Nerd Font",
+  "MesloLGM NF",
+  "Hack Nerd Font",
+  "FiraCode Nerd Font",
+  // PUA-only fallback (many Nerd glyphs live here on some systems).
+  "Symbols Nerd Font",
+  // System fallbacks.
+  "SF Mono",
+  "Menlo",
+  "Monaco",
+  "Consolas",
+  "'Liberation Mono'",
+  "monospace",
+].join(", ");
 
 export class TerminalEmulatorRuntime {
   private callbacks: TerminalEmulatorRuntimeCallbacks = {};
@@ -82,6 +100,7 @@ export class TerminalEmulatorRuntime {
   private outputOperations: TerminalOutputOperation[] = [];
   private inFlightOutputOperation: TerminalOutputOperation | null = null;
   private inFlightOutputOperationTimeout: ReturnType<typeof setTimeout> | null = null;
+  private suppressInput = false;
 
   setCallbacks(input: { callbacks: TerminalEmulatorRuntimeCallbacks }): void {
     this.callbacks = input.callbacks;
@@ -109,19 +128,49 @@ export class TerminalEmulatorRuntime {
       convertEol: false,
       cursorBlink: true,
       cursorStyle: "bar",
-      fontFamily: "'SF Mono', Menlo, Monaco, Consolas, 'Liberation Mono', monospace",
+      fontFamily: DEFAULT_TERMINAL_FONT_FAMILY,
       fontSize: 13,
-      lineHeight: 1.25,
+      lineHeight: 1.0,
       scrollback: 10_000,
-      theme: {
-        background: input.theme.backgroundColor,
-        foreground: input.theme.foregroundColor,
-        cursor: input.theme.cursorColor,
-      },
+      theme: input.theme,
     });
     const fitAddon = new FitAddon();
+    const unicode11Addon = new Unicode11Addon();
+    let webglAddon: WebglAddon | null = null;
     terminal.loadAddon(fitAddon);
+    terminal.loadAddon(unicode11Addon);
     terminal.open(input.host);
+    try {
+      terminal.unicode.activeVersion = "11";
+    } catch {
+      // Ignore if unicode API isn't available in this build/runtime.
+    }
+
+    // Prefer GPU rendering when available. This tends to reduce visible seams in block characters
+    // and improves scroll performance, but must gracefully fall back on platforms without WebGL.
+    let webglAddonRaf: number | null = requestAnimationFrame(() => {
+      webglAddonRaf = null;
+      try {
+        webglAddon = new WebglAddon();
+        webglAddon.onContextLoss(() => {
+          try {
+            webglAddon?.dispose();
+          } catch {
+            // ignore
+          }
+          webglAddon = null;
+          // Force a refresh after context loss to avoid visual corruption.
+          try {
+            terminal.refresh(0, terminal.rows - 1);
+          } catch {
+            // ignore
+          }
+        });
+        terminal.loadAddon(webglAddon);
+      } catch {
+        webglAddon = null;
+      }
+    });
 
     const restoreDocumentStyles = this.applyDocumentBoundsStyles({
       root: input.root,
@@ -174,6 +223,17 @@ export class TerminalEmulatorRuntime {
     fitAndEmitResize(true);
 
     const inputDisposable = terminal.onData((data) => {
+      if (this.suppressInput) {
+        terminalDebugLog({
+          scope: "emulator-runtime",
+          event: "input:suppressed",
+          details: {
+            length: data.length,
+            preview: summarizeTerminalText({ text: data, maxChars: 64 }),
+          },
+        });
+        return;
+      }
       terminalDebugLog({
         scope: "emulator-runtime",
         event: "input:onData",
@@ -283,7 +343,7 @@ export class TerminalEmulatorRuntime {
     }, 0);
 
     if (input.initialOutputText.length > 0) {
-      terminal.write(input.initialOutputText);
+      this.write({ text: input.initialOutputText, suppressInput: true });
       terminalDebugLog({
         scope: "emulator-runtime",
         event: "output:initial-write",
@@ -329,6 +389,18 @@ export class TerminalEmulatorRuntime {
       disposeFitAddon: () => {
         fitAddon.dispose();
       },
+      disposeWebglAddon: () => {
+        if (webglAddonRaf !== null) {
+          cancelAnimationFrame(webglAddonRaf);
+          webglAddonRaf = null;
+        }
+        try {
+          webglAddon?.dispose();
+        } catch {
+          // ignore
+        }
+        webglAddon = null;
+      },
       disposeTerminal: () => {
         terminal.dispose();
       },
@@ -344,13 +416,14 @@ export class TerminalEmulatorRuntime {
       disposables.removeFontListeners();
       disposables.removeTouchListeners();
       disposables.disposeFitAddon();
+      disposables.disposeWebglAddon();
       disposables.disposeTerminal();
       disposables.restoreDocumentStyles();
       disposables.restoreViewportStyles();
     };
   }
 
-  write(input: { text: string; onCommitted?: () => void }): void {
+  write(input: { text: string; suppressInput?: boolean; onCommitted?: () => void }): void {
     if (input.text.length === 0) {
       input.onCommitted?.();
       return;
@@ -358,6 +431,7 @@ export class TerminalEmulatorRuntime {
     this.outputOperations.push({
       type: "write",
       text: input.text,
+      suppressInput: input.suppressInput ?? false,
       ...(input.onCommitted ? { onCommitted: input.onCommitted } : {}),
     });
     terminalDebugLog({
@@ -376,6 +450,7 @@ export class TerminalEmulatorRuntime {
     this.outputOperations.push({
       type: "clear",
       text: "",
+      suppressInput: false,
       ...(input?.onCommitted ? { onCommitted: input.onCommitted } : {}),
     });
     terminalDebugLog({
@@ -421,6 +496,7 @@ export class TerminalEmulatorRuntime {
     this.fitAddon = null;
     this.fitAndEmitResize = null;
     this.lastSize = null;
+    this.suppressInput = false;
   }
 
   private processOutputQueue(): void {
@@ -439,12 +515,17 @@ export class TerminalEmulatorRuntime {
     }
 
     this.inFlightOutputOperation = operation;
+    const previousSuppressInput = this.suppressInput;
+    if (operation.type === "write") {
+      this.suppressInput = Boolean(operation.suppressInput);
+    }
     const finalizeOperation = (expectedOperation: TerminalOutputOperation) => {
       if (this.inFlightOutputOperation !== expectedOperation) {
         return;
       }
       this.inFlightOutputOperation = null;
       this.clearInFlightOutputTimeout();
+      this.suppressInput = previousSuppressInput;
       expectedOperation.onCommitted?.();
       this.processOutputQueue();
     };
@@ -493,12 +574,19 @@ export class TerminalEmulatorRuntime {
     const previousDocumentElementOverflow = documentElement.style.overflow;
     const previousDocumentElementWidth = documentElement.style.width;
     const previousDocumentElementHeight = documentElement.style.height;
+    const previousDocumentElementTextSizeAdjust =
+      documentElement.style.getPropertyValue("text-size-adjust");
+    const previousDocumentElementWebkitTextSizeAdjust =
+      documentElement.style.getPropertyValue("-webkit-text-size-adjust");
 
     const previousBodyOverflow = body.style.overflow;
     const previousBodyWidth = body.style.width;
     const previousBodyHeight = body.style.height;
     const previousBodyMargin = body.style.margin;
     const previousBodyPadding = body.style.padding;
+    const previousBodyTextSizeAdjust = body.style.getPropertyValue("text-size-adjust");
+    const previousBodyWebkitTextSizeAdjust =
+      body.style.getPropertyValue("-webkit-text-size-adjust");
 
     const previousRootOverflow = rootContainer?.style.overflow ?? "";
     const previousRootWidth = rootContainer?.style.width ?? "";
@@ -507,12 +595,16 @@ export class TerminalEmulatorRuntime {
     documentElement.style.overflow = "hidden";
     documentElement.style.width = "100%";
     documentElement.style.height = "100%";
+    documentElement.style.setProperty("text-size-adjust", "100%");
+    documentElement.style.setProperty("-webkit-text-size-adjust", "100%");
 
     body.style.overflow = "hidden";
     body.style.width = "100%";
     body.style.height = "100%";
     body.style.margin = "0";
     body.style.padding = "0";
+    body.style.setProperty("text-size-adjust", "100%");
+    body.style.setProperty("-webkit-text-size-adjust", "100%");
 
     if (rootContainer) {
       rootContainer.style.overflow = "hidden";
@@ -524,12 +616,19 @@ export class TerminalEmulatorRuntime {
       documentElement.style.overflow = previousDocumentElementOverflow;
       documentElement.style.width = previousDocumentElementWidth;
       documentElement.style.height = previousDocumentElementHeight;
+      documentElement.style.setProperty("text-size-adjust", previousDocumentElementTextSizeAdjust);
+      documentElement.style.setProperty(
+        "-webkit-text-size-adjust",
+        previousDocumentElementWebkitTextSizeAdjust
+      );
 
       body.style.overflow = previousBodyOverflow;
       body.style.width = previousBodyWidth;
       body.style.height = previousBodyHeight;
       body.style.margin = previousBodyMargin;
       body.style.padding = previousBodyPadding;
+      body.style.setProperty("text-size-adjust", previousBodyTextSizeAdjust);
+      body.style.setProperty("-webkit-text-size-adjust", previousBodyWebkitTextSizeAdjust);
 
       if (rootContainer) {
         rootContainer.style.overflow = previousRootOverflow;
