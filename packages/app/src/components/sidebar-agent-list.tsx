@@ -9,14 +9,19 @@ import {
   type ReactElement,
   type MutableRefObject,
 } from 'react'
-import { router, useSegments } from 'expo-router'
+import { router, usePathname, useSegments } from 'expo-router'
 import { StyleSheet, UnistylesRuntime, useUnistyles } from 'react-native-unistyles'
 import { type GestureType } from 'react-native-gesture-handler'
 import { ChevronDown, ChevronRight } from 'lucide-react-native'
 import { DraggableList, type DraggableRenderItemInfo } from './draggable-list'
 import { getHostRuntimeStore, isHostRuntimeConnected } from '@/runtime/host-runtime'
 import { projectIconQueryKey } from '@/hooks/use-project-icon-query'
-import { buildHostWorkspaceRoute } from '@/utils/host-routes'
+import {
+  buildHostWorkspaceRoute,
+  parseHostWorkspaceAgentRouteFromPathname,
+  parseHostWorkspaceRouteFromPathname,
+  parseHostWorkspaceTerminalRouteFromPathname,
+} from '@/utils/host-routes'
 import {
   type SidebarProjectEntry,
   type SidebarWorkspaceEntry,
@@ -69,6 +74,7 @@ interface ProjectRowProps {
 
 interface WorkspaceRowProps {
   workspace: SidebarWorkspaceEntry
+  selected: boolean
   onPress: () => void
   onLongPress: () => void
 }
@@ -195,7 +201,7 @@ function ProjectRow({
   )
 }
 
-function WorkspaceRow({ workspace, onPress, onLongPress }: WorkspaceRowProps) {
+function WorkspaceRow({ workspace, selected, onPress, onLongPress }: WorkspaceRowProps) {
   const didLongPressRef = useRef(false)
   const createdAtLabel = resolveWorkspaceCreatedAtLabel(workspace)
 
@@ -216,6 +222,7 @@ function WorkspaceRow({ workspace, onPress, onLongPress }: WorkspaceRowProps) {
     <Pressable
       style={({ pressed, hovered = false }) => [
         styles.workspaceRow,
+        selected && styles.workspaceRowSelected,
         hovered && styles.workspaceRowHovered,
         pressed && styles.workspaceRowPressed,
       ]}
@@ -274,6 +281,7 @@ export function SidebarAgentList({
   const isMobile = UnistylesRuntime.breakpoint === 'xs' || UnistylesRuntime.breakpoint === 'sm'
   const showDesktopWebScrollbar = Platform.OS === 'web' && !isMobile
   const segments = useSegments()
+  const pathname = usePathname()
   const shouldReplaceWorkspaceNavigation = segments[0] === 'h'
   const [collapsedProjectKeys, setCollapsedProjectKeys] = useState<Set<string>>(new Set())
   const [canonicalResyncNonce, setCanonicalResyncNonce] = useState(0)
@@ -282,6 +290,23 @@ export function SidebarAgentList({
   const setProjectOrder = useSidebarOrderStore((state) => state.setProjectOrder)
   const getWorkspaceOrder = useSidebarOrderStore((state) => state.getWorkspaceOrder)
   const setWorkspaceOrder = useSidebarOrderStore((state) => state.setWorkspaceOrder)
+
+  const activeWorkspaceSelection = useMemo(() => {
+    if (!pathname) {
+      return null
+    }
+    const parsed =
+      parseHostWorkspaceAgentRouteFromPathname(pathname) ??
+      parseHostWorkspaceTerminalRouteFromPathname(pathname) ??
+      parseHostWorkspaceRouteFromPathname(pathname)
+    if (!parsed) {
+      return null
+    }
+    return {
+      serverId: parsed.serverId,
+      workspaceId: parsed.workspaceId,
+    }
+  }, [pathname])
 
   useEffect(() => {
     setCollapsedProjectKeys((prev) => {
@@ -421,10 +446,15 @@ export function SidebarAgentList({
 
       const workspaceRoute = buildHostWorkspaceRoute(serverId ?? '', item.workspace.cwd)
       const navigate = shouldReplaceWorkspaceNavigation ? router.replace : router.push
+      const isSelected =
+        Boolean(serverId) &&
+        activeWorkspaceSelection?.serverId === serverId &&
+        activeWorkspaceSelection.workspaceId === item.workspace.cwd
 
       return (
         <WorkspaceRow
           workspace={item.workspace}
+          selected={isSelected}
           onPress={() => {
             if (!serverId) {
               return
@@ -437,6 +467,7 @@ export function SidebarAgentList({
       )
     },
     [
+      activeWorkspaceSelection,
       collapsedProjectKeys,
       isMobile,
       onWorkspacePress,
@@ -630,6 +661,9 @@ const styles = StyleSheet.create((theme) => ({
     backgroundColor: theme.colors.surface1,
   },
   workspaceRowPressed: {
+    backgroundColor: theme.colors.surface2,
+  },
+  workspaceRowSelected: {
     backgroundColor: theme.colors.surface2,
   },
   workspaceStatusDot: {

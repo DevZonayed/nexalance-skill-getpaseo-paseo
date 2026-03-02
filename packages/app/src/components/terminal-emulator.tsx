@@ -16,6 +16,9 @@ interface TerminalEmulatorProps {
   backgroundColor?: string;
   foregroundColor?: string;
   cursorColor?: string;
+  swipeGesturesEnabled?: boolean;
+  onSwipeLeft?: () => void;
+  onSwipeRight?: () => void;
   onInput?: (data: string) => Promise<void> | void;
   onResize?: (input: { rows: number; cols: number }) => Promise<void> | void;
   onTerminalKey?: (input: {
@@ -45,6 +48,9 @@ export default function TerminalEmulator({
   backgroundColor = "#0b0b0b",
   foregroundColor = "#e6e6e6",
   cursorColor = "#e6e6e6",
+  swipeGesturesEnabled = false,
+  onSwipeLeft,
+  onSwipeRight,
   onInput,
   onResize,
   onTerminalKey,
@@ -58,6 +64,122 @@ export default function TerminalEmulator({
   const hostRef = useRef<HTMLDivElement | null>(null);
   const runtimeRef = useRef<TerminalEmulatorRuntime | null>(null);
   const appliedInitialOutputRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    const root = rootRef.current;
+    if (!root || !swipeGesturesEnabled) {
+      return;
+    }
+
+    const SWIPE_MIN_PX = 22;
+    const VERTICAL_CANCEL_PX = 12;
+    const HORIZONTAL_DOMINANCE_RATIO = 1.2;
+
+    let tracking = false;
+    let activePointerId: number | null = null;
+    let startX = 0;
+    let startY = 0;
+    let fired = false;
+
+    const reset = () => {
+      tracking = false;
+      activePointerId = null;
+      startX = 0;
+      startY = 0;
+      fired = false;
+    };
+
+    const shouldTreatAsVertical = (dx: number, dy: number) => {
+      const absDx = Math.abs(dx);
+      const absDy = Math.abs(dy);
+      if (absDy < VERTICAL_CANCEL_PX) {
+        return false;
+      }
+      return absDy > absDx;
+    };
+
+    const shouldTreatAsHorizontal = (dx: number, dy: number) => {
+      const absDx = Math.abs(dx);
+      const absDy = Math.abs(dy);
+      if (absDx < SWIPE_MIN_PX) {
+        return false;
+      }
+      if (absDy === 0) {
+        return true;
+      }
+      return absDx / absDy >= HORIZONTAL_DOMINANCE_RATIO;
+    };
+
+    const onPointerDown = (event: PointerEvent) => {
+      if (!event.isPrimary) {
+        return;
+      }
+      tracking = true;
+      fired = false;
+      activePointerId = event.pointerId;
+      startX = event.clientX;
+      startY = event.clientY;
+    };
+
+    const onPointerMove = (event: PointerEvent) => {
+      if (!tracking || fired) {
+        return;
+      }
+      if (activePointerId !== null && event.pointerId !== activePointerId) {
+        return;
+      }
+
+      const dx = event.clientX - startX;
+      const dy = event.clientY - startY;
+
+      if (shouldTreatAsVertical(dx, dy)) {
+        reset();
+        return;
+      }
+
+      if (!shouldTreatAsHorizontal(dx, dy)) {
+        return;
+      }
+
+      fired = true;
+
+      if (dx > 0) {
+        onSwipeRight?.();
+      } else {
+        onSwipeLeft?.();
+      }
+
+      if (event.cancelable) {
+        event.preventDefault();
+      }
+    };
+
+    const onPointerUp = (event: PointerEvent) => {
+      if (activePointerId !== null && event.pointerId !== activePointerId) {
+        return;
+      }
+      reset();
+    };
+
+    const onPointerCancel = (event: PointerEvent) => {
+      if (activePointerId !== null && event.pointerId !== activePointerId) {
+        return;
+      }
+      reset();
+    };
+
+    root.addEventListener("pointerdown", onPointerDown, { passive: true });
+    root.addEventListener("pointermove", onPointerMove, { passive: false });
+    root.addEventListener("pointerup", onPointerUp, { passive: true });
+    root.addEventListener("pointercancel", onPointerCancel, { passive: true });
+
+    return () => {
+      root.removeEventListener("pointerdown", onPointerDown);
+      root.removeEventListener("pointermove", onPointerMove);
+      root.removeEventListener("pointerup", onPointerUp);
+      root.removeEventListener("pointercancel", onPointerCancel);
+    };
+  }, [onSwipeLeft, onSwipeRight, swipeGesturesEnabled]);
 
   useEffect(() => {
     const host = hostRef.current;
@@ -185,6 +307,7 @@ export default function TerminalEmulator({
         backgroundColor,
         overflow: "hidden",
         overscrollBehavior: "none",
+        touchAction: "pan-y",
       }}
       onPointerDown={() => {
         runtimeRef.current?.focus();

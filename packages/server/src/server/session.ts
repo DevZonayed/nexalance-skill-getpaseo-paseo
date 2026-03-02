@@ -6428,19 +6428,12 @@ export class Session {
       return
     }
 
-    const hadDirectoryBeforeSubscribe = this.terminalManager.listDirectories().includes(cwd)
-
     try {
       const terminals = await this.terminalManager.getTerminals(cwd)
       for (const terminal of terminals) {
         this.ensureTerminalExitSubscription(terminal)
       }
 
-      // New directories auto-create Terminal 1, which already emits through
-      // terminal-manager change listeners.
-      if (!hadDirectoryBeforeSubscribe) {
-        return
-      }
       if (!this.subscribedTerminalDirectories.has(cwd)) {
         return
       }

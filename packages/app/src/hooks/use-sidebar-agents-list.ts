@@ -393,7 +393,10 @@ export function useSidebarAgentsList(options?: {
         serverId,
         cwd: checkoutCwd,
         branchName: normalizedBranch,
-        createdAt: isMainCheckout ? sourceAgent.createdAt : null,
+        // Only Paseo-managed worktrees are ephemeral enough to justify showing a timestamp.
+        // If the daemon doesn't provide worktree.createdAt (older daemons), fall back to an
+        // agent-derived timestamp so the row still has a date.
+        createdAt: placement.checkout.isPaseoOwnedWorktree ? sourceAgent.createdAt : null,
         isMainCheckout,
         isPaseoOwnedWorktree: placement.checkout.isPaseoOwnedWorktree,
       })

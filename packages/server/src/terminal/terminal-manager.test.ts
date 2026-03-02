@@ -50,22 +50,22 @@ describe("TerminalManager", () => {
   });
 
   describe("getTerminals", () => {
-    it("auto-creates first terminal for new cwd", async () => {
+    it("returns empty list for new cwd", async () => {
       manager = createTerminalManager();
       const terminals = await manager.getTerminals("/tmp");
 
-      expect(terminals.length).toBe(1);
-      expect(terminals[0].name).toBe("Terminal 1");
-      expect(terminals[0].cwd).toBe("/tmp");
+      expect(terminals).toHaveLength(0);
     });
 
     it("returns existing terminals on subsequent calls", async () => {
       manager = createTerminalManager();
+      const created = await manager.createTerminal({ cwd: "/tmp" });
       const first = await manager.getTerminals("/tmp");
       const second = await manager.getTerminals("/tmp");
 
-      expect(first).toBe(second);
       expect(first.length).toBe(1);
+      expect(first[0].id).toBe(created.id);
+      expect(second.length).toBe(1);
     });
 
     it("throws for relative paths", async () => {
@@ -75,8 +75,8 @@ describe("TerminalManager", () => {
 
     it("creates separate terminals for different cwds", async () => {
       manager = createTerminalManager();
-      const tmpTerminals = await manager.getTerminals("/tmp");
-      const homeTerminals = await manager.getTerminals("/home");
+      const tmpTerminals = [await manager.createTerminal({ cwd: "/tmp" })];
+      const homeTerminals = [await manager.createTerminal({ cwd: "/home" })];
 
       expect(tmpTerminals.length).toBe(1);
       expect(homeTerminals.length).toBe(1);
@@ -87,7 +87,7 @@ describe("TerminalManager", () => {
   describe("createTerminal", () => {
     it("creates additional terminal with auto-incrementing name", async () => {
       manager = createTerminalManager();
-      await manager.getTerminals("/tmp");
+      await manager.createTerminal({ cwd: "/tmp" });
       const second = await manager.createTerminal({ cwd: "/tmp" });
 
       expect(second.name).toBe("Terminal 2");
@@ -175,10 +175,10 @@ describe("TerminalManager", () => {
   describe("getTerminal", () => {
     it("returns terminal by id", async () => {
       manager = createTerminalManager();
-      const terminals = await manager.getTerminals("/tmp");
-      const found = manager.getTerminal(terminals[0].id);
+      const session = await manager.createTerminal({ cwd: "/tmp" });
+      const found = manager.getTerminal(session.id);
 
-      expect(found).toBe(terminals[0]);
+      expect(found).toBe(session);
     });
 
     it("returns undefined for unknown id", () => {
@@ -192,28 +192,27 @@ describe("TerminalManager", () => {
   describe("killTerminal", () => {
     it("removes terminal from manager", async () => {
       manager = createTerminalManager();
-      const terminals = await manager.getTerminals("/tmp");
-      const id = terminals[0].id;
+      const session = await manager.createTerminal({ cwd: "/tmp" });
+      const id = session.id;
 
       manager.killTerminal(id);
 
       expect(manager.getTerminal(id)).toBeUndefined();
     });
 
-    it("keeps cwd entry when last terminal is killed (but does not auto-recreate)", async () => {
+    it("removes cwd entry when last terminal is killed", async () => {
       manager = createTerminalManager();
-      const terminals = await manager.getTerminals("/tmp");
+      const created = await manager.createTerminal({ cwd: "/tmp" });
+      manager.killTerminal(created.id);
 
-      manager.killTerminal(terminals[0].id);
-
-      expect(manager.listDirectories()).toContain("/tmp");
       const remaining = await manager.getTerminals("/tmp");
       expect(remaining).toHaveLength(0);
+      expect(manager.listDirectories()).not.toContain("/tmp");
     });
 
     it("keeps cwd entry when other terminals remain", async () => {
       manager = createTerminalManager();
-      await manager.getTerminals("/tmp");
+      await manager.createTerminal({ cwd: "/tmp" });
       const second = await manager.createTerminal({ cwd: "/tmp" });
 
       const terminals = await manager.getTerminals("/tmp");
@@ -232,9 +231,9 @@ describe("TerminalManager", () => {
 
     it("auto-removes terminal when shell exits", async () => {
       manager = createTerminalManager();
-      const terminals = await manager.getTerminals("/tmp");
-      const exitedId = terminals[0].id;
-      terminals[0].kill();
+      const session = await manager.createTerminal({ cwd: "/tmp" });
+      const exitedId = session.id;
+      session.kill();
 
       await waitForCondition(() => manager.getTerminal(exitedId) === undefined, 10000);
 
@@ -251,10 +250,10 @@ describe("TerminalManager", () => {
       expect(manager.listDirectories()).toEqual([]);
     });
 
-    it("returns all cwds that have ever had terminals", async () => {
+    it("returns all cwds with active terminals", async () => {
       manager = createTerminalManager();
-      await manager.getTerminals("/tmp");
-      await manager.getTerminals("/home");
+      await manager.createTerminal({ cwd: "/tmp" });
+      await manager.createTerminal({ cwd: "/home" });
 
       const dirs = manager.listDirectories();
       expect(dirs).toContain("/tmp");
@@ -266,10 +265,10 @@ describe("TerminalManager", () => {
   describe("killAll", () => {
     it("kills all terminals and clears state", async () => {
       manager = createTerminalManager();
-      const tmpTerminals = await manager.getTerminals("/tmp");
-      const homeTerminals = await manager.getTerminals("/home");
-      const tmpId = tmpTerminals[0].id;
-      const homeId = homeTerminals[0].id;
+      const tmpSession = await manager.createTerminal({ cwd: "/tmp" });
+      const homeSession = await manager.createTerminal({ cwd: "/home" });
+      const tmpId = tmpSession.id;
+      const homeId = homeSession.id;
 
       manager.killAll();
 
@@ -290,7 +289,7 @@ describe("TerminalManager", () => {
         });
       });
 
-      await manager.getTerminals("/tmp");
+      await manager.createTerminal({ cwd: "/tmp" });
       await manager.createTerminal({ cwd: "/tmp", name: "Dev Server" });
 
       expect(snapshots).toContainEqual({
@@ -315,8 +314,8 @@ describe("TerminalManager", () => {
         });
       });
 
-      const terminals = await manager.getTerminals("/tmp");
-      manager.killTerminal(terminals[0].id);
+      const session = await manager.createTerminal({ cwd: "/tmp" });
+      manager.killTerminal(session.id);
 
       expect(snapshots).toContainEqual({
         cwd: "/tmp",

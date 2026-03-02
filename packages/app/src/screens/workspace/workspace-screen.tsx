@@ -10,6 +10,7 @@ import {
 } from "react-native";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
+import * as Clipboard from "expo-clipboard";
 import {
   Bot,
   ChevronDown,
@@ -35,10 +36,19 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { ExplorerSidebar } from "@/components/explorer-sidebar";
 import { TerminalPane } from "@/components/terminal-pane";
+import { SortableInlineList } from "@/components/sortable-inline-list";
 import { ExplorerSidebarAnimationProvider } from "@/contexts/explorer-sidebar-animation-context";
+import { useToast } from "@/contexts/toast-context";
 import { useExplorerOpenGesture } from "@/hooks/use-explorer-open-gesture";
 import { usePanelStore, type ExplorerCheckoutContext } from "@/stores/panel-store";
 import { useSessionStore, type Agent } from "@/stores/session-store";
@@ -52,6 +62,7 @@ import {
   buildHostWorkspaceRoute,
   buildHostWorkspaceAgentRoute,
   buildHostWorkspaceTerminalRoute,
+  decodeWorkspaceIdFromPathSegment,
 } from "@/utils/host-routes";
 import { buildNewAgentRoute } from "@/utils/new-agent-routing";
 import { useHostRuntimeSession } from "@/runtime/host-runtime";
@@ -66,11 +77,13 @@ import { confirmDialog } from "@/utils/confirm-dialog";
 import { deriveSidebarStateBucket } from "@/utils/sidebar-agent-state";
 import { getStatusDotColor } from "@/utils/status-dot-color";
 import { useArchiveAgent } from "@/hooks/use-archive-agent";
+import { buildProviderCommand } from "@/utils/provider-command-templates";
 
 const TERMINALS_QUERY_STALE_TIME = 5_000;
 const DROPDOWN_WIDTH = 220;
 const NEW_TAB_AGENT_OPTION_ID = "__new_tab_agent__";
 const NEW_TAB_TERMINAL_OPTION_ID = "__new_tab_terminal__";
+const EMPTY_TAB_ORDER: string[] = [];
 
 type TabAvailability = "available" | "invalid" | "unknown";
 
@@ -98,6 +111,41 @@ type WorkspaceTabDescriptor =
       label: string;
       subtitle: string;
     };
+
+function applyWorkspaceTabOrder(input: {
+  tabs: WorkspaceTabDescriptor[];
+  keys: string[];
+}): WorkspaceTabDescriptor[] {
+  if (input.keys.length === 0) {
+    return input.tabs;
+  }
+
+  const byKey = new Map<string, WorkspaceTabDescriptor>();
+  for (const tab of input.tabs) {
+    byKey.set(tab.key, tab);
+  }
+
+  const used = new Set<string>();
+  const next: WorkspaceTabDescriptor[] = [];
+
+  for (const key of input.keys) {
+    const tab = byKey.get(key);
+    if (!tab) {
+      continue;
+    }
+    used.add(key);
+    next.push(tab);
+  }
+
+  for (const tab of input.tabs) {
+    if (used.has(tab.key)) {
+      continue;
+    }
+    next.push(tab);
+  }
+
+  return next;
+}
 
 function trimNonEmpty(value: string | null | undefined): string | null {
   if (typeof value !== "string") {
@@ -266,12 +314,13 @@ function WorkspaceScreenContent({
   routeTab,
 }: WorkspaceScreenProps) {
   const { theme } = useUnistyles();
+  const toast = useToast();
   const router = useRouter();
   const isMobile =
     UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
 
   const normalizedServerId = trimNonEmpty(decodeSegment(serverId)) ?? "";
-  const normalizedWorkspaceId = trimNonEmpty(decodeSegment(workspaceId)) ?? "";
+  const normalizedWorkspaceId = decodeWorkspaceIdFromPathSegment(workspaceId) ?? "";
 
   const queryClient = useQueryClient();
   const { client, isConnected } = useHostRuntimeSession(normalizedServerId);
@@ -517,7 +566,7 @@ function WorkspaceScreenContent({
     return map;
   }, [workspaceAgents]);
 
-  const tabs = useMemo<WorkspaceTabDescriptor[]>(() => {
+  const baseTabs = useMemo<WorkspaceTabDescriptor[]>(() => {
     const next: WorkspaceTabDescriptor[] = [];
 
     for (const agent of workspaceAgents) {
@@ -565,11 +614,23 @@ function WorkspaceScreenContent({
       }),
     [normalizedServerId, normalizedWorkspaceId]
   );
+
+  const tabOrder = useWorkspaceTabsStore((state) =>
+    persistenceKey
+      ? state.tabOrderByWorkspace[persistenceKey] ?? EMPTY_TAB_ORDER
+      : EMPTY_TAB_ORDER
+  );
   const lastFocusedTabByWorkspace = useWorkspaceTabsStore(
     (state) => state.lastFocusedTabByWorkspace
   );
   const setLastFocusedTab = useWorkspaceTabsStore(
     (state) => state.setLastFocusedTab
+  );
+  const setTabOrder = useWorkspaceTabsStore((state) => state.setTabOrder);
+
+  const tabs = useMemo(
+    () => applyWorkspaceTabOrder({ tabs: baseTabs, keys: tabOrder }),
+    [baseTabs, tabOrder]
   );
 
   const storedTab = useMemo(() => {
@@ -589,6 +650,17 @@ function WorkspaceScreenContent({
     }
     return { kind: "terminal", terminalId: first.terminalId };
   }, [tabs]);
+
+  const handleReorderTabs = useCallback(
+    (nextTabs: WorkspaceTabDescriptor[]) => {
+      setTabOrder({
+        serverId: normalizedServerId,
+        workspaceId: normalizedWorkspaceId,
+        keys: nextTabs.map((tab) => tab.key),
+      });
+    },
+    [normalizedServerId, normalizedWorkspaceId, setTabOrder]
+  );
 
   const requestedTabAvailability = useMemo<TabAvailability | null>(() => {
     if (!requestedTab) {
@@ -964,6 +1036,144 @@ function WorkspaceScreenContent({
     ]
   );
 
+  const handleCopyAgentId = useCallback(
+    async (agentId: string) => {
+      if (!agentId) return;
+      try {
+        await Clipboard.setStringAsync(agentId);
+        toast.copied("Agent ID");
+      } catch {
+        toast.error("Copy failed");
+      }
+    },
+    [toast]
+  );
+
+  const handleCopyResumeCommand = useCallback(
+    async (agentId: string) => {
+      if (!agentId) return;
+      const agent = agentsById.get(agentId) ?? null;
+      const providerSessionId =
+        agent?.runtimeInfo?.sessionId ?? agent?.persistence?.sessionId ?? null;
+      if (!agent || !providerSessionId) {
+        toast.error("Resume ID not available");
+        return;
+      }
+
+      const command =
+        buildProviderCommand({
+          provider: agent.provider,
+          id: "resume",
+          sessionId: providerSessionId,
+        }) ?? null;
+      if (!command) {
+        toast.error("Resume command not available");
+        return;
+      }
+      try {
+        await Clipboard.setStringAsync(command);
+        toast.copied("resume command");
+      } catch {
+        toast.error("Copy failed");
+      }
+    },
+    [agentsById, toast]
+  );
+
+  const handleCloseTabsToRight = useCallback(
+    async (tabKey: string) => {
+      const startIndex = tabs.findIndex((tab) => tab.key === tabKey);
+      if (startIndex < 0) {
+        return;
+      }
+      const toClose = tabs.slice(startIndex + 1);
+      if (toClose.length === 0) {
+        return;
+      }
+
+      const agentIds: string[] = [];
+      const terminalIdsToClose: string[] = [];
+      for (const tab of toClose) {
+        if (tab.kind === "agent") {
+          agentIds.push(tab.agentId);
+        } else {
+          terminalIdsToClose.push(tab.terminalId);
+        }
+      }
+
+      const confirmed = await confirmDialog({
+        title: "Close tabs to the right?",
+        message:
+          agentIds.length > 0 && terminalIdsToClose.length > 0
+            ? `This will archive ${agentIds.length} agent(s) and close ${terminalIdsToClose.length} terminal(s). Any running process in a closed terminal will be stopped immediately.`
+            : terminalIdsToClose.length > 0
+              ? `This will close ${terminalIdsToClose.length} terminal(s). Any running process in a closed terminal will be stopped immediately.`
+              : `This will archive ${agentIds.length} agent(s).`,
+        confirmLabel: "Close",
+        cancelLabel: "Cancel",
+        destructive: true,
+      });
+      if (!confirmed) {
+        return;
+      }
+
+      for (const terminalId of terminalIdsToClose) {
+        try {
+          await killTerminalMutation.mutateAsync(terminalId);
+          queryClient.setQueryData<ListTerminalsPayload>(terminalsQueryKey, (current) => {
+            if (!current) {
+              return current;
+            }
+            return {
+              ...current,
+              terminals: current.terminals.filter((terminal) => terminal.id !== terminalId),
+            };
+          });
+        } catch (error) {
+          console.warn("[WorkspaceScreen] Failed to close terminal tab to the right", { terminalId, error });
+        }
+      }
+
+      for (const agentId of agentIds) {
+        if (!normalizedServerId) {
+          continue;
+        }
+        try {
+          await archiveAgent({ serverId: normalizedServerId, agentId });
+        } catch (error) {
+          console.warn("[WorkspaceScreen] Failed to archive agent tab to the right", { agentId, error });
+        }
+      }
+
+      const resolvedTabKey = resolvedTab?.kind === "agent"
+        ? `agent:${resolvedTab.agentId}`
+        : resolvedTab?.kind === "terminal"
+          ? `terminal:${resolvedTab.terminalId}`
+          : null;
+      const closedKeys = new Set(toClose.map((tab) => tab.key));
+      if (resolvedTabKey && closedKeys.has(resolvedTabKey)) {
+        const target = tabByKey.get(tabKey);
+        if (target) {
+          navigateToTab(target);
+        }
+      }
+
+      setHoveredTabKey((current) => (current && closedKeys.has(current) ? null : current));
+      setHoveredCloseTabKey((current) => (current && closedKeys.has(current) ? null : current));
+    },
+    [
+      archiveAgent,
+      killTerminalMutation,
+      navigateToTab,
+      normalizedServerId,
+      queryClient,
+      resolvedTab,
+      tabByKey,
+      tabs,
+      terminalsQueryKey,
+    ]
+  );
+
   const handleOpenAgentChatView = useCallback(() => {
     if (!activeAgent) {
       return;
@@ -1253,155 +1463,229 @@ function WorkspaceScreenContent({
                 contentContainerStyle={styles.tabsContent}
                 showsHorizontalScrollIndicator={false}
               >
-                {tabs.map((tab) => {
-                  const isActive = tab.key === activeTabKey;
-                  const tabAgent = tab.kind === "agent" ? agentsById.get(tab.agentId) ?? null : null;
-                  const isTabHovered = hoveredTabKey === tab.key;
-                  const isCloseHovered = hoveredCloseTabKey === tab.key;
-                  const isClosingAgent =
-                    tab.kind === "agent" &&
-                    isArchivingAgent({
-                      serverId: normalizedServerId,
-                      agentId: tab.agentId,
-                    });
-                  const isClosingTerminal =
-                    tab.kind === "terminal" &&
-                    killTerminalMutation.isPending &&
-                    killTerminalMutation.variables === tab.terminalId;
-                  const isClosingTab = isClosingAgent || isClosingTerminal;
-                  const shouldShowCloseButton = true;
-                  const iconColor = isActive
-                    ? theme.colors.foreground
-                    : theme.colors.foregroundMuted;
-                  const tabAgentStatusBucket = tabAgent
-                    ? deriveSidebarStateBucket({
-                        status: tabAgent.status,
-                        pendingPermissionCount: tabAgent.pendingPermissions.length,
-                        requiresAttention: tabAgent.requiresAttention,
-                        attentionReason: tabAgent.attentionReason,
-                      })
-                    : null;
-                  const tabAgentStatusColor =
-                    tabAgentStatusBucket === null
-                      ? null
-                      : getStatusDotColor({
-                          theme,
-                          bucket: tabAgentStatusBucket,
-                          showDoneAsInactive: false,
-                        });
-                  const icon =
-                    tab.kind === "agent" ? (
-                      <View style={styles.tabAgentIconWrapper}>
-                        {tab.provider === "claude" ? (
-                          <ClaudeIcon size={14} color={iconColor} />
-                        ) : tab.provider === "codex" ? (
-                          <CodexIcon size={14} color={iconColor} />
-                        ) : (
-                          <Bot size={14} color={iconColor} />
-                        )}
-                        {tabAgentStatusColor ? (
-                          <View
-                            style={[
-                              styles.tabStatusDot,
-                              {
-                                backgroundColor: tabAgentStatusColor,
-                                borderColor: theme.colors.surface0,
-                              },
-                            ]}
-                          />
-                        ) : null}
-                      </View>
-                    ) : (
-                      <Terminal size={14} color={iconColor} />
-                    );
+                <SortableInlineList
+                  data={tabs}
+                  keyExtractor={(tab) => tab.key}
+                  useDragHandle
+                  disabled={tabs.length < 2}
+                  onDragEnd={handleReorderTabs}
+                  renderItem={({ item: tab, dragHandleProps }) => {
+                    const isActive = tab.key === activeTabKey;
+                    const tabAgent =
+                      tab.kind === "agent" ? agentsById.get(tab.agentId) ?? null : null;
+                    const isCloseHovered = hoveredCloseTabKey === tab.key;
+                    const isClosingAgent =
+                      tab.kind === "agent" &&
+                      isArchivingAgent({
+                        serverId: normalizedServerId,
+                        agentId: tab.agentId,
+                      });
+                    const isClosingTerminal =
+                      tab.kind === "terminal" &&
+                      killTerminalMutation.isPending &&
+                      killTerminalMutation.variables === tab.terminalId;
+                    const isClosingTab = isClosingAgent || isClosingTerminal;
+                    const shouldShowCloseButton = true;
+                    const iconColor = isActive
+                      ? theme.colors.foreground
+                      : theme.colors.foregroundMuted;
+                    const tabAgentStatusBucket = tabAgent
+                      ? deriveSidebarStateBucket({
+                          status: tabAgent.status,
+                          pendingPermissionCount: tabAgent.pendingPermissions.length,
+                          requiresAttention: tabAgent.requiresAttention,
+                          attentionReason: tabAgent.attentionReason,
+                        })
+                      : null;
+                    const tabAgentStatusColor =
+                      tabAgentStatusBucket === null
+                        ? null
+                        : getStatusDotColor({
+                            theme,
+                            bucket: tabAgentStatusBucket,
+                            showDoneAsInactive: false,
+                          });
+                    const icon =
+                      tab.kind === "agent" ? (
+                        <View style={styles.tabAgentIconWrapper}>
+                          {tab.provider === "claude" ? (
+                            <ClaudeIcon size={14} color={iconColor} />
+                          ) : tab.provider === "codex" ? (
+                            <CodexIcon size={14} color={iconColor} />
+                          ) : (
+                            <Bot size={14} color={iconColor} />
+                          )}
+                          {tabAgentStatusColor ? (
+                            <View
+                              style={[
+                                styles.tabStatusDot,
+                                {
+                                  backgroundColor: tabAgentStatusColor,
+                                  borderColor: theme.colors.surface0,
+                                },
+                              ]}
+                            />
+                          ) : null}
+                        </View>
+                      ) : (
+                        <Terminal size={14} color={iconColor} />
+                      );
 
-                  return (
-                    <Pressable
-                      key={tab.key}
-                      testID={`workspace-tab-${tab.key}`}
-                      style={({ hovered, pressed }) => [
-                        styles.tab,
-                        isActive && styles.tabActive,
-                        (hovered || pressed || isCloseHovered) && styles.tabHovered,
-                      ]}
-                      onHoverIn={() => {
-                        setHoveredTabKey(tab.key);
-                      }}
-                      onHoverOut={() => {
-                        setHoveredTabKey((current) =>
-                          current === tab.key ? null : current
-                        );
-                      }}
-                      onPress={() => {
-                        if (tab.kind === "agent") {
-                          navigateToTab({ kind: "agent", agentId: tab.agentId });
-                          return;
-                        }
-                        navigateToTab({
-                          kind: "terminal",
-                          terminalId: tab.terminalId,
-                        });
-                      }}
-                    >
-                      <View style={styles.tabIcon}>{icon}</View>
-                      <Text
-                        style={[
-                          styles.tabLabel,
-                          isActive && styles.tabLabelActive,
-                          shouldShowCloseButton && styles.tabLabelWithCloseButton,
-                        ]}
-                        numberOfLines={1}
-                      >
-                        {tab.label}
-                      </Text>
-                      <Pressable
-                        testID={
-                          tab.kind === "agent"
-                            ? `workspace-agent-close-${tab.agentId}`
-                            : `workspace-terminal-close-${tab.terminalId}`
-                        }
-                        pointerEvents={shouldShowCloseButton ? "auto" : "none"}
-                        disabled={!shouldShowCloseButton || isClosingTab}
-                        onHoverIn={() => {
-                          setHoveredTabKey(tab.key);
-                          setHoveredCloseTabKey(tab.key);
-                        }}
-                        onHoverOut={() => {
-                          setHoveredTabKey((current) =>
-                            current === tab.key ? null : current
-                          );
-                          setHoveredCloseTabKey((current) =>
-                            current === tab.key ? null : current
-                          );
-                        }}
-                        onPress={(event) => {
-                          event.stopPropagation?.();
-                          if (tab.kind === "agent") {
-                            void handleCloseAgentTab(tab.agentId);
-                            return;
-                          }
-                          void handleCloseTerminalTab(tab.terminalId);
-                        }}
-                        style={({ hovered, pressed }) => [
-                          styles.tabCloseButton,
-                          shouldShowCloseButton
-                            ? styles.tabCloseButtonShown
-                            : styles.tabCloseButtonHidden,
-                          (hovered || pressed) && styles.tabCloseButtonActive,
-                        ]}
-                      >
-                        {isClosingTab ? (
-                          <ActivityIndicator
-                            size={12}
-                            color={theme.colors.foregroundMuted}
-                          />
-                        ) : (
-                          <X size={12} color={theme.colors.foregroundMuted} />
-                        )}
-                      </Pressable>
-                    </Pressable>
-                  );
-                })}
+                    const contextMenuTestId = `workspace-tab-context-${tab.key}`;
+
+                    return (
+                      <ContextMenu key={tab.key}>
+                        <ContextMenuTrigger
+                          testID={`workspace-tab-${tab.key}`}
+                          enabledOnMobile={false}
+                          style={({ hovered, pressed }) => [
+                            styles.tab,
+                            isActive && styles.tabActive,
+                            (hovered || pressed || isCloseHovered) && styles.tabHovered,
+                          ]}
+                          onHoverIn={() => {
+                            setHoveredTabKey(tab.key);
+                          }}
+                          onHoverOut={() => {
+                            setHoveredTabKey((current) =>
+                              current === tab.key ? null : current
+                            );
+                          }}
+                          onPress={() => {
+                            if (tab.kind === "agent") {
+                              navigateToTab({ kind: "agent", agentId: tab.agentId });
+                              return;
+                            }
+                            navigateToTab({
+                              kind: "terminal",
+                              terminalId: tab.terminalId,
+                            });
+                          }}
+                        >
+                          <View
+                            {...(dragHandleProps?.attributes as any)}
+                            {...(dragHandleProps?.listeners as any)}
+                            ref={(node: unknown) => {
+                              dragHandleProps?.setActivatorNodeRef?.(node);
+                            }}
+                            style={styles.tabHandle}
+                          >
+                            <View style={styles.tabIcon}>{icon}</View>
+                            <Text
+                              style={[
+                                styles.tabLabel,
+                                isActive && styles.tabLabelActive,
+                                shouldShowCloseButton && styles.tabLabelWithCloseButton,
+                              ]}
+                              numberOfLines={1}
+                            >
+                              {tab.label}
+                            </Text>
+                          </View>
+
+                          <Pressable
+                            testID={
+                              tab.kind === "agent"
+                                ? `workspace-agent-close-${tab.agentId}`
+                                : `workspace-terminal-close-${tab.terminalId}`
+                            }
+                            pointerEvents={shouldShowCloseButton ? "auto" : "none"}
+                            disabled={!shouldShowCloseButton || isClosingTab}
+                            onHoverIn={() => {
+                              setHoveredTabKey(tab.key);
+                              setHoveredCloseTabKey(tab.key);
+                            }}
+                            onHoverOut={() => {
+                              setHoveredTabKey((current) =>
+                                current === tab.key ? null : current
+                              );
+                              setHoveredCloseTabKey((current) =>
+                                current === tab.key ? null : current
+                              );
+                            }}
+                            onPress={(event) => {
+                              event.stopPropagation?.();
+                              if (tab.kind === "agent") {
+                                void handleCloseAgentTab(tab.agentId);
+                                return;
+                              }
+                              void handleCloseTerminalTab(tab.terminalId);
+                            }}
+                            style={({ hovered, pressed }) => [
+                              styles.tabCloseButton,
+                              shouldShowCloseButton
+                                ? styles.tabCloseButtonShown
+                                : styles.tabCloseButtonHidden,
+                              (hovered || pressed) && styles.tabCloseButtonActive,
+                            ]}
+                          >
+                            {isClosingTab ? (
+                              <ActivityIndicator
+                                size={12}
+                                color={theme.colors.foregroundMuted}
+                              />
+                            ) : (
+                              <X size={12} color={theme.colors.foregroundMuted} />
+                            )}
+                          </Pressable>
+                        </ContextMenuTrigger>
+
+                        <ContextMenuContent
+                          align="start"
+                          width={DROPDOWN_WIDTH}
+                          testID={contextMenuTestId}
+                        >
+                          {tab.kind === "agent" ? (
+                            <>
+                              <ContextMenuItem
+                                testID={`${contextMenuTestId}-copy-resume-command`}
+                                onSelect={() => {
+                                  void handleCopyResumeCommand(tab.agentId);
+                                }}
+                              >
+                                Copy resume command
+                              </ContextMenuItem>
+                              <ContextMenuItem
+                                testID={`${contextMenuTestId}-copy-agent-id`}
+                                onSelect={() => {
+                                  void handleCopyAgentId(tab.agentId);
+                                }}
+                              >
+                                Copy agent id
+                              </ContextMenuItem>
+                            </>
+                          ) : null}
+
+                          <ContextMenuSeparator />
+
+                          <ContextMenuItem
+                            testID={`${contextMenuTestId}-close-right`}
+                            disabled={
+                              tabs.findIndex((t) => t.key === tab.key) === tabs.length - 1
+                            }
+                            onSelect={() => {
+                              void handleCloseTabsToRight(tab.key);
+                            }}
+                          >
+                            Close to the right
+                          </ContextMenuItem>
+                          <ContextMenuItem
+                            testID={`${contextMenuTestId}-close`}
+                            onSelect={() => {
+                              if (tab.kind === "agent") {
+                                void handleCloseAgentTab(tab.agentId);
+                                return;
+                              }
+                              void handleCloseTerminalTab(tab.terminalId);
+                            }}
+                          >
+                            Close
+                          </ContextMenuItem>
+                        </ContextMenuContent>
+                      </ContextMenu>
+                    );
+                  }}
+                />
               </ScrollView>
               <View style={styles.tabsActions}>
                 <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
@@ -1643,6 +1927,13 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     gap: theme.spacing[1],
     maxWidth: 260,
+  },
+  tabHandle: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[1],
+    flex: 1,
+    minWidth: 0,
   },
   tabIcon: {
     flexShrink: 0,

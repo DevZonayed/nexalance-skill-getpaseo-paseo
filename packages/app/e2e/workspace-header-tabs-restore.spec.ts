@@ -6,9 +6,10 @@ import {
   setWorkingDirectory,
 } from "./helpers/app";
 import { createTempGitRepo } from "./helpers/workspace";
+import { buildHostWorkspaceRoute } from "@/utils/host-routes";
 
 function buildWorkspaceRoute(serverId: string, workspacePath: string): string {
-  return `/h/${encodeURIComponent(serverId)}/workspace/${encodeURIComponent(workspacePath)}`;
+  return buildHostWorkspaceRoute(serverId, workspacePath);
 }
 
 async function openWorkspaceWithAgent(page: Page, workspacePath: string): Promise<void> {

@@ -41,6 +41,7 @@ import {
   summarizeTerminalText,
   terminalDebugLog,
 } from "@/terminal/runtime/terminal-debug";
+import { usePanelStore } from "@/stores/panel-store";
 import TerminalEmulator from "./terminal-emulator";
 
 interface TerminalPaneProps {
@@ -147,6 +148,10 @@ export function TerminalPane({
   const { theme } = useUnistyles();
   const isMobile =
     UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
+  const mobileView = usePanelStore((state) => state.mobileView);
+  const openAgentList = usePanelStore((state) => state.openAgentList);
+  const openFileExplorer = usePanelStore((state) => state.openFileExplorer);
+  const swipeGesturesEnabled = isMobile && mobileView === "agent";
   const { shift: keyboardShift, style: keyboardPaddingStyle } = useKeyboardShiftStyle({
     mode: "padding",
     enabled: isMobile,
@@ -1121,6 +1126,19 @@ export function TerminalPane({
               backgroundColor={theme.colors.background}
               foregroundColor={theme.colors.foreground}
               cursorColor={theme.colors.foreground}
+              swipeGesturesEnabled={swipeGesturesEnabled}
+              onSwipeRight={() => {
+                if (!swipeGesturesEnabled) {
+                  return;
+                }
+                openAgentList();
+              }}
+              onSwipeLeft={() => {
+                if (!swipeGesturesEnabled) {
+                  return;
+                }
+                openFileExplorer();
+              }}
               onInput={handleTerminalData}
               onResize={handleTerminalResize}
               onTerminalKey={handleTerminalKey}

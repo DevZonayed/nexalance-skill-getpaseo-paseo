@@ -56,16 +56,14 @@ const shouldRun = !process.env.CI;
   }, 60000);
 
   test(
-    "lists terminals for a directory (auto-creates first)",
+    "lists terminals for a directory (empty when none exist)",
     async () => {
       const cwd = tmpCwd();
 
       const result = await ctx.client.listTerminals(cwd);
 
       expect(result.cwd).toBe(cwd);
-      expect(result.terminals).toHaveLength(1);
-      expect(result.terminals[0].name).toBe("Terminal 1");
-      expect(result.terminals[0].id).toBeTruthy();
+      expect(result.terminals).toHaveLength(0);
 
       rmSync(cwd, { recursive: true, force: true });
     },
@@ -73,14 +71,11 @@ const shouldRun = !process.env.CI;
   );
 
   test(
-    "creates additional terminal with custom name",
+    "creates terminal with custom name",
     async () => {
       const cwd = tmpCwd();
 
-      // First call auto-creates Terminal 1
-      await ctx.client.listTerminals(cwd);
-
-      // Create a second terminal with custom name
+      // Create a terminal with custom name
       const result = await ctx.client.createTerminal(cwd, "Dev Server");
 
       expect(result.error).toBeNull();
@@ -88,9 +83,9 @@ const shouldRun = !process.env.CI;
       expect(result.terminal!.name).toBe("Dev Server");
       expect(result.terminal!.cwd).toBe(cwd);
 
-      // Verify list now shows two terminals
+      // Verify list now shows one terminal
       const list = await ctx.client.listTerminals(cwd);
-      expect(list.terminals).toHaveLength(2);
+      expect(list.terminals).toHaveLength(1);
 
       rmSync(cwd, { recursive: true, force: true });
     },
@@ -101,7 +96,6 @@ const shouldRun = !process.env.CI;
     "emits terminals_changed for subscribed cwd when terminals are created",
     async () => {
       const cwd = tmpCwd();
-      await ctx.client.listTerminals(cwd);
 
       const snapshots: Array<{ cwd: string; names: string[] }> = [];
       const unsubscribe = ctx.client.on("terminals_changed", (message) => {
@@ -138,9 +132,8 @@ const shouldRun = !process.env.CI;
     async () => {
       const cwd = tmpCwd();
 
-      // Get terminal (auto-creates)
-      const list = await ctx.client.listTerminals(cwd);
-      const terminalId = list.terminals[0].id;
+      const created = await ctx.client.createTerminal(cwd);
+      const terminalId = created.terminal!.id;
 
       // Subscribe to terminal
       const subscribeResult = await ctx.client.subscribeTerminal(terminalId);
@@ -166,9 +159,8 @@ const shouldRun = !process.env.CI;
     async () => {
       const cwd = tmpCwd();
 
-      // Get terminal
-      const list = await ctx.client.listTerminals(cwd);
-      const terminalId = list.terminals[0].id;
+      const created = await ctx.client.createTerminal(cwd);
+      const terminalId = created.terminal!.id;
 
       // Subscribe to terminal
       await ctx.client.subscribeTerminal(terminalId);
@@ -251,9 +243,8 @@ const shouldRun = !process.env.CI;
     async () => {
       const cwd = tmpCwd();
 
-      // Get terminal
-      const list = await ctx.client.listTerminals(cwd);
-      const terminalId = list.terminals[0].id;
+      const created = await ctx.client.createTerminal(cwd);
+      const terminalId = created.terminal!.id;
 
       // Subscribe to terminal
       await ctx.client.subscribeTerminal(terminalId);
@@ -318,8 +309,8 @@ const shouldRun = !process.env.CI;
     "streams terminal output over binary mux and supports modifier keys",
     async () => {
       const cwd = tmpCwd();
-      const list = await ctx.client.listTerminals(cwd);
-      const terminalId = list.terminals[0].id;
+      const created = await ctx.client.createTerminal(cwd);
+      const terminalId = created.terminal!.id;
 
       const attach = await ctx.client.attachTerminalStream(terminalId, { rows: 24, cols: 80 });
       expect(attach.error).toBeNull();
@@ -357,8 +348,8 @@ const shouldRun = !process.env.CI;
     "emits terminal_stream_exit and removes terminal when shell exits",
     async () => {
       const cwd = tmpCwd();
-      const list = await ctx.client.listTerminals(cwd);
-      const terminalId = list.terminals[0].id;
+      const created = await ctx.client.createTerminal(cwd);
+      const terminalId = created.terminal!.id;
 
       const attach = await ctx.client.attachTerminalStream(terminalId, { rows: 24, cols: 80 });
       expect(attach.error).toBeNull();
@@ -395,8 +386,8 @@ const shouldRun = !process.env.CI;
     "replays detached terminal output from resume offset (scrollback continuity)",
     async () => {
       const cwd = tmpCwd();
-      const list = await ctx.client.listTerminals(cwd);
-      const terminalId = list.terminals[0].id;
+      const created = await ctx.client.createTerminal(cwd);
+      const terminalId = created.terminal!.id;
 
       const attach = await ctx.client.attachTerminalStream(terminalId, { rows: 24, cols: 80 });
       expect(attach.error).toBeNull();
@@ -448,8 +439,8 @@ const shouldRun = !process.env.CI;
     "applies stream backpressure window until client ack advances",
     async () => {
       const cwd = tmpCwd();
-      const list = await ctx.client.listTerminals(cwd);
-      const terminalId = list.terminals[0].id;
+      const created = await ctx.client.createTerminal(cwd);
+      const terminalId = created.terminal!.id;
 
       const ws = new WebSocket(`ws://127.0.0.1:${ctx.daemon.port}/ws`);
       await new Promise<void>((resolve, reject) => {
@@ -646,8 +637,8 @@ const shouldRun = !process.env.CI;
     "measures local terminal round-trip latency via daemon client stream",
     async () => {
       const cwd = tmpCwd();
-      const list = await ctx.client.listTerminals(cwd);
-      const terminalId = list.terminals[0].id;
+      const created = await ctx.client.createTerminal(cwd);
+      const terminalId = created.terminal!.id;
 
       const attach = await ctx.client.attachTerminalStream(terminalId);
       expect(attach.error).toBeNull();
