@@ -86,6 +86,49 @@ function invalidateWorktreeList() {
     predicate: (query) =>
       Array.isArray(query.queryKey) && query.queryKey[0] === "paseoWorktreeList",
   });
+  void queryClient.invalidateQueries({
+    predicate: (query) =>
+      Array.isArray(query.queryKey) && query.queryKey[0] === "sidebarPaseoWorktreeList",
+  });
+}
+
+function removeWorktreeFromCachedLists(input: {
+  serverId: string;
+  worktreePath: string;
+}): void {
+  const serverId = input.serverId.trim();
+  const worktreePath = input.worktreePath.trim();
+  if (!serverId || !worktreePath) {
+    return;
+  }
+
+  const removeFromList = (current: unknown) => {
+    if (!Array.isArray(current)) {
+      return current;
+    }
+    const filtered = current.filter((entry) => entry?.worktreePath !== worktreePath);
+    return filtered.length === current.length ? current : filtered;
+  };
+
+  queryClient.setQueriesData(
+    {
+      predicate: (query) =>
+        Array.isArray(query.queryKey) &&
+        query.queryKey[0] === "paseoWorktreeList" &&
+        query.queryKey[1] === serverId,
+    },
+    removeFromList
+  );
+
+  queryClient.setQueriesData(
+    {
+      predicate: (query) =>
+        Array.isArray(query.queryKey) &&
+        query.queryKey[0] === "sidebarPaseoWorktreeList" &&
+        query.queryKey[1] === serverId,
+    },
+    removeFromList
+  );
 }
 
 const successTimers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -267,6 +310,7 @@ export const useCheckoutGitActionsStore = create<CheckoutGitActionsStoreState>()
         if (payload.error) {
           throw new Error(payload.error.message);
         }
+        removeWorktreeFromCachedLists({ serverId, worktreePath });
         invalidateWorktreeList();
       },
     });

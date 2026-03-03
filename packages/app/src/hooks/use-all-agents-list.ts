@@ -74,9 +74,6 @@ export function useAllAgentsList(options?: {
         serverId,
         serverLabel,
       });
-      if (aggregated.archivedAt) {
-        continue;
-      }
       if (aggregated.labels.ui !== "true") {
         continue;
       }

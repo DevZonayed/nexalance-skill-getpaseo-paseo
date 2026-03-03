@@ -58,6 +58,10 @@ function useContextMenuContext(componentName: string): ContextMenuContextValue {
   return ctx;
 }
 
+export function useContextMenu(): ContextMenuContextValue {
+  return useContextMenuContext("useContextMenu");
+}
+
 function useControllableOpenState({
   open,
   defaultOpen,

@@ -1906,6 +1906,16 @@ class ClaudeAgentSession implements AgentSession {
   }
 
   async close(): Promise<void> {
+    this.logger.trace(
+      {
+        claudeSessionId: this.claudeSessionId,
+        turnState: this.turnState,
+        hasQuery: Boolean(this.query),
+        hasInput: Boolean(this.input),
+        hasActiveForegroundTurn: Boolean(this.activeForegroundTurn),
+      },
+      "Claude session close: start"
+    );
     this.closed = true;
     this.rejectAllPendingPermissions(new Error("Claude session closed"));
     this.cancelCurrentTurn?.();
@@ -1922,6 +1932,10 @@ class ClaudeAgentSession implements AgentSession {
     await this.awaitWithTimeout(this.query?.return?.(), "close query return");
     this.query = null;
     this.input = null;
+    this.logger.trace(
+      { claudeSessionId: this.claudeSessionId, turnState: this.turnState },
+      "Claude session close: completed"
+    );
   }
 
   async listCommands(): Promise<AgentSlashCommand[]> {
@@ -2235,8 +2249,11 @@ class ClaudeAgentSession implements AgentSession {
     label: string
   ): Promise<void> {
     if (!promise) {
+      this.logger.trace({ label }, "Claude query operation skipped (no promise)");
       return;
     }
+    const startedAt = Date.now();
+    this.logger.trace({ label }, "Claude query operation wait start");
     try {
       await Promise.race([
         promise,
@@ -2244,6 +2261,10 @@ class ClaudeAgentSession implements AgentSession {
           setTimeout(() => reject(new Error("timeout")), 3_000);
         }),
       ]);
+      this.logger.trace(
+        { label, durationMs: Date.now() - startedAt },
+        "Claude query operation settled"
+      );
     } catch (error) {
       this.logger.warn({ err: error, label }, "Claude query operation did not settle cleanly");
     }
@@ -2464,6 +2485,23 @@ class ClaudeAgentSession implements AgentSession {
   }
 
   private emitRunEvent(run: RunRecord, event: AgentStreamEvent): void {
+    if (
+      event.type === "turn_started" ||
+      event.type === "turn_completed" ||
+      event.type === "turn_failed" ||
+      event.type === "turn_canceled"
+    ) {
+      this.logger.trace(
+        {
+          runId: run.id,
+          owner: run.owner,
+          runState: run.state,
+          eventType: event.type,
+          routedTo: run.owner === "foreground" && run.queue ? "foreground_queue" : "live_queue",
+        },
+        "Claude run event emitted"
+      );
+    }
     if (run.owner === "foreground" && run.queue) {
       run.queue.push(event);
       if (
@@ -2494,6 +2532,16 @@ class ClaudeAgentSession implements AgentSession {
       this.activeForegroundTurn = null;
       this.preReplayMetadataSeen = false;
     }
+    this.logger.trace(
+      {
+        runId: run.id,
+        owner: run.owner,
+        eventType: event.type,
+        runState: run.state,
+        hasActiveForegroundTurn: Boolean(this.activeForegroundTurn),
+      },
+      "Claude run terminal event handled"
+    );
     this.transitionTurnStateFromActiveRuns(`run ${run.id} terminal`);
   }
 
@@ -2789,6 +2837,13 @@ class ClaudeAgentSession implements AgentSession {
       }
 
       if (next.done) {
+        this.logger.trace(
+          {
+            claudeSessionId: this.claudeSessionId,
+            activeRunCount: this.runTracker.listActiveRuns().length,
+          },
+          "Claude query pump next() returned done"
+        );
         this.input?.end();
         await this.awaitWithTimeout(q.return?.(), "query pump return on done");
         if (this.query === q) {
@@ -2834,6 +2889,18 @@ class ClaudeAgentSession implements AgentSession {
       run: route.run,
       message,
     });
+    this.logger.trace(
+      {
+        claudeSessionId: this.claudeSessionId,
+        messageType: message.type,
+        routeReason: route.reason,
+        runId: route.run?.id ?? null,
+        runOwner: route.run?.owner ?? null,
+        suppressTerminalEvents,
+        metadataOnly,
+      },
+      "Claude query pump routed SDK message"
+    );
     if (route.run) {
       this.transitionTurnStateFromActiveRuns(`routed via ${route.reason}`);
       this.runTracker.bindIdentifiers(route.run, identifiers);
@@ -2898,6 +2965,16 @@ class ClaudeAgentSession implements AgentSession {
     // Pre-replay success results are stale in practice (leftover from an
     // earlier query segment) and must not end the current foreground run.
     if (resultSubtype === "success") {
+      this.logger.trace(
+        {
+          runId: run.id,
+          runOwner: run.owner,
+          runState: run.state,
+          promptReplaySeen: run.promptReplaySeen,
+          resultSubtype,
+        },
+        "Suppressing pre-replay foreground success result terminal event"
+      );
       return true;
     }
 
@@ -2917,6 +2994,7 @@ class ClaudeAgentSession implements AgentSession {
     message: SDKMessage,
     identifiers: EventIdentifiers
   ): void {
+    const previousState = run.state;
     if (
       message.type === "user" &&
       identifiers.messageId &&
@@ -2941,7 +3019,24 @@ class ClaudeAgentSession implements AgentSession {
 
     if (message.type === "result") {
       this.runTracker.transition(run, "finalizing");
+    } else {
       return;
+    }
+
+    if (run.state !== previousState) {
+      this.logger.trace(
+        {
+          runId: run.id,
+          owner: run.owner,
+          messageType: message.type,
+          previousState,
+          nextState: run.state,
+          taskId: identifiers.taskId,
+          parentMessageId: identifiers.parentMessageId,
+          messageId: identifiers.messageId,
+        },
+        "Updated Claude run lifecycle from SDK message"
+      );
     }
   }
 

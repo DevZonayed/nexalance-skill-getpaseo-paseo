@@ -736,10 +736,15 @@ export class Session {
   private async interruptAgentIfRunning(agentId: string): Promise<void> {
     const snapshot = this.agentManager.getAgent(agentId)
     if (!snapshot) {
+      this.sessionLogger.trace({ agentId }, 'interruptAgentIfRunning: agent not found')
       throw new Error(`Agent ${agentId} not found`)
     }
 
     if (snapshot.lifecycle !== 'running' && !snapshot.pendingRun) {
+      this.sessionLogger.trace(
+        { agentId, lifecycle: snapshot.lifecycle, pendingRun: Boolean(snapshot.pendingRun) },
+        'interruptAgentIfRunning: skipping because agent is not running'
+      )
       return
     }
 
@@ -787,9 +792,18 @@ export class Session {
     prompt: AgentPromptInput,
     runOptions?: AgentRunOptions
   ): { ok: true } | { ok: false; error: string } {
+    this.sessionLogger.trace(
+      {
+        agentId,
+        promptType: typeof prompt === 'string' ? 'string' : 'structured',
+        hasRunOptions: Boolean(runOptions),
+      },
+      'startAgentStream: requested'
+    )
     let iterator: AsyncGenerator<AgentStreamEvent>
     try {
       iterator = this.agentManager.streamAgent(agentId, prompt, runOptions)
+      this.sessionLogger.trace({ agentId }, 'startAgentStream: streamAgent returned iterator')
     } catch (error) {
       this.handleAgentRunError(agentId, error, 'Failed to start agent run')
       const message =
@@ -802,7 +816,9 @@ export class Session {
         for await (const _ of iterator) {
           // Events are forwarded via the session's AgentManager subscription.
         }
+        this.sessionLogger.trace({ agentId }, 'startAgentStream: iterator drained')
       } catch (error) {
+        this.sessionLogger.trace({ agentId, err: error }, 'startAgentStream: iterator threw')
         this.handleAgentRunError(agentId, error, 'Agent stream failed')
       }
     })()

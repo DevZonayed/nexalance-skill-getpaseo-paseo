@@ -801,6 +801,15 @@ export class AgentManager {
 
   async closeAgent(agentId: string): Promise<void> {
     const agent = this.requireAgent(agentId);
+    this.logger.trace(
+      {
+        agentId,
+        lifecycle: agent.lifecycle,
+        hasPendingRun: Boolean(agent.pendingRun),
+        pendingPermissions: agent.pendingPermissions.size,
+      },
+      "closeAgent: start"
+    );
     this.agents.delete(agentId);
     this.liveEventPumps.delete(agentId);
     this.liveEventBacklog.delete(agentId);
@@ -816,6 +825,7 @@ export class AgentManager {
     };
     await session.close();
     this.emitState(closedAgent);
+    this.logger.trace({ agentId }, "closeAgent: completed");
   }
 
   async setAgentMode(agentId: string, modeId: string): Promise<void> {
@@ -1005,7 +1015,24 @@ export class AgentManager {
     options?: AgentRunOptions
   ): AsyncGenerator<AgentStreamEvent> {
     const existingAgent = this.requireAgent(agentId);
+    this.logger.trace(
+      {
+        agentId,
+        lifecycle: existingAgent.lifecycle,
+        hasPendingRun: Boolean(existingAgent.pendingRun),
+        promptType: typeof prompt === "string" ? "string" : "structured",
+        hasRunOptions: Boolean(options),
+      },
+      "streamAgent: requested"
+    );
     if (existingAgent.pendingRun) {
+      this.logger.trace(
+        {
+          agentId,
+          lifecycle: existingAgent.lifecycle,
+        },
+        "streamAgent: rejected because pendingRun already exists"
+      );
       throw new Error(`Agent ${agentId} already has an active run`);
     }
 
@@ -1015,12 +1042,31 @@ export class AgentManager {
 
     let finalized = false;
     const finalize = (error?: string) => {
+      this.logger.trace(
+        {
+          agentId,
+          error,
+          alreadyFinalized: finalized,
+          lifecycle: agent.lifecycle,
+          hasPendingRun: Boolean(agent.pendingRun),
+        },
+        "streamAgent.finalize: invoked"
+      );
       if (finalized) {
         return;
       }
       finalized = true;
 
       if (agent.pendingRun !== streamForwarder) {
+        this.logger.trace(
+          {
+            agentId,
+            error,
+            lifecycle: agent.lifecycle,
+            hasPendingRun: Boolean(agent.pendingRun),
+          },
+          "streamAgent.finalize: skipped because pendingRun no longer points to streamForwarder"
+        );
         if (error) {
           agent.lastError = error;
         }
@@ -1043,6 +1089,15 @@ export class AgentManager {
           mutableAgent.cwd
         );
       }
+      this.logger.trace(
+        {
+          agentId,
+          lifecycle: mutableAgent.lifecycle,
+          hasPendingRun: Boolean(mutableAgent.pendingRun),
+          terminalError,
+        },
+        "streamAgent.finalize: applying terminal state"
+      );
       this.emitState(mutableAgent);
       this.flushLiveEventBacklog(mutableAgent);
     };
@@ -1054,6 +1109,22 @@ export class AgentManager {
       try {
         for await (const event of iterator) {
           self.handleStreamEvent(agent, event);
+          if (
+            event.type === "turn_started" ||
+            event.type === "turn_completed" ||
+            event.type === "turn_failed" ||
+            event.type === "turn_canceled"
+          ) {
+            self.logger.trace(
+              {
+                agentId,
+                eventType: event.type,
+                lifecycle: agent.lifecycle,
+                hasPendingRun: Boolean(agent.pendingRun),
+              },
+              "streamAgent: forwarded terminal/turn event"
+            );
+          }
           yield event;
         }
       } catch (error) {
@@ -1079,6 +1150,14 @@ export class AgentManager {
     // deterministically order idle->running transitions.
     this.touchUpdatedAt(agent);
     self.emitState(agent);
+    this.logger.trace(
+      {
+        agentId,
+        lifecycle: agent.lifecycle,
+        hasPendingRun: Boolean(agent.pendingRun),
+      },
+      "streamAgent: started"
+    );
 
     return streamForwarder;
   }
@@ -1743,6 +1822,14 @@ export class AgentManager {
         }
         break;
       case "turn_completed":
+        this.logger.trace(
+          {
+            agentId: agent.id,
+            lifecycle: agent.lifecycle,
+            hasPendingRun: Boolean(agent.pendingRun),
+          },
+          "handleStreamEvent: turn_completed"
+        );
         agent.lastUsage = event.usage;
         agent.lastError = undefined;
         if (!agent.pendingRun && agent.lifecycle !== "idle") {
@@ -1774,6 +1861,14 @@ export class AgentManager {
         this.emitState(agent);
         break;
       case "turn_canceled":
+        this.logger.trace(
+          {
+            agentId: agent.id,
+            lifecycle: agent.lifecycle,
+            hasPendingRun: Boolean(agent.pendingRun),
+          },
+          "handleStreamEvent: turn_canceled"
+        );
         if (!agent.pendingRun) {
           (agent as ActiveManagedAgent).lifecycle = "idle";
         }
@@ -1792,6 +1887,14 @@ export class AgentManager {
         this.emitState(agent);
         break;
       case "turn_started":
+        this.logger.trace(
+          {
+            agentId: agent.id,
+            lifecycle: agent.lifecycle,
+            hasPendingRun: Boolean(agent.pendingRun),
+          },
+          "handleStreamEvent: turn_started"
+        );
         if (!agent.pendingRun) {
           (agent as ActiveManagedAgent).lifecycle = "running";
           this.emitState(agent);
@@ -2143,6 +2246,14 @@ export class AgentManager {
             // Keep consuming provider events even during an active foreground run,
             // then replay them immediately once that run settles.
             if (latest.pendingRun) {
+              this.logger.trace(
+                {
+                  agentId: latest.id,
+                  eventType: event.type,
+                  backlogSize: (this.liveEventBacklog.get(latest.id)?.length ?? 0) + 1,
+                },
+                "Live event pump: queued event because pendingRun is active"
+              );
               this.enqueueLiveEvent(latest.id, event);
               continue;
             }

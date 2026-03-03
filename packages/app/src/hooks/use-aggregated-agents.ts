@@ -55,6 +55,9 @@ export function useAggregatedAgents(): AggregatedAgentsResult {
       }
       const serverLabel = serverLabelById.get(serverId) ?? serverId;
       for (const agent of agents.values()) {
+        if (agent.archivedAt) {
+          continue;
+        }
         const nextAgent: AggregatedAgent = {
           id: agent.id,
           serverId,

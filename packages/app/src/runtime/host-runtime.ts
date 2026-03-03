@@ -1113,7 +1113,7 @@ export class HostRuntimeStore {
     controller.markAgentDirectorySyncLoading();
     try {
       const payload = await client.fetchAgents({
-        filter: input.filter ?? { labels: { ui: "true" } },
+        filter: input.filter ?? { labels: { ui: "true" }, includeArchived: true },
         ...(input.subscribe ? { subscribe: input.subscribe } : {}),
         ...(input.page ? { page: input.page } : {}),
       });

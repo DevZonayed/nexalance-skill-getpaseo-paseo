@@ -98,6 +98,7 @@ function AgentListRow({
   const timeAgo = formatTimeAgo(agent.lastActivityAt);
   const agentKey = `${agent.serverId}:${agent.id}`;
   const isSelected = selectedAgentId === agentKey;
+  const archivedLabel = agent.archivedAt ? "Archived" : null;
   const checkoutQuery = useCheckoutStatusCacheOnly({
     serverId: agent.serverId,
     cwd: agent.cwd,
@@ -137,7 +138,8 @@ function AgentListRow({
 
           <Text style={styles.secondaryRow} numberOfLines={1}>
             {shortenPath(projectPath)}
-            {branchLabel ? ` · ${branchLabel}` : ""} · {timeAgo}
+            {branchLabel ? ` · ${branchLabel}` : ""}
+            {archivedLabel ? ` · ${archivedLabel}` : ""} · {timeAgo}
           </Text>
         </View>
       )}
