@@ -59,10 +59,7 @@ import {
 import {
   buildHostAgentDetailRoute,
   buildHostWorkspaceRoute,
-  buildHostWorkspaceAgentRoute,
-  buildHostWorkspaceFileRoute,
   buildHostWorkspaceTabRoute,
-  buildHostWorkspaceTerminalRoute,
   decodeWorkspaceIdFromPathSegment,
 } from "@/utils/host-routes";
 import { useHostRuntimeSession } from "@/runtime/host-runtime";
@@ -98,12 +95,9 @@ const EMPTY_WORKSPACE_TABS: WorkspaceTab[] = [];
 
 type TabAvailability = "available" | "invalid" | "unknown";
 
-type RouteTabTarget = WorkspaceTabTarget | null;
-
 type WorkspaceScreenProps = {
   serverId: string;
   workspaceId: string;
-  routeTab: RouteTabTarget;
   routeTabId?: string | null;
 };
 
@@ -189,98 +183,6 @@ function formatProviderLabel(provider: Agent["provider"]): string {
   return provider.charAt(0).toUpperCase() + provider.slice(1);
 }
 
-function normalizeWorkspaceTab(
-  value: WorkspaceTabTarget | null | undefined
-): WorkspaceTabTarget | null {
-  if (!value || typeof value !== "object") {
-    return null;
-  }
-  if (value.kind === "draft") {
-    const draftId = trimNonEmpty(decodeSegment(value.draftId));
-    if (!draftId) {
-      return null;
-    }
-    return { kind: "draft", draftId };
-  }
-  if (value.kind === "agent") {
-    const agentId = trimNonEmpty(decodeSegment(value.agentId));
-    if (!agentId) {
-      return null;
-    }
-    return { kind: "agent", agentId };
-  }
-  if (value.kind === "terminal") {
-    const terminalId = trimNonEmpty(decodeSegment(value.terminalId));
-    if (!terminalId) {
-      return null;
-    }
-    return { kind: "terminal", terminalId };
-  }
-  if (value.kind === "file") {
-    const path = trimNonEmpty(value.path);
-    if (!path) {
-      return null;
-    }
-    return { kind: "file", path: path.replace(/\\/g, "/") };
-  }
-  return null;
-}
-
-function tabEquals(left: WorkspaceTabTarget | null, right: WorkspaceTabTarget | null): boolean {
-  if (!left || !right) {
-    return left === right;
-  }
-  if (left.kind !== right.kind) {
-    return false;
-  }
-  if (left.kind === "draft" && right.kind === "draft") {
-    return left.draftId === right.draftId;
-  }
-  if (left.kind === "agent" && right.kind === "agent") {
-    return left.agentId === right.agentId;
-  }
-  if (left.kind === "terminal" && right.kind === "terminal") {
-    return left.terminalId === right.terminalId;
-  }
-  if (left.kind === "file" && right.kind === "file") {
-    return left.path === right.path;
-  }
-  return false;
-}
-
-function buildTabRoute(input: {
-  serverId: string;
-  workspaceId: string;
-  tab: WorkspaceTabTarget;
-}): string {
-  if (input.tab.kind === "draft") {
-    return buildHostWorkspaceTabRoute(
-      input.serverId,
-      input.workspaceId,
-      input.tab.draftId
-    );
-  }
-  if (input.tab.kind === "agent") {
-    return buildHostWorkspaceAgentRoute(
-      input.serverId,
-      input.workspaceId,
-      input.tab.agentId
-    );
-  }
-  if (input.tab.kind === "file") {
-    return buildHostWorkspaceFileRoute(
-      input.serverId,
-      input.workspaceId,
-      input.tab.path
-    );
-  }
-  return buildHostWorkspaceTerminalRoute(
-    input.serverId,
-    input.workspaceId,
-    input.tab.terminalId
-  );
-}
-
 function resolveTabAvailability(input: {
   tab: WorkspaceTabTarget;
   agentsHydrated: boolean;
@@ -317,25 +219,9 @@ function sortAgentsByCreatedAtDescending(agents: Agent[]): Agent[] {
   });
 }
 
-function toWorkspaceTabTarget(
-  tab: WorkspaceTabDescriptor
-): WorkspaceTabTarget {
-  if (tab.kind === "draft") {
-    return { kind: "draft", draftId: tab.draftId };
-  }
-  if (tab.kind === "agent") {
-    return { kind: "agent", agentId: tab.agentId };
-  }
-  if (tab.kind === "file") {
-    return { kind: "file", path: tab.filePath };
-  }
-  return { kind: "terminal", terminalId: tab.terminalId };
-}
-
 export function WorkspaceScreen({
   serverId,
   workspaceId,
-  routeTab,
   routeTabId,
 }: WorkspaceScreenProps) {
   return (
@@ -343,7 +229,6 @@ export function WorkspaceScreen({
       <WorkspaceScreenContent
         serverId={serverId}
         workspaceId={workspaceId}
-        routeTab={routeTab}
         routeTabId={routeTabId}
       />
     </ExplorerSidebarAnimationProvider>
@@ -353,7 +238,6 @@ export function WorkspaceScreen({
 function WorkspaceScreenContent({
   serverId,
   workspaceId,
-  routeTab,
   routeTabId,
 }: WorkspaceScreenProps) {
   const { theme } = useUnistyles();
@@ -632,11 +516,6 @@ function WorkspaceScreenContent({
     return set;
   }, [terminals]);
 
-  const requestedTab = useMemo(
-    () => normalizeWorkspaceTab(routeTab),
-    [routeTab]
-  );
-
   const persistenceKey = useMemo(
     () =>
       buildWorkspaceTabPersistenceKey({
@@ -770,31 +649,6 @@ function WorkspaceScreenContent({
     normalizedServerId,
     normalizedWorkspaceId,
     routeTabId,
-  ]);
-
-  useEffect(() => {
-    if (!requestedTab || !persistenceKey) {
-      return;
-    }
-    const tabId = openOrFocusTab({
-      serverId: normalizedServerId,
-      workspaceId: normalizedWorkspaceId,
-      target: requestedTab,
-    });
-    if (tabId) {
-      focusTab({
-        serverId: normalizedServerId,
-        workspaceId: normalizedWorkspaceId,
-        tabId,
-      });
-    }
-  }, [
-    focusTab,
-    normalizedServerId,
-    normalizedWorkspaceId,
-    openOrFocusTab,
-    persistenceKey,
-    requestedTab,
   ]);
 
   const activeTabId = useMemo(() => {

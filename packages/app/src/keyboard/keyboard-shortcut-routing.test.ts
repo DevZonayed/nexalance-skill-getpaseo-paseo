@@ -9,7 +9,7 @@ describe("keyboard-shortcut-routing", () => {
     it("allows the shortcut on selected-agent routes", () => {
       const canToggle = canToggleFileExplorerShortcut({
         selectedAgentId: "server-1:agent-1",
-        pathname: "/h/server-1/workspace/workspace-1/agent/agent-1",
+        pathname: "/h/server-1/workspace/workspace-1/tab/agent_agent-1",
         toggleFileExplorer,
       });
 
@@ -27,7 +27,7 @@ describe("keyboard-shortcut-routing", () => {
 
     it("allows the shortcut on workspace terminal routes", () => {
       const canToggle = canToggleFileExplorerShortcut({
-        pathname: "/h/server-1/workspace/workspace-1/terminal/terminal-1",
+        pathname: "/h/server-1/workspace/workspace-1/tab/terminal_terminal-1",
         toggleFileExplorer,
       });
 

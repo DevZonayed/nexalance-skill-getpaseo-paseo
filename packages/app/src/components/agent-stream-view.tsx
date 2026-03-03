@@ -82,7 +82,7 @@ import { createMarkdownStyles } from "@/styles/markdown-styles";
 import { MAX_CONTENT_WIDTH } from "@/constants/layout";
 import { isPerfLoggingEnabled, measurePayload, perfLog } from "@/utils/perf";
 import { getMarkdownListMarker } from "@/utils/markdown-list";
-import { buildHostWorkspaceFileRoute } from "@/utils/host-routes";
+import { buildHostWorkspaceFileTabRoute } from "@/utils/host-routes";
 
 const isUserMessageItem = (item?: StreamItem) => item?.kind === "user_message";
 const isToolSequenceItem = (item?: StreamItem) =>
@@ -213,7 +213,7 @@ export const AgentStreamView = forwardRef<AgentStreamViewHandle, AgentStreamView
       }
 
       if (normalized.file) {
-        const route = buildHostWorkspaceFileRoute(
+        const route = buildHostWorkspaceFileTabRoute(
           resolvedServerId,
           workspaceId,
           normalized.file

@@ -19,9 +19,7 @@ import { getIsTauri } from '@/constants/layout'
 import { projectIconQueryKey } from '@/hooks/use-project-icon-query'
 import {
   buildHostWorkspaceRoute,
-  parseHostWorkspaceAgentRouteFromPathname,
   parseHostWorkspaceRouteFromPathname,
-  parseHostWorkspaceTerminalRouteFromPathname,
 } from '@/utils/host-routes'
 import {
   type SidebarProjectEntry,
@@ -516,10 +514,7 @@ export function SidebarAgentList({
     if (!pathname) {
       return null
     }
-    const parsed =
-      parseHostWorkspaceAgentRouteFromPathname(pathname) ??
-      parseHostWorkspaceTerminalRouteFromPathname(pathname) ??
-      parseHostWorkspaceRouteFromPathname(pathname)
+    const parsed = parseHostWorkspaceRouteFromPathname(pathname)
     if (!parsed) {
       return null
     }

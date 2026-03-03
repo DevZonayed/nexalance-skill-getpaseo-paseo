@@ -77,7 +77,7 @@ describe("resolveSelectedAgentForNewAgent", () => {
   it("prefers the agent in the current route", () => {
     expect(
       resolveSelectedAgentForNewAgent({
-        pathname: "/h/srv-1/workspace/%2Frepo/agent/agent-2",
+        pathname: "/h/srv-1/workspace/%2Frepo/tab/agent_agent-2",
         selectedAgentId: "srv-9:agent-9",
       })
     ).toEqual({

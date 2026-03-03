@@ -85,6 +85,7 @@ const DEFAULT_RECONNECT_ERROR_MESSAGE = "Terminal stream ended. Reconnecting…"
 
 export class TerminalStreamController {
   private readonly resumeOffsetByTerminalId = new Map<string, number>();
+  private readonly exitedStreamsWhileAttaching = new Set<number>();
   private selectedTerminalId: string | null = null;
   private activeStream: TerminalStreamControllerActiveStream | null = null;
   private attachGeneration = 0;
@@ -167,31 +168,36 @@ export class TerminalStreamController {
       },
     });
 
-    const activeStream = this.activeStream;
-    if (!activeStream) {
-      return;
-    }
-    if (activeStream.terminalId !== input.terminalId || activeStream.streamId !== input.streamId) {
-      return;
-    }
     if (this.selectedTerminalId !== input.terminalId) {
       return;
     }
 
-    this.attachGeneration += 1;
-    const generation = this.attachGeneration;
-    void this.detachActiveStream({ shouldDetach: false });
-    this.updateStatus({
-      terminalId: input.terminalId,
-      streamId: null,
-      isAttaching: true,
-      error:
-        this.options.reconnectErrorMessage ?? DEFAULT_RECONNECT_ERROR_MESSAGE,
-    });
-    void this.attachTerminal({
-      terminalId: input.terminalId,
-      generation,
-    });
+    const activeStream = this.activeStream;
+    const activeMatches =
+      Boolean(activeStream) &&
+      activeStream!.terminalId === input.terminalId &&
+      activeStream!.streamId === input.streamId;
+    if (activeMatches) {
+      this.attachGeneration += 1;
+      const generation = this.attachGeneration;
+      void this.detachActiveStream({ shouldDetach: false });
+      this.updateStatus({
+        terminalId: input.terminalId,
+        streamId: null,
+        isAttaching: true,
+        error:
+          this.options.reconnectErrorMessage ?? DEFAULT_RECONNECT_ERROR_MESSAGE,
+      });
+      void this.attachTerminal({
+        terminalId: input.terminalId,
+        generation,
+      });
+      return;
+    }
+
+    if (this.status.isAttaching && this.status.terminalId === input.terminalId) {
+      this.exitedStreamsWhileAttaching.add(input.streamId);
+    }
   }
 
   pruneResumeOffsets(input: { terminalIds: string[] }): void {
@@ -267,6 +273,12 @@ export class TerminalStreamController {
           timeoutMessage: "Timed out attaching terminal stream",
         });
 
+        updateTerminalResumeOffset({
+          terminalId: input.terminalId,
+          offset: attachPayload.currentOffset,
+          resumeOffsetByTerminalId: this.resumeOffsetByTerminalId,
+        });
+
         if (!this.isAttachGenerationCurrent({ generation: input.generation, terminalId: input.terminalId })) {
           if (typeof attachPayload.streamId === "number") {
             void this.options.client.detachTerminalStream(attachPayload.streamId).catch(() => {});
@@ -300,16 +312,21 @@ export class TerminalStreamController {
           return;
         }
 
+        if (this.exitedStreamsWhileAttaching.has(attachPayload.streamId)) {
+          this.exitedStreamsWhileAttaching.delete(attachPayload.streamId);
+          void this.options.client.detachTerminalStream(attachPayload.streamId).catch(() => {});
+          this.attachGeneration += 1;
+          void this.attachTerminal({
+            terminalId: input.terminalId,
+            generation: this.attachGeneration,
+          });
+          return;
+        }
+
         if (attachPayload.reset) {
           this.resumeOffsetByTerminalId.delete(input.terminalId);
           this.options.onReset?.({ terminalId: input.terminalId });
         }
-
-        updateTerminalResumeOffset({
-          terminalId: input.terminalId,
-          offset: attachPayload.currentOffset,
-          resumeOffsetByTerminalId: this.resumeOffsetByTerminalId,
-        });
 
         const decoder = new TextDecoder();
         const streamId = attachPayload.streamId;

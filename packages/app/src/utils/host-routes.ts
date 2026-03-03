@@ -61,6 +61,21 @@ function normalizeWorkspaceId(value: string): string {
   return value.trim().replace(/\\/g, "/").replace(/\/+$/, "");
 }
 
+function buildWorkspaceAgentTabId(agentId: string): string | null {
+  const normalized = trimNonEmpty(agentId);
+  return normalized ? `agent_${normalized}` : null;
+}
+
+function buildWorkspaceTerminalTabId(terminalId: string): string | null {
+  const normalized = trimNonEmpty(terminalId);
+  return normalized ? `terminal_${normalized}` : null;
+}
+
+function buildWorkspaceFileTabId(filePath: string): string | null {
+  const normalized = trimNonEmpty(filePath);
+  return normalized ? `file_${normalized.replace(/\\/g, "/")}` : null;
+}
+
 export function encodeWorkspaceIdForPathSegment(workspaceId: string): string {
   const normalized = trimNonEmpty(workspaceId);
   if (!normalized) {
@@ -222,22 +237,9 @@ export function parseHostWorkspaceRouteFromPathname(
 
   const workspaceIdStart = serverIdEnd + workspacePrefix.length;
   let workspaceIdEnd = pathname.length;
-
-  const agentIdx = pathname.lastIndexOf("/agent/");
-  if (agentIdx >= 0 && agentIdx > workspaceIdStart) {
-    workspaceIdEnd = Math.min(workspaceIdEnd, agentIdx);
-  }
-  const terminalIdx = pathname.lastIndexOf("/terminal/");
-  if (terminalIdx >= 0 && terminalIdx > workspaceIdStart) {
-    workspaceIdEnd = Math.min(workspaceIdEnd, terminalIdx);
-  }
   const tabIdx = pathname.lastIndexOf("/tab/");
   if (tabIdx >= 0 && tabIdx > workspaceIdStart) {
-    workspaceIdEnd = Math.min(workspaceIdEnd, tabIdx);
-  }
-  const fileIdx = pathname.lastIndexOf("/file/");
-  if (fileIdx >= 0 && fileIdx > workspaceIdStart) {
-    workspaceIdEnd = Math.min(workspaceIdEnd, fileIdx);
+    workspaceIdEnd = tabIdx;
   }
 
   const rawWorkspaceId = pathname.slice(workspaceIdStart, workspaceIdEnd).replace(/\/+$/, "");
@@ -246,106 +248,6 @@ export function parseHostWorkspaceRouteFromPathname(
     return null;
   }
   return { serverId, workspaceId };
-}
-
-export function parseHostWorkspaceAgentRouteFromPathname(
-  pathname: string
-): { serverId: string; workspaceId: string; agentId: string } | null {
-  const prefix = "/h/";
-  if (!pathname.startsWith(prefix)) {
-    return null;
-  }
-
-  const serverIdStart = prefix.length;
-  const serverIdEnd = pathname.indexOf("/", serverIdStart);
-  if (serverIdEnd < 0) {
-    return null;
-  }
-  const rawServerId = pathname.slice(serverIdStart, serverIdEnd);
-  const serverId = trimNonEmpty(decodeSegment(rawServerId));
-  if (!serverId) {
-    return null;
-  }
-
-  const workspacePrefix = "/workspace/";
-  if (!pathname.startsWith(workspacePrefix, serverIdEnd)) {
-    return null;
-  }
-
-  const workspaceIdStart = serverIdEnd + workspacePrefix.length;
-  const agentMarker = "/agent/";
-  const agentIdx = pathname.lastIndexOf(agentMarker);
-  if (agentIdx < 0 || agentIdx <= workspaceIdStart) {
-    return null;
-  }
-
-  const rawWorkspaceId = pathname.slice(workspaceIdStart, agentIdx).replace(/\/+$/, "");
-  const workspaceId = decodeWorkspaceIdFromPathSegment(rawWorkspaceId);
-  if (!workspaceId) {
-    return null;
-  }
-
-  const agentIdStart = agentIdx + agentMarker.length;
-  const agentIdEnd = pathname.indexOf("/", agentIdStart);
-  const rawAgentId =
-    agentIdEnd < 0 ? pathname.slice(agentIdStart) : pathname.slice(agentIdStart, agentIdEnd);
-  const agentId = trimNonEmpty(decodeSegment(rawAgentId));
-  if (!agentId) {
-    return null;
-  }
-
-  return { serverId, workspaceId, agentId };
-}
-
-export function parseHostWorkspaceTerminalRouteFromPathname(
-  pathname: string
-): { serverId: string; workspaceId: string; terminalId: string } | null {
-  const prefix = "/h/";
-  if (!pathname.startsWith(prefix)) {
-    return null;
-  }
-
-  const serverIdStart = prefix.length;
-  const serverIdEnd = pathname.indexOf("/", serverIdStart);
-  if (serverIdEnd < 0) {
-    return null;
-  }
-  const rawServerId = pathname.slice(serverIdStart, serverIdEnd);
-  const serverId = trimNonEmpty(decodeSegment(rawServerId));
-  if (!serverId) {
-    return null;
-  }
-
-  const workspacePrefix = "/workspace/";
-  if (!pathname.startsWith(workspacePrefix, serverIdEnd)) {
-    return null;
-  }
-
-  const workspaceIdStart = serverIdEnd + workspacePrefix.length;
-  const terminalMarker = "/terminal/";
-  const terminalIdx = pathname.lastIndexOf(terminalMarker);
-  if (terminalIdx < 0 || terminalIdx <= workspaceIdStart) {
-    return null;
-  }
-
-  const rawWorkspaceId = pathname.slice(workspaceIdStart, terminalIdx).replace(/\/+$/, "");
-  const workspaceId = decodeWorkspaceIdFromPathSegment(rawWorkspaceId);
-  if (!workspaceId) {
-    return null;
-  }
-
-  const terminalIdStart = terminalIdx + terminalMarker.length;
-  const terminalIdEnd = pathname.indexOf("/", terminalIdStart);
-  const rawTerminalId =
-    terminalIdEnd < 0
-      ? pathname.slice(terminalIdStart)
-      : pathname.slice(terminalIdStart, terminalIdEnd);
-  const terminalId = trimNonEmpty(decodeSegment(rawTerminalId));
-  if (!terminalId) {
-    return null;
-  }
-
-  return { serverId, workspaceId, terminalId };
 }
 
 export function parseHostWorkspaceTabRouteFromPathname(
@@ -397,55 +299,6 @@ export function parseHostWorkspaceTabRouteFromPathname(
   return { serverId, workspaceId, tabId };
 }
 
-export function parseHostWorkspaceFileRouteFromPathname(
-  pathname: string
-): { serverId: string; workspaceId: string; filePath: string } | null {
-  const prefix = "/h/";
-  if (!pathname.startsWith(prefix)) {
-    return null;
-  }
-
-  const serverIdStart = prefix.length;
-  const serverIdEnd = pathname.indexOf("/", serverIdStart);
-  if (serverIdEnd < 0) {
-    return null;
-  }
-  const rawServerId = pathname.slice(serverIdStart, serverIdEnd);
-  const serverId = trimNonEmpty(decodeSegment(rawServerId));
-  if (!serverId) {
-    return null;
-  }
-
-  const workspacePrefix = "/workspace/";
-  if (!pathname.startsWith(workspacePrefix, serverIdEnd)) {
-    return null;
-  }
-
-  const workspaceIdStart = serverIdEnd + workspacePrefix.length;
-  const fileMarker = "/file/";
-  const fileIdx = pathname.lastIndexOf(fileMarker);
-  if (fileIdx < 0 || fileIdx <= workspaceIdStart) {
-    return null;
-  }
-
-  const rawWorkspaceId = pathname.slice(workspaceIdStart, fileIdx).replace(/\/+$/, "");
-  const workspaceId = decodeWorkspaceIdFromPathSegment(rawWorkspaceId);
-  if (!workspaceId) {
-    return null;
-  }
-
-  const filePathStart = fileIdx + fileMarker.length;
-  const filePathEnd = pathname.indexOf("/", filePathStart);
-  const rawFilePath =
-    filePathEnd < 0 ? pathname.slice(filePathStart) : pathname.slice(filePathStart, filePathEnd);
-  const filePath = decodeFilePathFromPathSegment(rawFilePath);
-  if (!filePath) {
-    return null;
-  }
-
-  return { serverId, workspaceId, filePath };
-}
-
 export function buildHostWorkspaceRoute(
   serverId: string,
   workspaceId: string
@@ -462,30 +315,28 @@ export function buildHostWorkspaceRoute(
   return `/h/${encodeSegment(normalizedServerId)}/workspace/${encodeSegment(encodedWorkspaceId)}`;
 }
 
-export function buildHostWorkspaceAgentRoute(
+export function buildHostWorkspaceAgentTabRoute(
   serverId: string,
   workspaceId: string,
   agentId: string
 ): string {
-  const base = buildHostWorkspaceRoute(serverId, workspaceId);
-  const normalizedAgentId = trimNonEmpty(agentId);
-  if (base === "/" || !normalizedAgentId) {
+  const tabId = buildWorkspaceAgentTabId(agentId);
+  if (!tabId) {
     return "/";
   }
-  return `${base}/agent/${encodeSegment(normalizedAgentId)}`;
+  return buildHostWorkspaceTabRoute(serverId, workspaceId, tabId);
 }
 
-export function buildHostWorkspaceTerminalRoute(
+export function buildHostWorkspaceTerminalTabRoute(
   serverId: string,
   workspaceId: string,
   terminalId: string
 ): string {
-  const base = buildHostWorkspaceRoute(serverId, workspaceId);
-  const normalizedTerminalId = trimNonEmpty(terminalId);
-  if (base === "/" || !normalizedTerminalId) {
+  const tabId = buildWorkspaceTerminalTabId(terminalId);
+  if (!tabId) {
     return "/";
   }
-  return `${base}/terminal/${encodeSegment(normalizedTerminalId)}`;
+  return buildHostWorkspaceTabRoute(serverId, workspaceId, tabId);
 }
 
 export function buildHostWorkspaceTabRoute(
@@ -501,17 +352,16 @@ export function buildHostWorkspaceTabRoute(
   return `${base}/tab/${encodeSegment(normalizedTabId)}`;
 }
 
-export function buildHostWorkspaceFileRoute(
+export function buildHostWorkspaceFileTabRoute(
   serverId: string,
   workspaceId: string,
   filePath: string
 ): string {
-  const base = buildHostWorkspaceRoute(serverId, workspaceId);
-  const encodedFilePath = encodeFilePathForPathSegment(filePath);
-  if (base === "/" || !encodedFilePath) {
+  const tabId = buildWorkspaceFileTabId(filePath);
+  if (!tabId) {
     return "/";
   }
-  return `${base}/file/${encodeSegment(encodedFilePath)}`;
+  return buildHostWorkspaceTabRoute(serverId, workspaceId, tabId);
 }
 
 export function buildHostAgentDetailRoute(
@@ -521,7 +371,7 @@ export function buildHostAgentDetailRoute(
 ): string {
   const normalizedWorkspaceId = trimNonEmpty(workspaceId);
   if (normalizedWorkspaceId) {
-    return buildHostWorkspaceAgentRoute(
+    return buildHostWorkspaceAgentTabRoute(
       serverId,
       normalizedWorkspaceId,
       agentId

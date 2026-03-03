@@ -2802,6 +2802,23 @@ export class DaemonClient {
     const startedAtMs = getNowMs()
     const rawData =
       data && typeof data === 'object' && 'data' in data ? (data as { data: unknown }).data : data
+
+    if (
+      typeof Blob !== 'undefined' &&
+      rawData instanceof Blob &&
+      typeof rawData.arrayBuffer === 'function'
+    ) {
+      void rawData
+        .arrayBuffer()
+        .then((buffer) => {
+          this.handleTransportMessage(buffer)
+        })
+        .catch(() => {
+          // Ignore failed blob decoding and allow reconnect logic to recover.
+        })
+      return
+    }
+
     const rawBytes = asUint8Array(rawData)
     if (rawBytes) {
       const frame = decodeBinaryMuxFrame(rawBytes)

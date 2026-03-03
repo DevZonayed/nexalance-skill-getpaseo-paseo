@@ -47,7 +47,6 @@ import { buildNotificationRoute } from "@/utils/notification-routing";
 import {
   buildHostDraftRoute,
   parseHostAgentRouteFromPathname,
-  parseHostWorkspaceAgentRouteFromPathname,
   parseHostWorkspaceTabRouteFromPathname,
 } from "@/utils/host-routes";
 import { getTauri } from "@/utils/tauri";
@@ -388,9 +387,7 @@ function AppWithSidebar({ children }: { children: ReactNode }) {
       return agentId ? `${workspaceTab.serverId}:${agentId}` : undefined;
     }
 
-    const match =
-      parseHostWorkspaceAgentRouteFromPathname(pathname) ??
-      parseHostAgentRouteFromPathname(pathname);
+    const match = parseHostAgentRouteFromPathname(pathname);
     return match ? `${match.serverId}:${match.agentId}` : undefined;
   }, [pathname]);
 
@@ -478,13 +475,6 @@ export default function RootLayout() {
                                 <Stack.Screen name="h/[serverId]/new" />
                                 <Stack.Screen name="h/[serverId]/workspace/[workspaceId]/index" />
                                 <Stack.Screen name="h/[serverId]/workspace/[workspaceId]/tab/[tabId]" />
-                                <Stack.Screen
-                                  name="h/[serverId]/workspace/[workspaceId]/agent/[agentId]"
-                                  options={{ gestureEnabled: false }}
-                                />
-                                <Stack.Screen
-                                  name="h/[serverId]/workspace/[workspaceId]/terminal/[terminalId]"
-                                />
                                 <Stack.Screen
                                   name="h/[serverId]/agent/[agentId]"
                                   options={{ gestureEnabled: false }}

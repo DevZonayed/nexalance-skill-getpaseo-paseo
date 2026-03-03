@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import { computeWorkspaceTabLayout } from "@/screens/workspace/workspace-tab-layout";
 
 const metrics = {
+  rowHorizontalInset: 0,
+  actionsReservedWidth: 120,
   rowPaddingHorizontal: 8,
   tabGap: 4,
   maxTabWidth: 260,
@@ -14,8 +16,7 @@ const metrics = {
 describe("computeWorkspaceTabLayout", () => {
   it("keeps full width tabs when space is available", () => {
     const result = computeWorkspaceTabLayout({
-      containerWidth: 1200,
-      actionsWidth: 100,
+      viewportWidth: 1200,
       tabLabelLengths: [8, 10, 7],
       metrics,
     });
@@ -28,8 +29,7 @@ describe("computeWorkspaceTabLayout", () => {
 
   it("shrinks proportionally in compact mode before icon-only", () => {
     const result = computeWorkspaceTabLayout({
-      containerWidth: 500,
-      actionsWidth: 110,
+      viewportWidth: 500,
       tabLabelLengths: [24, 12, 8],
       metrics,
     });
@@ -43,8 +43,7 @@ describe("computeWorkspaceTabLayout", () => {
 
   it("falls back to icon mode when compact labels still cannot fit", () => {
     const result = computeWorkspaceTabLayout({
-      containerWidth: 300,
-      actionsWidth: 120,
+      viewportWidth: 300,
       tabLabelLengths: [14, 14, 14, 14],
       metrics,
     });
@@ -57,8 +56,7 @@ describe("computeWorkspaceTabLayout", () => {
 
   it("keeps icon mode without scroll when icons can fit", () => {
     const result = computeWorkspaceTabLayout({
-      containerWidth: 380,
-      actionsWidth: 120,
+      viewportWidth: 380,
       tabLabelLengths: [20, 20, 20, 20],
       metrics,
     });

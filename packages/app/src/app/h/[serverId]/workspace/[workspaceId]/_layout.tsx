@@ -1,23 +1,20 @@
 import { useLocalSearchParams } from "expo-router";
 import { WorkspaceScreen } from "@/screens/workspace/workspace-screen";
-import { decodeFilePathFromPathSegment } from "@/utils/host-routes";
 
-export default function HostWorkspaceFileRoute() {
+export default function HostWorkspaceLayout() {
   const params = useLocalSearchParams<{
     serverId?: string;
     workspaceId?: string;
-    fileId?: string;
+    tabId?: string;
   }>();
 
-  const fileId = typeof params.fileId === "string" ? params.fileId : "";
-  const filePath = fileId ? decodeFilePathFromPathSegment(fileId) ?? "" : "";
+  const tabId = typeof params.tabId === "string" ? params.tabId : "";
 
   return (
     <WorkspaceScreen
       serverId={typeof params.serverId === "string" ? params.serverId : ""}
       workspaceId={typeof params.workspaceId === "string" ? params.workspaceId : ""}
-      routeTab={filePath ? { kind: "file", path: filePath } : null}
+      routeTabId={tabId || null}
     />
   );
 }
-

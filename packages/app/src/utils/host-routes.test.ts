@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildHostWorkspaceAgentTabRoute,
+  buildHostWorkspaceFileTabRoute,
   buildHostWorkspaceRoute,
-  buildHostWorkspaceFileRoute,
+  buildHostWorkspaceTerminalTabRoute,
   decodeFilePathFromPathSegment,
   decodeWorkspaceIdFromPathSegment,
   encodeFilePathForPathSegment,
@@ -9,10 +11,7 @@ import {
   parseHostAgentDraftRouteFromPathname,
   parseHostAgentRouteFromPathname,
   parseHostDraftRouteFromPathname,
-  parseHostWorkspaceAgentRouteFromPathname,
-  parseHostWorkspaceFileRouteFromPathname,
   parseHostWorkspaceTabRouteFromPathname,
-  parseHostWorkspaceTerminalRouteFromPathname,
   parseHostWorkspaceRouteFromPathname,
 } from "./host-routes";
 
@@ -24,9 +23,7 @@ describe("parseHostAgentDraftRouteFromPathname", () => {
   });
 
   it("parses encoded server id", () => {
-    expect(
-      parseHostAgentDraftRouteFromPathname("/h/team%20host/new")
-    ).toEqual({
+    expect(parseHostAgentDraftRouteFromPathname("/h/team%20host/new")).toEqual({
       serverId: "team host",
     });
   });
@@ -66,9 +63,7 @@ describe("workspace route parsing", () => {
   });
 
   it("parses workspace route", () => {
-    expect(
-      parseHostWorkspaceRouteFromPathname("/h/local/workspace/L3RtcC9yZXBv")
-    ).toEqual({
+    expect(parseHostWorkspaceRouteFromPathname("/h/local/workspace/L3RtcC9yZXBv")).toEqual({
       serverId: "local",
       workspaceId: "/tmp/repo",
     });
@@ -83,48 +78,9 @@ describe("workspace route parsing", () => {
     });
   });
 
-  it("parses workspace file route", () => {
-    const encodedPath = encodeFilePathForPathSegment("src/index.ts");
-    expect(
-      parseHostWorkspaceFileRouteFromPathname(
-        `/h/local/workspace/L3RtcC9yZXBv/file/${encodedPath}`
-      )
-    ).toEqual({
-      serverId: "local",
-      workspaceId: "/tmp/repo",
-      filePath: "src/index.ts",
-    });
-  });
-
-  it("parses workspace agent route", () => {
-    expect(
-      parseHostWorkspaceAgentRouteFromPathname(
-        "/h/local/workspace/L3RtcC9yZXBv/agent/agent-1"
-      )
-    ).toEqual({
-      serverId: "local",
-      workspaceId: "/tmp/repo",
-      agentId: "agent-1",
-    });
-  });
-
-  it("parses workspace terminal route", () => {
-    expect(
-      parseHostWorkspaceTerminalRouteFromPathname(
-        "/h/local/workspace/L3RtcC9yZXBv/terminal/term-1"
-      )
-    ).toEqual({
-      serverId: "local",
-      workspaceId: "/tmp/repo",
-      terminalId: "term-1",
-    });
-  });
-
   it("parses workspace tab route", () => {
     expect(
-      parseHostWorkspaceTabRouteFromPathname(
-        "/h/local/workspace/L3RtcC9yZXBv/tab/draft_abc123"
-      )
+      parseHostWorkspaceTabRouteFromPathname("/h/local/workspace/L3RtcC9yZXBv/tab/draft_abc123")
     ).toEqual({
       serverId: "local",
       workspaceId: "/tmp/repo",
@@ -132,27 +88,25 @@ describe("workspace route parsing", () => {
     });
   });
 
-  it("still parses legacy percent-encoded workspace routes", () => {
-    expect(
-      parseHostWorkspaceAgentRouteFromPathname(
-        "/h/local/workspace/%2Ftmp%2Frepo/agent/agent-1"
-      )
-    ).toEqual({
-      serverId: "local",
-      workspaceId: "/tmp/repo",
-      agentId: "agent-1",
-    });
+  it("builds base64url workspace routes", () => {
+    expect(buildHostWorkspaceRoute("local", "/tmp/repo")).toBe("/h/local/workspace/L3RtcC9yZXBv");
   });
 
-  it("builds base64url workspace routes", () => {
-    expect(buildHostWorkspaceRoute("local", "/tmp/repo")).toBe(
-      "/h/local/workspace/L3RtcC9yZXBv"
+  it("builds workspace agent tab routes", () => {
+    expect(buildHostWorkspaceAgentTabRoute("local", "/tmp/repo", "agent-1")).toBe(
+      "/h/local/workspace/L3RtcC9yZXBv/tab/agent_agent-1"
     );
   });
 
-  it("builds base64url workspace file routes", () => {
-    expect(buildHostWorkspaceFileRoute("local", "/tmp/repo", "src/index.ts")).toBe(
-      `/h/local/workspace/L3RtcC9yZXBv/file/${encodeFilePathForPathSegment("src/index.ts")}`
+  it("builds workspace terminal tab routes", () => {
+    expect(buildHostWorkspaceTerminalTabRoute("local", "/tmp/repo", "term-1")).toBe(
+      "/h/local/workspace/L3RtcC9yZXBv/tab/terminal_term-1"
+    );
+  });
+
+  it("builds workspace file tab routes", () => {
+    expect(buildHostWorkspaceFileTabRoute("local", "/tmp/repo", "src/index.ts")).toBe(
+      "/h/local/workspace/L3RtcC9yZXBv/tab/file_src%2Findex.ts"
     );
   });
 });

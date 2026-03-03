@@ -6755,7 +6755,11 @@ export class Session {
     }
 
     const streamId = this.allocateTerminalStreamId()
-    const initialOffset = Math.max(0, Math.floor(msg.resumeOffset ?? 0))
+    const requestedResumeOffset =
+      typeof msg.resumeOffset === 'number'
+        ? msg.resumeOffset
+        : session.getOutputOffset()
+    const initialOffset = Math.max(0, Math.floor(requestedResumeOffset))
     const binding: {
       terminalId: string
       unsubscribe: () => void
@@ -6789,7 +6793,7 @@ export class Session {
             replay: chunk.replay,
           })
         },
-        { fromOffset: msg.resumeOffset ?? 0 }
+        { fromOffset: requestedResumeOffset }
       )
     } catch (error) {
       this.terminalStreams.delete(streamId)

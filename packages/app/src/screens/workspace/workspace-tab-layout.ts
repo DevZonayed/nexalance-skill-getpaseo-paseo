@@ -1,10 +1,11 @@
 export type WorkspaceTabLayoutMode = "full" | "compact" | "icon";
 
 export type WorkspaceTabLayoutInput = {
-  containerWidth: number;
-  actionsWidth: number;
+  viewportWidth: number;
   tabLabelLengths: number[];
   metrics: {
+    rowHorizontalInset: number;
+    actionsReservedWidth: number;
     rowPaddingHorizontal: number;
     tabGap: number;
     maxTabWidth: number;
@@ -70,7 +71,10 @@ export function computeWorkspaceTabLayout(
     };
   }
 
-  const availableWidth = Math.max(0, input.containerWidth - input.actionsWidth);
+  const availableWidth = Math.max(
+    0,
+    input.viewportWidth - input.metrics.rowHorizontalInset * 2 - input.metrics.actionsReservedWidth
+  );
   const minLabelWidth =
     input.metrics.tabBaseWidthWithClose + input.metrics.charWidth * input.metrics.minLabelChars;
 

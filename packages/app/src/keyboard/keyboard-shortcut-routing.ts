@@ -1,7 +1,6 @@
 import {
   parseHostAgentDraftRouteFromPathname,
   parseHostAgentRouteFromPathname,
-  parseHostWorkspaceAgentRouteFromPathname,
   parseHostWorkspaceRouteFromPathname,
   parseHostWorkspaceTabRouteFromPathname,
 } from "@/utils/host-routes";
@@ -28,9 +27,7 @@ export function resolveSelectedOrRouteAgentKey(input: {
     }
   }
 
-  const route =
-    parseHostWorkspaceAgentRouteFromPathname(input.pathname) ??
-    parseHostAgentRouteFromPathname(input.pathname);
+  const route = parseHostAgentRouteFromPathname(input.pathname);
   if (!route) {
     const draftRoute = parseHostAgentDraftRouteFromPathname(input.pathname);
     if (!draftRoute) {

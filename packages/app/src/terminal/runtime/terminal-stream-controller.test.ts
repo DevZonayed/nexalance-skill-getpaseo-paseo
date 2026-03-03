@@ -128,7 +128,10 @@ function createControllerHarness(input?: {
     client,
     getPreferredSize: () => ({ rows: 24, cols: 80 }),
     onChunk: (chunk) => {
-      chunks.push(chunk);
+      chunks.push({
+        terminalId: chunk.terminalId,
+        text: chunk.text,
+      });
     },
     onStatusChange: (status) => {
       statuses.push(status);
@@ -212,6 +215,7 @@ describe("terminal-stream-controller", () => {
 
     expect(harness.client.attachCalls.length).toBe(2);
     expect(harness.client.attachCalls[1]?.options).toEqual({
+      resumeOffset: 0,
       rows: 24,
       cols: 80,
     });
@@ -266,6 +270,38 @@ describe("terminal-stream-controller", () => {
       isAttaching: false,
       error: null,
     });
+  });
+
+  it("recovers when stream exits before initial attach completes", async () => {
+    const harness = createControllerHarness();
+    harness.client.nextAttachResponses.push({
+      streamId: 1,
+      currentOffset: 1200,
+      reset: false,
+      error: null,
+    });
+    harness.client.nextAttachResponses.push({
+      streamId: 2,
+      currentOffset: 1200,
+      reset: false,
+      error: null,
+    });
+
+    harness.controller.setTerminal({ terminalId: "term-attach-exit" });
+    harness.controller.handleStreamExit({
+      terminalId: "term-attach-exit",
+      streamId: 1,
+    });
+    await flushAsyncWork();
+
+    expect(harness.client.attachCalls).toHaveLength(2);
+    expect(harness.client.attachCalls[1]?.options).toEqual({
+      resumeOffset: 1200,
+      rows: 24,
+      cols: 80,
+    });
+    expect(harness.client.detachCalls).toContain(1);
+    expect(harness.controller.getActiveStreamId()).toBe(2);
   });
 
   it("emits reset callback when attach indicates output reset", async () => {

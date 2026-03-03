@@ -76,6 +76,8 @@ export function WorkspaceDesktopTabsRow({
 
   const layoutMetrics = useMemo(
     () => ({
+      rowHorizontalInset: 0,
+      actionsReservedWidth: 120,
       rowPaddingHorizontal: theme.spacing[2],
       tabGap: theme.spacing[1],
       maxTabWidth: 260,
@@ -87,13 +89,13 @@ export function WorkspaceDesktopTabsRow({
     [theme.spacing]
   );
 
-  const { layout, onContainerLayout, onActionsLayout } = useWorkspaceTabLayout({
+  const { layout } = useWorkspaceTabLayout({
     tabLabels: tabs.map((tab) => tab.label),
     metrics: layoutMetrics,
   });
 
   return (
-    <View style={styles.tabsContainer} testID="workspace-tabs-row" onLayout={onContainerLayout}>
+    <View style={styles.tabsContainer} testID="workspace-tabs-row">
       <ScrollView
         horizontal
         scrollEnabled={layout.shouldScroll}
@@ -304,7 +306,7 @@ export function WorkspaceDesktopTabsRow({
           }}
         />
       </ScrollView>
-      <View style={styles.tabsActions} onLayout={onActionsLayout}>
+      <View style={styles.tabsActions}>
         <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
           <TooltipTrigger
             testID="workspace-new-agent-tab"

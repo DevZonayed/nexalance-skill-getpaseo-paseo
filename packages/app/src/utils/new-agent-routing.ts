@@ -2,7 +2,7 @@ import type { CheckoutStatusPayload } from "@/hooks/use-checkout-status-query";
 import {
   buildHostAgentDraftRoute,
   parseHostAgentRouteFromPathname,
-  parseHostWorkspaceAgentRouteFromPathname,
+  parseHostWorkspaceTabRouteFromPathname,
 } from "@/utils/host-routes";
 
 export function parseAgentKey(
@@ -27,9 +27,12 @@ export function resolveSelectedAgentForNewAgent(input: {
   pathname: string;
   selectedAgentId?: string;
 }): { serverId: string; agentId: string } | null {
-  const workspaceRoute = parseHostWorkspaceAgentRouteFromPathname(input.pathname);
-  if (workspaceRoute) {
-    return { serverId: workspaceRoute.serverId, agentId: workspaceRoute.agentId };
+  const workspaceTabRoute = parseHostWorkspaceTabRouteFromPathname(input.pathname);
+  if (workspaceTabRoute?.tabId?.startsWith("agent_")) {
+    const agentId = workspaceTabRoute.tabId.slice("agent_".length).trim();
+    if (agentId) {
+      return { serverId: workspaceTabRoute.serverId, agentId };
+    }
   }
   return (
     parseHostAgentRouteFromPathname(input.pathname) ??

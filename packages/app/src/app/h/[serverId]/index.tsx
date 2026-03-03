@@ -3,7 +3,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSessionStore } from "@/stores/session-store";
 import {
   buildHostDraftRoute,
-  buildHostWorkspaceAgentRoute,
+  buildHostWorkspaceAgentTabRoute,
 } from "@/utils/host-routes";
 
 export default function HostIndexRoute() {
@@ -31,7 +31,7 @@ export default function HostIndexRoute() {
     const primaryAgent = visibleAgents[0];
     if (primaryAgent?.cwd?.trim()) {
       router.replace(
-        buildHostWorkspaceAgentRoute(
+        buildHostWorkspaceAgentTabRoute(
           serverId,
           primaryAgent.cwd.trim(),
           primaryAgent.id
