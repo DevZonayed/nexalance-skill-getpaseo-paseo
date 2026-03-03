@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { SidebarProjectEntry, SidebarWorkspaceEntry } from "@/hooks/use-sidebar-agents-list";
+import type { SidebarProjectEntry, SidebarWorkspaceEntry } from "@/hooks/use-sidebar-workspaces-list";
 
 import { buildSidebarWorkspaceViewModel } from "./sidebar-shortcuts";
 
@@ -7,11 +7,9 @@ function workspace(serverId: string, cwd: string): SidebarWorkspaceEntry {
   return {
     workspaceKey: `${serverId}:${cwd}`,
     serverId,
-    cwd,
-    branchName: null,
-    createdAt: null,
-    isMainCheckout: false,
-    isPaseoOwnedWorktree: false,
+    workspaceId: cwd,
+    name: cwd,
+    activityAt: null,
     statusBucket: "done",
   };
 }
@@ -20,11 +18,11 @@ function project(projectKey: string, workspaces: SidebarWorkspaceEntry[]): Sideb
   return {
     projectKey,
     projectName: projectKey,
-    iconWorkingDir: workspaces[0]?.cwd ?? "",
+    iconWorkingDir: workspaces[0]?.workspaceId ?? "",
     statusBucket: "done",
     activeCount: 0,
-    totalCount: workspaces.length,
-    latestCreatedAt: null,
+    totalWorkspaces: workspaces.length,
+    latestActivityAt: null,
     workspaces,
   };
 }

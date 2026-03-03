@@ -49,7 +49,10 @@ import { ExplorerSidebarAnimationProvider } from "@/contexts/explorer-sidebar-an
 import { useToast } from "@/contexts/toast-context";
 import { useExplorerOpenGesture } from "@/hooks/use-explorer-open-gesture";
 import { usePanelStore, type ExplorerCheckoutContext } from "@/stores/panel-store";
-import { useSessionStore, type Agent } from "@/stores/session-store";
+import {
+  useSessionStore,
+  type Agent,
+} from "@/stores/session-store";
 import {
   buildWorkspaceTabPersistenceKey,
   useWorkspaceTabsStore,
@@ -80,11 +83,9 @@ import { WorkspaceDraftAgentTab } from "@/screens/workspace/workspace-draft-agen
 import { WorkspaceDesktopTabsRow } from "@/screens/workspace/workspace-desktop-tabs-row";
 import type { WorkspaceTabDescriptor } from "@/screens/workspace/workspace-tabs-types";
 import {
-  deriveProjectDisplayName,
-  deriveProjectKey,
-  deriveProjectName,
-  deriveRemoteProjectKey,
-} from "@/utils/agent-grouping";
+  resolveWorkspaceHeader,
+  shouldRenderMissingWorkspaceDescriptor,
+} from "@/screens/workspace/workspace-header-source";
 
 const TERMINALS_QUERY_STALE_TIME = 5_000;
 const DROPDOWN_WIDTH = 220;
@@ -150,24 +151,6 @@ function decodeSegment(value: string): string {
   } catch {
     return value;
   }
-}
-
-function deriveWorkspaceName(workspaceId: string): string {
-  const normalized = workspaceId.replace(/\\/g, "/");
-  const segments = normalized.split("/").filter(Boolean);
-  const last = segments[segments.length - 1];
-  return last ?? workspaceId;
-}
-
-function deriveWorkspaceProjectDisplayName(input: {
-  workspaceId: string;
-  checkout: CheckoutStatusPayload | null;
-}): string {
-  const projectKey =
-    deriveRemoteProjectKey(input.checkout?.remoteUrl ?? null) ??
-    deriveProjectKey(input.workspaceId);
-  const projectName = deriveProjectName(projectKey);
-  return deriveProjectDisplayName({ projectKey, projectName });
 }
 
 function formatProviderLabel(provider: Agent["provider"]): string {
@@ -407,18 +390,17 @@ function WorkspaceScreenContent({
     staleTime: 15_000,
   });
 
-  const workspaceName = useMemo(
-    () => deriveWorkspaceName(normalizedWorkspaceId),
-    [normalizedWorkspaceId]
+  const workspaceDescriptor = useSessionStore(
+    (state) =>
+      state.sessions[normalizedServerId]?.workspaces.get(normalizedWorkspaceId) ??
+      null
   );
-  const headerProjectName = useMemo(
-    () =>
-      deriveWorkspaceProjectDisplayName({
-        workspaceId: normalizedWorkspaceId,
-        checkout: checkoutQuery.data ?? null,
-      }),
-    [checkoutQuery.data, normalizedWorkspaceId]
+  const hasHydratedWorkspaces = useSessionStore(
+    (state) => state.sessions[normalizedServerId]?.hasHydratedWorkspaces ?? false
   );
+  const workspaceHeader = workspaceDescriptor
+    ? resolveWorkspaceHeader({ workspace: workspaceDescriptor })
+    : null;
 
   const isGitCheckout = checkoutQuery.data?.isGit ?? false;
   const areWorkspaceAgentsHydrated = useSessionStore(
@@ -1228,6 +1210,21 @@ function WorkspaceScreenContent({
   }, [activeAgent, normalizedServerId, router]);
 
   const renderContent = () => {
+    if (
+      shouldRenderMissingWorkspaceDescriptor({
+        workspace: workspaceDescriptor,
+        hasHydratedWorkspaces,
+      })
+    ) {
+      return (
+        <View style={styles.emptyState}>
+          <Text style={styles.emptyStateText}>
+            Workspace descriptor missing for this route.
+          </Text>
+        </View>
+      );
+    }
+
     const target = activeTab?.target ?? null;
     if (!target) {
       return (
@@ -1324,10 +1321,10 @@ function WorkspaceScreenContent({
                 <SidebarMenuToggle />
                 <View style={styles.headerTitleContainer}>
                   <Text style={styles.headerTitle} numberOfLines={1}>
-                    {workspaceName}
+                    {workspaceHeader ? workspaceHeader.title : "Loading workspace…"}
                   </Text>
                   <Text style={styles.headerProjectTitle} numberOfLines={1}>
-                    {headerProjectName}
+                    {workspaceHeader ? workspaceHeader.subtitle : "Awaiting workspace descriptor"}
                   </Text>
                 </View>
               </>

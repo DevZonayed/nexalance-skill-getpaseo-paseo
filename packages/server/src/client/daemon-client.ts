@@ -128,6 +128,11 @@ export type DaemonEvent =
       payload: Extract<SessionOutboundMessage, { type: 'agent_update' }>['payload']
     }
   | {
+      type: 'workspace_update'
+      workspaceId: string
+      payload: Extract<SessionOutboundMessage, { type: 'workspace_update' }>['payload']
+    }
+  | {
       type: 'agent_stream'
       agentId: string
       event: AgentStreamEventPayload
@@ -287,6 +292,19 @@ export type FetchAgentsOptions = Omit<FetchAgentsRequest, 'type' | 'requestId'> 
 }
 export type FetchAgentsEntry = FetchAgentsPayload['entries'][number]
 export type FetchAgentsPageInfo = FetchAgentsPayload['pageInfo']
+type FetchWorkspacesPayload = Extract<
+  SessionOutboundMessage,
+  { type: 'fetch_workspaces_response' }
+>['payload']
+type FetchWorkspacesRequest = Extract<
+  SessionInboundMessage,
+  { type: 'fetch_workspaces_request' }
+>
+export type FetchWorkspacesOptions = Omit<FetchWorkspacesRequest, 'type' | 'requestId'> & {
+  requestId?: string
+}
+export type FetchWorkspacesEntry = FetchWorkspacesPayload['entries'][number]
+export type FetchWorkspacesPageInfo = FetchWorkspacesPayload['pageInfo']
 
 export type FetchAgentResult = {
   agent: AgentSnapshotPayload
@@ -1088,6 +1106,33 @@ export class DaemonClient {
       options: { skipQueue: true },
       select: (msg) => {
         if (msg.type !== 'fetch_agents_response') {
+          return null
+        }
+        if (msg.payload.requestId !== resolvedRequestId) {
+          return null
+        }
+        return msg.payload
+      },
+    })
+  }
+
+  async fetchWorkspaces(options?: FetchWorkspacesOptions): Promise<FetchWorkspacesPayload> {
+    const resolvedRequestId = this.createRequestId(options?.requestId)
+    const message = SessionInboundMessageSchema.parse({
+      type: 'fetch_workspaces_request',
+      requestId: resolvedRequestId,
+      ...(options?.filter ? { filter: options.filter } : {}),
+      ...(options?.sort ? { sort: options.sort } : {}),
+      ...(options?.page ? { page: options.page } : {}),
+      ...(options?.subscribe ? { subscribe: options.subscribe } : {}),
+    })
+    return this.sendRequest({
+      requestId: resolvedRequestId,
+      message,
+      timeout: 10000,
+      options: { skipQueue: true },
+      select: (msg) => {
+        if (msg.type !== 'fetch_workspaces_response') {
           return null
         }
         if (msg.payload.requestId !== resolvedRequestId) {
@@ -3075,6 +3120,13 @@ export class DaemonClient {
         return {
           type: 'agent_update',
           agentId: msg.payload.kind === 'upsert' ? msg.payload.agent.id : msg.payload.agentId,
+          payload: msg.payload,
+        }
+      case 'workspace_update':
+        return {
+          type: 'workspace_update',
+          workspaceId:
+            msg.payload.kind === 'upsert' ? msg.payload.workspace.id : msg.payload.id,
           payload: msg.payload,
         }
       case 'agent_stream':

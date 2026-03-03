@@ -512,6 +512,45 @@ export const FetchAgentsRequestMessageSchema = z.object({
     .optional(),
 })
 
+const WorkspaceStateBucketSchema = z.enum([
+  'needs_input',
+  'failed',
+  'running',
+  'attention',
+  'done',
+])
+
+export const FetchWorkspacesRequestMessageSchema = z.object({
+  type: z.literal('fetch_workspaces_request'),
+  requestId: z.string(),
+  filter: z
+    .object({
+      query: z.string().optional(),
+      projectId: z.string().optional(),
+      idPrefix: z.string().optional(),
+    })
+    .optional(),
+  sort: z
+    .array(
+      z.object({
+        key: z.enum(['status_priority', 'activity_at', 'name', 'project_id']),
+        direction: z.enum(['asc', 'desc']),
+      })
+    )
+    .optional(),
+  page: z
+    .object({
+      limit: z.number().int().positive().max(200),
+      cursor: z.string().min(1).optional(),
+    })
+    .optional(),
+  subscribe: z
+    .object({
+      subscriptionId: z.string().optional(),
+    })
+    .optional(),
+})
+
 export const FetchAgentRequestMessageSchema = z.object({
   type: z.literal('fetch_agent_request'),
   requestId: z.string(),
@@ -1068,6 +1107,7 @@ export const SessionInboundMessageSchema = z.discriminatedUnion('type', [
   AbortRequestMessageSchema,
   AudioPlayedMessageSchema,
   FetchAgentsRequestMessageSchema,
+  FetchWorkspacesRequestMessageSchema,
   FetchAgentRequestMessageSchema,
   DeleteAgentRequestMessageSchema,
   ArchiveAgentRequestMessageSchema,
@@ -1426,6 +1466,14 @@ export const ProjectPlacementPayloadSchema = z.object({
   checkout: ProjectCheckoutLitePayloadSchema,
 })
 
+export const WorkspaceDescriptorPayloadSchema = z.object({
+  id: z.string(),
+  projectId: z.string(),
+  name: z.string(),
+  status: WorkspaceStateBucketSchema,
+  activityAt: z.string().nullable(),
+})
+
 export const AgentUpdateMessageSchema = z.object({
   type: z.literal('agent_update'),
   payload: z.discriminatedUnion('kind', [
@@ -1486,6 +1534,34 @@ export const FetchAgentsResponseMessageSchema = z.object({
       hasMore: z.boolean(),
     }),
   }),
+})
+
+export const FetchWorkspacesResponseMessageSchema = z.object({
+  type: z.literal('fetch_workspaces_response'),
+  payload: z.object({
+    requestId: z.string(),
+    subscriptionId: z.string().nullable().optional(),
+    entries: z.array(WorkspaceDescriptorPayloadSchema),
+    pageInfo: z.object({
+      nextCursor: z.string().nullable(),
+      prevCursor: z.string().nullable(),
+      hasMore: z.boolean(),
+    }),
+  }),
+})
+
+export const WorkspaceUpdateMessageSchema = z.object({
+  type: z.literal('workspace_update'),
+  payload: z.discriminatedUnion('kind', [
+    z.object({
+      kind: z.literal('upsert'),
+      workspace: WorkspaceDescriptorPayloadSchema,
+    }),
+    z.object({
+      kind: z.literal('remove'),
+      id: z.string(),
+    }),
+  ]),
 })
 
 export const FetchAgentResponseMessageSchema = z.object({
@@ -2051,9 +2127,11 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion('type', [
   RpcErrorMessageSchema,
   ArtifactMessageSchema,
   AgentUpdateMessageSchema,
+  WorkspaceUpdateMessageSchema,
   AgentStreamMessageSchema,
   AgentStatusMessageSchema,
   FetchAgentsResponseMessageSchema,
+  FetchWorkspacesResponseMessageSchema,
   FetchAgentResponseMessageSchema,
   FetchAgentTimelineResponseMessageSchema,
   SendAgentMessageResponseMessageSchema,
@@ -2119,7 +2197,10 @@ export type AgentStreamMessage = z.infer<typeof AgentStreamMessageSchema>
 export type AgentStatusMessage = z.infer<typeof AgentStatusMessageSchema>
 export type ProjectCheckoutLitePayload = z.infer<typeof ProjectCheckoutLitePayloadSchema>
 export type ProjectPlacementPayload = z.infer<typeof ProjectPlacementPayloadSchema>
+export type WorkspaceStateBucket = z.infer<typeof WorkspaceStateBucketSchema>
+export type WorkspaceDescriptorPayload = z.infer<typeof WorkspaceDescriptorPayloadSchema>
 export type FetchAgentsResponseMessage = z.infer<typeof FetchAgentsResponseMessageSchema>
+export type FetchWorkspacesResponseMessage = z.infer<typeof FetchWorkspacesResponseMessageSchema>
 export type FetchAgentResponseMessage = z.infer<typeof FetchAgentResponseMessageSchema>
 export type FetchAgentTimelineResponseMessage = z.infer<
   typeof FetchAgentTimelineResponseMessageSchema
@@ -2144,6 +2225,7 @@ export type ActivityLogPayload = z.infer<typeof ActivityLogPayloadSchema>
 // Type exports for inbound message types
 export type VoiceAudioChunkMessage = z.infer<typeof VoiceAudioChunkMessageSchema>
 export type FetchAgentsRequestMessage = z.infer<typeof FetchAgentsRequestMessageSchema>
+export type FetchWorkspacesRequestMessage = z.infer<typeof FetchWorkspacesRequestMessageSchema>
 export type FetchAgentRequestMessage = z.infer<typeof FetchAgentRequestMessageSchema>
 export type SendAgentMessageRequest = z.infer<typeof SendAgentMessageRequestSchema>
 export type WaitForFinishRequest = z.infer<typeof WaitForFinishRequestSchema>

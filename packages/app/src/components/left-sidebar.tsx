@@ -15,7 +15,7 @@ import { router, usePathname } from 'expo-router'
 import { usePanelStore } from '@/stores/panel-store'
 import { SidebarAgentList } from './sidebar-agent-list'
 import { SidebarAgentListSkeleton } from './sidebar-agent-list-skeleton'
-import { useSidebarAgentsList } from '@/hooks/use-sidebar-agents-list'
+import { useSidebarWorkspacesList } from '@/hooks/use-sidebar-workspaces-list'
 import { useSidebarAnimation } from '@/contexts/sidebar-animation-context'
 import { useTauriDragHandlers, useTrafficLightPadding } from '@/utils/tauri-window'
 import { Combobox } from '@/components/ui/combobox'
@@ -112,7 +112,7 @@ export function LeftSidebar({ selectedAgentId }: LeftSidebarProps) {
   // Derive isOpen from the unified panel state
   const isOpen = isMobile ? mobileView === 'agent-list' : desktopAgentListOpen
 
-  const { projects, isInitialLoad, isRevalidating, refreshAll } = useSidebarAgentsList({
+  const { projects, isInitialLoad, isRevalidating, refreshAll } = useSidebarWorkspacesList({
     serverId: activeServerId,
     enabled: isOpen,
   })

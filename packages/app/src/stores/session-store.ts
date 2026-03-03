@@ -23,6 +23,7 @@ import type {
   GitSetupOptions,
   ProjectPlacementPayload,
   ServerCapabilities,
+  WorkspaceDescriptorPayload,
 } from "@server/shared/messages";
 import { isPerfLoggingEnabled, measurePayload, perfLog } from "@/utils/perf";
 import {
@@ -108,6 +109,14 @@ export interface Agent {
   projectPlacement?: ProjectPlacementPayload | null;
 }
 
+export interface WorkspaceDescriptor {
+  id: string;
+  projectId: string;
+  name: string;
+  status: WorkspaceDescriptorPayload["status"];
+  activityAt: Date | null;
+}
+
 export type ExplorerEntryKind = "file" | "directory";
 export type ExplorerFileKind = "text" | "image" | "binary";
 export type ExplorerEncoding = "utf-8" | "base64" | "none";
@@ -180,6 +189,7 @@ export interface SessionState {
 
   // Hydration status
   hasHydratedAgents: boolean;
+  hasHydratedWorkspaces: boolean;
 
   // Audio state
   isPlayingAudio: boolean;
@@ -203,6 +213,7 @@ export interface SessionState {
 
   // Agents
   agents: Map<string, Agent>;
+  workspaces: Map<string, WorkspaceDescriptor>;
 
   // Permissions
   pendingPermissions: Map<string, PendingPermission>;
@@ -267,6 +278,17 @@ interface SessionStoreActions {
 
   // Agents
   setAgents: (serverId: string, agents: Map<string, Agent> | ((prev: Map<string, Agent>) => Map<string, Agent>)) => void;
+  setWorkspaces: (
+    serverId: string,
+    workspaces:
+      | Map<string, WorkspaceDescriptor>
+      | ((prev: Map<string, WorkspaceDescriptor>) => Map<string, WorkspaceDescriptor>)
+  ) => void;
+  mergeWorkspaces: (
+    serverId: string,
+    workspaces: Iterable<WorkspaceDescriptor>
+  ) => void;
+  removeWorkspace: (serverId: string, workspaceId: string) => void;
 
   // Agent activity timestamps
   setAgentLastActivity: (agentId: string, timestamp: Date) => void;
@@ -296,6 +318,7 @@ interface SessionStoreActions {
 
   // Hydration
   setHasHydratedAgents: (serverId: string, hydrated: boolean) => void;
+  setHasHydratedWorkspaces: (serverId: string, hydrated: boolean) => void;
 
   // Agent directory (derived from agents)
   getAgentDirectory: (serverId: string) => AgentDirectoryEntry[] | undefined;
@@ -335,6 +358,7 @@ function createInitialSessionState(serverId: string, client: DaemonClient, audio
     serverInfo: null,
     audioPlayer,
     hasHydratedAgents: false,
+    hasHydratedWorkspaces: false,
     isPlayingAudio: false,
     focusedAgentId: null,
     messages: [],
@@ -346,6 +370,7 @@ function createInitialSessionState(serverId: string, client: DaemonClient, audio
     agentHistorySyncGeneration: new Map(),
     initializingAgents: new Map(),
     agents: new Map(),
+    workspaces: new Map(),
     pendingPermissions: new Map(),
     fileExplorer: new Map(),
     queuedMessages: new Map(),
@@ -851,6 +876,78 @@ export const useSessionStore = create<SessionStore>()(
       });
     },
 
+    setWorkspaces: (serverId, workspaces) => {
+      set((prev) => {
+        const session = prev.sessions[serverId];
+        if (!session) {
+          return prev;
+        }
+        const nextWorkspaces =
+          typeof workspaces === "function" ? workspaces(session.workspaces) : workspaces;
+        if (session.workspaces === nextWorkspaces) {
+          return prev;
+        }
+        logSessionStoreUpdate("setWorkspaces", serverId, { count: nextWorkspaces.size });
+        return {
+          ...prev,
+          sessions: {
+            ...prev.sessions,
+            [serverId]: { ...session, workspaces: nextWorkspaces },
+          },
+        };
+      });
+    },
+
+    mergeWorkspaces: (serverId, workspaces) => {
+      const nextEntries = Array.from(workspaces);
+      set((prev) => {
+        const session = prev.sessions[serverId];
+        if (!session || nextEntries.length === 0) {
+          return prev;
+        }
+        const next = new Map(session.workspaces);
+        let changed = false;
+        for (const workspace of nextEntries) {
+          const existing = next.get(workspace.id);
+          if (existing === workspace) {
+            continue;
+          }
+          next.set(workspace.id, workspace);
+          changed = true;
+        }
+        if (!changed) {
+          return prev;
+        }
+        logSessionStoreUpdate("mergeWorkspaces", serverId, { count: nextEntries.length });
+        return {
+          ...prev,
+          sessions: {
+            ...prev.sessions,
+            [serverId]: { ...session, workspaces: next },
+          },
+        };
+      });
+    },
+
+    removeWorkspace: (serverId, workspaceId) => {
+      set((prev) => {
+        const session = prev.sessions[serverId];
+        if (!session || !session.workspaces.has(workspaceId)) {
+          return prev;
+        }
+        const next = new Map(session.workspaces);
+        next.delete(workspaceId);
+        logSessionStoreUpdate("removeWorkspace", serverId, { workspaceId });
+        return {
+          ...prev,
+          sessions: {
+            ...prev.sessions,
+            [serverId]: { ...session, workspaces: next },
+          },
+        };
+      });
+    },
+
     // Agent activity timestamps (top-level, does NOT mutate session object)
     setAgentLastActivity: (agentId, timestamp) => {
       agentLastActivityCoalescer.enqueue(agentId, timestamp);
@@ -975,6 +1072,23 @@ export const useSessionStore = create<SessionStore>()(
           sessions: {
             ...prev.sessions,
             [serverId]: { ...session, hasHydratedAgents: hydrated },
+          },
+        };
+      });
+    },
+
+    setHasHydratedWorkspaces: (serverId, hydrated) => {
+      set((prev) => {
+        const session = prev.sessions[serverId];
+        if (!session || session.hasHydratedWorkspaces === hydrated) {
+          return prev;
+        }
+        logSessionStoreUpdate("setHasHydratedWorkspaces", serverId, { hydrated });
+        return {
+          ...prev,
+          sessions: {
+            ...prev.sessions,
+            [serverId]: { ...session, hasHydratedWorkspaces: hydrated },
           },
         };
       });

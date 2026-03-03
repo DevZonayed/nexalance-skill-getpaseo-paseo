@@ -31,6 +31,7 @@ import { useHostRuntimeSession } from "@/runtime/host-runtime";
 import {
   useSessionStore,
   type Agent,
+  type WorkspaceDescriptor,
   type SessionState,
 } from "@/stores/session-store";
 import { useDraftStore } from "@/stores/draft-store";
@@ -116,9 +117,31 @@ type AgentUpdatePayload = Extract<
   SessionOutboundMessage,
   { type: "agent_update" }
 >["payload"];
+type WorkspaceUpdatePayload = Extract<
+  SessionOutboundMessage,
+  { type: "workspace_update" }
+>["payload"];
 
 const getAgentIdFromUpdate = (update: AgentUpdatePayload): string =>
   update.kind === "remove" ? update.agentId : update.agent.id;
+
+function normalizeWorkspaceDescriptor(
+  payload: Extract<WorkspaceUpdatePayload, { kind: "upsert" }>["workspace"]
+): WorkspaceDescriptor {
+  const activityAt = payload.activityAt
+    ? new Date(payload.activityAt)
+    : null;
+  return {
+    id: payload.id,
+    projectId: payload.projectId,
+    name: payload.name,
+    status: payload.status,
+    activityAt:
+      activityAt && !Number.isNaN(activityAt.getTime())
+        ? activityAt
+        : null,
+  };
+}
 
 // ---------------------------------------------------------------------------
 // Module-level pending agent updates buffer (scoped by serverId)
@@ -233,7 +256,13 @@ function SessionProviderInternal({
   const setHasHydratedAgents = useSessionStore(
     (state) => state.setHasHydratedAgents
   );
+  const setHasHydratedWorkspaces = useSessionStore(
+    (state) => state.setHasHydratedWorkspaces
+  );
   const setAgents = useSessionStore((state) => state.setAgents);
+  const setWorkspaces = useSessionStore((state) => state.setWorkspaces);
+  const mergeWorkspaces = useSessionStore((state) => state.mergeWorkspaces);
+  const removeWorkspace = useSessionStore((state) => state.removeWorkspace);
   const setAgentLastActivity = useSessionStore(
     (state) => state.setAgentLastActivity
   );
@@ -412,6 +441,38 @@ function SessionProviderInternal({
       setInitializingAgents(serverId, new Map());
     }
   }, [flushAgentLastActivity, serverId, isConnected, setInitializingAgents]);
+
+  useEffect(() => {
+    if (!client || !isConnected) {
+      return;
+    }
+
+    let cancelled = false;
+    void client
+      .fetchWorkspaces({
+        subscribe: {},
+        page: { limit: 200 },
+      })
+      .then((payload) => {
+        if (cancelled) {
+          return;
+        }
+        const workspaces = new Map<string, WorkspaceDescriptor>();
+        for (const entry of payload.entries) {
+          const workspace = normalizeWorkspaceDescriptor(entry);
+          workspaces.set(workspace.id, workspace);
+        }
+        setWorkspaces(serverId, workspaces);
+        setHasHydratedWorkspaces(serverId, true);
+      })
+      .catch((error) => {
+        console.error("[Session] Failed to hydrate workspaces:", error);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [client, isConnected, serverId, setHasHydratedWorkspaces, setWorkspaces]);
 
   const applyAgentUpdatePayload = useCallback(
     (update: AgentUpdatePayload) => {
@@ -891,6 +952,17 @@ function SessionProviderInternal({
       }
     );
 
+    const unsubWorkspaceUpdate = client.on("workspace_update", (message) => {
+      if (message.type !== "workspace_update") return;
+      if (message.payload.kind === "remove") {
+        removeWorkspace(serverId, message.payload.id);
+        return;
+      }
+      mergeWorkspaces(serverId, [
+        normalizeWorkspaceDescriptor(message.payload.workspace),
+      ]);
+    });
+
     const unsubStatus = client.on("status", (message) => {
       if (message.type !== "status") return;
       const serverInfo = parseServerInfoStatusPayload(message.payload);
@@ -1287,6 +1359,7 @@ function SessionProviderInternal({
       unsubAgentUpdate();
       unsubAgentStream();
       unsubAgentTimeline();
+      unsubWorkspaceUpdate();
       unsubStatus();
       unsubPermissionRequest();
       unsubPermissionResolved();
@@ -1312,6 +1385,8 @@ function SessionProviderInternal({
     setAgentTimelineCursor,
     setInitializingAgents,
     setAgents,
+    mergeWorkspaces,
+    removeWorkspace,
     setAgentLastActivity,
     setPendingPermissions,
     setHasHydratedAgents,

@@ -1,0 +1,267 @@
+import { describe, expect, test, vi } from 'vitest'
+import { Session } from './session.js'
+import type { AgentSnapshotPayload } from '../shared/messages.js'
+
+function makeAgent(input: {
+  id: string
+  cwd: string
+  status: AgentSnapshotPayload['status']
+  updatedAt: string
+  pendingPermissions?: number
+  requiresAttention?: boolean
+  attentionReason?: AgentSnapshotPayload['attentionReason']
+}): AgentSnapshotPayload {
+  const pendingPermissionCount = input.pendingPermissions ?? 0
+  return {
+    id: input.id,
+    provider: 'codex',
+    cwd: input.cwd,
+    model: null,
+    thinkingOptionId: null,
+    effectiveThinkingOptionId: null,
+    createdAt: input.updatedAt,
+    updatedAt: input.updatedAt,
+    lastUserMessageAt: null,
+    status: input.status,
+    capabilities: {
+      supportsStreaming: true,
+      supportsSessionPersistence: true,
+      supportsDynamicModes: true,
+      supportsMcpServers: true,
+      supportsReasoningStream: true,
+      supportsToolInvocations: true,
+    },
+    currentModeId: null,
+    availableModes: [],
+    pendingPermissions: Array.from({ length: pendingPermissionCount }, (_, index) => ({
+      id: `perm-${input.id}-${index}`,
+      provider: 'codex',
+      name: 'tool',
+      kind: 'tool',
+    })),
+    persistence: null,
+    runtimeInfo: {
+      provider: 'codex',
+      sessionId: null,
+    },
+    title: null,
+    labels: { ui: 'true' },
+    requiresAttention: input.requiresAttention ?? false,
+    attentionReason: input.attentionReason ?? null,
+    attentionTimestamp: null,
+    archivedAt: null,
+  }
+}
+
+function createSessionForWorkspaceTests(): Session {
+  const logger = {
+    child: () => logger,
+    trace: vi.fn(),
+    debug: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+  }
+
+  return new Session({
+    clientId: 'test-client',
+    onMessage: vi.fn(),
+    logger: logger as any,
+    downloadTokenStore: {} as any,
+    pushTokenStore: {} as any,
+    paseoHome: '/tmp/paseo-test',
+    agentManager: {
+      subscribe: () => () => {},
+      listAgents: () => [],
+      getAgent: () => null,
+    } as any,
+    agentStorage: {
+      list: async () => [],
+      get: async () => null,
+    } as any,
+    createAgentMcpTransport: async () => {
+      throw new Error('not used')
+    },
+    stt: null,
+    tts: null,
+    terminalManager: null,
+  })
+}
+
+describe('workspace aggregation', () => {
+  test('non-git workspace uses deterministic directory name and no unknown branch fallback', async () => {
+    const session = createSessionForWorkspaceTests() as any
+    session.listAgentPayloads = async () => [
+      makeAgent({
+        id: 'a1',
+        cwd: '/tmp/non-git',
+        status: 'idle',
+        updatedAt: '2026-03-01T12:00:00.000Z',
+      }),
+    ]
+    session.buildProjectPlacement = async (cwd: string) => ({
+      projectKey: cwd,
+      projectName: 'non-git',
+      checkout: {
+        cwd,
+        isGit: false,
+        currentBranch: null,
+        remoteUrl: null,
+        isPaseoOwnedWorktree: false,
+        mainRepoRoot: null,
+      },
+    })
+
+    const result = await session.listFetchWorkspacesEntries({
+      type: 'fetch_workspaces_request',
+      requestId: 'req-1',
+    })
+
+    expect(result.entries).toHaveLength(1)
+    expect(result.entries[0]?.name).toBe('non-git')
+    expect(result.entries[0]?.name).not.toBe('Unknown branch')
+  })
+
+  test('git branch workspace uses branch as canonical name', async () => {
+    const session = createSessionForWorkspaceTests() as any
+    session.listAgentPayloads = async () => [
+      makeAgent({
+        id: 'a1',
+        cwd: '/tmp/repo-branch',
+        status: 'running',
+        updatedAt: '2026-03-01T12:00:00.000Z',
+      }),
+    ]
+    session.buildProjectPlacement = async (cwd: string) => ({
+      projectKey: cwd,
+      projectName: 'repo-branch',
+      checkout: {
+        cwd,
+        isGit: true,
+        currentBranch: 'feature/name-from-server',
+        remoteUrl: 'https://github.com/acme/repo-branch.git',
+        isPaseoOwnedWorktree: false,
+        mainRepoRoot: null,
+      },
+    })
+
+    const result = await session.listFetchWorkspacesEntries({
+      type: 'fetch_workspaces_request',
+      requestId: 'req-branch',
+    })
+
+    expect(result.entries).toHaveLength(1)
+    expect(result.entries[0]?.name).toBe('feature/name-from-server')
+  })
+
+  test('branch/detached policies and dominant status bucket are deterministic', async () => {
+    const session = createSessionForWorkspaceTests() as any
+    session.listAgentPayloads = async () => [
+      makeAgent({
+        id: 'a1',
+        cwd: '/tmp/repo',
+        status: 'running',
+        updatedAt: '2026-03-01T12:00:00.000Z',
+      }),
+      makeAgent({
+        id: 'a2',
+        cwd: '/tmp/repo',
+        status: 'error',
+        updatedAt: '2026-03-01T12:01:00.000Z',
+      }),
+      makeAgent({
+        id: 'a3',
+        cwd: '/tmp/repo',
+        status: 'idle',
+        updatedAt: '2026-03-01T12:02:00.000Z',
+        pendingPermissions: 1,
+      }),
+    ]
+    session.buildProjectPlacement = async (cwd: string) => ({
+      projectKey: cwd,
+      projectName: 'repo',
+      checkout: {
+        cwd,
+        isGit: true,
+        currentBranch: 'HEAD',
+        remoteUrl: 'https://github.com/acme/repo.git',
+        isPaseoOwnedWorktree: false,
+        mainRepoRoot: null,
+      },
+    })
+
+    const result = await session.listFetchWorkspacesEntries({
+      type: 'fetch_workspaces_request',
+      requestId: 'req-2',
+    })
+
+    expect(result.entries).toHaveLength(1)
+    expect(result.entries[0]?.name).toBe('repo')
+    expect(result.entries[0]?.status).toBe('needs_input')
+  })
+
+  test('workspace update stream emits upsert and remove on lifecycle changes', async () => {
+    const emitted: Array<{ type: string; payload: unknown }> = []
+    const logger = {
+      child: () => logger,
+      trace: vi.fn(),
+      debug: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+    }
+
+    const session = new Session({
+      clientId: 'test-client',
+      onMessage: (message) => emitted.push(message as any),
+      logger: logger as any,
+      downloadTokenStore: {} as any,
+      pushTokenStore: {} as any,
+      paseoHome: '/tmp/paseo-test',
+      agentManager: {
+        subscribe: () => () => {},
+        listAgents: () => [],
+        getAgent: () => null,
+      } as any,
+      agentStorage: {
+        list: async () => [],
+        get: async () => null,
+      } as any,
+      createAgentMcpTransport: async () => {
+        throw new Error('not used')
+      },
+      stt: null,
+      tts: null,
+      terminalManager: null,
+    }) as any
+
+    session.workspaceUpdatesSubscription = {
+      subscriptionId: 'sub-1',
+      filter: undefined,
+      isBootstrapping: false,
+      pendingUpdatesByWorkspaceId: new Map(),
+    }
+
+    session.listWorkspaceDescriptors = async () => [
+      {
+        id: '/tmp/repo',
+        projectId: '/tmp/repo',
+        name: 'repo',
+        status: 'running',
+        activityAt: '2026-03-01T12:00:00.000Z',
+      },
+    ]
+    await session.emitWorkspaceUpdateForCwd('/tmp/repo')
+
+    session.listWorkspaceDescriptors = async () => []
+    await session.emitWorkspaceUpdateForCwd('/tmp/repo')
+
+    const workspaceUpdates = emitted.filter((message) => message.type === 'workspace_update')
+    expect(workspaceUpdates).toHaveLength(2)
+    expect((workspaceUpdates[0] as any).payload.kind).toBe('upsert')
+    expect((workspaceUpdates[1] as any).payload).toEqual({
+      kind: 'remove',
+      id: '/tmp/repo',
+    })
+  })
+})

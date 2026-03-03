@@ -30,6 +30,8 @@ import {
   type DirectorySuggestionsRequest,
   type ProjectCheckoutLitePayload,
   type ProjectPlacementPayload,
+  type WorkspaceDescriptorPayload,
+  type WorkspaceStateBucket,
 } from './messages.js'
 import type { TerminalManager, TerminalsChangedEvent } from '../terminal/terminal-manager.js'
 import type { TerminalSession } from '../terminal/terminal.js'
@@ -301,6 +303,31 @@ type FetchAgentsCursor = {
   values: Record<string, string | number | null>
   id: string
 }
+type FetchWorkspacesRequestMessage = Extract<
+  SessionInboundMessage,
+  { type: 'fetch_workspaces_request' }
+>
+type FetchWorkspacesRequestFilter = NonNullable<FetchWorkspacesRequestMessage['filter']>
+type FetchWorkspacesRequestSort = NonNullable<FetchWorkspacesRequestMessage['sort']>[number]
+type FetchWorkspacesResponsePayload = Extract<
+  SessionOutboundMessage,
+  { type: 'fetch_workspaces_response' }
+>['payload']
+type FetchWorkspacesResponseEntry = FetchWorkspacesResponsePayload['entries'][number]
+type FetchWorkspacesResponsePageInfo = FetchWorkspacesResponsePayload['pageInfo']
+type WorkspaceUpdatePayload = Extract<SessionOutboundMessage, { type: 'workspace_update' }>['payload']
+type WorkspaceUpdatesFilter = FetchWorkspacesRequestFilter
+type WorkspaceUpdatesSubscriptionState = {
+  subscriptionId: string
+  filter?: WorkspaceUpdatesFilter
+  isBootstrapping: boolean
+  pendingUpdatesByWorkspaceId: Map<string, WorkspaceUpdatePayload>
+}
+type FetchWorkspacesCursor = {
+  sort: FetchWorkspacesRequestSort[]
+  values: Record<string, string | number | null>
+  id: string
+}
 
 class SessionRequestError extends Error {
   constructor(
@@ -552,6 +579,7 @@ export class Session {
   private readonly providerRegistry: ReturnType<typeof buildProviderRegistry>
   private unsubscribeAgentEvents: (() => void) | null = null
   private agentUpdatesSubscription: AgentUpdatesSubscriptionState | null = null
+  private workspaceUpdatesSubscription: WorkspaceUpdatesSubscriptionState | null = null
   private clientActivity: {
     deviceType: 'web' | 'mobile'
     focusedAgentId: string | null
@@ -1258,31 +1286,30 @@ export class Session {
   private async forwardAgentUpdate(agent: ManagedAgent): Promise<void> {
     try {
       const subscription = this.agentUpdatesSubscription
-      if (!subscription) {
-        return
-      }
-
       const payload = await this.buildAgentPayload(agent)
-      const project = await this.buildProjectPlacement(payload.cwd)
-      const matches = this.matchesAgentFilter({
-        agent: payload,
-        project,
-        filter: subscription.filter,
-      })
-
-      if (matches) {
-        this.bufferOrEmitAgentUpdate(subscription, {
-          kind: 'upsert',
+      if (subscription) {
+        const project = await this.buildProjectPlacement(payload.cwd)
+        const matches = this.matchesAgentFilter({
           agent: payload,
           project,
+          filter: subscription.filter,
         })
-        return
+
+        if (matches) {
+          this.bufferOrEmitAgentUpdate(subscription, {
+            kind: 'upsert',
+            agent: payload,
+            project,
+          })
+        } else {
+          this.bufferOrEmitAgentUpdate(subscription, {
+            kind: 'remove',
+            agentId: payload.id,
+          })
+        }
       }
 
-      this.bufferOrEmitAgentUpdate(subscription, {
-        kind: 'remove',
-        agentId: payload.id,
-      })
+      await this.emitWorkspaceUpdateForCwd(payload.cwd)
     } catch (error) {
       this.sessionLogger.error({ err: error }, 'Failed to emit agent update')
     }
@@ -1308,6 +1335,10 @@ export class Session {
 
         case 'fetch_agents_request':
           await this.handleFetchAgents(msg)
+          break
+
+        case 'fetch_workspaces_request':
+          await this.handleFetchWorkspacesRequest(msg)
           break
 
         case 'fetch_agent_request':
@@ -1728,6 +1759,11 @@ export class Session {
   private async handleDeleteAgentRequest(agentId: string, requestId: string): Promise<void> {
     this.sessionLogger.info({ agentId }, `Deleting agent ${agentId} from registry`)
 
+    const knownCwd =
+      this.agentManager.getAgent(agentId)?.cwd ??
+      (await this.agentStorage.get(agentId))?.cwd ??
+      null
+
     // Prevent the persistence hook from re-creating the record while we close/delete.
     this.agentStorage.beginDelete(agentId)
 
@@ -1762,6 +1798,10 @@ export class Session {
         kind: 'remove',
         agentId,
       })
+    }
+
+    if (knownCwd) {
+      await this.emitWorkspaceUpdateForCwd(knownCwd)
     }
   }
 
@@ -5203,6 +5243,434 @@ export class Session {
     }
   }
 
+  private readonly workspaceStatePriority: Record<WorkspaceStateBucket, number> = {
+    needs_input: 0,
+    failed: 1,
+    running: 2,
+    attention: 3,
+    done: 4,
+  }
+
+  private normalizeWorkspaceId(cwd: string): string {
+    const trimmed = cwd.trim()
+    if (!trimmed) {
+      return cwd
+    }
+    return resolve(trimmed)
+  }
+
+  private deriveWorkspaceStateBucket(agent: AgentSnapshotPayload): WorkspaceStateBucket {
+    const pendingPermissionCount = agent.pendingPermissions?.length ?? 0
+    if (pendingPermissionCount > 0 || agent.attentionReason === 'permission') {
+      return 'needs_input'
+    }
+    if (agent.status === 'error' || agent.attentionReason === 'error') {
+      return 'failed'
+    }
+    if (agent.status === 'running' || agent.status === 'initializing') {
+      return 'running'
+    }
+    if (agent.requiresAttention) {
+      return 'attention'
+    }
+    return 'done'
+  }
+
+  private deriveWorkspaceDirectoryName(cwd: string): string {
+    const normalized = cwd.replace(/\\/g, '/')
+    const segments = normalized.split('/').filter(Boolean)
+    return segments[segments.length - 1] ?? cwd
+  }
+
+  private deriveWorkspaceName(input: {
+    cwd: string
+    checkout: ProjectCheckoutLitePayload
+  }): string {
+    const branch = input.checkout.currentBranch?.trim() ?? null
+    if (branch && branch.toUpperCase() !== 'HEAD') {
+      return branch
+    }
+    return this.deriveWorkspaceDirectoryName(input.cwd)
+  }
+
+  private accumulateLatestActivityAt(
+    current: string | null,
+    agent: AgentSnapshotPayload
+  ): string | null {
+    const candidateRaw = agent.lastUserMessageAt ?? agent.updatedAt
+    const candidateMs = Date.parse(candidateRaw)
+    if (Number.isNaN(candidateMs)) {
+      return current
+    }
+    if (!current) {
+      return new Date(candidateMs).toISOString()
+    }
+    const currentMs = Date.parse(current)
+    if (Number.isNaN(currentMs) || candidateMs > currentMs) {
+      return new Date(candidateMs).toISOString()
+    }
+    return current
+  }
+
+  private async listWorkspaceDescriptors(): Promise<WorkspaceDescriptorPayload[]> {
+    const agents = await this.listAgentPayloads({
+      labels: { ui: 'true' },
+    })
+
+    const descriptorsByWorkspaceId = new Map<string, WorkspaceDescriptorPayload>()
+    const placementByWorkspaceId = new Map<string, Promise<ProjectPlacementPayload>>()
+    const getPlacement = (workspaceCwd: string): Promise<ProjectPlacementPayload> => {
+      const key = this.normalizeWorkspaceId(workspaceCwd)
+      const existing = placementByWorkspaceId.get(key)
+      if (existing) {
+        return existing
+      }
+      const next = this.buildProjectPlacement(workspaceCwd)
+      placementByWorkspaceId.set(key, next)
+      return next
+    }
+
+    for (const agent of agents) {
+      if (agent.archivedAt) {
+        continue
+      }
+
+      const workspaceId = this.normalizeWorkspaceId(agent.cwd)
+      const placement = await getPlacement(workspaceId)
+      const existing = descriptorsByWorkspaceId.get(workspaceId)
+      if (!existing) {
+        const bucket = this.deriveWorkspaceStateBucket(agent)
+        descriptorsByWorkspaceId.set(workspaceId, {
+          id: workspaceId,
+          projectId: placement.projectKey,
+          name: this.deriveWorkspaceName({
+            cwd: workspaceId,
+            checkout: placement.checkout,
+          }),
+          status: bucket,
+          activityAt: this.accumulateLatestActivityAt(null, agent),
+        })
+        continue
+      }
+
+      const bucket = this.deriveWorkspaceStateBucket(agent)
+      if (this.workspaceStatePriority[bucket] < this.workspaceStatePriority[existing.status]) {
+        existing.status = bucket
+      }
+      existing.activityAt = this.accumulateLatestActivityAt(existing.activityAt, agent)
+    }
+
+    return Array.from(descriptorsByWorkspaceId.values())
+  }
+
+  private normalizeFetchWorkspacesSort(
+    sort: FetchWorkspacesRequestSort[] | undefined
+  ): FetchWorkspacesRequestSort[] {
+    const fallback: FetchWorkspacesRequestSort[] = [{ key: 'activity_at', direction: 'desc' }]
+    if (!sort || sort.length === 0) {
+      return fallback
+    }
+    const deduped: FetchWorkspacesRequestSort[] = []
+    const seen = new Set<string>()
+    for (const entry of sort) {
+      if (seen.has(entry.key)) {
+        continue
+      }
+      seen.add(entry.key)
+      deduped.push(entry)
+    }
+    return deduped.length > 0 ? deduped : fallback
+  }
+
+  private getFetchWorkspacesSortValue(
+    workspace: WorkspaceDescriptorPayload,
+    key: FetchWorkspacesRequestSort['key']
+  ): string | number | null {
+    switch (key) {
+      case 'status_priority':
+        return this.workspaceStatePriority[workspace.status]
+      case 'activity_at':
+        return workspace.activityAt ? Date.parse(workspace.activityAt) : null
+      case 'name':
+        return workspace.name.toLocaleLowerCase()
+      case 'project_id':
+        return workspace.projectId.toLocaleLowerCase()
+    }
+  }
+
+  private compareFetchWorkspacesEntries(
+    left: WorkspaceDescriptorPayload,
+    right: WorkspaceDescriptorPayload,
+    sort: FetchWorkspacesRequestSort[]
+  ): number {
+    for (const spec of sort) {
+      const leftValue = this.getFetchWorkspacesSortValue(left, spec.key)
+      const rightValue = this.getFetchWorkspacesSortValue(right, spec.key)
+      const base = this.compareSortValues(leftValue, rightValue)
+      if (base === 0) {
+        continue
+      }
+      return spec.direction === 'asc' ? base : -base
+    }
+    return left.id.localeCompare(right.id)
+  }
+
+  private encodeFetchWorkspacesCursor(
+    entry: FetchWorkspacesResponseEntry,
+    sort: FetchWorkspacesRequestSort[]
+  ): string {
+    const values: Record<string, string | number | null> = {}
+    for (const spec of sort) {
+      values[spec.key] = this.getFetchWorkspacesSortValue(entry, spec.key)
+    }
+    return Buffer.from(
+      JSON.stringify({
+        sort,
+        values,
+        id: entry.id,
+      }),
+      'utf8'
+    ).toString('base64url')
+  }
+
+  private decodeFetchWorkspacesCursor(
+    cursor: string,
+    sort: FetchWorkspacesRequestSort[]
+  ): FetchWorkspacesCursor {
+    let parsed: unknown
+    try {
+      parsed = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8'))
+    } catch {
+      throw new SessionRequestError('invalid_cursor', 'Invalid fetch_workspaces cursor')
+    }
+
+    if (!parsed || typeof parsed !== 'object') {
+      throw new SessionRequestError('invalid_cursor', 'Invalid fetch_workspaces cursor')
+    }
+
+    const payload = parsed as {
+      sort?: unknown
+      values?: unknown
+      id?: unknown
+    }
+
+    if (!Array.isArray(payload.sort) || typeof payload.id !== 'string') {
+      throw new SessionRequestError('invalid_cursor', 'Invalid fetch_workspaces cursor')
+    }
+    if (!payload.values || typeof payload.values !== 'object') {
+      throw new SessionRequestError('invalid_cursor', 'Invalid fetch_workspaces cursor')
+    }
+
+    const cursorSort: FetchWorkspacesRequestSort[] = []
+    for (const item of payload.sort) {
+      if (
+        !item ||
+        typeof item !== 'object' ||
+        typeof (item as { key?: unknown }).key !== 'string' ||
+        typeof (item as { direction?: unknown }).direction !== 'string'
+      ) {
+        throw new SessionRequestError('invalid_cursor', 'Invalid fetch_workspaces cursor')
+      }
+
+      const key = (item as { key: string }).key
+      const direction = (item as { direction: string }).direction
+      if (
+        (key !== 'status_priority' &&
+          key !== 'activity_at' &&
+          key !== 'name' &&
+          key !== 'project_id') ||
+        (direction !== 'asc' && direction !== 'desc')
+      ) {
+        throw new SessionRequestError('invalid_cursor', 'Invalid fetch_workspaces cursor')
+      }
+      cursorSort.push({ key, direction })
+    }
+
+    if (
+      cursorSort.length !== sort.length ||
+      cursorSort.some(
+        (entry, index) =>
+          entry.key !== sort[index]?.key || entry.direction !== sort[index]?.direction
+      )
+    ) {
+      throw new SessionRequestError(
+        'invalid_cursor',
+        'fetch_workspaces cursor does not match current sort'
+      )
+    }
+
+    return {
+      sort: cursorSort,
+      values: payload.values as Record<string, string | number | null>,
+      id: payload.id,
+    }
+  }
+
+  private compareWorkspaceWithCursor(
+    workspace: WorkspaceDescriptorPayload,
+    cursor: FetchWorkspacesCursor,
+    sort: FetchWorkspacesRequestSort[]
+  ): number {
+    for (const spec of sort) {
+      const leftValue = this.getFetchWorkspacesSortValue(workspace, spec.key)
+      const rightValue =
+        cursor.values[spec.key] !== undefined ? (cursor.values[spec.key] ?? null) : null
+      const base = this.compareSortValues(leftValue, rightValue)
+      if (base === 0) {
+        continue
+      }
+      return spec.direction === 'asc' ? base : -base
+    }
+    return workspace.id.localeCompare(cursor.id)
+  }
+
+  private matchesWorkspaceFilter(input: {
+    workspace: WorkspaceDescriptorPayload
+    filter: FetchWorkspacesRequestFilter | undefined
+  }): boolean {
+    const { workspace, filter } = input
+    if (!filter) {
+      return true
+    }
+
+    if (filter.projectId && filter.projectId.trim().length > 0) {
+      if (workspace.projectId !== filter.projectId.trim()) {
+        return false
+      }
+    }
+
+    if (filter.idPrefix && filter.idPrefix.trim().length > 0) {
+      if (!workspace.id.startsWith(filter.idPrefix.trim())) {
+        return false
+      }
+    }
+
+    if (filter.query && filter.query.trim().length > 0) {
+      const query = filter.query.trim().toLocaleLowerCase()
+      const haystacks = [workspace.name, workspace.projectId, workspace.id]
+      if (!haystacks.some((value) => value.toLocaleLowerCase().includes(query))) {
+        return false
+      }
+    }
+
+    return true
+  }
+
+  private async listFetchWorkspacesEntries(
+    request: Extract<SessionInboundMessage, { type: 'fetch_workspaces_request' }>
+  ): Promise<{
+    entries: FetchWorkspacesResponseEntry[]
+    pageInfo: FetchWorkspacesResponsePageInfo
+  }> {
+    const filter = request.filter
+    const sort = this.normalizeFetchWorkspacesSort(request.sort)
+    let entries = await this.listWorkspaceDescriptors()
+    entries = entries.filter((workspace) => this.matchesWorkspaceFilter({ workspace, filter }))
+    entries.sort((left, right) => this.compareFetchWorkspacesEntries(left, right, sort))
+
+    const cursorToken = request.page?.cursor
+    if (cursorToken) {
+      const cursor = this.decodeFetchWorkspacesCursor(cursorToken, sort)
+      entries = entries.filter((workspace) => this.compareWorkspaceWithCursor(workspace, cursor, sort) > 0)
+    }
+
+    const limit = request.page?.limit ?? 200
+    const pagedEntries = entries.slice(0, limit)
+    const hasMore = entries.length > limit
+    const nextCursor =
+      hasMore && pagedEntries.length > 0
+        ? this.encodeFetchWorkspacesCursor(pagedEntries[pagedEntries.length - 1], sort)
+        : null
+
+    return {
+      entries: pagedEntries,
+      pageInfo: {
+        nextCursor,
+        prevCursor: request.page?.cursor ?? null,
+        hasMore,
+      },
+    }
+  }
+
+  private bufferOrEmitWorkspaceUpdate(
+    subscription: WorkspaceUpdatesSubscriptionState,
+    payload: WorkspaceUpdatePayload
+  ): void {
+    if (subscription.isBootstrapping) {
+      const workspaceId = payload.kind === 'upsert' ? payload.workspace.id : payload.id
+      subscription.pendingUpdatesByWorkspaceId.set(workspaceId, payload)
+      return
+    }
+    this.emit({
+      type: 'workspace_update',
+      payload,
+    })
+  }
+
+  private flushBootstrappedWorkspaceUpdates(options?: {
+    snapshotLatestActivityByWorkspaceId?: Map<string, number>
+  }): void {
+    const subscription = this.workspaceUpdatesSubscription
+    if (!subscription || !subscription.isBootstrapping) {
+      return
+    }
+
+    subscription.isBootstrapping = false
+    const pending = Array.from(subscription.pendingUpdatesByWorkspaceId.values())
+    subscription.pendingUpdatesByWorkspaceId.clear()
+
+    for (const payload of pending) {
+      if (payload.kind === 'upsert') {
+        const snapshotLatestActivity = options?.snapshotLatestActivityByWorkspaceId?.get(
+          payload.workspace.id
+        )
+        if (typeof snapshotLatestActivity === 'number') {
+          const updateLatestActivity = payload.workspace.activityAt
+            ? Date.parse(payload.workspace.activityAt)
+            : Number.NEGATIVE_INFINITY
+          if (!Number.isNaN(updateLatestActivity) && updateLatestActivity <= snapshotLatestActivity) {
+            continue
+          }
+        }
+      }
+      this.emit({
+        type: 'workspace_update',
+        payload,
+      })
+    }
+  }
+
+  private async emitWorkspaceUpdateForCwd(cwd: string): Promise<void> {
+    const subscription = this.workspaceUpdatesSubscription
+    if (!subscription) {
+      return
+    }
+
+    const workspaceId = this.normalizeWorkspaceId(cwd)
+    const all = await this.listWorkspaceDescriptors()
+    const workspace = all.find((entry) => entry.id === workspaceId)
+    if (!workspace) {
+      this.bufferOrEmitWorkspaceUpdate(subscription, {
+        kind: 'remove',
+        id: workspaceId,
+      })
+      return
+    }
+
+    if (!this.matchesWorkspaceFilter({ workspace, filter: subscription.filter })) {
+      this.bufferOrEmitWorkspaceUpdate(subscription, {
+        kind: 'remove',
+        id: workspaceId,
+      })
+      return
+    }
+
+    this.bufferOrEmitWorkspaceUpdate(subscription, {
+      kind: 'upsert',
+      workspace,
+    })
+  }
+
   private async handleFetchAgents(
     request: Extract<SessionInboundMessage, { type: 'fetch_agents_request' }>
   ): Promise<void> {
@@ -5251,6 +5719,68 @@ export class Session {
       const code = error instanceof SessionRequestError ? error.code : 'fetch_agents_failed'
       const message = error instanceof Error ? error.message : 'Failed to fetch agents'
       this.sessionLogger.error({ err: error }, 'Failed to handle fetch_agents_request')
+      this.emit({
+        type: 'rpc_error',
+        payload: {
+          requestId: request.requestId,
+          requestType: request.type,
+          error: message,
+          code,
+        },
+      })
+    }
+  }
+
+  private async handleFetchWorkspacesRequest(
+    request: Extract<SessionInboundMessage, { type: 'fetch_workspaces_request' }>
+  ): Promise<void> {
+    const requestedSubscriptionId = request.subscribe?.subscriptionId?.trim()
+    const subscriptionId = request.subscribe
+      ? requestedSubscriptionId && requestedSubscriptionId.length > 0
+        ? requestedSubscriptionId
+        : uuidv4()
+      : null
+
+    try {
+      if (subscriptionId) {
+        this.workspaceUpdatesSubscription = {
+          subscriptionId,
+          filter: request.filter,
+          isBootstrapping: true,
+          pendingUpdatesByWorkspaceId: new Map(),
+        }
+      }
+
+      const payload = await this.listFetchWorkspacesEntries(request)
+      const snapshotLatestActivityByWorkspaceId = new Map<string, number>()
+      for (const entry of payload.entries) {
+        const parsedLatestActivity = entry.activityAt
+          ? Date.parse(entry.activityAt)
+          : Number.NEGATIVE_INFINITY
+        if (!Number.isNaN(parsedLatestActivity)) {
+          snapshotLatestActivityByWorkspaceId.set(entry.id, parsedLatestActivity)
+        }
+      }
+
+      this.emit({
+        type: 'fetch_workspaces_response',
+        payload: {
+          requestId: request.requestId,
+          ...(subscriptionId ? { subscriptionId } : {}),
+          ...payload,
+        },
+      })
+
+      if (subscriptionId && this.workspaceUpdatesSubscription?.subscriptionId === subscriptionId) {
+        this.flushBootstrappedWorkspaceUpdates({ snapshotLatestActivityByWorkspaceId })
+      }
+    } catch (error) {
+      if (subscriptionId && this.workspaceUpdatesSubscription?.subscriptionId === subscriptionId) {
+        this.workspaceUpdatesSubscription = null
+      }
+      const code = error instanceof SessionRequestError ? error.code : 'fetch_workspaces_failed'
+      const message = error instanceof Error ? error.message : 'Failed to fetch workspaces'
+      this.sessionLogger.error({ err: error }, 'Failed to handle fetch_workspaces_request')
       this.emit({
         type: 'rpc_error',
         payload: {

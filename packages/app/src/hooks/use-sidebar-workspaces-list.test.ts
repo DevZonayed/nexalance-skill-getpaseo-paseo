@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { applyStoredOrdering } from './use-sidebar-agents-list'
+import {
+  applyStoredOrdering,
+  buildSidebarProjectsFromWorkspaces,
+} from './use-sidebar-workspaces-list'
+import type { WorkspaceDescriptor } from '@/stores/session-store'
 
 interface OrderedItem {
   key: string
@@ -39,5 +43,31 @@ describe('applyStoredOrdering', () => {
     })
 
     expect(result).toBe(baseline)
+  })
+})
+
+describe('buildSidebarProjectsFromWorkspaces', () => {
+  it('uses workspace descriptor name and status directly', () => {
+    const workspaces: WorkspaceDescriptor[] = [
+      {
+        id: '/repo/main',
+        projectId: 'project-1',
+        name: 'feat/hard-cut',
+        status: 'failed',
+        activityAt: new Date('2026-01-01T00:00:00.000Z'),
+      },
+    ]
+
+    const projects = buildSidebarProjectsFromWorkspaces({
+      serverId: 'srv',
+      workspaces,
+      projectOrder: [],
+      workspaceOrderByScope: {},
+    })
+
+    expect(projects).toHaveLength(1)
+    expect(projects[0]?.statusBucket).toBe('failed')
+    expect(projects[0]?.workspaces[0]?.name).toBe('feat/hard-cut')
+    expect(projects[0]?.workspaces[0]?.statusBucket).toBe('failed')
   })
 })

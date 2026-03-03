@@ -1,7 +1,7 @@
 import type {
   SidebarProjectEntry,
   SidebarWorkspaceEntry,
-} from '@/hooks/use-sidebar-agents-list'
+} from '@/hooks/use-sidebar-workspaces-list'
 
 export interface SidebarShortcutWorkspaceTarget {
   serverId: string
@@ -58,7 +58,7 @@ export function buildSidebarWorkspaceViewModel(input: {
       if (shortcutNumber !== null) {
         shortcutTargets.push({
           serverId: workspace.serverId,
-          workspaceId: workspace.cwd,
+          workspaceId: workspace.workspaceId,
         })
         shortcutIndexByWorkspaceKey.set(workspace.workspaceKey, shortcutNumber)
       }

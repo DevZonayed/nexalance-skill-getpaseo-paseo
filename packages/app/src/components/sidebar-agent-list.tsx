@@ -1,4 +1,4 @@
-import { View, Text, Pressable, Image, Platform, Alert, ActivityIndicator, StatusBar } from 'react-native'
+import { View, Text, Pressable, Image, Platform } from 'react-native'
 import { useQueries } from '@tanstack/react-query'
 import {
   useCallback,
@@ -12,7 +12,7 @@ import {
 import { router, usePathname, useSegments } from 'expo-router'
 import { StyleSheet, UnistylesRuntime, useUnistyles } from 'react-native-unistyles'
 import { Gesture, GestureDetector, type GestureType } from 'react-native-gesture-handler'
-import { Archive, ChevronDown, ChevronRight } from 'lucide-react-native'
+import { ChevronDown, ChevronRight } from 'lucide-react-native'
 import { DraggableList, type DraggableRenderItemInfo } from './draggable-list'
 import { getHostRuntimeStore, isHostRuntimeConnected } from '@/runtime/host-runtime'
 import { getIsTauri } from '@/constants/layout'
@@ -24,21 +24,15 @@ import {
 import {
   type SidebarProjectEntry,
   type SidebarWorkspaceEntry,
-} from '@/hooks/use-sidebar-agents-list'
+  type SidebarStateBucket,
+} from '@/hooks/use-sidebar-workspaces-list'
 import { useSidebarOrderStore } from '@/stores/sidebar-order-store'
-import { useCheckoutGitActionsStore } from '@/stores/checkout-git-actions-store'
 import { useKeyboardShortcutsStore } from '@/stores/keyboard-shortcuts-store'
 import { formatTimeAgo } from '@/utils/time'
-import type { SidebarStateBucket } from '@/utils/sidebar-agent-state'
-import { confirmDialog } from '@/utils/confirm-dialog'
 import {
   ContextMenu,
-  ContextMenuContent,
-  ContextMenuItem,
   ContextMenuTrigger,
-  useContextMenu,
 } from '@/components/ui/context-menu'
-import { deriveProjectDisplayName } from '@/utils/agent-grouping'
 import {
   buildSidebarWorkspaceViewModel,
   type SidebarWorkspaceTreeRow,
@@ -81,19 +75,11 @@ interface WorkspaceRowProps {
   drag: () => void
 }
 
-function resolveWorkspaceBranchLabel(workspace: SidebarWorkspaceEntry): string {
-  const branch = workspace.branchName?.trim()
-  if (branch && branch.length > 0) {
-    return branch
-  }
-  return 'Unknown branch'
-}
-
 function resolveWorkspaceCreatedAtLabel(workspace: SidebarWorkspaceEntry): string | null {
-  if (!workspace.createdAt) {
+  if (!workspace.activityAt) {
     return null
   }
-  return formatTimeAgo(workspace.createdAt)
+  return formatTimeAgo(workspace.activityAt)
 }
 
 function resolveStatusDotColor(input: { theme: ReturnType<typeof useUnistyles>['theme']; bucket: SidebarStateBucket }) {
@@ -111,21 +97,15 @@ function resolveStatusDotColor(input: { theme: ReturnType<typeof useUnistyles>['
 
 function WorkspaceStatusIndicator({
   bucket,
-  loading = false,
 }: {
   bucket: SidebarWorkspaceEntry['statusBucket']
-  loading?: boolean
 }) {
   const { theme } = useUnistyles()
   const color = resolveStatusDotColor({ theme, bucket })
 
   return (
     <View style={styles.workspaceStatusDot}>
-      {loading ? (
-        <ActivityIndicator size={8} color={theme.colors.foregroundMuted} />
-      ) : (
-        <View style={[styles.workspaceStatusDotFill, { backgroundColor: color }]} />
-      )}
+      <View style={[styles.workspaceStatusDotFill, { backgroundColor: color }]} />
     </View>
   )
 }
@@ -198,69 +178,8 @@ function WorkspaceRow({
   onPress,
   drag,
 }: WorkspaceRowProps) {
-  const { theme } = useUnistyles()
   const createdAtLabel = resolveWorkspaceCreatedAtLabel(workspace)
-
-  const { setAnchorRect, setOpen } = useContextMenu()
   const didLongPressRef = useRef(false)
-  const didLongPressCleanupTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const longPressArmedRef = useRef(false)
-  const longPressCancelledRef = useRef(false)
-  const didStartDragRef = useRef(false)
-  const touchStartRef = useRef<{ x: number; y: number } | null>(null)
-
-  const archiveStatus = useCheckoutGitActionsStore((state) =>
-    state.getStatus({
-      serverId: workspace.serverId,
-      cwd: workspace.cwd,
-      actionId: 'archive-worktree',
-    })
-  )
-  const runArchiveWorktree = useCheckoutGitActionsStore((state) => state.archiveWorktree)
-  const isArchiving = archiveStatus === 'pending'
-
-  const openContextMenuAtTouchStart = useCallback(() => {
-    const point = touchStartRef.current
-    if (!point) {
-      return
-    }
-    const statusBarHeight = Platform.OS === 'android' ? (StatusBar.currentHeight ?? 0) : 0
-    setAnchorRect({
-      x: point.x,
-      y: point.y + statusBarHeight,
-      width: 0,
-      height: 0,
-    })
-    setOpen(true)
-  }, [setAnchorRect, setOpen])
-
-  const handleArchiveWorktree = useCallback(() => {
-    if (!workspace.isPaseoOwnedWorktree) {
-      return
-    }
-
-    void confirmDialog({
-      title: 'Archive worktree?',
-      message: `Archive this worktree?\n\n${workspace.cwd}`,
-      confirmLabel: 'Archive',
-      cancelLabel: 'Cancel',
-      destructive: true,
-    })
-      .then((confirmed) => {
-        if (!confirmed) {
-          return
-        }
-        return runArchiveWorktree({
-          serverId: workspace.serverId,
-          cwd: workspace.cwd,
-          worktreePath: workspace.cwd,
-        })
-      })
-      .catch((err) => {
-        const message = err instanceof Error ? err.message : 'Failed to archive worktree'
-        Alert.alert('Error', message)
-      })
-  }, [runArchiveWorktree, workspace.cwd, workspace.isPaseoOwnedWorktree, workspace.serverId])
 
   const handlePress = useCallback(() => {
     if (didLongPressRef.current) {
@@ -271,67 +190,12 @@ function WorkspaceRow({
   }, [onPress])
 
   const handleLongPress = useCallback(() => {
-    if (longPressCancelledRef.current) {
-      return
-    }
     didLongPressRef.current = true
-    longPressArmedRef.current = true
   }, [])
 
   const moveMonitorGesture = useMemo(() => {
-    if (Platform.OS === 'web') {
-      return null
-    }
-
-    const CANCEL_SLOP_PX = 10
-    const DRAG_SLOP_PX = 8
-
-    return Gesture.Pan()
-      .manualActivation(true)
-      .runOnJS(true)
-      .onTouchesDown((event) => {
-        const touch = event.changedTouches[0]
-        if (!touch) {
-          return
-        }
-        touchStartRef.current = { x: touch.absoluteX, y: touch.absoluteY }
-      })
-      .onTouchesMove((event, stateManager) => {
-        const touch = event.changedTouches[0]
-        if (!touch || event.numberOfTouches !== 1) {
-          stateManager.fail()
-          return
-        }
-
-        const start = touchStartRef.current
-        if (!start) {
-          touchStartRef.current = { x: touch.absoluteX, y: touch.absoluteY }
-          return
-        }
-
-        const dx = touch.absoluteX - start.x
-        const dy = touch.absoluteY - start.y
-        const distance = Math.sqrt(dx * dx + dy * dy)
-
-        if (!longPressArmedRef.current) {
-          if (distance > CANCEL_SLOP_PX) {
-            longPressCancelledRef.current = true
-            stateManager.fail()
-          }
-          return
-        }
-
-        if (didStartDragRef.current) {
-          return
-        }
-
-        if (distance > DRAG_SLOP_PX) {
-          didStartDragRef.current = true
-          drag()
-          stateManager.fail()
-        }
-      })
-  }, [drag])
+    return Platform.OS === 'web' ? null : Gesture.Pan().manualActivation(true).runOnJS(true)
+  }, [])
 
   const trigger = (
     <ContextMenuTrigger
@@ -342,46 +206,15 @@ function WorkspaceRow({
         hovered && styles.workspaceRowHovered,
         pressed && styles.workspaceRowPressed,
       ]}
-      onPressIn={(event) => {
-        if (didLongPressCleanupTimerRef.current) {
-          clearTimeout(didLongPressCleanupTimerRef.current)
-          didLongPressCleanupTimerRef.current = null
-        }
-        longPressCancelledRef.current = false
-        longPressArmedRef.current = false
-        didStartDragRef.current = false
-        touchStartRef.current = { x: event.nativeEvent.pageX, y: event.nativeEvent.pageY }
-      }}
-      onPressOut={() => {
-        if (Platform.OS === 'web') {
-          return
-        }
-        if (!longPressArmedRef.current || didStartDragRef.current) {
-          longPressCancelledRef.current = false
-          longPressArmedRef.current = false
-          didStartDragRef.current = false
-          touchStartRef.current = null
-          return
-        }
-        openContextMenuAtTouchStart()
-        didLongPressCleanupTimerRef.current = setTimeout(() => {
-          didLongPressRef.current = false
-          didLongPressCleanupTimerRef.current = null
-        }, 0)
-        longPressCancelledRef.current = false
-        longPressArmedRef.current = false
-        didStartDragRef.current = false
-        touchStartRef.current = null
-      }}
       onPress={handlePress}
       onLongPress={handleLongPress}
       delayLongPress={200}
       testID={`sidebar-workspace-row-${workspace.workspaceKey}`}
     >
       <View style={styles.workspaceRowLeft}>
-        <WorkspaceStatusIndicator bucket={workspace.statusBucket} loading={isArchiving} />
+        <WorkspaceStatusIndicator bucket={workspace.statusBucket} />
         <Text style={styles.workspaceBranchText} numberOfLines={1}>
-          {resolveWorkspaceBranchLabel(workspace)}
+          {workspace.name}
         </Text>
       </View>
       <View style={styles.workspaceRowRight}>
@@ -399,33 +232,10 @@ function WorkspaceRow({
     </ContextMenuTrigger>
   )
 
-  return (
-    <>
-      {moveMonitorGesture ? (
-        <GestureDetector gesture={moveMonitorGesture}>{trigger}</GestureDetector>
-      ) : (
-        trigger
-      )}
-
-      <ContextMenuContent
-        align="start"
-        width={220}
-        testID={`sidebar-workspace-context-${workspace.workspaceKey}`}
-      >
-        <ContextMenuItem
-          leading={<Archive size={16} color={theme.colors.foregroundMuted} />}
-          destructive
-          disabled={!workspace.isPaseoOwnedWorktree}
-          status={workspace.isPaseoOwnedWorktree ? archiveStatus : 'idle'}
-          pendingLabel="Archiving…"
-          successLabel="Archived"
-          onSelect={handleArchiveWorktree}
-          testID={`sidebar-workspace-context-${workspace.workspaceKey}-archive`}
-        >
-          Archive worktree
-        </ContextMenuItem>
-      </ContextMenuContent>
-    </>
+  return moveMonitorGesture ? (
+    <GestureDetector gesture={moveMonitorGesture}>{trigger}</GestureDetector>
+  ) : (
+    trigger
   )
 }
 
@@ -609,11 +419,7 @@ export function SidebarAgentList({
       buildSidebarWorkspaceViewModel({
         projects,
         collapsedProjectKeys,
-        getProjectDisplayName: (project) =>
-          deriveProjectDisplayName({
-            projectKey: project.projectKey,
-            projectName: project.projectName,
-          }),
+        getProjectDisplayName: (project) => project.projectName,
       }),
     [canonicalResyncNonce, collapsedProjectKeys, projects]
   )
@@ -655,12 +461,12 @@ export function SidebarAgentList({
         )
       }
 
-      const workspaceRoute = buildHostWorkspaceRoute(serverId ?? '', item.workspace.cwd)
+      const workspaceRoute = buildHostWorkspaceRoute(serverId ?? '', item.workspace.workspaceId)
       const navigate = shouldReplaceWorkspaceNavigation ? router.replace : router.push
       const isSelected =
         Boolean(serverId) &&
         activeWorkspaceSelection?.serverId === serverId &&
-        activeWorkspaceSelection.workspaceId === item.workspace.cwd
+        activeWorkspaceSelection.workspaceId === item.workspace.workspaceId
 
       return (
         <WorkspaceRowWithMenu
