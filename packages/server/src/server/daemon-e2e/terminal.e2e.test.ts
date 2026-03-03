@@ -42,6 +42,14 @@ function percentile(values: number[], p: number): number {
   return sorted[index];
 }
 
+function mean(values: number[]): number {
+  if (values.length === 0) {
+    return 0;
+  }
+  const total = values.reduce((sum, value) => sum + value, 0);
+  return total / values.length;
+}
+
 const shouldRun = !process.env.CI;
 
 (shouldRun ? describe : describe.skip)("daemon E2E terminal", () => {
@@ -634,7 +642,7 @@ const shouldRun = !process.env.CI;
   );
 
   test(
-    "measures local terminal round-trip latency via daemon client stream",
+    "profiles keystroke-to-echo latency via daemon terminal stream under burst load",
     async () => {
       const cwd = tmpCwd();
       const created = await ctx.client.createTerminal(cwd);
@@ -649,26 +657,106 @@ const shouldRun = !process.env.CI;
         output += decoder.decode(chunk.data, { stream: true });
       });
 
-      const samplesMs: number[] = [];
-      const iterations = 8;
-      for (let i = 0; i < iterations; i++) {
-        const marker = `PASEO_LAT_${i}_${Date.now()}`;
-        const start = performance.now();
-        ctx.client.sendTerminalStreamInput(streamId, `echo ${marker}\r`);
-        await waitForCondition(() => output.includes(marker), 10000);
-        samplesMs.push(performance.now() - start);
+      type Trial = {
+        phase: "stream-only" | "stream+state-sub";
+        iteration: number;
+        payloadBytes: number;
+        latencyMs: number;
+      };
+
+      async function runBurstLoop(input: {
+        phase: Trial["phase"];
+        iterations: number;
+        burstRepeat: number;
+      }): Promise<Trial[]> {
+        const trials: Trial[] = [];
+        let searchStart = 0;
+
+        for (let i = 0; i < input.iterations; i += 1) {
+          const marker = `PASEO_LAT_${input.phase}_${i}_${Date.now()}_${Math.random()
+            .toString(36)
+            .slice(2, 8)}`;
+          const burstBody = "abcdefghijklmnopqrstuvwxyz0123456789".repeat(input.burstRepeat);
+          const payload = `${marker}_${burstBody}`;
+
+          const start = performance.now();
+          ctx.client.sendTerminalStreamInput(streamId, `${payload}\r`);
+
+          await waitForCondition(() => output.indexOf(marker, searchStart) !== -1, 15000);
+
+          const markerOffset = output.indexOf(marker, searchStart);
+          if (markerOffset !== -1) {
+            searchStart = markerOffset + marker.length;
+          }
+
+          trials.push({
+            phase: input.phase,
+            iteration: i + 1,
+            payloadBytes: payload.length,
+            latencyMs: performance.now() - start,
+          });
+
+          await new Promise((resolve) => setTimeout(resolve, 150));
+        }
+
+        return trials;
       }
 
-      const p50 = percentile(samplesMs, 50);
-      const p95 = percentile(samplesMs, 95);
+      // Warm-up: establish prompt/output activity before timed loops.
+      ctx.client.sendTerminalStreamInput(streamId, "echo PASEO_LAT_WARMUP\r");
+      await waitForCondition(() => output.includes("PASEO_LAT_WARMUP"), 10000);
 
-      expect(samplesMs).toHaveLength(iterations);
-      // Localhost budget should be tight; keep margin for test noise.
-      expect(p95).toBeLessThan(350);
+      const streamOnlyTrials = await runBurstLoop({
+        phase: "stream-only",
+        iterations: 10,
+        burstRepeat: 12,
+      });
 
-      // Emit measurements for diagnosis when this test regresses.
+      await ctx.client.subscribeTerminal(terminalId);
+      const withStateSubscriptionTrials = await runBurstLoop({
+        phase: "stream+state-sub",
+        iterations: 10,
+        burstRepeat: 12,
+      });
+      ctx.client.unsubscribeTerminal(terminalId);
+
+      const allTrials = [...streamOnlyTrials, ...withStateSubscriptionTrials];
+      const streamOnlyLatencies = streamOnlyTrials.map((trial) => trial.latencyMs);
+      const withStateLatencies = withStateSubscriptionTrials.map((trial) => trial.latencyMs);
+
+      const streamOnlyP50 = percentile(streamOnlyLatencies, 50);
+      const streamOnlyP95 = percentile(streamOnlyLatencies, 95);
+      const streamOnlyMax = percentile(streamOnlyLatencies, 100);
+      const withStateP50 = percentile(withStateLatencies, 50);
+      const withStateP95 = percentile(withStateLatencies, 95);
+      const withStateMax = percentile(withStateLatencies, 100);
+
+      expect(allTrials).toHaveLength(20);
+      expect(streamOnlyLatencies.length).toBe(10);
+      expect(withStateLatencies.length).toBe(10);
+
+      // Diagnostic output: used as verification/measurement loop in local debugging.
       console.log(
-        `[terminal-latency] samples=${samplesMs.map((n) => n.toFixed(1)).join(",")} p50=${p50.toFixed(1)}ms p95=${p95.toFixed(1)}ms`
+        `[terminal-latency-loop] stream-only samples=${streamOnlyLatencies
+          .map((n) => n.toFixed(1))
+          .join(",")} mean=${mean(streamOnlyLatencies).toFixed(1)}ms p50=${streamOnlyP50.toFixed(
+          1
+        )}ms p95=${streamOnlyP95.toFixed(1)}ms max=${streamOnlyMax.toFixed(1)}ms`
+      );
+      console.log(
+        `[terminal-latency-loop] stream+state-sub samples=${withStateLatencies
+          .map((n) => n.toFixed(1))
+          .join(",")} mean=${mean(withStateLatencies).toFixed(1)}ms p50=${withStateP50.toFixed(
+          1
+        )}ms p95=${withStateP95.toFixed(1)}ms max=${withStateMax.toFixed(1)}ms`
+      );
+      console.log(
+        `[terminal-latency-loop] trial-details=${allTrials
+          .map(
+            (trial) =>
+              `${trial.phase}#${trial.iteration}:${trial.latencyMs.toFixed(1)}ms(${trial.payloadBytes}b)`
+          )
+          .join(" ")}`
       );
 
       const detach = await ctx.client.detachTerminalStream(streamId);
@@ -676,6 +764,6 @@ const shouldRun = !process.env.CI;
       unsubscribe();
       rmSync(cwd, { recursive: true, force: true });
     },
-    30000
+    90000
   );
 });

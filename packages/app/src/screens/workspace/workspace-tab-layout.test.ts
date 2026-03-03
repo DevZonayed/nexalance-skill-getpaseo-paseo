@@ -6,11 +6,12 @@ const metrics = {
   actionsReservedWidth: 120,
   rowPaddingHorizontal: 8,
   tabGap: 4,
+  minTabWidth: 60,
   maxTabWidth: 260,
-  iconOnlyTabWidth: 40,
-  tabBaseWidthWithClose: 84,
-  minLabelChars: 4,
-  charWidth: 7,
+  tabIconWidth: 14,
+  tabHorizontalPadding: 12,
+  estimatedCharWidth: 7,
+  closeButtonWidth: 22,
 };
 
 describe("computeWorkspaceTabLayout", () => {
@@ -22,23 +23,20 @@ describe("computeWorkspaceTabLayout", () => {
     });
 
     expect(result.mode).toBe("full");
-    expect(result.shouldScroll).toBe(false);
     expect(result.showLabels).toBe(true);
     expect(result.showCloseButtons).toBe(true);
   });
 
-  it("shrinks proportionally in compact mode before icon-only", () => {
+  it("uses compact mode before icon-only", () => {
     const result = computeWorkspaceTabLayout({
-      viewportWidth: 500,
+      viewportWidth: 570,
       tabLabelLengths: [24, 12, 8],
       metrics,
     });
 
     expect(result.mode).toBe("compact");
-    expect(result.shouldScroll).toBe(false);
     expect(result.showLabels).toBe(true);
-    expect(result.tabWidths[0]).toBeGreaterThan(result.tabWidths[1]);
-    expect(result.tabWidths[1]).toBeGreaterThan(result.tabWidths[2]);
+    expect(result.showCloseButtons).toBe(false);
   });
 
   it("falls back to icon mode when compact labels still cannot fit", () => {
@@ -51,7 +49,6 @@ describe("computeWorkspaceTabLayout", () => {
     expect(result.mode).toBe("icon");
     expect(result.showLabels).toBe(false);
     expect(result.showCloseButtons).toBe(false);
-    expect(result.shouldScroll).toBe(true);
   });
 
   it("keeps icon mode without scroll when icons can fit", () => {
@@ -62,6 +59,5 @@ describe("computeWorkspaceTabLayout", () => {
     });
 
     expect(result.mode).toBe("icon");
-    expect(result.shouldScroll).toBe(false);
   });
 });

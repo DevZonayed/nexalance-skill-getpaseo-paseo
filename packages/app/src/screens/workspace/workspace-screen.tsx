@@ -575,6 +575,9 @@ function WorkspaceScreenContent({
     if (normalized.startsWith("agent_")) {
       const agentId = normalized.slice("agent_".length).trim();
       if (agentId) {
+        if (areWorkspaceAgentsHydrated && !agentsById.has(agentId)) {
+          return;
+        }
         const tabId = openOrFocusTab({
           serverId: normalizedServerId,
           workspaceId: normalizedWorkspaceId,
@@ -593,6 +596,9 @@ function WorkspaceScreenContent({
     if (normalized.startsWith("terminal_")) {
       const terminalId = normalized.slice("terminal_".length).trim();
       if (terminalId) {
+        if (areWorkspaceTerminalsHydrated && !terminalIds.has(terminalId)) {
+          return;
+        }
         const tabId = openOrFocusTab({
           serverId: normalizedServerId,
           workspaceId: normalizedWorkspaceId,
@@ -624,6 +630,9 @@ function WorkspaceScreenContent({
     }
   }, [
     focusTab,
+    agentsById,
+    areWorkspaceAgentsHydrated,
+    areWorkspaceTerminalsHydrated,
     openDraftTab,
     openOrFocusTab,
     openTabs,
@@ -631,6 +640,7 @@ function WorkspaceScreenContent({
     normalizedServerId,
     normalizedWorkspaceId,
     routeTabId,
+    terminalIds,
   ]);
 
   const activeTabId = useMemo(() => {

@@ -80,11 +80,12 @@ export function WorkspaceDesktopTabsRow({
       actionsReservedWidth: 120,
       rowPaddingHorizontal: theme.spacing[2],
       tabGap: theme.spacing[1],
+      minTabWidth: 60,
       maxTabWidth: 260,
-      iconOnlyTabWidth: 40,
-      tabBaseWidthWithClose: 84,
-      minLabelChars: 4,
-      charWidth: 7,
+      tabIconWidth: 14,
+      tabHorizontalPadding: theme.spacing[3],
+      estimatedCharWidth: 7,
+      closeButtonWidth: 22,
     }),
     [theme.spacing]
   );
@@ -98,7 +99,6 @@ export function WorkspaceDesktopTabsRow({
     <View style={styles.tabsContainer} testID="workspace-tabs-row">
       <ScrollView
         horizontal
-        scrollEnabled={layout.shouldScroll}
         testID="workspace-tabs-scroll"
         style={styles.tabsScroll}
         contentContainerStyle={styles.tabsContent}
@@ -110,7 +110,7 @@ export function WorkspaceDesktopTabsRow({
           useDragHandle
           disabled={tabs.length < 2}
           onDragEnd={onReorderTabs}
-          renderItem={({ item: tab, dragHandleProps, index }) => {
+          renderItem={({ item: tab, dragHandleProps }) => {
             const isActive = tab.key === activeTabKey;
             const tabAgent = tab.kind === "agent" ? agentsById.get(tab.agentId) ?? null : null;
             const isCloseHovered = hoveredCloseTabKey === tab.key;
@@ -125,7 +125,6 @@ export function WorkspaceDesktopTabsRow({
             const isClosingTab = isClosingAgent || isClosingTerminal;
             const shouldShowCloseButton = layout.showCloseButtons;
             const iconColor = isActive ? theme.colors.foreground : theme.colors.foregroundMuted;
-            const tabWidth = layout.tabWidths[index] ?? layoutMetrics.maxTabWidth;
             const tabAgentStatusBucket = tabAgent
               ? deriveSidebarStateBucket({
                   status: tabAgent.status,
@@ -181,7 +180,6 @@ export function WorkspaceDesktopTabsRow({
                   enabledOnMobile={false}
                   style={({ hovered, pressed }) => [
                     styles.tab,
-                    { width: tabWidth, minWidth: tabWidth, maxWidth: tabWidth },
                     layout.mode === "icon" && styles.tabIconOnly,
                     isActive && styles.tabActive,
                     (hovered || pressed || isCloseHovered) && styles.tabHovered,
@@ -200,9 +198,7 @@ export function WorkspaceDesktopTabsRow({
                   <View
                     {...(dragHandleProps?.attributes as any)}
                     {...(dragHandleProps?.listeners as any)}
-                    ref={(node: unknown) => {
-                      dragHandleProps?.setActivatorNodeRef?.(node);
-                    }}
+                    ref={dragHandleProps?.setActivatorNodeRef}
                     style={styles.tabHandle}
                   >
                     <View style={styles.tabIcon}>{icon}</View>
@@ -386,6 +382,8 @@ const styles = StyleSheet.create((theme) => ({
     paddingVertical: theme.spacing[1],
   },
   tab: {
+    minWidth: 60,
+    maxWidth: 260,
     paddingHorizontal: theme.spacing[3],
     paddingVertical: theme.spacing[2],
     borderRadius: theme.borderRadius.md,
@@ -394,6 +392,9 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[1],
   },
   tabIconOnly: {
+    minWidth: 40,
+    width: 40,
+    maxWidth: 40,
     justifyContent: "center",
   },
   tabHandle: {

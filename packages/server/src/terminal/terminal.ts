@@ -8,6 +8,7 @@ import { createRequire } from "node:module";
 const { Terminal } = xterm;
 const require = createRequire(import.meta.url);
 let nodePtySpawnHelperChecked = false;
+const STATE_BROADCAST_INTERVAL_MS = 33;
 
 export interface Cell {
   char: string;
@@ -275,6 +276,8 @@ export async function createTerminal(options: CreateTerminalOptions): Promise<Te
   let killed = false;
   let disposed = false;
   let exitEmitted = false;
+  let stateBroadcastScheduled = false;
+  let stateBroadcastTimer: ReturnType<typeof setTimeout> | null = null;
 
   // Create xterm.js headless terminal
   const terminal = new Terminal({
@@ -319,10 +322,37 @@ export async function createTerminal(options: CreateTerminalOptions): Promise<Te
       return;
     }
     disposed = true;
+    if (stateBroadcastTimer) {
+      clearTimeout(stateBroadcastTimer);
+      stateBroadcastTimer = null;
+    }
+    stateBroadcastScheduled = false;
     terminal.dispose();
     listeners.clear();
     rawListeners.clear();
     exitListeners.clear();
+  }
+
+  function emitStateToListeners(): void {
+    stateBroadcastScheduled = false;
+    if (disposed || killed || listeners.size === 0) {
+      return;
+    }
+    const state = getState();
+    for (const listener of listeners) {
+      listener({ type: "full", state });
+    }
+  }
+
+  function scheduleStateBroadcast(): void {
+    if (disposed || killed || listeners.size === 0 || stateBroadcastScheduled) {
+      return;
+    }
+    stateBroadcastScheduled = true;
+    stateBroadcastTimer = setTimeout(() => {
+      stateBroadcastTimer = null;
+      emitStateToListeners();
+    }, STATE_BROADCAST_INTERVAL_MS);
   }
 
   function appendRawOutputChunk(data: string): void {
@@ -386,11 +416,7 @@ export async function createTerminal(options: CreateTerminalOptions): Promise<Te
     if (killed) return;
     appendRawOutputChunk(data);
     terminal.write(data, () => {
-      // Notify listeners of changes
-      const state = getState();
-      for (const listener of listeners) {
-        listener({ type: "full", state });
-      }
+      scheduleStateBroadcast();
     });
   });
 
