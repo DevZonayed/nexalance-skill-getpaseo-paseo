@@ -37,6 +37,8 @@ PASEO_HOME=~/.paseo-blue npm run dev
 
 - `PASEO_HOME` – path for runtime state (agent data, sockets, etc.). Defaults to `~/.paseo`; set this to a unique directory when running a secondary server instance.
 
+For trace+ logs, check $PASEO_HOME/daemon.log
+
 ## Running and checking logs
 
 Both the server and Expo app are running in a Tmux session. See CLAUDE.local.md for system-specific session details.
