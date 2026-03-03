@@ -251,8 +251,11 @@ async function runAttachmentGc(): Promise<void> {
       import("@/stores/session-store"),
     ]);
 
-    const pendingCreate = useCreateFlowStore.getState().pending;
-    if (pendingCreate?.lifecycle === "active" && pendingCreate.images) {
+    const pendingByDraftId = useCreateFlowStore.getState().pendingByDraftId;
+    for (const pendingCreate of Object.values(pendingByDraftId)) {
+      if (pendingCreate.lifecycle !== "active" || !pendingCreate.images) {
+        continue;
+      }
       for (const image of pendingCreate.images) {
         referencedIds.add(image.id);
       }

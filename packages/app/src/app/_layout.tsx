@@ -48,6 +48,7 @@ import {
   buildHostDraftRoute,
   parseHostAgentRouteFromPathname,
   parseHostWorkspaceAgentRouteFromPathname,
+  parseHostWorkspaceTabRouteFromPathname,
 } from "@/utils/host-routes";
 import { getTauri } from "@/utils/tauri";
 import { PerfDiagnosticsProvider } from "@/runtime/perf-diagnostics";
@@ -381,6 +382,12 @@ function AppWithSidebar({ children }: { children: ReactNode }) {
   // Parse selectedAgentKey directly from pathname
   // useLocalSearchParams doesn't update when navigating between same-pattern routes
   const selectedAgentKey = useMemo(() => {
+    const workspaceTab = parseHostWorkspaceTabRouteFromPathname(pathname);
+    if (workspaceTab?.tabId?.startsWith("agent_")) {
+      const agentId = workspaceTab.tabId.slice("agent_".length).trim();
+      return agentId ? `${workspaceTab.serverId}:${agentId}` : undefined;
+    }
+
     const match =
       parseHostWorkspaceAgentRouteFromPathname(pathname) ??
       parseHostAgentRouteFromPathname(pathname);
@@ -470,6 +477,7 @@ export default function RootLayout() {
                                 <Stack.Screen name="settings" />
                                 <Stack.Screen name="h/[serverId]/new" />
                                 <Stack.Screen name="h/[serverId]/workspace/[workspaceId]/index" />
+                                <Stack.Screen name="h/[serverId]/workspace/[workspaceId]/tab/[tabId]" />
                                 <Stack.Screen
                                   name="h/[serverId]/workspace/[workspaceId]/agent/[agentId]"
                                   options={{ gestureEnabled: false }}

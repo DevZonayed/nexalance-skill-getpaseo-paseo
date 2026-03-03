@@ -51,6 +51,7 @@ import { AGENT_PROVIDER_DEFINITIONS } from '@server/server/agent/provider-manife
 import { buildHostAgentDetailRoute } from '@/utils/host-routes'
 import { useTauriDragHandlers } from '@/utils/tauri-window'
 import { useKeyboardShiftStyle } from '@/hooks/use-keyboard-shift-style'
+import { normalizeAgentSnapshot } from '@/utils/agent-snapshots'
 
 const DRAFT_AGENT_ID = '__new_agent__'
 const EMPTY_PENDING_PERMISSIONS = new Map()
@@ -1023,9 +1024,15 @@ function DraftAgentScreenContent({
           git: gitOptions,
         })
 
-        const agentId = (result as { id?: string })?.id
+        const agentId = result.id
         if (agentId && selectedServerId) {
-          updatePendingAgentId(agentId)
+          updatePendingAgentId({ draftId: draftIdRef.current, agentId })
+          useSessionStore.getState().setAgents(selectedServerId, (prev) => {
+            const next = new Map(prev)
+            next.set(agentId, normalizeAgentSnapshot(result, selectedServerId))
+            return next
+          })
+          void createAgentClient.refreshAgent(agentId).catch(() => undefined)
           router.replace(buildHostAgentDetailRoute(selectedServerId, agentId) as any)
           return
         }
@@ -1035,15 +1042,15 @@ function DraftAgentScreenContent({
           message: 'Failed to create agent',
         })
         onCreateFlowActiveChange?.(false)
-        markPendingCreateLifecycle('abandoned')
-        clearPendingCreateAttempt()
+        markPendingCreateLifecycle({ draftId: draftIdRef.current, lifecycle: 'abandoned' })
+        clearPendingCreateAttempt({ draftId: draftIdRef.current })
         throw new Error('Failed to create agent')
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Failed to create agent'
         dispatch({ type: 'CREATE_FAILED', message })
         onCreateFlowActiveChange?.(false)
-        markPendingCreateLifecycle('abandoned')
-        clearPendingCreateAttempt()
+        markPendingCreateLifecycle({ draftId: draftIdRef.current, lifecycle: 'abandoned' })
+        clearPendingCreateAttempt({ draftId: draftIdRef.current })
         throw error // Re-throw so AgentInputArea knows it failed
       }
     },

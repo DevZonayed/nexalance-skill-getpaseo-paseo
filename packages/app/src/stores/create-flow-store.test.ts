@@ -3,7 +3,7 @@ import { useCreateFlowStore } from "./create-flow-store";
 
 describe("create-flow-store", () => {
   beforeEach(() => {
-    useCreateFlowStore.setState({ pending: null });
+    useCreateFlowStore.setState({ pendingByDraftId: {} });
   });
 
   it("tracks lifecycle transitions explicitly", () => {
@@ -18,10 +18,10 @@ describe("create-flow-store", () => {
       images: [],
     });
 
-    expect(useCreateFlowStore.getState().pending?.lifecycle).toBe("active");
+    expect(useCreateFlowStore.getState().pendingByDraftId["draft-1"]?.lifecycle).toBe("active");
 
-    useCreateFlowStore.getState().markLifecycle("abandoned");
-    expect(useCreateFlowStore.getState().pending?.lifecycle).toBe("abandoned");
+    useCreateFlowStore.getState().markLifecycle({ draftId: "draft-1", lifecycle: "abandoned" });
+    expect(useCreateFlowStore.getState().pendingByDraftId["draft-1"]?.lifecycle).toBe("abandoned");
   });
 
   it("rekeys draft id idempotently", () => {
@@ -44,6 +44,31 @@ describe("create-flow-store", () => {
       toDraftId: "draft-b",
     });
 
-    expect(useCreateFlowStore.getState().pending?.draftId).toBe("draft-b");
+    expect(useCreateFlowStore.getState().pendingByDraftId["draft-b"]?.draftId).toBe("draft-b");
+  });
+
+  it("supports multiple pending attempts", () => {
+    useCreateFlowStore.getState().setPending({
+      draftId: "draft-1",
+      serverId: "server-1",
+      agentId: null,
+      clientMessageId: "msg-1",
+      text: "one",
+      timestamp: Date.now(),
+    });
+    useCreateFlowStore.getState().setPending({
+      draftId: "draft-2",
+      serverId: "server-1",
+      agentId: null,
+      clientMessageId: "msg-2",
+      text: "two",
+      timestamp: Date.now(),
+    });
+
+    const state = useCreateFlowStore.getState();
+    expect(Object.keys(state.pendingByDraftId).sort()).toEqual(["draft-1", "draft-2"]);
+
+    useCreateFlowStore.getState().clear({ draftId: "draft-1" });
+    expect(useCreateFlowStore.getState().pendingByDraftId["draft-1"]).toBeUndefined();
   });
 });

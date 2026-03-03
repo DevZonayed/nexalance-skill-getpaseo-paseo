@@ -436,16 +436,28 @@ function AgentScreenContent({
   );
   const streamItems = streamItemsRaw ?? EMPTY_STREAM_ITEMS;
 
-  const pendingCreate = useCreateFlowStore((state) => state.pending);
+  const pendingByDraftId = useCreateFlowStore((state) => state.pendingByDraftId);
   const markPendingCreateLifecycle = useCreateFlowStore(
     (state) => state.markLifecycle
   );
   const clearPendingCreate = useCreateFlowStore((state) => state.clear);
-  const isPendingCreateForRoute =
-    Boolean(pendingCreate) &&
-    pendingCreate?.lifecycle === "active" &&
-    pendingCreate?.serverId === serverId &&
-    pendingCreate?.agentId === resolvedAgentId;
+  const pendingCreate = useMemo(() => {
+    if (!resolvedAgentId) {
+      return null;
+    }
+    const values = Object.values(pendingByDraftId);
+    for (const entry of values) {
+      if (
+        entry.lifecycle === "active" &&
+        entry.serverId === serverId &&
+        entry.agentId === resolvedAgentId
+      ) {
+        return entry;
+      }
+    }
+    return null;
+  }, [pendingByDraftId, resolvedAgentId, serverId]);
+  const isPendingCreateForRoute = Boolean(pendingCreate);
 
   // Select only the specific initializing state
   const isInitializingFromMap = useSessionStore((state) =>
@@ -740,7 +752,7 @@ function AgentScreenContent({
         item.kind === "user_message" &&
         item.id === pendingCreate.clientMessageId
     );
-    if (hasUserMessage && canFinalizePendingCreate) {
+      if (hasUserMessage && canFinalizePendingCreate) {
       if (
         resolvedAgentId &&
         pendingCreate.images &&
@@ -766,8 +778,8 @@ function AgentScreenContent({
           return next;
         });
       }
-      markPendingCreateLifecycle("sent");
-      clearPendingCreate();
+      markPendingCreateLifecycle({ draftId: pendingCreate.draftId, lifecycle: "sent" });
+      clearPendingCreate({ draftId: pendingCreate.draftId });
     }
   }, [
     canFinalizePendingCreate,

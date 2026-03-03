@@ -11,6 +11,7 @@ import {
   parseHostDraftRouteFromPathname,
   parseHostWorkspaceAgentRouteFromPathname,
   parseHostWorkspaceFileRouteFromPathname,
+  parseHostWorkspaceTabRouteFromPathname,
   parseHostWorkspaceTerminalRouteFromPathname,
   parseHostWorkspaceRouteFromPathname,
 } from "./host-routes";
@@ -73,6 +74,15 @@ describe("workspace route parsing", () => {
     });
   });
 
+  it("parses workspace route for /tab targets", () => {
+    expect(
+      parseHostWorkspaceRouteFromPathname("/h/local/workspace/L3RtcC9yZXBv/tab/draft_abc123")
+    ).toEqual({
+      serverId: "local",
+      workspaceId: "/tmp/repo",
+    });
+  });
+
   it("parses workspace file route", () => {
     const encodedPath = encodeFilePathForPathSegment("src/index.ts");
     expect(
@@ -107,6 +117,18 @@ describe("workspace route parsing", () => {
       serverId: "local",
       workspaceId: "/tmp/repo",
       terminalId: "term-1",
+    });
+  });
+
+  it("parses workspace tab route", () => {
+    expect(
+      parseHostWorkspaceTabRouteFromPathname(
+        "/h/local/workspace/L3RtcC9yZXBv/tab/draft_abc123"
+      )
+    ).toEqual({
+      serverId: "local",
+      workspaceId: "/tmp/repo",
+      tabId: "draft_abc123",
     });
   });
 

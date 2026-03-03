@@ -231,6 +231,10 @@ export function parseHostWorkspaceRouteFromPathname(
   if (terminalIdx >= 0 && terminalIdx > workspaceIdStart) {
     workspaceIdEnd = Math.min(workspaceIdEnd, terminalIdx);
   }
+  const tabIdx = pathname.lastIndexOf("/tab/");
+  if (tabIdx >= 0 && tabIdx > workspaceIdStart) {
+    workspaceIdEnd = Math.min(workspaceIdEnd, tabIdx);
+  }
   const fileIdx = pathname.lastIndexOf("/file/");
   if (fileIdx >= 0 && fileIdx > workspaceIdStart) {
     workspaceIdEnd = Math.min(workspaceIdEnd, fileIdx);
@@ -344,6 +348,55 @@ export function parseHostWorkspaceTerminalRouteFromPathname(
   return { serverId, workspaceId, terminalId };
 }
 
+export function parseHostWorkspaceTabRouteFromPathname(
+  pathname: string
+): { serverId: string; workspaceId: string; tabId: string } | null {
+  const prefix = "/h/";
+  if (!pathname.startsWith(prefix)) {
+    return null;
+  }
+
+  const serverIdStart = prefix.length;
+  const serverIdEnd = pathname.indexOf("/", serverIdStart);
+  if (serverIdEnd < 0) {
+    return null;
+  }
+  const rawServerId = pathname.slice(serverIdStart, serverIdEnd);
+  const serverId = trimNonEmpty(decodeSegment(rawServerId));
+  if (!serverId) {
+    return null;
+  }
+
+  const workspacePrefix = "/workspace/";
+  if (!pathname.startsWith(workspacePrefix, serverIdEnd)) {
+    return null;
+  }
+
+  const workspaceIdStart = serverIdEnd + workspacePrefix.length;
+  const tabMarker = "/tab/";
+  const tabIdx = pathname.lastIndexOf(tabMarker);
+  if (tabIdx < 0 || tabIdx <= workspaceIdStart) {
+    return null;
+  }
+
+  const rawWorkspaceId = pathname.slice(workspaceIdStart, tabIdx).replace(/\/+$/, "");
+  const workspaceId = decodeWorkspaceIdFromPathSegment(rawWorkspaceId);
+  if (!workspaceId) {
+    return null;
+  }
+
+  const tabIdStart = tabIdx + tabMarker.length;
+  const tabIdEnd = pathname.indexOf("/", tabIdStart);
+  const rawTabId =
+    tabIdEnd < 0 ? pathname.slice(tabIdStart) : pathname.slice(tabIdStart, tabIdEnd);
+  const tabId = trimNonEmpty(decodeSegment(rawTabId));
+  if (!tabId) {
+    return null;
+  }
+
+  return { serverId, workspaceId, tabId };
+}
+
 export function parseHostWorkspaceFileRouteFromPathname(
   pathname: string
 ): { serverId: string; workspaceId: string; filePath: string } | null {
@@ -433,6 +486,19 @@ export function buildHostWorkspaceTerminalRoute(
     return "/";
   }
   return `${base}/terminal/${encodeSegment(normalizedTerminalId)}`;
+}
+
+export function buildHostWorkspaceTabRoute(
+  serverId: string,
+  workspaceId: string,
+  tabId: string
+): string {
+  const base = buildHostWorkspaceRoute(serverId, workspaceId);
+  const normalizedTabId = trimNonEmpty(tabId);
+  if (base === "/" || !normalizedTabId) {
+    return "/";
+  }
+  return `${base}/tab/${encodeSegment(normalizedTabId)}`;
 }
 
 export function buildHostWorkspaceFileRoute(

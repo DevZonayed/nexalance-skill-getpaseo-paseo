@@ -38,24 +38,6 @@ export interface FileExplorerFile {
   modifiedAt: string;
 }
 
-const TEXT_EXTENSIONS = new Set([
-  ".ts",
-  ".tsx",
-  ".js",
-  ".jsx",
-  ".json",
-  ".md",
-  ".txt",
-  ".yml",
-  ".yaml",
-  ".css",
-  ".scss",
-  ".html",
-  ".mjs",
-  ".cjs",
-  ".sh",
-]);
-
 const TEXT_MIME_TYPES: Record<string, string> = {
   ".json": "application/json",
 };
@@ -156,17 +138,6 @@ export async function readExplorerFile({
     modifiedAt: stats.mtime.toISOString(),
   };
 
-  if (TEXT_EXTENSIONS.has(ext)) {
-    const content = await fs.readFile(filePath, "utf-8");
-    return {
-      ...basePayload,
-      kind: "text",
-      encoding: "utf-8",
-      content,
-      mimeType: TEXT_MIME_TYPES[ext] ?? DEFAULT_TEXT_MIME_TYPE,
-    };
-  }
-
   if (ext in IMAGE_MIME_TYPES) {
     const buffer = await fs.readFile(filePath);
     return {
@@ -178,11 +149,22 @@ export async function readExplorerFile({
     };
   }
 
+  const buffer = await fs.readFile(filePath);
+  if (isLikelyBinary(buffer)) {
+    return {
+      ...basePayload,
+      kind: "binary",
+      encoding: "none",
+      mimeType: "application/octet-stream",
+    };
+  }
+
   return {
     ...basePayload,
-    kind: "binary",
-    encoding: "none",
-    mimeType: "application/octet-stream",
+    kind: "text",
+    encoding: "utf-8",
+    content: buffer.toString("utf-8"),
+    mimeType: textMimeTypeForExtension(ext),
   };
 }
 
@@ -204,11 +186,23 @@ export async function getDownloadableFileInfo({
   }
 
   const ext = path.extname(filePath).toLowerCase();
-  const mimeType = TEXT_EXTENSIONS.has(ext)
-    ? TEXT_MIME_TYPES[ext] ?? DEFAULT_TEXT_MIME_TYPE
-    : ext in IMAGE_MIME_TYPES
-      ? IMAGE_MIME_TYPES[ext]
-      : "application/octet-stream";
+  let mimeType = "application/octet-stream";
+  if (ext in IMAGE_MIME_TYPES) {
+    mimeType = IMAGE_MIME_TYPES[ext];
+  } else {
+    // Read only a small prefix to classify likely text vs binary.
+    const handle = await fs.open(filePath, "r");
+    const sample = Buffer.alloc(8192);
+    try {
+      const { bytesRead } = await handle.read(sample, 0, sample.length, 0);
+      const chunk = bytesRead < sample.length ? sample.subarray(0, bytesRead) : sample;
+      if (!isLikelyBinary(chunk)) {
+        mimeType = textMimeTypeForExtension(ext);
+      }
+    } finally {
+      await handle.close();
+    }
+  }
 
   return {
     path: normalizeRelativePath({ root, targetPath: filePath }),
@@ -269,4 +263,34 @@ function normalizeRelativePath({
   const normalizedTarget = path.resolve(targetPath);
   const relative = path.relative(normalizedRoot, normalizedTarget);
   return relative === "" ? "." : relative.split(path.sep).join("/");
+}
+
+function textMimeTypeForExtension(ext: string): string {
+  return TEXT_MIME_TYPES[ext] ?? DEFAULT_TEXT_MIME_TYPE;
+}
+
+function isLikelyBinary(buffer: Buffer): boolean {
+  if (buffer.length === 0) {
+    return false;
+  }
+
+  let suspicious = 0;
+  for (let idx = 0; idx < buffer.length; idx += 1) {
+    const byte = buffer[idx];
+    if (byte === 0) {
+      return true;
+    }
+
+    const isControl =
+      byte < 32 &&
+      byte !== 9 && // tab
+      byte !== 10 && // newline
+      byte !== 13; // carriage return
+
+    if (isControl || byte === 127) {
+      suspicious += 1;
+    }
+  }
+
+  return suspicious / buffer.length > 0.3;
 }

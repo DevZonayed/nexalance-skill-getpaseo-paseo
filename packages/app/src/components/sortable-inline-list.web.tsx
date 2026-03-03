@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type ReactElement } from "react";
+import { useCallback, useState, type ReactElement } from "react";
 import {
   DndContext,
   closestCenter,
@@ -118,14 +118,8 @@ export function SortableInlineList<T>({
   onDragBegin?: () => void;
 }): ReactElement {
   const [activeId, setActiveId] = useState<string | null>(null);
-  const [items, setItems] = useState<T[]>(() => data);
-
-  useEffect(() => {
-    if (activeId) {
-      return;
-    }
-    setItems((current) => (current === data ? current : data));
-  }, [activeId, data]);
+  const [dragItems, setDragItems] = useState<T[] | null>(null);
+  const items = dragItems ?? data;
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -143,10 +137,11 @@ export function SortableInlineList<T>({
       if (disabled) {
         return;
       }
+      setDragItems(data);
       setActiveId(String(event.active.id));
       onDragBegin?.();
     },
-    [disabled, onDragBegin]
+    [data, disabled, onDragBegin]
   );
 
   const handleDragEnd = useCallback(
@@ -154,6 +149,7 @@ export function SortableInlineList<T>({
       const { active, over } = event;
 
       setActiveId(null);
+      setDragItems(null);
 
       if (disabled) {
         return;
@@ -169,10 +165,11 @@ export function SortableInlineList<T>({
 
         if (oldIndex >= 0 && newIndex >= 0 && oldIndex !== newIndex) {
           const newItems = arrayMove(items, oldIndex, newIndex);
-          setItems(newItems);
+          setDragItems(newItems);
           onDragEnd?.(newItems);
         }
       }
+
     },
     [disabled, items, keyExtractor, onDragEnd]
   );

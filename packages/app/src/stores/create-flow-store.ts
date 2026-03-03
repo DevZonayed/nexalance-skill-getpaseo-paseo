@@ -15,63 +15,82 @@ type PendingCreateAttempt = {
 };
 
 type CreateFlowState = {
-  pending: PendingCreateAttempt | null;
+  pendingByDraftId: Record<string, PendingCreateAttempt>;
   setPending: (
     pending: Omit<PendingCreateAttempt, "lifecycle">
   ) => void;
-  updateAgentId: (agentId: string) => void;
-  markLifecycle: (lifecycle: CreateFlowLifecycleState) => void;
+  updateAgentId: (input: { draftId: string; agentId: string }) => void;
+  markLifecycle: (input: {
+    draftId: string;
+    lifecycle: CreateFlowLifecycleState;
+  }) => void;
   rekeyDraft: (input: { fromDraftId: string; toDraftId: string }) => void;
-  clear: () => void;
+  clear: (input: { draftId: string }) => void;
+  clearAll: () => void;
 };
 
 export const useCreateFlowStore = create<CreateFlowState>((set) => ({
-  pending: null,
+  pendingByDraftId: {},
   setPending: (pending) =>
-    set({
-      pending: {
-        ...pending,
-        lifecycle: "active",
+    set((state) => ({
+      pendingByDraftId: {
+        ...state.pendingByDraftId,
+        [pending.draftId]: {
+          ...pending,
+          lifecycle: "active",
+        },
       },
-    }),
-  updateAgentId: (agentId) =>
+    })),
+  updateAgentId: ({ draftId, agentId }) =>
     set((state) => {
-      if (!state.pending || state.pending.agentId === agentId) {
+      const current = state.pendingByDraftId[draftId];
+      if (!current || current.agentId === agentId) {
         return state;
       }
       return {
-        pending: {
-          ...state.pending,
-          agentId,
+        pendingByDraftId: {
+          ...state.pendingByDraftId,
+          [draftId]: { ...current, agentId },
         },
       };
     }),
-  markLifecycle: (lifecycle) =>
+  markLifecycle: ({ draftId, lifecycle }) =>
     set((state) => {
-      if (!state.pending || state.pending.lifecycle === lifecycle) {
+      const current = state.pendingByDraftId[draftId];
+      if (!current || current.lifecycle === lifecycle) {
         return state;
       }
       return {
-        pending: {
-          ...state.pending,
-          lifecycle,
+        pendingByDraftId: {
+          ...state.pendingByDraftId,
+          [draftId]: { ...current, lifecycle },
         },
       };
     }),
   rekeyDraft: ({ fromDraftId, toDraftId }) =>
     set((state) => {
-      if (!state.pending || state.pending.draftId !== fromDraftId) {
+      const current = state.pendingByDraftId[fromDraftId];
+      if (!current) {
         return state;
       }
-      if (state.pending.draftId === toDraftId) {
+      if (fromDraftId === toDraftId) {
         return state;
       }
+      const { [fromDraftId]: _removed, ...rest } = state.pendingByDraftId;
       return {
-        pending: {
-          ...state.pending,
-          draftId: toDraftId,
+        pendingByDraftId: {
+          ...rest,
+          [toDraftId]: { ...current, draftId: toDraftId },
         },
       };
     }),
-  clear: () => set({ pending: null }),
+  clear: ({ draftId }) =>
+    set((state) => {
+      if (!state.pendingByDraftId[draftId]) {
+        return state;
+      }
+      const { [draftId]: _removed, ...rest } = state.pendingByDraftId;
+      return { pendingByDraftId: rest };
+    }),
+  clearAll: () => set({ pendingByDraftId: {} }),
 }));

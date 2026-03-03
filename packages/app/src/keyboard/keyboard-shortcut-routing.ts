@@ -3,6 +3,7 @@ import {
   parseHostAgentRouteFromPathname,
   parseHostWorkspaceAgentRouteFromPathname,
   parseHostWorkspaceRouteFromPathname,
+  parseHostWorkspaceTabRouteFromPathname,
 } from "@/utils/host-routes";
 
 const DRAFT_AGENT_ID = "__new_agent__";
@@ -14,6 +15,19 @@ export function resolveSelectedOrRouteAgentKey(input: {
   if (input.selectedAgentId) {
     return input.selectedAgentId;
   }
+
+  const workspaceTabRoute = parseHostWorkspaceTabRouteFromPathname(input.pathname);
+  if (workspaceTabRoute?.tabId) {
+    const tabId = workspaceTabRoute.tabId;
+    if (tabId.startsWith("agent_")) {
+      const agentId = tabId.slice("agent_".length).trim();
+      return agentId ? `${workspaceTabRoute.serverId}:${agentId}` : null;
+    }
+    if (tabId.startsWith("draft_")) {
+      return `${workspaceTabRoute.serverId}:${DRAFT_AGENT_ID}`;
+    }
+  }
+
   const route =
     parseHostWorkspaceAgentRouteFromPathname(input.pathname) ??
     parseHostAgentRouteFromPathname(input.pathname);

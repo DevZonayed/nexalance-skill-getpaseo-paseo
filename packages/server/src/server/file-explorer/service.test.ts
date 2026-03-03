@@ -2,7 +2,7 @@ import { mkdtemp, mkdir, rm, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { listDirectoryEntries } from "./service.js";
+import { listDirectoryEntries, readExplorerFile } from "./service.js";
 
 async function createTempDir(prefix: string): Promise<string> {
   return mkdtemp(path.join(os.tmpdir(), prefix));
@@ -27,6 +27,71 @@ describe("file explorer service", () => {
       const names = result.entries.map((entry) => entry.name);
       expect(names).toContain("README.md");
       expect(names).not.toContain("AGENTS.md");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("reads .ex files as text", async () => {
+    const root = await createTempDir("paseo-file-explorer-");
+
+    try {
+      const filePath = path.join(root, "sample.ex");
+      const content = "defmodule Sample do\nend\n";
+      await writeFile(filePath, content, "utf-8");
+
+      const result = await readExplorerFile({
+        root,
+        relativePath: "sample.ex",
+      });
+
+      expect(result.kind).toBe("text");
+      expect(result.encoding).toBe("utf-8");
+      expect(result.mimeType).toBe("text/plain");
+      expect(result.content).toBe(content);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("reads unknown extension text files as text", async () => {
+    const root = await createTempDir("paseo-file-explorer-");
+
+    try {
+      const filePath = path.join(root, "notes.customext");
+      const content = "hello from a custom text file\n";
+      await writeFile(filePath, content, "utf-8");
+
+      const result = await readExplorerFile({
+        root,
+        relativePath: "notes.customext",
+      });
+
+      expect(result.kind).toBe("text");
+      expect(result.encoding).toBe("utf-8");
+      expect(result.mimeType).toBe("text/plain");
+      expect(result.content).toBe(content);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("classifies files with null bytes as binary", async () => {
+    const root = await createTempDir("paseo-file-explorer-");
+
+    try {
+      const filePath = path.join(root, "blob.weird");
+      await writeFile(filePath, Buffer.from([0x48, 0x65, 0x00, 0x6c, 0x6f]));
+
+      const result = await readExplorerFile({
+        root,
+        relativePath: "blob.weird",
+      });
+
+      expect(result.kind).toBe("binary");
+      expect(result.encoding).toBe("none");
+      expect(result.content).toBeUndefined();
+      expect(result.mimeType).toBe("application/octet-stream");
     } finally {
       await rm(root, { recursive: true, force: true });
     }
