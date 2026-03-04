@@ -114,6 +114,12 @@ type WorkspaceTabsState = {
   }) => string | null;
   focusTab: (input: { serverId: string; workspaceId: string; tabId: string }) => void;
   closeTab: (input: { serverId: string; workspaceId: string; tabId: string }) => void;
+  promoteDraftToAgent: (input: {
+    serverId: string;
+    workspaceId: string;
+    draftTabId: string;
+    agentId: string;
+  }) => string | null;
   reorderTabs: (input: { serverId: string; workspaceId: string; tabIds: string[] }) => void;
   getWorkspaceTabs: (input: { serverId: string; workspaceId: string }) => WorkspaceTab[];
 };
@@ -265,6 +271,82 @@ export const useWorkspaceTabsStore = create<WorkspaceTabsState>()(
             focusedTabIdByWorkspace: nextFocusedByWorkspace,
           };
         });
+      },
+      promoteDraftToAgent: ({ serverId, workspaceId, draftTabId, agentId }) => {
+        const key = buildWorkspaceTabPersistenceKey({ serverId, workspaceId });
+        const normalizedDraftTabId = trimNonEmpty(draftTabId);
+        const normalizedAgentId = trimNonEmpty(agentId);
+        if (!key || !normalizedDraftTabId || !normalizedAgentId) {
+          return null;
+        }
+
+        const nextTabId = `agent_${normalizedAgentId}`;
+        let promotedTabId: string | null = null;
+
+        set((state) => {
+          const currentOrder = state.tabOrderByWorkspace[key] ?? [];
+          const currentTabs = state.uiTabsByWorkspace[key] ?? [];
+          const hasDraftInOrder = currentOrder.includes(normalizedDraftTabId);
+          const hasDraftInUiTabs = currentTabs.some((tab) => tab.tabId === normalizedDraftTabId);
+          if (!hasDraftInOrder && !hasDraftInUiTabs) {
+            return state;
+          }
+
+          const hasAgentTabInOrder = currentOrder.includes(nextTabId);
+          const nextOrder = hasAgentTabInOrder
+            ? currentOrder.filter((tabId) => tabId !== normalizedDraftTabId)
+            : currentOrder
+                .map((tabId) => (tabId === normalizedDraftTabId ? nextTabId : tabId))
+                .filter((tabId, index, arr) => arr.indexOf(tabId) === index);
+
+          const nextTabs = currentTabs.filter((tab) => tab.tabId !== normalizedDraftTabId);
+          const nextUiTabsByWorkspace =
+            nextTabs.length === 0
+              ? (() => {
+                  const { [key]: _removed, ...rest } = state.uiTabsByWorkspace;
+                  return rest;
+                })()
+              : nextTabs.length === currentTabs.length
+                ? state.uiTabsByWorkspace
+                : { ...state.uiTabsByWorkspace, [key]: nextTabs };
+
+          const nextTabOrderByWorkspace =
+            nextOrder.length === 0
+              ? (() => {
+                  const { [key]: _removed, ...rest } = state.tabOrderByWorkspace;
+                  return rest;
+                })()
+              : nextOrder.length === currentOrder.length &&
+                  nextOrder.every((tabId, index) => tabId === currentOrder[index])
+                ? state.tabOrderByWorkspace
+                : { ...state.tabOrderByWorkspace, [key]: nextOrder };
+
+          const currentFocused = trimNonEmpty(state.focusedTabIdByWorkspace[key]);
+          const nextFocused = !currentFocused || currentFocused === normalizedDraftTabId ? nextTabId : currentFocused;
+          const nextFocusedByWorkspace =
+            nextFocused === currentFocused
+              ? state.focusedTabIdByWorkspace
+              : { ...state.focusedTabIdByWorkspace, [key]: nextFocused };
+
+          const tabsChanged = nextTabs.length !== currentTabs.length;
+          const orderChanged =
+            nextOrder.length !== currentOrder.length ||
+            nextOrder.some((tabId, index) => tabId !== currentOrder[index]);
+          const focusChanged = nextFocused !== currentFocused;
+
+          if (!tabsChanged && !orderChanged && !focusChanged) {
+            return state;
+          }
+
+          promotedTabId = nextTabId;
+          return {
+            uiTabsByWorkspace: nextUiTabsByWorkspace,
+            tabOrderByWorkspace: nextTabOrderByWorkspace,
+            focusedTabIdByWorkspace: nextFocusedByWorkspace,
+          };
+        });
+
+        return promotedTabId;
       },
       reorderTabs: ({ serverId, workspaceId, tabIds }) => {
         const key = buildWorkspaceTabPersistenceKey({ serverId, workspaceId });

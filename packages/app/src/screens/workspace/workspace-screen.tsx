@@ -411,6 +411,7 @@ function WorkspaceScreenContent({
   const openOrFocusTab = useWorkspaceTabsStore((state) => state.openOrFocusTab);
   const focusTab = useWorkspaceTabsStore((state) => state.focusTab);
   const closeWorkspaceTab = useWorkspaceTabsStore((state) => state.closeTab);
+  const promoteDraftToAgent = useWorkspaceTabsStore((state) => state.promoteDraftToAgent);
   const reorderWorkspaceTabs = useWorkspaceTabsStore((state) => state.reorderTabs);
 
   useEffect(() => {
@@ -971,15 +972,11 @@ function WorkspaceScreenContent({
           draftId={target.draftId}
           onCreated={(agentSnapshot) => {
             const tabId = activeTabId ?? target.draftId;
-            const nextAgentTabId = openOrFocusTab({
+            const nextAgentTabId = promoteDraftToAgent({
               serverId: normalizedServerId,
               workspaceId: normalizedWorkspaceId,
-              target: { kind: "agent", agentId: agentSnapshot.id },
-            });
-            closeWorkspaceTab({
-              serverId: normalizedServerId,
-              workspaceId: normalizedWorkspaceId,
-              tabId,
+              draftTabId: tabId,
+              agentId: agentSnapshot.id,
             });
             if (nextAgentTabId) {
               navigateToTabId(nextAgentTabId);
