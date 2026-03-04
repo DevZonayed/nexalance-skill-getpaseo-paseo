@@ -10,7 +10,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useCallback, useMemo, useState, type ReactElement } from "react";
-import { router, usePathname } from "expo-router";
+import { router, usePathname, type Href } from "expo-router";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { useQueryClient } from "@tanstack/react-query";
 import { formatTimeAgo } from "@/utils/time";
@@ -33,7 +33,7 @@ import {
   startNavigationTiming,
 } from "@/utils/navigation-timing";
 import {
-  buildHostAgentDetailRoute,
+  buildHostWorkspaceAgentTabRoute,
 } from "@/utils/host-routes";
 
 interface AgentListProps {
@@ -189,7 +189,12 @@ export function AgentList({
 
       onAgentSelect?.();
 
-      navigate(buildHostAgentDetailRoute(serverId, agentId, agent.cwd) as any);
+      const route: Href = buildHostWorkspaceAgentTabRoute(
+        serverId,
+        agent.cwd,
+        agentId
+      ) as Href;
+      navigate(route);
     },
     [isActionSheetVisible, pathname, onAgentSelect]
   );

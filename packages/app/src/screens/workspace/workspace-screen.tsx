@@ -1265,11 +1265,10 @@ function WorkspaceScreenContent({
     }
 
     if (target.kind === "agent") {
-      return (
+        return (
         <AgentReadyScreen
           serverId={normalizedServerId}
           agentId={target.agentId}
-          showHeader={false}
           showExplorerSidebar={false}
           wrapWithExplorerSidebarProvider={false}
         />

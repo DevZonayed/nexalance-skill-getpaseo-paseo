@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { TextInput } from "react-native";
-import { router, usePathname } from "expo-router";
+import { router, usePathname, type Href } from "expo-router";
 import { useKeyboardShortcutsStore } from "@/stores/keyboard-shortcuts-store";
 import { useAggregatedAgents, type AggregatedAgent } from "@/hooks/use-aggregated-agents";
 import { useSessionStore } from "@/stores/session-store";
@@ -75,7 +75,7 @@ type CommandCenterActionDefinition = {
   icon?: "plus" | "settings";
   shortcutKeys?: ShortcutKey[];
   keywords: string[];
-  buildRoute: (params: { newAgentRoute: string; settingsRoute: string }) => string;
+  buildRoute: (params: { newAgentRoute: Href; settingsRoute: Href }) => Href;
 };
 
 const COMMAND_CENTER_ACTIONS: readonly CommandCenterActionDefinition[] = [
@@ -113,7 +113,7 @@ export type CommandCenterActionItem = {
   id: string;
   title: string;
   icon?: "plus" | "settings";
-  route: string;
+  route: Href;
   shortcutKeys?: ShortcutKey[];
 };
 
@@ -154,19 +154,19 @@ export function useCommandCenter() {
     [pathname]
   );
 
-  const newAgentRoute = useMemo(() => {
+  const newAgentRoute = useMemo<Href>(() => {
     const serverIdFromPath =
       parseServerIdFromPathname(pathname) ?? fallbackServerId;
     const routeAgent = parseAgentRouteFromPathname(pathname);
     if (!routeAgent) {
-      return serverIdFromPath ? buildNewAgentRoute(serverIdFromPath) : "/";
+      return serverIdFromPath ? (buildNewAgentRoute(serverIdFromPath) as Href) : "/";
     }
 
     const { serverId, agentId } = routeAgent;
     const currentAgent = useSessionStore.getState().sessions[serverId]?.agents?.get(agentId);
     const cwd = currentAgent?.cwd?.trim();
     if (!cwd) {
-      return buildNewAgentRoute(serverId);
+      return buildNewAgentRoute(serverId) as Href;
     }
 
     const checkout =
@@ -174,13 +174,13 @@ export function useCommandCenter() {
         checkoutStatusQueryKey(serverId, cwd)
       ) ?? null;
     const workingDir = resolveNewAgentWorkingDir(cwd, checkout);
-    return buildNewAgentRoute(serverId, workingDir);
+    return buildNewAgentRoute(serverId, workingDir) as Href;
   }, [fallbackServerId, pathname]);
 
-  const settingsRoute = useMemo(() => {
+  const settingsRoute = useMemo<Href>(() => {
     const serverIdFromPath =
       parseServerIdFromPathname(pathname) ?? fallbackServerId;
-    return serverIdFromPath ? buildHostSettingsRoute(serverIdFromPath) : "/";
+    return serverIdFromPath ? (buildHostSettingsRoute(serverIdFromPath) as Href) : "/";
   }, [fallbackServerId, pathname]);
 
   const actionItems = useMemo(() => {
@@ -230,9 +230,12 @@ export function useCommandCenter() {
       // Don't restore focus back to the prior element after we navigate.
       clearCommandCenterFocusRestoreElement();
       setOpen(false);
-      navigate(
-        buildHostWorkspaceAgentTabRoute(agent.serverId, agent.cwd, agent.id) as any
-      );
+      const route: Href = buildHostWorkspaceAgentTabRoute(
+        agent.serverId,
+        agent.cwd,
+        agent.id
+      ) as Href;
+      navigate(route);
     },
     [pathname, requestMessageInputAction, setOpen]
   );
@@ -241,7 +244,7 @@ export function useCommandCenter() {
     didNavigateRef.current = true;
     clearCommandCenterFocusRestoreElement();
     setOpen(false);
-    router.push(action.route as any);
+    router.push(action.route);
   }, [setOpen]);
 
   const handleSelectItem = useCallback(

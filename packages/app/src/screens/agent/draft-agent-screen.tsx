@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useReducer, useRef, useState, useSyncE
 import { createNameId } from 'mnemonic-id'
 import type { ImageAttachment } from '@/components/message-input'
 import { View, Text, Pressable, ScrollView, Keyboard, Platform } from 'react-native'
-import { useLocalSearchParams, useRouter } from 'expo-router'
+import { useLocalSearchParams, useRouter, type Href } from 'expo-router'
 import { useIsFocused } from '@react-navigation/native'
 import { StyleSheet, UnistylesRuntime, useUnistyles } from 'react-native-unistyles'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
@@ -1037,9 +1037,12 @@ function DraftAgentScreenContent({
           const configuredWorkingDir = config.cwd.trim()
           const workspaceId =
             createdWorkingDir.length > 0 ? createdWorkingDir : configuredWorkingDir
-          router.replace(
-            buildHostWorkspaceAgentTabRoute(selectedServerId, workspaceId, agentId) as any
-          )
+          const route: Href = buildHostWorkspaceAgentTabRoute(
+            selectedServerId,
+            workspaceId,
+            agentId
+          ) as Href
+          router.replace(route)
           return
         }
 

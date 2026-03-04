@@ -8,7 +8,6 @@ import {
   Alert,
   StatusBar,
   ScrollView,
-  RefreshControl,
   type GestureResponderEvent,
 } from 'react-native'
 import { useQueries } from '@tanstack/react-query'
@@ -55,7 +54,6 @@ import { useCheckoutGitActionsStore } from '@/stores/checkout-git-actions-store'
 import { buildSidebarShortcutModel } from '@/utils/sidebar-shortcuts'
 import { hasVisibleOrderChanged, mergeWithRemainder } from '@/utils/sidebar-reorder'
 import {
-  decideLongPressMove,
   shouldOpenContextMenuOnPressOut,
 } from '@/utils/sidebar-gesture-arbitration'
 
@@ -276,10 +274,9 @@ function useLongPressDragInteraction(input: {
         }
         touchStartRef.current = { x: touch.absoluteX, y: touch.absoluteY }
       })
-      .onTouchesMove((event, stateManager) => {
+      .onTouchesMove((event) => {
         const touch = event.changedTouches[0]
         if (!touch || event.numberOfTouches !== 1) {
-          stateManager.fail()
           return
         }
 
@@ -289,28 +286,27 @@ function useLongPressDragInteraction(input: {
           return
         }
 
-        const decision = decideLongPressMove({
-          longPressArmed: longPressArmedRef.current,
-          didStartDrag: didStartDragRef.current,
-          startPoint: start,
-          currentPoint: { x: touch.absoluteX, y: touch.absoluteY },
-          cancelSlopPx: CANCEL_SLOP_PX,
-          dragSlopPx: DRAG_SLOP_PX,
-        })
-
-        if (decision === 'cancel_long_press') {
-          longPressCancelledRef.current = true
-          stateManager.fail()
+        if (didStartDragRef.current) {
           return
         }
 
-        if (decision === 'start_drag') {
+        const dx = touch.absoluteX - start.x
+        const dy = touch.absoluteY - start.y
+        const distance = Math.sqrt(dx * dx + dy * dy)
+
+        if (!longPressArmedRef.current) {
+          if (distance > CANCEL_SLOP_PX) {
+            longPressCancelledRef.current = true
+          }
+          return
+        }
+
+        if (distance > DRAG_SLOP_PX) {
           didStartDragRef.current = true
           input.drag()
-          stateManager.fail()
         }
       })
-  }, [input])
+  }, [input.drag])
 
   return {
     didLongPressRef,
@@ -1038,10 +1034,6 @@ export function SidebarWorkspaceList({
     ]
   )
 
-  const refreshControl = onRefresh ? (
-    <RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} />
-  ) : undefined
-
   const content = (
     <>
       {projects.length === 0 ? (
@@ -1070,7 +1062,6 @@ export function SidebarWorkspaceList({
           style={styles.list}
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
-          refreshControl={refreshControl}
           testID="sidebar-project-workspace-list-scroll"
         >
           {content}
@@ -1080,7 +1071,6 @@ export function SidebarWorkspaceList({
           style={styles.list}
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
-          refreshControl={refreshControl}
           testID="sidebar-project-workspace-list-scroll"
         >
           {content}

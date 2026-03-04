@@ -3,30 +3,16 @@ import {
   View,
   Text,
   ActivityIndicator,
-  Pressable,
-  ScrollView,
   Platform,
   BackHandler,
 } from "react-native";
-import { useRouter } from "expo-router";
-import * as Clipboard from "expo-clipboard";
+import { useRouter, type Href } from "expo-router";
 import { useFocusEffect } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQueryClient } from "@tanstack/react-query";
 import ReanimatedAnimated from "react-native-reanimated";
 import { GestureDetector } from "react-native-gesture-handler";
 import { StyleSheet, UnistylesRuntime, useUnistyles } from "react-native-unistyles";
-import {
-  MoreVertical,
-  GitBranch,
-  Folder,
-  RotateCcw,
-  PanelRight,
-  CheckCircle2,
-} from "lucide-react-native";
-import { MenuHeader } from "@/components/headers/menu-header";
-import { BackHeader } from "@/components/headers/back-header";
-import { HeaderToggleButton } from "@/components/headers/header-toggle-button";
 import { AgentStreamView, type AgentStreamViewHandle } from "@/components/agent-stream-view";
 import { AgentInputArea } from "@/components/agent-input-area";
 import { ExplorerSidebar } from "@/components/explorer-sidebar";
@@ -48,13 +34,8 @@ import type { StreamItem } from "@/types/stream";
 import {
   buildAgentNavigationKey,
   endNavigationTiming,
-  HOME_NAVIGATION_KEY,
-  startNavigationTiming,
 } from "@/utils/navigation-timing";
-import { extractAgentModel } from "@/utils/extract-agent-model";
 import { startPerfMonitor } from "@/utils/perf-monitor";
-import { shortenPath } from "@/utils/shorten-path";
-import { deriveBranchLabel, deriveProjectPath } from "@/utils/agent-display-info";
 import {
   checkoutStatusQueryKey,
   type CheckoutStatusPayload,
@@ -78,17 +59,9 @@ import { useKeyboardShiftStyle } from "@/hooks/use-keyboard-shift-style";
 import { shouldClearAgentAttentionOnView } from "@/utils/agent-attention";
 import type { DaemonClient } from "@server/client/daemon-client";
 import { useExplorerOpenGesture } from "@/hooks/use-explorer-open-gesture";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { buildHostAgentDraftRoute } from "@/utils/host-routes";
 import type { ExplorerCheckoutContext } from "@/stores/panel-store";
 
-const DROPDOWN_WIDTH = 220;
 const EMPTY_STREAM_ITEMS: StreamItem[] = [];
 const IS_DEV = Boolean((globalThis as { __DEV__?: boolean }).__DEV__);
 
@@ -102,17 +75,14 @@ function logAgentExplorer(event: string, details: Record<string, unknown>): void
 export function AgentReadyScreen({
   serverId,
   agentId,
-  showHeader = true,
   showExplorerSidebar = true,
   wrapWithExplorerSidebarProvider = true,
 }: {
   serverId: string;
   agentId: string;
-  showHeader?: boolean;
   showExplorerSidebar?: boolean;
   wrapWithExplorerSidebarProvider?: boolean;
 }) {
-  const router = useRouter();
   const resolvedAgentId = agentId?.trim() || undefined;
   const resolvedServerId = serverId?.trim() || undefined;
   const { daemons } = useDaemonRegistry();
@@ -135,33 +105,6 @@ export function AgentReadyScreen({
     (isUnknownDaemon ? "offline" : "connecting");
   const lastConnectionError = runtimeSnapshot?.lastError ?? null;
   const isRuntimeSessionAvailable = Boolean(resolvedServerId && runtimeClient);
-
-  const handleBackToHome = useCallback(() => {
-    const targetServerId = resolvedServerId;
-    const targetAgentId = resolvedAgentId ?? null;
-    if (targetServerId && targetAgentId) {
-      startNavigationTiming(HOME_NAVIGATION_KEY, {
-        from: "agent",
-        to: "home",
-        targetMs: 300,
-        params: {
-          serverId: targetServerId,
-          agentId: targetAgentId,
-        },
-      });
-    } else {
-      startNavigationTiming(HOME_NAVIGATION_KEY, {
-        from: "agent",
-        to: "home",
-        targetMs: 300,
-      });
-    }
-    if (targetServerId) {
-      router.replace(buildHostAgentDraftRoute(targetServerId) as any);
-      return;
-    }
-    router.replace("/" as any);
-  }, [resolvedAgentId, resolvedServerId, router]);
 
   const focusServerId = resolvedServerId;
   const navigationStatus = isRuntimeSessionAvailable
@@ -187,7 +130,6 @@ export function AgentReadyScreen({
   if (!resolvedServerId || !runtimeClient) {
     return (
       <AgentSessionUnavailableState
-        onBack={handleBackToHome}
         serverLabel={serverLabel}
         connectionStatus={connectionStatus}
         lastError={lastConnectionError}
@@ -203,7 +145,6 @@ export function AgentReadyScreen({
       client={runtimeClient}
       isConnected={runtimeIsConnected}
       connectionStatus={connectionStatus}
-      showHeader={showHeader}
       showExplorerSidebar={showExplorerSidebar}
     />
   );
@@ -221,7 +162,6 @@ type AgentScreenContentProps = {
   client: DaemonClient;
   isConnected: boolean;
   connectionStatus: HostRuntimeConnectionStatus;
-  showHeader: boolean;
   showExplorerSidebar: boolean;
 };
 
@@ -242,7 +182,6 @@ function AgentScreenContent({
   client,
   isConnected,
   connectionStatus,
-  showHeader,
   showExplorerSidebar,
 }: AgentScreenContentProps) {
   const { theme } = useUnistyles();
@@ -269,7 +208,6 @@ function AgentScreenContent({
 
   const mobileView = usePanelStore((state) => state.mobileView);
   const desktopFileExplorerOpen = usePanelStore((state) => state.desktop.fileExplorerOpen);
-  const toggleFileExplorer = usePanelStore((state) => state.toggleFileExplorer);
   const openFileExplorer = usePanelStore((state) => state.openFileExplorer);
   const closeToAgent = usePanelStore((state) => state.closeToAgent);
   const setActiveExplorerCheckout = usePanelStore((state) => state.setActiveExplorerCheckout);
@@ -348,19 +286,6 @@ function AgentScreenContent({
     }
     openFileExplorer();
   }, [activateExplorerTabForCheckout, openFileExplorer, resolveCurrentExplorerCheckout]);
-  const handleToggleExplorer = useCallback(() => {
-    logAgentExplorer("handleToggleExplorer", {
-      isExplorerOpen,
-      mobileView,
-      isMobile,
-    });
-    if (isExplorerOpen) {
-      toggleFileExplorer();
-      return;
-    }
-    openExplorerForActiveCheckout();
-  }, [isExplorerOpen, isMobile, mobileView, openExplorerForActiveCheckout, toggleFileExplorer]);
-
   useEffect(() => {
     if (Platform.OS !== "web") {
       return;
@@ -501,7 +426,7 @@ function AgentScreenContent({
   const focusedAgentId = useSessionStore(
     (state) => state.sessions[serverId]?.focusedAgentId ?? null
   );
-  const { ensureAgentIsInitialized, refreshAgent } = useAgentInitialization({
+  const { ensureAgentIsInitialized } = useAgentInitialization({
     serverId,
     client: hasSession ? client : null,
   });
@@ -604,7 +529,8 @@ function AgentScreenContent({
       return;
     }
     hasRedirectedArchivedAgentRef.current = true;
-    router.replace(buildHostAgentDraftRoute(serverId) as any);
+    const route: Href = buildHostAgentDraftRoute(serverId) as Href;
+    router.replace(route);
   }, [agent?.archivedAt, resolvedAgentId, router, serverId]);
 
   useEffect(() => {
@@ -730,19 +656,6 @@ function AgentScreenContent({
   });
 
   const effectiveAgent = viewState.tag === "ready" ? viewState.agent : null;
-  const agentModel = extractAgentModel(effectiveAgent ?? agent);
-  const modelDisplayValue = agentModel ?? "Unknown";
-  const providerLabel = (effectiveAgent?.provider ?? "Provider").replace(
-    /^\w/,
-    (m) => m.toUpperCase()
-  );
-  const providerSessionId =
-    effectiveAgent?.runtimeInfo?.sessionId ?? effectiveAgent?.persistence?.sessionId ?? null;
-
-  // Header subtitle: project path + branch (matching agent list row format)
-  const headerProjectPath = effectiveAgent
-    ? deriveProjectPath(effectiveAgent.cwd, checkout)
-    : null;
   useEffect(() => {
     if (!isPendingCreateForRoute || !pendingCreate) {
       return;
@@ -952,33 +865,6 @@ function AgentScreenContent({
     resolvedAgentId,
   ]);
 
-  const handleRefreshAgent = useCallback(() => {
-    if (!resolvedAgentId || !hasSession) {
-      return;
-    }
-    void refreshAgent(resolvedAgentId).catch((error) => {
-      console.warn("[AgentScreen] refreshAgent failed", { agentId: resolvedAgentId, error });
-    });
-  }, [hasSession, refreshAgent, resolvedAgentId]);
-
-  const handleCopyMeta = useCallback(
-    async (label: string, value: string | null | undefined) => {
-      if (!value) {
-        return;
-      }
-      try {
-        await Clipboard.setStringAsync(value);
-        toast.show(`Copied ${label}`, {
-          variant: "success",
-          icon: <CheckCircle2 size={theme.iconSize.md} color={theme.colors.primary} />,
-        });
-      } catch {
-        toast.error("Copy failed");
-      }
-    },
-    [theme.colors.primary, toast]
-  );
-
   const isHistoryRefreshCatchingUp =
     viewState.tag === "ready" &&
     viewState.sync.status === "catching_up" &&
@@ -1003,7 +889,6 @@ function AgentScreenContent({
   if (viewState.tag === "not_found") {
     return (
       <View style={styles.container} testID="agent-not-found">
-        {showHeader ? <MenuHeader title="Agent" /> : null}
         <View style={styles.errorContainer}>
           <Text style={styles.errorText}>Agent not found</Text>
         </View>
@@ -1014,7 +899,6 @@ function AgentScreenContent({
   if (viewState.tag === "error") {
     return (
       <View style={styles.container} testID="agent-load-error">
-        {showHeader ? <MenuHeader title="Agent" /> : null}
         <View style={styles.errorContainer}>
           <Text style={styles.errorText}>Failed to load agent</Text>
           <Text style={styles.statusText}>{viewState.message}</Text>
@@ -1026,7 +910,6 @@ function AgentScreenContent({
   if (viewState.tag === "boot" || !effectiveAgent) {
     return (
       <View style={styles.container} testID="agent-loading">
-        {showHeader ? <MenuHeader title="Agent" /> : null}
         <View style={styles.errorContainer}>
           <ActivityIndicator size="large" color={theme.colors.foregroundMuted} />
         </View>
@@ -1041,210 +924,6 @@ function AgentScreenContent({
         disabled={isArchivingCurrentAgent}
       >
       <View style={styles.container}>
-        {/* Header */}
-        {showHeader ? (
-          <MenuHeader
-            title={effectiveAgent.title || "Agent"}
-            rightContent={
-              <View style={styles.headerRightContent}>
-                <HeaderToggleButton
-                  onPress={handleToggleExplorer}
-                  tooltipLabel="Toggle explorer"
-                  tooltipKeys={["mod", "E"]}
-                  tooltipSide="left"
-                  style={styles.menuButton}
-                  accessible
-                  accessibilityRole="button"
-                  accessibilityLabel={isExplorerOpen ? "Close explorer" : "Open explorer"}
-                  accessibilityState={{ expanded: isExplorerOpen }}
-                >
-                  {isMobile ? (
-                    checkout?.isGit ? (
-                      <GitBranch
-                        size={theme.iconSize.lg}
-                        color={
-                          isExplorerOpen
-                            ? theme.colors.foreground
-                            : theme.colors.foregroundMuted
-                        }
-                      />
-                    ) : (
-                      <Folder
-                        size={theme.iconSize.lg}
-                        color={
-                          isExplorerOpen
-                            ? theme.colors.foreground
-                            : theme.colors.foregroundMuted
-                        }
-                      />
-                    )
-                  ) : (
-                    <PanelRight
-                      size={theme.iconSize.md}
-                      color={
-                        isExplorerOpen
-                          ? theme.colors.foreground
-                          : theme.colors.foregroundMuted
-                      }
-                    />
-                  )}
-                </HeaderToggleButton>
-                <DropdownMenu
-                  onOpenChange={(open) => {
-                    if (open && agent?.cwd) {
-                      checkoutStatusQuery.refresh().catch(() => {});
-                    }
-                  }}
-                >
-                  <DropdownMenuTrigger testID="agent-overflow-menu" style={styles.menuButton}>
-                    <MoreVertical
-                      size={isMobile ? theme.iconSize.lg : theme.iconSize.md}
-                      color={theme.colors.foregroundMuted}
-                    />
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" width={DROPDOWN_WIDTH} testID="agent-overflow-content">
-                    <View style={styles.menuMetaContainer} testID="agent-details-sheet">
-                      <Pressable
-                        testID="agent-details-agent-id"
-                        style={({ hovered, pressed }) => [
-                          styles.menuMetaRow,
-                          (hovered || pressed) && styles.menuMetaRowActive,
-                        ]}
-                        onPress={() => {
-                          void handleCopyMeta("Directory", effectiveAgent.cwd);
-                        }}
-                      >
-                        <Text style={styles.menuMetaLabel} numberOfLines={1}>
-                          Directory
-                        </Text>
-                      <Text
-                        testID="agent-details-agent-id-value"
-                        style={styles.menuMetaValue}
-                        numberOfLines={1}
-                        ellipsizeMode="middle"
-                      >
-                        {shortenPath(effectiveAgent.cwd)}
-                      </Text>
-                    </Pressable>
-
-                    <Pressable
-                      style={({ hovered, pressed }) => [
-                        styles.menuMetaRow,
-                        (hovered || pressed) && styles.menuMetaRowActive,
-                      ]}
-                      onPress={() => {
-                        void handleCopyMeta("Model", modelDisplayValue);
-                      }}
-                    >
-                      <Text style={styles.menuMetaLabel} numberOfLines={1}>
-                        Model
-                      </Text>
-                      <Text
-                        style={styles.menuMetaValue}
-                        numberOfLines={1}
-                        ellipsizeMode="middle"
-                      >
-                        {modelDisplayValue}
-                      </Text>
-                    </Pressable>
-
-                    {checkout?.isGit && checkout.currentBranch && checkout.currentBranch !== "HEAD" ? (
-                      <Pressable
-                        style={({ hovered, pressed }) => [
-                          styles.menuMetaRow,
-                          (hovered || pressed) && styles.menuMetaRowActive,
-                        ]}
-                        onPress={() => {
-                          if (checkoutStatusQuery.isFetching) {
-                            return;
-                          }
-                          void handleCopyMeta("Branch", checkout.currentBranch);
-                        }}
-                      >
-                        <Text style={styles.menuMetaLabel} numberOfLines={1}>
-                          Branch
-                        </Text>
-                        <Text
-                          style={styles.menuMetaValue}
-                          numberOfLines={1}
-                          ellipsizeMode="middle"
-                        >
-                          {checkoutStatusQuery.isFetching ? "Fetching…" : checkout.currentBranch}
-                        </Text>
-                      </Pressable>
-                    ) : null}
-
-                    <Pressable
-                      style={({ hovered, pressed }) => [
-                        styles.menuMetaRow,
-                        (hovered || pressed) && styles.menuMetaRowActive,
-                      ]}
-                      onPress={() => {
-                        void handleCopyMeta("Paseo ID", effectiveAgent.id);
-                      }}
-                    >
-                      <Text style={styles.menuMetaLabel} numberOfLines={1}>
-                        Paseo ID
-                      </Text>
-                      <Text
-                        style={styles.menuMetaValue}
-                        numberOfLines={1}
-                        ellipsizeMode="middle"
-                      >
-                        {effectiveAgent.id}
-                      </Text>
-                    </Pressable>
-
-                    <Pressable
-                      testID="agent-details-persistence-session-id"
-                      style={({ hovered, pressed }) => [
-                        styles.menuMetaRow,
-                        providerSessionId && (hovered || pressed) && styles.menuMetaRowActive,
-                      ]}
-                      disabled={!providerSessionId}
-                      onPress={() => {
-                        void handleCopyMeta(`${providerLabel} ID`, providerSessionId);
-                      }}
-                    >
-                      <Text style={styles.menuMetaLabel} numberOfLines={1}>
-                        {providerLabel} ID
-                      </Text>
-                      <Text
-                        testID="agent-details-persistence-session-id-value"
-                        style={[styles.menuMetaValue, !providerSessionId && styles.menuMetaValueError]}
-                        numberOfLines={1}
-                        ellipsizeMode="middle"
-                      >
-                        {providerSessionId ?? "Not available"}
-                      </Text>
-                    </Pressable>
-                  </View>
-
-                  <DropdownMenuSeparator />
-
-                  <DropdownMenuItem
-                    leading={<RotateCcw size={theme.iconSize.md} color={theme.colors.foreground} />}
-                    disabled={isInitializing}
-                    trailing={
-                      isInitializing ? (
-                        <ActivityIndicator
-                          size="small"
-                          color={theme.colors.primary}
-                          style={styles.menuItemSpinner}
-                        />
-                      ) : null
-                    }
-                    onSelect={handleRefreshAgent}
-                  >
-                    {isInitializing ? "Refreshing..." : "Refresh"}
-                  </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </View>
-            }
-          />
-        ) : null}
-
           {/* Content Area with Keyboard Animation */}
           <View style={styles.contentContainer}>
             <ReanimatedAnimated.View
@@ -1332,13 +1011,11 @@ function AgentScreenContent({
 }
 
 function AgentSessionUnavailableState({
-  onBack,
   serverLabel,
   connectionStatus,
   lastError,
   isUnknownDaemon = false,
 }: {
-  onBack: () => void;
   serverLabel: string;
   connectionStatus: HostRuntimeConnectionStatus;
   lastError: string | null;
@@ -1347,7 +1024,6 @@ function AgentSessionUnavailableState({
   if (isUnknownDaemon) {
     return (
       <View style={styles.container}>
-        <BackHeader title="Agent" onBack={onBack} />
         <View style={styles.centerState}>
           <Text style={styles.errorText}>
             Cannot open this agent because {serverLabel} is not configured on
@@ -1367,7 +1043,6 @@ function AgentSessionUnavailableState({
 
   return (
     <View style={styles.container}>
-      <BackHeader title="Agent" onBack={onBack} />
       <View style={styles.centerState}>
         {isConnecting || isPreparingSession ? (
           <>
@@ -1410,10 +1085,6 @@ const styles = StyleSheet.create((theme) => ({
   container: {
     flex: 1,
     backgroundColor: theme.colors.surface0,
-  },
-  headerRightContent: {
-    flexDirection: "row",
-    alignItems: "center",
   },
   contentContainer: {
     flex: 1,
@@ -1505,41 +1176,5 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.xs,
     color: theme.colors.foregroundMuted,
     textAlign: "center",
-  },
-  menuButton: {
-    padding: theme.spacing[3],
-    borderRadius: theme.borderRadius.lg,
-  },
-  menuMetaContainer: {
-    paddingVertical: theme.spacing[1],
-  },
-  menuMetaRow: {
-    minHeight: 32,
-    paddingHorizontal: theme.spacing[3],
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: theme.spacing[3],
-  },
-  menuMetaRowActive: {
-    backgroundColor: theme.colors.surface2,
-  },
-  menuMetaLabel: {
-    fontSize: theme.fontSize.sm,
-    color: theme.colors.foregroundMuted,
-    flexShrink: 0,
-  },
-  menuMetaValue: {
-    fontSize: theme.fontSize.sm,
-    color: theme.colors.foreground,
-    flex: 1,
-    minWidth: 0,
-    textAlign: "right",
-  },
-  menuMetaValueError: {
-    color: theme.colors.destructive,
-  },
-  menuItemSpinner: {
-    marginLeft: "auto",
   },
 }));
