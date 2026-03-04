@@ -52,4 +52,9 @@ export interface DraggableListProps<T> {
   waitFor?: MutableRefObject<GestureType | undefined> | MutableRefObject<GestureType | undefined>[];
   /** Called when a drag gesture begins (before items are reordered) */
   onDragBegin?: () => void;
+  /**
+   * Native-only: use the nestable draggable-flatlist variant for nested drag
+   * lists coordinated by a shared NestableScrollContainer.
+   */
+  nestable?: boolean;
 }

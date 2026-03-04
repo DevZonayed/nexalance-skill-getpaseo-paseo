@@ -136,6 +136,7 @@ export function DraggableList<T>({
   useDragHandle = false,
   // simultaneousGestureRef is native-only, ignored on web
   onDragBegin,
+  nestable: _nestable = false,
 }: DraggableListProps<T>) {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [items, setItems] = useState(data);

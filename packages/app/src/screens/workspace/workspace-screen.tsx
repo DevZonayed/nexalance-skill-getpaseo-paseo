@@ -16,7 +16,6 @@ import {
   FileText,
   Folder,
   GitBranch,
-  MoreVertical,
   PanelRight,
   Plus,
   Pencil,
@@ -31,12 +30,6 @@ import { ScreenHeader } from "@/components/headers/screen-header";
 import { Combobox } from "@/components/ui/combobox";
 import { ClaudeIcon } from "@/components/icons/claude-icon";
 import { CodexIcon } from "@/components/icons/codex-icon";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import {
   Tooltip,
   TooltipContent,
@@ -60,7 +53,6 @@ import {
   type WorkspaceTab,
 } from "@/stores/workspace-tabs-store";
 import {
-  buildHostAgentDetailRoute,
   buildHostWorkspaceRoute,
   buildHostWorkspaceTabRoute,
   decodeWorkspaceIdFromPathSegment,
@@ -88,7 +80,6 @@ import {
 } from "@/screens/workspace/workspace-header-source";
 
 const TERMINALS_QUERY_STALE_TIME = 5_000;
-const DROPDOWN_WIDTH = 220;
 const NEW_TAB_AGENT_OPTION_ID = "__new_tab_agent__";
 const NEW_TAB_TERMINAL_OPTION_ID = "__new_tab_terminal__";
 const EMPTY_OPEN_FILE_PATHS: string[] = [];
@@ -164,6 +155,20 @@ function formatProviderLabel(provider: Agent["provider"]): string {
     return "Agent";
   }
   return provider.charAt(0).toUpperCase() + provider.slice(1);
+}
+
+function resolveWorkspaceAgentTabLabel(title: string | null | undefined): string {
+  if (typeof title !== "string") {
+    return "Agent";
+  }
+  const normalized = title.trim();
+  if (!normalized) {
+    return "Agent";
+  }
+  if (normalized.toLowerCase() === "new agent") {
+    return "Agent";
+  }
+  return normalized;
 }
 
 function resolveTabAvailability(input: {
@@ -755,7 +760,7 @@ function WorkspaceScreenContent({
           tabId: tab.tabId,
           kind: "draft",
           draftId: target.draftId,
-          label: "New agent",
+          label: "Draft",
           subtitle: "Draft",
         });
         continue;
@@ -769,7 +774,7 @@ function WorkspaceScreenContent({
           kind: "agent",
           agentId: target.agentId,
           provider,
-          label: agent?.title?.trim() || "Agent",
+          label: resolveWorkspaceAgentTabLabel(agent?.title),
           subtitle: `${formatProviderLabel(provider)} agent`,
         });
         continue;
@@ -867,13 +872,6 @@ function WorkspaceScreenContent({
       })),
     [tabs]
   );
-
-  const activeAgent = useMemo(() => {
-    if (activeTab?.target.kind !== "agent") {
-      return null;
-    }
-    return sessionAgents?.get(activeTab.target.agentId) ?? null;
-  }, [activeTab, sessionAgents]);
 
   const activeTabLabel = useMemo(() => {
     const active = tabs.find((tab) => tab.key === activeTabKey);
@@ -1210,15 +1208,6 @@ function WorkspaceScreenContent({
     ]
   );
 
-  const handleOpenAgentChatView = useCallback(() => {
-    if (!activeAgent) {
-      return;
-    }
-    router.push(
-      buildHostAgentDetailRoute(normalizedServerId, activeAgent.id) as any
-    );
-  }, [activeAgent, normalizedServerId, router]);
-
   const renderContent = () => {
     if (
       shouldRenderMissingWorkspaceDescriptor({
@@ -1385,32 +1374,6 @@ function WorkspaceScreenContent({
                   )}
                 </HeaderToggleButton>
 
-                {activeAgent ? (
-                  <DropdownMenu>
-                    <DropdownMenuTrigger
-                      testID="workspace-agent-overflow-menu"
-                      style={styles.menuButton}
-                    >
-                      <MoreVertical
-                        size={isMobile ? theme.iconSize.lg : theme.iconSize.md}
-                        color={theme.colors.foregroundMuted}
-                      />
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent
-                      align="end"
-                      width={DROPDOWN_WIDTH}
-                      testID="workspace-agent-overflow-content"
-                    >
-                      <DropdownMenuItem
-                        testID="workspace-agent-overflow-open-chat"
-                        description="Open this agent with the full chat header"
-                        onSelect={handleOpenAgentChatView}
-                      >
-                        Open chat view
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                ) : null}
               </View>
             }
           />

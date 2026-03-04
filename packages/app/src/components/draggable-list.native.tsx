@@ -1,6 +1,7 @@
 import { RefreshControl } from "react-native";
 import { useCallback, useState } from "react";
 import DraggableFlatList, {
+  NestableDraggableFlatList,
   type RenderItemParams,
 } from "react-native-draggable-flatlist";
 import { useUnistyles } from "react-native-unistyles";
@@ -32,6 +33,7 @@ export function DraggableList<T>({
   simultaneousGestureRef,
   waitFor,
   onDragBegin: onDragBeginProp,
+  nestable = false,
 }: DraggableListProps<T>) {
   const { theme } = useUnistyles();
   const [isDragging, setIsDragging] = useState(false);
@@ -75,9 +77,13 @@ export function DraggableList<T>({
   const showRefreshControl = Boolean(onRefresh) && (!isDragging || Boolean(refreshing));
   const resolvedContainerStyle =
     containerStyle ?? (scrollEnabled ? { flex: 1 } : undefined);
+  const ListComponent: typeof DraggableFlatList = (nestable
+    ? (NestableDraggableFlatList as any)
+    : DraggableFlatList) as any;
+  const shouldShowRefreshControl = showRefreshControl && !nestable;
 
   return (
-    <DraggableFlatList
+    <ListComponent
       testID={testID}
       data={data}
       keyExtractor={keyExtractor}
@@ -99,7 +105,7 @@ export function DraggableList<T>({
       // @ts-expect-error - waitFor is supported by RNGH FlatList but not typed in DraggableFlatList
       waitFor={waitFor}
       refreshControl={
-        showRefreshControl ? (
+        shouldShowRefreshControl ? (
           <RefreshControl
             refreshing={refreshing ?? false}
             onRefresh={onRefresh}

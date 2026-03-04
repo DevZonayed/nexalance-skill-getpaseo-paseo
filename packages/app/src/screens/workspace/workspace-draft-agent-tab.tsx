@@ -177,7 +177,7 @@ export function WorkspaceDraftAgentTab({
       pendingPermissions: [],
       persistence: null,
       runtimeInfo: { provider: selectedProvider, sessionId: null, model, modeId },
-      title: "New agent",
+      title: "Agent",
       cwd: workspaceId,
       model,
       thinkingOptionId,

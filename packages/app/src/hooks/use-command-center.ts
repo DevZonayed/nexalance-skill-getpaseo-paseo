@@ -18,7 +18,7 @@ import {
   resolveNewAgentWorkingDir,
 } from "@/utils/new-agent-routing";
 import {
-  buildHostAgentDetailRoute,
+  buildHostWorkspaceAgentTabRoute,
   buildHostSettingsRoute,
   parseHostAgentRouteFromPathname,
   parseServerIdFromPathname,
@@ -230,7 +230,9 @@ export function useCommandCenter() {
       // Don't restore focus back to the prior element after we navigate.
       clearCommandCenterFocusRestoreElement();
       setOpen(false);
-      navigate(buildHostAgentDetailRoute(agent.serverId, agent.id) as any);
+      navigate(
+        buildHostWorkspaceAgentTabRoute(agent.serverId, agent.cwd, agent.id) as any
+      );
     },
     [pathname, requestMessageInputAction, setOpen]
   );

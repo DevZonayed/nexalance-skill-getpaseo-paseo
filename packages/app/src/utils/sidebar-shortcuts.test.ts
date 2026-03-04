@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { SidebarProjectEntry, SidebarWorkspaceEntry } from "@/hooks/use-sidebar-workspaces-list";
 
-import { buildSidebarWorkspaceViewModel } from "./sidebar-shortcuts";
+import { buildSidebarShortcutModel } from "./sidebar-shortcuts";
 
 function workspace(serverId: string, cwd: string): SidebarWorkspaceEntry {
   return {
@@ -27,20 +27,18 @@ function project(projectKey: string, workspaces: SidebarWorkspaceEntry[]): Sideb
   };
 }
 
-describe("buildSidebarWorkspaceViewModel", () => {
-  it("builds visible rows and shortcut targets in visual order", () => {
+describe("buildSidebarShortcutModel", () => {
+  it("builds shortcut targets in visual order and excludes collapsed projects", () => {
     const projects = [
       project("p1", [workspace("s1", "/repo/main"), workspace("s1", "/repo/feat-a")]),
       project("p2", [workspace("s1", "/repo2/main")]),
     ];
 
-    const model = buildSidebarWorkspaceViewModel({
+    const model = buildSidebarShortcutModel({
       projects,
       collapsedProjectKeys: new Set<string>(["p2"]),
-      getProjectDisplayName: (entry) => entry.projectName,
     });
 
-    expect(model.rows.map((row) => row.kind)).toEqual(["project", "workspace", "workspace", "project"]);
     expect(model.shortcutTargets).toEqual([
       { serverId: "s1", workspaceId: "/repo/main" },
       { serverId: "s1", workspaceId: "/repo/feat-a" },
@@ -54,10 +52,9 @@ describe("buildSidebarWorkspaceViewModel", () => {
     const workspaces = Array.from({ length: 20 }, (_, index) => workspace("s", `/repo/w${index + 1}`));
     const projects = [project("p", workspaces)];
 
-    const model = buildSidebarWorkspaceViewModel({
+    const model = buildSidebarShortcutModel({
       projects,
       collapsedProjectKeys: new Set<string>(),
-      getProjectDisplayName: (entry) => entry.projectName,
     });
 
     expect(model.shortcutTargets).toHaveLength(9);
