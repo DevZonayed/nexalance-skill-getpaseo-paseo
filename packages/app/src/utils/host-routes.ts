@@ -30,7 +30,7 @@ function toBase64UrlNoPad(input: string): string {
     .replace(/=+$/g, "");
 }
 
-function tryDecodeBase64UrlNoPadUtf8(input: string): string | null {
+function decodeBase64UrlNoPadUtf8(input: string): string | null {
   const normalized = input.trim();
   if (normalized.length === 0) {
     return null;
@@ -49,12 +49,30 @@ function tryDecodeBase64UrlNoPadUtf8(input: string): string | null {
     return null;
   }
 
+  return decoded;
+}
+
+function tryDecodeBase64UrlNoPadUtf8(input: string): string | null {
+  const normalized = input.trim();
+  const decoded = decodeBase64UrlNoPadUtf8(normalized);
+  if (!decoded) {
+    return null;
+  }
+
   // Validate via round-trip to avoid false positives ("workspace-1" etc).
   if (toBase64UrlNoPad(decoded) !== normalized) {
     return null;
   }
 
   return decoded;
+}
+
+function isPathLikeWorkspaceIdentity(value: string): boolean {
+  return (
+    value.includes("/") ||
+    value.includes("\\") ||
+    /^[A-Za-z]:[\\/]/.test(value)
+  );
 }
 
 function normalizeWorkspaceId(value: string): string {
@@ -104,6 +122,13 @@ export function decodeWorkspaceIdFromPathSegment(workspaceIdSegment: string): st
   const base64Decoded = tryDecodeBase64UrlNoPadUtf8(decoded);
   if (base64Decoded) {
     return normalizeWorkspaceId(base64Decoded);
+  }
+
+  // Some older links use non-canonical base64url (non-zero pad bits). Accept
+  // decoded values only when they clearly represent filesystem paths.
+  const relaxedBase64Decoded = decodeBase64UrlNoPadUtf8(decoded);
+  if (relaxedBase64Decoded && isPathLikeWorkspaceIdentity(relaxedBase64Decoded)) {
+    return normalizeWorkspaceId(relaxedBase64Decoded);
   }
 
   return normalizeWorkspaceId(decoded);

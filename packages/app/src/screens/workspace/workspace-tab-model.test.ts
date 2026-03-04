@@ -161,4 +161,40 @@ describe("deriveWorkspaceTabModel", () => {
 
     expect(model.tabs.some((tab) => tab.descriptor.tabId === "agent_offender")).toBe(true);
   });
+
+  it("includes older attention and failure agents in workspace tabs when session data is complete", () => {
+    const olderPermissionAgent = makeAgent({
+      id: "agent-permission-old",
+      title: "Need permission",
+      createdAt: new Date("2026-01-15T00:00:00.000Z"),
+      requiresAttention: true,
+      attentionReason: "permission",
+    });
+    const olderFailedAgent = makeAgent({
+      id: "agent-failed-old",
+      title: "Failed run",
+      createdAt: new Date("2026-01-10T00:00:00.000Z"),
+      requiresAttention: true,
+      attentionReason: "error",
+    });
+    const newerAgent = makeAgent({
+      id: "agent-recent",
+      title: "Recent work",
+      createdAt: new Date("2026-03-04T00:00:00.000Z"),
+    });
+
+    const model = deriveWorkspaceTabModel({
+      workspaceAgents: [newerAgent, olderPermissionAgent, olderFailedAgent],
+      terminals: [],
+      uiTabs: [],
+      tabOrder: [],
+    });
+
+    expect(model.tabs.some((tab) => tab.descriptor.tabId === "agent_agent-permission-old")).toBe(
+      true
+    );
+    expect(model.tabs.some((tab) => tab.descriptor.tabId === "agent_agent-failed-old")).toBe(
+      true
+    );
+  });
 });

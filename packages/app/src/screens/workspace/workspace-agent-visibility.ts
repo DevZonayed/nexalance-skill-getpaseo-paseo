@@ -1,4 +1,5 @@
 import type { Agent } from "@/stores/session-store";
+import { normalizeWorkspaceIdentity } from "@/utils/workspace-identity";
 
 function sortAgentsByCreatedAtDescending(agents: Agent[]): Agent[] {
   const sorted = [...agents];
@@ -20,6 +21,10 @@ function trimNonEmpty(value: string | null | undefined): string | null {
   return trimmed.length > 0 ? trimmed : null;
 }
 
+function normalizeWorkspaceId(value: string | null | undefined): string {
+  return normalizeWorkspaceIdentity(value) ?? "";
+}
+
 export function deriveWorkspaceAgentVisibility(input: {
   sessionAgents: Map<string, Agent> | undefined;
   workspaceId: string;
@@ -28,6 +33,7 @@ export function deriveWorkspaceAgentVisibility(input: {
   lookupById: Map<string, Agent>;
 } {
   const { sessionAgents, workspaceId } = input;
+  const normalizedWorkspaceId = normalizeWorkspaceId(workspaceId);
   if (!sessionAgents || !workspaceId) {
     return {
       visibleAgents: [],
@@ -38,7 +44,7 @@ export function deriveWorkspaceAgentVisibility(input: {
   const lookupById = new Map<string, Agent>();
   const visible: Agent[] = [];
   for (const agent of sessionAgents.values()) {
-    if ((trimNonEmpty(agent.cwd) ?? "") !== workspaceId) {
+    if (normalizeWorkspaceId(agent.cwd) !== normalizedWorkspaceId) {
       continue;
     }
     lookupById.set(agent.id, agent);

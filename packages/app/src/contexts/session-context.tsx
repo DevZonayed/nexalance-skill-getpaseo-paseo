@@ -49,6 +49,7 @@ import {
   normalizeAgentSnapshot,
 } from "@/utils/agent-snapshots";
 import { resolveProjectPlacement } from "@/utils/project-placement";
+import { normalizeWorkspaceIdentity } from "@/utils/workspace-identity";
 import { buildDraftStoreKey } from "@/stores/draft-keys";
 import type { AttachmentMetadata } from "@/attachments/types";
 
@@ -132,7 +133,7 @@ function normalizeWorkspaceDescriptor(
     ? new Date(payload.activityAt)
     : null;
   return {
-    id: payload.id,
+    id: normalizeWorkspaceIdentity(payload.id) ?? payload.id,
     projectId: payload.projectId,
     name: payload.name,
     status: payload.status,
@@ -448,26 +449,43 @@ function SessionProviderInternal({
     }
 
     let cancelled = false;
-    void client
-      .fetchWorkspaces({
-        subscribe: {},
-        page: { limit: 200 },
-      })
-      .then((payload) => {
+    void (async () => {
+      const workspaces = new Map<string, WorkspaceDescriptor>();
+      let cursor: string | null = null;
+      let includeSubscribe = true;
+
+      try {
+        while (true) {
+          const payload = await client.fetchWorkspaces({
+            sort: [{ key: "activity_at", direction: "desc" }],
+            ...(includeSubscribe ? { subscribe: {} } : {}),
+            page: cursor ? { limit: 200, cursor } : { limit: 200 },
+          });
+          if (cancelled) {
+            return;
+          }
+
+          for (const entry of payload.entries) {
+            const workspace = normalizeWorkspaceDescriptor(entry);
+            workspaces.set(workspace.id, workspace);
+          }
+
+          if (!payload.pageInfo.hasMore || !payload.pageInfo.nextCursor) {
+            break;
+          }
+          cursor = payload.pageInfo.nextCursor;
+          includeSubscribe = false;
+        }
+
         if (cancelled) {
           return;
         }
-        const workspaces = new Map<string, WorkspaceDescriptor>();
-        for (const entry of payload.entries) {
-          const workspace = normalizeWorkspaceDescriptor(entry);
-          workspaces.set(workspace.id, workspace);
-        }
         setWorkspaces(serverId, workspaces);
         setHasHydratedWorkspaces(serverId, true);
-      })
-      .catch((error) => {
+      } catch (error) {
         console.error("[Session] Failed to hydrate workspaces:", error);
-      });
+      }
+    })();
 
     return () => {
       cancelled = true;

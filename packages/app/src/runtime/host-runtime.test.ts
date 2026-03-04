@@ -2,9 +2,11 @@ import { describe, expect, it, vi } from "vitest";
 import type {
   DaemonClient,
   ConnectionState,
+  FetchAgentsEntry,
   FetchAgentsOptions,
 } from "@server/client/daemon-client";
 import type { HostConnection, HostProfile } from "@/contexts/daemon-registry-context";
+import { useSessionStore } from "@/stores/session-store";
 import {
   HostRuntimeController,
   HostRuntimeStore,
@@ -19,6 +21,7 @@ class FakeDaemonClient {
   public closeCalls = 0;
   public ensureConnectedCalls = 0;
   public fetchAgentsCalls: FetchAgentsOptions[] = [];
+  public fetchAgentsResponses: Array<Awaited<ReturnType<DaemonClient["fetchAgents"]>>> = [];
 
   async connect(): Promise<void> {
     this.connectCalls += 1;
@@ -57,27 +60,16 @@ class FakeDaemonClient {
 
   async fetchAgents(
     options?: FetchAgentsOptions
-  ): Promise<{
-    entries: [];
-    pageInfo: {
-      hasMoreBefore: false;
-      hasMoreAfter: false;
-      beforeCursor: null;
-      afterCursor: null;
-    };
-    subscriptionId: string | null;
-  }> {
+  ): Promise<Awaited<ReturnType<DaemonClient["fetchAgents"]>>> {
     this.fetchAgentsCalls.push(options ?? {});
-    return {
+    const queued = this.fetchAgentsResponses.shift();
+    if (queued) {
+      return queued;
+    }
+    return makeFetchAgentsPayload({
       entries: [],
-      pageInfo: {
-        hasMoreBefore: false,
-        hasMoreAfter: false,
-        beforeCursor: null,
-        afterCursor: null,
-      },
-      subscriptionId: options?.subscribe?.subscriptionId ?? null,
-    };
+      subscriptionId: options?.subscribe?.subscriptionId ?? undefined,
+    });
   }
 
   setConnectionState(next: ConnectionState): void {
@@ -89,6 +81,83 @@ class FakeDaemonClient {
       listener(next);
     }
   }
+}
+
+function makeFetchAgentsPayload(input: {
+  entries: FetchAgentsEntry[];
+  hasMore?: boolean;
+  nextCursor?: string | null;
+  subscriptionId?: string;
+}): Awaited<ReturnType<DaemonClient["fetchAgents"]>> {
+  return {
+    entries: input.entries,
+    pageInfo: {
+      nextCursor: input.nextCursor ?? null,
+      prevCursor: null,
+      hasMore: input.hasMore ?? false,
+    } as Awaited<ReturnType<DaemonClient["fetchAgents"]>>["pageInfo"],
+    ...(input.subscriptionId ? { subscriptionId: input.subscriptionId } : {}),
+    requestId: "req_test",
+  };
+}
+
+function makeFetchAgentsEntry(input: {
+  id: string;
+  cwd: string;
+  updatedAt: string;
+  title?: string | null;
+  requiresAttention?: boolean;
+  attentionReason?: "permission" | "error" | null;
+}): FetchAgentsEntry {
+  return {
+    agent: {
+      id: input.id,
+      provider: "codex",
+      status: "idle",
+      createdAt: input.updatedAt,
+      updatedAt: input.updatedAt,
+      lastUserMessageAt: null,
+      lastError: undefined,
+      runtimeInfo: {
+        provider: "codex",
+        sessionId: null,
+      },
+      capabilities: {
+        supportsStreaming: true,
+        supportsSessionPersistence: true,
+        supportsDynamicModes: true,
+        supportsMcpServers: true,
+        supportsReasoningStream: true,
+        supportsToolInvocations: true,
+      },
+      currentModeId: null,
+      availableModes: [],
+      pendingPermissions: [],
+      persistence: null,
+      title: input.title ?? null,
+      cwd: input.cwd,
+      model: null,
+      thinkingOptionId: null,
+      requiresAttention: input.requiresAttention ?? false,
+      attentionReason: input.attentionReason ?? null,
+      attentionTimestamp:
+        input.requiresAttention && input.attentionReason ? input.updatedAt : null,
+      archivedAt: null,
+      labels: {},
+    },
+    project: {
+      projectKey: input.cwd,
+      projectName: "workspace",
+      checkout: {
+        cwd: input.cwd,
+        isGit: false,
+        currentBranch: null,
+        remoteUrl: null,
+        isPaseoOwnedWorktree: false,
+        mainRepoRoot: null,
+      },
+    },
+  };
 }
 
 function makeHost(input?: Partial<HostProfile>): HostProfile {
@@ -734,6 +803,11 @@ describe("HostRuntimeStore", () => {
       },
     });
 
+    useSessionStore.getState().initializeSession(
+      host.serverId,
+      fakeClient as unknown as DaemonClient,
+      null as any
+    );
     store.syncHosts([host]);
 
     const timeoutAt = Date.now() + 200;
@@ -744,6 +818,7 @@ describe("HostRuntimeStore", () => {
     expect(fakeClient.fetchAgentsCalls).toHaveLength(1);
     expect(fakeClient.fetchAgentsCalls[0]).toEqual({
       filter: { includeArchived: true },
+      sort: [{ key: "updated_at", direction: "desc" }],
       subscribe: { subscriptionId: "app:srv_test" },
       page: { limit: 200 },
     });
@@ -753,6 +828,154 @@ describe("HostRuntimeStore", () => {
     expect(snapshot?.hasEverLoadedAgentDirectory).toBe(true);
 
     store.syncHosts([]);
+    useSessionStore.getState().clearSession(host.serverId);
+  });
+
+  it("defers directory bootstrap until session store is initialized for that server", async () => {
+    const host = makeHost({
+      serverId: "srv_deferred",
+      connections: [
+        {
+          id: "direct:lan:6767",
+          type: "direct",
+          endpoint: "lan:6767",
+        },
+      ],
+    });
+    const fakeClient = new FakeDaemonClient();
+    const store = new HostRuntimeStore({
+      deps: {
+        createClient: () => fakeClient as unknown as DaemonClient,
+        measureLatency: async () => 5,
+        getClientId: async () => "cid_test_runtime",
+      },
+    });
+
+    store.syncHosts([host]);
+
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    expect(fakeClient.fetchAgentsCalls).toHaveLength(0);
+
+    useSessionStore.getState().initializeSession(
+      host.serverId,
+      fakeClient as unknown as DaemonClient,
+      null as any
+    );
+
+    const timeoutAt = Date.now() + 600;
+    while (fakeClient.fetchAgentsCalls.length === 0 && Date.now() < timeoutAt) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+
+    expect(fakeClient.fetchAgentsCalls).toHaveLength(1);
+    expect(fakeClient.fetchAgentsCalls[0]).toEqual({
+      filter: { includeArchived: true },
+      sort: [{ key: "updated_at", direction: "desc" }],
+      subscribe: { subscriptionId: "app:srv_deferred" },
+      page: { limit: 200 },
+    });
+
+    store.syncHosts([]);
+    useSessionStore.getState().clearSession(host.serverId);
+  });
+
+  it("fetches all pages during bootstrap so older workspace agents are present", async () => {
+    const host = makeHost({
+      serverId: "srv_paged",
+      connections: [
+        {
+          id: "direct:lan:6767",
+          type: "direct",
+          endpoint: "lan:6767",
+        },
+      ],
+    });
+    const fakeClient = new FakeDaemonClient();
+    fakeClient.fetchAgentsResponses.push(
+      makeFetchAgentsPayload({
+        entries: [
+          makeFetchAgentsEntry({
+            id: "agent-recent",
+            cwd: "/Users/moboudra/dev/paseo",
+            updatedAt: "2026-03-04T12:00:00.000Z",
+            title: "Recent agent",
+          }),
+        ],
+        hasMore: true,
+        nextCursor: "cursor-page-2",
+        subscriptionId: "app:srv_paged",
+      }),
+      makeFetchAgentsPayload({
+        entries: [
+          makeFetchAgentsEntry({
+            id: "agent-stale-attention",
+            cwd: "/Users/moboudra/dev/paseo-pr67-review",
+            updatedAt: "2026-02-20T08:00:00.000Z",
+            title: "Needs triage",
+            requiresAttention: true,
+            attentionReason: "error",
+          }),
+        ],
+        hasMore: false,
+      })
+    );
+    const store = new HostRuntimeStore({
+      deps: {
+        createClient: () => fakeClient as unknown as DaemonClient,
+        measureLatency: async () => 5,
+        getClientId: async () => "cid_test_runtime",
+      },
+    });
+
+    useSessionStore.getState().initializeSession(
+      host.serverId,
+      fakeClient as unknown as DaemonClient,
+      null as any
+    );
+    store.syncHosts([host]);
+
+    const timeoutAt = Date.now() + 300;
+    while (
+      fakeClient.fetchAgentsCalls.length < 2 &&
+      Date.now() < timeoutAt
+    ) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+
+    expect(fakeClient.fetchAgentsCalls).toHaveLength(2);
+    expect(fakeClient.fetchAgentsCalls[0]).toEqual({
+      filter: { includeArchived: true },
+      sort: [{ key: "updated_at", direction: "desc" }],
+      subscribe: { subscriptionId: "app:srv_paged" },
+      page: { limit: 200 },
+    });
+    expect(fakeClient.fetchAgentsCalls[1]).toEqual({
+      filter: { includeArchived: true },
+      sort: [{ key: "updated_at", direction: "desc" }],
+      page: { limit: 200, cursor: "cursor-page-2" },
+    });
+
+    let staleAgent =
+      useSessionStore.getState().sessions[host.serverId]?.agents?.get(
+        "agent-stale-attention"
+      ) ?? null;
+    const staleTimeoutAt = Date.now() + 300;
+    while (!staleAgent && Date.now() < staleTimeoutAt) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      staleAgent =
+        useSessionStore.getState().sessions[host.serverId]?.agents?.get(
+          "agent-stale-attention"
+        ) ?? null;
+    }
+    expect(staleAgent?.requiresAttention).toBe(true);
+    expect(staleAgent?.attentionReason).toBe("error");
+
+    const snapshot = store.getSnapshot(host.serverId);
+    expect(snapshot?.agentDirectoryStatus).toBe("ready");
+    expect(snapshot?.hasEverLoadedAgentDirectory).toBe(true);
+
+    store.syncHosts([]);
+    useSessionStore.getState().clearSession(host.serverId);
   });
 
   it("surfaces startup failures as error instead of leaving host idle", async () => {

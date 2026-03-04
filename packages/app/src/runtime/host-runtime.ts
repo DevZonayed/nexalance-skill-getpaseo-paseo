@@ -19,7 +19,7 @@ import {
 } from "@/utils/connection-selection";
 import { createTauriWebSocketTransportFactory } from "@/utils/tauri-daemon-transport";
 import { applyFetchedAgentDirectory } from "@/utils/agent-directory-sync";
-import { useSessionStore } from "@/stores/session-store";
+import { useSessionStore, type Agent } from "@/stores/session-store";
 import {
   recordDaemonClientDiagnostics,
   recordHostRuntimeCreateClient,
@@ -140,6 +140,43 @@ export type HostRuntimeStartOptions = {
 const PROBE_INTERVAL_MS = 10_000;
 const ADAPTIVE_SWITCH_THRESHOLD_MS = 40;
 const ADAPTIVE_SWITCH_CONSECUTIVE_PROBES = 3;
+const DEFAULT_AGENT_DIRECTORY_PAGE_LIMIT = 200;
+const AGENT_DIRECTORY_SESSION_RETRY_MS = 150;
+const DEFAULT_AGENT_DIRECTORY_SORT: NonNullable<FetchAgentsOptions["sort"]> = [
+  { key: "updated_at", direction: "desc" },
+];
+
+function readFetchAgentsHasMore(
+  pageInfo: Awaited<ReturnType<DaemonClient["fetchAgents"]>>["pageInfo"]
+): boolean {
+  const page = pageInfo as {
+    hasMore?: boolean;
+    hasMoreAfter?: boolean;
+  };
+  if (typeof page.hasMore === "boolean") {
+    return page.hasMore;
+  }
+  if (typeof page.hasMoreAfter === "boolean") {
+    return page.hasMoreAfter;
+  }
+  return false;
+}
+
+function readFetchAgentsNextCursor(
+  pageInfo: Awaited<ReturnType<DaemonClient["fetchAgents"]>>["pageInfo"]
+): string | null {
+  const page = pageInfo as {
+    nextCursor?: string | null;
+    afterCursor?: string | null;
+  };
+  if (typeof page.nextCursor === "string" && page.nextCursor.length > 0) {
+    return page.nextCursor;
+  }
+  if (typeof page.afterCursor === "string" && page.afterCursor.length > 0) {
+    return page.afterCursor;
+  }
+  return null;
+}
 
 function toActiveConnection(connection: HostConnection): ActiveConnection {
   if (connection.type === "direct") {
@@ -944,6 +981,10 @@ export class HostRuntimeStore {
   private deps: HostRuntimeControllerDeps;
   private lastConnectionStatusByServer = new Map<string, HostRuntimeConnectionStatus>();
   private agentDirectoryBootstrapInFlight = new Map<string, Promise<void>>();
+  private agentDirectorySessionRetryTimerByServer = new Map<
+    string,
+    ReturnType<typeof setTimeout>
+  >();
 
   constructor(input?: {
     deps?: HostRuntimeControllerDeps;
@@ -960,6 +1001,7 @@ export class HostRuntimeStore {
       this.controllers.delete(serverId);
       this.lastConnectionStatusByServer.delete(serverId);
       this.agentDirectoryBootstrapInFlight.delete(serverId);
+      this.clearAgentDirectorySessionRetry(serverId);
       void controller.stop();
       this.emit(serverId);
     }
@@ -1005,23 +1047,32 @@ export class HostRuntimeStore {
       useSessionStore.getState().bumpHistorySyncGeneration(serverId);
     }
 
-    // Bootstrap once per reconnect/online transition. Runtime owns this policy,
-    // not React effects in session components.
-    if (snapshot.connectionStatus !== "online") {
-      return;
-    }
-    if (previousStatus === "online") {
+    // Runtime owns directory bootstrap policy, including reconnect and delayed
+    // session initialization races.
+    if (
+      snapshot.connectionStatus !== "online" ||
+      snapshot.hasEverLoadedAgentDirectory
+    ) {
+      this.clearAgentDirectorySessionRetry(serverId);
       return;
     }
     if (this.agentDirectoryBootstrapInFlight.has(serverId)) {
       return;
     }
+    if (!useSessionStore.getState().sessions[serverId]) {
+      this.scheduleAgentDirectorySessionRetry(serverId);
+      return;
+    }
+    this.clearAgentDirectorySessionRetry(serverId);
 
-    const bootstrap = this.refreshAgentDirectory({
-      serverId,
-      subscribe: { subscriptionId: `app:${serverId}` },
-      page: { limit: 200 },
-    })
+    const bootstrap = Promise.resolve()
+      .then(() =>
+        this.refreshAgentDirectory({
+          serverId,
+          subscribe: { subscriptionId: `app:${serverId}` },
+          page: { limit: DEFAULT_AGENT_DIRECTORY_PAGE_LIMIT },
+        })
+      )
       .then(() => undefined)
       .catch((error) => {
         console.error("[HostRuntime] agent directory bootstrap failed", {
@@ -1037,6 +1088,26 @@ export class HostRuntimeStore {
       });
 
     this.agentDirectoryBootstrapInFlight.set(serverId, bootstrap);
+  }
+
+  private scheduleAgentDirectorySessionRetry(serverId: string): void {
+    if (this.agentDirectorySessionRetryTimerByServer.has(serverId)) {
+      return;
+    }
+    const handle = setTimeout(() => {
+      this.agentDirectorySessionRetryTimerByServer.delete(serverId);
+      this.maybeAutoBootstrapAgentDirectory(serverId);
+    }, AGENT_DIRECTORY_SESSION_RETRY_MS);
+    this.agentDirectorySessionRetryTimerByServer.set(serverId, handle);
+  }
+
+  private clearAgentDirectorySessionRetry(serverId: string): void {
+    const handle = this.agentDirectorySessionRetryTimerByServer.get(serverId);
+    if (!handle) {
+      return;
+    }
+    clearTimeout(handle);
+    this.agentDirectorySessionRetryTimerByServer.delete(serverId);
   }
 
   getSnapshot(serverId: string): HostRuntimeSnapshot | null {
@@ -1112,19 +1183,46 @@ export class HostRuntimeStore {
 
     controller.markAgentDirectorySyncLoading();
     try {
-      const payload = await client.fetchAgents({
-        filter: input.filter ?? { includeArchived: true },
-        ...(input.subscribe ? { subscribe: input.subscribe } : {}),
-        ...(input.page ? { page: input.page } : {}),
-      });
-      const agents = applyFetchedAgentDirectory({
-        serverId: input.serverId,
-        entries: payload.entries,
-      }).agents;
+      const pageLimit = input.page?.limit ?? DEFAULT_AGENT_DIRECTORY_PAGE_LIMIT;
+      let cursor = input.page?.cursor ?? null;
+      let includeSubscribe = true;
+      let subscriptionId: string | null = null;
+      const allAgents = new Map<string, Agent>();
+
+      while (true) {
+        const payload = await client.fetchAgents({
+          filter: input.filter ?? { includeArchived: true },
+          sort: DEFAULT_AGENT_DIRECTORY_SORT,
+          ...(includeSubscribe && input.subscribe ? { subscribe: input.subscribe } : {}),
+          page: cursor ? { limit: pageLimit, cursor } : { limit: pageLimit },
+        });
+
+        const pageAgents = applyFetchedAgentDirectory({
+          serverId: input.serverId,
+          entries: payload.entries,
+        }).agents;
+        for (const [agentId, agent] of pageAgents) {
+          allAgents.set(agentId, agent);
+        }
+
+        subscriptionId = subscriptionId ?? payload.subscriptionId ?? null;
+        includeSubscribe = false;
+
+        if (!readFetchAgentsHasMore(payload.pageInfo)) {
+          break;
+        }
+
+        const nextCursor = readFetchAgentsNextCursor(payload.pageInfo);
+        if (!nextCursor) {
+          break;
+        }
+        cursor = nextCursor;
+      }
+
       controller.markAgentDirectorySyncReady();
       return {
-        agents,
-        subscriptionId: payload.subscriptionId ?? null,
+        agents: allAgents,
+        subscriptionId,
       };
     } catch (error) {
       controller.markAgentDirectorySyncError(toErrorMessage(error));

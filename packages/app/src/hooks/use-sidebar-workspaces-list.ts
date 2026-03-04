@@ -4,6 +4,7 @@ import { getHostRuntimeStore } from '@/runtime/host-runtime'
 import { useSidebarOrderStore } from '@/stores/sidebar-order-store'
 import type { WorkspaceDescriptor } from '@/stores/session-store'
 import { projectDisplayNameFromProjectId } from '@/utils/project-display-name'
+import { normalizeWorkspaceIdentity } from '@/utils/workspace-identity'
 
 const EMPTY_ORDER: string[] = []
 const EMPTY_PROJECTS: SidebarProjectEntry[] = []
@@ -229,7 +230,7 @@ function toWorkspaceDescriptor(payload: {
 }): WorkspaceDescriptor {
   const activityAt = payload.activityAt ? new Date(payload.activityAt) : null
   return {
-    id: payload.id,
+    id: normalizeWorkspaceIdentity(payload.id) ?? payload.id,
     projectId: payload.projectId,
     name: payload.name,
     status: payload.status,
@@ -303,19 +304,31 @@ export function useSidebarWorkspacesList(options?: {
     if (!client) {
       return
     }
-    void client
-      .fetchWorkspaces({ page: { limit: 200 } })
-      .then((payload) => {
-        const next = new Map<string, WorkspaceDescriptor>()
-        for (const entry of payload.entries) {
-          const workspace = toWorkspaceDescriptor(entry)
-          next.set(workspace.id, workspace)
+    void (async () => {
+      const next = new Map<string, WorkspaceDescriptor>()
+      let cursor: string | null = null
+      try {
+        while (true) {
+          const payload = await client.fetchWorkspaces({
+            sort: [{ key: 'activity_at', direction: 'desc' }],
+            page: cursor ? { limit: 200, cursor } : { limit: 200 },
+          })
+          for (const entry of payload.entries) {
+            const workspace = toWorkspaceDescriptor(entry)
+            next.set(workspace.id, workspace)
+          }
+          if (!payload.pageInfo.hasMore || !payload.pageInfo.nextCursor) {
+            break
+          }
+          cursor = payload.pageInfo.nextCursor
         }
         const store = useSessionStore.getState()
         store.setWorkspaces(serverId, next)
         store.setHasHydratedWorkspaces(serverId, true)
-      })
-      .catch(() => undefined)
+      } catch {
+        // ignore explicit refresh failures; hook keeps existing data
+      }
+    })()
   }, [connectionStatus, enabled, isActive, runtime, serverId])
 
   const isLoading = isActive && Boolean(serverId) && connectionStatus === 'online' && !hasHydratedWorkspaces

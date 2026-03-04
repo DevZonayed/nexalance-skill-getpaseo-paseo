@@ -134,4 +134,24 @@ describe("workspace agent visibility", () => {
       "older-activity",
     ]);
   });
+
+  it("matches workspace agents when cwd and route workspace differ only by trailing slash", () => {
+    const sessionAgents = new Map<string, Agent>([
+      [
+        "slash-agent",
+        makeAgent({
+          id: "slash-agent",
+          cwd: "/Users/moboudra/.paseo/worktrees/1luy0po7/normal-squid/",
+        }),
+      ],
+    ]);
+
+    const result = deriveWorkspaceAgentVisibility({
+      sessionAgents,
+      workspaceId: "/Users/moboudra/.paseo/worktrees/1luy0po7/normal-squid",
+    });
+
+    expect(result.visibleAgents.map((agent) => agent.id)).toEqual(["slash-agent"]);
+    expect(result.lookupById.has("slash-agent")).toBe(true);
+  });
 });

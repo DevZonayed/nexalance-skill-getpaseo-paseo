@@ -6,6 +6,7 @@ import {
   Platform,
   ActivityIndicator,
   Alert,
+  StatusBar,
   ScrollView,
   type GestureResponderEvent,
 } from 'react-native'
@@ -23,7 +24,7 @@ import {
 import { router, usePathname, useSegments } from 'expo-router'
 import { StyleSheet, UnistylesRuntime, useUnistyles } from 'react-native-unistyles'
 import { type GestureType } from 'react-native-gesture-handler'
-import { ChevronDown, ChevronRight, GripVertical } from 'lucide-react-native'
+import { ChevronDown, ChevronRight } from 'lucide-react-native'
 import { DraggableList, type DraggableRenderItemInfo } from './draggable-list'
 import type { DraggableListDragHandleProps } from './draggable-list.types'
 import { getHostRuntimeStore, isHostRuntimeConnected } from '@/runtime/host-runtime'
@@ -154,33 +155,208 @@ function WorkspaceStatusIndicator({
 
 function useLongPressDragInteraction(input: {
   drag: () => void
+  menuController: ReturnType<typeof useContextMenu> | null
+  debugId: string
 }) {
   const didLongPressRef = useRef(false)
+  const dragArmedRef = useRef(false)
+  const didStartDragRef = useRef(false)
+  const scrollIntentRef = useRef(false)
+  const menuOpenedRef = useRef(false)
+  const touchStartRef = useRef<{ x: number; y: number } | null>(null)
+  const touchCurrentRef = useRef<{ x: number; y: number } | null>(null)
+  const dragArmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const contextMenuTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const clearTimers = useCallback(() => {
+    if (dragArmTimerRef.current) {
+      clearTimeout(dragArmTimerRef.current)
+      dragArmTimerRef.current = null
+    }
+    if (contextMenuTimerRef.current) {
+      clearTimeout(contextMenuTimerRef.current)
+      contextMenuTimerRef.current = null
+    }
+  }, [])
+
+  const openContextMenuAtStartPoint = useCallback(() => {
+    if (!input.menuController || !touchStartRef.current) {
+      return
+    }
+    const statusBarHeight = Platform.OS === 'android' ? (StatusBar.currentHeight ?? 0) : 0
+    input.menuController.setAnchorRect({
+      x: touchStartRef.current.x,
+      y: touchStartRef.current.y + statusBarHeight,
+      width: 0,
+      height: 0,
+    })
+    input.menuController.setOpen(true)
+    menuOpenedRef.current = true
+    didLongPressRef.current = true
+    console.log('[sidebar-dnd-debug] context menu opened', { id: input.debugId })
+  }, [input.debugId, input.menuController])
 
   const handleLongPress = useCallback(() => {
-    console.log('[sidebar-dnd-debug] long-press armed')
-    void Haptics.selectionAsync().catch(() => {})
-    didLongPressRef.current = true
-  }, [])
+    // Manual timers own long-press behavior on mobile.
+    console.log('[sidebar-dnd-debug] native onLongPress ignored (manual state machine active)', {
+      id: input.debugId,
+    })
+  }, [input.debugId])
+
+  useEffect(() => {
+    return () => {
+      clearTimers()
+    }
+  }, [clearTimers])
+
+  const armTimers = useCallback(() => {
+    clearTimers()
+
+    const DRAG_ARM_DELAY_MS = 140
+    const CONTEXT_MENU_DELAY_MS = 450
+    const CONTEXT_MENU_STATIONARY_SLOP_PX = 6
+
+    dragArmTimerRef.current = setTimeout(() => {
+      if (scrollIntentRef.current || didStartDragRef.current || menuOpenedRef.current) {
+        return
+      }
+      dragArmedRef.current = true
+      console.log('[sidebar-dnd-debug] drag armed', { id: input.debugId })
+      void Haptics.selectionAsync().catch(() => {})
+    }, DRAG_ARM_DELAY_MS)
+
+    if (!input.menuController || Platform.OS === 'web') {
+      return
+    }
+
+    contextMenuTimerRef.current = setTimeout(() => {
+      if (scrollIntentRef.current || didStartDragRef.current || menuOpenedRef.current) {
+        return
+      }
+      const start = touchStartRef.current
+      const current = touchCurrentRef.current ?? start
+      if (!start || !current) {
+        return
+      }
+      const dx = current.x - start.x
+      const dy = current.y - start.y
+      const distance = Math.sqrt(dx * dx + dy * dy)
+      if (distance > CONTEXT_MENU_STATIONARY_SLOP_PX) {
+        console.log('[sidebar-dnd-debug] context menu cancelled (movement)', {
+          id: input.debugId,
+          distance,
+        })
+        return
+      }
+      console.log('[sidebar-dnd-debug] long-press armed', { id: input.debugId })
+      void Haptics.selectionAsync().catch(() => {})
+      openContextMenuAtStartPoint()
+    }, CONTEXT_MENU_DELAY_MS)
+  }, [clearTimers, input.debugId, input.menuController, openContextMenuAtStartPoint])
+
+  const handleDragIntent = useCallback(
+    (details: { dx: number; dy: number; distance: number }) => {
+      didStartDragRef.current = true
+      didLongPressRef.current = true
+      clearTimers()
+      console.log('[sidebar-dnd-debug] drag intent detected', { id: input.debugId, ...details })
+      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {})
+      input.drag()
+    },
+    [clearTimers, input]
+  )
+
+  const handleScrollIntent = useCallback(
+    (details: { dx: number; dy: number; distance: number }) => {
+      scrollIntentRef.current = true
+      didLongPressRef.current = true
+      clearTimers()
+      console.log('[sidebar-dnd-debug] scroll intent detected', { id: input.debugId, ...details })
+    },
+    [clearTimers, input.debugId]
+  )
 
   const handlePressIn = useCallback((event: GestureResponderEvent) => {
     didLongPressRef.current = false
+    dragArmedRef.current = false
+    didStartDragRef.current = false
+    scrollIntentRef.current = false
+    menuOpenedRef.current = false
+    touchStartRef.current = {
+      x: event.nativeEvent.pageX,
+      y: event.nativeEvent.pageY,
+    }
+    touchCurrentRef.current = {
+      x: event.nativeEvent.pageX,
+      y: event.nativeEvent.pageY,
+    }
     console.log('[sidebar-dnd-debug] press-in', {
+      id: input.debugId,
       x: event.nativeEvent.pageX,
       y: event.nativeEvent.pageY,
     })
-  }, [])
+    armTimers()
+  }, [armTimers, input.debugId])
+
+  const handleTouchMove = useCallback(
+    (event: any) => {
+      const start = touchStartRef.current
+      if (!start || didStartDragRef.current) {
+        return
+      }
+
+      const touch = event?.nativeEvent?.touches?.[0] ?? event?.nativeEvent
+      const x = touch?.pageX
+      const y = touch?.pageY
+      if (typeof x !== 'number' || typeof y !== 'number') {
+        return
+      }
+      touchCurrentRef.current = { x, y }
+      const dx = x - start.x
+      const dy = y - start.y
+      const absDx = Math.abs(dx)
+      const absDy = Math.abs(dy)
+      const distance = Math.sqrt(dx * dx + dy * dy)
+
+      const SCROLL_INTENT_SLOP_PX = 8
+      const DRAG_START_SLOP_PX = 6
+
+      if (!scrollIntentRef.current && absDy > absDx && absDy > SCROLL_INTENT_SLOP_PX) {
+        handleScrollIntent({ dx, dy, distance })
+        return
+      }
+
+      if (scrollIntentRef.current) {
+        return
+      }
+
+      if (dragArmedRef.current && distance >= DRAG_START_SLOP_PX) {
+        handleDragIntent({ dx, dy, distance })
+      }
+    },
+    [handleDragIntent, handleScrollIntent]
+  )
 
   const handlePressOut = useCallback(() => {
+    clearTimers()
     console.log('[sidebar-dnd-debug] press-out no context-menu', {
+      id: input.debugId,
       didLongPress: didLongPressRef.current,
+      didStartDrag: didStartDragRef.current,
+      scrollIntent: scrollIntentRef.current,
+      dragArmed: dragArmedRef.current,
+      menuOpened: menuOpenedRef.current,
     })
-  }, [])
+    dragArmedRef.current = false
+    touchStartRef.current = null
+    touchCurrentRef.current = null
+  }, [clearTimers, input.debugId])
 
   return {
     didLongPressRef,
     handleLongPress,
     handlePressIn,
+    handleTouchMove,
     handlePressOut,
   }
 }
@@ -195,8 +371,11 @@ function ProjectHeaderRow({
   isDragging,
   dragHandleProps,
 }: ProjectHeaderRowProps) {
+  const menuController = useContextMenu()
   const interaction = useLongPressDragInteraction({
     drag,
+    menuController,
+    debugId: `project:${project.projectKey}`,
   })
 
   const handlePress = useCallback(() => {
@@ -207,15 +386,9 @@ function ProjectHeaderRow({
     onToggle()
   }, [interaction.didLongPressRef, onToggle])
 
-  const handleDragHandlePressIn = useCallback(() => {
-    console.log('[sidebar-dnd-debug] project drag-handle press-in')
-    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {})
-    drag()
-  }, [drag])
-
   const trigger = (
     <ContextMenuTrigger
-      enabledOnMobile
+      enabledOnMobile={false}
       style={({ pressed, hovered = false }) => [
         styles.projectRow,
         isDragging && styles.projectRowDragging,
@@ -223,13 +396,17 @@ function ProjectHeaderRow({
         pressed && styles.projectRowPressed,
       ]}
       onPressIn={interaction.handlePressIn}
+      onTouchMove={interaction.handleTouchMove}
       onPressOut={interaction.handlePressOut}
       onPress={handlePress}
-      onLongPress={interaction.handleLongPress}
-      delayLongPress={350}
       testID={`sidebar-project-row-${project.projectKey}`}
     >
-      <View style={styles.projectRowLeft}>
+      <View
+        {...(dragHandleProps?.attributes as any)}
+        {...(dragHandleProps?.listeners as any)}
+        ref={dragHandleProps?.setActivatorNodeRef as any}
+        style={styles.projectRowLeft}
+      >
         {collapsed ? (
           <ChevronRight size={14} color="#9ca3af" />
         ) : (
@@ -248,20 +425,6 @@ function ProjectHeaderRow({
           {displayName}
         </Text>
       </View>
-      <Pressable
-        {...(dragHandleProps?.attributes as any)}
-        {...(dragHandleProps?.listeners as any)}
-        ref={dragHandleProps?.setActivatorNodeRef as any}
-        hitSlop={8}
-        onPressIn={handleDragHandlePressIn}
-        onLongPress={handleDragHandlePressIn}
-        delayLongPress={120}
-        onPress={(event) => (event as any).stopPropagation?.()}
-        style={({ pressed }) => [styles.dragHandle, pressed && styles.dragHandlePressed]}
-        testID={`sidebar-project-drag-handle-${project.projectKey}`}
-      >
-        <GripVertical size={14} color="#9ca3af" />
-      </Pressable>
     </ContextMenuTrigger>
   )
 
@@ -300,6 +463,8 @@ function WorkspaceRowInner({
   const createdAtLabel = resolveWorkspaceCreatedAtLabel(workspace)
   const interaction = useLongPressDragInteraction({
     drag,
+    menuController,
+    debugId: `workspace:${workspace.workspaceKey}`,
   })
 
   const handlePress = useCallback(() => {
@@ -310,17 +475,12 @@ function WorkspaceRowInner({
     onPress()
   }, [interaction.didLongPressRef, onPress])
 
-  const handleDragHandlePressIn = useCallback(() => {
-    console.log('[sidebar-dnd-debug] workspace drag-handle press-in', {
-      workspaceKey: workspace.workspaceKey,
-    })
-    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {})
-    drag()
-  }, [drag, workspace.workspaceKey])
-
   const rowChildren = (
     <>
       <View
+        {...(dragHandleProps?.attributes as any)}
+        {...(dragHandleProps?.listeners as any)}
+        ref={dragHandleProps?.setActivatorNodeRef as any}
         style={styles.workspaceRowLeft}
       >
         <WorkspaceStatusIndicator bucket={workspace.statusBucket} loading={isArchiving} />
@@ -339,27 +499,13 @@ function WorkspaceRowInner({
             <Text style={styles.shortcutBadgeText}>{shortcutNumber}</Text>
           </View>
         ) : null}
-        <Pressable
-          {...(dragHandleProps?.attributes as any)}
-          {...(dragHandleProps?.listeners as any)}
-          ref={dragHandleProps?.setActivatorNodeRef as any}
-          hitSlop={8}
-          onPressIn={handleDragHandlePressIn}
-          onLongPress={handleDragHandlePressIn}
-          delayLongPress={120}
-          onPress={(event) => (event as any).stopPropagation?.()}
-          style={({ pressed }) => [styles.dragHandle, pressed && styles.dragHandlePressed]}
-          testID={`sidebar-workspace-drag-handle-${workspace.workspaceKey}`}
-        >
-          <GripVertical size={14} color="#9ca3af" />
-        </Pressable>
       </View>
     </>
   )
 
   const trigger = menuController ? (
     <ContextMenuTrigger
-      enabledOnMobile
+      enabledOnMobile={false}
       disabled={isArchiving}
       style={({ pressed, hovered = false }) => [
         styles.workspaceRow,
@@ -369,10 +515,9 @@ function WorkspaceRowInner({
         pressed && styles.workspaceRowPressed,
       ]}
       onPressIn={interaction.handlePressIn}
+      onTouchMove={interaction.handleTouchMove}
       onPressOut={interaction.handlePressOut}
       onPress={handlePress}
-      onLongPress={interaction.handleLongPress}
-      delayLongPress={350}
       testID={`sidebar-workspace-row-${workspace.workspaceKey}`}
     >
       {rowChildren}
@@ -388,10 +533,9 @@ function WorkspaceRowInner({
         pressed && styles.workspaceRowPressed,
       ]}
       onPressIn={interaction.handlePressIn}
+      onTouchMove={interaction.handleTouchMove}
       onPressOut={interaction.handlePressOut}
       onPress={handlePress}
-      onLongPress={interaction.handleLongPress}
-      delayLongPress={350}
       testID={`sidebar-workspace-row-${workspace.workspaceKey}`}
     >
       {rowChildren}
@@ -1190,22 +1334,6 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.sm,
     flex: 1,
     minWidth: 0,
-  },
-  dragHandle: {
-    width: 24,
-    height: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: theme.borderRadius.md,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    backgroundColor: theme.colors.surface0,
-    flexShrink: 0,
-  },
-  dragHandlePressed: {
-    backgroundColor: theme.colors.surface2,
-    borderColor: theme.colors.foregroundMuted,
-    transform: [{ scale: 0.96 }],
   },
   workspaceCreatedAtText: {
     color: theme.colors.foregroundMuted,

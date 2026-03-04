@@ -54,6 +54,7 @@ import {
   buildHostWorkspaceTabRoute,
   decodeWorkspaceIdFromPathSegment,
 } from "@/utils/host-routes";
+import { normalizeWorkspaceIdentity } from "@/utils/workspace-identity";
 import { useHostRuntimeSession } from "@/runtime/host-runtime";
 import {
   checkoutStatusQueryKey,
@@ -139,7 +140,8 @@ function WorkspaceScreenContent({
     UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
 
   const normalizedServerId = trimNonEmpty(decodeSegment(serverId)) ?? "";
-  const normalizedWorkspaceId = decodeWorkspaceIdFromPathSegment(workspaceId) ?? "";
+  const normalizedWorkspaceId =
+    normalizeWorkspaceIdentity(decodeWorkspaceIdFromPathSegment(workspaceId)) ?? "";
 
   const queryClient = useQueryClient();
   const { client, isConnected } = useHostRuntimeSession(normalizedServerId);
@@ -297,6 +299,9 @@ function WorkspaceScreenContent({
   );
   const hasHydratedWorkspaces = useSessionStore(
     (state) => state.sessions[normalizedServerId]?.hasHydratedWorkspaces ?? false
+  );
+  const hasHydratedAgents = useSessionStore(
+    (state) => state.sessions[normalizedServerId]?.hasHydratedAgents ?? false
   );
   const workspaceHeader = workspaceDescriptor
     ? resolveWorkspaceHeader({ workspace: workspaceDescriptor })
@@ -916,15 +921,20 @@ function WorkspaceScreenContent({
     ) {
       return (
         <View style={styles.emptyState}>
-          <Text style={styles.emptyStateText}>
-            Workspace descriptor missing for this route.
-          </Text>
+          <ActivityIndicator color={theme.colors.foregroundMuted} />
         </View>
       );
     }
 
     const target = activeTab?.target ?? null;
     if (!target) {
+      if (!hasHydratedAgents) {
+        return (
+          <View style={styles.emptyState}>
+            <ActivityIndicator color={theme.colors.foregroundMuted} />
+          </View>
+        );
+      }
       return (
         <View style={styles.emptyState}>
           <Text style={styles.emptyStateText}>
