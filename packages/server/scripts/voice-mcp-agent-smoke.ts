@@ -114,7 +114,7 @@ async function main(): Promise<void> {
         enableVoiceTools: false,
         resolveSpeakHandler,
         resolveCallerContext: () => ({
-          childAgentDefaultLabels: { ui: "true" },
+          childAgentDefaultLabels: { source: "voice-smoke" },
           allowCustomCwd: true,
           enableVoiceTools: true,
         }),
@@ -156,7 +156,7 @@ async function main(): Promise<void> {
 
   try {
     const created = await agentManager.createAgent(config, agentId, {
-      labels: { surface: "voice-smoke", ui: "true" },
+      labels: { surface: "voice-smoke" },
     });
     logger.info({ provider: opts.provider, agentId: created.id }, "Created smoke agent");
 

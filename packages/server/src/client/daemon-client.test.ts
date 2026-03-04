@@ -838,7 +838,7 @@ describe('DaemonClient', () => {
     await connectPromise
 
     const promise = client.fetchAgents({
-      filter: { labels: { ui: 'true' } },
+      filter: { labels: { surface: 'workspace' } },
       sort: [
         { key: 'status_priority', direction: 'asc' },
         { key: 'created_at', direction: 'desc' },

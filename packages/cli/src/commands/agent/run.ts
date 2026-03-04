@@ -43,7 +43,6 @@ export interface AgentRunOptions extends CommandOptions {
   image?: string[]
   cwd?: string
   label?: string[]
-  ui?: boolean
   outputSchema?: string
 }
 
@@ -265,9 +264,7 @@ export async function runRunCommand(
         }
       : undefined
 
-    // Build labels from --label and --ui flags
-    // --ui is syntactic sugar for --label ui=true
-    // If explicit --label ui=... is provided, it takes precedence over --ui
+    // Build labels from --label flags
     const labels: Record<string, string> = {}
     if (options.label) {
       for (const labelStr of options.label) {
@@ -284,10 +281,6 @@ export async function runRunCommand(
         const value = labelStr.slice(eqIndex + 1)
         labels[key] = value
       }
-    }
-    // Add ui=true if --ui flag is set and ui label not already set
-    if (options.ui && !('ui' in labels)) {
-      labels['ui'] = 'true'
     }
 
     if (outputSchema) {

@@ -78,6 +78,10 @@ import {
   resolveWorkspaceHeader,
   shouldRenderMissingWorkspaceDescriptor,
 } from "@/screens/workspace/workspace-header-source";
+import {
+  canOpenAgentTabFromRoute,
+  deriveWorkspaceAgentVisibility,
+} from "@/screens/workspace/workspace-agent-visibility";
 
 const TERMINALS_QUERY_STALE_TIME = 5_000;
 const NEW_TAB_AGENT_OPTION_ID = "__new_tab_agent__";
@@ -196,17 +200,6 @@ function resolveTabAvailability(input: {
   return input.terminalIds.has(input.tab.terminalId) ? "available" : "invalid";
 }
 
-function sortAgentsByCreatedAtDescending(agents: Agent[]): Agent[] {
-  return [...agents].sort((left, right) => {
-    const createdAtDelta =
-      right.createdAt.getTime() - left.createdAt.getTime();
-    if (createdAtDelta !== 0) {
-      return createdAtDelta;
-    }
-    return right.lastActivityAt.getTime() - left.lastActivityAt.getTime();
-  });
-}
-
 export function WorkspaceScreen({
   serverId,
   workspaceId,
@@ -243,24 +236,15 @@ function WorkspaceScreenContent({
   const sessionAgents = useSessionStore(
     (state) => state.sessions[normalizedServerId]?.agents
   );
-  const workspaceAgents = useMemo(() => {
-    if (!sessionAgents || !normalizedWorkspaceId) {
-      return [] as Agent[];
-    }
-
-    const collected: Agent[] = [];
-    for (const agent of sessionAgents.values()) {
-      if (agent.archivedAt) {
-        continue;
-      }
-      if ((trimNonEmpty(agent.cwd) ?? "") !== normalizedWorkspaceId) {
-        continue;
-      }
-      collected.push(agent);
-    }
-
-    return sortAgentsByCreatedAtDescending(collected);
-  }, [normalizedWorkspaceId, sessionAgents]);
+  const workspaceAgentVisibility = useMemo(
+    () =>
+      deriveWorkspaceAgentVisibility({
+        sessionAgents,
+        workspaceId: normalizedWorkspaceId,
+      }),
+    [normalizedWorkspaceId, sessionAgents]
+  );
+  const workspaceAgents = workspaceAgentVisibility.visibleAgents;
 
   const terminalsQueryKey = useMemo(
     () => ["terminals", normalizedServerId, normalizedWorkspaceId] as const,
@@ -487,13 +471,7 @@ function WorkspaceScreenContent({
     return () => handler.remove();
   }, [closeToAgent, isExplorerOpen]);
 
-  const agentsById = useMemo(() => {
-    const map = new Map<string, Agent>();
-    for (const agent of workspaceAgents) {
-      map.set(agent.id, agent);
-    }
-    return map;
-  }, [workspaceAgents]);
+  const agentsById = workspaceAgentVisibility.lookupById;
 
   const terminalIds = useMemo(() => {
     const set = new Set<string>();
@@ -580,7 +558,13 @@ function WorkspaceScreenContent({
     if (normalized.startsWith("agent_")) {
       const agentId = normalized.slice("agent_".length).trim();
       if (agentId) {
-        if (areWorkspaceAgentsHydrated && !agentsById.has(agentId)) {
+        if (
+          !canOpenAgentTabFromRoute({
+            agentId,
+            agentsHydrated: areWorkspaceAgentsHydrated,
+            workspaceAgentLookup: agentsById,
+          })
+        ) {
           return;
         }
         const tabId = openOrFocusTab({

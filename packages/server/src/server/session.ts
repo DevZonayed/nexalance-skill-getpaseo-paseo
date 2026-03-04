@@ -1808,35 +1808,7 @@ export class Session {
   private async handleArchiveAgentRequest(agentId: string, requestId: string): Promise<void> {
     this.sessionLogger.info({ agentId }, `Archiving agent ${agentId}`)
 
-    if (this.agentManager.getAgent(agentId)) {
-      await this.interruptAgentIfRunning(agentId)
-    }
-
-    const archivedAt = new Date().toISOString()
-
-    const existing = await this.agentStorage.get(agentId)
-    let archivedRecord: StoredAgentRecord | null = existing
-    if (!archivedRecord) {
-      const liveAgent = this.agentManager.getAgent(agentId)
-      if (!liveAgent) {
-        throw new Error(`Agent not found: ${agentId}`)
-      }
-
-      await this.agentStorage.applySnapshot(liveAgent, {
-        internal: liveAgent.internal,
-      })
-      archivedRecord = await this.agentStorage.get(agentId)
-      if (!archivedRecord) {
-        throw new Error(`Agent not found in storage after snapshot: ${agentId}`)
-      }
-    }
-
-    archivedRecord = {
-      ...archivedRecord,
-      archivedAt,
-    }
-    await this.agentStorage.upsert(archivedRecord)
-    this.agentManager.notifyAgentState(agentId)
+    const { archivedAt, archivedRecord } = await this.archiveAgentState(agentId)
 
     this.emit({
       type: 'agent_archived',
@@ -1854,9 +1826,75 @@ export class Session {
     })
   }
 
-  private async getArchivedAt(agentId: string): Promise<string | null> {
+  private async archiveAgentState(agentId: string): Promise<{
+    archivedAt: string
+    archivedRecord: StoredAgentRecord
+  }> {
+    if (this.agentManager.getAgent(agentId)) {
+      await this.interruptAgentIfRunning(agentId)
+      await this.agentManager.clearAgentAttention(agentId).catch(() => undefined)
+    }
+
+    const archivedAt = new Date().toISOString()
+    const existing = await this.agentStorage.get(agentId)
+    let archivedRecord: StoredAgentRecord | null = existing
+    if (!archivedRecord) {
+      const liveAgent = this.agentManager.getAgent(agentId)
+      if (!liveAgent) {
+        throw new Error(`Agent not found: ${agentId}`)
+      }
+
+      await this.agentStorage.applySnapshot(liveAgent, {
+        internal: liveAgent.internal,
+      })
+      archivedRecord = await this.agentStorage.get(agentId)
+      if (!archivedRecord) {
+        throw new Error(`Agent not found in storage after snapshot: ${agentId}`)
+      }
+    }
+
+    const normalizedStatus =
+      archivedRecord.lastStatus === 'running' || archivedRecord.lastStatus === 'initializing'
+        ? 'idle'
+        : archivedRecord.lastStatus
+
+    const nextRecord: StoredAgentRecord = {
+      ...archivedRecord,
+      archivedAt,
+      lastStatus: normalizedStatus,
+      requiresAttention: false,
+      attentionReason: null,
+      attentionTimestamp: null,
+    }
+    await this.agentStorage.upsert(nextRecord)
+    this.agentManager.notifyAgentState(agentId)
+    return { archivedAt, archivedRecord: nextRecord }
+  }
+
+  private async unarchiveAgentState(agentId: string): Promise<boolean> {
     const record = await this.agentStorage.get(agentId)
-    return record?.archivedAt ?? null
+    if (!record || !record.archivedAt) {
+      return false
+    }
+    await this.agentStorage.upsert({
+      ...record,
+      archivedAt: null,
+    })
+    this.agentManager.notifyAgentState(agentId)
+    return true
+  }
+
+  private async unarchiveAgentByHandle(handle: AgentPersistenceHandle): Promise<void> {
+    const records = await this.agentStorage.list()
+    const matched = records.find(
+      (record) =>
+        record.persistence?.provider === handle.provider &&
+        record.persistence?.sessionId === handle.sessionId
+    )
+    if (!matched) {
+      return
+    }
+    await this.unarchiveAgentState(matched.id)
   }
 
   private async handleUpdateAgentRequest(
@@ -2443,20 +2481,12 @@ export class Session {
       `Sending text to agent ${agentId}${images && images.length > 0 ? ` with ${images.length} image attachment(s)` : ''}`
     )
 
+    await this.unarchiveAgentState(agentId)
+
     try {
       await this.ensureAgentLoaded(agentId)
     } catch (error) {
       this.handleAgentRunError(agentId, error, 'Failed to initialize agent before sending prompt')
-      return
-    }
-
-    const archivedAt = await this.getArchivedAt(agentId)
-    if (archivedAt) {
-      this.handleAgentRunError(
-        agentId,
-        new Error(`Agent ${agentId} is archived`),
-        'Refusing to send prompt to archived agent'
-      )
       return
     }
 
@@ -2645,7 +2675,9 @@ export class Session {
       `Resuming agent ${handle.sessionId} (${handle.provider})`
     )
     try {
+      await this.unarchiveAgentByHandle(handle)
       const snapshot = await this.agentManager.resumeAgentFromPersistence(handle, overrides)
+      await this.unarchiveAgentState(snapshot.id)
       await this.agentManager.hydrateTimelineFromProvider(snapshot.id)
       await this.forwardAgentUpdate(snapshot)
       const timelineSize = this.agentManager.getTimeline(snapshot.id).length
@@ -2686,6 +2718,7 @@ export class Session {
     this.sessionLogger.info({ agentId }, `Refreshing agent ${agentId} from persistence`)
 
     try {
+      await this.unarchiveAgentState(agentId)
       let snapshot: ManagedAgent
       const existing = this.agentManager.getAgent(agentId)
       if (existing) {
@@ -5318,9 +5351,7 @@ export class Session {
   }
 
   private async listWorkspaceDescriptors(): Promise<WorkspaceDescriptorPayload[]> {
-    const agents = await this.listAgentPayloads({
-      labels: { ui: 'true' },
-    })
+    const agents = await this.listAgentPayloads()
 
     const descriptorsByWorkspaceId = new Map<string, WorkspaceDescriptorPayload>()
     const placementByWorkspaceId = new Map<string, Promise<ProjectPlacementPayload>>()
@@ -6021,20 +6052,7 @@ export class Session {
 
     try {
       const agentId = resolved.agentId
-
-      const archivedAt = await this.getArchivedAt(agentId)
-      if (archivedAt) {
-        this.emit({
-          type: 'send_agent_message_response',
-          payload: {
-            requestId: msg.requestId,
-            agentId,
-            accepted: false,
-            error: `Agent ${agentId} is archived`,
-          },
-        })
-        return
-      }
+      await this.unarchiveAgentState(agentId)
 
       await this.ensureAgentLoaded(agentId)
       await this.interruptAgentIfRunning(agentId)
@@ -6589,7 +6607,7 @@ export class Session {
     })
 
     this.registerVoiceCallerContext?.(agentId, {
-      childAgentDefaultLabels: { ui: 'true' },
+      childAgentDefaultLabels: {},
       allowCustomCwd: false,
       enableVoiceTools: true,
     })

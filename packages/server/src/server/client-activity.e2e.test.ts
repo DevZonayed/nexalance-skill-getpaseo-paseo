@@ -59,7 +59,7 @@ describe("client activity tracking", () => {
     return client;
   }
 
-  async function createUiAgent(params: {
+  async function createAgent(params: {
     client: DaemonClient;
     title: string;
   }): Promise<AgentSnapshotPayload> {
@@ -68,7 +68,7 @@ describe("client activity tracking", () => {
       model: TEST_MODEL,
       cwd: TEST_CWD,
       title: params.title,
-      labels: { ui: "true" },
+      labels: { surface: "activity-test" },
     });
   }
 
@@ -103,7 +103,7 @@ describe("client activity tracking", () => {
     test("no notification when actively focused on agent", async () => {
       client1 = await createClient();
 
-      const agent = await createUiAgent({
+      const agent = await createAgent({
         client: client1,
         title: "Active Focus Test",
       });
@@ -129,9 +129,9 @@ describe("client activity tracking", () => {
     test("notification when focused on different agent", async () => {
       client1 = await createClient();
 
-      const agent1 = await createUiAgent({ client: client1, title: "Agent 1" });
+      const agent1 = await createAgent({ client: client1, title: "Agent 1" });
 
-      const agent2 = await createUiAgent({ client: client1, title: "Agent 2" });
+      const agent2 = await createAgent({ client: client1, title: "Agent 2" });
 
       // User is looking at agent2, not agent1
       client1.sendHeartbeat({
@@ -155,7 +155,7 @@ describe("client activity tracking", () => {
     test("no notification when app is not visible but activity is recent (user just switched tabs)", async () => {
       client1 = await createClient();
 
-      const agent = await createUiAgent({
+      const agent = await createAgent({
         client: client1,
         title: "App Hidden Test",
       });
@@ -182,7 +182,7 @@ describe("client activity tracking", () => {
     test("notification when activity is stale (user walked away for 2+ minutes)", async () => {
       client1 = await createClient();
 
-      const agent = await createUiAgent({
+      const agent = await createAgent({
         client: client1,
         title: "Stale Activity Test",
       });
@@ -210,7 +210,7 @@ describe("client activity tracking", () => {
     test("notification when no heartbeat received (legacy/new client)", async () => {
       client1 = await createClient();
 
-      const agent = await createUiAgent({
+      const agent = await createAgent({
         client: client1,
         title: "No Heartbeat Test",
       });
@@ -236,7 +236,7 @@ describe("client activity tracking", () => {
       client1 = await createClient();
       client2 = await createClient();
 
-      const agent = await createUiAgent({
+      const agent = await createAgent({
         client: client1,
         title: "Two Tabs Test",
       });
@@ -277,7 +277,7 @@ describe("client activity tracking", () => {
       client1 = await createClient();
       client2 = await createClient();
 
-      const agent = await createUiAgent({
+      const agent = await createAgent({
         client: client1,
         title: "Both Inactive Test",
       });
@@ -325,7 +325,7 @@ describe("client activity tracking", () => {
       client1 = await createClient(); // web
       client2 = await createClient(); // mobile
 
-      const agent = await createUiAgent({
+      const agent = await createAgent({
         client: client1,
         title: "Web Active Test",
       });
@@ -366,7 +366,7 @@ describe("client activity tracking", () => {
       client1 = await createClient(); // web
       client2 = await createClient(); // mobile
 
-      const agent = await createUiAgent({
+      const agent = await createAgent({
         client: client1,
         title: "Mobile Active Test",
       });
@@ -407,7 +407,7 @@ describe("client activity tracking", () => {
       client1 = await createClient(); // web
       client2 = await createClient(); // mobile
 
-      const agent = await createUiAgent({
+      const agent = await createAgent({
         client: client1,
         title: "Web Stale Test",
       });
@@ -448,9 +448,9 @@ describe("client activity tracking", () => {
       client1 = await createClient(); // web
       client2 = await createClient(); // mobile
 
-      const agent1 = await createUiAgent({ client: client1, title: "Agent 1" });
+      const agent1 = await createAgent({ client: client1, title: "Agent 1" });
 
-      const agent2 = await createUiAgent({ client: client1, title: "Agent 2" });
+      const agent2 = await createAgent({ client: client1, title: "Agent 2" });
 
       // Web: active but looking at agent2
       client1.sendHeartbeat({
@@ -489,7 +489,7 @@ describe("client activity tracking", () => {
       client1 = await createClient(); // web
       client2 = await createClient(); // mobile
 
-      const agent = await createUiAgent({
+      const agent = await createAgent({
         client: client1,
         title: "Both Inactive Test",
       });
@@ -539,7 +539,7 @@ describe("client activity tracking", () => {
       client1 = await createClient(); // web
       client2 = await createClient(); // mobile - no heartbeat
 
-      const agent = await createUiAgent({
+      const agent = await createAgent({
         client: client1,
         title: "Mobile No Heartbeat Test",
       });
@@ -575,7 +575,7 @@ describe("client activity tracking", () => {
     test("no notification when app not visible but activity recent (switched tabs recently)", async () => {
       client1 = await createClient();
 
-      const agent = await createUiAgent({
+      const agent = await createAgent({
         client: client1,
         title: "Tab Switch Test",
       });
@@ -603,7 +603,7 @@ describe("client activity tracking", () => {
       client1 = await createClient(); // web
       client2 = await createClient(); // mobile
 
-      const agent = await createUiAgent({
+      const agent = await createAgent({
         client: client1,
         title: "Both Recent Activity Test",
       });

@@ -1550,7 +1550,6 @@ function SessionProviderInternal({
       }
       return client.createAgent({
         config,
-        labels: { ui: "true" },
         ...(trimmedPrompt ? { initialPrompt: trimmedPrompt } : {}),
         ...(imagesData && imagesData.length > 0 ? { images: imagesData } : {}),
         ...(git ? { git } : {}),

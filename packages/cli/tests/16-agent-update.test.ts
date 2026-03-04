@@ -89,7 +89,7 @@ try {
   {
     console.log('Test 5: agent update accepts multi-label syntax')
     const result =
-      await $`PASEO_HOST=localhost:${port} PASEO_HOME=${paseoHome} npx paseo agent update abc123 --label ui=true,area=frontend --label priority=high`.nothrow()
+      await $`PASEO_HOST=localhost:${port} PASEO_HOME=${paseoHome} npx paseo agent update abc123 --label surface=workspace,area=frontend --label priority=high`.nothrow()
     const output = result.stdout + result.stderr
     assert(!output.includes('unknown option'), 'should accept --label flag')
     assert(!output.includes('error: option'), 'should not have option parsing error')
