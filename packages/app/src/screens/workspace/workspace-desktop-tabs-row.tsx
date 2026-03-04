@@ -1,5 +1,5 @@
-import { useMemo, type Dispatch, type SetStateAction } from "react";
-import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
+import { useCallback, useMemo, useState, type Dispatch, type SetStateAction } from "react";
+import { ActivityIndicator, Pressable, ScrollView, Text, View, type LayoutChangeEvent } from "react-native";
 import { Bot, FileText, Pencil, Plus, SquareTerminal, Terminal, X } from "lucide-react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { SortableInlineList } from "@/components/sortable-inline-list";
@@ -73,11 +73,23 @@ export function WorkspaceDesktopTabsRow({
   onReorderTabs,
 }: WorkspaceDesktopTabsRowProps) {
   const { theme } = useUnistyles();
+  const [tabsContainerWidth, setTabsContainerWidth] = useState<number>(0);
+  const [tabsActionsWidth, setTabsActionsWidth] = useState<number>(0);
+
+  const handleTabsContainerLayout = useCallback((event: LayoutChangeEvent) => {
+    const nextWidth = Math.round(event.nativeEvent.layout.width);
+    setTabsContainerWidth((current) => (Math.abs(current - nextWidth) > 1 ? nextWidth : current));
+  }, []);
+
+  const handleTabsActionsLayout = useCallback((event: LayoutChangeEvent) => {
+    const nextWidth = Math.round(event.nativeEvent.layout.width);
+    setTabsActionsWidth((current) => (Math.abs(current - nextWidth) > 1 ? nextWidth : current));
+  }, []);
 
   const layoutMetrics = useMemo(
     () => ({
       rowHorizontalInset: 0,
-      actionsReservedWidth: 120,
+      actionsReservedWidth: Math.max(0, tabsActionsWidth),
       rowPaddingHorizontal: theme.spacing[2],
       tabGap: theme.spacing[1],
       minTabWidth: 60,
@@ -86,19 +98,24 @@ export function WorkspaceDesktopTabsRow({
       tabHorizontalPadding: theme.spacing[3],
       estimatedCharWidth: 7,
       closeButtonWidth: 22,
-      compactLabelCharCap: 10,
-      compactDenseLabelCharCap: 8,
+      compactLabelCharCap: 9,
+      compactDenseLabelCharCap: 7,
     }),
-    [theme.spacing]
+    [tabsActionsWidth, theme.spacing]
   );
 
   const { layout } = useWorkspaceTabLayout({
     tabLabels: tabs.map((tab) => tab.label),
+    viewportWidthOverride: tabsContainerWidth > 0 ? tabsContainerWidth : null,
     metrics: layoutMetrics,
   });
 
   return (
-    <View style={styles.tabsContainer} testID="workspace-tabs-row">
+    <View
+      style={styles.tabsContainer}
+      testID="workspace-tabs-row"
+      onLayout={handleTabsContainerLayout}
+    >
       <ScrollView
         horizontal
         testID="workspace-tabs-scroll"
@@ -125,7 +142,7 @@ export function WorkspaceDesktopTabsRow({
             const isClosingTerminal =
               tab.kind === "terminal" && killTerminalPending && killTerminalId === tab.terminalId;
             const isClosingTab = isClosingAgent || isClosingTerminal;
-            const shouldShowCloseButton = layout.showCloseButtons;
+            const shouldShowCloseButton = layout.closeButtonPolicy === "all";
             const iconColor = isActive ? theme.colors.foreground : theme.colors.foregroundMuted;
             const tabAgentStatusBucket = tabAgent
               ? deriveSidebarStateBucket({
@@ -183,6 +200,13 @@ export function WorkspaceDesktopTabsRow({
                   style={({ hovered, pressed }) => [
                     styles.tab,
                     layout.mode === "icon" && styles.tabIconOnly,
+                    layout.mode === "icon" && {
+                      minWidth: layout.tabMaxWidth,
+                      width: layout.tabMaxWidth,
+                      maxWidth: layout.tabMaxWidth,
+                    },
+                    layout.mode === "compact" && styles.tabCompact,
+                    layout.mode === "compact" && { maxWidth: layout.tabMaxWidth },
                     isActive && styles.tabActive,
                     (hovered || pressed || isCloseHovered) && styles.tabHovered,
                   ]}
@@ -320,7 +344,7 @@ export function WorkspaceDesktopTabsRow({
           }}
         />
       </ScrollView>
-      <View style={styles.tabsActions}>
+      <View style={styles.tabsActions} onLayout={handleTabsActionsLayout}>
         <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
           <TooltipTrigger
             testID="workspace-new-agent-tab"
@@ -414,6 +438,9 @@ const styles = StyleSheet.create((theme) => ({
     width: 40,
     maxWidth: 40,
     justifyContent: "center",
+  },
+  tabCompact: {
+    paddingHorizontal: theme.spacing[2],
   },
   tabHandle: {
     flexDirection: "row",

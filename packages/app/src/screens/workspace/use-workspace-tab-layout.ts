@@ -7,6 +7,7 @@ import {
 
 type UseWorkspaceTabLayoutInput = {
   tabLabels: string[];
+  viewportWidthOverride?: number | null;
   metrics: {
     rowHorizontalInset: number;
     actionsReservedWidth: number;
@@ -29,15 +30,19 @@ type UseWorkspaceTabLayoutResult = {
 
 export function useWorkspaceTabLayout(input: UseWorkspaceTabLayoutInput): UseWorkspaceTabLayoutResult {
   const { width: viewportWidth } = useWindowDimensions();
+  const resolvedViewportWidth =
+    typeof input.viewportWidthOverride === "number" && input.viewportWidthOverride > 0
+      ? input.viewportWidthOverride
+      : viewportWidth;
 
   const layout = useMemo(
     () =>
       computeWorkspaceTabLayout({
-        viewportWidth,
+        viewportWidth: resolvedViewportWidth,
         tabLabelLengths: input.tabLabels.map((label) => label.length),
         metrics: input.metrics,
       }),
-    [input.metrics, input.tabLabels, viewportWidth]
+    [input.metrics, input.tabLabels, resolvedViewportWidth]
   );
 
   return {

@@ -20,7 +20,7 @@ import {
   type ReactElement,
   type MutableRefObject,
 } from 'react'
-import { router, usePathname, useSegments } from 'expo-router'
+import { router, usePathname } from 'expo-router'
 import { StyleSheet, UnistylesRuntime, useUnistyles } from 'react-native-unistyles'
 import { type GestureType } from 'react-native-gesture-handler'
 import { ChevronDown, ChevronRight } from 'lucide-react-native'
@@ -736,7 +736,6 @@ function ProjectBlock({
   iconDataUri,
   serverId,
   activeWorkspaceSelection,
-  shouldReplaceWorkspaceNavigation,
   showShortcutBadges,
   shortcutIndexByWorkspaceKey,
   parentGestureRef,
@@ -756,7 +755,6 @@ function ProjectBlock({
   iconDataUri: string | null
   serverId: string | null
   activeWorkspaceSelection: { serverId: string; workspaceId: string } | null
-  shouldReplaceWorkspaceNavigation: boolean
   showShortcutBadges: boolean
   shortcutIndexByWorkspaceKey: Map<string, number>
   parentGestureRef?: MutableRefObject<GestureType | undefined>
@@ -778,7 +776,6 @@ function ProjectBlock({
       dragHandleProps: workspaceDragHandleProps,
     }: DraggableRenderItemInfo<SidebarWorkspaceEntry>) => {
       const workspaceRoute = buildHostWorkspaceRoute(serverId ?? '', item.workspaceId)
-      const navigate = shouldReplaceWorkspaceNavigation ? router.replace : router.push
       const isSelected =
         Boolean(serverId) &&
         activeWorkspaceSelection?.serverId === serverId &&
@@ -795,7 +792,7 @@ function ProjectBlock({
               return
             }
             onWorkspacePress?.()
-            navigate(workspaceRoute as any)
+            router.push(workspaceRoute as any)
           }}
           drag={workspaceDrag}
           isDragging={isActive}
@@ -807,7 +804,6 @@ function ProjectBlock({
       activeWorkspaceSelection,
       onWorkspacePress,
       serverId,
-      shouldReplaceWorkspaceNavigation,
       shortcutIndexByWorkspaceKey,
       showShortcutBadges,
     ]
@@ -861,9 +857,7 @@ export function SidebarWorkspaceList({
   parentGestureRef,
 }: SidebarWorkspaceListProps) {
   const isMobile = UnistylesRuntime.breakpoint === 'xs' || UnistylesRuntime.breakpoint === 'sm'
-  const segments = useSegments()
   const pathname = usePathname()
-  const shouldReplaceWorkspaceNavigation = segments[0] === 'h'
   const [collapsedProjectKeys, setCollapsedProjectKeys] = useState<Set<string>>(new Set())
   const [outerScrollEnabled, setOuterScrollEnabled] = useState(true)
   const isTauri = getIsTauri()
@@ -1081,7 +1075,6 @@ export function SidebarWorkspaceList({
           iconDataUri={projectIconByProjectKey.get(item.projectKey) ?? null}
           serverId={serverId}
           activeWorkspaceSelection={activeWorkspaceSelection}
-          shouldReplaceWorkspaceNavigation={shouldReplaceWorkspaceNavigation}
           showShortcutBadges={showShortcutBadges}
           shortcutIndexByWorkspaceKey={shortcutModel.shortcutIndexByWorkspaceKey}
           parentGestureRef={parentGestureRef}
@@ -1106,7 +1099,6 @@ export function SidebarWorkspaceList({
       projectIconByProjectKey,
       serverId,
       shortcutModel.shortcutIndexByWorkspaceKey,
-      shouldReplaceWorkspaceNavigation,
       showShortcutBadges,
       toggleProjectCollapsed,
       lockOuterScrollForDrag,

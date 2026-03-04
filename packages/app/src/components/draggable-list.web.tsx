@@ -139,14 +139,10 @@ export function DraggableList<T>({
   nestable: _nestable = false,
 }: DraggableListProps<T>) {
   const [activeId, setActiveId] = useState<string | null>(null);
-  const [items, setItems] = useState(data);
+  const [dragItems, setDragItems] = useState<T[] | null>(null);
+  const items = dragItems ?? data;
   const scrollViewRef = useRef<ScrollView>(null);
   const scrollbarMetrics = useWebDesktopScrollbarMetrics();
-
-  // Sync items with data prop
-  if (data !== items && !activeId) {
-    setItems(data);
-  }
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -159,16 +155,21 @@ export function DraggableList<T>({
     })
   );
 
-  const handleDragStart = useCallback((event: DragStartEvent) => {
-    setActiveId(String(event.active.id));
-    onDragBegin?.();
-  }, [onDragBegin]);
+  const handleDragStart = useCallback(
+    (event: DragStartEvent) => {
+      setDragItems(data);
+      setActiveId(String(event.active.id));
+      onDragBegin?.();
+    },
+    [data, onDragBegin]
+  );
 
   const handleDragEnd = useCallback(
     (event: DragEndEvent) => {
       const { active, over } = event;
 
       setActiveId(null);
+      setDragItems(null);
 
       if (over && active.id !== over.id) {
         const oldIndex = items.findIndex(
@@ -178,9 +179,10 @@ export function DraggableList<T>({
           (item, i) => keyExtractor(item, i) === over.id
         );
 
-        const newItems = arrayMove(items, oldIndex, newIndex);
-        setItems(newItems);
-        onDragEnd(newItems);
+        if (oldIndex >= 0 && newIndex >= 0 && oldIndex !== newIndex) {
+          const newItems = arrayMove(items, oldIndex, newIndex);
+          onDragEnd(newItems);
+        }
       }
     },
     [items, keyExtractor, onDragEnd]

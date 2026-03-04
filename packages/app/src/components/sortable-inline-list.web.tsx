@@ -165,7 +165,6 @@ export function SortableInlineList<T>({
 
         if (oldIndex >= 0 && newIndex >= 0 && oldIndex !== newIndex) {
           const newItems = arrayMove(items, oldIndex, newIndex);
-          setDragItems(newItems);
           onDragEnd?.(newItems);
         }
       }

@@ -12,8 +12,8 @@ const metrics = {
   tabHorizontalPadding: 12,
   estimatedCharWidth: 7,
   closeButtonWidth: 22,
-  compactLabelCharCap: 10,
-  compactDenseLabelCharCap: 8,
+  compactLabelCharCap: 9,
+  compactDenseLabelCharCap: 7,
 };
 
 describe("computeWorkspaceTabLayout", () => {
@@ -26,7 +26,7 @@ describe("computeWorkspaceTabLayout", () => {
 
     expect(result.mode).toBe("full");
     expect(result.showLabels).toBe(true);
-    expect(result.showCloseButtons).toBe(true);
+    expect(result.closeButtonPolicy).toBe("all");
   });
 
   it("uses compact mode before icon-only", () => {
@@ -38,7 +38,8 @@ describe("computeWorkspaceTabLayout", () => {
 
     expect(result.mode).toBe("compact");
     expect(result.showLabels).toBe(true);
-    expect(result.showCloseButtons).toBe(false);
+    expect(result.closeButtonPolicy).toBe("all");
+    expect(result.tabMaxWidth).toBeGreaterThan(108);
   });
 
   it("falls back to icon mode when compact labels still cannot fit", () => {
@@ -50,7 +51,7 @@ describe("computeWorkspaceTabLayout", () => {
 
     expect(result.mode).toBe("icon");
     expect(result.showLabels).toBe(false);
-    expect(result.showCloseButtons).toBe(false);
+    expect(result.closeButtonPolicy).toBe("all");
   });
 
   it("keeps icon mode without scroll when icons can fit", () => {
@@ -72,18 +73,20 @@ describe("computeWorkspaceTabLayout", () => {
 
     expect(result.mode).toBe("compact");
     expect(result.showLabels).toBe(true);
-    expect(result.showCloseButtons).toBe(false);
+    expect(result.closeButtonPolicy).toBe("all");
+    expect(result.tabMaxWidth).toBeGreaterThan(94);
   });
 
-  it("uses dense compact labels for larger tab counts before icon-only", () => {
+  it("falls back to icon mode sooner at tighter widths when close buttons stay visible", () => {
     const result = computeWorkspaceTabLayout({
       viewportWidth: 1100,
       tabLabelLengths: [18, 21, 14, 15, 19, 12, 17, 16, 20],
       metrics,
     });
 
-    expect(result.mode).toBe("compact");
-    expect(result.showLabels).toBe(true);
-    expect(result.showCloseButtons).toBe(false);
+    expect(result.mode).toBe("icon");
+    expect(result.showLabels).toBe(false);
+    expect(result.closeButtonPolicy).toBe("all");
+    expect(result.tabMaxWidth).toBe(58);
   });
 });

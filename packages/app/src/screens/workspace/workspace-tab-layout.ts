@@ -1,4 +1,5 @@
 export type WorkspaceTabLayoutMode = "full" | "compact" | "icon";
+export type WorkspaceTabCloseButtonPolicy = "all";
 
 export type WorkspaceTabLayoutInput = {
   viewportWidth: number;
@@ -22,7 +23,8 @@ export type WorkspaceTabLayoutInput = {
 export type WorkspaceTabLayoutResult = {
   mode: WorkspaceTabLayoutMode;
   showLabels: boolean;
-  showCloseButtons: boolean;
+  closeButtonPolicy: WorkspaceTabCloseButtonPolicy;
+  tabMaxWidth: number;
 };
 
 function clamp(value: number, min: number, max: number): number {
@@ -62,7 +64,8 @@ export function computeWorkspaceTabLayout(
     return {
       mode: "full",
       showLabels: true,
-      showCloseButtons: true,
+      closeButtonPolicy: "all",
+      tabMaxWidth: input.metrics.maxTabWidth,
     };
   }
 
@@ -90,13 +93,20 @@ export function computeWorkspaceTabLayout(
     rowPaddingHorizontal: input.metrics.rowPaddingHorizontal,
   });
   if (fullTotal <= availableWidth) {
-    return { mode: "full", showLabels: true, showCloseButtons: true };
+    return {
+      mode: "full",
+      showLabels: true,
+      closeButtonPolicy: "all",
+      tabMaxWidth: input.metrics.maxTabWidth,
+    };
   }
 
   const compactTabWidths = input.tabLabelLengths.map((rawLength) => {
     const labelLength = Math.max(rawLength, 1);
     const estimatedWidth =
-      baseTabWidth + estimateLabelWidth(Math.min(labelLength, effectiveCompactLabelCharCap));
+      baseTabWidth +
+      estimateLabelWidth(Math.min(labelLength, effectiveCompactLabelCharCap)) +
+      input.metrics.closeButtonWidth;
     return clamp(estimatedWidth, input.metrics.minTabWidth, input.metrics.maxTabWidth);
   });
   const compactTotal = computeTotalRowWidth({
@@ -105,8 +115,18 @@ export function computeWorkspaceTabLayout(
     rowPaddingHorizontal: input.metrics.rowPaddingHorizontal,
   });
   if (compactTotal <= availableWidth) {
-    return { mode: "compact", showLabels: true, showCloseButtons: false };
+    return {
+      mode: "compact",
+      showLabels: true,
+      closeButtonPolicy: "all",
+      tabMaxWidth: Math.max(...compactTabWidths),
+    };
   }
 
-  return { mode: "icon", showLabels: false, showCloseButtons: false };
+  return {
+    mode: "icon",
+    showLabels: false,
+    closeButtonPolicy: "all",
+    tabMaxWidth: 58,
+  };
 }
