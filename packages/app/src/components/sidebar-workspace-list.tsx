@@ -792,7 +792,7 @@ function ProjectBlock({
               return
             }
             onWorkspacePress?.()
-            router.push(workspaceRoute as any)
+            router.replace(workspaceRoute as any)
           }}
           drag={workspaceDrag}
           isDragging={isActive}

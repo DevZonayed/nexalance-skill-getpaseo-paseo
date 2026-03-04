@@ -367,7 +367,7 @@ export const createAgent = async (page: Page, message: string) => {
   await input.press('Enter');
 
   // Router updates can be same-document transitions; assert URL state instead of waiting for a commit event.
-  await expect(page).toHaveURL(/\/agent\//, { timeout: 30000 });
+  await expect(page).toHaveURL(/\/(workspace|agent)\//, { timeout: 30000 });
   await expect(page.getByText(message, { exact: true }).first()).toBeVisible({
     timeout: 30000,
   });
