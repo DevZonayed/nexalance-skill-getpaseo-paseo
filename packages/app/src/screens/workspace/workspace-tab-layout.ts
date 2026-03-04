@@ -14,6 +14,8 @@ export type WorkspaceTabLayoutInput = {
     tabHorizontalPadding: number;
     estimatedCharWidth: number;
     closeButtonWidth: number;
+    compactLabelCharCap?: number;
+    compactDenseLabelCharCap?: number;
   };
 };
 
@@ -70,6 +72,12 @@ export function computeWorkspaceTabLayout(
   );
   const baseTabWidth = input.metrics.tabIconWidth + input.metrics.tabHorizontalPadding * 2;
   const estimateLabelWidth = (labelLength: number) => labelLength * input.metrics.estimatedCharWidth;
+  const compactLabelCharCap = Math.max(1, input.metrics.compactLabelCharCap ?? 12);
+  const compactDenseLabelCharCap = Math.max(
+    1,
+    input.metrics.compactDenseLabelCharCap ?? Math.max(1, compactLabelCharCap - 2)
+  );
+  const effectiveCompactLabelCharCap = tabCount >= 8 ? compactDenseLabelCharCap : compactLabelCharCap;
 
   const fullTabWidths = input.tabLabelLengths.map((rawLength) => {
     const labelLength = Math.max(rawLength, 1);
@@ -87,7 +95,8 @@ export function computeWorkspaceTabLayout(
 
   const compactTabWidths = input.tabLabelLengths.map((rawLength) => {
     const labelLength = Math.max(rawLength, 1);
-    const estimatedWidth = baseTabWidth + estimateLabelWidth(labelLength);
+    const estimatedWidth =
+      baseTabWidth + estimateLabelWidth(Math.min(labelLength, effectiveCompactLabelCharCap));
     return clamp(estimatedWidth, input.metrics.minTabWidth, input.metrics.maxTabWidth);
   });
   const compactTotal = computeTotalRowWidth({

@@ -2693,6 +2693,9 @@ class ClaudeAgentSession implements AgentSession {
     // first turn cannot be stranded in autonomous fallback. If metadata churn
     // was observed pre-replay, stay conservative and wait for replay.
     if (!run.promptReplaySeen) {
+      if (this.isToolUseBoundaryStreamEvent(input.message)) {
+        return true;
+      }
       // Keep pre-replay result events with the foreground run so stale result
       // bursts cannot consume autonomous wake reservations.
       if (message.type === "result") {
@@ -2716,6 +2719,21 @@ class ClaudeAgentSession implements AgentSession {
     }
 
     return true;
+  }
+
+  private isToolUseBoundaryStreamEvent(message: SDKMessage): boolean {
+    if (message.type !== "stream_event") {
+      return false;
+    }
+    const event = (message as unknown as { event?: Record<string, unknown> }).event;
+    if (!event || event.type !== "message_delta") {
+      return false;
+    }
+    const delta =
+      "delta" in event && event.delta && typeof event.delta === "object"
+        ? (event.delta as Record<string, unknown>)
+        : null;
+    return delta?.stop_reason === "tool_use";
   }
 
   private notePreReplayMetadata(message: SDKMessage): void {

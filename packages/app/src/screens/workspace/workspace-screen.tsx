@@ -8,7 +8,7 @@ import {
   View,
 } from "react-native";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useRouter } from "expo-router";
+import { usePathname, useRouter } from "expo-router";
 import * as Clipboard from "expo-clipboard";
 import {
   Bot,
@@ -50,9 +50,9 @@ import {
   useWorkspaceTabsStore,
 } from "@/stores/workspace-tabs-store";
 import {
-  buildHostWorkspaceRoute,
   buildHostWorkspaceTabRoute,
   decodeWorkspaceIdFromPathSegment,
+  encodeWorkspaceIdForPathSegment,
 } from "@/utils/host-routes";
 import { normalizeWorkspaceIdentity } from "@/utils/workspace-identity";
 import { useHostRuntimeSession } from "@/runtime/host-runtime";
@@ -82,6 +82,7 @@ import {
 import {
   deriveWorkspaceTabModel,
 } from "@/screens/workspace/workspace-tab-model";
+import { resolveWorkspaceTabCanonicalPath } from "@/screens/workspace/workspace-route-canonicalization";
 
 const TERMINALS_QUERY_STALE_TIME = 5_000;
 const NEW_TAB_AGENT_OPTION_ID = "__new_tab_agent__";
@@ -111,6 +112,26 @@ function decodeSegment(value: string): string {
   }
 }
 
+function buildWorkspaceTabHref(
+  serverId: string,
+  workspaceId: string,
+  tabId: string
+): { pathname: string; params: { serverId: string; workspaceId: string; tabId: string } } | null {
+  const encodedWorkspaceId = encodeWorkspaceIdForPathSegment(workspaceId);
+  const trimmedTabId = tabId.trim();
+  const trimmedServerId = serverId.trim();
+  if (!encodedWorkspaceId || !trimmedTabId || !trimmedServerId) {
+    return null;
+  }
+  return {
+    pathname: "/h/[serverId]/workspace/[workspaceId]/tab/[tabId]",
+    params: {
+      serverId: trimmedServerId,
+      workspaceId: encodedWorkspaceId,
+      tabId: trimmedTabId,
+    },
+  };
+}
 
 export function WorkspaceScreen({
   serverId,
@@ -136,6 +157,11 @@ function WorkspaceScreenContent({
   const { theme } = useUnistyles();
   const toast = useToast();
   const router = useRouter();
+  const routePathname = usePathname();
+  const pathname =
+    Platform.OS === "web" && typeof window !== "undefined"
+      ? `${window.location.pathname}${window.location.search}${window.location.hash}`
+      : routePathname;
   const isMobile =
     UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
 
@@ -215,13 +241,15 @@ function WorkspaceScreenContent({
             target: { kind: "terminal", terminalId: createdTerminal.id },
           });
         if (tabId) {
-          router.replace(
-            buildHostWorkspaceTabRoute(
-              normalizedServerId,
-              normalizedWorkspaceId,
-              tabId
-            ) as any
+          const href = buildWorkspaceTabHref(
+            normalizedServerId,
+            normalizedWorkspaceId,
+            tabId
           );
+          if (!href) {
+            return;
+          }
+          router.replace(href as any);
         }
       }
     },
@@ -413,6 +441,7 @@ function WorkspaceScreenContent({
   const closeWorkspaceTab = useWorkspaceTabsStore((state) => state.closeTab);
   const promoteDraftToAgent = useWorkspaceTabsStore((state) => state.promoteDraftToAgent);
   const reorderWorkspaceTabs = useWorkspaceTabsStore((state) => state.reorderTabs);
+  const [pendingRouteTabId, setPendingRouteTabId] = useState<string | null>(null);
 
   useEffect(() => {
     const normalized = typeof routeTabId === "string" ? routeTabId.trim() : "";
@@ -447,6 +476,22 @@ function WorkspaceScreenContent({
     routeTabId,
   ]);
 
+  const normalizedRouteTabId = trimNonEmpty(routeTabId);
+  const effectiveRouteTabId = pendingRouteTabId ?? normalizedRouteTabId;
+
+  useEffect(() => {
+    if (!pendingRouteTabId || !normalizedRouteTabId) {
+      return;
+    }
+    if (normalizedRouteTabId === pendingRouteTabId) {
+      setPendingRouteTabId(null);
+    }
+  }, [normalizedRouteTabId, pendingRouteTabId]);
+
+  useEffect(() => {
+    setPendingRouteTabId(null);
+  }, [normalizedServerId, normalizedWorkspaceId]);
+
   const tabModel = useMemo(
     () =>
       deriveWorkspaceTabModel({
@@ -455,9 +500,9 @@ function WorkspaceScreenContent({
         uiTabs,
         tabOrder,
         focusedTabId,
-        routeTabId,
+        routeTabId: effectiveRouteTabId,
       }),
-    [focusedTabId, routeTabId, tabOrder, terminals, uiTabs, workspaceAgents]
+    [effectiveRouteTabId, focusedTabId, tabOrder, terminals, uiTabs, workspaceAgents]
   );
   const activeTabId = tabModel.activeTabId;
 
@@ -468,23 +513,76 @@ function WorkspaceScreenContent({
     focusTab({ serverId: normalizedServerId, workspaceId: normalizedWorkspaceId, tabId: activeTabId });
   }, [activeTabId, focusTab, normalizedServerId, normalizedWorkspaceId, persistenceKey]);
 
-  const lastCanonicalTabIdRef = useRef<string | null>(null);
   useEffect(() => {
-    if (!activeTabId || !normalizedServerId || !normalizedWorkspaceId) {
+    if (!pendingRouteTabId || !activeTabId) {
       return;
     }
-    if (routeTabId && routeTabId.trim() === activeTabId) {
-      lastCanonicalTabIdRef.current = activeTabId;
+    if (pendingRouteTabId === activeTabId) {
+      setPendingRouteTabId(null);
+    }
+  }, [activeTabId, pendingRouteTabId]);
+
+  const lastCanonicalPathRef = useRef<string | null>(null);
+  useEffect(() => {
+    const hasRouteIdentitySearchParams =
+      Platform.OS === "web" &&
+      typeof window !== "undefined" &&
+      (() => {
+        const params = new URLSearchParams(window.location.search);
+        return (
+          params.has("tabId") ||
+          params.has("workspaceId") ||
+          params.has("serverId")
+        );
+      })();
+    const derivedCanonicalPath = resolveWorkspaceTabCanonicalPath({
+      activeTabId,
+      pathname,
+      serverId: normalizedServerId,
+      workspaceId: normalizedWorkspaceId,
+    });
+    const canonicalPath =
+      derivedCanonicalPath ??
+      (hasRouteIdentitySearchParams && activeTabId
+        ? buildHostWorkspaceTabRoute(
+            normalizedServerId,
+            normalizedWorkspaceId,
+            activeTabId
+          )
+        : null);
+    if (!canonicalPath) {
+      lastCanonicalPathRef.current = null;
       return;
     }
-    if (lastCanonicalTabIdRef.current === activeTabId) {
+    if (lastCanonicalPathRef.current === canonicalPath) {
       return;
     }
-    lastCanonicalTabIdRef.current = activeTabId;
-    router.replace(
-      buildHostWorkspaceTabRoute(normalizedServerId, normalizedWorkspaceId, activeTabId) as any
-    );
-  }, [activeTabId, normalizedServerId, normalizedWorkspaceId, router, routeTabId]);
+    lastCanonicalPathRef.current = canonicalPath;
+    if (Platform.OS === "web" && typeof window !== "undefined") {
+      if (
+        window.location.pathname !== canonicalPath ||
+        window.location.search.length > 0 ||
+        window.location.hash.length > 0
+      ) {
+        window.history.replaceState(window.history.state, "", canonicalPath);
+      }
+      return;
+    }
+    const href = activeTabId
+      ? buildWorkspaceTabHref(normalizedServerId, normalizedWorkspaceId, activeTabId)
+      : null;
+    if (href) {
+      router.replace(href as any);
+      return;
+    }
+    router.replace(canonicalPath as any);
+  }, [
+    activeTabId,
+    normalizedServerId,
+    normalizedWorkspaceId,
+    pathname,
+    router,
+  ]);
 
   const activeTab = tabModel.activeTab;
 
@@ -509,16 +607,31 @@ function WorkspaceScreenContent({
       if (!tabId || !normalizedServerId || !normalizedWorkspaceId) {
         return;
       }
-      router.replace(
-        buildHostWorkspaceTabRoute(normalizedServerId, normalizedWorkspaceId, tabId) as any
+      setPendingRouteTabId(tabId);
+      focusTab({
+        serverId: normalizedServerId,
+        workspaceId: normalizedWorkspaceId,
+        tabId,
+      });
+      const href = buildWorkspaceTabHref(
+        normalizedServerId,
+        normalizedWorkspaceId,
+        tabId
       );
+      if (!href) {
+        return;
+      }
+      router.replace(href as any);
     },
-    [normalizedServerId, normalizedWorkspaceId, router]
+    [focusTab, normalizedServerId, normalizedWorkspaceId, router]
   );
 
   const emptyWorkspaceSeedRef = useRef<string | null>(null);
   useEffect(() => {
     if (!persistenceKey) {
+      return;
+    }
+    if (effectiveRouteTabId) {
       return;
     }
     if (tabs.length > 0) {
@@ -545,6 +658,7 @@ function WorkspaceScreenContent({
     normalizedWorkspaceId,
     openDraftTab,
     persistenceKey,
+    effectiveRouteTabId,
     tabs.length,
   ]);
 

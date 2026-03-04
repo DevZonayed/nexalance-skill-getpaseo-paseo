@@ -18,6 +18,8 @@ type UseWorkspaceTabLayoutInput = {
     tabHorizontalPadding: number;
     estimatedCharWidth: number;
     closeButtonWidth: number;
+    compactLabelCharCap?: number;
+    compactDenseLabelCharCap?: number;
   };
 };
 

@@ -2,6 +2,15 @@ import { Buffer } from "buffer";
 
 type NullableString = string | null | undefined;
 
+function stripSearchAndHash(pathname: string): string {
+  const hashIndex = pathname.indexOf("#");
+  const queryIndex = pathname.indexOf("?");
+  const end = [hashIndex, queryIndex]
+    .filter((index) => index >= 0)
+    .reduce((min, index) => Math.min(min, index), pathname.length);
+  return pathname.slice(0, end);
+}
+
 function trimNonEmpty(value: NullableString): string | null {
   if (typeof value !== "string") {
     return null;
@@ -155,7 +164,8 @@ export function decodeFilePathFromPathSegment(filePathSegment: string): string |
 }
 
 export function parseServerIdFromPathname(pathname: string): string | null {
-  const match = pathname.match(/^\/h\/([^/]+)(?:\/|$)/);
+  const pathOnly = stripSearchAndHash(pathname);
+  const match = pathOnly.match(/^\/h\/([^/]+)(?:\/|$)/);
   if (!match) {
     return null;
   }
@@ -169,7 +179,8 @@ export function parseServerIdFromPathname(pathname: string): string | null {
 export function parseHostAgentRouteFromPathname(
   pathname: string
 ): { serverId: string; agentId: string } | null {
-  const match = pathname.match(/^\/h\/([^/]+)\/agent\/([^/]+)(?:\/|$)/);
+  const pathOnly = stripSearchAndHash(pathname);
+  const match = pathOnly.match(/^\/h\/([^/]+)\/agent\/([^/]+)(?:\/|$)/);
   if (!match) {
     return null;
   }
@@ -191,35 +202,36 @@ export function parseHostAgentRouteFromPathname(
 export function parseHostWorkspaceRouteFromPathname(
   pathname: string
 ): { serverId: string; workspaceId: string } | null {
+  const pathOnly = stripSearchAndHash(pathname);
   const prefix = "/h/";
-  if (!pathname.startsWith(prefix)) {
+  if (!pathOnly.startsWith(prefix)) {
     return null;
   }
 
   const serverIdStart = prefix.length;
-  const serverIdEnd = pathname.indexOf("/", serverIdStart);
+  const serverIdEnd = pathOnly.indexOf("/", serverIdStart);
   if (serverIdEnd < 0) {
     return null;
   }
-  const rawServerId = pathname.slice(serverIdStart, serverIdEnd);
+  const rawServerId = pathOnly.slice(serverIdStart, serverIdEnd);
   const serverId = trimNonEmpty(decodeSegment(rawServerId));
   if (!serverId) {
     return null;
   }
 
   const workspacePrefix = "/workspace/";
-  if (!pathname.startsWith(workspacePrefix, serverIdEnd)) {
+  if (!pathOnly.startsWith(workspacePrefix, serverIdEnd)) {
     return null;
   }
 
   const workspaceIdStart = serverIdEnd + workspacePrefix.length;
-  let workspaceIdEnd = pathname.length;
-  const tabIdx = pathname.lastIndexOf("/tab/");
+  let workspaceIdEnd = pathOnly.length;
+  const tabIdx = pathOnly.lastIndexOf("/tab/");
   if (tabIdx >= 0 && tabIdx > workspaceIdStart) {
     workspaceIdEnd = tabIdx;
   }
 
-  const rawWorkspaceId = pathname.slice(workspaceIdStart, workspaceIdEnd).replace(/\/+$/, "");
+  const rawWorkspaceId = pathOnly.slice(workspaceIdStart, workspaceIdEnd).replace(/\/+$/, "");
   const workspaceId = decodeWorkspaceIdFromPathSegment(rawWorkspaceId);
   if (!workspaceId) {
     return null;
@@ -230,44 +242,45 @@ export function parseHostWorkspaceRouteFromPathname(
 export function parseHostWorkspaceTabRouteFromPathname(
   pathname: string
 ): { serverId: string; workspaceId: string; tabId: string } | null {
+  const pathOnly = stripSearchAndHash(pathname);
   const prefix = "/h/";
-  if (!pathname.startsWith(prefix)) {
+  if (!pathOnly.startsWith(prefix)) {
     return null;
   }
 
   const serverIdStart = prefix.length;
-  const serverIdEnd = pathname.indexOf("/", serverIdStart);
+  const serverIdEnd = pathOnly.indexOf("/", serverIdStart);
   if (serverIdEnd < 0) {
     return null;
   }
-  const rawServerId = pathname.slice(serverIdStart, serverIdEnd);
+  const rawServerId = pathOnly.slice(serverIdStart, serverIdEnd);
   const serverId = trimNonEmpty(decodeSegment(rawServerId));
   if (!serverId) {
     return null;
   }
 
   const workspacePrefix = "/workspace/";
-  if (!pathname.startsWith(workspacePrefix, serverIdEnd)) {
+  if (!pathOnly.startsWith(workspacePrefix, serverIdEnd)) {
     return null;
   }
 
   const workspaceIdStart = serverIdEnd + workspacePrefix.length;
   const tabMarker = "/tab/";
-  const tabIdx = pathname.lastIndexOf(tabMarker);
+  const tabIdx = pathOnly.lastIndexOf(tabMarker);
   if (tabIdx < 0 || tabIdx <= workspaceIdStart) {
     return null;
   }
 
-  const rawWorkspaceId = pathname.slice(workspaceIdStart, tabIdx).replace(/\/+$/, "");
+  const rawWorkspaceId = pathOnly.slice(workspaceIdStart, tabIdx).replace(/\/+$/, "");
   const workspaceId = decodeWorkspaceIdFromPathSegment(rawWorkspaceId);
   if (!workspaceId) {
     return null;
   }
 
   const tabIdStart = tabIdx + tabMarker.length;
-  const tabIdEnd = pathname.indexOf("/", tabIdStart);
+  const tabIdEnd = pathOnly.indexOf("/", tabIdStart);
   const rawTabId =
-    tabIdEnd < 0 ? pathname.slice(tabIdStart) : pathname.slice(tabIdStart, tabIdEnd);
+    tabIdEnd < 0 ? pathOnly.slice(tabIdStart) : pathOnly.slice(tabIdStart, tabIdEnd);
   const tabId = trimNonEmpty(decodeSegment(rawTabId));
   if (!tabId) {
     return null;

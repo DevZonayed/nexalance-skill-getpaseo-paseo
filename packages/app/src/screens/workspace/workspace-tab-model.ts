@@ -212,11 +212,12 @@ export function deriveWorkspaceTabModel(input: {
   const routeTabId = trimNonEmpty(input.routeTabId);
   const focusedTabId = trimNonEmpty(input.focusedTabId);
 
-  const activeTabId = routeTabId && openTabIds.has(routeTabId)
-    ? routeTabId
-    : focusedTabId && openTabIds.has(focusedTabId)
-      ? focusedTabId
-      : tabs[0]?.descriptor.tabId ?? null;
+  const activeTabId =
+    routeTabId && openTabIds.has(routeTabId)
+      ? routeTabId
+      : focusedTabId && openTabIds.has(focusedTabId)
+        ? focusedTabId
+        : tabs[0]?.descriptor.tabId ?? null;
 
   const activeTab = activeTabId
     ? tabs.find((tab) => tab.descriptor.tabId === activeTabId) ?? null

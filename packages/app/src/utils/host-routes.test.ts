@@ -68,6 +68,18 @@ describe("workspace route parsing", () => {
     });
   });
 
+  it("prefers path tab segment and ignores query params for workspace tab routes", () => {
+    expect(
+      parseHostWorkspaceTabRouteFromPathname(
+        "/h/local/workspace/L3RtcC9yZXBv/tab/draft_from_path?tabId=draft_from_query&workspaceId=wrong"
+      )
+    ).toEqual({
+      serverId: "local",
+      workspaceId: "/tmp/repo",
+      tabId: "draft_from_path",
+    });
+  });
+
   it("builds base64url workspace routes", () => {
     expect(buildHostWorkspaceRoute("local", "/tmp/repo")).toBe("/h/local/workspace/L3RtcC9yZXBv");
   });

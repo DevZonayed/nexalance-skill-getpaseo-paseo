@@ -12,6 +12,8 @@ const metrics = {
   tabHorizontalPadding: 12,
   estimatedCharWidth: 7,
   closeButtonWidth: 22,
+  compactLabelCharCap: 10,
+  compactDenseLabelCharCap: 8,
 };
 
 describe("computeWorkspaceTabLayout", () => {
@@ -59,5 +61,29 @@ describe("computeWorkspaceTabLayout", () => {
     });
 
     expect(result.mode).toBe("icon");
+  });
+
+  it("keeps compact-with-label mode for realistic desktop width with nine tabs", () => {
+    const result = computeWorkspaceTabLayout({
+      viewportWidth: 1180,
+      tabLabelLengths: [18, 21, 14, 15, 19, 12, 17, 16, 20],
+      metrics,
+    });
+
+    expect(result.mode).toBe("compact");
+    expect(result.showLabels).toBe(true);
+    expect(result.showCloseButtons).toBe(false);
+  });
+
+  it("uses dense compact labels for larger tab counts before icon-only", () => {
+    const result = computeWorkspaceTabLayout({
+      viewportWidth: 1100,
+      tabLabelLengths: [18, 21, 14, 15, 19, 12, 17, 16, 20],
+      metrics,
+    });
+
+    expect(result.mode).toBe("compact");
+    expect(result.showLabels).toBe(true);
+    expect(result.showCloseButtons).toBe(false);
   });
 });

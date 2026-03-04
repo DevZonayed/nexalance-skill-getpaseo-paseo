@@ -824,6 +824,161 @@ describe("ClaudeAgentSession interrupt restart regression", () => {
     await session.close();
   });
 
+  test("does not create an orphan autonomous run from pre-replay task_started metadata", async () => {
+    const logger = createTestLogger();
+    const keepQueryAlive = deferred<void>();
+
+    sdkMocks.query.mockImplementation(({ prompt }: { prompt: AsyncIterable<unknown> }) => {
+      const readPromptUuid = createPromptUuidReader(prompt);
+      let step = 0;
+      return {
+        next: vi.fn(async () => {
+          if (step === 0) {
+            step += 1;
+            return {
+              done: false,
+              value: {
+                type: "system",
+                subtype: "init",
+                session_id: "task-started-fallback-session",
+                permissionMode: "default",
+                model: "opus",
+              },
+            };
+          }
+          if (step === 1) {
+            step += 1;
+            return {
+              done: false,
+              value: {
+                type: "assistant",
+                message: {
+                  id: "tool-call-msg",
+                  content: [
+                    {
+                      type: "tool_use",
+                      id: "toolu_1",
+                      name: "Agent",
+                      input: { description: "verify", prompt: "sub-task" },
+                    },
+                  ],
+                },
+              },
+            };
+          }
+          if (step === 2) {
+            step += 1;
+            return {
+              done: false,
+              value: {
+                type: "system",
+                subtype: "task_started",
+                task_id: "task-1",
+                tool_use_id: "toolu_1",
+                description: "verify",
+                task_type: "local_agent",
+                session_id: "task-started-fallback-session",
+                uuid: "task-started-1",
+              },
+            };
+          }
+          if (step === 3) {
+            step += 1;
+            return {
+              done: false,
+              value: {
+                type: "stream_event",
+                event: {
+                  type: "message_delta",
+                  delta: { stop_reason: "tool_use", stop_sequence: null },
+                  usage: buildUsage(),
+                },
+                session_id: "task-started-fallback-session",
+                parent_tool_use_id: null,
+                uuid: "msg-delta-tool-use",
+              },
+            };
+          }
+          if (step === 4) {
+            step += 1;
+            const promptUuid = (await readPromptUuid()) ?? "missing-prompt-uuid";
+            return {
+              done: false,
+              value: {
+                type: "user",
+                message: { role: "user", content: "current prompt" },
+                parent_tool_use_id: null,
+                uuid: promptUuid,
+                session_id: "task-started-fallback-session",
+                isReplay: true,
+              },
+            };
+          }
+          if (step === 5) {
+            step += 1;
+            return {
+              done: false,
+              value: {
+                type: "assistant",
+                message: {
+                  content: "FOREGROUND_DONE",
+                },
+              },
+            };
+          }
+          if (step === 6) {
+            step += 1;
+            return {
+              done: false,
+              value: {
+                type: "result",
+                subtype: "success",
+                usage: buildUsage(),
+                total_cost_usd: 0,
+              },
+            };
+          }
+          if (step === 7) {
+            await keepQueryAlive.promise;
+            return { done: true, value: undefined };
+          }
+          return { done: true, value: undefined };
+        }),
+        interrupt: vi.fn(async () => undefined),
+        return: vi.fn(async () => undefined),
+        setPermissionMode: vi.fn(async () => undefined),
+        setModel: vi.fn(async () => undefined),
+        supportedModels: vi.fn(async () => [{ value: "opus", displayName: "Opus" }]),
+        supportedCommands: vi.fn(async () => []),
+        rewindFiles: vi.fn(async () => ({ canRewind: true })),
+      } satisfies QueryMock;
+    });
+
+    const client = new ClaudeAgentClient({ logger });
+    const session = await client.createSession({
+      provider: "claude",
+      cwd: process.cwd(),
+    });
+
+    const events = await collectUntilTerminal(session.stream("current prompt"));
+    const assistantText = collectAssistantText(events);
+
+    expect(assistantText).toContain("FOREGROUND_DONE");
+    expect(
+      (session as unknown as { turnState?: string }).turnState ?? null
+    ).toBe("idle");
+    expect(
+      (
+        session as unknown as {
+          runTracker?: { listActiveRuns: (owner?: "foreground" | "autonomous") => unknown[] };
+        }
+      ).runTracker?.listActiveRuns("autonomous") ?? []
+    ).toHaveLength(0);
+
+    keepQueryAlive.resolve(undefined);
+    await session.close();
+  });
+
   test("emits autonomous live events from SDK stream when Claude wakes itself", async () => {
     const logger = createTestLogger();
     let queryCreateCount = 0;

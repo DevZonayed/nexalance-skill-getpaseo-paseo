@@ -86,6 +86,8 @@ export function WorkspaceDesktopTabsRow({
       tabHorizontalPadding: theme.spacing[3],
       estimatedCharWidth: 7,
       closeButtonWidth: 22,
+      compactLabelCharCap: 10,
+      compactDenseLabelCharCap: 8,
     }),
     [theme.spacing]
   );
@@ -189,6 +191,9 @@ export function WorkspaceDesktopTabsRow({
                   }}
                   onHoverOut={() => {
                     setHoveredTabKey((current) => (current === tab.key ? null : current));
+                  }}
+                  onPressIn={() => {
+                    onNavigateTab(tab.tabId);
                   }}
                   onPress={() => {
                     onNavigateTab(tab.tabId);

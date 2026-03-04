@@ -1,6 +1,6 @@
 import { useEffect, useMemo } from "react";
-import { ActivityIndicator, View } from "react-native";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { ActivityIndicator, Platform, View } from "react-native";
+import { useLocalSearchParams, usePathname, useRouter } from "expo-router";
 import { useUnistyles } from "react-native-unistyles";
 import { DraftAgentScreen } from "@/screens/agent/draft-agent-screen";
 import { useDaemonRegistry } from "@/contexts/daemon-registry-context";
@@ -9,6 +9,11 @@ import { buildHostRootRoute } from "@/utils/host-routes";
 
 export default function Index() {
   const router = useRouter();
+  const routerPathname = usePathname();
+  const pathname =
+    Platform.OS === "web" && typeof window !== "undefined"
+      ? window.location.pathname
+      : routerPathname;
   const params = useLocalSearchParams<{ serverId?: string }>();
   const { theme } = useUnistyles();
   const { daemons, isLoading: registryLoading } = useDaemonRegistry();
@@ -45,8 +50,11 @@ export default function Index() {
     if (!targetServerId) {
       return;
     }
+    if (pathname !== "/" && pathname !== "") {
+      return;
+    }
     router.replace(buildHostRootRoute(targetServerId) as any);
-  }, [preferencesLoading, registryLoading, router, targetServerId]);
+  }, [pathname, preferencesLoading, registryLoading, router, targetServerId]);
 
   if (registryLoading || preferencesLoading) {
     return (
