@@ -34,14 +34,14 @@ describe("resolveNotificationTarget", () => {
 });
 
 describe("buildNotificationRoute", () => {
-  it("routes directly to workspace tab when workspace id is present", () => {
+  it("routes to workspace with one-shot open intent when workspace id is present", () => {
     expect(
       buildNotificationRoute({
         serverId: "srv-1",
         agentId: "agent-1",
         workspaceId: "/tmp/repo",
       })
-    ).toBe("/h/srv-1/workspace/L3RtcC9yZXBv/tab/agent_agent-1");
+    ).toBe("/h/srv-1/workspace/L3RtcC9yZXBv?open=agent%3Aagent-1");
   });
 
   it("routes directly to server-scoped agent path when both ids are present", () => {

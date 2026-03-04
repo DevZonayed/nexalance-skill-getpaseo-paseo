@@ -108,7 +108,6 @@ export function deriveWorkspaceTabModel(input: {
   uiTabs: WorkspaceTab[];
   tabOrder: string[];
   focusedTabId?: string | null;
-  routeTabId?: string | null;
 }): WorkspaceTabModel {
   const tabsById = new Map<string, WorkspaceDerivedTab>();
 
@@ -209,15 +208,12 @@ export function deriveWorkspaceTabModel(input: {
     .filter((tab): tab is WorkspaceDerivedTab => tab !== null);
 
   const openTabIds = new Set(tabs.map((tab) => tab.descriptor.tabId));
-  const routeTabId = trimNonEmpty(input.routeTabId);
   const focusedTabId = trimNonEmpty(input.focusedTabId);
 
   const activeTabId =
-    routeTabId && openTabIds.has(routeTabId)
-      ? routeTabId
-      : focusedTabId && openTabIds.has(focusedTabId)
-        ? focusedTabId
-        : tabs[0]?.descriptor.tabId ?? null;
+    focusedTabId && openTabIds.has(focusedTabId)
+      ? focusedTabId
+      : tabs[0]?.descriptor.tabId ?? null;
 
   const activeTab = activeTabId
     ? tabs.find((tab) => tab.descriptor.tabId === activeTabId) ?? null

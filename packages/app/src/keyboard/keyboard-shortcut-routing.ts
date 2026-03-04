@@ -1,7 +1,7 @@
 import {
   parseHostAgentRouteFromPathname,
+  parseHostWorkspaceOpenIntentFromPathname,
   parseHostWorkspaceRouteFromPathname,
-  parseHostWorkspaceTabRouteFromPathname,
 } from "@/utils/host-routes";
 
 export function resolveSelectedOrRouteAgentKey(input: {
@@ -12,15 +12,16 @@ export function resolveSelectedOrRouteAgentKey(input: {
     return input.selectedAgentId;
   }
 
-  const workspaceTabRoute = parseHostWorkspaceTabRouteFromPathname(input.pathname);
-  if (workspaceTabRoute?.tabId) {
-    const tabId = workspaceTabRoute.tabId;
-    if (tabId.startsWith("agent_")) {
-      const agentId = tabId.slice("agent_".length).trim();
-      return agentId ? `${workspaceTabRoute.serverId}:${agentId}` : null;
+  const workspaceRoute = parseHostWorkspaceRouteFromPathname(input.pathname);
+  const workspaceOpenIntent = parseHostWorkspaceOpenIntentFromPathname(input.pathname);
+  if (workspaceRoute && workspaceOpenIntent) {
+    if (workspaceOpenIntent.kind === "agent") {
+      const agentId = workspaceOpenIntent.agentId.trim();
+      return agentId ? `${workspaceRoute.serverId}:${agentId}` : null;
     }
-    if (tabId.startsWith("draft_")) {
-      return `${workspaceTabRoute.serverId}:${tabId}`;
+    if (workspaceOpenIntent.kind === "draft") {
+      const draftId = workspaceOpenIntent.draftId.trim();
+      return draftId ? `${workspaceRoute.serverId}:${draftId}` : null;
     }
   }
 

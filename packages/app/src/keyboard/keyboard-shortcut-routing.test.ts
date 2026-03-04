@@ -10,7 +10,7 @@ describe("keyboard-shortcut-routing", () => {
     it("returns selected agent key when provided", () => {
       const key = resolveSelectedOrRouteAgentKey({
         selectedAgentId: "server-1:agent-1",
-        pathname: "/h/server-1/workspace/workspace-1/tab/draft_123",
+        pathname: "/h/server-1/workspace/workspace-1?open=draft%3Adraft_123",
       });
 
       expect(key).toBe("server-1:agent-1");
@@ -18,7 +18,7 @@ describe("keyboard-shortcut-routing", () => {
 
     it("maps workspace draft tabs to the draft tab id key", () => {
       const key = resolveSelectedOrRouteAgentKey({
-        pathname: "/h/server-1/workspace/workspace-1/tab/draft_123",
+        pathname: "/h/server-1/workspace/workspace-1?open=draft%3Adraft_123",
       });
 
       expect(key).toBe("server-1:draft_123");
@@ -31,7 +31,7 @@ describe("keyboard-shortcut-routing", () => {
     it("allows the shortcut on selected-agent routes", () => {
       const canToggle = canToggleFileExplorerShortcut({
         selectedAgentId: "server-1:agent-1",
-        pathname: "/h/server-1/workspace/workspace-1/tab/agent_agent-1",
+        pathname: "/h/server-1/workspace/workspace-1?open=agent%3Aagent-1",
         toggleFileExplorer,
       });
 
@@ -47,18 +47,18 @@ describe("keyboard-shortcut-routing", () => {
       expect(canToggle).toBe(true);
     });
 
-    it("allows the shortcut on workspace terminal routes", () => {
+    it("allows the shortcut on workspace routes with intent query", () => {
       const canToggle = canToggleFileExplorerShortcut({
-        pathname: "/h/server-1/workspace/workspace-1/tab/terminal_terminal-1",
+        pathname: "/h/server-1/workspace/workspace-1?open=terminal%3Aterminal-1",
         toggleFileExplorer,
       });
 
       expect(canToggle).toBe(true);
     });
 
-    it("allows the shortcut on workspace draft-tab routes", () => {
+    it("allows the shortcut on workspace draft-intent routes", () => {
       const canToggle = canToggleFileExplorerShortcut({
-        pathname: "/h/server-1/workspace/workspace-1/tab/draft_123",
+        pathname: "/h/server-1/workspace/workspace-1?open=draft%3Adraft_123",
         toggleFileExplorer,
       });
 
@@ -67,7 +67,7 @@ describe("keyboard-shortcut-routing", () => {
 
     it("blocks the shortcut when no toggle handler exists", () => {
       const canToggle = canToggleFileExplorerShortcut({
-        pathname: "/h/server-1/workspace/workspace-1/tab/draft_123",
+        pathname: "/h/server-1/workspace/workspace-1?open=draft%3Adraft_123",
       });
 
       expect(canToggle).toBe(false);

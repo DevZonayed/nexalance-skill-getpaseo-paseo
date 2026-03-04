@@ -1,7 +1,7 @@
 import {
   buildHostAgentDetailRoute,
   buildHostRootRoute,
-  buildHostWorkspaceAgentTabRoute,
+  buildHostWorkspaceAgentRoute,
 } from "@/utils/host-routes";
 
 type NotificationData = Record<string, unknown> | null | undefined;
@@ -36,7 +36,7 @@ export function buildNotificationRoute(data: NotificationData): string {
   const { serverId, agentId, workspaceId } = resolveNotificationTarget(data);
   if (serverId && agentId) {
     if (workspaceId) {
-      return buildHostWorkspaceAgentTabRoute(serverId, workspaceId, agentId);
+      return buildHostWorkspaceAgentRoute(serverId, workspaceId, agentId);
     }
     return buildHostAgentDetailRoute(serverId, agentId);
   }

@@ -33,7 +33,7 @@ import {
   startNavigationTiming,
 } from "@/utils/navigation-timing";
 import {
-  buildHostWorkspaceAgentTabRoute,
+  buildHostWorkspaceAgentRoute,
 } from "@/utils/host-routes";
 
 interface AgentListProps {
@@ -189,7 +189,7 @@ export function AgentList({
 
       onAgentSelect?.();
 
-      const route: Href = buildHostWorkspaceAgentTabRoute(
+      const route: Href = buildHostWorkspaceAgentRoute(
         serverId,
         agent.cwd,
         agentId

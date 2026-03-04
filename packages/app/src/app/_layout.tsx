@@ -47,7 +47,7 @@ import { buildNotificationRoute } from "@/utils/notification-routing";
 import {
   buildHostRootRoute,
   parseHostAgentRouteFromPathname,
-  parseHostWorkspaceTabRouteFromPathname,
+  parseHostWorkspaceOpenIntentFromPathname,
 } from "@/utils/host-routes";
 import { getTauri } from "@/utils/tauri";
 import { PerfDiagnosticsProvider } from "@/runtime/perf-diagnostics";
@@ -381,10 +381,12 @@ function AppWithSidebar({ children }: { children: ReactNode }) {
   // Parse selectedAgentKey directly from pathname
   // useLocalSearchParams doesn't update when navigating between same-pattern routes
   const selectedAgentKey = useMemo(() => {
-    const workspaceTab = parseHostWorkspaceTabRouteFromPathname(pathname);
-    if (workspaceTab?.tabId?.startsWith("agent_")) {
-      const agentId = workspaceTab.tabId.slice("agent_".length).trim();
-      return agentId ? `${workspaceTab.serverId}:${agentId}` : undefined;
+    const workspaceMatch = pathname.match(/^\/h\/([^/]+)\/workspace\/[^/]+(?:\/|$)/);
+    const workspaceServerId = workspaceMatch?.[1]?.trim() ?? "";
+    const openIntent = parseHostWorkspaceOpenIntentFromPathname(pathname);
+    if (workspaceServerId && openIntent?.kind === "agent") {
+      const agentId = openIntent.agentId.trim();
+      return agentId ? `${workspaceServerId}:${agentId}` : undefined;
     }
 
     const match = parseHostAgentRouteFromPathname(pathname);

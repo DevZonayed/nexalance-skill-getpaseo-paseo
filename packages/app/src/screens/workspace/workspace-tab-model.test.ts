@@ -114,7 +114,7 @@ describe("deriveWorkspaceTabModel", () => {
     ]);
   });
 
-  it("prefers route tab when present, then focused tab, then first tab for active selection", () => {
+  it("uses focused tab when present, otherwise falls back to first tab", () => {
     const base = {
       workspaceAgents: [makeAgent({ id: "agent-a" }), makeAgent({ id: "agent-b" })],
       terminals: [],
@@ -133,40 +133,8 @@ describe("deriveWorkspaceTabModel", () => {
       deriveWorkspaceTabModel({
         ...base,
         focusedTabId: "agent_agent-b",
-        routeTabId: "agent_agent-a",
-      }).activeTabId
-    ).toBe("agent_agent-a");
-
-    expect(
-      deriveWorkspaceTabModel({
-        ...base,
-        focusedTabId: "agent_agent-b",
-        routeTabId: "agent_agent-missing",
       }).activeTabId
     ).toBe("agent_agent-b");
-  });
-
-  it("switches active tab target when route tab id changes", () => {
-    const modelA = deriveWorkspaceTabModel({
-      workspaceAgents: [makeAgent({ id: "agent-a" }), makeAgent({ id: "agent-b" })],
-      terminals: [{ id: "term-1", name: "shell" }],
-      uiTabs: [],
-      tabOrder: ["agent_agent-a", "terminal_term-1", "agent_agent-b"],
-      routeTabId: "terminal_term-1",
-    });
-
-    const modelB = deriveWorkspaceTabModel({
-      workspaceAgents: [makeAgent({ id: "agent-a" }), makeAgent({ id: "agent-b" })],
-      terminals: [{ id: "term-1", name: "shell" }],
-      uiTabs: [],
-      tabOrder: ["agent_agent-a", "terminal_term-1", "agent_agent-b"],
-      routeTabId: "agent_agent-b",
-    });
-
-    expect(modelA.activeTab?.descriptor.tabId).toBe("terminal_term-1");
-    expect(modelA.activeTab?.target.kind).toBe("terminal");
-    expect(modelB.activeTab?.descriptor.tabId).toBe("agent_agent-b");
-    expect(modelB.activeTab?.target.kind).toBe("agent");
   });
 
   it("re-resolves active content for a new workspace when prior focused tab is not available", () => {
@@ -176,7 +144,6 @@ describe("deriveWorkspaceTabModel", () => {
       uiTabs: [],
       tabOrder: ["agent_workspace-b-agent"],
       focusedTabId: "agent_workspace-a-agent",
-      routeTabId: null,
     });
 
     expect(model.activeTabId).toBe("agent_workspace-b-agent");

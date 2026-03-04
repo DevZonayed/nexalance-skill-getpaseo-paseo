@@ -8,7 +8,6 @@ import {
   View,
 } from "react-native";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { usePathname, useRouter } from "expo-router";
 import * as Clipboard from "expo-clipboard";
 import {
   Bot,
@@ -50,9 +49,9 @@ import {
   useWorkspaceTabsStore,
 } from "@/stores/workspace-tabs-store";
 import {
-  buildHostWorkspaceTabRoute,
+  buildWorkspaceOpenIntentParam,
+  type WorkspaceOpenIntent,
   decodeWorkspaceIdFromPathSegment,
-  encodeWorkspaceIdForPathSegment,
 } from "@/utils/host-routes";
 import { normalizeWorkspaceIdentity } from "@/utils/workspace-identity";
 import { useHostRuntimeSession } from "@/runtime/host-runtime";
@@ -82,7 +81,6 @@ import {
 import {
   deriveWorkspaceTabModel,
 } from "@/screens/workspace/workspace-tab-model";
-import { resolveWorkspaceTabCanonicalPath } from "@/screens/workspace/workspace-route-canonicalization";
 
 const TERMINALS_QUERY_STALE_TIME = 5_000;
 const NEW_TAB_AGENT_OPTION_ID = "__new_tab_agent__";
@@ -93,7 +91,7 @@ const EMPTY_TAB_ORDER: string[] = [];
 type WorkspaceScreenProps = {
   serverId: string;
   workspaceId: string;
-  routeTabId?: string | null;
+  openIntent?: WorkspaceOpenIntent | null;
 };
 
 function trimNonEmpty(value: string | null | undefined): string | null {
@@ -112,38 +110,17 @@ function decodeSegment(value: string): string {
   }
 }
 
-function buildWorkspaceTabHref(
-  serverId: string,
-  workspaceId: string,
-  tabId: string
-): { pathname: string; params: { serverId: string; workspaceId: string; tabId: string } } | null {
-  const encodedWorkspaceId = encodeWorkspaceIdForPathSegment(workspaceId);
-  const trimmedTabId = tabId.trim();
-  const trimmedServerId = serverId.trim();
-  if (!encodedWorkspaceId || !trimmedTabId || !trimmedServerId) {
-    return null;
-  }
-  return {
-    pathname: "/h/[serverId]/workspace/[workspaceId]/tab/[tabId]",
-    params: {
-      serverId: trimmedServerId,
-      workspaceId: encodedWorkspaceId,
-      tabId: trimmedTabId,
-    },
-  };
-}
-
 export function WorkspaceScreen({
   serverId,
   workspaceId,
-  routeTabId,
+  openIntent,
 }: WorkspaceScreenProps) {
   return (
     <ExplorerSidebarAnimationProvider>
       <WorkspaceScreenContent
         serverId={serverId}
         workspaceId={workspaceId}
-        routeTabId={routeTabId}
+        openIntent={openIntent}
       />
     </ExplorerSidebarAnimationProvider>
   );
@@ -152,16 +129,10 @@ export function WorkspaceScreen({
 function WorkspaceScreenContent({
   serverId,
   workspaceId,
-  routeTabId,
+  openIntent,
 }: WorkspaceScreenProps) {
   const { theme } = useUnistyles();
   const toast = useToast();
-  const router = useRouter();
-  const routePathname = usePathname();
-  const pathname =
-    Platform.OS === "web" && typeof window !== "undefined"
-      ? `${window.location.pathname}${window.location.search}${window.location.hash}`
-      : routePathname;
   const isMobile =
     UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
 
@@ -241,15 +212,11 @@ function WorkspaceScreenContent({
             target: { kind: "terminal", terminalId: createdTerminal.id },
           });
         if (tabId) {
-          const href = buildWorkspaceTabHref(
-            normalizedServerId,
-            normalizedWorkspaceId,
-            tabId
-          );
-          if (!href) {
-            return;
-          }
-          router.replace(href as any);
+          useWorkspaceTabsStore.getState().focusTab({
+            serverId: normalizedServerId,
+            workspaceId: normalizedWorkspaceId,
+            tabId,
+          });
         }
       }
     },
@@ -441,23 +408,37 @@ function WorkspaceScreenContent({
   const closeWorkspaceTab = useWorkspaceTabsStore((state) => state.closeTab);
   const promoteDraftToAgent = useWorkspaceTabsStore((state) => state.promoteDraftToAgent);
   const reorderWorkspaceTabs = useWorkspaceTabsStore((state) => state.reorderTabs);
-  const [pendingRouteTabId, setPendingRouteTabId] = useState<string | null>(null);
+  const consumedOpenIntentsRef = useRef(new Set<string>());
 
   useEffect(() => {
-    const normalized = typeof routeTabId === "string" ? routeTabId.trim() : "";
-    if (!normalized || !persistenceKey) {
+    if (!openIntent || !persistenceKey) {
       return;
     }
-    if (normalized.startsWith("file_")) {
-      const path = normalized.slice("file_".length).trim();
-      if (!path) {
-        return;
-      }
-      const tabId = openOrFocusTab({
-        serverId: normalizedServerId,
-        workspaceId: normalizedWorkspaceId,
-        target: { kind: "file", path },
-      });
+
+    const openParam = buildWorkspaceOpenIntentParam(openIntent);
+    if (!openParam) {
+      return;
+    }
+    const intentKey = `${normalizedServerId}:${normalizedWorkspaceId}:${openParam}`;
+    if (consumedOpenIntentsRef.current.has(intentKey)) {
+      return;
+    }
+    consumedOpenIntentsRef.current.add(intentKey);
+
+    if (openIntent.kind === "draft") {
+      const draftId = openIntent.draftId.trim();
+      const tabId =
+        draftId === "new"
+          ? openDraftTab({
+              serverId: normalizedServerId,
+              workspaceId: normalizedWorkspaceId,
+              draftId: generateDraftId(),
+            })
+          : openDraftTab({
+              serverId: normalizedServerId,
+              workspaceId: normalizedWorkspaceId,
+              draftId,
+            });
       if (tabId) {
         focusTab({
           serverId: normalizedServerId,
@@ -465,32 +446,35 @@ function WorkspaceScreenContent({
           tabId,
         });
       }
+      return;
+    }
+
+    const tabId = openOrFocusTab({
+      serverId: normalizedServerId,
+      workspaceId: normalizedWorkspaceId,
+      target:
+        openIntent.kind === "agent"
+          ? { kind: "agent", agentId: openIntent.agentId }
+          : openIntent.kind === "terminal"
+            ? { kind: "terminal", terminalId: openIntent.terminalId }
+            : { kind: "file", path: openIntent.path },
+    });
+    if (tabId) {
+      focusTab({
+        serverId: normalizedServerId,
+        workspaceId: normalizedWorkspaceId,
+        tabId,
+      });
     }
   }, [
     focusTab,
     openDraftTab,
+    openIntent,
     openOrFocusTab,
     persistenceKey,
     normalizedServerId,
     normalizedWorkspaceId,
-    routeTabId,
   ]);
-
-  const normalizedRouteTabId = trimNonEmpty(routeTabId);
-  const effectiveRouteTabId = pendingRouteTabId ?? normalizedRouteTabId;
-
-  useEffect(() => {
-    if (!pendingRouteTabId || !normalizedRouteTabId) {
-      return;
-    }
-    if (normalizedRouteTabId === pendingRouteTabId) {
-      setPendingRouteTabId(null);
-    }
-  }, [normalizedRouteTabId, pendingRouteTabId]);
-
-  useEffect(() => {
-    setPendingRouteTabId(null);
-  }, [normalizedServerId, normalizedWorkspaceId]);
 
   const tabModel = useMemo(
     () =>
@@ -500,9 +484,8 @@ function WorkspaceScreenContent({
         uiTabs,
         tabOrder,
         focusedTabId,
-        routeTabId: effectiveRouteTabId,
       }),
-    [effectiveRouteTabId, focusedTabId, tabOrder, terminals, uiTabs, workspaceAgents]
+    [focusedTabId, tabOrder, terminals, uiTabs, workspaceAgents]
   );
   const activeTabId = tabModel.activeTabId;
 
@@ -512,77 +495,6 @@ function WorkspaceScreenContent({
     }
     focusTab({ serverId: normalizedServerId, workspaceId: normalizedWorkspaceId, tabId: activeTabId });
   }, [activeTabId, focusTab, normalizedServerId, normalizedWorkspaceId, persistenceKey]);
-
-  useEffect(() => {
-    if (!pendingRouteTabId || !activeTabId) {
-      return;
-    }
-    if (pendingRouteTabId === activeTabId) {
-      setPendingRouteTabId(null);
-    }
-  }, [activeTabId, pendingRouteTabId]);
-
-  const lastCanonicalPathRef = useRef<string | null>(null);
-  useEffect(() => {
-    const hasRouteIdentitySearchParams =
-      Platform.OS === "web" &&
-      typeof window !== "undefined" &&
-      (() => {
-        const params = new URLSearchParams(window.location.search);
-        return (
-          params.has("tabId") ||
-          params.has("workspaceId") ||
-          params.has("serverId")
-        );
-      })();
-    const derivedCanonicalPath = resolveWorkspaceTabCanonicalPath({
-      activeTabId,
-      pathname,
-      serverId: normalizedServerId,
-      workspaceId: normalizedWorkspaceId,
-    });
-    const canonicalPath =
-      derivedCanonicalPath ??
-      (hasRouteIdentitySearchParams && activeTabId
-        ? buildHostWorkspaceTabRoute(
-            normalizedServerId,
-            normalizedWorkspaceId,
-            activeTabId
-          )
-        : null);
-    if (!canonicalPath) {
-      lastCanonicalPathRef.current = null;
-      return;
-    }
-    if (lastCanonicalPathRef.current === canonicalPath) {
-      return;
-    }
-    lastCanonicalPathRef.current = canonicalPath;
-    if (Platform.OS === "web" && typeof window !== "undefined") {
-      if (
-        window.location.pathname !== canonicalPath ||
-        window.location.search.length > 0 ||
-        window.location.hash.length > 0
-      ) {
-        window.history.replaceState(window.history.state, "", canonicalPath);
-      }
-      return;
-    }
-    const href = activeTabId
-      ? buildWorkspaceTabHref(normalizedServerId, normalizedWorkspaceId, activeTabId)
-      : null;
-    if (href) {
-      router.replace(href as any);
-      return;
-    }
-    router.replace(canonicalPath as any);
-  }, [
-    activeTabId,
-    normalizedServerId,
-    normalizedWorkspaceId,
-    pathname,
-    router,
-  ]);
 
   const activeTab = tabModel.activeTab;
 
@@ -607,31 +519,18 @@ function WorkspaceScreenContent({
       if (!tabId || !normalizedServerId || !normalizedWorkspaceId) {
         return;
       }
-      setPendingRouteTabId(tabId);
       focusTab({
         serverId: normalizedServerId,
         workspaceId: normalizedWorkspaceId,
         tabId,
       });
-      const href = buildWorkspaceTabHref(
-        normalizedServerId,
-        normalizedWorkspaceId,
-        tabId
-      );
-      if (!href) {
-        return;
-      }
-      router.replace(href as any);
     },
-    [focusTab, normalizedServerId, normalizedWorkspaceId, router]
+    [focusTab, normalizedServerId, normalizedWorkspaceId]
   );
 
   const emptyWorkspaceSeedRef = useRef<string | null>(null);
   useEffect(() => {
     if (!persistenceKey) {
-      return;
-    }
-    if (effectiveRouteTabId) {
       return;
     }
     if (tabs.length > 0) {
@@ -658,7 +557,6 @@ function WorkspaceScreenContent({
     normalizedWorkspaceId,
     openDraftTab,
     persistenceKey,
-    effectiveRouteTabId,
     tabs.length,
   ]);
 

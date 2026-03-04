@@ -9,7 +9,7 @@ import {
 } from "@/utils/command-center-focus-restore";
 import {
   buildHostNewAgentRoute,
-  buildHostWorkspaceAgentTabRoute,
+  buildHostWorkspaceAgentRoute,
   buildHostSettingsRoute,
   parseHostAgentRouteFromPathname,
   parseServerIdFromPathname,
@@ -198,7 +198,7 @@ export function useCommandCenter() {
       // Don't restore focus back to the prior element after we navigate.
       clearCommandCenterFocusRestoreElement();
       setOpen(false);
-      const route: Href = buildHostWorkspaceAgentTabRoute(
+      const route: Href = buildHostWorkspaceAgentRoute(
         agent.serverId,
         agent.cwd,
         agent.id

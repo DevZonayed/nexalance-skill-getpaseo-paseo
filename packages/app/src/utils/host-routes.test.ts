@@ -1,18 +1,21 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildHostAgentDetailRoute,
   buildHostNewAgentRoute,
   buildHostRootRoute,
-  buildHostWorkspaceAgentTabRoute,
-  buildHostWorkspaceFileTabRoute,
+  buildHostWorkspaceAgentRoute,
+  buildHostWorkspaceFileRoute,
   buildHostWorkspaceRoute,
-  buildHostWorkspaceTerminalTabRoute,
+  buildHostWorkspaceRouteWithOpenIntent,
+  buildHostWorkspaceTerminalRoute,
   decodeFilePathFromPathSegment,
   decodeWorkspaceIdFromPathSegment,
   encodeFilePathForPathSegment,
   encodeWorkspaceIdForPathSegment,
   parseHostAgentRouteFromPathname,
-  parseHostWorkspaceTabRouteFromPathname,
+  parseHostWorkspaceOpenIntentFromPathname,
   parseHostWorkspaceRouteFromPathname,
+  parseWorkspaceOpenIntent,
 } from "./host-routes";
 
 describe("parseHostAgentRouteFromPathname", () => {
@@ -49,35 +52,10 @@ describe("workspace route parsing", () => {
     });
   });
 
-  it("parses workspace route for /tab targets", () => {
+  it("does not treat /tab routes as valid workspace routes", () => {
     expect(
       parseHostWorkspaceRouteFromPathname("/h/local/workspace/L3RtcC9yZXBv/tab/draft_abc123")
-    ).toEqual({
-      serverId: "local",
-      workspaceId: "/tmp/repo",
-    });
-  });
-
-  it("parses workspace tab route", () => {
-    expect(
-      parseHostWorkspaceTabRouteFromPathname("/h/local/workspace/L3RtcC9yZXBv/tab/draft_abc123")
-    ).toEqual({
-      serverId: "local",
-      workspaceId: "/tmp/repo",
-      tabId: "draft_abc123",
-    });
-  });
-
-  it("prefers path tab segment and ignores query params for workspace tab routes", () => {
-    expect(
-      parseHostWorkspaceTabRouteFromPathname(
-        "/h/local/workspace/L3RtcC9yZXBv/tab/draft_from_path?tabId=draft_from_query&workspaceId=wrong"
-      )
-    ).toEqual({
-      serverId: "local",
-      workspaceId: "/tmp/repo",
-      tabId: "draft_from_path",
-    });
+    ).toBeNull();
   });
 
   it("builds base64url workspace routes", () => {
@@ -92,21 +70,50 @@ describe("workspace route parsing", () => {
     expect(buildHostNewAgentRoute("local")).toBe("/h/local/new-agent");
   });
 
-  it("builds workspace agent tab routes", () => {
-    expect(buildHostWorkspaceAgentTabRoute("local", "/tmp/repo", "agent-1")).toBe(
-      "/h/local/workspace/L3RtcC9yZXBv/tab/agent_agent-1"
+  it("builds workspace routes with open intent query", () => {
+    expect(buildHostWorkspaceAgentRoute("local", "/tmp/repo", "agent-1")).toBe(
+      "/h/local/workspace/L3RtcC9yZXBv?open=agent%3Aagent-1"
     );
+    expect(buildHostWorkspaceTerminalRoute("local", "/tmp/repo", "term-1")).toBe(
+      "/h/local/workspace/L3RtcC9yZXBv?open=terminal%3Aterm-1"
+    );
+    expect(buildHostWorkspaceFileRoute("local", "/tmp/repo", "src/index.ts")).toBe(
+      "/h/local/workspace/L3RtcC9yZXBv?open=file%3Ac3JjL2luZGV4LnRz"
+    );
+    expect(
+      buildHostWorkspaceRouteWithOpenIntent("local", "/tmp/repo", {
+        kind: "draft",
+        draftId: "new",
+      })
+    ).toBe("/h/local/workspace/L3RtcC9yZXBv?open=draft%3Anew");
   });
 
-  it("builds workspace terminal tab routes", () => {
-    expect(buildHostWorkspaceTerminalTabRoute("local", "/tmp/repo", "term-1")).toBe(
-      "/h/local/workspace/L3RtcC9yZXBv/tab/terminal_term-1"
-    );
+  it("parses workspace open intent from pathname query", () => {
+    expect(
+      parseHostWorkspaceOpenIntentFromPathname(
+        "/h/local/workspace/L3RtcC9yZXBv?open=agent%3Aagent-1"
+      )
+    ).toEqual({
+      kind: "agent",
+      agentId: "agent-1",
+    });
+    expect(parseWorkspaceOpenIntent("terminal:term-1")).toEqual({
+      kind: "terminal",
+      terminalId: "term-1",
+    });
+    expect(parseWorkspaceOpenIntent("draft:new")).toEqual({
+      kind: "draft",
+      draftId: "new",
+    });
+    expect(parseWorkspaceOpenIntent("file:c3JjL2luZGV4LnRz")).toEqual({
+      kind: "file",
+      path: "src/index.ts",
+    });
   });
 
-  it("builds workspace file tab routes", () => {
-    expect(buildHostWorkspaceFileTabRoute("local", "/tmp/repo", "src/index.ts")).toBe(
-      "/h/local/workspace/L3RtcC9yZXBv/tab/file_src%2Findex.ts"
+  it("keeps agent detail workspace routing on workspace path with open intent", () => {
+    expect(buildHostAgentDetailRoute("local", "agent-1", "/tmp/repo")).toBe(
+      "/h/local/workspace/L3RtcC9yZXBv?open=agent%3Aagent-1"
     );
   });
 });

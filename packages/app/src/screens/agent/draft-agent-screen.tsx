@@ -48,7 +48,7 @@ import type {
   AgentSessionConfig,
 } from '@server/server/agent/agent-sdk-types'
 import { AGENT_PROVIDER_DEFINITIONS } from '@server/server/agent/provider-manifest'
-import { buildHostWorkspaceAgentTabRoute } from '@/utils/host-routes'
+import { buildHostWorkspaceAgentRoute } from '@/utils/host-routes'
 import { useTauriDragHandlers } from '@/utils/tauri-window'
 import { useKeyboardShiftStyle } from '@/hooks/use-keyboard-shift-style'
 import { normalizeAgentSnapshot } from '@/utils/agent-snapshots'
@@ -1055,7 +1055,7 @@ function DraftAgentScreenContent({
           const configuredWorkingDir = config.cwd.trim()
           const workspaceId =
             createdWorkingDir.length > 0 ? createdWorkingDir : configuredWorkingDir
-          const route: Href = buildHostWorkspaceAgentTabRoute(
+          const route: Href = buildHostWorkspaceAgentRoute(
             selectedServerId,
             workspaceId,
             agentId

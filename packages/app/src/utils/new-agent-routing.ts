@@ -1,8 +1,9 @@
 import type { CheckoutStatusPayload } from "@/hooks/use-checkout-status-query";
 import {
+  parseHostWorkspaceOpenIntentFromPathname,
   buildHostWorkspaceRoute,
   parseHostAgentRouteFromPathname,
-  parseHostWorkspaceTabRouteFromPathname,
+  parseHostWorkspaceRouteFromPathname,
 } from "@/utils/host-routes";
 
 export function parseAgentKey(
@@ -27,11 +28,12 @@ export function resolveSelectedAgentForNewAgent(input: {
   pathname: string;
   selectedAgentId?: string;
 }): { serverId: string; agentId: string } | null {
-  const workspaceTabRoute = parseHostWorkspaceTabRouteFromPathname(input.pathname);
-  if (workspaceTabRoute?.tabId?.startsWith("agent_")) {
-    const agentId = workspaceTabRoute.tabId.slice("agent_".length).trim();
+  const workspaceRoute = parseHostWorkspaceRouteFromPathname(input.pathname);
+  const openIntent = parseHostWorkspaceOpenIntentFromPathname(input.pathname);
+  if (workspaceRoute && openIntent?.kind === "agent") {
+    const agentId = openIntent.agentId.trim();
     if (agentId) {
-      return { serverId: workspaceTabRoute.serverId, agentId };
+      return { serverId: workspaceRoute.serverId, agentId };
     }
   }
   return (
