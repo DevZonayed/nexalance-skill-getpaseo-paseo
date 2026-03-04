@@ -4,7 +4,6 @@ import { StyleSheet } from "react-native-unistyles";
 import { BackHeader } from "@/components/headers/back-header";
 import { AgentList } from "@/components/agent-list";
 import { useAllAgentsList } from "@/hooks/use-all-agents-list";
-import { buildHostAgentDraftRoute } from "@/utils/host-routes";
 import { router } from "expo-router";
 
 export function AgentsScreen({ serverId }: { serverId: string }) {
@@ -44,7 +43,7 @@ export function AgentsScreen({ serverId }: { serverId: string }) {
     <View style={styles.container}>
       <BackHeader
         title="All agents"
-        onBack={() => router.replace(buildHostAgentDraftRoute(serverId) as any)}
+        onBack={() => router.replace(`/h/${encodeURIComponent(serverId)}` as any)}
       />
       <AgentList
         agents={sortedAgents}

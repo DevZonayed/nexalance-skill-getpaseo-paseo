@@ -1,5 +1,4 @@
 import {
-  parseHostAgentDraftRouteFromPathname,
   parseHostAgentRouteFromPathname,
   parseHostWorkspaceRouteFromPathname,
   parseHostWorkspaceTabRouteFromPathname,
@@ -29,11 +28,7 @@ export function resolveSelectedOrRouteAgentKey(input: {
 
   const route = parseHostAgentRouteFromPathname(input.pathname);
   if (!route) {
-    const draftRoute = parseHostAgentDraftRouteFromPathname(input.pathname);
-    if (!draftRoute) {
-      return null;
-    }
-    return `${draftRoute.serverId}:${DRAFT_AGENT_ID}`;
+    return null;
   }
   return `${route.serverId}:${route.agentId}`;
 }
@@ -51,10 +46,6 @@ export function canToggleFileExplorerShortcut(input: {
   }
 
   if (parseHostAgentRouteFromPathname(input.pathname)) {
-    return true;
-  }
-
-  if (parseHostAgentDraftRouteFromPathname(input.pathname)) {
     return true;
   }
 

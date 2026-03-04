@@ -1,8 +1,9 @@
 import { useEffect } from "react";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSessionStore } from "@/stores/session-store";
+import { useFormPreferences } from "@/hooks/use-form-preferences";
 import {
-  buildHostDraftRoute,
+  buildHostWorkspaceRoute,
   buildHostWorkspaceAgentTabRoute,
 } from "@/utils/host-routes";
 
@@ -10,11 +11,15 @@ export default function HostIndexRoute() {
   const router = useRouter();
   const params = useLocalSearchParams<{ serverId?: string }>();
   const serverId = typeof params.serverId === "string" ? params.serverId : "";
+  const { preferences, isLoading: preferencesLoading } = useFormPreferences();
   const sessionAgents = useSessionStore(
     (state) => (serverId ? state.sessions[serverId]?.agents : undefined)
   );
 
   useEffect(() => {
+    if (preferencesLoading) {
+      return;
+    }
     if (!serverId) {
       return;
     }
@@ -40,8 +45,11 @@ export default function HostIndexRoute() {
       return;
     }
 
-    router.replace(buildHostDraftRoute(serverId) as any);
-  }, [router, serverId, sessionAgents]);
+    const preferredWorkingDir =
+      preferences.serverId === serverId ? preferences.workingDir?.trim() : "";
+    const workspaceId = preferredWorkingDir || ".";
+    router.replace(buildHostWorkspaceRoute(serverId, workspaceId) as any);
+  }, [preferences.serverId, preferences.workingDir, preferencesLoading, router, serverId, sessionAgents]);
 
   return null;
 }

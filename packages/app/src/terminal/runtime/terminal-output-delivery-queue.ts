@@ -74,6 +74,14 @@ export class TerminalOutputDeliveryQueue {
 
   consume(input: { sequence: number }): void {
     if (this.inFlightChunk?.sequence !== input.sequence) {
+      terminalDebugLog({
+        scope: "output-delivery-queue",
+        event: "consume:ignored",
+        details: {
+          sequence: input.sequence,
+          inFlightSequence: this.inFlightChunk?.sequence ?? null,
+        },
+      });
       return;
     }
 

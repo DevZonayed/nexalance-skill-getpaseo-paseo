@@ -6,6 +6,10 @@ import "@xterm/xterm/css/xterm.css";
 import type { ITheme } from "@xterm/xterm";
 import type { PendingTerminalModifiers } from "../utils/terminal-keys";
 import { TerminalEmulatorRuntime } from "../terminal/runtime/terminal-emulator-runtime";
+import {
+  summarizeTerminalText,
+  terminalDebugLog,
+} from "../terminal/runtime/terminal-debug";
 
 function buildXtermThemeKey(theme: ITheme): string {
   const values: Array<string> = [
@@ -40,6 +44,7 @@ interface TerminalEmulatorProps {
   dom?: DOMProps;
   streamKey: string;
   initialOutputText: string;
+  initialOutputChunkSequence?: number;
   outputChunkText: string;
   outputChunkSequence: number;
   outputChunkReplay?: boolean;
@@ -71,6 +76,7 @@ declare global {
 export default function TerminalEmulator({
   streamKey,
   initialOutputText,
+  initialOutputChunkSequence = 0,
   outputChunkText,
   outputChunkSequence,
   outputChunkReplay = false,
@@ -95,7 +101,7 @@ export default function TerminalEmulator({
   const rootRef = useRef<HTMLDivElement | null>(null);
   const hostRef = useRef<HTMLDivElement | null>(null);
   const runtimeRef = useRef<TerminalEmulatorRuntime | null>(null);
-  const appliedInitialOutputRef = useRef<string | null>(null);
+  const appliedChunkSequenceRef = useRef(0);
   const mountedThemeRef = useRef<ITheme>(xtermTheme);
   const themeKey = useMemo(() => buildXtermThemeKey(xtermTheme), [xtermTheme]);
 
@@ -244,33 +250,19 @@ export default function TerminalEmulator({
       initialOutputText,
       theme: mountedThemeRef.current,
     });
-    appliedInitialOutputRef.current = initialOutputText;
+    appliedChunkSequenceRef.current = Math.max(
+      0,
+      Math.floor(initialOutputChunkSequence)
+    );
 
     return () => {
       runtime.unmount();
       if (runtimeRef.current === runtime) {
         runtimeRef.current = null;
       }
-      appliedInitialOutputRef.current = null;
+      appliedChunkSequenceRef.current = 0;
     };
   }, [streamKey]);
-
-  useEffect(() => {
-    const runtime = runtimeRef.current;
-    if (!runtime) {
-      return;
-    }
-
-    if (appliedInitialOutputRef.current === initialOutputText) {
-      return;
-    }
-
-    appliedInitialOutputRef.current = initialOutputText;
-    runtime.clear();
-    if (initialOutputText.length > 0) {
-      runtime.write({ text: initialOutputText });
-    }
-  }, [initialOutputText]);
 
   useEffect(() => {
     runtimeRef.current?.setCallbacks({
@@ -293,12 +285,34 @@ export default function TerminalEmulator({
       return;
     }
 
+    if (outputChunkSequence <= appliedChunkSequenceRef.current) {
+      terminalDebugLog({
+        scope: "emulator-component",
+        event: "output:chunk:skip-duplicate",
+        details: {
+          sequence: outputChunkSequence,
+          lastAppliedSequence: appliedChunkSequenceRef.current,
+        },
+      });
+      onOutputChunkConsumed?.(outputChunkSequence);
+      return;
+    }
+
     if (!runtime) {
       onOutputChunkConsumed?.(outputChunkSequence);
       return;
     }
 
+    appliedChunkSequenceRef.current = outputChunkSequence;
+
     if (outputChunkText.length === 0) {
+      terminalDebugLog({
+        scope: "emulator-component",
+        event: "output:chunk:clear",
+        details: {
+          sequence: outputChunkSequence,
+        },
+      });
       runtime.clear({
         onCommitted: () => {
           onOutputChunkConsumed?.(outputChunkSequence);
@@ -306,6 +320,16 @@ export default function TerminalEmulator({
       });
       return;
     }
+    terminalDebugLog({
+      scope: "emulator-component",
+      event: "output:chunk:write",
+      details: {
+        sequence: outputChunkSequence,
+        replay: outputChunkReplay,
+        length: outputChunkText.length,
+        preview: summarizeTerminalText({ text: outputChunkText, maxChars: 80 }),
+      },
+    });
     runtime.write({
       text: outputChunkText,
       suppressInput: outputChunkReplay,
@@ -346,6 +370,10 @@ export default function TerminalEmulator({
         touchAction: "pan-y",
       }}
       onPointerDown={() => {
+        terminalDebugLog({
+          scope: "emulator-component",
+          event: "surface:pointer-down-focus",
+        });
         runtimeRef.current?.focus();
       }}
     >

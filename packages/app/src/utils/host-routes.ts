@@ -188,54 +188,6 @@ export function parseHostAgentRouteFromPathname(
   return { serverId, agentId };
 }
 
-export function parseHostAgentDraftRouteFromPathname(
-  pathname: string
-): { serverId: string } | null {
-  const match = pathname.match(/^\/h\/([^/]+)\/(?:agent|new)\/?$/);
-  if (!match) {
-    return null;
-  }
-  const encodedServerId = match[1];
-  if (!encodedServerId) {
-    return null;
-  }
-  const serverId = trimNonEmpty(decodeSegment(encodedServerId));
-  if (!serverId) {
-    return null;
-  }
-  return { serverId };
-}
-
-export function buildHostAgentDraftRoute(serverId: string): string {
-  return buildHostDraftRoute(serverId);
-}
-
-export function parseHostDraftRouteFromPathname(
-  pathname: string
-): { serverId: string } | null {
-  const match = pathname.match(/^\/h\/([^/]+)\/new\/?$/);
-  if (!match) {
-    return null;
-  }
-  const encodedServerId = match[1];
-  if (!encodedServerId) {
-    return null;
-  }
-  const serverId = trimNonEmpty(decodeSegment(encodedServerId));
-  if (!serverId) {
-    return null;
-  }
-  return { serverId };
-}
-
-export function buildHostDraftRoute(serverId: string): string {
-  const normalized = trimNonEmpty(serverId);
-  if (!normalized) {
-    return "/";
-  }
-  return `/h/${encodeSegment(normalized)}/new`;
-}
-
 export function parseHostWorkspaceRouteFromPathname(
   pathname: string
 ): { serverId: string; workspaceId: string } | null {
@@ -444,9 +396,6 @@ export function mapPathnameToServer(
   }
   if (suffix.startsWith("agents")) {
     return `${base}/agents`;
-  }
-  if (suffix.startsWith("new")) {
-    return `${base}/new`;
   }
   if (suffix.startsWith("workspace/")) {
     return `${base}/${suffix}`;

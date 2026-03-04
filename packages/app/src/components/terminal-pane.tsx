@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useFocusEffect } from "@react-navigation/native";
+import { useFocusEffect, useIsFocused } from "@react-navigation/native";
 import {
   ActivityIndicator,
   Pressable,
@@ -29,10 +29,10 @@ import {
 import { upsertTerminalListEntry } from "@/utils/terminal-list";
 import { confirmDialog } from "@/utils/confirm-dialog";
 import {
-  TerminalOutputPump,
-  type TerminalOutputChunk,
-} from "@/terminal/runtime/terminal-output-pump";
-import { TerminalOutputDeliveryQueue } from "@/terminal/runtime/terminal-output-delivery-queue";
+  getTerminalOutputSession,
+  releaseTerminalOutputSession,
+  retainTerminalOutputSession,
+} from "@/terminal/runtime/terminal-output-session";
 import {
   TerminalStreamController,
   type TerminalStreamControllerStatus,
@@ -80,12 +80,6 @@ type ModifierState = {
   ctrl: boolean;
   shift: boolean;
   alt: boolean;
-};
-
-type TerminalOutputChunkState = {
-  sequence: number;
-  text: string;
-  replay: boolean;
 };
 
 type PendingTerminalInput =
@@ -147,6 +141,7 @@ export function TerminalPane({
   hideHeader = false,
   manageTerminalDirectorySubscription = true,
 }: TerminalPaneProps) {
+  const isScreenFocused = useIsFocused();
   const { theme } = useUnistyles();
   const xtermTheme = useMemo(() => toXtermTheme(theme.colors.terminal), [theme.colors.terminal]);
   const isMobile =
@@ -167,14 +162,33 @@ export function TerminalPane({
   const terminalsQueryKey = useMemo(() => ["terminals", serverId, cwd] as const, [cwd, serverId]);
   const lastReportedSizeRef = useRef<{ rows: number; cols: number } | null>(null);
   const streamControllerRef = useRef<TerminalStreamController | null>(null);
-  const outputPumpRef = useRef<TerminalOutputPump | null>(null);
-  const outputDeliveryQueueRef = useRef<TerminalOutputDeliveryQueue | null>(null);
-  const [selectedOutputChunk, setSelectedOutputChunk] = useState<TerminalOutputChunkState>({
-    sequence: 0,
-    text: "",
-    replay: false,
-  });
-  const [selectedOutputSnapshot, setSelectedOutputSnapshot] = useState("");
+  const outputSession = useMemo(
+    () =>
+      getTerminalOutputSession({
+        scopeKey,
+        maxOutputChars: MAX_OUTPUT_CHARS,
+      }),
+    [scopeKey]
+  );
+  const subscribeOutputSession = useCallback(
+    (listener: () => void) => outputSession.subscribe(listener),
+    [outputSession]
+  );
+  const getOutputSessionState = useCallback(
+    () => outputSession.getState(),
+    [outputSession]
+  );
+  useEffect(() => {
+    retainTerminalOutputSession({ scopeKey });
+    return () => {
+      releaseTerminalOutputSession({ scopeKey });
+    };
+  }, [scopeKey]);
+  const outputState = useSyncExternalStore(
+    subscribeOutputSession,
+    getOutputSessionState,
+    getOutputSessionState
+  );
   const [activeStream, setActiveStream] = useState<{
     terminalId: string;
     streamId: number;
@@ -203,39 +217,6 @@ export function TerminalPane({
   useEffect(() => {
     selectedTerminalIdRef.current = selectedTerminalId;
   }, [selectedTerminalId]);
-
-  useEffect(() => {
-    const outputDeliveryQueue = new TerminalOutputDeliveryQueue({
-      onDeliver: (chunk) => {
-        setSelectedOutputChunk(chunk);
-      },
-    });
-    outputDeliveryQueueRef.current = outputDeliveryQueue;
-
-    return () => {
-      if (outputDeliveryQueueRef.current === outputDeliveryQueue) {
-        outputDeliveryQueueRef.current = null;
-      }
-      outputDeliveryQueue.reset();
-    };
-  }, []);
-
-  useEffect(() => {
-    const outputPump = new TerminalOutputPump({
-      maxOutputChars: MAX_OUTPUT_CHARS,
-      onSelectedOutputChunk: (chunk: TerminalOutputChunk) => {
-        outputDeliveryQueueRef.current?.enqueue(chunk);
-      },
-    });
-    outputPumpRef.current = outputPump;
-
-    return () => {
-      if (outputPumpRef.current === outputPump) {
-        outputPumpRef.current = null;
-      }
-      outputPump.dispose();
-    };
-  }, []);
 
   const clearHoverOutTimeout = useCallback(() => {
     if (!hoverOutTimeoutRef.current) {
@@ -467,7 +448,7 @@ export function TerminalPane({
     },
     onSuccess: (_, terminalId) => {
       setHoveredTerminalId((current) => (current === terminalId ? null : current));
-      outputPumpRef.current?.clearTerminal({ terminalId });
+      outputSession.clearTerminal({ terminalId });
       if (selectedTerminalIdRef.current === terminalId) {
         updateSelectedTerminalId(null);
         setModifiers({ ...EMPTY_MODIFIERS });
@@ -488,9 +469,9 @@ export function TerminalPane({
 
   useEffect(() => {
     const terminalIds = terminals.map((terminal) => terminal.id);
-    outputPumpRef.current?.prune({ terminalIds });
+    outputSession.prune({ terminalIds });
     streamControllerRef.current?.pruneResumeOffsets({ terminalIds });
-  }, [terminals]);
+  }, [outputSession, terminals]);
 
   const handleStreamControllerStatus = useCallback(
     (status: TerminalStreamControllerStatus) => {
@@ -519,28 +500,22 @@ export function TerminalPane({
       return;
     }
 
-    const outputPump = outputPumpRef.current;
-    if (!outputPump) {
-      return;
-    }
-
     const controller = new TerminalStreamController({
       client,
       getPreferredSize: () => lastReportedSizeRef.current,
       onChunk: ({ terminalId, text, replay }) => {
-        outputPump.append({ terminalId, text, replay });
+        outputSession.append({ terminalId, text, replay });
       },
       onReset: ({ terminalId }) => {
-        outputPump.clearTerminal({ terminalId });
-        if (selectedTerminalIdRef.current === terminalId) {
-          setSelectedOutputSnapshot("");
-        }
+        outputSession.clearTerminal({ terminalId });
       },
       onStatusChange: handleStreamControllerStatus,
     });
 
     streamControllerRef.current = controller;
-    controller.setTerminal({ terminalId: selectedTerminalIdRef.current });
+    controller.setTerminal({
+      terminalId: isScreenFocused ? selectedTerminalIdRef.current : null,
+    });
 
     return () => {
       controller.dispose();
@@ -548,24 +523,18 @@ export function TerminalPane({
         streamControllerRef.current = null;
       }
     };
-  }, [client, handleStreamControllerStatus, isConnected]);
+  }, [client, handleStreamControllerStatus, isConnected, isScreenFocused, outputSession]);
 
   useEffect(() => {
-    outputDeliveryQueueRef.current?.reset();
     pendingTerminalInputRef.current = [];
-    setSelectedOutputChunk({ sequence: 0, text: "", replay: false });
-    outputPumpRef.current?.setSelectedTerminal({
-      terminalId: selectedTerminalId,
+    const nextSelectedTerminalId = isScreenFocused ? selectedTerminalId : null;
+    outputSession.setSelectedTerminal({
+      terminalId: nextSelectedTerminalId,
     });
     streamControllerRef.current?.setTerminal({
-      terminalId: selectedTerminalId,
+      terminalId: nextSelectedTerminalId,
     });
-    setSelectedOutputSnapshot(
-      outputPumpRef.current?.readSnapshot({
-        terminalId: selectedTerminalId,
-      }) ?? ""
-    );
-  }, [selectedTerminalId]);
+  }, [isScreenFocused, outputSession, selectedTerminalId]);
 
   const activeStreamId =
     activeStream && activeStream.terminalId === selectedTerminalId
@@ -870,8 +839,15 @@ export function TerminalPane({
   }, [clearPendingModifiers]);
 
   const handleOutputChunkConsumed = useCallback((sequence: number) => {
-    outputDeliveryQueueRef.current?.consume({ sequence });
-  }, []);
+    terminalDebugLog({
+      scope: "terminal-pane",
+      event: "output:chunk:consumed",
+      details: {
+        sequence,
+      },
+    });
+    outputSession.consume({ sequence });
+  }, [outputSession]);
 
   const toggleModifier = useCallback(
     (modifier: keyof ModifierState) => {
@@ -1046,10 +1022,11 @@ export function TerminalPane({
                 contentInsetAdjustmentBehavior: "never",
               }}
               streamKey={`${scopeKey}:${selectedTerminal.id}`}
-              initialOutputText={selectedOutputSnapshot}
-              outputChunkText={selectedOutputChunk.text}
-              outputChunkSequence={selectedOutputChunk.sequence}
-              outputChunkReplay={selectedOutputChunk.replay}
+              initialOutputText={outputState.snapshotText}
+              initialOutputChunkSequence={outputState.snapshotSequence}
+              outputChunkText={outputState.chunkText}
+              outputChunkSequence={outputState.chunkSequence}
+              outputChunkReplay={outputState.chunkReplay}
               testId="terminal-surface"
               xtermTheme={xtermTheme}
               swipeGesturesEnabled={swipeGesturesEnabled}

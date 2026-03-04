@@ -8,38 +8,10 @@ import {
   decodeWorkspaceIdFromPathSegment,
   encodeFilePathForPathSegment,
   encodeWorkspaceIdForPathSegment,
-  parseHostAgentDraftRouteFromPathname,
   parseHostAgentRouteFromPathname,
-  parseHostDraftRouteFromPathname,
   parseHostWorkspaceTabRouteFromPathname,
   parseHostWorkspaceRouteFromPathname,
 } from "./host-routes";
-
-describe("parseHostAgentDraftRouteFromPathname", () => {
-  it("parses draft route server id", () => {
-    expect(parseHostAgentDraftRouteFromPathname("/h/local/new")).toEqual({
-      serverId: "local",
-    });
-  });
-
-  it("parses encoded server id", () => {
-    expect(parseHostAgentDraftRouteFromPathname("/h/team%20host/new")).toEqual({
-      serverId: "team host",
-    });
-  });
-
-  it("does not match agent detail routes", () => {
-    expect(parseHostAgentDraftRouteFromPathname("/h/local/agent/abc123")).toBeNull();
-  });
-});
-
-describe("parseHostDraftRouteFromPathname", () => {
-  it("parses /new draft routes", () => {
-    expect(parseHostDraftRouteFromPathname("/h/local/new")).toEqual({
-      serverId: "local",
-    });
-  });
-});
 
 describe("parseHostAgentRouteFromPathname", () => {
   it("continues parsing detail routes", () => {

@@ -306,6 +306,7 @@ function WorkspaceScreenContent({
   const workspaceHeader = workspaceDescriptor
     ? resolveWorkspaceHeader({ workspace: workspaceDescriptor })
     : null;
+  const isWorkspaceHeaderLoading = workspaceHeader === null;
 
   const isGitCheckout = checkoutQuery.data?.isGit ?? false;
   const mobileView = usePanelStore((state) => state.mobileView);
@@ -417,21 +418,6 @@ function WorkspaceScreenContent({
     if (!normalized || !persistenceKey) {
       return;
     }
-    if (normalized.startsWith("draft_")) {
-      const tabId = openDraftTab({
-        serverId: normalizedServerId,
-        workspaceId: normalizedWorkspaceId,
-        draftId: normalized,
-      });
-      if (tabId) {
-        focusTab({
-          serverId: normalizedServerId,
-          workspaceId: normalizedWorkspaceId,
-          tabId,
-        });
-      }
-      return;
-    }
     if (normalized.startsWith("file_")) {
       const path = normalized.slice("file_".length).trim();
       if (!path) {
@@ -528,6 +514,38 @@ function WorkspaceScreenContent({
     },
     [normalizedServerId, normalizedWorkspaceId, router]
   );
+
+  const emptyWorkspaceSeedRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!persistenceKey) {
+      return;
+    }
+    if (tabs.length > 0) {
+      emptyWorkspaceSeedRef.current = null;
+      return;
+    }
+    const workspaceKey = `${normalizedServerId}:${normalizedWorkspaceId}`;
+    if (emptyWorkspaceSeedRef.current === workspaceKey) {
+      return;
+    }
+    emptyWorkspaceSeedRef.current = workspaceKey;
+    const draftId = generateDraftId();
+    const tabId = openDraftTab({
+      serverId: normalizedServerId,
+      workspaceId: normalizedWorkspaceId,
+      draftId,
+    });
+    if (tabId) {
+      navigateToTabId(tabId);
+    }
+  }, [
+    navigateToTabId,
+    normalizedServerId,
+    normalizedWorkspaceId,
+    openDraftTab,
+    persistenceKey,
+    tabs.length,
+  ]);
 
   const handleOpenFileFromExplorer = useCallback(
     (filePath: string) => {
@@ -1025,12 +1043,21 @@ function WorkspaceScreenContent({
               <>
                 <SidebarMenuToggle />
                 <View style={styles.headerTitleContainer}>
-                  <Text style={styles.headerTitle} numberOfLines={1}>
-                    {workspaceHeader ? workspaceHeader.title : "Loading workspace…"}
-                  </Text>
-                  <Text style={styles.headerProjectTitle} numberOfLines={1}>
-                    {workspaceHeader ? workspaceHeader.subtitle : "Awaiting workspace descriptor"}
-                  </Text>
+                  {isWorkspaceHeaderLoading ? (
+                    <>
+                      <View style={styles.headerTitleSkeleton} />
+                      <View style={styles.headerProjectTitleSkeleton} />
+                    </>
+                  ) : (
+                    <>
+                      <Text style={styles.headerTitle} numberOfLines={1}>
+                        {workspaceHeader.title}
+                      </Text>
+                      <Text style={styles.headerProjectTitle} numberOfLines={1}>
+                        {workspaceHeader.subtitle}
+                      </Text>
+                    </>
+                  )}
                 </View>
               </>
             }
@@ -1325,6 +1352,22 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.base,
     flexShrink: 1,
+  },
+  headerTitleSkeleton: {
+    width: 190,
+    maxWidth: "45%",
+    height: 22,
+    borderRadius: theme.borderRadius.full,
+    backgroundColor: theme.colors.surface3,
+    opacity: 0.25,
+  },
+  headerProjectTitleSkeleton: {
+    width: 300,
+    maxWidth: "45%",
+    height: 22,
+    borderRadius: theme.borderRadius.full,
+    backgroundColor: theme.colors.surface3,
+    opacity: 0.18,
   },
   headerRight: {
     flexDirection: "row",

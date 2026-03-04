@@ -59,7 +59,6 @@ import { useKeyboardShiftStyle } from "@/hooks/use-keyboard-shift-style";
 import { shouldClearAgentAttentionOnView } from "@/utils/agent-attention";
 import type { DaemonClient } from "@server/client/daemon-client";
 import { useExplorerOpenGesture } from "@/hooks/use-explorer-open-gesture";
-import { buildHostAgentDraftRoute } from "@/utils/host-routes";
 import type { ExplorerCheckoutContext } from "@/stores/panel-store";
 
 const EMPTY_STREAM_ITEMS: StreamItem[] = [];
@@ -529,7 +528,7 @@ function AgentScreenContent({
       return;
     }
     hasRedirectedArchivedAgentRef.current = true;
-    const route: Href = buildHostAgentDraftRoute(serverId) as Href;
+    const route: Href = `/h/${encodeURIComponent(serverId)}` as Href;
     router.replace(route);
   }, [agent?.archivedAt, resolvedAgentId, router, serverId]);
 

@@ -3,7 +3,6 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSessionStore } from "@/stores/session-store";
 import { useHostRuntimeSession } from "@/runtime/host-runtime";
 import {
-  buildHostDraftRoute,
   buildHostWorkspaceAgentTabRoute,
 } from "@/utils/host-routes";
 
@@ -55,7 +54,7 @@ export default function HostAgentReadyRoute() {
     }
     if (!client || !isConnected) {
       redirectedRef.current = true;
-      router.replace(buildHostDraftRoute(serverId) as any);
+      router.replace(`/h/${encodeURIComponent(serverId)}` as any);
     }
   }, [agentCwd, agentId, client, isConnected, router, serverId]);
 
@@ -80,14 +79,14 @@ export default function HostAgentReadyRoute() {
           router.replace(buildHostWorkspaceAgentTabRoute(serverId, cwd, agentId) as any);
           return;
         }
-        router.replace(buildHostDraftRoute(serverId) as any);
+        router.replace(`/h/${encodeURIComponent(serverId)}` as any);
       })
       .catch(() => {
         if (cancelled || redirectedRef.current) {
           return;
         }
         redirectedRef.current = true;
-        router.replace(buildHostDraftRoute(serverId) as any);
+        router.replace(`/h/${encodeURIComponent(serverId)}` as any);
       });
 
     return () => {

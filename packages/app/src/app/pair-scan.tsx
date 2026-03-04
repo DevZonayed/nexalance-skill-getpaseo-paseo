@@ -12,7 +12,6 @@ import { decodeOfferFragmentPayload, normalizeHostPort } from "@/utils/daemon-en
 import { probeConnection } from "@/utils/test-daemon-connection";
 import { ConnectionOfferSchema } from "@server/shared/connection-offer";
 import {
-  buildHostAgentDraftRoute,
   buildHostSettingsRoute,
 } from "@/utils/host-routes";
 
@@ -170,7 +169,7 @@ export default function PairScanScreen() {
   const returnToSource = useCallback(
     (serverId: string) => {
       if (source === "onboarding") {
-        router.replace(buildHostAgentDraftRoute(serverId) as any);
+        router.replace(`/h/${encodeURIComponent(serverId)}` as any);
         return;
       }
       if (source === "editHost" && targetServerId) {

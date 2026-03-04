@@ -9,7 +9,6 @@ import { useSessionStore } from "@/stores/session-store";
 import { AddHostModal } from "./add-host-modal";
 import { PairLinkModal } from "./pair-link-modal";
 import { NameHostModal } from "./name-host-modal";
-import { buildHostAgentDraftRoute } from "@/utils/host-routes";
 import { resolveAppVersion } from "@/utils/app-version";
 import { formatVersionWithPrefix } from "@/desktop/updates/desktop-updates";
 
@@ -106,7 +105,7 @@ export function WelcomeScreen({ onHostAdded }: WelcomeScreenProps) {
 
   const finishOnboarding = useCallback(
     (serverId: string) => {
-      router.replace(buildHostAgentDraftRoute(serverId) as any);
+      router.replace(`/h/${encodeURIComponent(serverId)}` as any);
     },
     [router]
   );

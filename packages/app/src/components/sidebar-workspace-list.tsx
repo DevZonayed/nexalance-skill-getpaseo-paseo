@@ -634,7 +634,12 @@ function WorkspaceRowWithMenu({
         dragHandleProps={dragHandleProps}
         menuController={contextMenu}
       />
-      <ContextMenuContent align="start" width={220} testID={`sidebar-workspace-context-${workspace.workspaceKey}`}>
+      <ContextMenuContent
+        align="start"
+        width={220}
+        mobileMode="sheet"
+        testID={`sidebar-workspace-context-${workspace.workspaceKey}`}
+      >
         <ContextMenuItem
           testID={`sidebar-workspace-context-${workspace.workspaceKey}-archive`}
           status={archiveStatus}

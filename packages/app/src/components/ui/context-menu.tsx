@@ -1,4 +1,5 @@
 import {
+  type ComponentProps,
   createContext,
   useCallback,
   useContext,
@@ -24,14 +25,20 @@ import {
   type ViewStyle,
 } from "react-native";
 import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
-import { StyleSheet, useUnistyles } from "react-native-unistyles";
+import { StyleSheet, UnistylesRuntime, useUnistyles } from "react-native-unistyles";
 import { Check, CheckCircle } from "lucide-react-native";
+import {
+  BottomSheetBackdrop,
+  BottomSheetModal,
+  BottomSheetScrollView,
+} from "@gorhom/bottom-sheet";
 
 // Keep parity with dropdown-menu action statuses.
 export type ActionStatus = "idle" | "pending" | "success";
 
 type Placement = "top" | "bottom" | "left" | "right";
 type Alignment = "start" | "center" | "end";
+type MobileMenuMode = "dropdown" | "sheet";
 
 interface Rect {
   x: number;
@@ -308,6 +315,7 @@ export function ContextMenuContent({
   maxWidth,
   fullWidth = false,
   horizontalPadding = 16,
+  mobileMode = "dropdown",
   testID,
 }: PropsWithChildren<{
   side?: Placement;
@@ -318,9 +326,15 @@ export function ContextMenuContent({
   maxWidth?: number;
   fullWidth?: boolean;
   horizontalPadding?: number;
+  mobileMode?: MobileMenuMode;
   testID?: string;
 }>): ReactElement | null {
-  const { open, setOpen, triggerRef, anchorRect } = useContextMenuContext("ContextMenuContent");
+  const context = useContextMenuContext("ContextMenuContent");
+  const isMobile = UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
+  const useMobileSheet = isMobile && mobileMode === "sheet";
+  const { open, setOpen, triggerRef, anchorRect } = context;
+  const bottomSheetRef = useRef<BottomSheetModal>(null);
+  const sheetSnapPoints = useMemo(() => ["30%", "55%"], []);
   const [triggerRect, setTriggerRect] = useState<Rect | null>(null);
   const [contentSize, setContentSize] = useState<{ width: number; height: number } | null>(null);
   const [position, setPosition] = useState<{ x: number; y: number } | null>(null);
@@ -329,8 +343,45 @@ export function ContextMenuContent({
     setOpen(false);
   }, [setOpen]);
 
+  useEffect(() => {
+    if (!useMobileSheet) return;
+    if (open) {
+      bottomSheetRef.current?.present();
+      return;
+    }
+    bottomSheetRef.current?.dismiss();
+  }, [open, useMobileSheet]);
+
+  const handleSheetChange = useCallback(
+    (index: number) => {
+      if (index === -1) {
+        handleClose();
+      }
+    },
+    [handleClose]
+  );
+
+  const renderSheetBackdrop = useCallback(
+    (props: ComponentProps<typeof BottomSheetBackdrop>) => (
+      <BottomSheetBackdrop
+        {...props}
+        appearsOnIndex={0}
+        disappearsOnIndex={-1}
+        opacity={0.45}
+      />
+    ),
+    []
+  );
+
   // Measure trigger when opening (fallback) and capture point anchors.
   useEffect(() => {
+    if (useMobileSheet) {
+      setTriggerRect(null);
+      setContentSize(null);
+      setPosition(null);
+      return;
+    }
+
     if (!open) {
       setTriggerRect(null);
       setContentSize(null);
@@ -362,10 +413,11 @@ export function ContextMenuContent({
     return () => {
       cancelled = true;
     };
-  }, [anchorRect, open, triggerRef]);
+  }, [anchorRect, open, triggerRef, useMobileSheet]);
 
   // Calculate position when we have both measurements
   useEffect(() => {
+    if (useMobileSheet) return;
     if (!triggerRect || !contentSize) return;
 
     const { width: screenWidth, height: screenHeight } = Dimensions.get("window");
@@ -387,7 +439,7 @@ export function ContextMenuContent({
 
     const x = fullWidth ? horizontalPadding : result.x;
     setPosition({ x, y: result.y });
-  }, [triggerRect, contentSize, side, align, offset, fullWidth, horizontalPadding]);
+  }, [triggerRect, contentSize, side, align, offset, fullWidth, horizontalPadding, useMobileSheet]);
 
   const handleContentLayout = useCallback(
     (event: { nativeEvent: { layout: { width: number; height: number } } }) => {
@@ -396,6 +448,35 @@ export function ContextMenuContent({
     },
     []
   );
+
+  if (useMobileSheet) {
+    return (
+      <ContextMenuContext.Provider value={context}>
+        <BottomSheetModal
+          ref={bottomSheetRef}
+          index={0}
+          snapPoints={sheetSnapPoints}
+          enableDynamicSizing={false}
+          onChange={handleSheetChange}
+          backdropComponent={renderSheetBackdrop}
+          enablePanDownToClose
+          backgroundStyle={styles.sheetBackground}
+          handleIndicatorStyle={styles.sheetHandle}
+          keyboardBehavior="extend"
+          keyboardBlurBehavior="restore"
+        >
+          <BottomSheetScrollView
+            contentContainerStyle={styles.sheetScrollContent}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+            testID={testID ? `${testID}-content` : undefined}
+          >
+            {children}
+          </BottomSheetScrollView>
+        </BottomSheetModal>
+      </ContextMenuContext.Provider>
+    );
+  }
 
   if (!open) return null;
 
@@ -615,6 +696,20 @@ const styles = StyleSheet.create((theme) => ({
     shadowRadius: 8,
     elevation: 8,
     overflow: "hidden",
+  },
+  sheetBackground: {
+    backgroundColor: theme.colors.surface0,
+    borderTopLeftRadius: theme.borderRadius.xl,
+    borderTopRightRadius: theme.borderRadius.xl,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+  },
+  sheetHandle: {
+    backgroundColor: theme.colors.surface2,
+  },
+  sheetScrollContent: {
+    paddingTop: theme.spacing[1],
+    paddingBottom: theme.spacing[4],
   },
   labelContainer: {
     paddingHorizontal: theme.spacing[3],
