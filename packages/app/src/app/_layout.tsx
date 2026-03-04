@@ -45,6 +45,7 @@ import {
 } from "@/utils/os-notifications";
 import { buildNotificationRoute } from "@/utils/notification-routing";
 import {
+  buildHostRootRoute,
   parseHostAgentRouteFromPathname,
   parseHostWorkspaceTabRouteFromPathname,
 } from "@/utils/host-routes";
@@ -350,7 +351,7 @@ function OfferLinkListener({
           if (cancelled) return;
           const serverId = (profile as any)?.serverId;
           if (typeof serverId !== "string" || !serverId) return;
-          router.replace(`/h/${encodeURIComponent(serverId)}` as any);
+          router.replace(buildHostRootRoute(serverId) as any);
         })
         .catch((error) => {
           if (cancelled) return;
@@ -471,14 +472,14 @@ export default function RootLayout() {
                               >
                                 <Stack.Screen name="index" />
                                 <Stack.Screen name="settings" />
-                                <Stack.Screen name="h/[serverId]/workspace/[workspaceId]/index" />
-                                <Stack.Screen name="h/[serverId]/workspace/[workspaceId]/tab/[tabId]" />
+                                <Stack.Screen name="h/[serverId]/workspace/[workspaceId]" />
                                 <Stack.Screen
                                   name="h/[serverId]/agent/[agentId]"
                                   options={{ gestureEnabled: false }}
                                 />
                                 <Stack.Screen name="h/[serverId]/index" />
                                 <Stack.Screen name="h/[serverId]/agents" />
+                                <Stack.Screen name="h/[serverId]/new-agent" />
                                 <Stack.Screen name="h/[serverId]/settings" />
                                 <Stack.Screen name="pair-scan" />
                               </Stack>

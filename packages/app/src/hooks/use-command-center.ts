@@ -3,21 +3,12 @@ import type { TextInput } from "react-native";
 import { router, usePathname, type Href } from "expo-router";
 import { useKeyboardShortcutsStore } from "@/stores/keyboard-shortcuts-store";
 import { useAggregatedAgents, type AggregatedAgent } from "@/hooks/use-aggregated-agents";
-import { useSessionStore } from "@/stores/session-store";
-import {
-  checkoutStatusQueryKey,
-  type CheckoutStatusPayload,
-} from "@/hooks/use-checkout-status-query";
-import { queryClient } from "@/query/query-client";
 import {
   clearCommandCenterFocusRestoreElement,
   takeCommandCenterFocusRestoreElement,
 } from "@/utils/command-center-focus-restore";
 import {
-  buildNewAgentRoute,
-  resolveNewAgentWorkingDir,
-} from "@/utils/new-agent-routing";
-import {
+  buildHostNewAgentRoute,
   buildHostWorkspaceAgentTabRoute,
   buildHostSettingsRoute,
   parseHostAgentRouteFromPathname,
@@ -61,12 +52,6 @@ function parseAgentKeyFromPathname(pathname: string): string | null {
     return null;
   }
   return `${match.serverId}:${match.agentId}`;
-}
-
-function parseAgentRouteFromPathname(
-  pathname: string
-): { serverId: string; agentId: string } | null {
-  return parseHostAgentRouteFromPathname(pathname);
 }
 
 type CommandCenterActionDefinition = {
@@ -157,24 +142,7 @@ export function useCommandCenter() {
   const newAgentRoute = useMemo<Href>(() => {
     const serverIdFromPath =
       parseServerIdFromPathname(pathname) ?? fallbackServerId;
-    const routeAgent = parseAgentRouteFromPathname(pathname);
-    if (!routeAgent) {
-      return serverIdFromPath ? (buildNewAgentRoute(serverIdFromPath) as Href) : "/";
-    }
-
-    const { serverId, agentId } = routeAgent;
-    const currentAgent = useSessionStore.getState().sessions[serverId]?.agents?.get(agentId);
-    const cwd = currentAgent?.cwd?.trim();
-    if (!cwd) {
-      return buildNewAgentRoute(serverId) as Href;
-    }
-
-    const checkout =
-      queryClient.getQueryData<CheckoutStatusPayload>(
-        checkoutStatusQueryKey(serverId, cwd)
-      ) ?? null;
-    const workingDir = resolveNewAgentWorkingDir(cwd, checkout);
-    return buildNewAgentRoute(serverId, workingDir) as Href;
+    return serverIdFromPath ? (buildHostNewAgentRoute(serverIdFromPath) as Href) : "/";
   }, [fallbackServerId, pathname]);
 
   const settingsRoute = useMemo<Href>(() => {

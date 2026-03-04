@@ -11,6 +11,7 @@ import { PairLinkModal } from "./pair-link-modal";
 import { NameHostModal } from "./name-host-modal";
 import { resolveAppVersion } from "@/utils/app-version";
 import { formatVersionWithPrefix } from "@/desktop/updates/desktop-updates";
+import { buildHostRootRoute } from "@/utils/host-routes";
 
 const styles = StyleSheet.create((theme) => ({
   container: {
@@ -105,7 +106,7 @@ export function WelcomeScreen({ onHostAdded }: WelcomeScreenProps) {
 
   const finishOnboarding = useCallback(
     (serverId: string) => {
-      router.replace(`/h/${encodeURIComponent(serverId)}` as any);
+      router.replace(buildHostRootRoute(serverId) as any);
     },
     [router]
   );

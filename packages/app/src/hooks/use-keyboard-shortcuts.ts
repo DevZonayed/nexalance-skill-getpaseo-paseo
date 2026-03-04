@@ -6,16 +6,7 @@ import { useSessionStore } from "@/stores/session-store";
 import { useKeyboardShortcutsStore } from "@/stores/keyboard-shortcuts-store";
 import { setCommandCenterFocusRestoreElement } from "@/utils/command-center-focus-restore";
 import {
-  checkoutStatusQueryKey,
-  type CheckoutStatusPayload,
-} from "@/hooks/use-checkout-status-query";
-import { queryClient } from "@/query/query-client";
-import {
-  buildNewAgentRoute,
-  resolveSelectedAgentForNewAgent,
-  resolveNewAgentWorkingDir,
-} from "@/utils/new-agent-routing";
-import {
+  buildHostNewAgentRoute,
   buildHostWorkspaceRoute,
   parseHostAgentRouteFromPathname,
   parseHostWorkspaceRouteFromPathname,
@@ -85,26 +76,6 @@ export function useKeyboardShortcuts({
 
     const navigateToNewAgent = (): boolean => {
       let targetServerId = parseServerIdFromPathname(pathname);
-      let targetWorkingDir: string | null = null;
-      const selectedAgent = resolveSelectedAgentForNewAgent({
-        pathname,
-        selectedAgentId,
-      });
-      if (selectedAgent) {
-        targetServerId = selectedAgent.serverId;
-        const agent = useSessionStore
-          .getState()
-          .sessions[selectedAgent.serverId]
-          ?.agents?.get(selectedAgent.agentId);
-        const cwd = agent?.cwd?.trim();
-        if (cwd) {
-          const checkout =
-            queryClient.getQueryData<CheckoutStatusPayload>(
-              checkoutStatusQueryKey(selectedAgent.serverId, cwd)
-            ) ?? null;
-          targetWorkingDir = resolveNewAgentWorkingDir(cwd, checkout);
-        }
-      }
 
       if (!targetServerId) {
         const sessionServerIds = Object.keys(useSessionStore.getState().sessions);
@@ -115,7 +86,7 @@ export function useKeyboardShortcuts({
         return false;
       }
 
-      router.push(buildNewAgentRoute(targetServerId, targetWorkingDir) as any);
+      router.push(buildHostNewAgentRoute(targetServerId) as any);
       return true;
     };
 

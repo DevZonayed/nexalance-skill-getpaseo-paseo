@@ -1,5 +1,6 @@
 import {
   buildHostAgentDetailRoute,
+  buildHostRootRoute,
   buildHostWorkspaceAgentTabRoute,
 } from "@/utils/host-routes";
 
@@ -40,7 +41,7 @@ export function buildNotificationRoute(data: NotificationData): string {
     return buildHostAgentDetailRoute(serverId, agentId);
   }
   if (serverId) {
-    return `/h/${encodeURIComponent(serverId)}`;
+    return buildHostRootRoute(serverId);
   }
   return "/";
 }

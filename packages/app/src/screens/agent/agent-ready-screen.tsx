@@ -60,6 +60,7 @@ import { shouldClearAgentAttentionOnView } from "@/utils/agent-attention";
 import type { DaemonClient } from "@server/client/daemon-client";
 import { useExplorerOpenGesture } from "@/hooks/use-explorer-open-gesture";
 import type { ExplorerCheckoutContext } from "@/stores/panel-store";
+import { buildHostRootRoute } from "@/utils/host-routes";
 
 const EMPTY_STREAM_ITEMS: StreamItem[] = [];
 const IS_DEV = Boolean((globalThis as { __DEV__?: boolean }).__DEV__);
@@ -528,7 +529,7 @@ function AgentScreenContent({
       return;
     }
     hasRedirectedArchivedAgentRef.current = true;
-    const route: Href = `/h/${encodeURIComponent(serverId)}` as Href;
+    const route: Href = buildHostRootRoute(serverId) as Href;
     router.replace(route);
   }, [agent?.archivedAt, resolvedAgentId, router, serverId]);
 

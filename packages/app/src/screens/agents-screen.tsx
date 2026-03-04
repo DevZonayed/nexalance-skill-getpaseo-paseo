@@ -5,6 +5,7 @@ import { BackHeader } from "@/components/headers/back-header";
 import { AgentList } from "@/components/agent-list";
 import { useAllAgentsList } from "@/hooks/use-all-agents-list";
 import { router } from "expo-router";
+import { buildHostRootRoute } from "@/utils/host-routes";
 
 export function AgentsScreen({ serverId }: { serverId: string }) {
   const { agents, isRevalidating, refreshAll } = useAllAgentsList({
@@ -43,7 +44,7 @@ export function AgentsScreen({ serverId }: { serverId: string }) {
     <View style={styles.container}>
       <BackHeader
         title="All agents"
-        onBack={() => router.replace(`/h/${encodeURIComponent(serverId)}` as any)}
+        onBack={() => router.replace(buildHostRootRoute(serverId) as any)}
       />
       <AgentList
         agents={sortedAgents}

@@ -21,21 +21,11 @@ import { useTauriDragHandlers, useTrafficLightPadding } from '@/utils/tauri-wind
 import { Combobox } from '@/components/ui/combobox'
 import { useDaemonRegistry } from '@/contexts/daemon-registry-context'
 import { getHostRuntimeStore } from '@/runtime/host-runtime'
-import { useSessionStore } from '@/stores/session-store'
 import { formatConnectionStatus } from '@/utils/daemons'
 import { HEADER_INNER_HEIGHT, HEADER_INNER_HEIGHT_MOBILE } from '@/constants/layout'
 import {
-  checkoutStatusQueryKey,
-  type CheckoutStatusPayload,
-} from '@/hooks/use-checkout-status-query'
-import { queryClient } from '@/query/query-client'
-import {
-  buildNewAgentRoute,
-  resolveNewAgentWorkingDir,
-  resolveSelectedAgentForNewAgent,
-} from '@/utils/new-agent-routing'
-import {
   buildHostAgentsRoute,
+  buildHostNewAgentRoute,
   buildHostSettingsRoute,
   mapPathnameToServer,
   parseServerIdFromPathname,
@@ -47,7 +37,7 @@ interface LeftSidebarProps {
   selectedAgentId?: string
 }
 
-export function LeftSidebar({ selectedAgentId }: LeftSidebarProps) {
+export function LeftSidebar({ selectedAgentId: _selectedAgentId }: LeftSidebarProps) {
   const { theme } = useUnistyles()
   const insets = useSafeAreaInsets()
   const isMobile = UnistylesRuntime.breakpoint === 'xs' || UnistylesRuntime.breakpoint === 'sm'
@@ -79,13 +69,24 @@ export function LeftSidebar({ selectedAgentId }: LeftSidebarProps) {
         .join('|')
   )
   const activeServerIdFromPath = useMemo(() => parseServerIdFromPathname(pathname), [pathname])
-  const activeServerId = activeServerIdFromPath ?? daemons[0]?.serverId ?? null
+  const activeDaemon = useMemo(() => {
+    if (daemons.length === 0) {
+      return null
+    }
+    if (activeServerIdFromPath) {
+      const routeMatch = daemons.find((entry) => entry.serverId === activeServerIdFromPath)
+      if (routeMatch) {
+        return routeMatch
+      }
+    }
+    return daemons[0] ?? null
+  }, [activeServerIdFromPath, daemons])
+  const activeServerId = activeDaemon?.serverId ?? null
   const activeHostLabel = useMemo(() => {
-    if (!activeServerId) return 'No host'
-    const daemon = daemons.find((entry) => entry.serverId === activeServerId)
-    const trimmed = daemon?.label?.trim()
-    return trimmed && trimmed.length > 0 ? trimmed : activeServerId
-  }, [activeServerId, daemons])
+    if (!activeDaemon) return 'No host'
+    const trimmed = activeDaemon.label?.trim()
+    return trimmed && trimmed.length > 0 ? trimmed : activeDaemon.serverId
+  }, [activeDaemon])
   const activeHostStatus = activeServerId
     ? (runtime.getSnapshot(activeServerId)?.connectionStatus ?? 'connecting')
     : 'idle'
@@ -150,33 +151,11 @@ export function LeftSidebar({ selectedAgentId }: LeftSidebarProps) {
   }, [closeToAgent])
 
   const handleCreateAgentClean = useCallback(() => {
-    let targetServerId = activeServerId
-    let targetWorkingDir: string | null = null
-
-    const selectedAgent = resolveSelectedAgentForNewAgent({
-      pathname,
-      selectedAgentId,
-    })
-    if (selectedAgent) {
-      targetServerId = selectedAgent.serverId
-      const agent = useSessionStore
-        .getState()
-        .sessions[selectedAgent.serverId]?.agents?.get(selectedAgent.agentId)
-      const cwd = agent?.cwd?.trim()
-      if (cwd) {
-        const checkout =
-          queryClient.getQueryData<CheckoutStatusPayload>(
-            checkoutStatusQueryKey(selectedAgent.serverId, cwd)
-          ) ?? null
-        targetWorkingDir = resolveNewAgentWorkingDir(cwd, checkout)
-      }
-    }
-
-    if (!targetServerId) {
+    if (!activeServerId) {
       return
     }
-    router.push(buildNewAgentRoute(targetServerId, targetWorkingDir) as any)
-  }, [activeServerId, pathname, selectedAgentId])
+    router.push(buildHostNewAgentRoute(activeServerId) as any)
+  }, [activeServerId])
 
   // Mobile: close sidebar and navigate
   const handleCreateAgentCleanMobile = useCallback(() => {

@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildHostNewAgentRoute,
+  buildHostRootRoute,
   buildHostWorkspaceAgentTabRoute,
   buildHostWorkspaceFileTabRoute,
   buildHostWorkspaceRoute,
@@ -68,6 +70,14 @@ describe("workspace route parsing", () => {
 
   it("builds base64url workspace routes", () => {
     expect(buildHostWorkspaceRoute("local", "/tmp/repo")).toBe("/h/local/workspace/L3RtcC9yZXBv");
+  });
+
+  it("builds host root routes", () => {
+    expect(buildHostRootRoute("local")).toBe("/h/local");
+  });
+
+  it("builds host new-agent routes", () => {
+    expect(buildHostNewAgentRoute("local")).toBe("/h/local/new-agent");
   });
 
   it("builds workspace agent tab routes", () => {

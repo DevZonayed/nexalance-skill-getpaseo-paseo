@@ -359,25 +359,41 @@ export function buildHostAgentDetailRoute(
   if (!normalizedServerId || !normalizedAgentId) {
     return "/";
   }
-  return `/h/${encodeSegment(normalizedServerId)}/agent/${encodeSegment(
+  return `${buildHostRootRoute(normalizedServerId)}/agent/${encodeSegment(
     normalizedAgentId
   )}`;
 }
 
-export function buildHostAgentsRoute(serverId: string): string {
+export function buildHostRootRoute(serverId: string): string {
   const normalized = trimNonEmpty(serverId);
   if (!normalized) {
     return "/";
   }
-  return `/h/${encodeSegment(normalized)}/agents`;
+  return `/h/${encodeSegment(normalized)}`;
+}
+
+export function buildHostAgentsRoute(serverId: string): string {
+  const base = buildHostRootRoute(serverId);
+  if (base === "/") {
+    return "/";
+  }
+  return `${base}/agents`;
+}
+
+export function buildHostNewAgentRoute(serverId: string): string {
+  const base = buildHostRootRoute(serverId);
+  if (base === "/") {
+    return "/";
+  }
+  return `${base}/new-agent`;
 }
 
 export function buildHostSettingsRoute(serverId: string): string {
-  const normalized = trimNonEmpty(serverId);
-  if (!normalized) {
+  const base = buildHostRootRoute(serverId);
+  if (base === "/") {
     return "/";
   }
-  return `/h/${encodeSegment(normalized)}/settings`;
+  return `${base}/settings`;
 }
 
 export function mapPathnameToServer(
@@ -390,12 +406,15 @@ export function mapPathnameToServer(
   }
 
   const suffix = pathname.replace(/^\/h\/[^/]+\/?/, "");
-  const base = `/h/${encodeSegment(normalized)}`;
+  const base = buildHostRootRoute(normalized);
   if (suffix.startsWith("settings")) {
     return `${base}/settings`;
   }
   if (suffix.startsWith("agents")) {
     return `${base}/agents`;
+  }
+  if (suffix.startsWith("new-agent")) {
+    return `${base}/new-agent`;
   }
   if (suffix.startsWith("workspace/")) {
     return `${base}/${suffix}`;

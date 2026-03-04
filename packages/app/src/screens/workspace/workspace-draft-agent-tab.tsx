@@ -1,9 +1,11 @@
-import { useCallback, useEffect, useMemo, useReducer } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef } from "react";
 import { Keyboard, Platform, ScrollView, Text, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { AgentInputArea } from "@/components/agent-input-area";
 import { AgentConfigRow } from "@/components/agent-form/agent-form-dropdowns";
+import { FileDropZone } from "@/components/file-drop-zone";
 import { AgentStreamView } from "@/components/agent-stream-view";
+import type { ImageAttachment } from "@/components/message-input";
 import { MAX_CONTENT_WIDTH } from "@/constants/layout";
 import { useAgentFormState } from "@/hooks/use-agent-form-state";
 import { useHostRuntimeSession } from "@/runtime/host-runtime";
@@ -63,6 +65,7 @@ export function WorkspaceDraftAgentTab({
   onCreated,
 }: WorkspaceDraftAgentTabProps) {
   const { client, isConnected } = useHostRuntimeSession(serverId);
+  const addImagesRef = useRef<((images: ImageAttachment[]) => void) | null>(null);
 
   const setPendingCreateAttempt = useCreateFlowStore((state) => state.setPending);
   const updatePendingAgentId = useCreateFlowStore((state) => state.updateAgentId);
@@ -322,64 +325,75 @@ export function WorkspaceDraftAgentTab({
     workspaceId,
   ]);
 
+  const handleFilesDropped = useCallback((files: ImageAttachment[]) => {
+    addImagesRef.current?.(files);
+  }, []);
+
+  const handleAddImagesCallback = useCallback((addImages: (images: ImageAttachment[]) => void) => {
+    addImagesRef.current = addImages;
+  }, []);
+
   return (
-    <View style={styles.container}>
-      <View style={styles.contentContainer}>
-        {machine.tag === "creating" && draftAgent ? (
-          <View style={styles.streamContainer}>
-            <AgentStreamView
-              agentId={tabId}
-              serverId={serverId}
-              agent={draftAgent}
-              streamItems={optimisticStreamItems}
-              pendingPermissions={EMPTY_PENDING_PERMISSIONS}
-            />
-          </View>
-        ) : (
-          <ScrollView style={styles.scrollView} contentContainerStyle={styles.configScrollContent}>
-            <View style={styles.configSection}>
-              <AgentConfigRow
-                providerDefinitions={providerDefinitions}
-                selectedProvider={selectedProvider}
-                onSelectProvider={setProviderFromUser}
-                modeOptions={modeOptions}
-                selectedMode={selectedMode}
-                onSelectMode={setModeFromUser}
-                models={availableModels}
-                selectedModel={selectedModel}
-                onSelectModel={setModelFromUser}
-                isModelLoading={isModelLoading}
-                thinkingOptions={availableThinkingOptions}
-                selectedThinkingOptionId={selectedThinkingOptionId}
-                onSelectThinkingOption={setThinkingOptionFromUser}
-                disabled={isSubmitting}
+    <FileDropZone onFilesDropped={handleFilesDropped}>
+      <View style={styles.container}>
+        <View style={styles.contentContainer}>
+          {machine.tag === "creating" && draftAgent ? (
+            <View style={styles.streamContainer}>
+              <AgentStreamView
+                agentId={tabId}
+                serverId={serverId}
+                agent={draftAgent}
+                streamItems={optimisticStreamItems}
+                pendingPermissions={EMPTY_PENDING_PERMISSIONS}
               />
-
-              {formErrorMessage ? (
-                <View style={styles.errorContainer}>
-                  <Text style={styles.errorText}>{formErrorMessage}</Text>
-                </View>
-              ) : null}
             </View>
-          </ScrollView>
-        )}
-      </View>
+          ) : (
+            <ScrollView style={styles.scrollView} contentContainerStyle={styles.configScrollContent}>
+              <View style={styles.configSection}>
+                <AgentConfigRow
+                  providerDefinitions={providerDefinitions}
+                  selectedProvider={selectedProvider}
+                  onSelectProvider={setProviderFromUser}
+                  modeOptions={modeOptions}
+                  selectedMode={selectedMode}
+                  onSelectMode={setModeFromUser}
+                  models={availableModels}
+                  selectedModel={selectedModel}
+                  onSelectModel={setModelFromUser}
+                  isModelLoading={isModelLoading}
+                  thinkingOptions={availableThinkingOptions}
+                  selectedThinkingOptionId={selectedThinkingOptionId}
+                  onSelectThinkingOption={setThinkingOptionFromUser}
+                  disabled={isSubmitting}
+                />
 
-      <View style={styles.inputAreaWrapper}>
-        <AgentInputArea
-          agentId={tabId}
-          serverId={serverId}
-          onSubmitMessage={handleCreateFromInput}
-          isSubmitLoading={isSubmitting}
-          blurOnSubmit={true}
-          value={promptValue}
-          onChangeText={(next) => dispatch({ type: "DRAFT_SET_PROMPT", text: next })}
-          autoFocus={machine.tag === "draft"}
-          commandDraftConfig={draftCommandConfig}
-          draftId={draftId}
-        />
+                {formErrorMessage ? (
+                  <View style={styles.errorContainer}>
+                    <Text style={styles.errorText}>{formErrorMessage}</Text>
+                  </View>
+                ) : null}
+              </View>
+            </ScrollView>
+          )}
+        </View>
+
+        <View style={styles.inputAreaWrapper}>
+          <AgentInputArea
+            agentId={tabId}
+            serverId={serverId}
+            onSubmitMessage={handleCreateFromInput}
+            isSubmitLoading={isSubmitting}
+            blurOnSubmit={true}
+            value={promptValue}
+            onChangeText={(next) => dispatch({ type: "DRAFT_SET_PROMPT", text: next })}
+            autoFocus={machine.tag === "draft"}
+            onAddImages={handleAddImagesCallback}
+            commandDraftConfig={draftCommandConfig}
+            draftId={draftId}
+          />
+        </View>
       </View>
-    </View>
+    </FileDropZone>
   );
 }
 

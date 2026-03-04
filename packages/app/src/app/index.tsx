@@ -5,6 +5,7 @@ import { useUnistyles } from "react-native-unistyles";
 import { DraftAgentScreen } from "@/screens/agent/draft-agent-screen";
 import { useDaemonRegistry } from "@/contexts/daemon-registry-context";
 import { useFormPreferences } from "@/hooks/use-form-preferences";
+import { buildHostRootRoute } from "@/utils/host-routes";
 
 export default function Index() {
   const router = useRouter();
@@ -44,7 +45,7 @@ export default function Index() {
     if (!targetServerId) {
       return;
     }
-    router.replace(`/h/${encodeURIComponent(targetServerId)}` as any);
+    router.replace(buildHostRootRoute(targetServerId) as any);
   }, [preferencesLoading, registryLoading, router, targetServerId]);
 
   if (registryLoading || preferencesLoading) {

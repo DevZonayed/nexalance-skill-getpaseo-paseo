@@ -1,10 +1,14 @@
 import { v4 as uuidv4 } from "uuid";
 import type { Logger } from "pino";
+import { exec } from "node:child_process";
+import { promisify } from "node:util";
+import { sep } from "node:path";
 import type { TerminalManager } from "../terminal/terminal-manager.js";
 import type { TerminalSession } from "../terminal/terminal.js";
 import {
   createWorktree,
   getWorktreeTerminalSpecs,
+  listPaseoWorktrees,
   resolveWorktreeRuntimeEnv,
   runWorktreeSetupCommands,
   WorktreeSetupError,
@@ -42,6 +46,12 @@ export interface CreateAgentWorktreeOptions {
 const MAX_WORKTREE_SETUP_COMMAND_OUTPUT_BYTES = 64 * 1024;
 const WORKTREE_SETUP_TRUNCATION_MARKER = "\n...<output truncated in the middle>...\n";
 const WORKTREE_BOOTSTRAP_TERMINAL_READY_TIMEOUT_MS = 1_500;
+const READ_ONLY_GIT_ENV: NodeJS.ProcessEnv = {
+  ...process.env,
+  GIT_OPTIONAL_LOCKS: "0",
+};
+const execAsync = promisify(exec);
+const worktreeSetupEligibility = new WeakMap<WorktreeConfig, boolean>();
 
 type MiddleTruncationAccumulator = {
   totalBytes: number;
@@ -153,7 +163,18 @@ function renderMiddleTruncationAccumulator(
 export async function createAgentWorktree(
   options: CreateAgentWorktreeOptions
 ): Promise<WorktreeConfig> {
-  return createWorktree({
+  const existingWorktree = await findExistingPaseoWorktreeBySlug(options);
+  if (existingWorktree) {
+    const branchName = await resolveBranchNameForWorktreePath(existingWorktree.path);
+    const reusedWorktree = {
+      branchName,
+      worktreePath: existingWorktree.path,
+    };
+    worktreeSetupEligibility.set(reusedWorktree, false);
+    return reusedWorktree;
+  }
+
+  const createdWorktree = await createWorktree({
     branchName: options.branchName,
     cwd: options.cwd,
     baseBranch: options.baseBranch,
@@ -161,6 +182,29 @@ export async function createAgentWorktree(
     runSetup: false,
     paseoHome: options.paseoHome,
   });
+  worktreeSetupEligibility.set(createdWorktree, true);
+  return createdWorktree;
+}
+
+async function findExistingPaseoWorktreeBySlug(options: CreateAgentWorktreeOptions) {
+  const worktrees = await listPaseoWorktrees({
+    cwd: options.cwd,
+    paseoHome: options.paseoHome,
+  });
+  const slugSuffix = `${sep}${options.worktreeSlug}`;
+  return worktrees.find((worktree) => worktree.path.endsWith(slugSuffix));
+}
+
+async function resolveBranchNameForWorktreePath(worktreePath: string): Promise<string> {
+  const { stdout } = await execAsync("git branch --show-current", {
+    cwd: worktreePath,
+    env: READ_ONLY_GIT_ENV,
+  });
+  const branchName = stdout.trim();
+  if (!branchName) {
+    throw new Error(`Unable to resolve branch for existing worktree: ${worktreePath}`);
+  }
+  return branchName;
 }
 
 function formatDurationMs(durationMs: number): string {
@@ -467,6 +511,10 @@ async function runWorktreeTerminalBootstrap(
 export async function runAsyncWorktreeBootstrap(
   options: RunAsyncWorktreeBootstrapOptions
 ): Promise<void> {
+  if (worktreeSetupEligibility.get(options.worktree) === false) {
+    return;
+  }
+
   const setupCallId = uuidv4();
   let setupResults: WorktreeSetupCommandResult[] = [];
   let runtimeEnv: WorktreeRuntimeEnv | null = null;
