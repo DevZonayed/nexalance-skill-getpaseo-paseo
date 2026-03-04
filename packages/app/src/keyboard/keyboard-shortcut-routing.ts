@@ -4,8 +4,6 @@ import {
   parseHostWorkspaceTabRouteFromPathname,
 } from "@/utils/host-routes";
 
-const DRAFT_AGENT_ID = "__new_agent__";
-
 export function resolveSelectedOrRouteAgentKey(input: {
   selectedAgentId?: string;
   pathname: string;
@@ -22,7 +20,7 @@ export function resolveSelectedOrRouteAgentKey(input: {
       return agentId ? `${workspaceTabRoute.serverId}:${agentId}` : null;
     }
     if (tabId.startsWith("draft_")) {
-      return `${workspaceTabRoute.serverId}:${DRAFT_AGENT_ID}`;
+      return `${workspaceTabRoute.serverId}:${tabId}`;
     }
   }
 

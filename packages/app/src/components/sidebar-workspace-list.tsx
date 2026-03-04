@@ -5,7 +5,6 @@ import {
   Image,
   Platform,
   ActivityIndicator,
-  Alert,
   StatusBar,
   ScrollView,
   type GestureResponderEvent,
@@ -53,6 +52,7 @@ import { useToast } from '@/contexts/toast-context'
 import { useCheckoutGitActionsStore } from '@/stores/checkout-git-actions-store'
 import { buildSidebarShortcutModel } from '@/utils/sidebar-shortcuts'
 import { hasVisibleOrderChanged, mergeWithRemainder } from '@/utils/sidebar-reorder'
+import { confirmDialog } from '@/utils/confirm-dialog'
 
 const PASEO_WORKTREE_PATH_MARKER = '/.paseo/worktrees'
 
@@ -459,7 +459,6 @@ function WorkspaceRowInner({
   dragHandleProps,
   menuController,
 }: WorkspaceRowInnerProps) {
-  const { theme } = useUnistyles()
   const createdAtLabel = resolveWorkspaceCreatedAtLabel(workspace)
   const interaction = useLongPressDragInteraction({
     drag,
@@ -547,12 +546,6 @@ function WorkspaceRowInner({
   return (
     <View style={styles.workspaceRowContainer}>
       {content}
-      {isArchiving ? (
-        <View style={styles.workspaceArchivingOverlay} testID={`sidebar-workspace-archiving-${workspace.workspaceKey}`}>
-          <ActivityIndicator size="small" color={theme.colors.foregroundMuted} />
-          <Text style={styles.workspaceArchivingText}>Archiving</Text>
-        </View>
-      ) : null}
     </View>
   )
 }
@@ -593,31 +586,28 @@ function WorkspaceRowWithMenu({
       return
     }
 
-    Alert.alert(
-      'Archive worktree?',
-      `Archive "${workspace.name}"?\n\nThis removes the worktree from the sidebar.`,
-      [
-        {
-          text: 'Cancel',
-          style: 'cancel',
-        },
-        {
-          text: 'Archive',
-          style: 'destructive',
-          onPress: () => {
-            void archiveWorktree({
-              serverId: workspace.serverId,
-              cwd: workspace.workspaceId,
-              worktreePath: workspace.workspaceId,
-            }).catch((error) => {
-              const message = error instanceof Error ? error.message : 'Failed to archive worktree'
-              toast.error(message)
-            })
-          },
-        },
-      ],
-      { cancelable: true }
-    )
+    void (async () => {
+      const confirmed = await confirmDialog({
+        title: 'Archive worktree?',
+        message: `Archive "${workspace.name}"?\n\nThis removes the worktree from the sidebar.`,
+        confirmLabel: 'Archive',
+        cancelLabel: 'Cancel',
+        destructive: true,
+      })
+
+      if (!confirmed) {
+        return
+      }
+
+      void archiveWorktree({
+        serverId: workspace.serverId,
+        cwd: workspace.workspaceId,
+        worktreePath: workspace.workspaceId,
+      }).catch((error) => {
+        const message = error instanceof Error ? error.message : 'Failed to archive worktree'
+        toast.error(message)
+      })
+    })()
   }, [archiveWorktree, isArchiving, toast, workspace.name, workspace.serverId, workspace.workspaceId])
 
   return (

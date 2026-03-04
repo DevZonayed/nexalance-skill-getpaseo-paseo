@@ -53,7 +53,6 @@ import { useTauriDragHandlers } from '@/utils/tauri-window'
 import { useKeyboardShiftStyle } from '@/hooks/use-keyboard-shift-style'
 import { normalizeAgentSnapshot } from '@/utils/agent-snapshots'
 
-const DRAFT_AGENT_ID = '__new_agent__'
 const EMPTY_PENDING_PERMISSIONS = new Map()
 const EMPTY_STREAM_ITEMS: StreamItem[] = []
 const MAX_INITIAL_AGENT_TITLE_CHARS = 60
@@ -252,6 +251,7 @@ function DraftAgentScreenContent({
   const tauriDragHandlers = useTauriDragHandlers()
   const isExplorerOpen = isMobile ? mobileView === 'file-explorer' : desktopFileExplorerOpen
   const draftIdRef = useRef(generateDraftId())
+  const draftAgentIdRef = useRef(generateDraftId())
 
   const [worktreeMode, setWorktreeMode] = useState<'none' | 'create' | 'attach'>('none')
   const [baseBranch, setBaseBranch] = useState('')
@@ -866,7 +866,7 @@ function DraftAgentScreenContent({
 
     return {
       serverId,
-      id: DRAFT_AGENT_ID,
+      id: draftAgentIdRef.current,
       provider,
       status: 'running',
       createdAt: now,
@@ -1160,7 +1160,7 @@ function DraftAgentScreenContent({
             {machine.tag === 'creating' && draftAgent && selectedServerId ? (
               <View style={styles.streamContainer}>
                 <AgentStreamView
-                  agentId={DRAFT_AGENT_ID}
+                  agentId={draftAgentIdRef.current}
                   serverId={selectedServerId}
                   agent={draftAgent}
                   streamItems={optimisticStreamItems}
@@ -1346,7 +1346,7 @@ function DraftAgentScreenContent({
           </Animated.View>
           <View style={styles.inputAreaWrapper}>
             <AgentInputArea
-              agentId={DRAFT_AGENT_ID}
+              agentId={draftAgentIdRef.current}
               serverId={selectedServerId ?? ''}
               onSubmitMessage={handleCreateFromInput}
               isSubmitLoading={isSubmitting}

@@ -124,19 +124,19 @@ export function useAgentAutocomplete(input: UseAgentAutocompleteInput): AgentAut
     [draftConfig]
   )
 
-  const isRealAgent = Boolean(agentId) && !agentId.startsWith('__')
-  const queryDraftConfig = isRealAgent ? undefined : normalizedDraftConfig
-  const canLoadCommands = Boolean(serverId) && (isRealAgent || !!queryDraftConfig)
+  const isDraftContext = normalizedDraftConfig !== undefined
+  const queryDraftConfig = isDraftContext ? normalizedDraftConfig : undefined
+  const canLoadCommands = Boolean(serverId) && (Boolean(agentId) || isDraftContext)
 
   const agentCwd = useSessionStore(
     (state) => state.sessions[serverId]?.agents?.get(agentId)?.cwd ?? ''
   )
   const autocompleteCwd = useMemo(() => {
-    if (isRealAgent) {
-      return agentCwd.trim()
+    if (isDraftContext) {
+      return queryDraftConfig?.cwd ?? ''
     }
-    return queryDraftConfig?.cwd ?? ''
-  }, [agentCwd, isRealAgent, queryDraftConfig])
+    return agentCwd.trim()
+  }, [agentCwd, isDraftContext, queryDraftConfig])
 
   const { client, isConnected } = useHostRuntimeSession(serverId)
 
