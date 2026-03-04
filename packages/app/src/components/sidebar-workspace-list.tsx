@@ -6,10 +6,10 @@ import {
   Platform,
   ActivityIndicator,
   Alert,
-  StatusBar,
   ScrollView,
   type GestureResponderEvent,
 } from 'react-native'
+import * as Haptics from 'expo-haptics'
 import { useQueries } from '@tanstack/react-query'
 import {
   useCallback,
@@ -22,9 +22,8 @@ import {
 } from 'react'
 import { router, usePathname, useSegments } from 'expo-router'
 import { StyleSheet, UnistylesRuntime, useUnistyles } from 'react-native-unistyles'
-import { Gesture, GestureDetector, type GestureType } from 'react-native-gesture-handler'
-import { ChevronDown, ChevronRight } from 'lucide-react-native'
-import { NestableScrollContainer } from 'react-native-draggable-flatlist'
+import { type GestureType } from 'react-native-gesture-handler'
+import { ChevronDown, ChevronRight, GripVertical } from 'lucide-react-native'
 import { DraggableList, type DraggableRenderItemInfo } from './draggable-list'
 import type { DraggableListDragHandleProps } from './draggable-list.types'
 import { getHostRuntimeStore, isHostRuntimeConnected } from '@/runtime/host-runtime'
@@ -53,9 +52,6 @@ import { useToast } from '@/contexts/toast-context'
 import { useCheckoutGitActionsStore } from '@/stores/checkout-git-actions-store'
 import { buildSidebarShortcutModel } from '@/utils/sidebar-shortcuts'
 import { hasVisibleOrderChanged, mergeWithRemainder } from '@/utils/sidebar-reorder'
-import {
-  shouldOpenContextMenuOnPressOut,
-} from '@/utils/sidebar-gesture-arbitration'
 
 const PASEO_WORKTREE_PATH_MARKER = '/.paseo/worktrees'
 
@@ -78,11 +74,6 @@ interface SidebarWorkspaceListProps {
   parentGestureRef?: MutableRefObject<GestureType | undefined>
 }
 
-interface ContextMenuController {
-  setAnchorRect: (rect: { x: number; y: number; width: number; height: number } | null) => void
-  setOpen: (open: boolean) => void
-}
-
 interface ProjectHeaderRowProps {
   project: SidebarProjectEntry
   displayName: string
@@ -90,6 +81,7 @@ interface ProjectHeaderRowProps {
   collapsed: boolean
   onToggle: () => void
   drag: () => void
+  isDragging: boolean
   dragHandleProps?: DraggableListDragHandleProps
 }
 
@@ -100,9 +92,10 @@ interface WorkspaceRowInnerProps {
   showShortcutBadge: boolean
   onPress: () => void
   drag: () => void
+  isDragging: boolean
   isArchiving: boolean
   dragHandleProps?: DraggableListDragHandleProps
-  menuController: ContextMenuController | null
+  menuController: ReturnType<typeof useContextMenu> | null
 }
 
 function resolveWorkspaceCreatedAtLabel(workspace: SidebarWorkspaceEntry): string | null {
@@ -161,159 +154,34 @@ function WorkspaceStatusIndicator({
 
 function useLongPressDragInteraction(input: {
   drag: () => void
-  menuController: ContextMenuController | null
 }) {
   const didLongPressRef = useRef(false)
-  const didLongPressCleanupTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const longPressArmedRef = useRef(false)
-  const longPressCancelledRef = useRef(false)
-  const didStartDragRef = useRef(false)
-  const touchStartRef = useRef<{ x: number; y: number } | null>(null)
-
-  useEffect(() => {
-    return () => {
-      if (!didLongPressCleanupTimerRef.current) {
-        return
-      }
-      clearTimeout(didLongPressCleanupTimerRef.current)
-      didLongPressCleanupTimerRef.current = null
-    }
-  }, [])
-
-  const openContextMenuAtTouchStart = useCallback(() => {
-    if (!input.menuController) {
-      return
-    }
-
-    const point = touchStartRef.current
-    if (!point) {
-      return
-    }
-
-    const statusBarHeight = Platform.OS === 'android' ? (StatusBar.currentHeight ?? 0) : 0
-    input.menuController.setAnchorRect({
-      x: point.x,
-      y: point.y + statusBarHeight,
-      width: 0,
-      height: 0,
-    })
-    input.menuController.setOpen(true)
-  }, [input.menuController])
 
   const handleLongPress = useCallback(() => {
-    if (Platform.OS === 'web') {
-      return
-    }
-    if (longPressCancelledRef.current) {
-      return
-    }
+    console.log('[sidebar-dnd-debug] long-press armed')
+    void Haptics.selectionAsync().catch(() => {})
     didLongPressRef.current = true
-    longPressArmedRef.current = true
   }, [])
 
   const handlePressIn = useCallback((event: GestureResponderEvent) => {
-    if (didLongPressCleanupTimerRef.current) {
-      clearTimeout(didLongPressCleanupTimerRef.current)
-      didLongPressCleanupTimerRef.current = null
-    }
-
-    longPressCancelledRef.current = false
-    longPressArmedRef.current = false
-    didStartDragRef.current = false
-    touchStartRef.current = {
+    didLongPressRef.current = false
+    console.log('[sidebar-dnd-debug] press-in', {
       x: event.nativeEvent.pageX,
       y: event.nativeEvent.pageY,
-    }
+    })
   }, [])
 
   const handlePressOut = useCallback(() => {
-    if (Platform.OS === 'web') {
-      return
-    }
-
-    if (
-      !shouldOpenContextMenuOnPressOut({
-        longPressArmed: longPressArmedRef.current,
-        didStartDrag: didStartDragRef.current,
-      })
-    ) {
-      longPressCancelledRef.current = false
-      longPressArmedRef.current = false
-      didStartDragRef.current = false
-      touchStartRef.current = null
-      return
-    }
-
-    openContextMenuAtTouchStart()
-    didLongPressCleanupTimerRef.current = setTimeout(() => {
-      didLongPressRef.current = false
-      didLongPressCleanupTimerRef.current = null
-    }, 0)
-
-    longPressCancelledRef.current = false
-    longPressArmedRef.current = false
-    didStartDragRef.current = false
-    touchStartRef.current = null
-  }, [openContextMenuAtTouchStart])
-
-  const moveMonitorGesture = useMemo(() => {
-    if (Platform.OS === 'web') {
-      return null
-    }
-
-    const CANCEL_SLOP_PX = 10
-    const DRAG_SLOP_PX = 8
-
-    return Gesture.Pan()
-      .manualActivation(true)
-      .runOnJS(true)
-      .onTouchesDown((event) => {
-        const touch = event.changedTouches[0]
-        if (!touch) {
-          return
-        }
-        touchStartRef.current = { x: touch.absoluteX, y: touch.absoluteY }
-      })
-      .onTouchesMove((event) => {
-        const touch = event.changedTouches[0]
-        if (!touch || event.numberOfTouches !== 1) {
-          return
-        }
-
-        const start = touchStartRef.current
-        if (!start) {
-          touchStartRef.current = { x: touch.absoluteX, y: touch.absoluteY }
-          return
-        }
-
-        if (didStartDragRef.current) {
-          return
-        }
-
-        const dx = touch.absoluteX - start.x
-        const dy = touch.absoluteY - start.y
-        const distance = Math.sqrt(dx * dx + dy * dy)
-
-        if (!longPressArmedRef.current) {
-          if (distance > CANCEL_SLOP_PX) {
-            longPressCancelledRef.current = true
-          }
-          return
-        }
-
-        if (distance > DRAG_SLOP_PX) {
-          didStartDragRef.current = true
-          input.drag()
-        }
-      })
-  }, [input.drag])
+    console.log('[sidebar-dnd-debug] press-out no context-menu', {
+      didLongPress: didLongPressRef.current,
+    })
+  }, [])
 
   return {
     didLongPressRef,
     handleLongPress,
     handlePressIn,
     handlePressOut,
-    moveMonitorGesture,
   }
 }
 
@@ -324,11 +192,11 @@ function ProjectHeaderRow({
   collapsed,
   onToggle,
   drag,
+  isDragging,
   dragHandleProps,
 }: ProjectHeaderRowProps) {
   const interaction = useLongPressDragInteraction({
     drag,
-    menuController: useContextMenu(),
   })
 
   const handlePress = useCallback(() => {
@@ -339,11 +207,18 @@ function ProjectHeaderRow({
     onToggle()
   }, [interaction.didLongPressRef, onToggle])
 
+  const handleDragHandlePressIn = useCallback(() => {
+    console.log('[sidebar-dnd-debug] project drag-handle press-in')
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {})
+    drag()
+  }, [drag])
+
   const trigger = (
     <ContextMenuTrigger
-      enabledOnMobile={false}
+      enabledOnMobile
       style={({ pressed, hovered = false }) => [
         styles.projectRow,
+        isDragging && styles.projectRowDragging,
         hovered && styles.projectRowHovered,
         pressed && styles.projectRowPressed,
       ]}
@@ -351,15 +226,10 @@ function ProjectHeaderRow({
       onPressOut={interaction.handlePressOut}
       onPress={handlePress}
       onLongPress={interaction.handleLongPress}
-      delayLongPress={200}
+      delayLongPress={350}
       testID={`sidebar-project-row-${project.projectKey}`}
     >
-      <View
-        {...(dragHandleProps?.attributes as any)}
-        {...(dragHandleProps?.listeners as any)}
-        ref={dragHandleProps?.setActivatorNodeRef as any}
-        style={styles.projectRowLeft}
-      >
+      <View style={styles.projectRowLeft}>
         {collapsed ? (
           <ChevronRight size={14} color="#9ca3af" />
         ) : (
@@ -378,14 +248,24 @@ function ProjectHeaderRow({
           {displayName}
         </Text>
       </View>
+      <Pressable
+        {...(dragHandleProps?.attributes as any)}
+        {...(dragHandleProps?.listeners as any)}
+        ref={dragHandleProps?.setActivatorNodeRef as any}
+        hitSlop={8}
+        onPressIn={handleDragHandlePressIn}
+        onLongPress={handleDragHandlePressIn}
+        delayLongPress={120}
+        onPress={(event) => (event as any).stopPropagation?.()}
+        style={({ pressed }) => [styles.dragHandle, pressed && styles.dragHandlePressed]}
+        testID={`sidebar-project-drag-handle-${project.projectKey}`}
+      >
+        <GripVertical size={14} color="#9ca3af" />
+      </Pressable>
     </ContextMenuTrigger>
   )
 
-  return interaction.moveMonitorGesture ? (
-    <GestureDetector gesture={interaction.moveMonitorGesture}>{trigger}</GestureDetector>
-  ) : (
-    trigger
-  )
+  return trigger
 }
 
 function ProjectHeaderRowWithMenu(props: ProjectHeaderRowProps) {
@@ -411,6 +291,7 @@ function WorkspaceRowInner({
   showShortcutBadge,
   onPress,
   drag,
+  isDragging,
   isArchiving,
   dragHandleProps,
   menuController,
@@ -419,7 +300,6 @@ function WorkspaceRowInner({
   const createdAtLabel = resolveWorkspaceCreatedAtLabel(workspace)
   const interaction = useLongPressDragInteraction({
     drag,
-    menuController,
   })
 
   const handlePress = useCallback(() => {
@@ -430,12 +310,17 @@ function WorkspaceRowInner({
     onPress()
   }, [interaction.didLongPressRef, onPress])
 
+  const handleDragHandlePressIn = useCallback(() => {
+    console.log('[sidebar-dnd-debug] workspace drag-handle press-in', {
+      workspaceKey: workspace.workspaceKey,
+    })
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {})
+    drag()
+  }, [drag, workspace.workspaceKey])
+
   const rowChildren = (
     <>
       <View
-        {...(dragHandleProps?.attributes as any)}
-        {...(dragHandleProps?.listeners as any)}
-        ref={dragHandleProps?.setActivatorNodeRef as any}
         style={styles.workspaceRowLeft}
       >
         <WorkspaceStatusIndicator bucket={workspace.statusBucket} loading={isArchiving} />
@@ -454,16 +339,31 @@ function WorkspaceRowInner({
             <Text style={styles.shortcutBadgeText}>{shortcutNumber}</Text>
           </View>
         ) : null}
+        <Pressable
+          {...(dragHandleProps?.attributes as any)}
+          {...(dragHandleProps?.listeners as any)}
+          ref={dragHandleProps?.setActivatorNodeRef as any}
+          hitSlop={8}
+          onPressIn={handleDragHandlePressIn}
+          onLongPress={handleDragHandlePressIn}
+          delayLongPress={120}
+          onPress={(event) => (event as any).stopPropagation?.()}
+          style={({ pressed }) => [styles.dragHandle, pressed && styles.dragHandlePressed]}
+          testID={`sidebar-workspace-drag-handle-${workspace.workspaceKey}`}
+        >
+          <GripVertical size={14} color="#9ca3af" />
+        </Pressable>
       </View>
     </>
   )
 
   const trigger = menuController ? (
     <ContextMenuTrigger
-      enabledOnMobile={false}
+      enabledOnMobile
       disabled={isArchiving}
       style={({ pressed, hovered = false }) => [
         styles.workspaceRow,
+        isDragging && styles.workspaceRowDragging,
         selected && styles.workspaceRowSelected,
         hovered && styles.workspaceRowHovered,
         pressed && styles.workspaceRowPressed,
@@ -472,7 +372,7 @@ function WorkspaceRowInner({
       onPressOut={interaction.handlePressOut}
       onPress={handlePress}
       onLongPress={interaction.handleLongPress}
-      delayLongPress={200}
+      delayLongPress={350}
       testID={`sidebar-workspace-row-${workspace.workspaceKey}`}
     >
       {rowChildren}
@@ -482,6 +382,7 @@ function WorkspaceRowInner({
       disabled={isArchiving}
       style={({ pressed, hovered = false }) => [
         styles.workspaceRow,
+        isDragging && styles.workspaceRowDragging,
         selected && styles.workspaceRowSelected,
         hovered && styles.workspaceRowHovered,
         pressed && styles.workspaceRowPressed,
@@ -490,18 +391,14 @@ function WorkspaceRowInner({
       onPressOut={interaction.handlePressOut}
       onPress={handlePress}
       onLongPress={interaction.handleLongPress}
-      delayLongPress={200}
+      delayLongPress={350}
       testID={`sidebar-workspace-row-${workspace.workspaceKey}`}
     >
       {rowChildren}
     </Pressable>
   )
 
-  const content = interaction.moveMonitorGesture ? (
-    <GestureDetector gesture={interaction.moveMonitorGesture}>{trigger}</GestureDetector>
-  ) : (
-    trigger
-  )
+  const content = trigger
 
   return (
     <View style={styles.workspaceRowContainer}>
@@ -523,6 +420,7 @@ function WorkspaceRowWithMenu({
   showShortcutBadge,
   onPress,
   drag,
+  isDragging,
   dragHandleProps,
 }: {
   workspace: SidebarWorkspaceEntry
@@ -531,6 +429,7 @@ function WorkspaceRowWithMenu({
   showShortcutBadge: boolean
   onPress: () => void
   drag: () => void
+  isDragging: boolean
   dragHandleProps?: DraggableListDragHandleProps
 }) {
   const toast = useToast()
@@ -586,6 +485,7 @@ function WorkspaceRowWithMenu({
         showShortcutBadge={showShortcutBadge}
         onPress={onPress}
         drag={drag}
+        isDragging={isDragging}
         isArchiving={isArchiving}
         dragHandleProps={dragHandleProps}
         menuController={contextMenu}
@@ -612,6 +512,7 @@ function WorkspaceRowPlain({
   showShortcutBadge,
   onPress,
   drag,
+  isDragging,
   dragHandleProps,
 }: {
   workspace: SidebarWorkspaceEntry
@@ -620,6 +521,7 @@ function WorkspaceRowPlain({
   showShortcutBadge: boolean
   onPress: () => void
   drag: () => void
+  isDragging: boolean
   dragHandleProps?: DraggableListDragHandleProps
 }) {
   return (
@@ -630,6 +532,7 @@ function WorkspaceRowPlain({
       showShortcutBadge={showShortcutBadge}
       onPress={onPress}
       drag={drag}
+      isDragging={isDragging}
       isArchiving={false}
       dragHandleProps={dragHandleProps}
       menuController={null}
@@ -644,6 +547,7 @@ function WorkspaceRow({
   showShortcutBadge,
   onPress,
   drag,
+  isDragging,
   dragHandleProps,
 }: {
   workspace: SidebarWorkspaceEntry
@@ -652,6 +556,7 @@ function WorkspaceRow({
   showShortcutBadge: boolean
   onPress: () => void
   drag: () => void
+  isDragging: boolean
   dragHandleProps?: DraggableListDragHandleProps
 }) {
   if (!isPaseoOwnedWorktreePath(workspace.workspaceId)) {
@@ -663,6 +568,7 @@ function WorkspaceRow({
         showShortcutBadge={showShortcutBadge}
         onPress={onPress}
         drag={drag}
+        isDragging={isDragging}
         dragHandleProps={dragHandleProps}
       />
     )
@@ -677,6 +583,7 @@ function WorkspaceRow({
         showShortcutBadge={showShortcutBadge}
         onPress={onPress}
         drag={drag}
+        isDragging={isDragging}
         dragHandleProps={dragHandleProps}
       />
     </ContextMenu>
@@ -697,7 +604,10 @@ function ProjectBlock({
   onToggleCollapsed,
   onWorkspacePress,
   onWorkspaceReorder,
+  onAnyDragBegin,
+  onAnyDragEnd,
   drag,
+  isDragging,
   dragHandleProps,
   useNestable,
 }: {
@@ -714,12 +624,20 @@ function ProjectBlock({
   onToggleCollapsed: () => void
   onWorkspacePress?: () => void
   onWorkspaceReorder: (projectKey: string, workspaces: SidebarWorkspaceEntry[]) => void
+  onAnyDragBegin: () => void
+  onAnyDragEnd: () => void
   drag: () => void
+  isDragging: boolean
   dragHandleProps?: DraggableListDragHandleProps
   useNestable: boolean
 }) {
   const renderWorkspace = useCallback(
-    ({ item, drag: workspaceDrag, dragHandleProps: workspaceDragHandleProps }: DraggableRenderItemInfo<SidebarWorkspaceEntry>) => {
+    ({
+      item,
+      drag: workspaceDrag,
+      isActive,
+      dragHandleProps: workspaceDragHandleProps,
+    }: DraggableRenderItemInfo<SidebarWorkspaceEntry>) => {
       const workspaceRoute = buildHostWorkspaceRoute(serverId ?? '', item.workspaceId)
       const navigate = shouldReplaceWorkspaceNavigation ? router.replace : router.push
       const isSelected =
@@ -741,6 +659,7 @@ function ProjectBlock({
             navigate(workspaceRoute as any)
           }}
           drag={workspaceDrag}
+          isDragging={isActive}
           dragHandleProps={workspaceDragHandleProps}
         />
       )
@@ -764,15 +683,23 @@ function ProjectBlock({
         collapsed={collapsed}
         onToggle={onToggleCollapsed}
         drag={drag}
+        isDragging={isDragging}
         dragHandleProps={dragHandleProps}
       />
 
       {!collapsed ? (
         <DraggableList
+          testID={`sidebar-workspace-list-${project.projectKey}`}
           data={project.workspaces}
           keyExtractor={(workspace) => workspace.workspaceKey}
           renderItem={renderWorkspace}
-          onDragEnd={(workspaces) => onWorkspaceReorder(project.projectKey, workspaces)}
+          onDragIntent={onAnyDragBegin}
+          onDragBegin={onAnyDragBegin}
+          onDragRelease={onAnyDragEnd}
+          onDragEnd={(workspaces) => {
+            onWorkspaceReorder(project.projectKey, workspaces)
+            onAnyDragEnd()
+          }}
           scrollEnabled={false}
           useDragHandle
           nestable={useNestable}
@@ -795,11 +722,11 @@ export function SidebarWorkspaceList({
   parentGestureRef,
 }: SidebarWorkspaceListProps) {
   const isMobile = UnistylesRuntime.breakpoint === 'xs' || UnistylesRuntime.breakpoint === 'sm'
-  const isNative = Platform.OS !== 'web'
   const segments = useSegments()
   const pathname = usePathname()
   const shouldReplaceWorkspaceNavigation = segments[0] === 'h'
   const [collapsedProjectKeys, setCollapsedProjectKeys] = useState<Set<string>>(new Set())
+  const [outerScrollEnabled, setOuterScrollEnabled] = useState(true)
   const isTauri = getIsTauri()
   const altDown = useKeyboardShortcutsStore((state) => state.altDown)
   const cmdOrCtrlDown = useKeyboardShortcutsStore((state) => state.cmdOrCtrlDown)
@@ -938,6 +865,16 @@ export function SidebarWorkspaceList({
     })
   }, [])
 
+  const lockOuterScrollForDrag = useCallback((source: string) => {
+    console.log('[sidebar-dnd-debug] outer scroll locked', { source })
+    setOuterScrollEnabled(false)
+  }, [])
+
+  const unlockOuterScrollForDrag = useCallback((source: string) => {
+    console.log('[sidebar-dnd-debug] outer scroll unlocked', { source })
+    setOuterScrollEnabled(true)
+  }, [])
+
   const handleProjectDragEnd = useCallback(
     (reorderedProjects: SidebarProjectEntry[]) => {
       if (!serverId) {
@@ -996,7 +933,7 @@ export function SidebarWorkspaceList({
   )
 
   const renderProject = useCallback(
-    ({ item, drag, dragHandleProps }: DraggableRenderItemInfo<SidebarProjectEntry>) => {
+    ({ item, drag, isActive, dragHandleProps }: DraggableRenderItemInfo<SidebarProjectEntry>) => {
       return (
         <ProjectBlock
           project={item}
@@ -1012,9 +949,12 @@ export function SidebarWorkspaceList({
           onToggleCollapsed={() => toggleProjectCollapsed(item.projectKey)}
           onWorkspacePress={onWorkspacePress}
           onWorkspaceReorder={handleWorkspaceReorder}
+          onAnyDragBegin={() => lockOuterScrollForDrag(`workspace:${item.projectKey}`)}
+          onAnyDragEnd={() => unlockOuterScrollForDrag(`workspace:${item.projectKey}`)}
           drag={drag}
+          isDragging={isActive}
           dragHandleProps={dragHandleProps}
-          useNestable={isNative}
+          useNestable={false}
         />
       )
     },
@@ -1022,7 +962,6 @@ export function SidebarWorkspaceList({
       activeWorkspaceSelection,
       collapsedProjectKeys,
       handleWorkspaceReorder,
-      isNative,
       onWorkspacePress,
       parentGestureRef,
       projectIconByProjectKey,
@@ -1031,6 +970,8 @@ export function SidebarWorkspaceList({
       shouldReplaceWorkspaceNavigation,
       showShortcutBadges,
       toggleProjectCollapsed,
+      lockOuterScrollForDrag,
+      unlockOuterScrollForDrag,
     ]
   )
 
@@ -1040,13 +981,20 @@ export function SidebarWorkspaceList({
         <Text style={styles.emptyText}>No projects yet</Text>
       ) : (
         <DraggableList
+          testID="sidebar-project-list"
           data={projects}
           keyExtractor={(project) => project.projectKey}
           renderItem={renderProject}
-          onDragEnd={handleProjectDragEnd}
+          onDragIntent={() => lockOuterScrollForDrag('project-list-intent')}
+          onDragBegin={() => lockOuterScrollForDrag('project-list-begin')}
+          onDragRelease={() => unlockOuterScrollForDrag('project-list-release')}
+          onDragEnd={(reorderedProjects) => {
+            handleProjectDragEnd(reorderedProjects)
+            unlockOuterScrollForDrag('project-list-end')
+          }}
           scrollEnabled={false}
           useDragHandle
-          nestable={isNative}
+          nestable={false}
           simultaneousGestureRef={parentGestureRef}
           containerStyle={styles.projectListContainer}
         />
@@ -1057,25 +1005,18 @@ export function SidebarWorkspaceList({
 
   return (
     <View style={styles.container}>
-      {isNative ? (
-        <NestableScrollContainer
-          style={styles.list}
-          contentContainerStyle={styles.listContent}
-          showsVerticalScrollIndicator={false}
-          testID="sidebar-project-workspace-list-scroll"
-        >
-          {content}
-        </NestableScrollContainer>
-      ) : (
-        <ScrollView
-          style={styles.list}
-          contentContainerStyle={styles.listContent}
-          showsVerticalScrollIndicator={false}
-          testID="sidebar-project-workspace-list-scroll"
-        >
-          {content}
-        </ScrollView>
-      )}
+      <ScrollView
+        style={styles.list}
+        contentContainerStyle={styles.listContent}
+        showsVerticalScrollIndicator={false}
+        scrollEnabled={outerScrollEnabled}
+        onScrollBeginDrag={() =>
+          console.log('[sidebar-dnd-debug] outer scroll begin', { outerScrollEnabled })
+        }
+        testID="sidebar-project-workspace-list-scroll"
+      >
+        {content}
+      </ScrollView>
     </View>
   )
 }
@@ -1123,6 +1064,18 @@ const styles = StyleSheet.create((theme) => ({
   },
   projectRowPressed: {
     backgroundColor: theme.colors.surface2,
+  },
+  projectRowDragging: {
+    backgroundColor: theme.colors.surface2,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    transform: [{ scale: 1.02 }],
+    zIndex: 3,
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
   },
   projectRowLeft: {
     flexDirection: 'row',
@@ -1185,6 +1138,18 @@ const styles = StyleSheet.create((theme) => ({
   workspaceRowPressed: {
     backgroundColor: theme.colors.surface2,
   },
+  workspaceRowDragging: {
+    backgroundColor: theme.colors.surface2,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    transform: [{ scale: 1.02 }],
+    zIndex: 3,
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+  },
   workspaceRowSelected: {
     backgroundColor: theme.colors.surface2,
   },
@@ -1225,6 +1190,22 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.sm,
     flex: 1,
     minWidth: 0,
+  },
+  dragHandle: {
+    width: 24,
+    height: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: theme.borderRadius.md,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.surface0,
+    flexShrink: 0,
+  },
+  dragHandlePressed: {
+    backgroundColor: theme.colors.surface2,
+    borderColor: theme.colors.foregroundMuted,
+    transform: [{ scale: 0.96 }],
   },
   workspaceCreatedAtText: {
     color: theme.colors.foregroundMuted,

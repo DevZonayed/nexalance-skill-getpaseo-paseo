@@ -44,13 +44,10 @@ import { useExplorerOpenGesture } from "@/hooks/use-explorer-open-gesture";
 import { usePanelStore, type ExplorerCheckoutContext } from "@/stores/panel-store";
 import {
   useSessionStore,
-  type Agent,
 } from "@/stores/session-store";
 import {
   buildWorkspaceTabPersistenceKey,
   useWorkspaceTabsStore,
-  type WorkspaceTabTarget,
-  type WorkspaceTab,
 } from "@/stores/workspace-tabs-store";
 import {
   buildHostWorkspaceRoute,
@@ -79,58 +76,23 @@ import {
   shouldRenderMissingWorkspaceDescriptor,
 } from "@/screens/workspace/workspace-header-source";
 import {
-  canOpenAgentTabFromRoute,
   deriveWorkspaceAgentVisibility,
 } from "@/screens/workspace/workspace-agent-visibility";
+import {
+  deriveWorkspaceTabModel,
+} from "@/screens/workspace/workspace-tab-model";
 
 const TERMINALS_QUERY_STALE_TIME = 5_000;
 const NEW_TAB_AGENT_OPTION_ID = "__new_tab_agent__";
 const NEW_TAB_TERMINAL_OPTION_ID = "__new_tab_terminal__";
-const EMPTY_OPEN_FILE_PATHS: string[] = [];
-const EMPTY_WORKSPACE_TABS: WorkspaceTab[] = [];
-
-type TabAvailability = "available" | "invalid" | "unknown";
+const EMPTY_UI_TABS: ReturnType<typeof useWorkspaceTabsStore.getState>["uiTabsByWorkspace"][string] = [];
+const EMPTY_TAB_ORDER: string[] = [];
 
 type WorkspaceScreenProps = {
   serverId: string;
   workspaceId: string;
   routeTabId?: string | null;
 };
-
-function applyWorkspaceTabOrder(input: {
-  tabs: WorkspaceTabDescriptor[];
-  keys: string[];
-}): WorkspaceTabDescriptor[] {
-  if (input.keys.length === 0) {
-    return input.tabs;
-  }
-
-  const byKey = new Map<string, WorkspaceTabDescriptor>();
-  for (const tab of input.tabs) {
-    byKey.set(tab.key, tab);
-  }
-
-  const used = new Set<string>();
-  const next: WorkspaceTabDescriptor[] = [];
-
-  for (const key of input.keys) {
-    const tab = byKey.get(key);
-    if (!tab) {
-      continue;
-    }
-    used.add(key);
-    next.push(tab);
-  }
-
-  for (const tab of input.tabs) {
-    if (used.has(tab.key)) {
-      continue;
-    }
-    next.push(tab);
-  }
-
-  return next;
-}
 
 function trimNonEmpty(value: string | null | undefined): string | null {
   if (typeof value !== "string") {
@@ -148,57 +110,6 @@ function decodeSegment(value: string): string {
   }
 }
 
-function formatProviderLabel(provider: Agent["provider"]): string {
-  if (provider === "claude") {
-    return "Claude";
-  }
-  if (provider === "codex") {
-    return "Codex";
-  }
-  if (!provider) {
-    return "Agent";
-  }
-  return provider.charAt(0).toUpperCase() + provider.slice(1);
-}
-
-function resolveWorkspaceAgentTabLabel(title: string | null | undefined): string {
-  if (typeof title !== "string") {
-    return "Agent";
-  }
-  const normalized = title.trim();
-  if (!normalized) {
-    return "Agent";
-  }
-  if (normalized.toLowerCase() === "new agent") {
-    return "Agent";
-  }
-  return normalized;
-}
-
-function resolveTabAvailability(input: {
-  tab: WorkspaceTabTarget;
-  agentsHydrated: boolean;
-  terminalsHydrated: boolean;
-  agentsById: Map<string, Agent>;
-  terminalIds: Set<string>;
-}): TabAvailability {
-  if (input.tab.kind === "draft") {
-    return "available";
-  }
-  if (input.tab.kind === "agent") {
-    if (!input.agentsHydrated) {
-      return "unknown";
-    }
-    return input.agentsById.has(input.tab.agentId) ? "available" : "invalid";
-  }
-  if (input.tab.kind === "file") {
-    return "available";
-  }
-  if (!input.terminalsHydrated) {
-    return "unknown";
-  }
-  return input.terminalIds.has(input.tab.terminalId) ? "available" : "invalid";
-}
 
 export function WorkspaceScreen({
   serverId,
@@ -392,11 +303,6 @@ function WorkspaceScreenContent({
     : null;
 
   const isGitCheckout = checkoutQuery.data?.isGit ?? false;
-  const areWorkspaceAgentsHydrated = useSessionStore(
-    (state) => state.sessions[normalizedServerId]?.hasHydratedAgents ?? false
-  );
-  const areWorkspaceTerminalsHydrated = terminalsQuery.isSuccess;
-
   const mobileView = usePanelStore((state) => state.mobileView);
   const desktopFileExplorerOpen = usePanelStore(
     (state) => state.desktop.fileExplorerOpen
@@ -473,14 +379,6 @@ function WorkspaceScreenContent({
 
   const agentsById = workspaceAgentVisibility.lookupById;
 
-  const terminalIds = useMemo(() => {
-    const set = new Set<string>();
-    for (const terminal of terminals) {
-      set.add(terminal.id);
-    }
-    return set;
-  }, [terminals]);
-
   const persistenceKey = useMemo(
     () =>
       buildWorkspaceTabPersistenceKey({
@@ -490,117 +388,28 @@ function WorkspaceScreenContent({
     [normalizedServerId, normalizedWorkspaceId]
   );
 
-  const openTabs = useWorkspaceTabsStore((state) =>
+  const uiTabs = useWorkspaceTabsStore((state) =>
     persistenceKey
-      ? state.openTabsByWorkspace[persistenceKey] ?? EMPTY_WORKSPACE_TABS
-      : EMPTY_WORKSPACE_TABS
+      ? state.uiTabsByWorkspace[persistenceKey] ?? EMPTY_UI_TABS
+      : EMPTY_UI_TABS
   );
-  const openTabIdSet = useMemo(() => new Set(openTabs.map((tab) => tab.tabId)), [openTabs]);
+  const tabOrder = useWorkspaceTabsStore((state) =>
+    persistenceKey
+      ? state.tabOrderByWorkspace[persistenceKey] ?? EMPTY_TAB_ORDER
+      : EMPTY_TAB_ORDER
+  );
   const focusedTabId = useWorkspaceTabsStore((state) =>
     persistenceKey ? state.focusedTabIdByWorkspace[persistenceKey] ?? "" : ""
   );
   const openDraftTab = useWorkspaceTabsStore((state) => state.openDraftTab);
-  const seedWorkspaceTabs = useWorkspaceTabsStore((state) => state.seedWorkspaceTabs);
   const openOrFocusTab = useWorkspaceTabsStore((state) => state.openOrFocusTab);
   const focusTab = useWorkspaceTabsStore((state) => state.focusTab);
   const closeWorkspaceTab = useWorkspaceTabsStore((state) => state.closeTab);
   const reorderWorkspaceTabs = useWorkspaceTabsStore((state) => state.reorderTabs);
-  const replaceWorkspaceTabTarget = useWorkspaceTabsStore((state) => state.replaceTabTarget);
-
-  useEffect(() => {
-    if (!normalizedServerId || !normalizedWorkspaceId) {
-      return;
-    }
-    if (openTabs.length > 0) {
-      return;
-    }
-    if (!areWorkspaceAgentsHydrated || !areWorkspaceTerminalsHydrated) {
-      return;
-    }
-    const targets: WorkspaceTabTarget[] = [];
-    for (const agent of workspaceAgents) {
-      targets.push({ kind: "agent", agentId: agent.id });
-    }
-    for (const terminal of terminals) {
-      targets.push({ kind: "terminal", terminalId: terminal.id });
-    }
-    seedWorkspaceTabs({
-      serverId: normalizedServerId,
-      workspaceId: normalizedWorkspaceId,
-      targets,
-      focusedTabId: focusedTabId || null,
-    });
-  }, [
-    areWorkspaceAgentsHydrated,
-    areWorkspaceTerminalsHydrated,
-    focusedTabId,
-    normalizedServerId,
-    normalizedWorkspaceId,
-    openTabs.length,
-    seedWorkspaceTabs,
-    terminals,
-    workspaceAgents,
-  ]);
 
   useEffect(() => {
     const normalized = typeof routeTabId === "string" ? routeTabId.trim() : "";
     if (!normalized || !persistenceKey) {
-      return;
-    }
-    const alreadyOpen = openTabs.some((tab) => tab.tabId === normalized);
-    if (alreadyOpen) {
-      focusTab({ serverId: normalizedServerId, workspaceId: normalizedWorkspaceId, tabId: normalized });
-      return;
-    }
-
-    // If the canonical tab route is opened without local state (fresh load / reconnect),
-    // reconstruct the tab target from the tabId prefix.
-    if (normalized.startsWith("agent_")) {
-      const agentId = normalized.slice("agent_".length).trim();
-      if (agentId) {
-        if (
-          !canOpenAgentTabFromRoute({
-            agentId,
-            agentsHydrated: areWorkspaceAgentsHydrated,
-            workspaceAgentLookup: agentsById,
-          })
-        ) {
-          return;
-        }
-        const tabId = openOrFocusTab({
-          serverId: normalizedServerId,
-          workspaceId: normalizedWorkspaceId,
-          target: { kind: "agent", agentId },
-        });
-        if (tabId) {
-          focusTab({
-            serverId: normalizedServerId,
-            workspaceId: normalizedWorkspaceId,
-            tabId,
-          });
-        }
-      }
-      return;
-    }
-    if (normalized.startsWith("terminal_")) {
-      const terminalId = normalized.slice("terminal_".length).trim();
-      if (terminalId) {
-        if (areWorkspaceTerminalsHydrated && !terminalIds.has(terminalId)) {
-          return;
-        }
-        const tabId = openOrFocusTab({
-          serverId: normalizedServerId,
-          workspaceId: normalizedWorkspaceId,
-          target: { kind: "terminal", terminalId },
-        });
-        if (tabId) {
-          focusTab({
-            serverId: normalizedServerId,
-            workspaceId: normalizedWorkspaceId,
-            tabId,
-          });
-        }
-      }
       return;
     }
     if (normalized.startsWith("draft_")) {
@@ -616,75 +425,49 @@ function WorkspaceScreenContent({
           tabId,
         });
       }
+      return;
+    }
+    if (normalized.startsWith("file_")) {
+      const path = normalized.slice("file_".length).trim();
+      if (!path) {
+        return;
+      }
+      const tabId = openOrFocusTab({
+        serverId: normalizedServerId,
+        workspaceId: normalizedWorkspaceId,
+        target: { kind: "file", path },
+      });
+      if (tabId) {
+        focusTab({
+          serverId: normalizedServerId,
+          workspaceId: normalizedWorkspaceId,
+          tabId,
+        });
+      }
     }
   }, [
     focusTab,
-    agentsById,
-    areWorkspaceAgentsHydrated,
-    areWorkspaceTerminalsHydrated,
     openDraftTab,
     openOrFocusTab,
-    openTabs,
     persistenceKey,
     normalizedServerId,
     normalizedWorkspaceId,
     routeTabId,
-    terminalIds,
   ]);
 
-  const activeTabId = useMemo(() => {
-    const fromRoute =
-      typeof routeTabId === "string" ? trimNonEmpty(routeTabId.trim()) : null;
-    if (fromRoute && openTabIdSet.has(fromRoute)) {
-      return fromRoute;
-    }
-    const fromFocus = trimNonEmpty(focusedTabId);
-    if (fromFocus && openTabIdSet.has(fromFocus)) {
-      return fromFocus;
-    }
-    return openTabs[0]?.tabId ?? null;
-  }, [focusedTabId, openTabIdSet, openTabs, routeTabId]);
-
-  useEffect(() => {
-    if (!persistenceKey) {
-      return;
-    }
-
-    const invalidTabIds = openTabs
-      .filter((tab) => {
-        const availability = resolveTabAvailability({
-          tab: tab.target,
-          agentsHydrated: areWorkspaceAgentsHydrated,
-          terminalsHydrated: areWorkspaceTerminalsHydrated,
-          agentsById,
-          terminalIds,
-        });
-        return availability === "invalid";
-      })
-      .map((tab) => tab.tabId);
-
-    if (invalidTabIds.length === 0) {
-      return;
-    }
-
-    for (const tabId of invalidTabIds) {
-      closeWorkspaceTab({
-        serverId: normalizedServerId,
-        workspaceId: normalizedWorkspaceId,
-        tabId,
-      });
-    }
-  }, [
-    agentsById,
-    areWorkspaceAgentsHydrated,
-    areWorkspaceTerminalsHydrated,
-    closeWorkspaceTab,
-    normalizedServerId,
-    normalizedWorkspaceId,
-    openTabs,
-    persistenceKey,
-    terminalIds,
-  ]);
+  const tabModel = useMemo(
+    () =>
+      deriveWorkspaceTabModel({
+        workspaceAgents,
+        terminals,
+        uiTabs,
+        tabOrder,
+        focusedTabId,
+        routeTabId,
+      }),
+    [focusedTabId, routeTabId, tabOrder, terminals, uiTabs, workspaceAgents]
+  );
+  const activeTabId = tabModel.activeTabId;
 
   useEffect(() => {
     if (!activeTabId || !persistenceKey) {
@@ -711,83 +494,12 @@ function WorkspaceScreenContent({
     );
   }, [activeTabId, normalizedServerId, normalizedWorkspaceId, router, routeTabId]);
 
-  const activeTab = useMemo(() => openTabs.find((tab) => tab.tabId === activeTabId) ?? null, [
-    activeTabId,
-    openTabs,
-  ]);
-  const activeTabAvailability = useMemo(() => {
-    if (!activeTab) {
-      return "unknown" as TabAvailability;
-    }
-    return resolveTabAvailability({
-      tab: activeTab.target,
-      agentsHydrated: areWorkspaceAgentsHydrated,
-      terminalsHydrated: areWorkspaceTerminalsHydrated,
-      agentsById,
-      terminalIds,
-    });
-  }, [
-    activeTab,
-    agentsById,
-    areWorkspaceAgentsHydrated,
-    areWorkspaceTerminalsHydrated,
-    terminalIds,
-  ]);
+  const activeTab = tabModel.activeTab;
 
-  const tabs = useMemo<WorkspaceTabDescriptor[]>(() => {
-    const next: WorkspaceTabDescriptor[] = [];
-    for (const tab of openTabs) {
-      const target = tab.target;
-      if (target.kind === "draft") {
-        next.push({
-          key: tab.tabId,
-          tabId: tab.tabId,
-          kind: "draft",
-          draftId: target.draftId,
-          label: "Draft",
-          subtitle: "Draft",
-        });
-        continue;
-      }
-      if (target.kind === "agent") {
-        const agent = sessionAgents?.get(target.agentId) ?? null;
-        const provider = agent?.provider ?? "claude";
-        next.push({
-          key: tab.tabId,
-          tabId: tab.tabId,
-          kind: "agent",
-          agentId: target.agentId,
-          provider,
-          label: resolveWorkspaceAgentTabLabel(agent?.title),
-          subtitle: `${formatProviderLabel(provider)} agent`,
-        });
-        continue;
-      }
-      if (target.kind === "terminal") {
-        const terminal = terminals.find((t) => t.id === target.terminalId) ?? null;
-        next.push({
-          key: tab.tabId,
-          tabId: tab.tabId,
-          kind: "terminal",
-          terminalId: target.terminalId,
-          label: terminal?.name ?? "Terminal",
-          subtitle: "Terminal",
-        });
-        continue;
-      }
-      const filePath = target.path;
-      const fileName = filePath.split("/").filter(Boolean).pop() ?? filePath;
-      next.push({
-        key: tab.tabId,
-        tabId: tab.tabId,
-        kind: "file",
-        filePath,
-        label: fileName,
-        subtitle: filePath,
-      });
-    }
-    return next;
-  }, [openTabs, sessionAgents, terminals]);
+  const tabs = useMemo<WorkspaceTabDescriptor[]>(
+    () => tabModel.tabs.map((tab) => tab.descriptor),
+    [tabModel.tabs]
+  );
 
   const handleReorderTabs = useCallback(
     (nextTabs: WorkspaceTabDescriptor[]) => {
@@ -851,7 +563,7 @@ function WorkspaceScreenContent({
     () =>
       tabs.map((tab) => ({
         id: tab.key,
-        label: tab.label,
+        label: tab.kind === "agent" && tab.titleState === "loading" ? "Loading..." : tab.label,
         description: tab.subtitle,
       })),
     [tabs]
@@ -859,6 +571,9 @@ function WorkspaceScreenContent({
 
   const activeTabLabel = useMemo(() => {
     const active = tabs.find((tab) => tab.key === activeTabKey);
+    if (active?.kind === "agent" && active.titleState === "loading") {
+      return "Loading...";
+    }
     return active?.label ?? "Select tab";
   }, [activeTabKey, tabs]);
 
@@ -1218,15 +933,6 @@ function WorkspaceScreenContent({
         </View>
       );
     }
-    if (activeTabAvailability === "invalid") {
-      return (
-        <View style={styles.emptyState}>
-          <Text style={styles.emptyStateText}>
-            This tab is no longer available. It will be removed from your workspace.
-          </Text>
-        </View>
-      );
-    }
 
     if (target.kind === "draft") {
       return (
@@ -1237,19 +943,26 @@ function WorkspaceScreenContent({
           draftId={target.draftId}
           onCreated={(agentSnapshot) => {
             const tabId = activeTabId ?? target.draftId;
-            replaceWorkspaceTabTarget({
+            const nextAgentTabId = openOrFocusTab({
+              serverId: normalizedServerId,
+              workspaceId: normalizedWorkspaceId,
+              target: { kind: "agent", agentId: agentSnapshot.id },
+            });
+            closeWorkspaceTab({
               serverId: normalizedServerId,
               workspaceId: normalizedWorkspaceId,
               tabId,
-              target: { kind: "agent", agentId: agentSnapshot.id },
             });
+            if (nextAgentTabId) {
+              navigateToTabId(nextAgentTabId);
+            }
           }}
         />
       );
     }
 
     if (target.kind === "agent") {
-        return (
+      return (
         <AgentReadyScreen
           serverId={normalizedServerId}
           agentId={target.agentId}

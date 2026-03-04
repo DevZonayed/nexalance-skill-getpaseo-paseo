@@ -1,9 +1,6 @@
 import { RefreshControl } from "react-native";
 import { useCallback, useState } from "react";
-import DraggableFlatList, {
-  NestableDraggableFlatList,
-  type RenderItemParams,
-} from "react-native-draggable-flatlist";
+import DraggableFlatList, { type RenderItemParams } from "react-native-draggable-flatlist";
 import { useUnistyles } from "react-native-unistyles";
 import type {
   DraggableListProps,
@@ -33,57 +30,63 @@ export function DraggableList<T>({
   simultaneousGestureRef,
   waitFor,
   onDragBegin: onDragBeginProp,
-  nestable = false,
+  onDragIntent: onDragIntentProp,
+  onDragRelease: onDragReleaseProp,
+  nestable: _nestable = false,
 }: DraggableListProps<T>) {
   const { theme } = useUnistyles();
   const [isDragging, setIsDragging] = useState(false);
 
-  // Pass the ref directly to DraggableFlatList - it handles the gesture coordination
-  // The ref may not have .current set yet, but that's okay - DraggableFlatList will
-  // read it when the gesture is being recognized
   const simultaneousHandlers = simultaneousGestureRef ? [simultaneousGestureRef] : undefined;
 
   const handleRenderItem = useCallback(
     ({ item, drag, isActive, getIndex }: RenderItemParams<T>) => {
       const index = getIndex() ?? 0;
+      const itemKey = keyExtractor(item, index);
+      const dragWithLog = () => {
+        console.log("[sidebar-dnd-debug] row drag() called", { testID, itemKey, index });
+        onDragIntentProp?.();
+        drag();
+      };
       const info: DraggableRenderItemInfo<T> = {
         item,
         index,
-        drag,
+        drag: dragWithLog,
         isActive,
       };
       return renderItem(info);
     },
-    [renderItem]
+    [keyExtractor, onDragIntentProp, renderItem, testID]
   );
 
   const handleDragEnd = useCallback(
     ({ data: newData }: { data: T[] }) => {
+      console.log("[sidebar-dnd-debug] list onDragEnd", { testID, count: newData.length });
       setIsDragging(false);
       onDragEnd(newData);
     },
-    [onDragEnd]
+    [onDragEnd, testID]
   );
 
   const handleDragBegin = useCallback(() => {
+    console.log("[sidebar-dnd-debug] list onDragBegin", { testID });
     setIsDragging(true);
     onDragBeginProp?.();
-  }, [onDragBeginProp]);
+  }, [onDragBeginProp, testID]);
 
   const handleRelease = useCallback(() => {
+    console.log("[sidebar-dnd-debug] list onRelease", { testID });
     setIsDragging(false);
-  }, []);
+    onDragReleaseProp?.();
+  }, [onDragReleaseProp, testID]);
 
   const showRefreshControl = Boolean(onRefresh) && (!isDragging || Boolean(refreshing));
   const resolvedContainerStyle =
     containerStyle ?? (scrollEnabled ? { flex: 1 } : undefined);
-  const ListComponent: typeof DraggableFlatList = (nestable
-    ? (NestableDraggableFlatList as any)
-    : DraggableFlatList) as any;
-  const shouldShowRefreshControl = showRefreshControl && !nestable;
+  const shouldShowRefreshControl = showRefreshControl;
 
   return (
-    <ListComponent
+    <DraggableFlatList
       testID={testID}
       data={data}
       keyExtractor={keyExtractor}
@@ -98,11 +101,10 @@ export function DraggableList<T>({
       showsVerticalScrollIndicator={showsVerticalScrollIndicator}
       scrollEnabled={scrollEnabled}
       simultaneousHandlers={simultaneousHandlers}
-      // Higher activationDistance prevents drag from interfering with nested onLongPress handlers
-      activationDistance={20}
+      activationDistance={6}
       onDragBegin={handleDragBegin}
       onRelease={handleRelease}
-      // @ts-expect-error - waitFor is supported by RNGH FlatList but not typed in DraggableFlatList
+      // @ts-ignore - waitFor is supported by RNGH FlatList but missing from DraggableFlatList types
       waitFor={waitFor}
       refreshControl={
         shouldShowRefreshControl ? (

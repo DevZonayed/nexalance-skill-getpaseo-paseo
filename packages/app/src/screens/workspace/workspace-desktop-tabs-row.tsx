@@ -193,7 +193,11 @@ export function WorkspaceDesktopTabsRow({
                   onPress={() => {
                     onNavigateTab(tab.tabId);
                   }}
-                  accessibilityLabel={tab.label}
+                  accessibilityLabel={
+                    tab.kind === "agent" && tab.titleState === "loading"
+                      ? "Loading agent title"
+                      : tab.label
+                  }
                 >
                   <View
                     {...(dragHandleProps?.attributes as any)}
@@ -203,6 +207,14 @@ export function WorkspaceDesktopTabsRow({
                   >
                     <View style={styles.tabIcon}>{icon}</View>
                     {layout.showLabels ? (
+                      tab.kind === "agent" && tab.titleState === "loading" ? (
+                        <View
+                          style={[
+                            styles.tabLabelSkeleton,
+                            shouldShowCloseButton && styles.tabLabelSkeletonWithCloseButton,
+                          ]}
+                        />
+                      ) : (
                       <Text
                         style={[
                           styles.tabLabel,
@@ -213,6 +225,7 @@ export function WorkspaceDesktopTabsRow({
                       >
                         {tab.label}
                       </Text>
+                      )
                     ) : null}
                   </View>
 
@@ -435,6 +448,16 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.sm,
     fontWeight: theme.fontWeight.normal,
+  },
+  tabLabelSkeleton: {
+    width: 96,
+    height: 10,
+    borderRadius: theme.borderRadius.full,
+    backgroundColor: theme.colors.surface3,
+    opacity: 0.9,
+  },
+  tabLabelSkeletonWithCloseButton: {
+    width: 80,
   },
   tabLabelWithCloseButton: {
     paddingRight: 0,

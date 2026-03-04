@@ -17,6 +17,7 @@ export type WorkspaceTabDescriptor =
       provider: Agent["provider"];
       label: string;
       subtitle: string;
+      titleState: "ready" | "loading";
     }
   | {
       key: string;

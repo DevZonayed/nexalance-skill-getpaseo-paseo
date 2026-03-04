@@ -66,6 +66,7 @@ import type {
 } from './agent/agent-manager.js'
 import { scheduleAgentMetadataGeneration } from './agent/agent-metadata-generator.js'
 import { resolveEffectiveThinkingOptionId, toAgentPayload } from './agent/agent-projections.js'
+import { MAX_EXPLICIT_AGENT_TITLE_CHARS } from './agent/agent-title-limits.js'
 import {
   appendTimelineItemIfAgentKnown,
   emitLiveTimelineItemIfAgentKnown,
@@ -147,6 +148,7 @@ import type pino from 'pino'
 import { resolveClientMessageId } from './client-message-id.js'
 
 const execAsync = promisify(exec)
+const MAX_INITIAL_AGENT_TITLE_CHARS = Math.min(60, MAX_EXPLICIT_AGENT_TITLE_CHARS)
 const READ_ONLY_GIT_ENV: NodeJS.ProcessEnv = {
   ...process.env,
   GIT_OPTIONAL_LOCKS: '0',
@@ -158,6 +160,22 @@ const CHECKOUT_DIFF_FALLBACK_REFRESH_MS = 5_000
 const TERMINAL_STREAM_WINDOW_BYTES = 256 * 1024
 const TERMINAL_STREAM_MAX_PENDING_BYTES = 2 * 1024 * 1024
 const TERMINAL_STREAM_MAX_PENDING_CHUNKS = 2048
+
+function deriveInitialAgentTitle(prompt: string): string | null {
+  const firstContentLine = prompt
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .find((line) => line.length > 0)
+  if (!firstContentLine) {
+    return null
+  }
+  const normalized = firstContentLine.replace(/\s+/g, ' ').trim()
+  if (!normalized) {
+    return null
+  }
+  const clamped = normalized.slice(0, MAX_INITIAL_AGENT_TITLE_CHARS).trim()
+  return clamped.length > 0 ? clamped : null
+}
 
 function deriveRemoteProjectKey(remoteUrl: string | null): string | null {
   if (!remoteUrl) {
@@ -994,7 +1012,7 @@ export class Session {
 
   private async buildAgentPayload(agent: ManagedAgent): Promise<AgentSnapshotPayload> {
     const storedRecord = await this.agentStorage.get(agent.id)
-    const title = storedRecord?.title ?? null
+    const title = storedRecord?.title ?? storedRecord?.config?.title ?? null
     const payload = toAgentPayload(agent, { title })
     payload.archivedAt = storedRecord?.archivedAt ?? null
     return payload
@@ -1053,7 +1071,7 @@ export class Session {
       persistence: toAgentPersistenceHandle(this.sessionLogger, record.persistence),
       lastUsage: undefined,
       lastError: undefined,
-      title: record.title ?? null,
+      title: record.title ?? record.config?.title ?? null,
       requiresAttention: record.requiresAttention ?? false,
       attentionReason: record.attentionReason ?? null,
       attentionTimestamp: record.attentionTimestamp ?? null,
@@ -2544,8 +2562,20 @@ export class Session {
     )
 
     try {
+      const trimmedPrompt = initialPrompt?.trim()
+      const derivedTitle =
+        typeof config.title === 'string' && config.title.trim().length > 0
+          ? config.title.trim()
+          : trimmedPrompt
+            ? deriveInitialAgentTitle(trimmedPrompt)
+            : null
+      const resolvedConfig: AgentSessionConfig = {
+        ...config,
+        ...(derivedTitle ? { title: derivedTitle } : {}),
+      }
+
       const { sessionConfig, worktreeConfig } = await this.buildAgentSessionConfig(
-        config,
+        resolvedConfig,
         git,
         worktreeName,
         labels
@@ -2569,7 +2599,6 @@ export class Session {
         })
       }
 
-      const trimmedPrompt = initialPrompt?.trim()
       if (trimmedPrompt) {
         scheduleAgentMetadataGeneration({
           agentManager: this.agentManager,
