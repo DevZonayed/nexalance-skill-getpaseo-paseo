@@ -21,7 +21,7 @@ export default function HostIndexRoute() {
 
     const visibleAgents = sessionAgents
       ? Array.from(sessionAgents.values()).filter(
-          (agent) => !agent.archivedAt && agent.labels.ui === "true"
+          (agent) => !agent.archivedAt
         )
       : [];
     visibleAgents.sort(

@@ -197,7 +197,7 @@ describe("create_agent MCP tool", () => {
       agentStorage,
       callerAgentId: "voice-agent",
       resolveCallerContext: () => ({
-        childAgentDefaultLabels: { ui: "true" },
+        childAgentDefaultLabels: { source: "voice" },
         allowCustomCwd: true,
       }),
       logger,
@@ -216,7 +216,7 @@ describe("create_agent MCP tool", () => {
         cwd: subdir,
       }),
       undefined,
-      { labels: { ui: "true" } }
+      { labels: { source: "voice" } }
     );
     await rm(baseDir, { recursive: true, force: true });
   });

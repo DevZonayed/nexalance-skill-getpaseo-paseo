@@ -1017,7 +1017,6 @@ function DraftAgentScreenContent({
         const imagesData = await encodeImages(images)
         const result = await createAgentClient.createAgent({
           config,
-          labels: { ui: 'true' },
           initialPrompt: trimmedPrompt,
           clientMessageId: attempt.clientMessageId,
           ...(imagesData && imagesData.length > 0 ? { images: imagesData } : {}),

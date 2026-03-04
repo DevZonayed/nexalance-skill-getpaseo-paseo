@@ -236,7 +236,7 @@ describe("daemon client E2E", () => {
     }
   }, 60000);
 
-  test("rejects send_agent_message for archived agents", async () => {
+  test("send_agent_message auto-unarchives archived agents", async () => {
     const cwd = tmpCwd();
     try {
       const created = await ctx.client.createAgent({
@@ -247,13 +247,67 @@ describe("daemon client E2E", () => {
       });
 
       await ctx.client.archiveAgent(created.id);
-      await expect(
-        ctx.client.sendMessage(created.id, "Say hello and nothing else")
-      ).rejects.toThrow("archived");
+      await ctx.client.sendMessage(created.id, "Say hello and nothing else");
+      const finalState = await ctx.client.waitForFinish(created.id, 120000);
+      expect(finalState.status).toBe("idle");
+
+      const refreshed = await ctx.client.fetchAgent(created.id);
+      expect(refreshed).not.toBeNull();
+      expect(refreshed?.agent.archivedAt).toBeNull();
     } finally {
       rmSync(cwd, { recursive: true, force: true });
     }
-  }, 30000);
+  }, 180000);
+
+  test("refresh_agent auto-unarchives archived agents", async () => {
+    const cwd = tmpCwd();
+    try {
+      const created = await ctx.client.createAgent({
+        config: {
+          ...getFullAccessConfig("codex"),
+          cwd,
+        },
+      });
+      await ctx.client.archiveAgent(created.id);
+      await ctx.client.refreshAgent(created.id);
+
+      const refreshed = await ctx.client.fetchAgent(created.id);
+      expect(refreshed).not.toBeNull();
+      expect(refreshed?.agent.archivedAt).toBeNull();
+    } finally {
+      rmSync(cwd, { recursive: true, force: true });
+    }
+  }, 120000);
+
+  test("resume_agent auto-unarchives archived agents", async () => {
+    const cwd = tmpCwd();
+    try {
+      const created = await ctx.client.createAgent({
+        config: {
+          ...getFullAccessConfig("codex"),
+          cwd,
+        },
+      });
+      const agentBeforeArchive = await ctx.client.fetchAgent(created.id);
+      expect(agentBeforeArchive?.agent.persistence).toBeTruthy();
+      await ctx.client.archiveAgent(created.id);
+
+      const handle = agentBeforeArchive?.agent.persistence;
+      if (!handle) {
+        throw new Error("Expected persistence handle for resume test");
+      }
+      const resumed = await ctx.client.resumeAgent(handle);
+      const resumedDetails = await ctx.client.fetchAgent(resumed.id);
+      expect(resumedDetails).not.toBeNull();
+      expect(resumedDetails?.agent.archivedAt).toBeNull();
+
+      if (resumed.id !== created.id) {
+        await ctx.client.deleteAgent(resumed.id);
+      }
+    } finally {
+      rmSync(cwd, { recursive: true, force: true });
+    }
+  }, 180000);
 
   test("returns home-scoped directory suggestions", async () => {
     const insideHomeDir = mkdtempSync(path.join(homedir(), "paseo-dir-suggestion-"));

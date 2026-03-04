@@ -61,6 +61,7 @@ try {
     assert(result.stdout.includes('--output-schema'), 'help should mention --output-schema option')
     assert(result.stdout.includes('--host'), 'help should mention --host option')
     assert(result.stdout.includes('<prompt>'), 'help should mention prompt argument')
+    assert(!result.stdout.includes('--ui'), 'help should not mention removed --ui option')
     console.log('✓ run --help shows options\n')
   }
 
@@ -205,6 +206,17 @@ try {
     assert.strictEqual(result.exitCode, 0, 'paseo --help should exit 0')
     assert(result.stdout.includes('run'), 'help should mention run command')
     console.log('✓ paseo --help shows run command\n')
+  }
+
+  // Test 14: run --ui is rejected (flag removed)
+  {
+    console.log('Test 14: run --ui is rejected')
+    const result =
+      await $`PASEO_HOST=localhost:${port} PASEO_HOME=${paseoHome} npx paseo run --ui "test prompt"`.nothrow()
+    assert.notStrictEqual(result.exitCode, 0, 'should fail for removed --ui flag')
+    const output = result.stdout + result.stderr
+    assert(output.includes('unknown option'), 'should report unknown option for --ui')
+    console.log('✓ run --ui is rejected\n')
   }
 } finally {
   // Clean up temp directory

@@ -45,7 +45,7 @@ function makeAgent(input: {
       sessionId: null,
     },
     title: null,
-    labels: { ui: 'true' },
+    labels: {},
     requiresAttention: input.requiresAttention ?? false,
     attentionReason: input.attentionReason ?? null,
     attentionTimestamp: null,

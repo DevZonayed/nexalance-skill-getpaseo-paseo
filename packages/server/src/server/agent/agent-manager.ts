@@ -168,7 +168,7 @@ type ManagedAgentBase = {
    */
   internal?: boolean;
   /**
-   * User-defined labels for categorizing agents (e.g., { ui: "true" }).
+   * User-defined labels for categorizing agents (e.g., { surface: "workspace" }).
    */
   labels: Record<string, string>;
 };

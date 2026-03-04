@@ -743,7 +743,7 @@ describe("HostRuntimeStore", () => {
 
     expect(fakeClient.fetchAgentsCalls).toHaveLength(1);
     expect(fakeClient.fetchAgentsCalls[0]).toEqual({
-      filter: { labels: { ui: "true" } },
+      filter: { includeArchived: true },
       subscribe: { subscriptionId: "app:srv_test" },
       page: { limit: 200 },
     });
