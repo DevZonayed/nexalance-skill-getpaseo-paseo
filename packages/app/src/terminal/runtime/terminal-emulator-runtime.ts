@@ -464,6 +464,30 @@ export class TerminalEmulatorRuntime {
     this.fitAndEmitResize?.(input?.force ?? false);
   }
 
+  setTheme(input: { theme: ITheme }): void {
+    const terminal = this.terminal;
+    if (!terminal) {
+      return;
+    }
+
+    try {
+      terminal.options.theme = input.theme;
+      terminalDebugLog({
+        scope: "emulator-runtime",
+        event: "theme:update",
+      });
+    } catch {
+      // ignore
+      return;
+    }
+
+    try {
+      terminal.refresh(0, Math.max(0, terminal.rows - 1));
+    } catch {
+      // ignore
+    }
+  }
+
   focus(): void {
     this.terminal?.focus();
   }

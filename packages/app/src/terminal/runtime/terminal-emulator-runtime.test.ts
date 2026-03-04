@@ -6,6 +6,9 @@ type StubTerminal = {
   write: (text: string, callback?: () => void) => void;
   reset: () => void;
   focus: () => void;
+  refresh?: (start: number, end: number) => void;
+  options?: { theme?: unknown };
+  rows?: number;
 };
 
 function createRuntimeWithTerminal(): {
@@ -33,6 +36,9 @@ function createRuntimeWithTerminal(): {
       terminal.resetCalls = resetCalls;
     },
     focus: () => {},
+    refresh: () => {},
+    options: { theme: undefined },
+    rows: 0,
     resetCalls,
   };
 
@@ -170,5 +176,24 @@ describe("terminal-emulator-runtime", () => {
 
     expect(fitAndEmitResize).toHaveBeenNthCalledWith(1, false);
     expect(fitAndEmitResize).toHaveBeenNthCalledWith(2, true);
+  });
+
+  it("updates terminal theme without remounting", () => {
+    const runtime = new TerminalEmulatorRuntime();
+    const refresh = vi.fn();
+    const terminal: StubTerminal = {
+      write: () => {},
+      reset: () => {},
+      focus: () => {},
+      refresh,
+      options: { theme: { background: "before" } },
+      rows: 12,
+    };
+    (runtime as unknown as { terminal: StubTerminal }).terminal = terminal;
+
+    runtime.setTheme({ theme: { background: "after" } as never });
+
+    expect(terminal.options?.theme).toEqual({ background: "after" });
+    expect(refresh).toHaveBeenCalledWith(0, 11);
   });
 });

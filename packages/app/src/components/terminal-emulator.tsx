@@ -1,11 +1,40 @@
 "use dom";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import type { DOMProps } from "expo/dom";
 import "@xterm/xterm/css/xterm.css";
 import type { ITheme } from "@xterm/xterm";
 import type { PendingTerminalModifiers } from "../utils/terminal-keys";
 import { TerminalEmulatorRuntime } from "../terminal/runtime/terminal-emulator-runtime";
+
+function buildXtermThemeKey(theme: ITheme): string {
+  const values: Array<string> = [
+    theme.background,
+    theme.foreground,
+    theme.cursor,
+    theme.cursorAccent,
+    theme.selectionBackground,
+    theme.selectionForeground,
+    theme.black,
+    theme.red,
+    theme.green,
+    theme.yellow,
+    theme.blue,
+    theme.magenta,
+    theme.cyan,
+    theme.white,
+    theme.brightBlack,
+    theme.brightRed,
+    theme.brightGreen,
+    theme.brightYellow,
+    theme.brightBlue,
+    theme.brightMagenta,
+    theme.brightCyan,
+    theme.brightWhite,
+  ].map((value) => (typeof value === "string" ? value : ""));
+
+  return values.join("|");
+}
 
 interface TerminalEmulatorProps {
   dom?: DOMProps;
@@ -67,6 +96,13 @@ export default function TerminalEmulator({
   const hostRef = useRef<HTMLDivElement | null>(null);
   const runtimeRef = useRef<TerminalEmulatorRuntime | null>(null);
   const appliedInitialOutputRef = useRef<string | null>(null);
+  const mountedThemeRef = useRef<ITheme>(xtermTheme);
+  const themeKey = useMemo(() => buildXtermThemeKey(xtermTheme), [xtermTheme]);
+
+  useEffect(() => {
+    mountedThemeRef.current = xtermTheme;
+    runtimeRef.current?.setTheme({ theme: xtermTheme });
+  }, [themeKey]);
 
   useEffect(() => {
     const root = rootRef.current;
@@ -206,7 +242,7 @@ export default function TerminalEmulator({
       root,
       host,
       initialOutputText,
-      theme: xtermTheme,
+      theme: mountedThemeRef.current,
     });
     appliedInitialOutputRef.current = initialOutputText;
 
@@ -217,7 +253,7 @@ export default function TerminalEmulator({
       }
       appliedInitialOutputRef.current = null;
     };
-  }, [streamKey, xtermTheme]);
+  }, [streamKey]);
 
   useEffect(() => {
     const runtime = runtimeRef.current;
