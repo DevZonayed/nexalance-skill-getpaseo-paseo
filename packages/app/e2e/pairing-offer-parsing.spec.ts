@@ -1,5 +1,6 @@
 import { test, expect } from './fixtures';
 import { Buffer } from 'node:buffer';
+import { gotoHome, openSettings } from './helpers/app';
 
 function encodeBase64Url(input: string): string {
   return Buffer.from(input, 'utf8')
@@ -20,7 +21,8 @@ test('pairing flow accepts #offer=ConnectionOfferV2 and stores relay-only host',
   }
 
   // Override the default fixture seeding for this test.
-  await page.goto('/settings');
+  await gotoHome(page);
+  await openSettings(page);
   await page.evaluate(() => {
     const nonce = localStorage.getItem('@paseo:e2e-seed-nonce') ?? '1';
     localStorage.setItem('@paseo:e2e-disable-default-seed-once', nonce);

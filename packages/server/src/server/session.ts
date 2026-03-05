@@ -177,6 +177,23 @@ function deriveInitialAgentTitle(prompt: string): string | null {
   return clamped.length > 0 ? clamped : null
 }
 
+export function resolveCreateAgentTitles(options: {
+  configTitle?: string | null
+  initialPrompt?: string | null
+}): { explicitTitle: string | null; provisionalTitle: string | null } {
+  const explicitTitle =
+    typeof options.configTitle === 'string' && options.configTitle.trim().length > 0
+      ? options.configTitle.trim()
+      : null
+  const trimmedPrompt = options.initialPrompt?.trim()
+  const provisionalTitle = explicitTitle ?? (trimmedPrompt ? deriveInitialAgentTitle(trimmedPrompt) : null)
+
+  return {
+    explicitTitle,
+    provisionalTitle,
+  }
+}
+
 function deriveRemoteProjectKey(remoteUrl: string | null): string | null {
   if (!remoteUrl) {
     return null
@@ -297,6 +314,16 @@ type TerminalStreamPendingChunk = {
   startOffset: number
   endOffset: number
   replay: boolean
+}
+
+export type SessionRuntimeMetrics = {
+  checkoutDiffTargetCount: number
+  checkoutDiffSubscriptionCount: number
+  checkoutDiffWatcherCount: number
+  checkoutDiffFallbackRefreshTargetCount: number
+  terminalDirectorySubscriptionCount: number
+  terminalSubscriptionCount: number
+  terminalStreamCount: number
 }
 
 type FetchAgentsRequestMessage = Extract<SessionInboundMessage, { type: 'fetch_agents_request' }>
@@ -745,6 +772,27 @@ export class Session {
     appVisibilityChangedAt: Date
   } | null {
     return this.clientActivity
+  }
+
+  public getRuntimeMetrics(): SessionRuntimeMetrics {
+    let checkoutDiffWatcherCount = 0
+    let checkoutDiffFallbackRefreshTargetCount = 0
+    for (const target of this.checkoutDiffTargets.values()) {
+      checkoutDiffWatcherCount += target.watchers.length
+      if (target.fallbackRefreshInterval) {
+        checkoutDiffFallbackRefreshTargetCount += 1
+      }
+    }
+
+    return {
+      checkoutDiffTargetCount: this.checkoutDiffTargets.size,
+      checkoutDiffSubscriptionCount: this.checkoutDiffSubscriptions.size,
+      checkoutDiffWatcherCount,
+      checkoutDiffFallbackRefreshTargetCount,
+      terminalDirectorySubscriptionCount: this.subscribedTerminalDirectories.size,
+      terminalSubscriptionCount: this.terminalSubscriptions.size,
+      terminalStreamCount: this.terminalStreams.size,
+    }
   }
 
   /**
@@ -2563,15 +2611,13 @@ export class Session {
 
     try {
       const trimmedPrompt = initialPrompt?.trim()
-      const derivedTitle =
-        typeof config.title === 'string' && config.title.trim().length > 0
-          ? config.title.trim()
-          : trimmedPrompt
-            ? deriveInitialAgentTitle(trimmedPrompt)
-            : null
+      const { explicitTitle, provisionalTitle } = resolveCreateAgentTitles({
+        configTitle: config.title,
+        initialPrompt: trimmedPrompt,
+      })
       const resolvedConfig: AgentSessionConfig = {
         ...config,
-        ...(derivedTitle ? { title: derivedTitle } : {}),
+        ...(provisionalTitle ? { title: provisionalTitle } : {}),
       }
 
       const { sessionConfig, worktreeConfig } = await this.buildAgentSessionConfig(
@@ -2605,7 +2651,7 @@ export class Session {
           agentId: snapshot.id,
           cwd: snapshot.cwd,
           initialPrompt: trimmedPrompt,
-          explicitTitle: snapshot.config.title,
+          explicitTitle,
           paseoHome: this.paseoHome,
           logger: this.sessionLogger,
         })

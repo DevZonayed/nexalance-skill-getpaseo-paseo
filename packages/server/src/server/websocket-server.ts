@@ -25,7 +25,11 @@ import {
 } from "../shared/binary-mux.js";
 import type { AllowedHostsConfig } from "./allowed-hosts.js";
 import { isHostAllowed } from "./allowed-hosts.js";
-import { Session, type SessionLifecycleIntent } from "./session.js";
+import {
+  Session,
+  type SessionLifecycleIntent,
+  type SessionRuntimeMetrics,
+} from "./session.js";
 import type { AgentProvider } from "./agent/agent-sdk-types.js";
 import type { AgentProviderRuntimeSettingsMap } from "./agent/provider-launch-config.js";
 import { PushTokenStore } from "./push/token-store.js";
@@ -162,12 +166,31 @@ type SessionConnection = {
   externalDisconnectCleanupTimeout: ReturnType<typeof setTimeout> | null;
 };
 
+type WebSocketRuntimeCounters = {
+  connectedAwaitingHello: number;
+  helloResumed: number;
+  helloNew: number;
+  pendingDisconnected: number;
+  sessionDisconnectedWaitingReconnect: number;
+  sessionSocketDisconnectedAttached: number;
+  sessionCleanup: number;
+  validationFailed: number;
+  binaryBeforeHelloRejected: number;
+  pendingMessageRejectedBeforeHello: number;
+  missingConnectionForMessage: number;
+  unexpectedHelloOnActiveConnection: number;
+  relayExternalSocketAttached: number;
+  originRejected: number;
+  hostRejected: number;
+};
+
 const EXTERNAL_SESSION_DISCONNECT_GRACE_MS = 90_000;
 const HELLO_TIMEOUT_MS = 15_000;
 const WS_CLOSE_HELLO_TIMEOUT = 4001;
 const WS_CLOSE_INVALID_HELLO = 4002;
 const WS_CLOSE_INCOMPATIBLE_PROTOCOL = 4003;
 const WS_PROTOCOL_VERSION = 1;
+const WS_RUNTIME_METRICS_FLUSH_MS = 30_000;
 
 export class MissingDaemonVersionError extends Error {
   constructor() {
@@ -219,6 +242,27 @@ export class VoiceAssistantWebSocketServer {
   private readonly agentProviderRuntimeSettings: AgentProviderRuntimeSettingsMap | undefined;
   private readonly onLifecycleIntent: ((intent: SessionLifecycleIntent) => void) | null;
   private serverCapabilities: ServerCapabilities | undefined;
+  private runtimeWindowStartedAt = Date.now();
+  private readonly runtimeCounters: WebSocketRuntimeCounters = {
+    connectedAwaitingHello: 0,
+    helloResumed: 0,
+    helloNew: 0,
+    pendingDisconnected: 0,
+    sessionDisconnectedWaitingReconnect: 0,
+    sessionSocketDisconnectedAttached: 0,
+    sessionCleanup: 0,
+    validationFailed: 0,
+    binaryBeforeHelloRejected: 0,
+    pendingMessageRejectedBeforeHello: 0,
+    missingConnectionForMessage: 0,
+    unexpectedHelloOnActiveConnection: 0,
+    relayExternalSocketAttached: 0,
+    originRejected: 0,
+    hostRejected: 0,
+  };
+  private readonly inboundMessageCounts = new Map<string, number>();
+  private readonly inboundSessionRequestCounts = new Map<string, number>();
+  private runtimeMetricsInterval: ReturnType<typeof setInterval> | null = null;
 
   constructor(
     server: HTTPServer,
@@ -295,6 +339,7 @@ export class VoiceAssistantWebSocketServer {
         const origin = requestMetadata.origin;
         const requestHost = requestMetadata.host ?? null;
         if (requestHost && !isHostAllowed(requestHost, allowedHosts)) {
+          this.incrementRuntimeCounter("hostRejected");
           this.logger.warn(
             { ...requestMetadata, host: requestHost },
             "Rejected connection from disallowed host"
@@ -310,6 +355,7 @@ export class VoiceAssistantWebSocketServer {
         if (!origin || allowedOrigins.has(origin) || sameOrigin) {
           callback(true);
         } else {
+          this.incrementRuntimeCounter("originRejected");
           this.logger.warn(
             { ...requestMetadata, origin },
             "Rejected connection from origin"
@@ -322,6 +368,12 @@ export class VoiceAssistantWebSocketServer {
     this.wss.on("connection", (ws, request) => {
       void this.attachSocket(ws, request);
     });
+
+    const runtimeMetricsInterval = setInterval(() => {
+      this.flushRuntimeMetrics();
+    }, WS_RUNTIME_METRICS_FLUSH_MS);
+    this.runtimeMetricsInterval = runtimeMetricsInterval;
+    (runtimeMetricsInterval as unknown as { unref?: () => void }).unref?.();
 
     this.logger.info("WebSocket server initialized on /ws");
   }
@@ -355,10 +407,19 @@ export class VoiceAssistantWebSocketServer {
     ws: WebSocketLike,
     metadata?: ExternalSocketMetadata
   ): Promise<void> {
+    if (metadata?.transport === "relay") {
+      this.incrementRuntimeCounter("relayExternalSocketAttached");
+    }
     await this.attachSocket(ws, undefined, metadata);
   }
 
   public async close(): Promise<void> {
+    if (this.runtimeMetricsInterval) {
+      clearInterval(this.runtimeMetricsInterval);
+      this.runtimeMetricsInterval = null;
+    }
+    this.flushRuntimeMetrics({ final: true });
+
     const uniqueConnections = new Set<SessionConnection>([
       ...this.sessions.values(),
       ...this.externalSessionsByKey.values(),
@@ -494,6 +555,7 @@ export class VoiceAssistantWebSocketServer {
     (timeout as unknown as { unref?: () => void }).unref?.();
 
     this.pendingConnections.set(ws, pending);
+    this.incrementRuntimeCounter("connectedAwaitingHello");
     this.bindSocketHandlers(ws);
 
     pending.connectionLogger.trace(
@@ -633,6 +695,7 @@ export class VoiceAssistantWebSocketServer {
     this.clearPendingConnection(ws);
     const existing = this.externalSessionsByKey.get(clientId);
     if (existing) {
+      this.incrementRuntimeCounter("helloResumed");
       if (existing.externalDisconnectCleanupTimeout) {
         clearTimeout(existing.externalDisconnectCleanupTimeout);
         existing.externalDisconnectCleanupTimeout = null;
@@ -652,6 +715,7 @@ export class VoiceAssistantWebSocketServer {
     }
 
     const connectionLogger = pending.connectionLogger.child({ clientId });
+    this.incrementRuntimeCounter("helloNew");
     const connection = this.createSessionConnection({
       ws,
       clientId,
@@ -733,6 +797,7 @@ export class VoiceAssistantWebSocketServer {
   ): Promise<void> {
     const pending = this.clearPendingConnection(ws);
     if (pending) {
+      this.incrementRuntimeCounter("pendingDisconnected");
       pending.connectionLogger.trace(
         {
           code: details.code,
@@ -752,6 +817,7 @@ export class VoiceAssistantWebSocketServer {
     connection.sockets.delete(ws);
 
     if (connection.sockets.size === 0) {
+      this.incrementRuntimeCounter("sessionDisconnectedWaitingReconnect");
       if (connection.externalDisconnectCleanupTimeout) {
         clearTimeout(connection.externalDisconnectCleanupTimeout);
       }
@@ -777,6 +843,7 @@ export class VoiceAssistantWebSocketServer {
     }
 
     if (connection.sockets.size > 0) {
+      this.incrementRuntimeCounter("sessionSocketDisconnectedAttached");
       connection.connectionLogger.trace(
         {
           clientId: connection.clientId,
@@ -796,6 +863,7 @@ export class VoiceAssistantWebSocketServer {
     connection: SessionConnection,
     logMessage: string
   ): Promise<void> {
+    this.incrementRuntimeCounter("sessionCleanup");
     if (connection.externalDisconnectCleanupTimeout) {
       clearTimeout(connection.externalDisconnectCleanupTimeout);
       connection.externalDisconnectCleanupTimeout = null;
@@ -832,6 +900,7 @@ export class VoiceAssistantWebSocketServer {
         const frame = decodeBinaryMuxFrame(asBytes);
         if (frame) {
           if (!activeConnection) {
+            this.incrementRuntimeCounter("binaryBeforeHelloRejected");
             log.warn("Rejected binary frame before hello");
             this.clearPendingConnection(ws);
             try {
@@ -848,6 +917,7 @@ export class VoiceAssistantWebSocketServer {
       const parsed = JSON.parse(buffer.toString());
       const parsedMessage = WSInboundMessageSchema.safeParse(parsed);
       if (!parsedMessage.success) {
+        this.incrementRuntimeCounter("validationFailed");
         if (pendingConnection) {
           pendingConnection.connectionLogger.warn(
             {
@@ -913,6 +983,7 @@ export class VoiceAssistantWebSocketServer {
       }
 
       const message = parsedMessage.data;
+      this.recordInboundMessageType(message.type);
 
       if (message.type === "ping") {
         this.sendToClient(ws, { type: "pong" });
@@ -939,6 +1010,7 @@ export class VoiceAssistantWebSocketServer {
           },
           "Rejected pending message before hello"
         );
+        this.incrementRuntimeCounter("pendingMessageRejectedBeforeHello");
         this.clearPendingConnection(ws);
         try {
           ws.close(WS_CLOSE_INVALID_HELLO, "Session message before hello");
@@ -949,11 +1021,13 @@ export class VoiceAssistantWebSocketServer {
       }
 
       if (!activeConnection) {
+        this.incrementRuntimeCounter("missingConnectionForMessage");
         this.logger.error("No connection found for websocket");
         return;
       }
 
       if (message.type === "hello") {
+        this.incrementRuntimeCounter("unexpectedHelloOnActiveConnection");
         activeConnection.connectionLogger.warn("Received hello on active connection");
         try {
           ws.close(WS_CLOSE_INVALID_HELLO, "Unexpected hello");
@@ -964,6 +1038,7 @@ export class VoiceAssistantWebSocketServer {
       }
 
       if (message.type === "session") {
+        this.recordInboundSessionRequestType(message.message.type);
         await activeConnection.session.handleMessage(message.message);
       }
     } catch (error) {
@@ -1038,6 +1113,106 @@ export class VoiceAssistantWebSocketServer {
   }
 
   private readonly ACTIVITY_THRESHOLD_MS = 120_000;
+
+  private incrementRuntimeCounter(counter: keyof WebSocketRuntimeCounters): void {
+    this.runtimeCounters[counter] += 1;
+  }
+
+  private incrementCount(map: Map<string, number>, key: string): void {
+    map.set(key, (map.get(key) ?? 0) + 1);
+  }
+
+  private recordInboundMessageType(type: string): void {
+    this.incrementCount(this.inboundMessageCounts, type);
+  }
+
+  private recordInboundSessionRequestType(type: string): void {
+    this.incrementCount(this.inboundSessionRequestCounts, type);
+  }
+
+  private getTopCounts(map: Map<string, number>, limit: number): Array<[string, number]> {
+    return [...map.entries()].sort((a, b) => b[1] - a[1]).slice(0, limit);
+  }
+
+  private collectSessionRuntimeMetrics(): SessionRuntimeMetrics {
+    const uniqueConnections = new Set<SessionConnection>(this.externalSessionsByKey.values());
+    let checkoutDiffTargetCount = 0;
+    let checkoutDiffSubscriptionCount = 0;
+    let checkoutDiffWatcherCount = 0;
+    let checkoutDiffFallbackRefreshTargetCount = 0;
+    let terminalDirectorySubscriptionCount = 0;
+    let terminalSubscriptionCount = 0;
+    let terminalStreamCount = 0;
+
+    for (const connection of uniqueConnections) {
+      const sessionMetrics = connection.session.getRuntimeMetrics();
+      checkoutDiffTargetCount += sessionMetrics.checkoutDiffTargetCount;
+      checkoutDiffSubscriptionCount += sessionMetrics.checkoutDiffSubscriptionCount;
+      checkoutDiffWatcherCount += sessionMetrics.checkoutDiffWatcherCount;
+      checkoutDiffFallbackRefreshTargetCount +=
+        sessionMetrics.checkoutDiffFallbackRefreshTargetCount;
+      terminalDirectorySubscriptionCount += sessionMetrics.terminalDirectorySubscriptionCount;
+      terminalSubscriptionCount += sessionMetrics.terminalSubscriptionCount;
+      terminalStreamCount += sessionMetrics.terminalStreamCount;
+    }
+
+    return {
+      checkoutDiffTargetCount,
+      checkoutDiffSubscriptionCount,
+      checkoutDiffWatcherCount,
+      checkoutDiffFallbackRefreshTargetCount,
+      terminalDirectorySubscriptionCount,
+      terminalSubscriptionCount,
+      terminalStreamCount,
+    };
+  }
+
+  private flushRuntimeMetrics(options?: { final?: boolean }): void {
+    const now = Date.now();
+    const windowMs = Math.max(0, now - this.runtimeWindowStartedAt);
+    const activeConnections = new Set<SessionConnection>(this.sessions.values()).size;
+    const activeSockets = this.sessions.size;
+    const pendingConnections = this.pendingConnections.size;
+    const reconnectGraceSessions = [...this.externalSessionsByKey.values()].filter(
+      (connection) =>
+        connection.sockets.size === 0 &&
+        connection.externalDisconnectCleanupTimeout !== null
+    ).length;
+    const sessionMetrics = this.collectSessionRuntimeMetrics();
+
+    this.logger.info(
+      {
+        windowMs,
+        final: Boolean(options?.final),
+        sessions: {
+          activeConnections,
+          externalSessionKeys: this.externalSessionsByKey.size,
+          reconnectGraceSessions,
+        },
+        sockets: {
+          activeSockets,
+          pendingConnections,
+        },
+        counters: { ...this.runtimeCounters },
+        inboundMessageTypesTop: this.getTopCounts(this.inboundMessageCounts, 12),
+        inboundSessionRequestTypesTop: this.getTopCounts(
+          this.inboundSessionRequestCounts,
+          20
+        ),
+        runtime: sessionMetrics,
+      },
+      "ws_runtime_metrics"
+    );
+
+    for (const counter of Object.keys(this.runtimeCounters) as Array<
+      keyof WebSocketRuntimeCounters
+    >) {
+      this.runtimeCounters[counter] = 0;
+    }
+    this.inboundMessageCounts.clear();
+    this.inboundSessionRequestCounts.clear();
+    this.runtimeWindowStartedAt = now;
+  }
 
   private getClientActivityState(session: Session): ClientAttentionState {
     const activity = session.getClientActivity();

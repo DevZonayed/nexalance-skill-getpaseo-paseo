@@ -560,7 +560,7 @@ const styles = StyleSheet.create((theme) => ({
     top: 0,
     left: 0,
     bottom: 0,
-    backgroundColor: theme.colors.surface0,
+    backgroundColor: theme.colors.surfaceSidebar,
     overflow: 'hidden',
   },
   sidebarContent: {
@@ -571,7 +571,7 @@ const styles = StyleSheet.create((theme) => ({
   desktopSidebar: {
     borderRightWidth: 1,
     borderRightColor: theme.colors.border,
-    backgroundColor: theme.colors.surface0,
+    backgroundColor: theme.colors.surfaceSidebar,
   },
   sidebarHeader: {
     height: {

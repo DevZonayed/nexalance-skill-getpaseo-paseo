@@ -5,6 +5,7 @@ import {
   Platform,
   Pressable,
   Text,
+  useColorScheme,
   View,
 } from "react-native";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -49,6 +50,7 @@ import {
   useWorkspaceTabsStore,
 } from "@/stores/workspace-tabs-store";
 import { useKeyboardShortcutsStore } from "@/stores/keyboard-shortcuts-store";
+import { useCreateFlowStore } from "@/stores/create-flow-store";
 import {
   buildWorkspaceOpenIntentParam,
   type WorkspaceOpenIntent,
@@ -69,6 +71,7 @@ import { getStatusDotColor } from "@/utils/status-dot-color";
 import { useArchiveAgent } from "@/hooks/use-archive-agent";
 import { buildProviderCommand } from "@/utils/provider-command-templates";
 import { generateDraftId } from "@/stores/draft-keys";
+import { normalizeAgentSnapshot } from "@/utils/agent-snapshots";
 import { WorkspaceDraftAgentTab } from "@/screens/workspace/workspace-draft-agent-tab";
 import { WorkspaceDesktopTabsRow } from "@/screens/workspace/workspace-desktop-tabs-row";
 import type { WorkspaceTabDescriptor } from "@/screens/workspace/workspace-tabs-types";
@@ -133,6 +136,8 @@ function WorkspaceScreenContent({
   openIntent,
 }: WorkspaceScreenProps) {
   const { theme } = useUnistyles();
+  const isDarkMode = useColorScheme() === "dark";
+  const mainBackgroundColor = isDarkMode ? theme.colors.surface1 : theme.colors.surface0;
   const toast = useToast();
   const isMobile =
     UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
@@ -404,11 +409,13 @@ function WorkspaceScreenContent({
     persistenceKey ? state.focusedTabIdByWorkspace[persistenceKey] ?? "" : ""
   );
   const openDraftTab = useWorkspaceTabsStore((state) => state.openDraftTab);
+  const ensureTab = useWorkspaceTabsStore((state) => state.ensureTab);
   const openOrFocusTab = useWorkspaceTabsStore((state) => state.openOrFocusTab);
   const focusTab = useWorkspaceTabsStore((state) => state.focusTab);
   const closeWorkspaceTab = useWorkspaceTabsStore((state) => state.closeTab);
-  const promoteDraftToAgent = useWorkspaceTabsStore((state) => state.promoteDraftToAgent);
+  const retargetWorkspaceTab = useWorkspaceTabsStore((state) => state.retargetTab);
   const reorderWorkspaceTabs = useWorkspaceTabsStore((state) => state.reorderTabs);
+  const pendingByDraftId = useCreateFlowStore((state) => state.pendingByDraftId);
   const workspaceTabActionRequest = useKeyboardShortcutsStore(
     (state) => state.workspaceTabActionRequest
   );
@@ -483,12 +490,90 @@ function WorkspaceScreenContent({
     normalizedWorkspaceId,
   ]);
 
+  useEffect(() => {
+    if (!normalizedServerId || !normalizedWorkspaceId) {
+      return;
+    }
+
+    const agentIds = new Set(workspaceAgents.map((agent) => agent.id));
+    const terminalIds = new Set(terminals.map((terminal) => terminal.id));
+    const hasActivePendingDraftCreateInWorkspace = uiTabs.some((tab) => {
+      if (tab.target.kind !== "draft") {
+        return false;
+      }
+      const pending = pendingByDraftId[tab.target.draftId];
+      return pending?.serverId === normalizedServerId && pending.lifecycle === "active";
+    });
+
+    for (const agent of workspaceAgents) {
+      const representedByTarget = uiTabs.some(
+        (tab) => tab.target.kind === "agent" && tab.target.agentId === agent.id
+      );
+      const representedByDeterministicTabId = uiTabs.some(
+        (tab) => tab.tabId === `agent_${agent.id}`
+      );
+      if (
+        hasActivePendingDraftCreateInWorkspace &&
+        !representedByTarget &&
+        !representedByDeterministicTabId
+      ) {
+        continue;
+      }
+      ensureTab({
+        serverId: normalizedServerId,
+        workspaceId: normalizedWorkspaceId,
+        target: { kind: "agent", agentId: agent.id },
+      });
+    }
+    for (const terminal of terminals) {
+      ensureTab({
+        serverId: normalizedServerId,
+        workspaceId: normalizedWorkspaceId,
+        target: { kind: "terminal", terminalId: terminal.id },
+      });
+    }
+
+    const canPruneAgentTabs = hasHydratedAgents;
+    const canPruneTerminalTabs = terminalsQuery.isSuccess;
+    for (const tab of uiTabs) {
+      if (canPruneAgentTabs && tab.target.kind === "agent" && !agentIds.has(tab.target.agentId)) {
+        closeWorkspaceTab({
+          serverId: normalizedServerId,
+          workspaceId: normalizedWorkspaceId,
+          tabId: tab.tabId,
+        });
+      }
+      if (
+        canPruneTerminalTabs &&
+        tab.target.kind === "terminal" &&
+        !terminalIds.has(tab.target.terminalId)
+      ) {
+        closeWorkspaceTab({
+          serverId: normalizedServerId,
+          workspaceId: normalizedWorkspaceId,
+          tabId: tab.tabId,
+        });
+      }
+    }
+  }, [
+    closeWorkspaceTab,
+    ensureTab,
+    hasHydratedAgents,
+    normalizedServerId,
+    normalizedWorkspaceId,
+    pendingByDraftId,
+    terminals,
+    terminalsQuery.isSuccess,
+    uiTabs,
+    workspaceAgents,
+  ]);
+
   const tabModel = useMemo(
     () =>
       deriveWorkspaceTabModel({
         workspaceAgents,
         terminals,
-        uiTabs,
+        tabs: uiTabs,
         tabOrder,
         focusedTabId,
       }),
@@ -540,6 +625,10 @@ function WorkspaceScreenContent({
     if (!persistenceKey) {
       return;
     }
+    if (workspaceAgents.length > 0 || terminals.length > 0) {
+      emptyWorkspaceSeedRef.current = null;
+      return;
+    }
     if (tabs.length > 0) {
       emptyWorkspaceSeedRef.current = null;
       return;
@@ -564,7 +653,9 @@ function WorkspaceScreenContent({
     normalizedWorkspaceId,
     openDraftTab,
     persistenceKey,
+    terminals.length,
     tabs.length,
+    workspaceAgents.length,
   ]);
 
   const handleOpenFileFromExplorer = useCallback(
@@ -1047,15 +1138,25 @@ function WorkspaceScreenContent({
           draftId={target.draftId}
           onCreated={(agentSnapshot) => {
             const tabId = activeTabId ?? target.draftId;
-            const nextAgentTabId = promoteDraftToAgent({
+            const normalized = normalizeAgentSnapshot(agentSnapshot, normalizedServerId);
+            const nextTabId = retargetWorkspaceTab({
               serverId: normalizedServerId,
               workspaceId: normalizedWorkspaceId,
-              draftTabId: tabId,
-              agentId: agentSnapshot.id,
+              tabId,
+              target: { kind: "agent", agentId: agentSnapshot.id },
             });
-            if (nextAgentTabId) {
-              navigateToTabId(nextAgentTabId);
+            if (nextTabId) {
+              focusTab({
+                serverId: normalizedServerId,
+                workspaceId: normalizedWorkspaceId,
+                tabId: nextTabId,
+              });
             }
+            useSessionStore.getState().setAgents(normalizedServerId, (prev) => {
+              const next = new Map(prev);
+              next.set(agentSnapshot.id, normalized);
+              return next;
+            });
           }}
         />
       );
@@ -1107,7 +1208,7 @@ function WorkspaceScreenContent({
   };
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: mainBackgroundColor }]}>
       <View style={styles.threePaneRow}>
         <View style={styles.centerColumn}>
           <ScreenHeader
@@ -1654,6 +1755,7 @@ const styles = StyleSheet.create((theme) => ({
   content: {
     flex: 1,
     minHeight: 0,
+    backgroundColor: theme.colors.surface0,
   },
   emptyState: {
     flex: 1,

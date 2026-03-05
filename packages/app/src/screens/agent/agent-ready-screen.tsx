@@ -6,7 +6,6 @@ import {
   Platform,
   BackHandler,
 } from "react-native";
-import { useRouter, type Href } from "expo-router";
 import { useFocusEffect } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQueryClient } from "@tanstack/react-query";
@@ -60,7 +59,6 @@ import { shouldClearAgentAttentionOnView } from "@/utils/agent-attention";
 import type { DaemonClient } from "@server/client/daemon-client";
 import { useExplorerOpenGesture } from "@/hooks/use-explorer-open-gesture";
 import type { ExplorerCheckoutContext } from "@/stores/panel-store";
-import { buildHostRootRoute } from "@/utils/host-routes";
 
 const EMPTY_STREAM_ITEMS: StreamItem[] = [];
 const IS_DEV = Boolean((globalThis as { __DEV__?: boolean }).__DEV__);
@@ -187,7 +185,6 @@ function AgentScreenContent({
   const { theme } = useUnistyles();
   const toast = useToast();
   const insets = useSafeAreaInsets();
-  const router = useRouter();
   const queryClient = useQueryClient();
   const resolvedAgentId = agentId;
   const { isArchivingAgent } = useArchiveAgent();
@@ -514,24 +511,6 @@ function AgentScreenContent({
     resolvedAgentId &&
       isArchivingAgent({ serverId, agentId: resolvedAgentId })
   );
-  const hasRedirectedArchivedAgentRef = useRef(false);
-
-  useEffect(() => {
-    if (!resolvedAgentId) {
-      hasRedirectedArchivedAgentRef.current = false;
-      return;
-    }
-    if (!agent?.archivedAt) {
-      hasRedirectedArchivedAgentRef.current = false;
-      return;
-    }
-    if (hasRedirectedArchivedAgentRef.current) {
-      return;
-    }
-    hasRedirectedArchivedAgentRef.current = true;
-    const route: Href = buildHostRootRoute(serverId) as Href;
-    router.replace(route);
-  }, [agent?.archivedAt, resolvedAgentId, router, serverId]);
 
   useEffect(() => {
     if (!resolvedAgentId) {

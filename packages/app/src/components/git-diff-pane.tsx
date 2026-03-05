@@ -948,7 +948,7 @@ export function GitDiffPane({ serverId, workspaceId, cwd }: GitDiffPaneProps) {
   if (isStatusLoading) {
     bodyContent = (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" />
+        <ActivityIndicator size="large" color={theme.colors.foregroundMuted} />
         <Text style={styles.loadingText}>Checking repository...</Text>
       </View>
     );
@@ -967,8 +967,7 @@ export function GitDiffPane({ serverId, workspaceId, cwd }: GitDiffPaneProps) {
   } else if (isDiffLoading) {
     bodyContent = (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" />
-        <Text style={styles.loadingText}>Loading changes...</Text>
+        <ActivityIndicator size="large" color={theme.colors.foregroundMuted} />
       </View>
     );
   } else if (diffErrorMessage) {
@@ -1234,9 +1233,6 @@ export function GitDiffPane({ serverId, workspaceId, cwd }: GitDiffPaneProps) {
           <Text style={styles.branchLabel} testID="changes-branch" numberOfLines={1}>
             {branchLabel}
           </Text>
-          {isStatusFetching && (
-            <ActivityIndicator size="small" color={theme.colors.foregroundMuted} />
-          )}
         </View>
         {isGit ? (
           <View style={styles.headerRight}>

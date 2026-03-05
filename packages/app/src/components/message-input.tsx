@@ -30,6 +30,7 @@ import {
 } from '@/utils/image-attachments-from-files'
 import type { AttachmentMetadata } from '@/attachments/types'
 import { useAttachmentPreviewUrl } from '@/attachments/use-attachment-preview-url'
+import { focusWithRetries } from '@/utils/web-focus'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { Shortcut } from '@/components/ui/shortcut'
 import type { MessageInputKeyboardActionKind } from '@/keyboard/actions'
@@ -62,6 +63,7 @@ export interface MessageInputProps {
   isReadyForDictation?: boolean
   placeholder?: string
   autoFocus?: boolean
+  autoFocusKey?: string
   disabled?: boolean
   /** True when the containing screen is focused (React Navigation). Used to disable global hotkeys and cancel dictation when unfocused. */
   isScreenFocused?: boolean
@@ -137,6 +139,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
     isReadyForDictation,
     placeholder = 'Message...',
     autoFocus = false,
+    autoFocusKey,
     disabled = false,
     isScreenFocused = true,
     leftContent,
@@ -231,15 +234,20 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
     valueRef.current = value
   }, [value])
 
-  // Autofocus on web when autoFocus prop is true
+  // Autofocus on web when autoFocus is true, and re-run when focus key changes.
   useEffect(() => {
     if (!IS_WEB || !autoFocus) return
-    // Use requestAnimationFrame to ensure DOM is ready
-    const rafId = requestAnimationFrame(() => {
-      textInputRef.current?.focus()
+    return focusWithRetries({
+      focus: () => textInputRef.current?.focus(),
+      isFocused: () => {
+        const current = textInputRef.current as (TextInput & { getNativeRef?: () => unknown }) | null
+        const native = typeof current?.getNativeRef === 'function' ? current.getNativeRef() : current
+        const element = native instanceof HTMLElement ? native : null
+        const active = typeof document !== 'undefined' ? document.activeElement : null
+        return Boolean(element) && active === element
+      },
     })
-    return () => cancelAnimationFrame(rafId)
-  }, [autoFocus])
+  }, [autoFocus, autoFocusKey])
 
   const handleDictationTranscript = useCallback(
     (text: string, _meta: { requestId: string }) => {

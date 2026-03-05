@@ -20,7 +20,7 @@ import { buildWorkspaceTabPersistenceKey, useWorkspaceTabsStore } from "@/stores
 const SERVER_ID = "server-1";
 const WORKSPACE_ID = "/repo/worktree";
 
-describe("workspace-tabs-store promoteDraftToAgent", () => {
+describe("workspace-tabs-store retargetTab", () => {
   beforeEach(() => {
     useWorkspaceTabsStore.setState({
       uiTabsByWorkspace: {},
@@ -29,55 +29,26 @@ describe("workspace-tabs-store promoteDraftToAgent", () => {
     });
   });
 
-  it("replaces draft tab id in order with agent tab id, preserves tab count, and removes draft UI tab", () => {
+  it("keeps a promoted draft tab in-place by mutating target without changing tab id", () => {
     const draftTabId = "draft_123";
-    const agentId = "agent-1";
-    const expectedAgentTabId = `agent_${agentId}`;
     const key = buildWorkspaceTabPersistenceKey({ serverId: SERVER_ID, workspaceId: WORKSPACE_ID });
     expect(key).toBeTruthy();
     const workspaceKey = key as string;
 
+    useWorkspaceTabsStore.getState().ensureTab({
+      serverId: SERVER_ID,
+      workspaceId: WORKSPACE_ID,
+      target: { kind: "agent", agentId: "left" },
+    });
     useWorkspaceTabsStore.getState().openDraftTab({
       serverId: SERVER_ID,
       workspaceId: WORKSPACE_ID,
       draftId: draftTabId,
     });
-
-    const beforeOrder = useWorkspaceTabsStore.getState().tabOrderByWorkspace[workspaceKey] ?? [];
-    const promoted = useWorkspaceTabsStore.getState().promoteDraftToAgent({
+    useWorkspaceTabsStore.getState().ensureTab({
       serverId: SERVER_ID,
       workspaceId: WORKSPACE_ID,
-      draftTabId,
-      agentId,
-    });
-
-    const state = useWorkspaceTabsStore.getState();
-    const afterOrder = state.tabOrderByWorkspace[workspaceKey] ?? [];
-
-    expect(promoted).toBe(expectedAgentTabId);
-    expect(afterOrder).toEqual([expectedAgentTabId]);
-    expect(afterOrder).toHaveLength(beforeOrder.length);
-    expect(state.uiTabsByWorkspace[workspaceKey]).toBeUndefined();
-    expect(state.focusedTabIdByWorkspace[workspaceKey]).toBe(expectedAgentTabId);
-  });
-
-  it("does not create duplicate agent tab ids when agent tab already exists", () => {
-    const draftTabId = "draft_456";
-    const agentId = "agent-dup";
-    const expectedAgentTabId = `agent_${agentId}`;
-    const key = buildWorkspaceTabPersistenceKey({ serverId: SERVER_ID, workspaceId: WORKSPACE_ID });
-    expect(key).toBeTruthy();
-    const workspaceKey = key as string;
-
-    useWorkspaceTabsStore.getState().openDraftTab({
-      serverId: SERVER_ID,
-      workspaceId: WORKSPACE_ID,
-      draftId: draftTabId,
-    });
-    useWorkspaceTabsStore.getState().openOrFocusTab({
-      serverId: SERVER_ID,
-      workspaceId: WORKSPACE_ID,
-      target: { kind: "agent", agentId },
+      target: { kind: "agent", agentId: "right" },
     });
     useWorkspaceTabsStore.getState().focusTab({
       serverId: SERVER_ID,
@@ -85,23 +56,84 @@ describe("workspace-tabs-store promoteDraftToAgent", () => {
       tabId: draftTabId,
     });
 
-    const beforeOrder = useWorkspaceTabsStore.getState().tabOrderByWorkspace[workspaceKey] ?? [];
-    const promoted = useWorkspaceTabsStore.getState().promoteDraftToAgent({
+    const before = useWorkspaceTabsStore.getState();
+    const beforeOrder = before.tabOrderByWorkspace[workspaceKey] ?? [];
+
+    const retargeted = useWorkspaceTabsStore.getState().retargetTab({
       serverId: SERVER_ID,
       workspaceId: WORKSPACE_ID,
-      draftTabId,
-      agentId,
+      tabId: draftTabId,
+      target: { kind: "agent", agentId: "created" },
+    });
+
+    const after = useWorkspaceTabsStore.getState();
+    const afterOrder = after.tabOrderByWorkspace[workspaceKey] ?? [];
+    const tabs = after.uiTabsByWorkspace[workspaceKey] ?? [];
+    const retargetedTab = tabs.find((tab) => tab.tabId === draftTabId) ?? null;
+
+    expect(retargeted).toBe(draftTabId);
+    expect(afterOrder).toEqual(beforeOrder);
+    expect(after.focusedTabIdByWorkspace[workspaceKey]).toBe(draftTabId);
+    expect(retargetedTab?.target).toEqual({ kind: "agent", agentId: "created" });
+  });
+
+  it("ensureTab adds non-focused membership while openOrFocusTab focuses", () => {
+    const key = buildWorkspaceTabPersistenceKey({ serverId: SERVER_ID, workspaceId: WORKSPACE_ID });
+    expect(key).toBeTruthy();
+    const workspaceKey = key as string;
+
+    const terminalTabId = useWorkspaceTabsStore.getState().ensureTab({
+      serverId: SERVER_ID,
+      workspaceId: WORKSPACE_ID,
+      target: { kind: "terminal", terminalId: "term-1" },
+    });
+    expect(terminalTabId).toBe("terminal_term-1");
+    expect(useWorkspaceTabsStore.getState().focusedTabIdByWorkspace[workspaceKey]).toBeUndefined();
+
+    const focusedTabId = useWorkspaceTabsStore.getState().openOrFocusTab({
+      serverId: SERVER_ID,
+      workspaceId: WORKSPACE_ID,
+      target: { kind: "terminal", terminalId: "term-1" },
+    });
+    expect(focusedTabId).toBe("terminal_term-1");
+    expect(useWorkspaceTabsStore.getState().focusedTabIdByWorkspace[workspaceKey]).toBe(
+      "terminal_term-1"
+    );
+  });
+
+  it("ensureTab deduplicates by target when a retargeted tab already exists", () => {
+    const draftTabId = "draft_x";
+    const key = buildWorkspaceTabPersistenceKey({ serverId: SERVER_ID, workspaceId: WORKSPACE_ID });
+    expect(key).toBeTruthy();
+    const workspaceKey = key as string;
+
+    useWorkspaceTabsStore.getState().openDraftTab({
+      serverId: SERVER_ID,
+      workspaceId: WORKSPACE_ID,
+      draftId: draftTabId,
+    });
+    useWorkspaceTabsStore.getState().retargetTab({
+      serverId: SERVER_ID,
+      workspaceId: WORKSPACE_ID,
+      tabId: draftTabId,
+      target: { kind: "agent", agentId: "created-agent" },
+    });
+
+    const ensured = useWorkspaceTabsStore.getState().ensureTab({
+      serverId: SERVER_ID,
+      workspaceId: WORKSPACE_ID,
+      target: { kind: "agent", agentId: "created-agent" },
     });
 
     const state = useWorkspaceTabsStore.getState();
-    const afterOrder = state.tabOrderByWorkspace[workspaceKey] ?? [];
-    const duplicateCount = afterOrder.filter((tabId) => tabId === expectedAgentTabId).length;
+    const tabs = state.uiTabsByWorkspace[workspaceKey] ?? [];
+    const order = state.tabOrderByWorkspace[workspaceKey] ?? [];
+    const matchingTabs = tabs.filter(
+      (tab) => tab.target.kind === "agent" && tab.target.agentId === "created-agent"
+    );
 
-    expect(promoted).toBe(expectedAgentTabId);
-    expect(duplicateCount).toBe(1);
-    expect(afterOrder).toEqual([expectedAgentTabId]);
-    expect(afterOrder.length).toBeLessThanOrEqual(beforeOrder.length);
-    expect(state.focusedTabIdByWorkspace[workspaceKey]).toBe(expectedAgentTabId);
-    expect(state.uiTabsByWorkspace[workspaceKey]).toBeUndefined();
+    expect(ensured).toBe(draftTabId);
+    expect(matchingTabs).toHaveLength(1);
+    expect(order).toEqual([draftTabId]);
   });
 });

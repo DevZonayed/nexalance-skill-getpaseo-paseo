@@ -1,27 +1,13 @@
-import { test, expect } from "./fixtures";
+import { readFile } from "node:fs/promises";
+import path from "node:path";
+import { test, expect, type Page } from "./fixtures";
 import { setWorkingDirectory } from "./helpers/app";
 import { createTempGitRepo } from "./helpers/workspace";
-import { openNewAgentComposer, seedWorkspaceActivity } from "./helpers/workspace-ui";
-import { buildHostWorkspaceRoute } from "@/utils/host-routes";
-
-function buildWorkspaceRoute(serverId: string, workspacePath: string): string {
-  return buildHostWorkspaceRoute(serverId, workspacePath);
-}
-
-async function openWorkspace(page: Page, workspacePath: string): Promise<void> {
-  const serverId = process.env.E2E_SERVER_ID;
-  if (!serverId) {
-    throw new Error("E2E_SERVER_ID is not set.");
-  }
-
-  await page.goto(buildWorkspaceRoute(serverId, workspacePath));
-  await expect(page).toHaveURL(new RegExp(`/h/${encodeURIComponent(serverId)}/workspace/`), {
-    timeout: 30_000,
-  });
-  await expect(page.getByTestId("workspace-new-terminal-tab").first()).toBeVisible({
-    timeout: 30_000,
-  });
-}
+import {
+  openNewAgentComposer,
+  seedWorkspaceActivity,
+  switchWorkspaceViaSidebar,
+} from "./helpers/workspace-ui";
 
 function percentile(values: number[], p: number): number {
   if (values.length === 0) {
@@ -58,6 +44,7 @@ function summarize(values: number[]) {
 
 function buildStressCommand(doneMarker: string): string {
   // Deterministic synthetic "TUI-like" redraw loop: alternate screen + cursor-home repaint.
+  const markerFile = ".paseo-terminal-benchmark-marker";
   return [
     "i=1",
     "printf '\\033[?1049h\\033[2J'",
@@ -72,7 +59,17 @@ function buildStressCommand(doneMarker: string): string {
     "i=$((i+1))",
     "done",
     `printf '\\033[?1049l\\n${doneMarker}\\n'`,
+    `printf '${doneMarker}\\n' > '${markerFile}'`,
   ].join("; ");
+}
+
+async function markerFileContains(filePath: string, marker: string): Promise<boolean> {
+  try {
+    const text = await readFile(filePath, "utf8");
+    return text.includes(marker);
+  } catch {
+    return false;
+  }
 }
 
 async function toggleExplorerAndMeasureLatency(page: Page): Promise<number> {
@@ -92,13 +89,22 @@ test("workspace terminal responsiveness benchmark (report-only, single stress pr
 }, testInfo) => {
   test.setTimeout(180_000);
   const repo = await createTempGitRepo("paseo-e2e-terminal-benchmark-");
+  const markerFilePath = path.join(repo.path, ".paseo-terminal-benchmark-marker");
 
   try {
+    const serverId = process.env.E2E_SERVER_ID;
+    if (!serverId) {
+      throw new Error("E2E_SERVER_ID is not set.");
+    }
+
     await openNewAgentComposer(page);
     await setWorkingDirectory(page, repo.path);
     await seedWorkspaceActivity(page, `terminal benchmark seed ${Date.now()}`);
 
-    await openWorkspace(page, repo.path);
+    await switchWorkspaceViaSidebar({ page, serverId, targetWorkspacePath: repo.path });
+    await expect(page.getByTestId("workspace-new-terminal-tab").first()).toBeVisible({
+      timeout: 30_000,
+    });
 
     const newTerminalButton = page.getByTestId("workspace-new-terminal-tab").first();
     await expect(newTerminalButton).toBeVisible({ timeout: 30_000 });
@@ -163,11 +169,11 @@ test("workspace terminal responsiveness benchmark (report-only, single stress pr
     });
 
     await surface.click({ force: true });
-    await page.keyboard.type(`echo ${postMarker}`, { delay: 0 });
+    await page.keyboard.type(`echo ${postMarker} >> .paseo-terminal-benchmark-marker`, { delay: 0 });
     await page.keyboard.press("Enter");
-    await expect(page.getByText(postMarker).first()).toBeVisible({
+    await expect.poll(async () => await markerFileContains(markerFilePath, postMarker), {
       timeout: 120_000,
-    });
+    }).toBe(true);
 
     const diagnostics = await page.evaluate(async () => {
       const debug = (
@@ -205,9 +211,7 @@ test("workspace terminal responsiveness benchmark (report-only, single stress pr
         frameSleepMs: 10,
         doneMarker,
         postMarker,
-        doneMarkerObserved:
-          (await page.getByText(doneMarker).first().isVisible().catch(() => false)) ||
-          (await page.getByText(doneMarker).count()) > 0,
+        doneMarkerObserved: await markerFileContains(markerFilePath, doneMarker),
       },
       frameGapMs: {
         ...summarize(frameGapsMs),

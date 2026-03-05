@@ -65,6 +65,13 @@ test('new agent respects serverId in the URL', async ({ page }) => {
   await page.goto(`/?serverId=${encodeURIComponent(serverId)}`);
   await expect(page.getByText('New agent', { exact: true }).first()).toBeVisible();
 
+  const newAgentButton = page.getByTestId('sidebar-new-agent').first();
+  if (await newAgentButton.isVisible().catch(() => false)) {
+    await newAgentButton.click();
+  } else {
+    await page.getByText('New agent', { exact: true }).first().click();
+  }
+
   const input = page.getByRole('textbox', { name: 'Message agent...' });
   await expect(input).toBeEditable({ timeout: 30000 });
 });
@@ -95,7 +102,7 @@ test('new agent auto-selects first online host when no preference is stored', as
     updatedAt: nowIso,
   };
 
-  await page.goto('/');
+  await gotoHome(page);
   await page.evaluate(
     ({ daemon }) => {
       const nonce = localStorage.getItem('@paseo:e2e-seed-nonce') ?? '1';

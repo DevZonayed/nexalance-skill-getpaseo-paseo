@@ -1181,7 +1181,7 @@ const styles = StyleSheet.create((theme) => ({
     marginBottom: theme.spacing[1],
   },
   workspaceListContainer: {
-    marginLeft: theme.spacing[4],
+    marginLeft: theme.spacing[2],
   },
   emptyText: {
     color: theme.colors.foregroundMuted,

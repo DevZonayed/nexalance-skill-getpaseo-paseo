@@ -53,7 +53,7 @@ function resolveWorkspaceAgentTabLabel(title: string | null | undefined): string
   return normalized;
 }
 
-function normalizeUiTab(tab: WorkspaceTab): WorkspaceTab | null {
+function normalizeWorkspaceTab(tab: WorkspaceTab): WorkspaceTab | null {
   if (!tab || typeof tab !== "object") {
     return null;
   }
@@ -72,6 +72,28 @@ function normalizeUiTab(tab: WorkspaceTab): WorkspaceTab | null {
     return {
       tabId,
       target: { kind: "draft", draftId },
+      createdAt: tab.createdAt,
+    };
+  }
+  if (tab.target.kind === "agent") {
+    const agentId = trimNonEmpty(tab.target.agentId);
+    if (!agentId) {
+      return null;
+    }
+    return {
+      tabId,
+      target: { kind: "agent", agentId },
+      createdAt: tab.createdAt,
+    };
+  }
+  if (tab.target.kind === "terminal") {
+    const terminalId = trimNonEmpty(tab.target.terminalId);
+    if (!terminalId) {
+      return null;
+    }
+    return {
+      tabId,
+      target: { kind: "terminal", terminalId },
       createdAt: tab.createdAt,
     };
   }
@@ -105,53 +127,20 @@ export function buildWorkspaceTabId(target: WorkspaceTabTarget): string {
 export function deriveWorkspaceTabModel(input: {
   workspaceAgents: Agent[];
   terminals: TerminalLike[];
-  uiTabs: WorkspaceTab[];
+  tabs: WorkspaceTab[];
   tabOrder: string[];
   focusedTabId?: string | null;
 }): WorkspaceTabModel {
   const tabsById = new Map<string, WorkspaceDerivedTab>();
+  const agentsById = new Map(input.workspaceAgents.map((agent) => [agent.id, agent]));
+  const terminalsById = new Map(input.terminals.map((terminal) => [terminal.id, terminal]));
 
-  for (const agent of input.workspaceAgents) {
-    const target: WorkspaceTabTarget = { kind: "agent", agentId: agent.id };
-    const tabId = buildWorkspaceTabId(target);
-    const label = resolveWorkspaceAgentTabLabel(agent.title);
-    tabsById.set(tabId, {
-      target,
-      descriptor: {
-        key: tabId,
-        tabId,
-        kind: "agent",
-        agentId: agent.id,
-        provider: agent.provider,
-        label: label ?? "",
-        subtitle: `${formatProviderLabel(agent.provider)} agent`,
-        titleState: label ? "ready" : "loading",
-      },
-    });
-  }
-
-  for (const terminal of input.terminals) {
-    const target: WorkspaceTabTarget = { kind: "terminal", terminalId: terminal.id };
-    const tabId = buildWorkspaceTabId(target);
-    tabsById.set(tabId, {
-      target,
-      descriptor: {
-        key: tabId,
-        tabId,
-        kind: "terminal",
-        terminalId: terminal.id,
-        label: trimNonEmpty(terminal.name) ?? "Terminal",
-        subtitle: "Terminal",
-      },
-    });
-  }
-
-  const normalizedUiTabs = input.uiTabs
-    .map((tab) => normalizeUiTab(tab))
+  const normalizedTabs = input.tabs
+    .map((tab) => normalizeWorkspaceTab(tab))
     .filter((tab): tab is WorkspaceTab => tab !== null)
     .sort((left, right) => left.createdAt - right.createdAt);
 
-  for (const tab of normalizedUiTabs) {
+  for (const tab of normalizedTabs) {
     if (tab.target.kind === "draft") {
       tabsById.set(tab.tabId, {
         target: tab.target,
@@ -162,6 +151,42 @@ export function deriveWorkspaceTabModel(input: {
           draftId: tab.target.draftId,
           label: "Draft",
           subtitle: "Draft",
+        },
+      });
+      continue;
+    }
+
+    if (tab.target.kind === "agent") {
+      const agent = agentsById.get(tab.target.agentId) ?? null;
+      const label = resolveWorkspaceAgentTabLabel(agent?.title);
+      const provider = agent?.provider ?? "codex";
+      tabsById.set(tab.tabId, {
+        target: tab.target,
+        descriptor: {
+          key: tab.tabId,
+          tabId: tab.tabId,
+          kind: "agent",
+          agentId: tab.target.agentId,
+          provider,
+          label: label ?? "",
+          subtitle: `${formatProviderLabel(provider)} agent`,
+          titleState: label ? "ready" : "loading",
+        },
+      });
+      continue;
+    }
+
+    if (tab.target.kind === "terminal") {
+      const terminal = terminalsById.get(tab.target.terminalId) ?? null;
+      tabsById.set(tab.tabId, {
+        target: tab.target,
+        descriptor: {
+          key: tab.tabId,
+          tabId: tab.tabId,
+          kind: "terminal",
+          terminalId: tab.target.terminalId,
+          label: trimNonEmpty(terminal?.name ?? null) ?? "Terminal",
+          subtitle: "Terminal",
         },
       });
       continue;

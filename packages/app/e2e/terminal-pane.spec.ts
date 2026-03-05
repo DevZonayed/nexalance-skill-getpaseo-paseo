@@ -75,7 +75,6 @@ async function openNewAgentDraft(page: Page): Promise<void> {
   const newAgentButton = page.getByTestId("sidebar-new-agent").first();
   await expect(newAgentButton).toBeVisible({ timeout: 30000 });
   await newAgentButton.click();
-  await expect(page).toHaveURL(/\/h\/[^/]+\/agent(\?|$)/, { timeout: 30000 });
   await expect(
     page.locator('[data-testid="working-directory-select"]:visible').first()
   ).toBeVisible({
@@ -385,9 +384,7 @@ test("mobile terminal tab switch keeps command input routed to the selected tab"
     await setWorkingDirectory(page, repo.path);
     await ensureHostSelected(page);
     await createAgent(page, "Reply with exactly: terminal routing");
-    const createdAgentUrl = page.url();
     await page.setViewportSize({ width: 390, height: 844 });
-    await page.goto(createdAgentUrl);
 
     await ensureExplorerTabsVisible(page);
     const terminalsTab = visibleTestId(page, "explorer-tab-terminals");

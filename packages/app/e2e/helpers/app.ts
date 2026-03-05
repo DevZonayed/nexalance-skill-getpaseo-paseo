@@ -158,7 +158,12 @@ export const gotoHome = async (page: Page) => {
   await page.goto('/');
   await ensureE2EStorageSeeded(page);
   await expect(page.getByText('New agent', { exact: true }).first()).toBeVisible();
-  await expect(page.getByRole('textbox', { name: 'Message agent...' })).toBeVisible();
+  const composer = page.getByRole('textbox', { name: 'Message agent...' });
+  if (!(await composer.first().isVisible().catch(() => false))) {
+    const newAgentButton = page.getByText('New agent', { exact: true }).first();
+    await newAgentButton.click();
+  }
+  await expect(composer.first()).toBeVisible({ timeout: 30000 });
 };
 
 export const openSettings = async (page: Page) => {
@@ -582,6 +587,16 @@ export const createAgentWithConfig = async (page: Page, config: AgentConfig) => 
     await selectMode(page, config.mode);
   }
 
+  await createAgent(page, config.prompt);
+};
+
+export const createAgentInRepo = async (
+  page: Page,
+  config: Pick<AgentConfig, 'directory' | 'prompt'>
+) => {
+  await gotoHome(page);
+  await ensureHostSelected(page);
+  await setWorkingDirectory(page, config.directory);
   await createAgent(page, config.prompt);
 };
 

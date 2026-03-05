@@ -440,14 +440,14 @@ const styles = StyleSheet.create((theme) => ({
     top: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: theme.colors.surface0,
+    backgroundColor: theme.colors.surfaceSidebar,
     overflow: "hidden",
   },
   desktopSidebar: {
     position: "relative",
     borderLeftWidth: 1,
     borderLeftColor: theme.colors.border,
-    backgroundColor: theme.colors.surface0,
+    backgroundColor: theme.colors.surfaceSidebar,
   },
   resizeHandle: {
     position: "absolute",

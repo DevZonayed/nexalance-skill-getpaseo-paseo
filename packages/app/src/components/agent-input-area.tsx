@@ -1,6 +1,6 @@
 import { View, Pressable, Text, ActivityIndicator, Platform } from 'react-native'
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { StyleSheet, useUnistyles } from 'react-native-unistyles'
+import { StyleSheet, UnistylesRuntime, useUnistyles } from 'react-native-unistyles'
 import { ArrowUp, Square, Pencil, AudioLines } from 'lucide-react-native'
 import Animated from 'react-native-reanimated'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
@@ -119,6 +119,10 @@ export function AgentInputArea({
   const setAgentStreamHead = useSessionStore((state) => state.setAgentStreamHead)
 
   const [internalInput, setInternalInput] = useState('')
+  const isDesktopWebBreakpoint =
+    Platform.OS === 'web' &&
+    UnistylesRuntime.breakpoint !== 'xs' &&
+    UnistylesRuntime.breakpoint !== 'sm'
   const userInput = value ?? internalInput
   const setUserInput = onChangeText ?? setInternalInput
   const [cursorIndex, setCursorIndex] = useState(0)
@@ -775,7 +779,8 @@ export function AgentInputArea({
               client={client}
               isReadyForDictation={isDictationReady}
               placeholder="Message agent..."
-              autoFocus={autoFocus}
+              autoFocus={autoFocus && isDesktopWebBreakpoint}
+              autoFocusKey={`${serverId}:${agentId}`}
               disabled={isSubmitLoading}
               isScreenFocused={isScreenFocused}
               leftContent={leftContent}

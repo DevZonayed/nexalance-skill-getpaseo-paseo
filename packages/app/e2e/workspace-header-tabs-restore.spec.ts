@@ -1,16 +1,7 @@
 import { test, expect, type Page } from "./fixtures";
-import {
-  createAgent,
-  ensureHostSelected,
-  gotoHome,
-  setWorkingDirectory,
-} from "./helpers/app";
+import { createAgentInRepo } from "./helpers/app";
 import { createTempGitRepo } from "./helpers/workspace";
-import { buildHostWorkspaceRoute } from "@/utils/host-routes";
-
-function buildWorkspaceRoute(serverId: string, workspacePath: string): string {
-  return buildHostWorkspaceRoute(serverId, workspacePath);
-}
+import { switchWorkspaceViaSidebar } from "./helpers/workspace-ui";
 
 async function openWorkspaceWithAgent(page: Page, workspacePath: string): Promise<void> {
   const serverId = process.env.E2E_SERVER_ID;
@@ -18,15 +9,11 @@ async function openWorkspaceWithAgent(page: Page, workspacePath: string): Promis
     throw new Error("E2E_SERVER_ID is not set.");
   }
 
-  await gotoHome(page);
-  await ensureHostSelected(page);
-  await setWorkingDirectory(page, workspacePath);
-  await createAgent(page, `workspace header restore ${Date.now()}`);
-
-  await page.goto(buildWorkspaceRoute(serverId, workspacePath));
-  await expect(page).toHaveURL(new RegExp(`/h/${encodeURIComponent(serverId)}/workspace/`), {
-    timeout: 30000,
+  await createAgentInRepo(page, {
+    directory: workspacePath,
+    prompt: `workspace header restore ${Date.now()}`,
   });
+  await switchWorkspaceViaSidebar({ page, serverId, targetWorkspacePath: workspacePath });
   await expect(page.getByTestId("workspace-new-agent-tab").first()).toBeVisible({
     timeout: 30000,
   });
@@ -49,15 +36,17 @@ test("workspace new-tab buttons stay on-screen during horizontal scroll", async 
     await expect(tabsScroll).toBeVisible({ timeout: 30000 });
 
     // Create enough terminal tabs to ensure the tabs row has overflow to scroll.
-    const terminalTabs = page.locator('[data-testid^="workspace-tab-terminal:"]');
-    const initialTerminalCount = await terminalTabs.count();
-    const targetTerminalCount = initialTerminalCount + 8;
+    const workspaceTabs = page.locator(
+      '[data-testid^="workspace-tab-"]:not([data-testid^="workspace-tab-context-"])'
+    );
+    const initialTabCount = await workspaceTabs.count();
+    const targetTabCount = initialTabCount + 8;
 
-    for (let attempt = initialTerminalCount; attempt < targetTerminalCount; attempt += 1) {
+    for (let attempt = initialTabCount; attempt < targetTabCount; attempt += 1) {
       await expect(terminalButton).toBeEnabled({ timeout: 30000 });
       await terminalButton.click();
       await expect
-        .poll(async () => await terminalTabs.count(), { timeout: 30000 })
+        .poll(async () => await workspaceTabs.count(), { timeout: 30000 })
         .toBeGreaterThanOrEqual(attempt + 1);
     }
 

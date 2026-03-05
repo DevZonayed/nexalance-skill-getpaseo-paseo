@@ -10,12 +10,11 @@ import { MAX_CONTENT_WIDTH } from "@/constants/layout";
 import { useAgentFormState } from "@/hooks/use-agent-form-state";
 import { useHostRuntimeSession } from "@/runtime/host-runtime";
 import { useCreateFlowStore } from "@/stores/create-flow-store";
-import { useSessionStore, type Agent } from "@/stores/session-store";
+import type { Agent } from "@/stores/session-store";
 import { generateMessageId, type StreamItem, type UserMessageImageAttachment } from "@/types/stream";
 import { encodeImages } from "@/utils/encode-images";
 import type { AgentCapabilityFlags, AgentSessionConfig } from "@server/server/agent/agent-sdk-types";
 import type { AgentSnapshotPayload } from "@server/shared/messages";
-import { normalizeAgentSnapshot } from "@/utils/agent-snapshots";
 
 const EMPTY_PENDING_PERMISSIONS = new Map();
 const EMPTY_STREAM_ITEMS: StreamItem[] = [];
@@ -268,13 +267,6 @@ export function WorkspaceDraftAgentTab({
         const agentId = result.id;
         updatePendingAgentId({ draftId, agentId });
 
-        const normalized = normalizeAgentSnapshot(result, serverId);
-        useSessionStore.getState().setAgents(serverId, (prev) => {
-          const next = new Map(prev);
-          next.set(agentId, normalized);
-          return next;
-        });
-
         onCreated(result);
         return;
       } catch (error) {
@@ -403,6 +395,7 @@ const styles = StyleSheet.create((theme) => ({
     width: "100%",
     alignSelf: "center",
     maxWidth: MAX_CONTENT_WIDTH,
+    backgroundColor: theme.colors.surface0,
   },
   contentContainer: {
     flex: 1,
@@ -423,6 +416,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   inputAreaWrapper: {
     width: "100%",
+    backgroundColor: theme.colors.surface0,
   },
   errorContainer: {
     marginTop: theme.spacing[2],

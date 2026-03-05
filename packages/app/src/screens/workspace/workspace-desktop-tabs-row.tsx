@@ -21,6 +21,7 @@ import { encodeFilePathForPathSegment } from "@/utils/host-routes";
 import type { Agent } from "@/stores/session-store";
 
 const DROPDOWN_WIDTH = 220;
+const LOADING_TAB_LABEL_SKELETON_WIDTH = 80;
 type NewTabOptionId = "__new_tab_agent__" | "__new_tab_terminal__";
 
 type WorkspaceDesktopTabsRowProps = {
@@ -101,8 +102,19 @@ export function WorkspaceDesktopTabsRow({
     [tabsActionsWidth, theme.spacing]
   );
 
+  const tabLabelLengths = useMemo(
+    () =>
+      tabs.map((tab) => {
+        if (tab.kind === "agent" && tab.titleState === "loading") {
+          return Math.max(1, Math.ceil(LOADING_TAB_LABEL_SKELETON_WIDTH / layoutMetrics.estimatedCharWidth));
+        }
+        return tab.label.length;
+      }),
+    [layoutMetrics.estimatedCharWidth, tabs]
+  );
+
   const { layout } = useWorkspaceTabLayout({
-    tabLabels: tabs.map((tab) => tab.label),
+    tabLabelLengths,
     viewportWidthOverride: tabsContainerWidth > 0 ? tabsContainerWidth : null,
     metrics: layoutMetrics,
   });
@@ -478,7 +490,7 @@ const styles = StyleSheet.create((theme) => ({
     opacity: 0.9,
   },
   tabLabelSkeletonWithCloseButton: {
-    width: 80,
+    width: LOADING_TAB_LABEL_SKELETON_WIDTH,
   },
   tabLabelWithCloseButton: {
     paddingRight: 0,

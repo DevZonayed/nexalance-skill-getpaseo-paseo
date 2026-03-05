@@ -59,7 +59,11 @@ describe("deriveWorkspaceTabModel", () => {
         makeAgent({ id: "agent-b", title: "" }),
       ],
       terminals: [{ id: "term-1", name: "shell" }],
-      uiTabs: [],
+      tabs: [
+        { tabId: "agent_agent-a", target: { kind: "agent", agentId: "agent-a" }, createdAt: 1 },
+        { tabId: "agent_agent-b", target: { kind: "agent", agentId: "agent-b" }, createdAt: 2 },
+        { tabId: "terminal_term-1", target: { kind: "terminal", terminalId: "term-1" }, createdAt: 3 },
+      ],
       tabOrder: [],
     });
 
@@ -92,7 +96,10 @@ describe("deriveWorkspaceTabModel", () => {
     const model = deriveWorkspaceTabModel({
       workspaceAgents: [makeAgent({ id: "agent-a", title: "A" })],
       terminals: [],
-      uiTabs,
+      tabs: [
+        ...uiTabs,
+        { tabId: "agent_agent-a", target: { kind: "agent", agentId: "agent-a" }, createdAt: 3 },
+      ],
       tabOrder: ["draft_123", "agent_agent-a", "file_/repo/worktree/README.md"],
     });
 
@@ -103,7 +110,11 @@ describe("deriveWorkspaceTabModel", () => {
     const model = deriveWorkspaceTabModel({
       workspaceAgents: [makeAgent({ id: "agent-a" }), makeAgent({ id: "agent-b" })],
       terminals: [{ id: "term-1", name: "zsh" }],
-      uiTabs: [],
+      tabs: [
+        { tabId: "agent_agent-a", target: { kind: "agent", agentId: "agent-a" }, createdAt: 1 },
+        { tabId: "agent_agent-b", target: { kind: "agent", agentId: "agent-b" }, createdAt: 2 },
+        { tabId: "terminal_term-1", target: { kind: "terminal", terminalId: "term-1" }, createdAt: 3 },
+      ],
       tabOrder: ["terminal_term-1", "agent_agent-b"],
     });
 
@@ -115,10 +126,13 @@ describe("deriveWorkspaceTabModel", () => {
   });
 
   it("uses focused tab when present, otherwise falls back to first tab", () => {
-    const base = {
+    const base: Parameters<typeof deriveWorkspaceTabModel>[0] = {
       workspaceAgents: [makeAgent({ id: "agent-a" }), makeAgent({ id: "agent-b" })],
       terminals: [],
-      uiTabs: [],
+      tabs: [
+        { tabId: "agent_agent-a", target: { kind: "agent", agentId: "agent-a" }, createdAt: 1 },
+        { tabId: "agent_agent-b", target: { kind: "agent", agentId: "agent-b" }, createdAt: 2 },
+      ],
       tabOrder: ["agent_agent-a", "agent_agent-b"],
     };
 
@@ -141,7 +155,13 @@ describe("deriveWorkspaceTabModel", () => {
     const model = deriveWorkspaceTabModel({
       workspaceAgents: [makeAgent({ id: "workspace-b-agent", title: "B" })],
       terminals: [],
-      uiTabs: [],
+      tabs: [
+        {
+          tabId: "agent_workspace-b-agent",
+          target: { kind: "agent", agentId: "workspace-b-agent" },
+          createdAt: 1,
+        },
+      ],
       tabOrder: ["agent_workspace-b-agent"],
       focusedTabId: "agent_workspace-a-agent",
     });
@@ -153,7 +173,7 @@ describe("deriveWorkspaceTabModel", () => {
     });
   });
 
-  it("covers regression: non-archived attention agent remains visible even if UI tabs omitted it", () => {
+  it("does not materialize tabs absent from workspace tab membership", () => {
     const offending = makeAgent({
       id: "offender",
       title: "Needs permission",
@@ -164,7 +184,7 @@ describe("deriveWorkspaceTabModel", () => {
     const model = deriveWorkspaceTabModel({
       workspaceAgents: [offending],
       terminals: [],
-      uiTabs: [
+      tabs: [
         {
           tabId: "draft_123",
           target: { kind: "draft", draftId: "draft_123" },
@@ -174,42 +194,47 @@ describe("deriveWorkspaceTabModel", () => {
       tabOrder: ["draft_123"],
     });
 
-    expect(model.tabs.some((tab) => tab.descriptor.tabId === "agent_offender")).toBe(true);
+    expect(model.tabs.some((tab) => tab.descriptor.tabId === "agent_offender")).toBe(false);
   });
 
-  it("includes older attention and failure agents in workspace tabs when session data is complete", () => {
-    const olderPermissionAgent = makeAgent({
-      id: "agent-permission-old",
-      title: "Need permission",
-      createdAt: new Date("2026-01-15T00:00:00.000Z"),
-      requiresAttention: true,
-      attentionReason: "permission",
-    });
-    const olderFailedAgent = makeAgent({
-      id: "agent-failed-old",
-      title: "Failed run",
-      createdAt: new Date("2026-01-10T00:00:00.000Z"),
-      requiresAttention: true,
-      attentionReason: "error",
-    });
-    const newerAgent = makeAgent({
-      id: "agent-recent",
-      title: "Recent work",
-      createdAt: new Date("2026-03-04T00:00:00.000Z"),
-    });
-
+  it("keeps retargeted agent tab id stable while upgrading descriptor data", () => {
     const model = deriveWorkspaceTabModel({
-      workspaceAgents: [newerAgent, olderPermissionAgent, olderFailedAgent],
+      workspaceAgents: [],
       terminals: [],
-      uiTabs: [],
-      tabOrder: [],
+      tabs: [
+        {
+          tabId: "draft_abc",
+          target: { kind: "agent", agentId: "agent-1" },
+          createdAt: 1,
+        },
+      ],
+      tabOrder: ["draft_abc"],
     });
+    const initial = model.tabs[0]?.descriptor;
+    expect(initial?.tabId).toBe("draft_abc");
+    expect(initial?.kind).toBe("agent");
+    if (initial?.kind === "agent") {
+      expect(initial.titleState).toBe("loading");
+      expect(initial.agentId).toBe("agent-1");
+    }
 
-    expect(model.tabs.some((tab) => tab.descriptor.tabId === "agent_agent-permission-old")).toBe(
-      true
-    );
-    expect(model.tabs.some((tab) => tab.descriptor.tabId === "agent_agent-failed-old")).toBe(
-      true
-    );
+    const upgraded = deriveWorkspaceTabModel({
+      workspaceAgents: [makeAgent({ id: "agent-1", title: "Ready title" })],
+      terminals: [],
+      tabs: [
+        {
+          tabId: "draft_abc",
+          target: { kind: "agent", agentId: "agent-1" },
+          createdAt: 1,
+        },
+      ],
+      tabOrder: ["draft_abc"],
+    });
+    const upgradedDescriptor = upgraded.tabs[0]?.descriptor;
+    expect(upgradedDescriptor?.tabId).toBe("draft_abc");
+    if (upgradedDescriptor?.kind === "agent") {
+      expect(upgradedDescriptor.titleState).toBe("ready");
+      expect(upgradedDescriptor.label).toBe("Ready title");
+    }
   });
 });

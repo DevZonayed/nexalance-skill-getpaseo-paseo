@@ -1,4 +1,5 @@
 import { test, expect } from './fixtures';
+import { gotoHome, openSettings } from './helpers/app';
 
 test('connects via relay when direct endpoints fail', async ({ page }) => {
   const relayPort = process.env.E2E_RELAY_PORT;
@@ -26,7 +27,8 @@ test('connects via relay when direct endpoints fail', async ({ page }) => {
   };
 
   // Override the default fixture seeding for this test.
-  await page.goto('/settings');
+  await gotoHome(page);
+  await openSettings(page);
   await page.evaluate((daemon) => {
     const nonce = localStorage.getItem('@paseo:e2e-seed-nonce') ?? '1';
     localStorage.setItem('@paseo:e2e-disable-default-seed-once', nonce);

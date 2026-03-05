@@ -1,4 +1,5 @@
 import { test, expect } from './fixtures';
+import { gotoHome, openSettings } from './helpers/app';
 
 test('relay connection stays stable across multiple tabs', async ({ page }) => {
   const relayPort = process.env.E2E_RELAY_PORT;
@@ -26,7 +27,8 @@ test('relay connection stays stable across multiple tabs', async ({ page }) => {
   };
 
   // Use relay by making the direct endpoint intentionally fail.
-  await page.goto('/settings');
+  await gotoHome(page);
+  await openSettings(page);
   await page.evaluate((daemon) => {
     const nonce = localStorage.getItem('@paseo:e2e-seed-nonce') ?? '1';
     localStorage.setItem('@paseo:e2e-disable-default-seed-once', nonce);
@@ -45,7 +47,10 @@ test('relay connection stays stable across multiple tabs', async ({ page }) => {
   await page2.routeWebSocket(/:(6767)\b/, async (ws) => {
     await ws.close({ code: 1008, reason: 'Blocked connection to localhost:6767 during e2e.' });
   });
-  await page2.goto('/settings');
+  await page2.goto('/');
+  const settingsButton2 = page2.locator('[data-testid="sidebar-settings"]:visible').first();
+  await expect(settingsButton2).toBeVisible({ timeout: 20000 });
+  await settingsButton2.click();
   const card2 = page2.getByTestId(`daemon-card-${serverId}`);
   await expect(card2.getByText('Relay', { exact: true })).toBeVisible({ timeout: 20000 });
   await expect(card2.getByText('Online', { exact: true })).toBeVisible({ timeout: 20000 });
