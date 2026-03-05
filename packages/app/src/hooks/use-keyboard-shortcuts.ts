@@ -59,9 +59,9 @@ export function useKeyboardShortcuts({
       return true;
     };
 
-    const navigateToSidebarShortcut = (digit: number): boolean => {
+    const navigateToWorkspaceShortcut = (index: number): boolean => {
       const state = useKeyboardShortcutsStore.getState();
-      const target = state.sidebarShortcutWorkspaceTargets[digit - 1] ?? null;
+      const target = state.sidebarShortcutWorkspaceTargets[index - 1] ?? null;
       if (!target) {
         return false;
       }
@@ -71,6 +71,37 @@ export function useKeyboardShortcuts({
         Boolean(parseHostAgentRouteFromPathname(pathname));
       const navigate = shouldReplace ? router.replace : router.push;
       navigate(buildHostWorkspaceRoute(target.serverId, target.workspaceId) as any);
+      return true;
+    };
+    const navigateRelativeWorkspace = (delta: 1 | -1): boolean => {
+      const state = useKeyboardShortcutsStore.getState();
+      const targets = state.visibleWorkspaceTargets;
+      if (targets.length === 0) {
+        return false;
+      }
+
+      const workspaceRoute = parseHostWorkspaceRouteFromPathname(pathname);
+      if (!workspaceRoute) {
+        const fallback = targets[delta > 0 ? 0 : targets.length - 1] ?? null;
+        if (!fallback) {
+          return false;
+        }
+        router.push(buildHostWorkspaceRoute(fallback.serverId, fallback.workspaceId) as any);
+        return true;
+      }
+
+      const currentIndex = targets.findIndex(
+        (target) =>
+          target.serverId === workspaceRoute.serverId &&
+          target.workspaceId === workspaceRoute.workspaceId
+      );
+      const fromIndex = currentIndex >= 0 ? currentIndex : delta > 0 ? -1 : 0;
+      const nextIndex = (fromIndex + delta + targets.length) % targets.length;
+      const target = targets[nextIndex] ?? null;
+      if (!target) {
+        return false;
+      }
+      router.replace(buildHostWorkspaceRoute(target.serverId, target.workspaceId) as any);
       return true;
     };
 
@@ -103,6 +134,21 @@ export function useKeyboardShortcuts({
       });
       return true;
     };
+    const requestWorkspaceTabAction = (input:
+      | { kind: "new" | "close-current" }
+      | { kind: "navigate-index"; index: number }
+      | { kind: "navigate-relative"; delta: 1 | -1 }): boolean => {
+      const route = parseHostWorkspaceRouteFromPathname(pathname);
+      if (!route) {
+        return false;
+      }
+      useKeyboardShortcutsStore.getState().requestWorkspaceTabAction({
+        serverId: route.serverId,
+        workspaceId: route.workspaceId,
+        ...input,
+      });
+      return true;
+    };
 
     const handleAction = (input: {
       action: string;
@@ -112,6 +158,36 @@ export function useKeyboardShortcuts({
       switch (input.action) {
         case "agent.new":
           return navigateToNewAgent();
+        case "workspace.tab.new":
+          return requestWorkspaceTabAction({ kind: "new" });
+        case "workspace.tab.close.current":
+          return requestWorkspaceTabAction({ kind: "close-current" });
+        case "workspace.tab.navigate.index":
+          if (!input.payload || typeof input.payload !== "object" || !("index" in input.payload)) {
+            return false;
+          }
+          return requestWorkspaceTabAction({
+            kind: "navigate-index",
+            index: input.payload.index,
+          });
+        case "workspace.tab.navigate.relative":
+          if (!input.payload || typeof input.payload !== "object" || !("delta" in input.payload)) {
+            return false;
+          }
+          return requestWorkspaceTabAction({
+            kind: "navigate-relative",
+            delta: input.payload.delta,
+          });
+        case "workspace.navigate.index":
+          if (!input.payload || typeof input.payload !== "object" || !("index" in input.payload)) {
+            return false;
+          }
+          return navigateToWorkspaceShortcut(input.payload.index);
+        case "workspace.navigate.relative":
+          if (!input.payload || typeof input.payload !== "object" || !("delta" in input.payload)) {
+            return false;
+          }
+          return navigateRelativeWorkspace(input.payload.delta);
         case "sidebar.toggle.left":
           toggleAgentList();
           return true;
@@ -130,11 +206,6 @@ export function useKeyboardShortcuts({
           }
           toggleFileExplorer();
           return true;
-        case "sidebar.navigate.shortcut":
-          if (!input.payload || typeof input.payload !== "object" || !("digit" in input.payload)) {
-            return false;
-          }
-          return navigateToSidebarShortcut(input.payload.digit);
         case "command-center.toggle": {
           const store = useKeyboardShortcutsStore.getState();
           if (!store.commandCenterOpen) {

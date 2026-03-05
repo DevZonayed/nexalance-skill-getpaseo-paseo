@@ -2,6 +2,7 @@ import { execSync } from 'node:child_process';
 import { test, expect, type Page } from './fixtures';
 import { setWorkingDirectory } from './helpers/app';
 import { createTempGitRepo } from './helpers/workspace';
+import { openNewAgentComposer, seedWorkspaceActivity } from './helpers/workspace-ui';
 import { buildHostWorkspaceRoute } from '@/utils/host-routes';
 
 function escapeRegex(value: string): string {
@@ -31,27 +32,6 @@ function workspaceRowLocator(page: Page, serverId: string, workspacePath: string
     (id) => `[data-testid="sidebar-workspace-row-${serverId}:${id}"]`
   );
   return page.locator(ids.join(',')).first();
-}
-
-async function openNewAgentComposer(page: Page): Promise<void> {
-  await page.goto('/');
-
-  const sidebarNewAgent = page.getByTestId('sidebar-new-agent').first();
-  if (await sidebarNewAgent.isVisible().catch(() => false)) {
-    await sidebarNewAgent.click();
-  } else {
-    await page.getByText('New agent', { exact: true }).first().click();
-  }
-
-  await expect(page.getByRole('textbox', { name: 'Message agent...' })).toBeVisible({ timeout: 30000 });
-}
-
-async function seedWorkspaceActivity(page: Page, marker: string): Promise<void> {
-  const input = page.getByRole('textbox', { name: 'Message agent...' });
-  await expect(input).toBeEditable({ timeout: 30000 });
-  await input.fill(marker);
-  await input.press('Enter');
-  await expect(page).toHaveURL(/\/workspace\//, { timeout: 30000 });
 }
 
 async function switchViaSidebar(input: {

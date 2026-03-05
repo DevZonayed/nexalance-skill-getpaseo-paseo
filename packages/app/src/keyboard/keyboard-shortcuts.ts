@@ -109,39 +109,251 @@ function withMessageInputAction(
   return () => ({ kind });
 }
 
+function withIndexPayload(event: KeyboardEvent): KeyboardShortcutPayload {
+  const index = parseDigit(event);
+  return index ? { index } : null;
+}
+
+function withRelativeDelta(
+  delta: 1 | -1
+): (event: KeyboardEvent) => KeyboardShortcutPayload {
+  return () => ({ delta });
+}
+
 const SHORTCUT_BINDINGS: readonly KeyboardShortcutBinding[] = [
   {
-    id: "agent-new-mod-alt-n",
+    id: "agent-new-mod-shift-o",
     action: "agent.new",
     matches: (event) =>
       isMod(event) &&
-      event.altKey &&
-      !event.shiftKey &&
-      (event.code === "KeyN" || event.key.toLowerCase() === "n"),
+      !event.altKey &&
+      event.shiftKey &&
+      (event.code === "KeyO" || event.key.toLowerCase() === "o"),
     when: () => true,
     help: {
       id: "new-agent",
       section: "global",
       label: "Create new agent",
-      keys: ["mod", "alt", "N"],
-      when: (context) => !context.isTauri,
+      keys: ["mod", "shift", "O"],
     },
   },
   {
-    id: "agent-new-tauri-mod-n",
-    action: "agent.new",
+    id: "workspace-tab-new-alt-shift-t",
+    action: "workspace.tab.new",
+    matches: (event) =>
+      !event.metaKey &&
+      !event.ctrlKey &&
+      event.altKey &&
+      event.shiftKey &&
+      (event.code === "KeyT" || event.key.toLowerCase() === "t"),
+    when: (context) => !context.commandCenterOpen,
+    help: {
+      id: "workspace-tab-new",
+      section: "global",
+      label: "New agent tab",
+      keys: ["alt", "shift", "T"],
+    },
+  },
+  {
+    id: "workspace-tab-close-current-alt-shift-w",
+    action: "workspace.tab.close.current",
+    matches: (event) =>
+      !event.metaKey &&
+      !event.ctrlKey &&
+      event.altKey &&
+      event.shiftKey &&
+      (event.code === "KeyW" || event.key.toLowerCase() === "w"),
+    when: (context) => !context.commandCenterOpen,
+    help: {
+      id: "workspace-tab-close-current",
+      section: "global",
+      label: "Close current tab",
+      keys: ["alt", "shift", "W"],
+    },
+  },
+  {
+    id: "workspace-navigate-index-mod-digit-tauri",
+    action: "workspace.navigate.index",
     matches: (event) =>
       isMod(event) &&
       !event.altKey &&
       !event.shiftKey &&
-      (event.code === "KeyN" || event.key.toLowerCase() === "n"),
-    when: (context) => context.isTauri,
+      hasDigit(event),
+    payload: withIndexPayload,
+    when: (context) => context.isTauri && !context.commandCenterOpen,
     help: {
-      id: "new-agent",
+      id: "workspace-jump-index",
       section: "global",
-      label: "Create new agent",
-      keys: ["mod", "N"],
+      label: "Jump to workspace",
+      keys: ["mod", "1-9"],
       when: (context) => context.isTauri,
+    },
+  },
+  {
+    id: "workspace-navigate-index-alt-digit-web",
+    action: "workspace.navigate.index",
+    matches: (event) =>
+      !event.metaKey &&
+      !event.ctrlKey &&
+      event.altKey &&
+      !event.shiftKey &&
+      hasDigit(event),
+    payload: withIndexPayload,
+    when: (context) => !context.isTauri && !context.commandCenterOpen,
+    help: {
+      id: "workspace-jump-index",
+      section: "global",
+      label: "Jump to workspace",
+      keys: ["alt", "1-9"],
+      when: (context) => !context.isTauri,
+    },
+  },
+  {
+    id: "workspace-tab-navigate-index-alt-digit-tauri",
+    action: "workspace.tab.navigate.index",
+    matches: (event) =>
+      !event.metaKey &&
+      !event.ctrlKey &&
+      event.altKey &&
+      !event.shiftKey &&
+      hasDigit(event),
+    payload: withIndexPayload,
+    when: (context) => context.isTauri && !context.commandCenterOpen,
+    help: {
+      id: "workspace-tab-jump-index",
+      section: "global",
+      label: "Jump to tab",
+      keys: ["alt", "1-9"],
+      when: (context) => context.isTauri,
+    },
+  },
+  {
+    id: "workspace-tab-navigate-index-alt-shift-digit-web",
+    action: "workspace.tab.navigate.index",
+    matches: (event) =>
+      !event.metaKey &&
+      !event.ctrlKey &&
+      event.altKey &&
+      event.shiftKey &&
+      hasDigit(event),
+    payload: withIndexPayload,
+    when: (context) => !context.isTauri && !context.commandCenterOpen,
+    help: {
+      id: "workspace-tab-jump-index",
+      section: "global",
+      label: "Jump to tab",
+      keys: ["alt", "shift", "1-9"],
+      when: (context) => !context.isTauri,
+    },
+  },
+  {
+    id: "workspace-navigate-relative-mod-left",
+    action: "workspace.navigate.relative",
+    matches: (event) =>
+      isMod(event) &&
+      !event.altKey &&
+      !event.shiftKey &&
+      (event.code === "BracketLeft" || event.key === "["),
+    payload: withRelativeDelta(-1),
+    when: (context) => context.isTauri && !context.commandCenterOpen,
+    help: {
+      id: "workspace-prev",
+      section: "global",
+      label: "Previous workspace",
+      keys: ["mod", "["],
+      when: (context) => context.isTauri,
+    },
+  },
+  {
+    id: "workspace-navigate-relative-mod-right",
+    action: "workspace.navigate.relative",
+    matches: (event) =>
+      isMod(event) &&
+      !event.altKey &&
+      !event.shiftKey &&
+      (event.code === "BracketRight" || event.key === "]"),
+    payload: withRelativeDelta(1),
+    when: (context) => context.isTauri && !context.commandCenterOpen,
+    help: {
+      id: "workspace-next",
+      section: "global",
+      label: "Next workspace",
+      keys: ["mod", "]"],
+      when: (context) => context.isTauri,
+    },
+  },
+  {
+    id: "workspace-navigate-relative-alt-left",
+    action: "workspace.navigate.relative",
+    matches: (event) =>
+      !event.metaKey &&
+      !event.ctrlKey &&
+      event.altKey &&
+      !event.shiftKey &&
+      (event.code === "BracketLeft" || event.key === "["),
+    payload: withRelativeDelta(-1),
+    when: (context) => !context.isTauri && !context.commandCenterOpen,
+    help: {
+      id: "workspace-prev",
+      section: "global",
+      label: "Previous workspace",
+      keys: ["alt", "["],
+      when: (context) => !context.isTauri,
+    },
+  },
+  {
+    id: "workspace-navigate-relative-alt-right",
+    action: "workspace.navigate.relative",
+    matches: (event) =>
+      !event.metaKey &&
+      !event.ctrlKey &&
+      event.altKey &&
+      !event.shiftKey &&
+      (event.code === "BracketRight" || event.key === "]"),
+    payload: withRelativeDelta(1),
+    when: (context) => !context.isTauri && !context.commandCenterOpen,
+    help: {
+      id: "workspace-next",
+      section: "global",
+      label: "Next workspace",
+      keys: ["alt", "]"],
+      when: (context) => !context.isTauri,
+    },
+  },
+  {
+    id: "workspace-tab-navigate-relative-alt-shift-left",
+    action: "workspace.tab.navigate.relative",
+    matches: (event) =>
+      !event.metaKey &&
+      !event.ctrlKey &&
+      event.altKey &&
+      event.shiftKey &&
+      event.code === "BracketLeft",
+    payload: withRelativeDelta(-1),
+    when: (context) => !context.commandCenterOpen,
+    help: {
+      id: "workspace-tab-prev",
+      section: "global",
+      label: "Previous tab",
+      keys: ["alt", "shift", "["],
+    },
+  },
+  {
+    id: "workspace-tab-navigate-relative-alt-shift-right",
+    action: "workspace.tab.navigate.relative",
+    matches: (event) =>
+      !event.metaKey &&
+      !event.ctrlKey &&
+      event.altKey &&
+      event.shiftKey &&
+      event.code === "BracketRight",
+    payload: withRelativeDelta(1),
+    when: (context) => !context.commandCenterOpen,
+    help: {
+      id: "workspace-tab-next",
+      section: "global",
+      label: "Next tab",
+      keys: ["alt", "shift", "]"],
     },
   },
   {
@@ -306,40 +518,6 @@ const SHORTCUT_BINDINGS: readonly KeyboardShortcutBinding[] = [
       section: "agent-input",
       label: "Mute/unmute voice mode",
       keys: ["Space"],
-    },
-  },
-  {
-    id: "sidebar-shortcut-alt-digit",
-    action: "sidebar.navigate.shortcut",
-    matches: (event) => event.altKey && hasDigit(event),
-    payload: (event) => {
-      const digit = parseDigit(event);
-      return digit ? { digit } : null;
-    },
-    when: (context) => !context.commandCenterOpen,
-    help: {
-      id: "quick-open-workspace",
-      section: "global",
-      label: "Open sidebar workspace shortcut",
-      keys: ["alt", "1-9"],
-      when: (context) => !context.isTauri,
-    },
-  },
-  {
-    id: "sidebar-shortcut-tauri-mod-digit",
-    action: "sidebar.navigate.shortcut",
-    matches: (event) => isMod(event) && hasDigit(event),
-    payload: (event) => {
-      const digit = parseDigit(event);
-      return digit ? { digit } : null;
-    },
-    when: (context) => context.isTauri && !context.commandCenterOpen,
-    help: {
-      id: "quick-open-workspace",
-      section: "global",
-      label: "Open sidebar workspace shortcut",
-      keys: ["mod", "1-9"],
-      when: (context) => context.isTauri,
     },
   },
 ];

@@ -32,6 +32,34 @@ function shortcutContext(
 }
 
 describe("keyboard-shortcuts", () => {
+  it("matches Mod+Shift+O to create new agent", () => {
+    const match = resolveKeyboardShortcut({
+      event: keyboardEvent({
+        key: "O",
+        code: "KeyO",
+        metaKey: true,
+        shiftKey: true,
+      }),
+      context: shortcutContext({ isMac: true }),
+    });
+
+    expect(match?.action).toBe("agent.new");
+  });
+
+  it("does not keep old Mod+Alt+N binding", () => {
+    const match = resolveKeyboardShortcut({
+      event: keyboardEvent({
+        key: "n",
+        code: "KeyN",
+        metaKey: true,
+        altKey: true,
+      }),
+      context: shortcutContext({ isMac: true }),
+    });
+
+    expect(match).toBeNull();
+  });
+
   it("matches question-mark shortcut to toggle the shortcuts dialog", () => {
     const match = resolveKeyboardShortcut({
       event: keyboardEvent({
@@ -56,6 +84,134 @@ describe("keyboard-shortcuts", () => {
     });
 
     expect(match).toBeNull();
+  });
+
+  it("matches workspace index jump on web via Alt+digit", () => {
+    const match = resolveKeyboardShortcut({
+      event: keyboardEvent({
+        key: "2",
+        code: "Digit2",
+        altKey: true,
+      }),
+      context: shortcutContext({ isTauri: false }),
+    });
+
+    expect(match?.action).toBe("workspace.navigate.index");
+    expect(match?.payload).toEqual({ index: 2 });
+  });
+
+  it("matches workspace index jump on tauri via Mod+digit", () => {
+    const match = resolveKeyboardShortcut({
+      event: keyboardEvent({
+        key: "2",
+        code: "Digit2",
+        metaKey: true,
+      }),
+      context: shortcutContext({ isMac: true, isTauri: true }),
+    });
+
+    expect(match?.action).toBe("workspace.navigate.index");
+    expect(match?.payload).toEqual({ index: 2 });
+  });
+
+  it("matches tab index jump on tauri via Alt+digit", () => {
+    const match = resolveKeyboardShortcut({
+      event: keyboardEvent({
+        key: "2",
+        code: "Digit2",
+        altKey: true,
+      }),
+      context: shortcutContext({ isTauri: true }),
+    });
+
+    expect(match?.action).toBe("workspace.tab.navigate.index");
+    expect(match?.payload).toEqual({ index: 2 });
+  });
+
+  it("matches tab index jump on web via Alt+Shift+digit", () => {
+    const match = resolveKeyboardShortcut({
+      event: keyboardEvent({
+        key: "@",
+        code: "Digit2",
+        altKey: true,
+        shiftKey: true,
+      }),
+      context: shortcutContext({ isTauri: false }),
+    });
+
+    expect(match?.action).toBe("workspace.tab.navigate.index");
+    expect(match?.payload).toEqual({ index: 2 });
+  });
+
+  it("matches workspace relative navigation on web via Alt+[", () => {
+    const match = resolveKeyboardShortcut({
+      event: keyboardEvent({
+        key: "[",
+        code: "BracketLeft",
+        altKey: true,
+      }),
+      context: shortcutContext({ isTauri: false }),
+    });
+
+    expect(match?.action).toBe("workspace.navigate.relative");
+    expect(match?.payload).toEqual({ delta: -1 });
+  });
+
+  it("matches workspace relative navigation on tauri via Mod+]", () => {
+    const match = resolveKeyboardShortcut({
+      event: keyboardEvent({
+        key: "]",
+        code: "BracketRight",
+        ctrlKey: true,
+      }),
+      context: shortcutContext({ isTauri: true }),
+    });
+
+    expect(match?.action).toBe("workspace.navigate.relative");
+    expect(match?.payload).toEqual({ delta: 1 });
+  });
+
+  it("matches tab relative navigation via Alt+Shift+]", () => {
+    const match = resolveKeyboardShortcut({
+      event: keyboardEvent({
+        key: "}",
+        code: "BracketRight",
+        altKey: true,
+        shiftKey: true,
+      }),
+      context: shortcutContext(),
+    });
+
+    expect(match?.action).toBe("workspace.tab.navigate.relative");
+    expect(match?.payload).toEqual({ delta: 1 });
+  });
+
+  it("matches Alt+Shift+T to open new tab", () => {
+    const match = resolveKeyboardShortcut({
+      event: keyboardEvent({
+        key: "T",
+        code: "KeyT",
+        altKey: true,
+        shiftKey: true,
+      }),
+      context: shortcutContext(),
+    });
+
+    expect(match?.action).toBe("workspace.tab.new");
+  });
+
+  it("matches Alt+Shift+W to close current tab", () => {
+    const match = resolveKeyboardShortcut({
+      event: keyboardEvent({
+        key: "W",
+        code: "KeyW",
+        altKey: true,
+        shiftKey: true,
+      }),
+      context: shortcutContext(),
+    });
+
+    expect(match?.action).toBe("workspace.tab.close.current");
   });
 
   it("matches Cmd+B sidebar toggle on macOS", () => {
@@ -163,20 +319,6 @@ describe("keyboard-shortcuts", () => {
     expect(match?.preventDefault).toBe(false);
     expect(match?.stopPropagation).toBe(false);
   });
-
-  it("parses Alt+digit sidebar shortcut payload", () => {
-    const match = resolveKeyboardShortcut({
-      event: keyboardEvent({
-        key: "2",
-        code: "Digit2",
-        altKey: true,
-      }),
-      context: shortcutContext(),
-    });
-
-    expect(match?.action).toBe("sidebar.navigate.shortcut");
-    expect(match?.payload).toEqual({ digit: 2 });
-  });
 });
 
 describe("keyboard-shortcut help sections", () => {
@@ -193,30 +335,30 @@ describe("keyboard-shortcut help sections", () => {
     return null;
   }
 
-  it("uses non-tauri defaults for new-agent and quick-open", () => {
+  it("uses web defaults for workspace and tab jump", () => {
     const sections = buildKeyboardShortcutHelpSections({
       isMac: true,
       isTauri: false,
     });
 
-    expect(findRow(sections, "new-agent")?.keys).toEqual(["mod", "alt", "N"]);
-    expect(findRow(sections, "quick-open-workspace")?.keys).toEqual([
+    expect(findRow(sections, "new-agent")?.keys).toEqual(["mod", "shift", "O"]);
+    expect(findRow(sections, "workspace-jump-index")?.keys).toEqual(["alt", "1-9"]);
+    expect(findRow(sections, "workspace-tab-jump-index")?.keys).toEqual([
       "alt",
+      "shift",
       "1-9",
     ]);
   });
 
-  it("switches to tauri bindings in help rows", () => {
+  it("uses tauri defaults for workspace and tab jump", () => {
     const sections = buildKeyboardShortcutHelpSections({
       isMac: true,
       isTauri: true,
     });
 
-    expect(findRow(sections, "new-agent")?.keys).toEqual(["mod", "N"]);
-    expect(findRow(sections, "quick-open-workspace")?.keys).toEqual([
-      "mod",
-      "1-9",
-    ]);
+    expect(findRow(sections, "new-agent")?.keys).toEqual(["mod", "shift", "O"]);
+    expect(findRow(sections, "workspace-jump-index")?.keys).toEqual(["mod", "1-9"]);
+    expect(findRow(sections, "workspace-tab-jump-index")?.keys).toEqual(["alt", "1-9"]);
   });
 
   it("uses mod+period as non-mac left sidebar shortcut", () => {

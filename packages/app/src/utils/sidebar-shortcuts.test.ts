@@ -39,6 +39,10 @@ describe("buildSidebarShortcutModel", () => {
       collapsedProjectKeys: new Set<string>(["p2"]),
     });
 
+    expect(model.visibleTargets).toEqual([
+      { serverId: "s1", workspaceId: "/repo/main" },
+      { serverId: "s1", workspaceId: "/repo/feat-a" },
+    ]);
     expect(model.shortcutTargets).toEqual([
       { serverId: "s1", workspaceId: "/repo/main" },
       { serverId: "s1", workspaceId: "/repo/feat-a" },
@@ -57,6 +61,8 @@ describe("buildSidebarShortcutModel", () => {
       collapsedProjectKeys: new Set<string>(),
     });
 
+    expect(model.visibleTargets).toHaveLength(20);
+    expect(model.visibleTargets[19]).toEqual({ serverId: "s", workspaceId: "/repo/w20" });
     expect(model.shortcutTargets).toHaveLength(9);
     expect(model.shortcutTargets[0]).toEqual({ serverId: "s", workspaceId: "/repo/w1" });
     expect(model.shortcutTargets[8]).toEqual({ serverId: "s", workspaceId: "/repo/w9" });

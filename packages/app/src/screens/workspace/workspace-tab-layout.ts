@@ -67,10 +67,11 @@ export function computeWorkspaceTabLayout(
   const availableTabsWidth = Math.max(0, availableWidth - rowOverhead);
   const iconOnlyTabWidth =
     input.metrics.tabIconWidth + input.metrics.tabHorizontalPadding * 2 + input.metrics.closeButtonWidth;
+  const labelSafetyPadding = 10;
   const estimateLabelWidth = (labelLength: number) => labelLength * input.metrics.estimatedCharWidth;
   const desiredTabWidths = input.tabLabelLengths.map((rawLength) => {
     const labelLength = Math.max(rawLength, 1);
-    const estimatedWidth = iconOnlyTabWidth + estimateLabelWidth(labelLength);
+    const estimatedWidth = iconOnlyTabWidth + estimateLabelWidth(labelLength) + labelSafetyPadding;
     return clamp(estimatedWidth, iconOnlyTabWidth, input.metrics.maxTabWidth);
   });
 
@@ -80,6 +81,7 @@ export function computeWorkspaceTabLayout(
 
   let resolvedWidths: number[];
   if (desiredTotalTabsWidth <= availableTabsWidth) {
+    // Fit-content baseline: do not stretch tabs when there is spare space.
     resolvedWidths = desiredTabWidths;
   } else if (availableTabsWidth <= iconOnlyTotalTabsWidth) {
     resolvedWidths = new Array(tabCount).fill(iconOnlyTabWidth);

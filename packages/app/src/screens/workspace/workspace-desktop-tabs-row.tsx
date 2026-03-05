@@ -92,7 +92,7 @@ export function WorkspaceDesktopTabsRow({
       actionsReservedWidth: Math.max(0, tabsActionsWidth),
       rowPaddingHorizontal: theme.spacing[2],
       tabGap: theme.spacing[1],
-      maxTabWidth: 150,
+      maxTabWidth: 200,
       tabIconWidth: 14,
       tabHorizontalPadding: theme.spacing[3],
       estimatedCharWidth: 7,

@@ -9,6 +9,7 @@ export interface SidebarShortcutWorkspaceTarget {
 }
 
 export interface SidebarShortcutModel {
+  visibleTargets: SidebarShortcutWorkspaceTarget[]
   shortcutTargets: SidebarShortcutWorkspaceTarget[]
   shortcutIndexByWorkspaceKey: Map<string, number>
 }
@@ -19,6 +20,7 @@ export function buildSidebarShortcutModel(input: {
   shortcutLimit?: number
 }): SidebarShortcutModel {
   const maxShortcuts = Math.max(0, Math.floor(input.shortcutLimit ?? 9))
+  const visibleTargets: SidebarShortcutWorkspaceTarget[] = []
   const shortcutTargets: SidebarShortcutWorkspaceTarget[] = []
   const shortcutIndexByWorkspaceKey = new Map<string, number>()
 
@@ -28,6 +30,10 @@ export function buildSidebarShortcutModel(input: {
     }
 
     for (const workspace of project.workspaces) {
+      visibleTargets.push({
+        serverId: workspace.serverId,
+        workspaceId: workspace.workspaceId,
+      })
       const shortcutNumber =
         shortcutTargets.length < maxShortcuts ? shortcutTargets.length + 1 : null
       if (shortcutNumber !== null) {
@@ -40,5 +46,5 @@ export function buildSidebarShortcutModel(input: {
     }
   }
 
-  return { shortcutTargets, shortcutIndexByWorkspaceKey }
+  return { visibleTargets, shortcutTargets, shortcutIndexByWorkspaceKey }
 }

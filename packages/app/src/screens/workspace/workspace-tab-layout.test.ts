@@ -6,7 +6,7 @@ const metrics = {
   actionsReservedWidth: 120,
   rowPaddingHorizontal: 8,
   tabGap: 4,
-  maxTabWidth: 150,
+  maxTabWidth: 200,
   tabIconWidth: 14,
   tabHorizontalPadding: 12,
   estimatedCharWidth: 7,
@@ -14,7 +14,7 @@ const metrics = {
 };
 
 describe("computeWorkspaceTabLayout", () => {
-  it("caps tab width to the fixed maximum when enough space is available", () => {
+  it("keeps fit-content tab widths when there is extra horizontal space", () => {
     const result = computeWorkspaceTabLayout({
       viewportWidth: 1200,
       tabLabelLengths: [8, 10, 7],
@@ -25,7 +25,7 @@ describe("computeWorkspaceTabLayout", () => {
     expect(result.requiresHorizontalScrollFallback).toBe(false);
     expect(result.items).toHaveLength(3);
     expect(result.items.every((item) => item.showLabel)).toBe(true);
-    expect(Math.max(...result.items.map((item) => item.width))).toBeLessThanOrEqual(150);
+    expect(result.items.map((item) => item.width)).toEqual([126, 140, 119]);
   });
 
   it("shrinks tab widths proportionally before hiding labels", () => {
@@ -37,7 +37,7 @@ describe("computeWorkspaceTabLayout", () => {
 
     expect(result.closeButtonPolicy).toBe("all");
     expect(result.requiresHorizontalScrollFallback).toBe(false);
-    expect(result.items.map((item) => item.width)).toEqual([137, 132, 108]);
+    expect(result.items.map((item) => item.width)).toEqual([151, 121, 103]);
     expect(result.items.every((item) => item.showLabel)).toBe(true);
   });
 

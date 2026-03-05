@@ -14,14 +14,20 @@ export type MessageInputKeyboardActionKind =
 
 export type KeyboardActionId =
   | "agent.new"
+  | "workspace.tab.new"
+  | "workspace.tab.close.current"
+  | "workspace.tab.navigate.index"
+  | "workspace.tab.navigate.relative"
+  | "workspace.navigate.index"
+  | "workspace.navigate.relative"
   | "sidebar.toggle.left"
   | "sidebar.toggle.right"
-  | "sidebar.navigate.shortcut"
   | "command-center.toggle"
   | "shortcuts.dialog.toggle"
   | "message-input.action";
 
 export type KeyboardShortcutPayload =
-  | { digit: number }
+  | { index: number }
+  | { delta: 1 | -1 }
   | { kind: MessageInputKeyboardActionKind }
   | null;

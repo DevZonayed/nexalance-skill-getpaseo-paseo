@@ -48,6 +48,7 @@ import {
   buildWorkspaceTabPersistenceKey,
   useWorkspaceTabsStore,
 } from "@/stores/workspace-tabs-store";
+import { useKeyboardShortcutsStore } from "@/stores/keyboard-shortcuts-store";
 import {
   buildWorkspaceOpenIntentParam,
   type WorkspaceOpenIntent,
@@ -408,6 +409,12 @@ function WorkspaceScreenContent({
   const closeWorkspaceTab = useWorkspaceTabsStore((state) => state.closeTab);
   const promoteDraftToAgent = useWorkspaceTabsStore((state) => state.promoteDraftToAgent);
   const reorderWorkspaceTabs = useWorkspaceTabsStore((state) => state.reorderTabs);
+  const workspaceTabActionRequest = useKeyboardShortcutsStore(
+    (state) => state.workspaceTabActionRequest
+  );
+  const clearWorkspaceTabActionRequest = useKeyboardShortcutsStore(
+    (state) => state.clearWorkspaceTabActionRequest
+  );
   const consumedOpenIntentsRef = useRef(new Set<string>());
 
   useEffect(() => {
@@ -942,6 +949,62 @@ function WorkspaceScreenContent({
       terminalsQueryKey,
     ]
   );
+
+  useEffect(() => {
+    if (!workspaceTabActionRequest) {
+      return;
+    }
+    if (
+      workspaceTabActionRequest.serverId !== normalizedServerId ||
+      workspaceTabActionRequest.workspaceId !== normalizedWorkspaceId
+    ) {
+      return;
+    }
+
+    if (workspaceTabActionRequest.kind === "new") {
+      handleCreateDraftTab();
+      clearWorkspaceTabActionRequest(workspaceTabActionRequest.id);
+      return;
+    }
+    if (workspaceTabActionRequest.kind === "close-current") {
+      if (activeTabId) {
+        void handleCloseTabById(activeTabId);
+      }
+      clearWorkspaceTabActionRequest(workspaceTabActionRequest.id);
+      return;
+    }
+    if (workspaceTabActionRequest.kind === "navigate-index") {
+      const next = tabs[workspaceTabActionRequest.index - 1] ?? null;
+      if (next?.tabId) {
+        navigateToTabId(next.tabId);
+      }
+      clearWorkspaceTabActionRequest(workspaceTabActionRequest.id);
+      return;
+    }
+    if (workspaceTabActionRequest.kind === "navigate-relative") {
+      if (tabs.length > 0) {
+        const currentIndex = tabs.findIndex((tab) => tab.tabId === activeTabId);
+        const fromIndex = currentIndex >= 0 ? currentIndex : 0;
+        const nextIndex =
+          (fromIndex + workspaceTabActionRequest.delta + tabs.length) % tabs.length;
+        const next = tabs[nextIndex] ?? null;
+        if (next?.tabId) {
+          navigateToTabId(next.tabId);
+        }
+      }
+      clearWorkspaceTabActionRequest(workspaceTabActionRequest.id);
+    }
+  }, [
+    activeTabId,
+    clearWorkspaceTabActionRequest,
+    handleCloseTabById,
+    handleCreateDraftTab,
+    navigateToTabId,
+    normalizedServerId,
+    normalizedWorkspaceId,
+    tabs,
+    workspaceTabActionRequest,
+  ]);
 
   const renderContent = () => {
     if (

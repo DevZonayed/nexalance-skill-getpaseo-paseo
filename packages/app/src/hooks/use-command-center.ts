@@ -68,7 +68,7 @@ const COMMAND_CENTER_ACTIONS: readonly CommandCenterActionDefinition[] = [
     id: "new-agent",
     title: "New agent",
     icon: "plus",
-    shortcutKeys: ["mod", "alt", "N"],
+    shortcutKeys: ["mod", "shift", "O"],
     keywords: ["new", "new agent", "create", "start", "launch", "agent"],
     buildRoute: ({ newAgentRoute }) => newAgentRoute,
   },

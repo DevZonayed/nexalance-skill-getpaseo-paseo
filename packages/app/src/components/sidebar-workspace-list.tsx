@@ -866,6 +866,9 @@ export function SidebarWorkspaceList({
   const setSidebarShortcutWorkspaceTargets = useKeyboardShortcutsStore(
     (state) => state.setSidebarShortcutWorkspaceTargets
   )
+  const setVisibleWorkspaceTargets = useKeyboardShortcutsStore(
+    (state) => state.setVisibleWorkspaceTargets
+  )
   const showShortcutBadges = altDown || (isTauri && cmdOrCtrlDown)
 
   const getProjectOrder = useSidebarOrderStore((state) => state.getProjectOrder)
@@ -978,13 +981,20 @@ export function SidebarWorkspaceList({
 
   useEffect(() => {
     setSidebarShortcutWorkspaceTargets(shortcutModel.shortcutTargets)
-  }, [setSidebarShortcutWorkspaceTargets, shortcutModel.shortcutTargets])
+    setVisibleWorkspaceTargets(shortcutModel.visibleTargets)
+  }, [
+    setSidebarShortcutWorkspaceTargets,
+    setVisibleWorkspaceTargets,
+    shortcutModel.shortcutTargets,
+    shortcutModel.visibleTargets,
+  ])
 
   useEffect(() => {
     return () => {
       setSidebarShortcutWorkspaceTargets([])
+      setVisibleWorkspaceTargets([])
     }
-  }, [setSidebarShortcutWorkspaceTargets])
+  }, [setSidebarShortcutWorkspaceTargets, setVisibleWorkspaceTargets])
 
   const toggleProjectCollapsed = useCallback((projectKey: string) => {
     setCollapsedProjectKeys((prev) => {
