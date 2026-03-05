@@ -7,7 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useIsFocused } from '@react-navigation/native'
 import { FOOTER_HEIGHT, MAX_CONTENT_WIDTH } from '@/constants/layout'
 import { generateMessageId, type StreamItem } from '@/types/stream'
-import { AgentStatusBar } from './agent-status-bar'
+import { AgentStatusBar, DraftAgentStatusBar, type DraftAgentStatusBarProps } from './agent-status-bar'
 import { useImageAttachmentPicker } from '@/hooks/use-image-attachment-picker'
 import { useSessionStore } from '@/stores/session-store'
 import { useDraftStore } from '@/stores/draft-store'
@@ -34,6 +34,7 @@ import {
   deleteAttachments,
   persistAttachmentFromFileUri,
 } from '@/attachments/service'
+import { resolveStatusControlMode } from '@/components/agent-input-area.status-controls'
 import { shouldSkipDraftPersist } from '@/components/agent-input-area.draft-persist-guard'
 import { markScrollInvestigationRender } from '@/utils/scroll-jank-investigation'
 import { useKeyboardShiftStyle } from '@/hooks/use-keyboard-shift-style'
@@ -63,6 +64,8 @@ interface AgentInputAreaProps {
   commandDraftConfig?: DraftCommandConfig
   /** Called when a message is about to be sent (any path: keyboard, dictation, queued). */
   onMessageSent?: () => void
+  /** Controlled status controls rendered in input area (draft flows). */
+  statusControls?: DraftAgentStatusBarProps
 }
 
 const EMPTY_ARRAY: readonly QueuedMessage[] = []
@@ -80,6 +83,7 @@ export function AgentInputArea({
   onAddImages,
   commandDraftConfig,
   onMessageSent,
+  statusControls,
 }: AgentInputAreaProps) {
   markScrollInvestigationRender(`AgentInputArea:${serverId}:${agentId}`)
   const { theme } = useUnistyles()
@@ -710,7 +714,12 @@ export function AgentInputArea({
     </View>
   )
 
-  const leftContent = <AgentStatusBar agentId={agentId} serverId={serverId} />
+  const leftContent =
+    resolveStatusControlMode(statusControls) === 'draft' && statusControls ? (
+      <DraftAgentStatusBar {...statusControls} />
+    ) : (
+      <AgentStatusBar agentId={agentId} serverId={serverId} />
+    )
 
   return (
     <Animated.View

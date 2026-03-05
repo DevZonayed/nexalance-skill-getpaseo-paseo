@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState, useSyncExternalStore } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { createNameId } from 'mnemonic-id'
 import type { ImageAttachment } from '@/components/message-input'
 import { View, Text, Pressable, ScrollView, Keyboard, Platform } from 'react-native'
@@ -13,7 +13,7 @@ import { SidebarMenuToggle } from '@/components/headers/menu-header'
 import { HeaderToggleButton } from '@/components/headers/header-toggle-button'
 import { AgentInputArea } from '@/components/agent-input-area'
 import { AgentStreamView } from '@/components/agent-stream-view'
-import { AgentConfigRow, FormSelectTrigger } from '@/components/agent-form/agent-form-dropdowns'
+import { FormSelectTrigger } from '@/components/agent-form/agent-form-dropdowns'
 import { ExplorerSidebar } from '@/components/explorer-sidebar'
 import { Combobox } from '@/components/ui/combobox'
 import { FileDropZone } from '@/components/file-drop-zone'
@@ -32,7 +32,6 @@ import { collectAgentWorkingDirectorySuggestions } from '@/utils/agent-working-d
 import { buildWorkingDirectorySuggestions } from '@/utils/working-directory-suggestions'
 import { useExplorerOpenGesture } from '@/hooks/use-explorer-open-gesture'
 import { useSessionStore } from '@/stores/session-store'
-import { useCreateFlowStore } from '@/stores/create-flow-store'
 import { generateDraftId } from '@/stores/draft-keys'
 import { getHostRuntimeStore, useHostRuntimeSession } from '@/runtime/host-runtime'
 import { ExplorerSidebarAnimationProvider } from '@/contexts/explorer-sidebar-animation-context'
@@ -40,7 +39,6 @@ import { usePanelStore, type ExplorerCheckoutContext } from '@/stores/panel-stor
 import { MAX_CONTENT_WIDTH } from '@/constants/layout'
 import { WelcomeScreen } from '@/components/welcome-screen'
 import type { Agent } from '@/contexts/session-context'
-import { generateMessageId, type StreamItem, type UserMessageImageAttachment } from '@/types/stream'
 import { encodeImages } from '@/utils/encode-images'
 import type {
   AgentProvider,
@@ -52,9 +50,9 @@ import { buildHostWorkspaceAgentRoute } from '@/utils/host-routes'
 import { useTauriDragHandlers } from '@/utils/tauri-window'
 import { useKeyboardShiftStyle } from '@/hooks/use-keyboard-shift-style'
 import { normalizeAgentSnapshot } from '@/utils/agent-snapshots'
+import { useDraftAgentCreateFlow } from '@/hooks/use-draft-agent-create-flow'
 
 const EMPTY_PENDING_PERMISSIONS = new Map()
-const EMPTY_STREAM_ITEMS: StreamItem[] = []
 const MAX_INITIAL_AGENT_TITLE_CHARS = 60
 const DRAFT_CAPABILITIES: AgentCapabilityFlags = {
   supportsStreaming: true,
@@ -268,10 +266,6 @@ function DraftAgentScreenContent({
   const worktreeAnchorRef = useRef<View>(null)
   const branchAnchorRef = useRef<View>(null)
   const addImagesRef = useRef<((images: ImageAttachment[]) => void) | null>(null)
-  const setPendingCreateAttempt = useCreateFlowStore((state) => state.setPending)
-  const updatePendingAgentId = useCreateFlowStore((state) => state.updateAgentId)
-  const markPendingCreateLifecycle = useCreateFlowStore((state) => state.markLifecycle)
-  const clearPendingCreateAttempt = useCreateFlowStore((state) => state.clear)
 
   useEffect(() => {
     const trimmed = branchSearchQuery.trim()
@@ -284,58 +278,6 @@ function DraftAgentScreenContent({
     const timer = setTimeout(() => setDebouncedWorkingDirSearchQuery(trimmed), 180)
     return () => clearTimeout(timer)
   }, [workingDirSearchQuery])
-
-  type CreateAttempt = {
-    clientMessageId: string
-    text: string
-    timestamp: Date
-    images?: UserMessageImageAttachment[]
-  }
-
-  type DraftAgentMachineState =
-    | { tag: 'draft'; promptText: string; errorMessage: string }
-    | { tag: 'creating'; attempt: CreateAttempt }
-
-  type DraftAgentMachineEvent =
-    | { type: 'DRAFT_SET_PROMPT'; text: string }
-    | { type: 'DRAFT_SET_ERROR'; message: string }
-    | { type: 'SUBMIT'; attempt: CreateAttempt }
-    | { type: 'CREATE_FAILED'; message: string }
-
-  function assertNever(value: never): never {
-    throw new Error(`Unhandled state: ${JSON.stringify(value)}`)
-  }
-
-  const [machine, dispatch] = useReducer(
-    (state: DraftAgentMachineState, event: DraftAgentMachineEvent): DraftAgentMachineState => {
-      switch (event.type) {
-        case 'DRAFT_SET_PROMPT': {
-          if (state.tag !== 'draft') {
-            return state
-          }
-          return { ...state, promptText: event.text }
-        }
-        case 'DRAFT_SET_ERROR': {
-          if (state.tag !== 'draft') {
-            return state
-          }
-          return { ...state, errorMessage: event.message }
-        }
-        case 'SUBMIT': {
-          return { tag: 'creating', attempt: event.attempt }
-        }
-        case 'CREATE_FAILED': {
-          if (state.tag !== 'creating') {
-            return state
-          }
-          return { tag: 'draft', promptText: state.attempt.text, errorMessage: event.message }
-        }
-        default:
-          return assertNever(event)
-      }
-    },
-    { tag: 'draft', promptText: '', errorMessage: '' }
-  )
 
   const handleFilesDropped = useCallback((files: ImageAttachment[]) => {
     addImagesRef.current?.(files)
@@ -830,79 +772,179 @@ function DraftAgentScreenContent({
     workingDir,
   ])
 
-  const promptValue = machine.tag === 'draft' ? machine.promptText : ''
-  const formErrorMessage = machine.tag === 'draft' ? machine.errorMessage : ''
-  const isSubmitting = machine.tag === 'creating'
-
-  const optimisticStreamItems = useMemo<StreamItem[]>(() => {
-    if (machine.tag !== 'creating') {
-      return EMPTY_STREAM_ITEMS
-    }
-    return [
-      {
-        kind: 'user_message',
-        id: machine.attempt.clientMessageId,
-        text: machine.attempt.text,
-        timestamp: machine.attempt.timestamp,
-        ...(machine.attempt.images && machine.attempt.images.length > 0
-          ? { images: machine.attempt.images }
-          : {}),
-      },
-    ]
-  }, [machine])
-
-  const draftAgent = useMemo<Agent | null>(() => {
-    if (machine.tag !== 'creating') {
+  const {
+    promptValue,
+    formErrorMessage,
+    isSubmitting,
+    optimisticStreamItems,
+    draftAgent,
+    setPromptText,
+    handleCreateFromInput,
+  } = useDraftAgentCreateFlow<Agent, { id: string; cwd: string }>({
+    draftId: draftIdRef.current,
+    getPendingServerId: () => selectedServerId,
+    validateBeforeSubmit: ({ text }) => {
+      const trimmedPath = workingDir.trim()
+      if (!trimmedPath) {
+        return 'Working directory is required'
+      }
+      if (isDirectoryNotExists) {
+        return 'Working directory does not exist on the selected host'
+      }
+      if (!text.trim()) {
+        return 'Initial prompt is required'
+      }
+      if (!selectedServerId) {
+        return 'No host selected'
+      }
+      if (providerDefinitions.length === 0) {
+        return 'No available providers on the selected host'
+      }
+      if (gitBlockingError) {
+        return gitBlockingError
+      }
+      if (isAttachWorktree && !selectedWorktreePath) {
+        return 'Select a worktree to attach'
+      }
+      if (baseBranchError) {
+        return baseBranchError
+      }
+      if (!createAgentClient) {
+        return 'Host is not connected'
+      }
       return null
-    }
-    const serverId = selectedServerId ?? ''
-    const now = machine.attempt.timestamp
-    const cwd =
-      (isAttachWorktree && selectedWorktreePath ? selectedWorktreePath : workingDir).trim() || '.'
-    const provider = selectedProvider
-    const model = selectedModel.trim() || null
-    const thinkingOptionId = selectedThinkingOptionId.trim() || null
-    const modeId = modeOptions.length > 0 && selectedMode !== '' ? selectedMode : null
+    },
+    onBeforeSubmit: () => {
+      void persistFormPreferences()
+      if (Platform.OS === 'web') {
+        ;(document.activeElement as HTMLElement | null)?.blur?.()
+      }
+      Keyboard.dismiss()
+    },
+    onCreateStart: () => {
+      onCreateFlowActiveChange?.(true)
+    },
+    onCreateError: () => {
+      onCreateFlowActiveChange?.(false)
+    },
+    buildDraftAgent: (attempt) => {
+      const serverId = selectedServerId ?? ''
+      const now = attempt.timestamp
+      const cwd =
+        (isAttachWorktree && selectedWorktreePath ? selectedWorktreePath : workingDir).trim() || '.'
+      const provider = selectedProvider
+      const model = selectedModel.trim() || null
+      const thinkingOptionId = selectedThinkingOptionId.trim() || null
+      const modeId = modeOptions.length > 0 && selectedMode !== '' ? selectedMode : null
 
-    return {
-      serverId,
-      id: draftAgentIdRef.current,
-      provider,
-      status: 'running',
-      createdAt: now,
-      updatedAt: now,
-      lastUserMessageAt: now,
-      lastActivityAt: now,
-      capabilities: DRAFT_CAPABILITIES,
-      currentModeId: modeId,
-      availableModes: [],
-      pendingPermissions: [],
-      persistence: null,
-      runtimeInfo: {
+      return {
+        serverId,
+        id: draftAgentIdRef.current,
         provider,
-        sessionId: null,
+        status: 'running',
+        createdAt: now,
+        updatedAt: now,
+        lastUserMessageAt: now,
+        lastActivityAt: now,
+        capabilities: DRAFT_CAPABILITIES,
+        currentModeId: modeId,
+        availableModes: [],
+        pendingPermissions: [],
+        persistence: null,
+        runtimeInfo: {
+          provider,
+          sessionId: null,
+          model,
+          modeId,
+        },
+        title: 'New agent',
+        cwd,
         model,
-        modeId,
-      },
-      title: 'New agent',
-      cwd,
-      model,
-      thinkingOptionId,
-      labels: {},
-    }
-  }, [
-    machine.tag,
-    machine.tag === 'creating' ? machine.attempt.timestamp : null,
-    isAttachWorktree,
-    modeOptions.length,
-    selectedMode,
-    selectedModel,
-    selectedThinkingOptionId,
-    selectedProvider,
-    selectedServerId,
-    selectedWorktreePath,
-    workingDir,
-  ])
+        thinkingOptionId,
+        labels: {},
+      }
+    },
+    createRequest: async ({ attempt, text, images }) => {
+      const trimmedPath = workingDir.trim()
+      const resolvedWorkingDir =
+        isAttachWorktree && selectedWorktreePath ? selectedWorktreePath : trimmedPath
+
+      const modeId = modeOptions.length > 0 && selectedMode !== '' ? selectedMode : undefined
+      const trimmedModel = selectedModel.trim()
+      const trimmedThinkingOptionId = selectedThinkingOptionId.trim()
+      const derivedTitle = deriveInitialAgentTitle(text)
+      const config: AgentSessionConfig = {
+        provider: selectedProvider,
+        cwd: resolvedWorkingDir,
+        ...(derivedTitle ? { title: derivedTitle } : {}),
+        ...(modeId ? { modeId } : {}),
+        ...(trimmedModel ? { model: trimmedModel } : {}),
+        ...(trimmedThinkingOptionId ? { thinkingOptionId: trimmedThinkingOptionId } : {}),
+      }
+
+      const effectiveBaseBranch = baseBranch.trim()
+      const effectiveWorktreeSlug =
+        isCreateWorktree && !worktreeSlug ? createNameId() : worktreeSlug
+      if (isCreateWorktree && !worktreeSlug && effectiveWorktreeSlug) {
+        setWorktreeSlug(effectiveWorktreeSlug)
+      }
+
+      const gitOptions =
+        isCreateWorktree && !isNonGitDirectory && effectiveWorktreeSlug
+          ? {
+              createWorktree: true,
+              createNewBranch: true,
+              newBranchName: effectiveWorktreeSlug,
+              worktreeSlug: effectiveWorktreeSlug,
+              baseBranch: effectiveBaseBranch,
+            }
+          : undefined
+
+      const client = createAgentClient
+      if (!client) {
+        throw new Error('Host is not connected')
+      }
+
+      const imagesData = await encodeImages(images)
+      const result = await client.createAgent({
+        config,
+        initialPrompt: text,
+        clientMessageId: attempt.clientMessageId,
+        ...(imagesData && imagesData.length > 0 ? { images: imagesData } : {}),
+        git: gitOptions,
+      })
+
+      if (!result.id || !selectedServerId) {
+        throw new Error('Failed to create agent')
+      }
+
+      useSessionStore.getState().setAgents(selectedServerId, (prev) => {
+        const next = new Map(prev)
+        next.set(result.id, normalizeAgentSnapshot(result, selectedServerId))
+        return next
+      })
+
+      const createdWorkingDir = typeof result.cwd === 'string' ? result.cwd.trim() : ''
+      const configuredWorkingDir = config.cwd.trim()
+      const workspaceId = createdWorkingDir.length > 0 ? createdWorkingDir : configuredWorkingDir
+
+      return {
+        agentId: result.id,
+        result: {
+          id: result.id,
+          cwd: workspaceId,
+        },
+      }
+    },
+    onCreateSuccess: ({ result }) => {
+      const route: Href = buildHostWorkspaceAgentRoute(
+        selectedServerId as string,
+        result.cwd,
+        result.id
+      ) as Href
+      router.replace(route)
+    },
+  })
   useEffect(() => {
     if (!isFocused) {
       return
@@ -926,190 +968,6 @@ function DraftAgentScreenContent({
       setActiveExplorerCheckout(null)
     }
   }, [setActiveExplorerCheckout])
-
-  const handleCreateFromInput = useCallback(
-    async ({ text, images }: { text: string; images?: UserMessageImageAttachment[] }) => {
-      if (isSubmitting) {
-        throw new Error('Already loading')
-      }
-      dispatch({ type: 'DRAFT_SET_ERROR', message: '' })
-      const trimmedPath = workingDir.trim()
-      const trimmedPrompt = text.trim()
-      const resolvedWorkingDir =
-        isAttachWorktree && selectedWorktreePath ? selectedWorktreePath : trimmedPath
-      if (!trimmedPath) {
-        dispatch({ type: 'DRAFT_SET_ERROR', message: 'Working directory is required' })
-        throw new Error('Working directory is required')
-      }
-      if (isDirectoryNotExists) {
-        dispatch({
-          type: 'DRAFT_SET_ERROR',
-          message: 'Working directory does not exist on the selected host',
-        })
-        throw new Error('Working directory does not exist on the selected host')
-      }
-      if (!trimmedPrompt) {
-        dispatch({ type: 'DRAFT_SET_ERROR', message: 'Initial prompt is required' })
-        throw new Error('Initial prompt is required')
-      }
-      if (!selectedServerId) {
-        dispatch({ type: 'DRAFT_SET_ERROR', message: 'No host selected' })
-        throw new Error('No host selected')
-      }
-      if (providerDefinitions.length === 0) {
-        dispatch({
-          type: 'DRAFT_SET_ERROR',
-          message: 'No available providers on the selected host',
-        })
-        throw new Error('No available providers on the selected host')
-      }
-      if (gitBlockingError) {
-        dispatch({ type: 'DRAFT_SET_ERROR', message: gitBlockingError })
-        throw new Error(gitBlockingError)
-      }
-      if (isAttachWorktree && !selectedWorktreePath) {
-        const message = 'Select a worktree to attach'
-        dispatch({ type: 'DRAFT_SET_ERROR', message })
-        throw new Error(message)
-      }
-      if (baseBranchError) {
-        dispatch({ type: 'DRAFT_SET_ERROR', message: baseBranchError })
-        throw new Error(baseBranchError)
-      }
-      if (!createAgentClient) {
-        dispatch({ type: 'DRAFT_SET_ERROR', message: 'Host is not connected' })
-        throw new Error('Host is not connected')
-      }
-      const attempt = {
-        clientMessageId: generateMessageId(),
-        text: trimmedPrompt,
-        timestamp: new Date(),
-        ...(images && images.length > 0 ? { images } : {}),
-      }
-      setPendingCreateAttempt({
-        draftId: draftIdRef.current,
-        serverId: selectedServerId,
-        agentId: null,
-        clientMessageId: attempt.clientMessageId,
-        text: attempt.text,
-        timestamp: attempt.timestamp.getTime(),
-        ...(attempt.images && attempt.images.length > 0 ? { images: attempt.images } : {}),
-      })
-      const modeId = modeOptions.length > 0 && selectedMode !== '' ? selectedMode : undefined
-      const trimmedModel = selectedModel.trim()
-      const trimmedThinkingOptionId = selectedThinkingOptionId.trim()
-      const derivedTitle = deriveInitialAgentTitle(trimmedPrompt)
-      const config: AgentSessionConfig = {
-        provider: selectedProvider,
-        cwd: resolvedWorkingDir,
-        ...(derivedTitle ? { title: derivedTitle } : {}),
-        ...(modeId ? { modeId } : {}),
-        ...(trimmedModel ? { model: trimmedModel } : {}),
-        ...(trimmedThinkingOptionId ? { thinkingOptionId: trimmedThinkingOptionId } : {}),
-      }
-      const effectiveBaseBranch = baseBranch.trim()
-      const effectiveWorktreeSlug =
-        isCreateWorktree && !worktreeSlug ? createNameId() : worktreeSlug
-      if (isCreateWorktree && !worktreeSlug && effectiveWorktreeSlug) {
-        setWorktreeSlug(effectiveWorktreeSlug)
-      }
-      const gitOptions =
-        isCreateWorktree && !isNonGitDirectory && effectiveWorktreeSlug
-          ? {
-              createWorktree: true,
-              createNewBranch: true,
-              newBranchName: effectiveWorktreeSlug,
-              worktreeSlug: effectiveWorktreeSlug,
-              baseBranch: effectiveBaseBranch,
-            }
-          : undefined
-
-      void persistFormPreferences()
-      if (Platform.OS === 'web') {
-        ;(document.activeElement as HTMLElement | null)?.blur?.()
-      }
-      Keyboard.dismiss()
-      dispatch({ type: 'SUBMIT', attempt })
-      onCreateFlowActiveChange?.(true)
-
-      try {
-        const imagesData = await encodeImages(images)
-        const result = await createAgentClient.createAgent({
-          config,
-          initialPrompt: trimmedPrompt,
-          clientMessageId: attempt.clientMessageId,
-          ...(imagesData && imagesData.length > 0 ? { images: imagesData } : {}),
-          git: gitOptions,
-        })
-
-        const agentId = result.id
-        if (agentId && selectedServerId) {
-          updatePendingAgentId({ draftId: draftIdRef.current, agentId })
-          useSessionStore.getState().setAgents(selectedServerId, (prev) => {
-            const next = new Map(prev)
-            next.set(agentId, normalizeAgentSnapshot(result, selectedServerId))
-            return next
-          })
-          const createdWorkingDir =
-            typeof result.cwd === 'string' ? result.cwd.trim() : ''
-          const configuredWorkingDir = config.cwd.trim()
-          const workspaceId =
-            createdWorkingDir.length > 0 ? createdWorkingDir : configuredWorkingDir
-          const route: Href = buildHostWorkspaceAgentRoute(
-            selectedServerId,
-            workspaceId,
-            agentId
-          ) as Href
-          router.replace(route)
-          return
-        }
-
-        dispatch({
-          type: 'CREATE_FAILED',
-          message: 'Failed to create agent',
-        })
-        onCreateFlowActiveChange?.(false)
-        markPendingCreateLifecycle({ draftId: draftIdRef.current, lifecycle: 'abandoned' })
-        clearPendingCreateAttempt({ draftId: draftIdRef.current })
-        throw new Error('Failed to create agent')
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'Failed to create agent'
-        dispatch({ type: 'CREATE_FAILED', message })
-        onCreateFlowActiveChange?.(false)
-        markPendingCreateLifecycle({ draftId: draftIdRef.current, lifecycle: 'abandoned' })
-        clearPendingCreateAttempt({ draftId: draftIdRef.current })
-        throw error // Re-throw so AgentInputArea knows it failed
-      }
-    },
-    [
-      worktreeMode,
-      baseBranch,
-      worktreeSlug,
-      selectedWorktreePath,
-      gitBlockingError,
-      baseBranchError,
-      isDirectoryNotExists,
-      isNonGitDirectory,
-      modeOptions,
-      providerDefinitions,
-      persistFormPreferences,
-      router,
-      selectedMode,
-      selectedModel,
-      selectedThinkingOptionId,
-      selectedProvider,
-      selectedServerId,
-      createAgentClient,
-      setPendingCreateAttempt,
-      updatePendingAgentId,
-      markPendingCreateLifecycle,
-      clearPendingCreateAttempt,
-      workingDir,
-      isAttachWorktree,
-      isSubmitting,
-      onCreateFlowActiveChange,
-    ]
-  )
 
   if (daemons.length === 0) {
     return (
@@ -1157,7 +1015,7 @@ function DraftAgentScreenContent({
           </View>
 
           <Animated.View style={[styles.contentContainer, animatedKeyboardStyle]}>
-            {machine.tag === 'creating' && draftAgent && selectedServerId ? (
+            {isSubmitting && draftAgent && selectedServerId ? (
               <View style={styles.streamContainer}>
                 <AgentStreamView
                   agentId={draftAgentIdRef.current}
@@ -1194,22 +1052,6 @@ function DraftAgentScreenContent({
                       </Text>
                     </View>
                   )}
-                  {isMobile ? <View style={styles.formSeparator} /> : null}
-                  <AgentConfigRow
-                    providerDefinitions={providerDefinitions}
-                    selectedProvider={selectedProvider}
-                    onSelectProvider={setProviderFromUser}
-                    modeOptions={modeOptions}
-                    selectedMode={selectedMode}
-                    onSelectMode={setModeFromUser}
-                    models={availableModels}
-                    selectedModel={selectedModel}
-                    isModelLoading={isModelLoading}
-                    onSelectModel={setModelFromUser}
-                    thinkingOptions={availableThinkingOptions}
-                    selectedThinkingOptionId={selectedThinkingOptionId}
-                    onSelectThinkingOption={setThinkingOptionFromUser}
-                  />
                   {isMobile && trimmedWorkingDir.length > 0 && !isNonGitDirectory ? (
                     <View style={styles.formSeparator} />
                   ) : null}
@@ -1352,11 +1194,27 @@ function DraftAgentScreenContent({
               isSubmitLoading={isSubmitting}
               blurOnSubmit={true}
               value={promptValue}
-              onChangeText={(next) => dispatch({ type: 'DRAFT_SET_PROMPT', text: next })}
-              autoFocus={machine.tag === 'draft'}
+              onChangeText={setPromptText}
+              autoFocus={!isSubmitting}
               onAddImages={handleAddImagesCallback}
               commandDraftConfig={draftCommandConfig}
               draftId={draftIdRef.current}
+              statusControls={{
+                providerDefinitions,
+                selectedProvider,
+                onSelectProvider: setProviderFromUser,
+                modeOptions,
+                selectedMode,
+                onSelectMode: setModeFromUser,
+                models: availableModels,
+                selectedModel,
+                onSelectModel: setModelFromUser,
+                isModelLoading,
+                thinkingOptions: availableThinkingOptions,
+                selectedThinkingOptionId,
+                onSelectThinkingOption: setThinkingOptionFromUser,
+                disabled: isSubmitting,
+              }}
             />
           </View>
         </View>

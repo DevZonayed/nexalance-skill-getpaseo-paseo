@@ -379,7 +379,9 @@ export const createAgent = async (page: Page, message: string) => {
 };
 
 async function preferFastThinkingOption(page: Page): Promise<void> {
-  const providerTrigger = page.getByTestId('draft-provider-select').first();
+  const providerTrigger = page
+    .locator('[data-testid="agent-provider-selector"]:visible, [data-testid="draft-provider-select"]:visible')
+    .first();
   if (await providerTrigger.isVisible().catch(() => false)) {
     const providerText = ((await providerTrigger.innerText().catch(() => '')) ?? '').trim();
     if (!/codex/i.test(providerText)) {
@@ -458,7 +460,9 @@ export const selectProvider = async (page: Page, provider: string) => {
     throw new Error('Provider must be a non-empty string.');
   }
 
-  const providerTrigger = page.getByTestId('draft-provider-select').first();
+  const providerTrigger = page
+    .locator('[data-testid="agent-provider-selector"]:visible, [data-testid="draft-provider-select"]:visible')
+    .first();
   if (
     await providerTrigger
       .getByText(new RegExp(`^${escapeRegex(normalizedProvider)}$`, 'i'))
@@ -496,7 +500,9 @@ export const selectModel = async (page: Page, model: string) => {
     throw new Error('Model must be a non-empty string.');
   }
 
-  const modelTrigger = page.getByTestId('draft-model-select').first();
+  const modelTrigger = page
+    .locator('[data-testid="agent-model-selector"]:visible, [data-testid="draft-model-select"]:visible')
+    .first();
   if (
     await modelTrigger
       .getByText(new RegExp(`^${escapeRegex(normalizedModel)}$`, 'i'))
@@ -543,7 +549,9 @@ export const selectModel = async (page: Page, model: string) => {
 };
 
 export const selectMode = async (page: Page, mode: string) => {
-  const modeTrigger = page.getByTestId('draft-mode-select').first();
+  const modeTrigger = page
+    .locator('[data-testid="agent-mode-selector"]:visible, [data-testid="draft-mode-select"]:visible')
+    .first();
   if (await modeTrigger.isVisible().catch(() => false)) {
     await modeTrigger.click();
   } else {

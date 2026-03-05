@@ -7,6 +7,8 @@ import {
   persistAttachmentFromDataUrl,
   persistAttachmentFromFileUri,
 } from "@/attachments/service";
+import { useCreateFlowStore } from "@/stores/create-flow-store";
+import { useSessionStore } from "@/stores/session-store";
 
 const DRAFT_STORE_VERSION = 2;
 const FINALIZED_DRAFT_TTL_MS = 5 * 60 * 1000;
@@ -245,56 +247,47 @@ async function runAttachmentGc(): Promise<void> {
     referencedIds.add(id);
   }
 
-  try {
-    const [{ useCreateFlowStore }, { useSessionStore }] = await Promise.all([
-      import("@/stores/create-flow-store"),
-      import("@/stores/session-store"),
-    ]);
+  const pendingByDraftId = useCreateFlowStore.getState().pendingByDraftId;
+  for (const pendingCreate of Object.values(pendingByDraftId)) {
+    if (pendingCreate.lifecycle !== "active" || !pendingCreate.images) {
+      continue;
+    }
+    for (const image of pendingCreate.images) {
+      referencedIds.add(image.id);
+    }
+  }
 
-    const pendingByDraftId = useCreateFlowStore.getState().pendingByDraftId;
-    for (const pendingCreate of Object.values(pendingByDraftId)) {
-      if (pendingCreate.lifecycle !== "active" || !pendingCreate.images) {
-        continue;
-      }
-      for (const image of pendingCreate.images) {
-        referencedIds.add(image.id);
+  const sessions = useSessionStore.getState().sessions;
+  for (const session of Object.values(sessions)) {
+    for (const queue of session.queuedMessages.values()) {
+      for (const queuedMessage of queue) {
+        for (const image of queuedMessage.images ?? []) {
+          referencedIds.add(image.id);
+        }
       }
     }
 
-    const sessions = useSessionStore.getState().sessions;
-    for (const session of Object.values(sessions)) {
-      for (const queue of session.queuedMessages.values()) {
-        for (const queuedMessage of queue) {
-          for (const image of queuedMessage.images ?? []) {
-            referencedIds.add(image.id);
-          }
+    for (const stream of session.agentStreamTail.values()) {
+      for (const item of stream) {
+        if (item.kind !== "user_message") {
+          continue;
         }
-      }
-
-      for (const stream of session.agentStreamTail.values()) {
-        for (const item of stream) {
-          if (item.kind !== "user_message") {
-            continue;
-          }
-          for (const image of item.images ?? []) {
-            referencedIds.add(image.id);
-          }
-        }
-      }
-
-      for (const stream of session.agentStreamHead.values()) {
-        for (const item of stream) {
-          if (item.kind !== "user_message") {
-            continue;
-          }
-          for (const image of item.images ?? []) {
-            referencedIds.add(image.id);
-          }
+        for (const image of item.images ?? []) {
+          referencedIds.add(image.id);
         }
       }
     }
-  } catch (error) {
-    console.warn("[DraftStore] Failed to collect attachment GC references", error);
+
+    for (const stream of session.agentStreamHead.values()) {
+      for (const item of stream) {
+        if (item.kind !== "user_message") {
+          continue;
+        }
+        for (const image of item.images ?? []) {
+          referencedIds.add(image.id);
+        }
+      }
+    }
   }
 
   try {

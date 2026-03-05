@@ -7,19 +7,19 @@ let attachmentStorePromise: Promise<AttachmentStore> | null = null;
 async function createAttachmentStore(): Promise<AttachmentStore> {
   if (Platform.OS === "web") {
     if (isTauriEnvironment()) {
-      const { createDesktopAttachmentStore } = await import(
+      const { createDesktopAttachmentStore } = require(
         "@/desktop/attachments/desktop-attachment-store"
       );
       return createDesktopAttachmentStore();
     }
 
-    const { createIndexedDbAttachmentStore } = await import(
+    const { createIndexedDbAttachmentStore } = require(
       "@/attachments/web/indexeddb-attachment-store"
     );
     return createIndexedDbAttachmentStore();
   }
 
-  const { createNativeFileAttachmentStore } = await import(
+  const { createNativeFileAttachmentStore } = require(
     "@/attachments/native/native-file-attachment-store"
   );
   return createNativeFileAttachmentStore();
