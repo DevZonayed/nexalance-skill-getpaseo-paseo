@@ -13,14 +13,11 @@ type UseWorkspaceTabLayoutInput = {
     actionsReservedWidth: number;
     rowPaddingHorizontal: number;
     tabGap: number;
-    minTabWidth: number;
     maxTabWidth: number;
     tabIconWidth: number;
     tabHorizontalPadding: number;
     estimatedCharWidth: number;
     closeButtonWidth: number;
-    compactLabelCharCap?: number;
-    compactDenseLabelCharCap?: number;
   };
 };
 

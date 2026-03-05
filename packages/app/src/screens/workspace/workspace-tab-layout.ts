@@ -1,4 +1,3 @@
-export type WorkspaceTabLayoutMode = "full" | "compact" | "icon";
 export type WorkspaceTabCloseButtonPolicy = "all";
 
 export type WorkspaceTabLayoutInput = {
@@ -9,22 +8,24 @@ export type WorkspaceTabLayoutInput = {
     actionsReservedWidth: number;
     rowPaddingHorizontal: number;
     tabGap: number;
-    minTabWidth: number;
     maxTabWidth: number;
     tabIconWidth: number;
     tabHorizontalPadding: number;
     estimatedCharWidth: number;
     closeButtonWidth: number;
-    compactLabelCharCap?: number;
-    compactDenseLabelCharCap?: number;
   };
 };
 
+export type WorkspaceTabLayoutItem = {
+  width: number;
+  showLabel: boolean;
+  labelCharCap: number;
+};
+
 export type WorkspaceTabLayoutResult = {
-  mode: WorkspaceTabLayoutMode;
-  showLabels: boolean;
+  items: WorkspaceTabLayoutItem[];
   closeButtonPolicy: WorkspaceTabCloseButtonPolicy;
-  tabMaxWidth: number;
+  requiresHorizontalScrollFallback: boolean;
 };
 
 function clamp(value: number, min: number, max: number): number {
@@ -45,27 +46,15 @@ function sum(values: number[]): number {
   return total;
 }
 
-function computeTotalRowWidth(input: { itemWidths: number[]; tabGap: number; rowPaddingHorizontal: number }): number {
-  if (input.itemWidths.length === 0) {
-    return 0;
-  }
-  return (
-    input.rowPaddingHorizontal * 2 +
-    sum(input.itemWidths) +
-    Math.max(input.itemWidths.length - 1, 0) * input.tabGap
-  );
-}
-
 export function computeWorkspaceTabLayout(
   input: WorkspaceTabLayoutInput
 ): WorkspaceTabLayoutResult {
   const tabCount = input.tabLabelLengths.length;
   if (tabCount === 0) {
     return {
-      mode: "full",
-      showLabels: true,
+      items: [],
       closeButtonPolicy: "all",
-      tabMaxWidth: input.metrics.maxTabWidth,
+      requiresHorizontalScrollFallback: false,
     };
   }
 
@@ -73,60 +62,52 @@ export function computeWorkspaceTabLayout(
     0,
     input.viewportWidth - input.metrics.rowHorizontalInset * 2 - input.metrics.actionsReservedWidth
   );
-  const baseTabWidth = input.metrics.tabIconWidth + input.metrics.tabHorizontalPadding * 2;
+  const rowOverhead =
+    input.metrics.rowPaddingHorizontal * 2 + Math.max(tabCount - 1, 0) * input.metrics.tabGap;
+  const availableTabsWidth = Math.max(0, availableWidth - rowOverhead);
+  const iconOnlyTabWidth =
+    input.metrics.tabIconWidth + input.metrics.tabHorizontalPadding * 2 + input.metrics.closeButtonWidth;
   const estimateLabelWidth = (labelLength: number) => labelLength * input.metrics.estimatedCharWidth;
-  const compactLabelCharCap = Math.max(1, input.metrics.compactLabelCharCap ?? 12);
-  const compactDenseLabelCharCap = Math.max(
-    1,
-    input.metrics.compactDenseLabelCharCap ?? Math.max(1, compactLabelCharCap - 2)
+  const desiredTabWidths = input.tabLabelLengths.map((rawLength) => {
+    const labelLength = Math.max(rawLength, 1);
+    const estimatedWidth = iconOnlyTabWidth + estimateLabelWidth(labelLength);
+    return clamp(estimatedWidth, iconOnlyTabWidth, input.metrics.maxTabWidth);
+  });
+
+  const desiredTotalTabsWidth = sum(desiredTabWidths);
+  const iconOnlyTotalTabsWidth = iconOnlyTabWidth * tabCount;
+  const requiresHorizontalScrollFallback = availableTabsWidth < iconOnlyTotalTabsWidth;
+
+  let resolvedWidths: number[];
+  if (desiredTotalTabsWidth <= availableTabsWidth) {
+    resolvedWidths = desiredTabWidths;
+  } else if (availableTabsWidth <= iconOnlyTotalTabsWidth) {
+    resolvedWidths = new Array(tabCount).fill(iconOnlyTabWidth);
+  } else {
+    const desiredExpandableWidth = desiredTotalTabsWidth - iconOnlyTotalTabsWidth;
+    const availableExpandableWidth = availableTabsWidth - iconOnlyTotalTabsWidth;
+    const proportionalRatio =
+      desiredExpandableWidth > 0 ? availableExpandableWidth / desiredExpandableWidth : 0;
+    resolvedWidths = desiredTabWidths.map(
+      (desiredWidth) => iconOnlyTabWidth + (desiredWidth - iconOnlyTabWidth) * proportionalRatio
+    );
+  }
+
+  const roundedWidths = resolvedWidths.map((width) =>
+    Math.round(clamp(width, iconOnlyTabWidth, input.metrics.maxTabWidth))
   );
-  const effectiveCompactLabelCharCap = tabCount >= 8 ? compactDenseLabelCharCap : compactLabelCharCap;
-
-  const fullTabWidths = input.tabLabelLengths.map((rawLength) => {
-    const labelLength = Math.max(rawLength, 1);
-    const estimatedWidth = baseTabWidth + estimateLabelWidth(labelLength) + input.metrics.closeButtonWidth;
-    return clamp(estimatedWidth, input.metrics.minTabWidth, input.metrics.maxTabWidth);
-  });
-  const fullTotal = computeTotalRowWidth({
-    itemWidths: fullTabWidths,
-    tabGap: input.metrics.tabGap,
-    rowPaddingHorizontal: input.metrics.rowPaddingHorizontal,
-  });
-  if (fullTotal <= availableWidth) {
-    return {
-      mode: "full",
-      showLabels: true,
-      closeButtonPolicy: "all",
-      tabMaxWidth: input.metrics.maxTabWidth,
-    };
-  }
-
-  const compactTabWidths = input.tabLabelLengths.map((rawLength) => {
-    const labelLength = Math.max(rawLength, 1);
-    const estimatedWidth =
-      baseTabWidth +
-      estimateLabelWidth(Math.min(labelLength, effectiveCompactLabelCharCap)) +
-      input.metrics.closeButtonWidth;
-    return clamp(estimatedWidth, input.metrics.minTabWidth, input.metrics.maxTabWidth);
-  });
-  const compactTotal = computeTotalRowWidth({
-    itemWidths: compactTabWidths,
-    tabGap: input.metrics.tabGap,
-    rowPaddingHorizontal: input.metrics.rowPaddingHorizontal,
-  });
-  if (compactTotal <= availableWidth) {
-    return {
-      mode: "compact",
-      showLabels: true,
-      closeButtonPolicy: "all",
-      tabMaxWidth: Math.max(...compactTabWidths),
-    };
-  }
 
   return {
-    mode: "icon",
-    showLabels: false,
+    items: roundedWidths.map((width) => {
+      const rawCharCap = Math.floor((width - iconOnlyTabWidth) / input.metrics.estimatedCharWidth);
+      const labelCharCap = Math.max(0, rawCharCap);
+      return {
+        width,
+        showLabel: labelCharCap > 0,
+        labelCharCap,
+      };
+    }),
     closeButtonPolicy: "all",
-    tabMaxWidth: 58,
+    requiresHorizontalScrollFallback,
   };
 }

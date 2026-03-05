@@ -92,14 +92,11 @@ export function WorkspaceDesktopTabsRow({
       actionsReservedWidth: Math.max(0, tabsActionsWidth),
       rowPaddingHorizontal: theme.spacing[2],
       tabGap: theme.spacing[1],
-      minTabWidth: 60,
-      maxTabWidth: 260,
+      maxTabWidth: 150,
       tabIconWidth: 14,
       tabHorizontalPadding: theme.spacing[3],
       estimatedCharWidth: 7,
       closeButtonWidth: 22,
-      compactLabelCharCap: 9,
-      compactDenseLabelCharCap: 7,
     }),
     [tabsActionsWidth, theme.spacing]
   );
@@ -118,6 +115,7 @@ export function WorkspaceDesktopTabsRow({
     >
       <ScrollView
         horizontal
+        scrollEnabled={layout.requiresHorizontalScrollFallback}
         testID="workspace-tabs-scroll"
         style={styles.tabsScroll}
         contentContainerStyle={styles.tabsContent}
@@ -129,7 +127,7 @@ export function WorkspaceDesktopTabsRow({
           useDragHandle
           disabled={tabs.length < 2}
           onDragEnd={onReorderTabs}
-          renderItem={({ item: tab, dragHandleProps }) => {
+          renderItem={({ item: tab, index, dragHandleProps }) => {
             const isActive = tab.key === activeTabKey;
             const tabAgent = tab.kind === "agent" ? agentsById.get(tab.agentId) ?? null : null;
             const isCloseHovered = hoveredCloseTabKey === tab.key;
@@ -143,6 +141,11 @@ export function WorkspaceDesktopTabsRow({
               tab.kind === "terminal" && killTerminalPending && killTerminalId === tab.terminalId;
             const isClosingTab = isClosingAgent || isClosingTerminal;
             const shouldShowCloseButton = layout.closeButtonPolicy === "all";
+            const layoutItem = layout.items[index] ?? null;
+            const resolvedTabWidth = layoutItem?.width ?? 150;
+            const showLabel = layoutItem?.showLabel ?? true;
+            const labelCharCap = layoutItem?.labelCharCap ?? tab.label.length;
+            const renderedLabel = showLabel ? tab.label.slice(0, Math.max(1, labelCharCap)) : "";
             const iconColor = isActive ? theme.colors.foreground : theme.colors.foregroundMuted;
             const tabAgentStatusBucket = tabAgent
               ? deriveSidebarStateBucket({
@@ -199,14 +202,11 @@ export function WorkspaceDesktopTabsRow({
                   enabledOnMobile={false}
                   style={({ hovered, pressed }) => [
                     styles.tab,
-                    layout.mode === "icon" && styles.tabIconOnly,
-                    layout.mode === "icon" && {
-                      minWidth: layout.tabMaxWidth,
-                      width: layout.tabMaxWidth,
-                      maxWidth: layout.tabMaxWidth,
+                    {
+                      minWidth: resolvedTabWidth,
+                      width: resolvedTabWidth,
+                      maxWidth: resolvedTabWidth,
                     },
-                    layout.mode === "compact" && styles.tabCompact,
-                    layout.mode === "compact" && { maxWidth: layout.tabMaxWidth },
                     isActive && styles.tabActive,
                     (hovered || pressed || isCloseHovered) && styles.tabHovered,
                   ]}
@@ -235,7 +235,7 @@ export function WorkspaceDesktopTabsRow({
                     style={styles.tabHandle}
                   >
                     <View style={styles.tabIcon}>{icon}</View>
-                    {layout.showLabels ? (
+                    {showLabel ? (
                       tab.kind === "agent" && tab.titleState === "loading" ? (
                         <View
                           style={[
@@ -252,7 +252,7 @@ export function WorkspaceDesktopTabsRow({
                         ]}
                         numberOfLines={1}
                       >
-                        {tab.label}
+                        {renderedLabel}
                       </Text>
                       )
                     ) : null}
@@ -424,23 +424,12 @@ const styles = StyleSheet.create((theme) => ({
     paddingVertical: theme.spacing[1],
   },
   tab: {
-    minWidth: 60,
-    maxWidth: 260,
     paddingHorizontal: theme.spacing[3],
     paddingVertical: theme.spacing[2],
     borderRadius: theme.borderRadius.md,
     flexDirection: "row",
     alignItems: "center",
     gap: theme.spacing[1],
-  },
-  tabIconOnly: {
-    minWidth: 40,
-    width: 40,
-    maxWidth: 40,
-    justifyContent: "center",
-  },
-  tabCompact: {
-    paddingHorizontal: theme.spacing[2],
   },
   tabHandle: {
     flexDirection: "row",

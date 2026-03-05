@@ -6,87 +6,76 @@ const metrics = {
   actionsReservedWidth: 120,
   rowPaddingHorizontal: 8,
   tabGap: 4,
-  minTabWidth: 60,
-  maxTabWidth: 260,
+  maxTabWidth: 150,
   tabIconWidth: 14,
   tabHorizontalPadding: 12,
   estimatedCharWidth: 7,
   closeButtonWidth: 22,
-  compactLabelCharCap: 9,
-  compactDenseLabelCharCap: 7,
 };
 
 describe("computeWorkspaceTabLayout", () => {
-  it("keeps full width tabs when space is available", () => {
+  it("caps tab width to the fixed maximum when enough space is available", () => {
     const result = computeWorkspaceTabLayout({
       viewportWidth: 1200,
       tabLabelLengths: [8, 10, 7],
       metrics,
     });
 
-    expect(result.mode).toBe("full");
-    expect(result.showLabels).toBe(true);
     expect(result.closeButtonPolicy).toBe("all");
+    expect(result.requiresHorizontalScrollFallback).toBe(false);
+    expect(result.items).toHaveLength(3);
+    expect(result.items.every((item) => item.showLabel)).toBe(true);
+    expect(Math.max(...result.items.map((item) => item.width))).toBeLessThanOrEqual(150);
   });
 
-  it("uses compact mode before icon-only", () => {
+  it("shrinks tab widths proportionally before hiding labels", () => {
     const result = computeWorkspaceTabLayout({
-      viewportWidth: 570,
+      viewportWidth: 520,
       tabLabelLengths: [24, 12, 8],
       metrics,
     });
 
-    expect(result.mode).toBe("compact");
-    expect(result.showLabels).toBe(true);
     expect(result.closeButtonPolicy).toBe("all");
-    expect(result.tabMaxWidth).toBeGreaterThan(108);
+    expect(result.requiresHorizontalScrollFallback).toBe(false);
+    expect(result.items.map((item) => item.width)).toEqual([137, 132, 108]);
+    expect(result.items.every((item) => item.showLabel)).toBe(true);
   });
 
-  it("falls back to icon mode when compact labels still cannot fit", () => {
+  it("collapses to icon-only before allowing horizontal scroll fallback", () => {
+    const result = computeWorkspaceTabLayout({
+      viewportWidth: 388,
+      tabLabelLengths: [14, 14, 14, 14],
+      metrics,
+    });
+
+    expect(result.closeButtonPolicy).toBe("all");
+    expect(result.requiresHorizontalScrollFallback).toBe(false);
+    expect(result.items.map((item) => item.width)).toEqual([60, 60, 60, 60]);
+    expect(result.items.every((item) => item.showLabel === false)).toBe(true);
+  });
+
+  it("allows horizontal scroll only when icon-only tabs still cannot fit", () => {
     const result = computeWorkspaceTabLayout({
       viewportWidth: 300,
       tabLabelLengths: [14, 14, 14, 14],
       metrics,
     });
 
-    expect(result.mode).toBe("icon");
-    expect(result.showLabels).toBe(false);
     expect(result.closeButtonPolicy).toBe("all");
+    expect(result.requiresHorizontalScrollFallback).toBe(true);
+    expect(result.items.map((item) => item.width)).toEqual([60, 60, 60, 60]);
+    expect(result.items.every((item) => item.showLabel === false)).toBe(true);
   });
 
-  it("keeps icon mode without scroll when icons can fit", () => {
+  it("returns empty layout details when there are no tabs", () => {
     const result = computeWorkspaceTabLayout({
-      viewportWidth: 380,
-      tabLabelLengths: [20, 20, 20, 20],
+      viewportWidth: 1200,
+      tabLabelLengths: [],
       metrics,
     });
 
-    expect(result.mode).toBe("icon");
-  });
-
-  it("keeps compact-with-label mode for realistic desktop width with nine tabs", () => {
-    const result = computeWorkspaceTabLayout({
-      viewportWidth: 1180,
-      tabLabelLengths: [18, 21, 14, 15, 19, 12, 17, 16, 20],
-      metrics,
-    });
-
-    expect(result.mode).toBe("compact");
-    expect(result.showLabels).toBe(true);
     expect(result.closeButtonPolicy).toBe("all");
-    expect(result.tabMaxWidth).toBeGreaterThan(94);
-  });
-
-  it("falls back to icon mode sooner at tighter widths when close buttons stay visible", () => {
-    const result = computeWorkspaceTabLayout({
-      viewportWidth: 1100,
-      tabLabelLengths: [18, 21, 14, 15, 19, 12, 17, 16, 20],
-      metrics,
-    });
-
-    expect(result.mode).toBe("icon");
-    expect(result.showLabels).toBe(false);
-    expect(result.closeButtonPolicy).toBe("all");
-    expect(result.tabMaxWidth).toBe(58);
+    expect(result.requiresHorizontalScrollFallback).toBe(false);
+    expect(result.items).toEqual([]);
   });
 });
