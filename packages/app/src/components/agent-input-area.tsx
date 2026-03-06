@@ -21,7 +21,6 @@ import {
 import { Theme } from '@/styles/theme'
 import type { DraftCommandConfig } from '@/hooks/use-agent-commands-query'
 import { encodeImages } from '@/utils/encode-images'
-import { useKeyboardShortcutsStore } from '@/stores/keyboard-shortcuts-store'
 import { focusWithRetries } from '@/utils/web-focus'
 import { useVoiceOptional } from '@/contexts/voice-context'
 import { useToast } from '@/contexts/toast-context'
@@ -38,6 +37,9 @@ import { resolveStatusControlMode } from '@/components/agent-input-area.status-c
 import { shouldSkipDraftPersist } from '@/components/agent-input-area.draft-persist-guard'
 import { markScrollInvestigationRender } from '@/utils/scroll-jank-investigation'
 import { useKeyboardShiftStyle } from '@/hooks/use-keyboard-shift-style'
+import { useKeyboardActionHandler } from '@/hooks/use-keyboard-action-handler'
+import type { KeyboardActionDefinition } from '@/keyboard/keyboard-action-dispatcher'
+import { shouldClearAgentAttention } from '@/utils/agent-attention'
 
 type QueuedMessage = {
   id: string
@@ -89,10 +91,6 @@ export function AgentInputArea({
   const { theme } = useUnistyles()
   const insets = useSafeAreaInsets()
   const isScreenFocused = useIsFocused()
-  const messageInputActionRequest = useKeyboardShortcutsStore((s) => s.messageInputActionRequest)
-  const clearMessageInputActionRequest = useKeyboardShortcutsStore(
-    (s) => s.clearMessageInputActionRequest
-  )
 
   const { client, isConnected, snapshot } = useHostRuntimeSession(serverId)
   const toast = useToast()
@@ -134,10 +132,13 @@ export function AgentInputArea({
   const [selectedImages, setSelectedImages] = useState<ImageAttachment[]>([])
   const [isCancellingAgent, setIsCancellingAgent] = useState(false)
   const [sendError, setSendError] = useState<string | null>(null)
-  const lastHandledMessageInputActionRequestIdRef = useRef<number | null>(null)
+  const [isMessageInputFocused, setIsMessageInputFocused] = useState(false)
   const messageInputRef = useRef<MessageInputRef>(null)
   const draftGenerationRef = useRef(0)
   const hydratedGenerationRef = useRef(0)
+  const keyboardHandlerIdRef = useRef(
+    `message-input:${serverId}:${agentId}:${Math.random().toString(36).slice(2)}`
+  )
 
   const autocomplete = useAgentAutocomplete({
     userInput,
@@ -240,8 +241,18 @@ export function AgentInputArea({
         messageId: clientMessageId,
         ...(imagesData && imagesData.length > 0 ? { images: imagesData } : {}),
       })
+      if (
+        shouldClearAgentAttention({
+          agentId,
+          isConnected,
+          requiresAttention: agent?.requiresAttention,
+          attentionReason: agent?.attentionReason,
+        })
+      ) {
+        client.clearAgentAttention(agentId)
+      }
     }
-  }, [client, serverId, setAgentStreamTail, setAgentStreamHead])
+  }, [agent?.attentionReason, agent?.requiresAttention, client, isConnected, serverId, setAgentStreamTail, setAgentStreamHead])
 
   useEffect(() => {
     onSubmitMessageRef.current = onSubmitMessage
@@ -513,50 +524,58 @@ export function AgentInputArea({
     userInput,
   ])
 
-  // Keyboard-dispatched message-input actions are routed through store requests.
-  useEffect(() => {
-    if (!isScreenFocused) return
-    if (!messageInputActionRequest) return
-
-    const currentKey = `${serverId}:${agentId}`
-    if (messageInputActionRequest.agentKey !== currentKey) {
-      return
+  const handleKeyboardAction = useCallback((action: KeyboardActionDefinition): boolean => {
+    if (!isScreenFocused) {
+      return false
     }
 
-    if (lastHandledMessageInputActionRequestIdRef.current === messageInputActionRequest.id) {
-      return
-    }
-    lastHandledMessageInputActionRequestIdRef.current = messageInputActionRequest.id
+    switch (action.id) {
+      case 'message-input.focus':
+        if (Platform.OS !== 'web') {
+          messageInputRef.current?.focus()
+          return true
+        }
 
-    if (messageInputActionRequest.kind !== 'focus') {
-      messageInputRef.current?.runKeyboardAction(messageInputActionRequest.kind)
-      clearMessageInputActionRequest(messageInputActionRequest.id)
-      return
+        focusWithRetries({
+          focus: () => messageInputRef.current?.focus(),
+          isFocused: () => {
+            const el = messageInputRef.current?.getNativeElement?.() ?? null
+            const active = typeof document !== 'undefined' ? document.activeElement : null
+            return Boolean(el) && active === el
+          },
+        })
+        return true
+      case 'message-input.dictation-toggle':
+        messageInputRef.current?.runKeyboardAction('dictation-toggle')
+        return true
+      case 'message-input.dictation-cancel':
+        messageInputRef.current?.runKeyboardAction('dictation-cancel')
+        return true
+      case 'message-input.voice-toggle':
+        messageInputRef.current?.runKeyboardAction('voice-toggle')
+        return true
+      case 'message-input.voice-mute-toggle':
+        messageInputRef.current?.runKeyboardAction('voice-mute-toggle')
+        return true
+      default:
+        return false
     }
+  }, [isScreenFocused])
 
-    if (Platform.OS !== 'web') {
-      messageInputRef.current?.focus()
-      clearMessageInputActionRequest(messageInputActionRequest.id)
-      return
-    }
-
-    return focusWithRetries({
-      focus: () => messageInputRef.current?.focus(),
-      isFocused: () => {
-        const el = messageInputRef.current?.getNativeElement?.() ?? null
-        const active = typeof document !== 'undefined' ? document.activeElement : null
-        return Boolean(el) && active === el
-      },
-      onSuccess: () => clearMessageInputActionRequest(messageInputActionRequest.id),
-      onTimeout: () => clearMessageInputActionRequest(messageInputActionRequest.id),
-    })
-  }, [
-    agentId,
-    clearMessageInputActionRequest,
-    isScreenFocused,
-    messageInputActionRequest,
-    serverId,
-  ])
+  useKeyboardActionHandler({
+    handlerId: keyboardHandlerIdRef.current,
+    actions: [
+      'message-input.focus',
+      'message-input.dictation-toggle',
+      'message-input.dictation-cancel',
+      'message-input.voice-toggle',
+      'message-input.voice-mute-toggle',
+    ],
+    enabled: isScreenFocused,
+    priority: isMessageInputFocused ? 200 : 100,
+    isActive: () => isScreenFocused,
+    handle: handleKeyboardAction,
+  })
 
   const { style: keyboardAnimatedStyle } = useKeyboardShiftStyle({
     mode: 'translate',
@@ -803,6 +822,7 @@ export function AgentInputArea({
               onSelectionChange={(selection) => {
                 setCursorIndex(selection.start)
               }}
+              onFocusChange={setIsMessageInputFocused}
             />
           </View>
         </View>

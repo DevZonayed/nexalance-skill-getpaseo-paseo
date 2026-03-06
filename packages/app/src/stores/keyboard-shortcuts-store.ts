@@ -1,12 +1,5 @@
 import { create } from "zustand";
-import type { MessageInputKeyboardActionKind } from "@/keyboard/actions";
 import type { SidebarShortcutWorkspaceTarget } from "@/utils/sidebar-shortcuts";
-
-export type MessageInputActionRequest = {
-  id: number;
-  agentKey: string;
-  kind: MessageInputKeyboardActionKind;
-};
 
 export type WorkspaceTabActionRequest =
   | {
@@ -39,8 +32,6 @@ interface KeyboardShortcutsState {
   sidebarShortcutWorkspaceTargets: SidebarShortcutWorkspaceTarget[];
   /** All visible workspace targets in top-to-bottom visual order. */
   visibleWorkspaceTargets: SidebarShortcutWorkspaceTarget[];
-  messageInputActionRequest: MessageInputActionRequest | null;
-  nextMessageInputActionRequestId: number;
   workspaceTabActionRequest: WorkspaceTabActionRequest | null;
   nextWorkspaceTabActionRequestId: number;
 
@@ -51,12 +42,6 @@ interface KeyboardShortcutsState {
   setSidebarShortcutWorkspaceTargets: (targets: SidebarShortcutWorkspaceTarget[]) => void;
   setVisibleWorkspaceTargets: (targets: SidebarShortcutWorkspaceTarget[]) => void;
   resetModifiers: () => void;
-
-  requestMessageInputAction: (input: {
-    agentKey: string;
-    kind: MessageInputKeyboardActionKind;
-  }) => void;
-  clearMessageInputActionRequest: (id: number) => void;
 
   requestWorkspaceTabAction: (input:
     | {
@@ -87,8 +72,6 @@ export const useKeyboardShortcutsStore = create<KeyboardShortcutsState>(
     cmdOrCtrlDown: false,
     sidebarShortcutWorkspaceTargets: [],
     visibleWorkspaceTargets: [],
-    messageInputActionRequest: null,
-    nextMessageInputActionRequestId: 1,
     workspaceTabActionRequest: null,
     nextWorkspaceTabActionRequestId: 1,
 
@@ -100,21 +83,6 @@ export const useKeyboardShortcutsStore = create<KeyboardShortcutsState>(
       set({ sidebarShortcutWorkspaceTargets: targets }),
     setVisibleWorkspaceTargets: (targets) => set({ visibleWorkspaceTargets: targets }),
     resetModifiers: () => set({ altDown: false, cmdOrCtrlDown: false }),
-
-    requestMessageInputAction: ({ agentKey, kind }) => {
-      const id = get().nextMessageInputActionRequestId;
-      set({
-        messageInputActionRequest: { id, agentKey, kind },
-        nextMessageInputActionRequestId: id + 1,
-      });
-    },
-    clearMessageInputActionRequest: (id) => {
-      const current = get().messageInputActionRequest;
-      if (!current || current.id !== id) {
-        return;
-      }
-      set({ messageInputActionRequest: null });
-    },
 
     requestWorkspaceTabAction: (input) => {
       const id = get().nextWorkspaceTabActionRequestId;

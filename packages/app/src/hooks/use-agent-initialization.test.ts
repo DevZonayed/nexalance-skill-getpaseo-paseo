@@ -2,11 +2,28 @@ import { describe, expect, it } from "vitest";
 import { __private__ } from "./use-agent-initialization";
 
 describe("useAgentInitialization timeline request policy", () => {
+  it("uses canonical tail bootstrap when history has not synced yet", () => {
+    expect(
+      __private__.deriveInitialTimelineRequest({
+        cursor: {
+          epoch: "epoch-1",
+          seq: 42,
+        },
+        hasAuthoritativeHistory: false,
+        initialTimelineLimit: 200,
+      })
+    ).toEqual({
+      direction: "tail",
+      limit: 200,
+      projection: "canonical",
+    });
+  });
+
   it("uses canonical tail bootstrap when cursor is missing", () => {
     expect(
-      __private__.buildInitialTimelineRequest({
-        cursor: undefined,
-        hasLocalTail: false,
+      __private__.deriveInitialTimelineRequest({
+        cursor: null,
+        hasAuthoritativeHistory: true,
         initialTimelineLimit: 200,
       })
     ).toEqual({
@@ -16,31 +33,14 @@ describe("useAgentInitialization timeline request policy", () => {
     });
   });
 
-  it("uses canonical tail bootstrap when cursor exists but local tail is empty", () => {
+  it("uses canonical catch-up after the current cursor once history is synced", () => {
     expect(
-      __private__.buildInitialTimelineRequest({
+      __private__.deriveInitialTimelineRequest({
         cursor: {
           epoch: "epoch-1",
-          endSeq: 42,
+          seq: 42,
         },
-        hasLocalTail: false,
-        initialTimelineLimit: 200,
-      })
-    ).toEqual({
-      direction: "tail",
-      limit: 200,
-      projection: "canonical",
-    });
-  });
-
-  it("uses canonical catch-up after the current cursor when local tail exists", () => {
-    expect(
-      __private__.buildInitialTimelineRequest({
-        cursor: {
-          epoch: "epoch-1",
-          endSeq: 42,
-        },
-        hasLocalTail: true,
+        hasAuthoritativeHistory: true,
         initialTimelineLimit: 200,
       })
     ).toEqual({
@@ -53,9 +53,9 @@ describe("useAgentInitialization timeline request policy", () => {
 
   it("supports unbounded tail bootstrap policy", () => {
     expect(
-      __private__.buildInitialTimelineRequest({
-        cursor: undefined,
-        hasLocalTail: false,
+      __private__.deriveInitialTimelineRequest({
+        cursor: null,
+        hasAuthoritativeHistory: false,
         initialTimelineLimit: 0,
       })
     ).toEqual({

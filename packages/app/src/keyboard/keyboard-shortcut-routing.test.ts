@@ -1,30 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  canToggleFileExplorerShortcut,
-  resolveSelectedOrRouteAgentKey,
-} from "./keyboard-shortcut-routing";
+import { canToggleFileExplorerShortcut } from "./keyboard-shortcut-routing";
 
 describe("keyboard-shortcut-routing", () => {
-  describe("resolveSelectedOrRouteAgentKey", () => {
-    it("returns selected agent key when provided", () => {
-      const key = resolveSelectedOrRouteAgentKey({
-        selectedAgentId: "server-1:agent-1",
-        pathname: "/h/server-1/workspace/workspace-1?open=draft%3Adraft_123",
-      });
-
-      expect(key).toBe("server-1:agent-1");
-    });
-
-    it("maps workspace draft tabs to the draft tab id key", () => {
-      const key = resolveSelectedOrRouteAgentKey({
-        pathname: "/h/server-1/workspace/workspace-1?open=draft%3Adraft_123",
-      });
-
-      expect(key).toBe("server-1:draft_123");
-    });
-  });
-
   describe("canToggleFileExplorerShortcut", () => {
     const toggleFileExplorer = () => undefined;
 

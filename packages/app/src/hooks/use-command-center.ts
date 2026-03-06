@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { TextInput } from "react-native";
 import { router, usePathname, type Href } from "expo-router";
 import { useKeyboardShortcutsStore } from "@/stores/keyboard-shortcuts-store";
+import { keyboardActionDispatcher } from "@/keyboard/keyboard-action-dispatcher";
 import { useAggregatedAgents, type AggregatedAgent } from "@/hooks/use-aggregated-agents";
 import {
   clearCommandCenterFocusRestoreElement,
@@ -16,10 +17,6 @@ import {
 } from "@/utils/host-routes";
 import type { ShortcutKey } from "@/utils/format-shortcut";
 import { focusWithRetries } from "@/utils/web-focus";
-
-function agentKey(agent: Pick<AggregatedAgent, "serverId" | "id">): string {
-  return `${agent.serverId}:${agent.id}`;
-}
 
 function isMatch(agent: AggregatedAgent, query: string): boolean {
   if (!query) return true;
@@ -44,14 +41,6 @@ function sortAgents(left: AggregatedAgent, right: AggregatedAgent): number {
   if (leftRunning !== rightRunning) return rightRunning - leftRunning;
 
   return right.lastActivityAt.getTime() - left.lastActivityAt.getTime();
-}
-
-function parseAgentKeyFromPathname(pathname: string): string | null {
-  const match = parseHostAgentRouteFromPathname(pathname);
-  if (!match) {
-    return null;
-  }
-  return `${match.serverId}:${match.agentId}`;
 }
 
 type CommandCenterActionDefinition = {
@@ -117,9 +106,6 @@ export function useCommandCenter() {
   const { agents } = useAggregatedAgents();
   const open = useKeyboardShortcutsStore((s) => s.commandCenterOpen);
   const setOpen = useKeyboardShortcutsStore((s) => s.setCommandCenterOpen);
-  const requestMessageInputAction = useKeyboardShortcutsStore(
-    (s) => s.requestMessageInputAction
-  );
   const inputRef = useRef<TextInput>(null);
   const didNavigateRef = useRef(false);
   const prevOpenRef = useRef(open);
@@ -133,11 +119,6 @@ export function useCommandCenter() {
   }, [agents, query]);
 
   const fallbackServerId = agents[0]?.serverId ?? null;
-
-  const agentKeyFromPathname = useMemo(
-    () => parseAgentKeyFromPathname(pathname),
-    [pathname]
-  );
 
   const newAgentRoute = useMemo<Href>(() => {
     const serverIdFromPath =
@@ -191,10 +172,6 @@ export function useCommandCenter() {
       const shouldReplace = Boolean(parseHostAgentRouteFromPathname(pathname));
       const navigate = shouldReplace ? router.replace : router.push;
 
-      requestMessageInputAction({
-        agentKey: agentKey(agent),
-        kind: "focus",
-      });
       // Don't restore focus back to the prior element after we navigate.
       clearCommandCenterFocusRestoreElement();
       setOpen(false);
@@ -205,7 +182,7 @@ export function useCommandCenter() {
       ) as Href;
       navigate(route);
     },
-    [pathname, requestMessageInputAction, setOpen]
+    [pathname, setOpen]
   );
 
   const handleSelectAction = useCallback((action: CommandCenterActionItem) => {
@@ -245,12 +222,10 @@ export function useCommandCenter() {
           focus: () => el?.focus(),
           isFocused,
           onTimeout: () => {
-            if (agentKeyFromPathname) {
-              requestMessageInputAction({
-                agentKey: agentKeyFromPathname,
-                kind: "focus",
-              });
-            }
+            keyboardActionDispatcher.dispatch({
+              id: "message-input.focus",
+              scope: "message-input",
+            });
           },
         });
         return cancel;
@@ -265,7 +240,7 @@ export function useCommandCenter() {
       inputRef.current?.focus();
     }, 0);
     return () => clearTimeout(id);
-  }, [agentKeyFromPathname, open, requestMessageInputAction]);
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;

@@ -83,6 +83,7 @@ export interface MessageInputProps {
   onKeyPress?: (event: { key: string; preventDefault: () => void }) => boolean
   /** Reports cursor selection updates from the underlying input. */
   onSelectionChange?: (selection: { start: number; end: number }) => void
+  onFocusChange?: (focused: boolean) => void
 }
 
 export interface MessageInputRef {
@@ -151,6 +152,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
     onSubmitLoadingPress,
     onKeyPress: onKeyPressCallback,
     onSelectionChange: onSelectionChangeCallback,
+    onFocusChange,
   },
   ref
 ) {
@@ -233,6 +235,12 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
   useEffect(() => {
     valueRef.current = value
   }, [value])
+
+  useEffect(() => {
+    return () => {
+      onFocusChange?.(false)
+    }
+  }, [onFocusChange])
 
   // Autofocus on web when autoFocus is true, and re-run when focus key changes.
   useEffect(() => {
@@ -707,9 +715,11 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
           placeholderTextColor={theme.colors.mutedForeground}
           onFocus={() => {
             isInputFocusedRef.current = true
+            onFocusChange?.(true)
           }}
           onBlur={() => {
             isInputFocusedRef.current = false
+            onFocusChange?.(false)
           }}
           style={[
             styles.textInput,

@@ -1,13 +1,12 @@
-interface ShouldClearAgentAttentionOnViewInput {
+interface ShouldClearAgentAttentionInput {
   agentId: string | null | undefined;
-  focusedAgentId: string | null | undefined;
   isConnected: boolean;
   requiresAttention: boolean | null | undefined;
   attentionReason?: "finished" | "error" | "permission" | null | undefined;
 }
 
-export function shouldClearAgentAttentionOnView(
-  input: ShouldClearAgentAttentionOnViewInput
+export function shouldClearAgentAttention(
+  input: ShouldClearAgentAttentionInput
 ): boolean {
   const agentId = input.agentId?.trim();
   if (!agentId) {
@@ -22,5 +21,5 @@ export function shouldClearAgentAttentionOnView(
   if (input.attentionReason === "permission") {
     return false;
   }
-  return input.focusedAgentId === agentId;
+  return true;
 }

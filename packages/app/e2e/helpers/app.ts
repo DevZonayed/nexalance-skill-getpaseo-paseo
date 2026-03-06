@@ -371,8 +371,9 @@ export const createAgent = async (page: Page, message: string) => {
   await input.fill(message);
   await input.press('Enter');
 
-  // Router updates can be same-document transitions; assert URL state instead of waiting for a commit event.
-  await expect(page).toHaveURL(/\/(workspace|agent)\//, { timeout: 30000 });
+  // The composer may remain on the draft screen briefly while the initial run starts,
+  // so assert the user-visible result instead of forcing one route shape here.
+  await expect(page).toHaveURL(/\/(workspace|agent|new-agent)(\/|$|\?)/, { timeout: 30000 });
   await expect(page.getByText(message, { exact: true }).first()).toBeVisible({
     timeout: 30000,
   });

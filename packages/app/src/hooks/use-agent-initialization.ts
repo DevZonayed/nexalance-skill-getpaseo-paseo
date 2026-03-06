@@ -3,7 +3,6 @@ import { Platform } from "react-native";
 import { useSessionStore } from "@/stores/session-store";
 import type {
   DaemonClient,
-  FetchAgentTimelineOptions,
 } from "@server/client/daemon-client";
 import {
   attachInitTimeout,
@@ -12,42 +11,11 @@ import {
   getInitKey,
   rejectInitDeferred,
 } from "@/utils/agent-initialization";
+import { deriveInitialTimelineRequest } from "@/contexts/session-timeline-bootstrap-policy";
 
 const INIT_TIMEOUT_MS = 5 * 60_000;
 const NATIVE_INITIAL_TIMELINE_LIMIT = 200;
 const UNBOUNDED_TIMELINE_LIMIT = 0;
-
-type TimelineCursorState = {
-  epoch: string;
-  endSeq: number;
-};
-
-type BuildInitialTimelineRequestInput = {
-  cursor: TimelineCursorState | undefined;
-  hasLocalTail: boolean;
-  initialTimelineLimit: number;
-};
-
-function buildInitialTimelineRequest(
-  input: BuildInitialTimelineRequestInput
-): FetchAgentTimelineOptions {
-  const { cursor, hasLocalTail, initialTimelineLimit } = input;
-  if (!cursor || !hasLocalTail) {
-    return {
-      direction: "tail",
-      limit: initialTimelineLimit,
-      projection: "canonical",
-    };
-  }
-
-  return {
-    direction: "after",
-    cursor: { epoch: cursor.epoch, seq: cursor.endSeq },
-    // Catch up all missing canonical rows by default.
-    limit: 0,
-    projection: "canonical",
-  };
-}
 
 function resolveInitialTimelineLimit(): number {
   return Platform.OS === "web"
@@ -56,7 +24,7 @@ function resolveInitialTimelineLimit(): number {
 }
 
 export const __private__ = {
-  buildInitialTimelineRequest,
+  deriveInitialTimelineRequest,
   resolveInitialTimelineLimit,
 };
 
@@ -92,11 +60,14 @@ export function useAgentInitialization({
 
       const session = useSessionStore.getState().sessions[serverId];
       const cursor = session?.agentTimelineCursor.get(agentId);
-      const hasLocalTail = (session?.agentStreamTail.get(agentId)?.length ?? 0) > 0;
       const initialTimelineLimit = resolveInitialTimelineLimit();
-      const timelineRequest = buildInitialTimelineRequest({
-        cursor,
-        hasLocalTail,
+      const hasAuthoritativeHistory =
+        (session?.agentHistorySyncGeneration.get(agentId) ?? -1) >= 0;
+      const timelineRequest = deriveInitialTimelineRequest({
+        cursor: cursor
+          ? { epoch: cursor.epoch, seq: cursor.endSeq }
+          : null,
+        hasAuthoritativeHistory,
         initialTimelineLimit,
       });
       const initRequestDirection =

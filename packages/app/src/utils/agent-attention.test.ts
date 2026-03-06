@@ -1,13 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { shouldClearAgentAttentionOnView } from "./agent-attention";
+import { shouldClearAgentAttention } from "./agent-attention";
 
-describe("shouldClearAgentAttentionOnView", () => {
-  it("returns true only when the viewed agent is focused, connected, and requires attention", () => {
+describe("shouldClearAgentAttention", () => {
+  it("returns true only when the agent is connected and requires attention", () => {
     expect(
-      shouldClearAgentAttentionOnView({
+      shouldClearAgentAttention({
         agentId: "agent-1",
-        focusedAgentId: "agent-1",
         isConnected: true,
         requiresAttention: true,
         attentionReason: "finished",
@@ -17,22 +16,9 @@ describe("shouldClearAgentAttentionOnView", () => {
 
   it("returns false when the app is disconnected", () => {
     expect(
-      shouldClearAgentAttentionOnView({
+      shouldClearAgentAttention({
         agentId: "agent-1",
-        focusedAgentId: "agent-1",
         isConnected: false,
-        requiresAttention: true,
-        attentionReason: "finished",
-      })
-    ).toBe(false);
-  });
-
-  it("returns false when the agent is not focused", () => {
-    expect(
-      shouldClearAgentAttentionOnView({
-        agentId: "agent-1",
-        focusedAgentId: "agent-2",
-        isConnected: true,
         requiresAttention: true,
         attentionReason: "finished",
       })
@@ -41,9 +27,8 @@ describe("shouldClearAgentAttentionOnView", () => {
 
   it("returns false when attention is already clear", () => {
     expect(
-      shouldClearAgentAttentionOnView({
+      shouldClearAgentAttention({
         agentId: "agent-1",
-        focusedAgentId: "agent-1",
         isConnected: true,
         requiresAttention: false,
         attentionReason: null,
@@ -53,9 +38,8 @@ describe("shouldClearAgentAttentionOnView", () => {
 
   it("returns false for empty agent ids", () => {
     expect(
-      shouldClearAgentAttentionOnView({
+      shouldClearAgentAttention({
         agentId: "",
-        focusedAgentId: "agent-1",
         isConnected: true,
         requiresAttention: true,
         attentionReason: "finished",
@@ -65,9 +49,8 @@ describe("shouldClearAgentAttentionOnView", () => {
 
   it("returns false for permission-shaped attention", () => {
     expect(
-      shouldClearAgentAttentionOnView({
+      shouldClearAgentAttention({
         agentId: "agent-1",
-        focusedAgentId: "agent-1",
         isConnected: true,
         requiresAttention: true,
         attentionReason: "permission",

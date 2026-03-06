@@ -16,10 +16,8 @@ import {
   type MessageInputKeyboardActionKind,
   type KeyboardShortcutPayload,
 } from "@/keyboard/actions";
-import {
-  canToggleFileExplorerShortcut,
-  resolveSelectedOrRouteAgentKey,
-} from "@/keyboard/keyboard-shortcut-routing";
+import { canToggleFileExplorerShortcut } from "@/keyboard/keyboard-shortcut-routing";
+import { keyboardActionDispatcher } from "@/keyboard/keyboard-action-dispatcher";
 import { resolveKeyboardShortcut } from "@/keyboard/keyboard-shortcuts";
 import { resolveKeyboardFocusScope } from "@/keyboard/focus-scope";
 import { getShortcutOs } from "@/utils/shortcut-platform";
@@ -121,18 +119,38 @@ export function useKeyboardShortcuts({
       return true;
     };
 
-    const requestMessageInputAction = (
+    const dispatchMessageInputAction = (
       kind: MessageInputKeyboardActionKind
     ): boolean => {
-      const agentKey = resolveSelectedOrRouteAgentKey({ selectedAgentId, pathname });
-      if (!agentKey) {
-        return false;
+      switch (kind) {
+        case "focus":
+          return keyboardActionDispatcher.dispatch({
+            id: "message-input.focus",
+            scope: "message-input",
+          });
+        case "dictation-toggle":
+          return keyboardActionDispatcher.dispatch({
+            id: "message-input.dictation-toggle",
+            scope: "message-input",
+          });
+        case "dictation-cancel":
+          return keyboardActionDispatcher.dispatch({
+            id: "message-input.dictation-cancel",
+            scope: "message-input",
+          });
+        case "voice-toggle":
+          return keyboardActionDispatcher.dispatch({
+            id: "message-input.voice-toggle",
+            scope: "message-input",
+          });
+        case "voice-mute-toggle":
+          return keyboardActionDispatcher.dispatch({
+            id: "message-input.voice-mute-toggle",
+            scope: "message-input",
+          });
+        default:
+          return false;
       }
-      useKeyboardShortcutsStore.getState().requestMessageInputAction({
-        agentKey,
-        kind,
-      });
-      return true;
     };
     const requestWorkspaceTabAction = (input:
       | { kind: "new" | "close-current" }
@@ -232,7 +250,7 @@ export function useKeyboardShortcuts({
           if (!input.payload || typeof input.payload !== "object" || !("kind" in input.payload)) {
             return false;
           }
-          return requestMessageInputAction(input.payload.kind);
+          return dispatchMessageInputAction(input.payload.kind);
         default:
           return false;
       }

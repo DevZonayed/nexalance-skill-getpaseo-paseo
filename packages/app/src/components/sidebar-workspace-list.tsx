@@ -1181,7 +1181,7 @@ const styles = StyleSheet.create((theme) => ({
     marginBottom: theme.spacing[1],
   },
   workspaceListContainer: {
-    marginLeft: theme.spacing[2],
+    marginLeft: 0,
   },
   emptyText: {
     color: theme.colors.foregroundMuted,
@@ -1192,7 +1192,7 @@ const styles = StyleSheet.create((theme) => ({
   projectRow: {
     minHeight: 36,
     paddingVertical: theme.spacing[2],
-    paddingHorizontal: theme.spacing[2],
+    paddingHorizontal: theme.spacing[3],
     borderRadius: theme.borderRadius.lg,
     marginBottom: theme.spacing[1],
     flexDirection: 'row',
@@ -1253,7 +1253,7 @@ const styles = StyleSheet.create((theme) => ({
     minHeight: 36,
     marginBottom: theme.spacing[1],
     paddingVertical: theme.spacing[2],
-    paddingHorizontal: theme.spacing[2],
+    paddingHorizontal: theme.spacing[3],
     borderRadius: theme.borderRadius.lg,
     flexDirection: 'row',
     alignItems: 'center',
@@ -1329,6 +1329,7 @@ const styles = StyleSheet.create((theme) => ({
   workspaceBranchText: {
     color: theme.colors.foreground,
     fontSize: theme.fontSize.sm,
+    opacity: 0.76,
     flex: 1,
     minWidth: 0,
   },

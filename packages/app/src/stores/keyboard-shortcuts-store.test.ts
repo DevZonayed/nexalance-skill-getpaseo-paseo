@@ -9,8 +9,6 @@ beforeEach(() => {
     cmdOrCtrlDown: false,
     sidebarShortcutWorkspaceTargets: [],
     visibleWorkspaceTargets: [],
-    messageInputActionRequest: null,
-    nextMessageInputActionRequestId: 1,
     workspaceTabActionRequest: null,
     nextWorkspaceTabActionRequestId: 1,
   });

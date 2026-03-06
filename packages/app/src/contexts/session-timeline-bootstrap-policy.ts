@@ -1,9 +1,44 @@
 type TimelineDirection = "tail" | "before" | "after";
 type InitRequestDirection = "tail" | "after";
 
-type TimelineCursor = {
+type BootstrapTailCursor = {
   seq: number;
 } | null;
+
+type InitialTimelineCursor = {
+  epoch: string;
+  seq: number;
+} | null;
+
+export function deriveInitialTimelineRequest({
+  cursor,
+  hasAuthoritativeHistory,
+  initialTimelineLimit,
+}: {
+  cursor: InitialTimelineCursor;
+  hasAuthoritativeHistory: boolean;
+  initialTimelineLimit: number;
+}): {
+  direction: "tail" | "after";
+  cursor?: { epoch: string; seq: number };
+  limit: number;
+  projection: "canonical";
+} {
+  if (!hasAuthoritativeHistory || !cursor) {
+    return {
+      direction: "tail",
+      limit: initialTimelineLimit,
+      projection: "canonical",
+    };
+  }
+
+  return {
+    direction: "after",
+    cursor: { epoch: cursor.epoch, seq: cursor.seq },
+    limit: 0,
+    projection: "canonical",
+  };
+}
 
 export function deriveBootstrapTailTimelinePolicy({
   direction,
@@ -16,7 +51,7 @@ export function deriveBootstrapTailTimelinePolicy({
   direction: TimelineDirection;
   reset: boolean;
   epoch: string;
-  endCursor: TimelineCursor;
+  endCursor: BootstrapTailCursor;
   isInitializing: boolean;
   hasActiveInitDeferred: boolean;
 }): {

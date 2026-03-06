@@ -55,7 +55,7 @@ import {
 } from "@/utils/agent-snapshots";
 import { mergePendingCreateImages } from "@/utils/pending-create-images";
 import { useKeyboardShiftStyle } from "@/hooks/use-keyboard-shift-style";
-import { shouldClearAgentAttentionOnView } from "@/utils/agent-attention";
+import { shouldClearAgentAttention } from "@/utils/agent-attention";
 import type { DaemonClient } from "@server/client/daemon-client";
 import { useExplorerOpenGesture } from "@/hooks/use-explorer-open-gesture";
 import type { ExplorerCheckoutContext } from "@/stores/panel-store";
@@ -432,12 +432,19 @@ function AgentScreenContent({
   });
   const reconnectToastArmedRef = useRef(false);
   const initAttemptTokenRef = useRef(0);
+  const attentionClientRef = useRef(client);
+  const attentionConnectedRef = useRef(isConnected);
   const setFocusedAgentId = useCallback(
     (agentId: string | null) => {
       useSessionStore.getState().setFocusedAgentId(serverId, agentId);
     },
     [serverId]
   );
+
+  useEffect(() => {
+    attentionClientRef.current = client;
+    attentionConnectedRef.current = isConnected;
+  }, [client, isConnected]);
 
   const { style: animatedKeyboardStyle } = useKeyboardShiftStyle({
     mode: "translate",
@@ -520,9 +527,25 @@ function AgentScreenContent({
 
     setFocusedAgentId(resolvedAgentId);
     return () => {
+      const latestClient = attentionClientRef.current;
+      const latestAgent = useSessionStore
+        .getState()
+        .sessions[serverId]
+        ?.agents.get(resolvedAgentId);
+      if (
+        latestClient &&
+        shouldClearAgentAttention({
+          agentId: resolvedAgentId,
+          isConnected: attentionConnectedRef.current,
+          requiresAttention: latestAgent?.requiresAttention,
+          attentionReason: latestAgent?.attentionReason,
+        })
+      ) {
+        latestClient.clearAgentAttention(resolvedAgentId);
+      }
       setFocusedAgentId(null);
     };
-  }, [resolvedAgentId, setFocusedAgentId]);
+  }, [resolvedAgentId, serverId, setFocusedAgentId]);
 
   const isInitializing = resolvedAgentId ? isInitializingFromMap !== false : false;
   const isHistorySyncing = useMemo(() => {
@@ -817,32 +840,6 @@ function AgentScreenContent({
     const title = agent?.title || "Agent";
     document.title = title;
   }, [agent?.title]);
-
-  // Clear attention as soon as the user is focused on this agent screen.
-  useEffect(() => {
-    const clearAgentId = resolvedAgentId?.trim();
-    if (!clearAgentId || !client) {
-      return;
-    }
-    if (
-      !shouldClearAgentAttentionOnView({
-        agentId: clearAgentId,
-        focusedAgentId,
-        isConnected,
-        requiresAttention: agent?.requiresAttention,
-        attentionReason: agent?.attentionReason,
-      })
-    ) {
-      return;
-    }
-    client.clearAgentAttention(clearAgentId);
-  }, [
-    agent?.requiresAttention,
-    client,
-    focusedAgentId,
-    isConnected,
-    resolvedAgentId,
-  ]);
 
   const isHistoryRefreshCatchingUp =
     viewState.tag === "ready" &&
