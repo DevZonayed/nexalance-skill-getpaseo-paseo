@@ -38,11 +38,7 @@ export function useKeyboardShortcuts({
   toggleFileExplorer?: () => void;
 }) {
   const router = useRouter();
-  const routerPathname = usePathname();
-  const pathname =
-    Platform.OS === "web" && typeof window !== "undefined"
-      ? window.location.pathname
-      : routerPathname;
+  const pathname = usePathname();
   const resetModifiers = useKeyboardShortcutsStore((s) => s.resetModifiers);
 
   useEffect(() => {
@@ -327,7 +323,6 @@ export function useKeyboardShortcuts({
     pathname,
     resetModifiers,
     router,
-    routerPathname,
     selectedAgentId,
     toggleAgentList,
     toggleFileExplorer,
