@@ -2,6 +2,7 @@ import {
   getTerminalAttachRetryDelayMs,
   getTerminalResumeOffset,
   isTerminalAttachRetryableError,
+  type TerminalResumeOffsetStore,
   updateTerminalResumeOffset,
   waitForDuration,
   withPromiseTimeout,
@@ -51,9 +52,15 @@ export type TerminalStreamControllerStatus = {
   error: string | null;
 };
 
+export type TerminalStreamControllerResumeOffsets = TerminalResumeOffsetStore & {
+  clear: (input: { terminalId: string }) => void;
+  prune: (input: { terminalIds: string[] }) => void;
+};
+
 export type TerminalStreamControllerOptions = {
   client: TerminalStreamControllerClient;
   getPreferredSize: () => TerminalStreamControllerSize | null;
+  resumeOffsets?: TerminalStreamControllerResumeOffsets;
   onChunk: (input: { terminalId: string; text: string; replay: boolean }) => void;
   onReset?: (input: { terminalId: string }) => void;
   onStatusChange?: (status: TerminalStreamControllerStatus) => void;
@@ -84,8 +91,8 @@ const DEFAULT_ATTACH_TIMEOUT_MS = 12_000;
 const DEFAULT_RECONNECT_ERROR_MESSAGE = "Terminal stream ended. Reconnecting…";
 
 export class TerminalStreamController {
-  private readonly resumeOffsetByTerminalId = new Map<string, number>();
   private readonly exitedStreamsWhileAttaching = new Set<number>();
+  private readonly internalResumeOffsetByTerminalId = new Map<string, number>();
   private selectedTerminalId: string | null = null;
   private activeStream: TerminalStreamControllerActiveStream | null = null;
   private attachGeneration = 0;
@@ -201,10 +208,14 @@ export class TerminalStreamController {
   }
 
   pruneResumeOffsets(input: { terminalIds: string[] }): void {
+    if (this.options.resumeOffsets) {
+      this.options.resumeOffsets.prune(input);
+      return;
+    }
     const terminalIdSet = new Set(input.terminalIds);
-    for (const terminalId of Array.from(this.resumeOffsetByTerminalId.keys())) {
+    for (const terminalId of Array.from(this.internalResumeOffsetByTerminalId.keys())) {
       if (!terminalIdSet.has(terminalId)) {
-        this.resumeOffsetByTerminalId.delete(terminalId);
+        this.internalResumeOffsetByTerminalId.delete(terminalId);
       }
     }
   }
@@ -217,7 +228,7 @@ export class TerminalStreamController {
     this.attachGeneration += 1;
     this.selectedTerminalId = null;
     void this.detachActiveStream({ shouldDetach: true });
-    this.resumeOffsetByTerminalId.clear();
+    this.internalResumeOffsetByTerminalId.clear();
     this.updateStatus({
       terminalId: null,
       streamId: null,
@@ -260,7 +271,7 @@ export class TerminalStreamController {
         const preferredSize = this.options.getPreferredSize();
         const resumeOffset = getTerminalResumeOffset({
           terminalId: input.terminalId,
-          resumeOffsetByTerminalId: this.resumeOffsetByTerminalId,
+          resumeOffsetStore: this.getResumeOffsetStore(),
         });
         const attachPayload = await withTimeout({
           promise: this.options.client.attachTerminalStream(input.terminalId, {
@@ -276,7 +287,7 @@ export class TerminalStreamController {
         updateTerminalResumeOffset({
           terminalId: input.terminalId,
           offset: attachPayload.currentOffset,
-          resumeOffsetByTerminalId: this.resumeOffsetByTerminalId,
+          resumeOffsetStore: this.getResumeOffsetStore(),
         });
 
         if (!this.isAttachGenerationCurrent({ generation: input.generation, terminalId: input.terminalId })) {
@@ -324,7 +335,7 @@ export class TerminalStreamController {
         }
 
         if (attachPayload.reset) {
-          this.resumeOffsetByTerminalId.delete(input.terminalId);
+          this.options.resumeOffsets?.clear({ terminalId: input.terminalId });
           this.options.onReset?.({ terminalId: input.terminalId });
         }
 
@@ -492,7 +503,7 @@ export class TerminalStreamController {
     updateTerminalResumeOffset({
       terminalId: input.terminalId,
       offset: chunkEndOffset,
-      resumeOffsetByTerminalId: this.resumeOffsetByTerminalId,
+      resumeOffsetStore: this.getResumeOffsetStore(),
     });
 
     const text = input.decoder.decode(input.chunk.data, { stream: true });
@@ -541,7 +552,7 @@ export class TerminalStreamController {
     updateTerminalResumeOffset({
       terminalId: input.terminalId,
       offset: input.expectedOffset,
-      resumeOffsetByTerminalId: this.resumeOffsetByTerminalId,
+      resumeOffsetStore: this.getResumeOffsetStore(),
     });
 
     this.attachGeneration += 1;
@@ -633,5 +644,17 @@ export class TerminalStreamController {
       },
     });
     this.options.onStatusChange?.(status);
+  }
+
+  private getResumeOffsetStore(): TerminalResumeOffsetStore {
+    if (this.options.resumeOffsets) {
+      return this.options.resumeOffsets;
+    }
+    return {
+      get: ({ terminalId }) => this.internalResumeOffsetByTerminalId.get(terminalId),
+      set: ({ terminalId, offset }) => {
+        this.internalResumeOffsetByTerminalId.set(terminalId, offset);
+      },
+    };
   }
 }

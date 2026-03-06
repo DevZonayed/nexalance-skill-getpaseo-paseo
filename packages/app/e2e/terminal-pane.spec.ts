@@ -1,11 +1,13 @@
 import { test, expect, type Page } from "./fixtures";
 import {
   createAgent,
+  createAgentInRepo,
   ensureHostSelected,
   gotoHome,
   setWorkingDirectory,
 } from "./helpers/app";
 import { createTempGitRepo } from "./helpers/workspace";
+import { switchWorkspaceViaSidebar } from "./helpers/workspace-ui";
 
 function visibleTestId(page: Page, testId: string) {
   return page.locator(`[data-testid="${testId}"]:visible`).first();
@@ -171,6 +173,19 @@ async function runTerminalCommand(page: Page, command: string, expectedText: str
   });
 }
 
+async function runTerminalCommandAndWaitForBuffer(
+  page: Page,
+  command: string,
+  expectedText: string
+): Promise<void> {
+  const surface = visibleTestId(page, "terminal-surface");
+  await expect(surface).toBeVisible({ timeout: 30000 });
+  await surface.click({ force: true });
+  await page.keyboard.type(command, { delay: 1 });
+  await page.keyboard.press("Enter");
+  await expectCurrentTerminalBufferToContain(page, expectedText);
+}
+
 async function runTerminalCommandWithPreEnterEcho(
   page: Page,
   command: string,
@@ -209,17 +224,21 @@ async function readCurrentTerminalBuffer(page: Page): Promise<string> {
         };
       }).__paseoTerminal;
 
-      const lineCount = terminal?.buffer?.active?.length ?? 0;
-      const getLine = terminal?.buffer?.active?.getLine;
-      if (!getLine || lineCount <= 0) {
+      const buffer = terminal?.buffer?.active;
+      const lineCount = buffer?.length ?? 0;
+      if (!buffer || typeof buffer.getLine !== "function" || lineCount <= 0) {
         return "";
       }
 
       const lines: string[] = [];
       for (let index = 0; index < lineCount; index += 1) {
-        let line: { translateToString: (trimRight?: boolean) => string } | null = null;
+        let line:
+          | {
+              translateToString: (trimRight?: boolean) => string;
+            }
+          | null = null;
         try {
-          line = getLine(index);
+          line = buffer.getLine(index);
         } catch {
           return "";
         }
@@ -337,6 +356,48 @@ test("Terminals tab creates multiple terminals and streams command output", asyn
 
     const markerTwo = `terminal-smoke-two-${Date.now()}`;
     await runTerminalCommand(page, `echo ${markerTwo}`, markerTwo);
+  } finally {
+    await repo.cleanup();
+  }
+});
+
+test("new terminal does not inherit output from the previously selected terminal", async ({
+  page,
+}) => {
+  const repo = await createTempGitRepo("paseo-e2e-terminal-output-isolation-");
+
+  try {
+    const serverId = process.env.E2E_SERVER_ID;
+    if (!serverId) {
+      throw new Error("E2E_SERVER_ID is not set.");
+    }
+
+    await createAgentInRepo(page, {
+      directory: repo.path,
+      prompt: "hello",
+    });
+    await switchWorkspaceViaSidebar({
+      page,
+      serverId,
+      targetWorkspacePath: repo.path,
+    });
+    await expect(page.getByTestId("workspace-new-terminal-tab").first()).toBeVisible({
+      timeout: 30000,
+    });
+
+    await page.getByTestId("workspace-new-terminal-tab").first().click();
+    await waitForTerminalAttachToSettle(page);
+    const firstMarker = `terminal-isolation-one-${Date.now()}`;
+    await runTerminalCommandAndWaitForBuffer(page, `echo ${firstMarker}`, firstMarker);
+
+    await page.getByTestId("workspace-new-terminal-tab").first().click();
+    await waitForTerminalAttachToSettle(page);
+
+    await expectCurrentTerminalBufferNotToContain(page, firstMarker);
+
+    const secondMarker = `terminal-isolation-two-${Date.now()}`;
+    await runTerminalCommandAndWaitForBuffer(page, `echo ${secondMarker}`, secondMarker);
+    await expectCurrentTerminalBufferNotToContain(page, firstMarker);
   } finally {
     await repo.cleanup();
   }

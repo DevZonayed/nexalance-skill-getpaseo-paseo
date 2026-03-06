@@ -32,6 +32,14 @@ import {
 } from '@/utils/host-routes'
 
 const DESKTOP_SIDEBAR_WIDTH = 320
+const IS_DEV = Boolean((globalThis as { __DEV__?: boolean }).__DEV__)
+
+function logLeftSidebarCloseGesture(event: string, details: Record<string, unknown>): void {
+  if (!IS_DEV) {
+    return
+  }
+  console.log(`[LeftSidebarCloseGesture] ${event}`, details)
+}
 
 interface LeftSidebarProps {
   selectedAgentId?: string
@@ -253,6 +261,7 @@ export function LeftSidebar({ selectedAgentId: _selectedAgentId }: LeftSidebarPr
     })
     .onStart(() => {
       isGesturing.value = true
+      runOnJS(logLeftSidebarCloseGesture)('start', { isOpen, isMobile })
     })
     .onUpdate((event) => {
       if (!isMobile) return
@@ -270,6 +279,11 @@ export function LeftSidebar({ selectedAgentId: _selectedAgentId }: LeftSidebarPr
       isGesturing.value = false
       if (!isMobile) return
       const shouldClose = event.translationX < -windowWidth / 3 || event.velocityX < -500
+      runOnJS(logLeftSidebarCloseGesture)('end', {
+        translationX: event.translationX,
+        velocityX: event.velocityX,
+        shouldClose,
+      })
       if (shouldClose) {
         animateToClose()
         runOnJS(handleClose)()

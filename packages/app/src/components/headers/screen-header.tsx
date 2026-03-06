@@ -1,13 +1,15 @@
 import type { ReactNode } from "react";
 import { View, type StyleProp, type ViewStyle } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { StyleSheet, UnistylesRuntime } from "react-native-unistyles";
+import { StyleSheet, UnistylesRuntime, useUnistyles } from "react-native-unistyles";
 import {
   HEADER_INNER_HEIGHT,
   HEADER_INNER_HEIGHT_MOBILE,
   HEADER_TOP_PADDING_MOBILE,
+  getIsTauriMac,
 } from "@/constants/layout";
-import { useTauriDragHandlers } from "@/utils/tauri-window";
+import { useTauriDragHandlers, useTrafficLightPadding } from "@/utils/tauri-window";
+import { usePanelStore } from "@/stores/panel-store";
 
 interface ScreenHeaderProps {
   left?: ReactNode;
@@ -26,19 +28,29 @@ export function ScreenHeader({
   leftStyle,
   rightStyle,
 }: ScreenHeaderProps) {
+  const { theme } = useUnistyles();
   const insets = useSafeAreaInsets();
   const isMobile = UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
+  const desktopAgentListOpen = usePanelStore((state) => state.desktop.agentListOpen);
+  const trafficLightPadding = useTrafficLightPadding();
   // Only add extra padding on mobile for better touch targets; on desktop, only use safe area insets
   const topPadding = isMobile ? HEADER_TOP_PADDING_MOBILE : 0;
+  const baseHorizontalPadding = theme.spacing[2];
+  const collapsedSidebarTrafficLightInset =
+    !isMobile && !desktopAgentListOpen && getIsTauriMac()
+      ? trafficLightPadding.left
+      : 0;
 
   // On Tauri macOS, enable window dragging and double-click to maximize
-  // Left padding for traffic lights is handled by _layout.tsx when sidebar is collapsed
   const dragHandlers = useTauriDragHandlers();
 
   return (
     <View style={styles.header}>
       <View style={[styles.inner, { paddingTop: insets.top + topPadding }]}>
-        <View style={styles.row} {...dragHandlers}>
+        <View
+          style={[styles.row, { paddingLeft: baseHorizontalPadding + collapsedSidebarTrafficLightInset }]}
+          {...dragHandlers}
+        >
           <View style={[styles.left, leftStyle]}>{left}</View>
           <View style={[styles.right, rightStyle]}>{right}</View>
         </View>

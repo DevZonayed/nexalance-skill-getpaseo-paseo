@@ -44,6 +44,10 @@ export type TerminalOutputSessionConsumeInput = {
   sequence: number;
 };
 
+export type TerminalOutputSessionReadSnapshotInput = {
+  terminalId: string | null;
+};
+
 export class TerminalOutputSession {
   private readonly listeners = new Set<() => void>();
   private readonly outputPump: TerminalOutputPump;
@@ -130,6 +134,10 @@ export class TerminalOutputSession {
 
   append(input: TerminalOutputSessionAppendInput): void {
     this.outputPump.append(input);
+  }
+
+  readSnapshot(input: TerminalOutputSessionReadSnapshotInput): string {
+    return this.outputPump.readSnapshot(input);
   }
 
   clearTerminal(input: { terminalId: string }): void {

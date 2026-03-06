@@ -32,8 +32,7 @@ import {
   HorizontalScrollProvider,
   useHorizontalScrollOptional,
 } from "@/contexts/horizontal-scroll-context";
-import { getIsTauri, getIsTauriMac } from "@/constants/layout";
-import { useTrafficLightPadding } from "@/utils/tauri-window";
+import { getIsTauri } from "@/constants/layout";
 import { CommandCenter } from "@/components/command-center";
 import { KeyboardShortcutsDialog } from "@/components/keyboard-shortcuts-dialog";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
@@ -276,15 +275,11 @@ function AppContainer({ children, selectedAgentId }: AppContainerProps) {
     ]
   );
 
-  // When sidebar is collapsed on desktop Tauri macOS, add left padding for traffic lights
-  const trafficLightPadding = useTrafficLightPadding();
-  const needsTrafficLightPadding = !isMobile && !isOpen && getIsTauriMac();
-
   const content = (
     <View style={{ flex: 1, backgroundColor: theme.colors.surface0 }}>
       <View style={{ flex: 1, flexDirection: "row" }}>
         {!isMobile && chromeEnabled && <LeftSidebar selectedAgentId={selectedAgentId} />}
-        <View style={{ flex: 1, paddingLeft: needsTrafficLightPadding ? trafficLightPadding.left : 0 }}>
+        <View style={{ flex: 1 }}>
           {children}
         </View>
       </View>

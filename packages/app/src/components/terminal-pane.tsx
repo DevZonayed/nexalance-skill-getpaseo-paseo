@@ -29,10 +29,8 @@ import {
 import { upsertTerminalListEntry } from "@/utils/terminal-list";
 import { confirmDialog } from "@/utils/confirm-dialog";
 import {
-  getTerminalOutputSession,
-  releaseTerminalOutputSession,
-  retainTerminalOutputSession,
-} from "@/terminal/runtime/terminal-output-session";
+  getWorkspaceTerminalSession,
+} from "@/terminal/runtime/workspace-terminal-session";
 import {
   TerminalStreamController,
   type TerminalStreamControllerStatus,
@@ -162,14 +160,15 @@ export function TerminalPane({
   const terminalsQueryKey = useMemo(() => ["terminals", serverId, cwd] as const, [cwd, serverId]);
   const lastReportedSizeRef = useRef<{ rows: number; cols: number } | null>(null);
   const streamControllerRef = useRef<TerminalStreamController | null>(null);
-  const outputSession = useMemo(
+  const workspaceTerminalSession = useMemo(
     () =>
-      getTerminalOutputSession({
+      getWorkspaceTerminalSession({
         scopeKey,
         maxOutputChars: MAX_OUTPUT_CHARS,
       }),
     [scopeKey]
   );
+  const outputSession = workspaceTerminalSession.outputSession;
   const subscribeOutputSession = useCallback(
     (listener: () => void) => outputSession.subscribe(listener),
     [outputSession]
@@ -178,17 +177,26 @@ export function TerminalPane({
     () => outputSession.getState(),
     [outputSession]
   );
-  useEffect(() => {
-    retainTerminalOutputSession({ scopeKey });
-    return () => {
-      releaseTerminalOutputSession({ scopeKey });
-    };
-  }, [scopeKey]);
   const outputState = useSyncExternalStore(
     subscribeOutputSession,
     getOutputSessionState,
     getOutputSessionState
   );
+  const selectedOutputState = useMemo(() => {
+    if (outputState.selectedTerminalId === selectedTerminalId) {
+      return outputState;
+    }
+
+    return {
+      ...outputState,
+      selectedTerminalId,
+      snapshotText: outputSession.readSnapshot({ terminalId: selectedTerminalId }),
+      snapshotSequence: 0,
+      chunkText: "",
+      chunkSequence: 0,
+      chunkReplay: false,
+    };
+  }, [outputSession, outputState, selectedTerminalId]);
   const [activeStream, setActiveStream] = useState<{
     terminalId: string;
     streamId: number;
@@ -503,6 +511,7 @@ export function TerminalPane({
     const controller = new TerminalStreamController({
       client,
       getPreferredSize: () => lastReportedSizeRef.current,
+      resumeOffsets: workspaceTerminalSession.resumeOffsets,
       onChunk: ({ terminalId, text, replay }) => {
         outputSession.append({ terminalId, text, replay });
       },
@@ -523,7 +532,14 @@ export function TerminalPane({
         streamControllerRef.current = null;
       }
     };
-  }, [client, handleStreamControllerStatus, isConnected, isScreenFocused, outputSession]);
+  }, [
+    client,
+    handleStreamControllerStatus,
+    isConnected,
+    isScreenFocused,
+    outputSession,
+    workspaceTerminalSession.resumeOffsets,
+  ]);
 
   useEffect(() => {
     pendingTerminalInputRef.current = [];
@@ -1022,11 +1038,11 @@ export function TerminalPane({
                 contentInsetAdjustmentBehavior: "never",
               }}
               streamKey={`${scopeKey}:${selectedTerminal.id}`}
-              initialOutputText={outputState.snapshotText}
-              initialOutputChunkSequence={outputState.snapshotSequence}
-              outputChunkText={outputState.chunkText}
-              outputChunkSequence={outputState.chunkSequence}
-              outputChunkReplay={outputState.chunkReplay}
+              initialOutputText={selectedOutputState.snapshotText}
+              initialOutputChunkSequence={selectedOutputState.snapshotSequence}
+              outputChunkText={selectedOutputState.chunkText}
+              outputChunkSequence={selectedOutputState.chunkSequence}
+              outputChunkReplay={selectedOutputState.chunkReplay}
               testId="terminal-surface"
               xtermTheme={xtermTheme}
               swipeGesturesEnabled={swipeGesturesEnabled}

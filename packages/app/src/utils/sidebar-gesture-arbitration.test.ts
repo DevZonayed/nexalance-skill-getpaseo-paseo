@@ -9,7 +9,7 @@ describe("decideLongPressMove", () => {
   it("keeps long press pending for small movement before long-press arm", () => {
     expect(
       decideLongPressMove({
-        longPressArmed: false,
+        dragArmed: false,
         didStartDrag: false,
         startPoint: { x: 0, y: 0 },
         currentPoint: { x: 3, y: 2 },
@@ -20,18 +20,51 @@ describe("decideLongPressMove", () => {
   it("cancels long press when movement exceeds cancel slop before arm", () => {
     expect(
       decideLongPressMove({
-        longPressArmed: false,
+        dragArmed: false,
         didStartDrag: false,
         startPoint: { x: 0, y: 0 },
-        currentPoint: { x: 12, y: 0 },
+        currentPoint: { x: 8, y: 8 },
       })
     ).toBe("cancel_long_press");
+  });
+
+  it("yields to vertical scroll before drag arm", () => {
+    expect(
+      decideLongPressMove({
+        dragArmed: false,
+        didStartDrag: false,
+        startPoint: { x: 0, y: 0 },
+        currentPoint: { x: 2, y: 7 },
+      })
+    ).toBe("vertical_scroll");
+  });
+
+  it("keeps diagonal motion neutral before drag arm", () => {
+    expect(
+      decideLongPressMove({
+        dragArmed: false,
+        didStartDrag: false,
+        startPoint: { x: 0, y: 0 },
+        currentPoint: { x: 5, y: 7 },
+      })
+    ).toBe("none");
+  });
+
+  it("yields to horizontal swipe before drag arm", () => {
+    expect(
+      decideLongPressMove({
+        dragArmed: false,
+        didStartDrag: false,
+        startPoint: { x: 0, y: 0 },
+        currentPoint: { x: -10, y: 2 },
+      })
+    ).toBe("horizontal_swipe");
   });
 
   it("starts drag when movement exceeds drag slop after long-press arm", () => {
     expect(
       decideLongPressMove({
-        longPressArmed: true,
+        dragArmed: true,
         didStartDrag: false,
         startPoint: { x: 0, y: 0 },
         currentPoint: { x: 0, y: 9 },
@@ -42,7 +75,7 @@ describe("decideLongPressMove", () => {
   it("does nothing when drag already started", () => {
     expect(
       decideLongPressMove({
-        longPressArmed: true,
+        dragArmed: true,
         didStartDrag: true,
         startPoint: { x: 0, y: 0 },
         currentPoint: { x: 20, y: 20 },
@@ -75,4 +108,3 @@ describe("shouldOpenContextMenuOnPressOut", () => {
     ).toBe(false);
   });
 });
-

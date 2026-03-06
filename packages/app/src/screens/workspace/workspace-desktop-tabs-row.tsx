@@ -1,10 +1,8 @@
 import { useCallback, useMemo, useState, type Dispatch, type SetStateAction } from "react";
 import { ActivityIndicator, Pressable, ScrollView, Text, View, type LayoutChangeEvent } from "react-native";
-import { Bot, FileText, Pencil, Plus, SquareTerminal, Terminal, X } from "lucide-react-native";
+import { Plus, SquareTerminal, X } from "lucide-react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { SortableInlineList } from "@/components/sortable-inline-list";
-import { ClaudeIcon } from "@/components/icons/claude-icon";
-import { CodexIcon } from "@/components/icons/codex-icon";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -14,9 +12,11 @@ import {
 } from "@/components/ui/context-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useWorkspaceTabLayout } from "@/screens/workspace/use-workspace-tab-layout";
+import {
+  deriveWorkspaceTabPresentation,
+  WorkspaceTabIcon,
+} from "@/screens/workspace/workspace-tab-presentation";
 import type { WorkspaceTabDescriptor } from "@/screens/workspace/workspace-tabs-types";
-import { deriveSidebarStateBucket } from "@/utils/sidebar-agent-state";
-import { getStatusDotColor } from "@/utils/status-dot-color";
 import { encodeFilePathForPathSegment } from "@/utils/host-routes";
 import type { Agent } from "@/stores/session-store";
 
@@ -158,52 +158,7 @@ export function WorkspaceDesktopTabsRow({
             const showLabel = layoutItem?.showLabel ?? true;
             const labelCharCap = layoutItem?.labelCharCap ?? tab.label.length;
             const renderedLabel = showLabel ? tab.label.slice(0, Math.max(1, labelCharCap)) : "";
-            const iconColor = isActive ? theme.colors.foreground : theme.colors.foregroundMuted;
-            const tabAgentStatusBucket = tabAgent
-              ? deriveSidebarStateBucket({
-                  status: tabAgent.status,
-                  pendingPermissionCount: tabAgent.pendingPermissions.length,
-                  requiresAttention: tabAgent.requiresAttention,
-                  attentionReason: tabAgent.attentionReason,
-                })
-              : null;
-            const tabAgentStatusColor =
-              tabAgentStatusBucket === null
-                ? null
-                : getStatusDotColor({
-                    theme,
-                    bucket: tabAgentStatusBucket,
-                    showDoneAsInactive: false,
-                  });
-            const icon =
-              tab.kind === "agent" ? (
-                <View style={styles.tabAgentIconWrapper}>
-                  {tab.provider === "claude" ? (
-                    <ClaudeIcon size={14} color={iconColor} />
-                  ) : tab.provider === "codex" ? (
-                    <CodexIcon size={14} color={iconColor} />
-                  ) : (
-                    <Bot size={14} color={iconColor} />
-                  )}
-                  {tabAgentStatusColor ? (
-                    <View
-                      style={[
-                        styles.tabStatusDot,
-                        {
-                          backgroundColor: tabAgentStatusColor,
-                          borderColor: theme.colors.surface0,
-                        },
-                      ]}
-                    />
-                  ) : null}
-                </View>
-              ) : tab.kind === "draft" ? (
-                <Pencil size={14} color={iconColor} />
-              ) : tab.kind === "file" ? (
-                <FileText size={14} color={iconColor} />
-              ) : (
-                <Terminal size={14} color={iconColor} />
-              );
+            const presentation = deriveWorkspaceTabPresentation({ tab, agent: tabAgent });
 
             const contextMenuTestId = `workspace-tab-context-${tab.key}`;
 
@@ -246,9 +201,11 @@ export function WorkspaceDesktopTabsRow({
                     ref={dragHandleProps?.setActivatorNodeRef}
                     style={styles.tabHandle}
                   >
-                    <View style={styles.tabIcon}>{icon}</View>
+                    <View style={styles.tabIcon}>
+                      <WorkspaceTabIcon presentation={presentation} active={isActive} />
+                    </View>
                     {showLabel ? (
-                      tab.kind === "agent" && tab.titleState === "loading" ? (
+                      presentation.titleState === "loading" ? (
                         <View
                           style={[
                             styles.tabLabelSkeleton,
@@ -452,22 +409,6 @@ const styles = StyleSheet.create((theme) => ({
   },
   tabIcon: {
     flexShrink: 0,
-  },
-  tabAgentIconWrapper: {
-    position: "relative",
-    width: 14,
-    height: 14,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  tabStatusDot: {
-    position: "absolute",
-    right: -2,
-    bottom: -2,
-    width: 7,
-    height: 7,
-    borderRadius: theme.borderRadius.full,
-    borderWidth: 1,
   },
   tabActive: {
     backgroundColor: theme.colors.surface2,

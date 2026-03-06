@@ -35,23 +35,29 @@ describe("terminal-attach", () => {
   it("reads and updates resume offsets monotonically", () => {
     const offsets = new Map<string, number>();
     const terminalId = "term-1";
+    const resumeOffsetStore = {
+      get: ({ terminalId }: { terminalId: string }) => offsets.get(terminalId),
+      set: ({ terminalId, offset }: { terminalId: string; offset: number }) => {
+        offsets.set(terminalId, offset);
+      },
+    };
 
     expect(
       getTerminalResumeOffset({
         terminalId,
-        resumeOffsetByTerminalId: offsets,
+        resumeOffsetStore,
       })
     ).toBeUndefined();
 
     updateTerminalResumeOffset({
       terminalId,
       offset: 8,
-      resumeOffsetByTerminalId: offsets,
+      resumeOffsetStore,
     });
     expect(
       getTerminalResumeOffset({
         terminalId,
-        resumeOffsetByTerminalId: offsets,
+        resumeOffsetStore,
       })
     ).toBe(8);
 
@@ -59,12 +65,12 @@ describe("terminal-attach", () => {
     updateTerminalResumeOffset({
       terminalId,
       offset: 3,
-      resumeOffsetByTerminalId: offsets,
+      resumeOffsetStore,
     });
     expect(
       getTerminalResumeOffset({
         terminalId,
-        resumeOffsetByTerminalId: offsets,
+        resumeOffsetStore,
       })
     ).toBe(8);
   });

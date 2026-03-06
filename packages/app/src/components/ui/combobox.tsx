@@ -45,6 +45,12 @@ export interface ComboboxProps {
   options: ComboboxOption[]
   value: string
   onSelect: (id: string) => void
+  renderOption?: (input: {
+    option: ComboboxOption
+    selected: boolean
+    active: boolean
+    onPress: () => void
+  }) => ReactElement
   onSearchQueryChange?: (query: string) => void
   searchable?: boolean
   placeholder?: string
@@ -204,6 +210,7 @@ export function Combobox({
   options,
   value,
   onSelect,
+  renderOption,
   onSearchQueryChange,
   searchable = true,
   placeholder = 'Search...',
@@ -568,15 +575,26 @@ export function Combobox({
     <>
       {orderedVisibleOptions.length > 0 ? (
         orderedVisibleOptions.map((opt, index) => (
-          <ComboboxItem
-            key={opt.id}
-            label={opt.label}
-            description={opt.description}
-            kind={opt.kind}
-            selected={opt.id === value}
-            active={index === activeIndex}
-            onPress={() => handleSelect(opt.id)}
-          />
+          renderOption ? (
+            <View key={opt.id}>
+              {renderOption({
+                option: opt,
+                selected: opt.id === value,
+                active: index === activeIndex,
+                onPress: () => handleSelect(opt.id),
+              })}
+            </View>
+          ) : (
+            <ComboboxItem
+              key={opt.id}
+              label={opt.label}
+              description={opt.description}
+              kind={opt.kind}
+              selected={opt.id === value}
+              active={index === activeIndex}
+              onPress={() => handleSelect(opt.id)}
+            />
+          )
         ))
       ) : (
         <ComboboxEmpty>{emptyText}</ComboboxEmpty>

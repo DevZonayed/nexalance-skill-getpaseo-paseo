@@ -11,16 +11,12 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as Clipboard from "expo-clipboard";
 import {
-  Bot,
   ChevronDown,
-  FileText,
   Folder,
   GitBranch,
   PanelRight,
   Plus,
-  Pencil,
   SquareTerminal,
-  Terminal,
 } from "lucide-react-native";
 import { GestureDetector } from "react-native-gesture-handler";
 import { StyleSheet, UnistylesRuntime, useUnistyles } from "react-native-unistyles";
@@ -28,8 +24,6 @@ import { SidebarMenuToggle } from "@/components/headers/menu-header";
 import { HeaderToggleButton } from "@/components/headers/header-toggle-button";
 import { ScreenHeader } from "@/components/headers/screen-header";
 import { Combobox } from "@/components/ui/combobox";
-import { ClaudeIcon } from "@/components/icons/claude-icon";
-import { CodexIcon } from "@/components/icons/codex-icon";
 import {
   Tooltip,
   TooltipContent,
@@ -58,6 +52,7 @@ import {
 } from "@/utils/host-routes";
 import { normalizeWorkspaceIdentity } from "@/utils/workspace-identity";
 import { useHostRuntimeSession } from "@/runtime/host-runtime";
+import { useWorkspaceTerminalSessionRetention } from "@/terminal/hooks/use-workspace-terminal-session-retention";
 import {
   checkoutStatusQueryKey,
   type CheckoutStatusPayload,
@@ -66,14 +61,17 @@ import { AgentReadyScreen } from "@/screens/agent/agent-ready-screen";
 import type { ListTerminalsResponse } from "@server/shared/messages";
 import { upsertTerminalListEntry } from "@/utils/terminal-list";
 import { confirmDialog } from "@/utils/confirm-dialog";
-import { deriveSidebarStateBucket } from "@/utils/sidebar-agent-state";
-import { getStatusDotColor } from "@/utils/status-dot-color";
 import { useArchiveAgent } from "@/hooks/use-archive-agent";
 import { buildProviderCommand } from "@/utils/provider-command-templates";
 import { generateDraftId } from "@/stores/draft-keys";
 import { normalizeAgentSnapshot } from "@/utils/agent-snapshots";
 import { WorkspaceDraftAgentTab } from "@/screens/workspace/workspace-draft-agent-tab";
 import { WorkspaceDesktopTabsRow } from "@/screens/workspace/workspace-desktop-tabs-row";
+import {
+  deriveWorkspaceTabPresentation,
+  WorkspaceTabIcon,
+  WorkspaceTabOptionRow,
+} from "@/screens/workspace/workspace-tab-presentation";
 import type { WorkspaceTabDescriptor } from "@/screens/workspace/workspace-tabs-types";
 import {
   resolveWorkspaceHeader,
@@ -145,6 +143,13 @@ function WorkspaceScreenContent({
   const normalizedServerId = trimNonEmpty(decodeSegment(serverId)) ?? "";
   const normalizedWorkspaceId =
     normalizeWorkspaceIdentity(decodeWorkspaceIdFromPathSegment(workspaceId)) ?? "";
+  const workspaceTerminalScopeKey =
+    normalizedServerId && normalizedWorkspaceId
+      ? `${normalizedServerId}:${normalizedWorkspaceId}`
+      : null;
+  useWorkspaceTerminalSessionRetention({
+    scopeKey: workspaceTerminalScopeKey,
+  });
 
   const queryClient = useQueryClient();
   const { client, isConnected } = useHostRuntimeSession(normalizedServerId);
@@ -702,24 +707,32 @@ function WorkspaceScreenContent({
   }, [tabs]);
 
   const activeTabKey = activeTabId ?? "";
+  const tabPresentationsByKey = useMemo(() => {
+    const map = new Map<string, ReturnType<typeof deriveWorkspaceTabPresentation>>();
+    for (const tab of tabs) {
+      const agent = tab.kind === "agent" ? agentsById.get(tab.agentId) ?? null : null;
+      map.set(tab.key, deriveWorkspaceTabPresentation({ tab, agent }));
+    }
+    return map;
+  }, [agentsById, tabs]);
+  const activeTabPresentation = tabPresentationsByKey.get(activeTabKey) ?? null;
 
   const tabSwitcherOptions = useMemo(
     () =>
       tabs.map((tab) => ({
         id: tab.key,
-        label: tab.kind === "agent" && tab.titleState === "loading" ? "Loading..." : tab.label,
+        label: tabPresentationsByKey.get(tab.key)?.titleState === "loading" ? "Loading..." : tab.label,
         description: tab.subtitle,
       })),
-    [tabs]
+    [tabPresentationsByKey, tabs]
   );
 
   const activeTabLabel = useMemo(() => {
-    const active = tabs.find((tab) => tab.key === activeTabKey);
-    if (active?.kind === "agent" && active.titleState === "loading") {
+    if (activeTabPresentation?.titleState === "loading") {
       return "Loading...";
     }
-    return active?.label ?? "Select tab";
-  }, [activeTabKey, tabs]);
+    return activeTabPresentation?.label ?? "Select tab";
+  }, [activeTabPresentation]);
 
   const handleCreateDraftTab = useCallback(() => {
     if (!normalizedServerId || !normalizedWorkspaceId) {
@@ -1322,69 +1335,9 @@ function WorkspaceScreenContent({
               >
                 <View style={styles.switcherTriggerLeft}>
                   <View style={styles.switcherTriggerIcon} testID="workspace-active-tab-icon">
-                    {(() => {
-                      const activeDescriptor = tabs.find((tab) => tab.key === activeTabKey) ?? null;
-                      if (!activeDescriptor) {
-                        return <View style={styles.tabIcon}><Bot size={14} color={theme.colors.foregroundMuted} /></View>;
-                      }
-
-                      if (activeDescriptor.kind === "terminal") {
-                        return <Terminal size={14} color={theme.colors.foreground} />;
-                      }
-
-                      if (activeDescriptor.kind === "file") {
-                        return <FileText size={14} color={theme.colors.foreground} />;
-                      }
-
-                      if (activeDescriptor.kind === "draft") {
-                        return <Pencil size={14} color={theme.colors.foreground} />;
-                      }
-
-                      if (activeDescriptor.kind !== "agent") {
-                        return <Bot size={14} color={theme.colors.foreground} />;
-                      }
-
-                      const tabAgent = agentsById.get(activeDescriptor.agentId) ?? null;
-                      const tabAgentStatusBucket = tabAgent
-                        ? deriveSidebarStateBucket({
-                            status: tabAgent.status,
-                            pendingPermissionCount: tabAgent.pendingPermissions.length,
-                            requiresAttention: tabAgent.requiresAttention,
-                            attentionReason: tabAgent.attentionReason,
-                          })
-                        : null;
-                      const tabAgentStatusColor =
-                        tabAgentStatusBucket === null
-                          ? null
-                          : getStatusDotColor({
-                              theme,
-                              bucket: tabAgentStatusBucket,
-                              showDoneAsInactive: false,
-                            });
-
-                      return (
-                        <View style={styles.tabAgentIconWrapper}>
-                          {activeDescriptor.provider === "claude" ? (
-                            <ClaudeIcon size={14} color={theme.colors.foreground} />
-                          ) : activeDescriptor.provider === "codex" ? (
-                            <CodexIcon size={14} color={theme.colors.foreground} />
-                          ) : (
-                            <Bot size={14} color={theme.colors.foreground} />
-                          )}
-                          {tabAgentStatusColor ? (
-                            <View
-                              style={[
-                                styles.tabStatusDot,
-                                {
-                                  backgroundColor: tabAgentStatusColor,
-                                  borderColor: theme.colors.surface0,
-                                },
-                              ]}
-                            />
-                          ) : null}
-                        </View>
-                      );
-                    })()}
+                    {activeTabPresentation ? (
+                      <WorkspaceTabIcon presentation={activeTabPresentation} active />
+                    ) : null}
                   </View>
 
                   <Text style={styles.switcherTriggerText} numberOfLines={1}>
@@ -1456,6 +1409,23 @@ function WorkspaceScreenContent({
                 open={isTabSwitcherOpen}
                 onOpenChange={setIsTabSwitcherOpen}
                 anchorRef={tabSwitcherAnchorRef}
+                renderOption={({ option, selected, active, onPress }) => {
+                  const tab = tabByKey.get(option.id);
+                  if (!tab) {
+                    return <View />;
+                  }
+                  const presentation =
+                    tabPresentationsByKey.get(option.id) ??
+                    deriveWorkspaceTabPresentation({ tab });
+                  return (
+                    <WorkspaceTabOptionRow
+                      presentation={presentation}
+                      selected={selected}
+                      active={active}
+                      onPress={onPress}
+                    />
+                  );
+                }}
               />
             </View>
           ) : (
@@ -1709,22 +1679,6 @@ const styles = StyleSheet.create((theme) => ({
   },
   tabIcon: {
     flexShrink: 0,
-  },
-  tabAgentIconWrapper: {
-    position: "relative",
-    width: 14,
-    height: 14,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  tabStatusDot: {
-    position: "absolute",
-    right: -2,
-    bottom: -2,
-    width: 7,
-    height: 7,
-    borderRadius: theme.borderRadius.full,
-    borderWidth: 1,
   },
   tabActive: {
     backgroundColor: theme.colors.surface2,

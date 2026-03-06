@@ -5,6 +5,7 @@ import {
   type TerminalStreamControllerAttachPayload,
   type TerminalStreamControllerChunk,
   type TerminalStreamControllerClient,
+  type TerminalStreamControllerResumeOffsets,
   type TerminalStreamControllerStatus,
 } from "./terminal-stream-controller";
 
@@ -112,6 +113,7 @@ class FakeTerminalStreamClient implements TerminalStreamControllerClient {
 
 function createControllerHarness(input?: {
   client?: FakeTerminalStreamClient;
+  resumeOffsets?: TerminalStreamControllerResumeOffsets;
 }): {
   client: FakeTerminalStreamClient;
   chunks: Array<{ terminalId: string; text: string }>;
@@ -127,6 +129,7 @@ function createControllerHarness(input?: {
   const controller = new TerminalStreamController({
     client,
     getPreferredSize: () => ({ rows: 24, cols: 80 }),
+    resumeOffsets: input?.resumeOffsets,
     onChunk: (chunk) => {
       chunks.push({
         terminalId: chunk.terminalId,
@@ -516,6 +519,71 @@ describe("terminal-stream-controller", () => {
     expect(harness.chunks.at(-1)).toEqual({
       terminalId: "term-clamped-replay",
       text: "live",
+    });
+  });
+
+  it("reuses external resume offsets across controller recreation", async () => {
+    const client = new FakeTerminalStreamClient();
+    const resumeOffsetByTerminalId = new Map<string, number>();
+    const resumeOffsets: TerminalStreamControllerResumeOffsets = {
+      get: ({ terminalId }) => resumeOffsetByTerminalId.get(terminalId),
+      set: ({ terminalId, offset }) => {
+        resumeOffsetByTerminalId.set(terminalId, offset);
+      },
+      clear: ({ terminalId }) => {
+        resumeOffsetByTerminalId.delete(terminalId);
+      },
+      prune: ({ terminalIds }) => {
+        const terminalIdSet = new Set(terminalIds);
+        for (const terminalId of Array.from(resumeOffsetByTerminalId.keys())) {
+          if (!terminalIdSet.has(terminalId)) {
+            resumeOffsetByTerminalId.delete(terminalId);
+          }
+        }
+      },
+    };
+
+    client.nextAttachResponses.push({
+      streamId: 81,
+      currentOffset: 0,
+      reset: false,
+      error: null,
+    });
+
+    const firstHarness = createControllerHarness({
+      client,
+      resumeOffsets,
+    });
+    firstHarness.controller.setTerminal({ terminalId: "term-shared-resume" });
+    await flushAsyncWork();
+
+    client.emitChunk({
+      streamId: 81,
+      offset: 0,
+      endOffset: 2,
+      data: "ok",
+    });
+    await flushAsyncWork();
+    firstHarness.controller.dispose();
+
+    client.nextAttachResponses.push({
+      streamId: 82,
+      currentOffset: 2,
+      reset: false,
+      error: null,
+    });
+
+    const secondHarness = createControllerHarness({
+      client,
+      resumeOffsets,
+    });
+    secondHarness.controller.setTerminal({ terminalId: "term-shared-resume" });
+    await flushAsyncWork();
+
+    expect(client.attachCalls.at(-1)?.options).toEqual({
+      resumeOffset: 2,
+      rows: 24,
+      cols: 80,
     });
   });
 });

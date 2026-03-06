@@ -8,11 +8,16 @@ const TERMINAL_ATTACH_RETRYABLE_ERROR_PATTERNS = [
   "stream ended",
 ] as const;
 
+export type TerminalResumeOffsetStore = {
+  get: (input: { terminalId: string }) => number | undefined;
+  set: (input: { terminalId: string; offset: number }) => void;
+};
+
 export function getTerminalResumeOffset(input: {
   terminalId: string;
-  resumeOffsetByTerminalId: Map<string, number>;
+  resumeOffsetStore: TerminalResumeOffsetStore;
 }): number | undefined {
-  const offset = input.resumeOffsetByTerminalId.get(input.terminalId);
+  const offset = input.resumeOffsetStore.get({ terminalId: input.terminalId });
   if (typeof offset !== "number" || !Number.isFinite(offset)) {
     return undefined;
   }
@@ -24,7 +29,7 @@ export function getTerminalResumeOffset(input: {
 export function updateTerminalResumeOffset(input: {
   terminalId: string;
   offset: number;
-  resumeOffsetByTerminalId: Map<string, number>;
+  resumeOffsetStore: TerminalResumeOffsetStore;
 }): void {
   if (!Number.isFinite(input.offset)) {
     return;
@@ -34,13 +39,16 @@ export function updateTerminalResumeOffset(input: {
   const previousOffset =
     getTerminalResumeOffset({
       terminalId: input.terminalId,
-      resumeOffsetByTerminalId: input.resumeOffsetByTerminalId,
+      resumeOffsetStore: input.resumeOffsetStore,
     }) ?? -1;
   if (normalizedOffset <= previousOffset) {
     return;
   }
 
-  input.resumeOffsetByTerminalId.set(input.terminalId, normalizedOffset);
+  input.resumeOffsetStore.set({
+    terminalId: input.terminalId,
+    offset: normalizedOffset,
+  });
 }
 
 export function getTerminalAttachRetryDelayMs(input: { attempt: number }): number {
