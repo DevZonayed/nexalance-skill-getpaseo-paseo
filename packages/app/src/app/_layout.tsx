@@ -448,7 +448,9 @@ function MissingDaemonView() {
 
 export default function RootLayout() {
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
+    <GestureHandlerRootView
+      style={{ flex: 1, backgroundColor: darkTheme.colors.surface0 }}
+    >
       <PerfDiagnosticsProvider scope="root_layout">
         <PortalProvider>
           <SafeAreaProvider>
@@ -467,6 +469,9 @@ export default function RootLayout() {
                                 screenOptions={{
                                   headerShown: false,
                                   animation: "none",
+                                  contentStyle: {
+                                    backgroundColor: darkTheme.colors.surface0,
+                                  },
                                 }}
                               >
                                 <Stack.Screen name="index" />

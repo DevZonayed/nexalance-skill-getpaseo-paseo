@@ -7,13 +7,18 @@ import "../styles/unistyles";
 const webEcosystemStyles = /* css */ `
   html {
     touch-action: auto;
+    height: 100%;
+    background-color: #18181c;
+    color-scheme: dark;
   }
 
   body {
+    min-height: 100%;
     overflow: auto;
     overscroll-behavior: contain;
     -webkit-user-select: text;
     user-select: text;
+    background-color: #18181c;
   }
 
   body * {
@@ -35,6 +40,11 @@ const webEcosystemStyles = /* css */ `
   [data-testid="file-explorer-tree-scroll"]::-webkit-scrollbar {
     width: 0;
     height: 0;
+  }
+
+  #root {
+    min-height: 100%;
+    background-color: #18181c;
   }
 `;
 
