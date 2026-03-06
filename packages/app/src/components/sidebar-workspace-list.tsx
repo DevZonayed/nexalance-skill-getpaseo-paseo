@@ -55,6 +55,7 @@ import { buildSidebarShortcutModel } from '@/utils/sidebar-shortcuts'
 import { hasVisibleOrderChanged, mergeWithRemainder } from '@/utils/sidebar-reorder'
 import { decideLongPressMove } from '@/utils/sidebar-gesture-arbitration'
 import { confirmDialog } from '@/utils/confirm-dialog'
+import { projectIconPlaceholderLabelFromDisplayName } from '@/utils/project-display-name'
 
 const PASEO_WORKTREE_PATH_MARKER = '/.paseo/worktrees'
 
@@ -416,6 +417,8 @@ function ProjectHeaderRow({
     menuController: null,
     debugId: `project:${project.projectKey}`,
   })
+  const placeholderLabel = projectIconPlaceholderLabelFromDisplayName(displayName)
+  const placeholderInitial = placeholderLabel.charAt(0).toUpperCase()
 
   const handlePress = useCallback(() => {
     if (interaction.didLongPressRef.current) {
@@ -449,7 +452,7 @@ function ProjectHeaderRow({
           <Image source={{ uri: iconDataUri }} style={styles.projectIcon} />
         ) : (
           <View style={styles.projectIconFallback}>
-            <Text style={styles.projectIconFallbackText}>{displayName.charAt(0).toUpperCase()}</Text>
+            <Text style={styles.projectIconFallbackText}>{placeholderInitial}</Text>
           </View>
         )}
 
