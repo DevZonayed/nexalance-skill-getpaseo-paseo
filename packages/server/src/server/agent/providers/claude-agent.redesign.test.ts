@@ -753,6 +753,93 @@ describe("ClaudeAgentSession redesign invariants", () => {
     await session.close();
   });
 
+  test("completes a foreground run when only system metadata arrives before the first assistant message", async () => {
+    let step = 0;
+    sdkMocks.query.mockImplementation(() =>
+      createBaseQueryMock(
+        vi.fn(async () => {
+          if (step === 0) {
+            step += 1;
+            return {
+              done: false,
+              value: {
+                type: "system",
+                subtype: "init",
+                session_id: "redesign-metadata-only-session",
+                permissionMode: "default",
+                model: "opus",
+              },
+            };
+          }
+          if (step === 1) {
+            step += 1;
+            return {
+              done: false,
+              value: {
+                type: "system",
+                subtype: "hook_response",
+                session_id: "redesign-metadata-only-session",
+                hook_name: "SessionStart:Callback",
+                hook_event: "SessionStart",
+                stdout: "",
+                stderr: "",
+              },
+            };
+          }
+          if (step === 2) {
+            step += 1;
+            return {
+              done: false,
+              value: {
+                type: "assistant",
+                message: { content: "assistant output" },
+              },
+            };
+          }
+          if (step === 3) {
+            step += 1;
+            return {
+              done: false,
+              value: {
+                type: "result",
+                subtype: "success",
+                usage: buildUsage(),
+                total_cost_usd: 0,
+              },
+            };
+          }
+          return { done: true, value: undefined };
+        })
+      )
+    );
+
+    const session = await createSession();
+    try {
+      const events = await Promise.race([
+        collectUntilTerminal(session.stream("metadata helper prompt")),
+        new Promise<never>((_, reject) => {
+          setTimeout(
+            () => reject(new Error("Timed out waiting for foreground terminal event")),
+            1_000
+          );
+        }),
+      ]);
+
+      expect(events.some((event) => event.type === "turn_completed")).toBe(true);
+
+      const assistantText = events
+        .filter(
+          (event): event is Extract<AgentStreamEvent, { type: "timeline" }> =>
+            event.type === "timeline" && event.item.type === "assistant_message"
+        )
+        .map((event) => event.item.text)
+        .join("");
+      expect(assistantText).toContain("assistant output");
+    } finally {
+      await session.close();
+    }
+  });
+
   test("reuses one autonomous run for unbound stream_event bursts with no foreground run", async () => {
     const session = await createSession();
     const internal = session as unknown as {

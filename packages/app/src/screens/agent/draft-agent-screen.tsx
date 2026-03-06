@@ -53,7 +53,6 @@ import { normalizeAgentSnapshot } from '@/utils/agent-snapshots'
 import { useDraftAgentCreateFlow } from '@/hooks/use-draft-agent-create-flow'
 
 const EMPTY_PENDING_PERMISSIONS = new Map()
-const MAX_INITIAL_AGENT_TITLE_CHARS = 60
 const DRAFT_CAPABILITIES: AgentCapabilityFlags = {
   supportsStreaming: true,
   supportsSessionPersistence: false,
@@ -96,22 +95,6 @@ function getValidMode(provider: AgentProvider | undefined, value: string | undef
   const definition = PROVIDER_DEFINITION_MAP.get(provider)
   const modes = definition?.modes ?? []
   return modes.some((mode) => mode.id === value) ? value : undefined
-}
-
-function deriveInitialAgentTitle(prompt: string): string | null {
-  const firstContentLine = prompt
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .find((line) => line.length > 0)
-  if (!firstContentLine) {
-    return null
-  }
-  const normalized = firstContentLine.replace(/\s+/g, " ").trim()
-  if (!normalized) {
-    return null
-  }
-  const clamped = normalized.slice(0, MAX_INITIAL_AGENT_TITLE_CHARS).trim()
-  return clamped.length > 0 ? clamped : null
 }
 
 type DraftAgentParams = {
@@ -872,11 +855,9 @@ function DraftAgentScreenContent({
       const modeId = modeOptions.length > 0 && selectedMode !== '' ? selectedMode : undefined
       const trimmedModel = selectedModel.trim()
       const trimmedThinkingOptionId = selectedThinkingOptionId.trim()
-      const derivedTitle = deriveInitialAgentTitle(text)
       const config: AgentSessionConfig = {
         provider: selectedProvider,
         cwd: resolvedWorkingDir,
-        ...(derivedTitle ? { title: derivedTitle } : {}),
         ...(modeId ? { modeId } : {}),
         ...(trimmedModel ? { model: trimmedModel } : {}),
         ...(trimmedThinkingOptionId ? { thinkingOptionId: trimmedThinkingOptionId } : {}),

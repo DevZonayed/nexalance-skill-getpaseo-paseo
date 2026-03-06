@@ -2746,7 +2746,10 @@ class ClaudeAgentSession implements AgentSession {
     if (!foregroundRun || foregroundRun.promptReplaySeen) {
       return;
     }
-    if (message.type === "system" && message.subtype === "init") {
+    // System metadata (init/hook callbacks/etc.) can precede the first prompt
+    // replay for a legitimate foreground run. Treating that as churn strands
+    // one-shot helper runs in autonomous fallback.
+    if (message.type === "system") {
       return;
     }
     this.preReplayMetadataSeen = true;
