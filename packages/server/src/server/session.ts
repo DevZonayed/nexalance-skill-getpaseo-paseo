@@ -5975,6 +5975,7 @@ export class Session {
 
     try {
       const snapshot = await this.ensureAgentLoaded(msg.agentId)
+      const agentPayload = await this.buildAgentPayload(snapshot)
 
       let timeline = this.agentManager.fetchTimeline(msg.agentId, {
         direction,
@@ -6065,6 +6066,7 @@ export class Session {
         payload: {
           requestId: msg.requestId,
           agentId: msg.agentId,
+          agent: agentPayload,
           direction,
           projection,
           epoch: timeline.epoch,
@@ -6090,6 +6092,7 @@ export class Session {
         payload: {
           requestId: msg.requestId,
           agentId: msg.agentId,
+          agent: null,
           direction,
           projection,
           epoch: '',

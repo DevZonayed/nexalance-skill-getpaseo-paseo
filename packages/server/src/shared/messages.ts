@@ -1594,6 +1594,7 @@ export const FetchAgentTimelineResponseMessageSchema = z.object({
   payload: z.object({
     requestId: z.string(),
     agentId: z.string(),
+    agent: AgentSnapshotPayloadSchema.nullable(),
     direction: z.enum(['tail', 'before', 'after']),
     projection: z.enum(['projected', 'canonical']),
     epoch: z.string(),

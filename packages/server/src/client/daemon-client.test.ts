@@ -1631,6 +1631,7 @@ describe('DaemonClient', () => {
         payload: {
           requestId: 'req-1',
           agentId: 'agent_cli',
+          agent: null,
           direction: 'tail',
           projection: 'projected',
           epoch: 'epoch-1',
@@ -1724,6 +1725,7 @@ describe('DaemonClient', () => {
         payload: {
           requestId: 'req-invalid',
           agentId: 'agent_cli',
+          agent: null,
           direction: 'tail',
           projection: 'projected',
           epoch: 'epoch-1',

@@ -484,6 +484,9 @@ const styles = StyleSheet.create((theme) => ({
   },
   tabLabelSkeleton: {
     width: 96,
+    maxWidth: "100%",
+    flexShrink: 1,
+    minWidth: 0,
     height: 10,
     borderRadius: theme.borderRadius.full,
     backgroundColor: theme.colors.surface3,

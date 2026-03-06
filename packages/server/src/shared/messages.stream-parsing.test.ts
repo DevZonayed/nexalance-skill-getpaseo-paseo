@@ -15,6 +15,7 @@ describe('shared messages stream parsing', () => {
       payload: {
         requestId: 'req-1',
         agentId: 'agent_live',
+        agent: null,
         direction: 'tail',
         projection: 'projected',
         epoch: 'epoch-1',
