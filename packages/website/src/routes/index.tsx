@@ -5,7 +5,7 @@ import websitePackage from '../../package.json'
 import '~/styles.css'
 
 const desktopVersion = websitePackage.version
-const macDownloadHref = `https://github.com/getpaseo/paseo/releases/download/v${desktopVersion}/Paseo_${desktopVersion}_aarch64.dmg`
+const macDownloadHref = `https://github.com/getpaseo/paseo/releases/download/v${desktopVersion}/Paseo_${desktopVersion}_universal.dmg`
 
 export const Route = createFileRoute('/')({
   head: () => ({

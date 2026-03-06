@@ -155,7 +155,24 @@ const SHORTCUT_BINDINGS: readonly KeyboardShortcutBinding[] = [
     },
   },
   {
-    id: "workspace-tab-close-current-alt-shift-w",
+    id: "workspace-tab-close-current-mod-w-tauri",
+    action: "workspace.tab.close.current",
+    matches: (event) =>
+      isMod(event) &&
+      !event.altKey &&
+      !event.shiftKey &&
+      (event.code === "KeyW" || event.key.toLowerCase() === "w"),
+    when: (context) => context.isTauri && !context.commandCenterOpen,
+    help: {
+      id: "workspace-tab-close-current",
+      section: "global",
+      label: "Close current tab",
+      keys: ["mod", "W"],
+      when: (context) => context.isTauri,
+    },
+  },
+  {
+    id: "workspace-tab-close-current-alt-shift-w-web",
     action: "workspace.tab.close.current",
     matches: (event) =>
       !event.metaKey &&
@@ -163,12 +180,13 @@ const SHORTCUT_BINDINGS: readonly KeyboardShortcutBinding[] = [
       event.altKey &&
       event.shiftKey &&
       (event.code === "KeyW" || event.key.toLowerCase() === "w"),
-    when: (context) => !context.commandCenterOpen,
+    when: (context) => !context.isTauri && !context.commandCenterOpen,
     help: {
       id: "workspace-tab-close-current",
       section: "global",
       label: "Close current tab",
       keys: ["alt", "shift", "W"],
+      when: (context) => !context.isTauri,
     },
   },
   {

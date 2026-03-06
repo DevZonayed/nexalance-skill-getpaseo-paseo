@@ -200,7 +200,7 @@ describe("keyboard-shortcuts", () => {
     expect(match?.action).toBe("workspace.tab.new");
   });
 
-  it("matches Alt+Shift+W to close current tab", () => {
+  it("matches Alt+Shift+W to close current tab on web", () => {
     const match = resolveKeyboardShortcut({
       event: keyboardEvent({
         key: "W",
@@ -208,7 +208,20 @@ describe("keyboard-shortcuts", () => {
         altKey: true,
         shiftKey: true,
       }),
-      context: shortcutContext(),
+      context: shortcutContext({ isTauri: false }),
+    });
+
+    expect(match?.action).toBe("workspace.tab.close.current");
+  });
+
+  it("matches Mod+W to close current tab on tauri", () => {
+    const match = resolveKeyboardShortcut({
+      event: keyboardEvent({
+        key: "w",
+        code: "KeyW",
+        metaKey: true,
+      }),
+      context: shortcutContext({ isMac: true, isTauri: true }),
     });
 
     expect(match?.action).toBe("workspace.tab.close.current");
@@ -348,6 +361,11 @@ describe("keyboard-shortcut help sections", () => {
       "shift",
       "1-9",
     ]);
+    expect(findRow(sections, "workspace-tab-close-current")?.keys).toEqual([
+      "alt",
+      "shift",
+      "W",
+    ]);
   });
 
   it("uses tauri defaults for workspace and tab jump", () => {
@@ -359,6 +377,10 @@ describe("keyboard-shortcut help sections", () => {
     expect(findRow(sections, "new-agent")?.keys).toEqual(["mod", "shift", "O"]);
     expect(findRow(sections, "workspace-jump-index")?.keys).toEqual(["mod", "1-9"]);
     expect(findRow(sections, "workspace-tab-jump-index")?.keys).toEqual(["alt", "1-9"]);
+    expect(findRow(sections, "workspace-tab-close-current")?.keys).toEqual([
+      "mod",
+      "W",
+    ]);
   });
 
   it("uses mod+period as non-mac left sidebar shortcut", () => {

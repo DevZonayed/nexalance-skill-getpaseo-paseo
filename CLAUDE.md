@@ -141,12 +141,15 @@ From `packages/app`:
 
 ```bash
 # development (debug)
-APP_VARIANT=development npx expo prebuild --platform android --clean --non-interactive
+APP_VARIANT=development npx expo prebuild --platform android --non-interactive
 APP_VARIANT=development npx expo run:android --variant=debug
 
 # production (release)
-APP_VARIANT=production npx expo prebuild --platform android --clean --non-interactive
+APP_VARIANT=production npx expo prebuild --platform android --non-interactive
 APP_VARIANT=production npx expo run:android --variant=release
+
+# clean native project (when needed)
+npx expo prebuild --platform android --clean --non-interactive
 ```
 
 From repo root:
@@ -154,9 +157,10 @@ From repo root:
 ```bash
 npm run android:development
 npm run android:production
+npm run android:clean
 ```
 
-`npm run android:prod` and `npm run android:release` are aliases for `npm run android:production`.
+`npm run android:release` is an alias for `npm run android:production`.
 
 ### Cloud build + submit (EAS Workflows)
 
