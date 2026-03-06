@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.1.18 - 2026-03-06
+### Added
+- Added a desktop `Mod+W` shortcut to close the current tab.
+
+### Improved
+- New and newly selected terminals now take focus automatically so you can type immediately.
+- Kept newly created workspaces and projects in a more stable order in the sidebar.
+- Improved project naming for GitHub remotes and expanded project icon discovery to Phoenix `priv/static` assets.
+- Updated the website desktop download link to use the universal macOS DMG.
+
+### Fixed
+- Restored automatic agent metadata generation for Claude runs.
+
 ## 0.1.17 - 2026-03-06
 ### Added
 - New workspace-first navigation model with workspace tabs, file tabs, and sortable tab groups.
