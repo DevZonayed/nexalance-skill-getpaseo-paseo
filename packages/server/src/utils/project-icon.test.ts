@@ -44,6 +44,10 @@ describe("findProjectIcon", () => {
       expect(PRIORITY_DIRS).toContain("static");
       expect(PRIORITY_DIRS).toContain("assets");
     });
+
+    it("includes Phoenix static assets directory", () => {
+      expect(PRIORITY_DIRS).toContain("priv/static");
+    });
   });
 
   describe("IGNORED_DIRS", () => {
@@ -95,6 +99,14 @@ describe("findProjectIcon", () => {
 
     const result = await findProjectIcon(tempDir);
     expect(result).toBe(join(tempDir, "static", "favicon.svg"));
+  });
+
+  it("finds icon in Phoenix priv/static directory", async () => {
+    mkdirSync(join(tempDir, "priv", "static"), { recursive: true });
+    writeFileSync(join(tempDir, "priv", "static", "favicon.ico"), "icon content");
+
+    const result = await findProjectIcon(tempDir);
+    expect(result).toBe(join(tempDir, "priv", "static", "favicon.ico"));
   });
 
   it("finds icon in assets directory (priority dir)", async () => {
@@ -206,6 +218,14 @@ describe("findProjectIcon", () => {
 
       const result = await findProjectIcon(tempDir);
       expect(result).toBe(join(tempDir, "packages", "ui", "logo.svg"));
+    });
+
+    it("finds icon in Phoenix app priv/static directory inside monorepo", async () => {
+      mkdirSync(join(tempDir, "apps", "api", "priv", "static"), { recursive: true });
+      writeFileSync(join(tempDir, "apps", "api", "priv", "static", "favicon.ico"), "icon");
+
+      const result = await findProjectIcon(tempDir);
+      expect(result).toBe(join(tempDir, "apps", "api", "priv", "static", "favicon.ico"));
     });
 
     it("prioritizes root priority dirs over monorepo dirs", async () => {
