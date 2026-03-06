@@ -366,7 +366,7 @@ export function installScrollJankInvestigation(): void {
     timeoutHandles.set(timeoutId, true);
     timerStats.timeout.active = timeoutHandles.size;
     return timeoutId as unknown as ReturnType<typeof setTimeout>;
-  }) as typeof setTimeout;
+  }) as unknown as typeof setTimeout;
 
   globalThis.clearTimeout = ((timeoutId?: number) => {
     if (typeof timeoutId === "number" && timeoutHandles.delete(timeoutId)) {
@@ -391,7 +391,7 @@ export function installScrollJankInvestigation(): void {
     intervalHandles.set(intervalId, true);
     timerStats.interval.active = intervalHandles.size;
     return intervalId as unknown as ReturnType<typeof setInterval>;
-  }) as typeof setInterval;
+  }) as unknown as typeof setInterval;
 
   globalThis.clearInterval = ((intervalId?: number) => {
     if (typeof intervalId === "number" && intervalHandles.delete(intervalId)) {
