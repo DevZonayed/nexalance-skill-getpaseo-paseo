@@ -25,6 +25,7 @@ export type WorkspaceTabActionRequest =
 
 interface KeyboardShortcutsState {
   commandCenterOpen: boolean;
+  projectPickerOpen: boolean;
   shortcutsDialogOpen: boolean;
   altDown: boolean;
   cmdOrCtrlDown: boolean;
@@ -36,6 +37,7 @@ interface KeyboardShortcutsState {
   nextWorkspaceTabActionRequestId: number;
 
   setCommandCenterOpen: (open: boolean) => void;
+  setProjectPickerOpen: (open: boolean) => void;
   setShortcutsDialogOpen: (open: boolean) => void;
   setAltDown: (down: boolean) => void;
   setCmdOrCtrlDown: (down: boolean) => void;
@@ -67,6 +69,7 @@ interface KeyboardShortcutsState {
 export const useKeyboardShortcutsStore = create<KeyboardShortcutsState>(
   (set, get) => ({
     commandCenterOpen: false,
+    projectPickerOpen: false,
     shortcutsDialogOpen: false,
     altDown: false,
     cmdOrCtrlDown: false,
@@ -76,6 +79,7 @@ export const useKeyboardShortcutsStore = create<KeyboardShortcutsState>(
     nextWorkspaceTabActionRequestId: 1,
 
     setCommandCenterOpen: (open) => set({ commandCenterOpen: open }),
+    setProjectPickerOpen: (open) => set({ projectPickerOpen: open }),
     setShortcutsDialogOpen: (open) => set({ shortcutsDialogOpen: open }),
     setAltDown: (down) => set({ altDown: down }),
     setCmdOrCtrlDown: (down) => set({ cmdOrCtrlDown: down }),

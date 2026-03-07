@@ -2,15 +2,12 @@ import { useEffect } from "react";
 import { Platform } from "react-native";
 import { usePathname, useRouter } from "expo-router";
 import { getIsTauri } from "@/constants/layout";
-import { useSessionStore } from "@/stores/session-store";
 import { useKeyboardShortcutsStore } from "@/stores/keyboard-shortcuts-store";
 import { setCommandCenterFocusRestoreElement } from "@/utils/command-center-focus-restore";
 import {
-  buildHostOpenProjectRoute,
   buildHostWorkspaceRoute,
   parseHostAgentRouteFromPathname,
   parseHostWorkspaceRouteFromPathname,
-  parseServerIdFromPathname,
 } from "@/utils/host-routes";
 import {
   type MessageInputKeyboardActionKind,
@@ -99,19 +96,8 @@ export function useKeyboardShortcuts({
       return true;
     };
 
-    const navigateToOpenProject = (): boolean => {
-      let targetServerId = parseServerIdFromPathname(pathname);
-
-      if (!targetServerId) {
-        const sessionServerIds = Object.keys(useSessionStore.getState().sessions);
-        targetServerId = sessionServerIds[0] ?? null;
-      }
-
-      if (!targetServerId) {
-        return false;
-      }
-
-      router.push(buildHostOpenProjectRoute(targetServerId) as any);
+    const openProjectPicker = (): boolean => {
+      useKeyboardShortcutsStore.getState().setProjectPickerOpen(true);
       return true;
     };
 
@@ -171,7 +157,7 @@ export function useKeyboardShortcuts({
     }): boolean => {
       switch (input.action) {
         case "agent.new":
-          return navigateToOpenProject();
+          return openProjectPicker();
         case "workspace.tab.new":
           return requestWorkspaceTabAction({ kind: "new" });
         case "workspace.tab.close.current":

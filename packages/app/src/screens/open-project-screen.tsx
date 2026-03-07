@@ -1,160 +1,32 @@
-import { useCallback, useMemo, useRef, useState } from "react";
-import { View, Text, ScrollView } from "react-native";
-import { useQuery } from "@tanstack/react-query";
-import { router } from "expo-router";
-import { FolderOpen } from "lucide-react-native";
+import { View, Text, Pressable } from "react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
-import { FormSelectTrigger } from "@/components/agent-form/agent-form-dropdowns";
-import { Button } from "@/components/ui/button";
-import { Combobox } from "@/components/ui/combobox";
-import { useToast } from "@/contexts/toast-context";
-import { useHostRuntimeSession } from "@/runtime/host-runtime";
-import {
-  normalizeWorkspaceDescriptor,
-  useSessionStore,
-} from "@/stores/session-store";
-import { buildHostWorkspaceRouteWithOpenIntent } from "@/utils/host-routes";
-import { buildWorkingDirectorySuggestions } from "@/utils/working-directory-suggestions";
+import { FolderOpen } from "lucide-react-native";
+import { PaseoLogo } from "@/components/icons/paseo-logo";
+import { useKeyboardShortcutsStore } from "@/stores/keyboard-shortcuts-store";
 
-export function OpenProjectScreen({ serverId }: { serverId: string }) {
+export function OpenProjectScreen({ serverId: _serverId }: { serverId: string }) {
   const { theme } = useUnistyles();
-  const toast = useToast();
-  const { client, isConnected } = useHostRuntimeSession(serverId);
-  const workspaces = useSessionStore((state) => state.sessions[serverId]?.workspaces);
-  const mergeWorkspaces = useSessionStore((state) => state.mergeWorkspaces);
-  const setHasHydratedWorkspaces = useSessionStore((state) => state.setHasHydratedWorkspaces);
-  const [isDirectoryPickerOpen, setIsDirectoryPickerOpen] = useState(false);
-  const [directoryQuery, setDirectoryQuery] = useState("");
-  const [selectedPath, setSelectedPath] = useState("");
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const directoryAnchorRef = useRef<View>(null);
-
-  const recommendedPaths = useMemo(() => {
-    if (!workspaces) {
-      return [];
-    }
-    return Array.from(workspaces.values()).map((workspace) => workspace.projectRootPath || workspace.id);
-  }, [workspaces]);
-
-  const directorySuggestionsQuery = useQuery({
-    queryKey: ["open-project-directory-suggestions", serverId, directoryQuery],
-    queryFn: async () => {
-      if (!client) {
-        return [];
-      }
-      const result = await client.getDirectorySuggestions({
-        query: directoryQuery,
-        includeDirectories: true,
-        includeFiles: false,
-        limit: 30,
-      });
-      return result.entries?.flatMap((entry) =>
-        entry.kind === "directory" ? [entry.path] : []
-      ) ?? [];
-    },
-    enabled: Boolean(client) && isConnected,
-    staleTime: 15_000,
-    retry: false,
-  });
-
-  const directoryOptions = useMemo(
-    () =>
-      buildWorkingDirectorySuggestions({
-        recommendedPaths,
-        serverPaths: directorySuggestionsQuery.data ?? [],
-        query: directoryQuery,
-      }).map((path) => ({
-        id: path,
-        label: path,
-        kind: "directory" as const,
-      })),
-    [directoryQuery, directorySuggestionsQuery.data, recommendedPaths]
+  const setProjectPickerOpen = useKeyboardShortcutsStore(
+    (s) => s.setProjectPickerOpen
   );
-
-  const handleOpenProject = useCallback(async () => {
-    const trimmedPath = selectedPath.trim();
-    if (!trimmedPath) {
-      toast.error("Choose a project directory");
-      return;
-    }
-    if (!client) {
-      toast.error("Host is not connected");
-      return;
-    }
-
-    setIsSubmitting(true);
-    try {
-      const payload = await client.openProject(trimmedPath);
-      if (payload.error || !payload.workspace) {
-        throw new Error(payload.error || "Failed to open project");
-      }
-      mergeWorkspaces(serverId, [normalizeWorkspaceDescriptor(payload.workspace)]);
-      setHasHydratedWorkspaces(serverId, true);
-      router.replace(
-        buildHostWorkspaceRouteWithOpenIntent(serverId, payload.workspace.id, {
-          kind: "draft",
-          draftId: "new",
-        }) as any
-      );
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to open project");
-    } finally {
-      setIsSubmitting(false);
-    }
-  }, [client, mergeWorkspaces, selectedPath, serverId, setHasHydratedWorkspaces, toast]);
 
   return (
     <View style={styles.container}>
-      <ScrollView contentContainerStyle={styles.content}>
-        <View style={styles.card}>
-          <Text style={styles.eyebrow}>Workspace Registry</Text>
-          <Text style={styles.title}>Open project</Text>
-          <Text style={styles.subtitle}>
-            Add a local folder to the sidebar, then land inside its workspace draft tab.
-          </Text>
-
-          <FormSelectTrigger
-            controlRef={directoryAnchorRef}
-            containerStyle={styles.selector}
-            label="Project directory"
-            value={selectedPath}
-            placeholder="Choose a project directory"
-            onPress={() => setIsDirectoryPickerOpen(true)}
-            icon={<FolderOpen size={theme.iconSize.md} color={theme.colors.foregroundMuted} />}
-            showLabel={false}
-            valueEllipsizeMode="middle"
-            testID="open-project-directory-trigger"
-          />
-
-          <View style={styles.actions}>
-            <Button
-              variant="default"
-              onPress={() => void handleOpenProject()}
-              disabled={isSubmitting || !isConnected}
-              testID="open-project-submit"
-            >
-              {isSubmitting ? "Opening..." : "Open project"}
-            </Button>
-          </View>
-        </View>
-      </ScrollView>
-
-      <Combobox
-        options={directoryOptions}
-        value={selectedPath}
-        onSelect={setSelectedPath}
-        onSearchQueryChange={setDirectoryQuery}
-        searchPlaceholder="Search directories..."
-        emptyText="No directories found"
-        allowCustomValue
-        customValuePrefix=""
-        customValueKind="directory"
-        optionsPosition="above-search"
-        title="Project directory"
-        open={isDirectoryPickerOpen}
-        onOpenChange={setIsDirectoryPickerOpen}
-        anchorRef={directoryAnchorRef}
-      />
+      <View style={styles.content}>
+        <PaseoLogo size={56} />
+        <Text style={styles.heading}>What shall we build today?</Text>
+        <Pressable
+          style={({ hovered }) => [
+            styles.openButton,
+            hovered && styles.openButtonHovered,
+          ]}
+          onPress={() => setProjectPickerOpen(true)}
+          testID="open-project-submit"
+        >
+          <FolderOpen size={16} color={theme.colors.foregroundMuted} />
+          <Text style={styles.openButtonText}>Open a project</Text>
+        </Pressable>
+      </View>
     </View>
   );
 }
@@ -167,40 +39,34 @@ const styles = StyleSheet.create((theme) => ({
   content: {
     flexGrow: 1,
     justifyContent: "center",
+    alignItems: "center",
+    gap: theme.spacing[6],
     padding: theme.spacing[6],
   },
-  card: {
-    alignSelf: "center",
-    width: "100%",
-    maxWidth: 560,
-    gap: theme.spacing[4],
-    padding: theme.spacing[6],
-    borderRadius: theme.borderRadius.xl,
-    backgroundColor: theme.colors.surface1,
+  heading: {
+    color: theme.colors.foreground,
+    fontSize: theme.fontSize["2xl"],
+    fontWeight: theme.fontWeight.normal,
+    textAlign: "center",
+  },
+  openButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[2],
+    paddingVertical: theme.spacing[3],
+    paddingHorizontal: theme.spacing[4],
+    borderRadius: theme.borderRadius.lg,
     borderWidth: 1,
     borderColor: theme.colors.border,
+    backgroundColor: "transparent",
   },
-  eyebrow: {
-    color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
-    textTransform: "uppercase",
-    letterSpacing: 1,
+  openButtonHovered: {
+    borderColor: theme.colors.borderAccent,
+    backgroundColor: theme.colors.surface1,
   },
-  title: {
-    color: theme.colors.foreground,
-    fontSize: theme.fontSize["3xl"],
-    fontWeight: theme.fontWeight.semibold,
-  },
-  subtitle: {
+  openButtonText: {
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.sm,
-    lineHeight: 20,
-  },
-  selector: {
-    minHeight: 64,
-  },
-  actions: {
-    flexDirection: "row",
-    justifyContent: "flex-start",
+    fontWeight: theme.fontWeight.normal,
   },
 }));

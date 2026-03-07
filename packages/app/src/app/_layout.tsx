@@ -34,6 +34,7 @@ import {
 } from "@/contexts/horizontal-scroll-context";
 import { getIsTauri } from "@/constants/layout";
 import { CommandCenter } from "@/components/command-center";
+import { ProjectPickerModal } from "@/components/project-picker-modal";
 import { KeyboardShortcutsDialog } from "@/components/keyboard-shortcuts-dialog";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { queryClient } from "@/query/query-client";
@@ -286,6 +287,7 @@ function AppContainer({ children, selectedAgentId }: AppContainerProps) {
       {isMobile && chromeEnabled && <LeftSidebar selectedAgentId={selectedAgentId} />}
       <DownloadToast />
       <CommandCenter />
+      <ProjectPickerModal />
       <KeyboardShortcutsDialog />
     </View>
   );

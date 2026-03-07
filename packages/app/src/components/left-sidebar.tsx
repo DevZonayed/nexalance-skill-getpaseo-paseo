@@ -25,11 +25,11 @@ import { formatConnectionStatus } from '@/utils/daemons'
 import { HEADER_INNER_HEIGHT, HEADER_INNER_HEIGHT_MOBILE } from '@/constants/layout'
 import {
   buildHostAgentsRoute,
-  buildHostOpenProjectRoute,
   buildHostSettingsRoute,
   mapPathnameToServer,
   parseServerIdFromPathname,
 } from '@/utils/host-routes'
+import { useKeyboardShortcutsStore } from '@/stores/keyboard-shortcuts-store'
 
 const DESKTOP_SIDEBAR_WIDTH = 320
 const IS_DEV = Boolean((globalThis as { __DEV__?: boolean }).__DEV__)
@@ -158,21 +158,16 @@ export function LeftSidebar({ selectedAgentId: _selectedAgentId }: LeftSidebarPr
     closeToAgent()
   }, [closeToAgent])
 
-  const handleOpenProject = useCallback(() => {
-    if (!activeServerId) {
-      return
-    }
-    router.push(buildHostOpenProjectRoute(activeServerId) as any)
-  }, [activeServerId])
+  const setProjectPickerOpen = useKeyboardShortcutsStore((s) => s.setProjectPickerOpen)
 
   const handleOpenProjectMobile = useCallback(() => {
     closeToAgent()
-    handleOpenProject()
-  }, [closeToAgent, handleOpenProject])
+    setProjectPickerOpen(true)
+  }, [closeToAgent, setProjectPickerOpen])
 
   const handleOpenProjectDesktop = useCallback(() => {
-    handleOpenProject()
-  }, [handleOpenProject])
+    setProjectPickerOpen(true)
+  }, [setProjectPickerOpen])
 
   // Mobile: close sidebar and navigate
   const handleSettingsMobile = useCallback(() => {

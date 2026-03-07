@@ -185,12 +185,18 @@ export function useCommandCenter() {
     [pathname, setOpen]
   );
 
+  const setProjectPickerOpen = useKeyboardShortcutsStore((s) => s.setProjectPickerOpen);
+
   const handleSelectAction = useCallback((action: CommandCenterActionItem) => {
-    didNavigateRef.current = true;
     clearCommandCenterFocusRestoreElement();
     setOpen(false);
+    if (action.id === "new-agent") {
+      setProjectPickerOpen(true);
+      return;
+    }
+    didNavigateRef.current = true;
     router.push(action.route);
-  }, [setOpen]);
+  }, [setOpen, setProjectPickerOpen]);
 
   const handleSelectItem = useCallback(
     (item: CommandCenterItem) => {
