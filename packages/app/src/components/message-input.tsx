@@ -718,7 +718,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
           value={value}
           onChangeText={handleInputChange}
           placeholder={placeholder}
-          placeholderTextColor={theme.colors.mutedForeground}
+          placeholderTextColor={theme.colors.surface4}
           onFocus={() => {
             isInputFocusedRef.current = true
             onFocusChange?.(true)

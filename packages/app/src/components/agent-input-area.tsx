@@ -808,7 +808,7 @@ export function AgentInputArea({
               onRemoveImage={handleRemoveImage}
               client={client}
               isReadyForDictation={isDictationReady}
-              placeholder="Message agent..."
+              placeholder="Message the agent, tag @files, or use /commands and /skills"
               autoFocus={autoFocus && isDesktopWebBreakpoint}
               autoFocusKey={`${serverId}:${agentId}`}
               disabled={isSubmitLoading}
