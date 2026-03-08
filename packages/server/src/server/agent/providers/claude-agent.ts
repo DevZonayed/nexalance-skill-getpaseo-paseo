@@ -74,6 +74,24 @@ import {
 } from "../provider-launch-config.js";
 import { getOrchestratorModeInstructions } from "../orchestrator-instructions.js";
 
+/*
+ * Routing invariant:
+ * While a foreground Claude turn is active, identifier-less assistant/stream/result
+ * events must stay attached to that foreground run unless we have explicit evidence
+ * that a distinct autonomous run has started.
+ *
+ * We previously allowed task_notification metadata to reserve autonomous ownership,
+ * then consumed that reservation on the next unbound chunk. In practice Claude often
+ * emits task_notification records and foreground tool-use stream chunks interleaved
+ * within the same turn. That let a foreground turn's terminal result get misrouted
+ * into an autonomous side run, which stranded the agent in "running" because the
+ * foreground stream never received turn_completed.
+ *
+ * The rule below is intentionally conservative: foreground turns get first claim on
+ * same-turn traffic, and autonomous wake reservations are only consumed once no
+ * foreground turn is active. This keeps task_notification advisory instead of letting
+ * it steal ownership from the active user turn.
+ */
 const fsPromises = promises;
 const CLAUDE_SETTING_SOURCES: NonNullable<Options["settingSources"]> = [
   "user",
@@ -102,8 +120,9 @@ type RoutingReason =
   | "parent_message_id"
   | "message_id"
   | "unbound_autonomous"
-  | "fallback"
-  | "metadata";
+  | "reserved_autonomous"
+  | "metadata"
+  | "ignored_unmatched";
 
 type EventIdentifiers = {
   taskId: string | null;
@@ -114,6 +133,7 @@ type EventIdentifiers = {
 type RunRoute = {
   run: RunRecord | null;
   reason: RoutingReason;
+  dispatchWithoutRun?: boolean;
 };
 
 type RunRecord = {
@@ -2583,8 +2603,10 @@ class ClaudeAgentSession implements AgentSession {
   ): RunRoute {
     if (normalized.metadataOnly) {
       if (
-        normalized.message.type === "user" &&
-        isTaskNotificationUserContent(normalized.message.message?.content)
+        (normalized.message.type === "user" &&
+          isTaskNotificationUserContent(normalized.message.message?.content)) ||
+        (normalized.message.type === "system" &&
+          normalized.message.subtype === "task_notification")
       ) {
         this.reserveAutonomousWake("task_notification");
       }
@@ -2601,13 +2623,6 @@ class ClaudeAgentSession implements AgentSession {
     const byIdentifiers = this.runTracker.resolveByIdentifiers(normalized.identifiers);
     if (byIdentifiers.run) {
       return byIdentifiers;
-    }
-
-    if (this.turnState === "autonomous") {
-      const activeAutonomousRun = this.runTracker.getLatestActiveRun("autonomous");
-      if (activeAutonomousRun) {
-        return { run: activeAutonomousRun, reason: "unbound_autonomous" };
-      }
     }
 
     const foregroundRun = this.activeForegroundTurn
@@ -2648,19 +2663,35 @@ class ClaudeAgentSession implements AgentSession {
       return { run: foregroundRun, reason: "foreground" };
     }
 
+    if (
+      this.pendingAutonomousWakeReservations > 0 &&
+      !normalized.identifiers.taskId &&
+      !normalized.identifiers.parentMessageId &&
+      !normalized.identifiers.messageId
+    ) {
+      const reservedAutonomousRun = this.claimOrCreateAutonomousRun(
+        "reservation_unbound"
+      );
+      return {
+        run: reservedAutonomousRun,
+        reason: "reserved_autonomous",
+      };
+    }
+
     if (!hasIdentifiers) {
-      if (this.pendingAutonomousWakeReservations > 0) {
-        const reservedAutonomousRun = this.claimOrCreateAutonomousRun(
-          "reservation_unbound"
-        );
-        return {
-          run: reservedAutonomousRun,
-          reason: "unbound_autonomous",
-        };
-      }
       const activeAutonomousRun = this.runTracker.getLatestActiveRun("autonomous");
       if (activeAutonomousRun) {
         return { run: activeAutonomousRun, reason: "unbound_autonomous" };
+      }
+      if (
+        !foregroundRun &&
+        (normalized.message.type === "assistant" ||
+          normalized.message.type === "stream_event" ||
+          normalized.message.type === "result" ||
+          normalized.message.type === "tool_progress")
+      ) {
+        const autonomousRun = this.claimOrCreateAutonomousRun("unbound_implicit");
+        return { run: autonomousRun, reason: "unbound_autonomous" };
       }
     }
 
@@ -2668,12 +2699,26 @@ class ClaudeAgentSession implements AgentSession {
       const reservedAutonomousRun = this.claimOrCreateAutonomousRun(
         "reservation_fallback"
       );
-      return { run: reservedAutonomousRun, reason: "fallback" };
+      return { run: reservedAutonomousRun, reason: "reserved_autonomous" };
     }
 
-    const autonomousRun = this.createRun("autonomous", null);
-    this.emitRunEvent(autonomousRun, { type: "turn_started", provider: "claude" });
-    return { run: autonomousRun, reason: "fallback" };
+    this.logger.debug(
+      {
+        messageType: normalized.message.type,
+        hasIdentifiers,
+        taskId: normalized.identifiers.taskId,
+        parentMessageId: normalized.identifiers.parentMessageId,
+        messageId: normalized.identifiers.messageId,
+        turnState: this.turnState,
+        pendingAutonomousWakeReservations: this.pendingAutonomousWakeReservations,
+      },
+      "Ignoring unmatched Claude SDK message without explicit run start signal"
+    );
+    return {
+      run: null,
+      reason: "ignored_unmatched",
+      dispatchWithoutRun: false,
+    };
   }
 
   private shouldPreferForegroundRun(input: {
@@ -2746,10 +2791,14 @@ class ClaudeAgentSession implements AgentSession {
     if (!foregroundRun || foregroundRun.promptReplaySeen) {
       return;
     }
-    // System metadata (init/hook callbacks/etc.) can precede the first prompt
-    // replay for a legitimate foreground run. Treating that as churn strands
-    // one-shot helper runs in autonomous fallback.
-    if (message.type === "system") {
+    // Most system metadata (init/hook callbacks/etc.) can precede the first prompt
+    // replay for a legitimate foreground run. Treating all of it as churn strands
+    // one-shot helper runs. task_notification is the exception: it represents
+    // background agent activity and should suppress pre-replay foreground routing.
+    if (
+      message.type === "system" &&
+      message.subtype !== "task_notification"
+    ) {
       return;
     }
     this.preReplayMetadataSeen = true;
@@ -2886,6 +2935,10 @@ class ClaudeAgentSession implements AgentSession {
         continue;
       }
 
+      if (await this.handleMissingResumedConversation(sdkMessage, q)) {
+        continue;
+      }
+
       try {
         this.routeSdkMessageFromPump(sdkMessage);
       } catch (error) {
@@ -2954,6 +3007,9 @@ class ClaudeAgentSession implements AgentSession {
     }
 
     if (!route.run) {
+      if (route.dispatchWithoutRun === false) {
+        return;
+      }
       this.dispatchMetadataEvents(events);
       return;
     }
@@ -2961,6 +3017,45 @@ class ClaudeAgentSession implements AgentSession {
     for (const event of events) {
       this.emitRunEvent(route.run, event);
     }
+  }
+
+  private async handleMissingResumedConversation(
+    message: SDKMessage,
+    query: Query
+  ): Promise<boolean> {
+    const staleResumeError = this.readMissingResumedConversationError(message);
+    if (!staleResumeError) {
+      return false;
+    }
+
+    this.logger.warn(
+      {
+        claudeSessionId: this.claudeSessionId,
+        error: staleResumeError,
+      },
+      "Claude resumed session no longer exists; invalidating persisted session"
+    );
+
+    for (const run of this.runTracker.listActiveRuns()) {
+      this.failRun(run, staleResumeError);
+    }
+    this.transitionTurnStateFromActiveRuns("missing resumed conversation");
+    this.input?.end();
+    await this.awaitWithTimeout(
+      query.return?.(),
+      "query pump return on missing resumed conversation"
+    );
+    if (this.query === query) {
+      this.query = null;
+      this.input = null;
+    }
+    this.claudeSessionId = null;
+    this.persistence = null;
+    this.persistedHistory = [];
+    this.historyPending = false;
+    this.cachedRuntimeInfo = null;
+    this.queryRestartNeeded = false;
+    return true;
   }
 
   private shouldSuppressReplayResultTerminal(input: {
@@ -3689,6 +3784,30 @@ class ClaudeAgentSession implements AgentSession {
       this.cachedRuntimeInfo = null;
     }
     return threadStartedSessionId;
+  }
+
+  private readMissingResumedConversationError(message: SDKMessage): string | null {
+    if (message.type !== "result" || message.subtype !== "error_during_execution") {
+      return null;
+    }
+    if (!this.claudeSessionId) {
+      return null;
+    }
+    const errors =
+      "errors" in message && Array.isArray(message.errors) ? message.errors : [];
+    for (const entry of errors) {
+      if (typeof entry !== "string") {
+        continue;
+      }
+      const match = entry.match(/^No conversation found with session ID:\s*(.+)$/);
+      if (!match) {
+        continue;
+      }
+      if (match[1]?.trim() === this.claudeSessionId) {
+        return entry.trim();
+      }
+    }
+    return null;
   }
 
   private convertUsage(message: SDKResultMessage): AgentUsage | undefined {

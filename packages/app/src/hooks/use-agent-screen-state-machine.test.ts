@@ -342,6 +342,46 @@ describe("deriveAgentScreenViewState", () => {
     expect(ready.sync.status).toBe("idle");
   });
 
+  it("keeps first route entry blocked until authoritative history is applied", () => {
+    const memory = createBaseMemory();
+    const input: AgentScreenMachineInput = {
+      ...createBaseInput(),
+      agent: createAgent("agent-1"),
+      needsAuthoritativeSync: true,
+      isHistorySyncing: true,
+      hasHydratedHistoryBefore: false,
+    };
+
+    const result = deriveAgentScreenViewState({ input, memory });
+
+    expect(result.state).toEqual({
+      tag: "boot",
+      reason: "loading",
+      source: "none",
+    });
+    expect(result.memory.hasRenderedReady).toBe(false);
+    expect(result.memory.lastReadyAgent).toBeNull();
+  });
+
+  it("still allows optimistic create flow to render before authoritative history arrives", () => {
+    const memory = createBaseMemory();
+    const input: AgentScreenMachineInput = {
+      ...createBaseInput(),
+      agent: createAgentWithStatus({ id: "agent-1", status: "idle" }),
+      placeholderAgent: createAgent("agent-1"),
+      shouldUseOptimisticStream: true,
+      needsAuthoritativeSync: true,
+      isHistorySyncing: true,
+      hasHydratedHistoryBefore: false,
+    };
+
+    const result = deriveAgentScreenViewState({ input, memory });
+    const ready = expectReadyState(result.state);
+
+    expect(ready.source).toBe("optimistic");
+    expect(ready.agent.status).toBe("running");
+  });
+
   it("keeps optimistic flow non-blocking while transitioning to authoritative stream", () => {
     const initialMemory = createBaseMemory();
     const optimisticInput: AgentScreenMachineInput = {

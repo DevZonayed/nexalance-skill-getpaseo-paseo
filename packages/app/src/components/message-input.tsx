@@ -84,6 +84,7 @@ export interface MessageInputProps {
   /** Reports cursor selection updates from the underlying input. */
   onSelectionChange?: (selection: { start: number; end: number }) => void
   onFocusChange?: (focused: boolean) => void
+  onHeightChange?: (height: number) => void
 }
 
 export interface MessageInputRef {
@@ -153,6 +154,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
     onKeyPress: onKeyPressCallback,
     onSelectionChange: onSelectionChangeCallback,
     onFocusChange,
+    onHeightChange,
   },
   ref
 ) {
@@ -473,7 +475,8 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
     onSubmit(payload)
     inputHeightRef.current = MIN_INPUT_HEIGHT
     setInputHeight(MIN_INPUT_HEIGHT)
-  }, [value, images, onSubmit, isAgentRunning])
+    onHeightChange?.(MIN_INPUT_HEIGHT)
+  }, [value, images, onSubmit, isAgentRunning, onHeightChange])
 
   const handleQueueMessage = useCallback(() => {
     if (!onQueue) return
@@ -487,7 +490,8 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
     onChangeText('')
     inputHeightRef.current = MIN_INPUT_HEIGHT
     setInputHeight(MIN_INPUT_HEIGHT)
-  }, [value, images, onQueue, onChangeText])
+    onHeightChange?.(MIN_INPUT_HEIGHT)
+  }, [value, images, onQueue, onChangeText, onHeightChange])
 
   // Web input height measurement
   function isTextAreaLike(v: unknown): v is TextAreaHandle {
@@ -587,6 +591,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
     if (Math.abs(inputHeightRef.current - bounded) >= 1) {
       inputHeightRef.current = bounded
       setInputHeight(bounded)
+      onHeightChange?.(bounded)
       return true
     }
     return false
@@ -597,6 +602,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
     if (Math.abs(inputHeightRef.current - bounded) < 1) return
     inputHeightRef.current = bounded
     setInputHeight(bounded)
+    onHeightChange?.(bounded)
   }
 
   function handleContentSizeChange(

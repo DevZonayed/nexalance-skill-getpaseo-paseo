@@ -19,6 +19,16 @@ export interface AgentScreenMachineInput {
   hasHydratedHistoryBefore: boolean;
 }
 
+function shouldBlockInitialAuthoritativeReadyState(
+  input: AgentScreenMachineInput
+): boolean {
+  return (
+    !input.shouldUseOptimisticStream &&
+    !input.hasHydratedHistoryBefore &&
+    (input.needsAuthoritativeSync || input.isHistorySyncing)
+  );
+}
+
 export type AgentScreenToastLatch = "none" | "history_refresh" | "sync_error";
 
 export interface AgentScreenMachineMemory {
@@ -104,10 +114,7 @@ export function deriveAgentScreenViewState({
     input.agent && useOptimisticCreateFlowAgent && input.placeholderAgent
       ? { ...input.agent, status: input.placeholderAgent.status }
       : input.agent ?? input.placeholderAgent;
-  if (candidateAgent) {
-    nextMemory.hasRenderedReady = true;
-    nextMemory.lastReadyAgent = candidateAgent;
-  }
+  const shouldBlockReadyState = shouldBlockInitialAuthoritativeReadyState(input);
 
   if (input.missingAgentState.kind === "not_found") {
     return {
@@ -127,6 +134,22 @@ export function deriveAgentScreenViewState({
       },
       memory: nextMemory,
     };
+  }
+
+  if (candidateAgent && shouldBlockReadyState) {
+    return {
+      state: {
+        tag: "boot",
+        reason: "loading",
+        source: "none",
+      },
+      memory: nextMemory,
+    };
+  }
+
+  if (candidateAgent) {
+    nextMemory.hasRenderedReady = true;
+    nextMemory.lastReadyAgent = candidateAgent;
   }
 
   const displayAgent =

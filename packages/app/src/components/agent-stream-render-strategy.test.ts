@@ -9,6 +9,7 @@ import {
   isNearBottomForStreamRenderStrategy,
   orderHeadForStreamRenderStrategy,
   orderTailForStreamRenderStrategy,
+  resolveBottomAnchorTransportBehavior,
   resolveStreamRenderStrategy,
 } from "./agent-stream-render-strategy";
 
@@ -45,6 +46,10 @@ describe("resolveStreamRenderStrategy", () => {
     expect(strategy.getFlatListInverted()).toBe(false);
     expect(strategy.getOverlayScrollbarInverted()).toBe(false);
     expect(strategy.shouldAnchorBottomOnContentSizeChange()).toBe(true);
+    expect(strategy.getBottomAnchorTransportBehavior()).toEqual({
+      verificationDelayFrames: 0,
+      verificationRetryMode: "rescroll",
+    });
   });
 
   it("uses inverted_stream on native", () => {
@@ -57,6 +62,44 @@ describe("resolveStreamRenderStrategy", () => {
     expect(strategy.getFlatListInverted()).toBe(true);
     expect(strategy.getOverlayScrollbarInverted()).toBe(true);
     expect(strategy.shouldAnchorBottomOnContentSizeChange()).toBe(false);
+    expect(strategy.getBottomAnchorTransportBehavior()).toEqual({
+      verificationDelayFrames: 2,
+      verificationRetryMode: "recheck",
+    });
+  });
+
+  it("delays native verification while viewport settling is in flight", () => {
+    const strategy = resolveStreamRenderStrategy({
+      platform: "ios",
+      isMobileBreakpoint: false,
+    });
+
+    expect(
+      resolveBottomAnchorTransportBehavior({
+        strategy,
+        isViewportSettling: true,
+      })
+    ).toEqual({
+      verificationDelayFrames: 4,
+      verificationRetryMode: "recheck",
+    });
+  });
+
+  it("does not inflate forward-stream verification delays during web resize", () => {
+    const strategy = resolveStreamRenderStrategy({
+      platform: "web",
+      isMobileBreakpoint: false,
+    });
+
+    expect(
+      resolveBottomAnchorTransportBehavior({
+        strategy,
+        isViewportSettling: true,
+      })
+    ).toEqual({
+      verificationDelayFrames: 0,
+      verificationRetryMode: "rescroll",
+    });
   });
 });
 

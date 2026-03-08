@@ -66,6 +66,7 @@ interface AgentInputAreaProps {
   commandDraftConfig?: DraftCommandConfig
   /** Called when a message is about to be sent (any path: keyboard, dictation, queued). */
   onMessageSent?: () => void
+  onComposerHeightChange?: (height: number) => void
   /** Controlled status controls rendered in input area (draft flows). */
   statusControls?: DraftAgentStatusBarProps
 }
@@ -85,6 +86,7 @@ export function AgentInputArea({
   onAddImages,
   commandDraftConfig,
   onMessageSent,
+  onComposerHeightChange,
   statusControls,
 }: AgentInputAreaProps) {
   markScrollInvestigationRender(`AgentInputArea:${serverId}:${agentId}`)
@@ -823,6 +825,7 @@ export function AgentInputArea({
                 setCursorIndex(selection.start)
               }}
               onFocusChange={setIsMessageInputFocused}
+              onHeightChange={onComposerHeightChange}
             />
           </View>
         </View>

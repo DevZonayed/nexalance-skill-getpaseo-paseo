@@ -62,7 +62,7 @@ export function useAgentInitialization({
       const cursor = session?.agentTimelineCursor.get(agentId);
       const initialTimelineLimit = resolveInitialTimelineLimit();
       const hasAuthoritativeHistory =
-        (session?.agentHistorySyncGeneration.get(agentId) ?? -1) >= 0;
+        session?.agentAuthoritativeHistoryApplied.get(agentId) === true;
       const timelineRequest = deriveInitialTimelineRequest({
         cursor: cursor
           ? { epoch: cursor.epoch, seq: cursor.endSeq }
@@ -95,10 +95,6 @@ export function useAgentInitialization({
 
       client
         .fetchAgentTimeline(agentId, timelineRequest)
-        .then(() => {
-          // No-op: hydration completion is handled by SessionContext
-          // when it processes fetch_agent_timeline_response.
-        })
         .catch((error) => {
           setAgentInitializing(agentId, false);
           rejectInitDeferred(

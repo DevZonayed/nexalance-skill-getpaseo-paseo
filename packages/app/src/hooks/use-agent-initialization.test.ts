@@ -64,4 +64,10 @@ describe("useAgentInitialization timeline request policy", () => {
       projection: "canonical",
     });
   });
+
+  it("does not expose an RPC-success init fallback", () => {
+    expect(
+      "shouldResolveInitFromRpcSuccess" in __private__
+    ).toBe(false);
+  });
 });

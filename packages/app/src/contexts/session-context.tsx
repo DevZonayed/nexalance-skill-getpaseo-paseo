@@ -240,6 +240,9 @@ function SessionProviderInternal({
   const markAgentHistorySynchronized = useSessionStore(
     (state) => state.markAgentHistorySynchronized
   );
+  const setAgentAuthoritativeHistoryApplied = useSessionStore(
+    (state) => state.setAgentAuthoritativeHistoryApplied
+  );
   const setHasHydratedAgents = useSessionStore(
     (state) => state.setHasHydratedAgents
   );
@@ -719,6 +722,7 @@ function SessionProviderInternal({
           next.delete(agentId);
           return next;
         });
+        setAgentAuthoritativeHistoryApplied(serverId, agentId, false);
         return;
       }
 
@@ -771,6 +775,8 @@ function SessionProviderInternal({
     ) => {
       const agentId = payload.agentId;
       const initKey = getInitKey(serverId, agentId);
+      const shouldMarkAuthoritativeHistoryApplied =
+        payload.direction === "tail" || payload.direction === "after";
 
       // Read current store state
       const session = useSessionStore.getState().sessions[serverId];
@@ -890,6 +896,9 @@ function SessionProviderInternal({
         });
       }
 
+      if (shouldMarkAuthoritativeHistoryApplied) {
+        setAgentAuthoritativeHistoryApplied(serverId, agentId, true);
+      }
       if (result.initResolution === "resolve") {
         resolveInitDeferred(initKey);
       }
@@ -904,6 +913,7 @@ function SessionProviderInternal({
       markAgentHistorySynchronized,
       requestCanonicalCatchUp,
       serverId,
+      setAgentAuthoritativeHistoryApplied,
       setAgentStreamTail,
       setAgentTimelineCursor,
       setInitializingAgents,

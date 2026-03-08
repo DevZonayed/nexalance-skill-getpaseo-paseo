@@ -230,6 +230,7 @@ export interface SessionState {
   agentTimelineCursor: Map<string, AgentTimelineCursorState>;
   historySyncGeneration: number;
   agentHistorySyncGeneration: Map<string, number>;
+  agentAuthoritativeHistoryApplied: Map<string, boolean>;
 
   // Initializing agents (used for UI loading state)
   initializingAgents: Map<string, boolean>;
@@ -295,6 +296,11 @@ interface SessionStoreActions {
   ) => void;
   bumpHistorySyncGeneration: (serverId: string) => void;
   markAgentHistorySynchronized: (serverId: string, agentId: string) => void;
+  setAgentAuthoritativeHistoryApplied: (
+    serverId: string,
+    agentId: string,
+    applied: boolean
+  ) => void;
 
   // Initializing agents
   setInitializingAgents: (serverId: string, state: Map<string, boolean> | ((prev: Map<string, boolean>) => Map<string, boolean>)) => void;
@@ -391,6 +397,7 @@ function createInitialSessionState(serverId: string, client: DaemonClient, audio
     agentTimelineCursor: new Map(),
     historySyncGeneration: 0,
     agentHistorySyncGeneration: new Map(),
+    agentAuthoritativeHistoryApplied: new Map(),
     initializingAgents: new Map(),
     agents: new Map(),
     workspaces: new Map(),
@@ -849,6 +856,44 @@ export const useSessionStore = create<SessionStore>()(
             [serverId]: {
               ...session,
               agentHistorySyncGeneration: nextMap,
+            },
+          },
+        };
+      });
+    },
+
+    setAgentAuthoritativeHistoryApplied: (serverId, agentId, applied) => {
+      set((prev) => {
+        const session = prev.sessions[serverId];
+        if (!session) {
+          return prev;
+        }
+
+        const previousApplied =
+          session.agentAuthoritativeHistoryApplied.get(agentId) ?? false;
+        if (previousApplied === applied) {
+          return prev;
+        }
+
+        const nextApplied = new Map(session.agentAuthoritativeHistoryApplied);
+        if (applied) {
+          nextApplied.set(agentId, true);
+        } else {
+          nextApplied.delete(agentId);
+        }
+
+        logSessionStoreUpdate("setAgentAuthoritativeHistoryApplied", serverId, {
+          agentId,
+          applied,
+        });
+
+        return {
+          ...prev,
+          sessions: {
+            ...prev.sessions,
+            [serverId]: {
+              ...session,
+              agentAuthoritativeHistoryApplied: nextApplied,
             },
           },
         };

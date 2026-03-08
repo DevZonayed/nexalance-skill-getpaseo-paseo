@@ -12,8 +12,10 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as Clipboard from "expo-clipboard";
 import {
   ChevronDown,
+  Copy,
   Folder,
   GitBranch,
+  MoreVertical,
   PanelRight,
   Plus,
   SquareTerminal,
@@ -24,6 +26,12 @@ import { SidebarMenuToggle } from "@/components/headers/menu-header";
 import { HeaderToggleButton } from "@/components/headers/header-toggle-button";
 import { ScreenHeader } from "@/components/headers/screen-header";
 import { Combobox } from "@/components/ui/combobox";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Tooltip,
   TooltipContent,
@@ -1006,6 +1014,20 @@ function WorkspaceScreenContent({
     [sessionAgents, toast]
   );
 
+  const handleCopyWorkspacePath = useCallback(async () => {
+    if (!normalizedWorkspaceId.startsWith("/")) {
+      toast.error("Workspace path not available");
+      return;
+    }
+
+    try {
+      await Clipboard.setStringAsync(normalizedWorkspaceId);
+      toast.copied("Workspace path");
+    } catch {
+      toast.error("Copy failed");
+    }
+  }, [normalizedWorkspaceId, toast]);
+
   const handleBulkCloseTabs = useCallback(
     async (input: { tabsToClose: WorkspaceTabDescriptor[]; title: string; logLabel: string }) => {
       const { tabsToClose, title, logLabel } = input;
@@ -1252,6 +1274,7 @@ function WorkspaceScreenContent({
     if (target.kind === "agent") {
       return (
         <AgentReadyScreen
+          key={`${normalizedServerId}:${normalizedWorkspaceId}:${target.agentId}`}
           serverId={normalizedServerId}
           agentId={target.agentId}
           showExplorerSidebar={false}
@@ -1331,13 +1354,45 @@ function WorkspaceScreenContent({
             }
             right={
               <View style={styles.headerRight}>
+                <DropdownMenu>
+                  <DropdownMenuTrigger
+                    testID="workspace-header-menu-trigger"
+                    style={styles.headerActionButton}
+                    accessibilityRole="button"
+                    accessibilityLabel="Workspace actions"
+                  >
+                    <MoreVertical
+                      size={theme.iconSize.md}
+                      color={theme.colors.foregroundMuted}
+                    />
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent
+                    align="end"
+                    width={220}
+                    testID="workspace-header-menu"
+                  >
+                    <DropdownMenuItem
+                      testID="workspace-header-copy-path"
+                      leading={
+                        <Copy
+                          size={16}
+                          color={theme.colors.foregroundMuted}
+                        />
+                      }
+                      disabled={!normalizedWorkspaceId.startsWith("/")}
+                      onSelect={handleCopyWorkspacePath}
+                    >
+                      Copy workspace path
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
                 <HeaderToggleButton
                   testID="workspace-explorer-toggle"
                   onPress={handleToggleExplorer}
                   tooltipLabel="Toggle explorer"
                   tooltipKeys={["mod", "E"]}
                   tooltipSide="left"
-                  style={styles.menuButton}
+                  style={styles.headerActionButton}
                   accessible
                   accessibilityRole="button"
                   accessibilityLabel={isExplorerOpen ? "Close explorer" : "Open explorer"}
@@ -1599,10 +1654,11 @@ const styles = StyleSheet.create((theme) => ({
   headerRight: {
     flexDirection: "row",
     alignItems: "center",
-    gap: theme.spacing[2],
+    gap: theme.spacing[1],
   },
-  menuButton: {
-    padding: theme.spacing[3],
+  headerActionButton: {
+    paddingVertical: theme.spacing[2],
+    paddingHorizontal: theme.spacing[2],
     borderRadius: theme.borderRadius.lg,
   },
   newTabActions: {

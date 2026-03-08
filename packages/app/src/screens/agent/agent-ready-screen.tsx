@@ -59,6 +59,10 @@ import { shouldClearAgentAttention } from "@/utils/agent-attention";
 import type { DaemonClient } from "@server/client/daemon-client";
 import { useExplorerOpenGesture } from "@/hooks/use-explorer-open-gesture";
 import type { ExplorerCheckoutContext } from "@/stores/panel-store";
+import {
+  deriveRouteBottomAnchorIntent,
+  deriveRouteBottomAnchorRequest,
+} from "./agent-ready-screen-bottom-anchor";
 
 const EMPTY_STREAM_ITEMS: StreamItem[] = [];
 const IS_DEV = Boolean((globalThis as { __DEV__?: boolean }).__DEV__);
@@ -390,12 +394,19 @@ function AgentScreenContent({
   const historySyncGeneration = useSessionStore(
     (state) => state.sessions[serverId]?.historySyncGeneration ?? 0
   );
+  const hasAppliedAuthoritativeHistory = useSessionStore((state) =>
+    resolvedAgentId
+      ? state.sessions[serverId]?.agentAuthoritativeHistoryApplied?.get(
+          resolvedAgentId
+        ) === true
+      : false
+  );
   const agentHistorySyncGeneration = useSessionStore((state) =>
     resolvedAgentId
       ? state.sessions[serverId]?.agentHistorySyncGeneration?.get(resolvedAgentId) ?? -1
       : -1
   );
-  const hasHydratedHistoryBefore = agentHistorySyncGeneration >= 0;
+  const hasHydratedHistoryBefore = hasAppliedAuthoritativeHistory;
 
   // Select raw pending permissions - filter with useMemo to avoid new Map on every render
   const allPendingPermissions = useSessionStore(
@@ -432,6 +443,10 @@ function AgentScreenContent({
   });
   const reconnectToastArmedRef = useRef(false);
   const initAttemptTokenRef = useRef(0);
+  const routeBottomAnchorRequestRef = useRef<{
+    routeKey: string;
+    reason: "initial-entry" | "resume";
+  } | null>(null);
   const attentionClientRef = useRef(client);
   const attentionConnectedRef = useRef(isConnected);
   const setFocusedAgentId = useCallback(
@@ -658,6 +673,20 @@ function AgentScreenContent({
   });
 
   const effectiveAgent = viewState.tag === "ready" ? viewState.agent : null;
+  const routeEntryKey = resolvedAgentId ? `${serverId}:${resolvedAgentId}` : null;
+  routeBottomAnchorRequestRef.current = deriveRouteBottomAnchorIntent({
+    cachedIntent: routeBottomAnchorRequestRef.current,
+    routeKey: routeEntryKey,
+    hasAppliedAuthoritativeHistoryAtEntry: hasAppliedAuthoritativeHistory,
+  });
+  const routeBottomAnchorRequest = useMemo(
+    () =>
+      deriveRouteBottomAnchorRequest({
+        intent: routeBottomAnchorRequestRef.current,
+        effectiveAgentId: effectiveAgent?.id ?? null,
+      }),
+    [effectiveAgent?.id]
+  );
   useEffect(() => {
     if (!isPendingCreateForRoute || !pendingCreate) {
       return;
@@ -914,6 +943,8 @@ function AgentScreenContent({
                   shouldUseOptimisticStream ? mergedStreamItems : streamItems
                 }
                 pendingPermissions={pendingPermissions}
+                routeBottomAnchorRequest={routeBottomAnchorRequest}
+                isAuthoritativeHistoryReady={hasAppliedAuthoritativeHistory}
               />
             </ReanimatedAnimated.View>
           </View>
@@ -926,7 +957,12 @@ function AgentScreenContent({
               autoFocus
               isSubmitLoading={showPendingCreateSubmitLoading}
               onAddImages={handleAddImagesCallback}
-              onMessageSent={() => streamViewRef.current?.scrollToBottom()}
+              onComposerHeightChange={() =>
+                streamViewRef.current?.prepareForViewportChange()
+              }
+              onMessageSent={() =>
+                streamViewRef.current?.scrollToBottom("message-sent")
+              }
             />
           )}
 

@@ -1,0 +1,273 @@
+import { expect, type Page } from "@playwright/test";
+import path from "node:path";
+import { pathToFileURL } from "node:url";
+import { randomUUID } from "node:crypto";
+import {
+  buildHostWorkspaceAgentRoute,
+  buildHostWorkspaceRoute,
+} from "../../src/utils/host-routes";
+
+const NEAR_BOTTOM_THRESHOLD_PX = 72;
+
+export type ScrollMetrics = {
+  offsetY: number;
+  contentHeight: number;
+  viewportHeight: number;
+  distanceFromBottom: number;
+};
+
+export type SeededAgent = {
+  id: string;
+  title: string;
+  expectedTailText: string;
+  url: string;
+  workspaceUrl: string;
+};
+
+export type DaemonClientInstance = {
+  connect(): Promise<void>;
+  close(): Promise<void>;
+  createAgent(options: {
+    provider: string;
+    model: string;
+    thinkingOptionId: string;
+    modeId: string;
+    cwd: string;
+    title: string;
+    initialPrompt: string;
+  }): Promise<{ id: string }>;
+  sendAgentMessage(agentId: string, text: string): Promise<void>;
+  waitForFinish(
+    agentId: string,
+    timeout?: number
+  ): Promise<{ status: string }>;
+};
+
+function getDaemonWsUrl(): string {
+  const daemonPort = process.env.E2E_DAEMON_PORT;
+  if (!daemonPort) {
+    throw new Error("E2E_DAEMON_PORT is not set.");
+  }
+  return `ws://127.0.0.1:${daemonPort}/ws`;
+}
+
+function getServerId(): string {
+  const serverId = process.env.E2E_SERVER_ID;
+  if (!serverId) {
+    throw new Error("E2E_SERVER_ID is not set.");
+  }
+  return serverId;
+}
+
+function buildReplyBlock(label: string, lineCount = 14): string {
+  return Array.from({ length: lineCount }, (_, index) => {
+    const line = (index + 1).toString().padStart(2, "0");
+    return `${label} line ${line} anchor verification text keeps wrapping stable across resize and composer growth.`;
+  }).join("\n");
+}
+
+function buildProtocolMessage(label: string): string {
+  return [
+    "For every message in this chat, reply with exactly the text after the final line `REPLY:`.",
+    "Do not add extra words, bullets, markdown fences, or tool calls.",
+    "REPLY:",
+    buildReplyBlock(label),
+  ].join("\n");
+}
+
+function buildReplyMessage(label: string): string {
+  return ["REPLY:", buildReplyBlock(label)].join("\n");
+}
+
+export function createReplyTurn(label: string): {
+  message: string;
+  expectedReply: string;
+} {
+  return {
+    message: buildReplyMessage(label),
+    expectedReply: buildReplyBlock(label),
+  };
+}
+
+async function loadDaemonClientConstructor(): Promise<new (config: {
+  url: string;
+  clientId: string;
+  clientType: "cli";
+}) => DaemonClientInstance> {
+  const repoRoot = path.resolve(process.cwd(), "../..");
+  const moduleUrl = pathToFileURL(
+    path.join(repoRoot, "packages/server/dist/server/server/exports.js")
+  ).href;
+  const mod = (await import(moduleUrl)) as {
+    DaemonClient: new (config: {
+      url: string;
+      clientId: string;
+      clientType: "cli";
+    }) => DaemonClientInstance;
+  };
+  return mod.DaemonClient;
+}
+
+export async function connectDaemonClient(): Promise<DaemonClientInstance> {
+  const DaemonClient = await loadDaemonClientConstructor();
+  const client = new DaemonClient({
+    url: getDaemonWsUrl(),
+    clientId: `app-e2e-${randomUUID()}`,
+    clientType: "cli",
+  });
+  await client.connect();
+  return client;
+}
+
+export async function seedBottomAnchorAgent(input: {
+  client: DaemonClientInstance;
+  cwd: string;
+  title?: string;
+  turnCount?: number;
+}): Promise<SeededAgent> {
+  const title = input.title ?? `bottom-anchor-${Date.now()}`;
+  const turnCount = Math.max(3, input.turnCount ?? 5);
+  const created = await input.client.createAgent({
+    provider: "codex",
+    model: "gpt-5.1-codex-mini",
+    thinkingOptionId: "low",
+    modeId: "full-access",
+    cwd: input.cwd,
+    title,
+    initialPrompt: buildProtocolMessage(`${title}-turn-00`),
+  });
+  const initialFinish = await input.client.waitForFinish(created.id, 120000);
+  if (initialFinish.status !== "idle") {
+    throw new Error(
+      `Expected seeded agent ${created.id} to become idle after initial prompt, got ${initialFinish.status}.`
+    );
+  }
+
+  let expectedTailText = buildReplyBlock(`${title}-turn-00`);
+  for (let index = 1; index < turnCount; index += 1) {
+    const label = `${title}-turn-${index.toString().padStart(2, "0")}`;
+    expectedTailText = buildReplyBlock(label);
+    await input.client.sendAgentMessage(created.id, buildReplyMessage(label));
+    const finish = await input.client.waitForFinish(created.id, 120000);
+    if (finish.status !== "idle") {
+      throw new Error(
+        `Expected seeded agent ${created.id} to become idle after turn ${index}, got ${finish.status}.`
+      );
+    }
+  }
+
+  return {
+    id: created.id,
+    title,
+    expectedTailText,
+    url: buildHostWorkspaceAgentRoute(getServerId(), input.cwd, created.id),
+    workspaceUrl: buildHostWorkspaceRoute(getServerId(), input.cwd),
+  };
+}
+
+export async function readScrollMetrics(page: Page): Promise<ScrollMetrics> {
+  return page.getByTestId("agent-chat-scroll").evaluate((root: Element) => {
+    const rootElement = root as HTMLElement;
+    const candidates = [rootElement, ...Array.from(rootElement.querySelectorAll("*"))];
+    const scrollElement =
+      candidates.find(
+        (element) =>
+          element instanceof HTMLElement &&
+          element.scrollHeight - element.clientHeight > 1
+      ) ?? rootElement;
+
+    const offsetY = Math.max(0, scrollElement.scrollTop);
+    const contentHeight = Math.max(0, scrollElement.scrollHeight);
+    const viewportHeight = Math.max(0, scrollElement.clientHeight);
+    const distanceFromBottom = Math.max(
+      0,
+      contentHeight - (offsetY + viewportHeight)
+    );
+
+    return {
+      offsetY,
+      contentHeight,
+      viewportHeight,
+      distanceFromBottom,
+    };
+  });
+}
+
+export async function scrollUpFromBottom(page: Page, pixels: number): Promise<void> {
+  await page.getByTestId("agent-chat-scroll").evaluate(
+    (root: Element, amount: number) => {
+      const rootElement = root as HTMLElement;
+      const candidates = [rootElement, ...Array.from(rootElement.querySelectorAll("*"))];
+      const scrollElement =
+        candidates.find(
+          (element) =>
+            element instanceof HTMLElement &&
+            element.scrollHeight - element.clientHeight > 1
+        ) ?? rootElement;
+
+      const bottomOffset = Math.max(
+        0,
+        scrollElement.scrollHeight - scrollElement.clientHeight
+      );
+      scrollElement.scrollTop = Math.max(0, bottomOffset - amount);
+    },
+    pixels
+  );
+}
+
+export async function waitForAgentReady(page: Page, expectedTailText?: string): Promise<void> {
+  await expect(page.getByTestId("agent-chat-scroll")).toBeVisible({ timeout: 60000 });
+  await expect(page.getByRole("textbox", { name: "Message agent..." }).first()).toBeVisible({
+    timeout: 60000,
+  });
+  await expect(page.getByTestId("agent-loading")).toHaveCount(0, { timeout: 60000 });
+  if (expectedTailText) {
+    await expect
+      .poll(async () => {
+        const metrics = await readScrollMetrics(page);
+        return metrics.contentHeight;
+      })
+      .toBeGreaterThan(0);
+  }
+}
+
+export async function expectNearBottom(page: Page): Promise<void> {
+  await expect
+    .poll(async () => {
+      const metrics = await readScrollMetrics(page);
+      return metrics.distanceFromBottom;
+    })
+    .toBeLessThanOrEqual(NEAR_BOTTOM_THRESHOLD_PX);
+}
+
+export async function expectDetachedFromBottom(page: Page): Promise<void> {
+  await expect
+    .poll(async () => {
+      const metrics = await readScrollMetrics(page);
+      return metrics.distanceFromBottom;
+    })
+    .toBeGreaterThan(NEAR_BOTTOM_THRESHOLD_PX);
+}
+
+export async function waitForContentGrowth(
+  page: Page,
+  previousContentHeight: number
+): Promise<ScrollMetrics> {
+  await expect
+    .poll(async () => {
+      const metrics = await readScrollMetrics(page);
+      return metrics.contentHeight;
+    })
+    .toBeGreaterThan(previousContentHeight);
+  return readScrollMetrics(page);
+}
+
+export async function getChatContainerKey(page: Page): Promise<string | null> {
+  return page
+    .getByTestId("agent-chat-scroll")
+    .evaluate((element) => {
+      const nativeId = (element as HTMLElement).id;
+      const prefix = "agent-chat-scroll-";
+      return nativeId.startsWith(prefix) ? nativeId.slice(prefix.length) : null;
+    });
+}

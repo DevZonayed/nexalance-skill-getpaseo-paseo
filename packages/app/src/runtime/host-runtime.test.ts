@@ -978,6 +978,68 @@ describe("HostRuntimeStore", () => {
     useSessionStore.getState().clearSession(host.serverId);
   });
 
+  it("re-subscribes agent directory updates after reconnect", async () => {
+    const host = makeHost({
+      serverId: "srv_resubscribe",
+      connections: [
+        {
+          id: "direct:lan:6767",
+          type: "direct",
+          endpoint: "lan:6767",
+        },
+      ],
+    });
+    const fakeClient = new FakeDaemonClient();
+    const store = new HostRuntimeStore({
+      deps: {
+        createClient: () => fakeClient as unknown as DaemonClient,
+        measureLatency: async () => 5,
+        getClientId: async () => "cid_test_runtime",
+      },
+    });
+
+    useSessionStore.getState().initializeSession(
+      host.serverId,
+      fakeClient as unknown as DaemonClient,
+      null as any
+    );
+    store.syncHosts([host]);
+
+    const initialTimeoutAt = Date.now() + 200;
+    while (fakeClient.fetchAgentsCalls.length < 1 && Date.now() < initialTimeoutAt) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+
+    fakeClient.setConnectionState({
+      status: "disconnected",
+      reason: "client_closed",
+    });
+    fakeClient.setConnectionState({ status: "connected" });
+
+    const reconnectTimeoutAt = Date.now() + 200;
+    while (fakeClient.fetchAgentsCalls.length < 2 && Date.now() < reconnectTimeoutAt) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+
+    expect(fakeClient.fetchAgentsCalls).toEqual([
+      {
+        filter: { includeArchived: true },
+        sort: [{ key: "updated_at", direction: "desc" }],
+        subscribe: { subscriptionId: "app:srv_resubscribe" },
+        page: { limit: 200 },
+      },
+      {
+        filter: { includeArchived: true },
+        sort: [{ key: "updated_at", direction: "desc" }],
+        subscribe: { subscriptionId: "app:srv_resubscribe" },
+        page: { limit: 200 },
+      },
+    ]);
+
+    store.syncHosts([]);
+    useSessionStore.getState().clearSession(host.serverId);
+  });
+
   it("surfaces startup failures as error instead of leaving host idle", async () => {
     const host = makeHost({
       connections: [

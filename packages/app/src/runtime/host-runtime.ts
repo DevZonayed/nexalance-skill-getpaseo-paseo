@@ -1043,16 +1043,19 @@ export class HostRuntimeStore {
     const snapshot = controller.getSnapshot();
     const previousStatus = this.lastConnectionStatusByServer.get(serverId);
     this.lastConnectionStatusByServer.set(serverId, snapshot.connectionStatus);
-    if (snapshot.connectionStatus === "online" && previousStatus !== "online") {
+    const didTransitionOnline =
+      snapshot.connectionStatus === "online" && previousStatus !== "online";
+    if (didTransitionOnline) {
       useSessionStore.getState().bumpHistorySyncGeneration(serverId);
     }
 
     // Runtime owns directory bootstrap policy, including reconnect and delayed
     // session initialization races.
-    if (
-      snapshot.connectionStatus !== "online" ||
-      snapshot.hasEverLoadedAgentDirectory
-    ) {
+    if (snapshot.connectionStatus !== "online") {
+      this.clearAgentDirectorySessionRetry(serverId);
+      return;
+    }
+    if (!didTransitionOnline && snapshot.hasEverLoadedAgentDirectory) {
       this.clearAgentDirectorySessionRetry(serverId);
       return;
     }

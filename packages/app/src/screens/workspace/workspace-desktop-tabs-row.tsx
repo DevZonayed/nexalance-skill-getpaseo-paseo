@@ -166,6 +166,10 @@ export function WorkspaceDesktopTabsRow({
             const labelCharCap = layoutItem?.labelCharCap ?? tab.label.length;
             const renderedLabel = showLabel ? tab.label.slice(0, Math.max(1, labelCharCap)) : "";
             const presentation = deriveWorkspaceTabPresentation({ tab, agent: tabAgent });
+            const tooltipLabel =
+              tab.kind === "agent" && tab.titleState === "loading"
+                ? "Loading agent title"
+                : presentation.label;
 
             const contextMenuTestId = `workspace-tab-context-${tab.key}`;
             const isFirstTab = index === 0;
@@ -174,107 +178,114 @@ export function WorkspaceDesktopTabsRow({
 
             return (
               <ContextMenu key={tab.key}>
-                <ContextMenuTrigger
-                  testID={`workspace-tab-${tab.key}`}
-                  enabledOnMobile={false}
-                  style={({ hovered, pressed }) => [
-                    styles.tab,
-                    {
-                      minWidth: resolvedTabWidth,
-                      width: resolvedTabWidth,
-                      maxWidth: resolvedTabWidth,
-                    },
-                    isActive && styles.tabActive,
-                    (hovered || pressed || isCloseHovered) && styles.tabHovered,
-                  ]}
-                  onHoverIn={() => {
-                    setHoveredTabKey(tab.key);
-                  }}
-                  onHoverOut={() => {
-                    setHoveredTabKey((current) => (current === tab.key ? null : current));
-                  }}
-                  onPressIn={() => {
-                    onNavigateTab(tab.tabId);
-                  }}
-                  onPress={() => {
-                    onNavigateTab(tab.tabId);
-                  }}
-                  accessibilityLabel={
-                    tab.kind === "agent" && tab.titleState === "loading"
-                      ? "Loading agent title"
-                      : tab.label
-                  }
-                >
-                  <View
-                    {...(dragHandleProps?.attributes as any)}
-                    {...(dragHandleProps?.listeners as any)}
-                    ref={dragHandleProps?.setActivatorNodeRef}
-                    style={styles.tabHandle}
+                <Tooltip delayDuration={400} enabledOnDesktop enabledOnMobile={false}>
+                  <TooltipTrigger
+                    testID={`workspace-tab-tooltip-${tab.key}`}
+                    accessibilityRole="none"
+                    style={styles.tabTooltipTrigger}
                   >
-                    <View style={styles.tabIcon}>
-                      <WorkspaceTabIcon presentation={presentation} active={isActive} />
-                    </View>
-                    {showLabel ? (
-                      presentation.titleState === "loading" ? (
-                        <View
-                          style={[
-                            styles.tabLabelSkeleton,
-                            shouldShowCloseButton && styles.tabLabelSkeletonWithCloseButton,
-                          ]}
-                        />
-                      ) : (
-                      <Text
-                        style={[
-                          styles.tabLabel,
-                          isActive && styles.tabLabelActive,
-                          shouldShowCloseButton && styles.tabLabelWithCloseButton,
-                        ]}
-                        numberOfLines={1}
-                      >
-                        {renderedLabel}
-                      </Text>
-                      )
-                    ) : null}
-                  </View>
-
-                  {shouldShowCloseButton ? (
-                    <Pressable
-                      testID={
-                        tab.kind === "agent"
-                          ? `workspace-agent-close-${tab.agentId}`
-                          : tab.kind === "terminal"
-                            ? `workspace-terminal-close-${tab.terminalId}`
-                            : tab.kind === "draft"
-                              ? `workspace-draft-close-${tab.draftId}`
-                              : `workspace-file-close-${encodeFilePathForPathSegment(tab.filePath)}`
-                      }
-                      disabled={isClosingTab}
+                    <ContextMenuTrigger
+                      testID={`workspace-tab-${tab.key}`}
+                      enabledOnMobile={false}
+                      style={({ hovered, pressed }) => [
+                        styles.tab,
+                        {
+                          minWidth: resolvedTabWidth,
+                          width: resolvedTabWidth,
+                          maxWidth: resolvedTabWidth,
+                        },
+                        isActive && styles.tabActive,
+                        (hovered || pressed || isCloseHovered) && styles.tabHovered,
+                      ]}
                       onHoverIn={() => {
                         setHoveredTabKey(tab.key);
-                        setHoveredCloseTabKey(tab.key);
                       }}
                       onHoverOut={() => {
                         setHoveredTabKey((current) => (current === tab.key ? null : current));
-                        setHoveredCloseTabKey((current) => (current === tab.key ? null : current));
                       }}
-                      onPress={(event) => {
-                        event.stopPropagation?.();
-                        void onCloseTab(tab.tabId);
+                      onPressIn={() => {
+                        onNavigateTab(tab.tabId);
                       }}
-                      style={({ hovered, pressed }) => [
-                        styles.tabCloseButton,
-                        styles.tabCloseButtonShown,
-                        (hovered || pressed) && styles.tabCloseButtonActive,
-                      ]}
+                      onPress={() => {
+                        onNavigateTab(tab.tabId);
+                      }}
+                      accessibilityLabel={tooltipLabel}
                     >
-                      {isClosingTab ? (
-                        <ActivityIndicator size={12} color={theme.colors.foregroundMuted} />
-                      ) : (
-                        <X size={12} color={theme.colors.foregroundMuted} />
-                      )}
-                    </Pressable>
-                  ) : null}
-                </ContextMenuTrigger>
+                      <View
+                        {...(dragHandleProps?.attributes as any)}
+                        {...(dragHandleProps?.listeners as any)}
+                        ref={dragHandleProps?.setActivatorNodeRef}
+                        style={styles.tabHandle}
+                      >
+                        <View style={styles.tabIcon}>
+                          <WorkspaceTabIcon presentation={presentation} active={isActive} />
+                        </View>
+                        {showLabel ? (
+                          presentation.titleState === "loading" ? (
+                            <View
+                              style={[
+                                styles.tabLabelSkeleton,
+                                shouldShowCloseButton && styles.tabLabelSkeletonWithCloseButton,
+                              ]}
+                            />
+                          ) : (
+                            <Text
+                              style={[
+                                styles.tabLabel,
+                                isActive && styles.tabLabelActive,
+                                shouldShowCloseButton && styles.tabLabelWithCloseButton,
+                              ]}
+                              numberOfLines={1}
+                            >
+                              {renderedLabel}
+                            </Text>
+                          )
+                        ) : null}
+                      </View>
+
+                      {shouldShowCloseButton ? (
+                        <Pressable
+                          testID={
+                            tab.kind === "agent"
+                              ? `workspace-agent-close-${tab.agentId}`
+                              : tab.kind === "terminal"
+                                ? `workspace-terminal-close-${tab.terminalId}`
+                                : tab.kind === "draft"
+                                  ? `workspace-draft-close-${tab.draftId}`
+                                  : `workspace-file-close-${encodeFilePathForPathSegment(tab.filePath)}`
+                          }
+                          disabled={isClosingTab}
+                          onHoverIn={() => {
+                            setHoveredTabKey(tab.key);
+                            setHoveredCloseTabKey(tab.key);
+                          }}
+                          onHoverOut={() => {
+                            setHoveredTabKey((current) => (current === tab.key ? null : current));
+                            setHoveredCloseTabKey((current) => (current === tab.key ? null : current));
+                          }}
+                          onPress={(event) => {
+                            event.stopPropagation?.();
+                            void onCloseTab(tab.tabId);
+                          }}
+                          style={({ hovered, pressed }) => [
+                            styles.tabCloseButton,
+                            styles.tabCloseButtonShown,
+                            (hovered || pressed) && styles.tabCloseButtonActive,
+                          ]}
+                        >
+                          {isClosingTab ? (
+                            <ActivityIndicator size={12} color={theme.colors.foregroundMuted} />
+                          ) : (
+                            <X size={12} color={theme.colors.foregroundMuted} />
+                          )}
+                        </Pressable>
+                      ) : null}
+                    </ContextMenuTrigger>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom" align="center" offset={8}>
+                    <Text style={styles.newTabTooltipText}>{tooltipLabel}</Text>
+                  </TooltipContent>
+                </Tooltip>
 
                 <ContextMenuContent align="start" width={DROPDOWN_WIDTH} testID={contextMenuTestId}>
                   {tab.kind === "agent" ? (
@@ -425,6 +436,9 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[1],
     paddingRight: theme.spacing[2],
     paddingVertical: theme.spacing[1],
+  },
+  tabTooltipTrigger: {
+    flexShrink: 0,
   },
   tab: {
     paddingHorizontal: theme.spacing[3],

@@ -11,6 +11,11 @@ export type MaintainVisibleContentPositionConfig = Readonly<{
   autoscrollToTopThreshold: number;
 }>;
 
+export type BottomAnchorTransportBehavior = Readonly<{
+  verificationDelayFrames: number;
+  verificationRetryMode: "rescroll" | "recheck";
+}>;
+
 export type StreamViewportMetrics = {
   contentHeight: number;
   viewportHeight: number;
@@ -29,7 +34,7 @@ export type StreamEdgeSlotProps = {
 };
 
 export type StreamRenderRefs = {
-  flatListRef: RefObject<FlatList<StreamItem> | null>;
+  flatListRef: RefObject<FlatList<any> | null>;
   scrollViewRef: RefObject<ScrollView | null>;
   bottomAnchorRef: RefObject<View | null>;
 };
@@ -58,6 +63,7 @@ export interface StreamRenderStrategy {
   getMaintainVisibleContentPosition: () =>
     | MaintainVisibleContentPositionConfig
     | undefined;
+  getBottomAnchorTransportBehavior: () => BottomAnchorTransportBehavior;
   getFlatListInverted: () => boolean;
   getOverlayScrollbarInverted: () => boolean;
   shouldDisableParentScrollOnInlineDetailsExpansion: () => boolean;
@@ -76,6 +82,8 @@ export interface StreamRenderStrategy {
   }) => void;
 }
 
+const NATIVE_SETTLING_VERIFICATION_DELAY_FRAMES = 4;
+
 type StreamRenderStrategyConfig = {
   orderTailReverse: boolean;
   orderHeadReverse: boolean;
@@ -84,6 +92,7 @@ type StreamRenderStrategyConfig = {
   flatListInverted: boolean;
   overlayScrollbarInverted: boolean;
   maintainVisibleContentPosition?: MaintainVisibleContentPositionConfig;
+  bottomAnchorTransportBehavior: BottomAnchorTransportBehavior;
   disableParentScrollOnInlineDetailsExpansion: boolean;
   anchorBottomOnContentSizeChange: boolean;
   animateManualScrollToBottom: boolean;
@@ -137,28 +146,26 @@ function scrollAnchorIntoView(params: {
   return true;
 }
 
-function forceScrollContainerToBottom(
-  refs: StreamRenderRefs,
-  fallbackOffset: number
-): void {
-  const resolveNode = (
-    input: unknown
-  ): HTMLElement | null => {
-    if (!(input instanceof HTMLElement)) {
-      return null;
-    }
-    if (input.scrollHeight - input.clientHeight > 1) {
-      return input;
-    }
-    let node: HTMLElement | null = input.parentElement;
-    while (node) {
-      if (node.scrollHeight - node.clientHeight > 1) {
-        return node;
-      }
-      node = node.parentElement;
-    }
+function resolvePotentialScrollNode(input: unknown): HTMLElement | null {
+  if (!(input instanceof HTMLElement)) {
     return null;
-  };
+  }
+  if (input.scrollHeight - input.clientHeight > 1) {
+    return input;
+  }
+  let node: HTMLElement | null = input.parentElement;
+  while (node) {
+    if (node.scrollHeight - node.clientHeight > 1) {
+      return node;
+    }
+    node = node.parentElement;
+  }
+  return input;
+}
+
+export function resolveWebScrollContainerNode(
+  refs: StreamRenderRefs
+): HTMLElement | null {
 
   const scrollViewHandle = refs.scrollViewRef.current as
     | {
@@ -185,18 +192,43 @@ function forceScrollContainerToBottom(
 
   let scrollNode: HTMLElement | null = null;
   for (const candidate of candidates) {
-    scrollNode = resolveNode(candidate);
+    scrollNode = resolvePotentialScrollNode(candidate);
     if (scrollNode) {
       break;
     }
   }
 
   if (!scrollNode && typeof document !== "undefined") {
-    scrollNode = resolveNode(
+    scrollNode = resolvePotentialScrollNode(
       document.querySelector("[data-testid='agent-chat-scroll']")
     );
   }
 
+  return scrollNode;
+}
+
+export function resolveBottomAnchorTransportBehavior(input: {
+  strategy: StreamRenderStrategy;
+  isViewportSettling: boolean;
+}): BottomAnchorTransportBehavior {
+  const baseBehavior = input.strategy.getBottomAnchorTransportBehavior();
+  if (!input.isViewportSettling || !input.strategy.getFlatListInverted()) {
+    return baseBehavior;
+  }
+  return {
+    verificationDelayFrames: Math.max(
+      baseBehavior.verificationDelayFrames,
+      NATIVE_SETTLING_VERIFICATION_DELAY_FRAMES
+    ),
+    verificationRetryMode: "recheck",
+  };
+}
+
+function forceScrollContainerToBottom(
+  refs: StreamRenderRefs,
+  fallbackOffset: number
+): void {
+  const scrollNode = resolveWebScrollContainerNode(refs);
   if (!scrollNode) {
     return;
   }
@@ -267,6 +299,7 @@ function createStreamRenderStrategy(
       };
     },
     getMaintainVisibleContentPosition: () => config.maintainVisibleContentPosition,
+    getBottomAnchorTransportBehavior: () => config.bottomAnchorTransportBehavior,
     getFlatListInverted: () => config.flatListInverted,
     getOverlayScrollbarInverted: () => config.overlayScrollbarInverted,
     shouldDisableParentScrollOnInlineDetailsExpansion: () =>
@@ -289,6 +322,10 @@ function createInvertedStreamStrategy(): StreamRenderStrategy {
     flatListInverted: true,
     overlayScrollbarInverted: true,
     maintainVisibleContentPosition: DEFAULT_MAINTAIN_VISIBLE_CONTENT_POSITION,
+    bottomAnchorTransportBehavior: {
+      verificationDelayFrames: 2,
+      verificationRetryMode: "recheck",
+    },
     disableParentScrollOnInlineDetailsExpansion: false,
     anchorBottomOnContentSizeChange: false,
     animateManualScrollToBottom: true,
@@ -316,6 +353,10 @@ function createForwardStreamStrategy(): StreamRenderStrategy {
     flatListInverted: false,
     overlayScrollbarInverted: false,
     maintainVisibleContentPosition: undefined,
+    bottomAnchorTransportBehavior: {
+      verificationDelayFrames: 0,
+      verificationRetryMode: "rescroll",
+    },
     disableParentScrollOnInlineDetailsExpansion: false,
     anchorBottomOnContentSizeChange: true,
     animateManualScrollToBottom: false,
@@ -335,6 +376,14 @@ function createForwardStreamStrategy(): StreamRenderStrategy {
         0,
         metrics.contentHeight - metrics.viewportHeight
       );
+      if (refs.flatListRef.current) {
+        refs.flatListRef.current.scrollToEnd?.({ animated });
+        refs.flatListRef.current.scrollToOffset?.({
+          offset: bottomOffset,
+          animated,
+        });
+        return;
+      }
       const usedAnchor = scrollAnchorIntoView({ refs, animated });
       if (!usedAnchor) {
         refs.scrollViewRef.current?.scrollToEnd?.({ animated });
@@ -347,6 +396,10 @@ function createForwardStreamStrategy(): StreamRenderStrategy {
       forceScrollContainerToBottom(refs, bottomOffset);
     },
     scrollToOffset: ({ refs, offset, animated }) => {
+      if (refs.flatListRef.current) {
+        refs.flatListRef.current.scrollToOffset?.({ offset, animated });
+        return;
+      }
       refs.scrollViewRef.current?.scrollTo({ y: offset, animated });
     },
   });
