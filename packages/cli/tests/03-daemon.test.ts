@@ -65,9 +65,22 @@ try {
     console.log('✓ daemon status reports stopped when not running\n')
   }
 
-  // Test 4: daemon status --json outputs valid JSON
+  // Test 4: daemon pair --json outputs valid JSON
   {
-    console.log('Test 4: daemon status --json outputs JSON')
+    console.log('Test 4: daemon pair --json outputs JSON')
+    const result =
+      await $`PASEO_HOME=${paseoHome} npx paseo daemon pair --json`.nothrow()
+    assert.strictEqual(result.exitCode, 0, 'daemon pair --json should succeed')
+    const pairing = JSON.parse(result.stdout)
+    assert.strictEqual(pairing.relayEnabled, true, 'pairing should report relay enabled')
+    assert.match(pairing.url, /#offer=/, 'pairing URL should include offer fragment')
+    assert.strictEqual(typeof pairing.qr, 'string', 'pairing should include QR content')
+    console.log('✓ daemon pair --json outputs valid JSON\n')
+  }
+
+  // Test 5: daemon status --json outputs valid JSON
+  {
+    console.log('Test 5: daemon status --json outputs JSON')
     const result =
       await $`PASEO_HOME=${paseoHome} npx paseo daemon status --json`.nothrow()
     assert.strictEqual(result.exitCode, 0, '--json status should succeed')
@@ -77,9 +90,9 @@ try {
     console.log('✓ daemon status --json outputs valid JSON\n')
   }
 
-  // Test 5: daemon stop handles daemon not running gracefully
+  // Test 6: daemon stop handles daemon not running gracefully
   {
-    console.log('Test 5: daemon stop handles daemon not running')
+    console.log('Test 6: daemon stop handles daemon not running')
     const result =
       await $`PASEO_HOME=${paseoHome} npx paseo daemon stop`.nothrow()
     // Stop should succeed even if daemon is not running (idempotent).
@@ -92,9 +105,9 @@ try {
     console.log('✓ daemon stop succeeds gracefully when daemon not running\n')
   }
 
-  // Test 6: daemon restart starts daemon and can be stopped
+  // Test 7: daemon restart starts daemon and can be stopped
   {
-    console.log('Test 6: daemon restart starts daemon and can be stopped')
+    console.log('Test 7: daemon restart starts daemon and can be stopped')
     const result =
       await $`PASEO_HOME=${paseoHome} npx paseo daemon restart --port ${String(port)}`.nothrow()
     assert.strictEqual(result.exitCode, 0, 'restart should succeed even when previously stopped')

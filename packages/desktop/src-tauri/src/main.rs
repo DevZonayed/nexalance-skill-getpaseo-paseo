@@ -8,5 +8,9 @@
 tauri::embed_plist::embed_info_plist!("../Info.plist");
 
 fn main() {
+    if let Err(error) = paseo_lib::try_run_cli_shim_from_args() {
+        eprintln!("{error}");
+        std::process::exit(1);
+    }
     paseo_lib::run();
 }

@@ -1,5 +1,6 @@
 use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine as _};
 use serde::Serialize;
+use serde_json::json;
 use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -10,6 +11,17 @@ use tauri::menu::{Menu, MenuItemBuilder, MenuItemKind, PredefinedMenuItem, Subme
 use tauri::menu::AboutMetadata;
 use tauri::{AppHandle, Manager, WebviewWindow};
 use tauri_plugin_updater::UpdaterExt;
+
+mod runtime_manager;
+pub use runtime_manager::try_run_cli_shim_from_args;
+use runtime_manager::{
+    close_local_daemon_transport, ensure_managed_runtime, install_cli_shim,
+    managed_daemon_logs, managed_daemon_pairing, managed_daemon_status, managed_runtime_status,
+    open_local_daemon_transport, restart_managed_daemon,
+    send_local_daemon_transport_message, start_managed_daemon, stop_managed_daemon,
+    uninstall_cli_shim, update_managed_daemon_tcp_settings, ManagedTcpSettings,
+    LocalTransportState,
+};
 
 // Store zoom as u64 bits (f64 * 100 as integer for atomic ops)
 static ZOOM_LEVEL: AtomicU64 = AtomicU64::new(100);
@@ -62,6 +74,138 @@ struct LocalDaemonVersionResult {
 struct AttachmentFileResult {
     path: String,
     byte_size: u64,
+}
+
+#[derive(Debug, Clone)]
+enum ManagedHeadlessCommand {
+    RuntimeStatus,
+    Bootstrap,
+    DaemonStatus,
+    StopDaemon,
+    InstallCliShim,
+    UninstallCliShim,
+    UpdateTcp(ManagedTcpSettings),
+}
+
+fn parse_managed_headless_command() -> Result<Option<ManagedHeadlessCommand>, String> {
+    let args = std::env::args().collect::<Vec<_>>();
+    let Some(flag_index) = args.iter().position(|value| value == "--managed-headless") else {
+        return Ok(None);
+    };
+    let command = args
+        .get(flag_index + 1)
+        .ok_or_else(|| "Missing command after --managed-headless".to_string())?;
+    let tail = args.iter().skip(flag_index + 2).cloned().collect::<Vec<_>>();
+    match command.as_str() {
+        "runtime-status" => Ok(Some(ManagedHeadlessCommand::RuntimeStatus)),
+        "bootstrap" => Ok(Some(ManagedHeadlessCommand::Bootstrap)),
+        "daemon-status" => Ok(Some(ManagedHeadlessCommand::DaemonStatus)),
+        "stop-daemon" => Ok(Some(ManagedHeadlessCommand::StopDaemon)),
+        "install-cli-shim" => Ok(Some(ManagedHeadlessCommand::InstallCliShim)),
+        "uninstall-cli-shim" => Ok(Some(ManagedHeadlessCommand::UninstallCliShim)),
+        "update-tcp" => {
+            let mut enabled = false;
+            let mut host = "127.0.0.1".to_string();
+            let mut port = 7771_u16;
+            let mut index = 0_usize;
+            while index < tail.len() {
+                match tail[index].as_str() {
+                    "--enabled" => {
+                        enabled = tail
+                            .get(index + 1)
+                            .ok_or_else(|| "Missing value after --enabled".to_string())?
+                            .parse::<bool>()
+                            .map_err(|error| format!("Invalid --enabled value: {error}"))?;
+                        index += 2;
+                    }
+                    "--host" => {
+                        host = tail
+                            .get(index + 1)
+                            .ok_or_else(|| "Missing value after --host".to_string())?
+                            .to_string();
+                        index += 2;
+                    }
+                    "--port" => {
+                        port = tail
+                            .get(index + 1)
+                            .ok_or_else(|| "Missing value after --port".to_string())?
+                            .parse::<u16>()
+                            .map_err(|error| format!("Invalid --port value: {error}"))?;
+                        index += 2;
+                    }
+                    other => {
+                        return Err(format!("Unknown --managed-headless update-tcp option: {other}"));
+                    }
+                }
+            }
+            Ok(Some(ManagedHeadlessCommand::UpdateTcp(ManagedTcpSettings {
+                enabled,
+                host,
+                port,
+            })))
+        }
+        other => Err(format!("Unknown --managed-headless command: {other}")),
+    }
+}
+
+fn maybe_run_managed_headless_command(app: &AppHandle) -> Result<bool, String> {
+    let Some(command) = parse_managed_headless_command()? else {
+        return Ok(false);
+    };
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.hide();
+    }
+    let app_handle = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let result = async {
+            let payload = match command {
+                ManagedHeadlessCommand::RuntimeStatus => {
+                    json!(managed_runtime_status(app_handle.clone()).await?)
+                }
+                ManagedHeadlessCommand::Bootstrap => {
+                    ensure_managed_runtime(app_handle.clone()).await?;
+                    json!(start_managed_daemon(app_handle.clone()).await?)
+                }
+                ManagedHeadlessCommand::DaemonStatus => {
+                    json!(managed_daemon_status(app_handle.clone()).await?)
+                }
+                ManagedHeadlessCommand::StopDaemon => {
+                    json!(stop_managed_daemon(app_handle.clone()).await?)
+                }
+                ManagedHeadlessCommand::InstallCliShim => {
+                    json!(install_cli_shim(app_handle.clone()).await?)
+                }
+                ManagedHeadlessCommand::UninstallCliShim => {
+                    json!(uninstall_cli_shim(app_handle.clone()).await?)
+                }
+                ManagedHeadlessCommand::UpdateTcp(settings) => {
+                    json!(update_managed_daemon_tcp_settings(app_handle.clone(), settings).await?)
+                }
+            };
+            Ok::<serde_json::Value, String>(payload)
+        }
+        .await;
+
+        match result {
+            Ok(payload) => {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&payload)
+                        .unwrap_or_else(|error| format!(r#"{{"error":"{error}"}}"#))
+                );
+                app_handle.exit(0);
+            }
+            Err(error) => {
+                eprintln!(
+                    "{}",
+                    serde_json::to_string_pretty(&json!({ "error": error }))
+                        .unwrap_or_else(|_| r#"{"error":"managed headless command failed"}"#.to_string())
+                );
+                app_handle.exit(1);
+            }
+        }
+    });
+    Ok(true)
 }
 
 fn resolve_login_shell() -> String {
@@ -440,12 +584,27 @@ async fn garbage_collect_attachment_files(
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .manage(LocalTransportState::default())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_websocket::init())
         .invoke_handler(tauri::generate_handler![
+            managed_runtime_status,
+            ensure_managed_runtime,
+            managed_daemon_status,
+            start_managed_daemon,
+            stop_managed_daemon,
+            restart_managed_daemon,
+            managed_daemon_logs,
+            managed_daemon_pairing,
+            install_cli_shim,
+            uninstall_cli_shim,
+            update_managed_daemon_tcp_settings,
+            open_local_daemon_transport,
+            send_local_daemon_transport_message,
+            close_local_daemon_transport,
             get_local_daemon_version,
             run_local_daemon_update,
             check_app_update,
@@ -457,6 +616,10 @@ pub fn run() {
             garbage_collect_attachment_files
         ])
         .setup(|app| {
+            if maybe_run_managed_headless_command(app.handle())? {
+                return Ok(());
+            }
+
             if cfg!(debug_assertions) {
                 app.handle().plugin(
                     tauri_plugin_log::Builder::default()

@@ -246,7 +246,7 @@ type DownloadTarget = {
 
 function resolveDaemonDownloadTarget(daemon?: HostProfile): DownloadTarget {
   const endpoint =
-    daemon?.connections.find((conn) => conn.type === "direct")?.endpoint ?? null;
+    daemon?.connections.find((conn) => conn.type === "directTcp")?.endpoint ?? null;
   if (!endpoint) {
     return { baseUrl: null, authHeader: null, authCredentials: null };
   }

@@ -179,7 +179,11 @@ export function AddHostModal({ visible, onClose, onCancel, onSaved, targetServer
       setIsSaving(true);
       setErrorMessage("");
 
-      const { serverId, hostname } = await probeConnection({ id: "probe", type: "direct", endpoint });
+      const { serverId, hostname } = await probeConnection({
+        id: "probe",
+        type: "directTcp",
+        endpoint,
+      });
       if (targetServerId && serverId !== targetServerId) {
         const message = `That endpoint belongs to ${serverId}, not ${targetServerId}.`;
         setErrorMessage(message);

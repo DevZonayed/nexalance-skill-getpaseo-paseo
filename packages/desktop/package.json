@@ -4,8 +4,11 @@
   "private": true,
   "description": "Paseo desktop app (Tauri wrapper)",
   "scripts": {
-    "dev": "tauri dev",
-    "build": "tauri build",
+    "build:managed-runtime": "node ./scripts/build-managed-runtime.mjs",
+    "prepare:managed-runtime": "npm --prefix ../.. run build:daemon && npm run build:managed-runtime",
+    "dev": "npm run prepare:managed-runtime && tauri dev",
+    "build": "npm --prefix ../.. run build:web --workspace=@getpaseo/app && npm run prepare:managed-runtime && tauri build",
+    "smoke:managed-daemon": "node ./scripts/managed-daemon-smoke.mjs",
     "tauri": "tauri"
   },
   "devDependencies": {

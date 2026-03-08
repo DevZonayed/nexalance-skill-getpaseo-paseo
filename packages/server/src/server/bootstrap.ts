@@ -11,9 +11,16 @@ import type { Logger } from "pino";
 
 type ListenTarget =
   | { type: "tcp"; host: string; port: number }
-  | { type: "socket"; path: string };
+  | { type: "socket"; path: string }
+  | { type: "pipe"; path: string };
 
-function parseListenString(listen: string): ListenTarget {
+export function parseListenString(listen: string): ListenTarget {
+  if (listen.startsWith("\\\\.\\pipe\\") || listen.startsWith("pipe://")) {
+    return {
+      type: "pipe",
+      path: listen.startsWith("pipe://") ? listen.slice("pipe://".length) : listen,
+    };
+  }
   // Unix socket: starts with / or ~ or contains .sock
   if (listen.startsWith("/") || listen.startsWith("~") || listen.includes(".sock")) {
     return { type: "socket", path: listen };
@@ -570,45 +577,43 @@ export async function createPaseoDaemon(
       const onListening = () => {
         httpServer.off("error", onError);
         const logAndResolve = async () => {
+          const relayEnabled = config.relayEnabled ?? true;
+          const relayEndpoint = config.relayEndpoint ?? "relay.paseo.sh:443";
+          const relayPublicEndpoint = config.relayPublicEndpoint ?? relayEndpoint;
+          const appBaseUrl = config.appBaseUrl ?? "https://app.paseo.sh";
+
           if (listenTarget.type === "tcp") {
             logger.info(
               { host: listenTarget.host, port: listenTarget.port },
               `Server listening on http://${listenTarget.host}:${listenTarget.port}`
             );
-
-            const relayEnabled = config.relayEnabled ?? true;
-            const relayEndpoint = config.relayEndpoint ?? "relay.paseo.sh:443";
-            const relayPublicEndpoint = config.relayPublicEndpoint ?? relayEndpoint;
-            const appBaseUrl = config.appBaseUrl ?? "https://app.paseo.sh";
-
-            if (relayEnabled) {
-              const offer = await createConnectionOfferV2({
-                serverId,
-                daemonPublicKeyB64: daemonKeyPair.publicKeyB64,
-                relay: { endpoint: relayPublicEndpoint },
-              });
-
-              const url = encodeOfferToFragmentUrl({ offer, appBaseUrl });
-              logger.info({ url }, "pairing_offer");
-            }
-
-            if (relayEnabled) {
-              relayTransport?.stop().catch(() => undefined);
-              relayTransport = startRelayTransport({
-                logger,
-                attachSocket: (ws, metadata) => {
-                  if (!wsServer) {
-                    throw new Error("WebSocket server not initialized");
-                  }
-                  return wsServer.attachExternalSocket(ws, metadata);
-                },
-                relayEndpoint,
-                serverId,
-                daemonKeyPair: daemonKeyPair.keyPair,
-              });
-            }
           } else {
             logger.info({ path: listenTarget.path }, `Server listening on ${listenTarget.path}`);
+          }
+
+          if (relayEnabled) {
+            const offer = await createConnectionOfferV2({
+              serverId,
+              daemonPublicKeyB64: daemonKeyPair.publicKeyB64,
+              relay: { endpoint: relayPublicEndpoint },
+            });
+
+            const url = encodeOfferToFragmentUrl({ offer, appBaseUrl });
+            logger.info({ url }, "pairing_offer");
+
+            relayTransport?.stop().catch(() => undefined);
+            relayTransport = startRelayTransport({
+              logger,
+              attachSocket: (ws, metadata) => {
+                if (!wsServer) {
+                  throw new Error("WebSocket server not initialized");
+                }
+                return wsServer.attachExternalSocket(ws, metadata);
+              },
+              relayEndpoint,
+              serverId,
+              daemonKeyPair: daemonKeyPair.keyPair,
+            });
           }
         };
 
@@ -620,8 +625,7 @@ export async function createPaseoDaemon(
       if (listenTarget.type === "tcp") {
         httpServer.listen(listenTarget.port, listenTarget.host);
       } else {
-        // Remove stale socket file if it exists
-        if (existsSync(listenTarget.path)) {
+        if (listenTarget.type === "socket" && existsSync(listenTarget.path)) {
           unlinkSync(listenTarget.path);
         }
         httpServer.listen(listenTarget.path);

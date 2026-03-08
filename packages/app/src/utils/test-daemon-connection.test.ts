@@ -71,12 +71,12 @@ describe("test-daemon-connection probe client identity", () => {
 
     await mod.measureConnectionLatency({
       id: "direct:lan:6767",
-      type: "direct",
+      type: "directTcp",
       endpoint: "lan:6767",
     });
     await mod.measureConnectionLatency({
       id: "direct:lan:6767",
-      type: "direct",
+      type: "directTcp",
       endpoint: "lan:6767",
     });
 
@@ -84,5 +84,19 @@ describe("test-daemon-connection probe client identity", () => {
     expect(first?.clientId).toBe("cid_shared_probe_test");
     expect(second?.clientId).toBe("cid_shared_probe_test");
     expect(clientIdMock.getOrCreateClientId).toHaveBeenCalledTimes(2);
+  });
+
+  it("encodes the local socket target into the probe client config", async () => {
+    const mod = await import("./test-daemon-connection");
+
+    await mod.measureConnectionLatency({
+      id: "socket:/tmp/paseo.sock",
+      type: "directSocket",
+      path: "/tmp/paseo.sock",
+    });
+
+    expect(daemonClientMock.createdConfigs[0]?.url).toBe(
+      "paseo+local://socket?path=%2Ftmp%2Fpaseo.sock"
+    );
   });
 });

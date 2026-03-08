@@ -10,6 +10,17 @@ export interface ConnectOptions {
 const DEFAULT_HOST = 'localhost:6767'
 const DEFAULT_TIMEOUT = 5000
 
+type DaemonTarget =
+  | {
+      type: 'tcp'
+      url: string
+    }
+  | {
+      type: 'ipc'
+      url: string
+      socketPath: string
+    }
+
 /**
  * Get the daemon host from environment or options
  */
@@ -17,12 +28,49 @@ export function getDaemonHost(options?: ConnectOptions): string {
   return options?.host ?? process.env.PASEO_HOST ?? DEFAULT_HOST
 }
 
+export function resolveDaemonTarget(host: string): DaemonTarget {
+  const trimmed = host.trim()
+  if (
+    trimmed.startsWith('unix://') ||
+    trimmed.startsWith('pipe://') ||
+    trimmed.startsWith('\\\\.\\pipe\\')
+  ) {
+    const socketPath = trimmed.startsWith('unix://')
+      ? trimmed.slice('unix://'.length).trim()
+      : trimmed.startsWith('pipe://')
+        ? trimmed.slice('pipe://'.length).trim()
+        : trimmed
+    if (!socketPath) {
+      throw new Error('Invalid IPC daemon target: missing socket path')
+    }
+    const isUnixSocket = trimmed.startsWith('unix://')
+    return {
+      type: 'ipc',
+      url: isUnixSocket
+        ? `ws+unix://${socketPath}:/ws`
+        : 'ws://localhost/ws',
+      socketPath,
+    }
+  }
+
+  return {
+    type: 'tcp',
+    url: `ws://${trimmed}/ws`,
+  }
+}
+
 /**
  * Create a WebSocket factory that works in Node.js
  */
 function createNodeWebSocketFactory() {
-  return (url: string, options?: { headers?: Record<string, string> }) => {
-    return new WebSocket(url, { headers: options?.headers }) as unknown as {
+  return (
+    url: string,
+    options?: { headers?: Record<string, string>; socketPath?: string }
+  ) => {
+    return new WebSocket(url, {
+      headers: options?.headers,
+      ...(options?.socketPath ? { socketPath: options.socketPath } : {}),
+    }) as unknown as {
       readyState: number
       send: (data: string | Uint8Array | ArrayBuffer) => void
       close: (code?: number, reason?: string) => void
@@ -41,14 +89,19 @@ export async function connectToDaemon(options?: ConnectOptions): Promise<DaemonC
   const host = getDaemonHost(options)
   const timeout = options?.timeout ?? DEFAULT_TIMEOUT
   const clientId = await getOrCreateCliClientId()
-  const url = `ws://${host}/ws`
+  const target = resolveDaemonTarget(host)
+  const nodeWebSocketFactory = createNodeWebSocketFactory()
 
   const client = new DaemonClient(
     {
-      url,
+      url: target.url,
       clientId,
       clientType: 'cli',
-      webSocketFactory: createNodeWebSocketFactory(),
+      webSocketFactory: (url: string, config?: { headers?: Record<string, string> }) =>
+        nodeWebSocketFactory(url, {
+          headers: config?.headers,
+          ...(target.type === 'ipc' ? { socketPath: target.socketPath } : {}),
+        }),
       reconnect: { enabled: false },
     } as unknown as ConstructorParameters<typeof DaemonClient>[0]
   )

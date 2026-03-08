@@ -17,6 +17,10 @@ import {
   type ConnectionCandidate,
   type ConnectionProbeState,
 } from "@/utils/connection-selection";
+import {
+  buildLocalDaemonTransportUrl,
+  createTauriLocalDaemonTransportFactory,
+} from "@/utils/managed-tauri-daemon-transport";
 import { createTauriWebSocketTransportFactory } from "@/utils/tauri-daemon-transport";
 import { applyFetchedAgentDirectory } from "@/utils/agent-directory-sync";
 import { useSessionStore, type Agent } from "@/stores/session-store";
@@ -33,7 +37,9 @@ export type HostRuntimeConnectionStatus =
   | "error";
 
 export type ActiveConnection =
-  | { type: "direct"; endpoint: string; display: string }
+  | { type: "directTcp"; endpoint: string; display: string }
+  | { type: "directSocket"; endpoint: string; display: "socket" }
+  | { type: "directPipe"; endpoint: string; display: "pipe" }
   | { type: "relay"; endpoint: string; display: "relay" };
 
 export type HostRuntimeAgentDirectoryStatus =
@@ -179,9 +185,23 @@ function readFetchAgentsNextCursor(
 }
 
 function toActiveConnection(connection: HostConnection): ActiveConnection {
-  if (connection.type === "direct") {
+  if (connection.type === "directSocket") {
     return {
-      type: "direct",
+      type: "directSocket",
+      endpoint: connection.path,
+      display: "socket",
+    };
+  }
+  if (connection.type === "directPipe") {
+    return {
+      type: "directPipe",
+      endpoint: connection.path,
+      display: "pipe",
+    };
+  }
+  if (connection.type === "directTcp") {
+    return {
+      type: "directTcp",
       endpoint: connection.endpoint,
       display: connection.endpoint,
     };
@@ -421,11 +441,14 @@ function createDefaultDeps(): HostRuntimeControllerDeps {
         serverId: host.serverId,
         connectionType: connection.type,
         endpoint:
-          connection.type === "direct"
+          connection.type === "directTcp"
             ? connection.endpoint
+            : connection.type === "directSocket" || connection.type === "directPipe"
+              ? connection.path
             : connection.relayEndpoint,
       });
       const tauriTransportFactory = createTauriWebSocketTransportFactory();
+      const localTransportFactory = createTauriLocalDaemonTransportFactory();
       const base = {
         suppressSendErrors: true,
         clientId,
@@ -433,18 +456,31 @@ function createDefaultDeps(): HostRuntimeControllerDeps {
         runtimeGeneration,
         onDiagnosticsEvent: (event: DaemonClientDiagnosticsEvent) =>
           recordDaemonClientDiagnostics(host.serverId, event),
-        ...(tauriTransportFactory
-          ? { transportFactory: tauriTransportFactory }
-          : {}),
       };
-      if (connection.type === "direct") {
+      if (connection.type === "directSocket" || connection.type === "directPipe") {
         return new DaemonClient({
           ...base,
+          ...(localTransportFactory ? { transportFactory: localTransportFactory } : {}),
+          url: buildLocalDaemonTransportUrl({
+            transportType: connection.type === "directSocket" ? "socket" : "pipe",
+            transportPath: connection.path,
+          }),
+        });
+      }
+      if (connection.type === "directTcp") {
+        return new DaemonClient({
+          ...base,
+          ...(tauriTransportFactory
+            ? { transportFactory: tauriTransportFactory }
+            : {}),
           url: buildDaemonWebSocketUrl(connection.endpoint),
         });
       }
       return new DaemonClient({
         ...base,
+        ...(tauriTransportFactory
+          ? { transportFactory: tauriTransportFactory }
+          : {}),
         url: buildRelayWebSocketUrl({
           endpoint: connection.relayEndpoint,
           serverId: host.serverId,
