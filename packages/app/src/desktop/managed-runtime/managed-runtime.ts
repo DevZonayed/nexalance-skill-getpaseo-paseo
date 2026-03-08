@@ -4,9 +4,7 @@ import { getTauri, isTauriEnvironment } from "@/utils/tauri";
 export type ManagedRuntimeStatus = {
   runtimeId: string;
   runtimeVersion: string;
-  bundledRuntimeRoot: string;
-  installedRuntimeRoot: string;
-  installed: boolean;
+  runtimeRoot: string;
   managedHome: string;
   transportType: string;
   transportPath: string;
@@ -103,9 +101,7 @@ function parseManagedRuntimeStatus(raw: unknown): ManagedRuntimeStatus {
   return {
     runtimeId: toStringOrNull(raw.runtimeId) ?? "",
     runtimeVersion: toStringOrNull(raw.runtimeVersion) ?? "",
-    bundledRuntimeRoot: toStringOrNull(raw.bundledRuntimeRoot) ?? "",
-    installedRuntimeRoot: toStringOrNull(raw.installedRuntimeRoot) ?? "",
-    installed: raw.installed === true,
+    runtimeRoot: toStringOrNull(raw.runtimeRoot) ?? "",
     managedHome: toStringOrNull(raw.managedHome) ?? "",
     transportType: toStringOrNull(raw.transportType) ?? "socket",
     transportPath: toStringOrNull(raw.transportPath) ?? "",
@@ -187,10 +183,6 @@ export function parseCliShimResult(raw: unknown): CliShimResult {
 
 export function shouldUseManagedDesktopDaemon(): boolean {
   return isTauriEnvironment() && getTauri() !== null;
-}
-
-export async function ensureManagedRuntime(): Promise<ManagedRuntimeStatus> {
-  return parseManagedRuntimeStatus(await invokeDesktopCommand("ensure_managed_runtime"));
 }
 
 export async function getManagedRuntimeStatus(): Promise<ManagedRuntimeStatus> {

@@ -3,6 +3,7 @@ import {
   hostHasDirectEndpoint,
   registryHasDirectEndpoint,
   reconcileDesktopStartupRegistry,
+  resolveManagedDesktopStartupStatus,
   type HostProfile,
 } from './daemon-registry-context'
 
@@ -238,5 +239,85 @@ describe('reconcileDesktopStartupRegistry', () => {
     })
 
     expect(second).toEqual(first)
+  })
+})
+
+describe('resolveManagedDesktopStartupStatus', () => {
+  it('starts the managed daemon when management is enabled', async () => {
+    const managedStatus = {
+      runtimeId: 'runtime_1',
+      runtimeVersion: '1.2.3',
+      runtimeRoot: '/runtime',
+      managedHome: '/home',
+      transportType: 'socket',
+      transportPath: '/tmp/paseo.sock',
+      daemonPid: 123,
+      daemonRunning: true,
+      daemonStatus: 'running',
+      logPath: '/tmp/daemon.log',
+      serverId: 'srv_managed',
+      hostname: 'managed-host',
+      relayEnabled: true,
+      tcpEnabled: false,
+      tcpListen: null,
+      cliShimPath: null,
+    }
+    let startCalls = 0
+    let statusCalls = 0
+
+    const result = await resolveManagedDesktopStartupStatus({
+      settings: { manageBuiltInDaemon: true },
+      startManagedDaemonFn: async () => {
+        startCalls += 1
+        return managedStatus
+      },
+      getManagedDaemonStatusFn: async () => {
+        statusCalls += 1
+        return managedStatus
+      },
+    })
+
+    expect(result).toEqual(managedStatus)
+    expect(startCalls).toBe(1)
+    expect(statusCalls).toBe(0)
+  })
+
+  it('only reads managed daemon status when management is paused', async () => {
+    const managedStatus = {
+      runtimeId: 'runtime_1',
+      runtimeVersion: '1.2.3',
+      runtimeRoot: '/runtime',
+      managedHome: '/home',
+      transportType: 'socket',
+      transportPath: '/tmp/paseo.sock',
+      daemonPid: null,
+      daemonRunning: false,
+      daemonStatus: 'stopped',
+      logPath: '/tmp/daemon.log',
+      serverId: null,
+      hostname: null,
+      relayEnabled: true,
+      tcpEnabled: false,
+      tcpListen: null,
+      cliShimPath: null,
+    }
+    let startCalls = 0
+    let statusCalls = 0
+
+    const result = await resolveManagedDesktopStartupStatus({
+      settings: { manageBuiltInDaemon: false },
+      startManagedDaemonFn: async () => {
+        startCalls += 1
+        return managedStatus
+      },
+      getManagedDaemonStatusFn: async () => {
+        statusCalls += 1
+        return managedStatus
+      },
+    })
+
+    expect(result).toEqual(managedStatus)
+    expect(startCalls).toBe(0)
+    expect(statusCalls).toBe(1)
   })
 })

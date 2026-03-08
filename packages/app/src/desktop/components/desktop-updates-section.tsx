@@ -7,6 +7,7 @@ import { StyleSheet } from "react-native-unistyles";
 import { ArrowUpRight } from "lucide-react-native";
 import { AdaptiveModalSheet } from "@/components/adaptive-modal-sheet";
 import { Button } from "@/components/ui/button";
+import { useAppSettings } from "@/hooks/use-settings";
 import { confirmDialog } from "@/utils/confirm-dialog";
 import { openExternalUrl } from "@/utils/open-external-url";
 import {
@@ -20,6 +21,8 @@ import {
   installManagedCliShim,
   restartManagedDaemon,
   shouldUseManagedDesktopDaemon,
+  startManagedDaemon,
+  stopManagedDaemon,
   uninstallManagedCliShim,
   type ManagedDaemonLogs,
   type ManagedPairingOffer,
@@ -33,9 +36,11 @@ export interface LocalDaemonSectionProps {
 
 export function LocalDaemonSection({ appVersion }: LocalDaemonSectionProps) {
   const showSection = shouldUseManagedDesktopDaemon();
+  const { settings, updateSettings } = useAppSettings();
   const [managedStatus, setManagedStatus] = useState<ManagedDaemonStatus | null>(null);
   const [statusError, setStatusError] = useState<string | null>(null);
   const [isRestartingDaemon, setIsRestartingDaemon] = useState(false);
+  const [isUpdatingDaemonManagement, setIsUpdatingDaemonManagement] = useState(false);
   const [isInstallingCli, setIsInstallingCli] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [cliStatusMessage, setCliStatusMessage] = useState<string | null>(null);
@@ -78,8 +83,19 @@ export function LocalDaemonSection({ appVersion }: LocalDaemonSectionProps) {
 
   const localDaemonVersionText = formatVersionWithPrefix(managedStatus?.runtimeVersion ?? null);
   const daemonVersionMismatch = isVersionMismatch(appVersion, managedStatus?.runtimeVersion ?? null);
-  const daemonVersionHint =
-    statusError ?? (managedStatus?.daemonRunning ? "Running." : "Not running.");
+  const daemonStatusStateText =
+    statusError ??
+    (managedStatus?.daemonRunning
+      ? managedStatus?.daemonStatus ?? "running"
+      : "not running");
+  const daemonStatusDetailText = `PID ${managedStatus?.daemonPid ? managedStatus.daemonPid : "—"}`;
+  const isDaemonManagementPaused = !settings.manageBuiltInDaemon;
+  const daemonActionLabel = managedStatus?.daemonRunning ? "Restart daemon" : "Start daemon";
+  const daemonActionMessage = managedStatus?.daemonRunning
+    ? "Restarts the built-in daemon."
+    : isDaemonManagementPaused
+      ? "Starts the built-in daemon manually. Paseo will not auto-start it while paused."
+      : "Starts the built-in daemon.";
 
   const handleUpdateLocalDaemon = useCallback(() => {
     if (!showSection) {
@@ -90,10 +106,11 @@ export function LocalDaemonSection({ appVersion }: LocalDaemonSectionProps) {
     }
 
     void confirmDialog({
-      title: "Restart daemon",
-      message:
-        "This will restart the built-in daemon. The app will reconnect automatically.",
-      confirmLabel: "Restart",
+      title: daemonActionLabel,
+      message: managedStatus?.daemonRunning
+        ? "This will restart the built-in daemon. The app will reconnect automatically."
+        : "This will start the built-in daemon.",
+      confirmLabel: daemonActionLabel,
       cancelLabel: "Cancel",
     })
       .then((confirmed) => {
@@ -104,26 +121,100 @@ export function LocalDaemonSection({ appVersion }: LocalDaemonSectionProps) {
         setIsRestartingDaemon(true);
         setStatusMessage(null);
 
-        void restartManagedDaemon()
+        const action = managedStatus?.daemonRunning ? restartManagedDaemon : startManagedDaemon;
+
+        void action()
           .then((status) => {
             setManagedStatus(status);
-            setStatusMessage("Daemon restarted.");
+            setStatusMessage(
+              managedStatus?.daemonRunning ? "Daemon restarted." : "Daemon started."
+            );
             return loadManagedStatus();
           })
           .catch((error) => {
-            console.error("[Settings] Failed to restart managed daemon", error);
+            console.error("[Settings] Failed to change managed daemon state", error);
             const message = error instanceof Error ? error.message : String(error);
-            setStatusMessage(`Restart failed: ${message}`);
+            setStatusMessage(`${daemonActionLabel} failed: ${message}`);
           })
           .finally(() => {
             setIsRestartingDaemon(false);
           });
       })
       .catch((error) => {
-        console.error("[Settings] Failed to open managed daemon restart confirmation", error);
-        Alert.alert("Error", "Unable to open the restart confirmation dialog.");
+        console.error("[Settings] Failed to open managed daemon action confirmation", error);
+        Alert.alert("Error", "Unable to open the daemon confirmation dialog.");
       });
-  }, [isRestartingDaemon, loadManagedStatus, showSection]);
+  }, [daemonActionLabel, isRestartingDaemon, loadManagedStatus, managedStatus?.daemonRunning, showSection]);
+
+  const handleToggleDaemonManagement = useCallback(() => {
+    if (isUpdatingDaemonManagement) {
+      return;
+    }
+
+    if (!settings.manageBuiltInDaemon) {
+      setIsUpdatingDaemonManagement(true);
+      setStatusMessage(null);
+      void updateSettings({ manageBuiltInDaemon: true })
+        .then(() => {
+          setStatusMessage("Paseo will resume managing the built-in daemon on startup.");
+        })
+        .catch((error) => {
+          console.error("[Settings] Failed to update built-in daemon management", error);
+          Alert.alert("Error", "Unable to update built-in daemon management.");
+        })
+        .finally(() => {
+          setIsUpdatingDaemonManagement(false);
+        });
+      return;
+    }
+
+    void confirmDialog({
+      title: "Pause built-in daemon",
+      message:
+        "This will stop the built-in daemon immediately and prevent Paseo from auto-starting it on launch. Running agents and terminals connected to the built-in daemon will be stopped.",
+      confirmLabel: "Pause and stop",
+      cancelLabel: "Cancel",
+      destructive: true,
+    })
+      .then((confirmed) => {
+        if (!confirmed) {
+          return;
+        }
+
+        setIsUpdatingDaemonManagement(true);
+        setStatusMessage(null);
+
+        const stopPromise = managedStatus?.daemonRunning
+          ? stopManagedDaemon()
+          : Promise.resolve(managedStatus ?? null);
+
+        void stopPromise
+          .then(() => updateSettings({ manageBuiltInDaemon: false }))
+          .then(() => loadManagedStatus())
+          .then(() => {
+            setStatusMessage(
+              "Paseo paused the built-in daemon and will no longer auto-start it on launch."
+            );
+          })
+          .catch((error) => {
+            console.error("[Settings] Failed to pause built-in daemon management", error);
+            Alert.alert("Error", "Unable to pause built-in daemon management.");
+          })
+          .finally(() => {
+            setIsUpdatingDaemonManagement(false);
+          });
+      })
+      .catch((error) => {
+        console.error("[Settings] Failed to open built-in daemon pause confirmation", error);
+        Alert.alert("Error", "Unable to open the daemon confirmation dialog.");
+      });
+  }, [
+    isUpdatingDaemonManagement,
+    loadManagedStatus,
+    managedStatus,
+    settings.manageBuiltInDaemon,
+    updateSettings,
+  ]);
 
   const handleToggleCliShim = useCallback(() => {
     if (!showSection || isInstallingCli) {
@@ -255,26 +346,59 @@ export function LocalDaemonSection({ appVersion }: LocalDaemonSectionProps) {
       <View style={styles.card}>
         <View style={styles.row}>
           <View style={styles.rowContent}>
-            <Text style={styles.rowTitle}>Version</Text>
-            <Text style={styles.hintText}>{daemonVersionHint}</Text>
+            <Text style={styles.rowTitle}>Status</Text>
+            <Text style={styles.hintText}>Only the built-in managed daemon is shown here.</Text>
           </View>
-          <Text style={styles.valueText}>{localDaemonVersionText}</Text>
+          <View style={styles.statusValueGroup}>
+            <Text style={styles.valueText}>{daemonStatusStateText}</Text>
+            <Text style={styles.valueSubtext}>{daemonStatusDetailText}</Text>
+          </View>
         </View>
         <View style={[styles.row, styles.rowBorder]}>
           <View style={styles.rowContent}>
-            <Text style={styles.rowTitle}>Restart daemon</Text>
-            <Text style={styles.hintText}>Restarts the built-in daemon.</Text>
+            <Text style={styles.rowTitle}>Daemon management</Text>
+            <Text style={styles.hintText}>
+              {isDaemonManagementPaused
+                ? "Paused. Paseo will not auto-start the built-in daemon on app launch."
+                : "Enabled. Paseo will start the built-in daemon automatically when needed."}
+            </Text>
+          </View>
+          <Button
+            variant="outline"
+            size="sm"
+            style={styles.primaryActionButton}
+            onPress={handleToggleDaemonManagement}
+            disabled={isUpdatingDaemonManagement}
+          >
+            {isUpdatingDaemonManagement
+              ? isDaemonManagementPaused
+                ? "Resuming..."
+                : "Pausing..."
+              : isDaemonManagementPaused
+                ? "Resume"
+                : "Pause"}
+          </Button>
+        </View>
+        <View style={[styles.row, styles.rowBorder]}>
+          <View style={styles.rowContent}>
+            <Text style={styles.rowTitle}>{daemonActionLabel}</Text>
+            <Text style={styles.hintText}>{daemonActionMessage}</Text>
             {statusMessage ? (
               <Text style={styles.statusText}>{statusMessage}</Text>
             ) : null}
           </View>
           <Button
-            variant="secondary"
+            variant="outline"
             size="sm"
+            style={styles.primaryActionButton}
             onPress={handleUpdateLocalDaemon}
             disabled={isRestartingDaemon}
           >
-            {isRestartingDaemon ? "Restarting..." : "Restart daemon"}
+            {isRestartingDaemon
+              ? managedStatus?.daemonRunning
+                ? "Restarting..."
+                : "Starting..."
+              : daemonActionLabel}
           </Button>
         </View>
         <View style={[styles.row, styles.rowBorder]}>
@@ -286,8 +410,9 @@ export function LocalDaemonSection({ appVersion }: LocalDaemonSectionProps) {
             {cliStatusMessage ? <Text style={styles.statusText}>{cliStatusMessage}</Text> : null}
           </View>
           <Button
-            variant="secondary"
+            variant="outline"
             size="sm"
+            style={styles.secondaryActionButton}
             onPress={handleToggleCliShim}
             disabled={isInstallingCli}
           >
@@ -309,12 +434,12 @@ export function LocalDaemonSection({ appVersion }: LocalDaemonSectionProps) {
           </View>
           <View style={styles.actionGroup}>
             {(managedLogs?.logPath ?? managedStatus?.logPath) ? (
-              <Button variant="secondary" size="sm" onPress={handleCopyLogPath}>
+              <Button variant="outline" size="sm" onPress={handleCopyLogPath}>
                 Copy path
               </Button>
             ) : null}
             <Button
-              variant="secondary"
+              variant="outline"
               size="sm"
               onPress={handleOpenLogs}
               disabled={!managedLogs}
@@ -330,7 +455,7 @@ export function LocalDaemonSection({ appVersion }: LocalDaemonSectionProps) {
               Connect your phone to this computer.
             </Text>
           </View>
-          <Button variant="secondary" size="sm" onPress={handleOpenPairingModal}>
+          <Button variant="outline" size="sm" style={styles.secondaryActionButton} onPress={handleOpenPairingModal}>
             Pair device
           </Button>
         </View>
@@ -560,6 +685,18 @@ const styles = StyleSheet.create((theme) => ({
   actionGroup: {
     flexDirection: "row",
     gap: theme.spacing[2],
+    flexWrap: "wrap",
+    justifyContent: "flex-end",
+  },
+  statusValueGroup: {
+    alignItems: "flex-end",
+    gap: 2,
+  },
+  primaryActionButton: {
+    minWidth: 124,
+  },
+  secondaryActionButton: {
+    minWidth: 112,
   },
   rowTitle: {
     color: theme.colors.foreground,
@@ -569,6 +706,10 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.sm,
     fontWeight: theme.fontWeight.normal,
+  },
+  valueSubtext: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.xs,
   },
   hintText: {
     color: theme.colors.foregroundMuted,

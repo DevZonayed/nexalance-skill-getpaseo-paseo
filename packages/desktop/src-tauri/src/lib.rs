@@ -14,11 +14,11 @@ use tauri_plugin_updater::UpdaterExt;
 
 mod runtime_manager;
 use runtime_manager::{
-    close_local_daemon_transport, ensure_managed_runtime, install_cli_shim, managed_daemon_logs,
-    managed_daemon_pairing, managed_daemon_status, managed_runtime_status,
-    open_local_daemon_transport, restart_managed_daemon, send_local_daemon_transport_message,
-    start_managed_daemon, stop_managed_daemon, uninstall_cli_shim,
-    update_managed_daemon_tcp_settings, LocalTransportState, ManagedTcpSettings,
+    close_local_daemon_transport, install_cli_shim, managed_daemon_logs, managed_daemon_pairing,
+    managed_daemon_status, managed_runtime_status, open_local_daemon_transport,
+    restart_managed_daemon, send_local_daemon_transport_message, start_managed_daemon,
+    stop_managed_daemon, uninstall_cli_shim, update_managed_daemon_tcp_settings,
+    LocalTransportState, ManagedTcpSettings,
 };
 
 // Store zoom as u64 bits (f64 * 100 as integer for atomic ops)
@@ -169,7 +169,6 @@ fn maybe_run_managed_headless_command(app: &AppHandle) -> Result<bool, String> {
                     json!(managed_runtime_status(app_handle.clone()).await?)
                 }
                 ManagedHeadlessCommand::Bootstrap => {
-                    ensure_managed_runtime(app_handle.clone()).await?;
                     json!(start_managed_daemon(app_handle.clone()).await?)
                 }
                 ManagedHeadlessCommand::DaemonStatus => {
@@ -603,7 +602,6 @@ pub fn run() {
         .plugin(tauri_plugin_websocket::init())
         .invoke_handler(tauri::generate_handler![
             managed_runtime_status,
-            ensure_managed_runtime,
             managed_daemon_status,
             start_managed_daemon,
             stop_managed_daemon,

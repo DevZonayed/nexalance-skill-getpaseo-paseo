@@ -4,8 +4,10 @@ import AsyncStorage from '@react-native-async-storage/async-storage'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { decodeOfferFragmentPayload, normalizeHostPort } from '@/utils/daemon-endpoints'
 import { probeConnection } from '@/utils/test-daemon-connection'
+import { useAppSettings, type AppSettings } from '@/hooks/use-settings'
 import { ConnectionOfferSchema, type ConnectionOffer } from '@server/shared/connection-offer'
 import {
+  getManagedDaemonStatus,
   type ManagedDaemonStatus,
   shouldUseManagedDesktopDaemon,
   startManagedDaemon,
@@ -460,6 +462,18 @@ export function reconcileDesktopStartupRegistry(
   return next
 }
 
+export async function resolveManagedDesktopStartupStatus(input: {
+  settings: Pick<AppSettings, 'manageBuiltInDaemon'>
+  startManagedDaemonFn?: () => Promise<ManagedDaemonStatus>
+  getManagedDaemonStatusFn?: () => Promise<ManagedDaemonStatus>
+}): Promise<ManagedDaemonStatus> {
+  if (input.settings.manageBuiltInDaemon) {
+    return await (input.startManagedDaemonFn ?? startManagedDaemon)()
+  }
+
+  return await (input.getManagedDaemonStatusFn ?? getManagedDaemonStatus)()
+}
+
 async function probeManagedStartupTarget(input: {
   managedDaemon: ManagedDaemonStatus
   cancelled?: () => boolean
@@ -551,6 +565,7 @@ export function DaemonRegistryProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient()
   const desktopStartupReconciledRef = useRef(false)
   const localhostBootstrapAttemptedRef = useRef(false)
+  const { settings, isLoading: settingsLoading } = useAppSettings()
   const {
     data: daemons = [],
     isPending,
@@ -667,6 +682,7 @@ export function DaemonRegistryProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (isPending) return
+    if (settingsLoading) return
     if (!shouldUseManagedDesktopDaemon()) return
     if (desktopStartupReconciledRef.current) return
     desktopStartupReconciledRef.current = true
@@ -682,11 +698,15 @@ export function DaemonRegistryProvider({ children }: { children: ReactNode }) {
 
         let managed: ManagedHostReconciliationInput | null = null
         try {
-          const managedDaemon = await startManagedDaemon()
-          managed = await probeManagedConnectionUntilReady({
-            managedDaemon,
-            cancelled: () => cancelled,
+          const managedDaemon = await resolveManagedDesktopStartupStatus({
+            settings,
           })
+          if (managedDaemon.daemonRunning) {
+            managed = await probeManagedConnectionUntilReady({
+              managedDaemon,
+              cancelled: () => cancelled,
+            })
+          }
         } catch (managedBootstrapError) {
           if (!cancelled) {
             console.warn(
@@ -750,6 +770,8 @@ export function DaemonRegistryProvider({ children }: { children: ReactNode }) {
     isPending,
     persist,
     readDaemons,
+    settings.manageBuiltInDaemon,
+    settingsLoading,
   ])
 
   useEffect(() => {

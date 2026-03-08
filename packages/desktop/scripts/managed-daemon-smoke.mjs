@@ -25,10 +25,6 @@ const currentRuntimePointer = JSON.parse(
 );
 const currentRuntimeId = currentRuntimePointer.runtimeId;
 
-function buildRuntimeId(version) {
-  return currentRuntimeId.replace(currentRuntimeVersion, version);
-}
-
 function resolvePackagedBinary() {
   if (process.platform === "darwin") {
     return path.join(
@@ -103,87 +99,6 @@ function escapeForRegExp(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-function derivePreviousVersion(version) {
-  const match = version.match(/^(\d+)\.(\d+)\.(\d+)$/);
-  if (!match) {
-    return `${version}-previous`;
-  }
-  const [, major, minor, patch] = match;
-  const numericPatch = Number.parseInt(patch, 10);
-  if (numericPatch <= 0) {
-    return `${major}.${minor}.0-previous`;
-  }
-  return `${major}.${minor}.${numericPatch - 1}`;
-}
-
-function buildSeededTransportPath(testRoot) {
-  if (process.platform === "win32") {
-    return String.raw`\\.\pipe\paseo-managed-seeded-upgrade`;
-  }
-  return path.join(testRoot, "managed-home", "run", "paseo.sock");
-}
-
-async function seedPreviousManagedRuntime(testRoot) {
-  const previousRuntimeVersion = derivePreviousVersion(currentRuntimeVersion);
-  const previousRuntimeId = buildRuntimeId(previousRuntimeVersion);
-  const previousRuntimeRoot = path.join(testRoot, "runtime", previousRuntimeId);
-  const stateFilePath = path.join(testRoot, "managed-state.json");
-  const managedHome = path.join(testRoot, "managed-home");
-  const transportType = process.platform === "win32" ? "pipe" : "socket";
-  const transportPath = buildSeededTransportPath(testRoot);
-  await fs.mkdir(previousRuntimeRoot, { recursive: true });
-  await fs.writeFile(
-    path.join(previousRuntimeRoot, "runtime-manifest.json"),
-    JSON.stringify(
-      {
-        runtimeId: previousRuntimeId,
-        runtimeVersion: previousRuntimeVersion,
-        platform: process.platform,
-        arch: process.arch,
-        createdAt: "2000-01-01T00:00:00.000Z",
-        nodeRelativePath: process.platform === "win32" ? path.join("node", "node.exe") : path.join("node", "node"),
-        cliEntrypointRelativePath: path.join("node_modules", "@getpaseo", "cli", "dist", "index.js"),
-        cliShimRelativePath: path.join("node_modules", "@getpaseo", "cli", "bin", "paseo"),
-        serverRunnerRelativePath: path.join(
-          "node_modules",
-          "@getpaseo",
-          "server",
-          "dist",
-          "scripts",
-          "daemon-runner.js"
-        ),
-      },
-      null,
-      2
-    ) + "\n",
-    "utf8"
-  );
-  await fs.writeFile(path.join(previousRuntimeRoot, "seed-marker.txt"), "version-n\n", "utf8");
-  await fs.writeFile(
-    stateFilePath,
-    JSON.stringify(
-      {
-        runtimeId: previousRuntimeId,
-        runtimeRoot: previousRuntimeRoot,
-        managedHome,
-        transportType,
-        transportPath,
-        tcpEnabled: false,
-        tcpListen: null,
-        cliShimPath: null,
-      },
-      null,
-      2
-    ) + "\n",
-    "utf8"
-  );
-  return {
-    previousRuntimeId,
-    previousRuntimeVersion,
-    previousRuntimeRoot,
-    stateFilePath,
-  };
-}
 
 async function runBinary(binaryPath, args, env) {
   const { stdout, stderr } = await execFileAsync(binaryPath, args, {
@@ -221,6 +136,26 @@ async function runWorkspaceCli(args, env) {
     }
   }
   return { stdout, stderr, json };
+}
+
+async function runBundledRuntimeCli(runtimeRoot, managedHome, args, env) {
+  const manifest = JSON.parse(
+    await fs.readFile(path.join(runtimeRoot, "runtime-manifest.json"), "utf8")
+  );
+  const { stdout, stderr } = await execFileAsync(
+    path.join(runtimeRoot, manifest.nodeRelativePath),
+    [path.join(runtimeRoot, manifest.cliEntrypointRelativePath), ...args],
+    {
+      cwd: repoRoot,
+      env: {
+        ...process.env,
+        ...env,
+        PASEO_HOME: managedHome,
+      },
+      maxBuffer: 10 * 1024 * 1024,
+    }
+  );
+  return { stdout, stderr };
 }
 
 async function readDaemonStatus(home, env) {
@@ -466,6 +401,7 @@ const externalPort = await getAvailablePort();
 const externalEndpoint = `127.0.0.1:${externalPort}`;
 const relayPort = await getAvailablePort();
 const relayEndpoint = `127.0.0.1:${relayPort}`;
+const managedRuntimeDir = path.join(testRoot, "runtime");
 await fs.mkdir(testRoot, { recursive: true });
 await fs.mkdir(fakePaseoHome, { recursive: true });
 await fs.mkdir(cliScratchHome, { recursive: true });
@@ -473,7 +409,6 @@ await fs.mkdir(externalHome, { recursive: true });
 await fs.writeFile(path.join(fakePaseoHome, "sentinel.txt"), "do not touch\n", "utf8");
 
 const fakePaseoSnapshotBefore = await snapshotTree(fakePaseoHome);
-const seededUpgradeState = await seedPreviousManagedRuntime(testRoot);
 const managedEnv = {
   ...process.env,
   HOME: fakeHome,
@@ -492,7 +427,7 @@ const managedEnv = {
 let externalPid = null;
 let startedTemporaryExternalDaemon = false;
 let relayProcess = null;
-const forbiddenManagedReferences = ["127.0.0.1:6767", fakePaseoHome];
+const forbiddenManagedReferences = ["127.0.0.1:6767", fakePaseoHome, managedRuntimeDir];
 
 try {
   logStep(`Starting isolated local relay on ${relayEndpoint}`);
@@ -544,39 +479,40 @@ try {
 
   logStep("Bootstrapping managed runtime from packaged desktop binary");
   const runtimeStatus = await runBinary(packagedBinary, ["--managed-headless", "runtime-status"], managedEnv);
-  assert.equal(await pathExists(seededUpgradeState.previousRuntimeRoot), true);
   assert.equal(runtimeStatus.json.runtimeId, currentRuntimeId);
   assert.equal(runtimeStatus.json.runtimeVersion, currentRuntimeVersion);
   assert.match(runtimeStatus.json.managedHome, new RegExp(`^${escapeForRegExp(testRoot)}`));
-  assert.equal(
-    runtimeStatus.json.installedRuntimeRoot,
-    path.join(testRoot, "runtime", currentRuntimeId),
-    "managed runtime should install under the current bundled runtime id"
+  assert.match(
+    runtimeStatus.json.runtimeRoot,
+    new RegExp(escapeForRegExp(currentRuntimeId)),
+    "runtime status should point into the bundled runtime selected by current-runtime.json"
   );
-  assert.notEqual(
-    runtimeStatus.json.installedRuntimeRoot,
-    seededUpgradeState.previousRuntimeRoot,
-    "packaged app should adopt the bundled runtime instead of the seeded previous runtime"
+  assert.equal(
+    runtimeStatus.json.runtimeRoot.startsWith(testRoot),
+    false,
+    "runtime status should not resolve into managed app data"
   );
   assert.ok(runtimeStatus.json.transportType === "socket" || runtimeStatus.json.transportType === "pipe");
   assert.notEqual(runtimeStatus.json.transportPath, "127.0.0.1:6767");
   assertNoForbiddenPathsOrPorts(runtimeStatus.json, forbiddenManagedReferences);
-  const stateAfterRuntimeInstall = JSON.parse(
-    await fs.readFile(seededUpgradeState.stateFilePath, "utf8")
+  assert.equal(await pathExists(managedRuntimeDir), false, "managed app data should not gain a runtime tree");
+  const stateAfterRuntimeStatus = JSON.parse(
+    await fs.readFile(path.join(testRoot, "managed-state.json"), "utf8")
   );
-  assert.equal(stateAfterRuntimeInstall.runtimeId, currentRuntimeId);
-  assert.equal(stateAfterRuntimeInstall.runtimeRoot, runtimeStatus.json.installedRuntimeRoot);
-  assert.equal(await pathExists(seededUpgradeState.previousRuntimeRoot), true);
+  assert.equal(stateAfterRuntimeStatus.runtimeId, currentRuntimeId);
+  assert.equal(stateAfterRuntimeStatus.runtimeRoot, runtimeStatus.json.runtimeRoot);
 
   const managedStart = await runBinary(packagedBinary, ["--managed-headless", "bootstrap"], managedEnv);
   assert.equal(managedStart.json.daemonRunning, true);
   assert.ok(managedStart.json.daemonPid, "managed daemon pid should exist");
+  assert.equal(managedStart.json.runtimeRoot, runtimeStatus.json.runtimeRoot);
   assert.ok(
     managedStart.json.transportType === "socket" || managedStart.json.transportType === "pipe",
     "managed daemon should default to private IPC transport"
   );
   assert.notEqual(managedStart.json.transportPath, "127.0.0.1:6767");
   assertNoForbiddenPathsOrPorts(managedStart.json, forbiddenManagedReferences);
+  assert.equal(await pathExists(managedRuntimeDir), false, "starting the daemon should not install a runtime copy");
 
   const managedPid = managedStart.json.daemonPid;
   const stateFile = path.join(testRoot, "managed-state.json");
@@ -594,7 +530,7 @@ try {
   assert.equal(persistedManagedStatus.json.relayEnabled, true);
   assertNoForbiddenPathsOrPorts(persistedManagedStatus.json, forbiddenManagedReferences);
 
-  logStep("Installing CLI shim and verifying it targets the managed daemon");
+  logStep("Installing CLI shim and verifying the bundled CLI target");
   const cliInstall = await runBinary(
     packagedBinary,
     ["--managed-headless", "install-cli-shim"],
@@ -602,32 +538,62 @@ try {
   );
   const cliShimPath = cliInstall.json.path;
   assert.ok(cliShimPath, "CLI shim path should be returned");
-  assert.equal(await pathExists(cliShimPath), true, "CLI shim should exist");
-  const cliVersion = await execFileAsync(cliShimPath, ["--version"], {
-    env: managedEnv,
-    cwd: repoRoot,
-    maxBuffer: 1024 * 1024,
-  });
+  const cliShimInstalled = cliInstall.json.installed === true && (await pathExists(cliShimPath));
+  if (!cliShimInstalled) {
+    assert.ok(cliInstall.json.manualInstructions, "manual CLI install instructions should be returned");
+    assert.match(
+      cliInstall.json.manualInstructions.commands,
+      new RegExp(escapeForRegExp(runtimeStatus.json.runtimeRoot)),
+      "manual CLI install instructions should point at the bundled runtime"
+    );
+    assertNoForbiddenPathsOrPorts(cliInstall.json.manualInstructions, forbiddenManagedReferences);
+  }
+  const cliVersion = cliShimInstalled
+    ? await execFileAsync(cliShimPath, ["--version"], {
+        env: managedEnv,
+        cwd: repoRoot,
+        maxBuffer: 1024 * 1024,
+      })
+    : await runBundledRuntimeCli(
+        runtimeStatus.json.runtimeRoot,
+        managedStart.json.managedHome,
+        ["--version"],
+        managedEnv
+      );
   assert.match(cliVersion.stdout.trim(), /^0\./);
-  const shimStatus = await execFileAsync(cliShimPath, ["daemon", "status", "--json"], {
-    env: managedEnv,
-    cwd: repoRoot,
-    maxBuffer: 1024 * 1024,
-  });
+  const shimStatus = cliShimInstalled
+    ? await execFileAsync(cliShimPath, ["daemon", "status", "--json"], {
+        env: managedEnv,
+        cwd: repoRoot,
+        maxBuffer: 1024 * 1024,
+      })
+    : await runBundledRuntimeCli(
+        runtimeStatus.json.runtimeRoot,
+        managedStart.json.managedHome,
+        ["daemon", "status", "--json"],
+        managedEnv
+      );
   const shimDaemonStatus = JSON.parse(shimStatus.stdout.trim());
   assert.equal(shimDaemonStatus.pid, managedPid);
   assertNoForbiddenPathsOrPorts(shimDaemonStatus, forbiddenManagedReferences);
 
   logStep("Verifying relay connectivity still works after the desktop command has exited");
-  const relayPairing = await execFileAsync(
-    cliShimPath,
-    ["daemon", "pair", "--home", managedStart.json.managedHome],
-    {
-      env: managedEnv,
-      cwd: repoRoot,
-      maxBuffer: 4 * 1024 * 1024,
-    }
-  );
+  const relayPairing = cliShimInstalled
+    ? await execFileAsync(
+        cliShimPath,
+        ["daemon", "pair", "--home", managedStart.json.managedHome],
+        {
+          env: managedEnv,
+          cwd: repoRoot,
+          maxBuffer: 4 * 1024 * 1024,
+        }
+      )
+    : await runBundledRuntimeCli(
+        runtimeStatus.json.runtimeRoot,
+        managedStart.json.managedHome,
+        ["daemon", "pair", "--home", managedStart.json.managedHome],
+        managedEnv
+      );
   const relayOfferUrl = parseOfferUrlFromCommandOutput(relayPairing.stdout);
   const relayOffer = decodeOfferFromFragmentUrl(relayOfferUrl);
   assert.equal(relayOffer.relay?.endpoint, relayEndpoint);
@@ -705,8 +671,7 @@ try {
       {
         runtimeStatus: runtimeStatus.json,
         managedStart: managedStart.json,
-        seededUpgradeState,
-        stateAfterRuntimeInstall,
+        stateAfterRuntimeStatus,
         persistedManagedStatus: persistedManagedStatus.json,
         managedRestartless: managedRestartless.json,
         cliInstall: cliInstall.json,
