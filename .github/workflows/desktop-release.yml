@@ -21,10 +21,17 @@ env:
 
 jobs:
   publish-macos:
+    strategy:
+      matrix:
+        include:
+          - runner: macos-14
+            rust_target: aarch64-apple-darwin
+          - runner: macos-13
+            rust_target: x86_64-apple-darwin
     permissions:
       contents: write
       packages: read
-    runs-on: macos-latest
+    runs-on: ${{ matrix.runner }}
 
     steps:
       - uses: actions/checkout@v4
@@ -43,7 +50,7 @@ jobs:
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: aarch64-apple-darwin,x86_64-apple-darwin
+          targets: ${{ matrix.rust_target }}
 
       - name: Install JS dependencies
         run: npm ci
@@ -111,7 +118,7 @@ jobs:
           releaseBody: See the assets to download and install this version.
           releaseDraft: false
           prerelease: false
-          args: --target universal-apple-darwin
+          args: --target ${{ matrix.rust_target }}
 
   publish-linux:
     permissions:

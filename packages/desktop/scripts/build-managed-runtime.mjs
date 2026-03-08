@@ -20,6 +20,21 @@ const workspaces = [
   { name: "@getpaseo/cli", root: path.join(repoRoot, "packages", "cli") },
 ];
 
+const ripgrepPlatformDirMap = {
+  darwin: {
+    arm64: "arm64-darwin",
+    x64: "x64-darwin",
+  },
+  linux: {
+    arm64: "arm64-linux",
+    x64: "x64-linux",
+  },
+  win32: {
+    arm64: "arm64-win32",
+    x64: "x64-win32",
+  },
+};
+
 async function rmSafe(target) {
   await fs.rm(target, { recursive: true, force: true });
 }
@@ -47,6 +62,12 @@ async function pathExists(target) {
     return true;
   } catch {
     return false;
+  }
+}
+
+async function removeIfExists(target) {
+  if (await pathExists(target)) {
+    await rmSafe(target);
   }
 }
 
@@ -284,6 +305,92 @@ async function writeRuntimePackageJson(runtimeRoot) {
   );
 }
 
+async function pruneChildrenExcept(parent, keepNames) {
+  if (!(await pathExists(parent))) {
+    return;
+  }
+  const entries = await fs.readdir(parent);
+  await Promise.all(
+    entries
+      .filter((entry) => !keepNames.has(entry))
+      .map((entry) => rmSafe(path.join(parent, entry)))
+  );
+}
+
+async function pruneNodeDistribution(runtimeRoot) {
+  const nodeRoot = path.join(runtimeRoot, "node");
+  await Promise.all([
+    removeIfExists(path.join(nodeRoot, "include")),
+    removeIfExists(path.join(nodeRoot, "share")),
+    removeIfExists(path.join(nodeRoot, "CHANGELOG.md")),
+  ]);
+
+  const nodeGlobalModulesRoot = path.join(nodeRoot, "lib", "node_modules");
+  if (await pathExists(nodeGlobalModulesRoot)) {
+    const keepNames = new Set(["npm"]);
+    await pruneChildrenExcept(nodeGlobalModulesRoot, keepNames);
+  }
+}
+
+async function pruneOnnxRuntime(runtimeRoot) {
+  const onnxRoot = path.join(runtimeRoot, "node_modules", "onnxruntime-node", "bin", "napi-v6");
+  if (!(await pathExists(onnxRoot))) {
+    return;
+  }
+  if (process.platform === "darwin") {
+    await removeIfExists(path.join(onnxRoot, "linux"));
+    await removeIfExists(path.join(onnxRoot, "win32"));
+    await pruneChildrenExcept(path.join(onnxRoot, "darwin"), new Set([process.arch]));
+    return;
+  }
+  if (process.platform === "linux") {
+    await removeIfExists(path.join(onnxRoot, "darwin"));
+    await removeIfExists(path.join(onnxRoot, "win32"));
+    await pruneChildrenExcept(path.join(onnxRoot, "linux"), new Set([process.arch]));
+    return;
+  }
+  if (process.platform === "win32") {
+    await removeIfExists(path.join(onnxRoot, "darwin"));
+    await removeIfExists(path.join(onnxRoot, "linux"));
+    await pruneChildrenExcept(path.join(onnxRoot, "win32"), new Set([process.arch]));
+    return;
+  }
+}
+
+async function pruneNodePty(runtimeRoot) {
+  const prebuildsRoot = path.join(runtimeRoot, "node_modules", "node-pty", "prebuilds");
+  const keepName = `${process.platform}-${process.arch}`;
+  await pruneChildrenExcept(prebuildsRoot, new Set([keepName]));
+
+  if (process.platform !== "win32") {
+    await removeIfExists(path.join(runtimeRoot, "node_modules", "node-pty", "third_party"));
+  }
+}
+
+async function pruneClaudeAgentSdk(runtimeRoot) {
+  const ripgrepRoot = path.join(
+    runtimeRoot,
+    "node_modules",
+    "@anthropic-ai",
+    "claude-agent-sdk",
+    "vendor",
+    "ripgrep"
+  );
+  const keepName = ripgrepPlatformDirMap[process.platform]?.[process.arch];
+  if (keepName) {
+    await pruneChildrenExcept(ripgrepRoot, new Set(["COPYING", keepName]));
+  }
+}
+
+async function pruneManagedRuntime(runtimeRoot) {
+  await Promise.all([
+    pruneNodeDistribution(runtimeRoot),
+    pruneOnnxRuntime(runtimeRoot),
+    pruneNodePty(runtimeRoot),
+    pruneClaudeAgentSdk(runtimeRoot),
+  ]);
+}
+
 async function main() {
   await ensureWorkspaceBuilds();
 
@@ -322,6 +429,7 @@ async function main() {
       path.join(runtimeRoot, "node"),
       tarballs.map((entry) => entry.path)
     );
+    await pruneManagedRuntime(runtimeRoot);
 
     const nodeRelativePath = process.platform === "win32"
       ? path.join("node", "node.exe")

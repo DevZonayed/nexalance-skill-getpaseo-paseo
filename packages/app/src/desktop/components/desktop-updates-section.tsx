@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useState } from "react";
-import { ActivityIndicator, Alert, Image, Text, View } from "react-native";
+import { ActivityIndicator, Alert, Image, Pressable, Text, View } from "react-native";
 import * as Clipboard from "expo-clipboard";
 import * as QRCode from "qrcode";
 import { useFocusEffect } from "@react-navigation/native";
 import { StyleSheet } from "react-native-unistyles";
-import { AdaptiveModalSheet, AdaptiveTextInput } from "@/components/adaptive-modal-sheet";
+import { ArrowUpRight } from "lucide-react-native";
+import { AdaptiveModalSheet } from "@/components/adaptive-modal-sheet";
 import { Button } from "@/components/ui/button";
 import { confirmDialog } from "@/utils/confirm-dialog";
+import { openExternalUrl } from "@/utils/open-external-url";
 import {
   formatVersionWithPrefix,
   isVersionMismatch,
@@ -19,7 +21,6 @@ import {
   restartManagedDaemon,
   shouldUseManagedDesktopDaemon,
   uninstallManagedCliShim,
-  updateManagedDaemonTcpSettings,
   type ManagedDaemonLogs,
   type ManagedPairingOffer,
   type ManagedDaemonStatus,
@@ -36,11 +37,9 @@ export function LocalDaemonSection({ appVersion }: LocalDaemonSectionProps) {
   const [statusError, setStatusError] = useState<string | null>(null);
   const [isRestartingDaemon, setIsRestartingDaemon] = useState(false);
   const [isInstallingCli, setIsInstallingCli] = useState(false);
-  const [isSavingTcpSettings, setIsSavingTcpSettings] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [cliStatusMessage, setCliStatusMessage] = useState<string | null>(null);
   const [managedLogs, setManagedLogs] = useState<ManagedDaemonLogs | null>(null);
-  const [isTcpModalOpen, setIsTcpModalOpen] = useState(false);
   const [isLogsModalOpen, setIsLogsModalOpen] = useState(false);
   const [isPairingModalOpen, setIsPairingModalOpen] = useState(false);
   const [isCliInstallModalOpen, setIsCliInstallModalOpen] = useState(false);
@@ -50,8 +49,6 @@ export function LocalDaemonSection({ appVersion }: LocalDaemonSectionProps) {
     null
   );
   const [pairingStatusMessage, setPairingStatusMessage] = useState<string | null>(null);
-  const [tcpHostInput, setTcpHostInput] = useState(DEFAULT_TCP_HOST);
-  const [tcpPortInput, setTcpPortInput] = useState(String(DEFAULT_TCP_PORT));
 
   const loadManagedStatus = useCallback(() => {
     if (!showSection) {
@@ -62,9 +59,6 @@ export function LocalDaemonSection({ appVersion }: LocalDaemonSectionProps) {
         setManagedStatus(status);
         setManagedLogs(logs);
         setStatusError(null);
-        const [tcpHost, tcpPort] = splitTcpListen(status.tcpListen);
-        setTcpHostInput(tcpHost);
-        setTcpPortInput(tcpPort);
       })
       .catch((error) => {
         const message = error instanceof Error ? error.message : String(error);
@@ -85,12 +79,7 @@ export function LocalDaemonSection({ appVersion }: LocalDaemonSectionProps) {
   const localDaemonVersionText = formatVersionWithPrefix(managedStatus?.runtimeVersion ?? null);
   const daemonVersionMismatch = isVersionMismatch(appVersion, managedStatus?.runtimeVersion ?? null);
   const daemonVersionHint =
-    statusError ??
-    (managedStatus?.daemonRunning
-      ? managedStatus.transportType === "tcp"
-        ? `Running on ${managedStatus.transportPath}.`
-        : "Running."
-      : "Not running.");
+    statusError ?? (managedStatus?.daemonRunning ? "Running." : "Not running.");
 
   const handleUpdateLocalDaemon = useCallback(() => {
     if (!showSection) {
@@ -246,101 +235,23 @@ export function LocalDaemonSection({ appVersion }: LocalDaemonSectionProps) {
       });
   }, [pairingOffer?.url]);
 
-  const handleOpenTcpModal = useCallback(() => {
-    if (!managedStatus) {
-      return;
-    }
-    const [tcpHost, tcpPort] = splitTcpListen(managedStatus.tcpListen);
-    setTcpHostInput(tcpHost);
-    setTcpPortInput(tcpPort);
-    setIsTcpModalOpen(true);
-  }, [managedStatus]);
-
-  const handleDisableTcp = useCallback(() => {
-    if (isSavingTcpSettings) {
-      return;
-    }
-    setIsSavingTcpSettings(true);
-    setStatusMessage(null);
-    void updateManagedDaemonTcpSettings({
-      enabled: false,
-      host: tcpHostInput.trim() || DEFAULT_TCP_HOST,
-      port: parseTcpPort(tcpPortInput) ?? DEFAULT_TCP_PORT,
-    })
-      .then((status) => {
-        setManagedStatus(status);
-        setStatusMessage("Network access disabled.");
-        return loadManagedStatus();
-      })
-      .catch((error) => {
-        const message = error instanceof Error ? error.message : String(error);
-        setStatusMessage(`Failed to update: ${message}`);
-      })
-      .finally(() => {
-        setIsSavingTcpSettings(false);
-      });
-  }, [isSavingTcpSettings, loadManagedStatus, tcpHostInput, tcpPortInput]);
-
-  const handleSaveTcp = useCallback(() => {
-    if (isSavingTcpSettings) {
-      return;
-    }
-    const host = tcpHostInput.trim();
-    const port = parseTcpPort(tcpPortInput);
-    if (!host) {
-      Alert.alert("Host required", "Enter a TCP bind host.");
-      return;
-    }
-    if (port == null || port <= 0) {
-      Alert.alert("Port required", "Enter a valid TCP port.");
-      return;
-    }
-    if (port === 6767) {
-      Alert.alert("Port unavailable", "Port 6767 is reserved. Choose a different port.");
-      return;
-    }
-
-    void confirmDialog({
-      title: "Enable network access",
-      message:
-        "This makes the daemon reachable on your local network. Relay connections will continue to work.",
-      confirmLabel: "Enable",
-      cancelLabel: "Cancel",
-    })
-      .then((confirmed) => {
-        if (!confirmed) {
-          return;
-        }
-        setIsSavingTcpSettings(true);
-        setStatusMessage(null);
-        void updateManagedDaemonTcpSettings({ enabled: true, host, port })
-          .then((status) => {
-            setManagedStatus(status);
-            setIsTcpModalOpen(false);
-            setStatusMessage(`Network access enabled on ${host}:${port}.`);
-            return loadManagedStatus();
-          })
-          .catch((error) => {
-            const message = error instanceof Error ? error.message : String(error);
-            setStatusMessage(`Failed to update: ${message}`);
-          })
-          .finally(() => {
-            setIsSavingTcpSettings(false);
-          });
-      })
-      .catch((error) => {
-        console.error("[Settings] Failed to open TCP confirmation", error);
-        Alert.alert("Error", "Unable to open the confirmation dialog.");
-      });
-  }, [isSavingTcpSettings, loadManagedStatus, tcpHostInput, tcpPortInput]);
-
   if (!showSection) {
     return null;
   }
 
   return (
     <View style={styles.section}>
-      <Text style={styles.sectionTitle}>Built-in daemon</Text>
+      <View style={styles.sectionHeader}>
+        <Text style={styles.sectionTitle}>Built-in daemon</Text>
+        <Pressable
+          accessibilityRole="link"
+          onPress={() => void openExternalUrl(ADVANCED_DAEMON_SETTINGS_URL)}
+          style={styles.sectionLink}
+        >
+          <Text style={styles.sectionLinkText}>Advanced settings</Text>
+          <ArrowUpRight size={14} color={styles.sectionLinkText.color} />
+        </Pressable>
+      </View>
       <View style={styles.card}>
         <View style={styles.row}>
           <View style={styles.rowContent}>
@@ -352,9 +263,7 @@ export function LocalDaemonSection({ appVersion }: LocalDaemonSectionProps) {
         <View style={[styles.row, styles.rowBorder]}>
           <View style={styles.rowContent}>
             <Text style={styles.rowTitle}>Restart daemon</Text>
-            <Text style={styles.hintText}>
-              Restarts the built-in daemon. Your data and external connections are not affected.
-            </Text>
+            <Text style={styles.hintText}>Restarts the built-in daemon.</Text>
             {statusMessage ? (
               <Text style={styles.statusText}>{statusMessage}</Text>
             ) : null}
@@ -425,39 +334,6 @@ export function LocalDaemonSection({ appVersion }: LocalDaemonSectionProps) {
             Pair device
           </Button>
         </View>
-        <View style={[styles.row, styles.rowBorder]}>
-          <View style={styles.rowContent}>
-            <Text style={styles.rowTitle}>Network access</Text>
-            <Text style={styles.hintText}>
-              Allow other apps or devices on your network to connect directly.
-            </Text>
-            <Text style={styles.statusText}>
-              {managedStatus?.tcpEnabled
-                ? `Enabled on ${managedStatus.tcpListen ?? managedStatus.transportPath}`
-                : "Disabled"}
-            </Text>
-          </View>
-          <View style={styles.actionGroup}>
-            {managedStatus?.tcpEnabled ? (
-              <Button
-                variant="secondary"
-                size="sm"
-                onPress={handleDisableTcp}
-                disabled={isSavingTcpSettings}
-              >
-                {isSavingTcpSettings ? "Working..." : "Disable TCP"}
-              </Button>
-            ) : null}
-            <Button
-              variant="secondary"
-              size="sm"
-              onPress={handleOpenTcpModal}
-              disabled={isSavingTcpSettings}
-            >
-              {managedStatus?.tcpEnabled ? "Edit TCP" : "Enable TCP"}
-            </Button>
-          </View>
-        </View>
       </View>
 
       {daemonVersionMismatch ? (
@@ -468,44 +344,6 @@ export function LocalDaemonSection({ appVersion }: LocalDaemonSectionProps) {
           </Text>
         </View>
       ) : null}
-
-      <AdaptiveModalSheet
-        visible={isTcpModalOpen}
-        onClose={() => setIsTcpModalOpen(false)}
-        title="Network access"
-      >
-        <View style={styles.modalBody}>
-          <Text style={styles.hintText}>
-            Expose the daemon on a specific address and port so other apps can connect directly.
-            Port 6767 is reserved and cannot be used here.
-          </Text>
-          <AdaptiveTextInput
-            value={tcpHostInput}
-            onChangeText={setTcpHostInput}
-            autoCapitalize="none"
-            autoCorrect={false}
-            placeholder="127.0.0.1"
-            style={styles.input}
-          />
-          <AdaptiveTextInput
-            value={tcpPortInput}
-            onChangeText={setTcpPortInput}
-            autoCapitalize="none"
-            autoCorrect={false}
-            keyboardType="number-pad"
-            placeholder={String(DEFAULT_TCP_PORT)}
-            style={styles.input}
-          />
-          <View style={styles.modalActions}>
-            <Button variant="secondary" size="sm" onPress={() => setIsTcpModalOpen(false)}>
-              Cancel
-            </Button>
-            <Button size="sm" onPress={handleSaveTcp} disabled={isSavingTcpSettings}>
-              {isSavingTcpSettings ? "Saving..." : "Save"}
-            </Button>
-          </View>
-        </View>
-      </AdaptiveModalSheet>
 
       <AdaptiveModalSheet
         visible={isCliInstallModalOpen}
@@ -571,21 +409,7 @@ export function LocalDaemonSection({ appVersion }: LocalDaemonSectionProps) {
   );
 }
 
-const DEFAULT_TCP_HOST = "127.0.0.1";
-const DEFAULT_TCP_PORT = 7771;
-
-function splitTcpListen(value: string | null): [string, string] {
-  if (!value) {
-    return [DEFAULT_TCP_HOST, String(DEFAULT_TCP_PORT)];
-  }
-  const [host, port] = value.split(":");
-  return [host || DEFAULT_TCP_HOST, port || String(DEFAULT_TCP_PORT)];
-}
-
-function parseTcpPort(value: string): number | null {
-  const parsed = Number.parseInt(value.trim(), 10);
-  return Number.isFinite(parsed) ? parsed : null;
-}
+const ADVANCED_DAEMON_SETTINGS_URL = "https://paseo.sh/docs/configuration";
 
 function PairingOfferDialogContent(input: {
   isLoading: boolean;
@@ -690,12 +514,26 @@ const styles = StyleSheet.create((theme) => ({
   section: {
     marginBottom: theme.spacing[6],
   },
+  sectionHeader: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: theme.spacing[3],
+    marginLeft: theme.spacing[1],
+  },
   sectionTitle: {
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.xs,
     fontWeight: theme.fontWeight.normal,
-    marginBottom: theme.spacing[3],
-    marginLeft: theme.spacing[1],
+  },
+  sectionLink: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: theme.spacing[1],
+  },
+  sectionLinkText: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.xs,
   },
   card: {
     backgroundColor: theme.colors.surface2,
@@ -806,15 +644,6 @@ const styles = StyleSheet.create((theme) => ({
     borderRadius: theme.borderRadius.md,
     backgroundColor: theme.colors.surface0,
     padding: theme.spacing[3],
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    borderRadius: theme.borderRadius.md,
-    color: theme.colors.foreground,
-    backgroundColor: theme.colors.surface1,
-    paddingHorizontal: theme.spacing[3],
-    paddingVertical: theme.spacing[3],
   },
   modalActions: {
     flexDirection: "row",
