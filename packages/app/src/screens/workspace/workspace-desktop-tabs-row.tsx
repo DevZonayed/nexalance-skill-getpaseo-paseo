@@ -195,7 +195,7 @@ export function WorkspaceDesktopTabsRow({
                           maxWidth: resolvedTabWidth,
                         },
                         isActive && styles.tabActive,
-                        (hovered || pressed || isCloseHovered) && styles.tabHovered,
+                        !isActive && (hovered || pressed || isCloseHovered) && styles.tabHovered,
                       ]}
                       onHoverIn={() => {
                         setHoveredTabKey(tab.key);
@@ -273,11 +273,19 @@ export function WorkspaceDesktopTabsRow({
                             (hovered || pressed) && styles.tabCloseButtonActive,
                           ]}
                         >
-                          {isClosingTab ? (
-                            <ActivityIndicator size={12} color={theme.colors.foregroundMuted} />
-                          ) : (
-                            <X size={12} color={theme.colors.foregroundMuted} />
-                          )}
+                          {({ hovered, pressed }) =>
+                            isClosingTab ? (
+                              <ActivityIndicator
+                                size={12}
+                                color={hovered || pressed ? theme.colors.foreground : theme.colors.foregroundMuted}
+                              />
+                            ) : (
+                              <X
+                                size={12}
+                                color={hovered || pressed ? theme.colors.foreground : theme.colors.foregroundMuted}
+                              />
+                            )
+                          }
                         </Pressable>
                       ) : null}
                     </ContextMenuTrigger>
@@ -459,7 +467,7 @@ const styles = StyleSheet.create((theme) => ({
     flexShrink: 0,
   },
   tabActive: {
-    backgroundColor: theme.colors.surface2,
+    backgroundColor: theme.colors.surface3,
   },
   tabHovered: {
     backgroundColor: theme.colors.surface2,

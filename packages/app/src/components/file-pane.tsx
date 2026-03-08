@@ -41,10 +41,12 @@ function FilePreviewBody({
   preview,
   isLoading,
   showDesktopWebScrollbar,
+  isMobile,
 }: {
   preview: ExplorerFile | null;
   isLoading: boolean;
   showDesktopWebScrollbar: boolean;
+  isMobile: boolean;
 }) {
   const enablePreviewDesktopScrollbar = showDesktopWebScrollbar;
   const previewScrollRef = useRef<RNScrollView>(null);
@@ -101,14 +103,20 @@ function FilePreviewBody({
           scrollEventThrottle={enablePreviewDesktopScrollbar ? 16 : undefined}
           showsVerticalScrollIndicator={!enablePreviewDesktopScrollbar}
         >
-          <RNScrollView
-            horizontal
-            nestedScrollEnabled
-            showsHorizontalScrollIndicator
-            contentContainerStyle={styles.previewCodeScrollContent}
-          >
-            <Text style={styles.codeText}>{preview.content}</Text>
-          </RNScrollView>
+          {isMobile ? (
+            <View style={styles.previewCodeScrollContent}>
+              <Text style={styles.codeText}>{preview.content}</Text>
+            </View>
+          ) : (
+            <RNScrollView
+              horizontal
+              nestedScrollEnabled
+              showsHorizontalScrollIndicator
+              contentContainerStyle={styles.previewCodeScrollContent}
+            >
+              <Text style={styles.codeText}>{preview.content}</Text>
+            </RNScrollView>
+          )}
         </RNScrollView>
         <WebDesktopScrollbarOverlay
           enabled={enablePreviewDesktopScrollbar}
@@ -211,6 +219,7 @@ export function FilePane({
         preview={query.data?.file ?? null}
         isLoading={query.isFetching}
         showDesktopWebScrollbar={showDesktopWebScrollbar}
+        isMobile={isMobile}
       />
     </View>
   );

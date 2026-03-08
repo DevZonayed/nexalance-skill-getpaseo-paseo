@@ -39,7 +39,6 @@ import { markScrollInvestigationRender } from '@/utils/scroll-jank-investigation
 import { useKeyboardShiftStyle } from '@/hooks/use-keyboard-shift-style'
 import { useKeyboardActionHandler } from '@/hooks/use-keyboard-action-handler'
 import type { KeyboardActionDefinition } from '@/keyboard/keyboard-action-dispatcher'
-import { shouldClearAgentAttention } from '@/utils/agent-attention'
 
 type QueuedMessage = {
   id: string
@@ -67,11 +66,15 @@ interface AgentInputAreaProps {
   /** Called when a message is about to be sent (any path: keyboard, dictation, queued). */
   onMessageSent?: () => void
   onComposerHeightChange?: (height: number) => void
+  onAttentionInputFocus?: () => void
+  onAttentionPromptSend?: () => void
   /** Controlled status controls rendered in input area (draft flows). */
   statusControls?: DraftAgentStatusBarProps
 }
 
 const EMPTY_ARRAY: readonly QueuedMessage[] = []
+const DESKTOP_MESSAGE_PLACEHOLDER = 'Message the agent, tag @files, or use /commands and /skills'
+const MOBILE_MESSAGE_PLACEHOLDER = 'Message, @files, /commands'
 
 export function AgentInputArea({
   agentId,
@@ -87,6 +90,8 @@ export function AgentInputArea({
   commandDraftConfig,
   onMessageSent,
   onComposerHeightChange,
+  onAttentionInputFocus,
+  onAttentionPromptSend,
   statusControls,
 }: AgentInputAreaProps) {
   markScrollInvestigationRender(`AgentInputArea:${serverId}:${agentId}`)
@@ -127,6 +132,9 @@ export function AgentInputArea({
     Platform.OS === 'web' &&
     UnistylesRuntime.breakpoint !== 'xs' &&
     UnistylesRuntime.breakpoint !== 'sm'
+  const messagePlaceholder = isDesktopWebBreakpoint
+    ? DESKTOP_MESSAGE_PLACEHOLDER
+    : MOBILE_MESSAGE_PLACEHOLDER
   const userInput = value ?? internalInput
   const setUserInput = onChangeText ?? setInternalInput
   const [cursorIndex, setCursorIndex] = useState(0)
@@ -243,18 +251,9 @@ export function AgentInputArea({
         messageId: clientMessageId,
         ...(imagesData && imagesData.length > 0 ? { images: imagesData } : {}),
       })
-      if (
-        shouldClearAgentAttention({
-          agentId,
-          isConnected,
-          requiresAttention: agent?.requiresAttention,
-          attentionReason: agent?.attentionReason,
-        })
-      ) {
-        client.clearAgentAttention(agentId)
-      }
+      onAttentionPromptSend?.()
     }
-  }, [agent?.attentionReason, agent?.requiresAttention, client, isConnected, serverId, setAgentStreamTail, setAgentStreamHead])
+  }, [client, onAttentionPromptSend, serverId, setAgentStreamTail, setAgentStreamHead])
 
   useEffect(() => {
     onSubmitMessageRef.current = onSubmitMessage
@@ -808,7 +807,7 @@ export function AgentInputArea({
               onRemoveImage={handleRemoveImage}
               client={client}
               isReadyForDictation={isDictationReady}
-              placeholder="Message the agent, tag @files, or use /commands and /skills"
+              placeholder={messagePlaceholder}
               autoFocus={autoFocus && isDesktopWebBreakpoint}
               autoFocusKey={`${serverId}:${agentId}`}
               disabled={isSubmitLoading}
@@ -824,7 +823,12 @@ export function AgentInputArea({
               onSelectionChange={(selection) => {
                 setCursorIndex(selection.start)
               }}
-              onFocusChange={setIsMessageInputFocused}
+              onFocusChange={(focused) => {
+                setIsMessageInputFocused(focused)
+                if (focused) {
+                  onAttentionInputFocus?.()
+                }
+              }}
               onHeightChange={onComposerHeightChange}
             />
           </View>

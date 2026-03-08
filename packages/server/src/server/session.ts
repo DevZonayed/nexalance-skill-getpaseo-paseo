@@ -844,8 +844,15 @@ export class Session {
     )
     let iterator: AsyncGenerator<AgentStreamEvent>
     try {
-      iterator = this.agentManager.streamAgent(agentId, prompt, runOptions)
-      this.sessionLogger.trace({ agentId }, 'startAgentStream: streamAgent returned iterator')
+      const snapshot = this.agentManager.getAgent(agentId)
+      const shouldReplace = Boolean(snapshot && (snapshot.lifecycle === 'running' || snapshot.pendingRun))
+      iterator = shouldReplace
+        ? this.agentManager.replaceAgentRun(agentId, prompt, runOptions)
+        : this.agentManager.streamAgent(agentId, prompt, runOptions)
+      this.sessionLogger.trace(
+        { agentId, shouldReplace },
+        'startAgentStream: agent iterator returned'
+      )
     } catch (error) {
       this.handleAgentRunError(agentId, error, 'Failed to start agent run')
       const message =
@@ -2458,19 +2465,6 @@ export class Session {
     }
 
     try {
-      await this.interruptAgentIfRunning(agentId)
-    } catch (error) {
-      this.handleAgentRunError(
-        agentId,
-        error,
-        'Failed to interrupt running agent before sending prompt'
-      )
-      return
-    }
-
-    const prompt = this.buildAgentPrompt(text, images)
-
-    try {
       this.agentManager.recordUserMessage(agentId, text, {
         messageId,
         emitState: false,
@@ -2481,6 +2475,8 @@ export class Session {
         `Failed to record user message for agent ${agentId}`
       )
     }
+
+    const prompt = this.buildAgentPrompt(text, images)
 
     this.startAgentStream(agentId, prompt, runOptions)
   }
@@ -6100,7 +6096,6 @@ export class Session {
       await this.unarchiveAgentState(agentId)
 
       await this.ensureAgentLoaded(agentId)
-      await this.interruptAgentIfRunning(agentId)
 
       try {
         this.agentManager.recordUserMessage(agentId, msg.text, {

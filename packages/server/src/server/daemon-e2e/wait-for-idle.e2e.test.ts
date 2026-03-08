@@ -6,7 +6,9 @@ import {
   createDaemonTestContext,
   type DaemonTestContext,
 } from "../test-utils/index.js";
+import { DaemonClient } from "../test-utils/index.js";
 import { createMessageCollector, type MessageCollector } from "../test-utils/message-collector.js";
+import { getFullAccessConfig } from "./agent-configs.js";
 
 function tmpCwd(): string {
   return mkdtempSync(path.join(tmpdir(), "wait-for-idle-e2e-"));
@@ -186,4 +188,49 @@ describe("waitForFinish edge cases", () => {
       rmSync(cwd, { recursive: true, force: true });
     }
   }, 60000);
+
+  test("waitForFinish stays blocked when sendMessage transactionally replaces a running turn", async () => {
+    const cwd = tmpCwd();
+    const secondary = new DaemonClient({ url: `ws://127.0.0.1:${ctx.daemon.port}/ws` });
+
+    const agent = await ctx.client.createAgent({
+      ...getFullAccessConfig("codex"),
+      cwd,
+      title: "Transactional Replacement Wait",
+    });
+
+    try {
+      await secondary.connect();
+      await secondary.fetchAgents({ subscribe: { subscriptionId: "secondary" } });
+
+      await ctx.client.sendMessage(agent.id, "Run: sleep 5");
+      await ctx.client.waitForAgentUpsert(
+        agent.id,
+        (snapshot) => snapshot.status === "running",
+        5_000
+      );
+
+      const waitPromise = ctx.client.waitForFinish(agent.id, 5_000);
+
+      await secondary.sendMessage(agent.id, "Run: sleep 5");
+      await secondary.waitForAgentUpsert(
+        agent.id,
+        (snapshot) => snapshot.status === "running",
+        5_000
+      );
+
+      const prematureResolution = await Promise.race([
+        waitPromise.then(() => "resolved"),
+        new Promise<"pending">((resolve) => setTimeout(() => resolve("pending"), 100)),
+      ]);
+      expect(prematureResolution).toBe("pending");
+
+      const finalState = await waitPromise;
+      expect(finalState.status).toBe("idle");
+    } finally {
+      await secondary.close();
+      await ctx.client.deleteAgent(agent.id);
+      rmSync(cwd, { recursive: true, force: true });
+    }
+  }, 30000);
 });

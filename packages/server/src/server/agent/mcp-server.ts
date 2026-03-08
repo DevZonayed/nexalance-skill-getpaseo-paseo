@@ -225,9 +225,16 @@ function startAgentRun(
   agentManager: AgentManager,
   agentId: string,
   prompt: AgentPromptInput,
-  logger: Logger
+  logger: Logger,
+  options?: { replaceRunning?: boolean }
 ): void {
-  const iterator = agentManager.streamAgent(agentId, prompt);
+  const snapshot = agentManager.getAgent(agentId);
+  const shouldReplace =
+    options?.replaceRunning &&
+    Boolean(snapshot && (snapshot.lifecycle === "running" || snapshot.pendingRun));
+  const iterator = shouldReplace
+    ? agentManager.replaceAgentRun(agentId, prompt)
+    : agentManager.streamAgent(agentId, prompt);
   void (async () => {
     try {
       for await (const _ of iterator) {
@@ -764,52 +771,13 @@ export async function createAgentMcpServer(
       },
     },
     async ({ agentId, prompt, sessionMode, background = false }) => {
-      // Check if agent is running and interrupt if necessary (matches app behavior)
       const snapshot = agentManager.getAgent(agentId);
       if (!snapshot) {
         throw new Error(`Agent ${agentId} not found`);
       }
 
       if (snapshot.lifecycle === "running" || snapshot.pendingRun) {
-        childLogger.debug(
-          { agentId },
-          "Interrupting active run before sending new prompt"
-        );
-        try {
-          const cancelled = await agentManager.cancelAgentRun(agentId);
-          if (!cancelled) {
-            childLogger.warn(
-              { agentId },
-              "Agent reported running but no active run was cancelled"
-            );
-          }
-          // Also cancel any pending wait_for_agent calls for this agent
-          waitTracker.cancel(agentId, "Agent run interrupted by new prompt");
-
-          // Wait for the agent to become idle after cancellation
-          // Poll until the agent is no longer running and has no pending run
-          // This is necessary because cancelAgentRun only initiates cancellation
-          // and doesn't wait for the generator to fully terminate
-          const maxWaitMs = 5000;
-          const pollIntervalMs = 50;
-          const startTime = Date.now();
-          while (Date.now() - startTime < maxWaitMs) {
-            const current = agentManager.getAgent(agentId);
-            if (!current) {
-              throw new Error(`Agent ${agentId} not found during cancellation wait`);
-            }
-            if (current.lifecycle !== "running" && !current.pendingRun) {
-              break;
-            }
-            await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
-          }
-        } catch (error) {
-          childLogger.error(
-            { err: error, agentId },
-            "Failed to interrupt agent"
-          );
-          throw error;
-        }
+        waitTracker.cancel(agentId, "Agent run interrupted by new prompt");
       }
 
       if (sessionMode) {
@@ -827,7 +795,9 @@ export async function createAgentMcpServer(
         );
       }
 
-      startAgentRun(agentManager, agentId, prompt, childLogger);
+      startAgentRun(agentManager, agentId, prompt, childLogger, {
+        replaceRunning: true,
+      });
 
       // If not running in background, wait for completion
       if (!background) {

@@ -19,9 +19,12 @@ export interface AggregatedAgentsResult {
   refreshAll: () => void;
 }
 
-export function useAggregatedAgents(): AggregatedAgentsResult {
+export function useAggregatedAgents(options?: {
+  includeArchived?: boolean;
+}): AggregatedAgentsResult {
   const { daemons } = useDaemonRegistry();
   const runtime = getHostRuntimeStore();
+  const includeArchived = options?.includeArchived ?? false;
   const runtimeVersion = useSyncExternalStore(
     (onStoreChange) => runtime.subscribeAll(onStoreChange),
     () => runtime.getVersion(),
@@ -55,7 +58,7 @@ export function useAggregatedAgents(): AggregatedAgentsResult {
       }
       const serverLabel = serverLabelById.get(serverId) ?? serverId;
       for (const agent of agents.values()) {
-        if (agent.archivedAt) {
+        if (!includeArchived && agent.archivedAt) {
           continue;
         }
         const nextAgent: AggregatedAgent = {
@@ -112,7 +115,7 @@ export function useAggregatedAgents(): AggregatedAgentsResult {
       isInitialLoad,
       isRevalidating,
     };
-  }, [daemons, runtime, runtimeVersion, sessionAgents]);
+  }, [daemons, includeArchived, runtime, runtimeVersion, sessionAgents]);
 
   return {
     ...result,

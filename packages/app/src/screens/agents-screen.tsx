@@ -10,6 +10,7 @@ import { buildHostRootRoute } from "@/utils/host-routes";
 export function AgentsScreen({ serverId }: { serverId: string }) {
   const { agents, isRevalidating, refreshAll } = useAllAgentsList({
     serverId,
+    includeArchived: true,
   });
 
   // Track user-initiated refresh to avoid showing spinner on background revalidation
@@ -43,7 +44,7 @@ export function AgentsScreen({ serverId }: { serverId: string }) {
   return (
     <View style={styles.container}>
       <BackHeader
-        title="All agents"
+        title="Sessions"
         onBack={() => router.replace(buildHostRootRoute(serverId) as any)}
       />
       <AgentList

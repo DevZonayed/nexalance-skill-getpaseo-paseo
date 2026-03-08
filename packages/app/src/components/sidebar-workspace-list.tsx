@@ -147,6 +147,11 @@ function WorkspaceStatusIndicator({
   const { theme } = useUnistyles()
   const color = resolveStatusDotColor({ theme, bucket })
   const shouldShowSyncedLoader = shouldRenderSyncedStatusLoader({ bucket })
+  const shouldRenderIdlePlaceholder = !loading && !shouldShowSyncedLoader && bucket === 'done'
+
+  if (shouldRenderIdlePlaceholder) {
+    return null
+  }
 
   return (
     <View style={styles.workspaceStatusDot}>
@@ -1548,7 +1553,10 @@ const styles = StyleSheet.create((theme) => ({
     marginBottom: theme.spacing[1],
   },
   workspaceListContainer: {
-    marginLeft: 0,
+    marginLeft: theme.spacing[3],
+    paddingLeft: theme.spacing[2],
+    borderLeftWidth: StyleSheet.hairlineWidth,
+    borderLeftColor: theme.colors.surface1,
   },
   emptyText: {
     color: theme.colors.foregroundMuted,
@@ -1668,7 +1676,7 @@ const styles = StyleSheet.create((theme) => ({
   workspaceRowLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: theme.spacing[2],
+    gap: theme.spacing[1],
     flex: 1,
     minWidth: 0,
   },
@@ -1703,11 +1711,11 @@ const styles = StyleSheet.create((theme) => ({
     position: 'relative',
   },
   workspaceStatusDot: {
-    width: 16,
+    width: 11,
     height: 16,
     borderRadius: theme.borderRadius.full,
     flexShrink: 0,
-    alignItems: 'center',
+    alignItems: 'flex-start',
     justifyContent: 'center',
   },
   workspaceStatusDotFill: {

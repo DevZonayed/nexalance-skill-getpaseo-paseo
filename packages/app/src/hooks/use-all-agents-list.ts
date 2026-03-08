@@ -35,8 +35,44 @@ function toAggregatedAgent(params: {
   };
 }
 
+function buildAllAgentsList(params: {
+  agents: Iterable<Agent>;
+  serverId: string;
+  serverLabel: string;
+  includeArchived: boolean;
+}): AggregatedAgent[] {
+  const list: AggregatedAgent[] = [];
+
+  for (const agent of params.agents) {
+    const aggregated = toAggregatedAgent({
+      source: agent,
+      serverId: params.serverId,
+      serverLabel: params.serverLabel,
+    });
+    if (!params.includeArchived && aggregated.archivedAt) {
+      continue;
+    }
+    list.push(aggregated);
+  }
+
+  list.sort((left, right) => {
+    const leftRunning = left.status === "running";
+    const rightRunning = right.status === "running";
+    if (leftRunning && !rightRunning) {
+      return -1;
+    }
+    if (!leftRunning && rightRunning) {
+      return 1;
+    }
+    return right.lastActivityAt.getTime() - left.lastActivityAt.getTime();
+  });
+
+  return list;
+}
+
 export function useAllAgentsList(options?: {
   serverId?: string | null;
+  includeArchived?: boolean;
 }): AggregatedAgentsResult {
   const { daemons } = useDaemonRegistry();
   const runtime = getHostRuntimeStore();
@@ -47,6 +83,7 @@ export function useAllAgentsList(options?: {
       ? value.trim()
       : null;
   }, [options?.serverId]);
+  const includeArchived = options?.includeArchived ?? false;
 
   const liveAgents = useSessionStore((state) =>
     serverId ? state.sessions[serverId]?.agents ?? null : null
@@ -66,34 +103,13 @@ export function useAllAgentsList(options?: {
     }
     const serverLabel =
       daemons.find((daemon) => daemon.serverId === serverId)?.label ?? serverId;
-    const list: AggregatedAgent[] = [];
-
-    for (const agent of liveAgents.values()) {
-      const aggregated = toAggregatedAgent({
-        source: agent,
-        serverId,
-        serverLabel,
-      });
-      if (aggregated.archivedAt) {
-        continue;
-      }
-      list.push(aggregated);
-    }
-
-    list.sort((left, right) => {
-      const leftRunning = left.status === "running";
-      const rightRunning = right.status === "running";
-      if (leftRunning && !rightRunning) {
-        return -1;
-      }
-      if (!leftRunning && rightRunning) {
-        return 1;
-      }
-      return right.lastActivityAt.getTime() - left.lastActivityAt.getTime();
+    return buildAllAgentsList({
+      agents: liveAgents.values(),
+      serverId,
+      serverLabel,
+      includeArchived,
     });
-
-    return list;
-  }, [daemons, liveAgents, serverId]);
+  }, [daemons, includeArchived, liveAgents, serverId]);
 
   const isDirectoryLoading = Boolean(serverId && isHostRuntimeDirectoryLoading(snapshot));
   const isInitialLoad = isDirectoryLoading && agents.length === 0;
@@ -107,3 +123,8 @@ export function useAllAgentsList(options?: {
     refreshAll,
   };
 }
+
+export const __private__ = {
+  buildAllAgentsList,
+  toAggregatedAgent,
+};

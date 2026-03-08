@@ -6,7 +6,7 @@ import {
   Platform,
   BackHandler,
 } from "react-native";
-import { useFocusEffect } from "@react-navigation/native";
+import { useFocusEffect, useIsFocused } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQueryClient } from "@tanstack/react-query";
 import ReanimatedAnimated from "react-native-reanimated";
@@ -55,7 +55,7 @@ import {
 } from "@/utils/agent-snapshots";
 import { mergePendingCreateImages } from "@/utils/pending-create-images";
 import { useKeyboardShiftStyle } from "@/hooks/use-keyboard-shift-style";
-import { shouldClearAgentAttention } from "@/utils/agent-attention";
+import { useAgentAttentionClear } from "@/hooks/use-agent-attention-clear";
 import type { DaemonClient } from "@server/client/daemon-client";
 import { useExplorerOpenGesture } from "@/hooks/use-explorer-open-gesture";
 import type { ExplorerCheckoutContext } from "@/stores/panel-store";
@@ -431,9 +431,7 @@ function AgentScreenContent({
   const hasSession = useSessionStore(
     (state) => Boolean(state.sessions[serverId])
   );
-  const focusedAgentId = useSessionStore(
-    (state) => state.sessions[serverId]?.focusedAgentId ?? null
-  );
+  const isScreenFocused = useIsFocused();
   const { ensureAgentIsInitialized } = useAgentInitialization({
     serverId,
     client: hasSession ? client : null,
@@ -447,8 +445,6 @@ function AgentScreenContent({
     routeKey: string;
     reason: "initial-entry" | "resume";
   } | null>(null);
-  const attentionClientRef = useRef(client);
-  const attentionConnectedRef = useRef(isConnected);
   const setFocusedAgentId = useCallback(
     (agentId: string | null) => {
       useSessionStore.getState().setFocusedAgentId(serverId, agentId);
@@ -456,10 +452,14 @@ function AgentScreenContent({
     [serverId]
   );
 
-  useEffect(() => {
-    attentionClientRef.current = client;
-    attentionConnectedRef.current = isConnected;
-  }, [client, isConnected]);
+  const attentionController = useAgentAttentionClear({
+    agentId: resolvedAgentId,
+    client,
+    isConnected,
+    requiresAttention: agent?.requiresAttention,
+    attentionReason: agent?.attentionReason,
+    isScreenFocused,
+  });
 
   const { style: animatedKeyboardStyle } = useKeyboardShiftStyle({
     mode: "translate",
@@ -534,33 +534,20 @@ function AgentScreenContent({
       isArchivingAgent({ serverId, agentId: resolvedAgentId })
   );
 
-  useEffect(() => {
-    if (!resolvedAgentId) {
-      setFocusedAgentId(null);
-      return;
-    }
-
-    setFocusedAgentId(resolvedAgentId);
-    return () => {
-      const latestClient = attentionClientRef.current;
-      const latestAgent = useSessionStore
-        .getState()
-        .sessions[serverId]
-        ?.agents.get(resolvedAgentId);
-      if (
-        latestClient &&
-        shouldClearAgentAttention({
-          agentId: resolvedAgentId,
-          isConnected: attentionConnectedRef.current,
-          requiresAttention: latestAgent?.requiresAttention,
-          attentionReason: latestAgent?.attentionReason,
-        })
-      ) {
-        latestClient.clearAgentAttention(resolvedAgentId);
+  useFocusEffect(
+    useCallback(() => {
+      if (!resolvedAgentId) {
+        setFocusedAgentId(null);
+        return;
       }
-      setFocusedAgentId(null);
-    };
-  }, [resolvedAgentId, serverId, setFocusedAgentId]);
+
+      setFocusedAgentId(resolvedAgentId);
+      return () => {
+        attentionController.clearOnAgentBlur();
+        setFocusedAgentId(null);
+      };
+    }, [attentionController, resolvedAgentId, setFocusedAgentId])
+  );
 
   const isInitializing = resolvedAgentId ? isInitializingFromMap !== false : false;
   const isHistorySyncing = useMemo(() => {
@@ -956,6 +943,8 @@ function AgentScreenContent({
               serverId={serverId}
               autoFocus
               isSubmitLoading={showPendingCreateSubmitLoading}
+              onAttentionInputFocus={attentionController.clearOnInputFocus}
+              onAttentionPromptSend={attentionController.clearOnPromptSend}
               onAddImages={handleAddImagesCallback}
               onComposerHeightChange={() =>
                 streamViewRef.current?.prepareForViewportChange()

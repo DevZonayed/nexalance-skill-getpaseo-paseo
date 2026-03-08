@@ -4,37 +4,23 @@ import {
   Pressable,
   Modal,
   RefreshControl,
-  SectionList,
-  type ViewToken,
-  type SectionListRenderItem,
+  FlatList,
+  type ListRenderItem,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useCallback, useMemo, useState, type ReactElement } from "react";
 import { router, usePathname, type Href } from "expo-router";
-import { StyleSheet, useUnistyles } from "react-native-unistyles";
-import { useQueryClient } from "@tanstack/react-query";
+import { StyleSheet, UnistylesRuntime, useUnistyles } from "react-native-unistyles";
 import { formatTimeAgo } from "@/utils/time";
 import { shortenPath } from "@/utils/shorten-path";
-import { deriveBranchLabel, deriveProjectPath } from "@/utils/agent-display-info";
 import { type AggregatedAgent } from "@/hooks/use-aggregated-agents";
 import { useSessionStore } from "@/stores/session-store";
-import {
-  getHostRuntimeStore,
-  isHostRuntimeConnected,
-} from "@/runtime/host-runtime";
 import { AgentStatusDot } from "@/components/agent-status-dot";
-import {
-  CHECKOUT_STATUS_STALE_TIME,
-  checkoutStatusQueryKey,
-  useCheckoutStatusCacheOnly,
-} from "@/hooks/use-checkout-status-query";
 import {
   buildAgentNavigationKey,
   startNavigationTiming,
 } from "@/utils/navigation-timing";
-import {
-  buildHostWorkspaceAgentRoute,
-} from "@/utils/host-routes";
+import { buildHostWorkspaceAgentRoute } from "@/utils/host-routes";
 
 interface AgentListProps {
   agents: AggregatedAgent[];
@@ -51,6 +37,25 @@ interface AgentListSection {
   title: string;
   data: AggregatedAgent[];
 }
+
+type SessionColumnKey = "session" | "project" | "host" | "status" | "updated";
+
+interface SessionColumnDefinition {
+  key: SessionColumnKey;
+  label: string;
+  flex: number;
+  align?: "left" | "right";
+  mobile?: boolean;
+  requiresMultiHost?: boolean;
+}
+
+const SESSION_COLUMNS: SessionColumnDefinition[] = [
+  { key: "session", label: "Session", flex: 2.3, mobile: true },
+  { key: "project", label: "Project", flex: 2.6 },
+  { key: "host", label: "Host", flex: 1.2, requiresMultiHost: true },
+  { key: "status", label: "Status", flex: 1.2, mobile: true },
+  { key: "updated", label: "Updated", flex: 1, align: "right", mobile: true },
+];
 
 function deriveDateSectionLabel(lastActivityAt: Date): string {
   const now = new Date();
@@ -80,76 +85,290 @@ function deriveDateSectionLabel(lastActivityAt: Date): string {
   return "Older";
 }
 
-interface AgentListRowProps {
-  agent: AggregatedAgent;
-  selectedAgentId?: string;
-  showCheckoutInfo: boolean;
-  onPress: (agent: AggregatedAgent) => void;
-  onLongPress: (agent: AggregatedAgent) => void;
+function formatStatusLabel(status: AggregatedAgent["status"]): string {
+  switch (status) {
+    case "initializing":
+      return "Starting";
+    case "idle":
+      return "Idle";
+    case "running":
+      return "Running";
+    case "error":
+      return "Error";
+    case "closed":
+      return "Closed";
+    default:
+      return status;
+  }
 }
 
-function AgentListRow({
+function getVisibleColumns(input: {
+  isMobile: boolean;
+  showHostColumn: boolean;
+}): SessionColumnDefinition[] {
+  return SESSION_COLUMNS.filter((column) => {
+    if (!input.showHostColumn && column.requiresMultiHost) {
+      return false;
+    }
+    if (input.isMobile && !column.mobile) {
+      return false;
+    }
+    return true;
+  });
+}
+
+function SessionCell({
+  align = "left",
+  flex,
+  children,
+}: {
+  align?: "left" | "right";
+  flex: number;
+  children: ReactElement;
+}) {
+  return (
+    <View
+      style={[
+        styles.cell,
+        { flex },
+        align === "right" ? styles.cellRight : styles.cellLeft,
+      ]}
+    >
+      {children}
+    </View>
+  );
+}
+
+function SessionBadge({
+  label,
+  tone = "neutral",
+}: {
+  label: string;
+  tone?: "neutral" | "warning" | "danger";
+}) {
+  return (
+    <View
+      style={[
+        styles.badge,
+        tone === "warning" && styles.badgeWarning,
+        tone === "danger" && styles.badgeDanger,
+      ]}
+    >
+      <Text
+        style={[
+          styles.badgeText,
+          tone === "warning" && styles.badgeTextWarning,
+          tone === "danger" && styles.badgeTextDanger,
+        ]}
+      >
+        {label}
+      </Text>
+    </View>
+  );
+}
+
+function SessionTableRow({
   agent,
+  columns,
+  isMobile,
   selectedAgentId,
-  showCheckoutInfo,
   onPress,
   onLongPress,
-}: AgentListRowProps) {
+}: {
+  agent: AggregatedAgent;
+  columns: SessionColumnDefinition[];
+  isMobile: boolean;
+  selectedAgentId?: string;
+  onPress: (agent: AggregatedAgent) => void;
+  onLongPress: (agent: AggregatedAgent) => void;
+}) {
   const timeAgo = formatTimeAgo(agent.lastActivityAt);
   const agentKey = `${agent.serverId}:${agent.id}`;
   const isSelected = selectedAgentId === agentKey;
-  const archivedLabel = agent.archivedAt ? "Archived" : null;
-  const checkoutQuery = useCheckoutStatusCacheOnly({
-    serverId: agent.serverId,
-    cwd: agent.cwd,
-  });
-  const checkout = checkoutQuery.data ?? null;
-  const projectPath = showCheckoutInfo
-    ? deriveProjectPath(agent.cwd, checkout)
-    : agent.cwd;
-  const branchLabel = showCheckoutInfo ? deriveBranchLabel(checkout) : null;
+  const statusLabel = formatStatusLabel(agent.status);
+  const projectPath = shortenPath(agent.cwd);
 
   return (
     <Pressable
       style={({ pressed, hovered }) => [
-        styles.agentItem,
-        isSelected && styles.agentItemSelected,
-        hovered && styles.agentItemHovered,
-        pressed && styles.agentItemPressed,
+        styles.row,
+        isSelected && styles.rowSelected,
+        hovered && styles.rowHovered,
+        pressed && styles.rowPressed,
       ]}
       onPress={() => onPress(agent)}
       onLongPress={() => onLongPress(agent)}
       testID={`agent-row-${agent.serverId}-${agent.id}`}
     >
       {({ hovered }) => (
-        <View style={styles.agentContent}>
-          <View style={styles.row}>
-            <AgentStatusDot status={agent.status} requiresAttention={agent.requiresAttention} />
-            <Text
-              style={[
-                styles.agentTitle,
-                (isSelected || hovered) && styles.agentTitleHighlighted,
-              ]}
-              numberOfLines={1}
-            >
-              {agent.title || "New agent"}
-            </Text>
-          </View>
+        <View style={styles.rowInner}>
+          {columns.map((column) => {
+            if (column.key === "session") {
+              return (
+                <SessionCell key={column.key} flex={column.flex} align={column.align}>
+                  <View style={styles.primaryCell}>
+                    <View style={styles.sessionTitleRow}>
+                      <Text
+                        style={[
+                          styles.sessionTitle,
+                          (isSelected || hovered) && styles.sessionTitleHighlighted,
+                        ]}
+                        numberOfLines={1}
+                      >
+                        {agent.title || "New session"}
+                      </Text>
+                      {agent.archivedAt ? <SessionBadge label="Archived" /> : null}
+                      {(agent.pendingPermissionCount ?? 0) > 0 ? (
+                        <SessionBadge
+                          label={`${agent.pendingPermissionCount} pending`}
+                          tone="warning"
+                        />
+                      ) : null}
+                    </View>
+                    {isMobile ? (
+                      <View style={styles.sessionMetaRow}>
+                        <Text style={styles.sessionMetaText} numberOfLines={1}>
+                          {projectPath}
+                        </Text>
+                        <Text style={styles.sessionMetaSeparator}>·</Text>
+                        <Text style={styles.sessionMetaText}>{statusLabel}</Text>
+                        {agent.serverLabel ? (
+                          <>
+                            <Text style={styles.sessionMetaSeparator}>·</Text>
+                            <Text style={styles.sessionMetaText} numberOfLines={1}>
+                              {agent.serverLabel}
+                            </Text>
+                          </>
+                        ) : null}
+                      </View>
+                    ) : (
+                      <View style={styles.secondaryBadgeRow}>
+                        {agent.requiresAttention ? (
+                          <SessionBadge label="Attention" tone="danger" />
+                        ) : null}
+                      </View>
+                    )}
+                  </View>
+                </SessionCell>
+              );
+            }
 
-          <Text style={styles.secondaryRow} numberOfLines={1}>
-            {shortenPath(projectPath)}
-            {branchLabel ? ` · ${branchLabel}` : ""}
-            {archivedLabel ? ` · ${archivedLabel}` : ""} · {timeAgo}
-          </Text>
+            if (column.key === "project") {
+              return (
+                <SessionCell key={column.key} flex={column.flex} align={column.align}>
+                  <View style={styles.projectCell}>
+                    <Text style={styles.projectPath} numberOfLines={1}>
+                      {projectPath}
+                    </Text>
+                    <Text style={styles.projectProvider} numberOfLines={1}>
+                      {agent.provider}
+                    </Text>
+                  </View>
+                </SessionCell>
+              );
+            }
+
+            if (column.key === "host") {
+              return (
+                <SessionCell key={column.key} flex={column.flex} align={column.align}>
+                  <Text style={styles.hostText} numberOfLines={1}>
+                    {agent.serverLabel}
+                  </Text>
+                </SessionCell>
+              );
+            }
+
+            if (column.key === "status") {
+              return (
+                <SessionCell key={column.key} flex={column.flex} align={column.align}>
+                  <View style={styles.statusCell}>
+                    <AgentStatusDot
+                      status={agent.status}
+                      requiresAttention={agent.requiresAttention}
+                    />
+                    <Text style={styles.statusText} numberOfLines={1}>
+                      {statusLabel}
+                    </Text>
+                  </View>
+                </SessionCell>
+              );
+            }
+
+            return (
+              <SessionCell key={column.key} flex={column.flex} align={column.align}>
+                <Text style={styles.updatedText} numberOfLines={1}>
+                  {timeAgo}
+                </Text>
+              </SessionCell>
+            );
+          })}
         </View>
       )}
     </Pressable>
   );
 }
 
+function SessionTableSection({
+  section,
+  columns,
+  isMobile,
+  selectedAgentId,
+  onAgentPress,
+  onAgentLongPress,
+}: {
+  section: AgentListSection;
+  columns: SessionColumnDefinition[];
+  isMobile: boolean;
+  selectedAgentId?: string;
+  onAgentPress: (agent: AggregatedAgent) => void;
+  onAgentLongPress: (agent: AggregatedAgent) => void;
+}) {
+  return (
+    <View style={styles.sectionBlock}>
+      <View style={styles.sectionHeading}>
+        <Text style={styles.sectionTitle}>{section.title}</Text>
+        <View style={styles.sectionLine} />
+      </View>
+
+      <View style={styles.tableCard}>
+        <View style={styles.tableHeader}>
+          {columns.map((column) => (
+            <SessionCell key={column.key} flex={column.flex} align={column.align}>
+              <Text
+                style={[
+                  styles.columnLabel,
+                  column.align === "right" && styles.columnLabelRight,
+                ]}
+                numberOfLines={1}
+              >
+                {column.label}
+              </Text>
+            </SessionCell>
+          ))}
+        </View>
+
+        {section.data.map((agent, index) => (
+          <View
+            key={`${agent.serverId}:${agent.id}`}
+            style={index > 0 ? styles.rowDivider : undefined}
+          >
+            <SessionTableRow
+              agent={agent}
+              columns={columns}
+              isMobile={isMobile}
+              selectedAgentId={selectedAgentId}
+              onPress={onAgentPress}
+              onLongPress={onAgentLongPress}
+            />
+          </View>
+        ))}
+      </View>
+    </View>
+  );
+}
+
 export function AgentList({
   agents,
-  showCheckoutInfo = true,
   isRefreshing = false,
   onRefresh,
   selectedAgentId,
@@ -158,9 +377,10 @@ export function AgentList({
 }: AgentListProps) {
   const { theme } = useUnistyles();
   const pathname = usePathname();
-  const queryClient = useQueryClient();
   const insets = useSafeAreaInsets();
   const [actionAgent, setActionAgent] = useState<AggregatedAgent | null>(null);
+  const isMobile =
+    UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
 
   const actionClient = useSessionStore((state) =>
     actionAgent?.serverId ? state.sessions[actionAgent.serverId]?.client ?? null : null
@@ -168,6 +388,14 @@ export function AgentList({
 
   const isActionSheetVisible = actionAgent !== null;
   const isActionDaemonUnavailable = Boolean(actionAgent?.serverId && !actionClient);
+  const showHostColumn = useMemo(
+    () => new Set(agents.map((agent) => agent.serverId)).size > 1,
+    [agents]
+  );
+  const columns = useMemo(
+    () => getVisibleColumns({ isMobile, showHostColumn }),
+    [isMobile, showHostColumn]
+  );
 
   const handleAgentPress = useCallback(
     (agent: AggregatedAgent) => {
@@ -215,51 +443,6 @@ export function AgentList({
     setActionAgent(null);
   }, [actionAgent, actionClient]);
 
-  const viewabilityConfig = useMemo(
-    () => ({ itemVisiblePercentThreshold: 30 }),
-    []
-  );
-
-  const onViewableItemsChanged = useCallback(
-    ({ viewableItems }: { viewableItems: Array<ViewToken> }) => {
-      if (!showCheckoutInfo) {
-        return;
-      }
-      for (const token of viewableItems) {
-        const agent = token.item as AggregatedAgent | undefined;
-        if (!agent) {
-          continue;
-        }
-
-        const runtime = getHostRuntimeStore();
-        const client = runtime.getClient(agent.serverId);
-        const isConnected = isHostRuntimeConnected(runtime.getSnapshot(agent.serverId));
-        if (!client || !isConnected) {
-          continue;
-        }
-
-        const queryKey = checkoutStatusQueryKey(agent.serverId, agent.cwd);
-        const queryState = queryClient.getQueryState(queryKey);
-        const isFetching = queryState?.fetchStatus === "fetching";
-        const isFresh =
-          typeof queryState?.dataUpdatedAt === "number" &&
-          Date.now() - queryState.dataUpdatedAt < CHECKOUT_STATUS_STALE_TIME;
-        if (isFetching || isFresh) {
-          continue;
-        }
-
-        void queryClient.prefetchQuery({
-          queryKey,
-          queryFn: async () => await client.getCheckoutStatus(agent.cwd),
-          staleTime: CHECKOUT_STATUS_STALE_TIME,
-        }).catch((error) => {
-          console.warn("[checkout_status] prefetch failed", error);
-        });
-      }
-    },
-    [queryClient, showCheckoutInfo]
-  );
-
   const sections = useMemo((): AgentListSection[] => {
     const order = ["Today", "Yesterday", "This week", "This month", "Older"] as const;
     const buckets = new Map<string, AggregatedAgent[]>();
@@ -281,55 +464,33 @@ export function AgentList({
     return result;
   }, [agents]);
 
-  const renderAgentItem: SectionListRenderItem<AggregatedAgent, AgentListSection> =
-    useCallback(
-      ({ item: agent }) => (
-        <AgentListRow
-          agent={agent}
-          selectedAgentId={selectedAgentId}
-          showCheckoutInfo={showCheckoutInfo}
-          onPress={handleAgentPress}
-          onLongPress={handleAgentLongPress}
-        />
-      ),
-      [handleAgentLongPress, handleAgentPress, selectedAgentId, showCheckoutInfo]
-    );
-
-  const renderSectionHeader = useCallback(
-    ({ section }: { section: AgentListSection }) => (
-      <View style={styles.sectionHeader}>
-        <Text style={styles.sectionTitle}>{section.title}</Text>
-      </View>
+  const renderSection: ListRenderItem<AgentListSection> = useCallback(
+    ({ item: section }) => (
+      <SessionTableSection
+        section={section}
+        columns={columns}
+        isMobile={isMobile}
+        selectedAgentId={selectedAgentId}
+        onAgentPress={handleAgentPress}
+        onAgentLongPress={handleAgentLongPress}
+      />
     ),
-    []
+    [columns, handleAgentLongPress, handleAgentPress, isMobile, selectedAgentId]
   );
 
-  const keyExtractor = useCallback(
-    (agent: AggregatedAgent) => `${agent.serverId}:${agent.id}`,
-    []
-  );
+  const keyExtractor = useCallback((section: AgentListSection) => section.key, []);
 
   return (
     <>
-      <SectionList
-        sections={sections}
+      <FlatList
+        data={sections}
         style={styles.list}
         contentContainerStyle={styles.listContent}
         keyExtractor={keyExtractor}
-        renderItem={renderAgentItem}
-        renderSectionHeader={renderSectionHeader}
-        stickySectionHeadersEnabled={false}
-        extraData={selectedAgentId}
+        renderItem={renderSection}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
-        initialNumToRender={12}
-        windowSize={7}
-        maxToRenderPerBatch={12}
-        updateCellsBatchingPeriod={16}
-        removeClippedSubviews={true}
         ListFooterComponent={listFooterComponent}
-        onViewableItemsChanged={onViewableItemsChanged}
-        viewabilityConfig={viewabilityConfig}
         refreshControl={
           onRefresh ? (
             <RefreshControl
@@ -353,12 +514,15 @@ export function AgentList({
             style={styles.sheetBackdrop}
             onPress={handleCloseActionSheet}
           />
-          <View style={[styles.sheetContainer, { paddingBottom: Math.max(insets.bottom, theme.spacing[6]) }]}>
+          <View
+            style={[
+              styles.sheetContainer,
+              { paddingBottom: Math.max(insets.bottom, theme.spacing[6]) },
+            ]}
+          >
             <View style={styles.sheetHandle} />
             <Text style={styles.sheetTitle}>
-              {isActionDaemonUnavailable
-                ? "Host offline"
-                : "Archive this agent?"}
+              {isActionDaemonUnavailable ? "Host offline" : "Archive this session?"}
             </Text>
             <View style={styles.sheetButtonRow}>
               <Pressable
@@ -397,60 +561,198 @@ const styles = StyleSheet.create((theme) => ({
     minHeight: 0,
   },
   listContent: {
-    paddingHorizontal: theme.spacing[4],
+    paddingHorizontal: {
+      xs: theme.spacing[3],
+      md: theme.spacing[6],
+    },
     paddingTop: theme.spacing[2],
-    paddingBottom: theme.spacing[4],
+    paddingBottom: theme.spacing[6],
+    gap: theme.spacing[1],
   },
-  sectionHeader: {
-    paddingVertical: theme.spacing[2],
-    paddingHorizontal: theme.spacing[3],
+  sectionBlock: {
     marginTop: theme.spacing[2],
+  },
+  sectionHeading: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[3],
+    paddingHorizontal: theme.spacing[1],
+    marginBottom: theme.spacing[2],
   },
   sectionTitle: {
     fontSize: theme.fontSize.sm,
-    fontWeight: "500",
+    fontWeight: "600",
     color: theme.colors.foregroundMuted,
-    textAlign: "left",
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
   },
-  agentItem: {
-    paddingVertical: theme.spacing[2],
-    paddingHorizontal: theme.spacing[3],
-    borderRadius: theme.borderRadius.lg,
-    marginBottom: theme.spacing[1],
-  },
-  agentItemSelected: {
+  sectionLine: {
+    flex: 1,
+    height: StyleSheet.hairlineWidth,
     backgroundColor: theme.colors.surface2,
   },
-  agentItemHovered: {
+  tableCard: {
+    overflow: "hidden",
+    borderRadius: theme.borderRadius.xl,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: theme.colors.surface2,
     backgroundColor: theme.colors.surface1,
   },
-  agentItemPressed: {
-    backgroundColor: theme.colors.surface2,
+  tableHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: {
+      xs: theme.spacing[3],
+      md: theme.spacing[4],
+    },
+    paddingVertical: theme.spacing[2],
+    backgroundColor: theme.colors.surface0,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: theme.colors.surface2,
   },
-  agentContent: {
-    flex: 1,
-    gap: theme.spacing[0],
+  columnLabel: {
+    fontSize: theme.fontSize.xs,
+    fontWeight: "600",
+    color: theme.colors.foregroundMuted,
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
+  },
+  columnLabelRight: {
+    textAlign: "right",
+  },
+  rowDivider: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: theme.colors.surface2,
   },
   row: {
+    paddingHorizontal: {
+      xs: theme.spacing[3],
+      md: theme.spacing[4],
+    },
+    paddingVertical: {
+      xs: theme.spacing[2],
+      md: theme.spacing[3],
+    },
+  },
+  rowInner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[3],
+  },
+  rowSelected: {
+    backgroundColor: theme.colors.surface2,
+  },
+  rowHovered: {
+    backgroundColor: theme.colors.surface0,
+  },
+  rowPressed: {
+    backgroundColor: theme.colors.surface2,
+  },
+  cell: {
+    minWidth: 0,
+  },
+  cellLeft: {
+    alignItems: "flex-start",
+  },
+  cellRight: {
+    alignItems: "flex-end",
+  },
+  primaryCell: {
+    width: "100%",
+    gap: theme.spacing[1],
+  },
+  sessionTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: theme.spacing[2],
+  },
+  sessionTitle: {
+    flexShrink: 1,
+    fontSize: theme.fontSize.base,
+    fontWeight: "500",
+    color: theme.colors.foreground,
+    opacity: 0.86,
+  },
+  sessionTitleHighlighted: {
+    opacity: 1,
+  },
+  sessionMetaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: theme.spacing[1],
+  },
+  sessionMetaText: {
+    maxWidth: "100%",
+    fontSize: theme.fontSize.sm,
+    color: theme.colors.foregroundMuted,
+  },
+  sessionMetaSeparator: {
+    fontSize: theme.fontSize.sm,
+    color: theme.colors.foregroundMuted,
+    opacity: 0.7,
+  },
+  secondaryBadgeRow: {
+    minHeight: theme.spacing[6],
+    justifyContent: "center",
+  },
+  projectCell: {
+    width: "100%",
+    gap: theme.spacing[1],
+  },
+  projectPath: {
+    fontSize: theme.fontSize.sm,
+    color: theme.colors.foreground,
+  },
+  projectProvider: {
+    fontSize: theme.fontSize.xs,
+    color: theme.colors.foregroundMuted,
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
+  },
+  hostText: {
+    fontSize: theme.fontSize.sm,
+    color: theme.colors.foreground,
+  },
+  statusCell: {
     flexDirection: "row",
     alignItems: "center",
     gap: theme.spacing[2],
   },
-  agentTitle: {
-    flex: 1,
-    fontSize: theme.fontSize.base,
-    fontWeight: "400",
-    color: theme.colors.foreground,
-    opacity: 0.8,
-  },
-  agentTitleHighlighted: {
-    color: theme.colors.foreground,
-    opacity: 1,
-  },
-  secondaryRow: {
+  statusText: {
     fontSize: theme.fontSize.sm,
-    fontWeight: "300",
+    color: theme.colors.foreground,
+  },
+  updatedText: {
+    fontSize: theme.fontSize.sm,
     color: theme.colors.foregroundMuted,
+    textAlign: "right",
+  },
+  badge: {
+    paddingHorizontal: theme.spacing[2],
+    paddingVertical: theme.spacing[1],
+    borderRadius: theme.borderRadius.full,
+    backgroundColor: theme.colors.surface2,
+  },
+  badgeWarning: {
+    backgroundColor: "rgba(245, 158, 11, 0.12)",
+  },
+  badgeDanger: {
+    backgroundColor: "rgba(239, 68, 68, 0.14)",
+  },
+  badgeText: {
+    fontSize: theme.fontSize.xs,
+    fontWeight: "600",
+    color: theme.colors.foregroundMuted,
+    textTransform: "uppercase",
+    letterSpacing: 0.4,
+  },
+  badgeTextWarning: {
+    color: theme.colors.palette.amber[500],
+  },
+  badgeTextDanger: {
+    color: theme.colors.palette.red[300],
   },
   sheetOverlay: {
     flex: 1,

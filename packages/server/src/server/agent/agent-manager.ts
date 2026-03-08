@@ -153,6 +153,7 @@ type ManagedAgentBase = {
   availableModes: AgentMode[];
   currentModeId: string | null;
   pendingPermissions: Map<string, AgentPermissionRequest>;
+  pendingReplacement: boolean;
   timeline: AgentTimelineItem[];
   timelineRows: AgentTimelineRow[];
   timelineEpoch: string;
@@ -1038,6 +1039,7 @@ export class AgentManager {
 
     const agent = existingAgent as ActiveManagedAgent;
     const iterator = agent.session.stream(prompt, options);
+    agent.pendingReplacement = false;
     agent.lastError = undefined;
 
     let finalized = false;
@@ -1076,7 +1078,13 @@ export class AgentManager {
       const mutableAgent = agent as ActiveManagedAgent;
       mutableAgent.pendingRun = null;
       const terminalError = error ?? mutableAgent.lastError;
-      mutableAgent.lifecycle = terminalError ? "error" : "idle";
+      const shouldHoldBusyForReplacement =
+        mutableAgent.pendingReplacement && !terminalError;
+      mutableAgent.lifecycle = shouldHoldBusyForReplacement
+        ? "running"
+        : terminalError
+          ? "error"
+          : "idle";
       mutableAgent.lastError = terminalError;
       const persistenceHandle =
         mutableAgent.session.describePersistence() ??
@@ -1095,11 +1103,14 @@ export class AgentManager {
           lifecycle: mutableAgent.lifecycle,
           hasPendingRun: Boolean(mutableAgent.pendingRun),
           terminalError,
+          pendingReplacement: mutableAgent.pendingReplacement,
         },
         "streamAgent.finalize: applying terminal state"
       );
-      this.emitState(mutableAgent);
-      this.flushLiveEventBacklog(mutableAgent);
+      if (!shouldHoldBusyForReplacement) {
+        this.emitState(mutableAgent);
+        this.flushLiveEventBacklog(mutableAgent);
+      }
     };
 
     const self = this;
@@ -1162,17 +1173,61 @@ export class AgentManager {
     return streamForwarder;
   }
 
+  replaceAgentRun(
+    agentId: string,
+    prompt: AgentPromptInput,
+    options?: AgentRunOptions
+  ): AsyncGenerator<AgentStreamEvent> {
+    const snapshot = this.requireAgent(agentId);
+    if (snapshot.lifecycle !== "running" && !snapshot.pendingRun) {
+      return this.streamAgent(agentId, prompt, options);
+    }
+
+    const agent = snapshot as ActiveManagedAgent;
+    agent.pendingReplacement = true;
+
+    const self = this;
+    return (async function* replaceRunForwarder() {
+      try {
+        await self.cancelAgentRun(agentId);
+        const nextRun = self.streamAgent(agentId, prompt, options);
+        for await (const event of nextRun) {
+          yield event;
+        }
+      } catch (error) {
+        const latest = self.agents.get(agentId);
+        if (latest) {
+          const latestActive = latest as ActiveManagedAgent;
+          latestActive.pendingReplacement = false;
+          const hasForegroundRun = Boolean(
+            (latestActive as { pendingRun: AsyncGenerator<AgentStreamEvent> | null }).pendingRun
+          );
+          const lifecycle = (latestActive as { lifecycle: AgentLifecycleStatus }).lifecycle;
+          if (!hasForegroundRun && lifecycle === "running") {
+            latestActive.lifecycle = "idle";
+            self.emitState(latestActive);
+            self.flushLiveEventBacklog(latestActive);
+          }
+        }
+        throw error;
+      }
+    })();
+  }
+
   async waitForAgentRunStart(agentId: string, options?: WaitForAgentStartOptions): Promise<void> {
     const snapshot = this.getAgent(agentId);
     if (!snapshot) {
       throw new Error(`Agent ${agentId} not found`);
     }
 
-    if (snapshot.lifecycle === "running") {
+    if (snapshot.lifecycle === "running" && !snapshot.pendingReplacement) {
       return;
     }
 
-    if (!("pendingRun" in snapshot) || !snapshot.pendingRun) {
+    if (
+      (!("pendingRun" in snapshot) || !snapshot.pendingRun) &&
+      !snapshot.pendingReplacement
+    ) {
       throw new Error(`Agent ${agentId} has no pending run`);
     }
 
@@ -1229,7 +1284,7 @@ export class AgentManager {
             if (event.agent.id !== agentId) {
               return;
             }
-            if (event.agent.lifecycle === "running") {
+            if (event.agent.lifecycle === "running" && !event.agent.pendingReplacement) {
               finishOk();
               return;
             }
@@ -1575,6 +1630,7 @@ export class AgentManager {
       availableModes: [],
       currentModeId: null,
       pendingPermissions: new Map(),
+      pendingReplacement: false,
       pendingRun: null,
       timeline: initialTimeline,
       timelineRows: initialTimelineRows,

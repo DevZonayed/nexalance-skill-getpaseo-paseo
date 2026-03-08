@@ -10,7 +10,7 @@ import Animated, {
 } from 'react-native-reanimated'
 import { Gesture, GestureDetector } from 'react-native-gesture-handler'
 import { StyleSheet, UnistylesRuntime, useUnistyles } from 'react-native-unistyles'
-import { Plus, Settings, Users } from 'lucide-react-native'
+import { MessagesSquare, Plus, Settings } from 'lucide-react-native'
 import { router, usePathname } from 'expo-router'
 import { usePanelStore } from '@/stores/panel-store'
 import { SidebarWorkspaceList } from './sidebar-workspace-list'
@@ -389,12 +389,12 @@ export function LeftSidebar({ selectedAgentId: _selectedAgentId }: LeftSidebarPr
                     nativeID="sidebar-all-agents"
                     collapsable={false}
                     accessible
-                    accessibilityLabel="All agents"
+                    accessibilityLabel="Sessions"
                     accessibilityRole="button"
                     onPress={handleViewMore}
                   >
                     {({ hovered }) => (
-                      <Users
+                      <MessagesSquare
                         size={theme.iconSize.lg}
                         color={hovered ? theme.colors.foreground : theme.colors.foregroundMuted}
                       />
@@ -509,12 +509,12 @@ export function LeftSidebar({ selectedAgentId: _selectedAgentId }: LeftSidebarPr
             nativeID="sidebar-all-agents"
             collapsable={false}
             accessible
-            accessibilityLabel="All agents"
+            accessibilityLabel="Sessions"
             accessibilityRole="button"
             onPress={handleViewMore}
           >
             {({ hovered }) => (
-              <Users
+              <MessagesSquare
                 size={theme.iconSize.lg}
                 color={hovered ? theme.colors.foreground : theme.colors.foregroundMuted}
               />

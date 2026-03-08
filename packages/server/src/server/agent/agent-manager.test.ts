@@ -1029,6 +1029,115 @@ describe("AgentManager", () => {
     await consumePromise;
   });
 
+  test("replaceAgentRun does not emit idle or resolve waiters between interrupted and replacement runs", async () => {
+    const workdir = mkdtempSync(join(tmpdir(), "agent-manager-replace-run-"));
+    const storagePath = join(workdir, "agents");
+    const storage = new AgentStorage(storagePath, logger);
+    const allowFirstRunToEnd = deferred<void>();
+    const allowSecondRunToEnd = deferred<void>();
+
+    class ReplaceRunSession extends TestAgentSession {
+      private streamCount = 0;
+
+      override async *stream(): AsyncGenerator<AgentStreamEvent> {
+        this.streamCount += 1;
+
+        if (this.streamCount === 1) {
+          yield { type: "turn_started", provider: this.provider };
+          await allowFirstRunToEnd.promise;
+          yield { type: "turn_completed", provider: this.provider };
+          return;
+        }
+
+        yield { type: "turn_started", provider: this.provider };
+        await allowSecondRunToEnd.promise;
+        yield { type: "turn_completed", provider: this.provider };
+      }
+
+      override async interrupt(): Promise<void> {
+        allowFirstRunToEnd.resolve();
+      }
+    }
+
+    class ReplaceRunClient extends TestAgentClient {
+      override async createSession(config: AgentSessionConfig): Promise<AgentSession> {
+        return new ReplaceRunSession(config);
+      }
+    }
+
+    const manager = new AgentManager({
+      clients: {
+        codex: new ReplaceRunClient(),
+      },
+      registry: storage,
+      logger,
+      idFactory: () => "00000000-0000-4000-8000-000000000125",
+    });
+
+    const snapshot = await manager.createAgent({
+      provider: "codex",
+      cwd: workdir,
+    });
+
+    const lifecycleUpdates: string[] = [];
+    const unsubscribe = manager.subscribe(
+      (event) => {
+        if (event.type !== "agent_state" || event.agent.id !== snapshot.id) {
+          return;
+        }
+        lifecycleUpdates.push(event.agent.lifecycle);
+      },
+      { agentId: snapshot.id, replayState: false }
+    );
+
+    const firstRun = manager.streamAgent(snapshot.id, "first run");
+    const firstRunDrain = (async () => {
+      for await (const _event of firstRun) {
+        // Drain events so lifecycle updates are applied.
+      }
+    })();
+
+    await manager.waitForAgentRunStart(snapshot.id);
+
+    const waitPromise = manager.waitForAgentEvent(snapshot.id);
+    const secondRun = manager.replaceAgentRun(snapshot.id, "second run");
+    const secondRunDrain = (async () => {
+      for await (const _event of secondRun) {
+        // Drain replacement run.
+      }
+    })();
+
+    await manager.waitForAgentRunStart(snapshot.id);
+
+    const prematureResolution = await Promise.race([
+      waitPromise.then(() => "resolved"),
+      new Promise<"pending">((resolve) => setTimeout(() => resolve("pending"), 50)),
+    ]);
+    expect(prematureResolution).toBe("pending");
+
+    const runningIndexes = lifecycleUpdates.reduce<number[]>((indexes, status, index) => {
+      if (status === "running") {
+        indexes.push(index);
+      }
+      return indexes;
+    }, []);
+    expect(runningIndexes.length).toBeGreaterThanOrEqual(2);
+
+    const firstReplacementRunningIndex = runningIndexes[1]!;
+    expect(
+      lifecycleUpdates.slice(0, firstReplacementRunningIndex).includes("idle")
+    ).toBe(false);
+
+    allowSecondRunToEnd.resolve();
+
+    const waited = await waitPromise;
+    expect(waited.status).toBe("idle");
+
+    await firstRunDrain;
+    await secondRunDrain;
+    unsubscribe();
+  });
+
   test("applies live autonomous events while no foreground run is active", async () => {
     const workdir = mkdtempSync(join(tmpdir(), "agent-manager-live-events-"));
     const storagePath = join(workdir, "agents");
