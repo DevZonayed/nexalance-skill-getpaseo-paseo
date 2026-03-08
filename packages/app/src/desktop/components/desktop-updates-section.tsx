@@ -88,9 +88,9 @@ export function LocalDaemonSection({ appVersion }: LocalDaemonSectionProps) {
     statusError ??
     (managedStatus?.daemonRunning
       ? managedStatus.transportType === "tcp"
-        ? `Managed daemon running on explicit TCP ${managedStatus.transportPath}.`
-        : `Managed daemon running on private ${managedStatus.transportType}.`
-      : "Managed daemon is currently stopped.");
+        ? `Running on ${managedStatus.transportPath}.`
+        : "Running."
+      : "Not running.");
 
   const handleUpdateLocalDaemon = useCallback(() => {
     if (!showSection) {
@@ -101,10 +101,10 @@ export function LocalDaemonSection({ appVersion }: LocalDaemonSectionProps) {
     }
 
     void confirmDialog({
-      title: "Restart managed daemon",
+      title: "Restart daemon",
       message:
-        "This restarts the desktop-managed daemon using its private managed home and socket.",
-      confirmLabel: "Restart daemon",
+        "This will restart the built-in daemon. The app will reconnect automatically.",
+      confirmLabel: "Restart",
       cancelLabel: "Cancel",
     })
       .then((confirmed) => {
@@ -118,13 +118,13 @@ export function LocalDaemonSection({ appVersion }: LocalDaemonSectionProps) {
         void restartManagedDaemon()
           .then((status) => {
             setManagedStatus(status);
-            setStatusMessage("Managed daemon restarted.");
+            setStatusMessage("Daemon restarted.");
             return loadManagedStatus();
           })
           .catch((error) => {
             console.error("[Settings] Failed to restart managed daemon", error);
             const message = error instanceof Error ? error.message : String(error);
-            setStatusMessage(`Managed daemon restart failed: ${message}`);
+            setStatusMessage(`Restart failed: ${message}`);
           })
           .finally(() => {
             setIsRestartingDaemon(false);
@@ -132,7 +132,7 @@ export function LocalDaemonSection({ appVersion }: LocalDaemonSectionProps) {
       })
       .catch((error) => {
         console.error("[Settings] Failed to open managed daemon restart confirmation", error);
-        Alert.alert("Error", "Unable to open the managed daemon restart confirmation dialog.");
+        Alert.alert("Error", "Unable to open the restart confirmation dialog.");
       });
   }, [isRestartingDaemon, loadManagedStatus, showSection]);
 
@@ -162,7 +162,7 @@ export function LocalDaemonSection({ appVersion }: LocalDaemonSectionProps) {
       })
       .catch((error) => {
         const message = error instanceof Error ? error.message : String(error);
-        setCliStatusMessage(`CLI shim action failed: ${message}`);
+        setCliStatusMessage(`CLI install failed: ${message}`);
       })
       .finally(() => {
         setIsInstallingCli(false);
@@ -191,10 +191,10 @@ export function LocalDaemonSection({ appVersion }: LocalDaemonSectionProps) {
 
     void Clipboard.setStringAsync(logPath)
       .then(() => {
-        Alert.alert("Copied", "Managed daemon log path copied.");
+        Alert.alert("Copied", "Log path copied.");
       })
       .catch((error) => {
-        console.error("[Settings] Failed to copy managed daemon log path", error);
+        console.error("[Settings] Failed to copy log path", error);
         Alert.alert("Error", "Unable to copy log path.");
       });
   }, [managedLogs?.logPath, managedStatus?.logPath]);
@@ -219,7 +219,7 @@ export function LocalDaemonSection({ appVersion }: LocalDaemonSectionProps) {
       .then((pairing) => {
         setPairingOffer(pairing);
         if (!pairing.relayEnabled || !pairing.url) {
-          setPairingStatusMessage("Relay pairing is disabled for this managed daemon.");
+          setPairingStatusMessage("Relay pairing is not available.");
         }
       })
       .catch((error) => {
@@ -269,12 +269,12 @@ export function LocalDaemonSection({ appVersion }: LocalDaemonSectionProps) {
     })
       .then((status) => {
         setManagedStatus(status);
-        setStatusMessage("Managed TCP exposure disabled.");
+        setStatusMessage("Network access disabled.");
         return loadManagedStatus();
       })
       .catch((error) => {
         const message = error instanceof Error ? error.message : String(error);
-        setStatusMessage(`Managed TCP update failed: ${message}`);
+        setStatusMessage(`Failed to update: ${message}`);
       })
       .finally(() => {
         setIsSavingTcpSettings(false);
@@ -296,15 +296,15 @@ export function LocalDaemonSection({ appVersion }: LocalDaemonSectionProps) {
       return;
     }
     if (port === 6767) {
-      Alert.alert("Port unavailable", "Managed TCP mode must not claim 127.0.0.1:6767.");
+      Alert.alert("Port unavailable", "Port 6767 is reserved. Choose a different port.");
       return;
     }
 
     void confirmDialog({
-      title: "Enable managed TCP",
+      title: "Enable network access",
       message:
-        "This exposes the managed daemon on a TCP listener. Relay remains available, but network exposure is no longer private to the desktop app.",
-      confirmLabel: "Enable TCP",
+        "This makes the daemon reachable on your local network. Relay connections will continue to work.",
+      confirmLabel: "Enable",
       cancelLabel: "Cancel",
     })
       .then((confirmed) => {
@@ -317,20 +317,20 @@ export function LocalDaemonSection({ appVersion }: LocalDaemonSectionProps) {
           .then((status) => {
             setManagedStatus(status);
             setIsTcpModalOpen(false);
-            setStatusMessage(`Managed TCP exposure enabled on ${host}:${port}.`);
+            setStatusMessage(`Network access enabled on ${host}:${port}.`);
             return loadManagedStatus();
           })
           .catch((error) => {
             const message = error instanceof Error ? error.message : String(error);
-            setStatusMessage(`Managed TCP update failed: ${message}`);
+            setStatusMessage(`Failed to update: ${message}`);
           })
           .finally(() => {
             setIsSavingTcpSettings(false);
           });
       })
       .catch((error) => {
-        console.error("[Settings] Failed to open managed TCP confirmation", error);
-        Alert.alert("Error", "Unable to open the managed TCP confirmation dialog.");
+        console.error("[Settings] Failed to open TCP confirmation", error);
+        Alert.alert("Error", "Unable to open the confirmation dialog.");
       });
   }, [isSavingTcpSettings, loadManagedStatus, tcpHostInput, tcpPortInput]);
 
@@ -340,7 +340,7 @@ export function LocalDaemonSection({ appVersion }: LocalDaemonSectionProps) {
 
   return (
     <View style={styles.section}>
-      <Text style={styles.sectionTitle}>Managed daemon</Text>
+      <Text style={styles.sectionTitle}>Built-in daemon</Text>
       <View style={styles.card}>
         <View style={styles.row}>
           <View style={styles.rowContent}>
@@ -353,7 +353,7 @@ export function LocalDaemonSection({ appVersion }: LocalDaemonSectionProps) {
           <View style={styles.rowContent}>
             <Text style={styles.rowTitle}>Restart daemon</Text>
             <Text style={styles.hintText}>
-              Restarts the desktop-managed daemon without touching `~/.paseo` or `127.0.0.1:6767`.
+              Restarts the built-in daemon. Your data and external connections are not affected.
             </Text>
             {statusMessage ? (
               <Text style={styles.statusText}>{statusMessage}</Text>
@@ -370,9 +370,9 @@ export function LocalDaemonSection({ appVersion }: LocalDaemonSectionProps) {
         </View>
         <View style={[styles.row, styles.rowBorder]}>
           <View style={styles.rowContent}>
-            <Text style={styles.rowTitle}>CLI shim</Text>
+            <Text style={styles.rowTitle}>Command line (CLI)</Text>
             <Text style={styles.hintText}>
-              Installs a global `paseo` launcher that forwards into the desktop-managed runtime.
+              Adds the `paseo` command to your terminal.
             </Text>
             {cliStatusMessage ? <Text style={styles.statusText}>{cliStatusMessage}</Text> : null}
           </View>
@@ -395,7 +395,7 @@ export function LocalDaemonSection({ appVersion }: LocalDaemonSectionProps) {
             <Text style={styles.hintText}>
               {managedLogs?.logPath ??
                 managedStatus?.logPath ??
-                "Managed daemon log path unavailable."}
+                "Log path unavailable."}
             </Text>
           </View>
           <View style={styles.actionGroup}>
@@ -418,7 +418,7 @@ export function LocalDaemonSection({ appVersion }: LocalDaemonSectionProps) {
           <View style={styles.rowContent}>
             <Text style={styles.rowTitle}>Pair device</Text>
             <Text style={styles.hintText}>
-              Show the managed daemon QR code and a copyable pairing link for the mobile app.
+              Connect your phone to this computer.
             </Text>
           </View>
           <Button variant="secondary" size="sm" onPress={handleOpenPairingModal}>
@@ -427,10 +427,9 @@ export function LocalDaemonSection({ appVersion }: LocalDaemonSectionProps) {
         </View>
         <View style={[styles.row, styles.rowBorder]}>
           <View style={styles.rowContent}>
-            <Text style={styles.rowTitle}>Advanced TCP</Text>
+            <Text style={styles.rowTitle}>Network access</Text>
             <Text style={styles.hintText}>
-              Default off. Use only if you explicitly want a network listener instead of the
-              private managed transport.
+              Allow other apps or devices on your network to connect directly.
             </Text>
             <Text style={styles.statusText}>
               {managedStatus?.tcpEnabled
@@ -464,8 +463,8 @@ export function LocalDaemonSection({ appVersion }: LocalDaemonSectionProps) {
       {daemonVersionMismatch ? (
         <View style={styles.warningCard}>
           <Text style={styles.warningText}>
-            Desktop app and managed daemon versions differ. Keep both on the same version to avoid
-            stability issues or breaking changes.
+            App and daemon versions don't match. Update both to the same version for the best
+            experience.
           </Text>
         </View>
       ) : null}
@@ -473,12 +472,12 @@ export function LocalDaemonSection({ appVersion }: LocalDaemonSectionProps) {
       <AdaptiveModalSheet
         visible={isTcpModalOpen}
         onClose={() => setIsTcpModalOpen(false)}
-        title="Managed TCP settings"
+        title="Network access"
       >
         <View style={styles.modalBody}>
           <Text style={styles.hintText}>
-            TCP is advanced opt-in only. It must stay off unless you explicitly need direct network
-            access, and it must never use port 6767.
+            Expose the daemon on a specific address and port so other apps can connect directly.
+            Port 6767 is reserved and cannot be used here.
           </Text>
           <AdaptiveTextInput
             value={tcpHostInput}
@@ -553,7 +552,7 @@ export function LocalDaemonSection({ appVersion }: LocalDaemonSectionProps) {
       <AdaptiveModalSheet
         visible={isLogsModalOpen}
         onClose={() => setIsLogsModalOpen(false)}
-        title="Managed daemon logs"
+        title="Daemon logs"
         testID="managed-daemon-logs-dialog"
         snapPoints={["70%", "92%"]}
       >
@@ -561,7 +560,7 @@ export function LocalDaemonSection({ appVersion }: LocalDaemonSectionProps) {
           <Text style={styles.hintText}>
             {managedLogs?.logPath ??
               managedStatus?.logPath ??
-              "Managed daemon log path unavailable."}
+              "Log path unavailable."}
           </Text>
           <Text style={styles.logOutput} selectable>
             {managedLogs?.contents.length ? managedLogs.contents : "(log file is empty)"}

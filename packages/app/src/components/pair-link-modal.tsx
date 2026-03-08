@@ -149,7 +149,7 @@ export function PairLinkModal({ visible, onClose, onCancel, onSaved, targetServe
 
   return (
     <AdaptiveModalSheet title="Paste pairing link" visible={visible} onClose={handleClose} testID="pair-link-modal">
-      <Text style={styles.helper}>Paste the daemon’s pairing link.</Text>
+      <Text style={styles.helper}>Paste the pairing link from your server.</Text>
 
       <View style={styles.field}>
         <Text style={styles.label}>Pairing link</Text>

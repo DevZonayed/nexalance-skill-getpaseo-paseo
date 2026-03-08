@@ -56,10 +56,10 @@ function formatHostConnectionLabel(connection: HostConnection): string {
     return `Relay (${connection.relayEndpoint})`;
   }
   if (connection.type === "directSocket") {
-    return `Socket (${connection.path})`;
+    return `Local (${connection.path})`;
   }
   if (connection.type === "directPipe") {
-    return `Pipe (${connection.path})`;
+    return `Local (${connection.path})`;
   }
   return `TCP (${connection.endpoint})`;
 }
@@ -76,10 +76,10 @@ function formatActiveConnectionBadge(input: {
     return { icon: <Globe size={theme.iconSize.xs} color={theme.colors.foregroundMuted} />, text: "Relay" };
   }
   if (activeConnection.type === "directSocket") {
-    return { icon: <Monitor size={theme.iconSize.xs} color={theme.colors.foregroundMuted} />, text: "Socket" };
+    return { icon: <Monitor size={theme.iconSize.xs} color={theme.colors.foregroundMuted} />, text: "Local" };
   }
   if (activeConnection.type === "directPipe") {
-    return { icon: <Monitor size={theme.iconSize.xs} color={theme.colors.foregroundMuted} />, text: "Pipe" };
+    return { icon: <Monitor size={theme.iconSize.xs} color={theme.colors.foregroundMuted} />, text: "Local" };
   }
   return {
     icon: <Monitor size={theme.iconSize.xs} color={theme.colors.foregroundMuted} />,
@@ -705,7 +705,7 @@ export default function SettingsScreen() {
   );
 
   const restartConfirmationMessage =
-    "This will immediately stop the Paseo daemon process. The app will disconnect until it restarts.";
+    "This will restart the daemon. The app will reconnect automatically.";
 
   if (isLoading) {
     return (
