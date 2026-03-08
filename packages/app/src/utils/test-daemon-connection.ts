@@ -3,6 +3,10 @@ import type { DaemonClientConfig } from "@server/client/daemon-client";
 import type { HostConnection } from "@/contexts/daemon-registry-context";
 import { getOrCreateClientId } from "./client-id";
 import { buildDaemonWebSocketUrl, buildRelayWebSocketUrl } from "./daemon-endpoints";
+import {
+  buildLocalDaemonTransportUrl,
+  createTauriLocalDaemonTransportFactory,
+} from "./managed-tauri-daemon-transport";
 import { createTauriWebSocketTransportFactory } from "./tauri-daemon-transport";
 
 function normalizeNonEmptyString(value: unknown): string | null {
@@ -47,14 +51,31 @@ async function buildClientConfig(
 ): Promise<DaemonClientConfig> {
   const clientId = await getOrCreateClientId();
   const tauriTransportFactory = createTauriWebSocketTransportFactory();
+  const localTransportFactory = createTauriLocalDaemonTransportFactory();
   const base = {
     clientId,
     clientType: "mobile" as const,
     suppressSendErrors: true,
-    ...(tauriTransportFactory ? { transportFactory: tauriTransportFactory } : {}),
+    ...(connection.type === "directSocket" || connection.type === "directPipe"
+      ? localTransportFactory
+        ? { transportFactory: localTransportFactory }
+        : {}
+      : tauriTransportFactory
+        ? { transportFactory: tauriTransportFactory }
+        : {}),
   };
 
-  if (connection.type === "direct") {
+  if (connection.type === "directSocket" || connection.type === "directPipe") {
+    return {
+      ...base,
+      url: buildLocalDaemonTransportUrl({
+        transportType: connection.type === "directSocket" ? "socket" : "pipe",
+        transportPath: connection.path,
+      }),
+    };
+  }
+
+  if (connection.type === "directTcp") {
     return {
       ...base,
       url: buildDaemonWebSocketUrl(connection.endpoint),

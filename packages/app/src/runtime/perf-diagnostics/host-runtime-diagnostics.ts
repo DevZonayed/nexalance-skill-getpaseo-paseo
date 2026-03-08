@@ -24,7 +24,7 @@ function shouldSampleFastTransportEvent(): boolean {
 
 export function recordHostRuntimeCreateClient(params: {
   serverId: string;
-  connectionType: "direct" | "relay";
+  connectionType: "directTcp" | "directSocket" | "directPipe" | "relay";
   endpoint: string;
 }): void {
   recordPerfDiagnosticMark(

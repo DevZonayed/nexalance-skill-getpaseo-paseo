@@ -4,14 +4,16 @@ import { generateLocalPairingOffer, loadConfig, resolvePaseoHome } from '@getpas
 
 interface PairOptions {
   home?: string
+  json?: boolean
 }
 
 export function pairCommand(): Command {
   return new Command('pair')
     .description('Print the daemon pairing QR code and link')
+    .option('--json', 'Output in JSON format')
     .option('--home <path>', 'Paseo home directory (default: ~/.paseo)')
-    .action(async (options: PairOptions) => {
-      await runPairCommand(options)
+    .action(async (_options: PairOptions, command: Command) => {
+      await runPairCommand(command.optsWithGlobals() as PairOptions)
     })
 }
 
@@ -35,6 +37,21 @@ export async function runPairCommand(options: PairOptions): Promise<void> {
     console.error(chalk.red('Relay pairing is disabled for this daemon config.'))
     console.error(chalk.yellow('Enable relay and run this command again.'))
     process.exit(1)
+  }
+
+  if (options.json) {
+    process.stdout.write(
+      `${JSON.stringify(
+        {
+          relayEnabled: pairing.relayEnabled,
+          url: pairing.url,
+          qr: pairing.qr,
+        },
+        null,
+        2
+      )}\n`
+    )
+    return
   }
 
   const qrBlock = pairing.qr ? `${pairing.qr}\n` : ''

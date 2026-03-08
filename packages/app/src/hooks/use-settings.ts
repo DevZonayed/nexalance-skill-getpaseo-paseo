@@ -2,16 +2,18 @@ import { useCallback } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
-const APP_SETTINGS_KEY = "@paseo:app-settings";
+export const APP_SETTINGS_KEY = "@paseo:app-settings";
 const LEGACY_SETTINGS_KEY = "@paseo:settings";
 const APP_SETTINGS_QUERY_KEY = ["app-settings"];
 
 export interface AppSettings {
   theme: "dark" | "light" | "auto";
+  manageBuiltInDaemon: boolean;
 }
 
-const DEFAULT_APP_SETTINGS: AppSettings = {
+export const DEFAULT_APP_SETTINGS: AppSettings = {
   theme: "dark",
+  manageBuiltInDaemon: true,
 };
 
 export interface UseAppSettingsReturn {
@@ -66,7 +68,7 @@ export function useAppSettings(): UseAppSettingsReturn {
   };
 }
 
-async function loadSettingsFromStorage(): Promise<AppSettings> {
+export async function loadSettingsFromStorage(): Promise<AppSettings> {
   try {
     const stored = await AsyncStorage.getItem(APP_SETTINGS_KEY);
     if (stored) {
@@ -97,6 +99,9 @@ function pickAppSettingsFromLegacy(legacy: Record<string, unknown>): Partial<App
   const result: Partial<AppSettings> = {};
   if (legacy.theme === "dark" || legacy.theme === "light" || legacy.theme === "auto") {
     result.theme = legacy.theme;
+  }
+  if (typeof legacy.manageBuiltInDaemon === "boolean") {
+    result.manageBuiltInDaemon = legacy.manageBuiltInDaemon;
   }
   return result;
 }

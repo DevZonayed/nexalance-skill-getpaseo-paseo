@@ -65,7 +65,7 @@ export function AddHostMethodModal({
         <Link2 size={18} color={theme.colors.foreground} />
         <View style={styles.optionBody}>
           <Text style={styles.optionText}>Direct connection</Text>
-          <Text style={styles.optionSubtext}>Local network or Tailscale (unencrypted).</Text>
+          <Text style={styles.optionSubtext}>Local network or VPN.</Text>
         </View>
       </Pressable>
 
@@ -74,7 +74,7 @@ export function AddHostMethodModal({
           <QrCode size={18} color={theme.colors.foreground} />
           <View style={styles.optionBody}>
             <Text style={styles.optionText}>Scan QR code</Text>
-            <Text style={styles.optionSubtext}>Relay pairing (E2EE).</Text>
+            <Text style={styles.optionSubtext}>Encrypted relay connection.</Text>
           </View>
         </Pressable>
       ) : null}
@@ -83,7 +83,7 @@ export function AddHostMethodModal({
         <ClipboardPaste size={18} color={theme.colors.foreground} />
         <View style={styles.optionBody}>
           <Text style={styles.optionText}>Paste pairing link</Text>
-          <Text style={styles.optionSubtext}>Relay pairing (E2EE).</Text>
+          <Text style={styles.optionSubtext}>Encrypted relay connection.</Text>
         </View>
       </Pressable>
     </AdaptiveModalSheet>

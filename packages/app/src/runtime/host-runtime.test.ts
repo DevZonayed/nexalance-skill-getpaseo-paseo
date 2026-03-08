@@ -163,7 +163,7 @@ function makeFetchAgentsEntry(input: {
 function makeHost(input?: Partial<HostProfile>): HostProfile {
   const direct: HostConnection = {
     id: "direct:lan:6767",
-    type: "direct",
+    type: "directTcp",
     endpoint: "lan:6767",
   };
   const relay: HostConnection = {
@@ -176,6 +176,12 @@ function makeHost(input?: Partial<HostProfile>): HostProfile {
   return {
     serverId: input?.serverId ?? "srv_test",
     label: input?.label ?? "test host",
+    lifecycle: input?.lifecycle ?? {
+      managed: false,
+      managedRuntimeId: null,
+      managedRuntimeVersion: null,
+      associatedServerId: null,
+    },
     connections: input?.connections ?? [direct, relay],
     preferredConnectionId: input?.preferredConnectionId ?? direct.id,
     createdAt: input?.createdAt ?? new Date(0).toISOString(),
@@ -227,7 +233,7 @@ describe("HostRuntimeController", () => {
       connections: [
         {
           id: "direct:lan:6767",
-          type: "direct",
+          type: "directTcp",
           endpoint: "lan:6767",
         },
       ],
@@ -262,7 +268,7 @@ describe("HostRuntimeController", () => {
       connections: [
         {
           id: "direct:lan:6767",
-          type: "direct",
+          type: "directTcp",
           endpoint: "lan:6767",
         },
       ],
@@ -438,7 +444,7 @@ describe("HostRuntimeController", () => {
         connections: [
           {
             id: "direct:lan:6767",
-            type: "direct",
+            type: "directTcp",
             endpoint: "lan:6767",
           },
         ],
@@ -577,7 +583,7 @@ describe("HostRuntimeController", () => {
       connections: [
         {
           id: "direct:lan:6767",
-          type: "direct",
+          type: "directTcp",
           endpoint: "lan:6767",
         },
         {
@@ -667,7 +673,7 @@ describe("HostRuntimeController", () => {
       connections: [
         {
           id: "direct:lan:6767",
-          type: "direct",
+          type: "directTcp",
           endpoint: "lan:6767",
         },
       ],
@@ -723,7 +729,7 @@ describe("HostRuntimeController", () => {
       connections: [
         {
           id: "direct:lan:6767",
-          type: "direct",
+          type: "directTcp",
           endpoint: "lan:6767",
         },
       ],
@@ -789,7 +795,7 @@ describe("HostRuntimeStore", () => {
       connections: [
         {
           id: "direct:lan:6767",
-          type: "direct",
+          type: "directTcp",
           endpoint: "lan:6767",
         },
       ],
@@ -837,7 +843,7 @@ describe("HostRuntimeStore", () => {
       connections: [
         {
           id: "direct:lan:6767",
-          type: "direct",
+          type: "directTcp",
           endpoint: "lan:6767",
         },
       ],
@@ -885,7 +891,7 @@ describe("HostRuntimeStore", () => {
       connections: [
         {
           id: "direct:lan:6767",
-          type: "direct",
+          type: "directTcp",
           endpoint: "lan:6767",
         },
       ],
@@ -984,7 +990,7 @@ describe("HostRuntimeStore", () => {
       connections: [
         {
           id: "direct:lan:6767",
-          type: "direct",
+          type: "directTcp",
           endpoint: "lan:6767",
         },
       ],
@@ -1045,7 +1051,7 @@ describe("HostRuntimeStore", () => {
       connections: [
         {
           id: "direct:lan:6767",
-          type: "direct",
+          type: "directTcp",
           endpoint: "lan:6767",
         },
       ],

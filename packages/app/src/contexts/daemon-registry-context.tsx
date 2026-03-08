@@ -4,33 +4,67 @@ import AsyncStorage from '@react-native-async-storage/async-storage'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { decodeOfferFragmentPayload, normalizeHostPort } from '@/utils/daemon-endpoints'
 import { probeConnection } from '@/utils/test-daemon-connection'
+import { useAppSettings, type AppSettings } from '@/hooks/use-settings'
 import { ConnectionOfferSchema, type ConnectionOffer } from '@server/shared/connection-offer'
+import {
+  getManagedDaemonStatus,
+  type ManagedDaemonStatus,
+  shouldUseManagedDesktopDaemon,
+  startManagedDaemon,
+} from '@/desktop/managed-runtime/managed-runtime'
 
 const REGISTRY_STORAGE_KEY = '@paseo:daemon-registry'
 const DAEMON_REGISTRY_QUERY_KEY = ['daemon-registry']
 const DEFAULT_LOCALHOST_ENDPOINT = 'localhost:6767'
 const DEFAULT_LOCALHOST_BOOTSTRAP_KEY = '@paseo:default-localhost-bootstrap-v1'
 const DEFAULT_LOCALHOST_BOOTSTRAP_TIMEOUT_MS = 2500
+const DEFAULT_LOCAL_TRANSPORT_BOOTSTRAP_TIMEOUT_MS = 6000
+const DEFAULT_LOCAL_TRANSPORT_BOOTSTRAP_RETRY_MS = 2000
+const DEFAULT_LOCAL_TRANSPORT_BOOTSTRAP_DEADLINE_MS = 120000
 const E2E_STORAGE_KEY = '@paseo:e2e'
 
-export type DirectHostConnection = {
+export type DirectTcpHostConnection = {
   id: string
-  type: 'direct'
-  endpoint: string // host:port
+  type: 'directTcp'
+  endpoint: string
+}
+
+export type DirectSocketHostConnection = {
+  id: string
+  type: 'directSocket'
+  path: string
+}
+
+export type DirectPipeHostConnection = {
+  id: string
+  type: 'directPipe'
+  path: string
 }
 
 export type RelayHostConnection = {
   id: string
   type: 'relay'
-  relayEndpoint: string // host:port
+  relayEndpoint: string
   daemonPublicKeyB64: string
 }
 
-export type HostConnection = DirectHostConnection | RelayHostConnection
+export type HostConnection =
+  | DirectTcpHostConnection
+  | DirectSocketHostConnection
+  | DirectPipeHostConnection
+  | RelayHostConnection
+
+export type HostLifecycle = {
+  managed: boolean
+  managedRuntimeId: string | null
+  managedRuntimeVersion: string | null
+  associatedServerId: string | null
+}
 
 export type HostProfile = {
   serverId: string
   label: string
+  lifecycle: HostLifecycle
   connections: HostConnection[]
   preferredConnectionId: string | null
   createdAt: string
@@ -38,6 +72,29 @@ export type HostProfile = {
 }
 
 export type UpdateHostInput = Partial<Omit<HostProfile, 'serverId' | 'createdAt'>>
+
+export type ManagedHostReconciliationInput = {
+  serverId: string
+  hostname?: string | null
+  runtimeId: string
+  runtimeVersion: string
+  transportType: string
+  transportPath: string
+  associatedServerId?: string | null
+}
+
+export type LocalhostHostReconciliationInput = {
+  serverId: string
+  hostname: string | null
+  endpoint: string
+}
+
+export type DesktopStartupReconciliationInput = {
+  existing: HostProfile[]
+  managed: ManagedHostReconciliationInput | null
+  localhost: LocalhostHostReconciliationInput | null
+  now?: string
+}
 
 interface DaemonRegistryContextValue {
   daemons: HostProfile[]
@@ -63,6 +120,20 @@ interface DaemonRegistryContextValue {
 
 const DaemonRegistryContext = createContext<DaemonRegistryContextValue | null>(null)
 
+function defaultLifecycle(): HostLifecycle {
+  return {
+    managed: false,
+    managedRuntimeId: null,
+    managedRuntimeVersion: null,
+    associatedServerId: null,
+  }
+}
+
+function normalizeHostLabel(value: string | null | undefined, serverId: string): string {
+  const trimmed = value?.trim() ?? ''
+  return trimmed.length > 0 ? trimmed : serverId
+}
+
 function normalizeEndpointOrNull(endpoint: string): string | null {
   try {
     return normalizeHostPort(endpoint)
@@ -71,8 +142,401 @@ function normalizeEndpointOrNull(endpoint: string): string | null {
   }
 }
 
-function isDefaultLocalhostConnection(connection: HostConnection): boolean {
-  return connection.type === 'direct' && connection.endpoint === DEFAULT_LOCALHOST_ENDPOINT
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms)
+  })
+}
+
+function normalizeManagedTransportConnection(input: {
+  transportType: string
+  transportPath: string
+}): HostConnection | null {
+  const transportPath = input.transportPath.trim()
+  if (!transportPath) {
+    return null
+  }
+
+  if (input.transportType === 'tcp') {
+    try {
+      const endpoint = normalizeHostPort(transportPath)
+      return {
+        id: `direct:${endpoint}`,
+        type: 'directTcp',
+        endpoint,
+      }
+    } catch {
+      return null
+    }
+  }
+
+  if (input.transportType === 'pipe') {
+    return {
+      id: `pipe:${transportPath}`,
+      type: 'directPipe',
+      path: transportPath,
+    }
+  }
+
+  if (input.transportType === 'socket') {
+    return {
+      id: `socket:${transportPath}`,
+      type: 'directSocket',
+      path: transportPath,
+    }
+  }
+
+  return null
+}
+
+function normalizeStoredConnection(connection: unknown): HostConnection | null {
+  if (!connection || typeof connection !== 'object') {
+    return null
+  }
+  const record = connection as Record<string, unknown>
+  const type = typeof record.type === 'string' ? record.type : null
+  if (type === 'directTcp') {
+    try {
+      const endpoint = normalizeHostPort(String(record.endpoint ?? ''))
+      return { id: `direct:${endpoint}`, type: 'directTcp', endpoint }
+    } catch {
+      return null
+    }
+  }
+  if (type === 'directSocket') {
+    const path = String(record.path ?? '').trim()
+    return path ? { id: `socket:${path}`, type: 'directSocket', path } : null
+  }
+  if (type === 'directPipe') {
+    const path = String(record.path ?? '').trim()
+    return path ? { id: `pipe:${path}`, type: 'directPipe', path } : null
+  }
+  if (type === 'relay') {
+    try {
+      const relayEndpoint = normalizeHostPort(String(record.relayEndpoint ?? ''))
+      const daemonPublicKeyB64 = String(record.daemonPublicKeyB64 ?? '').trim()
+      if (!daemonPublicKeyB64) return null
+      return {
+        id: `relay:${relayEndpoint}`,
+        type: 'relay',
+        relayEndpoint,
+        daemonPublicKeyB64,
+      }
+    } catch {
+      return null
+    }
+  }
+
+  return null
+}
+
+function normalizeStoredLifecycle(lifecycle: unknown): HostLifecycle {
+  const record =
+    lifecycle && typeof lifecycle === 'object' ? (lifecycle as Record<string, unknown>) : null
+
+  return {
+    managed: record?.managed === true,
+    managedRuntimeId:
+      typeof record?.managedRuntimeId === 'string' ? record.managedRuntimeId : null,
+    managedRuntimeVersion:
+      typeof record?.managedRuntimeVersion === 'string' ? record.managedRuntimeVersion : null,
+    associatedServerId:
+      typeof record?.associatedServerId === 'string' ? record.associatedServerId : null,
+  }
+}
+
+function normalizeStoredHostProfile(entry: unknown): HostProfile | null {
+  if (!entry || typeof entry !== 'object') {
+    return null
+  }
+  const record = entry as Record<string, unknown>
+  const serverId = typeof record.serverId === 'string' ? record.serverId.trim() : ''
+  if (!serverId) {
+    return null
+  }
+
+  const rawConnections = Array.isArray(record.connections) ? record.connections : []
+  const connections = rawConnections
+    .map((connection) => normalizeStoredConnection(connection))
+    .filter((connection): connection is HostConnection => connection !== null)
+  if (connections.length === 0) {
+    return null
+  }
+
+  const lifecycle = normalizeStoredLifecycle(record.lifecycle)
+  const now = new Date().toISOString()
+  const label = normalizeHostLabel(
+    typeof record.label === 'string' ? record.label : null,
+    serverId
+  )
+  const preferredConnectionId =
+    typeof record.preferredConnectionId === 'string' &&
+    connections.some((connection) => connection.id === record.preferredConnectionId)
+      ? record.preferredConnectionId
+      : connections[0]?.id ?? null
+
+  return {
+    serverId,
+    label,
+    lifecycle,
+    connections,
+    preferredConnectionId,
+    createdAt: typeof record.createdAt === 'string' ? record.createdAt : now,
+    updatedAt: typeof record.updatedAt === 'string' ? record.updatedAt : now,
+  }
+}
+
+function hostConnectionEquals(left: HostConnection, right: HostConnection): boolean {
+  if (left.type !== right.type || left.id !== right.id) {
+    return false
+  }
+
+  if (left.type === 'directTcp' && right.type === 'directTcp') {
+    return left.endpoint === right.endpoint
+  }
+  if (left.type === 'directSocket' && right.type === 'directSocket') {
+    return left.path === right.path
+  }
+  if (left.type === 'directPipe' && right.type === 'directPipe') {
+    return left.path === right.path
+  }
+  if (left.type === 'relay' && right.type === 'relay') {
+    return (
+      left.relayEndpoint === right.relayEndpoint &&
+      left.daemonPublicKeyB64 === right.daemonPublicKeyB64
+    )
+  }
+
+  return false
+}
+
+function hostLifecycleEquals(left: HostLifecycle, right: HostLifecycle): boolean {
+  return (
+    left.managed === right.managed &&
+    left.managedRuntimeId === right.managedRuntimeId &&
+    left.managedRuntimeVersion === right.managedRuntimeVersion &&
+    left.associatedServerId === right.associatedServerId
+  )
+}
+
+function upsertHostConnectionInProfiles(input: {
+  profiles: HostProfile[]
+  serverId: string
+  label?: string
+  lifecycle?: Partial<HostLifecycle>
+  connection: HostConnection
+  now?: string
+}): HostProfile[] {
+  const serverId = input.serverId.trim()
+  if (!serverId) {
+    throw new Error('serverId is required')
+  }
+
+  const now = input.now ?? new Date().toISOString()
+  const labelTrimmed = input.label?.trim() ?? ''
+  const derivedLabel = labelTrimmed || serverId
+  const existing = input.profiles
+  const idx = existing.findIndex((daemon) => daemon.serverId === serverId)
+
+  if (idx === -1) {
+    const profile: HostProfile = {
+      serverId,
+      label: derivedLabel,
+      lifecycle: {
+        ...defaultLifecycle(),
+        ...(input.lifecycle ?? {}),
+      },
+      connections: [input.connection],
+      preferredConnectionId: input.connection.id,
+      createdAt: now,
+      updatedAt: now,
+    }
+    return [...existing, profile]
+  }
+
+  const prev = existing[idx]!
+  const connectionIdx = prev.connections.findIndex((connection) => connection.id === input.connection.id)
+  const hadConnection = connectionIdx !== -1
+  const connectionChanged =
+    connectionIdx === -1
+      ? true
+      : !hostConnectionEquals(prev.connections[connectionIdx]!, input.connection)
+  const nextConnections =
+    connectionIdx === -1
+      ? [...prev.connections, input.connection]
+      : connectionChanged
+        ? prev.connections.map((connection, index) =>
+            index === connectionIdx ? input.connection : connection
+          )
+        : prev.connections
+
+  const nextLifecycle = {
+    ...prev.lifecycle,
+    ...(input.lifecycle ?? {}),
+  }
+  const nextLabel = labelTrimmed ? labelTrimmed : prev.label
+  const nextPreferredConnectionId = prev.preferredConnectionId ?? input.connection.id
+  const changed =
+    nextLabel !== prev.label ||
+    nextPreferredConnectionId !== prev.preferredConnectionId ||
+    !hostLifecycleEquals(prev.lifecycle, nextLifecycle) ||
+    !hadConnection ||
+    connectionChanged
+
+  if (!changed) {
+    return existing
+  }
+
+  const nextProfile: HostProfile = {
+    ...prev,
+    label: nextLabel,
+    lifecycle: nextLifecycle,
+    connections: nextConnections,
+    preferredConnectionId: nextPreferredConnectionId,
+    updatedAt: now,
+  }
+
+  const next = [...existing]
+  next[idx] = nextProfile
+  return next
+}
+
+function reconcileManagedHostInProfiles(input: {
+  profiles: HostProfile[]
+  managed: ManagedHostReconciliationInput
+  now?: string
+}): HostProfile[] {
+  const connection = normalizeManagedTransportConnection(input.managed)
+  if (!connection) {
+    throw new Error(`Unsupported managed daemon transport: ${input.managed.transportType}`)
+  }
+
+  const nextBase = input.profiles.filter((daemon) => {
+    return !daemon.lifecycle.managed || daemon.serverId === input.managed.serverId
+  })
+  const profiles = nextBase.length === input.profiles.length ? input.profiles : nextBase
+
+  return upsertHostConnectionInProfiles({
+    profiles,
+    serverId: input.managed.serverId,
+    label: input.managed.hostname ?? undefined,
+    lifecycle: {
+      managed: true,
+      managedRuntimeId: input.managed.runtimeId,
+      managedRuntimeVersion: input.managed.runtimeVersion,
+      associatedServerId:
+        input.managed.associatedServerId?.trim() || input.managed.serverId,
+    },
+    connection,
+    now: input.now,
+  })
+}
+
+export function reconcileDesktopStartupRegistry(
+  input: DesktopStartupReconciliationInput
+): HostProfile[] {
+  let next = input.existing
+
+  if (input.managed) {
+    next = reconcileManagedHostInProfiles({
+      profiles: next,
+      managed: input.managed,
+      now: input.now,
+    })
+  }
+
+  if (input.localhost) {
+    next = upsertHostConnectionInProfiles({
+      profiles: next,
+      serverId: input.localhost.serverId,
+      label: input.localhost.hostname ?? undefined,
+      connection: {
+        id: `direct:${input.localhost.endpoint}`,
+        type: 'directTcp',
+        endpoint: input.localhost.endpoint,
+      },
+      now: input.now,
+    })
+  }
+
+  return next
+}
+
+export async function resolveManagedDesktopStartupStatus(input: {
+  settings: Pick<AppSettings, 'manageBuiltInDaemon'>
+  startManagedDaemonFn?: () => Promise<ManagedDaemonStatus>
+  getManagedDaemonStatusFn?: () => Promise<ManagedDaemonStatus>
+}): Promise<ManagedDaemonStatus> {
+  if (input.settings.manageBuiltInDaemon) {
+    return await (input.startManagedDaemonFn ?? startManagedDaemon)()
+  }
+
+  return await (input.getManagedDaemonStatusFn ?? getManagedDaemonStatus)()
+}
+
+async function probeManagedStartupTarget(input: {
+  managedDaemon: ManagedDaemonStatus
+  cancelled?: () => boolean
+}): Promise<ManagedHostReconciliationInput | null> {
+  const connection = normalizeManagedTransportConnection({
+    transportType: input.managedDaemon.transportType,
+    transportPath: input.managedDaemon.transportPath,
+  })
+  if (!connection) {
+    return null
+  }
+
+  let serverId = input.managedDaemon.serverId
+  let hostname = input.managedDaemon.hostname
+
+  if (!serverId) {
+    const probed = await probeConnection(connection, {
+      timeoutMs: DEFAULT_LOCAL_TRANSPORT_BOOTSTRAP_TIMEOUT_MS,
+    })
+    if (input.cancelled?.()) {
+      throw new Error('Managed daemon bootstrap cancelled')
+    }
+    serverId = probed.serverId
+    hostname = hostname ?? probed.hostname
+  }
+
+  return {
+    serverId,
+    hostname,
+    runtimeId: input.managedDaemon.runtimeId,
+    runtimeVersion: input.managedDaemon.runtimeVersion,
+    transportType: input.managedDaemon.transportType,
+    transportPath: input.managedDaemon.transportPath,
+    associatedServerId: input.managedDaemon.serverId,
+  }
+}
+
+async function probeManagedConnectionUntilReady(
+  input: {
+    managedDaemon: ManagedDaemonStatus
+    cancelled?: () => boolean
+  }
+): Promise<ManagedHostReconciliationInput | null> {
+  const startedAt = Date.now()
+  let lastError: unknown = null
+
+  while (Date.now() - startedAt < DEFAULT_LOCAL_TRANSPORT_BOOTSTRAP_DEADLINE_MS) {
+    if (input.cancelled?.()) {
+      throw new Error('Managed daemon bootstrap cancelled')
+    }
+
+    try {
+      return await probeManagedStartupTarget(input)
+    } catch (error) {
+      lastError = error
+      if (input.cancelled?.()) {
+        throw error
+      }
+      await sleep(DEFAULT_LOCAL_TRANSPORT_BOOTSTRAP_RETRY_MS)
+    }
+  }
+
+  throw lastError ?? new Error('Managed daemon bootstrap timed out')
 }
 
 export function hostHasDirectEndpoint(host: HostProfile, endpoint: string): boolean {
@@ -81,7 +545,7 @@ export function hostHasDirectEndpoint(host: HostProfile, endpoint: string): bool
     return false
   }
   return host.connections.some(
-    (connection) => connection.type === 'direct' && connection.endpoint === normalized
+    (connection) => connection.type === 'directTcp' && connection.endpoint === normalized
   )
 }
 
@@ -99,7 +563,9 @@ export function useDaemonRegistry(): DaemonRegistryContextValue {
 
 export function DaemonRegistryProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient()
+  const desktopStartupReconciledRef = useRef(false)
   const localhostBootstrapAttemptedRef = useRef(false)
+  const { settings, isLoading: settingsLoading } = useAppSettings()
   const {
     data: daemons = [],
     isPending,
@@ -123,10 +589,6 @@ export function DaemonRegistryProvider({ children }: { children: ReactNode }) {
     return queryClient.getQueryData<HostProfile[]>(DAEMON_REGISTRY_QUERY_KEY) ?? daemons
   }, [queryClient, daemons])
 
-  const markDefaultLocalhostBootstrapHandled = useCallback(async () => {
-    await AsyncStorage.setItem(DEFAULT_LOCALHOST_BOOTSTRAP_KEY, '1')
-  }, [])
-
   const updateHost = useCallback(
     async (serverId: string, updates: UpdateHostInput) => {
       const next = readDaemons().map((daemon) =>
@@ -146,23 +608,15 @@ export function DaemonRegistryProvider({ children }: { children: ReactNode }) {
   const removeHost = useCallback(
     async (serverId: string) => {
       const existing = readDaemons()
-      const removedHost = existing.find((daemon) => daemon.serverId === serverId) ?? null
       const remaining = existing.filter((daemon) => daemon.serverId !== serverId)
       await persist(remaining)
-      if (removedHost && hostHasDirectEndpoint(removedHost, DEFAULT_LOCALHOST_ENDPOINT)) {
-        await markDefaultLocalhostBootstrapHandled()
-      }
     },
-    [markDefaultLocalhostBootstrapHandled, persist, readDaemons]
+    [persist, readDaemons]
   )
 
   const removeConnection = useCallback(
     async (serverId: string, connectionId: string) => {
       const existing = readDaemons()
-      const removedConnection =
-        existing
-          .find((daemon) => daemon.serverId === serverId)
-          ?.connections.find((connection) => connection.id === connectionId) ?? null
       const now = new Date().toISOString()
       const next = existing
         .map((daemon) => {
@@ -184,64 +638,28 @@ export function DaemonRegistryProvider({ children }: { children: ReactNode }) {
         })
         .filter((entry): entry is HostProfile => entry !== null)
       await persist(next)
-      if (removedConnection && isDefaultLocalhostConnection(removedConnection)) {
-        await markDefaultLocalhostBootstrapHandled()
-      }
     },
-    [markDefaultLocalhostBootstrapHandled, persist, readDaemons]
+    [persist, readDaemons]
   )
 
   const upsertHostConnection = useCallback(
-    async (
-      input: {
-        serverId: string
-        label?: string
-      } & ({ connection: DirectHostConnection } | { connection: RelayHostConnection })
-    ) => {
-      const existing = readDaemons()
+    async (input: {
+      serverId: string
+      label?: string
+      lifecycle?: Partial<HostLifecycle>
+      connection: HostConnection
+    }) => {
       const now = new Date().toISOString()
-      const serverId = input.serverId.trim()
-      if (!serverId) {
-        throw new Error('serverId is required')
-      }
-
-      const labelTrimmed = input.label?.trim() ?? ''
-      const derivedLabel = labelTrimmed || serverId
-
-      const idx = existing.findIndex((d) => d.serverId === serverId)
-      if (idx === -1) {
-        const profile: HostProfile = {
-          serverId,
-          label: derivedLabel,
-          connections: [input.connection],
-          preferredConnectionId: input.connection.id,
-          createdAt: now,
-          updatedAt: now,
-        }
-        const next = [...existing, profile]
-        await persist(next)
-        return profile
-      }
-
-      const prev = existing[idx]!
-      const connectionIdx = prev.connections.findIndex((c) => c.id === input.connection.id)
-      const nextConnections =
-        connectionIdx === -1
-          ? [...prev.connections, input.connection]
-          : prev.connections.map((c, i) => (i === connectionIdx ? input.connection : c))
-
-      const nextProfile: HostProfile = {
-        ...prev,
-        label: labelTrimmed ? labelTrimmed : prev.label,
-        connections: nextConnections,
-        preferredConnectionId: prev.preferredConnectionId ?? input.connection.id,
-        updatedAt: now,
-      }
-
-      const next = [...existing]
-      next[idx] = nextProfile
+      const next = upsertHostConnectionInProfiles({
+        profiles: readDaemons(),
+        serverId: input.serverId,
+        label: input.label,
+        lifecycle: input.lifecycle,
+        connection: input.connection,
+        now,
+      })
       await persist(next)
-      return nextProfile
+      return next.find((daemon) => daemon.serverId === input.serverId) as HostProfile
     },
     [persist, readDaemons]
   )
@@ -249,15 +667,14 @@ export function DaemonRegistryProvider({ children }: { children: ReactNode }) {
   const upsertDirectConnection = useCallback(
     async (input: { serverId: string; endpoint: string; label?: string }) => {
       const endpoint = normalizeHostPort(input.endpoint)
-      const connection: DirectHostConnection = {
-        id: `direct:${endpoint}`,
-        type: 'direct',
-        endpoint,
-      }
       return upsertHostConnection({
         serverId: input.serverId,
         label: input.label,
-        connection,
+        connection: {
+          id: `direct:${endpoint}`,
+          type: 'directTcp',
+          endpoint,
+        },
       })
     },
     [upsertHostConnection]
@@ -265,24 +682,121 @@ export function DaemonRegistryProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (isPending) return
+    if (settingsLoading) return
+    if (!shouldUseManagedDesktopDaemon()) return
+    if (desktopStartupReconciledRef.current) return
+    desktopStartupReconciledRef.current = true
+
+    let cancelled = false
+
+    const reconcileDesktopStartup = async () => {
+      try {
+        const isE2E = await AsyncStorage.getItem(E2E_STORAGE_KEY)
+        if (cancelled || isE2E) {
+          return
+        }
+
+        let managed: ManagedHostReconciliationInput | null = null
+        try {
+          const managedDaemon = await resolveManagedDesktopStartupStatus({
+            settings,
+          })
+          if (managedDaemon.daemonRunning) {
+            managed = await probeManagedConnectionUntilReady({
+              managedDaemon,
+              cancelled: () => cancelled,
+            })
+          }
+        } catch (managedBootstrapError) {
+          if (!cancelled) {
+            console.warn(
+              '[DaemonRegistry] Failed to reconcile managed daemon transport',
+              managedBootstrapError
+            )
+          }
+        }
+
+        let localhost: LocalhostHostReconciliationInput | null = null
+
+        try {
+          const { serverId, hostname } = await probeConnection(
+            {
+              id: `bootstrap:${DEFAULT_LOCALHOST_ENDPOINT}`,
+              type: 'directTcp',
+              endpoint: DEFAULT_LOCALHOST_ENDPOINT,
+            },
+            { timeoutMs: DEFAULT_LOCALHOST_BOOTSTRAP_TIMEOUT_MS }
+          )
+          if (!cancelled) {
+            localhost = {
+              serverId,
+              hostname,
+              endpoint: DEFAULT_LOCALHOST_ENDPOINT,
+            }
+          }
+        } catch {
+          // Best-effort reconciliation only; keep startup resilient if localhost isn't reachable.
+        }
+
+        if (cancelled) {
+          return
+        }
+
+        const existing = readDaemons()
+        const next = reconcileDesktopStartupRegistry({
+          existing,
+          managed,
+          localhost,
+        })
+
+        if (next !== existing) {
+          await persist(next)
+        }
+      } catch (reconciliationError) {
+        if (cancelled) return
+        console.warn(
+          '[DaemonRegistry] Failed to reconcile desktop startup host connections',
+          reconciliationError
+        )
+      }
+    }
+
+    void reconcileDesktopStartup()
+
+    return () => {
+      cancelled = true
+    }
+  }, [
+    isPending,
+    persist,
+    readDaemons,
+    settings.manageBuiltInDaemon,
+    settingsLoading,
+  ])
+
+  useEffect(() => {
+    if (isPending) return
+    if (shouldUseManagedDesktopDaemon()) return
     if (localhostBootstrapAttemptedRef.current) return
     localhostBootstrapAttemptedRef.current = true
 
     let cancelled = false
 
-    const bootstrapDefaultLocalhost = async () => {
+    const bootstrapLocalhost = async () => {
       try {
-        const [isE2E, alreadyHandled] = await Promise.all([
-          AsyncStorage.getItem(E2E_STORAGE_KEY),
-          AsyncStorage.getItem(DEFAULT_LOCALHOST_BOOTSTRAP_KEY),
-        ])
-        if (cancelled || isE2E || alreadyHandled) {
+        const isE2E = await AsyncStorage.getItem(E2E_STORAGE_KEY)
+        if (cancelled || isE2E) {
+          return
+        }
+
+        const alreadyHandled = await AsyncStorage.getItem(DEFAULT_LOCALHOST_BOOTSTRAP_KEY)
+        if (cancelled || alreadyHandled) {
           return
         }
 
         const existing = readDaemons()
         if (registryHasDirectEndpoint(existing, DEFAULT_LOCALHOST_ENDPOINT)) {
-          await markDefaultLocalhostBootstrapHandled()
+          await AsyncStorage.setItem(DEFAULT_LOCALHOST_BOOTSTRAP_KEY, '1')
           return
         }
 
@@ -290,7 +804,7 @@ export function DaemonRegistryProvider({ children }: { children: ReactNode }) {
           const { serverId, hostname } = await probeConnection(
             {
               id: `bootstrap:${DEFAULT_LOCALHOST_ENDPOINT}`,
-              type: 'direct',
+              type: 'directTcp',
               endpoint: DEFAULT_LOCALHOST_ENDPOINT,
             },
             { timeoutMs: DEFAULT_LOCALHOST_BOOTSTRAP_TIMEOUT_MS }
@@ -302,25 +816,26 @@ export function DaemonRegistryProvider({ children }: { children: ReactNode }) {
             endpoint: DEFAULT_LOCALHOST_ENDPOINT,
             label: hostname ?? undefined,
           })
-          await markDefaultLocalhostBootstrapHandled()
+          await AsyncStorage.setItem(DEFAULT_LOCALHOST_BOOTSTRAP_KEY, '1')
         } catch {
           // Best-effort bootstrap only; keep startup resilient if localhost isn't reachable.
         }
       } catch (bootstrapError) {
         if (cancelled) return
-        console.warn(
-          '[DaemonRegistry] Failed to bootstrap default localhost connection',
-          bootstrapError
-        )
+        console.warn('[DaemonRegistry] Failed to bootstrap host connections', bootstrapError)
       }
     }
 
-    void bootstrapDefaultLocalhost()
+    void bootstrapLocalhost()
 
     return () => {
       cancelled = true
     }
-  }, [isPending, markDefaultLocalhostBootstrapHandled, readDaemons, upsertDirectConnection])
+  }, [
+    isPending,
+    readDaemons,
+    upsertDirectConnection,
+  ])
 
   const upsertRelayConnection = useCallback(
     async (input: {
@@ -334,16 +849,15 @@ export function DaemonRegistryProvider({ children }: { children: ReactNode }) {
       if (!daemonPublicKeyB64) {
         throw new Error('daemonPublicKeyB64 is required')
       }
-      const connection: RelayHostConnection = {
-        id: `relay:${relayEndpoint}`,
-        type: 'relay',
-        relayEndpoint,
-        daemonPublicKeyB64,
-      }
       return upsertHostConnection({
         serverId: input.serverId,
         label: input.label,
-        connection,
+        connection: {
+          id: `relay:${relayEndpoint}`,
+          type: 'relay',
+          relayEndpoint,
+          daemonPublicKeyB64,
+        },
       })
     },
     [upsertHostConnection]
@@ -394,108 +908,21 @@ export function DaemonRegistryProvider({ children }: { children: ReactNode }) {
   return <DaemonRegistryContext.Provider value={value}>{children}</DaemonRegistryContext.Provider>
 }
 
-type LegacyHostProfileV1 = {
-  id: string
-  label: string
-  endpoints?: unknown
-  daemonPublicKeyB64?: unknown
-  relay?: unknown
-  createdAt: string
-  updatedAt: string
-}
-
-function isHostProfileV2(value: unknown): value is HostProfile {
-  if (!value || typeof value !== 'object') return false
-  const obj = value as Record<string, unknown>
-  return (
-    typeof obj.serverId === 'string' &&
-    typeof obj.label === 'string' &&
-    Array.isArray(obj.connections) &&
-    typeof obj.createdAt === 'string' &&
-    typeof obj.updatedAt === 'string'
-  )
-}
-
 async function loadDaemonRegistryFromStorage(): Promise<HostProfile[]> {
   try {
     const stored = await AsyncStorage.getItem(REGISTRY_STORAGE_KEY)
-    if (stored) {
-      const parsed = JSON.parse(stored) as unknown
-      if (Array.isArray(parsed)) {
-        const v2 = parsed.filter((entry) => isHostProfileV2(entry)) as HostProfile[]
-        if (v2.length === parsed.length) {
-          return v2
-        }
-
-        // Hard migration from the previous in-repo schema (v1 HostProfile with `id/endpoints/relay`).
-        const migrated: HostProfile[] = parsed
-          .map((entry): HostProfile | null => {
-            if (!entry || typeof entry !== 'object') return null
-            const obj = entry as LegacyHostProfileV1
-            if (typeof obj.id !== 'string' || typeof obj.label !== 'string') return null
-
-            // Only keep stable daemon ids; discard transient entries to avoid confusing host selection.
-            if (!obj.id.startsWith('srv_')) return null
-
-            const now = new Date().toISOString()
-            const createdAt = typeof obj.createdAt === 'string' ? obj.createdAt : now
-            const updatedAt = typeof obj.updatedAt === 'string' ? obj.updatedAt : now
-
-            const connections: HostConnection[] = []
-
-            if (Array.isArray(obj.endpoints)) {
-              for (const endpointRaw of obj.endpoints) {
-                try {
-                  const endpoint = normalizeHostPort(String(endpointRaw))
-                  connections.push({ id: `direct:${endpoint}`, type: 'direct', endpoint })
-                } catch {
-                  // ignore invalid endpoint
-                }
-              }
-            }
-
-            const relayEndpointRaw =
-              obj.relay && typeof (obj.relay as any)?.endpoint === 'string'
-                ? String((obj.relay as any).endpoint)
-                : null
-            const daemonPublicKeyB64 =
-              typeof obj.daemonPublicKeyB64 === 'string' ? obj.daemonPublicKeyB64.trim() : ''
-
-            if (relayEndpointRaw && daemonPublicKeyB64) {
-              try {
-                const relayEndpoint = normalizeHostPort(relayEndpointRaw)
-                connections.push({
-                  id: `relay:${relayEndpoint}`,
-                  type: 'relay',
-                  relayEndpoint,
-                  daemonPublicKeyB64,
-                })
-              } catch {
-                // ignore invalid relay endpoint
-              }
-            }
-
-            if (connections.length === 0) return null
-
-            const preferredConnectionId: string | null = connections[0]?.id ?? null
-
-            return {
-              serverId: obj.id,
-              label: obj.label,
-              connections,
-              preferredConnectionId,
-              createdAt,
-              updatedAt,
-            }
-          })
-          .filter((entry): entry is HostProfile => entry !== null)
-
-        await AsyncStorage.setItem(REGISTRY_STORAGE_KEY, JSON.stringify(migrated))
-        return migrated
-      }
+    if (!stored) {
+      return []
     }
 
-    return []
+    const parsed = JSON.parse(stored) as unknown
+    if (!Array.isArray(parsed)) {
+      return []
+    }
+
+    return parsed
+      .map((entry) => normalizeStoredHostProfile(entry))
+      .filter((entry): entry is HostProfile => entry !== null)
   } catch (error) {
     console.error('[DaemonRegistry] Failed to load daemon registry', error)
     throw error

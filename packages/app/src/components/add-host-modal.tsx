@@ -103,13 +103,13 @@ function buildConnectionFailureCopy(endpoint: string, error: unknown): { title: 
     rawLower.includes("connection refused") ||
     rawLower.includes("err_connection_refused")
   ) {
-    detail = "Connection was refused. Is the daemon running on that host and port?";
+    detail = "Connection refused. Is the server running at this address?";
   } else if (rawLower.includes("enotfound") || rawLower.includes("not found")) {
     detail = "Host not found. Check the hostname and try again.";
   } else if (rawLower.includes("ehostunreach") || rawLower.includes("host is unreachable")) {
     detail = "Host is unreachable. Check your network and firewall.";
   } else if (rawLower.includes("certificate") || rawLower.includes("tls") || rawLower.includes("ssl")) {
-    detail = "TLS/certificate error. This app expects a daemon reachable over the local network or via relay.";
+    detail = "TLS error. Direct connections use an unencrypted local connection. Use relay for remote access.";
   } else if (raw) {
     detail = "Unable to connect. Check the host/port and that the daemon is reachable.";
   } else {
@@ -179,7 +179,11 @@ export function AddHostModal({ visible, onClose, onCancel, onSaved, targetServer
       setIsSaving(true);
       setErrorMessage("");
 
-      const { serverId, hostname } = await probeConnection({ id: "probe", type: "direct", endpoint });
+      const { serverId, hostname } = await probeConnection({
+        id: "probe",
+        type: "directTcp",
+        endpoint,
+      });
       if (targetServerId && serverId !== targetServerId) {
         const message = `That endpoint belongs to ${serverId}, not ${targetServerId}.`;
         setErrorMessage(message);
@@ -217,7 +221,7 @@ export function AddHostModal({ visible, onClose, onCancel, onSaved, targetServer
 
   return (
     <AdaptiveModalSheet title="Direct connection" visible={visible} onClose={handleClose} testID="add-host-modal">
-      <Text style={styles.helper}>Connect to a daemon by entering host:port.</Text>
+      <Text style={styles.helper}>Enter the address of a Paseo server.</Text>
 
       <View style={styles.field}>
         <Text style={styles.label}>Host</Text>
@@ -225,7 +229,7 @@ export function AddHostModal({ visible, onClose, onCancel, onSaved, targetServer
           ref={hostInputRef}
           value={endpointRaw}
           onChangeText={setEndpointRaw}
-          placeholder="host:6767"
+          placeholder="hostname:port"
           placeholderTextColor={theme.colors.foregroundMuted}
           style={styles.input}
           autoCapitalize="none"

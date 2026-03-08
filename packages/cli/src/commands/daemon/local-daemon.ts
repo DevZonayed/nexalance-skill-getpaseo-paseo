@@ -289,7 +289,12 @@ export function resolveTcpHostFromListen(listen: string): string | null {
     return null
   }
 
-  if (normalized.startsWith('/') || normalized.startsWith('unix://')) {
+  if (
+    normalized.startsWith('/') ||
+    normalized.startsWith('unix://') ||
+    normalized.startsWith('pipe://') ||
+    normalized.startsWith('\\\\.\\pipe\\')
+  ) {
     return null
   }
 

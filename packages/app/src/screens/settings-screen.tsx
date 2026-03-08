@@ -51,6 +51,42 @@ const delay = (ms: number) =>
     }, ms);
   });
 
+function formatHostConnectionLabel(connection: HostConnection): string {
+  if (connection.type === "relay") {
+    return `Relay (${connection.relayEndpoint})`;
+  }
+  if (connection.type === "directSocket") {
+    return `Local (${connection.path})`;
+  }
+  if (connection.type === "directPipe") {
+    return `Local (${connection.path})`;
+  }
+  return `TCP (${connection.endpoint})`;
+}
+
+function formatActiveConnectionBadge(input: {
+  activeConnection: { type: HostConnection["type"]; display: string } | null;
+  theme: ReturnType<typeof useUnistyles>["theme"];
+}) {
+  const { activeConnection, theme } = input;
+  if (!activeConnection) {
+    return null;
+  }
+  if (activeConnection.type === "relay") {
+    return { icon: <Globe size={theme.iconSize.xs} color={theme.colors.foregroundMuted} />, text: "Relay" };
+  }
+  if (activeConnection.type === "directSocket") {
+    return { icon: <Monitor size={theme.iconSize.xs} color={theme.colors.foregroundMuted} />, text: "Local" };
+  }
+  if (activeConnection.type === "directPipe") {
+    return { icon: <Monitor size={theme.iconSize.xs} color={theme.colors.foregroundMuted} />, text: "Local" };
+  }
+  return {
+    icon: <Monitor size={theme.iconSize.xs} color={theme.colors.foregroundMuted} />,
+    text: activeConnection.display,
+  };
+}
+
 const styles = StyleSheet.create((theme) => ({
   loadingContainer: {
     flex: 1,
@@ -669,7 +705,7 @@ export default function SettingsScreen() {
   );
 
   const restartConfirmationMessage =
-    "This will immediately stop the Paseo daemon process. The app will disconnect until it restarts.";
+    "This will restart the daemon. The app will reconnect automatically.";
 
   if (isLoading) {
     return (
@@ -1045,14 +1081,10 @@ function HostDetailModal({
           ? "rgba(248, 113, 113, 0.1)"
           : "rgba(161, 161, 170, 0.1)";
   const connectionBadge = (() => {
-    if (!activeConnection) return null;
-    if (activeConnection.type === "relay") {
-      return { icon: <Globe size={theme.iconSize.xs} color={theme.colors.foregroundMuted} />, text: "Relay" };
-    }
-    return {
-      icon: <Monitor size={theme.iconSize.xs} color={theme.colors.foregroundMuted} />,
-      text: activeConnection.display,
-    };
+    return formatActiveConnectionBadge({
+      activeConnection,
+      theme,
+    });
   })();
   const versionBadgeText = formatDaemonVersionBadge(daemonVersion);
   const connectionError = typeof lastError === "string" && lastError.trim().length > 0 ? lastError.trim() : null;
@@ -1138,9 +1170,7 @@ function HostDetailModal({
                     latencyError={probe?.status === "unavailable"}
                     onRemove={() => {
                       const title =
-                        conn.type === "relay"
-                          ? `Relay (${conn.relayEndpoint})`
-                          : `Direct (${conn.endpoint})`;
+                        formatHostConnectionLabel(conn);
                       setPendingRemoveConnection({ serverId: host.serverId, connectionId: conn.id, title });
                     }}
                   />
@@ -1276,9 +1306,7 @@ function ConnectionRow({
 }) {
   const { theme } = useUnistyles();
   const title =
-    connection.type === "relay"
-      ? `Relay (${connection.relayEndpoint})`
-      : `Direct (${connection.endpoint})`;
+    formatHostConnectionLabel(connection);
 
   const latencyText = (() => {
     if (latencyLoading) return "...";
@@ -1363,14 +1391,10 @@ function DaemonCard({
           ? "rgba(248, 113, 113, 0.1)"
           : "rgba(161, 161, 170, 0.1)";
   const connectionBadge = (() => {
-    if (!activeConnection) return null;
-    if (activeConnection.type === "relay") {
-      return { icon: <Globe size={theme.iconSize.xs} color={theme.colors.foregroundMuted} />, text: "Relay" };
-    }
-    return {
-      icon: <Monitor size={theme.iconSize.xs} color={theme.colors.foregroundMuted} />,
-      text: activeConnection.display,
-    };
+    return formatActiveConnectionBadge({
+      activeConnection,
+      theme,
+    });
   })();
   const versionBadgeText = formatDaemonVersionBadge(daemonVersion);
 

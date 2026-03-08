@@ -7,7 +7,7 @@ import {
 } from "./connection-selection";
 
 function makeDirect(id: string, endpoint: string): HostConnection {
-  return { id, type: "direct", endpoint };
+  return { id, type: "directTcp", endpoint };
 }
 
 function makeRelay(
