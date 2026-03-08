@@ -233,6 +233,20 @@ function deriveRetryDisposition(input: {
     : "retry-scroll";
 }
 
+function getDetailedMeasurementState(
+  measurementState: ControllerMeasurementState
+): Record<string, unknown> {
+  return {
+    containerKey: measurementState.containerKey,
+    viewportWidth: measurementState.viewportWidth,
+    viewportHeight: measurementState.viewportHeight,
+    contentHeight: measurementState.contentHeight,
+    offsetY: measurementState.offsetY,
+    viewportMeasuredForKey: measurementState.viewportMeasuredForKey,
+    contentMeasuredForKey: measurementState.contentMeasuredForKey,
+  };
+}
+
 function createBottomAnchorControllerDriver(
   input: CreateBottomAnchorControllerDriverInput
 ): BottomAnchorControllerDriver {
@@ -344,18 +358,37 @@ function createBottomAnchorControllerDriver(
         });
 
         if (verificationBlockedReason) {
+          input.log(
+            "attempt_verified",
+            getLogContext({
+              verificationPhase: "blocked",
+              verificationBlockedReason,
+              retries: attemptContext.retries,
+              measurementState: getDetailedMeasurementState(measurementState),
+            })
+          );
           pendingVerification = attemptContext;
           setBlockedReason(verificationBlockedReason);
           return;
         }
 
         const verifiedNearBottom = input.isNearBottom();
+        const retryDisposition = verifiedNearBottom
+          ? null
+          : deriveRetryDisposition({
+              mode,
+              retries: attemptContext.retries,
+              verificationRetryMode:
+                input.getTransportBehavior().verificationRetryMode,
+            });
 
         input.log(
           "attempt_verified",
           getLogContext({
             verifiedNearBottom,
             retries: attemptContext.retries,
+            retryDisposition,
+            measurementState: getDetailedMeasurementState(measurementState),
           })
         );
 
@@ -369,12 +402,6 @@ function createBottomAnchorControllerDriver(
           setBlockedReason(null);
           return;
         }
-
-        const retryDisposition = deriveRetryDisposition({
-          mode,
-          retries: attemptContext.retries,
-          verificationRetryMode: input.getTransportBehavior().verificationRetryMode,
-        });
 
         if (retryDisposition === "retry-verify") {
           pendingVerification = {
@@ -397,7 +424,11 @@ function createBottomAnchorControllerDriver(
 
         input.log(
           "attempt_failed",
-          getLogContext({ retries: attemptContext.retries })
+          getLogContext({
+            retries: attemptContext.retries,
+            retryDisposition,
+            measurementState: getDetailedMeasurementState(measurementState),
+          })
         );
         pendingVerification = null;
         if (isRequestAttempt && currentRequest) {
@@ -443,10 +474,11 @@ function createBottomAnchorControllerDriver(
       kind: "attempt",
       callback: () => {
         attemptHandle = null;
+        const measurementState = input.getMeasurementState();
         const nextBlockedReason = deriveBottomAnchorBlockedReason({
           pendingRequest,
           isAuthoritativeHistoryReady: input.getIsAuthoritativeHistoryReady(),
-          measurementState: input.getMeasurementState(),
+          measurementState,
           pendingVerificationRequestId: pendingVerification?.requestId ?? null,
         });
         setBlockedReason(nextBlockedReason);
@@ -462,6 +494,16 @@ function createBottomAnchorControllerDriver(
           !shouldAttemptForPendingRequest &&
           !shouldAttemptForStickyVerification
         ) {
+          input.log(
+            "attempt_started",
+            getLogContext({
+              attemptPhase: "skipped",
+              nextBlockedReason,
+              shouldAttemptForPendingRequest,
+              shouldAttemptForStickyVerification,
+              measurementState: getDetailedMeasurementState(measurementState),
+            })
+          );
           return;
         }
 

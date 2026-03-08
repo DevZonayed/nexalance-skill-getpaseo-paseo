@@ -245,6 +245,32 @@ function forceScrollContainerToBottom(
   }
 }
 
+function logWebBottomAnchorTransport(
+  event: string,
+  details: Record<string, unknown>
+): void {
+  if (!(globalThis as { __DEV__?: boolean }).__DEV__) {
+    return;
+  }
+  console.debug("[BottomAnchorTransport]", event, details);
+}
+
+function getResolvedWebScrollContainerMetrics(
+  refs: StreamRenderRefs
+): Record<string, unknown> {
+  const scrollNode = resolveWebScrollContainerNode(refs);
+  if (!scrollNode) {
+    return { hasScrollNode: false };
+  }
+  return {
+    hasScrollNode: true,
+    scrollTop: scrollNode.scrollTop,
+    scrollHeight: scrollNode.scrollHeight,
+    clientHeight: scrollNode.clientHeight,
+    tagName: scrollNode.tagName,
+  };
+}
+
 function createStreamRenderStrategy(
   config: StreamRenderStrategyConfig
 ): StreamRenderStrategy {
@@ -376,12 +402,28 @@ function createForwardStreamStrategy(): StreamRenderStrategy {
         0,
         metrics.contentHeight - metrics.viewportHeight
       );
+      logWebBottomAnchorTransport("forward_scroll_to_bottom_start", {
+        animated,
+        bottomOffset,
+        metrics,
+        usedFlatList: Boolean(refs.flatListRef.current),
+        ...getResolvedWebScrollContainerMetrics(refs),
+      });
       if (refs.flatListRef.current) {
         refs.flatListRef.current.scrollToEnd?.({ animated });
         refs.flatListRef.current.scrollToOffset?.({
           offset: bottomOffset,
           animated,
         });
+        if (typeof requestAnimationFrame === "function") {
+          requestAnimationFrame(() => {
+            logWebBottomAnchorTransport("forward_scroll_to_bottom_after_flatlist", {
+              animated,
+              bottomOffset,
+              ...getResolvedWebScrollContainerMetrics(refs),
+            });
+          });
+        }
         return;
       }
       const usedAnchor = scrollAnchorIntoView({ refs, animated });
@@ -394,6 +436,16 @@ function createForwardStreamStrategy(): StreamRenderStrategy {
         animated,
       });
       forceScrollContainerToBottom(refs, bottomOffset);
+      if (typeof requestAnimationFrame === "function") {
+        requestAnimationFrame(() => {
+          logWebBottomAnchorTransport("forward_scroll_to_bottom_after_scrollview", {
+            animated,
+            bottomOffset,
+            usedAnchor,
+            ...getResolvedWebScrollContainerMetrics(refs),
+          });
+        });
+      }
     },
     scrollToOffset: ({ refs, offset, animated }) => {
       if (refs.flatListRef.current) {
