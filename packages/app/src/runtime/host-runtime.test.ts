@@ -990,7 +990,7 @@ describe("HostRuntimeStore", () => {
       connections: [
         {
           id: "direct:lan:6767",
-          type: "direct",
+          type: "directTcp",
           endpoint: "lan:6767",
         },
       ],
