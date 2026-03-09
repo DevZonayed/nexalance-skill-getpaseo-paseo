@@ -8,7 +8,11 @@ if (!hasDraggableFlatlist) {
   process.exit(0);
 }
 
-const cmd = process.platform === "win32" ? "patch-package.cmd" : "patch-package";
-const result = spawnSync(cmd, { stdio: "inherit" });
+const isWindows = process.platform === "win32";
+const cmd = isWindows ? "patch-package.cmd" : "patch-package";
+const result = spawnSync(cmd, [], {
+  shell: isWindows,
+  stdio: "inherit",
+  windowsHide: true,
+});
 process.exit(result.status ?? 1);
-
