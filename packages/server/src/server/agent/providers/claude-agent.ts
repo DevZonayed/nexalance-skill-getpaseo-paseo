@@ -363,14 +363,18 @@ type ClaudeAgentSessionOptions = {
   logger: Logger;
 };
 
-function resolveClaudeBinary(): string {
+function whichClaude(): string | null {
   try {
-    const claudePath = execSync("which claude", { encoding: "utf8" }).trim();
-    if (claudePath) {
-      return claudePath;
-    }
+    return execSync("which claude", { encoding: "utf8", env: process.env }).trim() || null;
   } catch {
-    // fall through
+    return null;
+  }
+}
+
+function resolveClaudeBinary(): string {
+  const claudePath = whichClaude();
+  if (claudePath) {
+    return claudePath;
   }
   throw new Error(
     "Claude CLI not found. Install claude or configure agents.providers.claude.command.mode='replace'."
@@ -1410,11 +1414,7 @@ export class ClaudeAgentClient implements AgentClient {
     this.defaults = options.defaults;
     this.logger = options.logger.child({ module: "agent", provider: "claude" });
     this.runtimeSettings = options.runtimeSettings;
-    try {
-      this.claudePath = execSync("which claude", { encoding: "utf8" }).trim() || null;
-    } catch {
-      this.claudePath = null;
-    }
+    this.claudePath = whichClaude();
     if (this.claudePath) {
       try {
         const version = execSync(`${this.claudePath} --version`, { encoding: "utf8" }).trim();
@@ -1423,7 +1423,7 @@ export class ClaudeAgentClient implements AgentClient {
         this.logger.info({ claudePath: this.claudePath }, "Resolved Claude binary (version unknown)");
       }
     } else {
-      this.logger.warn("Claude binary not found via 'which claude'; SDK will use bundled binary");
+      this.logger.warn("Claude binary not found in PATH; SDK will use bundled binary");
     }
   }
 
