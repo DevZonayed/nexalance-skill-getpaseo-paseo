@@ -133,6 +133,7 @@ function createDriverHarness(input?: {
   });
   const modeChanges: BottomAnchorMode[] = [];
   const warnings: Array<{ agentId: string; reason: string }> = [];
+  const logs: Array<{ event: string; details: Record<string, unknown> }> = [];
   const driver = __private__.createBottomAnchorControllerDriver({
     getAgentId: () => context.agentId,
     getIsAuthoritativeHistoryReady: () => context.authoritativeReady,
@@ -144,7 +145,9 @@ function createDriverHarness(input?: {
     onModeChange: (mode) => {
       modeChanges.push(mode);
     },
-    log: () => {},
+    log: (event, details) => {
+      logs.push({ event, details });
+    },
     warn: (details) => warnings.push(details),
     scheduleFrame: (params) => scheduler.schedule(params),
     cancelFrame: (handle) => scheduler.cancel(handle),
@@ -156,6 +159,7 @@ function createDriverHarness(input?: {
     scheduler,
     scrollToBottom,
     modeChanges,
+    logs,
     warnings,
   };
 }
@@ -365,6 +369,122 @@ describe("bottom anchor controller driver", () => {
     expect(harness.scrollToBottom).toHaveBeenCalledTimes(1);
     expect(harness.warnings).toEqual([]);
     expect(harness.driver.getSnapshot().pendingRequest).toBeNull();
+  });
+
+  it("does not stay blocked on post-layout verification after a retry-scroll request", () => {
+    const harness = createDriverHarness({
+      measurementState: createMeasurementState({
+        containerKey: "web-partial-virtualized",
+        viewportWidth: 828,
+        viewportHeight: 846,
+        contentHeight: 14322,
+        offsetY: 0,
+        viewportMeasuredForKey: "web-partial-virtualized",
+        contentMeasuredForKey: "web-partial-virtualized",
+      }),
+      isNearBottom: false,
+    });
+
+    harness.scrollToBottom.mockImplementation(() => {
+      harness.context.measurementState.offsetY = 13476;
+    });
+
+    harness.driver.applyRouteRequest({
+      agentId: "agent-1",
+      reason: "resume",
+      requestKey: "route:agent-1:resume",
+    });
+
+    harness.scheduler.flushFrame();
+    expect(harness.scrollToBottom).toHaveBeenCalledTimes(1);
+
+    harness.context.measurementState.contentHeight = 14804;
+    harness.context.nearBottom = false;
+    harness.driver.handleContentSizeChange({
+      previousContentHeight: 14322,
+      contentHeight: 14804,
+    });
+
+    harness.scheduler.flushFrame();
+
+    expect(harness.driver.getSnapshot()).toMatchObject({
+      pendingRequest: {
+        reason: "resume",
+      },
+      pendingVerification: {
+        requestId: 1,
+        retries: 1,
+      },
+    });
+
+    harness.scheduler.flushFrame();
+
+    expect(harness.scrollToBottom).toHaveBeenCalledTimes(2);
+    expect(harness.driver.getSnapshot()).toMatchObject({
+      blockedReason: "waiting_for_post_layout_verification",
+      pendingRequest: {
+        reason: "resume",
+      },
+      pendingVerification: {
+        requestId: 1,
+      },
+    });
+  });
+
+  it("does not fulfill a web partial-virtualized resume request before a confirmation pass", () => {
+    const harness = createDriverHarness({
+      measurementState: createMeasurementState({
+        containerKey: "web-partial-virtualized",
+        viewportWidth: 828,
+        viewportHeight: 846,
+        contentHeight: 14322,
+        offsetY: 0,
+        viewportMeasuredForKey: "web-partial-virtualized",
+        contentMeasuredForKey: "web-partial-virtualized",
+      }),
+      isNearBottom: false,
+    });
+
+    harness.scrollToBottom.mockImplementation(() => {
+      harness.context.measurementState.offsetY = Math.max(
+        0,
+        harness.context.measurementState.contentHeight -
+          harness.context.measurementState.viewportHeight
+      );
+      harness.context.nearBottom = true;
+    });
+
+    harness.driver.applyRouteRequest({
+      agentId: "agent-1",
+      reason: "resume",
+      requestKey: "route:agent-1:resume-confirmation",
+    });
+
+    harness.scheduler.flushFrame();
+    harness.scheduler.flushFrame();
+
+    expect(harness.driver.getSnapshot()).toMatchObject({
+      pendingRequest: {
+        reason: "resume",
+      },
+      blockedReason: "waiting_for_post_layout_verification",
+    });
+
+    harness.context.measurementState.contentHeight = 16230;
+    harness.context.nearBottom = false;
+    harness.driver.handleContentSizeChange({
+      previousContentHeight: 14322,
+      contentHeight: 16230,
+    });
+
+    harness.scheduler.flushFrame();
+    harness.scheduler.flushFrame();
+    harness.scheduler.flushFrame();
+
+    expect(harness.scrollToBottom).toHaveBeenCalledTimes(2);
+    expect(harness.driver.getSnapshot().pendingRequest).toMatchObject({
+      reason: "resume",
+    });
   });
 
   it("keeps sticky-bottom during viewport growth until bottom is re-verified", () => {

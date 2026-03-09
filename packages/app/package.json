@@ -51,6 +51,7 @@
     "@react-navigation/elements": "^2.6.3",
     "@react-navigation/native": "^7.1.8",
     "@tanstack/react-query": "^5.90.11",
+    "@tanstack/react-virtual": "^3.13.21",
     "@tauri-apps/api": "^2.9.1",
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/addon-unicode11": "^0.9.0",

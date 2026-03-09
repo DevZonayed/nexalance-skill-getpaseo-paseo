@@ -1,8 +1,5 @@
 import {
-  Fragment,
-  createElement,
   forwardRef,
-  isValidElement,
   useCallback,
   useEffect,
   useImperativeHandle,
@@ -10,23 +7,14 @@ import {
   useRef,
   useState,
 } from "react";
-import type { ComponentType, ReactElement, ReactNode } from "react";
 import {
   View,
   Text,
   Pressable,
-  FlatList,
-  ScrollView,
-  ListRenderItemInfo,
-  LayoutChangeEvent,
-  NativeScrollEvent,
-  NativeSyntheticEvent,
   Platform,
   ActivityIndicator,
-  Keyboard,
 } from "react-native";
 import Markdown from "react-native-markdown-display";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, UnistylesRuntime, useUnistyles } from "react-native-unistyles";
 import { useMutation } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
@@ -65,29 +53,16 @@ import { ToolCallDetailsContent } from "./tool-call-details";
 import { QuestionFormCard } from "./question-form-card";
 import { ToolCallSheetProvider } from "./tool-call-sheet";
 import {
-  WebDesktopScrollbarOverlay,
-  useWebDesktopScrollbarMetrics,
-} from "./web-desktop-scrollbar";
-import {
   collectAssistantTurnContentForStreamRenderStrategy,
   getStreamEdgeSlotProps,
   getStreamNeighborItem,
-  isNearBottomForStreamRenderStrategy,
   orderHeadForStreamRenderStrategy,
   orderTailForStreamRenderStrategy,
-  resolveBottomAnchorTransportBehavior,
-  resolveWebScrollContainerNode,
   resolveStreamRenderStrategy,
   type StreamEdgeSlotProps,
+  type StreamViewportHandle,
 } from "./agent-stream-render-strategy";
 import {
-  getWebMountedRecentStreamItems,
-  getWebPartialVirtualizationThreshold,
-  splitWebVirtualizedHistory,
-  type IndexedStreamItem,
-} from "./agent-stream-web-virtualization";
-import {
-  useBottomAnchorController,
   type BottomAnchorLocalRequest,
   type BottomAnchorRouteRequest,
 } from "./use-bottom-anchor-controller";
@@ -103,23 +78,6 @@ const isToolSequenceItem = (item?: StreamItem) =>
 const AGENT_STREAM_LOG_TAG = "[AgentStreamView]";
 const STREAM_ITEM_LOG_MIN_COUNT = 200;
 const STREAM_ITEM_LOG_DELTA_THRESHOLD = 50;
-const NOOP_SEPARATORS: ListRenderItemInfo<StreamItem>["separators"] = {
-  highlight: () => {},
-  unhighlight: () => {},
-  updateProps: () => {},
-};
-
-function renderStreamEdgeComponent(
-  component: ReactElement | ComponentType<any> | null | undefined
-): ReactNode {
-  if (!component) {
-    return null;
-  }
-  if (isValidElement(component)) {
-    return component;
-  }
-  return createElement(component);
-}
 
 export interface AgentStreamViewHandle {
   scrollToBottom(reason?: BottomAnchorLocalRequest["reason"]): void;
@@ -145,9 +103,7 @@ export const AgentStreamView = forwardRef<AgentStreamViewHandle, AgentStreamView
   routeBottomAnchorRequest = null,
   isAuthoritativeHistoryReady = true,
 }, ref) {
-  const flatListRef = useRef<FlatList<any>>(null);
-  const scrollViewRef = useRef<ScrollView>(null);
-  const bottomAnchorRef = useRef<View>(null);
+  const viewportRef = useRef<StreamViewportHandle | null>(null);
   const { theme } = useUnistyles();
   const router = useRouter();
   const isMobile =
@@ -160,65 +116,11 @@ export const AgentStreamView = forwardRef<AgentStreamViewHandle, AgentStreamView
       }),
     [isMobile]
   );
-  const showDesktopWebScrollbar = Platform.OS === "web" && !isMobile;
-  const insets = useSafeAreaInsets();
   const [isNearBottom, setIsNearBottom] = useState(true);
-  const isNearBottomRef = useRef(true);
-  const scrollOffsetYRef = useRef(0);
-  const programmaticScrollEventBudgetRef = useRef(0);
   const streamItemCountRef = useRef(0);
-  const previousStreamItemsRef = useRef<StreamItem[] | null>(null);
-  const streamViewportMetricsRef = useRef({
-    containerKey: "unknown",
-    contentHeight: 0,
-    viewportWidth: 0,
-    viewportHeight: 0,
-    offsetY: 0,
-    viewportMeasuredForKey: null as string | null,
-    contentMeasuredForKey: null as string | null,
-  });
-  const streamScrollbarMetrics = useWebDesktopScrollbarMetrics();
-  const [isNativeViewportSettling, setIsNativeViewportSettling] = useState(false);
-  const nativeViewportSettlingFrameIdRef = useRef<number | null>(null);
   const [expandedInlineToolCallIds, setExpandedInlineToolCallIds] = useState<Set<string>>(new Set());
   const openFileExplorer = usePanelStore((state) => state.openFileExplorer);
   const setExplorerTabForCheckout = usePanelStore((state) => state.setExplorerTabForCheckout);
-  const streamRenderRefs = useMemo(
-    () => ({ flatListRef, scrollViewRef, bottomAnchorRef }),
-    []
-  );
-  const clearNativeViewportSettling = useCallback(() => {
-    if (nativeViewportSettlingFrameIdRef.current !== null) {
-      cancelAnimationFrame(nativeViewportSettlingFrameIdRef.current);
-      nativeViewportSettlingFrameIdRef.current = null;
-    }
-  }, []);
-  const markNativeViewportSettling = useCallback(() => {
-    if (Platform.OS === "web" || !streamRenderStrategy.getFlatListInverted()) {
-      return;
-    }
-    clearNativeViewportSettling();
-    setIsNativeViewportSettling(true);
-    let remainingFrames = 4;
-    const tick = () => {
-      if (remainingFrames <= 0) {
-        nativeViewportSettlingFrameIdRef.current = null;
-        setIsNativeViewportSettling(false);
-        return;
-      }
-      remainingFrames -= 1;
-      nativeViewportSettlingFrameIdRef.current = requestAnimationFrame(tick);
-    };
-    nativeViewportSettlingFrameIdRef.current = requestAnimationFrame(tick);
-  }, [clearNativeViewportSettling, streamRenderStrategy]);
-  const bottomAnchorTransportBehavior = useMemo(
-    () =>
-      resolveBottomAnchorTransportBehavior({
-        strategy: streamRenderStrategy,
-        isViewportSettling: isNativeViewportSettling,
-      }),
-    [isNativeViewportSettling, streamRenderStrategy]
-  );
 
   // Get serverId (fallback to agent's serverId if not provided)
   const resolvedServerId = serverId ?? agent.serverId ?? "";
@@ -248,52 +150,9 @@ export const AgentStreamView = forwardRef<AgentStreamViewHandle, AgentStreamView
     : FadeOut.duration(200);
 
   useEffect(() => {
-    isNearBottomRef.current = true;
-    scrollOffsetYRef.current = 0;
-    programmaticScrollEventBudgetRef.current = 0;
-    previousStreamItemsRef.current = null;
-    streamViewportMetricsRef.current = {
-      containerKey: "unknown",
-      contentHeight: 0,
-      viewportWidth: 0,
-      viewportHeight: 0,
-      offsetY: 0,
-      viewportMeasuredForKey: null,
-      contentMeasuredForKey: null,
-    };
+    setIsNearBottom(true);
     setExpandedInlineToolCallIds(new Set());
-    clearNativeViewportSettling();
-    setIsNativeViewportSettling(false);
-  }, [agentId, clearNativeViewportSettling]);
-
-  useEffect(() => {
-    if (Platform.OS === "web" || !streamRenderStrategy.getFlatListInverted()) {
-      return;
-    }
-    const keyboardEvents = [
-      "keyboardWillShow",
-      "keyboardWillHide",
-      "keyboardDidShow",
-      "keyboardDidHide",
-      "keyboardWillChangeFrame",
-      "keyboardDidChangeFrame",
-    ] as const;
-    const subscriptions = keyboardEvents.map((eventName) =>
-      Keyboard.addListener(eventName, () => {
-        markNativeViewportSettling();
-      })
-    );
-    return () => {
-      for (const subscription of subscriptions) {
-        subscription.remove();
-      }
-      clearNativeViewportSettling();
-    };
-  }, [
-    clearNativeViewportSettling,
-    markNativeViewportSettling,
-    streamRenderStrategy,
-  ]);
+  }, [agentId]);
 
   const handleInlinePathPress = useCallback(
     (target: InlinePathTarget) => {
@@ -340,299 +199,23 @@ export const AgentStreamView = forwardRef<AgentStreamViewHandle, AgentStreamView
     ]
   );
 
-  const updateNearBottom = useCallback((value: boolean) => {
-    if (isNearBottomRef.current === value) return;
-    isNearBottomRef.current = value;
-    setIsNearBottom(value);
-  }, []);
-
-  const flatListData = useMemo(() => {
+  const orderedStreamItems = useMemo(() => {
     return orderTailForStreamRenderStrategy({
       strategy: streamRenderStrategy,
       streamItems,
     });
   }, [streamItems, streamRenderStrategy]);
-  const indexedFlatListData = useMemo<IndexedStreamItem[]>(
-    () => flatListData.map((item, index) => ({ item, index })),
-    [flatListData]
-  );
-  const usesVirtualizedList = streamRenderStrategy.shouldUseVirtualizedList();
-  const shouldUseWebPartialVirtualization =
-    Platform.OS === "web" &&
-    !isMobile &&
-    !usesVirtualizedList &&
-    indexedFlatListData.length > getWebPartialVirtualizationThreshold();
-  const currentContainerKey = usesVirtualizedList
-    ? "native-virtualized"
-    : shouldUseWebPartialVirtualization
-      ? "web-partial-virtualized"
-      : "scroll-view";
-
-  useEffect(() => {
-    const current = streamViewportMetricsRef.current;
-    if (current.containerKey === currentContainerKey) {
-      return;
-    }
-    streamViewportMetricsRef.current = {
-      containerKey: currentContainerKey,
-      contentHeight: 0,
-      viewportWidth: 0,
-      viewportHeight: 0,
-      offsetY: 0,
-      viewportMeasuredForKey: null,
-      contentMeasuredForKey: null,
-    };
-    scrollOffsetYRef.current = 0;
-  }, [currentContainerKey]);
-
-  const scrollToBottomInternal = useCallback(
-    ({ animated }: { animated: boolean }) => {
-      const targetOffset = streamRenderStrategy.getBottomOffset(
-        streamViewportMetricsRef.current
-      );
-      programmaticScrollEventBudgetRef.current = 3;
-      streamRenderStrategy.scrollToBottom({
-        refs: streamRenderRefs,
-        metrics: streamViewportMetricsRef.current,
-        animated,
-      });
-      scrollOffsetYRef.current = targetOffset;
-      streamViewportMetricsRef.current = {
-        ...streamViewportMetricsRef.current,
-        offsetY: targetOffset,
-      };
-      updateNearBottom(true);
-    },
-    [updateNearBottom, streamRenderRefs, streamRenderStrategy]
-  );
-
-  const bottomAnchorController = useBottomAnchorController({
-    agentId,
-    routeRequest: routeBottomAnchorRequest,
-    isAuthoritativeHistoryReady,
-    renderStrategy:
-      Platform.OS === "web" ? "forward-stream" : "inverted-stream",
-    transportBehavior: bottomAnchorTransportBehavior,
-    getMeasurementState: () => streamViewportMetricsRef.current,
-    isNearBottom: () => {
-      const metrics = streamViewportMetricsRef.current;
-      return isNearBottomForStreamRenderStrategy({
-        strategy: streamRenderStrategy,
-        offsetY: metrics.offsetY,
-        threshold: Math.max(insets.bottom, 32),
-        contentHeight: metrics.contentHeight,
-        viewportHeight: metrics.viewportHeight,
-      });
-    },
-    scrollToBottom: (animated) => {
-      scrollToBottomInternal({ animated });
-    },
-  });
-
-  useEffect(() => {
-    if (previousStreamItemsRef.current === null) {
-      previousStreamItemsRef.current = streamItems;
-      return;
-    }
-    previousStreamItemsRef.current = streamItems;
-    bottomAnchorController.prepareForStickyContentChange();
-  }, [bottomAnchorController, streamItems]);
-
-  const handleScroll = useCallback(
-    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
-      const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
-      const previousOffsetY = scrollOffsetYRef.current;
-      scrollOffsetYRef.current = contentOffset.y;
-      streamViewportMetricsRef.current = {
-        contentHeight: Math.max(0, contentSize.height),
-        viewportWidth: Math.max(0, layoutMeasurement.width),
-        viewportHeight: Math.max(0, layoutMeasurement.height),
-        containerKey: currentContainerKey,
-        offsetY: contentOffset.y,
-        viewportMeasuredForKey: currentContainerKey,
-        contentMeasuredForKey: currentContainerKey,
-      };
-      const threshold = Math.max(insets.bottom, 32);
-      const nearBottom = isNearBottomForStreamRenderStrategy({
-        strategy: streamRenderStrategy,
-        offsetY: contentOffset.y,
-        threshold,
-        contentHeight: streamViewportMetricsRef.current.contentHeight,
-        viewportHeight: streamViewportMetricsRef.current.viewportHeight,
-      });
-      updateNearBottom(nearBottom);
-      const expectedBottomOffset = streamRenderStrategy.getBottomOffset(
-        streamViewportMetricsRef.current
-      );
-      const isProgrammaticBottomEvent =
-        Math.abs(contentOffset.y - expectedBottomOffset) <= 8;
-
-      if (
-        programmaticScrollEventBudgetRef.current > 0 &&
-        isProgrammaticBottomEvent
-      ) {
-        programmaticScrollEventBudgetRef.current -= 1;
-      } else {
-        programmaticScrollEventBudgetRef.current = 0;
-        bottomAnchorController.handleScrollNearBottomChange({
-          nextIsNearBottom: nearBottom,
-          scrollDelta: contentOffset.y - previousOffsetY,
-        });
-      }
-
-      if (showDesktopWebScrollbar) {
-        streamScrollbarMetrics.onScroll(event);
-      }
-    },
-    [
-      insets.bottom,
-      showDesktopWebScrollbar,
-      streamRenderStrategy,
-      streamScrollbarMetrics,
-      currentContainerKey,
-      bottomAnchorController,
-      updateNearBottom,
-    ]
-  );
-
-  const handleListLayout = useCallback(
-    (event: LayoutChangeEvent) => {
-      const previousViewportWidth = streamViewportMetricsRef.current.viewportWidth;
-      const previousViewportHeight = streamViewportMetricsRef.current.viewportHeight;
-      const viewportWidth = Math.max(0, event.nativeEvent.layout.width);
-      const viewportHeight = Math.max(0, event.nativeEvent.layout.height);
-      const viewportChanged =
-        (previousViewportWidth > 0 && previousViewportWidth !== viewportWidth) ||
-        (previousViewportHeight > 0 && previousViewportHeight !== viewportHeight);
-      streamViewportMetricsRef.current = {
-        ...streamViewportMetricsRef.current,
-        containerKey: currentContainerKey,
-        viewportWidth,
-        viewportHeight,
-        viewportMeasuredForKey: currentContainerKey,
-      };
-      if (viewportChanged) {
-        markNativeViewportSettling();
-      }
-      bottomAnchorController.handleViewportMetricsChange({
-        previousViewportWidth,
-        viewportWidth,
-        previousViewportHeight,
-        viewportHeight,
-      });
-      if (showDesktopWebScrollbar) {
-        streamScrollbarMetrics.onLayout(event);
-      }
-    },
-    [
-      showDesktopWebScrollbar,
-      streamScrollbarMetrics,
-      currentContainerKey,
-      markNativeViewportSettling,
-      bottomAnchorController,
-    ]
-  );
-
   useImperativeHandle(ref, () => ({
     scrollToBottom(reason = "jump-to-bottom") {
-      bottomAnchorController.requestLocalAnchor({ agentId, reason });
+      viewportRef.current?.scrollToBottom(reason);
     },
     prepareForViewportChange() {
-      bottomAnchorController.prepareForStickyViewportChange();
+      viewportRef.current?.prepareForViewportChange();
     },
-  }), [agentId, bottomAnchorController]);
-
-  const handleContentSizeChange = useCallback(
-    (width: number, height: number) => {
-      const previousContentHeight = streamViewportMetricsRef.current.contentHeight;
-      const nextContentHeight = Math.max(0, height);
-      streamViewportMetricsRef.current = {
-        ...streamViewportMetricsRef.current,
-        containerKey: currentContainerKey,
-        contentHeight: nextContentHeight,
-        contentMeasuredForKey: currentContainerKey,
-      };
-
-      bottomAnchorController.handleContentSizeChange({
-        previousContentHeight,
-        contentHeight: nextContentHeight,
-      });
-
-      if (showDesktopWebScrollbar) {
-        streamScrollbarMetrics.onContentSizeChange(width, height);
-      }
-    },
-    [
-      showDesktopWebScrollbar,
-      streamScrollbarMetrics,
-      currentContainerKey,
-      bottomAnchorController,
-    ]
-  );
-
-  useEffect(() => {
-    if (
-      Platform.OS !== "web" ||
-      typeof ResizeObserver === "undefined"
-    ) {
-      return;
-    }
-
-    const scrollNode = resolveWebScrollContainerNode(streamRenderRefs);
-    if (!scrollNode) {
-      return;
-    }
-
-    const applyObservedMetrics = () => {
-      const previousViewportWidth = streamViewportMetricsRef.current.viewportWidth;
-      const previousViewportHeight = streamViewportMetricsRef.current.viewportHeight;
-      const previousContentHeight = streamViewportMetricsRef.current.contentHeight;
-      const viewportWidth = Math.max(0, scrollNode.clientWidth);
-      const viewportHeight = Math.max(0, scrollNode.clientHeight);
-      const contentHeight = Math.max(0, scrollNode.scrollHeight);
-
-      streamViewportMetricsRef.current = {
-        ...streamViewportMetricsRef.current,
-        containerKey: currentContainerKey,
-        viewportWidth,
-        viewportHeight,
-        contentHeight,
-        viewportMeasuredForKey: currentContainerKey,
-        contentMeasuredForKey: currentContainerKey,
-      };
-
-      bottomAnchorController.handleViewportMetricsChange({
-        previousViewportWidth,
-        viewportWidth,
-        previousViewportHeight,
-        viewportHeight,
-      });
-      bottomAnchorController.handleContentSizeChange({
-        previousContentHeight,
-        contentHeight,
-      });
-    };
-
-    applyObservedMetrics();
-    const resizeObserver = new ResizeObserver(() => {
-      applyObservedMetrics();
-    });
-    resizeObserver.observe(scrollNode);
-    const contentNode = scrollNode.firstElementChild;
-    if (contentNode instanceof HTMLElement) {
-      resizeObserver.observe(contentNode);
-    }
-
-    return () => {
-      resizeObserver.disconnect();
-    };
-  }, [bottomAnchorController, currentContainerKey, streamRenderRefs]);
+  }), []);
 
   function scrollToBottom() {
-    bottomAnchorController.requestLocalAnchor({
-      agentId,
-      reason: "jump-to-bottom",
-    });
+    viewportRef.current?.scrollToBottom("jump-to-bottom");
   }
 
   const orderedStreamHead = useMemo(() => {
@@ -843,16 +426,16 @@ export const AgentStreamView = forwardRef<AgentStreamViewHandle, AgentStreamView
   );
 
   const renderStreamItem = useCallback(
-    ({ item, index }: ListRenderItemInfo<StreamItem>) => {
-      const content = renderStreamItemContent(item, index, flatListData);
+    (item: StreamItem, index: number, items: StreamItem[]) => {
+      const content = renderStreamItemContent(item, index, items);
       if (!content) {
         return null;
       }
 
-      const gapBelow = getGapBelow(item, index, flatListData);
+      const gapBelow = getGapBelow(item, index, items);
       const nextItem = getStreamNeighborItem({
         strategy: streamRenderStrategy,
-        items: flatListData,
+        items,
         index,
         relation: "below",
       });
@@ -863,7 +446,7 @@ export const AgentStreamView = forwardRef<AgentStreamViewHandle, AgentStreamView
       const getTurnContent = () =>
         collectAssistantTurnContentForStreamRenderStrategy({
           strategy: streamRenderStrategy,
-          items: flatListData,
+          items,
           startIndex: index,
         });
 
@@ -879,7 +462,6 @@ export const AgentStreamView = forwardRef<AgentStreamViewHandle, AgentStreamView
     [
       getGapBelow,
       renderStreamItemContent,
-      flatListData,
       agent.status,
       streamRenderStrategy,
     ]
@@ -963,35 +545,6 @@ export const AgentStreamView = forwardRef<AgentStreamViewHandle, AgentStreamView
 
   const showWorkingIndicator = agent.status === "running";
   const showBottomBar = showWorkingIndicator;
-  const webVirtualizedHistoryWindow = useMemo(() => {
-    if (!shouldUseWebPartialVirtualization) {
-      return null;
-    }
-      return splitWebVirtualizedHistory({
-        entries: indexedFlatListData,
-        minMountedCount: getWebMountedRecentStreamItems(),
-      });
-  }, [indexedFlatListData, shouldUseWebPartialVirtualization]);
-
-  const renderIndexedStreamItem = useCallback(
-    (entry: IndexedStreamItem) =>
-      renderStreamItem({
-        item: entry.item,
-        index: entry.index,
-        separators: NOOP_SEPARATORS,
-      }),
-    [renderStreamItem]
-  );
-  const renderWebVirtualizedStreamItem = useCallback(
-    ({ item }: ListRenderItemInfo<IndexedStreamItem>) => {
-      const rendered = renderIndexedStreamItem(item);
-      if (!rendered) {
-        return null;
-      }
-      return <Fragment key={item.item.id}>{rendered}</Fragment>;
-    },
-    [renderIndexedStreamItem]
-  );
 
   const listEdgeSlotComponent = useMemo(() => {
     const hasPermissions = pendingPermissionItems.length > 0;
@@ -1054,19 +607,6 @@ export const AgentStreamView = forwardRef<AgentStreamViewHandle, AgentStreamView
     tightGap,
   ]);
 
-  const flatListExtraData = useMemo(
-    () => ({
-      pendingPermissionCount: pendingPermissionItems.length,
-      showWorkingIndicator,
-      showBottomBar,
-    }),
-    [
-      pendingPermissionItems.length,
-      showWorkingIndicator,
-      showBottomBar,
-    ]
-  );
-
   const listEdgeSlotProps = useMemo<StreamEdgeSlotProps>(() => {
     if (!listEdgeSlotComponent) {
       return {};
@@ -1116,171 +656,27 @@ export const AgentStreamView = forwardRef<AgentStreamViewHandle, AgentStreamView
   const streamScrollEnabled =
     !streamRenderStrategy.shouldDisableParentScrollOnInlineDetailsExpansion() ||
     expandedInlineToolCallIds.size === 0;
-  const listContentContainerStyle = useMemo(
-    () =>
-      usesVirtualizedList
-        ? stylesheet.listContentContainer
-        : [stylesheet.listContentContainer, stylesheet.forwardListContentContainer],
-    [usesVirtualizedList]
-  );
-  const headerEdgeContent = renderStreamEdgeComponent(
-    listEdgeSlotProps.ListHeaderComponent
-  );
-  const footerEdgeContent = renderStreamEdgeComponent(
-    listEdgeSlotProps.ListFooterComponent
-  );
-  const nonVirtualizedItems = useMemo(() => {
-    if (indexedFlatListData.length === 0) {
-      return null;
-    }
-
-    return indexedFlatListData.map((entry) => {
-      const rendered = renderIndexedStreamItem(entry);
-      if (!rendered) {
-        return null;
-      }
-      return <Fragment key={entry.item.id}>{rendered}</Fragment>;
-    });
-  }, [indexedFlatListData, renderIndexedStreamItem]);
-  const webVirtualizedListHeader = useMemo(() => {
-    if (!shouldUseWebPartialVirtualization || !headerEdgeContent) {
-      return null;
-    }
-    return (
-      <View style={listEdgeSlotProps.ListHeaderComponentStyle}>
-        {headerEdgeContent}
-      </View>
-    );
-  }, [
-    headerEdgeContent,
-    listEdgeSlotProps.ListHeaderComponentStyle,
-    shouldUseWebPartialVirtualization,
-  ]);
-  const webVirtualizedListFooter = useMemo(() => {
-    if (!shouldUseWebPartialVirtualization || !webVirtualizedHistoryWindow) {
-      return null;
-    }
-
-    return (
-      <>
-        {webVirtualizedHistoryWindow.mountedEntries.map((entry) => (
-          <Fragment key={entry.item.id}>
-            {renderIndexedStreamItem(entry)}
-          </Fragment>
-        ))}
-        {footerEdgeContent ? (
-          <View style={listEdgeSlotProps.ListFooterComponentStyle}>
-            {footerEdgeContent}
-          </View>
-        ) : null}
-        <View ref={bottomAnchorRef} collapsable={false} />
-      </>
-    );
-  }, [
-    footerEdgeContent,
-    listEdgeSlotProps.ListFooterComponentStyle,
-    renderIndexedStreamItem,
-    shouldUseWebPartialVirtualization,
-    webVirtualizedHistoryWindow,
-  ]);
 
   return (
     <ToolCallSheetProvider>
       <View style={stylesheet.container}>
         <MessageOuterSpacingProvider disableOuterSpacing>
-          {usesVirtualizedList ? (
-            <FlatList
-              ref={flatListRef}
-              data={flatListData}
-              renderItem={renderStreamItem}
-              keyExtractor={(item) => item.id}
-              testID="agent-chat-scroll"
-              nativeID={`agent-chat-scroll-${currentContainerKey}`}
-              {...listEdgeSlotProps}
-              contentContainerStyle={listContentContainerStyle}
-              style={stylesheet.list}
-              onLayout={handleListLayout}
-              onScroll={handleScroll}
-              scrollEventThrottle={16}
-              onContentSizeChange={handleContentSizeChange}
-              ListEmptyComponent={listEmptyComponent}
-              extraData={flatListExtraData}
-              maintainVisibleContentPosition={
-                streamRenderStrategy.getMaintainVisibleContentPosition()
-              }
-              initialNumToRender={12}
-              windowSize={10}
-              scrollEnabled={streamScrollEnabled}
-              showsVerticalScrollIndicator={!showDesktopWebScrollbar}
-              inverted={streamRenderStrategy.getFlatListInverted()}
-            />
-          ) : shouldUseWebPartialVirtualization && webVirtualizedHistoryWindow ? (
-            <FlatList
-              ref={flatListRef}
-              data={webVirtualizedHistoryWindow.virtualizedEntries}
-              renderItem={renderWebVirtualizedStreamItem}
-              keyExtractor={(entry) => entry.item.id}
-              testID="agent-chat-scroll"
-              nativeID={`agent-chat-scroll-${currentContainerKey}`}
-              ListHeaderComponent={webVirtualizedListHeader}
-              ListFooterComponent={webVirtualizedListFooter}
-              contentContainerStyle={listContentContainerStyle}
-              style={stylesheet.list}
-              onLayout={handleListLayout}
-              onScroll={handleScroll}
-              scrollEventThrottle={16}
-              onContentSizeChange={handleContentSizeChange}
-              extraData={flatListExtraData}
-              initialNumToRender={12}
-              windowSize={10}
-              scrollEnabled={streamScrollEnabled}
-              showsVerticalScrollIndicator={!showDesktopWebScrollbar}
-              inverted={false}
-            />
-          ) : (
-            <ScrollView
-              ref={scrollViewRef}
-              testID="agent-chat-scroll"
-              nativeID={`agent-chat-scroll-${currentContainerKey}`}
-              contentContainerStyle={listContentContainerStyle}
-              style={stylesheet.list}
-              onLayout={handleListLayout}
-              onScroll={handleScroll}
-              scrollEventThrottle={16}
-              onContentSizeChange={handleContentSizeChange}
-              scrollEnabled={streamScrollEnabled}
-              showsVerticalScrollIndicator={!showDesktopWebScrollbar}
-            >
-              {headerEdgeContent ? (
-                <View style={listEdgeSlotProps.ListHeaderComponentStyle}>
-                  {headerEdgeContent}
-                </View>
-              ) : null}
-              {nonVirtualizedItems}
-              {flatListData.length === 0 ? listEmptyComponent : null}
-              {footerEdgeContent ? (
-                <View style={listEdgeSlotProps.ListFooterComponentStyle}>
-                  {footerEdgeContent}
-                </View>
-              ) : null}
-              <View ref={bottomAnchorRef} collapsable={false} />
-            </ScrollView>
-          )}
+          {streamRenderStrategy.render({
+            agentId,
+            rows: orderedStreamItems,
+            renderRow: renderStreamItem,
+            listEmptyComponent,
+            viewportRef,
+            routeBottomAnchorRequest,
+            isAuthoritativeHistoryReady,
+            onNearBottomChange: setIsNearBottom,
+            scrollEnabled: streamScrollEnabled,
+            listStyle: stylesheet.list,
+            baseListContentContainerStyle: stylesheet.listContentContainer,
+            forwardListContentContainerStyle: stylesheet.forwardListContentContainer,
+            edgeSlotProps: listEdgeSlotProps,
+          })}
         </MessageOuterSpacingProvider>
-        <WebDesktopScrollbarOverlay
-          enabled={showDesktopWebScrollbar}
-          metrics={streamScrollbarMetrics}
-          inverted={streamRenderStrategy.getOverlayScrollbarInverted()}
-          onScrollToOffset={(nextOffset) => {
-            streamRenderStrategy.scrollToOffset({
-              refs: streamRenderRefs,
-              offset: nextOffset,
-              animated: false,
-            });
-          }}
-        />
-
-        {/* Scroll to bottom button */}
         {!isNearBottom && (
           <Animated.View
             style={stylesheet.scrollToBottomContainer}

@@ -44,6 +44,10 @@ type ControllerMeasurementState = {
 type AttemptContext = {
   requestId: number | null;
   retries: number;
+  confirmationPasses?: number;
+  startedContentHeight?: number;
+  startedOffsetY?: number;
+  startedViewportHeight?: number;
 };
 
 type ScheduledFrameHandle = {
@@ -55,12 +59,14 @@ type ScheduledFrameHandle = {
 
 type BottomAnchorEvent =
   | "request_created"
+  | "evaluate_called"
   | "attempt_started"
   | "attempt_verified"
   | "attempt_failed"
   | "request_fulfilled"
   | "request_cancelled"
   | "detached_by_user"
+  | "verification_scheduled"
   | "blocked_reason_changed";
 
 type BottomAnchorControllerDriver = {
@@ -115,6 +121,7 @@ type CreateBottomAnchorControllerDriverInput = {
 };
 
 const MAX_VERIFICATION_RETRIES = 3;
+const WEB_PARTIAL_VIRTUALIZED_CONFIRMATION_DELAY_FRAMES = 1;
 const USER_SCROLL_AWAY_DELTA_PX = 24;
 const IS_DEV = Boolean((globalThis as { __DEV__?: boolean }).__DEV__);
 
@@ -233,15 +240,41 @@ function deriveRetryDisposition(input: {
     : "retry-scroll";
 }
 
+function shouldRequireRouteRequestConfirmation(input: {
+  request: BottomAnchorRequest | null;
+  measurementState: ControllerMeasurementState;
+  confirmationPasses: number;
+}): boolean {
+  if (!input.request) {
+    return false;
+  }
+  if (
+    input.request.reason !== "initial-entry" &&
+    input.request.reason !== "resume"
+  ) {
+    return false;
+  }
+  if (input.measurementState.containerKey !== "web-partial-virtualized") {
+    return false;
+  }
+  return input.confirmationPasses < 1;
+}
+
 function getDetailedMeasurementState(
   measurementState: ControllerMeasurementState
 ): Record<string, unknown> {
+  const distanceFromBottom = Math.max(
+    0,
+    measurementState.contentHeight -
+      (measurementState.offsetY + measurementState.viewportHeight)
+  );
   return {
     containerKey: measurementState.containerKey,
     viewportWidth: measurementState.viewportWidth,
     viewportHeight: measurementState.viewportHeight,
     contentHeight: measurementState.contentHeight,
     offsetY: measurementState.offsetY,
+    distanceFromBottom,
     viewportMeasuredForKey: measurementState.viewportMeasuredForKey,
     contentMeasuredForKey: measurementState.contentMeasuredForKey,
   };
@@ -263,6 +296,11 @@ function createBottomAnchorControllerDriver(
 
   const getLogContext = (extra?: Record<string, unknown>) => {
     const measurementState = input.getMeasurementState();
+    const distanceFromBottom = Math.max(
+      0,
+      measurementState.contentHeight -
+        (measurementState.offsetY + measurementState.viewportHeight)
+    );
     return {
       agentId: input.getAgentId(),
       requestReason: pendingRequest?.reason ?? null,
@@ -270,10 +308,12 @@ function createBottomAnchorControllerDriver(
       contentHeight: measurementState.contentHeight,
       viewportHeight: measurementState.viewportHeight,
       offset: measurementState.offsetY,
+      distanceFromBottom,
       renderStrategy: input.getRenderStrategy(),
       blockedReason,
       mode,
       containerKey: measurementState.containerKey,
+      transportBehavior: input.getTransportBehavior(),
       ...extra,
     };
   };
@@ -339,13 +379,42 @@ function createBottomAnchorControllerDriver(
     setBlockedReason(null);
   };
 
-  const scheduleVerification = (attemptContext: AttemptContext) => {
+  const deriveDriverBlockedReason = (
+    measurementState: ControllerMeasurementState
+  ) =>
+    deriveBottomAnchorBlockedReason({
+      pendingRequest,
+      isAuthoritativeHistoryReady: input.getIsAuthoritativeHistoryReady(),
+      measurementState,
+      pendingVerificationRequestId:
+        verificationHandle !== null ? pendingVerification?.requestId ?? null : null,
+    });
+
+  const scheduleVerification = (
+    attemptContext: AttemptContext,
+    delayFramesOverride?: number
+  ) => {
+    const scheduledMeasurementState = input.getMeasurementState();
     if (verificationHandle) {
       input.cancelFrame(verificationHandle);
     }
+    input.log(
+      "verification_scheduled",
+      getLogContext({
+        retries: attemptContext.retries,
+        startedContentHeight: attemptContext.startedContentHeight ?? null,
+        startedOffsetY: attemptContext.startedOffsetY ?? null,
+        startedViewportHeight: attemptContext.startedViewportHeight ?? null,
+        scheduledMeasurementState:
+          getDetailedMeasurementState(scheduledMeasurementState),
+        verificationDelayFrames:
+          delayFramesOverride ?? input.getTransportBehavior().verificationDelayFrames,
+      })
+    );
     verificationHandle = input.scheduleFrame({
       kind: "verification",
-      delayFrames: input.getTransportBehavior().verificationDelayFrames,
+      delayFrames:
+        delayFramesOverride ?? input.getTransportBehavior().verificationDelayFrames,
       callback: () => {
         verificationHandle = null;
         const currentRequest = pendingRequest;
@@ -388,11 +457,40 @@ function createBottomAnchorControllerDriver(
             verifiedNearBottom,
             retries: attemptContext.retries,
             retryDisposition,
+            contentHeightDeltaSinceAttempt:
+              measurementState.contentHeight -
+              (attemptContext.startedContentHeight ?? measurementState.contentHeight),
+            offsetDeltaSinceAttempt:
+              measurementState.offsetY -
+              (attemptContext.startedOffsetY ?? measurementState.offsetY),
+            viewportHeightDeltaSinceAttempt:
+              measurementState.viewportHeight -
+              (attemptContext.startedViewportHeight ??
+                measurementState.viewportHeight),
             measurementState: getDetailedMeasurementState(measurementState),
           })
         );
 
         if (verifiedNearBottom) {
+          if (
+            isRequestAttempt &&
+            shouldRequireRouteRequestConfirmation({
+              request: currentRequest,
+              measurementState,
+              confirmationPasses: attemptContext.confirmationPasses ?? 0,
+            })
+          ) {
+            pendingVerification = {
+              ...attemptContext,
+              confirmationPasses: (attemptContext.confirmationPasses ?? 0) + 1,
+            };
+            setBlockedReason("waiting_for_post_layout_verification");
+            scheduleVerification(
+              pendingVerification,
+              WEB_PARTIAL_VIRTUALIZED_CONFIRMATION_DELAY_FRAMES
+            );
+            return;
+          }
           pendingVerification = null;
           markStickyMeasurementVerified();
           if (isRequestAttempt) {
@@ -418,7 +516,7 @@ function createBottomAnchorControllerDriver(
             requestId: attemptContext.requestId,
             retries: attemptContext.retries + 1,
           };
-          evaluate(false);
+          evaluate(false, "retry_scroll");
           return;
         }
 
@@ -445,28 +543,51 @@ function createBottomAnchorControllerDriver(
   };
 
   const runAttempt = (animated: boolean) => {
+    const measurementState = input.getMeasurementState();
     const attemptContext: AttemptContext = {
       requestId: pendingRequest?.id ?? null,
       retries: pendingVerification?.retries ?? 0,
+      startedContentHeight: measurementState.contentHeight,
+      startedOffsetY: measurementState.offsetY,
+      startedViewportHeight: measurementState.viewportHeight,
     };
     pendingVerification = attemptContext;
     input.log(
       "attempt_started",
-      getLogContext({ animated, retries: attemptContext.retries })
+      getLogContext({
+        animated,
+        retries: attemptContext.retries,
+        measurementState: getDetailedMeasurementState(measurementState),
+      })
     );
     input.scrollToBottom(animated);
     scheduleVerification(attemptContext);
-    setBlockedReason(
-      deriveBottomAnchorBlockedReason({
-        pendingRequest,
-        isAuthoritativeHistoryReady: input.getIsAuthoritativeHistoryReady(),
-        measurementState: input.getMeasurementState(),
-        pendingVerificationRequestId: attemptContext.requestId,
-      })
-    );
+    setBlockedReason(deriveDriverBlockedReason(input.getMeasurementState()));
   };
 
-  const evaluate = (animated: boolean) => {
+  const evaluate = (
+    animated: boolean,
+    reason:
+      | "request_created"
+      | "viewport_change"
+      | "content_size_change"
+      | "scroll_near_bottom_change"
+      | "history_readiness_change"
+      | "manual_reevaluate"
+      | "retry_scroll"
+  ) => {
+    input.log(
+      "evaluate_called",
+      getLogContext({
+        evaluateReason: reason,
+        animated,
+        hasAttemptHandle: attemptHandle !== null,
+        hasVerificationHandle: verificationHandle !== null,
+        pendingVerificationRequestId: pendingVerification?.requestId ?? null,
+        pendingVerificationRetries: pendingVerification?.retries ?? null,
+        measurementState: getDetailedMeasurementState(input.getMeasurementState()),
+      })
+    );
     if (attemptHandle) {
       return;
     }
@@ -475,12 +596,7 @@ function createBottomAnchorControllerDriver(
       callback: () => {
         attemptHandle = null;
         const measurementState = input.getMeasurementState();
-        const nextBlockedReason = deriveBottomAnchorBlockedReason({
-          pendingRequest,
-          isAuthoritativeHistoryReady: input.getIsAuthoritativeHistoryReady(),
-          measurementState,
-          pendingVerificationRequestId: pendingVerification?.requestId ?? null,
-        });
+        const nextBlockedReason = deriveDriverBlockedReason(measurementState);
         setBlockedReason(nextBlockedReason);
 
         const shouldAttemptForPendingRequest =
@@ -498,6 +614,7 @@ function createBottomAnchorControllerDriver(
             "attempt_started",
             getLogContext({
               attemptPhase: "skipped",
+              evaluateReason: reason,
               nextBlockedReason,
               shouldAttemptForPendingRequest,
               shouldAttemptForStickyVerification,
@@ -546,7 +663,7 @@ function createBottomAnchorControllerDriver(
       "request_created",
       getLogContext({ requestReason: request.reason })
     );
-    evaluate(request.reason === "jump-to-bottom");
+    evaluate(request.reason === "jump-to-bottom", "request_created");
   };
 
   return {
@@ -610,7 +727,7 @@ function createBottomAnchorControllerDriver(
         pendingVerification = { requestId: null, retries: 0 };
       }
       if (shouldRestick || pendingRequest) {
-        evaluate(false);
+        evaluate(false, "viewport_change");
       }
     },
     handleContentSizeChange(params) {
@@ -626,7 +743,7 @@ function createBottomAnchorControllerDriver(
         pendingVerification = { requestId: null, retries: 0 };
       }
       if (shouldRestick || pendingRequest) {
-        evaluate(false);
+        evaluate(false, "content_size_change");
       }
     },
     prepareForStickyViewportChange() {
@@ -673,21 +790,21 @@ function createBottomAnchorControllerDriver(
         if (!pendingRequest && !pendingVerification) {
           pendingVerification = { requestId: null, retries: 0 };
         }
-        evaluate(false);
+        evaluate(false, "scroll_near_bottom_change");
         return;
       }
       if (nextIsNearBottom && pendingRequest) {
-        evaluate(false);
+        evaluate(false, "scroll_near_bottom_change");
       }
     },
     notifyAuthoritativeHistoryMaybeChanged() {
       if (!pendingVerification && !pendingRequest) {
         return;
       }
-      evaluate(false);
+      evaluate(false, "history_readiness_change");
     },
     reevaluate(animated = false) {
-      evaluate(animated);
+      evaluate(animated, "manual_reevaluate");
     },
   };
 }
