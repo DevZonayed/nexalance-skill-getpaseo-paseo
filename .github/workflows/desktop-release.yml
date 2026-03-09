@@ -334,13 +334,6 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Install Lightning CSS Windows binary
-        shell: bash
-        run: |
-          set -euo pipefail
-          version="$(node -p "require('./package.json').overrides.lightningcss")"
-          npm install --no-save "lightningcss-win32-x64-msvc@${version}"
-
       - name: Build web app for Tauri
         run: npm run build:web --workspace=@getpaseo/app
 

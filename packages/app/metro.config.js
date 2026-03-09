@@ -13,9 +13,6 @@ const customWebPlatform = (process.env.PASEO_WEB_PLATFORM ?? "")
 
 const config = getDefaultConfig(projectRoot);
 const defaultResolveRequest = config.resolver.resolveRequest ?? resolve;
-config.transformer.asyncRequireModulePath = require.resolve(
-  "@expo/metro-config/build/async-require"
-);
 
 function isLocalModuleImport(moduleName) {
   return (
