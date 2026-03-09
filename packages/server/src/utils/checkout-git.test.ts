@@ -6,6 +6,7 @@ import { tmpdir } from "os";
 import {
   commitAll,
   getCheckoutDiff,
+  getCheckoutShortstat,
   getPullRequestStatus,
   getCheckoutStatus,
   getCheckoutStatusLite,
@@ -136,6 +137,39 @@ describe("checkout git utilities", () => {
     }
     expect(divergedStatus.aheadOfOrigin).toBe(1);
     expect(divergedStatus.behindOfOrigin).toBe(1);
+  });
+
+  it("uses the freshest comparison base for status and shortstat when local main is stale", async () => {
+    const remoteDir = join(tempDir, "remote.git");
+    const cloneDir = join(tempDir, "clone");
+    execSync(`git init --bare -b main ${remoteDir}`);
+    execSync(`git remote add origin ${remoteDir}`, { cwd: repoDir });
+    execSync("git push -u origin main", { cwd: repoDir });
+
+    execSync(`git clone ${remoteDir} ${cloneDir}`);
+    execSync("git config user.email 'test@test.com'", { cwd: cloneDir });
+    execSync("git config user.name 'Test'", { cwd: cloneDir });
+    writeFileSync(join(cloneDir, "upstream.txt"), "upstream 1\nupstream 2\n");
+    execSync("git add upstream.txt", { cwd: cloneDir });
+    execSync("git -c commit.gpgsign=false commit -m 'remote update'", { cwd: cloneDir });
+    execSync("git push", { cwd: cloneDir });
+
+    execSync("git fetch origin", { cwd: repoDir });
+    execSync("git checkout -b feature origin/main", { cwd: repoDir });
+    writeFileSync(join(repoDir, "feature.txt"), "feature\n");
+    execSync("git add feature.txt", { cwd: repoDir });
+    execSync("git -c commit.gpgsign=false commit -m 'feature update'", { cwd: repoDir });
+
+    const status = await getCheckoutStatus(repoDir);
+    expect(status.isGit).toBe(true);
+    if (!status.isGit) {
+      return;
+    }
+    expect(status.baseRef).toBe("main");
+    expect(status.aheadBehind).toEqual({ ahead: 1, behind: 0 });
+
+    const shortstat = await getCheckoutShortstat(repoDir);
+    expect(shortstat).toEqual({ additions: 1, deletions: 0 });
   });
 
   it("commits messages with quotes safely", async () => {

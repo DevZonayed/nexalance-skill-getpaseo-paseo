@@ -771,7 +771,7 @@ async function doesGitRefExist(cwd: string, fullRef: string): Promise<boolean> {
   }
 }
 
-async function resolveBestBaseRefForMerge(cwd: string, normalizedBaseRef: string): Promise<string> {
+async function resolveBestComparisonBaseRef(cwd: string, normalizedBaseRef: string): Promise<string> {
   const [hasLocal, hasOrigin] = await Promise.all([
     doesGitRefExist(cwd, `refs/heads/${normalizedBaseRef}`),
     doesGitRefExist(cwd, `refs/remotes/origin/${normalizedBaseRef}`),
@@ -811,8 +811,9 @@ async function getAheadBehind(cwd: string, baseRef: string, currentBranch: strin
   if (!normalizedBaseRef || !currentBranch || normalizedBaseRef === currentBranch) {
     return null;
   }
+  const comparisonBaseRef = await resolveBestComparisonBaseRef(cwd, normalizedBaseRef);
   const { stdout } = await execAsync(
-    `git rev-list --left-right --count ${normalizedBaseRef}...${currentBranch}`,
+    `git rev-list --left-right --count ${comparisonBaseRef}...${currentBranch}`,
     { cwd, env: READ_ONLY_GIT_ENV }
   );
   const [behindRaw, aheadRaw] = stdout.trim().split(/\s+/);
@@ -1103,19 +1104,24 @@ export async function getCheckoutShortstat(
   }
 
   const configured = await getConfiguredBaseRefForCwd(cwd, context);
-  const baseRef = configured.baseRef ?? (await resolveBaseRef(cwd));
-  if (!baseRef) {
+  const localBaseRef = configured.baseRef ?? (await resolveBaseRef(cwd));
+  if (!localBaseRef) {
     return null;
   }
 
   const currentBranch = await getCurrentBranch(cwd);
-  if (currentBranch === baseRef) {
+  if (currentBranch === localBaseRef) {
     return null;
   }
 
+  const comparisonBaseRef = await resolveBestComparisonBaseRef(
+    cwd,
+    normalizeLocalBranchRefName(localBaseRef)
+  );
+
   let mergeBase: string;
   try {
-    const { stdout } = await execAsync(`git merge-base HEAD ${baseRef}`, {
+    const { stdout } = await execAsync(`git merge-base HEAD ${comparisonBaseRef}`, {
       cwd,
       env: READ_ONLY_GIT_ENV,
     });
@@ -1128,7 +1134,7 @@ export async function getCheckoutShortstat(
   }
 
   try {
-    const { stdout } = await execAsync(`git diff --shortstat ${mergeBase}`, {
+    const { stdout } = await execAsync(`git diff --shortstat ${mergeBase} HEAD`, {
       cwd,
       env: READ_ONLY_GIT_ENV,
     });
@@ -1180,7 +1186,7 @@ export async function getCheckoutDiff(
     }
 
     const normalizedBaseRef = normalizeLocalBranchRefName(baseRef);
-    const bestBaseRef = await resolveBestBaseRefForMerge(cwd, normalizedBaseRef);
+    const bestBaseRef = await resolveBestComparisonBaseRef(cwd, normalizedBaseRef);
     refForDiff = (await tryResolveMergeBase(cwd, bestBaseRef)) ?? bestBaseRef;
   }
 
@@ -1521,7 +1527,7 @@ export async function mergeFromBase(
   }
 
   const normalizedBaseRef = normalizeLocalBranchRefName(baseRef);
-  const bestBaseRef = await resolveBestBaseRefForMerge(cwd, normalizedBaseRef);
+  const bestBaseRef = await resolveBestComparisonBaseRef(cwd, normalizedBaseRef);
   if (bestBaseRef === currentBranch) {
     return;
   }

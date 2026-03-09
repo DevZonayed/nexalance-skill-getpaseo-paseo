@@ -365,7 +365,7 @@ type ClaudeAgentSessionOptions = {
 
 function whichClaude(): string | null {
   try {
-    return execSync("which claude", { encoding: "utf8", env: process.env }).trim() || null;
+    return execSync("which claude", { encoding: "utf8" }).trim() || null;
   } catch {
     return null;
   }
