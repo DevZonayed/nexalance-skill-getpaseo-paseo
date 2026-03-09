@@ -212,6 +212,21 @@ npm run release:publish
 npm run release:push       # pushes HEAD and current version tag (triggers desktop + Android APK + EAS mobile workflows)
 ```
 
+### Draft release flow
+
+```bash
+# Stage a draft GitHub release with assets, but do not publish npm yet.
+npm run draft-release:patch
+
+# Publish npm and promote the same GitHub draft release to final.
+npm run release:finalize
+```
+
+Behavior:
+- `draft-release:patch` bumps the version, runs release checks, pushes `HEAD` and the new `v*` tag, and creates the matching GitHub Release as a draft so desktop assets, APK uploads, and synced notes attach to that same draft release.
+- `release:finalize` requires that the current tag already has a GitHub draft release, publishes the npm packages for that exact version, and promotes the same GitHub Release from draft to published.
+- Use the same semver tag for both draft and final states; do not cut a second tag just to publish the release.
+
 Notes:
 - `version:all:*` bumps the root package version and runs the root `version` lifecycle script to sync workspace versions and internal `@getpaseo/*` dependency versions before the release commit/tag is created.
 - `release:prepare` refreshes workspace `node_modules` links to prevent stale local package types during release checks.

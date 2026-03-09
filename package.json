@@ -44,6 +44,11 @@
     "release:publish:dry-run": "npm publish --dry-run --workspace=@getpaseo/relay --access public && npm publish --dry-run --workspace=@getpaseo/server --access public && npm publish --dry-run --workspace=@getpaseo/cli --access public",
     "release:publish": "npm publish --workspace=@getpaseo/relay --access public && npm publish --workspace=@getpaseo/server --access public && npm publish --workspace=@getpaseo/cli --access public",
     "release:push": "node scripts/push-current-release-tag.mjs",
+    "draft-release:push": "node scripts/push-current-release-tag.mjs --draft-release",
+    "draft-release:patch": "npm run version:all:patch && npm run release:check && npm run draft-release:push",
+    "draft-release:minor": "npm run version:all:minor && npm run release:check && npm run draft-release:push",
+    "draft-release:major": "npm run version:all:major && npm run release:check && npm run draft-release:push",
+    "release:finalize": "node scripts/finalize-current-release.mjs",
     "release:patch": "npm run version:all:patch && npm run release:check && npm run release:publish && npm run release:push",
     "release:minor": "npm run version:all:minor && npm run release:check && npm run release:publish && npm run release:push",
     "release:major": "npm run version:all:major && npm run release:check && npm run release:publish && npm run release:push"

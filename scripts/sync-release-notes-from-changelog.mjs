@@ -13,6 +13,7 @@ Options:
   --repo <owner/repo>       Repository slug. Defaults to $GITHUB_REPOSITORY.
   --tag <tag>               Release tag (e.g. v0.1.14). Defaults to latest changelog entry.
   --create-if-missing       Create release if it does not already exist.
+  --draft                   Create missing release as draft.
 `;
   process.stderr.write(usage.trimStart());
   process.stderr.write("\n");
@@ -24,6 +25,7 @@ function parseArgs(argv) {
     repo: process.env.GITHUB_REPOSITORY || "",
     tag: "",
     createIfMissing: false,
+    draft: false,
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -50,6 +52,11 @@ function parseArgs(argv) {
 
     if (arg === "--create-if-missing") {
       args.createIfMissing = true;
+      continue;
+    }
+
+    if (arg === "--draft") {
+      args.draft = true;
       continue;
     }
 
@@ -186,6 +193,7 @@ function main() {
         "--notes-file",
         notesPath,
         "--verify-tag",
+        ...(args.draft ? ["--draft"] : []),
       ]);
       console.log(`Created release ${targetTag} with changelog notes.`);
     } catch (createError) {

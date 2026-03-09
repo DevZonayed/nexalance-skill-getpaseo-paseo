@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.19 - 2026-03-09
+### Added
+- Added a draft GitHub release flow so maintainers can upload and review desktop and Android release assets before publishing the final release.
+
 ## 0.1.18 - 2026-03-06
 ### Added
 - Added a desktop `Mod+W` shortcut to close the current tab.
