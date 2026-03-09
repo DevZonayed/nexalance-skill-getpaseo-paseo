@@ -5,12 +5,25 @@ on:
     tags:
       - "v*"
       - "desktop-v*"
+      - "desktop-macos-v*"
+      - "desktop-linux-v*"
+      - "desktop-windows-v*"
   workflow_dispatch:
     inputs:
       tag:
         description: "Existing tag to build (e.g. v0.1.0)"
         required: true
         type: string
+      platform:
+        description: "Optional desktop platform to build."
+        required: false
+        default: "all"
+        type: choice
+        options:
+          - all
+          - macos
+          - linux
+          - windows
 
 concurrency:
   group: desktop-release-${{ github.ref }}
@@ -18,9 +31,11 @@ concurrency:
 
 env:
   SOURCE_TAG: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
+  REQUESTED_PLATFORM: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.platform || (startsWith(github.ref_name, 'desktop-windows-v') && 'windows' || startsWith(github.ref_name, 'desktop-linux-v') && 'linux' || startsWith(github.ref_name, 'desktop-macos-v') && 'macos' || 'all') }}
 
 jobs:
   publish-macos:
+    if: ${{ env.REQUESTED_PLATFORM == 'all' || env.REQUESTED_PLATFORM == 'macos' }}
     strategy:
       matrix:
         include:
@@ -44,7 +59,13 @@ jobs:
         run: |
           set -euo pipefail
           source_tag="${SOURCE_TAG}"
-          if [[ "$source_tag" == desktop-v* ]]; then
+          if [[ "$source_tag" == desktop-windows-v* ]]; then
+            release_tag="v${source_tag#desktop-windows-v}"
+          elif [[ "$source_tag" == desktop-linux-v* ]]; then
+            release_tag="v${source_tag#desktop-linux-v}"
+          elif [[ "$source_tag" == desktop-macos-v* ]]; then
+            release_tag="v${source_tag#desktop-macos-v}"
+          elif [[ "$source_tag" == desktop-v* ]]; then
             release_tag="v${source_tag#desktop-v}"
           else
             release_tag="$source_tag"
@@ -69,13 +90,6 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Install Lightning CSS Windows binary
-        shell: bash
-        run: |
-          set -euo pipefail
-          version="$(node -p "require('./package.json').overrides.lightningcss")"
-          npm install --no-save "lightningcss-win32-x64-msvc@${version}"
-
       - name: Build web app for Tauri
         run: npm run build:web --workspace=@getpaseo/app
 
@@ -89,7 +103,7 @@ jobs:
           const rawTag = process.env.SOURCE_TAG;
           if (!rawTag) throw new Error('SOURCE_TAG env var is missing');
 
-          const version = rawTag.replace(/^desktop-/, '').replace(/^v/, '');
+          const version = rawTag.replace(/^desktop-(windows-|linux-|macos-)?/, '').replace(/^v/, '');
           console.log(`Using desktop version ${version} from tag ${rawTag}`);
 
           const tauriConfPath = path.join('packages', 'desktop', 'src-tauri', 'tauri.conf.json');
@@ -153,6 +167,7 @@ jobs:
           args: --target ${{ matrix.rust_target }}
 
   publish-linux:
+    if: ${{ env.REQUESTED_PLATFORM == 'all' || env.REQUESTED_PLATFORM == 'linux' }}
     permissions:
       contents: write
       packages: read
@@ -169,7 +184,13 @@ jobs:
         run: |
           set -euo pipefail
           source_tag="${SOURCE_TAG}"
-          if [[ "$source_tag" == desktop-v* ]]; then
+          if [[ "$source_tag" == desktop-windows-v* ]]; then
+            release_tag="v${source_tag#desktop-windows-v}"
+          elif [[ "$source_tag" == desktop-linux-v* ]]; then
+            release_tag="v${source_tag#desktop-linux-v}"
+          elif [[ "$source_tag" == desktop-macos-v* ]]; then
+            release_tag="v${source_tag#desktop-macos-v}"
+          elif [[ "$source_tag" == desktop-v* ]]; then
             release_tag="v${source_tag#desktop-v}"
           else
             release_tag="$source_tag"
@@ -210,7 +231,7 @@ jobs:
           const rawTag = process.env.SOURCE_TAG;
           if (!rawTag) throw new Error('SOURCE_TAG env var is missing');
 
-          const version = rawTag.replace(/^desktop-/, '').replace(/^v/, '');
+          const version = rawTag.replace(/^desktop-(windows-|linux-|macos-)?/, '').replace(/^v/, '');
           console.log(`Using desktop version ${version} from tag ${rawTag}`);
 
           const tauriConfPath = path.join('packages', 'desktop', 'src-tauri', 'tauri.conf.json');
@@ -268,6 +289,7 @@ jobs:
           args: --bundles appimage
 
   publish-windows:
+    if: ${{ env.REQUESTED_PLATFORM == 'all' || env.REQUESTED_PLATFORM == 'windows' }}
     permissions:
       contents: write
       packages: read
@@ -284,7 +306,13 @@ jobs:
         run: |
           set -euo pipefail
           source_tag="${SOURCE_TAG}"
-          if [[ "$source_tag" == desktop-v* ]]; then
+          if [[ "$source_tag" == desktop-windows-v* ]]; then
+            release_tag="v${source_tag#desktop-windows-v}"
+          elif [[ "$source_tag" == desktop-linux-v* ]]; then
+            release_tag="v${source_tag#desktop-linux-v}"
+          elif [[ "$source_tag" == desktop-macos-v* ]]; then
+            release_tag="v${source_tag#desktop-macos-v}"
+          elif [[ "$source_tag" == desktop-v* ]]; then
             release_tag="v${source_tag#desktop-v}"
           else
             release_tag="$source_tag"
@@ -307,6 +335,13 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Install Lightning CSS Windows binary
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(node -p "require('./package.json').overrides.lightningcss")"
+          npm install --no-save "lightningcss-win32-x64-msvc@${version}"
+
       - name: Build web app for Tauri
         run: npm run build:web --workspace=@getpaseo/app
 
@@ -320,7 +355,7 @@ jobs:
           const rawTag = process.env.SOURCE_TAG;
           if (!rawTag) throw new Error('SOURCE_TAG env var is missing');
 
-          const version = rawTag.replace(/^desktop-/, '').replace(/^v/, '');
+          const version = rawTag.replace(/^desktop-(windows-|linux-|macos-)?/, '').replace(/^v/, '');
           console.log(`Using desktop version ${version} from tag ${rawTag}`);
 
           const tauriConfPath = path.join('packages', 'desktop', 'src-tauri', 'tauri.conf.json');
