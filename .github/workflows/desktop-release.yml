@@ -40,7 +40,7 @@ jobs:
         include:
           - runner: macos-14
             rust_target: aarch64-apple-darwin
-          - runner: macos-13
+          - runner: macos-15-intel
             rust_target: x86_64-apple-darwin
     permissions:
       contents: write
