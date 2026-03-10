@@ -303,6 +303,11 @@ jobs:
       - name: Validate managed runtime bundle
         run: npm run validate:managed-runtime --workspace=@getpaseo/desktop
 
+      - name: Remove CUDA/TensorRT providers from onnxruntime
+        shell: bash
+        run: |
+          find packages/desktop/src-tauri/resources/managed-runtime -path '*/onnxruntime-node/bin/*' \( -name '*cuda*' -o -name '*tensorrt*' \) -delete || true
+
       - name: Detect existing GitHub release state
         if: env.IS_SMOKE_TAG != 'true'
         env:
