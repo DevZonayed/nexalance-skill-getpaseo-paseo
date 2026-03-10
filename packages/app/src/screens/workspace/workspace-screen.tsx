@@ -15,7 +15,7 @@ import {
   Copy,
   Folder,
   GitBranch,
-  MoreVertical,
+  Ellipsis,
   PanelRight,
   Plus,
   SquareTerminal,
@@ -40,6 +40,8 @@ import {
 import { ExplorerSidebar } from "@/components/explorer-sidebar";
 import { FilePane } from "@/components/file-pane";
 import { TerminalPane } from "@/components/terminal-pane";
+import { SourceControlPanelIcon } from "@/components/icons/source-control-panel-icon";
+import { WorkspaceGitActions } from "@/screens/workspace/workspace-git-actions";
 import { ExplorerSidebarAnimationProvider } from "@/contexts/explorer-sidebar-animation-context";
 import { useToast } from "@/contexts/toast-context";
 import { useExplorerOpenGesture } from "@/hooks/use-explorer-open-gesture";
@@ -98,7 +100,6 @@ import {
 
 const TERMINALS_QUERY_STALE_TIME = 5_000;
 const NEW_TAB_AGENT_OPTION_ID = "__new_tab_agent__";
-const NEW_TAB_TERMINAL_OPTION_ID = "__new_tab_terminal__";
 const EMPTY_UI_TABS: ReturnType<typeof useWorkspaceTabsStore.getState>["uiTabsByWorkspace"][string] = [];
 const EMPTY_TAB_ORDER: string[] = [];
 
@@ -751,7 +752,6 @@ function WorkspaceScreenContent({
   );
 
   const [isTabSwitcherOpen, setIsTabSwitcherOpen] = useState(false);
-  const [isNewTerminalHovered, setIsNewTerminalHovered] = useState(false);
   const [hoveredTabKey, setHoveredTabKey] = useState<string | null>(null);
   const [hoveredCloseTabKey, setHoveredCloseTabKey] = useState<string | null>(
     null
@@ -828,16 +828,12 @@ function WorkspaceScreenContent({
   );
 
   const handleSelectNewTabOption = useCallback(
-    (key: typeof NEW_TAB_AGENT_OPTION_ID | typeof NEW_TAB_TERMINAL_OPTION_ID) => {
+    (key: typeof NEW_TAB_AGENT_OPTION_ID) => {
       if (key === NEW_TAB_AGENT_OPTION_ID) {
         handleCreateDraftTab();
-        return;
-      }
-      if (key === NEW_TAB_TERMINAL_OPTION_ID) {
-        handleCreateTerminal();
       }
     },
-    [handleCreateDraftTab, handleCreateTerminal]
+    [handleCreateDraftTab]
   );
 
   const handleCloseTerminalTab = useCallback(
@@ -1349,87 +1345,134 @@ function WorkspaceScreenContent({
                       </Text>
                     </>
                   )}
+                  <DropdownMenu>
+                    <DropdownMenuTrigger
+                      testID="workspace-header-menu-trigger"
+                      style={styles.headerActionButton}
+                      accessibilityRole="button"
+                      accessibilityLabel="Workspace actions"
+                    >
+                      {({ hovered, open }) => (
+                        <Ellipsis
+                          size={theme.iconSize.md}
+                          color={hovered || open ? theme.colors.foreground : theme.colors.foregroundMuted}
+                        />
+                      )}
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent
+                      align="start"
+                      width={220}
+                      testID="workspace-header-menu"
+                    >
+                      <DropdownMenuItem
+                        testID="workspace-header-new-terminal"
+                        leading={
+                          <SquareTerminal
+                            size={16}
+                            color={theme.colors.foregroundMuted}
+                          />
+                        }
+                        disabled={createTerminalMutation.isPending}
+                        onSelect={handleCreateTerminal}
+                      >
+                        New terminal
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        testID="workspace-header-copy-path"
+                        leading={
+                          <Copy
+                            size={16}
+                            color={theme.colors.foregroundMuted}
+                          />
+                        }
+                        disabled={!normalizedWorkspaceId.startsWith("/")}
+                        onSelect={handleCopyWorkspacePath}
+                      >
+                        Copy workspace path
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </View>
               </>
             }
             right={
               <View style={styles.headerRight}>
-                <DropdownMenu>
-                  <DropdownMenuTrigger
-                    testID="workspace-header-menu-trigger"
-                    style={styles.headerActionButton}
-                    accessibilityRole="button"
-                    accessibilityLabel="Workspace actions"
-                  >
-                    <MoreVertical
-                      size={theme.iconSize.md}
-                      color={theme.colors.foregroundMuted}
+                {!isMobile && isGitCheckout ? (
+                  <>
+                    <WorkspaceGitActions
+                      serverId={normalizedServerId}
+                      cwd={normalizedWorkspaceId}
                     />
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent
-                    align="end"
-                    width={220}
-                    testID="workspace-header-menu"
-                  >
-                    <DropdownMenuItem
-                      testID="workspace-header-copy-path"
-                      leading={
-                        <Copy
-                          size={16}
-                          color={theme.colors.foregroundMuted}
-                        />
-                      }
-                      disabled={!normalizedWorkspaceId.startsWith("/")}
-                      onSelect={handleCopyWorkspacePath}
+                    <Pressable
+                      testID="workspace-explorer-toggle"
+                      onPress={handleToggleExplorer}
+                      accessibilityRole="button"
+                      accessibilityLabel={isExplorerOpen ? "Close explorer" : "Open explorer"}
+                      accessibilityState={{ expanded: isExplorerOpen }}
+                      style={({ hovered, pressed }) => [
+                        styles.sourceControlButton,
+                        workspaceDescriptor?.diffStat && styles.sourceControlButtonWithStats,
+                        (hovered || pressed || isExplorerOpen) && styles.sourceControlButtonHovered,
+                      ]}
                     >
-                      Copy workspace path
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-                <HeaderToggleButton
-                  testID="workspace-explorer-toggle"
-                  onPress={handleToggleExplorer}
-                  tooltipLabel="Toggle explorer"
-                  tooltipKeys={["mod", "E"]}
-                  tooltipSide="left"
-                  style={styles.headerActionButton}
-                  accessible
-                  accessibilityRole="button"
-                  accessibilityLabel={isExplorerOpen ? "Close explorer" : "Open explorer"}
-                  accessibilityState={{ expanded: isExplorerOpen }}
-                >
-                  {isMobile ? (
-                    isGitCheckout ? (
-                      <GitBranch
-                        size={theme.iconSize.lg}
-                        color={
-                          isExplorerOpen
-                            ? theme.colors.foreground
-                            : theme.colors.foregroundMuted
-                        }
-                      />
-                    ) : (
-                      <Folder
-                        size={theme.iconSize.lg}
-                        color={
-                          isExplorerOpen
-                            ? theme.colors.foreground
-                            : theme.colors.foregroundMuted
-                        }
-                      />
-                    )
-                  ) : (
-                    <PanelRight
-                      size={theme.iconSize.md}
-                      color={
-                        isExplorerOpen
-                          ? theme.colors.foreground
-                          : theme.colors.foregroundMuted
-                      }
-                    />
-                  )}
-                </HeaderToggleButton>
-
+                      {({ hovered, pressed }) => {
+                        const active = isExplorerOpen || hovered || pressed;
+                        const iconColor = active ? theme.colors.foreground : theme.colors.foregroundMuted;
+                        return (
+                          <>
+                            <SourceControlPanelIcon size={theme.iconSize.md} color={iconColor} />
+                            {workspaceDescriptor?.diffStat ? (
+                              <View style={styles.diffStatRow}>
+                                <Text style={styles.diffStatAdditions}>+{workspaceDescriptor.diffStat.additions}</Text>
+                                <Text style={styles.diffStatDeletions}>-{workspaceDescriptor.diffStat.deletions}</Text>
+                              </View>
+                            ) : null}
+                          </>
+                        );
+                      }}
+                    </Pressable>
+                  </>
+                ) : null}
+                {!isMobile && !isGitCheckout ? (
+                  <HeaderToggleButton
+                    testID="workspace-explorer-toggle"
+                    onPress={handleToggleExplorer}
+                    tooltipLabel="Toggle explorer"
+                    tooltipKeys={["mod", "E"]}
+                    tooltipSide="left"
+                    style={styles.headerActionButton}
+                    accessible
+                    accessibilityRole="button"
+                    accessibilityLabel={isExplorerOpen ? "Close explorer" : "Open explorer"}
+                    accessibilityState={{ expanded: isExplorerOpen }}
+                  >
+                    {({ hovered }) => {
+                      const color = isExplorerOpen || hovered ? theme.colors.foreground : theme.colors.foregroundMuted;
+                      return <PanelRight size={theme.iconSize.md} color={color} />;
+                    }}
+                  </HeaderToggleButton>
+                ) : null}
+                {isMobile ? (
+                  <HeaderToggleButton
+                    testID="workspace-explorer-toggle"
+                    onPress={handleToggleExplorer}
+                    tooltipLabel="Toggle explorer"
+                    tooltipKeys={["mod", "E"]}
+                    tooltipSide="left"
+                    style={styles.headerActionButton}
+                    accessible
+                    accessibilityRole="button"
+                    accessibilityLabel={isExplorerOpen ? "Close explorer" : "Open explorer"}
+                    accessibilityState={{ expanded: isExplorerOpen }}
+                  >
+                    {({ hovered }) => {
+                      const color = isExplorerOpen || hovered ? theme.colors.foreground : theme.colors.foregroundMuted;
+                      return isGitCheckout
+                        ? <GitBranch size={theme.iconSize.lg} color={color} />
+                        : <Folder size={theme.iconSize.lg} color={color} />;
+                    }}
+                  </HeaderToggleButton>
+                ) : null}
               </View>
             }
           />
@@ -1486,36 +1529,6 @@ function WorkspaceScreenContent({
                   </TooltipContent>
                 </Tooltip>
 
-                <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
-                  <TooltipTrigger
-                    testID="workspace-new-terminal-tab"
-                    onPress={() => handleSelectNewTabOption(NEW_TAB_TERMINAL_OPTION_ID)}
-                    onHoverIn={() => setIsNewTerminalHovered(true)}
-                    onHoverOut={() => setIsNewTerminalHovered(false)}
-                    disabled={createTerminalMutation.isPending}
-                    accessibilityRole="button"
-                    accessibilityLabel="New terminal tab"
-                    style={({ hovered, pressed }) => [
-                      styles.newTabActionButton,
-                      createTerminalMutation.isPending && styles.newTabActionButtonDisabled,
-                      (hovered || pressed) && styles.newTabActionButtonHovered,
-                    ]}
-                  >
-                    {createTerminalMutation.isPending ? (
-                      <ActivityIndicator size="small" color={theme.colors.foregroundMuted} />
-                    ) : (
-                      <View style={styles.terminalPlusIcon}>
-                        <SquareTerminal size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
-                        <View style={[styles.terminalPlusBadge, isNewTerminalHovered && styles.terminalPlusBadgeHovered]}>
-                          <Plus size={10} color={theme.colors.foregroundMuted} />
-                        </View>
-                      </View>
-                    )}
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom" align="end" offset={8}>
-                    <Text style={styles.newTabTooltipText}>New terminal tab</Text>
-                  </TooltipContent>
-                </Tooltip>
               </View>
 
               <Combobox
@@ -1568,10 +1581,6 @@ function WorkspaceScreenContent({
               onCloseOtherTabs={handleCloseOtherTabs}
               onSelectNewTabOption={handleSelectNewTabOption}
               newTabAgentOptionId={NEW_TAB_AGENT_OPTION_ID}
-              newTabTerminalOptionId={NEW_TAB_TERMINAL_OPTION_ID}
-              createTerminalPending={createTerminalMutation.isPending}
-              isNewTerminalHovered={isNewTerminalHovered}
-              setIsNewTerminalHovered={setIsNewTerminalHovered}
               onReorderTabs={handleReorderTabs}
             />
           )}
@@ -1654,12 +1663,48 @@ const styles = StyleSheet.create((theme) => ({
   headerRight: {
     flexDirection: "row",
     alignItems: "center",
-    gap: theme.spacing[1],
+    gap: {
+      xs: theme.spacing[1],
+      md: theme.spacing[2],
+    },
   },
   headerActionButton: {
     paddingVertical: theme.spacing[2],
     paddingHorizontal: theme.spacing[2],
     borderRadius: theme.borderRadius.lg,
+  },
+  sourceControlButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: theme.spacing[2],
+    paddingHorizontal: theme.spacing[1],
+    paddingVertical: theme.spacing[1],
+    minHeight: Math.ceil(theme.fontSize.sm * 1.5) + theme.spacing[1] * 2,
+    minWidth: Math.ceil(theme.fontSize.sm * 1.5) + theme.spacing[1] * 2,
+    borderRadius: theme.borderRadius.md,
+  },
+  sourceControlButtonWithStats: {
+    paddingHorizontal: theme.spacing[3],
+  },
+  sourceControlButtonHovered: {
+    backgroundColor: theme.colors.surface2,
+  },
+  diffStatRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    flexShrink: 0,
+  },
+  diffStatAdditions: {
+    fontSize: theme.fontSize.xs,
+    fontWeight: theme.fontWeight.normal,
+    color: theme.colors.palette.green[400],
+  },
+  diffStatDeletions: {
+    fontSize: theme.fontSize.xs,
+    fontWeight: theme.fontWeight.normal,
+    color: theme.colors.palette.red[500],
   },
   newTabActions: {
     flexDirection: "row",
@@ -1679,33 +1724,9 @@ const styles = StyleSheet.create((theme) => ({
   newTabActionButtonHovered: {
     backgroundColor: theme.colors.surface2,
   },
-  newTabActionButtonDisabled: {
-    opacity: 0.6,
-  },
   newTabTooltipText: {
     fontSize: theme.fontSize.sm,
     color: theme.colors.popoverForeground,
-  },
-  terminalPlusIcon: {
-    position: "relative",
-    width: theme.iconSize.sm,
-    height: theme.iconSize.sm,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  terminalPlusBadge: {
-    position: "absolute",
-    right: -5,
-    bottom: -5,
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: theme.colors.surface1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  terminalPlusBadgeHovered: {
-    backgroundColor: theme.colors.surface2,
   },
   mobileTabsRow: {
     borderBottomWidth: 1,

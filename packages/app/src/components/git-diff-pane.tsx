@@ -23,7 +23,6 @@ import {
   GitMerge,
   ListChevronsDownUp,
   ListChevronsUpDown,
-  MoreVertical,
   RefreshCcw,
   Upload,
 } from "lucide-react-native";
@@ -47,7 +46,6 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-  type ActionStatus,
 } from "@/components/ui/dropdown-menu";
 import { GitHubIcon } from "@/components/icons/github-icon";
 import {
@@ -58,36 +56,11 @@ import { buildNewAgentRoute, resolveNewAgentWorkingDir } from "@/utils/new-agent
 import { openExternalUrl } from "@/utils/open-external-url";
 import { shouldShowMergeFromBaseAction } from "./git-action-visibility";
 
-// =============================================================================
-// Git Actions Data Structure
-// =============================================================================
+import { type GitActionId, type GitAction, type GitActions } from "@/hooks/use-git-actions";
+import { GitActionsSplitButton } from "@/components/git-actions-split-button";
 
-type GitActionId =
-  | "commit"
-  | "push"
-  | "view-pr"
-  | "create-pr"
-  | "merge-branch"
-  | "merge-from-base"
-  | "archive-worktree";
-
-interface GitAction {
-  id: GitActionId;
-  label: string;
-  pendingLabel: string;
-  successLabel: string;
-  disabled: boolean;
-  status: ActionStatus;
-  description?: string;
-  icon?: ReactElement;
-  handler: () => void;
-}
-
-interface GitActions {
-  primary: GitAction | null;
-  secondary: GitAction[];
-  menu: GitAction[];
-}
+// Re-export types from shared hook
+export type { GitActionId, GitAction, GitActions } from "@/hooks/use-git-actions";
 
 function openURLInNewTab(url: string): void {
   void openExternalUrl(url);
@@ -466,13 +439,14 @@ interface GitDiffPaneProps {
   serverId: string;
   workspaceId?: string | null;
   cwd: string;
+  hideHeaderRow?: boolean;
 }
 
 type DiffFlatItem =
   | { type: "header"; file: ParsedDiffFile; fileIndex: number; isExpanded: boolean }
   | { type: "body"; file: ParsedDiffFile; fileIndex: number };
 
-export function GitDiffPane({ serverId, workspaceId, cwd }: GitDiffPaneProps) {
+export function GitDiffPane({ serverId, workspaceId, cwd, hideHeaderRow }: GitDiffPaneProps) {
   const { theme } = useUnistyles();
   const isMobile =
     UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
@@ -1219,119 +1193,22 @@ export function GitDiffPane({ serverId, workspaceId, cwd }: GitDiffPaneProps) {
   ]);
 
   // Helper to get display label based on status
-  const getActionDisplayLabel = useCallback((action: GitAction): string => {
-    if (action.status === "pending") return action.pendingLabel;
-    if (action.status === "success") return action.successLabel;
-    return action.label;
-  }, []);
 
   return (
     <View style={styles.container}>
-      <View style={styles.header} testID="changes-header">
-        <View style={styles.headerLeft}>
-          <GitBranch size={16} color={theme.colors.foregroundMuted} />
-          <Text style={styles.branchLabel} testID="changes-branch" numberOfLines={1}>
-            {branchLabel}
-          </Text>
-        </View>
-        {isGit ? (
-          <View style={styles.headerRight}>
-            {gitActions.primary ? (
-              <View style={styles.splitButton}>
-                <Pressable
-                  testID="changes-primary-cta"
-                  style={[
-                    styles.splitButtonPrimary,
-                    gitActions.primary.disabled && styles.splitButtonPrimaryDisabled,
-                  ]}
-                  onPress={gitActions.primary.handler}
-                  disabled={gitActions.primary.disabled}
-                  accessibilityRole="button"
-                  accessibilityLabel={gitActions.primary.label}
-                >
-                  {gitActions.primary.status === "pending" ? (
-                    <ActivityIndicator
-                      size="small"
-                      color={theme.colors.foreground}
-                      style={styles.splitButtonSpinnerOnly}
-                    />
-                  ) : (
-                    <View style={styles.splitButtonContent}>
-                      {gitActions.primary.icon}
-                      <Text style={styles.splitButtonText}>{getActionDisplayLabel(gitActions.primary)}</Text>
-                    </View>
-                  )}
-                </Pressable>
-                {gitActions.secondary.length > 0 ? (
-                  <DropdownMenu>
-                    <DropdownMenuTrigger
-                      testID="changes-primary-cta-caret"
-                      style={styles.splitButtonCaret}
-                      accessibilityRole="button"
-                      accessibilityLabel="More options"
-                    >
-                      <ChevronDown size={16} color={theme.colors.foregroundMuted} />
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" testID="changes-primary-cta-menu">
-                      {gitActions.secondary.map((action, index) => {
-                        const needsSeparator = action.id === "merge-from-base" || action.id === "push";
-                        return (
-                          <View key={action.id}>
-                            {needsSeparator && index > 0 ? <DropdownMenuSeparator /> : null}
-                            <DropdownMenuItem
-                              testID={`changes-menu-${action.id}`}
-                              leading={action.icon}
-                              disabled={action.disabled}
-                              status={action.status}
-                              pendingLabel={action.pendingLabel}
-                              successLabel={action.successLabel}
-                              closeOnSelect={action.status === "idle" && action.id === "view-pr"}
-                              description={action.description}
-                              onSelect={action.handler}
-                            >
-                              {action.label}
-                            </DropdownMenuItem>
-                          </View>
-                        );
-                      })}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                ) : null}
-              </View>
-            ) : null}
-            {gitActions.menu.length > 0 ? (
-              <DropdownMenu>
-                <DropdownMenuTrigger
-                  testID="changes-overflow-menu"
-                  hitSlop={8}
-                  style={[styles.iconButton, styles.overflowMenuButton]}
-                  accessibilityRole="button"
-                  accessibilityLabel="More actions"
-                >
-                  <MoreVertical size={16} color={theme.colors.foregroundMuted} />
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" width={220} testID="changes-overflow-content">
-                  {gitActions.menu.map((action) => (
-                    <DropdownMenuItem
-                      key={action.id}
-                      testID={`changes-menu-${action.id}`}
-                      leading={action.icon}
-                      disabled={action.disabled}
-                      status={action.status}
-                      pendingLabel={action.pendingLabel}
-                      successLabel={action.successLabel}
-                      closeOnSelect={false}
-                      onSelect={action.handler}
-                    >
-                      {action.label}
-                    </DropdownMenuItem>
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
-            ) : null}
+      {!hideHeaderRow ? (
+        <View style={styles.header} testID="changes-header">
+          <View style={styles.headerLeft}>
+            <GitBranch size={16} color={theme.colors.foregroundMuted} />
+            <Text style={styles.branchLabel} testID="changes-branch" numberOfLines={1}>
+              {branchLabel}
+            </Text>
           </View>
-        ) : null}
-      </View>
+          {isGit ? (
+            <GitActionsSplitButton gitActions={gitActions} />
+          ) : null}
+        </View>
+      ) : null}
 
       {isGit ? (
         <View style={styles.diffStatusContainer}>
@@ -1438,12 +1315,6 @@ const styles = StyleSheet.create((theme) => ({
     flex: 1,
     minWidth: 0,
   },
-  headerRight: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing[1],
-    flexShrink: 0,
-  },
   branchLabel: {
     fontSize: theme.fontSize.sm,
     color: theme.colors.foreground,
@@ -1495,112 +1366,6 @@ const styles = StyleSheet.create((theme) => ({
     paddingHorizontal: theme.spacing[1],
     paddingVertical: theme.spacing[1],
     borderRadius: theme.borderRadius.base,
-  },
-  splitButton: {
-    flexDirection: "row",
-    alignItems: "stretch",
-    borderRadius: theme.borderRadius.md,
-    backgroundColor: theme.colors.surface2,
-    borderWidth: theme.borderWidth[1],
-    borderColor: theme.colors.borderAccent,
-    overflow: "hidden",
-  },
-  splitButtonPrimary: {
-    paddingHorizontal: theme.spacing[3],
-    paddingVertical: theme.spacing[1],
-    justifyContent: "center",
-    position: "relative",
-  },
-  splitButtonPrimaryDisabled: {
-    opacity: 0.6,
-  },
-  splitButtonText: {
-    fontSize: theme.fontSize.sm,
-    lineHeight: theme.fontSize.sm * 1.5,
-    color: theme.colors.foreground,
-    fontWeight: theme.fontWeight.medium,
-  },
-  splitButtonContent: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: theme.spacing[2],
-  },
-  splitButtonSpinnerOnly: {
-    transform: [{ scale: 0.8 }],
-  },
-  splitButtonCaret: {
-    width: 36,
-    alignItems: "center",
-    justifyContent: "center",
-    borderLeftWidth: theme.borderWidth[1],
-    borderLeftColor: theme.colors.borderAccent,
-  },
-  iconButton: {
-    width: 32,
-    height: 32,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: theme.borderRadius.md,
-  },
-  overflowMenuButton: {
-    marginRight: -theme.spacing[2],
-  },
-  menuOverlay: {
-    flex: 1,
-  },
-  menuBackdrop: {
-    position: "absolute",
-    top: 0,
-    right: 0,
-    bottom: 0,
-    left: 0,
-  },
-  dropdownMenu: {
-    backgroundColor: theme.colors.surface0,
-    borderWidth: 1,
-    borderColor: theme.colors.borderAccent,
-    borderRadius: theme.borderRadius.lg,
-    overflow: "hidden",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 8,
-  },
-  menuItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing[2],
-    paddingHorizontal: theme.spacing[3],
-    paddingVertical: theme.spacing[2],
-  },
-  menuItemSelected: {
-    backgroundColor: theme.colors.surface2,
-  },
-  menuItemDisabled: {
-    opacity: 0.5,
-  },
-  menuItemText: {
-    fontSize: theme.fontSize.sm,
-    color: theme.colors.foreground,
-    fontWeight: theme.fontWeight.medium,
-  },
-  menuHintText: {
-    paddingHorizontal: theme.spacing[3],
-    paddingBottom: theme.spacing[2],
-    fontSize: theme.fontSize.xs,
-    color: theme.colors.foregroundMuted,
-  },
-  menuItemDestructive: {
-    backgroundColor: "rgba(248, 81, 73, 0.08)",
-  },
-  menuItemTextDestructive: {
-    color: theme.colors.destructive,
-  },
-  menuDivider: {
-    height: 1,
-    backgroundColor: theme.colors.border,
   },
   actionErrorText: {
     paddingHorizontal: theme.spacing[3],

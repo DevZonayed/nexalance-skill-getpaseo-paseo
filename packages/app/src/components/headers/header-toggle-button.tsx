@@ -1,4 +1,4 @@
-import type { PropsWithChildren, ReactElement } from "react";
+import type { ReactElement, ReactNode } from "react";
 import {
   Platform,
   Text,
@@ -12,6 +12,21 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { Shortcut } from "@/components/ui/shortcut";
 import type { ShortcutKey } from "@/utils/format-shortcut";
 
+interface HeaderToggleButtonState {
+  hovered: boolean;
+  pressed: boolean;
+}
+
+interface HeaderToggleButtonProps extends Omit<PressableProps, "style" | "onPress" | "children"> {
+  onPress: NonNullable<PressableProps["onPress"]>;
+  tooltipLabel: string;
+  tooltipKeys: ShortcutKey[];
+  tooltipSide: "left" | "right" | "top" | "bottom";
+  tooltipDelayDuration?: number;
+  style?: StyleProp<ViewStyle>;
+  children: ReactNode | ((state: HeaderToggleButtonState) => ReactNode);
+}
+
 export function HeaderToggleButton({
   onPress,
   tooltipLabel,
@@ -22,16 +37,7 @@ export function HeaderToggleButton({
   disabled,
   children,
   ...props
-}: PropsWithChildren<
-  Omit<PressableProps, "style" | "onPress"> & {
-    onPress: NonNullable<PressableProps["onPress"]>;
-    tooltipLabel: string;
-    tooltipKeys: ShortcutKey[];
-    tooltipSide: "left" | "right" | "top" | "bottom";
-    tooltipDelayDuration?: number;
-    style?: StyleProp<ViewStyle>;
-  }
->): ReactElement {
+}: HeaderToggleButtonProps): ReactElement {
   const tooltipTestID =
     typeof props.testID === "string" && props.testID.length > 0
       ? `${props.testID}-tooltip`
@@ -53,7 +59,10 @@ export function HeaderToggleButton({
         }}
         style={[styles.button, style]}
       >
-        {children}
+        {typeof children === "function"
+          ? (state: { pressed: boolean; hovered?: boolean }) =>
+              children({ hovered: Boolean(state.hovered), pressed: state.pressed })
+          : children}
       </TooltipTrigger>
       <TooltipContent testID={tooltipTestID} side={tooltipSide} align="center" offset={8}>
         <View style={styles.tooltipRow}>

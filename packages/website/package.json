@@ -16,8 +16,8 @@
     "@tanstack/react-router": "^1.120.3",
     "@tanstack/react-start": "^1.120.3",
     "framer-motion": "^12.35.2",
-    "react": "^19.1.0",
-    "react-dom": "^19.1.0",
+    "react": "^19.1.4",
+    "react-dom": "^19.1.4",
     "react-markdown": "^10.1.0",
     "wrangler": "^4.59.1"
   },

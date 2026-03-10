@@ -101,6 +101,7 @@ export interface MessageInputRef {
 const MIN_INPUT_HEIGHT = 30
 const MAX_INPUT_HEIGHT = 160
 const IS_WEB = Platform.OS === 'web'
+const IS_DEV = Boolean((globalThis as { __DEV__?: boolean }).__DEV__)
 
 type WebTextInputKeyPressEvent = NativeSyntheticEvent<
   TextInputKeyPressEventData & {
@@ -112,10 +113,66 @@ type WebTextInputKeyPressEvent = NativeSyntheticEvent<
 
 type TextAreaHandle = {
   scrollHeight?: number
+  clientHeight?: number
+  offsetHeight?: number
+  scrollTop?: number
+  selectionStart?: number | null
+  selectionEnd?: number | null
   style?: {
     height?: string
     overflowY?: string
   } & Record<string, unknown>
+}
+
+function logWebStickyBottom(
+  event: string,
+  details: Record<string, unknown>
+): void {
+  if (!IS_DEV || !IS_WEB) {
+    return
+  }
+  console.log('[WebStickyBottom]', event, details)
+}
+
+function getDebugNow(): number | null {
+  if (typeof performance !== 'undefined' && typeof performance.now === 'function') {
+    return Number(performance.now().toFixed(3))
+  }
+  return null
+}
+
+function getElementDescriptor(element: HTMLElement | null): string | null {
+  if (!element) return null
+  const tag = element.tagName?.toLowerCase() ?? 'unknown'
+  const id = element.id ? `#${element.id}` : ''
+  const testId = element.getAttribute?.('data-testid')
+  const label = element.getAttribute?.('aria-label')
+  const suffix = testId
+    ? `[data-testid="${testId}"]`
+    : label
+      ? `[aria-label="${label}"]`
+      : ''
+  return `${tag}${id}${suffix}`
+}
+
+function getScrollableAncestorChain(element: HTMLElement | null): string[] {
+  if (!element || typeof window === 'undefined') {
+    return []
+  }
+  const results: string[] = []
+  let current = element.parentElement
+  while (current) {
+    const style = window.getComputedStyle(current)
+    const overflowY = style.overflowY
+    const canScroll =
+      (overflowY === 'auto' || overflowY === 'scroll' || overflowY === 'overlay') &&
+      current.scrollHeight > current.clientHeight
+    if (canScroll) {
+      results.push(getElementDescriptor(current) ?? current.tagName.toLowerCase())
+    }
+    current = current.parentElement
+  }
+  return results
 }
 
 function ImageAttachmentThumbnail({ image }: { image: ImageAttachment }) {
@@ -164,6 +221,8 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
   const toast = useToast()
   const voice = useVoiceOptional()
   const [inputHeight, setInputHeight] = useState(MIN_INPUT_HEIGHT)
+  const rootRef = useRef<View | null>(null)
+  const inputWrapperRef = useRef<View | null>(null)
   const textInputRef = useRef<TextInput | (TextInput & { getNativeRef?: () => unknown }) | null>(
     null
   )
@@ -509,6 +568,12 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
     return null
   }, [])
 
+  const getWebElement = useCallback((target: 'root' | 'wrapper'): HTMLElement | null => {
+    const ref = target === 'root' ? rootRef.current : inputWrapperRef.current
+    if (!ref) return null
+    return ref instanceof HTMLElement ? ref : ((ref as unknown as { getBoundingClientRect?: () => DOMRect }).getBoundingClientRect ? (ref as unknown as HTMLElement) : null)
+  }, [])
+
   useEffect(() => {
     if (!IS_WEB || !onAddImages) {
       return
@@ -562,36 +627,125 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
     onAddImages,
   ])
 
+  useEffect(() => {
+    if (!IS_WEB || typeof ResizeObserver === 'undefined') {
+      return
+    }
+
+    const textarea = getWebTextArea()
+    const root = getWebElement('root')
+    const wrapper = getWebElement('wrapper')
+    const observed = [
+      { name: 'composer_root', element: root },
+      { name: 'composer_wrapper', element: wrapper },
+      { name: 'composer_textarea', element: textarea as unknown as HTMLElement | null },
+    ].filter((entry): entry is { name: string; element: HTMLElement } => entry.element instanceof HTMLElement)
+
+    if (observed.length === 0) {
+      return
+    }
+
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const target = entry.target as HTMLElement
+        const match = observed.find((item) => item.element === target)
+        if (!match) {
+          continue
+        }
+        const textareaNode = getWebTextArea()
+        logWebStickyBottom('composer_element_resized', {
+          target: match.name,
+          width: target.clientWidth,
+          height: target.clientHeight,
+          offsetHeight: target.offsetHeight,
+          scrollHeight: target.scrollHeight,
+          textareaClientHeight: textareaNode?.clientHeight ?? null,
+          textareaOffsetHeight: textareaNode?.offsetHeight ?? null,
+          textareaScrollHeight: textareaNode?.scrollHeight ?? null,
+          textareaScrollTop: (textareaNode as unknown as HTMLTextAreaElement | null)?.scrollTop ?? null,
+          valueLength: valueRef.current.length,
+        })
+      }
+    })
+
+    for (const entry of observed) {
+      observer.observe(entry.element)
+    }
+
+    return () => {
+      observer.disconnect()
+    }
+  }, [getWebElement, getWebTextArea])
+
+  useEffect(() => {
+    if (!IS_WEB) {
+      return
+    }
+    const textarea = getWebTextArea() as (HTMLTextAreaElement & TextAreaHandle) | null
+    if (!textarea || typeof textarea.addEventListener !== 'function') {
+      return
+    }
+
+    const handleScroll = () => {
+      const textareaElement = textarea as unknown as HTMLElement
+      const chatScroller =
+        typeof document !== 'undefined'
+          ? (document.querySelector('[data-testid="agent-chat-scroll"]') as HTMLElement | null)
+          : null
+      logWebStickyBottom('composer_textarea_scrolled', {
+        now: getDebugNow(),
+        scrollTop: textarea.scrollTop,
+        clientHeight: textarea.clientHeight ?? null,
+        scrollHeight: textarea.scrollHeight ?? null,
+        selectionStart: textarea.selectionStart ?? null,
+        selectionEnd: textarea.selectionEnd ?? null,
+        textareaDescriptor: getElementDescriptor(textareaElement),
+        chatScrollerDescriptor: getElementDescriptor(chatScroller),
+        chatScrollerContainsTextarea: Boolean(chatScroller && textareaElement && chatScroller.contains(textareaElement)),
+        textareaScrollableAncestors: getScrollableAncestorChain(textareaElement),
+        valueLength: valueRef.current.length,
+      })
+    }
+
+    textarea.addEventListener('scroll', handleScroll, { passive: true })
+    return () => {
+      textarea.removeEventListener('scroll', handleScroll)
+    }
+  }, [getWebTextArea])
+
   function measureWebInputHeight(source: string): boolean {
     if (!IS_WEB) return false
     const textarea = getWebTextArea()
     if (!textarea || typeof textarea.scrollHeight !== 'number') return false
-
-    const prevHeight = textarea.style?.height
-    const prevOverflow = textarea.style?.overflowY
-    if (textarea.style) {
-      textarea.style.height = 'auto'
-      textarea.style.overflowY = 'hidden'
-    }
-
     const scrollHeight = textarea.scrollHeight ?? 0
-    if (textarea.style) {
-      textarea.style.height = prevHeight ?? ''
-      textarea.style.overflowY = prevOverflow ?? ''
-    }
 
     if (baselineInputHeightRef.current === null && scrollHeight > 0) {
       baselineInputHeightRef.current = scrollHeight
+      logWebStickyBottom('composer_baseline_measured', {
+        source,
+        baseline: scrollHeight,
+      })
     }
 
     const baseline = baselineInputHeightRef.current ?? MIN_INPUT_HEIGHT
     const rawTarget = scrollHeight > 0 ? scrollHeight : baseline
     const bounded = Math.max(MIN_INPUT_HEIGHT, Math.min(MAX_INPUT_HEIGHT, rawTarget))
 
-    if (Math.abs(inputHeightRef.current - bounded) >= 1) {
+    const previousHeight = inputHeightRef.current
+    if (Math.abs(previousHeight - bounded) >= 1) {
       inputHeightRef.current = bounded
       setInputHeight(bounded)
       onHeightChange?.(bounded)
+      logWebStickyBottom('composer_height_changed', {
+        source,
+        previousHeight,
+        nextHeight: bounded,
+        scrollHeight,
+        clientHeight: textarea.clientHeight ?? null,
+        offsetHeight: textarea.offsetHeight ?? null,
+        baseline,
+        rawTarget,
+      })
       return true
     }
     return false
@@ -600,25 +754,51 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
   function setBoundedInputHeight(nextHeight: number) {
     const bounded = Math.max(MIN_INPUT_HEIGHT, Math.min(MAX_INPUT_HEIGHT, nextHeight))
     if (Math.abs(inputHeightRef.current - bounded) < 1) return
+    const previousHeight = inputHeightRef.current
     inputHeightRef.current = bounded
     setInputHeight(bounded)
     onHeightChange?.(bounded)
+    logWebStickyBottom('composer_height_changed_native', {
+      previousHeight,
+      nextHeight: bounded,
+    })
   }
 
   function handleContentSizeChange(
     event: NativeSyntheticEvent<TextInputContentSizeChangeEventData>
   ) {
+    const contentHeight = event.nativeEvent.contentSize.height
     if (IS_WEB) {
-      measureWebInputHeight('contentSizeChange')
+      logWebStickyBottom('composer_content_size_change', {
+        reportedHeight: contentHeight,
+      })
+      if (baselineInputHeightRef.current === null && contentHeight > 0) {
+        baselineInputHeightRef.current = contentHeight
+        logWebStickyBottom('composer_baseline_measured', {
+          source: 'contentSizeChange',
+          baseline: contentHeight,
+        })
+      }
+      setBoundedInputHeight(contentHeight)
       return
     }
-    const contentHeight = event.nativeEvent.contentSize.height
     setBoundedInputHeight(contentHeight)
   }
 
   function handleSelectionChange(event: NativeSyntheticEvent<TextInputSelectionChangeEventData>) {
     const start = event.nativeEvent.selection?.start ?? 0
     const end = event.nativeEvent.selection?.end ?? start
+    if (IS_WEB) {
+      const textarea = getWebTextArea()
+      logWebStickyBottom('composer_selection_changed', {
+        now: getDebugNow(),
+        start,
+        end,
+        textareaScrollTop: textarea?.scrollTop ?? null,
+        textareaClientHeight: textarea?.clientHeight ?? null,
+        textareaScrollHeight: textarea?.scrollHeight ?? null,
+      })
+    }
     onSelectionChangeCallback?.({ start, end })
   }
 
@@ -674,14 +854,20 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
     (nextValue: string) => {
       markScrollInvestigationEvent(investigationComponentId, 'inputChange')
       onChangeText(nextValue)
+      if (IS_WEB) {
+        logWebStickyBottom('composer_text_changed', {
+          valueLength: nextValue.length,
+          lineCount: nextValue.split('\n').length,
+        })
+      }
     },
     [investigationComponentId, onChangeText]
   )
 
   return (
-    <View style={styles.container} testID="message-input-root">
+    <View ref={rootRef} style={styles.container} testID="message-input-root">
       {/* Regular input */}
-      <Animated.View style={[styles.inputWrapper, inputAnimatedStyle]}>
+      <Animated.View ref={inputWrapperRef} style={[styles.inputWrapper, inputAnimatedStyle]}>
         {/* Image preview pills */}
         {hasImages && (
           <View style={styles.imagePreviewContainer} testID="message-input-image-preview">

@@ -1,17 +1,34 @@
+import { useEffect } from "react";
 import { View, Text, Pressable } from "react-native";
-import { StyleSheet, useUnistyles } from "react-native-unistyles";
+import { StyleSheet, UnistylesRuntime, useUnistyles } from "react-native-unistyles";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { FolderOpen } from "lucide-react-native";
 import { PaseoLogo } from "@/components/icons/paseo-logo";
+import { SidebarMenuToggle } from "@/components/headers/menu-header";
 import { useKeyboardShortcutsStore } from "@/stores/keyboard-shortcuts-store";
+import { usePanelStore } from "@/stores/panel-store";
 
 export function OpenProjectScreen({ serverId: _serverId }: { serverId: string }) {
   const { theme } = useUnistyles();
+  const insets = useSafeAreaInsets();
   const setProjectPickerOpen = useKeyboardShortcutsStore(
     (s) => s.setProjectPickerOpen
   );
+  const openAgentList = usePanelStore((s) => s.openAgentList);
+
+  useEffect(() => {
+    const isMobile =
+      UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
+    if (!isMobile) {
+      openAgentList();
+    }
+  }, [openAgentList]);
 
   return (
     <View style={styles.container}>
+      <View style={[styles.menuToggle, { paddingTop: insets.top }]}>
+        <SidebarMenuToggle />
+      </View>
       <View style={styles.content}>
         <PaseoLogo size={56} />
         <Text style={styles.heading}>What shall we build today?</Text>
@@ -24,7 +41,7 @@ export function OpenProjectScreen({ serverId: _serverId }: { serverId: string })
           testID="open-project-submit"
         >
           <FolderOpen size={16} color={theme.colors.foregroundMuted} />
-          <Text style={styles.openButtonText}>Open a project</Text>
+          <Text style={styles.openButtonText}>Add a project</Text>
         </Pressable>
       </View>
     </View>
@@ -35,6 +52,12 @@ const styles = StyleSheet.create((theme) => ({
   container: {
     flex: 1,
     backgroundColor: theme.colors.surface0,
+  },
+  menuToggle: {
+    position: "absolute",
+    top: theme.spacing[3],
+    left: theme.spacing[3],
+    zIndex: 1,
   },
   content: {
     flexGrow: 1,

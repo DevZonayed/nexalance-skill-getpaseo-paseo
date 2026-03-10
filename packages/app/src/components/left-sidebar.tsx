@@ -339,7 +339,7 @@ export function LeftSidebar({ selectedAgentId: _selectedAgentId }: LeftSidebarPr
                             hovered && styles.newAgentButtonTextHovered,
                           ]}
                         >
-                          Open project
+                          Add project
                         </Text>
                       </>
                     )}
@@ -463,7 +463,7 @@ export function LeftSidebar({ selectedAgentId: _selectedAgentId }: LeftSidebarPr
                 <Text
                   style={[styles.newAgentButtonText, hovered && styles.newAgentButtonTextHovered]}
                 >
-                  Open project
+                  Add project
                 </Text>
               </>
             )}

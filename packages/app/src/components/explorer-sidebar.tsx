@@ -412,6 +412,7 @@ function SidebarContent({
             serverId={serverId}
             workspaceId={workspaceId}
             cwd={workspaceRoot}
+            hideHeaderRow={!isMobile}
           />
         )}
         {resolvedTab === "files" && (

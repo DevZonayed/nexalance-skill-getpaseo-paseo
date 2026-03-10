@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useRef } from 'react'
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
@@ -99,6 +99,7 @@ export type DesktopStartupReconciliationInput = {
 interface DaemonRegistryContextValue {
   daemons: HostProfile[]
   isLoading: boolean
+  isReconciling: boolean
   error: unknown | null
   upsertDirectConnection: (input: {
     serverId: string
@@ -565,6 +566,7 @@ export function DaemonRegistryProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient()
   const desktopStartupReconciledRef = useRef(false)
   const localhostBootstrapAttemptedRef = useRef(false)
+  const [isReconciling, setIsReconciling] = useState(true)
   const { settings, isLoading: settingsLoading } = useAppSettings()
   const {
     data: daemons = [],
@@ -761,7 +763,11 @@ export function DaemonRegistryProvider({ children }: { children: ReactNode }) {
       }
     }
 
-    void reconcileDesktopStartup()
+    void reconcileDesktopStartup().finally(() => {
+      if (!cancelled) {
+        setIsReconciling(false)
+      }
+    })
 
     return () => {
       cancelled = true
@@ -826,7 +832,11 @@ export function DaemonRegistryProvider({ children }: { children: ReactNode }) {
       }
     }
 
-    void bootstrapLocalhost()
+    void bootstrapLocalhost().finally(() => {
+      if (!cancelled) {
+        setIsReconciling(false)
+      }
+    })
 
     return () => {
       cancelled = true
@@ -895,6 +905,7 @@ export function DaemonRegistryProvider({ children }: { children: ReactNode }) {
   const value: DaemonRegistryContextValue = {
     daemons,
     isLoading: isPending,
+    isReconciling,
     error: error ?? null,
     upsertDirectConnection,
     upsertRelayConnection,

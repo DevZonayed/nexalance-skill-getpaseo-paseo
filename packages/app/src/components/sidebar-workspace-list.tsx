@@ -665,11 +665,6 @@ function WorkspaceRowInner({
           </Text>
         </View>
         <View style={styles.workspaceRowRight}>
-          {showShortcutBadge && shortcutNumber !== null ? (
-            <View style={styles.shortcutBadge}>
-              <Text style={styles.shortcutBadgeText}>{shortcutNumber}</Text>
-            </View>
-          ) : null}
           {onArchive && (isHovered || isMobile) ? (
             <DropdownMenu>
               <DropdownMenuTrigger
@@ -714,6 +709,11 @@ function WorkspaceRowInner({
             <View style={styles.diffStatRow}>
               <Text style={styles.diffStatAdditions}>+{workspace.diffStat.additions}</Text>
               <Text style={styles.diffStatDeletions}>-{workspace.diffStat.deletions}</Text>
+            </View>
+          ) : null}
+          {showShortcutBadge && shortcutNumber !== null ? (
+            <View style={styles.shortcutBadge}>
+              <Text style={styles.shortcutBadgeText}>{shortcutNumber}</Text>
             </View>
           ) : null}
         </View>
@@ -1772,7 +1772,7 @@ const styles = StyleSheet.create((theme) => ({
   shortcutBadgeText: {
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.xs,
-    fontWeight: '600',
+    fontWeight: theme.fontWeight.normal,
     lineHeight: 14,
   },
 }))

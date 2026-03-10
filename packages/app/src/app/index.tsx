@@ -1,18 +1,16 @@
 import { useEffect, useMemo } from "react";
-import { ActivityIndicator, View } from "react-native";
 import { useLocalSearchParams, usePathname, useRouter } from "expo-router";
-import { useUnistyles } from "react-native-unistyles";
-import { DraftAgentScreen } from "@/screens/agent/draft-agent-screen";
 import { useDaemonRegistry } from "@/contexts/daemon-registry-context";
 import { useFormPreferences } from "@/hooks/use-form-preferences";
 import { buildHostRootRoute } from "@/utils/host-routes";
+import { StartupSplashScreen } from "@/screens/startup-splash-screen";
+import { WelcomeScreen } from "@/components/welcome-screen";
 
 export default function Index() {
   const router = useRouter();
   const pathname = usePathname();
   const params = useLocalSearchParams<{ serverId?: string }>();
-  const { theme } = useUnistyles();
-  const { daemons, isLoading: registryLoading } = useDaemonRegistry();
+  const { daemons, isLoading: registryLoading, isReconciling } = useDaemonRegistry();
   const { preferences, isLoading: preferencesLoading } = useFormPreferences();
   const requestedServerId = useMemo(() => {
     return typeof params.serverId === "string" ? params.serverId.trim() : "";
@@ -53,22 +51,14 @@ export default function Index() {
   }, [pathname, preferencesLoading, registryLoading, router, targetServerId]);
 
   if (registryLoading || preferencesLoading) {
-    return (
-      <View
-        style={{
-          flex: 1,
-          justifyContent: "center",
-          alignItems: "center",
-          backgroundColor: theme.colors.surface0,
-        }}
-      >
-        <ActivityIndicator size="small" color={theme.colors.foregroundMuted} />
-      </View>
-    );
+    return <StartupSplashScreen />;
   }
 
   if (!targetServerId) {
-    return <DraftAgentScreen />;
+    if (isReconciling) {
+      return <StartupSplashScreen />;
+    }
+    return <WelcomeScreen />;
   }
 
   return null;

@@ -4,6 +4,7 @@ const fs = require("fs");
 const path = require("path");
 
 const projectRoot = __dirname;
+const appNodeModulesRoot = path.resolve(projectRoot, "node_modules");
 const serverSrcRoot = path.resolve(projectRoot, "../server/src");
 const relaySrcRoot = path.resolve(projectRoot, "../relay/src");
 const customWebPlatform = (process.env.PASEO_WEB_PLATFORM ?? "")
@@ -13,6 +14,14 @@ const customWebPlatform = (process.env.PASEO_WEB_PLATFORM ?? "")
 
 const config = getDefaultConfig(projectRoot);
 const defaultResolveRequest = config.resolver.resolveRequest ?? resolve;
+
+config.resolver.extraNodeModules = {
+  ...(config.resolver.extraNodeModules ?? {}),
+  react: path.join(appNodeModulesRoot, "react"),
+  "react-dom": path.join(appNodeModulesRoot, "react-dom"),
+  "react/jsx-runtime": path.join(appNodeModulesRoot, "react/jsx-runtime"),
+  "react/jsx-dev-runtime": path.join(appNodeModulesRoot, "react/jsx-dev-runtime"),
+};
 
 function isLocalModuleImport(moduleName) {
   return (

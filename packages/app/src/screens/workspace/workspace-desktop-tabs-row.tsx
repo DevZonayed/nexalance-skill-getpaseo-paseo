@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState, type Dispatch, type SetStateAction } from "react";
 import { ActivityIndicator, Pressable, ScrollView, Text, View, type LayoutChangeEvent } from "react-native";
-import { Plus, SquareTerminal, X } from "lucide-react-native";
+import { Plus, X } from "lucide-react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { SortableInlineList } from "@/components/sortable-inline-list";
 import {
@@ -22,7 +22,7 @@ import type { Agent } from "@/stores/session-store";
 
 const DROPDOWN_WIDTH = 220;
 const LOADING_TAB_LABEL_SKELETON_WIDTH = 80;
-type NewTabOptionId = "__new_tab_agent__" | "__new_tab_terminal__";
+type NewTabOptionId = "__new_tab_agent__";
 
 type WorkspaceDesktopTabsRowProps = {
   tabs: WorkspaceTabDescriptor[];
@@ -44,10 +44,6 @@ type WorkspaceDesktopTabsRowProps = {
   onCloseOtherTabs: (tabId: string) => Promise<void> | void;
   onSelectNewTabOption: (optionId: NewTabOptionId) => void;
   newTabAgentOptionId: NewTabOptionId;
-  newTabTerminalOptionId: NewTabOptionId;
-  createTerminalPending: boolean;
-  isNewTerminalHovered: boolean;
-  setIsNewTerminalHovered: Dispatch<SetStateAction<boolean>>;
   onReorderTabs: (nextTabs: WorkspaceTabDescriptor[]) => void;
 };
 
@@ -71,10 +67,6 @@ export function WorkspaceDesktopTabsRow({
   onCloseOtherTabs,
   onSelectNewTabOption,
   newTabAgentOptionId,
-  newTabTerminalOptionId,
-  createTerminalPending,
-  isNewTerminalHovered,
-  setIsNewTerminalHovered,
   onReorderTabs,
 }: WorkspaceDesktopTabsRowProps) {
   const { theme } = useUnistyles();
@@ -378,36 +370,6 @@ export function WorkspaceDesktopTabsRow({
             <Text style={styles.newTabTooltipText}>New agent tab</Text>
           </TooltipContent>
         </Tooltip>
-        <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
-          <TooltipTrigger
-            testID="workspace-new-terminal-tab"
-            onPress={() => onSelectNewTabOption(newTabTerminalOptionId)}
-            onHoverIn={() => setIsNewTerminalHovered(true)}
-            onHoverOut={() => setIsNewTerminalHovered(false)}
-            disabled={createTerminalPending}
-            accessibilityRole="button"
-            accessibilityLabel="New terminal tab"
-            style={({ hovered, pressed }) => [
-              styles.newTabActionButton,
-              createTerminalPending && styles.newTabActionButtonDisabled,
-              (hovered || pressed) && styles.newTabActionButtonHovered,
-            ]}
-          >
-            {createTerminalPending ? (
-              <ActivityIndicator size="small" color={theme.colors.foregroundMuted} />
-            ) : (
-              <View style={styles.terminalPlusIcon}>
-                <SquareTerminal size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
-                <View style={[styles.terminalPlusBadge, isNewTerminalHovered && styles.terminalPlusBadgeHovered]}>
-                  <Plus size={10} color={theme.colors.foregroundMuted} />
-                </View>
-              </View>
-            )}
-          </TooltipTrigger>
-          <TooltipContent side="bottom" align="end" offset={8}>
-            <Text style={styles.newTabTooltipText}>New terminal tab</Text>
-          </TooltipContent>
-        </Tooltip>
       </View>
     </View>
   );
@@ -520,31 +482,6 @@ const styles = StyleSheet.create((theme) => ({
     justifyContent: "center",
   },
   newTabActionButtonHovered: {
-    backgroundColor: theme.colors.surface2,
-  },
-  newTabActionButtonDisabled: {
-    opacity: 0.5,
-  },
-  terminalPlusIcon: {
-    width: 16,
-    height: 16,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  terminalPlusBadge: {
-    position: "absolute",
-    right: -7,
-    bottom: -7,
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-    borderColor: theme.colors.surface0,
-    backgroundColor: theme.colors.surface0,
-  },
-  terminalPlusBadgeHovered: {
     backgroundColor: theme.colors.surface2,
   },
   newTabTooltipText: {

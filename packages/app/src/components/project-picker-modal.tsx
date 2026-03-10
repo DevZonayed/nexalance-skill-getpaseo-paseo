@@ -155,7 +155,7 @@ export function ProjectPickerModal() {
 
   // Keyboard navigation
   useEffect(() => {
-    if (!open) return;
+    if (!open || Platform.OS !== "web") return;
 
     function handler(event: KeyboardEvent) {
       const key = event.key;
@@ -200,7 +200,6 @@ export function ProjectPickerModal() {
     return () => window.removeEventListener("keydown", handler, true);
   }, [activeIndex, handleSelectPath, handleSubmitCustom, open, options, query, setOpen]);
 
-  if (Platform.OS !== "web") return null;
   if (!serverId) return null;
 
   return (

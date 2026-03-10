@@ -74,6 +74,13 @@ function logAgentExplorer(event: string, details: Record<string, unknown>): void
   console.log(`[AgentExplorer] ${event}`, details);
 }
 
+function logWebStickyBottom(event: string, details: Record<string, unknown>): void {
+  if (!IS_DEV || Platform.OS !== "web") {
+    return;
+  }
+  console.log("[WebStickyBottom]", event, details);
+}
+
 export function AgentReadyScreen({
   serverId,
   agentId,
@@ -946,12 +953,19 @@ function AgentScreenContent({
               onAttentionInputFocus={attentionController.clearOnInputFocus}
               onAttentionPromptSend={attentionController.clearOnPromptSend}
               onAddImages={handleAddImagesCallback}
-              onComposerHeightChange={() =>
-                streamViewRef.current?.prepareForViewportChange()
-              }
-              onMessageSent={() =>
-                streamViewRef.current?.scrollToBottom("message-sent")
-              }
+              onComposerHeightChange={(height) => {
+                logWebStickyBottom("screen_composer_height_change", {
+                  agentId: resolvedAgentId,
+                  height,
+                });
+                streamViewRef.current?.prepareForViewportChange();
+              }}
+              onMessageSent={() => {
+                logWebStickyBottom("screen_message_sent_scroll_to_bottom", {
+                  agentId: resolvedAgentId,
+                });
+                streamViewRef.current?.scrollToBottom("message-sent");
+              }}
             />
           )}
 

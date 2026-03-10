@@ -109,9 +109,11 @@ function Home() {
       {/* Content section */}
       <div className="bg-black">
         <main className="p-6 md:p-20 md:pt-8 max-w-5xl mx-auto">
-          <Features />
-          <CLISection />
-          <FAQ />
+          <div className="space-y-24">
+            <Features />
+            <CLISection />
+            <FAQ />
+          </div>
         </main>
         <footer className="p-6 md:p-20 md:pt-0 max-w-5xl mx-auto">
           <div className="border-t border-white/10 pt-6">
@@ -231,17 +233,55 @@ function Differentiator({ title, description }: { title: string; description: st
 
 function Features() {
   return (
-    <div className="space-y-6">
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
+    <div className="space-y-10">
+      {/* Primary differentiators - 2x2 */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-8">
         {[
-          { title: 'Self-hosted', description: 'The daemon runs on your laptop, home server, or VPS. Allowing you to take full advantage of your dev environment.' },
-          { title: 'Multi-provider', description: 'Works with existing agent harnesses like Claude Code, Codex, and OpenCode from one interface.' },
-          { title: 'Multi-host', description: 'Connect to multiple daemons and see all your agents in one place.' },
-          { title: 'First-class voice', description: 'Real-time voice conversations and dictation. Talk to your agent, hear responses, and orchestrate work hands-free.' },
-          { title: 'Optional relay', description: 'Use the hosted end-to-end encrypted relay for remote access, or connect directly over your network.' },
-          { title: 'Cross-device', description: 'Jump seamlessly between iOS, Android, desktop, web, and CLI.' },
-          { title: 'Git integration', description: 'Manage agents in isolated worktrees. Review diffs and ship directly from the app.' },
-          { title: 'Open source', description: 'Free and open source. Run it yourself, fork it, contribute.' },
+          {
+            title: 'Self-hosted',
+            description: 'Agents run on your machine with your full dev environment. Use your tools, your configs and your skills.',
+            icon: (
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="2" y="2" width="20" height="8" rx="2" ry="2" />
+                <rect x="2" y="14" width="20" height="8" rx="2" ry="2" />
+                <line x1="6" y1="6" x2="6.01" y2="6" />
+                <line x1="6" y1="18" x2="6.01" y2="18" />
+              </svg>
+            ),
+          },
+          {
+            title: 'Multi-provider',
+            description: 'Claude Code, Codex, and OpenCode through the same interface. Pick the right model for each job.',
+            icon: (
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M16 3h5v5" />
+                <path d="M8 3H3v5" />
+                <path d="M12 22v-8.3a4 4 0 0 0-1.172-2.872L3 3" />
+                <path d="m15 9 6-6" />
+              </svg>
+            ),
+          },
+          {
+            title: 'Voice control',
+            description: 'Dictate tasks or talk through problems in voice mode. Hands-free when you need it.',
+            icon: (
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
+                <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                <line x1="12" x2="12" y1="19" y2="22" />
+              </svg>
+            ),
+          },
+          {
+            title: 'Cross-device',
+            description: 'iOS, Android, desktop, web, and CLI. Start work at your desk, check in from your phone, script it from the terminal.',
+            icon: (
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="5" y="2" width="14" height="20" rx="2" ry="2" />
+                <line x1="12" y1="18" x2="12.01" y2="18" />
+              </svg>
+            ),
+          },
         ].map((feature, i) => (
           <motion.div
             key={feature.title}
@@ -249,13 +289,31 @@ function Features() {
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, margin: '-40px' }}
             transition={{ duration: 0.4, delay: i * 0.06, ease: 'easeOut' }}
-            className="space-y-1"
+            className="space-y-2"
           >
-            <p className="font-medium text-base">{feature.title}</p>
-            <p className="text-sm text-white/60">{feature.description}</p>
+            <div className="flex items-center gap-2">
+              <span className="text-white/40">{feature.icon}</span>
+              <p className="font-medium text-lg">{feature.title}</p>
+            </div>
+            <p className="text-sm text-white/60 leading-relaxed">{feature.description}</p>
           </motion.div>
         ))}
       </div>
+
+      {/* Also */}
+      <motion.div
+        initial={{ opacity: 0 }}
+        whileInView={{ opacity: 1 }}
+        viewport={{ once: true, margin: '-40px' }}
+        transition={{ duration: 0.4, delay: 0.25, ease: 'easeOut' }}
+        className="flex flex-wrap gap-x-6 gap-y-1 text-sm text-white/40"
+      >
+        <span>Multi-host</span>
+        <span>Built-in terminal</span>
+        <span>Git worktrees</span>
+        <span>E2E encrypted relay</span>
+        <span>Open source</span>
+      </motion.div>
     </div>
   )
 }
@@ -277,7 +335,7 @@ function GetStarted() {
           className="inline-flex items-center justify-center gap-2 rounded-lg border border-white/20 px-4 py-2 text-sm font-medium text-white hover:bg-white/10 transition-colors"
         >
           <GlobeIcon className="h-4 w-4" />
-          Launch Web App
+          Web App
         </a>
         <a
           href="https://apps.apple.com/app/paseo-pocket-engineer/id6758887924"
@@ -836,23 +894,12 @@ const cliExamples: CLIExample[] = [
     title: 'Launch and monitor',
     description: 'Give an agent a task and watch it work. The --worktree flag spins up an isolated git branch so you can run multiple agents on the same repo without conflicts.',
     code:
-`paseo run "implement user authentication"
-paseo run --worktree feature-x "implement feature X"
+`paseo run --provider claude/opus-4.6 "implement user authentication"
+paseo run --provider codex/gpt-5.4 --worktree feature-x "implement feature X"
 
 paseo ls                           # list running agents
 paseo attach abc123                # stream live output
 paseo send abc123 "also add tests" # follow-up task`,
-  },
-  {
-    title: 'Multi-provider',
-    description: 'Same commands, any agent. Pick a provider and model, or mix them in the same workflow.',
-    code:
-`paseo run --provider claude/opus-4.6 "refactor the auth module"
-paseo run --provider codex/gpt-5.4 "write integration tests"
-
-# Use different models for different jobs
-paseo run --detach --provider codex/gpt-5.4 "implement the feature" --name worker
-paseo run --provider claude/opus-4.6 "review the worker branch for issues"`,
   },
   {
     title: 'Orchestration',
@@ -923,7 +970,7 @@ function CLISection() {
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true, margin: '-60px' }}
       transition={{ duration: 0.5, ease: 'easeOut' }}
-      className="pt-16 space-y-6"
+      className="space-y-6"
     >
       <div className="space-y-2">
         <h2 className="text-2xl font-medium">CLI</h2>
@@ -973,22 +1020,59 @@ function FAQ() {
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true, margin: '-60px' }}
       transition={{ duration: 0.5, ease: 'easeOut' }}
-      className="pt-16 space-y-6"
+      className="space-y-6"
     >
       <h2 className="text-2xl font-medium">FAQ</h2>
       <div className="space-y-6">
         <FAQItem question="Is this free?">
-          Paseo is free and open source. It wraps CLI tools like Claude Code and Codex, which you'll
-          need to have installed and configured with your own credentials. Voice is local-first by
-          default and can optionally use OpenAI speech providers if you configure them.
+          Yes. Paseo is free and open source. You need Claude Code, Codex, or OpenCode installed
+          with your own credentials. Voice is local-first by default and can optionally use OpenAI
+          speech providers if you configure them.
         </FAQItem>
         <FAQItem question="Does my code leave my machine?">
-          Paseo itself doesn't send your code anywhere. Agents run locally and communicate with
-          their own APIs as they normally would. We provide an optional end-to-end encrypted relay
-          for remote access, but you can also connect directly over your local network or use your
-          own tunnel.
+          Paseo doesn't send your code anywhere. Agents run locally and talk to their own APIs
+          as they normally would. For remote access, you can use the optional{' '}
+          <a href="/docs/security" className="underline hover:text-white/80">end-to-end encrypted relay</a>,
+          connect directly over your local network, or use your own tunnel.
         </FAQItem>
-        <FAQItem question="What agents does it support?">Claude Code, Codex, and OpenCode.</FAQItem>
+        <FAQItem question="What agents does it support?">
+          Claude Code, Codex, and OpenCode. Each agent runs as its own process using its own CLI.
+          Paseo doesn't modify or wrap their behavior.
+        </FAQItem>
+        <FAQItem question="Do I need the desktop app?">
+          No. You can run the daemon headless with{' '}
+          <code className="font-mono text-white/50">npm install -g @getpaseo/cli && paseo</code>{' '}
+          and use the CLI, web app, or mobile app to connect. The desktop app just bundles the
+          daemon with a UI.
+        </FAQItem>
+        <FAQItem question="How does voice work?">
+          Voice runs locally on your device by default. You talk, the app transcribes and sends it
+          to your agent as text. Optionally, you can configure OpenAI speech providers for
+          higher-quality transcription and text-to-speech.
+          See the <a href="/docs/voice" className="underline hover:text-white/80">voice docs</a>.
+        </FAQItem>
+        <FAQItem question="Can I connect from outside my network?">
+          Yes. You can use the hosted relay (end-to-end encrypted, Paseo can't read your traffic),
+          set up your own tunnel (Tailscale, Cloudflare Tunnel, etc.), or expose the daemon port directly.
+          See <a href="/docs/configuration" className="underline hover:text-white/80">configuration</a>.
+        </FAQItem>
+        <FAQItem question="Do I need git or GitHub?">
+          No. Paseo works in any directory. Worktrees are optional and only relevant if you use git.
+          You can run agents anywhere you'd normally work.
+        </FAQItem>
+        <FAQItem question="Can I get banned for using Paseo?">
+          <p>We can't make promises on behalf of providers.</p>
+          <p>That said, Paseo launches the official first-party CLIs (Claude Code, Codex, OpenCode) as
+          subprocesses. It doesn't extract tokens or call inference APIs directly. From the provider's
+          perspective, usage through Paseo is indistinguishable from running the CLI yourself.</p>
+          <p>I've been using Paseo with all providers for months without issue.</p>
+        </FAQItem>
+        <FAQItem question="How do worktrees work?">
+          When you launch an agent with the worktree option (from the app, desktop, or CLI), Paseo
+          creates a git worktree and runs the agent inside it. The agent works on an isolated branch
+          without touching your main working directory. See the{' '}
+          <a href="/docs/worktrees" className="underline hover:text-white/80">worktrees docs</a>.
+        </FAQItem>
       </div>
     </motion.div>
   )
