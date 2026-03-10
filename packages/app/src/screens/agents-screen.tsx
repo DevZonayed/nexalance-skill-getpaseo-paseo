@@ -52,6 +52,7 @@ export function AgentsScreen({ serverId }: { serverId: string }) {
         showCheckoutInfo={false}
         isRefreshing={isManualRefresh && isRevalidating}
         onRefresh={handleRefresh}
+        showAttentionIndicator={false}
       />
     </View>
   );

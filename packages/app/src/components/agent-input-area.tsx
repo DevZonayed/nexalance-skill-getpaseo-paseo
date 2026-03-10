@@ -597,7 +597,7 @@ export function AgentInputArea({
   const isVoiceModeForAgent = voice?.isVoiceModeForAgent(serverId, agentId) ?? false
 
   const handleToggleRealtimeVoice = useCallback(() => {
-    if (!voice || !isConnected) {
+    if (!voice || !isConnected || !agent) {
       return
     }
     if (voice.isVoiceSwitching) {
@@ -614,7 +614,7 @@ export function AgentInputArea({
         toast.error(message)
       }
     })
-  }, [agentId, isConnected, serverId, toast, voice])
+  }, [agent, agentId, isConnected, serverId, toast, voice])
 
   function handleEditQueuedMessage(id: string) {
     const item = queuedMessages.find((q) => q.id === id)
@@ -704,7 +704,7 @@ export function AgentInputArea({
 
   const rightContent = (
     <View style={styles.rightControls}>
-      {!isVoiceModeForAgent ? (
+      {!isVoiceModeForAgent && agent ? (
         <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
           <TooltipTrigger
             onPress={handleToggleRealtimeVoice}

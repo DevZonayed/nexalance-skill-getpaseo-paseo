@@ -291,7 +291,12 @@ describe("ClaudeAgentSession interrupt restart regression", () => {
     await firstTurn.next();
 
     const secondTurnPromise = collectUntilTerminal(session.stream("second prompt"));
-    await Promise.resolve();
+    for (let attempt = 0; attempt < 40; attempt += 1) {
+      if (sdkMocks.secondQuery) {
+        break;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
     sdkMocks.releaseOldAssistant?.();
 
     const secondTurnEvents = await secondTurnPromise;
@@ -304,6 +309,93 @@ describe("ClaudeAgentSession interrupt restart regression", () => {
     expect(sdkMocks.secondQuery?.next).toHaveBeenCalled();
     expect(secondAssistantText).toContain("NEW_TURN_RESPONSE");
     expect(secondAssistantText).not.toContain("OLD_TURN_RESPONSE");
+
+    await firstTurn.return?.();
+    await session.close();
+  });
+
+  test("ignores stale interrupted query completion after the replacement run starts", async () => {
+    const logger = createTestLogger();
+    const releaseOldDone = deferred<void>();
+    let queryCreateCount = 0;
+
+    sdkMocks.query.mockImplementation(({ prompt }: { prompt: AsyncIterable<unknown> }) => {
+      queryCreateCount += 1;
+      if (queryCreateCount === 1) {
+        let step = 0;
+        const mock = {
+          next: vi.fn(async () => {
+            if (step === 0) {
+              step += 1;
+              return {
+                done: false,
+                value: {
+                  type: "system",
+                  subtype: "init",
+                  session_id: "interrupt-stale-done-session",
+                  permissionMode: "default",
+                  model: "opus",
+                },
+              };
+            }
+            if (step === 1) {
+              await releaseOldDone.promise;
+              step += 1;
+              return { done: true, value: undefined };
+            }
+            return { done: true, value: undefined };
+          }),
+          interrupt: vi.fn(async () => undefined),
+          return: vi.fn(async () => undefined),
+          setPermissionMode: vi.fn(async () => undefined),
+          setModel: vi.fn(async () => undefined),
+          supportedModels: vi.fn(async () => [{ value: "opus", displayName: "Opus" }]),
+          supportedCommands: vi.fn(async () => []),
+          rewindFiles: vi.fn(async () => ({ canRewind: true })),
+        } satisfies QueryMock;
+        sdkMocks.firstQuery = mock;
+        return mock;
+      }
+
+      const mock = buildSecondQueryMock(prompt);
+      if (queryCreateCount === 2) {
+        sdkMocks.secondQuery = mock;
+      }
+      return mock;
+    });
+
+    const client = new ClaudeAgentClient({ logger });
+    const session = await client.createSession({
+      provider: "claude",
+      cwd: process.cwd(),
+    });
+
+    const firstTurn = session.stream("first prompt");
+    await firstTurn.next();
+
+    const secondTurnPromise = collectUntilTerminal(session.stream("second prompt"));
+    for (let attempt = 0; attempt < 40; attempt += 1) {
+      if (sdkMocks.secondQuery) {
+        break;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+    releaseOldDone.resolve(undefined);
+
+    const secondTurnEvents = await secondTurnPromise;
+    const secondAssistantText = collectAssistantText(secondTurnEvents);
+
+    expect(sdkMocks.firstQuery?.interrupt).toHaveBeenCalledTimes(1);
+    expect(sdkMocks.secondQuery?.next).toHaveBeenCalled();
+    expect(secondAssistantText).toContain("NEW_TURN_RESPONSE");
+    expect(
+      secondTurnEvents.some(
+        (event) =>
+          event.type === "turn_failed" &&
+          event.error.includes("Claude stream ended before terminal result")
+      )
+    ).toBe(false);
+    expect(secondTurnEvents.some((event) => event.type === "turn_completed")).toBe(true);
 
     await firstTurn.return?.();
     await session.close();

@@ -24,7 +24,7 @@ import { router, usePathname } from 'expo-router'
 import { StyleSheet, UnistylesRuntime, useUnistyles } from 'react-native-unistyles'
 import { type GestureType } from 'react-native-gesture-handler'
 import * as Clipboard from 'expo-clipboard'
-import { ChevronDown, ChevronRight, MoreVertical, Plus } from 'lucide-react-native'
+import { Archive, ChevronDown, ChevronRight, Copy, MoreVertical, Plus } from 'lucide-react-native'
 import { NestableScrollContainer } from 'react-native-draggable-flatlist'
 import { DraggableList, type DraggableRenderItemInfo } from './draggable-list'
 import type { DraggableListDragHandleProps } from './draggable-list.types'
@@ -43,7 +43,6 @@ import {
 } from '@/hooks/use-sidebar-workspaces-list'
 import { useSidebarOrderStore } from '@/stores/sidebar-order-store'
 import { useKeyboardShortcutsStore } from '@/stores/keyboard-shortcuts-store'
-import { formatTimeAgo } from '@/utils/time'
 import {
   ContextMenu,
   ContextMenuContent,
@@ -126,12 +125,6 @@ interface WorkspaceRowInnerProps {
   onCopyPath?: () => void
 }
 
-function resolveWorkspaceCreatedAtLabel(workspace: SidebarWorkspaceEntry): string | null {
-  if (!workspace.activityAt) {
-    return null
-  }
-  return formatTimeAgo(workspace.activityAt)
-}
 
 function resolveStatusDotColor(input: {
   theme: ReturnType<typeof useUnistyles>['theme']
@@ -620,7 +613,8 @@ function WorkspaceRowInner({
   onCopyPath,
 }: WorkspaceRowInnerProps) {
   const { theme } = useUnistyles()
-  const createdAtLabel = resolveWorkspaceCreatedAtLabel(workspace)
+  const [isHovered, setIsHovered] = useState(false)
+  const isMobile = Platform.OS !== 'web'
   const interaction = useLongPressDragInteraction({
     drag,
     menuController,
@@ -636,14 +630,18 @@ function WorkspaceRowInner({
   }, [interaction.didLongPressRef, onPress])
 
   return (
-    <View style={styles.workspaceRowContainer}>
+    <View
+      style={styles.workspaceRowContainer}
+      onPointerEnter={() => setIsHovered(true)}
+      onPointerLeave={() => setIsHovered(false)}
+    >
       <Pressable
         disabled={isArchiving}
-        style={({ pressed, hovered = false }) => [
+        style={({ pressed }) => [
           styles.workspaceRow,
           isDragging && styles.workspaceRowDragging,
           selected && styles.sidebarRowSelected,
-          hovered && styles.workspaceRowHovered,
+          isHovered && styles.workspaceRowHovered,
           pressed && styles.workspaceRowPressed,
         ]}
         onPressIn={interaction.handlePressIn}
@@ -659,41 +657,43 @@ function WorkspaceRowInner({
           style={styles.workspaceRowLeft}
         >
           <WorkspaceStatusIndicator bucket={workspace.statusBucket} loading={isArchiving} />
-          <Text style={styles.workspaceBranchText} numberOfLines={1}>
+          <Text
+            style={[styles.workspaceBranchText, isHovered && styles.workspaceBranchTextHovered]}
+            numberOfLines={1}
+          >
             {workspace.name}
           </Text>
         </View>
         <View style={styles.workspaceRowRight}>
-          {workspace.diffStat ? (
-            <View style={styles.diffStatRow}>
-              <Text style={styles.diffStatAdditions}>+{workspace.diffStat.additions}</Text>
-              <Text style={styles.diffStatDeletions}>-{workspace.diffStat.deletions}</Text>
-            </View>
-          ) : createdAtLabel ? (
-            <Text style={styles.workspaceCreatedAtText} numberOfLines={1}>
-              {createdAtLabel}
-            </Text>
-          ) : null}
           {showShortcutBadge && shortcutNumber !== null ? (
             <View style={styles.shortcutBadge}>
               <Text style={styles.shortcutBadgeText}>{shortcutNumber}</Text>
             </View>
           ) : null}
-          {onArchive ? (
+          {onArchive && (isHovered || isMobile) ? (
             <DropdownMenu>
               <DropdownMenuTrigger
                 hitSlop={8}
-                style={styles.kebabButton}
+                style={({ hovered = false }) => [
+                  styles.kebabButton,
+                  hovered && styles.kebabButtonHovered,
+                ]}
                 accessibilityRole="button"
                 accessibilityLabel="Workspace actions"
                 testID={`sidebar-workspace-kebab-${workspace.workspaceKey}`}
               >
-                <MoreVertical size={14} color={theme.colors.foregroundMuted} />
+                {({ hovered }) => (
+                  <MoreVertical
+                    size={14}
+                    color={hovered ? theme.colors.foreground : theme.colors.foregroundMuted}
+                  />
+                )}
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" width={200}>
                 {onCopyPath ? (
                   <DropdownMenuItem
                     testID={`sidebar-workspace-menu-copy-path-${workspace.workspaceKey}`}
+                    leading={<Copy size={14} color={theme.colors.foregroundMuted} />}
                     onSelect={onCopyPath}
                   >
                     Copy path
@@ -701,15 +701,20 @@ function WorkspaceRowInner({
                 ) : null}
                 <DropdownMenuItem
                   testID={`sidebar-workspace-menu-archive-${workspace.workspaceKey}`}
+                  leading={<Archive size={14} color={theme.colors.foregroundMuted} />}
                   status={archiveStatus}
                   pendingLabel={archivePendingLabel}
-                  destructive
                   onSelect={onArchive}
                 >
                   {archiveLabel ?? 'Archive'}
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
+          ) : workspace.diffStat ? (
+            <View style={styles.diffStatRow}>
+              <Text style={styles.diffStatAdditions}>+{workspace.diffStat.additions}</Text>
+              <Text style={styles.diffStatDeletions}>-{workspace.diffStat.deletions}</Text>
+            </View>
           ) : null}
         </View>
       </Pressable>
@@ -1726,10 +1731,8 @@ const styles = StyleSheet.create((theme) => ({
     flex: 1,
     minWidth: 0,
   },
-  workspaceCreatedAtText: {
-    color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
-    flexShrink: 0,
+  workspaceBranchTextHovered: {
+    opacity: 1,
   },
   diffStatRow: {
     flexDirection: 'row',
@@ -1751,6 +1754,9 @@ const styles = StyleSheet.create((theme) => ({
     padding: 2,
     borderRadius: 4,
     marginLeft: 2,
+  },
+  kebabButtonHovered: {
+    backgroundColor: theme.colors.surface2,
   },
   shortcutBadge: {
     minWidth: 18,

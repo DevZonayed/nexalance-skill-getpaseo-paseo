@@ -8,6 +8,7 @@ import {
   useState,
   type PropsWithChildren,
   type ReactElement,
+  type ReactNode,
 } from "react";
 import {
   ActivityIndicator,
@@ -184,8 +185,9 @@ type TriggerStyleProp =
   | StyleProp<ViewStyle>
   | ((state: TriggerState) => StyleProp<ViewStyle>);
 
-interface DropdownMenuTriggerProps extends Omit<PressableProps, "style"> {
+interface DropdownMenuTriggerProps extends Omit<PressableProps, "style" | "children"> {
   style?: TriggerStyleProp;
+  children: ReactNode | ((state: TriggerState) => ReactNode);
 }
 
 export function DropdownMenuTrigger({
@@ -193,7 +195,7 @@ export function DropdownMenuTrigger({
   disabled,
   style,
   ...props
-}: PropsWithChildren<DropdownMenuTriggerProps>): ReactElement {
+}: DropdownMenuTriggerProps): ReactElement {
   const ctx = useDropdownMenuContext("DropdownMenuTrigger");
 
   const handlePress = useCallback(() => {
@@ -215,7 +217,10 @@ export function DropdownMenuTrigger({
         return style;
       }}
     >
-      {children}
+      {({ pressed, hovered = false }) => {
+        const state: TriggerState = { pressed, hovered: Boolean(hovered), open: ctx.open };
+        return typeof children === "function" ? children(state) : children;
+      }}
     </Pressable>
   );
 }

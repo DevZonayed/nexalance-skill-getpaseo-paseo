@@ -27,6 +27,7 @@ interface AgentListProps {
   selectedAgentId?: string
   onAgentSelect?: () => void
   listFooterComponent?: ReactElement | null
+  showAttentionIndicator?: boolean
 }
 
 interface AgentListSection {
@@ -112,12 +113,14 @@ function SessionRow({
   agent,
   isMobile,
   selectedAgentId,
+  showAttentionIndicator,
   onPress,
   onLongPress,
 }: {
   agent: AggregatedAgent
   isMobile: boolean
   selectedAgentId?: string
+  showAttentionIndicator: boolean
   onPress: (agent: AggregatedAgent) => void
   onLongPress: (agent: AggregatedAgent) => void
 }) {
@@ -154,7 +157,7 @@ function SessionRow({
           {(agent.pendingPermissionCount ?? 0) > 0 ? (
             <SessionBadge label={`${agent.pendingPermissionCount} pending`} tone="warning" />
           ) : null}
-          {!isMobile && agent.requiresAttention ? (
+          {!isMobile && showAttentionIndicator && agent.requiresAttention ? (
             <SessionBadge label="Attention" tone="danger" />
           ) : null}
         </View>
@@ -187,7 +190,7 @@ function SessionRow({
           <Text style={styles.columnMetaFixed}>{timeAgo}</Text>
         </>
       )}
-      {isMobile && agent.requiresAttention ? (
+      {isMobile && showAttentionIndicator && agent.requiresAttention ? (
         <View style={styles.rowTrailing}>
           <SessionBadge label="Attention" tone="danger" />
         </View>
@@ -200,12 +203,14 @@ function SessionTableSection({
   section,
   isMobile,
   selectedAgentId,
+  showAttentionIndicator,
   onAgentPress,
   onAgentLongPress,
 }: {
   section: AgentListSection
   isMobile: boolean
   selectedAgentId?: string
+  showAttentionIndicator: boolean
   onAgentPress: (agent: AggregatedAgent) => void
   onAgentLongPress: (agent: AggregatedAgent) => void
 }) {
@@ -225,6 +230,7 @@ function SessionTableSection({
               agent={agent}
               isMobile={isMobile}
               selectedAgentId={selectedAgentId}
+              showAttentionIndicator={showAttentionIndicator}
               onPress={onAgentPress}
               onLongPress={onAgentLongPress}
             />
@@ -242,6 +248,7 @@ export function AgentList({
   selectedAgentId,
   onAgentSelect,
   listFooterComponent,
+  showAttentionIndicator = true,
 }: AgentListProps) {
   const { theme } = useUnistyles()
   const pathname = usePathname()
@@ -325,11 +332,12 @@ export function AgentList({
         section={section}
         isMobile={isMobile}
         selectedAgentId={selectedAgentId}
+        showAttentionIndicator={showAttentionIndicator}
         onAgentPress={handleAgentPress}
         onAgentLongPress={handleAgentLongPress}
       />
     ),
-    [handleAgentLongPress, handleAgentPress, isMobile, selectedAgentId]
+    [handleAgentLongPress, handleAgentPress, isMobile, selectedAgentId, showAttentionIndicator]
   )
 
   const keyExtractor = useCallback((section: AgentListSection) => section.key, [])

@@ -1418,12 +1418,12 @@ export class ClaudeAgentClient implements AgentClient {
     if (this.claudePath) {
       try {
         const version = execSync(`${this.claudePath} --version`, { encoding: "utf8" }).trim();
-        this.logger.info({ claudePath: this.claudePath, version }, "Resolved Claude binary");
+        this.logger.trace({ claudePath: this.claudePath, version }, "Resolved Claude binary");
       } catch {
-        this.logger.info({ claudePath: this.claudePath }, "Resolved Claude binary (version unknown)");
+        this.logger.trace({ claudePath: this.claudePath }, "Resolved Claude binary (version unknown)");
       }
     } else {
-      this.logger.warn("Claude binary not found in PATH; SDK will use bundled binary");
+      this.logger.trace("Claude binary not found in PATH; SDK will use bundled binary");
     }
   }
 
@@ -2864,7 +2864,7 @@ class ClaudeAgentSession implements AgentSession {
     }
 
     const pump = this.runQueryPump().catch((error) => {
-      this.logger.warn({ err: error }, "Claude query pump exited unexpectedly");
+      this.logger.trace({ err: error }, "Claude query pump exited unexpectedly");
     });
 
     this.queryPumpPromise = pump;
@@ -2886,7 +2886,7 @@ class ClaudeAgentSession implements AgentSession {
       try {
         q = await this.ensureQuery();
       } catch (error) {
-        this.logger.warn({ err: error }, "Failed to initialize Claude query pump");
+        this.logger.trace({ err: error }, "Failed to initialize Claude query pump");
         await this.waitForLiveHistoryPoll();
         continue;
       }
@@ -2894,12 +2894,23 @@ class ClaudeAgentSession implements AgentSession {
       let next: IteratorResult<SDKMessage, void>;
       try {
         next = await q.next();
-        this.logger.info(
+        this.logger.trace(
           { claudeSessionId: this.claudeSessionId, next },
           "Claude query pump raw next()"
         );
       } catch (error) {
-        this.logger.warn({ err: error }, "Claude query pump next() failed");
+        if (this.query !== q) {
+          this.logger.trace(
+            { err: error, staleQuery: true },
+            "Ignoring Claude query pump next() failure from replaced query"
+          );
+          await this.awaitWithTimeout(
+            q.return?.(),
+            "query pump return after stale failure"
+          );
+          continue;
+        }
+        this.logger.trace({ err: error }, "Claude query pump next() failed");
         for (const run of this.runTracker.listActiveRuns()) {
           this.failRun(
             run,
@@ -2917,6 +2928,21 @@ class ClaudeAgentSession implements AgentSession {
       }
 
       if (next.done) {
+        if (this.query !== q) {
+          this.logger.trace(
+            {
+              claudeSessionId: this.claudeSessionId,
+              activeRunCount: this.runTracker.listActiveRuns().length,
+              staleQuery: true,
+            },
+            "Ignoring replaced Claude query pump completion"
+          );
+          await this.awaitWithTimeout(
+            q.return?.(),
+            "query pump return on stale done"
+          );
+          continue;
+        }
         this.logger.trace(
           {
             claudeSessionId: this.claudeSessionId,
@@ -2945,6 +2971,22 @@ class ClaudeAgentSession implements AgentSession {
         continue;
       }
 
+      if (this.query !== q) {
+        this.logger.trace(
+          {
+            claudeSessionId: this.claudeSessionId,
+            messageType: sdkMessage.type,
+            staleQuery: true,
+          },
+          "Ignoring Claude SDK message from replaced query"
+        );
+        await this.awaitWithTimeout(
+          q.return?.(),
+          "query pump return on stale message"
+        );
+        continue;
+      }
+
       if (await this.handleMissingResumedConversation(sdkMessage, q)) {
         continue;
       }
@@ -2952,7 +2994,7 @@ class ClaudeAgentSession implements AgentSession {
       try {
         this.routeSdkMessageFromPump(sdkMessage);
       } catch (error) {
-        this.logger.warn({ err: error }, "Failed to route Claude SDK message from query pump");
+        this.logger.trace({ err: error }, "Failed to route Claude SDK message from query pump");
       }
     }
   }
@@ -3229,22 +3271,22 @@ class ClaudeAgentSession implements AgentSession {
   private async interruptActiveTurn(): Promise<void> {
     const queryToInterrupt = this.query;
     if (!queryToInterrupt || typeof queryToInterrupt.interrupt !== "function") {
-      this.logger.debug("interruptActiveTurn: no query to interrupt");
+      this.logger.trace("interruptActiveTurn: no query to interrupt");
       return;
     }
     try {
-      this.logger.debug("interruptActiveTurn: calling query.interrupt()...");
+      this.logger.trace("interruptActiveTurn: calling query.interrupt()...");
       const t0 = Date.now();
       await queryToInterrupt.interrupt();
-      this.logger.debug({ durationMs: Date.now() - t0 }, "interruptActiveTurn: query.interrupt() returned");
+      this.logger.trace({ durationMs: Date.now() - t0 }, "interruptActiveTurn: query.interrupt() returned");
       // After interrupt(), the query iterator is done (returns done: true).
       // Clear it so ensureQuery() creates a fresh query for the next turn.
       // Also end the input stream and call return() to clean up the SDK process.
       this.input?.end();
-      this.logger.debug("interruptActiveTurn: calling query.return()...");
+      this.logger.trace("interruptActiveTurn: calling query.return()...");
       const t1 = Date.now();
       await queryToInterrupt.return?.();
-      this.logger.debug({ durationMs: Date.now() - t1 }, "interruptActiveTurn: query.return() returned");
+      this.logger.trace({ durationMs: Date.now() - t1 }, "interruptActiveTurn: query.return() returned");
       this.query = null;
       this.input = null;
       this.queryRestartNeeded = false;

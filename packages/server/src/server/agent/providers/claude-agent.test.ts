@@ -1038,7 +1038,7 @@ async function startAgentMcpServer(): Promise<AgentMcpServerHandle> {
 
         let capturedQuestion: AgentPermissionRequest | null = null;
         let sawResolvedAllow = false;
-        let sawDone = false;
+        let assistantText = "";
 
         for await (const event of session.stream(prompt)) {
           if (
@@ -1071,10 +1071,9 @@ async function startAgentMcpServer(): Promise<AgentMcpServerHandle> {
 
           if (
             event.type === "timeline" &&
-            event.item.type === "assistant_message" &&
-            event.item.text.includes("QUESTION_FLOW_DONE")
+            event.item.type === "assistant_message"
           ) {
-            sawDone = true;
+            assistantText += event.item.text;
           }
 
           if (event.type === "turn_completed" || event.type === "turn_failed") {
@@ -1085,7 +1084,7 @@ async function startAgentMcpServer(): Promise<AgentMcpServerHandle> {
         expect(capturedQuestion).not.toBeNull();
         expect(sawResolvedAllow).toBe(true);
         expect(session.getPendingPermissions()).toHaveLength(0);
-        expect(sawDone).toBe(true);
+        expect(assistantText).toContain("QUESTION_FLOW_DONE");
       } finally {
         await closeSessionAndCleanup(session, cwd);
       }
