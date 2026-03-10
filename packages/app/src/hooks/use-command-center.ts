@@ -3,7 +3,9 @@ import type { TextInput } from "react-native";
 import { router, usePathname, type Href } from "expo-router";
 import { useKeyboardShortcutsStore } from "@/stores/keyboard-shortcuts-store";
 import { keyboardActionDispatcher } from "@/keyboard/keyboard-action-dispatcher";
-import { useAggregatedAgents, type AggregatedAgent } from "@/hooks/use-aggregated-agents";
+import { useDaemonRegistry } from "@/contexts/daemon-registry-context";
+import { useAllAgentsList } from "@/hooks/use-all-agents-list";
+import type { AggregatedAgent } from "@/hooks/use-aggregated-agents";
 import {
   clearCommandCenterFocusRestoreElement,
   takeCommandCenterFocusRestoreElement,
@@ -23,8 +25,7 @@ function isMatch(agent: AggregatedAgent, query: string): boolean {
   const q = query.toLowerCase();
   const title = (agent.title ?? "New agent").toLowerCase();
   const cwd = agent.cwd.toLowerCase();
-  const host = agent.serverLabel.toLowerCase();
-  return title.includes(q) || cwd.includes(q) || host.includes(q);
+  return title.includes(q) || cwd.includes(q);
 }
 
 function sortAgents(left: AggregatedAgent, right: AggregatedAgent): number {
@@ -103,14 +104,33 @@ export type CommandCenterItem =
 
 export function useCommandCenter() {
   const pathname = usePathname();
-  const { agents } = useAggregatedAgents();
+  const { daemons } = useDaemonRegistry();
   const open = useKeyboardShortcutsStore((s) => s.commandCenterOpen);
   const setOpen = useKeyboardShortcutsStore((s) => s.setCommandCenterOpen);
   const inputRef = useRef<TextInput>(null);
   const didNavigateRef = useRef(false);
   const prevOpenRef = useRef(open);
+  const activeIndexRef = useRef(0);
+  const itemsRef = useRef<CommandCenterItem[]>([]);
+  const handleCloseRef = useRef<() => void>(() => undefined);
+  const handleSelectItemRef = useRef<(item: CommandCenterItem) => void>(() => undefined);
   const [query, setQuery] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
+
+  const activeServerId = useMemo(() => {
+    const serverIdFromPath = parseServerIdFromPathname(pathname);
+    if (serverIdFromPath) {
+      const routeMatch = daemons.find((entry) => entry.serverId === serverIdFromPath);
+      if (routeMatch) {
+        return routeMatch.serverId;
+      }
+    }
+    return daemons[0]?.serverId ?? null;
+  }, [daemons, pathname]);
+
+  const { agents } = useAllAgentsList({
+    serverId: activeServerId,
+  });
 
   const agentResults = useMemo(() => {
     const filtered = agents.filter((agent) => isMatch(agent, query));
@@ -118,19 +138,15 @@ export function useCommandCenter() {
     return filtered;
   }, [agents, query]);
 
-  const fallbackServerId = agents[0]?.serverId ?? null;
-
   const newAgentRoute = useMemo<Href>(() => {
-    const serverIdFromPath =
-      parseServerIdFromPathname(pathname) ?? fallbackServerId;
+    const serverIdFromPath = activeServerId;
     return serverIdFromPath ? (buildHostOpenProjectRoute(serverIdFromPath) as Href) : "/";
-  }, [fallbackServerId, pathname]);
+  }, [activeServerId]);
 
   const settingsRoute = useMemo<Href>(() => {
-    const serverIdFromPath =
-      parseServerIdFromPathname(pathname) ?? fallbackServerId;
+    const serverIdFromPath = activeServerId;
     return serverIdFromPath ? (buildHostSettingsRoute(serverIdFromPath) as Href) : "/";
-  }, [fallbackServerId, pathname]);
+  }, [activeServerId]);
 
   const actionItems = useMemo(() => {
     return COMMAND_CENTER_ACTIONS.filter((action) =>
@@ -210,6 +226,22 @@ export function useCommandCenter() {
   );
 
   useEffect(() => {
+    activeIndexRef.current = activeIndex;
+  }, [activeIndex]);
+
+  useEffect(() => {
+    itemsRef.current = items;
+  }, [items]);
+
+  useEffect(() => {
+    handleCloseRef.current = handleClose;
+  }, [handleClose]);
+
+  useEffect(() => {
+    handleSelectItemRef.current = handleSelectItem;
+  }, [handleSelectItem]);
+
+  useEffect(() => {
     const prevOpen = prevOpenRef.current;
     prevOpenRef.current = open;
 
@@ -259,6 +291,7 @@ export function useCommandCenter() {
     if (!open) return;
 
     const handler = (event: KeyboardEvent) => {
+      const currentItems = itemsRef.current;
       const key = event.key;
       if (
         key !== "ArrowDown" &&
@@ -271,26 +304,29 @@ export function useCommandCenter() {
 
       if (key === "Escape") {
         event.preventDefault();
-        handleClose();
+        handleCloseRef.current();
         return;
       }
 
       if (key === "Enter") {
-        if (items.length === 0) return;
+        if (currentItems.length === 0) return;
         event.preventDefault();
-        const index = Math.max(0, Math.min(activeIndex, items.length - 1));
-        handleSelectItem(items[index]!);
+        const index = Math.max(
+          0,
+          Math.min(activeIndexRef.current, currentItems.length - 1)
+        );
+        handleSelectItemRef.current(currentItems[index]!);
         return;
       }
 
       if (key === "ArrowDown" || key === "ArrowUp") {
-        if (items.length === 0) return;
+        if (currentItems.length === 0) return;
         event.preventDefault();
         setActiveIndex((current) => {
           const delta = key === "ArrowDown" ? 1 : -1;
           const next = current + delta;
-          if (next < 0) return items.length - 1;
-          if (next >= items.length) return 0;
+          if (next < 0) return currentItems.length - 1;
+          if (next >= currentItems.length) return 0;
           return next;
         });
       }
@@ -299,7 +335,7 @@ export function useCommandCenter() {
     // react-native-web can stop propagation on key events, so listen in capture phase.
     window.addEventListener("keydown", handler, true);
     return () => window.removeEventListener("keydown", handler, true);
-  }, [activeIndex, handleClose, handleSelectItem, items, open]);
+  }, [open]);
 
   return {
     open,

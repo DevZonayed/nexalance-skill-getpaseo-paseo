@@ -7,6 +7,7 @@ import {
   View,
   Platform,
 } from "react-native";
+import { memo, useEffect, useMemo, useRef, type ReactNode } from "react";
 import { Plus, Settings } from "lucide-react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { useCommandCenter } from "@/hooks/use-command-center";
@@ -19,6 +20,37 @@ import { Shortcut } from "@/components/ui/shortcut";
 function agentKey(agent: Pick<AggregatedAgent, "serverId" | "id">): string {
   return `${agent.serverId}:${agent.id}`;
 }
+
+type CommandCenterRowProps = {
+  active: boolean;
+  children: ReactNode;
+  onPress: () => void;
+  registerRow: (el: View | null) => void;
+};
+
+const CommandCenterRow = memo(function CommandCenterRow({
+  active,
+  children,
+  onPress,
+  registerRow,
+}: CommandCenterRowProps) {
+  const { theme } = useUnistyles();
+
+  return (
+    <Pressable
+      ref={registerRow}
+      style={({ hovered, pressed }) => [
+        styles.row,
+        (hovered || pressed || active) && {
+          backgroundColor: theme.colors.surface1,
+        },
+      ]}
+      onPress={onPress}
+    >
+      {children}
+    </Pressable>
+  );
+});
 
 export function CommandCenter() {
   const { theme } = useUnistyles();
@@ -33,10 +65,52 @@ export function CommandCenter() {
     handleSelectItem,
   } = useCommandCenter();
 
+  const rowRefs = useRef<Map<number, View>>(new Map());
+  const resultsRef = useRef<ScrollView>(null);
+
+  useEffect(() => {
+    const row = rowRefs.current.get(activeIndex);
+    if (!row || typeof document === "undefined") {
+      return;
+    }
+    const scrollNode =
+      (resultsRef.current as
+        | (ScrollView & {
+            getScrollableNode?: () => HTMLElement | null;
+          })
+        | null)?.getScrollableNode?.() ?? null;
+    const rowEl = row as unknown as HTMLElement;
+
+    if (!scrollNode) {
+      rowEl.scrollIntoView?.({ block: "nearest" });
+      return;
+    }
+
+    const rowTop = rowEl.offsetTop;
+    const rowBottom = rowTop + rowEl.offsetHeight;
+    const visibleTop = scrollNode.scrollTop;
+    const visibleBottom = visibleTop + scrollNode.clientHeight;
+
+    if (rowTop < visibleTop) {
+      scrollNode.scrollTop = rowTop;
+      return;
+    }
+
+    if (rowBottom > visibleBottom) {
+      scrollNode.scrollTop = rowBottom - scrollNode.clientHeight;
+    }
+  }, [activeIndex]);
+
   if (Platform.OS !== "web") return null;
 
-  const actionItems = items.filter((item) => item.kind === "action");
-  const agentItems = items.filter((item) => item.kind === "agent");
+  const actionItems = useMemo(
+    () => items.filter((item) => item.kind === "action"),
+    [items]
+  );
+  const agentItems = useMemo(
+    () => items.filter((item) => item.kind === "agent"),
+    [items]
+  );
 
   return (
     <Modal
@@ -71,6 +145,7 @@ export function CommandCenter() {
           </View>
 
           <ScrollView
+            ref={resultsRef}
             style={styles.results}
             contentContainerStyle={styles.resultsContent}
             keyboardShouldPersistTaps="always"
@@ -105,14 +180,13 @@ export function CommandCenter() {
                           />
                         ) : null;
                       return (
-                        <Pressable
+                        <CommandCenterRow
                           key={`action:${action.id}`}
-                          style={({ hovered, pressed }) => [
-                            styles.row,
-                            (hovered || pressed || active) && {
-                              backgroundColor: theme.colors.surface1,
-                            },
-                          ]}
+                          registerRow={(el: View | null) => {
+                            if (el) rowRefs.current.set(index, el);
+                            else rowRefs.current.delete(index);
+                          }}
+                          active={active}
                           onPress={() => handleSelectItem(item)}
                         >
                           <View style={styles.rowContent}>
@@ -133,7 +207,7 @@ export function CommandCenter() {
                               <Shortcut keys={action.shortcutKeys} style={styles.rowShortcut} />
                             ) : null}
                           </View>
-                        </Pressable>
+                        </CommandCenterRow>
                       );
                     })}
                   </>
@@ -154,14 +228,13 @@ export function CommandCenter() {
                       const active = rowIndex === activeIndex;
                       const agent = item.agent;
                       return (
-                        <Pressable
+                        <CommandCenterRow
                           key={agentKey(agent)}
-                          style={({ hovered, pressed }) => [
-                            styles.row,
-                            (hovered || pressed || active) && {
-                              backgroundColor: theme.colors.surface1,
-                            },
-                          ]}
+                          registerRow={(el: View | null) => {
+                            if (el) rowRefs.current.set(rowIndex, el);
+                            else rowRefs.current.delete(rowIndex);
+                          }}
+                          active={active}
                           onPress={() => handleSelectItem(item)}
                         >
                           <View style={styles.rowContent}>
@@ -184,12 +257,12 @@ export function CommandCenter() {
                                   style={[styles.subtitle, { color: theme.colors.foregroundMuted }]}
                                   numberOfLines={1}
                                 >
-                                  {agent.serverLabel} · {shortenPath(agent.cwd)} · {formatTimeAgo(agent.lastActivityAt)}
+                                  {shortenPath(agent.cwd)} · {formatTimeAgo(agent.lastActivityAt)}
                                 </Text>
                               </View>
                             </View>
                           </View>
-                        </Pressable>
+                        </CommandCenterRow>
                       );
                     })}
                   </>
@@ -277,6 +350,8 @@ const styles = StyleSheet.create((theme) => ({
     justifyContent: "center",
   },
   textContent: {
+    flex: 1,
+    minWidth: 0,
     gap: 2,
   },
   rowShortcut: {

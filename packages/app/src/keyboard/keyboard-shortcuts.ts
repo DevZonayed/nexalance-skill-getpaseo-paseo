@@ -138,20 +138,19 @@ const SHORTCUT_BINDINGS: readonly KeyboardShortcutBinding[] = [
     },
   },
   {
-    id: "workspace-tab-new-alt-shift-t",
+    id: "workspace-tab-new-mod-t",
     action: "workspace.tab.new",
     matches: (event) =>
-      !event.metaKey &&
-      !event.ctrlKey &&
-      event.altKey &&
-      event.shiftKey &&
+      isMod(event) &&
+      !event.altKey &&
+      !event.shiftKey &&
       (event.code === "KeyT" || event.key.toLowerCase() === "t"),
     when: (context) => !context.commandCenterOpen,
     help: {
       id: "workspace-tab-new",
       section: "global",
       label: "New agent tab",
-      keys: ["alt", "shift", "T"],
+      keys: ["mod", "T"],
     },
   },
   {

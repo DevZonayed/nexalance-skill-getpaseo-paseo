@@ -10,6 +10,7 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
+import { Shortcut } from "@/components/ui/shortcut";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useWorkspaceTabLayout } from "@/screens/workspace/use-workspace-tab-layout";
 import {
@@ -367,7 +368,10 @@ export function WorkspaceDesktopTabsRow({
             <Plus size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
           </TooltipTrigger>
           <TooltipContent side="bottom" align="end" offset={8}>
-            <Text style={styles.newTabTooltipText}>New agent tab</Text>
+            <View style={styles.newTabTooltipRow}>
+              <Text style={styles.newTabTooltipText}>New agent tab</Text>
+              <Shortcut keys={["mod", "T"]} style={styles.newTabTooltipShortcut} />
+            </View>
           </TooltipContent>
         </Tooltip>
       </View>
@@ -487,5 +491,14 @@ const styles = StyleSheet.create((theme) => ({
   newTabTooltipText: {
     color: theme.colors.foreground,
     fontSize: theme.fontSize.sm,
+  },
+  newTabTooltipRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[2],
+  },
+  newTabTooltipShortcut: {
+    backgroundColor: theme.colors.surface3,
+    borderColor: theme.colors.borderAccent,
   },
 }));

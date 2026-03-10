@@ -26,6 +26,7 @@ import { SidebarMenuToggle } from "@/components/headers/menu-header";
 import { HeaderToggleButton } from "@/components/headers/header-toggle-button";
 import { ScreenHeader } from "@/components/headers/screen-header";
 import { Combobox } from "@/components/ui/combobox";
+import { Shortcut } from "@/components/ui/shortcut";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -1157,38 +1158,36 @@ function WorkspaceScreenContent({
       return;
     }
 
-    if (workspaceTabActionRequest.kind === "new") {
+    const request = workspaceTabActionRequest;
+    clearWorkspaceTabActionRequest(request.id);
+
+    if (request.kind === "new") {
       handleCreateDraftTab();
-      clearWorkspaceTabActionRequest(workspaceTabActionRequest.id);
       return;
     }
-    if (workspaceTabActionRequest.kind === "close-current") {
+    if (request.kind === "close-current") {
       if (activeTabId) {
         void handleCloseTabById(activeTabId);
       }
-      clearWorkspaceTabActionRequest(workspaceTabActionRequest.id);
       return;
     }
-    if (workspaceTabActionRequest.kind === "navigate-index") {
-      const next = tabs[workspaceTabActionRequest.index - 1] ?? null;
+    if (request.kind === "navigate-index") {
+      const next = tabs[request.index - 1] ?? null;
       if (next?.tabId) {
         navigateToTabId(next.tabId);
       }
-      clearWorkspaceTabActionRequest(workspaceTabActionRequest.id);
       return;
     }
-    if (workspaceTabActionRequest.kind === "navigate-relative") {
+    if (request.kind === "navigate-relative") {
       if (tabs.length > 0) {
         const currentIndex = tabs.findIndex((tab) => tab.tabId === activeTabId);
         const fromIndex = currentIndex >= 0 ? currentIndex : 0;
-        const nextIndex =
-          (fromIndex + workspaceTabActionRequest.delta + tabs.length) % tabs.length;
+        const nextIndex = (fromIndex + request.delta + tabs.length) % tabs.length;
         const next = tabs[nextIndex] ?? null;
         if (next?.tabId) {
           navigateToTabId(next.tabId);
         }
       }
-      clearWorkspaceTabActionRequest(workspaceTabActionRequest.id);
     }
   }, [
     activeTabId,
@@ -1525,7 +1524,10 @@ function WorkspaceScreenContent({
                     <Plus size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
                   </TooltipTrigger>
                   <TooltipContent side="bottom" align="end" offset={8}>
-                    <Text style={styles.newTabTooltipText}>New agent tab</Text>
+                    <View style={styles.newTabTooltipRow}>
+                      <Text style={styles.newTabTooltipText}>New agent tab</Text>
+                      <Shortcut keys={["mod", "T"]} style={styles.newTabTooltipShortcut} />
+                    </View>
                   </TooltipContent>
                 </Tooltip>
 
@@ -1727,6 +1729,15 @@ const styles = StyleSheet.create((theme) => ({
   newTabTooltipText: {
     fontSize: theme.fontSize.sm,
     color: theme.colors.popoverForeground,
+  },
+  newTabTooltipRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[2],
+  },
+  newTabTooltipShortcut: {
+    backgroundColor: theme.colors.surface3,
+    borderColor: theme.colors.borderAccent,
   },
   mobileTabsRow: {
     borderBottomWidth: 1,

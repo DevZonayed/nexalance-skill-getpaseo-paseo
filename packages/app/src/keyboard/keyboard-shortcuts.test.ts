@@ -152,8 +152,9 @@ describe("keyboard-shortcuts", () => {
       payload: { delta: 1 },
     },
     {
-      name: "matches Alt+Shift+T to open new tab",
-      event: { key: "T", code: "KeyT", altKey: true, shiftKey: true },
+      name: "matches Mod+T to open new tab",
+      event: { key: "t", code: "KeyT", metaKey: true },
+      context: { isMac: true },
       action: "workspace.tab.new",
     },
     {
@@ -223,6 +224,10 @@ describe("keyboard-shortcuts", () => {
       context: { isMac: true },
     },
     {
+      name: "does not keep old Alt+Shift+T binding",
+      event: { key: "T", code: "KeyT", altKey: true, shiftKey: true },
+    },
+    {
       name: "does not match question-mark shortcut inside editable scopes",
       event: { key: "?", code: "Slash", shiftKey: true },
       context: { focusScope: "message-input" },
@@ -269,6 +274,7 @@ describe("keyboard-shortcut help sections", () => {
       context: { isMac: true, isTauri: false },
       expectedKeys: {
         "new-agent": ["mod", "shift", "O"],
+        "workspace-tab-new": ["mod", "T"],
         "workspace-jump-index": ["alt", "1-9"],
         "workspace-tab-jump-index": ["alt", "shift", "1-9"],
         "workspace-tab-close-current": ["alt", "shift", "W"],
@@ -279,6 +285,7 @@ describe("keyboard-shortcut help sections", () => {
       context: { isMac: true, isTauri: true },
       expectedKeys: {
         "new-agent": ["mod", "shift", "O"],
+        "workspace-tab-new": ["mod", "T"],
         "workspace-jump-index": ["mod", "1-9"],
         "workspace-tab-jump-index": ["alt", "1-9"],
         "workspace-tab-close-current": ["mod", "W"],
