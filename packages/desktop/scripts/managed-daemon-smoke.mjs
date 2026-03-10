@@ -489,7 +489,7 @@ try {
   });
   await waitFor(async () => {
     await execFileAsync(process.execPath, ["-e", `require("node:net").connect(${relayPort}, "127.0.0.1").on("connect", function () { this.end(); process.exit(0); }).on("error", () => process.exit(1));`]);
-  }, 30_000, "relay HTTP endpoint to start");
+  }, 60_000, "relay HTTP endpoint to start");
   await waitForRelayWebSocketReady(relayEndpoint, 60_000);
 
   logStep(`Starting isolated external daemon on ${externalEndpoint}`);
