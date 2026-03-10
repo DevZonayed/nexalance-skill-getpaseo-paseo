@@ -110,7 +110,7 @@ function Home() {
       <div className="bg-black">
         <main className="p-6 md:p-20 md:pt-8 max-w-3xl mx-auto">
           <Features />
-          <Story />
+          <CLISection />
           <FAQ />
         </main>
         <footer className="p-6 md:p-20 md:pt-0 max-w-3xl mx-auto">
@@ -682,33 +682,150 @@ function CodeBlock({ children }: { children: React.ReactNode }) {
   )
 }
 
-function Story() {
+function CLICodeBlock({ children }: { children: string }) {
+  const [copied, setCopied] = React.useState(false)
+
+  function handleCopy() {
+    navigator.clipboard.writeText(children)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  return (
+    <div className="relative bg-white/5 rounded-lg overflow-hidden">
+      <button
+        onClick={handleCopy}
+        className="absolute top-3 right-3 text-white/30 hover:text-white/70 transition-colors p-1"
+        title="Copy to clipboard"
+      >
+        {copied ? (
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" viewBox="0 0 256 256">
+            <path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z" />
+          </svg>
+        ) : (
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" viewBox="0 0 256 256">
+            <path d="M216,28H88A20,20,0,0,0,68,48V76H40A20,20,0,0,0,20,96V216a20,20,0,0,0,20,20H168a20,20,0,0,0,20-20V188h28a20,20,0,0,0,20-20V48A20,20,0,0,0,216,28ZM164,212H44V100H164Zm48-48H188V96a20,20,0,0,0-20-20H92V52H212Z" />
+          </svg>
+        )}
+      </button>
+      <pre className="p-4 pr-10 text-xs leading-relaxed overflow-x-auto text-white/70 font-mono whitespace-pre">{children}</pre>
+    </div>
+  )
+}
+
+interface CLIExample {
+  title: string
+  description: string
+  code: string
+}
+
+const cliExamples: CLIExample[] = [
+  {
+    title: 'Launch and monitor agents',
+    description: 'Start agents with a task. Use --worktree to run in an isolated git branch — parallel feature work without conflicts.',
+    code:
+`paseo run "implement user authentication"
+paseo run --worktree feature-x "implement feature X"
+
+paseo ls                           # list running agents
+paseo attach abc123                # stream live output
+paseo send abc123 "also add tests" # follow-up task`,
+  },
+  {
+    title: 'Multi-agent orchestration',
+    description: 'The CLI is designed to be used by agents themselves. One agent can spawn others, coordinate parallel work, and synthesize results.',
+    code:
+`# Agent A spawns parallel workers and waits for both
+paseo run --detach "implement the frontend" --name frontend
+paseo run --detach "implement the API layer" --name api
+
+paseo wait frontend api
+
+paseo run "review both branches and write an integration plan"`,
+  },
+  {
+    title: 'Structured output',
+    description: 'Get typed JSON back from any agent run. Pass a JSON schema and only the matching output is returned — no parsing required.',
+    code:
+`result=$(paseo run \\
+  --output-schema '{
+    "type": "object",
+    "properties": {
+      "severity": { "type": "string", "enum": ["low", "medium", "high"] },
+      "issues":   { "type": "array", "items": { "type": "string" } }
+    },
+    "required": ["severity", "issues"]
+  }' \\
+  "audit this codebase for security issues")
+
+echo $result | jq '.severity'   # "high"
+echo $result | jq '.issues[0]'  # "SQL injection on line 42"`,
+  },
+  {
+    title: 'Worker–judge loops',
+    description: 'Combine structured output with a loop to keep iterating until acceptance criteria are met.',
+    code:
+`while true; do
+  paseo run "make all tests pass"
+
+  verdict=$(paseo run \\
+    --output-schema '{"type":"object","properties":{"passed":{"type":"boolean"}},"required":["passed"]}' \\
+    "verify tests pass and the code is production-ready")
+
+  echo "$verdict" | jq -e '.passed' && break
+done`,
+  },
+]
+
+function CLISection() {
+  const [activeIndex, setActiveIndex] = React.useState(0)
+  const active = cliExamples[activeIndex]
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true, margin: '-60px' }}
       transition={{ duration: 0.5, ease: 'easeOut' }}
-      className="pt-16 space-y-4"
+      className="pt-16 space-y-6"
     >
-      <h2 className="text-2xl font-medium">Background</h2>
-      <div className="space-y-4 text-sm text-white/60">
-        <p>
-          I started using Claude Code soon after it launched, often on my phone while going on walks
-          to spend less time at my desk. I'd SSH into Tmux from my phone. It worked, but the UX was
-          rough. Dictation was bad, the virtual keyboard was awkward, and the TUI would randomly
-          start flickering, which forced me to start over very often.
-        </p>
-        <p>
-          I started building a simple app to manage agents via voice. I continued adding features as
-          I needed them, and it slowly turned into what Paseo is today.
-        </p>
-        <p>
-          Anthropic and OpenAI added coding agents to their mobile apps since I started working on
-          this, but they force you into cloud sandboxes where you lose your whole setup. I also like
-          testing different agents, so locking myself to a single harness or model wasn't an option.
+      <div className="space-y-2">
+        <h2 className="text-2xl font-medium">CLI</h2>
+        <p className="text-sm text-white/60 max-w-lg">
+          Everything in the app, from your terminal. The CLI is ergonomic enough for agents to use — one agent can spawn others, wait for results, and get structured output back.
         </p>
       </div>
+
+      <div className="flex flex-wrap gap-2">
+        {cliExamples.map((example, i) => (
+          <button
+            key={example.title}
+            onClick={() => setActiveIndex(i)}
+            className={`text-xs px-3 py-1.5 rounded-full border transition-colors ${
+              i === activeIndex
+                ? 'border-white/40 text-white bg-white/10'
+                : 'border-white/15 text-white/50 hover:text-white/80 hover:border-white/30'
+            }`}
+          >
+            {example.title}
+          </button>
+        ))}
+      </div>
+
+      <div className="space-y-3">
+        <p className="text-sm text-white/50">{active.description}</p>
+        <CLICodeBlock>{active.code}</CLICodeBlock>
+      </div>
+
+      <a
+        href="/docs/cli"
+        className="inline-flex items-center gap-1.5 text-xs text-white/40 hover:text-white/70 transition-colors"
+      >
+        Full CLI reference
+        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
+          <path d="M5 12h14M12 5l7 7-7 7" />
+        </svg>
+      </a>
     </motion.div>
   )
 }
@@ -736,14 +853,6 @@ function FAQ() {
           own tunnel.
         </FAQItem>
         <FAQItem question="What agents does it support?">Claude Code, Codex, and OpenCode.</FAQItem>
-        <FAQItem question="What's the business model?">There isn't one.</FAQItem>
-        <FAQItem question="Isn't this just more screen time?">
-          I won't pretend this can't be misused to squeeze every minute of your day into work. But
-          for me it means less time at my desk, not more. I brainstorm whole features with voice. I
-          kick off work at my desk, then check in from my phone during a walk. I see what an agent
-          needs, send a voice reply, and put my phone away.
-        </FAQItem>
-        <FAQItem question="What does Paseo mean?">Stroll, in Spanish. 🚶‍♂️</FAQItem>
       </div>
     </motion.div>
   )

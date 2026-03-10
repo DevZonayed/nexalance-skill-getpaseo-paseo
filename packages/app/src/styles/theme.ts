@@ -133,8 +133,6 @@ const lightSemanticColors = {
 
   // Legacy aliases (for gradual migration)
   background: "#ffffff",
-  card: "#ffffff",
-  cardForeground: "#09090b",
   popover: "#ffffff",
   popoverForeground: "#09090b",
   primary: "#18181b",
@@ -204,8 +202,6 @@ const darkSemanticColors = {
 
   // Legacy aliases (for gradual migration)
   background: "#18181c",
-  card: "#27272a",
-  cardForeground: "#fafafa",
   popover: "#27272a",
   popoverForeground: "#fafafa",
   primary: "#fafafa",

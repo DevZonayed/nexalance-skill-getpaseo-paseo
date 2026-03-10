@@ -8,9 +8,7 @@ import {
   type NativeSyntheticEvent,
 } from "react-native";
 import type { StreamItem } from "@/types/stream";
-import {
-  useBottomAnchorController,
-} from "./use-bottom-anchor-controller";
+import { useBottomAnchorController } from "./use-bottom-anchor-controller";
 import type {
   StreamRenderInput,
   StreamStrategy,
@@ -30,8 +28,9 @@ const DEFAULT_MAINTAIN_VISIBLE_CONTENT_POSITION = Object.freeze({
 function NativeStreamViewport(props: StreamRenderInput & { strategy: StreamStrategy }) {
   const {
     agentId,
-    rows,
-    renderRow,
+    segments,
+    boundary,
+    renderers,
     listEmptyComponent,
     viewportRef,
     routeBottomAnchorRequest,
@@ -40,7 +39,6 @@ function NativeStreamViewport(props: StreamRenderInput & { strategy: StreamStrat
     scrollEnabled,
     listStyle,
     baseListContentContainerStyle,
-    edgeSlotProps,
     strategy,
   } = props;
   const flatListRef = useRef<FlatList<StreamItem>>(null);
@@ -57,6 +55,13 @@ function NativeStreamViewport(props: StreamRenderInput & { strategy: StreamStrat
   const programmaticScrollEventBudgetRef = useRef(0);
   const [isNativeViewportSettling, setIsNativeViewportSettling] = useState(false);
   const nativeViewportSettlingFrameIdRef = useRef<number | null>(null);
+
+  const historyRows = useMemo(() => {
+    if (segments.historyVirtualized.length === 0) {
+      return segments.historyMounted;
+    }
+    return [...segments.historyVirtualized, ...segments.historyMounted];
+  }, [segments.historyMounted, segments.historyVirtualized]);
 
   const clearNativeViewportSettling = useCallback(() => {
     if (nativeViewportSettlingFrameIdRef.current !== null) {
@@ -90,19 +95,22 @@ function NativeStreamViewport(props: StreamRenderInput & { strategy: StreamStrat
     [isNativeViewportSettling, strategy]
   );
 
-  const scrollToBottom = useCallback((animated: boolean) => {
-    programmaticScrollEventBudgetRef.current = 3;
-    flatListRef.current?.scrollToOffset({
-      offset: 0,
-      animated,
-    });
-    scrollOffsetYRef.current = 0;
-    streamViewportMetricsRef.current = {
-      ...streamViewportMetricsRef.current,
-      offsetY: 0,
-    };
-    onNearBottomChange(true);
-  }, [onNearBottomChange]);
+  const scrollToBottom = useCallback(
+    (animated: boolean) => {
+      programmaticScrollEventBudgetRef.current = 3;
+      flatListRef.current?.scrollToOffset({
+        offset: 0,
+        animated,
+      });
+      scrollOffsetYRef.current = 0;
+      streamViewportMetricsRef.current = {
+        ...streamViewportMetricsRef.current,
+        offsetY: 0,
+      };
+      onNearBottomChange(true);
+    },
+    [onNearBottomChange]
+  );
 
   const bottomAnchorController = useBottomAnchorController({
     agentId,
@@ -163,7 +171,7 @@ function NativeStreamViewport(props: StreamRenderInput & { strategy: StreamStrat
 
   useEffect(() => {
     bottomAnchorController.prepareForStickyContentChange();
-  }, [bottomAnchorController, rows]);
+  }, [bottomAnchorController, historyRows, segments.liveHead]);
 
   useEffect(() => {
     const handle: StreamViewportHandle = {
@@ -272,30 +280,50 @@ function NativeStreamViewport(props: StreamRenderInput & { strategy: StreamStrat
 
   const renderItem = useCallback(
     ({ item, index }: ListRenderItemInfo<StreamItem>) => {
-      const rendered = renderRow(item, index, rows);
+      const rendered = renderers.renderHistoryMountedRow(item, index, historyRows);
       return rendered ? <Fragment>{rendered}</Fragment> : null;
     },
-    [renderRow, rows]
+    [historyRows, renderers]
   );
+
+  const liveHeaderContent = useMemo(() => {
+    const liveHeadRows = segments.liveHead.map((item, index) => (
+      <Fragment key={item.id}>
+        {renderers.renderLiveHeadRow(item, index, segments.liveHead)}
+      </Fragment>
+    ));
+    const liveAuxiliary = renderers.renderLiveAuxiliary();
+    if (
+      liveHeadRows.length === 0 &&
+      !liveAuxiliary &&
+      !boundary.hasMountedHistory &&
+      !boundary.hasVirtualizedHistory
+    ) {
+      return listEmptyComponent ? <Fragment>{listEmptyComponent}</Fragment> : null;
+    }
+    return (
+      <Fragment>
+        {liveHeadRows}
+        {liveAuxiliary}
+      </Fragment>
+    );
+  }, [boundary, listEmptyComponent, renderers, segments.liveHead]);
 
   return (
     <FlatList
       ref={flatListRef}
-      data={rows}
+      data={historyRows}
       renderItem={renderItem}
       keyExtractor={(item) => item.id}
       testID="agent-chat-scroll"
       nativeID="agent-chat-scroll-native-virtualized"
-      {...edgeSlotProps}
+      ListHeaderComponent={liveHeaderContent ? () => liveHeaderContent : undefined}
       contentContainerStyle={baseListContentContainerStyle}
       style={listStyle}
       onLayout={handleListLayout}
       onScroll={handleScroll}
       scrollEventThrottle={16}
       onContentSizeChange={handleContentSizeChange}
-      ListEmptyComponent={
-        listEmptyComponent ? () => <Fragment>{listEmptyComponent}</Fragment> : undefined
-      }
       maintainVisibleContentPosition={DEFAULT_MAINTAIN_VISIBLE_CONTENT_POSITION}
       initialNumToRender={12}
       windowSize={10}

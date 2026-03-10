@@ -53,13 +53,12 @@ import { ToolCallDetailsContent } from "./tool-call-details";
 import { QuestionFormCard } from "./question-form-card";
 import { ToolCallSheetProvider } from "./tool-call-sheet";
 import {
+  buildAgentStreamRenderModel,
   collectAssistantTurnContentForStreamRenderStrategy,
-  getStreamEdgeSlotProps,
   getStreamNeighborItem,
-  orderHeadForStreamRenderStrategy,
-  orderTailForStreamRenderStrategy,
   resolveStreamRenderStrategy,
-  type StreamEdgeSlotProps,
+  type AgentStreamRenderModel,
+  type StreamSegmentRenderers,
   type StreamViewportHandle,
 } from "./agent-stream-render-strategy";
 import {
@@ -199,12 +198,14 @@ export const AgentStreamView = forwardRef<AgentStreamViewHandle, AgentStreamView
     ]
   );
 
-  const orderedStreamItems = useMemo(() => {
-    return orderTailForStreamRenderStrategy({
-      strategy: streamRenderStrategy,
-      streamItems,
+  const baseRenderModel = useMemo(() => {
+    return buildAgentStreamRenderModel({
+      tail: streamItems,
+      head: streamHead ?? [],
+      platform: Platform.OS === "web" ? "web" : "native",
+      isMobileBreakpoint: isMobile,
     });
-  }, [streamItems, streamRenderStrategy]);
+  }, [isMobile, streamHead, streamItems]);
   useImperativeHandle(ref, () => ({
     scrollToBottom(reason = "jump-to-bottom") {
       viewportRef.current?.scrollToBottom(reason);
@@ -218,68 +219,48 @@ export const AgentStreamView = forwardRef<AgentStreamViewHandle, AgentStreamView
     viewportRef.current?.scrollToBottom("jump-to-bottom");
   }
 
-  const orderedStreamHead = useMemo(() => {
-    return orderHeadForStreamRenderStrategy({
-      strategy: streamRenderStrategy,
-      streamHead: streamHead ?? [],
-    });
-  }, [streamHead, streamRenderStrategy]);
-
   const tightGap = theme.spacing[1]; // 4px
   const looseGap = theme.spacing[4]; // 16px
 
-  const getGapBelow = useCallback(
-    (item: StreamItem, index: number, items: StreamItem[]) => {
-      const belowItem = getStreamNeighborItem({
-        strategy: streamRenderStrategy,
-        items,
-        index,
-        relation: "below",
-      });
-      if (!belowItem) {
+  const getGapBetween = useCallback(
+    (item: StreamItem | null, belowItem: StreamItem | null) => {
+      if (!item || !belowItem) {
         return 0;
       }
 
-      // Same type groups get tight gap (4px)
       if (isUserMessageItem(item) && isUserMessageItem(belowItem)) {
         return tightGap;
       }
-
       if (isToolSequenceItem(item) && isToolSequenceItem(belowItem)) {
         return tightGap;
       }
-
-      // Give user messages more breathing room before tool sequences.
       if (item.kind === "user_message" && isToolSequenceItem(belowItem)) {
         return looseGap;
       }
-
-      // Keep tool sequences visually connected to the preceding user/assistant message.
       if (
         (item.kind === "user_message" || item.kind === "assistant_message") &&
         isToolSequenceItem(belowItem)
       ) {
         return tightGap;
       }
-
-      // Keep todo lists visually connected to the following tool sequence (symmetry).
       if (item.kind === "todo_list" && isToolSequenceItem(belowItem)) {
         return tightGap;
       }
-
-      // Keep tool sequences visually connected to the assistant response (symmetry).
       if (isToolSequenceItem(item) && belowItem.kind === "assistant_message") {
         return tightGap;
       }
-
-      // Different types get loose gap (16px)
       return looseGap;
     },
-    [looseGap, streamRenderStrategy, tightGap]
+    [looseGap, tightGap]
   );
 
   const renderStreamItemContent = useCallback(
-    (item: StreamItem, index: number, items: StreamItem[]) => {
+    (
+      item: StreamItem,
+      index: number,
+      items: StreamItem[],
+      seamAboveItem: StreamItem | null = null
+    ) => {
       const handleInlineDetailsExpandedChange = (expanded: boolean) => {
         if (
           !streamRenderStrategy.shouldDisableParentScrollOnInlineDetailsExpansion()
@@ -299,12 +280,13 @@ export const AgentStreamView = forwardRef<AgentStreamViewHandle, AgentStreamView
 
       switch (item.kind) {
         case "user_message": {
-          const aboveItem = getStreamNeighborItem({
-            strategy: streamRenderStrategy,
-            items,
-            index,
-            relation: "above",
-          });
+          const aboveItem =
+            getStreamNeighborItem({
+              strategy: streamRenderStrategy,
+              items,
+              index,
+              relation: "above",
+            }) ?? seamAboveItem ?? undefined;
           const belowItem = getStreamNeighborItem({
             strategy: streamRenderStrategy,
             items,
@@ -426,19 +408,24 @@ export const AgentStreamView = forwardRef<AgentStreamViewHandle, AgentStreamView
   );
 
   const renderStreamItem = useCallback(
-    (item: StreamItem, index: number, items: StreamItem[]) => {
-      const content = renderStreamItemContent(item, index, items);
+    (
+      item: StreamItem,
+      index: number,
+      items: StreamItem[],
+      seamAboveItem: StreamItem | null = null
+    ) => {
+      const content = renderStreamItemContent(item, index, items, seamAboveItem);
       if (!content) {
         return null;
       }
 
-      const gapBelow = getGapBelow(item, index, items);
       const nextItem = getStreamNeighborItem({
         strategy: streamRenderStrategy,
         items,
         index,
         relation: "below",
       });
+      const gapBelow = getGapBetween(item, nextItem ?? null);
       const isEndOfAssistantTurn =
         item.kind === "assistant_message" &&
         (nextItem?.kind === "user_message" ||
@@ -460,7 +447,7 @@ export const AgentStreamView = forwardRef<AgentStreamViewHandle, AgentStreamView
       );
     },
     [
-      getGapBelow,
+      getGapBetween,
       renderStreamItemContent,
       agent.status,
       streamRenderStrategy,
@@ -544,99 +531,56 @@ export const AgentStreamView = forwardRef<AgentStreamViewHandle, AgentStreamView
   }, [agentId, pendingPermissionItems.length, streamHead, streamItems]);
 
   const showWorkingIndicator = agent.status === "running";
-  const showBottomBar = showWorkingIndicator;
-
-  const listEdgeSlotComponent = useMemo(() => {
-    const hasPermissions = pendingPermissionItems.length > 0;
-    const hasHeadItems = orderedStreamHead.length > 0;
-
-    if (!hasPermissions && !showBottomBar && !hasHeadItems) {
-      return null;
-    }
-
-    const leftContent = showWorkingIndicator ? <WorkingIndicator /> : null;
-
-    return (
-      <View style={stylesheet.contentWrapper}>
-        <View
-          style={[
-            stylesheet.listHeaderContent,
-            // The edge slot (header for inverted streams, footer for forward streams)
-            // sits next to the newest timeline item.
-            hasHeadItems ? { paddingTop: tightGap } : null,
-          ]}
-        >
-          {hasPermissions ? (
-            <View style={stylesheet.permissionsContainer}>
-              {pendingPermissionItems.map((permission) => (
-                <PermissionRequestCard
-                  key={permission.key}
-                  permission={permission}
-                  client={client}
-                />
-              ))}
-            </View>
-          ) : null}
-
-          {hasHeadItems
-            ? orderedStreamHead.map((item, index) => {
-                const rendered = renderStreamItemContent(
-                  item,
-                  index,
-                  orderedStreamHead
-                );
-                return rendered ? (
-                  <View key={item.id} style={stylesheet.streamItemWrapper}>
-                    {rendered}
-                  </View>
-                ) : null;
-              })
-            : null}
-
-          {showBottomBar ? <View style={stylesheet.bottomBarWrapper}>{leftContent}</View> : null}
+  const renderModel = useMemo<AgentStreamRenderModel>(() => {
+    const pendingPermissionsNode =
+      pendingPermissionItems.length > 0 ? (
+        <View style={stylesheet.permissionsContainer}>
+          {pendingPermissionItems.map((permission) => (
+            <PermissionRequestCard
+              key={permission.key}
+              permission={permission}
+              client={client}
+            />
+          ))}
         </View>
+      ) : null;
+    const workingIndicatorNode = showWorkingIndicator ? (
+      <View style={stylesheet.bottomBarWrapper}>
+        <WorkingIndicator />
       </View>
-    );
+    ) : null;
+
+    return {
+      ...baseRenderModel,
+      boundary: {
+        ...baseRenderModel.boundary,
+        historyToHeadGap: getGapBetween(
+          baseRenderModel.history.at(-1) ?? null,
+          baseRenderModel.segments.liveHead[0] ?? null
+        ),
+      },
+      auxiliary: {
+        pendingPermissions: pendingPermissionsNode,
+        workingIndicator: workingIndicatorNode,
+      },
+    };
   }, [
+    baseRenderModel,
+    client,
+    getGapBetween,
     pendingPermissionItems,
     showWorkingIndicator,
-    client,
-    orderedStreamHead,
-    renderStreamItemContent,
-    showBottomBar,
-    tightGap,
   ]);
 
-  const listEdgeSlotProps = useMemo<StreamEdgeSlotProps>(() => {
-    if (!listEdgeSlotComponent) {
-      return {};
-    }
-    return getStreamEdgeSlotProps({
-      strategy: streamRenderStrategy,
-      component: listEdgeSlotComponent,
-      gapSize: tightGap,
-    });
-  }, [listEdgeSlotComponent, streamRenderStrategy, tightGap]);
-
   const listEmptyComponent = useMemo(() => {
-    const hasPermissions = pendingPermissionItems.length > 0;
-    const hasHeadItems = orderedStreamHead.length > 0;
-    if (hasPermissions || hasHeadItems) {
+    if (
+      renderModel.boundary.hasVirtualizedHistory ||
+      renderModel.boundary.hasMountedHistory ||
+      renderModel.boundary.hasLiveHead ||
+      renderModel.auxiliary.pendingPermissions ||
+      renderModel.auxiliary.workingIndicator
+    ) {
       return null;
-    }
-
-    const shouldShowWorking = agent.status === "running";
-
-    if (shouldShowWorking) {
-      return (
-        <View style={[stylesheet.emptyState, stylesheet.contentWrapper]}>
-          <ActivityIndicator
-            size="small"
-            color={theme.colors.foregroundMuted}
-          />
-          <Text style={stylesheet.emptyStateText}>Working…</Text>
-        </View>
-      );
     }
 
     return (
@@ -646,12 +590,86 @@ export const AgentStreamView = forwardRef<AgentStreamViewHandle, AgentStreamView
         </Text>
       </View>
     );
-  }, [
-    agent.status,
-    pendingPermissionItems.length,
-    orderedStreamHead,
-    theme.colors.foregroundMuted,
-  ]);
+  }, [renderModel]);
+
+  const historyItems = renderModel.history;
+  const liveHeadItems = renderModel.segments.liveHead;
+  const { boundary, auxiliary } = renderModel;
+  const lastHistoryItem = historyItems.at(-1) ?? null;
+
+  const historyIndexById = useMemo(() => {
+    const indexById = new Map<string, number>();
+    historyItems.forEach((item, index) => {
+      indexById.set(item.id, index);
+    });
+    return indexById;
+  }, [historyItems]);
+
+  const renderHistoryRow = useCallback(
+    (item: StreamItem) => {
+      const historyIndex = historyIndexById.get(item.id);
+      if (historyIndex === undefined) {
+        return null;
+      }
+      return renderStreamItem(item, historyIndex, historyItems);
+    },
+    [historyIndexById, historyItems, renderStreamItem]
+  );
+
+  const renderHistoryVirtualizedRow = useCallback<StreamSegmentRenderers["renderHistoryVirtualizedRow"]>(
+    (item) => renderHistoryRow(item),
+    [renderHistoryRow]
+  );
+  const renderHistoryMountedRow = useCallback<StreamSegmentRenderers["renderHistoryMountedRow"]>(
+    (item) => renderHistoryRow(item),
+    [renderHistoryRow]
+  );
+  const renderLiveHeadRow = useCallback<StreamSegmentRenderers["renderLiveHeadRow"]>(
+    (item, index, items) =>
+      renderStreamItem(item, index, items, index === 0 ? lastHistoryItem : null),
+    [lastHistoryItem, renderStreamItem]
+  );
+  const renderLiveAuxiliary = useCallback<StreamSegmentRenderers["renderLiveAuxiliary"]>(
+    () => {
+      if (!auxiliary.pendingPermissions && !auxiliary.workingIndicator) {
+        return null;
+      }
+      return (
+        <View style={stylesheet.contentWrapper}>
+          <View
+            style={[
+              stylesheet.listHeaderContent,
+              boundary.hasLiveHead ? { paddingTop: tightGap } : null,
+            ]}
+          >
+            {auxiliary.pendingPermissions}
+            {auxiliary.workingIndicator}
+          </View>
+        </View>
+      );
+    },
+    [
+      auxiliary.pendingPermissions,
+      auxiliary.workingIndicator,
+      boundary.hasLiveHead,
+      tightGap,
+    ]
+  );
+
+  const renderers = useMemo<StreamSegmentRenderers>(
+    () => ({
+      renderHistoryVirtualizedRow,
+      renderHistoryMountedRow,
+      renderLiveHeadRow,
+      renderLiveAuxiliary,
+    }),
+    [
+      renderHistoryVirtualizedRow,
+      renderHistoryMountedRow,
+      renderLiveHeadRow,
+      renderLiveAuxiliary,
+    ]
+  );
 
   const streamScrollEnabled =
     !streamRenderStrategy.shouldDisableParentScrollOnInlineDetailsExpansion() ||
@@ -663,8 +681,9 @@ export const AgentStreamView = forwardRef<AgentStreamViewHandle, AgentStreamView
         <MessageOuterSpacingProvider disableOuterSpacing>
           {streamRenderStrategy.render({
             agentId,
-            rows: orderedStreamItems,
-            renderRow: renderStreamItem,
+            segments: renderModel.segments,
+            boundary,
+            renderers,
             listEmptyComponent,
             viewportRef,
             routeBottomAnchorRequest,
@@ -674,7 +693,6 @@ export const AgentStreamView = forwardRef<AgentStreamViewHandle, AgentStreamView
             listStyle: stylesheet.list,
             baseListContentContainerStyle: stylesheet.listContentContainer,
             forwardListContentContainerStyle: stylesheet.forwardListContentContainer,
-            edgeSlotProps: listEdgeSlotProps,
           })}
         </MessageOuterSpacingProvider>
         {!isNearBottom && (

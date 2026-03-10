@@ -2,6 +2,10 @@ import type { ComponentType, ReactElement, ReactNode, RefObject } from "react";
 import type { StyleProp, ViewStyle } from "react-native";
 import type { StreamItem } from "@/types/stream";
 import type {
+  StreamHistoryBoundary,
+  StreamRenderSegments,
+} from "./agent-stream-render-model";
+import type {
   BottomAnchorLocalRequest,
   BottomAnchorRouteRequest,
 } from "./use-bottom-anchor-controller";
@@ -44,10 +48,30 @@ export type StreamViewportHandle = {
   prepareForViewportChange: () => void;
 };
 
+export type StreamSegmentRenderers = {
+  renderHistoryVirtualizedRow: (
+    item: StreamItem,
+    index: number,
+    items: StreamItem[]
+  ) => ReactNode;
+  renderHistoryMountedRow: (
+    item: StreamItem,
+    index: number,
+    items: StreamItem[]
+  ) => ReactNode;
+  renderLiveHeadRow: (
+    item: StreamItem,
+    index: number,
+    items: StreamItem[]
+  ) => ReactNode;
+  renderLiveAuxiliary: () => ReactNode;
+};
+
 export type StreamRenderInput = {
   agentId: string;
-  rows: StreamItem[];
-  renderRow: (item: StreamItem, index: number, items: StreamItem[]) => ReactNode;
+  segments: StreamRenderSegments;
+  boundary: StreamHistoryBoundary;
+  renderers: StreamSegmentRenderers;
   listEmptyComponent: ReactNode;
   viewportRef: RefObject<StreamViewportHandle | null>;
   routeBottomAnchorRequest: BottomAnchorRouteRequest | null;
@@ -57,7 +81,6 @@ export type StreamRenderInput = {
   listStyle: StyleProp<ViewStyle>;
   baseListContentContainerStyle: StyleProp<ViewStyle>;
   forwardListContentContainerStyle: StyleProp<ViewStyle>;
-  edgeSlotProps: StreamEdgeSlotProps;
 };
 
 export type ResolveStreamRenderStrategyInput = {

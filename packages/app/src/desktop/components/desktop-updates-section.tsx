@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { ActivityIndicator, Alert, Image, Pressable, Text, View } from "react-native";
+import { ActivityIndicator, Alert, Image, Text, View } from "react-native";
 import * as Clipboard from "expo-clipboard";
 import * as QRCode from "qrcode";
 import { useFocusEffect } from "@react-navigation/native";
@@ -336,14 +336,17 @@ export function LocalDaemonSection({ appVersion }: LocalDaemonSectionProps) {
     <View style={settingsStyles.section}>
       <View style={styles.sectionHeader}>
         <Text style={settingsStyles.sectionTitle}>Built-in daemon</Text>
-        <Pressable
-          accessibilityRole="link"
-          onPress={() => void openExternalUrl(ADVANCED_DAEMON_SETTINGS_URL)}
+        <Button
+          variant="ghost"
+          size="sm"
+          leftIcon={<ArrowUpRight size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />}
+          textStyle={styles.sectionLinkText}
           style={styles.sectionLink}
+          onPress={() => void openExternalUrl(ADVANCED_DAEMON_SETTINGS_URL)}
+          accessibilityLabel="Open advanced daemon settings"
         >
-          <Text style={styles.sectionLinkText}>Advanced settings</Text>
-          <ArrowUpRight size={14} color={styles.sectionLinkText.color} />
-        </Pressable>
+          Advanced settings
+        </Button>
       </View>
       <View style={settingsStyles.card}>
         <View style={styles.row}>

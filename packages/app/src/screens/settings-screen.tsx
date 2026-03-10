@@ -4,7 +4,6 @@ import {
   View,
   Text,
   ScrollView,
-  Pressable,
   Alert,
   Platform,
 } from "react-native";
@@ -221,16 +220,11 @@ const styles = StyleSheet.create((theme) => ({
   hostSettingsButton: {
     width: 28,
     height: 28,
+    paddingVertical: 0,
+    paddingHorizontal: 0,
     borderRadius: theme.borderRadius.md,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-    borderColor: "transparent",
-    backgroundColor: "transparent",
+    gap: 0,
     marginLeft: theme.spacing[2],
-  },
-  hostSettingsButtonActive: {
-    backgroundColor: theme.colors.surface3,
   },
   advancedTrigger: {
     flexDirection: "row",
@@ -256,20 +250,10 @@ const styles = StyleSheet.create((theme) => ({
   },
   // Add host button
   addButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: theme.spacing[2],
-    paddingVertical: theme.spacing[3],
-    borderRadius: theme.borderRadius.lg,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
     borderStyle: "dashed",
   },
   addButtonText: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.sm,
-    fontWeight: theme.fontWeight.normal,
   },
   // Add/Edit form
   formCard: {
@@ -712,16 +696,19 @@ export default function SettingsScreen() {
               })
             )}
 
-            <Pressable
+            <Button
+              variant="outline"
+              size="md"
               style={styles.addButton}
+              textStyle={styles.addButtonText}
               onPress={() => {
                 setAddConnectionTargetServerId(null);
                 setPendingEditReopenServerId(null);
                 setIsAddHostMethodVisible(true);
               }}
             >
-              <Text style={styles.addButtonText}>+ Add connection</Text>
-            </Pressable>
+              + Add connection
+            </Button>
           </View>
 
           <AddHostMethodModal
@@ -1147,12 +1134,15 @@ function HostDetailModal({
                   />
                 );
               })}
-              <Pressable
+              <Button
+                variant="outline"
+                size="md"
                 style={styles.addButton}
+                textStyle={styles.addButtonText}
                 onPress={onAddConnection}
               >
-                <Text style={styles.addButtonText}>+ Add connection</Text>
-              </Pressable>
+                + Add connection
+              </Button>
             </View>
           </View>
         ) : null}
@@ -1312,11 +1302,14 @@ function ConnectionRow({
       <Text style={{ color: latencyColor, fontSize: 11 }}>
         {latencyText}
       </Text>
-      <Pressable onPress={onRemove}>
-        <Text style={{ color: theme.colors.destructive, fontSize: 12, fontWeight: "500" }}>
-          Remove
-        </Text>
-      </Pressable>
+      <Button
+        variant="ghost"
+        size="sm"
+        textStyle={{ color: theme.colors.destructive }}
+        onPress={onRemove}
+      >
+        Remove
+      </Button>
     </View>
   );
 }
@@ -1403,23 +1396,18 @@ function DaemonCard({
               </View>
             ) : null}
 
-            <Pressable
-              style={({ pressed, hovered }) => [
-                styles.hostSettingsButton,
-                (pressed || hovered) && styles.hostSettingsButtonActive,
-              ]}
+            <Button
+              variant="ghost"
+              size="sm"
+              style={styles.hostSettingsButton}
+              textStyle={{ fontSize: 0, lineHeight: 0 }}
+              leftIcon={<Settings size={theme.iconSize.md} color={theme.colors.foregroundMuted} />}
               onPress={() => onOpenSettings(daemon)}
               testID={`daemon-card-settings-${daemon.serverId}`}
-              accessibilityRole="button"
               accessibilityLabel={`Open settings for ${daemon.label}`}
             >
-              {({ pressed, hovered }) => (
-                <Settings
-                  size={theme.iconSize.md}
-                  color={pressed || hovered ? theme.colors.foreground : theme.colors.foregroundMuted}
-                />
-              )}
-            </Pressable>
+              {" "}
+            </Button>
           </View>
         </View>
         {connectionError ? <Text style={styles.hostError}>{connectionError}</Text> : null}

@@ -1,8 +1,6 @@
 import {
   Fragment,
   type CSSProperties,
-  createElement,
-  isValidElement,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -11,13 +9,7 @@ import {
   useState,
 } from 'react'
 import { measureElement as measureVirtualElement, useVirtualizer } from '@tanstack/react-virtual'
-import { View } from 'react-native'
-import {
-  estimateStreamItemHeight,
-  getWebMountedRecentStreamItems,
-  getWebPartialVirtualizationThreshold,
-  splitWebVirtualizedHistory,
-} from './agent-stream-web-virtualization'
+import { estimateStreamItemHeight } from './agent-stream-web-virtualization'
 import type { StreamRenderInput, StreamStrategy, StreamViewportHandle } from './stream-strategy'
 import { createStreamStrategy } from './stream-strategy'
 
@@ -68,28 +60,6 @@ function isScrollContainerAtBottom(
   return isScrollContainerNearBottom(scrollContainer, AUTO_SCROLL_RESUME_THRESHOLD_PX)
 }
 
-function renderEdge(
-  content: StreamRenderInput['edgeSlotProps']['ListHeaderComponent'],
-  style?: CSSProperties
-) {
-  if (!content) {
-    return null
-  }
-  const rendered = isValidElement(content) ? content : createElement(content)
-  return (
-    <div
-      style={{
-        display: 'flex',
-        flexDirection: 'column',
-        width: '100%',
-        ...style,
-      }}
-    >
-      {rendered}
-    </div>
-  )
-}
-
 function scrollElementToBottom(
   scrollContainer: HTMLElement,
   behavior: ScrollBehaviorLike = 'auto'
@@ -127,18 +97,15 @@ function isScrollContainerOverscrolledPastBottom(
 
 function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: boolean }) {
   const {
-    rows,
-    renderRow,
+    segments,
+    boundary,
+    renderers,
     listEmptyComponent,
     viewportRef,
     routeBottomAnchorRequest,
     isAuthoritativeHistoryReady,
     onNearBottomChange,
     scrollEnabled,
-    listStyle,
-    baseListContentContainerStyle,
-    forwardListContentContainerStyle,
-    edgeSlotProps,
     isMobileBreakpoint,
   } = props
   const { WebDesktopScrollbarOverlay, useWebDesktopScrollbarMetrics } =
@@ -147,7 +114,6 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
   const contentRef = useRef<HTMLElement | null>(null)
   const [followOutput, setFollowOutputr] = useState(true)
   const setFollowOutput = (value: boolean) => {
-    console.trace('setFollowOutput', value)
     setFollowOutputr(value)
     return value
   }
@@ -160,32 +126,25 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
   const pendingAutoScrollTimeoutRef = useRef<number | null>(null)
   const streamScrollbarMetrics = useWebDesktopScrollbarMetrics()
   const showDesktopWebScrollbar = !isMobileBreakpoint
-  const shouldUseVirtualizer =
-    !isMobileBreakpoint && rows.length > getWebPartialVirtualizationThreshold()
+  const shouldUseVirtualizer = segments.historyVirtualized.length > 0
+  const {
+    renderHistoryVirtualizedRow,
+    renderHistoryMountedRow,
+    renderLiveHeadRow,
+    renderLiveAuxiliary,
+  } = renderers
 
   followOutputRef.current = followOutput
 
-  const indexedRows = useMemo(() => rows.map((item, index) => ({ item, index })), [rows])
-  const webVirtualizedHistoryWindow = useMemo(() => {
-    if (!shouldUseVirtualizer) {
-      return null
-    }
-    return splitWebVirtualizedHistory({
-      entries: indexedRows,
-      minMountedCount: getWebMountedRecentStreamItems(),
-    })
-  }, [indexedRows, shouldUseVirtualizer])
-  const virtualizedEntries = webVirtualizedHistoryWindow?.virtualizedEntries ?? []
-  const mountedEntries = webVirtualizedHistoryWindow?.mountedEntries ?? indexedRows
   const activationKey = routeBottomAnchorRequest?.requestKey ?? props.agentId
   const isActivationReady = routeBottomAnchorRequest === null || isAuthoritativeHistoryReady
 
   const rowVirtualizer = useVirtualizer({
-    count: virtualizedEntries.length,
+    count: segments.historyVirtualized.length,
     getScrollElement: () => scrollContainerRef.current,
-    getItemKey: (index: number) => virtualizedEntries[index]?.item.id ?? index,
+    getItemKey: (index: number) => segments.historyVirtualized[index]?.id ?? index,
     estimateSize: (index: number) => {
-      const row = virtualizedEntries[index]?.item
+      const row = segments.historyVirtualized[index]
       return row ? estimateStreamItemHeight(row) : 120
     },
     measureElement: measureVirtualElement,
@@ -220,7 +179,7 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
   }, [])
 
   const scrollMessagesToBottom = useCallback(
-    (behavior: ScrollBehaviorLike = 'auto', source = 'unknown') => {
+    (behavior: ScrollBehaviorLike = 'auto') => {
       const scrollContainer = scrollContainerRef.current
       if (!scrollContainer) {
         return
@@ -236,7 +195,7 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
   )
 
   const scheduleStickToBottom = useCallback(
-    (source = 'unknown') => {
+    () => {
       const scrollContainer = scrollContainerRef.current
       if (scrollContainer && isScrollContainerOverscrolledPastBottom(scrollContainer)) {
         return
@@ -249,15 +208,16 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
         if (!followOutputRef.current) {
           return
         }
-        scrollMessagesToBottom('auto', source)
+        scrollMessagesToBottom('auto')
       })
     },
     [scrollMessagesToBottom]
   )
+
   const forceStickToBottom = useCallback(() => {
     cancelPendingStickToBottom()
-    scrollMessagesToBottom('auto', 'force')
-    scheduleStickToBottom('force')
+    scrollMessagesToBottom('auto')
+    scheduleStickToBottom()
   }, [cancelPendingStickToBottom, scheduleStickToBottom, scrollMessagesToBottom])
 
   const updateScrollMetrics = useCallback(() => {
@@ -303,7 +263,6 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
     }
 
     const currentScrollTop = scrollContainer.scrollTop
-    const isNearBottom = syncNearBottom(scrollContainer, onNearBottomChange)
     const isAtBottom = isScrollContainerAtBottom(scrollContainer)
     const scrolledUp = currentScrollTop < lastKnownScrollTopRef.current - USER_SCROLL_DELTA_EPSILON
 
@@ -325,7 +284,7 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
 
     lastKnownScrollTopRef.current = currentScrollTop
     updateScrollMetrics()
-  }, [cancelPendingStickToBottom, onNearBottomChange, updateScrollMetrics])
+  }, [cancelPendingStickToBottom, updateScrollMetrics])
 
   useLayoutEffect(() => {
     if (!isActivationReady) {
@@ -334,13 +293,6 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
     setFollowOutput(true)
     forceStickToBottom()
     const timeout = window.setTimeout(() => {
-      console.log('timeout', {
-        followOutputRef: followOutputRef.current,
-        scrollContainerRef: scrollContainerRef.current,
-        isScrollContainerNearBottom: scrollContainerRef.current
-          ? isScrollContainerNearBottom(scrollContainerRef.current)
-          : null,
-      })
       if (!followOutputRef.current) {
         return
       }
@@ -351,7 +303,7 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
       if (isScrollContainerNearBottom(scrollContainer)) {
         return
       }
-      scheduleStickToBottom('activation-timeout')
+      scheduleStickToBottom()
     }, WEB_BOTTOM_SETTLE_TIMEOUT_MS)
     return () => {
       window.clearTimeout(timeout)
@@ -362,22 +314,30 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
     if (!followOutputRef.current) {
       return
     }
-    scheduleStickToBottom('rows-effect')
-  }, [rows, scheduleStickToBottom])
+    scheduleStickToBottom()
+  }, [
+    scheduleStickToBottom,
+    segments.historyMounted,
+    segments.historyVirtualized,
+    segments.liveHead,
+  ])
 
   useEffect(() => {
-    if (!followOutputRef.current) {
+    if (!followOutputRef.current || !shouldUseVirtualizer) {
       return
     }
-    if (!webVirtualizedHistoryWindow) {
-      return
-    }
-    scheduleStickToBottom('virtual-total-size-effect')
-  }, [scheduleStickToBottom, virtualTotalSize, webVirtualizedHistoryWindow])
+    scheduleStickToBottom()
+  }, [scheduleStickToBottom, shouldUseVirtualizer, virtualTotalSize])
 
   useEffect(() => {
     updateScrollMetrics()
-  }, [updateScrollMetrics, virtualTotalSize, rows.length])
+  }, [
+    segments.historyMounted.length,
+    segments.historyVirtualized.length,
+    segments.liveHead.length,
+    updateScrollMetrics,
+    virtualTotalSize,
+  ])
 
   useEffect(() => {
     const scrollContainer = scrollContainerRef.current
@@ -392,7 +352,7 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
       if (!followOutputRef.current) {
         return
       }
-      scheduleStickToBottom('resize-observer')
+      scheduleStickToBottom()
     })
     observer.observe(scrollContainer)
     if (contentNode) {
@@ -478,7 +438,7 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
         if (!followOutputRef.current) {
           return
         }
-        scheduleStickToBottom('prepare-for-viewport-change')
+        scheduleStickToBottom()
       },
     }
     viewportRef.current = handle
@@ -488,7 +448,7 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
       }
       cancelPendingStickToBottom()
     }
-  }, [cancelPendingStickToBottom, scheduleStickToBottom, forceStickToBottom, viewportRef])
+  }, [cancelPendingStickToBottom, forceStickToBottom, scheduleStickToBottom, viewportRef])
 
   const contentContainerStyle = useMemo(
     (): CSSProperties => ({
@@ -513,11 +473,6 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
     }),
     [scrollEnabled]
   )
-  const headerEdgeContent = renderEdge(edgeSlotProps.ListHeaderComponent)
-  const footerEdgeContent = renderEdge(
-    edgeSlotProps.ListFooterComponent,
-    edgeSlotProps.ListFooterComponentStyle as CSSProperties | undefined
-  )
   const virtualRowsContainerStyle = useMemo(
     (): CSSProperties => ({
       position: 'relative',
@@ -538,6 +493,30 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
     }),
     []
   )
+  const mountedHistoryRows = useMemo(
+    () =>
+      segments.historyMounted.map((item, index) => (
+        <Fragment key={item.id}>
+          {renderHistoryMountedRow(item, index, segments.historyMounted)}
+        </Fragment>
+      )),
+    [renderHistoryMountedRow, segments.historyMounted]
+  )
+  const liveHeadRows = useMemo(
+    () =>
+      segments.liveHead.map((item, index) => (
+        <Fragment key={item.id}>
+          {renderLiveHeadRow(item, index, segments.liveHead)}
+        </Fragment>
+      )),
+    [renderLiveHeadRow, segments.liveHead]
+  )
+  const liveAuxiliary = useMemo(() => renderLiveAuxiliary(), [renderLiveAuxiliary])
+  const shouldRenderEmpty =
+    !boundary.hasMountedHistory &&
+    !boundary.hasVirtualizedHistory &&
+    !boundary.hasLiveHead &&
+    !liveAuxiliary
 
   return (
     <>
@@ -556,12 +535,11 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
           }}
           style={contentContainerStyle}
         >
-          {headerEdgeContent}
-          {webVirtualizedHistoryWindow ? (
+          {shouldUseVirtualizer ? (
             <div style={virtualRowsContainerStyle}>
               {virtualRows.map((virtualRow) => {
-                const entry = virtualizedEntries[virtualRow.index]
-                if (!entry) {
+                const item = segments.historyVirtualized[virtualRow.index]
+                if (!item) {
                   return null
                 }
                 return (
@@ -571,17 +549,23 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
                     ref={rowVirtualizer.measureElement}
                     style={renderVirtualRowStyle(virtualRow.start)}
                   >
-                    {renderRow(entry.item, entry.index, rows)}
+                    {renderHistoryVirtualizedRow(
+                      item,
+                      virtualRow.index,
+                      segments.historyVirtualized
+                    )}
                   </div>
                 )
               })}
             </div>
           ) : null}
-          {mountedEntries.map((entry) => (
-            <Fragment key={entry.item.id}>{renderRow(entry.item, entry.index, rows)}</Fragment>
-          ))}
-          {rows.length === 0 ? listEmptyComponent : null}
-          {footerEdgeContent}
+          {mountedHistoryRows}
+          {boundary.hasMountedHistory && boundary.hasLiveHead && boundary.historyToHeadGap > 0 ? (
+            <div style={{ height: boundary.historyToHeadGap, width: '100%' }} />
+          ) : null}
+          {liveHeadRows}
+          {liveAuxiliary}
+          {shouldRenderEmpty ? listEmptyComponent : null}
         </div>
       </div>
       <WebDesktopScrollbarOverlay
