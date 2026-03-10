@@ -108,12 +108,12 @@ function Home() {
 
       {/* Content section */}
       <div className="bg-black">
-        <main className="p-6 md:p-20 md:pt-8 max-w-3xl mx-auto">
+        <main className="p-6 md:p-20 md:pt-8 max-w-5xl mx-auto">
           <Features />
           <CLISection />
           <FAQ />
         </main>
-        <footer className="p-6 md:p-20 md:pt-0 max-w-3xl mx-auto">
+        <footer className="p-6 md:p-20 md:pt-0 max-w-5xl mx-auto">
           <div className="border-t border-white/10 pt-6">
             <a
               href="/privacy"
@@ -232,7 +232,7 @@ function Differentiator({ title, description }: { title: string; description: st
 function Features() {
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
         {[
           { title: 'Self-hosted', description: 'The daemon runs on your laptop, home server, or VPS. Allowing you to take full advantage of your dev environment.' },
           { title: 'Multi-provider', description: 'Works with existing agent harnesses like Claude Code, Codex, and OpenCode from one interface.' },
@@ -682,6 +682,118 @@ function CodeBlock({ children }: { children: React.ReactNode }) {
   )
 }
 
+const bashKeywords = new Set(['while', 'do', 'done', 'if', 'then', 'fi', 'else', 'break', 'true', 'false'])
+const bashCommands = new Set(['paseo', 'echo', 'jq'])
+
+function highlightBash(code: string): React.ReactNode {
+  const tokens: React.ReactNode[] = []
+  let i = 0
+  let key = 0
+
+  while (i < code.length) {
+    // Comment (# not inside a word)
+    if (code[i] === '#' && (i === 0 || /[\s(]/.test(code[i - 1]))) {
+      const end = code.indexOf('\n', i)
+      const comment = end === -1 ? code.slice(i) : code.slice(i, end)
+      tokens.push(<span key={key++} className="text-white/30 italic">{comment}</span>)
+      i += comment.length
+      continue
+    }
+
+    // Double-quoted string
+    if (code[i] === '"') {
+      let j = i + 1
+      while (j < code.length && code[j] !== '"') {
+        if (code[j] === '\\') j++
+        j++
+      }
+      const str = code.slice(i, j + 1)
+      tokens.push(<span key={key++} className="text-green-400/80">{str}</span>)
+      i = j + 1
+      continue
+    }
+
+    // Single-quoted string
+    if (code[i] === "'") {
+      let j = i + 1
+      while (j < code.length && code[j] !== "'") j++
+      const str = code.slice(i, j + 1)
+      tokens.push(<span key={key++} className="text-green-400/80">{str}</span>)
+      i = j + 1
+      continue
+    }
+
+    // $( subshell or $variable
+    if (code[i] === '$') {
+      if (code[i + 1] === '(') {
+        tokens.push(<span key={key++} className="text-amber-300/70">$(</span>)
+        i += 2
+        continue
+      }
+      let j = i + 1
+      while (j < code.length && /\w/.test(code[j])) j++
+      tokens.push(<span key={key++} className="text-amber-300/70">{code.slice(i, j)}</span>)
+      i = j
+      continue
+    }
+
+    // Flags: --long-flag or -f (preceded by whitespace)
+    if (code[i] === '-' && (i === 0 || /\s/.test(code[i - 1])) && i + 1 < code.length && /[\w-]/.test(code[i + 1])) {
+      let j = i
+      if (code[j + 1] === '-') j++
+      j++
+      while (j < code.length && /[\w-]/.test(code[j])) j++
+      tokens.push(<span key={key++} className="text-sky-300/70">{code.slice(i, j)}</span>)
+      i = j
+      continue
+    }
+
+    // Words
+    if (/[a-zA-Z_]/.test(code[i])) {
+      let j = i
+      while (j < code.length && /\w/.test(code[j])) j++
+      const word = code.slice(i, j)
+      if (bashKeywords.has(word)) {
+        tokens.push(<span key={key++} className="text-purple-400">{word}</span>)
+      } else if (bashCommands.has(word)) {
+        tokens.push(<span key={key++} className="text-white">{word}</span>)
+      } else {
+        tokens.push(word)
+        key++
+      }
+      i = j
+      continue
+    }
+
+    // Pipe, &&, backslash
+    if (code[i] === '|' || (code[i] === '&' && code[i + 1] === '&')) {
+      const op = code[i] === '|' ? '|' : '&&'
+      tokens.push(<span key={key++} className="text-white/40">{op}</span>)
+      i += op.length
+      continue
+    }
+
+    if (code[i] === '\\') {
+      tokens.push(<span key={key++} className="text-white/40">\</span>)
+      i++
+      continue
+    }
+
+    // Closing paren (matches $( ... ))
+    if (code[i] === ')') {
+      tokens.push(<span key={key++} className="text-amber-300/70">)</span>)
+      i++
+      continue
+    }
+
+    // Everything else
+    tokens.push(code[i])
+    i++
+  }
+
+  return <>{tokens}</>
+}
+
 function CLICodeBlock({ children }: { children: string }) {
   const [copied, setCopied] = React.useState(false)
 
@@ -708,7 +820,7 @@ function CLICodeBlock({ children }: { children: string }) {
           </svg>
         )}
       </button>
-      <pre className="p-4 pr-10 text-xs leading-relaxed overflow-x-auto text-white/70 font-mono whitespace-pre">{children}</pre>
+      <pre className="p-4 pr-10 text-xs leading-relaxed overflow-x-auto text-white/70 font-mono whitespace-pre">{highlightBash(children)}</pre>
     </div>
   )
 }
@@ -721,8 +833,8 @@ interface CLIExample {
 
 const cliExamples: CLIExample[] = [
   {
-    title: 'Launch and monitor agents',
-    description: 'Start agents with a task. Use --worktree to run in an isolated git branch — parallel feature work without conflicts.',
+    title: 'Launch and monitor',
+    description: 'Give an agent a task and watch it work. The --worktree flag spins up an isolated git branch so you can run multiple agents on the same repo without conflicts.',
     code:
 `paseo run "implement user authentication"
 paseo run --worktree feature-x "implement feature X"
@@ -732,10 +844,21 @@ paseo attach abc123                # stream live output
 paseo send abc123 "also add tests" # follow-up task`,
   },
   {
-    title: 'Multi-agent orchestration',
-    description: 'The CLI is designed to be used by agents themselves. One agent can spawn others, coordinate parallel work, and synthesize results.',
+    title: 'Multi-provider',
+    description: 'Same commands, any agent. Pick a provider and model, or mix them in the same workflow.',
     code:
-`# Agent A spawns parallel workers and waits for both
+`paseo run --provider claude/opus-4.6 "refactor the auth module"
+paseo run --provider codex/gpt-5.4 "write integration tests"
+
+# Use different models for different jobs
+paseo run --detach --provider codex/gpt-5.4 "implement the feature" --name worker
+paseo run --provider claude/opus-4.6 "review the worker branch for issues"`,
+  },
+  {
+    title: 'Orchestration',
+    description: 'Agents can use the CLI too. Tell one agent to spawn others, split up the work, and pull everything together when they\'re done.',
+    code:
+`# Spawn two agents in parallel, wait, then synthesize
 paseo run --detach "implement the frontend" --name frontend
 paseo run --detach "implement the API layer" --name api
 
@@ -745,7 +868,7 @@ paseo run "review both branches and write an integration plan"`,
   },
   {
     title: 'Structured output',
-    description: 'Get typed JSON back from any agent run. Pass a JSON schema and only the matching output is returned — no parsing required.',
+    description: 'Pass a JSON schema and get typed data back from any agent run. No output parsing, just the structured result you asked for.',
     code:
 `result=$(paseo run \\
   --output-schema '{
@@ -762,8 +885,21 @@ echo $result | jq '.severity'   # "high"
 echo $result | jq '.issues[0]'  # "SQL injection on line 42"`,
   },
   {
-    title: 'Worker–judge loops',
-    description: 'Combine structured output with a loop to keep iterating until acceptance criteria are met.',
+    title: 'Remote',
+    description: 'Point at any daemon on your network or over the internet. Run agents on a beefy server from your laptop.',
+    code:
+`# Set once for the session
+export PASEO_HOST=workstation.local:6767
+paseo run "run the full test suite"
+paseo ls
+
+# Or per-command
+paseo --host gpu-server:6767 run "train the model"
+paseo --host gpu-server:6767 attach abc123`,
+  },
+  {
+    title: 'Worker-judge loops',
+    description: 'Have one agent do the work and another judge the result. Loop until it passes. Good for test fixes, code review, or any task with clear acceptance criteria.',
     code:
 `while true; do
   paseo run "make all tests pass"
@@ -792,7 +928,7 @@ function CLISection() {
       <div className="space-y-2">
         <h2 className="text-2xl font-medium">CLI</h2>
         <p className="text-sm text-white/60 max-w-lg">
-          Everything in the app, from your terminal. The CLI is ergonomic enough for agents to use — one agent can spawn others, wait for results, and get structured output back.
+          Everything you can do in the app, you can do from the terminal.
         </p>
       </div>
 
