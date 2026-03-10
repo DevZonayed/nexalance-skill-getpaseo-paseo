@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.24 - 2026-03-10
+
+### Improved
+- Improved command center keyboard navigation and new tab shortcut.
+- Simplified desktop release pipeline for faster and more reliable builds.
+
 ## 0.1.21 - 2026-03-10
 ### Improved
 - Improved desktop release reliability by fixing the Windows managed-runtime build path during GitHub Actions releases.
