@@ -11,6 +11,7 @@ import WebSocket from "ws";
 import { createClientChannel } from "@getpaseo/relay/e2ee";
 
 const execFileAsync = promisify(execFile);
+const COMMAND_TIMEOUT_MS = 120_000;
 const repoRoot = fileURLToPath(new URL("../../..", import.meta.url));
 const desktopRoot = path.join(repoRoot, "packages", "desktop");
 const relayRoot = path.join(repoRoot, "packages", "relay");
@@ -109,13 +110,29 @@ function escapeForRegExp(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+async function execFileWithTimeout(command, args, options, label) {
+  try {
+    return await execFileAsync(command, args, {
+      timeout: COMMAND_TIMEOUT_MS,
+      ...options,
+    });
+  } catch (error) {
+    if (error?.killed && error?.signal === "SIGTERM") {
+      const renderedArgs = args.map((arg) => JSON.stringify(arg)).join(" ");
+      throw new Error(
+        `Timed out after ${COMMAND_TIMEOUT_MS}ms running ${label}: ${JSON.stringify(command)} ${renderedArgs}`
+      );
+    }
+    throw error;
+  }
+}
 
 async function runBinary(binaryPath, args, env) {
-  const { stdout, stderr } = await execFileAsync(binaryPath, args, {
+  const { stdout, stderr } = await execFileWithTimeout(binaryPath, args, {
     env,
     cwd: repoRoot,
     maxBuffer: 10 * 1024 * 1024,
-  });
+  }, "packaged desktop binary");
   const trimmed = stdout.trim();
   return {
     stdout,
@@ -125,7 +142,7 @@ async function runBinary(binaryPath, args, env) {
 }
 
 async function runWorkspaceCli(args, env) {
-  const { stdout, stderr } = await execFileAsync(
+  const { stdout, stderr } = await execFileWithTimeout(
     process.execPath,
     [path.join(repoRoot, "packages", "cli", "dist", "index.js"), ...args],
     {
@@ -136,6 +153,7 @@ async function runWorkspaceCli(args, env) {
       },
       maxBuffer: 10 * 1024 * 1024,
     },
+    "workspace CLI"
   );
   let json = null;
   if (stdout.trim()) {
@@ -152,7 +170,7 @@ async function runBundledRuntimeCli(runtimeRoot, managedHome, args, env) {
   const manifest = JSON.parse(
     await fs.readFile(path.join(runtimeRoot, "runtime-manifest.json"), "utf8")
   );
-  const { stdout, stderr } = await execFileAsync(
+  const { stdout, stderr } = await execFileWithTimeout(
     path.join(runtimeRoot, manifest.nodeRelativePath),
     [path.join(runtimeRoot, manifest.cliEntrypointRelativePath), ...args],
     {
@@ -163,7 +181,8 @@ async function runBundledRuntimeCli(runtimeRoot, managedHome, args, env) {
         PASEO_HOME: managedHome,
       },
       maxBuffer: 10 * 1024 * 1024,
-    }
+    },
+    "bundled runtime CLI"
   );
   return { stdout, stderr };
 }
@@ -367,11 +386,11 @@ async function ensurePackagedArtifact(binaryPath) {
     throw new Error("npm_execpath is required to build the packaged desktop artifact during smoke tests.");
   }
   try {
-    await execFileAsync(process.execPath, [npmExecPath, "run", "build"], {
+    await execFileWithTimeout(process.execPath, [npmExecPath, "run", "build"], {
       cwd: desktopRoot,
       env: process.env,
       maxBuffer: 20 * 1024 * 1024,
-    });
+    }, "desktop smoke artifact build");
   } catch (error) {
     const combined = `${error.stdout ?? ""}\n${error.stderr ?? ""}`;
     const signingBlocked =
@@ -620,11 +639,11 @@ try {
     logStep("Skipping privileged CLI shim install in CI and verifying the bundled CLI target directly");
   }
   const cliVersion = cliShimInstalled
-    ? await execFileAsync(cliShimPath, ["--version"], {
+    ? await execFileWithTimeout(cliShimPath, ["--version"], {
         env: managedEnv,
         cwd: repoRoot,
         maxBuffer: 1024 * 1024,
-      })
+      }, "installed CLI shim version check")
     : await runBundledRuntimeCli(
         runtimeStatus.json.runtimeRoot,
         managedStart.managedHome,
@@ -633,11 +652,11 @@ try {
       );
   assert.match(cliVersion.stdout.trim(), /^0\./);
   const shimStatus = cliShimInstalled
-    ? await execFileAsync(cliShimPath, ["daemon", "status", "--json"], {
+    ? await execFileWithTimeout(cliShimPath, ["daemon", "status", "--json"], {
         env: managedEnv,
         cwd: repoRoot,
         maxBuffer: 1024 * 1024,
-      })
+      }, "installed CLI shim daemon status")
     : await runBundledRuntimeCli(
         runtimeStatus.json.runtimeRoot,
         managedStart.managedHome,
@@ -650,14 +669,15 @@ try {
 
   logStep("Verifying relay connectivity still works after the desktop command has exited");
   const relayPairing = cliShimInstalled
-    ? await execFileAsync(
+    ? await execFileWithTimeout(
         cliShimPath,
         ["daemon", "pair", "--home", managedStart.managedHome],
         {
           env: managedEnv,
           cwd: repoRoot,
           maxBuffer: 4 * 1024 * 1024,
-        }
+        },
+        "installed CLI shim relay pairing"
       )
     : await runBundledRuntimeCli(
         runtimeStatus.json.runtimeRoot,
