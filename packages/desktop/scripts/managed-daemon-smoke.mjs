@@ -600,7 +600,7 @@ try {
       })
     : await runBundledRuntimeCli(
         runtimeStatus.json.runtimeRoot,
-        managedStart.json.managedHome,
+        managedStart.managedHome,
         ["--version"],
         managedEnv
       );
@@ -613,7 +613,7 @@ try {
       })
     : await runBundledRuntimeCli(
         runtimeStatus.json.runtimeRoot,
-        managedStart.json.managedHome,
+        managedStart.managedHome,
         ["daemon", "status", "--json"],
         managedEnv
       );
@@ -625,7 +625,7 @@ try {
   const relayPairing = cliShimInstalled
     ? await execFileAsync(
         cliShimPath,
-        ["daemon", "pair", "--home", managedStart.json.managedHome],
+        ["daemon", "pair", "--home", managedStart.managedHome],
         {
           env: managedEnv,
           cwd: repoRoot,
@@ -634,8 +634,8 @@ try {
       )
     : await runBundledRuntimeCli(
         runtimeStatus.json.runtimeRoot,
-        managedStart.json.managedHome,
-        ["daemon", "pair", "--home", managedStart.json.managedHome],
+        managedStart.managedHome,
+        ["daemon", "pair", "--home", managedStart.managedHome],
         managedEnv
       );
   const relayOfferUrl = parseOfferUrlFromCommandOutput(relayPairing.stdout);
