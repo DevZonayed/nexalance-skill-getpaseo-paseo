@@ -368,17 +368,22 @@ async function pruneNodePty(runtimeRoot) {
 }
 
 async function pruneClaudeAgentSdk(runtimeRoot) {
-  const ripgrepRoot = path.join(
+  const vendorRoot = path.join(
     runtimeRoot,
     "node_modules",
     "@anthropic-ai",
     "claude-agent-sdk",
-    "vendor",
-    "ripgrep"
+    "vendor"
   );
+  const ripgrepRoot = path.join(vendorRoot, "ripgrep");
   const keepName = ripgrepPlatformDirMap[process.platform]?.[process.arch];
   if (keepName) {
     await pruneChildrenExcept(ripgrepRoot, new Set(["COPYING", keepName]));
+  }
+
+  const treeSitterBashRoot = path.join(vendorRoot, "tree-sitter-bash");
+  if (keepName) {
+    await pruneChildrenExcept(treeSitterBashRoot, new Set([keepName]));
   }
 }
 

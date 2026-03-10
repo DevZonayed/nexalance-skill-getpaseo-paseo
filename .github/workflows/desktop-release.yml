@@ -36,6 +36,7 @@ jobs:
   publish-macos:
     if: ${{ (github.event_name == 'workflow_dispatch' && (github.event.inputs.platform == 'all' || github.event.inputs.platform == 'macos')) || (github.event_name == 'push' && (startsWith(github.ref_name, 'v') || startsWith(github.ref_name, 'desktop-v') || startsWith(github.ref_name, 'desktop-macos-v'))) }}
     strategy:
+      fail-fast: false
       matrix:
         include:
           - runner: macos-14
@@ -97,6 +98,11 @@ jobs:
 
       - name: Smoke check managed runtime for macOS
         run: npm run smoke:managed-daemon --workspace=@getpaseo/desktop
+
+      - name: Sign bundled managed runtime for macOS
+        env:
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+        run: node ./packages/desktop/scripts/sign-managed-runtime-macos.mjs
 
       - name: Set desktop version from tag
         shell: bash
