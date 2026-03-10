@@ -515,19 +515,33 @@ try {
   assert.equal(stateAfterRuntimeStatus.runtimeId, currentRuntimeId);
   assert.equal(stateAfterRuntimeStatus.runtimeRoot, runtimeStatus.json.runtimeRoot);
 
-  const managedStart = await runBinary(packagedBinary, ["--managed-headless", "bootstrap"], managedEnv);
-  assert.equal(managedStart.json.daemonRunning, true);
-  assert.ok(managedStart.json.daemonPid, "managed daemon pid should exist");
-  assert.equal(managedStart.json.runtimeRoot, runtimeStatus.json.runtimeRoot);
+  const managedBootstrap = await runBinary(packagedBinary, ["--managed-headless", "bootstrap"], managedEnv);
+  const managedStart = managedBootstrap.json ?? await waitFor(
+    async () => {
+      const status = await runBinary(
+        packagedBinary,
+        ["--managed-headless", "daemon-status"],
+        managedEnv
+      );
+      assert.equal(status.json?.daemonRunning, true);
+      assert.ok(status.json?.daemonPid, "managed daemon pid should exist");
+      return status.json;
+    },
+    10_000,
+    "managed daemon bootstrap status"
+  );
+  assert.equal(managedStart.daemonRunning, true);
+  assert.ok(managedStart.daemonPid, "managed daemon pid should exist");
+  assert.equal(managedStart.runtimeRoot, runtimeStatus.json.runtimeRoot);
   assert.ok(
-    managedStart.json.transportType === "socket" || managedStart.json.transportType === "pipe",
+    managedStart.transportType === "socket" || managedStart.transportType === "pipe",
     "managed daemon should default to private IPC transport"
   );
-  assert.notEqual(managedStart.json.transportPath, "127.0.0.1:6767");
-  assertNoForbiddenPathsOrPorts(managedStart.json, forbiddenManagedReferences);
+  assert.notEqual(managedStart.transportPath, "127.0.0.1:6767");
+  assertNoForbiddenPathsOrPorts(managedStart, forbiddenManagedReferences);
   assert.equal(await pathExists(managedRuntimeDir), false, "starting the daemon should not install a runtime copy");
 
-  const managedPid = managedStart.json.daemonPid;
+  const managedPid = managedStart.daemonPid;
   const stateFile = path.join(testRoot, "managed-state.json");
   assert.equal(await pathExists(stateFile), true, "managed state file should be written");
 
@@ -700,7 +714,8 @@ try {
     JSON.stringify(
       {
         runtimeStatus: runtimeStatus.json,
-        managedStart: managedStart.json,
+        managedBootstrap: managedBootstrap.json,
+        managedStart,
         stateAfterRuntimeStatus,
         persistedManagedStatus: persistedManagedStatus.json,
         managedRestartless: managedRestartless.json,
