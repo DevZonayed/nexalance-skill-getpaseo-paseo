@@ -364,7 +364,7 @@ export function LocalDaemonSection({ appVersion }: LocalDaemonSectionProps) {
             </Text>
           </View>
           <Button
-            variant="outline"
+            variant="secondary"
             size="sm"
             style={styles.primaryActionButton}
             onPress={handleToggleDaemonManagement}
@@ -388,7 +388,7 @@ export function LocalDaemonSection({ appVersion }: LocalDaemonSectionProps) {
             ) : null}
           </View>
           <Button
-            variant="outline"
+            variant="secondary"
             size="sm"
             style={styles.primaryActionButton}
             onPress={handleUpdateLocalDaemon}
@@ -410,7 +410,7 @@ export function LocalDaemonSection({ appVersion }: LocalDaemonSectionProps) {
             {cliStatusMessage ? <Text style={styles.statusText}>{cliStatusMessage}</Text> : null}
           </View>
           <Button
-            variant="outline"
+            variant="secondary"
             size="sm"
             style={styles.secondaryActionButton}
             onPress={handleToggleCliShim}
@@ -434,12 +434,12 @@ export function LocalDaemonSection({ appVersion }: LocalDaemonSectionProps) {
           </View>
           <View style={styles.actionGroup}>
             {(managedLogs?.logPath ?? managedStatus?.logPath) ? (
-              <Button variant="outline" size="sm" onPress={handleCopyLogPath}>
+              <Button variant="secondary" size="sm" onPress={handleCopyLogPath}>
                 Copy path
               </Button>
             ) : null}
             <Button
-              variant="outline"
+              variant="secondary"
               size="sm"
               onPress={handleOpenLogs}
               disabled={!managedLogs}
@@ -455,7 +455,7 @@ export function LocalDaemonSection({ appVersion }: LocalDaemonSectionProps) {
               Connect your phone to this computer.
             </Text>
           </View>
-          <Button variant="outline" size="sm" style={styles.secondaryActionButton} onPress={handleOpenPairingModal}>
+          <Button variant="secondary" size="sm" style={styles.secondaryActionButton} onPress={handleOpenPairingModal}>
             Pair device
           </Button>
         </View>

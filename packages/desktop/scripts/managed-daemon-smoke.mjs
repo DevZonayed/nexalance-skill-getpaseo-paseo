@@ -51,6 +51,15 @@ function resolvePackagedBinary() {
       `Paseo_${desktopPackageJson.version}_amd64.AppImage`
     );
   }
+  if (process.platform === "win32") {
+    return path.join(
+      desktopRoot,
+      "src-tauri",
+      "target",
+      "release",
+      "Paseo.exe"
+    );
+  }
   throw new Error(`Managed desktop smoke is not implemented for ${process.platform} yet.`);
 }
 

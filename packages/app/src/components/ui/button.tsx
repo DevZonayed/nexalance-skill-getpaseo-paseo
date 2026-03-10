@@ -35,8 +35,8 @@ const styles = StyleSheet.create((theme) => ({
     borderColor: theme.colors.accent,
   },
   secondary: {
-    backgroundColor: theme.colors.surface2,
-    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.surface3,
+    borderColor: theme.colors.surface3,
   },
   outline: {
     backgroundColor: "transparent",

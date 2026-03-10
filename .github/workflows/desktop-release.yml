@@ -92,6 +92,12 @@ jobs:
       - name: Build web app for Tauri
         run: npm run build:web --workspace=@getpaseo/app
 
+      - name: Build managed runtime for macOS
+        run: npm run prepare:managed-runtime --workspace=@getpaseo/desktop
+
+      - name: Smoke check managed runtime for macOS
+        run: npm run smoke:managed-daemon --workspace=@getpaseo/desktop
+
       - name: Set desktop version from tag
         shell: bash
         run: |
@@ -220,6 +226,12 @@ jobs:
       - name: Build web app for Tauri
         run: npm run build:web --workspace=@getpaseo/app
 
+      - name: Build managed runtime for Linux
+        run: npm run prepare:managed-runtime --workspace=@getpaseo/desktop
+
+      - name: Smoke check managed runtime for Linux
+        run: npm run smoke:managed-daemon --workspace=@getpaseo/desktop
+
       - name: Set desktop version from tag
         shell: bash
         run: |
@@ -336,6 +348,12 @@ jobs:
 
       - name: Build web app for Tauri
         run: npm run build:web --workspace=@getpaseo/app
+
+      - name: Build managed runtime for Windows
+        run: npm run prepare:managed-runtime --workspace=@getpaseo/desktop
+
+      - name: Smoke check managed runtime for Windows
+        run: npm run smoke:managed-daemon --workspace=@getpaseo/desktop
 
       - name: Set desktop version from tag
         shell: bash
