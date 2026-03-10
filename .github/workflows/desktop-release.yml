@@ -194,10 +194,7 @@ jobs:
 
       - name: Build macOS app (smoke only)
         if: env.IS_SMOKE_TAG == 'true'
-        run: npm run tauri --workspace=@getpaseo/desktop build -- --target ${{ matrix.rust_target }}
-        env:
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: npm run tauri --workspace=@getpaseo/desktop build -- --target ${{ matrix.rust_target }} --no-bundle
 
   publish-linux:
     if: ${{ (github.event_name == 'workflow_dispatch' && (github.event.inputs.platform == 'all' || github.event.inputs.platform == 'linux')) || (github.event_name == 'push' && (startsWith(github.ref_name, 'v') || startsWith(github.ref_name, 'desktop-v') || startsWith(github.ref_name, 'desktop-linux-v'))) }}
@@ -338,10 +335,7 @@ jobs:
 
       - name: Build Linux app (smoke only)
         if: env.IS_SMOKE_TAG == 'true'
-        run: npm run tauri --workspace=@getpaseo/desktop build -- --bundles appimage
-        env:
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: npm run tauri --workspace=@getpaseo/desktop build -- --no-bundle
 
   publish-windows:
     if: ${{ (github.event_name == 'workflow_dispatch' && (github.event.inputs.platform == 'all' || github.event.inputs.platform == 'windows')) || (github.event_name == 'push' && (startsWith(github.ref_name, 'v') || startsWith(github.ref_name, 'desktop-v') || startsWith(github.ref_name, 'desktop-windows-v'))) }}
@@ -477,7 +471,7 @@ jobs:
 
       - name: Build Windows app (smoke only)
         if: env.IS_SMOKE_TAG == 'true'
-        run: npm run tauri --workspace=@getpaseo/desktop build -- --bundles nsis,msi
+        run: npm run tauri --workspace=@getpaseo/desktop build -- --no-bundle
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
