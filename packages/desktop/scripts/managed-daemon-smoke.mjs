@@ -391,6 +391,8 @@ async function waitFor(assertion, timeoutMs, label) {
 }
 
 function logStep(label) {
+  currentStepLabel = label;
+  currentStepStartedAt = Date.now();
   console.log(`\n[managed-smoke] ${label}`);
 }
 
@@ -422,6 +424,23 @@ await fs.mkdir(externalHome, { recursive: true });
 await fs.writeFile(path.join(fakePaseoHome, "sentinel.txt"), "do not touch\n", "utf8");
 
 const fakePaseoSnapshotBefore = await snapshotTree(fakePaseoHome);
+const smokeStartedAt = Date.now();
+const smokeDeadlineMs = 15 * 60 * 1000;
+let currentStepLabel = "initializing";
+let currentStepStartedAt = smokeStartedAt;
+const heartbeat = setInterval(() => {
+  const elapsedSeconds = Math.floor((Date.now() - smokeStartedAt) / 1000);
+  const currentStepSeconds = Math.floor((Date.now() - currentStepStartedAt) / 1000);
+  console.log(
+    `[managed-smoke] heartbeat elapsed=${elapsedSeconds}s currentStep=${JSON.stringify(currentStepLabel)} stepElapsed=${currentStepSeconds}s`
+  );
+  if (Date.now() - smokeStartedAt > smokeDeadlineMs) {
+    console.error(
+      `[managed-smoke] FAIL exceeded ${smokeDeadlineMs / 1000}s overall deadline during ${JSON.stringify(currentStepLabel)}`
+    );
+    process.exit(1);
+  }
+}, 30_000);
 const managedEnv = {
   ...process.env,
   HOME: fakeHome,
@@ -739,6 +758,7 @@ try {
 
   console.log(`\n[managed-smoke] PASS (${testRoot})`);
 } finally {
+  clearInterval(heartbeat);
   try {
     await runBinary(packagedBinary, ["--managed-headless", "stop-daemon"], managedEnv);
   } catch {}
