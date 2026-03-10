@@ -8,6 +8,7 @@
     "prepare:managed-runtime": "npm --prefix ../.. run build:daemon && npm run build:managed-runtime",
     "dev": "npm run prepare:managed-runtime && tauri dev",
     "build": "npm --prefix ../.. run build:web --workspace=@getpaseo/app && npm run prepare:managed-runtime && tauri build",
+    "validate:managed-runtime": "node ./scripts/validate-managed-runtime.mjs",
     "smoke:managed-daemon": "node ./scripts/managed-daemon-smoke.mjs",
     "tauri": "tauri"
   },

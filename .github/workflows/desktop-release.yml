@@ -54,28 +54,60 @@ jobs:
           fetch-depth: 0
           ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref }}
 
-      - name: Normalize release tag
+      - name: Resolve release metadata
         shell: bash
         run: |
           set -euo pipefail
           source_tag="${SOURCE_TAG}"
-          if [[ "$source_tag" == desktop-windows-v* ]]; then
-            release_tag="v${source_tag#desktop-windows-v}"
-          elif [[ "$source_tag" == desktop-linux-v* ]]; then
-            release_tag="v${source_tag#desktop-linux-v}"
-          elif [[ "$source_tag" == desktop-macos-v* ]]; then
-            release_tag="v${source_tag#desktop-macos-v}"
-          elif [[ "$source_tag" == desktop-v* ]]; then
-            release_tag="v${source_tag#desktop-v}"
-          else
-            release_tag="$source_tag"
-          fi
+          release_tag="$source_tag"
+          for prefix in desktop-windows-v desktop-linux-v desktop-macos-v desktop-v; do
+            if [[ "$source_tag" == ${prefix}* ]]; then
+              release_tag="v${source_tag#${prefix}}"
+              break
+            fi
+          done
           echo "RELEASE_TAG=$release_tag" >> "$GITHUB_ENV"
+
+          version="${release_tag#v}"
+          echo "DESKTOP_VERSION=$version" >> "$GITHUB_ENV"
+
           if [[ "$source_tag" == *gha-smoke* ]]; then
             echo "IS_SMOKE_TAG=true" >> "$GITHUB_ENV"
           else
             echo "IS_SMOKE_TAG=false" >> "$GITHUB_ENV"
           fi
+
+      - name: Set desktop version from tag
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const path = require('node:path');
+          const version = process.env.DESKTOP_VERSION;
+          if (!version) throw new Error('DESKTOP_VERSION env var is missing');
+          console.log(`Setting desktop version to ${version}`);
+
+          const tauriConfPath = path.join('packages', 'desktop', 'src-tauri', 'tauri.conf.json');
+          const tauriConfText = fs.readFileSync(tauriConfPath, 'utf8');
+          const tauriRe = /("version"\s*:\s*")([^"]+)(")/;
+          if (!tauriRe.test(tauriConfText)) throw new Error('Failed to find version in tauri.conf.json');
+          fs.writeFileSync(tauriConfPath, tauriConfText.replace(tauriRe, `$1${version}$3`));
+
+          const cargoTomlPath = path.join('packages', 'desktop', 'src-tauri', 'Cargo.toml');
+          const lines = fs.readFileSync(cargoTomlPath, 'utf8').split(/\r?\n/);
+          let inPackage = false, updated = false;
+          const result = lines.map((line) => {
+            if (/^\[package\]\s*$/.test(line)) inPackage = true;
+            else if (inPackage && /^\[/.test(line)) inPackage = false;
+            if (inPackage && /^version\s*=\s*".*"\s*$/.test(line)) {
+              updated = true;
+              return `version = "${version}"`;
+            }
+            return line;
+          });
+          if (!updated) throw new Error('Failed to update Cargo.toml version');
+          fs.writeFileSync(cargoTomlPath, result.join('\n') + '\n');
+          NODE
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -107,8 +139,11 @@ jobs:
       - name: Build web app for Tauri
         run: npm run build:web --workspace=@getpaseo/app
 
-      - name: Build managed runtime for macOS
+      - name: Build managed runtime
         run: npm run prepare:managed-runtime --workspace=@getpaseo/desktop
+
+      - name: Validate managed runtime bundle
+        run: npm run validate:managed-runtime --workspace=@getpaseo/desktop
 
       - name: Import Apple code-signing certificate
         uses: apple-actions/import-codesign-certs@v3
@@ -116,69 +151,10 @@ jobs:
           p12-file-base64: ${{ secrets.APPLE_CERTIFICATE }}
           p12-password: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
 
-      - name: Build packaged app for macOS smoke
-        shell: bash
-        run: |
-          set -euo pipefail
-          app_path="packages/desktop/src-tauri/target/${{ matrix.rust_target }}/release/bundle/macos/Paseo.app/Contents/MacOS/Paseo"
-          if npm run tauri --workspace=@getpaseo/desktop build -- --target ${{ matrix.rust_target }}; then
-            exit 0
-          fi
-          if [[ -f "$app_path" ]]; then
-            echo "Smoke app created at $app_path despite tauri build exiting non-zero; continuing."
-            exit 0
-          fi
-          exit 1
-
-      - name: Smoke check managed runtime for macOS
-        env:
-          PASEO_MANAGED_SMOKE_SKIP_BUILD: "1"
-          PASEO_MANAGED_SMOKE_RUST_TARGET: ${{ matrix.rust_target }}
-        run: npm run smoke:managed-daemon --workspace=@getpaseo/desktop
-
-      - name: Sign bundled managed runtime for macOS
+      - name: Sign bundled managed runtime
         env:
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
         run: node ./packages/desktop/scripts/sign-managed-runtime-macos.mjs
-
-      - name: Set desktop version from tag
-        shell: bash
-        run: |
-          node <<'NODE'
-          const fs = require('node:fs');
-          const path = require('node:path');
-
-          const rawTag = process.env.SOURCE_TAG;
-          if (!rawTag) throw new Error('SOURCE_TAG env var is missing');
-
-          const version = rawTag.replace(/^desktop-(windows-|linux-|macos-)?/, '').replace(/^v/, '');
-          console.log(`Using desktop version ${version} from tag ${rawTag}`);
-
-          const tauriConfPath = path.join('packages', 'desktop', 'src-tauri', 'tauri.conf.json');
-          const tauriConfText = fs.readFileSync(tauriConfPath, 'utf8');
-          const tauriRe = /("version"\s*:\s*")([^"]+)(")/;
-          if (!tauriRe.test(tauriConfText)) {
-            throw new Error(`Failed to find version field in ${tauriConfPath}`);
-          }
-          fs.writeFileSync(tauriConfPath, tauriConfText.replace(tauriRe, `$1${version}$3`));
-
-          const cargoTomlPath = path.join('packages', 'desktop', 'src-tauri', 'Cargo.toml');
-          const cargoLines = fs.readFileSync(cargoTomlPath, 'utf8').split(/\r?\n/);
-          let inPackage = false;
-          let updated = false;
-          const nextLines = cargoLines.map((line) => {
-            if (/^\[package\]\s*$/.test(line)) inPackage = true;
-            else if (inPackage && /^\[/.test(line)) inPackage = false;
-
-            if (inPackage && /^version\s*=\s*".*"\s*$/.test(line)) {
-              updated = true;
-              return `version = "${version}"`;
-            }
-            return line;
-          });
-          if (!updated) throw new Error(`Failed to update Cargo package version in ${cargoTomlPath}`);
-          fs.writeFileSync(cargoTomlPath, `${nextLines.join('\n')}\n`);
-          NODE
 
       - name: Detect existing GitHub release state
         if: env.IS_SMOKE_TAG != 'true'
@@ -216,6 +192,13 @@ jobs:
           prerelease: false
           args: --target ${{ matrix.rust_target }}
 
+      - name: Build macOS app (smoke only)
+        if: env.IS_SMOKE_TAG == 'true'
+        run: npm run tauri --workspace=@getpaseo/desktop build -- --target ${{ matrix.rust_target }}
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+
   publish-linux:
     if: ${{ (github.event_name == 'workflow_dispatch' && (github.event.inputs.platform == 'all' || github.event.inputs.platform == 'linux')) || (github.event_name == 'push' && (startsWith(github.ref_name, 'v') || startsWith(github.ref_name, 'desktop-v') || startsWith(github.ref_name, 'desktop-linux-v'))) }}
     permissions:
@@ -229,28 +212,60 @@ jobs:
           fetch-depth: 0
           ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref }}
 
-      - name: Normalize release tag
+      - name: Resolve release metadata
         shell: bash
         run: |
           set -euo pipefail
           source_tag="${SOURCE_TAG}"
-          if [[ "$source_tag" == desktop-windows-v* ]]; then
-            release_tag="v${source_tag#desktop-windows-v}"
-          elif [[ "$source_tag" == desktop-linux-v* ]]; then
-            release_tag="v${source_tag#desktop-linux-v}"
-          elif [[ "$source_tag" == desktop-macos-v* ]]; then
-            release_tag="v${source_tag#desktop-macos-v}"
-          elif [[ "$source_tag" == desktop-v* ]]; then
-            release_tag="v${source_tag#desktop-v}"
-          else
-            release_tag="$source_tag"
-          fi
+          release_tag="$source_tag"
+          for prefix in desktop-windows-v desktop-linux-v desktop-macos-v desktop-v; do
+            if [[ "$source_tag" == ${prefix}* ]]; then
+              release_tag="v${source_tag#${prefix}}"
+              break
+            fi
+          done
           echo "RELEASE_TAG=$release_tag" >> "$GITHUB_ENV"
+
+          version="${release_tag#v}"
+          echo "DESKTOP_VERSION=$version" >> "$GITHUB_ENV"
+
           if [[ "$source_tag" == *gha-smoke* ]]; then
             echo "IS_SMOKE_TAG=true" >> "$GITHUB_ENV"
           else
             echo "IS_SMOKE_TAG=false" >> "$GITHUB_ENV"
           fi
+
+      - name: Set desktop version from tag
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const path = require('node:path');
+          const version = process.env.DESKTOP_VERSION;
+          if (!version) throw new Error('DESKTOP_VERSION env var is missing');
+          console.log(`Setting desktop version to ${version}`);
+
+          const tauriConfPath = path.join('packages', 'desktop', 'src-tauri', 'tauri.conf.json');
+          const tauriConfText = fs.readFileSync(tauriConfPath, 'utf8');
+          const tauriRe = /("version"\s*:\s*")([^"]+)(")/;
+          if (!tauriRe.test(tauriConfText)) throw new Error('Failed to find version in tauri.conf.json');
+          fs.writeFileSync(tauriConfPath, tauriConfText.replace(tauriRe, `$1${version}$3`));
+
+          const cargoTomlPath = path.join('packages', 'desktop', 'src-tauri', 'Cargo.toml');
+          const lines = fs.readFileSync(cargoTomlPath, 'utf8').split(/\r?\n/);
+          let inPackage = false, updated = false;
+          const result = lines.map((line) => {
+            if (/^\[package\]\s*$/.test(line)) inPackage = true;
+            else if (inPackage && /^\[/.test(line)) inPackage = false;
+            if (inPackage && /^version\s*=\s*".*"\s*$/.test(line)) {
+              updated = true;
+              return `version = "${version}"`;
+            }
+            return line;
+          });
+          if (!updated) throw new Error('Failed to update Cargo.toml version');
+          fs.writeFileSync(cargoTomlPath, result.join('\n') + '\n');
+          NODE
 
       - name: Install Linux packaging dependencies
         run: |
@@ -285,50 +300,11 @@ jobs:
       - name: Build web app for Tauri
         run: npm run build:web --workspace=@getpaseo/app
 
-      - name: Build managed runtime for Linux
+      - name: Build managed runtime
         run: npm run prepare:managed-runtime --workspace=@getpaseo/desktop
 
-      - name: Smoke check managed runtime for Linux
-        run: npm run smoke:managed-daemon --workspace=@getpaseo/desktop
-
-      - name: Set desktop version from tag
-        shell: bash
-        run: |
-          node <<'NODE'
-          const fs = require('node:fs');
-          const path = require('node:path');
-
-          const rawTag = process.env.SOURCE_TAG;
-          if (!rawTag) throw new Error('SOURCE_TAG env var is missing');
-
-          const version = rawTag.replace(/^desktop-(windows-|linux-|macos-)?/, '').replace(/^v/, '');
-          console.log(`Using desktop version ${version} from tag ${rawTag}`);
-
-          const tauriConfPath = path.join('packages', 'desktop', 'src-tauri', 'tauri.conf.json');
-          const tauriConfText = fs.readFileSync(tauriConfPath, 'utf8');
-          const tauriRe = /("version"\s*:\s*")([^"]+)(")/;
-          if (!tauriRe.test(tauriConfText)) {
-            throw new Error(`Failed to find version field in ${tauriConfPath}`);
-          }
-          fs.writeFileSync(tauriConfPath, tauriConfText.replace(tauriRe, `$1${version}$3`));
-
-          const cargoTomlPath = path.join('packages', 'desktop', 'src-tauri', 'Cargo.toml');
-          const cargoLines = fs.readFileSync(cargoTomlPath, 'utf8').split(/\r?\n/);
-          let inPackage = false;
-          let updated = false;
-          const nextLines = cargoLines.map((line) => {
-            if (/^\[package\]\s*$/.test(line)) inPackage = true;
-            else if (inPackage && /^\[/.test(line)) inPackage = false;
-
-            if (inPackage && /^version\s*=\s*".*"\s*$/.test(line)) {
-              updated = true;
-              return `version = "${version}"`;
-            }
-            return line;
-          });
-          if (!updated) throw new Error(`Failed to update Cargo package version in ${cargoTomlPath}`);
-          fs.writeFileSync(cargoTomlPath, `${nextLines.join('\n')}\n`);
-          NODE
+      - name: Validate managed runtime bundle
+        run: npm run validate:managed-runtime --workspace=@getpaseo/desktop
 
       - name: Detect existing GitHub release state
         if: env.IS_SMOKE_TAG != 'true'
@@ -360,6 +336,13 @@ jobs:
           prerelease: false
           args: --bundles appimage
 
+      - name: Build Linux app (smoke only)
+        if: env.IS_SMOKE_TAG == 'true'
+        run: npm run tauri --workspace=@getpaseo/desktop build -- --bundles appimage
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+
   publish-windows:
     if: ${{ (github.event_name == 'workflow_dispatch' && (github.event.inputs.platform == 'all' || github.event.inputs.platform == 'windows')) || (github.event_name == 'push' && (startsWith(github.ref_name, 'v') || startsWith(github.ref_name, 'desktop-v') || startsWith(github.ref_name, 'desktop-windows-v'))) }}
     permissions:
@@ -373,28 +356,60 @@ jobs:
           fetch-depth: 0
           ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref }}
 
-      - name: Normalize release tag
+      - name: Resolve release metadata
         shell: bash
         run: |
           set -euo pipefail
           source_tag="${SOURCE_TAG}"
-          if [[ "$source_tag" == desktop-windows-v* ]]; then
-            release_tag="v${source_tag#desktop-windows-v}"
-          elif [[ "$source_tag" == desktop-linux-v* ]]; then
-            release_tag="v${source_tag#desktop-linux-v}"
-          elif [[ "$source_tag" == desktop-macos-v* ]]; then
-            release_tag="v${source_tag#desktop-macos-v}"
-          elif [[ "$source_tag" == desktop-v* ]]; then
-            release_tag="v${source_tag#desktop-v}"
-          else
-            release_tag="$source_tag"
-          fi
+          release_tag="$source_tag"
+          for prefix in desktop-windows-v desktop-linux-v desktop-macos-v desktop-v; do
+            if [[ "$source_tag" == ${prefix}* ]]; then
+              release_tag="v${source_tag#${prefix}}"
+              break
+            fi
+          done
           echo "RELEASE_TAG=$release_tag" >> "$GITHUB_ENV"
+
+          version="${release_tag#v}"
+          echo "DESKTOP_VERSION=$version" >> "$GITHUB_ENV"
+
           if [[ "$source_tag" == *gha-smoke* ]]; then
             echo "IS_SMOKE_TAG=true" >> "$GITHUB_ENV"
           else
             echo "IS_SMOKE_TAG=false" >> "$GITHUB_ENV"
           fi
+
+      - name: Set desktop version from tag
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const path = require('node:path');
+          const version = process.env.DESKTOP_VERSION;
+          if (!version) throw new Error('DESKTOP_VERSION env var is missing');
+          console.log(`Setting desktop version to ${version}`);
+
+          const tauriConfPath = path.join('packages', 'desktop', 'src-tauri', 'tauri.conf.json');
+          const tauriConfText = fs.readFileSync(tauriConfPath, 'utf8');
+          const tauriRe = /("version"\s*:\s*")([^"]+)(")/;
+          if (!tauriRe.test(tauriConfText)) throw new Error('Failed to find version in tauri.conf.json');
+          fs.writeFileSync(tauriConfPath, tauriConfText.replace(tauriRe, `$1${version}$3`));
+
+          const cargoTomlPath = path.join('packages', 'desktop', 'src-tauri', 'Cargo.toml');
+          const lines = fs.readFileSync(cargoTomlPath, 'utf8').split(/\r?\n/);
+          let inPackage = false, updated = false;
+          const result = lines.map((line) => {
+            if (/^\[package\]\s*$/.test(line)) inPackage = true;
+            else if (inPackage && /^\[/.test(line)) inPackage = false;
+            if (inPackage && /^version\s*=\s*".*"\s*$/.test(line)) {
+              updated = true;
+              return `version = "${version}"`;
+            }
+            return line;
+          });
+          if (!updated) throw new Error('Failed to update Cargo.toml version');
+          fs.writeFileSync(cargoTomlPath, result.join('\n') + '\n');
+          NODE
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -424,68 +439,11 @@ jobs:
       - name: Build web app for Tauri
         run: npm run build:web --workspace=@getpaseo/app
 
-      - name: Build managed runtime for Windows
+      - name: Build managed runtime
         run: npm run prepare:managed-runtime --workspace=@getpaseo/desktop
 
-      - name: Build packaged app for Windows smoke
-        shell: bash
-        run: |
-          set -euo pipefail
-          app_path="packages/desktop/src-tauri/target/release/Paseo.exe"
-          if npm run tauri --workspace=@getpaseo/desktop build -- --no-bundle; then
-            exit 0
-          fi
-          if [[ -f "$app_path" ]]; then
-            echo "Smoke app created at $app_path despite tauri build exiting non-zero; continuing."
-            exit 0
-          fi
-          echo "Expected Windows smoke app at $app_path"
-          exit 1
-
-      - name: Smoke check managed runtime for Windows
-        timeout-minutes: 12
-        env:
-          PASEO_MANAGED_SMOKE_SKIP_BUILD: "1"
-        run: npm run smoke:managed-daemon --workspace=@getpaseo/desktop
-
-      - name: Set desktop version from tag
-        shell: bash
-        run: |
-          node <<'NODE'
-          const fs = require('node:fs');
-          const path = require('node:path');
-
-          const rawTag = process.env.SOURCE_TAG;
-          if (!rawTag) throw new Error('SOURCE_TAG env var is missing');
-
-          const version = rawTag.replace(/^desktop-(windows-|linux-|macos-)?/, '').replace(/^v/, '');
-          console.log(`Using desktop version ${version} from tag ${rawTag}`);
-
-          const tauriConfPath = path.join('packages', 'desktop', 'src-tauri', 'tauri.conf.json');
-          const tauriConfText = fs.readFileSync(tauriConfPath, 'utf8');
-          const tauriRe = /("version"\s*:\s*")([^"]+)(")/;
-          if (!tauriRe.test(tauriConfText)) {
-            throw new Error(`Failed to find version field in ${tauriConfPath}`);
-          }
-          fs.writeFileSync(tauriConfPath, tauriConfText.replace(tauriRe, `$1${version}$3`));
-
-          const cargoTomlPath = path.join('packages', 'desktop', 'src-tauri', 'Cargo.toml');
-          const cargoLines = fs.readFileSync(cargoTomlPath, 'utf8').split(/\r?\n/);
-          let inPackage = false;
-          let updated = false;
-          const nextLines = cargoLines.map((line) => {
-            if (/^\[package\]\s*$/.test(line)) inPackage = true;
-            else if (inPackage && /^\[/.test(line)) inPackage = false;
-
-            if (inPackage && /^version\s*=\s*".*"\s*$/.test(line)) {
-              updated = true;
-              return `version = "${version}"`;
-            }
-            return line;
-          });
-          if (!updated) throw new Error(`Failed to update Cargo package version in ${cargoTomlPath}`);
-          fs.writeFileSync(cargoTomlPath, `${nextLines.join('\n')}\n`);
-          NODE
+      - name: Validate managed runtime bundle
+        run: npm run validate:managed-runtime --workspace=@getpaseo/desktop
 
       - name: Detect existing GitHub release state
         if: env.IS_SMOKE_TAG != 'true'
@@ -516,3 +474,10 @@ jobs:
           releaseDraft: ${{ env.RELEASE_DRAFT }}
           prerelease: false
           args: --bundles nsis,msi
+
+      - name: Build Windows app (smoke only)
+        if: env.IS_SMOKE_TAG == 'true'
+        run: npm run tauri --workspace=@getpaseo/desktop build -- --bundles nsis,msi
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
