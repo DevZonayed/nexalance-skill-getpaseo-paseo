@@ -99,6 +99,12 @@ jobs:
       - name: Smoke check managed runtime for macOS
         run: npm run smoke:managed-daemon --workspace=@getpaseo/desktop
 
+      - name: Import Apple code-signing certificate
+        uses: apple-actions/import-codesign-certs@v3
+        with:
+          p12-file-base64: ${{ secrets.APPLE_CERTIFICATE }}
+          p12-password: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+
       - name: Sign bundled managed runtime for macOS
         env:
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
