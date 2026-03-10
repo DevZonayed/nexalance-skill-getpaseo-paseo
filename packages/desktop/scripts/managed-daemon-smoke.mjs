@@ -110,6 +110,19 @@ function escapeForRegExp(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+async function waitForChildExit(child, timeoutMs) {
+  if (!child || child.exitCode !== null || child.killed) {
+    return;
+  }
+  await new Promise((resolve) => {
+    const timeout = setTimeout(resolve, timeoutMs);
+    child.once("exit", () => {
+      clearTimeout(timeout);
+      resolve();
+    });
+  });
+}
+
 async function execFileWithTimeout(command, args, options, label) {
   try {
     return await execFileAsync(command, args, {
@@ -139,6 +152,34 @@ async function runBinary(binaryPath, args, env) {
     stderr,
     json: trimmed ? JSON.parse(trimmed) : null,
   };
+}
+
+async function terminateChildProcess(child, label) {
+  if (!child || child.exitCode !== null || child.killed) {
+    return;
+  }
+  if (process.platform === "win32" && typeof child.pid === "number") {
+    try {
+      await execFileWithTimeout(
+        "taskkill",
+        ["/pid", String(child.pid), "/T", "/F"],
+        { maxBuffer: 1024 * 1024 },
+        `${label} taskkill`
+      );
+    } catch {}
+    await waitForChildExit(child, 5_000);
+    return;
+  }
+  try {
+    child.kill("SIGTERM");
+  } catch {}
+  await waitForChildExit(child, 5_000);
+  if (child.exitCode === null && !child.killed) {
+    try {
+      child.kill("SIGKILL");
+    } catch {}
+    await waitForChildExit(child, 5_000);
+  }
 }
 
 async function runWorkspaceCli(args, env) {
@@ -808,6 +849,6 @@ try {
     }
   } catch {}
   try {
-    relayProcess?.kill("SIGTERM");
+    await terminateChildProcess(relayProcess, "local relay");
   } catch {}
 }

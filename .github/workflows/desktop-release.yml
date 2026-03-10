@@ -443,6 +443,7 @@ jobs:
           exit 1
 
       - name: Smoke check managed runtime for Windows
+        timeout-minutes: 12
         env:
           PASEO_MANAGED_SMOKE_SKIP_BUILD: "1"
         run: npm run smoke:managed-daemon --workspace=@getpaseo/desktop
