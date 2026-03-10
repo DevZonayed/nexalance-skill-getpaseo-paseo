@@ -427,7 +427,20 @@ jobs:
       - name: Build managed runtime for Windows
         run: npm run prepare:managed-runtime --workspace=@getpaseo/desktop
 
+      - name: Build packaged app for Windows smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          app_path="packages/desktop/src-tauri/target/release/Paseo.exe"
+          npm run tauri --workspace=@getpaseo/desktop build
+          if [[ ! -f "$app_path" ]]; then
+            echo "Expected Windows smoke app at $app_path"
+            exit 1
+          fi
+
       - name: Smoke check managed runtime for Windows
+        env:
+          PASEO_MANAGED_SMOKE_SKIP_BUILD: "1"
         run: npm run smoke:managed-daemon --workspace=@getpaseo/desktop
 
       - name: Set desktop version from tag
