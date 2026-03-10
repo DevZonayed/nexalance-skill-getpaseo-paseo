@@ -394,6 +394,10 @@ function logStep(label) {
   console.log(`\n[managed-smoke] ${label}`);
 }
 
+function shouldAttemptCliShimInstall(env) {
+  return !(process.platform === "darwin" && env.CI === "true");
+}
+
 const packagedBinary = resolvePackagedBinary();
 await ensurePackagedArtifact(packagedBinary);
 if (!(await pathExists(packagedBinary))) {
@@ -539,23 +543,40 @@ try {
   assert.equal(persistedManagedStatus.json.relayEnabled, true);
   assertNoForbiddenPathsOrPorts(persistedManagedStatus.json, forbiddenManagedReferences);
 
-  logStep("Installing CLI shim and verifying the bundled CLI target");
-  const cliInstall = await runBinary(
-    packagedBinary,
-    ["--managed-headless", "install-cli-shim"],
-    managedEnv
-  );
+  const attemptCliShimInstall = shouldAttemptCliShimInstall(managedEnv);
+  const cliInstall = attemptCliShimInstall
+    ? await (async () => {
+        logStep("Installing CLI shim and verifying the bundled CLI target");
+        return await runBinary(
+          packagedBinary,
+          ["--managed-headless", "install-cli-shim"],
+          managedEnv
+        );
+      })()
+    : {
+        json: {
+          status: "skippedInCi",
+          installed: false,
+          path: null,
+          message: "Skipping privileged macOS CLI shim install in CI; verifying bundled CLI directly.",
+        },
+      };
   const cliShimPath = cliInstall.json.path;
-  assert.ok(cliShimPath, "CLI shim path should be returned");
-  const cliShimInstalled = cliInstall.json.installed === true && (await pathExists(cliShimPath));
-  if (!cliShimInstalled) {
-    assert.ok(cliInstall.json.manualInstructions, "manual CLI install instructions should be returned");
-    assert.match(
-      cliInstall.json.manualInstructions.commands,
-      new RegExp(escapeForRegExp(runtimeStatus.json.runtimeRoot)),
-      "manual CLI install instructions should point at the bundled runtime"
-    );
-    assertNoForbiddenPathsOrPorts(cliInstall.json.manualInstructions, forbiddenManagedReferences);
+  const cliShimInstalled =
+    Boolean(attemptCliShimInstall && cliShimPath) && cliInstall.json.installed === true && (await pathExists(cliShimPath));
+  if (attemptCliShimInstall) {
+    assert.ok(cliShimPath, "CLI shim path should be returned");
+    if (!cliShimInstalled) {
+      assert.ok(cliInstall.json.manualInstructions, "manual CLI install instructions should be returned");
+      assert.match(
+        cliInstall.json.manualInstructions.commands,
+        new RegExp(escapeForRegExp(runtimeStatus.json.runtimeRoot)),
+        "manual CLI install instructions should point at the bundled runtime"
+      );
+      assertNoForbiddenPathsOrPorts(cliInstall.json.manualInstructions, forbiddenManagedReferences);
+    }
+  } else {
+    logStep("Skipping privileged CLI shim install in CI and verifying the bundled CLI target directly");
   }
   const cliVersion = cliShimInstalled
     ? await execFileAsync(cliShimPath, ["--version"], {
@@ -707,7 +728,9 @@ try {
     await runBinary(packagedBinary, ["--managed-headless", "stop-daemon"], managedEnv);
   } catch {}
   try {
-    await runBinary(packagedBinary, ["--managed-headless", "uninstall-cli-shim"], managedEnv);
+    if (shouldAttemptCliShimInstall(managedEnv)) {
+      await runBinary(packagedBinary, ["--managed-headless", "uninstall-cli-shim"], managedEnv);
+    }
   } catch {}
   try {
     if (startedTemporaryExternalDaemon) {
