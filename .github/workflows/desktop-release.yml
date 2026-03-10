@@ -77,6 +77,7 @@ jobs:
         with:
           node-version: "22"
           cache: "npm"
+          cache-dependency-path: package-lock.json
           registry-url: "https://npm.pkg.github.com"
           scope: "@boudra"
 
@@ -84,6 +85,14 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.rust_target }}
+
+      - name: Restore Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: desktop-release-macos-${{ matrix.rust_target }}
+          workspaces: |
+            .
+            packages/desktop/src-tauri -> target
 
       - name: Install JS dependencies
         run: npm ci
@@ -241,11 +250,20 @@ jobs:
         with:
           node-version: "22"
           cache: "npm"
+          cache-dependency-path: package-lock.json
           registry-url: "https://npm.pkg.github.com"
           scope: "@boudra"
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
+
+      - name: Restore Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: desktop-release-linux
+          workspaces: |
+            .
+            packages/desktop/src-tauri -> target
 
       - name: Install JS dependencies
         run: npm ci
@@ -364,11 +382,20 @@ jobs:
         with:
           node-version: "22"
           cache: "npm"
+          cache-dependency-path: package-lock.json
           registry-url: "https://npm.pkg.github.com"
           scope: "@boudra"
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
+
+      - name: Restore Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: desktop-release-windows
+          workspaces: |
+            .
+            packages/desktop/src-tauri -> target
 
       - name: Install JS dependencies
         run: npm ci
