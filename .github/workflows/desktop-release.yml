@@ -96,14 +96,27 @@ jobs:
       - name: Build managed runtime for macOS
         run: npm run prepare:managed-runtime --workspace=@getpaseo/desktop
 
-      - name: Smoke check managed runtime for macOS
-        run: npm run smoke:managed-daemon --workspace=@getpaseo/desktop
-
       - name: Import Apple code-signing certificate
         uses: apple-actions/import-codesign-certs@v3
         with:
           p12-file-base64: ${{ secrets.APPLE_CERTIFICATE }}
           p12-password: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+
+      - name: Build packaged app for macOS smoke
+        env:
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: npm run tauri --workspace=@getpaseo/desktop build -- --target ${{ matrix.rust_target }}
+
+      - name: Smoke check managed runtime for macOS
+        env:
+          PASEO_MANAGED_SMOKE_SKIP_BUILD: "1"
+          PASEO_MANAGED_SMOKE_RUST_TARGET: ${{ matrix.rust_target }}
+        run: npm run smoke:managed-daemon --workspace=@getpaseo/desktop
 
       - name: Sign bundled managed runtime for macOS
         env:

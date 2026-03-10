@@ -26,12 +26,18 @@ const currentRuntimePointer = JSON.parse(
 const currentRuntimeId = currentRuntimePointer.runtimeId;
 
 function resolvePackagedBinary() {
+  const targetRoot = process.env.PASEO_MANAGED_SMOKE_RUST_TARGET
+    ? path.join(
+        desktopRoot,
+        "src-tauri",
+        "target",
+        process.env.PASEO_MANAGED_SMOKE_RUST_TARGET,
+        "release"
+      )
+    : path.join(desktopRoot, "src-tauri", "target", "release");
   if (process.platform === "darwin") {
     return path.join(
-      desktopRoot,
-      "src-tauri",
-      "target",
-      "release",
+      targetRoot,
       "bundle",
       "macos",
       "Paseo.app",
@@ -42,10 +48,7 @@ function resolvePackagedBinary() {
   }
   if (process.platform === "linux") {
     return path.join(
-      desktopRoot,
-      "src-tauri",
-      "target",
-      "release",
+      targetRoot,
       "bundle",
       "appimage",
       `Paseo_${desktopPackageJson.version}_amd64.AppImage`
@@ -53,10 +56,7 @@ function resolvePackagedBinary() {
   }
   if (process.platform === "win32") {
     return path.join(
-      desktopRoot,
-      "src-tauri",
-      "target",
-      "release",
+      targetRoot,
       "Paseo.exe"
     );
   }
@@ -358,6 +358,9 @@ function assertNoForbiddenPathsOrPorts(value, forbidden) {
 }
 
 async function ensurePackagedArtifact(binaryPath) {
+  if (process.env.PASEO_MANAGED_SMOKE_SKIP_BUILD === "1") {
+    return;
+  }
   try {
     await execFileAsync("npm", ["run", "build"], {
       cwd: desktopRoot,
