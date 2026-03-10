@@ -362,8 +362,12 @@ async function ensurePackagedArtifact(binaryPath) {
   if (process.env.PASEO_MANAGED_SMOKE_SKIP_BUILD === "1") {
     return;
   }
+  const npmExecPath = process.env.npm_execpath;
+  if (!npmExecPath) {
+    throw new Error("npm_execpath is required to build the packaged desktop artifact during smoke tests.");
+  }
   try {
-    await execFileAsync("npm", ["run", "build"], {
+    await execFileAsync(process.execPath, [npmExecPath, "run", "build"], {
       cwd: desktopRoot,
       env: process.env,
       maxBuffer: 20 * 1024 * 1024,
