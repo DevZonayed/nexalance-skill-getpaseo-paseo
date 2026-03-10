@@ -5,12 +5,13 @@ import fs from "node:fs/promises";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import WebSocket from "ws";
 import { createClientChannel } from "@getpaseo/relay/e2ee";
 
 const execFileAsync = promisify(execFile);
-const repoRoot = path.resolve(new URL("../../..", import.meta.url).pathname);
+const repoRoot = fileURLToPath(new URL("../../..", import.meta.url));
 const desktopRoot = path.join(repoRoot, "packages", "desktop");
 const relayRoot = path.join(repoRoot, "packages", "relay");
 const desktopPackageJson = JSON.parse(
