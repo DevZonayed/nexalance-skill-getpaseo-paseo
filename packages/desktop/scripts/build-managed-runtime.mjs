@@ -196,10 +196,13 @@ function runCommand(command, args, options = {}) {
     encoding: "utf8",
     ...options,
   });
-  if (result.status !== 0) {
+  if (result.status !== 0 || result.error) {
     throw new Error(
       [
         `Command failed: ${command} ${args.join(" ")}`,
+        result.error ? String(result.error) : null,
+        result.signal ? `signal: ${result.signal}` : null,
+        result.status != null ? `exit code: ${result.status}` : null,
         result.stdout?.trim(),
         result.stderr?.trim(),
       ]
@@ -245,7 +248,17 @@ async function ensureWorkspaceBuilds() {
 
 async function packWorkspace(packageRoot, tarballRoot) {
   await ensureDir(tarballRoot);
-  const result = runCommand("npm", ["pack", "--json", "--pack-destination", tarballRoot], {
+  const npmExecPath = process.env.npm_execpath;
+  if (!npmExecPath) {
+    throw new Error("Missing npm_execpath while building managed runtime.");
+  }
+  const result = runCommand(process.execPath, [
+    npmExecPath,
+    "pack",
+    "--json",
+    "--pack-destination",
+    tarballRoot,
+  ], {
     cwd: packageRoot,
   });
   const [{ filename }] = JSON.parse(result.stdout.trim());
