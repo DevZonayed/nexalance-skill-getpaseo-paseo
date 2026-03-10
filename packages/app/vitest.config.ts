@@ -27,15 +27,29 @@ export default defineConfig({
     },
   },
   resolve: {
-    alias: {
-      "@": path.resolve(__dirname, "src"),
-      "@server": path.resolve(__dirname, "../server/src"),
+    alias: [
+      {
+        find: /^@getpaseo\/relay\/e2ee$/,
+        replacement: path.resolve(__dirname, "../relay/src/e2ee.ts"),
+      },
+      {
+        find: /^@getpaseo\/relay$/,
+        replacement: path.resolve(__dirname, "../relay/src/index.ts"),
+      },
+      { find: "@", replacement: path.resolve(__dirname, "src") },
+      { find: "@server", replacement: path.resolve(__dirname, "../server/src") },
       // Point to the ESM build so Vite can transform its imports and apply the
       // react alias below (the CJS build uses require('react') which bypasses
       // Vite alias resolution).
-      "react-native": path.resolve(rootNodeModules, "react-native-web/dist/index.js"),
-      react: path.resolve(appNodeModules, "react"),
-      "react-dom": path.resolve(appNodeModules, "react-dom"),
-    },
+      {
+        find: "react-native",
+        replacement: path.resolve(rootNodeModules, "react-native-web/dist/index.js"),
+      },
+      { find: "react", replacement: path.resolve(appNodeModules, "react") },
+      {
+        find: "react-dom",
+        replacement: path.resolve(appNodeModules, "react-dom"),
+      },
+    ],
   },
 });
