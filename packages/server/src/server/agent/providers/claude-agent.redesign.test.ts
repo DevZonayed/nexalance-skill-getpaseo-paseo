@@ -1449,9 +1449,11 @@ describe("ClaudeAgentSession redesign invariants", () => {
     });
 
     const logger = createTestLogger();
+    const claudeClient = new ClaudeAgentClient({ logger });
+    vi.spyOn(claudeClient, "isAvailable").mockResolvedValue(true);
     const manager = new AgentManager({
       clients: {
-        claude: new ClaudeAgentClient({ logger }),
+        claude: claudeClient,
       },
       logger,
     });

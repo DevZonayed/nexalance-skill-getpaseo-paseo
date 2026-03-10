@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.21 - 2026-03-10
+### Improved
+- Improved desktop release reliability by fixing the Windows managed-runtime build path during GitHub Actions releases.
+
+### Fixed
+- Fixed a desktop release CI failure caused by a Unix-only server build script on Windows runners.
+- Fixed server CI to build the relay dependency before running tests, restoring relay E2EE test coverage on clean runners.
+- Fixed a Claude redesign test that depended on the local Claude CLI being installed.
+
 ## 0.1.20 - 2026-03-10
 ### Added
 - Added workspace sidebar git actions with quick diff stats and archive controls.
