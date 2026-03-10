@@ -360,6 +360,15 @@ async function pruneOnnxRuntime(runtimeRoot) {
     await removeIfExists(path.join(onnxRoot, "darwin"));
     await removeIfExists(path.join(onnxRoot, "win32"));
     await pruneChildrenExcept(path.join(onnxRoot, "linux"), new Set([process.arch]));
+    const archDir = path.join(onnxRoot, "linux", process.arch);
+    if (await pathExists(archDir)) {
+      const entries = await fs.readdir(archDir);
+      await Promise.all(
+        entries
+          .filter((name) => name.includes("cuda") || name.includes("tensorrt"))
+          .map((name) => fs.rm(path.join(archDir, name), { force: true }))
+      );
+    }
     return;
   }
   if (process.platform === "win32") {
