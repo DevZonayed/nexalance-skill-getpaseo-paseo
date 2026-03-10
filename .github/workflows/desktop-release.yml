@@ -346,7 +346,7 @@ jobs:
           releaseBody: See the assets to download and install this version.
           releaseDraft: ${{ env.RELEASE_DRAFT }}
           prerelease: false
-          args: --bundles appimage
+          args: --bundles deb
 
       - name: Build Linux app (smoke only)
         if: env.IS_SMOKE_TAG == 'true'
