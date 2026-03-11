@@ -215,23 +215,38 @@ fn maybe_run_managed_headless_command(app: &AppHandle) -> Result<bool, String> {
     Ok(true)
 }
 
-fn resolve_login_shell() -> String {
-    std::env::var("SHELL")
-        .ok()
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty())
-        .unwrap_or_else(|| "/bin/zsh".to_string())
+fn shell_command(script: &str) -> Command {
+    #[cfg(unix)]
+    {
+        let shell = std::env::var("SHELL")
+            .ok()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .unwrap_or_else(|| "/bin/zsh".to_string());
+        let mut cmd = Command::new(shell);
+        cmd.arg("-lc").arg(script);
+        cmd
+    }
+    #[cfg(windows)]
+    {
+        let mut cmd = Command::new("cmd.exe");
+        cmd.arg("/C").arg(script);
+        cmd
+    }
 }
 
-fn execute_local_daemon_version(shell: &str) -> LocalDaemonVersionResult {
+fn execute_local_daemon_version() -> LocalDaemonVersionResult {
+    #[cfg(unix)]
     let script = r#"if command -v paseo >/dev/null 2>&1; then
   paseo --version
 else
   echo "paseo command not found in PATH" >&2
   exit 127
 fi"#;
+    #[cfg(windows)]
+    let script = r#"where paseo >nul 2>&1 && paseo --version || (echo paseo command not found in PATH >&2 & exit /b 127)"#;
 
-    match Command::new(shell).arg("-lc").arg(script).output() {
+    match shell_command(script).output() {
         Ok(output) => {
             if output.status.success() {
                 let version = String::from_utf8_lossy(&output.stdout).trim().to_string();
@@ -268,15 +283,18 @@ fi"#;
     }
 }
 
-fn execute_local_daemon_update(shell: &str) -> DaemonUpdateCommandResult {
+fn execute_local_daemon_update() -> DaemonUpdateCommandResult {
+    #[cfg(unix)]
     let script = r#"if command -v paseo >/dev/null 2>&1; then
   paseo daemon update
 else
   echo "paseo command not found in PATH. Ensure Paseo CLI is installed for this user." >&2
   exit 127
 fi"#;
+    #[cfg(windows)]
+    let script = r#"where paseo >nul 2>&1 && paseo daemon update || (echo paseo command not found in PATH. Ensure Paseo CLI is installed for this user. >&2 & exit /b 127)"#;
 
-    match Command::new(shell).arg("-lc").arg(script).output() {
+    match shell_command(script).output() {
         Ok(output) => DaemonUpdateCommandResult {
             exit_code: output.status.code().unwrap_or(1),
             stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
@@ -292,8 +310,7 @@ fi"#;
 
 #[tauri::command]
 async fn get_local_daemon_version() -> LocalDaemonVersionResult {
-    let shell = resolve_login_shell();
-    tauri::async_runtime::spawn_blocking(move || execute_local_daemon_version(&shell))
+    tauri::async_runtime::spawn_blocking(execute_local_daemon_version)
         .await
         .unwrap_or_else(|error| LocalDaemonVersionResult {
             version: None,
@@ -303,8 +320,7 @@ async fn get_local_daemon_version() -> LocalDaemonVersionResult {
 
 #[tauri::command]
 async fn run_local_daemon_update() -> DaemonUpdateCommandResult {
-    let shell = resolve_login_shell();
-    tauri::async_runtime::spawn_blocking(move || execute_local_daemon_update(&shell))
+    tauri::async_runtime::spawn_blocking(execute_local_daemon_update)
         .await
         .unwrap_or_else(|error| DaemonUpdateCommandResult {
             exit_code: -1,

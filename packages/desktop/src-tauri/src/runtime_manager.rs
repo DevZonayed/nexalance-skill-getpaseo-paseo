@@ -561,15 +561,25 @@ fn dev_resource_root() -> PathBuf {
 
 fn bundled_runtime_root(app: &AppHandle) -> Result<PathBuf, String> {
     if let Ok(resource_dir) = app.path().resource_dir() {
-        let candidate = resource_dir.join("managed-runtime");
-        if candidate.exists() {
-            log::info!("[runtime] found bundled runtime at {}", candidate.display());
-            return Ok(candidate);
+        // Tauri's bundle.resources preserves the source directory structure, so
+        // "resources/**/*" in tauri.conf.json places files at
+        // $RESOURCE/resources/managed-runtime/. Try the nested path first (installed
+        // builds), then the flat path for any future config changes.
+        for candidate in [
+            resource_dir.join("resources").join("managed-runtime"),
+            resource_dir.join("managed-runtime"),
+        ] {
+            if candidate.exists() {
+                log::info!("[runtime] found bundled runtime at {}", candidate.display());
+                return Ok(candidate);
+            }
+            log::info!(
+                "[runtime] no bundled runtime at {}",
+                candidate.display()
+            );
         }
-        log::info!(
-            "[runtime] no bundled runtime at {}, checking dev path",
-            candidate.display()
-        );
+    } else {
+        log::info!("[runtime] resource_dir() unavailable, checking dev path");
     }
     let dev = dev_resource_root().join("managed-runtime");
     if dev.exists() {
@@ -624,10 +634,19 @@ fn is_pid_running(pid: i32) -> bool {
             .status();
         return output.map(|status| status.success()).unwrap_or(false);
     }
-    #[cfg(not(unix))]
+    #[cfg(windows)]
     {
-        let _ = pid;
-        false
+        let output = Command::new("tasklist")
+            .args(["/FI", &format!("PID eq {pid}"), "/NH", "/FO", "CSV"])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .output();
+        return output
+            .map(|out| {
+                let stdout = String::from_utf8_lossy(&out.stdout);
+                stdout.contains(&pid.to_string())
+            })
+            .unwrap_or(false);
     }
 }
 

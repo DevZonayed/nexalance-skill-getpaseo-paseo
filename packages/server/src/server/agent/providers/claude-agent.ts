@@ -3269,25 +3269,35 @@ class ClaudeAgentSession implements AgentSession {
     }
     try {
       this.logger.trace("interruptActiveTurn: calling query.interrupt()...");
-      const t0 = Date.now();
-      await queryToInterrupt.interrupt();
-      this.logger.trace({ durationMs: Date.now() - t0 }, "interruptActiveTurn: query.interrupt() returned");
-      // After interrupt(), the query iterator is done (returns done: true).
-      // Clear it so ensureQuery() creates a fresh query for the next turn.
-      // Also end the input stream and call return() to clean up the SDK process.
+      await this.awaitWithTimeout(
+        queryToInterrupt.interrupt(),
+        "interruptActiveTurn query.interrupt()"
+      );
       this.input?.end();
       this.logger.trace("interruptActiveTurn: calling query.return()...");
-      const t1 = Date.now();
-      await queryToInterrupt.return?.();
-      this.logger.trace({ durationMs: Date.now() - t1 }, "interruptActiveTurn: query.return() returned");
+      await this.awaitWithTimeout(
+        queryToInterrupt.return?.(),
+        "interruptActiveTurn query.return()"
+      );
       this.query = null;
       this.input = null;
       this.queryRestartNeeded = false;
     } catch (error) {
       this.logger.warn({ err: error }, "Failed to interrupt active turn");
-      // If interrupt fails, the SDK iterator may remain in an indeterminate state.
-      // Force a teardown/recreate path so the next turn cannot reuse stale query state.
-      this.queryRestartNeeded = true;
+      this.input?.end();
+      if (this.query === queryToInterrupt) {
+        this.query = null;
+        this.input = null;
+      }
+      // Try to force-close the iterator to unblock the pump's q.next() call.
+      this.awaitWithTimeout(
+        queryToInterrupt.return?.(),
+        "interruptActiveTurn force return after failure"
+      ).catch(() => {});
+      // Disown the current pump and start a fresh one immediately so
+      // autonomous wakes are not lost while waiting for the next user turn.
+      this.queryPumpPromise = null;
+      this.startQueryPump();
     }
   }
 
