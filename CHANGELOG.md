@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.25 - 2026-03-11
+
+### Fixed
+- Fixed desktop app failing to start the built-in daemon on fresh macOS installs. The DMG was not notarized and code-signing stripped entitlements from the bundled Node runtime, causing Gatekeeper to block execution.
+- Fixed Linux AppImage build by restoring the AppImage bundle format and stripping CUDA dependencies from onnxruntime.
+
 ## 0.1.24 - 2026-03-10
 
 ### Improved
