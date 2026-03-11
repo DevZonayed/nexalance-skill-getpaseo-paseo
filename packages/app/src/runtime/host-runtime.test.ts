@@ -176,12 +176,7 @@ function makeHost(input?: Partial<HostProfile>): HostProfile {
   return {
     serverId: input?.serverId ?? "srv_test",
     label: input?.label ?? "test host",
-    lifecycle: input?.lifecycle ?? {
-      managed: false,
-      managedRuntimeId: null,
-      managedRuntimeVersion: null,
-      associatedServerId: null,
-    },
+    lifecycle: input?.lifecycle ?? {},
     connections: input?.connections ?? [direct, relay],
     preferredConnectionId: input?.preferredConnectionId ?? direct.id,
     createdAt: input?.createdAt ?? new Date(0).toISOString(),
