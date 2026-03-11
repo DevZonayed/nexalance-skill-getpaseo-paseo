@@ -1,14 +1,11 @@
-import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useRef } from 'react'
 import type { ReactNode } from 'react'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { decodeOfferFragmentPayload, normalizeHostPort } from '@/utils/daemon-endpoints'
 import { probeConnection } from '@/utils/test-daemon-connection'
-import { useAppSettings, type AppSettings } from '@/hooks/use-settings'
 import { ConnectionOfferSchema, type ConnectionOffer } from '@server/shared/connection-offer'
 import {
-  getManagedDaemonStatus,
-  type ManagedDaemonStatus,
   shouldUseManagedDesktopDaemon,
   startManagedDaemon,
 } from '@/desktop/managed-runtime/managed-runtime'
@@ -18,9 +15,6 @@ const DAEMON_REGISTRY_QUERY_KEY = ['daemon-registry']
 const DEFAULT_LOCALHOST_ENDPOINT = 'localhost:6767'
 const DEFAULT_LOCALHOST_BOOTSTRAP_KEY = '@paseo:default-localhost-bootstrap-v1'
 const DEFAULT_LOCALHOST_BOOTSTRAP_TIMEOUT_MS = 2500
-const DEFAULT_LOCAL_TRANSPORT_BOOTSTRAP_TIMEOUT_MS = 6000
-const DEFAULT_LOCAL_TRANSPORT_BOOTSTRAP_RETRY_MS = 2000
-const DEFAULT_LOCAL_TRANSPORT_BOOTSTRAP_DEADLINE_MS = 120000
 const E2E_STORAGE_KEY = '@paseo:e2e'
 
 export type DirectTcpHostConnection = {
@@ -54,12 +48,7 @@ export type HostConnection =
   | DirectPipeHostConnection
   | RelayHostConnection
 
-export type HostLifecycle = {
-  managed: boolean
-  managedRuntimeId: string | null
-  managedRuntimeVersion: string | null
-  associatedServerId: string | null
-}
+export type HostLifecycle = Record<string, never>
 
 export type HostProfile = {
   serverId: string
@@ -73,33 +62,9 @@ export type HostProfile = {
 
 export type UpdateHostInput = Partial<Omit<HostProfile, 'serverId' | 'createdAt'>>
 
-export type ManagedHostReconciliationInput = {
-  serverId: string
-  hostname?: string | null
-  runtimeId: string
-  runtimeVersion: string
-  transportType: string
-  transportPath: string
-  associatedServerId?: string | null
-}
-
-export type LocalhostHostReconciliationInput = {
-  serverId: string
-  hostname: string | null
-  endpoint: string
-}
-
-export type DesktopStartupReconciliationInput = {
-  existing: HostProfile[]
-  managed: ManagedHostReconciliationInput | null
-  localhost: LocalhostHostReconciliationInput | null
-  now?: string
-}
-
 interface DaemonRegistryContextValue {
   daemons: HostProfile[]
   isLoading: boolean
-  isReconciling: boolean
   error: unknown | null
   upsertDirectConnection: (input: {
     serverId: string
@@ -122,12 +87,7 @@ interface DaemonRegistryContextValue {
 const DaemonRegistryContext = createContext<DaemonRegistryContextValue | null>(null)
 
 function defaultLifecycle(): HostLifecycle {
-  return {
-    managed: false,
-    managedRuntimeId: null,
-    managedRuntimeVersion: null,
-    associatedServerId: null,
-  }
+  return {}
 }
 
 function normalizeHostLabel(value: string | null | undefined, serverId: string): string {
@@ -143,51 +103,48 @@ function normalizeEndpointOrNull(endpoint: string): string | null {
   }
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => {
-    setTimeout(resolve, ms)
-  })
-}
-
-function normalizeManagedTransportConnection(input: {
-  transportType: string
-  transportPath: string
-}): HostConnection | null {
-  const transportPath = input.transportPath.trim()
-  if (!transportPath) {
+export function connectionFromListen(listen: string): HostConnection | null {
+  const normalizedListen = listen.trim()
+  if (!normalizedListen) {
     return null
   }
 
-  if (input.transportType === 'tcp') {
-    try {
-      const endpoint = normalizeHostPort(transportPath)
-      return {
-        id: `direct:${endpoint}`,
-        type: 'directTcp',
-        endpoint,
-      }
-    } catch {
-      return null
-    }
+  if (normalizedListen.startsWith('pipe://')) {
+    const path = normalizedListen.slice('pipe://'.length).trim()
+    return path ? { id: `pipe:${path}`, type: 'directPipe', path } : null
   }
 
-  if (input.transportType === 'pipe') {
+  if (normalizedListen.startsWith('unix://')) {
+    const path = normalizedListen.slice('unix://'.length).trim()
+    return path ? { id: `socket:${path}`, type: 'directSocket', path } : null
+  }
+
+  if (normalizedListen.startsWith('\\\\.\\pipe\\')) {
     return {
-      id: `pipe:${transportPath}`,
+      id: `pipe:${normalizedListen}`,
       type: 'directPipe',
-      path: transportPath,
+      path: normalizedListen,
     }
   }
 
-  if (input.transportType === 'socket') {
+  if (normalizedListen.startsWith('/')) {
     return {
-      id: `socket:${transportPath}`,
+      id: `socket:${normalizedListen}`,
       type: 'directSocket',
-      path: transportPath,
+      path: normalizedListen,
     }
   }
 
-  return null
+  try {
+    const endpoint = normalizeHostPort(normalizedListen)
+    return {
+      id: `direct:${endpoint}`,
+      type: 'directTcp',
+      endpoint,
+    }
+  } catch {
+    return null
+  }
 }
 
 function normalizeStoredConnection(connection: unknown): HostConnection | null {
@@ -231,19 +188,8 @@ function normalizeStoredConnection(connection: unknown): HostConnection | null {
   return null
 }
 
-function normalizeStoredLifecycle(lifecycle: unknown): HostLifecycle {
-  const record =
-    lifecycle && typeof lifecycle === 'object' ? (lifecycle as Record<string, unknown>) : null
-
-  return {
-    managed: record?.managed === true,
-    managedRuntimeId:
-      typeof record?.managedRuntimeId === 'string' ? record.managedRuntimeId : null,
-    managedRuntimeVersion:
-      typeof record?.managedRuntimeVersion === 'string' ? record.managedRuntimeVersion : null,
-    associatedServerId:
-      typeof record?.associatedServerId === 'string' ? record.associatedServerId : null,
-  }
+function normalizeStoredLifecycle(_lifecycle: unknown): HostLifecycle {
+  return defaultLifecycle()
 }
 
 function normalizeStoredHostProfile(entry: unknown): HostProfile | null {
@@ -312,19 +258,13 @@ function hostConnectionEquals(left: HostConnection, right: HostConnection): bool
 }
 
 function hostLifecycleEquals(left: HostLifecycle, right: HostLifecycle): boolean {
-  return (
-    left.managed === right.managed &&
-    left.managedRuntimeId === right.managedRuntimeId &&
-    left.managedRuntimeVersion === right.managedRuntimeVersion &&
-    left.associatedServerId === right.associatedServerId
-  )
+  return JSON.stringify(left) === JSON.stringify(right)
 }
 
 function upsertHostConnectionInProfiles(input: {
   profiles: HostProfile[]
   serverId: string
   label?: string
-  lifecycle?: Partial<HostLifecycle>
   connection: HostConnection
   now?: string
 }): HostProfile[] {
@@ -343,10 +283,7 @@ function upsertHostConnectionInProfiles(input: {
     const profile: HostProfile = {
       serverId,
       label: derivedLabel,
-      lifecycle: {
-        ...defaultLifecycle(),
-        ...(input.lifecycle ?? {}),
-      },
+      lifecycle: defaultLifecycle(),
       connections: [input.connection],
       preferredConnectionId: input.connection.id,
       createdAt: now,
@@ -371,10 +308,7 @@ function upsertHostConnectionInProfiles(input: {
           )
         : prev.connections
 
-  const nextLifecycle = {
-    ...prev.lifecycle,
-    ...(input.lifecycle ?? {}),
-  }
+  const nextLifecycle = prev.lifecycle
   const nextLabel = labelTrimmed ? labelTrimmed : prev.label
   const nextPreferredConnectionId = prev.preferredConnectionId ?? input.connection.id
   const changed =
@@ -402,144 +336,6 @@ function upsertHostConnectionInProfiles(input: {
   return next
 }
 
-function reconcileManagedHostInProfiles(input: {
-  profiles: HostProfile[]
-  managed: ManagedHostReconciliationInput
-  now?: string
-}): HostProfile[] {
-  const connection = normalizeManagedTransportConnection(input.managed)
-  if (!connection) {
-    throw new Error(`Unsupported managed daemon transport: ${input.managed.transportType}`)
-  }
-
-  const nextBase = input.profiles.filter((daemon) => {
-    return !daemon.lifecycle.managed || daemon.serverId === input.managed.serverId
-  })
-  const profiles = nextBase.length === input.profiles.length ? input.profiles : nextBase
-
-  return upsertHostConnectionInProfiles({
-    profiles,
-    serverId: input.managed.serverId,
-    label: input.managed.hostname ?? undefined,
-    lifecycle: {
-      managed: true,
-      managedRuntimeId: input.managed.runtimeId,
-      managedRuntimeVersion: input.managed.runtimeVersion,
-      associatedServerId:
-        input.managed.associatedServerId?.trim() || input.managed.serverId,
-    },
-    connection,
-    now: input.now,
-  })
-}
-
-export function reconcileDesktopStartupRegistry(
-  input: DesktopStartupReconciliationInput
-): HostProfile[] {
-  let next = input.existing
-
-  if (input.managed) {
-    next = reconcileManagedHostInProfiles({
-      profiles: next,
-      managed: input.managed,
-      now: input.now,
-    })
-  }
-
-  if (input.localhost) {
-    next = upsertHostConnectionInProfiles({
-      profiles: next,
-      serverId: input.localhost.serverId,
-      label: input.localhost.hostname ?? undefined,
-      connection: {
-        id: `direct:${input.localhost.endpoint}`,
-        type: 'directTcp',
-        endpoint: input.localhost.endpoint,
-      },
-      now: input.now,
-    })
-  }
-
-  return next
-}
-
-export async function resolveManagedDesktopStartupStatus(input: {
-  settings: Pick<AppSettings, 'manageBuiltInDaemon'>
-  startManagedDaemonFn?: () => Promise<ManagedDaemonStatus>
-  getManagedDaemonStatusFn?: () => Promise<ManagedDaemonStatus>
-}): Promise<ManagedDaemonStatus> {
-  if (input.settings.manageBuiltInDaemon) {
-    return await (input.startManagedDaemonFn ?? startManagedDaemon)()
-  }
-
-  return await (input.getManagedDaemonStatusFn ?? getManagedDaemonStatus)()
-}
-
-async function probeManagedStartupTarget(input: {
-  managedDaemon: ManagedDaemonStatus
-  cancelled?: () => boolean
-}): Promise<ManagedHostReconciliationInput | null> {
-  const connection = normalizeManagedTransportConnection({
-    transportType: input.managedDaemon.transportType,
-    transportPath: input.managedDaemon.transportPath,
-  })
-  if (!connection) {
-    return null
-  }
-
-  let serverId = input.managedDaemon.serverId
-  let hostname = input.managedDaemon.hostname
-
-  if (!serverId) {
-    const probed = await probeConnection(connection, {
-      timeoutMs: DEFAULT_LOCAL_TRANSPORT_BOOTSTRAP_TIMEOUT_MS,
-    })
-    if (input.cancelled?.()) {
-      throw new Error('Managed daemon bootstrap cancelled')
-    }
-    serverId = probed.serverId
-    hostname = hostname ?? probed.hostname
-  }
-
-  return {
-    serverId,
-    hostname,
-    runtimeId: input.managedDaemon.runtimeId,
-    runtimeVersion: input.managedDaemon.runtimeVersion,
-    transportType: input.managedDaemon.transportType,
-    transportPath: input.managedDaemon.transportPath,
-    associatedServerId: input.managedDaemon.serverId,
-  }
-}
-
-async function probeManagedConnectionUntilReady(
-  input: {
-    managedDaemon: ManagedDaemonStatus
-    cancelled?: () => boolean
-  }
-): Promise<ManagedHostReconciliationInput | null> {
-  const startedAt = Date.now()
-  let lastError: unknown = null
-
-  while (Date.now() - startedAt < DEFAULT_LOCAL_TRANSPORT_BOOTSTRAP_DEADLINE_MS) {
-    if (input.cancelled?.()) {
-      throw new Error('Managed daemon bootstrap cancelled')
-    }
-
-    try {
-      return await probeManagedStartupTarget(input)
-    } catch (error) {
-      lastError = error
-      if (input.cancelled?.()) {
-        throw error
-      }
-      await sleep(DEFAULT_LOCAL_TRANSPORT_BOOTSTRAP_RETRY_MS)
-    }
-  }
-
-  throw lastError ?? new Error('Managed daemon bootstrap timed out')
-}
-
 export function hostHasDirectEndpoint(host: HostProfile, endpoint: string): boolean {
   const normalized = normalizeEndpointOrNull(endpoint)
   if (!normalized) {
@@ -564,10 +360,8 @@ export function useDaemonRegistry(): DaemonRegistryContextValue {
 
 export function DaemonRegistryProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient()
-  const desktopStartupReconciledRef = useRef(false)
+  const desktopStartupAttemptedRef = useRef(false)
   const localhostBootstrapAttemptedRef = useRef(false)
-  const [isReconciling, setIsReconciling] = useState(true)
-  const { settings, isLoading: settingsLoading } = useAppSettings()
   const {
     data: daemons = [],
     isPending,
@@ -648,7 +442,6 @@ export function DaemonRegistryProvider({ children }: { children: ReactNode }) {
     async (input: {
       serverId: string
       label?: string
-      lifecycle?: Partial<HostLifecycle>
       connection: HostConnection
     }) => {
       const now = new Date().toISOString()
@@ -656,7 +449,6 @@ export function DaemonRegistryProvider({ children }: { children: ReactNode }) {
         profiles: readDaemons(),
         serverId: input.serverId,
         label: input.label,
-        lifecycle: input.lifecycle,
         connection: input.connection,
         now,
       })
@@ -684,101 +476,81 @@ export function DaemonRegistryProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (isPending) return
-    if (settingsLoading) return
     if (!shouldUseManagedDesktopDaemon()) return
-    if (desktopStartupReconciledRef.current) return
-    desktopStartupReconciledRef.current = true
+    if (desktopStartupAttemptedRef.current) return
+    desktopStartupAttemptedRef.current = true
 
     let cancelled = false
 
-    const reconcileDesktopStartup = async () => {
+    const bootstrapDesktopStartup = async () => {
       try {
         const isE2E = await AsyncStorage.getItem(E2E_STORAGE_KEY)
         if (cancelled || isE2E) {
           return
         }
 
-        let managed: ManagedHostReconciliationInput | null = null
-        try {
-          const managedDaemon = await resolveManagedDesktopStartupStatus({
-            settings,
-          })
-          if (managedDaemon.daemonRunning) {
-            managed = await probeManagedConnectionUntilReady({
-              managedDaemon,
-              cancelled: () => cancelled,
-            })
-          }
-        } catch (managedBootstrapError) {
-          if (!cancelled) {
-            console.warn(
-              '[DaemonRegistry] Failed to reconcile managed daemon transport',
-              managedBootstrapError
-            )
-          }
-        }
-
-        let localhost: LocalhostHostReconciliationInput | null = null
-
-        try {
-          const { serverId, hostname } = await probeConnection(
-            {
-              id: `bootstrap:${DEFAULT_LOCALHOST_ENDPOINT}`,
-              type: 'directTcp',
-              endpoint: DEFAULT_LOCALHOST_ENDPOINT,
-            },
-            { timeoutMs: DEFAULT_LOCALHOST_BOOTSTRAP_TIMEOUT_MS }
-          )
-          if (!cancelled) {
-            localhost = {
-              serverId,
-              hostname,
-              endpoint: DEFAULT_LOCALHOST_ENDPOINT,
+        await Promise.allSettled([
+          (async () => {
+            const daemon = await startManagedDaemon()
+            if (cancelled || !daemon.serverId) {
+              return
             }
-          }
-        } catch {
-          // Best-effort reconciliation only; keep startup resilient if localhost isn't reachable.
-        }
 
-        if (cancelled) {
-          return
-        }
+            const connection = connectionFromListen(daemon.listen)
+            if (!connection) {
+              return
+            }
 
-        const existing = readDaemons()
-        const next = reconcileDesktopStartupRegistry({
-          existing,
-          managed,
-          localhost,
-        })
+            await upsertHostConnection({
+              serverId: daemon.serverId,
+              label: daemon.hostname ?? undefined,
+              connection,
+            })
+          })().catch((managedBootstrapError) => {
+            if (!cancelled) {
+              console.warn(
+                '[DaemonRegistry] Failed to bootstrap desktop daemon connection',
+                managedBootstrapError
+              )
+            }
+          }),
+          (async () => {
+            const { serverId, hostname } = await probeConnection(
+              {
+                id: `bootstrap:${DEFAULT_LOCALHOST_ENDPOINT}`,
+                type: 'directTcp',
+                endpoint: DEFAULT_LOCALHOST_ENDPOINT,
+              },
+              { timeoutMs: DEFAULT_LOCALHOST_BOOTSTRAP_TIMEOUT_MS }
+            )
+            if (cancelled) {
+              return
+            }
 
-        if (next !== existing) {
-          await persist(next)
-        }
-      } catch (reconciliationError) {
+            await upsertDirectConnection({
+              serverId,
+              endpoint: DEFAULT_LOCALHOST_ENDPOINT,
+              label: hostname ?? undefined,
+            })
+          })().catch(() => {
+            // Best-effort startup race only; ignore if localhost isn't reachable.
+          }),
+        ])
+      } catch (bootstrapError) {
         if (cancelled) return
         console.warn(
-          '[DaemonRegistry] Failed to reconcile desktop startup host connections',
-          reconciliationError
+          '[DaemonRegistry] Failed to bootstrap desktop startup host connections',
+          bootstrapError
         )
       }
     }
 
-    void reconcileDesktopStartup().finally(() => {
-      if (!cancelled) {
-        setIsReconciling(false)
-      }
-    })
+    void bootstrapDesktopStartup()
 
     return () => {
       cancelled = true
     }
-  }, [
-    isPending,
-    persist,
-    readDaemons,
-    settings.manageBuiltInDaemon,
-    settingsLoading,
-  ])
+  }, [isPending, upsertDirectConnection, upsertHostConnection])
 
   useEffect(() => {
     if (isPending) return
@@ -832,20 +604,12 @@ export function DaemonRegistryProvider({ children }: { children: ReactNode }) {
       }
     }
 
-    void bootstrapLocalhost().finally(() => {
-      if (!cancelled) {
-        setIsReconciling(false)
-      }
-    })
+    void bootstrapLocalhost()
 
     return () => {
       cancelled = true
     }
-  }, [
-    isPending,
-    readDaemons,
-    upsertDirectConnection,
-  ])
+  }, [isPending, readDaemons, upsertDirectConnection])
 
   const upsertRelayConnection = useCallback(
     async (input: {
@@ -905,7 +669,6 @@ export function DaemonRegistryProvider({ children }: { children: ReactNode }) {
   const value: DaemonRegistryContextValue = {
     daemons,
     isLoading: isPending,
-    isReconciling,
     error: error ?? null,
     upsertDirectConnection,
     upsertRelayConnection,

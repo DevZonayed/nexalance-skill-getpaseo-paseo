@@ -3,9 +3,6 @@ use futures_util::{SinkExt, StreamExt};
 use http::Request;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::env;
-#[cfg(windows)]
-use std::hash::{DefaultHasher, Hash, Hasher};
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -18,18 +15,9 @@ use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use tokio_tungstenite::tungstenite::Message;
 
 const LOCAL_TRANSPORT_EVENT_NAME: &str = "local-daemon-transport-event";
-const MANAGED_STATE_FILE: &str = "managed-state.json";
-const DEFAULT_MANAGED_HOME_BASENAME: &str = ".paseo";
-const DEFAULT_MANAGED_HOME_DIRNAME: &str = "managed-home";
-#[cfg(not(windows))]
-const SHORT_SOCKET_FILENAME: &str = "paseo.sock";
 const UNIX_CLIENT_URL: &str = "ws://localhost/ws";
 #[cfg(windows)]
 const PIPE_CLIENT_URL: &str = "ws://localhost/ws";
-#[cfg(windows)]
-const PIPE_PREFIX: &str = r"\\.\pipe\";
-const DEFAULT_MANAGED_TCP_HOST: &str = "127.0.0.1";
-const DEFAULT_MANAGED_TCP_PORT: u16 = 7771;
 const CLI_SHIM_NAME: &str = "paseo";
 #[cfg(windows)]
 const CLI_SHIM_WINDOWS_NAME: &str = "paseo.cmd";
@@ -57,41 +45,6 @@ struct BundledRuntimePointer {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct ManagedStateFile {
-    runtime_id: String,
-    runtime_root: String,
-    managed_home: String,
-    transport_type: String,
-    transport_path: String,
-    tcp_enabled: bool,
-    tcp_listen: Option<String>,
-    cli_shim_path: Option<String>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct PidFile {
-    pid: Option<i64>,
-    hostname: Option<String>,
-}
-
-#[derive(Debug, Clone)]
-struct ManagedPaths {
-    managed_home: PathBuf,
-    transport_path: PathBuf,
-    logs_path: PathBuf,
-    state_file_path: PathBuf,
-    diagnostics_root: PathBuf,
-}
-
-#[derive(Debug, Clone)]
-struct ManagedTransportTarget {
-    transport_type: String,
-    transport_path: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct ManagedTcpSettings {
     pub enabled: bool,
     pub host: String,
@@ -104,11 +57,18 @@ pub struct ManagedRuntimeStatus {
     pub runtime_id: String,
     pub runtime_version: String,
     pub runtime_root: String,
-    pub managed_home: String,
-    pub transport_type: String,
-    pub transport_path: String,
-    pub diagnostics_root: String,
-    pub state_file_path: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CliDaemonStatus {
+    server_id: Option<String>,
+    status: String,
+    listen: String,
+    hostname: Option<String>,
+    pid: Option<i64>,
+    home: String,
+    log_path: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -116,20 +76,18 @@ pub struct ManagedRuntimeStatus {
 pub struct ManagedDaemonStatus {
     pub runtime_id: String,
     pub runtime_version: String,
-    pub runtime_root: String,
-    pub managed_home: String,
-    pub transport_type: String,
-    pub transport_path: String,
-    pub daemon_pid: Option<i64>,
-    pub daemon_running: bool,
-    pub daemon_status: String,
-    pub log_path: String,
-    pub server_id: Option<String>,
+    pub server_id: String,
+    pub status: String,
+    pub listen: String,
     pub hostname: Option<String>,
-    pub relay_enabled: bool,
-    pub tcp_enabled: bool,
-    pub tcp_listen: Option<String>,
-    pub cli_shim_path: Option<String>,
+    pub pid: Option<i64>,
+    pub home: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CliShimStatus {
+    pub path: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -345,15 +303,6 @@ mod tests {
     fn cli_shim_contents_runs_bundled_runtime_in_place() {
         let runtime_root =
             PathBuf::from("/Applications/Paseo.app/Contents/Resources/managed-runtime/runtime-1");
-        let paths = ManagedPaths {
-            managed_home: PathBuf::from("/Users/me/.paseo"),
-            transport_path: PathBuf::from("/Users/me/.paseo/paseo.sock"),
-            logs_path: PathBuf::from("/Users/me/.paseo/daemon.log"),
-            state_file_path: PathBuf::from(
-                "/Users/me/Library/Application Support/Paseo/managed-state.json",
-            ),
-            diagnostics_root: PathBuf::from("/Users/me/Library/Application Support/Paseo"),
-        };
         let manifest = ManagedRuntimeManifest {
             runtime_id: "runtime-1".to_string(),
             runtime_version: "0.1.0".to_string(),
@@ -367,11 +316,11 @@ mod tests {
                 "node_modules/@getpaseo/server/dist/scripts/daemon-runner.js".to_string(),
         };
 
-        let contents = cli_shim_contents(&runtime_root, &manifest, &paths);
+        let contents = cli_shim_contents(&runtime_root, &manifest);
 
-        assert!(contents.contains("export PASEO_HOME='/Users/me/.paseo'"));
         assert!(contents.contains("Contents/Resources/managed-runtime/runtime-1/node/node"));
         assert!(contents.contains("node_modules/@getpaseo/cli/dist/index.js"));
+        assert!(!contents.contains("PASEO_HOME"));
         assert!(!contents.contains("--paseo-cli-shim"));
     }
 
@@ -383,12 +332,7 @@ mod tests {
             .ok()
             .filter(|value| !value.trim().is_empty())
             .map(PathBuf::from)
-            .or_else(|| {
-                dirs::home_dir().map(|home| {
-                    home.join(DEFAULT_MANAGED_HOME_BASENAME)
-                        .join(SHORT_SOCKET_FILENAME)
-                })
-            })
+            .or_else(|| dirs::home_dir().map(|home| home.join(".paseo").join("paseo.sock")))
             .expect("socket path should resolve");
 
         assert!(
@@ -418,145 +362,6 @@ fn read_json_file<T: for<'de> Deserialize<'de>>(path: &Path) -> Result<T, String
         .map_err(|error| format!("Failed to parse {}: {error}", path.display()))
 }
 
-fn write_json_file<T: Serialize>(path: &Path, value: &T) -> Result<(), String> {
-    let raw = serde_json::to_string_pretty(value)
-        .map_err(|error| format!("Failed to serialize {}: {error}", path.display()))?;
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)
-            .map_err(|error| format!("Failed to create {}: {error}", parent.display()))?;
-    }
-    fs::write(path, format!("{raw}\n"))
-        .map_err(|error| format!("Failed to write {}: {error}", path.display()))
-}
-
-fn app_data_root(app: &AppHandle) -> Result<PathBuf, String> {
-    app.path()
-        .app_data_dir()
-        .map_err(|error| format!("Failed to resolve app data directory: {error}"))
-}
-
-fn resolve_test_root() -> Option<PathBuf> {
-    std::env::var("PASEO_DESKTOP_TEST_ROOT")
-        .ok()
-        .map(PathBuf::from)
-}
-
-fn resolve_override_path(name: &str) -> Option<PathBuf> {
-    std::env::var(name).ok().map(PathBuf::from)
-}
-
-#[cfg(windows)]
-fn current_username() -> String {
-    std::env::var("USER")
-        .ok()
-        .or_else(|| std::env::var("USERNAME").ok())
-        .filter(|value| !value.trim().is_empty())
-        .unwrap_or_else(|| "user".to_string())
-}
-
-#[cfg(windows)]
-fn hash_seed(value: &str) -> String {
-    let mut hasher = DefaultHasher::new();
-    value.hash(&mut hasher);
-    format!("{:016x}", hasher.finish())
-}
-
-#[cfg(windows)]
-fn build_windows_pipe_path(seed: &str) -> String {
-    let user = current_username()
-        .chars()
-        .map(|character| {
-            if character.is_ascii_alphanumeric() {
-                character.to_ascii_lowercase()
-            } else {
-                '-'
-            }
-        })
-        .collect::<String>();
-    format!("{PIPE_PREFIX}paseo-managed-{user}-{}", hash_seed(seed))
-}
-
-fn default_transport_type() -> &'static str {
-    #[cfg(windows)]
-    {
-        "pipe"
-    }
-    #[cfg(not(windows))]
-    {
-        "socket"
-    }
-}
-
-#[cfg(target_os = "macos")]
-fn default_managed_home() -> PathBuf {
-    dirs::home_dir()
-        .unwrap_or_else(|| PathBuf::from("/tmp"))
-        .join(DEFAULT_MANAGED_HOME_BASENAME)
-}
-
-#[cfg(not(target_os = "macos"))]
-fn default_managed_home() -> PathBuf {
-    dirs::home_dir()
-        .unwrap_or_else(|| PathBuf::from("/tmp"))
-        .join(DEFAULT_MANAGED_HOME_BASENAME)
-}
-
-fn default_transport_path(managed_home: &Path, diagnostics_root: &Path) -> PathBuf {
-    #[cfg(windows)]
-    {
-        PathBuf::from(build_windows_pipe_path(
-            diagnostics_root.to_string_lossy().as_ref(),
-        ))
-    }
-    #[cfg(target_os = "macos")]
-    {
-        let _ = diagnostics_root;
-        managed_home.join(SHORT_SOCKET_FILENAME)
-    }
-    #[cfg(all(not(windows), not(target_os = "macos")))]
-    {
-        let _ = diagnostics_root;
-        managed_home.join(SHORT_SOCKET_FILENAME)
-    }
-}
-
-fn resolve_paths(app: &AppHandle) -> Result<ManagedPaths, String> {
-    if let Some(test_root) = resolve_test_root() {
-        let managed_home = resolve_override_path("PASEO_DESKTOP_MANAGED_HOME")
-            .unwrap_or_else(|| test_root.join(DEFAULT_MANAGED_HOME_DIRNAME));
-        let transport_path = resolve_override_path("PASEO_DESKTOP_MANAGED_SOCKET_PATH")
-            .unwrap_or_else(|| default_transport_path(&managed_home, &test_root));
-        return Ok(ManagedPaths {
-            managed_home: managed_home.clone(),
-            transport_path,
-            logs_path: managed_home.join("daemon.log"),
-            state_file_path: test_root.join(MANAGED_STATE_FILE),
-            diagnostics_root: test_root,
-        });
-    }
-
-    let root = app_data_root(app)?;
-    let managed_home = resolve_override_path("PASEO_DESKTOP_MANAGED_HOME").unwrap_or_else(|| {
-        #[cfg(target_os = "macos")]
-        {
-            default_managed_home()
-        }
-        #[cfg(not(target_os = "macos"))]
-        {
-            default_managed_home()
-        }
-    });
-    let transport_path = resolve_override_path("PASEO_DESKTOP_MANAGED_SOCKET_PATH")
-        .unwrap_or_else(|| default_transport_path(&managed_home, &root));
-    Ok(ManagedPaths {
-        managed_home: managed_home.clone(),
-        transport_path,
-        logs_path: managed_home.join("daemon.log"),
-        state_file_path: root.join(MANAGED_STATE_FILE),
-        diagnostics_root: root,
-    })
-}
-
 fn dev_resource_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("resources")
 }
@@ -576,10 +381,7 @@ fn bundled_runtime_root(app: &AppHandle) -> Result<PathBuf, String> {
                 log::info!("[runtime] found bundled runtime at {}", candidate.display());
                 return Ok(candidate);
             }
-            log::info!(
-                "[runtime] no bundled runtime at {}",
-                candidate.display()
-            );
+            log::info!("[runtime] no bundled runtime at {}", candidate.display());
         }
     } else {
         log::info!("[runtime] resource_dir() unavailable, checking dev path");
@@ -606,16 +408,6 @@ fn load_runtime_manifest(runtime_root: &Path) -> Result<ManagedRuntimeManifest, 
     read_json_file::<ManagedRuntimeManifest>(&runtime_root.join("runtime-manifest.json"))
 }
 
-fn read_server_id(managed_home: &Path) -> Option<String> {
-    let raw = fs::read_to_string(managed_home.join("server-id")).ok()?;
-    let trimmed = raw.trim();
-    if trimmed.is_empty() {
-        None
-    } else {
-        Some(trimmed.to_string())
-    }
-}
-
 fn tail_log(path: &Path, max_lines: usize) -> String {
     let raw = match fs::read_to_string(path) {
         Ok(value) => value,
@@ -626,122 +418,14 @@ fn tail_log(path: &Path, max_lines: usize) -> String {
     lines.join("\n")
 }
 
-fn is_pid_running(pid: i32) -> bool {
-    #[cfg(unix)]
-    {
-        let output = Command::new("kill")
-            .arg("-0")
-            .arg(pid.to_string())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status();
-        return output.map(|status| status.success()).unwrap_or(false);
-    }
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        let output = Command::new("tasklist")
-            .args(["/FI", &format!("PID eq {pid}"), "/NH", "/FO", "CSV"])
-            .stdout(Stdio::piped())
-            .stderr(Stdio::null())
-            .creation_flags(0x08000000)
-            .output();
-        return output
-            .map(|out| {
-                let stdout = String::from_utf8_lossy(&out.stdout);
-                stdout.contains(&pid.to_string())
-            })
-            .unwrap_or(false);
-    }
-}
-
 fn to_stdio_message(input: Option<&str>) -> String {
     input.unwrap_or_default().trim().to_string()
-}
-
-fn parse_tcp_listen(listen: &str) -> Result<(String, u16), String> {
-    let trimmed = listen.trim();
-    let (host, port_raw) = trimmed
-        .rsplit_once(':')
-        .ok_or_else(|| "Managed TCP listen target must be host:port.".to_string())?;
-    let host = host.trim();
-    if host.is_empty() {
-        return Err("Managed TCP host cannot be empty.".to_string());
-    }
-    let port = port_raw
-        .trim()
-        .parse::<u16>()
-        .map_err(|_| "Managed TCP port must be a valid integer.".to_string())?;
-    if port == 0 {
-        return Err("Managed TCP port must be greater than 0.".to_string());
-    }
-    if port == 6767 {
-        return Err("Managed TCP mode cannot use port 6767.".to_string());
-    }
-    Ok((host.to_string(), port))
-}
-
-fn resolve_tcp_settings_from_state(state: Option<&ManagedStateFile>) -> ManagedTcpSettings {
-    let listen = state
-        .and_then(|value| value.tcp_listen.clone())
-        .unwrap_or_else(|| format!("{DEFAULT_MANAGED_TCP_HOST}:{DEFAULT_MANAGED_TCP_PORT}"));
-    let (host, port) = parse_tcp_listen(&listen).unwrap_or((
-        DEFAULT_MANAGED_TCP_HOST.to_string(),
-        DEFAULT_MANAGED_TCP_PORT,
-    ));
-    ManagedTcpSettings {
-        enabled: state.map(|value| value.tcp_enabled).unwrap_or(false),
-        host,
-        port,
-    }
-}
-
-fn managed_transport_target(
-    paths: &ManagedPaths,
-    state: Option<&ManagedStateFile>,
-) -> Result<ManagedTransportTarget, String> {
-    let tcp_settings = resolve_tcp_settings_from_state(state);
-    if tcp_settings.enabled {
-        return Ok(ManagedTransportTarget {
-            transport_type: "tcp".to_string(),
-            transport_path: format!("{}:{}", tcp_settings.host, tcp_settings.port),
-        });
-    }
-    Ok(ManagedTransportTarget {
-        transport_type: default_transport_type().to_string(),
-        transport_path: paths.transport_path.to_string_lossy().into_owned(),
-    })
-}
-
-fn cli_host_for_target(target: &ManagedTransportTarget) -> String {
-    match target.transport_type.as_str() {
-        "tcp" => target.transport_path.clone(),
-        "pipe" => format!("pipe://{}", target.transport_path),
-        _ => format!("unix://{}", target.transport_path),
-    }
-}
-
-fn cli_env(paths: &ManagedPaths) -> Vec<(String, String)> {
-    let state = read_state_file(&paths.state_file_path);
-    let target =
-        managed_transport_target(paths, state.as_ref()).unwrap_or(ManagedTransportTarget {
-            transport_type: default_transport_type().to_string(),
-            transport_path: paths.transport_path.to_string_lossy().into_owned(),
-        });
-    vec![
-        (
-            "PASEO_HOME".to_string(),
-            paths.managed_home.to_string_lossy().into_owned(),
-        ),
-        ("PASEO_HOST".to_string(), cli_host_for_target(&target)),
-    ]
 }
 
 fn cli_command(
     runtime_root: &Path,
     manifest: &ManagedRuntimeManifest,
     args: &[&str],
-    paths: &ManagedPaths,
 ) -> Result<Command, String> {
     let node = runtime_root.join(&manifest.node_relative_path);
     let cli = runtime_root.join(&manifest.cli_entrypoint_relative_path);
@@ -772,9 +456,6 @@ fn cli_command(
     {
         use std::os::windows::process::CommandExt;
         command.creation_flags(0x08000000); // CREATE_NO_WINDOW
-    }
-    for (key, value) in cli_env(paths) {
-        command.env(key, value);
     }
     Ok(command)
 }
@@ -814,18 +495,13 @@ fn outer_cli_shim_path() -> Result<PathBuf, String> {
     }
 }
 
-fn cli_shim_contents(
-    runtime_root: &Path,
-    manifest: &ManagedRuntimeManifest,
-    paths: &ManagedPaths,
-) -> String {
+fn cli_shim_contents(runtime_root: &Path, manifest: &ManagedRuntimeManifest) -> String {
     let node = runtime_root.join(&manifest.node_relative_path);
     let cli = runtime_root.join(&manifest.cli_entrypoint_relative_path);
     #[cfg(windows)]
     {
         return format!(
-            "@echo off\r\nset \"PASEO_HOME={}\"\r\n\"{}\" \"{}\" %*\r\n",
-            paths.managed_home.display(),
+            "@echo off\r\n\"{}\" \"{}\" %*\r\n",
             node.display(),
             cli.display()
         );
@@ -833,8 +509,7 @@ fn cli_shim_contents(
     #[cfg(not(windows))]
     {
         format!(
-            "#!/bin/sh\nexport PASEO_HOME={}\nexec \"{}\" \"{}\" \"$@\"\n",
-            shell_single_quote(paths.managed_home.to_string_lossy().as_ref()),
+            "#!/bin/sh\nexec \"{}\" \"{}\" \"$@\"\n",
             node.display(),
             cli.display()
         )
@@ -859,11 +534,10 @@ fn write_cli_launcher(path: &Path, contents: &str) -> Result<(), String> {
 
 fn cli_manual_instructions(
     runtime_root: &Path,
-    paths: &ManagedPaths,
     manifest: &ManagedRuntimeManifest,
 ) -> Result<CliManualInstructions, String> {
     let outer_shim = outer_cli_shim_path()?;
-    let contents = cli_shim_contents(runtime_root, manifest, paths);
+    let contents = cli_shim_contents(runtime_root, manifest);
     #[cfg(windows)]
     {
         let target_dir = outer_shim
@@ -907,91 +581,29 @@ fn cli_manual_instructions(
 
 fn detect_installed_cli_shim_path(
     runtime_root: &Path,
-    paths: &ManagedPaths,
     manifest: &ManagedRuntimeManifest,
 ) -> Option<String> {
     let outer_shim = outer_cli_shim_path().ok()?;
-    let expected = cli_shim_contents(runtime_root, manifest, paths);
+    let expected = cli_shim_contents(runtime_root, manifest);
     let actual = fs::read_to_string(&outer_shim).ok()?;
     (actual == expected).then(|| outer_shim.to_string_lossy().into_owned())
-}
-
-fn read_pid_from_home(managed_home: &Path) -> Option<i64> {
-    read_json_file::<PidFile>(&managed_home.join("paseo.pid"))
-        .ok()
-        .and_then(|parsed| parsed.pid)
-}
-
-fn read_hostname_from_home(managed_home: &Path) -> Option<String> {
-    read_json_file::<PidFile>(&managed_home.join("paseo.pid"))
-        .ok()
-        .and_then(|parsed| parsed.hostname)
-}
-
-fn read_state_file(path: &Path) -> Option<ManagedStateFile> {
-    read_json_file::<ManagedStateFile>(path).ok()
-}
-
-fn write_state_file(path: &Path, value: &ManagedStateFile) -> Result<(), String> {
-    write_json_file(path, value)
 }
 
 fn ensure_runtime_ready_internal(app: &AppHandle) -> Result<ManagedRuntimeStatus, String> {
     log::info!("[runtime] ensuring runtime is ready");
     let (bundled_root, pointer) = load_bundled_runtime_pointer(app)?;
     let runtime_root = bundled_root.join(&pointer.relative_root);
-    let paths = resolve_paths(app)?;
-    log::info!(
-        "[runtime] runtime_root={} managed_home={} transport={}",
-        runtime_root.display(),
-        paths.managed_home.display(),
-        paths.transport_path.display()
-    );
     let manifest = load_runtime_manifest(&runtime_root)?;
     log::info!(
         "[runtime] manifest: id={} version={}",
         manifest.runtime_id,
         manifest.runtime_version
     );
-    if let Some(parent) = paths.transport_path.parent() {
-        fs::create_dir_all(parent)
-            .map_err(|error| format!("Failed to create {}: {error}", parent.display()))?;
-    }
-    fs::create_dir_all(&paths.managed_home)
-        .map_err(|error| format!("Failed to create {}: {error}", paths.managed_home.display()))?;
-    let existing_state = read_state_file(&paths.state_file_path);
-    let target = managed_transport_target(&paths, existing_state.as_ref())?;
-    log::info!(
-        "[runtime] transport target: type={} path={}",
-        target.transport_type,
-        target.transport_path
-    );
-    let state = ManagedStateFile {
-        runtime_id: manifest.runtime_id.clone(),
-        runtime_root: runtime_root.to_string_lossy().into_owned(),
-        managed_home: paths.managed_home.to_string_lossy().into_owned(),
-        transport_type: target.transport_type.clone(),
-        transport_path: target.transport_path.clone(),
-        tcp_enabled: existing_state
-            .as_ref()
-            .map(|entry| entry.tcp_enabled)
-            .unwrap_or(false),
-        tcp_listen: existing_state
-            .as_ref()
-            .and_then(|entry| entry.tcp_listen.clone()),
-        cli_shim_path: existing_state.and_then(|entry| entry.cli_shim_path),
-    };
-    write_state_file(&paths.state_file_path, &state)?;
 
     Ok(ManagedRuntimeStatus {
         runtime_id: manifest.runtime_id,
         runtime_version: manifest.runtime_version,
         runtime_root: runtime_root.to_string_lossy().into_owned(),
-        managed_home: paths.managed_home.to_string_lossy().into_owned(),
-        transport_type: state.transport_type,
-        transport_path: state.transport_path,
-        diagnostics_root: paths.diagnostics_root.to_string_lossy().into_owned(),
-        state_file_path: paths.state_file_path.to_string_lossy().into_owned(),
     })
 }
 
@@ -999,10 +611,9 @@ fn run_cli_json_command(
     runtime_root: &Path,
     manifest: &ManagedRuntimeManifest,
     args: &[&str],
-    paths: &ManagedPaths,
 ) -> Result<serde_json::Value, String> {
     log::info!("[cli] running: {:?}", args);
-    let output = cli_command(runtime_root, manifest, args, paths)?
+    let output = cli_command(runtime_root, manifest, args)?
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .output()
@@ -1036,70 +647,30 @@ fn run_cli_json_command(
 
 fn managed_daemon_status_internal(app: &AppHandle) -> Result<ManagedDaemonStatus, String> {
     let status = ensure_runtime_ready_internal(app)?;
-    let paths = resolve_paths(app)?;
     let runtime_root = PathBuf::from(&status.runtime_root);
     let manifest = load_runtime_manifest(&runtime_root)?;
-    let cli_shim_path = detect_installed_cli_shim_path(&runtime_root, &paths, &manifest);
-    let state = read_state_file(&paths.state_file_path);
-    let target = managed_transport_target(&paths, state.as_ref())?;
-    let tcp_settings = resolve_tcp_settings_from_state(state.as_ref());
-    let cli_status = run_cli_json_command(
-        &runtime_root,
-        &manifest,
-        &[
-            "daemon",
-            "status",
-            "--home",
-            &paths.managed_home.to_string_lossy(),
-            "--json",
-        ],
-        &paths,
-    )
-    .ok();
-
-    let daemon_status = cli_status
-        .as_ref()
-        .and_then(|value| value.get("status"))
-        .and_then(|value| value.as_str())
-        .unwrap_or(if read_pid_from_home(&paths.managed_home).is_some() {
-            "running"
-        } else {
-            "stopped"
-        })
-        .to_string();
-    let daemon_pid = cli_status
-        .as_ref()
-        .and_then(|value| value.get("pid"))
-        .and_then(|value| {
-            value
-                .as_i64()
-                .or_else(|| value.as_str().and_then(|raw| raw.parse::<i64>().ok()))
-        })
-        .or_else(|| read_pid_from_home(&paths.managed_home));
-    let daemon_running = daemon_pid
-        .map(|pid| is_pid_running(pid as i32))
-        .unwrap_or(false)
-        || daemon_status == "running";
+    let value = run_cli_json_command(&runtime_root, &manifest, &["daemon", "status", "--json"])?;
+    let daemon_status: CliDaemonStatus = serde_json::from_value(value)
+        .map_err(|error| format!("Failed to parse managed daemon status: {error}"))?;
 
     Ok(ManagedDaemonStatus {
         runtime_id: manifest.runtime_id,
         runtime_version: manifest.runtime_version,
-        runtime_root: runtime_root.to_string_lossy().into_owned(),
-        managed_home: paths.managed_home.to_string_lossy().into_owned(),
-        transport_type: target.transport_type,
-        transport_path: target.transport_path,
-        daemon_pid,
-        daemon_running,
-        daemon_status,
-        log_path: paths.logs_path.to_string_lossy().into_owned(),
-        server_id: read_server_id(&paths.managed_home),
-        hostname: read_hostname_from_home(&paths.managed_home),
-        relay_enabled: true,
-        tcp_enabled: tcp_settings.enabled,
-        tcp_listen: tcp_settings
-            .enabled
-            .then(|| format!("{}:{}", tcp_settings.host, tcp_settings.port)),
-        cli_shim_path,
+        server_id: daemon_status.server_id.unwrap_or_default(),
+        status: daemon_status.status,
+        listen: daemon_status.listen,
+        hostname: daemon_status.hostname,
+        pid: daemon_status.pid,
+        home: daemon_status.home,
+    })
+}
+
+fn cli_shim_status_internal(app: &AppHandle) -> Result<CliShimStatus, String> {
+    let status = ensure_runtime_ready_internal(app)?;
+    let runtime_root = PathBuf::from(&status.runtime_root);
+    let manifest = load_runtime_manifest(&runtime_root)?;
+    Ok(CliShimStatus {
+        path: detect_installed_cli_shim_path(&runtime_root, &manifest),
     })
 }
 
@@ -1176,12 +747,11 @@ fn remove_cli_shim_via_macos_prompt(shim_path: &Path) -> Result<(), String> {
 fn install_cli_shim_internal(app: &AppHandle) -> Result<CliShimResult, String> {
     log::info!("[cli-shim] installing CLI shim");
     let status = ensure_runtime_ready_internal(app)?;
-    let paths = resolve_paths(app)?;
     let runtime_root = PathBuf::from(&status.runtime_root);
     let manifest = load_runtime_manifest(&runtime_root)?;
     let shim_path = outer_cli_shim_path()?;
-    let shim_contents = cli_shim_contents(&runtime_root, &manifest, &paths);
-    let manual_instructions = cli_manual_instructions(&runtime_root, &paths, &manifest)?;
+    let shim_contents = cli_shim_contents(&runtime_root, &manifest);
+    let manual_instructions = cli_manual_instructions(&runtime_root, &manifest)?;
 
     #[cfg(target_os = "macos")]
     let install_result = install_cli_shim_via_macos_prompt(&shim_path, &shim_contents);
@@ -1192,27 +762,13 @@ fn install_cli_shim_internal(app: &AppHandle) -> Result<CliShimResult, String> {
 
     log::info!("[cli-shim] target path: {}", shim_path.display());
     match install_result {
-        Ok(()) => {
-            let mut state = read_state_file(&paths.state_file_path).unwrap_or(ManagedStateFile {
-                runtime_id: status.runtime_id.clone(),
-                runtime_root: runtime_root.to_string_lossy().into_owned(),
-                managed_home: paths.managed_home.to_string_lossy().into_owned(),
-                transport_type: status.transport_type.clone(),
-                transport_path: status.transport_path.clone(),
-                tcp_enabled: false,
-                tcp_listen: None,
-                cli_shim_path: None,
-            });
-            state.cli_shim_path = Some(shim_path.to_string_lossy().into_owned());
-            write_state_file(&paths.state_file_path, &state)?;
-            Ok(CliShimResult {
-                status: "installed".to_string(),
-                installed: true,
-                path: Some(shim_path.to_string_lossy().into_owned()),
-                message: format!("Paseo CLI installed at {}.", shim_path.display()),
-                manual_instructions: None,
-            })
-        }
+        Ok(()) => Ok(CliShimResult {
+            status: "installed".to_string(),
+            installed: true,
+            path: Some(shim_path.to_string_lossy().into_owned()),
+            message: format!("Paseo CLI installed at {}.", shim_path.display()),
+            manual_instructions: None,
+        }),
         Err(error) if error == "ELEVATION_DENIED" => Ok(CliShimResult {
             status: "elevationDenied".to_string(),
             installed: false,
@@ -1241,15 +797,10 @@ fn install_cli_shim_internal(app: &AppHandle) -> Result<CliShimResult, String> {
 
 fn uninstall_cli_shim_internal(app: &AppHandle) -> Result<CliShimResult, String> {
     let status = ensure_runtime_ready_internal(app)?;
-    let paths = resolve_paths(app)?;
     let runtime_root = PathBuf::from(&status.runtime_root);
     let manifest = load_runtime_manifest(&runtime_root)?;
-    let shim_path = detect_installed_cli_shim_path(&runtime_root, &paths, &manifest)
+    let shim_path = detect_installed_cli_shim_path(&runtime_root, &manifest)
         .map(PathBuf::from)
-        .or_else(|| {
-            read_state_file(&paths.state_file_path)
-                .and_then(|entry| entry.cli_shim_path.map(PathBuf::from))
-        })
         .unwrap_or(outer_cli_shim_path()?);
     if shim_path.exists() {
         #[cfg(target_os = "macos")]
@@ -1261,18 +812,6 @@ fn uninstall_cli_shim_internal(app: &AppHandle) -> Result<CliShimResult, String>
         fs::remove_file(&shim_path)
             .map_err(|error| format!("Failed to remove {}: {error}", shim_path.display()))?;
     }
-    let mut state = read_state_file(&paths.state_file_path).unwrap_or(ManagedStateFile {
-        runtime_id: status.runtime_id.clone(),
-        runtime_root: runtime_root.to_string_lossy().into_owned(),
-        managed_home: paths.managed_home.to_string_lossy().into_owned(),
-        transport_type: status.transport_type.clone(),
-        transport_path: status.transport_path.clone(),
-        tcp_enabled: false,
-        tcp_listen: None,
-        cli_shim_path: None,
-    });
-    state.cli_shim_path = None;
-    write_state_file(&paths.state_file_path, &state)?;
 
     Ok(CliShimResult {
         status: "removed".to_string(),
@@ -1286,48 +825,16 @@ fn uninstall_cli_shim_internal(app: &AppHandle) -> Result<CliShimResult, String>
 fn start_managed_daemon_internal(app: &AppHandle) -> Result<ManagedDaemonStatus, String> {
     log::info!("[daemon] starting managed daemon");
     let status = ensure_runtime_ready_internal(app)?;
-    let paths = resolve_paths(app)?;
-    let existing_status = managed_daemon_status_internal(app)?;
-    if existing_status.daemon_running {
-        log::info!(
-            "[daemon] already running (pid={:?})",
-            existing_status.daemon_pid
-        );
-        return Ok(existing_status);
-    }
-    if let Some(parent) = paths.transport_path.parent() {
-        fs::create_dir_all(parent)
-            .map_err(|error| format!("Failed to create {}: {error}", parent.display()))?;
-    }
     let runtime_root = PathBuf::from(&status.runtime_root);
     let manifest = load_runtime_manifest(&runtime_root)?;
-    let state = read_state_file(&paths.state_file_path);
-    let target = managed_transport_target(&paths, state.as_ref())?;
-    log::info!(
-        "[daemon] spawning: home={} listen={} (type={})",
-        paths.managed_home.display(),
-        target.transport_path,
-        target.transport_type
-    );
-    let output = cli_command(
-        &runtime_root,
-        &manifest,
-        &[
-            "start",
-            "--home",
-            &paths.managed_home.to_string_lossy(),
-            "--listen",
-            &target.transport_path,
-        ],
-        &paths,
-    )?
-    .stdout(Stdio::piped())
-    .stderr(Stdio::piped())
-    .output()
-    .map_err(|error| {
-        log::error!("[daemon] failed to spawn: {error}");
-        format!("Failed to launch managed daemon: {error}")
-    })?;
+    let output = cli_command(&runtime_root, &manifest, &["start"])?
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .map_err(|error| {
+            log::error!("[daemon] failed to spawn: {error}");
+            format!("Failed to launch managed daemon: {error}")
+        })?;
     if !output.status.success() {
         let stderr = to_stdio_message(Some(&String::from_utf8_lossy(&output.stderr)));
         log::error!(
@@ -1342,13 +849,13 @@ fn start_managed_daemon_internal(app: &AppHandle) -> Result<ManagedDaemonStatus,
         ));
     }
     log::info!("[daemon] start command succeeded, waiting for daemon to be ready");
-    for attempt in 0..30 {
+    for attempt in 0..150 {
         let daemon_status = managed_daemon_status_internal(app)?;
-        if daemon_status.daemon_running {
+        if daemon_status.status == "running" && !daemon_status.server_id.trim().is_empty() {
             log::info!(
                 "[daemon] ready after {} attempts (pid={:?})",
                 attempt + 1,
-                daemon_status.daemon_pid
+                daemon_status.pid
             );
             return Ok(daemon_status);
         }
@@ -1361,28 +868,16 @@ fn start_managed_daemon_internal(app: &AppHandle) -> Result<ManagedDaemonStatus,
 fn stop_managed_daemon_internal(app: &AppHandle) -> Result<ManagedDaemonStatus, String> {
     log::info!("[daemon] stopping managed daemon");
     let status = ensure_runtime_ready_internal(app)?;
-    let paths = resolve_paths(app)?;
     let runtime_root = PathBuf::from(&status.runtime_root);
     let manifest = load_runtime_manifest(&runtime_root)?;
-    let output = cli_command(
-        &runtime_root,
-        &manifest,
-        &[
-            "daemon",
-            "stop",
-            "--home",
-            &paths.managed_home.to_string_lossy(),
-            "--json",
-        ],
-        &paths,
-    )?
-    .stdout(Stdio::piped())
-    .stderr(Stdio::piped())
-    .output()
-    .map_err(|error| {
-        log::error!("[daemon] failed to spawn stop command: {error}");
-        format!("Failed to stop managed daemon: {error}")
-    })?;
+    let output = cli_command(&runtime_root, &manifest, &["daemon", "stop", "--json"])?
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .map_err(|error| {
+            log::error!("[daemon] failed to spawn stop command: {error}");
+            format!("Failed to stop managed daemon: {error}")
+        })?;
     if !output.status.success() {
         let stderr = to_stdio_message(Some(&String::from_utf8_lossy(&output.stderr)));
         log::error!(
@@ -1403,37 +898,16 @@ fn stop_managed_daemon_internal(app: &AppHandle) -> Result<ManagedDaemonStatus, 
 fn restart_managed_daemon_internal(app: &AppHandle) -> Result<ManagedDaemonStatus, String> {
     log::info!("[daemon] restarting managed daemon");
     let status = ensure_runtime_ready_internal(app)?;
-    let paths = resolve_paths(app)?;
     let runtime_root = PathBuf::from(&status.runtime_root);
     let manifest = load_runtime_manifest(&runtime_root)?;
-    let state = read_state_file(&paths.state_file_path);
-    let target = managed_transport_target(&paths, state.as_ref())?;
-    log::info!(
-        "[daemon] restart: listen={} (type={})",
-        target.transport_path,
-        target.transport_type
-    );
-    let output = cli_command(
-        &runtime_root,
-        &manifest,
-        &[
-            "daemon",
-            "restart",
-            "--home",
-            &paths.managed_home.to_string_lossy(),
-            "--listen",
-            &target.transport_path,
-            "--json",
-        ],
-        &paths,
-    )?
-    .stdout(Stdio::piped())
-    .stderr(Stdio::piped())
-    .output()
-    .map_err(|error| {
-        log::error!("[daemon] failed to spawn restart command: {error}");
-        format!("Failed to restart managed daemon: {error}")
-    })?;
+    let output = cli_command(&runtime_root, &manifest, &["daemon", "restart", "--json"])?
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .map_err(|error| {
+            log::error!("[daemon] failed to spawn restart command: {error}");
+            format!("Failed to restart managed daemon: {error}")
+        })?;
     if !output.status.success() {
         let stderr = to_stdio_message(Some(&String::from_utf8_lossy(&output.stderr)));
         log::error!(
@@ -1453,40 +927,10 @@ fn restart_managed_daemon_internal(app: &AppHandle) -> Result<ManagedDaemonStatu
 
 fn update_managed_tcp_settings_internal(
     app: &AppHandle,
-    settings: ManagedTcpSettings,
+    _settings: ManagedTcpSettings,
 ) -> Result<ManagedDaemonStatus, String> {
-    log::info!(
-        "[tcp] updating settings: enabled={} host={} port={}",
-        settings.enabled,
-        settings.host,
-        settings.port
-    );
-    if settings.enabled {
-        parse_tcp_listen(&format!("{}:{}", settings.host.trim(), settings.port))?;
-    }
-    let status = ensure_runtime_ready_internal(app)?;
-    let paths = resolve_paths(app)?;
-    let mut state = read_state_file(&paths.state_file_path).unwrap_or(ManagedStateFile {
-        runtime_id: status.runtime_id.clone(),
-        runtime_root: status.runtime_root.clone(),
-        managed_home: paths.managed_home.to_string_lossy().into_owned(),
-        transport_type: status.transport_type.clone(),
-        transport_path: status.transport_path.clone(),
-        tcp_enabled: false,
-        tcp_listen: None,
-        cli_shim_path: None,
-    });
-    state.tcp_enabled = settings.enabled;
-    state.tcp_listen = Some(format!("{}:{}", settings.host.trim(), settings.port));
-    let target = managed_transport_target(&paths, Some(&state))?;
-    state.transport_type = target.transport_type;
-    state.transport_path = target.transport_path;
-    write_state_file(&paths.state_file_path, &state)?;
-
-    if managed_daemon_status_internal(app)?.daemon_running {
-        return restart_managed_daemon_internal(app);
-    }
-    managed_daemon_status_internal(app)
+    let _ = app;
+    Err("Managed daemon TCP settings are no longer configurable from desktop.".to_string())
 }
 
 #[tauri::command]
@@ -1525,13 +969,26 @@ pub async fn restart_managed_daemon(app: AppHandle) -> Result<ManagedDaemonStatu
 }
 
 #[tauri::command]
+pub async fn cli_shim_status(app: AppHandle) -> Result<CliShimStatus, String> {
+    tauri::async_runtime::spawn_blocking(move || cli_shim_status_internal(&app))
+        .await
+        .map_err(|error| format!("CLI shim status task failed: {error}"))?
+}
+
+#[tauri::command]
 pub async fn managed_daemon_logs(app: AppHandle) -> Result<ManagedDaemonLogs, String> {
     tauri::async_runtime::spawn_blocking(move || {
-        ensure_runtime_ready_internal(&app)?;
-        let paths = resolve_paths(&app)?;
+        let runtime_status = ensure_runtime_ready_internal(&app)?;
+        let runtime_root = PathBuf::from(&runtime_status.runtime_root);
+        let manifest = load_runtime_manifest(&runtime_root)?;
+        let value =
+            run_cli_json_command(&runtime_root, &manifest, &["daemon", "status", "--json"])?;
+        let daemon_status: CliDaemonStatus = serde_json::from_value(value)
+            .map_err(|error| format!("Failed to parse managed daemon status for logs: {error}"))?;
+        let log_path = PathBuf::from(&daemon_status.log_path);
         Ok(ManagedDaemonLogs {
-            log_path: paths.logs_path.to_string_lossy().into_owned(),
-            contents: tail_log(&paths.logs_path, 400),
+            log_path: log_path.to_string_lossy().into_owned(),
+            contents: tail_log(&log_path, 400),
         })
     })
     .await
@@ -1542,21 +999,9 @@ pub async fn managed_daemon_logs(app: AppHandle) -> Result<ManagedDaemonLogs, St
 pub async fn managed_daemon_pairing(app: AppHandle) -> Result<ManagedPairingOffer, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let status = ensure_runtime_ready_internal(&app)?;
-        let paths = resolve_paths(&app)?;
         let runtime_root = PathBuf::from(&status.runtime_root);
         let manifest = load_runtime_manifest(&runtime_root)?;
-        let value = run_cli_json_command(
-            &runtime_root,
-            &manifest,
-            &[
-                "daemon",
-                "pair",
-                "--home",
-                &paths.managed_home.to_string_lossy(),
-                "--json",
-            ],
-            &paths,
-        )?;
+        let value = run_cli_json_command(&runtime_root, &manifest, &["daemon", "pair", "--json"])?;
         serde_json::from_value::<ManagedPairingOffer>(value)
             .map_err(|error| format!("Failed to parse managed pairing offer: {error}"))
     })

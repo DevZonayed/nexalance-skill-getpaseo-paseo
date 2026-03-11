@@ -14,11 +14,11 @@ use tauri_plugin_updater::UpdaterExt;
 
 mod runtime_manager;
 use runtime_manager::{
-    close_local_daemon_transport, install_cli_shim, managed_daemon_logs, managed_daemon_pairing,
-    managed_daemon_status, managed_runtime_status, open_local_daemon_transport,
-    restart_managed_daemon, send_local_daemon_transport_message, start_managed_daemon,
-    stop_managed_daemon, uninstall_cli_shim, update_managed_daemon_tcp_settings,
-    LocalTransportState, ManagedTcpSettings,
+    cli_shim_status, close_local_daemon_transport, install_cli_shim, managed_daemon_logs,
+    managed_daemon_pairing, managed_daemon_status, managed_runtime_status,
+    open_local_daemon_transport, restart_managed_daemon, send_local_daemon_transport_message,
+    start_managed_daemon, stop_managed_daemon, uninstall_cli_shim,
+    update_managed_daemon_tcp_settings, LocalTransportState, ManagedTcpSettings,
 };
 
 // Store zoom as u64 bits (f64 * 100 as integer for atomic ops)
@@ -622,6 +622,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             managed_runtime_status,
             managed_daemon_status,
+            cli_shim_status,
             start_managed_daemon,
             stop_managed_daemon,
             restart_managed_daemon,

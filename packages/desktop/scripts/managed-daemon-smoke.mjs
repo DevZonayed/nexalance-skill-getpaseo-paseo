@@ -588,7 +588,6 @@ try {
   const runtimeStatus = await runBinary(packagedBinary, ["--managed-headless", "runtime-status"], managedEnv);
   assert.equal(runtimeStatus.json.runtimeId, currentRuntimeId);
   assert.equal(runtimeStatus.json.runtimeVersion, currentRuntimeVersion);
-  assert.match(runtimeStatus.json.managedHome, new RegExp(`^${escapeForRegExp(testRoot)}`));
   assert.match(
     runtimeStatus.json.runtimeRoot,
     new RegExp(escapeForRegExp(currentRuntimeId)),
@@ -599,15 +598,8 @@ try {
     false,
     "runtime status should not resolve into managed app data"
   );
-  assert.ok(runtimeStatus.json.transportType === "socket" || runtimeStatus.json.transportType === "pipe");
-  assert.notEqual(runtimeStatus.json.transportPath, "127.0.0.1:6767");
   assertNoForbiddenPathsOrPorts(runtimeStatus.json, forbiddenManagedReferences);
   assert.equal(await pathExists(managedRuntimeDir), false, "managed app data should not gain a runtime tree");
-  const stateAfterRuntimeStatus = JSON.parse(
-    await fs.readFile(path.join(testRoot, "managed-state.json"), "utf8")
-  );
-  assert.equal(stateAfterRuntimeStatus.runtimeId, currentRuntimeId);
-  assert.equal(stateAfterRuntimeStatus.runtimeRoot, runtimeStatus.json.runtimeRoot);
 
   const managedBootstrap = await runBinary(packagedBinary, ["--managed-headless", "bootstrap"], managedEnv);
   const managedStart = managedBootstrap.json ?? await waitFor(
@@ -617,27 +609,23 @@ try {
         ["--managed-headless", "daemon-status"],
         managedEnv
       );
-      assert.equal(status.json?.daemonRunning, true);
-      assert.ok(status.json?.daemonPid, "managed daemon pid should exist");
+      assert.equal(status.json?.status, "running");
+      assert.ok(status.json?.pid, "managed daemon pid should exist");
+      assert.ok(status.json?.serverId, "managed daemon should expose a server id");
       return status.json;
     },
     10_000,
     "managed daemon bootstrap status"
   );
-  assert.equal(managedStart.daemonRunning, true);
-  assert.ok(managedStart.daemonPid, "managed daemon pid should exist");
-  assert.equal(managedStart.runtimeRoot, runtimeStatus.json.runtimeRoot);
-  assert.ok(
-    managedStart.transportType === "socket" || managedStart.transportType === "pipe",
-    "managed daemon should default to private IPC transport"
-  );
-  assert.notEqual(managedStart.transportPath, "127.0.0.1:6767");
+  assert.equal(managedStart.status, "running");
+  assert.ok(managedStart.pid, "managed daemon pid should exist");
+  assert.ok(managedStart.serverId, "managed daemon should expose a server id");
+  assert.ok(managedStart.home, "managed daemon should expose its home directory");
+  assert.ok(managedStart.listen, "managed daemon should expose its listen target");
   assertNoForbiddenPathsOrPorts(managedStart, forbiddenManagedReferences);
   assert.equal(await pathExists(managedRuntimeDir), false, "starting the daemon should not install a runtime copy");
 
-  const managedPid = managedStart.daemonPid;
-  const stateFile = path.join(testRoot, "managed-state.json");
-  assert.equal(await pathExists(stateFile), true, "managed state file should be written");
+  const managedPid = managedStart.pid;
 
   logStep("Verifying the managed daemon stays alive after the packaged command exits");
   await sleep(1_500);
@@ -646,9 +634,9 @@ try {
     ["--managed-headless", "daemon-status"],
     managedEnv
   );
-  assert.equal(persistedManagedStatus.json.daemonPid, managedPid);
-  assert.equal(persistedManagedStatus.json.daemonRunning, true);
-  assert.equal(persistedManagedStatus.json.relayEnabled, true);
+  assert.equal(persistedManagedStatus.json.pid, managedPid);
+  assert.equal(persistedManagedStatus.json.status, "running");
+  assert.equal(persistedManagedStatus.json.serverId, managedStart.serverId);
   assertNoForbiddenPathsOrPorts(persistedManagedStatus.json, forbiddenManagedReferences);
 
   const attemptCliShimInstall = shouldAttemptCliShimInstall(managedEnv);
@@ -694,7 +682,7 @@ try {
       }, "installed CLI shim version check")
     : await runBundledRuntimeCli(
         runtimeStatus.json.runtimeRoot,
-        managedStart.managedHome,
+        managedStart.home,
         ["--version"],
         managedEnv
       );
@@ -707,7 +695,7 @@ try {
       }, "installed CLI shim daemon status")
     : await runBundledRuntimeCli(
         runtimeStatus.json.runtimeRoot,
-        managedStart.managedHome,
+        managedStart.home,
         ["daemon", "status", "--json"],
         managedEnv
       );
@@ -719,7 +707,7 @@ try {
   const relayPairing = cliShimInstalled
     ? await execFileWithTimeout(
         cliShimPath,
-        ["daemon", "pair", "--home", managedStart.managedHome],
+        ["daemon", "pair"],
         {
           env: managedEnv,
           cwd: repoRoot,
@@ -729,8 +717,8 @@ try {
       )
     : await runBundledRuntimeCli(
         runtimeStatus.json.runtimeRoot,
-        managedStart.managedHome,
-        ["daemon", "pair", "--home", managedStart.managedHome],
+        managedStart.home,
+        ["daemon", "pair"],
         managedEnv
       );
   const relayOfferUrl = parseOfferUrlFromCommandOutput(relayPairing.stdout);
@@ -745,7 +733,7 @@ try {
     ["--managed-headless", "bootstrap"],
     managedEnv
   );
-  assert.equal(managedRestartless.json.daemonPid, managedPid);
+  assert.equal(managedRestartless.json.pid, managedPid);
 
   logStep("Verifying managed and external daemons coexist");
   const externalStatusAfter = await readDaemonStatus(externalHome, managedEnv);
@@ -761,46 +749,6 @@ try {
   assert.ok(managedStatus.json.serverId, "managed daemon should expose a server id");
   assertNoForbiddenPathsOrPorts(managedStatus.json, forbiddenManagedReferences);
 
-  logStep("Enabling managed TCP exposure on an explicit non-default port");
-  const tcpEnabled = await runBinary(
-    packagedBinary,
-    [
-      "--managed-headless",
-      "update-tcp",
-      "--enabled",
-      "true",
-      "--host",
-      "127.0.0.1",
-      "--port",
-      "7771",
-    ],
-    managedEnv
-  );
-  assert.equal(tcpEnabled.json.tcpEnabled, true);
-  assert.equal(tcpEnabled.json.transportType, "tcp");
-  assert.equal(tcpEnabled.json.transportPath, "127.0.0.1:7771");
-  assert.notEqual(tcpEnabled.json.transportPath, "127.0.0.1:6767");
-  assertNoForbiddenPathsOrPorts(tcpEnabled.json, [fakePaseoHome]);
-
-  logStep("Disabling managed TCP exposure and returning to private transport");
-  const tcpDisabled = await runBinary(
-    packagedBinary,
-    [
-      "--managed-headless",
-      "update-tcp",
-      "--enabled",
-      "false",
-      "--host",
-      "127.0.0.1",
-      "--port",
-      "7771",
-    ],
-    managedEnv
-  );
-  assert.equal(tcpDisabled.json.tcpEnabled, false);
-  assert.notEqual(tcpDisabled.json.transportType, "tcp");
-  assertNoForbiddenPathsOrPorts(tcpDisabled.json, forbiddenManagedReferences);
-
   logStep("Capturing diagnostics and verifying the fake ~/.paseo stayed untouched");
   const fakePaseoSnapshotAfter = await snapshotTree(fakePaseoHome);
   assert.deepEqual(fakePaseoSnapshotAfter, fakePaseoSnapshotBefore);
@@ -811,7 +759,6 @@ try {
         runtimeStatus: runtimeStatus.json,
         managedBootstrap: managedBootstrap.json,
         managedStart,
-        stateAfterRuntimeStatus,
         persistedManagedStatus: persistedManagedStatus.json,
         managedRestartless: managedRestartless.json,
         cliInstall: cliInstall.json,
@@ -823,8 +770,6 @@ try {
         externalPid,
         externalPidAfter,
         managedStatus: managedStatus.json,
-        tcpEnabled: tcpEnabled.json,
-        tcpDisabled: tcpDisabled.json,
       },
       null,
       2

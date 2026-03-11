@@ -1,6 +1,7 @@
 import type { Command } from 'commander'
 import { spawnSync } from 'node:child_process'
 import { createRequire } from 'node:module'
+import { getOrCreateServerId } from '@getpaseo/server'
 import { tryConnectToDaemon } from '../../utils/client.js'
 import type { CommandOptions, ListResult, OutputSchema } from '../../output/index.js'
 import { resolveLocalDaemonState, resolveTcpHostFromListen } from './local-daemon.js'
@@ -12,9 +13,11 @@ import {
 } from './runtime-toolchain.js'
 
 interface DaemonStatus {
+  serverId: string | null
   status: 'running' | 'stopped' | 'unresponsive'
   home: string
   listen: string
+  hostname: string | null
   pid: number | null
   startedAt: string | null
   owner: string | null
@@ -196,9 +199,11 @@ function createStatusSchema(status: DaemonStatus): OutputSchema<StatusRow> {
 
 function toStatusRows(status: DaemonStatus): StatusRow[] {
   const rows: StatusRow[] = [
+    { key: 'Server ID', value: status.serverId ?? '-' },
     { key: 'Status', value: status.status },
     { key: 'Home', value: status.home },
     { key: 'Listen', value: status.listen },
+    { key: 'Hostname', value: status.hostname ?? '-' },
     { key: 'PID', value: status.pid === null ? '-' : String(status.pid) },
     { key: 'Started', value: status.startedAt ?? '-' },
     { key: 'Owner', value: status.owner ?? '-' },
@@ -323,10 +328,19 @@ export async function runStatusCommand(
     updateStatus = 'unknown (npm unresolved)'
   }
 
+  let serverId: string | null = null
+  try {
+    serverId = getOrCreateServerId(state.home)
+  } catch (error) {
+    note = appendNote(note, `serverId unavailable: ${shortenMessage(normalizeError(error))}`)
+  }
+
   const daemonStatus: DaemonStatus = {
+    serverId,
     status,
     home: state.home,
     listen: state.listen,
+    hostname: state.pidInfo?.hostname ?? null,
     pid: state.pidInfo?.pid ?? null,
     startedAt: state.pidInfo?.startedAt ?? null,
     owner,

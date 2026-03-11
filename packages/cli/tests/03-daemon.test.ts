@@ -85,8 +85,10 @@ try {
       await $`PASEO_HOME=${paseoHome} npx paseo daemon status --json`.nothrow()
     assert.strictEqual(result.exitCode, 0, '--json status should succeed')
     const status = JSON.parse(result.stdout)
+    assert.strictEqual(typeof status.serverId, 'string', 'json status should include serverId')
     assert.strictEqual(status.status, 'stopped', 'json status should report stopped')
     assert.strictEqual(status.home, paseoHome, 'json status should reflect the isolated home')
+    assert.strictEqual(status.hostname, null, 'json status should include hostname when unavailable')
     console.log('✓ daemon status --json outputs valid JSON\n')
   }
 
