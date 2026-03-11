@@ -229,8 +229,10 @@ fn shell_command(script: &str) -> Command {
     }
     #[cfg(windows)]
     {
+        use std::os::windows::process::CommandExt;
         let mut cmd = Command::new("cmd.exe");
         cmd.arg("/C").arg(script);
+        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
         cmd
     }
 }

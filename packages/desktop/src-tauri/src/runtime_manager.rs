@@ -495,8 +495,10 @@ fn default_managed_home() -> PathBuf {
 }
 
 #[cfg(not(target_os = "macos"))]
-fn default_managed_home(root: &Path) -> PathBuf {
-    root.join(DEFAULT_MANAGED_HOME_DIRNAME)
+fn default_managed_home() -> PathBuf {
+    dirs::home_dir()
+        .unwrap_or_else(|| PathBuf::from("/tmp"))
+        .join(DEFAULT_MANAGED_HOME_BASENAME)
 }
 
 fn default_transport_path(managed_home: &Path, diagnostics_root: &Path) -> PathBuf {
@@ -541,7 +543,7 @@ fn resolve_paths(app: &AppHandle) -> Result<ManagedPaths, String> {
         }
         #[cfg(not(target_os = "macos"))]
         {
-            default_managed_home(&root)
+            default_managed_home()
         }
     });
     let transport_path = resolve_override_path("PASEO_DESKTOP_MANAGED_SOCKET_PATH")
@@ -637,10 +639,12 @@ fn is_pid_running(pid: i32) -> bool {
     }
     #[cfg(windows)]
     {
+        use std::os::windows::process::CommandExt;
         let output = Command::new("tasklist")
             .args(["/FI", &format!("PID eq {pid}"), "/NH", "/FO", "CSV"])
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
+            .creation_flags(0x08000000)
             .output();
         return output
             .map(|out| {
@@ -764,6 +768,11 @@ fn cli_command(
     let mut command = Command::new(node);
     command.arg(cli);
     command.args(args);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        command.creation_flags(0x08000000); // CREATE_NO_WINDOW
+    }
     for (key, value) in cli_env(paths) {
         command.env(key, value);
     }
