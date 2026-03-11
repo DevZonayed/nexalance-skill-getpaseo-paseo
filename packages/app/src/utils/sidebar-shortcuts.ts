@@ -14,6 +14,15 @@ export interface SidebarShortcutModel {
   shortcutIndexByWorkspaceKey: Map<string, number>
 }
 
+function createShortcutTarget(
+  workspace: SidebarWorkspaceEntry,
+): SidebarShortcutWorkspaceTarget {
+  return {
+    serverId: workspace.serverId,
+    workspaceId: workspace.workspaceId,
+  }
+}
+
 export function buildSidebarShortcutModel(input: {
   projects: SidebarProjectEntry[]
   collapsedProjectKeys: ReadonlySet<string>
@@ -30,19 +39,15 @@ export function buildSidebarShortcutModel(input: {
     }
 
     for (const workspace of project.workspaces) {
-      visibleTargets.push({
-        serverId: workspace.serverId,
-        workspaceId: workspace.workspaceId,
-      })
-      const shortcutNumber =
-        shortcutTargets.length < maxShortcuts ? shortcutTargets.length + 1 : null
-      if (shortcutNumber !== null) {
-        shortcutTargets.push({
-          serverId: workspace.serverId,
-          workspaceId: workspace.workspaceId,
-        })
-        shortcutIndexByWorkspaceKey.set(workspace.workspaceKey, shortcutNumber)
+      visibleTargets.push(createShortcutTarget(workspace))
+
+      if (shortcutTargets.length >= maxShortcuts) {
+        continue
       }
+
+      const shortcutNumber = shortcutTargets.length + 1
+      shortcutTargets.push(createShortcutTarget(workspace))
+      shortcutIndexByWorkspaceKey.set(workspace.workspaceKey, shortcutNumber)
     }
   }
 
