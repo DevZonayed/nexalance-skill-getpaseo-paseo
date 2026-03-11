@@ -2629,7 +2629,7 @@ dependencies = [
 
 [[package]]
 name = "paseo"
-version = "0.1.24"
+version = "0.1.25"
 dependencies = [
  "base64 0.22.1",
  "dirs",

@@ -40,6 +40,7 @@ import {
 } from "./codex/tool-call-mapper.js";
 import {
   applyProviderEnv,
+  findExecutable,
   isProviderCommandAvailable,
   resolveProviderCommandPrefix,
   type ProviderRuntimeSettings,
@@ -150,13 +151,9 @@ function mergeCodexConfiguredDefaults(
 }
 
 function resolveCodexBinary(): string {
-  try {
-    const codexPath = execSync("which codex", { encoding: "utf8" }).trim();
-    if (codexPath) {
-      return codexPath;
-    }
-  } catch {
-    // Fall through to error
+  const codexPath = findExecutable("codex");
+  if (codexPath) {
+    return codexPath;
   }
   throw new Error(
     "Codex CLI not found. Please install codex globally: npm install -g @openai/codex"

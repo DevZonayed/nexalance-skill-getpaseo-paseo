@@ -563,13 +563,20 @@ fn bundled_runtime_root(app: &AppHandle) -> Result<PathBuf, String> {
     if let Ok(resource_dir) = app.path().resource_dir() {
         let candidate = resource_dir.join("managed-runtime");
         if candidate.exists() {
+            log::info!("[runtime] found bundled runtime at {}", candidate.display());
             return Ok(candidate);
         }
+        log::info!(
+            "[runtime] no bundled runtime at {}, checking dev path",
+            candidate.display()
+        );
     }
     let dev = dev_resource_root().join("managed-runtime");
     if dev.exists() {
+        log::info!("[runtime] using dev runtime at {}", dev.display());
         return Ok(dev);
     }
+    log::error!("[runtime] no managed runtime found");
     Err("Managed runtime resources are not bundled with this desktop build.".to_string())
 }
 
@@ -715,17 +722,25 @@ fn cli_command(
     let node = runtime_root.join(&manifest.node_relative_path);
     let cli = runtime_root.join(&manifest.cli_entrypoint_relative_path);
     if !node.exists() {
+        log::error!("[cli] bundled Node missing at {}", node.display());
         return Err(format!(
             "Bundled Node runtime is missing at {}",
             node.display()
         ));
     }
     if !cli.exists() {
+        log::error!("[cli] bundled CLI missing at {}", cli.display());
         return Err(format!(
             "Bundled CLI entrypoint is missing at {}",
             cli.display()
         ));
     }
+    log::info!(
+        "[cli] node={} cli={} args={:?}",
+        node.display(),
+        cli.display(),
+        args
+    );
     let mut command = Command::new(node);
     command.arg(cli);
     command.args(args);
@@ -893,10 +908,22 @@ fn write_state_file(path: &Path, value: &ManagedStateFile) -> Result<(), String>
 }
 
 fn ensure_runtime_ready_internal(app: &AppHandle) -> Result<ManagedRuntimeStatus, String> {
+    log::info!("[runtime] ensuring runtime is ready");
     let (bundled_root, pointer) = load_bundled_runtime_pointer(app)?;
     let runtime_root = bundled_root.join(&pointer.relative_root);
     let paths = resolve_paths(app)?;
+    log::info!(
+        "[runtime] runtime_root={} managed_home={} transport={}",
+        runtime_root.display(),
+        paths.managed_home.display(),
+        paths.transport_path.display()
+    );
     let manifest = load_runtime_manifest(&runtime_root)?;
+    log::info!(
+        "[runtime] manifest: id={} version={}",
+        manifest.runtime_id,
+        manifest.runtime_version
+    );
     if let Some(parent) = paths.transport_path.parent() {
         fs::create_dir_all(parent)
             .map_err(|error| format!("Failed to create {}: {error}", parent.display()))?;
@@ -905,6 +932,11 @@ fn ensure_runtime_ready_internal(app: &AppHandle) -> Result<ManagedRuntimeStatus
         .map_err(|error| format!("Failed to create {}: {error}", paths.managed_home.display()))?;
     let existing_state = read_state_file(&paths.state_file_path);
     let target = managed_transport_target(&paths, existing_state.as_ref())?;
+    log::info!(
+        "[runtime] transport target: type={} path={}",
+        target.transport_type,
+        target.transport_path
+    );
     let state = ManagedStateFile {
         runtime_id: manifest.runtime_id.clone(),
         runtime_root: runtime_root.to_string_lossy().into_owned(),
@@ -940,20 +972,32 @@ fn run_cli_json_command(
     args: &[&str],
     paths: &ManagedPaths,
 ) -> Result<serde_json::Value, String> {
+    log::info!("[cli] running: {:?}", args);
     let output = cli_command(runtime_root, manifest, args, paths)?
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .output()
-        .map_err(|error| format!("Failed to run bundled CLI: {error}"))?;
+        .map_err(|error| {
+            log::error!("[cli] failed to spawn: {error}");
+            format!("Failed to run bundled CLI: {error}")
+        })?;
     if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        log::error!(
+            "[cli] exit={} stderr={}",
+            output.status.code().unwrap_or(-1),
+            stderr.trim()
+        );
         return Err(format!(
             "Bundled CLI failed (exit {}): {}",
             output.status.code().unwrap_or(-1),
-            String::from_utf8_lossy(&output.stderr).trim()
+            stderr.trim()
         ));
     }
     let stdout = String::from_utf8_lossy(&output.stdout);
+    log::info!("[cli] success, parsing JSON output");
     serde_json::from_str(stdout.trim()).map_err(|error| {
+        log::error!("[cli] JSON parse error: {error}; stdout={}", stdout.trim());
         format!(
             "Failed to parse bundled CLI JSON output: {error}; stdout={}",
             stdout.trim()
@@ -1101,6 +1145,7 @@ fn remove_cli_shim_via_macos_prompt(shim_path: &Path) -> Result<(), String> {
 }
 
 fn install_cli_shim_internal(app: &AppHandle) -> Result<CliShimResult, String> {
+    log::info!("[cli-shim] installing CLI shim");
     let status = ensure_runtime_ready_internal(app)?;
     let paths = resolve_paths(app)?;
     let runtime_root = PathBuf::from(&status.runtime_root);
@@ -1116,6 +1161,7 @@ fn install_cli_shim_internal(app: &AppHandle) -> Result<CliShimResult, String> {
     #[cfg(windows)]
     let install_result: Result<(), String> = Err("AUTOMATIC_INSTALL_UNAVAILABLE".to_string());
 
+    log::info!("[cli-shim] target path: {}", shim_path.display());
     match install_result {
         Ok(()) => {
             let mut state = read_state_file(&paths.state_file_path).unwrap_or(ManagedStateFile {
@@ -1209,10 +1255,15 @@ fn uninstall_cli_shim_internal(app: &AppHandle) -> Result<CliShimResult, String>
 }
 
 fn start_managed_daemon_internal(app: &AppHandle) -> Result<ManagedDaemonStatus, String> {
+    log::info!("[daemon] starting managed daemon");
     let status = ensure_runtime_ready_internal(app)?;
     let paths = resolve_paths(app)?;
     let existing_status = managed_daemon_status_internal(app)?;
     if existing_status.daemon_running {
+        log::info!(
+            "[daemon] already running (pid={:?})",
+            existing_status.daemon_pid
+        );
         return Ok(existing_status);
     }
     if let Some(parent) = paths.transport_path.parent() {
@@ -1223,6 +1274,12 @@ fn start_managed_daemon_internal(app: &AppHandle) -> Result<ManagedDaemonStatus,
     let manifest = load_runtime_manifest(&runtime_root)?;
     let state = read_state_file(&paths.state_file_path);
     let target = managed_transport_target(&paths, state.as_ref())?;
+    log::info!(
+        "[daemon] spawning: home={} listen={} (type={})",
+        paths.managed_home.display(),
+        target.transport_path,
+        target.transport_type
+    );
     let output = cli_command(
         &runtime_root,
         &manifest,
@@ -1238,25 +1295,42 @@ fn start_managed_daemon_internal(app: &AppHandle) -> Result<ManagedDaemonStatus,
     .stdout(Stdio::piped())
     .stderr(Stdio::piped())
     .output()
-    .map_err(|error| format!("Failed to launch managed daemon: {error}"))?;
+    .map_err(|error| {
+        log::error!("[daemon] failed to spawn: {error}");
+        format!("Failed to launch managed daemon: {error}")
+    })?;
     if !output.status.success() {
+        let stderr = to_stdio_message(Some(&String::from_utf8_lossy(&output.stderr)));
+        log::error!(
+            "[daemon] start failed (exit {}): {}",
+            output.status.code().unwrap_or(-1),
+            stderr
+        );
         return Err(format!(
             "Managed daemon start failed (exit {}): {}",
             output.status.code().unwrap_or(-1),
-            to_stdio_message(Some(&String::from_utf8_lossy(&output.stderr)))
+            stderr
         ));
     }
-    for _ in 0..30 {
+    log::info!("[daemon] start command succeeded, waiting for daemon to be ready");
+    for attempt in 0..30 {
         let daemon_status = managed_daemon_status_internal(app)?;
         if daemon_status.daemon_running {
+            log::info!(
+                "[daemon] ready after {} attempts (pid={:?})",
+                attempt + 1,
+                daemon_status.daemon_pid
+            );
             return Ok(daemon_status);
         }
         std::thread::sleep(std::time::Duration::from_millis(200));
     }
+    log::warn!("[daemon] timed out waiting for daemon to become ready");
     managed_daemon_status_internal(app)
 }
 
 fn stop_managed_daemon_internal(app: &AppHandle) -> Result<ManagedDaemonStatus, String> {
+    log::info!("[daemon] stopping managed daemon");
     let status = ensure_runtime_ready_internal(app)?;
     let paths = resolve_paths(app)?;
     let runtime_root = PathBuf::from(&status.runtime_root);
@@ -1276,24 +1350,40 @@ fn stop_managed_daemon_internal(app: &AppHandle) -> Result<ManagedDaemonStatus, 
     .stdout(Stdio::piped())
     .stderr(Stdio::piped())
     .output()
-    .map_err(|error| format!("Failed to stop managed daemon: {error}"))?;
+    .map_err(|error| {
+        log::error!("[daemon] failed to spawn stop command: {error}");
+        format!("Failed to stop managed daemon: {error}")
+    })?;
     if !output.status.success() {
+        let stderr = to_stdio_message(Some(&String::from_utf8_lossy(&output.stderr)));
+        log::error!(
+            "[daemon] stop failed (exit {}): {}",
+            output.status.code().unwrap_or(-1),
+            stderr
+        );
         return Err(format!(
             "Managed daemon stop failed (exit {}): {}",
             output.status.code().unwrap_or(-1),
-            to_stdio_message(Some(&String::from_utf8_lossy(&output.stderr)))
+            stderr
         ));
     }
+    log::info!("[daemon] stop command succeeded");
     managed_daemon_status_internal(app)
 }
 
 fn restart_managed_daemon_internal(app: &AppHandle) -> Result<ManagedDaemonStatus, String> {
+    log::info!("[daemon] restarting managed daemon");
     let status = ensure_runtime_ready_internal(app)?;
     let paths = resolve_paths(app)?;
     let runtime_root = PathBuf::from(&status.runtime_root);
     let manifest = load_runtime_manifest(&runtime_root)?;
     let state = read_state_file(&paths.state_file_path);
     let target = managed_transport_target(&paths, state.as_ref())?;
+    log::info!(
+        "[daemon] restart: listen={} (type={})",
+        target.transport_path,
+        target.transport_type
+    );
     let output = cli_command(
         &runtime_root,
         &manifest,
@@ -1311,14 +1401,24 @@ fn restart_managed_daemon_internal(app: &AppHandle) -> Result<ManagedDaemonStatu
     .stdout(Stdio::piped())
     .stderr(Stdio::piped())
     .output()
-    .map_err(|error| format!("Failed to restart managed daemon: {error}"))?;
+    .map_err(|error| {
+        log::error!("[daemon] failed to spawn restart command: {error}");
+        format!("Failed to restart managed daemon: {error}")
+    })?;
     if !output.status.success() {
+        let stderr = to_stdio_message(Some(&String::from_utf8_lossy(&output.stderr)));
+        log::error!(
+            "[daemon] restart failed (exit {}): {}",
+            output.status.code().unwrap_or(-1),
+            stderr
+        );
         return Err(format!(
             "Managed daemon restart failed (exit {}): {}",
             output.status.code().unwrap_or(-1),
-            to_stdio_message(Some(&String::from_utf8_lossy(&output.stderr)))
+            stderr
         ));
     }
+    log::info!("[daemon] restart command succeeded");
     managed_daemon_status_internal(app)
 }
 
@@ -1326,6 +1426,12 @@ fn update_managed_tcp_settings_internal(
     app: &AppHandle,
     settings: ManagedTcpSettings,
 ) -> Result<ManagedDaemonStatus, String> {
+    log::info!(
+        "[tcp] updating settings: enabled={} host={} port={}",
+        settings.enabled,
+        settings.host,
+        settings.port
+    );
     if settings.enabled {
         parse_tcp_listen(&format!("{}:{}", settings.host.trim(), settings.port))?;
     }
@@ -1596,6 +1702,12 @@ pub async fn open_local_daemon_transport(
     transport_path: String,
 ) -> Result<String, String> {
     let session_id = transport_state.alloc_session_id();
+    log::info!(
+        "[transport] opening session {} type={} path={}",
+        session_id,
+        transport_type,
+        transport_path
+    );
     let _ = app;
     match transport_type.as_str() {
         "pipe" => {

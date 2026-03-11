@@ -1,5 +1,6 @@
-import { execFileSync } from "node:child_process";
+import { execFileSync, execSync } from "node:child_process";
 import { existsSync } from "node:fs";
+import { platform } from "node:os";
 import { z } from "zod";
 
 import type { AgentProvider } from "./agent-sdk-types.js";
@@ -88,22 +89,61 @@ export function applyProviderEnv(
   };
 }
 
-export function isCommandAvailable(command: string): boolean {
-  const normalized = command.trim();
-  if (!normalized) {
-    return false;
+/**
+ * Resolve an executable name to its absolute path the way the user's shell would.
+ *
+ * On Unix we first try `$SHELL -lic "which <name>"` so that rc-file PATH
+ * additions (asdf, nvm, homebrew, nix, etc.) are visible — exactly as if the
+ * user opened a terminal and typed the command.  If that fails (e.g. the login
+ * shell itself errors) we fall back to a plain `which`.
+ *
+ * On Windows the system PATH is always available, so `where.exe` is sufficient.
+ */
+export function findExecutable(name: string): string | null {
+  const trimmed = name.trim();
+  if (!trimmed) {
+    return null;
   }
 
-  if (normalized.includes("/") || normalized.includes("\\")) {
-    return existsSync(normalized);
+  if (trimmed.includes("/") || trimmed.includes("\\")) {
+    return existsSync(trimmed) ? trimmed : null;
+  }
+
+  if (platform() === "win32") {
+    try {
+      const out = execSync(`where.exe ${trimmed}`, { encoding: "utf8" }).trim();
+      const firstLine = out.split(/\r?\n/)[0]?.trim();
+      return firstLine || null;
+    } catch {
+      return null;
+    }
+  }
+
+  // Unix: try the user's login shell so rc-file PATH entries are visible.
+  const shell = process.env["SHELL"];
+  if (shell) {
+    try {
+      const out = execSync(`${shell} -lic "which ${trimmed}"`, {
+        encoding: "utf8",
+        timeout: 5000,
+      }).trim();
+      if (out) {
+        return out;
+      }
+    } catch {
+      // Login shell failed (broken rc, etc.) — fall through to plain which.
+    }
   }
 
   try {
-    const output = execFileSync("which", [normalized], { encoding: "utf8" }).trim();
-    return output.length > 0;
+    return execFileSync("which", [trimmed], { encoding: "utf8" }).trim() || null;
   } catch {
-    return false;
+    return null;
   }
+}
+
+export function isCommandAvailable(command: string): boolean {
+  return findExecutable(command) !== null;
 }
 
 export function isProviderCommandAvailable(

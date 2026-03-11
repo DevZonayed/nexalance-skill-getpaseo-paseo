@@ -69,6 +69,7 @@ import type {
 } from "../agent-sdk-types.js";
 import {
   applyProviderEnv,
+  findExecutable,
   isProviderCommandAvailable,
   type ProviderRuntimeSettings,
 } from "../provider-launch-config.js";
@@ -363,16 +364,8 @@ type ClaudeAgentSessionOptions = {
   logger: Logger;
 };
 
-function whichClaude(): string | null {
-  try {
-    return execSync("which claude", { encoding: "utf8" }).trim() || null;
-  } catch {
-    return null;
-  }
-}
-
 function resolveClaudeBinary(): string {
-  const claudePath = whichClaude();
+  const claudePath = findExecutable("claude");
   if (claudePath) {
     return claudePath;
   }
@@ -1414,7 +1407,7 @@ export class ClaudeAgentClient implements AgentClient {
     this.defaults = options.defaults;
     this.logger = options.logger.child({ module: "agent", provider: "claude" });
     this.runtimeSettings = options.runtimeSettings;
-    this.claudePath = whichClaude();
+    this.claudePath = findExecutable("claude");
     if (this.claudePath) {
       try {
         const version = execSync(`${this.claudePath} --version`, { encoding: "utf8" }).trim();

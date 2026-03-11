@@ -158,6 +158,7 @@ fn maybe_run_managed_headless_command(app: &AppHandle) -> Result<bool, String> {
     let Some(command) = parse_managed_headless_command()? else {
         return Ok(false);
     };
+    log::info!("[headless] running managed headless command: {:?}", command);
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.hide();
     }
@@ -625,17 +626,36 @@ pub fn run() {
             garbage_collect_attachment_files
         ])
         .setup(|app| {
+            log::info!(
+                "[app] Paseo Desktop v{} starting",
+                app.package_info().version
+            );
+
             if maybe_run_managed_headless_command(app.handle())? {
                 return Ok(());
             }
 
-            if cfg!(debug_assertions) {
-                app.handle().plugin(
-                    tauri_plugin_log::Builder::default()
-                        .level(log::LevelFilter::Info)
-                        .build(),
-                )?;
-            }
+            app.handle().plugin(
+                tauri_plugin_log::Builder::default()
+                    .level(log::LevelFilter::Info)
+                    .level_for("tao", log::LevelFilter::Warn)
+                    .level_for("wry", log::LevelFilter::Warn)
+                    .max_file_size(5_000_000)
+                    .rotation_strategy(tauri_plugin_log::RotationStrategy::KeepAll)
+                    .clear_targets()
+                    .target(tauri_plugin_log::Target::new(
+                        tauri_plugin_log::TargetKind::LogDir {
+                            file_name: Some("app.log".into()),
+                        },
+                    ))
+                    .target(tauri_plugin_log::Target::new(
+                        tauri_plugin_log::TargetKind::Stdout,
+                    ))
+                    .target(tauri_plugin_log::Target::new(
+                        tauri_plugin_log::TargetKind::Webview,
+                    ))
+                    .build(),
+            )?;
 
             // Start from Tauri's default menu so macOS standard shortcuts (Cmd+A/C/V/etc)
             // keep working. Then inject our zoom controls into a View menu.

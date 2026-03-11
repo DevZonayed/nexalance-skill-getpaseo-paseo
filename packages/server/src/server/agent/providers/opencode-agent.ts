@@ -1,4 +1,4 @@
-import { execSync, spawn, type ChildProcess } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import { createOpencodeClient, type OpencodeClient } from "@opencode-ai/sdk/v2/client";
 import net from "node:net";
 import type { Logger } from "pino";
@@ -29,6 +29,7 @@ import type {
 } from "../agent-sdk-types.js";
 import {
   applyProviderEnv,
+  findExecutable,
   isProviderCommandAvailable,
   resolveProviderCommandPrefix,
   type ProviderRuntimeSettings,
@@ -150,13 +151,9 @@ const OpencodeToolPartToTimelineItemSchema = OpencodeToolPartTimelineEnvelopeSch
 );
 
 function resolveOpenCodeBinary(): string {
-  try {
-    const opencodePath = execSync("which opencode", { encoding: "utf8" }).trim();
-    if (opencodePath) {
-      return opencodePath;
-    }
-  } catch {
-    // fall through
+  const opencodePath = findExecutable("opencode");
+  if (opencodePath) {
+    return opencodePath;
   }
   throw new Error(
     "OpenCode CLI not found. Please install opencode globally so Paseo can launch the provider."
