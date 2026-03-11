@@ -560,7 +560,8 @@ fn dev_resource_root() -> PathBuf {
 }
 
 fn bundled_runtime_root(app: &AppHandle) -> Result<PathBuf, String> {
-    if let Ok(resource_dir) = app.path().resource_dir() {
+    if let Ok(raw_resource_dir) = app.path().resource_dir() {
+        let resource_dir = dunce::simplified(&raw_resource_dir).to_path_buf();
         // Tauri's bundle.resources preserves the source directory structure, so
         // "resources/**/*" in tauri.conf.json places files at
         // $RESOURCE/resources/managed-runtime/. Try the nested path first (installed
