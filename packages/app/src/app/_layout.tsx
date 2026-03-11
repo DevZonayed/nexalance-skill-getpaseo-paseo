@@ -148,9 +148,14 @@ function QueryProvider({ children }: { children: ReactNode }) {
 interface AppContainerProps {
   children: ReactNode;
   selectedAgentId?: string;
+  chromeEnabled?: boolean;
 }
 
-function AppContainer({ children, selectedAgentId }: AppContainerProps) {
+function AppContainer({
+  children,
+  selectedAgentId,
+  chromeEnabled: chromeEnabledOverride,
+}: AppContainerProps) {
   const { theme } = useUnistyles();
   const { daemons } = useDaemonRegistry();
   const mobileView = usePanelStore((state) => state.mobileView);
@@ -162,7 +167,7 @@ function AppContainer({ children, selectedAgentId }: AppContainerProps) {
 
   const isMobile =
     UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
-  const chromeEnabled = daemons.length > 0;
+  const chromeEnabled = chromeEnabledOverride ?? daemons.length > 0;
   const isOpen = chromeEnabled
     ? isMobile
       ? mobileView === "agent-list"
@@ -375,6 +380,7 @@ function AppWithSidebar({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const params = useGlobalSearchParams<{ open?: string | string[] }>();
   useFaviconStatus();
+  const shouldShowAppChrome = pathname !== "/" && pathname !== "";
 
   // Parse selectedAgentKey directly from pathname
   // useLocalSearchParams doesn't update when navigating between same-pattern routes
@@ -393,7 +399,12 @@ function AppWithSidebar({ children }: { children: ReactNode }) {
   }, [params.open, pathname]);
 
   return (
-    <AppContainer selectedAgentId={selectedAgentKey}>{children}</AppContainer>
+    <AppContainer
+      selectedAgentId={shouldShowAppChrome ? selectedAgentKey : undefined}
+      chromeEnabled={shouldShowAppChrome}
+    >
+      {children}
+    </AppContainer>
   );
 }
 
