@@ -23,30 +23,13 @@ export type ManagedDaemonLogs = {
   contents: string
 }
 
-export type CliShimStatus = {
-  path: string | null
-}
-
 export type ManagedPairingOffer = {
   relayEnabled: boolean
   url: string | null
   qr: string | null
 }
 
-export type CliShimResult = {
-  status:
-    | 'installed'
-    | 'removed'
-    | 'elevationDenied'
-    | 'automaticInstallUnavailable'
-    | 'manualInstallRequired'
-  installed: boolean
-  path: string | null
-  message: string
-  manualInstructions: CliManualInstructions | null
-}
-
-export type CliManualInstructions = {
+export type CliSymlinkInstructions = {
   title: string
   detail: string
   commands: string
@@ -122,15 +105,6 @@ function parseManagedDaemonLogs(raw: unknown): ManagedDaemonLogs {
   }
 }
 
-function parseCliShimStatus(raw: unknown): CliShimStatus {
-  if (!isRecord(raw)) {
-    throw new Error('Unexpected CLI shim status response.')
-  }
-  return {
-    path: toStringOrNull(raw.path),
-  }
-}
-
 function parseManagedPairingOffer(raw: unknown): ManagedPairingOffer {
   if (!isRecord(raw)) {
     throw new Error('Unexpected managed daemon pairing response.')
@@ -142,7 +116,7 @@ function parseManagedPairingOffer(raw: unknown): ManagedPairingOffer {
   }
 }
 
-function parseCliManualInstructions(raw: unknown): CliManualInstructions | null {
+function parseCliSymlinkInstructionsInternal(raw: unknown): CliSymlinkInstructions | null {
   if (!isRecord(raw)) {
     return null
   }
@@ -150,21 +124,6 @@ function parseCliManualInstructions(raw: unknown): CliManualInstructions | null 
     title: toStringOrNull(raw.title) ?? '',
     detail: toStringOrNull(raw.detail) ?? '',
     commands: toStringOrNull(raw.commands) ?? '',
-  }
-}
-
-export function parseCliShimResult(raw: unknown): CliShimResult {
-  if (!isRecord(raw)) {
-    throw new Error('Unexpected CLI shim response.')
-  }
-  return {
-    status:
-      (toStringOrNull(raw.status) as CliShimResult['status'] | null) ??
-      (raw.installed === true ? 'installed' : 'removed'),
-    installed: raw.installed === true,
-    path: toStringOrNull(raw.path),
-    message: toStringOrNull(raw.message) ?? '',
-    manualInstructions: parseCliManualInstructions(raw.manualInstructions),
   }
 }
 
@@ -196,20 +155,20 @@ export async function getManagedDaemonLogs(): Promise<ManagedDaemonLogs> {
   return parseManagedDaemonLogs(await invokeDesktopCommand('managed_daemon_logs'))
 }
 
-export async function getCliShimStatus(): Promise<CliShimStatus> {
-  return parseCliShimStatus(await invokeDesktopCommand('cli_shim_status'))
-}
-
 export async function getManagedDaemonPairing(): Promise<ManagedPairingOffer> {
   return parseManagedPairingOffer(await invokeDesktopCommand('managed_daemon_pairing'))
 }
 
-export async function installManagedCliShim(): Promise<CliShimResult> {
-  return parseCliShimResult(await invokeDesktopCommand('install_cli_shim'))
+export function parseCliSymlinkInstructions(raw: unknown): CliSymlinkInstructions {
+  const instructions = parseCliSymlinkInstructionsInternal(raw)
+  if (!instructions) {
+    throw new Error('Unexpected CLI symlink instructions response.')
+  }
+  return instructions
 }
 
-export async function uninstallManagedCliShim(): Promise<CliShimResult> {
-  return parseCliShimResult(await invokeDesktopCommand('uninstall_cli_shim'))
+export async function getCliSymlinkInstructions(): Promise<CliSymlinkInstructions> {
+  return parseCliSymlinkInstructions(await invokeDesktopCommand('cli_symlink_instructions'))
 }
 
 export async function updateManagedDaemonTcpSettings(

@@ -228,6 +228,50 @@ async function runBundledRuntimeCli(runtimeRoot, managedHome, args, env) {
   return { stdout, stderr };
 }
 
+async function resolvePackagedRuntimeStatus(binaryPath) {
+  const binaryDir = path.dirname(binaryPath);
+  const resourceDirs = [
+    path.join(binaryDir, "resources"),
+    binaryDir,
+    path.join(binaryDir, "..", "Resources"),
+    path.join(binaryDir, "..", "resources"),
+  ];
+
+  let bundledRoot = null;
+  for (const resourceDir of resourceDirs) {
+    for (const candidate of [
+      path.join(resourceDir, "resources", "managed-runtime"),
+      path.join(resourceDir, "managed-runtime"),
+    ]) {
+      if (await pathExists(candidate)) {
+        bundledRoot = candidate;
+        break;
+      }
+    }
+    if (bundledRoot) {
+      break;
+    }
+  }
+
+  if (!bundledRoot) {
+    throw new Error("Managed runtime resources are not bundled with this desktop build.");
+  }
+
+  const pointer = JSON.parse(
+    await fs.readFile(path.join(bundledRoot, "current-runtime.json"), "utf8")
+  );
+  const runtimeRoot = path.join(bundledRoot, pointer.relativeRoot);
+  const manifest = JSON.parse(
+    await fs.readFile(path.join(runtimeRoot, "runtime-manifest.json"), "utf8")
+  );
+
+  return {
+    runtimeId: manifest.runtimeId,
+    runtimeVersion: manifest.runtimeVersion,
+    runtimeRoot,
+  };
+}
+
 async function readDaemonStatus(home, env) {
   const result = await runWorkspaceCli(["daemon", "status", "--home", home, "--json"], env);
   return result.json ?? {};
@@ -464,10 +508,6 @@ function logStep(label) {
   console.log(`\n[managed-smoke] ${label}`);
 }
 
-function shouldAttemptCliShimInstall(env) {
-  return !(process.platform === "darwin" && env.CI === "true");
-}
-
 const packagedBinary = resolvePackagedBinary();
 await ensurePackagedArtifact(packagedBinary);
 if (!(await pathExists(packagedBinary))) {
@@ -527,6 +567,8 @@ const managedEnv = {
 let externalPid = null;
 let startedTemporaryExternalDaemon = false;
 let relayProcess = null;
+let runtimeStatus = null;
+let managedStart = null;
 const forbiddenManagedReferences = ["127.0.0.1:6767", fakePaseoHome, managedRuntimeDir];
 const npmExecPath = process.env.npm_execpath;
 if (!npmExecPath) {
@@ -584,35 +626,42 @@ try {
   externalPid = externalStatus.pid;
   assert.ok(externalPid, "external daemon pid should be present");
 
-  logStep("Bootstrapping managed runtime from packaged desktop binary");
-  const runtimeStatus = await runBinary(packagedBinary, ["--managed-headless", "runtime-status"], managedEnv);
-  assert.equal(runtimeStatus.json.runtimeId, currentRuntimeId);
-  assert.equal(runtimeStatus.json.runtimeVersion, currentRuntimeVersion);
+  logStep("Resolving bundled runtime from packaged desktop artifact");
+  runtimeStatus = await resolvePackagedRuntimeStatus(packagedBinary);
+  assert.equal(runtimeStatus.runtimeId, currentRuntimeId);
+  assert.equal(runtimeStatus.runtimeVersion, currentRuntimeVersion);
   assert.match(
-    runtimeStatus.json.runtimeRoot,
+    runtimeStatus.runtimeRoot,
     new RegExp(escapeForRegExp(currentRuntimeId)),
     "runtime status should point into the bundled runtime selected by current-runtime.json"
   );
   assert.equal(
-    runtimeStatus.json.runtimeRoot.startsWith(testRoot),
+    runtimeStatus.runtimeRoot.startsWith(testRoot),
     false,
     "runtime status should not resolve into managed app data"
   );
-  assertNoForbiddenPathsOrPorts(runtimeStatus.json, forbiddenManagedReferences);
+  assertNoForbiddenPathsOrPorts(runtimeStatus, forbiddenManagedReferences);
   assert.equal(await pathExists(managedRuntimeDir), false, "managed app data should not gain a runtime tree");
 
-  const managedBootstrap = await runBinary(packagedBinary, ["--managed-headless", "bootstrap"], managedEnv);
-  const managedStart = managedBootstrap.json ?? await waitFor(
+  const managedBootstrap = await runBundledRuntimeCli(
+    runtimeStatus.runtimeRoot,
+    cliScratchHome,
+    ["start", "--json"],
+    managedEnv
+  );
+  managedStart = (managedBootstrap.stdout.trim() ? JSON.parse(managedBootstrap.stdout.trim()) : null) ?? await waitFor(
     async () => {
-      const status = await runBinary(
-        packagedBinary,
-        ["--managed-headless", "daemon-status"],
+      const status = await runBundledRuntimeCli(
+        runtimeStatus.runtimeRoot,
+        cliScratchHome,
+        ["daemon", "status", "--json"],
         managedEnv
       );
-      assert.equal(status.json?.status, "running");
-      assert.ok(status.json?.pid, "managed daemon pid should exist");
-      assert.ok(status.json?.serverId, "managed daemon should expose a server id");
-      return status.json;
+      const json = JSON.parse(status.stdout.trim());
+      assert.equal(json.status, "running");
+      assert.ok(json.pid, "managed daemon pid should exist");
+      assert.ok(json.serverId, "managed daemon should expose a server id");
+      return json;
     },
     10_000,
     "managed daemon bootstrap status"
@@ -629,111 +678,64 @@ try {
 
   logStep("Verifying the managed daemon stays alive after the packaged command exits");
   await sleep(1_500);
-  const persistedManagedStatus = await runBinary(
-    packagedBinary,
-    ["--managed-headless", "daemon-status"],
-    managedEnv
-  );
-  assert.equal(persistedManagedStatus.json.pid, managedPid);
-  assert.equal(persistedManagedStatus.json.status, "running");
-  assert.equal(persistedManagedStatus.json.serverId, managedStart.serverId);
-  assertNoForbiddenPathsOrPorts(persistedManagedStatus.json, forbiddenManagedReferences);
-
-  const attemptCliShimInstall = shouldAttemptCliShimInstall(managedEnv);
-  const cliInstall = attemptCliShimInstall
-    ? await (async () => {
-        logStep("Installing CLI shim and verifying the bundled CLI target");
-        return await runBinary(
-          packagedBinary,
-          ["--managed-headless", "install-cli-shim"],
-          managedEnv
-        );
-      })()
-    : {
-        json: {
-          status: "skippedInCi",
-          installed: false,
-          path: null,
-          message: "Skipping privileged macOS CLI shim install in CI; verifying bundled CLI directly.",
-        },
-      };
-  const cliShimPath = cliInstall.json.path;
-  const cliShimInstalled =
-    Boolean(attemptCliShimInstall && cliShimPath) && cliInstall.json.installed === true && (await pathExists(cliShimPath));
-  if (attemptCliShimInstall) {
-    assert.ok(cliShimPath, "CLI shim path should be returned");
-    if (!cliShimInstalled) {
-      assert.ok(cliInstall.json.manualInstructions, "manual CLI install instructions should be returned");
-      assert.match(
-        cliInstall.json.manualInstructions.commands,
-        new RegExp(escapeForRegExp(runtimeStatus.json.runtimeRoot)),
-        "manual CLI install instructions should point at the bundled runtime"
-      );
-      assertNoForbiddenPathsOrPorts(cliInstall.json.manualInstructions, forbiddenManagedReferences);
-    }
-  } else {
-    logStep("Skipping privileged CLI shim install in CI and verifying the bundled CLI target directly");
-  }
-  const cliVersion = cliShimInstalled
-    ? await execFileWithTimeout(cliShimPath, ["--version"], {
-        env: managedEnv,
-        cwd: repoRoot,
-        maxBuffer: 1024 * 1024,
-      }, "installed CLI shim version check")
-    : await runBundledRuntimeCli(
-        runtimeStatus.json.runtimeRoot,
-        managedStart.home,
-        ["--version"],
-        managedEnv
-      );
-  assert.match(cliVersion.stdout.trim(), /^0\./);
-  const shimStatus = cliShimInstalled
-    ? await execFileWithTimeout(cliShimPath, ["daemon", "status", "--json"], {
-        env: managedEnv,
-        cwd: repoRoot,
-        maxBuffer: 1024 * 1024,
-      }, "installed CLI shim daemon status")
-    : await runBundledRuntimeCli(
-        runtimeStatus.json.runtimeRoot,
+  const persistedManagedStatus = JSON.parse(
+    (
+      await runBundledRuntimeCli(
+        runtimeStatus.runtimeRoot,
         managedStart.home,
         ["daemon", "status", "--json"],
         managedEnv
-      );
-  const shimDaemonStatus = JSON.parse(shimStatus.stdout.trim());
-  assert.equal(shimDaemonStatus.pid, managedPid);
-  assertNoForbiddenPathsOrPorts(shimDaemonStatus, forbiddenManagedReferences);
+      )
+    ).stdout.trim()
+  );
+  assert.equal(persistedManagedStatus.pid, managedPid);
+  assert.equal(persistedManagedStatus.status, "running");
+  assert.equal(persistedManagedStatus.serverId, managedStart.serverId);
+  assertNoForbiddenPathsOrPorts(persistedManagedStatus, forbiddenManagedReferences);
+
+  logStep("Verifying bundled CLI access without installing a shim");
+  const cliVersion = await runBundledRuntimeCli(
+    runtimeStatus.runtimeRoot,
+    managedStart.home,
+    ["--version"],
+    managedEnv
+  );
+  assert.match(cliVersion.stdout.trim(), /^0\./);
+  const bundledCliStatus = await runBundledRuntimeCli(
+    runtimeStatus.runtimeRoot,
+    managedStart.home,
+    ["daemon", "status", "--json"],
+    managedEnv
+  );
+  const bundledCliDaemonStatus = JSON.parse(bundledCliStatus.stdout.trim());
+  assert.equal(bundledCliDaemonStatus.pid, managedPid);
+  assertNoForbiddenPathsOrPorts(bundledCliDaemonStatus, forbiddenManagedReferences);
 
   logStep("Verifying relay connectivity still works after the desktop command has exited");
-  const relayPairing = cliShimInstalled
-    ? await execFileWithTimeout(
-        cliShimPath,
-        ["daemon", "pair"],
-        {
-          env: managedEnv,
-          cwd: repoRoot,
-          maxBuffer: 4 * 1024 * 1024,
-        },
-        "installed CLI shim relay pairing"
-      )
-    : await runBundledRuntimeCli(
-        runtimeStatus.json.runtimeRoot,
-        managedStart.home,
-        ["daemon", "pair"],
-        managedEnv
-      );
+  const relayPairing = await runBundledRuntimeCli(
+    runtimeStatus.runtimeRoot,
+    managedStart.home,
+    ["daemon", "pair"],
+    managedEnv
+  );
   const relayOfferUrl = parseOfferUrlFromCommandOutput(relayPairing.stdout);
   const relayOffer = decodeOfferFromFragmentUrl(relayOfferUrl);
   assert.equal(relayOffer.relay?.endpoint, relayEndpoint);
   const relayPong = await connectViaRelay(relayEndpoint, relayOffer);
   assert.deepEqual(relayPong, { type: "pong" });
 
-  logStep("Reopening packaged desktop command path without spawning duplicate daemons");
-  const managedRestartless = await runBinary(
-    packagedBinary,
-    ["--managed-headless", "bootstrap"],
-    managedEnv
+  logStep("Re-running managed start without spawning duplicate daemons");
+  const managedRestartless = JSON.parse(
+    (
+      await runBundledRuntimeCli(
+        runtimeStatus.runtimeRoot,
+        managedStart.home,
+        ["start", "--json"],
+        managedEnv
+      )
+    ).stdout.trim()
   );
-  assert.equal(managedRestartless.json.pid, managedPid);
+  assert.equal(managedRestartless.pid, managedPid);
 
   logStep("Verifying managed and external daemons coexist");
   const externalStatusAfter = await readDaemonStatus(externalHome, managedEnv);
@@ -741,13 +743,18 @@ try {
   assert.equal(externalStatusAfter.status, "running");
   assert.equal(externalPidAfter, externalPid);
   await runWorkspaceCli(["ls", "--host", externalEndpoint, "--json"], managedEnv);
-  const managedStatus = await runBinary(
-    packagedBinary,
-    ["--managed-headless", "daemon-status"],
-    managedEnv
+  const managedStatus = JSON.parse(
+    (
+      await runBundledRuntimeCli(
+        runtimeStatus.runtimeRoot,
+        managedStart.home,
+        ["daemon", "status", "--json"],
+        managedEnv
+      )
+    ).stdout.trim()
   );
-  assert.ok(managedStatus.json.serverId, "managed daemon should expose a server id");
-  assertNoForbiddenPathsOrPorts(managedStatus.json, forbiddenManagedReferences);
+  assert.ok(managedStatus.serverId, "managed daemon should expose a server id");
+  assertNoForbiddenPathsOrPorts(managedStatus, forbiddenManagedReferences);
 
   logStep("Capturing diagnostics and verifying the fake ~/.paseo stayed untouched");
   const fakePaseoSnapshotAfter = await snapshotTree(fakePaseoHome);
@@ -756,20 +763,19 @@ try {
     path.join(testRoot, "managed-daemon-smoke-diagnostics.json"),
     JSON.stringify(
       {
-        runtimeStatus: runtimeStatus.json,
-        managedBootstrap: managedBootstrap.json,
+        runtimeStatus,
+        managedBootstrap: managedBootstrap.stdout.trim() ? JSON.parse(managedBootstrap.stdout.trim()) : null,
         managedStart,
-        persistedManagedStatus: persistedManagedStatus.json,
-        managedRestartless: managedRestartless.json,
-        cliInstall: cliInstall.json,
-        shimDaemonStatus,
+        persistedManagedStatus,
+        managedRestartless,
+        bundledCliDaemonStatus,
         relayEndpoint,
         relayOfferUrl,
         relayPong,
         externalEndpoint,
         externalPid,
         externalPidAfter,
-        managedStatus: managedStatus.json,
+        managedStatus,
       },
       null,
       2
@@ -781,11 +787,13 @@ try {
 } finally {
   clearInterval(heartbeat);
   try {
-    await runBinary(packagedBinary, ["--managed-headless", "stop-daemon"], managedEnv);
-  } catch {}
-  try {
-    if (shouldAttemptCliShimInstall(managedEnv)) {
-      await runBinary(packagedBinary, ["--managed-headless", "uninstall-cli-shim"], managedEnv);
+    if (runtimeStatus?.runtimeRoot) {
+      await runBundledRuntimeCli(
+        runtimeStatus.runtimeRoot,
+        managedStart?.home ?? cliScratchHome,
+        ["daemon", "stop", "--json"],
+        managedEnv
+      );
     }
   } catch {}
   try {

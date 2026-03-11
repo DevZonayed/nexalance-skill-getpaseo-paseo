@@ -22,21 +22,18 @@ import { confirmDialog } from '@/utils/confirm-dialog'
 import { openExternalUrl } from '@/utils/open-external-url'
 import { formatVersionWithPrefix, isVersionMismatch } from '@/desktop/updates/desktop-updates'
 import {
-  getCliShimStatus,
+  getCliSymlinkInstructions,
   getManagedDaemonLogs,
   getManagedDaemonPairing,
   getManagedDaemonStatus,
-  installManagedCliShim,
   restartManagedDaemon,
   shouldUseManagedDesktopDaemon,
   startManagedDaemon,
   stopManagedDaemon,
-  uninstallManagedCliShim,
+  type CliSymlinkInstructions,
   type ManagedDaemonLogs,
   type ManagedPairingOffer,
   type ManagedDaemonStatus,
-  type CliManualInstructions,
-  type CliShimStatus,
 } from '@/desktop/managed-runtime/managed-runtime'
 
 export interface LocalDaemonSectionProps {
@@ -51,29 +48,27 @@ export function LocalDaemonSection({ appVersion }: LocalDaemonSectionProps) {
   const [statusError, setStatusError] = useState<string | null>(null)
   const [isRestartingDaemon, setIsRestartingDaemon] = useState(false)
   const [isUpdatingDaemonManagement, setIsUpdatingDaemonManagement] = useState(false)
-  const [isInstallingCli, setIsInstallingCli] = useState(false)
+  const [isLoadingCliSymlinkInstructions, setIsLoadingCliSymlinkInstructions] = useState(false)
   const [statusMessage, setStatusMessage] = useState<string | null>(null)
   const [cliStatusMessage, setCliStatusMessage] = useState<string | null>(null)
   const [managedLogs, setManagedLogs] = useState<ManagedDaemonLogs | null>(null)
-  const [cliShimStatus, setCliShimStatus] = useState<CliShimStatus | null>(null)
   const [isLogsModalOpen, setIsLogsModalOpen] = useState(false)
   const [isPairingModalOpen, setIsPairingModalOpen] = useState(false)
-  const [isCliInstallModalOpen, setIsCliInstallModalOpen] = useState(false)
+  const [isCliSymlinkModalOpen, setIsCliSymlinkModalOpen] = useState(false)
   const [isLoadingPairing, setIsLoadingPairing] = useState(false)
   const [pairingOffer, setPairingOffer] = useState<ManagedPairingOffer | null>(null)
-  const [cliInstallInstructions, setCliInstallInstructions] =
-    useState<CliManualInstructions | null>(null)
+  const [cliSymlinkInstructions, setCliSymlinkInstructions] =
+    useState<CliSymlinkInstructions | null>(null)
   const [pairingStatusMessage, setPairingStatusMessage] = useState<string | null>(null)
 
   const loadManagedStatus = useCallback(() => {
     if (!showSection) {
       return Promise.resolve()
     }
-    return Promise.all([getManagedDaemonStatus(), getManagedDaemonLogs(), getCliShimStatus()])
-      .then(([status, logs, shimStatus]) => {
+    return Promise.all([getManagedDaemonStatus(), getManagedDaemonLogs()])
+      .then(([status, logs]) => {
         setManagedStatus(status)
         setManagedLogs(logs)
-        setCliShimStatus(shimStatus)
         setStatusError(null)
       })
       .catch((error) => {
@@ -224,50 +219,39 @@ export function LocalDaemonSection({ appVersion }: LocalDaemonSectionProps) {
     updateSettings,
   ])
 
-  const handleToggleCliShim = useCallback(() => {
-    if (!showSection || isInstallingCli) {
+  const handleOpenCliSymlinkInstructions = useCallback(() => {
+    if (!showSection || isLoadingCliSymlinkInstructions) {
       return
     }
-    setIsInstallingCli(true)
-    const isInstalling = !cliShimStatus?.path
-    setCliStatusMessage(
-      isInstalling ? 'A permissions popup may appear while Paseo installs the CLI globally.' : null
-    )
-    const action = cliShimStatus?.path ? uninstallManagedCliShim : installManagedCliShim
-    void action()
-      .then((result) => {
-        setCliStatusMessage(result.message)
-        if (result.manualInstructions) {
-          setCliInstallInstructions(result.manualInstructions)
-          setIsCliInstallModalOpen(true)
-        } else {
-          setCliInstallInstructions(null)
-          setIsCliInstallModalOpen(false)
-        }
-        return loadManagedStatus()
+    setIsLoadingCliSymlinkInstructions(true)
+    setCliStatusMessage(null)
+    void getCliSymlinkInstructions()
+      .then((instructions) => {
+        setCliSymlinkInstructions(instructions)
+        setIsCliSymlinkModalOpen(true)
       })
       .catch((error) => {
         const message = error instanceof Error ? error.message : String(error)
-        setCliStatusMessage(`CLI install failed: ${message}`)
+        setCliStatusMessage(`Unable to load CLI symlink instructions: ${message}`)
       })
       .finally(() => {
-        setIsInstallingCli(false)
+        setIsLoadingCliSymlinkInstructions(false)
       })
-  }, [cliShimStatus?.path, isInstallingCli, loadManagedStatus, showSection])
+  }, [isLoadingCliSymlinkInstructions, showSection])
 
-  const handleCopyCliInstallCommands = useCallback(() => {
-    if (!cliInstallInstructions?.commands) {
+  const handleCopyCliSymlinkCommands = useCallback(() => {
+    if (!cliSymlinkInstructions?.commands) {
       return
     }
-    void Clipboard.setStringAsync(cliInstallInstructions.commands)
+    void Clipboard.setStringAsync(cliSymlinkInstructions.commands)
       .then(() => {
-        Alert.alert('Copied', 'CLI install commands copied.')
+        Alert.alert('Copied', 'CLI symlink commands copied.')
       })
       .catch((error) => {
-        console.error('[Settings] Failed to copy CLI install commands', error)
-        Alert.alert('Error', 'Unable to copy CLI install commands.')
+        console.error('[Settings] Failed to copy CLI symlink commands', error)
+        Alert.alert('Error', 'Unable to copy CLI symlink commands.')
       })
-  }, [cliInstallInstructions?.commands])
+  }, [cliSymlinkInstructions?.commands])
 
   const handleCopyLogPath = useCallback(() => {
     const logPath = managedLogs?.logPath
@@ -417,17 +401,17 @@ export function LocalDaemonSection({ appVersion }: LocalDaemonSectionProps) {
         <View style={[styles.row, styles.rowBorder]}>
           <View style={styles.rowContent}>
             <Text style={styles.rowTitle}>Command line (CLI)</Text>
-            <Text style={styles.hintText}>Adds the `paseo` command to your terminal.</Text>
+            <Text style={styles.hintText}>Shows the command to add `paseo` to your terminal.</Text>
             {cliStatusMessage ? <Text style={styles.statusText}>{cliStatusMessage}</Text> : null}
           </View>
           <Button
             variant="outline"
             size="sm"
             leftIcon={<Terminal size={theme.iconSize.sm} color={theme.colors.foreground} />}
-            onPress={handleToggleCliShim}
-            disabled={isInstallingCli}
+            onPress={handleOpenCliSymlinkInstructions}
+            disabled={isLoadingCliSymlinkInstructions}
           >
-            {isInstallingCli ? 'Working...' : cliShimStatus?.path ? 'Uninstall CLI' : 'Install CLI'}
+            {isLoadingCliSymlinkInstructions ? 'Loading...' : 'Show instructions'}
           </Button>
         </View>
         <View style={[styles.row, styles.rowBorder]}>
@@ -483,27 +467,26 @@ export function LocalDaemonSection({ appVersion }: LocalDaemonSectionProps) {
       ) : null}
 
       <AdaptiveModalSheet
-        visible={isCliInstallModalOpen}
-        onClose={() => setIsCliInstallModalOpen(false)}
-        title="Install CLI manually"
-        testID="managed-daemon-cli-install-dialog"
+        visible={isCliSymlinkModalOpen}
+        onClose={() => setIsCliSymlinkModalOpen(false)}
+        title="Add paseo to your shell"
+        testID="managed-daemon-cli-symlink-dialog"
       >
         <View style={styles.modalBody}>
           <Text style={styles.hintText}>
-            A permissions popup should appear when Paseo installs the CLI globally. If it does not
-            complete, open a terminal and run the commands below.
+            Paseo does not add the command for you. Run the command below in your terminal.
           </Text>
-          {cliInstallInstructions?.detail ? (
-            <Text style={styles.hintText}>{cliInstallInstructions.detail}</Text>
+          {cliSymlinkInstructions?.detail ? (
+            <Text style={styles.hintText}>{cliSymlinkInstructions.detail}</Text>
           ) : null}
           <Text style={styles.codeBlock} selectable>
-            {cliInstallInstructions?.commands ?? ''}
+            {cliSymlinkInstructions?.commands ?? ''}
           </Text>
           <View style={styles.modalActions}>
-            <Button variant="outline" size="sm" onPress={() => setIsCliInstallModalOpen(false)}>
+            <Button variant="outline" size="sm" onPress={() => setIsCliSymlinkModalOpen(false)}>
               Close
             </Button>
-            <Button size="sm" onPress={handleCopyCliInstallCommands}>
+            <Button size="sm" onPress={handleCopyCliSymlinkCommands}>
               Copy commands
             </Button>
           </View>

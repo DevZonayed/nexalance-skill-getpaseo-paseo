@@ -1,5 +1,7 @@
-import { Image, Text, View } from "react-native";
+import { Text, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
+import { PaseoLogo } from "@/components/icons/paseo-logo";
+import { useTauriDragHandlers } from "@/utils/tauri-window";
 
 const styles = StyleSheet.create((theme) => ({
   container: {
@@ -8,11 +10,6 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     backgroundColor: theme.colors.surface0,
   },
-  logo: {
-    width: 96,
-    height: 96,
-    marginBottom: theme.spacing[6],
-  },
   status: {
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.base,
@@ -20,13 +17,11 @@ const styles = StyleSheet.create((theme) => ({
 }));
 
 export function StartupSplashScreen() {
+  const dragHandlers = useTauriDragHandlers();
+
   return (
-    <View style={styles.container}>
-      <Image
-        source={require("../../assets/images/icon.png")}
-        style={styles.logo}
-        resizeMode="contain"
-      />
+    <View style={styles.container} {...dragHandlers}>
+      <PaseoLogo size={96} />
       <Text style={styles.status}>Starting up…</Text>
     </View>
   );

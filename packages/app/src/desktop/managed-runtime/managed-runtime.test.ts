@@ -1,46 +1,24 @@
 import { describe, expect, it } from "vitest";
-import { parseCliShimResult } from "./managed-runtime";
+import { parseCliSymlinkInstructions } from "./managed-runtime";
 
-describe("parseCliShimResult", () => {
-  it("parses manual install payloads from the desktop backend", () => {
+describe("parseCliSymlinkInstructions", () => {
+  it("parses CLI symlink instructions from the desktop backend", () => {
     expect(
-      parseCliShimResult({
-        status: "manualInstallRequired",
-        installed: false,
-        path: "/usr/local/bin/paseo",
-        message: "Install it manually.",
-        manualInstructions: {
-          title: "Install from Terminal",
-          detail: "Run these commands.",
-          commands: "sudo tee /usr/local/bin/paseo",
-        },
+      parseCliSymlinkInstructions({
+        title: "Add paseo to your shell",
+        detail: "Create a symlink to the Paseo desktop executable.",
+        commands: "sudo ln -sf /Applications/Paseo.app/Contents/MacOS/Paseo /usr/local/bin/paseo",
       })
     ).toEqual({
-      status: "manualInstallRequired",
-      installed: false,
-      path: "/usr/local/bin/paseo",
-      message: "Install it manually.",
-      manualInstructions: {
-        title: "Install from Terminal",
-        detail: "Run these commands.",
-        commands: "sudo tee /usr/local/bin/paseo",
-      },
+      title: "Add paseo to your shell",
+      detail: "Create a symlink to the Paseo desktop executable.",
+      commands: "sudo ln -sf /Applications/Paseo.app/Contents/MacOS/Paseo /usr/local/bin/paseo",
     });
   });
 
-  it("falls back to installed or removed when older payloads omit status", () => {
-    expect(
-      parseCliShimResult({
-        installed: true,
-        path: "/usr/local/bin/paseo",
-        message: "Installed.",
-      })
-    ).toEqual({
-      status: "installed",
-      installed: true,
-      path: "/usr/local/bin/paseo",
-      message: "Installed.",
-      manualInstructions: null,
-    });
+  it("rejects non-object payloads", () => {
+    expect(() => parseCliSymlinkInstructions(null)).toThrow(
+      "Unexpected CLI symlink instructions response."
+    );
   });
 });

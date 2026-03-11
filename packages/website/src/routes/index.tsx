@@ -96,7 +96,7 @@ function Home() {
           transition={{ duration: 0.8, delay: 0.5, ease: 'easeOut' }}
           className="relative px-6 md:px-8 pb-8 md:pb-16"
         >
-          <div className="max-w-6xl mx-auto">
+          <div className="max-w-6xl lg:max-w-7xl xl:max-w-[90rem] mx-auto">
             <img
               src="/paseo-mockup.png"
               alt="Paseo app showing agent management interface"

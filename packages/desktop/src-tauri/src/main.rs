@@ -8,5 +8,8 @@
 tauri::embed_plist::embed_info_plist!("../Info.plist");
 
 fn main() {
+    if let Some(exit_code) = paseo_lib::try_run_pre_tauri_mode() {
+        std::process::exit(exit_code);
+    }
     paseo_lib::run();
 }

@@ -18,9 +18,9 @@ const LOCAL_TRANSPORT_EVENT_NAME: &str = "local-daemon-transport-event";
 const UNIX_CLIENT_URL: &str = "ws://localhost/ws";
 #[cfg(windows)]
 const PIPE_CLIENT_URL: &str = "ws://localhost/ws";
-const CLI_SHIM_NAME: &str = "paseo";
+const CLI_LINK_NAME: &str = "paseo";
 #[cfg(windows)]
-const CLI_SHIM_WINDOWS_NAME: &str = "paseo.cmd";
+const CLI_LINK_WINDOWS_NAME: &str = "paseo.exe";
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ManagedRuntimeManifest {
@@ -86,12 +86,6 @@ pub struct ManagedDaemonStatus {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct CliShimStatus {
-    pub path: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
 pub struct ManagedDaemonLogs {
     pub log_path: String,
     pub contents: String,
@@ -107,17 +101,7 @@ pub struct ManagedPairingOffer {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct CliShimResult {
-    pub status: String,
-    pub installed: bool,
-    pub path: Option<String>,
-    pub message: String,
-    pub manual_instructions: Option<CliManualInstructions>,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CliManualInstructions {
+pub struct CliSymlinkInstructions {
     pub title: String,
     pub detail: String,
     pub commands: String,
@@ -272,56 +256,22 @@ mod tests {
     }
 
     #[test]
-    fn cli_shim_result_serializes_manual_instructions_with_camel_case_keys() {
-        let value = serde_json::to_value(CliShimResult {
-            status: "manualInstallRequired".to_string(),
-            installed: false,
-            path: Some("/usr/local/bin/paseo".to_string()),
-            message: "Manual install required.".to_string(),
-            manual_instructions: Some(CliManualInstructions {
-                title: "Install from Terminal".to_string(),
-                detail: "Run the commands below.".to_string(),
-                commands: "sudo ...".to_string(),
-            }),
+    fn cli_symlink_instructions_serialize_with_camel_case_keys() {
+        let value = serde_json::to_value(CliSymlinkInstructions {
+            title: "Add paseo to your shell".to_string(),
+            detail: "Create a symlink to the Paseo desktop executable.".to_string(),
+            commands: "sudo ...".to_string(),
         })
         .expect("serializes");
 
         assert_eq!(
-            value.get("status").and_then(|entry| entry.as_str()),
-            Some("manualInstallRequired")
+            value.get("title").and_then(|entry| entry.as_str()),
+            Some("Add paseo to your shell")
         );
         assert_eq!(
-            value
-                .get("manualInstructions")
-                .and_then(|entry| entry.get("commands"))
-                .and_then(|entry| entry.as_str()),
+            value.get("commands").and_then(|entry| entry.as_str()),
             Some("sudo ...")
         );
-    }
-
-    #[test]
-    fn cli_shim_contents_runs_bundled_runtime_in_place() {
-        let runtime_root =
-            PathBuf::from("/Applications/Paseo.app/Contents/Resources/managed-runtime/runtime-1");
-        let manifest = ManagedRuntimeManifest {
-            runtime_id: "runtime-1".to_string(),
-            runtime_version: "0.1.0".to_string(),
-            platform: "darwin".to_string(),
-            arch: "arm64".to_string(),
-            created_at: "2025-01-01T00:00:00.000Z".to_string(),
-            node_relative_path: "node/node".to_string(),
-            cli_entrypoint_relative_path: "node_modules/@getpaseo/cli/dist/index.js".to_string(),
-            cli_shim_relative_path: "node_modules/@getpaseo/cli/bin/paseo".to_string(),
-            server_runner_relative_path:
-                "node_modules/@getpaseo/server/dist/scripts/daemon-runner.js".to_string(),
-        };
-
-        let contents = cli_shim_contents(&runtime_root, &manifest);
-
-        assert!(contents.contains("Contents/Resources/managed-runtime/runtime-1/node/node"));
-        assert!(contents.contains("node_modules/@getpaseo/cli/dist/index.js"));
-        assert!(!contents.contains("PASEO_HOME"));
-        assert!(!contents.contains("--paseo-cli-shim"));
     }
 
     #[cfg(unix)]
@@ -366,22 +316,25 @@ fn dev_resource_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("resources")
 }
 
+fn bundled_runtime_root_from_resource_dir(resource_dir: &Path) -> Option<PathBuf> {
+    for candidate in [
+        resource_dir.join("resources").join("managed-runtime"),
+        resource_dir.join("managed-runtime"),
+    ] {
+        if candidate.exists() {
+            return Some(candidate);
+        }
+    }
+
+    None
+}
+
 fn bundled_runtime_root(app: &AppHandle) -> Result<PathBuf, String> {
     if let Ok(raw_resource_dir) = app.path().resource_dir() {
         let resource_dir = dunce::simplified(&raw_resource_dir).to_path_buf();
-        // Tauri's bundle.resources preserves the source directory structure, so
-        // "resources/**/*" in tauri.conf.json places files at
-        // $RESOURCE/resources/managed-runtime/. Try the nested path first (installed
-        // builds), then the flat path for any future config changes.
-        for candidate in [
-            resource_dir.join("resources").join("managed-runtime"),
-            resource_dir.join("managed-runtime"),
-        ] {
-            if candidate.exists() {
-                log::info!("[runtime] found bundled runtime at {}", candidate.display());
-                return Ok(candidate);
-            }
-            log::info!("[runtime] no bundled runtime at {}", candidate.display());
+        if let Some(candidate) = bundled_runtime_root_from_resource_dir(&resource_dir) {
+            log::info!("[runtime] found bundled runtime at {}", candidate.display());
+            return Ok(candidate);
         }
     } else {
         log::info!("[runtime] resource_dir() unavailable, checking dev path");
@@ -464,129 +417,80 @@ fn shell_single_quote(value: &str) -> String {
     format!("'{}'", value.replace('\'', r"'\''"))
 }
 
-fn escape_applescript_string(value: &str) -> String {
-    value.replace('\\', r"\\").replace('"', "\\\"")
-}
-
 #[cfg(windows)]
 fn powershell_double_quote(value: &str) -> String {
     value.replace('`', "``").replace('"', "`\"")
 }
 
-fn outer_cli_shim_path() -> Result<PathBuf, String> {
+fn outer_cli_link_path() -> Result<PathBuf, String> {
     #[cfg(target_os = "macos")]
     {
-        return Ok(PathBuf::from("/usr/local/bin").join(CLI_SHIM_NAME));
+        return Ok(PathBuf::from("/usr/local/bin").join(CLI_LINK_NAME));
     }
     #[cfg(all(not(target_os = "macos"), not(windows)))]
     {
-        return Ok(PathBuf::from("/usr/local/bin").join(CLI_SHIM_NAME));
+        return Ok(PathBuf::from("/usr/local/bin").join(CLI_LINK_NAME));
     }
     #[cfg(windows)]
     {
         let local_app_data = dirs::data_local_dir().ok_or_else(|| {
-            "Failed to resolve LocalAppData for CLI shim instructions.".to_string()
+            "Failed to resolve LocalAppData for CLI symlink instructions.".to_string()
         })?;
         Ok(local_app_data
             .join("Microsoft")
             .join("WinGet")
             .join("Links")
-            .join(CLI_SHIM_WINDOWS_NAME))
+            .join(CLI_LINK_WINDOWS_NAME))
     }
 }
 
-fn cli_shim_contents(runtime_root: &Path, manifest: &ManagedRuntimeManifest) -> String {
-    let node = runtime_root.join(&manifest.node_relative_path);
-    let cli = runtime_root.join(&manifest.cli_entrypoint_relative_path);
+fn desktop_cli_source_path() -> Result<PathBuf, String> {
+    let current_exe = std::env::current_exe()
+        .map_err(|error| format!("Failed to resolve desktop executable path: {error}"))?;
+    Ok(dunce::simplified(&current_exe).to_path_buf())
+}
+
+fn cli_symlink_instructions_internal() -> Result<CliSymlinkInstructions, String> {
+    let outer_link = outer_cli_link_path()?;
     #[cfg(windows)]
     {
-        return format!(
-            "@echo off\r\n\"{}\" \"{}\" %*\r\n",
-            node.display(),
-            cli.display()
-        );
-    }
-    #[cfg(not(windows))]
-    {
-        format!(
-            "#!/bin/sh\nexec \"{}\" \"{}\" \"$@\"\n",
-            node.display(),
-            cli.display()
-        )
-    }
-}
-
-fn write_cli_launcher(path: &Path, contents: &str) -> Result<(), String> {
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)
-            .map_err(|error| format!("Failed to create {}: {error}", parent.display()))?;
-    }
-    fs::write(path, contents)
-        .map_err(|error| format!("Failed to write {}: {error}", path.display()))?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(path, fs::Permissions::from_mode(0o755))
-            .map_err(|error| format!("Failed to chmod {}: {error}", path.display()))?;
-    }
-    Ok(())
-}
-
-fn cli_manual_instructions(
-    runtime_root: &Path,
-    manifest: &ManagedRuntimeManifest,
-) -> Result<CliManualInstructions, String> {
-    let outer_shim = outer_cli_shim_path()?;
-    let contents = cli_shim_contents(runtime_root, manifest);
-    #[cfg(windows)]
-    {
-        let target_dir = outer_shim
+        let desktop_executable = desktop_cli_source_path()?;
+        let target_dir = outer_link
             .parent()
-            .ok_or_else(|| "CLI shim target is missing a parent directory.".to_string())?;
-        return Ok(CliManualInstructions {
-            title: "Install the Paseo CLI from PowerShell".to_string(),
-            detail: "If the automatic install does not complete, run these commands in PowerShell to write the PATH shim manually.".to_string(),
+            .ok_or_else(|| "CLI symlink target is missing a parent directory.".to_string())?;
+        return Ok(CliSymlinkInstructions {
+            title: "Add paseo to your shell".to_string(),
+            detail: "Create a symlink to the Paseo desktop executable.".to_string(),
             commands: format!(
-                "$target = \"{}\"\nNew-Item -ItemType Directory -Force -Path \"{}\" | Out-Null\n$contents = @\"\n{}\"@\nSet-Content -Path $target -Value $contents -Encoding ASCII\n",
-                powershell_double_quote(outer_shim.to_string_lossy().as_ref()),
+                "$target = \"{}\"\nNew-Item -ItemType Directory -Force -Path \"{}\" | Out-Null\nif (Test-Path $target) {{ Remove-Item -Path $target -Force }}\nNew-Item -ItemType SymbolicLink -Path $target -Target \"{}\" | Out-Null\n",
+                powershell_double_quote(outer_link.to_string_lossy().as_ref()),
                 powershell_double_quote(target_dir.to_string_lossy().as_ref()),
-                contents
+                powershell_double_quote(desktop_executable.to_string_lossy().as_ref())
             ),
         });
     }
     #[cfg(not(windows))]
     {
-        Ok(CliManualInstructions {
-            title: "Install the Paseo CLI from Terminal".to_string(),
-            detail: "If the automatic install does not complete, run these commands in Terminal to write the global PATH shim manually.".to_string(),
+        let desktop_executable = desktop_cli_source_path()?;
+        Ok(CliSymlinkInstructions {
+            title: "Add paseo to your shell".to_string(),
+            detail: "Create a symlink to the Paseo desktop executable.".to_string(),
             commands: format!(
-                "sudo mkdir -p {target_dir}\nprintf '%s\\n' {lines} | sudo tee {target_path} >/dev/null\nsudo chmod 755 {target_path}\n",
+                "sudo mkdir -p {target_dir}\nsudo ln -sf {source_path} {target_path}\n",
                 target_dir = shell_single_quote(
-                    outer_shim
+                    outer_link
                         .parent()
-                        .ok_or_else(|| "CLI shim target is missing a parent directory.".to_string())?
+                        .ok_or_else(
+                            || "CLI symlink target is missing a parent directory.".to_string()
+                        )?
                         .to_string_lossy()
                         .as_ref()
                 ),
-                target_path = shell_single_quote(outer_shim.to_string_lossy().as_ref()),
-                lines = contents
-                    .lines()
-                    .map(|line| shell_single_quote(line))
-                    .collect::<Vec<_>>()
-                    .join(" ")
+                target_path = shell_single_quote(outer_link.to_string_lossy().as_ref()),
+                source_path = shell_single_quote(desktop_executable.to_string_lossy().as_ref())
             ),
         })
     }
-}
-
-fn detect_installed_cli_shim_path(
-    runtime_root: &Path,
-    manifest: &ManagedRuntimeManifest,
-) -> Option<String> {
-    let outer_shim = outer_cli_shim_path().ok()?;
-    let expected = cli_shim_contents(runtime_root, manifest);
-    let actual = fs::read_to_string(&outer_shim).ok()?;
-    (actual == expected).then(|| outer_shim.to_string_lossy().into_owned())
 }
 
 fn ensure_runtime_ready_internal(app: &AppHandle) -> Result<ManagedRuntimeStatus, String> {
@@ -645,6 +549,19 @@ fn run_cli_json_command(
     })
 }
 
+fn run_cli_passthrough_command(
+    runtime_root: &Path,
+    manifest: &ManagedRuntimeManifest,
+    args: &[String],
+) -> Result<i32, String> {
+    log::info!("[cli] passthrough: {:?}", args);
+    let status = cli_command(runtime_root, manifest, &[])?
+        .args(args)
+        .status()
+        .map_err(|error| format!("Failed to run bundled CLI: {error}"))?;
+    Ok(status.code().unwrap_or(1))
+}
+
 fn managed_daemon_status_internal(app: &AppHandle) -> Result<ManagedDaemonStatus, String> {
     let status = ensure_runtime_ready_internal(app)?;
     let runtime_root = PathBuf::from(&status.runtime_root);
@@ -662,163 +579,6 @@ fn managed_daemon_status_internal(app: &AppHandle) -> Result<ManagedDaemonStatus
         hostname: daemon_status.hostname,
         pid: daemon_status.pid,
         home: daemon_status.home,
-    })
-}
-
-fn cli_shim_status_internal(app: &AppHandle) -> Result<CliShimStatus, String> {
-    let status = ensure_runtime_ready_internal(app)?;
-    let runtime_root = PathBuf::from(&status.runtime_root);
-    let manifest = load_runtime_manifest(&runtime_root)?;
-    Ok(CliShimStatus {
-        path: detect_installed_cli_shim_path(&runtime_root, &manifest),
-    })
-}
-
-#[cfg(target_os = "macos")]
-fn install_cli_shim_via_macos_prompt(shim_path: &Path, contents: &str) -> Result<(), String> {
-    // Manual smoke path: click Install CLI in the desktop app on macOS and confirm the
-    // /usr/local/bin/paseo prompt writes the trivial outer shim shown in cli_manual_instructions().
-    let temp_path = std::env::temp_dir().join(format!("paseo-cli-shim-{}", std::process::id()));
-    write_cli_launcher(&temp_path, contents)?;
-    let command = format!(
-        "mkdir -p {target_dir} && install -m 755 {temp_path} {target_path}",
-        target_dir = shell_single_quote(
-            shim_path
-                .parent()
-                .ok_or_else(|| "CLI shim target is missing a parent directory.".to_string())?
-                .to_string_lossy()
-                .as_ref()
-        ),
-        temp_path = shell_single_quote(temp_path.to_string_lossy().as_ref()),
-        target_path = shell_single_quote(shim_path.to_string_lossy().as_ref())
-    );
-    let output = Command::new("osascript")
-        .arg("-e")
-        .arg(format!(
-            "do shell script \"{}\" with administrator privileges",
-            escape_applescript_string(&command)
-        ))
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .output()
-        .map_err(|error| format!("Failed to request macOS CLI install privileges: {error}"))?;
-    let _ = fs::remove_file(&temp_path);
-    if output.status.success() {
-        return Ok(());
-    }
-    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-    if stderr.contains("User canceled") || stderr.contains("(-128)") {
-        return Err("ELEVATION_DENIED".to_string());
-    }
-    Err(if stderr.is_empty() {
-        "Failed to install the global CLI shim.".to_string()
-    } else {
-        stderr
-    })
-}
-
-#[cfg(target_os = "macos")]
-fn remove_cli_shim_via_macos_prompt(shim_path: &Path) -> Result<(), String> {
-    let command = format!(
-        "rm -f {}",
-        shell_single_quote(shim_path.to_string_lossy().as_ref())
-    );
-    let output = Command::new("osascript")
-        .arg("-e")
-        .arg(format!(
-            "do shell script \"{}\" with administrator privileges",
-            escape_applescript_string(&command)
-        ))
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .output()
-        .map_err(|error| format!("Failed to request macOS CLI uninstall privileges: {error}"))?;
-    if output.status.success() {
-        return Ok(());
-    }
-    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-    Err(if stderr.is_empty() {
-        "Failed to remove the global CLI shim.".to_string()
-    } else {
-        stderr
-    })
-}
-
-fn install_cli_shim_internal(app: &AppHandle) -> Result<CliShimResult, String> {
-    log::info!("[cli-shim] installing CLI shim");
-    let status = ensure_runtime_ready_internal(app)?;
-    let runtime_root = PathBuf::from(&status.runtime_root);
-    let manifest = load_runtime_manifest(&runtime_root)?;
-    let shim_path = outer_cli_shim_path()?;
-    let shim_contents = cli_shim_contents(&runtime_root, &manifest);
-    let manual_instructions = cli_manual_instructions(&runtime_root, &manifest)?;
-
-    #[cfg(target_os = "macos")]
-    let install_result = install_cli_shim_via_macos_prompt(&shim_path, &shim_contents);
-    #[cfg(all(not(target_os = "macos"), not(windows)))]
-    let install_result = write_cli_launcher(&shim_path, &shim_contents);
-    #[cfg(windows)]
-    let install_result: Result<(), String> = Err("AUTOMATIC_INSTALL_UNAVAILABLE".to_string());
-
-    log::info!("[cli-shim] target path: {}", shim_path.display());
-    match install_result {
-        Ok(()) => Ok(CliShimResult {
-            status: "installed".to_string(),
-            installed: true,
-            path: Some(shim_path.to_string_lossy().into_owned()),
-            message: format!("Paseo CLI installed at {}.", shim_path.display()),
-            manual_instructions: None,
-        }),
-        Err(error) if error == "ELEVATION_DENIED" => Ok(CliShimResult {
-            status: "elevationDenied".to_string(),
-            installed: false,
-            path: Some(shim_path.to_string_lossy().into_owned()),
-            message: "CLI install needs administrator approval. If you dismissed the prompt, install it from Terminal with the commands below.".to_string(),
-            manual_instructions: Some(manual_instructions),
-        }),
-        Err(error) if error == "AUTOMATIC_INSTALL_UNAVAILABLE" => Ok(CliShimResult {
-            status: "automaticInstallUnavailable".to_string(),
-            installed: false,
-            path: Some(shim_path.to_string_lossy().into_owned()),
-            message: "Automatic CLI install is not available on this platform. Finish the install manually with the commands below.".to_string(),
-            manual_instructions: Some(manual_instructions),
-        }),
-        Err(error) => Ok(CliShimResult {
-            status: "manualInstallRequired".to_string(),
-            installed: false,
-            path: Some(shim_path.to_string_lossy().into_owned()),
-            message: format!(
-                "Automatic CLI install did not complete: {error}. Finish the install manually with the commands below."
-            ),
-            manual_instructions: Some(manual_instructions),
-        }),
-    }
-}
-
-fn uninstall_cli_shim_internal(app: &AppHandle) -> Result<CliShimResult, String> {
-    let status = ensure_runtime_ready_internal(app)?;
-    let runtime_root = PathBuf::from(&status.runtime_root);
-    let manifest = load_runtime_manifest(&runtime_root)?;
-    let shim_path = detect_installed_cli_shim_path(&runtime_root, &manifest)
-        .map(PathBuf::from)
-        .unwrap_or(outer_cli_shim_path()?);
-    if shim_path.exists() {
-        #[cfg(target_os = "macos")]
-        remove_cli_shim_via_macos_prompt(&shim_path)?;
-        #[cfg(all(not(target_os = "macos"), not(windows)))]
-        fs::remove_file(&shim_path)
-            .map_err(|error| format!("Failed to remove {}: {error}", shim_path.display()))?;
-        #[cfg(windows)]
-        fs::remove_file(&shim_path)
-            .map_err(|error| format!("Failed to remove {}: {error}", shim_path.display()))?;
-    }
-
-    Ok(CliShimResult {
-        status: "removed".to_string(),
-        installed: false,
-        path: Some(shim_path.to_string_lossy().into_owned()),
-        message: "Paseo CLI shim removed.".to_string(),
-        manual_instructions: None,
     })
 }
 
@@ -969,10 +729,13 @@ pub async fn restart_managed_daemon(app: AppHandle) -> Result<ManagedDaemonStatu
 }
 
 #[tauri::command]
-pub async fn cli_shim_status(app: AppHandle) -> Result<CliShimStatus, String> {
-    tauri::async_runtime::spawn_blocking(move || cli_shim_status_internal(&app))
-        .await
-        .map_err(|error| format!("CLI shim status task failed: {error}"))?
+pub async fn cli_symlink_instructions(app: AppHandle) -> Result<CliSymlinkInstructions, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let _ = app;
+        cli_symlink_instructions_internal()
+    })
+    .await
+    .map_err(|error| format!("CLI symlink instructions task failed: {error}"))?
 }
 
 #[tauri::command]
@@ -1010,20 +773,6 @@ pub async fn managed_daemon_pairing(app: AppHandle) -> Result<ManagedPairingOffe
 }
 
 #[tauri::command]
-pub async fn install_cli_shim(app: AppHandle) -> Result<CliShimResult, String> {
-    tauri::async_runtime::spawn_blocking(move || install_cli_shim_internal(&app))
-        .await
-        .map_err(|error| format!("CLI shim install task failed: {error}"))?
-}
-
-#[tauri::command]
-pub async fn uninstall_cli_shim(app: AppHandle) -> Result<CliShimResult, String> {
-    tauri::async_runtime::spawn_blocking(move || uninstall_cli_shim_internal(&app))
-        .await
-        .map_err(|error| format!("CLI shim uninstall task failed: {error}"))?
-}
-
-#[tauri::command]
 pub async fn update_managed_daemon_tcp_settings(
     app: AppHandle,
     settings: ManagedTcpSettings,
@@ -1033,6 +782,35 @@ pub async fn update_managed_daemon_tcp_settings(
     })
     .await
     .map_err(|error| format!("Managed daemon TCP settings task failed: {error}"))?
+}
+
+pub fn run_managed_cli_from_current_process(args: Vec<String>) -> Result<i32, String> {
+    let current_exe = std::env::current_exe()
+        .map_err(|error| format!("Failed to resolve desktop executable path: {error}"))?;
+    let current_exe = dunce::simplified(&current_exe).to_path_buf();
+    let exe_dir = current_exe
+        .parent()
+        .ok_or_else(|| "Desktop executable path is missing a parent directory.".to_string())?;
+    let mut resource_dirs = vec![exe_dir.join("resources"), exe_dir.to_path_buf()];
+    if let Some(contents_dir) = exe_dir.parent() {
+        resource_dirs.push(contents_dir.join("Resources"));
+        resource_dirs.push(contents_dir.join("resources"));
+    }
+    let bundled_root = resource_dirs
+        .into_iter()
+        .find_map(|resource_dir| bundled_runtime_root_from_resource_dir(&resource_dir))
+        .or_else(|| {
+            let dev = dev_resource_root().join("managed-runtime");
+            dev.exists().then_some(dev)
+        })
+        .ok_or_else(|| {
+            "Managed runtime resources are not bundled with this desktop build.".to_string()
+        })?;
+    let pointer =
+        read_json_file::<BundledRuntimePointer>(&bundled_root.join("current-runtime.json"))?;
+    let runtime_root = bundled_root.join(pointer.relative_root);
+    let manifest = load_runtime_manifest(&runtime_root)?;
+    run_cli_passthrough_command(&runtime_root, &manifest, &args)
 }
 
 async fn spawn_local_transport_session<S>(
