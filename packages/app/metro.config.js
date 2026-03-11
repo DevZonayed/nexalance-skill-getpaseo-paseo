@@ -1,5 +1,6 @@
 const { getDefaultConfig } = require("expo/metro-config");
-const exclusionList = require("metro-config/src/defaults/exclusionList");
+const exclusionList =
+  require("@expo/metro/metro-config/defaults/exclusionList").default;
 const { resolve } = require("metro-resolver");
 const fs = require("fs");
 const path = require("path");
