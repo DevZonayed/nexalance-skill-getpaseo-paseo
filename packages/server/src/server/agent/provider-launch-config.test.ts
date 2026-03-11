@@ -1,10 +1,42 @@
-import { describe, expect, test, vi } from "vitest";
+import { beforeEach, describe, expect, test, vi } from "vitest";
+
+const { execFileSyncMock, execSyncMock, existsSyncMock, platformMock } = vi.hoisted(
+  () => ({
+    execFileSyncMock: vi.fn(),
+    execSyncMock: vi.fn(),
+    existsSyncMock: vi.fn(),
+    platformMock: vi.fn(() => "darwin"),
+  })
+);
+
+vi.mock("node:child_process", () => ({
+  execFileSync: execFileSyncMock,
+  execSync: execSyncMock,
+}));
+
+vi.mock("node:fs", () => ({
+  existsSync: existsSyncMock,
+}));
+
+vi.mock("node:os", () => ({
+  platform: platformMock,
+}));
 
 import {
+  findExecutable,
   resolveProviderCommandPrefix,
   applyProviderEnv,
   type ProviderRuntimeSettings,
 } from "./provider-launch-config.js";
+
+beforeEach(() => {
+  execFileSyncMock.mockReset();
+  execSyncMock.mockReset();
+  existsSyncMock.mockReset();
+  platformMock.mockReset();
+  platformMock.mockReturnValue("darwin");
+  delete process.env["SHELL"];
+});
 
 describe("resolveProviderCommandPrefix", () => {
   test("uses resolved default command in default mode", () => {
@@ -73,5 +105,35 @@ describe("applyProviderEnv", () => {
       HOME: "/custom/home",
       FOO: "bar",
     });
+  });
+});
+
+describe("findExecutable", () => {
+  test("uses the last line from login-shell which output", () => {
+    process.env["SHELL"] = "/bin/zsh";
+    execSyncMock.mockReturnValue("echo from profile\n/usr/local/bin/codex\n");
+
+    expect(findExecutable("codex")).toBe("/usr/local/bin/codex");
+    expect(execSyncMock).toHaveBeenCalledOnce();
+    expect(execFileSyncMock).not.toHaveBeenCalled();
+  });
+
+  test("warns and returns null when the final which line is not an absolute path", () => {
+    process.env["SHELL"] = "/bin/zsh";
+    execSyncMock.mockReturnValue("profile noise\ncodex\n");
+    execFileSyncMock.mockReturnValue("codex\n");
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    expect(findExecutable("codex")).toBeNull();
+    expect(warnSpy).toHaveBeenCalledTimes(2);
+
+    warnSpy.mockRestore();
+  });
+
+  test("returns direct paths when they exist", () => {
+    existsSyncMock.mockReturnValue(true);
+
+    expect(findExecutable("/usr/local/bin/codex")).toBe("/usr/local/bin/codex");
+    expect(existsSyncMock).toHaveBeenCalledWith("/usr/local/bin/codex");
   });
 });

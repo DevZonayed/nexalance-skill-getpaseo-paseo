@@ -55,6 +55,31 @@ export type ProviderCommandPrefix = {
   args: string[];
 };
 
+function resolveExecutableFromWhichOutput(
+  name: string,
+  output: string,
+  source: "login-shell" | "which"
+): string | null {
+  const lines = output
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+  const candidate = lines.at(-1);
+
+  if (!candidate) {
+    return null;
+  }
+
+  if (!candidate.startsWith("/")) {
+    console.warn(
+      `[findExecutable] Ignoring non-absolute ${source} output for '${name}': ${JSON.stringify(candidate)}`
+    );
+    return null;
+  }
+
+  return candidate;
+}
+
 export function resolveProviderCommandPrefix(
   commandConfig: ProviderCommand | undefined,
   resolveDefaultCommand: () => string
@@ -127,8 +152,9 @@ export function findExecutable(name: string): string | null {
         encoding: "utf8",
         timeout: 5000,
       }).trim();
-      if (out) {
-        return out;
+      const resolved = resolveExecutableFromWhichOutput(trimmed, out, "login-shell");
+      if (resolved) {
+        return resolved;
       }
     } catch {
       // Login shell failed (broken rc, etc.) — fall through to plain which.
@@ -136,7 +162,11 @@ export function findExecutable(name: string): string | null {
   }
 
   try {
-    return execFileSync("which", [trimmed], { encoding: "utf8" }).trim() || null;
+    return resolveExecutableFromWhichOutput(
+      trimmed,
+      execFileSync("which", [trimmed], { encoding: "utf8" }).trim(),
+      "which"
+    );
   } catch {
     return null;
   }
