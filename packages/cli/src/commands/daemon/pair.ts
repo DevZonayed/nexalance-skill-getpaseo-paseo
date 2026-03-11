@@ -1,6 +1,7 @@
 import { Command } from 'commander'
 import chalk from 'chalk'
 import { generateLocalPairingOffer, loadConfig, resolvePaseoHome } from '@getpaseo/server'
+import { addJsonOption } from '../../utils/command-options.js'
 
 interface PairOptions {
   home?: string
@@ -8,9 +9,10 @@ interface PairOptions {
 }
 
 export function pairCommand(): Command {
-  return new Command('pair')
-    .description('Print the daemon pairing QR code and link')
-    .option('--json', 'Output in JSON format')
+  return addJsonOption(
+    new Command('pair')
+      .description('Print the daemon pairing QR code and link')
+  )
     .option('--home <path>', 'Paseo home directory (default: ~/.paseo)')
     .action(async (_options: PairOptions, command: Command) => {
       await runPairCommand(command.optsWithGlobals() as PairOptions)

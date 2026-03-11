@@ -6,6 +6,7 @@ import { runRestartCommand } from './restart.js'
 import { pairCommand } from './pair.js'
 import { updateCommand } from './update.js'
 import { withOutput } from '../../output/index.js'
+import { addJsonOption } from '../../utils/command-options.js'
 
 export function createDaemonCommand(): Command {
   const daemon = new Command('daemon').description('Manage the Paseo daemon')
@@ -14,26 +15,29 @@ export function createDaemonCommand(): Command {
   daemon.addCommand(pairCommand())
   daemon.addCommand(updateCommand())
 
-  daemon
-    .command('status')
-    .description('Show local daemon status')
-    .option('--json', 'Output in JSON format')
+  addJsonOption(
+    daemon
+      .command('status')
+      .description('Show local daemon status')
+  )
     .option('--home <path>', 'Paseo home directory (default: ~/.paseo)')
     .action(withOutput(runStatusCommand))
 
-  daemon
-    .command('stop')
-    .description('Stop the local daemon')
-    .option('--json', 'Output in JSON format')
+  addJsonOption(
+    daemon
+      .command('stop')
+      .description('Stop the local daemon')
+  )
     .option('--home <path>', 'Paseo home directory (default: ~/.paseo)')
     .option('--timeout <seconds>', 'Wait timeout before failing (default: 15)')
     .option('--force', 'Send SIGKILL if graceful stop times out')
     .action(withOutput(runStopCommand))
 
-  daemon
-    .command('restart')
-    .description('Restart the local daemon')
-    .option('--json', 'Output in JSON format')
+  addJsonOption(
+    daemon
+      .command('restart')
+      .description('Restart the local daemon')
+  )
     .option('--home <path>', 'Paseo home directory (default: ~/.paseo)')
     .option('--timeout <seconds>', 'Wait timeout before force step (default: 15)')
     .option('--force', 'Send SIGKILL if graceful stop times out')

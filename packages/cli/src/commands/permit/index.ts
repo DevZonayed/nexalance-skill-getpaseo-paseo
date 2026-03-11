@@ -3,39 +3,37 @@ import { runLsCommand } from './ls.js'
 import { runAllowCommand } from './allow.js'
 import { runDenyCommand } from './deny.js'
 import { withOutput } from '../../output/index.js'
+import { addJsonAndDaemonHostOptions } from '../../utils/command-options.js'
 
 export function createPermitCommand(): Command {
   const permit = new Command('permit').description('Manage permission requests')
 
-  permit
-    .command('ls')
-    .description('List all pending permissions')
-    .option('--json', 'Output in JSON format')
-    .option('--host <host>', 'Daemon host target (default: local socket/pipe, then localhost:6767)')
-    .action(withOutput(runLsCommand))
+  addJsonAndDaemonHostOptions(
+    permit
+      .command('ls')
+      .description('List all pending permissions')
+  ).action(withOutput(runLsCommand))
 
-  permit
-    .command('allow')
-    .description('Allow a permission request')
-    .argument('<agent>', 'Agent ID (or prefix)')
-    .argument('[req_id]', 'Permission request ID (optional if --all)')
-    .option('--all', 'Allow all pending permissions for this agent')
-    .option('--input <json>', 'Modified input parameters (JSON)')
-    .option('--json', 'Output in JSON format')
-    .option('--host <host>', 'Daemon host target (default: local socket/pipe, then localhost:6767)')
-    .action(withOutput(runAllowCommand))
+  addJsonAndDaemonHostOptions(
+    permit
+      .command('allow')
+      .description('Allow a permission request')
+      .argument('<agent>', 'Agent ID (or prefix)')
+      .argument('[req_id]', 'Permission request ID (optional if --all)')
+      .option('--all', 'Allow all pending permissions for this agent')
+      .option('--input <json>', 'Modified input parameters (JSON)')
+  ).action(withOutput(runAllowCommand))
 
-  permit
-    .command('deny')
-    .description('Deny a permission request')
-    .argument('<agent>', 'Agent ID (or prefix)')
-    .argument('[req_id]', 'Permission request ID (optional if --all)')
-    .option('--all', 'Deny all pending permissions for this agent')
-    .option('--message <msg>', 'Denial reason message')
-    .option('--interrupt', 'Stop agent after denial')
-    .option('--json', 'Output in JSON format')
-    .option('--host <host>', 'Daemon host target (default: local socket/pipe, then localhost:6767)')
-    .action(withOutput(runDenyCommand))
+  addJsonAndDaemonHostOptions(
+    permit
+      .command('deny')
+      .description('Deny a permission request')
+      .argument('<agent>', 'Agent ID (or prefix)')
+      .argument('[req_id]', 'Permission request ID (optional if --all)')
+      .option('--all', 'Deny all pending permissions for this agent')
+      .option('--message <msg>', 'Denial reason message')
+      .option('--interrupt', 'Stop agent after denial')
+  ).action(withOutput(runDenyCommand))
 
   return permit
 }

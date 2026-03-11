@@ -21,6 +21,12 @@ import { runWaitCommand } from './commands/agent/wait.js'
 import { runAttachCommand } from './commands/agent/attach.js'
 import { withOutput } from './output/index.js'
 import { onboardCommand } from './commands/onboard.js'
+import {
+  addDaemonHostOption,
+  addJsonAndDaemonHostOptions,
+  addJsonOption,
+  collectMultiple,
+} from './utils/command-options.js'
 
 const require = createRequire(import.meta.url)
 
@@ -38,11 +44,6 @@ function resolveCliVersion(): string {
 
 const VERSION = resolveCliVersion()
 
-// Helper function to collect multiple option values into an array
-function collectMultiple(value: string, previous: string[]): string[] {
-  return previous.concat([value])
-}
-
 export function createCli(): Command {
   const program = new Command()
 
@@ -58,102 +59,100 @@ export function createCli(): Command {
     .option('--no-color', 'disable colored output')
 
   // Primary agent commands (top-level)
-  program
-    .command('ls')
-    .description('List agents. By default excludes archived agents.')
-    .option('-a, --all', 'Include archived agents')
-    .option('-g, --global', 'Legacy no-op (kept for compatibility)')
-    .option('--label <key=value>', 'Filter by label (can be used multiple times)', collectMultiple, [])
-    .option('--thinking <id>', 'Filter by thinking option ID')
-    .option('--json', 'Output in JSON format')
-    .option('--host <host>', 'Daemon host target (default: local socket/pipe, then localhost:6767)')
-    .action(withOutput(runLsCommand))
+  addJsonAndDaemonHostOptions(
+    program
+      .command('ls')
+      .description('List agents. By default excludes archived agents.')
+      .option('-a, --all', 'Include archived agents')
+      .option('-g, --global', 'Legacy no-op (kept for compatibility)')
+      .option('--label <key=value>', 'Filter by label (can be used multiple times)', collectMultiple, [])
+      .option('--thinking <id>', 'Filter by thinking option ID')
+  ).action(withOutput(runLsCommand))
 
-  program
-    .command('run')
-    .description('Create and start an agent with a task')
-    .argument('<prompt>', 'The task/prompt for the agent')
-    .option('-d, --detach', 'Run in background (detached)')
-    .option('--name <name>', 'Assign a name/title to the agent')
-    .option('--provider <provider>', 'Agent provider: claude | codex | opencode', 'claude')
-    .option('--model <model>', 'Model to use (e.g., claude-sonnet-4-20250514, claude-3-5-haiku-20241022)')
-    .option('--thinking <id>', 'Thinking option ID to use for this run')
-    .option('--mode <mode>', 'Provider-specific mode (e.g., plan, default, bypass)')
-    .option('--worktree <name>', 'Create agent in a new git worktree')
-    .option('--base <branch>', 'Base branch for worktree (default: current branch)')
-    .option('--image <path>', 'Attach image(s) to the initial prompt (can be used multiple times)', collectMultiple, [])
-    .option('--cwd <path>', 'Working directory (default: current)')
-    .option('--label <key=value>', 'Add label(s) to the agent (can be used multiple times)', collectMultiple, [])
-    .option('--output-schema <schema>', 'Output JSON matching the provided schema file path or inline JSON schema')
-    .option('--json', 'Output in JSON format')
-    .option('--host <host>', 'Daemon host target (default: local socket/pipe, then localhost:6767)')
-    .action(withOutput(runRunCommand))
+  addJsonAndDaemonHostOptions(
+    program
+      .command('run')
+      .description('Create and start an agent with a task')
+      .argument('<prompt>', 'The task/prompt for the agent')
+      .option('-d, --detach', 'Run in background (detached)')
+      .option('--name <name>', 'Assign a name/title to the agent')
+      .option('--provider <provider>', 'Agent provider: claude | codex | opencode', 'claude')
+      .option('--model <model>', 'Model to use (e.g., claude-sonnet-4-20250514, claude-3-5-haiku-20241022)')
+      .option('--thinking <id>', 'Thinking option ID to use for this run')
+      .option('--mode <mode>', 'Provider-specific mode (e.g., plan, default, bypass)')
+      .option('--worktree <name>', 'Create agent in a new git worktree')
+      .option('--base <branch>', 'Base branch for worktree (default: current branch)')
+      .option(
+        '--image <path>',
+        'Attach image(s) to the initial prompt (can be used multiple times)',
+        collectMultiple,
+        []
+      )
+      .option('--cwd <path>', 'Working directory (default: current)')
+      .option('--label <key=value>', 'Add label(s) to the agent (can be used multiple times)', collectMultiple, [])
+      .option('--output-schema <schema>', 'Output JSON matching the provided schema file path or inline JSON schema')
+  ).action(withOutput(runRunCommand))
 
-  program
-    .command('attach')
-    .description("Attach to a running agent's output stream")
-    .argument('<id>', 'Agent ID (or prefix)')
-    .option('--host <host>', 'Daemon host target (default: local socket/pipe, then localhost:6767)')
-    .action(runAttachCommand)
+  addDaemonHostOption(
+    program
+      .command('attach')
+      .description("Attach to a running agent's output stream")
+      .argument('<id>', 'Agent ID (or prefix)')
+  ).action(runAttachCommand)
 
-  program
-    .command('logs')
-    .description('View agent activity/timeline')
-    .argument('<id>', 'Agent ID (or prefix)')
-    .option('-f, --follow', 'Follow log output (streaming)')
-    .option('--tail <n>', 'Show last n entries')
-    .option('--filter <type>', 'Filter by event type (tools, text, errors, permissions)')
-    .option('--since <time>', 'Show logs since timestamp')
-    .option('--host <host>', 'Daemon host target (default: local socket/pipe, then localhost:6767)')
-    .action(runLogsCommand)
+  addDaemonHostOption(
+    program
+      .command('logs')
+      .description('View agent activity/timeline')
+      .argument('<id>', 'Agent ID (or prefix)')
+      .option('-f, --follow', 'Follow log output (streaming)')
+      .option('--tail <n>', 'Show last n entries')
+      .option('--filter <type>', 'Filter by event type (tools, text, errors, permissions)')
+      .option('--since <time>', 'Show logs since timestamp')
+  ).action(runLogsCommand)
 
-  program
-    .command('stop')
-    .description('Interrupt an agent if it is running (no-op for idle agents)')
-    .argument('[id]', 'Agent ID (or prefix) - optional if --all or --cwd specified')
-    .option('--all', 'Stop all agents')
-    .option('--cwd <path>', 'Stop all agents in directory')
-    .option('--json', 'Output in JSON format')
-    .option('--host <host>', 'Daemon host target (default: local socket/pipe, then localhost:6767)')
-    .action(withOutput(runStopCommand))
+  addJsonAndDaemonHostOptions(
+    program
+      .command('stop')
+      .description('Interrupt an agent if it is running (no-op for idle agents)')
+      .argument('[id]', 'Agent ID (or prefix) - optional if --all or --cwd specified')
+      .option('--all', 'Stop all agents')
+      .option('--cwd <path>', 'Stop all agents in directory')
+  ).action(withOutput(runStopCommand))
 
-  program
-    .command('delete')
-    .description('Delete an agent (interrupt if running, then hard-delete)')
-    .argument('[id]', 'Agent ID (or prefix) - optional if --all or --cwd specified')
-    .option('--all', 'Delete all agents')
-    .option('--cwd <path>', 'Delete all agents in directory')
-    .option('--json', 'Output in JSON format')
-    .option('--host <host>', 'Daemon host target (default: local socket/pipe, then localhost:6767)')
-    .action(withOutput(runDeleteCommand))
+  addJsonAndDaemonHostOptions(
+    program
+      .command('delete')
+      .description('Delete an agent (interrupt if running, then hard-delete)')
+      .argument('[id]', 'Agent ID (or prefix) - optional if --all or --cwd specified')
+      .option('--all', 'Delete all agents')
+      .option('--cwd <path>', 'Delete all agents in directory')
+  ).action(withOutput(runDeleteCommand))
 
-  program
-    .command('send')
-    .description('Send a message/task to an existing agent')
-    .argument('<id>', 'Agent ID (or prefix)')
-    .argument('<prompt>', 'The message to send')
-    .option('--no-wait', 'Return immediately without waiting for completion')
-    .option('--image <path>', 'Attach image(s) to the message', collectMultiple, [])
-    .option('--json', 'Output in JSON format')
-    .option('--host <host>', 'Daemon host target (default: local socket/pipe, then localhost:6767)')
-    .action(withOutput(runSendCommand))
+  addJsonAndDaemonHostOptions(
+    program
+      .command('send')
+      .description('Send a message/task to an existing agent')
+      .argument('<id>', 'Agent ID (or prefix)')
+      .argument('<prompt>', 'The message to send')
+      .option('--no-wait', 'Return immediately without waiting for completion')
+      .option('--image <path>', 'Attach image(s) to the message', collectMultiple, [])
+  ).action(withOutput(runSendCommand))
 
-  program
-    .command('inspect')
-    .description('Show detailed information about an agent')
-    .argument('<id>', 'Agent ID (or prefix)')
-    .option('--json', 'Output in JSON format')
-    .option('--host <host>', 'Daemon host target (default: local socket/pipe, then localhost:6767)')
-    .action(withOutput(runInspectCommand))
+  addJsonAndDaemonHostOptions(
+    program
+      .command('inspect')
+      .description('Show detailed information about an agent')
+      .argument('<id>', 'Agent ID (or prefix)')
+  ).action(withOutput(runInspectCommand))
 
-  program
-    .command('wait')
-    .description('Wait for an agent to become idle')
-    .argument('<id>', 'Agent ID (or prefix)')
-    .option('--timeout <seconds>', 'Maximum wait time (default: no limit)')
-    .option('--json', 'Output in JSON format')
-    .option('--host <host>', 'Daemon host target (default: local socket/pipe, then localhost:6767)')
-    .action(withOutput(runWaitCommand))
+  addJsonAndDaemonHostOptions(
+    program
+      .command('wait')
+      .description('Wait for an agent to become idle')
+      .argument('<id>', 'Agent ID (or prefix)')
+      .option('--timeout <seconds>', 'Maximum wait time (default: no limit)')
+  ).action(withOutput(runWaitCommand))
 
   // Top-level local daemon shortcuts
   program.addCommand(onboardCommand())
@@ -168,17 +167,19 @@ export function createCli(): Command {
       await runDaemonUpdateCommandOrExit(options)
     })
 
-  program
-    .command('status')
-    .description('Show local daemon status (alias for "paseo daemon status")')
-    .option('--json', 'Output in JSON format')
+  addJsonOption(
+    program
+      .command('status')
+      .description('Show local daemon status (alias for "paseo daemon status")')
+  )
     .option('--home <path>', 'Paseo home directory (default: ~/.paseo)')
     .action(withOutput(runDaemonStatusCommand))
 
-  program
-    .command('restart')
-    .description('Restart local daemon (alias for "paseo daemon restart")')
-    .option('--json', 'Output in JSON format')
+  addJsonOption(
+    program
+      .command('restart')
+      .description('Restart local daemon (alias for "paseo daemon restart")')
+  )
     .option('--home <path>', 'Paseo home directory (default: ~/.paseo)')
     .option('--timeout <seconds>', 'Wait timeout before force step (default: 15)')
     .option('--force', 'Send SIGKILL if graceful stop times out')

@@ -2,24 +2,23 @@ import { Command } from 'commander'
 import { runLsCommand } from './ls.js'
 import { runArchiveCommand } from './archive.js'
 import { withOutput } from '../../output/index.js'
+import { addJsonAndDaemonHostOptions } from '../../utils/command-options.js'
 
 export function createWorktreeCommand(): Command {
   const worktree = new Command('worktree').description('Manage Paseo-managed git worktrees')
 
-  worktree
-    .command('ls')
-    .description('List Paseo-managed git worktrees')
-    .option('--json', 'Output in JSON format')
-    .option('--host <host>', 'Daemon host target (default: local socket/pipe, then localhost:6767)')
-    .action(withOutput(runLsCommand))
+  addJsonAndDaemonHostOptions(
+    worktree
+      .command('ls')
+      .description('List Paseo-managed git worktrees')
+  ).action(withOutput(runLsCommand))
 
-  worktree
-    .command('archive')
-    .description('Archive a worktree (removes worktree and associated branch)')
-    .argument('<name>', 'Worktree name or branch name')
-    .option('--json', 'Output in JSON format')
-    .option('--host <host>', 'Daemon host target (default: local socket/pipe, then localhost:6767)')
-    .action(withOutput(runArchiveCommand))
+  addJsonAndDaemonHostOptions(
+    worktree
+      .command('archive')
+      .description('Archive a worktree (removes worktree and associated branch)')
+      .argument('<name>', 'Worktree name or branch name')
+  ).action(withOutput(runArchiveCommand))
 
   return worktree
 }
