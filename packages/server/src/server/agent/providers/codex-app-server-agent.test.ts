@@ -11,9 +11,12 @@ import {
 } from "./codex-app-server-agent.js";
 import { createTestLogger } from "../../../test-utils/test-logger.js";
 import { agentConfigs } from "../../daemon-e2e/agent-configs.js";
+import { AgentManager } from "../agent-manager.js";
+import { AgentStorage } from "../agent-storage.js";
 import type {
   AgentPermissionRequest,
   AgentPromptContentBlock,
+  AgentStreamEvent,
   AgentTimelineItem,
 } from "../agent-sdk-types.js";
 
@@ -177,6 +180,22 @@ function readRolloutTurnContextEfforts(rolloutPath: string): string[] {
   }
 
   return efforts;
+}
+
+type Deferred<T> = {
+  promise: Promise<T>;
+  resolve: (value: T) => void;
+  reject: (reason?: unknown) => void;
+};
+
+function deferred<T>(): Deferred<T> {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
 }
 
 describe("Codex app-server provider (integration)", () => {
@@ -1451,6 +1470,134 @@ describe("Codex app-server provider (integration)", () => {
         await session?.close();
         await followupSession?.close();
         cleanup();
+        rmSync(cwd, { recursive: true, force: true });
+      }
+    },
+    120000
+  );
+
+  test.runIf(isCodexInstalled())(
+    "replaceAgentRun keeps the replacement Codex stream alive when the previous interrupted turn completes late",
+    async () => {
+      const cleanup = useTempCodexSessionDir();
+      const cwd = tmpCwd("codex-replace-run-");
+      const storageDir = tmpCwd("codex-replace-run-storage-");
+
+      try {
+        const manager = new AgentManager({
+          clients: {
+            codex: new CodexAppServerAgentClient(logger),
+          },
+          registry: new AgentStorage(storageDir, logger),
+          logger,
+        });
+
+        const snapshot = await manager.createAgent({
+          provider: "codex",
+          cwd,
+          modeId: "auto",
+          model: CODEX_TEST_MODEL,
+          thinkingOptionId: CODEX_TEST_THINKING_OPTION_ID,
+        });
+
+        const managedAgent = ((manager as any).agents.get(snapshot.id) ?? null) as
+          | { session?: any }
+          | null;
+        const session = managedAgent?.session as
+          | {
+              client?: {
+                request: (method: string, params?: unknown, timeoutMs?: number) => Promise<unknown>;
+              } | null;
+              handleNotification?: (method: string, params: unknown) => void;
+            }
+          | undefined;
+        if (!session?.client || !session.handleNotification) {
+          throw new Error("Codex session internals unavailable for replaceAgentRun regression test");
+        }
+
+        let turnStartCount = 0;
+        const replacementTurnInjected = deferred<void>();
+        const originalRequest = session.client.request.bind(session.client);
+        session.client.request = async (method: string, params?: unknown, timeoutMs?: number) => {
+          if (method === "turn/start") {
+            turnStartCount += 1;
+            if (turnStartCount === 1) {
+              queueMicrotask(() => {
+                session.handleNotification?.("turn/started", {
+                  turn: { id: "initial-turn" },
+                });
+              });
+            } else if (turnStartCount === 2) {
+              queueMicrotask(() => {
+                session.handleNotification?.("turn/completed", {
+                  turn: { status: "interrupted" },
+                });
+                session.handleNotification?.("turn/started", {
+                  turn: { id: "replacement-turn" },
+                });
+                session.handleNotification?.("turn/completed", {
+                  turn: { status: "completed" },
+                });
+                replacementTurnInjected.resolve(undefined);
+              });
+            }
+          }
+          return originalRequest(method, params, timeoutMs);
+        };
+
+        const firstRun = manager.streamAgent(
+          snapshot.id,
+          "Keep working until you are interrupted."
+        );
+        const firstRunReady = deferred<void>();
+        const firstRunDrain = (async () => {
+          for await (const event of firstRun) {
+            if (event.type === "turn_started") {
+              firstRunReady.resolve(undefined);
+            }
+          }
+        })();
+
+        await Promise.race([
+          firstRunReady.promise,
+          new Promise<never>((_, reject) =>
+            setTimeout(
+              () => reject(new Error("Timed out waiting for initial Codex turn to start")),
+              15_000
+            )
+          ),
+        ]);
+
+        const replacementEvents: AgentStreamEvent[] = [];
+        await Promise.race([
+          (async () => {
+            for await (const event of manager.replaceAgentRun(
+              snapshot.id,
+              "Reply exactly REPLACED and stop."
+            )) {
+              replacementEvents.push(event);
+            }
+          })(),
+          new Promise<never>((_, reject) =>
+            setTimeout(
+              () =>
+                reject(
+                  new Error("Timed out waiting for replacement Codex stream to finish")
+                ),
+              60_000
+            )
+          ),
+        ]);
+
+        await replacementTurnInjected.promise;
+        await firstRunDrain;
+
+        expect(turnStartCount).toBeGreaterThanOrEqual(2);
+        expect(replacementEvents.some((event) => event.type === "turn_started")).toBe(true);
+        expect(replacementEvents.some((event) => event.type === "turn_completed")).toBe(true);
+      } finally {
+        cleanup();
+        rmSync(storageDir, { recursive: true, force: true });
         rmSync(cwd, { recursive: true, force: true });
       }
     },

@@ -2626,7 +2626,6 @@ class CodexAppServerAgentSession implements AgentSession {
       this.pendingCommandOutputDeltas.clear();
       this.pendingFileChangeOutputDeltas.clear();
       this.warnedIncompleteEditToolCallIds.clear();
-      this.eventQueue?.end();
       return;
     }
 
