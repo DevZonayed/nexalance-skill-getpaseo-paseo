@@ -379,29 +379,61 @@ jobs:
           set -euo pipefail
           npm run tauri --workspace=@getpaseo/desktop build -- --bundles appimage
 
-      - name: Inspect failed Linux AppImage build
+      - name: Attempt manual Linux AppImage fallback
         if: env.IS_SMOKE_TAG != 'true' && steps.linux_tauri.outcome == 'failure'
         shell: bash
         run: |
           set -euxo pipefail
           appimage_dir="packages/desktop/src-tauri/target/release/bundle/appimage"
-          ls -R "$appimage_dir" || true
-          script_path="$(find "$appimage_dir" -maxdepth 2 -type f -name 'build_appimage.sh' | head -n 1)"
-          if [ -z "$script_path" ]; then
-            echo "::error::build_appimage.sh was not generated"
+          appdir_path="$appimage_dir/Paseo.AppDir"
+          if [ ! -d "$appdir_path" ]; then
+            echo "::error::AppDir was not generated at $appdir_path"
             exit 1
           fi
-          sed -n '1,240p' "$script_path"
           env | sort | grep -E '^(APPIMAGE|DESKTOP_VERSION|NO_STRIP|RELEASE_TAG|SOURCE_TAG|TAURI_)' || true
+          tools_dir="$(mktemp -d)"
+          curl -fsSL https://github.com/linuxdeploy/linuxdeploy/releases/download/1-alpha-20251107-1/linuxdeploy-x86_64.AppImage -o "$tools_dir/linuxdeploy-x86_64.AppImage"
+          curl -fsSL https://github.com/linuxdeploy/linuxdeploy-plugin-appimage/releases/download/1-alpha-20250213-1/linuxdeploy-plugin-appimage-x86_64.AppImage -o "$tools_dir/linuxdeploy-plugin-appimage-x86_64.AppImage"
+          curl -fsSL https://raw.githubusercontent.com/tauri-apps/linuxdeploy-plugin-gtk/master/linuxdeploy-plugin-gtk.sh -o "$tools_dir/linuxdeploy-plugin-gtk.sh"
+          curl -fsSL https://raw.githubusercontent.com/tauri-apps/linuxdeploy-plugin-gstreamer/master/linuxdeploy-plugin-gstreamer.sh -o "$tools_dir/linuxdeploy-plugin-gstreamer.sh"
+          chmod +x "$tools_dir"/linuxdeploy*
+          export PATH="$tools_dir:$PATH"
+          export NO_STRIP=1
+          export APPIMAGE_EXTRACT_AND_RUN=1
           (
-            cd "$(dirname "$script_path")"
-            bash -x "./$(basename "$script_path")"
-          ) || true
+            cd "$appimage_dir"
+            "$tools_dir/linuxdeploy-x86_64.AppImage" \
+              --verbosity 2 \
+              --appdir "Paseo.AppDir" \
+              --plugin gtk \
+              --plugin gstreamer \
+              --output appimage
+          )
+          manual_appimage="$(find "$appimage_dir" -maxdepth 1 -type f -name '*.AppImage' | head -n 1)"
+          if [ -z "$manual_appimage" ]; then
+            echo "::error::Manual linuxdeploy run did not produce an AppImage"
+            exit 1
+          fi
+          canonical_appimage="$appimage_dir/Paseo_${DESKTOP_VERSION}_amd64.AppImage"
+          if [ "$manual_appimage" != "$canonical_appimage" ]; then
+            mv "$manual_appimage" "$canonical_appimage"
+          fi
+          npx tauri signer sign "$canonical_appimage"
 
       - name: Fail Linux release when AppImage bundling fails
         if: env.IS_SMOKE_TAG != 'true' && steps.linux_tauri.outcome == 'failure'
         shell: bash
-        run: exit 1
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          assets=(
+            packages/desktop/src-tauri/target/release/bundle/appimage/*.AppImage
+            packages/desktop/src-tauri/target/release/bundle/appimage/*.AppImage.sig
+          )
+          if [ "${#assets[@]}" -eq 0 ]; then
+            echo "::error::Linux AppImage assets are still missing after the manual fallback."
+            exit 1
+          fi
 
       - name: Upload Linux release assets
         if: env.IS_SMOKE_TAG != 'true'
