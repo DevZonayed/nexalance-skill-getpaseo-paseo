@@ -18,8 +18,9 @@ const customWebPlatform = (process.env.PASEO_WEB_PLATFORM ?? "")
 const config = getDefaultConfig(projectRoot);
 const defaultResolveRequest = config.resolver.resolveRequest ?? resolve;
 const escapedAppSrcRoot = appSrcRoot
-  .replace(/[|\\{}()[\]^$+*?.]/g, "\\$&")
-  .replace(/\//g, "[\\\\/]");
+  .split(path.sep)
+  .map((segment) => segment.replace(/[|\\{}()[\]^$+*?.]/g, "\\$&"))
+  .join("[\\\\/]");
 
 config.resolver.extraNodeModules = {
   ...(config.resolver.extraNodeModules ?? {}),
