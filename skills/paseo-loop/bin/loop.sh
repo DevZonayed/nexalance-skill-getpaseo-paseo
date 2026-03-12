@@ -111,7 +111,7 @@ worker_flags=()
 if [[ "$worker_provider" == "codex" ]]; then
   worker_flags+=(--mode full-access --provider codex)
 elif [[ "$worker_provider" == "claude" ]]; then
-  worker_flags+=(--mode bypassPermissions)
+  worker_flags+=(--mode bypass)
 fi
 [[ -n "$worker_model" ]] && worker_flags+=(--model "$worker_model")
 [[ -n "$thinking" ]] && worker_flags+=(--thinking "$thinking")
@@ -121,7 +121,7 @@ judge_flags=()
 if [[ "$judge_provider" == "codex" ]]; then
   judge_flags+=(--mode full-access --provider codex)
 elif [[ "$judge_provider" == "claude" ]]; then
-  judge_flags+=(--mode bypassPermissions)
+  judge_flags+=(--mode bypass)
 fi
 [[ -n "$judge_model" ]] && judge_flags+=(--model "$judge_model")
 

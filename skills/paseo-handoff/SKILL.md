@@ -34,9 +34,9 @@ Parse `$ARGUMENTS` to determine:
 |---|---|---|---|
 | *(nothing)* | `codex` | `gpt-5.4` | `full-access` |
 | `codex` | `codex` | `gpt-5.4` | `full-access` |
-| `claude` | `claude` | `opus` | `bypassPermissions` |
-| `opus` | `claude` | `opus` | `bypassPermissions` |
-| `sonnet` | `claude` | `sonnet` | `bypassPermissions` |
+| `claude` | `claude` | `opus` | `bypass` |
+| `opus` | `claude` | `opus` | `bypass` |
+| `sonnet` | `claude` | `sonnet` | `bypass` |
 
 Default is **Codex** with `gpt-5.4`.
 
@@ -106,32 +106,30 @@ This is the critical step. The receiving agent has **zero context** about your c
 
 ## Launching the Agent
 
-Use `--ui` so that the agent is visible in the UI.
-
 ### Default (Codex, no worktree)
 
 ```bash
-paseo run --ui -d --mode full-access --provider codex --name "[Handoff] Task description" "$prompt"
+paseo run -d --mode full-access --provider codex --name "[Handoff] Task description" "$prompt"
 ```
 
 ### Claude (Opus, no worktree)
 
 ```bash
-paseo run --ui -d --mode bypassPermissions --model opus --name "[Handoff] Task description" "$prompt"
+paseo run -d --mode bypass --model opus --name "[Handoff] Task description" "$prompt"
 ```
 
 ### Codex in a worktree
 
 ```bash
 base=$(git branch --show-current)
-paseo run --ui -d --mode full-access --provider codex --worktree task-branch-name --base "$base" --name "[Handoff] Task description" "$prompt"
+paseo run -d --mode full-access --provider codex --worktree task-branch-name --base "$base" --name "[Handoff] Task description" "$prompt"
 ```
 
 ### Claude in a worktree
 
 ```bash
 base=$(git branch --show-current)
-paseo run --ui -d --mode bypassPermissions --model opus --worktree task-branch-name --base "$base" --name "[Handoff] Task description" "$prompt"
+paseo run -d --mode bypass --model opus --worktree task-branch-name --base "$base" --name "[Handoff] Task description" "$prompt"
 ```
 
 ## After Launch

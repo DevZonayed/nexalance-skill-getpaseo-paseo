@@ -77,7 +77,7 @@ $NO_EDITS"
 Same prompt to both, `[Committee]` prefix for identification:
 
 ```bash
-opus_id=$(paseo run -d --mode bypassPermissions --model opus --thinking on --name "[Committee] Task description" "$prompt" -q)
+opus_id=$(paseo run -d --mode bypass --model opus --thinking on --name "[Committee] Task description" "$prompt" -q)
 gpt_id=$(paseo run -d --mode full-access --provider codex --model gpt-5.4 --thinking medium --name "[Committee] Task description" "$prompt" -q)
 ```
 

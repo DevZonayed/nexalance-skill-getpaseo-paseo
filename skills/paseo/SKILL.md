@@ -14,13 +14,10 @@ paseo ls -g              # All agents across all projects (global)
 paseo ls --json          # JSON output for parsing
 
 # Create and run an agent (blocks until completion by default)
-paseo run --mode bypassPermissions "<prompt>"
-paseo run --mode bypassPermissions --name "Task Name" "<prompt>"
-paseo run --mode bypassPermissions --model opus "<prompt>"
+paseo run --mode bypass "<prompt>"
+paseo run --mode bypass --name "Task Name" "<prompt>"
+paseo run --mode bypass --model opus "<prompt>"
 paseo run --mode full-access --provider codex "<prompt>"
-
-# UI visible agents
-paseo run --ui "hello"
 
 # Detached mode - runs in background, returns agent ID immediately
 paseo run --detach "<prompt>"
@@ -75,10 +72,6 @@ paseo ls --json          # JSON output
 paseo ls -q              # IDs only (quiet mode, useful for scripting)
 ```
 
-## UI
-
-By default agents you run are not visible in the UI, use the `--ui` flags so that they're visible.
-
 ### Available Models
 
 **Claude (default provider)** - use aliases, CLI resolves to latest version:
@@ -92,7 +85,7 @@ By default agents you run are not visible in the UI, use the `--ui` flags so tha
 
 ### Permissions
 
-Always launch agents fully permissioned. Use `--mode bypassPermissions` for Claude and `--mode full-access` for Codex. Control behavior through **strict prompting**, not permission modes.
+Always launch agents fully permissioned. Use `--mode bypass` for Claude and `--mode full-access` for Codex. Control behavior through **strict prompting**, not permission modes.
 
 ### Agent Use Cases
 
