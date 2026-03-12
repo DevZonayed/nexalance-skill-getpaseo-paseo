@@ -11,8 +11,9 @@ const styles = StyleSheet.create((theme) => ({
     backgroundColor: theme.colors.surface0,
   },
   status: {
+    marginTop: theme.spacing[8],
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.base,
+    fontSize: theme.fontSize.lg,
   },
 }));
 

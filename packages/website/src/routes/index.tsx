@@ -7,6 +7,7 @@ import '~/styles.css'
 
 const desktopVersion = websitePackage.version
 const releaseBase = `https://github.com/getpaseo/paseo/releases/download/v${desktopVersion}`
+const androidApkHref = `${releaseBase}/paseo-v${desktopVersion}-android.apk`
 
 type Platform = 'mac-silicon' | 'mac-intel' | 'windows' | 'linux'
 
@@ -364,12 +365,18 @@ function GetStarted() {
         >
           <AppleIcon className="h-5 w-5" />
         </a>
-        <span className="relative group inline-flex items-center justify-center rounded-lg border border-white/10 px-3 py-2 text-white/40 cursor-default">
-          <GooglePlayIcon className="h-5 w-5 opacity-40" />
+        <a
+          href={androidApkHref}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="relative group inline-flex items-center justify-center rounded-lg border border-white/20 px-3 py-2 text-white hover:bg-white/10 transition-colors"
+          aria-label="Download APK"
+        >
+          <AndroidIcon className="h-5 w-5" />
           <span className="absolute -top-8 left-1/2 -translate-x-1/2 px-2 py-1 rounded bg-white text-black text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
-            Coming soon
+            Download APK (Play Store coming soon)
           </span>
-        </span>
+        </a>
         <ServerInstallButton />
       </div>
       <div className="flex items-center gap-2 pt-8">
@@ -588,26 +595,6 @@ function AppStoreIcon(props: React.SVGProps<SVGSVGElement>) {
       <path
         d="M265.471 626.12C284.647 595.758 329.491 609.042 330.39 643.199C325.296 664.872 313.511 684.647 298.53 701.027C275.758 724.997 235.009 703.124 242.5 670.864C246.195 654.485 256.882 640.302 265.471 626.12Z"
         fill="black"
-      />
-    </svg>
-  )
-}
-
-function GooglePlayIcon(props: React.SVGProps<SVGSVGElement>) {
-  return (
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 28.99 31.99" aria-hidden="true" {...props}>
-      <path d="M13.54 15.28.12 29.34a3.66 3.66 0 0 0 5.33 2.16l15.1-8.6Z" fill="#ea4335" />
-      <path
-        d="m27.11 12.89-6.53-3.74-7.35 6.45 7.38 7.28 6.48-3.7a3.54 3.54 0 0 0 1.5-4.79 3.62 3.62 0 0 0-1.5-1.5z"
-        fill="#fbbc04"
-      />
-      <path
-        d="M.12 2.66a3.57 3.57 0 0 0-.12.92v24.84a3.57 3.57 0 0 0 .12.92L14 15.64Z"
-        fill="#4285f4"
-      />
-      <path
-        d="m13.64 16 6.94-6.85L5.5.51A3.73 3.73 0 0 0 3.63 0 3.64 3.64 0 0 0 .12 2.65Z"
-        fill="#34a853"
       />
     </svg>
   )

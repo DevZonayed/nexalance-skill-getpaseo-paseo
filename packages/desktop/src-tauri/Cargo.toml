@@ -35,11 +35,11 @@ tauri-plugin-dialog = "2"
 tauri-plugin-log = "2"
 tauri-plugin-notification = "2"
 tauri-plugin-opener = "2"
+tauri-plugin-single-instance = "2"
 tauri-plugin-updater = "2"
 tauri-plugin-websocket = "2"
 tokio = { version = "1", features = ["net", "sync"] }
 tokio-tungstenite = "0.24"
-
 
 
 
