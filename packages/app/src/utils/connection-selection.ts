@@ -1,4 +1,4 @@
-import type { HostConnection } from "@/contexts/daemon-registry-context";
+import type { HostConnection } from "@/types/host-connection";
 
 export type ConnectionCandidate = {
   connectionId: string;

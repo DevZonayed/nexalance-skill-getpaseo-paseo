@@ -2,9 +2,10 @@ import { useCallback, useState } from "react";
 import { Alert, Text, View } from "react-native";
 import { StyleSheet, UnistylesRuntime, useUnistyles } from "react-native-unistyles";
 import { Link } from "lucide-react-native";
-import { useDaemonRegistry, type HostProfile } from "@/contexts/daemon-registry-context";
+import type { HostProfile } from "@/types/host-connection";
+import { useHosts, useHostMutations } from "@/runtime/host-runtime";
 import { decodeOfferFragmentPayload, normalizeHostPort } from "@/utils/daemon-endpoints";
-import { probeConnection } from "@/utils/test-daemon-connection";
+import { connectToDaemon } from "@/utils/test-daemon-connection";
 import { ConnectionOfferSchema } from "@server/shared/connection-offer";
 import { AdaptiveModalSheet, AdaptiveTextInput } from "./adaptive-modal-sheet";
 import { Button } from "@/components/ui/button";
@@ -52,7 +53,8 @@ export interface PairLinkModalProps {
 
 export function PairLinkModal({ visible, onClose, onCancel, onSaved, targetServerId }: PairLinkModalProps) {
   const { theme } = useUnistyles();
-  const { daemons, upsertDaemonFromOfferUrl } = useDaemonRegistry();
+  const daemons = useHosts();
+  const { upsertConnectionFromOfferUrl: upsertDaemonFromOfferUrl } = useHostMutations();
   const isMobile =
     UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
 
@@ -122,7 +124,7 @@ export function PairLinkModal({ visible, onClose, onCancel, onSaved, targetServe
       setIsSaving(true);
       setErrorMessage("");
 
-      const probeResult = await probeConnection(
+      const { client, hostname } = await connectToDaemon(
         {
           id: "probe",
           type: "relay",
@@ -131,10 +133,11 @@ export function PairLinkModal({ visible, onClose, onCancel, onSaved, targetServe
         },
         { serverId: parsedOffer.serverId },
       );
+      await client.close().catch(() => undefined);
 
       const isNewHost = !daemons.some((daemon) => daemon.serverId === parsedOffer.serverId);
       const profile = await upsertDaemonFromOfferUrl(raw);
-      onSaved?.({ profile, serverId: parsedOffer.serverId, hostname: probeResult.hostname, isNewHost });
+      onSaved?.({ profile, serverId: parsedOffer.serverId, hostname, isNewHost });
       handleClose();
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unable to pair host";

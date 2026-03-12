@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { type HostConnection } from "@/contexts/daemon-registry-context";
+import type { HostConnection } from "@/types/host-connection";
 import {
   selectBestConnection,
   type ConnectionCandidate,

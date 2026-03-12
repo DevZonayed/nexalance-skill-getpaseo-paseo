@@ -1,10 +1,9 @@
 import { useMemo, useCallback, useSyncExternalStore } from "react";
 import { useShallow } from "zustand/shallow";
-import { useDaemonRegistry } from "@/contexts/daemon-registry-context";
 import { useSessionStore } from "@/stores/session-store";
 import type { AgentDirectoryEntry } from "@/types/agent-directory";
 import type { Agent } from "@/stores/session-store";
-import { getHostRuntimeStore } from "@/runtime/host-runtime";
+import { getHostRuntimeStore, useHosts } from "@/runtime/host-runtime";
 
 export interface AggregatedAgent extends AgentDirectoryEntry {
   serverId: string;
@@ -22,7 +21,7 @@ export interface AggregatedAgentsResult {
 export function useAggregatedAgents(options?: {
   includeArchived?: boolean;
 }): AggregatedAgentsResult {
-  const { daemons } = useDaemonRegistry();
+  const daemons = useHosts();
   const runtime = getHostRuntimeStore();
   const includeArchived = options?.includeArchived ?? false;
   const runtimeVersion = useSyncExternalStore(

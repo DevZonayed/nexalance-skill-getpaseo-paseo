@@ -3,14 +3,14 @@ import { ActivityIndicator, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useUnistyles } from "react-native-unistyles";
 import { DraftAgentScreen } from "@/screens/agent/draft-agent-screen";
-import { useDaemonRegistry } from "@/contexts/daemon-registry-context";
+import { useHosts } from "@/runtime/host-runtime";
 import { useFormPreferences } from "@/hooks/use-form-preferences";
 import { buildHostSettingsRoute } from "@/utils/host-routes";
 
 export default function LegacySettingsRoute() {
   const router = useRouter();
   const { theme } = useUnistyles();
-  const { daemons, isLoading: registryLoading } = useDaemonRegistry();
+  const daemons = useHosts();
   const { preferences, isLoading: preferencesLoading } = useFormPreferences();
 
   const targetServerId = useMemo(() => {
@@ -29,16 +29,16 @@ export default function LegacySettingsRoute() {
   }, [daemons, preferences.serverId]);
 
   useEffect(() => {
-    if (registryLoading || preferencesLoading) {
+    if (preferencesLoading) {
       return;
     }
     if (!targetServerId) {
       return;
     }
     router.replace(buildHostSettingsRoute(targetServerId) as any);
-  }, [preferencesLoading, registryLoading, router, targetServerId]);
+  }, [preferencesLoading, router, targetServerId]);
 
-  if (registryLoading || preferencesLoading) {
+  if (preferencesLoading) {
     return (
       <View
         style={{

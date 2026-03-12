@@ -5,11 +5,11 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import type { BarcodeScanningResult } from "expo-camera";
-import { useDaemonRegistry } from "@/contexts/daemon-registry-context";
+import { useHosts, useHostMutations } from "@/runtime/host-runtime";
 import { useSessionStore } from "@/stores/session-store";
 import { NameHostModal } from "@/components/name-host-modal";
 import { decodeOfferFragmentPayload, normalizeHostPort } from "@/utils/daemon-endpoints";
-import { probeConnection } from "@/utils/test-daemon-connection";
+import { connectToDaemon } from "@/utils/test-daemon-connection";
 import { ConnectionOfferSchema } from "@server/shared/connection-offer";
 import {
   buildHostRootRoute,
@@ -151,7 +151,8 @@ export default function PairScanScreen() {
   const sourceServerId =
     typeof params.sourceServerId === "string" ? params.sourceServerId : null;
   const targetServerId = typeof params.targetServerId === "string" ? params.targetServerId : null;
-  const { daemons, upsertDaemonFromOfferUrl, updateHost } = useDaemonRegistry();
+  const daemons = useHosts();
+  const { upsertConnectionFromOfferUrl: upsertDaemonFromOfferUrl, renameHost } = useHostMutations();
 
   const [permission, requestPermission] = useCameraPermissions();
   const [isPairing, setIsPairing] = useState(false);
@@ -241,7 +242,7 @@ export default function PairScanScreen() {
           return;
         }
 
-        await probeConnection(
+        const { client } = await connectToDaemon(
           {
             id: "probe",
             type: "relay",
@@ -250,6 +251,7 @@ export default function PairScanScreen() {
           },
           { serverId: offer.serverId },
         );
+        await client.close().catch(() => undefined);
 
         const isNewHost = !daemons.some((daemon) => daemon.serverId === offer.serverId);
         const profile = await upsertDaemonFromOfferUrl(offerUrl);
@@ -311,7 +313,7 @@ export default function PairScanScreen() {
           }}
           onSave={(label) => {
             const serverId = pendingNameHost.serverId;
-            void updateHost(serverId, { label }).finally(() => {
+            void renameHost(serverId, label).finally(() => {
               setPendingNameHost(null);
               returnToSource(serverId);
             });

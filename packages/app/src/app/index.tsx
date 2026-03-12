@@ -1,6 +1,6 @@
 import { useEffect, useRef, useSyncExternalStore, useState } from 'react'
 import { usePathname, useRouter } from 'expo-router'
-import { useDaemonRegistry } from '@/contexts/daemon-registry-context'
+import { useHosts } from '@/runtime/host-runtime'
 import { shouldUseManagedDesktopDaemon } from '@/desktop/managed-runtime/managed-runtime'
 import { buildHostRootRoute } from '@/utils/host-routes'
 import { StartupSplashScreen } from '@/screens/startup-splash-screen'
@@ -57,7 +57,7 @@ function useAnyHostOnline(serverIds: string[]): string | null {
 export default function Index() {
   const router = useRouter()
   const pathname = usePathname()
-  const { daemons, isLoading: registryLoading } = useDaemonRegistry()
+  const daemons = useHosts()
   const [hasTimedOut, setHasTimedOut] = useState(false)
   const isDesktopStartupRace = shouldUseManagedDesktopDaemon()
   const onlineServerId = useAnyHostOnline(daemons.map((daemon) => daemon.serverId))
@@ -83,9 +83,6 @@ export default function Index() {
   }, [])
 
   useEffect(() => {
-    if (registryLoading) {
-      return
-    }
     if (!onlineServerId) {
       return
     }
@@ -97,12 +94,11 @@ export default function Index() {
       elapsedMs: Math.round(performance.now() - APP_START_TIME),
     })
     router.replace(buildHostRootRoute(onlineServerId) as any)
-  }, [onlineServerId, pathname, registryLoading, router])
+  }, [onlineServerId, pathname, router])
 
   useEffect(() => {
     if (
       !shouldRedirectToWelcome({
-        registryLoading,
         onlineServerId,
         hasTimedOut,
         pathname,
@@ -113,11 +109,10 @@ export default function Index() {
       return
     }
     router.replace(WELCOME_ROUTE as any)
-  }, [daemons.length, hasTimedOut, isDesktopStartupRace, onlineServerId, pathname, registryLoading, router])
+  }, [daemons.length, hasTimedOut, isDesktopStartupRace, onlineServerId, pathname, router])
 
   if (
     shouldWaitOnStartupRace({
-      registryLoading,
       onlineServerId,
       hasTimedOut,
       isDesktopStartupRace,

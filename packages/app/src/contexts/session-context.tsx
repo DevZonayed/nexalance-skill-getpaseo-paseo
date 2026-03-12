@@ -1100,6 +1100,19 @@ function SessionProviderInternal({
       if (message.type !== "status") return;
       const serverInfo = parseServerInfoStatusPayload(message.payload);
       if (serverInfo) {
+        console.info(
+          `[Session] server_info received ${JSON.stringify({
+            serverId,
+            payloadServerId: serverInfo.serverId,
+            hostname: serverInfo.hostname,
+            version: serverInfo.version,
+            capabilitiesPresent: Boolean(serverInfo.capabilities),
+            dictationCapabilityEnabled:
+              serverInfo.capabilities?.voice?.dictation?.enabled ?? null,
+            dictationCapabilityReason:
+              serverInfo.capabilities?.voice?.dictation?.reason ?? null,
+          })}`
+        );
         updateSessionServerInfo(serverId, {
           serverId: serverInfo.serverId,
           hostname: serverInfo.hostname,

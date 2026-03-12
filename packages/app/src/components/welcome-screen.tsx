@@ -3,8 +3,8 @@ import { Image, Pressable, Text, View, Platform, ScrollView } from "react-native
 import { useRouter } from "expo-router";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { QrCode, Link2, ClipboardPaste } from "lucide-react-native";
-import type { HostProfile } from "@/contexts/daemon-registry-context";
-import { useDaemonRegistry } from "@/contexts/daemon-registry-context";
+import type { HostProfile } from "@/types/host-connection";
+import { useHostMutations } from "@/runtime/host-runtime";
 import { useSessionStore } from "@/stores/session-store";
 import { AddHostModal } from "./add-host-modal";
 import { PairLinkModal } from "./pair-link-modal";
@@ -87,7 +87,7 @@ export interface WelcomeScreenProps {
 export function WelcomeScreen({ onHostAdded }: WelcomeScreenProps) {
   const { theme } = useUnistyles();
   const router = useRouter();
-  const { updateHost } = useDaemonRegistry();
+  const { renameHost } = useHostMutations();
   const appVersion = resolveAppVersion();
   const appVersionText = formatVersionWithPrefix(appVersion);
   const [isDirectOpen, setIsDirectOpen] = useState(false);
@@ -201,7 +201,7 @@ export function WelcomeScreen({ onHostAdded }: WelcomeScreenProps) {
           }}
           onSave={(label) => {
             const serverId = pendingRedirectServerId;
-            void updateHost(pendingNameHost.serverId, { label }).finally(() => {
+            void renameHost(pendingNameHost.serverId, label).finally(() => {
               setPendingNameHost(null);
               setPendingRedirectServerId(null);
               finishOnboarding(serverId);

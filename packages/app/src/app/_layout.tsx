@@ -12,10 +12,24 @@ import { useFaviconStatus } from "@/hooks/use-favicon-status";
 import { View, ActivityIndicator, Text } from "react-native";
 import { UnistylesRuntime, useUnistyles } from "react-native-unistyles";
 import { darkTheme } from "@/styles/theme";
-import { DaemonRegistryProvider, useDaemonRegistry } from "@/contexts/daemon-registry-context";
-import { MultiDaemonSessionHost } from "@/components/multi-daemon-session-host";
 import { QueryClientProvider } from "@tanstack/react-query";
-import { useState, useEffect, type ReactNode, useMemo, useRef } from "react";
+import {
+  getHostRuntimeStore,
+  useHosts,
+  useHostMutations,
+  useHostRuntimeSession,
+} from "@/runtime/host-runtime";
+import { SessionProvider } from "@/contexts/session-context";
+import type { HostProfile } from "@/types/host-connection";
+import {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  type ReactNode,
+  useMemo,
+  useRef,
+} from "react";
 import { Platform } from "react-native";
 import * as Linking from "expo-linking";
 import * as Notifications from "expo-notifications";
@@ -51,8 +65,12 @@ import {
 } from "@/utils/host-routes";
 import { getTauri } from "@/utils/tauri";
 import { PerfDiagnosticsProvider } from "@/runtime/perf-diagnostics";
+import { attachConsole } from "@/utils/tauri-attach-console";
 
 polyfillCrypto();
+attachConsole();
+const HostRuntimeBootstrapContext = createContext(false);
+
 const IS_DEV = Boolean((globalThis as { __DEV__?: boolean }).__DEV__);
 
 function logLeftSidebarOpenGesture(
@@ -141,6 +159,79 @@ function PushNotificationRouter() {
   return null;
 }
 
+function ManagedDaemonSession({ daemon }: { daemon: HostProfile }) {
+  const { client } = useHostRuntimeSession(daemon.serverId);
+
+  if (!client) {
+    return null;
+  }
+
+  return (
+    <SessionProvider
+      key={daemon.serverId}
+      serverId={daemon.serverId}
+      client={client}
+    >
+      {null}
+    </SessionProvider>
+  );
+}
+
+function HostSessionManager() {
+  const hosts = useHosts();
+
+  if (hosts.length === 0) {
+    return null;
+  }
+
+  return (
+    <>
+      {hosts.map((daemon) => (
+        <ManagedDaemonSession key={daemon.serverId} daemon={daemon} />
+      ))}
+    </>
+  );
+}
+
+function HostRuntimeBootstrapProvider({ children }: { children: ReactNode }) {
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    const store = getHostRuntimeStore();
+
+    void store
+      .loadFromStorage()
+      .then(() => {
+        if (cancelled) {
+          return;
+        }
+        setReady(true);
+        void store.bootstrap();
+      })
+      .catch((error) => {
+        console.error("[HostRuntime] Failed to initialize store", error);
+        if (!cancelled) {
+          setReady(true);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  return (
+    <HostRuntimeBootstrapContext.Provider value={ready}>
+      {children}
+    </HostRuntimeBootstrapContext.Provider>
+  );
+}
+
+function useStoreReady(): boolean {
+  return useContext(HostRuntimeBootstrapContext);
+}
+
 function QueryProvider({ children }: { children: ReactNode }) {
   return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
 }
@@ -157,7 +248,7 @@ function AppContainer({
   chromeEnabled: chromeEnabledOverride,
 }: AppContainerProps) {
   const { theme } = useUnistyles();
-  const { daemons } = useDaemonRegistry();
+  const daemons = useHosts();
   const mobileView = usePanelStore((state) => state.mobileView);
   const desktopAgentListOpen = usePanelStore((state) => state.desktop.agentListOpen);
   const openAgentList = usePanelStore((state) => state.openAgentList);
@@ -310,8 +401,9 @@ function AppContainer({
 
 function ProvidersWrapper({ children }: { children: ReactNode }) {
   const { settings, isLoading: settingsLoading } = useAppSettings();
-  const { daemons, isLoading: registryLoading, upsertDaemonFromOfferUrl } = useDaemonRegistry();
-  const isLoading = settingsLoading || registryLoading;
+  const storeReady = useStoreReady();
+  const { upsertConnectionFromOfferUrl } = useHostMutations();
+  const isLoading = settingsLoading || !storeReady;
 
   // Apply theme setting on mount and when it changes
   useEffect(() => {
@@ -330,7 +422,7 @@ function ProvidersWrapper({ children }: { children: ReactNode }) {
 
   return (
     <VoiceProvider>
-      <OfferLinkListener upsertDaemonFromOfferUrl={upsertDaemonFromOfferUrl} />
+      <OfferLinkListener upsertDaemonFromOfferUrl={upsertConnectionFromOfferUrl} />
       {children}
     </VoiceProvider>
   );
@@ -470,9 +562,9 @@ export default function RootLayout() {
             <KeyboardProvider>
               <BottomSheetModalProvider>
                 <QueryProvider>
-                  <DaemonRegistryProvider>
+                  <HostRuntimeBootstrapProvider>
                     <PushNotificationRouter />
-                    <MultiDaemonSessionHost />
+                    <HostSessionManager />
                     <ProvidersWrapper>
                       <SidebarAnimationProvider>
                         <HorizontalScrollProvider>
@@ -506,7 +598,7 @@ export default function RootLayout() {
                         </HorizontalScrollProvider>
                       </SidebarAnimationProvider>
                     </ProvidersWrapper>
-                  </DaemonRegistryProvider>
+                  </HostRuntimeBootstrapProvider>
                 </QueryProvider>
               </BottomSheetModalProvider>
             </KeyboardProvider>

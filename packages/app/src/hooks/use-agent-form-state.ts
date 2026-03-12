@@ -9,7 +9,7 @@ import type {
   AgentModelDefinition,
   AgentProvider,
 } from "@server/server/agent/agent-sdk-types";
-import { useDaemonRegistry } from "@/contexts/daemon-registry-context";
+import { useHosts } from "@/runtime/host-runtime";
 import { useHostRuntimeSession } from "@/runtime/host-runtime";
 import { useFormPreferences, type FormPreferences } from "./use-form-preferences";
 
@@ -327,7 +327,7 @@ export function useAgentFormState(
     updateProviderPreferences,
   } = useFormPreferences();
 
-  const { daemons } = useDaemonRegistry();
+  const daemons = useHosts();
 
   // Build a set of valid server IDs for preference validation
   const validServerIds = useMemo(

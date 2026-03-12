@@ -3,7 +3,7 @@ import type { TextInput } from "react-native";
 import { router, usePathname, type Href } from "expo-router";
 import { useKeyboardShortcutsStore } from "@/stores/keyboard-shortcuts-store";
 import { keyboardActionDispatcher } from "@/keyboard/keyboard-action-dispatcher";
-import { useDaemonRegistry } from "@/contexts/daemon-registry-context";
+import { useHosts } from "@/runtime/host-runtime";
 import { useAllAgentsList } from "@/hooks/use-all-agents-list";
 import type { AggregatedAgent } from "@/hooks/use-aggregated-agents";
 import {
@@ -104,7 +104,7 @@ export type CommandCenterItem =
 
 export function useCommandCenter() {
   const pathname = usePathname();
-  const { daemons } = useDaemonRegistry();
+  const daemons = useHosts();
   const open = useKeyboardShortcutsStore((s) => s.commandCenterOpen);
   const setOpen = useKeyboardShortcutsStore((s) => s.setCommandCenterOpen);
   const inputRef = useRef<TextInput>(null);

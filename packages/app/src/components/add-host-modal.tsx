@@ -2,9 +2,10 @@ import { useCallback, useRef, useState } from "react";
 import { Alert, Text, TextInput, View } from "react-native";
 import { StyleSheet, UnistylesRuntime, useUnistyles } from "react-native-unistyles";
 import { Link2 } from "lucide-react-native";
-import { useDaemonRegistry, type HostProfile } from "@/contexts/daemon-registry-context";
+import type { HostProfile } from "@/types/host-connection";
+import { useHosts, useHostMutations } from "@/runtime/host-runtime";
 import { normalizeHostPort } from "@/utils/daemon-endpoints";
-import { DaemonConnectionTestError, probeConnection } from "@/utils/test-daemon-connection";
+import { DaemonConnectionTestError, connectToDaemon } from "@/utils/test-daemon-connection";
 import { AdaptiveModalSheet, AdaptiveTextInput } from "./adaptive-modal-sheet";
 import { Button } from "@/components/ui/button";
 
@@ -129,7 +130,8 @@ export interface AddHostModalProps {
 
 export function AddHostModal({ visible, onClose, onCancel, onSaved, targetServerId }: AddHostModalProps) {
   const { theme } = useUnistyles();
-  const { daemons, upsertDirectConnection } = useDaemonRegistry();
+  const daemons = useHosts();
+  const { upsertDirectConnection } = useHostMutations();
   const isMobile =
     UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
 
@@ -179,11 +181,12 @@ export function AddHostModal({ visible, onClose, onCancel, onSaved, targetServer
       setIsSaving(true);
       setErrorMessage("");
 
-      const { serverId, hostname } = await probeConnection({
+      const { client, serverId, hostname } = await connectToDaemon({
         id: "probe",
         type: "directTcp",
         endpoint,
       });
+      await client.close().catch(() => undefined);
       if (targetServerId && serverId !== targetServerId) {
         const message = `That endpoint belongs to ${serverId}, not ${targetServerId}.`;
         setErrorMessage(message);

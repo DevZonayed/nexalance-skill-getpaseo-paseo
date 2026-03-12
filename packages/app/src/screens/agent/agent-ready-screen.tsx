@@ -21,7 +21,7 @@ import {
   ExplorerSidebarAnimationProvider,
 } from "@/contexts/explorer-sidebar-animation-context";
 import { usePanelStore } from "@/stores/panel-store";
-import { useDaemonRegistry } from "@/contexts/daemon-registry-context";
+import { useHosts } from "@/runtime/host-runtime";
 import { useSessionStore } from "@/stores/session-store";
 import {
   useHostRuntimeSession,
@@ -94,7 +94,7 @@ export function AgentReadyScreen({
 }) {
   const resolvedAgentId = agentId?.trim() || undefined;
   const resolvedServerId = serverId?.trim() || undefined;
-  const { daemons } = useDaemonRegistry();
+  const daemons = useHosts();
   const runtimeServerId = resolvedServerId ?? "";
   const {
     snapshot: runtimeSnapshot,

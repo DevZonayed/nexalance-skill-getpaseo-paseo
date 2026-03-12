@@ -13,7 +13,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, UnistylesRuntime, useUnistyles } from "react-native-unistyles";
 import { Sun, Moon, Monitor, Globe, Settings, RotateCw, Trash2 } from "lucide-react-native";
 import { useAppSettings, type AppSettings } from "@/hooks/use-settings";
-import { useDaemonRegistry, type HostProfile, type HostConnection } from "@/contexts/daemon-registry-context";
+import type { HostProfile, HostConnection } from "@/types/host-connection";
+import { useHosts, useHostMutations } from "@/runtime/host-runtime";
 import { formatConnectionStatus, getConnectionStatusTone } from "@/utils/daemons";
 import { confirmDialog } from "@/utils/confirm-dialog";
 import { MenuHeader } from "@/components/headers/menu-header";
@@ -487,12 +488,8 @@ export default function SettingsScreen() {
   const routeServerId = typeof params.serverId === "string" ? params.serverId.trim() : "";
   const { settings, isLoading: settingsLoading, updateSettings } = useAppSettings();
   const {
-    daemons,
-    isLoading: daemonLoading,
-    updateHost,
-    removeHost,
-    removeConnection,
-  } = useDaemonRegistry();
+    daemons, renameHost, removeHost, removeConnection,
+  } = { daemons: useHosts(), ...useHostMutations() };
   const [isAddHostMethodVisible, setIsAddHostMethodVisible] = useState(false);
   const [isDirectHostVisible, setIsDirectHostVisible] = useState(false);
   const [isPasteLinkVisible, setIsPasteLinkVisible] = useState(false);
@@ -503,7 +500,7 @@ export default function SettingsScreen() {
   const [isRemovingHost, setIsRemovingHost] = useState(false);
   const [editingDaemon, setEditingDaemon] = useState<HostProfile | null>(null);
   const [isSavingEdit, setIsSavingEdit] = useState(false);
-  const isLoading = settingsLoading || daemonLoading;
+  const isLoading = settingsLoading;
   const isMountedRef = useRef(true);
   const lastHandledEditHostRef = useRef<string | null>(null);
   const isDesktop = Platform.OS === "web";
@@ -615,7 +612,7 @@ export default function SettingsScreen() {
 
     try {
       setIsSavingEdit(true);
-      await updateHost(editingServerId, { label: nextLabel });
+      await renameHost(editingServerId, nextLabel);
       handleCloseEditDaemon();
     } catch (error) {
       console.error("[Settings] Failed to rename host", error);
@@ -623,7 +620,7 @@ export default function SettingsScreen() {
     } finally {
       setIsSavingEdit(false);
     }
-  }, [editingServerId, handleCloseEditDaemon, isSavingEdit, updateHost]);
+  }, [editingServerId, handleCloseEditDaemon, isSavingEdit, renameHost]);
 
   const handleRemoveConnection = useCallback(
     async (serverId: string, connectionId: string) => {
@@ -767,7 +764,7 @@ export default function SettingsScreen() {
               hostname={pendingNameHostname}
               onSkip={() => setPendingNameHost(null)}
               onSave={(label) => {
-                void updateHost(pendingNameHost.serverId, { label }).finally(() => {
+                void renameHost(pendingNameHost.serverId, label).finally(() => {
                   setPendingNameHost(null);
                 });
               }}

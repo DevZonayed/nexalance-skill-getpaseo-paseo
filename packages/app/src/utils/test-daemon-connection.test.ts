@@ -60,40 +60,44 @@ vi.mock("./client-id", () => ({
   getOrCreateClientId: clientIdMock.getOrCreateClientId,
 }));
 
-describe("test-daemon-connection probe client identity", () => {
+describe("test-daemon-connection connectToDaemon", () => {
   beforeEach(() => {
     daemonClientMock.createdConfigs.length = 0;
     clientIdMock.getOrCreateClientId.mockClear();
   });
 
-  it("reuses the app clientId for direct latency probes", async () => {
+  it("reuses the app clientId for direct connections", async () => {
     const mod = await import("./test-daemon-connection");
 
-    await mod.measureConnectionLatency({
+    const first = await mod.connectToDaemon({
       id: "direct:lan:6767",
       type: "directTcp",
       endpoint: "lan:6767",
     });
-    await mod.measureConnectionLatency({
-      id: "direct:lan:6767",
-      type: "directTcp",
-      endpoint: "lan:6767",
-    });
+    await first.client.close();
 
-    const [first, second] = daemonClientMock.createdConfigs;
-    expect(first?.clientId).toBe("cid_shared_probe_test");
-    expect(second?.clientId).toBe("cid_shared_probe_test");
+    const second = await mod.connectToDaemon({
+      id: "direct:lan:6767",
+      type: "directTcp",
+      endpoint: "lan:6767",
+    });
+    await second.client.close();
+
+    const [firstConfig, secondConfig] = daemonClientMock.createdConfigs;
+    expect(firstConfig?.clientId).toBe("cid_shared_probe_test");
+    expect(secondConfig?.clientId).toBe("cid_shared_probe_test");
     expect(clientIdMock.getOrCreateClientId).toHaveBeenCalledTimes(2);
   });
 
-  it("encodes the local socket target into the probe client config", async () => {
+  it("encodes the local socket target into the client config", async () => {
     const mod = await import("./test-daemon-connection");
 
-    await mod.measureConnectionLatency({
+    const result = await mod.connectToDaemon({
       id: "socket:/tmp/paseo.sock",
       type: "directSocket",
       path: "/tmp/paseo.sock",
     });
+    await result.client.close();
 
     expect(daemonClientMock.createdConfigs[0]?.url).toBe(
       "paseo+local://socket?path=%2Ftmp%2Fpaseo.sock"

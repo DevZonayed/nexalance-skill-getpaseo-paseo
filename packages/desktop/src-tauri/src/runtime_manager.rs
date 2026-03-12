@@ -604,6 +604,14 @@ fn start_managed_daemon_internal(app: &AppHandle) -> Result<ManagedDaemonStatus,
     log::info!("[daemon] start command succeeded ({}ms), waiting for daemon to be ready", t0.elapsed().as_millis());
     for attempt in 0..150 {
         let daemon_status = managed_daemon_status_internal(app)?;
+        log::info!(
+            "[daemon] poll attempt {}: status={:?} server_id={:?} listen={:?} pid={:?}",
+            attempt + 1,
+            daemon_status.status,
+            daemon_status.server_id,
+            daemon_status.listen,
+            daemon_status.pid
+        );
         if daemon_status.status == "running" && !daemon_status.server_id.trim().is_empty() {
             log::info!(
                 "[daemon] ready after {} attempts, {}ms (pid={:?})",

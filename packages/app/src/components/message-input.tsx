@@ -356,6 +356,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
     serverInfo,
     mode: 'dictation',
   })
+  const dictationReadiness = serverInfo?.capabilities?.voice?.dictation ?? null
 
   const canStartDictation = useCallback(() => {
     const socketConnected = client?.isConnected ?? false
@@ -415,7 +416,28 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
   }, [dictationStatus, isDictating, isDictationProcessing])
 
   const startDictationIfAvailable = useCallback(async () => {
+    console.info(
+      `[DictationGate] start requested ${JSON.stringify({
+        serverId: voiceServerId ?? null,
+        agentId: voiceAgentId ?? null,
+        socketConnected: client?.isConnected ?? false,
+        isReadyForDictation: isReadyForDictation ?? null,
+        disabled,
+        serverInfoPresent: Boolean(serverInfo),
+        capabilitiesPresent: Boolean(serverInfo?.capabilities),
+        dictationReadinessEnabled: dictationReadiness?.enabled ?? null,
+        dictationReadinessReason: dictationReadiness?.reason ?? null,
+        dictationUnavailableMessage,
+      })}`
+    )
     if (dictationUnavailableMessage) {
+      console.info(
+        `[DictationGate] blocked before start ${JSON.stringify({
+          serverId: voiceServerId ?? null,
+          agentId: voiceAgentId ?? null,
+          dictationUnavailableMessage,
+        })}`
+      )
       isDictatingRef.current = false
       toast.error(dictationUnavailableMessage)
       return
@@ -424,7 +446,18 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
     // state-ref sync effect, so a rapid second toggle routes to confirm.
     isDictatingRef.current = true
     await startDictation()
-  }, [dictationUnavailableMessage, startDictation, toast])
+  }, [
+    client,
+    dictationReadiness,
+    dictationUnavailableMessage,
+    disabled,
+    isReadyForDictation,
+    serverInfo,
+    startDictation,
+    toast,
+    voiceAgentId,
+    voiceServerId,
+  ])
 
   // Animate overlay
   useEffect(() => {

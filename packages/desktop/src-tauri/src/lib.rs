@@ -496,6 +496,16 @@ async fn garbage_collect_attachment_files(
     .map_err(|error| format!("Attachment GC task failed: {error}"))?
 }
 
+#[tauri::command]
+fn webview_log(level: u8, message: String) {
+    match level {
+        0 => log::debug!("[webview] {}", message),
+        1 => log::info!("[webview] {}", message),
+        2 => log::warn!("[webview] {}", message),
+        _ => log::error!("[webview] {}", message),
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -533,7 +543,8 @@ pub fn run() {
             copy_attachment_file,
             read_file_base64,
             delete_attachment_file,
-            garbage_collect_attachment_files
+            garbage_collect_attachment_files,
+            webview_log
         ])
         .setup(|app| {
             let setup_start = std::time::Instant::now();
@@ -557,9 +568,6 @@ pub fn run() {
                     ))
                     .target(tauri_plugin_log::Target::new(
                         tauri_plugin_log::TargetKind::Stdout,
-                    ))
-                    .target(tauri_plugin_log::Target::new(
-                        tauri_plugin_log::TargetKind::Webview,
                     ))
                     .build(),
             )?;

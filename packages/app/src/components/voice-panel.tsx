@@ -3,11 +3,11 @@ import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { MicOff, Square } from "lucide-react-native";
 import { VolumeMeter } from "./volume-meter";
 import { useVoice } from "@/contexts/voice-context";
-import { useDaemonRegistry } from "@/contexts/daemon-registry-context";
+import { useHosts } from "@/runtime/host-runtime";
 
 export function VoicePanel() {
   const { theme } = useUnistyles();
-  const { daemons } = useDaemonRegistry();
+  const daemons = useHosts();
   const {
     volume,
     isMuted,

@@ -1,6 +1,6 @@
 import { DaemonClient } from "@server/client/daemon-client";
 import type { DaemonClientConfig } from "@server/client/daemon-client";
-import type { HostConnection } from "@/contexts/daemon-registry-context";
+import type { HostConnection } from "@/types/host-connection";
 import { getOrCreateClientId } from "./client-id";
 import { buildDaemonWebSocketUrl, buildRelayWebSocketUrl } from "./daemon-endpoints";
 import {
@@ -45,7 +45,7 @@ export class DaemonConnectionTestError extends Error {
   }
 }
 
-async function buildClientConfig(
+export async function buildClientConfig(
   connection: HostConnection,
   serverId?: string
 ): Promise<DaemonClientConfig> {
@@ -96,7 +96,7 @@ async function buildClientConfig(
   };
 }
 
-function connectAndProbe(
+export function connectAndProbe(
   config: DaemonClientConfig,
   timeoutMs: number,
 ): Promise<{ client: DaemonClient; serverId: string; hostname: string | null }> {
@@ -152,26 +152,10 @@ function resolveTimeout(connection: HostConnection, options?: ProbeOptions): num
   return connection.type === "relay" ? 10_000 : 6_000;
 }
 
-export async function probeConnection(
+export async function connectToDaemon(
   connection: HostConnection,
   options?: ProbeOptions,
-): Promise<{ serverId: string; hostname: string | null }> {
+): Promise<{ client: DaemonClient; serverId: string; hostname: string | null }> {
   const config = await buildClientConfig(connection, options?.serverId);
-  const { client, serverId, hostname } = await connectAndProbe(config, resolveTimeout(connection, options));
-  await client.close().catch(() => undefined);
-  return { serverId, hostname };
-}
-
-export async function measureConnectionLatency(
-  connection: HostConnection,
-  options?: ProbeOptions,
-): Promise<number> {
-  const config = await buildClientConfig(connection, options?.serverId);
-  const { client } = await connectAndProbe(config, resolveTimeout(connection, options));
-  try {
-    const { rttMs } = await client.ping({ timeoutMs: 5000 });
-    return rttMs;
-  } finally {
-    await client.close().catch(() => undefined);
-  }
+  return connectAndProbe(config, resolveTimeout(connection, options));
 }

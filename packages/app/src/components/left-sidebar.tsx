@@ -19,8 +19,7 @@ import { useSidebarWorkspacesList } from '@/hooks/use-sidebar-workspaces-list'
 import { useSidebarAnimation } from '@/contexts/sidebar-animation-context'
 import { useTauriDragHandlers, useTrafficLightPadding } from '@/utils/tauri-window'
 import { Combobox } from '@/components/ui/combobox'
-import { useDaemonRegistry } from '@/contexts/daemon-registry-context'
-import { getHostRuntimeStore } from '@/runtime/host-runtime'
+import { getHostRuntimeStore, useHosts } from '@/runtime/host-runtime'
 import { formatConnectionStatus } from '@/utils/daemons'
 import { HEADER_INNER_HEIGHT, HEADER_INNER_HEIGHT_MOBILE } from '@/constants/layout'
 import {
@@ -53,7 +52,7 @@ export function LeftSidebar({ selectedAgentId: _selectedAgentId }: LeftSidebarPr
   const desktopAgentListOpen = usePanelStore((state) => state.desktop.agentListOpen)
   const closeToAgent = usePanelStore((state) => state.closeToAgent)
   const pathname = usePathname()
-  const { daemons } = useDaemonRegistry()
+  const daemons = useHosts()
   const runtime = getHostRuntimeStore()
   const runtimeConnectionStatusSignature = useSyncExternalStore(
     (onStoreChange) => runtime.subscribeAll(onStoreChange),

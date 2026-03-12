@@ -1,5 +1,5 @@
 import { useCallback, useMemo } from "react";
-import { useDaemonRegistry } from "@/contexts/daemon-registry-context";
+import { useHosts } from "@/runtime/host-runtime";
 import { useSessionStore, type Agent } from "@/stores/session-store";
 import {
   getHostRuntimeStore,
@@ -74,7 +74,7 @@ export function useAllAgentsList(options?: {
   serverId?: string | null;
   includeArchived?: boolean;
 }): AggregatedAgentsResult {
-  const { daemons } = useDaemonRegistry();
+  const daemons = useHosts();
   const runtime = getHostRuntimeStore();
 
   const serverId = useMemo(() => {

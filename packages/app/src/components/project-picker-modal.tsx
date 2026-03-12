@@ -17,8 +17,7 @@ import {
   normalizeWorkspaceDescriptor,
   useSessionStore,
 } from "@/stores/session-store";
-import { useDaemonRegistry } from "@/contexts/daemon-registry-context";
-import { useHostRuntimeSession } from "@/runtime/host-runtime";
+import { useHosts, useHostRuntimeSession } from "@/runtime/host-runtime";
 import { useToast } from "@/contexts/toast-context";
 import { parseServerIdFromPathname } from "@/utils/host-routes";
 import { buildHostWorkspaceRouteWithOpenIntent } from "@/utils/host-routes";
@@ -28,7 +27,7 @@ export function ProjectPickerModal() {
   const { theme } = useUnistyles();
   const toast = useToast();
   const pathname = usePathname();
-  const { daemons } = useDaemonRegistry();
+  const daemons = useHosts();
 
   const open = useKeyboardShortcutsStore((s) => s.projectPickerOpen);
   const setOpen = useKeyboardShortcutsStore((s) => s.setProjectPickerOpen);

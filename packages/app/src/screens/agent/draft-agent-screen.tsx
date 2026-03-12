@@ -25,7 +25,7 @@ import {
   checkoutStatusQueryKey,
 } from '@/hooks/use-checkout-status-query'
 import { useAllAgentsList } from '@/hooks/use-all-agents-list'
-import { useDaemonRegistry } from '@/contexts/daemon-registry-context'
+import { useHosts } from '@/runtime/host-runtime'
 import { buildBranchComboOptions, normalizeBranchOptionName } from '@/utils/branch-suggestions'
 import { shortenPath } from '@/utils/shorten-path'
 import { collectAgentWorkingDirectorySuggestions } from '@/utils/agent-working-directory-suggestions'
@@ -138,7 +138,7 @@ function DraftAgentScreenContent({
   const { theme } = useUnistyles()
   const router = useRouter()
   const insets = useSafeAreaInsets()
-  const { daemons } = useDaemonRegistry()
+  const daemons = useHosts()
   const runtime = getHostRuntimeStore()
   const runtimeVersion = useSyncExternalStore(
     (onStoreChange) => runtime.subscribeAll(onStoreChange),

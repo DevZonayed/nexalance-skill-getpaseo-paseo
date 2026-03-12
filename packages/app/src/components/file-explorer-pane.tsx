@@ -41,7 +41,7 @@ import type {
   AgentFileExplorerState,
   ExplorerEntry,
 } from "@/stores/session-store";
-import { useDaemonRegistry } from "@/contexts/daemon-registry-context";
+import { useHosts } from "@/runtime/host-runtime";
 import { useSessionStore } from "@/stores/session-store";
 import { useDownloadStore } from "@/stores/download-store";
 import {
@@ -105,7 +105,7 @@ export function FileExplorerPane({
     UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
   const showDesktopWebScrollbar = Platform.OS === "web" && !isMobile;
 
-  const { daemons } = useDaemonRegistry();
+  const daemons = useHosts();
   const daemonProfile = useMemo(
     () => daemons.find((daemon) => daemon.serverId === serverId),
     [daemons, serverId]
