@@ -381,6 +381,9 @@ jobs:
 
       - name: Attempt manual Linux AppImage fallback
         if: env.IS_SMOKE_TAG != 'true' && steps.linux_tauri.outcome == 'failure'
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         shell: bash
         run: |
           set -euxo pipefail

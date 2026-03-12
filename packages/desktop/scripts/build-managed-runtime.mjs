@@ -338,9 +338,9 @@ async function ensureSherpaNativePackage(runtimeRoot, bundledNodeRoot) {
       "utf8"
     )
   );
-  const versionRange = sherpaNodePackageJson.optionalDependencies?.[packageName];
-  if (!versionRange) {
-    throw new Error(`Unable to resolve optional sherpa package version for ${packageName}.`);
+  const packageVersion = sherpaNodePackageJson.version;
+  if (!packageVersion) {
+    throw new Error("Missing version in sherpa-onnx-node package.json.");
   }
 
   const nodeExecutable = process.platform === "win32"
@@ -356,7 +356,7 @@ async function ensureSherpaNativePackage(runtimeRoot, bundledNodeRoot) {
     "--omit=dev",
     "--no-package-lock",
     "--no-save",
-    `${packageName}@${versionRange}`,
+    `${packageName}@${packageVersion}`,
   ], {
     cwd: runtimeRoot,
     stdio: "inherit",
