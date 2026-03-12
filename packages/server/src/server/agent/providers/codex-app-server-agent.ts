@@ -27,8 +27,10 @@ import type { Logger } from "pino";
 import { execSync, spawn } from "node:child_process";
 import type { ChildProcessWithoutNullStreams } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { existsSync } from "node:fs";
 import fs from "node:fs/promises";
 import { Dirent } from "node:fs";
+import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import readline from "node:readline";
@@ -40,8 +42,6 @@ import {
 } from "./codex/tool-call-mapper.js";
 import {
   applyProviderEnv,
-  findExecutable,
-  isProviderCommandAvailable,
   resolveProviderCommandPrefix,
   type ProviderRuntimeSettings,
 } from "../provider-launch-config.js";
@@ -150,13 +150,52 @@ function mergeCodexConfiguredDefaults(
   };
 }
 
+const CODEX_TARGET_TRIPLE: Record<string, Record<string, string>> = {
+  linux: { x64: "x86_64-unknown-linux-musl", arm64: "aarch64-unknown-linux-musl" },
+  darwin: { x64: "x86_64-apple-darwin", arm64: "aarch64-apple-darwin" },
+  win32: { x64: "x86_64-pc-windows-msvc", arm64: "aarch64-pc-windows-msvc" },
+};
+
+const CODEX_PLATFORM_PACKAGE: Record<string, string> = {
+  "x86_64-unknown-linux-musl": "@openai/codex-linux-x64",
+  "aarch64-unknown-linux-musl": "@openai/codex-linux-arm64",
+  "x86_64-apple-darwin": "@openai/codex-darwin-x64",
+  "aarch64-apple-darwin": "@openai/codex-darwin-arm64",
+  "x86_64-pc-windows-msvc": "@openai/codex-win32-x64",
+  "aarch64-pc-windows-msvc": "@openai/codex-win32-arm64",
+};
+
+function resolveBundledCodexBinary(): string | null {
+  const targetTriple = CODEX_TARGET_TRIPLE[process.platform]?.[process.arch];
+  if (!targetTriple) {
+    return null;
+  }
+  const platformPackage = CODEX_PLATFORM_PACKAGE[targetTriple];
+  if (!platformPackage) {
+    return null;
+  }
+  const binaryName = process.platform === "win32" ? "codex.exe" : "codex";
+  try {
+    const require = createRequire(import.meta.url);
+    const packageJsonPath = require.resolve(`${platformPackage}/package.json`);
+    const vendorRoot = path.join(path.dirname(packageJsonPath), "vendor");
+    const binaryPath = path.join(vendorRoot, targetTriple, "codex", binaryName);
+    if (existsSync(binaryPath)) {
+      return binaryPath;
+    }
+  } catch {
+    // Platform package not installed
+  }
+  return null;
+}
+
 function resolveCodexBinary(): string {
-  const codexPath = findExecutable("codex");
-  if (codexPath) {
-    return codexPath;
+  const bundled = resolveBundledCodexBinary();
+  if (bundled) {
+    return bundled;
   }
   throw new Error(
-    "Codex CLI not found. Please install codex globally: npm install -g @openai/codex"
+    `Bundled Codex binary not found for platform ${process.platform}-${process.arch}. Ensure the @openai/codex package and its platform-specific optional dependency are installed.`
   );
 }
 
@@ -3235,6 +3274,10 @@ export class CodexAppServerAgentClient implements AgentClient {
   }
 
   async isAvailable(): Promise<boolean> {
-    return isProviderCommandAvailable(this.runtimeSettings?.command, resolveCodexBinary);
+    const command = this.runtimeSettings?.command;
+    if (command?.mode === "replace") {
+      return existsSync(command.argv[0]);
+    }
+    return true;
   }
 }

@@ -409,12 +409,71 @@ async function pruneClaudeAgentSdk(runtimeRoot) {
   }
 }
 
+async function pruneCodexCli(runtimeRoot) {
+  const codexTargetTriple = {
+    darwin: { arm64: "aarch64-apple-darwin", x64: "x86_64-apple-darwin" },
+    linux: { arm64: "aarch64-unknown-linux-musl", x64: "x86_64-unknown-linux-musl" },
+    win32: { arm64: "aarch64-pc-windows-msvc", x64: "x86_64-pc-windows-msvc" },
+  };
+  const codexPlatformPackages = [
+    "@openai/codex-darwin-arm64",
+    "@openai/codex-darwin-x64",
+    "@openai/codex-linux-arm64",
+    "@openai/codex-linux-x64",
+    "@openai/codex-win32-arm64",
+    "@openai/codex-win32-x64",
+  ];
+  const currentTriple = codexTargetTriple[process.platform]?.[process.arch];
+  const currentPackage = currentTriple
+    ? `@openai/codex-${process.platform === "win32" ? "win32" : process.platform}-${process.arch}`
+    : null;
+
+  const openaiScope = path.join(runtimeRoot, "node_modules", "@openai");
+  for (const pkg of codexPlatformPackages) {
+    const pkgName = pkg.replace("@openai/", "");
+    if (currentPackage && pkg === currentPackage) {
+      continue;
+    }
+    await removeIfExists(path.join(openaiScope, pkgName));
+  }
+}
+
+async function pruneOpenCodeCli(runtimeRoot) {
+  const opencodePlatformPackages = [
+    "opencode-darwin-arm64",
+    "opencode-darwin-x64",
+    "opencode-linux-arm64",
+    "opencode-linux-x64",
+    "opencode-linux-x64-baseline",
+    "opencode-linux-arm64-musl",
+    "opencode-linux-x64-musl",
+    "opencode-linux-x64-baseline-musl",
+    "opencode-windows-x64",
+    "opencode-windows-arm64",
+  ];
+  const platformMap = { darwin: "darwin", linux: "linux", win32: "windows" };
+  const currentPlatform = platformMap[process.platform];
+  const currentPackage = currentPlatform
+    ? `opencode-${currentPlatform}-${process.arch}`
+    : null;
+
+  const nodeModules = path.join(runtimeRoot, "node_modules");
+  for (const pkg of opencodePlatformPackages) {
+    if (currentPackage && pkg === currentPackage) {
+      continue;
+    }
+    await removeIfExists(path.join(nodeModules, pkg));
+  }
+}
+
 async function pruneManagedRuntime(runtimeRoot) {
   await Promise.all([
     pruneNodeDistribution(runtimeRoot),
     pruneOnnxRuntime(runtimeRoot),
     pruneNodePty(runtimeRoot),
     pruneClaudeAgentSdk(runtimeRoot),
+    pruneCodexCli(runtimeRoot),
+    pruneOpenCodeCli(runtimeRoot),
   ]);
 }
 

@@ -1,4 +1,4 @@
-import { execSync, spawn } from "node:child_process";
+import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import { promises } from "node:fs";
@@ -69,8 +69,6 @@ import type {
 } from "../agent-sdk-types.js";
 import {
   applyProviderEnv,
-  findExecutable,
-  isProviderCommandAvailable,
   type ProviderRuntimeSettings,
 } from "../provider-launch-config.js";
 import { getOrchestratorModeInstructions } from "../orchestrator-instructions.js";
@@ -358,21 +356,10 @@ type ClaudeAgentClientOptions = {
 
 type ClaudeAgentSessionOptions = {
   defaults?: { agents?: Record<string, AgentDefinition> };
-  claudePath: string | null;
   runtimeSettings?: ProviderRuntimeSettings;
   handle?: AgentPersistenceHandle;
   logger: Logger;
 };
-
-function resolveClaudeBinary(): string {
-  const claudePath = findExecutable("claude");
-  if (claudePath) {
-    return claudePath;
-  }
-  throw new Error(
-    "Claude CLI not found. Install claude or configure agents.providers.claude.command.mode='replace'."
-  );
-}
 
 function resolveClaudeSpawnCommand(
   spawnOptions: SpawnOptions,
@@ -1400,31 +1387,18 @@ export class ClaudeAgentClient implements AgentClient {
 
   private readonly defaults?: { agents?: Record<string, AgentDefinition> };
   private readonly logger: Logger;
-  private readonly claudePath: string | null;
   private readonly runtimeSettings?: ProviderRuntimeSettings;
 
   constructor(options: ClaudeAgentClientOptions) {
     this.defaults = options.defaults;
     this.logger = options.logger.child({ module: "agent", provider: "claude" });
     this.runtimeSettings = options.runtimeSettings;
-    this.claudePath = findExecutable("claude");
-    if (this.claudePath) {
-      try {
-        const version = execSync(`${this.claudePath} --version`, { encoding: "utf8" }).trim();
-        this.logger.trace({ claudePath: this.claudePath, version }, "Resolved Claude binary");
-      } catch {
-        this.logger.trace({ claudePath: this.claudePath }, "Resolved Claude binary (version unknown)");
-      }
-    } else {
-      this.logger.trace("Claude binary not found in PATH; SDK will use bundled binary");
-    }
   }
 
   async createSession(config: AgentSessionConfig): Promise<AgentSession> {
     const claudeConfig = this.assertConfig(config);
     return new ClaudeAgentSession(claudeConfig, {
       defaults: this.defaults,
-      claudePath: this.claudePath,
       runtimeSettings: this.runtimeSettings,
       logger: this.logger,
     });
@@ -1443,7 +1417,6 @@ export class ClaudeAgentClient implements AgentClient {
     const claudeConfig = this.assertConfig(mergedConfig);
     return new ClaudeAgentSession(claudeConfig, {
       defaults: this.defaults,
-      claudePath: this.claudePath,
       runtimeSettings: this.runtimeSettings,
       handle,
       logger: this.logger,
@@ -1478,11 +1451,11 @@ export class ClaudeAgentClient implements AgentClient {
   }
 
   async isAvailable(): Promise<boolean> {
-    const commandConfig = this.runtimeSettings?.command;
-    if (commandConfig?.mode === "replace") {
-      return isProviderCommandAvailable(commandConfig, resolveClaudeBinary);
+    const command = this.runtimeSettings?.command;
+    if (command?.mode === "replace") {
+      return fs.existsSync(command.argv[0]);
     }
-    return this.claudePath !== null;
+    return true;
   }
 
   private assertConfig(config: AgentSessionConfig): ClaudeAgentConfig {
@@ -1499,7 +1472,6 @@ class ClaudeAgentSession implements AgentSession {
 
   private readonly config: ClaudeAgentConfig;
   private readonly defaults?: { agents?: Record<string, AgentDefinition> };
-  private readonly claudePath: string | null;
   private readonly runtimeSettings?: ProviderRuntimeSettings;
   private readonly logger: Logger;
   private query: Query | null = null;
@@ -1546,7 +1518,6 @@ class ClaudeAgentSession implements AgentSession {
   ) {
     this.config = config;
     this.defaults = options.defaults;
-    this.claudePath = options.claudePath;
     this.runtimeSettings = options.runtimeSettings;
     this.logger = options.logger;
     const handle = options.handle;
@@ -2319,7 +2290,6 @@ class ClaudeAgentSession implements AgentSession {
       permissionMode: this.currentMode,
       agents: this.defaults?.agents,
       canUseTool: this.handlePermissionRequest,
-      ...(this.claudePath ? { pathToClaudeCodeExecutable: this.claudePath } : {}),
       // Use Claude Code preset system prompt and load CLAUDE.md files
       // Append provider-agnostic system prompt and orchestrator instructions for agents.
       systemPrompt: {

@@ -1,4 +1,8 @@
 import { spawn, type ChildProcess } from "node:child_process";
+import { existsSync } from "node:fs";
+import { createRequire } from "node:module";
+import path from "node:path";
+import os from "node:os";
 import { createOpencodeClient, type OpencodeClient } from "@opencode-ai/sdk/v2/client";
 import net from "node:net";
 import type { Logger } from "pino";
@@ -29,8 +33,6 @@ import type {
 } from "../agent-sdk-types.js";
 import {
   applyProviderEnv,
-  findExecutable,
-  isProviderCommandAvailable,
   resolveProviderCommandPrefix,
   type ProviderRuntimeSettings,
 } from "../provider-launch-config.js";
@@ -150,13 +152,40 @@ const OpencodeToolPartToTimelineItemSchema = OpencodeToolPartTimelineEnvelopeSch
   })
 );
 
+const OPENCODE_PLATFORM_MAP: Record<string, string> = {
+  darwin: "darwin",
+  linux: "linux",
+  win32: "windows",
+};
+
+function resolveBundledOpenCodeBinary(): string | null {
+  const platform = OPENCODE_PLATFORM_MAP[os.platform()];
+  if (!platform) {
+    return null;
+  }
+  const arch = os.arch();
+  const packageName = `opencode-${platform}-${arch}`;
+  const binaryName = platform === "windows" ? "opencode.exe" : "opencode";
+  try {
+    const require = createRequire(import.meta.url);
+    const packageJsonPath = require.resolve(`${packageName}/package.json`);
+    const binaryPath = path.join(path.dirname(packageJsonPath), "bin", binaryName);
+    if (existsSync(binaryPath)) {
+      return binaryPath;
+    }
+  } catch {
+    // Platform package not installed
+  }
+  return null;
+}
+
 function resolveOpenCodeBinary(): string {
-  const opencodePath = findExecutable("opencode");
-  if (opencodePath) {
-    return opencodePath;
+  const bundled = resolveBundledOpenCodeBinary();
+  if (bundled) {
+    return bundled;
   }
   throw new Error(
-    "OpenCode CLI not found. Please install opencode globally so Paseo can launch the provider."
+    `Bundled OpenCode binary not found for platform ${os.platform()}-${os.arch()}. Ensure the opencode-ai package and its platform-specific optional dependency are installed.`
   );
 }
 
@@ -522,10 +551,11 @@ export class OpenCodeAgentClient implements AgentClient {
   }
 
   async isAvailable(): Promise<boolean> {
-    return isProviderCommandAvailable(
-      this.runtimeSettings?.command,
-      resolveOpenCodeBinary
-    );
+    const command = this.runtimeSettings?.command;
+    if (command?.mode === "replace") {
+      return existsSync(command.argv[0]);
+    }
+    return true;
   }
 
   private assertConfig(config: AgentSessionConfig): OpenCodeAgentConfig {
