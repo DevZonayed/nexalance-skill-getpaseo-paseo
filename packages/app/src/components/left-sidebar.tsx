@@ -15,6 +15,7 @@ import { router, usePathname } from 'expo-router'
 import { usePanelStore } from '@/stores/panel-store'
 import { SidebarWorkspaceList } from './sidebar-workspace-list'
 import { SidebarAgentListSkeleton } from './sidebar-agent-list-skeleton'
+import { useSidebarShortcutModel } from '@/hooks/use-sidebar-shortcut-model'
 import { useSidebarWorkspacesList } from '@/hooks/use-sidebar-workspaces-list'
 import { useSidebarAnimation } from '@/contexts/sidebar-animation-context'
 import { useTauriDragHandlers, useTrafficLightPadding } from '@/utils/tauri-window'
@@ -124,6 +125,8 @@ export function LeftSidebar({ selectedAgentId: _selectedAgentId }: LeftSidebarPr
     serverId: activeServerId,
     enabled: isOpen,
   })
+  const { collapsedProjectKeys, shortcutIndexByWorkspaceKey, toggleProjectCollapsed } =
+    useSidebarShortcutModel(projects)
   const {
     translateX,
     backdropOpacity,
@@ -353,6 +356,9 @@ export function LeftSidebar({ selectedAgentId: _selectedAgentId }: LeftSidebarPr
                 <SidebarWorkspaceList
                   isOpen={isOpen}
                   serverId={activeServerId}
+                  collapsedProjectKeys={collapsedProjectKeys}
+                  onToggleProjectCollapsed={toggleProjectCollapsed}
+                  shortcutIndexByWorkspaceKey={shortcutIndexByWorkspaceKey}
                   projects={projects}
                   isRefreshing={isManualRefresh && isRevalidating}
                   onRefresh={handleRefresh}
@@ -477,6 +483,9 @@ export function LeftSidebar({ selectedAgentId: _selectedAgentId }: LeftSidebarPr
         <SidebarWorkspaceList
           isOpen={isOpen}
           serverId={activeServerId}
+          collapsedProjectKeys={collapsedProjectKeys}
+          onToggleProjectCollapsed={toggleProjectCollapsed}
+          shortcutIndexByWorkspaceKey={shortcutIndexByWorkspaceKey}
           projects={projects}
           isRefreshing={isManualRefresh && isRevalidating}
           onRefresh={handleRefresh}

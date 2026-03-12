@@ -59,7 +59,6 @@ import {
 import { SyncedLoader } from '@/components/synced-loader'
 import { useToast } from '@/contexts/toast-context'
 import { useCheckoutGitActionsStore } from '@/stores/checkout-git-actions-store'
-import { buildSidebarShortcutModel } from '@/utils/sidebar-shortcuts'
 import { hasVisibleOrderChanged, mergeWithRemainder } from '@/utils/sidebar-reorder'
 import { decideLongPressMove } from '@/utils/sidebar-gesture-arbitration'
 import { confirmDialog } from '@/utils/confirm-dialog'
@@ -83,6 +82,9 @@ interface SidebarWorkspaceListProps {
   isOpen?: boolean
   projects: SidebarProjectEntry[]
   serverId: string | null
+  collapsedProjectKeys: ReadonlySet<string>
+  onToggleProjectCollapsed: (projectKey: string) => void
+  shortcutIndexByWorkspaceKey: Map<string, number>
   isRefreshing?: boolean
   onRefresh?: () => void
   onWorkspacePress?: () => void
@@ -1196,6 +1198,9 @@ export function SidebarWorkspaceList({
   isOpen = true,
   projects,
   serverId,
+  collapsedProjectKeys,
+  onToggleProjectCollapsed,
+  shortcutIndexByWorkspaceKey,
   isRefreshing = false,
   onRefresh,
   onWorkspacePress,
@@ -1205,16 +1210,9 @@ export function SidebarWorkspaceList({
   const isMobile = UnistylesRuntime.breakpoint === 'xs' || UnistylesRuntime.breakpoint === 'sm'
   const isNative = Platform.OS !== 'web'
   const pathname = usePathname()
-  const [collapsedProjectKeys, setCollapsedProjectKeys] = useState<Set<string>>(new Set())
   const isTauri = getIsTauri()
   const altDown = useKeyboardShortcutsStore((state) => state.altDown)
   const cmdOrCtrlDown = useKeyboardShortcutsStore((state) => state.cmdOrCtrlDown)
-  const setSidebarShortcutWorkspaceTargets = useKeyboardShortcutsStore(
-    (state) => state.setSidebarShortcutWorkspaceTargets
-  )
-  const setVisibleWorkspaceTargets = useKeyboardShortcutsStore(
-    (state) => state.setVisibleWorkspaceTargets
-  )
   const showShortcutBadges = altDown || (isTauri && cmdOrCtrlDown)
 
   const getProjectOrder = useSidebarOrderStore((state) => state.getProjectOrder)
@@ -1235,19 +1233,6 @@ export function SidebarWorkspaceList({
       workspaceId: parsed.workspaceId,
     }
   }, [pathname])
-
-  useEffect(() => {
-    setCollapsedProjectKeys((prev) => {
-      const validProjectKeys = new Set(projects.map((project) => project.projectKey))
-      const next = new Set<string>()
-      for (const key of prev) {
-        if (validProjectKeys.has(key)) {
-          next.add(key)
-        }
-      }
-      return next
-    })
-  }, [projects])
 
   const projectIconRequests = useMemo(() => {
     if (!isOpen || !serverId) {
@@ -1315,44 +1300,6 @@ export function SidebarWorkspaceList({
 
     return byProject
   }, [projectIconQueries, projectIconRequests, projects, serverId])
-
-  const shortcutModel = useMemo(
-    () =>
-      buildSidebarShortcutModel({
-        projects,
-        collapsedProjectKeys,
-      }),
-    [collapsedProjectKeys, projects]
-  )
-
-  useEffect(() => {
-    setSidebarShortcutWorkspaceTargets(shortcutModel.shortcutTargets)
-    setVisibleWorkspaceTargets(shortcutModel.visibleTargets)
-  }, [
-    setSidebarShortcutWorkspaceTargets,
-    setVisibleWorkspaceTargets,
-    shortcutModel.shortcutTargets,
-    shortcutModel.visibleTargets,
-  ])
-
-  useEffect(() => {
-    return () => {
-      setSidebarShortcutWorkspaceTargets([])
-      setVisibleWorkspaceTargets([])
-    }
-  }, [setSidebarShortcutWorkspaceTargets, setVisibleWorkspaceTargets])
-
-  const toggleProjectCollapsed = useCallback((projectKey: string) => {
-    setCollapsedProjectKeys((prev) => {
-      const next = new Set(prev)
-      if (next.has(projectKey)) {
-        next.delete(projectKey)
-      } else {
-        next.add(projectKey)
-      }
-      return next
-    })
-  }, [])
 
   const handleProjectDragEnd = useCallback(
     (reorderedProjects: SidebarProjectEntry[]) => {
@@ -1437,9 +1384,9 @@ export function SidebarWorkspaceList({
           serverId={serverId}
           activeWorkspaceSelection={activeWorkspaceSelection}
           showShortcutBadges={showShortcutBadges}
-          shortcutIndexByWorkspaceKey={shortcutModel.shortcutIndexByWorkspaceKey}
+          shortcutIndexByWorkspaceKey={shortcutIndexByWorkspaceKey}
           parentGestureRef={parentGestureRef}
-          onToggleCollapsed={() => toggleProjectCollapsed(item.projectKey)}
+          onToggleCollapsed={() => onToggleProjectCollapsed(item.projectKey)}
           onWorkspacePress={onWorkspacePress}
           onWorkspaceReorder={handleWorkspaceReorder}
           onCreateWorktree={handleCreateWorktree}
@@ -1456,12 +1403,12 @@ export function SidebarWorkspaceList({
       handleCreateWorktree,
       handleWorkspaceReorder,
       onWorkspacePress,
+      onToggleProjectCollapsed,
       parentGestureRef,
       projectIconByProjectKey,
       serverId,
-      shortcutModel.shortcutIndexByWorkspaceKey,
+      shortcutIndexByWorkspaceKey,
       showShortcutBadges,
-      toggleProjectCollapsed,
       isNative,
     ]
   )
