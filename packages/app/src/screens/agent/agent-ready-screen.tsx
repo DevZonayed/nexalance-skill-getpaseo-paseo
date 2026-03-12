@@ -81,11 +81,13 @@ export function AgentReadyScreen({
   agentId,
   showExplorerSidebar = true,
   wrapWithExplorerSidebarProvider = true,
+  onOpenWorkspaceFile,
 }: {
   serverId: string;
   agentId: string;
   showExplorerSidebar?: boolean;
   wrapWithExplorerSidebarProvider?: boolean;
+  onOpenWorkspaceFile?: (input: { filePath: string }) => void;
 }) {
   const resolvedAgentId = agentId?.trim() || undefined;
   const resolvedServerId = serverId?.trim() || undefined;
@@ -129,6 +131,7 @@ export function AgentReadyScreen({
       isConnected={runtimeIsConnected}
       connectionStatus={connectionStatus}
       showExplorerSidebar={showExplorerSidebar}
+      onOpenWorkspaceFile={onOpenWorkspaceFile}
     />
   );
 
@@ -146,6 +149,7 @@ type AgentScreenContentProps = {
   isConnected: boolean;
   connectionStatus: HostRuntimeConnectionStatus;
   showExplorerSidebar: boolean;
+  onOpenWorkspaceFile?: (input: { filePath: string }) => void;
 };
 
 function toErrorMessage(error: unknown): string {
@@ -166,6 +170,7 @@ function AgentScreenContent({
   isConnected,
   connectionStatus,
   showExplorerSidebar,
+  onOpenWorkspaceFile,
 }: AgentScreenContentProps) {
   const { theme } = useUnistyles();
   const toast = useToast();
@@ -904,6 +909,7 @@ function AgentScreenContent({
                 pendingPermissions={pendingPermissions}
                 routeBottomAnchorRequest={routeBottomAnchorRequest}
                 isAuthoritativeHistoryReady={hasAppliedAuthoritativeHistory}
+                onOpenWorkspaceFile={onOpenWorkspaceFile}
               />
             </ReanimatedAnimated.View>
           </View>

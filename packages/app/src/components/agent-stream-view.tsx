@@ -86,6 +86,7 @@ export interface AgentStreamViewProps {
   pendingPermissions: Map<string, PendingPermission>;
   routeBottomAnchorRequest?: BottomAnchorRouteRequest | null;
   isAuthoritativeHistoryReady?: boolean;
+  onOpenWorkspaceFile?: (input: { filePath: string }) => void;
 }
 
 export const AgentStreamView = forwardRef<AgentStreamViewHandle, AgentStreamViewProps>(function AgentStreamView({
@@ -96,6 +97,7 @@ export const AgentStreamView = forwardRef<AgentStreamViewHandle, AgentStreamView
   pendingPermissions,
   routeBottomAnchorRequest = null,
   isAuthoritativeHistoryReady = true,
+  onOpenWorkspaceFile,
 }, ref) {
   const viewportRef = useRef<StreamViewportHandle | null>(null);
   const { theme } = useUnistyles();
@@ -159,6 +161,11 @@ export const AgentStreamView = forwardRef<AgentStreamViewHandle, AgentStreamView
       }
 
       if (normalized.file) {
+        if (onOpenWorkspaceFile) {
+          onOpenWorkspaceFile({ filePath: normalized.file });
+          return;
+        }
+
         const route = buildHostWorkspaceFileRoute(
           resolvedServerId,
           workspaceId,
@@ -188,6 +195,7 @@ export const AgentStreamView = forwardRef<AgentStreamViewHandle, AgentStreamView
       resolvedServerId,
       router,
       setExplorerTabForCheckout,
+      onOpenWorkspaceFile,
       workspaceId,
     ]
   );

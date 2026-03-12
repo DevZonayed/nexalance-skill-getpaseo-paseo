@@ -136,4 +136,38 @@ describe("workspace-tabs-store retargetTab", () => {
     expect(matchingTabs).toHaveLength(1);
     expect(order).toEqual([draftTabId]);
   });
+
+  it("openOrFocusTab re-focuses an existing file tab after the workspace focus changed", () => {
+    const key = buildWorkspaceTabPersistenceKey({ serverId: SERVER_ID, workspaceId: WORKSPACE_ID });
+    expect(key).toBeTruthy();
+    const workspaceKey = key as string;
+
+    const fileTabId = useWorkspaceTabsStore.getState().openOrFocusTab({
+      serverId: SERVER_ID,
+      workspaceId: WORKSPACE_ID,
+      target: { kind: "file", path: "/repo/worktree/src/index.ts" },
+    });
+    const terminalTabId = useWorkspaceTabsStore.getState().openOrFocusTab({
+      serverId: SERVER_ID,
+      workspaceId: WORKSPACE_ID,
+      target: { kind: "terminal", terminalId: "term-1" },
+    });
+
+    expect(fileTabId).toBe("file_/repo/worktree/src/index.ts");
+    expect(terminalTabId).toBe("terminal_term-1");
+    expect(useWorkspaceTabsStore.getState().focusedTabIdByWorkspace[workspaceKey]).toBe(
+      terminalTabId
+    );
+
+    const reopenedFileTabId = useWorkspaceTabsStore.getState().openOrFocusTab({
+      serverId: SERVER_ID,
+      workspaceId: WORKSPACE_ID,
+      target: { kind: "file", path: "/repo/worktree/src/index.ts" },
+    });
+
+    expect(reopenedFileTabId).toBe(fileTabId);
+    expect(useWorkspaceTabsStore.getState().focusedTabIdByWorkspace[workspaceKey]).toBe(
+      fileTabId
+    );
+  });
 });

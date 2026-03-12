@@ -29,6 +29,7 @@ type WorkspaceDraftAgentTabProps = {
   tabId: string
   draftId: string
   onCreated: (snapshot: AgentSnapshotPayload) => void
+  onOpenWorkspaceFile: (input: { filePath: string }) => void
 }
 
 export function WorkspaceDraftAgentTab({
@@ -37,6 +38,7 @@ export function WorkspaceDraftAgentTab({
   tabId,
   draftId,
   onCreated,
+  onOpenWorkspaceFile,
 }: WorkspaceDraftAgentTabProps) {
   const { client, isConnected } = useHostRuntimeSession(serverId)
   const addImagesRef = useRef<((images: ImageAttachment[]) => void) | null>(null)
@@ -204,6 +206,7 @@ export function WorkspaceDraftAgentTab({
                 agent={draftAgent}
                 streamItems={optimisticStreamItems}
                 pendingPermissions={EMPTY_PENDING_PERMISSIONS}
+                onOpenWorkspaceFile={onOpenWorkspaceFile}
               />
             </View>
           ) : (

@@ -756,6 +756,17 @@ function WorkspaceScreenContent({
     [closeToAgent, isMobile, navigateToTabId, normalizedServerId, normalizedWorkspaceId, openOrFocusTab]
   );
 
+  const handleOpenFileFromChat = useCallback(
+    ({ filePath }: { filePath: string }) => {
+      const normalizedFilePath = filePath.trim();
+      if (!normalizedFilePath) {
+        return;
+      }
+      handleOpenFileFromExplorer(normalizedFilePath);
+    },
+    [handleOpenFileFromExplorer]
+  );
+
   const [isTabSwitcherOpen, setIsTabSwitcherOpen] = useState(false);
   const [hoveredTabKey, setHoveredTabKey] = useState<string | null>(null);
   const [hoveredCloseTabKey, setHoveredCloseTabKey] = useState<string | null>(
@@ -1258,6 +1269,7 @@ function WorkspaceScreenContent({
           workspaceId={normalizedWorkspaceId}
           tabId={activeTabId ?? target.draftId}
           draftId={target.draftId}
+          onOpenWorkspaceFile={handleOpenFileFromChat}
           onCreated={(agentSnapshot) => {
             const tabId = activeTabId ?? target.draftId;
             const normalized = normalizeAgentSnapshot(agentSnapshot, normalizedServerId);
@@ -1292,6 +1304,7 @@ function WorkspaceScreenContent({
           agentId={target.agentId}
           showExplorerSidebar={false}
           wrapWithExplorerSidebarProvider={false}
+          onOpenWorkspaceFile={handleOpenFileFromChat}
         />
       );
     }
