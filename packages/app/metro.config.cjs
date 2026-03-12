@@ -1,6 +1,4 @@
 const { getDefaultConfig } = require("expo/metro-config");
-const exclusionList =
-  require("@expo/metro/metro-config/defaults/exclusionList").default;
 const { resolve } = require("metro-resolver");
 const fs = require("fs");
 const path = require("path");
@@ -21,6 +19,7 @@ const escapedAppSrcRoot = appSrcRoot
   .split(path.sep)
   .map((segment) => segment.replace(/[|\\{}()[\]^$+*?.]/g, "\\$&"))
   .join("[\\\\/]");
+const pathSeparatorPattern = "[\\\\/]";
 
 config.resolver.extraNodeModules = {
   ...(config.resolver.extraNodeModules ?? {}),
@@ -29,9 +28,9 @@ config.resolver.extraNodeModules = {
   "react/jsx-runtime": path.join(appNodeModulesRoot, "react/jsx-runtime"),
   "react/jsx-dev-runtime": path.join(appNodeModulesRoot, "react/jsx-dev-runtime"),
 };
-config.resolver.blockList = exclusionList([
-  new RegExp(`^${escapedAppSrcRoot}[\\\\/].*\\.(test|spec)\\.(ts|tsx)$`),
-]);
+config.resolver.blockList = new RegExp(
+  `(^${escapedAppSrcRoot}${pathSeparatorPattern}.*\\.(test|spec)\\.(ts|tsx)$|${pathSeparatorPattern}__tests__${pathSeparatorPattern}.*)$`,
+);
 
 function isLocalModuleImport(moduleName) {
   return (
