@@ -312,10 +312,6 @@ fn read_json_file<T: for<'de> Deserialize<'de>>(path: &Path) -> Result<T, String
         .map_err(|error| format!("Failed to parse {}: {error}", path.display()))
 }
 
-fn dev_resource_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("resources")
-}
-
 fn bundled_runtime_root_from_resource_dir(resource_dir: &Path) -> Option<PathBuf> {
     for candidate in [
         resource_dir.join("resources").join("managed-runtime"),
@@ -337,12 +333,7 @@ fn bundled_runtime_root(app: &AppHandle) -> Result<PathBuf, String> {
             return Ok(candidate);
         }
     } else {
-        log::info!("[runtime] resource_dir() unavailable, checking dev path");
-    }
-    let dev = dev_resource_root().join("managed-runtime");
-    if dev.exists() {
-        log::info!("[runtime] using dev runtime at {}", dev.display());
-        return Ok(dev);
+        log::info!("[runtime] resource_dir() unavailable");
     }
     log::error!("[runtime] no managed runtime found");
     Err("Managed runtime resources are not bundled with this desktop build.".to_string())
@@ -786,6 +777,7 @@ pub async fn update_managed_daemon_tcp_settings(
 
 pub fn run_managed_cli_from_current_process(args: Vec<String>) -> Result<i32, String> {
     let current_exe = std::env::current_exe()
+        .and_then(|p| p.canonicalize())
         .map_err(|error| format!("Failed to resolve desktop executable path: {error}"))?;
     let current_exe = dunce::simplified(&current_exe).to_path_buf();
     let exe_dir = current_exe
@@ -799,10 +791,6 @@ pub fn run_managed_cli_from_current_process(args: Vec<String>) -> Result<i32, St
     let bundled_root = resource_dirs
         .into_iter()
         .find_map(|resource_dir| bundled_runtime_root_from_resource_dir(&resource_dir))
-        .or_else(|| {
-            let dev = dev_resource_root().join("managed-runtime");
-            dev.exists().then_some(dev)
-        })
         .ok_or_else(|| {
             "Managed runtime resources are not bundled with this desktop build.".to_string()
         })?;

@@ -1,4 +1,4 @@
-import { mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, renameSync, unlinkSync } from "node:fs";
 import path from "node:path";
 import pino from "pino";
 import pretty from "pino-pretty";
@@ -138,6 +138,37 @@ function normalizeLoggerConfigInput(config: LoggerConfigInput): PersistedConfig 
   return config as PersistedConfig;
 }
 
+function rotateOnRestart(filePath: string, maxFiles: number): void {
+  if (!existsSync(filePath)) return;
+
+  const dir = path.dirname(filePath);
+  const base = path.basename(filePath);
+  const now = new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const ts = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}`;
+
+  try {
+    renameSync(filePath, path.join(dir, `${ts}-00-${base}`));
+  } catch {
+    return;
+  }
+
+  // Clean up old rotated logs beyond maxFiles.
+  // Both our restart-rotated files (YYYYMMDD-HHMM-00-daemon.log) and
+  // rotating-file-stream's size-rotated files (YYYYMMDD-HHMM-NN-daemon.log)
+  // end with -${base} and sort chronologically by name.
+  const rotatedFiles = readdirSync(dir)
+    .filter((f) => f.endsWith(`-${base}`) && f !== base)
+    .sort()
+    .reverse();
+
+  for (const file of rotatedFiles.slice(maxFiles)) {
+    try {
+      unlinkSync(path.join(dir, file));
+    } catch {}
+  }
+}
+
 function toRotatingFileStreamSize(size: string): string {
   const trimmed = size.trim();
   const match = trimmed.match(/^(\d+)\s*([bBkKmMgG])?$/);
@@ -230,11 +261,12 @@ export function createRootLogger(
         })
       : pino.destination({ dest: 1, sync: false });
 
+  rotateOnRestart(config.file.path, config.file.rotate.maxFiles);
+
   const fileStream = createRotatingFileStream(path.basename(config.file.path), {
     path: path.dirname(config.file.path),
     size: toRotatingFileStreamSize(config.file.rotate.maxSize),
     maxFiles: config.file.rotate.maxFiles,
-    initialRotation: true,
   });
 
   return pino(

@@ -376,7 +376,7 @@ function resolveClaudeSpawnCommand(
   if (commandConfig.mode === "append") {
     return {
       command: spawnOptions.command,
-      args: [...(commandConfig.args ?? []), ...spawnOptions.args],
+      args: [...spawnOptions.args, ...(commandConfig.args ?? [])],
     };
   }
 
@@ -390,15 +390,6 @@ function applyRuntimeSettingsToClaudeOptions(
   options: ClaudeOptions,
   runtimeSettings?: ProviderRuntimeSettings
 ): ClaudeOptions {
-  const hasEnvOverrides = Object.keys(runtimeSettings?.env ?? {}).length > 0;
-  const commandMode = runtimeSettings?.command?.mode;
-  const needsCustomSpawn =
-    hasEnvOverrides || commandMode === "append" || commandMode === "replace";
-
-  if (!needsCustomSpawn) {
-    return options;
-  }
-
   return {
     ...options,
     spawnClaudeCodeProcess: (spawnOptions) => {
@@ -406,7 +397,13 @@ function applyRuntimeSettingsToClaudeOptions(
         spawnOptions,
         runtimeSettings
       );
-      return spawn(resolved.command, resolved.args, {
+      // The SDK defaults to spawning "node" via PATH lookup, which fails when
+      // running from the managed runtime bundle where node isn't in PATH.
+      // Always use process.execPath — the actual node binary running the daemon.
+      const command = resolved.command === spawnOptions.command
+        ? process.execPath
+        : resolved.command;
+      return spawn(command, resolved.args, {
         cwd: spawnOptions.cwd,
         env: applyProviderEnv(spawnOptions.env, runtimeSettings),
         signal: spawnOptions.signal,
