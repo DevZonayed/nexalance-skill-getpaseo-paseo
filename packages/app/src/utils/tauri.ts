@@ -7,8 +7,22 @@ export interface TauriDialogAskOptions {
   kind?: "info" | "warning" | "error";
 }
 
+export interface TauriDialogOpenOptions {
+  title?: string;
+  defaultPath?: string;
+  directory?: boolean;
+  multiple?: boolean;
+  filters?: Array<{
+    name: string;
+    extensions: string[];
+  }>;
+}
+
 export interface TauriDialogApi {
   ask?: (message: string, options?: TauriDialogAskOptions) => Promise<boolean>;
+  open?: (
+    options?: TauriDialogOpenOptions
+  ) => Promise<string | string[] | null>;
 }
 
 export interface TauriCoreApi {

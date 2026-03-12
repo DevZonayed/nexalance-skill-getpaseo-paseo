@@ -1,11 +1,16 @@
 import { useCallback, useRef } from "react";
 import { Alert } from "react-native";
+import { Platform } from "react-native";
 import * as ImagePicker from "expo-image-picker";
-
-type ImagePickerSuccessResult = ImagePicker.ImagePickerSuccessResult;
+import { isTauriEnvironment } from "@/utils/tauri";
+import {
+  normalizePickedImageAssets,
+  openImagePathsWithTauriDialog,
+  type PickedImageAttachmentInput,
+} from "@/hooks/image-attachment-picker";
 
 interface UseImageAttachmentPickerResult {
-  pickImages: () => Promise<ImagePickerSuccessResult | null>;
+  pickImages: () => Promise<PickedImageAttachmentInput[] | null>;
 }
 
 export function useImageAttachmentPicker(): UseImageAttachmentPickerResult {
@@ -37,6 +42,18 @@ export function useImageAttachmentPicker(): UseImageAttachmentPickerResult {
     isPickingRef.current = true;
 
     try {
+      if (Platform.OS === "web" && isTauriEnvironment()) {
+        const selectedPaths = await openImagePathsWithTauriDialog();
+        if (selectedPaths.length === 0) {
+          return null;
+        }
+        return selectedPaths.map((path) => ({
+          source: { kind: "file_uri" as const, uri: path },
+          mimeType: null,
+          fileName: null,
+        }));
+      }
+
       const hasPermission = await ensurePermission();
       if (!hasPermission) {
         return null;
@@ -44,7 +61,7 @@ export function useImageAttachmentPicker(): UseImageAttachmentPickerResult {
 
       const pendingResult = await ImagePicker.getPendingResultAsync();
       if (pendingResult && "canceled" in pendingResult && !pendingResult.canceled) {
-        return pendingResult as ImagePickerSuccessResult;
+        return await normalizePickedImageAssets(pendingResult.assets);
       }
 
       const result = await ImagePicker.launchImageLibraryAsync({
@@ -57,7 +74,7 @@ export function useImageAttachmentPicker(): UseImageAttachmentPickerResult {
         return null;
       }
 
-      return result;
+      return await normalizePickedImageAssets(result.assets);
     } catch (error) {
       console.error("[ImageAttachmentPicker] Failed to pick image:", error);
       Alert.alert("Error", "Failed to select image");

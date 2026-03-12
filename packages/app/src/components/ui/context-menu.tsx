@@ -9,6 +9,8 @@ import {
   useState,
   type PropsWithChildren,
   type ReactElement,
+  type Ref,
+  type MutableRefObject,
 } from "react";
 import {
   ActivityIndicator,
@@ -182,6 +184,16 @@ function coerceEventPoint(event: unknown): { pageX: number; pageY: number } | nu
   return null;
 }
 
+function assignRef<T>(ref: Ref<T> | undefined, value: T): void {
+  if (typeof ref === "function") {
+    ref(value);
+    return;
+  }
+  if (ref && typeof ref === "object") {
+    (ref as MutableRefObject<T>).current = value;
+  }
+}
+
 export function ContextMenu({
   open,
   defaultOpen,
@@ -231,6 +243,7 @@ export function ContextMenuTrigger({
   enabledOnMobile = false,
   enabledOnWeb = true,
   longPressDelayMs,
+  triggerRef,
   ...props
 }: PropsWithChildren<
   Omit<PressableProps, "style"> & {
@@ -239,6 +252,7 @@ export function ContextMenuTrigger({
     enabledOnMobile?: boolean;
     enabledOnWeb?: boolean;
     longPressDelayMs?: number;
+    triggerRef?: Ref<View | null>;
   }
 >): ReactElement {
   const ctx = useContextMenuContext("ContextMenuTrigger");
@@ -268,10 +282,18 @@ export function ContextMenuTrigger({
     [ctx, disabled, shouldEnableOnThisPlatform]
   );
 
+  const handleRef = useCallback(
+    (node: View | null) => {
+      assignRef(ctx.triggerRef, node);
+      assignRef(triggerRef, node);
+    },
+    [ctx.triggerRef, triggerRef]
+  );
+
   return (
     <Pressable
       {...props}
-      ref={ctx.triggerRef}
+      ref={handleRef}
       collapsable={false}
       disabled={disabled}
       delayLongPress={longPressDelayMs}

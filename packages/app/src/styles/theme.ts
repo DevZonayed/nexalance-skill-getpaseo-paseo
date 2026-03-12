@@ -123,6 +123,7 @@ const lightSemanticColors = {
 
   // Brand
   accent: "#20744A",
+  accentBright: "#239956",
   accentForeground: "#ffffff",
 
   // Semantic
@@ -192,6 +193,7 @@ const darkSemanticColors = {
 
   // Brand
   accent: "#20744A",
+  accentBright: "#7ccba0",
   accentForeground: "#ffffff",
 
   // Semantic

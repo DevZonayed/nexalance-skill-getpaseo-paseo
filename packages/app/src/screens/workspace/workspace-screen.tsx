@@ -344,6 +344,10 @@ function WorkspaceScreenContent({
   const isWorkspaceHeaderLoading = workspaceHeader === null;
 
   const isGitCheckout = checkoutQuery.data?.isGit ?? false;
+  const currentBranchName =
+    checkoutQuery.data?.isGit && checkoutQuery.data.currentBranch !== "HEAD"
+      ? trimNonEmpty(checkoutQuery.data.currentBranch)
+      : null;
   const mobileView = usePanelStore((state) => state.mobileView);
   const desktopFileExplorerOpen = usePanelStore(
     (state) => state.desktop.fileExplorerOpen
@@ -1025,6 +1029,20 @@ function WorkspaceScreenContent({
     }
   }, [normalizedWorkspaceId, toast]);
 
+  const handleCopyBranchName = useCallback(async () => {
+    if (!currentBranchName) {
+      toast.error("Branch name not available");
+      return;
+    }
+
+    try {
+      await Clipboard.setStringAsync(currentBranchName);
+      toast.copied("Branch name");
+    } catch {
+      toast.error("Copy failed");
+    }
+  }, [currentBranchName, toast]);
+
   const handleBulkCloseTabs = useCallback(
     async (input: { tabsToClose: WorkspaceTabDescriptor[]; title: string; logLabel: string }) => {
       const { tabsToClose, title, logLabel } = input;
@@ -1389,6 +1407,20 @@ function WorkspaceScreenContent({
                       >
                         Copy workspace path
                       </DropdownMenuItem>
+                      {currentBranchName ? (
+                        <DropdownMenuItem
+                          testID="workspace-header-copy-branch-name"
+                          leading={
+                            <Copy
+                              size={16}
+                              color={theme.colors.foregroundMuted}
+                            />
+                          }
+                          onSelect={handleCopyBranchName}
+                        >
+                          Copy branch name
+                        </DropdownMenuItem>
+                      ) : null}
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </View>

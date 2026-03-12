@@ -18,10 +18,16 @@ export function createMarkdownStyles(theme: Theme) {
       color: theme.colors.foreground,
       fontSize: theme.fontSize.base,
       lineHeight: 22,
+      flexShrink: 1,
+      minWidth: 0,
+      width: "100%" as const,
     },
 
     text: {
       color: theme.colors.foreground,
+      flexShrink: 1,
+      minWidth: 0,
+      overflowWrap: "anywhere" as const,
     },
 
     paragraph: {
@@ -31,6 +37,9 @@ export function createMarkdownStyles(theme: Theme) {
       flexDirection: "row" as const,
       alignItems: "flex-start" as const,
       justifyContent: "flex-start" as const,
+      flexShrink: 1,
+      minWidth: 0,
+      width: "100%" as const,
     },
 
     // =========================================================================
@@ -117,13 +126,19 @@ export function createMarkdownStyles(theme: Theme) {
     },
 
     link: {
-      color: theme.colors.primary,
-      textDecorationLine: "underline" as const,
+      color: theme.colors.accentBright,
+      textDecorationLine: "none" as const,
+      flexShrink: 1,
+      minWidth: 0,
+      overflowWrap: "anywhere" as const,
     },
 
     blocklink: {
-      color: theme.colors.primary,
-      textDecorationLine: "underline" as const,
+      color: theme.colors.accentBright,
+      textDecorationLine: "none" as const,
+      flexShrink: 1,
+      minWidth: 0,
+      overflowWrap: "anywhere" as const,
     },
 
     // =========================================================================
@@ -135,7 +150,8 @@ export function createMarkdownStyles(theme: Theme) {
       color: theme.colors.foreground,
       paddingHorizontal: theme.spacing[1],
       paddingVertical: 2,
-      borderRadius: theme.borderRadius.sm,
+      borderRadius: theme.borderRadius.md,
+      borderWidth: 0,
       fontFamily: Fonts.mono,
       fontSize: theme.fontSize.sm,
     },

@@ -156,8 +156,6 @@ export function WorkspaceDesktopTabsRow({
             const layoutItem = layout.items[index] ?? null;
             const resolvedTabWidth = layoutItem?.width ?? 150;
             const showLabel = layoutItem?.showLabel ?? true;
-            const labelCharCap = layoutItem?.labelCharCap ?? tab.label.length;
-            const renderedLabel = showLabel ? tab.label.slice(0, Math.max(1, labelCharCap)) : "";
             const presentation = deriveWorkspaceTabPresentation({ tab, agent: tabAgent });
             const tooltipLabel =
               tab.kind === "agent" && tab.titleState === "loading"
@@ -172,11 +170,7 @@ export function WorkspaceDesktopTabsRow({
             return (
               <ContextMenu key={tab.key}>
                 <Tooltip delayDuration={400} enabledOnDesktop enabledOnMobile={false}>
-                  <TooltipTrigger
-                    testID={`workspace-tab-tooltip-${tab.key}`}
-                    accessibilityRole="none"
-                    style={styles.tabTooltipTrigger}
-                  >
+                  <TooltipTrigger asChild triggerRefProp="triggerRef">
                     <ContextMenuTrigger
                       testID={`workspace-tab-${tab.key}`}
                       enabledOnMobile={false}
@@ -228,9 +222,11 @@ export function WorkspaceDesktopTabsRow({
                                 isActive && styles.tabLabelActive,
                                 shouldShowCloseButton && styles.tabLabelWithCloseButton,
                               ]}
+                              selectable={false}
                               numberOfLines={1}
+                              ellipsizeMode="tail"
                             >
-                              {renderedLabel}
+                              {tab.label}
                             </Text>
                           )
                         ) : null}
@@ -411,9 +407,6 @@ const styles = StyleSheet.create((theme) => ({
     paddingRight: theme.spacing[2],
     paddingVertical: theme.spacing[1],
   },
-  tabTooltipTrigger: {
-    flexShrink: 0,
-  },
   tab: {
     paddingHorizontal: theme.spacing[3],
     paddingVertical: theme.spacing[2],
@@ -421,6 +414,7 @@ const styles = StyleSheet.create((theme) => ({
     flexDirection: "row",
     alignItems: "center",
     gap: theme.spacing[1],
+    userSelect: "none",
   },
   tabHandle: {
     flexDirection: "row",
@@ -428,6 +422,7 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[1],
     flex: 1,
     minWidth: 0,
+    userSelect: "none",
   },
   tabIcon: {
     flexShrink: 0,
@@ -444,6 +439,7 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.sm,
     fontWeight: theme.fontWeight.normal,
+    userSelect: "none",
   },
   tabLabelSkeleton: {
     width: 96,

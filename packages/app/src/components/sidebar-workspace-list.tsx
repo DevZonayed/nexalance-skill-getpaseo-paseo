@@ -124,6 +124,7 @@ interface WorkspaceRowInnerProps {
   archiveStatus?: 'idle' | 'pending' | 'success'
   archivePendingLabel?: string
   onArchive?: () => void
+  onCopyBranchName?: () => void
   onCopyPath?: () => void
 }
 
@@ -612,6 +613,7 @@ function WorkspaceRowInner({
   archiveStatus = 'idle',
   archivePendingLabel,
   onArchive,
+  onCopyBranchName,
   onCopyPath,
 }: WorkspaceRowInnerProps) {
   const { theme } = useUnistyles()
@@ -696,6 +698,15 @@ function WorkspaceRowInner({
                     Copy path
                   </DropdownMenuItem>
                 ) : null}
+                {onCopyBranchName ? (
+                  <DropdownMenuItem
+                    testID={`sidebar-workspace-menu-copy-branch-name-${workspace.workspaceKey}`}
+                    leading={<Copy size={14} color={theme.colors.foregroundMuted} />}
+                    onSelect={onCopyBranchName}
+                  >
+                    Copy branch name
+                  </DropdownMenuItem>
+                ) : null}
                 <DropdownMenuItem
                   testID={`sidebar-workspace-menu-archive-${workspace.workspaceKey}`}
                   leading={<Archive size={14} color={theme.colors.foregroundMuted} />}
@@ -733,6 +744,7 @@ function WorkspaceRowWithMenu({
   drag,
   isDragging,
   dragHandleProps,
+  canCopyBranchName,
 }: {
   workspace: SidebarWorkspaceEntry
   selected: boolean
@@ -742,6 +754,7 @@ function WorkspaceRowWithMenu({
   drag: () => void
   isDragging: boolean
   dragHandleProps?: DraggableListDragHandleProps
+  canCopyBranchName: boolean
 }) {
   const toast = useToast()
   const archiveWorktree = useCheckoutGitActionsStore((state) => state.archiveWorktree)
@@ -827,6 +840,11 @@ function WorkspaceRowWithMenu({
     toast.copied('Path copied')
   }, [toast, workspace.workspaceId])
 
+  const handleCopyBranchName = useCallback(() => {
+    void Clipboard.setStringAsync(workspace.name)
+    toast.copied('Branch name copied')
+  }, [toast, workspace.name])
+
   return (
     <WorkspaceRowInner
       workspace={workspace}
@@ -843,6 +861,7 @@ function WorkspaceRowWithMenu({
       archiveStatus={isWorktree ? archiveStatus : isArchivingWorkspace ? 'pending' : 'idle'}
       archivePendingLabel={isWorktree ? 'Archiving...' : 'Hiding...'}
       onArchive={isWorktree ? handleArchiveWorktree : handleArchiveWorkspace}
+      onCopyBranchName={canCopyBranchName ? handleCopyBranchName : undefined}
       onCopyPath={handleCopyPath}
     />
   )
@@ -1008,6 +1027,7 @@ function WorkspaceRow({
   drag,
   isDragging,
   dragHandleProps,
+  canCopyBranchName,
 }: {
   workspace: SidebarWorkspaceEntry
   selected: boolean
@@ -1017,6 +1037,7 @@ function WorkspaceRow({
   drag: () => void
   isDragging: boolean
   dragHandleProps?: DraggableListDragHandleProps
+  canCopyBranchName: boolean
 }) {
   return (
     <WorkspaceRowWithMenu
@@ -1028,6 +1049,7 @@ function WorkspaceRow({
       drag={drag}
       isDragging={isDragging}
       dragHandleProps={dragHandleProps}
+      canCopyBranchName={canCopyBranchName}
     />
   )
 }
@@ -1095,6 +1117,7 @@ function ProjectBlock({
           selected={isSelected}
           shortcutNumber={shortcutIndexByWorkspaceKey.get(item.workspaceKey) ?? null}
           showShortcutBadge={showShortcutBadges}
+          canCopyBranchName={project.projectKind === 'git'}
           onPress={() => {
             if (!serverId) {
               return

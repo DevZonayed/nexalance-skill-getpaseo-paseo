@@ -229,14 +229,10 @@ export function createTauriWebSocketTransportFactory(): DaemonTransportFactory |
     return {
       ...transport,
       close: (code?: number, reason?: string) => {
+        wsListenerCleanup = null;
         transport.close(code, reason);
         disposed = true;
-        try {
-          wsListenerCleanup?.();
-        } catch {
-          // no-op
-        }
-        wsListenerCleanup = null;
+        ws = null;
       },
     };
   };

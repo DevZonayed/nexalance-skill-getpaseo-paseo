@@ -18,6 +18,9 @@ import {
   useCallback,
   createContext,
   useContext,
+  isValidElement,
+  Children,
+  cloneElement,
 } from "react";
 import type { ReactNode, ComponentType } from "react";
 import Markdown, { MarkdownIt } from "react-native-markdown-display";
@@ -433,20 +436,6 @@ export const assistantMessageStylesheet = StyleSheet.create((theme) => ({
   containerSpacing: {
     marginBottom: theme.spacing[4],
   },
-  // Used in custom markdownRules for inline code styling
-  markdownCodeInline: {
-    backgroundColor: theme.colors.surface2,
-    color: theme.colors.foreground,
-    paddingHorizontal: theme.spacing[2],
-    paddingVertical: 2,
-    borderRadius: theme.borderRadius.sm,
-    fontFamily: Fonts.mono,
-    fontSize: 13,
-  },
-  markdownCodeInlineLink: {
-    color: theme.colors.primary,
-    textDecorationLine: "underline",
-  },
   // Used in custom markdownRules for path chip styling
   pathChip: {
     backgroundColor: theme.colors.surface2,
@@ -462,6 +451,35 @@ export const assistantMessageStylesheet = StyleSheet.create((theme) => ({
     fontSize: 13,
   },
 }));
+
+function MarkdownLink({
+  href,
+  style,
+  onPress,
+  children,
+}: {
+  href: string;
+  style: any;
+  onPress: (url: string) => void;
+  children: ReactNode;
+}) {
+  const [hovered, setHovered] = useState(false);
+  const hoverProps =
+    Platform.OS === "web"
+      ? { onHoverIn: () => setHovered(true), onHoverOut: () => setHovered(false) }
+      : {};
+  return (
+    <Pressable
+      accessibilityRole="link"
+      onPress={() => onPress(href)}
+      {...hoverProps}
+    >
+      <Text style={[style, hovered && { textDecorationLine: "underline" }]}>
+        {children}
+      </Text>
+    </Pressable>
+  );
+}
 
 function getInlineCodeAutoLinkUrl(
   markdownParser: ReturnType<typeof MarkdownIt>,
@@ -776,7 +794,7 @@ export const AssistantMessage = memo(function AssistantMessage({
         node: any,
         _children: ReactNode[],
         _parent: any,
-        _styles: any,
+        styles: any,
         inheritedStyles: any = {}
       ) => {
         const content = node.content ?? "";
@@ -803,30 +821,21 @@ export const AssistantMessage = memo(function AssistantMessage({
         const inlineCodeLinkUrl = getInlineCodeAutoLinkUrl(markdownParser, content);
         if (inlineCodeLinkUrl) {
           return (
-            <Text
+            <MarkdownLink
               key={node.key}
-              accessibilityRole="link"
-              onPress={() => {
-                handleLinkPress(inlineCodeLinkUrl);
-              }}
-              style={[
-                inheritedStyles,
-                assistantMessageStylesheet.markdownCodeInline,
-                assistantMessageStylesheet.markdownCodeInlineLink,
-              ]}
+              href={inlineCodeLinkUrl}
+              style={[inheritedStyles, styles.code_inline, styles.link]}
+              onPress={handleLinkPress}
             >
               {content}
-            </Text>
+            </MarkdownLink>
           );
         }
 
         return (
           <Text
             key={node.key}
-            style={[
-              inheritedStyles,
-              assistantMessageStylesheet.markdownCodeInline,
-            ]}
+            style={[inheritedStyles, styles.code_inline]}
           >
             {content}
           </Text>
@@ -877,6 +886,25 @@ export const AssistantMessage = memo(function AssistantMessage({
           </View>
         );
       },
+      link: (
+        node: any,
+        children: ReactNode[],
+        _parent: any,
+        styles: any,
+      ) => (
+        <MarkdownLink
+          key={node.key}
+          href={node.attributes?.href ?? ""}
+          style={styles.link}
+          onPress={handleLinkPress}
+        >
+          {Children.map(children, (child) =>
+            isValidElement(child)
+              ? cloneElement(child, { style: [(child.props as any).style, { color: styles.link.color }] } as any)
+              : child
+          )}
+        </MarkdownLink>
+      ),
     };
   }, [handleLinkPress, markdownParser, onInlinePathPress]);
 

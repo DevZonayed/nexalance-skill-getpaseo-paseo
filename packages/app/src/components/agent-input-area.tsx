@@ -31,6 +31,7 @@ import { useAgentAutocomplete } from '@/hooks/use-agent-autocomplete'
 import { useHostRuntimeSession } from '@/runtime/host-runtime'
 import {
   deleteAttachments,
+  persistAttachmentFromBlob,
   persistAttachmentFromFileUri,
 } from '@/attachments/service'
 import { resolveStatusControlMode } from '@/components/agent-input-area.status-controls'
@@ -390,16 +391,24 @@ export function AgentInputArea({
 
   async function handlePickImage() {
     const result = await pickImages()
-    if (!result?.assets?.length) {
+    if (!result?.length) {
       return
     }
 
     const newImages = await Promise.all(
-      result.assets.map(async (asset) => {
+      result.map(async (pickedImage) => {
+        if (pickedImage.source.kind === 'blob') {
+          return await persistAttachmentFromBlob({
+            blob: pickedImage.source.blob,
+            mimeType: pickedImage.mimeType || 'image/jpeg',
+            fileName: pickedImage.fileName ?? null,
+          })
+        }
+
         return await persistAttachmentFromFileUri({
-          uri: asset.uri,
-          mimeType: asset.mimeType || 'image/jpeg',
-          fileName: asset.fileName ?? null,
+          uri: pickedImage.source.uri,
+          mimeType: pickedImage.mimeType || 'image/jpeg',
+          fileName: pickedImage.fileName ?? null,
         })
       })
     )

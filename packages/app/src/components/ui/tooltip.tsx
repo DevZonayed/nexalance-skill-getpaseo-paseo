@@ -1,5 +1,8 @@
 import {
+  Children,
+  cloneElement,
   createContext,
+  isValidElement,
   useCallback,
   useContext,
   useEffect,
@@ -8,6 +11,7 @@ import {
   useState,
   type PropsWithChildren,
   type ReactElement,
+  type Ref,
 } from "react";
 import {
   Dimensions,
@@ -51,6 +55,26 @@ function useTooltipContext(componentName: string): TooltipContextValue {
     throw new Error(`${componentName} must be used within <Tooltip />`);
   }
   return ctx;
+}
+
+function composeEventHandlers<E>(
+  original?: (event: E) => void,
+  injected?: (event: E) => void
+): (event: E) => void {
+  return (event: E) => {
+    original?.(event);
+    injected?.(event);
+  };
+}
+
+function assignRef<T>(ref: Ref<T> | undefined, value: T): void {
+  if (typeof ref === "function") {
+    ref(value);
+    return;
+  }
+  if (ref && typeof ref === "object") {
+    (ref as { current: T }).current = value;
+  }
 }
 
 function useControllableOpenState({
@@ -224,8 +248,15 @@ export function TooltipTrigger({
   onFocus,
   onBlur,
   onPress,
+  asChild = false,
+  triggerRefProp = "ref",
   ...props
-}: PropsWithChildren<PressableProps>): ReactElement {
+}: PropsWithChildren<
+  PressableProps & {
+    asChild?: boolean;
+    triggerRefProp?: string;
+  }
+>): ReactElement {
   const ctx = useTooltipContext("TooltipTrigger");
   const openTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -276,37 +307,86 @@ export function TooltipTrigger({
     [onHoverOut, close]
   );
 
+  const handleFocus = useCallback(
+    (e: any) => {
+      onFocus?.(e);
+      if (!ctx.enabled || disabled) return;
+      clearOpenTimer();
+      ctx.setOpen(true);
+    },
+    [clearOpenTimer, ctx, disabled, onFocus]
+  );
+
+  const handleBlur = useCallback(
+    (e: any) => {
+      onBlur?.(e);
+      close();
+    },
+    [close, onBlur]
+  );
+
+  const handlePress = useCallback(
+    (e: any) => {
+      onPress?.(e);
+      close();
+    },
+    [close, onPress]
+  );
+
+  const triggerProps = {
+    ...props,
+    disabled,
+    onHoverIn: handleHoverIn,
+    onHoverOut: handleHoverOut,
+    onFocus: handleFocus,
+    onBlur: handleBlur,
+    onPress: handlePress,
+    ...(Platform.OS === "web"
+      ? ({
+          // RN Web's hover handling can vary across environments; pointer events are the most reliable.
+          onPointerEnter: handleHoverIn,
+          onPointerLeave: handleHoverOut,
+          onMouseEnter: handleHoverIn,
+          onMouseLeave: handleHoverOut,
+        } as any)
+      : null),
+  };
+
+  if (asChild) {
+    const child = Children.only(children);
+    if (!isValidElement(child)) {
+      throw new Error("TooltipTrigger with asChild expects a single React element child");
+    }
+
+    const childProps = child.props as Record<string, any>;
+    const mergedProps = {
+      ...childProps,
+      ...triggerProps,
+      onHoverIn: composeEventHandlers(childProps.onHoverIn, handleHoverIn),
+      onHoverOut: composeEventHandlers(childProps.onHoverOut, handleHoverOut),
+      onFocus: composeEventHandlers(childProps.onFocus, handleFocus),
+      onBlur: composeEventHandlers(childProps.onBlur, handleBlur),
+      onPress: composeEventHandlers(childProps.onPress, handlePress),
+      onPointerEnter: composeEventHandlers(childProps.onPointerEnter, handleHoverIn),
+      onPointerLeave: composeEventHandlers(childProps.onPointerLeave, handleHoverOut),
+      onMouseEnter: composeEventHandlers(childProps.onMouseEnter, handleHoverIn),
+      onMouseLeave: composeEventHandlers(childProps.onMouseLeave, handleHoverOut),
+    } as Record<string, any>;
+
+    const existingRefProp = childProps[triggerRefProp] as Ref<View | null> | undefined;
+    mergedProps[triggerRefProp] = (node: View | null) => {
+      assignRef(existingRefProp, node);
+      assignRef(ctx.triggerRef, node);
+    };
+
+    return cloneElement(child, mergedProps);
+  }
+
   return (
     <Pressable
-      {...props}
+      {...triggerProps}
       ref={ctx.triggerRef}
       collapsable={false}
-      disabled={disabled}
-      onHoverIn={handleHoverIn}
-      onHoverOut={handleHoverOut}
-      onFocus={(e) => {
-        onFocus?.(e);
-        if (!ctx.enabled || disabled) return;
-        clearOpenTimer();
-        ctx.setOpen(true);
-      }}
-      onBlur={(e) => {
-        onBlur?.(e);
-        close();
-      }}
-      onPress={(e) => {
-        onPress?.(e);
-        close();
-      }}
-      {...(Platform.OS === "web"
-        ? ({
-            // RN Web's hover handling can vary across environments; pointer events are the most reliable.
-            onPointerEnter: handleHoverIn,
-            onPointerLeave: handleHoverOut,
-            onMouseEnter: handleHoverIn,
-            onMouseLeave: handleHoverOut,
-          } as any)
-        : null)}
     >
       {children}
     </Pressable>
