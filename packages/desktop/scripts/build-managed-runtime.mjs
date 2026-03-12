@@ -288,30 +288,87 @@ async function installPackedWorkspaces(runtimeRoot, bundledNodeRoot, tarballs) {
   const npmCli = process.platform === "win32"
     ? path.join(bundledNodeRoot, "node_modules", "npm", "bin", "npm-cli.js")
     : path.join(bundledNodeRoot, "lib", "node_modules", "npm", "bin", "npm-cli.js");
-  const install = spawnSync(
-    nodeExecutable,
-    [
-      npmCli,
-      "install",
-      "--include=optional",
-      "--omit=dev",
-      "--no-package-lock",
-      "--no-save",
-      ...tarballs,
-    ],
-    {
-      cwd: runtimeRoot,
-      stdio: "inherit",
-      env: {
-        ...process.env,
-        npm_config_audit: "false",
-        npm_config_fund: "false",
-      },
-    }
-  );
+  const install = spawnSync(nodeExecutable, [
+    npmCli,
+    "install",
+    "--include=optional",
+    "--omit=dev",
+    "--no-package-lock",
+    "--no-save",
+    ...tarballs,
+  ], {
+    cwd: runtimeRoot,
+    stdio: "inherit",
+    env: {
+      ...process.env,
+      npm_config_audit: "false",
+      npm_config_fund: "false",
+    },
+  });
   if (install.status !== 0) {
     throw new Error(
       `Managed runtime dependency install failed with exit code ${install.status ?? 1}.`
+    );
+  }
+}
+
+function resolveSherpaNativePackageName() {
+  const sherpaPlatformMap = {
+    darwin: "darwin",
+    linux: "linux",
+    win32: "win",
+  };
+  const sherpaPlatform = sherpaPlatformMap[process.platform];
+  if (!sherpaPlatform) {
+    throw new Error(`Managed runtime sherpa package is not implemented for ${process.platform}.`);
+  }
+  return `sherpa-onnx-${sherpaPlatform}-${process.arch}`;
+}
+
+async function ensureSherpaNativePackage(runtimeRoot, bundledNodeRoot) {
+  const packageName = resolveSherpaNativePackageName();
+  const packageDir = path.join(runtimeRoot, "node_modules", packageName);
+  if (await pathExists(packageDir)) {
+    return;
+  }
+
+  const sherpaNodePackageJson = JSON.parse(
+    await fs.readFile(
+      path.join(runtimeRoot, "node_modules", "sherpa-onnx-node", "package.json"),
+      "utf8"
+    )
+  );
+  const versionRange = sherpaNodePackageJson.optionalDependencies?.[packageName];
+  if (!versionRange) {
+    throw new Error(`Unable to resolve optional sherpa package version for ${packageName}.`);
+  }
+
+  const nodeExecutable = process.platform === "win32"
+    ? path.join(bundledNodeRoot, "node.exe")
+    : path.join(bundledNodeRoot, "bin", "node");
+  const npmCli = process.platform === "win32"
+    ? path.join(bundledNodeRoot, "node_modules", "npm", "bin", "npm-cli.js")
+    : path.join(bundledNodeRoot, "lib", "node_modules", "npm", "bin", "npm-cli.js");
+  const install = spawnSync(nodeExecutable, [
+    npmCli,
+    "install",
+    "--include=optional",
+    "--omit=dev",
+    "--no-package-lock",
+    "--no-save",
+    `${packageName}@${versionRange}`,
+  ], {
+    cwd: runtimeRoot,
+    stdio: "inherit",
+    env: {
+      ...process.env,
+      npm_config_audit: "false",
+      npm_config_fund: "false",
+    },
+  });
+  if (install.status !== 0) {
+    throw new Error(
+      `Managed runtime sherpa package install failed with exit code ${install.status ?? 1}.`
     );
   }
 }
@@ -529,6 +586,7 @@ async function main() {
       path.join(runtimeRoot, "node"),
       tarballs.map((entry) => entry.path)
     );
+    await ensureSherpaNativePackage(runtimeRoot, path.join(runtimeRoot, "node"));
     await pruneManagedRuntime(runtimeRoot);
 
     const nodeRelativePath = process.platform === "win32"
