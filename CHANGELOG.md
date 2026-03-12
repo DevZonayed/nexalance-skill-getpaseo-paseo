@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.1.26 - 2026-03-12
+
+### Added
+- Added single-instance desktop behavior, Android APK download access, and refreshed splash screen styling.
+- Added bundled Codex and OpenCode binaries in the server so setup no longer depends on global installs.
+- Added Windows support with improved cross-platform shell execution.
+
+### Improved
+- Improved desktop runtime behavior on Windows by suppressing console windows and defaulting app data to `~/.paseo`.
+- Added a Discord link to the website navigation.
+
+### Fixed
+- Fixed desktop Claude agent startup from the managed runtime and rotated logs correctly on restart.
+- Fixed the home route to hide browser chrome when appropriate.
+- Fixed Expo Metro compatibility by updating the `exclusionList` import.
+- Fixed noisy shell output interfering with executable lookup.
+- Fixed Windows resource-path handling by stripping the extended-length path prefix.
+
 ## 0.1.25 - 2026-03-11
 
 ### Fixed
