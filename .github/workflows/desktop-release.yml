@@ -369,23 +369,36 @@ jobs:
           fi
           echo "RELEASE_DRAFT=$release_draft" >> "$GITHUB_ENV"
 
-      - name: Build and publish Linux Tauri release
+      - name: Build Linux Tauri release
         if: env.IS_SMOKE_TAG != 'true'
-        uses: tauri-apps/tauri-action@v0
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           NO_STRIP: "true"
           APPIMAGE_EXTRACT_AND_RUN: "1"
-        with:
-          projectPath: packages/desktop
-          tagName: ${{ env.RELEASE_TAG }}
-          releaseName: Paseo ${{ env.RELEASE_TAG }}
-          releaseBody: See the assets to download and install this version.
-          releaseDraft: ${{ env.RELEASE_DRAFT }}
-          prerelease: false
-          args: --bundles appimage
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run tauri --workspace=@getpaseo/desktop build -- --bundles appimage
+
+      - name: Upload Linux release assets
+        if: env.IS_SMOKE_TAG != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          assets=(
+            packages/desktop/src-tauri/target/release/bundle/appimage/*.AppImage
+            packages/desktop/src-tauri/target/release/bundle/appimage/*.AppImage.sig
+          )
+          if [ "${#assets[@]}" -eq 0 ]; then
+            echo "::error::No Linux AppImage assets were produced."
+            exit 1
+          fi
+          printf 'Uploading Linux assets:\n%s\n' "${assets[@]}"
+          gh release upload "$RELEASE_TAG" "${assets[@]}" --repo "${{ github.repository }}" --clobber
 
       - name: Build Linux app (smoke only)
         if: env.IS_SMOKE_TAG == 'true'
