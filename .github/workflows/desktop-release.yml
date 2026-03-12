@@ -59,13 +59,11 @@ jobs:
         run: |
           set -euo pipefail
           source_tag="${SOURCE_TAG}"
-          release_tag="$source_tag"
-          for prefix in desktop-windows-v desktop-linux-v desktop-macos-v desktop-v; do
-            if [[ "$source_tag" == ${prefix}* ]]; then
-              release_tag="v${source_tag#${prefix}}"
-              break
-            fi
-          done
+          if [[ "$source_tag" =~ ^(desktop-(windows|linux|macos)-|desktop-)?v([0-9]+\.[0-9]+\.[0-9]+) ]]; then
+            release_tag="v${BASH_REMATCH[3]}"
+          else
+            release_tag="$source_tag"
+          fi
           echo "RELEASE_TAG=$release_tag" >> "$GITHUB_ENV"
 
           version="${release_tag#v}"
@@ -135,12 +133,6 @@ jobs:
         run: npm ci
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Patch Metro loader for Windows absolute paths
-        shell: pwsh
-        run: |
-          $patchPath = (Get-Item "$env:GITHUB_WORKSPACE/scripts/metro-config-windows-loader-patch.cjs").FullName
-          "NODE_OPTIONS=--require=$patchPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Build web app for Tauri
         run: npm run build:web --workspace=@getpaseo/app
@@ -259,13 +251,11 @@ jobs:
         run: |
           set -euo pipefail
           source_tag="${SOURCE_TAG}"
-          release_tag="$source_tag"
-          for prefix in desktop-windows-v desktop-linux-v desktop-macos-v desktop-v; do
-            if [[ "$source_tag" == ${prefix}* ]]; then
-              release_tag="v${source_tag#${prefix}}"
-              break
-            fi
-          done
+          if [[ "$source_tag" =~ ^(desktop-(windows|linux|macos)-|desktop-)?v([0-9]+\.[0-9]+\.[0-9]+) ]]; then
+            release_tag="v${BASH_REMATCH[3]}"
+          else
+            release_tag="$source_tag"
+          fi
           echo "RELEASE_TAG=$release_tag" >> "$GITHUB_ENV"
 
           version="${release_tag#v}"
@@ -454,13 +444,11 @@ jobs:
         run: |
           set -euo pipefail
           source_tag="${SOURCE_TAG}"
-          release_tag="$source_tag"
-          for prefix in desktop-windows-v desktop-linux-v desktop-macos-v desktop-v; do
-            if [[ "$source_tag" == ${prefix}* ]]; then
-              release_tag="v${source_tag#${prefix}}"
-              break
-            fi
-          done
+          if [[ "$source_tag" =~ ^(desktop-(windows|linux|macos)-|desktop-)?v([0-9]+\.[0-9]+\.[0-9]+) ]]; then
+            release_tag="v${BASH_REMATCH[3]}"
+          else
+            release_tag="$source_tag"
+          fi
           echo "RELEASE_TAG=$release_tag" >> "$GITHUB_ENV"
 
           version="${release_tag#v}"
@@ -528,6 +516,12 @@ jobs:
         run: npm ci
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Patch Metro loader for Windows absolute paths
+        shell: pwsh
+        run: |
+          $patchPath = (Get-Item "$env:GITHUB_WORKSPACE/scripts/metro-config-windows-loader-patch.cjs").FullName
+          "NODE_OPTIONS=--require=$patchPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Build web app for Tauri
         run: npm run build:web --workspace=@getpaseo/app
