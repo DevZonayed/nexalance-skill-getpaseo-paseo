@@ -5,7 +5,7 @@
   "description": "Paseo desktop app (Tauri wrapper)",
   "scripts": {
     "build:managed-runtime": "node ./scripts/build-managed-runtime.mjs",
-    "prepare:managed-runtime": "npm --prefix ../.. run build:daemon && npm run build:managed-runtime",
+    "prepare:managed-runtime": "npm --prefix ../.. run build:daemon && npm run build:managed-runtime && npm run validate:managed-runtime",
     "dev": "npm run prepare:managed-runtime && tauri dev",
     "build": "npm --prefix ../.. run build:web --workspace=@getpaseo/app && npm run prepare:managed-runtime && tauri build",
     "validate:managed-runtime": "node ./scripts/validate-managed-runtime.mjs",

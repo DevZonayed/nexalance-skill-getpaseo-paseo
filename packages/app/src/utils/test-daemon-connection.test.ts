@@ -5,12 +5,11 @@ const daemonClientMock = vi.hoisted(() => {
 
   class MockDaemonClient {
     public lastError: string | null = null;
-    private lastWelcome = {
-      type: "welcome" as const,
+    private lastServerInfo = {
+      status: "server_info" as const,
       serverId: "srv_probe_test",
       hostname: "probe-host" as string | null,
       version: "0.0.0",
-      resumed: false,
     };
 
     constructor(config: { clientId?: string; url?: string }) {
@@ -29,8 +28,8 @@ const daemonClientMock = vi.hoisted(() => {
       return;
     }
 
-    getLastWelcomeMessage() {
-      return this.lastWelcome;
+    getLastServerInfoMessage() {
+      return this.lastServerInfo;
     }
 
     async ping(): Promise<{ rttMs: number }> {

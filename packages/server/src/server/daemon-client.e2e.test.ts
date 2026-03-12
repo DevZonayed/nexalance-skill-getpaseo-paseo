@@ -335,17 +335,16 @@ describe("daemon client E2E", () => {
     }
   }, 30000);
 
-  test("receives welcome on websocket connect", async () => {
+  test("receives server_info on websocket connect", async () => {
     const client = new DaemonClient({
       url: `ws://127.0.0.1:${ctx.daemon.port}/ws`,
       clientId: `cid-e2e-${randomUUID()}`,
       clientType: "cli",
     });
     await client.connect();
-    const welcome = client.getLastWelcomeMessage();
-    expect(welcome).not.toBeNull();
-    expect(welcome?.serverId.length).toBeGreaterThan(0);
-    expect(typeof welcome?.resumed).toBe("boolean");
+    const serverInfo = client.getLastServerInfoMessage();
+    expect(serverInfo).not.toBeNull();
+    expect(serverInfo?.serverId.length).toBeGreaterThan(0);
 
     await client.close();
   }, 15000);
@@ -369,8 +368,8 @@ describe("daemon client E2E", () => {
 
     try {
       await client.connect();
-      const welcome = client.getLastWelcomeMessage();
-      const voice = welcome?.capabilities?.voice;
+      const serverInfo = client.getLastServerInfoMessage();
+      const voice = serverInfo?.capabilities?.voice;
       expect(voice).toBeTruthy();
 
       expect(voice?.dictation.enabled).toBe(false);

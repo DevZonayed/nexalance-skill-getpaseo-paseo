@@ -115,12 +115,12 @@ export function connectAndProbe(
 
     void client.connect().then(() => {
       clearTimeout(timer);
-      const welcome = client.getLastWelcomeMessage();
-      if (!welcome) {
+      const serverInfo = client.getLastServerInfoMessage();
+      if (!serverInfo) {
         void client.close().catch(() => undefined);
         reject(
-          new DaemonConnectionTestError("Missing welcome message", {
-            reason: "Missing welcome message",
+          new DaemonConnectionTestError("Missing server info message", {
+            reason: "Missing server info message",
             lastError: client.lastError ?? null,
           })
         );
@@ -128,8 +128,8 @@ export function connectAndProbe(
       }
       resolve({
         client,
-        serverId: welcome.serverId,
-        hostname: welcome.hostname,
+        serverId: serverInfo.serverId,
+        hostname: serverInfo.hostname,
       });
     }).catch((error) => {
       clearTimeout(timer);

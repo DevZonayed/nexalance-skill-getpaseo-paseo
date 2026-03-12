@@ -243,7 +243,13 @@ async function waitForRelayWebSocketReady(port: number, timeout = 60000): Promis
                     try {
                       const payload =
                         typeof data === "string" ? JSON.parse(data) : data;
-                      if (payload && typeof payload === "object" && (payload as any).type === "welcome") {
+                      if (
+                        payload &&
+                        typeof payload === "object" &&
+                        (payload as any).type === "session" &&
+                        (payload as any).message?.type === "status" &&
+                        (payload as any).message?.payload?.status === "server_info"
+                      ) {
                         if (!pingSent && channelRef) {
                           pingSent = true;
                           void channelRef.send(JSON.stringify({ type: "ping" }));
@@ -365,7 +371,13 @@ async function waitForRelayWebSocketReady(port: number, timeout = 60000): Promis
               const channel = await createClientChannel(transport, daemonPublicKeyB64, {
                 onmessage: (data) => {
                   const payload = typeof data === "string" ? JSON.parse(data) : data;
-                  if (payload && typeof payload === "object" && (payload as any).type === "welcome") {
+                  if (
+                    payload &&
+                    typeof payload === "object" &&
+                    (payload as any).type === "session" &&
+                    (payload as any).message?.type === "status" &&
+                    (payload as any).message?.payload?.status === "server_info"
+                  ) {
                     if (!pingSent && channelRef) {
                       pingSent = true;
                       void channelRef.send(JSON.stringify({ type: "ping" }));

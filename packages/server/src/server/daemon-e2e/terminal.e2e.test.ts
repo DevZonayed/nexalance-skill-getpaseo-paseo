@@ -459,7 +459,7 @@ const shouldRun = !process.env.CI;
       const helloReady = new Promise<void>((resolve, reject) => {
         const timeout = setTimeout(() => {
           cleanup();
-          reject(new Error("Timed out waiting for websocket welcome"));
+          reject(new Error("Timed out waiting for initial websocket server_info"));
         }, 10000);
 
         const onError = (error: Error) => {
@@ -478,8 +478,15 @@ const shouldRun = !process.env.CI;
           }
           const text = typeof raw === "string" ? raw : raw.toString("utf8");
           try {
-            const parsed = JSON.parse(text) as { type?: string };
-            if (parsed.type === "welcome") {
+            const parsed = JSON.parse(text) as {
+              type?: string;
+              message?: { type?: string; payload?: { status?: string } };
+            };
+            if (
+              parsed.type === "session" &&
+              parsed.message?.type === "status" &&
+              parsed.message.payload?.status === "server_info"
+            ) {
               cleanup();
               resolve();
             }

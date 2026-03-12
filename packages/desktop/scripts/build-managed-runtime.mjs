@@ -213,6 +213,18 @@ function runCommand(command, args, options = {}) {
   return result;
 }
 
+function withManagedRuntimeNodeOptions(env = process.env) {
+  const existing = env.NODE_OPTIONS?.trim() ?? "";
+  if (existing.includes("--max-old-space-size")) {
+    return env;
+  }
+  const nodeOptions = existing ? `${existing} --max-old-space-size=8192` : "--max-old-space-size=8192";
+  return {
+    ...env,
+    NODE_OPTIONS: nodeOptions,
+  };
+}
+
 async function extractNodeDistribution(archivePath, nodeArtifact) {
   const extractionRoot = await fs.mkdtemp(path.join(os.tmpdir(), "paseo-managed-runtime-node-"));
   if (nodeArtifact.extension === "zip") {
@@ -260,6 +272,7 @@ async function packWorkspace(packageRoot, tarballRoot) {
     tarballRoot,
   ], {
     cwd: packageRoot,
+    env: withManagedRuntimeNodeOptions(process.env),
   });
   const [{ filename }] = JSON.parse(result.stdout.trim());
   if (!filename) {

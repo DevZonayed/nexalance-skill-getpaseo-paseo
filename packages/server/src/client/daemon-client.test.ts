@@ -29,7 +29,7 @@ function createMockTransport() {
   let onOpen: () => void = () => {}
   let onClose: (_event?: unknown) => void = () => {}
   let onError: (_event?: unknown) => void = () => {}
-  let welcomeOrdinal = 1
+  let serverInfoOrdinal = 1
 
   const transport: DaemonTransport = {
     send: (data) => sent.push(data),
@@ -61,11 +61,16 @@ function createMockTransport() {
       sent.length = 0
       onMessage(
         JSON.stringify({
-          type: 'welcome',
-          serverId: `srv_test_${welcomeOrdinal++}`,
-          hostname: null,
-          version: null,
-          resumed: false,
+          type: 'session',
+          message: {
+            type: 'status',
+            payload: {
+              status: 'server_info',
+              serverId: `srv_test_${serverInfoOrdinal++}`,
+              hostname: null,
+              version: null,
+            },
+          },
         })
       )
     },

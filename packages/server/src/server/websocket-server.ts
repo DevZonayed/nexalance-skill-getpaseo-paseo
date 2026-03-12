@@ -12,7 +12,6 @@ import type { ProjectRegistry, WorkspaceRegistry } from "./workspace-registry.js
 import {
   type ServerInfoStatusPayload,
   type WSHelloMessage,
-  type WSWelcomeMessage,
   WSInboundMessageSchema,
   type ServerCapabilityState,
   type ServerCapabilities,
@@ -678,17 +677,6 @@ export class VoiceAssistantWebSocketServer {
     return pending;
   }
 
-  private buildWelcomeMessage(params: { resumed: boolean }): WSWelcomeMessage {
-    return {
-      type: "welcome",
-      serverId: this.serverId,
-      hostname: getHostname(),
-      version: this.daemonVersion,
-      resumed: params.resumed,
-      ...(this.serverCapabilities ? { capabilities: this.serverCapabilities } : {}),
-    };
-  }
-
   private handleHello(params: {
     ws: WebSocketLike;
     message: WSHelloMessage;
@@ -735,7 +723,7 @@ export class VoiceAssistantWebSocketServer {
       }
       existing.sockets.add(ws);
       this.sessions.set(ws, existing);
-      this.sendToClient(ws, this.buildWelcomeMessage({ resumed: true }));
+      this.sendToClient(ws, this.createServerInfoMessage());
       existing.connectionLogger.trace(
         {
           clientId,
@@ -756,7 +744,7 @@ export class VoiceAssistantWebSocketServer {
     });
     this.sessions.set(ws, connection);
     this.externalSessionsByKey.set(clientId, connection);
-    this.sendToClient(ws, this.buildWelcomeMessage({ resumed: false }));
+    this.sendToClient(ws, this.createServerInfoMessage());
     connection.connectionLogger.trace(
       {
         clientId,
@@ -777,13 +765,18 @@ export class VoiceAssistantWebSocketServer {
     };
   }
 
-  private broadcastCapabilitiesUpdate(): void {
-    this.broadcast(
-      wrapSessionMessage({
+  private createServerInfoMessage(): WSOutboundMessage {
+    return {
+      type: "session",
+      message: {
         type: "status",
         payload: this.buildServerInfoStatusPayload(),
-      })
-    );
+      },
+    };
+  }
+
+  private broadcastCapabilitiesUpdate(): void {
+    this.broadcast(this.createServerInfoMessage());
   }
 
   private bindSocketHandlers(ws: WebSocketLike): void {

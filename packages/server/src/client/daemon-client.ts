@@ -4,10 +4,11 @@ import {
   AgentCreatedStatusPayloadSchema,
   AgentRefreshedStatusPayloadSchema,
   AgentResumedStatusPayloadSchema,
+  parseServerInfoStatusPayload,
   RestartRequestedStatusPayloadSchema,
   ShutdownRequestedStatusPayloadSchema,
   SessionInboundMessageSchema,
-  type WSWelcomeMessage,
+  type ServerInfoStatusPayload,
   WSOutboundMessageSchema,
 } from '../shared/messages.js'
 import type {
@@ -450,7 +451,7 @@ export class DaemonClient {
   private readonly logServerId: string | null
   private readonly logClientIdHash: string
   private readonly logGeneration: number | null
-  private lastWelcomeMessage: WSWelcomeMessage | null = null
+  private lastServerInfoMessage: ServerInfoStatusPayload | null = null
 
   constructor(private config: DaemonClientConfig) {
     this.logger = config.logger ?? consoleLogger
@@ -565,7 +566,7 @@ export class DaemonClient {
       const transportUrl = this.resolveTransportUrlForAttempt()
       const transport = transportFactory({ url: transportUrl, headers })
       this.transport = transport
-      this.lastWelcomeMessage = null
+      this.lastServerInfoMessage = null
 
       this.updateConnectionState({
         status: 'connecting',
@@ -700,7 +701,7 @@ export class DaemonClient {
     this.clearWaiters(new Error('Daemon client closed'))
     this.rejectPendingSendQueue(new Error('Daemon client closed'))
     this.terminalStreams.clearAll()
-    this.lastWelcomeMessage = null
+    this.lastServerInfoMessage = null
     this.updateConnectionState(
       { status: 'disposed' },
       { event: 'DISPOSE', reason: 'Client closed', reasonCode: 'disposed' }
@@ -2796,8 +2797,8 @@ export class DaemonClient {
     return requestId ?? crypto.randomUUID()
   }
 
-  getLastWelcomeMessage(): WSWelcomeMessage | null {
-    return this.lastWelcomeMessage
+  getLastServerInfoMessage(): ServerInfoStatusPayload | null {
+    return this.lastServerInfoMessage
   }
 
   private resolveTransportUrlForAttempt(): string {
@@ -2962,18 +2963,6 @@ export class DaemonClient {
       return
     }
 
-    if (parsed.data.type === 'welcome') {
-      this.lastWelcomeMessage = parsed.data
-      this.resetConnectTimeout()
-      this.reconnectAttempt = 0
-      this.updateConnectionState({ status: 'connected' }, { event: 'HELLO_WELCOME' })
-      this.resubscribeCheckoutDiffSubscriptions()
-      this.resubscribeTerminalDirectorySubscriptions()
-      this.flushPendingSendQueue()
-      this.resolveConnect()
-      return
-    }
-
     this.handleSessionMessage(parsed.data.message)
   }
 
@@ -3050,7 +3039,7 @@ export class DaemonClient {
     this.clearWaiters(new Error(reason ?? 'Connection lost'))
     this.rejectPendingSendQueue(new Error(reason ?? 'Connection lost'))
     this.terminalStreams.clearAll()
-    this.lastWelcomeMessage = null
+    this.lastServerInfoMessage = null
 
     if (wasDisposed) {
       this.rejectConnect(new Error(reason ?? 'Daemon client is disposed'))
@@ -3084,6 +3073,22 @@ export class DaemonClient {
   }
 
   private handleSessionMessage(msg: SessionOutboundMessage): void {
+    if (msg.type === 'status') {
+      const serverInfo = parseServerInfoStatusPayload(msg.payload)
+      if (serverInfo) {
+        this.lastServerInfoMessage = serverInfo
+        if (this.connectionState.status === 'connecting') {
+          this.resetConnectTimeout()
+          this.reconnectAttempt = 0
+          this.updateConnectionState({ status: 'connected' }, { event: 'HELLO_SERVER_INFO' })
+          this.resubscribeCheckoutDiffSubscriptions()
+          this.resubscribeTerminalDirectorySubscriptions()
+          this.flushPendingSendQueue()
+          this.resolveConnect()
+        }
+      }
+    }
+
     if (msg.type === 'terminal_stream_exit') {
       this.terminalStreams.clearStream({ streamId: msg.payload.streamId })
     }

@@ -2388,15 +2388,6 @@ export const WSHelloMessageSchema = z.object({
     .optional(),
 })
 
-export const WSWelcomeMessageSchema = z.object({
-  type: z.literal('welcome'),
-  serverId: z.string(),
-  hostname: z.string().nullable(),
-  version: z.string().nullable(),
-  resumed: z.boolean(),
-  capabilities: ServerCapabilitiesSchema.optional(),
-})
-
 export const WSRecordingStateMessageSchema = z.object({
   type: z.literal('recording_state'),
   isRecording: z.boolean(),
@@ -2423,14 +2414,12 @@ export const WSInboundMessageSchema = z.discriminatedUnion('type', [
 
 export const WSOutboundMessageSchema = z.discriminatedUnion('type', [
   WSPongMessageSchema,
-  WSWelcomeMessageSchema,
   WSSessionOutboundSchema,
 ])
 
 export type WSInboundMessage = z.infer<typeof WSInboundMessageSchema>
 export type WSOutboundMessage = z.infer<typeof WSOutboundMessageSchema>
 export type WSHelloMessage = z.infer<typeof WSHelloMessageSchema>
-export type WSWelcomeMessage = z.infer<typeof WSWelcomeMessageSchema>
 
 // ============================================================================
 // Helper functions for message conversion

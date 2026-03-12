@@ -55,8 +55,28 @@ for (const pkg of ["@getpaseo/relay", "@getpaseo/server", "@getpaseo/cli"]) {
   });
 }
 
+const sherpaPlatformMap = {
+  darwin: "darwin",
+  linux: "linux",
+  win32: "win",
+};
+const sherpaPlatform = sherpaPlatformMap[manifest.platform];
+assert.ok(
+  sherpaPlatform,
+  `Unsupported sherpa platform mapping for managed runtime validation: ${manifest.platform}`
+);
+
+const sherpaNativePackage = `sherpa-onnx-${sherpaPlatform}-${manifest.arch}`;
+const sherpaNativePackageDir = path.join(runtimeRoot, "node_modules", sherpaNativePackage);
+await fs.access(sherpaNativePackageDir).catch(() => {
+  throw new Error(
+    `Missing bundled native speech dependency: ${sherpaNativePackage} (expected at ${sherpaNativePackageDir})`
+  );
+});
+
 console.log(`[validate-managed-runtime] PASS`);
 console.log(`  runtimeId: ${manifest.runtimeId}`);
 console.log(`  version: ${expectedVersion}`);
 console.log(`  platform: ${manifest.platform}`);
 console.log(`  arch: ${manifest.arch}`);
+console.log(`  sherpaNativePackage: ${sherpaNativePackage}`);
