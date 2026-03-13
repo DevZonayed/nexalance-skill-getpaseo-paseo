@@ -245,6 +245,30 @@ describe("claude tool-call mapper", () => {
     });
   });
 
+  it("maps Grep calls as search detail using pattern input", () => {
+    const item = expectMapped(
+      mapClaudeCompletedToolCall({
+        callId: "claude-grep-1",
+        name: "Grep",
+        input: {
+          pattern: '\\\\\\"cli\\\\\\""',
+          path: "/Users/moboudra/dev/paseo/packages/desktop/src-tauri/src",
+          output_mode: "content",
+          "-n": true,
+        },
+        output: { output: "No matches found" },
+      })
+    );
+
+    expect(item.status).toBe("completed");
+    expect(item.error).toBeNull();
+    expect(item.name).toBe("Grep");
+    expect(item.detail).toEqual({
+      type: "search",
+      query: '\\\\\\"cli\\\\\\""',
+    });
+  });
+
   it("normalizes claude speak tool names through schema transforms", () => {
     const item = expectMapped(
       mapClaudeCompletedToolCall({

@@ -75,6 +75,8 @@ const ClaudeSearchToolNameSchema = z.union([
   z.literal("WebSearch"),
   z.literal("web_search"),
   z.literal("search"),
+  z.literal("Grep"),
+  z.literal("grep"),
   z.literal("Glob"),
   z.literal("glob"),
 ]);
