@@ -69,11 +69,11 @@ function logAgentExplorer(event: string, details: Record<string, unknown>): void
   console.log(`[AgentExplorer] ${event}`, details);
 }
 
-function logWebStickyBottom(event: string, details: Record<string, unknown>): void {
-  if (!IS_DEV || Platform.OS !== "web") {
-    return;
-  }
-  console.log("[WebStickyBottom]", event, details);
+function logWebStickyBottom(
+  _event: string,
+  _details: Record<string, unknown>
+): void {
+  // Intentionally disabled: this path is too noisy during voice debugging.
 }
 
 export function AgentReadyScreen({

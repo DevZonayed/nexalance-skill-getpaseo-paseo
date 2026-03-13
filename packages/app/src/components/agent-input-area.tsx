@@ -103,6 +103,23 @@ export function AgentInputArea({
   const { client, isConnected, snapshot } = useHostRuntimeSession(serverId)
   const toast = useToast()
   const voice = useVoiceOptional()
+  console.log("[AgentInputArea] render", {
+    serverId,
+    agentId,
+    isConnected,
+    isVoiceMode: voice?.isVoiceMode ?? false,
+    isVoiceSwitching: voice?.isVoiceSwitching ?? false,
+    isMuted: voice?.isMuted ?? false,
+  })
+  console.log("[AgentInputArea] voice_snapshot", {
+    serverId,
+    agentId,
+    isVoiceMode: voice?.isVoiceMode ?? false,
+    isVoiceSwitching: voice?.isVoiceSwitching ?? false,
+    isMuted: voice?.isMuted ?? false,
+    activeServerId: voice?.activeServerId ?? null,
+    activeAgentId: voice?.activeAgentId ?? null,
+  })
   const isDictationReady =
     isConnected &&
     (snapshot?.agentDirectoryStatus === 'ready' ||
@@ -150,6 +167,19 @@ export function AgentInputArea({
   const keyboardHandlerIdRef = useRef(
     `message-input:${serverId}:${agentId}:${Math.random().toString(36).slice(2)}`
   )
+
+  useEffect(() => {
+    console.log("[AgentInputArea] mount", {
+      serverId,
+      agentId,
+    })
+    return () => {
+      console.log("[AgentInputArea] unmount", {
+        serverId,
+        agentId,
+      })
+    }
+  }, [agentId, serverId])
 
   const autocomplete = useAgentAutocomplete({
     userInput,

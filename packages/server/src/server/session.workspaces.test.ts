@@ -284,8 +284,9 @@ describe('workspace aggregation', () => {
       isBootstrapping: false,
       pendingUpdatesByWorkspaceId: new Map(),
     }
+    session.reconcileActiveWorkspaceRecords = async () => new Set()
 
-    session.listWorkspaceDescriptors = async () => [
+    session.listWorkspaceDescriptorsSnapshot = async () => [
       {
         id: '/tmp/repo',
         projectId: '/tmp/repo',
@@ -300,7 +301,7 @@ describe('workspace aggregation', () => {
     ]
     await session.emitWorkspaceUpdateForCwd('/tmp/repo')
 
-    session.listWorkspaceDescriptors = async () => [
+    session.listWorkspaceDescriptorsSnapshot = async () => [
       {
         id: '/tmp/repo',
         projectId: '/tmp/repo',
@@ -335,16 +336,40 @@ describe('workspace aggregation', () => {
   })
 
   test('workspace update fanout for multiple cwd values is deduplicated', async () => {
+    const emitted: Array<{ type: string; payload: unknown }> = []
     const session = createSessionForWorkspaceTests() as any
+    session.emit = (message: any) => emitted.push(message)
     session.workspaceUpdatesSubscription = {
       subscriptionId: 'sub-dedupe',
       filter: undefined,
       isBootstrapping: false,
       pendingUpdatesByWorkspaceId: new Map(),
     }
-
-    const emitWorkspaceUpdateForCwd = vi.fn(async () => {})
-    session.emitWorkspaceUpdateForCwd = emitWorkspaceUpdateForCwd
+    session.reconcileActiveWorkspaceRecords = async () => new Set()
+    session.listWorkspaceDescriptorsSnapshot = async () => [
+      {
+        id: '/tmp/repo',
+        projectId: '/tmp/repo',
+        projectDisplayName: 'repo',
+        projectRootPath: '/tmp/repo',
+        projectKind: 'non_git',
+        workspaceKind: 'directory',
+        name: 'repo',
+        status: 'done',
+        activityAt: null,
+      },
+      {
+        id: '/tmp/repo/sub',
+        projectId: '/tmp/repo',
+        projectDisplayName: 'repo',
+        projectRootPath: '/tmp/repo',
+        projectKind: 'non_git',
+        workspaceKind: 'directory',
+        name: 'sub',
+        status: 'done',
+        activityAt: null,
+      },
+    ]
 
     await session.emitWorkspaceUpdatesForCwds([
       '/tmp/repo',
@@ -354,9 +379,12 @@ describe('workspace aggregation', () => {
       '/tmp/repo/sub/',
     ])
 
-    expect(emitWorkspaceUpdateForCwd).toHaveBeenCalledTimes(2)
-    expect(emitWorkspaceUpdateForCwd).toHaveBeenNthCalledWith(1, '/tmp/repo')
-    expect(emitWorkspaceUpdateForCwd).toHaveBeenNthCalledWith(2, '/tmp/repo/sub')
+    const workspaceUpdates = emitted.filter((message) => message.type === 'workspace_update') as any[]
+    expect(workspaceUpdates).toHaveLength(2)
+    expect(workspaceUpdates.map((message) => message.payload.workspace.id)).toEqual([
+      '/tmp/repo',
+      '/tmp/repo/sub',
+    ])
   })
 
   test('open_project_request registers a workspace before any agent exists', async () => {
@@ -433,5 +461,181 @@ describe('workspace aggregation', () => {
     expect(workspace.archivedAt).toBeTruthy()
     const response = emitted.find((message) => message.type === 'archive_workspace_response') as any
     expect(response?.payload.error).toBeNull()
+  })
+
+  test('opening a new worktree reconciles older local workspaces into the remote project', async () => {
+    const emitted: Array<{ type: string; payload: unknown }> = []
+    const session = createSessionForWorkspaceTests() as any
+    const projects = new Map<string, ReturnType<typeof createPersistedProjectRecord>>()
+    const workspaces = new Map<string, ReturnType<typeof createPersistedWorkspaceRecord>>()
+
+    const mainWorkspaceId = '/tmp/inkwell'
+    const worktreeWorkspaceId = '/tmp/inkwell/.paseo/worktrees/feature-a'
+    const localProjectId = mainWorkspaceId
+    const remoteProjectId = 'remote:github.com/zimakki/inkwell'
+
+    projects.set(
+      localProjectId,
+      createPersistedProjectRecord({
+        projectId: localProjectId,
+        rootPath: mainWorkspaceId,
+        kind: 'git',
+        displayName: 'inkwell',
+        createdAt: '2026-03-01T12:00:00.000Z',
+        updatedAt: '2026-03-01T12:00:00.000Z',
+      })
+    )
+    workspaces.set(
+      mainWorkspaceId,
+      createPersistedWorkspaceRecord({
+        workspaceId: mainWorkspaceId,
+        projectId: localProjectId,
+        cwd: mainWorkspaceId,
+        kind: 'local_checkout',
+        displayName: 'main',
+        createdAt: '2026-03-01T12:00:00.000Z',
+        updatedAt: '2026-03-01T12:00:00.000Z',
+      })
+    )
+
+    session.emit = (message: any) => emitted.push(message)
+    session.workspaceUpdatesSubscription = {
+      subscriptionId: 'sub-reconcile',
+      filter: undefined,
+      isBootstrapping: false,
+      pendingUpdatesByWorkspaceId: new Map(),
+    }
+    session.listAgentPayloads = async () => []
+    session.projectRegistry.get = async (projectId: string) => projects.get(projectId) ?? null
+    session.projectRegistry.list = async () => Array.from(projects.values())
+    session.projectRegistry.upsert = async (record: ReturnType<typeof createPersistedProjectRecord>) => {
+      projects.set(record.projectId, record)
+    }
+    session.projectRegistry.archive = async (projectId: string, archivedAt: string) => {
+      const existing = projects.get(projectId)
+      if (!existing) return
+      projects.set(projectId, { ...existing, archivedAt, updatedAt: archivedAt })
+    }
+    session.workspaceRegistry.get = async (workspaceId: string) => workspaces.get(workspaceId) ?? null
+    session.workspaceRegistry.list = async () => Array.from(workspaces.values())
+    session.workspaceRegistry.upsert = async (
+      record: ReturnType<typeof createPersistedWorkspaceRecord>
+    ) => {
+      workspaces.set(record.workspaceId, record)
+    }
+    session.buildProjectPlacement = async (cwd: string) => ({
+      projectKey: remoteProjectId,
+      projectName: 'zimakki/inkwell',
+      checkout: {
+        cwd,
+        isGit: true,
+        currentBranch: cwd === mainWorkspaceId ? 'main' : 'feature-a',
+        remoteUrl: 'https://github.com/zimakki/inkwell.git',
+        isPaseoOwnedWorktree: cwd !== mainWorkspaceId,
+        mainRepoRoot: cwd === mainWorkspaceId ? null : mainWorkspaceId,
+      },
+    })
+
+    await session.handleMessage({
+      type: 'open_project_request',
+      cwd: worktreeWorkspaceId,
+      requestId: 'req-open-worktree',
+    })
+
+    expect(workspaces.get(mainWorkspaceId)?.projectId).toBe(remoteProjectId)
+    expect(workspaces.get(worktreeWorkspaceId)?.projectId).toBe(remoteProjectId)
+    expect(projects.get(localProjectId)?.archivedAt).toBeTruthy()
+
+    const workspaceUpdates = emitted.filter((message) => message.type === 'workspace_update') as any[]
+    expect(workspaceUpdates).toHaveLength(2)
+    expect(workspaceUpdates.map((message) => message.payload.workspace.id).sort()).toEqual([
+      mainWorkspaceId,
+      worktreeWorkspaceId,
+    ])
+    expect(
+      workspaceUpdates.every((message) => message.payload.workspace.projectId === remoteProjectId)
+    ).toBe(true)
+  })
+
+  test('fetch_workspaces_request reconciles remote URL changes for existing workspaces', async () => {
+    const session = createSessionForWorkspaceTests() as any
+    const projects = new Map<string, ReturnType<typeof createPersistedProjectRecord>>()
+    const workspaces = new Map<string, ReturnType<typeof createPersistedWorkspaceRecord>>()
+
+    const mainWorkspaceId = '/tmp/inkwell'
+    const worktreeWorkspaceId = '/tmp/inkwell/.paseo/worktrees/feature-a'
+    const oldProjectId = 'remote:github.com/old-owner/inkwell'
+    const newProjectId = 'remote:github.com/new-owner/inkwell'
+
+    projects.set(
+      oldProjectId,
+      createPersistedProjectRecord({
+        projectId: oldProjectId,
+        rootPath: mainWorkspaceId,
+        kind: 'git',
+        displayName: 'old-owner/inkwell',
+        createdAt: '2026-03-01T12:00:00.000Z',
+        updatedAt: '2026-03-01T12:00:00.000Z',
+      })
+    )
+
+    for (const [workspaceId, displayName] of [
+      [mainWorkspaceId, 'main'],
+      [worktreeWorkspaceId, 'feature-a'],
+    ] as const) {
+      workspaces.set(
+        workspaceId,
+        createPersistedWorkspaceRecord({
+          workspaceId,
+          projectId: oldProjectId,
+          cwd: workspaceId,
+          kind: workspaceId === mainWorkspaceId ? 'local_checkout' : 'worktree',
+          displayName,
+          createdAt: '2026-03-01T12:00:00.000Z',
+          updatedAt: '2026-03-01T12:00:00.000Z',
+        })
+      )
+    }
+
+    session.listAgentPayloads = async () => []
+    session.projectRegistry.get = async (projectId: string) => projects.get(projectId) ?? null
+    session.projectRegistry.list = async () => Array.from(projects.values())
+    session.projectRegistry.upsert = async (record: ReturnType<typeof createPersistedProjectRecord>) => {
+      projects.set(record.projectId, record)
+    }
+    session.projectRegistry.archive = async (projectId: string, archivedAt: string) => {
+      const existing = projects.get(projectId)
+      if (!existing) return
+      projects.set(projectId, { ...existing, archivedAt, updatedAt: archivedAt })
+    }
+    session.workspaceRegistry.get = async (workspaceId: string) => workspaces.get(workspaceId) ?? null
+    session.workspaceRegistry.list = async () => Array.from(workspaces.values())
+    session.workspaceRegistry.upsert = async (
+      record: ReturnType<typeof createPersistedWorkspaceRecord>
+    ) => {
+      workspaces.set(record.workspaceId, record)
+    }
+    session.buildProjectPlacement = async (cwd: string) => ({
+      projectKey: newProjectId,
+      projectName: 'new-owner/inkwell',
+      checkout: {
+        cwd,
+        isGit: true,
+        currentBranch: cwd === mainWorkspaceId ? 'main' : 'feature-a',
+        remoteUrl: 'https://github.com/new-owner/inkwell.git',
+        isPaseoOwnedWorktree: cwd !== mainWorkspaceId,
+        mainRepoRoot: cwd === mainWorkspaceId ? null : mainWorkspaceId,
+      },
+    })
+
+    const result = await session.listFetchWorkspacesEntries({
+      type: 'fetch_workspaces_request',
+      requestId: 'req-fetch-reconcile',
+    })
+
+    expect(result.entries.map((entry: any) => entry.projectId)).toEqual([newProjectId, newProjectId])
+    expect(workspaces.get(mainWorkspaceId)?.projectId).toBe(newProjectId)
+    expect(workspaces.get(worktreeWorkspaceId)?.projectId).toBe(newProjectId)
+    expect(projects.get(oldProjectId)?.archivedAt).toBeTruthy()
   })
 })

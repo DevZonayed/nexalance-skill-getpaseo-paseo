@@ -267,8 +267,6 @@ export function useSidebarWorkspacesList(options?: {
     const value = options?.serverId
     return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null
   }, [options?.serverId])
-  const enabled = options?.enabled ?? true
-
   const persistedProjectOrder = useSidebarOrderStore((state) =>
     serverId ? (state.projectOrderByServerId[serverId] ?? EMPTY_ORDER) : EMPTY_ORDER
   )
@@ -304,6 +302,13 @@ export function useSidebarWorkspacesList(options?: {
   )
 
   const projects = useMemo(() => {
+    console.log('[useSidebarWorkspacesList] build_projects', {
+      serverId,
+      hasSessionWorkspaces: Boolean(sessionWorkspaces),
+      workspaceCount: sessionWorkspaces?.size ?? 0,
+      projectOrderLength: persistedProjectOrder.length,
+      workspaceOrderScopeCount: Object.keys(persistedWorkspaceOrderByScope).length,
+    })
     if (!sessionWorkspaces || sessionWorkspaces.size === 0 || !serverId) {
       return EMPTY_PROJECTS
     }
@@ -314,6 +319,36 @@ export function useSidebarWorkspacesList(options?: {
       workspaceOrderByScope: persistedWorkspaceOrderByScope,
     })
   }, [persistedProjectOrder, persistedWorkspaceOrderByScope, serverId, sessionWorkspaces])
+
+  useEffect(() => {
+    console.log('[useSidebarWorkspacesList] inputs_changed', {
+      serverId,
+      connectionStatus,
+      hasHydratedWorkspaces,
+      workspaceCount: sessionWorkspaces?.size ?? 0,
+      projectOrderLength: persistedProjectOrder.length,
+      workspaceOrderScopeCount: Object.keys(persistedWorkspaceOrderByScope).length,
+    })
+  }, [
+    connectionStatus,
+    hasHydratedWorkspaces,
+    persistedProjectOrder,
+    persistedWorkspaceOrderByScope,
+    serverId,
+    sessionWorkspaces,
+  ])
+
+  useEffect(() => {
+    console.log('[useSidebarWorkspacesList] projects_changed', {
+      serverId,
+      projectCount: projects.length,
+      projectKeys: projects.map((project) => project.projectKey),
+      workspaceCounts: projects.map((project) => ({
+        projectKey: project.projectKey,
+        workspaceCount: project.workspaces.length,
+      })),
+    })
+  }, [projects, serverId])
 
   useEffect(() => {
     if (!serverId || projects.length === 0) {
@@ -345,7 +380,7 @@ export function useSidebarWorkspacesList(options?: {
   }, [persistedProjectOrder, persistedWorkspaceOrderByScope, projects, serverId])
 
   const refreshAll = useCallback(() => {
-    if (!isActive || !serverId || connectionStatus !== 'online' || !enabled) {
+    if (!isActive || !serverId || connectionStatus !== 'online') {
       return
     }
     const client = runtime.getClient(serverId)
@@ -377,7 +412,7 @@ export function useSidebarWorkspacesList(options?: {
         // ignore explicit refresh failures; hook keeps existing data
       }
     })()
-  }, [connectionStatus, enabled, isActive, runtime, serverId])
+  }, [connectionStatus, isActive, runtime, serverId])
 
   const isLoading = isActive && Boolean(serverId) && connectionStatus === 'online' && !hasHydratedWorkspaces
   const isInitialLoad = isLoading && projects.length === 0

@@ -922,8 +922,7 @@ describe("HostRuntimeStore", () => {
 
     useSessionStore.getState().initializeSession(
       host.serverId,
-      fakeClient as unknown as DaemonClient,
-      null as any
+      fakeClient as unknown as DaemonClient
     );
     store.syncHosts([host]);
 
@@ -1046,8 +1045,7 @@ describe("HostRuntimeStore", () => {
 
     useSessionStore.getState().initializeSession(
       host.serverId,
-      fakeClient as unknown as DaemonClient,
-      null as any
+      fakeClient as unknown as DaemonClient
     );
     store.syncHosts([host]);
 
@@ -1122,8 +1120,7 @@ describe("HostRuntimeStore", () => {
 
     useSessionStore.getState().initializeSession(
       host.serverId,
-      fakeClient as unknown as DaemonClient,
-      null as any
+      fakeClient as unknown as DaemonClient
     );
     store.syncHosts([host]);
 

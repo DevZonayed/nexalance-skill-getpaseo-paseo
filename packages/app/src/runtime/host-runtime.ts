@@ -1822,6 +1822,15 @@ export function useHostRuntimeSession(serverId: string): {
   };
 }
 
+export function useHostRuntimeIsConnected(serverId: string): boolean {
+  const store = getHostRuntimeStore();
+  return useSyncExternalStore(
+    (onStoreChange) => store.subscribe(serverId, onStoreChange),
+    () => isHostRuntimeConnected(store.getSnapshot(serverId)),
+    () => isHostRuntimeConnected(store.getSnapshot(serverId))
+  );
+}
+
 export function useHosts(): HostProfile[] {
   const store = getHostRuntimeStore();
   return useSyncExternalStore(

@@ -1,7 +1,7 @@
 import { useRef, ReactNode, useCallback, useEffect, useMemo } from "react";
+import { Buffer } from "buffer";
 import { AppState, Platform } from "react-native";
 import { useQueryClient } from "@tanstack/react-query";
-import { useAudioPlayer } from "@/hooks/use-audio-player";
 import { useClientActivity } from "@/hooks/use-client-activity";
 import { usePushTokenRegistration } from "@/hooks/use-push-token-registration";
 import { clearArchiveAgentPending } from "@/hooks/use-archive-agent";
@@ -29,8 +29,13 @@ import type { DaemonClient } from "@server/client/daemon-client";
 import { File } from "expo-file-system";
 import {
   getHostRuntimeStore,
-  useHostRuntimeSession,
+  useHostRuntimeIsConnected,
 } from "@/runtime/host-runtime";
+import {
+  useVoiceAudioEngineOptional,
+  useVoiceRuntimeOptional,
+} from "@/contexts/voice-context";
+import type { AudioPlaybackSource } from "@/voice/audio-engine-types";
 import {
   useSessionStore,
   type Agent,
@@ -72,6 +77,66 @@ export type {
 
 const HISTORY_STALE_AFTER_MS = 60_000;
 const AUTHORITATIVE_REVALIDATION_DEBOUNCE_MS = 300;
+
+type AudioOutputPayload = Extract<
+  SessionOutboundMessage,
+  { type: "audio_output" }
+>["payload"];
+
+interface BufferedAudioChunk {
+  chunkIndex: number;
+  audio: string;
+  format: string;
+  id: string;
+}
+
+function decodeBase64Chunk(base64: string): Uint8Array {
+  return Buffer.from(base64, "base64");
+}
+
+function buildAudioPlaybackSource(
+  chunks: BufferedAudioChunk[]
+): AudioPlaybackSource {
+  const decodedChunks = chunks.map((chunk) => decodeBase64Chunk(chunk.audio));
+  const totalSize = decodedChunks.reduce((sum, chunk) => sum + chunk.length, 0);
+  const output = new Uint8Array(totalSize);
+  let offset = 0;
+  for (const chunk of decodedChunks) {
+    output.set(chunk, offset);
+    offset += chunk.length;
+  }
+
+  const format = chunks[0]?.format ?? "pcm";
+  const mimeType =
+    format === "pcm"
+      ? "audio/pcm;rate=24000;bits=16"
+      : format === "mp3"
+      ? "audio/mpeg"
+        : `audio/${format}`;
+
+  const bytes = output.slice();
+  return {
+    size: bytes.byteLength,
+    type: mimeType,
+    async arrayBuffer() {
+      return bytes.buffer.slice(
+        bytes.byteOffset,
+        bytes.byteOffset + bytes.byteLength
+      );
+    },
+  };
+}
+
+function logVoiceSession(
+  event: string,
+  details?: Record<string, unknown>
+): void {
+  if (details) {
+    console.log(`[VoiceSession] ${event}`, details);
+    return;
+  }
+  console.log(`[VoiceSession] ${event}`);
+}
 
 const findLatestAssistantMessageText = (items: StreamItem[]): string | null => {
   for (let i = items.length - 1; i >= 0; i -= 1) {
@@ -206,8 +271,15 @@ function SessionProviderInternal({
   serverId,
   client,
 }: SessionProviderClientProps) {
+  const voiceRuntime = useVoiceRuntimeOptional();
+  const voiceAudioEngine = useVoiceAudioEngineOptional();
+  console.log("[SessionProvider] render", {
+    serverId,
+    hasVoiceRuntime: Boolean(voiceRuntime),
+    hasVoiceAudioEngine: Boolean(voiceAudioEngine),
+  });
   const queryClient = useQueryClient();
-  const { isConnected } = useHostRuntimeSession(serverId);
+  const isConnected = useHostRuntimeIsConnected(serverId);
 
   // Zustand store actions
   const initializeSession = useSessionStore((state) => state.initializeSession);
@@ -276,16 +348,6 @@ function SessionProviderInternal({
     (state) => state.sessions[serverId]?.agents
   );
 
-  // State for voice detection flags (will be set by RealtimeContext)
-  const isDetectingRef = useRef(false);
-  const isSpeakingRef = useRef(false);
-
-  const audioPlayer = useAudioPlayer({
-    isDetecting: () => isDetectingRef.current,
-    isSpeaking: () => isSpeakingRef.current,
-  });
-
-  const activeAudioGroupsRef = useRef<Set<string>>(new Set());
   const previousAgentStatusRef = useRef<Map<string, AgentLifecycleStatus>>(
     new Map()
   );
@@ -308,6 +370,10 @@ function SessionProviderInternal({
   const revalidationInFlightRef = useRef<Promise<void> | null>(null);
   const revalidationQueuedRef = useRef(false);
   const wasConnectedRef = useRef(isConnected);
+  const audioOutputBuffersRef = useRef<Map<string, BufferedAudioChunk[]>>(
+    new Map()
+  );
+  const activeAudioGroupsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     const subscription = AppState.addEventListener("change", (nextState) => {
@@ -617,23 +683,82 @@ function SessionProviderInternal({
     [serverId]
   );
 
-  // Buffer for streaming audio chunks
-  interface AudioChunk {
-    chunkIndex: number;
-    audio: string; // base64
-    format: string;
-    id: string;
-  }
-  const audioChunkBuffersRef = useRef<Map<string, AudioChunk[]>>(new Map());
-
   // Initialize session in store
   useEffect(() => {
-    initializeSession(serverId, client, audioPlayer);
-  }, [serverId, client, audioPlayer, initializeSession]);
+    console.log("[SessionProvider] mount", { serverId });
+    return () => {
+      console.log("[SessionProvider] unmount", { serverId });
+    };
+  }, [serverId]);
+
+  useEffect(() => {
+    initializeSession(serverId, client);
+  }, [serverId, client, initializeSession]);
 
   useEffect(() => {
     updateSessionClient(serverId, client);
   }, [serverId, client, updateSessionClient]);
+
+  useEffect(() => {
+    if (!voiceRuntime) {
+      return;
+    }
+
+    console.log("[SessionProvider] register_voice_session", { serverId });
+    return voiceRuntime.registerSession({
+      serverId,
+      setVoiceMode: async (enabled, agentId) => {
+        console.log("[SessionProvider] setVoiceMode", {
+          serverId,
+          enabled,
+          agentId: agentId ?? null,
+        });
+        if (!client) {
+          throw new Error("Daemon unavailable");
+        }
+        await client.setVoiceMode(enabled, agentId);
+      },
+      sendVoiceAudioChunk: async (audioData, mimeType, isLast) => {
+        console.log("[SessionProvider] sendVoiceAudioChunk", {
+          serverId,
+          audioDataLength: audioData.length,
+          mimeType,
+          isLast,
+        });
+        if (!client) {
+          throw new Error("Daemon unavailable");
+        }
+        await client.sendVoiceAudioChunk(audioData, mimeType, isLast);
+      },
+      abortRequest: async () => {
+        console.log("[SessionProvider] abortRequest", { serverId });
+        if (!client) {
+          throw new Error("Daemon unavailable");
+        }
+        await client.abortRequest();
+      },
+      setAssistantAudioPlaying: (isPlaying) => {
+        console.log("[SessionProvider] setAssistantAudioPlaying", {
+          serverId,
+          isPlaying,
+        });
+        setIsPlayingAudio(serverId, isPlaying);
+      },
+    });
+  }, [
+    client,
+    serverId,
+    setIsPlayingAudio,
+    voiceRuntime,
+  ]);
+
+  useEffect(() => {
+    console.log("[SessionProvider] updateSessionConnection", {
+      serverId,
+      isConnected,
+    });
+    voiceRuntime?.updateSessionConnection(serverId, isConnected);
+  }, [isConnected, serverId, voiceRuntime]);
 
   // If the client drops mid-initialization, clear pending flags
   useEffect(() => {
@@ -962,6 +1087,14 @@ function SessionProviderInternal({
       const { agentId, event, timestamp, seq, epoch } = message.payload;
       const parsedTimestamp = new Date(timestamp);
       const streamEvent = event as AgentStreamEventPayload;
+      if (
+        event.type === "turn_started" ||
+        event.type === "turn_completed" ||
+        event.type === "turn_failed" ||
+        event.type === "turn_canceled"
+      ) {
+        voiceRuntime?.onTurnEvent(serverId, agentId, event.type);
+      }
 
       // Attention notification stays in React (not extractable to pure reducer)
       if (event.type === "attention_required") {
@@ -1161,92 +1294,102 @@ function SessionProviderInternal({
 
     const unsubAudioOutput = client.on("audio_output", async (message) => {
       if (message.type !== "audio_output") return;
-      const data = message.payload;
-      const playbackGroupId = data.groupId ?? data.id;
-      const isFinalChunk = data.isLastChunk ?? true;
-      const chunkIndex = data.chunkIndex ?? 0;
+      if (!voiceAudioEngine) {
+        return;
+      }
+
+      const payload: AudioOutputPayload = message.payload;
+      console.log("[SessionProvider] audio_output", {
+        serverId,
+        id: payload.id,
+        groupId: payload.groupId ?? null,
+        chunkIndex: payload.chunkIndex ?? 0,
+        isLastChunk: payload.isLastChunk ?? true,
+        format: payload.format,
+        isVoiceMode: payload.isVoiceMode ?? false,
+        audioLength: payload.audio.length,
+      });
+      const playbackGroupId = payload.groupId ?? payload.id;
+      const chunkIndex = payload.chunkIndex ?? 0;
+      const isFinalChunk = payload.isLastChunk ?? true;
+
+      if (!audioOutputBuffersRef.current.has(playbackGroupId)) {
+        audioOutputBuffersRef.current.set(playbackGroupId, []);
+      }
+
+      const bufferedChunks = audioOutputBuffersRef.current.get(playbackGroupId)!;
+      bufferedChunks.push({
+        chunkIndex,
+        audio: payload.audio,
+        format: payload.format,
+        id: payload.id,
+      });
 
       activeAudioGroupsRef.current.add(playbackGroupId);
       setIsPlayingAudio(serverId, true);
 
-      if (!audioChunkBuffersRef.current.has(playbackGroupId)) {
-        audioChunkBuffersRef.current.set(playbackGroupId, []);
-      }
-
-      const buffer = audioChunkBuffersRef.current.get(playbackGroupId)!;
-      buffer.push({
-        chunkIndex,
-        audio: data.audio,
-        format: data.format,
-        id: data.id,
-      });
-
       if (!isFinalChunk) {
         return;
       }
-      buffer.sort((a, b) => a.chunkIndex - b.chunkIndex);
 
-      let playbackFailed = false;
-      const chunkIds = buffer.map((chunk) => chunk.id);
-
-      const confirmAudioPlayed = (ids: string[]) => {
-        if (!client) {
-          console.warn("[Session] audio_played skipped: daemon unavailable");
-          return;
-        }
-        ids.forEach((chunkId) => {
-          void client.audioPlayed(chunkId).catch((error) => {
-            console.warn("[Session] Failed to confirm audio playback:", error);
-          });
+      bufferedChunks.sort((left, right) => left.chunkIndex - right.chunkIndex);
+      const chunkIds = bufferedChunks.map((chunk) => chunk.id);
+      const shouldPlay =
+        !payload.isVoiceMode ||
+        (voiceRuntime?.shouldPlayVoiceAudio(serverId) ?? false);
+      const audioBlob = buildAudioPlaybackSource(bufferedChunks);
+      if (payload.isVoiceMode) {
+        logVoiceSession("audio_output_ready", {
+          serverId,
+          playbackGroupId,
+          chunkCount: bufferedChunks.length,
+          format: payload.format,
+          blobBytes: audioBlob.size,
+          shouldPlay,
         });
+      }
+      const confirmAudioPlayed = async () => {
+        await Promise.all(
+          chunkIds.map((chunkId) =>
+            client.audioPlayed(chunkId).catch((error) => {
+              console.warn("[Session] Failed to confirm audio playback:", error);
+            })
+          )
+        );
       };
 
+      let startedVoicePlayback = false;
       try {
-        const mimeType =
-          data.format === "mp3" ? "audio/mpeg" : `audio/${data.format}`;
-
-        const decodedChunks: Uint8Array[] = [];
-        let totalSize = 0;
-
-        for (const chunk of buffer) {
-          const binaryString = atob(chunk.audio);
-          const bytes = new Uint8Array(binaryString.length);
-          for (let i = 0; i < binaryString.length; i++) {
-            bytes[i] = binaryString.charCodeAt(i);
+        if (shouldPlay) {
+          if (payload.isVoiceMode) {
+            startedVoicePlayback = true;
+            voiceRuntime?.onAssistantAudioStarted(serverId);
           }
-          decodedChunks.push(bytes);
-          totalSize += bytes.length;
+          await voiceAudioEngine.play(audioBlob);
+          if (payload.isVoiceMode) {
+            logVoiceSession("audio_output_played", {
+              serverId,
+              playbackGroupId,
+              chunkCount: bufferedChunks.length,
+            });
+          }
+        } else if (payload.isVoiceMode) {
+          logVoiceSession("audio_output_suppressed", {
+            serverId,
+            playbackGroupId,
+          });
         }
-
-        const concatenatedBytes = new Uint8Array(totalSize);
-        let offset = 0;
-        for (const chunk of decodedChunks) {
-          concatenatedBytes.set(chunk, offset);
-          offset += chunk.length;
-        }
-
-        const audioBlob = {
-          type: mimeType,
-          size: totalSize,
-          arrayBuffer: async () => {
-            return concatenatedBytes.buffer;
-          },
-        } as Blob;
-
-        await audioPlayer.play(audioBlob);
-
-        confirmAudioPlayed(chunkIds);
-      } catch (error: any) {
-        playbackFailed = true;
+        await confirmAudioPlayed();
+      } catch (error) {
         console.error("[Session] Audio playback error:", error);
-
-        confirmAudioPlayed(chunkIds);
+        await confirmAudioPlayed();
       } finally {
-        audioChunkBuffersRef.current.delete(playbackGroupId);
+        audioOutputBuffersRef.current.delete(playbackGroupId);
         activeAudioGroupsRef.current.delete(playbackGroupId);
+        setIsPlayingAudio(serverId, activeAudioGroupsRef.current.size > 0);
 
-        if (activeAudioGroupsRef.current.size === 0) {
-          setIsPlayingAudio(serverId, false);
+        if (startedVoicePlayback) {
+          voiceRuntime?.onAssistantAudioFinished(serverId);
         }
       }
     });
@@ -1254,6 +1397,12 @@ function SessionProviderInternal({
     const unsubActivity = client.on("activity_log", (message) => {
       if (message.type !== "activity_log") return;
       const data = message.payload;
+      console.log("[SessionProvider] activity_log", {
+        serverId,
+        type: data.type,
+        contentPreview:
+          typeof data.content === "string" ? data.content.slice(0, 80) : null,
+      });
 
       if (data.type === "system" && data.content.includes("Transcribing")) {
         return;
@@ -1374,13 +1523,18 @@ function SessionProviderInternal({
       if (message.type !== "transcription_result") return;
 
       const transcriptText = message.payload.text.trim();
+      console.log("[SessionProvider] transcription_result", {
+        serverId,
+        textLength: transcriptText.length,
+        textPreview: transcriptText.slice(0, 80),
+      });
 
       if (!transcriptText) {
-      } else {
-        audioPlayer.stop();
-        setIsPlayingAudio(serverId, false);
-        setCurrentAssistantMessage(serverId, "");
+        voiceRuntime?.onTranscriptionResult(serverId, transcriptText);
+        return;
       }
+
+      setCurrentAssistantMessage(serverId, "");
     });
 
     const unsubAgentDeleted = client.on("agent_deleted", (message) => {
@@ -1498,7 +1652,6 @@ function SessionProviderInternal({
     };
   }, [
     client,
-    audioPlayer,
     queryClient,
     serverId,
     setIsPlayingAudio,
@@ -1521,6 +1674,8 @@ function SessionProviderInternal({
     requestCanonicalCatchUp,
     applyAgentUpdatePayload,
     applyTimelineResponse,
+    voiceRuntime,
+    voiceAudioEngine,
   ]);
 
   const sendAgentMessage = useCallback(
@@ -1742,20 +1897,12 @@ function SessionProviderInternal({
     [client]
   );
 
-  const setVoiceDetectionFlags = useCallback(
-    (isDetecting: boolean, isSpeaking: boolean) => {
-      isDetectingRef.current = isDetecting;
-      isSpeakingRef.current = isSpeaking;
-    },
-    []
-  );
-
   // Cleanup on unmount
   useEffect(() => {
     return () => {
       clearSession(serverId);
     };
-  }, [serverId, clearSession]);
+  }, [clearSession, serverId]);
 
   return children;
 }

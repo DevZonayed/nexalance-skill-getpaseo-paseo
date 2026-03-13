@@ -3,10 +3,9 @@ import { View } from "react-native";
 import ReanimatedAnimated, {
   useSharedValue,
   useAnimatedStyle,
-  withSpring,
+  withTiming,
   withRepeat,
   withSequence,
-  withTiming,
   Easing,
 } from "react-native-reanimated";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
@@ -41,9 +40,7 @@ export function VolumeMeter({
     orientation === "horizontal" ? (isCompact ? 8 : 12) : isCompact ? 14 : 20;
 
   // Create shared values for 3 dots unconditionally
-  const line1Height = useSharedValue(MIN_HEIGHT);
-  const line2Height = useSharedValue(MIN_HEIGHT);
-  const line3Height = useSharedValue(MIN_HEIGHT);
+  const animatedVolume = useSharedValue(0);
   const line1Pulse = useSharedValue(1);
   const line2Pulse = useSharedValue(1);
   const line3Pulse = useSharedValue(1);
@@ -90,54 +87,19 @@ export function VolumeMeter({
     );
   }, [isMuted]);
 
-  // Update heights based on volume with different responsiveness for all dots
+  // Drive a single animated volume value and derive the individual bar heights
+  // on the UI thread instead of scheduling three independent springs per sample.
   useEffect(() => {
     if (isMuted) {
-      // When muted, keep all lines at minimum height without animation
-      line1Height.value = MIN_HEIGHT;
-      line2Height.value = MIN_HEIGHT;
-      line3Height.value = MIN_HEIGHT;
+      animatedVolume.value = 0;
       return;
     }
 
-    if (volume > 0.001) {
-      // Active volume - animate heights based on volume
-      const target1 = MIN_HEIGHT + (MAX_HEIGHT * volume * 1.2);
-      const target2 = MIN_HEIGHT + (MAX_HEIGHT * volume * 1.05);
-      const target3 = MIN_HEIGHT + (MAX_HEIGHT * volume * 0.9);
-
-      line1Height.value = withSpring(target1, {
-        damping: 10,
-        stiffness: 200,
-      });
-
-      line2Height.value = withSpring(target2, {
-        damping: 12.5,
-        stiffness: 175,
-      });
-
-      line3Height.value = withSpring(target3, {
-        damping: 15,
-        stiffness: 150,
-      });
-    } else {
-      // No volume - return to minimum
-      line1Height.value = withSpring(MIN_HEIGHT, {
-        damping: 20,
-        stiffness: 150,
-      });
-
-      line2Height.value = withSpring(MIN_HEIGHT, {
-        damping: 20,
-        stiffness: 150,
-      });
-
-      line3Height.value = withSpring(MIN_HEIGHT, {
-        damping: 20,
-        stiffness: 150,
-      });
-    }
-  }, [volume, isMuted]);
+    animatedVolume.value = withTiming(volume, {
+      duration: volume > animatedVolume.value ? 70 : 140,
+      easing: Easing.out(Easing.cubic),
+    });
+  }, [animatedVolume, isMuted, volume]);
 
   const lineColor = color ?? theme.colors.foreground;
   const containerHeight =
@@ -147,9 +109,12 @@ export function VolumeMeter({
   const line1Style = useAnimatedStyle(() => {
     const isActive = isSpeaking;
     const baseOpacity = isMuted ? 0.3 : isActive ? 0.9 : 0.5;
-    const volumeBoost = isMuted || !isActive ? 0 : volume * 0.3;
+    const currentVolume = isMuted ? 0 : animatedVolume.value;
+    const currentHeight = MIN_HEIGHT + (MAX_HEIGHT * currentVolume * 1.2);
+    const volumeBoost = isMuted || !isActive ? 0 : currentVolume * 0.3;
     return {
-      height: line1Height.value * (isMuted || volume > 0.001 ? 1 : line1Pulse.value),
+      height:
+        currentHeight * (isMuted || currentVolume > 0.001 ? 1 : line1Pulse.value),
       opacity: baseOpacity + volumeBoost,
     };
   });
@@ -157,9 +122,12 @@ export function VolumeMeter({
   const line2Style = useAnimatedStyle(() => {
     const isActive = isSpeaking;
     const baseOpacity = isMuted ? 0.3 : isActive ? 0.9 : 0.5;
-    const volumeBoost = isMuted || !isActive ? 0 : volume * 0.3;
+    const currentVolume = isMuted ? 0 : animatedVolume.value;
+    const currentHeight = MIN_HEIGHT + (MAX_HEIGHT * currentVolume * 1.05);
+    const volumeBoost = isMuted || !isActive ? 0 : currentVolume * 0.3;
     return {
-      height: line2Height.value * (isMuted || volume > 0.001 ? 1 : line2Pulse.value),
+      height:
+        currentHeight * (isMuted || currentVolume > 0.001 ? 1 : line2Pulse.value),
       opacity: baseOpacity + volumeBoost,
     };
   });
@@ -167,9 +135,12 @@ export function VolumeMeter({
   const line3Style = useAnimatedStyle(() => {
     const isActive = isSpeaking;
     const baseOpacity = isMuted ? 0.3 : isActive ? 0.9 : 0.5;
-    const volumeBoost = isMuted || !isActive ? 0 : volume * 0.3;
+    const currentVolume = isMuted ? 0 : animatedVolume.value;
+    const currentHeight = MIN_HEIGHT + (MAX_HEIGHT * currentVolume * 0.9);
+    const volumeBoost = isMuted || !isActive ? 0 : currentVolume * 0.3;
     return {
-      height: line3Height.value * (isMuted || volume > 0.001 ? 1 : line3Pulse.value),
+      height:
+        currentHeight * (isMuted || currentVolume > 0.001 ? 1 : line3Pulse.value),
       opacity: baseOpacity + volumeBoost,
     };
   });

@@ -44,6 +44,7 @@ import {
   resolveProviderCommandPrefix,
   type ProviderRuntimeSettings,
 } from "../provider-launch-config.js";
+import { extractCodexTerminalSessionId, nonEmptyString } from "./tool-call-mapper-utils.js";
 
 
 const DEFAULT_TIMEOUT_MS = 14 * 24 * 60 * 60 * 1000;
@@ -1054,6 +1055,32 @@ function mapCodexPatchNotificationToToolCall(params: {
   return params.running ? toRunningToolCall(mapped) : mapped;
 }
 
+function mapCodexTerminalInteractionToToolCall(params: {
+  processId?: string | null;
+  fallbackCallId?: string | null;
+  command?: string | null;
+}): ToolCallTimelineItem {
+  const processId = nonEmptyString(params.processId ?? undefined);
+  const callId =
+    processId
+      ? `terminal-session-${processId}`
+      : nonEmptyString(params.fallbackCallId ?? undefined) ?? "terminal-interaction";
+  const label = nonEmptyString(params.command ?? undefined);
+  return {
+    type: "tool_call",
+    callId,
+    name: "terminal",
+    status: "completed",
+    error: null,
+    detail: {
+      type: "plain_text",
+      ...(label ? { label } : {}),
+      icon: "square_terminal",
+    },
+    ...(processId ? { metadata: { processId } } : {}),
+  };
+}
+
 function threadItemToTimeline(
   item: any,
   options?: { includeUserMessage?: boolean; cwd?: string | null }
@@ -1278,6 +1305,23 @@ const CodexEventExecCommandOutputDeltaNotificationSchema = z.object({
     .passthrough(),
 }).passthrough();
 
+const CodexEventTerminalInteractionNotificationSchema = z.object({
+  msg: z
+    .object({
+      type: z.literal("terminal_interaction"),
+      call_id: z.string().optional(),
+      process_id: z.union([z.string(), z.number()]).optional(),
+      stdin: z.string().optional(),
+    })
+    .passthrough(),
+}).passthrough();
+
+const ItemCommandExecutionTerminalInteractionNotificationSchema = z.object({
+  itemId: z.string().optional(),
+  processId: z.union([z.string(), z.number()]).optional(),
+  stdin: z.string().optional(),
+}).passthrough();
+
 const CodexEventPatchApplyBeginNotificationSchema = z.object({
   msg: z
     .object({
@@ -1357,6 +1401,13 @@ type ParsedCodexNotification =
       callId: string | null;
       stream: string | null;
       chunk: string | null;
+    }
+  | {
+      kind: "terminal_interaction";
+      source: "item" | "codex_event";
+      callId: string | null;
+      processId: string | null;
+      stdin: string | null;
     }
   | {
       kind: "patch_apply_started";
@@ -1540,6 +1591,45 @@ const CodexNotificationSchema = z.union([
   ),
   z.object({
     method: z.literal("codex/event/exec_command_output_delta"),
+    params: z.unknown(),
+  }).transform(
+    ({ method, params }): ParsedCodexNotification => ({ kind: "invalid_payload", method, params })
+  ),
+  z.object({
+    method: z.literal("codex/event/terminal_interaction"),
+    params: CodexEventTerminalInteractionNotificationSchema,
+  }).transform(
+    ({ params }): ParsedCodexNotification => ({
+      kind: "terminal_interaction",
+      source: "codex_event",
+      callId: params.msg.call_id ?? null,
+      processId:
+        typeof params.msg.process_id === "number"
+          ? String(params.msg.process_id)
+          : params.msg.process_id ?? null,
+      stdin: params.msg.stdin ?? null,
+    })
+  ),
+  z.object({ method: z.literal("codex/event/terminal_interaction"), params: z.unknown() }).transform(
+    ({ method, params }): ParsedCodexNotification => ({ kind: "invalid_payload", method, params })
+  ),
+  z.object({
+    method: z.literal("item/commandExecution/terminalInteraction"),
+    params: ItemCommandExecutionTerminalInteractionNotificationSchema,
+  }).transform(
+    ({ params }): ParsedCodexNotification => ({
+      kind: "terminal_interaction",
+      source: "item",
+      callId: params.itemId ?? null,
+      processId:
+        typeof params.processId === "number"
+          ? String(params.processId)
+          : params.processId ?? null,
+      stdin: params.stdin ?? null,
+    })
+  ),
+  z.object({
+    method: z.literal("item/commandExecution/terminalInteraction"),
     params: z.unknown(),
   }).transform(
     ({ method, params }): ParsedCodexNotification => ({ kind: "invalid_payload", method, params })
@@ -1758,6 +1848,8 @@ class CodexAppServerAgentSession implements AgentSession {
   private pendingReasoning = new Map<string, string[]>();
   private pendingCommandOutputDeltas = new Map<string, string[]>();
   private pendingFileChangeOutputDeltas = new Map<string, string[]>();
+  private terminalCommandByProcessId = new Map<string, string>();
+  private emittedTerminalInteractionKeys = new Set<string>();
   private emittedExecCommandStartedCallIds = new Set<string>();
   private emittedExecCommandCompletedCallIds = new Set<string>();
   private emittedItemStartedIds = new Set<string>();
@@ -2667,11 +2759,13 @@ class CodexAppServerAgentSession implements AgentSession {
         this.pendingCommandOutputDeltas,
         parsed.callId
       );
+      const resolvedOutput = parsed.output ?? bufferedOutput;
+      this.rememberTerminalProcessForCommand(parsed.command, resolvedOutput);
       const timelineItem = mapCodexExecNotificationToToolCall({
         callId: parsed.callId,
         command: parsed.command,
         cwd: parsed.cwd ?? this.config.cwd ?? null,
-        output: parsed.output ?? bufferedOutput,
+        output: resolvedOutput,
         exitCode: parsed.exitCode,
         success: parsed.success,
         stderr: parsed.stderr,
@@ -2681,6 +2775,25 @@ class CodexAppServerAgentSession implements AgentSession {
         this.emittedExecCommandCompletedCallIds.add(timelineItem.callId);
         this.emitEvent({ type: "timeline", provider: CODEX_PROVIDER, item: timelineItem });
       }
+      return;
+    }
+
+    if (parsed.kind === "terminal_interaction") {
+      const interactionKey = [
+        parsed.processId ?? "",
+        parsed.stdin ?? "",
+      ].join("\u0000");
+      if (!this.shouldEmitTerminalInteractionKey(interactionKey)) {
+        return;
+      }
+      const timelineItem = mapCodexTerminalInteractionToToolCall({
+        processId: parsed.processId,
+        fallbackCallId: parsed.callId,
+        command:
+          (parsed.processId ? this.terminalCommandByProcessId.get(parsed.processId) : undefined) ??
+          null,
+      });
+      this.emitEvent({ type: "timeline", provider: CODEX_PROVIDER, item: timelineItem });
       return;
     }
 
@@ -2874,6 +2987,33 @@ class CodexAppServerAgentSession implements AgentSession {
     }
     store.delete(id);
     return buffered.join("");
+  }
+
+  private rememberTerminalProcessForCommand(command: unknown, output: string | null): void {
+    const normalizedCommand = normalizeCodexCommandValue(command);
+    if (!normalizedCommand) {
+      return;
+    }
+    const displayCommand =
+      typeof normalizedCommand === "string"
+        ? normalizedCommand
+        : normalizedCommand.join(" ").trim();
+    if (!displayCommand) {
+      return;
+    }
+    const processId = extractCodexTerminalSessionId(output ?? undefined);
+    if (!processId) {
+      return;
+    }
+    this.terminalCommandByProcessId.set(processId, displayCommand);
+  }
+
+  private shouldEmitTerminalInteractionKey(key: string): boolean {
+    if (this.emittedTerminalInteractionKeys.has(key)) {
+      return false;
+    }
+    this.emittedTerminalInteractionKeys.add(key);
+    return true;
   }
 
   private warnOnIncompleteEditToolCall(

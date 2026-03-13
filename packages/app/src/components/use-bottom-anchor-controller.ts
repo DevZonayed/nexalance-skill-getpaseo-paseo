@@ -110,8 +110,6 @@ type CreateBottomAnchorControllerDriverInput = {
   isNearBottom: () => boolean;
   scrollToBottom: (animated: boolean) => void;
   onModeChange: (mode: BottomAnchorMode) => void;
-  log: (event: BottomAnchorEvent, details: Record<string, unknown>) => void;
-  warn: (details: { agentId: string; reason: BottomAnchorRequestReason }) => void;
   scheduleFrame: (params: {
     kind: "attempt" | "verification";
     callback: () => void;
@@ -123,17 +121,6 @@ type CreateBottomAnchorControllerDriverInput = {
 const MAX_VERIFICATION_RETRIES = 3;
 const WEB_PARTIAL_VIRTUALIZED_CONFIRMATION_DELAY_FRAMES = 1;
 const USER_SCROLL_AWAY_DELTA_PX = 24;
-const IS_DEV = Boolean((globalThis as { __DEV__?: boolean }).__DEV__);
-
-function logBottomAnchorEvent(
-  event: BottomAnchorEvent,
-  details: Record<string, unknown>
-): void {
-  if (!IS_DEV) {
-    return;
-  }
-  console.debug("[BottomAnchor]", event, details);
-}
 
 function scheduleAnimationFrameWithDelay(input: {
   callback: () => void;
@@ -323,10 +310,6 @@ function createBottomAnchorControllerDriver(
       return;
     }
     blockedReason = nextBlockedReason;
-    input.log(
-      "blocked_reason_changed",
-      getLogContext({ nextBlockedReason })
-    );
   };
 
   const setModeInternal = (nextMode: BottomAnchorMode) => {
@@ -367,13 +350,6 @@ function createBottomAnchorControllerDriver(
       setBlockedReason(null);
       return;
     }
-    input.log(
-      "request_cancelled",
-      getLogContext({
-        cancelledRequestReason: currentRequest.reason,
-        cancelReason: reason,
-      })
-    );
     pendingRequest = null;
     cancelPendingAttempt();
     setBlockedReason(null);
@@ -398,19 +374,6 @@ function createBottomAnchorControllerDriver(
     if (verificationHandle) {
       input.cancelFrame(verificationHandle);
     }
-    input.log(
-      "verification_scheduled",
-      getLogContext({
-        retries: attemptContext.retries,
-        startedContentHeight: attemptContext.startedContentHeight ?? null,
-        startedOffsetY: attemptContext.startedOffsetY ?? null,
-        startedViewportHeight: attemptContext.startedViewportHeight ?? null,
-        scheduledMeasurementState:
-          getDetailedMeasurementState(scheduledMeasurementState),
-        verificationDelayFrames:
-          delayFramesOverride ?? input.getTransportBehavior().verificationDelayFrames,
-      })
-    );
     verificationHandle = input.scheduleFrame({
       kind: "verification",
       delayFrames:
@@ -427,15 +390,6 @@ function createBottomAnchorControllerDriver(
         });
 
         if (verificationBlockedReason) {
-          input.log(
-            "attempt_verified",
-            getLogContext({
-              verificationPhase: "blocked",
-              verificationBlockedReason,
-              retries: attemptContext.retries,
-              measurementState: getDetailedMeasurementState(measurementState),
-            })
-          );
           pendingVerification = attemptContext;
           setBlockedReason(verificationBlockedReason);
           return;
@@ -450,26 +404,6 @@ function createBottomAnchorControllerDriver(
               verificationRetryMode:
                 input.getTransportBehavior().verificationRetryMode,
             });
-
-        input.log(
-          "attempt_verified",
-          getLogContext({
-            verifiedNearBottom,
-            retries: attemptContext.retries,
-            retryDisposition,
-            contentHeightDeltaSinceAttempt:
-              measurementState.contentHeight -
-              (attemptContext.startedContentHeight ?? measurementState.contentHeight),
-            offsetDeltaSinceAttempt:
-              measurementState.offsetY -
-              (attemptContext.startedOffsetY ?? measurementState.offsetY),
-            viewportHeightDeltaSinceAttempt:
-              measurementState.viewportHeight -
-              (attemptContext.startedViewportHeight ??
-                measurementState.viewportHeight),
-            measurementState: getDetailedMeasurementState(measurementState),
-          })
-        );
 
         if (verifiedNearBottom) {
           if (
@@ -494,7 +428,6 @@ function createBottomAnchorControllerDriver(
           pendingVerification = null;
           markStickyMeasurementVerified();
           if (isRequestAttempt) {
-            input.log("request_fulfilled", getLogContext());
             pendingRequest = null;
           }
           setBlockedReason(null);
@@ -520,21 +453,7 @@ function createBottomAnchorControllerDriver(
           return;
         }
 
-        input.log(
-          "attempt_failed",
-          getLogContext({
-            retries: attemptContext.retries,
-            retryDisposition,
-            measurementState: getDetailedMeasurementState(measurementState),
-          })
-        );
         pendingVerification = null;
-        if (isRequestAttempt && currentRequest) {
-          input.warn({
-            agentId: input.getAgentId(),
-            reason: currentRequest.reason,
-          });
-        }
         setBlockedReason(
           isRequestAttempt ? "waiting_for_post_layout_verification" : null
         );
@@ -552,14 +471,6 @@ function createBottomAnchorControllerDriver(
       startedViewportHeight: measurementState.viewportHeight,
     };
     pendingVerification = attemptContext;
-    input.log(
-      "attempt_started",
-      getLogContext({
-        animated,
-        retries: attemptContext.retries,
-        measurementState: getDetailedMeasurementState(measurementState),
-      })
-    );
     input.scrollToBottom(animated);
     scheduleVerification(attemptContext);
     setBlockedReason(deriveDriverBlockedReason(input.getMeasurementState()));
@@ -576,18 +487,6 @@ function createBottomAnchorControllerDriver(
       | "manual_reevaluate"
       | "retry_scroll"
   ) => {
-    input.log(
-      "evaluate_called",
-      getLogContext({
-        evaluateReason: reason,
-        animated,
-        hasAttemptHandle: attemptHandle !== null,
-        hasVerificationHandle: verificationHandle !== null,
-        pendingVerificationRequestId: pendingVerification?.requestId ?? null,
-        pendingVerificationRetries: pendingVerification?.retries ?? null,
-        measurementState: getDetailedMeasurementState(input.getMeasurementState()),
-      })
-    );
     if (attemptHandle) {
       return;
     }
@@ -610,17 +509,6 @@ function createBottomAnchorControllerDriver(
           !shouldAttemptForPendingRequest &&
           !shouldAttemptForStickyVerification
         ) {
-          input.log(
-            "attempt_started",
-            getLogContext({
-              attemptPhase: "skipped",
-              evaluateReason: reason,
-              nextBlockedReason,
-              shouldAttemptForPendingRequest,
-              shouldAttemptForStickyVerification,
-              measurementState: getDetailedMeasurementState(measurementState),
-            })
-          );
           return;
         }
 
@@ -630,17 +518,6 @@ function createBottomAnchorControllerDriver(
   };
 
   const createRequest = (request: BottomAnchorRouteRequest | BottomAnchorLocalRequest) => {
-    const existing = pendingRequest;
-    if (existing) {
-      input.log(
-        "request_cancelled",
-        getLogContext({
-          cancelledRequestReason: existing.reason,
-          cancelReason: "replaced_by_new_request",
-        })
-      );
-    }
-
     cancelPendingAttempt();
     const nextRequest: BottomAnchorRequest = {
       id: requestSequence + 1,
@@ -658,10 +535,6 @@ function createBottomAnchorControllerDriver(
       "requestKey" in request
         ? "sticky-bottom"
         : __private__.deriveModeForLocalRequest({ reason: request.reason })
-    );
-    input.log(
-      "request_created",
-      getLogContext({ requestReason: request.reason })
     );
     evaluate(request.reason === "jump-to-bottom", "request_created");
   };
@@ -707,7 +580,6 @@ function createBottomAnchorControllerDriver(
       }
       cancelPendingRequest("user_scrolled_away");
       setModeInternal("detached");
-      input.log("detached_by_user", getLogContext());
     },
     handleViewportMetricsChange(params) {
       if (
@@ -905,10 +777,6 @@ export function useBottomAnchorController(input: {
       isNearBottom: () => isNearBottomRef.current(),
       scrollToBottom: (animated) => scrollToBottomRef.current(animated),
       onModeChange: (nextMode) => setMode(nextMode),
-      log: (event, details) => logBottomAnchorEvent(event, details),
-      warn: (details) => {
-        console.warn("[BottomAnchor] request could not be fulfilled", details);
-      },
       scheduleFrame: ({ callback, delayFrames }) =>
         scheduleAnimationFrameWithDelay({ callback, delayFrames }),
       cancelFrame: (handle) => cancelScheduledAnimationFrame(handle),

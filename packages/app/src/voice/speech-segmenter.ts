@@ -139,6 +139,11 @@ export class SpeechSegmenter {
   }
 
   flush(isLast: boolean): void {
+    console.log("[SpeechSegmenter] flush", {
+      isLast,
+      audioBufferLength: this.audioBuffer.length,
+      bufferedBytes: this.bufferedBytes,
+    });
     if (this.audioBuffer.length === 0) {
       this.bufferedBytes = 0;
       return;
@@ -157,6 +162,13 @@ export class SpeechSegmenter {
    * In non-continuous mode, chunk buffering is gated by the VAD state.
    */
   pushPcmChunk(chunk: Uint8Array): void {
+    console.log("[SpeechSegmenter] pushPcmChunk", {
+      bytes: chunk.length,
+      speechDetectionStartMs: this.speechDetectionStartMs,
+      isSpeaking: this.isSpeaking,
+      speechConfirmed: this.speechConfirmed,
+      bufferedBytes: this.bufferedBytes,
+    });
     if (chunk.length === 0) {
       return;
     }
@@ -186,6 +198,16 @@ export class SpeechSegmenter {
    * Called with a normalized volume level (0..1). Drives VAD transitions.
    */
   pushVolumeLevel(volume: number, nowMs: number): void {
+    console.log("[SpeechSegmenter] pushVolumeLevel", {
+      volume,
+      nowMs,
+      speechDetectionStartMs: this.speechDetectionStartMs,
+      isSpeaking: this.isSpeaking,
+      isDetecting: this.isDetecting,
+      speechConfirmed: this.speechConfirmed,
+      silenceStartMs: this.silenceStartMs,
+      confirmedDropStartMs: this.confirmedDropStartMs,
+    });
     if (this.config.enableContinuousStreaming) {
       return;
     }

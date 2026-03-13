@@ -144,6 +144,70 @@ export function LeftSidebar({ selectedAgentId: _selectedAgentId }: LeftSidebarPr
   // Track user-initiated refresh to avoid showing spinner on background revalidation
   const [isManualRefresh, setIsManualRefresh] = useState(false)
 
+  useEffect(() => {
+    console.log('[LeftSidebar] isOpen_changed', {
+      isOpen,
+      isMobile,
+      mobileView,
+      desktopAgentListOpen,
+    })
+  }, [desktopAgentListOpen, isMobile, isOpen, mobileView])
+
+  useEffect(() => {
+    console.log('[LeftSidebar] pathname_changed', {
+      pathname,
+      activeServerIdFromPath,
+      activeServerId,
+    })
+  }, [activeServerId, activeServerIdFromPath, pathname])
+
+  useEffect(() => {
+    console.log('[LeftSidebar] hosts_changed', {
+      hostCount: daemons.length,
+      serverIds: daemons.map((daemon) => daemon.serverId),
+      runtimeConnectionStatusSignature,
+    })
+  }, [daemons, runtimeConnectionStatusSignature])
+
+  useEffect(() => {
+    console.log('[LeftSidebar] active_host_changed', {
+      activeServerId,
+      activeHostLabel,
+      activeHostStatus,
+    })
+  }, [activeHostLabel, activeHostStatus, activeServerId])
+
+  useEffect(() => {
+    console.log('[LeftSidebar] projects_changed', {
+      activeServerId,
+      projectCount: projects.length,
+      projectKeys: projects.map((project) => project.projectKey),
+      workspaceCounts: projects.map((project) => ({
+        projectKey: project.projectKey,
+        workspaceCount: project.workspaces.length,
+      })),
+      isInitialLoad,
+      isRevalidating,
+    })
+  }, [activeServerId, isInitialLoad, isRevalidating, projects])
+
+  useEffect(() => {
+    console.log('[LeftSidebar] collapsed_or_shortcuts_changed', {
+      collapsedProjectKeys: Array.from(collapsedProjectKeys),
+      shortcutCount: shortcutIndexByWorkspaceKey.size,
+    })
+  }, [collapsedProjectKeys, shortcutIndexByWorkspaceKey])
+
+  useEffect(() => {
+    console.log('[LeftSidebar] animation_context_changed', {
+      windowWidth,
+      translateXValue: translateX.value,
+      backdropOpacityValue: backdropOpacity.value,
+      isGesturing: isGesturing.value,
+      hasCloseGestureRef: Boolean(closeGestureRef.current),
+    })
+  }, [backdropOpacity, closeGestureRef, isGesturing, translateX, windowWidth])
+
   const handleRefresh = useCallback(() => {
     setIsManualRefresh(true)
     refreshAll()
@@ -354,7 +418,6 @@ export function LeftSidebar({ selectedAgentId: _selectedAgentId }: LeftSidebarPr
                 <SidebarAgentListSkeleton />
               ) : (
                 <SidebarWorkspaceList
-                  isOpen={isOpen}
                   serverId={activeServerId}
                   collapsedProjectKeys={collapsedProjectKeys}
                   onToggleProjectCollapsed={toggleProjectCollapsed}
@@ -481,7 +544,6 @@ export function LeftSidebar({ selectedAgentId: _selectedAgentId }: LeftSidebarPr
         <SidebarAgentListSkeleton />
       ) : (
         <SidebarWorkspaceList
-          isOpen={isOpen}
           serverId={activeServerId}
           collapsedProjectKeys={collapsedProjectKeys}
           onToggleProjectCollapsed={toggleProjectCollapsed}

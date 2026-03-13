@@ -86,7 +86,7 @@ describe("codex rollout parsing", () => {
       });
     });
 
-    test("skips write_stdin function calls (polling)", async () => {
+    test("maps write_stdin polling calls into terminal interaction tool calls", async () => {
       const rolloutPath = join(tmpDir, "rollout.jsonl");
       const lines = [
         JSON.stringify({
@@ -97,6 +97,16 @@ describe("codex rollout parsing", () => {
             name: "exec_command",
             arguments: '{"cmd":"npm test"}',
             call_id: "call_real",
+          },
+        }),
+        JSON.stringify({
+          timestamp: "2026-01-22T07:09:01.785Z",
+          type: "response_item",
+          payload: {
+            type: "function_call_output",
+            call_id: "call_real",
+            output:
+              "Chunk ID: 13d232\nWall time: 0.2667 seconds\nProcess exited with code 0\nOriginal token count: 10\nOutput:\nProcess running with session ID 7144",
           },
         }),
         JSON.stringify({
@@ -116,8 +126,54 @@ describe("codex rollout parsing", () => {
       const timeline = await parseRolloutFile(rolloutPath);
 
       const toolCalls = timeline.filter((i) => i.type === "tool_call");
-      expect(toolCalls.length).toBe(1);
-      expect(toolCalls[0].name).toBe("Bash");
+      expect(toolCalls.length).toBe(2);
+      expect(toolCalls[0]).toMatchObject({
+        type: "tool_call",
+        name: "Bash",
+      });
+      expect(toolCalls[1]).toMatchObject({
+        type: "tool_call",
+        name: "terminal",
+        callId: "terminal-session-7144",
+        detail: {
+          type: "plain_text",
+          icon: "square_terminal",
+        },
+        metadata: {
+          processId: "7144",
+        },
+      });
+    });
+
+    test("falls back to generic terminal interaction label when command cannot be resolved", async () => {
+      const rolloutPath = join(tmpDir, "rollout.jsonl");
+      const lines = [
+        JSON.stringify({
+          timestamp: "2026-01-22T07:28:16.497Z",
+          type: "response_item",
+          payload: {
+            type: "function_call",
+            name: "write_stdin",
+            arguments:
+              '{"session_id":7144,"chars":"","yield_time_ms":1000,"max_output_tokens":6000}',
+            call_id: "call_polling",
+          },
+        }),
+      ];
+      writeFileSync(rolloutPath, lines.join("\n") + "\n");
+
+      const timeline = await parseRolloutFile(rolloutPath);
+      const toolCalls = timeline.filter((i) => i.type === "tool_call");
+      expect(toolCalls).toHaveLength(1);
+      expect(toolCalls[0]).toMatchObject({
+        type: "tool_call",
+        name: "terminal",
+        callId: "terminal-session-7144",
+        detail: {
+          type: "plain_text",
+          icon: "square_terminal",
+        },
+      });
     });
   });
 

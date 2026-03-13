@@ -103,6 +103,12 @@ export function buildToolCallDisplayModel(input: ToolCallDisplayInput): ToolCall
     summary = isRecord(input.metadata) ? readString(input.metadata.subAgentActivity) : undefined;
   } else if (lowerName === "thinking" && input.detail.type === "unknown") {
     displayName = "Thinking";
+  } else if (lowerName === "terminal") {
+    displayName = "Interacted with terminal";
+    summary =
+      input.detail.type === "plain_text"
+        ? readString(input.detail.label)
+        : undefined;
   }
 
   const errorText = input.status === "failed" ? formatErrorText(input.error) : undefined;

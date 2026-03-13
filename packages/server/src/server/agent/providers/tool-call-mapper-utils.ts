@@ -72,6 +72,16 @@ export function extractCodexShellOutput(value: string | undefined): string | und
   return nonEmptyString(lines.slice(firstBodyLineIndex).join("\n"));
 }
 
+export function extractCodexTerminalSessionId(value: string | undefined): string | undefined {
+  const text = nonEmptyString(value);
+  if (!text) {
+    return undefined;
+  }
+
+  const match = text.match(/process running with session id\s+([A-Za-z0-9._:-]+)/i);
+  return nonEmptyString(match?.[1]);
+}
+
 export function flattenReadContent<Chunk extends ReadChunkLike>(
   value: string | Chunk | Chunk[] | undefined
 ): string | undefined {

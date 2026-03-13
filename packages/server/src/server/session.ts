@@ -1255,6 +1255,132 @@ export class Session {
     })
   }
 
+  private buildPersistedProjectRecord(input: {
+    workspaceId: string
+    placement: ProjectPlacementPayload
+    createdAt: string
+    updatedAt: string
+  }): PersistedProjectRecord {
+    return createPersistedProjectRecord({
+      projectId: input.placement.projectKey,
+      rootPath: deriveProjectRootPath({
+        cwd: input.workspaceId,
+        checkout: input.placement.checkout,
+      }),
+      kind: deriveProjectKind(input.placement.checkout),
+      displayName: input.placement.projectName,
+      createdAt: input.createdAt,
+      updatedAt: input.updatedAt,
+      archivedAt: null,
+    })
+  }
+
+  private buildPersistedWorkspaceRecord(input: {
+    workspaceId: string
+    placement: ProjectPlacementPayload
+    createdAt: string
+    updatedAt: string
+  }): PersistedWorkspaceRecord {
+    return createPersistedWorkspaceRecord({
+      workspaceId: input.workspaceId,
+      projectId: input.placement.projectKey,
+      cwd: input.workspaceId,
+      kind: deriveWorkspaceKind(input.placement.checkout),
+      displayName: deriveWorkspaceDisplayName({
+        cwd: input.workspaceId,
+        checkout: input.placement.checkout,
+      }),
+      createdAt: input.createdAt,
+      updatedAt: input.updatedAt,
+      archivedAt: null,
+    })
+  }
+
+  private async archiveProjectRecordIfEmpty(projectId: string, archivedAt: string): Promise<void> {
+    const siblingWorkspaces = (await this.workspaceRegistry.list()).filter(
+      (workspace) => workspace.projectId === projectId && !workspace.archivedAt
+    )
+    if (siblingWorkspaces.length === 0) {
+      await this.projectRegistry.archive(projectId, archivedAt)
+    }
+  }
+
+  private async reconcileWorkspaceRecord(workspaceId: string): Promise<{
+    workspace: PersistedWorkspaceRecord
+    changed: boolean
+  }> {
+    const normalizedWorkspaceId = normalizePersistedWorkspaceId(workspaceId)
+    const existing = await this.workspaceRegistry.get(normalizedWorkspaceId)
+    const placement = await this.buildProjectPlacement(normalizedWorkspaceId)
+    const now = new Date().toISOString()
+    const nextProjectCreatedAt = existing?.createdAt ?? now
+    const nextWorkspaceCreatedAt = existing?.createdAt ?? now
+    const currentProjectRecord = await this.projectRegistry.get(placement.projectKey)
+    const nextProjectRecord = this.buildPersistedProjectRecord({
+      workspaceId: normalizedWorkspaceId,
+      placement,
+      createdAt: currentProjectRecord?.createdAt ?? nextProjectCreatedAt,
+      updatedAt: now,
+    })
+    const nextWorkspaceRecord = this.buildPersistedWorkspaceRecord({
+      workspaceId: normalizedWorkspaceId,
+      placement,
+      createdAt: nextWorkspaceCreatedAt,
+      updatedAt: now,
+    })
+
+    const needsWorkspaceUpdate =
+      !existing ||
+      existing.archivedAt ||
+      existing.projectId !== nextWorkspaceRecord.projectId ||
+      existing.kind !== nextWorkspaceRecord.kind ||
+      existing.displayName !== nextWorkspaceRecord.displayName
+
+    const needsProjectUpdate =
+      !currentProjectRecord ||
+      currentProjectRecord.archivedAt ||
+      currentProjectRecord.rootPath !== nextProjectRecord.rootPath ||
+      currentProjectRecord.kind !== nextProjectRecord.kind ||
+      currentProjectRecord.displayName !== nextProjectRecord.displayName
+
+    if (!needsWorkspaceUpdate && !needsProjectUpdate) {
+      return {
+        workspace: existing!,
+        changed: false,
+      }
+    }
+
+    await this.projectRegistry.upsert(nextProjectRecord)
+    await this.workspaceRegistry.upsert(nextWorkspaceRecord)
+
+    if (
+      existing &&
+      !existing.archivedAt &&
+      existing.projectId !== nextWorkspaceRecord.projectId
+    ) {
+      await this.archiveProjectRecordIfEmpty(existing.projectId, now)
+    }
+
+    return {
+      workspace: nextWorkspaceRecord,
+      changed: true,
+    }
+  }
+
+  private async reconcileActiveWorkspaceRecords(): Promise<Set<string>> {
+    const changedWorkspaceIds = new Set<string>()
+    const activeWorkspaces = (await this.workspaceRegistry.list()).filter((workspace) => !workspace.archivedAt)
+
+    for (const workspace of activeWorkspaces) {
+      const result = await this.reconcileWorkspaceRecord(workspace.workspaceId)
+      if (result.changed) {
+        changedWorkspaceIds.add(result.workspace.workspaceId)
+      }
+    }
+
+    return changedWorkspaceIds
+  }
+
   private async forwardAgentUpdate(agent: ManagedAgent): Promise<void> {
     try {
       await this.ensureWorkspaceRegistered(agent.cwd)
@@ -5275,7 +5401,7 @@ export class Session {
     }
   }
 
-  private async listWorkspaceDescriptors(): Promise<WorkspaceDescriptorPayload[]> {
+  private async listWorkspaceDescriptorsSnapshot(): Promise<WorkspaceDescriptorPayload[]> {
     const [agents, persistedWorkspaces, persistedProjects] = await Promise.all([
       this.listAgentPayloads(),
       this.workspaceRegistry.list(),
@@ -5316,6 +5442,11 @@ export class Session {
     }
 
     return Array.from(descriptorsByWorkspaceId.values())
+  }
+
+  private async listWorkspaceDescriptors(): Promise<WorkspaceDescriptorPayload[]> {
+    await this.reconcileActiveWorkspaceRecords()
+    return this.listWorkspaceDescriptorsSnapshot()
   }
 
   private normalizeFetchWorkspacesSort(
@@ -5597,43 +5728,7 @@ export class Session {
 
   private async ensureWorkspaceRegistered(cwd: string): Promise<PersistedWorkspaceRecord> {
     const workspaceId = normalizePersistedWorkspaceId(cwd)
-    const existing = await this.workspaceRegistry.get(workspaceId)
-    if (existing && !existing.archivedAt) {
-      return existing
-    }
-
-    const placement = await this.buildProjectPlacement(workspaceId)
-    const now = new Date().toISOString()
-    const projectExisting = await this.projectRegistry.get(placement.projectKey)
-    const projectRecord: PersistedProjectRecord = createPersistedProjectRecord({
-      projectId: placement.projectKey,
-      rootPath: deriveProjectRootPath({
-        cwd: workspaceId,
-        checkout: placement.checkout,
-      }),
-      kind: deriveProjectKind(placement.checkout),
-      displayName: placement.projectName,
-      createdAt: projectExisting?.createdAt ?? now,
-      updatedAt: now,
-      archivedAt: null,
-    })
-    await this.projectRegistry.upsert(projectRecord)
-
-    const workspaceRecord = createPersistedWorkspaceRecord({
-      workspaceId,
-      projectId: placement.projectKey,
-      cwd: workspaceId,
-      kind: deriveWorkspaceKind(placement.checkout),
-      displayName: deriveWorkspaceDisplayName({
-        cwd: workspaceId,
-        checkout: placement.checkout,
-      }),
-      createdAt: existing?.createdAt ?? now,
-      updatedAt: now,
-      archivedAt: null,
-    })
-    await this.workspaceRegistry.upsert(workspaceRecord)
-    return workspaceRecord
+    return (await this.reconcileWorkspaceRecord(workspaceId)).workspace
   }
 
   private async archiveWorkspaceRecord(workspaceId: string, archivedAt?: string): Promise<void> {
@@ -5660,28 +5755,26 @@ export class Session {
     }
 
     const workspaceId = normalizePersistedWorkspaceId(cwd)
-    const all = await this.listWorkspaceDescriptors()
-    const workspace = all.find((entry) => entry.id === workspaceId)
-    if (!workspace) {
-      this.bufferOrEmitWorkspaceUpdate(subscription, {
-        kind: 'remove',
-        id: workspaceId,
-      })
-      return
-    }
+    const changedWorkspaceIds = await this.reconcileActiveWorkspaceRecords()
+    const all = await this.listWorkspaceDescriptorsSnapshot()
+    const descriptorsByWorkspaceId = new Map(all.map((entry) => [entry.id, entry] as const))
+    const workspaceIdsToEmit = new Set<string>([workspaceId, ...changedWorkspaceIds])
 
-    if (!this.matchesWorkspaceFilter({ workspace, filter: subscription.filter })) {
-      this.bufferOrEmitWorkspaceUpdate(subscription, {
-        kind: 'remove',
-        id: workspaceId,
-      })
-      return
-    }
+    for (const nextWorkspaceId of workspaceIdsToEmit) {
+      const workspace = descriptorsByWorkspaceId.get(nextWorkspaceId)
+      if (!workspace || !this.matchesWorkspaceFilter({ workspace, filter: subscription.filter })) {
+        this.bufferOrEmitWorkspaceUpdate(subscription, {
+          kind: 'remove',
+          id: nextWorkspaceId,
+        })
+        continue
+      }
 
-    this.bufferOrEmitWorkspaceUpdate(subscription, {
-      kind: 'upsert',
-      workspace,
-    })
+      this.bufferOrEmitWorkspaceUpdate(subscription, {
+        kind: 'upsert',
+        workspace,
+      })
+    }
   }
 
   private async emitWorkspaceUpdatesForCwds(cwds: Iterable<string>): Promise<void> {
@@ -5689,7 +5782,8 @@ export class Session {
       return
     }
 
-    const uniqueWorkspaceCwds = new Set<string>()
+    const changedWorkspaceIds = await this.reconcileActiveWorkspaceRecords()
+    const uniqueWorkspaceCwds = new Set<string>(changedWorkspaceIds)
     for (const cwd of cwds) {
       const normalized = normalizePersistedWorkspaceId(cwd)
       if (!normalized) {
@@ -5698,8 +5792,24 @@ export class Session {
       uniqueWorkspaceCwds.add(normalized)
     }
 
-    for (const workspaceCwd of uniqueWorkspaceCwds) {
-      await this.emitWorkspaceUpdateForCwd(workspaceCwd)
+    const subscription = this.workspaceUpdatesSubscription
+    const all = await this.listWorkspaceDescriptorsSnapshot()
+    const descriptorsByWorkspaceId = new Map(all.map((entry) => [entry.id, entry] as const))
+
+    for (const workspaceId of uniqueWorkspaceCwds) {
+      const workspace = descriptorsByWorkspaceId.get(workspaceId)
+      if (!workspace || !this.matchesWorkspaceFilter({ workspace, filter: subscription.filter })) {
+        this.bufferOrEmitWorkspaceUpdate(subscription, {
+          kind: 'remove',
+          id: workspaceId,
+        })
+        continue
+      }
+
+      this.bufferOrEmitWorkspaceUpdate(subscription, {
+        kind: 'upsert',
+        workspace,
+      })
     }
   }
 

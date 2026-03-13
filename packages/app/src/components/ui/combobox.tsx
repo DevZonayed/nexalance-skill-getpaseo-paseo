@@ -64,6 +64,7 @@ export interface ComboboxProps {
   title?: string
   open?: boolean
   onOpenChange?: (open: boolean) => void
+  enableDismissOnClose?: boolean
   desktopPlacement?: 'top-start' | 'bottom-start'
   /**
    * Prevents an initial frame at 0,0 by hiding desktop content until floating
@@ -224,6 +225,7 @@ export function Combobox({
   title = 'Select',
   open,
   onOpenChange,
+  enableDismissOnClose,
   desktopPlacement = 'top-start',
   desktopPreventInitialFlash = true,
   anchorRef,
@@ -235,6 +237,7 @@ export function Combobox({
     !isMobile && Platform.OS === 'web' && effectiveOptionsPosition === 'above-search'
   const { height: windowHeight } = useWindowDimensions()
   const bottomSheetRef = useRef<BottomSheetModal>(null)
+  const hasPresentedBottomSheetRef = useRef(false)
   const snapPoints = useMemo(() => ['60%', '90%'], [])
   const [availableSize, setAvailableSize] = useState<{ width?: number; height?: number } | null>(
     null
@@ -379,11 +382,20 @@ export function Combobox({
   useEffect(() => {
     if (!isMobile) return
     if (isOpen) {
-      bottomSheetRef.current?.present()
+      if (enableDismissOnClose === false && hasPresentedBottomSheetRef.current) {
+        bottomSheetRef.current?.snapToIndex(0)
+      } else {
+        hasPresentedBottomSheetRef.current = true
+        bottomSheetRef.current?.present()
+      }
     } else {
-      bottomSheetRef.current?.dismiss()
+      if (enableDismissOnClose === false) {
+        bottomSheetRef.current?.close()
+      } else {
+        bottomSheetRef.current?.dismiss()
+      }
     }
-  }, [isOpen, isMobile])
+  }, [enableDismissOnClose, isOpen, isMobile])
 
   const handleSheetChange = useCallback(
     (index: number) => {
@@ -622,6 +634,7 @@ export function Combobox({
         onChange={handleSheetChange}
         backdropComponent={renderBackdrop}
         enablePanDownToClose
+        enableDismissOnClose={enableDismissOnClose}
         backgroundComponent={ComboboxSheetBackground}
         handleIndicatorStyle={styles.bottomSheetHandle}
         keyboardBehavior="extend"

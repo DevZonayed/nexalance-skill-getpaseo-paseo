@@ -1926,9 +1926,11 @@ export const ToolCall = memo(function ToolCall({
   const hasDetails =
     Boolean(error) ||
     (effectiveDetail
-      ? effectiveDetail.type !== "unknown" ||
-        effectiveDetail.input !== null ||
-        effectiveDetail.output !== null
+      ? effectiveDetail.type === "plain_text"
+        ? Boolean(effectiveDetail.text)
+        : effectiveDetail.type !== "unknown" ||
+          effectiveDetail.input !== null ||
+          effectiveDetail.output !== null
       : false);
 
   const handleToggle = useCallback(() => {

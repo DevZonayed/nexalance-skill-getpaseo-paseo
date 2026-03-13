@@ -140,4 +140,38 @@ describe("tool-call-display", () => {
 
     expect(display.errorText).toBe('{\n  "message": "boom"\n}');
   });
+
+  it("shows terminal interaction with only the fixed label when no command is available", () => {
+    const display = buildToolCallDisplayModel({
+      name: "terminal",
+      status: "completed",
+      error: null,
+      detail: {
+        type: "plain_text",
+        icon: "square_terminal",
+      },
+    });
+
+    expect(display).toEqual({
+      displayName: "Interacted with terminal",
+    });
+  });
+
+  it("shows terminal interaction command as the summary when available", () => {
+    const display = buildToolCallDisplayModel({
+      name: "terminal",
+      status: "completed",
+      error: null,
+      detail: {
+        type: "plain_text",
+        label: "npm run test",
+        icon: "square_terminal",
+      },
+    });
+
+    expect(display).toEqual({
+      displayName: "Interacted with terminal",
+      summary: "npm run test",
+    });
+  });
 });

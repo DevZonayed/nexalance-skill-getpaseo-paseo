@@ -1,7 +1,6 @@
 import { create } from "zustand";
 import { subscribeWithSelector } from "zustand/middleware";
 import type { DaemonClient } from "@server/client/daemon-client";
-import type { useAudioPlayer } from "@/hooks/use-audio-player";
 import type { AgentDirectoryEntry } from "@/types/agent-directory";
 import type { StreamItem } from "@/types/stream";
 import type { PendingPermission } from "@/types/shared";
@@ -208,9 +207,6 @@ export interface SessionState {
   // Server metadata (from server_info handshake)
   serverInfo: DaemonServerInfo | null;
 
-  // Audio player (immutable reference)
-  audioPlayer: ReturnType<typeof useAudioPlayer> | null;
-
   // Hydration status
   hasHydratedAgents: boolean;
   hasHydratedWorkspaces: boolean;
@@ -264,7 +260,7 @@ interface SessionStoreState {
 // Action types
 interface SessionStoreActions {
   // Session management
-  initializeSession: (serverId: string, client: DaemonClient, audioPlayer: ReturnType<typeof useAudioPlayer>) => void;
+  initializeSession: (serverId: string, client: DaemonClient) => void;
   clearSession: (serverId: string) => void;
   getSession: (serverId: string) => SessionState | undefined;
   updateSessionClient: (serverId: string, client: DaemonClient) => void;
@@ -359,12 +355,14 @@ type SessionStore = SessionStoreState & SessionStoreActions;
 const agentLastActivityCoalescer = createAgentLastActivityCoalescer();
 
 // Helper to create initial session state
-function createInitialSessionState(serverId: string, client: DaemonClient, audioPlayer: ReturnType<typeof useAudioPlayer>): SessionState {
+function createInitialSessionState(
+  serverId: string,
+  client: DaemonClient
+): SessionState {
   return {
     serverId,
     client,
     serverInfo: null,
-    audioPlayer,
     hasHydratedAgents: false,
     hasHydratedWorkspaces: false,
     isPlayingAudio: false,
@@ -424,7 +422,7 @@ export const useSessionStore = create<SessionStore>()(
       agentLastActivity: new Map(),
 
     // Session management
-    initializeSession: (serverId, client, audioPlayer) => {
+    initializeSession: (serverId, client) => {
       set((prev) => {
         if (prev.sessions[serverId]) {
           return prev;
@@ -433,7 +431,7 @@ export const useSessionStore = create<SessionStore>()(
           ...prev,
           sessions: {
             ...prev.sessions,
-            [serverId]: createInitialSessionState(serverId, client, audioPlayer),
+            [serverId]: createInitialSessionState(serverId, client),
           },
         };
       });

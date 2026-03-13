@@ -1,14 +1,13 @@
 import { ActivityIndicator, Pressable, View } from "react-native";
+import { useEffect } from "react";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { Mic, MicOff, Square } from "lucide-react-native";
 import { FOOTER_HEIGHT } from "@/constants/layout";
+import { useVoiceTelemetry } from "@/contexts/voice-context";
 import { VolumeMeter } from "./volume-meter";
 
 interface RealtimeVoiceOverlayProps {
-  volume: number;
   isMuted: boolean;
-  isDetecting: boolean;
-  isSpeaking: boolean;
   isSwitching: boolean;
   onToggleMute: () => void;
   onStop: () => void;
@@ -18,15 +17,27 @@ const OVERLAY_BUTTON_SIZE = 44;
 const OVERLAY_VERTICAL_PADDING = (FOOTER_HEIGHT - OVERLAY_BUTTON_SIZE) / 2;
 
 export function RealtimeVoiceOverlay({
-  volume,
   isMuted,
-  isDetecting,
-  isSpeaking,
   isSwitching,
   onToggleMute,
   onStop,
 }: RealtimeVoiceOverlayProps) {
   const { theme } = useUnistyles();
+  const { volume, isDetecting, isSpeaking } = useVoiceTelemetry();
+  console.log("[RealtimeVoiceOverlay] render", {
+    isMuted,
+    isSwitching,
+    volume,
+    isDetecting,
+    isSpeaking,
+  });
+
+  useEffect(() => {
+    console.log("[RealtimeVoiceOverlay] mount");
+    return () => {
+      console.log("[RealtimeVoiceOverlay] unmount");
+    };
+  }, []);
 
   return (
     <View style={styles.container}>

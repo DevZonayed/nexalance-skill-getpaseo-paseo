@@ -1,22 +1,35 @@
 import { View, Pressable } from "react-native";
+import { useEffect } from "react";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { MicOff, Square } from "lucide-react-native";
 import { VolumeMeter } from "./volume-meter";
-import { useVoice } from "@/contexts/voice-context";
+import { useVoice, useVoiceTelemetry } from "@/contexts/voice-context";
 import { useHosts } from "@/runtime/host-runtime";
 
 export function VoicePanel() {
   const { theme } = useUnistyles();
   const daemons = useHosts();
+  const { volume, isDetecting, isSpeaking } = useVoiceTelemetry();
   const {
-    volume,
     isMuted,
-    isDetecting,
-    isSpeaking,
     stopVoice,
     toggleMute,
     activeServerId,
   } = useVoice();
+  console.log("[VoicePanel] render", {
+    activeServerId,
+    isMuted,
+    volume,
+    isDetecting,
+    isSpeaking,
+  });
+
+  useEffect(() => {
+    console.log("[VoicePanel] mount");
+    return () => {
+      console.log("[VoicePanel] unmount");
+    };
+  }, []);
 
   const hostLabel = activeServerId
     ? daemons.find((daemon) => daemon.serverId === activeServerId)?.label ?? null

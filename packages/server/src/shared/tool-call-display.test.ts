@@ -106,4 +106,38 @@ describe("shared tool-call display mapping", () => {
 
     expect(display.errorText).toBe('{\n  "message": "boom"\n}');
   });
+
+  it("labels terminal interaction rows without a summary when no command is available", () => {
+    const display = buildToolCallDisplayModel({
+      name: "terminal",
+      status: "completed",
+      error: null,
+      detail: {
+        type: "plain_text",
+        icon: "square_terminal",
+      },
+    });
+
+    expect(display).toEqual({
+      displayName: "Interacted with terminal",
+    });
+  });
+
+  it("uses the command as terminal interaction summary when available", () => {
+    const display = buildToolCallDisplayModel({
+      name: "terminal",
+      status: "completed",
+      error: null,
+      detail: {
+        type: "plain_text",
+        label: "npm run test",
+        icon: "square_terminal",
+      },
+    });
+
+    expect(display).toEqual({
+      displayName: "Interacted with terminal",
+      summary: "npm run test",
+    });
+  });
 });

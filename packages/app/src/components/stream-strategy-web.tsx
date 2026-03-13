@@ -24,7 +24,6 @@ const USER_SCROLL_DELTA_EPSILON = 1
 const AUTO_SCROLL_BOTTOM_THRESHOLD_PX = 64
 const AUTO_SCROLL_RESUME_THRESHOLD_PX = 1
 const WEB_STREAM_SCROLLBAR_STYLE_ID = 'web-stream-viewport-scrollbar-style'
-const IS_DEV = Boolean((globalThis as { __DEV__?: boolean }).__DEV__)
 const WEB_STREAM_SCROLLBAR_STYLE = `
   #agent-chat-scroll-web-dom-scroll,
   #agent-chat-scroll-web-dom-virtualized {
@@ -40,11 +39,8 @@ const WEB_STREAM_SCROLLBAR_STYLE = `
   }
 `
 
-function logWebStickyBottom(event: string, details: Record<string, unknown>): void {
-  if (!IS_DEV) {
-    return
-  }
-  console.log('[WebStickyBottom]', event, details)
+function logWebStickyBottom(_event: string, _details: Record<string, unknown>): void {
+  // Intentionally disabled: this path is too noisy during voice debugging.
 }
 
 function getDebugNow(): number | null {

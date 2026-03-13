@@ -7,6 +7,7 @@ import type { Logger } from "pino";
 
 import type { AgentTimelineItem } from "../agent-sdk-types.js";
 import { mapCodexRolloutToolCall } from "./codex/tool-call-mapper.js";
+import { extractCodexTerminalSessionId, nonEmptyString } from "./tool-call-mapper-utils.js";
 
 const MAX_ROLLOUT_SEARCH_DEPTH = 4;
 
@@ -272,6 +273,74 @@ function parseJsonLikeValue(value: unknown): unknown {
   return value;
 }
 
+function readTerminalSessionId(value: unknown): string | undefined {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return String(value);
+  }
+  if (typeof value === "string") {
+    return nonEmptyString(value.trim());
+  }
+  return undefined;
+}
+
+function mapCodexTerminalInteractionToToolCall(params: {
+  processId?: string | undefined;
+  fallbackCallId?: string | undefined;
+  command?: string | undefined;
+}): Extract<AgentTimelineItem, { type: "tool_call" }> {
+  const processId = nonEmptyString(params.processId);
+  const callId = processId
+    ? `terminal-session-${processId}`
+    : nonEmptyString(params.fallbackCallId) ?? "terminal-interaction";
+  const label = nonEmptyString(params.command);
+  return {
+    type: "tool_call",
+    callId,
+    name: "terminal",
+    status: "completed",
+    error: null,
+    detail: {
+      type: "plain_text",
+      ...(label ? { label } : {}),
+      icon: "square_terminal",
+    },
+    metadata: processId ? { processId } : undefined,
+  };
+}
+
+function buildTerminalCommandBySessionId(
+  parsedRecords: ParsedRolloutRecord[]
+): Map<string, string> {
+  const outputsByCallId = parsedRecords
+    .filter((record): record is Extract<ParsedRolloutRecord, { kind: "output" }> => record.kind === "output")
+    .reduce((map, record) => map.set(record.callId, record.output), new Map<string, unknown>());
+
+  const commandsBySessionId = new Map<string, string>();
+  for (const record of parsedRecords) {
+    if (record.kind !== "call" || record.name === "write_stdin") {
+      continue;
+    }
+
+    const mapped = mapCodexRolloutToolCall({
+      callId: record.callId ?? null,
+      name: record.name,
+      input: record.input ?? null,
+      output: record.callId ? outputsByCallId.get(record.callId) ?? null : null,
+    });
+    if (!mapped || mapped.detail.type !== "shell") {
+      continue;
+    }
+
+    const sessionId = extractCodexTerminalSessionId(mapped.detail.output);
+    if (!sessionId) {
+      continue;
+    }
+    commandsBySessionId.set(sessionId, mapped.detail.command);
+  }
+
+  return commandsBySessionId;
+}
+
 function readOutputPayloadValue(payload: Record<string, unknown>): unknown {
   if (payload.output !== undefined) {
     return parseJsonLikeValue(payload.output);
@@ -319,15 +388,12 @@ const RolloutResponseRecordSchema = z
           rawName === "exec_command" || rawName === "shell"
             ? FunctionCallInputNormalizationSchema.parse(parsedArguments)
             : { name: rawName, input: parsedArguments };
-        const skip = rawName === "write_stdin";
-        return skip
-          ? { kind: "ignore" }
-          : {
-              kind: "call",
-              name: normalized.name,
-              callId: payload.call_id,
-              input: normalized.input,
-            };
+        return {
+          kind: "call",
+          name: normalized.name,
+          callId: payload.call_id,
+          input: normalized.input,
+        };
       }),
     z
       .union([
@@ -498,12 +564,29 @@ export async function parseRolloutFile(
   const outputsByCallId = parsedRecords
     .filter((record): record is Extract<ParsedRolloutRecord, { kind: "output" }> => record.kind === "output")
     .reduce((map, record) => map.set(record.callId, record.output), new Map<string, unknown>());
+  const terminalCommandsBySessionId = buildTerminalCommandBySessionId(parsedRecords);
 
   const timeline = parsedRecords.flatMap((record): AgentTimelineItem[] =>
     record.kind === "timeline"
       ? [record.item]
       : record.kind === "call"
         ? (() => {
+            if (record.name === "write_stdin") {
+              const input =
+                record.input && typeof record.input === "object"
+                  ? (record.input as { session_id?: unknown; sessionId?: unknown })
+                  : null;
+              const sessionId =
+                readTerminalSessionId(input?.session_id) ??
+                readTerminalSessionId(input?.sessionId);
+              return [
+                mapCodexTerminalInteractionToToolCall({
+                  processId: sessionId,
+                  fallbackCallId: record.callId,
+                  command: sessionId ? terminalCommandsBySessionId.get(sessionId) : undefined,
+                }),
+              ];
+            }
             const mapped = mapCodexRolloutToolCall({
               callId: record.callId ?? null,
               name: record.name,

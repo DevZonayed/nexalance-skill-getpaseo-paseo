@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   BackHandler,
@@ -25,7 +25,7 @@ import { StyleSheet, UnistylesRuntime, useUnistyles } from "react-native-unistyl
 import { SidebarMenuToggle } from "@/components/headers/menu-header";
 import { HeaderToggleButton } from "@/components/headers/header-toggle-button";
 import { ScreenHeader } from "@/components/headers/screen-header";
-import { Combobox } from "@/components/ui/combobox";
+import { Combobox, type ComboboxOption } from "@/components/ui/combobox";
 import { Shortcut } from "@/components/ui/shortcut";
 import {
   DropdownMenu,
@@ -80,6 +80,7 @@ import { WorkspaceDraftAgentTab } from "@/screens/workspace/workspace-draft-agen
 import { WorkspaceDesktopTabsRow } from "@/screens/workspace/workspace-desktop-tabs-row";
 import {
   deriveWorkspaceTabPresentation,
+  type WorkspaceTabPresentation,
   WorkspaceTabIcon,
   WorkspaceTabOptionRow,
 } from "@/screens/workspace/workspace-tab-presentation";
@@ -140,6 +141,120 @@ function buildOpenIntentKey(input: {
   }
   return `${input.serverId}:${input.workspaceId}:${openParam}`;
 }
+
+type MobileWorkspaceTabSwitcherProps = {
+  activeTabKey: string;
+  activeTabLabel: string;
+  activeTabPresentation: WorkspaceTabPresentation | null;
+  tabSwitcherOptions: ComboboxOption[];
+  tabByKey: Map<string, WorkspaceTabDescriptor>;
+  tabPresentationsByKey: Map<string, WorkspaceTabPresentation>;
+  onSelectSwitcherTab: (key: string) => void;
+  onSelectNewTabOption: (key: typeof NEW_TAB_AGENT_OPTION_ID) => void;
+};
+
+const MobileWorkspaceTabSwitcher = memo(function MobileWorkspaceTabSwitcher({
+  activeTabKey,
+  activeTabLabel,
+  activeTabPresentation,
+  tabSwitcherOptions,
+  tabByKey,
+  tabPresentationsByKey,
+  onSelectSwitcherTab,
+  onSelectNewTabOption,
+}: MobileWorkspaceTabSwitcherProps) {
+  const { theme } = useUnistyles();
+  const [isOpen, setIsOpen] = useState(false);
+  const anchorRef = useRef<View>(null);
+
+  return (
+    <View style={styles.mobileTabsRow} testID="workspace-tabs-row">
+      <Pressable
+        ref={anchorRef}
+        style={({ hovered, pressed }) => [
+          styles.switcherTrigger,
+          (hovered || pressed || isOpen) && styles.switcherTriggerActive,
+          { borderWidth: 0, borderColor: "transparent" },
+          Platform.OS === "web"
+            ? {
+                outlineStyle: "solid",
+                outlineWidth: 0,
+                outlineColor: "transparent",
+              }
+            : null,
+        ]}
+        onPress={() => setIsOpen(true)}
+      >
+        <View style={styles.switcherTriggerLeft}>
+          <View style={styles.switcherTriggerIcon} testID="workspace-active-tab-icon">
+            {activeTabPresentation ? (
+              <WorkspaceTabIcon presentation={activeTabPresentation} active />
+            ) : null}
+          </View>
+
+          <Text style={styles.switcherTriggerText} numberOfLines={1}>
+            {activeTabLabel}
+          </Text>
+        </View>
+
+        <ChevronDown size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
+      </Pressable>
+
+      <View style={styles.mobileTabsActions}>
+        <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
+          <TooltipTrigger
+            testID="workspace-new-agent-tab"
+            onPress={() => onSelectNewTabOption(NEW_TAB_AGENT_OPTION_ID)}
+            accessibilityRole="button"
+            accessibilityLabel="New agent tab"
+            style={({ hovered, pressed }) => [
+              styles.newTabActionButton,
+              (hovered || pressed) && styles.newTabActionButtonHovered,
+            ]}
+          >
+            <Plus size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
+          </TooltipTrigger>
+          <TooltipContent side="bottom" align="end" offset={8}>
+            <View style={styles.newTabTooltipRow}>
+              <Text style={styles.newTabTooltipText}>New agent tab</Text>
+              <Shortcut keys={["mod", "T"]} style={styles.newTabTooltipShortcut} />
+            </View>
+          </TooltipContent>
+        </Tooltip>
+      </View>
+
+      <Combobox
+        options={tabSwitcherOptions}
+        value={activeTabKey}
+        onSelect={onSelectSwitcherTab}
+        searchable={false}
+        title="Switch tab"
+        searchPlaceholder="Search tabs"
+        open={isOpen}
+        onOpenChange={setIsOpen}
+        enableDismissOnClose={false}
+        anchorRef={anchorRef}
+        renderOption={({ option, selected, active, onPress }) => {
+          const tab = tabByKey.get(option.id);
+          if (!tab) {
+            return <View />;
+          }
+          const presentation =
+            tabPresentationsByKey.get(option.id) ??
+            deriveWorkspaceTabPresentation({ tab });
+          return (
+            <WorkspaceTabOptionRow
+              presentation={presentation}
+              selected={selected}
+              active={active}
+              onPress={onPress}
+            />
+          );
+        }}
+      />
+    </View>
+  );
+});
 
 export function WorkspaceScreen({
   serverId,
@@ -767,12 +882,10 @@ function WorkspaceScreenContent({
     [handleOpenFileFromExplorer]
   );
 
-  const [isTabSwitcherOpen, setIsTabSwitcherOpen] = useState(false);
   const [hoveredTabKey, setHoveredTabKey] = useState<string | null>(null);
   const [hoveredCloseTabKey, setHoveredCloseTabKey] = useState<string | null>(
     null
   );
-  const tabSwitcherAnchorRef = useRef<View>(null);
 
   const tabByKey = useMemo(() => {
     const map = new Map<string, WorkspaceTabDescriptor>();
@@ -837,7 +950,6 @@ function WorkspaceScreenContent({
 
   const handleSelectSwitcherTab = useCallback(
     (key: string) => {
-      setIsTabSwitcherOpen(false);
       navigateToTabId(key);
     },
     [navigateToTabId]
@@ -1522,91 +1634,16 @@ function WorkspaceScreenContent({
           />
 
           {isMobile ? (
-            <View style={styles.mobileTabsRow} testID="workspace-tabs-row">
-              <Pressable
-                ref={tabSwitcherAnchorRef}
-                style={({ hovered, pressed }) => [
-                  styles.switcherTrigger,
-                  (hovered || pressed || isTabSwitcherOpen) && styles.switcherTriggerActive,
-                  { borderWidth: 0, borderColor: "transparent" },
-                  Platform.OS === "web"
-                    ? {
-                        outlineStyle: "solid",
-                        outlineWidth: 0,
-                        outlineColor: "transparent",
-                      }
-                    : null,
-                ]}
-                onPress={() => setIsTabSwitcherOpen(true)}
-              >
-                <View style={styles.switcherTriggerLeft}>
-                  <View style={styles.switcherTriggerIcon} testID="workspace-active-tab-icon">
-                    {activeTabPresentation ? (
-                      <WorkspaceTabIcon presentation={activeTabPresentation} active />
-                    ) : null}
-                  </View>
-
-                  <Text style={styles.switcherTriggerText} numberOfLines={1}>
-                    {activeTabLabel}
-                  </Text>
-                </View>
-
-                <ChevronDown size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
-              </Pressable>
-
-              <View style={styles.mobileTabsActions}>
-                <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
-                  <TooltipTrigger
-                    testID="workspace-new-agent-tab"
-                    onPress={() => handleSelectNewTabOption(NEW_TAB_AGENT_OPTION_ID)}
-                    accessibilityRole="button"
-                    accessibilityLabel="New agent tab"
-                    style={({ hovered, pressed }) => [
-                      styles.newTabActionButton,
-                      (hovered || pressed) && styles.newTabActionButtonHovered,
-                    ]}
-                  >
-                    <Plus size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom" align="end" offset={8}>
-                    <View style={styles.newTabTooltipRow}>
-                      <Text style={styles.newTabTooltipText}>New agent tab</Text>
-                      <Shortcut keys={["mod", "T"]} style={styles.newTabTooltipShortcut} />
-                    </View>
-                  </TooltipContent>
-                </Tooltip>
-
-              </View>
-
-              <Combobox
-                options={tabSwitcherOptions}
-                value={activeTabKey}
-                onSelect={handleSelectSwitcherTab}
-                searchable={false}
-                title="Switch tab"
-                searchPlaceholder="Search tabs"
-                open={isTabSwitcherOpen}
-                onOpenChange={setIsTabSwitcherOpen}
-                anchorRef={tabSwitcherAnchorRef}
-                renderOption={({ option, selected, active, onPress }) => {
-                  const tab = tabByKey.get(option.id);
-                  if (!tab) {
-                    return <View />;
-                  }
-                  const presentation =
-                    tabPresentationsByKey.get(option.id) ??
-                    deriveWorkspaceTabPresentation({ tab });
-                  return (
-                    <WorkspaceTabOptionRow
-                      presentation={presentation}
-                      selected={selected}
-                      active={active}
-                      onPress={onPress}
-                    />
-                  );
-                }}
-              />
-            </View>
+            <MobileWorkspaceTabSwitcher
+              activeTabKey={activeTabKey}
+              activeTabLabel={activeTabLabel}
+              activeTabPresentation={activeTabPresentation}
+              tabSwitcherOptions={tabSwitcherOptions}
+              tabByKey={tabByKey}
+              tabPresentationsByKey={tabPresentationsByKey}
+              onSelectSwitcherTab={handleSelectSwitcherTab}
+              onSelectNewTabOption={handleSelectNewTabOption}
+            />
           ) : (
             <WorkspaceDesktopTabsRow
               tabs={tabs}

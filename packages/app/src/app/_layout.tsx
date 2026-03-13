@@ -442,6 +442,7 @@ function ProvidersWrapper({ children }: { children: ReactNode }) {
   return (
     <VoiceProvider>
       <OfferLinkListener upsertDaemonFromOfferUrl={upsertConnectionFromOfferUrl} />
+      <HostSessionManager />
       {children}
     </VoiceProvider>
   );
@@ -582,7 +583,6 @@ export default function RootLayout() {
               <QueryProvider>
                 <HostRuntimeBootstrapProvider>
                   <PushNotificationRouter />
-                  <HostSessionManager />
                   <ProvidersWrapper>
                     <SidebarAnimationProvider>
                       <HorizontalScrollProvider>

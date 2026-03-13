@@ -132,8 +132,6 @@ function createDriverHarness(input?: {
     context.measurementState.offsetY = 720;
   });
   const modeChanges: BottomAnchorMode[] = [];
-  const warnings: Array<{ agentId: string; reason: string }> = [];
-  const logs: Array<{ event: string; details: Record<string, unknown> }> = [];
   const driver = __private__.createBottomAnchorControllerDriver({
     getAgentId: () => context.agentId,
     getIsAuthoritativeHistoryReady: () => context.authoritativeReady,
@@ -145,10 +143,6 @@ function createDriverHarness(input?: {
     onModeChange: (mode) => {
       modeChanges.push(mode);
     },
-    log: (event, details) => {
-      logs.push({ event, details });
-    },
-    warn: (details) => warnings.push(details),
     scheduleFrame: (params) => scheduler.schedule(params),
     cancelFrame: (handle) => scheduler.cancel(handle),
   });
@@ -159,8 +153,6 @@ function createDriverHarness(input?: {
     scheduler,
     scrollToBottom,
     modeChanges,
-    logs,
-    warnings,
   };
 }
 
@@ -367,7 +359,6 @@ describe("bottom anchor controller driver", () => {
     harness.scheduler.flushAll();
 
     expect(harness.scrollToBottom).toHaveBeenCalledTimes(1);
-    expect(harness.warnings).toEqual([]);
     expect(harness.driver.getSnapshot().pendingRequest).toBeNull();
   });
 

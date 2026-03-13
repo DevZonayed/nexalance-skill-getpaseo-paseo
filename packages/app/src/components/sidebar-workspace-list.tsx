@@ -78,8 +78,12 @@ function toProjectIconDataUri(icon: { mimeType: string; data: string } | null): 
   return `data:${icon.mimeType};base64,${icon.data}`
 }
 
+const workspaceKeyExtractor = (workspace: SidebarWorkspaceEntry) =>
+  workspace.workspaceKey
+
+const projectKeyExtractor = (project: SidebarProjectEntry) => project.projectKey
+
 interface SidebarWorkspaceListProps {
-  isOpen?: boolean
   projects: SidebarProjectEntry[]
   serverId: string | null
   collapsedProjectKeys: ReadonlySet<string>
@@ -1156,6 +1160,13 @@ function ProjectBlock({
     [renderWorkspaceRow]
   )
 
+  const handleWorkspaceDragEnd = useCallback(
+    (workspaces: SidebarWorkspaceEntry[]) => {
+      onWorkspaceReorder(project.projectKey, workspaces)
+    },
+    [onWorkspaceReorder, project.projectKey]
+  )
+
   return (
     <View style={styles.projectBlock}>
       {flattenedWorkspace ? (
@@ -1201,9 +1212,9 @@ function ProjectBlock({
             <DraggableList
               testID={`sidebar-workspace-list-${project.projectKey}`}
               data={project.workspaces}
-              keyExtractor={(workspace) => workspace.workspaceKey}
+              keyExtractor={workspaceKeyExtractor}
               renderItem={renderWorkspace}
-              onDragEnd={(workspaces) => onWorkspaceReorder(project.projectKey, workspaces)}
+              onDragEnd={handleWorkspaceDragEnd}
               scrollEnabled={false}
               useDragHandle
               nestable={useNestable}
@@ -1218,7 +1229,6 @@ function ProjectBlock({
 }
 
 export function SidebarWorkspaceList({
-  isOpen = true,
   projects,
   serverId,
   collapsedProjectKeys,
@@ -1258,7 +1268,7 @@ export function SidebarWorkspaceList({
   }, [pathname])
 
   const projectIconRequests = useMemo(() => {
-    if (!isOpen || !serverId) {
+    if (!serverId) {
       return []
     }
     const unique = new Map<string, { serverId: string; cwd: string }>()
@@ -1270,7 +1280,7 @@ export function SidebarWorkspaceList({
       unique.set(`${serverId}:${cwd}`, { serverId, cwd })
     }
     return Array.from(unique.values())
-  }, [isOpen, projects, serverId])
+  }, [projects, serverId])
 
   const projectIconQueries = useQueries({
     queries: projectIconRequests.map((request) => ({
@@ -1285,7 +1295,6 @@ export function SidebarWorkspaceList({
       },
       select: toProjectIconDataUri,
       enabled: Boolean(
-        isOpen &&
         getHostRuntimeStore().getClient(request.serverId) &&
         isHostRuntimeConnected(getHostRuntimeStore().getSnapshot(request.serverId)) &&
         request.cwd
@@ -1444,7 +1453,7 @@ export function SidebarWorkspaceList({
         <DraggableList
           testID="sidebar-project-list"
           data={projects}
-          keyExtractor={(project) => project.projectKey}
+          keyExtractor={projectKeyExtractor}
           renderItem={renderProject}
           onDragEnd={handleProjectDragEnd}
           scrollEnabled={false}
