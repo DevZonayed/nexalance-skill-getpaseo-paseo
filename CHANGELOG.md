@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.1.27 - 2026-03-13
+
+### Added
+- Added voice runtime with new audio engine architecture for voice interactions.
+- Added Grep tool support in Claude tool-call mapping.
+- Added ability to open workspace files directly from agent chat messages.
+- Added desktop notifications via a custom native bridge.
+
+### Improved
+- Improved image picker, markdown rendering, and UI interactions.
+- Improved shell environment detection using shell-env.
+
+### Fixed
+- Fixed platform-specific markdown link rendering.
+- Fixed Linux AppImage CLI resource paths.
+- Fixed Codex replacement stream being killed by stale turn notifications.
+
 ## 0.1.26 - 2026-03-12
 
 ### Added
