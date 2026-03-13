@@ -821,6 +821,7 @@ pub fn run_managed_cli_from_current_process(args: Vec<String>) -> Result<i32, St
     if let Some(contents_dir) = exe_dir.parent() {
         resource_dirs.push(contents_dir.join("Resources"));
         resource_dirs.push(contents_dir.join("resources"));
+        resource_dirs.push(contents_dir.join("lib").join("Paseo").join("resources"));
     }
     let bundled_root = resource_dirs
         .into_iter()
