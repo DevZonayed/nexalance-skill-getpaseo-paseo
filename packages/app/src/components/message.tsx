@@ -71,7 +71,11 @@ import {
   buildToolCallDisplayModel,
 } from "@/utils/tool-call-display";
 import { resolveToolCallIcon } from "@/utils/tool-call-icon";
-import { parseInlinePathToken, type InlinePathTarget } from "@/utils/inline-path";
+import {
+  parseFileProtocolUrl,
+  parseInlinePathToken,
+  type InlinePathTarget,
+} from "@/utils/inline-path";
 import { getMarkdownListMarker } from "@/utils/markdown-list";
 import { openExternalUrl } from "@/utils/open-external-url";
 import { markScrollInvestigationEvent } from "@/utils/scroll-jank-investigation";
@@ -505,6 +509,19 @@ function getInlineCodeAutoLinkUrl(
   return match.url;
 }
 
+function nodeHasParentType(parent: unknown, type: string): boolean {
+  if (Array.isArray(parent)) {
+    return parent.some((entry) => entry?.type === type);
+  }
+
+  return (
+    typeof parent === "object" &&
+    parent !== null &&
+    "type" in parent &&
+    (parent as { type?: string }).type === type
+  );
+}
+
 const turnCopyButtonStylesheet = StyleSheet.create((theme) => ({
   container: {
     alignSelf: "flex-start",
@@ -727,16 +744,35 @@ export const AssistantMessage = memo(function AssistantMessage({
   const markdownStyles = useMemo(() => createMarkdownStyles(theme), [theme]);
 
   const markdownParser = useMemo(
-    () => MarkdownIt({ typographer: true, linkify: true }),
+    () => {
+      const parser = MarkdownIt({ typographer: true, linkify: true });
+      const defaultValidateLink = parser.validateLink.bind(parser);
+      parser.validateLink = (url: string) => {
+        if (url.trim().toLowerCase().startsWith("file://")) {
+          return true;
+        }
+
+        return defaultValidateLink(url);
+      };
+      return parser;
+    },
     []
   );
 
   const handleLinkPress = useCallback((url: string) => {
+    const fileTarget = onInlinePathPress
+      ? parseFileProtocolUrl(url)
+      : null;
+    if (fileTarget) {
+      onInlinePathPress?.(fileTarget);
+      return false;
+    }
+
     void openExternalUrl(url);
     // react-native-markdown-display opens the link itself when this returns true.
     // We already handled it above, so return false to avoid duplicate opens.
     return false;
-  }, []);
+  }, [onInlinePathPress]);
 
   const markdownRules = useMemo(() => {
     return {
@@ -793,12 +829,16 @@ export const AssistantMessage = memo(function AssistantMessage({
       code_inline: (
         node: any,
         _children: ReactNode[],
-        _parent: any,
+        parent: any,
         styles: any,
         inheritedStyles: any = {}
       ) => {
         const content = node.content ?? "";
-        const parsed = onInlinePathPress
+        const isLinkedInlineCode =
+          nodeHasParentType(parent, "link") ||
+          (!Array.isArray(parent) &&
+            typeof parent?.attributes?.href === "string");
+        const parsed = onInlinePathPress && !isLinkedInlineCode
           ? parseInlinePathToken(content)
           : null;
 
