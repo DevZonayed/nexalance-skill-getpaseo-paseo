@@ -51,23 +51,6 @@ export const DEFAULT_EXPLORER_FILES_SPLIT_RATIO = 0.38;
 export const MIN_EXPLORER_FILES_SPLIT_RATIO = 0.2;
 export const MAX_EXPLORER_FILES_SPLIT_RATIO = 0.8;
 
-const IS_DEV = Boolean((globalThis as { __DEV__?: boolean }).__DEV__);
-
-function logPanelTransition(
-  action: string,
-  details: Record<string, unknown>
-): void {
-  if (!IS_DEV) {
-    return;
-  }
-  const stack =
-    new Error().stack
-      ?.split("\n")
-      .slice(2, 8)
-      .join("\n") ?? "stack unavailable";
-  console.log(`[PanelStore] ${action}`, details, stack);
-}
-
 interface PanelState {
   // Mobile: which panel is currently shown
   mobileView: MobilePanelView;
@@ -151,103 +134,52 @@ export const usePanelStore = create<PanelState>()(
       explorerFilesSplitRatio: DEFAULT_EXPLORER_FILES_SPLIT_RATIO,
 
       openAgentList: () =>
-        set((state) => {
-          const nextState = {
-            mobileView: "agent-list" as const,
-            desktop: { ...state.desktop, agentListOpen: true },
-          };
-          logPanelTransition("openAgentList", {
-            fromMobileView: state.mobileView,
-            toMobileView: nextState.mobileView,
-            fromDesktopAgentListOpen: state.desktop.agentListOpen,
-            toDesktopAgentListOpen: nextState.desktop.agentListOpen,
-          });
-          return nextState;
-        }),
+        set((state) => ({
+          mobileView: "agent-list" as const,
+          desktop: { ...state.desktop, agentListOpen: true },
+        })),
 
       openFileExplorer: () =>
         set((state) => {
           const resolvedTab = resolveExplorerTabFromActiveCheckout(state);
-          const nextMobileView: MobilePanelView = "file-explorer";
-          const nextDesktop = { ...state.desktop, fileExplorerOpen: true };
-          const nextState = {
-            mobileView: nextMobileView,
-            desktop: nextDesktop,
+          return {
+            mobileView: "file-explorer" as MobilePanelView,
+            desktop: { ...state.desktop, fileExplorerOpen: true },
             ...(resolvedTab ? { explorerTab: resolvedTab } : {}),
           };
-          logPanelTransition("openFileExplorer", {
-            fromMobileView: state.mobileView,
-            toMobileView: nextMobileView,
-            fromDesktopFileExplorerOpen: state.desktop.fileExplorerOpen,
-            toDesktopFileExplorerOpen: nextDesktop.fileExplorerOpen,
-            resolvedTab: resolvedTab ?? null,
-            activeCheckout: state.activeExplorerCheckout,
-          });
-          return nextState;
         }),
       closeFileExplorer: () =>
-        set((state) => {
-          const nextState = {
-            mobileView:
-              state.mobileView === "file-explorer" ? ("agent" as const) : state.mobileView,
-            desktop: {
-              ...state.desktop,
-              fileExplorerOpen: false,
-            },
-          };
-          logPanelTransition("closeFileExplorer", {
-            fromMobileView: state.mobileView,
-            toMobileView: nextState.mobileView,
-            fromDesktopFileExplorerOpen: state.desktop.fileExplorerOpen,
-            toDesktopFileExplorerOpen: nextState.desktop.fileExplorerOpen,
-          });
-          return nextState;
-        }),
+        set((state) => ({
+          mobileView:
+            state.mobileView === "file-explorer" ? ("agent" as const) : state.mobileView,
+          desktop: {
+            ...state.desktop,
+            fileExplorerOpen: false,
+          },
+        })),
 
       closeToAgent: () =>
-        set((state) => {
-          const nextState = {
-            mobileView: "agent" as const,
-            // On desktop, closing depends on which panel triggered it
-            // This is called when closing via gesture/backdrop, so we close the currently active mobile panel
-            desktop: {
-              agentListOpen:
-                state.mobileView === "agent-list" ? false : state.desktop.agentListOpen,
-              fileExplorerOpen:
-                state.mobileView === "file-explorer" ? false : state.desktop.fileExplorerOpen,
-            },
-          };
-          logPanelTransition("closeToAgent", {
-            fromMobileView: state.mobileView,
-            toMobileView: nextState.mobileView,
-            fromDesktopAgentListOpen: state.desktop.agentListOpen,
-            toDesktopAgentListOpen: nextState.desktop.agentListOpen,
-            fromDesktopFileExplorerOpen: state.desktop.fileExplorerOpen,
-            toDesktopFileExplorerOpen: nextState.desktop.fileExplorerOpen,
-          });
-          return nextState;
-        }),
+        set((state) => ({
+          mobileView: "agent" as const,
+          // On desktop, closing depends on which panel triggered it
+          // This is called when closing via gesture/backdrop, so we close the currently active mobile panel
+          desktop: {
+            agentListOpen:
+              state.mobileView === "agent-list" ? false : state.desktop.agentListOpen,
+            fileExplorerOpen:
+              state.mobileView === "file-explorer" ? false : state.desktop.fileExplorerOpen,
+          },
+        })),
 
       toggleAgentList: () =>
-        set((state) => {
+        set((state) => ({
           // Mobile: toggle between agent and agent-list
-          const newMobileView: MobilePanelView =
-            state.mobileView === "agent-list" ? "agent" : "agent-list";
-          const nextState = {
-            mobileView: newMobileView,
-            desktop: {
-              ...state.desktop,
-              agentListOpen: !state.desktop.agentListOpen,
-            },
-          };
-          logPanelTransition("toggleAgentList", {
-            fromMobileView: state.mobileView,
-            toMobileView: nextState.mobileView,
-            fromDesktopAgentListOpen: state.desktop.agentListOpen,
-            toDesktopAgentListOpen: nextState.desktop.agentListOpen,
-          });
-          return nextState;
-        }),
+          mobileView: (state.mobileView === "agent-list" ? "agent" : "agent-list") as MobilePanelView,
+          desktop: {
+            ...state.desktop,
+            agentListOpen: !state.desktop.agentListOpen,
+          },
+        })),
 
       toggleFileExplorer: () =>
         set((state) => {
@@ -266,23 +198,12 @@ export const usePanelStore = create<PanelState>()(
             mobileView: nextMobileView,
             desktop: nextDesktop,
           };
-          let resolvedTab: ExplorerTab | null = null;
           if (willOpenMobile || willOpenDesktop) {
-            resolvedTab = resolveExplorerTabFromActiveCheckout(state);
+            const resolvedTab = resolveExplorerTabFromActiveCheckout(state);
             if (resolvedTab) {
               nextState.explorerTab = resolvedTab;
             }
           }
-          logPanelTransition("toggleFileExplorer", {
-            fromMobileView: state.mobileView,
-            toMobileView: nextMobileView,
-            fromDesktopFileExplorerOpen: state.desktop.fileExplorerOpen,
-            toDesktopFileExplorerOpen: nextDesktop.fileExplorerOpen,
-            willOpenMobile,
-            willOpenDesktop,
-            resolvedTab: resolvedTab ?? null,
-            activeCheckout: state.activeExplorerCheckout,
-          });
           return nextState;
         }),
 

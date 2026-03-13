@@ -216,18 +216,6 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
   markScrollInvestigationRender(investigationComponentId)
   const toast = useToast()
   const voice = useVoiceOptional()
-  console.log("[MessageInput] render", {
-    voiceServerId: voiceServerId ?? null,
-    voiceAgentId: voiceAgentId ?? null,
-    hasVoice: Boolean(voice),
-    isVoiceMode: voice?.isVoiceMode ?? false,
-    isVoiceSwitching: voice?.isVoiceSwitching ?? false,
-    isMuted: voice?.isMuted ?? false,
-    disabled,
-    isSubmitLoading,
-    valueLength: value.length,
-    imageCount: images.length,
-  })
   const [inputHeight, setInputHeight] = useState(MIN_INPUT_HEIGHT)
   const rootRef = useRef<View | null>(null)
   const inputWrapperRef = useRef<View | null>(null)
@@ -300,19 +288,6 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
       [voiceServerId]
     )
   )
-
-  useEffect(() => {
-    console.log("[MessageInput] mount", {
-      voiceServerId: voiceServerId ?? null,
-      voiceAgentId: voiceAgentId ?? null,
-    })
-    return () => {
-      console.log("[MessageInput] unmount", {
-        voiceServerId: voiceServerId ?? null,
-        voiceAgentId: voiceAgentId ?? null,
-      })
-    }
-  }, [voiceAgentId, voiceServerId])
 
   useEffect(() => {
     valueRef.current = value
@@ -428,25 +403,6 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
   const showRealtimeOverlay = isRealtimeVoiceForCurrentAgent
   const showOverlay = showDictationOverlay || showRealtimeOverlay
 
-  useEffect(() => {
-    console.log("[MessageInput] overlay_state", {
-      showDictationOverlay,
-      showRealtimeOverlay,
-      showOverlay,
-      isDictating,
-      isDictationProcessing,
-      dictationStatus,
-      isRealtimeVoiceForCurrentAgent,
-    })
-  }, [
-    dictationStatus,
-    isDictating,
-    isDictationProcessing,
-    isRealtimeVoiceForCurrentAgent,
-    showDictationOverlay,
-    showOverlay,
-    showRealtimeOverlay,
-  ])
 
   useEffect(() => {
     if (isDictating || isDictationProcessing) {
@@ -484,11 +440,6 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
   }))
 
   const handleVoicePress = useCallback(async () => {
-    console.log("[MessageInput] handleVoicePress", {
-      isRealtimeVoiceForCurrentAgent,
-      isDictating,
-      hasVoice: Boolean(voice),
-    })
     if (isRealtimeVoiceForCurrentAgent && voice) {
       voice.toggleMute()
       return
@@ -508,39 +459,28 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
   ])
 
   const handleCancelRecording = useCallback(async () => {
-    console.log("[MessageInput] handleCancelRecording")
     await cancelDictation()
   }, [cancelDictation])
 
   const handleAcceptRecording = useCallback(async () => {
-    console.log("[MessageInput] handleAcceptRecording")
     sendAfterTranscriptRef.current = false
     await confirmDictation()
   }, [confirmDictation])
 
   const handleAcceptAndSendRecording = useCallback(async () => {
-    console.log("[MessageInput] handleAcceptAndSendRecording")
     sendAfterTranscriptRef.current = true
     await confirmDictation()
   }, [confirmDictation])
 
   const handleRetryFailedRecording = useCallback(() => {
-    console.log("[MessageInput] handleRetryFailedRecording")
     void retryFailedDictation()
   }, [retryFailedDictation])
 
   const handleDiscardFailedRecording = useCallback(() => {
-    console.log("[MessageInput] handleDiscardFailedRecording")
     discardFailedDictation()
   }, [discardFailedDictation])
 
   const handleStopRealtimeVoice = useCallback(async () => {
-    console.log("[MessageInput] handleStopRealtimeVoice", {
-      hasVoice: Boolean(voice),
-      isRealtimeVoiceForCurrentAgent,
-      isAgentRunning,
-      voiceAgentId: voiceAgentId ?? null,
-    })
     if (!voice || !isRealtimeVoiceForCurrentAgent) {
       return
     }
@@ -560,18 +500,6 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
   }, [client, isAgentRunning, isRealtimeVoiceForCurrentAgent, voice, voiceAgentId])
 
   const handleToggleRealtimeVoiceShortcut = useCallback(() => {
-    console.log("[MessageInput] handleToggleRealtimeVoiceShortcut", {
-      hasVoice: Boolean(voice),
-      voiceServerId: voiceServerId ?? null,
-      voiceAgentId: voiceAgentId ?? null,
-      isConnected,
-      disabled,
-      isVoiceSwitching: voice?.isVoiceSwitching ?? false,
-      isVoiceModeForAgent:
-        voice && voiceServerId && voiceAgentId
-          ? voice.isVoiceModeForAgent(voiceServerId, voiceAgentId)
-          : false,
-    })
     if (!voice || !voiceServerId || !voiceAgentId || !isConnected || disabled) {
       return
     }
@@ -593,11 +521,6 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
   }, [disabled, handleStopRealtimeVoice, isConnected, toast, voice, voiceAgentId, voiceServerId])
 
   const handleSendMessage = useCallback(() => {
-    console.log("[MessageInput] handleSendMessage", {
-      valueLength: value.length,
-      imageCount: images.length,
-      isAgentRunning,
-    })
     const trimmed = value.trim()
     if (!trimmed && images.length === 0) return
     const payload = {

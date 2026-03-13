@@ -103,29 +103,6 @@ function toErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-function toReasonCode(reason: string | null): string | null {
-  if (!reason) {
-    return null;
-  }
-  const normalized = reason.toLowerCase();
-  if (normalized.includes("timed out")) {
-    return "connect_timeout";
-  }
-  if (normalized.includes("disposed")) {
-    return "disposed";
-  }
-  if (normalized.includes("client closed") || normalized.includes("client_closed")) {
-    return "client_closed";
-  }
-  if (normalized.includes("transport")) {
-    return "transport_error";
-  }
-  if (normalized.includes("failed to connect")) {
-    return "connect_failed";
-  }
-  return "unknown";
-}
-
 function hashForLog(value: string): string {
   let hash = 0;
   for (let index = 0; index < value.length; index += 1) {
@@ -915,35 +892,12 @@ export class HostRuntimeController {
     });
   }
 
-  private logConnectionTransition(input: {
+  private logConnectionTransition(_input: {
     from: HostRuntimeConnectionMachineState["tag"];
     to: HostRuntimeConnectionMachineState["tag"];
     event: HostRuntimeConnectionMachineEvent;
   }): void {
-    const { event } = input;
-    const reason =
-      event.type === "connect_failed"
-        ? event.message
-        : event.type === "client_state"
-          ? event.state.status === "disconnected"
-            ? event.state.reason ?? event.lastError ?? null
-            : null
-          : null;
-    const reasonCode =
-      event.type === "connect_failed"
-        ? "connect_failed"
-        : toReasonCode(reason);
-    console.info("[HostRuntimeTransition]", {
-      serverId: this.host.serverId,
-      clientIdHash: this.clientIdHash,
-      from: input.from,
-      to: input.to,
-      event: event.type,
-      connectionPath: this.snapshot.activeConnection?.type ?? null,
-      generation: this.snapshot.clientGeneration,
-      reasonCode,
-      reason,
-    });
+    // Intentionally empty - logging removed.
   }
 
   private trackConnectionFirstSeen(): void {

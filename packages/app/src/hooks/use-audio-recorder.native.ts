@@ -18,41 +18,27 @@ export interface AudioCaptureConfig {
  */
 async function getActualRecordingUri(createdAt: Date): Promise<string | null> {
   try {
-    console.log('[AudioRecorder] Searching for recording file created at:', createdAt.toISOString());
 
     const audioDir = new Directory(Paths.cache, 'Audio');
-    console.log('[AudioRecorder] Audio cache directory URI:', audioDir.uri);
-    console.log('[AudioRecorder] Directory exists:', audioDir.exists);
 
     if (!audioDir.exists) {
-      console.log('[AudioRecorder] Audio cache directory does not exist');
       return null;
     }
 
     const files = audioDir.list();
-    console.log('[AudioRecorder] Found files in Audio cache:', files.length);
 
     if (!files.length) {
-      console.log('[AudioRecorder] No files found in Audio cache directory');
       return null;
     }
 
     const validFiles = files
       .map(file => {
         const info = file.info();
-        console.log('[AudioRecorder] File info:', {
-          uri: info.uri,
-          size: info.size,
-          creationTime: info.creationTime ? new Date(info.creationTime).toISOString() : null,
-        });
         return info;
       })
       .filter(f => f.size && f.size > 0);
 
-    console.log('[AudioRecorder] Valid files (size > 0):', validFiles.length);
-
     if (validFiles.length === 0) {
-      console.log('[AudioRecorder] No valid files found (all are zero-byte)');
       return null;
     }
 
@@ -62,10 +48,6 @@ async function getActualRecordingUri(createdAt: Date): Promise<string | null> {
     for (const file of validFiles) {
       if (!file.creationTime || !file.uri) continue;
       const diff = Math.abs(file.creationTime - createdAt.getTime());
-      console.log('[AudioRecorder] Time diff for file:', {
-        uri: file.uri,
-        diffMs: diff,
-      });
       if (diff < minDiff) {
         closest = file;
         minDiff = diff;
@@ -74,15 +56,9 @@ async function getActualRecordingUri(createdAt: Date): Promise<string | null> {
 
     if (closest) {
       const resultUri = closest.uri?.slice(0, -1) ?? null;
-      console.log('[AudioRecorder] Found closest file:', {
-        uri: resultUri,
-        size: closest.size,
-        timeDiffMs: minDiff,
-      });
       return resultUri;
     }
 
-    console.log('[AudioRecorder] No closest file found');
     return null;
   } catch (e) {
     console.error('[AudioRecorder] Error finding actual recording file:', e);
@@ -208,7 +184,6 @@ export function useAudioRecorder(config?: AudioCaptureConfig) {
       attemptGuardRef.current.assertCurrent(attemptId);
 
       // Request microphone permissions
-      console.log('[AudioRecorder] Requesting recording permissions...');
       const permissionResponse = await requestRecordingPermissionsAsync();
       attemptGuardRef.current.assertCurrent(attemptId);
 
@@ -217,38 +192,26 @@ export function useAudioRecorder(config?: AudioCaptureConfig) {
       }
 
       // Configure audio mode for recording
-      console.log('[AudioRecorder] Configuring audio mode...');
       await setAudioModeAsync({
         playsInSilentMode: true,
         allowsRecording: true,
       });
       attemptGuardRef.current.assertCurrent(attemptId);
 
-      console.log('[AudioRecorder] Starting recording with options:', {
-        sampleRate: recordingOptions.sampleRate,
-        numberOfChannels: recordingOptions.numberOfChannels,
-        bitRate: recordingOptions.bitRate,
-      });
-
       const startTime = new Date();
       setRecordingStartTime(startTime);
       attemptGuardRef.current.assertCurrent(attemptId);
 
       // Prepare the recorder before recording (required step)
-      console.log('[AudioRecorder] Preparing recorder...');
       await recorder.prepareToRecordAsync();
       attemptGuardRef.current.assertCurrent(attemptId);
 
-      console.log('[AudioRecorder] Starting recording...');
       await recorder.record();
       attemptGuardRef.current.assertCurrent(attemptId);
 
-      console.log('[AudioRecorder] Recording started at:', startTime.toISOString());
-      console.log('[AudioRecorder] Recorder isRecording:', recorder.isRecording);
     } catch (error: any) {
       setRecordingStartTime(null);
       if (error instanceof AttemptCancelledError) {
-        console.log('[AudioRecorder] Recording start cancelled.');
         return;
       }
       if (error?.message !== 'Recording cancelled') {
@@ -278,15 +241,12 @@ export function useAudioRecorder(config?: AudioCaptureConfig) {
 
         // Get URI from recorder
         let uri = recorder.uri;
-        console.log('[AudioRecorder] Initial URI from recorder:', uri);
 
         // Workaround for Expo SDK 54 Android bug - find actual recording file
         if (recordingStartTime && (!uri || uri === '')) {
-          console.log('[AudioRecorder] Using workaround to find actual recording file...');
           const actualUri = await getActualRecordingUri(recordingStartTime);
           if (actualUri) {
             uri = actualUri;
-            console.log('[AudioRecorder] Found actual recording URI:', uri);
           }
         }
 
@@ -299,7 +259,6 @@ export function useAudioRecorder(config?: AudioCaptureConfig) {
         // Get file info
         const file = new File(uri);
         const exists = file.exists;
-        console.log('[AudioRecorder] File exists:', exists);
 
         if (!exists) {
           setRecordingStartTime(null);
@@ -308,11 +267,6 @@ export function useAudioRecorder(config?: AudioCaptureConfig) {
 
         // Convert URI to Blob
         const audioBlob = await uriToBlob(uri);
-
-        console.log('[AudioRecorder] Recording converted to blob:', {
-          size: audioBlob.size,
-          type: audioBlob.type,
-        });
 
         // Clean up the temporary file
         file.delete();

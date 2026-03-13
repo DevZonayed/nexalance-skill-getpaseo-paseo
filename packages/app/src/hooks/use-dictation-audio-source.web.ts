@@ -163,15 +163,6 @@ export function useDictationAudioSource(config: DictationAudioSourceConfig): Dic
     if (missingNavigator) {
       throw new Error("Microphone capture is not supported in this environment");
     }
-    console.log("[DictationAudio][Web] Microphone preflight", {
-      secureContext,
-      currentOrigin,
-      isTauri,
-      hasMediaDevices:
-        typeof navigator !== "undefined" &&
-        !!navigator.mediaDevices &&
-        typeof navigator.mediaDevices.getUserMedia === "function",
-    });
     if (!secureContext && !isTauri) {
       throw new Error(`Microphone access requires HTTPS or localhost. Current origin: ${currentOrigin}`);
     }

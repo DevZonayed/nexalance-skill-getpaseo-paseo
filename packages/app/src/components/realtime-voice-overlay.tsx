@@ -1,5 +1,4 @@
 import { ActivityIndicator, Pressable, View } from "react-native";
-import { useEffect } from "react";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { Mic, MicOff, Square } from "lucide-react-native";
 import { FOOTER_HEIGHT } from "@/constants/layout";
@@ -24,21 +23,6 @@ export function RealtimeVoiceOverlay({
 }: RealtimeVoiceOverlayProps) {
   const { theme } = useUnistyles();
   const { volume, isDetecting, isSpeaking } = useVoiceTelemetry();
-  console.log("[RealtimeVoiceOverlay] render", {
-    isMuted,
-    isSwitching,
-    volume,
-    isDetecting,
-    isSpeaking,
-  });
-
-  useEffect(() => {
-    console.log("[RealtimeVoiceOverlay] mount");
-    return () => {
-      console.log("[RealtimeVoiceOverlay] unmount");
-    };
-  }, []);
-
   return (
     <View style={styles.container}>
       <View style={styles.meterContainer}>

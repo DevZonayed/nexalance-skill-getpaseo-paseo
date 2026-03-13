@@ -1,5 +1,4 @@
 import { ActivityIndicator, Alert, Pressable, View } from "react-native";
-import { useEffect } from "react";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { Mic, MicOff, Square } from "lucide-react-native";
 import { VolumeMeter } from "@/components/volume-meter";
@@ -15,22 +14,6 @@ export function VoiceCompactIndicator() {
     toggleMute,
     stopVoice,
   } = useVoice();
-  console.log("[VoiceCompactIndicator] render", {
-    isVoiceMode,
-    isVoiceSwitching,
-    isMuted,
-    volume,
-    isDetecting,
-    isSpeaking,
-  });
-
-  useEffect(() => {
-    console.log("[VoiceCompactIndicator] mount");
-    return () => {
-      console.log("[VoiceCompactIndicator] unmount");
-    };
-  }, []);
-
   if (!isVoiceMode) {
     return null;
   }

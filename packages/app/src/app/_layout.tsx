@@ -71,18 +71,6 @@ polyfillCrypto();
 attachConsole();
 const HostRuntimeBootstrapContext = createContext(false);
 
-const IS_DEV = Boolean((globalThis as { __DEV__?: boolean }).__DEV__);
-
-function logLeftSidebarOpenGesture(
-  event: string,
-  details: Record<string, unknown>
-): void {
-  if (!IS_DEV) {
-    return;
-  }
-  console.log(`[LeftSidebarOpenGesture] ${event}`, details);
-}
-
 function PushNotificationRouter() {
   const router = useRouter();
   const lastHandledIdRef = useRef<string | null>(null);
@@ -339,10 +327,6 @@ function AppContainer({
         })
         .onStart(() => {
           isGesturing.value = true;
-          runOnJS(logLeftSidebarOpenGesture)("start", {
-            mobileView,
-            openGestureEnabled,
-          });
         })
         .onUpdate((event) => {
           // Start from closed position (-windowWidth) and move towards 0
@@ -359,13 +343,6 @@ function AppContainer({
           isGesturing.value = false;
           // Open if dragged more than 1/3 of sidebar or fast swipe
           const shouldOpen = event.translationX > windowWidth / 3 || event.velocityX > 500;
-          runOnJS(logLeftSidebarOpenGesture)("end", {
-            translationX: event.translationX,
-            velocityX: event.velocityX,
-            shouldOpen,
-            mobileView,
-            openGestureEnabled,
-          });
           if (shouldOpen) {
             animateToOpen();
             runOnJS(openAgentList)();

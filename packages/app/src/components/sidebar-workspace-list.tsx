@@ -257,7 +257,6 @@ function NewWorktreeButton({
 function useLongPressDragInteraction(input: {
   drag: () => void
   menuController: ReturnType<typeof useContextMenu> | null
-  debugId: string
 }) {
   const didLongPressRef = useRef(false)
   const dragArmedRef = useRef(false)
@@ -295,15 +294,11 @@ function useLongPressDragInteraction(input: {
     input.menuController.setOpen(true)
     menuOpenedRef.current = true
     didLongPressRef.current = true
-    console.log('[sidebar-dnd-debug] context menu opened', { id: input.debugId })
-  }, [input.debugId, input.menuController])
+  }, [input.menuController])
 
   const handleLongPress = useCallback(() => {
     // Manual timers own long-press behavior on mobile.
-    console.log('[sidebar-dnd-debug] native onLongPress ignored (manual state machine active)', {
-      id: input.debugId,
-    })
-  }, [input.debugId])
+  }, [])
 
   useEffect(() => {
     return () => {
@@ -332,16 +327,11 @@ function useLongPressDragInteraction(input: {
       const dy = current.y - start.y
       const distance = Math.sqrt(dx * dx + dy * dy)
       if (distance > DRAG_ARM_STATIONARY_SLOP_PX) {
-        console.log('[sidebar-dnd-debug] drag arm cancelled (movement)', {
-          id: input.debugId,
-          distance,
-        })
         return
       }
       dragArmedRef.current = true
       dragActivatedRef.current = true
       didLongPressRef.current = true
-      console.log('[sidebar-dnd-debug] drag armed', { id: input.debugId })
       void Haptics.selectionAsync().catch(() => {})
       input.drag()
     }, DRAG_ARM_DELAY_MS)
@@ -363,17 +353,12 @@ function useLongPressDragInteraction(input: {
       const dy = current.y - start.y
       const distance = Math.sqrt(dx * dx + dy * dy)
       if (distance > CONTEXT_MENU_STATIONARY_SLOP_PX) {
-        console.log('[sidebar-dnd-debug] context menu cancelled (movement)', {
-          id: input.debugId,
-          distance,
-        })
         return
       }
-      console.log('[sidebar-dnd-debug] long-press armed', { id: input.debugId })
       void Haptics.selectionAsync().catch(() => {})
       openContextMenuAtStartPoint()
     }, CONTEXT_MENU_DELAY_MS)
-  }, [clearTimers, input.debugId, input.menuController, openContextMenuAtStartPoint])
+  }, [clearTimers, input.menuController, openContextMenuAtStartPoint])
 
   const handleDragIntent = useCallback(
     (details: { dx: number; dy: number; distance: number }) => {
@@ -383,10 +368,9 @@ function useLongPressDragInteraction(input: {
       didStartDragRef.current = true
       didLongPressRef.current = true
       clearTimers()
-      console.log('[sidebar-dnd-debug] drag movement detected', { id: input.debugId, ...details })
       void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {})
     },
-    [clearTimers, input.debugId]
+    [clearTimers]
   )
 
   const handleScrollIntent = useCallback(
@@ -394,18 +378,16 @@ function useLongPressDragInteraction(input: {
       scrollIntentRef.current = true
       didLongPressRef.current = true
       clearTimers()
-      console.log('[sidebar-dnd-debug] scroll intent detected', { id: input.debugId, ...details })
     },
-    [clearTimers, input.debugId]
+    [clearTimers]
   )
 
   const handleSwipeIntent = useCallback(
     (details: { dx: number; dy: number; distance: number }) => {
       didLongPressRef.current = true
       clearTimers()
-      console.log('[sidebar-dnd-debug] swipe intent detected', { id: input.debugId, ...details })
     },
-    [clearTimers, input.debugId]
+    [clearTimers]
   )
 
   const handlePressIn = useCallback((event: GestureResponderEvent) => {
@@ -423,13 +405,8 @@ function useLongPressDragInteraction(input: {
       x: event.nativeEvent.pageX,
       y: event.nativeEvent.pageY,
     }
-    console.log('[sidebar-dnd-debug] press-in', {
-      id: input.debugId,
-      x: event.nativeEvent.pageX,
-      y: event.nativeEvent.pageY,
-    })
     armTimers()
-  }, [armTimers, input.debugId])
+  }, [armTimers])
 
   const handleTouchMove = useCallback(
     (event: any) => {
@@ -476,20 +453,11 @@ function useLongPressDragInteraction(input: {
 
   const handlePressOut = useCallback(() => {
     clearTimers()
-    console.log('[sidebar-dnd-debug] press-out no context-menu', {
-      id: input.debugId,
-      didLongPress: didLongPressRef.current,
-      didStartDrag: didStartDragRef.current,
-      dragActivated: dragActivatedRef.current,
-      scrollIntent: scrollIntentRef.current,
-      dragArmed: dragArmedRef.current,
-      menuOpened: menuOpenedRef.current,
-    })
     dragArmedRef.current = false
     dragActivatedRef.current = false
     touchStartRef.current = null
     touchCurrentRef.current = null
-  }, [clearTimers, input.debugId])
+  }, [clearTimers])
 
   return {
     didLongPressRef,
@@ -518,7 +486,6 @@ function ProjectHeaderRow({
   const interaction = useLongPressDragInteraction({
     drag,
     menuController,
-    debugId: `project:${project.projectKey}`,
   })
 
   const handlePress = useCallback(() => {
@@ -626,7 +593,6 @@ function WorkspaceRowInner({
   const interaction = useLongPressDragInteraction({
     drag,
     menuController,
-    debugId: `workspace:${workspace.workspaceKey}`,
   })
 
   const handlePress = useCallback(() => {
@@ -1474,9 +1440,7 @@ export function SidebarWorkspaceList({
           style={styles.list}
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
-          onScrollBeginDrag={() =>
-            console.log('[sidebar-dnd-debug] outer scroll begin')
-          }
+
           testID="sidebar-project-workspace-list-scroll"
         >
           {content}
@@ -1486,9 +1450,7 @@ export function SidebarWorkspaceList({
           style={styles.list}
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
-          onScrollBeginDrag={() =>
-            console.log('[sidebar-dnd-debug] outer scroll begin')
-          }
+
           testID="sidebar-project-workspace-list-scroll"
         >
           {content}

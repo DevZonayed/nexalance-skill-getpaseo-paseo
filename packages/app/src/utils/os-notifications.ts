@@ -86,7 +86,6 @@ async function ensureTauriNotificationPermission(
     try {
       const granted = await notificationModule.isPermissionGranted();
       if (granted) {
-        console.log("[OSNotifications][Tauri] Permission already granted");
         return true;
       }
     } catch (error) {
@@ -106,7 +105,6 @@ async function ensureTauriNotificationPermission(
 
   try {
     const result = await notificationModule.requestPermission();
-    console.log("[OSNotifications][Tauri] requestPermission result:", result);
     return result === "granted";
   } catch (error) {
     console.warn(
@@ -210,12 +208,7 @@ export async function sendOsNotification(
   const NotificationConstructor = getWebNotificationConstructor();
   if (NotificationConstructor) {
     const granted = await ensureNotificationPermission();
-    if (!granted) {
-      console.log(
-        "[OSNotifications][Web] Permission not granted:",
-        NotificationConstructor.permission
-      );
-    } else {
+    if (granted) {
       const notification = new NotificationConstructor(payload.title, {
         body: payload.body,
         data: payload.data,

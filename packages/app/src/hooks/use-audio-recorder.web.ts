@@ -163,16 +163,6 @@ export function useAudioRecorder(config?: AudioCaptureConfig) {
       throw new Error("Microphone capture is not supported in this environment");
     }
 
-    console.log("[AudioRecorder][Web] Microphone preflight", {
-      secureContext,
-      currentOrigin,
-      isTauri,
-      hasMediaDevices:
-        typeof navigator !== "undefined" &&
-        !!navigator.mediaDevices &&
-        typeof navigator.mediaDevices.getUserMedia === "function",
-    });
-
     if (!secureContext && !isTauri) {
       throw new Error(
         `Microphone access requires HTTPS or localhost. Current origin: ${currentOrigin}`

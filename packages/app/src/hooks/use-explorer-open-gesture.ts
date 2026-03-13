@@ -13,18 +13,6 @@ interface UseExplorerOpenGestureParams {
   onOpen: () => void;
 }
 
-const IS_DEV = Boolean((globalThis as { __DEV__?: boolean }).__DEV__);
-
-function logExplorerOpenGesture(
-  event: string,
-  details: Record<string, unknown>
-): void {
-  if (!IS_DEV) {
-    return;
-  }
-  console.log(`[ExplorerOpenGesture] ${event}`, details);
-}
-
 export function useExplorerOpenGesture({
   enabled,
   onOpen,
@@ -82,7 +70,6 @@ export function useExplorerOpenGesture({
         })
         .onStart(() => {
           isGesturing.value = true;
-          runOnJS(logExplorerOpenGesture)("start", { enabled });
         })
         .onUpdate((event) => {
           // Right sidebar: start from closed position (+windowWidth) and move towards 0.
@@ -103,15 +90,6 @@ export function useExplorerOpenGesture({
           const shouldOpenByPosition = translateX.value < (windowWidth * 2) / 3;
           const shouldOpenByVelocity = event.velocityX < -500;
           const shouldOpen = shouldOpenByPosition || shouldOpenByVelocity;
-          runOnJS(logExplorerOpenGesture)("end", {
-            translationX: event.translationX,
-            velocityX: event.velocityX,
-            panelTranslateX: translateX.value,
-            windowWidth,
-            shouldOpenByPosition,
-            shouldOpenByVelocity,
-            shouldOpen,
-          });
           if (shouldOpen) {
             animateToOpen();
             runOnJS(onOpen)();

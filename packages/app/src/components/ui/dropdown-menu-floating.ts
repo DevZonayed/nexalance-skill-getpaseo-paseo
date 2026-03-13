@@ -170,10 +170,6 @@ export function useDropdownFloating({
   }, []);
 
   const update = useCallback(async () => {
-    console.log("[useDropdownFloating] update called", {
-      hasReferenceEl: !!referenceEl,
-      hasFloatingEl: !!floatingElRef.current,
-    });
 
     if (!referenceEl || !floatingElRef.current) {
       return;
@@ -185,12 +181,6 @@ export function useDropdownFloating({
         measureElement(floatingElRef.current),
       ]);
 
-      console.log("[useDropdownFloating] measured", {
-        fromRect,
-        contentRect,
-        displayArea,
-      });
-
       const result = computeGeometry({
         fromRect,
         contentSize: { width: contentRect.width, height: contentRect.height },
@@ -201,8 +191,6 @@ export function useDropdownFloating({
         padding,
       });
 
-      console.log("[useDropdownFloating] geometry result", result);
-
       setGeometry(result);
     } catch (e) {
       console.warn("[useDropdownFloating] measure failed:", e);
@@ -210,7 +198,6 @@ export function useDropdownFloating({
   }, [referenceEl, displayArea, placement, alignment, offset, padding]);
 
   const floatingRef = useCallback((el: View | null) => {
-    console.log("[useDropdownFloating] floatingRef called", { hasEl: !!el });
     floatingElRef.current = el;
   }, []);
 
@@ -218,17 +205,10 @@ export function useDropdownFloating({
   const [floatingReady, setFloatingReady] = useState(false);
 
   const handleFloatingLayout = useCallback(() => {
-    console.log("[useDropdownFloating] handleFloatingLayout called");
     setFloatingReady(true);
   }, []);
 
   useEffect(() => {
-    console.log("[useDropdownFloating] useEffect", {
-      open,
-      floatingReady,
-      hasReferenceEl: !!referenceEl,
-      hasFloatingEl: !!floatingElRef.current,
-    });
 
     if (!open) {
       setGeometry(null);
@@ -237,7 +217,6 @@ export function useDropdownFloating({
     }
 
     if (floatingReady && referenceEl && floatingElRef.current) {
-      console.log("[useDropdownFloating] calling update from useEffect");
       update();
     }
   }, [open, floatingReady, referenceEl, update]);

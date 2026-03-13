@@ -1,5 +1,4 @@
 import { View, Pressable } from "react-native";
-import { useEffect } from "react";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { MicOff, Square } from "lucide-react-native";
 import { VolumeMeter } from "./volume-meter";
@@ -16,21 +15,6 @@ export function VoicePanel() {
     toggleMute,
     activeServerId,
   } = useVoice();
-  console.log("[VoicePanel] render", {
-    activeServerId,
-    isMuted,
-    volume,
-    isDetecting,
-    isSpeaking,
-  });
-
-  useEffect(() => {
-    console.log("[VoicePanel] mount");
-    return () => {
-      console.log("[VoicePanel] unmount");
-    };
-  }, []);
-
   const hostLabel = activeServerId
     ? daemons.find((daemon) => daemon.serverId === activeServerId)?.label ?? null
     : null;

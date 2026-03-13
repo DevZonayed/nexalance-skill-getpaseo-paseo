@@ -60,15 +60,6 @@ import {
 } from "./agent-ready-screen-bottom-anchor";
 
 const EMPTY_STREAM_ITEMS: StreamItem[] = [];
-const IS_DEV = Boolean((globalThis as { __DEV__?: boolean }).__DEV__);
-
-function logAgentExplorer(event: string, details: Record<string, unknown>): void {
-  if (!IS_DEV) {
-    return;
-  }
-  console.log(`[AgentExplorer] ${event}`, details);
-}
-
 function logWebStickyBottom(
   _event: string,
   _details: Record<string, unknown>
@@ -264,10 +255,6 @@ function AgentScreenContent({
   }, [resolveCachedCheckoutIsGit, resolvedAgentId, checkout?.isGit, serverId]);
   const openExplorerForActiveCheckout = useCallback(() => {
     const checkoutContext = resolveCurrentExplorerCheckout();
-    logAgentExplorer("openExplorerForActiveCheckout", {
-      hasCheckoutContext: Boolean(checkoutContext),
-      checkoutContext,
-    });
     if (checkoutContext) {
       activateExplorerTabForCheckout(checkoutContext);
     }

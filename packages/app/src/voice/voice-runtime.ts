@@ -96,17 +96,6 @@ const INITIAL_TELEMETRY: VoiceRuntimeTelemetrySnapshot = {
   segmentDuration: 0,
 };
 
-function logVoiceRuntime(
-  event: string,
-  details?: Record<string, unknown>
-): void {
-  if (details) {
-    console.log(`[VoiceRuntime] ${event}`, details);
-    return;
-  }
-  console.log(`[VoiceRuntime] ${event}`);
-}
-
 function snapshotsEqual(
   left: VoiceRuntimeSnapshot,
   right: VoiceRuntimeSnapshot
@@ -196,15 +185,6 @@ export function createVoiceRuntime(deps: VoiceRuntimeDeps): VoiceRuntime {
     }
     const previous = state.snapshot;
     state.snapshot = next;
-    logVoiceRuntime("snapshot_changed", {
-      previousPhase: previous.phase,
-      phase: next.phase,
-      isVoiceMode: next.isVoiceMode,
-      isVoiceSwitching: next.isVoiceSwitching,
-      isMuted: next.isMuted,
-      activeServerId: next.activeServerId,
-      activeAgentId: next.activeAgentId,
-    });
     emit();
   }
 
@@ -294,11 +274,6 @@ export function createVoiceRuntime(deps: VoiceRuntimeDeps): VoiceRuntime {
       stopCue();
       return;
     }
-    logVoiceRuntime("thinking_tone_requested", {
-      phase: state.snapshot.phase,
-      isDetecting: state.telemetry.isDetecting,
-      isSpeaking: state.telemetry.isSpeaking,
-    });
     deps.engine.playLooping(new Uint8Array(0), THINKING_TONE_REPEAT_GAP_MS);
   }
 
@@ -346,12 +321,6 @@ export function createVoiceRuntime(deps: VoiceRuntimeDeps): VoiceRuntime {
         if (isLast) {
           state.turnInProgress = true;
         }
-        logVoiceRuntime("audio_segment_ready", {
-          isLast,
-          base64Bytes: audioData.length,
-          phase: state.snapshot.phase,
-          serverId: activeSession.adapter.serverId,
-        });
 
         void activeSession.adapter
           .sendVoiceAudioChunk(audioData, PCM_MIME_TYPE, isLast)
@@ -365,10 +334,6 @@ export function createVoiceRuntime(deps: VoiceRuntimeDeps): VoiceRuntime {
             ) {
               return;
             }
-            logVoiceRuntime("audio_segment_sent", {
-              isLast,
-              serverId: activeSession.adapter.serverId,
-            });
             patchSnapshot((prev) => ({ ...prev, phase: "waiting" }));
             reconcileCue();
           })
@@ -377,11 +342,9 @@ export function createVoiceRuntime(deps: VoiceRuntimeDeps): VoiceRuntime {
           });
       },
       onSpeechStart: () => {
-        logVoiceRuntime("speech_started");
         stopCue();
       },
       onSpeechEnd: () => {
-        logVoiceRuntime("speech_ended");
         clearSpeechInterruptTimer();
         state.speechInterruptSent = false;
         reconcileCue();
@@ -390,10 +353,6 @@ export function createVoiceRuntime(deps: VoiceRuntimeDeps): VoiceRuntime {
         const previous = state.telemetry;
         patchTelemetry((prev) => ({ ...prev, isDetecting }));
         if (previous.isDetecting !== isDetecting) {
-          logVoiceRuntime("detecting_changed", {
-            isDetecting,
-            volume: Number(state.telemetry.volume.toFixed(3)),
-          });
         }
         if (!previous.isDetecting && isDetecting) {
           stopCue();
@@ -405,11 +364,6 @@ export function createVoiceRuntime(deps: VoiceRuntimeDeps): VoiceRuntime {
         const previous = state.telemetry;
         patchTelemetry((prev) => ({ ...prev, isSpeaking }));
         if (previous.isSpeaking !== isSpeaking) {
-          logVoiceRuntime("speaking_changed", {
-            isSpeaking,
-            phase: state.snapshot.phase,
-            volume: Number(state.telemetry.volume.toFixed(3)),
-          });
         }
 
         if (!previous.isSpeaking && isSpeaking) {
@@ -429,15 +383,8 @@ export function createVoiceRuntime(deps: VoiceRuntimeDeps): VoiceRuntime {
                 return;
               }
               state.speechInterruptSent = true;
-              logVoiceRuntime("barge_in_interrupt_triggered", {
-                phase: state.snapshot.phase,
-              });
               void interruptActiveTurn();
             }, REALTIME_VOICE_VAD_CONFIG.interruptGracePeriodMs);
-            logVoiceRuntime("barge_in_interrupt_scheduled", {
-              gracePeriodMs: REALTIME_VOICE_VAD_CONFIG.interruptGracePeriodMs,
-              phase: state.snapshot.phase,
-            });
           }
         }
 
@@ -543,9 +490,6 @@ export function createVoiceRuntime(deps: VoiceRuntimeDeps): VoiceRuntime {
     },
 
     registerSession(adapter) {
-      logVoiceRuntime("session_registered", {
-        serverId: adapter.serverId,
-      });
       sessions.set(adapter.serverId, {
         adapter,
         connected: true,
@@ -566,10 +510,6 @@ export function createVoiceRuntime(deps: VoiceRuntimeDeps): VoiceRuntime {
         return;
       }
       session.connected = connected;
-      logVoiceRuntime("session_connection_changed", {
-        serverId,
-        connected,
-      });
       if (state.snapshot.activeServerId !== serverId) {
         return;
       }
@@ -581,12 +521,6 @@ export function createVoiceRuntime(deps: VoiceRuntimeDeps): VoiceRuntime {
     },
 
     handleCapturePcm(chunk) {
-      console.log("[VoiceRuntime] handleCapturePcm", {
-        bytes: chunk.byteLength,
-        isVoiceMode: state.snapshot.isVoiceMode,
-        isMuted: state.snapshot.isMuted,
-        phase: state.snapshot.phase,
-      });
       if (!state.snapshot.isVoiceMode || state.snapshot.isMuted) {
         return;
       }
@@ -595,12 +529,6 @@ export function createVoiceRuntime(deps: VoiceRuntimeDeps): VoiceRuntime {
 
     handleCaptureVolume(level) {
       const nowMs = Date.now();
-      console.log("[VoiceRuntime] handleCaptureVolume", {
-        level,
-        isVoiceMode: state.snapshot.isVoiceMode,
-        isMuted: state.snapshot.isMuted,
-        phase: state.snapshot.phase,
-      });
       const displayLevel = state.snapshot.isMuted ? 0 : level;
       publishDisplayVolume(displayLevel, nowMs);
       if (!state.snapshot.isVoiceMode || state.snapshot.isMuted) {
@@ -610,10 +538,6 @@ export function createVoiceRuntime(deps: VoiceRuntimeDeps): VoiceRuntime {
     },
 
     async startVoice(serverId, agentId) {
-      logVoiceRuntime("start_requested", {
-        serverId,
-        agentId,
-      });
       const session = sessions.get(serverId);
       if (!session) {
         throw new Error(`Voice runtime is not ready for host ${serverId}`);
@@ -678,26 +602,13 @@ export function createVoiceRuntime(deps: VoiceRuntimeDeps): VoiceRuntime {
           phase: "listening",
           isMuted: deps.engine.isMuted(),
         }));
-        logVoiceRuntime("start_completed", {
-          serverId,
-          agentId,
-        });
       } catch (error) {
-        logVoiceRuntime("start_failed", {
-          serverId,
-          agentId,
-          error: error instanceof Error ? error.message : String(error),
-        });
         await performLocalStop();
         throw error;
       }
     },
 
     async stopVoice() {
-      logVoiceRuntime("stop_requested", {
-        activeServerId: state.snapshot.activeServerId,
-        activeAgentId: state.snapshot.activeAgentId,
-      });
       const activeSession = getActiveSession();
       const generation = state.generation + 1;
       state.generation = generation;
@@ -722,7 +633,6 @@ export function createVoiceRuntime(deps: VoiceRuntimeDeps): VoiceRuntime {
         if (state.generation === generation) {
           resetToDisabledState();
         }
-        logVoiceRuntime("stop_completed");
       }
     },
 
@@ -736,9 +646,6 @@ export function createVoiceRuntime(deps: VoiceRuntimeDeps): VoiceRuntime {
 
     toggleMute() {
       const nextMuted = deps.engine.toggleMute();
-      logVoiceRuntime("mute_toggled", {
-        muted: nextMuted,
-      });
       if (nextMuted) {
         resetSegmenter(segmenter);
         patchSnapshot((prev) => ({
@@ -778,9 +685,6 @@ export function createVoiceRuntime(deps: VoiceRuntimeDeps): VoiceRuntime {
       ) {
         return;
       }
-      logVoiceRuntime("assistant_audio_started", {
-        serverId,
-      });
       stopCue();
       getActiveSession()?.adapter.setAssistantAudioPlaying(true);
       patchSnapshot((prev) => ({ ...prev, phase: "playing" }));
@@ -791,10 +695,6 @@ export function createVoiceRuntime(deps: VoiceRuntimeDeps): VoiceRuntime {
         return;
       }
 
-      logVoiceRuntime("assistant_audio_finished", {
-        serverId,
-        turnInProgress: state.turnInProgress,
-      });
       getActiveSession()?.adapter.setAssistantAudioPlaying(false);
       if (!state.snapshot.isVoiceMode) {
         return;
@@ -822,9 +722,6 @@ export function createVoiceRuntime(deps: VoiceRuntimeDeps): VoiceRuntime {
         return;
       }
 
-      logVoiceRuntime("empty_transcription_result", {
-        serverId,
-      });
       state.turnInProgress = false;
       patchSnapshot((prev) => ({ ...prev, phase: "listening" }));
       stopCue();
@@ -838,11 +735,6 @@ export function createVoiceRuntime(deps: VoiceRuntimeDeps): VoiceRuntime {
       ) {
         return;
       }
-      logVoiceRuntime("turn_event", {
-        serverId,
-        agentId,
-        eventType,
-      });
 
       if (eventType === "turn_started") {
         state.turnInProgress = true;

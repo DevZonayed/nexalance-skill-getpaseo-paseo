@@ -6,7 +6,6 @@ import {
   Modal,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useEffect } from "react";
 import { StyleSheet } from "react-native-unistyles";
 import { Fonts } from "@/constants/theme";
 
@@ -154,16 +153,6 @@ const styles = StyleSheet.create((theme) => ({
 }));
 
 export function ArtifactDrawer({ artifact, onClose }: ArtifactDrawerProps) {
-  useEffect(() => {
-    if (!artifact) return;
-    console.log(
-      "[ArtifactDrawer] Showing artifact:",
-      artifact.id,
-      artifact.type,
-      artifact.title
-    );
-  }, [artifact]);
-
   if (!artifact) {
     return null;
   }

@@ -127,17 +127,6 @@ function buildAudioPlaybackSource(
   };
 }
 
-function logVoiceSession(
-  event: string,
-  details?: Record<string, unknown>
-): void {
-  if (details) {
-    console.log(`[VoiceSession] ${event}`, details);
-    return;
-  }
-  console.log(`[VoiceSession] ${event}`);
-}
-
 const findLatestAssistantMessageText = (items: StreamItem[]): string | null => {
   for (let i = items.length - 1; i >= 0; i -= 1) {
     const item = items[i];
@@ -273,11 +262,6 @@ function SessionProviderInternal({
 }: SessionProviderClientProps) {
   const voiceRuntime = useVoiceRuntimeOptional();
   const voiceAudioEngine = useVoiceAudioEngineOptional();
-  console.log("[SessionProvider] render", {
-    serverId,
-    hasVoiceRuntime: Boolean(voiceRuntime),
-    hasVoiceAudioEngine: Boolean(voiceAudioEngine),
-  });
   const queryClient = useQueryClient();
   const isConnected = useHostRuntimeIsConnected(serverId);
 
@@ -519,11 +503,6 @@ function SessionProviderInternal({
         const queue = session?.queuedMessages.get(agent.id);
         if (queue && queue.length > 0) {
           const [next, ...rest] = queue;
-          console.log(
-            "[Session] Flushing queued message for agent:",
-            agent.id,
-            next.text
-          );
           if (sendAgentMessageRef.current) {
             void sendAgentMessageRef.current(agent.id, next.text, next.images);
           }
@@ -685,13 +664,6 @@ function SessionProviderInternal({
 
   // Initialize session in store
   useEffect(() => {
-    console.log("[SessionProvider] mount", { serverId });
-    return () => {
-      console.log("[SessionProvider] unmount", { serverId });
-    };
-  }, [serverId]);
-
-  useEffect(() => {
     initializeSession(serverId, client);
   }, [serverId, client, initializeSession]);
 
@@ -704,44 +676,27 @@ function SessionProviderInternal({
       return;
     }
 
-    console.log("[SessionProvider] register_voice_session", { serverId });
     return voiceRuntime.registerSession({
       serverId,
       setVoiceMode: async (enabled, agentId) => {
-        console.log("[SessionProvider] setVoiceMode", {
-          serverId,
-          enabled,
-          agentId: agentId ?? null,
-        });
         if (!client) {
           throw new Error("Daemon unavailable");
         }
         await client.setVoiceMode(enabled, agentId);
       },
       sendVoiceAudioChunk: async (audioData, mimeType, isLast) => {
-        console.log("[SessionProvider] sendVoiceAudioChunk", {
-          serverId,
-          audioDataLength: audioData.length,
-          mimeType,
-          isLast,
-        });
         if (!client) {
           throw new Error("Daemon unavailable");
         }
         await client.sendVoiceAudioChunk(audioData, mimeType, isLast);
       },
       abortRequest: async () => {
-        console.log("[SessionProvider] abortRequest", { serverId });
         if (!client) {
           throw new Error("Daemon unavailable");
         }
         await client.abortRequest();
       },
       setAssistantAudioPlaying: (isPlaying) => {
-        console.log("[SessionProvider] setAssistantAudioPlaying", {
-          serverId,
-          isPlaying,
-        });
         setIsPlayingAudio(serverId, isPlaying);
       },
     });
@@ -753,10 +708,6 @@ function SessionProviderInternal({
   ]);
 
   useEffect(() => {
-    console.log("[SessionProvider] updateSessionConnection", {
-      serverId,
-      isConnected,
-    });
     voiceRuntime?.updateSessionConnection(serverId, isConnected);
   }, [isConnected, serverId, voiceRuntime]);
 
@@ -1244,13 +1195,6 @@ function SessionProviderInternal({
         if (message.type !== "agent_permission_request") return;
         const { agentId, request } = message.payload;
 
-        console.log(
-          "[Session] Permission request:",
-          request.id,
-          "for agent:",
-          agentId
-        );
-
         setPendingPermissions(serverId, (prev) => {
           const next = new Map(prev);
           const key = derivePendingPermissionKey(agentId, request);
@@ -1265,13 +1209,6 @@ function SessionProviderInternal({
       (message) => {
         if (message.type !== "agent_permission_resolved") return;
         const { requestId, agentId } = message.payload;
-
-        console.log(
-          "[Session] Permission resolved:",
-          requestId,
-          "for agent:",
-          agentId
-        );
 
         setPendingPermissions(serverId, (prev) => {
           const next = new Map(prev);
@@ -1299,16 +1236,6 @@ function SessionProviderInternal({
       }
 
       const payload: AudioOutputPayload = message.payload;
-      console.log("[SessionProvider] audio_output", {
-        serverId,
-        id: payload.id,
-        groupId: payload.groupId ?? null,
-        chunkIndex: payload.chunkIndex ?? 0,
-        isLastChunk: payload.isLastChunk ?? true,
-        format: payload.format,
-        isVoiceMode: payload.isVoiceMode ?? false,
-        audioLength: payload.audio.length,
-      });
       const playbackGroupId = payload.groupId ?? payload.id;
       const chunkIndex = payload.chunkIndex ?? 0;
       const isFinalChunk = payload.isLastChunk ?? true;
@@ -1338,16 +1265,6 @@ function SessionProviderInternal({
         !payload.isVoiceMode ||
         (voiceRuntime?.shouldPlayVoiceAudio(serverId) ?? false);
       const audioBlob = buildAudioPlaybackSource(bufferedChunks);
-      if (payload.isVoiceMode) {
-        logVoiceSession("audio_output_ready", {
-          serverId,
-          playbackGroupId,
-          chunkCount: bufferedChunks.length,
-          format: payload.format,
-          blobBytes: audioBlob.size,
-          shouldPlay,
-        });
-      }
       const confirmAudioPlayed = async () => {
         await Promise.all(
           chunkIds.map((chunkId) =>
@@ -1366,18 +1283,6 @@ function SessionProviderInternal({
             voiceRuntime?.onAssistantAudioStarted(serverId);
           }
           await voiceAudioEngine.play(audioBlob);
-          if (payload.isVoiceMode) {
-            logVoiceSession("audio_output_played", {
-              serverId,
-              playbackGroupId,
-              chunkCount: bufferedChunks.length,
-            });
-          }
-        } else if (payload.isVoiceMode) {
-          logVoiceSession("audio_output_suppressed", {
-            serverId,
-            playbackGroupId,
-          });
         }
         await confirmAudioPlayed();
       } catch (error) {
@@ -1397,13 +1302,6 @@ function SessionProviderInternal({
     const unsubActivity = client.on("activity_log", (message) => {
       if (message.type !== "activity_log") return;
       const data = message.payload;
-      console.log("[SessionProvider] activity_log", {
-        serverId,
-        type: data.type,
-        contentPreview:
-          typeof data.content === "string" ? data.content.slice(0, 80) : null,
-      });
-
       if (data.type === "system" && data.content.includes("Transcribing")) {
         return;
       }
@@ -1523,12 +1421,6 @@ function SessionProviderInternal({
       if (message.type !== "transcription_result") return;
 
       const transcriptText = message.payload.text.trim();
-      console.log("[SessionProvider] transcription_result", {
-        serverId,
-        textLength: transcriptText.length,
-        textPreview: transcriptText.slice(0, 80),
-      });
-
       if (!transcriptText) {
         voiceRuntime?.onTranscriptionResult(serverId, transcriptText);
         return;
@@ -1542,7 +1434,6 @@ function SessionProviderInternal({
         return;
       }
       const { agentId } = message.payload;
-      console.log("[Session] Agent deleted:", agentId);
       deletePendingAgentUpdate(serverId, agentId);
       clearArchiveAgentPending({ queryClient, serverId, agentId });
 
@@ -1618,7 +1509,6 @@ function SessionProviderInternal({
         return;
       }
       const { agentId, archivedAt } = message.payload;
-      console.log("[Session] Agent archived:", agentId);
       clearArchiveAgentPending({ queryClient, serverId, agentId });
 
       setAgents(serverId, (prev) => {
@@ -1802,11 +1692,6 @@ function SessionProviderInternal({
       worktreeName?: string;
       requestId?: string;
     }) => {
-      console.log(
-        "[Session] createAgent called with images:",
-        images?.length ?? 0,
-        images
-      );
       if (!client) {
         console.warn("[Session] createAgent skipped: daemon unavailable");
         return;
@@ -1815,14 +1700,6 @@ function SessionProviderInternal({
       let imagesData: Array<{ data: string; mimeType: string }> | undefined;
       try {
         imagesData = await encodeImages(images);
-        console.log(
-          "[Session] encodeImages result:",
-          imagesData?.length ?? 0,
-          imagesData?.map((img) => ({
-            dataLength: img.data?.length ?? 0,
-            mimeType: img.mimeType,
-          }))
-        );
       } catch (error) {
         console.error(
           "[Session] Failed to prepare images for agent creation:",

@@ -23,13 +23,7 @@ import { FileExplorerPane } from "./file-explorer-pane";
 import { useKeyboardShiftStyle } from "@/hooks/use-keyboard-shift-style";
 
 const MIN_CHAT_WIDTH = 400;
-const IS_DEV = Boolean((globalThis as { __DEV__?: boolean }).__DEV__);
-
-function logExplorerSidebar(event: string, details: Record<string, unknown>): void {
-  if (!IS_DEV) {
-    return;
-  }
-  console.log(`[ExplorerSidebar] ${event}`, details);
+function logExplorerSidebar(_event: string, _details: Record<string, unknown>): void {
 }
 
 interface ExplorerSidebarProps {

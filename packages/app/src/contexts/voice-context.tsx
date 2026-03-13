@@ -46,19 +46,6 @@ const VoiceAudioEngineContext = createContext<AudioEngine | null>(null);
 const noopSubscribe = () => () => {};
 const getEmptySnapshot = () => EMPTY_SNAPSHOT;
 const getEmptyTelemetry = () => EMPTY_TELEMETRY;
-let nextVoiceProviderInstanceId = 1;
-
-function getProviderTraceStack(): string | undefined {
-  const stack = new Error().stack;
-  if (!stack) {
-    return undefined;
-  }
-  return stack
-    .split("\n")
-    .slice(2, 7)
-    .map((line) => line.trim())
-    .join(" | ");
-}
 
 export function useVoice() {
   const value = useVoiceOptional();
@@ -121,47 +108,21 @@ interface VoiceProviderProps {
 }
 
 export function VoiceProvider({ children }: VoiceProviderProps) {
-  const providerIdRef = useRef<number | null>(null);
-  if (providerIdRef.current === null) {
-    providerIdRef.current = nextVoiceProviderInstanceId++;
-    console.log("[VoiceProvider] instance_created", {
-      providerId: providerIdRef.current,
-      stack: getProviderTraceStack(),
-    });
-  }
-
-  const providerId = providerIdRef.current;
   const engineRef = useRef<AudioEngine | null>(null);
   const runtimeRef = useRef<VoiceRuntime | null>(null);
-  console.log("[VoiceProvider] render", {
-    providerId,
-    hasEngine: Boolean(engineRef.current),
-    hasRuntime: Boolean(runtimeRef.current),
-  });
 
   if (!engineRef.current) {
     let runtime: VoiceRuntime | null = null;
-    console.log("[VoiceProvider] create_engine_and_runtime");
     const engine = createAudioEngine({
       onCaptureData: (pcm) => {
-        console.log("[VoiceProvider] onCaptureData", {
-          providerId,
-          bytes: pcm.byteLength,
-        });
         runtime?.handleCapturePcm(pcm);
       },
       onVolumeLevel: (level) => {
-        console.log("[VoiceProvider] onVolumeLevel", {
-          providerId,
-          level,
-        });
         runtime?.handleCaptureVolume(level);
       },
       onError: (error) => {
         console.error("[VoiceEngine] Capture error:", error);
       },
-    }, {
-      traceLabel: `voice-provider:${providerId}`,
     });
 
     runtime = createVoiceRuntime({
@@ -184,18 +145,12 @@ export function VoiceProvider({ children }: VoiceProviderProps) {
   const runtime = runtimeRef.current!;
 
   useEffect(() => {
-    console.log("[VoiceProvider] mount", {
-      providerId,
-    });
     return () => {
-      console.log("[VoiceProvider] unmount", {
-        providerId,
-      });
       void runtime.destroy().catch((error) => {
         console.error("[VoiceProvider] Failed to destroy voice runtime", error);
       });
     };
-  }, [providerId, runtime]);
+  }, [runtime]);
 
   return (
     <VoiceAudioEngineContext.Provider value={engine}>
