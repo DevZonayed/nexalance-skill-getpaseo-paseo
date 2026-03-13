@@ -468,15 +468,24 @@ function MarkdownLink({
   children: ReactNode;
 }) {
   const [hovered, setHovered] = useState(false);
-  const hoverProps =
-    Platform.OS === "web"
-      ? { onHoverIn: () => setHovered(true), onHoverOut: () => setHovered(false) }
-      : {};
+  if (Platform.OS !== "web") {
+    return (
+      <Text
+        accessibilityRole="link"
+        onPress={() => onPress(href)}
+        style={style}
+      >
+        {children}
+      </Text>
+    );
+  }
+
   return (
     <Pressable
       accessibilityRole="link"
       onPress={() => onPress(href)}
-      {...hoverProps}
+      onHoverIn={() => setHovered(true)}
+      onHoverOut={() => setHovered(false)}
     >
       <Text style={[style, hovered && { textDecorationLine: "underline" }]}>
         {children}
