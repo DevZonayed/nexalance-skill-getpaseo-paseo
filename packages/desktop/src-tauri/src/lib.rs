@@ -11,7 +11,9 @@ use tauri::menu::{Menu, MenuItemBuilder, MenuItemKind, PredefinedMenuItem, Subme
 use tauri::{AppHandle, Manager, WebviewWindow};
 use tauri_plugin_updater::UpdaterExt;
 
+mod desktop_notifications;
 mod runtime_manager;
+use desktop_notifications::send_desktop_notification;
 use runtime_manager::{
     cli_symlink_instructions, close_local_daemon_transport, managed_daemon_logs,
     managed_daemon_pairing, managed_daemon_status, managed_runtime_status,
@@ -544,6 +546,7 @@ pub fn run() {
             read_file_base64,
             delete_attachment_file,
             garbage_collect_attachment_files,
+            send_desktop_notification,
             webview_log
         ])
         .setup(|app| {

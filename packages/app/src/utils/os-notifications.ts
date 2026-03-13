@@ -1,4 +1,5 @@
 import { Platform } from "react-native";
+import { sendDesktopNotification } from "@/desktop/notifications/desktop-notifications";
 import { buildNotificationRoute } from "./notification-routing";
 import { getTauri, type TauriNotificationApi } from "@/utils/tauri";
 
@@ -14,13 +15,16 @@ export type WebNotificationClickDetail = {
 
 type WebNotificationInstance = {
   onclick?: ((event: Event) => void) | null;
+  onclose?: ((event: Event) => void) | null;
   addEventListener?: (type: string, listener: (event: Event) => void) => void;
+  removeEventListener?: (type: string, listener: (event: Event) => void) => void;
   close?: () => void;
 };
 
 export const WEB_NOTIFICATION_CLICK_EVENT = "paseo:web-notification-click";
 
 let permissionRequest: Promise<boolean> | null = null;
+const activeWebNotifications = new Set<WebNotificationInstance>();
 
 function getTauriNotificationModule(): TauriNotificationApi | null {
   if (Platform.OS !== "web") {
@@ -113,35 +117,6 @@ async function ensureTauriNotificationPermission(
   }
 }
 
-async function sendTauriNotification(
-  payload: OsNotificationPayload,
-  notificationModule: TauriNotificationApi
-): Promise<boolean> {
-  if (typeof notificationModule.sendNotification !== "function") {
-    console.warn(
-      "[OSNotifications][Tauri] notification.sendNotification is unavailable"
-    );
-    return false;
-  }
-
-  const granted = await ensureTauriNotificationPermission(notificationModule);
-  if (!granted) {
-    console.log("[OSNotifications][Tauri] Permission not granted");
-    return false;
-  }
-
-  try {
-    await notificationModule.sendNotification({
-      title: payload.title,
-      body: payload.body,
-    });
-    return true;
-  } catch (error) {
-    console.warn("[OSNotifications][Tauri] Failed to send notification", error);
-    return false;
-  }
-}
-
 function dispatchWebNotificationClick(detail: WebNotificationClickDetail): boolean {
   const dispatch = (globalThis as { dispatchEvent?: (event: Event) => boolean }).dispatchEvent;
   const CustomEventConstructor = (globalThis as { CustomEvent?: typeof CustomEvent })
@@ -183,6 +158,12 @@ function attachWebClickHandler(
   notification: WebNotificationInstance,
   data: Record<string, unknown> | undefined
 ): void {
+  activeWebNotifications.add(notification);
+
+  const cleanup = () => {
+    activeWebNotifications.delete(notification);
+  };
+
   const onClick = () => {
     const focus = (globalThis as { focus?: () => void }).focus;
     if (typeof focus === "function") {
@@ -194,17 +175,24 @@ function attachWebClickHandler(
       fallbackNavigateToNotificationTarget(data);
     }
 
+    cleanup();
     if (typeof notification.close === "function") {
       notification.close();
     }
   };
 
+  const onClose = () => {
+    cleanup();
+  };
+
   if (typeof notification.addEventListener === "function") {
     notification.addEventListener("click", onClick);
+    notification.addEventListener("close", onClose);
     return;
   }
 
   notification.onclick = onClick;
+  notification.onclose = onClose;
 }
 
 export async function sendOsNotification(
@@ -215,34 +203,27 @@ export async function sendOsNotification(
     return false;
   }
 
-  const tauriNotification = getTauriNotificationModule();
-  if (tauriNotification) {
-    console.log("[OSNotifications] Using Tauri notification module");
-    return await sendTauriNotification(payload, tauriNotification);
+  if (getTauri()) {
+    return await sendDesktopNotification(payload);
   }
 
   const NotificationConstructor = getWebNotificationConstructor();
-  if (!NotificationConstructor) {
-    console.log(
-      "[OSNotifications][Web] Notification constructor unavailable",
-      typeof window !== "undefined" && window.location
-        ? window.location.origin
-        : "unknown-origin"
-    );
-    return false;
+  if (NotificationConstructor) {
+    const granted = await ensureNotificationPermission();
+    if (!granted) {
+      console.log(
+        "[OSNotifications][Web] Permission not granted:",
+        NotificationConstructor.permission
+      );
+    } else {
+      const notification = new NotificationConstructor(payload.title, {
+        body: payload.body,
+        data: payload.data,
+      }) as WebNotificationInstance;
+      attachWebClickHandler(notification, payload.data);
+      return true;
+    }
   }
-  const granted = await ensureOsNotificationPermission();
-  if (!granted) {
-    console.log(
-      "[OSNotifications][Web] Permission not granted:",
-      NotificationConstructor.permission
-    );
-    return false;
-  }
-  const notification = new NotificationConstructor(payload.title, {
-    body: payload.body,
-    data: payload.data,
-  }) as WebNotificationInstance;
-  attachWebClickHandler(notification, payload.data);
-  return true;
+
+  return false;
 }

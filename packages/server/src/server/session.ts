@@ -7379,7 +7379,7 @@ export class Session {
     const requestedResumeOffset =
       typeof msg.resumeOffset === 'number'
         ? msg.resumeOffset
-        : session.getOutputOffset()
+        : 0
     const initialOffset = Math.max(0, Math.floor(requestedResumeOffset))
     const binding: {
       terminalId: string

@@ -50,6 +50,7 @@ import { getIsTauri } from "@/constants/layout";
 import { CommandCenter } from "@/components/command-center";
 import { ProjectPickerModal } from "@/components/project-picker-modal";
 import { KeyboardShortcutsDialog } from "@/components/keyboard-shortcuts-dialog";
+import { listenToDesktopNotificationClicks } from "@/desktop/notifications/desktop-notifications";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { queryClient } from "@/query/query-client";
 import {
@@ -89,20 +90,39 @@ function PushNotificationRouter() {
   useEffect(() => {
     if (Platform.OS === "web") {
       if (getTauri()) {
-        void ensureOsNotificationPermission().then((granted) => {
-          console.log(
-            "[OSNotifications][Tauri] Startup permission preflight result:",
-            granted ? "granted" : "not-granted"
-          );
-        });
+        void ensureOsNotificationPermission();
+
+        let disposed = false;
+        let unlisten: (() => void) | null = null;
+
+        void listenToDesktopNotificationClicks((payload) => {
+          router.push(buildNotificationRoute(payload.data) as any);
+        })
+          .then((cleanup) => {
+            if (disposed) {
+              cleanup();
+              return;
+            }
+            unlisten = cleanup;
+          })
+          .catch((error) => {
+            console.error(
+              "[OSNotifications][Desktop] Failed to register notification click listener",
+              error
+            );
+          });
+
+        return () => {
+          disposed = true;
+          unlisten?.();
+        };
       }
 
       const target = globalThis as unknown as EventTarget;
       const openFromWebClick = (event: Event) => {
         const customEvent = event as CustomEvent<WebNotificationClickDetail>;
-        const route = buildNotificationRoute(customEvent.detail?.data);
         event.preventDefault();
-        router.push(route as any);
+        router.push(buildNotificationRoute(customEvent.detail?.data) as any);
       };
 
       target.addEventListener(

@@ -34,7 +34,7 @@ export function attachConsole(): void {
 
   console.log = (...args: unknown[]) => {
     originalLog.apply(console, args);
-    forwardToRust(0, args); // debug
+    forwardToRust(1, args); // info
   };
   console.info = (...args: unknown[]) => {
     originalInfo.apply(console, args);

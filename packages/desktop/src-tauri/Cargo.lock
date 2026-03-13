@@ -2637,6 +2637,7 @@ dependencies = [
  "futures-util",
  "http",
  "log",
+ "mac-notification-sys",
  "serde",
  "serde_json",
  "tauri",

@@ -1,6 +1,7 @@
 import { execFileSync, execSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { platform } from "node:os";
+import { shellEnvSync } from "shell-env";
 import { z } from "zod";
 
 import type { AgentProvider } from "./agent-sdk-types.js";
@@ -104,11 +105,24 @@ export function resolveProviderCommandPrefix(
   };
 }
 
+let cachedShellEnv: Record<string, string> | null = null;
+
+export function resolveShellEnv(): Record<string, string> {
+  if (cachedShellEnv) return cachedShellEnv;
+  try {
+    cachedShellEnv = shellEnvSync();
+  } catch {
+    cachedShellEnv = { ...process.env } as Record<string, string>;
+  }
+  return cachedShellEnv;
+}
+
 export function applyProviderEnv(
   baseEnv: Record<string, string | undefined>,
   runtimeSettings?: ProviderRuntimeSettings
 ): Record<string, string | undefined> {
   return {
+    ...resolveShellEnv(),
     ...baseEnv,
     ...(runtimeSettings?.env ?? {}),
   };

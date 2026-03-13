@@ -41,6 +41,7 @@ import {
 import { useDraftStore } from "@/stores/draft-store";
 import type { AgentDirectoryEntry } from "@/types/agent-directory";
 import { sendOsNotification } from "@/utils/os-notifications";
+import { getIsAppActivelyVisible } from "@/utils/app-visibility";
 import {
   getInitKey,
   getInitDeferred,
@@ -570,18 +571,10 @@ function SessionProviderInternal({
       if (params.reason === "error") {
         return;
       }
-      const isActive = appState ? appState === "active" : true;
-      const isAwayFromAgent = !isActive || focusedAgentId !== params.agentId;
+      const isActivelyVisible = getIsAppActivelyVisible(appState);
+      const isAwayFromAgent =
+        !isActivelyVisible || focusedAgentId !== params.agentId;
       if (!isAwayFromAgent) {
-        console.log(
-          "[OSNotifications] Skipping attention notification: user already focused on agent",
-          {
-            agentId: params.agentId,
-            reason: params.reason,
-            appState,
-            focusedAgentId,
-          }
-        );
         return;
       }
 

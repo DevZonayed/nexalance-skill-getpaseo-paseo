@@ -71,6 +71,7 @@ describe("sendOsNotification", () => {
   });
 
   afterEach(() => {
+    vi.doUnmock("@/desktop/notifications/desktop-notifications");
     vi.doUnmock("react-native");
     vi.restoreAllMocks();
     vi.resetModules();
@@ -167,18 +168,13 @@ describe("sendOsNotification", () => {
     expect(assign).toHaveBeenCalledWith("/h/srv%20with%20space/agent/agent%2F1");
   });
 
-  it("uses Tauri notification module when available", async () => {
-    const isPermissionGranted = vi.fn(async () => false);
-    const requestPermission = vi.fn(async () => "granted");
-    const sendNotification = vi.fn(async () => undefined);
+  it("uses the desktop notification bridge when Tauri is available", async () => {
+    const sendDesktopNotification = vi.fn(async () => true);
+    vi.doMock("@/desktop/notifications/desktop-notifications", () => ({
+      sendDesktopNotification,
+    }));
 
-    (globalThis as { __TAURI__?: unknown }).__TAURI__ = {
-      notification: {
-        isPermissionGranted,
-        requestPermission,
-        sendNotification,
-      },
-    };
+    (globalThis as { __TAURI__?: unknown }).__TAURI__ = {};
 
     const { sendOsNotification } = await loadModuleForPlatform("web");
     const sent = await sendOsNotification({
@@ -188,11 +184,10 @@ describe("sendOsNotification", () => {
     });
 
     expect(sent).toBe(true);
-    expect(isPermissionGranted).toHaveBeenCalledTimes(1);
-    expect(requestPermission).toHaveBeenCalledTimes(1);
-    expect(sendNotification).toHaveBeenCalledWith({
+    expect(sendDesktopNotification).toHaveBeenCalledWith({
       title: "Agent finished",
       body: "Done",
+      data: { serverId: "srv-1", agentId: "agent-1" },
     });
   });
 });

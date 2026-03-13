@@ -5,6 +5,7 @@ import {
   shouldClearAgentAttention,
   type AgentAttentionClearTrigger,
 } from "@/utils/agent-attention";
+import { getIsAppActivelyVisible } from "@/utils/app-visibility";
 
 type AttentionReason = "finished" | "error" | "permission" | null | undefined;
 
@@ -23,20 +24,6 @@ interface AgentAttentionClearController {
   clearOnAgentBlur: () => void;
 }
 
-function getIsAppVisible(): boolean {
-  const isAppStateActive = AppState.currentState === "active";
-  if (Platform.OS !== "web") {
-    return isAppStateActive;
-  }
-  const documentVisible =
-    typeof document === "undefined" || document.visibilityState === "visible";
-  const windowFocused =
-    typeof document === "undefined" ||
-    typeof document.hasFocus !== "function" ||
-    document.hasFocus();
-  return isAppStateActive && documentVisible && windowFocused;
-}
-
 export function useAgentAttentionClear({
   agentId,
   client,
@@ -45,12 +32,14 @@ export function useAgentAttentionClear({
   attentionReason,
   isScreenFocused,
 }: UseAgentAttentionClearParams): AgentAttentionClearController {
-  const [isAppVisible, setIsAppVisible] = useState<boolean>(() => getIsAppVisible());
+  const [isAppVisible, setIsAppVisible] = useState<boolean>(() =>
+    getIsAppActivelyVisible()
+  );
   const deferredFocusEntryClearRef = useRef(false);
   const prevRequiresAttentionRef = useRef(Boolean(requiresAttention));
-  const prevActivelyViewedRef = useRef(isScreenFocused && getIsAppVisible());
+  const prevActivelyViewedRef = useRef(isScreenFocused && getIsAppActivelyVisible());
   const prevScreenFocusedRef = useRef(false);
-  const prevAppVisibleRef = useRef(getIsAppVisible());
+  const prevAppVisibleRef = useRef(getIsAppActivelyVisible());
 
   const clearAttention = useCallback(
     (trigger: AgentAttentionClearTrigger) => {
@@ -78,7 +67,7 @@ export function useAgentAttentionClear({
 
   useEffect(() => {
     const updateVisibility = () => {
-      setIsAppVisible(getIsAppVisible());
+      setIsAppVisible(getIsAppActivelyVisible());
     };
 
     const appStateSubscription = AppState.addEventListener(
