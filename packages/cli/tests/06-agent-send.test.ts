@@ -19,7 +19,7 @@
 
 import assert from 'node:assert'
 import { $ } from 'zx'
-import { mkdtemp, rm } from 'fs/promises'
+import { mkdtemp, rm, writeFile } from 'fs/promises'
 import { tmpdir } from 'os'
 import { join } from 'path'
 
@@ -30,6 +30,8 @@ console.log('=== Send Command Tests ===\n')
 // Get random port that's definitely not in use (never 6767)
 const port = 10000 + Math.floor(Math.random() * 50000)
 const paseoHome = await mkdtemp(join(tmpdir(), 'paseo-test-home-'))
+const promptFilePath = join(paseoHome, 'send-prompt.txt')
+await writeFile(promptFilePath, 'prompt from file')
 
 try {
   // Test 1: send --help shows options
@@ -37,14 +39,18 @@ try {
     console.log('Test 1: send --help shows options')
     const result = await $`npx paseo send --help`.nothrow()
     assert.strictEqual(result.exitCode, 0, 'send --help should exit 0')
+    assert(result.stdout.includes('--prompt'), 'help should mention --prompt option')
+    assert(result.stdout.includes('--prompt-file'), 'help should mention --prompt-file option')
     assert(result.stdout.includes('--no-wait'), 'help should mention --no-wait flag')
     assert(result.stdout.includes('--host'), 'help should mention --host option')
     assert(result.stdout.includes('<id>'), 'help should mention id argument')
-    assert(result.stdout.includes('<prompt>'), 'help should mention prompt argument')
+    assert(result.stdout.includes('[prompt]'), 'help should mention optional prompt argument')
+    console.log('  help should mention --prompt option')
+    console.log('  help should mention --prompt-file option')
     console.log('  help should mention --no-wait flag')
     console.log('  help should mention --host option')
     console.log('  help should mention <id> argument')
-    console.log('  help should mention <prompt> argument')
+    console.log('  help should mention [prompt] argument')
     console.log('✓ send --help shows options\n')
   }
 
@@ -107,6 +113,28 @@ try {
     console.log('✓ send --no-wait flag is accepted\n')
   }
 
+  // Test 5b: send --prompt flag is accepted
+  {
+    console.log('Test 5b: send --prompt flag is accepted')
+    const result =
+      await $`PASEO_HOST=localhost:${port} PASEO_HOME=${paseoHome} npx paseo send --prompt "test prompt" abc123`.nothrow()
+    const output = result.stdout + result.stderr
+    assert(!output.includes('unknown option'), 'should accept --prompt flag')
+    assert(!output.includes('error: option'), 'should not have option parsing error')
+    console.log('✓ send --prompt flag is accepted\n')
+  }
+
+  // Test 5c: send --prompt-file flag is accepted
+  {
+    console.log('Test 5c: send --prompt-file flag is accepted')
+    const result =
+      await $`PASEO_HOST=localhost:${port} PASEO_HOME=${paseoHome} npx paseo send --prompt-file ${promptFilePath} abc123`.nothrow()
+    const output = result.stdout + result.stderr
+    assert(!output.includes('unknown option'), 'should accept --prompt-file flag')
+    assert(!output.includes('error: option'), 'should not have option parsing error')
+    console.log('✓ send --prompt-file flag is accepted\n')
+  }
+
   // Test 6: send --host flag is accepted
   {
     console.log('Test 6: send --host flag is accepted')
@@ -138,6 +166,20 @@ try {
     assert(!output.includes('unknown option'), 'should accept all combined flags')
     assert(!output.includes('error: option'), 'should not have option parsing error')
     console.log('✓ Combined flags work together\n')
+  }
+
+  // Test 8b: conflicting prompt sources are rejected
+  {
+    console.log('Test 8b: conflicting prompt sources are rejected')
+    const result =
+      await $`PASEO_HOST=localhost:${port} PASEO_HOME=${paseoHome} npx paseo send abc123 "positional prompt" --prompt "flag prompt"`.nothrow()
+    assert.notStrictEqual(result.exitCode, 0, 'should fail for conflicting prompt sources')
+    const output = result.stdout + result.stderr
+    assert(
+      output.includes('Provide exactly one of prompt argument, --prompt, or --prompt-file'),
+      'should explain conflicting prompt sources'
+    )
+    console.log('✓ conflicting prompt sources are rejected\n')
   }
 
   // Test 9: paseo --help shows send command

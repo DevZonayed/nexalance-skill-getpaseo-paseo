@@ -2,7 +2,7 @@ import type { Command } from 'commander'
 import { connectToDaemon, getDaemonHost } from '../../utils/client.js'
 import type { CommandOptions, SingleResult, OutputSchema, CommandError } from '../../output/index.js'
 import { readFile } from 'node:fs/promises'
-import { extname } from 'node:path'
+import { extname, resolve } from 'node:path'
 
 /** Result type for agent send command */
 export interface AgentSendResult {
@@ -24,6 +24,8 @@ export const agentSendSchema: OutputSchema<AgentSendResult> = {
 export interface AgentSendOptions extends CommandOptions {
   noWait?: boolean
   image?: string[]
+  prompt?: string
+  promptFile?: string
 }
 
 /**
@@ -77,9 +79,57 @@ async function readImageFiles(imagePaths: string[]): Promise<Array<{ data: strin
   return images
 }
 
+async function resolvePromptInput(options: {
+  promptArgument: string | undefined
+  promptOption: string | undefined
+  promptFile: string | undefined
+}): Promise<string> {
+  const promptText = options.promptArgument?.trim()
+  const promptOptionText = options.promptOption?.trim()
+  const promptFilePath = options.promptFile?.trim()
+  const providedSourceCount = [promptText, promptOptionText, promptFilePath].filter(Boolean).length
+
+  if (providedSourceCount > 1) {
+    const error: CommandError = {
+      code: 'CONFLICTING_PROMPT_INPUT',
+      message: 'Provide exactly one of prompt argument, --prompt, or --prompt-file',
+    }
+    throw error
+  }
+
+  if (promptText) {
+    return options.promptArgument as string
+  }
+
+  if (promptOptionText) {
+    return options.promptOption as string
+  }
+
+  if (!promptFilePath) {
+    const error: CommandError = {
+      code: 'MISSING_PROMPT',
+      message: 'A prompt is required',
+      details: 'Usage: paseo agent send [options] <id> [prompt] | --prompt <text> | --prompt-file <path>',
+    }
+    throw error
+  }
+
+  try {
+    return await readFile(resolve(promptFilePath), 'utf8')
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    const error: CommandError = {
+      code: 'PROMPT_FILE_READ_ERROR',
+      message: `Failed to read prompt file: ${promptFilePath}`,
+      details: message,
+    }
+    throw error
+  }
+}
+
 export async function runSendCommand(
   agentIdArg: string,
-  prompt: string,
+  prompt: string | undefined,
   options: AgentSendOptions,
   _command: Command
 ): Promise<SingleResult<AgentSendResult>> {
@@ -90,19 +140,16 @@ export async function runSendCommand(
     const error: CommandError = {
       code: 'MISSING_AGENT_ID',
       message: 'Agent ID is required',
-      details: 'Usage: paseo agent send [options] <id> <prompt>',
+      details: 'Usage: paseo agent send [options] <id> [prompt]',
     }
     throw error
   }
 
-  if (!prompt || prompt.trim().length === 0) {
-    const error: CommandError = {
-      code: 'MISSING_PROMPT',
-      message: 'A prompt is required',
-      details: 'Usage: paseo agent send [options] <id> <prompt>',
-    }
-    throw error
-  }
+  const promptInput = await resolvePromptInput({
+    promptArgument: prompt,
+    promptOption: options.prompt,
+    promptFile: options.promptFile,
+  })
 
   let client
   try {
@@ -124,7 +171,7 @@ export async function runSendCommand(
       : undefined
 
     // Send the message
-    await client.sendAgentMessage(agentIdArg, prompt, { images })
+    await client.sendAgentMessage(agentIdArg, promptInput, { images })
 
     // If --no-wait, return immediately
     if (options.noWait) {
