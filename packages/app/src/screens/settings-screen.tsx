@@ -6,11 +6,13 @@ import {
   ScrollView,
   Alert,
   Platform,
+  Pressable,
 } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { useFocusEffect } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, UnistylesRuntime, useUnistyles } from "react-native-unistyles";
+import { Buffer } from "buffer";
 import { Sun, Moon, Monitor, Globe, Settings, RotateCw, Trash2 } from "lucide-react-native";
 import { useAppSettings, type AppSettings } from "@/hooks/use-settings";
 import type { HostProfile, HostConnection } from "@/types/host-connection";
@@ -43,6 +45,8 @@ import { useDesktopAppUpdater } from "@/desktop/updates/use-desktop-app-updater"
 import { formatVersionWithPrefix } from "@/desktop/updates/desktop-updates";
 import { resolveAppVersion } from "@/utils/app-version";
 import { settingsStyles } from "@/styles/settings";
+import { THINKING_TONE_NATIVE_PCM_BASE64 } from "@/utils/thinking-tone.native-pcm";
+import { useVoiceAudioEngineOptional } from "@/contexts/voice-context";
 
 const delay = (ms: number) =>
   new Promise<void>((resolve) => {
@@ -484,6 +488,7 @@ function DesktopAppUpdateRow() {
 export default function SettingsScreen() {
   const { theme } = useUnistyles();
   const insets = useSafeAreaInsets();
+  const voiceAudioEngine = useVoiceAudioEngineOptional();
   const params = useLocalSearchParams<{ editHost?: string; serverId?: string }>();
   const routeServerId = typeof params.serverId === "string" ? params.serverId.trim() : "";
   const { settings, isLoading: settingsLoading, updateSettings } = useAppSettings();
@@ -500,6 +505,8 @@ export default function SettingsScreen() {
   const [isRemovingHost, setIsRemovingHost] = useState(false);
   const [editingDaemon, setEditingDaemon] = useState<HostProfile | null>(null);
   const [isSavingEdit, setIsSavingEdit] = useState(false);
+  const [isPlaybackTestRunning, setIsPlaybackTestRunning] = useState(false);
+  const [playbackTestResult, setPlaybackTestResult] = useState<string | null>(null);
   const isLoading = settingsLoading;
   const isMountedRef = useRef(true);
   const lastHandledEditHostRef = useRef<string | null>(null);
@@ -658,6 +665,35 @@ export default function SettingsScreen() {
 
   const restartConfirmationMessage =
     "This will restart the daemon. The app will reconnect automatically.";
+
+  const handlePlaybackTest = useCallback(async () => {
+    if (!voiceAudioEngine || isPlaybackTestRunning) {
+      return;
+    }
+
+    setIsPlaybackTestRunning(true);
+    setPlaybackTestResult(null);
+
+    try {
+      const bytes = Buffer.from(THINKING_TONE_NATIVE_PCM_BASE64, "base64");
+      await voiceAudioEngine.initialize();
+      voiceAudioEngine.stop();
+      await voiceAudioEngine.play({
+        type: "audio/pcm;rate=16000;bits=16",
+        size: bytes.byteLength,
+        async arrayBuffer() {
+          return Uint8Array.from(bytes).buffer;
+        },
+      });
+      setPlaybackTestResult("Playback command completed.");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error("[Settings] Playback test failed", error);
+      setPlaybackTestResult(`Playback failed: ${message}`);
+    } finally {
+      setIsPlaybackTestRunning(false);
+    }
+  }, [isPlaybackTestRunning, voiceAudioEngine]);
 
   if (isLoading) {
     return (
@@ -868,6 +904,31 @@ export default function SettingsScreen() {
 
           {isDesktop ? <DesktopPermissionsSection /> : null}
           {isDesktop ? <LocalDaemonSection appVersion={appVersion} /> : null}
+
+          <View style={settingsStyles.section}>
+            <Text style={settingsStyles.sectionTitle}>Diagnostics</Text>
+            <View style={[settingsStyles.card, styles.audioCard]}>
+              <View style={styles.audioRow}>
+                <View style={styles.audioRowContent}>
+                  <Text style={styles.audioRowTitle}>Test audio playback</Text>
+                  <Text style={styles.aboutHintText}>
+                    Plays a built-in PCM sample through the current app audio engine.
+                  </Text>
+                  {playbackTestResult ? (
+                    <Text style={styles.aboutHintText}>{playbackTestResult}</Text>
+                  ) : null}
+                </View>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onPress={() => void handlePlaybackTest()}
+                  disabled={!voiceAudioEngine || isPlaybackTestRunning}
+                >
+                  {isPlaybackTestRunning ? "Playing..." : "Play test"}
+                </Button>
+              </View>
+            </View>
+          </View>
 
           {/* About */}
           <View style={settingsStyles.section}>
@@ -1393,18 +1454,22 @@ function DaemonCard({
               </View>
             ) : null}
 
-            <Button
-              variant="ghost"
-              size="sm"
+            <Pressable
               style={styles.hostSettingsButton}
-              textStyle={{ fontSize: 0, lineHeight: 0 }}
-              leftIcon={<Settings size={theme.iconSize.md} color={theme.colors.foregroundMuted} />}
               onPress={() => onOpenSettings(daemon)}
               testID={`daemon-card-settings-${daemon.serverId}`}
               accessibilityLabel={`Open settings for ${daemon.label}`}
+              accessibilityRole="button"
             >
-              {" "}
-            </Button>
+              {({ hovered = false, pressed = false }) => (
+                <Settings
+                  size={theme.iconSize.md}
+                  color={
+                    hovered || pressed ? theme.colors.foreground : theme.colors.foregroundMuted
+                  }
+                />
+              )}
+            </Pressable>
           </View>
         </View>
         {connectionError ? <Text style={styles.hostError}>{connectionError}</Text> : null}

@@ -100,6 +100,9 @@ export default {
       output: "single",
       favicon: "./assets/images/favicon.png",
     },
+    autolinking: {
+      searchPaths: ["../../node_modules", "./node_modules"],
+    },
     plugins: [
       "expo-router",
       [
@@ -143,6 +146,7 @@ export default {
     experiments: {
       typedRoutes: true,
       reactCompiler: true,
+      autolinkingModuleResolution: true,
     },
     extra: {
       router: {},

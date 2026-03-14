@@ -2130,7 +2130,12 @@ export class Session {
     agentId?: string,
     requestId?: string
   ): Promise<void> {
+    const startedAt = Date.now()
     try {
+      this.sessionLogger.info(
+        { enabled, requestedAgentId: agentId ?? null, requestId: requestId ?? null },
+        'set_voice_mode started'
+      )
       if (enabled) {
         const unavailable = this.resolveVoiceFeatureUnavailableContext('voice_mode')
         if (unavailable) {
@@ -2144,19 +2149,44 @@ export class Session {
           this.voiceModeAgentId &&
           this.voiceModeAgentId !== normalizedAgentId
         ) {
+          this.sessionLogger.info(
+            {
+              previousAgentId: this.voiceModeAgentId,
+              nextAgentId: normalizedAgentId,
+              elapsedMs: Date.now() - startedAt,
+            },
+            'set_voice_mode disabling previous active voice agent'
+          )
           await this.disableVoiceModeForActiveAgent(true)
         }
 
         if (!this.isVoiceMode || this.voiceModeAgentId !== normalizedAgentId) {
+          this.sessionLogger.info(
+            { agentId: normalizedAgentId, elapsedMs: Date.now() - startedAt },
+            'set_voice_mode enabling voice for agent'
+          )
           const refreshedAgentId = await this.enableVoiceModeForAgent(normalizedAgentId)
           this.voiceModeAgentId = refreshedAgentId
+          this.sessionLogger.info(
+            { agentId: refreshedAgentId, elapsedMs: Date.now() - startedAt },
+            'set_voice_mode agent enable complete'
+          )
         }
 
+        this.sessionLogger.info(
+          { agentId: this.voiceModeAgentId, elapsedMs: Date.now() - startedAt },
+          'set_voice_mode starting voice turn controller'
+        )
         await this.startVoiceTurnController()
+        this.sessionLogger.info(
+          { agentId: this.voiceModeAgentId, elapsedMs: Date.now() - startedAt },
+          'set_voice_mode voice turn controller started'
+        )
         this.isVoiceMode = true
         this.sessionLogger.info(
           {
             agentId: this.voiceModeAgentId,
+            elapsedMs: Date.now() - startedAt,
           },
           'Voice mode enabled for existing agent'
         )
@@ -2175,9 +2205,13 @@ export class Session {
         return
       }
 
+      this.sessionLogger.info(
+        { agentId: this.voiceModeAgentId, elapsedMs: Date.now() - startedAt },
+        'set_voice_mode disabling active voice mode'
+      )
       await this.disableVoiceModeForActiveAgent(true)
       this.isVoiceMode = false
-      this.sessionLogger.info('Voice mode disabled')
+      this.sessionLogger.info({ elapsedMs: Date.now() - startedAt }, 'Voice mode disabled')
       if (requestId) {
         this.emit({
           type: 'set_voice_mode_response',
@@ -2198,6 +2232,7 @@ export class Session {
           err: error,
           enabled,
           requestedAgentId: agentId ?? null,
+          elapsedMs: Date.now() - startedAt,
         },
         'set_voice_mode failed'
       )
@@ -2256,14 +2291,25 @@ export class Session {
   }
 
   private async enableVoiceModeForAgent(agentId: string): Promise<string> {
+    const startedAt = Date.now()
     const ensureVoiceSocket = this.ensureVoiceMcpSocketForAgent
     if (!ensureVoiceSocket) {
       throw new Error('Voice MCP socket bridge is not configured')
     }
 
+    this.sessionLogger.info({ agentId }, 'enableVoiceModeForAgent.ensureAgentLoaded.start')
     const existing = await this.ensureAgentLoaded(agentId)
+    this.sessionLogger.info(
+      { agentId, elapsedMs: Date.now() - startedAt },
+      'enableVoiceModeForAgent.ensureAgentLoaded.done'
+    )
 
+    this.sessionLogger.info({ agentId }, 'enableVoiceModeForAgent.ensureVoiceSocket.start')
     const socketPath = await ensureVoiceSocket(agentId)
+    this.sessionLogger.info(
+      { agentId, socketPath, elapsedMs: Date.now() - startedAt },
+      'enableVoiceModeForAgent.ensureVoiceSocket.done'
+    )
     this.registerVoiceBridgeForAgent(agentId)
 
     const baseConfig: VoiceModeBaseConfig = {
@@ -2277,7 +2323,15 @@ export class Session {
     }
 
     try {
+      this.sessionLogger.info(
+        { agentId, elapsedMs: Date.now() - startedAt },
+        'enableVoiceModeForAgent.reloadAgentSession.start'
+      )
       const refreshed = await this.agentManager.reloadAgentSession(agentId, refreshOverrides)
+      this.sessionLogger.info(
+        { agentId, refreshedAgentId: refreshed.id, elapsedMs: Date.now() - startedAt },
+        'enableVoiceModeForAgent.reloadAgentSession.done'
+      )
       return refreshed.id
     } catch (error) {
       this.unregisterVoiceSpeakHandler?.(agentId)
@@ -2331,6 +2385,7 @@ export class Session {
 
   private async startVoiceTurnController(): Promise<void> {
     if (this.voiceTurnController) {
+      this.sessionLogger.info('startVoiceTurnController skipped: already running')
       return
     }
 
@@ -2338,6 +2393,11 @@ export class Session {
     if (!turnDetection) {
       throw new Error('Voice turn detection is not configured')
     }
+
+    this.sessionLogger.info(
+      { providerId: turnDetection.id },
+      'startVoiceTurnController creating controller'
+    )
 
     const controller = createVoiceTurnController({
       logger: this.sessionLogger.child({ component: 'voice-turn-controller' }),
@@ -2381,8 +2441,10 @@ export class Session {
       },
     })
 
+    this.sessionLogger.info('startVoiceTurnController connecting controller')
     await controller.start()
     this.voiceTurnController = controller
+    this.sessionLogger.info('startVoiceTurnController connected')
   }
 
   private async stopVoiceTurnController(): Promise<void> {
@@ -6368,12 +6430,9 @@ export class Session {
   }
 
   private async processCompletedAudio(audio: Buffer, format: string): Promise<void> {
-    const shouldBuffer =
-      this.processingPhase === 'transcribing' && this.pendingAudioSegments.length === 0
-
-    if (shouldBuffer) {
+    if (this.processingPhase === 'transcribing') {
       this.sessionLogger.debug(
-        { phase: this.processingPhase },
+        { phase: this.processingPhase, segmentCount: this.pendingAudioSegments.length + 1 },
         `Buffering audio segment (phase: ${this.processingPhase})`
       )
       this.pendingAudioSegments.push({
@@ -6406,6 +6465,26 @@ export class Session {
     }
 
     await this.processAudio(audio, format)
+  }
+
+  private async flushPendingAudioSegments(reason: string): Promise<void> {
+    if (this.processingPhase === 'transcribing' || this.pendingAudioSegments.length === 0) {
+      return
+    }
+
+    const pendingSegments = [...this.pendingAudioSegments]
+    this.pendingAudioSegments = []
+    this.clearBufferTimeout()
+
+    this.sessionLogger.debug(
+      { reason, segmentCount: pendingSegments.length },
+      `Flushing ${pendingSegments.length} buffered audio segment(s)`
+    )
+
+    const combinedAudio = Buffer.concat(pendingSegments.map((segment) => segment.audio))
+    const combinedFormat = pendingSegments[pendingSegments.length - 1]!.format
+
+    await this.processAudio(combinedAudio, combinedFormat)
   }
 
   /**
@@ -6456,6 +6535,7 @@ export class Session {
     } catch (error: any) {
       this.setPhase('idle')
       this.clearSpeechInProgress('transcription error')
+      await this.flushPendingAudioSegments('transcription error')
       this.emit({
         type: 'activity_log',
         payload: {
@@ -6495,6 +6575,7 @@ export class Session {
       this.sessionLogger.debug('Empty transcription (false positive), not aborting')
       this.setPhase('idle')
       this.clearSpeechInProgress('empty transcription')
+      await this.flushPendingAudioSegments('empty transcription')
       return
     }
 
@@ -6539,6 +6620,7 @@ export class Session {
         { requestId: result.requestId },
         'Skipping voice agent processing because voice mode is disabled'
       )
+      await this.flushPendingAudioSegments('voice mode disabled')
       return
     }
 
@@ -6548,12 +6630,14 @@ export class Session {
         { requestId: result.requestId },
         'Skipping voice agent processing because no agent is currently voice-enabled'
       )
+      await this.flushPendingAudioSegments('no active voice agent')
       return
     }
 
     // Route voice utterances through the same send path as regular text input:
     // interrupt-if-running, record message, then start a new stream.
     await this.handleSendAgentMessage(agentId, result.text)
+    await this.flushPendingAudioSegments('transcription complete')
   }
 
   private registerVoiceBridgeForAgent(agentId: string): void {
@@ -6722,6 +6806,15 @@ export class Session {
 
     this.bufferTimeout = setTimeout(async () => {
       this.sessionLogger.debug('Buffer timeout reached, processing pending segments')
+
+      if (this.processingPhase === 'transcribing') {
+        this.sessionLogger.debug(
+          { segmentCount: this.pendingAudioSegments.length },
+          'Buffer timeout deferred because transcription is still in progress'
+        )
+        this.setBufferTimeout()
+        return
+      }
 
       if (this.pendingAudioSegments.length > 0) {
         const segments = [...this.pendingAudioSegments]

@@ -1,8 +1,4 @@
 import { getTauri } from "@/utils/tauri";
-import {
-  loadThinkingToneArrayBuffer,
-  THINKING_TONE_REPEAT_GAP_MS,
-} from "@/utils/thinking-tone";
 import type {
   AudioEngine,
   AudioEngineCallbacks,
@@ -117,16 +113,6 @@ export function createAudioEngine(
       reject: (error: Error) => void;
       settled: boolean;
     } | null;
-    looping: {
-      token: number;
-      source: AudioBufferSourceNode | null;
-      gain: GainNode | null;
-      timeout: ReturnType<typeof setTimeout> | null;
-    };
-    thinkingTone: {
-      bytes: Uint8Array | null;
-      buffer: AudioBuffer | null;
-    };
   } = {
     playbackContext: null,
     captureContext: null,
@@ -139,16 +125,6 @@ export function createAudioEngine(
     queue: [],
     processingQueue: false,
     activePlayback: null,
-    looping: {
-      token: 0,
-      source: null,
-      gain: null,
-      timeout: null,
-    },
-    thinkingTone: {
-      bytes: null,
-      buffer: null,
-    },
   };
 
   async function ensurePlaybackContext(): Promise<AudioContext> {
@@ -191,48 +167,6 @@ export function createAudioEngine(
     }
     refs.captureContext = context;
     return context;
-  }
-
-  async function ensureThinkingToneBytes(): Promise<Uint8Array> {
-    if (refs.thinkingTone.bytes) {
-      return refs.thinkingTone.bytes;
-    }
-    const wav = await loadThinkingToneArrayBuffer();
-    refs.thinkingTone.bytes = new Uint8Array(wav);
-    return refs.thinkingTone.bytes;
-  }
-
-  async function ensureThinkingToneBuffer(): Promise<AudioBuffer> {
-    if (refs.thinkingTone.buffer) {
-      return refs.thinkingTone.buffer;
-    }
-    const context = await ensurePlaybackContext();
-    const wav = await loadThinkingToneArrayBuffer();
-    const audioBuffer = await decodeAudioData(context, wav);
-    refs.thinkingTone.buffer = audioBuffer;
-    return audioBuffer;
-  }
-
-  function stopLooping(): void {
-    refs.looping.token += 1;
-    if (refs.looping.timeout) {
-      clearTimeout(refs.looping.timeout);
-      refs.looping.timeout = null;
-    }
-    if (refs.looping.source) {
-      try {
-        refs.looping.source.onended = null;
-        refs.looping.source.stop();
-      } catch {
-        // Ignore best-effort stop errors.
-      }
-      refs.looping.source.disconnect();
-      refs.looping.source = null;
-    }
-    if (refs.looping.gain) {
-      refs.looping.gain.disconnect();
-      refs.looping.gain = null;
-    }
   }
 
   async function playAudio(audio: AudioPlaybackSource): Promise<number> {
@@ -335,18 +269,15 @@ export function createAudioEngine(
   return {
     async initialize() {
       await ensurePlaybackContext();
-      await Promise.all([ensureThinkingToneBytes(), ensureThinkingToneBuffer()]);
     },
 
     async destroy() {
-      stopLooping();
       this.stop();
       this.clearQueue();
       await stopCapture();
 
       const playbackContext = refs.playbackContext;
       refs.playbackContext = null;
-      refs.thinkingTone.buffer = null;
       if (playbackContext && playbackContext.state !== "closed") {
         await playbackContext.close().catch(() => undefined);
       }
@@ -486,63 +417,5 @@ export function createAudioEngine(
     isPlaying() {
       return refs.activePlayback !== null;
     },
-
-    playLooping(audio, gapMs) {
-      if (refs.looping.source || refs.looping.timeout) {
-        return;
-      }
-
-      const token = refs.looping.token + 1;
-      refs.looping.token = token;
-
-      void (async () => {
-        try {
-          const context = await ensurePlaybackContext();
-          const audioBuffer =
-            audio.byteLength > 0
-              ? pcm16LeToAudioBuffer(context, audio, 16000)
-              : await ensureThinkingToneBuffer();
-          if (refs.looping.token !== token) {
-            return;
-          }
-
-          const gain = context.createGain();
-          gain.gain.value = 1;
-          gain.connect(context.destination);
-          refs.looping.gain = gain;
-
-          const playOnce = () => {
-            if (refs.looping.token !== token) {
-              return;
-            }
-            const source = context.createBufferSource();
-            source.buffer = audioBuffer;
-            source.connect(gain);
-            refs.looping.source = source;
-            source.onended = () => {
-              if (refs.looping.source === source) {
-                refs.looping.source = null;
-              }
-              if (refs.looping.token !== token) {
-                return;
-              }
-              refs.looping.timeout = setTimeout(
-                playOnce,
-                gapMs || THINKING_TONE_REPEAT_GAP_MS
-              );
-            };
-            source.start();
-          };
-
-          playOnce();
-        } catch (error) {
-          callbacks.onError?.(
-            error instanceof Error ? error : new Error(String(error))
-          );
-        }
-      })();
-    },
-
-    stopLooping,
   };
 }

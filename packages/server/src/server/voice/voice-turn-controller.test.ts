@@ -278,4 +278,5 @@ describe("voice turn controller", () => {
     deferred.resolve();
     await settleSerialQueue();
   });
+
 });

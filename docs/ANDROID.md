@@ -20,7 +20,7 @@ From repo root:
 ```bash
 npm run android:development    # Debug build
 npm run android:production     # Release build
-npm run android:clean          # Clean native project
+npm run android:clear          # Remove generated Android project
 ```
 
 Or from `packages/app`:
@@ -34,8 +34,8 @@ APP_VARIANT=development npx expo run:android --variant=debug
 APP_VARIANT=production npx expo prebuild --platform android --non-interactive
 APP_VARIANT=production npx expo run:android --variant=release
 
-# Clean
-npx expo prebuild --platform android --clean --non-interactive
+# Clear generated Android project
+rm -rf android
 ```
 
 ## Screenshots

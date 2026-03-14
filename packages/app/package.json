@@ -7,11 +7,10 @@
     "start": "expo start",
     "reset-project": "node ./scripts/reset-project.js",
     "android": "npm run android:development",
-    "android:clear-autolinking-cache": "node -e \"require('node:fs').rmSync('android/build/generated/autolinking', { recursive: true, force: true })\"",
-    "android:development": "npm run android:clear-autolinking-cache && APP_VARIANT=development expo prebuild --platform android --non-interactive && APP_VARIANT=development expo run:android --variant=debug",
-    "android:production": "npm run android:clear-autolinking-cache && APP_VARIANT=production expo prebuild --platform android --non-interactive && APP_VARIANT=production expo run:android --variant=release",
+    "android:development": "APP_VARIANT=development expo prebuild --platform android --non-interactive && APP_VARIANT=development expo run:android --variant=debug",
+    "android:production": "APP_VARIANT=production expo prebuild --platform android --non-interactive && APP_VARIANT=production expo run:android --variant=release",
     "android:release": "npm run android:production",
-    "android:clean": "expo prebuild --platform android --clean --non-interactive",
+    "android:clear": "node -e \"require('node:fs').rmSync('android', { recursive: true, force: true })\"",
     "ios": "expo run:ios",
     "ios:release": "expo run:ios --configuration Release",
     "web": "expo start --web",
@@ -27,7 +26,7 @@
     "deploy:web": "npm run build:web && wrangler pages deploy dist --project-name paseo-app"
   },
   "dependencies": {
-    "@boudra/expo-two-way-audio": "^0.1.3",
+    "@getpaseo/expo-two-way-audio": "file:../expo-two-way-audio",
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",

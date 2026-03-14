@@ -117,6 +117,14 @@ export function createVoiceTurnController(params: {
       rollingPrefixBytes: prefixBuffer.byteLength,
       utteranceBytes: prefix.length,
     };
+    params.logger.info(
+      {
+        utteranceId: state.utteranceId,
+        prefixBytes: prefix.length,
+        rollingPrefixBytes: prefixBuffer.byteLength,
+      },
+      "voice_turn.speech_started"
+    );
   }
 
   async function handleSpeechStopped(): Promise<void> {
@@ -132,6 +140,14 @@ export function createVoiceTurnController(params: {
     state = { status: "listening", rollingPrefixBytes: prefixBuffer.byteLength };
 
     await params.callbacks.onSpeechStopped();
+
+    params.logger.info(
+      {
+        utteranceBytes: utterance.length,
+        utteranceAgeMs: Math.max(0, endedAt - startedAt),
+      },
+      "voice_turn.speech_stopped"
+    );
 
     if (utterance.length === 0) {
       return;

@@ -1,0 +1,28 @@
+{
+  "$schema": "https://biomejs.dev/schemas/1.5.3/schema.json",
+  "organizeImports": {
+    "enabled": true
+  },
+  "files": {
+    "ignore": [
+      "./build",
+      "./node_modules/",
+      ".expo",
+      "ios",
+      "android",
+      "expo-env.d.ts",
+      "./examples/*/node_modules",
+      "./examples/*/.expo",
+      "./examples/*/ios",
+      "./examples/*/android"
+    ]
+  },
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space",
+    "lineWidth": 100
+  },
+  "linter": {
+    "enabled": false
+  }
+}

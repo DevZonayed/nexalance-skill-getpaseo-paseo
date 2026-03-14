@@ -20,8 +20,6 @@ function createAudioEngineMock(): AudioEngine {
     stop: vi.fn(),
     clearQueue: vi.fn(),
     isPlaying: vi.fn().mockReturnValue(false),
-    playLooping: vi.fn(),
-    stopLooping: vi.fn(),
   };
 }
 
@@ -137,7 +135,6 @@ describe("voice runtime", () => {
     runtime.onAssistantAudioStarted("server-1");
 
     expect(runtime.getSnapshot().phase).toBe("playing");
-    expect(engine.stopLooping).toHaveBeenCalled();
     expect(adapter.setAssistantAudioPlaying).toHaveBeenCalledWith(true);
   });
 
@@ -256,7 +253,7 @@ describe("voice runtime", () => {
     runtime.onAssistantAudioFinished("server-1");
 
     expect(runtime.getSnapshot().phase).toBe("waiting");
-    expect(engine.playLooping).toHaveBeenCalled();
+    expect(engine.play).toHaveBeenCalled();
   });
 
   it("starts the thinking tone when an agent turn begins before playback", async () => {
@@ -268,7 +265,7 @@ describe("voice runtime", () => {
     runtime.onTurnEvent("server-1", "agent-1", "turn_started");
 
     expect(runtime.getSnapshot().phase).toBe("waiting");
-    expect(engine.playLooping).toHaveBeenCalled();
+    expect(engine.play).toHaveBeenCalled();
   });
 
   it("returns to listening after assistant playback once the turn is complete", async () => {
@@ -283,8 +280,7 @@ describe("voice runtime", () => {
     runtime.onAssistantAudioFinished("server-1");
 
     expect(runtime.getSnapshot().phase).toBe("listening");
-    expect(engine.playLooping).toHaveBeenCalledTimes(1);
-    expect(engine.stopLooping).toHaveBeenCalled();
+    expect(engine.play).toHaveBeenCalled();
   });
 
   it("keeps local volume alone non-authoritative for playback interruption", async () => {

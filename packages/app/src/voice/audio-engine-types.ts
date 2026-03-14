@@ -23,7 +23,4 @@ export interface AudioEngine {
   stop(): void;
   clearQueue(): void;
   isPlaying(): boolean;
-
-  playLooping(pcm: Uint8Array, gapMs: number): void;
-  stopLooping(): void;
 }

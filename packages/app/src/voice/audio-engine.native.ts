@@ -1,19 +1,8 @@
-import { Audio } from "expo-av";
-import * as FileSystem from "expo-file-system";
-import {
-  THINKING_TONE_REPEAT_GAP_MS,
-} from "@/utils/thinking-tone";
-import {
-  THINKING_TONE_NATIVE_PCM_DURATION_MS,
-} from "@/utils/thinking-tone.native-pcm";
 import type {
   AudioEngine,
   AudioEngineCallbacks,
   AudioPlaybackSource,
 } from "@/voice/audio-engine-types";
-
-// Use expo-av for playback instead of expo-two-way-audio (temporary test)
-const USE_EXPO_AV_PLAYBACK = true;
 
 interface QueuedAudio {
   audio: AudioPlaybackSource;
@@ -21,13 +10,20 @@ interface QueuedAudio {
   reject: (error: Error) => void;
 }
 
-interface CuePcm {
-  pcm16k: Uint8Array;
-  durationMs: number;
-}
-
 interface AudioEngineTraceOptions {
   traceLabel?: string;
+}
+
+let nextAudioEngineInstanceId = 1;
+
+interface BridgeStats {
+  windowStartedAtMs: number;
+  captureEvents: number;
+  captureBytes: number;
+  playbackEvents: number;
+  playbackInputBytes: number;
+  playbackResampledBytes: number;
+  playbackDurationMs: number;
 }
 
 function parsePcmSampleRate(mimeType: string): number | null {
@@ -39,10 +35,92 @@ function parsePcmSampleRate(mimeType: string): number | null {
   return Number.isFinite(rate) && rate > 0 ? rate : null;
 }
 
+function resamplePcm16(pcm: Uint8Array, fromRate: number, toRate: number): Uint8Array {
+  if (fromRate === toRate) {
+    return pcm;
+  }
+
+  const inputSamples = Math.floor(pcm.length / 2);
+  const outputSamples = Math.floor((inputSamples * toRate) / fromRate);
+  const out = new Uint8Array(outputSamples * 2);
+  const ratio = fromRate / toRate;
+
+  const readInt16 = (sampleIndex: number): number => {
+    const i = sampleIndex * 2;
+    if (i + 1 >= pcm.length) {
+      return 0;
+    }
+    const lo = pcm[i]!;
+    const hi = pcm[i + 1]!;
+    let value = (hi << 8) | lo;
+    if (value & 0x8000) {
+      value = value - 0x10000;
+    }
+    return value;
+  };
+
+  const writeInt16 = (sampleIndex: number, value: number): void => {
+    const clamped = Math.max(-32768, Math.min(32767, Math.round(value)));
+    const i = sampleIndex * 2;
+    out[i] = clamped & 0xff;
+    out[i + 1] = (clamped >> 8) & 0xff;
+  };
+
+  for (let i = 0; i < outputSamples; i++) {
+    const srcPos = i * ratio;
+    const i0 = Math.floor(srcPos);
+    const frac = srcPos - i0;
+    const s0 = readInt16(i0);
+    const s1 = readInt16(Math.min(inputSamples - 1, i0 + 1));
+    writeInt16(i, s0 + (s1 - s0) * frac);
+  }
+
+  return out;
+}
+
 export function createAudioEngine(
   callbacks: AudioEngineCallbacks,
   _options?: AudioEngineTraceOptions
 ): AudioEngine {
+  const native = require("@getpaseo/expo-two-way-audio");
+  const instanceId = nextAudioEngineInstanceId++;
+  const bridgeStats: BridgeStats = {
+    windowStartedAtMs: Date.now(),
+    captureEvents: 0,
+    captureBytes: 0,
+    playbackEvents: 0,
+    playbackInputBytes: 0,
+    playbackResampledBytes: 0,
+    playbackDurationMs: 0,
+  };
+
+  const toHexPreview = (bytes: Uint8Array, count = 12): string =>
+    Array.from(bytes.slice(0, count))
+      .map((value) => value.toString(16).padStart(2, "0"))
+      .join(" ");
+
+  const maybeFlushBridgeStats = (reason: string): void => {
+    const now = Date.now();
+    const elapsedMs = now - bridgeStats.windowStartedAtMs;
+    if (elapsedMs < 1000) {
+      return;
+    }
+    console.log(
+      `[AudioEngine.native#${instanceId}][bridge] ${reason} ` +
+        `capture=${bridgeStats.captureEvents}ev/${bridgeStats.captureBytes}B ` +
+        `play=${bridgeStats.playbackEvents}ev/${bridgeStats.playbackInputBytes}B->${bridgeStats.playbackResampledBytes}B ` +
+        `playMs=${bridgeStats.playbackDurationMs.toFixed(1)} ` +
+        `windowMs=${elapsedMs}`
+    );
+    bridgeStats.windowStartedAtMs = now;
+    bridgeStats.captureEvents = 0;
+    bridgeStats.captureBytes = 0;
+    bridgeStats.playbackEvents = 0;
+    bridgeStats.playbackInputBytes = 0;
+    bridgeStats.playbackResampledBytes = 0;
+    bridgeStats.playbackDurationMs = 0;
+  };
+
   const refs: {
     initialized: boolean;
     captureActive: boolean;
@@ -55,14 +133,7 @@ export function createAudioEngine(
       reject: (error: Error) => void;
       settled: boolean;
     } | null;
-    looping: {
-      active: boolean;
-      token: number;
-      timeout: ReturnType<typeof setTimeout> | null;
-    };
-    thinkingTone: CuePcm | null;
     destroyed: boolean;
-    mockVolumeInterval: ReturnType<typeof setInterval> | null;
   } = {
     initialized: false,
     captureActive: false,
@@ -71,62 +142,53 @@ export function createAudioEngine(
     processingQueue: false,
     playbackTimeout: null,
     activePlayback: null,
-    looping: {
-      active: false,
-      token: 0,
-      timeout: null,
-    },
-    thinkingTone: null,
     destroyed: false,
-    mockVolumeInterval: null,
   };
 
-  // Only subscribe to native events if not mocking
-  let microphoneSubscription: { remove(): void };
-  let volumeSubscription: { remove(): void };
+  const microphoneSubscription = native.addExpoTwoWayAudioEventListener(
+    "onMicrophoneData",
+    (event: any) => {
+      if (!refs.captureActive || refs.muted) {
+        return;
+      }
+      const pcm = event.data as Uint8Array;
+      bridgeStats.captureEvents += 1;
+      bridgeStats.captureBytes += pcm.byteLength;
+      maybeFlushBridgeStats("capture");
+      callbacks.onCaptureData(pcm);
+    }
+  );
+  const volumeSubscription = native.addExpoTwoWayAudioEventListener(
+    "onInputVolumeLevelData",
+    (event: any) => {
+      if (!refs.captureActive) {
+        return;
+      }
+      const level = refs.muted ? 0 : event.data;
+      callbacks.onVolumeLevel(level);
+    }
+  );
 
-  if (MOCK_MODE) {
-    microphoneSubscription = { remove() {} };
-    volumeSubscription = { remove() {} };
-  } else {
-    const native = require("@boudra/expo-two-way-audio");
-    microphoneSubscription = native.addExpoTwoWayAudioEventListener(
-      "onMicrophoneData",
-      (event: any) => {
-        if (!refs.captureActive || refs.muted) {
-          return;
-        }
-        callbacks.onCaptureData(event.data);
-      }
-    );
-    volumeSubscription = native.addExpoTwoWayAudioEventListener(
-      "onInputVolumeLevelData",
-      (event: any) => {
-        if (!refs.captureActive) {
-          return;
-        }
-        const level = refs.muted ? 0 : event.data;
-        callbacks.onVolumeLevel(level);
-      }
-    );
-  }
+  const outputVolumeSubscription = native.addExpoTwoWayAudioEventListener(
+    "onOutputVolumeLevelData",
+    (event: any) => {
+      console.log(`[AudioEngine.native#${instanceId}] outputVolume=${event.data}`);
+    }
+  );
 
   async function ensureInitialized(): Promise<void> {
     if (refs.initialized) {
       return;
     }
-    if (!MOCK_MODE) {
-      const native = require("@boudra/expo-two-way-audio");
-      await native.initialize();
+    const success = await native.initialize();
+    if (!success) {
+      throw new Error("expo-two-way-audio: native initialize() returned false");
     }
+    console.log(`[AudioEngine.native#${instanceId}] initialized successfully`);
     refs.initialized = true;
   }
 
   async function ensureMicrophonePermission(): Promise<void> {
-    if (MOCK_MODE) {
-      return;
-    }
-    const native = require("@boudra/expo-two-way-audio");
     let permission = await native.getMicrophonePermissionsAsync().catch(() => null);
     if (!permission?.granted) {
       permission = await native.requestMicrophonePermissionsAsync().catch(() => null);
@@ -136,15 +198,6 @@ export function createAudioEngine(
         "Microphone permission is required to capture audio. Please enable microphone access in system settings."
       );
     }
-  }
-
-  async function ensureThinkingTone(): Promise<CuePcm> {
-    if (refs.thinkingTone) {
-      return refs.thinkingTone;
-    }
-    const durationMs = THINKING_TONE_NATIVE_PCM_DURATION_MS;
-    refs.thinkingTone = { pcm16k: new Uint8Array(0), durationMs };
-    return refs.thinkingTone;
   }
 
   function clearPlaybackTimeout(): void {
@@ -164,15 +217,24 @@ export function createAudioEngine(
         const arrayBuffer = await audio.arrayBuffer();
         const pcm = new Uint8Array(arrayBuffer);
         const inputRate = parsePcmSampleRate(audio.type || "") ?? 24000;
-        const durationSec = pcm.length / 2 / inputRate;
 
-        console.log(`[AudioEngine.native] playPCMData: MOCK_MODE=${MOCK_MODE} inputRate=${inputRate} inputBytes=${pcm.length} durationSec=${durationSec.toFixed(3)}`);
+        // Native AudioEngine expects 16kHz PCM16
+        const pcm16k = resamplePcm16(pcm, inputRate, 16000);
+        const durationSec = pcm16k.length / 2 / 16000;
+        bridgeStats.playbackEvents += 1;
+        bridgeStats.playbackInputBytes += pcm.length;
+        bridgeStats.playbackResampledBytes += pcm16k.length;
+        bridgeStats.playbackDurationMs += durationSec * 1000;
 
-        if (!MOCK_MODE) {
-          const native = require("@boudra/expo-two-way-audio");
-          native.resumePlayback();
-          native.playPCMData(pcm);
-        }
+        console.log(
+          `[AudioEngine.native#${instanceId}] playPCMData: inputRate=${inputRate} inputBytes=${pcm.length} ` +
+            `resampled=${pcm16k.length} durationSec=${durationSec.toFixed(3)} ` +
+            `pcmHead=${toHexPreview(pcm)} resampledHead=${toHexPreview(pcm16k)}`
+        );
+        maybeFlushBridgeStats("play");
+
+        native.resumePlayback();
+        native.playPCMData(pcm16k);
 
         clearPlaybackTimeout();
         refs.playbackTimeout = setTimeout(() => {
@@ -215,27 +277,9 @@ export function createAudioEngine(
     refs.processingQueue = false;
   }
 
-  function nativeStopPlayback(): void {
-    if (!MOCK_MODE) {
-      const native = require("@boudra/expo-two-way-audio");
-      native.stopPlayback();
-    }
-  }
-
-  function stopLooping(): void {
-    refs.looping.active = false;
-    refs.looping.token += 1;
-    if (refs.looping.timeout) {
-      clearTimeout(refs.looping.timeout);
-      refs.looping.timeout = null;
-    }
-    nativeStopPlayback();
-  }
-
   return {
     async initialize() {
       await ensureInitialized();
-      await ensureThinkingTone();
     },
 
     async destroy() {
@@ -243,30 +287,22 @@ export function createAudioEngine(
         return;
       }
       refs.destroyed = true;
-      stopLooping();
       this.stop();
       this.clearQueue();
       if (refs.captureActive) {
-        if (!MOCK_MODE) {
-          const native = require("@boudra/expo-two-way-audio");
-          native.toggleRecording(false);
-        }
-        if (refs.mockVolumeInterval) {
-          clearInterval(refs.mockVolumeInterval);
-          refs.mockVolumeInterval = null;
-        }
+        native.toggleRecording(false);
         refs.captureActive = false;
       }
       clearPlaybackTimeout();
       refs.muted = false;
       callbacks.onVolumeLevel(0);
-      if (refs.initialized && !MOCK_MODE) {
-        const native = require("@boudra/expo-two-way-audio");
+      if (refs.initialized) {
         native.tearDown();
         refs.initialized = false;
       }
       microphoneSubscription.remove();
       volumeSubscription.remove();
+      outputVolumeSubscription.remove();
     },
 
     async startCapture() {
@@ -277,22 +313,7 @@ export function createAudioEngine(
       try {
         await ensureMicrophonePermission();
         await ensureInitialized();
-
-        if (MOCK_MODE) {
-          // Emit fake volume levels and empty PCM data periodically
-          refs.mockVolumeInterval = setInterval(() => {
-            if (!refs.captureActive) {
-              return;
-            }
-            const fakeVolume = refs.muted ? 0 : 0.15 + Math.random() * 0.5;
-            callbacks.onVolumeLevel(fakeVolume);
-            // Send empty PCM chunk to keep the pipeline alive
-            callbacks.onCaptureData(new Uint8Array(3200));
-          }, 100);
-        } else {
-          const native = require("@boudra/expo-two-way-audio");
-          native.toggleRecording(true);
-        }
+        native.toggleRecording(true);
         refs.captureActive = true;
       } catch (error) {
         const wrapped = error instanceof Error ? error : new Error(String(error));
@@ -303,15 +324,7 @@ export function createAudioEngine(
 
     async stopCapture() {
       if (refs.captureActive) {
-        if (MOCK_MODE) {
-          if (refs.mockVolumeInterval) {
-            clearInterval(refs.mockVolumeInterval);
-            refs.mockVolumeInterval = null;
-          }
-        } else {
-          const native = require("@boudra/expo-two-way-audio");
-          native.toggleRecording(false);
-        }
+        native.toggleRecording(false);
       }
       refs.captureActive = false;
       refs.muted = false;
@@ -340,7 +353,7 @@ export function createAudioEngine(
     },
 
     stop() {
-      nativeStopPlayback();
+      native.stopPlayback();
       clearPlaybackTimeout();
       const active = refs.activePlayback;
       refs.activePlayback = null;
@@ -360,45 +373,5 @@ export function createAudioEngine(
     isPlaying() {
       return refs.activePlayback !== null;
     },
-
-    playLooping(audio, gapMs) {
-      if (refs.looping.active) {
-        return;
-      }
-
-      refs.looping.active = true;
-      const token = refs.looping.token + 1;
-      refs.looping.token = token;
-
-      void (async () => {
-        try {
-          await ensureInitialized();
-          const cue = await ensureThinkingTone();
-
-          const loop = () => {
-            if (!refs.looping.active || refs.looping.token !== token) {
-              return;
-            }
-            if (!MOCK_MODE) {
-              const native = require("@boudra/expo-two-way-audio");
-              native.resumePlayback();
-              native.playPCMData(cue.pcm16k);
-            }
-            refs.looping.timeout = setTimeout(
-              loop,
-              cue.durationMs + (gapMs || THINKING_TONE_REPEAT_GAP_MS)
-            );
-          };
-
-          loop();
-        } catch (error) {
-          callbacks.onError?.(
-            error instanceof Error ? error : new Error(String(error))
-          );
-        }
-      })();
-    },
-
-    stopLooping,
   };
 }

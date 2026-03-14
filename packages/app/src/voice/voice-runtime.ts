@@ -7,6 +7,10 @@ import { resolveVoiceUnavailableMessage } from "@/utils/server-info-capabilities
 import type { DaemonServerInfo } from "@/stores/session-store";
 import type { AudioEngine } from "@/voice/audio-engine-types";
 import { REALTIME_VOICE_VAD_CONFIG } from "@/voice/realtime-voice-config";
+import {
+  THINKING_TONE_NATIVE_PCM_BASE64,
+  THINKING_TONE_NATIVE_PCM_DURATION_MS,
+} from "@/utils/thinking-tone.native-pcm";
 
 const PCM_MIME_TYPE = "audio/pcm;rate=16000;bits=16";
 const KEEP_AWAKE_TAG = "paseo:voice";
@@ -114,6 +118,26 @@ interface RuntimePlaybackState {
   generation: number;
 }
 
+interface CueState {
+  active: boolean;
+  token: number;
+  timeout: ReturnType<typeof setTimeout> | null;
+  playing: boolean;
+}
+
+interface RealtimeBridgeStats {
+  windowStartedAtMs: number;
+  captureEvents: number;
+  captureBytes: number;
+  uplinkEvents: number;
+  uplinkRawBytes: number;
+  uplinkBase64Chars: number;
+  outputEvents: number;
+  outputBytes: number;
+  outputGroups: number;
+  jsLagMaxMs: number;
+}
+
 const INITIAL_SNAPSHOT: VoiceRuntimeSnapshot = {
   phase: "disabled",
   isVoiceMode: false,
@@ -129,6 +153,8 @@ const INITIAL_TELEMETRY: VoiceRuntimeTelemetrySnapshot = {
   isSpeaking: false,
   segmentDuration: 0,
 };
+
+let nextVoiceRuntimeInstanceId = 1;
 
 function snapshotsEqual(
   left: VoiceRuntimeSnapshot,
@@ -180,6 +206,7 @@ export interface VoiceRuntime {
 }
 
 export function createVoiceRuntime(deps: VoiceRuntimeDeps): VoiceRuntime {
+  const instanceId = nextVoiceRuntimeInstanceId++;
   const listeners = new Set<() => void>();
   const telemetryListeners = new Set<() => void>();
   const sessions = new Map<string, RuntimeSessionState>();
@@ -201,6 +228,69 @@ export function createVoiceRuntime(deps: VoiceRuntimeDeps): VoiceRuntime {
     processing: false,
     generation: 0,
   };
+  const bridgeStats: RealtimeBridgeStats = {
+    windowStartedAtMs: Date.now(),
+    captureEvents: 0,
+    captureBytes: 0,
+    uplinkEvents: 0,
+    uplinkRawBytes: 0,
+    uplinkBase64Chars: 0,
+    outputEvents: 0,
+    outputBytes: 0,
+    outputGroups: 0,
+    jsLagMaxMs: 0,
+  };
+  const cue: CueState = {
+    active: false,
+    token: 0,
+    timeout: null,
+    playing: false,
+  };
+  const cuePcm16 = Uint8Array.from(Buffer.from(THINKING_TONE_NATIVE_PCM_BASE64, "base64"));
+  const cueSource = {
+    size: cuePcm16.byteLength,
+    type: "audio/pcm;rate=16000;bits=16",
+    async arrayBuffer() {
+      return cuePcm16.buffer.slice(
+        cuePcm16.byteOffset,
+        cuePcm16.byteOffset + cuePcm16.byteLength
+      );
+    },
+  };
+  let lagProbeLastMs = Date.now();
+  const lagProbe = setInterval(() => {
+    const now = Date.now();
+    const lagMs = Math.max(0, now - lagProbeLastMs - 100);
+    lagProbeLastMs = now;
+    if (lagMs > bridgeStats.jsLagMaxMs) {
+      bridgeStats.jsLagMaxMs = lagMs;
+    }
+  }, 100);
+
+  function flushBridgeStats(reason: string): void {
+    const now = Date.now();
+    const elapsedMs = now - bridgeStats.windowStartedAtMs;
+    if (elapsedMs < 1000) {
+      return;
+    }
+    console.log(
+      `[VoiceRuntime#${instanceId}][bridge] ${reason} ` +
+        `capture=${bridgeStats.captureEvents}ev/${bridgeStats.captureBytes}B ` +
+        `uplink=${bridgeStats.uplinkEvents}ev/${bridgeStats.uplinkRawBytes}B/${bridgeStats.uplinkBase64Chars}c ` +
+        `output=${bridgeStats.outputEvents}ev/${bridgeStats.outputBytes}B groups=${bridgeStats.outputGroups} ` +
+        `jsLagMaxMs=${bridgeStats.jsLagMaxMs} windowMs=${elapsedMs}`
+    );
+    bridgeStats.windowStartedAtMs = now;
+    bridgeStats.captureEvents = 0;
+    bridgeStats.captureBytes = 0;
+    bridgeStats.uplinkEvents = 0;
+    bridgeStats.uplinkRawBytes = 0;
+    bridgeStats.uplinkBase64Chars = 0;
+    bridgeStats.outputEvents = 0;
+    bridgeStats.outputBytes = 0;
+    bridgeStats.outputGroups = 0;
+    bridgeStats.jsLagMaxMs = 0;
+  }
 
   function emit(): void {
     for (const listener of listeners) {
@@ -441,7 +531,17 @@ export function createVoiceRuntime(deps: VoiceRuntimeDeps): VoiceRuntime {
   }
 
   function stopCue(): void {
-    deps.engine.stopLooping();
+    const hadActive = cue.active || cue.timeout !== null || cue.playing;
+    cue.active = false;
+    cue.token += 1;
+    if (cue.timeout) {
+      clearTimeout(cue.timeout);
+      cue.timeout = null;
+    }
+    if (hadActive) {
+      deps.engine.stop();
+      deps.engine.clearQueue();
+    }
   }
 
   function resetCaptureTelemetry(): void {
@@ -455,7 +555,36 @@ export function createVoiceRuntime(deps: VoiceRuntimeDeps): VoiceRuntime {
       stopCue();
       return;
     }
-    deps.engine.playLooping(new Uint8Array(0), THINKING_TONE_REPEAT_GAP_MS);
+    if (cue.active) {
+      return;
+    }
+    cue.active = true;
+    cue.token += 1;
+    const token = cue.token;
+
+    const playNext = () => {
+      if (!cue.active || cue.token !== token) {
+        return;
+      }
+      cue.playing = true;
+      void deps.engine
+        .play(cueSource)
+        .catch((error) => {
+          if (cue.token !== token) {
+            return;
+          }
+          console.warn(`[VoiceRuntime#${instanceId}] Cue playback failed:`, error);
+        })
+        .finally(() => {
+          cue.playing = false;
+          if (!cue.active || cue.token !== token) {
+            return;
+          }
+          cue.timeout = setTimeout(playNext, THINKING_TONE_NATIVE_PCM_DURATION_MS + THINKING_TONE_REPEAT_GAP_MS);
+        });
+    };
+
+    playNext();
   }
 
   const uploader: ContinuousVoiceUploader = {
@@ -471,10 +600,18 @@ export function createVoiceRuntime(deps: VoiceRuntimeDeps): VoiceRuntime {
         return;
       }
 
+      const base64 = Buffer.from(chunk).toString("base64");
+      bridgeStats.captureEvents += 1;
+      bridgeStats.captureBytes += chunk.byteLength;
+      bridgeStats.uplinkEvents += 1;
+      bridgeStats.uplinkRawBytes += chunk.byteLength;
+      bridgeStats.uplinkBase64Chars += base64.length;
+      flushBridgeStats("uplink");
+
       void activeSession.adapter
-        .sendVoiceAudioChunk(Buffer.from(chunk).toString("base64"), PCM_MIME_TYPE)
+        .sendVoiceAudioChunk(base64, PCM_MIME_TYPE)
         .catch((error) => {
-          console.error("[VoiceRuntime] Failed to send audio chunk:", error);
+          console.error(`[VoiceRuntime#${instanceId}] Failed to send audio chunk:`, error);
         });
     },
   };
@@ -651,13 +788,22 @@ export function createVoiceRuntime(deps: VoiceRuntimeDeps): VoiceRuntime {
         !state.snapshot.isVoiceMode ||
         !payload.isVoiceMode
       ) {
-        console.log(`[VoiceRuntime] audio_output DROPPED: activeServer=${state.snapshot.activeServerId} serverId=${serverId} isVoiceMode=${state.snapshot.isVoiceMode} payloadVoice=${payload.isVoiceMode}`);
+        console.log(`[VoiceRuntime#${instanceId}] audio_output DROPPED: activeServer=${state.snapshot.activeServerId} serverId=${serverId} isVoiceMode=${state.snapshot.isVoiceMode} payloadVoice=${payload.isVoiceMode}`);
         return;
       }
 
       const groupId = payload.groupId ?? payload.id;
       const chunkIndex = payload.chunkIndex ?? 0;
-      console.log(`[VoiceRuntime] audio_output groupId=${groupId} chunk=${chunkIndex} isLast=${payload.isLastChunk} size=${payload.audio.length} format=${payload.format}`);
+      const decoded = decodeAudioChunk(payload.audio);
+      bridgeStats.outputEvents += 1;
+      bridgeStats.outputBytes += decoded.byteLength;
+      bridgeStats.outputGroups += playback.groups.has(groupId) ? 0 : 1;
+      console.log(
+        `[VoiceRuntime#${instanceId}] audio_output groupId=${groupId} chunk=${chunkIndex} isLast=${payload.isLastChunk} ` +
+          `base64Chars=${payload.audio.length} decodedBytes=${decoded.byteLength} format=${payload.format} ` +
+          `head=${Array.from(decoded.slice(0, 12)).map((value) => value.toString(16).padStart(2, "0")).join(" ")}`
+      );
+      flushBridgeStats("audio_output");
 
       let group = playback.groups.get(groupId);
       if (!group) {
@@ -683,7 +829,7 @@ export function createVoiceRuntime(deps: VoiceRuntimeDeps): VoiceRuntime {
       group.chunks.set(chunkIndex, {
         id: payload.id,
         chunkIndex,
-        source: toPlaybackSource(decodeAudioChunk(payload.audio), payload.format),
+        source: toPlaybackSource(decoded, payload.format),
       });
       if (payload.isLastChunk) {
         group.finalChunkIndex = chunkIndex;
@@ -796,6 +942,7 @@ export function createVoiceRuntime(deps: VoiceRuntimeDeps): VoiceRuntime {
 
     async destroy() {
       await this.stopVoice().catch(() => undefined);
+      clearInterval(lagProbe);
       await deps.engine.destroy();
       listeners.clear();
       telemetryListeners.clear();
