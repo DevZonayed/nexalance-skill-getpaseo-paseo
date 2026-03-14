@@ -130,6 +130,17 @@ try {
     console.log('✓ run --provider flag is accepted\n')
   }
 
+  // Test 6b: run --provider provider/model syntax is accepted
+  {
+    console.log('Test 6b: run --provider provider/model syntax is accepted')
+    const result =
+      await $`PASEO_HOST=localhost:${port} PASEO_HOME=${paseoHome} npx paseo run --provider codex/gpt-5.4 "test prompt"`.nothrow()
+    const output = result.stdout + result.stderr
+    assert(!output.includes('unknown option'), 'should accept provider/model syntax')
+    assert(!output.includes('error: option'), 'should not have option parsing error')
+    console.log('✓ run --provider provider/model syntax is accepted\n')
+  }
+
   // Test 7: run --mode flag is accepted
   {
     console.log('Test 7: run --mode flag is accepted')
@@ -197,6 +208,17 @@ try {
     assert(!output.includes('unknown option'), 'should accept all combined flags')
     assert(!output.includes('error: option'), 'should not have option parsing error')
     console.log('✓ Combined flags work together\n')
+  }
+
+  // Test 12b: conflicting provider/model syntax is rejected before connect
+  {
+    console.log('Test 12b: conflicting provider/model syntax is rejected')
+    const result =
+      await $`PASEO_HOST=localhost:${port} PASEO_HOME=${paseoHome} npx paseo run --provider codex/gpt-5.4 --model gpt-5.5 "test prompt"`.nothrow()
+    assert.notStrictEqual(result.exitCode, 0, 'should fail for conflicting model inputs')
+    const output = result.stdout + result.stderr
+    assert(output.includes('Conflicting model values provided'), 'should explain conflicting model inputs')
+    console.log('✓ conflicting provider/model syntax is rejected\n')
   }
 
   // Test 13: paseo --help shows run command

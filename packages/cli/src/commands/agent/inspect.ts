@@ -11,6 +11,8 @@ interface AgentInspect {
   Model: string
   Thinking: string
   Status: string
+  Archived: boolean
+  ArchivedAt: string | null
   Mode: string
   Cwd: string
   CreatedAt: string
@@ -127,6 +129,8 @@ function toInspectData(snapshot: AgentSnapshotPayload): AgentInspect {
     Model: resolveModel(snapshot) ?? '-',
     Thinking: snapshot.effectiveThinkingOptionId ?? 'auto',
     Status: snapshot.status,
+    Archived: snapshot.archivedAt != null,
+    ArchivedAt: snapshot.archivedAt ?? null,
     Mode: snapshot.currentModeId ?? 'default',
     Cwd: snapshot.cwd,
     CreatedAt: snapshot.createdAt,
@@ -154,6 +158,8 @@ function toInspectRows(agent: AgentInspect): InspectRow[] {
     { key: 'Model', value: agent.Model },
     { key: 'Thinking', value: agent.Thinking },
     { key: 'Status', value: agent.Status },
+    { key: 'Archived', value: String(agent.Archived) },
+    { key: 'ArchivedAt', value: agent.ArchivedAt ?? 'null' },
     { key: 'Mode', value: agent.Mode },
     { key: 'Cwd', value: shortenPath(agent.Cwd) },
     { key: 'CreatedAt', value: agent.CreatedAt },

@@ -1,5 +1,5 @@
 import type { Command } from 'commander'
-import { connectToDaemon, getDaemonHost } from '../../utils/client.js'
+import { connectToDaemon, getDaemonHost, resolveAgentId } from '../../utils/client.js'
 import type { CommandOptions, SingleResult, OutputSchema, CommandError } from '../../output/index.js'
 
 /** Result type for agent archive command */
@@ -38,7 +38,7 @@ export async function runArchiveCommand(
     const error: CommandError = {
       code: 'MISSING_AGENT_ID',
       message: 'Agent ID is required',
-      details: 'Usage: paseo agent archive <id>',
+      details: 'Usage: paseo agent archive <id-or-name>',
     }
     throw error
   }
@@ -57,8 +57,10 @@ export async function runArchiveCommand(
   }
 
   try {
-    const fetchResult = await client.fetchAgent(agentIdArg)
-    if (!fetchResult) {
+    const agentsPayload = await client.fetchAgents({ filter: { includeArchived: true } })
+    const agents = agentsPayload.entries.map((entry) => entry.agent)
+    const agentId = resolveAgentId(agentIdArg, agents)
+    if (!agentId) {
       const error: CommandError = {
         code: 'AGENT_NOT_FOUND',
         message: `Agent not found: ${agentIdArg}`,
@@ -66,8 +68,10 @@ export async function runArchiveCommand(
       }
       throw error
     }
-    const agent = fetchResult.agent
-    const agentId = agent.id
+    const agent = agents.find((entry) => entry.id === agentId)
+    if (!agent) {
+      throw new Error(`Resolved agent missing from fetched agents: ${agentId}`)
+    }
 
     // Check if agent is already archived
     if (agent.archivedAt) {

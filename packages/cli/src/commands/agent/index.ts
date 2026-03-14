@@ -39,7 +39,7 @@ export function createAgentCommand(): Command {
       .argument('<prompt>', 'The task/prompt for the agent')
       .option('-d, --detach', 'Run in background (detached)')
       .option('--name <name>', 'Assign a name/title to the agent')
-      .option('--provider <provider>', 'Agent provider: claude | codex | opencode', 'claude')
+      .option('--provider <provider>', 'Agent provider, or provider/model (e.g. codex or codex/gpt-5.4)', 'claude')
       .option('--model <model>', 'Model to use (e.g., claude-sonnet-4-20250514, claude-3-5-haiku-20241022)')
       .option('--thinking <id>', 'Thinking option ID to use for this run')
       .option('--mode <mode>', 'Provider-specific mode (e.g., plan, default, bypass)')
@@ -121,7 +121,7 @@ export function createAgentCommand(): Command {
     agent
       .command('archive')
       .description('Archive an agent (soft-delete)')
-      .argument('<id>', 'Agent ID (or prefix)')
+      .argument('<id>', 'Agent ID, prefix, or name')
       .option('--force', 'Force archive running agent (interrupts active run first)')
   ).action(withOutput(runArchiveCommand))
 

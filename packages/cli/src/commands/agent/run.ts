@@ -46,6 +46,11 @@ export interface AgentRunOptions extends CommandOptions {
   outputSchema?: string
 }
 
+interface ResolvedProviderModel {
+  provider: string
+  model: string | undefined
+}
+
 function toRunResult(
   agent: AgentSnapshotPayload,
   statusOverride?: AgentRunResult['status']
@@ -165,6 +170,52 @@ function structuredRunSchema(output: Record<string, unknown>): OutputSchema<Agen
   }
 }
 
+export function resolveProviderAndModel(options: Pick<AgentRunOptions, 'provider' | 'model'>): ResolvedProviderModel {
+  const providerInput = options.provider?.trim() || 'claude'
+  const modelInput = options.model?.trim()
+
+  if (options.model !== undefined && !modelInput) {
+    const error: CommandError = {
+      code: 'INVALID_MODEL',
+      message: '--model cannot be empty',
+    }
+    throw error
+  }
+
+  const slashIndex = providerInput.indexOf('/')
+  if (slashIndex === -1) {
+    return {
+      provider: providerInput,
+      model: modelInput,
+    }
+  }
+
+  const provider = providerInput.slice(0, slashIndex).trim()
+  const modelFromProvider = providerInput.slice(slashIndex + 1).trim()
+  if (!provider || !modelFromProvider) {
+    const error: CommandError = {
+      code: 'INVALID_PROVIDER',
+      message: 'Invalid --provider value',
+      details: 'Use --provider <provider> or --provider <provider>/<model>',
+    }
+    throw error
+  }
+
+  if (modelInput && modelInput !== modelFromProvider) {
+    const error: CommandError = {
+      code: 'CONFLICTING_MODEL_OPTIONS',
+      message: 'Conflicting model values provided',
+      details: `--provider specifies model ${modelFromProvider}, but --model specifies ${modelInput}`,
+    }
+    throw error
+  }
+
+  return {
+    provider,
+    model: modelInput ?? modelFromProvider,
+  }
+}
+
 export async function runRunCommand(
   prompt: string,
   options: AgentRunOptions,
@@ -202,6 +253,8 @@ export async function runRunCommand(
     }
     throw error
   }
+
+  const resolvedProviderModel = resolveProviderAndModel(options)
 
   let client
   try {
@@ -289,11 +342,11 @@ export async function runRunCommand(
       const callStructuredTurn = async (structuredPrompt: string): Promise<string> => {
         if (!structuredAgent) {
           structuredAgent = await client.createAgent({
-            provider: (options.provider as 'claude' | 'codex' | 'opencode') ?? 'claude',
+            provider: resolvedProviderModel.provider as 'claude' | 'codex' | 'opencode',
             cwd,
             title: options.name,
             modeId: options.mode,
-            model: options.model,
+            model: resolvedProviderModel.model,
             thinkingOptionId,
             initialPrompt: structuredPrompt,
             images,
@@ -387,11 +440,11 @@ export async function runRunCommand(
 
     // Create the agent
     const agent = await client.createAgent({
-      provider: (options.provider as 'claude' | 'codex' | 'opencode') ?? 'claude',
+      provider: resolvedProviderModel.provider as 'claude' | 'codex' | 'opencode',
       cwd,
       title: options.name,
       modeId: options.mode,
-      model: options.model,
+      model: resolvedProviderModel.model,
       thinkingOptionId,
       initialPrompt: prompt,
       images,

@@ -2,6 +2,7 @@
 
 import assert from 'node:assert'
 import {
+  resolveProviderAndModel,
   resolveStructuredResponseMessage,
   type StructuredResponseTimelineClient,
 } from '../src/commands/agent/run.ts'
@@ -92,6 +93,34 @@ console.log('=== Run Output Schema Helper Tests ===\n')
   })
   assert.strictEqual(result, null)
   console.log('✓ returns null when timeline fetch throws')
+}
+
+// Test 5: Provider/model slash syntax resolves both values.
+{
+  const result = resolveProviderAndModel({ provider: 'codex/gpt-5.4' })
+  assert.deepStrictEqual(result, {
+    provider: 'codex',
+    model: 'gpt-5.4',
+  })
+  console.log('✓ resolves provider/model slash syntax')
+}
+
+// Test 6: Explicit matching --model coexists with slash syntax.
+{
+  const result = resolveProviderAndModel({ provider: 'codex/gpt-5.4', model: 'gpt-5.4' })
+  assert.deepStrictEqual(result, {
+    provider: 'codex',
+    model: 'gpt-5.4',
+  })
+  console.log('✓ accepts matching explicit model with slash syntax')
+}
+
+// Test 7: Conflicting --model is rejected.
+{
+  assert.throws(() => resolveProviderAndModel({ provider: 'codex/gpt-5.4', model: 'gpt-5.5' }), {
+    message: 'Conflicting model values provided',
+  })
+  console.log('✓ rejects conflicting explicit model with slash syntax')
 }
 
 console.log('\n=== All helper tests passed ===')
