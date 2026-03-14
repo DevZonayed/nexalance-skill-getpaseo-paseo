@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
 
@@ -62,6 +63,7 @@ class FileBackedRegistry<TRecord extends RegistryRecord> {
   private readonly getId: (record: TRecord) => string
   private loaded = false
   private readonly cache = new Map<string, TRecord>()
+  private persistQueue: Promise<void> = Promise.resolve()
 
   constructor(options: {
     filePath: string
@@ -103,7 +105,7 @@ class FileBackedRegistry<TRecord extends RegistryRecord> {
     await this.load()
     const parsed = this.schema.parse(record)
     this.cache.set(this.getId(parsed), parsed)
-    await this.persist()
+    await this.enqueuePersist()
   }
 
   async archive(id: string, archivedAt: string): Promise<void> {
@@ -118,7 +120,7 @@ class FileBackedRegistry<TRecord extends RegistryRecord> {
       archivedAt,
     })
     this.cache.set(id, next)
-    await this.persist()
+    await this.enqueuePersist()
   }
 
   async remove(id: string): Promise<void> {
@@ -126,7 +128,7 @@ class FileBackedRegistry<TRecord extends RegistryRecord> {
     if (!this.cache.delete(id)) {
       return
     }
-    await this.persist()
+    await this.enqueuePersist()
   }
 
   private async load(): Promise<void> {
@@ -153,9 +155,15 @@ class FileBackedRegistry<TRecord extends RegistryRecord> {
   private async persist(): Promise<void> {
     const records = Array.from(this.cache.values())
     await fs.mkdir(path.dirname(this.filePath), { recursive: true })
-    const tempPath = `${this.filePath}.${process.pid}.${Date.now()}.tmp`
+    const tempPath = `${this.filePath}.${process.pid}.${Date.now()}.${randomUUID()}.tmp`
     await fs.writeFile(tempPath, JSON.stringify(records, null, 2), 'utf8')
     await fs.rename(tempPath, this.filePath)
+  }
+
+  private async enqueuePersist(): Promise<void> {
+    const nextPersist = this.persistQueue.then(() => this.persist())
+    this.persistQueue = nextPersist.catch(() => {})
+    await nextPersist
   }
 }
 
