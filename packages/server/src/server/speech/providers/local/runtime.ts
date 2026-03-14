@@ -3,6 +3,7 @@ import type { Logger } from "pino";
 import type { PaseoSpeechConfig } from "../../../bootstrap.js";
 import type { SpeechToTextProvider, TextToSpeechProvider } from "../../speech-provider.js";
 import type { RequestedSpeechProviders } from "../../speech-types.js";
+import type { TurnDetectionProvider } from "../../turn-detection-provider.js";
 import { PocketTtsOnnxTTS } from "./pocket/pocket-tts-onnx.js";
 import {
   ensureLocalSpeechModels,
@@ -22,6 +23,7 @@ import { SherpaParakeetRealtimeTranscriptionSession } from "./sherpa/sherpa-para
 import { SherpaRealtimeTranscriptionSession } from "./sherpa/sherpa-realtime-session.js";
 import { SherpaOnnxSTT } from "./sherpa/sherpa-stt.js";
 import { SherpaOnnxTTS } from "./sherpa/sherpa-tts.js";
+import { SherpaSileroTurnDetectionProvider } from "./sherpa/silero-vad-provider.js";
 
 type LocalSttEngine =
   | { kind: "offline"; engine: SherpaOfflineRecognizerEngine }
@@ -39,6 +41,7 @@ type LocalSpeechAvailability = {
 };
 
 export type InitializedLocalSpeech = {
+  turnDetectionService: TurnDetectionProvider | null;
   sttService: SpeechToTextProvider | null;
   ttsService: TextToSpeechProvider | null;
   dictationSttService: SpeechToTextProvider | null;
@@ -192,6 +195,7 @@ export async function initializeLocalSpeechServices(params: {
   let sttService: SpeechToTextProvider | null = null;
   let ttsService: TextToSpeechProvider | null = null;
   let dictationSttService: SpeechToTextProvider | null = null;
+  let turnDetectionService: TurnDetectionProvider | null = null;
   let localVoiceTtsProvider: TextToSpeechProvider | null = null;
 
   const requiredLocalModelIds = computeRequiredLocalModelIds({
@@ -261,6 +265,13 @@ export async function initializeLocalSpeechServices(params: {
       return null;
     }
   };
+
+  if (
+    providers.voiceTurnDetection.enabled !== false &&
+    providers.voiceTurnDetection.provider === "local"
+  ) {
+    turnDetectionService = new SherpaSileroTurnDetectionProvider({}, logger);
+  }
 
   if (providers.voiceStt.enabled !== false && providers.voiceStt.provider === "local") {
     if (!localConfig) {
@@ -357,6 +368,7 @@ export async function initializeLocalSpeechServices(params: {
   };
 
   return {
+    turnDetectionService,
     sttService,
     ttsService,
     dictationSttService,

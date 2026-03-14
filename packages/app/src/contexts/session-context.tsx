@@ -676,7 +676,7 @@ function SessionProviderInternal({
       return;
     }
 
-    return voiceRuntime.registerSession({
+  return voiceRuntime.registerSession({
       serverId,
       setVoiceMode: async (enabled, agentId) => {
         if (!client) {
@@ -684,11 +684,17 @@ function SessionProviderInternal({
         }
         await client.setVoiceMode(enabled, agentId);
       },
-      sendVoiceAudioChunk: async (audioData, mimeType, isLast) => {
+      sendVoiceAudioChunk: async (audioData, mimeType) => {
         if (!client) {
           throw new Error("Daemon unavailable");
         }
-        await client.sendVoiceAudioChunk(audioData, mimeType, isLast);
+        await client.sendVoiceAudioChunk(audioData, mimeType);
+      },
+      audioPlayed: async (chunkId) => {
+        if (!client) {
+          throw new Error("Daemon unavailable");
+        }
+        await client.audioPlayed(chunkId);
       },
       abortRequest: async () => {
         if (!client) {
@@ -1236,6 +1242,11 @@ function SessionProviderInternal({
       }
 
       const payload: AudioOutputPayload = message.payload;
+      if (payload.isVoiceMode && voiceRuntime) {
+        voiceRuntime.handleAudioOutput(serverId, payload);
+        return;
+      }
+
       const playbackGroupId = payload.groupId ?? payload.id;
       const chunkIndex = payload.chunkIndex ?? 0;
       const isFinalChunk = payload.isLastChunk ?? true;
@@ -1421,12 +1432,20 @@ function SessionProviderInternal({
       if (message.type !== "transcription_result") return;
 
       const transcriptText = message.payload.text.trim();
+      voiceRuntime?.onTranscriptionResult(serverId, transcriptText);
       if (!transcriptText) {
-        voiceRuntime?.onTranscriptionResult(serverId, transcriptText);
         return;
       }
 
       setCurrentAssistantMessage(serverId, "");
+    });
+
+    const unsubVoiceInputState = client.on("voice_input_state", (message) => {
+      if (message.type !== "voice_input_state") return;
+      voiceRuntime?.onServerSpeechStateChanged(
+        serverId,
+        message.payload.isSpeaking
+      );
     });
 
     const unsubAgentDeleted = client.on("agent_deleted", (message) => {
@@ -1537,6 +1556,7 @@ function SessionProviderInternal({
       unsubActivity();
       unsubChunk();
       unsubTranscription();
+      unsubVoiceInputState();
       unsubAgentDeleted();
       unsubAgentArchived();
     };

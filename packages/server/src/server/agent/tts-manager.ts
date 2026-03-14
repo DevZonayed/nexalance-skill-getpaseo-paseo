@@ -1,4 +1,5 @@
 import type pino from "pino";
+import type { Readable } from "node:stream";
 import { v4 as uuidv4 } from "uuid";
 import type { TextToSpeechProvider } from "../speech/speech-provider.js";
 import { toResolver, type Resolvable } from "../speech/provider-resolver.js";
@@ -11,80 +12,114 @@ interface PendingPlayback {
   streamEnded: boolean;
 }
 
-const MAX_TTS_SEGMENT_CHARS = 400;
+type TtsSegment = {
+  index: number;
+  text: string;
+};
 
-function splitTextForTts(text: string, maxChars: number): string[] {
+type PreparedTtsSegment = TtsSegment & {
+  format: string;
+  stream: Readable;
+};
+
+type PreparedSegmentResult =
+  | { kind: "prepared"; prepared: PreparedTtsSegment }
+  | { kind: "aborted" }
+  | { kind: "error"; error: unknown };
+
+const MAX_TTS_SEGMENT_CHARS = 260;
+const TTS_PREFETCH_SEGMENTS = 2;
+const CLOSED_AUDIO_ID_TTL_MS = 10_000;
+
+function splitOversizedFragment(fragment: string, maxChars: number): string[] {
+  const trimmed = fragment.trim();
+  if (!trimmed) {
+    return [];
+  }
+
+  if (trimmed.length <= maxChars) {
+    return [trimmed];
+  }
+
+  const clauseChunks = trimmed.split(/(?<=[,;:])\s+/);
+  if (clauseChunks.length > 1) {
+    const parts: string[] = [];
+    let current = "";
+
+    const pushCurrent = () => {
+      const value = current.trim();
+      if (value) {
+        parts.push(value);
+      }
+      current = "";
+    };
+
+    for (const clause of clauseChunks) {
+      const clauseText = clause.trim();
+      if (!clauseText) {
+        continue;
+      }
+
+      if (clauseText.length > maxChars) {
+        pushCurrent();
+        parts.push(...splitOversizedFragment(clauseText, maxChars));
+        continue;
+      }
+
+      if (!current) {
+        current = clauseText;
+        continue;
+      }
+
+      const candidate = `${current} ${clauseText}`;
+      if (candidate.length <= maxChars) {
+        current = candidate;
+        continue;
+      }
+
+      pushCurrent();
+      current = clauseText;
+    }
+
+    pushCurrent();
+    if (parts.length > 1 || parts[0] !== trimmed) {
+      return parts;
+    }
+  }
+
+  const parts: string[] = [];
+  let remaining = trimmed;
+  while (remaining.length > maxChars) {
+    let idx = remaining.lastIndexOf(" ", maxChars);
+    if (idx < Math.floor(maxChars * 0.5)) {
+      idx = maxChars;
+    }
+    parts.push(remaining.slice(0, idx).trim());
+    remaining = remaining.slice(idx).trim();
+  }
+  if (remaining.length > 0) {
+    parts.push(remaining);
+  }
+  return parts;
+}
+
+function splitTextForTts(text: string): TtsSegment[] {
   const normalized = text.trim().replace(/\s+/g, " ");
   if (!normalized) {
     throw new Error("Cannot synthesize empty text");
   }
 
-  if (normalized.length <= maxChars) {
-    return [normalized];
-  }
+  const sentences = normalized.split(/(?<=[.!?])\s+/);
+  const parts: TtsSegment[] = [];
+  let segmentIndex = 0;
 
-  const parts: string[] = [];
-  const sentenceChunks = normalized.split(/(?<=[.!?])\s+/);
-
-  let current = "";
-  const pushCurrent = () => {
-    const trimmed = current.trim();
-    if (trimmed.length > 0) {
-      parts.push(trimmed);
-    }
-    current = "";
-  };
-
-  const appendFragment = (fragment: string) => {
-    const trimmed = fragment.trim();
-    if (!trimmed) {
-      return;
-    }
-
-    if (!current) {
-      current = trimmed;
-      return;
-    }
-
-    const candidate = `${current} ${trimmed}`;
-    if (candidate.length <= maxChars) {
-      current = candidate;
-      return;
-    }
-
-    pushCurrent();
-    current = trimmed;
-  };
-
-  const splitLargeFragment = (fragment: string): string[] => {
-    const trimmed = fragment.trim();
-    if (trimmed.length <= maxChars) {
-      return [trimmed];
-    }
-
-    const out: string[] = [];
-    let remaining = trimmed;
-    while (remaining.length > maxChars) {
-      let idx = remaining.lastIndexOf(" ", maxChars);
-      if (idx < Math.floor(maxChars * 0.5)) {
-        idx = maxChars;
-      }
-      out.push(remaining.slice(0, idx).trim());
-      remaining = remaining.slice(idx).trim();
-    }
-    if (remaining.length > 0) {
-      out.push(remaining);
-    }
-    return out;
-  };
-
-  for (const sentence of sentenceChunks) {
-    const fragments = splitLargeFragment(sentence);
+  for (const sentence of sentences) {
+    const fragments = splitOversizedFragment(sentence, MAX_TTS_SEGMENT_CHARS);
     for (const fragment of fragments) {
-      appendFragment(fragment);
+      parts.push({ index: segmentIndex, text: fragment });
+      segmentIndex += 1;
     }
   }
-  pushCurrent();
 
   return parts;
 }
@@ -95,6 +130,7 @@ function splitTextForTts(text: string, maxChars: number): string[] {
  */
 export class TTSManager {
   private pendingPlaybacks: Map<string, PendingPlayback> = new Map();
+  private readonly recentlyClosedAudioIds: Map<string, number> = new Map();
   private readonly logger: pino.Logger;
   private readonly resolveTts: () => TextToSpeechProvider | null;
 
@@ -117,6 +153,7 @@ export class TTSManager {
     abortSignal: AbortSignal,
     isVoiceMode: boolean
   ): Promise<void> {
+    const ttsStartMs = Date.now();
     this.logger.info(
       {
         isVoiceMode,
@@ -126,45 +163,176 @@ export class TTSManager {
       "TTS input text"
     );
 
-    const segments = splitTextForTts(text, MAX_TTS_SEGMENT_CHARS);
-    for (const segment of segments) {
-      if (abortSignal.aborted) {
-        this.logger.debug("Aborted before generating segmented audio");
-        return;
-      }
+    const segments = splitTextForTts(text);
+    this.logger.info(
+      { segmentCount: segments.length, segments: segments.map((s) => ({ index: s.index, chars: s.text.length, text: s.text.slice(0, 80) })) },
+      `TTS split into ${segments.length} segment(s)`
+    );
 
-      await this.generateSegmentAndWaitForPlayback(
-        segment,
-        emitMessage,
-        abortSignal,
-        isVoiceMode
+    const inflight = new Map<number, Promise<PreparedSegmentResult>>();
+    let nextSegmentToSchedule = 0;
+
+    const scheduleNextSegments = () => {
+      while (
+        nextSegmentToSchedule < segments.length &&
+        inflight.size < TTS_PREFETCH_SEGMENTS
+      ) {
+        const segment = segments[nextSegmentToSchedule]!;
+        inflight.set(segment.index, this.scheduleSegmentSynthesis(segment, abortSignal));
+        nextSegmentToSchedule += 1;
+      }
+    };
+
+    scheduleNextSegments();
+
+    try {
+      for (const segment of segments) {
+        if (abortSignal.aborted) {
+          this.logger.debug("Aborted before emitting segmented audio");
+          return;
+        }
+
+        const synthWaitStart = Date.now();
+        const result = await inflight.get(segment.index)!;
+        const synthWaitMs = Date.now() - synthWaitStart;
+        inflight.delete(segment.index);
+        scheduleNextSegments();
+
+        if (result.kind === "aborted") {
+          return;
+        }
+
+        if (result.kind === "error") {
+          throw result.error;
+        }
+
+        this.logger.info(
+          { segmentIndex: segment.index, synthWaitMs, totalElapsedMs: Date.now() - ttsStartMs, chars: segment.text.length },
+          `TTS segment ${segment.index} synthesis ready (waited ${synthWaitMs}ms, total ${Date.now() - ttsStartMs}ms)`
+        );
+
+        const emitStart = Date.now();
+        await this.emitPreparedSegment({
+          prepared: result.prepared,
+          emitMessage,
+          abortSignal,
+          isVoiceMode,
+        });
+        this.logger.info(
+          { segmentIndex: segment.index, emitAndPlayMs: Date.now() - emitStart, totalElapsedMs: Date.now() - ttsStartMs },
+          `TTS segment ${segment.index} playback confirmed (emit+play ${Date.now() - emitStart}ms, total ${Date.now() - ttsStartMs}ms)`
+        );
+
+        scheduleNextSegments();
+      }
+    } finally {
+      this.cleanupPrefetchedSegments(inflight);
+      this.logger.info(
+        { totalMs: Date.now() - ttsStartMs },
+        `TTS generateAndWaitForPlayback done (${Date.now() - ttsStartMs}ms)`
       );
     }
   }
 
-  private async generateSegmentAndWaitForPlayback(
-    text: string,
-    emitMessage: (msg: SessionOutboundMessage) => void,
-    abortSignal: AbortSignal,
-    isVoiceMode: boolean
-  ): Promise<void> {
+  private async synthesizeSegment(
+    segment: TtsSegment,
+    abortSignal: AbortSignal
+  ): Promise<PreparedTtsSegment> {
+    const resolveStart = Date.now();
     const tts = this.resolveTts();
     if (!tts) {
       throw new Error("TTS not configured");
     }
+    const resolveMs = Date.now() - resolveStart;
 
     if (abortSignal.aborted) {
-      this.logger.debug("Aborted before generating audio");
+      throw new Error("TTS synthesis aborted");
+    }
+
+    const synthStart = Date.now();
+    const { stream, format } = await tts.synthesizeSpeech(segment.text);
+    this.logger.info(
+      { segmentIndex: segment.index, resolveMs, synthMs: Date.now() - synthStart, chars: segment.text.length },
+      `TTS segment ${segment.index} synthesized (resolve=${resolveMs}ms, synth=${Date.now() - synthStart}ms, ${segment.text.length} chars)`
+    );
+
+    if (abortSignal.aborted) {
+      this.destroySpeechStream(stream);
+      throw new Error("TTS synthesis aborted");
+    }
+
+    return {
+      ...segment,
+      stream,
+      format,
+    };
+  }
+
+  private scheduleSegmentSynthesis(
+    segment: TtsSegment,
+    abortSignal: AbortSignal
+  ): Promise<PreparedSegmentResult> {
+    return this.synthesizeSegment(segment, abortSignal).then(
+      (prepared) => {
+        if (abortSignal.aborted) {
+          this.destroySpeechStream(prepared.stream);
+          return { kind: "aborted" };
+        }
+        return { kind: "prepared", prepared };
+      },
+      (error) => {
+        if (abortSignal.aborted) {
+          return { kind: "aborted" };
+        }
+        return { kind: "error", error };
+      }
+    );
+  }
+
+  private cleanupPrefetchedSegments(
+    inflight: Map<number, Promise<PreparedSegmentResult>>
+  ): void {
+    if (inflight.size === 0) {
       return;
     }
 
-    // Generate TTS audio stream
-    const { stream, format } = await tts.synthesizeSpeech(text);
-
-    if (abortSignal.aborted) {
-      this.logger.debug("Aborted after generating audio");
-      return;
+    for (const pending of inflight.values()) {
+      void pending.then((result) => {
+        if (result.kind === "prepared") {
+          this.destroySpeechStream(result.prepared.stream);
+        }
+      });
     }
+  }
+
+  private destroySpeechStream(stream: Readable): void {
+    if (typeof stream.destroy === "function" && !stream.destroyed) {
+      stream.destroy();
+    }
+  }
+
+  private pruneRecentlyClosedAudioIds(now: number): void {
+    for (const [audioId, expiresAt] of this.recentlyClosedAudioIds.entries()) {
+      if (expiresAt <= now) {
+        this.recentlyClosedAudioIds.delete(audioId);
+      }
+    }
+  }
+
+  private rememberClosedAudioId(audioId: string): void {
+    const now = Date.now();
+    this.pruneRecentlyClosedAudioIds(now);
+    this.recentlyClosedAudioIds.set(audioId, now + CLOSED_AUDIO_ID_TTL_MS);
+  }
+
+  private async emitPreparedSegment(params: {
+    prepared: PreparedTtsSegment;
+    emitMessage: (msg: SessionOutboundMessage) => void;
+    abortSignal: AbortSignal;
+    isVoiceMode: boolean;
+  }): Promise<void> {
+    const { prepared, emitMessage, abortSignal, isVoiceMode } = params;
+    const { stream, format, text } = prepared;
 
     const audioId = uuidv4();
     let playbackResolve!: () => void;
@@ -185,72 +353,53 @@ export class TTSManager {
     this.pendingPlaybacks.set(audioId, pendingPlayback);
 
     let onAbort: (() => void) | undefined;
-    const destroyStream = () => {
-      if (typeof stream.destroy === "function" && !stream.destroyed) {
-        stream.destroy();
-      }
-    };
 
     onAbort = () => {
       this.logger.debug("Aborted while waiting for playback");
       pendingPlayback.streamEnded = true;
       pendingPlayback.pendingChunks = 0;
       this.pendingPlaybacks.delete(audioId);
+      this.rememberClosedAudioId(audioId);
       playbackResolve();
-      destroyStream();
+      this.destroySpeechStream(stream);
     };
 
     abortSignal.addEventListener("abort", onAbort, { once: true });
 
     try {
-      const iterator = stream[Symbol.asyncIterator]();
-      let chunkIndex = 0;
-      let current = await iterator.next();
-
-      if (!current.done) {
-        let next = await iterator.next();
-
-        while (true) {
-          if (abortSignal.aborted) {
-            this.logger.debug("Aborted during stream emission");
-            break;
-          }
-
-          const chunkBuffer = Buffer.isBuffer(current.value)
-            ? current.value
-            : Buffer.from(current.value);
-
-          const chunkId = `${audioId}:${chunkIndex}`;
-          pendingPlayback.pendingChunks += 1;
-
-          emitMessage({
-            type: "audio_output",
-            payload: {
-              id: chunkId,
-              groupId: audioId,
-              chunkIndex,
-              isLastChunk: next.done,
-              audio: chunkBuffer.toString("base64"),
-              format,
-              isVoiceMode,
-            },
-          });
-
-          chunkIndex += 1;
-
-          if (next.done) {
-            break;
-          }
-
-          current = next;
-          next = await iterator.next();
+      const buffers: Buffer[] = [];
+      for await (const chunk of stream) {
+        if (abortSignal.aborted) {
+          this.logger.debug("Aborted during stream collection");
+          break;
         }
+        buffers.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+      }
+
+      if (!abortSignal.aborted && buffers.length > 0) {
+        const fullBuffer = Buffer.concat(buffers);
+        const chunkId = `${audioId}:0`;
+        pendingPlayback.pendingChunks = 1;
+
+        emitMessage({
+          type: "audio_output",
+          payload: {
+            id: chunkId,
+            groupId: audioId,
+            chunkIndex: 0,
+            isLastChunk: true,
+            audio: fullBuffer.toString("base64"),
+            format,
+            isVoiceMode,
+          },
+        });
       }
 
       pendingPlayback.streamEnded = true;
 
       if (pendingPlayback.pendingChunks === 0) {
         this.pendingPlaybacks.delete(audioId);
+        this.rememberClosedAudioId(audioId);
         playbackResolve();
       }
 
@@ -267,14 +416,14 @@ export class TTSManager {
       if (onAbort) {
         abortSignal.removeEventListener("abort", onAbort);
       }
-      destroyStream();
+      this.destroySpeechStream(stream);
     }
 
     if (abortSignal.aborted) {
       return;
     }
 
-    this.logger.debug({ audioId }, "Audio playback confirmed");
+    this.logger.debug({ audioId, textLength: text.length }, "Audio playback confirmed");
   }
 
   /**
@@ -288,6 +437,13 @@ export class TTSManager {
     const pending = this.pendingPlaybacks.get(audioId);
 
     if (!pending) {
+      const now = Date.now();
+      this.pruneRecentlyClosedAudioIds(now);
+      const expiresAt = this.recentlyClosedAudioIds.get(audioId);
+      if (expiresAt && expiresAt > now) {
+        this.logger.debug({ chunkId }, "Ignoring late confirmation for recently closed audio ID");
+        return;
+      }
       this.logger.warn({ chunkId }, "Received confirmation for unknown audio ID");
       return;
     }
@@ -297,6 +453,7 @@ export class TTSManager {
     if (pending.pendingChunks === 0 && pending.streamEnded) {
       pending.resolve();
       this.pendingPlaybacks.delete(audioId);
+      this.rememberClosedAudioId(audioId);
     }
   }
 
@@ -316,6 +473,7 @@ export class TTSManager {
     for (const [audioId, pending] of this.pendingPlaybacks.entries()) {
       pending.resolve();
       this.pendingPlaybacks.delete(audioId);
+      this.rememberClosedAudioId(audioId);
       this.logger.debug({ audioId }, "Cleared pending playback");
     }
   }
@@ -328,6 +486,7 @@ export class TTSManager {
     for (const [audioId, pending] of this.pendingPlaybacks.entries()) {
       pending.reject(new Error("Session closed"));
       this.pendingPlaybacks.delete(audioId);
+      this.rememberClosedAudioId(audioId);
     }
   }
 }

@@ -169,8 +169,8 @@ export function deriveWorkspaceTabModel(input: {
           tabId: tab.tabId,
           kind: "draft",
           draftId: tab.target.draftId,
-          label: "Draft",
-          subtitle: "Draft",
+          label: "New Agent",
+          subtitle: "New Agent",
         },
       });
       continue;

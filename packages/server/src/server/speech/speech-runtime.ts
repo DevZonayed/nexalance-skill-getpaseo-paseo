@@ -17,6 +17,7 @@ import {
 } from "./providers/openai/runtime.js";
 import type { SpeechToTextProvider, TextToSpeechProvider } from "./speech-provider.js";
 import type { RequestedSpeechProviders } from "./speech-types.js";
+import type { TurnDetectionProvider } from "./turn-detection-provider.js";
 
 const SPEECH_RUNTIME_MONITOR_INTERVAL_MS = 3000;
 
@@ -26,6 +27,7 @@ export type SpeechReadinessReasonCode =
   | "model_download_in_progress"
   | "models_missing"
   | "model_download_failed"
+  | "turn_detection_unavailable"
   | "stt_unavailable"
   | "tts_unavailable";
 
@@ -61,6 +63,7 @@ function resolveRequestedSpeechProviders(
 
   return {
     dictationStt: { provider: "local", explicit: false, enabled: true },
+    voiceTurnDetection: { provider: "local", explicit: false, enabled: true },
     voiceStt: { provider: "local", explicit: false, enabled: true },
     voiceTts: { provider: "local", explicit: false, enabled: true },
   };
@@ -118,18 +121,30 @@ function joinModelIds(modelIds: LocalSpeechModelId[]): string {
 
 function buildRealtimeVoiceReadiness(params: {
   providers: RequestedSpeechProviders;
+  turnDetectionService: TurnDetectionProvider | null;
   sttService: SpeechToTextProvider | null;
   ttsService: TextToSpeechProvider | null;
 }): SpeechReadinessState {
+  const voiceTurnDetectionEnabled = params.providers.voiceTurnDetection.enabled !== false;
   const voiceSttEnabled = params.providers.voiceStt.enabled !== false;
   const voiceTtsEnabled = params.providers.voiceTts.enabled !== false;
-  const enabled = voiceSttEnabled || voiceTtsEnabled;
+  const enabled = voiceTurnDetectionEnabled || voiceSttEnabled || voiceTtsEnabled;
   if (!enabled) {
     return {
       enabled: false,
       available: false,
       reasonCode: "disabled",
       message: "Realtime voice is disabled in daemon config.",
+      retryable: false,
+      missingModelIds: [],
+    };
+  }
+  if (voiceTurnDetectionEnabled && !params.turnDetectionService) {
+    return {
+      enabled: true,
+      available: false,
+      reasonCode: "turn_detection_unavailable",
+      message: "Realtime voice is unavailable: turn-detection service is not ready.",
       retryable: false,
       missingModelIds: [],
     };
@@ -262,6 +277,7 @@ function buildVoiceFeatureReadiness(params: {
 
 function describeRequestedProviders(providers: RequestedSpeechProviders): {
   dictationStt: { provider: string; enabled: boolean; explicit: boolean };
+  voiceTurnDetection: { provider: string; enabled: boolean; explicit: boolean };
   voiceStt: { provider: string; enabled: boolean; explicit: boolean };
   voiceTts: { provider: string; enabled: boolean; explicit: boolean };
 } {
@@ -270,6 +286,11 @@ function describeRequestedProviders(providers: RequestedSpeechProviders): {
       provider: providers.dictationStt.provider,
       enabled: providers.dictationStt.enabled !== false,
       explicit: providers.dictationStt.explicit,
+    },
+    voiceTurnDetection: {
+      provider: providers.voiceTurnDetection.provider,
+      enabled: providers.voiceTurnDetection.enabled !== false,
+      explicit: providers.voiceTurnDetection.explicit,
     },
     voiceStt: {
       provider: providers.voiceStt.provider,
@@ -285,13 +306,20 @@ function describeRequestedProviders(providers: RequestedSpeechProviders): {
 }
 
 function resolveEffectiveProviderIds(params: {
+  turnDetectionService: TurnDetectionProvider | null;
   sttService: SpeechToTextProvider | null;
   ttsService: TextToSpeechProvider | null;
   dictationSttService: SpeechToTextProvider | null;
   localVoiceTtsProvider: TextToSpeechProvider | null;
-}): { dictationStt: string; voiceStt: string; voiceTts: string } {
+}): {
+  dictationStt: string;
+  voiceTurnDetection: string;
+  voiceStt: string;
+  voiceTts: string;
+} {
   return {
     dictationStt: params.dictationSttService?.id ?? "unavailable",
+    voiceTurnDetection: params.turnDetectionService?.id ?? "unavailable",
     voiceStt: params.sttService?.id ?? "unavailable",
     voiceTts:
       !params.ttsService
@@ -303,6 +331,7 @@ function resolveEffectiveProviderIds(params: {
 }
 
 export type InitializedSpeechRuntime = {
+  resolveVoiceTurnDetection: () => TurnDetectionProvider | null;
   resolveVoiceStt: () => SpeechToTextProvider | null;
   resolveVoiceTts: () => TextToSpeechProvider | null;
   resolveDictationStt: () => SpeechToTextProvider | null;
@@ -347,6 +376,7 @@ export async function initializeSpeechRuntime(params: {
   let sttService: SpeechToTextProvider | null = null;
   let ttsService: TextToSpeechProvider | null = null;
   let dictationSttService: SpeechToTextProvider | null = null;
+  let turnDetectionService: TurnDetectionProvider | null = null;
   let localModelConfig: {
     modelsDir: string;
     defaultModelIds: LocalSpeechModelId[];
@@ -367,6 +397,7 @@ export async function initializeSpeechRuntime(params: {
   const computeReadinessSnapshot = (): SpeechReadinessSnapshot => {
     const realtimeVoice = buildRealtimeVoiceReadiness({
       providers,
+      turnDetectionService,
       sttService,
       ttsService,
     });
@@ -466,6 +497,7 @@ export async function initializeSpeechRuntime(params: {
       providers,
       openaiConfig,
       existing: {
+        turnDetectionService: nextLocalSpeech.turnDetectionService,
         sttService: nextLocalSpeech.sttService,
         ttsService: nextLocalSpeech.ttsService,
         dictationSttService: nextLocalSpeech.dictationSttService,
@@ -474,6 +506,7 @@ export async function initializeSpeechRuntime(params: {
     });
 
     const previousLocalCleanup = localCleanup;
+    turnDetectionService = nextOpenAiSpeech.turnDetectionService;
     sttService = nextOpenAiSpeech.sttService;
     ttsService = nextOpenAiSpeech.ttsService;
     dictationSttService = nextOpenAiSpeech.dictationSttService;
@@ -485,6 +518,7 @@ export async function initializeSpeechRuntime(params: {
     await refreshMissingLocalModels();
 
     const effectiveProviders = resolveEffectiveProviderIds({
+      turnDetectionService,
       sttService,
       ttsService,
       dictationSttService,
@@ -492,6 +526,9 @@ export async function initializeSpeechRuntime(params: {
     });
     const unavailableFeatures = [
       providers.dictationStt.enabled !== false && !dictationSttService ? "dictation.stt" : null,
+      providers.voiceTurnDetection.enabled !== false && !turnDetectionService
+        ? "voice.turnDetection"
+        : null,
       providers.voiceStt.enabled !== false && !sttService ? "voice.stt" : null,
       providers.voiceTts.enabled !== false && !ttsService ? "voice.tts" : null,
     ].filter((feature): feature is string => feature !== null);
@@ -642,6 +679,7 @@ export async function initializeSpeechRuntime(params: {
   };
 
   return {
+    resolveVoiceTurnDetection: () => turnDetectionService,
     resolveVoiceStt: () => sttService,
     resolveVoiceTts: () => ttsService,
     resolveDictationStt: () => dictationSttService,

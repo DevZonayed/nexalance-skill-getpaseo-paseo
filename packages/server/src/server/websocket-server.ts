@@ -35,6 +35,7 @@ import type { AgentProviderRuntimeSettingsMap } from "./agent/provider-launch-co
 import { PushTokenStore } from "./push/token-store.js";
 import { PushService } from "./push/push-service.js";
 import type { SpeechToTextProvider, TextToSpeechProvider } from "./speech/speech-provider.js";
+import type { TurnDetectionProvider } from "./speech/turn-detection-provider.js";
 import type { Resolvable } from "./speech/provider-resolver.js";
 import type { SpeechReadinessSnapshot } from "./speech/speech-runtime.js";
 import type { LocalSpeechModelId } from "./speech/providers/local/models.js";
@@ -245,6 +246,7 @@ export class VoiceAssistantWebSocketServer {
   private readonly createAgentMcpTransport: AgentMcpTransportFactory;
   private readonly stt: Resolvable<SpeechToTextProvider | null>;
   private readonly tts: Resolvable<TextToSpeechProvider | null>;
+  private readonly turnDetection: Resolvable<TurnDetectionProvider | null>;
   private readonly terminalManager: TerminalManager | null;
   private readonly dictation: {
     finalTimeoutMs?: number;
@@ -301,6 +303,7 @@ export class VoiceAssistantWebSocketServer {
     createAgentMcpTransport: AgentMcpTransportFactory,
     wsConfig: WebSocketServerConfig,
     speech?: {
+      turnDetection: Resolvable<TurnDetectionProvider | null>;
       stt: Resolvable<SpeechToTextProvider | null>;
       tts: Resolvable<TextToSpeechProvider | null>;
     },
@@ -338,6 +341,7 @@ export class VoiceAssistantWebSocketServer {
     this.downloadTokenStore = downloadTokenStore;
     this.paseoHome = paseoHome;
     this.createAgentMcpTransport = createAgentMcpTransport;
+    this.turnDetection = speech?.turnDetection ?? null;
     this.stt = speech?.stt ?? null;
     this.tts = speech?.tts ?? null;
     this.terminalManager = terminalManager ?? null;
@@ -633,7 +637,10 @@ export class VoiceAssistantWebSocketServer {
       stt: this.stt,
       tts: this.tts,
       terminalManager: this.terminalManager,
-      voice: this.voice ?? undefined,
+      voice: {
+        ...(this.voice ?? {}),
+        turnDetection: this.turnDetection,
+      },
       voiceBridge: {
         registerVoiceSpeakHandler: (agentId, handler) => {
           this.voiceSpeakHandlers.set(agentId, handler);

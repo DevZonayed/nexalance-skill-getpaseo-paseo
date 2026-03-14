@@ -1236,6 +1236,13 @@ export const TranscriptionResultMessageSchema = z.object({
   }),
 })
 
+export const VoiceInputStateMessageSchema = z.object({
+  type: z.literal('voice_input_state'),
+  payload: z.object({
+    isSpeaking: z.boolean(),
+  }),
+})
+
 export const DictationStreamAckMessageSchema = z.object({
   type: z.literal('dictation_stream_ack'),
   payload: z.object({
@@ -2159,6 +2166,7 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion('type', [
   AssistantChunkMessageSchema,
   AudioOutputMessageSchema,
   TranscriptionResultMessageSchema,
+  VoiceInputStateMessageSchema,
   DictationStreamAckMessageSchema,
   DictationStreamFinishAcceptedMessageSchema,
   DictationStreamPartialMessageSchema,

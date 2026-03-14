@@ -1,4 +1,4 @@
-import type { ReactElement } from "react";
+import type { ReactElement, ReactNode } from "react";
 import { Pressable, Text, View } from "react-native";
 import { Bot, Check, FileText, Pencil, Terminal } from "lucide-react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
@@ -124,6 +124,7 @@ type WorkspaceTabOptionRowProps = {
   selected: boolean;
   active: boolean;
   onPress: () => void;
+  trailingAccessory?: ReactNode;
 };
 
 export function WorkspaceTabOptionRow({
@@ -131,30 +132,36 @@ export function WorkspaceTabOptionRow({
   selected,
   active,
   onPress,
+  trailingAccessory,
 }: WorkspaceTabOptionRowProps): ReactElement {
   const { theme } = useUnistyles();
   return (
-    <Pressable
-      onPress={onPress}
-      style={({ hovered = false, pressed }) => [
-        styles.optionRow,
-        (hovered || pressed || active) && styles.optionRowActive,
-      ]}
-    >
-      <View style={styles.optionLeadingSlot}>
-        <WorkspaceTabIcon presentation={presentation} active={selected || active} />
-      </View>
-      <View style={styles.optionContent}>
-        <Text numberOfLines={1} style={styles.optionLabel}>
-          {presentation.titleState === "loading" ? "Loading..." : presentation.label}
-        </Text>
-      </View>
+    <View style={[styles.optionRow, active && styles.optionRowActive]}>
+      <Pressable
+        onPress={onPress}
+        style={({ hovered = false, pressed }) => [
+          styles.optionMainPressable,
+          (hovered || pressed || active) && styles.optionRowActive,
+        ]}
+      >
+        <View style={styles.optionLeadingSlot}>
+          <WorkspaceTabIcon presentation={presentation} active={selected || active} />
+        </View>
+        <View style={styles.optionContent}>
+          <Text numberOfLines={1} style={styles.optionLabel}>
+            {presentation.titleState === "loading" ? "Loading..." : presentation.label}
+          </Text>
+        </View>
+      </Pressable>
       {selected ? (
         <View style={styles.optionTrailingSlot}>
           <Check size={16} color={theme.colors.foregroundMuted} />
         </View>
       ) : null}
-    </Pressable>
+      {trailingAccessory ? (
+        <View style={styles.optionTrailingAccessorySlot}>{trailingAccessory}</View>
+      ) : null}
+    </View>
   );
 }
 
@@ -178,11 +185,20 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     minHeight: 36,
     gap: theme.spacing[2],
-    paddingHorizontal: theme.spacing[3],
-    paddingVertical: theme.spacing[2],
+    paddingHorizontal: theme.spacing[1],
+    paddingVertical: theme.spacing[1],
     borderRadius: 0,
     marginHorizontal: theme.spacing[1],
     marginBottom: theme.spacing[1],
+  },
+  optionMainPressable: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[2],
+    paddingHorizontal: theme.spacing[2],
+    paddingVertical: theme.spacing[2],
   },
   optionRowActive: {
     backgroundColor: theme.colors.surface1,
@@ -204,6 +220,9 @@ const styles = StyleSheet.create((theme) => ({
     width: 16,
     alignItems: "center",
     justifyContent: "center",
-    marginLeft: "auto",
+  },
+  optionTrailingAccessorySlot: {
+    alignItems: "center",
+    justifyContent: "center",
   },
 }));

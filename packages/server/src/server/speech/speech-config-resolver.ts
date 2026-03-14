@@ -38,6 +38,7 @@ const OptionalBooleanFlagSchema = z
 
 const RequestedSpeechProvidersSchema = z.object({
   dictationStt: OptionalSpeechProviderSchema.default("local"),
+  voiceTurnDetection: OptionalSpeechProviderSchema.default("local"),
   voiceStt: OptionalSpeechProviderSchema.default("local"),
   voiceTts: OptionalSpeechProviderSchema.default("local"),
 });
@@ -62,6 +63,9 @@ function resolveRequestedSpeechProviders(params: {
   const voiceSttProviderFromConfig =
     params.env.PASEO_VOICE_STT_PROVIDER ??
     params.persisted.features?.voiceMode?.stt?.provider;
+  const voiceTurnDetectionProviderFromConfig =
+    params.env.PASEO_VOICE_TURN_DETECTION_PROVIDER ??
+    params.persisted.features?.voiceMode?.turnDetection?.provider;
   const voiceTtsProviderFromConfig =
     params.env.PASEO_VOICE_TTS_PROVIDER ??
     params.persisted.features?.voiceMode?.tts?.provider;
@@ -76,6 +80,7 @@ function resolveRequestedSpeechProviders(params: {
 
   const parsed = RequestedSpeechProvidersSchema.parse({
     dictationStt: dictationSttProviderFromConfig ?? "local",
+    voiceTurnDetection: voiceTurnDetectionProviderFromConfig ?? "local",
     voiceStt: voiceSttProviderFromConfig ?? "local",
     voiceTts: voiceTtsProviderFromConfig ?? "local",
   });
@@ -85,6 +90,11 @@ function resolveRequestedSpeechProviders(params: {
       dictationSttProviderFromConfig,
       parsed.dictationStt,
       dictationEnabled
+    ),
+    voiceTurnDetection: resolveFeatureProvider(
+      voiceTurnDetectionProviderFromConfig,
+      parsed.voiceTurnDetection,
+      voiceModeEnabled
     ),
     voiceStt: resolveFeatureProvider(
       voiceSttProviderFromConfig,

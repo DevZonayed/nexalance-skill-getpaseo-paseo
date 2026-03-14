@@ -104,6 +104,7 @@ describe("deriveWorkspaceTabModel", () => {
     });
 
     expect(model.tabs.map((tab) => tab.descriptor.kind)).toEqual(["draft", "agent", "file"]);
+    expect(model.tabs[0]?.descriptor.label).toBe("New Agent");
   });
 
   it("applies stored order and appends newly-derived tabs deterministically", () => {

@@ -4,6 +4,7 @@ import pino from "pino";
 import type { PaseoSpeechConfig } from "../bootstrap.js";
 import type { InitializedLocalSpeech } from "./providers/local/runtime.js";
 import type { SpeechToTextProvider, TextToSpeechProvider } from "./speech-provider.js";
+import type { TurnDetectionProvider } from "./turn-detection-provider.js";
 import { initializeSpeechRuntime } from "./speech-runtime.js";
 
 const { initializeLocalSpeechServicesMock } = vi.hoisted(() => ({
@@ -20,11 +21,13 @@ vi.mock("./providers/openai/runtime.js", () => ({
   getOpenAiSpeechAvailability: () => ({ configured: false }),
   initializeOpenAiSpeechServices: (args: {
     existing: {
+      turnDetectionService: TurnDetectionProvider | null;
       sttService: SpeechToTextProvider | null;
       ttsService: TextToSpeechProvider | null;
       dictationSttService: SpeechToTextProvider | null;
     };
   }) => ({
+    turnDetectionService: args.existing.turnDetectionService,
     sttService: args.existing.sttService,
     ttsService: args.existing.ttsService,
     dictationSttService: args.existing.dictationSttService,
@@ -56,6 +59,15 @@ function createStubTts(id: string): TextToSpeechProvider {
   };
 }
 
+function createStubTurnDetection(id: string): TurnDetectionProvider {
+  return {
+    id,
+    createSession: vi.fn(() => {
+      throw new Error("not used in this test");
+    }),
+  };
+}
+
 function createSpeechConfig(
   providers: PaseoSpeechConfig["providers"]
 ): PaseoSpeechConfig {
@@ -71,6 +83,7 @@ describe("initializeSpeechRuntime readiness", () => {
     const dictationStt = createStubStt("dictation-local");
 
     initializeLocalSpeechServicesMock.mockResolvedValue({
+      turnDetectionService: null,
       sttService: null,
       ttsService: null,
       dictationSttService: dictationStt,
@@ -87,6 +100,7 @@ describe("initializeSpeechRuntime readiness", () => {
       logger: pino({ level: "silent" }),
       speechConfig: createSpeechConfig({
         dictationStt: { provider: "local", enabled: true, explicit: true },
+        voiceTurnDetection: { provider: "local", enabled: false, explicit: true },
         voiceStt: { provider: "local", enabled: false, explicit: true },
         voiceTts: { provider: "local", enabled: false, explicit: true },
       }),
@@ -104,8 +118,10 @@ describe("initializeSpeechRuntime readiness", () => {
   it("keeps voice feature available when only realtime voice is enabled and ready", async () => {
     const voiceStt = createStubStt("voice-local");
     const voiceTts = createStubTts("tts-local");
+    const turnDetection = createStubTurnDetection("turn-local");
 
     initializeLocalSpeechServicesMock.mockResolvedValue({
+      turnDetectionService: turnDetection,
       sttService: voiceStt,
       ttsService: voiceTts,
       dictationSttService: null,
@@ -122,6 +138,7 @@ describe("initializeSpeechRuntime readiness", () => {
       logger: pino({ level: "silent" }),
       speechConfig: createSpeechConfig({
         dictationStt: { provider: "local", enabled: false, explicit: true },
+        voiceTurnDetection: { provider: "local", enabled: true, explicit: true },
         voiceStt: { provider: "local", enabled: true, explicit: true },
         voiceTts: { provider: "local", enabled: true, explicit: true },
       }),

@@ -43,12 +43,17 @@ import {
 import { TTSManager } from './agent/tts-manager.js'
 import { STTManager } from './agent/stt-manager.js'
 import type { SpeechToTextProvider, TextToSpeechProvider } from './speech/speech-provider.js'
+import type { TurnDetectionProvider } from './speech/turn-detection-provider.js'
 import { maybePersistTtsDebugAudio } from './agent/tts-debug.js'
 import { isPaseoDictationDebugEnabled } from './agent/recordings-debug.js'
 import {
   DictationStreamManager,
   type DictationStreamOutboundMessage,
 } from './dictation/dictation-stream-manager.js'
+import {
+  createVoiceTurnController,
+  type VoiceTurnController,
+} from './voice/voice-turn-controller.js'
 import { buildConfigOverrides, buildSessionConfig, extractTimestamps } from './persistence-hooks.js'
 import { experimental_createMCPClient } from 'ai'
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js'
@@ -159,7 +164,7 @@ import {
   listLocalSpeechModels,
   type LocalSpeechModelId,
 } from './speech/providers/local/models.js'
-import type { Resolvable } from './speech/provider-resolver.js'
+import { toResolver, type Resolvable } from './speech/provider-resolver.js'
 import type { SpeechReadinessSnapshot, SpeechReadinessState } from './speech/speech-runtime.js'
 import type pino from 'pino'
 import { resolveClientMessageId } from './client-message-id.js'
@@ -331,8 +336,6 @@ const PCM_BITS_PER_SAMPLE = 16
 const PCM_BYTES_PER_MS = (PCM_SAMPLE_RATE * PCM_CHANNELS * (PCM_BITS_PER_SAMPLE / 8)) / 1000
 const MIN_STREAMING_SEGMENT_DURATION_MS = 1000
 const MIN_STREAMING_SEGMENT_BYTES = Math.round(PCM_BYTES_PER_MS * MIN_STREAMING_SEGMENT_DURATION_MS)
-const VOICE_MODE_INACTIVITY_FLUSH_MS = 4500
-const VOICE_INTERNAL_DICTATION_ID_PREFIX = '__voice_turn__:'
 const SAFE_GIT_REF_PATTERN = /^[A-Za-z0-9._\/-]+$/
 const AgentIdSchema = z.string().uuid()
 const VOICE_MCP_SERVER_NAME = 'paseo_voice'
@@ -380,6 +383,7 @@ export type SessionOptions = {
   terminalManager: TerminalManager | null
   voice?: {
     voiceAgentMcpStdio?: VoiceMcpStdioConfig | null
+    turnDetection?: Resolvable<TurnDetectionProvider | null>
   }
   voiceBridge?: {
     registerVoiceSpeakHandler?: (agentId: string, handler: VoiceSpeakHandler) => void
@@ -528,26 +532,13 @@ export class Session {
   private speechInProgress = false
 
   private readonly dictationStreamManager: DictationStreamManager
-  private readonly voiceStreamManager: DictationStreamManager
+  private readonly resolveVoiceTurnDetection: () => TurnDetectionProvider | null
+  private voiceTurnController: VoiceTurnController | null = null
 
   // Audio buffering for interruption handling
   private pendingAudioSegments: Array<{ audio: Buffer; format: string }> = []
   private bufferTimeout: NodeJS.Timeout | null = null
-  private voiceModeInactivityTimeout: NodeJS.Timeout | null = null
   private audioBuffer: AudioBufferState | null = null
-  private activeVoiceDictationId: string | null = null
-  private activeVoiceDictationFormat: string | null = null
-  private activeVoiceDictationNextSeq = 0
-  private activeVoiceDictationStartPromise: Promise<void> | null = null
-  private activeVoiceDictationFinalizePromise: Promise<void> | null = null
-  private activeVoiceDictationResultPromise: Promise<{
-    text: string
-    debugRecordingPath?: string
-  }> | null = null
-  private activeVoiceDictationResolve:
-    | ((value: { text: string; debugRecordingPath?: string }) => void)
-    | null = null
-  private activeVoiceDictationReject: ((error: Error) => void) | null = null
 
   // Optional TTS debug capture (persisted per utterance)
   private readonly ttsDebugStreams = new Map<string, { format: string; chunks: Buffer[] }>()
@@ -658,6 +649,7 @@ export class Session {
       )
     }
     this.voiceAgentMcpStdio = voice?.voiceAgentMcpStdio ?? null
+    this.resolveVoiceTurnDetection = toResolver(voice?.turnDetection ?? null)
     const configuredModelsDir = dictation?.localModels?.modelsDir?.trim()
     this.localSpeechModelsDir =
       configuredModelsDir && configuredModelsDir.length > 0
@@ -693,13 +685,6 @@ export class Session {
       sessionId: this.sessionId,
       emit: (msg) => this.handleDictationManagerMessage(msg),
       stt: dictation?.stt ?? null,
-      finalTimeoutMs: dictation?.finalTimeoutMs,
-    })
-    this.voiceStreamManager = new DictationStreamManager({
-      logger: this.sessionLogger.child({ stream: 'voice-internal' }),
-      sessionId: this.sessionId,
-      emit: (msg) => this.handleDictationManagerMessage(msg),
-      stt: stt,
       finalTimeoutMs: dictation?.finalTimeoutMs,
     })
 
@@ -2167,6 +2152,7 @@ export class Session {
           this.voiceModeAgentId = refreshedAgentId
         }
 
+        await this.startVoiceTurnController()
         this.isVoiceMode = true
         this.sessionLogger.info(
           {
@@ -2303,8 +2289,7 @@ export class Session {
   }
 
   private async disableVoiceModeForActiveAgent(restoreAgentConfig: boolean): Promise<void> {
-    this.clearVoiceModeInactivityTimeout()
-    this.cancelActiveVoiceDictationStream('voice mode disabled')
+    await this.stopVoiceTurnController()
 
     const agentId = this.voiceModeAgentId
     if (!agentId) {
@@ -2340,231 +2325,74 @@ export class Session {
     this.voiceModeAgentId = null
   }
 
-  private isInternalVoiceDictationId(dictationId: string): boolean {
-    return dictationId.startsWith(VOICE_INTERNAL_DICTATION_ID_PREFIX)
-  }
-
   private handleDictationManagerMessage(msg: DictationStreamOutboundMessage): void {
-    if (msg.type === 'activity_log') {
-      const metadata = msg.payload.metadata as { dictationId?: unknown } | undefined
-      const dictationId =
-        metadata && typeof metadata.dictationId === 'string' ? metadata.dictationId : null
-      if (dictationId && this.isInternalVoiceDictationId(dictationId)) {
-        return
-      }
-      this.emit(msg as unknown as SessionOutboundMessage)
-      return
-    }
-
-    const payloadWithDictationId = msg.payload as { dictationId?: unknown }
-    const dictationId =
-      payloadWithDictationId && typeof payloadWithDictationId.dictationId === 'string'
-        ? payloadWithDictationId.dictationId
-        : null
-
-    if (!dictationId || !this.isInternalVoiceDictationId(dictationId)) {
-      this.emit(msg as unknown as SessionOutboundMessage)
-      return
-    }
-
-    if (msg.type === 'dictation_stream_final') {
-      if (dictationId !== this.activeVoiceDictationId || !this.activeVoiceDictationResolve) {
-        return
-      }
-      this.activeVoiceDictationResolve({
-        text: msg.payload.text,
-        ...(msg.payload.debugRecordingPath
-          ? { debugRecordingPath: msg.payload.debugRecordingPath }
-          : {}),
-      })
-      return
-    }
-
-    if (msg.type === 'dictation_stream_error') {
-      if (dictationId !== this.activeVoiceDictationId || !this.activeVoiceDictationReject) {
-        return
-      }
-      this.activeVoiceDictationReject(new Error(msg.payload.error))
-      return
-    }
-
-    // Ack/partial messages for internal voice dictation are consumed server-side.
+    this.emit(msg as unknown as SessionOutboundMessage)
   }
 
-  private resetActiveVoiceDictationState(): void {
-    this.activeVoiceDictationId = null
-    this.activeVoiceDictationFormat = null
-    this.activeVoiceDictationNextSeq = 0
-    this.activeVoiceDictationStartPromise = null
-    this.activeVoiceDictationFinalizePromise = null
-    this.activeVoiceDictationResultPromise = null
-    this.activeVoiceDictationResolve = null
-    this.activeVoiceDictationReject = null
-  }
-
-  private cancelActiveVoiceDictationStream(reason: string): void {
-    const dictationId = this.activeVoiceDictationId
-    if (!dictationId) {
+  private async startVoiceTurnController(): Promise<void> {
+    if (this.voiceTurnController) {
       return
     }
 
-    this.sessionLogger.debug(
-      { dictationId, reason },
-      'Cancelling active internal voice dictation stream'
-    )
-    if (this.activeVoiceDictationReject) {
-      this.activeVoiceDictationReject(new Error(`Voice dictation cancelled: ${reason}`))
-    }
-    this.voiceStreamManager.handleCancel(dictationId)
-    this.resetActiveVoiceDictationState()
-  }
-
-  private async ensureActiveVoiceDictationStream(format: string): Promise<void> {
-    if (this.activeVoiceDictationId && this.activeVoiceDictationFormat === format) {
-      if (this.activeVoiceDictationStartPromise) {
-        await this.activeVoiceDictationStartPromise
-      }
-      return
+    const turnDetection = this.resolveVoiceTurnDetection()
+    if (!turnDetection) {
+      throw new Error('Voice turn detection is not configured')
     }
 
-    if (this.activeVoiceDictationId) {
-      await this.finalizeActiveVoiceDictationStream('voice format changed')
-    }
-
-    const dictationId = `${VOICE_INTERNAL_DICTATION_ID_PREFIX}${uuidv4()}`
-    let resolve: ((value: { text: string; debugRecordingPath?: string }) => void) | null = null
-    let reject: ((error: Error) => void) | null = null
-    const resultPromise = new Promise<{ text: string; debugRecordingPath?: string }>(
-      (resolveFn, rejectFn) => {
-        resolve = resolveFn
-        reject = rejectFn
-      }
-    )
-    // Prevent process-level unhandled rejection warnings when cancellation races are resolved later.
-    void resultPromise.catch(() => undefined)
-
-    this.activeVoiceDictationId = dictationId
-    this.activeVoiceDictationFormat = format
-    this.activeVoiceDictationNextSeq = 0
-    this.activeVoiceDictationFinalizePromise = null
-    this.activeVoiceDictationResultPromise = resultPromise
-    this.activeVoiceDictationResolve = resolve
-    this.activeVoiceDictationReject = reject
-    this.setPhase('transcribing')
-    this.emit({
-      type: 'activity_log',
-      payload: {
-        id: uuidv4(),
-        timestamp: new Date(),
-        type: 'system',
-        content: 'Transcribing audio...',
+    const controller = createVoiceTurnController({
+      logger: this.sessionLogger.child({ component: 'voice-turn-controller' }),
+      turnDetection,
+      utteranceSink: {
+        submitUtterance: async ({ pcm16, format, sampleRate, startedAt, endedAt }) => {
+          this.sessionLogger.debug(
+            {
+              audioBytes: pcm16.length,
+              sampleRate,
+              startedAt,
+              endedAt,
+              durationMs: Math.max(0, endedAt - startedAt),
+            },
+            'Submitting detected voice utterance'
+          )
+          await this.processCompletedAudio(pcm16, format)
+        },
+      },
+      callbacks: {
+        onSpeechStarted: async () => {
+          this.emit({
+            type: 'voice_input_state',
+            payload: {
+              isSpeaking: true,
+            },
+          })
+          await this.handleVoiceSpeechStart()
+        },
+        onSpeechStopped: async () => {
+          this.emit({
+            type: 'voice_input_state',
+            payload: {
+              isSpeaking: false,
+            },
+          })
+        },
+        onError: (error) => {
+          this.sessionLogger.error({ err: error }, 'Voice turn controller failed')
+        },
       },
     })
 
-    const startPromise = this.voiceStreamManager.handleStart(dictationId, format)
-    this.activeVoiceDictationStartPromise = startPromise
-    try {
-      await startPromise
-    } catch (error) {
-      this.resetActiveVoiceDictationState()
-      throw error
-    } finally {
-      if (this.activeVoiceDictationId === dictationId) {
-        this.activeVoiceDictationStartPromise = null
-      }
-    }
+    await controller.start()
+    this.voiceTurnController = controller
   }
 
-  private async appendToActiveVoiceDictationStream(
-    audioBase64: string,
-    format: string
-  ): Promise<void> {
-    if (this.activeVoiceDictationFinalizePromise) {
-      await this.activeVoiceDictationFinalizePromise.catch(() => undefined)
-    }
-    await this.ensureActiveVoiceDictationStream(format)
-    const dictationId = this.activeVoiceDictationId
-    if (!dictationId) {
-      throw new Error('Voice dictation stream did not initialize')
-    }
-
-    const seq = this.activeVoiceDictationNextSeq
-    this.activeVoiceDictationNextSeq += 1
-    await this.voiceStreamManager.handleChunk({
-      dictationId,
-      seq,
-      audioBase64,
-      format,
-    })
-  }
-
-  private async finalizeActiveVoiceDictationStream(reason: string): Promise<void> {
-    const dictationId = this.activeVoiceDictationId
-    if (!dictationId) {
-      return
-    }
-    this.clearVoiceModeInactivityTimeout()
-    if (this.activeVoiceDictationStartPromise) {
-      await this.activeVoiceDictationStartPromise
-    }
-
-    if (this.activeVoiceDictationFinalizePromise) {
-      await this.activeVoiceDictationFinalizePromise
+  private async stopVoiceTurnController(): Promise<void> {
+    if (!this.voiceTurnController) {
       return
     }
 
-    const finalSeq = this.activeVoiceDictationNextSeq - 1
-    const resultPromise = this.activeVoiceDictationResultPromise
-    if (!resultPromise) {
-      this.resetActiveVoiceDictationState()
-      return
-    }
-
-    this.activeVoiceDictationFinalizePromise = (async () => {
-      this.sessionLogger.debug(
-        { dictationId, finalSeq, reason },
-        'Finalizing internal voice dictation stream'
-      )
-      await this.voiceStreamManager.handleFinish(dictationId, finalSeq)
-      const result = await resultPromise
-      this.resetActiveVoiceDictationState()
-      const requestId = uuidv4()
-      const transcriptText = result.text.trim()
-      this.sessionLogger.info(
-        {
-          requestId,
-          isVoiceMode: this.isVoiceMode,
-          transcriptLength: transcriptText.length,
-          transcript: transcriptText,
-        },
-        'Transcription result'
-      )
-      await this.handleTranscriptionResultPayload({
-        text: result.text,
-        requestId,
-        ...(result.debugRecordingPath
-          ? { debugRecordingPath: result.debugRecordingPath, format: 'audio/wav' }
-          : {}),
-      })
-    })()
-
-    try {
-      await this.activeVoiceDictationFinalizePromise
-    } catch (error) {
-      this.resetActiveVoiceDictationState()
-      this.setPhase('idle')
-      this.clearSpeechInProgress('transcription error')
-      this.emit({
-        type: 'activity_log',
-        payload: {
-          id: uuidv4(),
-          timestamp: new Date(),
-          type: 'error',
-          content: `Transcription error: ${error instanceof Error ? error.message : String(error)}`,
-        },
-      })
-      throw error
-    }
+    const controller = this.voiceTurnController
+    this.voiceTurnController = null
+    await controller.stop()
   }
 
   /**
@@ -6421,21 +6249,16 @@ export class Session {
       )
     }
 
-    await this.handleVoiceSpeechStart()
-
     const chunkFormat = msg.format || 'audio/wav'
 
     if (this.isVoiceMode) {
-      await this.appendToActiveVoiceDictationStream(msg.audio, chunkFormat)
-      if (!msg.isLast) {
-        this.setVoiceModeInactivityTimeout()
-        this.sessionLogger.debug('Voice mode: streaming chunk, waiting for speech end')
-        return
+      if (!this.voiceTurnController) {
+        throw new Error('Voice mode is enabled but the voice turn controller is not running')
       }
-
-      this.clearVoiceModeInactivityTimeout()
-      this.sessionLogger.debug('Voice mode: speech ended, finalizing streaming transcription')
-      await this.finalizeActiveVoiceDictationStream('speech ended')
+      await this.voiceTurnController.appendClientChunk({
+        audioBase64: msg.audio,
+        format: chunkFormat,
+      })
       return
     }
 
@@ -6849,8 +6672,6 @@ export class Session {
       this.audioBuffer = null
     }
 
-    this.cancelActiveVoiceDictationStream('new speech turn started')
-    this.clearVoiceModeInactivityTimeout()
     this.clearBufferTimeout()
 
     this.abortController.abort()
@@ -6911,43 +6732,6 @@ export class Session {
         await this.processAudio(combined, segments[0].format)
       }
     }, 10000) // 10 second timeout
-  }
-
-  private setVoiceModeInactivityTimeout(): void {
-    if (!this.isVoiceMode) {
-      return
-    }
-
-    this.clearVoiceModeInactivityTimeout()
-    this.voiceModeInactivityTimeout = setTimeout(() => {
-      this.voiceModeInactivityTimeout = null
-      if (!this.isVoiceMode || !this.activeVoiceDictationId) {
-        return
-      }
-
-      this.sessionLogger.warn(
-        {
-          timeoutMs: VOICE_MODE_INACTIVITY_FLUSH_MS,
-          dictationId: this.activeVoiceDictationId,
-          nextSeq: this.activeVoiceDictationNextSeq,
-        },
-        'Voice mode inactivity timeout reached without isLast; finalizing active voice dictation stream'
-      )
-
-      void this.finalizeActiveVoiceDictationStream('inactivity timeout').catch((error) => {
-        this.sessionLogger.error(
-          { err: error },
-          'Failed to finalize voice dictation stream after inactivity timeout'
-        )
-      })
-    }, VOICE_MODE_INACTIVITY_FLUSH_MS)
-  }
-
-  private clearVoiceModeInactivityTimeout(): void {
-    if (this.voiceModeInactivityTimeout) {
-      clearTimeout(this.voiceModeInactivityTimeout)
-      this.voiceModeInactivityTimeout = null
-    }
   }
 
   /**
@@ -7041,18 +6825,16 @@ export class Session {
     this.abortController.abort()
 
     // Clear timeouts
-    this.clearVoiceModeInactivityTimeout()
     this.clearBufferTimeout()
 
     // Clear buffers
-    this.cancelActiveVoiceDictationStream('session cleanup')
     this.pendingAudioSegments = []
     this.audioBuffer = null
+    await this.stopVoiceTurnController()
 
     // Cleanup managers
     this.ttsManager.cleanup()
     this.sttManager.cleanup()
-    this.voiceStreamManager.cleanupAll()
     this.dictationStreamManager.cleanupAll()
 
     // Close MCP clients

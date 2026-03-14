@@ -512,6 +512,7 @@ export async function createPaseoDaemon(
     },
   });
   const {
+    resolveVoiceTurnDetection,
     resolveVoiceStt,
     resolveVoiceTts,
     resolveDictationStt,
@@ -536,7 +537,7 @@ export async function createPaseoDaemon(
     config.paseoHome,
     createInMemoryAgentMcpTransport,
     { allowedOrigins, allowedHosts: config.allowedHosts },
-    { stt: resolveVoiceStt, tts: resolveVoiceTts },
+    { turnDetection: resolveVoiceTurnDetection, stt: resolveVoiceStt, tts: resolveVoiceTts },
     terminalManager,
     {
       voiceAgentMcpStdio: {

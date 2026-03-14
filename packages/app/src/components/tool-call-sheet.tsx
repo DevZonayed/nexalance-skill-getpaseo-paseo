@@ -109,6 +109,7 @@ export function ToolCallSheetProvider({ children }: ToolCallSheetProviderProps) 
         ref={bottomSheetRef}
         snapPoints={snapPoints}
         index={0}
+        stackBehavior="replace"
         enableDynamicSizing={false}
         onChange={handleSheetChange}
         backdropComponent={renderBackdrop}

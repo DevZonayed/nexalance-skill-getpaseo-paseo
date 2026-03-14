@@ -137,6 +137,35 @@ describe("workspace-tabs-store retargetTab", () => {
     expect(order).toEqual([draftTabId]);
   });
 
+  it("retargeting a background draft keeps the currently focused tab focused", () => {
+    const draftTabId = "draft_background";
+    const key = buildWorkspaceTabPersistenceKey({ serverId: SERVER_ID, workspaceId: WORKSPACE_ID });
+    expect(key).toBeTruthy();
+    const workspaceKey = key as string;
+
+    useWorkspaceTabsStore.getState().openDraftTab({
+      serverId: SERVER_ID,
+      workspaceId: WORKSPACE_ID,
+      draftId: draftTabId,
+    });
+    const focusedFileTabId = useWorkspaceTabsStore.getState().openOrFocusTab({
+      serverId: SERVER_ID,
+      workspaceId: WORKSPACE_ID,
+      target: { kind: "file", path: "/repo/worktree/src/index.ts" },
+    });
+
+    useWorkspaceTabsStore.getState().retargetTab({
+      serverId: SERVER_ID,
+      workspaceId: WORKSPACE_ID,
+      tabId: draftTabId,
+      target: { kind: "agent", agentId: "created-agent" },
+    });
+
+    expect(useWorkspaceTabsStore.getState().focusedTabIdByWorkspace[workspaceKey]).toBe(
+      focusedFileTabId
+    );
+  });
+
   it("openOrFocusTab re-focuses an existing file tab after the workspace focus changed", () => {
     const key = buildWorkspaceTabPersistenceKey({ serverId: SERVER_ID, workspaceId: WORKSPACE_ID });
     expect(key).toBeTruthy();

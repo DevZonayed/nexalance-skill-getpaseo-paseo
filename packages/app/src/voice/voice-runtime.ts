@@ -1,9 +1,12 @@
-import type { AgentStreamEventPayload } from "@server/shared/messages";
+import { Buffer } from "buffer";
+import type {
+  AgentStreamEventPayload,
+  SessionOutboundMessage,
+} from "@server/shared/messages";
 import { resolveVoiceUnavailableMessage } from "@/utils/server-info-capabilities";
 import type { DaemonServerInfo } from "@/stores/session-store";
 import type { AudioEngine } from "@/voice/audio-engine-types";
 import { REALTIME_VOICE_VAD_CONFIG } from "@/voice/realtime-voice-config";
-import { SpeechSegmenter } from "@/voice/speech-segmenter";
 
 const PCM_MIME_TYPE = "audio/pcm;rate=16000;bits=16";
 const KEEP_AWAKE_TAG = "paseo:voice";
@@ -22,7 +25,6 @@ export type VoiceRuntimePhase =
   | "disabled"
   | "starting"
   | "listening"
-  | "capturing"
   | "submitting"
   | "waiting"
   | "playing"
@@ -47,11 +49,8 @@ export interface VoiceRuntimeTelemetrySnapshot {
 export interface VoiceSessionAdapter {
   serverId: string;
   setVoiceMode(enabled: boolean, agentId?: string): Promise<void>;
-  sendVoiceAudioChunk(
-    audioData: string,
-    mimeType: string,
-    isLast: boolean
-  ): Promise<void>;
+  sendVoiceAudioChunk(audioData: string, mimeType: string): Promise<void>;
+  audioPlayed(chunkId: string): Promise<void>;
   abortRequest(): Promise<void>;
   setAssistantAudioPlaying(isPlaying: boolean): void;
 }
@@ -68,16 +67,51 @@ interface RuntimeSessionState {
   connected: boolean;
 }
 
+interface ContinuousVoiceUploader {
+  reset(): void;
+  pushPcmChunk(chunk: Uint8Array): void;
+}
+
 interface RuntimeState {
   snapshot: VoiceRuntimeSnapshot;
   telemetry: VoiceRuntimeTelemetrySnapshot;
   turnInProgress: boolean;
+  serverSpeechDetected: boolean;
   transportReady: boolean;
   generation: number;
-  speechInterruptTimer: ReturnType<typeof setTimeout> | null;
-  speechInterruptSent: boolean;
   segmentDurationTimer: ReturnType<typeof setInterval> | null;
   lastDisplayVolumePublishMs: number;
+  localSpeechStartedAt: number | null;
+}
+
+type AudioOutputPayload = Extract<
+  SessionOutboundMessage,
+  { type: "audio_output" }
+>["payload"];
+
+type StreamingPlaybackChunk = {
+  id: string;
+  chunkIndex: number;
+  source: { arrayBuffer(): Promise<ArrayBuffer>; size: number; type: string };
+};
+
+type StreamingPlaybackGroup = {
+  groupId: string;
+  isVoiceMode: boolean;
+  shouldPlay: boolean;
+  chunks: Map<number, StreamingPlaybackChunk>;
+  nextChunkToPlay: number;
+  finalChunkIndex: number | null;
+  started: boolean;
+  ackedChunkIds: Set<string>;
+};
+
+interface RuntimePlaybackState {
+  groups: Map<string, StreamingPlaybackGroup>;
+  orderedGroupIds: string[];
+  activeGroupId: string | null;
+  processing: boolean;
+  generation: number;
 }
 
 const INITIAL_SNAPSHOT: VoiceRuntimeSnapshot = {
@@ -131,6 +165,7 @@ export interface VoiceRuntime {
   updateSessionConnection(serverId: string, connected: boolean): void;
   handleCapturePcm(chunk: Uint8Array): void;
   handleCaptureVolume(level: number): void;
+  handleAudioOutput(serverId: string, payload: AudioOutputPayload): void;
   startVoice(serverId: string, agentId: string): Promise<void>;
   stopVoice(): Promise<void>;
   destroy(): Promise<void>;
@@ -140,6 +175,7 @@ export interface VoiceRuntime {
   onAssistantAudioStarted(serverId: string): void;
   onAssistantAudioFinished(serverId: string): void;
   onTranscriptionResult(serverId: string, text: string): void;
+  onServerSpeechStateChanged(serverId: string, isSpeaking: boolean): void;
   onTurnEvent(serverId: string, agentId: string, eventType: TurnEventType): void;
 }
 
@@ -151,12 +187,19 @@ export function createVoiceRuntime(deps: VoiceRuntimeDeps): VoiceRuntime {
     snapshot: INITIAL_SNAPSHOT,
     telemetry: INITIAL_TELEMETRY,
     turnInProgress: false,
+    serverSpeechDetected: false,
     transportReady: false,
     generation: 0,
-    speechInterruptTimer: null,
-    speechInterruptSent: false,
     segmentDurationTimer: null,
     lastDisplayVolumePublishMs: 0,
+    localSpeechStartedAt: null,
+  };
+  const playback: RuntimePlaybackState = {
+    groups: new Map(),
+    orderedGroupIds: [],
+    activeGroupId: null,
+    processing: false,
+    generation: 0,
   };
 
   function emit(): void {
@@ -213,10 +256,151 @@ export function createVoiceRuntime(deps: VoiceRuntimeDeps): VoiceRuntime {
     return sessions.get(state.snapshot.activeServerId) ?? null;
   }
 
-  function clearSpeechInterruptTimer(): void {
-    if (state.speechInterruptTimer) {
-      clearTimeout(state.speechInterruptTimer);
-      state.speechInterruptTimer = null;
+  function decodeAudioChunk(base64: string): Uint8Array {
+    return Buffer.from(base64, "base64");
+  }
+
+  function toPlaybackSource(
+    bytes: Uint8Array,
+    format: string
+  ): { arrayBuffer(): Promise<ArrayBuffer>; size: number; type: string } {
+    const mimeType =
+      format === "pcm"
+        ? "audio/pcm;rate=24000;bits=16"
+        : format === "mp3"
+          ? "audio/mpeg"
+          : `audio/${format}`;
+
+    return {
+      size: bytes.byteLength,
+      type: mimeType,
+      async arrayBuffer() {
+        return Uint8Array.from(bytes).buffer;
+      },
+    };
+  }
+
+  function resetPlaybackState(): void {
+    const hadGroups = playback.groups.size;
+    playback.generation += 1;
+    playback.groups.clear();
+    playback.orderedGroupIds = [];
+    playback.activeGroupId = null;
+    playback.processing = false;
+    if (hadGroups > 0) {
+      console.log(`[VoiceRuntime] resetPlaybackState: cleared ${hadGroups} groups, new gen=${playback.generation}`);
+    }
+  }
+
+  function activateNextPlaybackGroup(): void {
+    while (playback.orderedGroupIds.length > 0) {
+      const groupId = playback.orderedGroupIds[0]!;
+      if (playback.groups.has(groupId)) {
+        playback.activeGroupId = groupId;
+        return;
+      }
+      playback.orderedGroupIds.shift();
+    }
+    playback.activeGroupId = null;
+  }
+
+  async function acknowledgeChunk(chunkId: string): Promise<void> {
+    const activeSession = getActiveSession();
+    if (!activeSession) {
+      return;
+    }
+    await activeSession.adapter.audioPlayed(chunkId);
+  }
+
+  async function processPlaybackQueue(serverId: string): Promise<void> {
+    if (playback.processing) {
+      return;
+    }
+
+    playback.processing = true;
+    const generation = playback.generation;
+    console.log(`[VoiceRuntime] processPlaybackQueue start gen=${generation} activeGroup=${playback.activeGroupId}`);
+    try {
+      while (playback.activeGroupId) {
+        if (generation !== playback.generation) {
+          console.log(`[VoiceRuntime] processPlaybackQueue abort: generation changed ${generation} -> ${playback.generation}`);
+          return;
+        }
+
+        const group = playback.groups.get(playback.activeGroupId);
+        if (!group) {
+          activateNextPlaybackGroup();
+          continue;
+        }
+
+        const nextChunk = group.chunks.get(group.nextChunkToPlay);
+        if (!nextChunk) {
+          if (
+            group.finalChunkIndex !== null &&
+            group.nextChunkToPlay > group.finalChunkIndex
+          ) {
+            console.log(`[VoiceRuntime] group=${group.groupId} complete, played=${group.started} chunks=${group.nextChunkToPlay}`);
+            playback.groups.delete(group.groupId);
+            if (playback.orderedGroupIds[0] === group.groupId) {
+              playback.orderedGroupIds.shift();
+            } else {
+              playback.orderedGroupIds = playback.orderedGroupIds.filter(
+                (value) => value !== group.groupId
+              );
+            }
+            if (group.started && group.isVoiceMode) {
+              api.onAssistantAudioFinished(serverId);
+            }
+            activateNextPlaybackGroup();
+            continue;
+          }
+          console.log(`[VoiceRuntime] group=${group.groupId} waiting for chunk=${group.nextChunkToPlay} (finalChunkIndex=${group.finalChunkIndex})`);
+          return;
+        }
+
+        group.chunks.delete(group.nextChunkToPlay);
+
+        if (group.shouldPlay && !group.started && group.isVoiceMode) {
+          group.started = true;
+          console.log(`[VoiceRuntime] group=${group.groupId} first play starting at chunk=${group.nextChunkToPlay}`);
+          api.onAssistantAudioStarted(serverId);
+        }
+
+        const playStart = Date.now();
+        try {
+          if (group.shouldPlay) {
+            await deps.engine.play(nextChunk.source);
+            console.log(`[VoiceRuntime] played chunk=${group.nextChunkToPlay} id=${nextChunk.id} took=${Date.now() - playStart}ms`);
+          } else {
+            console.log(`[VoiceRuntime] SKIPPED chunk=${group.nextChunkToPlay} id=${nextChunk.id} shouldPlay=false`);
+          }
+        } catch (error) {
+          if (generation !== playback.generation) {
+            console.log(`[VoiceRuntime] play error + generation changed, aborting`);
+            return;
+          }
+          console.error(`[VoiceRuntime] play error chunk=${group.nextChunkToPlay} took=${Date.now() - playStart}ms:`, error);
+        }
+
+        if (generation !== playback.generation) {
+          console.log(`[VoiceRuntime] post-play generation changed ${generation} -> ${playback.generation}`);
+          return;
+        }
+
+        if (!group.ackedChunkIds.has(nextChunk.id)) {
+          group.ackedChunkIds.add(nextChunk.id);
+          void acknowledgeChunk(nextChunk.id).catch((error) => {
+            console.warn("[VoiceRuntime] Failed to confirm audio playback:", error);
+          });
+        }
+
+        group.nextChunkToPlay += 1;
+      }
+    } finally {
+      if (generation === playback.generation) {
+        playback.processing = false;
+      }
+      console.log(`[VoiceRuntime] processPlaybackQueue exit gen=${generation} currentGen=${playback.generation}`);
     }
   }
 
@@ -227,9 +411,7 @@ export function createVoiceRuntime(deps: VoiceRuntimeDeps): VoiceRuntime {
     }
   }
 
-  function reconcileSegmentDurationTimer(
-    segmenter: SpeechSegmenter
-  ): void {
+  function reconcileSegmentDurationTimer(): void {
     if (!state.telemetry.isDetecting && !state.telemetry.isSpeaking) {
       clearSegmentDurationTimer();
       patchTelemetry((prev) => ({ ...prev, segmentDuration: 0 }));
@@ -241,7 +423,7 @@ export function createVoiceRuntime(deps: VoiceRuntimeDeps): VoiceRuntime {
     }
 
     state.segmentDurationTimer = setInterval(() => {
-      const startedAt = segmenter.getSpeechDetectionStartMs();
+      const startedAt = state.localSpeechStartedAt;
       patchTelemetry((prev) => ({
         ...prev,
         segmentDuration: startedAt ? Date.now() - startedAt : 0,
@@ -262,10 +444,9 @@ export function createVoiceRuntime(deps: VoiceRuntimeDeps): VoiceRuntime {
     deps.engine.stopLooping();
   }
 
-  function resetSegmenter(segmenter: SpeechSegmenter): void {
-    segmenter.reset();
-    clearSpeechInterruptTimer();
+  function resetCaptureTelemetry(): void {
     clearSegmentDurationTimer();
+    state.localSpeechStartedAt = null;
     patchTelemetry({ ...INITIAL_TELEMETRY });
   }
 
@@ -277,134 +458,34 @@ export function createVoiceRuntime(deps: VoiceRuntimeDeps): VoiceRuntime {
     deps.engine.playLooping(new Uint8Array(0), THINKING_TONE_REPEAT_GAP_MS);
   }
 
-  async function interruptActiveTurn(): Promise<void> {
-    const activeSession = getActiveSession();
-    if (!activeSession) {
-      return;
-    }
+  const uploader: ContinuousVoiceUploader = {
+    reset() {},
+    pushPcmChunk(chunk) {
+      const activeSession = getActiveSession();
+      if (
+        !activeSession ||
+        !state.transportReady ||
+        !state.snapshot.isVoiceMode ||
+        chunk.byteLength === 0
+      ) {
+        return;
+      }
 
-    stopCue();
-    deps.engine.stop();
-    deps.engine.clearQueue();
-    activeSession.adapter.setAssistantAudioPlaying(false);
-    patchSnapshot((prev) => ({ ...prev, phase: "capturing" }));
-
-    try {
-      await activeSession.adapter.abortRequest();
-    } catch (error) {
-      console.error("[VoiceRuntime] Failed to abort active turn:", error);
-    }
-  }
-
-  const segmenter = new SpeechSegmenter(
-    {
-      enableContinuousStreaming: false,
-      volumeThreshold: REALTIME_VOICE_VAD_CONFIG.volumeThreshold,
-      confirmedDropGracePeriodMs:
-        REALTIME_VOICE_VAD_CONFIG.confirmedDropGracePeriodMs,
-      silenceDurationMs: REALTIME_VOICE_VAD_CONFIG.silenceDurationMs,
-      speechConfirmationMs: REALTIME_VOICE_VAD_CONFIG.speechConfirmationMs,
-      detectionGracePeriodMs: REALTIME_VOICE_VAD_CONFIG.detectionGracePeriodMs,
+      void activeSession.adapter
+        .sendVoiceAudioChunk(Buffer.from(chunk).toString("base64"), PCM_MIME_TYPE)
+        .catch((error) => {
+          console.error("[VoiceRuntime] Failed to send audio chunk:", error);
+        });
     },
-    {
-      onAudioSegment: ({ audioData, isLast }) => {
-        const activeSession = getActiveSession();
-        if (!activeSession || !state.transportReady || !state.snapshot.isVoiceMode) {
-          return;
-        }
-
-        const generation = state.generation;
-        patchSnapshot((prev) => ({
-          ...prev,
-          phase: isLast ? "submitting" : "capturing",
-        }));
-        if (isLast) {
-          state.turnInProgress = true;
-        }
-
-        void activeSession.adapter
-          .sendVoiceAudioChunk(audioData, PCM_MIME_TYPE, isLast)
-          .then(() => {
-            if (
-              !isLast ||
-              generation !== state.generation ||
-              !state.snapshot.isVoiceMode ||
-              state.snapshot.activeServerId !== activeSession.adapter.serverId ||
-              state.snapshot.phase !== "submitting"
-            ) {
-              return;
-            }
-            patchSnapshot((prev) => ({ ...prev, phase: "waiting" }));
-            reconcileCue();
-          })
-          .catch((error) => {
-            console.error("[VoiceRuntime] Failed to send audio segment:", error);
-          });
-      },
-      onSpeechStart: () => {
-        stopCue();
-      },
-      onSpeechEnd: () => {
-        clearSpeechInterruptTimer();
-        state.speechInterruptSent = false;
-        reconcileCue();
-      },
-      onDetectingChange: (isDetecting) => {
-        const previous = state.telemetry;
-        patchTelemetry((prev) => ({ ...prev, isDetecting }));
-        if (previous.isDetecting !== isDetecting) {
-        }
-        if (!previous.isDetecting && isDetecting) {
-          stopCue();
-        }
-        reconcileSegmentDurationTimer(segmenter);
-        reconcileCue();
-      },
-      onSpeakingChange: (isSpeaking) => {
-        const previous = state.telemetry;
-        patchTelemetry((prev) => ({ ...prev, isSpeaking }));
-        if (previous.isSpeaking !== isSpeaking) {
-        }
-
-        if (!previous.isSpeaking && isSpeaking) {
-          stopCue();
-          if (
-            state.snapshot.phase === "waiting" ||
-            state.snapshot.phase === "playing"
-          ) {
-            clearSpeechInterruptTimer();
-            state.speechInterruptTimer = setTimeout(() => {
-              state.speechInterruptTimer = null;
-              if (
-                state.speechInterruptSent ||
-                !state.snapshot.isVoiceMode ||
-                !state.telemetry.isSpeaking
-              ) {
-                return;
-              }
-              state.speechInterruptSent = true;
-              void interruptActiveTurn();
-            }, REALTIME_VOICE_VAD_CONFIG.interruptGracePeriodMs);
-          }
-        }
-
-        if (!isSpeaking) {
-          clearSpeechInterruptTimer();
-          state.speechInterruptSent = false;
-        }
-
-        reconcileSegmentDurationTimer(segmenter);
-        reconcileCue();
-      },
-    }
-  );
+  };
 
   function resetToDisabledState(): void {
     state.transportReady = false;
     state.turnInProgress = false;
-    state.speechInterruptSent = false;
+    state.serverSpeechDetected = false;
     state.lastDisplayVolumePublishMs = 0;
-    resetSegmenter(segmenter);
+    uploader.reset();
+    resetCaptureTelemetry();
     patchSnapshot({ ...INITIAL_SNAPSHOT });
   }
 
@@ -435,6 +516,8 @@ export function createVoiceRuntime(deps: VoiceRuntimeDeps): VoiceRuntime {
 
   async function performLocalStop(): Promise<void> {
     stopCue();
+    uploader.reset();
+    resetPlaybackState();
     deps.engine.stop();
     deps.engine.clearQueue();
     await deps.engine.stopCapture().catch(() => undefined);
@@ -466,7 +549,7 @@ export function createVoiceRuntime(deps: VoiceRuntimeDeps): VoiceRuntime {
     }
   }
 
-  return {
+  const api: VoiceRuntime = {
     subscribe(listener) {
       listeners.add(listener);
       return () => {
@@ -524,7 +607,7 @@ export function createVoiceRuntime(deps: VoiceRuntimeDeps): VoiceRuntime {
       if (!state.snapshot.isVoiceMode || state.snapshot.isMuted) {
         return;
       }
-      segmenter.pushPcmChunk(chunk);
+      uploader.pushPcmChunk(chunk);
     },
 
     handleCaptureVolume(level) {
@@ -532,9 +615,81 @@ export function createVoiceRuntime(deps: VoiceRuntimeDeps): VoiceRuntime {
       const displayLevel = state.snapshot.isMuted ? 0 : level;
       publishDisplayVolume(displayLevel, nowMs);
       if (!state.snapshot.isVoiceMode || state.snapshot.isMuted) {
+        state.localSpeechStartedAt = null;
+        patchTelemetry((prev) => ({
+          ...prev,
+          isDetecting: false,
+          isSpeaking: false,
+          segmentDuration: 0,
+        }));
         return;
       }
-      segmenter.pushVolumeLevel(level, nowMs);
+
+      const isActive = level > REALTIME_VOICE_VAD_CONFIG.volumeThreshold;
+      if (isActive && state.localSpeechStartedAt === null) {
+        state.localSpeechStartedAt = nowMs;
+      }
+      if (!isActive) {
+        state.localSpeechStartedAt = null;
+      }
+
+      patchTelemetry((prev) => ({
+        ...prev,
+        isDetecting: isActive,
+        isSpeaking: state.serverSpeechDetected,
+      }));
+      reconcileSegmentDurationTimer();
+      if (!isActive) {
+        patchTelemetry((prev) => ({ ...prev, segmentDuration: 0 }));
+      }
+      reconcileCue();
+    },
+
+    handleAudioOutput(serverId, payload) {
+      if (
+        serverId !== state.snapshot.activeServerId ||
+        !state.snapshot.isVoiceMode ||
+        !payload.isVoiceMode
+      ) {
+        console.log(`[VoiceRuntime] audio_output DROPPED: activeServer=${state.snapshot.activeServerId} serverId=${serverId} isVoiceMode=${state.snapshot.isVoiceMode} payloadVoice=${payload.isVoiceMode}`);
+        return;
+      }
+
+      const groupId = payload.groupId ?? payload.id;
+      const chunkIndex = payload.chunkIndex ?? 0;
+      console.log(`[VoiceRuntime] audio_output groupId=${groupId} chunk=${chunkIndex} isLast=${payload.isLastChunk} size=${payload.audio.length} format=${payload.format}`);
+
+      let group = playback.groups.get(groupId);
+      if (!group) {
+        const shouldPlay = api.shouldPlayVoiceAudio(serverId);
+        console.log(`[VoiceRuntime] new group=${groupId} shouldPlay=${shouldPlay} phase=${state.snapshot.phase} isDetecting=${state.telemetry.isDetecting} isSpeaking=${state.telemetry.isSpeaking}`);
+        group = {
+          groupId,
+          isVoiceMode: payload.isVoiceMode,
+          shouldPlay: api.shouldPlayVoiceAudio(serverId),
+          chunks: new Map(),
+          nextChunkToPlay: 0,
+          finalChunkIndex: null,
+          started: false,
+          ackedChunkIds: new Set(),
+        };
+        playback.groups.set(groupId, group);
+        playback.orderedGroupIds.push(groupId);
+        if (!playback.activeGroupId) {
+          playback.activeGroupId = groupId;
+        }
+      }
+
+      group.chunks.set(chunkIndex, {
+        id: payload.id,
+        chunkIndex,
+        source: toPlaybackSource(decodeAudioChunk(payload.audio), payload.format),
+      });
+      if (payload.isLastChunk) {
+        group.finalChunkIndex = chunkIndex;
+      }
+
+      void processPlaybackQueue(serverId);
     },
 
     async startVoice(serverId, agentId) {
@@ -594,7 +749,8 @@ export function createVoiceRuntime(deps: VoiceRuntimeDeps): VoiceRuntime {
 
         state.transportReady = true;
         state.turnInProgress = false;
-        resetSegmenter(segmenter);
+        uploader.reset();
+        resetCaptureTelemetry();
         patchSnapshot((prev) => ({
           ...prev,
           isVoiceMode: true,
@@ -619,8 +775,10 @@ export function createVoiceRuntime(deps: VoiceRuntimeDeps): VoiceRuntime {
       }));
 
       try {
-        state.transportReady = false;
         stopCue();
+        uploader.reset();
+        state.transportReady = false;
+        resetPlaybackState();
         deps.engine.stop();
         deps.engine.clearQueue();
         activeSession?.adapter.setAssistantAudioPlaying(false);
@@ -647,7 +805,8 @@ export function createVoiceRuntime(deps: VoiceRuntimeDeps): VoiceRuntime {
     toggleMute() {
       const nextMuted = deps.engine.toggleMute();
       if (nextMuted) {
-        resetSegmenter(segmenter);
+        uploader.reset();
+        resetCaptureTelemetry();
         patchSnapshot((prev) => ({
           ...prev,
           isMuted: true,
@@ -672,9 +831,7 @@ export function createVoiceRuntime(deps: VoiceRuntimeDeps): VoiceRuntime {
         state.snapshot.isVoiceMode &&
         state.snapshot.activeServerId === serverId &&
         state.snapshot.phase !== "stopping" &&
-        state.snapshot.phase !== "disabled" &&
-        !state.telemetry.isDetecting &&
-        !state.telemetry.isSpeaking
+        state.snapshot.phase !== "disabled"
       );
     },
 
@@ -701,8 +858,6 @@ export function createVoiceRuntime(deps: VoiceRuntimeDeps): VoiceRuntime {
       }
 
       if (state.turnInProgress) {
-        patchSnapshot((prev) => ({ ...prev, phase: "waiting" }));
-        reconcileCue();
         return;
       }
 
@@ -719,12 +874,39 @@ export function createVoiceRuntime(deps: VoiceRuntimeDeps): VoiceRuntime {
       }
 
       if (text.trim()) {
+        state.turnInProgress = true;
+        patchSnapshot((prev) => ({ ...prev, phase: "waiting" }));
+        reconcileCue();
         return;
       }
 
       state.turnInProgress = false;
       patchSnapshot((prev) => ({ ...prev, phase: "listening" }));
       stopCue();
+    },
+
+    onServerSpeechStateChanged(serverId, isSpeaking) {
+      if (
+        serverId !== state.snapshot.activeServerId ||
+        !state.snapshot.isVoiceMode
+      ) {
+        return;
+      }
+
+      console.log(`[VoiceRuntime] onServerSpeechStateChanged isSpeaking=${isSpeaking} phase=${state.snapshot.phase}`);
+      state.serverSpeechDetected = isSpeaking;
+      if (isSpeaking) {
+        resetPlaybackState();
+        deps.engine.stop();
+        deps.engine.clearQueue();
+        getActiveSession()?.adapter.setAssistantAudioPlaying(false);
+      }
+      patchTelemetry((prev) => ({
+        ...prev,
+        isSpeaking,
+      }));
+      reconcileSegmentDurationTimer();
+      reconcileCue();
     },
 
     onTurnEvent(serverId, agentId, eventType) {
@@ -738,6 +920,10 @@ export function createVoiceRuntime(deps: VoiceRuntimeDeps): VoiceRuntime {
 
       if (eventType === "turn_started") {
         state.turnInProgress = true;
+        if (state.snapshot.phase !== "playing") {
+          patchSnapshot((prev) => ({ ...prev, phase: "waiting" }));
+          reconcileCue();
+        }
         return;
       }
 
@@ -748,4 +934,6 @@ export function createVoiceRuntime(deps: VoiceRuntimeDeps): VoiceRuntime {
       stopCue();
     },
   };
+
+  return api;
 }

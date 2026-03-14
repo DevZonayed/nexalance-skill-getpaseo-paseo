@@ -1648,7 +1648,11 @@ export class DaemonClient {
     return response
   }
 
-  async sendVoiceAudioChunk(audio: string, format: string, isLast: boolean): Promise<void> {
+  async sendVoiceAudioChunk(
+    audio: string,
+    format: string,
+    isLast = false
+  ): Promise<void> {
     this.sendSessionMessage({ type: 'voice_audio_chunk', audio, format, isLast })
   }
 

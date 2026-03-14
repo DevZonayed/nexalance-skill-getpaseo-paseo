@@ -17,6 +17,7 @@ import {
   deriveWorkspaceTabPresentation,
   WorkspaceTabIcon,
 } from "@/screens/workspace/workspace-tab-presentation";
+import { buildWorkspaceTabMenuEntries } from "@/screens/workspace/workspace-tab-menu";
 import type { WorkspaceTabDescriptor } from "@/screens/workspace/workspace-tabs-types";
 import { encodeFilePathForPathSegment } from "@/utils/host-routes";
 import type { Agent } from "@/stores/session-store";
@@ -163,9 +164,19 @@ export function WorkspaceDesktopTabsRow({
                 : presentation.label;
 
             const contextMenuTestId = `workspace-tab-context-${tab.key}`;
-            const isFirstTab = index === 0;
-            const isLastTab = index === tabs.length - 1;
-            const isOnlyTab = tabs.length <= 1;
+            const menuEntries = buildWorkspaceTabMenuEntries({
+              surface: "desktop",
+              tab,
+              index,
+              tabCount: tabs.length,
+              menuTestIDBase: contextMenuTestId,
+              onCopyResumeCommand,
+              onCopyAgentId,
+              onCloseTab,
+              onCloseTabsBefore: onCloseTabsToLeft,
+              onCloseTabsAfter: onCloseTabsToRight,
+              onCloseOtherTabs,
+            });
 
             return (
               <ContextMenu key={tab.key}>
@@ -285,64 +296,21 @@ export function WorkspaceDesktopTabsRow({
                 </Tooltip>
 
                 <ContextMenuContent align="start" width={DROPDOWN_WIDTH} testID={contextMenuTestId}>
-                  {tab.kind === "agent" ? (
-                    <>
+                  {menuEntries.map((entry) =>
+                    entry.kind === "separator" ? (
+                      <ContextMenuSeparator key={entry.key} />
+                    ) : (
                       <ContextMenuItem
-                        testID={`${contextMenuTestId}-copy-resume-command`}
-                        onSelect={() => {
-                          void onCopyResumeCommand(tab.agentId);
-                        }}
+                        key={entry.key}
+                        testID={entry.testID}
+                        disabled={entry.disabled}
+                        destructive={entry.destructive}
+                        onSelect={entry.onSelect}
                       >
-                        Copy resume command
+                        {entry.label}
                       </ContextMenuItem>
-                      <ContextMenuItem
-                        testID={`${contextMenuTestId}-copy-agent-id`}
-                        onSelect={() => {
-                          void onCopyAgentId(tab.agentId);
-                        }}
-                      >
-                        Copy agent id
-                      </ContextMenuItem>
-                    </>
-                  ) : null}
-
-                  <ContextMenuSeparator />
-
-                  <ContextMenuItem
-                    testID={`${contextMenuTestId}-close-left`}
-                    disabled={isFirstTab}
-                    onSelect={() => {
-                      void onCloseTabsToLeft(tab.tabId);
-                    }}
-                  >
-                    Close to the left
-                  </ContextMenuItem>
-                  <ContextMenuItem
-                    testID={`${contextMenuTestId}-close-right`}
-                    disabled={isLastTab}
-                    onSelect={() => {
-                      void onCloseTabsToRight(tab.tabId);
-                    }}
-                  >
-                    Close to the right
-                  </ContextMenuItem>
-                  <ContextMenuItem
-                    testID={`${contextMenuTestId}-close-others`}
-                    disabled={isOnlyTab}
-                    onSelect={() => {
-                      void onCloseOtherTabs(tab.tabId);
-                    }}
-                  >
-                    Close other tabs
-                  </ContextMenuItem>
-                  <ContextMenuItem
-                    testID={`${contextMenuTestId}-close`}
-                    onSelect={() => {
-                      void onCloseTab(tab.tabId);
-                    }}
-                  >
-                    Close
-                  </ContextMenuItem>
+                    )
+                  )}
                 </ContextMenuContent>
               </ContextMenu>
             );

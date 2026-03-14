@@ -12,6 +12,8 @@ export type SherpaOnnxNodeModule = {
   OfflineRecognizer: new (config: any) => any;
   OnlineRecognizer?: new (config: any) => any;
   OfflineTts?: new (config: any) => any;
+  Vad?: new (config: any, bufferSizeInSeconds: number) => any;
+  CircularBuffer?: new (capacity: number) => any;
 };
 
 let cached: SherpaOnnxNodeModule | null = null;

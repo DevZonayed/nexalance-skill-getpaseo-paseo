@@ -23,6 +23,11 @@ describe("resolveSpeechConfig", () => {
       explicit: false,
       enabled: true,
     });
+    expect(result.speech.providers.voiceTurnDetection).toEqual({
+      provider: "local",
+      explicit: false,
+      enabled: true,
+    });
     expect(result.speech.providers.voiceStt).toEqual({
       provider: "local",
       explicit: false,
@@ -52,6 +57,7 @@ describe("resolveSpeechConfig", () => {
     const persisted = PersistedConfigSchema.parse({
       features: {
         voiceMode: {
+          turnDetection: { provider: "local" },
           stt: { provider: "openai", model: "gpt-4o-transcribe" },
         },
       },
@@ -95,6 +101,11 @@ describe("resolveSpeechConfig", () => {
     });
     expect(result.speech.providers.voiceStt).toEqual({
       provider: "openai",
+      explicit: true,
+      enabled: true,
+    });
+    expect(result.speech.providers.voiceTurnDetection).toEqual({
+      provider: "local",
       explicit: true,
       enabled: true,
     });
@@ -146,6 +157,11 @@ describe("resolveSpeechConfig", () => {
     });
 
     expect(result.speech.providers.dictationStt).toEqual({
+      provider: "local",
+      explicit: false,
+      enabled: false,
+    });
+    expect(result.speech.providers.voiceTurnDetection).toEqual({
       provider: "local",
       explicit: false,
       enabled: false,

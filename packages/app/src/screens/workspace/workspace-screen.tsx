@@ -31,6 +31,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
@@ -84,6 +85,7 @@ import {
   WorkspaceTabIcon,
   WorkspaceTabOptionRow,
 } from "@/screens/workspace/workspace-tab-presentation";
+import { buildWorkspaceTabMenuEntries } from "@/screens/workspace/workspace-tab-menu";
 import type { WorkspaceTabDescriptor } from "@/screens/workspace/workspace-tabs-types";
 import {
   resolveWorkspaceHeader,
@@ -143,6 +145,7 @@ function buildOpenIntentKey(input: {
 }
 
 type MobileWorkspaceTabSwitcherProps = {
+  tabs: WorkspaceTabDescriptor[];
   activeTabKey: string;
   activeTabLabel: string;
   activeTabPresentation: WorkspaceTabPresentation | null;
@@ -151,9 +154,16 @@ type MobileWorkspaceTabSwitcherProps = {
   tabPresentationsByKey: Map<string, WorkspaceTabPresentation>;
   onSelectSwitcherTab: (key: string) => void;
   onSelectNewTabOption: (key: typeof NEW_TAB_AGENT_OPTION_ID) => void;
+  onCopyResumeCommand: (agentId: string) => Promise<void> | void;
+  onCopyAgentId: (agentId: string) => Promise<void> | void;
+  onCloseTab: (tabId: string) => Promise<void> | void;
+  onCloseTabsAbove: (tabId: string) => Promise<void> | void;
+  onCloseTabsBelow: (tabId: string) => Promise<void> | void;
+  onCloseOtherTabs: (tabId: string) => Promise<void> | void;
 };
 
 const MobileWorkspaceTabSwitcher = memo(function MobileWorkspaceTabSwitcher({
+  tabs,
   activeTabKey,
   activeTabLabel,
   activeTabPresentation,
@@ -162,15 +172,29 @@ const MobileWorkspaceTabSwitcher = memo(function MobileWorkspaceTabSwitcher({
   tabPresentationsByKey,
   onSelectSwitcherTab,
   onSelectNewTabOption,
+  onCopyResumeCommand,
+  onCopyAgentId,
+  onCloseTab,
+  onCloseTabsAbove,
+  onCloseTabsBelow,
+  onCloseOtherTabs,
 }: MobileWorkspaceTabSwitcherProps) {
   const { theme } = useUnistyles();
   const [isOpen, setIsOpen] = useState(false);
   const anchorRef = useRef<View>(null);
+  const tabIndexByKey = useMemo(() => {
+    const map = new Map<string, number>();
+    tabs.forEach((tab, index) => {
+      map.set(tab.key, index);
+    });
+    return map;
+  }, [tabs]);
 
   return (
     <View style={styles.mobileTabsRow} testID="workspace-tabs-row">
       <Pressable
         ref={anchorRef}
+        testID="workspace-tab-switcher-trigger"
         style={({ hovered, pressed }) => [
           styles.switcherTrigger,
           (hovered || pressed || isOpen) && styles.switcherTriggerActive,
@@ -242,12 +266,71 @@ const MobileWorkspaceTabSwitcher = memo(function MobileWorkspaceTabSwitcher({
           const presentation =
             tabPresentationsByKey.get(option.id) ??
             deriveWorkspaceTabPresentation({ tab });
+          const tabIndex = tabIndexByKey.get(tab.key) ?? -1;
+          const menuTestIDBase = `workspace-tab-menu-${tab.key}`;
+          const menuEntries =
+            tabIndex < 0
+              ? []
+              : buildWorkspaceTabMenuEntries({
+                  surface: "mobile",
+                  tab,
+                  index: tabIndex,
+                  tabCount: tabs.length,
+                  menuTestIDBase,
+                  onCopyResumeCommand,
+                  onCopyAgentId,
+                  onCloseTab,
+                  onCloseTabsBefore: onCloseTabsAbove,
+                  onCloseTabsAfter: onCloseTabsBelow,
+                  onCloseOtherTabs,
+                });
           return (
             <WorkspaceTabOptionRow
               presentation={presentation}
               selected={selected}
               active={active}
               onPress={onPress}
+              trailingAccessory={
+                <DropdownMenu>
+                  <DropdownMenuTrigger
+                    testID={`${menuTestIDBase}-trigger`}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Open menu for ${presentation.label}`}
+                    hitSlop={8}
+                    style={({ open, pressed }) => [
+                      styles.mobileTabMenuTrigger,
+                      (open || pressed) && styles.mobileTabMenuTriggerActive,
+                    ]}
+                  >
+                    <Ellipsis
+                      size={theme.iconSize.sm}
+                      color={theme.colors.foregroundMuted}
+                    />
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent
+                    side="bottom"
+                    align="end"
+                    width={220}
+                    testID={menuTestIDBase}
+                  >
+                    {menuEntries.map((entry) =>
+                      entry.kind === "separator" ? (
+                        <DropdownMenuSeparator key={entry.key} />
+                      ) : (
+                        <DropdownMenuItem
+                          key={entry.key}
+                          testID={entry.testID}
+                          disabled={entry.disabled}
+                          destructive={entry.destructive}
+                          onSelect={entry.onSelect}
+                        >
+                          {entry.label}
+                        </DropdownMenuItem>
+                      )
+                    )}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              }
             />
           );
         }}
@@ -587,6 +670,29 @@ function WorkspaceScreenContent({
     [normalizedServerId, normalizedWorkspaceId, openIntent]
   );
 
+  const openWorkspaceDraftTab = useCallback(
+    (input?: { draftId?: string; focus?: boolean }) => {
+      if (!normalizedServerId || !normalizedWorkspaceId) {
+        return null;
+      }
+
+      const tabId = openDraftTab({
+        serverId: normalizedServerId,
+        workspaceId: normalizedWorkspaceId,
+        draftId: trimNonEmpty(input?.draftId) ?? generateDraftId(),
+      });
+      if (tabId && input?.focus !== false) {
+        focusTab({
+          serverId: normalizedServerId,
+          workspaceId: normalizedWorkspaceId,
+          tabId,
+        });
+      }
+      return tabId;
+    },
+    [focusTab, normalizedServerId, normalizedWorkspaceId, openDraftTab]
+  );
+
   useEffect(() => {
     if (!currentOpenIntentKey) {
       if (resolvedOpenIntentKey !== null) {
@@ -619,24 +725,11 @@ function WorkspaceScreenContent({
 
     if (openIntent.kind === "draft") {
       const draftId = openIntent.draftId.trim();
-      const tabId =
-        draftId === "new"
-          ? openDraftTab({
-              serverId: normalizedServerId,
-              workspaceId: normalizedWorkspaceId,
-              draftId: generateDraftId(),
-            })
-          : openDraftTab({
-              serverId: normalizedServerId,
-              workspaceId: normalizedWorkspaceId,
-              draftId,
-            });
+      const tabId = openWorkspaceDraftTab({
+        ...(draftId === "new" ? {} : { draftId }),
+        focus: true,
+      });
       if (tabId) {
-        focusTab({
-          serverId: normalizedServerId,
-          workspaceId: normalizedWorkspaceId,
-          tabId,
-        });
         setResolvedOpenIntentKey(intentKey);
       }
       return;
@@ -653,18 +746,12 @@ function WorkspaceScreenContent({
             : { kind: "file", path: openIntent.path },
     });
     if (tabId) {
-      focusTab({
-        serverId: normalizedServerId,
-        workspaceId: normalizedWorkspaceId,
-        tabId,
-      });
       setResolvedOpenIntentKey(intentKey);
     }
   }, [
     currentOpenIntentKey,
-    focusTab,
-    openDraftTab,
     openIntent,
+    openWorkspaceDraftTab,
     openOrFocusTab,
     persistenceKey,
     normalizedServerId,
@@ -821,6 +908,10 @@ function WorkspaceScreenContent({
     if (!persistenceKey) {
       return;
     }
+    if (openIntent) {
+      emptyWorkspaceSeedRef.current = null;
+      return;
+    }
     if (workspaceAgents.length > 0 || terminals.length > 0) {
       emptyWorkspaceSeedRef.current = null;
       return;
@@ -834,20 +925,12 @@ function WorkspaceScreenContent({
       return;
     }
     emptyWorkspaceSeedRef.current = workspaceKey;
-    const draftId = generateDraftId();
-    const tabId = openDraftTab({
-      serverId: normalizedServerId,
-      workspaceId: normalizedWorkspaceId,
-      draftId,
-    });
-    if (tabId) {
-      navigateToTabId(tabId);
-    }
+    openWorkspaceDraftTab();
   }, [
-    navigateToTabId,
     normalizedServerId,
     normalizedWorkspaceId,
-    openDraftTab,
+    openIntent,
+    openWorkspaceDraftTab,
     persistenceKey,
     terminals.length,
     tabs.length,
@@ -924,19 +1007,8 @@ function WorkspaceScreenContent({
   }, [activeTabPresentation]);
 
   const handleCreateDraftTab = useCallback(() => {
-    if (!normalizedServerId || !normalizedWorkspaceId) {
-      return;
-    }
-    const draftId = generateDraftId();
-    const tabId = openDraftTab({
-      serverId: normalizedServerId,
-      workspaceId: normalizedWorkspaceId,
-      draftId,
-    });
-    if (tabId) {
-      navigateToTabId(tabId);
-    }
-  }, [navigateToTabId, normalizedServerId, normalizedWorkspaceId, openDraftTab]);
+    openWorkspaceDraftTab();
+  }, [openWorkspaceDraftTab]);
 
   const handleCreateTerminal = useCallback(() => {
     if (createTerminalMutation.isPending) {
@@ -1375,29 +1447,23 @@ function WorkspaceScreenContent({
     }
 
     if (target.kind === "draft") {
+      const tabId = activeTabId ?? target.draftId;
       return (
         <WorkspaceDraftAgentTab
+          key={`${normalizedServerId}:${normalizedWorkspaceId}:${tabId}`}
           serverId={normalizedServerId}
           workspaceId={normalizedWorkspaceId}
-          tabId={activeTabId ?? target.draftId}
+          tabId={tabId}
           draftId={target.draftId}
           onOpenWorkspaceFile={handleOpenFileFromChat}
           onCreated={(agentSnapshot) => {
-            const tabId = activeTabId ?? target.draftId;
             const normalized = normalizeAgentSnapshot(agentSnapshot, normalizedServerId);
-            const nextTabId = retargetWorkspaceTab({
+            retargetWorkspaceTab({
               serverId: normalizedServerId,
               workspaceId: normalizedWorkspaceId,
               tabId,
               target: { kind: "agent", agentId: agentSnapshot.id },
             });
-            if (nextTabId) {
-              focusTab({
-                serverId: normalizedServerId,
-                workspaceId: normalizedWorkspaceId,
-                tabId: nextTabId,
-              });
-            }
             useSessionStore.getState().setAgents(normalizedServerId, (prev) => {
               const next = new Map(prev);
               next.set(agentSnapshot.id, normalized);
@@ -1635,6 +1701,7 @@ function WorkspaceScreenContent({
 
           {isMobile ? (
             <MobileWorkspaceTabSwitcher
+              tabs={tabs}
               activeTabKey={activeTabKey}
               activeTabLabel={activeTabLabel}
               activeTabPresentation={activeTabPresentation}
@@ -1643,6 +1710,12 @@ function WorkspaceScreenContent({
               tabPresentationsByKey={tabPresentationsByKey}
               onSelectSwitcherTab={handleSelectSwitcherTab}
               onSelectNewTabOption={handleSelectNewTabOption}
+              onCopyResumeCommand={handleCopyResumeCommand}
+              onCopyAgentId={handleCopyAgentId}
+              onCloseTab={handleCloseTabById}
+              onCloseTabsAbove={handleCloseTabsToLeft}
+              onCloseTabsBelow={handleCloseTabsToRight}
+              onCloseOtherTabs={handleCloseOtherTabs}
             />
           ) : (
             <WorkspaceDesktopTabsRow
@@ -1867,6 +1940,16 @@ const styles = StyleSheet.create((theme) => ({
     flex: 1,
     color: theme.colors.foreground,
     fontSize: theme.fontSize.sm,
+  },
+  mobileTabMenuTrigger: {
+    width: 28,
+    height: 28,
+    borderRadius: theme.borderRadius.md,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  mobileTabMenuTriggerActive: {
+    backgroundColor: theme.colors.surface2,
   },
   tabsContainer: {
     borderBottomWidth: 1,

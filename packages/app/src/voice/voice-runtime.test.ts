@@ -30,9 +30,28 @@ function createSessionAdapter(serverId = "server-1"): VoiceSessionAdapter {
     serverId,
     setVoiceMode: vi.fn().mockResolvedValue(undefined),
     sendVoiceAudioChunk: vi.fn().mockResolvedValue(undefined),
+    audioPlayed: vi.fn().mockResolvedValue(undefined),
     abortRequest: vi.fn().mockResolvedValue(undefined),
     setAssistantAudioPlaying: vi.fn(),
   };
+}
+
+function createAudioPayload(args: {
+  id: string;
+  groupId: string;
+  chunkIndex: number;
+  isLastChunk: boolean;
+  isVoiceMode?: boolean;
+}) {
+  return {
+    id: args.id,
+    groupId: args.groupId,
+    chunkIndex: args.chunkIndex,
+    isLastChunk: args.isLastChunk,
+    isVoiceMode: args.isVoiceMode ?? true,
+    format: "pcm",
+    audio: Buffer.from(`chunk-${args.chunkIndex}`).toString("base64"),
+  } as const;
 }
 
 function createServerInfo(): DaemonServerInfo {
@@ -91,37 +110,21 @@ describe("voice runtime", () => {
     });
   });
 
-  it("transitions from capturing to submitting to waiting on the final chunk", async () => {
+  it("streams continuous PCM chunks and waits after receiving a transcript", async () => {
     const adapter = createSessionAdapter();
     const { runtime } = createRuntime();
     runtime.registerSession(adapter);
 
     await runtime.startVoice("server-1", "agent-1");
-    runtime.handleCaptureVolume(0.4);
-    await vi.advanceTimersByTimeAsync(
-      REALTIME_VOICE_VAD_CONFIG.speechConfirmationMs + 10
-    );
-    runtime.handleCaptureVolume(0.4);
     runtime.handleCapturePcm(new Uint8Array(32000));
-    expect(runtime.getSnapshot().phase).toBe("capturing");
-
-    runtime.handleCapturePcm(new Uint8Array(4000));
-    runtime.handleCaptureVolume(0);
-    await vi.advanceTimersByTimeAsync(
-      REALTIME_VOICE_VAD_CONFIG.confirmedDropGracePeriodMs + 10
-    );
-    runtime.handleCaptureVolume(0);
-    await vi.advanceTimersByTimeAsync(
-      REALTIME_VOICE_VAD_CONFIG.silenceDurationMs + 10
-    );
-    runtime.handleCaptureVolume(0);
-    await Promise.resolve();
+    expect(runtime.getSnapshot().phase).toBe("listening");
 
     expect(adapter.sendVoiceAudioChunk).toHaveBeenLastCalledWith(
       expect.any(String),
-      "audio/pcm;rate=16000;bits=16",
-      true
+      "audio/pcm;rate=16000;bits=16"
     );
+
+    runtime.onTranscriptionResult("server-1", "hello");
     expect(runtime.getSnapshot().phase).toBe("waiting");
   });
 
@@ -138,6 +141,110 @@ describe("voice runtime", () => {
     expect(adapter.setAssistantAudioPlaying).toHaveBeenCalledWith(true);
   });
 
+  it("starts playback on the first chunk before isLastChunk arrives", async () => {
+    const adapter = createSessionAdapter();
+    let resolvePlay!: (duration: number) => void;
+    const engine = createAudioEngineMock();
+    vi.mocked(engine.play).mockImplementation(
+      () =>
+        new Promise<number>((resolve) => {
+          resolvePlay = resolve;
+        })
+    );
+    const { runtime } = createRuntime({ engine });
+    runtime.registerSession(adapter);
+
+    await runtime.startVoice("server-1", "agent-1");
+    runtime.onTurnEvent("server-1", "agent-1", "turn_started");
+
+    runtime.handleAudioOutput(
+      "server-1",
+      createAudioPayload({
+        id: "chunk-0",
+        groupId: "group-1",
+        chunkIndex: 0,
+        isLastChunk: false,
+      })
+    );
+
+    await vi.waitFor(() => {
+      expect(engine.play).toHaveBeenCalledTimes(1);
+      expect(runtime.getSnapshot().phase).toBe("playing");
+      expect(adapter.audioPlayed).not.toHaveBeenCalled();
+    });
+
+    runtime.handleAudioOutput(
+      "server-1",
+      createAudioPayload({
+        id: "chunk-1",
+        groupId: "group-1",
+        chunkIndex: 1,
+        isLastChunk: true,
+      })
+    );
+
+    expect(engine.play).toHaveBeenCalledTimes(1);
+    resolvePlay(0.1);
+
+    await vi.waitFor(() => {
+      expect(adapter.audioPlayed).toHaveBeenCalledWith("chunk-0");
+      expect(engine.play).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  it("acknowledges chunks only after they are consumed and finishes after the final chunk", async () => {
+    const adapter = createSessionAdapter();
+    const playResolvers: Array<(duration: number) => void> = [];
+    const engine = createAudioEngineMock();
+    vi.mocked(engine.play).mockImplementation(
+      () =>
+        new Promise<number>((resolve) => {
+          playResolvers.push(resolve);
+        })
+    );
+    const { runtime } = createRuntime({ engine });
+    runtime.registerSession(adapter);
+
+    await runtime.startVoice("server-1", "agent-1");
+    runtime.onTurnEvent("server-1", "agent-1", "turn_started");
+
+    runtime.handleAudioOutput(
+      "server-1",
+      createAudioPayload({
+        id: "chunk-0",
+        groupId: "group-1",
+        chunkIndex: 0,
+        isLastChunk: false,
+      })
+    );
+    runtime.handleAudioOutput(
+      "server-1",
+      createAudioPayload({
+        id: "chunk-1",
+        groupId: "group-1",
+        chunkIndex: 1,
+        isLastChunk: true,
+      })
+    );
+
+    await vi.waitFor(() => {
+      expect(engine.play).toHaveBeenCalledTimes(1);
+    });
+    expect(adapter.audioPlayed).not.toHaveBeenCalled();
+
+    playResolvers.shift()!(0.1);
+    await vi.waitFor(() => {
+      expect(adapter.audioPlayed).toHaveBeenCalledWith("chunk-0");
+      expect(engine.play).toHaveBeenCalledTimes(2);
+    });
+
+    playResolvers.shift()!(0.1);
+    await vi.waitFor(() => {
+      expect(adapter.audioPlayed).toHaveBeenCalledWith("chunk-1");
+      expect(runtime.getSnapshot().phase).toBe("waiting");
+    });
+  });
+
   it("returns to waiting after assistant playback when the turn is still active", async () => {
     const adapter = createSessionAdapter();
     const { runtime, engine } = createRuntime();
@@ -147,6 +254,18 @@ describe("voice runtime", () => {
     runtime.onTurnEvent("server-1", "agent-1", "turn_started");
     runtime.onAssistantAudioStarted("server-1");
     runtime.onAssistantAudioFinished("server-1");
+
+    expect(runtime.getSnapshot().phase).toBe("waiting");
+    expect(engine.playLooping).toHaveBeenCalled();
+  });
+
+  it("starts the thinking tone when an agent turn begins before playback", async () => {
+    const adapter = createSessionAdapter();
+    const { runtime, engine } = createRuntime();
+    runtime.registerSession(adapter);
+
+    await runtime.startVoice("server-1", "agent-1");
+    runtime.onTurnEvent("server-1", "agent-1", "turn_started");
 
     expect(runtime.getSnapshot().phase).toBe("waiting");
     expect(engine.playLooping).toHaveBeenCalled();
@@ -164,10 +283,11 @@ describe("voice runtime", () => {
     runtime.onAssistantAudioFinished("server-1");
 
     expect(runtime.getSnapshot().phase).toBe("listening");
-    expect(engine.playLooping).not.toHaveBeenCalled();
+    expect(engine.playLooping).toHaveBeenCalledTimes(1);
+    expect(engine.stopLooping).toHaveBeenCalled();
   });
 
-  it("interrupts the active turn on barge-in after the grace period", async () => {
+  it("keeps local volume alone non-authoritative for playback interruption", async () => {
     const adapter = createSessionAdapter();
     const { runtime, engine } = createRuntime();
     runtime.registerSession(adapter);
@@ -177,16 +297,46 @@ describe("voice runtime", () => {
     runtime.onAssistantAudioStarted("server-1");
 
     runtime.handleCaptureVolume(0.5);
-    await vi.advanceTimersByTimeAsync(
-      REALTIME_VOICE_VAD_CONFIG.speechConfirmationMs + 10
-    );
-    await vi.advanceTimersByTimeAsync(
-      REALTIME_VOICE_VAD_CONFIG.interruptGracePeriodMs
-    );
+    expect(runtime.getTelemetrySnapshot().isSpeaking).toBe(false);
+    expect(adapter.abortRequest).not.toHaveBeenCalled();
+    expect(engine.stop).not.toHaveBeenCalled();
+  });
 
-    expect(adapter.abortRequest).toHaveBeenCalled();
+  it("keeps the meter white state driven by server speech detection", async () => {
+    const adapter = createSessionAdapter();
+    const { runtime } = createRuntime();
+    runtime.registerSession(adapter);
+
+    await runtime.startVoice("server-1", "agent-1");
+    runtime.handleCaptureVolume(0.7);
+
+    expect(runtime.getTelemetrySnapshot()).toMatchObject({
+      volume: expect.any(Number),
+      isDetecting: true,
+      isSpeaking: false,
+    });
+
+    runtime.onServerSpeechStateChanged("server-1", true);
+    expect(runtime.getTelemetrySnapshot().isSpeaking).toBe(true);
+
+    runtime.onServerSpeechStateChanged("server-1", false);
+    expect(runtime.getTelemetrySnapshot().isSpeaking).toBe(false);
+  });
+
+  it("stops assistant playback immediately when server speech starts", async () => {
+    const adapter = createSessionAdapter();
+    const { runtime, engine } = createRuntime();
+    runtime.registerSession(adapter);
+
+    await runtime.startVoice("server-1", "agent-1");
+    runtime.onAssistantAudioStarted("server-1");
+
+    runtime.onServerSpeechStateChanged("server-1", true);
+
     expect(engine.stop).toHaveBeenCalled();
-    expect(runtime.getSnapshot().phase).toBe("capturing");
+    expect(engine.clearQueue).toHaveBeenCalled();
+    expect(adapter.setAssistantAudioPlaying).toHaveBeenCalledWith(false);
+    expect(runtime.getTelemetrySnapshot().isSpeaking).toBe(true);
   });
 
   it("authoritatively stops and suppresses later voice audio", async () => {

@@ -94,6 +94,12 @@ const FeatureVoiceModeSchema = z
       })
       .strict()
       .optional(),
+    turnDetection: z
+      .object({
+        provider: SpeechProviderIdSchema.optional(),
+      })
+      .strict()
+      .optional(),
     tts: z
       .object({
         provider: SpeechProviderIdSchema.optional(),

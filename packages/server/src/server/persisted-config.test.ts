@@ -107,3 +107,19 @@ describe("PersistedConfigSchema logging config", () => {
     expect(result.success).toBe(false);
   });
 });
+
+describe("PersistedConfigSchema voice mode config", () => {
+  test("accepts a dedicated turn detection provider", () => {
+    const parsed = PersistedConfigSchema.parse({
+      features: {
+        voiceMode: {
+          turnDetection: {
+            provider: "local",
+          },
+        },
+      },
+    });
+
+    expect(parsed.features?.voiceMode?.turnDetection?.provider).toBe("local");
+  });
+});

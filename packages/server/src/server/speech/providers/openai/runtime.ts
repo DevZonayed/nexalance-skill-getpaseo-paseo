@@ -2,6 +2,7 @@ import type { Logger } from "pino";
 
 import type { SpeechToTextProvider, TextToSpeechProvider } from "../../speech-provider.js";
 import type { RequestedSpeechProviders } from "../../speech-types.js";
+import type { TurnDetectionProvider } from "../../turn-detection-provider.js";
 import {
   DEFAULT_OPENAI_REALTIME_TRANSCRIPTION_MODEL,
   DEFAULT_OPENAI_TTS_MODEL,
@@ -24,6 +25,7 @@ export type OpenAiSpeechAvailability = {
 };
 
 export type SpeechServices = {
+  turnDetectionService: TurnDetectionProvider | null;
   sttService: SpeechToTextProvider | null;
   ttsService: TextToSpeechProvider | null;
   dictationSttService: SpeechToTextProvider | null;
@@ -112,6 +114,7 @@ export function initializeOpenAiSpeechServices(params: {
   let sttService = existing.sttService;
   let ttsService = existing.ttsService;
   let dictationSttService = existing.dictationSttService;
+  const turnDetectionService = existing.turnDetectionService;
 
   const needsOpenAiStt =
     !sttService &&
@@ -181,6 +184,7 @@ export function initializeOpenAiSpeechServices(params: {
   }
 
   return {
+    turnDetectionService,
     sttService,
     ttsService,
     dictationSttService,

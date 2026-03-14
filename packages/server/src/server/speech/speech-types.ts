@@ -12,6 +12,7 @@ export type RequestedSpeechProvider = z.infer<typeof RequestedSpeechProviderSche
 
 export type RequestedSpeechProviders = {
   dictationStt: RequestedSpeechProvider;
+  voiceTurnDetection: RequestedSpeechProvider;
   voiceStt: RequestedSpeechProvider;
   voiceTts: RequestedSpeechProvider;
 };
