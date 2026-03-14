@@ -35,7 +35,6 @@ const EMPTY_SNAPSHOT: VoiceRuntimeSnapshot = {
 
 const EMPTY_TELEMETRY: VoiceRuntimeTelemetrySnapshot = {
   volume: 0,
-  isDetecting: false,
   isSpeaking: false,
   segmentDuration: 0,
 };

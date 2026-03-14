@@ -20,6 +20,8 @@ interface BridgeStats {
   windowStartedAtMs: number;
   captureEvents: number;
   captureBytes: number;
+  volumeEvents: number;
+  volumeMax: number;
   playbackEvents: number;
   playbackInputBytes: number;
   playbackResampledBytes: number;
@@ -88,6 +90,8 @@ export function createAudioEngine(
     windowStartedAtMs: Date.now(),
     captureEvents: 0,
     captureBytes: 0,
+    volumeEvents: 0,
+    volumeMax: 0,
     playbackEvents: 0,
     playbackInputBytes: 0,
     playbackResampledBytes: 0,
@@ -108,6 +112,7 @@ export function createAudioEngine(
     console.log(
       `[AudioEngine.native#${instanceId}][bridge] ${reason} ` +
         `capture=${bridgeStats.captureEvents}ev/${bridgeStats.captureBytes}B ` +
+        `volume=${bridgeStats.volumeEvents}ev max=${bridgeStats.volumeMax.toFixed(3)} ` +
         `play=${bridgeStats.playbackEvents}ev/${bridgeStats.playbackInputBytes}B->${bridgeStats.playbackResampledBytes}B ` +
         `playMs=${bridgeStats.playbackDurationMs.toFixed(1)} ` +
         `windowMs=${elapsedMs}`
@@ -115,6 +120,8 @@ export function createAudioEngine(
     bridgeStats.windowStartedAtMs = now;
     bridgeStats.captureEvents = 0;
     bridgeStats.captureBytes = 0;
+    bridgeStats.volumeEvents = 0;
+    bridgeStats.volumeMax = 0;
     bridgeStats.playbackEvents = 0;
     bridgeStats.playbackInputBytes = 0;
     bridgeStats.playbackResampledBytes = 0;
@@ -133,6 +140,8 @@ export function createAudioEngine(
       reject: (error: Error) => void;
       settled: boolean;
     } | null;
+    sawFirstMicChunk: boolean;
+    sawFirstVolumeEvent: boolean;
     destroyed: boolean;
   } = {
     initialized: false,
@@ -142,6 +151,8 @@ export function createAudioEngine(
     processingQueue: false,
     playbackTimeout: null,
     activePlayback: null,
+    sawFirstMicChunk: false,
+    sawFirstVolumeEvent: false,
     destroyed: false,
   };
 
@@ -152,6 +163,12 @@ export function createAudioEngine(
         return;
       }
       const pcm = event.data as Uint8Array;
+      if (!refs.sawFirstMicChunk) {
+        refs.sawFirstMicChunk = true;
+        console.log(
+          `[AudioEngine.native#${instanceId}] firstMicChunk bytes=${pcm.byteLength} head=${toHexPreview(pcm)}`
+        );
+      }
       bridgeStats.captureEvents += 1;
       bridgeStats.captureBytes += pcm.byteLength;
       maybeFlushBridgeStats("capture");
@@ -165,6 +182,15 @@ export function createAudioEngine(
         return;
       }
       const level = refs.muted ? 0 : event.data;
+      bridgeStats.volumeEvents += 1;
+      bridgeStats.volumeMax = Math.max(bridgeStats.volumeMax, level);
+      if (!refs.sawFirstVolumeEvent) {
+        refs.sawFirstVolumeEvent = true;
+        console.log(
+          `[AudioEngine.native#${instanceId}] firstInputVolume level=${level.toFixed(3)} muted=${refs.muted}`
+        );
+      }
+      maybeFlushBridgeStats("volume");
       callbacks.onVolumeLevel(level);
     }
   );
@@ -190,8 +216,14 @@ export function createAudioEngine(
 
   async function ensureMicrophonePermission(): Promise<void> {
     let permission = await native.getMicrophonePermissionsAsync().catch(() => null);
+    console.log(
+      `[AudioEngine.native#${instanceId}] microphonePermission initial=${permission?.status ?? "unknown"} granted=${String(permission?.granted ?? false)}`
+    );
     if (!permission?.granted) {
       permission = await native.requestMicrophonePermissionsAsync().catch(() => null);
+      console.log(
+        `[AudioEngine.native#${instanceId}] microphonePermission requested=${permission?.status ?? "unknown"} granted=${String(permission?.granted ?? false)}`
+      );
     }
     if (!permission?.granted) {
       throw new Error(
@@ -307,14 +339,21 @@ export function createAudioEngine(
 
     async startCapture() {
       if (refs.captureActive) {
+        console.log(`[AudioEngine.native#${instanceId}] startCapture skipped: already active`);
         return;
       }
 
       try {
+        console.log(`[AudioEngine.native#${instanceId}] startCapture begin`);
         await ensureMicrophonePermission();
         await ensureInitialized();
-        native.toggleRecording(true);
+        refs.sawFirstMicChunk = false;
+        refs.sawFirstVolumeEvent = false;
+        const isRecording = native.toggleRecording(true);
         refs.captureActive = true;
+        console.log(
+          `[AudioEngine.native#${instanceId}] startCapture toggleRecording(true) => ${String(isRecording)}`
+        );
       } catch (error) {
         const wrapped = error instanceof Error ? error : new Error(String(error));
         callbacks.onError?.(wrapped);
@@ -324,7 +363,10 @@ export function createAudioEngine(
 
     async stopCapture() {
       if (refs.captureActive) {
-        native.toggleRecording(false);
+        const isRecording = native.toggleRecording(false);
+        console.log(
+          `[AudioEngine.native#${instanceId}] stopCapture toggleRecording(false) => ${String(isRecording)}`
+        );
       }
       refs.captureActive = false;
       refs.muted = false;

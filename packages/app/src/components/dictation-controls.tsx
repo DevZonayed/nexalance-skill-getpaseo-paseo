@@ -69,7 +69,6 @@ export function DictationControls({
         <VolumeMeter
           volume={volume}
           isMuted={false}
-          isDetecting
           isSpeaking={false}
           orientation="horizontal"
         />
@@ -177,7 +176,6 @@ export function DictationOverlay({
           <VolumeMeter
             volume={volume}
             isMuted={false}
-            isDetecting
             isSpeaking={false}
             orientation="horizontal"
             color={theme.colors.palette.white}

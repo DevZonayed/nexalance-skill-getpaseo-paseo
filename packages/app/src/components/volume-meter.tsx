@@ -13,7 +13,6 @@ import { StyleSheet, useUnistyles } from "react-native-unistyles";
 interface VolumeMeterProps {
   volume: number;
   isMuted?: boolean;
-  isDetecting?: boolean;
   isSpeaking?: boolean;
   orientation?: "vertical" | "horizontal";
   variant?: "default" | "compact";

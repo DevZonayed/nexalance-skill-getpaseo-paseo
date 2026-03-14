@@ -268,6 +268,40 @@ describe("voice runtime", () => {
     expect(engine.play).toHaveBeenCalled();
   });
 
+  it("does not restart the thinking tone from local detection jitter while waiting", async () => {
+    const adapter = createSessionAdapter();
+    let resolvePlay!: (duration: number) => void;
+    const engine = createAudioEngineMock();
+    vi.mocked(engine.play).mockImplementation(
+      () =>
+        new Promise<number>((resolve) => {
+          resolvePlay = resolve;
+        })
+    );
+    const { runtime } = createRuntime({ engine });
+    runtime.registerSession(adapter);
+
+    await runtime.startVoice("server-1", "agent-1");
+    runtime.onTurnEvent("server-1", "agent-1", "turn_started");
+
+    expect(runtime.getSnapshot().phase).toBe("waiting");
+    expect(engine.play).toHaveBeenCalledTimes(1);
+
+    runtime.handleCaptureVolume(REALTIME_VOICE_VAD_CONFIG.volumeThreshold + 0.05);
+    runtime.handleCaptureVolume(0);
+
+    expect(engine.stop).not.toHaveBeenCalled();
+    expect(engine.clearQueue).not.toHaveBeenCalled();
+    expect(engine.play).toHaveBeenCalledTimes(1);
+
+    runtime.onServerSpeechStateChanged("server-1", true);
+
+    expect(engine.stop).toHaveBeenCalledTimes(1);
+    expect(engine.clearQueue).toHaveBeenCalledTimes(1);
+
+    resolvePlay(0.1);
+  });
+
   it("returns to listening after assistant playback once the turn is complete", async () => {
     const adapter = createSessionAdapter();
     const { runtime, engine } = createRuntime();
@@ -308,7 +342,6 @@ describe("voice runtime", () => {
 
     expect(runtime.getTelemetrySnapshot()).toMatchObject({
       volume: expect.any(Number),
-      isDetecting: true,
       isSpeaking: false,
     });
 

@@ -6,7 +6,7 @@ import { useVoice, useVoiceTelemetry } from "@/contexts/voice-context";
 
 export function VoiceCompactIndicator() {
   const { theme } = useUnistyles();
-  const { volume, isDetecting, isSpeaking } = useVoiceTelemetry();
+  const { volume, isSpeaking } = useVoiceTelemetry();
   const {
     isVoiceMode,
     isVoiceSwitching,
@@ -24,7 +24,6 @@ export function VoiceCompactIndicator() {
         <VolumeMeter
           volume={volume}
           isMuted={isMuted}
-          isDetecting={isDetecting}
           isSpeaking={isSpeaking}
           orientation="horizontal"
           variant="compact"

@@ -8,7 +8,7 @@ import { useHosts } from "@/runtime/host-runtime";
 export function VoicePanel() {
   const { theme } = useUnistyles();
   const daemons = useHosts();
-  const { volume, isDetecting, isSpeaking } = useVoiceTelemetry();
+  const { volume, isSpeaking } = useVoiceTelemetry();
   const {
     isMuted,
     stopVoice,
@@ -27,7 +27,6 @@ export function VoicePanel() {
           <VolumeMeter
             volume={volume}
             isMuted={isMuted}
-            isDetecting={isDetecting}
             isSpeaking={isSpeaking}
             orientation="horizontal"
             variant="compact"

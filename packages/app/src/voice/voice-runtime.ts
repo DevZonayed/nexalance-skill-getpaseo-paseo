@@ -45,7 +45,6 @@ export interface VoiceRuntimeSnapshot {
 
 export interface VoiceRuntimeTelemetrySnapshot {
   volume: number;
-  isDetecting: boolean;
   isSpeaking: boolean;
   segmentDuration: number;
 }
@@ -85,7 +84,9 @@ interface RuntimeState {
   generation: number;
   segmentDurationTimer: ReturnType<typeof setInterval> | null;
   lastDisplayVolumePublishMs: number;
-  localSpeechStartedAt: number | null;
+  serverSpeechStartedAt: number | null;
+  lastNoServerSpeechLogMs: number;
+  localAboveThresholdActive: boolean;
 }
 
 type AudioOutputPayload = Extract<
@@ -149,7 +150,6 @@ const INITIAL_SNAPSHOT: VoiceRuntimeSnapshot = {
 
 const INITIAL_TELEMETRY: VoiceRuntimeTelemetrySnapshot = {
   volume: 0,
-  isDetecting: false,
   isSpeaking: false,
   segmentDuration: 0,
 };
@@ -176,7 +176,6 @@ function telemetryEqual(
 ): boolean {
   return (
     left.volume === right.volume &&
-    left.isDetecting === right.isDetecting &&
     left.isSpeaking === right.isSpeaking &&
     left.segmentDuration === right.segmentDuration
   );
@@ -219,7 +218,9 @@ export function createVoiceRuntime(deps: VoiceRuntimeDeps): VoiceRuntime {
     generation: 0,
     segmentDurationTimer: null,
     lastDisplayVolumePublishMs: 0,
-    localSpeechStartedAt: null,
+    serverSpeechStartedAt: null,
+    lastNoServerSpeechLogMs: 0,
+    localAboveThresholdActive: false,
   };
   const playback: RuntimePlaybackState = {
     groups: new Map(),
@@ -502,7 +503,7 @@ export function createVoiceRuntime(deps: VoiceRuntimeDeps): VoiceRuntime {
   }
 
   function reconcileSegmentDurationTimer(): void {
-    if (!state.telemetry.isDetecting && !state.telemetry.isSpeaking) {
+    if (!state.serverSpeechDetected) {
       clearSegmentDurationTimer();
       patchTelemetry((prev) => ({ ...prev, segmentDuration: 0 }));
       return;
@@ -513,7 +514,7 @@ export function createVoiceRuntime(deps: VoiceRuntimeDeps): VoiceRuntime {
     }
 
     state.segmentDurationTimer = setInterval(() => {
-      const startedAt = state.localSpeechStartedAt;
+      const startedAt = state.serverSpeechStartedAt;
       patchTelemetry((prev) => ({
         ...prev,
         segmentDuration: startedAt ? Date.now() - startedAt : 0,
@@ -525,7 +526,6 @@ export function createVoiceRuntime(deps: VoiceRuntimeDeps): VoiceRuntime {
     return (
       state.snapshot.isVoiceMode &&
       state.snapshot.phase === "waiting" &&
-      !state.telemetry.isDetecting &&
       !state.telemetry.isSpeaking
     );
   }
@@ -546,7 +546,7 @@ export function createVoiceRuntime(deps: VoiceRuntimeDeps): VoiceRuntime {
 
   function resetCaptureTelemetry(): void {
     clearSegmentDurationTimer();
-    state.localSpeechStartedAt = null;
+    state.serverSpeechStartedAt = null;
     patchTelemetry({ ...INITIAL_TELEMETRY });
   }
 
@@ -621,6 +621,8 @@ export function createVoiceRuntime(deps: VoiceRuntimeDeps): VoiceRuntime {
     state.turnInProgress = false;
     state.serverSpeechDetected = false;
     state.lastDisplayVolumePublishMs = 0;
+    state.lastNoServerSpeechLogMs = 0;
+    state.localAboveThresholdActive = false;
     uploader.reset();
     resetCaptureTelemetry();
     patchSnapshot({ ...INITIAL_SNAPSHOT });
@@ -744,6 +746,11 @@ export function createVoiceRuntime(deps: VoiceRuntimeDeps): VoiceRuntime {
       if (!state.snapshot.isVoiceMode || state.snapshot.isMuted) {
         return;
       }
+      if (bridgeStats.captureEvents === 0) {
+        console.log(
+          `[VoiceRuntime#${instanceId}] firstCapturePcm bytes=${chunk.byteLength} phase=${state.snapshot.phase} transportReady=${state.transportReady}`
+        );
+      }
       uploader.pushPcmChunk(chunk);
     },
 
@@ -752,10 +759,8 @@ export function createVoiceRuntime(deps: VoiceRuntimeDeps): VoiceRuntime {
       const displayLevel = state.snapshot.isMuted ? 0 : level;
       publishDisplayVolume(displayLevel, nowMs);
       if (!state.snapshot.isVoiceMode || state.snapshot.isMuted) {
-        state.localSpeechStartedAt = null;
         patchTelemetry((prev) => ({
           ...prev,
-          isDetecting: false,
           isSpeaking: false,
           segmentDuration: 0,
         }));
@@ -763,22 +768,34 @@ export function createVoiceRuntime(deps: VoiceRuntimeDeps): VoiceRuntime {
       }
 
       const isActive = level > REALTIME_VOICE_VAD_CONFIG.volumeThreshold;
-      if (isActive && state.localSpeechStartedAt === null) {
-        state.localSpeechStartedAt = nowMs;
+      if (isActive && !state.localAboveThresholdActive) {
+        state.localAboveThresholdActive = true;
+        console.log(
+          `[VoiceRuntime#${instanceId}] localSpeechActive level=${level.toFixed(3)} threshold=${REALTIME_VOICE_VAD_CONFIG.volumeThreshold.toFixed(3)} phase=${state.snapshot.phase} transportReady=${state.transportReady}`
+        );
       }
-      if (!isActive) {
-        state.localSpeechStartedAt = null;
+      if (!isActive && state.localAboveThresholdActive) {
+        state.localAboveThresholdActive = false;
+        console.log(
+          `[VoiceRuntime#${instanceId}] localSpeechInactive phase=${state.snapshot.phase} serverSpeaking=${state.serverSpeechDetected}`
+        );
+      }
+      if (
+        isActive &&
+        !state.serverSpeechDetected &&
+        nowMs - state.lastNoServerSpeechLogMs >= 1500
+      ) {
+        state.lastNoServerSpeechLogMs = nowMs;
+        console.log(
+          `[VoiceRuntime#${instanceId}] localSpeechWithoutServerSpeech level=${level.toFixed(3)} phase=${state.snapshot.phase} turnInProgress=${state.turnInProgress} transportReady=${state.transportReady}`
+        );
       }
 
       patchTelemetry((prev) => ({
         ...prev,
-        isDetecting: isActive,
         isSpeaking: state.serverSpeechDetected,
       }));
       reconcileSegmentDurationTimer();
-      if (!isActive) {
-        patchTelemetry((prev) => ({ ...prev, segmentDuration: 0 }));
-      }
       reconcileCue();
     },
 
@@ -808,7 +825,7 @@ export function createVoiceRuntime(deps: VoiceRuntimeDeps): VoiceRuntime {
       let group = playback.groups.get(groupId);
       if (!group) {
         const shouldPlay = api.shouldPlayVoiceAudio(serverId);
-        console.log(`[VoiceRuntime] new group=${groupId} shouldPlay=${shouldPlay} phase=${state.snapshot.phase} isDetecting=${state.telemetry.isDetecting} isSpeaking=${state.telemetry.isSpeaking}`);
+        console.log(`[VoiceRuntime] new group=${groupId} shouldPlay=${shouldPlay} phase=${state.snapshot.phase} isSpeaking=${state.telemetry.isSpeaking}`);
         group = {
           groupId,
           isVoiceMode: payload.isVoiceMode,
@@ -1040,8 +1057,11 @@ export function createVoiceRuntime(deps: VoiceRuntimeDeps): VoiceRuntime {
         return;
       }
 
-      console.log(`[VoiceRuntime] onServerSpeechStateChanged isSpeaking=${isSpeaking} phase=${state.snapshot.phase}`);
+      console.log(
+        `[VoiceRuntime#${instanceId}] onServerSpeechStateChanged isSpeaking=${isSpeaking} phase=${state.snapshot.phase} volume=${state.telemetry.volume}`
+      );
       state.serverSpeechDetected = isSpeaking;
+      state.serverSpeechStartedAt = isSpeaking ? (state.serverSpeechStartedAt ?? Date.now()) : null;
       if (isSpeaking) {
         resetPlaybackState();
         deps.engine.stop();

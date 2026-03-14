@@ -22,14 +22,13 @@ export function RealtimeVoiceOverlay({
   onStop,
 }: RealtimeVoiceOverlayProps) {
   const { theme } = useUnistyles();
-  const { volume, isDetecting, isSpeaking } = useVoiceTelemetry();
+  const { volume, isSpeaking } = useVoiceTelemetry();
   return (
     <View style={styles.container}>
       <View style={styles.meterContainer}>
         <VolumeMeter
           volume={volume}
           isMuted={isMuted}
-          isDetecting={isDetecting}
           isSpeaking={isSpeaking}
           orientation="horizontal"
         />

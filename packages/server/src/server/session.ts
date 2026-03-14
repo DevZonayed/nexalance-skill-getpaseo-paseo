@@ -339,6 +339,7 @@ const MIN_STREAMING_SEGMENT_BYTES = Math.round(PCM_BYTES_PER_MS * MIN_STREAMING_
 const SAFE_GIT_REF_PATTERN = /^[A-Za-z0-9._\/-]+$/
 const AgentIdSchema = z.string().uuid()
 const VOICE_MCP_SERVER_NAME = 'paseo_voice'
+const VOICE_INTERRUPT_CONFIRMATION_MS = 500
 
 type VoiceModeBaseConfig = {
   systemPrompt?: string
@@ -530,10 +531,15 @@ export class Session {
   // Voice mode state
   private isVoiceMode = false
   private speechInProgress = false
+  private pendingVoiceSpeechStartAt: number | null = null
+  private pendingVoiceSpeechTimer: NodeJS.Timeout | null = null
 
   private readonly dictationStreamManager: DictationStreamManager
   private readonly resolveVoiceTurnDetection: () => TurnDetectionProvider | null
   private voiceTurnController: VoiceTurnController | null = null
+  private voiceInputChunkCount = 0
+  private voiceInputBytes = 0
+  private voiceInputWindowStartedAt = Date.now()
 
   // Audio buffering for interruption handling
   private pendingAudioSegments: Array<{ audio: Buffer; format: string }> = []
@@ -2419,21 +2425,10 @@ export class Session {
       },
       callbacks: {
         onSpeechStarted: async () => {
-          this.emit({
-            type: 'voice_input_state',
-            payload: {
-              isSpeaking: true,
-            },
-          })
-          await this.handleVoiceSpeechStart()
+          this.handleProvisionalVoiceSpeechStarted()
         },
         onSpeechStopped: async () => {
-          this.emit({
-            type: 'voice_input_state',
-            payload: {
-              isSpeaking: false,
-            },
-          })
+          this.handleVoiceSpeechStopped()
         },
         onError: (error) => {
           this.sessionLogger.error({ err: error }, 'Voice turn controller failed')
@@ -2452,9 +2447,70 @@ export class Session {
       return
     }
 
+    this.clearPendingVoiceSpeechStart('turn-controller-stop')
     const controller = this.voiceTurnController
     this.voiceTurnController = null
     await controller.stop()
+  }
+
+  private clearPendingVoiceSpeechStart(reason: string): void {
+    if (this.pendingVoiceSpeechTimer) {
+      clearTimeout(this.pendingVoiceSpeechTimer)
+      this.pendingVoiceSpeechTimer = null
+    }
+    if (this.pendingVoiceSpeechStartAt !== null) {
+      this.sessionLogger.debug({ reason }, 'Clearing provisional voice speech start')
+      this.pendingVoiceSpeechStartAt = null
+    }
+  }
+
+  private handleProvisionalVoiceSpeechStarted(): void {
+    if (this.speechInProgress || this.pendingVoiceSpeechTimer) {
+      return
+    }
+
+    const startedAt = Date.now()
+    this.pendingVoiceSpeechStartAt = startedAt
+    this.sessionLogger.info(
+      { confirmationMs: VOICE_INTERRUPT_CONFIRMATION_MS },
+      'Silero VAD provisional speech_started'
+    )
+    this.pendingVoiceSpeechTimer = setTimeout(() => {
+      this.pendingVoiceSpeechTimer = null
+      if (this.pendingVoiceSpeechStartAt !== startedAt || this.speechInProgress) {
+        return
+      }
+
+      this.pendingVoiceSpeechStartAt = null
+      this.sessionLogger.info('voice_input_state emitting isSpeaking=true')
+      this.emit({
+        type: 'voice_input_state',
+        payload: {
+          isSpeaking: true,
+        },
+      })
+      void this.handleVoiceSpeechStart()
+    }, VOICE_INTERRUPT_CONFIRMATION_MS)
+  }
+
+  private handleVoiceSpeechStopped(): void {
+    if (this.pendingVoiceSpeechStartAt !== null) {
+      const durationMs = Date.now() - this.pendingVoiceSpeechStartAt
+      this.clearPendingVoiceSpeechStart('speech-stopped-before-confirmation')
+      this.sessionLogger.info(
+        { durationMs, confirmationMs: VOICE_INTERRUPT_CONFIRMATION_MS },
+        'Ignoring provisional voice speech start that ended before confirmation'
+      )
+      return
+    }
+
+    this.sessionLogger.info('voice_input_state emitting isSpeaking=false')
+    this.emit({
+      type: 'voice_input_state',
+      payload: {
+        isSpeaking: false,
+      },
+    })
   }
 
   /**
@@ -6317,6 +6373,36 @@ export class Session {
       if (!this.voiceTurnController) {
         throw new Error('Voice mode is enabled but the voice turn controller is not running')
       }
+      const chunkBytes = Buffer.byteLength(msg.audio, 'base64')
+      this.voiceInputChunkCount += 1
+      this.voiceInputBytes += chunkBytes
+      if (this.voiceInputChunkCount === 1) {
+        this.sessionLogger.info(
+          {
+            format: chunkFormat,
+            audioBytes: chunkBytes,
+          },
+          'Received first voice_audio_chunk for active voice mode'
+        )
+      }
+      const now = Date.now()
+      if (
+        this.voiceInputChunkCount % 50 === 0 ||
+        now - this.voiceInputWindowStartedAt >= 1000
+      ) {
+        this.sessionLogger.info(
+          {
+            chunkCount: this.voiceInputChunkCount,
+            audioBytes: this.voiceInputBytes,
+            windowMs: now - this.voiceInputWindowStartedAt,
+            format: chunkFormat,
+          },
+          'Voice input chunk summary'
+        )
+        this.voiceInputWindowStartedAt = now
+        this.voiceInputChunkCount = 0
+        this.voiceInputBytes = 0
+      }
       await this.voiceTurnController.appendClientChunk({
         audioBase64: msg.audio,
         format: chunkFormat,
@@ -6772,6 +6858,7 @@ export class Session {
    * Clear speech-in-progress flag once the user turn has completed
    */
   private clearSpeechInProgress(reason: string): void {
+    this.clearPendingVoiceSpeechStart(`clear-speech-in-progress:${reason}`)
     if (!this.speechInProgress) {
       return
     }
