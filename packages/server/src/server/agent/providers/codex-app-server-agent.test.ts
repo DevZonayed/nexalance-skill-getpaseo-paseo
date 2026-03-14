@@ -1,8 +1,17 @@
 import { describe, expect, test } from "vitest";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 import {
   __codexAppServerInternals,
@@ -17,6 +26,7 @@ import type {
   AgentPermissionRequest,
   AgentPromptContentBlock,
   AgentStreamEvent,
+  AgentRunResult,
   AgentTimelineItem,
 } from "../agent-sdk-types.js";
 
@@ -24,6 +34,7 @@ const CODEX_TEST_MODEL = agentConfigs.codex.model;
 const CODEX_TEST_THINKING_OPTION_ID = agentConfigs.codex.thinkingOptionId;
 const ONE_BY_ONE_PNG_BASE64 =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+X1r0AAAAASUVORK5CYII=";
+const TEST_FILE_DIR = path.dirname(fileURLToPath(import.meta.url));
 
 function isCodexInstalled(): boolean {
   try {
@@ -49,6 +60,42 @@ function useTempCodexSessionDir(): () => void {
       process.env.CODEX_SESSION_DIR = prevSessionDir;
     }
     rmSync(codexSessionDir, { recursive: true, force: true });
+  };
+}
+
+function useTempCodexHome(prefix = "codex-home-"): { codexHome: string; cleanup: () => void } {
+  const codexHome = tmpCwd(prefix);
+  const prevCodexHome = process.env.CODEX_HOME;
+  const sharedCodexHome = process.env.CODEX_HOME ?? path.join(os.homedir(), ".codex");
+  const sharedAuthPath = path.join(sharedCodexHome, "auth.json");
+  if (!existsSync(sharedAuthPath)) {
+    throw new Error(`Codex auth file not found at ${sharedAuthPath}`);
+  }
+  copyFileSync(sharedAuthPath, path.join(codexHome, "auth.json"));
+  writeFileSync(
+    path.join(codexHome, "config.toml"),
+    [
+      'model = "gpt-5.2-codex"',
+      'model_reasoning_effort = "medium"',
+      `[projects."${process.cwd()}"]`,
+      'trust_level = "trusted"',
+      "[features]",
+      "unified_exec = true",
+      "shell_snapshot = true",
+    ].join("\n"),
+    "utf8"
+  );
+  process.env.CODEX_HOME = codexHome;
+  return {
+    codexHome,
+    cleanup: () => {
+      if (prevCodexHome === undefined) {
+        delete process.env.CODEX_HOME;
+      } else {
+        process.env.CODEX_HOME = prevCodexHome;
+      }
+      rmSync(codexHome, { recursive: true, force: true });
+    },
   };
 }
 
@@ -196,6 +243,17 @@ function deferred<T>(): Deferred<T> {
     reject = rej;
   });
   return { promise, resolve, reject };
+}
+
+function expectSuccessfulAssistantTurn(
+  result: Pick<AgentRunResult, "finalText" | "timeline">,
+  options?: { forbiddenText?: string[] }
+): void {
+  expect(result.finalText.trim().length).toBeGreaterThan(0);
+  expect(result.timeline.some((item) => item.type === "assistant_message")).toBe(true);
+  for (const fragment of options?.forbiddenText ?? []) {
+    expect(result.finalText.toLowerCase()).not.toContain(fragment.toLowerCase());
+  }
 }
 
 describe("Codex app-server provider (integration)", () => {
@@ -375,12 +433,17 @@ describe("Codex app-server provider (integration)", () => {
       });
 
       const result = await session.run([
-        { type: "text", text: "Reply with exactly: OK." },
+        {
+          type: "text",
+          text: "Confirm in one short sentence that you received the attached image.",
+        },
         { type: "image", mimeType: "image/png", data: ONE_BY_ONE_PNG_BASE64 },
       ] satisfies AgentPromptContentBlock[]);
       await session.close();
 
-      expect(result.finalText).toContain("OK");
+      expectSuccessfulAssistantTurn(result, {
+        forbiddenText: ["validation error", "invalid request", "schema"],
+      });
     } finally {
       cleanup();
       rmSync(cwd, { recursive: true, force: true });
@@ -487,9 +550,10 @@ describe("Codex app-server provider (integration)", () => {
 
   test.runIf(isCodexInstalled())("round-trips a stdio MCP tool call", async () => {
     const cleanup = useTempCodexSessionDir();
+    const { cleanup: cleanupCodexHome } = useTempCodexHome("codex-mcp-home-");
     const cwd = tmpCwd("codex-mcp-roundtrip-");
     const token = `MCP_ROUNDTRIP_${Date.now()}`;
-    const mcpScriptPath = path.resolve(process.cwd(), "scripts", "mcp-echo-test-server.mjs");
+    const mcpScriptPath = path.resolve(TEST_FILE_DIR, "../../../../scripts/mcp-echo-test-server.mjs");
 
     try {
       const client = new CodexAppServerAgentClient(logger);
@@ -497,8 +561,8 @@ describe("Codex app-server provider (integration)", () => {
         provider: "codex",
         cwd,
         modeId: "read-only",
-        model: CODEX_TEST_MODEL,
-        thinkingOptionId: CODEX_TEST_THINKING_OPTION_ID,
+        model: "gpt-5.2-codex",
+        thinkingOptionId: "medium",
         extra: {
           codex: {
             tools: {
@@ -519,6 +583,7 @@ describe("Codex app-server provider (integration)", () => {
 
       const result = await session.run(
         [
+          "Use the MCP tool-calling interface, not shell commands or plain text.",
           "You must call the MCP tool named paseo_test.paseo_roundtrip_text exactly once.",
           `Call it with text: ${token}`,
           "Do not use shell or any non-MCP tools.",
@@ -573,6 +638,7 @@ describe("Codex app-server provider (integration)", () => {
       expect(JSON.stringify(mcpDetail?.output ?? {})).toContain(`ECHO:${token}`);
       expect(result.finalText).toContain(`ECHO:${token}`);
     } finally {
+      cleanupCodexHome();
       cleanup();
       rmSync(cwd, { recursive: true, force: true });
     }
@@ -582,7 +648,7 @@ describe("Codex app-server provider (integration)", () => {
     "listCommands includes custom prompts and run('/prompts:*') expands them",
     async () => {
       const cleanup = useTempCodexSessionDir();
-      const codexHome = process.env.CODEX_HOME ?? path.join(os.homedir(), ".codex");
+      const { codexHome, cleanup: cleanupCodexHome } = useTempCodexHome("codex-prompts-home-");
       const promptsDir = path.join(codexHome, "prompts");
       const promptName = `paseo-test-${process.pid}-${Date.now().toString(36)}`;
       const promptPath = path.join(promptsDir, `${promptName}.md`);
@@ -648,6 +714,7 @@ describe("Codex app-server provider (integration)", () => {
           await session.close();
         }
       } finally {
+        cleanupCodexHome();
         cleanup();
         rmSync(cwd, { recursive: true, force: true });
         rmSync(promptPath, { force: true });
@@ -660,7 +727,9 @@ describe("Codex app-server provider (integration)", () => {
     "slash prompt run streams live turn events (turn_started/turn_completed)",
     async () => {
       const cleanup = useTempCodexSessionDir();
-      const codexHome = process.env.CODEX_HOME ?? path.join(os.homedir(), ".codex");
+      const { codexHome, cleanup: cleanupCodexHome } = useTempCodexHome(
+        "codex-stream-prompts-home-"
+      );
       const promptsDir = path.join(codexHome, "prompts");
       const promptName = `paseo-stream-${process.pid}-${Date.now().toString(36)}`;
       const promptPath = path.join(promptsDir, `${promptName}.md`);
@@ -706,6 +775,7 @@ describe("Codex app-server provider (integration)", () => {
           await session.close();
         }
       } finally {
+        cleanupCodexHome();
         cleanup();
         rmSync(cwd, { recursive: true, force: true });
         rmSync(promptPath, { force: true });

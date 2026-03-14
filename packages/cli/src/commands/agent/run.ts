@@ -349,6 +349,7 @@ export async function runRunCommand(
             model: resolvedProviderModel.model,
             thinkingOptionId,
             initialPrompt: structuredPrompt,
+            outputSchema,
             images,
             git,
             worktreeName: options.worktree,

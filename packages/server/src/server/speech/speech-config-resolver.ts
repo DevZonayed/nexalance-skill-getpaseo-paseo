@@ -43,6 +43,10 @@ const RequestedSpeechProvidersSchema = z.object({
   voiceTts: OptionalSpeechProviderSchema.default("local"),
 });
 
+function resolveOptionalBooleanFlag(value: unknown): boolean {
+  return OptionalBooleanFlagSchema.parse(value) ?? true;
+}
+
 function resolveRequestedSpeechProviders(params: {
   env: NodeJS.ProcessEnv;
   persisted: PersistedConfig;
@@ -57,54 +61,71 @@ function resolveRequestedSpeechProviders(params: {
     enabled,
   });
 
-  const dictationSttProviderFromConfig =
-    params.env.PASEO_DICTATION_STT_PROVIDER ??
-    params.persisted.features?.dictation?.stt?.provider;
-  const voiceSttProviderFromConfig =
-    params.env.PASEO_VOICE_STT_PROVIDER ??
-    params.persisted.features?.voiceMode?.stt?.provider;
-  const voiceTurnDetectionProviderFromConfig =
-    params.env.PASEO_VOICE_TURN_DETECTION_PROVIDER ??
-    params.persisted.features?.voiceMode?.turnDetection?.provider;
-  const voiceTtsProviderFromConfig =
-    params.env.PASEO_VOICE_TTS_PROVIDER ??
-    params.persisted.features?.voiceMode?.tts?.provider;
-  const dictationEnabled =
-    OptionalBooleanFlagSchema.parse(
-      params.env.PASEO_DICTATION_ENABLED ?? params.persisted.features?.dictation?.enabled
-    ) ?? true;
-  const voiceModeEnabled =
-    OptionalBooleanFlagSchema.parse(
-      params.env.PASEO_VOICE_MODE_ENABLED ?? params.persisted.features?.voiceMode?.enabled
-    ) ?? true;
+  const voiceModeEnabled = resolveOptionalBooleanFlag(
+    params.env.PASEO_VOICE_MODE_ENABLED ?? params.persisted.features?.voiceMode?.enabled
+  );
+  const featureProviders = {
+    dictationStt: {
+      configuredValue:
+        params.env.PASEO_DICTATION_STT_PROVIDER ??
+        params.persisted.features?.dictation?.stt?.provider,
+      enabled: resolveOptionalBooleanFlag(
+        params.env.PASEO_DICTATION_ENABLED ?? params.persisted.features?.dictation?.enabled
+      ),
+    },
+    voiceTurnDetection: {
+      configuredValue:
+        params.env.PASEO_VOICE_TURN_DETECTION_PROVIDER ??
+        params.persisted.features?.voiceMode?.turnDetection?.provider,
+      enabled: voiceModeEnabled,
+    },
+    voiceStt: {
+      configuredValue:
+        params.env.PASEO_VOICE_STT_PROVIDER ??
+        params.persisted.features?.voiceMode?.stt?.provider,
+      enabled: voiceModeEnabled,
+    },
+    voiceTts: {
+      configuredValue:
+        params.env.PASEO_VOICE_TTS_PROVIDER ??
+        params.persisted.features?.voiceMode?.tts?.provider,
+      enabled: voiceModeEnabled,
+    },
+  } satisfies Record<
+    keyof RequestedSpeechProviders,
+    {
+      configuredValue: string | undefined;
+      enabled: boolean;
+    }
+  >;
 
   const parsed = RequestedSpeechProvidersSchema.parse({
-    dictationStt: dictationSttProviderFromConfig ?? "local",
-    voiceTurnDetection: voiceTurnDetectionProviderFromConfig ?? "local",
-    voiceStt: voiceSttProviderFromConfig ?? "local",
-    voiceTts: voiceTtsProviderFromConfig ?? "local",
+    dictationStt: featureProviders.dictationStt.configuredValue ?? "local",
+    voiceTurnDetection: featureProviders.voiceTurnDetection.configuredValue ?? "local",
+    voiceStt: featureProviders.voiceStt.configuredValue ?? "local",
+    voiceTts: featureProviders.voiceTts.configuredValue ?? "local",
   });
 
   return {
     dictationStt: resolveFeatureProvider(
-      dictationSttProviderFromConfig,
+      featureProviders.dictationStt.configuredValue,
       parsed.dictationStt,
-      dictationEnabled
+      featureProviders.dictationStt.enabled
     ),
     voiceTurnDetection: resolveFeatureProvider(
-      voiceTurnDetectionProviderFromConfig,
+      featureProviders.voiceTurnDetection.configuredValue,
       parsed.voiceTurnDetection,
-      voiceModeEnabled
+      featureProviders.voiceTurnDetection.enabled
     ),
     voiceStt: resolveFeatureProvider(
-      voiceSttProviderFromConfig,
+      featureProviders.voiceStt.configuredValue,
       parsed.voiceStt,
-      voiceModeEnabled
+      featureProviders.voiceStt.enabled
     ),
     voiceTts: resolveFeatureProvider(
-      voiceTtsProviderFromConfig,
+      featureProviders.voiceTts.configuredValue,
       parsed.voiceTts,
-      voiceModeEnabled
+      featureProviders.voiceTts.enabled
     ),
   };
 }

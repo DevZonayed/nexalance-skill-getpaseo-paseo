@@ -14,6 +14,11 @@ export type ToolCallDisplayModel = {
   errorText?: string;
 };
 
+type DetailDisplay = {
+  displayName?: string;
+  summary?: string;
+};
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -56,61 +61,86 @@ function formatErrorText(error: unknown): string | undefined {
   }
 }
 
-export function buildToolCallDisplayModel(input: ToolCallDisplayInput): ToolCallDisplayModel {
-  const lowerName = input.name.trim().toLowerCase();
+function buildFilePathDisplay(
+  displayName: string,
+  filePath: string,
+  cwd: string | undefined,
+): DetailDisplay {
+  return {
+    displayName,
+    summary: stripCwdPrefix(filePath, cwd),
+  };
+}
 
-  let displayName = humanizeToolName(input.name);
-  let summary: string | undefined;
-
+function buildCanonicalDetailDisplay(input: ToolCallDisplayInput): DetailDisplay {
   switch (input.detail.type) {
     case "shell":
-      displayName = "Shell";
-      summary = input.detail.command;
-      break;
+      return {
+        displayName: "Shell",
+        summary: input.detail.command,
+      };
     case "read":
-      displayName = "Read";
-      summary = stripCwdPrefix(input.detail.filePath, input.cwd);
-      break;
+      return buildFilePathDisplay("Read", input.detail.filePath, input.cwd);
     case "edit":
-      displayName = "Edit";
-      summary = stripCwdPrefix(input.detail.filePath, input.cwd);
-      break;
+      return buildFilePathDisplay("Edit", input.detail.filePath, input.cwd);
     case "write":
-      displayName = "Write";
-      summary = stripCwdPrefix(input.detail.filePath, input.cwd);
-      break;
+      return buildFilePathDisplay("Write", input.detail.filePath, input.cwd);
     case "search":
-      displayName = "Search";
-      summary = input.detail.query;
-      break;
+      return {
+        displayName: "Search",
+        summary: input.detail.query,
+      };
     case "worktree_setup":
-      displayName = "Worktree Setup";
-      summary = input.detail.branchName;
-      break;
+      return {
+        displayName: "Worktree Setup",
+        summary: input.detail.branchName,
+      };
     case "sub_agent":
-      displayName = readString(input.detail.subAgentType) ?? "Task";
-      summary = readString(input.detail.description);
-      break;
+      return {
+        displayName: readString(input.detail.subAgentType) ?? "Task",
+        summary: readString(input.detail.description),
+      };
     case "plain_text":
-      summary = input.detail.label;
-      break;
+      return {
+        summary: input.detail.label,
+      };
     case "unknown":
-      break;
+      return {};
   }
+}
 
-  if (lowerName === "task" && input.detail.type === "unknown") {
-    displayName = "Task";
-    summary = isRecord(input.metadata) ? readString(input.metadata.subAgentActivity) : undefined;
-  } else if (lowerName === "thinking" && input.detail.type === "unknown") {
-    displayName = "Thinking";
-  } else if (lowerName === "terminal") {
-    displayName = "Interacted with terminal";
-    summary =
-      input.detail.type === "plain_text"
-        ? readString(input.detail.label)
-        : undefined;
+function buildUnknownDetailOverride(input: ToolCallDisplayInput): DetailDisplay {
+  const lowerName = input.name.trim().toLowerCase();
+  if (input.detail.type === "unknown" && lowerName === "task") {
+    return {
+      displayName: "Task",
+      summary: isRecord(input.metadata)
+        ? readString(input.metadata.subAgentActivity)
+        : undefined,
+    };
   }
+  if (input.detail.type === "unknown" && lowerName === "thinking") {
+    return {
+      displayName: "Thinking",
+    };
+  }
+  if (lowerName === "terminal") {
+    return {
+      displayName: "Interacted with terminal",
+      summary: input.detail.type === "plain_text" ? readString(input.detail.label) : undefined,
+    };
+  }
+  return {};
+}
 
+export function buildToolCallDisplayModel(input: ToolCallDisplayInput): ToolCallDisplayModel {
+  const canonicalDisplay = buildCanonicalDetailDisplay(input);
+  const unknownDetailOverride = buildUnknownDetailOverride(input);
+  const displayName =
+    unknownDetailOverride.displayName ??
+    canonicalDisplay.displayName ??
+    humanizeToolName(input.name);
+  const summary = unknownDetailOverride.summary ?? canonicalDisplay.summary;
   const errorText = input.status === "failed" ? formatErrorText(input.error) : undefined;
 
   return {
