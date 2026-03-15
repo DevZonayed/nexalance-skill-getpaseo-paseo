@@ -13,6 +13,7 @@ import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { useQuery } from "@tanstack/react-query";
 import { router, usePathname } from "expo-router";
 import { useKeyboardShortcutsStore } from "@/stores/keyboard-shortcuts-store";
+import { shortenPath } from "@/utils/shorten-path";
 import {
   normalizeWorkspaceDescriptor,
   useSessionStore,
@@ -294,7 +295,7 @@ export function ProjectPickerModal() {
                           ]}
                           numberOfLines={1}
                         >
-                          {path}
+                          {shortenPath(path)}
                         </Text>
                       </View>
                     </Pressable>

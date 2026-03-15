@@ -1361,6 +1361,7 @@ export function SidebarWorkspaceList({
       if (!serverId || project.projectKind !== 'git') {
         return
       }
+      onWorkspacePress?.()
       router.push(
         buildHostNewAgentRoute(serverId, {
           workingDir: project.iconWorkingDir,
@@ -1368,7 +1369,7 @@ export function SidebarWorkspaceList({
         }) as any
       )
     },
-    [serverId]
+    [serverId, onWorkspacePress]
   )
 
   const renderProject = useCallback(
