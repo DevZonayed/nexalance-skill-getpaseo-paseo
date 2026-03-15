@@ -67,7 +67,7 @@ function useDetectedPlatform(): Platform {
 }
 
 interface LandingPageProps {
-  title: string
+  title: React.ReactNode
   subtitle: string
 }
 
@@ -109,6 +109,7 @@ export function LandingPage({ title, subtitle }: LandingPageProps) {
             <Features />
             <CLISection />
             <FAQ />
+            <SponsorCTA />
           </div>
         </main>
         <footer className="p-6 md:p-20 md:pt-0 max-w-5xl mx-auto">
@@ -214,7 +215,7 @@ function Nav() {
   )
 }
 
-function Hero({ title, subtitle }: { title: string; subtitle: string }) {
+function Hero({ title, subtitle }: { title: React.ReactNode; subtitle: string }) {
   return (
     <div className="space-y-6">
       <motion.h1
@@ -1083,6 +1084,36 @@ function FAQ() {
           without touching your main working directory. See the{' '}
           <a href="/docs/worktrees" className="underline hover:text-white/80">worktrees docs</a>.
         </FAQItem>
+      </div>
+    </motion.div>
+  )
+}
+
+function SponsorCTA() {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true, margin: '-60px' }}
+      transition={{ duration: 0.5, ease: 'easeOut' }}
+      className="rounded-xl bg-white/5 border border-white/10 p-8 md:p-10 text-center space-y-4"
+    >
+      <p className="text-lg font-medium">Paseo is an independent project</p>
+      <p className="text-sm text-white/50 max-w-md mx-auto leading-relaxed">
+        I built Paseo because the existing tools weren't good enough for me. There's no VC or big team behind this. If it saves you time, sponsoring keeps development going.
+      </p>
+      <div className="pt-2">
+        <a
+          href="https://github.com/sponsors/boudra"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-2 rounded-lg bg-white/10 border border-white/20 px-5 py-2.5 text-sm font-medium text-white hover:bg-white/15 transition-colors"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" className="text-pink-400">
+            <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" />
+          </svg>
+          Sponsor on GitHub
+        </a>
       </div>
     </motion.div>
   )

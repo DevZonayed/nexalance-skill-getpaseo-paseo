@@ -4,7 +4,7 @@ import { LandingPage } from '~/components/landing-page'
 export const Route = createFileRoute('/')({
   head: () => ({
     meta: [
-      { title: 'Paseo – Manage coding agents from your phone and desktop' },
+      { title: 'Paseo – Run Claude Code, Codex, and OpenCode from everywhere' },
       {
         name: 'description',
         content:
@@ -18,8 +18,8 @@ export const Route = createFileRoute('/')({
 function Home() {
   return (
     <LandingPage
-      title="One interface for all your coding agents"
-      subtitle="Run agents in parallel on your own machines. Ship from your phone or your desk."
+      title={<>All your coding agents,<br className="hidden md:block" /> from anywhere</>}
+      subtitle="Run any coding agent from your phone, desktop, or terminal. Self-hosted, multi-provider, open source."
     />
   )
 }
