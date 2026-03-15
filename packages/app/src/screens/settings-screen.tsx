@@ -78,16 +78,16 @@ function formatActiveConnectionBadge(input: {
     return null;
   }
   if (activeConnection.type === "relay") {
-    return { icon: <Globe size={theme.iconSize.xs} color={theme.colors.foregroundMuted} />, text: "Relay" };
+    return { icon: <Globe size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />, text: "Relay" };
   }
   if (activeConnection.type === "directSocket") {
-    return { icon: <Monitor size={theme.iconSize.xs} color={theme.colors.foregroundMuted} />, text: "Local" };
+    return { icon: <Monitor size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />, text: "Local" };
   }
   if (activeConnection.type === "directPipe") {
-    return { icon: <Monitor size={theme.iconSize.xs} color={theme.colors.foregroundMuted} />, text: "Local" };
+    return { icon: <Monitor size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />, text: "Local" };
   }
   return {
-    icon: <Monitor size={theme.iconSize.xs} color={theme.colors.foregroundMuted} />,
+    icon: <Monitor size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />,
     text: activeConnection.display,
   };
 }
@@ -230,6 +230,8 @@ const styles = StyleSheet.create((theme) => ({
     borderRadius: theme.borderRadius.md,
     gap: 0,
     marginLeft: theme.spacing[2],
+    alignItems: "center",
+    justifyContent: "center",
   },
   advancedTrigger: {
     flexDirection: "row",
@@ -685,7 +687,7 @@ export default function SettingsScreen() {
           return Uint8Array.from(bytes).buffer;
         },
       });
-      setPlaybackTestResult("Playback command completed.");
+      setPlaybackTestResult(null);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       console.error("[Settings] Playback test failed", error);
@@ -878,6 +880,7 @@ export default function SettingsScreen() {
                 </View>
                 <SegmentedControl
                   size="sm"
+                  hideLabels={Platform.OS !== "web"}
                   value={settings.theme}
                   onValueChange={handleThemeChange}
                   options={[
@@ -910,10 +913,7 @@ export default function SettingsScreen() {
             <View style={[settingsStyles.card, styles.audioCard]}>
               <View style={styles.audioRow}>
                 <View style={styles.audioRowContent}>
-                  <Text style={styles.audioRowTitle}>Test audio playback</Text>
-                  <Text style={styles.aboutHintText}>
-                    Plays a built-in PCM sample through the current app audio engine.
-                  </Text>
+                  <Text style={styles.audioRowTitle}>Test audio</Text>
                   {playbackTestResult ? (
                     <Text style={styles.aboutHintText}>{playbackTestResult}</Text>
                   ) : null}
@@ -1463,7 +1463,7 @@ function DaemonCard({
             >
               {({ hovered = false, pressed = false }) => (
                 <Settings
-                  size={theme.iconSize.md}
+                  size={theme.iconSize.sm}
                   color={
                     hovered || pressed ? theme.colors.foreground : theme.colors.foregroundMuted
                   }

@@ -23,6 +23,7 @@ type SegmentedControlProps<T extends string> = {
   value: T;
   onValueChange: (value: T) => void;
   size?: SegmentedControlSize;
+  hideLabels?: boolean;
   style?: StyleProp<ViewStyle>;
   testID?: string;
 };
@@ -32,6 +33,7 @@ export function SegmentedControl<T extends string>({
   value,
   onValueChange,
   size = "md",
+  hideLabels = false,
   style,
   testID,
 }: SegmentedControlProps<T>) {
@@ -72,12 +74,14 @@ export function SegmentedControl<T extends string>({
                 {option.icon({ color: iconColor, size: iconSize })}
               </View>
             ) : null}
-            <Text
-              style={[styles.label, labelSizeStyle, isSelected && styles.labelSelected]}
-              numberOfLines={1}
-            >
-              {option.label}
-            </Text>
+            {hideLabels ? null : (
+              <Text
+                style={[styles.label, labelSizeStyle, isSelected && styles.labelSelected]}
+                numberOfLines={1}
+              >
+                {option.label}
+              </Text>
+            )}
           </Pressable>
         );
       })}
