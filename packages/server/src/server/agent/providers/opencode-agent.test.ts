@@ -1,5 +1,12 @@
 import { beforeAll, describe, expect, test, vi } from "vitest";
-import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
@@ -200,6 +207,74 @@ const hasOpenCode = isBinaryInstalled("opencode");
       }
     },
     60_000
+  );
+
+  test(
+    "available modes include build and plan",
+    async () => {
+      const cwd = tmpCwd();
+      const client = new OpenCodeAgentClient(logger);
+      const session = await client.createSession(buildConfig(cwd));
+
+      const modes = await session.getAvailableModes();
+
+      expect(modes.some((mode) => mode.id === "build")).toBe(true);
+      expect(modes.some((mode) => mode.id === "plan")).toBe(true);
+
+      await session.close();
+      rmSync(cwd, { recursive: true, force: true });
+    },
+    60_000
+  );
+
+  test(
+    "plan mode blocks edits while build mode can write files",
+    async () => {
+      const cwd = tmpCwd();
+      const planFile = path.join(cwd, "plan-mode-output.txt");
+      const buildFile = path.join(cwd, "build-mode-output.txt");
+      const client = new OpenCodeAgentClient(logger);
+
+      const planSession = await client.createSession({
+        ...buildConfig(cwd),
+        modeId: "plan",
+      });
+
+      const planTurn = await collectTurnEvents(
+        planSession.stream(
+          "Create a file named plan-mode-output.txt in the current directory containing exactly hello."
+        )
+      );
+
+      expect(planTurn.turnCompleted).toBe(true);
+      expect(planTurn.turnFailed).toBe(false);
+      expect(existsSync(planFile)).toBe(false);
+
+      const planResponse = planTurn.assistantMessages.map((message) => message.text).join("");
+      expect(planResponse.toLowerCase()).toContain("plan mode");
+
+      await planSession.close();
+
+      const buildSession = await client.createSession({
+        ...buildConfig(cwd),
+        modeId: "build",
+      });
+
+      const buildTurn = await collectTurnEvents(
+        buildSession.stream(
+          "Create a file named build-mode-output.txt in the current directory containing exactly hello."
+        )
+      );
+
+      expect(buildTurn.turnCompleted).toBe(true);
+      expect(buildTurn.turnFailed).toBe(false);
+      expect(existsSync(buildFile)).toBe(true);
+      expect(readFileSync(buildFile, "utf8")).toContain("hello");
+
+      await buildSession.close();
+      rmSync(cwd, { recursive: true, force: true });
+    },
+    180_000
   );
 
 });

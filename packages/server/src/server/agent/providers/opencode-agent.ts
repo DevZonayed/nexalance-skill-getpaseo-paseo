@@ -39,7 +39,7 @@ import { mapOpencodeToolCall } from "./opencode/tool-call-mapper.js";
 const OPENCODE_CAPABILITIES: AgentCapabilityFlags = {
   supportsStreaming: true,
   supportsSessionPersistence: true,
-  supportsDynamicModes: false,
+  supportsDynamicModes: true,
   supportsMcpServers: true,
   supportsReasoningStream: true,
   supportsToolInvocations: true,
@@ -47,11 +47,18 @@ const OPENCODE_CAPABILITIES: AgentCapabilityFlags = {
 
 const DEFAULT_MODES: AgentMode[] = [
   {
-    id: "default",
-    label: "Default",
-    description: "Standard permission rules",
+    id: "build",
+    label: "Build",
+    description: "Allows edits and tool execution for implementation work",
+  },
+  {
+    id: "plan",
+    label: "Plan",
+    description: "Read-only planning mode that avoids file edits",
   },
 ];
+
+const OPENCODE_MODE_IDS = new Set(DEFAULT_MODES.map((mode) => mode.id));
 
 type OpenCodeAgentConfig = AgentSessionConfig & { provider: "opencode" };
 type OpenCodeMessageRole = "user" | "assistant";
@@ -225,6 +232,26 @@ function resolvePartDedupeKey(
     return `${partType}:message:${messageId}`;
   }
   return null;
+}
+
+function normalizeOpenCodeModeId(modeId: string | null | undefined): string {
+  const trimmed = typeof modeId === "string" ? modeId.trim() : "";
+  if (!trimmed || trimmed === "default") {
+    return "build";
+  }
+  return trimmed;
+}
+
+function sortOpenCodeModes(modes: AgentMode[]): AgentMode[] {
+  const order = new Map(DEFAULT_MODES.map((mode, index) => [mode.id, index]));
+  return [...modes].sort((left, right) => {
+    const leftOrder = order.get(left.id) ?? Number.MAX_SAFE_INTEGER;
+    const rightOrder = order.get(right.id) ?? Number.MAX_SAFE_INTEGER;
+    if (leftOrder !== rightOrder) {
+      return leftOrder - rightOrder;
+    }
+    return left.label.localeCompare(right.label);
+  });
 }
 
 export class OpenCodeServerManager {
@@ -794,6 +821,7 @@ class OpenCodeAgentSession implements AgentSession {
   private streamedPartKeys = new Set<string>();
   /** Tracks assistant messages already emitted from structured payloads. */
   private emittedStructuredMessageIds = new Set<string>();
+  private availableModesCache: AgentMode[] | null = null;
 
   constructor(
     config: OpenCodeAgentConfig,
@@ -803,6 +831,7 @@ class OpenCodeAgentSession implements AgentSession {
     this.config = config;
     this.client = client;
     this.sessionId = sessionId;
+    this.currentMode = normalizeOpenCodeModeId(config.modeId);
   }
 
   get id(): string | null {
@@ -871,6 +900,7 @@ class OpenCodeAgentSession implements AgentSession {
     const thinkingOptionId = this.config.thinkingOptionId;
     const effectiveVariant =
       thinkingOptionId && thinkingOptionId !== "default" ? thinkingOptionId : undefined;
+    const effectiveMode = normalizeOpenCodeModeId(this.currentMode);
 
     // Send prompt asynchronously
     const promptResponse = await this.client.session.promptAsync({
@@ -887,6 +917,7 @@ class OpenCodeAgentSession implements AgentSession {
         : {}),
       ...(this.config.systemPrompt ? { system: this.config.systemPrompt } : {}),
       ...(model ? { model } : {}),
+      ...(effectiveMode ? { agent: effectiveMode } : {}),
       ...(effectiveVariant ? { variant: effectiveVariant } : {}),
     });
 
@@ -1025,7 +1056,32 @@ class OpenCodeAgentSession implements AgentSession {
   }
 
   async getAvailableModes(): Promise<AgentMode[]> {
-    return DEFAULT_MODES;
+    if (this.availableModesCache) {
+      return this.availableModesCache;
+    }
+
+    const response = await this.client.app.agents({
+      directory: this.config.cwd,
+    });
+
+    const discoveredModes =
+      response.error || !response.data
+        ? []
+        : response.data
+            .filter((agent) => agent.mode === "primary" && agent.hidden !== true)
+            .filter((agent) => OPENCODE_MODE_IDS.has(agent.name))
+            .map((agent) => ({
+              id: agent.name,
+              label: agent.name.charAt(0).toUpperCase() + agent.name.slice(1),
+              description:
+                typeof agent.description === "string" && agent.description.trim().length > 0
+                  ? agent.description.trim()
+                  : DEFAULT_MODES.find((mode) => mode.id === agent.name)?.description,
+            }));
+
+    this.availableModesCache =
+      discoveredModes.length > 0 ? sortOpenCodeModes(discoveredModes) : DEFAULT_MODES;
+    return this.availableModesCache;
   }
 
   async getCurrentMode(): Promise<string | null> {
@@ -1033,7 +1089,7 @@ class OpenCodeAgentSession implements AgentSession {
   }
 
   async setMode(modeId: string): Promise<void> {
-    this.currentMode = modeId;
+    this.currentMode = normalizeOpenCodeModeId(modeId);
   }
 
   getPendingPermissions(): AgentPermissionRequest[] {

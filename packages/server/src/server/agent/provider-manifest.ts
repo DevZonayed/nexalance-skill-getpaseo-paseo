@@ -59,9 +59,14 @@ const CODEX_MODES: AgentMode[] = [
 
 const OPENCODE_MODES: AgentMode[] = [
   {
-    id: "default",
-    label: "Default",
-    description: "Standard permission rules",
+    id: "build",
+    label: "Build",
+    description: "Allows edits and tool execution for implementation work",
+  },
+  {
+    id: "plan",
+    label: "Plan",
+    description: "Read-only planning mode that avoids file edits",
   },
 ];
 
@@ -97,11 +102,11 @@ export const AGENT_PROVIDER_DEFINITIONS: AgentProviderDefinition[] = [
     label: "OpenCode",
     description:
       "Open-source coding assistant with multi-provider model support",
-    defaultModeId: "default",
+    defaultModeId: "build",
     modes: OPENCODE_MODES,
     voice: {
       enabled: true,
-      defaultModeId: "default",
+      defaultModeId: "build",
     },
   },
 ];
