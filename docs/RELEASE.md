@@ -32,6 +32,23 @@ npm run release:finalize       # Publish npm, promote draft to published
 - `release:finalize` publishes npm and promotes the same draft release
 - Use the same semver tag for both; don't cut a second tag
 
+## Fixing a failed release build
+
+**NEVER bump the version to fix a build problem.** New versions are reserved for meaningful product changes (features, fixes, improvements). Build/CI failures are fixed on the current version.
+
+To retry a failed workflow for an existing tag:
+
+1. **Retry via `workflow_dispatch`** — all release workflows support `workflow_dispatch` with a `tag` input:
+   ```bash
+   gh workflow run "Desktop Release" -f tag=v0.1.28                      # all platforms
+   gh workflow run "Desktop Release" -f tag=v0.1.28 -f platform=macos    # single platform
+   gh workflow run "Android APK Release" -f tag=v0.1.28
+   gh workflow run "Deploy App"                                           # no tag input needed
+   ```
+2. **Platform-specific retry tags** (desktop only) — push a tag like `desktop-macos-v0.1.28` to rebuild just that platform against the release tag's code
+
+If the fix requires a code change (e.g. a broken build script), commit the fix to `main` and use `workflow_dispatch` pointing at the existing tag — the workflow checks out the tag ref, but for build-tooling fixes you may need to point it at `main` or cherry-pick the fix onto the tag.
+
 ## Notes
 
 - `version:all:*` bumps root + syncs workspace versions and `@getpaseo/*` dependency versions
