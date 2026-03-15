@@ -1,14 +1,12 @@
 import { createFileRoute } from '@tanstack/react-router'
+import { pageMeta } from '~/meta'
 
 export const Route = createFileRoute('/docs/worktrees')({
   head: () => ({
-    meta: [
-      { title: 'Git Worktrees - Paseo Docs' },
-      {
-        name: 'description',
-        content: 'Run agents in isolated git worktrees for parallel feature development.',
-      },
-    ],
+    meta: pageMeta(
+      'Git Worktrees - Paseo Docs',
+      'Run agents in isolated git worktrees for parallel feature development.',
+    ),
   }),
   component: Worktrees,
 })

@@ -1,14 +1,12 @@
 import { createFileRoute } from '@tanstack/react-router'
+import { pageMeta } from '~/meta'
 
 export const Route = createFileRoute('/docs/voice')({
   head: () => ({
-    meta: [
-      { title: 'Voice - Paseo Docs' },
-      {
-        name: 'description',
-        content: 'Paseo voice architecture, local-first model execution, and provider configuration.',
-      },
-    ],
+    meta: pageMeta(
+      'Voice - Paseo Docs',
+      'Paseo voice architecture, local-first model execution, and provider configuration.',
+    ),
   }),
   component: VoiceDocs,
 })

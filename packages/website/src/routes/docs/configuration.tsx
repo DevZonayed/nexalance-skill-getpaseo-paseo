@@ -1,14 +1,12 @@
 import { createFileRoute } from '@tanstack/react-router'
+import { pageMeta } from '~/meta'
 
 export const Route = createFileRoute('/docs/configuration')({
   head: () => ({
-    meta: [
-      { title: 'Configuration - Paseo Docs' },
-      {
-        name: 'description',
-        content: 'Configure Paseo via config.json, environment variables, and CLI overrides.',
-      },
-    ],
+    meta: pageMeta(
+      'Configuration - Paseo Docs',
+      'Configure Paseo via config.json, environment variables, and CLI overrides.',
+    ),
   }),
   component: Configuration,
 })

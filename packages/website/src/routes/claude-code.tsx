@@ -1,16 +1,13 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { LandingPage } from '~/components/landing-page'
+import { pageMeta } from '~/meta'
 
 export const Route = createFileRoute('/claude-code')({
   head: () => ({
-    meta: [
-      { title: 'Claude Code Mobile App – Ship from your phone | Paseo' },
-      {
-        name: 'description',
-        content:
-          'Run Claude Code from your phone. Launch agents, check on progress, review diffs, and merge — all from your pocket. Self-hosted, your code stays on your machine.',
-      },
-    ],
+    meta: pageMeta(
+      'Claude Code Mobile App – Ship from your phone | Paseo',
+      'Run Claude Code from your phone. Launch agents, check on progress, review diffs, and merge — all from your pocket. Self-hosted, your code stays on your machine.',
+    ),
   }),
   component: ClaudeCodePage,
 })

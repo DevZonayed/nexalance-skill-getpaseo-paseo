@@ -1,18 +1,15 @@
 import { Link, createFileRoute } from '@tanstack/react-router'
 import ReactMarkdown from 'react-markdown'
 import changelogMarkdown from '../../../../CHANGELOG.md?raw'
+import { pageMeta } from '~/meta'
 import '~/styles.css'
 
 export const Route = createFileRoute('/changelog')({
   head: () => ({
-    meta: [
-      { title: 'Changelog - Paseo' },
-      {
-        name: 'description',
-        content:
-          'Product updates, fixes, and improvements shipped in each Paseo release.',
-      },
-    ],
+    meta: pageMeta(
+      'Changelog - Paseo',
+      'Product updates, fixes, and improvements shipped in each Paseo release.',
+    ),
   }),
   component: Changelog,
 })

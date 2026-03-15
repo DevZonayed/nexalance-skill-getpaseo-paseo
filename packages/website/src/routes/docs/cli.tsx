@@ -1,14 +1,12 @@
 import { createFileRoute } from '@tanstack/react-router'
+import { pageMeta } from '~/meta'
 
 export const Route = createFileRoute('/docs/cli')({
   head: () => ({
-    meta: [
-      { title: 'CLI - Paseo Docs' },
-      {
-        name: 'description',
-        content: 'Paseo CLI reference: manage agents, daemons, permissions, and worktrees from your terminal.',
-      },
-    ],
+    meta: pageMeta(
+      'CLI - Paseo Docs',
+      'Paseo CLI reference: manage agents, daemons, permissions, and worktrees from your terminal.',
+    ),
   }),
   component: CLI,
 })

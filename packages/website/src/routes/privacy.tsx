@@ -1,15 +1,12 @@
 import { createFileRoute } from '@tanstack/react-router'
+import { pageMeta } from '~/meta'
 
 export const Route = createFileRoute('/privacy')({
   head: () => ({
-    meta: [
-      { title: 'Privacy Policy - Paseo' },
-      {
-        name: 'description',
-        content:
-          'Privacy policy for Paseo - a self-hosted agent manager with no tracking or analytics.',
-      },
-    ],
+    meta: pageMeta(
+      'Privacy Policy - Paseo',
+      'Privacy policy for Paseo - a self-hosted agent manager with no tracking or analytics.',
+    ),
   }),
   component: Privacy,
 })

@@ -1,16 +1,13 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { LandingPage } from '~/components/landing-page'
+import { pageMeta } from '~/meta'
 
 export const Route = createFileRoute('/codex')({
   head: () => ({
-    meta: [
-      { title: 'Codex Mobile App – Run Codex from anywhere | Paseo' },
-      {
-        name: 'description',
-        content:
-          'Run OpenAI Codex from your phone. Kick off agents, monitor progress, and ship code without being at your desk. Self-hosted, your code never leaves your machine.',
-      },
-    ],
+    meta: pageMeta(
+      'Codex Mobile App – Run Codex from anywhere | Paseo',
+      'Run OpenAI Codex from your phone. Kick off agents, monitor progress, and ship code without being at your desk. Self-hosted, your code never leaves your machine.',
+    ),
   }),
   component: CodexPage,
 })
