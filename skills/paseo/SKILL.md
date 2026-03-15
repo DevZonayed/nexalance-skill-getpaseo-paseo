@@ -13,11 +13,16 @@ paseo ls                 # Only shows agents for current directory
 paseo ls -g              # All agents across all projects (global)
 paseo ls --json          # JSON output for parsing
 
-# Create and run an agent (blocks until completion by default)
+# Create and run an agent (blocks until completion by default, no timeout)
 paseo run --mode bypass "<prompt>"
 paseo run --mode bypass --name "Task Name" "<prompt>"
 paseo run --mode bypass --model opus "<prompt>"
 paseo run --mode full-access --provider codex "<prompt>"
+
+# Wait timeout - limit how long run blocks (default: no limit)
+paseo run --wait-timeout 30m "<prompt>"   # Wait up to 30 minutes
+paseo run --wait-timeout 1h "<prompt>"    # Wait up to 1 hour
+paseo run --wait-timeout 3600 "<prompt>"  # Plain number = seconds
 
 # Detached mode - runs in background, returns agent ID immediately
 paseo run --detach "<prompt>"
@@ -27,6 +32,7 @@ paseo run -d "<prompt>"  # Short form
 paseo run --output-schema '{"type":"object","properties":{"summary":{"type":"string"}},"required":["summary"]}' "<prompt>"
 paseo run --output-schema schema.json "<prompt>"  # Or from a file
 # NOTE: --output-schema blocks until completion (cannot be used with --detach)
+# NOTE: --wait-timeout applies to --output-schema runs too
 
 # Worktrees - isolated git worktree for parallel feature development
 paseo run --worktree feature-x "<prompt>"
@@ -144,10 +150,12 @@ When working with agents, you must dig deep and challenge them rigorously:
 
 ### Waiting for Agents
 
-**CRITICAL:** `paseo wait` blocks until the agent completes. Trust it.
+**CRITICAL:** Both `paseo run` and `paseo wait` block until the agent completes. Trust them.
 
+- `paseo run` waits **forever** by default (no timeout). Use `--wait-timeout` to set a limit.
+- `paseo wait` also waits forever by default. Use `--timeout` to set a limit.
 - Agent tasks can legitimately take 10, 20, or even 30+ minutes. This is normal.
-- When `paseo wait` times out, **just re-run `paseo wait <id>`** — don't panic, don't start checking logs, don't inspect status. The agent is still working.
+- When a wait times out, **just re-run `paseo wait <id>`** — don't panic, don't start checking logs, don't inspect status. The agent is still working.
 - Do NOT poll with `paseo ls`, `paseo inspect`, or `paseo logs` in a loop to "check on" the agent. This wastes your context window and accomplishes nothing.
 - Only check logs/inspect if you have a **specific reason** to believe something is wrong (e.g., you sent a prompt and got an unexpected error back).
 - **Never launch a duplicate agent** because a wait timed out. The original is still running.
@@ -157,6 +165,9 @@ When working with agents, you must dig deep and challenge them rigorously:
 paseo wait <id>              # timed out? just run it again:
 paseo wait <id>              # still going? keep waiting:
 paseo wait <id> --timeout 300  # or use a longer timeout
+
+# For long-running tasks, set a generous timeout on run itself:
+paseo run --wait-timeout 1h --output-schema '...' "<prompt>"
 
 # Wrong: anxious polling loop
 paseo wait <id>    # timed out
