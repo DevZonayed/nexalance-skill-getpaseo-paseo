@@ -1,5 +1,17 @@
 Your sole purpose is to make the tests pass in `packages/app`. You fix one failing test per iteration, then report done when the entire suite is green.
 
+## IMPORTANT: Known issues from previous iterations
+
+1. **`selectThinkingOption` keeps failing** — the `global-draft-create-status-controls.spec.ts` test fails because it expects a thinking option like 'high' that doesn't exist for the codex provider. Don't try to make it find options that don't exist — check what thinking options the codex provider actually offers and update the test to use one that exists. Or if codex doesn't support thinking selection, remove that assertion.
+
+2. **`helpers/app.ts` changes are breaking unrelated tests** — the gotoHome/setWorkingDirectory/ensureHostSelected refactors leave the app in unexpected states (overlays blocking clicks, wrong navigation). Be EXTREMELY careful when modifying shared helpers. After changing any helper, run `npm run test:e2e -w packages/app -- --max-failures 3` (not just 1) to catch cascading breakage.
+
+3. **Don't add conditional branches to helpers** — the verifier flagged that gotoHome, setWorkingDirectory, and ensureHostSelected now branch on 3-5 possible UI states. This makes tests non-deterministic. Keep helpers simple and deterministic — one code path, explicit assertions.
+
+4. **`checkout-ship.spec.ts` try/catch MUST be removed** — the `selectAttachWorktree` helper uses try/catch to swallow Playwright assertion errors and falls back to keyboard navigation. This is explicitly prohibited. The `usedFallbackSelection` flag then branches assertion logic — also prohibited. Remove the try/catch entirely. Pick ONE deterministic selection approach and assert it works. No fallbacks, no conditional assertions.
+
+5. **`permission-prompt.spec.ts` failure is pre-existing** — this test fails on the base commit too. Don't spend time on it unless you're directly fixing the seeding logic it depends on. Focus on tests that YOUR changes broke or that are fixable.
+
 ## Before you start
 
 Read these docs — they are the law:
