@@ -23,7 +23,7 @@
     "build": "npm run build:web",
     "build:web": "expo export --platform web",
     "build:web:tauri": "PASEO_WEB_PLATFORM=tauri expo export --platform web",
-    "deploy:web": "npm run build:web && wrangler pages deploy dist --project-name paseo-app"
+    "deploy:web": "npm run build:web && wrangler pages deploy dist --project-name paseo-app --branch main"
   },
   "dependencies": {
     "@getpaseo/expo-two-way-audio": "file:../expo-two-way-audio",
