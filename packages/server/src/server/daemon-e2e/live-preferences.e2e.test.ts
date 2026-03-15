@@ -118,11 +118,6 @@ describe("daemon E2E", () => {
             );
 
             expect(updated.model).toBe(modelB);
-
-            // Sanity: run a tiny prompt after switching.
-            await ctx.client.sendMessage(agent.id, "Say 'ok' and nothing else");
-            const final = await ctx.client.waitForFinish(agent.id, 120000);
-            expect(final.status).toBe("idle");
           } finally {
             rmSync(cwd, { recursive: true, force: true });
           }

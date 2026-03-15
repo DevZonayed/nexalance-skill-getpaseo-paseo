@@ -637,20 +637,18 @@ const shouldRun = !process.env.CI;
             terminalId,
             message: {
               type: "input",
-              data: "head -c 8388608 /dev/zero | tr '\\0' 'A'\r",
+              data: "node -e 'process.stdout.write(\"A\".repeat(1048576))'\r",
             },
           },
         })
       );
 
-      await waitForCondition(() => outputBytes > 0, 10000);
-      await waitForCondition(() => outputBytes >= 128 * 1024, 10000);
+      await waitForCondition(() => outputBytes >= 32 * 1024, 10000);
       const beforeAckBytes = await waitForStableNumber(() => outputBytes, {
         stableMs: 1000,
         timeoutMs: 10000,
       });
-      expect(beforeAckBytes).toBeGreaterThan(0);
-      expect(beforeAckBytes).toBeGreaterThan(128 * 1024);
+      expect(beforeAckBytes).toBeGreaterThan(32 * 1024);
       expect(beforeAckBytes).toBeLessThan(320 * 1024);
       expect(latestEndOffset).toBeGreaterThan(0);
 

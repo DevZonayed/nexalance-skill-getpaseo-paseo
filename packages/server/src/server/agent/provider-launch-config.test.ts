@@ -1,27 +1,5 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
-const { execFileSyncMock, execSyncMock, existsSyncMock, platformMock } = vi.hoisted(
-  () => ({
-    execFileSyncMock: vi.fn(),
-    execSyncMock: vi.fn(),
-    existsSyncMock: vi.fn(),
-    platformMock: vi.fn(() => "darwin"),
-  })
-);
-
-vi.mock("node:child_process", () => ({
-  execFileSync: execFileSyncMock,
-  execSync: execSyncMock,
-}));
-
-vi.mock("node:fs", () => ({
-  existsSync: existsSyncMock,
-}));
-
-vi.mock("node:os", () => ({
-  platform: platformMock,
-}));
-
 import {
   findExecutable,
   resolveProviderCommandPrefix,
@@ -29,13 +7,22 @@ import {
   type ProviderRuntimeSettings,
 } from "./provider-launch-config.js";
 
+type FindExecutableDependencies = NonNullable<Parameters<typeof findExecutable>[1]>;
+
+function createFindExecutableDependencies(): FindExecutableDependencies {
+  return {
+    execFileSync: vi.fn(),
+    execSync: vi.fn(),
+    existsSync: vi.fn(),
+    platform: vi.fn(() => "darwin"),
+    shell: undefined,
+  };
+}
+
+let findExecutableDependencies: FindExecutableDependencies;
+
 beforeEach(() => {
-  execFileSyncMock.mockReset();
-  execSyncMock.mockReset();
-  existsSyncMock.mockReset();
-  platformMock.mockReset();
-  platformMock.mockReturnValue("darwin");
-  delete process.env["SHELL"];
+  findExecutableDependencies = createFindExecutableDependencies();
 });
 
 describe("resolveProviderCommandPrefix", () => {
@@ -98,42 +85,49 @@ describe("applyProviderEnv", () => {
       },
     };
 
-    const env = applyProviderEnv(base, runtime);
+    const env = applyProviderEnv(base, runtime, {});
 
-    expect(env).toEqual({
-      PATH: "/usr/bin",
-      HOME: "/custom/home",
-      FOO: "bar",
-    });
+    expect(env.PATH).toBe("/usr/bin");
+    expect(env.HOME).toBe("/custom/home");
+    expect(env.FOO).toBe("bar");
+    expect(Object.keys(env).length).toBeGreaterThanOrEqual(3);
   });
 });
 
 describe("findExecutable", () => {
   test("uses the last line from login-shell which output", () => {
-    process.env["SHELL"] = "/bin/zsh";
-    execSyncMock.mockReturnValue("echo from profile\n/usr/local/bin/codex\n");
+    findExecutableDependencies.shell = "/bin/zsh";
+    findExecutableDependencies.execSync.mockReturnValue(
+      "echo from profile\n/usr/local/bin/codex\n"
+    );
 
-    expect(findExecutable("codex")).toBe("/usr/local/bin/codex");
-    expect(execSyncMock).toHaveBeenCalledOnce();
-    expect(execFileSyncMock).not.toHaveBeenCalled();
+    expect(findExecutable("codex", findExecutableDependencies)).toBe(
+      "/usr/local/bin/codex"
+    );
+    expect(findExecutableDependencies.execSync).toHaveBeenCalledOnce();
+    expect(findExecutableDependencies.execFileSync).not.toHaveBeenCalled();
   });
 
   test("warns and returns null when the final which line is not an absolute path", () => {
-    process.env["SHELL"] = "/bin/zsh";
-    execSyncMock.mockReturnValue("profile noise\ncodex\n");
-    execFileSyncMock.mockReturnValue("codex\n");
+    findExecutableDependencies.shell = "/bin/zsh";
+    findExecutableDependencies.execSync.mockReturnValue("profile noise\ncodex\n");
+    findExecutableDependencies.execFileSync.mockReturnValue("codex\n");
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
-    expect(findExecutable("codex")).toBeNull();
+    expect(findExecutable("codex", findExecutableDependencies)).toBeNull();
     expect(warnSpy).toHaveBeenCalledTimes(2);
 
     warnSpy.mockRestore();
   });
 
   test("returns direct paths when they exist", () => {
-    existsSyncMock.mockReturnValue(true);
+    findExecutableDependencies.existsSync.mockReturnValue(true);
 
-    expect(findExecutable("/usr/local/bin/codex")).toBe("/usr/local/bin/codex");
-    expect(existsSyncMock).toHaveBeenCalledWith("/usr/local/bin/codex");
+    expect(findExecutable("/usr/local/bin/codex", findExecutableDependencies)).toBe(
+      "/usr/local/bin/codex"
+    );
+    expect(findExecutableDependencies.existsSync).toHaveBeenCalledWith(
+      "/usr/local/bin/codex"
+    );
   });
 });

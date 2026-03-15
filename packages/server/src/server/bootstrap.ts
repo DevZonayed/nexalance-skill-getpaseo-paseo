@@ -9,10 +9,30 @@ import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
 import type { Logger } from "pino";
 
-type ListenTarget =
+export type ListenTarget =
   | { type: "tcp"; host: string; port: number }
   | { type: "socket"; path: string }
   | { type: "pipe"; path: string };
+
+function resolveBoundListenTarget(
+  listenTarget: ListenTarget,
+  httpServer: ReturnType<typeof createHTTPServer>
+): ListenTarget {
+  if (listenTarget.type !== "tcp") {
+    return listenTarget;
+  }
+
+  const address = httpServer.address();
+  if (!address || typeof address === "string") {
+    throw new Error("HTTP server did not expose a TCP address after listening");
+  }
+
+  return {
+    type: "tcp",
+    host: listenTarget.host,
+    port: address.port,
+  };
+}
 
 export function parseListenString(listen: string): ListenTarget {
   if (listen.startsWith("\\\\.\\pipe\\") || listen.startsWith("pipe://")) {
@@ -160,6 +180,7 @@ export interface PaseoDaemon {
   terminalManager: TerminalManager;
   start(): Promise<void>;
   stop(): Promise<void>;
+  getListenTarget(): ListenTarget | null;
 }
 
 export async function createPaseoDaemon(
@@ -195,6 +216,7 @@ export async function createPaseoDaemon(
     const listenTarget = parseListenString(config.listen);
 
     const app = express();
+    let boundListenTarget: ListenTarget | null = null;
 
   // Host allowlist / DNS rebinding protection (vite-like semantics).
   // For non-TCP (unix sockets), skip host validation.
@@ -587,18 +609,26 @@ export async function createPaseoDaemon(
       const onListening = () => {
         httpServer.off("error", onError);
         const logAndResolve = async () => {
+          boundListenTarget = resolveBoundListenTarget(listenTarget, httpServer);
           const relayEnabled = config.relayEnabled ?? true;
           const relayEndpoint = config.relayEndpoint ?? "relay.paseo.sh:443";
           const relayPublicEndpoint = config.relayPublicEndpoint ?? relayEndpoint;
           const appBaseUrl = config.appBaseUrl ?? "https://app.paseo.sh";
 
-          if (listenTarget.type === "tcp") {
+          if (boundListenTarget.type === "tcp") {
             logger.info(
-              { host: listenTarget.host, port: listenTarget.port, elapsed: elapsed() },
-              `Server listening on http://${listenTarget.host}:${listenTarget.port}`
+              {
+                host: boundListenTarget.host,
+                port: boundListenTarget.port,
+                elapsed: elapsed(),
+              },
+              `Server listening on http://${boundListenTarget.host}:${boundListenTarget.port}`
             );
           } else {
-            logger.info({ path: listenTarget.path, elapsed: elapsed() }, `Server listening on ${listenTarget.path}`);
+            logger.info(
+              { path: boundListenTarget.path, elapsed: elapsed() },
+              `Server listening on ${boundListenTarget.path}`
+            );
           }
 
           if (relayEnabled) {
@@ -684,6 +714,7 @@ export async function createPaseoDaemon(
       terminalManager,
       start,
       stop,
+      getListenTarget: () => boundListenTarget,
     };
   } catch (err) {
     if (ownsPidLock) {

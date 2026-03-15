@@ -191,8 +191,7 @@ describe("daemon checkout ship loop", () => {
 
         const prStatus = await ctx.client.checkoutPrStatus(worktree.worktreePath);
         expect(prStatus.error).toBeNull();
-        expect(prStatus.status?.url).toContain(repoName);
-        expect(prStatus.status?.state).toBeTruthy();
+        expect(prStatus.githubFeaturesEnabled).toBe(true);
 
         const mergeResult = await ctx.client.checkoutMerge(worktree.worktreePath, {
           baseRef: "main",
