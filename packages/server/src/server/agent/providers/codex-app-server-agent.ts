@@ -540,12 +540,17 @@ class CodexAppServerClient {
   private nextId = 1;
   private disposed = false;
   private stderrBuffer = "";
+  private readonly exitPromise: Promise<void>;
+  private resolveExitPromise: (() => void) | null = null;
 
   constructor(
     private readonly child: ChildProcessWithoutNullStreams,
     private readonly logger: Logger
   ) {
     this.rl = readline.createInterface({ input: child.stdout });
+    this.exitPromise = new Promise<void>((resolve) => {
+      this.resolveExitPromise = resolve;
+    });
     this.rl.on("line", (line) => this.handleLine(line));
 
     child.stderr.on("data", (chunk) => {
@@ -567,6 +572,8 @@ class CodexAppServerClient {
       }
       this.pending.clear();
       this.disposed = true;
+      this.resolveExitPromise?.();
+      this.resolveExitPromise = null;
     });
   }
 
@@ -608,10 +615,12 @@ class CodexAppServerClient {
     this.disposed = true;
     this.rl.close();
     try {
-      this.child.kill();
+      this.child.stdin.end();
     } catch {
       // ignore
     }
+    terminateChildProcessTree(this.child);
+    await this.exitPromise;
   }
 
   private async handleLine(line: string): Promise<void> {
@@ -662,6 +671,27 @@ class CodexAppServerClient {
       const notification = msg as JsonRpcNotification;
       this.notificationHandler?.(notification.method, notification.params);
     }
+  }
+}
+
+function terminateChildProcessTree(child: ChildProcessWithoutNullStreams): void {
+  if (child.killed) {
+    return;
+  }
+
+  if (process.platform !== "win32" && typeof child.pid === "number" && child.pid > 0) {
+    try {
+      process.kill(-child.pid, "SIGTERM");
+      return;
+    } catch {
+      // Fall back to the direct child when no separate process group exists.
+    }
+  }
+
+  try {
+    child.kill("SIGTERM");
+  } catch {
+    // ignore
   }
 }
 
@@ -3173,6 +3203,7 @@ export class CodexAppServerAgentClient implements AgentClient {
       launchPrefix
     }, "Spawning Codex app server");
     return spawn(launchPrefix.command, [...launchPrefix.args, "app-server"], {
+      detached: process.platform !== "win32",
       stdio: ["pipe", "pipe", "pipe"],
       env: applyProviderEnv(process.env, this.runtimeSettings),
     });

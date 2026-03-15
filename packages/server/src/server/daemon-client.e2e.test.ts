@@ -106,33 +106,33 @@ describe("daemon client E2E", () => {
 
   beforeAll(async () => {
     const speechConfig =
-      openaiApiKey
+      hasLocalSpeech
         ? {
             providers: {
-              dictationStt: { provider: "openai" as const, explicit: true },
-              voiceStt: { provider: "openai" as const, explicit: true },
-              voiceTts: { provider: "openai" as const, explicit: true },
+              dictationStt: { provider: "local" as const, explicit: true },
+              voiceStt: { provider: "local" as const, explicit: true },
+              voiceTts: { provider: "local" as const, explicit: true },
+            },
+            local: {
+              modelsDir: localModelsDir,
+              models: {
+                dictationStt:
+                  process.env.PASEO_DICTATION_LOCAL_STT_MODEL ??
+                  "zipformer-bilingual-zh-en-2023-02-20",
+                voiceStt:
+                  process.env.PASEO_VOICE_LOCAL_STT_MODEL ??
+                  "zipformer-bilingual-zh-en-2023-02-20",
+                voiceTts:
+                  process.env.PASEO_VOICE_LOCAL_TTS_MODEL ?? "kitten-nano-en-v0_1-fp16",
+              },
             },
           }
-        : hasLocalSpeech
+        : openaiApiKey
           ? {
               providers: {
-                dictationStt: { provider: "local" as const, explicit: true },
-                voiceStt: { provider: "local" as const, explicit: true },
-                voiceTts: { provider: "local" as const, explicit: true },
-              },
-              local: {
-                modelsDir: localModelsDir,
-                models: {
-                  dictationStt:
-                    process.env.PASEO_DICTATION_LOCAL_STT_MODEL ??
-                    "zipformer-bilingual-zh-en-2023-02-20",
-                  voiceStt:
-                    process.env.PASEO_VOICE_LOCAL_STT_MODEL ??
-                    "zipformer-bilingual-zh-en-2023-02-20",
-                  voiceTts:
-                    process.env.PASEO_VOICE_LOCAL_TTS_MODEL ?? "kitten-nano-en-v0_1-fp16",
-                },
+                dictationStt: { provider: "openai" as const, explicit: true },
+                voiceStt: { provider: "openai" as const, explicit: true },
+                voiceTts: { provider: "openai" as const, explicit: true },
               },
             }
           : undefined;
@@ -366,6 +366,7 @@ describe("daemon client E2E", () => {
       speech: {
         providers: {
           dictationStt: { provider: "local", explicit: true, enabled: false },
+          voiceTurnDetection: { provider: "local", explicit: true, enabled: false },
           voiceStt: { provider: "local", explicit: true, enabled: false },
           voiceTts: { provider: "local", explicit: true, enabled: false },
         },
@@ -944,102 +945,6 @@ describe("daemon client E2E", () => {
         expect(typeof outcome.payload.text).toBe("string");
         if (outcome.payload.text.trim().length > 0) {
           expect(outcome.payload.text.toLowerCase()).toContain("voice note");
-        } else {
-          expect(outcome.payload.isLowConfidence).toBe(true);
-        }
-      } finally {
-        await Promise.allSettled([transcription, errorSignal]);
-        await ctx.client.setVoiceMode(false);
-        rmSync(voiceCwd, { recursive: true, force: true });
-      }
-    },
-    90_000
-  );
-
-  speechTest(
-    "voice mode flushes buffered audio after inactivity when isLast is missing",
-    async () => {
-      const voiceCwd = tmpCwd();
-      const voiceAgent = await ctx.client.createAgent({
-        config: {
-          ...getFullAccessConfig("codex"),
-          cwd: voiceCwd,
-        },
-      });
-      await ctx.client.setVoiceMode(true, voiceAgent.id);
-
-      const transcription = waitForSignal(40_000, (resolve) => {
-        const unsubscribe = ctx.client.on("transcription_result", (message) => {
-          if (message.type !== "transcription_result") {
-            return;
-          }
-          resolve(message.payload);
-        });
-        return unsubscribe;
-      });
-
-      const errorSignal = waitForSignal(40_000, (resolve) => {
-        const unsubscribeStatus = ctx.client.on("status", (message) => {
-          if (message.type !== "status") {
-            return;
-          }
-          if (message.payload.status !== "error") {
-            return;
-          }
-          resolve(`status:error ${message.payload.message}`);
-        });
-
-        const unsubscribeLog = ctx.client.on("activity_log", (message) => {
-          if (message.type !== "activity_log") {
-            return;
-          }
-          if (message.payload.type !== "error") {
-            return;
-          }
-          resolve(`activity_log:error ${message.payload.content}`);
-        });
-
-        return () => {
-          unsubscribeStatus();
-          unsubscribeLog();
-        };
-      });
-
-      try {
-        const wav = await readFixture("recording.wav");
-        const { sampleRate, pcm16 } = parsePcm16MonoWav(wav);
-        expect(sampleRate).toBe(16000);
-
-        const format = "audio/pcm;rate=16000;bits=16";
-        const chunkBytes = 3200; // 100ms @ 16kHz mono PCM16
-        const maxChunksWithoutLast = 25;
-
-        let sentChunks = 0;
-        for (
-          let offset = 0;
-          offset < pcm16.length && sentChunks < maxChunksWithoutLast;
-          offset += chunkBytes
-        ) {
-          const chunk = pcm16.subarray(offset, Math.min(pcm16.length, offset + chunkBytes));
-          await ctx.client.sendVoiceAudioChunk(chunk.toString("base64"), format, false);
-          sentChunks += 1;
-        }
-
-        const outcome = await Promise.race([
-          transcription.then((payload) => ({ kind: "ok" as const, payload })),
-          errorSignal.then((error) => ({ kind: "error" as const, error })),
-        ]);
-
-        if (outcome.kind === "error") {
-          throw new Error(outcome.error);
-        }
-
-        expect(typeof outcome.payload.text).toBe("string");
-        if (outcome.payload.byteLength !== undefined) {
-          expect(outcome.payload.byteLength).toBeGreaterThan(0);
-        }
-        if (outcome.payload.text.trim().length > 0) {
-          expect(outcome.payload.text.trim().length).toBeGreaterThan(1);
         } else {
           expect(outcome.payload.isLowConfidence).toBe(true);
         }

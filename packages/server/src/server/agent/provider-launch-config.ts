@@ -56,6 +56,14 @@ export type ProviderCommandPrefix = {
   args: string[];
 };
 
+interface FindExecutableDependencies {
+  execSync: typeof execSync;
+  execFileSync: typeof execFileSync;
+  existsSync: typeof existsSync;
+  platform: typeof platform;
+  shell: string | undefined;
+}
+
 function resolveExecutableFromWhichOutput(
   name: string,
   output: string,
@@ -119,10 +127,11 @@ export function resolveShellEnv(): Record<string, string> {
 
 export function applyProviderEnv(
   baseEnv: Record<string, string | undefined>,
-  runtimeSettings?: ProviderRuntimeSettings
+  runtimeSettings?: ProviderRuntimeSettings,
+  shellEnv?: Record<string, string>
 ): Record<string, string | undefined> {
   return {
-    ...resolveShellEnv(),
+    ...(shellEnv ?? resolveShellEnv()),
     ...baseEnv,
     ...(runtimeSettings?.env ?? {}),
   };
@@ -138,19 +147,31 @@ export function applyProviderEnv(
  *
  * On Windows the system PATH is always available, so `where.exe` is sufficient.
  */
-export function findExecutable(name: string): string | null {
+export function findExecutable(
+  name: string,
+  dependencies?: FindExecutableDependencies
+): string | null {
   const trimmed = name.trim();
   if (!trimmed) {
     return null;
   }
 
+  const deps: FindExecutableDependencies = {
+    execSync,
+    execFileSync,
+    existsSync,
+    platform,
+    shell: process.env["SHELL"],
+    ...dependencies,
+  };
+
   if (trimmed.includes("/") || trimmed.includes("\\")) {
-    return existsSync(trimmed) ? trimmed : null;
+    return deps.existsSync(trimmed) ? trimmed : null;
   }
 
-  if (platform() === "win32") {
+  if (deps.platform() === "win32") {
     try {
-      const out = execSync(`where.exe ${trimmed}`, { encoding: "utf8" }).trim();
+      const out = deps.execSync(`where.exe ${trimmed}`, { encoding: "utf8" }).trim();
       const firstLine = out.split(/\r?\n/)[0]?.trim();
       return firstLine || null;
     } catch {
@@ -159,10 +180,10 @@ export function findExecutable(name: string): string | null {
   }
 
   // Unix: try the user's login shell so rc-file PATH entries are visible.
-  const shell = process.env["SHELL"];
+  const shell = deps.shell;
   if (shell) {
     try {
-      const out = execSync(`${shell} -lic "which ${trimmed}"`, {
+      const out = deps.execSync(`${shell} -lic "which ${trimmed}"`, {
         encoding: "utf8",
         timeout: 5000,
       }).trim();
@@ -178,7 +199,7 @@ export function findExecutable(name: string): string | null {
   try {
     return resolveExecutableFromWhichOutput(
       trimmed,
-      execFileSync("which", [trimmed], { encoding: "utf8" }).trim(),
+      deps.execFileSync("which", [trimmed], { encoding: "utf8" }).trim(),
       "which"
     );
   } catch {

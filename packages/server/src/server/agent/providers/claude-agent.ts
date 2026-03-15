@@ -352,6 +352,7 @@ type ClaudeAgentClientOptions = {
   defaults?: { agents?: Record<string, AgentDefinition> };
   logger: Logger;
   runtimeSettings?: ProviderRuntimeSettings;
+  queryFactory?: typeof query;
 };
 
 type ClaudeAgentSessionOptions = {
@@ -359,6 +360,7 @@ type ClaudeAgentSessionOptions = {
   runtimeSettings?: ProviderRuntimeSettings;
   handle?: AgentPersistenceHandle;
   logger: Logger;
+  queryFactory?: typeof query;
 };
 
 function resolveClaudeSpawnCommand(
@@ -1385,11 +1387,13 @@ export class ClaudeAgentClient implements AgentClient {
   private readonly defaults?: { agents?: Record<string, AgentDefinition> };
   private readonly logger: Logger;
   private readonly runtimeSettings?: ProviderRuntimeSettings;
+  private readonly queryFactory: typeof query;
 
   constructor(options: ClaudeAgentClientOptions) {
     this.defaults = options.defaults;
     this.logger = options.logger.child({ module: "agent", provider: "claude" });
     this.runtimeSettings = options.runtimeSettings;
+    this.queryFactory = options.queryFactory ?? query;
   }
 
   async createSession(config: AgentSessionConfig): Promise<AgentSession> {
@@ -1398,6 +1402,7 @@ export class ClaudeAgentClient implements AgentClient {
       defaults: this.defaults,
       runtimeSettings: this.runtimeSettings,
       logger: this.logger,
+      queryFactory: this.queryFactory,
     });
   }
 
@@ -1417,6 +1422,7 @@ export class ClaudeAgentClient implements AgentClient {
       runtimeSettings: this.runtimeSettings,
       handle,
       logger: this.logger,
+      queryFactory: this.queryFactory,
     });
   }
 
@@ -1471,6 +1477,7 @@ class ClaudeAgentSession implements AgentSession {
   private readonly defaults?: { agents?: Record<string, AgentDefinition> };
   private readonly runtimeSettings?: ProviderRuntimeSettings;
   private readonly logger: Logger;
+  private readonly queryFactory: typeof query;
   private query: Query | null = null;
   private input: Pushable<SDKUserMessage> | null = null;
   private claudeSessionId: string | null;
@@ -1517,6 +1524,7 @@ class ClaudeAgentSession implements AgentSession {
     this.defaults = options.defaults;
     this.runtimeSettings = options.runtimeSettings;
     this.logger = options.logger;
+    this.queryFactory = options.queryFactory ?? query;
     const handle = options.handle;
 
     if (handle) {
@@ -2227,7 +2235,7 @@ class ClaudeAgentSession implements AgentSession {
       "claude query"
     );
     this.input = input;
-    this.query = query({ prompt: input, options });
+    this.query = this.queryFactory({ prompt: input, options });
     // Do not kick off background control-plane queries here. Methods like
     // supportedCommands()/setPermissionMode() may execute immediately after
     // ensureQuery() (for listCommands()/setMode()), and sharing the same query

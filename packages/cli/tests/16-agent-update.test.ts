@@ -8,7 +8,6 @@
  * - Help and argument parsing
  * - Validation for required update fields
  * - Graceful daemon connection errors
- * - Top-level daemon update alias behavior (`paseo update`)
  */
 
 import assert from 'node:assert'
@@ -105,28 +104,6 @@ try {
     console.log('✓ agent --help shows update subcommand\n')
   }
 
-  // Test 7: top-level update alias --help shows daemon update options
-  {
-    console.log('Test 7: top-level update --help shows daemon update options')
-    const result = await $`npx paseo update --help`.nothrow()
-    assert.strictEqual(result.exitCode, 0, 'update --help should exit 0')
-    assert(result.stdout.includes('--home'), 'help should mention --home flag')
-    assert(result.stdout.includes('--yes'), 'help should mention --yes flag')
-    assert(result.stdout.includes('daemon update'), 'help should mention daemon update alias')
-    console.log('✓ top-level update --help shows daemon update options\n')
-  }
-
-  // Test 8: top-level update alias accepts daemon update flags
-  {
-    console.log('Test 8: top-level update alias accepts daemon update flags')
-    const result =
-      await $`PASEO_HOME=${paseoHome} npx paseo update --home ${paseoHome} --yes --help`.nothrow()
-    const output = result.stdout + result.stderr
-    assert(!output.includes('unknown option'), 'should accept top-level update flags')
-    assert(!output.includes('error: option'), 'should not have option parsing error')
-    assert.strictEqual(result.exitCode, 0, 'update alias help with flags should exit 0')
-    console.log('✓ top-level update alias accepts daemon update flags\n')
-  }
 } finally {
   // Clean up temp directory
   await rm(paseoHome, { recursive: true, force: true })

@@ -2,17 +2,8 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { Logger } from "pino";
 
 import { createTestLogger } from "../../../test-utils/test-logger.js";
-import { AgentManager } from "../agent-manager.js";
 import { ClaudeAgentClient, readEventIdentifiers } from "./claude-agent.js";
 import type { AgentStreamEvent, AgentTimelineItem } from "../agent-sdk-types.js";
-
-const sdkMocks = vi.hoisted(() => ({
-  query: vi.fn(),
-}));
-
-vi.mock("@anthropic-ai/claude-agent-sdk", () => ({
-  query: sdkMocks.query,
-}));
 
 type QueryMock = {
   next: ReturnType<typeof vi.fn>;
@@ -64,7 +55,10 @@ function createBaseQueryMock(nextImpl: QueryMock["next"]): QueryMock {
 }
 
 async function createSession() {
-  const client = new ClaudeAgentClient({ logger: createTestLogger() });
+  const client = new ClaudeAgentClient({
+    logger: createTestLogger(),
+    queryFactory: sdkQueryFactory,
+  });
   return client.createSession({
     provider: "claude",
     cwd: process.cwd(),
@@ -72,12 +66,17 @@ async function createSession() {
 }
 
 function createSessionWithLogger(logger: Logger) {
-  const client = new ClaudeAgentClient({ logger });
+  const client = new ClaudeAgentClient({
+    logger,
+    queryFactory: sdkQueryFactory,
+  });
   return client.createSession({
     provider: "claude",
     cwd: process.cwd(),
   });
 }
+
+const sdkQueryFactory = vi.fn();
 
 type CapturedLog = {
   level: "debug" | "info" | "warn" | "error";
@@ -166,11 +165,11 @@ async function waitForCondition(
 
 describe("ClaudeAgentSession redesign invariants", () => {
   beforeEach(() => {
-    sdkMocks.query.mockReset();
+    sdkQueryFactory.mockReset();
   });
 
   afterEach(() => {
-    sdkMocks.query.mockReset();
+    sdkQueryFactory.mockReset();
   });
 
   test("logs redacted query summary and never leaks sentinel secrets", async () => {
@@ -180,7 +179,7 @@ describe("ClaudeAgentSession redesign invariants", () => {
     const previousEnv = process.env.PASEO_TEST_SENTINEL_SECRET;
     process.env.PASEO_TEST_SENTINEL_SECRET = envSecret;
 
-    sdkMocks.query.mockImplementation(() => {
+    sdkQueryFactory.mockImplementation(() => {
       let step = 0;
       return createBaseQueryMock(
         vi.fn(async () => {
@@ -227,6 +226,7 @@ describe("ClaudeAgentSession redesign invariants", () => {
     const spy = createSpyLogger();
     const client = new ClaudeAgentClient({
       logger: spy.logger,
+      queryFactory: sdkQueryFactory,
       runtimeSettings: {
         env: {
           PASEO_RUNTIME_SENTINEL_SECRET: runtimeSecret,
@@ -273,7 +273,7 @@ describe("ClaudeAgentSession redesign invariants", () => {
     }
   });
 
-  test("emits interrupt step diagnostics at debug level only", async () => {
+  test("emits interrupt step diagnostics without info logs", async () => {
     const spy = createSpyLogger();
     const session = await createSessionWithLogger(spy.logger);
     const internal = session as unknown as {
@@ -310,9 +310,7 @@ describe("ClaudeAgentSession redesign invariants", () => {
       expect(interruptInfoMessages).toEqual([]);
       expect(interruptDebugMessages).toEqual([
         "interruptActiveTurn: calling query.interrupt()...",
-        "interruptActiveTurn: query.interrupt() returned",
         "interruptActiveTurn: calling query.return()...",
-        "interruptActiveTurn: query.return() returned",
       ]);
       expect(interrupt).toHaveBeenCalledTimes(1);
       expect(queryReturn).toHaveBeenCalledTimes(1);
@@ -755,7 +753,7 @@ describe("ClaudeAgentSession redesign invariants", () => {
 
   test("completes a foreground run when only system metadata arrives before the first assistant message", async () => {
     let step = 0;
-    sdkMocks.query.mockImplementation(() =>
+    sdkQueryFactory.mockImplementation(() =>
       createBaseQueryMock(
         vi.fn(async () => {
           if (step === 0) {
@@ -950,7 +948,7 @@ describe("ClaudeAgentSession redesign invariants", () => {
     const session = await createSession();
     let streamCase: "success" | "error" | "interrupt" = "success";
 
-    sdkMocks.query.mockImplementation(({ prompt }: { prompt: AsyncIterable<unknown> }) => {
+    sdkQueryFactory.mockImplementation(({ prompt }: { prompt: AsyncIterable<unknown> }) => {
       const readPromptUuid = createPromptUuidReader(prompt);
       let step = 0;
       let interruptRequested = false;
@@ -1082,7 +1080,7 @@ describe("ClaudeAgentSession redesign invariants", () => {
   });
 
   test("assembles assistant timeline when message_delta arrives before message_start", async () => {
-    sdkMocks.query.mockImplementation(({ prompt }: { prompt: AsyncIterable<unknown> }) => {
+    sdkQueryFactory.mockImplementation(({ prompt }: { prompt: AsyncIterable<unknown> }) => {
       const readPromptUuid = createPromptUuidReader(prompt);
       let step = 0;
       return createBaseQueryMock(
@@ -1199,7 +1197,7 @@ describe("ClaudeAgentSession redesign invariants", () => {
   });
 
   test("does not use stream_event uuid as assistant message identity when message_id is missing", async () => {
-    sdkMocks.query.mockImplementation(({ prompt }: { prompt: AsyncIterable<unknown> }) => {
+    sdkQueryFactory.mockImplementation(({ prompt }: { prompt: AsyncIterable<unknown> }) => {
       const readPromptUuid = createPromptUuidReader(prompt);
       let step = 0;
       return createBaseQueryMock(

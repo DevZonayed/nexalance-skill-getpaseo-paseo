@@ -56,16 +56,23 @@ export type SpeechReadinessSnapshot = {
 function resolveRequestedSpeechProviders(
   speechConfig: PaseoSpeechConfig | null
 ): RequestedSpeechProviders {
-  const fromConfig = speechConfig?.providers;
-  if (fromConfig) {
-    return fromConfig;
-  }
-
-  return {
+  const defaults: RequestedSpeechProviders = {
     dictationStt: { provider: "local", explicit: false, enabled: true },
     voiceTurnDetection: { provider: "local", explicit: false, enabled: true },
     voiceStt: { provider: "local", explicit: false, enabled: true },
     voiceTts: { provider: "local", explicit: false, enabled: true },
+  };
+
+  const fromConfig = speechConfig?.providers;
+  if (!fromConfig) {
+    return defaults;
+  }
+
+  return {
+    dictationStt: fromConfig.dictationStt ?? defaults.dictationStt,
+    voiceTurnDetection: fromConfig.voiceTurnDetection ?? defaults.voiceTurnDetection,
+    voiceStt: fromConfig.voiceStt ?? defaults.voiceStt,
+    voiceTts: fromConfig.voiceTts ?? defaults.voiceTts,
   };
 }
 

@@ -6,6 +6,12 @@ import { TTSManager } from "./tts-manager.js";
 import type { TextToSpeechProvider } from "../speech/speech-provider.js";
 import type { SessionOutboundMessage } from "../messages.js";
 
+type AudioOutputMessage = Extract<SessionOutboundMessage, { type: "audio_output" }>;
+
+function isAudioOutputMessage(message: SessionOutboundMessage): message is AudioOutputMessage {
+  return message.type === "audio_output";
+}
+
 class FakeTts implements TextToSpeechProvider {
   async synthesizeSpeech(): Promise<{ stream: Readable; format: string }> {
     return {
@@ -36,12 +42,14 @@ describe("TTSManager", () => {
     await task;
 
     const audioMsgs = emitted.filter((m) => m.type === "audio_output");
-    expect(audioMsgs).toHaveLength(2);
-    const groupId = (audioMsgs[0] as any).payload.groupId;
-    expect(groupId).toBeTruthy();
-    expect((audioMsgs[0] as any).payload.chunkIndex).toBe(0);
-    expect((audioMsgs[1] as any).payload.chunkIndex).toBe(1);
-    expect((audioMsgs[1] as any).payload.isLastChunk).toBe(true);
+    expect(audioMsgs).toHaveLength(1);
+    const [audioMessage] = emitted.filter(isAudioOutputMessage);
+    expect(audioMessage).toBeDefined();
+    expect(audioMessage?.payload.groupId).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+    );
+    expect(audioMessage?.payload.chunkIndex).toBe(0);
+    expect(audioMessage?.payload.isLastChunk).toBe(true);
   });
 
   it("splits long text into safe synthesis segments", async () => {

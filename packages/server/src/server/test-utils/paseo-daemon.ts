@@ -1,4 +1,3 @@
-import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
@@ -35,21 +34,6 @@ export type TestPaseoDaemon = {
   staticDir: string;
   close: () => Promise<void>;
 };
-
-async function getAvailablePort(): Promise<number> {
-  return new Promise((resolve, reject) => {
-    const server = net.createServer();
-    server.once("error", reject);
-    server.listen(0, () => {
-      const address = server.address();
-      if (!address || typeof address === "string") {
-        server.close(() => reject(new Error("Failed to acquire port")));
-        return;
-      }
-      server.close(() => resolve(address.port));
-    });
-  });
-}
 
 const TEST_DAEMON_START_TIMEOUT_MS = 20_000;
 
@@ -91,11 +75,9 @@ export async function createTestPaseoDaemon(
     const paseoHome = path.join(paseoHomeRoot, ".paseo");
     await mkdir(paseoHome, { recursive: true });
     const staticDir = options.staticDir ?? (await mkdtemp(path.join(os.tmpdir(), "paseo-static-")));
-    const port = await getAvailablePort();
-
     const listenHost = options.listen ?? '127.0.0.1';
     const config: PaseoDaemonConfig = {
-      listen: `${listenHost}:${port}`,
+      listen: `${listenHost}:0`,
       paseoHome,
       corsAllowedOrigins: options.corsAllowedOrigins ?? [],
       allowedHosts: true,
@@ -120,6 +102,10 @@ export async function createTestPaseoDaemon(
     const daemon = await createPaseoDaemon(config, logger);
     try {
       await startDaemonWithTimeout(daemon, TEST_DAEMON_START_TIMEOUT_MS);
+      const listenTarget = daemon.getListenTarget();
+      if (!listenTarget || listenTarget.type !== "tcp") {
+        throw new Error("Test daemon did not expose a bound TCP listen target");
+      }
 
       const close = async (): Promise<void> => {
         await daemon.stop().catch(() => undefined);
@@ -134,7 +120,7 @@ export async function createTestPaseoDaemon(
       return {
         config,
         daemon,
-        port,
+        port: listenTarget.port,
         paseoHome,
         staticDir,
         close,
