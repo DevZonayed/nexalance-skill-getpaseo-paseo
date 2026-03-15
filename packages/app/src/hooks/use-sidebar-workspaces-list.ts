@@ -7,6 +7,7 @@ import { projectDisplayNameFromProjectId } from '@/utils/project-display-name'
 
 const EMPTY_ORDER: string[] = []
 const EMPTY_PROJECTS: SidebarProjectEntry[] = []
+const EMPTY_WORKSPACE_ORDER_SCOPE: Record<string, string[]> = {}
 
 export type SidebarStateBucket = WorkspaceDescriptor['status']
 
@@ -271,7 +272,7 @@ export function useSidebarWorkspacesList(options?: {
     serverId ? (state.projectOrderByServerId[serverId] ?? EMPTY_ORDER) : EMPTY_ORDER
   )
   const persistedWorkspaceOrderByScope = useSidebarOrderStore((state) =>
-    serverId ? state.workspaceOrderByServerAndProject : {}
+    serverId ? state.workspaceOrderByServerAndProject : EMPTY_WORKSPACE_ORDER_SCOPE
   )
 
   const isActive = Boolean(serverId)

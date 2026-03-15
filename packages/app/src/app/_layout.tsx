@@ -61,6 +61,7 @@ import {
 import { buildNotificationRoute } from "@/utils/notification-routing";
 import {
   buildHostRootRoute,
+  parseServerIdFromPathname,
   parseHostAgentRouteFromPathname,
   parseWorkspaceOpenIntent,
 } from "@/utils/host-routes";
@@ -469,7 +470,8 @@ function AppWithSidebar({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const params = useGlobalSearchParams<{ open?: string | string[] }>();
   useFaviconStatus();
-  const shouldShowAppChrome = pathname !== "/" && pathname !== "";
+  const activeServerId = useMemo(() => parseServerIdFromPathname(pathname), [pathname]);
+  const shouldShowAppChrome = activeServerId !== null;
 
   // Parse selectedAgentKey directly from pathname
   // useLocalSearchParams doesn't update when navigating between same-pattern routes

@@ -554,7 +554,7 @@ function PairingOfferDialogContent(input: {
     void QRCode.toDataURL(pairingOffer.url, {
       errorCorrectionLevel: 'M',
       margin: 1,
-      width: 320,
+      width: 480,
     })
       .then((dataUrl) => {
         if (cancelled) {
@@ -606,17 +606,19 @@ function PairingOfferDialogContent(input: {
       </Text>
       <View style={styles.qrCard}>
         {qrDataUrl ? (
-          <Image source={{ uri: qrDataUrl }} style={styles.qrImage} />
+          <Image source={{ uri: qrDataUrl }} style={styles.qrImage} resizeMode="contain" />
         ) : qrError ? (
           <Text style={styles.hintText}>QR unavailable: {qrError}</Text>
         ) : (
           <ActivityIndicator size="small" />
         )}
       </View>
-      <Text style={styles.linkLabel}>Pairing link</Text>
-      <Text style={styles.linkText} selectable>
-        {pairingOffer.url}
-      </Text>
+      <View style={styles.linkSection}>
+        <Text style={styles.linkLabel}>Pairing link</Text>
+        <Text style={styles.linkText} selectable>
+          {pairingOffer.url}
+        </Text>
+      </View>
       <View style={styles.modalActions}>
         <Button variant="outline" size="sm" onPress={onCopyLink}>
           Copy link
@@ -717,18 +719,21 @@ const styles = StyleSheet.create((theme) => ({
   qrCard: {
     alignItems: 'center',
     justifyContent: 'center',
-    alignSelf: 'center',
-    minHeight: 220,
-    minWidth: 220,
-    padding: theme.spacing[4],
+    width: '100%',
+    aspectRatio: 1,
+    alignSelf: 'stretch',
+    padding: theme.spacing[3],
     borderRadius: theme.borderRadius.lg,
     borderWidth: 1,
     borderColor: theme.colors.border,
     backgroundColor: theme.colors.surface0,
   },
   qrImage: {
-    width: 220,
-    height: 220,
+    width: '100%',
+    height: '100%',
+  },
+  linkSection: {
+    gap: theme.spacing[2],
   },
   linkLabel: {
     color: theme.colors.foreground,

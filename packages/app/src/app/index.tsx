@@ -10,7 +10,7 @@ import {
   shouldRedirectToWelcome,
   shouldWaitOnStartupRace,
   WELCOME_ROUTE,
-} from './index-startup'
+} from '@/app-support/index-startup'
 
 const STARTUP_TIMEOUT_MS = 30_000
 function useAnyHostOnline(serverIds: string[]): string | null {

@@ -1,8 +1,9 @@
 import { useCallback, useState } from "react";
-import { Image, Pressable, Text, View, Platform, ScrollView } from "react-native";
+import { Pressable, Text, View, Platform, ScrollView } from "react-native";
 import { useRouter } from "expo-router";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { QrCode, Link2, ClipboardPaste } from "lucide-react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { HostProfile } from "@/types/host-connection";
 import { useHostMutations } from "@/runtime/host-runtime";
 import { useSessionStore } from "@/stores/session-store";
@@ -12,12 +13,23 @@ import { NameHostModal } from "./name-host-modal";
 import { resolveAppVersion } from "@/utils/app-version";
 import { formatVersionWithPrefix } from "@/desktop/updates/desktop-updates";
 import { buildHostRootRoute } from "@/utils/host-routes";
+import { PaseoLogo } from "@/components/icons/paseo-logo";
+
+type WelcomeAction = {
+  key: "scan-qr" | "direct-connection" | "paste-pairing-link";
+  label: string;
+  testID: string;
+  primary: boolean;
+  icon: typeof QrCode;
+  onPress: () => void;
+};
 
 const styles = StyleSheet.create((theme) => ({
   container: {
     flexGrow: 1,
     backgroundColor: theme.colors.surface0,
     padding: theme.spacing[6],
+    paddingBottom: 0,
     alignItems: "center",
   },
   content: {
@@ -25,11 +37,6 @@ const styles = StyleSheet.create((theme) => ({
     flexGrow: 1,
     justifyContent: "center",
     alignItems: "center",
-  },
-  logo: {
-    width: 96,
-    height: 96,
-    marginBottom: theme.spacing[6],
   },
   title: {
     color: theme.colors.foreground,
@@ -61,8 +68,8 @@ const styles = StyleSheet.create((theme) => ({
     borderColor: theme.colors.border,
   },
   actionButtonPrimary: {
-    backgroundColor: theme.colors.palette.blue[500],
-    borderColor: theme.colors.palette.blue[500],
+    backgroundColor: theme.colors.accent,
+    borderColor: theme.colors.accent,
   },
   actionText: {
     color: theme.colors.foreground,
@@ -70,7 +77,7 @@ const styles = StyleSheet.create((theme) => ({
     fontWeight: theme.fontWeight.medium,
   },
   actionTextPrimary: {
-    color: theme.colors.palette.white,
+    color: theme.colors.accentForeground,
   },
   versionLabel: {
     color: theme.colors.foregroundMuted,
@@ -86,6 +93,7 @@ export interface WelcomeScreenProps {
 
 export function WelcomeScreen({ onHostAdded }: WelcomeScreenProps) {
   const { theme } = useUnistyles();
+  const insets = useSafeAreaInsets();
   const router = useRouter();
   const { renameHost } = useHostMutations();
   const appVersion = resolveAppVersion();
@@ -111,51 +119,87 @@ export function WelcomeScreen({ onHostAdded }: WelcomeScreenProps) {
     [router]
   );
 
+  const actions: WelcomeAction[] = Platform.OS === "web"
+    ? [
+        {
+          key: "direct-connection",
+          label: "Direct connection",
+          testID: "welcome-direct-connection",
+          primary: true,
+          icon: Link2,
+          onPress: () => setIsDirectOpen(true),
+        },
+        {
+          key: "paste-pairing-link",
+          label: "Paste pairing link",
+          testID: "welcome-paste-pairing-link",
+          primary: false,
+          icon: ClipboardPaste,
+          onPress: () => setIsPasteLinkOpen(true),
+        },
+      ]
+    : [
+        {
+          key: "scan-qr",
+          label: "Scan QR code",
+          testID: "welcome-scan-qr",
+          primary: true,
+          icon: QrCode,
+          onPress: () => router.push("/pair-scan?source=onboarding"),
+        },
+        {
+          key: "direct-connection",
+          label: "Direct connection",
+          testID: "welcome-direct-connection",
+          primary: false,
+          icon: Link2,
+          onPress: () => setIsDirectOpen(true),
+        },
+        {
+          key: "paste-pairing-link",
+          label: "Paste pairing link",
+          testID: "welcome-paste-pairing-link",
+          primary: false,
+          icon: ClipboardPaste,
+          onPress: () => setIsPasteLinkOpen(true),
+        },
+      ];
+
   return (
     <ScrollView
       style={{ flex: 1, backgroundColor: theme.colors.surface0 }}
-      contentContainerStyle={styles.container}
+      contentContainerStyle={[
+        styles.container,
+        { paddingBottom: theme.spacing[6] + insets.bottom },
+      ]}
       showsVerticalScrollIndicator={false}
       testID="welcome-screen"
     >
       <View style={styles.content}>
-        <Image
-          source={require("../../assets/images/icon.png")}
-          style={styles.logo}
-          resizeMode="contain"
-        />
+        <PaseoLogo size={96} color={theme.colors.foreground} />
         <Text style={styles.title}>Welcome to Paseo</Text>
-        <Text style={styles.subtitle}>Add a host to start.</Text>
+        <Text style={styles.subtitle}>Connect to your host to start</Text>
 
         <View style={styles.actions}>
-          <Pressable
-            style={[styles.actionButton, styles.actionButtonPrimary]}
-            onPress={() => setIsDirectOpen(true)}
-            testID="welcome-direct-connection"
-          >
-            <Link2 size={18} color={theme.colors.palette.white} />
-            <Text style={[styles.actionText, styles.actionTextPrimary]}>Direct connection</Text>
-          </Pressable>
-
-          <Pressable
-            style={styles.actionButton}
-            onPress={() => setIsPasteLinkOpen(true)}
-            testID="welcome-paste-pairing-link"
-          >
-            <ClipboardPaste size={18} color={theme.colors.foreground} />
-            <Text style={styles.actionText}>Paste pairing link</Text>
-          </Pressable>
-
-          {Platform.OS !== "web" ? (
+          {actions.map((action) => {
+            const Icon = action.icon;
+            return (
             <Pressable
-              style={styles.actionButton}
-              onPress={() => router.push("/pair-scan?source=onboarding")}
-              testID="welcome-scan-qr"
+              key={action.key}
+              style={[styles.actionButton, action.primary ? styles.actionButtonPrimary : null]}
+              onPress={action.onPress}
+              testID={action.testID}
             >
-              <QrCode size={18} color={theme.colors.foreground} />
-              <Text style={styles.actionText}>Scan QR code</Text>
+              <Icon
+                size={18}
+                color={action.primary ? theme.colors.accentForeground : theme.colors.foreground}
+              />
+              <Text style={[styles.actionText, action.primary ? styles.actionTextPrimary : null]}>
+                {action.label}
+              </Text>
             </Pressable>
-          ) : null}
+            );
+          })}
         </View>
       </View>
       <Text style={styles.versionLabel}>{appVersionText}</Text>
