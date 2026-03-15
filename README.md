@@ -4,7 +4,7 @@
 
 <h1 align="center">Paseo</h1>
 
-<p align="center">Manage coding agents from your phone and desktop.</p>
+<p align="center">One interface for all your coding agents.</p>
 
 <p align="center">
   <img src="https://paseo.sh/paseo-mockup.png" alt="Paseo app screenshot" width="100%">
@@ -12,19 +12,27 @@
 
 ---
 
-> [!WARNING]
-> **Early development** — Features may break or change without notice. Use at your own risk.
+Run agents in parallel on your own machines. Ship from your phone or your desk.
 
-Paseo is a self-hosted daemon for Claude Code, Codex, and OpenCode. Agents run on your machine with your full dev environment. Connect from phone, desktop, or web.
+- **Self-hosted** — Agents run on your machine with your full dev environment. Use your tools, your configs, and your skills.
+- **Multi-provider** — Claude Code, Codex, and OpenCode through the same interface. Pick the right model for each job.
+- **Voice control** — Dictate tasks or talk through problems in voice mode. Hands-free when you need it.
+- **Cross-device** — iOS, Android, desktop, web, and CLI. Start work at your desk, check in from your phone, script it from the terminal.
 
 ## Getting Started
+
+Download the desktop app from [paseo.sh](https://paseo.sh) — it bundles the daemon so there's nothing else to install.
+
+### Headless / server mode
+
+To run the daemon on a remote or headless machine:
 
 ```bash
 npm install -g @getpaseo/cli
 paseo
 ```
 
-Then open the app and connect to your daemon.
+Then connect from the desktop app, mobile app, or CLI.
 
 For full setup and configuration, see:
 - [Docs](https://paseo.sh/docs)
