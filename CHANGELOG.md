@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.1.28 - 2026-03-15
+
+### Added
+- Added OpenCode build and plan modes.
+- Added website landing pages for Claude Code, Codex, and OpenCode.
+
+### Improved
+- Improved the git action menu for more reliable repository actions.
+- Improved the mobile settings screen, workspace header actions, and welcome screen presentation.
+- Updated the website hero copy and added a sponsor callout section.
+
+### Fixed
+- Fixed assistant file links so they open the correct workspace files from chat.
+
 ## 0.1.27 - 2026-03-13
 
 ### Added
