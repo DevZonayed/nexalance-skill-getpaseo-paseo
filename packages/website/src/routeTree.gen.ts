@@ -10,7 +10,10 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as PrivacyRouteImport } from './routes/privacy'
+import { Route as OpencodeRouteImport } from './routes/opencode'
 import { Route as DocsRouteImport } from './routes/docs'
+import { Route as CodexRouteImport } from './routes/codex'
+import { Route as ClaudeCodeRouteImport } from './routes/claude-code'
 import { Route as ChangelogRouteImport } from './routes/changelog'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as DocsIndexRouteImport } from './routes/docs/index'
@@ -27,9 +30,24 @@ const PrivacyRoute = PrivacyRouteImport.update({
   path: '/privacy',
   getParentRoute: () => rootRouteImport,
 } as any)
+const OpencodeRoute = OpencodeRouteImport.update({
+  id: '/opencode',
+  path: '/opencode',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const DocsRoute = DocsRouteImport.update({
   id: '/docs',
   path: '/docs',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CodexRoute = CodexRouteImport.update({
+  id: '/codex',
+  path: '/codex',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ClaudeCodeRoute = ClaudeCodeRouteImport.update({
+  id: '/claude-code',
+  path: '/claude-code',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ChangelogRoute = ChangelogRouteImport.update({
@@ -86,7 +104,10 @@ const DocsBestPracticesRoute = DocsBestPracticesRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/changelog': typeof ChangelogRoute
+  '/claude-code': typeof ClaudeCodeRoute
+  '/codex': typeof CodexRoute
   '/docs': typeof DocsRouteWithChildren
+  '/opencode': typeof OpencodeRoute
   '/privacy': typeof PrivacyRoute
   '/docs/best-practices': typeof DocsBestPracticesRoute
   '/docs/cli': typeof DocsCliRoute
@@ -100,6 +121,9 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/changelog': typeof ChangelogRoute
+  '/claude-code': typeof ClaudeCodeRoute
+  '/codex': typeof CodexRoute
+  '/opencode': typeof OpencodeRoute
   '/privacy': typeof PrivacyRoute
   '/docs/best-practices': typeof DocsBestPracticesRoute
   '/docs/cli': typeof DocsCliRoute
@@ -114,7 +138,10 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/changelog': typeof ChangelogRoute
+  '/claude-code': typeof ClaudeCodeRoute
+  '/codex': typeof CodexRoute
   '/docs': typeof DocsRouteWithChildren
+  '/opencode': typeof OpencodeRoute
   '/privacy': typeof PrivacyRoute
   '/docs/best-practices': typeof DocsBestPracticesRoute
   '/docs/cli': typeof DocsCliRoute
@@ -130,7 +157,10 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/changelog'
+    | '/claude-code'
+    | '/codex'
     | '/docs'
+    | '/opencode'
     | '/privacy'
     | '/docs/best-practices'
     | '/docs/cli'
@@ -144,6 +174,9 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/changelog'
+    | '/claude-code'
+    | '/codex'
+    | '/opencode'
     | '/privacy'
     | '/docs/best-practices'
     | '/docs/cli'
@@ -157,7 +190,10 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/changelog'
+    | '/claude-code'
+    | '/codex'
     | '/docs'
+    | '/opencode'
     | '/privacy'
     | '/docs/best-practices'
     | '/docs/cli'
@@ -172,7 +208,10 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ChangelogRoute: typeof ChangelogRoute
+  ClaudeCodeRoute: typeof ClaudeCodeRoute
+  CodexRoute: typeof CodexRoute
   DocsRoute: typeof DocsRouteWithChildren
+  OpencodeRoute: typeof OpencodeRoute
   PrivacyRoute: typeof PrivacyRoute
 }
 
@@ -185,11 +224,32 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PrivacyRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/opencode': {
+      id: '/opencode'
+      path: '/opencode'
+      fullPath: '/opencode'
+      preLoaderRoute: typeof OpencodeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/docs': {
       id: '/docs'
       path: '/docs'
       fullPath: '/docs'
       preLoaderRoute: typeof DocsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/codex': {
+      id: '/codex'
+      path: '/codex'
+      fullPath: '/codex'
+      preLoaderRoute: typeof CodexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/claude-code': {
+      id: '/claude-code'
+      path: '/claude-code'
+      fullPath: '/claude-code'
+      preLoaderRoute: typeof ClaudeCodeRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/changelog': {
@@ -292,7 +352,10 @@ const DocsRouteWithChildren = DocsRoute._addFileChildren(DocsRouteChildren)
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ChangelogRoute: ChangelogRoute,
+  ClaudeCodeRoute: ClaudeCodeRoute,
+  CodexRoute: CodexRoute,
   DocsRoute: DocsRouteWithChildren,
+  OpencodeRoute: OpencodeRoute,
   PrivacyRoute: PrivacyRoute,
 }
 export const routeTree = rootRouteImport
