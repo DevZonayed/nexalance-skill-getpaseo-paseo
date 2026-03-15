@@ -45,6 +45,10 @@ export function createAgentCommand(): Command {
       .option('--mode <mode>', 'Provider-specific mode (e.g., plan, default, bypass)')
       .option('--cwd <path>', 'Working directory (default: current)')
       .option('--label <key=value>', 'Add label(s) to the agent (can be used multiple times)', collectMultiple, [])
+      .option(
+        '--wait-timeout <duration>',
+        'Maximum time to wait for agent to finish (e.g., 30s, 5m, 1h). Default: no limit'
+      )
       .option('--output-schema <schema>', 'Output JSON matching the provided schema file path or inline JSON schema')
   ).action(withOutput(runRunCommand))
 

@@ -9,6 +9,7 @@ import type { CommandOptions, SingleResult, OutputSchema, CommandError } from '.
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { lookup } from 'mime-types'
+import { parseDuration } from '../../utils/duration.js'
 
 /** Result type for agent run command */
 export interface AgentRunResult {
@@ -43,6 +44,7 @@ export interface AgentRunOptions extends CommandOptions {
   image?: string[]
   cwd?: string
   label?: string[]
+  waitTimeout?: string
   outputSchema?: string
 }
 
@@ -223,6 +225,7 @@ export async function runRunCommand(
 ): Promise<SingleResult<AgentRunResult>> {
   const host = getDaemonHost({ host: options.host as string | undefined })
   const outputSchema = options.outputSchema ? loadOutputSchema(options.outputSchema) : undefined
+  let waitTimeoutMs = 0
 
   // Validate prompt is provided
   if (!prompt || prompt.trim().length === 0) {
@@ -252,6 +255,23 @@ export async function runRunCommand(
       details: 'Structured output requires waiting for the agent to finish',
     }
     throw error
+  }
+
+  if (options.waitTimeout) {
+    try {
+      waitTimeoutMs = parseDuration(options.waitTimeout)
+      if (waitTimeoutMs <= 0) {
+        throw new Error('Timeout must be positive')
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      const error: CommandError = {
+        code: 'INVALID_TIMEOUT',
+        message: 'Invalid wait timeout value',
+        details: message,
+      }
+      throw error
+    }
   }
 
   const resolvedProviderModel = resolveProviderAndModel(options)
@@ -359,7 +379,7 @@ export async function runRunCommand(
           await client.sendMessage(structuredAgent.id, structuredPrompt)
         }
 
-        const state = await client.waitForFinish(structuredAgent.id, 10 * 60 * 1000)
+        const state = await client.waitForFinish(structuredAgent.id, waitTimeoutMs)
         if (state.status === 'timeout') {
           throw new StructuredRunStatusError('timeout', 'Timed out waiting for structured output')
         }
@@ -456,7 +476,7 @@ export async function runRunCommand(
 
     // Default run behavior is foreground: wait for completion unless --detach is set.
     if (!options.detach) {
-      const state = await client.waitForFinish(agent.id, 10 * 60 * 1000)
+      const state = await client.waitForFinish(agent.id, waitTimeoutMs)
       await client.close()
 
       const finalAgent = state.final ?? agent
