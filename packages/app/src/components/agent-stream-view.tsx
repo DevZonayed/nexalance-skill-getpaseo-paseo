@@ -69,6 +69,7 @@ import { createMarkdownStyles } from "@/styles/markdown-styles";
 import { MAX_CONTENT_WIDTH } from "@/constants/layout";
 import { getMarkdownListMarker } from "@/utils/markdown-list";
 import { buildHostWorkspaceFileRoute } from "@/utils/host-routes";
+import { normalizeInlinePathTarget } from "@/utils/inline-path";
 
 const isUserMessageItem = (item?: StreamItem) => item?.kind === "user_message";
 const isToolSequenceItem = (item?: StreamItem) =>
@@ -155,7 +156,7 @@ export const AgentStreamView = forwardRef<AgentStreamViewHandle, AgentStreamView
         return;
       }
 
-      const normalized = normalizeInlinePath(target.path, agent.cwd);
+      const normalized = normalizeInlinePathTarget(target.path, agent.cwd);
       if (!normalized) {
         return;
       }
@@ -314,6 +315,7 @@ export const AgentStreamView = forwardRef<AgentStreamViewHandle, AgentStreamView
               message={item.text}
               timestamp={item.timestamp.getTime()}
               onInlinePathPress={handleInlinePathPress}
+              workspaceRoot={workspaceRoot}
             />
           );
 
@@ -655,102 +657,6 @@ export const AgentStreamView = forwardRef<AgentStreamViewHandle, AgentStreamView
     </ToolCallSheetProvider>
   );
 });
-
-function normalizeInlinePath(
-  rawPath: string,
-  cwd?: string
-): { directory: string; file?: string } | null {
-  if (!rawPath) {
-    return null;
-  }
-
-  const normalizedInput = normalizePathInput(rawPath);
-  if (!normalizedInput) {
-    return null;
-  }
-
-  let normalized = normalizedInput;
-  const cwdRelative = resolvePathAgainstCwd(normalized, cwd);
-  if (cwdRelative) {
-    normalized = cwdRelative;
-  }
-
-  if (normalized.startsWith("./")) {
-    normalized = normalized.slice(2) || ".";
-  }
-
-  if (!normalized.length) {
-    normalized = ".";
-  }
-
-  if (normalized === ".") {
-    return { directory: "." };
-  }
-
-  if (normalized.endsWith("/")) {
-    const dir = normalized.replace(/\/+$/, "");
-    return { directory: dir.length > 0 ? dir : "." };
-  }
-
-  const lastSlash = normalized.lastIndexOf("/");
-  const directory = lastSlash >= 0 ? normalized.slice(0, lastSlash) : ".";
-
-  return {
-    directory: directory.length > 0 ? directory : ".",
-    file: normalized,
-  };
-}
-
-function normalizePathInput(value: string | undefined): string | null {
-  if (!value) {
-    return null;
-  }
-
-  const trimmed = value
-    .trim()
-    .replace(/^['"`]/, "")
-    .replace(/['"`]$/, "");
-  if (!trimmed) {
-    return null;
-  }
-
-  return trimmed.replace(/\\/g, "/").replace(/\/{2,}/g, "/");
-}
-
-function resolvePathAgainstCwd(pathValue: string, cwd?: string): string | null {
-  const normalizedCwd = normalizePathInput(cwd);
-  if (
-    !normalizedCwd ||
-    !isAbsolutePath(pathValue) ||
-    !isAbsolutePath(normalizedCwd)
-  ) {
-    return null;
-  }
-
-  const normalizedCwdBase = normalizedCwd.replace(/\/+$/, "") || "/";
-  const comparePath = normalizePathForCompare(pathValue);
-  const compareCwd = normalizePathForCompare(normalizedCwdBase);
-  const prefix = normalizedCwdBase === "/" ? "/" : `${normalizedCwdBase}/`;
-  const comparePrefix = normalizePathForCompare(prefix);
-
-  if (comparePath === compareCwd) {
-    return ".";
-  }
-
-  if (comparePath.startsWith(comparePrefix)) {
-    return pathValue.slice(prefix.length) || ".";
-  }
-
-  return null;
-}
-
-function normalizePathForCompare(value: string): string {
-  return /^[A-Za-z]:/.test(value) ? value.toLowerCase() : value;
-}
-
-function isAbsolutePath(value: string): boolean {
-  return value.startsWith("/") || /^[A-Za-z]:\//.test(value);
-}
 
 function WorkingIndicator() {
   const dotOne = useSharedValue(0);

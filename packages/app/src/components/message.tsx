@@ -72,7 +72,7 @@ import {
 } from "@/utils/tool-call-display";
 import { resolveToolCallIcon } from "@/utils/tool-call-icon";
 import {
-  parseFileProtocolUrl,
+  parseAssistantFileLink,
   parseInlinePathToken,
   type InlinePathTarget,
 } from "@/utils/inline-path";
@@ -429,6 +429,7 @@ interface AssistantMessageProps {
   message: string;
   timestamp: number;
   onInlinePathPress?: (target: InlinePathTarget) => void;
+  workspaceRoot?: string;
   disableOuterSpacing?: boolean;
 }
 
@@ -744,6 +745,7 @@ export const AssistantMessage = memo(function AssistantMessage({
   message,
   timestamp,
   onInlinePathPress,
+  workspaceRoot,
   disableOuterSpacing,
 }: AssistantMessageProps) {
   const { theme } = useUnistyles();
@@ -770,7 +772,7 @@ export const AssistantMessage = memo(function AssistantMessage({
 
   const handleLinkPress = useCallback((url: string) => {
     const fileTarget = onInlinePathPress
-      ? parseFileProtocolUrl(url)
+      ? parseAssistantFileLink(url, { workspaceRoot })
       : null;
     if (fileTarget) {
       onInlinePathPress?.(fileTarget);
@@ -781,7 +783,7 @@ export const AssistantMessage = memo(function AssistantMessage({
     // react-native-markdown-display opens the link itself when this returns true.
     // We already handled it above, so return false to avoid duplicate opens.
     return false;
-  }, [onInlinePathPress]);
+  }, [onInlinePathPress, workspaceRoot]);
 
   const markdownRules = useMemo(() => {
     return {
