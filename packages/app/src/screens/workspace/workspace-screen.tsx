@@ -13,9 +13,8 @@ import * as Clipboard from "expo-clipboard";
 import {
   ChevronDown,
   Copy,
-  Folder,
-  GitBranch,
   Ellipsis,
+  EllipsisVertical,
   PanelRight,
   Plus,
   SquareTerminal,
@@ -1560,12 +1559,15 @@ function WorkspaceScreenContent({
                       accessibilityRole="button"
                       accessibilityLabel="Workspace actions"
                     >
-                      {({ hovered, open }) => (
-                        <Ellipsis
-                          size={theme.iconSize.md}
-                          color={hovered || open ? theme.colors.foreground : theme.colors.foregroundMuted}
-                        />
-                      )}
+                      {({ hovered, open }) => {
+                        const Icon = isMobile ? EllipsisVertical : Ellipsis;
+                        return (
+                          <Icon
+                            size={theme.iconSize.md}
+                            color={hovered || open ? theme.colors.foreground : theme.colors.foregroundMuted}
+                          />
+                        );
+                      }}
                     </DropdownMenuTrigger>
                     <DropdownMenuContent
                       align="start"
@@ -1690,8 +1692,8 @@ function WorkspaceScreenContent({
                     {({ hovered }) => {
                       const color = isExplorerOpen || hovered ? theme.colors.foreground : theme.colors.foregroundMuted;
                       return isGitCheckout
-                        ? <GitBranch size={theme.iconSize.lg} color={color} />
-                        : <Folder size={theme.iconSize.lg} color={color} />;
+                        ? <SourceControlPanelIcon size={theme.iconSize.lg} color={color} strokeWidth={1.5} />
+                        : <PanelRight size={theme.iconSize.lg} color={color} />;
                     }}
                   </HeaderToggleButton>
                 ) : null}
