@@ -155,7 +155,7 @@ export function LandingPage({ title, subtitle }: LandingPageProps) {
 
 function Nav() {
   return (
-    <nav className="flex items-center justify-between mb-16">
+    <nav className="flex flex-col sm:flex-row items-center sm:justify-between gap-4 mb-16">
       <div className="flex items-center gap-3">
         <a href="/" className="flex items-center gap-3">
           <img src="/logo.svg" alt="Paseo" className="w-7 h-7" />
@@ -388,7 +388,7 @@ function GetStarted() {
           aria-label="Download APK"
         >
           <AndroidIcon className="h-5 w-5" />
-          <span className="absolute -top-8 left-1/2 -translate-x-1/2 px-2 py-1 rounded bg-white text-black text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+          <span className="absolute -top-8 right-0 sm:right-auto sm:left-1/2 sm:-translate-x-1/2 px-2 py-1 rounded bg-white text-black text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
             Download APK (Play Store coming soon)
           </span>
         </a>
