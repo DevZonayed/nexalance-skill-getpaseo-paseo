@@ -165,6 +165,21 @@ export function useKeyboardShortcuts({
             scope: "workspace",
             delta: input.payload.delta,
           });
+        case "workspace.pane.split.right":
+        case "workspace.pane.split.down":
+        case "workspace.pane.focus.left":
+        case "workspace.pane.focus.right":
+        case "workspace.pane.focus.up":
+        case "workspace.pane.focus.down":
+        case "workspace.pane.move-tab.left":
+        case "workspace.pane.move-tab.right":
+        case "workspace.pane.move-tab.up":
+        case "workspace.pane.move-tab.down":
+        case "workspace.pane.close":
+          return keyboardActionDispatcher.dispatch({
+            id: input.action,
+            scope: "workspace",
+          });
         case "workspace.navigate.index":
           if (!input.payload || typeof input.payload !== "object" || !("index" in input.payload)) {
             return false;

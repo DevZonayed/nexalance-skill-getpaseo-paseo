@@ -1,4 +1,4 @@
-import type { ReactElement, ReactNode } from "react";
+import { useMemo, type ReactElement, type ReactNode } from "react";
 import { Pressable, Text, View } from "react-native";
 import { Check } from "lucide-react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
@@ -34,15 +34,26 @@ export function useWorkspaceTabPresentation(input: {
     workspaceId: input.workspaceId,
   });
 
-  return {
-    key: input.tab.key,
-    kind: input.tab.kind,
-    label: descriptor.label,
-    subtitle: descriptor.subtitle,
-    titleState: descriptor.titleState,
-    icon: descriptor.icon,
-    statusBucket: descriptor.statusBucket,
-  };
+  return useMemo(
+    () => ({
+      key: input.tab.key,
+      kind: input.tab.kind,
+      label: descriptor.label,
+      subtitle: descriptor.subtitle,
+      titleState: descriptor.titleState,
+      icon: descriptor.icon,
+      statusBucket: descriptor.statusBucket,
+    }),
+    [
+      descriptor.icon,
+      descriptor.label,
+      descriptor.statusBucket,
+      descriptor.subtitle,
+      descriptor.titleState,
+      input.tab.key,
+      input.tab.kind,
+    ]
+  );
 }
 
 type WorkspaceTabIconProps = {

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type Dispatch, type SetStateAction } from "react";
+import { useCallback, useMemo, useState, type Dispatch, type SetStateAction } from "react";
 import { ActivityIndicator, Pressable, ScrollView, Text, View, type LayoutChangeEvent } from "react-native";
 import { Plus, X } from "lucide-react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
@@ -27,6 +27,7 @@ const LOADING_TAB_LABEL_SKELETON_WIDTH = 80;
 type NewTabOptionId = "__new_tab_agent__";
 
 type WorkspaceDesktopTabsRowProps = {
+  paneId?: string;
   tabs: WorkspaceTabDescriptor[];
   activeTabKey: string;
   normalizedServerId: string;
@@ -47,6 +48,8 @@ type WorkspaceDesktopTabsRowProps = {
   onSelectNewTabOption: (optionId: NewTabOptionId) => void;
   newTabAgentOptionId: NewTabOptionId;
   onReorderTabs: (nextTabs: WorkspaceTabDescriptor[]) => void;
+  externalDndContext?: boolean;
+  activeDragTabId?: string | null;
 };
 
 function getFallbackTabLabel(tab: WorkspaceTabDescriptor): string {
@@ -59,7 +62,7 @@ function getFallbackTabLabel(tab: WorkspaceTabDescriptor): string {
   if (tab.target.kind === "file") {
     return tab.target.path.split("/").filter(Boolean).pop() ?? tab.target.path;
   }
-  return "";
+  return "Agent";
 }
 
 function getCloseButtonTestId(tab: WorkspaceTabDescriptor): string {
@@ -96,7 +99,6 @@ function TabChip({
   onCloseTabsToLeft,
   onCloseTabsToRight,
   onCloseOtherTabs,
-  onPresentationChange,
   dragHandleProps,
 }: {
   tab: WorkspaceTabDescriptor;
@@ -119,19 +121,14 @@ function TabChip({
   onCloseTabsToLeft: (tabId: string) => Promise<void> | void;
   onCloseTabsToRight: (tabId: string) => Promise<void> | void;
   onCloseOtherTabs: (tabId: string) => Promise<void> | void;
-  onPresentationChange: (tabKey: string, presentation: WorkspaceTabPresentation) => void;
   dragHandleProps: any;
 }) {
-  const { theme } = useUnistyles();
   const presentation = useWorkspaceTabPresentation({
     tab,
     serverId: normalizedServerId,
     workspaceId: normalizedWorkspaceId,
   });
-
-  useEffect(() => {
-    onPresentationChange(tab.key, presentation);
-  }, [onPresentationChange, presentation, tab.key]);
+  const { theme } = useUnistyles();
 
   const tooltipLabel =
     presentation.titleState === "loading" ? "Loading agent title" : presentation.label;
@@ -281,6 +278,7 @@ function TabChip({
 }
 
 export function WorkspaceDesktopTabsRow({
+  paneId,
   tabs,
   activeTabKey,
   normalizedServerId,
@@ -301,47 +299,12 @@ export function WorkspaceDesktopTabsRow({
   onSelectNewTabOption,
   newTabAgentOptionId,
   onReorderTabs,
+  externalDndContext = false,
+  activeDragTabId = null,
 }: WorkspaceDesktopTabsRowProps) {
   const { theme } = useUnistyles();
   const [tabsContainerWidth, setTabsContainerWidth] = useState<number>(0);
   const [tabsActionsWidth, setTabsActionsWidth] = useState<number>(0);
-  const [presentationsByKey, setPresentationsByKey] = useState<Map<string, WorkspaceTabPresentation>>(
-    () => new Map()
-  );
-
-  const handlePresentationChange = useCallback(
-    (tabKey: string, presentation: WorkspaceTabPresentation) => {
-      setPresentationsByKey((current) => {
-        const existing = current.get(tabKey);
-        if (
-          existing?.label === presentation.label &&
-          existing?.subtitle === presentation.subtitle &&
-          existing?.titleState === presentation.titleState &&
-          existing?.statusBucket === presentation.statusBucket &&
-          existing?.icon === presentation.icon
-        ) {
-          return current;
-        }
-        const next = new Map(current);
-        next.set(tabKey, presentation);
-        return next;
-      });
-    },
-    []
-  );
-
-  useEffect(() => {
-    setPresentationsByKey((current) => {
-      const next = new Map<string, WorkspaceTabPresentation>();
-      for (const tab of tabs) {
-        const presentation = current.get(tab.key);
-        if (presentation) {
-          next.set(tab.key, presentation);
-        }
-      }
-      return next.size === current.size ? current : next;
-    });
-  }, [tabs]);
 
   const handleTabsContainerLayout = useCallback((event: LayoutChangeEvent) => {
     const nextWidth = Math.round(event.nativeEvent.layout.width);
@@ -371,14 +334,10 @@ export function WorkspaceDesktopTabsRow({
   const tabLabelLengths = useMemo(
     () =>
       tabs.map((tab) => {
-        const presentation = presentationsByKey.get(tab.key);
-        if (presentation?.titleState === "loading") {
-          return Math.max(1, Math.ceil(LOADING_TAB_LABEL_SKELETON_WIDTH / layoutMetrics.estimatedCharWidth));
-        }
-        const label = presentation?.label ?? getFallbackTabLabel(tab);
+        const label = getFallbackTabLabel(tab);
         return label.length;
       }),
-    [layoutMetrics.estimatedCharWidth, presentationsByKey, tabs]
+    [tabs]
   );
 
   const { layout } = useWorkspaceTabLayout({
@@ -410,6 +369,17 @@ export function WorkspaceDesktopTabsRow({
           useDragHandle
           disabled={tabs.length < 2}
           onDragEnd={onReorderTabs}
+          externalDndContext={externalDndContext}
+          activeId={activeDragTabId}
+          getItemData={
+            paneId
+              ? (tab) => ({
+                  kind: "workspace-tab",
+                  paneId,
+                  tabId: tab.tabId,
+                })
+              : undefined
+          }
           renderItem={({ item: tab, index, dragHandleProps }) => {
             const isActive = tab.key === activeTabKey;
             const isCloseHovered = hoveredCloseTabKey === tab.key;
@@ -452,7 +422,6 @@ export function WorkspaceDesktopTabsRow({
                 onCloseTabsToLeft={onCloseTabsToLeft}
                 onCloseTabsToRight={onCloseTabsToRight}
                 onCloseOtherTabs={onCloseOtherTabs}
-                onPresentationChange={handlePresentationChange}
                 dragHandleProps={dragHandleProps}
               />
             );

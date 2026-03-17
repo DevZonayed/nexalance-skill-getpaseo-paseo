@@ -12,6 +12,9 @@ export function SortableInlineList<T>({
   onDragEnd?: (data: T[]) => void;
   useDragHandle?: boolean;
   disabled?: boolean;
+  externalDndContext?: boolean;
+  activeId?: string | null;
+  getItemData?: (item: T, index: number) => Record<string, unknown>;
 }): ReactElement {
   return (
     <>

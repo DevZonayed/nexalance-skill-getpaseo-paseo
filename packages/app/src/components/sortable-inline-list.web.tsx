@@ -33,6 +33,7 @@ function SortableItem<T>({
   activeId,
   useDragHandle,
   disabled,
+  itemData,
 }: {
   id: string;
   item: T;
@@ -41,6 +42,7 @@ function SortableItem<T>({
   activeId: string | null;
   useDragHandle: boolean;
   disabled: boolean;
+  itemData?: Record<string, unknown>;
 }): ReactElement {
   const {
     attributes,
@@ -50,7 +52,7 @@ function SortableItem<T>({
     transform,
     transition,
     isDragging,
-  } = useSortable({ id, disabled });
+  } = useSortable({ id, disabled, data: itemData });
 
   const drag = useCallback(() => {
     // dnd-kit handles drag initiation via listeners
@@ -107,6 +109,9 @@ export function SortableInlineList<T>({
   disabled = false,
   activationDistance = 8,
   onDragBegin,
+  externalDndContext = false,
+  activeId: externalActiveId = null,
+  getItemData,
 }: {
   data: T[];
   keyExtractor: (item: T, index: number) => string;
@@ -116,10 +121,13 @@ export function SortableInlineList<T>({
   disabled?: boolean;
   activationDistance?: number;
   onDragBegin?: () => void;
+  externalDndContext?: boolean;
+  activeId?: string | null;
+  getItemData?: (item: T, index: number) => Record<string, unknown>;
 }): ReactElement {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [dragItems, setDragItems] = useState<T[] | null>(null);
-  const items = dragItems ?? data;
+  const items = externalDndContext ? data : dragItems ?? data;
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -175,6 +183,31 @@ export function SortableInlineList<T>({
 
   const ids = items.map((item, index) => keyExtractor(item, index));
 
+  const renderedItems = (
+    <SortableContext items={ids} strategy={horizontalListSortingStrategy}>
+      {items.map((item, index) => {
+        const id = keyExtractor(item, index);
+        return (
+          <SortableItem
+            key={id}
+            id={id}
+            item={item}
+            index={index}
+            renderItem={renderItem}
+            activeId={externalDndContext ? externalActiveId : activeId}
+            useDragHandle={useDragHandle}
+            disabled={disabled}
+            itemData={getItemData?.(item, index)}
+          />
+        );
+      })}
+    </SortableContext>
+  );
+
+  if (externalDndContext) {
+    return renderedItems;
+  }
+
   return (
     <DndContext
       sensors={sensors}
@@ -183,23 +216,7 @@ export function SortableInlineList<T>({
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
     >
-      <SortableContext items={ids} strategy={horizontalListSortingStrategy}>
-        {items.map((item, index) => {
-          const id = keyExtractor(item, index);
-          return (
-            <SortableItem
-              key={id}
-              id={id}
-              item={item}
-              index={index}
-              renderItem={renderItem}
-              activeId={activeId}
-              useDragHandle={useDragHandle}
-              disabled={disabled}
-            />
-          );
-        })}
-      </SortableContext>
+      {renderedItems}
     </DndContext>
   );
 }

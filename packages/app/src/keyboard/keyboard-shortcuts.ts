@@ -71,6 +71,10 @@ function isMod(event: KeyboardEvent): boolean {
   return event.metaKey || event.ctrlKey;
 }
 
+function isMacCommand(event: KeyboardEvent): boolean {
+  return event.metaKey && !event.ctrlKey;
+}
+
 function parseDigit(event: KeyboardEvent): number | null {
   const code = event.code ?? "";
   if (code.startsWith("Digit")) {
@@ -371,6 +375,204 @@ const SHORTCUT_BINDINGS: readonly KeyboardShortcutBinding[] = [
       section: "global",
       label: "Next tab",
       keys: ["alt", "shift", "]"],
+    },
+  },
+  {
+    id: "workspace-pane-split-right-cmd-backslash",
+    action: "workspace.pane.split.right",
+    matches: (event) =>
+      isMacCommand(event) &&
+      !event.altKey &&
+      !event.shiftKey &&
+      event.code === "Backslash",
+    when: (context) =>
+      context.isMac && context.focusScope !== "terminal" && !context.commandCenterOpen,
+    help: {
+      id: "workspace-pane-split-right",
+      section: "global",
+      label: "Split pane right",
+      keys: ["mod", "\\"],
+      when: (context) => context.isMac,
+    },
+  },
+  {
+    id: "workspace-pane-split-down-cmd-shift-backslash",
+    action: "workspace.pane.split.down",
+    matches: (event) =>
+      isMacCommand(event) &&
+      !event.altKey &&
+      event.shiftKey &&
+      event.code === "Backslash",
+    when: (context) =>
+      context.isMac && context.focusScope !== "terminal" && !context.commandCenterOpen,
+    help: {
+      id: "workspace-pane-split-down",
+      section: "global",
+      label: "Split pane down",
+      keys: ["mod", "shift", "\\"],
+      when: (context) => context.isMac,
+    },
+  },
+  {
+    id: "workspace-pane-focus-left-cmd-shift-left",
+    action: "workspace.pane.focus.left",
+    matches: (event) =>
+      isMacCommand(event) &&
+      !event.altKey &&
+      event.shiftKey &&
+      event.code === "ArrowLeft",
+    when: (context) =>
+      context.isMac && context.focusScope !== "terminal" && !context.commandCenterOpen,
+    help: {
+      id: "workspace-pane-focus-left",
+      section: "global",
+      label: "Focus pane left",
+      keys: ["mod", "shift", "Left"],
+      when: (context) => context.isMac,
+    },
+  },
+  {
+    id: "workspace-pane-focus-right-cmd-shift-right",
+    action: "workspace.pane.focus.right",
+    matches: (event) =>
+      isMacCommand(event) &&
+      !event.altKey &&
+      event.shiftKey &&
+      event.code === "ArrowRight",
+    when: (context) =>
+      context.isMac && context.focusScope !== "terminal" && !context.commandCenterOpen,
+    help: {
+      id: "workspace-pane-focus-right",
+      section: "global",
+      label: "Focus pane right",
+      keys: ["mod", "shift", "Right"],
+      when: (context) => context.isMac,
+    },
+  },
+  {
+    id: "workspace-pane-focus-up-cmd-shift-up",
+    action: "workspace.pane.focus.up",
+    matches: (event) =>
+      isMacCommand(event) &&
+      !event.altKey &&
+      event.shiftKey &&
+      event.code === "ArrowUp",
+    when: (context) =>
+      context.isMac && context.focusScope !== "terminal" && !context.commandCenterOpen,
+    help: {
+      id: "workspace-pane-focus-up",
+      section: "global",
+      label: "Focus pane up",
+      keys: ["mod", "shift", "Up"],
+      when: (context) => context.isMac,
+    },
+  },
+  {
+    id: "workspace-pane-focus-down-cmd-shift-down",
+    action: "workspace.pane.focus.down",
+    matches: (event) =>
+      isMacCommand(event) &&
+      !event.altKey &&
+      event.shiftKey &&
+      event.code === "ArrowDown",
+    when: (context) =>
+      context.isMac && context.focusScope !== "terminal" && !context.commandCenterOpen,
+    help: {
+      id: "workspace-pane-focus-down",
+      section: "global",
+      label: "Focus pane down",
+      keys: ["mod", "shift", "Down"],
+      when: (context) => context.isMac,
+    },
+  },
+  {
+    id: "workspace-pane-move-tab-left-cmd-shift-alt-left",
+    action: "workspace.pane.move-tab.left",
+    matches: (event) =>
+      isMacCommand(event) &&
+      event.altKey &&
+      event.shiftKey &&
+      event.code === "ArrowLeft",
+    when: (context) =>
+      context.isMac && context.focusScope !== "terminal" && !context.commandCenterOpen,
+    help: {
+      id: "workspace-pane-move-tab-left",
+      section: "global",
+      label: "Move tab left",
+      keys: ["mod", "shift", "alt", "Left"],
+      when: (context) => context.isMac,
+    },
+  },
+  {
+    id: "workspace-pane-move-tab-right-cmd-shift-alt-right",
+    action: "workspace.pane.move-tab.right",
+    matches: (event) =>
+      isMacCommand(event) &&
+      event.altKey &&
+      event.shiftKey &&
+      event.code === "ArrowRight",
+    when: (context) =>
+      context.isMac && context.focusScope !== "terminal" && !context.commandCenterOpen,
+    help: {
+      id: "workspace-pane-move-tab-right",
+      section: "global",
+      label: "Move tab right",
+      keys: ["mod", "shift", "alt", "Right"],
+      when: (context) => context.isMac,
+    },
+  },
+  {
+    id: "workspace-pane-move-tab-up-cmd-shift-alt-up",
+    action: "workspace.pane.move-tab.up",
+    matches: (event) =>
+      isMacCommand(event) &&
+      event.altKey &&
+      event.shiftKey &&
+      event.code === "ArrowUp",
+    when: (context) =>
+      context.isMac && context.focusScope !== "terminal" && !context.commandCenterOpen,
+    help: {
+      id: "workspace-pane-move-tab-up",
+      section: "global",
+      label: "Move tab up",
+      keys: ["mod", "shift", "alt", "Up"],
+      when: (context) => context.isMac,
+    },
+  },
+  {
+    id: "workspace-pane-move-tab-down-cmd-shift-alt-down",
+    action: "workspace.pane.move-tab.down",
+    matches: (event) =>
+      isMacCommand(event) &&
+      event.altKey &&
+      event.shiftKey &&
+      event.code === "ArrowDown",
+    when: (context) =>
+      context.isMac && context.focusScope !== "terminal" && !context.commandCenterOpen,
+    help: {
+      id: "workspace-pane-move-tab-down",
+      section: "global",
+      label: "Move tab down",
+      keys: ["mod", "shift", "alt", "Down"],
+      when: (context) => context.isMac,
+    },
+  },
+  {
+    id: "workspace-pane-close-cmd-shift-w",
+    action: "workspace.pane.close",
+    matches: (event) =>
+      isMacCommand(event) &&
+      !event.altKey &&
+      event.shiftKey &&
+      (event.code === "KeyW" || event.key.toLowerCase() === "w"),
+    when: (context) =>
+      context.isMac && context.focusScope !== "terminal" && !context.commandCenterOpen,
+    help: {
+      id: "workspace-pane-close",
+      section: "global",
+      label: "Close pane",
+      keys: ["mod", "shift", "W"],
+      when: (context) => context.isMac,
     },
   },
   {

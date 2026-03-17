@@ -1,0 +1,610 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("@react-native-async-storage/async-storage", () => {
+  const storage = new Map<string, string>();
+  return {
+    default: {
+      getItem: vi.fn(async (key: string) => storage.get(key) ?? null),
+      setItem: vi.fn(async (key: string, value: string) => {
+        storage.set(key, value);
+      }),
+      removeItem: vi.fn(async (key: string) => {
+        storage.delete(key);
+      }),
+    },
+  };
+});
+
+import type { WorkspaceTab } from "@/stores/workspace-tabs-store";
+import {
+  buildWorkspaceTabPersistenceKey,
+  collectAllPanes,
+  collectAllTabs,
+  createDefaultLayout,
+  findPaneById,
+  findPaneContainingTab,
+  getTreeDepth,
+  insertSplit,
+  removePaneFromTree,
+  removeTabFromTree,
+  useWorkspaceLayoutStore,
+  type SplitNode,
+} from "@/stores/workspace-layout-store";
+
+const SERVER_ID = "server-1";
+const WORKSPACE_ID = "/repo/worktree";
+
+function createTab(tabId: string): WorkspaceTab {
+  return {
+    tabId,
+    target: { kind: "draft", draftId: tabId },
+    createdAt: 1,
+  };
+}
+
+function createPane(input: {
+  id: string;
+  tabIds: string[];
+  focusedTabId?: string | null;
+}): SplitNode {
+  const tabs = input.tabIds.map((tabId) => createTab(tabId));
+  return {
+    kind: "pane",
+    pane: {
+      id: input.id,
+      tabIds: input.tabIds,
+      focusedTabId: input.focusedTabId ?? input.tabIds[input.tabIds.length - 1] ?? null,
+      tabs,
+    } as any,
+  };
+}
+
+function createWorkspaceKey(): string {
+  const key = buildWorkspaceTabPersistenceKey({
+    serverId: SERVER_ID,
+    workspaceId: WORKSPACE_ID,
+  });
+  expect(key).toBeTruthy();
+  return key as string;
+}
+
+function expectGroup(node: SplitNode): Extract<SplitNode, { kind: "group" }> {
+  expect(node.kind).toBe("group");
+  return node as Extract<SplitNode, { kind: "group" }>;
+}
+
+describe("workspace-layout-store helpers", () => {
+  it("finds panes and tabs across nested groups", () => {
+    const root: SplitNode = {
+      kind: "group",
+      group: {
+        id: "group-root",
+        direction: "horizontal",
+        sizes: [0.4, 0.6],
+        children: [
+          createPane({ id: "left", tabIds: ["tab-a", "tab-b"], focusedTabId: "tab-a" }),
+          {
+            kind: "group",
+            group: {
+              id: "group-right",
+              direction: "vertical",
+              sizes: [0.5, 0.5],
+              children: [
+                createPane({ id: "top-right", tabIds: ["tab-c"] }),
+                createPane({ id: "bottom-right", tabIds: ["tab-d"] }),
+              ],
+            },
+          },
+        ],
+      },
+    };
+
+    expect(findPaneById(root, "top-right")?.tabIds).toEqual(["tab-c"]);
+    expect(findPaneContainingTab(root, "tab-b")?.id).toBe("left");
+    expect(getTreeDepth(root)).toBe(3);
+    expect(collectAllPanes(root).map((pane) => pane.id)).toEqual([
+      "left",
+      "top-right",
+      "bottom-right",
+    ]);
+    expect(collectAllTabs(root).map((tab) => tab.tabId)).toEqual([
+      "tab-a",
+      "tab-b",
+      "tab-c",
+      "tab-d",
+    ]);
+  });
+});
+
+describe("workspace-layout-store tree transforms", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("insertSplit reuses a matching parent direction instead of nesting", () => {
+    vi.spyOn(globalThis.crypto, "randomUUID")
+      .mockReturnValueOnce("11111111-1111-1111-1111-111111111111")
+      .mockReturnValueOnce("22222222-2222-2222-2222-222222222222");
+
+    const root: SplitNode = {
+      kind: "group",
+      group: {
+        id: "group-root",
+        direction: "horizontal",
+        sizes: [0.25, 0.75],
+        children: [
+          createPane({ id: "left", tabIds: ["tab-a"] }),
+          createPane({ id: "right", tabIds: ["tab-b", "tab-c"] }),
+        ],
+      },
+    };
+
+    const nextRoot = insertSplit(root, "right", "tab-c", "right");
+    const nextGroup = expectGroup(nextRoot);
+
+    expect(nextGroup.group.direction).toBe("horizontal");
+    expect(nextGroup.group.children).toHaveLength(3);
+    expect(nextGroup.group.sizes).toEqual([0.25, 0.375, 0.375]);
+    expect(collectAllPanes(nextRoot).map((pane) => pane.id)).toEqual([
+      "left",
+      "right",
+      "pane_11111111-1111-1111-1111-111111111111",
+    ]);
+    expect(findPaneById(nextRoot, "right")?.tabIds).toEqual(["tab-b"]);
+    expect(findPaneById(nextRoot, "pane_11111111-1111-1111-1111-111111111111")?.tabIds).toEqual([
+      "tab-c",
+    ]);
+  });
+
+  it("removePaneFromTree unwraps single-child groups and renormalizes siblings", () => {
+    const root: SplitNode = {
+      kind: "group",
+      group: {
+        id: "group-root",
+        direction: "horizontal",
+        sizes: [0.2, 0.8],
+        children: [
+          createPane({ id: "left", tabIds: ["tab-a"] }),
+          {
+            kind: "group",
+            group: {
+              id: "group-right",
+              direction: "vertical",
+              sizes: [0.5, 0.5],
+              children: [
+                createPane({ id: "top-right", tabIds: ["tab-b"] }),
+                createPane({ id: "bottom-right", tabIds: ["tab-c"] }),
+              ],
+            },
+          },
+        ],
+      },
+    };
+
+    const nextRoot = removePaneFromTree(root, "top-right");
+    const nextGroup = expectGroup(nextRoot);
+
+    expect(nextGroup.group.sizes).toEqual([0.2, 0.8]);
+    expect(collectAllPanes(nextRoot).map((pane) => pane.id)).toEqual(["left", "bottom-right"]);
+    expect(nextGroup.group.children[1]).toEqual(createPane({ id: "bottom-right", tabIds: ["tab-c"] }));
+  });
+
+  it("removeTabFromTree collapses empty panes but keeps the final root pane", () => {
+    const splitRoot: SplitNode = {
+      kind: "group",
+      group: {
+        id: "group-root",
+        direction: "horizontal",
+        sizes: [0.5, 0.5],
+        children: [
+          createPane({ id: "left", tabIds: ["tab-a"] }),
+          createPane({ id: "right", tabIds: ["tab-b"] }),
+        ],
+      },
+    };
+
+    const collapsed = removeTabFromTree(splitRoot, "tab-a");
+    expect(collapsed).toEqual(createPane({ id: "right", tabIds: ["tab-b"] }));
+
+    const singlePaneRoot = createPane({ id: "main", tabIds: ["tab-a"] });
+    const emptied = removeTabFromTree(singlePaneRoot, "tab-a");
+    expect(emptied).toEqual(createPane({ id: "main", tabIds: [], focusedTabId: null }));
+  });
+});
+
+describe("workspace-layout-store actions", () => {
+  beforeEach(() => {
+    useWorkspaceLayoutStore.setState({ layoutByWorkspace: {} });
+    vi.restoreAllMocks();
+  });
+
+  it("opens tabs into the focused pane and focuses duplicate opens instead of creating them", () => {
+    vi.spyOn(globalThis.crypto, "randomUUID").mockReturnValue(
+      "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+    );
+    const workspaceKey = createWorkspaceKey();
+    const store = useWorkspaceLayoutStore.getState();
+
+    const firstTabId = store.openTab(workspaceKey, { kind: "file", path: "/repo/worktree/a.ts" });
+    const secondTabId = store.openTab(workspaceKey, { kind: "file", path: "/repo/worktree/b.ts" });
+    const splitPaneId = store.splitPane(workspaceKey, {
+      tabId: secondTabId!,
+      targetPaneId: "main",
+      position: "right",
+    });
+
+    expect(splitPaneId).toBe("pane_aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
+
+    store.focusPane(workspaceKey, "main");
+    const duplicateTabId = store.openTab(workspaceKey, { kind: "file", path: "/repo/worktree/b.ts" });
+    const layout = useWorkspaceLayoutStore.getState().layoutByWorkspace[workspaceKey]!;
+
+    expect(firstTabId).toBe("file_/repo/worktree/a.ts");
+    expect(secondTabId).toBe("file_/repo/worktree/b.ts");
+    expect(duplicateTabId).toBe(secondTabId);
+    expect(layout.focusedPaneId).toBe("pane_aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
+    expect(collectAllTabs(layout.root).map((tab) => tab.tabId)).toEqual([
+      "file_/repo/worktree/a.ts",
+      "file_/repo/worktree/b.ts",
+    ]);
+  });
+
+  it("focusTab moves workspace focus to the pane containing the tab", () => {
+    vi.spyOn(globalThis.crypto, "randomUUID").mockReturnValue(
+      "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
+    );
+    const workspaceKey = createWorkspaceKey();
+    const store = useWorkspaceLayoutStore.getState();
+
+    const fileTabId = store.openTab(workspaceKey, { kind: "file", path: "/repo/worktree/a.ts" });
+    const terminalTabId = store.openTab(workspaceKey, { kind: "terminal", terminalId: "term-1" });
+    const splitPaneId = store.splitPane(workspaceKey, {
+      tabId: terminalTabId!,
+      targetPaneId: "main",
+      position: "right",
+    });
+
+    store.focusTab(workspaceKey, fileTabId!);
+    let layout = useWorkspaceLayoutStore.getState().layoutByWorkspace[workspaceKey]!;
+    expect(layout.focusedPaneId).toBe("main");
+
+    store.focusTab(workspaceKey, terminalTabId!);
+    layout = useWorkspaceLayoutStore.getState().layoutByWorkspace[workspaceKey]!;
+    expect(splitPaneId).toBe("pane_bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
+    expect(layout.focusedPaneId).toBe(splitPaneId);
+    expect(findPaneById(layout.root, splitPaneId!)?.focusedTabId).toBe(terminalTabId);
+  });
+
+  it("retargetTab updates the existing tab target without moving it to a different pane", () => {
+    vi.spyOn(globalThis.crypto, "randomUUID").mockReturnValue(
+      "12121212-1212-1212-1212-121212121212"
+    );
+    const workspaceKey = createWorkspaceKey();
+    const store = useWorkspaceLayoutStore.getState();
+
+    store.openTab(workspaceKey, { kind: "file", path: "/repo/worktree/a.ts" });
+    const secondTabId = store.openTab(workspaceKey, { kind: "file", path: "/repo/worktree/b.ts" });
+    const splitPaneId = store.splitPane(workspaceKey, {
+      tabId: secondTabId!,
+      targetPaneId: "main",
+      position: "right",
+    });
+
+    const nextTabId = store.retargetTab(workspaceKey, secondTabId!, {
+      kind: "agent",
+      agentId: "agent-1",
+    });
+    const layout = useWorkspaceLayoutStore.getState().layoutByWorkspace[workspaceKey]!;
+    const splitPane = findPaneById(layout.root, splitPaneId!);
+    const retargetedTab = collectAllTabs(layout.root).find((tab) => tab.tabId === secondTabId);
+
+    expect(splitPaneId).toBe("pane_12121212-1212-1212-1212-121212121212");
+    expect(nextTabId).toBe(secondTabId);
+    expect(splitPane?.tabIds).toEqual([secondTabId!]);
+    expect(findPaneContainingTab(layout.root, secondTabId!)?.id).toBe(splitPaneId);
+    expect(retargetedTab).toEqual({
+      tabId: secondTabId,
+      target: { kind: "agent", agentId: "agent-1" },
+      createdAt: expect.any(Number),
+    });
+  });
+
+  it("reorderTabs reorders tabs within the focused pane", () => {
+    const workspaceKey = createWorkspaceKey();
+    const store = useWorkspaceLayoutStore.getState();
+
+    const firstTabId = store.openTab(workspaceKey, { kind: "file", path: "/repo/worktree/a.ts" });
+    const secondTabId = store.openTab(workspaceKey, { kind: "file", path: "/repo/worktree/b.ts" });
+    const thirdTabId = store.openTab(workspaceKey, { kind: "file", path: "/repo/worktree/c.ts" });
+
+    store.reorderTabs(workspaceKey, [thirdTabId!, firstTabId!]);
+    const layout = useWorkspaceLayoutStore.getState().layoutByWorkspace[workspaceKey]!;
+
+    expect(findPaneById(layout.root, "main")).toEqual({
+      id: "main",
+      tabIds: [thirdTabId!, firstTabId!, secondTabId!],
+      focusedTabId: thirdTabId,
+      tabs: [
+        { tabId: thirdTabId, target: { kind: "file", path: "/repo/worktree/c.ts" }, createdAt: expect.any(Number) },
+        { tabId: firstTabId, target: { kind: "file", path: "/repo/worktree/a.ts" }, createdAt: expect.any(Number) },
+        { tabId: secondTabId, target: { kind: "file", path: "/repo/worktree/b.ts" }, createdAt: expect.any(Number) },
+      ],
+    });
+  });
+
+  it("reorderTabsInPane reorders tabs in the requested pane without changing focused pane", () => {
+    vi.spyOn(globalThis.crypto, "randomUUID").mockReturnValue(
+      "34343434-3434-3434-3434-343434343434"
+    );
+    const workspaceKey = createWorkspaceKey();
+    const store = useWorkspaceLayoutStore.getState();
+
+    store.openTab(workspaceKey, { kind: "file", path: "/repo/worktree/a.ts" });
+    const secondTabId = store.openTab(workspaceKey, { kind: "file", path: "/repo/worktree/b.ts" });
+    const thirdTabId = store.openTab(workspaceKey, { kind: "file", path: "/repo/worktree/c.ts" });
+    const fourthTabId = store.openTab(workspaceKey, { kind: "file", path: "/repo/worktree/d.ts" });
+    const splitPaneId = store.splitPane(workspaceKey, {
+      tabId: thirdTabId!,
+      targetPaneId: "main",
+      position: "right",
+    });
+
+    store.moveTabToPane(workspaceKey, fourthTabId!, splitPaneId!);
+    store.focusPane(workspaceKey, "main");
+    store.reorderTabsInPane(workspaceKey, splitPaneId!, [fourthTabId!, thirdTabId!]);
+    const layout = useWorkspaceLayoutStore.getState().layoutByWorkspace[workspaceKey]!;
+
+    expect(splitPaneId).toBe("pane_34343434-3434-3434-3434-343434343434");
+    expect(layout.focusedPaneId).toBe("main");
+    expect(findPaneById(layout.root, splitPaneId!)).toEqual({
+      id: splitPaneId,
+      tabIds: [fourthTabId!, thirdTabId!],
+      focusedTabId: fourthTabId,
+      tabs: [
+        { tabId: fourthTabId, target: { kind: "file", path: "/repo/worktree/d.ts" }, createdAt: expect.any(Number) },
+        { tabId: thirdTabId, target: { kind: "file", path: "/repo/worktree/c.ts" }, createdAt: expect.any(Number) },
+      ],
+    });
+  });
+
+  it("focusPane switches workspace focus to a different pane", () => {
+    vi.spyOn(globalThis.crypto, "randomUUID").mockReturnValue(
+      "56565656-5656-5656-5656-565656565656"
+    );
+    const workspaceKey = createWorkspaceKey();
+    const store = useWorkspaceLayoutStore.getState();
+
+    store.openTab(workspaceKey, { kind: "file", path: "/repo/worktree/a.ts" });
+    const secondTabId = store.openTab(workspaceKey, { kind: "file", path: "/repo/worktree/b.ts" });
+    const splitPaneId = store.splitPane(workspaceKey, {
+      tabId: secondTabId!,
+      targetPaneId: "main",
+      position: "right",
+    });
+
+    store.focusPane(workspaceKey, "main");
+    let layout = useWorkspaceLayoutStore.getState().layoutByWorkspace[workspaceKey]!;
+    expect(layout.focusedPaneId).toBe("main");
+
+    store.focusPane(workspaceKey, splitPaneId!);
+    layout = useWorkspaceLayoutStore.getState().layoutByWorkspace[workspaceKey]!;
+
+    expect(splitPaneId).toBe("pane_56565656-5656-5656-5656-565656565656");
+    expect(layout.focusedPaneId).toBe(splitPaneId);
+  });
+
+  it("closeTab collapses an emptied pane and keeps the nearest sibling focused", () => {
+    vi.spyOn(globalThis.crypto, "randomUUID").mockReturnValue(
+      "cccccccc-cccc-cccc-cccc-cccccccccccc"
+    );
+    const workspaceKey = createWorkspaceKey();
+    const store = useWorkspaceLayoutStore.getState();
+
+    store.openTab(workspaceKey, { kind: "file", path: "/repo/worktree/a.ts" });
+    const secondTabId = store.openTab(workspaceKey, { kind: "file", path: "/repo/worktree/b.ts" });
+    const splitPaneId = store.splitPane(workspaceKey, {
+      tabId: secondTabId!,
+      targetPaneId: "main",
+      position: "right",
+    });
+
+    store.closeTab(workspaceKey, secondTabId!);
+    const layout = useWorkspaceLayoutStore.getState().layoutByWorkspace[workspaceKey]!;
+
+    expect(splitPaneId).toBe("pane_cccccccc-cccc-cccc-cccc-cccccccccccc");
+    expect(layout.focusedPaneId).toBe("main");
+    expect(collectAllPanes(layout.root).map((pane) => pane.id)).toEqual(["main"]);
+  });
+
+  it("splitPane enforces the maximum depth of four", () => {
+    vi.spyOn(globalThis.crypto, "randomUUID")
+      .mockReturnValueOnce("11111111-1111-1111-1111-111111111111")
+      .mockReturnValueOnce("22222222-2222-2222-2222-222222222222")
+      .mockReturnValueOnce("33333333-3333-3333-3333-333333333333")
+      .mockReturnValueOnce("44444444-4444-4444-4444-444444444444")
+      .mockReturnValueOnce("55555555-5555-5555-5555-555555555555")
+      .mockReturnValueOnce("66666666-6666-6666-6666-666666666666")
+      .mockReturnValueOnce("77777777-7777-7777-7777-777777777777")
+      .mockReturnValueOnce("88888888-8888-8888-8888-888888888888");
+
+    const workspaceKey = createWorkspaceKey();
+    const store = useWorkspaceLayoutStore.getState();
+    const a = store.openTab(workspaceKey, { kind: "file", path: "/repo/worktree/a.ts" });
+    const b = store.openTab(workspaceKey, { kind: "file", path: "/repo/worktree/b.ts" });
+    const c = store.openTab(workspaceKey, { kind: "file", path: "/repo/worktree/c.ts" });
+    const d = store.openTab(workspaceKey, { kind: "file", path: "/repo/worktree/d.ts" });
+    const e = store.openTab(workspaceKey, { kind: "file", path: "/repo/worktree/e.ts" });
+
+    expect(a).toBeTruthy();
+    const pane1 = store.splitPane(workspaceKey, {
+      tabId: b!,
+      targetPaneId: "main",
+      position: "right",
+    });
+    const pane2 = store.splitPane(workspaceKey, {
+      tabId: c!,
+      targetPaneId: pane1!,
+      position: "bottom",
+    });
+    const pane3 = store.splitPane(workspaceKey, {
+      tabId: d!,
+      targetPaneId: pane2!,
+      position: "right",
+    });
+    const pane4 = store.splitPane(workspaceKey, {
+      tabId: e!,
+      targetPaneId: pane3!,
+      position: "bottom",
+    });
+
+    const layout = useWorkspaceLayoutStore.getState().layoutByWorkspace[workspaceKey]!;
+    expect(pane1).toBe("pane_11111111-1111-1111-1111-111111111111");
+    expect(pane2).toBe("pane_33333333-3333-3333-3333-333333333333");
+    expect(pane3).toBe("pane_55555555-5555-5555-5555-555555555555");
+    expect(pane4).toBeNull();
+    expect(getTreeDepth(layout.root)).toBe(4);
+  });
+
+  it("moveTabToPane collapses the source pane when its last tab moves out", () => {
+    vi.spyOn(globalThis.crypto, "randomUUID").mockReturnValue(
+      "dddddddd-dddd-dddd-dddd-dddddddddddd"
+    );
+    const workspaceKey = createWorkspaceKey();
+    const store = useWorkspaceLayoutStore.getState();
+
+    const leftTabId = store.openTab(workspaceKey, { kind: "file", path: "/repo/worktree/a.ts" });
+    const rightTabId = store.openTab(workspaceKey, { kind: "file", path: "/repo/worktree/b.ts" });
+    const splitPaneId = store.splitPane(workspaceKey, {
+      tabId: rightTabId!,
+      targetPaneId: "main",
+      position: "right",
+    });
+
+    store.moveTabToPane(workspaceKey, leftTabId!, splitPaneId!);
+    const layout = useWorkspaceLayoutStore.getState().layoutByWorkspace[workspaceKey]!;
+
+    expect(layout.focusedPaneId).toBe(splitPaneId);
+    expect(collectAllPanes(layout.root).map((pane) => pane.id)).toEqual([splitPaneId!]);
+    expect(findPaneById(layout.root, splitPaneId!)?.tabIds).toEqual([
+      "file_/repo/worktree/b.ts",
+      "file_/repo/worktree/a.ts",
+    ]);
+  });
+
+  it("closeTab cascades group unwrapping when an inner split collapses to a single pane", () => {
+    vi.spyOn(globalThis.crypto, "randomUUID")
+      .mockReturnValueOnce("78787878-7878-7878-7878-787878787878")
+      .mockReturnValueOnce("89898989-8989-8989-8989-898989898989")
+      .mockReturnValueOnce("9a9a9a9a-9a9a-9a9a-9a9a-9a9a9a9a9a9a");
+
+    const workspaceKey = createWorkspaceKey();
+    const store = useWorkspaceLayoutStore.getState();
+
+    store.openTab(workspaceKey, { kind: "file", path: "/repo/worktree/a.ts" });
+    const secondTabId = store.openTab(workspaceKey, { kind: "file", path: "/repo/worktree/b.ts" });
+    const thirdTabId = store.openTab(workspaceKey, { kind: "file", path: "/repo/worktree/c.ts" });
+    const paneBId = store.splitPane(workspaceKey, {
+      tabId: secondTabId!,
+      targetPaneId: "main",
+      position: "right",
+    });
+    const paneCId = store.splitPane(workspaceKey, {
+      tabId: thirdTabId!,
+      targetPaneId: paneBId!,
+      position: "bottom",
+    });
+
+    store.closeTab(workspaceKey, secondTabId!);
+    const layout = useWorkspaceLayoutStore.getState().layoutByWorkspace[workspaceKey]!;
+    const rootGroup = expectGroup(layout.root);
+
+    expect(paneBId).toBe("pane_78787878-7878-7878-7878-787878787878");
+    expect(paneCId).toBe("pane_89898989-8989-8989-8989-898989898989");
+    expect(layout.focusedPaneId).toBe(paneCId);
+    expect(rootGroup.group.direction).toBe("horizontal");
+    expect(rootGroup.group.children).toEqual([
+      createPane({ id: "main", tabIds: ["file_/repo/worktree/a.ts"] }),
+      createPane({ id: paneCId!, tabIds: ["file_/repo/worktree/c.ts"] }),
+    ]);
+    expect(rootGroup.group.sizes).toEqual([0.5, 0.5]);
+  });
+
+  it("openTab focuses the existing tab instead of creating a duplicate entry", () => {
+    vi.spyOn(globalThis.crypto, "randomUUID").mockReturnValue(
+      "abababab-abab-abab-abab-abababababab"
+    );
+    const workspaceKey = createWorkspaceKey();
+    const store = useWorkspaceLayoutStore.getState();
+
+    store.openTab(workspaceKey, { kind: "file", path: "/repo/worktree/a.ts" });
+    const secondTabId = store.openTab(workspaceKey, { kind: "file", path: "/repo/worktree/b.ts" });
+    const splitPaneId = store.splitPane(workspaceKey, {
+      tabId: secondTabId!,
+      targetPaneId: "main",
+      position: "right",
+    });
+
+    store.focusPane(workspaceKey, "main");
+    const duplicateTabId = store.openTab(workspaceKey, { kind: "file", path: "/repo/worktree/b.ts" });
+    const layout = useWorkspaceLayoutStore.getState().layoutByWorkspace[workspaceKey]!;
+
+    expect(splitPaneId).toBe("pane_abababab-abab-abab-abab-abababababab");
+    expect(duplicateTabId).toBe(secondTabId);
+    expect(layout.focusedPaneId).toBe(splitPaneId);
+    expect(collectAllTabs(layout.root).map((tab) => tab.tabId)).toEqual([
+      "file_/repo/worktree/a.ts",
+      "file_/repo/worktree/b.ts",
+    ]);
+  });
+
+  it("resizeSplit keeps sizes normalized while enforcing the minimum proportion", () => {
+    vi.spyOn(globalThis.crypto, "randomUUID")
+      .mockReturnValueOnce("eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee")
+      .mockReturnValueOnce("ffffffff-ffff-ffff-ffff-ffffffffffff");
+
+    const workspaceKey = createWorkspaceKey();
+    const store = useWorkspaceLayoutStore.getState();
+
+    const a = store.openTab(workspaceKey, { kind: "file", path: "/repo/worktree/a.ts" });
+    const b = store.openTab(workspaceKey, { kind: "file", path: "/repo/worktree/b.ts" });
+    const c = store.openTab(workspaceKey, { kind: "file", path: "/repo/worktree/c.ts" });
+
+    expect(a).toBeTruthy();
+    const rightPaneId = store.splitPane(workspaceKey, {
+      tabId: b!,
+      targetPaneId: "main",
+      position: "right",
+    });
+    const farRightPaneId = store.splitPane(workspaceKey, {
+      tabId: c!,
+      targetPaneId: rightPaneId!,
+      position: "right",
+    });
+
+    const splitRoot = useWorkspaceLayoutStore.getState().layoutByWorkspace[workspaceKey]!.root;
+    const splitGroup = expectGroup(splitRoot);
+    store.resizeSplit(workspaceKey, splitGroup.group.id, [0.01, 0.01, 0.98]);
+
+    const resizedRoot = useWorkspaceLayoutStore.getState().layoutByWorkspace[workspaceKey]!.root;
+    const resizedGroup = expectGroup(resizedRoot);
+    const total = resizedGroup.group.sizes.reduce((sum, size) => sum + size, 0);
+
+    expect(rightPaneId).toBe("pane_eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee");
+    expect(farRightPaneId).toBe("pane_ffffffff-ffff-ffff-ffff-ffffffffffff");
+    expect(resizedGroup.group.sizes[0]).toBeGreaterThanOrEqual(0.1);
+    expect(resizedGroup.group.sizes[1]).toBeGreaterThanOrEqual(0.1);
+    expect(resizedGroup.group.sizes[2]).toBeGreaterThanOrEqual(0.1);
+    expect(total).toBeCloseTo(1, 10);
+  });
+
+  it("closing the last tab keeps a single empty pane in the layout", () => {
+    const workspaceKey = createWorkspaceKey();
+    const store = useWorkspaceLayoutStore.getState();
+
+    const tabId = store.openTab(workspaceKey, { kind: "draft", draftId: "draft-1" });
+    store.closeTab(workspaceKey, tabId!);
+    const layout = useWorkspaceLayoutStore.getState().layoutByWorkspace[workspaceKey]!;
+
+    expect(layout).toEqual(createDefaultLayout());
+  });
+});

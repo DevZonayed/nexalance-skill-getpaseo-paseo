@@ -111,52 +111,29 @@ export function buildWorkspaceTabId(target: WorkspaceTabTarget): string {
 
 export function deriveWorkspaceTabModel(input: {
   tabs: WorkspaceTab[];
-  tabOrder: string[];
   focusedTabId?: string | null;
   preferredTarget?: WorkspaceTabTarget | null;
 }): WorkspaceTabModel {
-  const tabsById = new Map<string, WorkspaceDerivedTab>();
+  const tabs: WorkspaceDerivedTab[] = [];
+  const openTabIds = new Set<string>();
 
-  const normalizedTabs = input.tabs
-    .map((tab) => normalizeWorkspaceTab(tab))
-    .filter((tab): tab is WorkspaceTab => tab !== null)
-    .sort((left, right) => left.createdAt - right.createdAt);
+  for (const tab of input.tabs) {
+    const normalizedTab = normalizeWorkspaceTab(tab);
+    if (!normalizedTab || openTabIds.has(normalizedTab.tabId)) {
+      continue;
+    }
 
-  for (const tab of normalizedTabs) {
-    tabsById.set(tab.tabId, {
+    openTabIds.add(normalizedTab.tabId);
+    tabs.push({
       descriptor: {
-        key: tab.tabId,
-        tabId: tab.tabId,
-        kind: tab.target.kind,
-        target: tab.target,
+        key: normalizedTab.tabId,
+        tabId: normalizedTab.tabId,
+        kind: normalizedTab.target.kind,
+        target: normalizedTab.target,
       },
     });
   }
 
-  const orderedTabIds: string[] = [];
-  const used = new Set<string>();
-  for (const tabId of input.tabOrder) {
-    const normalizedTabId = trimNonEmpty(tabId);
-    if (!normalizedTabId || used.has(normalizedTabId) || !tabsById.has(normalizedTabId)) {
-      continue;
-    }
-    used.add(normalizedTabId);
-    orderedTabIds.push(normalizedTabId);
-  }
-
-  for (const tabId of tabsById.keys()) {
-    if (used.has(tabId)) {
-      continue;
-    }
-    used.add(tabId);
-    orderedTabIds.push(tabId);
-  }
-
-  const tabs = orderedTabIds
-    .map((tabId) => tabsById.get(tabId) ?? null)
-    .filter((tab): tab is WorkspaceDerivedTab => tab !== null);
-
-  const openTabIds = new Set(tabs.map((tab) => tab.descriptor.tabId));
   const focusedTabId = trimNonEmpty(input.focusedTabId);
   const preferredTarget = input.preferredTarget ?? null;
   const preferredTabId = (() => {

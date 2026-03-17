@@ -170,6 +170,42 @@ describe("keyboard-shortcuts", () => {
       action: "workspace.tab.close.current",
     },
     {
+      name: "matches Cmd+Backslash to split pane right on macOS",
+      event: { key: "\\", code: "Backslash", metaKey: true },
+      context: { isMac: true },
+      action: "workspace.pane.split.right",
+    },
+    {
+      name: "matches Cmd+Shift+Backslash to split pane down on macOS",
+      event: { key: "|", code: "Backslash", metaKey: true, shiftKey: true },
+      context: { isMac: true },
+      action: "workspace.pane.split.down",
+    },
+    {
+      name: "matches Cmd+Shift+ArrowRight to focus pane right on macOS",
+      event: { key: "ArrowRight", code: "ArrowRight", metaKey: true, shiftKey: true },
+      context: { isMac: true },
+      action: "workspace.pane.focus.right",
+    },
+    {
+      name: "matches Cmd+Shift+Alt+ArrowDown to move tab down on macOS",
+      event: {
+        key: "ArrowDown",
+        code: "ArrowDown",
+        metaKey: true,
+        shiftKey: true,
+        altKey: true,
+      },
+      context: { isMac: true },
+      action: "workspace.pane.move-tab.down",
+    },
+    {
+      name: "matches Cmd+Shift+W to close pane on macOS",
+      event: { key: "W", code: "KeyW", metaKey: true, shiftKey: true },
+      context: { isMac: true },
+      action: "workspace.pane.close",
+    },
+    {
       name: "matches Cmd+B sidebar toggle on macOS",
       event: { key: "b", code: "KeyB", metaKey: true },
       context: { isMac: true },
@@ -243,6 +279,11 @@ describe("keyboard-shortcuts", () => {
       context: { isMac: true, focusScope: "terminal" },
     },
     {
+      name: "does not bind pane shortcuts on non-mac platforms",
+      event: { key: "\\", code: "Backslash", ctrlKey: true },
+      context: { isMac: false },
+    },
+    {
       name: "keeps space typing available in message input",
       event: { key: " ", code: "Space" },
       context: { focusScope: "message-input" },
@@ -278,6 +319,8 @@ describe("keyboard-shortcut help sections", () => {
         "workspace-jump-index": ["alt", "1-9"],
         "workspace-tab-jump-index": ["alt", "shift", "1-9"],
         "workspace-tab-close-current": ["alt", "shift", "W"],
+        "workspace-pane-split-right": ["mod", "\\"],
+        "workspace-pane-close": ["mod", "shift", "W"],
       },
     },
     {
@@ -289,6 +332,8 @@ describe("keyboard-shortcut help sections", () => {
         "workspace-jump-index": ["mod", "1-9"],
         "workspace-tab-jump-index": ["alt", "1-9"],
         "workspace-tab-close-current": ["mod", "W"],
+        "workspace-pane-split-right": ["mod", "\\"],
+        "workspace-pane-close": ["mod", "shift", "W"],
       },
     },
     {

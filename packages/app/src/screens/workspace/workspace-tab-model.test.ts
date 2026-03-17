@@ -23,8 +23,7 @@ describe("deriveWorkspaceTabModel", () => {
     ];
 
     const model = deriveWorkspaceTabModel({
-      tabs: uiTabs,
-      tabOrder: ["draft_123", "agent_agent-a", "file_/repo/worktree/README.md"],
+      tabs: [uiTabs[0]!, uiTabs[2]!, uiTabs[1]!],
     });
 
     expect(model.tabs.map((tab) => tab.descriptor.tabId)).toEqual([
@@ -43,11 +42,10 @@ describe("deriveWorkspaceTabModel", () => {
   it("applies stored order and appends unordered tabs deterministically", () => {
     const model = deriveWorkspaceTabModel({
       tabs: [
-        { tabId: "agent_agent-a", target: { kind: "agent", agentId: "agent-a" }, createdAt: 1 },
-        { tabId: "agent_agent-b", target: { kind: "agent", agentId: "agent-b" }, createdAt: 2 },
         { tabId: "terminal_term-1", target: { kind: "terminal", terminalId: "term-1" }, createdAt: 3 },
+        { tabId: "agent_agent-b", target: { kind: "agent", agentId: "agent-b" }, createdAt: 2 },
+        { tabId: "agent_agent-a", target: { kind: "agent", agentId: "agent-a" }, createdAt: 1 },
       ],
-      tabOrder: ["terminal_term-1", "agent_agent-b"],
     });
 
     expect(model.tabs.map((tab) => tab.descriptor.tabId)).toEqual([
@@ -63,7 +61,6 @@ describe("deriveWorkspaceTabModel", () => {
         { tabId: "agent_agent-a", target: { kind: "agent", agentId: "agent-a" }, createdAt: 1 },
         { tabId: "agent_agent-b", target: { kind: "agent", agentId: "agent-b" }, createdAt: 2 },
       ],
-      tabOrder: ["agent_agent-a", "agent_agent-b"],
     };
 
     expect(
@@ -82,7 +79,6 @@ describe("deriveWorkspaceTabModel", () => {
         { tabId: "agent_agent-a", target: { kind: "agent", agentId: "agent-a" }, createdAt: 1 },
         { tabId: "agent_agent-b", target: { kind: "agent", agentId: "agent-b" }, createdAt: 2 },
       ],
-      tabOrder: ["agent_agent-a", "agent_agent-b"],
       focusedTabId: "agent_agent-a",
       preferredTarget: { kind: "agent", agentId: "agent-b" },
     });
@@ -100,7 +96,6 @@ describe("deriveWorkspaceTabModel", () => {
           createdAt: 1,
         },
       ],
-      tabOrder: ["draft_abc"],
       preferredTarget: { kind: "agent", agentId: "agent-1" },
     });
 
@@ -123,7 +118,6 @@ describe("deriveWorkspaceTabModel", () => {
           createdAt: 2,
         },
       ],
-      tabOrder: [],
     });
 
     expect(model.tabs).toHaveLength(1);
