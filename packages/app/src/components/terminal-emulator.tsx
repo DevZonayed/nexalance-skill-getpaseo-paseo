@@ -400,6 +400,7 @@ export default function TerminalEmulator({
           height: "100%",
           overflow: "hidden",
           overscrollBehavior: "none",
+          padding: 8,
         }}
       />
     </div>
