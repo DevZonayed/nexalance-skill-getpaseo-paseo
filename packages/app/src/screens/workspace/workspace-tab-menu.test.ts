@@ -7,11 +7,7 @@ function createAgentTab(): WorkspaceTabDescriptor {
     key: "agent_123",
     tabId: "agent_123",
     kind: "agent",
-    agentId: "agent-123",
-    provider: "codex",
-    label: "Agent 123",
-    subtitle: "/repo",
-    titleState: "ready",
+    target: { kind: "agent", agentId: "agent-123" },
   };
 }
 
@@ -84,9 +80,7 @@ describe("buildWorkspaceTabMenuEntries", () => {
         key: "draft_123",
         tabId: "draft_123",
         kind: "draft",
-        draftId: "draft_123",
-        label: "New agent",
-        subtitle: "/repo",
+        target: { kind: "draft", draftId: "draft_123" },
       },
       index: 0,
       tabCount: 1,

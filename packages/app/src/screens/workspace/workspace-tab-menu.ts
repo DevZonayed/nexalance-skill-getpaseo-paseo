@@ -68,14 +68,15 @@ export function buildWorkspaceTabMenuEntries(
   const isOnlyTab = tabCount <= 1;
   const entries: WorkspaceTabMenuEntry[] = [];
 
-  if (tab.kind === "agent") {
+  if (tab.target.kind === "agent") {
+    const { agentId } = tab.target;
     entries.push({
       kind: "item",
       key: "copy-resume-command",
       label: "Copy resume command",
       testID: `${menuTestIDBase}-copy-resume-command`,
       onSelect: () => {
-        void onCopyResumeCommand(tab.agentId);
+        void onCopyResumeCommand(agentId);
       },
     });
     entries.push({
@@ -84,7 +85,7 @@ export function buildWorkspaceTabMenuEntries(
       label: "Copy agent id",
       testID: `${menuTestIDBase}-copy-agent-id`,
       onSelect: () => {
-        void onCopyAgentId(tab.agentId);
+        void onCopyAgentId(agentId);
       },
     });
     entries.push({

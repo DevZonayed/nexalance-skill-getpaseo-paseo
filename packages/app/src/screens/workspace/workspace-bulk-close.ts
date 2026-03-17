@@ -14,12 +14,12 @@ export function classifyBulkClosableTabs(tabs: WorkspaceTabDescriptor[]): BulkCl
   };
 
   for (const tab of tabs) {
-    if (tab.kind === "agent") {
-      groups.agentTabs.push({ tabId: tab.tabId, agentId: tab.agentId });
+    if (tab.target.kind === "agent") {
+      groups.agentTabs.push({ tabId: tab.tabId, agentId: tab.target.agentId });
       continue;
     }
-    if (tab.kind === "terminal") {
-      groups.terminalTabs.push({ tabId: tab.tabId, terminalId: tab.terminalId });
+    if (tab.target.kind === "terminal") {
+      groups.terminalTabs.push({ tabId: tab.tabId, terminalId: tab.target.terminalId });
       continue;
     }
     groups.otherTabs.push({ tabId: tab.tabId });

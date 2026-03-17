@@ -1,50 +1,47 @@
 import type { ReactElement, ReactNode } from "react";
 import { Pressable, Text, View } from "react-native";
-import { Bot, Check, FileText, Pencil, Terminal } from "lucide-react-native";
+import { Check } from "lucide-react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
-import { ClaudeIcon } from "@/components/icons/claude-icon";
-import { CodexIcon } from "@/components/icons/codex-icon";
+import invariant from "tiny-invariant";
 import { SyncedLoader } from "@/components/synced-loader";
-import type { Agent } from "@/stores/session-store";
+import { ensurePanelsRegistered } from "@/panels/register-panels";
+import { getPanelRegistration } from "@/panels/panel-registry";
 import type { WorkspaceTabDescriptor } from "@/screens/workspace/workspace-tabs-types";
-import {
-  deriveSidebarStateBucket,
-  type SidebarStateBucket,
-} from "@/utils/sidebar-agent-state";
+import type { SidebarStateBucket } from "@/utils/sidebar-agent-state";
 import { getStatusDotColor } from "@/utils/status-dot-color";
 import { shouldRenderSyncedStatusLoader } from "@/utils/status-loader";
 
-export type WorkspaceTabPresentation = {
+export interface WorkspaceTabPresentation {
   key: string;
   kind: WorkspaceTabDescriptor["kind"];
   label: string;
   subtitle: string;
   titleState: "ready" | "loading";
-  provider: Agent["provider"] | null;
+  icon: React.ComponentType<{ size: number; color: string }>;
   statusBucket: SidebarStateBucket | null;
-};
+}
 
-export function deriveWorkspaceTabPresentation(input: {
+export function useWorkspaceTabPresentation(input: {
   tab: WorkspaceTabDescriptor;
-  agent?: Agent | null;
+  serverId: string;
+  workspaceId: string;
 }): WorkspaceTabPresentation {
-  const { tab, agent = null } = input;
+  ensurePanelsRegistered();
+  const registration = getPanelRegistration(input.tab.kind);
+  invariant(registration, `No panel registration for kind: ${input.tab.kind}`);
+  const descriptor = registration.useDescriptor(input.tab.target, {
+    serverId: input.serverId,
+    workspaceId: input.workspaceId,
+  });
+
   return {
-    key: tab.key,
-    kind: tab.kind,
-    label: tab.label,
-    subtitle: tab.subtitle,
-    titleState: tab.kind === "agent" ? tab.titleState : "ready",
-    provider: tab.kind === "agent" ? tab.provider : null,
-    statusBucket:
-      tab.kind === "agent" && agent
-        ? deriveSidebarStateBucket({
-            status: agent.status,
-            pendingPermissionCount: agent.pendingPermissions.length,
-            requiresAttention: agent.requiresAttention,
-            attentionReason: agent.attentionReason,
-          })
-        : null,
+    key: input.tab.key,
+    kind: input.tab.kind,
+    label: descriptor.label,
+    subtitle: descriptor.subtitle,
+    titleState: descriptor.titleState,
+    icon: descriptor.icon,
+    statusBucket: descriptor.statusBucket,
   };
 }
 
@@ -74,49 +71,32 @@ export function WorkspaceTabIcon({
   const shouldShowLoader = shouldRenderSyncedStatusLoader({
     bucket: presentation.statusBucket,
   });
+  const Icon = presentation.icon;
 
-  if (presentation.kind === "agent") {
-    if (shouldShowLoader) {
-      return (
-        <View style={[styles.agentIconWrapper, { width: size, height: size }]}>
-          <SyncedLoader size={size - 1} color={theme.colors.palette.amber[500]} />
-        </View>
-      );
-    }
-
+  if (shouldShowLoader) {
     return (
       <View style={[styles.agentIconWrapper, { width: size, height: size }]}>
-        {presentation.provider === "claude" ? (
-          <ClaudeIcon size={size} color={iconColor} />
-        ) : presentation.provider === "codex" ? (
-          <CodexIcon size={size} color={iconColor} />
-        ) : (
-          <Bot size={size} color={iconColor} />
-        )}
-        {statusDotColor ? (
-          <View
-            style={[
-              styles.statusDot,
-              {
-                backgroundColor: statusDotColor,
-                borderColor: statusDotBorderColor ?? theme.colors.surface0,
-              },
-            ]}
-          />
-        ) : null}
+        <SyncedLoader size={size - 1} color={theme.colors.palette.amber[500]} />
       </View>
     );
   }
 
-  if (presentation.kind === "draft") {
-    return <Pencil size={size} color={iconColor} />;
-  }
-
-  if (presentation.kind === "file") {
-    return <FileText size={size} color={iconColor} />;
-  }
-
-  return <Terminal size={size} color={iconColor} />;
+  return (
+    <View style={[styles.agentIconWrapper, { width: size, height: size }]}>
+      <Icon size={size} color={iconColor} />
+      {statusDotColor ? (
+        <View
+          style={[
+            styles.statusDot,
+            {
+              backgroundColor: statusDotColor,
+              borderColor: statusDotBorderColor ?? theme.colors.surface0,
+            },
+          ]}
+        />
+      ) : null}
+    </View>
+  );
 }
 
 type WorkspaceTabOptionRowProps = {

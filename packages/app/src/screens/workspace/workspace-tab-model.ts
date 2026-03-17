@@ -1,22 +1,15 @@
-import type { Agent } from "@/stores/session-store";
 import type { WorkspaceTab, WorkspaceTabTarget } from "@/stores/workspace-tabs-store";
 import type { WorkspaceTabDescriptor } from "@/screens/workspace/workspace-tabs-types";
 
-type TerminalLike = {
-  id: string;
-  name?: string | null;
-};
-
-export type WorkspaceDerivedTab = {
+export interface WorkspaceDerivedTab {
   descriptor: WorkspaceTabDescriptor;
-  target: WorkspaceTabTarget;
-};
+}
 
-export type WorkspaceTabModel = {
+export interface WorkspaceTabModel {
   tabs: WorkspaceDerivedTab[];
   activeTabId: string | null;
   activeTab: WorkspaceDerivedTab | null;
-};
+}
 
 function trimNonEmpty(value: string | null | undefined): string | null {
   if (typeof value !== "string") {
@@ -43,33 +36,6 @@ function tabTargetsEqual(left: WorkspaceTabTarget, right: WorkspaceTabTarget): b
     return left.path === right.path;
   }
   return false;
-}
-
-function formatProviderLabel(provider: Agent["provider"]): string {
-  if (provider === "claude") {
-    return "Claude";
-  }
-  if (provider === "codex") {
-    return "Codex";
-  }
-  if (!provider) {
-    return "Agent";
-  }
-  return provider.charAt(0).toUpperCase() + provider.slice(1);
-}
-
-function resolveWorkspaceAgentTabLabel(title: string | null | undefined): string | null {
-  if (typeof title !== "string") {
-    return null;
-  }
-  const normalized = title.trim();
-  if (!normalized) {
-    return null;
-  }
-  if (normalized.toLowerCase() === "new agent") {
-    return null;
-  }
-  return normalized;
 }
 
 function normalizeWorkspaceTab(tab: WorkspaceTab): WorkspaceTab | null {
@@ -144,16 +110,12 @@ export function buildWorkspaceTabId(target: WorkspaceTabTarget): string {
 }
 
 export function deriveWorkspaceTabModel(input: {
-  workspaceAgents: Agent[];
-  terminals: TerminalLike[];
   tabs: WorkspaceTab[];
   tabOrder: string[];
   focusedTabId?: string | null;
   preferredTarget?: WorkspaceTabTarget | null;
 }): WorkspaceTabModel {
   const tabsById = new Map<string, WorkspaceDerivedTab>();
-  const agentsById = new Map(input.workspaceAgents.map((agent) => [agent.id, agent]));
-  const terminalsById = new Map(input.terminals.map((terminal) => [terminal.id, terminal]));
 
   const normalizedTabs = input.tabs
     .map((tab) => normalizeWorkspaceTab(tab))
@@ -161,72 +123,14 @@ export function deriveWorkspaceTabModel(input: {
     .sort((left, right) => left.createdAt - right.createdAt);
 
   for (const tab of normalizedTabs) {
-    if (tab.target.kind === "draft") {
-      tabsById.set(tab.tabId, {
+    tabsById.set(tab.tabId, {
+      descriptor: {
+        key: tab.tabId,
+        tabId: tab.tabId,
+        kind: tab.target.kind,
         target: tab.target,
-        descriptor: {
-          key: tab.tabId,
-          tabId: tab.tabId,
-          kind: "draft",
-          draftId: tab.target.draftId,
-          label: "New Agent",
-          subtitle: "New Agent",
-        },
-      });
-      continue;
-    }
-
-    if (tab.target.kind === "agent") {
-      const agent = agentsById.get(tab.target.agentId) ?? null;
-      const label = resolveWorkspaceAgentTabLabel(agent?.title);
-      const provider = agent?.provider ?? "codex";
-      tabsById.set(tab.tabId, {
-        target: tab.target,
-        descriptor: {
-          key: tab.tabId,
-          tabId: tab.tabId,
-          kind: "agent",
-          agentId: tab.target.agentId,
-          provider,
-          label: label ?? "",
-          subtitle: `${formatProviderLabel(provider)} agent`,
-          titleState: label ? "ready" : "loading",
-        },
-      });
-      continue;
-    }
-
-    if (tab.target.kind === "terminal") {
-      const terminal = terminalsById.get(tab.target.terminalId) ?? null;
-      tabsById.set(tab.tabId, {
-        target: tab.target,
-        descriptor: {
-          key: tab.tabId,
-          tabId: tab.tabId,
-          kind: "terminal",
-          terminalId: tab.target.terminalId,
-          label: trimNonEmpty(terminal?.name ?? null) ?? "Terminal",
-          subtitle: "Terminal",
-        },
-      });
-      continue;
-    }
-
-    if (tab.target.kind === "file") {
-      const filePath = tab.target.path;
-      const fileName = filePath.split("/").filter(Boolean).pop() ?? filePath;
-      tabsById.set(tab.tabId, {
-        target: tab.target,
-        descriptor: {
-          key: tab.tabId,
-          tabId: tab.tabId,
-          kind: "file",
-          filePath,
-          label: fileName,
-          subtitle: filePath,
-        },
-      });
-    }
+      },
+    });
   }
 
   const orderedTabIds: string[] = [];
@@ -260,7 +164,7 @@ export function deriveWorkspaceTabModel(input: {
       return null;
     }
     const matchingTab =
-      tabs.find((tab) => tabTargetsEqual(tab.target, preferredTarget)) ?? null;
+      tabs.find((tab) => tabTargetsEqual(tab.descriptor.target, preferredTarget)) ?? null;
     return matchingTab?.descriptor.tabId ?? buildWorkspaceTabId(preferredTarget);
   })();
 
@@ -268,8 +172,8 @@ export function deriveWorkspaceTabModel(input: {
     preferredTabId && openTabIds.has(preferredTabId)
       ? preferredTabId
       : focusedTabId && openTabIds.has(focusedTabId)
-      ? focusedTabId
-      : tabs[0]?.descriptor.tabId ?? null;
+        ? focusedTabId
+        : tabs[0]?.descriptor.tabId ?? null;
 
   const activeTab = activeTabId
     ? tabs.find((tab) => tab.descriptor.tabId === activeTabId) ?? null

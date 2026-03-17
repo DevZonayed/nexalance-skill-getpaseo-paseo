@@ -10,11 +10,7 @@ function makeAgentTab(id: string): WorkspaceTabDescriptor {
     key: `agent_${id}`,
     tabId: `agent_${id}`,
     kind: "agent",
-    agentId: id,
-    provider: "codex",
-    label: `Agent ${id}`,
-    subtitle: "",
-    titleState: "ready",
+    target: { kind: "agent", agentId: id },
   };
 }
 
@@ -23,9 +19,7 @@ function makeTerminalTab(id: string): WorkspaceTabDescriptor {
     key: `terminal_${id}`,
     tabId: `terminal_${id}`,
     kind: "terminal",
-    terminalId: id,
-    label: `Terminal ${id}`,
-    subtitle: "",
+    target: { kind: "terminal", terminalId: id },
   };
 }
 
@@ -34,9 +28,7 @@ function makeFileTab(path: string): WorkspaceTabDescriptor {
     key: `file_${path}`,
     tabId: `file_${path}`,
     kind: "file",
-    filePath: path,
-    label: path.split("/").pop() ?? path,
-    subtitle: path,
+    target: { kind: "file", path },
   };
 }
 
