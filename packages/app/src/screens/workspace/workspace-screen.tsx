@@ -658,6 +658,7 @@ function WorkspaceScreenContent({
     (state) => state.clearWorkspaceTabActionRequest
   );
   const consumedOpenIntentsRef = useRef(new Set<string>());
+  const pendingCloseTabIdsRef = useRef(new Set<string>());
   const [resolvedOpenIntentKey, setResolvedOpenIntentKey] = useState<string | null>(null);
   const currentOpenIntentKey = useMemo(
     () =>
@@ -1035,29 +1036,48 @@ function WorkspaceScreenContent({
     [handleCreateDraftTab]
   );
 
+  const runCloseFlowForTab = useCallback(
+    async (input: { tabId: string; action: () => Promise<void> }): Promise<void> => {
+      const normalizedTabId = input.tabId.trim();
+      if (!normalizedTabId || pendingCloseTabIdsRef.current.has(normalizedTabId)) {
+        return;
+      }
+
+      pendingCloseTabIdsRef.current.add(normalizedTabId);
+      try {
+        await input.action();
+      } finally {
+        pendingCloseTabIdsRef.current.delete(normalizedTabId);
+      }
+    },
+    []
+  );
+
   const handleCloseTerminalTab = useCallback(
     async (input: { tabId: string; terminalId: string }) => {
       const { tabId, terminalId } = input;
-      if (
-        killTerminalMutation.isPending &&
-        killTerminalMutation.variables === terminalId
-      ) {
-        return;
-      }
+      await runCloseFlowForTab({
+        tabId,
+        action: async () => {
+          if (
+            killTerminalMutation.isPending &&
+            killTerminalMutation.variables === terminalId
+          ) {
+            return;
+          }
 
-      const confirmed = await confirmDialog({
-        title: "Close terminal?",
-        message: "Any running process in this terminal will be stopped immediately.",
-        confirmLabel: "Close",
-        cancelLabel: "Cancel",
-        destructive: true,
-      });
-      if (!confirmed) {
-        return;
-      }
+          const confirmed = await confirmDialog({
+            title: "Close terminal?",
+            message: "Any running process in this terminal will be stopped immediately.",
+            confirmLabel: "Close",
+            cancelLabel: "Cancel",
+            destructive: true,
+          });
+          if (!confirmed) {
+            return;
+          }
 
-      killTerminalMutation.mutate(terminalId, {
-        onSuccess: () => {
+          await killTerminalMutation.mutateAsync(terminalId);
           setHoveredTabKey((current) => (current === tabId ? null : current));
           setHoveredCloseTabKey((current) => (current === tabId ? null : current));
 
@@ -1090,6 +1110,7 @@ function WorkspaceScreenContent({
       normalizedServerId,
       normalizedWorkspaceId,
       queryClient,
+      runCloseFlowForTab,
       terminalsQueryKey,
     ]
   );
@@ -1097,31 +1118,36 @@ function WorkspaceScreenContent({
   const handleCloseAgentTab = useCallback(
     async (input: { tabId: string; agentId: string }) => {
       const { tabId, agentId } = input;
-      if (
-        !normalizedServerId ||
-        isArchivingAgent({ serverId: normalizedServerId, agentId })
-      ) {
-        return;
-      }
-
-      const confirmed = await confirmDialog({
-        title: "Archive agent?",
-        message: "This closes the tab and archives the agent.",
-        confirmLabel: "Archive",
-        cancelLabel: "Cancel",
-        destructive: true,
-      });
-      if (!confirmed) {
-        return;
-      }
-
-      await archiveAgent({ serverId: normalizedServerId, agentId });
-      setHoveredTabKey((current) => (current === tabId ? null : current));
-      setHoveredCloseTabKey((current) => (current === tabId ? null : current));
-      closeWorkspaceTab({
-        serverId: normalizedServerId,
-        workspaceId: normalizedWorkspaceId,
+      await runCloseFlowForTab({
         tabId,
+        action: async () => {
+          if (
+            !normalizedServerId ||
+            isArchivingAgent({ serverId: normalizedServerId, agentId })
+          ) {
+            return;
+          }
+
+          const confirmed = await confirmDialog({
+            title: "Archive agent?",
+            message: "This closes the tab and archives the agent.",
+            confirmLabel: "Archive",
+            cancelLabel: "Cancel",
+            destructive: true,
+          });
+          if (!confirmed) {
+            return;
+          }
+
+          await archiveAgent({ serverId: normalizedServerId, agentId });
+          setHoveredTabKey((current) => (current === tabId ? null : current));
+          setHoveredCloseTabKey((current) => (current === tabId ? null : current));
+          closeWorkspaceTab({
+            serverId: normalizedServerId,
+            workspaceId: normalizedWorkspaceId,
+            tabId,
+          });
+        },
       });
     },
     [
@@ -1130,6 +1156,7 @@ function WorkspaceScreenContent({
       isArchivingAgent,
       normalizedServerId,
       normalizedWorkspaceId,
+      runCloseFlowForTab,
     ]
   );
 

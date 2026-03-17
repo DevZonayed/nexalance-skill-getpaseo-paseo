@@ -66,12 +66,21 @@ function buildTauriAskOptions(input: ConfirmDialogInput): TauriDialogAskOptions 
   };
 }
 
+function blurActiveWebElement(): void {
+  if (Platform.OS !== "web") {
+    return;
+  }
+  const activeElement = (globalThis as { document?: Document }).document?.activeElement;
+  (activeElement as HTMLElement | null)?.blur?.();
+}
+
 async function showTauriConfirmDialog(input: ConfirmDialogInput): Promise<boolean | null> {
   const tauriApi = getTauriApi();
   if (!tauriApi) {
     return null;
   }
 
+  blurActiveWebElement();
   const options = buildTauriAskOptions(input);
   const tauriAsk = tauriApi.dialog?.ask;
 
@@ -105,6 +114,7 @@ function showWebConfirmDialog(input: ConfirmDialogInput): boolean {
     throw new Error("[ConfirmDialog] No web confirmation backend is available.");
   }
 
+  blurActiveWebElement();
   const promptMessage = `${input.title}\n\n${input.message}`;
   return browserConfirm(promptMessage);
 }
@@ -121,3 +131,8 @@ export async function confirmDialog(input: ConfirmDialogInput): Promise<boolean>
 
   return showWebConfirmDialog(input);
 }
+
+export const __private__ = {
+  blurActiveWebElement,
+  buildTauriAskOptions,
+};

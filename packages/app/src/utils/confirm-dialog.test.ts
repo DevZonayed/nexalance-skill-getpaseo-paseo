@@ -39,6 +39,10 @@ describe("confirmDialog", () => {
 
   it("uses Tauri dialog.ask on web when available", async () => {
     const askMock = vi.fn(async () => true);
+    const blurMock = vi.fn();
+    (globalThis as { document?: unknown }).document = {
+      activeElement: { blur: blurMock },
+    } as unknown as Document;
     (globalThis as { __TAURI__?: unknown }).__TAURI__ = {
       dialog: { ask: askMock },
     };
@@ -54,6 +58,7 @@ describe("confirmDialog", () => {
 
     expect(confirmed).toBe(true);
     expect(alertMock).not.toHaveBeenCalled();
+    expect(blurMock).toHaveBeenCalledTimes(1);
     expect(askMock).toHaveBeenCalledWith("This will restart the daemon.", {
       title: "Restart host",
       okLabel: "Restart",
@@ -64,6 +69,10 @@ describe("confirmDialog", () => {
 
   it("falls back to browser confirm on web when Tauri APIs are unavailable", async () => {
     const browserConfirm = vi.fn(() => true);
+    const blurMock = vi.fn();
+    (globalThis as { document?: unknown }).document = {
+      activeElement: { blur: blurMock },
+    } as unknown as Document;
     (globalThis as { confirm?: unknown }).confirm = browserConfirm;
 
     const { confirmDialog } = await loadModuleForPlatform("web");
@@ -73,6 +82,7 @@ describe("confirmDialog", () => {
     });
 
     expect(confirmed).toBe(true);
+    expect(blurMock).toHaveBeenCalledTimes(1);
     expect(browserConfirm).toHaveBeenCalledWith(
       "Restart host\n\nThis will restart the daemon."
     );
