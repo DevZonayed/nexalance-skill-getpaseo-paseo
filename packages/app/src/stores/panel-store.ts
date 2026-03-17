@@ -42,7 +42,7 @@ export interface ExplorerCheckoutContext {
   isGit: boolean;
 }
 
-export const DEFAULT_EXPLORER_SIDEBAR_WIDTH = Platform.OS === "web" ? 640 : 400;
+export const DEFAULT_EXPLORER_SIDEBAR_WIDTH = 400;
 export const MIN_EXPLORER_SIDEBAR_WIDTH = 280;
 // Upper bound is intentionally generous; desktop resizing enforces a min-chat-width constraint.
 export const MAX_EXPLORER_SIDEBAR_WIDTH = 2000;
@@ -122,7 +122,7 @@ export const usePanelStore = create<PanelState>()(
       // Desktop defaults based on platform
       desktop: {
         agentListOpen: DEFAULT_DESKTOP_OPEN,
-        fileExplorerOpen: DEFAULT_DESKTOP_OPEN,
+        fileExplorerOpen: false,
       },
 
       // File explorer defaults
