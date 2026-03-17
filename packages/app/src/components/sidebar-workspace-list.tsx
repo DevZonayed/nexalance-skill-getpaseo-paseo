@@ -21,6 +21,7 @@ import {
   type MutableRefObject,
 } from 'react'
 import { router, usePathname } from 'expo-router'
+import { navigateToWorkspace } from '@/hooks/use-workspace-navigation'
 import { StyleSheet, UnistylesRuntime, useUnistyles } from 'react-native-unistyles'
 import { type GestureType } from 'react-native-gesture-handler'
 import * as Clipboard from 'expo-clipboard'
@@ -1093,7 +1094,7 @@ function ProjectBlock({
               return
             }
             onWorkspacePress?.()
-            router.replace(workspaceRoute as any)
+            navigateToWorkspace(serverId, item.workspaceId)
           }}
           drag={input?.drag ?? (() => {})}
           isDragging={input?.isDragging ?? false}
@@ -1147,7 +1148,7 @@ function ProjectBlock({
               return
             }
             onWorkspacePress?.()
-            router.replace(buildHostWorkspaceRoute(serverId, flattenedWorkspace.workspaceId) as any)
+            navigateToWorkspace(serverId, flattenedWorkspace.workspaceId)
           }}
           drag={drag}
           isDragging={isDragging}

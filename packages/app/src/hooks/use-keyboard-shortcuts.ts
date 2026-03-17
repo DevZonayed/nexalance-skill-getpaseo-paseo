@@ -1,14 +1,14 @@
 import { useEffect } from "react";
 import { Platform } from "react-native";
-import { usePathname, useRouter } from "expo-router";
+import { usePathname } from "expo-router";
 import { getIsTauri } from "@/constants/layout";
 import { useKeyboardShortcutsStore } from "@/stores/keyboard-shortcuts-store";
 import { setCommandCenterFocusRestoreElement } from "@/utils/command-center-focus-restore";
 import {
-  buildHostWorkspaceRoute,
   parseHostAgentRouteFromPathname,
   parseHostWorkspaceRouteFromPathname,
 } from "@/utils/host-routes";
+import { navigateToWorkspace } from "@/hooks/use-workspace-navigation";
 import {
   type MessageInputKeyboardActionKind,
   type KeyboardShortcutPayload,
@@ -32,7 +32,6 @@ export function useKeyboardShortcuts({
   selectedAgentId?: string;
   toggleFileExplorer?: () => void;
 }) {
-  const router = useRouter();
   const pathname = usePathname();
   const resetModifiers = useKeyboardShortcutsStore((s) => s.resetModifiers);
 
@@ -57,11 +56,7 @@ export function useKeyboardShortcuts({
         return false;
       }
 
-      const shouldReplace =
-        Boolean(parseHostWorkspaceRouteFromPathname(pathname)) ||
-        Boolean(parseHostAgentRouteFromPathname(pathname));
-      const navigate = shouldReplace ? router.replace : router.push;
-      navigate(buildHostWorkspaceRoute(target.serverId, target.workspaceId) as any);
+      navigateToWorkspace(target.serverId, target.workspaceId);
       return true;
     };
     const navigateRelativeWorkspace = (delta: 1 | -1): boolean => {
@@ -77,7 +72,7 @@ export function useKeyboardShortcuts({
         if (!fallback) {
           return false;
         }
-        router.push(buildHostWorkspaceRoute(fallback.serverId, fallback.workspaceId) as any);
+        navigateToWorkspace(fallback.serverId, fallback.workspaceId);
         return true;
       }
 
@@ -92,7 +87,7 @@ export function useKeyboardShortcuts({
       if (!target) {
         return false;
       }
-      router.replace(buildHostWorkspaceRoute(target.serverId, target.workspaceId) as any);
+      navigateToWorkspace(target.serverId, target.workspaceId);
       return true;
     };
 
@@ -134,22 +129,6 @@ export function useKeyboardShortcuts({
           return false;
       }
     };
-    const requestWorkspaceTabAction = (input:
-      | { kind: "new" | "close-current" }
-      | { kind: "navigate-index"; index: number }
-      | { kind: "navigate-relative"; delta: 1 | -1 }): boolean => {
-      const route = parseHostWorkspaceRouteFromPathname(pathname);
-      if (!route) {
-        return false;
-      }
-      useKeyboardShortcutsStore.getState().requestWorkspaceTabAction({
-        serverId: route.serverId,
-        workspaceId: route.workspaceId,
-        ...input,
-      });
-      return true;
-    };
-
     const handleAction = (input: {
       action: string;
       payload: KeyboardShortcutPayload;
@@ -159,23 +138,31 @@ export function useKeyboardShortcuts({
         case "agent.new":
           return openProjectPicker();
         case "workspace.tab.new":
-          return requestWorkspaceTabAction({ kind: "new" });
+          return keyboardActionDispatcher.dispatch({
+            id: "workspace.tab.new",
+            scope: "workspace",
+          });
         case "workspace.tab.close.current":
-          return requestWorkspaceTabAction({ kind: "close-current" });
+          return keyboardActionDispatcher.dispatch({
+            id: "workspace.tab.close-current",
+            scope: "workspace",
+          });
         case "workspace.tab.navigate.index":
           if (!input.payload || typeof input.payload !== "object" || !("index" in input.payload)) {
             return false;
           }
-          return requestWorkspaceTabAction({
-            kind: "navigate-index",
+          return keyboardActionDispatcher.dispatch({
+            id: "workspace.tab.navigate-index",
+            scope: "workspace",
             index: input.payload.index,
           });
         case "workspace.tab.navigate.relative":
           if (!input.payload || typeof input.payload !== "object" || !("delta" in input.payload)) {
             return false;
           }
-          return requestWorkspaceTabAction({
-            kind: "navigate-relative",
+          return keyboardActionDispatcher.dispatch({
+            id: "workspace.tab.navigate-relative",
+            scope: "workspace",
             delta: input.payload.delta,
           });
         case "workspace.navigate.index":
@@ -326,7 +313,6 @@ export function useKeyboardShortcuts({
     isMobile,
     pathname,
     resetModifiers,
-    router,
     selectedAgentId,
     toggleAgentList,
     toggleFileExplorer,

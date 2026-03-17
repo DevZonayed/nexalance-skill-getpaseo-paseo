@@ -35,10 +35,6 @@ import {
   TerminalStreamController,
   type TerminalStreamControllerStatus,
 } from "@/terminal/runtime/terminal-stream-controller";
-import {
-  summarizeTerminalText,
-  terminalDebugLog,
-} from "@/terminal/runtime/terminal-debug";
 import { usePanelStore } from "@/stores/panel-store";
 import { toXtermTheme } from "@/utils/to-xterm-theme";
 import TerminalEmulator from "./terminal-emulator";
@@ -366,7 +362,7 @@ export function TerminalPane({
   const terminals = terminalsQuery.data?.terminals ?? [];
 
   useEffect(() => {
-    if (!client || !isConnected) {
+    if (!client || !isConnected || !isScreenFocused) {
       return;
     }
 
@@ -716,17 +712,6 @@ export function TerminalPane({
           meta: input.meta,
         },
       };
-      terminalDebugLog({
-        scope: "terminal-pane",
-        event: "input:key:send",
-        details: {
-          key: normalizedKey,
-          ctrl: input.ctrl,
-          shift: input.shift,
-          alt: input.alt,
-          activeStreamId: getCurrentActiveStreamId(),
-        },
-      });
       if (!dispatchTerminalInputEntry(pendingEntry)) {
         enqueuePendingTerminalInput(pendingEntry);
       }
@@ -745,16 +730,6 @@ export function TerminalPane({
       if (data.length === 0) {
         return;
       }
-      const currentStreamId = getCurrentActiveStreamId();
-      terminalDebugLog({
-        scope: "terminal-pane",
-        event: "input:data:received",
-        details: {
-          length: data.length,
-          preview: summarizeTerminalText({ text: data, maxChars: 80 }),
-          activeStreamId: currentStreamId,
-        },
-      });
 
       if (hasPendingTerminalModifiers(modifiers)) {
         const pendingResolution = resolvePendingModifierDataInput({
@@ -788,15 +763,6 @@ export function TerminalPane({
         });
         return;
       }
-      terminalDebugLog({
-        scope: "terminal-pane",
-        event: "input:data:send",
-        details: {
-          length: data.length,
-          preview: summarizeTerminalText({ text: data, maxChars: 80 }),
-          activeStreamId: currentStreamId,
-        },
-      });
       const pendingEntry: PendingTerminalInput = {
         type: "data",
         data,
@@ -835,15 +801,6 @@ export function TerminalPane({
         return;
       }
       lastReportedSizeRef.current = { rows: normalizedRows, cols: normalizedCols };
-      terminalDebugLog({
-        scope: "terminal-pane",
-        event: "display:resize:send",
-        details: {
-          terminalId: selectedTerminalId,
-          rows: normalizedRows,
-          cols: normalizedCols,
-        },
-      });
       client.sendTerminalInput(selectedTerminalId, {
         type: "resize",
         rows: normalizedRows,
@@ -871,13 +828,6 @@ export function TerminalPane({
   }, [clearPendingModifiers]);
 
   const handleOutputChunkConsumed = useCallback((sequence: number) => {
-    terminalDebugLog({
-      scope: "terminal-pane",
-      event: "output:chunk:consumed",
-      details: {
-        sequence,
-      },
-    });
     outputSession.consume({ sequence });
   }, [outputSession]);
 
@@ -1040,7 +990,7 @@ export function TerminalPane({
       ) : null}
 
       <View style={styles.outputContainer}>
-        {selectedTerminal ? (
+        {selectedTerminal && isScreenFocused ? (
           <View style={styles.terminalGestureContainer}>
             <TerminalEmulator
               dom={{
@@ -1084,13 +1034,15 @@ export function TerminalPane({
               resizeRequestToken={resizeRequestToken}
             />
           </View>
+        ) : selectedTerminal ? (
+          <View style={styles.terminalGestureContainer} />
         ) : (
           <View style={styles.centerState}>
             <Text style={styles.stateText}>No terminal selected</Text>
           </View>
         )}
 
-        {isAttaching ? (
+        {isAttaching && isScreenFocused ? (
           <View
             style={styles.attachOverlay}
             pointerEvents="none"

@@ -1,5 +1,3 @@
-import { summarizeTerminalText, terminalDebugLog } from "./terminal-debug";
-
 export type TerminalOutputDeliveryChunk = {
   sequence: number;
   text: string;
@@ -37,13 +35,6 @@ export class TerminalOutputDeliveryQueue {
     if (chunk.text.length === 0) {
       this.pendingChunks.length = 0;
       this.pendingChunks.push(chunk);
-      terminalDebugLog({
-        scope: "output-delivery-queue",
-        event: "enqueue:clear",
-        details: {
-          sequence: chunk.sequence,
-        },
-      });
       this.tryDeliver();
       return;
     }
@@ -59,39 +50,14 @@ export class TerminalOutputDeliveryQueue {
     } else {
       this.pendingChunks.push(chunk);
     }
-    terminalDebugLog({
-      scope: "output-delivery-queue",
-      event: "enqueue:text",
-      details: {
-        sequence: chunk.sequence,
-        pendingCount: this.pendingChunks.length,
-        textLength: chunk.text.length,
-        preview: summarizeTerminalText({ text: chunk.text, maxChars: 80 }),
-      },
-    });
     this.tryDeliver();
   }
 
   consume(input: { sequence: number }): void {
     if (this.inFlightChunk?.sequence !== input.sequence) {
-      terminalDebugLog({
-        scope: "output-delivery-queue",
-        event: "consume:ignored",
-        details: {
-          sequence: input.sequence,
-          inFlightSequence: this.inFlightChunk?.sequence ?? null,
-        },
-      });
       return;
     }
 
-    terminalDebugLog({
-      scope: "output-delivery-queue",
-      event: "consume",
-      details: {
-        sequence: input.sequence,
-      },
-    });
     this.clearInFlightTimeout();
     this.inFlightChunk = null;
     this.tryDeliver();
@@ -114,14 +80,6 @@ export class TerminalOutputDeliveryQueue {
     }
 
     this.inFlightChunk = nextChunk;
-    terminalDebugLog({
-      scope: "output-delivery-queue",
-      event: "deliver:start",
-      details: {
-        sequence: nextChunk.sequence,
-        pendingCount: this.pendingChunks.length,
-      },
-    });
     this.deliverInFlightChunk();
   }
 
@@ -136,15 +94,6 @@ export class TerminalOutputDeliveryQueue {
       if (!this.inFlightChunk) {
         return;
       }
-      terminalDebugLog({
-        scope: "output-delivery-queue",
-        event: "deliver:timeout-retry",
-        details: {
-          sequence: this.inFlightChunk.sequence,
-          pendingCount: this.pendingChunks.length,
-          timeoutMs: this.deliveryTimeoutMs,
-        },
-      });
       this.deliverInFlightChunk();
     }, this.deliveryTimeoutMs);
 

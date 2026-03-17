@@ -1,28 +1,6 @@
 import { create } from "zustand";
 import type { SidebarShortcutWorkspaceTarget } from "@/utils/sidebar-shortcuts";
 
-export type WorkspaceTabActionRequest =
-  | {
-      id: number;
-      serverId: string;
-      workspaceId: string;
-      kind: "new" | "close-current";
-    }
-  | {
-      id: number;
-      serverId: string;
-      workspaceId: string;
-      kind: "navigate-index";
-      index: number;
-    }
-  | {
-      id: number;
-      serverId: string;
-      workspaceId: string;
-      kind: "navigate-relative";
-      delta: 1 | -1;
-    };
-
 interface KeyboardShortcutsState {
   commandCenterOpen: boolean;
   projectPickerOpen: boolean;
@@ -33,8 +11,6 @@ interface KeyboardShortcutsState {
   sidebarShortcutWorkspaceTargets: SidebarShortcutWorkspaceTarget[];
   /** All visible workspace targets in top-to-bottom visual order. */
   visibleWorkspaceTargets: SidebarShortcutWorkspaceTarget[];
-  workspaceTabActionRequest: WorkspaceTabActionRequest | null;
-  nextWorkspaceTabActionRequestId: number;
 
   setCommandCenterOpen: (open: boolean) => void;
   setProjectPickerOpen: (open: boolean) => void;
@@ -44,30 +20,10 @@ interface KeyboardShortcutsState {
   setSidebarShortcutWorkspaceTargets: (targets: SidebarShortcutWorkspaceTarget[]) => void;
   setVisibleWorkspaceTargets: (targets: SidebarShortcutWorkspaceTarget[]) => void;
   resetModifiers: () => void;
-
-  requestWorkspaceTabAction: (input:
-    | {
-        serverId: string;
-        workspaceId: string;
-        kind: "new" | "close-current";
-      }
-    | {
-        serverId: string;
-        workspaceId: string;
-        kind: "navigate-index";
-        index: number;
-      }
-    | {
-        serverId: string;
-        workspaceId: string;
-        kind: "navigate-relative";
-        delta: 1 | -1;
-      }) => void;
-  clearWorkspaceTabActionRequest: (id: number) => void;
 }
 
 export const useKeyboardShortcutsStore = create<KeyboardShortcutsState>(
-  (set, get) => ({
+  (set) => ({
     commandCenterOpen: false,
     projectPickerOpen: false,
     shortcutsDialogOpen: false,
@@ -75,8 +31,6 @@ export const useKeyboardShortcutsStore = create<KeyboardShortcutsState>(
     cmdOrCtrlDown: false,
     sidebarShortcutWorkspaceTargets: [],
     visibleWorkspaceTargets: [],
-    workspaceTabActionRequest: null,
-    nextWorkspaceTabActionRequestId: 1,
 
     setCommandCenterOpen: (open) => set({ commandCenterOpen: open }),
     setProjectPickerOpen: (open) => set({ projectPickerOpen: open }),
@@ -87,23 +41,5 @@ export const useKeyboardShortcutsStore = create<KeyboardShortcutsState>(
       set({ sidebarShortcutWorkspaceTargets: targets }),
     setVisibleWorkspaceTargets: (targets) => set({ visibleWorkspaceTargets: targets }),
     resetModifiers: () => set({ altDown: false, cmdOrCtrlDown: false }),
-
-    requestWorkspaceTabAction: (input) => {
-      const id = get().nextWorkspaceTabActionRequestId;
-      set({
-        workspaceTabActionRequest: {
-          ...input,
-          id,
-        } as WorkspaceTabActionRequest,
-        nextWorkspaceTabActionRequestId: id + 1,
-      });
-    },
-    clearWorkspaceTabActionRequest: (id) => {
-      const current = get().workspaceTabActionRequest;
-      if (!current || current.id !== id) {
-        return;
-      }
-      set({ workspaceTabActionRequest: null });
-    },
   })
 );

@@ -7,10 +7,6 @@ import type { ITheme } from "@xterm/xterm";
 import type { PendingTerminalModifiers } from "../utils/terminal-keys";
 import { TerminalEmulatorRuntime } from "../terminal/runtime/terminal-emulator-runtime";
 import { focusWithRetries } from "../utils/web-focus";
-import {
-  summarizeTerminalText,
-  terminalDebugLog,
-} from "../terminal/runtime/terminal-debug";
 
 function buildXtermThemeKey(theme: ITheme): string {
   const values: Array<string> = [
@@ -287,14 +283,6 @@ export default function TerminalEmulator({
     }
 
     if (outputChunkSequence <= appliedChunkSequenceRef.current) {
-      terminalDebugLog({
-        scope: "emulator-component",
-        event: "output:chunk:skip-duplicate",
-        details: {
-          sequence: outputChunkSequence,
-          lastAppliedSequence: appliedChunkSequenceRef.current,
-        },
-      });
       onOutputChunkConsumed?.(outputChunkSequence);
       return;
     }
@@ -307,13 +295,6 @@ export default function TerminalEmulator({
     appliedChunkSequenceRef.current = outputChunkSequence;
 
     if (outputChunkText.length === 0) {
-      terminalDebugLog({
-        scope: "emulator-component",
-        event: "output:chunk:clear",
-        details: {
-          sequence: outputChunkSequence,
-        },
-      });
       runtime.clear({
         onCommitted: () => {
           onOutputChunkConsumed?.(outputChunkSequence);
@@ -321,16 +302,6 @@ export default function TerminalEmulator({
       });
       return;
     }
-    terminalDebugLog({
-      scope: "emulator-component",
-      event: "output:chunk:write",
-      details: {
-        sequence: outputChunkSequence,
-        replay: outputChunkReplay,
-        length: outputChunkText.length,
-        preview: summarizeTerminalText({ text: outputChunkText, maxChars: 80 }),
-      },
-    });
     runtime.write({
       text: outputChunkText,
       suppressInput: outputChunkReplay,
@@ -383,10 +354,6 @@ export default function TerminalEmulator({
         touchAction: "pan-y",
       }}
       onPointerDown={() => {
-        terminalDebugLog({
-          scope: "emulator-component",
-          event: "surface:pointer-down-focus",
-        });
         runtimeRef.current?.focus();
       }}
     >

@@ -9,12 +9,22 @@ export type KeyboardActionId =
   | "message-input.dictation-toggle"
   | "message-input.dictation-cancel"
   | "message-input.voice-toggle"
-  | "message-input.voice-mute-toggle";
+  | "message-input.voice-mute-toggle"
+  | "workspace.tab.new"
+  | "workspace.tab.close-current"
+  | "workspace.tab.navigate-index"
+  | "workspace.tab.navigate-relative";
 
-export type KeyboardActionDefinition = {
-  id: KeyboardActionId;
-  scope: KeyboardActionScope;
-};
+export type KeyboardActionDefinition =
+  | { id: "message-input.focus"; scope: KeyboardActionScope }
+  | { id: "message-input.dictation-toggle"; scope: KeyboardActionScope }
+  | { id: "message-input.dictation-cancel"; scope: KeyboardActionScope }
+  | { id: "message-input.voice-toggle"; scope: KeyboardActionScope }
+  | { id: "message-input.voice-mute-toggle"; scope: KeyboardActionScope }
+  | { id: "workspace.tab.new"; scope: KeyboardActionScope }
+  | { id: "workspace.tab.close-current"; scope: KeyboardActionScope }
+  | { id: "workspace.tab.navigate-index"; scope: KeyboardActionScope; index: number }
+  | { id: "workspace.tab.navigate-relative"; scope: KeyboardActionScope; delta: 1 | -1 };
 
 export type KeyboardActionHandler = {
   handlerId: string;

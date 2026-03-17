@@ -35,6 +35,7 @@ import * as Linking from "expo-linking";
 import * as Notifications from "expo-notifications";
 import { LeftSidebar } from "@/components/left-sidebar";
 import { DownloadToast } from "@/components/download-toast";
+import { UpdateBanner } from "@/desktop/updates/update-banner";
 import { ToastProvider } from "@/contexts/toast-context";
 import { usePanelStore } from "@/stores/panel-store";
 import { runOnJS, interpolate, Extrapolation, useSharedValue } from "react-native-reanimated";
@@ -379,6 +380,7 @@ function AppContainer({
       </View>
       {isMobile && chromeEnabled && <LeftSidebar selectedAgentId={selectedAgentId} />}
       <DownloadToast />
+      <UpdateBanner />
       <CommandCenter />
       <ProjectPickerModal />
       <KeyboardShortcutsDialog />
@@ -578,7 +580,12 @@ export default function RootLayout() {
                             >
                               <Stack.Screen name="index" />
                               <Stack.Screen name="settings" />
-                              <Stack.Screen name="h/[serverId]/workspace/[workspaceId]" />
+                              <Stack.Screen
+                                name="h/[serverId]/workspace/[workspaceId]"
+                                getId={({ params }) =>
+                                  `${params?.serverId}:${params?.workspaceId}`
+                                }
+                              />
                               <Stack.Screen
                                 name="h/[serverId]/agent/[agentId]"
                                 options={{ gestureEnabled: false }}

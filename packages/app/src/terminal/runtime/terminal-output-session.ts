@@ -6,7 +6,6 @@ import {
   TerminalOutputDeliveryQueue,
   type TerminalOutputDeliveryChunk,
 } from "./terminal-output-delivery-queue";
-import { summarizeTerminalText, terminalDebugLog } from "./terminal-debug";
 
 type TerminalOutputState = {
   selectedTerminalId: string | null;
@@ -75,18 +74,6 @@ export class TerminalOutputSession {
           chunkSequence: chunk.sequence,
           chunkReplay: chunk.replay,
         };
-        terminalDebugLog({
-          scope: "output-session",
-          event: "deliver",
-          details: {
-            selectedTerminalId: this.state.selectedTerminalId,
-            sequence: chunk.sequence,
-            replay: chunk.replay,
-            chunkLength: chunk.text.length,
-            snapshotLength: snapshotText.length,
-            preview: summarizeTerminalText({ text: chunk.text, maxChars: 80 }),
-          },
-        });
         this.emit();
       },
     });
@@ -121,14 +108,6 @@ export class TerminalOutputSession {
       chunkSequence: 0,
       chunkReplay: false,
     };
-    terminalDebugLog({
-      scope: "output-session",
-      event: "selected-terminal:set",
-      details: {
-        selectedTerminalId: input.terminalId,
-        snapshotLength: snapshotText.length,
-      },
-    });
     this.emit();
   }
 
@@ -154,13 +133,6 @@ export class TerminalOutputSession {
       chunkSequence: 0,
       chunkReplay: false,
     };
-    terminalDebugLog({
-      scope: "output-session",
-      event: "selected-terminal:clear",
-      details: {
-        terminalId: input.terminalId,
-      },
-    });
     this.emit();
   }
 
@@ -208,14 +180,6 @@ export function releaseTerminalOutputSession(input: { scopeKey: string }): void 
   if (current <= 1) {
     sessionRefCountByScopeKey.delete(input.scopeKey);
     sessionsByScopeKey.delete(input.scopeKey);
-    terminalDebugLog({
-      scope: "output-session",
-      event: "scope:release",
-      details: {
-        scopeKey: input.scopeKey,
-        released: true,
-      },
-    });
     return;
   }
 

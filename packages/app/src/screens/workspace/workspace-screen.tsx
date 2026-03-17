@@ -1,4 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useIsFocused } from "@react-navigation/native";
 import {
   ActivityIndicator,
   BackHandler,
@@ -54,7 +55,8 @@ import {
   buildWorkspaceTabPersistenceKey,
   useWorkspaceTabsStore,
 } from "@/stores/workspace-tabs-store";
-import { useKeyboardShortcutsStore } from "@/stores/keyboard-shortcuts-store";
+import { useKeyboardActionHandler } from "@/hooks/use-keyboard-action-handler";
+import type { KeyboardActionDefinition } from "@/keyboard/keyboard-action-dispatcher";
 import { useCreateFlowStore } from "@/stores/create-flow-store";
 import {
   buildWorkspaceOpenIntentParam,
@@ -363,6 +365,7 @@ function WorkspaceScreenContent({
   const isDarkMode = useColorScheme() === "dark";
   const mainBackgroundColor = isDarkMode ? theme.colors.surface1 : theme.colors.surface0;
   const toast = useToast();
+  const isScreenFocused = useIsFocused();
   const isMobile =
     UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
 
@@ -651,12 +654,6 @@ function WorkspaceScreenContent({
   const retargetWorkspaceTab = useWorkspaceTabsStore((state) => state.retargetTab);
   const reorderWorkspaceTabs = useWorkspaceTabsStore((state) => state.reorderTabs);
   const pendingByDraftId = useCreateFlowStore((state) => state.pendingByDraftId);
-  const workspaceTabActionRequest = useKeyboardShortcutsStore(
-    (state) => state.workspaceTabActionRequest
-  );
-  const clearWorkspaceTabActionRequest = useKeyboardShortcutsStore(
-    (state) => state.clearWorkspaceTabActionRequest
-  );
   const consumedOpenIntentsRef = useRef(new Set<string>());
   const pendingCloseTabIdsRef = useRef(new Set<string>());
   const [resolvedOpenIntentKey, setResolvedOpenIntentKey] = useState<string | null>(null);
@@ -1386,59 +1383,56 @@ function WorkspaceScreenContent({
     [handleBulkCloseTabs, tabs]
   );
 
-  useEffect(() => {
-    if (!workspaceTabActionRequest) {
-      return;
-    }
-    if (
-      workspaceTabActionRequest.serverId !== normalizedServerId ||
-      workspaceTabActionRequest.workspaceId !== normalizedWorkspaceId
-    ) {
-      return;
-    }
-
-    const request = workspaceTabActionRequest;
-    clearWorkspaceTabActionRequest(request.id);
-
-    if (request.kind === "new") {
-      handleCreateDraftTab();
-      return;
-    }
-    if (request.kind === "close-current") {
-      if (activeTabId) {
-        void handleCloseTabById(activeTabId);
-      }
-      return;
-    }
-    if (request.kind === "navigate-index") {
-      const next = tabs[request.index - 1] ?? null;
-      if (next?.tabId) {
-        navigateToTabId(next.tabId);
-      }
-      return;
-    }
-    if (request.kind === "navigate-relative") {
-      if (tabs.length > 0) {
-        const currentIndex = tabs.findIndex((tab) => tab.tabId === activeTabId);
-        const fromIndex = currentIndex >= 0 ? currentIndex : 0;
-        const nextIndex = (fromIndex + request.delta + tabs.length) % tabs.length;
-        const next = tabs[nextIndex] ?? null;
-        if (next?.tabId) {
-          navigateToTabId(next.tabId);
+  const handleWorkspaceTabAction = useCallback(
+    (action: KeyboardActionDefinition): boolean => {
+      switch (action.id) {
+        case "workspace.tab.new":
+          handleCreateDraftTab();
+          return true;
+        case "workspace.tab.close-current":
+          if (activeTabId) {
+            void handleCloseTabById(activeTabId);
+          }
+          return true;
+        case "workspace.tab.navigate-index": {
+          const next = tabs[action.index - 1] ?? null;
+          if (next?.tabId) {
+            navigateToTabId(next.tabId);
+          }
+          return true;
         }
+        case "workspace.tab.navigate-relative": {
+          if (tabs.length > 0) {
+            const currentIndex = tabs.findIndex((tab) => tab.tabId === activeTabId);
+            const fromIndex = currentIndex >= 0 ? currentIndex : 0;
+            const nextIndex = (fromIndex + action.delta + tabs.length) % tabs.length;
+            const next = tabs[nextIndex] ?? null;
+            if (next?.tabId) {
+              navigateToTabId(next.tabId);
+            }
+          }
+          return true;
+        }
+        default:
+          return false;
       }
-    }
-  }, [
-    activeTabId,
-    clearWorkspaceTabActionRequest,
-    handleCloseTabById,
-    handleCreateDraftTab,
-    navigateToTabId,
-    normalizedServerId,
-    normalizedWorkspaceId,
-    tabs,
-    workspaceTabActionRequest,
-  ]);
+    },
+    [activeTabId, handleCloseTabById, handleCreateDraftTab, navigateToTabId, tabs]
+  );
+
+  useKeyboardActionHandler({
+    handlerId: `workspace-tab-actions:${normalizedServerId}:${normalizedWorkspaceId}`,
+    actions: [
+      "workspace.tab.new",
+      "workspace.tab.close-current",
+      "workspace.tab.navigate-index",
+      "workspace.tab.navigate-relative",
+    ] as const,
+    enabled: Boolean(normalizedServerId && normalizedWorkspaceId),
+    priority: 100,
+    isActive: () => isScreenFocused,
+    handle: handleWorkspaceTabAction,
+  });
 
   const renderContent = () => {
     if (
@@ -1523,7 +1517,7 @@ function WorkspaceScreenContent({
       );
     }
 
-    return (
+    return isScreenFocused ? (
       <TerminalPane
         serverId={normalizedServerId}
         cwd={normalizedWorkspaceId}
@@ -1544,6 +1538,8 @@ function WorkspaceScreenContent({
         hideHeader
         manageTerminalDirectorySubscription={false}
       />
+    ) : (
+      <View style={styles.contentPlaceholder} />
     );
   };
 
@@ -2065,6 +2061,11 @@ const styles = StyleSheet.create((theme) => ({
     backgroundColor: theme.colors.surface3,
   },
   content: {
+    flex: 1,
+    minHeight: 0,
+    backgroundColor: theme.colors.surface0,
+  },
+  contentPlaceholder: {
     flex: 1,
     minHeight: 0,
     backgroundColor: theme.colors.surface0,

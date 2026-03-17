@@ -10,7 +10,6 @@ import {
   normalizeTerminalTransportKey,
   shouldInterceptDomTerminalKey,
 } from "@/utils/terminal-keys";
-import { summarizeTerminalText, terminalDebugLog } from "./terminal-debug";
 
 export type TerminalEmulatorRuntimeMountInput = {
   root: HTMLDivElement;
@@ -126,13 +125,6 @@ export class TerminalEmulatorRuntime {
   }
 
   mount(input: TerminalEmulatorRuntimeMountInput): void {
-    terminalDebugLog({
-      scope: "emulator-runtime",
-      event: "mount:start",
-      details: {
-        initialOutputLength: input.initialOutputText.length,
-      },
-    });
     this.unmount();
 
     input.host.innerHTML = "";
@@ -219,15 +211,6 @@ export class TerminalEmulatorRuntime {
       }
 
       this.lastSize = { rows: nextRows, cols: nextCols };
-      terminalDebugLog({
-        scope: "emulator-runtime",
-        event: "resize:emit",
-        details: {
-          rows: nextRows,
-          cols: nextCols,
-          force,
-        },
-      });
       this.callbacks.onResize?.({
         rows: nextRows,
         cols: nextCols,
@@ -239,24 +222,8 @@ export class TerminalEmulatorRuntime {
 
     const inputDisposable = terminal.onData((data) => {
       if (this.suppressInput) {
-        terminalDebugLog({
-          scope: "emulator-runtime",
-          event: "input:suppressed",
-          details: {
-            length: data.length,
-            preview: summarizeTerminalText({ text: data, maxChars: 64 }),
-          },
-        });
         return;
       }
-      terminalDebugLog({
-        scope: "emulator-runtime",
-        event: "input:onData",
-        details: {
-          length: data.length,
-          preview: summarizeTerminalText({ text: data, maxChars: 64 }),
-        },
-      });
       this.callbacks.onInput?.(data);
     });
 
@@ -291,17 +258,6 @@ export class TerminalEmulatorRuntime {
       this.callbacks.onTerminalKey?.({
         key: normalizeTerminalTransportKey(normalizedKey),
         ...modifiers,
-      });
-      terminalDebugLog({
-        scope: "emulator-runtime",
-        event: "key:intercepted",
-        details: {
-          key: normalizedKey,
-          ctrl: modifiers.ctrl,
-          shift: modifiers.shift,
-          alt: modifiers.alt,
-          meta: modifiers.meta,
-        },
       });
 
       if (this.pendingModifiers.ctrl || this.pendingModifiers.shift || this.pendingModifiers.alt) {
@@ -368,17 +324,6 @@ export class TerminalEmulatorRuntime {
 
     if (input.initialOutputText.length > 0) {
       this.write({ text: input.initialOutputText, suppressInput: true });
-      terminalDebugLog({
-        scope: "emulator-runtime",
-        event: "output:initial-write",
-        details: {
-          length: input.initialOutputText.length,
-          preview: summarizeTerminalText({
-            text: input.initialOutputText,
-            maxChars: 96,
-          }),
-        },
-      });
     }
 
     this.processOutputQueue();
@@ -466,15 +411,6 @@ export class TerminalEmulatorRuntime {
       suppressInput: input.suppressInput ?? false,
       ...(input.onCommitted ? { onCommitted: input.onCommitted } : {}),
     });
-    terminalDebugLog({
-      scope: "emulator-runtime",
-      event: "output:enqueue",
-      details: {
-        chunkLength: input.text.length,
-        queueLength: this.outputOperations.length,
-        preview: summarizeTerminalText({ text: input.text, maxChars: 64 }),
-      },
-    });
     this.processOutputQueue();
   }
 
@@ -484,10 +420,6 @@ export class TerminalEmulatorRuntime {
       text: "",
       suppressInput: false,
       ...(input?.onCommitted ? { onCommitted: input.onCommitted } : {}),
-    });
-    terminalDebugLog({
-      scope: "emulator-runtime",
-      event: "output:clear",
     });
     this.processOutputQueue();
   }
@@ -504,10 +436,6 @@ export class TerminalEmulatorRuntime {
 
     try {
       terminal.options.theme = input.theme;
-      terminalDebugLog({
-        scope: "emulator-runtime",
-        event: "theme:update",
-      });
     } catch {
       // ignore
       return;
@@ -525,13 +453,6 @@ export class TerminalEmulatorRuntime {
   }
 
   unmount(): void {
-    terminalDebugLog({
-      scope: "emulator-runtime",
-      event: "mount:unmount",
-      details: {
-        pendingWriteOperations: this.outputOperations.length,
-      },
-    });
     this.clearInFlightOutputTimeout();
     const inFlightOperation = this.inFlightOutputOperation;
     this.inFlightOutputOperation = null;
@@ -593,14 +514,6 @@ export class TerminalEmulatorRuntime {
     }
 
     const text = operation.text;
-    terminalDebugLog({
-      scope: "emulator-runtime",
-      event: "output:flush",
-      details: {
-        length: text.length,
-        preview: summarizeTerminalText({ text, maxChars: 96 }),
-      },
-    });
     this.inFlightOutputOperationTimeout = setTimeout(() => {
       finalizeOperation(operation);
     }, OUTPUT_OPERATION_TIMEOUT_MS);
