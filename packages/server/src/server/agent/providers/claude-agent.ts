@@ -39,6 +39,7 @@ import {
   listClaudeCatalogModels,
   type ClaudeModelFamily,
 } from "./claude/model-catalog.js";
+import { parsePartialJsonObject } from "./claude/partial-json.js";
 import { buildToolCallDisplayModel } from "../../../shared/tool-call-display.js";
 
 import type {
@@ -4398,15 +4399,19 @@ class ClaudeAgentSession implements AgentSession {
     }
     const buffer = (this.toolUseInputBuffers.get(toolId) ?? "") + partialJson;
     this.toolUseInputBuffers.set(toolId, buffer);
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(buffer);
-    } catch {
+    const entry = this.toolUseCache.get(toolId);
+    const parsed = parsePartialJsonObject(buffer);
+    if (!entry || !parsed) {
       return;
     }
-    const entry = this.toolUseCache.get(toolId);
-    const normalized = this.normalizeToolInput(parsed);
-    if (!entry || !normalized) {
+    const normalized = this.normalizeToolInput(parsed.value);
+    if (!normalized) {
+      return;
+    }
+    if (!parsed.complete && Object.keys(normalized).length === 0) {
+      return;
+    }
+    if (this.areToolInputsEqual(entry.input ?? undefined, normalized)) {
       return;
     }
     this.applyToolInput(entry, normalized);
@@ -4426,6 +4431,21 @@ class ClaudeAgentSession implements AgentSession {
       return null;
     }
     return input;
+  }
+
+  private areToolInputsEqual(
+    left: AgentMetadata | undefined,
+    right: AgentMetadata
+  ): boolean {
+    if (!left) {
+      return false;
+    }
+    const leftKeys = Object.keys(left);
+    const rightKeys = Object.keys(right);
+    if (leftKeys.length !== rightKeys.length) {
+      return false;
+    }
+    return rightKeys.every((key) => left[key] === right[key]);
   }
 
   private applyToolInput(entry: ToolUseCacheEntry, input: AgentMetadata): void {

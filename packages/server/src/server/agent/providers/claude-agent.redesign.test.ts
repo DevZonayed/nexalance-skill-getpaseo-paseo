@@ -447,7 +447,7 @@ describe("ClaudeAgentSession redesign invariants", () => {
     }
   });
 
-  test("applies input_json_delta updates only when buffered JSON is complete", async () => {
+  test("routes input_json_delta through partial parsing before buffered JSON is complete", async () => {
     const session = await createSession();
     const internal = session as unknown as {
       mapPartialEvent: (event: Record<string, unknown>) => AgentTimelineItem[];
@@ -485,7 +485,7 @@ describe("ClaudeAgentSession redesign invariants", () => {
               partial_json: "{\"command\":\"echo ",
             },
           },
-          expectedCommand: "echo seed",
+          expectedCommand: "echo ",
         },
         {
           event: {
@@ -523,6 +523,45 @@ describe("ClaudeAgentSession redesign invariants", () => {
       });
       expect(internal.toolUseIndexToId.has(index)).toBe(false);
       expect(internal.toolUseInputBuffers.has(toolUseId)).toBe(false);
+    } finally {
+      await session.close();
+    }
+  });
+
+  test("surfaces canonical partial tool input from input_json_delta before JSON is complete", async () => {
+    const session = await createSession();
+    const internal = session as unknown as {
+      mapPartialEvent: (event: Record<string, unknown>) => AgentTimelineItem[];
+      toolUseCache: Map<string, { input?: Record<string, unknown> }>;
+    };
+
+    const toolUseId = "tool-input-preview";
+    const index = 8;
+    try {
+      internal.mapPartialEvent({
+        type: "content_block_start",
+        index,
+        content_block: {
+          type: "tool_use",
+          id: toolUseId,
+          name: "Edit",
+        },
+      });
+
+      internal.mapPartialEvent({
+        type: "content_block_delta",
+        index,
+        delta: {
+          type: "input_json_delta",
+          partial_json:
+            "{\"file_path\":\"src/message.tsx\",\"old_string\":\"before",
+        },
+      });
+
+      expect(internal.toolUseCache.get(toolUseId)?.input).toEqual({
+        file_path: "src/message.tsx",
+        old_string: "before",
+      });
     } finally {
       await session.close();
     }
