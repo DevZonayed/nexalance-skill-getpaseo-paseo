@@ -26,12 +26,15 @@ export function ResizeHandle({
 }: ResizeHandleProps) {
   const { theme } = useUnistyles();
   const pointerStateRef = useRef<PointerState | null>(null);
-  const [hovered, setHovered] = useState(false);
+  const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [active, setActive] = useState(false);
+  const [dragging, setDragging] = useState(false);
+  const highlighted = active || dragging;
 
   const handlePointerDown = useCallback(
     (event: any) => {
-      const handleElement = event.currentTarget as HTMLElement | null;
-      const containerElement = handleElement?.parentElement ?? null;
+      const hitAreaElement = event.currentTarget as HTMLElement | null;
+      const containerElement = hitAreaElement?.parentElement?.parentElement ?? null;
       if (!containerElement) {
         return;
       }
@@ -41,6 +44,8 @@ export function ResizeHandle({
       if (containerSize <= 0) {
         return;
       }
+
+      setDragging(true);
 
       pointerStateRef.current = {
         containerSize,
@@ -56,6 +61,7 @@ export function ResizeHandle({
 
       function cleanup() {
         pointerStateRef.current = null;
+        setDragging(false);
         document.body.style.cursor = previousCursor;
         window.removeEventListener("pointermove", handlePointerMove);
         window.removeEventListener("pointerup", handlePointerUp);
@@ -90,65 +96,95 @@ export function ResizeHandle({
 
   return (
     <View
-      role="separator"
-      aria-orientation={direction === "horizontal" ? "vertical" : "horizontal"}
       style={[
         styles.handle,
         direction === "horizontal" ? styles.handleHorizontal : styles.handleVertical,
-        hovered && {
-          backgroundColor: theme.colors.surface2,
-        },
-        {
-          cursor: direction === "horizontal" ? "col-resize" : "row-resize",
-        } as any,
+        { backgroundColor: theme.colors.border },
       ]}
-      onPointerDown={handlePointerDown}
-      onPointerEnter={() => {
-        setHovered(true);
-      }}
-      onPointerLeave={() => {
-        setHovered(false);
-      }}
     >
+      {highlighted && (
+        <View
+          pointerEvents="none"
+          style={[
+            styles.highlight,
+            direction === "horizontal"
+              ? styles.highlightHorizontal
+              : styles.highlightVertical,
+            { backgroundColor: theme.colors.accent },
+          ]}
+        />
+      )}
       <View
+        role="separator"
+        aria-orientation={direction === "horizontal" ? "vertical" : "horizontal"}
         style={[
-          styles.handleGrip,
-          direction === "horizontal" ? styles.handleGripHorizontal : styles.handleGripVertical,
+          styles.hitArea,
+          direction === "horizontal" ? styles.hitAreaHorizontal : styles.hitAreaVertical,
           {
-            backgroundColor: hovered ? theme.colors.accent : theme.colors.border,
-          },
+            cursor: direction === "horizontal" ? "col-resize" : "row-resize",
+          } as any,
         ]}
+        onPointerDown={handlePointerDown}
+        onPointerEnter={() => {
+          hoverTimerRef.current = setTimeout(() => {
+            setActive(true);
+          }, 150);
+        }}
+        onPointerLeave={() => {
+          if (hoverTimerRef.current) {
+            clearTimeout(hoverTimerRef.current);
+            hoverTimerRef.current = null;
+          }
+          setActive(false);
+        }}
       />
     </View>
   );
 }
 
-const styles = StyleSheet.create((theme) => ({
+const styles = StyleSheet.create((_theme) => ({
   handle: {
     position: "relative",
-    alignItems: "center",
-    justifyContent: "center",
     flexShrink: 0,
-    backgroundColor: "transparent",
   },
   handleHorizontal: {
-    width: 4,
+    width: 1,
     alignSelf: "stretch",
   },
   handleVertical: {
-    height: 4,
+    height: 1,
     width: "100%",
   },
-  handleGrip: {
-    opacity: 0.6,
-    borderRadius: theme.borderRadius.full,
+  highlight: {
+    position: "absolute",
+    zIndex: 5,
   },
-  handleGripHorizontal: {
-    width: 2,
-    height: "100%",
+  highlightHorizontal: {
+    top: 0,
+    bottom: 0,
+    width: 3,
+    left: -1,
   },
-  handleGripVertical: {
-    width: "100%",
-    height: 2,
+  highlightVertical: {
+    left: 0,
+    right: 0,
+    height: 3,
+    top: -1,
+  },
+  hitArea: {
+    position: "absolute",
+    zIndex: 10,
+  },
+  hitAreaHorizontal: {
+    left: -5,
+    top: 0,
+    bottom: 0,
+    width: 10,
+  },
+  hitAreaVertical: {
+    top: -5,
+    left: 0,
+    right: 0,
+    height: 10,
   },
 }));

@@ -752,11 +752,11 @@ export const AssistantMessage = memo(function AssistantMessage({
   workspaceRoot,
   disableOuterSpacing,
 }: AssistantMessageProps) {
-  const { theme } = useUnistyles();
+  const { theme, rt } = useUnistyles();
   const resolvedDisableOuterSpacing =
     useDisableOuterSpacing(disableOuterSpacing);
 
-  const markdownStyles = useMemo(() => createMarkdownStyles(theme), [theme]);
+  const markdownStyles = useMemo(() => createMarkdownStyles(theme), [rt.themeName]);
 
   const markdownParser = useMemo(
     () => {

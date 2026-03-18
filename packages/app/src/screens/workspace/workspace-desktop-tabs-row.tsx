@@ -27,6 +27,10 @@ import type { WorkspaceTabDescriptor } from "@/screens/workspace/workspace-tabs-
 const DROPDOWN_WIDTH = 220;
 const LOADING_TAB_LABEL_SKELETON_WIDTH = 80;
 type NewTabOptionId = "__new_tab_agent__";
+type NewTabSelection = {
+  optionId: NewTabOptionId;
+  paneId?: string;
+};
 
 export interface WorkspaceDesktopTabRowItem {
   tab: WorkspaceTabDescriptor;
@@ -37,6 +41,7 @@ export interface WorkspaceDesktopTabRowItem {
 
 type WorkspaceDesktopTabsRowProps = {
   paneId?: string;
+  isFocused?: boolean;
   tabs: WorkspaceDesktopTabRowItem[];
   normalizedServerId: string;
   normalizedWorkspaceId: string;
@@ -49,7 +54,7 @@ type WorkspaceDesktopTabsRowProps = {
   onCloseTabsToLeft: (tabId: string) => Promise<void> | void;
   onCloseTabsToRight: (tabId: string) => Promise<void> | void;
   onCloseOtherTabs: (tabId: string) => Promise<void> | void;
-  onSelectNewTabOption: (optionId: NewTabOptionId) => void;
+  onSelectNewTabOption: (selection: NewTabSelection) => void;
   newTabAgentOptionId: NewTabOptionId;
   onReorderTabs: (nextTabs: WorkspaceTabDescriptor[]) => void;
   externalDndContext?: boolean;
@@ -72,6 +77,7 @@ function getFallbackTabLabel(tab: WorkspaceTabDescriptor): string {
 function TabChip({
   tab,
   isActive,
+  isFocused,
   resolvedTabWidth,
   showLabel,
   showCloseButton,
@@ -88,6 +94,7 @@ function TabChip({
 }: {
   tab: WorkspaceTabDescriptor;
   isActive: boolean;
+  isFocused: boolean;
   resolvedTabWidth: number;
   showLabel: boolean;
   showCloseButton: boolean;
@@ -104,6 +111,8 @@ function TabChip({
 }) {
   const { theme } = useUnistyles();
   const { closeButtonTestId, contextMenuTestId, menuEntries } = resolvedTab;
+  const [hovered, setHovered] = useState(false);
+  const isHighlighted = isActive || hovered || isCloseHovered;
 
   return (
     <ContextMenu key={tab.key}>
@@ -119,13 +128,13 @@ function TabChip({
                 width: resolvedTabWidth,
                 maxWidth: resolvedTabWidth,
               },
-              isActive && styles.tabActive,
-              !isActive && (hovered || pressed || isCloseHovered) && styles.tabHovered,
             ]}
             onHoverIn={() => {
+              setHovered(true);
               setHoveredTabKey(tab.key);
             }}
             onHoverOut={() => {
+              setHovered(false);
               setHoveredTabKey((current) => (current === tab.key ? null : current));
             }}
             onPressIn={() => {
@@ -136,6 +145,14 @@ function TabChip({
             }}
             accessibilityLabel={tooltipLabel}
           >
+            {isActive && (
+              <View
+                style={[
+                  styles.tabFocusIndicator,
+                  !isFocused && styles.tabFocusIndicatorUnfocused,
+                ]}
+              />
+            )}
             <View
               {...(dragHandleProps?.attributes as any)}
               {...(dragHandleProps?.listeners as any)}
@@ -143,7 +160,7 @@ function TabChip({
               style={styles.tabHandle}
             >
               <View style={styles.tabIcon}>
-                <WorkspaceTabIcon presentation={presentation} active={isActive} />
+                <WorkspaceTabIcon presentation={presentation} active={isHighlighted} />
               </View>
               {showLabel ? (
                 presentation.titleState === "loading" ? (
@@ -157,7 +174,7 @@ function TabChip({
                   <Text
                     style={[
                       styles.tabLabel,
-                      isActive && styles.tabLabelActive,
+                      isHighlighted && styles.tabLabelActive,
                       showCloseButton && styles.tabLabelWithCloseButton,
                     ]}
                     selectable={false}
@@ -237,6 +254,7 @@ function TabChip({
 
 export function WorkspaceDesktopTabsRow({
   paneId,
+  isFocused = false,
   tabs,
   normalizedServerId,
   normalizedWorkspaceId,
@@ -273,8 +291,8 @@ export function WorkspaceDesktopTabsRow({
     () => ({
       rowHorizontalInset: 0,
       actionsReservedWidth: Math.max(0, tabsActionsWidth),
-      rowPaddingHorizontal: theme.spacing[2],
-      tabGap: theme.spacing[1],
+      rowPaddingHorizontal: 0,
+      tabGap: 0,
       maxTabWidth: 200,
       tabIconWidth: 14,
       tabHorizontalPadding: theme.spacing[3],
@@ -343,6 +361,7 @@ export function WorkspaceDesktopTabsRow({
               <ResolvedDesktopTabChip
                 key={`${item.tab.key}:${item.tab.kind}`}
                 item={item}
+                isFocused={isFocused}
                 index={index}
                 tabCount={tabs.length}
                 normalizedServerId={normalizedServerId}
@@ -367,9 +386,14 @@ export function WorkspaceDesktopTabsRow({
       </ScrollView>
       <View style={styles.tabsActions} onLayout={handleTabsActionsLayout}>
         <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
-          <TooltipTrigger
+        <TooltipTrigger
             testID="workspace-new-agent-tab"
-            onPress={() => onSelectNewTabOption(newTabAgentOptionId)}
+            onPress={() =>
+              onSelectNewTabOption({
+                optionId: newTabAgentOptionId,
+                paneId,
+              })
+            }
             accessibilityRole="button"
             accessibilityLabel="New agent tab"
             style={({ hovered, pressed }) => [
@@ -393,6 +417,7 @@ export function WorkspaceDesktopTabsRow({
 
 function ResolvedDesktopTabChip({
   item,
+  isFocused,
   index,
   tabCount,
   normalizedServerId,
@@ -412,6 +437,7 @@ function ResolvedDesktopTabChip({
   dragHandleProps,
 }: {
   item: WorkspaceDesktopTabRowItem;
+  isFocused: boolean;
   index: number;
   tabCount: number;
   normalizedServerId: string;
@@ -467,6 +493,7 @@ function ResolvedDesktopTabChip({
     <TabChip
       tab={item.tab}
       isActive={item.isActive}
+      isFocused={isFocused}
       resolvedTabWidth={resolvedTabWidth}
       showLabel={showLabel}
       showCloseButton={showCloseButton}
@@ -504,22 +531,19 @@ const styles = StyleSheet.create((theme) => ({
   },
   tabsContent: {
     flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing[1],
-    paddingHorizontal: theme.spacing[2],
-    paddingVertical: theme.spacing[1],
+    alignItems: "stretch",
   },
   tabsActions: {
     flexDirection: "row",
     alignItems: "center",
     gap: theme.spacing[1],
-    paddingRight: theme.spacing[2],
-    paddingVertical: theme.spacing[1],
+    paddingHorizontal: theme.spacing[2],
   },
   tab: {
     paddingHorizontal: theme.spacing[3],
     paddingVertical: theme.spacing[2],
-    borderRadius: theme.borderRadius.md,
+    borderRightWidth: 1,
+    borderRightColor: theme.colors.border,
     flexDirection: "row",
     alignItems: "center",
     gap: theme.spacing[1],
@@ -536,11 +560,16 @@ const styles = StyleSheet.create((theme) => ({
   tabIcon: {
     flexShrink: 0,
   },
-  tabActive: {
-    backgroundColor: theme.colors.surface3,
+  tabFocusIndicator: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 2,
+    backgroundColor: theme.colors.accent,
   },
-  tabHovered: {
-    backgroundColor: theme.colors.surface2,
+  tabFocusIndicatorUnfocused: {
+    backgroundColor: theme.colors.borderAccent,
   },
   tabLabel: {
     flexShrink: 1,

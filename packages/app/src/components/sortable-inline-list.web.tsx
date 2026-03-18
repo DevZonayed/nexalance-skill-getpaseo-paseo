@@ -34,6 +34,7 @@ function SortableItem<T>({
   useDragHandle,
   disabled,
   itemData,
+  externalDndContext,
 }: {
   id: string;
   item: T;
@@ -43,6 +44,7 @@ function SortableItem<T>({
   useDragHandle: boolean;
   disabled: boolean;
   itemData?: Record<string, unknown>;
+  externalDndContext: boolean;
 }): ReactElement {
   const {
     attributes,
@@ -59,17 +61,21 @@ function SortableItem<T>({
     // This is a no-op but matches the mobile API
   }, []);
 
-  // See `draggable-list.web.tsx` for details on why we zero out dnd-kit scale.
-  const baseTransform = CSS.Transform.toString(
-    transform && isDragging ? { ...transform, scaleX: 1, scaleY: 1 } : transform
-  );
-  const scaleTransform = isDragging ? "scale(1.01)" : "";
+  // When using an external DndContext (e.g. split pane container), hide the
+  // original item during drag so the DragOverlay renders the floating copy.
+  // In standalone mode, keep the existing in-place drag visual.
+  const baseTransform = externalDndContext && isDragging
+    ? undefined
+    : CSS.Transform.toString(
+        transform && isDragging ? { ...transform, scaleX: 1, scaleY: 1 } : transform
+      );
+  const scaleTransform = !externalDndContext && isDragging ? "scale(1.01)" : "";
   const combinedTransform = [baseTransform, scaleTransform].filter(Boolean).join(" ");
 
   const style = {
     transform: combinedTransform || undefined,
     transition,
-    opacity: isDragging ? 0.9 : 1,
+    opacity: externalDndContext && isDragging ? 0.3 : isDragging ? 0.9 : 1,
     zIndex: isDragging ? 1000 : 1,
   };
 
@@ -198,6 +204,7 @@ export function SortableInlineList<T>({
             useDragHandle={useDragHandle}
             disabled={disabled}
             itemData={getItemData?.(item, index)}
+            externalDndContext={externalDndContext}
           />
         );
       })}

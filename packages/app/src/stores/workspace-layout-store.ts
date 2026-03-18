@@ -7,6 +7,7 @@ import {
   type WorkspaceTabTarget,
 } from "@/stores/workspace-tabs-store";
 import {
+  clampNormalizedSizes,
   closeTabInLayout,
   collectAllPanes,
   collectAllTabs,
@@ -24,7 +25,6 @@ import {
   removeTabFromTree,
   reorderFocusedPaneTabsInLayout,
   reorderPaneTabsInLayout,
-  resizeSplitInLayout,
   retargetTabInLayout,
   splitPaneInLayout,
   type SplitGroup,
@@ -51,6 +51,7 @@ export type { SplitGroup, SplitNode, SplitPane, WorkspaceLayout };
 
 interface WorkspaceLayoutStore {
   layoutByWorkspace: Record<string, WorkspaceLayout>;
+  splitSizesByWorkspace: Record<string, Record<string, number[]>>;
   openTab: (workspaceKey: string, target: WorkspaceTabTarget) => string | null;
   closeTab: (workspaceKey: string, tabId: string) => void;
   focusTab: (workspaceKey: string, tabId: string) => void;
@@ -89,6 +90,7 @@ export const useWorkspaceLayoutStore = create<WorkspaceLayoutStore>()(
   persist(
     (set, get) => ({
       layoutByWorkspace: {},
+      splitSizesByWorkspace: {},
       openTab: (workspaceKey, target) => {
         const normalizedWorkspaceKey = trimNonEmpty(workspaceKey);
         const normalizedTarget = normalizeWorkspaceTabTarget(target);
@@ -308,13 +310,12 @@ export const useWorkspaceLayoutStore = create<WorkspaceLayoutStore>()(
         }
 
         set((state) => ({
-          layoutByWorkspace: {
-            ...state.layoutByWorkspace,
-            [normalizedWorkspaceKey]: resizeSplitInLayout({
-              layout: getWorkspaceLayout(state.layoutByWorkspace, normalizedWorkspaceKey),
-              groupId: normalizedGroupId,
-              sizes,
-            }),
+          splitSizesByWorkspace: {
+            ...state.splitSizesByWorkspace,
+            [normalizedWorkspaceKey]: {
+              ...(state.splitSizesByWorkspace[normalizedWorkspaceKey] ?? {}),
+              [normalizedGroupId]: clampNormalizedSizes(sizes),
+            },
           },
         }));
       },
@@ -353,7 +354,10 @@ export const useWorkspaceLayoutStore = create<WorkspaceLayoutStore>()(
         for (const key in state.layoutByWorkspace) {
           layoutByWorkspace[key] = normalizeLayout(state.layoutByWorkspace[key]);
         }
-        return { layoutByWorkspace };
+        return {
+          layoutByWorkspace,
+          splitSizesByWorkspace: state.splitSizesByWorkspace,
+        };
       },
     }
   )

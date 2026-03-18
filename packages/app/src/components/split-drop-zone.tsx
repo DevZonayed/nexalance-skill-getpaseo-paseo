@@ -1,6 +1,6 @@
-import { useCallback, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { useDroppable } from "@dnd-kit/core";
-import { View, type LayoutChangeEvent } from "react-native";
+import { View } from "react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 
 export type SplitDropZonePosition = "center" | "left" | "right" | "top" | "bottom";
@@ -14,12 +14,6 @@ export interface SplitDropZoneProps {
   paneId: string;
   active: boolean;
   preview: SplitDropZoneHover | null;
-  onHoverChange: (hover: SplitDropZoneHover | null) => void;
-}
-
-interface LayoutSize {
-  width: number;
-  height: number;
 }
 
 const EDGE_RATIO = 0.15;
@@ -33,10 +27,8 @@ export function SplitDropZone({
   paneId,
   active,
   preview,
-  onHoverChange,
 }: SplitDropZoneProps) {
   const { theme } = useUnistyles();
-  const [layoutSize, setLayoutSize] = useState<LayoutSize>({ width: 0, height: 0 });
   const { setNodeRef, isOver } = useDroppable({
     id: buildSplitDropZoneId(paneId),
     disabled: !active,
@@ -45,34 +37,6 @@ export function SplitDropZone({
       paneId,
     },
   });
-
-  const handleLayout = useCallback((event: LayoutChangeEvent) => {
-    const width = Math.round(event.nativeEvent.layout.width);
-    const height = Math.round(event.nativeEvent.layout.height);
-    setLayoutSize((current) =>
-      current.width === width && current.height === height ? current : { width, height }
-    );
-  }, []);
-
-  const updateHover = useCallback(
-    (event: any) => {
-      if (!active || layoutSize.width <= 0 || layoutSize.height <= 0) {
-        return;
-      }
-      const locationX = Number(event.nativeEvent.locationX ?? 0);
-      const locationY = Number(event.nativeEvent.locationY ?? 0);
-      onHoverChange({
-        paneId,
-        position: resolveDropPosition({
-          width: layoutSize.width,
-          height: layoutSize.height,
-          x: locationX,
-          y: locationY,
-        }),
-      });
-    },
-    [active, layoutSize.height, layoutSize.width, onHoverChange, paneId]
-  );
 
   const previewStyle = useMemo(() => {
     if (!preview || preview.paneId !== paneId) {
@@ -95,21 +59,14 @@ export function SplitDropZone({
     <View
       ref={setNodeRef as any}
       style={[styles.overlay, isOver && styles.overlayActive]}
-      onLayout={handleLayout}
-      onPointerEnter={updateHover}
-      onPointerMove={updateHover}
-      onPointerLeave={() => {
-        if (preview?.paneId === paneId) {
-          onHoverChange(null);
-        }
-      }}
+      pointerEvents="none"
     >
       {previewStyle ? <View pointerEvents="none" style={previewStyle} /> : null}
     </View>
   );
 }
 
-function resolveDropPosition(input: {
+export function resolveSplitDropPosition(input: {
   width: number;
   height: number;
   x: number;
@@ -174,12 +131,12 @@ const styles = StyleSheet.create((theme) => ({
   },
   overlayActive: {
     backgroundColor: theme.colors.surface0,
-    opacity: 0.02,
+    opacity: 0.03,
   },
   preview: {
     position: "absolute",
     borderRadius: theme.borderRadius.md,
-    opacity: 0.16,
+    opacity: 0.2,
   },
   previewLeft: {
     left: 0,

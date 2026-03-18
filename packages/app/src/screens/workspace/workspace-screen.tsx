@@ -183,7 +183,10 @@ type MobileWorkspaceTabSwitcherProps = {
   normalizedServerId: string;
   normalizedWorkspaceId: string;
   onSelectSwitcherTab: (key: string) => void;
-  onSelectNewTabOption: (key: typeof NEW_TAB_AGENT_OPTION_ID) => void;
+  onSelectNewTabOption: (selection: {
+    optionId: typeof NEW_TAB_AGENT_OPTION_ID;
+    paneId?: string;
+  }) => void;
   onCopyResumeCommand: (agentId: string) => Promise<void> | void;
   onCopyAgentId: (agentId: string) => Promise<void> | void;
   onCloseTab: (tabId: string) => Promise<void> | void;
@@ -405,9 +408,13 @@ const MobileWorkspaceTabSwitcher = memo(function MobileWorkspaceTabSwitcher({
 
       <View style={styles.mobileTabsActions}>
         <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
-          <TooltipTrigger
+        <TooltipTrigger
             testID="workspace-new-agent-tab"
-            onPress={() => onSelectNewTabOption(NEW_TAB_AGENT_OPTION_ID)}
+            onPress={() =>
+              onSelectNewTabOption({
+                optionId: NEW_TAB_AGENT_OPTION_ID,
+              })
+            }
             accessibilityRole="button"
             accessibilityLabel="New agent tab"
             style={({ hovered, pressed }) => [
@@ -1143,12 +1150,15 @@ function WorkspaceScreenContent({
   );
 
   const handleSelectNewTabOption = useCallback(
-    (key: typeof NEW_TAB_AGENT_OPTION_ID) => {
-      if (key === NEW_TAB_AGENT_OPTION_ID) {
+    (selection: { optionId: typeof NEW_TAB_AGENT_OPTION_ID; paneId?: string }) => {
+      if (selection.optionId === NEW_TAB_AGENT_OPTION_ID) {
+        if (selection.paneId && persistenceKey) {
+          focusWorkspacePane(persistenceKey, selection.paneId);
+        }
         handleCreateDraftTab();
       }
     },
-    [handleCreateDraftTab]
+    [focusWorkspacePane, handleCreateDraftTab, persistenceKey]
   );
 
   const runCloseFlowForTab = useCallback(

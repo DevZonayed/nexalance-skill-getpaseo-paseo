@@ -1,6 +1,7 @@
 import { Fragment, useCallback, useMemo, useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
 import {
   DndContext,
+  DragOverlay,
   KeyboardSensor,
   PointerSensor,
   closestCenter,
@@ -9,13 +10,19 @@ import {
   useSensors,
   type CollisionDetection,
   type DragEndEvent,
+  type DragMoveEvent,
+  type DragOverEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
 import { arrayMove, sortableKeyboardCoordinates } from "@dnd-kit/sortable";
-import { View } from "react-native";
+import { View, Text } from "react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { ResizeHandle } from "@/components/resize-handle";
-import { SplitDropZone, type SplitDropZoneHover } from "@/components/split-drop-zone";
+import {
+  SplitDropZone,
+  resolveSplitDropPosition,
+  type SplitDropZoneHover,
+} from "@/components/split-drop-zone";
 import {
   deriveWorkspacePaneState,
   getWorkspacePaneDescriptors,
@@ -28,8 +35,12 @@ import {
   WorkspaceDesktopTabsRow,
   type WorkspaceDesktopTabRowItem,
 } from "@/screens/workspace/workspace-desktop-tabs-row";
+import {
+  useWorkspaceTabPresentation,
+  WorkspaceTabIcon,
+} from "@/screens/workspace/workspace-tab-presentation";
 import type { WorkspaceTabDescriptor } from "@/screens/workspace/workspace-tabs-types";
-import type { SplitNode, SplitPane, WorkspaceLayout } from "@/stores/workspace-layout-store";
+import { useWorkspaceLayoutStore, type SplitNode, type SplitPane, type WorkspaceLayout } from "@/stores/workspace-layout-store";
 import type { WorkspaceTab } from "@/stores/workspace-tabs-store";
 
 interface SplitContainerProps {
@@ -51,7 +62,7 @@ interface SplitContainerProps {
   onCloseTabsToLeft: (tabId: string, paneTabs: WorkspaceTabDescriptor[]) => Promise<void> | void;
   onCloseTabsToRight: (tabId: string, paneTabs: WorkspaceTabDescriptor[]) => Promise<void> | void;
   onCloseOtherTabs: (tabId: string, paneTabs: WorkspaceTabDescriptor[]) => Promise<void> | void;
-  onSelectNewTabOption: (optionId: "__new_tab_agent__") => void;
+  onSelectNewTabOption: (selection: { optionId: "__new_tab_agent__"; paneId?: string }) => void;
   newTabAgentOptionId?: "__new_tab_agent__";
   buildPaneContentModel: (input: {
     paneId: string;
@@ -81,36 +92,34 @@ interface SplitPaneDropData {
 }
 
 interface SplitNodeViewProps
-  extends Omit<SplitContainerProps, "layout" | "workspaceKey"> {
+  extends Omit<SplitContainerProps, "layout"> {
   node: SplitNode;
   uiTabs: WorkspaceTab[];
   focusedPaneId: string;
   activeDragTabId: string | null;
   showDropZones: boolean;
   dropPreview: SplitDropZoneHover | null;
-  onDropPreviewChange: (hover: SplitDropZoneHover | null) => void;
 }
 
 interface SplitPaneViewProps
   extends Omit<
     SplitNodeViewProps,
     | "node"
+    | "workspaceKey"
     | "focusedPaneId"
     | "activeDragTabId"
     | "showDropZones"
     | "dropPreview"
-    | "onDropPreviewChange"
     | "onSplitPane"
     | "onMoveTabToPane"
     | "onResizeSplit"
   > {
   pane: SplitPane;
   uiTabs: WorkspaceTab[];
-  focused: boolean;
+  isFocused: boolean;
   activeDragTabId: string | null;
   showDropZones: boolean;
   dropPreview: SplitDropZoneHover | null;
-  onDropPreviewChange: (hover: SplitDropZoneHover | null) => void;
 }
 
 const dropCollisionDetection: CollisionDetection = (args) => {
@@ -134,6 +143,7 @@ const dropCollisionDetection: CollisionDetection = (args) => {
 
 export function SplitContainer({
   layout,
+  workspaceKey,
   normalizedServerId,
   normalizedWorkspaceId,
   uiTabs,
@@ -190,6 +200,64 @@ export function SplitContainer({
     setActiveDragTabId(null);
     setDropPreview(null);
   }, []);
+
+  const updateDropPreview = useCallback(
+    (
+      event:
+        | Pick<DragMoveEvent, "active" | "over">
+        | Pick<DragOverEvent, "active" | "over">
+    ) => {
+      const activeData = event.active.data.current as WorkspaceTabDragData | undefined;
+      const overData = event.over?.data.current as
+        | WorkspaceTabDragData
+        | SplitPaneDropData
+        | undefined;
+
+      if (activeData?.kind !== "workspace-tab") {
+        setDropPreview(null);
+        return;
+      }
+
+      if (overData?.kind !== "split-pane-drop") {
+        setDropPreview(null);
+        return;
+      }
+
+      const translatedRect = event.active.rect.current.translated;
+      const overRect = event.over?.rect;
+      if (!translatedRect || !overRect || overRect.width <= 0 || overRect.height <= 0) {
+        setDropPreview(null);
+        return;
+      }
+
+      const centerX = translatedRect.left + translatedRect.width / 2;
+      const centerY = translatedRect.top + translatedRect.height / 2;
+      const relativeX = centerX - overRect.left;
+      const relativeY = centerY - overRect.top;
+      if (
+        Number.isNaN(relativeX) ||
+        Number.isNaN(relativeY) ||
+        relativeX < 0 ||
+        relativeX > overRect.width ||
+        relativeY < 0 ||
+        relativeY > overRect.height
+      ) {
+        setDropPreview(null);
+        return;
+      }
+
+      setDropPreview({
+        paneId: overData.paneId,
+        position: resolveSplitDropPosition({
+          width: overRect.width,
+          height: overRect.height,
+          x: relativeX,
+          y: relativeY,
+        }),
+      });
+    },
+    []
+  );
 
   const handleDragEnd = useCallback(
     (event: DragEndEvent) => {
@@ -266,11 +334,14 @@ export function SplitContainer({
       sensors={sensors}
       collisionDetection={dropCollisionDetection}
       onDragStart={handleDragStart}
+      onDragMove={updateDropPreview}
+      onDragOver={updateDropPreview}
       onDragCancel={handleDragCancel}
       onDragEnd={handleDragEnd}
     >
       <SplitNodeView
         node={layout.root}
+        workspaceKey={workspaceKey}
         uiTabs={uiTabs}
         focusedPaneId={layout.focusedPaneId}
         normalizedServerId={normalizedServerId}
@@ -300,14 +371,96 @@ export function SplitContainer({
         activeDragTabId={activeDragTabId}
         showDropZones={activeDragTabId !== null}
         dropPreview={dropPreview}
-        onDropPreviewChange={setDropPreview}
       />
+      <DragOverlay dropAnimation={null}>
+        {activeDragTabId ? (
+          <DragOverlayTabChip
+            tabId={activeDragTabId}
+            uiTabs={uiTabs}
+            normalizedServerId={normalizedServerId}
+            normalizedWorkspaceId={normalizedWorkspaceId}
+          />
+        ) : null}
+      </DragOverlay>
     </DndContext>
+  );
+}
+
+function DragOverlayTabChip({
+  tabId,
+  uiTabs,
+  normalizedServerId,
+  normalizedWorkspaceId,
+}: {
+  tabId: string;
+  uiTabs: WorkspaceTab[];
+  normalizedServerId: string;
+  normalizedWorkspaceId: string;
+}) {
+  const tab = uiTabs.find((t) => t.tabId === tabId);
+  if (!tab) {
+    return null;
+  }
+  const descriptor: WorkspaceTabDescriptor = {
+    key: tab.tabId,
+    tabId: tab.tabId,
+    kind: tab.target.kind,
+    target: tab.target,
+  };
+  return (
+    <DragOverlayTabChipInner
+      tab={descriptor}
+      normalizedServerId={normalizedServerId}
+      normalizedWorkspaceId={normalizedWorkspaceId}
+    />
+  );
+}
+
+function DragOverlayTabChipInner({
+  tab,
+  normalizedServerId,
+  normalizedWorkspaceId,
+}: {
+  tab: WorkspaceTabDescriptor;
+  normalizedServerId: string;
+  normalizedWorkspaceId: string;
+}) {
+  const { theme } = useUnistyles();
+  const presentation = useWorkspaceTabPresentation({
+    tab,
+    serverId: normalizedServerId,
+    workspaceId: normalizedWorkspaceId,
+  });
+  const label =
+    presentation.titleState === "loading" ? "Loading..." : presentation.label;
+
+  return (
+    <View
+      style={[
+        styles.dragOverlayChip,
+        {
+          backgroundColor: theme.colors.surface1,
+          borderColor: theme.colors.borderAccent,
+        },
+      ]}
+    >
+      <WorkspaceTabIcon presentation={presentation} active size={14} />
+      <Text
+        numberOfLines={1}
+        style={[
+          styles.dragOverlayLabel,
+          { color: theme.colors.foreground },
+        ]}
+      >
+        {label}
+      </Text>
+    </View>
   );
 }
 
 function SplitNodeView({
   node,
+  workspaceKey,
   uiTabs,
   focusedPaneId,
   normalizedServerId,
@@ -337,14 +490,13 @@ function SplitNodeView({
   activeDragTabId,
   showDropZones,
   dropPreview,
-  onDropPreviewChange,
 }: SplitNodeViewProps) {
   if (node.kind === "pane") {
     return (
       <SplitPaneView
         pane={node.pane}
         uiTabs={uiTabs}
-        focused={node.pane.id === focusedPaneId}
+        isFocused={node.pane.id === focusedPaneId}
         normalizedServerId={normalizedServerId}
         normalizedWorkspaceId={normalizedWorkspaceId}
         hoveredCloseTabKey={hoveredCloseTabKey}
@@ -369,10 +521,13 @@ function SplitNodeView({
         activeDragTabId={activeDragTabId}
         showDropZones={showDropZones}
         dropPreview={dropPreview}
-        onDropPreviewChange={onDropPreviewChange}
       />
     );
   }
+
+  const groupSizes =
+    useWorkspaceLayoutStore((state) => state.splitSizesByWorkspace[workspaceKey]?.[node.group.id]) ??
+    node.group.sizes;
 
   return (
     <View
@@ -383,9 +538,10 @@ function SplitNodeView({
     >
       {node.group.children.map((child, index) => (
         <Fragment key={getNodeKey(child)}>
-          <View style={[styles.groupChild, { flex: node.group.sizes[index] ?? 1 }]}>
+          <View style={[styles.groupChild, { flex: groupSizes[index] ?? 1 }]}>
             <SplitNodeView
               node={child}
+              workspaceKey={workspaceKey}
               uiTabs={uiTabs}
               focusedPaneId={focusedPaneId}
               normalizedServerId={normalizedServerId}
@@ -415,7 +571,6 @@ function SplitNodeView({
               activeDragTabId={activeDragTabId}
               showDropZones={showDropZones}
               dropPreview={dropPreview}
-              onDropPreviewChange={onDropPreviewChange}
             />
           </View>
           {index < node.group.children.length - 1 ? (
@@ -423,7 +578,7 @@ function SplitNodeView({
               direction={node.group.direction}
               groupId={node.group.id}
               index={index}
-              sizes={node.group.sizes}
+              sizes={groupSizes}
               onResizeSplit={onResizeSplit}
             />
           ) : null}
@@ -436,7 +591,7 @@ function SplitNodeView({
 function SplitPaneView({
   pane,
   uiTabs,
-  focused,
+  isFocused,
   normalizedServerId,
   normalizedWorkspaceId,
   hoveredCloseTabKey,
@@ -461,7 +616,6 @@ function SplitPaneView({
   activeDragTabId,
   showDropZones,
   dropPreview,
-  onDropPreviewChange,
 }: SplitPaneViewProps) {
   const { theme } = useUnistyles();
   const paneState = useMemo(
@@ -525,28 +679,15 @@ function SplitPaneView({
 
   return (
     <View
-      style={[
-        styles.pane,
-        {
-          borderColor: focused ? theme.colors.borderAccent : theme.colors.border,
-        },
-      ]}
+      style={styles.pane}
       onPointerDownCapture={() => {
         onFocusPane(pane.id);
       }}
     >
-      <View
-        style={[
-          styles.paneTabs,
-          focused
-            ? {
-                borderTopColor: theme.colors.accent,
-              }
-            : null,
-        ]}
-      >
+      <View style={styles.paneTabs}>
         <WorkspaceDesktopTabsRow
           paneId={pane.id}
+          isFocused={isFocused}
           tabs={desktopTabRowItems}
           normalizedServerId={normalizedServerId}
           normalizedWorkspaceId={normalizedWorkspaceId}
@@ -575,14 +716,8 @@ function SplitPaneView({
         ) : (
           renderPaneEmptyState?.() ?? null
         )}
+        <SplitDropZone paneId={pane.id} active={showDropZones} preview={dropPreview} />
       </View>
-
-      <SplitDropZone
-        paneId={pane.id}
-        active={showDropZones}
-        preview={dropPreview}
-        onHoverChange={onDropPreviewChange}
-      />
     </View>
   );
 }
@@ -632,16 +767,27 @@ const styles = StyleSheet.create((theme) => ({
     minWidth: 0,
     minHeight: 0,
     backgroundColor: theme.colors.surface0,
-    borderWidth: 1,
     overflow: "hidden",
   },
-  paneTabs: {
-    borderTopWidth: 2,
-    borderTopColor: "transparent",
-  },
+  paneTabs: {},
   paneContent: {
+    position: "relative",
     flex: 1,
     minWidth: 0,
     minHeight: 0,
+  },
+  dragOverlayChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[2],
+    paddingHorizontal: theme.spacing[3],
+    paddingVertical: theme.spacing[1],
+    borderRadius: theme.borderRadius.md,
+    borderWidth: 1,
+    maxWidth: 200,
+  },
+  dragOverlayLabel: {
+    fontSize: theme.fontSize.sm,
+    flexShrink: 1,
   },
 }));

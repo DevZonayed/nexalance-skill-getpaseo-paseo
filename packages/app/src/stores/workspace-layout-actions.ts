@@ -302,7 +302,7 @@ function normalizeSizes(input: NormalizeSizesInput): number[] {
   return sanitized.map((value) => value / total);
 }
 
-function clampNormalizedSizes(sizes: number[]): number[] {
+export function clampNormalizedSizes(sizes: number[]): number[] {
   if (sizes.length === 0) {
     return [];
   }
