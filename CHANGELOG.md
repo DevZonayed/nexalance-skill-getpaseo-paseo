@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.29 - 2026-03-18
+
+### Improved
+- Improved `paseo daemon status` with provider binary resolution and version checks for Claude, Codex, and OpenCode.
+
+### Fixed
+- Fixed desktop-managed agent startup failures caused by the daemon using the GUI process PATH instead of the user's login shell PATH.
+
 ## 0.1.28 - 2026-03-15
 
 ### Added
