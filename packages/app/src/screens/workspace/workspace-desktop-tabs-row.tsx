@@ -57,7 +57,7 @@ type WorkspaceDesktopTabsRowProps = {
   onSelectNewTabOption: (selection: NewTabSelection) => void;
   newTabAgentOptionId: NewTabOptionId;
   onReorderTabs: (nextTabs: WorkspaceTabDescriptor[]) => void;
-  onNewTerminalTab: () => void;
+  onNewTerminalTab: (input: { paneId?: string }) => void;
   onSplitRight: () => void;
   onSplitDown: () => void;
   externalDndContext?: boolean;
@@ -346,7 +346,7 @@ export function WorkspaceDesktopTabsRow({
           data={tabs}
           keyExtractor={(tab) => `${tab.tab.key}:${tab.tab.kind}`}
           useDragHandle
-          disabled={tabs.length < 2}
+          disabled={!externalDndContext && tabs.length < 2}
           onDragEnd={(nextTabs) => onReorderTabs(nextTabs.map((tab) => tab.tab))}
           externalDndContext={externalDndContext}
           activeId={activeDragTabId}
@@ -428,7 +428,7 @@ export function WorkspaceDesktopTabsRow({
         </Tooltip>
         <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
           <TooltipTrigger
-            onPress={onNewTerminalTab}
+            onPress={() => onNewTerminalTab({ paneId })}
             accessibilityRole="button"
             accessibilityLabel="New terminal tab"
             style={({ hovered, pressed }) => [

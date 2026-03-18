@@ -18,6 +18,7 @@ import { arrayMove, sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 import { Platform, View, Text } from "react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { ResizeHandle } from "@/components/resize-handle";
+import { shouldFocusPaneFromEventTarget } from "@/components/split-container-pane-focus";
 import {
   computeTabDropPreview,
   type TabDropPreview,
@@ -67,7 +68,7 @@ interface SplitContainerProps {
   onCloseTabsToRight: (tabId: string, paneTabs: WorkspaceTabDescriptor[]) => Promise<void> | void;
   onCloseOtherTabs: (tabId: string, paneTabs: WorkspaceTabDescriptor[]) => Promise<void> | void;
   onSelectNewTabOption: (selection: { optionId: "__new_tab_agent__"; paneId?: string }) => void;
-  onNewTerminalTab: () => void;
+  onNewTerminalTab: (input: { paneId?: string }) => void;
   newTabAgentOptionId?: "__new_tab_agent__";
   buildPaneContentModel: (input: {
     paneId: string;
@@ -768,16 +769,26 @@ function SplitPaneView({
       return;
     }
 
-    const handlePaneInteraction = () => {
+    const handlePanePointerDown = (event: PointerEvent) => {
+      if (!shouldFocusPaneFromEventTarget(event.target)) {
+        return;
+      }
       onFocusPane(pane.id);
     };
 
-    paneElement.addEventListener("pointerdown", handlePaneInteraction, true);
-    paneElement.addEventListener("focusin", handlePaneInteraction, true);
+    const handlePaneFocusIn = (event: FocusEvent) => {
+      if (!shouldFocusPaneFromEventTarget(event.target)) {
+        return;
+      }
+      onFocusPane(pane.id);
+    };
+
+    paneElement.addEventListener("pointerdown", handlePanePointerDown, true);
+    paneElement.addEventListener("focusin", handlePaneFocusIn, true);
 
     return () => {
-      paneElement.removeEventListener("pointerdown", handlePaneInteraction, true);
-      paneElement.removeEventListener("focusin", handlePaneInteraction, true);
+      paneElement.removeEventListener("pointerdown", handlePanePointerDown, true);
+      paneElement.removeEventListener("focusin", handlePaneFocusIn, true);
     };
   }, [onFocusPane, pane.id]);
 
@@ -786,12 +797,6 @@ function SplitPaneView({
       ref={paneRef}
       collapsable={false}
       style={styles.pane}
-      onFocus={() => {
-        onFocusPane(pane.id);
-      }}
-      onPointerDownCapture={() => {
-        onFocusPane(pane.id);
-      }}
     >
       <View style={styles.paneTabs}>
         <WorkspaceDesktopTabsRow

@@ -1,12 +1,36 @@
 "use dom";
 
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { DOMProps } from "expo/dom";
 import "@xterm/xterm/css/xterm.css";
 import type { ITheme } from "@xterm/xterm";
 import type { PendingTerminalModifiers } from "../utils/terminal-keys";
 import { TerminalEmulatorRuntime } from "../terminal/runtime/terminal-emulator-runtime";
 import { focusWithRetries } from "../utils/web-focus";
+import {
+  computeScrollOffsetFromDragDelta,
+  computeVerticalScrollbarGeometry,
+} from "./web-desktop-scrollbar.math";
+
+const SCROLLBAR_HANDLE_WIDTH_IDLE = 6;
+const SCROLLBAR_HANDLE_WIDTH_ACTIVE = 9;
+const SCROLLBAR_HANDLE_GRAB_WIDTH = 18;
+const SCROLLBAR_HANDLE_GRAB_VERTICAL_PADDING = 8;
+const SCROLLBAR_HANDLE_OPACITY_VISIBLE = 0.62;
+const SCROLLBAR_HANDLE_OPACITY_HOVERED = 0.78;
+const SCROLLBAR_HANDLE_OPACITY_DRAGGING = 0.9;
+const SCROLLBAR_HANDLE_FADE_DURATION_MS = 220;
+const SCROLLBAR_HANDLE_WIDTH_TRANSITION_DURATION_MS = 240;
+const SCROLLBAR_HANDLE_TRAVEL_DURATION_MS = 90;
+const SCROLLBAR_HANDLE_SCROLL_VISIBILITY_MS = 1_200;
+const SCROLLBAR_HANDLE_SCROLL_ACTIVE_MS = 110;
+const WEBKIT_SCROLLBAR_STYLE_ID = "terminal-emulator-webkit-scrollbar-style";
+
+type ViewportMetrics = {
+  offset: number;
+  viewportSize: number;
+  contentSize: number;
+};
 
 function buildXtermThemeKey(theme: ITheme): string {
   const values: Array<string> = [
@@ -70,6 +94,34 @@ declare global {
   interface Window {}
 }
 
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
+function ensureTerminalScrollbarStyle(): void {
+  if (typeof document === "undefined") {
+    return;
+  }
+  if (document.getElementById(WEBKIT_SCROLLBAR_STYLE_ID)) {
+    return;
+  }
+
+  const styleElement = document.createElement("style");
+  styleElement.id = WEBKIT_SCROLLBAR_STYLE_ID;
+  styleElement.textContent = `
+    [data-terminal-scrollbar-root="true"] .xterm-viewport {
+      scrollbar-width: none;
+      -ms-overflow-style: none;
+    }
+
+    [data-terminal-scrollbar-root="true"] .xterm-viewport::-webkit-scrollbar {
+      width: 0;
+      height: 0;
+    }
+  `;
+  document.head.appendChild(styleElement);
+}
+
 export default function TerminalEmulator({
   streamKey,
   initialOutputText,
@@ -100,12 +152,31 @@ export default function TerminalEmulator({
   const runtimeRef = useRef<TerminalEmulatorRuntime | null>(null);
   const appliedChunkSequenceRef = useRef(0);
   const mountedThemeRef = useRef<ITheme>(xtermTheme);
+  const viewportRef = useRef<HTMLElement | null>(null);
+  const dragStartOffsetRef = useRef(0);
+  const dragStartClientYRef = useRef(0);
+  const scrollVisibilityTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scrollActiveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastObservedOffsetRef = useRef<number | null>(null);
   const themeKey = useMemo(() => buildXtermThemeKey(xtermTheme), [xtermTheme]);
+  const [viewportMetrics, setViewportMetrics] = useState<ViewportMetrics>({
+    offset: 0,
+    viewportSize: 0,
+    contentSize: 0,
+  });
+  const [isHandleHovered, setIsHandleHovered] = useState(false);
+  const [isDraggingScrollbar, setIsDraggingScrollbar] = useState(false);
+  const [isScrollVisible, setIsScrollVisible] = useState(false);
+  const [isScrollActive, setIsScrollActive] = useState(false);
 
   useEffect(() => {
     mountedThemeRef.current = xtermTheme;
     runtimeRef.current?.setTheme({ theme: xtermTheme });
   }, [themeKey]);
+
+  useEffect(() => {
+    ensureTerminalScrollbarStyle();
+  }, []);
 
   useEffect(() => {
     const root = rootRef.current;
@@ -337,10 +408,206 @@ export default function TerminalEmulator({
     runtimeRef.current?.resize({ force: true });
   }, [resizeRequestToken]);
 
+  useEffect(() => {
+    const host = hostRef.current;
+    if (!host) {
+      return;
+    }
+
+    const viewportElement = host.querySelector<HTMLElement>(".xterm-viewport");
+    if (!viewportElement) {
+      viewportRef.current = null;
+      setViewportMetrics({ offset: 0, viewportSize: 0, contentSize: 0 });
+      return;
+    }
+
+    viewportRef.current = viewportElement;
+
+    const updateViewportMetrics = () => {
+      setViewportMetrics({
+        offset: Math.max(0, viewportElement.scrollTop),
+        viewportSize: Math.max(0, viewportElement.clientHeight),
+        contentSize: Math.max(0, viewportElement.scrollHeight),
+      });
+    };
+
+    updateViewportMetrics();
+
+    const handleViewportScroll = () => {
+      updateViewportMetrics();
+    };
+
+    const resizeObserver = new ResizeObserver(() => {
+      updateViewportMetrics();
+    });
+    resizeObserver.observe(viewportElement);
+    const scrollAreaElement = host.querySelector<HTMLElement>(".xterm-scroll-area");
+    if (scrollAreaElement) {
+      resizeObserver.observe(scrollAreaElement);
+    }
+
+    const mutationObserver = new MutationObserver(() => {
+      updateViewportMetrics();
+    });
+    mutationObserver.observe(host, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ["style", "class"],
+    });
+
+    viewportElement.addEventListener("scroll", handleViewportScroll, { passive: true });
+
+    return () => {
+      viewportElement.removeEventListener("scroll", handleViewportScroll);
+      resizeObserver.disconnect();
+      mutationObserver.disconnect();
+      if (viewportRef.current === viewportElement) {
+        viewportRef.current = null;
+      }
+    };
+  }, [streamKey]);
+
+  useEffect(() => {
+    const maxScrollOffset = Math.max(
+      0,
+      viewportMetrics.contentSize - viewportMetrics.viewportSize
+    );
+    const normalizedOffset = clamp(viewportMetrics.offset, 0, maxScrollOffset);
+    if (maxScrollOffset <= 0 || viewportMetrics.viewportSize <= 0) {
+      setIsScrollVisible(false);
+      setIsScrollActive(false);
+      lastObservedOffsetRef.current = null;
+      return;
+    }
+
+    const previousOffset = lastObservedOffsetRef.current;
+    lastObservedOffsetRef.current = normalizedOffset;
+    if (previousOffset === null || Math.abs(previousOffset - normalizedOffset) <= 0.5) {
+      return;
+    }
+
+    setIsScrollVisible(true);
+    if (scrollVisibilityTimeoutRef.current !== null) {
+      clearTimeout(scrollVisibilityTimeoutRef.current);
+    }
+    scrollVisibilityTimeoutRef.current = setTimeout(() => {
+      setIsScrollVisible(false);
+      scrollVisibilityTimeoutRef.current = null;
+    }, SCROLLBAR_HANDLE_SCROLL_VISIBILITY_MS);
+
+    setIsScrollActive(true);
+    if (scrollActiveTimeoutRef.current !== null) {
+      clearTimeout(scrollActiveTimeoutRef.current);
+    }
+    scrollActiveTimeoutRef.current = setTimeout(() => {
+      setIsScrollActive(false);
+      scrollActiveTimeoutRef.current = null;
+    }, SCROLLBAR_HANDLE_SCROLL_ACTIVE_MS);
+  }, [
+    viewportMetrics.contentSize,
+    viewportMetrics.offset,
+    viewportMetrics.viewportSize,
+  ]);
+
+  useEffect(() => {
+    return () => {
+      if (scrollVisibilityTimeoutRef.current !== null) {
+        clearTimeout(scrollVisibilityTimeoutRef.current);
+      }
+      if (scrollActiveTimeoutRef.current !== null) {
+        clearTimeout(scrollActiveTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  const scrollbarGeometry = useMemo(
+    () =>
+      computeVerticalScrollbarGeometry({
+        viewportSize: viewportMetrics.viewportSize,
+        contentSize: viewportMetrics.contentSize,
+        offset: viewportMetrics.offset,
+      }),
+    [viewportMetrics.contentSize, viewportMetrics.offset, viewportMetrics.viewportSize]
+  );
+
+  useEffect(() => {
+    if (!isDraggingScrollbar) {
+      return;
+    }
+
+    const handlePointerMove = (event: PointerEvent) => {
+      const dragDelta = event.clientY - dragStartClientYRef.current;
+      const nextOffset = computeScrollOffsetFromDragDelta({
+        startOffset: dragStartOffsetRef.current,
+        dragDelta,
+        maxScrollOffset: scrollbarGeometry.maxScrollOffset,
+        maxHandleOffset: scrollbarGeometry.maxHandleOffset,
+      });
+      const viewportElement = viewportRef.current;
+      if (!viewportElement) {
+        return;
+      }
+      viewportElement.scrollTop = nextOffset;
+      setViewportMetrics({
+        offset: nextOffset,
+        viewportSize: Math.max(0, viewportElement.clientHeight),
+        contentSize: Math.max(0, viewportElement.scrollHeight),
+      });
+    };
+
+    const stopDragging = () => {
+      setIsDraggingScrollbar(false);
+    };
+
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointerup", stopDragging);
+    window.addEventListener("pointercancel", stopDragging);
+
+    return () => {
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", stopDragging);
+      window.removeEventListener("pointercancel", stopDragging);
+    };
+  }, [
+    isDraggingScrollbar,
+    scrollbarGeometry.maxHandleOffset,
+    scrollbarGeometry.maxScrollOffset,
+  ]);
+
+  const handleVisible =
+    scrollbarGeometry.isVisible && (isDraggingScrollbar || isScrollVisible || isHandleHovered);
+  const handleOpacity = isDraggingScrollbar
+    ? SCROLLBAR_HANDLE_OPACITY_DRAGGING
+    : isHandleHovered
+      ? SCROLLBAR_HANDLE_OPACITY_HOVERED
+      : isScrollVisible
+        ? SCROLLBAR_HANDLE_OPACITY_VISIBLE
+        : 0;
+  const handleWidth =
+    isDraggingScrollbar || isHandleHovered
+      ? SCROLLBAR_HANDLE_WIDTH_ACTIVE
+      : SCROLLBAR_HANDLE_WIDTH_IDLE;
+  const thumbRegionOffset = Math.max(
+    0,
+    scrollbarGeometry.handleOffset - SCROLLBAR_HANDLE_GRAB_VERTICAL_PADDING
+  );
+  const thumbRegionHeight = Math.min(
+    viewportMetrics.viewportSize - thumbRegionOffset,
+    scrollbarGeometry.handleSize + SCROLLBAR_HANDLE_GRAB_VERTICAL_PADDING * 2
+  );
+  const handleInsetTop = Math.max(
+    0,
+    (thumbRegionHeight - scrollbarGeometry.handleSize) / 2
+  );
+  const handleTravelDurationMs =
+    isDraggingScrollbar || isScrollActive ? 0 : SCROLLBAR_HANDLE_TRAVEL_DURATION_MS;
+
   return (
     <div
       ref={rootRef}
       data-testid={testId}
+      data-terminal-scrollbar-root="true"
       style={{
         position: "relative",
         display: "flex",
@@ -370,6 +637,76 @@ export default function TerminalEmulator({
           padding: 8,
         }}
       />
+      {scrollbarGeometry.isVisible ? (
+        <div
+          style={{
+            position: "absolute",
+            top: 0,
+            right: 0,
+            bottom: 0,
+            width: 12,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "flex-start",
+            zIndex: 10,
+            pointerEvents: "none",
+          }}
+        >
+          <div
+            style={{
+              position: "absolute",
+              top: 0,
+              right: -3,
+              width: SCROLLBAR_HANDLE_GRAB_WIDTH,
+              height: thumbRegionHeight,
+              transform: `translateY(${thumbRegionOffset}px)`,
+              cursor: isDraggingScrollbar ? "grabbing" : "grab",
+              touchAction: "none",
+              userSelect: "none",
+              transitionProperty: "transform",
+              transitionDuration: `${handleTravelDurationMs}ms`,
+              transitionTimingFunction: "linear",
+              pointerEvents: handleVisible ? "auto" : "none",
+            }}
+            onPointerDown={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              dragStartOffsetRef.current = clamp(
+                viewportMetrics.offset,
+                0,
+                scrollbarGeometry.maxScrollOffset
+              );
+              dragStartClientYRef.current = event.clientY;
+              setIsDraggingScrollbar(true);
+            }}
+            onPointerEnter={() => {
+              if (!isScrollVisible && !isDraggingScrollbar) {
+                return;
+              }
+              setIsHandleHovered(true);
+            }}
+            onPointerLeave={() => {
+              setIsHandleHovered(false);
+            }}
+          >
+            <div
+              style={{
+                marginTop: handleInsetTop,
+                height: scrollbarGeometry.handleSize,
+                width: handleWidth,
+                borderRadius: 999,
+                alignSelf: "center",
+                backgroundColor: "rgba(113, 113, 122, 1)",
+                opacity: handleOpacity,
+                transitionProperty: "opacity, width, background-color",
+                transitionDuration: `${SCROLLBAR_HANDLE_FADE_DURATION_MS}ms, ${SCROLLBAR_HANDLE_WIDTH_TRANSITION_DURATION_MS}ms, ${SCROLLBAR_HANDLE_FADE_DURATION_MS}ms`,
+                transitionTimingFunction:
+                  "ease-out, cubic-bezier(0.22, 0.75, 0.2, 1), ease-out",
+              }}
+            />
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

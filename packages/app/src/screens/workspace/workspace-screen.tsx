@@ -554,13 +554,13 @@ function WorkspaceScreenContent({
   });
   const terminals = terminalsQuery.data?.terminals ?? [];
   const createTerminalMutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (input?: { paneId?: string }) => {
       if (!client) {
         throw new Error("Host is not connected");
       }
       return await client.createTerminal(normalizedWorkspaceId);
     },
-    onSuccess: (payload) => {
+    onSuccess: (payload, input) => {
       const createdTerminal = payload.terminal;
       if (createdTerminal) {
         queryClient.setQueryData<ListTerminalsPayload>(
@@ -587,6 +587,9 @@ function WorkspaceScreenContent({
         });
         if (!workspaceKey) {
           return;
+        }
+        if (input?.paneId) {
+          focusWorkspacePane(workspaceKey, input.paneId);
         }
         const tabId = useWorkspaceLayoutStore
           .getState()
@@ -1133,14 +1136,14 @@ function WorkspaceScreenContent({
     openWorkspaceDraftTab();
   }, [openWorkspaceDraftTab]);
 
-  const handleCreateTerminal = useCallback(() => {
+  const handleCreateTerminal = useCallback((input?: { paneId?: string }) => {
     if (createTerminalMutation.isPending) {
       return;
     }
     if (!normalizedWorkspaceId.startsWith("/")) {
       return;
     }
-    createTerminalMutation.mutate();
+    createTerminalMutation.mutate(input);
   }, [createTerminalMutation, normalizedWorkspaceId]);
 
   const handleSelectSwitcherTab = useCallback(
@@ -1160,6 +1163,23 @@ function WorkspaceScreenContent({
       }
     },
     [focusWorkspacePane, handleCreateDraftTab, persistenceKey]
+  );
+
+  const handleCreateDraftSplit = useCallback(
+    (input: { targetPaneId: string; position: "left" | "right" | "top" | "bottom" }) => {
+      if (!persistenceKey) {
+        return;
+      }
+
+      const paneId = splitWorkspacePaneEmpty(persistenceKey, input);
+      if (!paneId) {
+        return;
+      }
+
+      focusWorkspacePane(persistenceKey, paneId);
+      openWorkspaceDraftTab();
+    },
+    [focusWorkspacePane, openWorkspaceDraftTab, persistenceKey, splitWorkspacePaneEmpty]
   );
 
   const runCloseFlowForTab = useCallback(
@@ -1569,26 +1589,18 @@ function WorkspaceScreenContent({
       }
 
       if (action.id === "workspace.pane.split.right") {
-        const activePaneTabId = focusedPaneTabState.activeTabId;
-        if (activePaneTabId) {
-          splitWorkspacePane(persistenceKey, {
-            tabId: activePaneTabId,
-            targetPaneId: focusedPane.id,
-            position: "right",
-          });
-        }
+        handleCreateDraftSplit({
+          targetPaneId: focusedPane.id,
+          position: "right",
+        });
         return true;
       }
 
       if (action.id === "workspace.pane.split.down") {
-        const activePaneTabId = focusedPaneTabState.activeTabId;
-        if (activePaneTabId) {
-          splitWorkspacePane(persistenceKey, {
-            tabId: activePaneTabId,
-            targetPaneId: focusedPane.id,
-            position: "bottom",
-          });
-        }
+        handleCreateDraftSplit({
+          targetPaneId: focusedPane.id,
+          position: "bottom",
+        });
         return true;
       }
 
@@ -1647,9 +1659,9 @@ function WorkspaceScreenContent({
     [
       closeWorkspaceTab,
       focusWorkspacePane,
+      handleCreateDraftSplit,
       moveWorkspaceTabToPane,
       persistenceKey,
-      splitWorkspacePane,
       focusedPaneTabState.activeTabId,
       focusedPaneTabState.pane,
       workspaceLayout,
@@ -2023,7 +2035,7 @@ function WorkspaceScreenContent({
                       splitWorkspacePane(persistenceKey, input);
                     }}
                     onSplitPaneEmpty={(input) => {
-                      splitWorkspacePaneEmpty(persistenceKey, input);
+                      handleCreateDraftSplit(input);
                     }}
                     onMoveTabToPane={(tabId, toPaneId) => {
                       moveWorkspaceTabToPane(persistenceKey, tabId, toPaneId);

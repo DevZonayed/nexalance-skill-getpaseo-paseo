@@ -51,38 +51,6 @@ function parseLineFragment(value: string): Pick<InlinePathTarget, "lineStart" | 
   return { lineStart, lineEnd };
 }
 
-function parseTrailingLineSuffix(pathValue: string): {
-  path: string;
-  lineStart?: number;
-  lineEnd?: number;
-} | null {
-  const match = pathValue.match(/^(.*?):([0-9]+)(?::([0-9]+))?$/);
-  if (!match) {
-    return null;
-  }
-
-  const normalizedPath = normalizePathToken(match[1] ?? "");
-  if (!normalizedPath) {
-    return null;
-  }
-
-  const lineStart = parseInt(match[2] ?? "", 10);
-  if (!Number.isFinite(lineStart) || lineStart <= 0) {
-    return null;
-  }
-
-  const column = match[3] ? parseInt(match[3], 10) : undefined;
-  if (column !== undefined && (!Number.isFinite(column) || column <= 0)) {
-    return null;
-  }
-
-  return {
-    path: normalizedPath,
-    lineStart,
-    lineEnd: undefined,
-  };
-}
-
 /**
  * Strict VSCode-style markers only.
  *
@@ -198,15 +166,12 @@ export function parseAssistantFileLink(
 
   const windowsPathMatch = trimmed.match(/^([A-Za-z]:[\\/][^?#]*)(#[^?]+)?$/);
   if (windowsPathMatch) {
-    const rawWindowsPath = windowsPathMatch[1] ?? "";
-    const windowsPathWithLine = parseTrailingLineSuffix(rawWindowsPath);
-    const normalizedPath =
-      windowsPathWithLine?.path ?? normalizePathToken(rawWindowsPath);
+    const normalizedPath = normalizePathToken(windowsPathMatch[1] ?? "");
     if (!normalizedPath || !isAllowedAbsolutePath(normalizedPath, options.workspaceRoot)) {
       return null;
     }
 
-    const lines = windowsPathWithLine ?? parseLineFragment(windowsPathMatch[2] ?? "");
+    const lines = parseLineFragment(windowsPathMatch[2] ?? "");
     if (!lines) {
       return null;
     }
@@ -229,9 +194,7 @@ export function parseAssistantFileLink(
     return null;
   }
 
-  const rawPosixPath = decodeURIComponent(parsedUrl.pathname);
-  const posixPathWithLine = parseTrailingLineSuffix(rawPosixPath);
-  const normalizedPath = posixPathWithLine?.path ?? normalizePathToken(rawPosixPath);
+  const normalizedPath = normalizePathToken(decodeURIComponent(parsedUrl.pathname));
   if (!normalizedPath || !normalizedPath.startsWith("/")) {
     return null;
   }
@@ -240,7 +203,7 @@ export function parseAssistantFileLink(
     return null;
   }
 
-  const lines = posixPathWithLine ?? parseLineFragment(parsedUrl.hash);
+  const lines = parseLineFragment(parsedUrl.hash);
   if (!lines) {
     return null;
   }

@@ -92,19 +92,6 @@ describe("parseAssistantFileLink", () => {
     });
   });
 
-  it("parses absolute POSIX hrefs that use :line:column suffixes", () => {
-    expect(
-      parseAssistantFileLink("/Users/test/project/src/app.tsx:33:1", {
-        workspaceRoot: "/Users/test/project",
-      })
-    ).toEqual({
-      raw: "/Users/test/project/src/app.tsx:33:1",
-      path: "/Users/test/project/src/app.tsx",
-      lineStart: 33,
-      lineEnd: undefined,
-    });
-  });
-
   it("parses absolute Windows hrefs inside the active workspace", () => {
     expect(
       parseAssistantFileLink("C:/repo/src/app.tsx#L12-L20", {
@@ -115,19 +102,6 @@ describe("parseAssistantFileLink", () => {
       path: "C:/repo/src/app.tsx",
       lineStart: 12,
       lineEnd: 20,
-    });
-  });
-
-  it("parses absolute Windows hrefs that use :line:column suffixes", () => {
-    expect(
-      parseAssistantFileLink("C:/repo/src/app.tsx:12:4", {
-        workspaceRoot: "C:/repo",
-      })
-    ).toEqual({
-      raw: "C:/repo/src/app.tsx:12:4",
-      path: "C:/repo/src/app.tsx",
-      lineStart: 12,
-      lineEnd: undefined,
     });
   });
 

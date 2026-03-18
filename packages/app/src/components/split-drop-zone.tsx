@@ -29,7 +29,7 @@ export function SplitDropZone({
   preview,
 }: SplitDropZoneProps) {
   const { theme } = useUnistyles();
-  const { setNodeRef, isOver } = useDroppable({
+  const { setNodeRef } = useDroppable({
     id: buildSplitDropZoneId(paneId),
     disabled: !active,
     data: {
@@ -38,17 +38,27 @@ export function SplitDropZone({
     },
   });
 
-  const previewStyle = useMemo(() => {
+  const previewStyles = useMemo(() => {
     if (!preview || preview.paneId !== paneId) {
       return null;
     }
-    return [
-      styles.preview,
-      getPreviewStyle(preview.position),
-      {
-        backgroundColor: theme.colors.accent,
-      },
-    ];
+    return {
+      overlay: [
+        styles.previewOverlay,
+        getPreviewOverlayStyle(preview.position),
+        {
+          backgroundColor: theme.colors.accent,
+          opacity: 0.6,
+        },
+      ],
+      frame: [
+        styles.previewFrame,
+        getPreviewFrameStyle(preview.position),
+        {
+          borderColor: theme.colors.accent,
+        },
+      ],
+    };
   }, [paneId, preview, theme.colors.accent]);
 
   if (!active) {
@@ -58,10 +68,15 @@ export function SplitDropZone({
   return (
     <View
       ref={setNodeRef as any}
-      style={[styles.overlay, isOver && styles.overlayActive]}
+      style={styles.overlay}
       pointerEvents="none"
     >
-      {previewStyle ? <View pointerEvents="none" style={previewStyle} /> : null}
+      {previewStyles ? (
+        <>
+          <View pointerEvents="none" style={previewStyles.overlay} />
+          <View pointerEvents="none" style={previewStyles.frame} />
+        </>
+      ) : null}
     </View>
   );
 }
@@ -108,7 +123,7 @@ export function resolveSplitDropPosition(input: {
   return distances[0]?.position ?? "center";
 }
 
-function getPreviewStyle(position: SplitDropZonePosition) {
+function getPreviewOverlayStyle(position: SplitDropZonePosition) {
   if (position === "left") {
     return styles.previewLeft;
   }
@@ -121,7 +136,23 @@ function getPreviewStyle(position: SplitDropZonePosition) {
   if (position === "bottom") {
     return styles.previewBottom;
   }
-  return styles.previewCenter;
+  return styles.previewCenterOverlay;
+}
+
+function getPreviewFrameStyle(position: SplitDropZonePosition) {
+  if (position === "left") {
+    return styles.previewLeft;
+  }
+  if (position === "right") {
+    return styles.previewRight;
+  }
+  if (position === "top") {
+    return styles.previewTop;
+  }
+  if (position === "bottom") {
+    return styles.previewBottom;
+  }
+  return styles.previewCenterFrame;
 }
 
 const styles = StyleSheet.create((theme) => ({
@@ -129,14 +160,14 @@ const styles = StyleSheet.create((theme) => ({
     ...StyleSheet.absoluteFillObject,
     zIndex: 40,
   },
-  overlayActive: {
-    backgroundColor: theme.colors.surface0,
-    opacity: 0.03,
-  },
-  preview: {
+  previewOverlay: {
     position: "absolute",
     borderRadius: theme.borderRadius.md,
-    opacity: 0.2,
+  },
+  previewFrame: {
+    position: "absolute",
+    borderRadius: theme.borderRadius.md,
+    borderWidth: 2,
   },
   previewLeft: {
     left: 0,
@@ -162,10 +193,16 @@ const styles = StyleSheet.create((theme) => ({
     bottom: 0,
     height: "50%",
   },
-  previewCenter: {
-    left: "30%",
-    top: "30%",
-    right: "30%",
-    bottom: "30%",
+  previewCenterOverlay: {
+    left: theme.spacing[2],
+    top: theme.spacing[2],
+    right: theme.spacing[2],
+    bottom: theme.spacing[2],
+  },
+  previewCenterFrame: {
+    left: theme.spacing[2],
+    top: theme.spacing[2],
+    right: theme.spacing[2],
+    bottom: theme.spacing[2],
   },
 }));
