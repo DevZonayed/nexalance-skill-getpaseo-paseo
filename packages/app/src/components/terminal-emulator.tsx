@@ -634,7 +634,10 @@ export default function TerminalEmulator({
           height: "100%",
           overflow: "hidden",
           overscrollBehavior: "none",
-          padding: 8,
+          paddingTop: 8,
+          paddingBottom: 8,
+          paddingLeft: 8,
+          paddingRight: 0,
         }}
       />
       {scrollbarGeometry.isVisible ? (

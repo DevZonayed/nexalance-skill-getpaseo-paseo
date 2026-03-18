@@ -86,6 +86,13 @@ const DEFAULT_TERMINAL_FONT_FAMILY = [
   "monospace",
 ].join(", ");
 
+function withOverviewRulerBorderHidden(theme: ITheme): ITheme {
+  return {
+    ...theme,
+    overviewRulerBorder: theme.background ?? "transparent",
+  };
+}
+
 export class TerminalEmulatorRuntime {
   private callbacks: TerminalEmulatorRuntimeCallbacks = {};
   private pendingModifiers: PendingTerminalModifiers = {
@@ -138,8 +145,11 @@ export class TerminalEmulatorRuntime {
       fontFamily: DEFAULT_TERMINAL_FONT_FAMILY,
       fontSize: 13,
       lineHeight: 1.0,
+      overviewRuler: {
+        width: 8,
+      },
       scrollback: 10_000,
-      theme: input.theme,
+      theme: withOverviewRulerBorderHidden(input.theme),
     });
     const fitAddon = new FitAddon();
     const unicode11Addon = new Unicode11Addon();
@@ -435,7 +445,7 @@ export class TerminalEmulatorRuntime {
     }
 
     try {
-      terminal.options.theme = input.theme;
+      terminal.options.theme = withOverviewRulerBorderHidden(input.theme);
     } catch {
       // ignore
       return;
