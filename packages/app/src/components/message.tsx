@@ -541,6 +541,7 @@ const turnCopyButtonStylesheet = StyleSheet.create((theme) => ({
     alignSelf: "flex-start",
     padding: theme.spacing[2],
     paddingTop: 0,
+    marginTop: theme.spacing[2],
   },
   iconColor: {
     color: theme.colors.foregroundMuted,
@@ -624,7 +625,7 @@ export const TurnCopyButton = memo(function TurnCopyButton({
 
 const expandableBadgeStylesheet = StyleSheet.create((theme) => ({
   container: {
-    marginHorizontal: theme.spacing[2],
+    marginHorizontal: -6,
   },
   containerSpacing: {
     marginBottom: theme.spacing[1],
@@ -635,8 +636,7 @@ const expandableBadgeStylesheet = StyleSheet.create((theme) => ({
   pressable: {
     borderRadius: theme.borderRadius.lg,
     borderWidth: theme.borderWidth[1],
-    borderColor: theme.colors.border,
-    backgroundColor: theme.colors.surface1,
+    borderColor: "transparent",
     paddingHorizontal: theme.spacing[2],
     paddingVertical: theme.spacing[1],
     overflow: "hidden",
@@ -660,15 +660,17 @@ const expandableBadgeStylesheet = StyleSheet.create((theme) => ({
     borderRadius: 11,
     alignItems: "center",
     justifyContent: "center",
-    marginRight: theme.spacing[2],
+    marginRight: theme.spacing[1],
     backgroundColor: "transparent",
   },
   label: {
-    color: theme.colors.foreground,
-    opacity: 0.88,
+    color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.base,
     fontWeight: theme.fontWeight.normal,
     flexShrink: 0,
+  },
+  labelActive: {
+    color: theme.colors.foreground,
   },
   labelLoading: {
     color: theme.colors.foreground,
@@ -680,6 +682,9 @@ const expandableBadgeStylesheet = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.base,
     fontWeight: theme.fontWeight.normal,
     marginLeft: theme.spacing[2],
+  },
+  secondaryLabelActive: {
+    color: theme.colors.foreground,
   },
   shimmerText: {
     color: "transparent",
@@ -710,6 +715,8 @@ const expandableBadgeStylesheet = StyleSheet.create((theme) => ({
     overflow: "hidden",
   },
   pressableExpanded: {
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.surface1,
     borderBottomLeftRadius: 0,
     borderBottomRightRadius: 0,
   },
@@ -938,6 +945,22 @@ export const AssistantMessage = memo(function AssistantMessage({
             >
               {children}
             </View>
+          </View>
+        );
+      },
+      paragraph: (
+        node: any,
+        children: ReactNode[],
+        parent: any,
+        styles: any,
+      ) => {
+        const isLastChild = parent[0]?.children?.at(-1)?.key === node.key;
+        return (
+          <View
+            key={node.key}
+            style={[styles.paragraph, isLastChild && { marginBottom: 0 }]}
+          >
+            {children}
           </View>
         );
       },
@@ -1594,12 +1617,23 @@ const ExpandableBadge = memo(function ExpandableBadge({
     [isExpanded, isInteractive]
   );
 
+  const isActive = isHovered || isExpanded;
+
   const labelStyle = useMemo(
     () => [
       expandableBadgeStylesheet.label,
+      isActive && expandableBadgeStylesheet.labelActive,
       isLoading && expandableBadgeStylesheet.labelLoading,
     ],
-    [isLoading]
+    [isActive, isLoading]
+  );
+
+  const secondaryLabelStyle = useMemo(
+    () => [
+      expandableBadgeStylesheet.secondaryLabel,
+      isActive && expandableBadgeStylesheet.secondaryLabelActive,
+    ],
+    [isActive]
   );
 
   const shimmerLabelTextStyle = useMemo(
@@ -1670,7 +1704,9 @@ const ExpandableBadge = memo(function ExpandableBadge({
   const IconComponent = icon;
   const iconColor = isError
     ? theme.colors.destructive
-    : theme.colors.mutedForeground;
+    : isActive
+      ? theme.colors.foreground
+      : theme.colors.mutedForeground;
 
   let iconNode: ReactNode = null;
   if (isError) {
@@ -1717,7 +1753,7 @@ const ExpandableBadge = memo(function ExpandableBadge({
             </Text>
             {secondaryLabel ? (
               <Text
-                style={expandableBadgeStylesheet.secondaryLabel}
+                style={secondaryLabelStyle}
                 numberOfLines={1}
                 onLayout={shouldMeasureWebShimmer ? handleSecondaryLayout : undefined}
               >
@@ -1812,7 +1848,7 @@ const ExpandableBadge = memo(function ExpandableBadge({
           {isInteractive && isHovered ? (
             <ChevronRight
               size={14}
-              color={theme.colors.foregroundMuted}
+              color={theme.colors.foreground}
               style={chevronStyle}
             />
           ) : null}

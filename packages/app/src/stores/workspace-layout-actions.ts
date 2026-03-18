@@ -145,6 +145,14 @@ interface SplitPaneInLayoutResult {
   paneId: string;
 }
 
+interface SplitPaneEmptyInLayoutInput {
+  layout: WorkspaceLayout;
+  targetPaneId: string;
+  position: "left" | "right" | "top" | "bottom";
+  createNodeId: (prefix: "pane" | "group") => string;
+  maxTreeDepth: number;
+}
+
 interface MoveTabToPaneInLayoutInput {
   layout: WorkspaceLayout;
   tabId: string;
@@ -1062,6 +1070,60 @@ export function splitPaneInLayout(input: SplitPaneInLayoutInput): SplitPaneInLay
     layout: {
       root: result.root,
       focusedPaneId: result.newPaneId,
+    },
+  };
+}
+
+export function splitPaneEmptyInLayout(input: SplitPaneEmptyInLayoutInput): SplitPaneInLayoutResult | null {
+  const layout = asInternalLayout(input.layout);
+  if (!findPaneById(layout.root, input.targetPaneId)) {
+    return null;
+  }
+
+  const direction = input.position === "left" || input.position === "right" ? "horizontal" : "vertical";
+  const insertAfter = input.position === "right" || input.position === "bottom";
+
+  const targetPath = findPanePathById(layout.root, input.targetPaneId);
+  invariant(targetPath, `Target pane not found: ${input.targetPaneId}`);
+  const targetNode = getNodeAtPath(layout.root, targetPath);
+  invariant(targetNode.kind === "pane", "Expected target pane");
+
+  const newPaneId = input.createNodeId("pane");
+  const newPaneNode = createPaneNode({ id: newPaneId });
+
+  const parentPath = targetPath.slice(0, -1);
+  const targetIndex = targetPath[targetPath.length - 1] ?? 0;
+  const parentNode = parentPath.length > 0 ? getNodeAtPath(layout.root, parentPath) : null;
+
+  let nextRoot: SplitNodeInternal;
+  if (parentNode?.kind === "group" && parentNode.group.direction === direction) {
+    const targetSize = parentNode.group.sizes[targetIndex] ?? 0;
+    const nextSizes = parentNode.group.sizes.slice();
+    const insertIndex = insertAfter ? targetIndex + 1 : targetIndex;
+    nextSizes.splice(insertIndex, 0, targetSize / 2);
+    nextSizes[targetIndex + (insertAfter ? 0 : 1)] = targetSize / 2;
+    nextRoot = replaceNodeAtPath(layout.root, parentPath, () =>
+      insertChildIntoGroup(parentNode, { index: insertIndex, node: newPaneNode, sizes: nextSizes })
+    );
+  } else {
+    const newGroup = createGroupNode({
+      id: input.createNodeId("group"),
+      direction,
+      children: insertAfter ? [targetNode, newPaneNode] : [newPaneNode, targetNode],
+      sizes: [0.5, 0.5],
+    });
+    nextRoot = replaceNodeAtPath(layout.root, targetPath, () => newGroup);
+  }
+
+  if (getTreeDepth(nextRoot) > input.maxTreeDepth) {
+    return null;
+  }
+
+  return {
+    paneId: newPaneId,
+    layout: {
+      root: nextRoot,
+      focusedPaneId: newPaneId,
     },
   };
 }

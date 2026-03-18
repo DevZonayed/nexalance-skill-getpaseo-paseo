@@ -26,6 +26,7 @@ import {
   reorderFocusedPaneTabsInLayout,
   reorderPaneTabsInLayout,
   retargetTabInLayout,
+  splitPaneEmptyInLayout,
   splitPaneInLayout,
   type SplitGroup,
   type SplitNode,
@@ -62,6 +63,13 @@ interface WorkspaceLayoutStore {
     workspaceKey: string,
     input: {
       tabId: string;
+      targetPaneId: string;
+      position: "left" | "right" | "top" | "bottom";
+    }
+  ) => string | null;
+  splitPaneEmpty: (
+    workspaceKey: string,
+    input: {
       targetPaneId: string;
       position: "left" | "right" | "top" | "bottom";
     }
@@ -228,6 +236,39 @@ export const useWorkspaceLayoutStore = create<WorkspaceLayoutStore>()(
         const result = splitPaneInLayout({
           layout: getWorkspaceLayout(get().layoutByWorkspace, normalizedWorkspaceKey),
           tabId: normalizedTabId,
+          targetPaneId: normalizedTargetPaneId,
+          position: input.position,
+          maxTreeDepth: MAX_TREE_DEPTH,
+          createNodeId: (prefix) => {
+            const randomValue =
+              typeof globalThis.crypto?.randomUUID === "function"
+                ? globalThis.crypto.randomUUID()
+                : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+            return `${prefix}_${randomValue}`;
+          },
+        });
+        if (!result) {
+          return null;
+        }
+
+        set((state) => ({
+          layoutByWorkspace: {
+            ...state.layoutByWorkspace,
+            [normalizedWorkspaceKey]: result.layout,
+          },
+        }));
+
+        return result.paneId;
+      },
+      splitPaneEmpty: (workspaceKey, input) => {
+        const normalizedWorkspaceKey = trimNonEmpty(workspaceKey);
+        const normalizedTargetPaneId = trimNonEmpty(input.targetPaneId);
+        if (!normalizedWorkspaceKey || !normalizedTargetPaneId) {
+          return null;
+        }
+
+        const result = splitPaneEmptyInLayout({
+          layout: getWorkspaceLayout(get().layoutByWorkspace, normalizedWorkspaceKey),
           targetPaneId: normalizedTargetPaneId,
           position: input.position,
           maxTreeDepth: MAX_TREE_DEPTH,

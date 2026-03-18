@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState, type Dispatch, type SetStateAction } from "react";
 import { ActivityIndicator, Pressable, ScrollView, Text, View, type LayoutChangeEvent } from "react-native";
-import { Plus, X } from "lucide-react-native";
+import { Columns2, Plus, Rows2, SquareTerminal, X } from "lucide-react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { SortableInlineList } from "@/components/sortable-inline-list";
 import {
@@ -57,6 +57,9 @@ type WorkspaceDesktopTabsRowProps = {
   onSelectNewTabOption: (selection: NewTabSelection) => void;
   newTabAgentOptionId: NewTabOptionId;
   onReorderTabs: (nextTabs: WorkspaceTabDescriptor[]) => void;
+  onNewTerminalTab: () => void;
+  onSplitRight: () => void;
+  onSplitDown: () => void;
   externalDndContext?: boolean;
   activeDragTabId?: string | null;
 };
@@ -270,6 +273,9 @@ export function WorkspaceDesktopTabsRow({
   onSelectNewTabOption,
   newTabAgentOptionId,
   onReorderTabs,
+  onNewTerminalTab,
+  onSplitRight,
+  onSplitDown,
   externalDndContext = false,
   activeDragTabId = null,
 }: WorkspaceDesktopTabsRowProps) {
@@ -410,6 +416,54 @@ export function WorkspaceDesktopTabsRow({
             </View>
           </TooltipContent>
         </Tooltip>
+        <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
+          <TooltipTrigger
+            onPress={onNewTerminalTab}
+            accessibilityRole="button"
+            accessibilityLabel="New terminal tab"
+            style={({ hovered, pressed }) => [
+              styles.newTabActionButton,
+              (hovered || pressed) && styles.newTabActionButtonHovered,
+            ]}
+          >
+            <SquareTerminal size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
+          </TooltipTrigger>
+          <TooltipContent side="bottom" align="end" offset={8}>
+            <Text style={styles.newTabTooltipText}>New terminal tab</Text>
+          </TooltipContent>
+        </Tooltip>
+        <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
+          <TooltipTrigger
+            onPress={onSplitRight}
+            accessibilityRole="button"
+            accessibilityLabel="Split pane right"
+            style={({ hovered, pressed }) => [
+              styles.newTabActionButton,
+              (hovered || pressed) && styles.newTabActionButtonHovered,
+            ]}
+          >
+            <Columns2 size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
+          </TooltipTrigger>
+          <TooltipContent side="bottom" align="end" offset={8}>
+            <Text style={styles.newTabTooltipText}>Split pane right</Text>
+          </TooltipContent>
+        </Tooltip>
+        <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
+          <TooltipTrigger
+            onPress={onSplitDown}
+            accessibilityRole="button"
+            accessibilityLabel="Split pane down"
+            style={({ hovered, pressed }) => [
+              styles.newTabActionButton,
+              (hovered || pressed) && styles.newTabActionButtonHovered,
+            ]}
+          >
+            <Rows2 size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
+          </TooltipTrigger>
+          <TooltipContent side="bottom" align="end" offset={8}>
+            <Text style={styles.newTabTooltipText}>Split pane down</Text>
+          </TooltipContent>
+        </Tooltip>
       </View>
     </View>
   );
@@ -514,11 +568,13 @@ function ResolvedDesktopTabChip({
 const styles = StyleSheet.create((theme) => ({
   tabsContainer: {
     minWidth: 0,
+    height: theme.spacing[2] * 2 + theme.iconSize.sm + theme.spacing[1],
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.border,
     backgroundColor: theme.colors.surface0,
     flexDirection: "row",
     alignItems: "center",
+    overflow: "visible",
   },
   tabsScroll: {
     minWidth: 0,
@@ -536,7 +592,6 @@ const styles = StyleSheet.create((theme) => ({
   tabsActions: {
     flexDirection: "row",
     alignItems: "center",
-    gap: theme.spacing[1],
     paddingHorizontal: theme.spacing[2],
   },
   tab: {
@@ -613,8 +668,8 @@ const styles = StyleSheet.create((theme) => ({
     backgroundColor: theme.colors.surface3,
   },
   newTabActionButton: {
-    width: 28,
-    height: 28,
+    width: 22,
+    height: 22,
     borderRadius: theme.borderRadius.md,
     alignItems: "center",
     justifyContent: "center",

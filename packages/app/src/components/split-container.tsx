@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useMemo, useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -15,7 +15,7 @@ import {
   type DragStartEvent,
 } from "@dnd-kit/core";
 import { arrayMove, sortableKeyboardCoordinates } from "@dnd-kit/sortable";
-import { View, Text } from "react-native";
+import { Platform, View, Text } from "react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { ResizeHandle } from "@/components/resize-handle";
 import {
@@ -63,6 +63,7 @@ interface SplitContainerProps {
   onCloseTabsToRight: (tabId: string, paneTabs: WorkspaceTabDescriptor[]) => Promise<void> | void;
   onCloseOtherTabs: (tabId: string, paneTabs: WorkspaceTabDescriptor[]) => Promise<void> | void;
   onSelectNewTabOption: (selection: { optionId: "__new_tab_agent__"; paneId?: string }) => void;
+  onNewTerminalTab: () => void;
   newTabAgentOptionId?: "__new_tab_agent__";
   buildPaneContentModel: (input: {
     paneId: string;
@@ -71,6 +72,10 @@ interface SplitContainerProps {
   onFocusPane: (paneId: string) => void;
   onSplitPane: (input: {
     tabId: string;
+    targetPaneId: string;
+    position: "left" | "right" | "top" | "bottom";
+  }) => void;
+  onSplitPaneEmpty: (input: {
     targetPaneId: string;
     position: "left" | "right" | "top" | "bottom";
   }) => void;
@@ -110,7 +115,6 @@ interface SplitPaneViewProps
     | "activeDragTabId"
     | "showDropZones"
     | "dropPreview"
-    | "onSplitPane"
     | "onMoveTabToPane"
     | "onResizeSplit"
   > {
@@ -161,10 +165,12 @@ export function SplitContainer({
   onCloseTabsToRight,
   onCloseOtherTabs,
   onSelectNewTabOption,
+  onNewTerminalTab,
   newTabAgentOptionId = "__new_tab_agent__",
   buildPaneContentModel,
   onFocusPane,
   onSplitPane,
+  onSplitPaneEmpty,
   onMoveTabToPane,
   onResizeSplit,
   onReorderTabsInPane,
@@ -360,10 +366,12 @@ export function SplitContainer({
         onCloseTabsToRight={onCloseTabsToRight}
         onCloseOtherTabs={onCloseOtherTabs}
         onSelectNewTabOption={onSelectNewTabOption}
+        onNewTerminalTab={onNewTerminalTab}
         newTabAgentOptionId={newTabAgentOptionId}
         buildPaneContentModel={buildPaneContentModel}
         onFocusPane={onFocusPane}
         onSplitPane={onSplitPane}
+        onSplitPaneEmpty={onSplitPaneEmpty}
         onMoveTabToPane={onMoveTabToPane}
         onResizeSplit={onResizeSplit}
         onReorderTabsInPane={onReorderTabsInPane}
@@ -479,10 +487,12 @@ function SplitNodeView({
   onCloseTabsToRight,
   onCloseOtherTabs,
   onSelectNewTabOption,
+  onNewTerminalTab,
   newTabAgentOptionId,
   buildPaneContentModel,
   onFocusPane,
   onSplitPane,
+  onSplitPaneEmpty,
   onMoveTabToPane,
   onResizeSplit,
   onReorderTabsInPane,
@@ -513,9 +523,12 @@ function SplitNodeView({
         onCloseTabsToRight={onCloseTabsToRight}
         onCloseOtherTabs={onCloseOtherTabs}
         onSelectNewTabOption={onSelectNewTabOption}
+        onNewTerminalTab={onNewTerminalTab}
         newTabAgentOptionId={newTabAgentOptionId}
         buildPaneContentModel={buildPaneContentModel}
         onFocusPane={onFocusPane}
+        onSplitPane={onSplitPane}
+        onSplitPaneEmpty={onSplitPaneEmpty}
         onReorderTabsInPane={onReorderTabsInPane}
         renderPaneEmptyState={renderPaneEmptyState}
         activeDragTabId={activeDragTabId}
@@ -560,10 +573,12 @@ function SplitNodeView({
               onCloseTabsToRight={onCloseTabsToRight}
               onCloseOtherTabs={onCloseOtherTabs}
               onSelectNewTabOption={onSelectNewTabOption}
+              onNewTerminalTab={onNewTerminalTab}
               newTabAgentOptionId={newTabAgentOptionId}
               buildPaneContentModel={buildPaneContentModel}
               onFocusPane={onFocusPane}
               onSplitPane={onSplitPane}
+              onSplitPaneEmpty={onSplitPaneEmpty}
               onMoveTabToPane={onMoveTabToPane}
               onResizeSplit={onResizeSplit}
               onReorderTabsInPane={onReorderTabsInPane}
@@ -608,9 +623,12 @@ function SplitPaneView({
   onCloseTabsToRight,
   onCloseOtherTabs,
   onSelectNewTabOption,
+  onNewTerminalTab,
   newTabAgentOptionId,
   buildPaneContentModel,
   onFocusPane,
+  onSplitPane,
+  onSplitPaneEmpty,
   onReorderTabsInPane,
   renderPaneEmptyState,
   activeDragTabId,
@@ -618,6 +636,7 @@ function SplitPaneView({
   dropPreview,
 }: SplitPaneViewProps) {
   const { theme } = useUnistyles();
+  const paneRef = useRef<View | null>(null);
   const paneState = useMemo(
     () =>
       deriveWorkspacePaneState({
@@ -677,8 +696,37 @@ function SplitPaneView({
     ]
   );
 
+  useEffect(() => {
+    if (Platform.OS !== "web") {
+      return;
+    }
+
+    const paneElement = paneRef.current as unknown as HTMLElement | null;
+    if (
+      !paneElement ||
+      typeof paneElement.addEventListener !== "function" ||
+      typeof paneElement.removeEventListener !== "function"
+    ) {
+      return;
+    }
+
+    const handlePaneInteraction = () => {
+      onFocusPane(pane.id);
+    };
+
+    paneElement.addEventListener("pointerdown", handlePaneInteraction, true);
+    paneElement.addEventListener("focusin", handlePaneInteraction, true);
+
+    return () => {
+      paneElement.removeEventListener("pointerdown", handlePaneInteraction, true);
+      paneElement.removeEventListener("focusin", handlePaneInteraction, true);
+    };
+  }, [onFocusPane, pane.id]);
+
   return (
     <View
+      ref={paneRef}
+      collapsable={false}
       style={styles.pane}
       onFocus={() => {
         onFocusPane(pane.id);
@@ -704,10 +752,13 @@ function SplitPaneView({
           onCloseTabsToRight={(tabId) => onCloseTabsToRight(tabId, paneTabs)}
           onCloseOtherTabs={(tabId) => onCloseOtherTabs(tabId, paneTabs)}
           onSelectNewTabOption={onSelectNewTabOption}
+          onNewTerminalTab={onNewTerminalTab}
           newTabAgentOptionId={newTabAgentOptionId ?? "__new_tab_agent__"}
           onReorderTabs={(nextTabs) => {
             onReorderTabsInPane(pane.id, nextTabs.map((tab) => tab.tabId));
           }}
+          onSplitRight={() => onSplitPaneEmpty({ targetPaneId: pane.id, position: "right" })}
+          onSplitDown={() => onSplitPaneEmpty({ targetPaneId: pane.id, position: "bottom" })}
           externalDndContext
           activeDragTabId={activeDragTabId}
         />

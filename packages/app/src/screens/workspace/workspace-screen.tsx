@@ -781,6 +781,7 @@ function WorkspaceScreenContent({
   const closeWorkspaceTab = useWorkspaceLayoutStore((state) => state.closeTab);
   const retargetWorkspaceTab = useWorkspaceLayoutStore((state) => state.retargetTab);
   const splitWorkspacePane = useWorkspaceLayoutStore((state) => state.splitPane);
+  const splitWorkspacePaneEmpty = useWorkspaceLayoutStore((state) => state.splitPaneEmpty);
   const moveWorkspaceTabToPane = useWorkspaceLayoutStore((state) => state.moveTabToPane);
   const focusWorkspacePane = useWorkspaceLayoutStore((state) => state.focusPane);
   const resizeWorkspaceSplit = useWorkspaceLayoutStore((state) => state.resizeSplit);
@@ -2017,8 +2018,12 @@ function WorkspaceScreenContent({
                     onFocusPane={(paneId) => {
                       focusWorkspacePane(persistenceKey, paneId);
                     }}
+                    onNewTerminalTab={handleCreateTerminal}
                     onSplitPane={(input) => {
                       splitWorkspacePane(persistenceKey, input);
+                    }}
+                    onSplitPaneEmpty={(input) => {
+                      splitWorkspacePaneEmpty(persistenceKey, input);
                     }}
                     onMoveTabToPane={(tabId, toPaneId) => {
                       moveWorkspaceTabToPane(persistenceKey, tabId, toPaneId);
