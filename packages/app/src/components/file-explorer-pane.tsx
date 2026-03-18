@@ -23,6 +23,7 @@ import Animated, {
   withRepeat,
   withTiming,
 } from "react-native-reanimated";
+import { WORKSPACE_SECONDARY_HEADER_HEIGHT } from "@/constants/layout";
 import { Fonts } from "@/constants/theme";
 import * as Clipboard from "expo-clipboard";
 import {
@@ -581,13 +582,12 @@ export function FileExplorerPane({
                 style={({ hovered, pressed }) => [
                   styles.iconButton,
                   (hovered || pressed) && styles.iconButtonHovered,
-                  pressed && styles.iconButtonPressed,
                 ]}
                 accessibilityRole="button"
                 accessibilityLabel="Refresh files"
               >
                 <Animated.View style={[styles.refreshIcon, refreshIconAnimatedStyle]}>
-                  <RotateCw size={16} color={theme.colors.foregroundMuted} />
+                  <RotateCw size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
                 </Animated.View>
               </Pressable>
               <Pressable style={styles.sortButton} onPress={handleSortCycle}>
@@ -875,7 +875,7 @@ const styles = StyleSheet.create((theme) => ({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    height: 32 + theme.spacing[2] * 2,
+    height: WORKSPACE_SECONDARY_HEADER_HEIGHT,
     paddingHorizontal: theme.spacing[3],
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.border,
@@ -898,7 +898,7 @@ const styles = StyleSheet.create((theme) => ({
     flexShrink: 0,
   },
   sortButton: {
-    height: 32,
+    height: 28,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
@@ -1025,18 +1025,14 @@ const styles = StyleSheet.create((theme) => ({
     fontWeight: theme.fontWeight.normal,
   },
   iconButton: {
-    width: 32,
-    height: 32,
+    width: 22,
+    height: 22,
     borderRadius: theme.borderRadius.md,
     alignItems: "center",
     justifyContent: "center",
   },
   iconButtonHovered: {
     backgroundColor: theme.colors.surface2,
-  },
-  iconButtonPressed: {
-    opacity: 0.8,
-    transform: [{ scale: 0.96 }],
   },
   refreshIcon: {
     width: 16,
