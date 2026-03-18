@@ -1,10 +1,17 @@
 import type { Command } from 'commander'
+import { execFileSync } from 'node:child_process'
 import { createRequire } from 'node:module'
-import { getOrCreateServerId } from '@getpaseo/server'
+import { getOrCreateServerId, findExecutable, applyProviderEnv } from '@getpaseo/server'
 import { tryConnectToDaemon } from '../../utils/client.js'
 import type { CommandOptions, ListResult, OutputSchema } from '../../output/index.js'
 import { resolveLocalDaemonState, resolveTcpHostFromListen } from './local-daemon.js'
 import { resolveNodePathFromPid } from './runtime-toolchain.js'
+
+interface ProviderBinaryStatus {
+  label: string
+  path: string | null
+  version: string | null
+}
 
 interface DaemonStatus {
   serverId: string | null
@@ -21,6 +28,7 @@ interface DaemonStatus {
   daemonNode: string
   cliNode: string
   cliVersion: string
+  providers: ProviderBinaryStatus[]
   note?: string
 }
 
@@ -77,16 +85,17 @@ function createStatusSchema(status: DaemonStatus): OutputSchema<StatusRow> {
         header: 'VALUE',
         field: 'value',
         color: (_, item) => {
-          if (item.key !== 'Status') {
-            return undefined
+          if (item.key === 'Status') {
+            if (item.value === 'running') return 'green'
+            if (item.value === 'unresponsive') return 'yellow'
+            return 'red'
           }
-          if (item.value === 'running') {
+          if (item.key.startsWith('  ')) {
+            if (item.value === 'not found') return 'red'
+            if (item.value.endsWith('(--version failed)')) return 'yellow'
             return 'green'
           }
-          if (item.value === 'unresponsive') {
-            return 'yellow'
-          }
-          return 'red'
+          return undefined
         },
       },
     ],
@@ -126,7 +135,51 @@ function toStatusRows(status: DaemonStatus): StatusRow[] {
     rows.push({ key: 'Note', value: status.note })
   }
 
+  rows.push({ key: '', value: '' })
+  rows.push({ key: 'Providers', value: '' })
+  for (const provider of status.providers) {
+    if (!provider.path) {
+      rows.push({ key: `  ${provider.label}`, value: 'not found' })
+    } else if (!provider.version) {
+      rows.push({ key: `  ${provider.label}`, value: `${provider.path} (--version failed)` })
+    } else {
+      rows.push({ key: `  ${provider.label}`, value: `${provider.path} (${provider.version})` })
+    }
+  }
+
   return rows
+}
+
+const PROVIDER_BINARIES: { label: string; binary: string }[] = [
+  { label: 'Claude', binary: 'claude' },
+  { label: 'Codex', binary: 'codex' },
+  { label: 'OpenCode', binary: 'opencode' },
+]
+
+function checkProviderBinary(binary: string): { path: string | null; version: string | null } {
+  const binaryPath = findExecutable(binary)
+  if (!binaryPath) {
+    return { path: null, version: null }
+  }
+  const env = applyProviderEnv(process.env)
+  try {
+    const output = execFileSync(binaryPath, ['--version'], {
+      encoding: 'utf8',
+      timeout: 5000,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env,
+    }).trim()
+    return { path: binaryPath, version: output || null }
+  } catch {
+    return { path: binaryPath, version: null }
+  }
+}
+
+function checkProviderBinaries(): ProviderBinaryStatus[] {
+  return PROVIDER_BINARIES.map(({ label, binary }) => {
+    const result = checkProviderBinary(binary)
+    return { label, ...result }
+  })
 }
 
 function resolveOwnerLabel(uid: number | undefined, hostname: string | undefined): string | null {
@@ -201,6 +254,8 @@ export async function runStatusCommand(
     note = appendNote(note, `serverId unavailable: ${shortenMessage(normalizeError(error))}`)
   }
 
+  const providers = checkProviderBinaries()
+
   const daemonStatus: DaemonStatus = {
     serverId,
     status,
@@ -216,6 +271,7 @@ export async function runStatusCommand(
     daemonNode,
     cliNode,
     cliVersion,
+    providers,
     note,
   }
 

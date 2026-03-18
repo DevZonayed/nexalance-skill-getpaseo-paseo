@@ -92,6 +92,25 @@ describe("applyProviderEnv", () => {
     expect(env.FOO).toBe("bar");
     expect(Object.keys(env).length).toBeGreaterThanOrEqual(3);
   });
+
+  test("shell env PATH wins over base env PATH", () => {
+    const base = { PATH: "/usr/bin:/bin" };
+    const shellEnv = { PATH: "/usr/local/bin:/usr/bin:/bin:/home/user/.nvm/bin" };
+
+    const env = applyProviderEnv(base, undefined, shellEnv);
+
+    expect(env.PATH).toBe("/usr/local/bin:/usr/bin:/bin:/home/user/.nvm/bin");
+  });
+
+  test("runtimeSettings env wins over shell env", () => {
+    const base = { PATH: "/usr/bin" };
+    const shellEnv = { PATH: "/usr/local/bin:/usr/bin" };
+    const runtime: ProviderRuntimeSettings = { env: { PATH: "/custom/path" } };
+
+    const env = applyProviderEnv(base, runtime, shellEnv);
+
+    expect(env.PATH).toBe("/custom/path");
+  });
 });
 
 describe("findExecutable", () => {
