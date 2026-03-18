@@ -131,8 +131,8 @@ export function applyProviderEnv(
   shellEnv?: Record<string, string>
 ): Record<string, string | undefined> {
   return {
-    ...(shellEnv ?? resolveShellEnv()),
     ...baseEnv,
+    ...(shellEnv ?? resolveShellEnv()),
     ...(runtimeSettings?.env ?? {}),
   };
 }
