@@ -1,9 +1,11 @@
 import type { WorkspaceTab, WorkspaceTabTarget } from "@/stores/workspace-tabs-store";
-import type { WorkspaceTabDescriptor } from "@/screens/workspace/workspace-tabs-types";
-
-export interface WorkspaceDerivedTab {
-  descriptor: WorkspaceTabDescriptor;
-}
+import {
+  deriveWorkspacePaneState,
+  type WorkspaceDerivedTab,
+} from "@/screens/workspace/workspace-pane-state";
+import {
+  buildDeterministicWorkspaceTabId,
+} from "@/utils/workspace-tab-identity";
 
 export interface WorkspaceTabModel {
   tabs: WorkspaceDerivedTab[];
@@ -11,102 +13,8 @@ export interface WorkspaceTabModel {
   activeTab: WorkspaceDerivedTab | null;
 }
 
-function trimNonEmpty(value: string | null | undefined): string | null {
-  if (typeof value !== "string") {
-    return null;
-  }
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : null;
-}
-
-function tabTargetsEqual(left: WorkspaceTabTarget, right: WorkspaceTabTarget): boolean {
-  if (left.kind !== right.kind) {
-    return false;
-  }
-  if (left.kind === "draft" && right.kind === "draft") {
-    return left.draftId === right.draftId;
-  }
-  if (left.kind === "agent" && right.kind === "agent") {
-    return left.agentId === right.agentId;
-  }
-  if (left.kind === "terminal" && right.kind === "terminal") {
-    return left.terminalId === right.terminalId;
-  }
-  if (left.kind === "file" && right.kind === "file") {
-    return left.path === right.path;
-  }
-  return false;
-}
-
-function normalizeWorkspaceTab(tab: WorkspaceTab): WorkspaceTab | null {
-  if (!tab || typeof tab !== "object") {
-    return null;
-  }
-  const tabId = trimNonEmpty(tab.tabId);
-  if (!tabId) {
-    return null;
-  }
-  if (!tab.target || typeof tab.target !== "object") {
-    return null;
-  }
-  if (tab.target.kind === "draft") {
-    const draftId = trimNonEmpty(tab.target.draftId);
-    if (!draftId) {
-      return null;
-    }
-    return {
-      tabId,
-      target: { kind: "draft", draftId },
-      createdAt: tab.createdAt,
-    };
-  }
-  if (tab.target.kind === "agent") {
-    const agentId = trimNonEmpty(tab.target.agentId);
-    if (!agentId) {
-      return null;
-    }
-    return {
-      tabId,
-      target: { kind: "agent", agentId },
-      createdAt: tab.createdAt,
-    };
-  }
-  if (tab.target.kind === "terminal") {
-    const terminalId = trimNonEmpty(tab.target.terminalId);
-    if (!terminalId) {
-      return null;
-    }
-    return {
-      tabId,
-      target: { kind: "terminal", terminalId },
-      createdAt: tab.createdAt,
-    };
-  }
-  if (tab.target.kind === "file") {
-    const path = trimNonEmpty(tab.target.path);
-    if (!path) {
-      return null;
-    }
-    return {
-      tabId,
-      target: { kind: "file", path: path.replace(/\\/g, "/") },
-      createdAt: tab.createdAt,
-    };
-  }
-  return null;
-}
-
 export function buildWorkspaceTabId(target: WorkspaceTabTarget): string {
-  if (target.kind === "draft") {
-    return target.draftId;
-  }
-  if (target.kind === "agent") {
-    return `agent_${target.agentId}`;
-  }
-  if (target.kind === "terminal") {
-    return `terminal_${target.terminalId}`;
-  }
-  return `file_${target.path}`;
+  return buildDeterministicWorkspaceTabId(target);
 }
 
 export function deriveWorkspaceTabModel(input: {
@@ -114,51 +22,14 @@ export function deriveWorkspaceTabModel(input: {
   focusedTabId?: string | null;
   preferredTarget?: WorkspaceTabTarget | null;
 }): WorkspaceTabModel {
-  const tabs: WorkspaceDerivedTab[] = [];
-  const openTabIds = new Set<string>();
-
-  for (const tab of input.tabs) {
-    const normalizedTab = normalizeWorkspaceTab(tab);
-    if (!normalizedTab || openTabIds.has(normalizedTab.tabId)) {
-      continue;
-    }
-
-    openTabIds.add(normalizedTab.tabId);
-    tabs.push({
-      descriptor: {
-        key: normalizedTab.tabId,
-        tabId: normalizedTab.tabId,
-        kind: normalizedTab.target.kind,
-        target: normalizedTab.target,
-      },
-    });
-  }
-
-  const focusedTabId = trimNonEmpty(input.focusedTabId);
-  const preferredTarget = input.preferredTarget ?? null;
-  const preferredTabId = (() => {
-    if (!preferredTarget) {
-      return null;
-    }
-    const matchingTab =
-      tabs.find((tab) => tabTargetsEqual(tab.descriptor.target, preferredTarget)) ?? null;
-    return matchingTab?.descriptor.tabId ?? buildWorkspaceTabId(preferredTarget);
-  })();
-
-  const activeTabId =
-    preferredTabId && openTabIds.has(preferredTabId)
-      ? preferredTabId
-      : focusedTabId && openTabIds.has(focusedTabId)
-        ? focusedTabId
-        : tabs[0]?.descriptor.tabId ?? null;
-
-  const activeTab = activeTabId
-    ? tabs.find((tab) => tab.descriptor.tabId === activeTabId) ?? null
-    : null;
-
+  const paneState = deriveWorkspacePaneState({
+    tabs: input.tabs,
+    focusedTabId: input.focusedTabId,
+    preferredTarget: input.preferredTarget,
+  });
   return {
-    tabs,
-    activeTabId,
-    activeTab,
+    tabs: paneState.tabs,
+    activeTabId: paneState.activeTabId,
+    activeTab: paneState.activeTab,
   };
 }

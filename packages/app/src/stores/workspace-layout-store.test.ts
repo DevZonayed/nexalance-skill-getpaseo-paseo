@@ -121,7 +121,7 @@ describe("workspace-layout-store tree transforms", () => {
     vi.restoreAllMocks();
   });
 
-  it("insertSplit reuses a matching parent direction instead of nesting", () => {
+  it("insertSplit wraps root-level same-direction splits in a nested group", () => {
     vi.spyOn(globalThis.crypto, "randomUUID")
       .mockReturnValueOnce("11111111-1111-1111-1111-111111111111")
       .mockReturnValueOnce("22222222-2222-2222-2222-222222222222");
@@ -141,10 +141,14 @@ describe("workspace-layout-store tree transforms", () => {
 
     const nextRoot = insertSplit(root, "right", "tab-c", "right");
     const nextGroup = expectGroup(nextRoot);
+    const nestedGroup = expectGroup(nextGroup.group.children[1]!);
 
     expect(nextGroup.group.direction).toBe("horizontal");
-    expect(nextGroup.group.children).toHaveLength(3);
-    expect(nextGroup.group.sizes).toEqual([0.25, 0.375, 0.375]);
+    expect(nextGroup.group.children).toHaveLength(2);
+    expect(nextGroup.group.sizes).toEqual([0.25, 0.75]);
+    expect(nestedGroup.group.id).toBe("group_22222222-2222-2222-2222-222222222222");
+    expect(nestedGroup.group.direction).toBe("horizontal");
+    expect(nestedGroup.group.sizes).toEqual([0.5, 0.5]);
     expect(collectAllPanes(nextRoot).map((pane) => pane.id)).toEqual([
       "left",
       "right",
@@ -519,12 +523,33 @@ describe("workspace-layout-store actions", () => {
     const rootGroup = expectGroup(layout.root);
 
     expect(paneBId).toBe("pane_78787878-7878-7878-7878-787878787878");
-    expect(paneCId).toBe("pane_89898989-8989-8989-8989-898989898989");
+    expect(paneCId).toBe("pane_9a9a9a9a-9a9a-9a9a-9a9a-9a9a9a9a9a9a");
     expect(layout.focusedPaneId).toBe(paneCId);
     expect(rootGroup.group.direction).toBe("horizontal");
-    expect(rootGroup.group.children).toEqual([
-      createPane({ id: "main", tabIds: ["file_/repo/worktree/a.ts"] }),
-      createPane({ id: paneCId!, tabIds: ["file_/repo/worktree/c.ts"] }),
+    expect(rootGroup.group.children).toHaveLength(2);
+    expect(
+      rootGroup.group.children.map((child) => {
+        expect(child.kind).toBe("pane");
+        if (child.kind !== "pane") {
+          throw new Error("Expected pane child");
+        }
+        return {
+          id: child.pane.id,
+          tabIds: child.pane.tabIds,
+          focusedTabId: child.pane.focusedTabId,
+        };
+      })
+    ).toEqual([
+      {
+        id: "main",
+        tabIds: ["file_/repo/worktree/a.ts"],
+        focusedTabId: "file_/repo/worktree/a.ts",
+      },
+      {
+        id: paneCId!,
+        tabIds: ["file_/repo/worktree/c.ts"],
+        focusedTabId: "file_/repo/worktree/c.ts",
+      },
     ]);
     expect(rootGroup.group.sizes).toEqual([0.5, 0.5]);
   });
@@ -560,7 +585,8 @@ describe("workspace-layout-store actions", () => {
   it("resizeSplit keeps sizes normalized while enforcing the minimum proportion", () => {
     vi.spyOn(globalThis.crypto, "randomUUID")
       .mockReturnValueOnce("eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee")
-      .mockReturnValueOnce("ffffffff-ffff-ffff-ffff-ffffffffffff");
+      .mockReturnValueOnce("ffffffff-ffff-ffff-ffff-ffffffffffff")
+      .mockReturnValueOnce("11111111-1111-1111-1111-111111111111");
 
     const workspaceKey = createWorkspaceKey();
     const store = useWorkspaceLayoutStore.getState();
@@ -583,17 +609,18 @@ describe("workspace-layout-store actions", () => {
 
     const splitRoot = useWorkspaceLayoutStore.getState().layoutByWorkspace[workspaceKey]!.root;
     const splitGroup = expectGroup(splitRoot);
-    store.resizeSplit(workspaceKey, splitGroup.group.id, [0.01, 0.01, 0.98]);
+    const nestedGroup = expectGroup(splitGroup.group.children[1]!);
+    store.resizeSplit(workspaceKey, nestedGroup.group.id, [0.01, 0.99]);
 
     const resizedRoot = useWorkspaceLayoutStore.getState().layoutByWorkspace[workspaceKey]!.root;
     const resizedGroup = expectGroup(resizedRoot);
-    const total = resizedGroup.group.sizes.reduce((sum, size) => sum + size, 0);
+    const resizedNestedGroup = expectGroup(resizedGroup.group.children[1]!);
+    const total = resizedNestedGroup.group.sizes.reduce((sum, size) => sum + size, 0);
 
     expect(rightPaneId).toBe("pane_eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee");
-    expect(farRightPaneId).toBe("pane_ffffffff-ffff-ffff-ffff-ffffffffffff");
-    expect(resizedGroup.group.sizes[0]).toBeGreaterThanOrEqual(0.1);
-    expect(resizedGroup.group.sizes[1]).toBeGreaterThanOrEqual(0.1);
-    expect(resizedGroup.group.sizes[2]).toBeGreaterThanOrEqual(0.1);
+    expect(farRightPaneId).toBe("pane_11111111-1111-1111-1111-111111111111");
+    expect(resizedNestedGroup.group.sizes[0]).toBeGreaterThanOrEqual(0.1);
+    expect(resizedNestedGroup.group.sizes[1]).toBeGreaterThanOrEqual(0.1);
     expect(total).toBeCloseTo(1, 10);
   });
 

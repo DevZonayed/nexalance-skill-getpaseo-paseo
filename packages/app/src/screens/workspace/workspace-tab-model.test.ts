@@ -87,6 +87,31 @@ describe("deriveWorkspaceTabModel", () => {
     expect(model.activeTab?.descriptor.target).toEqual({ kind: "agent", agentId: "agent-b" });
   });
 
+  it("normalizes preferredTarget before overriding focused tab selection", () => {
+    const model = deriveWorkspaceTabModel({
+      tabs: [
+        {
+          tabId: "file_/repo/worktree/README.md",
+          target: { kind: "file", path: "/repo/worktree/README.md" },
+          createdAt: 1,
+        },
+        {
+          tabId: "agent_agent-a",
+          target: { kind: "agent", agentId: "agent-a" },
+          createdAt: 2,
+        },
+      ],
+      focusedTabId: "agent_agent-a",
+      preferredTarget: { kind: "file", path: "\\repo\\worktree\\README.md" },
+    });
+
+    expect(model.activeTabId).toBe("file_/repo/worktree/README.md");
+    expect(model.activeTab?.descriptor.target).toEqual({
+      kind: "file",
+      path: "/repo/worktree/README.md",
+    });
+  });
+
   it("keeps retargeted tab ids stable while matching upgraded targets", () => {
     const model = deriveWorkspaceTabModel({
       tabs: [

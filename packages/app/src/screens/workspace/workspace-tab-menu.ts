@@ -1,4 +1,5 @@
 import type { WorkspaceTabDescriptor } from "@/screens/workspace/workspace-tabs-types";
+import { encodeFilePathForPathSegment } from "@/utils/host-routes";
 
 export type WorkspaceTabMenuSurface = "desktop" | "mobile";
 
@@ -31,6 +32,24 @@ interface BuildWorkspaceTabMenuEntriesInput {
   onCloseOtherTabs: (tabId: string) => Promise<void> | void;
 }
 
+interface BuildWorkspaceDesktopTabActionsInput {
+  tab: WorkspaceTabDescriptor;
+  index: number;
+  tabCount: number;
+  onCopyResumeCommand: (agentId: string) => Promise<void> | void;
+  onCopyAgentId: (agentId: string) => Promise<void> | void;
+  onCloseTab: (tabId: string) => Promise<void> | void;
+  onCloseTabsToLeft: (tabId: string) => Promise<void> | void;
+  onCloseTabsToRight: (tabId: string) => Promise<void> | void;
+  onCloseOtherTabs: (tabId: string) => Promise<void> | void;
+}
+
+export interface WorkspaceDesktopTabActions {
+  contextMenuTestId: string;
+  menuEntries: WorkspaceTabMenuEntry[];
+  closeButtonTestId: string;
+}
+
 function buildCloseBeforeLabel(surface: WorkspaceTabMenuSurface): string {
   return surface === "mobile" ? "Close tabs above" : "Close to the left";
 }
@@ -45,6 +64,19 @@ function buildCloseBeforeTestIDSuffix(surface: WorkspaceTabMenuSurface): string 
 
 function buildCloseAfterTestIDSuffix(surface: WorkspaceTabMenuSurface): string {
   return surface === "mobile" ? "close-below" : "close-right";
+}
+
+function getCloseButtonTestId(tab: WorkspaceTabDescriptor): string {
+  if (tab.target.kind === "agent") {
+    return `workspace-agent-close-${tab.target.agentId}`;
+  }
+  if (tab.target.kind === "terminal") {
+    return `workspace-terminal-close-${tab.target.terminalId}`;
+  }
+  if (tab.target.kind === "draft") {
+    return `workspace-draft-close-${tab.target.draftId}`;
+  }
+  return `workspace-file-close-${encodeFilePathForPathSegment(tab.target.path)}`;
 }
 
 export function buildWorkspaceTabMenuEntries(
@@ -135,4 +167,27 @@ export function buildWorkspaceTabMenuEntries(
   });
 
   return entries;
+}
+
+export function buildWorkspaceDesktopTabActions(
+  input: BuildWorkspaceDesktopTabActionsInput
+): WorkspaceDesktopTabActions {
+  const contextMenuTestId = `workspace-tab-context-${input.tab.key}`;
+  return {
+    contextMenuTestId,
+    menuEntries: buildWorkspaceTabMenuEntries({
+      surface: "desktop",
+      tab: input.tab,
+      index: input.index,
+      tabCount: input.tabCount,
+      menuTestIDBase: contextMenuTestId,
+      onCopyResumeCommand: input.onCopyResumeCommand,
+      onCopyAgentId: input.onCopyAgentId,
+      onCloseTab: input.onCloseTab,
+      onCloseTabsBefore: input.onCloseTabsToLeft,
+      onCloseTabsAfter: input.onCloseTabsToRight,
+      onCloseOtherTabs: input.onCloseOtherTabs,
+    }),
+    closeButtonTestId: getCloseButtonTestId(input.tab),
+  };
 }

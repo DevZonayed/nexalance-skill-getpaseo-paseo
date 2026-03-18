@@ -1,8 +1,15 @@
 import { defineConfig, configDefaults } from "vitest/config";
 import path from "path";
+import fs from "fs";
 
 const appNodeModules = path.resolve(__dirname, "node_modules");
 const rootNodeModules = path.resolve(__dirname, "../../node_modules");
+const resolvePackageEntry = (packageName: string) => {
+  const appPackagePath = path.resolve(appNodeModules, packageName);
+  return fs.existsSync(appPackagePath)
+    ? appPackagePath
+    : path.resolve(rootNodeModules, packageName);
+};
 
 export default defineConfig({
   test: {
@@ -45,10 +52,10 @@ export default defineConfig({
         find: "react-native",
         replacement: path.resolve(rootNodeModules, "react-native-web/dist/index.js"),
       },
-      { find: "react", replacement: path.resolve(appNodeModules, "react") },
+      { find: "react", replacement: resolvePackageEntry("react") },
       {
         find: "react-dom",
-        replacement: path.resolve(appNodeModules, "react-dom"),
+        replacement: resolvePackageEntry("react-dom"),
       },
     ],
   },

@@ -1,10 +1,17 @@
+import type { ComponentType } from "react";
 import invariant from "tiny-invariant";
-import { PaneProvider } from "@/panels/pane-context";
+import { PaneProvider, type PaneContextValue } from "@/panels/pane-context";
 import { getPanelRegistration } from "@/panels/panel-registry";
 import { ensurePanelsRegistered } from "@/panels/register-panels";
 import type { WorkspaceTabDescriptor } from "@/screens/workspace/workspace-tabs-types";
 
-export interface WorkspacePaneContentProps {
+export interface WorkspacePaneContentModel {
+  key: string;
+  Component: ComponentType;
+  paneContextValue: PaneContextValue;
+}
+
+export interface BuildWorkspacePaneContentModelInput {
   tab: WorkspaceTabDescriptor;
   normalizedServerId: string;
   normalizedWorkspaceId: string;
@@ -14,7 +21,7 @@ export interface WorkspacePaneContentProps {
   onOpenWorkspaceFile: (filePath: string) => void;
 }
 
-export function WorkspacePaneContent({
+export function buildWorkspacePaneContentModel({
   tab,
   normalizedServerId,
   normalizedWorkspaceId,
@@ -22,26 +29,36 @@ export function WorkspacePaneContent({
   onCloseCurrentTab,
   onRetargetCurrentTab,
   onOpenWorkspaceFile,
-}: WorkspacePaneContentProps) {
+}: BuildWorkspacePaneContentModelInput): WorkspacePaneContentModel {
   ensurePanelsRegistered();
   const registration = getPanelRegistration(tab.kind);
   invariant(registration, `No panel registration for kind: ${tab.kind}`);
-  const Component = registration.component;
+  return {
+    key: `${normalizedServerId}:${normalizedWorkspaceId}:${tab.tabId}`,
+    Component: registration.component,
+    paneContextValue: {
+      serverId: normalizedServerId,
+      workspaceId: normalizedWorkspaceId,
+      tabId: tab.tabId,
+      target: tab.target,
+      openTab: onOpenTab,
+      closeCurrentTab: onCloseCurrentTab,
+      retargetCurrentTab: onRetargetCurrentTab,
+      openFileInWorkspace: onOpenWorkspaceFile,
+    },
+  };
+}
+
+export interface WorkspacePaneContentProps {
+  content: WorkspacePaneContentModel;
+}
+
+export function WorkspacePaneContent({ content }: WorkspacePaneContentProps) {
+  const { Component, key, paneContextValue } = content;
 
   return (
-    <PaneProvider
-      value={{
-        serverId: normalizedServerId,
-        workspaceId: normalizedWorkspaceId,
-        tabId: tab.tabId,
-        target: tab.target,
-        openTab: onOpenTab,
-        closeCurrentTab: onCloseCurrentTab,
-        retargetCurrentTab: onRetargetCurrentTab,
-        openFileInWorkspace: onOpenWorkspaceFile,
-      }}
-    >
-      <Component key={`${normalizedServerId}:${normalizedWorkspaceId}:${tab.tabId}`} />
+    <PaneProvider value={paneContextValue}>
+      <Component key={key} />
     </PaneProvider>
   );
 }
