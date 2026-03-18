@@ -20,7 +20,7 @@ import {
   type ReactElement,
   type MutableRefObject,
 } from 'react'
-import { router, useGlobalSearchParams, usePathname } from 'expo-router'
+import { router, usePathname } from 'expo-router'
 import { navigateToWorkspace } from '@/hooks/use-workspace-navigation'
 import { StyleSheet, UnistylesRuntime, useUnistyles } from 'react-native-unistyles'
 import { type GestureType } from 'react-native-gesture-handler'
@@ -35,10 +35,8 @@ import { projectIconQueryKey } from '@/hooks/use-project-icon-query'
 import {
   buildHostNewAgentRoute,
   buildHostWorkspaceRoute,
-  decodeWorkspaceIdFromPathSegment,
   parseHostWorkspaceRouteFromPathname,
 } from '@/utils/host-routes'
-import { normalizeWorkspaceIdentity } from '@/utils/workspace-identity'
 import {
   type SidebarProjectEntry,
   type SidebarWorkspaceEntry,
@@ -73,6 +71,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { buildSidebarProjectRowModel } from '@/utils/sidebar-project-row-model'
+import { useNavigationActiveWorkspaceSelection } from '@/stores/navigation-active-workspace-store'
 
 function toProjectIconDataUri(icon: { mimeType: string; data: string } | null): string | null {
   if (!icon) {
@@ -1212,10 +1211,7 @@ export function SidebarWorkspaceList({
   const isMobile = UnistylesRuntime.breakpoint === 'xs' || UnistylesRuntime.breakpoint === 'sm'
   const isNative = Platform.OS !== 'web'
   const pathname = usePathname()
-  const routeParams = useGlobalSearchParams<{
-    serverId?: string | string[]
-    workspaceId?: string | string[]
-  }>()
+  const activeWorkspaceSelection = useNavigationActiveWorkspaceSelection()
   const isTauri = getIsTauri()
   const altDown = useKeyboardShortcutsStore((state) => state.altDown)
   const cmdOrCtrlDown = useKeyboardShortcutsStore((state) => state.cmdOrCtrlDown)
@@ -1226,40 +1222,8 @@ export function SidebarWorkspaceList({
   const getWorkspaceOrder = useSidebarOrderStore((state) => state.getWorkspaceOrder)
   const setWorkspaceOrder = useSidebarOrderStore((state) => state.setWorkspaceOrder)
 
-  const activeWorkspaceSelection = useMemo(() => {
-    if (!pathname) {
-      return null
-    }
-    if (!parseHostWorkspaceRouteFromPathname(pathname)) {
-      return null
-    }
-
-    const serverValue = Array.isArray(routeParams.serverId)
-      ? routeParams.serverId[0]
-      : routeParams.serverId
-    const workspaceValue = Array.isArray(routeParams.workspaceId)
-      ? routeParams.workspaceId[0]
-      : routeParams.workspaceId
-    const serverId = serverValue?.trim() ?? ''
-    const workspaceId = normalizeWorkspaceIdentity(
-      workspaceValue ? decodeWorkspaceIdFromPathSegment(workspaceValue) : null
-    )
-    if (!serverId || !workspaceId) {
-      const parsed = parseHostWorkspaceRouteFromPathname(pathname)
-      if (!parsed) {
-        return null
-      }
-      return {
-        serverId: parsed.serverId,
-        workspaceId: parsed.workspaceId,
-      }
-    }
-
-    return {
-      serverId,
-      workspaceId,
-    }
-  }, [pathname, routeParams.serverId, routeParams.workspaceId])
+  const isWorkspaceRoute = useMemo(() => Boolean(pathname && parseHostWorkspaceRouteFromPathname(pathname)), [pathname])
+  const effectiveActiveWorkspaceSelection = isWorkspaceRoute ? activeWorkspaceSelection : null
 
   const projectIconRequests = useMemo(() => {
     if (!serverId) {
@@ -1409,7 +1373,7 @@ export function SidebarWorkspaceList({
           displayName={item.projectName}
           iconDataUri={projectIconByProjectKey.get(item.projectKey) ?? null}
           serverId={serverId}
-          activeWorkspaceSelection={activeWorkspaceSelection}
+          activeWorkspaceSelection={effectiveActiveWorkspaceSelection}
           showShortcutBadges={showShortcutBadges}
           shortcutIndexByWorkspaceKey={shortcutIndexByWorkspaceKey}
           parentGestureRef={parentGestureRef}
@@ -1425,8 +1389,8 @@ export function SidebarWorkspaceList({
       )
     },
     [
-      activeWorkspaceSelection,
       collapsedProjectKeys,
+      effectiveActiveWorkspaceSelection,
       handleCreateWorktree,
       handleWorkspaceReorder,
       onWorkspacePress,

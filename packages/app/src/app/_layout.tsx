@@ -1,6 +1,12 @@
 import "@/styles/unistyles";
 import { polyfillCrypto } from "@/polyfills/crypto";
-import { Stack, useGlobalSearchParams, usePathname, useRouter } from "expo-router";
+import {
+  Stack,
+  useGlobalSearchParams,
+  useNavigationContainerRef,
+  usePathname,
+  useRouter,
+} from "expo-router";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { GestureHandlerRootView, Gesture, GestureDetector } from "react-native-gesture-handler";
@@ -68,6 +74,7 @@ import {
 } from "@/utils/host-routes";
 import { getTauri } from "@/utils/tauri";
 import { attachConsole } from "@/utils/tauri-attach-console";
+import { syncNavigationActiveWorkspace } from "@/stores/navigation-active-workspace-store";
 
 polyfillCrypto();
 attachConsole();
@@ -501,6 +508,26 @@ function AppWithSidebar({ children }: { children: ReactNode }) {
   );
 }
 
+function NavigationActiveWorkspaceObserver() {
+  const navigationRef = useNavigationContainerRef();
+
+  useEffect(() => {
+    syncNavigationActiveWorkspace(navigationRef);
+    const unsubscribeState = navigationRef.addListener("state", () => {
+      syncNavigationActiveWorkspace(navigationRef);
+    });
+    const unsubscribeReady = navigationRef.addListener("ready" as never, () => {
+      syncNavigationActiveWorkspace(navigationRef);
+    });
+    return () => {
+      unsubscribeState();
+      unsubscribeReady();
+    };
+  }, [navigationRef]);
+
+  return null;
+}
+
 function LoadingView({ message }: { message?: string } = {}) {
   return (
     <View
@@ -557,6 +584,7 @@ export default function RootLayout() {
     <GestureHandlerRootView
       style={{ flex: 1, backgroundColor: darkTheme.colors.surface0 }}
     >
+      <NavigationActiveWorkspaceObserver />
       <PortalProvider>
         <SafeAreaProvider>
           <KeyboardProvider>
