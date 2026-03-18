@@ -704,12 +704,12 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[1],
   },
   modeBadge: {
+    height: 28,
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: 'transparent',
     gap: theme.spacing[1],
     paddingHorizontal: theme.spacing[2],
-    paddingVertical: theme.spacing[1],
     borderRadius: theme.borderRadius['2xl'],
   },
   modeIconBadge: {
