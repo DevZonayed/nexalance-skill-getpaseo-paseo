@@ -2008,12 +2008,12 @@ function WorkspaceScreenContent({
                     onSelectNewTabOption={handleSelectNewTabOption}
                     newTabAgentOptionId={NEW_TAB_AGENT_OPTION_ID}
                     buildPaneContentModel={({ paneId, tab }) =>
-                      buildPaneContentModel({
-                        tab,
-                        paneId,
-                        focusPaneBeforeOpen: true,
-                      })
-                    }
+                    buildPaneContentModel({
+                      tab,
+                      paneId,
+                      focusPaneBeforeOpen: true,
+                    })
+                  }
                     onFocusPane={(paneId) => {
                       focusWorkspacePane(persistenceKey, paneId);
                     }}

@@ -14,7 +14,7 @@ const metrics = {
 };
 
 describe("computeWorkspaceTabLayout", () => {
-  it("keeps fit-content tab widths when there is extra horizontal space", () => {
+  it("caps equal-width tabs at the ideal width when there is extra horizontal space", () => {
     const result = computeWorkspaceTabLayout({
       viewportWidth: 1200,
       tabLabelLengths: [8, 10, 7],
@@ -25,10 +25,10 @@ describe("computeWorkspaceTabLayout", () => {
     expect(result.requiresHorizontalScrollFallback).toBe(false);
     expect(result.items).toHaveLength(3);
     expect(result.items.every((item) => item.showLabel)).toBe(true);
-    expect(result.items.map((item) => item.width)).toEqual([126, 140, 119]);
+    expect(result.items.map((item) => item.width)).toEqual([200, 200, 200]);
   });
 
-  it("shrinks tab widths proportionally before hiding labels", () => {
+  it("shrinks equal-width tabs proportionally to fit the pane", () => {
     const result = computeWorkspaceTabLayout({
       viewportWidth: 520,
       tabLabelLengths: [24, 12, 8],
@@ -37,8 +37,25 @@ describe("computeWorkspaceTabLayout", () => {
 
     expect(result.closeButtonPolicy).toBe("all");
     expect(result.requiresHorizontalScrollFallback).toBe(false);
-    expect(result.items.map((item) => item.width)).toEqual([151, 121, 103]);
+    expect(result.items.map((item) => item.width)).toEqual([125, 125, 125]);
     expect(result.items.every((item) => item.showLabel)).toBe(true);
+  });
+
+  it("uses the split width for evenly sized tabs when space is available", () => {
+    const result = computeWorkspaceTabLayout({
+      viewportWidth: 743,
+      tabLabelLengths: [8, 8, 8, 8],
+      metrics: {
+        ...metrics,
+        actionsReservedWidth: 44,
+        rowPaddingHorizontal: 0,
+        tabGap: 0,
+      },
+    });
+
+    expect(result.closeButtonPolicy).toBe("all");
+    expect(result.requiresHorizontalScrollFallback).toBe(false);
+    expect(result.items.map((item) => item.width)).toEqual([175, 175, 175, 175]);
   });
 
   it("collapses to icon-only before allowing horizontal scroll fallback", () => {

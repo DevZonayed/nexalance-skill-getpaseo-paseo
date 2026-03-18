@@ -680,6 +680,9 @@ function SplitPaneView({
   return (
     <View
       style={styles.pane}
+      onFocus={() => {
+        onFocusPane(pane.id);
+      }}
       onPointerDownCapture={() => {
         onFocusPane(pane.id);
       }}
@@ -769,7 +772,9 @@ const styles = StyleSheet.create((theme) => ({
     backgroundColor: theme.colors.surface0,
     overflow: "hidden",
   },
-  paneTabs: {},
+  paneTabs: {
+    minWidth: 0,
+  },
   paneContent: {
     position: "relative",
     flex: 1,

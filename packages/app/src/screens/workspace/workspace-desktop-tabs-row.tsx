@@ -513,6 +513,7 @@ function ResolvedDesktopTabChip({
 
 const styles = StyleSheet.create((theme) => ({
   tabsContainer: {
+    minWidth: 0,
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.border,
     backgroundColor: theme.colors.surface0,
@@ -523,8 +524,7 @@ const styles = StyleSheet.create((theme) => ({
     minWidth: 0,
   },
   tabsScrollFitContent: {
-    flexGrow: 0,
-    flexShrink: 1,
+    flex: 1,
   },
   tabsScrollOverflow: {
     flex: 1,

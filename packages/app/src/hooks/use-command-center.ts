@@ -20,6 +20,10 @@ import {
 import type { ShortcutKey } from "@/utils/format-shortcut";
 import { focusWithRetries } from "@/utils/web-focus";
 
+const EMPTY_AGENTS: AggregatedAgent[] = [];
+const EMPTY_ACTION_ITEMS: CommandCenterActionItem[] = [];
+const EMPTY_COMMAND_CENTER_ITEMS: CommandCenterItem[] = [];
+
 function isMatch(agent: AggregatedAgent, query: string): boolean {
   if (!query) return true;
   const q = query.toLowerCase();
@@ -118,6 +122,9 @@ export function useCommandCenter() {
   const [activeIndex, setActiveIndex] = useState(0);
 
   const activeServerId = useMemo(() => {
+    if (!open) {
+      return null;
+    }
     const serverIdFromPath = parseServerIdFromPathname(pathname);
     if (serverIdFromPath) {
       const routeMatch = daemons.find((entry) => entry.serverId === serverIdFromPath);
@@ -126,17 +133,20 @@ export function useCommandCenter() {
       }
     }
     return daemons[0]?.serverId ?? null;
-  }, [daemons, pathname]);
+  }, [daemons, open, pathname]);
 
   const { agents } = useAllAgentsList({
     serverId: activeServerId,
   });
 
   const agentResults = useMemo(() => {
+    if (!open || agents.length === 0) {
+      return EMPTY_AGENTS;
+    }
     const filtered = agents.filter((agent) => isMatch(agent, query));
     filtered.sort(sortAgents);
     return filtered;
-  }, [agents, query]);
+  }, [agents, open, query]);
 
   const newAgentRoute = useMemo<Href>(() => {
     const serverIdFromPath = activeServerId;
@@ -149,6 +159,9 @@ export function useCommandCenter() {
   }, [activeServerId]);
 
   const actionItems = useMemo(() => {
+    if (!open) {
+      return EMPTY_ACTION_ITEMS;
+    }
     return COMMAND_CENTER_ACTIONS.filter((action) =>
       matchesActionQuery(query, action)
     ).map<CommandCenterActionItem>((action) => ({
@@ -159,9 +172,12 @@ export function useCommandCenter() {
       route: action.buildRoute({ newAgentRoute, settingsRoute }),
       shortcutKeys: action.shortcutKeys,
     }));
-  }, [newAgentRoute, query, settingsRoute]);
+  }, [newAgentRoute, open, query, settingsRoute]);
 
   const items = useMemo(() => {
+    if (!open) {
+      return EMPTY_COMMAND_CENTER_ITEMS;
+    }
     const next: CommandCenterItem[] = [];
     for (const action of actionItems) {
       next.push({
@@ -176,7 +192,7 @@ export function useCommandCenter() {
       });
     }
     return next;
-  }, [actionItems, agentResults]);
+  }, [actionItems, agentResults, open]);
 
   const handleClose = useCallback(() => {
     setOpen(false);

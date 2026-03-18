@@ -7,7 +7,7 @@ import {
   View,
   Platform,
 } from "react-native";
-import { memo, useEffect, useMemo, useRef, type ReactNode } from "react";
+import { memo, useEffect, useRef, type ReactNode } from "react";
 import { Plus, Settings } from "lucide-react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { useCommandCenter } from "@/hooks/use-command-center";
@@ -69,6 +69,9 @@ export function CommandCenter() {
   const resultsRef = useRef<ScrollView>(null);
 
   useEffect(() => {
+    if (!open) {
+      return;
+    }
     const row = rowRefs.current.get(activeIndex);
     if (!row || typeof document === "undefined") {
       return;
@@ -99,18 +102,12 @@ export function CommandCenter() {
     if (rowBottom > visibleBottom) {
       scrollNode.scrollTop = rowBottom - scrollNode.clientHeight;
     }
-  }, [activeIndex]);
+  }, [activeIndex, open]);
 
-  if (Platform.OS !== "web") return null;
+  if (Platform.OS !== "web" || !open) return null;
 
-  const actionItems = useMemo(
-    () => items.filter((item) => item.kind === "action"),
-    [items]
-  );
-  const agentItems = useMemo(
-    () => items.filter((item) => item.kind === "agent"),
-    [items]
-  );
+  const actionItems = items.filter((item) => item.kind === "action");
+  const agentItems = items.filter((item) => item.kind === "agent");
 
   return (
     <Modal
