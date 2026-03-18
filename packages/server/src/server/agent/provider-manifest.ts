@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { AgentMode } from "./agent-sdk-types.js";
 
-export type AgentModeColorTier = 'safe' | 'moderate' | 'dangerous';
+export type AgentModeColorTier = 'safe' | 'moderate' | 'dangerous' | 'readonly';
 export type AgentModeIcon = 'ShieldCheck' | 'ShieldAlert' | 'ShieldOff';
 
 export interface AgentModeVisuals {
@@ -27,19 +27,19 @@ export interface AgentProviderDefinition {
 const CLAUDE_MODES: AgentProviderModeDefinition[] = [
   { id: "default", label: "Always Ask", description: "Prompts for permission the first time a tool is used", icon: "ShieldCheck", colorTier: "safe" },
   { id: "acceptEdits", label: "Accept File Edits", description: "Automatically approves edit-focused tools without prompting", icon: "ShieldAlert", colorTier: "moderate" },
-  { id: "plan", label: "Plan Mode", description: "Analyze the codebase without executing tools or edits", icon: "ShieldCheck", colorTier: "safe" },
-  { id: "bypassPermissions", label: "Bypass", description: "Skip all permission prompts (use with caution)", icon: "ShieldOff", colorTier: "dangerous" },
+  { id: "plan", label: "Plan Mode", description: "Analyze the codebase without executing tools or edits", icon: "ShieldCheck", colorTier: "readonly" },
+  { id: "bypassPermissions", label: "Bypass", description: "Skip all permission prompts (use with caution)", icon: "ShieldAlert", colorTier: "dangerous" },
 ];
 
 const CODEX_MODES: AgentProviderModeDefinition[] = [
-  { id: "read-only", label: "Read Only", description: "Read files and answer questions. Manual approval required for edits, commands, or network ops.", icon: "ShieldCheck", colorTier: "safe" },
+  { id: "read-only", label: "Read Only", description: "Read files and answer questions. Manual approval required for edits, commands, or network ops.", icon: "ShieldCheck", colorTier: "readonly" },
   { id: "auto", label: "Auto", description: "Edit files and run commands but still request approval before escalating scope.", icon: "ShieldAlert", colorTier: "moderate" },
-  { id: "full-access", label: "Full Access", description: "Edit files, run commands, and access the network without additional prompts.", icon: "ShieldOff", colorTier: "dangerous" },
+  { id: "full-access", label: "Full Access", description: "Edit files, run commands, and access the network without additional prompts.", icon: "ShieldAlert", colorTier: "dangerous" },
 ];
 
 const OPENCODE_MODES: AgentProviderModeDefinition[] = [
   { id: "build", label: "Build", description: "Allows edits and tool execution for implementation work", icon: "ShieldAlert", colorTier: "moderate" },
-  { id: "plan", label: "Plan", description: "Read-only planning mode that avoids file edits", icon: "ShieldCheck", colorTier: "safe" },
+  { id: "plan", label: "Plan", description: "Read-only planning mode that avoids file edits", icon: "ShieldCheck", colorTier: "readonly" },
 ];
 
 export const AGENT_PROVIDER_DEFINITIONS: AgentProviderDefinition[] = [

@@ -39,6 +39,7 @@ const MODE_COLOR_MAP: Record<string, string> = {
   safe: baseColors.green[500],
   moderate: baseColors.amber[500],
   dangerous: baseColors.red[500],
+  readonly: baseColors.purple[500],
 };
 
 type DropdownTriggerRenderProps = {

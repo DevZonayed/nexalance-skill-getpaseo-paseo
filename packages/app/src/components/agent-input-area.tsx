@@ -720,8 +720,9 @@ export function AgentInputArea({
             disabled={!isConnected || voice?.isVoiceSwitching}
             accessibilityLabel="Enable Voice mode"
             accessibilityRole="button"
-            style={[
+            style={({ hovered }) => [
               styles.realtimeVoiceButton as any,
+              (hovered ? styles.iconButtonHovered : undefined) as any,
               (!isConnected || voice?.isVoiceSwitching ? styles.buttonDisabled : undefined) as any,
             ]}
           >
@@ -901,15 +902,15 @@ const styles = StyleSheet.create(((theme: Theme) => ({
     width: 28,
     height: 28,
     borderRadius: theme.borderRadius.full,
-    backgroundColor: theme.colors.surface0,
-    borderWidth: theme.borderWidth[1],
-    borderColor: theme.colors.border,
     alignItems: 'center',
     justifyContent: 'center',
   },
   realtimeVoiceButtonActive: {
     backgroundColor: theme.colors.palette.green[600],
     borderColor: theme.colors.palette.green[800],
+  },
+  iconButtonHovered: {
+    backgroundColor: theme.colors.surface2,
   },
   tooltipRow: {
     flexDirection: 'row',

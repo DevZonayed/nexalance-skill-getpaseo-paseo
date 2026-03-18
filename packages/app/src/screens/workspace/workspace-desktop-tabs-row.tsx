@@ -145,9 +145,8 @@ function TabChip({
             style={({ hovered, pressed }) => [
               styles.tab,
               Platform.OS === "web" &&
-                ({
-                  cursor: isDragging ? "grabbing" : "grab",
-                } as const),
+                isDragging &&
+                ({ cursor: "grabbing" } as const),
               {
                 minWidth: resolvedTabWidth,
                 width: resolvedTabWidth,

@@ -944,7 +944,11 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
                   disabled={!isConnected || disabled}
                   accessibilityLabel="Attach images"
                   accessibilityRole="button"
-                  style={[styles.attachButton, (!isConnected || disabled) && styles.buttonDisabled]}
+                  style={({ hovered }) => [
+                    styles.attachButton,
+                    hovered && styles.iconButtonHovered,
+                    (!isConnected || disabled) && styles.buttonDisabled,
+                  ]}
                 >
                   <Paperclip size={theme.iconSize.md} color={theme.colors.foreground} />
                 </TooltipTrigger>
@@ -972,8 +976,9 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
                       ? 'Stop dictation'
                       : 'Start dictation'
                 }
-                style={[
+                style={({ hovered }) => [
                   styles.voiceButton,
+                  hovered && !isDictating && styles.iconButtonHovered,
                   (!isDictationStartEnabled) && styles.buttonDisabled,
                   isDictating && styles.voiceButtonRecording,
                 ]}
@@ -1010,7 +1015,11 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
                   disabled={!isConnected || disabled}
                   accessibilityLabel="Queue message"
                   accessibilityRole="button"
-                  style={[styles.queueButton, (!isConnected || disabled) && styles.buttonDisabled]}
+                  style={({ hovered }) => [
+                    styles.queueButton,
+                    hovered && styles.iconButtonHovered,
+                    (!isConnected || disabled) && styles.buttonDisabled,
+                  ]}
                 >
                   <Plus size={theme.iconSize.md} color="white" />
                 </TooltipTrigger>
@@ -1174,7 +1183,7 @@ const styles = StyleSheet.create(((theme: any) => ({
   },
   leftButtonGroup: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-end',
     gap: theme.spacing[2],
   },
   rightButtonGroup: {
@@ -1214,6 +1223,9 @@ const styles = StyleSheet.create(((theme: any) => ({
     backgroundColor: theme.colors.accent,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  iconButtonHovered: {
+    backgroundColor: theme.colors.surface2,
   },
   tooltipRow: {
     flexDirection: 'row',

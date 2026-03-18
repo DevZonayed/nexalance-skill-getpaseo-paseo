@@ -2,6 +2,7 @@ import { useCallback, useMemo, useRef, useState } from 'react'
 import { View, Text, Platform, Pressable } from 'react-native'
 import { StyleSheet, useUnistyles } from 'react-native-unistyles'
 import {
+  Bot,
   Brain,
   ChevronDown,
   ShieldAlert,
@@ -9,6 +10,8 @@ import {
   ShieldOff,
   SlidersHorizontal,
 } from 'lucide-react-native'
+import { ClaudeIcon } from '@/components/icons/claude-icon'
+import { CodexIcon } from '@/components/icons/codex-icon'
 import { useQuery } from '@tanstack/react-query'
 import { useSessionStore } from '@/stores/session-store'
 import {
@@ -91,9 +94,18 @@ const MODE_ICONS = {
   ShieldOff,
 } as const
 
+const PROVIDER_ICONS: Record<string, typeof Bot> = {
+  claude: ClaudeIcon as unknown as typeof Bot,
+  codex: CodexIcon as unknown as typeof Bot,
+}
+
+function getProviderIcon(provider: string): typeof Bot {
+  return PROVIDER_ICONS[provider] ?? Bot
+}
+
 function getModeIconColor(
   colorTier: AgentModeColorTier | undefined,
-  palette: { green: { 500: string }; amber: { 500: string }; red: { 500: string } }
+  palette: { green: { 500: string }; amber: { 500: string }; red: { 500: string }; purple: { 500: string } }
 ): string {
   switch (colorTier) {
     case 'safe':
@@ -102,6 +114,8 @@ function getModeIconColor(
       return palette.amber[500]
     case 'dangerous':
       return palette.red[500]
+    case 'readonly':
+      return palette.purple[500]
     default:
       return palette.green[500]
   }
@@ -153,6 +167,7 @@ function ControlledStatusBar({
   const modeVisuals = selectedModeId ? getModeVisuals(provider, selectedModeId) : undefined
   const ModeIconComponent = modeVisuals?.icon ? MODE_ICONS[modeVisuals.icon] : null
   const modeIconColor = getModeIconColor(modeVisuals?.colorTier, theme.colors.palette)
+  const ProviderIcon = getProviderIcon(provider)
 
   const hasAnyControl =
     Boolean(providerOptions?.length) ||
@@ -210,7 +225,7 @@ function ControlledStatusBar({
   )
 
   return (
-    <View style={[styles.container, isWeb && { marginBottom: -theme.spacing[1] }]}>
+    <View style={styles.container}>
       {isWeb ? (
         <>
           {providerOptions && providerOptions.length > 0 ? (
@@ -298,6 +313,7 @@ function ControlledStatusBar({
             accessibilityLabel="Select agent model"
             testID="agent-model-selector"
           >
+            <ProviderIcon size={theme.iconSize.md} color={theme.colors.foregroundMuted} />
             <Text style={styles.modeBadgeText}>{displayModel}</Text>
             <ChevronDown size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
           </Pressable>
@@ -326,14 +342,10 @@ function ControlledStatusBar({
                   (disabled || !canSelectThinking) && styles.disabledBadge,
                 ]}
                 accessibilityRole="button"
-                accessibilityLabel="Select thinking option"
+                accessibilityLabel={`Select thinking option (${displayThinking})`}
                 testID="agent-thinking-selector"
               >
-                <Brain
-                  size={theme.iconSize.xs}
-                  color={theme.colors.foregroundMuted}
-                  style={{ marginTop: 1 }}
-                />
+                <Brain size={theme.iconSize.md} color={theme.colors.foregroundMuted} />
                 <Text style={styles.modeBadgeText}>{displayThinking}</Text>
                 <ChevronDown size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
               </Pressable>
@@ -362,7 +374,7 @@ function ControlledStatusBar({
             accessibilityLabel="Agent preferences"
             testID="agent-preferences-button"
           >
-            <SlidersHorizontal size={theme.iconSize.lg} color={theme.colors.foreground} />
+            <SlidersHorizontal size={theme.iconSize.md} color={theme.colors.foreground} />
           </Pressable>
 
           <AdaptiveModalSheet
@@ -688,7 +700,7 @@ export function DraftAgentStatusBar({
 const styles = StyleSheet.create((theme) => ({
   container: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-end',
     gap: theme.spacing[1],
   },
   modeBadge: {
@@ -701,10 +713,11 @@ const styles = StyleSheet.create((theme) => ({
     borderRadius: theme.borderRadius['2xl'],
   },
   modeIconBadge: {
+    width: 28,
+    height: 28,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'transparent',
-    padding: theme.spacing[1],
     borderRadius: theme.borderRadius.full,
   },
   modeBadgeHovered: {
@@ -722,8 +735,8 @@ const styles = StyleSheet.create((theme) => ({
     fontWeight: theme.fontWeight.normal,
   },
   prefsButton: {
-    width: 34,
-    height: 34,
+    width: 28,
+    height: 28,
     borderRadius: theme.borderRadius.full,
     alignItems: 'center',
     justifyContent: 'center',
