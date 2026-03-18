@@ -207,6 +207,7 @@ const DiffFileHeader = memo(function DiffFileHeader({
     <View
       style={[
         styles.fileSectionHeaderContainer,
+        isExpanded && styles.fileSectionHeaderExpanded,
       ]}
       onLayout={(event) => {
         layoutYRef.current = event.nativeEvent.layout.y;
@@ -1191,6 +1192,9 @@ const styles = StyleSheet.create((theme) => ({
   },
   fileSectionHeaderContainer: {
     overflow: "hidden",
+  },
+  fileSectionHeaderExpanded: {
+    backgroundColor: theme.colors.surface1,
   },
   fileSectionBodyContainer: {
     overflow: "hidden",
