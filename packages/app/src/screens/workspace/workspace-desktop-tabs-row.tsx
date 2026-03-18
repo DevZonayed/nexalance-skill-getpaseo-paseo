@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState, type Dispatch, type SetStateAction } from "react";
-import { ActivityIndicator, Pressable, ScrollView, Text, View, type LayoutChangeEvent } from "react-native";
+import { ActivityIndicator, Platform, Pressable, ScrollView, Text, View, type LayoutChangeEvent } from "react-native";
 import { Columns2, Plus, Rows2, SquareTerminal, X } from "lucide-react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { SortableInlineList } from "@/components/sortable-inline-list";
@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/context-menu";
 import { Shortcut } from "@/components/ui/shortcut";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { WORKSPACE_SECONDARY_HEADER_HEIGHT } from "@/constants/layout";
 import { useWorkspaceTabLayout } from "@/screens/workspace/use-workspace-tab-layout";
 import {
   useWorkspaceTabPresentation,
@@ -81,6 +82,7 @@ function getFallbackTabLabel(tab: WorkspaceTabDescriptor): string {
 function TabChip({
   tab,
   isActive,
+  isDragging,
   isFocused,
   resolvedTabWidth,
   showLabel,
@@ -98,6 +100,7 @@ function TabChip({
 }: {
   tab: WorkspaceTabDescriptor;
   isActive: boolean;
+  isDragging: boolean;
   isFocused: boolean;
   resolvedTabWidth: number;
   showLabel: boolean;
@@ -117,16 +120,34 @@ function TabChip({
   const { closeButtonTestId, contextMenuTestId, menuEntries } = resolvedTab;
   const [hovered, setHovered] = useState(false);
   const isHighlighted = isActive || hovered || isCloseHovered;
+  const closeButtonDragBlockers =
+    Platform.OS === "web"
+      ? ({
+          onPointerDown: (event: { stopPropagation?: () => void }) => {
+            event.stopPropagation?.();
+          },
+          onMouseDown: (event: { stopPropagation?: () => void }) => {
+            event.stopPropagation?.();
+          },
+        } as const)
+      : undefined;
 
   return (
     <ContextMenu key={tab.key}>
       <Tooltip delayDuration={400} enabledOnDesktop enabledOnMobile={false}>
         <TooltipTrigger asChild triggerRefProp="triggerRef">
           <ContextMenuTrigger
+            {...(dragHandleProps?.attributes as any)}
+            {...(dragHandleProps?.listeners as any)}
             testID={`workspace-tab-${tab.key}`}
+            triggerRef={dragHandleProps?.setActivatorNodeRef as any}
             enabledOnMobile={false}
             style={({ hovered, pressed }) => [
               styles.tab,
+              Platform.OS === "web" &&
+                ({
+                  cursor: isDragging ? "grabbing" : "grab",
+                } as const),
               {
                 minWidth: resolvedTabWidth,
                 width: resolvedTabWidth,
@@ -157,12 +178,7 @@ function TabChip({
                 ]}
               />
             )}
-            <View
-              {...(dragHandleProps?.attributes as any)}
-              {...(dragHandleProps?.listeners as any)}
-              ref={dragHandleProps?.setActivatorNodeRef}
-              style={styles.tabHandle}
-            >
+            <View style={styles.tabHandle}>
               <View style={styles.tabIcon}>
                 <WorkspaceTabIcon presentation={presentation} active={isHighlighted} />
               </View>
@@ -193,8 +209,12 @@ function TabChip({
 
             {showCloseButton ? (
               <Pressable
+                {...(closeButtonDragBlockers as any)}
                 testID={closeButtonTestId}
                 disabled={isClosingTab}
+                onPressIn={(event) => {
+                  event.stopPropagation?.();
+                }}
                 onHoverIn={() => {
                   setHoveredTabKey(tab.key);
                   setHoveredCloseTabKey(tab.key);
@@ -359,7 +379,7 @@ export function WorkspaceDesktopTabsRow({
                 })
               : undefined
           }
-          renderItem={({ item, index, dragHandleProps }) => {
+          renderItem={({ item, index, dragHandleProps, isActive }) => {
             const shouldShowCloseButton = layout.closeButtonPolicy === "all";
             const layoutItem = layout.items[index] ?? null;
             const resolvedTabWidth = layoutItem?.width ?? 150;
@@ -376,6 +396,7 @@ export function WorkspaceDesktopTabsRow({
                 key={`${item.tab.key}:${item.tab.kind}`}
                 item={item}
                 isFocused={isFocused}
+                isDragging={isActive}
                 index={index}
                 tabCount={tabs.length}
                 normalizedServerId={normalizedServerId}
@@ -482,6 +503,7 @@ export function WorkspaceDesktopTabsRow({
 function ResolvedDesktopTabChip({
   item,
   isFocused,
+  isDragging,
   index,
   tabCount,
   normalizedServerId,
@@ -504,6 +526,7 @@ function ResolvedDesktopTabChip({
 }: {
   item: WorkspaceDesktopTabRowItem;
   isFocused: boolean;
+  isDragging: boolean;
   index: number;
   tabCount: number;
   normalizedServerId: string;
@@ -565,6 +588,7 @@ function ResolvedDesktopTabChip({
       <TabChip
         tab={item.tab}
         isActive={item.isActive}
+        isDragging={isDragging}
         isFocused={isFocused}
         resolvedTabWidth={resolvedTabWidth}
         showLabel={showLabel}
@@ -590,7 +614,7 @@ function ResolvedDesktopTabChip({
 const styles = StyleSheet.create((theme) => ({
   tabsContainer: {
     minWidth: 0,
-    height: theme.spacing[2] * 2 + theme.iconSize.sm + theme.spacing[1],
+    height: WORKSPACE_SECONDARY_HEADER_HEIGHT,
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.border,
     backgroundColor: theme.colors.surface0,
