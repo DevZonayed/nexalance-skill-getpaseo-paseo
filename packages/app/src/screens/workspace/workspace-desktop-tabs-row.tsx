@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState, type Dispatch, type SetStateAction } from "react";
 import { ActivityIndicator, Platform, Pressable, ScrollView, Text, View, type LayoutChangeEvent } from "react-native";
-import { Columns2, Plus, Rows2, SquareTerminal, X } from "lucide-react-native";
+import { Columns2, Rows2, SquarePen, SquareTerminal, X } from "lucide-react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { SortableInlineList } from "@/components/sortable-inline-list";
 import {
@@ -438,7 +438,7 @@ export function WorkspaceDesktopTabsRow({
               (hovered || pressed) && styles.newTabActionButtonHovered,
             ]}
           >
-            <Plus size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
+            <SquarePen size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
           </TooltipTrigger>
           <TooltipContent side="bottom" align="end" offset={8}>
             <View style={styles.newTabTooltipRow}>

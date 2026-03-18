@@ -1,4 +1,4 @@
-import { Pencil } from "lucide-react-native";
+import { SquarePen } from "lucide-react-native";
 import invariant from "tiny-invariant";
 import { WorkspaceDraftAgentTab } from "@/screens/workspace/workspace-draft-agent-tab";
 import { usePaneContext } from "@/panels/pane-context";
@@ -11,7 +11,7 @@ function useDraftPanelDescriptor() {
     label: "New Agent",
     subtitle: "New Agent",
     titleState: "ready" as const,
-    icon: Pencil,
+    icon: SquarePen,
     statusBucket: null,
   };
 }

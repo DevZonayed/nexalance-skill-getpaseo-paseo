@@ -144,6 +144,7 @@ export interface ComboboxItemProps {
   label: string
   description?: string
   kind?: 'directory' | 'file'
+  leadingSlot?: ReactNode
   selected?: boolean
   active?: boolean
   onPress: () => void
@@ -154,12 +155,26 @@ export function ComboboxItem({
   label,
   description,
   kind,
+  leadingSlot,
   selected,
   active,
   onPress,
   testID,
 }: ComboboxItemProps): ReactElement {
   const { theme } = useUnistyles()
+
+  const leadingContent = leadingSlot ? (
+    <View style={styles.comboboxItemLeadingSlot}>{leadingSlot}</View>
+  ) : kind === 'directory' || kind === 'file' ? (
+    <View style={styles.comboboxItemLeadingSlot}>
+      {kind === 'directory' ? (
+        <Folder size={16} color={theme.colors.foregroundMuted} />
+      ) : (
+        <File size={16} color={theme.colors.foregroundMuted} />
+      )}
+    </View>
+  ) : null
+
   return (
     <Pressable
       testID={testID}
@@ -171,15 +186,7 @@ export function ComboboxItem({
         active && styles.comboboxItemActive,
       ]}
     >
-      {kind === 'directory' || kind === 'file' ? (
-        <View style={styles.comboboxItemLeadingSlot}>
-          {kind === 'directory' ? (
-            <Folder size={16} color={theme.colors.foregroundMuted} />
-          ) : (
-            <File size={16} color={theme.colors.foregroundMuted} />
-          )}
-        </View>
-      ) : null}
+      {leadingContent}
       <View style={styles.comboboxItemContent}>
         <Text numberOfLines={1} style={styles.comboboxItemLabel}>
           {label}

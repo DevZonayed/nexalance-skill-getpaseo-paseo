@@ -1,7 +1,14 @@
 import { useCallback, useMemo, useRef, useState } from 'react'
 import { View, Text, Platform, Pressable } from 'react-native'
 import { StyleSheet, useUnistyles } from 'react-native-unistyles'
-import { Brain, ChevronDown, SlidersHorizontal } from 'lucide-react-native'
+import {
+  Brain,
+  ChevronDown,
+  ShieldAlert,
+  ShieldCheck,
+  ShieldOff,
+  SlidersHorizontal,
+} from 'lucide-react-native'
 import { useQuery } from '@tanstack/react-query'
 import { useSessionStore } from '@/stores/session-store'
 import {
@@ -10,7 +17,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { Combobox, type ComboboxOption } from '@/components/ui/combobox'
+import { Combobox, ComboboxItem, type ComboboxOption } from '@/components/ui/combobox'
 import { AdaptiveModalSheet } from '@/components/adaptive-modal-sheet'
 import type {
   AgentMode,
@@ -18,6 +25,11 @@ import type {
   AgentProvider,
 } from '@server/server/agent/agent-sdk-types'
 import type { AgentProviderDefinition } from '@server/server/agent/provider-manifest'
+import {
+  getModeVisuals,
+  type AgentModeColorTier,
+  type AgentModeIcon,
+} from '@server/server/agent/provider-manifest'
 import { normalizeModelId, resolveAgentModelSelection } from '@/components/agent-status-bar.utils'
 
 type StatusOption = {
@@ -26,6 +38,7 @@ type StatusOption = {
 }
 
 type ControlledAgentStatusBarProps = {
+  provider: string
   providerOptions?: StatusOption[]
   selectedProviderId?: string
   onSelectProvider?: (providerId: string) => void
@@ -72,7 +85,31 @@ function findOptionLabel(options: StatusOption[] | undefined, selectedId: string
   return selected?.label ?? fallback
 }
 
+const MODE_ICONS = {
+  ShieldCheck,
+  ShieldAlert,
+  ShieldOff,
+} as const
+
+function getModeIconColor(
+  colorTier: AgentModeColorTier | undefined,
+  palette: { green: { 500: string }; amber: { 500: string }; red: { 500: string } }
+): string {
+  switch (colorTier) {
+    case 'safe':
+      return palette.green[500]
+    case 'moderate':
+      return palette.amber[500]
+    case 'dangerous':
+      return palette.red[500]
+    default:
+      return palette.green[500]
+  }
+}
+
+
 function ControlledStatusBar({
+  provider,
   providerOptions,
   selectedProviderId,
   onSelectProvider,
@@ -113,6 +150,10 @@ function ControlledStatusBar({
       : findOptionLabel(modelOptions, selectedModelId, 'Auto')
   const displayThinking = findOptionLabel(thinkingOptions, selectedThinkingOptionId, 'auto')
 
+  const modeVisuals = selectedModeId ? getModeVisuals(provider, selectedModeId) : undefined
+  const ModeIconComponent = modeVisuals?.icon ? MODE_ICONS[modeVisuals.icon] : null
+  const modeIconColor = getModeIconColor(modeVisuals?.colorTier, theme.colors.palette)
+
   const hasAnyControl =
     Boolean(providerOptions?.length) ||
     Boolean(modeOptions?.length) ||
@@ -142,6 +183,23 @@ function ControlledStatusBar({
   const comboboxThinkingOptions = useMemo<ComboboxOption[]>(
     () => (thinkingOptions ?? []).map((o) => ({ id: o.id, label: o.label })),
     [thinkingOptions]
+  )
+
+  const renderModeOption = useCallback(
+    ({ option, selected, active, onPress }: { option: ComboboxOption; selected: boolean; active: boolean; onPress: () => void }) => {
+      const visuals = getModeVisuals(provider, option.id)
+      const IconComponent = visuals?.icon ? MODE_ICONS[visuals.icon] : ShieldCheck
+      return (
+        <ComboboxItem
+          label={option.label}
+          selected={selected}
+          active={active}
+          onPress={onPress}
+          leadingSlot={<IconComponent size={16} color={theme.colors.foreground} />}
+        />
+      )
+    },
+    [provider, theme.colors.foreground]
   )
 
   const handleOpenChange = useCallback(
@@ -196,17 +254,20 @@ function ControlledStatusBar({
                 disabled={disabled || !canSelectMode}
                 onPress={() => setOpenSelector(openSelector === 'mode' ? null : 'mode')}
                 style={({ pressed, hovered }) => [
-                  styles.modeBadge,
+                  styles.modeIconBadge,
                   hovered && styles.modeBadgeHovered,
                   (pressed || openSelector === 'mode') && styles.modeBadgePressed,
                   (disabled || !canSelectMode) && styles.disabledBadge,
                 ]}
                 accessibilityRole="button"
-                accessibilityLabel="Select agent mode"
+                accessibilityLabel={`Select agent mode (${displayMode})`}
                 testID="agent-mode-selector"
               >
-                <Text style={styles.modeBadgeText}>{displayMode}</Text>
-                <ChevronDown size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
+                {ModeIconComponent ? (
+                  <ModeIconComponent size={theme.iconSize.md} color={modeIconColor} />
+                ) : (
+                  <ShieldCheck size={theme.iconSize.md} color={theme.colors.foregroundMuted} />
+                )}
               </Pressable>
               <Combobox
                 options={comboboxModeOptions}
@@ -217,6 +278,7 @@ function ControlledStatusBar({
                 onOpenChange={handleOpenChange('mode')}
                 anchorRef={modeAnchorRef}
                 desktopPlacement="top-start"
+                renderOption={renderModeOption}
               />
             </>
           ) : null}
@@ -355,19 +417,27 @@ function ControlledStatusBar({
                     accessibilityLabel="Select agent mode"
                     testID="agent-preferences-mode"
                   >
+                    {ModeIconComponent ? (
+                      <ModeIconComponent size={theme.iconSize.md} color={modeIconColor} />
+                    ) : null}
                     <Text style={styles.sheetSelectText}>{displayMode}</Text>
                     <ChevronDown size={theme.iconSize.md} color={theme.colors.foregroundMuted} />
                   </DropdownMenuTrigger>
                   <DropdownMenuContent side="top" align="start">
-                    {modeOptions.map((mode) => (
-                      <DropdownMenuItem
-                        key={mode.id}
-                        selected={mode.id === selectedModeId}
-                        onSelect={() => onSelectMode?.(mode.id)}
-                      >
-                        {mode.label}
-                      </DropdownMenuItem>
-                    ))}
+                    {modeOptions.map((mode) => {
+                      const visuals = getModeVisuals(provider, mode.id)
+                      const Icon = visuals?.icon ? MODE_ICONS[visuals.icon] : ShieldCheck
+                      return (
+                        <DropdownMenuItem
+                          key={mode.id}
+                          selected={mode.id === selectedModeId}
+                          onSelect={() => onSelectMode?.(mode.id)}
+                          leading={<Icon size={16} color={theme.colors.foreground} />}
+                        >
+                          {mode.label}
+                        </DropdownMenuItem>
+                      )
+                    })}
                   </DropdownMenuContent>
                 </DropdownMenu>
               </View>
@@ -504,6 +574,7 @@ export function AgentStatusBar({ agentId, serverId }: AgentStatusBarProps) {
 
   return (
     <ControlledStatusBar
+      provider={agent.provider}
       modeOptions={
         modeOptions.length > 0
           ? modeOptions
@@ -571,7 +642,10 @@ export function DraftAgentStatusBar({
     if (modeOptions.length === 0) {
       return [{ id: '', label: 'Default' }]
     }
-    return modeOptions.map((mode) => ({ id: mode.id, label: mode.label }))
+    return modeOptions.map((mode) => ({
+      id: mode.id,
+      label: mode.label,
+    }))
   }, [modeOptions])
 
   const modelOptions = useMemo<StatusOption[]>(() => {
@@ -592,6 +666,7 @@ export function DraftAgentStatusBar({
 
   return (
     <ControlledStatusBar
+      provider={selectedProvider}
       providerOptions={providerOptions}
       selectedProviderId={selectedProvider}
       onSelectProvider={(providerId) => onSelectProvider(providerId as AgentProvider)}
@@ -624,6 +699,13 @@ const styles = StyleSheet.create((theme) => ({
     paddingHorizontal: theme.spacing[2],
     paddingVertical: theme.spacing[1],
     borderRadius: theme.borderRadius['2xl'],
+  },
+  modeIconBadge: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'transparent',
+    padding: theme.spacing[1],
+    borderRadius: theme.borderRadius.full,
   },
   modeBadgeHovered: {
     backgroundColor: theme.colors.surface2,

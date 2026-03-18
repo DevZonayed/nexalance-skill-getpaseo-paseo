@@ -17,7 +17,7 @@ import {
   BottomSheetBackgroundProps,
 } from "@gorhom/bottom-sheet";
 import Animated from "react-native-reanimated";
-import { ChevronDown, ChevronRight, Pencil, Check, X, Bot, Brain, Shield } from "lucide-react-native";
+import { ChevronDown, ChevronRight, Pencil, Check, X, Bot, Brain, ShieldCheck, ShieldAlert, ShieldOff } from "lucide-react-native";
 import { theme as defaultTheme } from "@/styles/theme";
 import type {
   AgentMode,
@@ -25,7 +25,21 @@ import type {
   AgentProvider,
 } from "@server/server/agent/agent-sdk-types";
 import type { AgentProviderDefinition } from "@server/server/agent/provider-manifest";
+import { getModeVisuals, type AgentModeIcon } from "@server/server/agent/provider-manifest";
 import { Combobox, ComboboxItem, ComboboxEmpty } from "@/components/ui/combobox";
+import { baseColors } from "@/styles/theme";
+
+const MODE_ICON_MAP: Record<AgentModeIcon, typeof ShieldCheck> = {
+  ShieldCheck,
+  ShieldAlert,
+  ShieldOff,
+};
+
+const MODE_COLOR_MAP: Record<string, string> = {
+  safe: baseColors.green[500],
+  moderate: baseColors.amber[500],
+  dangerous: baseColors.red[500],
+};
 
 type DropdownTriggerRenderProps = {
   label: string;
@@ -563,6 +577,10 @@ export function AgentConfigRow({
   const effectiveSelectedThinkingOption =
     selectedThinkingOptionId || thinkingSelectOptions[0]?.id || "";
 
+  const selectedModeVisuals = getModeVisuals(selectedProvider, effectiveSelectedMode);
+  const ModeIcon = MODE_ICON_MAP[selectedModeVisuals?.icon ?? "ShieldCheck"];
+  const modeIconColor = MODE_COLOR_MAP[selectedModeVisuals?.colorTier ?? "safe"];
+
   return (
     <View style={styles.agentConfigRow}>
       <View style={styles.agentConfigColumn}>
@@ -603,7 +621,7 @@ export function AgentConfigRow({
           placeholder="Default"
           disabled={disabled || modeOptions.length === 0}
           onSelect={onSelectMode}
-          icon={<Shield size={defaultTheme.iconSize.md} color={defaultTheme.colors.foregroundMuted} />}
+          icon={<ModeIcon size={defaultTheme.iconSize.md} color={modeIconColor} />}
           showLabel={false}
           testID="draft-mode-select"
         />

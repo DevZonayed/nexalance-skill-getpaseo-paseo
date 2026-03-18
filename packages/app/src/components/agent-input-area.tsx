@@ -699,7 +699,7 @@ export function AgentInputArea({
           {isCancellingAgent ? (
             <ActivityIndicator size="small" color="white" />
           ) : (
-            <Square size={theme.iconSize.lg} color="white" fill="white" />
+            <Square size={theme.iconSize.md} color="white" fill="white" />
           )}
         </TooltipTrigger>
         <TooltipContent side="top" align="center" offset={8}>
@@ -728,7 +728,7 @@ export function AgentInputArea({
             {voice?.isVoiceSwitching ? (
               <ActivityIndicator size="small" color="white" />
             ) : (
-              <AudioLines size={theme.iconSize.lg} color={theme.colors.foreground} />
+              <AudioLines size={theme.iconSize.md} color={theme.colors.foreground} />
             )}
           </TooltipTrigger>
           <TooltipContent side="top" align="center" offset={8}>
@@ -885,8 +885,8 @@ const styles = StyleSheet.create(((theme: Theme) => ({
     zIndex: 30,
   },
   cancelButton: {
-    width: 34,
-    height: 34,
+    width: 28,
+    height: 28,
     borderRadius: theme.borderRadius.full,
     backgroundColor: theme.colors.palette.red[600],
     alignItems: 'center',
@@ -898,8 +898,8 @@ const styles = StyleSheet.create(((theme: Theme) => ({
     gap: theme.spacing[2],
   },
   realtimeVoiceButton: {
-    width: 34,
-    height: 34,
+    width: 28,
+    height: 28,
     borderRadius: theme.borderRadius.full,
     backgroundColor: theme.colors.surface0,
     borderWidth: theme.borderWidth[1],

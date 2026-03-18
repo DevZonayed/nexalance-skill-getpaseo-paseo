@@ -17,7 +17,7 @@ import {
   Ellipsis,
   EllipsisVertical,
   PanelRight,
-  Plus,
+  SquarePen,
   SquareTerminal,
 } from "lucide-react-native";
 import { GestureDetector } from "react-native-gesture-handler";
@@ -422,7 +422,7 @@ const MobileWorkspaceTabSwitcher = memo(function MobileWorkspaceTabSwitcher({
               (hovered || pressed) && styles.newTabActionButtonHovered,
             ]}
           >
-            <Plus size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
+            <SquarePen size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
           </TooltipTrigger>
           <TooltipContent side="bottom" align="end" offset={8}>
             <View style={styles.newTabTooltipRow}>
