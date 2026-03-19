@@ -83,7 +83,7 @@ import { useArchiveAgent } from "@/hooks/use-archive-agent";
 import { buildProviderCommand } from "@/utils/provider-command-templates";
 import { generateDraftId } from "@/stores/draft-keys";
 import {
-  useWorkspaceTabPresentation,
+  WorkspaceTabPresentationResolver,
   WorkspaceTabIcon,
   WorkspaceTabOptionRow,
 } from "@/screens/workspace/workspace-tab-presentation";
@@ -226,22 +226,24 @@ function ResolvedMobileActiveTabTrigger({
   normalizedServerId: string;
   normalizedWorkspaceId: string;
 }) {
-  const presentation = useWorkspaceTabPresentation({
-    tab: activeTab,
-    serverId: normalizedServerId,
-    workspaceId: normalizedWorkspaceId,
-  });
-
   return (
-    <>
-      <View style={styles.switcherTriggerIcon} testID="workspace-active-tab-icon">
-        <WorkspaceTabIcon presentation={presentation} active />
-      </View>
+    <WorkspaceTabPresentationResolver
+      tab={activeTab}
+      serverId={normalizedServerId}
+      workspaceId={normalizedWorkspaceId}
+    >
+      {(presentation) => (
+        <>
+          <View style={styles.switcherTriggerIcon} testID="workspace-active-tab-icon">
+            <WorkspaceTabIcon presentation={presentation} active />
+          </View>
 
-      <Text style={styles.switcherTriggerText} numberOfLines={1}>
-        {presentation.titleState === "loading" ? "Loading..." : presentation.label}
-      </Text>
-    </>
+          <Text style={styles.switcherTriggerText} numberOfLines={1}>
+            {presentation.titleState === "loading" ? "Loading..." : presentation.label}
+          </Text>
+        </>
+      )}
+    </WorkspaceTabPresentationResolver>
   );
 }
 
@@ -277,11 +279,6 @@ function MobileWorkspaceTabOption({
   onCloseOtherTabs: (tabId: string) => Promise<void> | void;
 }) {
   const { theme } = useUnistyles();
-  const presentation = useWorkspaceTabPresentation({
-    tab,
-    serverId: normalizedServerId,
-    workspaceId: normalizedWorkspaceId,
-  });
   const menuTestIDBase = `workspace-tab-menu-${tab.key}`;
   const menuEntries = buildWorkspaceTabMenuEntries({
     surface: "mobile",
@@ -298,53 +295,61 @@ function MobileWorkspaceTabOption({
   });
 
   return (
-    <WorkspaceTabOptionRow
-      presentation={presentation}
-      selected={selected}
-      active={active}
-      onPress={onPress}
-      trailingAccessory={
-        <DropdownMenu>
-          <DropdownMenuTrigger
-            testID={`${menuTestIDBase}-trigger`}
-            accessibilityRole="button"
-            accessibilityLabel={`Open menu for ${presentation.label}`}
-            hitSlop={8}
-            style={({ open, pressed }) => [
-              styles.mobileTabMenuTrigger,
-              (open || pressed) && styles.mobileTabMenuTriggerActive,
-            ]}
-          >
-            <Ellipsis
-              size={theme.iconSize.sm}
-              color={theme.colors.foregroundMuted}
-            />
-          </DropdownMenuTrigger>
-          <DropdownMenuContent
-            side="bottom"
-            align="end"
-            width={220}
-            testID={menuTestIDBase}
-          >
-            {menuEntries.map((entry) =>
-              entry.kind === "separator" ? (
-                <DropdownMenuSeparator key={entry.key} />
-              ) : (
-                <DropdownMenuItem
-                  key={entry.key}
-                  testID={entry.testID}
-                  disabled={entry.disabled}
-                  destructive={entry.destructive}
-                  onSelect={entry.onSelect}
-                >
-                  {entry.label}
-                </DropdownMenuItem>
-              )
-            )}
-          </DropdownMenuContent>
-        </DropdownMenu>
-      }
-    />
+    <WorkspaceTabPresentationResolver
+      tab={tab}
+      serverId={normalizedServerId}
+      workspaceId={normalizedWorkspaceId}
+    >
+      {(presentation) => (
+        <WorkspaceTabOptionRow
+          presentation={presentation}
+          selected={selected}
+          active={active}
+          onPress={onPress}
+          trailingAccessory={
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                testID={`${menuTestIDBase}-trigger`}
+                accessibilityRole="button"
+                accessibilityLabel={`Open menu for ${presentation.label}`}
+                hitSlop={8}
+                style={({ open, pressed }) => [
+                  styles.mobileTabMenuTrigger,
+                  (open || pressed) && styles.mobileTabMenuTriggerActive,
+                ]}
+              >
+                <Ellipsis
+                  size={theme.iconSize.sm}
+                  color={theme.colors.foregroundMuted}
+                />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                side="bottom"
+                align="end"
+                width={220}
+                testID={menuTestIDBase}
+              >
+                {menuEntries.map((entry) =>
+                  entry.kind === "separator" ? (
+                    <DropdownMenuSeparator key={entry.key} />
+                  ) : (
+                    <DropdownMenuItem
+                      key={entry.key}
+                      testID={entry.testID}
+                      disabled={entry.disabled}
+                      destructive={entry.destructive}
+                      onSelect={entry.onSelect}
+                    >
+                      {entry.label}
+                    </DropdownMenuItem>
+                  )
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          }
+        />
+      )}
+    </WorkspaceTabPresentationResolver>
   );
 }
 

@@ -15,7 +15,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { WORKSPACE_SECONDARY_HEADER_HEIGHT } from "@/constants/layout";
 import { useWorkspaceTabLayout } from "@/screens/workspace/use-workspace-tab-layout";
 import {
-  useWorkspaceTabPresentation,
+  WorkspaceTabPresentationResolver,
   WorkspaceTabIcon,
   type WorkspaceTabPresentation,
 } from "@/screens/workspace/workspace-tab-presentation";
@@ -546,13 +546,6 @@ function ResolvedDesktopTabChip({
   showDropIndicatorBefore: boolean;
   showDropIndicatorAfter: boolean;
 }) {
-  const presentation = useWorkspaceTabPresentation({
-    tab: item.tab,
-    serverId: normalizedServerId,
-    workspaceId: normalizedWorkspaceId,
-  });
-  const tooltipLabel =
-    presentation.titleState === "loading" ? "Loading agent title" : presentation.label;
   const resolvedTab = useMemo(
     () =>
       buildWorkspaceDesktopTabActions({
@@ -580,33 +573,46 @@ function ResolvedDesktopTabChip({
   );
 
   return (
-    <View style={styles.tabSlot}>
-      {showDropIndicatorBefore ? (
-        <View style={[styles.tabDropIndicator, styles.tabDropIndicatorBefore]} />
-      ) : null}
-      <TabChip
-        tab={item.tab}
-        isActive={item.isActive}
-        isDragging={isDragging}
-        isFocused={isFocused}
-        resolvedTabWidth={resolvedTabWidth}
-        showLabel={showLabel}
-        showCloseButton={showCloseButton}
-        isCloseHovered={item.isCloseHovered}
-        isClosingTab={item.isClosingTab}
-        presentation={presentation}
-        tooltipLabel={tooltipLabel}
-        resolvedTab={resolvedTab}
-        setHoveredTabKey={setHoveredTabKey}
-        setHoveredCloseTabKey={setHoveredCloseTabKey}
-        onNavigateTab={onNavigateTab}
-        onCloseTab={onCloseTab}
-        dragHandleProps={dragHandleProps}
-      />
-      {showDropIndicatorAfter ? (
-        <View style={[styles.tabDropIndicator, styles.tabDropIndicatorAfter]} />
-      ) : null}
-    </View>
+    <WorkspaceTabPresentationResolver
+      tab={item.tab}
+      serverId={normalizedServerId}
+      workspaceId={normalizedWorkspaceId}
+    >
+      {(presentation) => {
+        const tooltipLabel =
+          presentation.titleState === "loading" ? "Loading agent title" : presentation.label;
+
+        return (
+          <View style={styles.tabSlot}>
+            {showDropIndicatorBefore ? (
+              <View style={[styles.tabDropIndicator, styles.tabDropIndicatorBefore]} />
+            ) : null}
+            <TabChip
+              tab={item.tab}
+              isActive={item.isActive}
+              isDragging={isDragging}
+              isFocused={isFocused}
+              resolvedTabWidth={resolvedTabWidth}
+              showLabel={showLabel}
+              showCloseButton={showCloseButton}
+              isCloseHovered={item.isCloseHovered}
+              isClosingTab={item.isClosingTab}
+              presentation={presentation}
+              tooltipLabel={tooltipLabel}
+              resolvedTab={resolvedTab}
+              setHoveredTabKey={setHoveredTabKey}
+              setHoveredCloseTabKey={setHoveredCloseTabKey}
+              onNavigateTab={onNavigateTab}
+              onCloseTab={onCloseTab}
+              dragHandleProps={dragHandleProps}
+            />
+            {showDropIndicatorAfter ? (
+              <View style={[styles.tabDropIndicator, styles.tabDropIndicatorAfter]} />
+            ) : null}
+          </View>
+        );
+      }}
+    </WorkspaceTabPresentationResolver>
   );
 }
 

@@ -41,7 +41,7 @@ import {
   type WorkspaceDesktopTabRowItem,
 } from "@/screens/workspace/workspace-desktop-tabs-row";
 import {
-  useWorkspaceTabPresentation,
+  WorkspaceTabPresentationResolver,
   WorkspaceTabIcon,
 } from "@/screens/workspace/workspace-tab-presentation";
 import type { WorkspaceTabDescriptor } from "@/screens/workspace/workspace-tabs-types";
@@ -489,35 +489,41 @@ function DragOverlayTabChipInner({
   normalizedWorkspaceId: string;
 }) {
   const { theme } = useUnistyles();
-  const presentation = useWorkspaceTabPresentation({
-    tab,
-    serverId: normalizedServerId,
-    workspaceId: normalizedWorkspaceId,
-  });
-  const label =
-    presentation.titleState === "loading" ? "Loading..." : presentation.label;
 
   return (
-    <View
-      style={[
-        styles.dragOverlayChip,
-        {
-          backgroundColor: theme.colors.surface1,
-          borderColor: theme.colors.borderAccent,
-        },
-      ]}
+    <WorkspaceTabPresentationResolver
+      tab={tab}
+      serverId={normalizedServerId}
+      workspaceId={normalizedWorkspaceId}
     >
-      <WorkspaceTabIcon presentation={presentation} active size={14} />
-      <Text
-        numberOfLines={1}
-        style={[
-          styles.dragOverlayLabel,
-          { color: theme.colors.foreground },
-        ]}
-      >
-        {label}
-      </Text>
-    </View>
+      {(presentation) => {
+        const label =
+          presentation.titleState === "loading" ? "Loading..." : presentation.label;
+
+        return (
+          <View
+            style={[
+              styles.dragOverlayChip,
+              {
+                backgroundColor: theme.colors.surface1,
+                borderColor: theme.colors.borderAccent,
+              },
+            ]}
+          >
+            <WorkspaceTabIcon presentation={presentation} active size={14} />
+            <Text
+              numberOfLines={1}
+              style={[
+                styles.dragOverlayLabel,
+                { color: theme.colors.foreground },
+              ]}
+            >
+              {label}
+            </Text>
+          </View>
+        );
+      }}
+    </WorkspaceTabPresentationResolver>
   );
 }
 

@@ -21,23 +21,56 @@ export interface WorkspaceTabPresentation {
   statusBucket: SidebarStateBucket | null;
 }
 
-export function useWorkspaceTabPresentation(input: {
+type WorkspaceTabPresentationResolverProps = {
   tab: WorkspaceTabDescriptor;
   serverId: string;
   workspaceId: string;
-}): WorkspaceTabPresentation {
+  children: (presentation: WorkspaceTabPresentation) => ReactNode;
+};
+
+type WorkspaceTabPresentationResolverInnerProps = WorkspaceTabPresentationResolverProps & {
+  registration: NonNullable<ReturnType<typeof getPanelRegistration>>;
+};
+
+export function WorkspaceTabPresentationResolver({
+  tab,
+  serverId,
+  workspaceId,
+  children,
+}: WorkspaceTabPresentationResolverProps): ReactElement {
   ensurePanelsRegistered();
-  const registration = getPanelRegistration(input.tab.kind);
-  invariant(registration, `No panel registration for kind: ${input.tab.kind}`);
-  const descriptor = registration.useDescriptor(input.tab.target, {
-    serverId: input.serverId,
-    workspaceId: input.workspaceId,
+  const registration = getPanelRegistration(tab.kind);
+  invariant(registration, `No panel registration for kind: ${tab.kind}`);
+
+  return (
+    <WorkspaceTabPresentationResolverInner
+      key={tab.kind}
+      registration={registration}
+      tab={tab}
+      serverId={serverId}
+      workspaceId={workspaceId}
+    >
+      {children}
+    </WorkspaceTabPresentationResolverInner>
+  );
+}
+
+function WorkspaceTabPresentationResolverInner({
+  registration,
+  tab,
+  serverId,
+  workspaceId,
+  children,
+}: WorkspaceTabPresentationResolverInnerProps): ReactElement {
+  const descriptor = registration.useDescriptor(tab.target as never, {
+    serverId,
+    workspaceId,
   });
 
-  return useMemo(
+  const presentation = useMemo(
     () => ({
-      key: input.tab.key,
-      kind: input.tab.kind,
+      key: tab.key,
+      kind: tab.kind,
       label: descriptor.label,
       subtitle: descriptor.subtitle,
       titleState: descriptor.titleState,
@@ -50,10 +83,12 @@ export function useWorkspaceTabPresentation(input: {
       descriptor.statusBucket,
       descriptor.subtitle,
       descriptor.titleState,
-      input.tab.key,
-      input.tab.kind,
+      tab.key,
+      tab.kind,
     ]
   );
+
+  return <>{children(presentation)}</>;
 }
 
 type WorkspaceTabIconProps = {
