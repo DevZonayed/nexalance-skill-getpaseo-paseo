@@ -12,7 +12,6 @@ import {
   takeCommandCenterFocusRestoreElement,
 } from "@/utils/command-center-focus-restore";
 import {
-  buildHostOpenProjectRoute,
   buildHostWorkspaceAgentRoute,
   buildHostSettingsRoute,
   parseHostAgentRouteFromPathname,
@@ -55,7 +54,7 @@ type CommandCenterActionDefinition = {
   icon?: "plus" | "settings";
   shortcutKeys?: ShortcutKey[];
   keywords: string[];
-  buildRoute: (params: { newAgentRoute: Href; settingsRoute: Href }) => Href;
+  routeKind: "settings" | "none";
 };
 
 const COMMAND_CENTER_ACTIONS: readonly CommandCenterActionDefinition[] = [
@@ -65,14 +64,14 @@ const COMMAND_CENTER_ACTIONS: readonly CommandCenterActionDefinition[] = [
     icon: "plus",
     shortcutKeys: ["mod", "shift", "O"],
     keywords: ["open", "project", "folder", "workspace", "repo"],
-    buildRoute: ({ newAgentRoute }) => newAgentRoute,
+    routeKind: "none",
   },
   {
     id: "settings",
     title: "Settings",
     icon: "settings",
     keywords: ["settings", "preferences", "config", "configuration"],
-    buildRoute: ({ settingsRoute }) => settingsRoute,
+    routeKind: "settings",
   },
 ];
 
@@ -93,7 +92,7 @@ export type CommandCenterActionItem = {
   id: string;
   title: string;
   icon?: "plus" | "settings";
-  route: Href;
+  route?: Href;
   shortcutKeys?: ShortcutKey[];
 };
 
@@ -149,11 +148,6 @@ export function useCommandCenter() {
     return filtered;
   }, [agents, open, query]);
 
-  const newAgentRoute = useMemo<Href>(() => {
-    const serverIdFromPath = activeServerId;
-    return serverIdFromPath ? (buildHostOpenProjectRoute(serverIdFromPath) as Href) : "/";
-  }, [activeServerId]);
-
   const settingsRoute = useMemo<Href>(() => {
     const serverIdFromPath = activeServerId;
     return serverIdFromPath ? (buildHostSettingsRoute(serverIdFromPath) as Href) : "/";
@@ -170,10 +164,10 @@ export function useCommandCenter() {
       id: action.id,
       title: action.title,
       icon: action.icon,
-      route: action.buildRoute({ newAgentRoute, settingsRoute }),
+      route: action.routeKind === "settings" ? settingsRoute : undefined,
       shortcutKeys: action.shortcutKeys,
     }));
-  }, [newAgentRoute, open, query, settingsRoute]);
+  }, [open, query, settingsRoute]);
 
   const items = useMemo(() => {
     if (!open) {
@@ -225,6 +219,9 @@ export function useCommandCenter() {
     setOpen(false);
     if (action.id === "new-agent") {
       void openProjectPicker();
+      return;
+    }
+    if (!action.route) {
       return;
     }
     didNavigateRef.current = true;

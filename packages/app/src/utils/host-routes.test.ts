@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
   buildHostAgentDetailRoute,
-  buildHostNewAgentRoute,
   buildHostRootRoute,
   buildHostWorkspaceAgentRoute,
   buildHostWorkspaceFileRoute,
@@ -64,16 +63,6 @@ describe("workspace route parsing", () => {
 
   it("builds host root routes", () => {
     expect(buildHostRootRoute("local")).toBe("/h/local");
-  });
-
-  it("builds host new-agent routes", () => {
-    expect(buildHostNewAgentRoute("local")).toBe("/h/local/new-agent");
-    expect(
-      buildHostNewAgentRoute("local", {
-        workingDir: "/tmp/repo",
-        worktreeMode: "create",
-      })
-    ).toBe("/h/local/new-agent?workingDir=%2Ftmp%2Frepo&worktreeMode=create");
   });
 
   it("builds workspace routes with open intent query", () => {

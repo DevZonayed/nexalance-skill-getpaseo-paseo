@@ -708,7 +708,7 @@ async function hasOriginRemote(cwd: string): Promise<boolean> {
   return url !== null;
 }
 
-async function resolveBaseRef(repoRoot: string): Promise<string | null> {
+export async function resolveRepositoryDefaultBranch(repoRoot: string): Promise<string | null> {
   try {
     const { stdout } = await execAsync("git symbolic-ref --quiet refs/remotes/origin/HEAD", {
       cwd: repoRoot,
@@ -753,6 +753,10 @@ async function resolveBaseRef(repoRoot: string): Promise<string | null> {
   }
 
   return null;
+}
+
+async function resolveBaseRef(repoRoot: string): Promise<string | null> {
+  return resolveRepositoryDefaultBranch(repoRoot);
 }
 
 function normalizeLocalBranchRefName(input: string): string {

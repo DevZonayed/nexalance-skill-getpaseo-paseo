@@ -1,3 +1,7 @@
+import { execSync } from 'node:child_process'
+import { mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
 import { describe, expect, test, vi } from 'vitest'
 import { Session } from './session.js'
 import type { AgentSnapshotPayload } from '../shared/messages.js'
@@ -335,55 +339,110 @@ describe('workspace aggregation', () => {
     })
   })
 
+  test('create paseo worktree request returns a registered workspace descriptor', async () => {
+    const emitted: Array<{ type: string; payload: unknown }> = []
+    const session = createSessionForWorkspaceTests() as any
+    const tempDir = realpathSync(mkdtempSync(path.join(tmpdir(), 'session-worktree-test-')))
+    const repoDir = path.join(tempDir, 'repo')
+    const paseoHome = path.join(tempDir, 'paseo-home')
+    execSync(`mkdir -p ${repoDir}`)
+    execSync('git init -b main', { cwd: repoDir, stdio: 'pipe' })
+    execSync("git config user.email 'test@test.com'", { cwd: repoDir, stdio: 'pipe' })
+    execSync("git config user.name 'Test'", { cwd: repoDir, stdio: 'pipe' })
+    writeFileSync(path.join(repoDir, 'file.txt'), 'hello\n')
+    execSync('git add .', { cwd: repoDir, stdio: 'pipe' })
+    execSync("git -c commit.gpgsign=false commit -m 'initial'", { cwd: repoDir, stdio: 'pipe' })
+
+    const workspaces = new Map()
+    const projects = new Map()
+    session.paseoHome = paseoHome
+    session.workspaceRegistry.get = async (workspaceId: string) => workspaces.get(workspaceId) ?? null
+    session.workspaceRegistry.list = async () => Array.from(workspaces.values())
+    session.workspaceRegistry.upsert = async (record: any) => {
+      workspaces.set(record.workspaceId, record)
+    }
+    session.projectRegistry.get = async (projectId: string) => projects.get(projectId) ?? null
+    session.projectRegistry.list = async () => Array.from(projects.values())
+    session.projectRegistry.upsert = async (record: any) => {
+      projects.set(record.projectId, record)
+    }
+    session.emit = (message: { type: string; payload: unknown }) => {
+      emitted.push(message)
+    }
+    try {
+      await session.handleCreatePaseoWorktreeRequest({
+        type: 'create_paseo_worktree_request',
+        cwd: repoDir,
+        worktreeSlug: 'worktree-123',
+        requestId: 'req-worktree',
+      })
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true })
+    }
+
+    const response = emitted.find((message) => message.type === 'create_paseo_worktree_response') as
+      | { type: 'create_paseo_worktree_response'; payload: any }
+      | undefined
+
+    expect(response?.payload.error).toBeNull()
+    expect(response?.payload.workspace).toMatchObject({
+      projectDisplayName: 'repo',
+      projectKind: 'git',
+      workspaceKind: 'worktree',
+      name: 'worktree-123',
+      status: 'done',
+    })
+    expect(response?.payload.workspace?.id).toContain(path.join('worktree-123'))
+    expect(workspaces.has(response?.payload.workspace?.id)).toBe(true)
+    expect(projects.has(response?.payload.workspace?.projectId)).toBe(true)
+  })
+
   test('workspace update fanout for multiple cwd values is deduplicated', async () => {
     const emitted: Array<{ type: string; payload: unknown }> = []
     const session = createSessionForWorkspaceTests() as any
-    session.emit = (message: any) => emitted.push(message)
     session.workspaceUpdatesSubscription = {
-      subscriptionId: 'sub-dedupe',
+      subscriptionId: 'sub-dedup',
       filter: undefined,
       isBootstrapping: false,
       pendingUpdatesByWorkspaceId: new Map(),
     }
-    session.reconcileActiveWorkspaceRecords = async () => new Set()
+    session.reconcileActiveWorkspaceRecords = async () => new Set(['/tmp/repo', '/tmp/repo/worktree'])
     session.listWorkspaceDescriptorsSnapshot = async () => [
       {
         id: '/tmp/repo',
         projectId: '/tmp/repo',
         projectDisplayName: 'repo',
         projectRootPath: '/tmp/repo',
-        projectKind: 'non_git',
-        workspaceKind: 'directory',
-        name: 'repo',
+        projectKind: 'git',
+        workspaceKind: 'local_checkout',
+        name: 'main',
         status: 'done',
         activityAt: null,
       },
       {
-        id: '/tmp/repo/sub',
+        id: '/tmp/repo/worktree',
         projectId: '/tmp/repo',
         projectDisplayName: 'repo',
         projectRootPath: '/tmp/repo',
-        projectKind: 'non_git',
-        workspaceKind: 'directory',
-        name: 'sub',
-        status: 'done',
-        activityAt: null,
+        projectKind: 'git',
+        workspaceKind: 'worktree',
+        name: 'feature',
+        status: 'running',
+        activityAt: '2026-03-01T12:00:00.000Z',
       },
     ]
+    session.onMessage = (message: { type: string; payload: unknown }) => {
+      emitted.push(message)
+    }
 
-    await session.emitWorkspaceUpdatesForCwds([
-      '/tmp/repo',
-      '/tmp/repo/',
-      '  /tmp/repo  ',
-      '/tmp/repo/sub',
-      '/tmp/repo/sub/',
-    ])
+    await session.emitWorkspaceUpdateForCwd('/tmp/repo/worktree')
 
     const workspaceUpdates = emitted.filter((message) => message.type === 'workspace_update') as any[]
     expect(workspaceUpdates).toHaveLength(2)
-    expect(workspaceUpdates.map((message) => message.payload.workspace.id)).toEqual([
+    expect(workspaceUpdates.map((entry) => entry.payload.kind)).toEqual(['upsert', 'upsert'])
+    expect(workspaceUpdates.map((entry) => entry.payload.workspace.id).sort()).toEqual([
       '/tmp/repo',
-      '/tmp/repo/sub',
+      '/tmp/repo/worktree',
     ])
   })
 

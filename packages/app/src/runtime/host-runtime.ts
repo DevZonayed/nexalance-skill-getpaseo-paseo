@@ -34,7 +34,6 @@ import {
   buildLocalDaemonTransportUrl,
   createTauriLocalDaemonTransportFactory,
 } from "@/utils/managed-tauri-daemon-transport";
-import { createTauriWebSocketTransportFactory } from "@/utils/tauri-daemon-transport";
 import { applyFetchedAgentDirectory } from "@/utils/agent-directory-sync";
 import { useSessionStore, type Agent } from "@/stores/session-store";
 
@@ -433,7 +432,6 @@ function probeIntervalForConnection(
 function createDefaultDeps(): HostRuntimeControllerDeps {
   return {
     createClient: ({ host, connection, clientId, runtimeGeneration }) => {
-      const tauriTransportFactory = createTauriWebSocketTransportFactory();
       const localTransportFactory = createTauriLocalDaemonTransportFactory();
       const base = {
         suppressSendErrors: true,
@@ -454,17 +452,11 @@ function createDefaultDeps(): HostRuntimeControllerDeps {
       if (connection.type === "directTcp") {
         return new DaemonClient({
           ...base,
-          ...(tauriTransportFactory
-            ? { transportFactory: tauriTransportFactory }
-            : {}),
           url: buildDaemonWebSocketUrl(connection.endpoint),
         });
       }
       return new DaemonClient({
         ...base,
-        ...(tauriTransportFactory
-          ? { transportFactory: tauriTransportFactory }
-          : {}),
         url: buildRelayWebSocketUrl({
           endpoint: connection.relayEndpoint,
           serverId: host.serverId,

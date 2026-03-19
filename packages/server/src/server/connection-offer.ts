@@ -30,7 +30,6 @@ export function buildOfferEndpoints({
   }
 
   endpoints.push(`localhost:${port}`);
-  endpoints.push(`127.0.0.1:${port}`);
 
   return dedupePreserveOrder(endpoints);
 }

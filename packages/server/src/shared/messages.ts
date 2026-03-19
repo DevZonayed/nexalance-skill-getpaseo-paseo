@@ -936,6 +936,13 @@ export const PaseoWorktreeArchiveRequestSchema = z.object({
   requestId: z.string(),
 })
 
+export const CreatePaseoWorktreeRequestSchema = z.object({
+  type: z.literal('create_paseo_worktree_request'),
+  cwd: z.string(),
+  worktreeSlug: z.string().optional(),
+  requestId: z.string(),
+})
+
 export const OpenProjectRequestSchema = z.object({
   type: z.literal('open_project_request'),
   cwd: z.string(),
@@ -1186,6 +1193,7 @@ export const SessionInboundMessageSchema = z.discriminatedUnion('type', [
   DirectorySuggestionsRequestSchema,
   PaseoWorktreeListRequestSchema,
   PaseoWorktreeArchiveRequestSchema,
+  CreatePaseoWorktreeRequestSchema,
   OpenProjectRequestSchema,
   ArchiveWorkspaceRequestSchema,
   FileExplorerRequestSchema,
@@ -1961,6 +1969,16 @@ export const PaseoWorktreeArchiveResponseSchema = z.object({
   }),
 })
 
+export const CreatePaseoWorktreeResponseSchema = z.object({
+  type: z.literal('create_paseo_worktree_response'),
+  payload: z.object({
+    workspace: WorkspaceDescriptorPayloadSchema.nullable(),
+    error: z.string().nullable(),
+    setupTerminalId: z.string().nullable(),
+    requestId: z.string(),
+  }),
+})
+
 export const FileExplorerResponseSchema = z.object({
   type: z.literal('file_explorer_response'),
   payload: z.object({
@@ -2237,6 +2255,7 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion('type', [
   DirectorySuggestionsResponseSchema,
   PaseoWorktreeListResponseSchema,
   PaseoWorktreeArchiveResponseSchema,
+  CreatePaseoWorktreeResponseSchema,
   FileExplorerResponseSchema,
   ProjectIconResponseSchema,
   FileDownloadTokenResponseSchema,

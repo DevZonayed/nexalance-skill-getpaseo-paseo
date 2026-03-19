@@ -399,40 +399,6 @@ export function buildHostAgentsRoute(serverId: string): string {
   return `${base}/agents`;
 }
 
-export function buildHostNewAgentRoute(
-  serverId: string,
-  options?: {
-    workingDir?: string;
-    provider?: string;
-    modeId?: string;
-    model?: string;
-    thinkingOptionId?: string;
-    worktreeMode?: "create" | "attach";
-  }
-): string {
-  const base = buildHostRootRoute(serverId);
-  if (base === "/") {
-    return "/";
-  }
-  const searchParams = new URLSearchParams();
-  const entries: Array<[string, string | undefined]> = [
-    ["workingDir", options?.workingDir],
-    ["provider", options?.provider],
-    ["modeId", options?.modeId],
-    ["model", options?.model],
-    ["thinkingOptionId", options?.thinkingOptionId],
-    ["worktreeMode", options?.worktreeMode],
-  ];
-  for (const [key, value] of entries) {
-    const normalized = trimNonEmpty(value);
-    if (normalized) {
-      searchParams.set(key, normalized);
-    }
-  }
-  const search = searchParams.toString();
-  return search ? `${base}/new-agent?${search}` : `${base}/new-agent`;
-}
-
 export function buildHostOpenProjectRoute(serverId: string): string {
   const base = buildHostRootRoute(serverId);
   if (base === "/") {
@@ -465,9 +431,6 @@ export function mapPathnameToServer(
   }
   if (suffix.startsWith("agents")) {
     return `${base}/agents`;
-  }
-  if (suffix.startsWith("new-agent")) {
-    return `${base}/new-agent`;
   }
   if (suffix.startsWith("open-project")) {
     return `${base}/open-project`;

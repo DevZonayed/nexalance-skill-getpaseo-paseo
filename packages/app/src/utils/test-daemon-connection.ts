@@ -7,7 +7,6 @@ import {
   buildLocalDaemonTransportUrl,
   createTauriLocalDaemonTransportFactory,
 } from "./managed-tauri-daemon-transport";
-import { createTauriWebSocketTransportFactory } from "./tauri-daemon-transport";
 
 function normalizeNonEmptyString(value: unknown): string | null {
   if (typeof value !== "string") return null;
@@ -50,7 +49,6 @@ export async function buildClientConfig(
   serverId?: string
 ): Promise<DaemonClientConfig> {
   const clientId = await getOrCreateClientId();
-  const tauriTransportFactory = createTauriWebSocketTransportFactory();
   const localTransportFactory = createTauriLocalDaemonTransportFactory();
   const base = {
     clientId,
@@ -61,9 +59,7 @@ export async function buildClientConfig(
       ? localTransportFactory
         ? { transportFactory: localTransportFactory }
         : {}
-      : tauriTransportFactory
-        ? { transportFactory: tauriTransportFactory }
-        : {}),
+      : {}),
   };
 
   if (connection.type === "directSocket" || connection.type === "directPipe") {

@@ -33,7 +33,7 @@ import { getHostRuntimeStore, isHostRuntimeConnected } from '@/runtime/host-runt
 import { getIsTauri } from '@/constants/layout'
 import { projectIconQueryKey } from '@/hooks/use-project-icon-query'
 import {
-  buildHostNewAgentRoute,
+  buildHostWorkspaceRouteWithOpenIntent,
   parseHostWorkspaceRouteFromPathname,
 } from '@/utils/host-routes'
 import {
@@ -71,6 +71,8 @@ import {
 } from '@/components/ui/tooltip'
 import { buildSidebarProjectRowModel } from '@/utils/sidebar-project-row-model'
 import { useNavigationActiveWorkspaceSelection } from '@/stores/navigation-active-workspace-store'
+import { normalizeWorkspaceDescriptor, useSessionStore } from '@/stores/session-store'
+import { createNameId } from 'mnemonic-id'
 
 function toProjectIconDataUri(icon: { mimeType: string; data: string } | null): string | null {
   if (!icon) {
@@ -126,6 +128,7 @@ interface WorkspaceRowInnerProps {
   drag: () => void
   isDragging: boolean
   isArchiving: boolean
+  isCreating?: boolean
   dragHandleProps?: DraggableListDragHandleProps
   menuController: ReturnType<typeof useContextMenu> | null
   archiveLabel?: string
@@ -626,6 +629,7 @@ function WorkspaceRowInner({
   drag,
   isDragging,
   isArchiving,
+  isCreating = false,
   dragHandleProps,
   menuController,
   archiveLabel,
@@ -678,15 +682,23 @@ function WorkspaceRowInner({
           ref={dragHandleProps?.setActivatorNodeRef as any}
           style={styles.workspaceRowLeft}
         >
-          <WorkspaceStatusIndicator bucket={workspace.statusBucket} loading={isArchiving} />
+          <WorkspaceStatusIndicator
+            bucket={workspace.statusBucket}
+            loading={isArchiving || isCreating}
+          />
           <Text
-            style={[styles.workspaceBranchText, isHovered && styles.workspaceBranchTextHovered]}
+            style={[
+              styles.workspaceBranchText,
+              isHovered && styles.workspaceBranchTextHovered,
+              isCreating && styles.workspaceBranchTextCreating,
+            ]}
             numberOfLines={1}
           >
             {workspace.name}
           </Text>
         </View>
         <View style={styles.workspaceRowRight}>
+          {isCreating ? <Text style={styles.workspaceCreatingText}>Creating...</Text> : null}
           {onArchive && (isHovered || isMobile) ? (
             <DropdownMenu>
               <DropdownMenuTrigger
@@ -763,6 +775,7 @@ function WorkspaceRowWithMenu({
   isDragging,
   dragHandleProps,
   canCopyBranchName,
+  isCreating = false,
 }: {
   workspace: SidebarWorkspaceEntry
   selected: boolean
@@ -773,6 +786,7 @@ function WorkspaceRowWithMenu({
   isDragging: boolean
   dragHandleProps?: DraggableListDragHandleProps
   canCopyBranchName: boolean
+  isCreating?: boolean
 }) {
   const toast = useToast()
   const archiveWorktree = useCheckoutGitActionsStore((state) => state.archiveWorktree)
@@ -873,6 +887,7 @@ function WorkspaceRowWithMenu({
       drag={drag}
       isDragging={isDragging}
       isArchiving={isArchiving}
+      isCreating={isCreating}
       dragHandleProps={dragHandleProps}
       menuController={null}
       archiveLabel={isWorktree ? 'Archive worktree' : 'Hide from sidebar'}
@@ -1082,6 +1097,7 @@ function WorkspaceRow({
   isDragging,
   dragHandleProps,
   canCopyBranchName,
+  isCreating = false,
 }: {
   workspace: SidebarWorkspaceEntry
   selected: boolean
@@ -1092,6 +1108,7 @@ function WorkspaceRow({
   isDragging: boolean
   dragHandleProps?: DraggableListDragHandleProps
   canCopyBranchName: boolean
+  isCreating?: boolean
 }) {
   return (
     <WorkspaceRowWithMenu
@@ -1104,6 +1121,7 @@ function WorkspaceRow({
       isDragging={isDragging}
       dragHandleProps={dragHandleProps}
       canCopyBranchName={canCopyBranchName}
+      isCreating={isCreating}
     />
   )
 }
@@ -1126,6 +1144,7 @@ function ProjectBlock({
   isDragging,
   dragHandleProps,
   useNestable,
+  creatingWorkspaceIds,
 }: {
   project: SidebarProjectEntry
   collapsed: boolean
@@ -1144,6 +1163,7 @@ function ProjectBlock({
   isDragging: boolean
   dragHandleProps?: DraggableListDragHandleProps
   useNestable: boolean
+  creatingWorkspaceIds: ReadonlySet<string>
 }) {
   const rowModel = useMemo(
     () =>
@@ -1170,6 +1190,7 @@ function ProjectBlock({
           shortcutNumber={shortcutIndexByWorkspaceKey.get(item.workspaceKey) ?? null}
           showShortcutBadge={showShortcutBadges}
           canCopyBranchName={project.projectKind === 'git'}
+          isCreating={creatingWorkspaceIds.has(item.workspaceId)}
           onPress={() => {
             if (!serverId) {
               return
@@ -1186,6 +1207,7 @@ function ProjectBlock({
     [
       activeWorkspaceSelection,
       project.projectKind,
+      creatingWorkspaceIds,
       onWorkspacePress,
       serverId,
       shortcutIndexByWorkspaceKey,
@@ -1300,6 +1322,13 @@ export function SidebarWorkspaceList({
   const isNative = Platform.OS !== 'web'
   const pathname = usePathname()
   const activeWorkspaceSelection = useNavigationActiveWorkspaceSelection()
+  const toast = useToast()
+  const mergeWorkspaces = useSessionStore((state) => state.mergeWorkspaces)
+  const [creatingProjectKey, setCreatingProjectKey] = useState<string | null>(null)
+  const [creatingWorkspaceIds, setCreatingWorkspaceIds] = useState<Set<string>>(() => new Set())
+  const creatingWorkspaceTimeoutsRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(
+    new Map()
+  )
   const isTauri = getIsTauri()
   const altDown = useKeyboardShortcutsStore((state) => state.altDown)
   const cmdOrCtrlDown = useKeyboardShortcutsStore((state) => state.cmdOrCtrlDown)
@@ -1379,6 +1408,51 @@ export function SidebarWorkspaceList({
     return byProject
   }, [projectIconQueries, projectIconRequests, projects, serverId])
 
+  useEffect(() => {
+    return () => {
+      for (const timeout of creatingWorkspaceTimeoutsRef.current.values()) {
+        clearTimeout(timeout)
+      }
+      creatingWorkspaceTimeoutsRef.current.clear()
+    }
+  }, [])
+
+  useEffect(() => {
+    if (creatingWorkspaceIds.size === 0) {
+      return
+    }
+
+    const visibleWorkspaceIds = new Set<string>()
+    for (const project of projects) {
+      for (const workspace of project.workspaces) {
+        visibleWorkspaceIds.add(workspace.workspaceId)
+      }
+    }
+
+    const removedWorkspaceIds = Array.from(creatingWorkspaceIds).filter(
+      (workspaceId) => !visibleWorkspaceIds.has(workspaceId)
+    )
+    if (removedWorkspaceIds.length === 0) {
+      return
+    }
+
+    for (const workspaceId of removedWorkspaceIds) {
+      const timeout = creatingWorkspaceTimeoutsRef.current.get(workspaceId)
+      if (timeout) {
+        clearTimeout(timeout)
+        creatingWorkspaceTimeoutsRef.current.delete(workspaceId)
+      }
+    }
+
+    setCreatingWorkspaceIds((current) => {
+      const next = new Set(current)
+      for (const workspaceId of removedWorkspaceIds) {
+        next.delete(workspaceId)
+      }
+      return next
+    })
+  }, [creatingWorkspaceIds, projects])
+
   const handleProjectDragEnd = useCallback(
     (reorderedProjects: SidebarProjectEntry[]) => {
       if (!serverId) {
@@ -1437,20 +1511,68 @@ export function SidebarWorkspaceList({
   )
 
   const handleCreateWorktree = useCallback(
-    (project: SidebarProjectEntry) => {
+    async (project: SidebarProjectEntry) => {
       if (!serverId || project.projectKind !== 'git') {
         return
       }
+      if (creatingProjectKey) {
+        return
+      }
       onSetProjectCollapsed(project.projectKey, false)
-      onWorkspacePress?.()
-      router.push(
-        buildHostNewAgentRoute(serverId, {
-          workingDir: project.iconWorkingDir,
-          worktreeMode: 'create',
-        }) as any
-      )
+      setCreatingProjectKey(project.projectKey)
+      try {
+        const client = getHostRuntimeStore().getClient(serverId)
+        if (!client || !isHostRuntimeConnected(getHostRuntimeStore().getSnapshot(serverId))) {
+          throw new Error('Host is not connected')
+        }
+        const payload = await client.createPaseoWorktree({
+          cwd: project.iconWorkingDir,
+          worktreeSlug: createNameId(),
+        })
+        if (payload.error || !payload.workspace) {
+          throw new Error(payload.error ?? 'Failed to create worktree')
+        }
+        const workspace = payload.workspace
+        mergeWorkspaces(serverId, [normalizeWorkspaceDescriptor(workspace)])
+        setCreatingWorkspaceIds((current) => {
+          const next = new Set(current)
+          next.add(workspace.id)
+          return next
+        })
+        const existingTimeout = creatingWorkspaceTimeoutsRef.current.get(workspace.id)
+        if (existingTimeout) {
+          clearTimeout(existingTimeout)
+        }
+        creatingWorkspaceTimeoutsRef.current.set(
+          workspace.id,
+          setTimeout(() => {
+            creatingWorkspaceTimeoutsRef.current.delete(workspace.id)
+            setCreatingWorkspaceIds((current) => {
+              if (!current.has(workspace.id)) {
+                return current
+              }
+              const next = new Set(current)
+              next.delete(workspace.id)
+              return next
+            })
+          }, 3000)
+        )
+        onWorkspacePress?.()
+        router.replace(
+          buildHostWorkspaceRouteWithOpenIntent(serverId, workspace.id, {
+            kind: 'draft',
+            draftId: 'new',
+          }) as any
+        )
+      } catch (error) {
+        toast.error(
+          error instanceof Error ? error.message : String(error)
+        )
+      } finally {
+        setCreatingProjectKey((current) => (current === project.projectKey ? null : current))
+      }
     },
-    [onSetProjectCollapsed, serverId, onWorkspacePress]
+    [creatingProjectKey, mergeWorkspaces, onSetProjectCollapsed, onWorkspacePress, serverId, toast]
   )
 
   const renderProject = useCallback(
@@ -1474,6 +1596,7 @@ export function SidebarWorkspaceList({
           isDragging={isActive}
           dragHandleProps={dragHandleProps}
           useNestable={isNative}
+          creatingWorkspaceIds={creatingWorkspaceIds}
         />
       )
     },
@@ -1490,6 +1613,7 @@ export function SidebarWorkspaceList({
       shortcutIndexByWorkspaceKey,
       showShortcutBadges,
       isNative,
+      creatingWorkspaceIds,
     ]
   )
 
@@ -1771,8 +1895,16 @@ const styles = StyleSheet.create((theme) => ({
     flex: 1,
     minWidth: 0,
   },
+  workspaceBranchTextCreating: {
+    opacity: 0.92,
+  },
   workspaceBranchTextHovered: {
     opacity: 1,
+  },
+  workspaceCreatingText: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.xs,
+    flexShrink: 0,
   },
   diffStatRow: {
     flexDirection: 'row',

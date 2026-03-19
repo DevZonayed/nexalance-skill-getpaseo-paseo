@@ -213,6 +213,10 @@ type BranchSuggestionsPayload = BranchSuggestionsResponse['payload']
 type DirectorySuggestionsPayload = DirectorySuggestionsResponse['payload']
 type PaseoWorktreeListPayload = PaseoWorktreeListResponse['payload']
 type PaseoWorktreeArchivePayload = PaseoWorktreeArchiveResponse['payload']
+type CreatePaseoWorktreePayload = Extract<
+  SessionOutboundMessage,
+  { type: 'create_paseo_worktree_response' }
+>['payload']
 type FileExplorerPayload = FileExplorerResponse['payload']
 type FileDownloadTokenPayload = FileDownloadTokenResponse['payload']
 type ListProviderModelsPayload = ListProviderModelsResponseMessage['payload']
@@ -2145,6 +2149,22 @@ export class DaemonClient {
       },
       responseType: 'paseo_worktree_archive_response',
       timeout: 20000,
+    })
+  }
+
+  async createPaseoWorktree(
+    input: { cwd: string; worktreeSlug?: string },
+    requestId?: string
+  ): Promise<CreatePaseoWorktreePayload> {
+    return this.sendCorrelatedSessionRequest({
+      requestId,
+      message: {
+        type: 'create_paseo_worktree_request',
+        cwd: input.cwd,
+        worktreeSlug: input.worktreeSlug,
+      },
+      responseType: 'create_paseo_worktree_response',
+      timeout: 60000,
     })
   }
 

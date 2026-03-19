@@ -69,6 +69,17 @@ export function normalizeHostPort(input: string): string {
   return isIpv6 ? `[${host}]:${port}` : `${host}:${port}`;
 }
 
+export function normalizeLoopbackToLocalhost(endpoint: string): string {
+  const { host, port, isIpv6 } = parseHostPort(endpoint);
+  if (host === "127.0.0.1" || (!isIpv6 && host === "0.0.0.0")) {
+    return `localhost:${port}`;
+  }
+  if (isIpv6 && (host === "::1" || host === "::")) {
+    return `localhost:${port}`;
+  }
+  return endpoint;
+}
+
 export function deriveLabelFromEndpoint(endpoint: string): string {
   try {
     const { host } = parseHostPort(endpoint);

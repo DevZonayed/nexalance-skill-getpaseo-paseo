@@ -668,10 +668,19 @@ export async function deriveWorktreeProjectHash(cwd: string): Promise<string> {
   }
 }
 
-async function getPaseoWorktreesRoot(cwd: string, paseoHome?: string): Promise<string> {
+export async function getPaseoWorktreesRoot(cwd: string, paseoHome?: string): Promise<string> {
   const home = paseoHome ? resolve(paseoHome) : resolvePaseoHome();
   const projectHash = await deriveWorktreeProjectHash(cwd);
   return join(home, "worktrees", projectHash);
+}
+
+export async function computeWorktreePath(
+  cwd: string,
+  slug: string,
+  paseoHome?: string
+): Promise<string> {
+  const worktreesRoot = await getPaseoWorktreesRoot(cwd, paseoHome);
+  return join(worktreesRoot, slug);
 }
 
 function normalizePathForOwnership(input: string): string {

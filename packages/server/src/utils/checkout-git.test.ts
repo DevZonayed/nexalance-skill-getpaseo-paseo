@@ -17,6 +17,7 @@ import {
   MergeFromBaseConflictError,
   NotGitRepoError,
   pushCurrentBranch,
+  resolveRepositoryDefaultBranch,
 } from "./checkout-git.js";
 import { createWorktree } from "./worktree.js";
 import { getPaseoWorktreeMetadataPath } from "./worktree-metadata.js";
@@ -705,6 +706,17 @@ describe("checkout git utilities", () => {
     const baseDiff = await getCheckoutDiff(worktree.worktreePath, { mode: "base" }, { paseoHome });
     expect(baseDiff.diff).toContain("feature.txt");
     expect(baseDiff.diff).not.toContain("file.txt");
+  });
+
+  it("resolves the repository default branch from origin HEAD", async () => {
+    execSync("git checkout -b develop", { cwd: repoDir });
+    execSync("git checkout main", { cwd: repoDir });
+    execSync("git remote add origin https://github.com/acme/repo.git", { cwd: repoDir });
+    execSync("git update-ref refs/remotes/origin/main refs/heads/main", { cwd: repoDir });
+    execSync("git update-ref refs/remotes/origin/develop refs/heads/develop", { cwd: repoDir });
+    execSync("git symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/main", { cwd: repoDir });
+
+    await expect(resolveRepositoryDefaultBranch(repoDir)).resolves.toBe("main");
   });
 
   it("merges to stored baseRefName when baseRef is not provided", async () => {
