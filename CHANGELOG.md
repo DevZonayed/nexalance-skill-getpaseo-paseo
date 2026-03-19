@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.1.30 - 2026-03-19
+
+### Added
+- Added terminal tabs, split pane controls, and drop previews for workspace layouts.
+- Added a combined model selector and agent mode visuals across key UI surfaces.
+- Added Open Graph metadata improvements for richer website sharing previews.
+
+### Improved
+- Improved workspace navigation with better active-workspace tracking and keyboard-driven pane interactions.
+- Improved terminal scrollbar behavior, pane focus handling, and status bar/message input spacing.
+- Improved project picker path display and general workspace UI polish.
+
+### Fixed
+- Fixed agent startup reliability by tightening PATH resolution and surfacing missing provider binaries in status.
+- Fixed workspace route syncing, drag hit areas, and git diff panel header styling regressions.
+- Fixed website mobile horizontal scrolling and ensured the workspace audio module builds during EAS installs.
+
 ## 0.1.28 - 2026-03-15
 
 ### Added
