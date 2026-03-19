@@ -10,6 +10,10 @@ export interface DesktopPermissionRowProps {
   isRequesting: boolean;
   showBorder?: boolean;
   onRequest: () => void;
+  extraActionLabel?: string;
+  isExtraActionBusy?: boolean;
+  isExtraActionDisabled?: boolean;
+  onExtraAction?: () => void;
 }
 
 export function DesktopPermissionRow({
@@ -18,6 +22,10 @@ export function DesktopPermissionRow({
   isRequesting,
   showBorder,
   onRequest,
+  extraActionLabel,
+  isExtraActionBusy = false,
+  isExtraActionDisabled = false,
+  onExtraAction,
 }: DesktopPermissionRowProps) {
   const { theme } = useUnistyles();
   const state = status?.state ?? "unknown";
@@ -36,9 +44,21 @@ export function DesktopPermissionRow({
       </View>
       <View style={styles.permissionRowActions}>
         {isGranted ? (
-          <View style={styles.permissionStatusPill}>
-            <Check size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
-            <Text style={styles.permissionStatusText}>Granted</Text>
+          <View style={styles.permissionGrantedActions}>
+            <View style={styles.permissionStatusPill}>
+              <Check size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
+              <Text style={styles.permissionStatusText}>Granted</Text>
+            </View>
+            {extraActionLabel && onExtraAction ? (
+              <Button
+                variant="outline"
+                size="sm"
+                onPress={onExtraAction}
+                disabled={isExtraActionDisabled || isExtraActionBusy}
+              >
+                {isExtraActionBusy ? `${extraActionLabel}...` : extraActionLabel}
+              </Button>
+            ) : null}
           </View>
         ) : (
           <Button variant="outline" size="sm" onPress={onRequest} disabled={isRequesting}>
@@ -74,6 +94,11 @@ const styles = StyleSheet.create((theme) => ({
   permissionRowActions: {
     alignItems: "flex-end",
     gap: theme.spacing[1],
+  },
+  permissionGrantedActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[2],
   },
   permissionStatusPill: {
     flexDirection: "row",

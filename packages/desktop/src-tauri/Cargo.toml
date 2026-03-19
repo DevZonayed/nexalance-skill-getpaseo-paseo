@@ -19,6 +19,7 @@ name = "Paseo"
 path = "src/main.rs"
 
 [build-dependencies]
+cc = "1"
 tauri-build = { version = "2.5.3", features = [] }
 
 [dependencies]
@@ -40,9 +41,6 @@ tauri-plugin-updater = "2"
 tauri-plugin-websocket = "2"
 tokio = { version = "1", features = ["net", "sync"] }
 tokio-tungstenite = "0.24"
-
-[target.'cfg(target_os = "macos")'.dependencies]
-mac-notification-sys = "0.6"
 
 
 

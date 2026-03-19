@@ -2632,12 +2632,12 @@ name = "paseo"
 version = "0.1.30"
 dependencies = [
  "base64 0.22.1",
+ "cc",
  "dirs",
  "dunce",
  "futures-util",
  "http",
  "log",
- "mac-notification-sys",
  "serde",
  "serde_json",
  "tauri",

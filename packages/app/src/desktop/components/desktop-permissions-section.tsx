@@ -13,8 +13,10 @@ export function DesktopPermissionsSection() {
     snapshot,
     isRefreshing,
     requestingPermission,
+    isSendingTestNotification,
     refreshPermissions,
     requestPermission,
+    sendTestNotification,
   } = useDesktopPermissions();
 
   if (!isDesktop) {
@@ -22,6 +24,7 @@ export function DesktopPermissionsSection() {
   }
 
   const isBusy = isRefreshing || requestingPermission !== null;
+  const notificationsGranted = snapshot?.notifications.state === "granted";
 
   return (
     <View style={settingsStyles.section}>
@@ -47,6 +50,12 @@ export function DesktopPermissionsSection() {
           isRequesting={requestingPermission === "notifications"}
           onRequest={() => {
             void requestPermission("notifications");
+          }}
+          extraActionLabel="Test"
+          isExtraActionBusy={isSendingTestNotification}
+          isExtraActionDisabled={!notificationsGranted || isBusy}
+          onExtraAction={() => {
+            void sendTestNotification();
           }}
         />
         <DesktopPermissionRow

@@ -6,14 +6,17 @@ import {
   type DesktopPermissionKind,
   type DesktopPermissionSnapshot,
 } from "@/desktop/permissions/desktop-permissions";
+import { sendOsNotification } from "@/utils/os-notifications";
 
 export interface UseDesktopPermissionsReturn {
   isDesktop: boolean;
   snapshot: DesktopPermissionSnapshot | null;
   isRefreshing: boolean;
   requestingPermission: DesktopPermissionKind | null;
+  isSendingTestNotification: boolean;
   refreshPermissions: () => Promise<void>;
   requestPermission: (kind: DesktopPermissionKind) => Promise<void>;
+  sendTestNotification: () => Promise<void>;
 }
 
 const EMPTY_NOTIFICATION_STATUS = {
@@ -34,6 +37,7 @@ export function useDesktopPermissions(): UseDesktopPermissionsReturn {
   const [requestingPermission, setRequestingPermission] = useState<DesktopPermissionKind | null>(
     null
   );
+  const [isSendingTestNotification, setIsSendingTestNotification] = useState(false);
 
   useEffect(() => {
     return () => {
@@ -109,6 +113,29 @@ export function useDesktopPermissions(): UseDesktopPermissionsReturn {
     [isDesktop, refreshPermissions]
   );
 
+  const sendTestNotification = useCallback(async () => {
+    if (!isDesktop) {
+      return;
+    }
+
+    setIsSendingTestNotification(true);
+    try {
+      const sent = await sendOsNotification({
+        title: "Paseo notification test",
+        body: "If you can see this, delivery works. Click it to verify the open flow.",
+      });
+      if (!sent) {
+        console.warn("[Settings] Desktop test notification was not delivered");
+      }
+    } catch (error) {
+      console.error("[Settings] Failed to send desktop test notification", error);
+    } finally {
+      if (isMountedRef.current) {
+        setIsSendingTestNotification(false);
+      }
+    }
+  }, [isDesktop]);
+
   useEffect(() => {
     if (!isDesktop) {
       return;
@@ -122,7 +149,9 @@ export function useDesktopPermissions(): UseDesktopPermissionsReturn {
     snapshot,
     isRefreshing,
     requestingPermission,
+    isSendingTestNotification,
     refreshPermissions,
     requestPermission,
+    sendTestNotification,
   };
 }
