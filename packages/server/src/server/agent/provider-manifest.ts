@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { AgentMode } from "./agent-sdk-types.js";
 
-export type AgentModeColorTier = 'safe' | 'moderate' | 'dangerous' | 'readonly';
+export type AgentModeColorTier = 'default' | 'safe' | 'moderate' | 'dangerous' | 'readonly';
 export type AgentModeIcon = 'ShieldCheck' | 'ShieldAlert' | 'ShieldOff';
 
 export interface AgentModeVisuals {
@@ -38,7 +38,7 @@ const CODEX_MODES: AgentProviderModeDefinition[] = [
 ];
 
 const OPENCODE_MODES: AgentProviderModeDefinition[] = [
-  { id: "build", label: "Build", description: "Allows edits and tool execution for implementation work", icon: "ShieldAlert", colorTier: "moderate" },
+  { id: "build", label: "Build", description: "Allows edits and tool execution for implementation work", icon: "ShieldCheck", colorTier: "default" },
   { id: "plan", label: "Plan", description: "Read-only planning mode that avoids file edits", icon: "ShieldCheck", colorTier: "readonly" },
 ];
 

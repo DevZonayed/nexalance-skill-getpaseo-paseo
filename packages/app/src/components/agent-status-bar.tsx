@@ -10,8 +10,8 @@ import {
   ShieldOff,
   SlidersHorizontal,
 } from 'lucide-react-native'
-import { ClaudeIcon } from '@/components/icons/claude-icon'
-import { CodexIcon } from '@/components/icons/codex-icon'
+import { getProviderIcon } from '@/components/provider-icons'
+import { CombinedModelSelector } from '@/components/combined-model-selector'
 import { useQuery } from '@tanstack/react-query'
 import { useSessionStore } from '@/stores/session-store'
 import {
@@ -69,6 +69,9 @@ export interface DraftAgentStatusBarProps {
   selectedModel: string
   onSelectModel: (modelId: string) => void
   isModelLoading: boolean
+  allProviderModels: Map<string, AgentModelDefinition[]>
+  isAllModelsLoading: boolean
+  onSelectProviderAndModel: (provider: AgentProvider, modelId: string) => void
   thinkingOptions: NonNullable<AgentModelDefinition['thinkingOptions']>
   selectedThinkingOptionId: string
   onSelectThinkingOption: (thinkingOptionId: string) => void
@@ -94,20 +97,14 @@ const MODE_ICONS = {
   ShieldOff,
 } as const
 
-const PROVIDER_ICONS: Record<string, typeof Bot> = {
-  claude: ClaudeIcon as unknown as typeof Bot,
-  codex: CodexIcon as unknown as typeof Bot,
-}
-
-function getProviderIcon(provider: string): typeof Bot {
-  return PROVIDER_ICONS[provider] ?? Bot
-}
 
 function getModeIconColor(
   colorTier: AgentModeColorTier | undefined,
-  palette: { green: { 500: string }; amber: { 500: string }; red: { 500: string }; purple: { 500: string } }
+  palette: { blue: { 500: string }; green: { 500: string }; amber: { 500: string }; red: { 500: string }; purple: { 500: string } }
 ): string {
   switch (colorTier) {
+    case 'default':
+      return palette.blue[500]
     case 'safe':
       return palette.green[500]
     case 'moderate':
@@ -117,7 +114,7 @@ function getModeIconColor(
     case 'readonly':
       return palette.purple[500]
     default:
-      return palette.green[500]
+      return palette.blue[500]
   }
 }
 
@@ -298,35 +295,39 @@ function ControlledStatusBar({
             </>
           ) : null}
 
-          <Pressable
-            ref={modelAnchorRef}
-            collapsable={false}
-            disabled={modelDisabled}
-            onPress={() => setOpenSelector(openSelector === 'model' ? null : 'model')}
-            style={({ pressed, hovered }) => [
-              styles.modeBadge,
-              hovered && styles.modeBadgeHovered,
-              (pressed || openSelector === 'model') && styles.modeBadgePressed,
-              modelDisabled && styles.disabledBadge,
-            ]}
-            accessibilityRole="button"
-            accessibilityLabel="Select agent model"
-            testID="agent-model-selector"
-          >
-            <ProviderIcon size={theme.iconSize.md} color={theme.colors.foregroundMuted} />
-            <Text style={styles.modeBadgeText}>{displayModel}</Text>
-            <ChevronDown size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
-          </Pressable>
-          <Combobox
-            options={comboboxModelOptions}
-            value={selectedModelId ?? ''}
-            onSelect={(id) => onSelectModel?.(id)}
-            searchable={comboboxModelOptions.length > SEARCH_THRESHOLD}
-            open={openSelector === 'model'}
-            onOpenChange={handleOpenChange('model')}
-            anchorRef={modelAnchorRef}
-            desktopPlacement="top-start"
-          />
+          {canSelectModel ? (
+            <>
+              <Pressable
+                ref={modelAnchorRef}
+                collapsable={false}
+                disabled={modelDisabled}
+                onPress={() => setOpenSelector(openSelector === 'model' ? null : 'model')}
+                style={({ pressed, hovered }) => [
+                  styles.modeBadge,
+                  hovered && styles.modeBadgeHovered,
+                  (pressed || openSelector === 'model') && styles.modeBadgePressed,
+                  modelDisabled && styles.disabledBadge,
+                ]}
+                accessibilityRole="button"
+                accessibilityLabel="Select agent model"
+                testID="agent-model-selector"
+              >
+                <ProviderIcon size={theme.iconSize.md} color={theme.colors.foregroundMuted} />
+                <Text style={styles.modeBadgeText}>{displayModel}</Text>
+                <ChevronDown size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
+              </Pressable>
+              <Combobox
+                options={comboboxModelOptions}
+                value={selectedModelId ?? ''}
+                onSelect={(id) => onSelectModel?.(id)}
+                searchable={comboboxModelOptions.length > SEARCH_THRESHOLD}
+                open={openSelector === 'model'}
+                onOpenChange={handleOpenChange('model')}
+                anchorRef={modelAnchorRef}
+                desktopPlacement="top-start"
+              />
+            </>
+          ) : null}
 
           {thinkingOptions && thinkingOptions.length > 0 ? (
             <>
@@ -455,35 +456,37 @@ function ControlledStatusBar({
               </View>
             ) : null}
 
-            <View style={styles.sheetSection}>
-              <DropdownMenu>
-                <DropdownMenuTrigger
-                  disabled={modelDisabled}
-                  style={({ pressed }) => [
-                    styles.sheetSelect,
-                    pressed && styles.sheetSelectPressed,
-                    modelDisabled && styles.disabledSheetSelect,
-                  ]}
-                  accessibilityRole="button"
-                  accessibilityLabel="Select agent model"
-                  testID="agent-preferences-model"
-                >
-                  <Text style={styles.sheetSelectText}>{displayModel}</Text>
-                  <ChevronDown size={theme.iconSize.md} color={theme.colors.foregroundMuted} />
-                </DropdownMenuTrigger>
-                <DropdownMenuContent side="top" align="start">
-                  {(modelOptions ?? []).map((model) => (
-                    <DropdownMenuItem
-                      key={model.id}
-                      selected={model.id === selectedModelId}
-                      onSelect={() => onSelectModel?.(model.id)}
-                    >
-                      {model.label}
-                    </DropdownMenuItem>
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </View>
+            {canSelectModel ? (
+              <View style={styles.sheetSection}>
+                <DropdownMenu>
+                  <DropdownMenuTrigger
+                    disabled={modelDisabled}
+                    style={({ pressed }) => [
+                      styles.sheetSelect,
+                      pressed && styles.sheetSelectPressed,
+                      modelDisabled && styles.disabledSheetSelect,
+                    ]}
+                    accessibilityRole="button"
+                    accessibilityLabel="Select agent model"
+                    testID="agent-preferences-model"
+                  >
+                    <Text style={styles.sheetSelectText}>{displayModel}</Text>
+                    <ChevronDown size={theme.iconSize.md} color={theme.colors.foregroundMuted} />
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent side="top" align="start">
+                    {(modelOptions ?? []).map((model) => (
+                      <DropdownMenuItem
+                        key={model.id}
+                        selected={model.id === selectedModelId}
+                        onSelect={() => onSelectModel?.(model.id)}
+                      >
+                        {model.label}
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </View>
+            ) : null}
 
             {thinkingOptions && thinkingOptions.length > 0 ? (
               <View style={styles.sheetSection}>
@@ -638,17 +641,15 @@ export function DraftAgentStatusBar({
   selectedModel,
   onSelectModel,
   isModelLoading,
+  allProviderModels,
+  isAllModelsLoading,
+  onSelectProviderAndModel,
   thinkingOptions,
   selectedThinkingOptionId,
   onSelectThinkingOption,
   disabled = false,
 }: DraftAgentStatusBarProps) {
-  const providerOptions = useMemo<StatusOption[]>(() => {
-    return providerDefinitions.map((definition) => ({
-      id: definition.id,
-      label: definition.label,
-    }))
-  }, [providerDefinitions])
+  const isWeb = Platform.OS === 'web'
 
   const mappedModeOptions = useMemo<StatusOption[]>(() => {
     if (modeOptions.length === 0) {
@@ -660,14 +661,6 @@ export function DraftAgentStatusBar({
     }))
   }, [modeOptions])
 
-  const modelOptions = useMemo<StatusOption[]>(() => {
-    const options: StatusOption[] = [{ id: '', label: 'Auto' }]
-    for (const model of models) {
-      options.push({ id: model.id, label: model.label })
-    }
-    return options
-  }, [models])
-
   const mappedThinkingOptions = useMemo<StatusOption[]>(() => {
     return thinkingOptions.map((option) => ({ id: option.id, label: option.label }))
   }, [thinkingOptions])
@@ -675,6 +668,42 @@ export function DraftAgentStatusBar({
   const effectiveSelectedMode = selectedMode || mappedModeOptions[0]?.id || ''
   const effectiveSelectedThinkingOption =
     selectedThinkingOptionId || mappedThinkingOptions[0]?.id || undefined
+
+  if (isWeb) {
+    return (
+      <View style={styles.container}>
+        <CombinedModelSelector
+          providerDefinitions={providerDefinitions}
+          allProviderModels={allProviderModels}
+          selectedProvider={selectedProvider}
+          selectedModel={selectedModel}
+          onSelect={onSelectProviderAndModel}
+          isLoading={isAllModelsLoading}
+          disabled={disabled}
+        />
+        <ControlledStatusBar
+          provider={selectedProvider}
+          modeOptions={mappedModeOptions}
+          selectedModeId={effectiveSelectedMode}
+          onSelectMode={onSelectMode}
+          thinkingOptions={mappedThinkingOptions.length > 0 ? mappedThinkingOptions : undefined}
+          selectedThinkingOptionId={effectiveSelectedThinkingOption}
+          onSelectThinkingOption={onSelectThinkingOption}
+          disabled={disabled}
+        />
+      </View>
+    )
+  }
+
+  const providerOptions = providerDefinitions.map((definition) => ({
+    id: definition.id,
+    label: definition.label,
+  }))
+
+  const modelOptions: StatusOption[] = [{ id: '', label: 'Auto' }]
+  for (const model of models) {
+    modelOptions.push({ id: model.id, label: model.label })
+  }
 
   return (
     <ControlledStatusBar

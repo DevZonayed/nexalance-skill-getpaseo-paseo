@@ -93,7 +93,7 @@ function ComboboxSheetBackground({ style }: BottomSheetBackgroundProps) {
   return <Animated.View pointerEvents="none" style={[style, styles.bottomSheetBackground]} />
 }
 
-interface SearchInputProps {
+export interface SearchInputProps {
   placeholder: string
   value: string
   onChangeText: (text: string) => void
@@ -101,7 +101,7 @@ interface SearchInputProps {
   autoFocus?: boolean
 }
 
-function SearchInput({
+export function SearchInput({
   placeholder,
   value,
   onChangeText,

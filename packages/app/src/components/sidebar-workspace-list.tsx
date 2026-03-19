@@ -1624,7 +1624,7 @@ const styles = StyleSheet.create((theme) => ({
     shadowOffset: { width: 0, height: 4 },
   },
   sidebarRowSelected: {
-    backgroundColor: theme.colors.surface2,
+    backgroundColor: theme.colors.surface1,
   },
   workspaceRowContainer: {
     position: 'relative',

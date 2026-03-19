@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueries } from "@tanstack/react-query";
 import {
   AGENT_PROVIDER_DEFINITIONS,
   type AgentProviderDefinition,
@@ -81,10 +81,13 @@ type UseAgentFormStateResult = {
   agentDefinition?: AgentProviderDefinition;
   modeOptions: AgentMode[];
   availableModels: AgentModelDefinition[];
+  allProviderModels: Map<string, AgentModelDefinition[]>;
+  isAllModelsLoading: boolean;
   availableThinkingOptions: NonNullable<AgentModelDefinition["thinkingOptions"]>;
   isModelLoading: boolean;
   modelError: string | null;
   refreshProviderModels: () => void;
+  setProviderAndModelFromUser: (provider: AgentProvider, modelId: string) => void;
   workingDirIsEmpty: boolean;
   persistFormPreferences: () => Promise<void>;
 };
@@ -440,6 +443,45 @@ export function useAgentFormState(
 
   const availableModels = providerModelsQuery.data ?? null;
 
+  const allProviderModelQueries = useQueries({
+    queries: providerDefinitions.map((def) => ({
+      queryKey: ["providerModels", formState.serverId, def.id, debouncedCwd],
+      enabled: Boolean(
+        isVisible &&
+          isTargetDaemonReady &&
+          formState.serverId &&
+          client &&
+          isConnected
+      ),
+      staleTime: 5 * 60 * 1000,
+      queryFn: async () => {
+        if (!client) {
+          throw new Error("Host is not connected");
+        }
+        const payload = await client.listProviderModels(def.id as AgentProvider, {
+          cwd: debouncedCwd,
+        });
+        if (payload.error) {
+          throw new Error(payload.error);
+        }
+        return payload.models ?? [];
+      },
+    })),
+  });
+
+  const allProviderModels = useMemo(() => {
+    const map = new Map<string, AgentModelDefinition[]>();
+    for (let i = 0; i < providerDefinitions.length; i++) {
+      const query = allProviderModelQueries[i];
+      if (query?.data) {
+        map.set(providerDefinitions[i]!.id, query.data);
+      }
+    }
+    return map;
+  }, [allProviderModelQueries, providerDefinitions]);
+
+  const isAllModelsLoading = allProviderModelQueries.some((q) => q.isLoading);
+
   // Combine initialValues with initialServerId for resolution
   const combinedInitialValues = useMemo((): FormInitialValues | undefined => {
     return combineInitialValues(initialValues, initialServerId);
@@ -568,6 +610,25 @@ export function useAgentFormState(
     [preferences?.providerPreferences, providerDefinitionMap, updatePreferences]
   );
 
+  const setProviderAndModelFromUser = useCallback(
+    (provider: AgentProvider, modelId: string) => {
+      const providerDef = providerDefinitionMap.get(provider);
+      const providerPrefs = preferences?.providerPreferences?.[provider];
+
+      setFormState((prev) => ({
+        ...prev,
+        provider,
+        model: modelId,
+        modeId: providerPrefs?.mode ?? providerDef?.defaultModeId ?? "",
+        thinkingOptionId: providerPrefs?.thinkingOptionId ?? "",
+      }));
+      setUserModified((prev) => ({ ...prev, provider: true, model: true }));
+      void updatePreferences({ provider });
+      void updateProviderPreferences(provider, { model: modelId });
+    },
+    [preferences?.providerPreferences, providerDefinitionMap, updatePreferences, updateProviderPreferences]
+  );
+
   const setModeFromUser = useCallback(
     (modeId: string) => {
       setFormState((prev) => ({ ...prev, modeId }));
@@ -679,10 +740,13 @@ export function useAgentFormState(
       agentDefinition,
       modeOptions,
       availableModels: availableModels ?? [],
+      allProviderModels,
+      isAllModelsLoading,
       availableThinkingOptions,
       isModelLoading,
       modelError,
       refreshProviderModels,
+      setProviderAndModelFromUser,
       workingDirIsEmpty,
       persistFormPreferences,
     }),
@@ -706,10 +770,13 @@ export function useAgentFormState(
       agentDefinition,
       modeOptions,
       availableModels,
+      allProviderModels,
+      isAllModelsLoading,
       availableThinkingOptions,
       isModelLoading,
       modelError,
       refreshProviderModels,
+      setProviderAndModelFromUser,
       workingDirIsEmpty,
       persistFormPreferences,
     ]

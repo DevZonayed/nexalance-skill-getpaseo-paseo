@@ -36,6 +36,7 @@ const MODE_ICON_MAP: Record<AgentModeIcon, typeof ShieldCheck> = {
 };
 
 const MODE_COLOR_MAP: Record<string, string> = {
+  default: baseColors.blue[500],
   safe: baseColors.green[500],
   moderate: baseColors.amber[500],
   dangerous: baseColors.red[500],

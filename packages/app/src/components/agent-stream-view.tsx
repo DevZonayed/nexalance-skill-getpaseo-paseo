@@ -22,11 +22,10 @@ import Animated, {
   FadeIn,
   FadeOut,
   cancelAnimation,
+  Easing,
   useAnimatedStyle,
   useSharedValue,
-  withDelay,
   withRepeat,
-  withSequence,
   withTiming,
 } from "react-native-reanimated";
 import { Check, ChevronDown, X } from "lucide-react-native";
@@ -70,6 +69,11 @@ import { MAX_CONTENT_WIDTH } from "@/constants/layout";
 import { getMarkdownListMarker } from "@/utils/markdown-list";
 import { buildHostWorkspaceFileRoute } from "@/utils/host-routes";
 import { normalizeInlinePathTarget } from "@/utils/inline-path";
+import {
+  getWorkingIndicatorDotStrength,
+  WORKING_INDICATOR_CYCLE_MS,
+  WORKING_INDICATOR_OFFSETS,
+} from "@/utils/working-indicator";
 
 const isUserMessageItem = (item?: StreamItem) => item?.kind === "user_message";
 const isToolSequenceItem = (item?: StreamItem) =>
@@ -659,50 +663,58 @@ export const AgentStreamView = forwardRef<AgentStreamViewHandle, AgentStreamView
 });
 
 function WorkingIndicator() {
-  const dotOne = useSharedValue(0);
-  const dotTwo = useSharedValue(0);
-  const dotThree = useSharedValue(0);
-  const bounceDuration = 600;
-  const bounceDelayOffset = 160;
+  const progress = useSharedValue(0);
 
   useEffect(() => {
-    const sharedValues = [dotOne, dotTwo, dotThree];
-    sharedValues.forEach((value, index) => {
-      value.value = withDelay(
-        index * bounceDelayOffset,
-        withRepeat(
-          withSequence(
-            withTiming(1, { duration: bounceDuration }),
-            withTiming(0, { duration: bounceDuration })
-          ),
-          -1
-        )
-      );
-    });
+    progress.value = 0;
+    progress.value = withRepeat(
+      withTiming(1, {
+        duration: WORKING_INDICATOR_CYCLE_MS,
+        easing: Easing.linear,
+      }),
+      -1,
+      false
+    );
 
     return () => {
-      sharedValues.forEach((value) => {
-        cancelAnimation(value);
-        value.value = 0;
-      });
+      cancelAnimation(progress);
+      progress.value = 0;
     };
-  }, [dotOne, dotTwo, dotThree]);
+  }, [progress]);
 
   const translateDistance = -2;
-  const dotOneStyle = useAnimatedStyle(() => ({
-    opacity: 0.3 + dotOne.value * 0.7,
-    transform: [{ translateY: dotOne.value * translateDistance }],
-  }));
+  const dotOneStyle = useAnimatedStyle(() => {
+    const strength = getWorkingIndicatorDotStrength(
+      progress.value,
+      WORKING_INDICATOR_OFFSETS[0]
+    );
+    return {
+      opacity: 0.3 + strength * 0.7,
+      transform: [{ translateY: strength * translateDistance }],
+    };
+  });
 
-  const dotTwoStyle = useAnimatedStyle(() => ({
-    opacity: 0.3 + dotTwo.value * 0.7,
-    transform: [{ translateY: dotTwo.value * translateDistance }],
-  }));
+  const dotTwoStyle = useAnimatedStyle(() => {
+    const strength = getWorkingIndicatorDotStrength(
+      progress.value,
+      WORKING_INDICATOR_OFFSETS[1]
+    );
+    return {
+      opacity: 0.3 + strength * 0.7,
+      transform: [{ translateY: strength * translateDistance }],
+    };
+  });
 
-  const dotThreeStyle = useAnimatedStyle(() => ({
-    opacity: 0.3 + dotThree.value * 0.7,
-    transform: [{ translateY: dotThree.value * translateDistance }],
-  }));
+  const dotThreeStyle = useAnimatedStyle(() => {
+    const strength = getWorkingIndicatorDotStrength(
+      progress.value,
+      WORKING_INDICATOR_OFFSETS[2]
+    );
+    return {
+      opacity: 0.3 + strength * 0.7,
+      transform: [{ translateY: strength * translateDistance }],
+    };
+  });
 
   return (
     <View style={stylesheet.workingIndicatorBubble}>
