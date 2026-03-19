@@ -6,7 +6,6 @@ import type { RequestedSpeechProviders } from "../../speech-types.js";
 import type { TurnDetectionProvider } from "../../turn-detection-provider.js";
 import { PocketTtsOnnxTTS } from "./pocket/pocket-tts-onnx.js";
 import {
-  ensureLocalSpeechModels,
   getLocalSpeechModelDir,
   DEFAULT_LOCAL_STT_MODEL,
   DEFAULT_LOCAL_TTS_MODEL,
@@ -202,35 +201,6 @@ export async function initializeLocalSpeechServices(params: {
     providers,
     models: localModels,
   });
-
-  if (requiredLocalModelIds.length > 0 && localConfig) {
-    try {
-      logger.info(
-        {
-          modelsDir: localConfig.modelsDir,
-          modelIds: requiredLocalModelIds,
-        },
-        "Ensuring local speech models"
-      );
-      await ensureLocalSpeechModels({
-        modelsDir: localConfig.modelsDir,
-        modelIds: requiredLocalModelIds,
-        logger,
-      });
-    } catch (err) {
-      logger.warn(
-        {
-          err,
-          modelsDir: localConfig.modelsDir,
-          modelIds: requiredLocalModelIds,
-          hint:
-            "Use `paseo speech models` to inspect status and " +
-            "`paseo speech download --model <MODEL_ID>` to fetch missing models.",
-        },
-        "Local speech model bootstrap failed"
-      );
-    }
-  }
 
   const localSttEngines = new Map<LocalSttModelId, LocalSttEngine>();
 

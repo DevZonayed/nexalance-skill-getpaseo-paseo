@@ -3,13 +3,17 @@ import path from "node:path";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { Writable } from "node:stream";
 import pino from "pino";
-import { describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 
 import { createPaseoDaemon, parseListenString, type PaseoDaemonConfig } from "./bootstrap.js";
 import { createTestPaseoDaemon } from "./test-utils/paseo-daemon.js";
 import { createTestAgentClients } from "./test-utils/fake-agent-client.js";
 
 describe("paseo daemon bootstrap", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   test("starts and serves health endpoint", async () => {
     const daemonHandle = await createTestPaseoDaemon({
       openai: { apiKey: "test-openai-api-key" },
@@ -74,6 +78,47 @@ describe("paseo daemon bootstrap", () => {
     } finally {
       await rm(paseoHomeRoot, { recursive: true, force: true });
       await rm(staticDir, { recursive: true, force: true });
+    }
+  });
+
+  test("does not block daemon start on local speech model downloads", async () => {
+    const originalFetch = globalThis.fetch;
+    let releaseFetch: ((value: Response) => void) | null = null;
+    const fetchGate = new Promise<Response>((resolve) => {
+      releaseFetch = resolve;
+    });
+    vi.stubGlobal("fetch", vi.fn(() => fetchGate));
+
+    const daemonHandle = await createTestPaseoDaemon({
+      speech: {
+        providers: {
+          dictationStt: { provider: "local", explicit: true, enabled: true },
+          voiceTurnDetection: { provider: "local", explicit: true, enabled: false },
+          voiceStt: { provider: "local", explicit: true, enabled: false },
+          voiceTts: { provider: "local", explicit: true, enabled: false },
+        },
+        local: {
+          modelsDir: path.join(os.tmpdir(), `paseo-missing-models-${Date.now()}`),
+          models: {
+            dictationStt: "parakeet-tdt-0.6b-v3-int8",
+            voiceStt: "parakeet-tdt-0.6b-v3-int8",
+            voiceTts: "kokoro-en-v0_19",
+          },
+        },
+      },
+    });
+
+    try {
+      const response = await originalFetch(`http://127.0.0.1:${daemonHandle.port}/api/health`);
+      expect(response.ok).toBe(true);
+    } finally {
+      releaseFetch?.(
+        new Response(null, {
+          status: 500,
+          statusText: "test cleanup",
+        })
+      );
+      await daemonHandle.close();
     }
   });
 
