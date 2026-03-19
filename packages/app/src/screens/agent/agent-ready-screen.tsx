@@ -14,6 +14,7 @@ import { GestureDetector } from "react-native-gesture-handler";
 import { StyleSheet, UnistylesRuntime, useUnistyles } from "react-native-unistyles";
 import { AgentStreamView, type AgentStreamViewHandle } from "@/components/agent-stream-view";
 import { AgentInputArea } from "@/components/agent-input-area";
+import { ToastViewport, useToastHost } from "@/components/toast-host";
 import { ExplorerSidebar } from "@/components/explorer-sidebar";
 import { FileDropZone } from "@/components/file-drop-zone";
 import type { ImageAttachment } from "@/components/message-input";
@@ -41,7 +42,6 @@ import {
   useAgentScreenStateMachine,
   type AgentScreenMissingState,
 } from "@/hooks/use-agent-screen-state-machine";
-import { useToast } from "@/contexts/toast-context";
 import { useDelayedHistoryRefreshToast } from "@/hooks/use-delayed-history-refresh-toast";
 import { getInitDeferred, getInitKey } from "@/utils/agent-initialization";
 import {
@@ -164,9 +164,9 @@ function AgentScreenContent({
   onOpenWorkspaceFile,
 }: AgentScreenContentProps) {
   const { theme } = useUnistyles();
-  const toast = useToast();
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
+  const panelToast = useToastHost();
   const resolvedAgentId = agentId;
   const { isArchivingAgent } = useArchiveAgent();
 
@@ -471,12 +471,12 @@ function AgentScreenContent({
     }
     if (!reconnectToastArmedRef.current) {
       reconnectToastArmedRef.current = true;
-      toast.show("Reconnecting...", {
+      panelToast.api.show("Reconnecting...", {
         durationMs: 2200,
         testID: "agent-reconnecting-toast",
       });
     }
-  }, [connectionStatus, toast]);
+  }, [connectionStatus, panelToast.api]);
 
   useFocusEffect(
     useCallback(() => {
@@ -833,14 +833,15 @@ function AgentScreenContent({
   useDelayedHistoryRefreshToast({
     isCatchingUp: isHistoryRefreshCatchingUp,
     indicatorColor: theme.colors.primary,
+    showToast: panelToast.api.show,
   });
 
   useEffect(() => {
     if (!shouldEmitSyncErrorToast) {
       return;
     }
-    toast.error("Failed to refresh agent. Retrying in background.");
-  }, [shouldEmitSyncErrorToast, toast]);
+    panelToast.api.error("Failed to refresh agent. Retrying in background.");
+  }, [panelToast.api, shouldEmitSyncErrorToast]);
 
   if (viewState.tag === "not_found") {
     return (
@@ -934,6 +935,12 @@ function AgentScreenContent({
               <ActivityIndicator size="large" color={theme.colors.foregroundMuted} />
             </View>
           ) : null}
+
+          <ToastViewport
+            toast={panelToast.toast}
+            onDismiss={panelToast.dismiss}
+            placement="panel"
+          />
 
         </View>
       </FileDropZone>

@@ -1,6 +1,6 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import { ActivityIndicator } from "react-native";
-import { useToast } from "@/contexts/toast-context";
+import type { ToastShowOptions } from "@/components/toast-host";
 
 const HISTORY_REFRESH_TOAST_DELAY_MS = 1000;
 const HISTORY_REFRESH_TOAST_DURATION_MS = 2200;
@@ -8,22 +8,23 @@ const HISTORY_REFRESH_TOAST_DURATION_MS = 2200;
 interface UseDelayedHistoryRefreshToastParams {
   isCatchingUp: boolean;
   indicatorColor: string;
+  showToast: (content: ReactNode, options?: ToastShowOptions) => void;
 }
 
 export function useDelayedHistoryRefreshToast({
   isCatchingUp,
   indicatorColor,
+  showToast,
 }: UseDelayedHistoryRefreshToastParams): void {
-  const toast = useToast();
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const wasCatchingUpRef = useRef(false);
   const isCatchingUpRef = useRef(false);
-  const toastRef = useRef(toast);
+  const showToastRef = useRef(showToast);
   const indicatorColorRef = useRef(indicatorColor);
 
   useEffect(() => {
-    toastRef.current = toast;
-  }, [toast]);
+    showToastRef.current = showToast;
+  }, [showToast]);
 
   useEffect(() => {
     indicatorColorRef.current = indicatorColor;
@@ -44,7 +45,7 @@ export function useDelayedHistoryRefreshToast({
         if (!isCatchingUpRef.current) {
           return;
         }
-        toastRef.current.show("Refreshing", {
+        showToastRef.current("Refreshing", {
           icon: (
             <ActivityIndicator
               size="small"
