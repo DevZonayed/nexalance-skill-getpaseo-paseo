@@ -512,6 +512,71 @@ export const ToolSearchInputSchema = z.union([
   z.object({ pattern: z.string() }).passthrough().transform((value) => ({ query: value.pattern })),
 ]);
 
+export const ToolGlobOutputSchema = z
+  .object({
+    durationMs: z.number().finite(),
+    numFiles: z.number().int().nonnegative(),
+    filenames: z.array(z.string()),
+    truncated: z.boolean(),
+  })
+  .passthrough();
+
+export const ToolGrepOutputSchema = z
+  .object({
+    mode: z.enum(["content", "files_with_matches", "count"]).optional(),
+    numFiles: z.number().int().nonnegative(),
+    filenames: z.array(z.string()),
+    content: z.string().optional(),
+    numLines: z.number().int().nonnegative().optional(),
+    numMatches: z.number().int().nonnegative().optional(),
+    appliedLimit: z.number().int().nonnegative().optional(),
+    appliedOffset: z.number().int().nonnegative().optional(),
+  })
+  .passthrough();
+
+export const ToolWebFetchInputSchema = z
+  .object({
+    url: z.string(),
+    prompt: z.string(),
+  })
+  .passthrough();
+
+export const ToolWebFetchOutputSchema = z
+  .object({
+    bytes: z.number().int().nonnegative(),
+    code: z.number().int(),
+    codeText: z.string(),
+    result: z.string(),
+    durationMs: z.number().finite(),
+    url: z.string(),
+  })
+  .passthrough();
+
+const ToolWebSearchResultHitSchema = z
+  .object({
+    title: z.string(),
+    url: z.string(),
+  })
+  .passthrough();
+
+const ToolWebSearchResultEntrySchema = z.union([
+  z
+    .object({
+      tool_use_id: z.string(),
+      content: z.array(ToolWebSearchResultHitSchema),
+    })
+    .passthrough(),
+  z.string(),
+]);
+
+export const ToolWebSearchOutputSchema = z
+  .object({
+    query: z.string(),
+    results: z.array(ToolWebSearchResultEntrySchema),
+    durationSeconds: z.number().finite(),
+  })
+  .passthrough();
+
 export type ParsedToolShellInput = z.infer<typeof ToolShellInputSchema>;
 export type ParsedToolShellOutput = z.infer<typeof ToolShellOutputSchema>;
 export type ParsedToolReadInput = z.infer<typeof ToolReadInputSchema>;
@@ -522,6 +587,11 @@ export type ParsedToolWriteOutput = z.infer<typeof ToolWriteOutputSchema>;
 export type ParsedToolEditInput = z.infer<typeof ToolEditInputSchema>;
 export type ParsedToolEditOutput = z.infer<typeof ToolEditOutputSchema>;
 export type ParsedToolSearchInput = z.infer<typeof ToolSearchInputSchema>;
+export type ParsedToolGlobOutput = z.infer<typeof ToolGlobOutputSchema>;
+export type ParsedToolGrepOutput = z.infer<typeof ToolGrepOutputSchema>;
+export type ParsedToolWebFetchInput = z.infer<typeof ToolWebFetchInputSchema>;
+export type ParsedToolWebFetchOutput = z.infer<typeof ToolWebFetchOutputSchema>;
+export type ParsedToolWebSearchOutput = z.infer<typeof ToolWebSearchOutputSchema>;
 
 type NormalizePathFn = (filePath: string) => string | undefined;
 
@@ -537,6 +607,24 @@ function normalizeDetailPath(
     return undefined;
   }
   return normalizePath ? normalizePath(trimmed) : trimmed;
+}
+
+function isParsedToolGlobOutput(
+  output: ParsedToolGrepOutput | ParsedToolGlobOutput | ParsedToolWebSearchOutput | null | undefined
+): output is ParsedToolGlobOutput {
+  return Boolean(output && "truncated" in output);
+}
+
+function isParsedToolGrepOutput(
+  output: ParsedToolGrepOutput | ParsedToolGlobOutput | ParsedToolWebSearchOutput | null | undefined
+): output is ParsedToolGrepOutput {
+  return Boolean(output && "filenames" in output && !("truncated" in output));
+}
+
+function isParsedToolWebSearchOutput(
+  output: ParsedToolGrepOutput | ParsedToolGlobOutput | ParsedToolWebSearchOutput | null | undefined
+): output is ParsedToolWebSearchOutput {
+  return Boolean(output && "results" in output);
 }
 
 export function toShellToolDetail(
@@ -625,15 +713,70 @@ export function toEditToolDetail(
   };
 }
 
-export function toSearchToolDetail(
-  input: ParsedToolSearchInput | null
-): ToolCallDetail | undefined {
+export function toSearchToolDetail(params: {
+  input: ParsedToolSearchInput | null;
+  output?: ParsedToolGrepOutput | ParsedToolGlobOutput | ParsedToolWebSearchOutput | null;
+  toolName?: "search" | "grep" | "glob" | "web_search";
+}): ToolCallDetail | undefined {
+  const { input, output, toolName } = params;
   if (!input?.query) {
     return undefined;
   }
+
+  const filePaths =
+    isParsedToolGrepOutput(output) || isParsedToolGlobOutput(output)
+      ? output.filenames.length > 0
+        ? output.filenames
+        : undefined
+      : undefined;
+  const webResults = isParsedToolWebSearchOutput(output)
+    ? output.results.flatMap((entry) => (typeof entry === "string" ? [] : entry.content))
+    : undefined;
+  const annotations = isParsedToolWebSearchOutput(output)
+    ? output.results.filter((entry): entry is string => typeof entry === "string")
+    : undefined;
+
   return {
     type: "search",
     query: input.query,
+    ...(toolName ? { toolName } : {}),
+    ...(isParsedToolGrepOutput(output) && output.content ? { content: output.content } : {}),
+    ...(filePaths ? { filePaths } : {}),
+    ...(webResults && webResults.length > 0 ? { webResults } : {}),
+    ...(annotations && annotations.length > 0 ? { annotations } : {}),
+    ...(isParsedToolGrepOutput(output) || isParsedToolGlobOutput(output)
+      ? { numFiles: output.numFiles }
+      : {}),
+    ...(isParsedToolGrepOutput(output) && output.numMatches !== undefined
+      ? { numMatches: output.numMatches }
+      : {}),
+    ...(isParsedToolGlobOutput(output) ? { durationMs: output.durationMs } : {}),
+    ...(isParsedToolWebSearchOutput(output)
+      ? { durationSeconds: output.durationSeconds }
+      : {}),
+    ...(isParsedToolGlobOutput(output) ? { truncated: output.truncated } : {}),
+    ...(isParsedToolGrepOutput(output) && output.mode ? { mode: output.mode } : {}),
+  };
+}
+
+export function toFetchToolDetail(
+  input: ParsedToolWebFetchInput | null,
+  output: ParsedToolWebFetchOutput | null
+): ToolCallDetail | undefined {
+  const url = input?.url ?? output?.url;
+  if (!url) {
+    return undefined;
+  }
+
+  return {
+    type: "fetch",
+    url,
+    ...(input?.prompt ? { prompt: input.prompt } : {}),
+    ...(output?.result ? { result: output.result } : {}),
+    ...(output?.code !== undefined ? { code: output.code } : {}),
+    ...(output?.codeText ? { codeText: output.codeText } : {}),
+    ...(output?.bytes !== undefined ? { bytes: output.bytes } : {}),
+    ...(output?.durationMs !== undefined ? { durationMs: output.durationMs } : {}),
   };
 }
 

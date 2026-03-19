@@ -150,10 +150,10 @@ const CodexToolDetailPass2Schema = z.union([
     (input, output, cwd) => toEditToolDetail(input, output, { normalizePath: normalizePathForCwd(cwd) })
   ),
   toolDetailBranchByNameWithCwd("search", ToolSearchInputSchema, z.unknown(), (input) =>
-    toSearchToolDetail(input)
+    toSearchToolDetail({ input, toolName: "search" })
   ),
   toolDetailBranchByNameWithCwd("web_search", ToolSearchInputSchema, z.unknown(), (input) =>
-    toSearchToolDetail(input)
+    toSearchToolDetail({ input, toolName: "web_search" })
   ),
   CodexSpeakToolDetailSchema,
 ]);

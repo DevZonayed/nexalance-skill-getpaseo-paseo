@@ -18,6 +18,13 @@ type TauriWebSocketModule = {
   connect(url: string, config?: unknown): Promise<TauriWebSocketConnection>;
 };
 
+function isTauriDuplicateListenerCleanupError(error: unknown): boolean {
+  return (
+    error instanceof TypeError &&
+    error.message.includes("listeners[eventId].handlerId")
+  );
+}
+
 function toTauriOutgoingMessage(
   data: string | Uint8Array | ArrayBuffer
 ): string | number[] {
@@ -49,6 +56,7 @@ export function createTauriWebSocketTransportFactory(): DaemonTransportFactory |
     let disposed = false;
     let opened = false;
     let closeEmitted = false;
+    let disconnectPromise: Promise<void> | null = null;
 
     const openHandlers = new Set<() => void>();
     const closeHandlers = new Set<(event?: unknown) => void>();
@@ -104,6 +112,21 @@ export function createTauriWebSocketTransportFactory(): DaemonTransportFactory |
       }
     };
 
+    const disconnectSocket = (socket: TauriWebSocketConnection) => {
+      if (disconnectPromise) {
+        return disconnectPromise;
+      }
+      disconnectPromise = Promise.resolve()
+        .then(() => socket.disconnect())
+        .catch((error) => {
+          if (!isTauriDuplicateListenerCleanupError(error)) {
+            emitError(error);
+          }
+        })
+        .then(() => undefined);
+      return disconnectPromise;
+    };
+
     const connect = async () => {
       try {
         let module: TauriWebSocketModule | null = getTauriWebSocketModule();
@@ -122,11 +145,7 @@ export function createTauriWebSocketTransportFactory(): DaemonTransportFactory |
 
         const socket = await module.connect(url);
         if (disposed) {
-          try {
-            await socket.disconnect();
-          } catch {
-            // no-op
-          }
+          await disconnectSocket(socket);
           return;
         }
 
@@ -160,13 +179,8 @@ export function createTauriWebSocketTransportFactory(): DaemonTransportFactory |
         }
 
         if (closeRequested) {
-          try {
-            await ws.disconnect();
-          } catch (error) {
-            emitError(error);
-          } finally {
-            emitClose(closeRequested);
-          }
+          await disconnectSocket(ws);
+          emitClose(closeRequested);
         }
       } catch (error) {
         emitError(error);
@@ -189,10 +203,7 @@ export function createTauriWebSocketTransportFactory(): DaemonTransportFactory |
         if (disposed) return;
         closeRequested = { code, reason };
         if (!ws) return;
-        void ws
-          .disconnect()
-          .catch((error) => emitError(error))
-          .finally(() => emitClose(closeRequested));
+        void disconnectSocket(ws).finally(() => emitClose(closeRequested));
       },
       onMessage: (handler) => {
         messageHandlers.add(handler);
@@ -230,7 +241,13 @@ export function createTauriWebSocketTransportFactory(): DaemonTransportFactory |
       ...transport,
       close: (code?: number, reason?: string) => {
         wsListenerCleanup = null;
-        transport.close(code, reason);
+        try {
+          transport.close(code, reason);
+        } catch (error) {
+          if (!isTauriDuplicateListenerCleanupError(error)) {
+            throw error;
+          }
+        }
         disposed = true;
         ws = null;
       },

@@ -7,11 +7,17 @@ import {
   ToolReadInputSchema,
   ToolReadOutputSchema,
   ToolSearchInputSchema,
+  ToolGrepOutputSchema,
+  ToolGlobOutputSchema,
   ToolShellInputSchema,
   ToolShellOutputSchema,
+  ToolWebFetchInputSchema,
+  ToolWebFetchOutputSchema,
+  ToolWebSearchOutputSchema,
   ToolWriteInputSchema,
   ToolWriteOutputSchema,
   toEditToolDetail,
+  toFetchToolDetail,
   toReadToolDetail,
   toSearchToolDetail,
   toShellToolDetail,
@@ -87,27 +93,32 @@ const ClaudeToolDetailPass2Schema = z.union([
     ToolEditOutputSchema,
     toEditToolDetail
   ),
-  toolDetailBranchByName("WebSearch", ToolSearchInputSchema, z.unknown(), (input) =>
-    toSearchToolDetail(input)
+  toolDetailBranchByName("WebSearch", ToolSearchInputSchema, ToolWebSearchOutputSchema.nullable(), (input, output) =>
+    toSearchToolDetail({ input, output, toolName: "web_search" })
   ),
-  toolDetailBranchByName("web_search", ToolSearchInputSchema, z.unknown(), (input) =>
-    toSearchToolDetail(input)
+  toolDetailBranchByName("web_search", ToolSearchInputSchema, ToolWebSearchOutputSchema.nullable(), (input, output) =>
+    toSearchToolDetail({ input, output, toolName: "web_search" })
   ),
   toolDetailBranchByName("search", ToolSearchInputSchema, z.unknown(), (input) =>
-    toSearchToolDetail(input)
+    toSearchToolDetail({ input, toolName: "search" })
   ),
-  toolDetailBranchByName("Grep", ToolSearchInputSchema, z.unknown(), (input) =>
-    toSearchToolDetail(input)
+  toolDetailBranchByName("Grep", ToolSearchInputSchema, ToolGrepOutputSchema.nullable(), (input, output) =>
+    toSearchToolDetail({ input, output, toolName: "grep" })
   ),
-  toolDetailBranchByName("grep", ToolSearchInputSchema, z.unknown(), (input) =>
-    toSearchToolDetail(input)
+  toolDetailBranchByName("grep", ToolSearchInputSchema, ToolGrepOutputSchema.nullable(), (input, output) =>
+    toSearchToolDetail({ input, output, toolName: "grep" })
   ),
-  toolDetailBranchByName("Glob", ToolSearchInputSchema, z.unknown(), (input) =>
-    toSearchToolDetail(input)
+  toolDetailBranchByName("Glob", ToolSearchInputSchema, ToolGlobOutputSchema.nullable(), (input, output) =>
+    toSearchToolDetail({ input, output, toolName: "glob" })
   ),
-  toolDetailBranchByName("glob", ToolSearchInputSchema, z.unknown(), (input) =>
-    toSearchToolDetail(input)
+  toolDetailBranchByName("glob", ToolSearchInputSchema, ToolGlobOutputSchema.nullable(), (input, output) =>
+    toSearchToolDetail({ input, output, toolName: "glob" })
   ),
+  toolDetailBranchByName("WebFetch", ToolWebFetchInputSchema, ToolWebFetchOutputSchema, toFetchToolDetail),
+  toolDetailBranchByName("web_fetch", ToolWebFetchInputSchema, ToolWebFetchOutputSchema, toFetchToolDetail),
+  toolDetailBranchByName("WebFetchTool", ToolWebFetchInputSchema, ToolWebFetchOutputSchema, toFetchToolDetail),
+  toolDetailBranchByName("web_fetch_tool", ToolWebFetchInputSchema, ToolWebFetchOutputSchema, toFetchToolDetail),
+  toolDetailBranchByName("webfetch", ToolWebFetchInputSchema, ToolWebFetchOutputSchema, toFetchToolDetail),
   toolDetailBranchByName(
     "Skill",
     z.object({ skill: z.string() }).passthrough(),

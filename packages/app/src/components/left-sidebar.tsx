@@ -11,6 +11,8 @@ import Animated, {
 import { Gesture, GestureDetector } from 'react-native-gesture-handler'
 import { StyleSheet, UnistylesRuntime, useUnistyles } from 'react-native-unistyles'
 import { MessagesSquare, Plus, Settings } from 'lucide-react-native'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { Shortcut } from '@/components/ui/shortcut'
 import { router, usePathname } from 'expo-router'
 import { usePanelStore } from '@/stores/panel-store'
 import { SidebarWorkspaceList } from './sidebar-workspace-list'
@@ -117,7 +119,7 @@ export function LeftSidebar({ selectedAgentId: _selectedAgentId }: LeftSidebarPr
     serverId: activeServerId,
     enabled: isOpen,
   })
-  const { collapsedProjectKeys, shortcutIndexByWorkspaceKey, toggleProjectCollapsed } =
+  const { collapsedProjectKeys, shortcutIndexByWorkspaceKey, toggleProjectCollapsed, setProjectCollapsed } =
     useSidebarShortcutModel(projects)
   const {
     translateX,
@@ -312,12 +314,12 @@ export function LeftSidebar({ selectedAgentId: _selectedAgentId }: LeftSidebarPr
                 <View style={styles.sidebarHeaderRow}>
                   <Pressable
                     style={styles.newAgentButton}
-                    testID="sidebar-new-agent"
-                    onPress={handleOpenProjectMobile}
+                    testID="sidebar-sessions"
+                    onPress={handleViewMore}
                   >
                     {({ hovered }) => (
                       <>
-                        <Plus
+                        <MessagesSquare
                           size={theme.iconSize.md}
                           color={hovered ? theme.colors.foreground : theme.colors.foregroundMuted}
                         />
@@ -327,7 +329,7 @@ export function LeftSidebar({ selectedAgentId: _selectedAgentId }: LeftSidebarPr
                             hovered && styles.newAgentButtonTextHovered,
                           ]}
                         >
-                          Add project
+                          Sessions
                         </Text>
                       </>
                     )}
@@ -343,6 +345,7 @@ export function LeftSidebar({ selectedAgentId: _selectedAgentId }: LeftSidebarPr
                   serverId={activeServerId}
                   collapsedProjectKeys={collapsedProjectKeys}
                   onToggleProjectCollapsed={toggleProjectCollapsed}
+                  onSetProjectCollapsed={setProjectCollapsed}
                   shortcutIndexByWorkspaceKey={shortcutIndexByWorkspaceKey}
                   projects={projects}
                   isRefreshing={isManualRefresh && isRevalidating}
@@ -373,23 +376,33 @@ export function LeftSidebar({ selectedAgentId: _selectedAgentId }: LeftSidebarPr
                   </Pressable>
                 </View>
                 <View style={styles.footerIconRow}>
-                  <Pressable
-                    style={styles.footerIconButton}
-                    testID="sidebar-all-agents"
-                    nativeID="sidebar-all-agents"
-                    collapsable={false}
-                    accessible
-                    accessibilityLabel="Sessions"
-                    accessibilityRole="button"
-                    onPress={handleViewMore}
-                  >
-                    {({ hovered }) => (
-                      <MessagesSquare
-                        size={theme.iconSize.lg}
-                        color={hovered ? theme.colors.foreground : theme.colors.foregroundMuted}
-                      />
-                    )}
-                  </Pressable>
+                  <Tooltip delayDuration={300}>
+                    <TooltipTrigger asChild>
+                      <Pressable
+                        style={styles.footerIconButton}
+                        testID="sidebar-add-project"
+                        nativeID="sidebar-add-project"
+                        collapsable={false}
+                        accessible
+                        accessibilityLabel="Add project"
+                        accessibilityRole="button"
+                        onPress={handleOpenProjectMobile}
+                      >
+                        {({ hovered }) => (
+                          <Plus
+                            size={theme.iconSize.lg}
+                            color={hovered ? theme.colors.foreground : theme.colors.foregroundMuted}
+                          />
+                        )}
+                      </Pressable>
+                    </TooltipTrigger>
+                    <TooltipContent side="top" align="center" offset={8}>
+                      <View style={styles.tooltipRow}>
+                        <Text style={styles.tooltipText}>Add project</Text>
+                        <Shortcut keys={['⌘', '⇧', 'O']} />
+                      </View>
+                    </TooltipContent>
+                  </Tooltip>
                   <Pressable
                     style={styles.footerIconButton}
                     testID="sidebar-settings"
@@ -441,19 +454,19 @@ export function LeftSidebar({ selectedAgentId: _selectedAgentId }: LeftSidebarPr
         <View style={styles.sidebarHeaderRow}>
           <Pressable
             style={styles.newAgentButton}
-            testID="sidebar-new-agent"
-            onPress={handleOpenProjectDesktop}
+            testID="sidebar-sessions"
+            onPress={handleViewMore}
           >
             {({ hovered }) => (
               <>
-                <Plus
+                <MessagesSquare
                   size={theme.iconSize.md}
                   color={hovered ? theme.colors.foreground : theme.colors.foregroundMuted}
                 />
                 <Text
                   style={[styles.newAgentButtonText, hovered && styles.newAgentButtonTextHovered]}
                 >
-                  Add project
+                  Sessions
                 </Text>
               </>
             )}
@@ -469,6 +482,7 @@ export function LeftSidebar({ selectedAgentId: _selectedAgentId }: LeftSidebarPr
           serverId={activeServerId}
           collapsedProjectKeys={collapsedProjectKeys}
           onToggleProjectCollapsed={toggleProjectCollapsed}
+          onSetProjectCollapsed={setProjectCollapsed}
           shortcutIndexByWorkspaceKey={shortcutIndexByWorkspaceKey}
           projects={projects}
           isRefreshing={isManualRefresh && isRevalidating}
@@ -495,23 +509,33 @@ export function LeftSidebar({ selectedAgentId: _selectedAgentId }: LeftSidebarPr
           </Pressable>
         </View>
         <View style={styles.footerIconRow}>
-          <Pressable
-            style={styles.footerIconButton}
-            testID="sidebar-all-agents"
-            nativeID="sidebar-all-agents"
-            collapsable={false}
-            accessible
-            accessibilityLabel="Sessions"
-            accessibilityRole="button"
-            onPress={handleViewMore}
-          >
-            {({ hovered }) => (
-              <MessagesSquare
-                size={theme.iconSize.lg}
-                color={hovered ? theme.colors.foreground : theme.colors.foregroundMuted}
-              />
-            )}
-          </Pressable>
+          <Tooltip delayDuration={300}>
+            <TooltipTrigger asChild>
+              <Pressable
+                style={styles.footerIconButton}
+                testID="sidebar-add-project"
+                nativeID="sidebar-add-project"
+                collapsable={false}
+                accessible
+                accessibilityLabel="Add project"
+                accessibilityRole="button"
+                onPress={handleOpenProjectDesktop}
+              >
+                {({ hovered }) => (
+                  <Plus
+                    size={theme.iconSize.lg}
+                    color={hovered ? theme.colors.foreground : theme.colors.foregroundMuted}
+                  />
+                )}
+              </Pressable>
+            </TooltipTrigger>
+            <TooltipContent side="top" align="center" offset={8}>
+              <View style={styles.tooltipRow}>
+                <Text style={styles.tooltipText}>Add project</Text>
+                <Shortcut keys={['⌘', '⇧', 'O']} />
+              </View>
+            </TooltipContent>
+          </Tooltip>
           <Pressable
             style={styles.footerIconButton}
             testID="sidebar-settings"
@@ -689,5 +713,14 @@ const styles = StyleSheet.create((theme) => ({
   hostPickerCancelText: {
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.sm,
+  },
+  tooltipRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.spacing[2],
+  },
+  tooltipText: {
+    fontSize: theme.fontSize.sm,
+    color: theme.colors.popoverForeground,
   },
 }))

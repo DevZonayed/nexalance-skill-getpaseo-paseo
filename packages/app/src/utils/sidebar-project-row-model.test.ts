@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { buildSidebarProjectRowModel } from './sidebar-project-row-model'
+import {
+  buildSidebarProjectRowModel,
+  isSidebarProjectFlattened,
+} from './sidebar-project-row-model'
 import type {
   SidebarProjectEntry,
   SidebarWorkspaceEntry,
@@ -51,11 +54,11 @@ describe('buildSidebarProjectRowModel', () => {
     })
 
     expect(result).toEqual({
-      interaction: 'navigate',
-      chevron: 'disclosure',
-      trailingAction: 'none',
-      flattenedWorkspace,
+      kind: 'workspace_link',
+      workspace: flattenedWorkspace,
       selected: false,
+      chevron: null,
+      trailingAction: 'none',
     })
   })
 
@@ -78,10 +81,36 @@ describe('buildSidebarProjectRowModel', () => {
       },
     })
 
-    expect(result.selected).toBe(true)
+    expect(result).toMatchObject({
+      kind: 'workspace_link',
+      selected: true,
+    })
   })
 
-  it('keeps git projects as expandable sections with a new worktree action', () => {
+  it('flattens git projects with a single workspace and keeps the new worktree action', () => {
+    const flattenedWorkspace = workspace({
+      workspaceId: '/repo/main',
+      workspaceKind: 'local_checkout',
+    })
+
+    const result = buildSidebarProjectRowModel({
+      project: project({
+        projectKind: 'git',
+        workspaces: [flattenedWorkspace],
+      }),
+      collapsed: true,
+    })
+
+    expect(result).toEqual({
+      kind: 'workspace_link',
+      workspace: flattenedWorkspace,
+      selected: false,
+      chevron: null,
+      trailingAction: 'new_worktree',
+    })
+  })
+
+  it('keeps multi-workspace git projects as expandable sections with a new worktree action', () => {
     const result = buildSidebarProjectRowModel({
       project: project({
         projectKind: 'git',
@@ -94,11 +123,28 @@ describe('buildSidebarProjectRowModel', () => {
     })
 
     expect(result).toEqual({
-      interaction: 'toggle',
+      kind: 'project_section',
       chevron: 'expand',
       trailingAction: 'new_worktree',
-      flattenedWorkspace: null,
-      selected: false,
     })
+  })
+})
+
+describe('isSidebarProjectFlattened', () => {
+  it('returns true for single-workspace projects regardless of kind', () => {
+    expect(isSidebarProjectFlattened(project({ projectKind: 'git', workspaces: [workspace()] }))).toBe(true)
+    expect(
+      isSidebarProjectFlattened(project({ projectKind: 'non_git', workspaces: [workspace()] }))
+    ).toBe(true)
+  })
+
+  it('returns false for multi-workspace projects', () => {
+    expect(
+      isSidebarProjectFlattened(
+        project({
+          workspaces: [workspace({ workspaceId: '/repo/main' }), workspace({ workspaceId: '/repo/feat' })],
+        })
+      )
+    ).toBe(false)
   })
 })

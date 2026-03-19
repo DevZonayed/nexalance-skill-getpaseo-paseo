@@ -135,6 +135,10 @@ function normalizeCodexModelId(modelId: string | null | undefined): string | und
   return normalized;
 }
 
+function normalizeCodexModelLabel(displayName: string): string {
+  return displayName.replace(/\bgpt\b/gi, 'GPT');
+}
+
 type CodexConfiguredDefaults = {
   model?: string;
   thinkingOptionId?: string;
@@ -3389,7 +3393,7 @@ export class CodexAppServerAgentClient implements AgentClient {
         return {
           provider: CODEX_PROVIDER,
           id: model.id,
-          label: model.displayName,
+          label: normalizeCodexModelLabel(model.displayName),
           description: model.description,
           isDefault: isDefaultModel,
           thinkingOptions: thinkingOptions.length > 0 ? thinkingOptions : undefined,

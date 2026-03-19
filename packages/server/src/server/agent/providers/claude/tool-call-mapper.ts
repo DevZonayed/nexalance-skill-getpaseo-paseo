@@ -80,6 +80,13 @@ const ClaudeSearchToolNameSchema = z.union([
   z.literal("Glob"),
   z.literal("glob"),
 ]);
+const ClaudeFetchToolNameSchema = z.union([
+  z.literal("WebFetch"),
+  z.literal("web_fetch"),
+  z.literal("WebFetchTool"),
+  z.literal("web_fetch_tool"),
+  z.literal("webfetch"),
+]);
 const ClaudeSpeakToolNameSchema = z
   .string()
   .min(1)
@@ -91,6 +98,7 @@ const ClaudeToolKindSchema = z.enum([
   "write",
   "edit",
   "search",
+  "fetch",
   "speak",
   "unknown",
 ]);
@@ -147,6 +155,13 @@ const ClaudeToolCallPass2EnvelopeSchema = z.union([
     toolKind: "search" as const,
   })),
   ClaudeToolCallPass2InputSchema.extend({
+    name: ClaudeFetchToolNameSchema,
+  }).transform((normalized) => ({
+    ...normalized,
+    name: normalized.name.trim(),
+    toolKind: "fetch" as const,
+  })),
+  ClaudeToolCallPass2InputSchema.extend({
     name: ClaudeSpeakToolNameSchema,
   }).transform((normalized) => ({
     ...normalized,
@@ -182,6 +197,10 @@ const ClaudeToolCallPass2Schema = z.discriminatedUnion("toolKind", [
     name: ClaudeSearchToolNameSchema,
   }),
   ClaudeToolCallPass2BaseSchema.extend({
+    toolKind: z.literal("fetch"),
+    name: ClaudeFetchToolNameSchema,
+  }),
+  ClaudeToolCallPass2BaseSchema.extend({
     toolKind: z.literal("speak"),
     name: z.literal("speak"),
   }),
@@ -203,8 +222,8 @@ function toToolCallTimelineItem(normalized: ClaudeToolCallPass2): ToolCallTimeli
           ? "write_file"
           : normalized.toolKind === "edit"
             ? "apply_patch"
-            : normalized.toolKind === "search"
-              ? "search"
+            : normalized.toolKind === "search" || normalized.toolKind === "fetch"
+              ? normalized.name
               : normalized.toolKind === "speak"
                 ? "speak"
                 : normalized.name;

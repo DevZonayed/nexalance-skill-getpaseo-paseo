@@ -38,10 +38,10 @@ const OpencodeKnownToolDetailSchema = z.union([
   toolDetailBranchByToolName("apply_patch", ToolEditInputSchema, ToolEditOutputSchema, toEditToolDetail),
   toolDetailBranchByToolName("apply_diff", ToolEditInputSchema, ToolEditOutputSchema, toEditToolDetail),
   toolDetailBranchByToolName("search", ToolSearchInputSchema, z.unknown(), (input) =>
-    toSearchToolDetail(input)
+    toSearchToolDetail({ input, toolName: "search" })
   ),
   toolDetailBranchByToolName("web_search", ToolSearchInputSchema, z.unknown(), (input) =>
-    toSearchToolDetail(input)
+    toSearchToolDetail({ input, toolName: "web_search" })
   ),
 ]);
 

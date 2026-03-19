@@ -90,6 +90,11 @@ function buildCanonicalDetailDisplay(input: ToolCallDisplayInput): DetailDisplay
         displayName: "Search",
         summary: input.detail.query,
       };
+    case "fetch":
+      return {
+        displayName: "Fetch",
+        summary: input.detail.url,
+      };
     case "worktree_setup":
       return {
         displayName: "Worktree Setup",

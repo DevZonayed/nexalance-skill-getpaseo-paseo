@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { SidebarProjectEntry } from '@/hooks/use-sidebar-workspaces-list'
 import { useKeyboardShortcutsStore } from '@/stores/keyboard-shortcuts-store'
 import { buildSidebarShortcutModel } from '@/utils/sidebar-shortcuts'
+import { isSidebarProjectFlattened } from '@/utils/sidebar-project-row-model'
 
 export function useSidebarShortcutModel(projects: SidebarProjectEntry[]) {
   const [collapsedProjectKeys, setCollapsedProjectKeys] = useState<Set<string>>(new Set())
@@ -23,10 +24,14 @@ export function useSidebarShortcutModel(projects: SidebarProjectEntry[]) {
 
   useEffect(() => {
     setCollapsedProjectKeys((prev) => {
-      const validProjectKeys = new Set(projects.map((project) => project.projectKey))
+      const collapsibleProjectKeys = new Set(
+        projects
+          .filter((project) => !isSidebarProjectFlattened(project))
+          .map((project) => project.projectKey)
+      )
       const next = new Set<string>()
       for (const key of prev) {
-        if (validProjectKeys.has(key)) {
+        if (collapsibleProjectKeys.has(key)) {
           next.add(key)
         }
       }
@@ -63,9 +68,22 @@ export function useSidebarShortcutModel(projects: SidebarProjectEntry[]) {
     })
   }, [])
 
+  const setProjectCollapsed = useCallback((projectKey: string, collapsed: boolean) => {
+    setCollapsedProjectKeys((prev) => {
+      const next = new Set(prev)
+      if (collapsed) {
+        next.add(projectKey)
+      } else {
+        next.delete(projectKey)
+      }
+      return next
+    })
+  }, [])
+
   return {
     collapsedProjectKeys,
     shortcutIndexByWorkspaceKey: shortcutModel.shortcutIndexByWorkspaceKey,
+    setProjectCollapsed,
     toggleProjectCollapsed,
   }
 }

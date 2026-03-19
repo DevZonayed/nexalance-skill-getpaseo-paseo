@@ -3,12 +3,26 @@ import type {
   SidebarWorkspaceEntry,
 } from '@/hooks/use-sidebar-workspaces-list'
 
-export interface SidebarProjectRowModel {
-  interaction: 'toggle' | 'navigate'
-  chevron: 'expand' | 'collapse' | 'disclosure'
-  trailingAction: 'new_worktree' | 'none'
-  flattenedWorkspace: SidebarWorkspaceEntry | null
+export interface SidebarProjectWorkspaceLinkRowModel {
+  kind: 'workspace_link'
+  workspace: SidebarWorkspaceEntry
   selected: boolean
+  chevron: null
+  trailingAction: 'new_worktree' | 'none'
+}
+
+export interface SidebarProjectSectionRowModel {
+  kind: 'project_section'
+  chevron: 'expand' | 'collapse'
+  trailingAction: 'new_worktree' | 'none'
+}
+
+export type SidebarProjectRowModel =
+  | SidebarProjectWorkspaceLinkRowModel
+  | SidebarProjectSectionRowModel
+
+export function isSidebarProjectFlattened(project: SidebarProjectEntry): boolean {
+  return project.workspaces.length === 1
 }
 
 export function buildSidebarProjectRowModel(input: {
@@ -17,10 +31,9 @@ export function buildSidebarProjectRowModel(input: {
   serverId?: string | null
   activeWorkspaceSelection?: { serverId: string; workspaceId: string } | null
 }): SidebarProjectRowModel {
-  const flattenedWorkspace =
-    input.project.projectKind === 'non_git' && input.project.workspaces.length === 1
-      ? input.project.workspaces[0] ?? null
-      : null
+  const flattenedWorkspace = isSidebarProjectFlattened(input.project)
+    ? (input.project.workspaces[0] ?? null)
+    : null
   const selected =
     flattenedWorkspace !== null &&
     Boolean(input.serverId) &&
@@ -29,19 +42,17 @@ export function buildSidebarProjectRowModel(input: {
 
   if (flattenedWorkspace) {
     return {
-      interaction: 'navigate',
-      chevron: 'disclosure',
-      trailingAction: 'none',
-      flattenedWorkspace,
+      kind: 'workspace_link',
+      workspace: flattenedWorkspace,
       selected,
+      chevron: null,
+      trailingAction: input.project.projectKind === 'git' ? 'new_worktree' : 'none',
     }
   }
 
   return {
-    interaction: 'toggle',
+    kind: 'project_section',
     chevron: input.collapsed ? 'expand' : 'collapse',
     trailingAction: input.project.projectKind === 'git' ? 'new_worktree' : 'none',
-    flattenedWorkspace: null,
-    selected: false,
   }
 }

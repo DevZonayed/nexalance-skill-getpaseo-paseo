@@ -57,4 +57,26 @@ describe("tool-call detail state", () => {
       false
     );
   });
+
+  it("treats enriched search detail as meaningful", () => {
+    const detail: ToolCallDetail = {
+      type: "search",
+      query: "needle",
+      toolName: "grep",
+      content: "12:needle",
+      filePaths: ["src/index.ts"],
+    };
+
+    assert.strictEqual(hasMeaningfulToolCallDetail(detail), true);
+  });
+
+  it("treats fetch detail as meaningful", () => {
+    const detail: ToolCallDetail = {
+      type: "fetch",
+      url: "https://example.com",
+      result: "Fetched summary",
+    };
+
+    assert.strictEqual(hasMeaningfulToolCallDetail(detail), true);
+  });
 });

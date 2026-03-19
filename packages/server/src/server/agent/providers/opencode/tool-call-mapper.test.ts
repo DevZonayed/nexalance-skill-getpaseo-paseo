@@ -86,6 +86,7 @@ describe("opencode tool-call mapper", () => {
     expect(searchItem.detail).toEqual({
       type: "search",
       query: "opencode mapper",
+      toolName: "web_search",
     });
   });
 
@@ -210,6 +211,7 @@ describe("opencode tool-call mapper", () => {
     expect(searchItem.detail).toEqual({
       type: "search",
       query: "opencode mapper",
+      toolName: "web_search",
     });
   });
 

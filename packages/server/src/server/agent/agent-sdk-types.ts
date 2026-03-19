@@ -147,6 +147,30 @@ export type ToolCallDetail =
   | {
       type: "search";
       query: string;
+      toolName?: "search" | "grep" | "glob" | "web_search";
+      content?: string;
+      filePaths?: string[];
+      webResults?: Array<{
+        title: string;
+        url: string;
+      }>;
+      annotations?: string[];
+      numFiles?: number;
+      numMatches?: number;
+      durationMs?: number;
+      durationSeconds?: number;
+      truncated?: boolean;
+      mode?: "content" | "files_with_matches" | "count";
+    }
+  | {
+      type: "fetch";
+      url: string;
+      prompt?: string;
+      result?: string;
+      code?: number;
+      codeText?: string;
+      bytes?: number;
+      durationMs?: number;
     }
   | {
       type: "worktree_setup";

@@ -103,6 +103,7 @@ describe("claude tool-call mapper", () => {
     expect(searchItem.detail).toEqual({
       type: "search",
       query: "tool call mapping",
+      toolName: "web_search",
     });
   });
 
@@ -220,6 +221,7 @@ describe("claude tool-call mapper", () => {
     expect(searchItem.detail).toEqual({
       type: "search",
       query: "tool call mapping",
+      toolName: "web_search",
     });
   });
 
@@ -248,7 +250,12 @@ describe("claude tool-call mapper", () => {
         callId: "claude-glob-1",
         name: "Glob",
         input: { pattern: "**/.claude/commands/paseo*" },
-        output: { output: "No files found" },
+        output: {
+          durationMs: 7,
+          numFiles: 2,
+          filenames: ["a.txt", "b.txt"],
+          truncated: false,
+        },
       })
     );
 
@@ -258,6 +265,11 @@ describe("claude tool-call mapper", () => {
     expect(item.detail).toEqual({
       type: "search",
       query: "**/.claude/commands/paseo*",
+      toolName: "glob",
+      filePaths: ["a.txt", "b.txt"],
+      numFiles: 2,
+      durationMs: 7,
+      truncated: false,
     });
   });
 
@@ -272,7 +284,14 @@ describe("claude tool-call mapper", () => {
           output_mode: "content",
           "-n": true,
         },
-        output: { output: "No matches found" },
+        output: {
+          mode: "content",
+          numFiles: 1,
+          filenames: ["src/main.rs"],
+          content: "12:const cli = true;",
+          numLines: 1,
+          numMatches: 1,
+        },
       })
     );
 
@@ -282,6 +301,80 @@ describe("claude tool-call mapper", () => {
     expect(item.detail).toEqual({
       type: "search",
       query: '\\\\\\"cli\\\\\\""',
+      toolName: "grep",
+      content: "12:const cli = true;",
+      filePaths: ["src/main.rs"],
+      numFiles: 1,
+      numMatches: 1,
+      mode: "content",
+    });
+  });
+
+  it("maps WebSearch calls with structured results", () => {
+    const item = expectMapped(
+      mapClaudeCompletedToolCall({
+        callId: "claude-web-search-1",
+        name: "WebSearch",
+        input: { query: "OpenAI latest news" },
+        output: {
+          query: "OpenAI latest news",
+          results: [
+            "Top results:",
+            {
+              tool_use_id: "toolu_123",
+              content: [
+                { title: "OpenAI launches thing", url: "https://example.com/1" },
+                { title: "Another result", url: "https://example.com/2" },
+              ],
+            },
+          ],
+          durationSeconds: 1.5,
+        },
+      })
+    );
+
+    expect(item.detail).toEqual({
+      type: "search",
+      query: "OpenAI latest news",
+      toolName: "web_search",
+      webResults: [
+        { title: "OpenAI launches thing", url: "https://example.com/1" },
+        { title: "Another result", url: "https://example.com/2" },
+      ],
+      annotations: ["Top results:"],
+      durationSeconds: 1.5,
+    });
+  });
+
+  it("maps WebFetch calls with fetched content", () => {
+    const item = expectMapped(
+      mapClaudeCompletedToolCall({
+        callId: "claude-web-fetch-1",
+        name: "WebFetch",
+        input: {
+          url: "https://example.com/article",
+          prompt: "Summarize this page",
+        },
+        output: {
+          bytes: 5120,
+          code: 200,
+          codeText: "OK",
+          result: "Summary text",
+          durationMs: 250,
+          url: "https://example.com/article",
+        },
+      })
+    );
+
+    expect(item.detail).toEqual({
+      type: "fetch",
+      url: "https://example.com/article",
+      prompt: "Summarize this page",
+      result: "Summary text",
+      code: 200,
+      codeText: "OK",
+      bytes: 5120,
+      durationMs: 250,
     });
   });
 

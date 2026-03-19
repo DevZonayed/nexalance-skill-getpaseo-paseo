@@ -151,6 +151,7 @@ describe("codex tool-call mapper", () => {
     expect(searchItem?.detail).toEqual({
       type: "search",
       query: "codex timeline",
+      toolName: "web_search",
     });
   });
 
@@ -338,6 +339,7 @@ describe("codex tool-call mapper", () => {
     expect(searchItem?.detail).toEqual({
       type: "search",
       query: "codex timeline",
+      toolName: "web_search",
     });
   });
 

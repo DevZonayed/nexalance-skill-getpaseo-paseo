@@ -38,7 +38,15 @@ export function hasMeaningfulToolCallDetail(
     case "write":
       return Boolean(detail.filePath || detail.content);
     case "search":
-      return detail.query.trim().length > 0;
+      return Boolean(
+        detail.query.trim().length > 0 ||
+          detail.content ||
+          (detail.filePaths && detail.filePaths.length > 0) ||
+          (detail.webResults && detail.webResults.length > 0) ||
+          (detail.annotations && detail.annotations.length > 0)
+      );
+    case "fetch":
+      return Boolean(detail.url || detail.result || detail.codeText);
     case "worktree_setup":
       return Boolean(detail.branchName || detail.worktreePath || detail.log);
     case "sub_agent":

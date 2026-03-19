@@ -34,7 +34,7 @@ describe("buildSidebarShortcutModel", () => {
   it("builds shortcut targets in visual order and excludes collapsed projects", () => {
     const projects = [
       project("p1", [workspace("s1", "/repo/main"), workspace("s1", "/repo/feat-a")]),
-      project("p2", [workspace("s1", "/repo2/main")]),
+      project("p2", [workspace("s1", "/repo2/main"), workspace("s1", "/repo2/feat-a")]),
     ];
 
     const model = buildSidebarShortcutModel({
@@ -69,5 +69,17 @@ describe("buildSidebarShortcutModel", () => {
     expect(model.shortcutTargets).toHaveLength(9);
     expect(model.shortcutTargets[0]).toEqual({ serverId: "s", workspaceId: "/repo/w1" });
     expect(model.shortcutTargets[8]).toEqual({ serverId: "s", workspaceId: "/repo/w9" });
+  });
+
+  it("ignores collapsed state for flattened single-workspace projects", () => {
+    const projects = [project("p1", [workspace("s1", "/repo/main")])];
+
+    const model = buildSidebarShortcutModel({
+      projects,
+      collapsedProjectKeys: new Set<string>(["p1"]),
+    });
+
+    expect(model.visibleTargets).toEqual([{ serverId: "s1", workspaceId: "/repo/main" }]);
+    expect(model.shortcutTargets).toEqual([{ serverId: "s1", workspaceId: "/repo/main" }]);
   });
 });

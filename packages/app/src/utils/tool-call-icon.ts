@@ -20,6 +20,7 @@ const TOOL_DETAIL_ICONS: Record<ToolCallDetail["type"], ToolCallIconComponent> =
   edit: Pencil,
   write: Pencil,
   search: Search,
+  fetch: Search,
   worktree_setup: SquareTerminal,
   sub_agent: Bot,
   plain_text: Wrench,

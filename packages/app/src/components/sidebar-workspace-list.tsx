@@ -34,7 +34,6 @@ import { getIsTauri } from '@/constants/layout'
 import { projectIconQueryKey } from '@/hooks/use-project-icon-query'
 import {
   buildHostNewAgentRoute,
-  buildHostWorkspaceRoute,
   parseHostWorkspaceRouteFromPathname,
 } from '@/utils/host-routes'
 import {
@@ -90,6 +89,7 @@ interface SidebarWorkspaceListProps {
   serverId: string | null
   collapsedProjectKeys: ReadonlySet<string>
   onToggleProjectCollapsed: (projectKey: string) => void
+  onSetProjectCollapsed: (projectKey: string, collapsed: boolean) => void
   shortcutIndexByWorkspaceKey: Map<string, number>
   isRefreshing?: boolean
   onRefresh?: () => void
@@ -105,9 +105,11 @@ interface ProjectHeaderRowProps {
   iconDataUri: string | null
   workspace: SidebarWorkspaceEntry | null
   selected?: boolean
-  chevron: 'expand' | 'collapse' | 'disclosure'
+  chevron: 'expand' | 'collapse' | null
   onPress: () => void
   onCreateWorktree?: () => void
+  shortcutNumber?: number | null
+  showShortcutBadge?: boolean
   drag: () => void
   isDragging: boolean
   isArchiving?: boolean
@@ -184,11 +186,15 @@ function ProjectLeadingVisual({
   displayName,
   iconDataUri,
   workspace,
+  chevron = null,
+  showChevron = false,
   isArchiving = false,
 }: {
   displayName: string
   iconDataUri: string | null
   workspace: SidebarWorkspaceEntry | null
+  chevron?: 'expand' | 'collapse' | null
+  showChevron?: boolean
   isArchiving?: boolean
 }) {
   const placeholderLabel = projectIconPlaceholderLabelFromDisplayName(displayName)
@@ -199,7 +205,9 @@ function ProjectLeadingVisual({
 
   return (
     <View style={styles.projectLeadingVisualSlot}>
-      {shouldShowWorkspaceStatus && activeWorkspace ? (
+      {showChevron && chevron !== null ? (
+        <ProjectInlineChevron chevron={chevron} />
+      ) : shouldShowWorkspaceStatus && activeWorkspace ? (
         <WorkspaceStatusIndicator bucket={activeWorkspace.statusBucket} loading={isArchiving} />
       ) : iconDataUri ? (
         <Image source={{ uri: iconDataUri }} style={styles.projectIcon} />
@@ -215,8 +223,11 @@ function ProjectLeadingVisual({
 function ProjectInlineChevron({
   chevron,
 }: {
-  chevron: 'expand' | 'collapse' | 'disclosure'
+  chevron: 'expand' | 'collapse' | null
 }) {
+  if (chevron === null) {
+    return null
+  }
   if (chevron === 'collapse') {
     return <ChevronDown size={14} color="#9ca3af" />
   }
@@ -226,33 +237,47 @@ function ProjectInlineChevron({
 function NewWorktreeButton({
   displayName,
   onPress,
+  visible,
   testID,
 }: {
   displayName: string
   onPress: () => void
+  visible: boolean
   testID: string
 }) {
+  const { theme } = useUnistyles()
+
   return (
-    <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
-      <TooltipTrigger
-        style={({ hovered, pressed }) => [
-          styles.projectIconActionButton,
-          (hovered || pressed) && styles.projectIconActionButtonHovered,
-        ]}
-        onPress={(event) => {
-          event.stopPropagation()
-          onPress()
-        }}
-        accessibilityRole="button"
-        accessibilityLabel={`Create a new worktree for ${displayName}`}
-        testID={testID}
-      >
-        <Plus size={14} color="#9ca3af" />
-      </TooltipTrigger>
-      <TooltipContent side="bottom" align="end" offset={8}>
-        <Text style={styles.projectActionTooltipText}>New worktree</Text>
-      </TooltipContent>
-    </Tooltip>
+    <View style={styles.projectTrailingControlSlot} pointerEvents={visible ? 'auto' : 'none'}>
+      <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
+        <TooltipTrigger asChild disabled={!visible}>
+          <Pressable
+            style={({ hovered, pressed }) => [
+              styles.projectIconActionButton,
+              !visible && styles.projectIconActionButtonHidden,
+              (hovered || pressed) && styles.projectIconActionButtonHovered,
+            ]}
+            onPress={(event) => {
+              event.stopPropagation()
+              onPress()
+            }}
+            accessibilityRole="button"
+            accessibilityLabel={`Create a new worktree for ${displayName}`}
+            testID={testID}
+          >
+            {({ hovered, pressed }) => (
+              <Plus
+                size={14}
+                color={hovered || pressed ? theme.colors.foreground : theme.colors.foregroundMuted}
+              />
+            )}
+          </Pressable>
+        </TooltipTrigger>
+        <TooltipContent side="bottom" align="end" offset={8}>
+          <Text style={styles.projectActionTooltipText}>New worktree</Text>
+        </TooltipContent>
+      </Tooltip>
+    </View>
   )
 }
 
@@ -479,12 +504,15 @@ function ProjectHeaderRow({
   chevron,
   onPress,
   onCreateWorktree,
+  shortcutNumber = null,
+  showShortcutBadge = false,
   drag,
   isDragging,
   isArchiving = false,
   menuController,
   dragHandleProps,
 }: ProjectHeaderRowProps) {
+  const [isHovered, setIsHovered] = useState(false)
   const interaction = useLongPressDragInteraction({
     drag,
     menuController,
@@ -510,34 +538,71 @@ function ProjectHeaderRow({
           displayName={displayName}
           iconDataUri={iconDataUri}
           workspace={workspace}
+          chevron={chevron}
+          showChevron={isHovered && chevron !== null}
           isArchiving={isArchiving}
         />
 
-        <Text style={styles.projectTitle} numberOfLines={1}>
-          {displayName}
-        </Text>
-
-        <ProjectInlineChevron chevron={chevron} />
+        <View style={styles.projectTitleGroup}>
+          <Text style={styles.projectTitle} numberOfLines={1}>
+            {displayName}
+          </Text>
+        </View>
       </View>
       {onCreateWorktree ? (
         <NewWorktreeButton
           displayName={displayName}
           onPress={onCreateWorktree}
+          visible={isHovered}
           testID={`sidebar-project-new-worktree-${project.projectKey}`}
         />
+      ) : null}
+      {showShortcutBadge && shortcutNumber !== null ? (
+        <View style={styles.shortcutBadge}>
+          <Text style={styles.shortcutBadgeText}>{shortcutNumber}</Text>
+        </View>
       ) : null}
     </>
   )
 
   if (menuController) {
     return (
-      <ContextMenuTrigger
-        enabledOnMobile={false}
-        style={({ pressed, hovered = false }) => [
+      <View
+        onPointerEnter={() => setIsHovered(true)}
+        onPointerLeave={() => setIsHovered(false)}
+      >
+        <ContextMenuTrigger
+          enabledOnMobile={false}
+          style={({ pressed }) => [
+            styles.projectRow,
+            isDragging && styles.projectRowDragging,
+            selected && styles.sidebarRowSelected,
+            isHovered && styles.projectRowHovered,
+            pressed && styles.projectRowPressed,
+          ]}
+          onPressIn={interaction.handlePressIn}
+          onTouchMove={interaction.handleTouchMove}
+          onPressOut={interaction.handlePressOut}
+          onPress={handlePress}
+          testID={`sidebar-project-row-${project.projectKey}`}
+        >
+          {rowChildren}
+        </ContextMenuTrigger>
+      </View>
+    )
+  }
+
+  return (
+    <View
+      onPointerEnter={() => setIsHovered(true)}
+      onPointerLeave={() => setIsHovered(false)}
+    >
+      <Pressable
+        style={({ pressed }) => [
           styles.projectRow,
           isDragging && styles.projectRowDragging,
           selected && styles.sidebarRowSelected,
-          hovered && styles.projectRowHovered,
+          isHovered && styles.projectRowHovered,
           pressed && styles.projectRowPressed,
         ]}
         onPressIn={interaction.handlePressIn}
@@ -547,27 +612,8 @@ function ProjectHeaderRow({
         testID={`sidebar-project-row-${project.projectKey}`}
       >
         {rowChildren}
-      </ContextMenuTrigger>
-    )
-  }
-
-  return (
-    <Pressable
-      style={({ pressed, hovered = false }) => [
-        styles.projectRow,
-        isDragging && styles.projectRowDragging,
-        selected && styles.sidebarRowSelected,
-        hovered && styles.projectRowHovered,
-        pressed && styles.projectRowPressed,
-      ]}
-      onPressIn={interaction.handlePressIn}
-      onTouchMove={interaction.handleTouchMove}
-      onPressOut={interaction.handlePressOut}
-      onPress={handlePress}
-      testID={`sidebar-project-row-${project.projectKey}`}
-    >
-      {rowChildren}
-    </Pressable>
+      </Pressable>
+    </View>
   )
 }
 
@@ -846,6 +892,8 @@ function NonGitProjectRowWithMenuContent({
   workspace,
   selected,
   onPress,
+  shortcutNumber,
+  showShortcutBadge,
   drag,
   isDragging,
   dragHandleProps,
@@ -856,6 +904,8 @@ function NonGitProjectRowWithMenuContent({
   workspace: SidebarWorkspaceEntry
   selected: boolean
   onPress: () => void
+  shortcutNumber: number | null
+  showShortcutBadge: boolean
   drag: () => void
   isDragging: boolean
   dragHandleProps?: DraggableListDragHandleProps
@@ -909,8 +959,10 @@ function NonGitProjectRowWithMenuContent({
         iconDataUri={iconDataUri}
         workspace={workspace}
         selected={selected}
-        chevron="disclosure"
+        chevron={null}
         onPress={onPress}
+        shortcutNumber={shortcutNumber}
+        showShortcutBadge={showShortcutBadge}
         drag={drag}
         isDragging={isDragging}
         isArchiving={isArchivingWorkspace}
@@ -944,6 +996,8 @@ function NonGitProjectRowWithMenu(props: {
   workspace: SidebarWorkspaceEntry
   selected: boolean
   onPress: () => void
+  shortcutNumber: number | null
+  showShortcutBadge: boolean
   drag: () => void
   isDragging: boolean
   dragHandleProps?: DraggableListDragHandleProps
@@ -955,37 +1009,65 @@ function NonGitProjectRowWithMenu(props: {
   )
 }
 
-function WorkspaceRowPlain({
-  workspace,
-  selected,
+function FlattenedProjectRow({
+  project,
+  displayName,
+  iconDataUri,
+  rowModel,
+  onPress,
+  onCreateWorktree,
   shortcutNumber,
   showShortcutBadge,
-  onPress,
   drag,
   isDragging,
   dragHandleProps,
 }: {
-  workspace: SidebarWorkspaceEntry
-  selected: boolean
+  project: SidebarProjectEntry
+  displayName: string
+  iconDataUri: string | null
+  rowModel: Extract<ReturnType<typeof buildSidebarProjectRowModel>, { kind: 'workspace_link' }>
+  onPress: () => void
+  onCreateWorktree?: () => void
   shortcutNumber: number | null
   showShortcutBadge: boolean
-  onPress: () => void
   drag: () => void
   isDragging: boolean
   dragHandleProps?: DraggableListDragHandleProps
 }) {
+  if (project.projectKind === 'non_git') {
+    return (
+      <NonGitProjectRowWithMenu
+        project={project}
+        displayName={displayName}
+        iconDataUri={iconDataUri}
+        workspace={rowModel.workspace}
+        selected={rowModel.selected}
+        onPress={onPress}
+        shortcutNumber={shortcutNumber}
+        showShortcutBadge={showShortcutBadge}
+        drag={drag}
+        isDragging={isDragging}
+        dragHandleProps={dragHandleProps}
+      />
+    )
+  }
+
   return (
-    <WorkspaceRowInner
-      workspace={workspace}
-      selected={selected}
+    <ProjectHeaderRow
+      project={project}
+      displayName={displayName}
+      iconDataUri={iconDataUri}
+      workspace={rowModel.workspace}
+      selected={rowModel.selected}
+      chevron={rowModel.chevron}
+      onPress={onPress}
+      onCreateWorktree={rowModel.trailingAction === 'new_worktree' ? onCreateWorktree : undefined}
       shortcutNumber={shortcutNumber}
       showShortcutBadge={showShortcutBadge}
-      onPress={onPress}
       drag={drag}
       isDragging={isDragging}
-      isArchiving={false}
-      dragHandleProps={dragHandleProps}
       menuController={null}
+      dragHandleProps={dragHandleProps}
     />
   )
 }
@@ -1073,11 +1155,9 @@ function ProjectBlock({
       }),
     [activeWorkspaceSelection, collapsed, project, serverId]
   )
-  const flattenedWorkspace = rowModel.flattenedWorkspace
 
   const renderWorkspaceRow = useCallback(
     (item: SidebarWorkspaceEntry, input?: { drag?: () => void; isDragging?: boolean; dragHandleProps?: DraggableListDragHandleProps }) => {
-      const workspaceRoute = buildHostWorkspaceRoute(serverId ?? '', item.workspaceId)
       const isSelected =
         Boolean(serverId) &&
         activeWorkspaceSelection?.serverId === serverId &&
@@ -1105,6 +1185,7 @@ function ProjectBlock({
     },
     [
       activeWorkspaceSelection,
+      project.projectKind,
       onWorkspacePress,
       serverId,
       shortcutIndexByWorkspaceKey,
@@ -1137,20 +1218,26 @@ function ProjectBlock({
 
   return (
     <View style={styles.projectBlock}>
-      {flattenedWorkspace ? (
-        <NonGitProjectRowWithMenu
+      {rowModel.kind === 'workspace_link' ? (
+        <FlattenedProjectRow
           project={project}
           displayName={displayName}
           iconDataUri={iconDataUri}
-          workspace={flattenedWorkspace}
-          selected={rowModel.selected}
+          rowModel={rowModel}
           onPress={() => {
             if (!serverId) {
               return
             }
             onWorkspacePress?.()
-            navigateToWorkspace(serverId, flattenedWorkspace.workspaceId)
+            navigateToWorkspace(serverId, rowModel.workspace.workspaceId)
           }}
+          onCreateWorktree={
+            rowModel.trailingAction === 'new_worktree' && onCreateWorktree
+              ? () => onCreateWorktree(project)
+              : undefined
+          }
+          shortcutNumber={shortcutIndexByWorkspaceKey.get(rowModel.workspace.workspaceKey) ?? null}
+          showShortcutBadge={showShortcutBadges}
           drag={drag}
           isDragging={isDragging}
           dragHandleProps={dragHandleProps}
@@ -1201,6 +1288,7 @@ export function SidebarWorkspaceList({
   serverId,
   collapsedProjectKeys,
   onToggleProjectCollapsed,
+  onSetProjectCollapsed,
   shortcutIndexByWorkspaceKey,
   isRefreshing = false,
   onRefresh,
@@ -1353,6 +1441,7 @@ export function SidebarWorkspaceList({
       if (!serverId || project.projectKind !== 'git') {
         return
       }
+      onSetProjectCollapsed(project.projectKey, false)
       onWorkspacePress?.()
       router.push(
         buildHostNewAgentRoute(serverId, {
@@ -1361,7 +1450,7 @@ export function SidebarWorkspaceList({
         }) as any
       )
     },
-    [serverId, onWorkspacePress]
+    [onSetProjectCollapsed, serverId, onWorkspacePress]
   )
 
   const renderProject = useCallback(
@@ -1519,6 +1608,13 @@ const styles = StyleSheet.create((theme) => ({
     flex: 1,
     minWidth: 0,
   },
+  projectTitleGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.spacing[1],
+    flex: 1,
+    minWidth: 0,
+  },
   projectIcon: {
     width: '100%',
     height: '100%',
@@ -1547,8 +1643,8 @@ const styles = StyleSheet.create((theme) => ({
   projectTitle: {
     color: theme.colors.foreground,
     fontSize: theme.fontSize.sm,
-    flex: 1,
     minWidth: 0,
+    flexShrink: 1,
   },
   projectActionButton: {
     flexDirection: 'row',
@@ -1576,6 +1672,16 @@ const styles = StyleSheet.create((theme) => ({
   },
   projectIconActionButtonHovered: {
     backgroundColor: theme.colors.surface1,
+  },
+  projectIconActionButtonHidden: {
+    opacity: 0,
+  },
+  projectTrailingControlSlot: {
+    width: 24,
+    height: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
   },
   projectActionTooltipText: {
     color: theme.colors.foreground,
@@ -1698,11 +1804,16 @@ const styles = StyleSheet.create((theme) => ({
     paddingHorizontal: theme.spacing[1],
     alignItems: 'center',
     justifyContent: 'center',
+    borderRadius: theme.borderRadius.sm,
+    borderWidth: 1,
+    borderColor: theme.colors.surface2,
+    backgroundColor: theme.colors.surface0,
+    flexShrink: 0,
   },
   shortcutBadgeText: {
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.xs,
-    fontWeight: theme.fontWeight.normal,
+    fontWeight: theme.fontWeight.medium,
     lineHeight: 14,
   },
 }))

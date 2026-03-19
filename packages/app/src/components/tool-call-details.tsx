@@ -243,9 +243,79 @@ export function ToolCallDetailsContent({
       );
     }
   } else if (detail?.type === "search") {
+    const searchSections: ReactNode[] = [];
+    if (detail.query) {
+      searchSections.push(
+        <View key="search-query" style={styles.section}>
+          <Text selectable style={styles.scrollText}>{detail.query}</Text>
+        </View>
+      );
+    }
+    if (detail.content) {
+      searchSections.push(
+        <View key="search-content" style={styles.section}>
+          <ScrollView
+            style={[
+              styles.scrollArea,
+              resolvedMaxHeight !== undefined && { maxHeight: resolvedMaxHeight },
+            ]}
+            contentContainerStyle={styles.scrollContent}
+            nestedScrollEnabled
+            showsVerticalScrollIndicator
+          >
+            <ScrollView horizontal nestedScrollEnabled showsHorizontalScrollIndicator>
+              <Text selectable style={styles.scrollText}>{detail.content}</Text>
+            </ScrollView>
+          </ScrollView>
+        </View>
+      );
+    }
+    if (detail.filePaths && detail.filePaths.length > 0) {
+      searchSections.push(
+        <View key="search-files" style={styles.section}>
+          <Text selectable style={styles.scrollText}>{detail.filePaths.join("\n")}</Text>
+        </View>
+      );
+    }
+    if (detail.webResults && detail.webResults.length > 0) {
+      searchSections.push(
+        <View key="search-web-results" style={styles.section}>
+          <Text selectable style={styles.scrollText}>
+            {detail.webResults.map((entry) => `${entry.title}\n${entry.url}`).join("\n\n")}
+          </Text>
+        </View>
+      );
+    }
+    if (detail.annotations && detail.annotations.length > 0) {
+      searchSections.push(
+        <View key="search-annotations" style={styles.section}>
+          <Text selectable style={styles.scrollText}>{detail.annotations.join("\n\n")}</Text>
+        </View>
+      );
+    }
+    sections.push(...searchSections);
+  } else if (detail?.type === "fetch") {
     sections.push(
-      <View key="search" style={styles.section}>
-        <Text selectable style={styles.scrollText}>{detail.query}</Text>
+      <View
+        key="fetch"
+        style={[styles.section, shouldFill && styles.fillHeight]}
+      >
+        <ScrollView
+          style={[
+            styles.scrollArea,
+            resolvedMaxHeight !== undefined && { maxHeight: resolvedMaxHeight },
+            shouldFill && styles.fillHeight,
+          ]}
+          contentContainerStyle={styles.scrollContent}
+          nestedScrollEnabled
+          showsVerticalScrollIndicator
+        >
+          <ScrollView horizontal nestedScrollEnabled showsHorizontalScrollIndicator>
+            <Text selectable style={styles.scrollText}>
+              {detail.result ? `${detail.url}\n\n${detail.result}` : detail.url}
+            </Text>
+          </ScrollView>
+        </ScrollView>
       </View>
     );
   } else if (detail?.type === "plain_text") {
