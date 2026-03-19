@@ -11,22 +11,17 @@ import {
 import { Folder } from "lucide-react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { useQuery } from "@tanstack/react-query";
-import { router, usePathname } from "expo-router";
+import { usePathname } from "expo-router";
 import { useKeyboardShortcutsStore } from "@/stores/keyboard-shortcuts-store";
 import { shortenPath } from "@/utils/shorten-path";
-import {
-  normalizeWorkspaceDescriptor,
-  useSessionStore,
-} from "@/stores/session-store";
+import { useSessionStore } from "@/stores/session-store";
 import { useHosts, useHostRuntimeSession } from "@/runtime/host-runtime";
-import { useToast } from "@/contexts/toast-context";
+import { useOpenProject } from "@/hooks/use-open-project";
 import { parseServerIdFromPathname } from "@/utils/host-routes";
-import { buildHostWorkspaceRouteWithOpenIntent } from "@/utils/host-routes";
 import { buildWorkingDirectorySuggestions } from "@/utils/working-directory-suggestions";
 
 export function ProjectPickerModal() {
   const { theme } = useUnistyles();
-  const toast = useToast();
   const pathname = usePathname();
   const daemons = useHosts();
 
@@ -43,15 +38,12 @@ export function ProjectPickerModal() {
   const workspaces = useSessionStore((state) =>
     serverId ? state.sessions[serverId]?.workspaces : undefined
   );
-  const mergeWorkspaces = useSessionStore((state) => state.mergeWorkspaces);
-  const setHasHydratedWorkspaces = useSessionStore(
-    (state) => state.setHasHydratedWorkspaces
-  );
 
   const inputRef = useRef<TextInput>(null);
   const [query, setQuery] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const openProject = useOpenProject(serverId);
 
   const recommendedPaths = useMemo(() => {
     if (!workspaces) return [];
@@ -102,31 +94,15 @@ export function ProjectPickerModal() {
 
       setIsSubmitting(true);
       try {
-        const payload = await client.openProject(trimmed);
-        if (payload.error || !payload.workspace) {
-          throw new Error(payload.error || "Failed to open project");
+        const didOpenProject = await openProject(trimmed);
+        if (didOpenProject) {
+          setOpen(false);
         }
-        mergeWorkspaces(serverId, [
-          normalizeWorkspaceDescriptor(payload.workspace),
-        ]);
-        setHasHydratedWorkspaces(serverId, true);
-        setOpen(false);
-        router.replace(
-          buildHostWorkspaceRouteWithOpenIntent(
-            serverId,
-            payload.workspace.id,
-            { kind: "draft", draftId: "new" }
-          ) as any
-        );
-      } catch (error) {
-        toast.error(
-          error instanceof Error ? error.message : "Failed to open project"
-        );
       } finally {
         setIsSubmitting(false);
       }
     },
-    [client, mergeWorkspaces, serverId, setHasHydratedWorkspaces, setOpen, toast]
+    [client, openProject, serverId, setOpen]
   );
 
   const handleSubmitCustom = useCallback(() => {

@@ -6,6 +6,7 @@ import { keyboardActionDispatcher } from "@/keyboard/keyboard-action-dispatcher"
 import { useHosts } from "@/runtime/host-runtime";
 import { useAllAgentsList } from "@/hooks/use-all-agents-list";
 import type { AggregatedAgent } from "@/hooks/use-aggregated-agents";
+import { useOpenProjectPicker } from "@/hooks/use-open-project-picker";
 import {
   clearCommandCenterFocusRestoreElement,
   takeCommandCenterFocusRestoreElement,
@@ -217,18 +218,18 @@ export function useCommandCenter() {
     [pathname, setOpen]
   );
 
-  const setProjectPickerOpen = useKeyboardShortcutsStore((s) => s.setProjectPickerOpen);
+  const openProjectPicker = useOpenProjectPicker(activeServerId);
 
   const handleSelectAction = useCallback((action: CommandCenterActionItem) => {
     clearCommandCenterFocusRestoreElement();
     setOpen(false);
     if (action.id === "new-agent") {
-      setProjectPickerOpen(true);
+      void openProjectPicker();
       return;
     }
     didNavigateRef.current = true;
     router.push(action.route);
-  }, [setOpen, setProjectPickerOpen]);
+  }, [openProjectPicker, setOpen]);
 
   const handleSelectItem = useCallback(
     (item: CommandCenterItem) => {

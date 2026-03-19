@@ -1,5 +1,17 @@
 import { describe, expect, it } from 'vitest'
-import { normalizeModelId, resolveAgentModelSelection } from './agent-status-bar.utils'
+import {
+  getStatusSelectorHint,
+  normalizeModelId,
+  resolveAgentModelSelection,
+} from './agent-status-bar.utils'
+
+describe('getStatusSelectorHint', () => {
+  it('explains what each editable status control does', () => {
+    expect(getStatusSelectorHint('thinking')).toBe('Thinking mode')
+    expect(getStatusSelectorHint('model')).toBe('Change model')
+    expect(getStatusSelectorHint('mode')).toBe('Change permission mode')
+  })
+})
 
 describe('normalizeModelId', () => {
   it('treats empty and default values as unset', () => {

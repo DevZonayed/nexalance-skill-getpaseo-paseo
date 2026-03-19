@@ -5,18 +5,18 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { FolderOpen } from "lucide-react-native";
 import { PaseoLogo } from "@/components/icons/paseo-logo";
 import { SidebarMenuToggle } from "@/components/headers/menu-header";
-import { useKeyboardShortcutsStore } from "@/stores/keyboard-shortcuts-store";
+import { useOpenProjectPicker } from "@/hooks/use-open-project-picker";
 import { usePanelStore } from "@/stores/panel-store";
 import { getIsTauriMac } from "@/constants/layout";
 import { useTauriDragHandlers, useTrafficLightPadding } from "@/utils/tauri-window";
 
-export function OpenProjectScreen({ serverId: _serverId }: { serverId: string }) {
+export function OpenProjectScreen({ serverId }: { serverId: string }) {
   const { theme } = useUnistyles();
   const insets = useSafeAreaInsets();
   const trafficLightPadding = useTrafficLightPadding();
   const desktopAgentListOpen = usePanelStore((s) => s.desktop.agentListOpen);
   const openAgentList = usePanelStore((s) => s.openAgentList);
-  const setProjectPickerOpen = useKeyboardShortcutsStore((s) => s.setProjectPickerOpen);
+  const openProjectPicker = useOpenProjectPicker(serverId);
 
   const isMobile = UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
   const needsTrafficLightInset = !isMobile && !desktopAgentListOpen && getIsTauriMac();
@@ -42,7 +42,9 @@ export function OpenProjectScreen({ serverId: _serverId }: { serverId: string })
             styles.openButton,
             hovered && styles.openButtonHovered,
           ]}
-          onPress={() => setProjectPickerOpen(true)}
+          onPress={() => {
+            void openProjectPicker();
+          }}
           testID="open-project-submit"
         >
           <FolderOpen size={16} color={theme.colors.foregroundMuted} />

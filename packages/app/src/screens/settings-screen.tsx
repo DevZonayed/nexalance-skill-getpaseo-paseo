@@ -47,6 +47,7 @@ import { resolveAppVersion } from "@/utils/app-version";
 import { settingsStyles } from "@/styles/settings";
 import { THINKING_TONE_NATIVE_PCM_BASE64 } from "@/utils/thinking-tone.native-pcm";
 import { useVoiceAudioEngineOptional } from "@/contexts/voice-context";
+import { useIsLocalDaemon } from "@/hooks/use-is-local-daemon";
 
 const delay = (ms: number) =>
   new Promise<void>((resolve) => {
@@ -513,6 +514,7 @@ export default function SettingsScreen() {
   const isMountedRef = useRef(true);
   const lastHandledEditHostRef = useRef<string | null>(null);
   const isDesktop = Platform.OS === "web";
+  const isLocalDaemon = useIsLocalDaemon(routeServerId);
   const appVersion = resolveAppVersion();
   const appVersionText = formatVersionWithPrefix(appVersion);
   const editingServerId = editingDaemon?.serverId ?? null;
@@ -906,7 +908,12 @@ export default function SettingsScreen() {
           </View>
 
           {isDesktop ? <DesktopPermissionsSection /> : null}
-          {isDesktop ? <LocalDaemonSection appVersion={appVersion} /> : null}
+          {isDesktop ? (
+            <LocalDaemonSection
+              appVersion={appVersion}
+              showLifecycleControls={isLocalDaemon}
+            />
+          ) : null}
 
           <View style={settingsStyles.section}>
             <Text style={settingsStyles.sectionTitle}>Diagnostics</Text>

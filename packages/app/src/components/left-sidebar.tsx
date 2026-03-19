@@ -31,7 +31,7 @@ import {
   mapPathnameToServer,
   parseServerIdFromPathname,
 } from '@/utils/host-routes'
-import { useKeyboardShortcutsStore } from '@/stores/keyboard-shortcuts-store'
+import { useOpenProjectPicker } from '@/hooks/use-open-project-picker'
 
 const DESKTOP_SIDEBAR_WIDTH = 320
 
@@ -154,16 +154,16 @@ export function LeftSidebar({ selectedAgentId: _selectedAgentId }: LeftSidebarPr
     closeToAgent()
   }, [closeToAgent])
 
-  const setProjectPickerOpen = useKeyboardShortcutsStore((s) => s.setProjectPickerOpen)
+  const openProjectPicker = useOpenProjectPicker(activeServerId)
 
   const handleOpenProjectMobile = useCallback(() => {
     closeToAgent()
-    setProjectPickerOpen(true)
-  }, [closeToAgent, setProjectPickerOpen])
+    void openProjectPicker()
+  }, [closeToAgent, openProjectPicker])
 
   const handleOpenProjectDesktop = useCallback(() => {
-    setProjectPickerOpen(true)
-  }, [setProjectPickerOpen])
+    void openProjectPicker()
+  }, [openProjectPicker])
 
   // Mobile: close sidebar and navigate
   const handleSettingsMobile = useCallback(() => {

@@ -1,5 +1,18 @@
 import type { AgentModelDefinition } from '@server/server/agent/agent-sdk-types'
 
+export type ExplainedStatusSelector = 'mode' | 'model' | 'thinking'
+
+export function getStatusSelectorHint(selector: ExplainedStatusSelector): string {
+  switch (selector) {
+    case 'thinking':
+      return 'Thinking mode'
+    case 'model':
+      return 'Change model'
+    case 'mode':
+      return 'Change permission mode'
+  }
+}
+
 export function normalizeModelId(modelId: string | null | undefined): string | null {
   const normalized = typeof modelId === 'string' ? modelId.trim() : ''
   if (!normalized || normalized.toLowerCase() === 'default') {

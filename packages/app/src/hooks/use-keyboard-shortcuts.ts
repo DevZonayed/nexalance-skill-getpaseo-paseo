@@ -2,10 +2,12 @@ import { useEffect } from "react";
 import { Platform } from "react-native";
 import { usePathname } from "expo-router";
 import { getIsTauri } from "@/constants/layout";
+import { useHosts } from "@/runtime/host-runtime";
 import { useKeyboardShortcutsStore } from "@/stores/keyboard-shortcuts-store";
 import { setCommandCenterFocusRestoreElement } from "@/utils/command-center-focus-restore";
 import {
   parseHostAgentRouteFromPathname,
+  parseServerIdFromPathname,
   parseHostWorkspaceRouteFromPathname,
 } from "@/utils/host-routes";
 import { navigateToWorkspace } from "@/hooks/use-workspace-navigation";
@@ -18,6 +20,7 @@ import { keyboardActionDispatcher } from "@/keyboard/keyboard-action-dispatcher"
 import { resolveKeyboardShortcut } from "@/keyboard/keyboard-shortcuts";
 import { resolveKeyboardFocusScope } from "@/keyboard/focus-scope";
 import { getShortcutOs } from "@/utils/shortcut-platform";
+import { useOpenProjectPicker } from "@/hooks/use-open-project-picker";
 
 export function useKeyboardShortcuts({
   enabled,
@@ -33,7 +36,14 @@ export function useKeyboardShortcuts({
   toggleFileExplorer?: () => void;
 }) {
   const pathname = usePathname();
+  const hosts = useHosts();
   const resetModifiers = useKeyboardShortcutsStore((s) => s.resetModifiers);
+  const activeServerIdFromPath = parseServerIdFromPathname(pathname);
+  const activeServerId =
+    hosts.find((host) => host.serverId === activeServerIdFromPath)?.serverId ??
+    hosts[0]?.serverId ??
+    null;
+  const openProjectPickerAction = useOpenProjectPicker(activeServerId);
 
   useEffect(() => {
     if (!enabled) return;
@@ -92,7 +102,7 @@ export function useKeyboardShortcuts({
     };
 
     const openProjectPicker = (): boolean => {
-      useKeyboardShortcutsStore.getState().setProjectPickerOpen(true);
+      void openProjectPickerAction();
       return true;
     };
 
@@ -326,6 +336,7 @@ export function useKeyboardShortcuts({
   }, [
     enabled,
     isMobile,
+    openProjectPickerAction,
     pathname,
     resetModifiers,
     selectedAgentId,

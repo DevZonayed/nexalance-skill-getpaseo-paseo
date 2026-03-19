@@ -22,6 +22,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Combobox, ComboboxItem, type ComboboxOption } from '@/components/ui/combobox'
 import { AdaptiveModalSheet } from '@/components/adaptive-modal-sheet'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import type {
   AgentMode,
   AgentModelDefinition,
@@ -33,12 +34,17 @@ import {
   type AgentModeColorTier,
   type AgentModeIcon,
 } from '@server/server/agent/provider-manifest'
-import { normalizeModelId, resolveAgentModelSelection } from '@/components/agent-status-bar.utils'
+import {
+  getStatusSelectorHint,
+  resolveAgentModelSelection,
+} from '@/components/agent-status-bar.utils'
 
 type StatusOption = {
   id: string
   label: string
 }
+
+type StatusSelector = 'provider' | 'mode' | 'model' | 'thinking'
 
 type ControlledAgentStatusBarProps = {
   provider: string
@@ -139,7 +145,7 @@ function ControlledStatusBar({
   const { theme } = useUnistyles()
   const isWeb = Platform.OS === 'web'
   const [prefsOpen, setPrefsOpen] = useState(false)
-  const [openSelector, setOpenSelector] = useState<'provider' | 'mode' | 'model' | 'thinking' | null>(null)
+  const [openSelector, setOpenSelector] = useState<StatusSelector | null>(null)
 
   const providerAnchorRef = useRef<View>(null)
   const modeAnchorRef = useRef<View>(null)
@@ -215,10 +221,17 @@ function ControlledStatusBar({
   )
 
   const handleOpenChange = useCallback(
-    (selector: 'provider' | 'mode' | 'model' | 'thinking') => (nextOpen: boolean) => {
+    (selector: StatusSelector) => (nextOpen: boolean) => {
       setOpenSelector(nextOpen ? selector : null)
     },
     []
+  )
+
+  const handleSelectorPress = useCallback(
+    (selector: StatusSelector) => {
+      handleOpenChange(selector)(openSelector !== selector)
+    },
+    [handleOpenChange, openSelector]
   )
 
   return (
@@ -231,7 +244,7 @@ function ControlledStatusBar({
                 ref={providerAnchorRef}
                 collapsable={false}
                 disabled={disabled || !canSelectProvider}
-                onPress={() => setOpenSelector(openSelector === 'provider' ? null : 'provider')}
+                onPress={() => handleSelectorPress('provider')}
                 style={({ pressed, hovered }) => [
                   styles.modeBadge,
                   hovered && styles.modeBadgeHovered,
@@ -260,27 +273,39 @@ function ControlledStatusBar({
 
           {modeOptions && modeOptions.length > 0 ? (
             <>
-              <Pressable
-                ref={modeAnchorRef}
-                collapsable={false}
-                disabled={disabled || !canSelectMode}
-                onPress={() => setOpenSelector(openSelector === 'mode' ? null : 'mode')}
-                style={({ pressed, hovered }) => [
-                  styles.modeIconBadge,
-                  hovered && styles.modeBadgeHovered,
-                  (pressed || openSelector === 'mode') && styles.modeBadgePressed,
-                  (disabled || !canSelectMode) && styles.disabledBadge,
-                ]}
-                accessibilityRole="button"
-                accessibilityLabel={`Select agent mode (${displayMode})`}
-                testID="agent-mode-selector"
+              <Tooltip
+                key={`mode-${openSelector === 'mode' ? 'open' : 'closed'}`}
+                delayDuration={0}
+                enabledOnDesktop
+                enabledOnMobile={false}
               >
-                {ModeIconComponent ? (
-                  <ModeIconComponent size={theme.iconSize.md} color={modeIconColor} />
-                ) : (
-                  <ShieldCheck size={theme.iconSize.md} color={theme.colors.foregroundMuted} />
-                )}
-              </Pressable>
+                <TooltipTrigger asChild triggerRefProp="ref">
+                  <Pressable
+                    ref={modeAnchorRef}
+                    collapsable={false}
+                    disabled={disabled || !canSelectMode}
+                    onPress={() => handleSelectorPress('mode')}
+                    style={({ pressed, hovered }) => [
+                      styles.modeIconBadge,
+                      hovered && styles.modeBadgeHovered,
+                      (pressed || openSelector === 'mode') && styles.modeBadgePressed,
+                      (disabled || !canSelectMode) && styles.disabledBadge,
+                    ]}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Select agent mode (${displayMode})`}
+                    testID="agent-mode-selector"
+                  >
+                    {ModeIconComponent ? (
+                      <ModeIconComponent size={theme.iconSize.md} color={modeIconColor} />
+                    ) : (
+                      <ShieldCheck size={theme.iconSize.md} color={theme.colors.foregroundMuted} />
+                    )}
+                  </Pressable>
+                </TooltipTrigger>
+                <TooltipContent side="top" align="center" offset={8}>
+                  <Text style={styles.tooltipText}>{getStatusSelectorHint('mode')}</Text>
+                </TooltipContent>
+              </Tooltip>
               <Combobox
                 options={comboboxModeOptions}
                 value={selectedModeId ?? ''}
@@ -297,25 +322,37 @@ function ControlledStatusBar({
 
           {canSelectModel ? (
             <>
-              <Pressable
-                ref={modelAnchorRef}
-                collapsable={false}
-                disabled={modelDisabled}
-                onPress={() => setOpenSelector(openSelector === 'model' ? null : 'model')}
-                style={({ pressed, hovered }) => [
-                  styles.modeBadge,
-                  hovered && styles.modeBadgeHovered,
-                  (pressed || openSelector === 'model') && styles.modeBadgePressed,
-                  modelDisabled && styles.disabledBadge,
-                ]}
-                accessibilityRole="button"
-                accessibilityLabel="Select agent model"
-                testID="agent-model-selector"
+              <Tooltip
+                key={`model-${openSelector === 'model' ? 'open' : 'closed'}`}
+                delayDuration={0}
+                enabledOnDesktop
+                enabledOnMobile={false}
               >
-                <ProviderIcon size={theme.iconSize.md} color={theme.colors.foregroundMuted} />
-                <Text style={styles.modeBadgeText}>{displayModel}</Text>
-                <ChevronDown size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
-              </Pressable>
+                <TooltipTrigger asChild triggerRefProp="ref">
+                  <Pressable
+                    ref={modelAnchorRef}
+                    collapsable={false}
+                    disabled={modelDisabled}
+                    onPress={() => handleSelectorPress('model')}
+                    style={({ pressed, hovered }) => [
+                      styles.modeBadge,
+                      hovered && styles.modeBadgeHovered,
+                      (pressed || openSelector === 'model') && styles.modeBadgePressed,
+                      modelDisabled && styles.disabledBadge,
+                    ]}
+                    accessibilityRole="button"
+                    accessibilityLabel="Select agent model"
+                    testID="agent-model-selector"
+                  >
+                    <ProviderIcon size={theme.iconSize.md} color={theme.colors.foregroundMuted} />
+                    <Text style={styles.modeBadgeText}>{displayModel}</Text>
+                    <ChevronDown size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
+                  </Pressable>
+                </TooltipTrigger>
+                <TooltipContent side="top" align="center" offset={8}>
+                  <Text style={styles.tooltipText}>{getStatusSelectorHint('model')}</Text>
+                </TooltipContent>
+              </Tooltip>
               <Combobox
                 options={comboboxModelOptions}
                 value={selectedModelId ?? ''}
@@ -331,25 +368,37 @@ function ControlledStatusBar({
 
           {thinkingOptions && thinkingOptions.length > 0 ? (
             <>
-              <Pressable
-                ref={thinkingAnchorRef}
-                collapsable={false}
-                disabled={disabled || !canSelectThinking}
-                onPress={() => setOpenSelector(openSelector === 'thinking' ? null : 'thinking')}
-                style={({ pressed, hovered }) => [
-                  styles.modeBadge,
-                  hovered && styles.modeBadgeHovered,
-                  (pressed || openSelector === 'thinking') && styles.modeBadgePressed,
-                  (disabled || !canSelectThinking) && styles.disabledBadge,
-                ]}
-                accessibilityRole="button"
-                accessibilityLabel={`Select thinking option (${displayThinking})`}
-                testID="agent-thinking-selector"
+              <Tooltip
+                key={`thinking-${openSelector === 'thinking' ? 'open' : 'closed'}`}
+                delayDuration={0}
+                enabledOnDesktop
+                enabledOnMobile={false}
               >
-                <Brain size={theme.iconSize.md} color={theme.colors.foregroundMuted} />
-                <Text style={styles.modeBadgeText}>{displayThinking}</Text>
-                <ChevronDown size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
-              </Pressable>
+                <TooltipTrigger asChild triggerRefProp="ref">
+                  <Pressable
+                    ref={thinkingAnchorRef}
+                    collapsable={false}
+                    disabled={disabled || !canSelectThinking}
+                    onPress={() => handleSelectorPress('thinking')}
+                    style={({ pressed, hovered }) => [
+                      styles.modeBadge,
+                      hovered && styles.modeBadgeHovered,
+                      (pressed || openSelector === 'thinking') && styles.modeBadgePressed,
+                      (disabled || !canSelectThinking) && styles.disabledBadge,
+                    ]}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Select thinking option (${displayThinking})`}
+                    testID="agent-thinking-selector"
+                  >
+                    <Brain size={theme.iconSize.md} color={theme.colors.foregroundMuted} />
+                    <Text style={styles.modeBadgeText}>{displayThinking}</Text>
+                    <ChevronDown size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
+                  </Pressable>
+                </TooltipTrigger>
+                <TooltipContent side="top" align="center" offset={8}>
+                  <Text style={styles.tooltipText}>{getStatusSelectorHint('thinking')}</Text>
+                </TooltipContent>
+              </Tooltip>
               <Combobox
                 options={comboboxThinkingOptions}
                 value={selectedThinkingOptionId ?? ''}
@@ -386,7 +435,10 @@ function ControlledStatusBar({
           >
             {providerOptions && providerOptions.length > 0 ? (
               <View style={styles.sheetSection}>
-                <DropdownMenu>
+                <DropdownMenu
+                  open={openSelector === 'provider'}
+                  onOpenChange={handleOpenChange('provider')}
+                >
                   <DropdownMenuTrigger
                     disabled={disabled || !canSelectProvider}
                     style={({ pressed }) => [
@@ -418,7 +470,10 @@ function ControlledStatusBar({
 
             {modeOptions && modeOptions.length > 0 ? (
               <View style={styles.sheetSection}>
-                <DropdownMenu>
+                <DropdownMenu
+                  open={openSelector === 'mode'}
+                  onOpenChange={handleOpenChange('mode')}
+                >
                   <DropdownMenuTrigger
                     disabled={disabled || !canSelectMode}
                     style={({ pressed }) => [
@@ -458,7 +513,10 @@ function ControlledStatusBar({
 
             {canSelectModel ? (
               <View style={styles.sheetSection}>
-                <DropdownMenu>
+                <DropdownMenu
+                  open={openSelector === 'model'}
+                  onOpenChange={handleOpenChange('model')}
+                >
                   <DropdownMenuTrigger
                     disabled={modelDisabled}
                     style={({ pressed }) => [
@@ -490,7 +548,10 @@ function ControlledStatusBar({
 
             {thinkingOptions && thinkingOptions.length > 0 ? (
               <View style={styles.sheetSection}>
-                <DropdownMenu>
+                <DropdownMenu
+                  open={openSelector === 'thinking'}
+                  onOpenChange={handleOpenChange('thinking')}
+                >
                   <DropdownMenuTrigger
                     disabled={disabled || !canSelectThinking}
                     style={({ pressed }) => [
@@ -762,6 +823,11 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.sm,
     fontWeight: theme.fontWeight.normal,
+  },
+  tooltipText: {
+    color: theme.colors.foreground,
+    fontSize: theme.fontSize.sm,
+    lineHeight: theme.fontSize.sm * 1.4,
   },
   prefsButton: {
     width: 28,

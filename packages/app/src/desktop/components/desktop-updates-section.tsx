@@ -38,9 +38,13 @@ import {
 
 export interface LocalDaemonSectionProps {
   appVersion: string | null
+  showLifecycleControls: boolean
 }
 
-export function LocalDaemonSection({ appVersion }: LocalDaemonSectionProps) {
+export function LocalDaemonSection({
+  appVersion,
+  showLifecycleControls,
+}: LocalDaemonSectionProps) {
   const { theme } = useUnistyles()
   const showSection = shouldUseManagedDesktopDaemon()
   const { settings, updateSettings } = useAppSettings()
@@ -347,57 +351,61 @@ export function LocalDaemonSection({ appVersion }: LocalDaemonSectionProps) {
             <Text style={styles.valueSubtext}>{daemonStatusDetailText}</Text>
           </View>
         </View>
-        <View style={[styles.row, styles.rowBorder]}>
-          <View style={styles.rowContent}>
-            <Text style={styles.rowTitle}>Daemon management</Text>
-            <Text style={styles.hintText}>
-              {isDaemonManagementPaused
-                ? 'Paused. The built-in daemon stays stopped until you start it again.'
-                : 'Enabled. Paseo can manage the built-in daemon from the desktop app.'}
-            </Text>
-          </View>
-          <Button
-            variant="outline"
-            size="sm"
-            leftIcon={
-              isDaemonManagementPaused ? (
-                <Play size={theme.iconSize.sm} color={theme.colors.foreground} />
-              ) : (
-                <Pause size={theme.iconSize.sm} color={theme.colors.foreground} />
-              )
-            }
-            onPress={handleToggleDaemonManagement}
-            disabled={isUpdatingDaemonManagement}
-          >
-            {isUpdatingDaemonManagement
-              ? isDaemonManagementPaused
-                ? 'Resuming...'
-                : 'Pausing...'
-              : isDaemonManagementPaused
-                ? 'Resume'
-                : 'Pause'}
-          </Button>
-        </View>
-        <View style={[styles.row, styles.rowBorder]}>
-          <View style={styles.rowContent}>
-            <Text style={styles.rowTitle}>{daemonActionLabel}</Text>
-            <Text style={styles.hintText}>{daemonActionMessage}</Text>
-            {statusMessage ? <Text style={styles.statusText}>{statusMessage}</Text> : null}
-          </View>
-          <Button
-            variant="outline"
-            size="sm"
-            leftIcon={<RotateCw size={theme.iconSize.sm} color={theme.colors.foreground} />}
-            onPress={handleUpdateLocalDaemon}
-            disabled={isRestartingDaemon}
-          >
-            {isRestartingDaemon
-              ? managedStatus?.status === 'running'
-                ? 'Restarting...'
-                : 'Starting...'
-              : daemonActionLabel}
-          </Button>
-        </View>
+        {showLifecycleControls ? (
+          <>
+            <View style={[styles.row, styles.rowBorder]}>
+              <View style={styles.rowContent}>
+                <Text style={styles.rowTitle}>Daemon management</Text>
+                <Text style={styles.hintText}>
+                  {isDaemonManagementPaused
+                    ? 'Paused. The built-in daemon stays stopped until you start it again.'
+                    : 'Enabled. Paseo can manage the built-in daemon from the desktop app.'}
+                </Text>
+              </View>
+              <Button
+                variant="outline"
+                size="sm"
+                leftIcon={
+                  isDaemonManagementPaused ? (
+                    <Play size={theme.iconSize.sm} color={theme.colors.foreground} />
+                  ) : (
+                    <Pause size={theme.iconSize.sm} color={theme.colors.foreground} />
+                  )
+                }
+                onPress={handleToggleDaemonManagement}
+                disabled={isUpdatingDaemonManagement}
+              >
+                {isUpdatingDaemonManagement
+                  ? isDaemonManagementPaused
+                    ? 'Resuming...'
+                    : 'Pausing...'
+                  : isDaemonManagementPaused
+                    ? 'Resume'
+                    : 'Pause'}
+              </Button>
+            </View>
+            <View style={[styles.row, styles.rowBorder]}>
+              <View style={styles.rowContent}>
+                <Text style={styles.rowTitle}>{daemonActionLabel}</Text>
+                <Text style={styles.hintText}>{daemonActionMessage}</Text>
+                {statusMessage ? <Text style={styles.statusText}>{statusMessage}</Text> : null}
+              </View>
+              <Button
+                variant="outline"
+                size="sm"
+                leftIcon={<RotateCw size={theme.iconSize.sm} color={theme.colors.foreground} />}
+                onPress={handleUpdateLocalDaemon}
+                disabled={isRestartingDaemon}
+              >
+                {isRestartingDaemon
+                  ? managedStatus?.status === 'running'
+                    ? 'Restarting...'
+                    : 'Starting...'
+                  : daemonActionLabel}
+              </Button>
+            </View>
+          </>
+        ) : null}
         <View style={[styles.row, styles.rowBorder]}>
           <View style={styles.rowContent}>
             <Text style={styles.rowTitle}>Command line (CLI)</Text>
