@@ -428,6 +428,50 @@ jobs:
             exit 1
           fi
 
+      - name: Patch AppImage for Wayland compatibility
+        if: env.IS_SMOKE_TAG != 'true'
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          APPIMAGE_EXTRACT_AND_RUN: "1"
+        shell: bash
+        run: |
+          set -euo pipefail
+          appimage_dir="packages/desktop/src-tauri/target/release/bundle/appimage"
+          appimage="$(find "$appimage_dir" -maxdepth 1 -type f -name '*.AppImage' | head -n 1)"
+          if [ -z "$appimage" ]; then
+            echo "::error::No AppImage found to patch"
+            exit 1
+          fi
+          echo "Patching $appimage for Wayland compatibility..."
+
+          # Extract the AppImage
+          workdir="$(mktemp -d)"
+          cd "$workdir"
+          "$appimage" --appimage-extract
+
+          # Remove GDK_BACKEND=x11 from the GTK plugin hook.
+          # The bundled libgdk-3.so has Wayland support built in; forcing x11
+          # prevents the app from starting on Wayland-only systems.
+          gtk_hook="squashfs-root/apprun-hooks/linuxdeploy-plugin-gtk.sh"
+          if [ -f "$gtk_hook" ]; then
+            sed -i 's/^export GDK_BACKEND=x11/#export GDK_BACKEND=x11/' "$gtk_hook"
+            echo "Patched $gtk_hook — removed GDK_BACKEND=x11"
+          fi
+
+          # Repackage
+          tools_dir="$(mktemp -d)"
+          curl -fsSL https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage \
+            -o "$tools_dir/appimagetool"
+          chmod +x "$tools_dir/appimagetool"
+          ARCH=x86_64 "$tools_dir/appimagetool" squashfs-root "$appimage"
+
+          # Re-sign
+          rm -f "$appimage.sig"
+          cd "$GITHUB_WORKSPACE"
+          npx tauri signer sign "$appimage"
+          echo "Repackaged and re-signed $appimage"
+
       - name: Upload Linux release assets
         if: env.IS_SMOKE_TAG != 'true'
         env:
