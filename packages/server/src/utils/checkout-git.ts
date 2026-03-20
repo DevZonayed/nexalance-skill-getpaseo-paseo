@@ -1109,36 +1109,44 @@ export async function getCheckoutShortstat(
 
   const configured = await getConfiguredBaseRefForCwd(cwd, context);
   const localBaseRef = configured.baseRef ?? (await resolveBaseRef(cwd));
-  if (!localBaseRef) {
-    return null;
-  }
-
   const currentBranch = await getCurrentBranch(cwd);
-  if (currentBranch === localBaseRef) {
-    return null;
-  }
 
-  const comparisonBaseRef = await resolveBestComparisonBaseRef(
-    cwd,
-    normalizeLocalBranchRefName(localBaseRef)
-  );
+  let diffTarget: string;
 
-  let mergeBase: string;
-  try {
-    const { stdout } = await execAsync(`git merge-base HEAD ${comparisonBaseRef}`, {
+  if (currentBranch && localBaseRef && currentBranch !== localBaseRef) {
+    // Feature branch: diff against the merge-base with the base branch
+    const comparisonBaseRef = await resolveBestComparisonBaseRef(
       cwd,
-      env: READ_ONLY_GIT_ENV,
-    });
-    mergeBase = stdout.trim();
-    if (!mergeBase) {
+      normalizeLocalBranchRefName(localBaseRef)
+    );
+
+    try {
+      const { stdout } = await execAsync(`git merge-base HEAD ${comparisonBaseRef}`, {
+        cwd,
+        env: READ_ONLY_GIT_ENV,
+      });
+      const mergeBase = stdout.trim();
+      if (!mergeBase) {
+        return null;
+      }
+      diffTarget = mergeBase;
+    } catch {
       return null;
     }
-  } catch {
+  } else if (currentBranch) {
+    // On the base branch (or no base ref configured): diff against remote tracking branch
+    const hasOrigin = await doesGitRefExist(cwd, `refs/remotes/origin/${currentBranch}`);
+    if (!hasOrigin) {
+      return null;
+    }
+    diffTarget = `origin/${currentBranch}`;
+  } else {
     return null;
   }
 
   try {
-    const { stdout } = await execAsync(`git diff --shortstat ${mergeBase} HEAD`, {
+    // Omit HEAD so the diff includes uncommitted (staged + unstaged) changes
+    const { stdout } = await execAsync(`git diff --shortstat ${diffTarget}`, {
       cwd,
       env: READ_ONLY_GIT_ENV,
     });

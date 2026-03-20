@@ -25,7 +25,7 @@ import { navigateToWorkspace } from '@/hooks/use-workspace-navigation'
 import { StyleSheet, UnistylesRuntime, useUnistyles } from 'react-native-unistyles'
 import { type GestureType } from 'react-native-gesture-handler'
 import * as Clipboard from 'expo-clipboard'
-import { Archive, ChevronDown, ChevronRight, Copy, MoreVertical, Plus } from 'lucide-react-native'
+import { Archive, Check, ChevronDown, ChevronRight, CircleHelp, Copy, FolderGit2, Monitor, MoreVertical, Plus } from 'lucide-react-native'
 import { NestableScrollContainer } from 'react-native-draggable-flatlist'
 import { DraggableList, type DraggableRenderItemInfo } from './draggable-list'
 import type { DraggableListDragHandleProps } from './draggable-list.types'
@@ -160,18 +160,26 @@ function resolveStatusDotColor(input: {
 
 function WorkspaceStatusIndicator({
   bucket,
+  workspaceKind,
   loading = false,
 }: {
   bucket: SidebarWorkspaceEntry['statusBucket']
+  workspaceKind: SidebarWorkspaceEntry['workspaceKind']
   loading?: boolean
 }) {
   const { theme } = useUnistyles()
   const color = resolveStatusDotColor({ theme, bucket })
   const shouldShowSyncedLoader = shouldRenderSyncedStatusLoader({ bucket })
-  const shouldRenderIdlePlaceholder = !loading && !shouldShowSyncedLoader && bucket === 'done'
+  const isIdle = !loading && !shouldShowSyncedLoader && bucket === 'done'
 
-  if (shouldRenderIdlePlaceholder) {
-    return null
+  if (isIdle) {
+    const KindIcon = workspaceKind === 'local_checkout' ? Monitor : workspaceKind === 'worktree' ? FolderGit2 : null
+    if (!KindIcon) return null
+    return (
+      <View style={styles.workspaceStatusDot}>
+        <KindIcon size={14} color={theme.colors.foregroundMuted} />
+      </View>
+    )
   }
 
   return (
@@ -180,6 +188,10 @@ function WorkspaceStatusIndicator({
         <ActivityIndicator size={8} color={theme.colors.foregroundMuted} />
       ) : shouldShowSyncedLoader ? (
         <SyncedLoader size={11} color={theme.colors.palette.amber[500]} />
+      ) : bucket === 'needs_input' ? (
+        <CircleHelp size={14} color={theme.colors.palette.amber[500]} />
+      ) : bucket === 'attention' ? (
+        <Check size={14} color={theme.colors.palette.green[500]} />
       ) : (
         <View style={[styles.workspaceStatusDotFill, { backgroundColor: color }]} />
       )}
@@ -213,7 +225,7 @@ function ProjectLeadingVisual({
       {showChevron && chevron !== null ? (
         <ProjectInlineChevron chevron={chevron} />
       ) : shouldShowWorkspaceStatus && activeWorkspace ? (
-        <WorkspaceStatusIndicator bucket={activeWorkspace.statusBucket} loading={isArchiving} />
+        <WorkspaceStatusIndicator bucket={activeWorkspace.statusBucket} workspaceKind={activeWorkspace.workspaceKind} loading={isArchiving} />
       ) : iconDataUri ? (
         <Image source={{ uri: iconDataUri }} style={styles.projectIcon} />
       ) : (
@@ -686,6 +698,7 @@ function WorkspaceRowInner({
         >
           <WorkspaceStatusIndicator
             bucket={workspace.statusBucket}
+            workspaceKind={workspace.workspaceKind}
             loading={isArchiving || isCreating}
           />
           <Text
@@ -1903,7 +1916,7 @@ const styles = StyleSheet.create((theme) => ({
   workspaceRowLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: theme.spacing[1],
+    gap: theme.spacing[2],
     flex: 1,
     minWidth: 0,
   },
@@ -1938,7 +1951,7 @@ const styles = StyleSheet.create((theme) => ({
     position: 'relative',
   },
   workspaceStatusDot: {
-    width: 11,
+    width: 14,
     height: 16,
     borderRadius: theme.borderRadius.full,
     flexShrink: 0,

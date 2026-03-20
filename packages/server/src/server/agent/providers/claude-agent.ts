@@ -29,6 +29,7 @@ import {
   mapClaudeRunningToolCall,
 } from "./claude/tool-call-mapper.js";
 import {
+  coerceTaskNotificationHistoryRecordToSystemMessage,
   isTaskNotificationUserContent,
   mapTaskNotificationSystemRecordToToolCall,
   mapTaskNotificationUserContentToToolCall,
@@ -1495,6 +1496,9 @@ class ClaudeAgentSession implements AgentSession {
   private readonly timelineAssembler = new TimelineAssembler();
   private persistedHistory: AgentTimelineItem[] = [];
   private historyPending = false;
+  private historyOffsetSessionId: string | null = null;
+  private historyReadOffsetBytes = 0;
+  private historyLineFragment = "";
   private turnState: TurnState = "idle";
   private preReplayMetadataSeen = false;
   private pendingAutonomousWakeReservations = 0;
@@ -3074,6 +3078,9 @@ class ClaudeAgentSession implements AgentSession {
     this.persistence = null;
     this.persistedHistory = [];
     this.historyPending = false;
+    this.historyOffsetSessionId = null;
+    this.historyReadOffsetBytes = 0;
+    this.historyLineFragment = "";
     this.cachedRuntimeInfo = null;
     this.queryRestartNeeded = false;
     return true;
@@ -3998,43 +4005,160 @@ class ClaudeAgentSession implements AgentSession {
     }
   }
 
-  private waitForLiveHistoryPoll(): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, 250));
+  private async waitForLiveHistoryPoll(): Promise<void> {
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    if (this.claudeSessionId) {
+      this.loadPersistedHistory(this.claudeSessionId, { dispatchLive: true });
+    }
   }
 
-  private loadPersistedHistory(sessionId: string) {
+  private loadPersistedHistory(
+    sessionId: string,
+    options?: { dispatchLive?: boolean }
+  ) {
     try {
       const historyPath = this.resolveHistoryPath(sessionId);
       if (!historyPath || !fs.existsSync(historyPath)) {
         return;
       }
-      const content = fs.readFileSync(historyPath, "utf8");
-      const timeline: AgentTimelineItem[] = [];
-      for (const line of content.split(/\n+/)) {
-        const trimmed = line.trim();
-        if (!trimmed) continue;
-        try {
-          const entry = JSON.parse(trimmed);
-          if (entry.isSidechain) {
-            continue;
-          }
-          if (entry.type === "user" && typeof entry.uuid === "string") {
-            this.rememberUserMessageId(entry.uuid);
-          }
-          const items = this.convertHistoryEntry(entry);
-          if (items.length > 0) {
-            timeline.push(...items);
-          }
-        } catch (error) {
-          // ignore malformed history line
-        }
+      if (this.historyOffsetSessionId !== sessionId) {
+        this.historyOffsetSessionId = sessionId;
+        this.historyReadOffsetBytes = 0;
+        this.historyLineFragment = "";
       }
-      if (timeline.length > 0) {
-        this.persistedHistory = timeline;
-        this.historyPending = true;
+      const content = fs.readFileSync(historyPath);
+      if (content.byteLength < this.historyReadOffsetBytes) {
+        this.historyReadOffsetBytes = 0;
+        this.historyLineFragment = "";
       }
+      if (content.byteLength === this.historyReadOffsetBytes) {
+        return;
+      }
+
+      const unreadChunk = content
+        .subarray(this.historyReadOffsetBytes)
+        .toString("utf8");
+      this.historyReadOffsetBytes = content.byteLength;
+      this.ingestPersistedHistoryChunk(unreadChunk, {
+        dispatchLive: options?.dispatchLive ?? false,
+      });
     } catch (error) {
       // ignore history load failures
+    }
+  }
+
+  private ingestPersistedHistoryChunk(
+    chunk: string,
+    options: { dispatchLive: boolean }
+  ): void {
+    if (!chunk) {
+      return;
+    }
+
+    const combined = `${this.historyLineFragment}${chunk}`;
+    this.historyLineFragment = "";
+    const lines = combined.split(/\r?\n/);
+    const trailing = lines.pop() ?? "";
+    const timeline: AgentTimelineItem[] = [];
+
+    for (const line of lines) {
+      this.ingestPersistedHistoryLine(line, {
+        dispatchLive: options.dispatchLive,
+        timeline,
+      });
+    }
+
+    if (trailing.trim().length > 0) {
+      const handled = this.ingestPersistedHistoryLine(trailing, {
+        dispatchLive: options.dispatchLive,
+        timeline,
+      });
+      if (!handled) {
+        this.historyLineFragment = trailing;
+      }
+    }
+
+    if (!options.dispatchLive && timeline.length > 0) {
+      this.persistedHistory = [...this.persistedHistory, ...timeline];
+      this.historyPending = true;
+    }
+  }
+
+  private ingestPersistedHistoryLine(
+    line: string,
+    options: {
+      dispatchLive: boolean;
+      timeline: AgentTimelineItem[];
+    }
+  ): boolean {
+    const trimmed = line.trim();
+    if (!trimmed) {
+      return true;
+    }
+
+    let entry: Record<string, unknown>;
+    try {
+      entry = JSON.parse(trimmed) as Record<string, unknown>;
+    } catch {
+      return false;
+    }
+
+    if (entry.isSidechain) {
+      return true;
+    }
+    if (entry.type === "user" && typeof entry.uuid === "string") {
+      this.rememberUserMessageId(entry.uuid);
+    }
+
+    if (options.dispatchLive) {
+      this.dispatchPersistedHistoryEntry(entry);
+      return true;
+    }
+
+    const items = this.convertHistoryEntry(entry);
+    if (items.length > 0) {
+      options.timeline.push(...items);
+    }
+    return true;
+  }
+
+  private dispatchPersistedHistoryEntry(entry: Record<string, unknown>): void {
+    const liveMessage = this.normalizePersistedHistoryEntryToLiveMessage(entry);
+    if (liveMessage) {
+      this.routeSdkMessageFromPump(liveMessage);
+      return;
+    }
+
+    const items = this.convertHistoryEntry(entry);
+    for (const item of items) {
+      this.pushEvent({
+        type: "timeline",
+        item,
+        provider: "claude",
+      });
+    }
+  }
+
+  private normalizePersistedHistoryEntryToLiveMessage(
+    entry: Record<string, unknown>
+  ): SDKMessage | null {
+    const taskNotificationMessage =
+      coerceTaskNotificationHistoryRecordToSystemMessage(entry);
+    if (taskNotificationMessage) {
+      return taskNotificationMessage as unknown as SDKMessage;
+    }
+
+    const type = readTrimmedString(entry.type);
+    switch (type) {
+      case "assistant":
+      case "result":
+      case "stream_event":
+      case "system":
+      case "tool_progress":
+      case "user":
+        return entry as unknown as SDKMessage;
+      default:
+        return null;
     }
   }
 
@@ -4624,13 +4748,9 @@ export function convertClaudeHistoryEntry(
     }];
   }
 
-  if (entry.type === "system") {
-    const taskNotificationItem = mapTaskNotificationSystemRecordToToolCall(
-      entry
-    );
-    if (taskNotificationItem) {
-      return [taskNotificationItem];
-    }
+  const taskNotificationItem = mapTaskNotificationSystemRecordToToolCall(entry);
+  if (taskNotificationItem) {
+    return [taskNotificationItem];
   }
 
   if (entry.isCompactSummary) {

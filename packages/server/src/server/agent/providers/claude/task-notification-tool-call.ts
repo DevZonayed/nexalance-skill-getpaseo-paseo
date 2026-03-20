@@ -32,9 +32,10 @@ const TaskNotificationUserContentSchema = z.union([
   z.array(TaskNotificationUserContentBlockSchema),
 ]);
 
-const TaskNotificationSystemRecordSchema = z
+const TaskNotificationHistoryRecordSchema = z
   .object({
-    subtype: z.literal("task_notification"),
+    type: z.string().optional(),
+    subtype: z.string().optional(),
     uuid: z.string().optional(),
     message_id: z.string().optional(),
     task_id: z.string().optional(),
@@ -57,12 +58,23 @@ export type MapTaskNotificationUserContentToToolCallInput = z.infer<
 >;
 
 type TaskNotificationUserContent = z.infer<typeof TaskNotificationUserContentSchema>;
-type TaskNotificationSystemRecord = z.infer<typeof TaskNotificationSystemRecordSchema>;
+type TaskNotificationHistoryRecord = z.infer<typeof TaskNotificationHistoryRecordSchema>;
 
 type TaskNotificationLifecycle =
   | { status: "completed"; error: null }
   | { status: "failed"; error: unknown }
   | { status: "canceled"; error: null };
+
+export type TaskNotificationSystemMessageLike = {
+  type: "system";
+  subtype: "task_notification";
+  uuid?: string;
+  task_id?: string;
+  status?: "completed" | "failed" | "stopped";
+  summary?: string;
+  output_file?: string;
+  content?: string;
+};
 
 type ReadTaskNotificationTagInput = {
   text: string;
@@ -157,12 +169,18 @@ function parseTaskNotificationFromUserContent(
 function parseTaskNotificationFromSystemRecord(
   record: unknown
 ): TaskNotificationEnvelope | null {
-  const parsedRecord = TaskNotificationSystemRecordSchema.safeParse(record);
+  const parsedRecord = TaskNotificationHistoryRecordSchema.safeParse(record);
   if (!parsedRecord.success) {
     return null;
   }
 
-  const systemRecord: TaskNotificationSystemRecord = parsedRecord.data;
+  const systemRecord: TaskNotificationHistoryRecord = parsedRecord.data;
+  const isSystemTaskNotification =
+    systemRecord.type === "system" && systemRecord.subtype === "task_notification";
+  const isQueueOperation = systemRecord.type === "queue-operation";
+  if (!isSystemTaskNotification && !isQueueOperation) {
+    return null;
+  }
   const rawText = toNonEmptyString(systemRecord.content);
 
   return TaskNotificationEnvelopeSchema.parse({
@@ -329,4 +347,32 @@ export function mapTaskNotificationSystemRecordToToolCall(
     return null;
   }
   return toTaskNotificationToolCall(parsed);
+}
+
+export function coerceTaskNotificationHistoryRecordToSystemMessage(
+  record: unknown
+): TaskNotificationSystemMessageLike | null {
+  const parsed = parseTaskNotificationFromSystemRecord(record);
+  if (!parsed) {
+    return null;
+  }
+
+  const normalizedStatus = parsed.status?.toLowerCase() ?? null;
+  const status =
+    normalizedStatus === "failed" || normalizedStatus === "error"
+      ? "failed"
+      : normalizedStatus === "canceled" || normalizedStatus === "cancelled"
+        ? "stopped"
+        : "completed";
+
+  return {
+    type: "system",
+    subtype: "task_notification",
+    ...(parsed.messageId ? { uuid: parsed.messageId } : {}),
+    ...(parsed.taskId ? { task_id: parsed.taskId } : {}),
+    status,
+    ...(parsed.summary ? { summary: parsed.summary } : {}),
+    ...(parsed.outputFile ? { output_file: parsed.outputFile } : {}),
+    ...(parsed.rawText ? { content: parsed.rawText } : {}),
+  };
 }

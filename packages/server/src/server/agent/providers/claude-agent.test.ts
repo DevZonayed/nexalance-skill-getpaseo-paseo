@@ -147,6 +147,45 @@ describe("convertClaudeHistoryEntry", () => {
     ]);
   });
 
+  test("maps queue-operation task notifications to synthetic tool calls", () => {
+    const entry = {
+      type: "queue-operation",
+      operation: "enqueue",
+      uuid: "task-note-queue-1",
+      content: [
+        "<task-notification>",
+        "<task-id>bg-queue-1</task-id>",
+        "<status>completed</status>",
+        "<summary>Background task completed</summary>",
+        "<output-file>/tmp/bg-queue-1.txt</output-file>",
+        "</task-notification>",
+      ].join("\n"),
+    };
+
+    expect(convertClaudeHistoryEntry(entry, () => [])).toEqual([
+      {
+        type: "tool_call",
+        callId: "task_notification_task-note-queue-1",
+        name: "task_notification",
+        status: "completed",
+        error: null,
+        detail: {
+          type: "plain_text",
+          label: "Background task completed",
+          icon: "wrench",
+          text: entry.content,
+        },
+        metadata: {
+          synthetic: true,
+          source: "claude_task_notification",
+          taskId: "bg-queue-1",
+          status: "completed",
+          outputFile: "/tmp/bg-queue-1.txt",
+        },
+      },
+    ]);
+  });
+
   test("passes assistant content blocks through to the mapper", () => {
     const entry = {
       type: "assistant",
