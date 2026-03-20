@@ -9,7 +9,7 @@ import {
 } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useCallback, useMemo, useState, type ReactElement } from 'react'
-import { router, usePathname, type Href } from 'expo-router'
+import { router, type Href } from 'expo-router'
 import { StyleSheet, UnistylesRuntime, useUnistyles } from 'react-native-unistyles'
 import { formatTimeAgo } from '@/utils/time'
 import { shortenPath } from '@/utils/shorten-path'
@@ -250,7 +250,6 @@ export function AgentList({
   showAttentionIndicator = true,
 }: AgentListProps) {
   const { theme } = useUnistyles()
-  const pathname = usePathname()
   const insets = useSafeAreaInsets()
   const [actionAgent, setActionAgent] = useState<AggregatedAgent | null>(null)
   const isMobile = UnistylesRuntime.breakpoint === 'xs' || UnistylesRuntime.breakpoint === 'sm'
@@ -270,15 +269,13 @@ export function AgentList({
 
       const serverId = agent.serverId
       const agentId = agent.id
-      const shouldReplace = pathname.startsWith('/h/')
-      const navigate = shouldReplace ? router.replace : router.push
 
       onAgentSelect?.()
 
       const route: Href = buildHostWorkspaceAgentRoute(serverId, agent.cwd, agentId) as Href
-      navigate(route)
+      router.navigate(route)
     },
-    [isActionSheetVisible, pathname, onAgentSelect]
+    [isActionSheetVisible, onAgentSelect]
   )
 
   const handleAgentLongPress = useCallback((agent: AggregatedAgent) => {

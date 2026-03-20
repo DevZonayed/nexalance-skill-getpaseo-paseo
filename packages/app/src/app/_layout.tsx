@@ -608,12 +608,7 @@ export default function RootLayout() {
                             >
                               <Stack.Screen name="index" />
                               <Stack.Screen name="settings" />
-                              <Stack.Screen
-                                name="h/[serverId]/workspace/[workspaceId]"
-                                getId={({ params }) =>
-                                  `${params?.serverId}:${params?.workspaceId}`
-                                }
-                              />
+                              <Stack.Screen name="h/[serverId]/workspace/[workspaceId]" />
                               <Stack.Screen
                                 name="h/[serverId]/agent/[agentId]"
                                 options={{ gestureEnabled: false }}

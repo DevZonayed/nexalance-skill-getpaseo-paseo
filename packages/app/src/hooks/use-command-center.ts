@@ -14,7 +14,6 @@ import {
 import {
   buildHostWorkspaceAgentRoute,
   buildHostSettingsRoute,
-  parseHostAgentRouteFromPathname,
   parseServerIdFromPathname,
 } from "@/utils/host-routes";
 import type { ShortcutKey } from "@/utils/format-shortcut";
@@ -196,8 +195,6 @@ export function useCommandCenter() {
   const handleSelectAgent = useCallback(
     (agent: AggregatedAgent) => {
       didNavigateRef.current = true;
-      const shouldReplace = Boolean(parseHostAgentRouteFromPathname(pathname));
-      const navigate = shouldReplace ? router.replace : router.push;
 
       // Don't restore focus back to the prior element after we navigate.
       clearCommandCenterFocusRestoreElement();
@@ -207,9 +204,9 @@ export function useCommandCenter() {
         agent.cwd,
         agent.id
       ) as Href;
-      navigate(route);
+      router.navigate(route);
     },
-    [pathname, setOpen]
+    [setOpen]
   );
 
   const openProjectPicker = useOpenProjectPicker(activeServerId);

@@ -95,8 +95,12 @@ import {
 } from "@/screens/workspace/workspace-header-source";
 import {
   deriveWorkspaceAgentVisibility,
+  shouldPruneWorkspaceAgentTab,
 } from "@/screens/workspace/workspace-agent-visibility";
-import { deriveWorkspacePaneState } from "@/screens/workspace/workspace-pane-state";
+import {
+  deriveWorkspacePaneState,
+  type WorkspaceDerivedTab,
+} from "@/screens/workspace/workspace-pane-state";
 import {
   buildWorkspacePaneContentModel,
   WorkspacePaneContent,
@@ -146,6 +150,34 @@ function buildOpenIntentKey(input: {
     return null;
   }
   return `${input.serverId}:${input.workspaceId}:${openParam}`;
+}
+
+function openIntentMatchesActiveTab(input: {
+  openIntent?: WorkspaceOpenIntent | null;
+  activeTab: WorkspaceDerivedTab | null;
+}): boolean {
+  const { openIntent, activeTab } = input;
+  if (!openIntent || !activeTab) {
+    return false;
+  }
+
+  const target = activeTab.descriptor.target;
+  if (openIntent.kind !== target.kind) {
+    return false;
+  }
+  if (openIntent.kind === "agent" && target.kind === "agent") {
+    return target.agentId === openIntent.agentId;
+  }
+  if (openIntent.kind === "terminal" && target.kind === "terminal") {
+    return target.terminalId === openIntent.terminalId;
+  }
+  if (openIntent.kind === "file" && target.kind === "file") {
+    return target.path === openIntent.path;
+  }
+  if (openIntent.kind === "draft" && target.kind === "draft") {
+    return openIntent.draftId === "new" || target.draftId === openIntent.draftId;
+  }
+  return false;
 }
 
 function getFallbackTabOptionLabel(tab: WorkspaceTabDescriptor): string {
@@ -796,6 +828,7 @@ function WorkspaceScreenContent({
   const reorderWorkspaceTabsInPane = useWorkspaceLayoutStore((state) => state.reorderTabsInPane);
   const pendingByDraftId = useCreateFlowStore((state) => state.pendingByDraftId);
   const consumedOpenIntentsRef = useRef(new Set<string>());
+  const reopenedArchivedOpenIntentsRef = useRef(new Set<string>());
   const pendingCloseTabIdsRef = useRef(new Set<string>());
   const [resolvedOpenIntentKey, setResolvedOpenIntentKey] = useState<string | null>(null);
   const currentOpenIntentKey = useMemo(
@@ -882,6 +915,43 @@ function WorkspaceScreenContent({
   }, [currentOpenIntentKey, resolvedOpenIntentKey]);
 
   useEffect(() => {
+    if (!client || !isConnected || openIntent?.kind !== "agent" || !currentOpenIntentKey) {
+      return;
+    }
+
+    const agentId = openIntent.agentId.trim();
+    if (!agentId) {
+      return;
+    }
+    if (reopenedArchivedOpenIntentsRef.current.has(currentOpenIntentKey)) {
+      return;
+    }
+
+    const agent = agentsById.get(agentId) ?? null;
+    if (!agent?.archivedAt) {
+      return;
+    }
+
+    reopenedArchivedOpenIntentsRef.current.add(currentOpenIntentKey);
+    void client.refreshAgent(agentId).catch((error) => {
+      console.warn("[WorkspaceScreen] Failed to reopen archived agent", {
+        serverId: normalizedServerId,
+        workspaceId: normalizedWorkspaceId,
+        agentId,
+        error,
+      });
+    });
+  }, [
+    agentsById,
+    client,
+    currentOpenIntentKey,
+    isConnected,
+    normalizedServerId,
+    normalizedWorkspaceId,
+    openIntent,
+  ]);
+
+  useEffect(() => {
     if (!openIntent || !persistenceKey) {
       return;
     }
@@ -904,9 +974,6 @@ function WorkspaceScreenContent({
         ...(draftId === "new" ? {} : { draftId }),
         focus: true,
       });
-      if (tabId) {
-        setResolvedOpenIntentKey(intentKey);
-      }
       return;
     }
 
@@ -918,15 +985,15 @@ function WorkspaceScreenContent({
           : { kind: "file", path: openIntent.path };
     const tabId = openWorkspaceTab(persistenceKey, target);
     if (tabId) {
-      setResolvedOpenIntentKey(intentKey);
+      focusWorkspaceTab(persistenceKey, tabId);
     }
   }, [
     currentOpenIntentKey,
+    focusWorkspaceTab,
     openIntent,
     openWorkspaceDraftTab,
     openWorkspaceTab,
     persistenceKey,
-    resolvedOpenIntentKey,
   ]);
 
   const unresolvedOpenIntent = currentOpenIntentKey && resolvedOpenIntentKey !== currentOpenIntentKey
@@ -956,7 +1023,6 @@ function WorkspaceScreenContent({
       return;
     }
 
-    const agentIds = new Set(workspaceAgents.map((agent) => agent.id));
     const terminalIds = new Set(terminals.map((terminal) => terminal.id));
     const hasActivePendingDraftCreateInWorkspace = uiTabs.some((tab) => {
       if (tab.target.kind !== "draft") {
@@ -989,7 +1055,15 @@ function WorkspaceScreenContent({
     const canPruneAgentTabs = hasHydratedAgents;
     const canPruneTerminalTabs = terminalsQuery.isSuccess;
     for (const tab of uiTabs) {
-      if (canPruneAgentTabs && tab.target.kind === "agent" && !agentIds.has(tab.target.agentId)) {
+      if (
+        canPruneAgentTabs &&
+        tab.target.kind === "agent" &&
+        shouldPruneWorkspaceAgentTab({
+          agentId: tab.target.agentId,
+          agentsHydrated: hasHydratedAgents,
+          workspaceAgentLookup: agentsById,
+        })
+      ) {
         closeWorkspaceTab(persistenceKey, tab.tabId);
       }
       if (
@@ -1013,6 +1087,24 @@ function WorkspaceScreenContent({
   ]);
 
   const activeTabId = resolvedPaneTabState.activeTabId;
+  const activeTab = resolvedPaneTabState.activeTab;
+
+  useEffect(() => {
+    if (!openIntent || !currentOpenIntentKey) {
+      return;
+    }
+    if (resolvedOpenIntentKey === currentOpenIntentKey) {
+      return;
+    }
+    if (
+      openIntentMatchesActiveTab({
+        openIntent,
+        activeTab,
+      })
+    ) {
+      setResolvedOpenIntentKey(currentOpenIntentKey);
+    }
+  }, [activeTab, currentOpenIntentKey, openIntent, resolvedOpenIntentKey]);
 
   useEffect(() => {
     if (!activeTabId || !persistenceKey) {
@@ -1020,8 +1112,6 @@ function WorkspaceScreenContent({
     }
     focusWorkspaceTab(persistenceKey, activeTabId);
   }, [activeTabId, focusWorkspaceTab, persistenceKey]);
-
-  const activeTab = resolvedPaneTabState.activeTab;
 
   const tabs = useMemo<WorkspaceTabDescriptor[]>(
     () => resolvedPaneTabState.tabs.map((tab) => tab.descriptor),

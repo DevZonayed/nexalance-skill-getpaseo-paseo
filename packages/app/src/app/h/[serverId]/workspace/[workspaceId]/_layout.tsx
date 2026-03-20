@@ -1,4 +1,4 @@
-import { useLocalSearchParams } from 'expo-router'
+import { useGlobalSearchParams, useLocalSearchParams } from 'expo-router'
 import { WorkspaceScreen } from '@/screens/workspace/workspace-screen'
 import {
   decodeWorkspaceIdFromPathSegment,
@@ -9,6 +9,8 @@ export default function HostWorkspaceLayout() {
   const params = useLocalSearchParams<{
     serverId?: string | string[]
     workspaceId?: string | string[]
+  }>()
+  const globalParams = useGlobalSearchParams<{
     open?: string | string[]
   }>()
   const serverValue = Array.isArray(params.serverId) ? params.serverId[0] : params.serverId
@@ -17,7 +19,7 @@ export default function HostWorkspaceLayout() {
     : params.workspaceId
   const serverId = serverValue?.trim() ?? ''
   const workspaceId = workspaceValue ? (decodeWorkspaceIdFromPathSegment(workspaceValue) ?? '') : ''
-  const openValue = Array.isArray(params.open) ? params.open[0] : params.open
+  const openValue = Array.isArray(globalParams.open) ? globalParams.open[0] : globalParams.open
   const openIntent = parseWorkspaceOpenIntent(openValue)
 
   return (

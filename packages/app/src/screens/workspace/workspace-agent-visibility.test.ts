@@ -3,6 +3,7 @@ import type { Agent } from "@/stores/session-store";
 import {
   canOpenAgentTabFromRoute,
   deriveWorkspaceAgentVisibility,
+  shouldPruneWorkspaceAgentTab,
 } from "@/screens/workspace/workspace-agent-visibility";
 
 function makeAgent(input: {
@@ -100,6 +101,33 @@ describe("workspace agent visibility", () => {
         agentId: "archived-agent",
         agentsHydrated: true,
         workspaceAgentLookup: lookup,
+      })
+    ).toBe(true);
+  });
+
+  it("does not prune archived agent tabs when the workspace lookup still contains the agent", () => {
+    const archivedAgent = makeAgent({
+      id: "archived-agent",
+      cwd: "/repo/worktree",
+      archivedAt: new Date("2026-03-04T00:01:00.000Z"),
+    });
+    const lookup = new Map<string, Agent>([[archivedAgent.id, archivedAgent]]);
+
+    expect(
+      shouldPruneWorkspaceAgentTab({
+        agentId: "archived-agent",
+        agentsHydrated: true,
+        workspaceAgentLookup: lookup,
+      })
+    ).toBe(false);
+  });
+
+  it("prunes agent tabs once agents are hydrated and the agent is missing from the workspace lookup", () => {
+    expect(
+      shouldPruneWorkspaceAgentTab({
+        agentId: "missing-agent",
+        agentsHydrated: true,
+        workspaceAgentLookup: new Map<string, Agent>(),
       })
     ).toBe(true);
   });

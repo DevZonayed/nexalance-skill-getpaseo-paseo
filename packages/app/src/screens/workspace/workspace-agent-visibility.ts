@@ -72,3 +72,17 @@ export function canOpenAgentTabFromRoute(input: {
   }
   return input.workspaceAgentLookup.has(input.agentId);
 }
+
+export function shouldPruneWorkspaceAgentTab(input: {
+  agentId: string;
+  agentsHydrated: boolean;
+  workspaceAgentLookup: Map<string, Agent>;
+}): boolean {
+  if (!input.agentId.trim()) {
+    return false;
+  }
+  if (!input.agentsHydrated) {
+    return false;
+  }
+  return !input.workspaceAgentLookup.has(input.agentId);
+}
