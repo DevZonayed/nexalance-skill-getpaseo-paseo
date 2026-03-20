@@ -1,68 +1,66 @@
 import type { Agent } from "@/stores/session-store";
 import { normalizeWorkspaceIdentity } from "@/utils/workspace-identity";
 
-function sortAgentsByCreatedAtDescending(agents: Agent[]): Agent[] {
-  const sorted = [...agents];
-  sorted.sort((left, right) => {
-    const createdAtDelta = right.createdAt.getTime() - left.createdAt.getTime();
-    if (createdAtDelta !== 0) {
-      return createdAtDelta;
-    }
-    return right.lastActivityAt.getTime() - left.lastActivityAt.getTime();
-  });
-  return sorted;
-}
-
-function trimNonEmpty(value: string | null | undefined): string | null {
-  if (!value) {
-    return null;
-  }
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : null;
-}
-
 function normalizeWorkspaceId(value: string | null | undefined): string {
   return normalizeWorkspaceIdentity(value) ?? "";
+}
+
+export interface WorkspaceAgentVisibility {
+  activeAgentIds: Set<string>;
+  knownAgentIds: Set<string>;
 }
 
 export function deriveWorkspaceAgentVisibility(input: {
   sessionAgents: Map<string, Agent> | undefined;
   workspaceId: string;
-}): {
-  visibleAgents: Agent[];
-  lookupById: Map<string, Agent>;
-} {
+}): WorkspaceAgentVisibility {
   const { sessionAgents, workspaceId } = input;
   const normalizedWorkspaceId = normalizeWorkspaceId(workspaceId);
   if (!sessionAgents || !workspaceId) {
     return {
-      visibleAgents: [],
-      lookupById: new Map<string, Agent>(),
+      activeAgentIds: new Set<string>(),
+      knownAgentIds: new Set<string>(),
     };
   }
 
-  const lookupById = new Map<string, Agent>();
-  const visible: Agent[] = [];
+  const activeAgentIds = new Set<string>();
+  const knownAgentIds = new Set<string>();
   for (const agent of sessionAgents.values()) {
     if (normalizeWorkspaceId(agent.cwd) !== normalizedWorkspaceId) {
       continue;
     }
-    lookupById.set(agent.id, agent);
+    knownAgentIds.add(agent.id);
     if (!agent.archivedAt) {
-      visible.push(agent);
+      activeAgentIds.add(agent.id);
     }
   }
 
-  return {
-    visibleAgents: sortAgentsByCreatedAtDescending(visible),
-    lookupById,
-  };
+  return { activeAgentIds, knownAgentIds };
+}
+
+export function workspaceAgentVisibilityEqual(
+  a: WorkspaceAgentVisibility,
+  b: WorkspaceAgentVisibility,
+): boolean {
+  return setsEqual(a.activeAgentIds, b.activeAgentIds) && setsEqual(a.knownAgentIds, b.knownAgentIds);
+}
+
+function setsEqual(a: Set<string>, b: Set<string>): boolean {
+  if (a.size !== b.size) {
+    return false;
+  }
+  for (const item of a) {
+    if (!b.has(item)) {
+      return false;
+    }
+  }
+  return true;
 }
 
 export function canOpenAgentTabFromRoute(input: {
   agentId: string;
   agentsHydrated: boolean;
-  workspaceAgentLookup: Map<string, Agent>;
+  knownAgentIds: Set<string>;
 }): boolean {
   if (!input.agentId.trim()) {
     return false;
@@ -70,13 +68,13 @@ export function canOpenAgentTabFromRoute(input: {
   if (!input.agentsHydrated) {
     return true;
   }
-  return input.workspaceAgentLookup.has(input.agentId);
+  return input.knownAgentIds.has(input.agentId);
 }
 
 export function shouldPruneWorkspaceAgentTab(input: {
   agentId: string;
   agentsHydrated: boolean;
-  workspaceAgentLookup: Map<string, Agent>;
+  knownAgentIds: Set<string>;
 }): boolean {
   if (!input.agentId.trim()) {
     return false;
@@ -84,5 +82,5 @@ export function shouldPruneWorkspaceAgentTab(input: {
   if (!input.agentsHydrated) {
     return false;
   }
-  return !input.workspaceAgentLookup.has(input.agentId);
+  return !input.knownAgentIds.has(input.agentId);
 }

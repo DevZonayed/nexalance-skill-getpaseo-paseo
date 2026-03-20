@@ -1,4 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useStoreWithEqualityFn } from "zustand/traditional";
 import { useIsFocused } from "@react-navigation/native";
 import {
   ActivityIndicator,
@@ -96,6 +97,7 @@ import {
 import {
   deriveWorkspaceAgentVisibility,
   shouldPruneWorkspaceAgentTab,
+  workspaceAgentVisibilityEqual,
 } from "@/screens/workspace/workspace-agent-visibility";
 import {
   deriveWorkspacePaneState,
@@ -582,18 +584,15 @@ function WorkspaceScreenContent({
   const client = useHostRuntimeClient(normalizedServerId);
   const isConnected = useHostRuntimeIsConnected(normalizedServerId);
 
-  const sessionAgents = useSessionStore(
-    (state) => state.sessions[normalizedServerId]?.agents
-  );
-  const workspaceAgentVisibility = useMemo(
-    () =>
+  const workspaceAgentVisibility = useStoreWithEqualityFn(
+    useSessionStore,
+    (state) =>
       deriveWorkspaceAgentVisibility({
-        sessionAgents,
+        sessionAgents: state.sessions[normalizedServerId]?.agents,
         workspaceId: normalizedWorkspaceId,
       }),
-    [normalizedWorkspaceId, sessionAgents]
+    workspaceAgentVisibilityEqual,
   );
-  const workspaceAgents = workspaceAgentVisibility.visibleAgents;
 
   const terminalsQueryKey = useMemo(
     () => ["terminals", normalizedServerId, normalizedWorkspaceId] as const,
@@ -823,8 +822,6 @@ function WorkspaceScreenContent({
     return () => handler.remove();
   }, [closeToAgent, isExplorerOpen]);
 
-  const agentsById = workspaceAgentVisibility.lookupById;
-
   const persistenceKey = useMemo(
     () =>
       buildWorkspaceTabPersistenceKey({
@@ -853,7 +850,6 @@ function WorkspaceScreenContent({
   const reorderWorkspaceTabsInPane = useWorkspaceLayoutStore((state) => state.reorderTabsInPane);
   const pendingByDraftId = useCreateFlowStore((state) => state.pendingByDraftId);
   const consumedOpenIntentsRef = useRef(new Set<string>());
-  const reopenedArchivedOpenIntentsRef = useRef(new Set<string>());
   const pendingCloseTabIdsRef = useRef(new Set<string>());
   const [resolvedOpenIntentKey, setResolvedOpenIntentKey] = useState<string | null>(null);
   const currentOpenIntentKey = useMemo(
@@ -958,43 +954,6 @@ function WorkspaceScreenContent({
   }, [currentOpenIntentKey, resolvedOpenIntentKey]);
 
   useEffect(() => {
-    if (!client || !isConnected || openIntent?.kind !== "agent" || !currentOpenIntentKey) {
-      return;
-    }
-
-    const agentId = openIntent.agentId.trim();
-    if (!agentId) {
-      return;
-    }
-    if (reopenedArchivedOpenIntentsRef.current.has(currentOpenIntentKey)) {
-      return;
-    }
-
-    const agent = agentsById.get(agentId) ?? null;
-    if (!agent?.archivedAt) {
-      return;
-    }
-
-    reopenedArchivedOpenIntentsRef.current.add(currentOpenIntentKey);
-    void client.refreshAgent(agentId).catch((error) => {
-      console.warn("[WorkspaceScreen] Failed to reopen archived agent", {
-        serverId: normalizedServerId,
-        workspaceId: normalizedWorkspaceId,
-        agentId,
-        error,
-      });
-    });
-  }, [
-    agentsById,
-    client,
-    currentOpenIntentKey,
-    isConnected,
-    normalizedServerId,
-    normalizedWorkspaceId,
-    openIntent,
-  ]);
-
-  useEffect(() => {
     if (!openIntent || !persistenceKey) {
       return;
     }
@@ -1075,12 +1034,12 @@ function WorkspaceScreenContent({
       return pending?.serverId === normalizedServerId && pending.lifecycle === "active";
     });
 
-    for (const agent of workspaceAgents) {
+    for (const agentId of workspaceAgentVisibility.activeAgentIds) {
       const representedByTarget = uiTabs.some(
-        (tab) => tab.target.kind === "agent" && tab.target.agentId === agent.id
+        (tab) => tab.target.kind === "agent" && tab.target.agentId === agentId
       );
       const representedByDeterministicTabId = uiTabs.some(
-        (tab) => tab.tabId === `agent_${agent.id}`
+        (tab) => tab.tabId === `agent_${agentId}`
       );
       if (
         hasActivePendingDraftCreateInWorkspace &&
@@ -1089,7 +1048,7 @@ function WorkspaceScreenContent({
       ) {
         continue;
       }
-      ensureWorkspaceTab({ kind: "agent", agentId: agent.id });
+      ensureWorkspaceTab({ kind: "agent", agentId });
     }
     for (const terminal of terminals) {
       ensureWorkspaceTab({ kind: "terminal", terminalId: terminal.id });
@@ -1104,7 +1063,7 @@ function WorkspaceScreenContent({
         shouldPruneWorkspaceAgentTab({
           agentId: tab.target.agentId,
           agentsHydrated: hasHydratedAgents,
-          workspaceAgentLookup: agentsById,
+          knownAgentIds: workspaceAgentVisibility.knownAgentIds,
         })
       ) {
         closeWorkspaceTab(persistenceKey, tab.tabId);
@@ -1126,7 +1085,7 @@ function WorkspaceScreenContent({
     terminals,
     terminalsQuery.isSuccess,
     uiTabs,
-    workspaceAgents,
+    workspaceAgentVisibility,
   ]);
 
   const activeTabId = resolvedPaneTabState.activeTabId;
@@ -1180,7 +1139,7 @@ function WorkspaceScreenContent({
       emptyWorkspaceSeedRef.current = null;
       return;
     }
-    if (workspaceAgents.length > 0 || terminals.length > 0) {
+    if (workspaceAgentVisibility.activeAgentIds.size > 0 || terminals.length > 0) {
       emptyWorkspaceSeedRef.current = null;
       return;
     }
@@ -1202,7 +1161,7 @@ function WorkspaceScreenContent({
     persistenceKey,
     terminals.length,
     tabs.length,
-    workspaceAgents.length,
+    workspaceAgentVisibility.activeAgentIds.size,
   ]);
 
   const handleOpenFileFromExplorer = useCallback(
@@ -1485,7 +1444,7 @@ function WorkspaceScreenContent({
   const handleCopyResumeCommand = useCallback(
     async (agentId: string) => {
       if (!agentId) return;
-      const agent = sessionAgents?.get(agentId) ?? null;
+      const agent = useSessionStore.getState().sessions[normalizedServerId]?.agents?.get(agentId) ?? null;
       const providerSessionId =
         agent?.runtimeInfo?.sessionId ?? agent?.persistence?.sessionId ?? null;
       if (!agent || !providerSessionId) {
@@ -1510,7 +1469,7 @@ function WorkspaceScreenContent({
         toast.error("Copy failed");
       }
     },
-    [sessionAgents, toast]
+    [normalizedServerId, toast]
   );
 
   const handleCopyWorkspacePath = useCallback(async () => {

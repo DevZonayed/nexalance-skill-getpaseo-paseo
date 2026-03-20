@@ -802,7 +802,7 @@ function AgentPanelBody({
             </ReanimatedAnimated.View>
           </View>
 
-          {agentId && !isArchivingCurrentAgent ? (
+          {agentId && !isArchivingCurrentAgent && !agent?.archivedAt ? (
             <AgentInputArea
               agentId={agentId}
               serverId={serverId}
