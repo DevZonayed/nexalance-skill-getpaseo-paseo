@@ -1,4 +1,4 @@
-import { getTauri } from "@/utils/tauri";
+import { getDesktopHost } from "@/desktop/host";
 
 export type PickedImageSource =
   | { kind: "file_uri"; uri: string }
@@ -77,15 +77,15 @@ export async function normalizePickedImageAssets(
   );
 }
 
-function normalizeTauriDialogSelection(selection: string | string[] | null): string[] {
+function normalizeDesktopDialogSelection(selection: string | string[] | null): string[] {
   if (!selection) {
     return [];
   }
   return Array.isArray(selection) ? selection : [selection];
 }
 
-export async function openImagePathsWithTauriDialog(): Promise<string[]> {
-  const tauri = getTauri();
+export async function openImagePathsWithDesktopDialog(): Promise<string[]> {
+  const desktop = getDesktopHost();
   const options = {
     directory: false,
     multiple: true,
@@ -93,18 +93,10 @@ export async function openImagePathsWithTauriDialog(): Promise<string[]> {
     title: "Attach images",
   };
 
-  const dialogOpen = tauri?.dialog?.open;
-  if (typeof dialogOpen === "function") {
-    return normalizeTauriDialogSelection(await dialogOpen(options));
+  const dialogOpen = desktop?.dialog?.open;
+  if (typeof dialogOpen !== "function") {
+    throw new Error("Desktop dialog API is not available.");
   }
 
-  const invoke = tauri?.core?.invoke;
-  if (typeof invoke !== "function") {
-    throw new Error("Tauri dialog API is not available.");
-  }
-
-  const result = await invoke("plugin:dialog|open", { options });
-  return normalizeTauriDialogSelection(
-    Array.isArray(result) || typeof result === "string" || result === null ? result : null
-  );
+  return normalizeDesktopDialogSelection(await dialogOpen(options));
 }

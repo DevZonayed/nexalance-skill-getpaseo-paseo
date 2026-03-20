@@ -1,6 +1,6 @@
 import { Platform } from 'react-native'
-import { getTauri } from '@/utils/tauri'
-import { invokeDesktopCommand } from '@/desktop/tauri/invoke-desktop-command'
+import { isDesktop } from '@/desktop/host'
+import { invokeDesktopCommand } from '@/desktop/electron/invoke'
 
 export interface DesktopAppUpdateCheckResult {
   hasUpdate: boolean
@@ -49,7 +49,7 @@ function toNumberOr(defaultValue: number, value: unknown): number {
 }
 
 export function shouldShowDesktopUpdateSection(): boolean {
-  return Platform.OS === 'web' && getTauri() !== null
+  return Platform.OS === 'web' && isDesktop()
 }
 
 export function parseLocalDaemonVersionResult(raw: unknown): LocalDaemonVersionResult {

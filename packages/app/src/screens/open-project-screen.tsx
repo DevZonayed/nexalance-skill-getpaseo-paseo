@@ -7,8 +7,8 @@ import { PaseoLogo } from "@/components/icons/paseo-logo";
 import { SidebarMenuToggle } from "@/components/headers/menu-header";
 import { useOpenProjectPicker } from "@/hooks/use-open-project-picker";
 import { usePanelStore } from "@/stores/panel-store";
-import { getIsTauriMac } from "@/constants/layout";
-import { useTauriDragHandlers, useTrafficLightPadding } from "@/utils/tauri-window";
+import { getIsDesktopMac } from "@/constants/layout";
+import { useDesktopDragHandlers, useTrafficLightPadding } from "@/utils/desktop-window";
 
 export function OpenProjectScreen({ serverId }: { serverId: string }) {
   const { theme } = useUnistyles();
@@ -19,9 +19,9 @@ export function OpenProjectScreen({ serverId }: { serverId: string }) {
   const openProjectPicker = useOpenProjectPicker(serverId);
 
   const isMobile = UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
-  const needsTrafficLightInset = !isMobile && !desktopAgentListOpen && getIsTauriMac();
+  const needsTrafficLightInset = !isMobile && !desktopAgentListOpen && getIsDesktopMac();
   const trafficLightInset = needsTrafficLightInset ? trafficLightPadding.left : 0;
-  const dragHandlers = useTauriDragHandlers();
+  const { style: dragRegionStyle, ...dragHandlers } = useDesktopDragHandlers();
 
   useEffect(() => {
     if (!isMobile) {
@@ -30,7 +30,7 @@ export function OpenProjectScreen({ serverId }: { serverId: string }) {
   }, [isMobile, openAgentList]);
 
   return (
-    <View style={styles.container} {...dragHandlers}>
+    <View style={[styles.container, dragRegionStyle]} {...dragHandlers}>
       <View style={[styles.menuToggle, { paddingTop: insets.top, paddingLeft: trafficLightInset }]}>
         <SidebarMenuToggle />
       </View>

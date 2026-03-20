@@ -1,21 +1,21 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
-const tauriState = vi.hoisted(() => ({
+const desktopHostState = vi.hoisted(() => ({
   api: null as any,
 }));
 
-vi.mock("@/utils/tauri", () => ({
-  getTauri: () => tauriState.api,
+vi.mock("@/desktop/host", () => ({
+  getDesktopHost: () => desktopHostState.api,
 }));
 
 import {
   normalizePickedImageAssets,
-  openImagePathsWithTauriDialog,
+  openImagePathsWithDesktopDialog,
 } from "./image-attachment-picker";
 
 describe("image-attachment-picker", () => {
   beforeEach(() => {
-    tauriState.api = null;
+    desktopHostState.api = null;
   });
 
   it("normalizes a picked File into a blob source", async () => {
@@ -69,13 +69,13 @@ describe("image-attachment-picker", () => {
     expect(result[0]?.mimeType).toBe("image/png");
   });
 
-  it("uses the tauri dialog api when available", async () => {
+  it("uses the desktop dialog api when available", async () => {
     const open = vi.fn().mockResolvedValue(["/tmp/one.png", "/tmp/two.jpg"]);
-    tauriState.api = {
+    desktopHostState.api = {
       dialog: { open },
     };
 
-    const result = await openImagePathsWithTauriDialog();
+    const result = await openImagePathsWithDesktopDialog();
 
     expect(open).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -87,21 +87,11 @@ describe("image-attachment-picker", () => {
     expect(result).toEqual(["/tmp/one.png", "/tmp/two.jpg"]);
   });
 
-  it("falls back to core invoke for the tauri dialog plugin", async () => {
-    const invoke = vi.fn().mockResolvedValue("/tmp/one.png");
-    tauriState.api = {
-      core: { invoke },
-    };
+  it("throws when desktop dialog API is not available", async () => {
+    desktopHostState.api = {};
 
-    const result = await openImagePathsWithTauriDialog();
-
-    expect(invoke).toHaveBeenCalledWith("plugin:dialog|open", {
-      options: expect.objectContaining({
-        multiple: true,
-        directory: false,
-        title: "Attach images",
-      }),
-    });
-    expect(result).toEqual(["/tmp/one.png"]);
+    await expect(openImagePathsWithDesktopDialog()).rejects.toThrow(
+      "Desktop dialog API is not available."
+    );
   });
 });

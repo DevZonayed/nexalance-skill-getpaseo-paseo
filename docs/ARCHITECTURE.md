@@ -9,7 +9,7 @@ Your code never leaves your machine. Paseo is local-first.
 ```
 ┌─────────────┐    ┌─────────────┐    ┌─────────────┐
 │  Mobile App  │    │     CLI     │    │ Desktop App │
-│   (Expo)     │    │ (Commander) │    │  (Tauri)    │
+│   (Expo)     │    │ (Commander) │    │ (Electron)  │
 └──────┬───────┘    └──────┬──────┘    └──────┬──────┘
        │                   │                  │
        │    WebSocket      │    WebSocket     │    Managed subprocess
@@ -90,9 +90,9 @@ Enables remote access when the daemon is behind a firewall.
 
 See [SECURITY.md](../SECURITY.md) for the full threat model.
 
-### `packages/desktop` — Desktop app (Tauri)
+### `packages/desktop` — Desktop app (Electron)
 
-Tauri wrapper for macOS, Linux, and Windows.
+Electron wrapper for macOS, Linux, and Windows.
 
 - Can spawn the daemon as a managed subprocess
 - Native file access for workspace integration
@@ -180,5 +180,5 @@ $PASEO_HOME/
 ## Deployment models
 
 1. **Local daemon** (default): `paseo daemon start` on `127.0.0.1:6767`
-2. **Managed desktop**: Tauri app spawns daemon as subprocess
+2. **Managed desktop**: Electron app spawns daemon as subprocess
 3. **Remote + relay**: Daemon behind firewall, relay bridges with E2E encryption

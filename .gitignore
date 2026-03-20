@@ -46,6 +46,9 @@ test-results/
 # Vercel
 .vercel/
 
+# Expo
+.expo/
+
 # Misc
 *.pem
 .vercel

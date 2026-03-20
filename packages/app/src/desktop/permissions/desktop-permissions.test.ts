@@ -4,14 +4,17 @@ type MockPlatform = 'web' | 'ios' | 'android'
 
 type GlobalSnapshot = {
   Notification: unknown
-  __TAURI__: unknown
   navigatorDescriptor?: PropertyDescriptor
+  paseoDesktop: unknown
 }
 
 const originalGlobals: GlobalSnapshot = {
   Notification: (globalThis as { Notification?: unknown }).Notification,
-  __TAURI__: (globalThis as { __TAURI__?: unknown }).__TAURI__,
   navigatorDescriptor: Object.getOwnPropertyDescriptor(globalThis, 'navigator'),
+  paseoDesktop:
+    typeof window === 'undefined'
+      ? undefined
+      : (window as { paseoDesktop?: unknown }).paseoDesktop,
 }
 
 function setNavigator(value: unknown): void {
@@ -24,12 +27,15 @@ function setNavigator(value: unknown): void {
 
 function restoreGlobals(): void {
   ;(globalThis as { Notification?: unknown }).Notification = originalGlobals.Notification
-  ;(globalThis as { __TAURI__?: unknown }).__TAURI__ = originalGlobals.__TAURI__
 
   if (originalGlobals.navigatorDescriptor) {
     Object.defineProperty(globalThis, 'navigator', originalGlobals.navigatorDescriptor)
   } else {
     delete (globalThis as { navigator?: unknown }).navigator
+  }
+
+  if (typeof window !== 'undefined') {
+    ;(window as { paseoDesktop?: unknown }).paseoDesktop = originalGlobals.paseoDesktop
   }
 }
 
@@ -47,20 +53,20 @@ describe('desktop-permissions', () => {
     restoreGlobals()
   })
 
-  it('shows section only in Tauri web runtime', async () => {
+  it('shows section only in desktop web runtime', async () => {
     const { shouldShowDesktopPermissionSection } = await loadModuleForPlatform('web')
 
     expect(shouldShowDesktopPermissionSection()).toBe(false)
 
-    ;(globalThis as { __TAURI__?: unknown }).__TAURI__ = { notification: {} }
+    ;(window as { paseoDesktop?: unknown }).paseoDesktop = {}
     expect(shouldShowDesktopPermissionSection()).toBe(true)
   })
 
   it('reads notification and microphone status', async () => {
-    const isPermissionGranted = vi.fn(async () => false)
-    ;(globalThis as { __TAURI__?: unknown }).__TAURI__ = {
-      notification: { isPermissionGranted },
+    class MockNotification {
+      static permission = 'default'
     }
+    ;(globalThis as { Notification?: unknown }).Notification = MockNotification
     setNavigator({
       permissions: {
         query: vi.fn(async () => ({ state: 'granted' })),
@@ -73,9 +79,8 @@ describe('desktop-permissions', () => {
     const { getDesktopPermissionSnapshot } = await loadModuleForPlatform('web')
     const snapshot = await getDesktopPermissionSnapshot()
 
-    expect(snapshot.notifications.state).toBe('not-granted')
+    expect(snapshot.notifications.state).toBe('prompt')
     expect(snapshot.microphone.state).toBe('granted')
-    expect(isPermissionGranted).toHaveBeenCalledTimes(1)
     expect(snapshot.checkedAt).toBeTypeOf('number')
   })
 
@@ -127,20 +132,21 @@ describe('desktop-permissions', () => {
     )
   })
 
-  it('requests notification permission via Tauri', async () => {
-    const requestPermission = vi.fn(async () => 'granted')
-    ;(globalThis as { __TAURI__?: unknown }).__TAURI__ = {
-      notification: { requestPermission },
+  it('requests notification permission via the browser Notification API', async () => {
+    class MockNotification {
+      static permission = 'default'
+      static requestPermission = vi.fn(async () => 'granted')
     }
+    ;(globalThis as { Notification?: unknown }).Notification = MockNotification
 
     const { requestDesktopPermission } = await loadModuleForPlatform('web')
     const result = await requestDesktopPermission({ kind: 'notifications' })
 
     expect(result.state).toBe('granted')
-    expect(requestPermission).toHaveBeenCalledTimes(1)
+    expect(MockNotification.requestPermission).toHaveBeenCalledTimes(1)
   })
 
-  it('falls back to browser Notification permission when Tauri API is unavailable', async () => {
+  it('reads browser Notification permission when available', async () => {
     class MockNotification {
       static permission = 'denied'
     }

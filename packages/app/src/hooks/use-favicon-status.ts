@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { Platform } from "react-native";
-import { getIsTauriMac } from "@/constants/layout";
+import { getIsDesktopMac } from "@/constants/layout";
 import { useAggregatedAgents } from "./use-aggregated-agents";
-import { getCurrentTauriWindow } from "@/utils/tauri";
+import { getDesktopHost } from "@/desktop/host";
 
 type FaviconStatus = "none" | "running" | "attention";
 type ColorScheme = "dark" | "light";
@@ -92,15 +92,15 @@ function getSystemColorScheme(): ColorScheme {
 }
 
 async function updateMacDockBadge(count?: number) {
-  if (Platform.OS !== "web" || !getIsTauriMac()) return;
+  if (Platform.OS !== "web" || !getIsDesktopMac()) return;
 
-  const tauriWindow = getCurrentTauriWindow();
-  if (!tauriWindow || typeof tauriWindow.setBadgeCount !== "function") {
+  const desktopWindow = getDesktopHost()?.window?.getCurrentWindow?.();
+  if (!desktopWindow || typeof desktopWindow.setBadgeCount !== "function") {
     return;
   }
 
   try {
-    await tauriWindow.setBadgeCount(count);
+    await desktopWindow.setBadgeCount(count);
   } catch (error) {
     console.warn("[useFaviconStatus] Failed to update macOS dock badge", error);
   }

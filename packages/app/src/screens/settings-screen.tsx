@@ -41,6 +41,7 @@ import {
 import { AdaptiveModalSheet, AdaptiveTextInput } from "@/components/adaptive-modal-sheet";
 import { DesktopPermissionsSection } from "@/desktop/components/desktop-permissions-section";
 import { LocalDaemonSection } from "@/desktop/components/desktop-updates-section";
+import { isDesktop as isDesktopHost } from "@/desktop/host";
 import { useDesktopAppUpdater } from "@/desktop/updates/use-desktop-app-updater";
 import { formatVersionWithPrefix } from "@/desktop/updates/desktop-updates";
 import { resolveAppVersion } from "@/utils/app-version";
@@ -513,7 +514,7 @@ export default function SettingsScreen() {
   const isLoading = settingsLoading;
   const isMountedRef = useRef(true);
   const lastHandledEditHostRef = useRef<string | null>(null);
-  const isDesktop = Platform.OS === "web";
+  const isDesktop = isDesktopHost();
   const isLocalDaemon = useIsLocalDaemon(routeServerId);
   const appVersion = resolveAppVersion();
   const appVersionText = formatVersionWithPrefix(appVersion);

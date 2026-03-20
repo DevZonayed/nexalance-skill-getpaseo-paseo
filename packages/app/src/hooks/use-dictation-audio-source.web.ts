@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { parsePcm16Wav } from "@/utils/pcm16-wav";
-import { getTauri } from "@/utils/tauri";
+import { isDesktop } from "@/desktop/host";
 
 import type { DictationAudioSource, DictationAudioSourceConfig } from "./use-dictation-audio-source.types";
 
@@ -158,17 +158,17 @@ export function useDictationAudioSource(config: DictationAudioSourceConfig): Dic
         : true;
     const currentOrigin =
       typeof window !== "undefined" && window.location ? window.location.origin : "unknown";
-    const isTauri = getTauri() !== null;
+    const isDesktopApp = isDesktop();
 
     if (missingNavigator) {
       throw new Error("Microphone capture is not supported in this environment");
     }
-    if (!secureContext && !isTauri) {
+    if (!secureContext && !isDesktopApp) {
       throw new Error(`Microphone access requires HTTPS or localhost. Current origin: ${currentOrigin}`);
     }
-    if (!secureContext && isTauri) {
+    if (!secureContext && isDesktopApp) {
       console.warn(
-        "[DictationAudio][Web] Insecure context reported under Tauri; attempting getUserMedia anyway",
+        "[DictationAudio][Web] Insecure context reported under Desktop; attempting getUserMedia anyway",
         { currentOrigin }
       );
     }

@@ -44,7 +44,7 @@ Quick monorepo package map:
 - `packages/server`: Paseo daemon (agent process orchestration, WebSocket API, MCP server)
 - `packages/app`: Expo client (iOS, Android, web)
 - `packages/cli`: `paseo` CLI for daemon and agent workflows
-- `packages/desktop`: Tauri desktop app
+- `packages/desktop`: Electron desktop app
 - `packages/relay`: Relay package for remote connectivity
 - `packages/website`: Marketing site and documentation (`paseo.sh`)
 

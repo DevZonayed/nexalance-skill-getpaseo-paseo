@@ -1,9 +1,9 @@
-import { getTauri } from '@/utils/tauri'
+import { getDesktopHost } from '@/desktop/host'
 
 export async function pickDirectory(): Promise<string | null> {
-  const open = getTauri()?.dialog?.open
+  const open = getDesktopHost()?.dialog?.open
   if (typeof open !== 'function') {
-    throw new Error('Tauri dialog open() is unavailable in this environment.')
+    throw new Error('Desktop dialog open() is unavailable in this environment.')
   }
 
   const selection = await open({

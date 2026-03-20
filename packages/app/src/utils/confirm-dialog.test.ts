@@ -1,5 +1,13 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+const desktopHostState = {
+  api: null as {
+    dialog?: {
+      ask?: (message: string, options?: Record<string, unknown>) => Promise<boolean>;
+    };
+  } | null,
+};
+
 type MockPlatform = "web" | "ios" | "android";
 
 type AlertButton = {
@@ -19,13 +27,16 @@ async function loadModuleForPlatform(platform: MockPlatform): Promise<{
     },
     Platform: { OS: platform },
   }));
+  vi.doMock("@/desktop/host", () => ({
+    getDesktopHost: () => desktopHostState.api,
+  }));
 
   const module = await import("./confirm-dialog");
   return { confirmDialog: module.confirmDialog, alertMock };
 }
 
 function clearDialogGlobals(): void {
-  delete (globalThis as { __TAURI__?: unknown }).__TAURI__;
+  desktopHostState.api = null;
   delete (globalThis as { confirm?: unknown }).confirm;
 }
 
@@ -37,13 +48,13 @@ describe("confirmDialog", () => {
     clearDialogGlobals();
   });
 
-  it("uses Tauri dialog.ask on web when available", async () => {
+  it("uses the desktop dialog bridge on web when available", async () => {
     const askMock = vi.fn(async () => true);
     const blurMock = vi.fn();
     (globalThis as { document?: unknown }).document = {
       activeElement: { blur: blurMock },
     } as unknown as Document;
-    (globalThis as { __TAURI__?: unknown }).__TAURI__ = {
+    desktopHostState.api = {
       dialog: { ask: askMock },
     };
 
@@ -67,7 +78,7 @@ describe("confirmDialog", () => {
     });
   });
 
-  it("falls back to browser confirm on web when Tauri APIs are unavailable", async () => {
+  it("falls back to browser confirm on web when desktop APIs are unavailable", async () => {
     const browserConfirm = vi.fn(() => true);
     const blurMock = vi.fn();
     (globalThis as { document?: unknown }).document = {

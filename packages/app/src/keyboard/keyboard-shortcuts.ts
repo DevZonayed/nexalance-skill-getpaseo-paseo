@@ -8,7 +8,7 @@ import type {
 
 export type KeyboardShortcutContext = {
   isMac: boolean;
-  isTauri: boolean;
+  isDesktop: boolean;
   focusScope: KeyboardFocusScope;
   commandCenterOpen: boolean;
   hasSelectedAgent: boolean;
@@ -36,7 +36,7 @@ export type KeyboardShortcutHelpSection = {
 
 type KeyboardShortcutPlatformContext = {
   isMac: boolean;
-  isTauri: boolean;
+  isDesktop: boolean;
 };
 
 type KeyboardShortcutHelpEntry = {
@@ -158,20 +158,20 @@ const SHORTCUT_BINDINGS: readonly KeyboardShortcutBinding[] = [
     },
   },
   {
-    id: "workspace-tab-close-current-mod-w-tauri",
+    id: "workspace-tab-close-current-mod-w-desktop",
     action: "workspace.tab.close.current",
     matches: (event) =>
       isMod(event) &&
       !event.altKey &&
       !event.shiftKey &&
       (event.code === "KeyW" || event.key.toLowerCase() === "w"),
-    when: (context) => context.isTauri && !context.commandCenterOpen,
+    when: (context) => context.isDesktop && !context.commandCenterOpen,
     help: {
       id: "workspace-tab-close-current",
       section: "global",
       label: "Close current tab",
       keys: ["mod", "W"],
-      when: (context) => context.isTauri,
+      when: (context) => context.isDesktop,
     },
   },
   {
@@ -183,17 +183,17 @@ const SHORTCUT_BINDINGS: readonly KeyboardShortcutBinding[] = [
       event.altKey &&
       event.shiftKey &&
       (event.code === "KeyW" || event.key.toLowerCase() === "w"),
-    when: (context) => !context.isTauri && !context.commandCenterOpen,
+    when: (context) => !context.isDesktop && !context.commandCenterOpen,
     help: {
       id: "workspace-tab-close-current",
       section: "global",
       label: "Close current tab",
       keys: ["alt", "shift", "W"],
-      when: (context) => !context.isTauri,
+      when: (context) => !context.isDesktop,
     },
   },
   {
-    id: "workspace-navigate-index-mod-digit-tauri",
+    id: "workspace-navigate-index-mod-digit-desktop",
     action: "workspace.navigate.index",
     matches: (event) =>
       isMod(event) &&
@@ -201,13 +201,13 @@ const SHORTCUT_BINDINGS: readonly KeyboardShortcutBinding[] = [
       !event.shiftKey &&
       hasDigit(event),
     payload: withIndexPayload,
-    when: (context) => context.isTauri && !context.commandCenterOpen,
+    when: (context) => context.isDesktop && !context.commandCenterOpen,
     help: {
       id: "workspace-jump-index",
       section: "global",
       label: "Jump to workspace",
       keys: ["mod", "1-9"],
-      when: (context) => context.isTauri,
+      when: (context) => context.isDesktop,
     },
   },
   {
@@ -220,17 +220,17 @@ const SHORTCUT_BINDINGS: readonly KeyboardShortcutBinding[] = [
       !event.shiftKey &&
       hasDigit(event),
     payload: withIndexPayload,
-    when: (context) => !context.isTauri && !context.commandCenterOpen,
+    when: (context) => !context.isDesktop && !context.commandCenterOpen,
     help: {
       id: "workspace-jump-index",
       section: "global",
       label: "Jump to workspace",
       keys: ["alt", "1-9"],
-      when: (context) => !context.isTauri,
+      when: (context) => !context.isDesktop,
     },
   },
   {
-    id: "workspace-tab-navigate-index-alt-digit-tauri",
+    id: "workspace-tab-navigate-index-alt-digit-desktop",
     action: "workspace.tab.navigate.index",
     matches: (event) =>
       !event.metaKey &&
@@ -239,13 +239,13 @@ const SHORTCUT_BINDINGS: readonly KeyboardShortcutBinding[] = [
       !event.shiftKey &&
       hasDigit(event),
     payload: withIndexPayload,
-    when: (context) => context.isTauri && !context.commandCenterOpen,
+    when: (context) => context.isDesktop && !context.commandCenterOpen,
     help: {
       id: "workspace-tab-jump-index",
       section: "global",
       label: "Jump to tab",
       keys: ["alt", "1-9"],
-      when: (context) => context.isTauri,
+      when: (context) => context.isDesktop,
     },
   },
   {
@@ -258,13 +258,13 @@ const SHORTCUT_BINDINGS: readonly KeyboardShortcutBinding[] = [
       event.shiftKey &&
       hasDigit(event),
     payload: withIndexPayload,
-    when: (context) => !context.isTauri && !context.commandCenterOpen,
+    when: (context) => !context.isDesktop && !context.commandCenterOpen,
     help: {
       id: "workspace-tab-jump-index",
       section: "global",
       label: "Jump to tab",
       keys: ["alt", "shift", "1-9"],
-      when: (context) => !context.isTauri,
+      when: (context) => !context.isDesktop,
     },
   },
   {
@@ -276,13 +276,13 @@ const SHORTCUT_BINDINGS: readonly KeyboardShortcutBinding[] = [
       !event.shiftKey &&
       (event.code === "BracketLeft" || event.key === "["),
     payload: withRelativeDelta(-1),
-    when: (context) => context.isTauri && !context.commandCenterOpen,
+    when: (context) => context.isDesktop && !context.commandCenterOpen,
     help: {
       id: "workspace-prev",
       section: "global",
       label: "Previous workspace",
       keys: ["mod", "["],
-      when: (context) => context.isTauri,
+      when: (context) => context.isDesktop,
     },
   },
   {
@@ -294,13 +294,13 @@ const SHORTCUT_BINDINGS: readonly KeyboardShortcutBinding[] = [
       !event.shiftKey &&
       (event.code === "BracketRight" || event.key === "]"),
     payload: withRelativeDelta(1),
-    when: (context) => context.isTauri && !context.commandCenterOpen,
+    when: (context) => context.isDesktop && !context.commandCenterOpen,
     help: {
       id: "workspace-next",
       section: "global",
       label: "Next workspace",
       keys: ["mod", "]"],
-      when: (context) => context.isTauri,
+      when: (context) => context.isDesktop,
     },
   },
   {
@@ -313,13 +313,13 @@ const SHORTCUT_BINDINGS: readonly KeyboardShortcutBinding[] = [
       !event.shiftKey &&
       (event.code === "BracketLeft" || event.key === "["),
     payload: withRelativeDelta(-1),
-    when: (context) => !context.isTauri && !context.commandCenterOpen,
+    when: (context) => !context.isDesktop && !context.commandCenterOpen,
     help: {
       id: "workspace-prev",
       section: "global",
       label: "Previous workspace",
       keys: ["alt", "["],
-      when: (context) => !context.isTauri,
+      when: (context) => !context.isDesktop,
     },
   },
   {
@@ -332,13 +332,13 @@ const SHORTCUT_BINDINGS: readonly KeyboardShortcutBinding[] = [
       !event.shiftKey &&
       (event.code === "BracketRight" || event.key === "]"),
     payload: withRelativeDelta(1),
-    when: (context) => !context.isTauri && !context.commandCenterOpen,
+    when: (context) => !context.isDesktop && !context.commandCenterOpen,
     help: {
       id: "workspace-next",
       section: "global",
       label: "Next workspace",
       keys: ["alt", "]"],
-      when: (context) => !context.isTauri,
+      when: (context) => !context.isDesktop,
     },
   },
   {

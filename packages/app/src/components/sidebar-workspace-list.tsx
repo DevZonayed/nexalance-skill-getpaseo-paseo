@@ -30,7 +30,7 @@ import { NestableScrollContainer } from 'react-native-draggable-flatlist'
 import { DraggableList, type DraggableRenderItemInfo } from './draggable-list'
 import type { DraggableListDragHandleProps } from './draggable-list.types'
 import { getHostRuntimeStore, isHostRuntimeConnected } from '@/runtime/host-runtime'
-import { getIsTauri } from '@/constants/layout'
+import { getIsDesktop } from '@/constants/layout'
 import { projectIconQueryKey } from '@/hooks/use-project-icon-query'
 import {
   buildHostWorkspaceRouteWithOpenIntent,
@@ -1407,10 +1407,10 @@ export function SidebarWorkspaceList({
   const creatingWorkspaceTimeoutsRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(
     new Map()
   )
-  const isTauri = getIsTauri()
+  const isDesktopApp = getIsDesktop()
   const altDown = useKeyboardShortcutsStore((state) => state.altDown)
   const cmdOrCtrlDown = useKeyboardShortcutsStore((state) => state.cmdOrCtrlDown)
-  const showShortcutBadges = altDown || (isTauri && cmdOrCtrlDown)
+  const showShortcutBadges = altDown || (isDesktopApp && cmdOrCtrlDown)
 
   const getProjectOrder = useSidebarOrderStore((state) => state.getProjectOrder)
   const setProjectOrder = useSidebarOrderStore((state) => state.setProjectOrder)

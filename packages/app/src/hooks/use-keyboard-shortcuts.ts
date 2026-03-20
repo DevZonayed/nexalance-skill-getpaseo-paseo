@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { Platform } from "react-native";
 import { usePathname } from "expo-router";
-import { getIsTauri } from "@/constants/layout";
+import { getIsDesktop } from "@/constants/layout";
 import { useHosts } from "@/runtime/host-runtime";
 import { useKeyboardShortcutsStore } from "@/stores/keyboard-shortcuts-store";
 import { setCommandCenterFocusRestoreElement } from "@/utils/command-center-focus-restore";
@@ -50,7 +50,7 @@ export function useKeyboardShortcuts({
     if (Platform.OS !== "web") return;
     if (isMobile) return;
 
-    const isTauri = getIsTauri();
+    const isDesktopApp = getIsDesktop();
     const isMac = getShortcutOs() === "mac";
 
     const shouldHandle = () => {
@@ -259,7 +259,7 @@ export function useKeyboardShortcuts({
       if (key === "Alt" && !event.shiftKey) {
         useKeyboardShortcutsStore.getState().setAltDown(true);
       }
-      if (isTauri && (key === "Meta" || key === "Control") && !event.shiftKey) {
+      if (isDesktopApp && (key === "Meta" || key === "Control") && !event.shiftKey) {
         useKeyboardShortcutsStore.getState().setCmdOrCtrlDown(true);
       }
       if (key === "Shift") {
@@ -278,7 +278,7 @@ export function useKeyboardShortcuts({
         event,
         context: {
           isMac,
-          isTauri,
+          isDesktop: isDesktopApp,
           focusScope,
           commandCenterOpen: store.commandCenterOpen,
           hasSelectedAgent: canToggleFileExplorerShortcut({
@@ -314,7 +314,7 @@ export function useKeyboardShortcuts({
       if (key === "Alt") {
         useKeyboardShortcutsStore.getState().setAltDown(false);
       }
-      if (isTauri && (key === "Meta" || key === "Control")) {
+      if (isDesktopApp && (key === "Meta" || key === "Control")) {
         useKeyboardShortcutsStore.getState().setCmdOrCtrlDown(false);
       }
     };

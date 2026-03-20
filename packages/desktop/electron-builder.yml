@@ -1,0 +1,44 @@
+appId: sh.paseo.desktop
+productName: Paseo
+executableName: Paseo
+directories:
+  output: release
+files:
+  - dist/**/*
+extraResources:
+  - from: ../app/dist
+    to: app-dist
+publish:
+  provider: github
+  owner: anthropics
+  repo: paseo
+mac:
+  category: public.app-category.developer-tools
+  icon: assets/icon.icns
+  extraFiles:
+    - from: scripts/paseo
+      to: MacOS/paseo
+  target:
+    - dmg
+    - zip
+linux:
+  category: Development
+  icon: assets
+  extraFiles:
+    - from: scripts/paseo
+      to: paseo
+  target:
+    - AppImage
+    - tar.gz
+win:
+  icon: assets/icon.ico
+  extraFiles:
+    - from: scripts/paseo.cmd
+      to: paseo.cmd
+  target:
+    - nsis
+    - zip
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true

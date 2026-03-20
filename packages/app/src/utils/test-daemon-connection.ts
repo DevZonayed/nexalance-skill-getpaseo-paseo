@@ -5,8 +5,8 @@ import { getOrCreateClientId } from "./client-id";
 import { buildDaemonWebSocketUrl, buildRelayWebSocketUrl } from "./daemon-endpoints";
 import {
   buildLocalDaemonTransportUrl,
-  createTauriLocalDaemonTransportFactory,
-} from "./managed-tauri-daemon-transport";
+  createDesktopLocalDaemonTransportFactory,
+} from "@/desktop/daemon/desktop-daemon-transport";
 
 function normalizeNonEmptyString(value: unknown): string | null {
   if (typeof value !== "string") return null;
@@ -49,7 +49,7 @@ export async function buildClientConfig(
   serverId?: string
 ): Promise<DaemonClientConfig> {
   const clientId = await getOrCreateClientId();
-  const localTransportFactory = createTauriLocalDaemonTransportFactory();
+  const localTransportFactory = createDesktopLocalDaemonTransportFactory();
   const base = {
     clientId,
     clientType: "mobile" as const,

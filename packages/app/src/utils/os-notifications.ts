@@ -1,7 +1,10 @@
+import { Asset } from "expo-asset";
 import { Platform } from "react-native";
-import { sendDesktopNotification } from "@/desktop/notifications/desktop-notifications";
-import { buildNotificationRoute } from "./notification-routing";
-import { getTauri, type TauriNotificationApi } from "@/utils/tauri";
+import { getDesktopHost } from "@/desktop/host";
+import {
+  buildNotificationRoute,
+  resolveNotificationTarget,
+} from "./notification-routing";
 
 type OsNotificationPayload = {
   title: string;
@@ -15,28 +18,41 @@ export type WebNotificationClickDetail = {
 
 type WebNotificationInstance = {
   onclick?: ((event: Event) => void) | null;
-  onclose?: ((event: Event) => void) | null;
-  addEventListener?: (type: string, listener: (event: Event) => void) => void;
-  removeEventListener?: (type: string, listener: (event: Event) => void) => void;
-  close?: () => void;
 };
 
 export const WEB_NOTIFICATION_CLICK_EVENT = "paseo:web-notification-click";
 
 let permissionRequest: Promise<boolean> | null = null;
-const activeWebNotifications = new Set<WebNotificationInstance>();
+let notificationIconUrl: string | null | undefined;
 
-function getTauriNotificationModule(): TauriNotificationApi | null {
-  if (Platform.OS !== "web") {
-    return null;
-  }
-  return getTauri()?.notification ?? null;
+function getDesktopNotificationSender():
+  | ((payload: {
+      title: string;
+      body?: string;
+      data?: Record<string, unknown>;
+    }) => Promise<boolean>)
+  | null {
+  const sendNotification = getDesktopHost()?.notification?.sendNotification;
+  return typeof sendNotification === "function"
+    ? (sendNotification as (payload: {
+        title: string;
+        body?: string;
+        data?: Record<string, unknown>;
+      }) => Promise<boolean>)
+    : null;
 }
 
 function getWebNotificationConstructor(): {
   permission: string;
   requestPermission?: () => Promise<string>;
-  new (title: string, options?: { body?: string; data?: Record<string, unknown> }): unknown;
+  new (
+    title: string,
+    options?: {
+      body?: string;
+      data?: Record<string, unknown>;
+      icon?: string;
+    }
+  ): unknown;
 } | null {
   const NotificationConstructor = (globalThis as { Notification?: any }).Notification;
   return NotificationConstructor ?? null;
@@ -70,49 +86,31 @@ export async function ensureOsNotificationPermission(): Promise<boolean> {
   if (Platform.OS !== "web") {
     return false;
   }
-
-  const tauriNotification = getTauriNotificationModule();
-  if (tauriNotification) {
-    return await ensureTauriNotificationPermission(tauriNotification);
-  }
-
   return await ensureNotificationPermission();
 }
 
-async function ensureTauriNotificationPermission(
-  notificationModule: TauriNotificationApi
-): Promise<boolean> {
-  if (typeof notificationModule.isPermissionGranted === "function") {
-    try {
-      const granted = await notificationModule.isPermissionGranted();
-      if (granted) {
-        return true;
-      }
-    } catch (error) {
-      console.warn(
-        "[OSNotifications][Tauri] Failed to check notification permission",
-        error
-      );
-    }
-  }
+function hasNotificationClickTarget(
+  data: Record<string, unknown> | undefined
+): boolean {
+  const target = resolveNotificationTarget(data);
+  return target.serverId !== null || target.agentId !== null || target.workspaceId !== null;
+}
 
-  if (typeof notificationModule.requestPermission !== "function") {
-    console.warn(
-      "[OSNotifications][Tauri] notification.requestPermission is unavailable"
-    );
-    return false;
+function getWebNotificationIconUrl(): string | undefined {
+  if (notificationIconUrl !== undefined) {
+    return notificationIconUrl ?? undefined;
   }
 
   try {
-    const result = await notificationModule.requestPermission();
-    return result === "granted";
-  } catch (error) {
-    console.warn(
-      "[OSNotifications][Tauri] Failed to request notification permission",
-      error
+    const asset = Asset.fromModule(
+      require("../../assets/images/notification-icon.png")
     );
-    return false;
+    notificationIconUrl = asset.uri ?? null;
+  } catch {
+    notificationIconUrl = null;
   }
+
+  return notificationIconUrl ?? undefined;
 }
 
 function dispatchWebNotificationClick(detail: WebNotificationClickDetail): boolean {
@@ -156,41 +154,12 @@ function attachWebClickHandler(
   notification: WebNotificationInstance,
   data: Record<string, unknown> | undefined
 ): void {
-  activeWebNotifications.add(notification);
-
-  const cleanup = () => {
-    activeWebNotifications.delete(notification);
-  };
-
-  const onClick = () => {
-    const focus = (globalThis as { focus?: () => void }).focus;
-    if (typeof focus === "function") {
-      focus();
-    }
-
+  notification.onclick = () => {
     const handledByApp = dispatchWebNotificationClick({ data });
     if (!handledByApp) {
       fallbackNavigateToNotificationTarget(data);
     }
-
-    cleanup();
-    if (typeof notification.close === "function") {
-      notification.close();
-    }
   };
-
-  const onClose = () => {
-    cleanup();
-  };
-
-  if (typeof notification.addEventListener === "function") {
-    notification.addEventListener("click", onClick);
-    notification.addEventListener("close", onClose);
-    return;
-  }
-
-  notification.onclick = onClick;
-  notification.onclose = onClose;
 }
 
 export async function sendOsNotification(
@@ -201,8 +170,9 @@ export async function sendOsNotification(
     return false;
   }
 
-  if (getTauri()) {
-    return await sendDesktopNotification(payload);
+  const desktopNotificationSender = getDesktopNotificationSender();
+  if (desktopNotificationSender) {
+    return await desktopNotificationSender(payload);
   }
 
   const NotificationConstructor = getWebNotificationConstructor();
@@ -212,8 +182,11 @@ export async function sendOsNotification(
       const notification = new NotificationConstructor(payload.title, {
         body: payload.body,
         data: payload.data,
+        icon: getWebNotificationIconUrl(),
       }) as WebNotificationInstance;
-      attachWebClickHandler(notification, payload.data);
+      if (hasNotificationClickTarget(payload.data)) {
+        attachWebClickHandler(notification, payload.data);
+      }
       return true;
     }
   }

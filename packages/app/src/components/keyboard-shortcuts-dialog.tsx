@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { Text, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
-import { getIsTauri } from "@/constants/layout";
+import { getIsDesktop } from "@/constants/layout";
 import { AdaptiveModalSheet } from "@/components/adaptive-modal-sheet";
 import { Shortcut } from "@/components/ui/shortcut";
 import { useKeyboardShortcutsStore } from "@/stores/keyboard-shortcuts-store";
@@ -13,10 +13,10 @@ export function KeyboardShortcutsDialog() {
   const setOpen = useKeyboardShortcutsStore((s) => s.setShortcutsDialogOpen);
 
   const isMac = getShortcutOs() === "mac";
-  const isTauri = getIsTauri();
+  const isDesktopApp = getIsDesktop();
   const sections = useMemo(
-    () => buildKeyboardShortcutHelpSections({ isMac, isTauri }),
-    [isMac, isTauri]
+    () => buildKeyboardShortcutHelpSections({ isMac, isDesktop: isDesktopApp }),
+    [isDesktopApp, isMac]
   );
 
   return (

@@ -3,6 +3,7 @@ import { createServer as createHTTPServer } from "http";
 import { createReadStream, unlinkSync, existsSync } from "fs";
 import { stat } from "fs/promises";
 import { randomUUID } from "node:crypto";
+import { hostname as getHostname } from "node:os";
 import path from "node:path";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
@@ -66,6 +67,16 @@ export function parseListenString(listen: string): ListenTarget {
   throw new Error(`Invalid listen string: ${listen}`);
 }
 
+function formatListenTarget(listenTarget: ListenTarget | null): string | null {
+  if (!listenTarget) {
+    return null;
+  }
+  if (listenTarget.type === "tcp") {
+    return `${listenTarget.host}:${listenTarget.port}`;
+  }
+  return listenTarget.path;
+}
+
 import { VoiceAssistantWebSocketServer } from "./websocket-server.js";
 import { DownloadTokenStore } from "./file-download/token-store.js";
 import type { OpenAiSpeechProviderConfig } from "./speech/providers/openai/config.js";
@@ -88,6 +99,7 @@ import {
   encodeOfferToFragmentUrl,
 } from "./connection-offer.js";
 import { loadOrCreateDaemonKeyPair } from "./daemon-keypair.js";
+import { generateLocalPairingOffer } from "./pairing-offer.js";
 import { startRelayTransport, type RelayTransportController } from "./relay-transport.js";
 import { getOrCreateServerId } from "./server-id.js";
 import { resolveDaemonVersion } from "./daemon-version.js";
@@ -234,9 +246,9 @@ export async function createPaseoDaemon(
   // CORS - allow same-origin + configured origins
   const allowedOrigins = new Set([
     ...config.corsAllowedOrigins,
-    // Tauri desktop app WebView origin (used for fetch/WebSocket in production builds).
-    // This origin can't be produced by normal websites, so it's safe to allow by default.
-    "tauri://localhost",
+    // Packaged desktop renderers may send `file://` or `null` as the origin.
+    "file://",
+    "null",
     // For TCP, add localhost variants
     ...(listenTarget.type === "tcp"
       ? [
@@ -271,6 +283,37 @@ export async function createPaseoDaemon(
   // Health check endpoint
   app.get("/api/health", (_req, res) => {
     res.json({ status: "ok", timestamp: new Date().toISOString() });
+  });
+
+  app.get("/api/status", (_req, res) => {
+    res.json({
+      status: "server_info",
+      serverId,
+      hostname: getHostname(),
+      version: daemonVersion,
+      listen: formatListenTarget(boundListenTarget ?? listenTarget),
+    });
+  });
+
+  app.get("/pairing", async (_req, res) => {
+    try {
+      const offer = await generateLocalPairingOffer({
+        paseoHome: config.paseoHome,
+        relayEnabled: config.relayEnabled,
+        relayEndpoint: config.relayEndpoint,
+        relayPublicEndpoint: config.relayPublicEndpoint,
+        appBaseUrl: config.appBaseUrl,
+        logger,
+      });
+      res.json(offer);
+    } catch (error) {
+      logger.error({ err: error }, "Failed to generate pairing offer");
+      res.status(500).json({
+        relayEnabled: false,
+        url: null,
+        qr: null,
+      });
+    }
   });
 
   app.get("/api/files/download", async (req, res) => {

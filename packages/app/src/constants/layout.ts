@@ -1,5 +1,5 @@
 import { Platform } from "react-native";
-import { getTauri } from "@/utils/tauri";
+import { isDesktop, isDesktopMac } from "@/desktop/host";
 
 export const FOOTER_HEIGHT = 75;
 
@@ -14,60 +14,56 @@ export const HEADER_TOP_PADDING_MOBILE = 8;
 // Max width for chat content (stream view, input area, new agent form)
 export const MAX_CONTENT_WIDTH = 820;
 
-// Tauri desktop app constants for macOS traffic light buttons
+// Desktop app constants for macOS traffic light buttons
 // These buttons (close/minimize/maximize) overlay the top-left corner
-export const TAURI_TRAFFIC_LIGHT_WIDTH = 78;
-export const TAURI_TRAFFIC_LIGHT_HEIGHT = 56;
+export const DESKTOP_TRAFFIC_LIGHT_WIDTH = 78;
+export const DESKTOP_TRAFFIC_LIGHT_HEIGHT = 45;
 
-// Check if running in Tauri desktop app (any OS)
-function isTauri(): boolean {
+// Check if running in desktop app (any OS)
+function isDesktopEnvironment(): boolean {
   if (Platform.OS !== "web") return false;
-  return getTauri() !== null;
+  return isDesktop();
 }
 
-// Check if running in Tauri desktop app on macOS
-function isTauriMac(): boolean {
+// Check if running in desktop host on macOS
+function isDesktopEnvironmentMac(): boolean {
   if (Platform.OS !== "web") return false;
-  if (typeof window === "undefined") return false;
-  if (getTauri() === null) return false;
-  // Check for macOS via user agent
-  const ua = navigator.userAgent;
-  return ua.includes("Mac OS") || ua.includes("Macintosh");
+  return isDesktopMac();
 }
 
-// Cached result - only cache true, keep checking if false (in case Tauri globals load later)
-let _isTauriMacCached: boolean | null = null;
-let _isTauriCached: boolean | null = null;
+// Cached result - only cache true, keep checking if false (in case desktop globals load later)
+let _isDesktopMacCached: boolean | null = null;
+let _isDesktopCached: boolean | null = null;
 
-export function getIsTauriMac(): boolean {
-  if (_isTauriMacCached === true) {
+export function getIsDesktopMac(): boolean {
+  if (_isDesktopMacCached === true) {
     return true;
   }
-  const result = isTauriMac();
+  const result = isDesktopEnvironmentMac();
   if (result) {
-    _isTauriMacCached = true;
+    _isDesktopMacCached = true;
   }
   return result;
 }
 
-export function getIsTauri(): boolean {
-  if (_isTauriCached === true) {
+export function getIsDesktop(): boolean {
+  if (_isDesktopCached === true) {
     return true;
   }
-  const result = isTauri();
+  const result = isDesktopEnvironment();
   if (result) {
-    _isTauriCached = true;
+    _isDesktopCached = true;
   }
   return result;
 }
 
-// Get traffic light padding values (only non-zero on Tauri macOS)
+// Get traffic light padding values (only non-zero on desktop macOS)
 export function getTrafficLightPadding(): { left: number; top: number } {
-  if (!getIsTauriMac()) {
+  if (!getIsDesktopMac()) {
     return { left: 0, top: 0 };
   }
   return {
-    left: TAURI_TRAFFIC_LIGHT_WIDTH,
-    top: TAURI_TRAFFIC_LIGHT_HEIGHT,
+    left: DESKTOP_TRAFFIC_LIGHT_WIDTH,
+    top: DESKTOP_TRAFFIC_LIGHT_HEIGHT,
   };
 }

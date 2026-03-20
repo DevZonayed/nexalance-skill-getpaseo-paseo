@@ -122,7 +122,7 @@ export function useDesktopPermissions(): UseDesktopPermissionsReturn {
     try {
       const sent = await sendOsNotification({
         title: "Paseo notification test",
-        body: "If you can see this, delivery works. Click it to verify the open flow.",
+        body: "If you can see this, desktop notifications work.",
       });
       if (!sent) {
         console.warn("[Settings] Desktop test notification was not delivered");

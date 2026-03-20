@@ -166,7 +166,7 @@
 - Redesigned the website get-started experience into a clearer two-step flow.
 - Simplified website GitHub navigation and changelog headings.
 - Improved app draft/new-agent UX with clearer working directory placeholder and empty-state messaging.
-- Enabled drag interactions in previously unhandled areas on the desktop (Tauri) draft screen.
+- Enabled drag interactions in previously unhandled areas on the desktop draft screen.
 - Hid empty filter groups in the left sidebar.
 
 ### Fixed
@@ -188,7 +188,7 @@
 - Improved new worktree-agent defaults by prefilling CWD to the main repository.
 - Improved desktop command autocomplete behavior to match combobox interactions.
 - Improved git sync UX by simplifying sync labels and only showing Sync when a branch diverges from origin.
-- Improved desktop settings and permissions UX in Tauri.
+- Improved desktop settings and permissions UX on desktop.
 - Improved scrollbar visibility, drag interactions, tracking, and animation timing on web/desktop.
 
 ### Fixed
@@ -227,7 +227,7 @@
 - Fixed stuck "send while running" recovery across app and server session handling.
 - Fixed Claude session identity preservation when reloading existing agents.
 - Fixed combobox option behavior and related interactions.
-- Fixed Tauri file-drop listener cleanup to avoid uncaught unlisten errors.
+- Fixed desktop file-drop listener cleanup to avoid uncaught unlisten errors.
 - Fixed web tool-detail wheel event routing at scroll edges.
 
 ## 0.1.7 - 2026-02-16

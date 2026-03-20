@@ -1,5 +1,5 @@
 import { Platform } from 'react-native'
-import { getTauri, type TauriNotificationPermission } from '@/utils/tauri'
+import { getDesktopHost } from '@/desktop/host'
 
 export type DesktopPermissionKind = 'notifications' | 'microphone'
 
@@ -45,7 +45,7 @@ type NavigatorLike = {
 }
 
 export function shouldShowDesktopPermissionSection(): boolean {
-  return Platform.OS === 'web' && getTauri() !== null
+  return Platform.OS === 'web' && getDesktopHost() !== null
 }
 
 function status(input: DesktopPermissionStatus): DesktopPermissionStatus {
@@ -132,27 +132,6 @@ function mapNotificationPermissionString(permission: string): DesktopPermissionS
   })
 }
 
-function mapTauriNotificationPermissionResult(
-  permission: TauriNotificationPermission
-): DesktopPermissionStatus {
-  if (permission === 'granted') {
-    return status({
-      state: 'granted',
-      detail: 'Notifications are allowed by the OS.',
-    })
-  }
-  if (permission === 'denied') {
-    return status({
-      state: 'denied',
-      detail: 'Notifications are denied in system settings.',
-    })
-  }
-  return status({
-    state: 'prompt',
-    detail: 'Notifications have not been granted yet.',
-  })
-}
-
 async function getNotificationPermissionStatus(): Promise<DesktopPermissionStatus> {
   if (Platform.OS !== 'web') {
     return status({
@@ -161,44 +140,30 @@ async function getNotificationPermissionStatus(): Promise<DesktopPermissionStatu
     })
   }
 
-  const tauriNotification = getTauri()?.notification
-  if (tauriNotification) {
-    if (typeof tauriNotification.isPermissionGranted !== 'function') {
-      return status({
-        state: 'unavailable',
-        detail: 'Tauri notification plugin is missing isPermissionGranted().',
-      })
-    }
-
+  const desktopHost = getDesktopHost()
+  if (desktopHost && typeof desktopHost.notification?.isSupported === 'function') {
     try {
-      const granted = await tauriNotification.isPermissionGranted()
-      if (granted) {
-        return status({
-          state: 'granted',
-          detail: 'Tauri reports notifications are granted.',
-        })
-      }
+      const supported = await desktopHost.notification.isSupported()
       return status({
-        state: 'not-granted',
-        detail: 'Tauri reports notifications are not granted. Use Request to prompt.',
+        state: supported ? 'granted' : 'unavailable',
+        detail: supported
+          ? 'Desktop notifications are supported.'
+          : 'Desktop notifications are not supported on this platform.',
       })
-    } catch (error) {
-      return status({
-        state: 'unknown',
-        detail: `Failed to read notification status: ${getErrorMessage(error)}`,
-      })
+    } catch {
+      // Fall through to web API check
     }
   }
 
   const NotificationConstructor = getWebNotificationConstructor()
-  if (!NotificationConstructor || typeof NotificationConstructor.permission !== 'string') {
-    return status({
-      state: 'unavailable',
-      detail: 'Web Notification API is unavailable in this environment.',
-    })
+  if (NotificationConstructor && typeof NotificationConstructor.permission === 'string') {
+    return mapNotificationPermissionString(NotificationConstructor.permission)
   }
 
-  return mapNotificationPermissionString(NotificationConstructor.permission)
+  return status({
+    state: 'unavailable',
+    detail: 'Web Notification API is unavailable in this environment.',
+  })
 }
 
 async function getMicrophonePermissionStatus(): Promise<DesktopPermissionStatus> {
@@ -279,18 +244,11 @@ async function requestNotificationPermissionStatus(): Promise<DesktopPermissionS
     })
   }
 
-  const tauriNotification = getTauri()?.notification
-  if (tauriNotification) {
-    if (typeof tauriNotification.requestPermission !== 'function') {
-      return status({
-        state: 'unavailable',
-        detail: 'Tauri notification plugin is missing requestPermission().',
-      })
-    }
-
+  const NotificationConstructor = getWebNotificationConstructor()
+  if (NotificationConstructor && typeof NotificationConstructor.requestPermission === 'function') {
     try {
-      const permission = await tauriNotification.requestPermission()
-      return mapTauriNotificationPermissionResult(permission)
+      const permission = await NotificationConstructor.requestPermission()
+      return mapNotificationPermissionString(permission)
     } catch (error) {
       return status({
         state: 'unknown',
@@ -299,23 +257,10 @@ async function requestNotificationPermissionStatus(): Promise<DesktopPermissionS
     }
   }
 
-  const NotificationConstructor = getWebNotificationConstructor()
-  if (!NotificationConstructor || typeof NotificationConstructor.requestPermission !== 'function') {
-    return status({
-      state: 'unavailable',
-      detail: 'Web Notification API requestPermission() is unavailable.',
-    })
-  }
-
-  try {
-    const permission = await NotificationConstructor.requestPermission()
-    return mapNotificationPermissionString(permission)
-  } catch (error) {
-    return status({
-      state: 'unknown',
-      detail: `Failed to request notification permission: ${getErrorMessage(error)}`,
-    })
-  }
+  return status({
+    state: 'unavailable',
+    detail: 'Web Notification API requestPermission() is unavailable.',
+  })
 }
 
 async function requestMicrophonePermissionStatus(): Promise<DesktopPermissionStatus> {

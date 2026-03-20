@@ -20,7 +20,7 @@ import { SidebarAgentListSkeleton } from './sidebar-agent-list-skeleton'
 import { useSidebarShortcutModel } from '@/hooks/use-sidebar-shortcut-model'
 import { useSidebarWorkspacesList } from '@/hooks/use-sidebar-workspaces-list'
 import { useSidebarAnimation } from '@/contexts/sidebar-animation-context'
-import { useTauriDragHandlers, useTrafficLightPadding } from '@/utils/tauri-window'
+import { useDesktopDragHandlers, useTrafficLightPadding } from '@/utils/desktop-window'
 import { Combobox } from '@/components/ui/combobox'
 import { getHostRuntimeStore, useHosts } from '@/runtime/host-runtime'
 import { formatConnectionStatus } from '@/utils/daemons'
@@ -130,7 +130,7 @@ export function LeftSidebar({ selectedAgentId: _selectedAgentId }: LeftSidebarPr
     isGesturing,
     closeGestureRef,
   } = useSidebarAnimation()
-  const dragHandlers = useTauriDragHandlers()
+  const { style: dragRegionStyle, ...dragHandlers } = useDesktopDragHandlers()
   const trafficLightPadding = useTrafficLightPadding()
   const closeTouchStartX = useSharedValue(0)
   const closeTouchStartY = useSharedValue(0)
@@ -448,9 +448,9 @@ export function LeftSidebar({ selectedAgentId: _selectedAgentId }: LeftSidebarPr
   return (
     <View style={[styles.desktopSidebar, { width: DESKTOP_SIDEBAR_WIDTH }]}>
       {trafficLightPadding.top > 0 ? (
-        <View style={{ height: trafficLightPadding.top }} {...dragHandlers} />
+        <View style={[{ height: trafficLightPadding.top }, dragRegionStyle]} {...dragHandlers} />
       ) : null}
-      <View style={styles.sidebarHeader} {...dragHandlers}>
+      <View style={[styles.sidebarHeader, dragRegionStyle]} {...dragHandlers}>
         <View style={styles.sidebarHeaderRow}>
           <Pressable
             style={styles.newAgentButton}

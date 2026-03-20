@@ -1,4 +1,4 @@
-import { getTauri } from "@/utils/tauri";
+import { isDesktop } from "@/desktop/host";
 import type {
   AudioEngine,
   AudioEngineCallbacks,
@@ -300,12 +300,12 @@ export function createAudioEngine(
         typeof window !== "undefined" && window.location
           ? window.location.origin
           : "unknown";
-      const isTauri = getTauri() !== null;
+      const isDesktopApp = isDesktop();
 
       if (missingNavigator) {
         throw new Error("Microphone capture is not supported in this environment");
       }
-      if (!secureContext && !isTauri) {
+      if (!secureContext && !isDesktopApp) {
         throw new Error(
           `Microphone access requires HTTPS or localhost. Current origin: ${currentOrigin}`
         );

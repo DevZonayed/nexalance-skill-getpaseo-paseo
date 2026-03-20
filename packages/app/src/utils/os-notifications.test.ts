@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 type MockNotificationOptions = {
   body?: string;
   data?: Record<string, unknown>;
+  icon?: string;
 };
 
 type MockNotificationInstance = {
@@ -18,7 +19,6 @@ type GlobalSnapshot = {
   dispatchEvent: unknown;
   focus: unknown;
   location: unknown;
-  __TAURI__: unknown;
 };
 
 const originalGlobals: GlobalSnapshot = {
@@ -27,12 +27,34 @@ const originalGlobals: GlobalSnapshot = {
   dispatchEvent: (globalThis as { dispatchEvent?: unknown }).dispatchEvent,
   focus: (globalThis as { focus?: unknown }).focus,
   location: (globalThis as { location?: unknown }).location,
-  __TAURI__: (globalThis as { __TAURI__?: unknown }).__TAURI__,
 };
 
-async function loadModuleForPlatform(platform: "web" | "ios" | "android") {
+async function loadModuleForPlatform(
+  platform: "web" | "ios" | "android",
+  options?: {
+    desktopHost?: {
+      notification?: {
+        sendNotification?: (payload: {
+          title: string;
+          body?: string;
+          data?: Record<string, unknown>;
+        }) => Promise<boolean>;
+      };
+    } | null;
+  }
+) {
   vi.resetModules();
   vi.doMock("react-native", () => ({ Platform: { OS: platform } }));
+  vi.doMock("@/desktop/host", () => ({
+    getDesktopHost: () => options?.desktopHost ?? null,
+  }));
+  vi.doMock("expo-asset", () => ({
+    Asset: {
+      fromModule: vi.fn(() => ({
+        uri: "http://localhost:8081/packages/app/assets/images/notification-icon.png",
+      })),
+    },
+  }));
   return import("./os-notifications");
 }
 
@@ -42,7 +64,6 @@ function restoreGlobals(): void {
   (globalThis as { dispatchEvent?: unknown }).dispatchEvent = originalGlobals.dispatchEvent;
   (globalThis as { focus?: unknown }).focus = originalGlobals.focus;
   (globalThis as { location?: unknown }).location = originalGlobals.location;
-  (globalThis as { __TAURI__?: unknown }).__TAURI__ = originalGlobals.__TAURI__;
 }
 
 describe("sendOsNotification", () => {
@@ -71,7 +92,6 @@ describe("sendOsNotification", () => {
   });
 
   afterEach(() => {
-    vi.doUnmock("@/desktop/notifications/desktop-notifications");
     vi.doUnmock("react-native");
     vi.restoreAllMocks();
     vi.resetModules();
@@ -168,14 +188,8 @@ describe("sendOsNotification", () => {
     expect(assign).toHaveBeenCalledWith("/h/srv%20with%20space/agent/agent%2F1");
   });
 
-  it("uses the desktop notification bridge when Tauri is available", async () => {
-    const sendDesktopNotification = vi.fn(async () => true);
-    vi.doMock("@/desktop/notifications/desktop-notifications", () => ({
-      sendDesktopNotification,
-    }));
-
-    (globalThis as { __TAURI__?: unknown }).__TAURI__ = {};
-
+  it("returns false when the Notification API is unavailable", async () => {
+    (globalThis as { Notification?: unknown }).Notification = undefined;
     const { sendOsNotification } = await loadModuleForPlatform("web");
     const sent = await sendOsNotification({
       title: "Agent finished",
@@ -183,11 +197,61 @@ describe("sendOsNotification", () => {
       data: { serverId: "srv-1", agentId: "agent-1" },
     });
 
+    expect(sent).toBe(false);
+  });
+
+  it("does not attach a click handler when there is no route target", async () => {
+    const created: MockNotificationInstance[] = [];
+
+    class MockNotification implements MockNotificationInstance {
+      static permission = "granted";
+      static requestPermission = vi.fn(async () => "granted");
+      onclick: ((event: Event) => void) | null = null;
+      close = vi.fn();
+
+      constructor(public title: string, public options?: MockNotificationOptions) {
+        created.push(this);
+      }
+    }
+
+    (globalThis as { Notification?: unknown }).Notification = MockNotification;
+    (globalThis as { dispatchEvent?: unknown }).dispatchEvent = vi.fn();
+    (globalThis as { location?: unknown }).location = { assign: vi.fn() };
+
+    const { sendOsNotification } = await loadModuleForPlatform("web");
+
+    const sent = await sendOsNotification({
+      title: "Paseo notification test",
+      body: "If you can see this, desktop notifications work.",
+    });
+
     expect(sent).toBe(true);
-    expect(sendDesktopNotification).toHaveBeenCalledWith({
-      title: "Agent finished",
-      body: "Done",
-      data: { serverId: "srv-1", agentId: "agent-1" },
+    expect(created).toHaveLength(1);
+    expect(created[0]?.onclick).toBeNull();
+  });
+
+  it("uses the desktop notification bridge when available", async () => {
+    const sendNotification = vi.fn(async () => true);
+
+    const { sendOsNotification } = await loadModuleForPlatform("web", {
+      desktopHost: {
+        notification: {
+          sendNotification,
+        },
+      },
+    });
+
+    const sent = await sendOsNotification({
+      title: "Paseo notification test",
+      body: "If you can see this, desktop notifications work.",
+      data: { serverId: "srv-1" },
+    });
+
+    expect(sent).toBe(true);
+    expect(sendNotification).toHaveBeenCalledWith({
+      title: "Paseo notification test",
+      body: "If you can see this, desktop notifications work.",
+      data: { serverId: "srv-1" },
     });
   });
 });

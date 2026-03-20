@@ -1,6 +1,6 @@
 import type { AttachmentMetadata } from "@/attachments/types";
 import { fileUriToPath } from "@/attachments/utils";
-import { invokeDesktopCommand } from "@/desktop/tauri/invoke-desktop-command";
+import { invokeDesktopCommand } from "@/desktop/electron/invoke";
 
 function base64ToUint8Array(base64: string): Uint8Array {
   const binary = atob(base64);

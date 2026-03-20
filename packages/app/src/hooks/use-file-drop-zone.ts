@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { Platform } from "react-native";
 import type { ImageAttachment } from "@/components/message-input";
-import { getCurrentTauriWindow, getTauri } from "@/utils/tauri";
+import { getDesktopHost } from "@/desktop/host";
 import {
   persistAttachmentFromBlob,
   persistAttachmentFromFileUri,
@@ -33,7 +33,7 @@ const IMAGE_MIME_BY_EXTENSION: Record<string, string> = {
   ".tiff": "image/tiff",
 };
 
-type TauriDragDropPayload =
+type DesktopDragDropPayload =
   | {
       type: "enter";
       paths: string[];
@@ -49,8 +49,8 @@ type TauriDragDropPayload =
       type: "leave";
     };
 
-type TauriDragDropEvent = {
-  payload: TauriDragDropPayload;
+type DesktopDragDropEvent = {
+  payload: DesktopDragDropPayload;
 };
 
 function isImageFile(file: File): boolean {
@@ -121,26 +121,27 @@ export function useFileDropZone({
       didCleanup = true;
       try {
         void Promise.resolve(cleanupFn()).catch((error) => {
-          console.warn("[useFileDropZone] Failed to remove Tauri drag-drop listener:", error);
+          console.warn("[useFileDropZone] Failed to remove desktop drag-drop listener:", error);
         });
       } catch (error) {
-        console.warn("[useFileDropZone] Failed to remove Tauri drag-drop listener:", error);
+        console.warn("[useFileDropZone] Failed to remove desktop drag-drop listener:", error);
       }
     }
 
-    async function setupTauriDragDrop(): Promise<boolean> {
-      if (getTauri() === null) {
+    async function setupDesktopDragDrop(): Promise<boolean> {
+      const desktopHost = getDesktopHost();
+      if (desktopHost === null) {
         return false;
       }
 
-      const tauriWindow = getCurrentTauriWindow();
-      if (!tauriWindow || typeof tauriWindow.onDragDropEvent !== "function") {
+      const desktopWindow = desktopHost.window?.getCurrentWindow?.();
+      if (!desktopWindow || typeof desktopWindow.onDragDropEvent !== "function") {
         return false;
       }
 
       try {
-        const unlisten = await tauriWindow.onDragDropEvent(
-          (event: TauriDragDropEvent) => {
+        const unlisten = await desktopWindow.onDragDropEvent(
+          (event: DesktopDragDropEvent) => {
             const payload = event.payload;
             if (payload.type === "leave") {
               setIsDragging(false);
@@ -185,7 +186,7 @@ export function useFileDropZone({
         cleanup = unlisten;
         return true;
       } catch (error) {
-        console.warn("[useFileDropZone] Failed to listen for Tauri drag-drop:", error);
+        console.warn("[useFileDropZone] Failed to listen for desktop drag-drop:", error);
         return false;
       }
     }
@@ -269,8 +270,8 @@ export function useFileDropZone({
     }
 
     void (async () => {
-      const tauriListenersAttached = await setupTauriDragDrop();
-      if (disposed || tauriListenersAttached) {
+      const desktopListenersAttached = await setupDesktopDragDrop();
+      if (disposed || desktopListenersAttached) {
         return;
       }
       setupDomDragDrop();

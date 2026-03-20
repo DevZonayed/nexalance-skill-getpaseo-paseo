@@ -23,7 +23,7 @@ function shortcutContext(
 ): KeyboardShortcutContext {
   return {
     isMac: false,
-    isTauri: false,
+    isDesktop: false,
     focusScope: "other",
     commandCenterOpen: false,
     hasSelectedAgent: true,
@@ -84,7 +84,7 @@ type HelpSectionCase = {
   name: string;
   context: {
     isMac: boolean;
-    isTauri: boolean;
+    isDesktop: boolean;
   };
   expectedKeys: Record<string, string[]>;
 };
@@ -106,42 +106,42 @@ describe("keyboard-shortcuts", () => {
     {
       name: "matches workspace index jump on web via Alt+digit",
       event: { key: "2", code: "Digit2", altKey: true },
-      context: { isTauri: false },
+      context: { isDesktop: false },
       action: "workspace.navigate.index",
       payload: { index: 2 },
     },
     {
-      name: "matches workspace index jump on tauri via Mod+digit",
+      name: "matches workspace index jump on desktop via Mod+digit",
       event: { key: "2", code: "Digit2", metaKey: true },
-      context: { isMac: true, isTauri: true },
+      context: { isMac: true, isDesktop: true },
       action: "workspace.navigate.index",
       payload: { index: 2 },
     },
     {
-      name: "matches tab index jump on tauri via Alt+digit",
+      name: "matches tab index jump on desktop via Alt+digit",
       event: { key: "2", code: "Digit2", altKey: true },
-      context: { isTauri: true },
+      context: { isDesktop: true },
       action: "workspace.tab.navigate.index",
       payload: { index: 2 },
     },
     {
       name: "matches tab index jump on web via Alt+Shift+digit",
       event: { key: "@", code: "Digit2", altKey: true, shiftKey: true },
-      context: { isTauri: false },
+      context: { isDesktop: false },
       action: "workspace.tab.navigate.index",
       payload: { index: 2 },
     },
     {
       name: "matches workspace relative navigation on web via Alt+[",
       event: { key: "[", code: "BracketLeft", altKey: true },
-      context: { isTauri: false },
+      context: { isDesktop: false },
       action: "workspace.navigate.relative",
       payload: { delta: -1 },
     },
     {
-      name: "matches workspace relative navigation on tauri via Mod+]",
+      name: "matches workspace relative navigation on desktop via Mod+]",
       event: { key: "]", code: "BracketRight", ctrlKey: true },
-      context: { isTauri: true },
+      context: { isDesktop: true },
       action: "workspace.navigate.relative",
       payload: { delta: 1 },
     },
@@ -160,13 +160,13 @@ describe("keyboard-shortcuts", () => {
     {
       name: "matches Alt+Shift+W to close current tab on web",
       event: { key: "W", code: "KeyW", altKey: true, shiftKey: true },
-      context: { isTauri: false },
+      context: { isDesktop: false },
       action: "workspace.tab.close.current",
     },
     {
-      name: "matches Mod+W to close current tab on tauri",
+      name: "matches Mod+W to close current tab on desktop",
       event: { key: "w", code: "KeyW", metaKey: true },
-      context: { isMac: true, isTauri: true },
+      context: { isMac: true, isDesktop: true },
       action: "workspace.tab.close.current",
     },
     {
@@ -312,7 +312,7 @@ describe("keyboard-shortcut help sections", () => {
   const helpCases: HelpSectionCase[] = [
     {
       name: "uses web defaults for workspace and tab jump",
-      context: { isMac: true, isTauri: false },
+      context: { isMac: true, isDesktop: false },
       expectedKeys: {
         "new-agent": ["mod", "shift", "O"],
         "workspace-tab-new": ["mod", "T"],
@@ -324,8 +324,8 @@ describe("keyboard-shortcut help sections", () => {
       },
     },
     {
-      name: "uses tauri defaults for workspace and tab jump",
-      context: { isMac: true, isTauri: true },
+      name: "uses desktop defaults for workspace and tab jump",
+      context: { isMac: true, isDesktop: true },
       expectedKeys: {
         "new-agent": ["mod", "shift", "O"],
         "workspace-tab-new": ["mod", "T"],
@@ -338,7 +338,7 @@ describe("keyboard-shortcut help sections", () => {
     },
     {
       name: "uses mod+period as non-mac left sidebar shortcut",
-      context: { isMac: false, isTauri: false },
+      context: { isMac: false, isDesktop: false },
       expectedKeys: {
         "toggle-left-sidebar": ["mod", "."],
       },

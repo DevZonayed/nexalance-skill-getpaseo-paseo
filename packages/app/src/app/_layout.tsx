@@ -53,11 +53,10 @@ import {
   HorizontalScrollProvider,
   useHorizontalScrollOptional,
 } from "@/contexts/horizontal-scroll-context";
-import { getIsTauri } from "@/constants/layout";
+import { getIsDesktop } from "@/constants/layout";
 import { CommandCenter } from "@/components/command-center";
 import { ProjectPickerModal } from "@/components/project-picker-modal";
 import { KeyboardShortcutsDialog } from "@/components/keyboard-shortcuts-dialog";
-import { listenToDesktopNotificationClicks } from "@/desktop/notifications/desktop-notifications";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { queryClient } from "@/query/query-client";
 import {
@@ -65,19 +64,18 @@ import {
   type WebNotificationClickDetail,
   ensureOsNotificationPermission,
 } from "@/utils/os-notifications";
+import { getDesktopHost } from "@/desktop/host";
 import { buildNotificationRoute } from "@/utils/notification-routing";
 import {
   buildHostRootRoute,
+  mapPathnameToServer,
   parseServerIdFromPathname,
   parseHostAgentRouteFromPathname,
   parseWorkspaceOpenIntent,
 } from "@/utils/host-routes";
-import { getTauri } from "@/utils/tauri";
-import { attachConsole } from "@/utils/tauri-attach-console";
 import { syncNavigationActiveWorkspace } from "@/stores/navigation-active-workspace-store";
 
 polyfillCrypto();
-attachConsole();
 const HostRuntimeBootstrapContext = createContext(false);
 
 function PushNotificationRouter() {
@@ -86,33 +84,37 @@ function PushNotificationRouter() {
 
   useEffect(() => {
     if (Platform.OS === "web") {
-      if (getTauri()) {
+      let removeDesktopNotificationListener: (() => void) | null = null;
+      let cancelled = false;
+
+      if (getIsDesktop()) {
         void ensureOsNotificationPermission();
 
-        let disposed = false;
-        let unlisten: (() => void) | null = null;
+        const unlistenResult = getDesktopHost()?.events?.on?.(
+          "notification-click",
+          (payload: unknown) => {
+            const data =
+              typeof payload === "object" &&
+              payload !== null &&
+              "data" in payload &&
+              typeof (payload as { data?: unknown }).data === "object" &&
+              (payload as { data?: unknown }).data !== null
+                ? ((payload as { data: Record<string, unknown> }).data)
+                : undefined;
+            router.push(buildNotificationRoute(data) as any);
+          }
+        );
 
-        void listenToDesktopNotificationClicks((payload) => {
-          router.push(buildNotificationRoute(payload.data) as any);
-        })
-          .then((cleanup) => {
-            if (disposed) {
-              cleanup();
-              return;
-            }
-            unlisten = cleanup;
-          })
-          .catch((error) => {
-            console.error(
-              "[OSNotifications][Desktop] Failed to register notification click listener",
-              error
-            );
-          });
-
-        return () => {
-          disposed = true;
-          unlisten?.();
-        };
+        void Promise.resolve(unlistenResult).then((unlisten) => {
+          if (typeof unlisten !== "function") {
+            return;
+          }
+          if (cancelled) {
+            unlisten();
+            return;
+          }
+          removeDesktopNotificationListener = unlisten;
+        });
       }
 
       const target = globalThis as unknown as EventTarget;
@@ -126,7 +128,10 @@ function PushNotificationRouter() {
         WEB_NOTIFICATION_CLICK_EVENT,
         openFromWebClick as EventListener
       );
+
       return () => {
+        cancelled = true;
+        removeDesktopNotificationListener?.();
         target.removeEventListener(
           WEB_NOTIFICATION_CLICK_EVENT,
           openFromWebClick as EventListener
@@ -476,11 +481,23 @@ function OfferLinkListener({
 }
 
 function AppWithSidebar({ children }: { children: ReactNode }) {
+  const router = useRouter();
   const pathname = usePathname();
   const params = useGlobalSearchParams<{ open?: string | string[] }>();
+  const hosts = useHosts();
   useFaviconStatus();
   const activeServerId = useMemo(() => parseServerIdFromPathname(pathname), [pathname]);
   const shouldShowAppChrome = activeServerId !== null;
+
+  useEffect(() => {
+    if (!activeServerId || hosts.length === 0) {
+      return;
+    }
+    if (hosts.some((host) => host.serverId === activeServerId)) {
+      return;
+    }
+    router.replace(mapPathnameToServer(pathname, hosts[0]!.serverId) as any);
+  }, [activeServerId, hosts, pathname, router]);
 
   // Parse selectedAgentKey directly from pathname
   // useLocalSearchParams doesn't update when navigating between same-pattern routes

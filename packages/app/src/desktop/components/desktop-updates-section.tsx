@@ -20,21 +20,21 @@ import { Button } from '@/components/ui/button'
 import { useAppSettings } from '@/hooks/use-settings'
 import { confirmDialog } from '@/utils/confirm-dialog'
 import { openExternalUrl } from '@/utils/open-external-url'
-import { formatVersionWithPrefix, isVersionMismatch } from '@/desktop/updates/desktop-updates'
+import { getLocalDaemonVersion, isVersionMismatch } from '@/desktop/updates/desktop-updates'
 import {
   getCliSymlinkInstructions,
-  getManagedDaemonLogs,
-  getManagedDaemonPairing,
-  getManagedDaemonStatus,
-  restartManagedDaemon,
-  shouldUseManagedDesktopDaemon,
-  startManagedDaemon,
-  stopManagedDaemon,
+  getDesktopDaemonLogs,
+  getDesktopDaemonPairing,
+  getDesktopDaemonStatus,
+  restartDesktopDaemon,
+  shouldUseDesktopDaemon,
+  startDesktopDaemon,
+  stopDesktopDaemon,
   type CliSymlinkInstructions,
-  type ManagedDaemonLogs,
-  type ManagedPairingOffer,
-  type ManagedDaemonStatus,
-} from '@/desktop/managed-runtime/managed-runtime'
+  type DesktopDaemonLogs,
+  type DesktopDaemonStatus,
+  type DesktopPairingOffer,
+} from '@/desktop/daemon/desktop-daemon'
 
 export interface LocalDaemonSectionProps {
   appVersion: string | null
@@ -46,33 +46,35 @@ export function LocalDaemonSection({
   showLifecycleControls,
 }: LocalDaemonSectionProps) {
   const { theme } = useUnistyles()
-  const showSection = shouldUseManagedDesktopDaemon()
+  const showSection = shouldUseDesktopDaemon()
   const { settings, updateSettings } = useAppSettings()
-  const [managedStatus, setManagedStatus] = useState<ManagedDaemonStatus | null>(null)
+  const [daemonStatus, setDaemonStatus] = useState<DesktopDaemonStatus | null>(null)
+  const [daemonVersion, setDaemonVersion] = useState<string | null>(null)
   const [statusError, setStatusError] = useState<string | null>(null)
   const [isRestartingDaemon, setIsRestartingDaemon] = useState(false)
   const [isUpdatingDaemonManagement, setIsUpdatingDaemonManagement] = useState(false)
   const [isLoadingCliSymlinkInstructions, setIsLoadingCliSymlinkInstructions] = useState(false)
   const [statusMessage, setStatusMessage] = useState<string | null>(null)
   const [cliStatusMessage, setCliStatusMessage] = useState<string | null>(null)
-  const [managedLogs, setManagedLogs] = useState<ManagedDaemonLogs | null>(null)
+  const [daemonLogs, setDaemonLogs] = useState<DesktopDaemonLogs | null>(null)
   const [isLogsModalOpen, setIsLogsModalOpen] = useState(false)
   const [isPairingModalOpen, setIsPairingModalOpen] = useState(false)
   const [isCliSymlinkModalOpen, setIsCliSymlinkModalOpen] = useState(false)
   const [isLoadingPairing, setIsLoadingPairing] = useState(false)
-  const [pairingOffer, setPairingOffer] = useState<ManagedPairingOffer | null>(null)
+  const [pairingOffer, setPairingOffer] = useState<DesktopPairingOffer | null>(null)
   const [cliSymlinkInstructions, setCliSymlinkInstructions] =
     useState<CliSymlinkInstructions | null>(null)
   const [pairingStatusMessage, setPairingStatusMessage] = useState<string | null>(null)
 
-  const loadManagedStatus = useCallback(() => {
+  const loadDaemonData = useCallback(() => {
     if (!showSection) {
       return Promise.resolve()
     }
-    return Promise.all([getManagedDaemonStatus(), getManagedDaemonLogs()])
-      .then(([status, logs]) => {
-        setManagedStatus(status)
-        setManagedLogs(logs)
+    return Promise.all([getDesktopDaemonStatus(), getDesktopDaemonLogs(), getLocalDaemonVersion()])
+      .then(([status, logs, version]) => {
+        setDaemonStatus(status)
+        setDaemonLogs(logs)
+        setDaemonVersion(version.version)
         setStatusError(null)
       })
       .catch((error) => {
@@ -86,35 +88,31 @@ export function LocalDaemonSection({
       if (!showSection) {
         return undefined
       }
-      void loadManagedStatus()
+      void loadDaemonData()
       return undefined
-    }, [loadManagedStatus, showSection])
+    }, [loadDaemonData, showSection])
   )
 
-  const localDaemonVersionText = formatVersionWithPrefix(managedStatus?.runtimeVersion ?? null)
-  const daemonVersionMismatch = isVersionMismatch(appVersion, managedStatus?.runtimeVersion ?? null)
+  const daemonVersionMismatch = isVersionMismatch(appVersion, daemonVersion)
   const daemonStatusStateText =
-    statusError ?? (managedStatus?.status === 'running' ? managedStatus.status : 'not running')
-  const daemonStatusDetailText = `PID ${managedStatus?.pid ? managedStatus.pid : '—'}`
+    statusError ?? (daemonStatus?.status === 'running' ? daemonStatus.status : 'not running')
+  const daemonStatusDetailText = `PID ${daemonStatus?.pid ? daemonStatus.pid : '—'}`
   const isDaemonManagementPaused = !settings.manageBuiltInDaemon
-  const daemonActionLabel = managedStatus?.status === 'running' ? 'Restart daemon' : 'Start daemon'
+  const daemonActionLabel = daemonStatus?.status === 'running' ? 'Restart daemon' : 'Start daemon'
   const daemonActionMessage =
-    managedStatus?.status === 'running'
+    daemonStatus?.status === 'running'
       ? 'Restarts the built-in daemon.'
       : 'Starts the built-in daemon.'
 
   const handleUpdateLocalDaemon = useCallback(() => {
-    if (!showSection) {
-      return
-    }
-    if (isRestartingDaemon) {
+    if (!showSection || isRestartingDaemon) {
       return
     }
 
     void confirmDialog({
       title: daemonActionLabel,
       message:
-        managedStatus?.status === 'running'
+        daemonStatus?.status === 'running'
           ? 'This will restart the built-in daemon. The app will reconnect automatically.'
           : 'This will start the built-in daemon.',
       confirmLabel: daemonActionLabel,
@@ -128,19 +126,18 @@ export function LocalDaemonSection({
         setIsRestartingDaemon(true)
         setStatusMessage(null)
 
-        const action =
-          managedStatus?.status === 'running' ? restartManagedDaemon : startManagedDaemon
+        const action = daemonStatus?.status === 'running' ? restartDesktopDaemon : startDesktopDaemon
 
         void action()
           .then((status) => {
-            setManagedStatus(status)
+            setDaemonStatus(status)
             setStatusMessage(
-              managedStatus?.status === 'running' ? 'Daemon restarted.' : 'Daemon started.'
+              daemonStatus?.status === 'running' ? 'Daemon restarted.' : 'Daemon started.'
             )
-            return loadManagedStatus()
+            return loadDaemonData()
           })
           .catch((error) => {
-            console.error('[Settings] Failed to change managed daemon state', error)
+            console.error('[Settings] Failed to change desktop daemon state', error)
             const message = error instanceof Error ? error.message : String(error)
             setStatusMessage(`${daemonActionLabel} failed: ${message}`)
           })
@@ -149,10 +146,10 @@ export function LocalDaemonSection({
           })
       })
       .catch((error) => {
-        console.error('[Settings] Failed to open managed daemon action confirmation', error)
+        console.error('[Settings] Failed to open desktop daemon action confirmation', error)
         Alert.alert('Error', 'Unable to open the daemon confirmation dialog.')
       })
-  }, [daemonActionLabel, isRestartingDaemon, loadManagedStatus, managedStatus?.status, showSection])
+  }, [daemonActionLabel, daemonStatus?.status, isRestartingDaemon, loadDaemonData, showSection])
 
   const handleToggleDaemonManagement = useCallback(() => {
     if (isUpdatingDaemonManagement) {
@@ -193,13 +190,13 @@ export function LocalDaemonSection({
         setStatusMessage(null)
 
         const stopPromise =
-          managedStatus?.status === 'running'
-            ? stopManagedDaemon()
-            : Promise.resolve(managedStatus ?? null)
+          daemonStatus?.status === 'running'
+            ? stopDesktopDaemon()
+            : Promise.resolve(daemonStatus ?? null)
 
         void stopPromise
           .then(() => updateSettings({ manageBuiltInDaemon: false }))
-          .then(() => loadManagedStatus())
+          .then(() => loadDaemonData())
           .then(() => {
             setStatusMessage('Built-in daemon paused and stopped.')
           })
@@ -216,9 +213,9 @@ export function LocalDaemonSection({
         Alert.alert('Error', 'Unable to open the daemon confirmation dialog.')
       })
   }, [
+    daemonStatus,
     isUpdatingDaemonManagement,
-    loadManagedStatus,
-    managedStatus,
+    loadDaemonData,
     settings.manageBuiltInDaemon,
     updateSettings,
   ])
@@ -258,7 +255,7 @@ export function LocalDaemonSection({
   }, [cliSymlinkInstructions?.commands])
 
   const handleCopyLogPath = useCallback(() => {
-    const logPath = managedLogs?.logPath
+    const logPath = daemonLogs?.logPath
     if (!logPath) {
       return
     }
@@ -271,14 +268,14 @@ export function LocalDaemonSection({
         console.error('[Settings] Failed to copy log path', error)
         Alert.alert('Error', 'Unable to copy log path.')
       })
-  }, [managedLogs?.logPath])
+  }, [daemonLogs?.logPath])
 
   const handleOpenLogs = useCallback(() => {
-    if (!managedLogs) {
+    if (!daemonLogs) {
       return
     }
     setIsLogsModalOpen(true)
-  }, [managedLogs])
+  }, [daemonLogs])
 
   const handleOpenPairingModal = useCallback(() => {
     if (isLoadingPairing) {
@@ -289,7 +286,7 @@ export function LocalDaemonSection({
     setIsLoadingPairing(true)
     setPairingStatusMessage(null)
 
-    void getManagedDaemonPairing()
+    void getDesktopDaemonPairing()
       .then((pairing) => {
         setPairingOffer(pairing)
         if (!pairing.relayEnabled || !pairing.url) {
@@ -344,7 +341,7 @@ export function LocalDaemonSection({
         <View style={styles.row}>
           <View style={styles.rowContent}>
             <Text style={styles.rowTitle}>Status</Text>
-            <Text style={styles.hintText}>Only the built-in managed daemon is shown here.</Text>
+            <Text style={styles.hintText}>Only the built-in desktop daemon is shown here.</Text>
           </View>
           <View style={styles.statusValueGroup}>
             <Text style={styles.valueText}>{daemonStatusStateText}</Text>
@@ -398,7 +395,7 @@ export function LocalDaemonSection({
                 disabled={isRestartingDaemon}
               >
                 {isRestartingDaemon
-                  ? managedStatus?.status === 'running'
+                  ? daemonStatus?.status === 'running'
                     ? 'Restarting...'
                     : 'Starting...'
                   : daemonActionLabel}
@@ -425,10 +422,10 @@ export function LocalDaemonSection({
         <View style={[styles.row, styles.rowBorder]}>
           <View style={styles.rowContent}>
             <Text style={styles.rowTitle}>Log file</Text>
-            <Text style={styles.hintText}>{managedLogs?.logPath ?? 'Log path unavailable.'}</Text>
+            <Text style={styles.hintText}>{daemonLogs?.logPath ?? 'Log path unavailable.'}</Text>
           </View>
           <View style={styles.actionGroup}>
-            {managedLogs?.logPath ? (
+            {daemonLogs?.logPath ? (
               <Button
                 variant="outline"
                 size="sm"
@@ -443,7 +440,7 @@ export function LocalDaemonSection({
               size="sm"
               leftIcon={<FileText size={theme.iconSize.sm} color={theme.colors.foreground} />}
               onPress={handleOpenLogs}
-              disabled={!managedLogs}
+              disabled={!daemonLogs}
             >
               Open logs
             </Button>
@@ -523,9 +520,9 @@ export function LocalDaemonSection({
         snapPoints={['70%', '92%']}
       >
         <View style={styles.modalBody}>
-          <Text style={styles.hintText}>{managedLogs?.logPath ?? 'Log path unavailable.'}</Text>
+          <Text style={styles.hintText}>{daemonLogs?.logPath ?? 'Log path unavailable.'}</Text>
           <Text style={styles.logOutput} selectable>
-            {managedLogs?.contents.length ? managedLogs.contents : '(log file is empty)'}
+            {daemonLogs?.contents.length ? daemonLogs.contents : '(log file is empty)'}
           </Text>
         </View>
       </AdaptiveModalSheet>
@@ -537,7 +534,7 @@ const ADVANCED_DAEMON_SETTINGS_URL = 'https://paseo.sh/docs/configuration'
 
 function PairingOfferDialogContent(input: {
   isLoading: boolean
-  pairingOffer: ManagedPairingOffer | null
+  pairingOffer: DesktopPairingOffer | null
   statusMessage: string | null
   onCopyLink: () => void
 }) {

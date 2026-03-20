@@ -1,5 +1,5 @@
 import { Alert, Platform } from "react-native";
-import { getTauri, type TauriDialogAskOptions } from "@/utils/tauri";
+import { getDesktopHost, type DesktopDialogAskOptions } from "@/desktop/host";
 
 export interface ConfirmDialogInput {
   title: string;
@@ -48,14 +48,14 @@ async function showNativeConfirmDialog(input: ConfirmDialogInput): Promise<boole
   });
 }
 
-function getTauriApi() {
+function getDesktopApi() {
   if (Platform.OS !== "web") {
     return null;
   }
-  return getTauri();
+  return getDesktopHost();
 }
 
-function buildTauriAskOptions(input: ConfirmDialogInput): TauriDialogAskOptions {
+function buildDesktopAskOptions(input: ConfirmDialogInput): DesktopDialogAskOptions {
   const labels = resolveButtonLabels(input);
 
   return {
@@ -74,35 +74,18 @@ function blurActiveWebElement(): void {
   (activeElement as HTMLElement | null)?.blur?.();
 }
 
-async function showTauriConfirmDialog(input: ConfirmDialogInput): Promise<boolean | null> {
-  const tauriApi = getTauriApi();
-  if (!tauriApi) {
+async function showDesktopConfirmDialog(input: ConfirmDialogInput): Promise<boolean | null> {
+  const desktopApi = getDesktopApi();
+  if (!desktopApi) {
     return null;
   }
 
   blurActiveWebElement();
-  const options = buildTauriAskOptions(input);
-  const tauriAsk = tauriApi.dialog?.ask;
+  const options = buildDesktopAskOptions(input);
+  const desktopAsk = desktopApi.dialog?.ask;
 
-  if (typeof tauriAsk === "function") {
-    try {
-      return Boolean(await tauriAsk(input.message, options));
-    } catch (error) {
-      console.warn("[ConfirmDialog] Tauri dialog.ask failed", error);
-    }
-  }
-
-  const tauriInvoke = tauriApi.core?.invoke;
-  if (typeof tauriInvoke === "function") {
-    try {
-      const result = await tauriInvoke("plugin:dialog|ask", {
-        message: input.message,
-        ...options,
-      });
-      return result === true;
-    } catch (error) {
-      console.warn("[ConfirmDialog] Tauri plugin:dialog|ask failed", error);
-    }
+  if (typeof desktopAsk === "function") {
+    return Boolean(await desktopAsk(input.message, options));
   }
 
   return null;
@@ -124,9 +107,9 @@ export async function confirmDialog(input: ConfirmDialogInput): Promise<boolean>
     return showNativeConfirmDialog(input);
   }
 
-  const tauriResult = await showTauriConfirmDialog(input);
-  if (tauriResult !== null) {
-    return tauriResult;
+  const desktopResult = await showDesktopConfirmDialog(input);
+  if (desktopResult !== null) {
+    return desktopResult;
   }
 
   return showWebConfirmDialog(input);
@@ -134,5 +117,5 @@ export async function confirmDialog(input: ConfirmDialogInput): Promise<boolean>
 
 export const __private__ = {
   blurActiveWebElement,
-  buildTauriAskOptions,
+  buildDesktopAskOptions,
 };

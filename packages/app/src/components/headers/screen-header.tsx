@@ -6,9 +6,9 @@ import {
   HEADER_INNER_HEIGHT,
   HEADER_INNER_HEIGHT_MOBILE,
   HEADER_TOP_PADDING_MOBILE,
-  getIsTauriMac,
+  getIsDesktopMac,
 } from "@/constants/layout";
-import { useTauriDragHandlers, useTrafficLightPadding } from "@/utils/tauri-window";
+import { useDesktopDragHandlers, useTrafficLightPadding } from "@/utils/desktop-window";
 import { usePanelStore } from "@/stores/panel-store";
 
 interface ScreenHeaderProps {
@@ -37,18 +37,21 @@ export function ScreenHeader({
   const topPadding = isMobile ? HEADER_TOP_PADDING_MOBILE : 0;
   const baseHorizontalPadding = theme.spacing[2];
   const collapsedSidebarTrafficLightInset =
-    !isMobile && !desktopAgentListOpen && getIsTauriMac()
+    !isMobile && !desktopAgentListOpen && getIsDesktopMac()
       ? trafficLightPadding.left
       : 0;
 
-  // On Tauri macOS, enable window dragging and double-click to maximize
-  const dragHandlers = useTauriDragHandlers();
+  const { style: dragRegionStyle, ...dragHandlers } = useDesktopDragHandlers();
 
   return (
     <View style={styles.header}>
       <View style={[styles.inner, { paddingTop: insets.top + topPadding }]}>
         <View
-          style={[styles.row, { paddingLeft: baseHorizontalPadding + collapsedSidebarTrafficLightInset }]}
+          style={[
+            styles.row,
+            { paddingLeft: baseHorizontalPadding + collapsedSidebarTrafficLightInset },
+            dragRegionStyle,
+          ]}
           {...dragHandlers}
         >
           <View style={[styles.left, leftStyle]}>{left}</View>

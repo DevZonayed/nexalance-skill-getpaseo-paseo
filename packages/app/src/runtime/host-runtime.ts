@@ -16,9 +16,9 @@ import {
 import { decodeOfferFragmentPayload, normalizeHostPort } from "@/utils/daemon-endpoints";
 import { ConnectionOfferSchema, type ConnectionOffer } from "@server/shared/connection-offer";
 import {
-  shouldUseManagedDesktopDaemon,
-  startManagedDaemon,
-} from "@/desktop/managed-runtime/managed-runtime";
+  shouldUseDesktopDaemon,
+  startDesktopDaemon,
+} from "@/desktop/daemon/desktop-daemon";
 import { connectToDaemon } from "@/utils/test-daemon-connection";
 import {
   buildDaemonWebSocketUrl,
@@ -32,8 +32,8 @@ import {
 } from "@/utils/connection-selection";
 import {
   buildLocalDaemonTransportUrl,
-  createTauriLocalDaemonTransportFactory,
-} from "@/utils/managed-tauri-daemon-transport";
+  createDesktopLocalDaemonTransportFactory,
+} from "@/desktop/daemon/desktop-daemon-transport";
 import { applyFetchedAgentDirectory } from "@/utils/agent-directory-sync";
 import { useSessionStore, type Agent } from "@/stores/session-store";
 
@@ -432,7 +432,7 @@ function probeIntervalForConnection(
 function createDefaultDeps(): HostRuntimeControllerDeps {
   return {
     createClient: ({ host, connection, clientId, runtimeGeneration }) => {
-      const localTransportFactory = createTauriLocalDaemonTransportFactory();
+      const localTransportFactory = createDesktopLocalDaemonTransportFactory();
       const base = {
         suppressSendErrors: true,
         clientId,
@@ -1188,7 +1188,7 @@ export class HostRuntimeStore {
       return;
     }
 
-    if (shouldUseManagedDesktopDaemon()) {
+    if (shouldUseDesktopDaemon()) {
       await this.bootstrapDesktop();
     } else {
       await this.bootstrapLocalhost();
@@ -1197,43 +1197,22 @@ export class HostRuntimeStore {
 
   private async bootstrapDesktop(): Promise<void> {
     try {
-      await Promise.allSettled([
-        (async () => {
-          const daemon = await startManagedDaemon();
-          if (!daemon.serverId) {
-            return;
-          }
-          const connection = connectionFromListen(daemon.listen);
-          if (!connection) {
-            return;
-          }
-          await this.upsertHostConnection({
-            serverId: daemon.serverId,
-            label: daemon.hostname ?? undefined,
-            connection,
-          });
-        })().catch((error) => {
-          console.warn("[HostRuntime] Failed to bootstrap desktop daemon connection", error);
-        }),
-        (async () => {
-          const { client, serverId, hostname } = await connectToDaemon(
-            {
-              id: `bootstrap:${DEFAULT_LOCALHOST_ENDPOINT}`,
-              type: "directTcp",
-              endpoint: DEFAULT_LOCALHOST_ENDPOINT,
-            },
-            { timeoutMs: DEFAULT_LOCALHOST_BOOTSTRAP_TIMEOUT_MS }
-          );
-          await this.upsertDirectConnection({
-            serverId,
-            endpoint: DEFAULT_LOCALHOST_ENDPOINT,
-            label: hostname ?? undefined,
-            existingClient: client,
-          });
-        })().catch(() => undefined),
-      ]);
+      const daemon = await startDesktopDaemon();
+      const connection = connectionFromListen(daemon.listen);
+      if (!connection) {
+        return;
+      }
+      const { client, serverId, hostname } = await connectToDaemon(connection, {
+        timeoutMs: DEFAULT_LOCALHOST_BOOTSTRAP_TIMEOUT_MS,
+      });
+      await this.upsertHostConnection({
+        serverId,
+        label: hostname ?? daemon.hostname ?? undefined,
+        connection,
+        existingClient: client,
+      });
     } catch (error) {
-      console.warn("[HostRuntime] Failed to bootstrap desktop startup host connections", error);
+      console.warn("[HostRuntime] Failed to bootstrap desktop daemon connection", error);
     }
   }
 

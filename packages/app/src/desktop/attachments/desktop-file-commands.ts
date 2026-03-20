@@ -1,4 +1,4 @@
-import { invokeDesktopCommand } from "@/desktop/tauri/invoke-desktop-command";
+import { invokeDesktopCommand } from "@/desktop/electron/invoke";
 
 interface AttachmentFileResult {
   path: string;

@@ -12,7 +12,7 @@ This is an npm workspace monorepo:
 - `packages/app` — Mobile + web client (Expo)
 - `packages/cli` — Docker-style CLI (`paseo run/ls/logs/wait`)
 - `packages/relay` — E2E encrypted relay for remote access
-- `packages/desktop` — Tauri desktop wrapper
+- `packages/desktop` — Electron desktop wrapper
 - `packages/website` — Marketing site (paseo.sh)
 
 ## Documentation

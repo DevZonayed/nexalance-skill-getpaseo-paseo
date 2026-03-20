@@ -80,6 +80,17 @@ function hostLifecycleEquals(left: HostLifecycle, right: HostLifecycle): boolean
   return JSON.stringify(left) === JSON.stringify(right)
 }
 
+function dedupeHostConnections(connections: HostConnection[]): HostConnection[] {
+  const next: HostConnection[] = []
+  for (const connection of connections) {
+    if (next.some((existing) => hostConnectionEquals(existing, connection))) {
+      continue
+    }
+    next.push(connection)
+  }
+  return next
+}
+
 export function upsertHostConnectionInProfiles(input: {
   profiles: HostProfile[]
   serverId: string
@@ -96,9 +107,17 @@ export function upsertHostConnectionInProfiles(input: {
   const labelTrimmed = input.label?.trim() ?? ''
   const derivedLabel = labelTrimmed || serverId
   const existing = input.profiles
-  const idx = existing.findIndex((daemon) => daemon.serverId === serverId)
+  const matchingIndexes = existing.reduce<number[]>((matches, daemon, index) => {
+    if (
+      daemon.serverId === serverId ||
+      daemon.connections.some((connection) => hostConnectionEquals(connection, input.connection))
+    ) {
+      matches.push(index)
+    }
+    return matches
+  }, [])
 
-  if (idx === -1) {
+  if (matchingIndexes.length === 0) {
     const profile: HostProfile = {
       serverId,
       label: derivedLabel,
@@ -111,31 +130,37 @@ export function upsertHostConnectionInProfiles(input: {
     return [...existing, profile]
   }
 
-  const prev = existing[idx]!
-  const connectionIdx = prev.connections.findIndex((connection) => connection.id === input.connection.id)
-  const hadConnection = connectionIdx !== -1
-  const connectionChanged =
-    connectionIdx === -1
-      ? true
-      : !hostConnectionEquals(prev.connections[connectionIdx]!, input.connection)
-  const nextConnections =
-    connectionIdx === -1
-      ? [...prev.connections, input.connection]
-      : connectionChanged
-        ? prev.connections.map((connection, index) =>
-            index === connectionIdx ? input.connection : connection
-          )
-        : prev.connections
-
+  const matchedProfiles = matchingIndexes.map((index) => existing[index]!)
+  const prev =
+    matchedProfiles.find((daemon) => daemon.serverId === serverId) ?? matchedProfiles[0]!
+  const nextConnections = dedupeHostConnections([
+    ...matchedProfiles.flatMap((daemon) => daemon.connections),
+    input.connection,
+  ])
   const nextLifecycle = prev.lifecycle
-  const nextLabel = labelTrimmed ? labelTrimmed : prev.label
-  const nextPreferredConnectionId = prev.preferredConnectionId ?? input.connection.id
+  const nextLabel =
+    labelTrimmed || (prev.label === prev.serverId ? derivedLabel : prev.label)
+  const nextPreferredConnectionId =
+    prev.preferredConnectionId &&
+    nextConnections.some((connection) => connection.id === prev.preferredConnectionId)
+      ? prev.preferredConnectionId
+      : input.connection.id
+  const nextCreatedAt = matchedProfiles.reduce(
+    (earliest, daemon) => (daemon.createdAt < earliest ? daemon.createdAt : earliest),
+    prev.createdAt
+  )
   const changed =
+    matchingIndexes.length > 1 ||
+    prev.serverId !== serverId ||
+    nextCreatedAt !== prev.createdAt ||
     nextLabel !== prev.label ||
     nextPreferredConnectionId !== prev.preferredConnectionId ||
     !hostLifecycleEquals(prev.lifecycle, nextLifecycle) ||
-    !hadConnection ||
-    connectionChanged
+    nextConnections.length !== prev.connections.length ||
+    nextConnections.some((connection, index) => {
+      const previousConnection = prev.connections[index]
+      return !previousConnection || !hostConnectionEquals(connection, previousConnection)
+    })
 
   if (!changed) {
     return existing
@@ -143,15 +168,19 @@ export function upsertHostConnectionInProfiles(input: {
 
   const nextProfile: HostProfile = {
     ...prev,
+    serverId,
     label: nextLabel,
     lifecycle: nextLifecycle,
     connections: nextConnections,
     preferredConnectionId: nextPreferredConnectionId,
+    createdAt: nextCreatedAt,
     updatedAt: now,
   }
 
-  const next = [...existing]
-  next[idx] = nextProfile
+  const firstIndex = matchingIndexes[0]!
+  const matchingIndexSet = new Set(matchingIndexes)
+  const next = existing.filter((_daemon, index) => !matchingIndexSet.has(index))
+  next.splice(firstIndex, 0, nextProfile)
   return next
 }
 

@@ -56,7 +56,6 @@
     "release:major": "npm run version:all:major && npm run release:check && npm run release:publish && npm run release:push"
   },
   "devDependencies": {
-    "concurrently": "^9.2.1",
     "prettier": "^3.5.3",
     "get-port-cli": "^3.0.0",
     "knip": "^5.82.1",

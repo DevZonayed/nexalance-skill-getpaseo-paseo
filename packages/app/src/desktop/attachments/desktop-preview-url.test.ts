@@ -4,7 +4,7 @@ const { invokeDesktopCommandMock } = vi.hoisted(() => ({
   invokeDesktopCommandMock: vi.fn(async () => "AAECAw=="),
 }));
 
-vi.mock("@/desktop/tauri/invoke-desktop-command", () => ({
+vi.mock("@/desktop/electron/invoke", () => ({
   invokeDesktopCommand: invokeDesktopCommandMock,
 }));
 

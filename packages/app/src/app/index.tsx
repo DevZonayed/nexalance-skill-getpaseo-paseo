@@ -1,7 +1,7 @@
 import { useEffect, useSyncExternalStore, useState } from 'react'
 import { usePathname, useRouter } from 'expo-router'
 import { useHosts } from '@/runtime/host-runtime'
-import { shouldUseManagedDesktopDaemon } from '@/desktop/managed-runtime/managed-runtime'
+import { shouldUseDesktopDaemon } from '@/desktop/daemon/desktop-daemon'
 import { buildHostRootRoute } from '@/utils/host-routes'
 import { StartupSplashScreen } from '@/screens/startup-splash-screen'
 import { WelcomeScreen } from '@/components/welcome-screen'
@@ -57,7 +57,7 @@ export default function Index() {
   const pathname = usePathname()
   const daemons = useHosts()
   const [hasTimedOut, setHasTimedOut] = useState(false)
-  const isDesktopStartupRace = shouldUseManagedDesktopDaemon()
+  const isDesktopStartupRace = shouldUseDesktopDaemon()
   const onlineServerId = useAnyHostOnline(daemons.map((daemon) => daemon.serverId))
   useEffect(() => {
     const timer = setTimeout(() => {

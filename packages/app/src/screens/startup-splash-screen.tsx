@@ -1,7 +1,7 @@
 import { Text, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { PaseoLogo } from "@/components/icons/paseo-logo";
-import { useTauriDragHandlers } from "@/utils/tauri-window";
+import { useDesktopDragHandlers } from "@/utils/desktop-window";
 
 const styles = StyleSheet.create((theme) => ({
   container: {
@@ -18,10 +18,10 @@ const styles = StyleSheet.create((theme) => ({
 }));
 
 export function StartupSplashScreen() {
-  const dragHandlers = useTauriDragHandlers();
+  const { style: dragRegionStyle, ...dragHandlers } = useDesktopDragHandlers();
 
   return (
-    <View style={styles.container} {...dragHandlers}>
+    <View style={[styles.container, dragRegionStyle]} {...dragHandlers}>
       <PaseoLogo size={96} />
       <Text style={styles.status}>Starting up…</Text>
     </View>

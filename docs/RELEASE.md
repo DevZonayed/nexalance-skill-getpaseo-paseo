@@ -31,6 +31,7 @@ npm run release:finalize       # Publish npm, promote draft to published
 - `draft-release:patch` creates the GitHub Release as a draft so desktop assets, APK uploads, and synced notes attach to it
 - `release:finalize` publishes npm and promotes the same draft release
 - Use the same semver tag for both; don't cut a second tag
+- Desktop assets now come from the Electron package at `packages/desktop`
 
 ## Fixing a failed release build
 
@@ -53,6 +54,7 @@ If the fix requires a code change (e.g. a broken build script), commit the fix t
 
 - `version:all:*` bumps root + syncs workspace versions and `@getpaseo/*` dependency versions
 - `release:prepare` refreshes workspace `node_modules` links to prevent stale types
+- `npm run dev:desktop` and `npm run build:desktop` target the Electron desktop package in `packages/desktop`
 - If `release:publish` partially fails, re-run it — npm skips already-published versions
 - Website Mac download CTA URL derives from `packages/website/package.json` version at build time
 

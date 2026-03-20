@@ -47,7 +47,7 @@ import type {
 } from '@server/server/agent/agent-sdk-types'
 import { AGENT_PROVIDER_DEFINITIONS } from '@server/server/agent/provider-manifest'
 import { buildHostWorkspaceAgentRoute } from '@/utils/host-routes'
-import { useTauriDragHandlers } from '@/utils/tauri-window'
+import { useDesktopDragHandlers } from '@/utils/desktop-window'
 import { useKeyboardShiftStyle } from '@/hooks/use-keyboard-shift-style'
 import { normalizeAgentSnapshot } from '@/utils/agent-snapshots'
 import { useDraftAgentCreateFlow } from '@/hooks/use-draft-agent-create-flow'
@@ -238,7 +238,7 @@ function DraftAgentScreenContent({
   const activateExplorerTabForCheckout = usePanelStore(
     (state) => state.activateExplorerTabForCheckout
   )
-  const tauriDragHandlers = useTauriDragHandlers()
+  const { style: dragRegionStyle, ...dragHandlers } = useDesktopDragHandlers()
   const isExplorerOpen = isMobile ? mobileView === 'file-explorer' : desktopFileExplorerOpen
   const draftIdRef = useRef(generateDraftId())
   const draftAgentIdRef = useRef(generateDraftId())
@@ -974,7 +974,7 @@ function DraftAgentScreenContent({
   const explorerServerId = draftExplorerCheckout?.serverId ?? null
   const explorerIsGit = draftExplorerCheckout?.isGit ?? false
   const mainContent = (
-    <View style={styles.container} {...tauriDragHandlers}>
+    <View style={[styles.container, dragRegionStyle]} {...dragHandlers}>
       <View style={styles.outerContainer}>
         <View style={styles.agentPanel}>
           <View

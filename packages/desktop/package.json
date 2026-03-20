@@ -2,17 +2,26 @@
   "name": "@getpaseo/desktop",
   "version": "0.1.30",
   "private": true,
-  "description": "Paseo desktop app (Tauri wrapper)",
+  "description": "Paseo desktop app (Electron wrapper)",
+  "main": "dist/main.js",
   "scripts": {
-    "build:managed-runtime": "node ./scripts/build-managed-runtime.mjs",
-    "prepare:managed-runtime": "npm --prefix ../.. run build:daemon && npm run build:managed-runtime && npm run validate:managed-runtime",
-    "dev": "tauri dev",
-    "build": "npm --prefix ../.. run build:web --workspace=@getpaseo/app && npm run prepare:managed-runtime && tauri build",
-    "validate:managed-runtime": "node ./scripts/validate-managed-runtime.mjs",
-    "smoke:managed-daemon": "node ./scripts/managed-daemon-smoke.mjs",
-    "tauri": "tauri"
+    "build": "npm --prefix ../.. run build:daemon && npm run build:main && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --config electron-builder.yml",
+    "build:main": "tsc -p tsconfig.json",
+    "dev": "npm run build:main && wait-on tcp:8081 && electron .",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@getpaseo/cli": "0.1.30",
+    "@getpaseo/server": "0.1.30",
+    "electron-updater": "^6.6.2",
+    "ws": "^8.14.2"
   },
   "devDependencies": {
-    "@tauri-apps/cli": "^2.9.6"
+    "@types/node": "24.6.0",
+    "@types/ws": "^8.5.14",
+    "electron": "41.0.3",
+    "electron-builder": "26.8.1",
+    "typescript": "5.9.3",
+    "wait-on": "8.0.5"
   }
 }
