@@ -73,6 +73,7 @@ import { buildSidebarProjectRowModel } from '@/utils/sidebar-project-row-model'
 import { useNavigationActiveWorkspaceSelection } from '@/stores/navigation-active-workspace-store'
 import { normalizeWorkspaceDescriptor, useSessionStore } from '@/stores/session-store'
 import { createNameId } from 'mnemonic-id'
+import { buildWorkspaceArchiveRedirectRoute } from '@/utils/workspace-archive-navigation'
 
 function toProjectIconDataUri(icon: { mimeType: string; data: string } | null): string | null {
   if (!icon) {
@@ -85,6 +86,7 @@ const workspaceKeyExtractor = (workspace: SidebarWorkspaceEntry) =>
   workspace.workspaceKey
 
 const projectKeyExtractor = (project: SidebarProjectEntry) => project.projectKey
+const EMPTY_WORKSPACES = new Map()
 
 interface SidebarWorkspaceListProps {
   projects: SidebarProjectEntry[]
@@ -789,7 +791,11 @@ function WorkspaceRowWithMenu({
   isCreating?: boolean
 }) {
   const toast = useToast()
+  const activeWorkspaceSelection = useNavigationActiveWorkspaceSelection()
   const archiveWorktree = useCheckoutGitActionsStore((state) => state.archiveWorktree)
+  const sessionWorkspaces = useSessionStore(
+    (state) => state.sessions[workspace.serverId]?.workspaces ?? EMPTY_WORKSPACES
+  )
   const [isArchivingWorkspace, setIsArchivingWorkspace] = useState(false)
   const archiveStatus = useCheckoutGitActionsStore((state) =>
     state.getStatus({
@@ -800,6 +806,27 @@ function WorkspaceRowWithMenu({
   )
   const isWorktree = workspace.workspaceKind === 'worktree'
   const isArchiving = isWorktree ? archiveStatus === 'pending' : isArchivingWorkspace
+  const redirectAfterArchive = useCallback(() => {
+    if (
+      activeWorkspaceSelection?.serverId !== workspace.serverId ||
+      activeWorkspaceSelection.workspaceId !== workspace.workspaceId
+    ) {
+      return
+    }
+
+    router.replace(
+      buildWorkspaceArchiveRedirectRoute({
+        serverId: workspace.serverId,
+        archivedWorkspaceId: workspace.workspaceId,
+        workspaces: sessionWorkspaces.values(),
+      }) as any
+    )
+  }, [
+    activeWorkspaceSelection,
+    sessionWorkspaces,
+    workspace.serverId,
+    workspace.workspaceId,
+  ])
 
   const handleArchiveWorktree = useCallback(() => {
     if (isArchiving) {
@@ -823,12 +850,22 @@ function WorkspaceRowWithMenu({
         serverId: workspace.serverId,
         cwd: workspace.workspaceId,
         worktreePath: workspace.workspaceId,
+      }).then(() => {
+        redirectAfterArchive()
       }).catch((error) => {
         const message = error instanceof Error ? error.message : 'Failed to archive worktree'
         toast.error(message)
       })
     })()
-  }, [archiveWorktree, isArchiving, toast, workspace.name, workspace.serverId, workspace.workspaceId])
+  }, [
+    archiveWorktree,
+    isArchiving,
+    redirectAfterArchive,
+    toast,
+    workspace.name,
+    workspace.serverId,
+    workspace.workspaceId,
+  ])
 
   const handleArchiveWorkspace = useCallback(() => {
     if (isArchivingWorkspace) {
@@ -859,13 +896,21 @@ function WorkspaceRowWithMenu({
         if (payload.error) {
           throw new Error(payload.error)
         }
+        redirectAfterArchive()
       } catch (error) {
         toast.error(error instanceof Error ? error.message : 'Failed to hide workspace')
       } finally {
         setIsArchivingWorkspace(false)
       }
     })()
-  }, [isArchivingWorkspace, toast, workspace.name, workspace.serverId, workspace.workspaceId])
+  }, [
+    isArchivingWorkspace,
+    redirectAfterArchive,
+    toast,
+    workspace.name,
+    workspace.serverId,
+    workspace.workspaceId,
+  ])
 
   const handleCopyPath = useCallback(() => {
     void Clipboard.setStringAsync(workspace.workspaceId)
@@ -927,7 +972,32 @@ function NonGitProjectRowWithMenuContent({
 }) {
   const toast = useToast()
   const contextMenu = useContextMenu()
+  const activeWorkspaceSelection = useNavigationActiveWorkspaceSelection()
+  const sessionWorkspaces = useSessionStore(
+    (state) => state.sessions[workspace.serverId]?.workspaces ?? EMPTY_WORKSPACES
+  )
   const [isArchivingWorkspace, setIsArchivingWorkspace] = useState(false)
+  const redirectAfterArchive = useCallback(() => {
+    if (
+      activeWorkspaceSelection?.serverId !== workspace.serverId ||
+      activeWorkspaceSelection.workspaceId !== workspace.workspaceId
+    ) {
+      return
+    }
+
+    router.replace(
+      buildWorkspaceArchiveRedirectRoute({
+        serverId: workspace.serverId,
+        archivedWorkspaceId: workspace.workspaceId,
+        workspaces: sessionWorkspaces.values(),
+      }) as any
+    )
+  }, [
+    activeWorkspaceSelection,
+    sessionWorkspaces,
+    workspace.serverId,
+    workspace.workspaceId,
+  ])
 
   const handleArchiveWorkspace = useCallback(() => {
     if (isArchivingWorkspace) {
@@ -958,13 +1028,21 @@ function NonGitProjectRowWithMenuContent({
         if (payload.error) {
           throw new Error(payload.error)
         }
+        redirectAfterArchive()
       } catch (error) {
         toast.error(error instanceof Error ? error.message : 'Failed to hide workspace')
       } finally {
         setIsArchivingWorkspace(false)
       }
     })()
-  }, [isArchivingWorkspace, toast, workspace.name, workspace.serverId, workspace.workspaceId])
+  }, [
+    isArchivingWorkspace,
+    redirectAfterArchive,
+    toast,
+    workspace.name,
+    workspace.serverId,
+    workspace.workspaceId,
+  ])
 
   return (
     <>
