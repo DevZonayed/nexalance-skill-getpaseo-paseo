@@ -2,7 +2,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useId, useMemo } from "react";
 import { UnistylesRuntime } from "react-native-unistyles";
 import { usePanelStore } from "@/stores/panel-store";
-import { useHostRuntimeSession } from "@/runtime/host-runtime";
+import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
 import type { SubscribeCheckoutDiffResponse } from "@server/shared/messages";
 import { orderCheckoutDiffFiles } from "./checkout-diff-order";
 
@@ -56,7 +56,8 @@ export function useCheckoutDiffQuery({
   enabled = true,
 }: UseCheckoutDiffQueryOptions) {
   const queryClient = useQueryClient();
-  const { client, isConnected } = useHostRuntimeSession(serverId);
+  const client = useHostRuntimeClient(serverId);
+  const isConnected = useHostRuntimeIsConnected(serverId);
   const isMobile =
     UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
   const mobileView = usePanelStore((state) => state.mobileView);

@@ -72,6 +72,7 @@ interface SplitContainerProps {
   newTabAgentOptionId?: "__new_tab_agent__";
   buildPaneContentModel: (input: {
     paneId: string;
+    isPaneFocused: boolean;
     tab: WorkspaceTabDescriptor;
   }) => WorkspacePaneContentModel;
   onFocusPane: (paneId: string) => void;
@@ -751,6 +752,7 @@ function SplitPaneView({
       activeTabDescriptor
         ? buildPaneContentModel({
             paneId: pane.id,
+            isPaneFocused: isFocused,
             tab: activeTabDescriptor,
           })
         : null,

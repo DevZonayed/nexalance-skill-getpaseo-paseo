@@ -6,6 +6,7 @@ export interface PaneContextValue {
   serverId: string;
   workspaceId: string;
   tabId: string;
+  isPaneFocused: boolean;
   target: WorkspaceTabTarget;
   openTab(target: WorkspaceTabTarget): void;
   closeCurrentTab(): void;

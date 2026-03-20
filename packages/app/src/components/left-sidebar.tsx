@@ -1,4 +1,15 @@
-import { useCallback, useMemo, useState, useEffect, useRef, useSyncExternalStore } from 'react'
+import {
+  memo,
+  useCallback,
+  useMemo,
+  useState,
+  useEffect,
+  useRef,
+  useSyncExternalStore,
+  type Dispatch,
+  type RefObject,
+  type SetStateAction,
+} from 'react'
 import { View, Pressable, Text, Platform } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import Animated, {
@@ -18,7 +29,7 @@ import { usePanelStore } from '@/stores/panel-store'
 import { SidebarWorkspaceList } from './sidebar-workspace-list'
 import { SidebarAgentListSkeleton } from './sidebar-agent-list-skeleton'
 import { useSidebarShortcutModel } from '@/hooks/use-sidebar-shortcut-model'
-import { useSidebarWorkspacesList } from '@/hooks/use-sidebar-workspaces-list'
+import { useSidebarWorkspacesList, type SidebarProjectEntry } from '@/hooks/use-sidebar-workspaces-list'
 import { useSidebarAnimation } from '@/contexts/sidebar-animation-context'
 import { useDesktopDragHandlers, useTrafficLightPadding } from '@/utils/desktop-window'
 import { Combobox } from '@/components/ui/combobox'
@@ -34,12 +45,58 @@ import {
 import { useOpenProjectPicker } from '@/hooks/use-open-project-picker'
 
 const DESKTOP_SIDEBAR_WIDTH = 320
+type SidebarShortcutModel = ReturnType<typeof useSidebarShortcutModel>
+type SidebarTheme = ReturnType<typeof useUnistyles>['theme']
 
 interface LeftSidebarProps {
   selectedAgentId?: string
 }
 
-export function LeftSidebar({ selectedAgentId: _selectedAgentId }: LeftSidebarProps) {
+interface HostOption {
+  id: string
+  label: string
+  description: string
+}
+
+interface SidebarSharedProps {
+  theme: SidebarTheme
+  activeServerId: string | null
+  activeHostLabel: string
+  activeHostStatusColor: string
+  hostOptions: HostOption[]
+  hostTriggerRef: RefObject<View | null>
+  isHostPickerOpen: boolean
+  setIsHostPickerOpen: Dispatch<SetStateAction<boolean>>
+  projects: SidebarProjectEntry[]
+  isInitialLoad: boolean
+  isRevalidating: boolean
+  isManualRefresh: boolean
+  collapsedProjectKeys: SidebarShortcutModel['collapsedProjectKeys']
+  shortcutIndexByWorkspaceKey: SidebarShortcutModel['shortcutIndexByWorkspaceKey']
+  toggleProjectCollapsed: SidebarShortcutModel['toggleProjectCollapsed']
+  setProjectCollapsed: SidebarShortcutModel['setProjectCollapsed']
+  handleRefresh: () => void
+  handleHostSelect: (nextServerId: string) => void
+  handleOpenProject: () => void
+  handleSettings: () => void
+}
+
+interface MobileSidebarProps extends SidebarSharedProps {
+  insetsTop: number
+  insetsBottom: number
+  isOpen: boolean
+  closeToAgent: () => void
+  handleViewMoreNavigate: () => void
+}
+
+interface DesktopSidebarProps extends SidebarSharedProps {
+  isOpen: boolean
+  handleViewMore: () => void
+}
+
+export const LeftSidebar = memo(function LeftSidebar({ selectedAgentId: _selectedAgentId }: LeftSidebarProps) {
+  void _selectedAgentId
+
   const { theme } = useUnistyles()
   const insets = useSafeAreaInsets()
   const isMobile = UnistylesRuntime.breakpoint === 'xs' || UnistylesRuntime.breakpoint === 'sm'
@@ -109,10 +166,9 @@ export function LeftSidebar({ selectedAgentId: _selectedAgentId }: LeftSidebarPr
       })),
     [daemons, runtime, runtimeConnectionStatusSignature]
   )
-  const hostTriggerRef = useRef<View>(null)
+  const hostTriggerRef = useRef<View | null>(null)
   const [isHostPickerOpen, setIsHostPickerOpen] = useState(false)
 
-  // Derive isOpen from the unified panel state
   const isOpen = isMobile ? mobileView === 'agent-list' : desktopAgentListOpen
 
   const { projects, isInitialLoad, isRevalidating, refreshAll } = useSidebarWorkspacesList({
@@ -121,21 +177,7 @@ export function LeftSidebar({ selectedAgentId: _selectedAgentId }: LeftSidebarPr
   })
   const { collapsedProjectKeys, shortcutIndexByWorkspaceKey, toggleProjectCollapsed, setProjectCollapsed } =
     useSidebarShortcutModel(projects)
-  const {
-    translateX,
-    backdropOpacity,
-    windowWidth,
-    animateToOpen,
-    animateToClose,
-    isGesturing,
-    closeGestureRef,
-  } = useSidebarAnimation()
-  const { style: dragRegionStyle, ...dragHandlers } = useDesktopDragHandlers()
-  const trafficLightPadding = useTrafficLightPadding()
-  const closeTouchStartX = useSharedValue(0)
-  const closeTouchStartY = useSharedValue(0)
 
-  // Track user-initiated refresh to avoid showing spinner on background revalidation
   const [isManualRefresh, setIsManualRefresh] = useState(false)
 
   const handleRefresh = useCallback(() => {
@@ -143,16 +185,11 @@ export function LeftSidebar({ selectedAgentId: _selectedAgentId }: LeftSidebarPr
     refreshAll()
   }, [refreshAll])
 
-  // Reset manual refresh flag when revalidation completes
   useEffect(() => {
     if (!isRevalidating && isManualRefresh) {
       setIsManualRefresh(false)
     }
   }, [isRevalidating, isManualRefresh])
-
-  const handleClose = useCallback(() => {
-    closeToAgent()
-  }, [closeToAgent])
 
   const openProjectPicker = useOpenProjectPicker(activeServerId)
 
@@ -165,7 +202,6 @@ export function LeftSidebar({ selectedAgentId: _selectedAgentId }: LeftSidebarPr
     void openProjectPicker()
   }, [openProjectPicker])
 
-  // Mobile: close sidebar and navigate
   const handleSettingsMobile = useCallback(() => {
     if (!activeServerId) {
       return
@@ -174,7 +210,6 @@ export function LeftSidebar({ selectedAgentId: _selectedAgentId }: LeftSidebarPr
     router.push(buildHostSettingsRoute(activeServerId) as any)
   }, [activeServerId, closeToAgent])
 
-  // Desktop: just navigate, don't close
   const handleSettingsDesktop = useCallback(() => {
     if (!activeServerId) {
       return
@@ -182,17 +217,12 @@ export function LeftSidebar({ selectedAgentId: _selectedAgentId }: LeftSidebarPr
     router.push(buildHostSettingsRoute(activeServerId) as any)
   }, [activeServerId])
 
-  const handleViewMore = useCallback(() => {
+  const handleViewMoreNavigate = useCallback(() => {
     if (!activeServerId) {
       return
     }
-    if (isMobile) {
-      translateX.value = -windowWidth
-      backdropOpacity.value = 0
-      closeToAgent()
-    }
     router.push(buildHostAgentsRoute(activeServerId) as any)
-  }, [activeServerId, backdropOpacity, closeToAgent, isMobile, translateX, windowWidth])
+  }, [activeServerId])
 
   const handleHostSelect = useCallback(
     (nextServerId: string) => {
@@ -206,77 +236,201 @@ export function LeftSidebar({ selectedAgentId: _selectedAgentId }: LeftSidebarPr
     [pathname]
   )
 
-  // Close gesture (swipe left to close when sidebar is open)
-  const closeGesture = Gesture.Pan()
-    .withRef(closeGestureRef)
-    .enabled(isOpen)
-    // Use manual activation so child views keep touch streams unless we detect
-    // an intentional left-swipe close (mirrors explorer-sidebar pattern).
-    .manualActivation(true)
-    .onTouchesDown((event) => {
-      const touch = event.changedTouches[0]
-      if (!touch) {
-        return
-      }
-      closeTouchStartX.value = touch.absoluteX
-      closeTouchStartY.value = touch.absoluteY
-    })
-    .onTouchesMove((event, stateManager) => {
-      const touch = event.changedTouches[0]
-      if (!touch || event.numberOfTouches !== 1) {
-        stateManager.fail()
-        return
-      }
+  const sharedProps = {
+    theme,
+    activeServerId,
+    activeHostLabel,
+    activeHostStatusColor,
+    hostOptions,
+    hostTriggerRef,
+    isHostPickerOpen,
+    setIsHostPickerOpen,
+    projects,
+    isInitialLoad,
+    isRevalidating,
+    isManualRefresh,
+    collapsedProjectKeys,
+    shortcutIndexByWorkspaceKey,
+    toggleProjectCollapsed,
+    setProjectCollapsed,
+    handleRefresh,
+    handleHostSelect,
+  }
 
-      const deltaX = touch.absoluteX - closeTouchStartX.value
-      const deltaY = touch.absoluteY - closeTouchStartY.value
-      const absDeltaX = Math.abs(deltaX)
-      const absDeltaY = Math.abs(deltaY)
+  if (isMobile) {
+    return (
+      <MobileSidebar
+        {...sharedProps}
+        insetsTop={insets.top}
+        insetsBottom={insets.bottom}
+        isOpen={isOpen}
+        closeToAgent={closeToAgent}
+        handleOpenProject={handleOpenProjectMobile}
+        handleSettings={handleSettingsMobile}
+        handleViewMoreNavigate={handleViewMoreNavigate}
+      />
+    )
+  }
 
-      // Fail quickly on clear rightward or vertical intent so child views keep control.
-      if (deltaX >= 10) {
-        stateManager.fail()
-        return
-      }
-      if (absDeltaY > 10 && absDeltaY > absDeltaX) {
-        stateManager.fail()
-        return
-      }
+  return (
+    <DesktopSidebar
+      {...sharedProps}
+      isOpen={isOpen}
+      handleOpenProject={handleOpenProjectDesktop}
+      handleSettings={handleSettingsDesktop}
+      handleViewMore={handleViewMoreNavigate}
+    />
+  )
+})
 
-      // Activate only on intentional leftward movement.
-      if (deltaX <= -15 && absDeltaX > absDeltaY) {
-        stateManager.activate()
-      }
-    })
-    .onStart(() => {
-      isGesturing.value = true
-    })
-    .onUpdate((event) => {
-      if (!isMobile) return
-      // Only allow swiping left (closing)
-      const newTranslateX = Math.min(0, Math.max(-windowWidth, event.translationX))
-      translateX.value = newTranslateX
-      backdropOpacity.value = interpolate(
-        newTranslateX,
-        [-windowWidth, 0],
-        [0, 1],
-        Extrapolation.CLAMP
-      )
-    })
-    .onEnd((event) => {
-      isGesturing.value = false
-      if (!isMobile) return
-      const shouldClose = event.translationX < -windowWidth / 3 || event.velocityX < -500
-      if (shouldClose) {
-        animateToClose()
-        runOnJS(handleClose)()
-      } else {
-        animateToOpen()
-      }
-    })
-    .onFinalize(() => {
-      isGesturing.value = false
-    })
+function MobileSidebar({
+  theme,
+  activeServerId,
+  activeHostLabel,
+  activeHostStatusColor,
+  hostOptions,
+  hostTriggerRef,
+  isHostPickerOpen,
+  setIsHostPickerOpen,
+  projects,
+  isInitialLoad,
+  isRevalidating,
+  isManualRefresh,
+  collapsedProjectKeys,
+  shortcutIndexByWorkspaceKey,
+  toggleProjectCollapsed,
+  setProjectCollapsed,
+  handleRefresh,
+  handleHostSelect,
+  handleOpenProject,
+  handleSettings,
+  insetsTop,
+  insetsBottom,
+  isOpen,
+  closeToAgent,
+  handleViewMoreNavigate,
+}: MobileSidebarProps) {
+  const {
+    translateX,
+    backdropOpacity,
+    windowWidth,
+    animateToOpen,
+    animateToClose,
+    isGesturing,
+    closeGestureRef,
+  } = useSidebarAnimation()
+  const closeTouchStartX = useSharedValue(0)
+  const closeTouchStartY = useSharedValue(0)
+
+  const handleClose = useCallback(() => {
+    closeToAgent()
+  }, [closeToAgent])
+
+  const handleViewMore = useCallback(() => {
+    if (!activeServerId) {
+      return
+    }
+    translateX.value = -windowWidth
+    backdropOpacity.value = 0
+    closeToAgent()
+    handleViewMoreNavigate()
+  }, [
+    activeServerId,
+    backdropOpacity,
+    closeToAgent,
+    handleViewMoreNavigate,
+    translateX,
+    windowWidth,
+  ])
+
+  const closeGesture = useMemo(
+    () =>
+      Gesture.Pan()
+        .withRef(closeGestureRef)
+        .enabled(isOpen)
+        .manualActivation(true)
+        .onTouchesDown((event) => {
+          const touch = event.changedTouches[0]
+          if (!touch) {
+            return
+          }
+          closeTouchStartX.value = touch.absoluteX
+          closeTouchStartY.value = touch.absoluteY
+        })
+        .onTouchesMove((event, stateManager) => {
+          const touch = event.changedTouches[0]
+          if (!touch || event.numberOfTouches !== 1) {
+            stateManager.fail()
+            return
+          }
+
+          const deltaX = touch.absoluteX - closeTouchStartX.value
+          const deltaY = touch.absoluteY - closeTouchStartY.value
+          const absDeltaX = Math.abs(deltaX)
+          const absDeltaY = Math.abs(deltaY)
+
+          if (deltaX >= 10) {
+            stateManager.fail()
+            return
+          }
+          if (absDeltaY > 10 && absDeltaY > absDeltaX) {
+            stateManager.fail()
+            return
+          }
+          if (deltaX <= -15 && absDeltaX > absDeltaY) {
+            stateManager.activate()
+          }
+        })
+        .onStart(() => {
+          isGesturing.value = true
+        })
+        .onUpdate((event) => {
+          const newTranslateX = Math.min(0, Math.max(-windowWidth, event.translationX))
+          translateX.value = newTranslateX
+          backdropOpacity.value = interpolate(
+            newTranslateX,
+            [-windowWidth, 0],
+            [0, 1],
+            Extrapolation.CLAMP
+          )
+        })
+        .onEnd((event) => {
+          isGesturing.value = false
+          const shouldClose = event.translationX < -windowWidth / 3 || event.velocityX < -500
+          if (shouldClose) {
+            animateToClose()
+            runOnJS(handleClose)()
+          } else {
+            animateToOpen()
+          }
+        })
+        .onFinalize(() => {
+          isGesturing.value = false
+        }),
+    [
+      isOpen,
+      closeGestureRef,
+      closeTouchStartX,
+      closeTouchStartY,
+      isGesturing,
+      windowWidth,
+      translateX,
+      backdropOpacity,
+      animateToClose,
+      animateToOpen,
+      handleClose,
+    ]
+  )
+
+  const mobileSidebarInsetStyle = useMemo(
+    () => ({ width: windowWidth, paddingTop: insetsTop, paddingBottom: insetsBottom }),
+    [windowWidth, insetsTop, insetsBottom]
+  )
+
+  const hostStatusDotStyle = useMemo(
+    () => [styles.hostStatusDot, { backgroundColor: activeHostStatusColor }],
+    [activeHostStatusColor]
+  )
 
   const sidebarAnimatedStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: translateX.value }],
@@ -287,160 +441,174 @@ export function LeftSidebar({ selectedAgentId: _selectedAgentId }: LeftSidebarPr
     pointerEvents: backdropOpacity.value > 0.01 ? 'auto' : 'none',
   }))
 
-  // Render mobile sidebar
-  // On web, keep the overlay interactive only while the sidebar is open.
-  // This preserves swipe/scroll behavior without blocking taps when closed.
   const overlayPointerEvents = Platform.OS === 'web' ? (isOpen ? 'auto' : 'none') : 'box-none'
-  if (isMobile) {
-    return (
-      <View style={StyleSheet.absoluteFillObject} pointerEvents={overlayPointerEvents}>
-        {/* Backdrop */}
-        <Animated.View style={[styles.backdrop, backdropAnimatedStyle]}>
-          <Pressable style={styles.backdropPressable} onPress={handleClose} />
-        </Animated.View>
 
-        <GestureDetector gesture={closeGesture} touchAction="pan-y">
-          <Animated.View
-            style={[
-              styles.mobileSidebar,
-              { width: windowWidth, paddingTop: insets.top, paddingBottom: insets.bottom },
-              sidebarAnimatedStyle,
-            ]}
-            pointerEvents="auto"
-          >
-            <View style={styles.sidebarContent} pointerEvents="auto">
-              {/* Header */}
-              <View style={styles.sidebarHeader}>
-                <View style={styles.sidebarHeaderRow}>
-                  <Pressable
-                    style={styles.newAgentButton}
-                    testID="sidebar-sessions"
-                    onPress={handleViewMore}
-                  >
-                    {({ hovered }) => (
-                      <>
-                        <MessagesSquare
-                          size={theme.iconSize.md}
-                          color={hovered ? theme.colors.foreground : theme.colors.foregroundMuted}
-                        />
-                        <Text
-                          style={[
-                            styles.newAgentButtonText,
-                            hovered && styles.newAgentButtonTextHovered,
-                          ]}
-                        >
-                          Sessions
-                        </Text>
-                      </>
-                    )}
-                  </Pressable>
-                </View>
-              </View>
+  return (
+    <View style={StyleSheet.absoluteFillObject} pointerEvents={overlayPointerEvents}>
+      <Animated.View style={[styles.backdrop, backdropAnimatedStyle]}>
+        <Pressable style={styles.backdropPressable} onPress={handleClose} />
+      </Animated.View>
 
-              {/* Middle: scrollable project/workspace tree */}
-              {isInitialLoad ? (
-                <SidebarAgentListSkeleton />
-              ) : (
-                <SidebarWorkspaceList
-                  serverId={activeServerId}
-                  collapsedProjectKeys={collapsedProjectKeys}
-                  onToggleProjectCollapsed={toggleProjectCollapsed}
-                  onSetProjectCollapsed={setProjectCollapsed}
-                  shortcutIndexByWorkspaceKey={shortcutIndexByWorkspaceKey}
-                  projects={projects}
-                  isRefreshing={isManualRefresh && isRevalidating}
-                  onRefresh={handleRefresh}
-                  onWorkspacePress={closeToAgent}
-                  parentGestureRef={closeGestureRef}
-                />
-              )}
-
-              {/* Footer */}
-              <View style={styles.sidebarFooter}>
-                <View style={styles.footerHostSlot}>
-                  <Pressable
-                    ref={hostTriggerRef}
-                    style={({ hovered = false }) => [
-                      styles.hostTrigger,
-                      hovered && styles.hostTriggerHovered,
-                    ]}
-                    onPress={() => setIsHostPickerOpen(true)}
-                    disabled={hostOptions.length === 0}
-                  >
-                    <View
-                      style={[styles.hostStatusDot, { backgroundColor: activeHostStatusColor }]}
-                    />
-                    <Text style={styles.hostTriggerText} numberOfLines={1}>
-                      {activeHostLabel}
-                    </Text>
-                  </Pressable>
-                </View>
-                <View style={styles.footerIconRow}>
-                  <Tooltip delayDuration={300}>
-                    <TooltipTrigger asChild>
-                      <Pressable
-                        style={styles.footerIconButton}
-                        testID="sidebar-add-project"
-                        nativeID="sidebar-add-project"
-                        collapsable={false}
-                        accessible
-                        accessibilityLabel="Add project"
-                        accessibilityRole="button"
-                        onPress={handleOpenProjectMobile}
-                      >
-                        {({ hovered }) => (
-                          <Plus
-                            size={theme.iconSize.lg}
-                            color={hovered ? theme.colors.foreground : theme.colors.foregroundMuted}
-                          />
-                        )}
-                      </Pressable>
-                    </TooltipTrigger>
-                    <TooltipContent side="top" align="center" offset={8}>
-                      <View style={styles.tooltipRow}>
-                        <Text style={styles.tooltipText}>Add project</Text>
-                        <Shortcut keys={['⌘', '⇧', 'O']} />
-                      </View>
-                    </TooltipContent>
-                  </Tooltip>
-                  <Pressable
-                    style={styles.footerIconButton}
-                    testID="sidebar-settings"
-                    nativeID="sidebar-settings"
-                    collapsable={false}
-                    accessible
-                    accessibilityLabel="Settings"
-                    accessibilityRole="button"
-                    onPress={handleSettingsMobile}
-                  >
-                    {({ hovered }) => (
-                      <Settings
-                        size={theme.iconSize.lg}
+      <GestureDetector gesture={closeGesture} touchAction="pan-y">
+        <Animated.View
+          style={[styles.mobileSidebar, mobileSidebarInsetStyle, sidebarAnimatedStyle]}
+          pointerEvents="auto"
+        >
+          <View style={styles.sidebarContent} pointerEvents="auto">
+            <View style={styles.sidebarHeader}>
+              <View style={styles.sidebarHeaderRow}>
+                <Pressable
+                  style={styles.newAgentButton}
+                  testID="sidebar-sessions"
+                  onPress={handleViewMore}
+                >
+                  {({ hovered }) => (
+                    <>
+                      <MessagesSquare
+                        size={theme.iconSize.md}
                         color={hovered ? theme.colors.foreground : theme.colors.foregroundMuted}
                       />
-                    )}
-                  </Pressable>
-                </View>
-                <Combobox
-                  options={hostOptions}
-                  value={activeServerId ?? ''}
-                  onSelect={handleHostSelect}
-                  searchable={false}
-                  title="Switch host"
-                  searchPlaceholder="Search hosts..."
-                  open={isHostPickerOpen}
-                  onOpenChange={setIsHostPickerOpen}
-                  anchorRef={hostTriggerRef}
-                />
+                      <Text
+                        style={[styles.newAgentButtonText, hovered && styles.newAgentButtonTextHovered]}
+                      >
+                        Sessions
+                      </Text>
+                    </>
+                  )}
+                </Pressable>
               </View>
             </View>
-          </Animated.View>
-        </GestureDetector>
-      </View>
-    )
-  }
 
-  // Desktop: no edge swipe, just show/hide based on isOpen
+            {isInitialLoad ? (
+              <SidebarAgentListSkeleton />
+            ) : (
+              <SidebarWorkspaceList
+                serverId={activeServerId}
+                collapsedProjectKeys={collapsedProjectKeys}
+                onToggleProjectCollapsed={toggleProjectCollapsed}
+                onSetProjectCollapsed={setProjectCollapsed}
+                shortcutIndexByWorkspaceKey={shortcutIndexByWorkspaceKey}
+                projects={projects}
+                isRefreshing={isManualRefresh && isRevalidating}
+                onRefresh={handleRefresh}
+                onWorkspacePress={closeToAgent}
+                parentGestureRef={closeGestureRef}
+              />
+            )}
+
+            <View style={styles.sidebarFooter}>
+              <View style={styles.footerHostSlot}>
+                <Pressable
+                  ref={hostTriggerRef}
+                  style={({ hovered = false }) => [
+                    styles.hostTrigger,
+                    hovered && styles.hostTriggerHovered,
+                  ]}
+                  onPress={() => setIsHostPickerOpen(true)}
+                  disabled={hostOptions.length === 0}
+                >
+                  <View style={hostStatusDotStyle} />
+                  <Text style={styles.hostTriggerText} numberOfLines={1}>
+                    {activeHostLabel}
+                  </Text>
+                </Pressable>
+              </View>
+              <View style={styles.footerIconRow}>
+                <Tooltip delayDuration={300}>
+                  <TooltipTrigger asChild>
+                    <Pressable
+                      style={styles.footerIconButton}
+                      testID="sidebar-add-project"
+                      nativeID="sidebar-add-project"
+                      collapsable={false}
+                      accessible
+                      accessibilityLabel="Add project"
+                      accessibilityRole="button"
+                      onPress={handleOpenProject}
+                    >
+                      {({ hovered }) => (
+                        <Plus
+                          size={theme.iconSize.lg}
+                          color={hovered ? theme.colors.foreground : theme.colors.foregroundMuted}
+                        />
+                      )}
+                    </Pressable>
+                  </TooltipTrigger>
+                  <TooltipContent side="top" align="center" offset={8}>
+                    <View style={styles.tooltipRow}>
+                      <Text style={styles.tooltipText}>Add project</Text>
+                      <Shortcut keys={['⌘', '⇧', 'O']} />
+                    </View>
+                  </TooltipContent>
+                </Tooltip>
+                <Pressable
+                  style={styles.footerIconButton}
+                  testID="sidebar-settings"
+                  nativeID="sidebar-settings"
+                  collapsable={false}
+                  accessible
+                  accessibilityLabel="Settings"
+                  accessibilityRole="button"
+                  onPress={handleSettings}
+                >
+                  {({ hovered }) => (
+                    <Settings
+                      size={theme.iconSize.lg}
+                      color={hovered ? theme.colors.foreground : theme.colors.foregroundMuted}
+                    />
+                  )}
+                </Pressable>
+              </View>
+              <Combobox
+                options={hostOptions}
+                value={activeServerId ?? ''}
+                onSelect={handleHostSelect}
+                searchable={false}
+                title="Switch host"
+                searchPlaceholder="Search hosts..."
+                open={isHostPickerOpen}
+                onOpenChange={setIsHostPickerOpen}
+                anchorRef={hostTriggerRef}
+              />
+            </View>
+          </View>
+        </Animated.View>
+      </GestureDetector>
+    </View>
+  )
+}
+
+function DesktopSidebar({
+  theme,
+  activeServerId,
+  activeHostLabel,
+  activeHostStatusColor,
+  hostOptions,
+  hostTriggerRef,
+  isHostPickerOpen,
+  setIsHostPickerOpen,
+  projects,
+  isInitialLoad,
+  isRevalidating,
+  isManualRefresh,
+  collapsedProjectKeys,
+  shortcutIndexByWorkspaceKey,
+  toggleProjectCollapsed,
+  setProjectCollapsed,
+  handleRefresh,
+  handleHostSelect,
+  handleOpenProject,
+  handleSettings,
+  isOpen,
+  handleViewMore,
+}: DesktopSidebarProps) {
+  const { style: dragRegionStyle, ...dragHandlers } = useDesktopDragHandlers()
+  const trafficLightPadding = useTrafficLightPadding()
+  const hostStatusDotStyle = useMemo(
+    () => [styles.hostStatusDot, { backgroundColor: activeHostStatusColor }],
+    [activeHostStatusColor]
+  )
+
   if (!isOpen) {
     return null
   }
@@ -474,7 +642,6 @@ export function LeftSidebar({ selectedAgentId: _selectedAgentId }: LeftSidebarPr
         </View>
       </View>
 
-      {/* Middle: scrollable project/workspace tree */}
       {isInitialLoad ? (
         <SidebarAgentListSkeleton />
       ) : (
@@ -490,7 +657,6 @@ export function LeftSidebar({ selectedAgentId: _selectedAgentId }: LeftSidebarPr
         />
       )}
 
-      {/* Footer */}
       <View style={styles.sidebarFooter}>
         <View style={styles.footerHostSlot}>
           <Pressable
@@ -502,7 +668,7 @@ export function LeftSidebar({ selectedAgentId: _selectedAgentId }: LeftSidebarPr
             onPress={() => setIsHostPickerOpen(true)}
             disabled={hostOptions.length === 0}
           >
-            <View style={[styles.hostStatusDot, { backgroundColor: activeHostStatusColor }]} />
+            <View style={hostStatusDotStyle} />
             <Text style={styles.hostTriggerText} numberOfLines={1}>
               {activeHostLabel}
             </Text>
@@ -519,7 +685,7 @@ export function LeftSidebar({ selectedAgentId: _selectedAgentId }: LeftSidebarPr
                 accessible
                 accessibilityLabel="Add project"
                 accessibilityRole="button"
-                onPress={handleOpenProjectDesktop}
+                onPress={handleOpenProject}
               >
                 {({ hovered }) => (
                   <Plus
@@ -544,7 +710,7 @@ export function LeftSidebar({ selectedAgentId: _selectedAgentId }: LeftSidebarPr
             accessible
             accessibilityLabel="Settings"
             accessibilityRole="button"
-            onPress={handleSettingsDesktop}
+            onPress={handleSettings}
           >
             {({ hovered }) => (
               <Settings

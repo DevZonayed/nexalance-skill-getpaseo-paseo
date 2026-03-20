@@ -15,6 +15,7 @@ export interface BuildWorkspacePaneContentModelInput {
   tab: WorkspaceTabDescriptor;
   normalizedServerId: string;
   normalizedWorkspaceId: string;
+  isPaneFocused: boolean;
   onOpenTab: (target: WorkspaceTabDescriptor["target"]) => void;
   onCloseCurrentTab: () => void;
   onRetargetCurrentTab: (target: WorkspaceTabDescriptor["target"]) => void;
@@ -25,6 +26,7 @@ export function buildWorkspacePaneContentModel({
   tab,
   normalizedServerId,
   normalizedWorkspaceId,
+  isPaneFocused,
   onOpenTab,
   onCloseCurrentTab,
   onRetargetCurrentTab,
@@ -40,6 +42,7 @@ export function buildWorkspacePaneContentModel({
       serverId: normalizedServerId,
       workspaceId: normalizedWorkspaceId,
       tabId: tab.tabId,
+      isPaneFocused,
       target: tab.target,
       openTab: onOpenTab,
       closeCurrentTab: onCloseCurrentTab,

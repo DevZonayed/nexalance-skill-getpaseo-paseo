@@ -1734,17 +1734,13 @@ export function useHostRuntimeSnapshot(
   );
 }
 
-export function useHostRuntimeSession(serverId: string): {
-  snapshot: HostRuntimeSnapshot | null;
-  client: DaemonClient | null;
-  isConnected: boolean;
-} {
-  const snapshot = useHostRuntimeSnapshot(serverId);
-  return {
-    snapshot,
-    client: snapshot?.client ?? null,
-    isConnected: isHostRuntimeConnected(snapshot),
-  };
+export function useHostRuntimeClient(serverId: string): DaemonClient | null {
+  const store = getHostRuntimeStore();
+  return useSyncExternalStore(
+    (onStoreChange) => store.subscribe(serverId, onStoreChange),
+    () => store.getSnapshot(serverId)?.client ?? null,
+    () => store.getSnapshot(serverId)?.client ?? null
+  );
 }
 
 export function useHostRuntimeIsConnected(serverId: string): boolean {
@@ -1753,6 +1749,46 @@ export function useHostRuntimeIsConnected(serverId: string): boolean {
     (onStoreChange) => store.subscribe(serverId, onStoreChange),
     () => isHostRuntimeConnected(store.getSnapshot(serverId)),
     () => isHostRuntimeConnected(store.getSnapshot(serverId))
+  );
+}
+
+export function useHostRuntimeConnectionStatus(
+  serverId: string
+): HostRuntimeConnectionStatus {
+  const store = getHostRuntimeStore();
+  return useSyncExternalStore(
+    (onStoreChange) => store.subscribe(serverId, onStoreChange),
+    () => store.getSnapshot(serverId)?.connectionStatus ?? "connecting",
+    () => store.getSnapshot(serverId)?.connectionStatus ?? "connecting"
+  );
+}
+
+export function useHostRuntimeLastError(serverId: string): string | null {
+  const store = getHostRuntimeStore();
+  return useSyncExternalStore(
+    (onStoreChange) => store.subscribe(serverId, onStoreChange),
+    () => store.getSnapshot(serverId)?.lastError ?? null,
+    () => store.getSnapshot(serverId)?.lastError ?? null
+  );
+}
+
+export function useHostRuntimeAgentDirectoryStatus(
+  serverId: string
+): HostRuntimeAgentDirectoryStatus {
+  const store = getHostRuntimeStore();
+  return useSyncExternalStore(
+    (onStoreChange) => store.subscribe(serverId, onStoreChange),
+    () => store.getSnapshot(serverId)?.agentDirectoryStatus ?? "idle",
+    () => store.getSnapshot(serverId)?.agentDirectoryStatus ?? "idle"
+  );
+}
+
+export function useHostRuntimeIsDirectoryLoading(serverId: string): boolean {
+  const store = getHostRuntimeStore();
+  return useSyncExternalStore(
+    (onStoreChange) => store.subscribe(serverId, onStoreChange),
+    () => isHostRuntimeDirectoryLoading(store.getSnapshot(serverId)),
+    () => isHostRuntimeDirectoryLoading(store.getSnapshot(serverId))
   );
 }
 

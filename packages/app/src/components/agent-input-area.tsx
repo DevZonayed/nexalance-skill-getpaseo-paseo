@@ -28,7 +28,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { Shortcut } from '@/components/ui/shortcut'
 import { Autocomplete } from '@/components/ui/autocomplete'
 import { useAgentAutocomplete } from '@/hooks/use-agent-autocomplete'
-import { useHostRuntimeSession } from '@/runtime/host-runtime'
+import { useHostRuntimeAgentDirectoryStatus, useHostRuntimeClient, useHostRuntimeIsConnected } from '@/runtime/host-runtime'
 import {
   deleteAttachments,
   persistAttachmentFromBlob,
@@ -100,14 +100,16 @@ export function AgentInputArea({
   const insets = useSafeAreaInsets()
   const isScreenFocused = useIsFocused()
 
-  const { client, isConnected, snapshot } = useHostRuntimeSession(serverId)
+  const client = useHostRuntimeClient(serverId)
+  const isConnected = useHostRuntimeIsConnected(serverId)
+  const agentDirectoryStatus = useHostRuntimeAgentDirectoryStatus(serverId)
   const toast = useToast()
   const voice = useVoiceOptional()
   const isDictationReady =
     isConnected &&
-    (snapshot?.agentDirectoryStatus === 'ready' ||
-      snapshot?.agentDirectoryStatus === 'revalidating' ||
-      snapshot?.agentDirectoryStatus === 'error_after_ready')
+    (agentDirectoryStatus === 'ready' ||
+      agentDirectoryStatus === 'revalidating' ||
+      agentDirectoryStatus === 'error_after_ready')
 
   const agent = useSessionStore((state) => state.sessions[serverId]?.agents?.get(agentId))
 

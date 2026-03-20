@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSessionStore } from "@/stores/session-store";
-import { useHostRuntimeSession } from "@/runtime/host-runtime";
+import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
 import {
   buildHostRootRoute,
   buildHostWorkspaceAgentRoute,
@@ -16,7 +16,8 @@ export default function HostAgentReadyRoute() {
   const redirectedRef = useRef(false);
   const serverId = typeof params.serverId === "string" ? params.serverId : "";
   const agentId = typeof params.agentId === "string" ? params.agentId : "";
-  const { client, isConnected } = useHostRuntimeSession(serverId);
+  const client = useHostRuntimeClient(serverId);
+  const isConnected = useHostRuntimeIsConnected(serverId);
   const agentCwd = useSessionStore((state) => {
     if (!serverId || !agentId) {
       return null;

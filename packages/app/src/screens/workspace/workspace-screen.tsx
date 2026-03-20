@@ -1,4 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useStoreWithEqualityFn } from "zustand/traditional";
 import { useIsFocused } from "@react-navigation/native";
 import {
   ActivityIndicator,
@@ -70,7 +71,7 @@ import {
   normalizeWorkspaceTabTarget,
   workspaceTabTargetsEqual,
 } from "@/utils/workspace-tab-identity";
-import { useHostRuntimeSession } from "@/runtime/host-runtime";
+import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
 import { useWorkspaceTerminalSessionRetention } from "@/terminal/hooks/use-workspace-terminal-session-retention";
 import {
   checkoutStatusQueryKey,
@@ -96,6 +97,7 @@ import {
 import {
   deriveWorkspaceAgentVisibility,
   shouldPruneWorkspaceAgentTab,
+  workspaceAgentVisibilityEqual,
 } from "@/screens/workspace/workspace-agent-visibility";
 import {
   deriveWorkspacePaneState,
@@ -277,6 +279,25 @@ function ResolvedMobileActiveTabTrigger({
       )}
     </WorkspaceTabPresentationResolver>
   );
+}
+
+function WorkspaceDocumentTitleEffect({
+  label,
+  titleState,
+}: {
+  label: string;
+  titleState: "ready" | "loading";
+}) {
+  useEffect(() => {
+    if (Platform.OS !== "web" || typeof document === "undefined") {
+      return;
+    }
+    const resolvedLabel = label.trim();
+    document.title =
+      titleState === "loading" ? "Loading..." : resolvedLabel || "Workspace";
+  }, [label, titleState]);
+
+  return null;
 }
 
 function MobileWorkspaceTabOption({
@@ -519,6 +540,12 @@ export function WorkspaceScreen({
   workspaceId,
   openIntent,
 }: WorkspaceScreenProps) {
+  const isFocused = useIsFocused();
+
+  if (!isFocused) {
+    return <View style={{ flex: 1 }} />;
+  }
+
   return (
     <ExplorerSidebarAnimationProvider>
       <WorkspaceScreenContent
@@ -539,7 +566,6 @@ function WorkspaceScreenContent({
   const isDarkMode = useColorScheme() === "dark";
   const mainBackgroundColor = isDarkMode ? theme.colors.surface1 : theme.colors.surface0;
   const toast = useToast();
-  const isScreenFocused = useIsFocused();
   const isMobile =
     UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
 
@@ -555,20 +581,18 @@ function WorkspaceScreenContent({
   });
 
   const queryClient = useQueryClient();
-  const { client, isConnected } = useHostRuntimeSession(normalizedServerId);
+  const client = useHostRuntimeClient(normalizedServerId);
+  const isConnected = useHostRuntimeIsConnected(normalizedServerId);
 
-  const sessionAgents = useSessionStore(
-    (state) => state.sessions[normalizedServerId]?.agents
-  );
-  const workspaceAgentVisibility = useMemo(
-    () =>
+  const workspaceAgentVisibility = useStoreWithEqualityFn(
+    useSessionStore,
+    (state) =>
       deriveWorkspaceAgentVisibility({
-        sessionAgents,
+        sessionAgents: state.sessions[normalizedServerId]?.agents,
         workspaceId: normalizedWorkspaceId,
       }),
-    [normalizedWorkspaceId, sessionAgents]
+    workspaceAgentVisibilityEqual,
   );
-  const workspaceAgents = workspaceAgentVisibility.visibleAgents;
 
   const terminalsQueryKey = useMemo(
     () => ["terminals", normalizedServerId, normalizedWorkspaceId] as const,
@@ -798,8 +822,6 @@ function WorkspaceScreenContent({
     return () => handler.remove();
   }, [closeToAgent, isExplorerOpen]);
 
-  const agentsById = workspaceAgentVisibility.lookupById;
-
   const persistenceKey = useMemo(
     () =>
       buildWorkspaceTabPersistenceKey({
@@ -828,7 +850,6 @@ function WorkspaceScreenContent({
   const reorderWorkspaceTabsInPane = useWorkspaceLayoutStore((state) => state.reorderTabsInPane);
   const pendingByDraftId = useCreateFlowStore((state) => state.pendingByDraftId);
   const consumedOpenIntentsRef = useRef(new Set<string>());
-  const reopenedArchivedOpenIntentsRef = useRef(new Set<string>());
   const pendingCloseTabIdsRef = useRef(new Set<string>());
   const [resolvedOpenIntentKey, setResolvedOpenIntentKey] = useState<string | null>(null);
   const currentOpenIntentKey = useMemo(
@@ -849,6 +870,24 @@ function WorkspaceScreenContent({
       }),
     [uiTabs, workspaceLayout]
   );
+  const setFocusedAgentId = useSessionStore((state) => state.setFocusedAgentId);
+  const focusedPaneAgentId = useMemo(() => {
+    const target = focusedPaneTabState.activeTab?.descriptor.target;
+    if (target?.kind !== "agent") {
+      return null;
+    }
+    return target.agentId;
+  }, [focusedPaneTabState.activeTab]);
+
+  useEffect(() => {
+    setFocusedAgentId(normalizedServerId, focusedPaneAgentId);
+  }, [focusedPaneAgentId, normalizedServerId, setFocusedAgentId]);
+
+  useEffect(() => {
+    return () => {
+      setFocusedAgentId(normalizedServerId, null);
+    };
+  }, [normalizedServerId, setFocusedAgentId]);
 
   const ensureWorkspaceTab = useCallback(
     function ensureWorkspaceTab(target: WorkspaceTabTarget): string | null {
@@ -913,43 +952,6 @@ function WorkspaceScreenContent({
       return;
     }
   }, [currentOpenIntentKey, resolvedOpenIntentKey]);
-
-  useEffect(() => {
-    if (!client || !isConnected || openIntent?.kind !== "agent" || !currentOpenIntentKey) {
-      return;
-    }
-
-    const agentId = openIntent.agentId.trim();
-    if (!agentId) {
-      return;
-    }
-    if (reopenedArchivedOpenIntentsRef.current.has(currentOpenIntentKey)) {
-      return;
-    }
-
-    const agent = agentsById.get(agentId) ?? null;
-    if (!agent?.archivedAt) {
-      return;
-    }
-
-    reopenedArchivedOpenIntentsRef.current.add(currentOpenIntentKey);
-    void client.refreshAgent(agentId).catch((error) => {
-      console.warn("[WorkspaceScreen] Failed to reopen archived agent", {
-        serverId: normalizedServerId,
-        workspaceId: normalizedWorkspaceId,
-        agentId,
-        error,
-      });
-    });
-  }, [
-    agentsById,
-    client,
-    currentOpenIntentKey,
-    isConnected,
-    normalizedServerId,
-    normalizedWorkspaceId,
-    openIntent,
-  ]);
 
   useEffect(() => {
     if (!openIntent || !persistenceKey) {
@@ -1032,12 +1034,12 @@ function WorkspaceScreenContent({
       return pending?.serverId === normalizedServerId && pending.lifecycle === "active";
     });
 
-    for (const agent of workspaceAgents) {
+    for (const agentId of workspaceAgentVisibility.activeAgentIds) {
       const representedByTarget = uiTabs.some(
-        (tab) => tab.target.kind === "agent" && tab.target.agentId === agent.id
+        (tab) => tab.target.kind === "agent" && tab.target.agentId === agentId
       );
       const representedByDeterministicTabId = uiTabs.some(
-        (tab) => tab.tabId === `agent_${agent.id}`
+        (tab) => tab.tabId === `agent_${agentId}`
       );
       if (
         hasActivePendingDraftCreateInWorkspace &&
@@ -1046,7 +1048,7 @@ function WorkspaceScreenContent({
       ) {
         continue;
       }
-      ensureWorkspaceTab({ kind: "agent", agentId: agent.id });
+      ensureWorkspaceTab({ kind: "agent", agentId });
     }
     for (const terminal of terminals) {
       ensureWorkspaceTab({ kind: "terminal", terminalId: terminal.id });
@@ -1061,7 +1063,7 @@ function WorkspaceScreenContent({
         shouldPruneWorkspaceAgentTab({
           agentId: tab.target.agentId,
           agentsHydrated: hasHydratedAgents,
-          workspaceAgentLookup: agentsById,
+          knownAgentIds: workspaceAgentVisibility.knownAgentIds,
         })
       ) {
         closeWorkspaceTab(persistenceKey, tab.tabId);
@@ -1083,7 +1085,7 @@ function WorkspaceScreenContent({
     terminals,
     terminalsQuery.isSuccess,
     uiTabs,
-    workspaceAgents,
+    workspaceAgentVisibility,
   ]);
 
   const activeTabId = resolvedPaneTabState.activeTabId;
@@ -1137,7 +1139,7 @@ function WorkspaceScreenContent({
       emptyWorkspaceSeedRef.current = null;
       return;
     }
-    if (workspaceAgents.length > 0 || terminals.length > 0) {
+    if (workspaceAgentVisibility.activeAgentIds.size > 0 || terminals.length > 0) {
       emptyWorkspaceSeedRef.current = null;
       return;
     }
@@ -1159,7 +1161,7 @@ function WorkspaceScreenContent({
     persistenceKey,
     terminals.length,
     tabs.length,
-    workspaceAgents.length,
+    workspaceAgentVisibility.activeAgentIds.size,
   ]);
 
   const handleOpenFileFromExplorer = useCallback(
@@ -1442,7 +1444,7 @@ function WorkspaceScreenContent({
   const handleCopyResumeCommand = useCallback(
     async (agentId: string) => {
       if (!agentId) return;
-      const agent = sessionAgents?.get(agentId) ?? null;
+      const agent = useSessionStore.getState().sessions[normalizedServerId]?.agents?.get(agentId) ?? null;
       const providerSessionId =
         agent?.runtimeInfo?.sessionId ?? agent?.persistence?.sessionId ?? null;
       if (!agent || !providerSessionId) {
@@ -1467,7 +1469,7 @@ function WorkspaceScreenContent({
         toast.error("Copy failed");
       }
     },
-    [sessionAgents, toast]
+    [normalizedServerId, toast]
   );
 
   const handleCopyWorkspacePath = useCallback(async () => {
@@ -1773,7 +1775,7 @@ function WorkspaceScreenContent({
     ] as const,
     enabled: Boolean(normalizedServerId && normalizedWorkspaceId),
     priority: 100,
-    isActive: () => isScreenFocused,
+    isActive: () => true,
     handle: handleWorkspaceTabAction,
   });
 
@@ -1794,21 +1796,29 @@ function WorkspaceScreenContent({
     ] as const,
     enabled: Boolean(normalizedServerId && normalizedWorkspaceId),
     priority: 100,
-    isActive: () => isScreenFocused,
+    isActive: () => true,
     handle: handleWorkspacePaneAction,
   });
 
   const activeTabDescriptor = activeTab?.descriptor ?? null;
+  useEffect(() => {
+    if (Platform.OS !== "web" || typeof document === "undefined" || activeTabDescriptor) {
+      return;
+    }
+    document.title = "Workspace";
+  }, [activeTabDescriptor]);
   const buildPaneContentModel = useCallback(
     (input: {
       tab: WorkspaceTabDescriptor;
       paneId?: string | null;
+      isPaneFocused: boolean;
       focusPaneBeforeOpen?: boolean;
     }) =>
       buildWorkspacePaneContentModel({
         tab: input.tab,
         normalizedServerId,
         normalizedWorkspaceId,
+        isPaneFocused: input.isPaneFocused,
         onOpenTab: (target) => {
           if (!persistenceKey) {
             return;
@@ -1855,6 +1865,7 @@ function WorkspaceScreenContent({
         ? buildPaneContentModel({
             tab: activeTabDescriptor,
             paneId: focusedPaneTabState.pane?.id ?? null,
+            isPaneFocused: true,
             focusPaneBeforeOpen: false,
           })
         : null,
@@ -1885,6 +1896,20 @@ function WorkspaceScreenContent({
 
   return (
     <View style={[styles.container, { backgroundColor: mainBackgroundColor }]}>
+      {Platform.OS === "web" && activeTabDescriptor ? (
+        <WorkspaceTabPresentationResolver
+          tab={activeTabDescriptor}
+          serverId={normalizedServerId}
+          workspaceId={normalizedWorkspaceId}
+        >
+          {(presentation) => (
+            <WorkspaceDocumentTitleEffect
+              label={presentation.label}
+              titleState={presentation.titleState}
+            />
+          )}
+        </WorkspaceTabPresentationResolver>
+      ) : null}
       <View style={styles.threePaneRow}>
         <View style={styles.centerColumn}>
           <ScreenHeader
@@ -2115,13 +2140,14 @@ function WorkspaceScreenContent({
                     onCloseOtherTabs={handleCloseOtherTabsInPane}
                     onSelectNewTabOption={handleSelectNewTabOption}
                     newTabAgentOptionId={NEW_TAB_AGENT_OPTION_ID}
-                    buildPaneContentModel={({ paneId, tab }) =>
-                    buildPaneContentModel({
-                      tab,
-                      paneId,
-                      focusPaneBeforeOpen: true,
-                    })
-                  }
+                    buildPaneContentModel={({ paneId, tab, isPaneFocused }) =>
+                      buildPaneContentModel({
+                        tab,
+                        paneId,
+                        isPaneFocused,
+                        focusPaneBeforeOpen: true,
+                      })
+                    }
                     onFocusPane={(paneId) => {
                       focusWorkspacePane(persistenceKey, paneId);
                     }}

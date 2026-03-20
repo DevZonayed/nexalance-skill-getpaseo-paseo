@@ -23,7 +23,7 @@ import {
   getHostRuntimeStore,
   useHosts,
   useHostMutations,
-  useHostRuntimeSession,
+  useHostRuntimeClient,
 } from "@/runtime/host-runtime";
 import { SessionProvider } from "@/contexts/session-context";
 import type { HostProfile } from "@/types/host-connection";
@@ -181,7 +181,7 @@ function PushNotificationRouter() {
 }
 
 function ManagedDaemonSession({ daemon }: { daemon: HostProfile }) {
-  const { client } = useHostRuntimeSession(daemon.serverId);
+  const client = useHostRuntimeClient(daemon.serverId);
 
   if (!client) {
     return null;
@@ -257,6 +257,9 @@ function QueryProvider({ children }: { children: ReactNode }) {
   return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
 }
 
+const rowStyle = { flex: 1, flexDirection: "row" } as const;
+const flexStyle = { flex: 1 } as const;
+
 interface AppContainerProps {
   children: ReactNode;
   selectedAgentId?: string;
@@ -270,23 +273,12 @@ function AppContainer({
 }: AppContainerProps) {
   const { theme } = useUnistyles();
   const daemons = useHosts();
-  const mobileView = usePanelStore((state) => state.mobileView);
-  const desktopAgentListOpen = usePanelStore((state) => state.desktop.agentListOpen);
-  const openAgentList = usePanelStore((state) => state.openAgentList);
   const toggleAgentList = usePanelStore((state) => state.toggleAgentList);
   const toggleFileExplorer = usePanelStore((state) => state.toggleFileExplorer);
-  const horizontalScroll = useHorizontalScrollOptional();
 
   const isMobile =
     UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
   const chromeEnabled = chromeEnabledOverride ?? daemons.length > 0;
-  const isOpen = chromeEnabled
-    ? isMobile
-      ? mobileView === "agent-list"
-      : desktopAgentListOpen
-    : false;
-  const openGestureEnabled =
-    chromeEnabled && isMobile && mobileView === "agent";
 
   useKeyboardShortcuts({
     enabled: chromeEnabled,
@@ -295,6 +287,50 @@ function AppContainer({
     selectedAgentId,
     toggleFileExplorer,
   });
+
+  const containerStyle = useMemo(
+    () => ({ flex: 1 as const, backgroundColor: theme.colors.surface0 }),
+    [theme.colors.surface0]
+  );
+
+  const content = (
+    <View style={containerStyle}>
+      <View style={rowStyle}>
+        {!isMobile && chromeEnabled && <LeftSidebar selectedAgentId={selectedAgentId} />}
+        <View style={flexStyle}>
+          {children}
+        </View>
+      </View>
+      {isMobile && chromeEnabled && <LeftSidebar selectedAgentId={selectedAgentId} />}
+      <DownloadToast />
+      <UpdateBanner />
+      <CommandCenter />
+      <ProjectPickerModal />
+      <KeyboardShortcutsDialog />
+    </View>
+  );
+
+  if (!isMobile) {
+    return content;
+  }
+
+  return (
+    <MobileGestureWrapper chromeEnabled={chromeEnabled}>
+      {content}
+    </MobileGestureWrapper>
+  );
+}
+
+function MobileGestureWrapper({
+  children,
+  chromeEnabled,
+}: {
+  children: ReactNode;
+  chromeEnabled: boolean;
+}) {
+  const mobileView = usePanelStore((state) => state.mobileView);
+  const openAgentList = usePanelStore((state) => state.openAgentList);
+  const horizontalScroll = useHorizontalScrollOptional();
   const {
     translateX,
     backdropOpacity,
@@ -303,18 +339,14 @@ function AppContainer({
     animateToClose,
     isGesturing,
   } = useSidebarAnimation();
-
-  // Track initial touch position for manual activation
   const touchStartX = useSharedValue(0);
+  const openGestureEnabled = chromeEnabled && mobileView === "agent";
 
-  // Open gesture: swipe right from anywhere to open sidebar (interactive drag)
-  // If any horizontal scroll is scrolled right, let the scroll view handle the gesture first
   const openGesture = useMemo(
     () =>
       Gesture.Pan()
         .enabled(openGestureEnabled)
         .manualActivation(true)
-        // Fail if 10px vertical movement happens first (allow vertical scroll)
         .failOffsetY([-10, 10])
         .onTouchesDown((event) => {
           const touch = event.changedTouches[0];
@@ -328,13 +360,11 @@ function AppContainer({
 
           const deltaX = touch.absoluteX - touchStartX.value;
 
-          // If horizontal scroll is scrolled right, fail so ScrollView handles it
           if (horizontalScroll?.isAnyScrolledRight.value) {
             stateManager.fail();
             return;
           }
 
-          // Activate after 15px rightward movement
           if (deltaX > 15) {
             stateManager.activate();
           }
@@ -343,7 +373,6 @@ function AppContainer({
           isGesturing.value = true;
         })
         .onUpdate((event) => {
-          // Start from closed position (-windowWidth) and move towards 0
           const newTranslateX = Math.min(0, -windowWidth + event.translationX);
           translateX.value = newTranslateX;
           backdropOpacity.value = interpolate(
@@ -355,7 +384,6 @@ function AppContainer({
         })
         .onEnd((event) => {
           isGesturing.value = false;
-          // Open if dragged more than 1/3 of sidebar or fast swipe
           const shouldOpen = event.translationX > windowWidth / 3 || event.velocityX > 500;
           if (shouldOpen) {
             animateToOpen();
@@ -375,37 +403,15 @@ function AppContainer({
       animateToOpen,
       animateToClose,
       openAgentList,
-      mobileView,
       isGesturing,
       horizontalScroll?.isAnyScrolledRight,
       touchStartX,
     ]
   );
 
-  const content = (
-    <View style={{ flex: 1, backgroundColor: theme.colors.surface0 }}>
-      <View style={{ flex: 1, flexDirection: "row" }}>
-        {!isMobile && chromeEnabled && <LeftSidebar selectedAgentId={selectedAgentId} />}
-        <View style={{ flex: 1 }}>
-          {children}
-        </View>
-      </View>
-      {isMobile && chromeEnabled && <LeftSidebar selectedAgentId={selectedAgentId} />}
-      <DownloadToast />
-      <UpdateBanner />
-      <CommandCenter />
-      <ProjectPickerModal />
-      <KeyboardShortcutsDialog />
-    </View>
-  );
-
-  if (!isMobile) {
-    return content;
-  }
-
   return (
     <GestureDetector gesture={openGesture} touchAction="pan-y">
-      {content}
+      {children}
     </GestureDetector>
   );
 }
@@ -435,6 +441,7 @@ function ProvidersWrapper({ children }: { children: ReactNode }) {
     <VoiceProvider>
       <OfferLinkListener upsertDaemonFromOfferUrl={upsertConnectionFromOfferUrl} />
       <HostSessionManager />
+      <FaviconStatusSync />
       {children}
     </VoiceProvider>
   );
@@ -485,7 +492,6 @@ function AppWithSidebar({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const params = useGlobalSearchParams<{ open?: string | string[] }>();
   const hosts = useHosts();
-  useFaviconStatus();
   const activeServerId = useMemo(() => parseServerIdFromPathname(pathname), [pathname]);
   const shouldShowAppChrome = activeServerId !== null;
 
@@ -523,6 +529,11 @@ function AppWithSidebar({ children }: { children: ReactNode }) {
       {children}
     </AppContainer>
   );
+}
+
+function FaviconStatusSync() {
+  useFaviconStatus();
+  return null;
 }
 
 function NavigationActiveWorkspaceObserver() {
@@ -625,10 +636,13 @@ export default function RootLayout() {
                             >
                               <Stack.Screen name="index" />
                               <Stack.Screen name="settings" />
-                              <Stack.Screen name="h/[serverId]/workspace/[workspaceId]" />
+                              <Stack.Screen
+                                name="h/[serverId]/workspace/[workspaceId]"
+                                options={{ freezeOnBlur: true }}
+                              />
                               <Stack.Screen
                                 name="h/[serverId]/agent/[agentId]"
-                                options={{ gestureEnabled: false }}
+                                options={{ gestureEnabled: false, freezeOnBlur: true }}
                               />
                               <Stack.Screen name="h/[serverId]/index" />
                               <Stack.Screen name="h/[serverId]/agents" />

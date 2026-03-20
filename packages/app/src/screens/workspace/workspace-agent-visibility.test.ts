@@ -4,6 +4,7 @@ import {
   canOpenAgentTabFromRoute,
   deriveWorkspaceAgentVisibility,
   shouldPruneWorkspaceAgentTab,
+  workspaceAgentVisibilityEqual,
 } from "@/screens/workspace/workspace-agent-visibility";
 
 function makeAgent(input: {
@@ -53,7 +54,7 @@ function makeAgent(input: {
 }
 
 describe("workspace agent visibility", () => {
-  it("keeps archived agents hidden from visible list but present in workspace lookup", () => {
+  it("keeps archived agents out of activeAgentIds but present in knownAgentIds", () => {
     const workspaceId = "/repo/worktree";
     const visible = makeAgent({
       id: "visible-agent",
@@ -82,85 +83,44 @@ describe("workspace agent visibility", () => {
       workspaceId,
     });
 
-    expect(result.visibleAgents.map((agent) => agent.id)).toEqual(["visible-agent"]);
-    expect(result.lookupById.has("visible-agent")).toBe(true);
-    expect(result.lookupById.has("archived-agent")).toBe(true);
-    expect(result.lookupById.has("other-workspace-agent")).toBe(false);
+    expect(result.activeAgentIds).toEqual(new Set(["visible-agent"]));
+    expect(result.knownAgentIds.has("visible-agent")).toBe(true);
+    expect(result.knownAgentIds.has("archived-agent")).toBe(true);
+    expect(result.knownAgentIds.has("other-workspace-agent")).toBe(false);
   });
 
   it("allows explicit route open for archived agent once agents are hydrated", () => {
-    const archivedAgent = makeAgent({
-      id: "archived-agent",
-      cwd: "/repo/worktree",
-      archivedAt: new Date("2026-03-04T00:01:00.000Z"),
-    });
-    const lookup = new Map<string, Agent>([[archivedAgent.id, archivedAgent]]);
+    const knownAgentIds = new Set(["archived-agent"]);
 
     expect(
       canOpenAgentTabFromRoute({
         agentId: "archived-agent",
         agentsHydrated: true,
-        workspaceAgentLookup: lookup,
+        knownAgentIds,
       })
     ).toBe(true);
   });
 
-  it("does not prune archived agent tabs when the workspace lookup still contains the agent", () => {
-    const archivedAgent = makeAgent({
-      id: "archived-agent",
-      cwd: "/repo/worktree",
-      archivedAt: new Date("2026-03-04T00:01:00.000Z"),
-    });
-    const lookup = new Map<string, Agent>([[archivedAgent.id, archivedAgent]]);
+  it("does not prune archived agent tabs when knownAgentIds contains the agent", () => {
+    const knownAgentIds = new Set(["archived-agent"]);
 
     expect(
       shouldPruneWorkspaceAgentTab({
         agentId: "archived-agent",
         agentsHydrated: true,
-        workspaceAgentLookup: lookup,
+        knownAgentIds,
       })
     ).toBe(false);
   });
 
-  it("prunes agent tabs once agents are hydrated and the agent is missing from the workspace lookup", () => {
+  it("prunes agent tabs once agents are hydrated and the agent is missing from knownAgentIds", () => {
     expect(
       shouldPruneWorkspaceAgentTab({
         agentId: "missing-agent",
         agentsHydrated: true,
-        workspaceAgentLookup: new Map<string, Agent>(),
+        knownAgentIds: new Set<string>(),
       })
     ).toBe(true);
-  });
-
-  it("sorts same-createdAt agents by lastActivityAt descending", () => {
-    const workspaceId = "/repo/worktree";
-    const createdAt = new Date("2026-03-04T00:00:00.000Z");
-    const newerActivity = makeAgent({
-      id: "newer-activity",
-      cwd: workspaceId,
-      createdAt,
-      lastActivityAt: new Date("2026-03-04T00:05:00.000Z"),
-    });
-    const olderActivity = makeAgent({
-      id: "older-activity",
-      cwd: workspaceId,
-      createdAt,
-      lastActivityAt: new Date("2026-03-04T00:01:00.000Z"),
-    });
-    const sessionAgents = new Map<string, Agent>([
-      [olderActivity.id, olderActivity],
-      [newerActivity.id, newerActivity],
-    ]);
-
-    const result = deriveWorkspaceAgentVisibility({
-      sessionAgents,
-      workspaceId,
-    });
-
-    expect(result.visibleAgents.map((agent) => agent.id)).toEqual([
-      "newer-activity",
-      "older-activity",
-    ]);
   });
 
   it("matches workspace agents when cwd and route workspace differ only by trailing slash", () => {
@@ -179,7 +139,33 @@ describe("workspace agent visibility", () => {
       workspaceId: "/Users/moboudra/.paseo/worktrees/1luy0po7/normal-squid",
     });
 
-    expect(result.visibleAgents.map((agent) => agent.id)).toEqual(["slash-agent"]);
-    expect(result.lookupById.has("slash-agent")).toBe(true);
+    expect(result.activeAgentIds).toEqual(new Set(["slash-agent"]));
+    expect(result.knownAgentIds.has("slash-agent")).toBe(true);
+  });
+
+  describe("workspaceAgentVisibilityEqual", () => {
+    it("returns true for identical sets", () => {
+      const a = { activeAgentIds: new Set(["a", "b"]), knownAgentIds: new Set(["a", "b", "c"]) };
+      const b = { activeAgentIds: new Set(["a", "b"]), knownAgentIds: new Set(["a", "b", "c"]) };
+      expect(workspaceAgentVisibilityEqual(a, b)).toBe(true);
+    });
+
+    it("returns false when activeAgentIds differ", () => {
+      const a = { activeAgentIds: new Set(["a"]), knownAgentIds: new Set(["a"]) };
+      const b = { activeAgentIds: new Set(["b"]), knownAgentIds: new Set(["a"]) };
+      expect(workspaceAgentVisibilityEqual(a, b)).toBe(false);
+    });
+
+    it("returns false when knownAgentIds differ", () => {
+      const a = { activeAgentIds: new Set(["a"]), knownAgentIds: new Set(["a"]) };
+      const b = { activeAgentIds: new Set(["a"]), knownAgentIds: new Set(["a", "b"]) };
+      expect(workspaceAgentVisibilityEqual(a, b)).toBe(false);
+    });
+
+    it("returns true for empty sets", () => {
+      const a = { activeAgentIds: new Set<string>(), knownAgentIds: new Set<string>() };
+      const b = { activeAgentIds: new Set<string>(), knownAgentIds: new Set<string>() };
+      expect(workspaceAgentVisibilityEqual(a, b)).toBe(true);
+    });
   });
 });

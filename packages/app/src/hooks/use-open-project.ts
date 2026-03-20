@@ -1,7 +1,7 @@
 import { router } from "expo-router";
 import { useCallback } from "react";
 import { useToast } from "@/contexts/toast-context";
-import { useHostRuntimeSession } from "@/runtime/host-runtime";
+import { useHostRuntimeClient } from "@/runtime/host-runtime";
 import {
   normalizeWorkspaceDescriptor,
   useSessionStore,
@@ -13,7 +13,7 @@ export function useOpenProject(
 ): (path: string) => Promise<boolean> {
   const normalizedServerId = serverId?.trim() ?? "";
   const toast = useToast();
-  const { client } = useHostRuntimeSession(normalizedServerId);
+  const client = useHostRuntimeClient(normalizedServerId);
   const mergeWorkspaces = useSessionStore((state) => state.mergeWorkspaces);
   const setHasHydratedWorkspaces = useSessionStore(
     (state) => state.setHasHydratedWorkspaces
