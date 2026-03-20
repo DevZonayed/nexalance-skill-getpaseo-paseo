@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useFocusEffect, useIsFocused } from "@react-navigation/native";
 import { ActivityIndicator, Platform, Text, View } from "react-native";
 import ReanimatedAnimated from "react-native-reanimated";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
@@ -102,12 +101,13 @@ function useAgentPanelDescriptor(
 }
 
 function AgentPanel() {
-  const { serverId, target, openFileInWorkspace } = usePaneContext();
+  const { serverId, target, isPaneFocused, openFileInWorkspace } = usePaneContext();
   invariant(target.kind === "agent", "AgentPanel requires agent target");
   return (
     <AgentPanelContent
       serverId={serverId}
       agentId={target.agentId}
+      isPaneFocused={isPaneFocused}
       onOpenWorkspaceFile={({ filePath }) => {
         openFileInWorkspace(filePath);
       }}
@@ -142,10 +142,12 @@ function isNotFoundErrorMessage(message: string): boolean {
 function AgentPanelContent({
   serverId,
   agentId,
+  isPaneFocused,
   onOpenWorkspaceFile,
 }: {
   serverId: string;
   agentId: string;
+  isPaneFocused: boolean;
   onOpenWorkspaceFile?: (input: { filePath: string }) => void;
 }) {
   const resolvedAgentId = agentId.trim() || undefined;
@@ -185,6 +187,7 @@ function AgentPanelContent({
     <AgentPanelBody
       serverId={resolvedServerId}
       agentId={resolvedAgentId}
+      isPaneFocused={isPaneFocused}
       client={runtimeClient}
       isConnected={runtimeIsConnected}
       connectionStatus={connectionStatus}
@@ -196,6 +199,7 @@ function AgentPanelContent({
 function AgentPanelBody({
   serverId,
   agentId,
+  isPaneFocused,
   client,
   isConnected,
   connectionStatus,
@@ -203,6 +207,7 @@ function AgentPanelBody({
 }: {
   serverId: string;
   agentId?: string;
+  isPaneFocused: boolean;
   client: NonNullable<ReturnType<typeof useHostRuntimeSession>["client"]>;
   isConnected: boolean;
   connectionStatus: HostRuntimeConnectionStatus;
@@ -213,7 +218,8 @@ function AgentPanelBody({
   const { isArchivingAgent } = useArchiveAgent();
   const streamViewRef = useRef<AgentStreamViewHandle>(null);
   const addImagesRef = useRef<((images: ImageAttachment[]) => void) | null>(null);
-  const isScreenFocused = useIsFocused();
+  const clearOnAgentBlurRef = useRef<() => void>(() => {});
+  const wasPaneFocusedRef = useRef(isPaneFocused);
   const reconnectToastArmedRef = useRef(false);
   const initAttemptTokenRef = useRef(0);
   const routeBottomAnchorRequestRef = useRef<{
@@ -314,21 +320,17 @@ function AgentPanelBody({
     return filtered;
   }, [agentId, allPendingPermissions]);
 
-  const setFocusedAgentId = useCallback(
-    (focusedAgentId: string | null) => {
-      useSessionStore.getState().setFocusedAgentId(serverId, focusedAgentId);
-    },
-    [serverId]
-  );
-
   const attentionController = useAgentAttentionClear({
     agentId,
     client,
     isConnected,
     requiresAttention: agent?.requiresAttention,
     attentionReason: agent?.attentionReason,
-    isScreenFocused,
+    isScreenFocused: isPaneFocused,
   });
+  useEffect(() => {
+    clearOnAgentBlurRef.current = attentionController.clearOnAgentBlur;
+  }, [attentionController.clearOnAgentBlur]);
 
   const { style: animatedKeyboardStyle } = useKeyboardShiftStyle({
     mode: "translate",
@@ -383,34 +385,38 @@ function AgentPanelBody({
     }
   }, [connectionStatus, panelToast.api]);
 
-  useFocusEffect(
-    useCallback(() => {
-      if (!agentId || !isConnected || !hasSession) {
-        return;
-      }
-      ensureInitializedWithSyncErrorHandling("focus");
-    }, [agentId, ensureInitializedWithSyncErrorHandling, hasSession, isConnected])
-  );
+  useEffect(() => {
+    if (!isPaneFocused || !agentId || !isConnected || !hasSession) {
+      return;
+    }
+    ensureInitializedWithSyncErrorHandling("focus");
+  }, [
+    agentId,
+    ensureInitializedWithSyncErrorHandling,
+    hasSession,
+    isConnected,
+    isPaneFocused,
+  ]);
 
   const isArchivingCurrentAgent = Boolean(
     agentId &&
       isArchivingAgent({ serverId, agentId })
   );
 
-  useFocusEffect(
-    useCallback(() => {
-      if (!agentId) {
-        setFocusedAgentId(null);
-        return;
-      }
+  useEffect(() => {
+    if (wasPaneFocusedRef.current && !isPaneFocused) {
+      clearOnAgentBlurRef.current();
+    }
+    wasPaneFocusedRef.current = isPaneFocused;
+  }, [isPaneFocused]);
 
-      setFocusedAgentId(agentId);
-      return () => {
-        attentionController.clearOnAgentBlur();
-        setFocusedAgentId(null);
-      };
-    }, [agentId, attentionController, setFocusedAgentId])
-  );
+  useEffect(() => {
+    return () => {
+      if (wasPaneFocusedRef.current) {
+        clearOnAgentBlurRef.current();
+      }
+    };
+  }, []);
 
   const isInitializing = agentId ? isInitializingFromMap !== false : false;
   const isHistorySyncing = useMemo(() => {
@@ -797,7 +803,7 @@ function AgentPanelBody({
             <AgentInputArea
               agentId={agentId}
               serverId={serverId}
-              autoFocus
+              autoFocus={isPaneFocused}
               isSubmitLoading={showPendingCreateSubmitLoading}
               onAttentionInputFocus={attentionController.clearOnInputFocus}
               onAttentionPromptSend={attentionController.clearOnPromptSend}

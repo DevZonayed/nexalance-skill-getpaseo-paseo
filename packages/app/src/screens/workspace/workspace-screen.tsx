@@ -873,6 +873,24 @@ function WorkspaceScreenContent({
       }),
     [uiTabs, workspaceLayout]
   );
+  const setFocusedAgentId = useSessionStore((state) => state.setFocusedAgentId);
+  const focusedPaneAgentId = useMemo(() => {
+    const target = focusedPaneTabState.activeTab?.descriptor.target;
+    if (target?.kind !== "agent") {
+      return null;
+    }
+    return target.agentId;
+  }, [focusedPaneTabState.activeTab]);
+
+  useEffect(() => {
+    setFocusedAgentId(normalizedServerId, focusedPaneAgentId);
+  }, [focusedPaneAgentId, normalizedServerId, setFocusedAgentId]);
+
+  useEffect(() => {
+    return () => {
+      setFocusedAgentId(normalizedServerId, null);
+    };
+  }, [normalizedServerId, setFocusedAgentId]);
 
   const ensureWorkspaceTab = useCallback(
     function ensureWorkspaceTab(target: WorkspaceTabTarget): string | null {
@@ -1833,12 +1851,14 @@ function WorkspaceScreenContent({
     (input: {
       tab: WorkspaceTabDescriptor;
       paneId?: string | null;
+      isPaneFocused: boolean;
       focusPaneBeforeOpen?: boolean;
     }) =>
       buildWorkspacePaneContentModel({
         tab: input.tab,
         normalizedServerId,
         normalizedWorkspaceId,
+        isPaneFocused: input.isPaneFocused,
         onOpenTab: (target) => {
           if (!persistenceKey) {
             return;
@@ -1885,6 +1905,7 @@ function WorkspaceScreenContent({
         ? buildPaneContentModel({
             tab: activeTabDescriptor,
             paneId: focusedPaneTabState.pane?.id ?? null,
+            isPaneFocused: true,
             focusPaneBeforeOpen: false,
           })
         : null,
@@ -2159,13 +2180,14 @@ function WorkspaceScreenContent({
                     onCloseOtherTabs={handleCloseOtherTabsInPane}
                     onSelectNewTabOption={handleSelectNewTabOption}
                     newTabAgentOptionId={NEW_TAB_AGENT_OPTION_ID}
-                    buildPaneContentModel={({ paneId, tab }) =>
-                    buildPaneContentModel({
-                      tab,
-                      paneId,
-                      focusPaneBeforeOpen: true,
-                    })
-                  }
+                    buildPaneContentModel={({ paneId, tab, isPaneFocused }) =>
+                      buildPaneContentModel({
+                        tab,
+                        paneId,
+                        isPaneFocused,
+                        focusPaneBeforeOpen: true,
+                      })
+                    }
                     onFocusPane={(paneId) => {
                       focusWorkspacePane(persistenceKey, paneId);
                     }}
