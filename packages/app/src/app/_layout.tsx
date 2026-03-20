@@ -268,23 +268,12 @@ function AppContainer({
 }: AppContainerProps) {
   const { theme } = useUnistyles();
   const daemons = useHosts();
-  const mobileView = usePanelStore((state) => state.mobileView);
-  const desktopAgentListOpen = usePanelStore((state) => state.desktop.agentListOpen);
-  const openAgentList = usePanelStore((state) => state.openAgentList);
   const toggleAgentList = usePanelStore((state) => state.toggleAgentList);
   const toggleFileExplorer = usePanelStore((state) => state.toggleFileExplorer);
-  const horizontalScroll = useHorizontalScrollOptional();
 
   const isMobile =
     UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
   const chromeEnabled = chromeEnabledOverride ?? daemons.length > 0;
-  const isOpen = chromeEnabled
-    ? isMobile
-      ? mobileView === "agent-list"
-      : desktopAgentListOpen
-    : false;
-  const openGestureEnabled =
-    chromeEnabled && isMobile && mobileView === "agent";
 
   useKeyboardShortcuts({
     enabled: chromeEnabled,
@@ -293,92 +282,6 @@ function AppContainer({
     selectedAgentId,
     toggleFileExplorer,
   });
-  const {
-    translateX,
-    backdropOpacity,
-    windowWidth,
-    animateToOpen,
-    animateToClose,
-    isGesturing,
-  } = useSidebarAnimation();
-
-  // Track initial touch position for manual activation
-  const touchStartX = useSharedValue(0);
-
-  // Open gesture: swipe right from anywhere to open sidebar (interactive drag)
-  // If any horizontal scroll is scrolled right, let the scroll view handle the gesture first
-  const openGesture = useMemo(
-    () =>
-      Gesture.Pan()
-        .enabled(openGestureEnabled)
-        .manualActivation(true)
-        // Fail if 10px vertical movement happens first (allow vertical scroll)
-        .failOffsetY([-10, 10])
-        .onTouchesDown((event) => {
-          const touch = event.changedTouches[0];
-          if (touch) {
-            touchStartX.value = touch.absoluteX;
-          }
-        })
-        .onTouchesMove((event, stateManager) => {
-          const touch = event.changedTouches[0];
-          if (!touch || event.numberOfTouches !== 1) return;
-
-          const deltaX = touch.absoluteX - touchStartX.value;
-
-          // If horizontal scroll is scrolled right, fail so ScrollView handles it
-          if (horizontalScroll?.isAnyScrolledRight.value) {
-            stateManager.fail();
-            return;
-          }
-
-          // Activate after 15px rightward movement
-          if (deltaX > 15) {
-            stateManager.activate();
-          }
-        })
-        .onStart(() => {
-          isGesturing.value = true;
-        })
-        .onUpdate((event) => {
-          // Start from closed position (-windowWidth) and move towards 0
-          const newTranslateX = Math.min(0, -windowWidth + event.translationX);
-          translateX.value = newTranslateX;
-          backdropOpacity.value = interpolate(
-            newTranslateX,
-            [-windowWidth, 0],
-            [0, 1],
-            Extrapolation.CLAMP
-          );
-        })
-        .onEnd((event) => {
-          isGesturing.value = false;
-          // Open if dragged more than 1/3 of sidebar or fast swipe
-          const shouldOpen = event.translationX > windowWidth / 3 || event.velocityX > 500;
-          if (shouldOpen) {
-            animateToOpen();
-            runOnJS(openAgentList)();
-          } else {
-            animateToClose();
-          }
-        })
-        .onFinalize(() => {
-          isGesturing.value = false;
-        }),
-    [
-      openGestureEnabled,
-      windowWidth,
-      translateX,
-      backdropOpacity,
-      animateToOpen,
-      animateToClose,
-      openAgentList,
-      mobileView,
-      isGesturing,
-      horizontalScroll?.isAnyScrolledRight,
-      touchStartX,
-    ]
-  );
 
   const containerStyle = useMemo(
     () => ({ flex: 1 as const, backgroundColor: theme.colors.surface0 }),
@@ -407,8 +310,103 @@ function AppContainer({
   }
 
   return (
-    <GestureDetector gesture={openGesture} touchAction="pan-y">
+    <MobileGestureWrapper chromeEnabled={chromeEnabled}>
       {content}
+    </MobileGestureWrapper>
+  );
+}
+
+function MobileGestureWrapper({
+  children,
+  chromeEnabled,
+}: {
+  children: ReactNode;
+  chromeEnabled: boolean;
+}) {
+  const mobileView = usePanelStore((state) => state.mobileView);
+  const openAgentList = usePanelStore((state) => state.openAgentList);
+  const horizontalScroll = useHorizontalScrollOptional();
+  const {
+    translateX,
+    backdropOpacity,
+    windowWidth,
+    animateToOpen,
+    animateToClose,
+    isGesturing,
+  } = useSidebarAnimation();
+  const touchStartX = useSharedValue(0);
+  const openGestureEnabled = chromeEnabled && mobileView === "agent";
+
+  const openGesture = useMemo(
+    () =>
+      Gesture.Pan()
+        .enabled(openGestureEnabled)
+        .manualActivation(true)
+        .failOffsetY([-10, 10])
+        .onTouchesDown((event) => {
+          const touch = event.changedTouches[0];
+          if (touch) {
+            touchStartX.value = touch.absoluteX;
+          }
+        })
+        .onTouchesMove((event, stateManager) => {
+          const touch = event.changedTouches[0];
+          if (!touch || event.numberOfTouches !== 1) return;
+
+          const deltaX = touch.absoluteX - touchStartX.value;
+
+          if (horizontalScroll?.isAnyScrolledRight.value) {
+            stateManager.fail();
+            return;
+          }
+
+          if (deltaX > 15) {
+            stateManager.activate();
+          }
+        })
+        .onStart(() => {
+          isGesturing.value = true;
+        })
+        .onUpdate((event) => {
+          const newTranslateX = Math.min(0, -windowWidth + event.translationX);
+          translateX.value = newTranslateX;
+          backdropOpacity.value = interpolate(
+            newTranslateX,
+            [-windowWidth, 0],
+            [0, 1],
+            Extrapolation.CLAMP
+          );
+        })
+        .onEnd((event) => {
+          isGesturing.value = false;
+          const shouldOpen = event.translationX > windowWidth / 3 || event.velocityX > 500;
+          if (shouldOpen) {
+            animateToOpen();
+            runOnJS(openAgentList)();
+          } else {
+            animateToClose();
+          }
+        })
+        .onFinalize(() => {
+          isGesturing.value = false;
+        }),
+    [
+      openGestureEnabled,
+      windowWidth,
+      translateX,
+      backdropOpacity,
+      animateToOpen,
+      animateToClose,
+      openAgentList,
+      isGesturing,
+      horizontalScroll?.isAnyScrolledRight,
+      touchStartX,
+    ]
+  );
+
+  return (
+    <GestureDetector gesture={openGesture} touchAction="pan-y">
+      {children}
     </GestureDetector>
   );
 }
