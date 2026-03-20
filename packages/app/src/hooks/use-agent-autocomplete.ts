@@ -5,7 +5,7 @@ import { useAgentCommandsQuery, type DraftCommandConfig } from './use-agent-comm
 import { orderAutocompleteOptions } from '@/components/ui/autocomplete-utils'
 import { useAutocomplete } from './use-autocomplete'
 import { useSessionStore } from '@/stores/session-store'
-import { useHostRuntimeSession } from '@/runtime/host-runtime'
+import { useHostRuntimeClient, useHostRuntimeIsConnected } from '@/runtime/host-runtime'
 import {
   applyFileMentionReplacement,
   findActiveFileMention,
@@ -138,7 +138,8 @@ export function useAgentAutocomplete(input: UseAgentAutocompleteInput): AgentAut
     return agentCwd.trim()
   }, [agentCwd, isDraftContext, queryDraftConfig])
 
-  const { client, isConnected } = useHostRuntimeSession(serverId)
+  const client = useHostRuntimeClient(serverId)
+  const isConnected = useHostRuntimeIsConnected(serverId)
 
   const mode: 'command' | 'file' | null = showFileAutocomplete
     ? 'file'

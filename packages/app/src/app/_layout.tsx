@@ -23,7 +23,7 @@ import {
   getHostRuntimeStore,
   useHosts,
   useHostMutations,
-  useHostRuntimeSession,
+  useHostRuntimeClient,
 } from "@/runtime/host-runtime";
 import { SessionProvider } from "@/contexts/session-context";
 import type { HostProfile } from "@/types/host-connection";
@@ -176,7 +176,7 @@ function PushNotificationRouter() {
 }
 
 function ManagedDaemonSession({ daemon }: { daemon: HostProfile }) {
-  const { client } = useHostRuntimeSession(daemon.serverId);
+  const client = useHostRuntimeClient(daemon.serverId);
 
   if (!client) {
     return null;

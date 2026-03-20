@@ -33,7 +33,7 @@ import { buildWorkingDirectorySuggestions } from '@/utils/working-directory-sugg
 import { useExplorerOpenGesture } from '@/hooks/use-explorer-open-gesture'
 import { useSessionStore } from '@/stores/session-store'
 import { generateDraftId } from '@/stores/draft-keys'
-import { getHostRuntimeStore, useHostRuntimeSession } from '@/runtime/host-runtime'
+import { getHostRuntimeStore, useHostRuntimeClient, useHostRuntimeIsConnected } from '@/runtime/host-runtime'
 import { ExplorerSidebarAnimationProvider } from '@/contexts/explorer-sidebar-animation-context'
 import { usePanelStore, type ExplorerCheckoutContext } from '@/stores/panel-store'
 import { MAX_CONTENT_WIDTH } from '@/constants/layout'
@@ -317,9 +317,8 @@ function DraftAgentScreenContent({
     return collectAgentWorkingDirectorySuggestions([...liveSources, ...fetchedSources])
   }, [allAgents, sessionAgents])
 
-  const { client: runtimeClient, isConnected: isHostOnline } = useHostRuntimeSession(
-    selectedServerId ?? ''
-  )
+  const runtimeClient = useHostRuntimeClient(selectedServerId ?? '')
+  const isHostOnline = useHostRuntimeIsConnected(selectedServerId ?? '')
   const sessionClient = runtimeClient
   const trimmedWorkingDir = workingDir.trim()
   const shouldInspectRepo = trimmedWorkingDir.length > 0

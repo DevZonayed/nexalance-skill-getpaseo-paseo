@@ -19,7 +19,7 @@ import Svg, {
 import { StyleSheet, UnistylesRuntime, useUnistyles } from "react-native-unistyles";
 import type { ListTerminalsResponse } from "@server/shared/messages";
 import { encodeTerminalKeyInput } from "@server/shared/terminal-key-input";
-import { useHostRuntimeSession } from "@/runtime/host-runtime";
+import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
 import { useKeyboardShiftStyle } from "@/hooks/use-keyboard-shift-style";
 import {
   hasPendingTerminalModifiers,
@@ -150,7 +150,8 @@ export function TerminalPane({
   });
 
   const queryClient = useQueryClient();
-  const { client, isConnected } = useHostRuntimeSession(serverId);
+  const client = useHostRuntimeClient(serverId);
+  const isConnected = useHostRuntimeIsConnected(serverId);
 
   const scopeKey = useMemo(() => terminalScopeKey({ serverId, cwd }), [serverId, cwd]);
   const terminalsQueryKey = useMemo(() => ["terminals", serverId, cwd] as const, [cwd, serverId]);

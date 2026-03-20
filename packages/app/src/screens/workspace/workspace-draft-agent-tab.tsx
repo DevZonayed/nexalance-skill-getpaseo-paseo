@@ -7,7 +7,7 @@ import { AgentStreamView } from '@/components/agent-stream-view'
 import type { ImageAttachment } from '@/components/message-input'
 import { useAgentFormState } from '@/hooks/use-agent-form-state'
 import { useDraftAgentCreateFlow } from '@/hooks/use-draft-agent-create-flow'
-import { useHostRuntimeSession } from '@/runtime/host-runtime'
+import { useHostRuntimeClient, useHostRuntimeIsConnected } from '@/runtime/host-runtime'
 import type { Agent } from '@/stores/session-store'
 import { encodeImages } from '@/utils/encode-images'
 import type { AgentCapabilityFlags, AgentSessionConfig } from '@server/server/agent/agent-sdk-types'
@@ -40,7 +40,8 @@ export function WorkspaceDraftAgentTab({
   onCreated,
   onOpenWorkspaceFile,
 }: WorkspaceDraftAgentTabProps) {
-  const { client, isConnected } = useHostRuntimeSession(serverId)
+  const client = useHostRuntimeClient(serverId)
+  const isConnected = useHostRuntimeIsConnected(serverId)
   const addImagesRef = useRef<((images: ImageAttachment[]) => void) | null>(null)
 
   const {

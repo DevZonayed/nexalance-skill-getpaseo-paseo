@@ -24,7 +24,9 @@ import { useSessionStore } from "@/stores/session-store";
 import {
   getHostRuntimeStore,
   isHostRuntimeConnected,
-  useHostRuntimeSession,
+  useHostRuntimeClient,
+  useHostRuntimeIsConnected,
+  useHostRuntimeSnapshot,
 } from "@/runtime/host-runtime";
 import { AddHostMethodModal } from "@/components/add-host-method-modal";
 import { AddHostModal } from "@/components/add-host-modal";
@@ -992,9 +994,9 @@ function HostDetailModal({
   const connections = host?.connections ?? [];
 
   // Restart logic (moved from DaemonCard)
-  const { snapshot: runtimeSnapshot, client: runtimeClient, isConnected } = useHostRuntimeSession(
-    host?.serverId ?? ""
-  );
+  const runtimeSnapshot = useHostRuntimeSnapshot(host?.serverId ?? "");
+  const runtimeClient = useHostRuntimeClient(host?.serverId ?? "");
+  const isConnected = useHostRuntimeIsConnected(host?.serverId ?? "");
   const runtime = getHostRuntimeStore();
   const daemonClient = runtimeClient;
   const daemonVersion = useSessionStore((state) => host ? (state.sessions[host.serverId]?.serverInfo?.version ?? null) : null);
@@ -1389,7 +1391,7 @@ function DaemonCard({
   onOpenSettings,
 }: DaemonCardProps) {
   const { theme } = useUnistyles();
-  const { snapshot } = useHostRuntimeSession(daemon.serverId);
+  const snapshot = useHostRuntimeSnapshot(daemon.serverId);
   const connectionStatus = snapshot?.connectionStatus ?? "connecting";
   const activeConnection = snapshot?.activeConnection ?? null;
   const lastError = snapshot?.lastError ?? null;

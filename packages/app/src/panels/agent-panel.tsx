@@ -23,7 +23,10 @@ import { useKeyboardShiftStyle } from "@/hooks/use-keyboard-shift-style";
 import { usePaneContext } from "@/panels/pane-context";
 import type { PanelDescriptor, PanelRegistration } from "@/panels/panel-registry";
 import {
-  useHostRuntimeSession,
+  useHostRuntimeClient,
+  useHostRuntimeConnectionStatus,
+  useHostRuntimeIsConnected,
+  useHostRuntimeLastError,
   useHosts,
   type HostRuntimeConnectionStatus,
 } from "@/runtime/host-runtime";
@@ -154,11 +157,10 @@ function AgentPanelContent({
   const resolvedServerId = serverId.trim() || undefined;
   const daemons = useHosts();
   const runtimeServerId = resolvedServerId ?? "";
-  const {
-    snapshot: runtimeSnapshot,
-    client: runtimeClient,
-    isConnected: runtimeIsConnected,
-  } = useHostRuntimeSession(runtimeServerId);
+  const runtimeClient = useHostRuntimeClient(runtimeServerId);
+  const runtimeIsConnected = useHostRuntimeIsConnected(runtimeServerId);
+  const runtimeConnectionStatus = useHostRuntimeConnectionStatus(runtimeServerId);
+  const runtimeLastError = useHostRuntimeLastError(runtimeServerId);
 
   const connectionServerId = resolvedServerId ?? null;
   const daemon = connectionServerId
@@ -168,9 +170,10 @@ function AgentPanelContent({
     daemon?.label ?? connectionServerId ?? "Selected host";
   const isUnknownDaemon = Boolean(connectionServerId && !daemon);
   const connectionStatus: HostRuntimeConnectionStatus =
-    runtimeSnapshot?.connectionStatus ??
-    (isUnknownDaemon ? "offline" : "connecting");
-  const lastConnectionError = runtimeSnapshot?.lastError ?? null;
+    isUnknownDaemon && runtimeConnectionStatus === "connecting"
+      ? "offline"
+      : runtimeConnectionStatus;
+  const lastConnectionError = runtimeLastError;
 
   if (!resolvedServerId || !runtimeClient) {
     return (
@@ -208,7 +211,7 @@ function AgentPanelBody({
   serverId: string;
   agentId?: string;
   isPaneFocused: boolean;
-  client: NonNullable<ReturnType<typeof useHostRuntimeSession>["client"]>;
+  client: NonNullable<ReturnType<typeof useHostRuntimeClient>>;
   isConnected: boolean;
   connectionStatus: HostRuntimeConnectionStatus;
   onOpenWorkspaceFile?: (input: { filePath: string }) => void;

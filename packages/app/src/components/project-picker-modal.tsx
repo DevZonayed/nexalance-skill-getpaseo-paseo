@@ -15,7 +15,7 @@ import { usePathname } from "expo-router";
 import { useKeyboardShortcutsStore } from "@/stores/keyboard-shortcuts-store";
 import { shortenPath } from "@/utils/shorten-path";
 import { useSessionStore } from "@/stores/session-store";
-import { useHosts, useHostRuntimeSession } from "@/runtime/host-runtime";
+import { useHosts, useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
 import { useOpenProject } from "@/hooks/use-open-project";
 import { parseServerIdFromPathname } from "@/utils/host-routes";
 import { buildWorkingDirectorySuggestions } from "@/utils/working-directory-suggestions";
@@ -34,7 +34,8 @@ export function ProjectPickerModal() {
     return daemons[0]?.serverId ?? null;
   }, [pathname, daemons]);
 
-  const { client, isConnected } = useHostRuntimeSession(serverId ?? "");
+  const client = useHostRuntimeClient(serverId ?? "");
+  const isConnected = useHostRuntimeIsConnected(serverId ?? "");
   const workspaces = useSessionStore((state) =>
     serverId ? state.sessions[serverId]?.workspaces : undefined
   );

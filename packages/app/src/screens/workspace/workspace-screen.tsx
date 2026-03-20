@@ -70,7 +70,7 @@ import {
   normalizeWorkspaceTabTarget,
   workspaceTabTargetsEqual,
 } from "@/utils/workspace-tab-identity";
-import { useHostRuntimeSession } from "@/runtime/host-runtime";
+import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
 import { useWorkspaceTerminalSessionRetention } from "@/terminal/hooks/use-workspace-terminal-session-retention";
 import {
   checkoutStatusQueryKey,
@@ -579,7 +579,8 @@ function WorkspaceScreenContent({
   });
 
   const queryClient = useQueryClient();
-  const { client, isConnected } = useHostRuntimeSession(normalizedServerId);
+  const client = useHostRuntimeClient(normalizedServerId);
+  const isConnected = useHostRuntimeIsConnected(normalizedServerId);
 
   const sessionAgents = useSessionStore(
     (state) => state.sessions[normalizedServerId]?.agents

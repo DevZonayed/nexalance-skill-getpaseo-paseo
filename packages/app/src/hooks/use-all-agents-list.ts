@@ -3,8 +3,8 @@ import { useHosts } from "@/runtime/host-runtime";
 import { useSessionStore, type Agent } from "@/stores/session-store";
 import {
   getHostRuntimeStore,
-  isHostRuntimeDirectoryLoading,
-  useHostRuntimeSession,
+  useHostRuntimeConnectionStatus,
+  useHostRuntimeIsDirectoryLoading,
 } from "@/runtime/host-runtime";
 import type {
   AggregatedAgent,
@@ -88,14 +88,14 @@ export function useAllAgentsList(options?: {
   const liveAgents = useSessionStore((state) =>
     serverId ? state.sessions[serverId]?.agents ?? null : null
   );
-  const { snapshot } = useHostRuntimeSession(serverId ?? "");
+  const connectionStatus = useHostRuntimeConnectionStatus(serverId ?? "");
 
   const refreshAll = useCallback(() => {
-    if (!serverId || snapshot?.connectionStatus !== "online") {
+    if (!serverId || connectionStatus !== "online") {
       return;
     }
     void runtime.refreshAgentDirectory({ serverId }).catch(() => undefined);
-  }, [runtime, serverId, snapshot?.connectionStatus]);
+  }, [runtime, serverId, connectionStatus]);
 
   const agents = useMemo(() => {
     if (!serverId || !liveAgents) {
@@ -111,7 +111,7 @@ export function useAllAgentsList(options?: {
     });
   }, [daemons, includeArchived, liveAgents, serverId]);
 
-  const isDirectoryLoading = Boolean(serverId && isHostRuntimeDirectoryLoading(snapshot));
+  const isDirectoryLoading = useHostRuntimeIsDirectoryLoading(serverId ?? "");
   const isInitialLoad = isDirectoryLoading && agents.length === 0;
   const isRevalidating = isDirectoryLoading && agents.length > 0;
 
