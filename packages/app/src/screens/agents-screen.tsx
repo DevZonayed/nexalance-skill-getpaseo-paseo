@@ -1,5 +1,6 @@
 import { useMemo, useState, useCallback, useEffect } from "react";
 import { View } from "react-native";
+import { useIsFocused } from "@react-navigation/native";
 import { StyleSheet } from "react-native-unistyles";
 import { BackHeader } from "@/components/headers/back-header";
 import { AgentList } from "@/components/agent-list";
@@ -8,6 +9,16 @@ import { router } from "expo-router";
 import { buildHostRootRoute } from "@/utils/host-routes";
 
 export function AgentsScreen({ serverId }: { serverId: string }) {
+  const isFocused = useIsFocused();
+
+  if (!isFocused) {
+    return <View style={styles.container} />;
+  }
+
+  return <AgentsScreenContent serverId={serverId} />;
+}
+
+function AgentsScreenContent({ serverId }: { serverId: string }) {
   const { agents, isRevalidating, refreshAll } = useAllAgentsList({
     serverId,
     includeArchived: true,
