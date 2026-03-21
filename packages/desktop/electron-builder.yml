@@ -10,7 +10,7 @@ extraResources:
     to: app-dist
 publish:
   provider: github
-  owner: anthropics
+  owner: getpaseo
   repo: paseo
 mac:
   category: public.app-category.developer-tools
