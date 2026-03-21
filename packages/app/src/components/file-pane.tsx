@@ -25,6 +25,7 @@ import {
   type HighlightToken,
   type HighlightStyle,
 } from "@getpaseo/highlight";
+import { lineNumberGutterWidth } from "@/components/code-insets";
 
 interface CodeLineProps {
   tokens: HighlightToken[];
@@ -100,6 +101,7 @@ const codeLineStyles = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.sm,
     lineHeight: theme.fontSize.sm * 1.45,
     opacity: 0.4,
+    userSelect: "none",
   },
   lineText: {
     fontFamily: Fonts.mono,
@@ -135,8 +137,7 @@ function FilePreviewBody({
 
   const gutterWidth = useMemo(() => {
     if (!highlightedLines) return 0;
-    const digits = String(highlightedLines.length).length;
-    return Math.max(digits * 8 + 12, 28);
+    return lineNumberGutterWidth(highlightedLines.length);
   }, [highlightedLines]);
 
   const handlePreviewScroll = useCallback(

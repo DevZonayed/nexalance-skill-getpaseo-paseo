@@ -64,6 +64,7 @@ import {
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { GitHubIcon } from "@/components/icons/github-icon";
 import { buildGitActions, type GitActions } from "@/components/git-actions-policy";
+import { lineNumberGutterWidth } from "@/components/code-insets";
 import {
   WebDesktopScrollbarOverlay,
   useWebDesktopScrollbarMetrics,
@@ -325,8 +326,7 @@ function DiffFileBody({
               hunk.newStart + hunk.newCount,
             );
           }
-          const digitCount = Math.max(1, String(maxLineNo).length);
-          const gutterWidth = digitCount * 8 + 12;
+          const gutterWidth = lineNumberGutterWidth(maxLineNo);
           return file.hunks.map((hunk, hunkIndex) => {
             let oldLineNo = hunk.oldStart;
             let newLineNo = hunk.newStart;
@@ -1427,6 +1427,7 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.xs,
     fontFamily: Fonts.mono,
     color: theme.colors.foregroundMuted,
+    userSelect: "none",
   },
   addLineNumberText: {
     color: theme.colors.palette.green[400],
@@ -1441,6 +1442,7 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.xs,
     fontFamily: Fonts.mono,
     color: theme.colors.foreground,
+    userSelect: "text",
   },
   addLineContainer: {
     backgroundColor: "rgba(46, 160, 67, 0.15)", // GitHub green
