@@ -120,6 +120,7 @@ const NEW_TAB_AGENT_OPTION_ID = "__new_tab_agent__";
 const NEW_TAB_TERMINAL_OPTION_ID = "__new_tab_terminal__";
 type NewTabOptionId = typeof NEW_TAB_AGENT_OPTION_ID | typeof NEW_TAB_TERMINAL_OPTION_ID;
 const EMPTY_UI_TABS: WorkspaceTab[] = [];
+const EMPTY_PINNED_AGENT_IDS = new Set<string>();
 
 type WorkspaceScreenProps = {
   serverId: string;
@@ -810,6 +811,8 @@ function WorkspaceScreenContent({
   const openWorkspaceTab = useWorkspaceLayoutStore((state) => state.openTab);
   const focusWorkspaceTab = useWorkspaceLayoutStore((state) => state.focusTab);
   const closeWorkspaceTab = useWorkspaceLayoutStore((state) => state.closeTab);
+  const pinWorkspaceAgent = useWorkspaceLayoutStore((state) => state.pinAgent);
+  const unpinWorkspaceAgent = useWorkspaceLayoutStore((state) => state.unpinAgent);
   const retargetWorkspaceTab = useWorkspaceLayoutStore((state) => state.retargetTab);
   const splitWorkspacePane = useWorkspaceLayoutStore((state) => state.splitPane);
   const splitWorkspacePaneEmpty = useWorkspaceLayoutStore((state) => state.splitPaneEmpty);
@@ -817,6 +820,11 @@ function WorkspaceScreenContent({
   const focusWorkspacePane = useWorkspaceLayoutStore((state) => state.focusPane);
   const resizeWorkspaceSplit = useWorkspaceLayoutStore((state) => state.resizeSplit);
   const reorderWorkspaceTabsInPane = useWorkspaceLayoutStore((state) => state.reorderTabsInPane);
+  const pinnedAgentIds = useWorkspaceLayoutStore((state) =>
+    persistenceKey
+      ? state.pinnedAgentIdsByWorkspace[persistenceKey] ?? EMPTY_PINNED_AGENT_IDS
+      : EMPTY_PINNED_AGENT_IDS
+  );
   const pendingByDraftId = useCreateFlowStore((state) => state.pendingByDraftId);
   const consumedOpenIntentsRef = useRef(new Set<string>());
   const pendingCloseTabIdsRef = useRef(new Set<string>());
@@ -829,6 +837,38 @@ function WorkspaceScreenContent({
         openIntent,
       }),
     [normalizedServerId, normalizedWorkspaceId, openIntent]
+  );
+  const currentOpenIntentPinnedAgentId = useMemo(
+    function getCurrentOpenIntentPinnedAgentId() {
+      if (!openIntent || openIntent.kind !== "agent" || !hasHydratedAgents) {
+        return null;
+      }
+      if (!workspaceAgentVisibility.knownAgentIds.has(openIntent.agentId)) {
+        return null;
+      }
+      if (workspaceAgentVisibility.activeAgentIds.has(openIntent.agentId)) {
+        return null;
+      }
+      return openIntent.agentId;
+    },
+    [hasHydratedAgents, openIntent, workspaceAgentVisibility]
+  );
+  const closeWorkspaceTabWithCleanup = useCallback(
+    function closeWorkspaceTabWithCleanup(input: {
+      tabId: string;
+      target?: WorkspaceTabTarget | null;
+    }) {
+      const normalizedTabId = trimNonEmpty(input.tabId);
+      if (!normalizedTabId || !persistenceKey) {
+        return;
+      }
+
+      if (input.target?.kind === "agent") {
+        unpinWorkspaceAgent(persistenceKey, input.target.agentId);
+      }
+      closeWorkspaceTab(persistenceKey, normalizedTabId);
+    },
+    [closeWorkspaceTab, persistenceKey, unpinWorkspaceAgent]
   );
 
   const focusedPaneTabState = useMemo(
@@ -930,6 +970,11 @@ function WorkspaceScreenContent({
     if (!currentOpenIntentKey) {
       return;
     }
+
+    if (currentOpenIntentPinnedAgentId) {
+      pinWorkspaceAgent(persistenceKey, currentOpenIntentPinnedAgentId);
+    }
+
     const intentKey = currentOpenIntentKey;
     if (consumedOpenIntentsRef.current.has(intentKey)) {
       if (resolvedOpenIntentKey !== intentKey) {
@@ -959,11 +1004,13 @@ function WorkspaceScreenContent({
       focusWorkspaceTab(persistenceKey, tabId);
     }
   }, [
+    currentOpenIntentPinnedAgentId,
     currentOpenIntentKey,
     focusWorkspaceTab,
     openIntent,
     openWorkspaceDraftTab,
     openWorkspaceTab,
+    pinWorkspaceAgent,
     persistenceKey,
   ]);
 
@@ -1029,27 +1076,32 @@ function WorkspaceScreenContent({
       if (
         canPruneAgentTabs &&
         tab.target.kind === "agent" &&
+        !pinnedAgentIds.has(tab.target.agentId) &&
+        tab.target.agentId !== currentOpenIntentPinnedAgentId &&
         shouldPruneWorkspaceAgentTab({
           agentId: tab.target.agentId,
           agentsHydrated: hasHydratedAgents,
           knownAgentIds: workspaceAgentVisibility.knownAgentIds,
+          activeAgentIds: workspaceAgentVisibility.activeAgentIds,
         })
       ) {
-        closeWorkspaceTab(persistenceKey, tab.tabId);
+        closeWorkspaceTabWithCleanup({ tabId: tab.tabId, target: tab.target });
       }
       if (
         canPruneTerminalTabs &&
         tab.target.kind === "terminal" &&
         !terminalIds.has(tab.target.terminalId)
       ) {
-        closeWorkspaceTab(persistenceKey, tab.tabId);
+        closeWorkspaceTabWithCleanup({ tabId: tab.tabId, target: tab.target });
       }
     }
   }, [
-    closeWorkspaceTab,
+    closeWorkspaceTabWithCleanup,
+    currentOpenIntentPinnedAgentId,
     ensureWorkspaceTab,
     hasHydratedAgents,
     pendingByDraftId,
+    pinnedAgentIds,
     persistenceKey,
     terminals,
     terminalsQuery.isSuccess,
@@ -1311,13 +1363,16 @@ function WorkspaceScreenContent({
           );
 
           if (persistenceKey) {
-            closeWorkspaceTab(persistenceKey, tabId);
+            closeWorkspaceTabWithCleanup({
+              tabId,
+              target: { kind: "terminal", terminalId },
+            });
           }
         },
       });
     },
     [
-      closeWorkspaceTab,
+      closeWorkspaceTabWithCleanup,
       killTerminalMutation,
       persistenceKey,
       queryClient,
@@ -1354,14 +1409,17 @@ function WorkspaceScreenContent({
           setHoveredTabKey((current) => (current === tabId ? null : current));
           setHoveredCloseTabKey((current) => (current === tabId ? null : current));
           if (persistenceKey) {
-            closeWorkspaceTab(persistenceKey, tabId);
+            closeWorkspaceTabWithCleanup({
+              tabId,
+              target: { kind: "agent", agentId },
+            });
           }
         },
       });
     },
     [
       archiveAgent,
-      closeWorkspaceTab,
+      closeWorkspaceTabWithCleanup,
       isArchivingAgent,
       normalizedServerId,
       persistenceKey,
@@ -1374,10 +1432,10 @@ function WorkspaceScreenContent({
       setHoveredTabKey((current) => (current === tabId ? null : current));
       setHoveredCloseTabKey((current) => (current === tabId ? null : current));
       if (persistenceKey) {
-        closeWorkspaceTab(persistenceKey, tabId);
+        closeWorkspaceTabWithCleanup({ tabId });
       }
     },
-    [closeWorkspaceTab, persistenceKey]
+    [closeWorkspaceTabWithCleanup, persistenceKey]
   );
 
   const handleCloseTabById = useCallback(
@@ -1503,7 +1561,10 @@ function WorkspaceScreenContent({
             };
           });
           if (persistenceKey) {
-            closeWorkspaceTab(persistenceKey, tabId);
+            closeWorkspaceTabWithCleanup({
+              tabId,
+              target: { kind: "terminal", terminalId },
+            });
           }
         } catch (error) {
           console.warn(`[WorkspaceScreen] Failed to close terminal tab ${logLabel}`, { terminalId, error });
@@ -1517,7 +1578,10 @@ function WorkspaceScreenContent({
         try {
           await archiveAgent({ serverId: normalizedServerId, agentId });
           if (persistenceKey) {
-            closeWorkspaceTab(persistenceKey, tabId);
+            closeWorkspaceTabWithCleanup({
+              tabId,
+              target: { kind: "agent", agentId },
+            });
           }
         } catch (error) {
           console.warn(`[WorkspaceScreen] Failed to archive agent tab ${logLabel}`, { agentId, error });
@@ -1526,7 +1590,7 @@ function WorkspaceScreenContent({
 
       for (const { tabId } of groups.otherTabs) {
         if (persistenceKey) {
-          closeWorkspaceTab(persistenceKey, tabId);
+          closeWorkspaceTabWithCleanup({ tabId });
         }
       }
 
@@ -1536,7 +1600,7 @@ function WorkspaceScreenContent({
     },
     [
       archiveAgent,
-      closeWorkspaceTab,
+      closeWorkspaceTabWithCleanup,
       killTerminalMutation,
       normalizedServerId,
       persistenceKey,
@@ -1717,7 +1781,10 @@ function WorkspaceScreenContent({
 
       if (action.id === "workspace.pane.close") {
         for (const tabId of focusedPane.tabIds) {
-          closeWorkspaceTab(persistenceKey, tabId);
+          closeWorkspaceTabWithCleanup({
+            tabId,
+            target: allTabDescriptorsById.get(tabId)?.target ?? null,
+          });
         }
         return true;
       }
@@ -1725,7 +1792,8 @@ function WorkspaceScreenContent({
       return false;
     },
     [
-      closeWorkspaceTab,
+      allTabDescriptorsById,
+      closeWorkspaceTabWithCleanup,
       focusWorkspacePane,
       handleCreateDraftSplit,
       moveWorkspaceTabToPane,

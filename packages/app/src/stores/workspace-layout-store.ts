@@ -53,6 +53,7 @@ export type { SplitGroup, SplitNode, SplitPane, WorkspaceLayout };
 interface WorkspaceLayoutStore {
   layoutByWorkspace: Record<string, WorkspaceLayout>;
   splitSizesByWorkspace: Record<string, Record<string, number[]>>;
+  pinnedAgentIdsByWorkspace: Record<string, Set<string>>;
   openTab: (workspaceKey: string, target: WorkspaceTabTarget) => string | null;
   closeTab: (workspaceKey: string, tabId: string) => void;
   focusTab: (workspaceKey: string, tabId: string) => void;
@@ -78,6 +79,8 @@ interface WorkspaceLayoutStore {
   focusPane: (workspaceKey: string, paneId: string) => void;
   resizeSplit: (workspaceKey: string, groupId: string, sizes: number[]) => void;
   reorderTabsInPane: (workspaceKey: string, paneId: string, tabIds: string[]) => void;
+  pinAgent: (workspaceKey: string, agentId: string) => void;
+  unpinAgent: (workspaceKey: string, agentId: string) => void;
 }
 
 const MAX_TREE_DEPTH = 4;
@@ -99,6 +102,7 @@ export const useWorkspaceLayoutStore = create<WorkspaceLayoutStore>()(
     (set, get) => ({
       layoutByWorkspace: {},
       splitSizesByWorkspace: {},
+      pinnedAgentIdsByWorkspace: {},
       openTab: (workspaceKey, target) => {
         const normalizedWorkspaceKey = trimNonEmpty(workspaceKey);
         const normalizedTarget = normalizeWorkspaceTabTarget(target);
@@ -381,6 +385,66 @@ export const useWorkspaceLayoutStore = create<WorkspaceLayoutStore>()(
             layoutByWorkspace: {
               ...state.layoutByWorkspace,
               [normalizedWorkspaceKey]: nextLayout,
+            },
+          };
+        });
+      },
+      pinAgent: (workspaceKey, agentId) => {
+        const normalizedWorkspaceKey = trimNonEmpty(workspaceKey);
+        const normalizedAgentId = trimNonEmpty(agentId);
+        if (!normalizedWorkspaceKey || !normalizedAgentId) {
+          return;
+        }
+
+        set((state) => {
+          const currentPinnedAgentIds =
+            state.pinnedAgentIdsByWorkspace[normalizedWorkspaceKey] ?? null;
+          if (currentPinnedAgentIds?.has(normalizedAgentId)) {
+            return state;
+          }
+
+          const nextPinnedAgentIds = new Set(currentPinnedAgentIds ?? []);
+          nextPinnedAgentIds.add(normalizedAgentId);
+
+          return {
+            pinnedAgentIdsByWorkspace: {
+              ...state.pinnedAgentIdsByWorkspace,
+              [normalizedWorkspaceKey]: nextPinnedAgentIds,
+            },
+          };
+        });
+      },
+      unpinAgent: (workspaceKey, agentId) => {
+        const normalizedWorkspaceKey = trimNonEmpty(workspaceKey);
+        const normalizedAgentId = trimNonEmpty(agentId);
+        if (!normalizedWorkspaceKey || !normalizedAgentId) {
+          return;
+        }
+
+        set((state) => {
+          const currentPinnedAgentIds =
+            state.pinnedAgentIdsByWorkspace[normalizedWorkspaceKey] ?? null;
+          if (!currentPinnedAgentIds?.has(normalizedAgentId)) {
+            return state;
+          }
+
+          if (currentPinnedAgentIds.size === 1) {
+            const nextPinnedAgentIdsByWorkspace = {
+              ...state.pinnedAgentIdsByWorkspace,
+            };
+            delete nextPinnedAgentIdsByWorkspace[normalizedWorkspaceKey];
+            return {
+              pinnedAgentIdsByWorkspace: nextPinnedAgentIdsByWorkspace,
+            };
+          }
+
+          const nextPinnedAgentIds = new Set(currentPinnedAgentIds);
+          nextPinnedAgentIds.delete(normalizedAgentId);
+
+          return {
+            pinnedAgentIdsByWorkspace: {
+              ...state.pinnedAgentIdsByWorkspace,
+              [normalizedWorkspaceKey]: nextPinnedAgentIds,
             },
           };
         });

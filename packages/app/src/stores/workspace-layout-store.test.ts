@@ -218,7 +218,11 @@ describe("workspace-layout-store tree transforms", () => {
 
 describe("workspace-layout-store actions", () => {
   beforeEach(() => {
-    useWorkspaceLayoutStore.setState({ layoutByWorkspace: {} });
+    useWorkspaceLayoutStore.setState({
+      layoutByWorkspace: {},
+      splitSizesByWorkspace: {},
+      pinnedAgentIdsByWorkspace: {},
+    });
     vi.restoreAllMocks();
   });
 
@@ -633,5 +637,41 @@ describe("workspace-layout-store actions", () => {
     const layout = useWorkspaceLayoutStore.getState().layoutByWorkspace[workspaceKey]!;
 
     expect(layout).toEqual(createDefaultLayout());
+  });
+
+  it("keeps pinned archived agents in memory per workspace without persisting them", () => {
+    const workspaceKey = createWorkspaceKey();
+    const otherWorkspaceKey = buildWorkspaceTabPersistenceKey({
+      serverId: SERVER_ID,
+      workspaceId: "/repo/other-worktree",
+    });
+
+    expect(otherWorkspaceKey).toBeTruthy();
+
+    const store = useWorkspaceLayoutStore.getState();
+    store.pinAgent(workspaceKey, "agent-1");
+    store.pinAgent(workspaceKey, "agent-1");
+    store.pinAgent(otherWorkspaceKey as string, "agent-2");
+
+    let state = useWorkspaceLayoutStore.getState();
+    expect(Array.from(state.pinnedAgentIdsByWorkspace[workspaceKey] ?? [])).toEqual(["agent-1"]);
+    expect(Array.from(state.pinnedAgentIdsByWorkspace[otherWorkspaceKey as string] ?? [])).toEqual([
+      "agent-2",
+    ]);
+
+    store.unpinAgent(workspaceKey, "agent-1");
+
+    state = useWorkspaceLayoutStore.getState();
+    expect(state.pinnedAgentIdsByWorkspace[workspaceKey]).toBeUndefined();
+    expect(Array.from(state.pinnedAgentIdsByWorkspace[otherWorkspaceKey as string] ?? [])).toEqual([
+      "agent-2",
+    ]);
+
+    const partialize = useWorkspaceLayoutStore.persist.getOptions().partialize;
+    expect(partialize).toBeTypeOf("function");
+    expect(partialize?.(state)).toEqual({
+      layoutByWorkspace: {},
+      splitSizesByWorkspace: {},
+    });
   });
 });
