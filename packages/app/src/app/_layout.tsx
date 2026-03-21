@@ -616,8 +616,8 @@ export default function RootLayout() {
       <PortalProvider>
         <SafeAreaProvider>
           <KeyboardProvider>
-            <BottomSheetModalProvider>
-              <QueryProvider>
+            <QueryProvider>
+              <BottomSheetModalProvider>
                 <HostRuntimeBootstrapProvider>
                   <PushNotificationRouter />
                   <ProvidersWrapper>
@@ -656,8 +656,8 @@ export default function RootLayout() {
                     </SidebarAnimationProvider>
                   </ProvidersWrapper>
                 </HostRuntimeBootstrapProvider>
-              </QueryProvider>
-            </BottomSheetModalProvider>
+              </BottomSheetModalProvider>
+            </QueryProvider>
           </KeyboardProvider>
         </SafeAreaProvider>
       </PortalProvider>

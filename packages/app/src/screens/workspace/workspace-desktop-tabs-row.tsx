@@ -27,7 +27,7 @@ import type { WorkspaceTabDescriptor } from "@/screens/workspace/workspace-tabs-
 
 const DROPDOWN_WIDTH = 220;
 const LOADING_TAB_LABEL_SKELETON_WIDTH = 80;
-type NewTabOptionId = "__new_tab_agent__";
+type NewTabOptionId = "__new_tab_agent__" | "__new_tab_terminal__";
 type NewTabSelection = {
   optionId: NewTabOptionId;
   paneId?: string;

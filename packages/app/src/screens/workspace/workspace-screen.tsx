@@ -22,6 +22,8 @@ import {
   SquareTerminal,
 } from "lucide-react-native";
 import { GestureDetector } from "react-native-gesture-handler";
+import Animated from "react-native-reanimated";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, UnistylesRuntime, useUnistyles } from "react-native-unistyles";
 import invariant from "tiny-invariant";
 import { SidebarMenuToggle } from "@/components/headers/menu-header";
@@ -115,6 +117,8 @@ import { findAdjacentPane } from "@/utils/split-navigation";
 
 const TERMINALS_QUERY_STALE_TIME = 5_000;
 const NEW_TAB_AGENT_OPTION_ID = "__new_tab_agent__";
+const NEW_TAB_TERMINAL_OPTION_ID = "__new_tab_terminal__";
+type NewTabOptionId = typeof NEW_TAB_AGENT_OPTION_ID | typeof NEW_TAB_TERMINAL_OPTION_ID;
 const EMPTY_UI_TABS: WorkspaceTab[] = [];
 
 type WorkspaceScreenProps = {
@@ -217,10 +221,6 @@ type MobileWorkspaceTabSwitcherProps = {
   normalizedServerId: string;
   normalizedWorkspaceId: string;
   onSelectSwitcherTab: (key: string) => void;
-  onSelectNewTabOption: (selection: {
-    optionId: typeof NEW_TAB_AGENT_OPTION_ID;
-    paneId?: string;
-  }) => void;
   onCopyResumeCommand: (agentId: string) => Promise<void> | void;
   onCopyAgentId: (agentId: string) => Promise<void> | void;
   onCloseTab: (tabId: string) => Promise<void> | void;
@@ -415,7 +415,6 @@ const MobileWorkspaceTabSwitcher = memo(function MobileWorkspaceTabSwitcher({
   normalizedServerId,
   normalizedWorkspaceId,
   onSelectSwitcherTab,
-  onSelectNewTabOption,
   onCopyResumeCommand,
   onCopyAgentId,
   onCloseTab,
@@ -435,21 +434,18 @@ const MobileWorkspaceTabSwitcher = memo(function MobileWorkspaceTabSwitcher({
   }, [tabs]);
 
   return (
-    <View style={styles.mobileTabsRow} testID="workspace-tabs-row">
+    <View
+      style={styles.mobileTabsRow}
+      testID="workspace-tabs-row"
+    >
       <Pressable
         ref={anchorRef}
         testID="workspace-tab-switcher-trigger"
-        style={({ hovered, pressed }) => [
+        accessibilityRole="button"
+        accessibilityLabel={`Switch tabs (${tabs.length} open)`}
+        style={({ pressed }) => [
           styles.switcherTrigger,
-          (hovered || pressed || isOpen) && styles.switcherTriggerActive,
-          { borderWidth: 0, borderColor: "transparent" },
-          Platform.OS === "web"
-            ? {
-                outlineStyle: "solid",
-                outlineWidth: 0,
-                outlineColor: "transparent",
-              }
-            : null,
+          pressed && styles.switcherTriggerPressed,
         ]}
         onPress={() => setIsOpen(true)}
       >
@@ -460,36 +456,8 @@ const MobileWorkspaceTabSwitcher = memo(function MobileWorkspaceTabSwitcher({
             normalizedWorkspaceId={normalizedWorkspaceId}
           />
         </View>
-
         <ChevronDown size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
       </Pressable>
-
-      <View style={styles.mobileTabsActions}>
-        <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
-        <TooltipTrigger
-            testID="workspace-new-agent-tab"
-            onPress={() =>
-              onSelectNewTabOption({
-                optionId: NEW_TAB_AGENT_OPTION_ID,
-              })
-            }
-            accessibilityRole="button"
-            accessibilityLabel="New agent tab"
-            style={({ hovered, pressed }) => [
-              styles.newTabActionButton,
-              (hovered || pressed) && styles.newTabActionButtonHovered,
-            ]}
-          >
-            <SquarePen size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
-          </TooltipTrigger>
-          <TooltipContent side="bottom" align="end" offset={8}>
-            <View style={styles.newTabTooltipRow}>
-              <Text style={styles.newTabTooltipText}>New agent tab</Text>
-              <Shortcut keys={["mod", "T"]} style={styles.newTabTooltipShortcut} />
-            </View>
-          </TooltipContent>
-        </Tooltip>
-      </View>
 
       <Combobox
         options={tabSwitcherOptions}
@@ -563,6 +531,7 @@ function WorkspaceScreenContent({
   openIntent,
 }: WorkspaceScreenProps) {
   const { theme } = useUnistyles();
+  const insets = useSafeAreaInsets();
   const isDarkMode = useColorScheme() === "dark";
   const mainBackgroundColor = isDarkMode ? theme.colors.surface1 : theme.colors.surface0;
   const toast = useToast();
@@ -1251,15 +1220,17 @@ function WorkspaceScreenContent({
   );
 
   const handleSelectNewTabOption = useCallback(
-    (selection: { optionId: typeof NEW_TAB_AGENT_OPTION_ID; paneId?: string }) => {
+    (selection: { optionId: NewTabOptionId; paneId?: string }) => {
+      if (selection.paneId && persistenceKey) {
+        focusWorkspacePane(persistenceKey, selection.paneId);
+      }
       if (selection.optionId === NEW_TAB_AGENT_OPTION_ID) {
-        if (selection.paneId && persistenceKey) {
-          focusWorkspacePane(persistenceKey, selection.paneId);
-        }
         handleCreateDraftTab();
+      } else if (selection.optionId === NEW_TAB_TERMINAL_OPTION_ID) {
+        handleCreateTerminal({ paneId: selection.paneId });
       }
     },
-    [focusWorkspacePane, handleCreateDraftTab, persistenceKey]
+    [focusWorkspacePane, handleCreateDraftTab, handleCreateTerminal, persistenceKey]
   );
 
   const handleCreateDraftSplit = useCallback(
@@ -1963,6 +1934,18 @@ function WorkspaceScreenContent({
                       testID="workspace-header-menu"
                     >
                       <DropdownMenuItem
+                        testID="workspace-header-new-agent"
+                        leading={
+                          <SquarePen
+                            size={16}
+                            color={theme.colors.foregroundMuted}
+                          />
+                        }
+                        onSelect={handleCreateDraftTab}
+                      >
+                        New agent
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
                         testID="workspace-header-new-terminal"
                         leading={
                           <SquareTerminal
@@ -2099,7 +2082,6 @@ function WorkspaceScreenContent({
               normalizedServerId={normalizedServerId}
               normalizedWorkspaceId={normalizedWorkspaceId}
               onSelectSwitcherTab={handleSelectSwitcherTab}
-              onSelectNewTabOption={handleSelectNewTabOption}
               onCopyResumeCommand={handleCopyResumeCommand}
               onCopyAgentId={handleCopyAgentId}
               onCloseTab={handleCloseTabById}
@@ -2107,9 +2089,7 @@ function WorkspaceScreenContent({
               onCloseTabsBelow={handleCloseTabsToRight}
               onCloseOtherTabs={handleCloseOtherTabs}
             />
-          ) : (
-            null
-          )}
+          ) : null}
 
           <View style={styles.centerContent}>
             {isMobile ? (
@@ -2323,35 +2303,19 @@ const styles = StyleSheet.create((theme) => ({
     borderColor: theme.colors.borderAccent,
   },
   mobileTabsRow: {
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.border,
     backgroundColor: theme.colors.surface0,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing[2],
-    paddingHorizontal: theme.spacing[2],
-    paddingVertical: theme.spacing[1],
-  },
-  mobileTabsActions: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing[1],
+    borderBottomWidth: theme.borderWidth[1],
+    borderBottomColor: theme.colors.border,
   },
   switcherTrigger: {
     flexDirection: "row",
     alignItems: "center",
-    gap: theme.spacing[1],
-    flex: 1,
-    minWidth: 0,
-    paddingHorizontal: theme.spacing[2],
-    paddingVertical: theme.spacing[1],
-    borderRadius: theme.borderRadius.md,
-    borderWidth: theme.borderWidth[1],
-    borderColor: theme.colors.border,
-    justifyContent: "space-between",
+    gap: theme.spacing[2],
+    paddingHorizontal: theme.spacing[2] + theme.spacing[3],
+    paddingVertical: theme.spacing[2],
   },
-  switcherTriggerActive: {
-    backgroundColor: theme.colors.surface2,
+  switcherTriggerPressed: {
+    backgroundColor: theme.colors.surface1,
   },
   switcherTriggerLeft: {
     flexDirection: "row",
