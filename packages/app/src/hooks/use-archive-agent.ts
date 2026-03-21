@@ -194,20 +194,13 @@ export function useArchiveAgent() {
     },
   });
 
+  const archiveMutateAsync = archiveMutation.mutateAsync;
+
   const archiveAgent = useCallback(
     async (input: ArchiveAgentInput): Promise<void> => {
-      if (
-        isAgentArchiving({
-          queryClient,
-          serverId: input.serverId,
-          agentId: input.agentId,
-        })
-      ) {
-        return;
-      }
-      await archiveMutation.mutateAsync(input);
+      await archiveMutateAsync(input);
     },
-    [archiveMutation, queryClient]
+    [archiveMutateAsync]
   );
 
   const isArchivingAgent = useCallback(

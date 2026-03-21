@@ -995,6 +995,10 @@ export function focusTabInLayout(input: FocusTabInLayoutInput): WorkspaceLayout 
     return null;
   }
 
+  if (pane.focusedTabId === input.tabId && layout.focusedPaneId === pane.id) {
+    return null;
+  }
+
   return {
     root: focusTabInPane(layout.root, pane.id, input.tabId),
     focusedPaneId: pane.id,
@@ -1155,6 +1159,9 @@ export function moveTabToPaneInLayout(input: MoveTabToPaneInLayoutInput): Worksp
 
 export function focusPaneInLayout(input: FocusPaneInLayoutInput): WorkspaceLayout | null {
   if (!findPaneById(input.layout.root, input.paneId)) {
+    return null;
+  }
+  if (input.layout.focusedPaneId === input.paneId) {
     return null;
   }
   return {

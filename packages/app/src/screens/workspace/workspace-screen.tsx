@@ -121,11 +121,13 @@ const NEW_TAB_TERMINAL_OPTION_ID = "__new_tab_terminal__";
 type NewTabOptionId = typeof NEW_TAB_AGENT_OPTION_ID | typeof NEW_TAB_TERMINAL_OPTION_ID;
 const EMPTY_UI_TABS: WorkspaceTab[] = [];
 const EMPTY_PINNED_AGENT_IDS = new Set<string>();
+const EMPTY_SET = new Set<string>();
 
 type WorkspaceScreenProps = {
   serverId: string;
   workspaceId: string;
   openIntent?: WorkspaceOpenIntent | null;
+  onOpenIntentConsumed?: () => void;
 };
 
 function trimNonEmpty(value: string | null | undefined): string | null {
@@ -508,6 +510,7 @@ export function WorkspaceScreen({
   serverId,
   workspaceId,
   openIntent,
+  onOpenIntentConsumed,
 }: WorkspaceScreenProps) {
   const isFocused = useIsFocused();
 
@@ -521,15 +524,47 @@ export function WorkspaceScreen({
         serverId={serverId}
         workspaceId={workspaceId}
         openIntent={openIntent}
+        onOpenIntentConsumed={onOpenIntentConsumed}
       />
     </ExplorerSidebarAnimationProvider>
   );
+}
+
+interface UseCloseTabsResult {
+  closingTabIds: Set<string>;
+  closeTab: (tabId: string, action: () => Promise<void>) => Promise<void>;
+}
+
+function useCloseTabs(): UseCloseTabsResult {
+  const pendingRef = useRef(new Set<string>());
+  const [closingTabIds, setClosingTabIds] = useState<Set<string>>(EMPTY_SET);
+
+  const closeTab = useCallback(
+    async (tabId: string, action: () => Promise<void>) => {
+      const normalized = tabId.trim();
+      if (!normalized || pendingRef.current.has(normalized)) {
+        return;
+      }
+      pendingRef.current.add(normalized);
+      setClosingTabIds(new Set(pendingRef.current));
+      try {
+        await action();
+      } finally {
+        pendingRef.current.delete(normalized);
+        setClosingTabIds(new Set(pendingRef.current));
+      }
+    },
+    []
+  );
+
+  return { closingTabIds, closeTab };
 }
 
 function WorkspaceScreenContent({
   serverId,
   workspaceId,
   openIntent,
+  onOpenIntentConsumed,
 }: WorkspaceScreenProps) {
   const { theme } = useUnistyles();
   const insets = useSafeAreaInsets();
@@ -643,7 +678,7 @@ function WorkspaceScreenContent({
       return payload;
     },
   });
-  const { archiveAgent, isArchivingAgent } = useArchiveAgent();
+  const { archiveAgent } = useArchiveAgent();
 
   useEffect(() => {
     if (!client || !isConnected || !normalizedWorkspaceId.startsWith("/")) {
@@ -827,7 +862,7 @@ function WorkspaceScreenContent({
   );
   const pendingByDraftId = useCreateFlowStore((state) => state.pendingByDraftId);
   const consumedOpenIntentsRef = useRef(new Set<string>());
-  const pendingCloseTabIdsRef = useRef(new Set<string>());
+  const { closingTabIds, closeTab } = useCloseTabs();
   const [resolvedOpenIntentKey, setResolvedOpenIntentKey] = useState<string | null>(null);
   const currentOpenIntentKey = useMemo(
     () =>
@@ -971,10 +1006,6 @@ function WorkspaceScreenContent({
       return;
     }
 
-    if (currentOpenIntentPinnedAgentId) {
-      pinWorkspaceAgent(persistenceKey, currentOpenIntentPinnedAgentId);
-    }
-
     const intentKey = currentOpenIntentKey;
     if (consumedOpenIntentsRef.current.has(intentKey)) {
       if (resolvedOpenIntentKey !== intentKey) {
@@ -984,12 +1015,17 @@ function WorkspaceScreenContent({
     }
     consumedOpenIntentsRef.current.add(intentKey);
 
+    if (currentOpenIntentPinnedAgentId) {
+      pinWorkspaceAgent(persistenceKey, currentOpenIntentPinnedAgentId);
+    }
+
     if (openIntent.kind === "draft") {
       const draftId = openIntent.draftId.trim();
       const tabId = openWorkspaceDraftTab({
         ...(draftId === "new" ? {} : { draftId }),
         focus: true,
       });
+      onOpenIntentConsumed?.();
       return;
     }
 
@@ -1003,10 +1039,12 @@ function WorkspaceScreenContent({
     if (tabId) {
       focusWorkspaceTab(persistenceKey, tabId);
     }
+    onOpenIntentConsumed?.();
   }, [
     currentOpenIntentPinnedAgentId,
     currentOpenIntentKey,
     focusWorkspaceTab,
+    onOpenIntentConsumed,
     openIntent,
     openWorkspaceDraftTab,
     openWorkspaceTab,
@@ -1302,81 +1340,56 @@ function WorkspaceScreenContent({
     [focusWorkspacePane, openWorkspaceDraftTab, persistenceKey, splitWorkspacePaneEmpty]
   );
 
-  const runCloseFlowForTab = useCallback(
-    async (input: { tabId: string; action: () => Promise<void> }): Promise<void> => {
-      const normalizedTabId = input.tabId.trim();
-      if (!normalizedTabId || pendingCloseTabIdsRef.current.has(normalizedTabId)) {
-        return;
-      }
-
-      pendingCloseTabIdsRef.current.add(normalizedTabId);
-      try {
-        await input.action();
-      } finally {
-        pendingCloseTabIdsRef.current.delete(normalizedTabId);
-      }
-    },
-    []
-  );
+  const killTerminalAsync = killTerminalMutation.mutateAsync;
 
   const handleCloseTerminalTab = useCallback(
     async (input: { tabId: string; terminalId: string }) => {
       const { tabId, terminalId } = input;
-      await runCloseFlowForTab({
-        tabId,
-        action: async () => {
-          if (
-            killTerminalMutation.isPending &&
-            killTerminalMutation.variables === terminalId
-          ) {
-            return;
-          }
+      await closeTab(tabId, async () => {
+        const confirmed = await confirmDialog({
+          title: "Close terminal?",
+          message: "Any running process in this terminal will be stopped immediately.",
+          confirmLabel: "Close",
+          cancelLabel: "Cancel",
+          destructive: true,
+        });
+        if (!confirmed) {
+          return;
+        }
 
-          const confirmed = await confirmDialog({
-            title: "Close terminal?",
-            message: "Any running process in this terminal will be stopped immediately.",
-            confirmLabel: "Close",
-            cancelLabel: "Cancel",
-            destructive: true,
-          });
-          if (!confirmed) {
-            return;
-          }
+        await killTerminalAsync(terminalId);
+        setHoveredTabKey((current) => (current === tabId ? null : current));
+        setHoveredCloseTabKey((current) => (current === tabId ? null : current));
 
-          await killTerminalMutation.mutateAsync(terminalId);
-          setHoveredTabKey((current) => (current === tabId ? null : current));
-          setHoveredCloseTabKey((current) => (current === tabId ? null : current));
-
-          queryClient.setQueryData<ListTerminalsPayload>(
-            terminalsQueryKey,
-            (current) => {
-              if (!current) {
-                return current;
-              }
-              return {
-                ...current,
-                terminals: current.terminals.filter(
-                  (terminal) => terminal.id !== terminalId
-                ),
-              };
+        queryClient.setQueryData<ListTerminalsPayload>(
+          terminalsQueryKey,
+          (current) => {
+            if (!current) {
+              return current;
             }
-          );
-
-          if (persistenceKey) {
-            closeWorkspaceTabWithCleanup({
-              tabId,
-              target: { kind: "terminal", terminalId },
-            });
+            return {
+              ...current,
+              terminals: current.terminals.filter(
+                (terminal) => terminal.id !== terminalId
+              ),
+            };
           }
-        },
+        );
+
+        if (persistenceKey) {
+          closeWorkspaceTabWithCleanup({
+            tabId,
+            target: { kind: "terminal", terminalId },
+          });
+        }
       });
     },
     [
+      closeTab,
       closeWorkspaceTabWithCleanup,
-      killTerminalMutation,
+      killTerminalAsync,
       persistenceKey,
       queryClient,
-      runCloseFlowForTab,
       terminalsQueryKey,
     ]
   );
@@ -1384,46 +1397,39 @@ function WorkspaceScreenContent({
   const handleCloseAgentTab = useCallback(
     async (input: { tabId: string; agentId: string }) => {
       const { tabId, agentId } = input;
-      await runCloseFlowForTab({
-        tabId,
-        action: async () => {
-          if (
-            !normalizedServerId ||
-            isArchivingAgent({ serverId: normalizedServerId, agentId })
-          ) {
-            return;
-          }
+      await closeTab(tabId, async () => {
+        if (!normalizedServerId) {
+          return;
+        }
 
-          const confirmed = await confirmDialog({
-            title: "Archive agent?",
-            message: "This closes the tab and archives the agent.",
-            confirmLabel: "Archive",
-            cancelLabel: "Cancel",
-            destructive: true,
+        const confirmed = await confirmDialog({
+          title: "Archive agent?",
+          message: "This closes the tab and archives the agent.",
+          confirmLabel: "Archive",
+          cancelLabel: "Cancel",
+          destructive: true,
+        });
+        if (!confirmed) {
+          return;
+        }
+
+        await archiveAgent({ serverId: normalizedServerId, agentId });
+        setHoveredTabKey((current) => (current === tabId ? null : current));
+        setHoveredCloseTabKey((current) => (current === tabId ? null : current));
+        if (persistenceKey) {
+          closeWorkspaceTabWithCleanup({
+            tabId,
+            target: { kind: "agent", agentId },
           });
-          if (!confirmed) {
-            return;
-          }
-
-          await archiveAgent({ serverId: normalizedServerId, agentId });
-          setHoveredTabKey((current) => (current === tabId ? null : current));
-          setHoveredCloseTabKey((current) => (current === tabId ? null : current));
-          if (persistenceKey) {
-            closeWorkspaceTabWithCleanup({
-              tabId,
-              target: { kind: "agent", agentId },
-            });
-          }
-        },
+        }
       });
     },
     [
       archiveAgent,
+      closeTab,
       closeWorkspaceTabWithCleanup,
-      isArchivingAgent,
       normalizedServerId,
       persistenceKey,
-      runCloseFlowForTab,
     ]
   );
 
@@ -1457,6 +1463,17 @@ function WorkspaceScreenContent({
     [allTabDescriptorsById, handleCloseAgentTab, handleCloseDraftOrFileTab, handleCloseTerminalTab]
   );
 
+  const prevCloseTabDeps = useRef({ allTabDescriptorsById, handleCloseAgentTab, handleCloseDraftOrFileTab, handleCloseTerminalTab });
+  useEffect(() => {
+    const prev = prevCloseTabDeps.current;
+    const changed: string[] = [];
+    if (prev.allTabDescriptorsById !== allTabDescriptorsById) changed.push('allTabDescriptorsById');
+    if (prev.handleCloseAgentTab !== handleCloseAgentTab) changed.push('handleCloseAgentTab');
+    if (prev.handleCloseDraftOrFileTab !== handleCloseDraftOrFileTab) changed.push('handleCloseDraftOrFileTab');
+    if (prev.handleCloseTerminalTab !== handleCloseTerminalTab) changed.push('handleCloseTerminalTab');
+    if (changed.length > 0) console.log('[handleCloseTabById] deps changed:', changed.join(', '));
+    prevCloseTabDeps.current = { allTabDescriptorsById, handleCloseAgentTab, handleCloseDraftOrFileTab, handleCloseTerminalTab };
+  });
   const handleCopyAgentId = useCallback(
     async (agentId: string) => {
       if (!agentId) return;
@@ -1549,49 +1566,55 @@ function WorkspaceScreenContent({
       }
 
       for (const { tabId, terminalId } of groups.terminalTabs) {
-        try {
-          await killTerminalMutation.mutateAsync(terminalId);
-          queryClient.setQueryData<ListTerminalsPayload>(terminalsQueryKey, (current) => {
-            if (!current) {
-              return current;
-            }
-            return {
-              ...current,
-              terminals: current.terminals.filter((terminal) => terminal.id !== terminalId),
-            };
-          });
-          if (persistenceKey) {
-            closeWorkspaceTabWithCleanup({
-              tabId,
-              target: { kind: "terminal", terminalId },
+        await closeTab(tabId, async () => {
+          try {
+            await killTerminalAsync(terminalId);
+            queryClient.setQueryData<ListTerminalsPayload>(terminalsQueryKey, (current) => {
+              if (!current) {
+                return current;
+              }
+              return {
+                ...current,
+                terminals: current.terminals.filter((terminal) => terminal.id !== terminalId),
+              };
             });
+            if (persistenceKey) {
+              closeWorkspaceTabWithCleanup({
+                tabId,
+                target: { kind: "terminal", terminalId },
+              });
+            }
+          } catch (error) {
+            console.warn(`[WorkspaceScreen] Failed to close terminal tab ${logLabel}`, { terminalId, error });
           }
-        } catch (error) {
-          console.warn(`[WorkspaceScreen] Failed to close terminal tab ${logLabel}`, { terminalId, error });
-        }
+        });
       }
 
       for (const { tabId, agentId } of groups.agentTabs) {
         if (!normalizedServerId) {
           continue;
         }
-        try {
-          await archiveAgent({ serverId: normalizedServerId, agentId });
-          if (persistenceKey) {
-            closeWorkspaceTabWithCleanup({
-              tabId,
-              target: { kind: "agent", agentId },
-            });
+        await closeTab(tabId, async () => {
+          try {
+            await archiveAgent({ serverId: normalizedServerId, agentId });
+            if (persistenceKey) {
+              closeWorkspaceTabWithCleanup({
+                tabId,
+                target: { kind: "agent", agentId },
+              });
+            }
+          } catch (error) {
+            console.warn(`[WorkspaceScreen] Failed to archive agent tab ${logLabel}`, { agentId, error });
           }
-        } catch (error) {
-          console.warn(`[WorkspaceScreen] Failed to archive agent tab ${logLabel}`, { agentId, error });
-        }
+        });
       }
 
       for (const { tabId } of groups.otherTabs) {
-        if (persistenceKey) {
-          closeWorkspaceTabWithCleanup({ tabId });
-        }
+        await closeTab(tabId, async () => {
+          if (persistenceKey) {
+            closeWorkspaceTabWithCleanup({ tabId });
+          }
+        });
       }
 
       const closedKeys = new Set(tabsToClose.map((tab) => tab.key));
@@ -1600,8 +1623,9 @@ function WorkspaceScreenContent({
     },
     [
       archiveAgent,
+      closeTab,
       closeWorkspaceTabWithCleanup,
-      killTerminalMutation,
+      killTerminalAsync,
       normalizedServerId,
       persistenceKey,
       queryClient,
@@ -1898,6 +1922,22 @@ function WorkspaceScreenContent({
       retargetWorkspaceTab,
     ]
   );
+  const prevBuildDeps = useRef({ handleCloseTabById, handleOpenFileFromChat, focusWorkspacePane, navigateToTabId, normalizedServerId, normalizedWorkspaceId, openWorkspaceTab, persistenceKey, retargetWorkspaceTab });
+  useEffect(() => {
+    const prev = prevBuildDeps.current;
+    const changed: string[] = [];
+    if (prev.handleCloseTabById !== handleCloseTabById) changed.push('handleCloseTabById');
+    if (prev.handleOpenFileFromChat !== handleOpenFileFromChat) changed.push('handleOpenFileFromChat');
+    if (prev.focusWorkspacePane !== focusWorkspacePane) changed.push('focusWorkspacePane');
+    if (prev.navigateToTabId !== navigateToTabId) changed.push('navigateToTabId');
+    if (prev.normalizedServerId !== normalizedServerId) changed.push('normalizedServerId');
+    if (prev.normalizedWorkspaceId !== normalizedWorkspaceId) changed.push('normalizedWorkspaceId');
+    if (prev.openWorkspaceTab !== openWorkspaceTab) changed.push('openWorkspaceTab');
+    if (prev.persistenceKey !== persistenceKey) changed.push('persistenceKey');
+    if (prev.retargetWorkspaceTab !== retargetWorkspaceTab) changed.push('retargetWorkspaceTab');
+    if (changed.length > 0) console.log('[buildPaneContentModel] deps changed:', changed.join(', '));
+    prevBuildDeps.current = { handleCloseTabById, handleOpenFileFromChat, focusWorkspacePane, navigateToTabId, normalizedServerId, normalizedWorkspaceId, openWorkspaceTab, persistenceKey, retargetWorkspaceTab };
+  });
   const activePaneContent = useMemo(
     () =>
       activeTabDescriptor
@@ -1910,6 +1950,14 @@ function WorkspaceScreenContent({
         : null,
     [activeTabDescriptor, buildPaneContentModel, focusedPaneTabState.pane?.id]
   );
+  const prevActivePaneDeps = useRef({ activeTabDescriptor, buildPaneContentModel, paneId: focusedPaneTabState.pane?.id });
+  useEffect(() => {
+    const prev = prevActivePaneDeps.current;
+    if (prev.activeTabDescriptor !== activeTabDescriptor) console.log('[activePaneContent] activeTabDescriptor changed');
+    if (prev.buildPaneContentModel !== buildPaneContentModel) console.log('[activePaneContent] buildPaneContentModel changed');
+    if (prev.paneId !== focusedPaneTabState.pane?.id) console.log('[activePaneContent] paneId changed');
+    prevActivePaneDeps.current = { activeTabDescriptor, buildPaneContentModel, paneId: focusedPaneTabState.pane?.id };
+  });
   const content = shouldRenderMissingWorkspaceDescriptor({
     workspace: workspaceDescriptor,
     hasHydratedWorkspaces,
@@ -2176,9 +2224,7 @@ function WorkspaceScreenContent({
                     hoveredCloseTabKey={hoveredCloseTabKey}
                     setHoveredTabKey={setHoveredTabKey}
                     setHoveredCloseTabKey={setHoveredCloseTabKey}
-                    isArchivingAgent={isArchivingAgent}
-                    killTerminalPending={killTerminalMutation.isPending}
-                    killTerminalId={killTerminalMutation.variables ?? null}
+                    closingTabIds={closingTabIds}
                     onNavigateTab={navigateToTabId}
                     onCloseTab={handleCloseTabById}
                     onCopyResumeCommand={handleCopyResumeCommand}

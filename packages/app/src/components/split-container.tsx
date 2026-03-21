@@ -57,9 +57,7 @@ interface SplitContainerProps {
   hoveredCloseTabKey: string | null;
   setHoveredTabKey: Dispatch<SetStateAction<string | null>>;
   setHoveredCloseTabKey: Dispatch<SetStateAction<string | null>>;
-  isArchivingAgent: (input: { serverId: string; agentId: string }) => boolean;
-  killTerminalPending: boolean;
-  killTerminalId: string | null;
+  closingTabIds: Set<string>;
   onNavigateTab: (tabId: string) => void;
   onCloseTab: (tabId: string) => Promise<void> | void;
   onCopyResumeCommand: (agentId: string) => Promise<void> | void;
@@ -162,9 +160,7 @@ export function SplitContainer({
   hoveredCloseTabKey,
   setHoveredTabKey,
   setHoveredCloseTabKey,
-  isArchivingAgent,
-  killTerminalPending,
-  killTerminalId,
+  closingTabIds,
   onNavigateTab,
   onCloseTab,
   onCopyResumeCommand,
@@ -410,9 +406,7 @@ export function SplitContainer({
         hoveredCloseTabKey={hoveredCloseTabKey}
         setHoveredTabKey={setHoveredTabKey}
         setHoveredCloseTabKey={setHoveredCloseTabKey}
-        isArchivingAgent={isArchivingAgent}
-        killTerminalPending={killTerminalPending}
-        killTerminalId={killTerminalId}
+        closingTabIds={closingTabIds}
         onNavigateTab={onNavigateTab}
         onCloseTab={onCloseTab}
         onCopyResumeCommand={onCopyResumeCommand}
@@ -538,9 +532,7 @@ function SplitNodeView({
   hoveredCloseTabKey,
   setHoveredTabKey,
   setHoveredCloseTabKey,
-  isArchivingAgent,
-  killTerminalPending,
-  killTerminalId,
+  closingTabIds,
   onNavigateTab,
   onCloseTab,
   onCopyResumeCommand,
@@ -575,9 +567,7 @@ function SplitNodeView({
         hoveredCloseTabKey={hoveredCloseTabKey}
         setHoveredTabKey={setHoveredTabKey}
         setHoveredCloseTabKey={setHoveredCloseTabKey}
-        isArchivingAgent={isArchivingAgent}
-        killTerminalPending={killTerminalPending}
-        killTerminalId={killTerminalId}
+        closingTabIds={closingTabIds}
         onNavigateTab={onNavigateTab}
         onCloseTab={onCloseTab}
         onCopyResumeCommand={onCopyResumeCommand}
@@ -626,9 +616,7 @@ function SplitNodeView({
               hoveredCloseTabKey={hoveredCloseTabKey}
               setHoveredTabKey={setHoveredTabKey}
               setHoveredCloseTabKey={setHoveredCloseTabKey}
-              isArchivingAgent={isArchivingAgent}
-              killTerminalPending={killTerminalPending}
-              killTerminalId={killTerminalId}
+              closingTabIds={closingTabIds}
               onNavigateTab={onNavigateTab}
               onCloseTab={onCloseTab}
               onCopyResumeCommand={onCopyResumeCommand}
@@ -677,9 +665,7 @@ function SplitPaneView({
   hoveredCloseTabKey,
   setHoveredTabKey,
   setHoveredCloseTabKey,
-  isArchivingAgent,
-  killTerminalPending,
-  killTerminalId,
+  closingTabIds,
   onNavigateTab,
   onCloseTab,
   onCopyResumeCommand,
@@ -718,32 +704,16 @@ function SplitPaneView({
   const activeTabDescriptor = paneState.activeTab?.descriptor ?? null;
   const desktopTabRowItems = useMemo<WorkspaceDesktopTabRowItem[]>(
     () =>
-      paneTabs.map((tab) => {
-        const isClosingAgent =
-          tab.target.kind === "agent" &&
-          isArchivingAgent({
-            serverId: normalizedServerId,
-            agentId: tab.target.agentId,
-          });
-        const isClosingTerminal =
-          tab.target.kind === "terminal" &&
-          killTerminalPending &&
-          killTerminalId === tab.target.terminalId;
-
-        return {
-          tab,
-          isActive: tab.key === activeTabDescriptor?.key,
-          isCloseHovered: hoveredCloseTabKey === tab.key,
-          isClosingTab: isClosingAgent || isClosingTerminal,
-        };
-      }),
+      paneTabs.map((tab) => ({
+        tab,
+        isActive: tab.key === activeTabDescriptor?.key,
+        isCloseHovered: hoveredCloseTabKey === tab.key,
+        isClosingTab: closingTabIds.has(tab.tabId),
+      })),
     [
       activeTabDescriptor?.key,
+      closingTabIds,
       hoveredCloseTabKey,
-      isArchivingAgent,
-      killTerminalId,
-      killTerminalPending,
-      normalizedServerId,
       paneTabs,
     ]
   );
