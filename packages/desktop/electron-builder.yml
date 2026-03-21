@@ -1,6 +1,7 @@
 appId: sh.paseo.desktop
 productName: Paseo
 executableName: Paseo
+afterPack: ./scripts/after-pack.js
 directories:
   output: release
 files:
