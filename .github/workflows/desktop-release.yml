@@ -31,8 +31,8 @@ concurrency:
 
 env:
   SOURCE_TAG: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
-  DESKTOP_WORKSPACE: '@getpaseo/desktop-electron'
-  DESKTOP_PACKAGE_PATH: 'packages/desktop-electron'
+  DESKTOP_WORKSPACE: '@getpaseo/desktop'
+  DESKTOP_PACKAGE_PATH: 'packages/desktop'
 
 jobs:
   publish-macos:
