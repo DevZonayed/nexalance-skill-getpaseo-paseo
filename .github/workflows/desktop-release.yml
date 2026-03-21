@@ -348,12 +348,16 @@ jobs:
           fs.writeFileSync(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`);
           NODE
 
+      - name: Build workspace dependencies
+        run: npm run build:workspace-deps --workspace=@getpaseo/app
+
       - name: Build web app for desktop
         shell: pwsh
         run: |
           $patchPath = (Get-Item "$env:GITHUB_WORKSPACE/scripts/metro-config-windows-loader-patch.cjs").FullName
           $env:NODE_OPTIONS = "--require=$patchPath"
-          npm run build:web --workspace=@getpaseo/app
+          npx expo export --platform web
+        working-directory: packages/app
 
       - name: Detect existing GitHub release state
         if: env.IS_SMOKE_TAG != 'true'
