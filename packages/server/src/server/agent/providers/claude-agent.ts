@@ -3662,7 +3662,9 @@ class ClaudeAgentSession implements AgentSession {
             provider: "claude",
           });
         } else if (Array.isArray(content)) {
-          const timelineItems = this.mapBlocksToTimeline(content);
+          const timelineItems = this.mapBlocksToTimeline(content, {
+            textMessageType: "user_message",
+          });
           for (const item of timelineItems) {
             if (item.type === "user_message" && messageId && !item.messageId) {
               events.push({
@@ -4181,30 +4183,40 @@ class ClaudeAgentSession implements AgentSession {
   private mapBlocksToTimeline(
     content: string | ClaudeContentChunk[],
     options?: {
+      textMessageType?: "assistant_message" | "user_message";
       suppressAssistantText?: boolean;
       suppressReasoning?: boolean;
     }
   ): AgentTimelineItem[] {
-    const suppressAssistant = options?.suppressAssistantText ?? false;
+    const textMessageType = options?.textMessageType ?? "assistant_message";
+    const suppressText =
+      textMessageType === "assistant_message" &&
+      (options?.suppressAssistantText ?? false);
     const suppressReasoning = options?.suppressReasoning ?? false;
 
     if (typeof content === "string") {
       if (!content || content === INTERRUPT_TOOL_USE_PLACEHOLDER) {
         return [];
       }
-      if (suppressAssistant) {
+      if (suppressText) {
         return [];
       }
-      return [{ type: "assistant_message", text: content }];
+      return [{ type: textMessageType, text: content }];
     }
 
     const items: AgentTimelineItem[] = [];
+    const userTextParts: string[] = [];
     for (const block of content) {
       switch (block.type) {
         case "text":
         case "text_delta":
           if (block.text && block.text !== INTERRUPT_TOOL_USE_PLACEHOLDER) {
-            if (!suppressAssistant) {
+            if (textMessageType === "user_message") {
+              const trimmed = block.text.trim();
+              if (trimmed) {
+                userTextParts.push(trimmed);
+              }
+            } else if (!suppressText) {
               items.push({ type: "assistant_message", text: block.text });
             }
           }
@@ -4237,6 +4249,14 @@ class ClaudeAgentSession implements AgentSession {
           break;
       }
     }
+
+    if (textMessageType === "user_message" && userTextParts.length > 0) {
+      items.unshift({
+        type: "user_message",
+        text: userTextParts.join("\n\n"),
+      });
+    }
+
     return items;
   }
 
