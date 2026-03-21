@@ -1,5 +1,5 @@
-import { useCallback, useMemo, useRef } from "react";
-import { useQuery } from "@tanstack/react-query";
+import React, { useCallback, useMemo, useRef } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import {
   ActivityIndicator,
   Image as RNImage,
@@ -10,65 +10,152 @@ import {
   type LayoutChangeEvent,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
-} from "react-native";
-import { StyleSheet, UnistylesRuntime } from "react-native-unistyles";
-import { Fonts } from "@/constants/theme";
-import { useSessionStore, type ExplorerFile } from "@/stores/session-store";
+} from 'react-native'
+import { StyleSheet, UnistylesRuntime, useUnistyles } from 'react-native-unistyles'
+import { Fonts } from '@/constants/theme'
+import { useSessionStore, type ExplorerFile } from '@/stores/session-store'
 import {
   WebDesktopScrollbarOverlay,
   useWebDesktopScrollbarMetrics,
-} from "@/components/web-desktop-scrollbar";
+} from '@/components/web-desktop-scrollbar'
+import {
+  highlightCode,
+  darkHighlightColors,
+  lightHighlightColors,
+  type HighlightToken,
+  type HighlightStyle,
+} from '@getpaseo/highlight'
+
+interface CodeLineProps {
+  tokens: HighlightToken[]
+  lineNumber: number
+  gutterWidth: number
+  colorMap: Record<HighlightStyle, string>
+  baseColor: string
+}
+
+interface FilePreviewBodyProps {
+  preview: ExplorerFile | null
+  isLoading: boolean
+  showDesktopWebScrollbar: boolean
+  isMobile: boolean
+  filePath: string
+}
 
 function trimNonEmpty(value: string | null | undefined): string | null {
-  if (typeof value !== "string") {
-    return null;
+  if (typeof value !== 'string') {
+    return null
   }
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : null;
+  const trimmed = value.trim()
+  return trimmed.length > 0 ? trimmed : null
 }
 
 function formatFileSize({ size }: { size: number }): string {
   if (size < 1024) {
-    return `${size} B`;
+    return `${size} B`
   }
   if (size < 1024 * 1024) {
-    return `${(size / 1024).toFixed(1)} KB`;
+    return `${(size / 1024).toFixed(1)} KB`
   }
-  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(size / (1024 * 1024)).toFixed(1)} MB`
 }
+
+const CodeLine = React.memo(function CodeLine({
+  tokens,
+  lineNumber,
+  gutterWidth,
+  colorMap,
+  baseColor,
+}: CodeLineProps) {
+  return (
+    <View style={codeLineStyles.line}>
+      <View style={[codeLineStyles.gutter, { width: gutterWidth }]}>
+        <Text style={[codeLineStyles.gutterText, { color: baseColor }]}>{String(lineNumber)}</Text>
+      </View>
+      <Text style={codeLineStyles.lineText}>
+        {tokens.map((token, index) => (
+          <Text
+            key={index}
+            style={{ color: token.style ? colorMap[token.style] ?? baseColor : baseColor }}
+          >
+            {token.text}
+          </Text>
+        ))}
+      </Text>
+    </View>
+  )
+})
+
+const codeLineStyles = StyleSheet.create((theme) => ({
+  line: {
+    flexDirection: 'row',
+  },
+  gutter: {
+    alignItems: 'flex-end',
+    paddingRight: theme.spacing[3],
+    flexShrink: 0,
+  },
+  gutterText: {
+    fontFamily: Fonts.mono,
+    fontSize: theme.fontSize.sm,
+    lineHeight: theme.fontSize.sm * 1.45,
+    opacity: 0.4,
+  },
+  lineText: {
+    fontFamily: Fonts.mono,
+    fontSize: theme.fontSize.sm,
+    lineHeight: theme.fontSize.sm * 1.45,
+    flex: 1,
+  },
+}))
 
 function FilePreviewBody({
   preview,
   isLoading,
   showDesktopWebScrollbar,
   isMobile,
-}: {
-  preview: ExplorerFile | null;
-  isLoading: boolean;
-  showDesktopWebScrollbar: boolean;
-  isMobile: boolean;
-}) {
-  const enablePreviewDesktopScrollbar = showDesktopWebScrollbar;
-  const previewScrollRef = useRef<RNScrollView>(null);
-  const previewScrollbarMetrics = useWebDesktopScrollbarMetrics();
+  filePath,
+}: FilePreviewBodyProps) {
+  const { theme } = useUnistyles()
+  const isDark = theme.colors.surface0 === '#18181c'
+  const colorMap = isDark ? darkHighlightColors : lightHighlightColors
+  const baseColor = isDark ? '#c9d1d9' : '#24292f'
+
+  const enablePreviewDesktopScrollbar = showDesktopWebScrollbar
+  const previewScrollRef = useRef<RNScrollView>(null)
+  const previewScrollbarMetrics = useWebDesktopScrollbarMetrics()
+
+  const highlightedLines = useMemo(() => {
+    if (!preview || preview.kind !== 'text') {
+      return null
+    }
+
+    return highlightCode(preview.content ?? '', filePath)
+  }, [preview?.kind, preview?.content, filePath])
+
+  const gutterWidth = useMemo(() => {
+    if (!highlightedLines) return 0
+    const digits = String(highlightedLines.length).length
+    return Math.max(digits * 8 + 12, 28)
+  }, [highlightedLines])
 
   const handlePreviewScroll = useCallback(
     (event: NativeSyntheticEvent<NativeScrollEvent>) => {
       if (enablePreviewDesktopScrollbar) {
-        previewScrollbarMetrics.onScroll(event);
+        previewScrollbarMetrics.onScroll(event)
       }
     },
     [enablePreviewDesktopScrollbar, previewScrollbarMetrics]
-  );
+  )
 
   const handlePreviewLayout = useCallback(
     (event: LayoutChangeEvent) => {
       if (enablePreviewDesktopScrollbar) {
-        previewScrollbarMetrics.onLayout(event);
+        previewScrollbarMetrics.onLayout(event)
       }
     },
     [enablePreviewDesktopScrollbar, previewScrollbarMetrics]
-  );
+  )
 
   if (isLoading && !preview) {
     return (
@@ -76,7 +163,7 @@ function FilePreviewBody({
         <ActivityIndicator size="small" />
         <Text style={styles.loadingText}>Loading file…</Text>
       </View>
-    );
+    )
   }
 
   if (!preview) {
@@ -84,10 +171,26 @@ function FilePreviewBody({
       <View style={styles.centerState}>
         <Text style={styles.emptyText}>No preview available</Text>
       </View>
-    );
+    )
   }
 
-  if (preview.kind === "text") {
+  if (preview.kind === 'text') {
+    const lines = highlightedLines ?? [[{ text: preview.content ?? '', style: null }]]
+    const codeLines = (
+      <View>
+        {lines.map((tokens, index) => (
+          <CodeLine
+            key={index}
+            tokens={tokens}
+            lineNumber={index + 1}
+            gutterWidth={gutterWidth}
+            colorMap={colorMap}
+            baseColor={baseColor}
+          />
+        ))}
+      </View>
+    )
+
     return (
       <View style={styles.previewScrollContainer}>
         <RNScrollView
@@ -96,17 +199,13 @@ function FilePreviewBody({
           onLayout={enablePreviewDesktopScrollbar ? handlePreviewLayout : undefined}
           onScroll={enablePreviewDesktopScrollbar ? handlePreviewScroll : undefined}
           onContentSizeChange={
-            enablePreviewDesktopScrollbar
-              ? previewScrollbarMetrics.onContentSizeChange
-              : undefined
+            enablePreviewDesktopScrollbar ? previewScrollbarMetrics.onContentSizeChange : undefined
           }
           scrollEventThrottle={enablePreviewDesktopScrollbar ? 16 : undefined}
           showsVerticalScrollIndicator={!enablePreviewDesktopScrollbar}
         >
           {isMobile ? (
-            <View style={styles.previewCodeScrollContent}>
-              <Text style={styles.codeText}>{preview.content}</Text>
-            </View>
+            <View style={styles.previewCodeScrollContent}>{codeLines}</View>
           ) : (
             <RNScrollView
               horizontal
@@ -114,7 +213,7 @@ function FilePreviewBody({
               showsHorizontalScrollIndicator
               contentContainerStyle={styles.previewCodeScrollContent}
             >
-              <Text style={styles.codeText}>{preview.content}</Text>
+              {codeLines}
             </RNScrollView>
           )}
         </RNScrollView>
@@ -122,14 +221,14 @@ function FilePreviewBody({
           enabled={enablePreviewDesktopScrollbar}
           metrics={previewScrollbarMetrics}
           onScrollToOffset={(nextOffset) => {
-            previewScrollRef.current?.scrollTo({ y: nextOffset, animated: false });
+            previewScrollRef.current?.scrollTo({ y: nextOffset, animated: false })
           }}
         />
       </View>
-    );
+    )
   }
 
-  if (preview.kind === "image" && preview.content) {
+  if (preview.kind === 'image' && preview.content) {
     return (
       <View style={styles.previewScrollContainer}>
         <RNScrollView
@@ -139,16 +238,14 @@ function FilePreviewBody({
           onLayout={enablePreviewDesktopScrollbar ? handlePreviewLayout : undefined}
           onScroll={enablePreviewDesktopScrollbar ? handlePreviewScroll : undefined}
           onContentSizeChange={
-            enablePreviewDesktopScrollbar
-              ? previewScrollbarMetrics.onContentSizeChange
-              : undefined
+            enablePreviewDesktopScrollbar ? previewScrollbarMetrics.onContentSizeChange : undefined
           }
           scrollEventThrottle={enablePreviewDesktopScrollbar ? 16 : undefined}
           showsVerticalScrollIndicator={!enablePreviewDesktopScrollbar}
         >
           <RNImage
             source={{
-              uri: `data:${preview.mimeType ?? "image/png"};base64,${preview.content}`,
+              uri: `data:${preview.mimeType ?? 'image/png'};base64,${preview.content}`,
             }}
             style={styles.previewImage}
             resizeMode="contain"
@@ -158,11 +255,11 @@ function FilePreviewBody({
           enabled={enablePreviewDesktopScrollbar}
           metrics={previewScrollbarMetrics}
           onScrollToOffset={(nextOffset) => {
-            previewScrollRef.current?.scrollTo({ y: nextOffset, animated: false });
+            previewScrollRef.current?.scrollTo({ y: nextOffset, animated: false })
           }}
         />
       </View>
-    );
+    )
   }
 
   return (
@@ -170,7 +267,7 @@ function FilePreviewBody({
       <Text style={styles.emptyText}>Binary preview unavailable</Text>
       <Text style={styles.binaryMetaText}>{formatFileSize({ size: preview.size })}</Text>
     </View>
-  );
+  )
 }
 
 export function FilePane({
@@ -178,34 +275,33 @@ export function FilePane({
   workspaceRoot,
   filePath,
 }: {
-  serverId: string;
-  workspaceRoot: string;
-  filePath: string;
+  serverId: string
+  workspaceRoot: string
+  filePath: string
 }) {
-  const isMobile =
-    UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
-  const showDesktopWebScrollbar = Platform.OS === "web" && !isMobile;
+  const isMobile = UnistylesRuntime.breakpoint === 'xs' || UnistylesRuntime.breakpoint === 'sm'
+  const showDesktopWebScrollbar = Platform.OS === 'web' && !isMobile
 
-  const client = useSessionStore((state) => state.sessions[serverId]?.client ?? null);
-  const normalizedWorkspaceRoot = useMemo(() => workspaceRoot.trim(), [workspaceRoot]);
-  const normalizedFilePath = useMemo(() => trimNonEmpty(filePath), [filePath]);
+  const client = useSessionStore((state) => state.sessions[serverId]?.client ?? null)
+  const normalizedWorkspaceRoot = useMemo(() => workspaceRoot.trim(), [workspaceRoot])
+  const normalizedFilePath = useMemo(() => trimNonEmpty(filePath), [filePath])
 
   const query = useQuery({
-    queryKey: ["workspaceFile", serverId, normalizedWorkspaceRoot, normalizedFilePath],
+    queryKey: ['workspaceFile', serverId, normalizedWorkspaceRoot, normalizedFilePath],
     enabled: Boolean(client && normalizedWorkspaceRoot && normalizedFilePath),
     queryFn: async () => {
       if (!client || !normalizedWorkspaceRoot || !normalizedFilePath) {
-        return { file: null as ExplorerFile | null, error: "Host is not connected" };
+        return { file: null as ExplorerFile | null, error: 'Host is not connected' }
       }
       const payload = await client.exploreFileSystem(
         normalizedWorkspaceRoot,
         normalizedFilePath,
-        "file"
-      );
-      return { file: payload.file ?? null, error: payload.error ?? null };
+        'file'
+      )
+      return { file: payload.file ?? null, error: payload.error ?? null }
     },
     staleTime: 5_000,
-  });
+  })
 
   return (
     <View style={styles.container} testID="workspace-file-pane">
@@ -220,9 +316,10 @@ export function FilePane({
         isLoading={query.isFetching}
         showDesktopWebScrollbar={showDesktopWebScrollbar}
         isMobile={isMobile}
+        filePath={filePath}
       />
     </View>
-  );
+  )
 }
 
 const styles = StyleSheet.create((theme) => ({
@@ -233,8 +330,8 @@ const styles = StyleSheet.create((theme) => ({
   },
   centerState: {
     flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
+    alignItems: 'center',
+    justifyContent: 'center',
     padding: theme.spacing[4],
   },
   loadingText: {
@@ -245,12 +342,12 @@ const styles = StyleSheet.create((theme) => ({
   errorText: {
     color: theme.colors.destructive,
     fontSize: theme.fontSize.sm,
-    textAlign: "center",
+    textAlign: 'center',
   },
   emptyText: {
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.sm,
-    textAlign: "center",
+    textAlign: 'center',
   },
   binaryMetaText: {
     marginTop: theme.spacing[2],
@@ -268,20 +365,14 @@ const styles = StyleSheet.create((theme) => ({
   previewCodeScrollContent: {
     padding: theme.spacing[4],
   },
-  codeText: {
-    fontFamily: Fonts.mono,
-    fontSize: theme.fontSize.sm,
-    lineHeight: theme.fontSize.sm * 1.45,
-    color: theme.colors.foreground,
-  },
   previewImageScrollContent: {
     flexGrow: 1,
     padding: theme.spacing[4],
-    alignItems: "center",
-    justifyContent: "center",
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   previewImage: {
-    width: "100%",
+    width: '100%',
     height: 420,
   },
-}));
+}))
