@@ -99,10 +99,10 @@ function PushNotificationRouter() {
               "data" in payload &&
               typeof (payload as { data?: unknown }).data === "object" &&
               (payload as { data?: unknown }).data !== null
-                ? ((payload as { data: Record<string, unknown> }).data)
+                ? (payload as { data: Record<string, unknown> }).data
                 : undefined;
             router.push(buildNotificationRoute(data) as any);
-          }
+          },
         );
 
         void Promise.resolve(unlistenResult).then((unlisten) => {
@@ -124,18 +124,12 @@ function PushNotificationRouter() {
         router.push(buildNotificationRoute(customEvent.detail?.data) as any);
       };
 
-      target.addEventListener(
-        WEB_NOTIFICATION_CLICK_EVENT,
-        openFromWebClick as EventListener
-      );
+      target.addEventListener(WEB_NOTIFICATION_CLICK_EVENT, openFromWebClick as EventListener);
 
       return () => {
         cancelled = true;
         removeDesktopNotificationListener?.();
-        target.removeEventListener(
-          WEB_NOTIFICATION_CLICK_EVENT,
-          openFromWebClick as EventListener
-        );
+        target.removeEventListener(WEB_NOTIFICATION_CLICK_EVENT, openFromWebClick as EventListener);
       };
     }
 
@@ -163,8 +157,7 @@ function PushNotificationRouter() {
       router.push(buildNotificationRoute(data) as any);
     };
 
-    const subscription =
-      Notifications.addNotificationResponseReceivedListener(openFromResponse);
+    const subscription = Notifications.addNotificationResponseReceivedListener(openFromResponse);
 
     void Notifications.getLastNotificationResponseAsync().then((response) => {
       if (response) {
@@ -188,11 +181,7 @@ function ManagedDaemonSession({ daemon }: { daemon: HostProfile }) {
   }
 
   return (
-    <SessionProvider
-      key={daemon.serverId}
-      serverId={daemon.serverId}
-      client={client}
-    >
+    <SessionProvider key={daemon.serverId} serverId={daemon.serverId} client={client}>
       {null}
     </SessionProvider>
   );
@@ -276,8 +265,7 @@ function AppContainer({
   const toggleAgentList = usePanelStore((state) => state.toggleAgentList);
   const toggleFileExplorer = usePanelStore((state) => state.toggleFileExplorer);
 
-  const isMobile =
-    UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
+  const isMobile = UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
   const chromeEnabled = chromeEnabledOverride ?? daemons.length > 0;
 
   useKeyboardShortcuts({
@@ -290,16 +278,14 @@ function AppContainer({
 
   const containerStyle = useMemo(
     () => ({ flex: 1 as const, backgroundColor: theme.colors.surface0 }),
-    [theme.colors.surface0]
+    [theme.colors.surface0],
   );
 
   const content = (
     <View style={containerStyle}>
       <View style={rowStyle}>
         {!isMobile && chromeEnabled && <LeftSidebar selectedAgentId={selectedAgentId} />}
-        <View style={flexStyle}>
-          {children}
-        </View>
+        <View style={flexStyle}>{children}</View>
       </View>
       {isMobile && chromeEnabled && <LeftSidebar selectedAgentId={selectedAgentId} />}
       <DownloadToast />
@@ -314,11 +300,7 @@ function AppContainer({
     return content;
   }
 
-  return (
-    <MobileGestureWrapper chromeEnabled={chromeEnabled}>
-      {content}
-    </MobileGestureWrapper>
-  );
+  return <MobileGestureWrapper chromeEnabled={chromeEnabled}>{content}</MobileGestureWrapper>;
 }
 
 function MobileGestureWrapper({
@@ -331,14 +313,8 @@ function MobileGestureWrapper({
   const mobileView = usePanelStore((state) => state.mobileView);
   const openAgentList = usePanelStore((state) => state.openAgentList);
   const horizontalScroll = useHorizontalScrollOptional();
-  const {
-    translateX,
-    backdropOpacity,
-    windowWidth,
-    animateToOpen,
-    animateToClose,
-    isGesturing,
-  } = useSidebarAnimation();
+  const { translateX, backdropOpacity, windowWidth, animateToOpen, animateToClose, isGesturing } =
+    useSidebarAnimation();
   const touchStartX = useSharedValue(0);
   const openGestureEnabled = chromeEnabled && mobileView === "agent";
 
@@ -379,7 +355,7 @@ function MobileGestureWrapper({
             newTranslateX,
             [-windowWidth, 0],
             [0, 1],
-            Extrapolation.CLAMP
+            Extrapolation.CLAMP,
           );
         })
         .onEnd((event) => {
@@ -406,7 +382,7 @@ function MobileGestureWrapper({
       isGesturing,
       horizontalScroll?.isAnyScrolledRight,
       touchStartX,
-    ]
+    ],
   );
 
   return (
@@ -472,7 +448,9 @@ function OfferLinkListener({
         });
     };
 
-    void Linking.getInitialURL().then(handleUrl).catch(() => undefined);
+    void Linking.getInitialURL()
+      .then(handleUrl)
+      .catch(() => undefined);
 
     const subscription = Linking.addEventListener("url", (event) => {
       handleUrl(event.url);
@@ -609,9 +587,7 @@ function MissingDaemonView() {
 
 export default function RootLayout() {
   return (
-    <GestureHandlerRootView
-      style={{ flex: 1, backgroundColor: darkTheme.colors.surface0 }}
-    >
+    <GestureHandlerRootView style={{ flex: 1, backgroundColor: darkTheme.colors.surface0 }}>
       <NavigationActiveWorkspaceObserver />
       <PortalProvider>
         <SafeAreaProvider>
@@ -636,13 +612,10 @@ export default function RootLayout() {
                             >
                               <Stack.Screen name="index" />
                               <Stack.Screen name="settings" />
-                              <Stack.Screen
-                                name="h/[serverId]/workspace/[workspaceId]"
-                                options={{ freezeOnBlur: true }}
-                              />
+                              <Stack.Screen name="h/[serverId]/workspace/[workspaceId]" />
                               <Stack.Screen
                                 name="h/[serverId]/agent/[agentId]"
-                                options={{ gestureEnabled: false, freezeOnBlur: true }}
+                                options={{ gestureEnabled: false }}
                               />
                               <Stack.Screen name="h/[serverId]/index" />
                               <Stack.Screen name="h/[serverId]/sessions" />
