@@ -3662,6 +3662,9 @@ class ClaudeAgentSession implements AgentSession {
             provider: "claude",
           });
         } else if (Array.isArray(content)) {
+          // User SDK entries with array content (e.g. interrupt messages, replayed JSONL entries)
+          // must declare textMessageType so mapBlocksToTimeline emits user_message, not assistant_message.
+          // Without this, user text during interrupts appears as assistant output in paseo logs and the app.
           const timelineItems = this.mapBlocksToTimeline(content, {
             textMessageType: "user_message",
           });
@@ -4180,6 +4183,18 @@ class ClaudeAgentSession implements AgentSession {
     );
   }
 
+  // Maps Claude content blocks into AgentTimelineItems.
+  //
+  // textMessageType controls what type text blocks emit:
+  //   - "assistant_message" (default): one item per text block (streaming granularity)
+  //   - "user_message": coalesces all text blocks into a single user_message
+  //     (matches extractUserMessageText semantics: trim each block, join with "\n\n")
+  //
+  // suppressAssistantText only applies when textMessageType is "assistant_message" — user text
+  // must never be suppressed since the TimelineAssembler only handles assistant text.
+  //
+  // NOTE: convertClaudeHistoryEntry uses extractUserMessageText directly instead of this function
+  // for user entries. Both paths must produce equivalent user_message items.
   private mapBlocksToTimeline(
     content: string | ClaudeContentChunk[],
     options?: {
@@ -4205,6 +4220,7 @@ class ClaudeAgentSession implements AgentSession {
     }
 
     const items: AgentTimelineItem[] = [];
+    // User SDK entries can arrive as multiple text blocks, but Paseo treats them as one message.
     const userTextParts: string[] = [];
     for (const block of content) {
       switch (block.type) {
