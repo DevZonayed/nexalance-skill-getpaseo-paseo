@@ -158,6 +158,8 @@ function buildDesktopDaemonCorsOriginsEnv(): string | undefined {
       .filter((value) => value.length > 0)
   );
 
+  origins.add("paseo://app");
+
   const devServerUrl = process.env.EXPO_DEV_URL ?? DEFAULT_ELECTRON_DEV_SERVER_URL;
   try {
     const parsed = new URL(devServerUrl);
@@ -479,7 +481,7 @@ function getCliSymlinkInstructions(): CliSymlinkInstructions {
 
   if (process.platform === "darwin") {
     const appBundle = electronExePath.replace(/\/Contents\/MacOS\/.+$/, "");
-    const cliPath = path.join(appBundle, "Contents", "MacOS", cliShimFilename);
+    const cliPath = path.join(appBundle, "Contents", "Resources", "bin", cliShimFilename);
     return {
       title: "Add paseo to your shell",
       detail: "Create a symlink to the bundled Paseo CLI shim.",
@@ -488,18 +490,20 @@ function getCliSymlinkInstructions(): CliSymlinkInstructions {
   }
 
   if (process.platform === "win32") {
+    const cliPath = path.join(path.dirname(electronExePath), "resources", "bin", cliShimFilename);
     return {
       title: "Add paseo to your PATH",
       detail: "Add the Paseo installation directory to your system PATH so paseo.cmd is available.",
-      commands: `setx PATH "%PATH%;${path.dirname(electronExePath)}"`,
+      commands: `setx PATH "%PATH%;${path.dirname(cliPath)}"`,
     };
   }
 
   // Linux
+  const cliPath = path.join(path.dirname(electronExePath), "resources", "bin", cliShimFilename);
   return {
     title: "Add paseo to your shell",
     detail: "Create a symlink to the bundled Paseo CLI shim.",
-    commands: `sudo ln -sf "${path.join(path.dirname(electronExePath), cliShimFilename)}" /usr/local/bin/paseo`,
+    commands: `sudo ln -sf "${cliPath}" /usr/local/bin/paseo`,
   };
 }
 

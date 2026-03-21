@@ -334,6 +334,9 @@ const REWIND_COMMAND: AgentSlashCommand = {
   argumentHint: "[user_message_uuid]",
 };
 const INTERRUPT_TOOL_USE_PLACEHOLDER = "[Request interrupted by user for tool use]";
+const INTERRUPT_PLACEHOLDER_PATTERN =
+  /^\[Request interrupted by user(?:[^\]]*)\]$/;
+const NO_RESPONSE_REQUESTED_PLACEHOLDER = "No response requested.";
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -584,11 +587,88 @@ function coerceToolResultContentToString(content: unknown): string {
   return deterministicStringify(content);
 }
 
+function normalizeClaudeTranscriptText(value: unknown): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : null;
+}
+
+function isClaudeInterruptPlaceholderText(value: unknown): boolean {
+  const normalized = normalizeClaudeTranscriptText(value);
+  return normalized !== null && INTERRUPT_PLACEHOLDER_PATTERN.test(normalized);
+}
+
+function isClaudeNoResponsePlaceholderText(value: unknown): boolean {
+  return (
+    normalizeClaudeTranscriptText(value) === NO_RESPONSE_REQUESTED_PLACEHOLDER
+  );
+}
+
+function isClaudeTranscriptNoiseText(value: unknown): boolean {
+  return (
+    isClaudeInterruptPlaceholderText(value) ||
+    isClaudeNoResponsePlaceholderText(value)
+  );
+}
+
+function collectClaudeTextContentParts(content: unknown): string[] {
+  if (typeof content === "string") {
+    const normalized = normalizeClaudeTranscriptText(content);
+    return normalized ? [normalized] : [];
+  }
+
+  if (!Array.isArray(content)) {
+    return [];
+  }
+
+  const parts: string[] = [];
+  for (const block of content) {
+    if (!block || typeof block !== "object") {
+      continue;
+    }
+    const text = normalizeClaudeTranscriptText(
+      (block as { text?: unknown }).text
+    );
+    if (text) {
+      parts.push(text);
+      continue;
+    }
+    const input = normalizeClaudeTranscriptText(
+      (block as { input?: unknown }).input
+    );
+    if (input) {
+      parts.push(input);
+    }
+  }
+
+  return parts;
+}
+
+function isClaudeInterruptScaffoldContent(content: unknown): boolean {
+  const parts = collectClaudeTextContentParts(content);
+  return (
+    parts.length > 0 &&
+    parts.every((part) => isClaudeInterruptPlaceholderText(part))
+  );
+}
+
+function isClaudeTranscriptNoiseContent(content: unknown): boolean {
+  const parts = collectClaudeTextContentParts(content);
+  return (
+    parts.length > 0 &&
+    parts.every((part) => isClaudeTranscriptNoiseText(part))
+  );
+}
 
 export function extractUserMessageText(content: unknown): string | null {
   if (typeof content === "string") {
     const normalized = content.trim();
-    return normalized.length > 0 ? normalized : null;
+    if (!normalized || isClaudeTranscriptNoiseText(normalized)) {
+      return null;
+    }
+    return normalized;
   }
 
   if (!Array.isArray(content)) {
@@ -602,12 +682,18 @@ export function extractUserMessageText(content: unknown): string | null {
     }
     const text = typeof block.text === "string" ? block.text : undefined;
     if (text && text.trim()) {
-      parts.push(text.trim());
+      const trimmed = text.trim();
+      if (!isClaudeTranscriptNoiseText(trimmed)) {
+        parts.push(trimmed);
+      }
       continue;
     }
     const input = typeof block.input === "string" ? block.input : undefined;
     if (input && input.trim()) {
-      parts.push(input.trim());
+      const trimmed = input.trim();
+      if (!isClaudeTranscriptNoiseText(trimmed)) {
+        parts.push(trimmed);
+      }
     }
   }
 
@@ -1208,7 +1294,8 @@ class TimelineAssembler {
     const nextAssistantText = state.assistantText.slice(state.emittedAssistantLength);
     if (
       nextAssistantText.length > 0 &&
-      nextAssistantText !== INTERRUPT_TOOL_USE_PLACEHOLDER
+      nextAssistantText !== INTERRUPT_TOOL_USE_PLACEHOLDER &&
+      !isClaudeTranscriptNoiseText(nextAssistantText)
     ) {
       state.emittedAssistantLength = state.assistantText.length;
       items.push({ type: "assistant_message", text: nextAssistantText });
@@ -1332,10 +1419,19 @@ function isMetadataOnlySdkMessage(message: SDKMessage): boolean {
   if (message.type === "system") {
     return true;
   }
+  if (
+    message.type === "assistant" &&
+    isClaudeTranscriptNoiseContent(message.message?.content)
+  ) {
+    return true;
+  }
   if (message.type !== "user") {
     return false;
   }
   if (isSyntheticUserEntry(message)) {
+    return true;
+  }
+  if (isClaudeInterruptScaffoldContent(message.message?.content)) {
     return true;
   }
   return isTaskNotificationUserContent(message.message?.content);
@@ -1491,6 +1587,7 @@ class ClaudeAgentSession implements AgentSession {
   private toolUseInputBuffers = new Map<string, string>();
   private pendingPermissions = new Map<string, PendingPermission>();
   private activeForegroundTurn: ForegroundTurnState | null = null;
+  private activeForegroundPrompt: SDKUserMessage | null = null;
   private liveEventQueue = new Pushable<AgentStreamEvent>();
   private readonly runTracker = new RunTracker();
   private readonly timelineAssembler = new TimelineAssembler();
@@ -1501,6 +1598,7 @@ class ClaudeAgentSession implements AgentSession {
   private historyLineFragment = "";
   private turnState: TurnState = "idle";
   private preReplayMetadataSeen = false;
+  private preReplayDoneRecoveryUsed = false;
   private pendingAutonomousWakeReservations = 0;
   private nextRunOrdinal = 1;
   private cancelCurrentTurn: (() => void) | null = null;
@@ -1627,6 +1725,7 @@ class ClaudeAgentSession implements AgentSession {
     }
     this.suppressLocalReplayActivity = false;
     this.pendingAutonomousWakeReservations = 0;
+    this.preReplayDoneRecoveryUsed = false;
 
     const slashCommand = this.resolveSlashCommandInvocation(prompt);
     if (slashCommand?.commandName === REWIND_COMMAND_NAME) {
@@ -1655,6 +1754,7 @@ class ClaudeAgentSession implements AgentSession {
       queue,
     };
     this.activeForegroundTurn = foregroundTurn;
+    this.activeForegroundPrompt = sdkMessage;
     this.preReplayMetadataSeen = false;
     this.transitionTurnState("foreground", "foreground stream started");
     this.clearRecentStderr();
@@ -1672,6 +1772,7 @@ class ClaudeAgentSession implements AgentSession {
       cancelIssued = true;
       if (this.activeForegroundTurn?.runId === run.id) {
         this.activeForegroundTurn = null;
+        this.activeForegroundPrompt = null;
       }
       if (this.cancelCurrentTurn === requestCancel) {
         this.cancelCurrentTurn = null;
@@ -1925,6 +2026,7 @@ class ClaudeAgentSession implements AgentSession {
     this.cancelCurrentTurn?.();
     this.activeForegroundTurn?.queue.end();
     this.activeForegroundTurn = null;
+    this.activeForegroundPrompt = null;
     this.cancelCurrentTurn = null;
     this.turnState = "idle";
     this.suppressLocalReplayActivity = false;
@@ -2533,7 +2635,9 @@ class ClaudeAgentSession implements AgentSession {
 
     if (this.activeForegroundTurn?.runId === run.id) {
       this.activeForegroundTurn = null;
+      this.activeForegroundPrompt = null;
       this.preReplayMetadataSeen = false;
+      this.preReplayDoneRecoveryUsed = false;
     }
     this.logger.trace(
       {
@@ -2930,6 +3034,31 @@ class ClaudeAgentSession implements AgentSession {
           this.input = null;
         }
         const activeRuns = this.runTracker.listActiveRuns();
+        if (this.shouldRecoverFromPreReplayQueryDone(activeRuns)) {
+          this.logger.warn(
+            {
+              claudeSessionId: this.claudeSessionId,
+              activeRunCount: activeRuns.length,
+              preReplayMetadataSeen: this.preReplayMetadataSeen,
+            },
+            "Claude query ended before prompt replay after interrupt scaffold; retrying fresh query"
+          );
+          try {
+            await this.ensureQuery();
+            if (this.input && this.activeForegroundPrompt) {
+              this.input.push(this.activeForegroundPrompt);
+            }
+          } catch (error) {
+            for (const run of activeRuns) {
+              this.failRun(
+                run,
+                error instanceof Error ? error.message : "Claude stream failed"
+              );
+            }
+            await this.waitForLiveHistoryPoll();
+          }
+          continue;
+        }
         if (activeRuns.length > 0) {
           for (const run of activeRuns) {
             this.failRun(run, "Claude stream ended before terminal result");
@@ -3133,6 +3262,28 @@ class ClaudeAgentSession implements AgentSession {
     }
   }
 
+  private shouldRecoverFromPreReplayQueryDone(activeRuns: RunRecord[]): boolean {
+    if (
+      this.preReplayDoneRecoveryUsed ||
+      !this.preReplayMetadataSeen ||
+      !this.activeForegroundTurn ||
+      activeRuns.length !== 1
+    ) {
+      return false;
+    }
+
+    const foregroundRun = this.runTracker.getRun(this.activeForegroundTurn.runId);
+    if (!foregroundRun || activeRuns[0]?.id !== foregroundRun.id) {
+      return false;
+    }
+    if (foregroundRun.owner !== "foreground" || foregroundRun.promptReplaySeen) {
+      return false;
+    }
+
+    this.preReplayDoneRecoveryUsed = true;
+    return true;
+  }
+
   private updateRunLifecycleForMessage(
     run: RunRecord,
     message: SDKMessage,
@@ -3146,6 +3297,7 @@ class ClaudeAgentSession implements AgentSession {
     ) {
       run.promptReplaySeen = true;
       this.preReplayMetadataSeen = false;
+      this.preReplayDoneRecoveryUsed = false;
     }
 
     if (run.state === "queued") {
@@ -3185,11 +3337,22 @@ class ClaudeAgentSession implements AgentSession {
   }
 
   private shouldSuppressLocalReplayActivity(message: SDKMessage): boolean {
-    const localReplay = this.isLocalReplayUserMessage(message);
-    if (!this.activeForegroundTurn && localReplay) {
+    const replayUuid = this.getLocalReplayUserMessageUuid(message);
+    if (replayUuid) {
+      // Don't suppress the echo of the current foreground turn's prompt —
+      // updateRunLifecycleForMessage needs it to set promptReplaySeen.
+      if (this.activeForegroundTurn) {
+        const foregroundRun = this.runTracker.getRun(
+          this.activeForegroundTurn.runId
+        );
+        if (foregroundRun?.messageIds.has(replayUuid)) {
+          this.suppressLocalReplayActivity = false;
+          return false;
+        }
+      }
       this.suppressLocalReplayActivity = true;
       this.logger.debug(
-        { uuid: (message as { uuid?: string }).uuid },
+        { uuid: replayUuid },
         "Suppressing local replay user message from live pump"
       );
       return true;
@@ -3201,7 +3364,7 @@ class ClaudeAgentSession implements AgentSession {
 
     // Suppress only replay scaffolding. Do not suppress autonomous
     // assistant/result events; otherwise task-notification replies can be dropped.
-    if (localReplay) {
+    if (replayUuid) {
       return true;
     }
 
@@ -3231,17 +3394,17 @@ class ClaudeAgentSession implements AgentSession {
     return false;
   }
 
-  private isLocalReplayUserMessage(message: SDKMessage): boolean {
+  private getLocalReplayUserMessageUuid(message: SDKMessage): string | null {
     if (message.type !== "user") {
-      return false;
+      return null;
     }
     const uuid = readTrimmedString(
       (message as unknown as { uuid?: unknown }).uuid
     );
     if (!uuid) {
-      return false;
+      return null;
     }
-    return this.localUserMessageIds.has(uuid);
+    return this.localUserMessageIds.has(uuid) ? uuid : null;
   }
 
   private async interruptActiveTurn(): Promise<void> {
@@ -3652,15 +3815,17 @@ class ClaudeAgentSession implements AgentSession {
         }
         if (typeof content === "string" && content.length > 0) {
           // String content from user messages (e.g., local command output)
-          events.push({
-            type: "timeline",
-            item: {
-              type: "user_message",
-              text: content,
-              ...(messageId ? { messageId } : {}),
-            },
-            provider: "claude",
-          });
+          if (!isClaudeTranscriptNoiseText(content)) {
+            events.push({
+              type: "timeline",
+              item: {
+                type: "user_message",
+                text: content,
+                ...(messageId ? { messageId } : {}),
+              },
+              provider: "claude",
+            });
+          }
         } else if (Array.isArray(content)) {
           // User SDK entries with array content (e.g. interrupt messages, replayed JSONL entries)
           // must declare textMessageType so mapBlocksToTimeline emits user_message, not assistant_message.
@@ -4210,7 +4375,11 @@ class ClaudeAgentSession implements AgentSession {
     const suppressReasoning = options?.suppressReasoning ?? false;
 
     if (typeof content === "string") {
-      if (!content || content === INTERRUPT_TOOL_USE_PLACEHOLDER) {
+      if (
+        !content ||
+        content === INTERRUPT_TOOL_USE_PLACEHOLDER ||
+        isClaudeTranscriptNoiseText(content)
+      ) {
         return [];
       }
       if (suppressText) {
@@ -4226,7 +4395,11 @@ class ClaudeAgentSession implements AgentSession {
       switch (block.type) {
         case "text":
         case "text_delta":
-          if (block.text && block.text !== INTERRUPT_TOOL_USE_PLACEHOLDER) {
+          if (
+            block.text &&
+            block.text !== INTERRUPT_TOOL_USE_PLACEHOLDER &&
+            !isClaudeTranscriptNoiseText(block.text)
+          ) {
             if (textMessageType === "user_message") {
               const trimmed = block.text.trim();
               if (trimmed) {
@@ -4802,6 +4975,12 @@ export function convertClaudeHistoryEntry(
   }
 
   const content = message.content;
+  if (
+    (entry.type === "user" || entry.type === "assistant") &&
+    isClaudeTranscriptNoiseContent(content)
+  ) {
+    return [];
+  }
   const normalizedBlocks = normalizeHistoryBlocks(content);
   const contentValue =
     typeof content === "string"
@@ -5040,15 +5219,24 @@ function extractClaudeUserText(message: any): string | null {
     return null;
   }
   if (typeof message.content === "string") {
-    return message.content.trim();
+    const normalized = message.content.trim();
+    return normalized && !isClaudeTranscriptNoiseText(normalized)
+      ? normalized
+      : null;
   }
   if (typeof message.text === "string") {
-    return message.text.trim();
+    const normalized = message.text.trim();
+    return normalized && !isClaudeTranscriptNoiseText(normalized)
+      ? normalized
+      : null;
   }
   if (Array.isArray(message.content)) {
     for (const block of message.content) {
       if (block && typeof block.text === "string") {
-        return block.text.trim();
+        const normalized = block.text.trim();
+        if (normalized && !isClaudeTranscriptNoiseText(normalized)) {
+          return normalized;
+        }
       }
     }
   }

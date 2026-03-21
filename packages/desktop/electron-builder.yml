@@ -19,26 +19,26 @@ mac:
   notarize: true
   entitlements: build/entitlements.mac.plist
   entitlementsInherit: build/entitlements.mac.inherit.plist
-  extraFiles:
-    - from: scripts/paseo
-      to: MacOS/paseo
+  extraResources:
+    - from: bin/paseo
+      to: bin/paseo
   target:
     - dmg
     - zip
 linux:
   category: Development
   icon: assets
-  extraFiles:
-    - from: scripts/paseo
-      to: paseo
+  extraResources:
+    - from: bin/paseo
+      to: bin/paseo
   target:
     - AppImage
     - tar.gz
 win:
   icon: assets/icon.ico
-  extraFiles:
-    - from: scripts/paseo.cmd
-      to: paseo.cmd
+  extraResources:
+    - from: bin/paseo.cmd
+      to: bin/paseo.cmd
   target:
     - nsis
     - zip

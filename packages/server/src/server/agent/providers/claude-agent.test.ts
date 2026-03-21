@@ -112,6 +112,31 @@ describe("convertClaudeHistoryEntry", () => {
     expect(mapBlocks).not.toHaveBeenCalled();
   });
 
+  test("skips interrupt placeholder transcript noise", () => {
+    const interruptEntry = {
+      type: "user",
+      message: {
+        role: "user",
+        content: [{ type: "text", text: "[Request interrupted by user]" }],
+      },
+    };
+
+    const assistantNoiseEntry = {
+      type: "assistant",
+      message: {
+        role: "assistant",
+        content: "No response requested.",
+      },
+    };
+
+    const mapBlocks = vi.fn().mockReturnValue([
+      { type: "assistant_message", text: "No response requested." },
+    ]);
+
+    expect(convertClaudeHistoryEntry(interruptEntry, mapBlocks)).toEqual([]);
+    expect(convertClaudeHistoryEntry(assistantNoiseEntry, mapBlocks)).toEqual([]);
+  });
+
   test("maps task notifications to synthetic tool calls", () => {
     const entry = {
       type: "system",

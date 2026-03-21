@@ -224,6 +224,16 @@ function collectAssistantText(events: AgentStreamEvent[]): string {
     .join("");
 }
 
+function collectUserText(events: AgentStreamEvent[]): string {
+  return events
+    .filter(
+      (event): event is Extract<AgentStreamEvent, { type: "timeline" }> =>
+        event.type === "timeline" && event.item.type === "user_message"
+    )
+    .map((event) => event.item.text)
+    .join("");
+}
+
 function createTimedIteratorReader<T>(params: { iterator: AsyncIterator<T> }) {
   const { iterator } = params;
   let pendingNext: Promise<IteratorResult<T>> | null = null;
@@ -312,6 +322,176 @@ describe("ClaudeAgentSession interrupt restart regression", () => {
 
     await firstTurn.return?.();
     await session.close();
+  });
+
+  test("restarts after interrupt scaffold query drain without surfacing placeholder transcript noise", async () => {
+    const logger = createTestLogger();
+    let queryCreateCount = 0;
+
+    sdkMocks.query.mockImplementation(({ prompt }: { prompt: AsyncIterable<unknown> }) => {
+      queryCreateCount += 1;
+
+      if (queryCreateCount === 1) {
+        let step = 0;
+        return {
+          next: vi.fn(async () => {
+            if (step === 0) {
+              step += 1;
+              return {
+                done: false,
+                value: {
+                  type: "system",
+                  subtype: "init",
+                  session_id: "interrupt-scaffold-session",
+                  permissionMode: "default",
+                  model: "opus",
+                },
+              };
+            }
+            if (step === 1) {
+              step += 1;
+              return {
+                done: false,
+                value: {
+                  type: "user",
+                  message: {
+                    role: "user",
+                    content: [{ type: "text", text: "[Request interrupted by user]" }],
+                  },
+                  parent_tool_use_id: null,
+                  uuid: "interrupt-scaffold-1",
+                  session_id: "interrupt-scaffold-session",
+                },
+              };
+            }
+            if (step === 2) {
+              step += 1;
+              return {
+                done: false,
+                value: {
+                  type: "assistant",
+                  message: {
+                    content: "Got it. Sorry for the mess.",
+                  },
+                },
+              };
+            }
+            if (step === 3) {
+              step += 1;
+              return {
+                done: false,
+                value: {
+                  type: "assistant",
+                  message: {
+                    content: "No response requested.",
+                  },
+                },
+              };
+            }
+            return { done: true, value: undefined };
+          }),
+          interrupt: vi.fn(async () => undefined),
+          return: vi.fn(async () => undefined),
+          setPermissionMode: vi.fn(async () => undefined),
+          setModel: vi.fn(async () => undefined),
+          supportedModels: vi.fn(async () => [{ value: "opus", displayName: "Opus" }]),
+          supportedCommands: vi.fn(async () => []),
+          rewindFiles: vi.fn(async () => ({ canRewind: true })),
+        } satisfies QueryMock;
+      }
+
+      const readPromptUuid = createPromptUuidReader(prompt);
+      let step = 0;
+      return {
+        next: vi.fn(async () => {
+          if (step === 0) {
+            step += 1;
+            return {
+              done: false,
+              value: {
+                type: "system",
+                subtype: "init",
+                session_id: "interrupt-scaffold-session",
+                permissionMode: "default",
+                model: "opus",
+              },
+            };
+          }
+          if (step === 1) {
+            step += 1;
+            const promptUuid = (await readPromptUuid()) ?? "missing-prompt-uuid";
+            return {
+              done: false,
+              value: {
+                type: "user",
+                message: { role: "user", content: "fresh prompt" },
+                parent_tool_use_id: null,
+                uuid: promptUuid,
+                session_id: "interrupt-scaffold-session",
+                isReplay: true,
+              },
+            };
+          }
+          if (step === 2) {
+            step += 1;
+            return {
+              done: false,
+              value: {
+                type: "assistant",
+                message: {
+                  content: "FRESH_RESPONSE_AFTER_INTERRUPT",
+                },
+              },
+            };
+          }
+          if (step === 3) {
+            step += 1;
+            return {
+              done: false,
+              value: {
+                type: "result",
+                subtype: "success",
+                usage: buildUsage(),
+                total_cost_usd: 0,
+              },
+            };
+          }
+          return { done: true, value: undefined };
+        }),
+        interrupt: vi.fn(async () => undefined),
+        return: vi.fn(async () => undefined),
+        setPermissionMode: vi.fn(async () => undefined),
+        setModel: vi.fn(async () => undefined),
+        supportedModels: vi.fn(async () => [{ value: "opus", displayName: "Opus" }]),
+        supportedCommands: vi.fn(async () => []),
+        rewindFiles: vi.fn(async () => ({ canRewind: true })),
+      } satisfies QueryMock;
+    });
+
+    const client = new ClaudeAgentClient({ logger });
+    const session = await client.createSession({
+      provider: "claude",
+      cwd: process.cwd(),
+    });
+
+    const events = await collectUntilTerminal(session.stream("fresh prompt"));
+    const assistantText = collectAssistantText(events);
+    const userText = collectUserText(events);
+    await session.close();
+
+    expect(queryCreateCount).toBeGreaterThanOrEqual(2);
+    expect(assistantText).toContain("FRESH_RESPONSE_AFTER_INTERRUPT");
+    expect(assistantText).not.toContain("Got it. Sorry for the mess.");
+    expect(assistantText).not.toContain("No response requested.");
+    expect(userText).not.toContain("[Request interrupted by user]");
+    expect(
+      events.some(
+        (event) =>
+          event.type === "turn_failed" &&
+          event.error.includes("Claude stream ended before terminal result")
+      )
+    ).toBe(false);
+    expect(events.some((event) => event.type === "turn_completed")).toBe(true);
   });
 
   test("ignores stale interrupted query completion after the replacement run starts", async () => {
