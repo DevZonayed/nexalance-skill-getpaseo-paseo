@@ -164,10 +164,28 @@ describe("keyboard-shortcuts", () => {
       action: "workspace.tab.close.current",
     },
     {
-      name: "matches Mod+W to close current tab on desktop",
+      name: "matches Cmd+W to close current tab on mac desktop",
       event: { key: "w", code: "KeyW", metaKey: true },
       context: { isMac: true, isDesktop: true },
       action: "workspace.tab.close.current",
+    },
+    {
+      name: "matches Ctrl+W to close current tab on non-mac desktop",
+      event: { key: "w", code: "KeyW", ctrlKey: true },
+      context: { isMac: false, isDesktop: true },
+      action: "workspace.tab.close.current",
+    },
+    {
+      name: "matches Ctrl+Shift+O to create new agent on non-mac",
+      event: { key: "O", code: "KeyO", ctrlKey: true, shiftKey: true },
+      context: { isMac: false },
+      action: "agent.new",
+    },
+    {
+      name: "matches Ctrl+K for command center on non-mac",
+      event: { key: "k", code: "KeyK", ctrlKey: true },
+      context: { isMac: false },
+      action: "command-center.toggle",
     },
     {
       name: "matches Cmd+Backslash to split pane right on macOS",
@@ -269,6 +287,26 @@ describe("keyboard-shortcuts", () => {
       context: { focusScope: "message-input" },
     },
     {
+      name: "does not close tab with Ctrl+W on mac desktop (Cmd+W only)",
+      event: { key: "w", code: "KeyW", ctrlKey: true },
+      context: { isMac: true, isDesktop: true },
+    },
+    {
+      name: "does not close tab with Ctrl+W on non-mac desktop when terminal is focused",
+      event: { key: "w", code: "KeyW", ctrlKey: true },
+      context: { isMac: false, isDesktop: true, focusScope: "terminal" },
+    },
+    {
+      name: "does not match Ctrl+T on mac (Cmd only)",
+      event: { key: "t", code: "KeyT", ctrlKey: true },
+      context: { isMac: true },
+    },
+    {
+      name: "does not match Ctrl+K for command center on non-mac in terminal",
+      event: { key: "k", code: "KeyK", ctrlKey: true },
+      context: { isMac: false, focusScope: "terminal" },
+    },
+    {
       name: "does not bind Ctrl+B on non-mac",
       event: { key: "b", code: "KeyB", ctrlKey: true },
       context: { isMac: false },
@@ -331,9 +369,16 @@ describe("keyboard-shortcut help sections", () => {
         "workspace-tab-new": ["mod", "T"],
         "workspace-jump-index": ["mod", "1-9"],
         "workspace-tab-jump-index": ["alt", "1-9"],
-        "workspace-tab-close-current": ["mod", "W"],
+        "workspace-tab-close-current": ["meta", "W"],
         "workspace-pane-split-right": ["mod", "\\"],
         "workspace-pane-close": ["mod", "shift", "W"],
+      },
+    },
+    {
+      name: "shows Ctrl+W close tab for non-mac desktop",
+      context: { isMac: false, isDesktop: true },
+      expectedKeys: {
+        "workspace-tab-close-current": ["ctrl", "W"],
       },
     },
     {
