@@ -806,12 +806,9 @@ const styles = StyleSheet.create((theme) => ({
     paddingVertical: theme.spacing[1],
     paddingHorizontal: theme.spacing[2],
     borderRadius: theme.borderRadius.lg,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    backgroundColor: theme.colors.surface1,
   },
   hostTriggerHovered: {
-    borderColor: theme.colors.borderAccent,
+    backgroundColor: theme.colors.surface1,
   },
   hostStatusDot: {
     width: 8,
