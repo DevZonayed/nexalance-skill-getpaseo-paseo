@@ -2,9 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { buildGitActions, type BuildGitActionsInput } from "./git-actions-policy";
 
-function createInput(
-  overrides: Partial<BuildGitActionsInput> = {}
-): BuildGitActionsInput {
+function createInput(overrides: Partial<BuildGitActionsInput> = {}): BuildGitActionsInput {
   return {
     isGit: true,
     githubFeaturesEnabled: true,
@@ -68,7 +66,7 @@ describe("git-actions-policy", () => {
         aheadCount: 3,
         aheadOfOrigin: 2,
         shipDefault: "pr",
-      })
+      }),
     );
 
     expect(noPrActions.primary).toBeNull();
@@ -117,18 +115,20 @@ describe("git-actions-policy", () => {
         hasRemote: true,
         hasPullRequest: true,
         pullRequestUrl: "https://example.com/pr/456",
-      })
+      }),
     );
 
     expect(actions.primary?.id).toBe("pr");
-    expect(actions.secondary.some((action) => action.id === "pr" && action.label === "View PR")).toBe(true);
+    expect(
+      actions.secondary.some((action) => action.id === "pr" && action.label === "View PR"),
+    ).toBe(true);
   });
 
   it("disables sync on the base branch when already up to date", () => {
     const actions = buildGitActions(
       createInput({
         hasRemote: true,
-      })
+      }),
     );
     const syncAction = actions.secondary.find((action) => action.id === "merge-from-base");
 

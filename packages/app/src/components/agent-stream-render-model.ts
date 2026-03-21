@@ -128,7 +128,7 @@ function splitOrderedTail(params: {
 }
 
 export function buildAgentStreamRenderModel(
-  input: BuildAgentStreamRenderModelInput
+  input: BuildAgentStreamRenderModelInput,
 ): AgentStreamRenderModel {
   const strategy = resolveStreamRenderStrategy({
     platform: input.platform === "web" ? "web" : "native",

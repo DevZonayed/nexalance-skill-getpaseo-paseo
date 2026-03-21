@@ -59,7 +59,7 @@ function useTooltipContext(componentName: string): TooltipContextValue {
 
 function composeEventHandlers<E>(
   original?: (event: E) => void,
-  injected?: (event: E) => void
+  injected?: (event: E) => void,
 ): (event: E) => void {
   return (event: E) => {
     original?.(event);
@@ -94,7 +94,7 @@ function useControllableOpenState({
       if (!isControlled) setInternalOpen(next);
       onOpenChange?.(next);
     },
-    [isControlled, onOpenChange]
+    [isControlled, onOpenChange],
   );
   return [value, setValue];
 }
@@ -125,11 +125,9 @@ function computePosition({
   const { width: contentWidth, height: contentHeight } = contentSize;
 
   const spaceTop = triggerRect.y - displayArea.y;
-  const spaceBottom =
-    displayArea.y + displayArea.height - (triggerRect.y + triggerRect.height);
+  const spaceBottom = displayArea.y + displayArea.height - (triggerRect.y + triggerRect.height);
   const spaceLeft = triggerRect.x - displayArea.x;
-  const spaceRight =
-    displayArea.x + displayArea.width - (triggerRect.x + triggerRect.width);
+  const spaceRight = displayArea.x + displayArea.width - (triggerRect.x + triggerRect.width);
 
   let actualSide = side;
   if (side === "bottom" && spaceBottom < contentHeight && spaceTop > spaceBottom) {
@@ -184,13 +182,10 @@ function computePosition({
   }
 
   const padding = 8;
-  x = Math.max(
-    padding,
-    Math.min(displayArea.width - contentWidth - padding, x)
-  );
+  x = Math.max(padding, Math.min(displayArea.width - contentWidth - padding, x));
   y = Math.max(
     displayArea.y + padding,
-    Math.min(displayArea.y + displayArea.height - contentHeight - padding, y)
+    Math.min(displayArea.y + displayArea.height - contentHeight - padding, y),
   );
 
   return { x, y, actualSide };
@@ -234,7 +229,7 @@ export function Tooltip({
       enabled,
       delayDuration,
     }),
-    [isOpen, setIsOpen, enabled, delayDuration]
+    [isOpen, setIsOpen, enabled, delayDuration],
   );
 
   return <TooltipContext.Provider value={value}>{children}</TooltipContext.Provider>;
@@ -296,7 +291,7 @@ export function TooltipTrigger({
       onHoverIn?.(e);
       scheduleOpen();
     },
-    [onHoverIn, scheduleOpen]
+    [onHoverIn, scheduleOpen],
   );
 
   const handleHoverOut = useCallback(
@@ -304,7 +299,7 @@ export function TooltipTrigger({
       onHoverOut?.(e);
       close();
     },
-    [onHoverOut, close]
+    [onHoverOut, close],
   );
 
   const handleFocus = useCallback(
@@ -314,7 +309,7 @@ export function TooltipTrigger({
       clearOpenTimer();
       ctx.setOpen(true);
     },
-    [clearOpenTimer, ctx, disabled, onFocus]
+    [clearOpenTimer, ctx, disabled, onFocus],
   );
 
   const handleBlur = useCallback(
@@ -322,7 +317,7 @@ export function TooltipTrigger({
       onBlur?.(e);
       close();
     },
-    [close, onBlur]
+    [close, onBlur],
   );
 
   const handlePress = useCallback(
@@ -330,7 +325,7 @@ export function TooltipTrigger({
       onPress?.(e);
       close();
     },
-    [close, onPress]
+    [close, onPress],
   );
 
   const triggerProps = {
@@ -383,11 +378,7 @@ export function TooltipTrigger({
   }
 
   return (
-    <Pressable
-      {...triggerProps}
-      ref={ctx.triggerRef}
-      collapsable={false}
-    >
+    <Pressable {...triggerProps} ref={ctx.triggerRef} collapsable={false}>
       {children}
     </Pressable>
   );
@@ -412,9 +403,7 @@ export function TooltipContent({
   const ctx = useTooltipContext("TooltipContent");
   const bottomSheetInternal = useBottomSheetModalInternal(true);
   const [triggerRect, setTriggerRect] = useState<Rect | null>(null);
-  const [contentSize, setContentSize] = useState<{ width: number; height: number } | null>(
-    null
-  );
+  const [contentSize, setContentSize] = useState<{ width: number; height: number } | null>(null);
   const [position, setPosition] = useState<{ x: number; y: number } | null>(null);
 
   useEffect(() => {
@@ -425,8 +414,7 @@ export function TooltipContent({
       return;
     }
 
-    const statusBarHeight =
-      Platform.OS === "android" ? (StatusBar.currentHeight ?? 0) : 0;
+    const statusBarHeight = Platform.OS === "android" ? (StatusBar.currentHeight ?? 0) : 0;
     let cancelled = false;
 
     measureElement(ctx.triggerRef.current).then((rect) => {
@@ -459,7 +447,7 @@ export function TooltipContent({
       const { width, height } = event.nativeEvent.layout;
       setContentSize({ width, height });
     },
-    []
+    [],
   );
 
   if (!ctx.open || !ctx.enabled) return null;

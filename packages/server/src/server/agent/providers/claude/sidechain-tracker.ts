@@ -3,11 +3,7 @@ import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 import { mapClaudeRunningToolCall } from "./tool-call-mapper.js";
 import { buildToolCallDisplayModel } from "../../../../shared/tool-call-display.js";
 
-import type {
-  AgentMetadata,
-  AgentStreamEvent,
-  AgentTimelineItem,
-} from "../../agent-sdk-types.js";
+import type { AgentMetadata, AgentStreamEvent, AgentTimelineItem } from "../../agent-sdk-types.js";
 
 type ClaudeContentChunk = { type: string; [key: string]: unknown };
 
@@ -45,9 +41,7 @@ function readTrimmedString(value: unknown): string | undefined {
 
 function isClaudeContentChunk(value: unknown): value is ClaudeContentChunk {
   return Boolean(
-    value &&
-      typeof value === "object" &&
-      typeof (value as { type?: unknown }).type === "string"
+    value && typeof value === "object" && typeof (value as { type?: unknown }).type === "string",
   );
 }
 
@@ -72,10 +66,7 @@ export class ClaudeSidechainTracker {
       } satisfies SubAgentActivityState);
     this.activeSidechains.set(parentToolUseId, state);
 
-    const contextUpdated = this.updateSubAgentContextFromTaskInput(
-      state,
-      parentToolUseId
-    );
+    const contextUpdated = this.updateSubAgentContextFromTaskInput(state, parentToolUseId);
     const actionCandidates = this.extractSubAgentActionCandidates(message);
     let actionUpdated = false;
     for (const action of actionCandidates) {
@@ -104,7 +95,7 @@ export class ClaudeSidechainTracker {
       ...(state.description ? { description: state.description } : {}),
       log: state.actions
         .map((action) =>
-          action.summary ? `[${action.toolName}] ${action.summary}` : `[${action.toolName}]`
+          action.summary ? `[${action.toolName}] ${action.summary}` : `[${action.toolName}]`,
         )
         .join("\n"),
       actions: state.actions.map((action) => ({
@@ -136,7 +127,7 @@ export class ClaudeSidechainTracker {
 
   private updateSubAgentContextFromTaskInput(
     state: SubAgentActivityState,
-    parentToolUseId: string
+    parentToolUseId: string,
   ): boolean {
     const taskInput = this.getToolInput(parentToolUseId);
     const nextSubAgentType = this.normalizeSubAgentText(taskInput?.subagent_type);
@@ -237,17 +228,14 @@ export class ClaudeSidechainTracker {
 
   private appendSubAgentAction(
     state: SubAgentActivityState,
-    candidate: SubAgentActionCandidate
+    candidate: SubAgentActionCandidate,
   ): boolean {
     const normalizedToolName = readTrimmedString(candidate.toolName);
     if (!normalizedToolName) {
       return false;
     }
 
-    const summary = this.deriveSubAgentActionSummary(
-      normalizedToolName,
-      candidate.input
-    );
+    const summary = this.deriveSubAgentActionSummary(normalizedToolName, candidate.input);
     const existingIndex = state.actionIndexByKey.get(candidate.key);
 
     if (existingIndex !== undefined) {
@@ -256,10 +244,7 @@ export class ClaudeSidechainTracker {
         return false;
       }
       const nextSummary = existing.summary ?? summary;
-      if (
-        existing.toolName === normalizedToolName &&
-        existing.summary === nextSummary
-      ) {
+      if (existing.toolName === normalizedToolName && existing.summary === nextSummary) {
         return false;
       }
       state.actions[existingIndex] = {
@@ -299,10 +284,7 @@ export class ClaudeSidechainTracker {
     }
   }
 
-  private deriveSubAgentActionSummary(
-    toolName: string,
-    input: unknown
-  ): string | undefined {
+  private deriveSubAgentActionSummary(toolName: string, input: unknown): string | undefined {
     const runningToolCall = mapClaudeRunningToolCall({
       name: toolName,
       callId: `sub-agent-summary-${toolName}`,

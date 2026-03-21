@@ -51,11 +51,11 @@ describe("crypto", () => {
       // Derive shared keys
       const daemonSharedKey = await deriveSharedKey(
         daemonKeyPair.secretKey,
-        daemonSeesClientPubKey
+        daemonSeesClientPubKey,
       );
       const clientSharedKey = await deriveSharedKey(
         clientKeyPair.secretKey,
-        clientSeesDaemonPubKey
+        clientSeesDaemonPubKey,
       );
 
       // Both should derive the same key - test by encrypting with one, decrypting with other
@@ -71,10 +71,7 @@ describe("crypto", () => {
     it("roundtrips a string message", async () => {
       const daemonKeyPair = await generateKeyPair();
       const clientKeyPair = await generateKeyPair();
-      const sharedKey = await deriveSharedKey(
-        daemonKeyPair.secretKey,
-        clientKeyPair.publicKey
-      );
+      const sharedKey = await deriveSharedKey(daemonKeyPair.secretKey, clientKeyPair.publicKey);
 
       const plaintext = "Test message with unicode: 你好世界 🎉";
       const ciphertext = await encrypt(sharedKey, plaintext);
@@ -89,10 +86,7 @@ describe("crypto", () => {
     it("roundtrips binary data", async () => {
       const daemonKeyPair = await generateKeyPair();
       const clientKeyPair = await generateKeyPair();
-      const sharedKey = await deriveSharedKey(
-        daemonKeyPair.secretKey,
-        clientKeyPair.publicKey
-      );
+      const sharedKey = await deriveSharedKey(daemonKeyPair.secretKey, clientKeyPair.publicKey);
 
       const binary = new Uint8Array([0, 1, 2, 255, 254, 253]);
       const ciphertext = await encrypt(sharedKey, binary.buffer);
@@ -106,14 +100,8 @@ describe("crypto", () => {
       const keypair2 = await generateKeyPair();
       const keypair3 = await generateKeyPair();
 
-      const correctKey = await deriveSharedKey(
-        keypair1.secretKey,
-        keypair2.publicKey
-      );
-      const wrongKey = await deriveSharedKey(
-        keypair1.secretKey,
-        keypair3.publicKey
-      );
+      const correctKey = await deriveSharedKey(keypair1.secretKey, keypair2.publicKey);
+      const wrongKey = await deriveSharedKey(keypair1.secretKey, keypair3.publicKey);
 
       const ciphertext = await encrypt(correctKey, "secret");
 
@@ -123,10 +111,7 @@ describe("crypto", () => {
     it("produces different ciphertext for same plaintext (random IV)", async () => {
       const keypair1 = await generateKeyPair();
       const keypair2 = await generateKeyPair();
-      const sharedKey = await deriveSharedKey(
-        keypair1.secretKey,
-        keypair2.publicKey
-      );
+      const sharedKey = await deriveSharedKey(keypair1.secretKey, keypair2.publicKey);
 
       const plaintext = "Same message";
       const ciphertext1 = await encrypt(sharedKey, plaintext);
@@ -159,10 +144,7 @@ describe("crypto", () => {
       const daemonPubKeyOnClient = await importPublicKey(daemonPubKeyB64);
 
       // Client derives shared key
-      const clientSharedKey = await deriveSharedKey(
-        clientKeyPair.secretKey,
-        daemonPubKeyOnClient
-      );
+      const clientSharedKey = await deriveSharedKey(clientKeyPair.secretKey, daemonPubKeyOnClient);
 
       // Client sends hello: { type: "hello", key: clientPubKeyB64 }
 
@@ -171,10 +153,7 @@ describe("crypto", () => {
       const clientPubKeyOnDaemon = await importPublicKey(clientPubKeyB64);
 
       // Daemon derives shared key
-      const daemonSharedKey = await deriveSharedKey(
-        daemonKeyPair.secretKey,
-        clientPubKeyOnDaemon
-      );
+      const daemonSharedKey = await deriveSharedKey(daemonKeyPair.secretKey, clientPubKeyOnDaemon);
 
       // === VERIFY BOTH HAVE SAME KEY ===
       const testFromDaemon = "Message from daemon";
@@ -182,15 +161,11 @@ describe("crypto", () => {
 
       // Daemon encrypts, client decrypts
       const encryptedFromDaemon = await encrypt(daemonSharedKey, testFromDaemon);
-      expect(await decrypt(clientSharedKey, encryptedFromDaemon)).toBe(
-        testFromDaemon
-      );
+      expect(await decrypt(clientSharedKey, encryptedFromDaemon)).toBe(testFromDaemon);
 
       // Client encrypts, daemon decrypts
       const encryptedFromClient = await encrypt(clientSharedKey, testFromClient);
-      expect(await decrypt(daemonSharedKey, encryptedFromClient)).toBe(
-        testFromClient
-      );
+      expect(await decrypt(daemonSharedKey, encryptedFromClient)).toBe(testFromClient);
     });
   });
 });

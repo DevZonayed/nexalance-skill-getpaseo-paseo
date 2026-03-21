@@ -1,10 +1,5 @@
 import type { Command } from "commander";
-import type {
-  CommandError,
-  CommandOptions,
-  ListResult,
-  OutputSchema,
-} from "../../output/index.js";
+import type { CommandError, CommandOptions, ListResult, OutputSchema } from "../../output/index.js";
 import { connectToDaemon } from "../../utils/client.js";
 
 interface SpeechDownloadRow {
@@ -29,7 +24,7 @@ export interface SpeechDownloadOptions extends CommandOptions {
 
 export async function runSpeechDownloadCommand(
   options: SpeechDownloadOptions,
-  _command: Command
+  _command: Command,
 ): Promise<SpeechDownloadResult> {
   const client = await connectToDaemon({ host: options.host });
   try {

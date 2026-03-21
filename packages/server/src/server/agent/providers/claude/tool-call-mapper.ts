@@ -12,12 +12,7 @@ type MapperParams = {
   metadata?: Record<string, unknown>;
 };
 
-const ClaudeToolCallStatusSchema = z.enum([
-  "running",
-  "completed",
-  "failed",
-  "canceled",
-]);
+const ClaudeToolCallStatusSchema = z.enum(["running", "completed", "failed", "canceled"]);
 
 const ClaudeRawToolCallSchema = z
   .object({
@@ -32,10 +27,7 @@ const ClaudeRawToolCallSchema = z
   .passthrough();
 
 const ClaudeToolCallPass1Schema = ClaudeRawToolCallSchema.transform((raw) => ({
-  callId:
-    typeof raw.callId === "string" && raw.callId.trim().length > 0
-      ? raw.callId
-      : null,
+  callId: typeof raw.callId === "string" && raw.callId.trim().length > 0 ? raw.callId : null,
   name: raw.name.trim(),
   input: raw.input ?? null,
   output: raw.output ?? null,
@@ -253,7 +245,7 @@ function toToolCallTimelineItem(normalized: ClaudeToolCallPass2): ToolCallTimeli
 function mapClaudeToolCall(
   params: MapperParams,
   status: z.infer<typeof ClaudeToolCallStatusSchema>,
-  error: unknown | null
+  error: unknown | null,
 ): ToolCallTimelineItem | null {
   const pass1 = ClaudeToolCallPass1Schema.safeParse({
     ...params,
@@ -277,26 +269,20 @@ function mapClaudeToolCall(
   return toToolCallTimelineItem(pass2.data);
 }
 
-export function mapClaudeRunningToolCall(
-  params: MapperParams
-): ToolCallTimelineItem | null {
+export function mapClaudeRunningToolCall(params: MapperParams): ToolCallTimelineItem | null {
   return mapClaudeToolCall(params, "running", null);
 }
 
-export function mapClaudeCompletedToolCall(
-  params: MapperParams
-): ToolCallTimelineItem | null {
+export function mapClaudeCompletedToolCall(params: MapperParams): ToolCallTimelineItem | null {
   return mapClaudeToolCall(params, "completed", null);
 }
 
 export function mapClaudeFailedToolCall(
-  params: MapperParams & { error: unknown }
+  params: MapperParams & { error: unknown },
 ): ToolCallTimelineItem | null {
   return mapClaudeToolCall(params, "failed", params.error);
 }
 
-export function mapClaudeCanceledToolCall(
-  params: MapperParams
-): ToolCallTimelineItem | null {
+export function mapClaudeCanceledToolCall(params: MapperParams): ToolCallTimelineItem | null {
   return mapClaudeToolCall(params, "canceled", null);
 }

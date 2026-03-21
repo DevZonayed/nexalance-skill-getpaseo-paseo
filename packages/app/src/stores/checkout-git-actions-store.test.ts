@@ -51,9 +51,7 @@ describe("checkout-git-actions-store", () => {
     const second = store.commit({ serverId, cwd });
 
     expect(client.checkoutCommit).toHaveBeenCalledTimes(1);
-    expect(
-      store.getStatus({ serverId, cwd, actionId: "commit" })
-    ).toBe("pending");
+    expect(store.getStatus({ serverId, cwd, actionId: "commit" })).toBe("pending");
 
     deferred.resolve({});
     await Promise.all([first, second]);
@@ -64,4 +62,3 @@ describe("checkout-git-actions-store", () => {
     expect(store.getStatus({ serverId, cwd, actionId: "commit" })).toBe("idle");
   });
 });
-

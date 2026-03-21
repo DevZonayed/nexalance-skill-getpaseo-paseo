@@ -32,9 +32,7 @@ export function useAgentAttentionClear({
   attentionReason,
   isScreenFocused,
 }: UseAgentAttentionClearParams): AgentAttentionClearController {
-  const [isAppVisible, setIsAppVisible] = useState<boolean>(() =>
-    getIsAppActivelyVisible()
-  );
+  const [isAppVisible, setIsAppVisible] = useState<boolean>(() => getIsAppActivelyVisible());
   const deferredFocusEntryClearRef = useRef(false);
   const prevRequiresAttentionRef = useRef(Boolean(requiresAttention));
   const prevActivelyViewedRef = useRef(isScreenFocused && getIsAppActivelyVisible());
@@ -62,7 +60,7 @@ export function useAgentAttentionClear({
       deferredFocusEntryClearRef.current = false;
       client.clearAgentAttention(resolvedAgentId);
     },
-    [agentId, attentionReason, client, isConnected, requiresAttention]
+    [agentId, attentionReason, client, isConnected, requiresAttention],
   );
 
   useEffect(() => {
@@ -70,10 +68,7 @@ export function useAgentAttentionClear({
       setIsAppVisible(getIsAppActivelyVisible());
     };
 
-    const appStateSubscription = AppState.addEventListener(
-      "change",
-      updateVisibility
-    );
+    const appStateSubscription = AppState.addEventListener("change", updateVisibility);
 
     if (Platform.OS === "web" && typeof document !== "undefined") {
       document.addEventListener("visibilitychange", updateVisibility);
@@ -114,10 +109,8 @@ export function useAgentAttentionClear({
   }, [isAppVisible, isScreenFocused, requiresAttention]);
 
   useEffect(() => {
-    const enteredScreenFocus =
-      !prevScreenFocusedRef.current && isScreenFocused && isAppVisible;
-    const resumedIntoFocusedAgent =
-      !prevAppVisibleRef.current && isAppVisible && isScreenFocused;
+    const enteredScreenFocus = !prevScreenFocusedRef.current && isScreenFocused && isAppVisible;
+    const resumedIntoFocusedAgent = !prevAppVisibleRef.current && isAppVisible && isScreenFocused;
 
     if (enteredScreenFocus || resumedIntoFocusedAgent) {
       clearAttention("focus-entry");

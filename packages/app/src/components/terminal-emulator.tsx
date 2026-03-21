@@ -318,10 +318,7 @@ export default function TerminalEmulator({
       initialOutputText,
       theme: mountedThemeRef.current,
     });
-    appliedChunkSequenceRef.current = Math.max(
-      0,
-      Math.floor(initialOutputChunkSequence)
-    );
+    appliedChunkSequenceRef.current = Math.max(0, Math.floor(initialOutputChunkSequence));
 
     return () => {
       runtime.unmount();
@@ -469,10 +466,7 @@ export default function TerminalEmulator({
   }, [streamKey]);
 
   useEffect(() => {
-    const maxScrollOffset = Math.max(
-      0,
-      viewportMetrics.contentSize - viewportMetrics.viewportSize
-    );
+    const maxScrollOffset = Math.max(0, viewportMetrics.contentSize - viewportMetrics.viewportSize);
     const normalizedOffset = clamp(viewportMetrics.offset, 0, maxScrollOffset);
     if (maxScrollOffset <= 0 || viewportMetrics.viewportSize <= 0) {
       setIsScrollVisible(false);
@@ -504,11 +498,7 @@ export default function TerminalEmulator({
       setIsScrollActive(false);
       scrollActiveTimeoutRef.current = null;
     }, SCROLLBAR_HANDLE_SCROLL_ACTIVE_MS);
-  }, [
-    viewportMetrics.contentSize,
-    viewportMetrics.offset,
-    viewportMetrics.viewportSize,
-  ]);
+  }, [viewportMetrics.contentSize, viewportMetrics.offset, viewportMetrics.viewportSize]);
 
   useEffect(() => {
     return () => {
@@ -528,7 +518,7 @@ export default function TerminalEmulator({
         contentSize: viewportMetrics.contentSize,
         offset: viewportMetrics.offset,
       }),
-    [viewportMetrics.contentSize, viewportMetrics.offset, viewportMetrics.viewportSize]
+    [viewportMetrics.contentSize, viewportMetrics.offset, viewportMetrics.viewportSize],
   );
 
   useEffect(() => {
@@ -569,11 +559,7 @@ export default function TerminalEmulator({
       window.removeEventListener("pointerup", stopDragging);
       window.removeEventListener("pointercancel", stopDragging);
     };
-  }, [
-    isDraggingScrollbar,
-    scrollbarGeometry.maxHandleOffset,
-    scrollbarGeometry.maxScrollOffset,
-  ]);
+  }, [isDraggingScrollbar, scrollbarGeometry.maxHandleOffset, scrollbarGeometry.maxScrollOffset]);
 
   const handleVisible =
     scrollbarGeometry.isVisible && (isDraggingScrollbar || isScrollVisible || isHandleHovered);
@@ -590,16 +576,13 @@ export default function TerminalEmulator({
       : SCROLLBAR_HANDLE_WIDTH_IDLE;
   const thumbRegionOffset = Math.max(
     0,
-    scrollbarGeometry.handleOffset - SCROLLBAR_HANDLE_GRAB_VERTICAL_PADDING
+    scrollbarGeometry.handleOffset - SCROLLBAR_HANDLE_GRAB_VERTICAL_PADDING,
   );
   const thumbRegionHeight = Math.min(
     viewportMetrics.viewportSize - thumbRegionOffset,
-    scrollbarGeometry.handleSize + SCROLLBAR_HANDLE_GRAB_VERTICAL_PADDING * 2
+    scrollbarGeometry.handleSize + SCROLLBAR_HANDLE_GRAB_VERTICAL_PADDING * 2,
   );
-  const handleInsetTop = Math.max(
-    0,
-    (thumbRegionHeight - scrollbarGeometry.handleSize) / 2
-  );
+  const handleInsetTop = Math.max(0, (thumbRegionHeight - scrollbarGeometry.handleSize) / 2);
   const handleTravelDurationMs =
     isDraggingScrollbar || isScrollActive ? 0 : SCROLLBAR_HANDLE_TRAVEL_DURATION_MS;
 
@@ -677,7 +660,7 @@ export default function TerminalEmulator({
               dragStartOffsetRef.current = clamp(
                 viewportMetrics.offset,
                 0,
-                scrollbarGeometry.maxScrollOffset
+                scrollbarGeometry.maxScrollOffset,
               );
               dragStartClientYRef.current = event.clientY;
               setIsDraggingScrollbar(true);
@@ -703,8 +686,7 @@ export default function TerminalEmulator({
                 opacity: handleOpacity,
                 transitionProperty: "opacity, width, background-color",
                 transitionDuration: `${SCROLLBAR_HANDLE_FADE_DURATION_MS}ms, ${SCROLLBAR_HANDLE_WIDTH_TRANSITION_DURATION_MS}ms, ${SCROLLBAR_HANDLE_FADE_DURATION_MS}ms`,
-                transitionTimingFunction:
-                  "ease-out, cubic-bezier(0.22, 0.75, 0.2, 1), ease-out",
+                transitionTimingFunction: "ease-out, cubic-bezier(0.22, 0.75, 0.2, 1), ease-out",
               }}
             />
           </div>

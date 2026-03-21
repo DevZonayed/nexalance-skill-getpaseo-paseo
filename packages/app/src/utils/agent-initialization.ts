@@ -16,10 +16,7 @@ export function getInitDeferred(key: string): DeferredInit | undefined {
   return initPromises.get(key);
 }
 
-export function createInitDeferred(
-  key: string,
-  requestDirection: "tail" | "after"
-): DeferredInit {
+export function createInitDeferred(key: string, requestDirection: "tail" | "after"): DeferredInit {
   let resolve!: () => void;
   let reject!: (error: Error) => void;
 

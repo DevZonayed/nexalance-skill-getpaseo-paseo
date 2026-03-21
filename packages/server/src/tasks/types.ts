@@ -2,11 +2,7 @@ export type TaskStatus = "draft" | "open" | "in_progress" | "done" | "failed";
 
 export type AgentType = "claude" | "codex";
 
-export type ModelName =
-  | "haiku"
-  | "sonnet"
-  | "opus"
-  | `gpt-${string}`;
+export type ModelName = "haiku" | "sonnet" | "opus" | `gpt-${string}`;
 
 export interface Note {
   timestamp: string; // ISO date

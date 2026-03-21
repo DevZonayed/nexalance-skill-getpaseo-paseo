@@ -17,11 +17,11 @@ export default function HostIndexRoute() {
   const params = useLocalSearchParams<{ serverId?: string }>();
   const serverId = typeof params.serverId === "string" ? params.serverId : "";
   const { isLoading: preferencesLoading } = useFormPreferences();
-  const sessionAgents = useSessionStore(
-    (state) => (serverId ? state.sessions[serverId]?.agents : undefined)
+  const sessionAgents = useSessionStore((state) =>
+    serverId ? state.sessions[serverId]?.agents : undefined,
   );
-  const sessionWorkspaces = useSessionStore(
-    (state) => (serverId ? state.sessions[serverId]?.workspaces : undefined)
+  const sessionWorkspaces = useSessionStore((state) =>
+    serverId ? state.sessions[serverId]?.workspaces : undefined,
   );
 
   useEffect(() => {
@@ -44,12 +44,10 @@ export default function HostIndexRoute() {
         ? Array.from(sessionAgents.values()).filter((agent) => !agent.archivedAt)
         : [];
       visibleAgents.sort(
-        (left, right) => right.lastActivityAt.getTime() - left.lastActivityAt.getTime()
+        (left, right) => right.lastActivityAt.getTime() - left.lastActivityAt.getTime(),
       );
 
-      const visibleWorkspaces = sessionWorkspaces
-        ? Array.from(sessionWorkspaces.values())
-        : [];
+      const visibleWorkspaces = sessionWorkspaces ? Array.from(sessionWorkspaces.values()) : [];
       visibleWorkspaces.sort((left, right) => {
         const leftTime = left.activityAt?.getTime() ?? Number.NEGATIVE_INFINITY;
         const rightTime = right.activityAt?.getTime() ?? Number.NEGATIVE_INFINITY;
@@ -63,7 +61,7 @@ export default function HostIndexRoute() {
             serverId,
             workspaceId: primaryAgent.cwd.trim(),
             target: { kind: "agent", agentId: primaryAgent.id },
-          }) as any
+          }) as any,
         );
         return;
       }
@@ -78,14 +76,7 @@ export default function HostIndexRoute() {
     }, HOST_ROOT_REDIRECT_DELAY_MS);
 
     return () => clearTimeout(timer);
-  }, [
-    pathname,
-    preferencesLoading,
-    router,
-    serverId,
-    sessionAgents,
-    sessionWorkspaces,
-  ]);
+  }, [pathname, preferencesLoading, router, serverId, sessionAgents, sessionWorkspaces]);
 
   return null;
 }

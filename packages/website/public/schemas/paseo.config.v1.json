@@ -120,9 +120,7 @@
                             "const": "default"
                           }
                         },
-                        "required": [
-                          "mode"
-                        ],
+                        "required": ["mode"],
                         "additionalProperties": false
                       },
                       {
@@ -139,9 +137,7 @@
                             }
                           }
                         },
-                        "required": [
-                          "mode"
-                        ],
+                        "required": ["mode"],
                         "additionalProperties": false
                       },
                       {
@@ -160,10 +156,7 @@
                             "minItems": 1
                           }
                         },
-                        "required": [
-                          "mode",
-                          "argv"
-                        ],
+                        "required": ["mode", "argv"],
                         "additionalProperties": false
                       }
                     ]
@@ -178,11 +171,7 @@
                 "additionalProperties": false
               },
               "propertyNames": {
-                "enum": [
-                  "claude",
-                  "codex",
-                  "opencode"
-                ]
+                "enum": ["claude", "codex", "opencode"]
               }
             }
           },
@@ -207,10 +196,7 @@
                         },
                         {
                           "type": "string",
-                          "enum": [
-                            "openai",
-                            "local"
-                          ]
+                          "enum": ["openai", "local"]
                         }
                       ]
                     },
@@ -238,11 +224,7 @@
                   "properties": {
                     "provider": {
                       "type": "string",
-                      "enum": [
-                        "claude",
-                        "codex",
-                        "opencode"
-                      ]
+                      "enum": ["claude", "codex", "opencode"]
                     },
                     "model": {
                       "type": "string",
@@ -276,14 +258,7 @@
                     },
                     "voice": {
                       "type": "string",
-                      "enum": [
-                        "alloy",
-                        "echo",
-                        "fable",
-                        "onyx",
-                        "nova",
-                        "shimmer"
-                      ]
+                      "enum": ["alloy", "echo", "fable", "onyx", "nova", "shimmer"]
                     },
                     "speakerId": {
                       "type": "integer"
@@ -305,21 +280,11 @@
           "properties": {
             "level": {
               "type": "string",
-              "enum": [
-                "trace",
-                "debug",
-                "info",
-                "warn",
-                "error",
-                "fatal"
-              ]
+              "enum": ["trace", "debug", "info", "warn", "error", "fatal"]
             },
             "format": {
               "type": "string",
-              "enum": [
-                "pretty",
-                "json"
-              ]
+              "enum": ["pretty", "json"]
             },
             "console": {
               "type": "object",

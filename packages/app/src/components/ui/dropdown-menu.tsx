@@ -74,7 +74,7 @@ function useControllableOpenState({
       if (!isControlled) setInternalOpen(next);
       onOpenChange?.(next);
     },
-    [isControlled, onOpenChange]
+    [isControlled, onOpenChange],
   );
   return [value, setValue];
 }
@@ -146,7 +146,10 @@ function computePosition({
   // Constrain to screen
   const padding = 8;
   x = Math.max(padding, Math.min(displayArea.width - contentWidth - padding, x!));
-  y = Math.max(displayArea.y + padding, Math.min(displayArea.y + displayArea.height - contentHeight - padding, y!));
+  y = Math.max(
+    displayArea.y + padding,
+    Math.min(displayArea.y + displayArea.height - contentHeight - padding, y!),
+  );
 
   return { x, y, actualPlacement };
 }
@@ -174,16 +177,14 @@ export function DropdownMenu({
       setOpen: setIsOpen,
       triggerRef,
     }),
-    [isOpen, setIsOpen]
+    [isOpen, setIsOpen],
   );
 
   return <DropdownMenuContext.Provider value={value}>{children}</DropdownMenuContext.Provider>;
 }
 
 type TriggerState = { pressed: boolean; hovered: boolean; open: boolean };
-type TriggerStyleProp =
-  | StyleProp<ViewStyle>
-  | ((state: TriggerState) => StyleProp<ViewStyle>);
+type TriggerStyleProp = StyleProp<ViewStyle> | ((state: TriggerState) => StyleProp<ViewStyle>);
 
 interface DropdownMenuTriggerProps extends Omit<PressableProps, "style" | "children"> {
   style?: TriggerStyleProp;
@@ -315,10 +316,13 @@ export function DropdownMenuContent({
     setPosition({ x, y: result.y });
   }, [triggerRect, contentSize, side, align, offset, fullWidth, horizontalPadding]);
 
-  const handleContentLayout = useCallback((event: { nativeEvent: { layout: { width: number; height: number } } }) => {
-    const { width: w, height: h } = event.nativeEvent.layout;
-    setContentSize({ width: w, height: h });
-  }, []);
+  const handleContentLayout = useCallback(
+    (event: { nativeEvent: { layout: { width: number; height: number } } }) => {
+      const { width: w, height: h } = event.nativeEvent.layout;
+      setContentSize({ width: w, height: h });
+    },
+    [],
+  );
 
   if (!open) return null;
 
@@ -363,7 +367,11 @@ export function DropdownMenuContent({
             },
           ]}
         >
-          <ScrollView bounces={false} showsVerticalScrollIndicator contentContainerStyle={{ flexGrow: 1 }}>
+          <ScrollView
+            bounces={false}
+            showsVerticalScrollIndicator
+            contentContainerStyle={{ flexGrow: 1 }}
+          >
             {children}
           </ScrollView>
         </Animated.View>
@@ -384,7 +392,13 @@ export function DropdownMenuLabel({
   );
 }
 
-export function DropdownMenuSeparator({ style, testID }: { style?: ViewStyle; testID?: string }): ReactElement {
+export function DropdownMenuSeparator({
+  style,
+  testID,
+}: {
+  style?: ViewStyle;
+  testID?: string;
+}): ReactElement {
   return <View style={[styles.separator, style]} testID={testID} />;
 }
 
@@ -464,7 +478,10 @@ export function DropdownMenuItem({
   }
 
   const trailingContent =
-    trailing ?? (!showSelectedCheck && selected ? <Check size={16} color={theme.colors.foregroundMuted} /> : null);
+    trailing ??
+    (!showSelectedCheck && selected ? (
+      <Check size={16} color={theme.colors.foregroundMuted} />
+    ) : null);
 
   return (
     <Pressable
@@ -480,7 +497,11 @@ export function DropdownMenuItem({
       }}
       style={({ pressed, hovered }) => [
         styles.item,
-        selected ? (selectedVariant === "accent" ? styles.itemSelectedAccent : styles.itemSelected) : null,
+        selected
+          ? selectedVariant === "accent"
+            ? styles.itemSelectedAccent
+            : styles.itemSelected
+          : null,
         selected && (hovered || pressed) && selectedVariant !== "accent"
           ? styles.itemSelectedInteractive
           : null,
@@ -512,7 +533,9 @@ export function DropdownMenuItem({
             numberOfLines={2}
             style={[
               styles.itemDescription,
-              selected && selectedVariant === "accent" ? styles.itemDescriptionSelectedAccent : null,
+              selected && selectedVariant === "accent"
+                ? styles.itemDescriptionSelectedAccent
+                : null,
             ]}
           >
             {description}

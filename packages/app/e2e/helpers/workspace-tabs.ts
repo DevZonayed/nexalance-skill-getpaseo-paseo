@@ -38,7 +38,7 @@ export async function ensureWorkspaceAgentPaneVisible(page: Page): Promise<void>
 
 export async function sampleWorkspaceTabIds(
   page: Page,
-  options: { durationMs?: number; intervalMs?: number } = {}
+  options: { durationMs?: number; intervalMs?: number } = {},
 ): Promise<string[][]> {
   const durationMs = options.durationMs ?? 2_500;
   const intervalMs = options.intervalMs ?? 50;

@@ -29,7 +29,9 @@ export type CliConfigOverrides = Partial<{
 
 const OptionalVoiceLlmProviderSchema = z
   .union([z.string(), z.null(), z.undefined()])
-  .transform((value): string | null => (typeof value === "string" ? value.trim().toLowerCase() : null))
+  .transform((value): string | null =>
+    typeof value === "string" ? value.trim().toLowerCase() : null,
+  )
   .pipe(z.union([AgentProviderSchema, z.null()]));
 
 function parseOptionalVoiceLlmProvider(value: unknown): AgentProvider | null {
@@ -42,7 +44,7 @@ export function loadConfig(
   options?: {
     env?: NodeJS.ProcessEnv;
     cli?: CliConfigOverrides;
-  }
+  },
 ): PaseoDaemonConfig {
   const env = options?.env ?? process.env;
   const persisted = loadPersistedConfig(paseoHome);
@@ -53,10 +55,7 @@ export function loadConfig(
   // - unix:///path/to/socket (Unix socket)
   // Default is TCP at 127.0.0.1:6767
   const listen =
-    options?.cli?.listen ??
-    env.PASEO_LISTEN ??
-    persisted.daemon?.listen ??
-    getDefaultListen();
+    options?.cli?.listen ?? env.PASEO_LISTEN ?? persisted.daemon?.listen ?? getDefaultListen();
 
   const envCorsOrigins = env.PASEO_CORS_ORIGINS
     ? env.PASEO_CORS_ORIGINS.split(",").map((s) => s.trim())
@@ -70,24 +69,17 @@ export function loadConfig(
     options?.cli?.allowedHosts,
   ]);
 
-  const mcpEnabled =
-    options?.cli?.mcpEnabled ?? persisted.daemon?.mcp?.enabled ?? true;
+  const mcpEnabled = options?.cli?.mcpEnabled ?? persisted.daemon?.mcp?.enabled ?? true;
 
-  const relayEnabled =
-    options?.cli?.relayEnabled ?? persisted.daemon?.relay?.enabled ?? true;
+  const relayEnabled = options?.cli?.relayEnabled ?? persisted.daemon?.relay?.enabled ?? true;
 
   const relayEndpoint =
-    env.PASEO_RELAY_ENDPOINT ??
-    persisted.daemon?.relay?.endpoint ??
-    DEFAULT_RELAY_ENDPOINT;
+    env.PASEO_RELAY_ENDPOINT ?? persisted.daemon?.relay?.endpoint ?? DEFAULT_RELAY_ENDPOINT;
 
   const relayPublicEndpoint =
-    env.PASEO_RELAY_PUBLIC_ENDPOINT ??
-    persisted.daemon?.relay?.publicEndpoint ??
-    relayEndpoint;
+    env.PASEO_RELAY_PUBLIC_ENDPOINT ?? persisted.daemon?.relay?.publicEndpoint ?? relayEndpoint;
 
-  const appBaseUrl =
-    env.PASEO_APP_BASE_URL ?? persisted.app?.baseUrl ?? DEFAULT_APP_BASE_URL;
+  const appBaseUrl = env.PASEO_APP_BASE_URL ?? persisted.app?.baseUrl ?? DEFAULT_APP_BASE_URL;
 
   const { openai, speech } = resolveSpeechConfig({
     paseoHome,
@@ -97,7 +89,7 @@ export function loadConfig(
 
   const envVoiceLlmProvider = parseOptionalVoiceLlmProvider(env.PASEO_VOICE_LLM_PROVIDER);
   const persistedVoiceLlmProvider = parseOptionalVoiceLlmProvider(
-    persisted.features?.voiceMode?.llm?.provider
+    persisted.features?.voiceMode?.llm?.provider,
   );
   const voiceLlmProvider = envVoiceLlmProvider ?? persistedVoiceLlmProvider ?? null;
   const voiceLlmProviderExplicit =
@@ -108,7 +100,7 @@ export function loadConfig(
     listen,
     paseoHome,
     corsAllowedOrigins: Array.from(
-      new Set([...persistedCorsOrigins, ...envCorsOrigins].filter((s) => s.length > 0))
+      new Set([...persistedCorsOrigins, ...envCorsOrigins].filter((s) => s.length > 0)),
     ),
     allowedHosts,
     mcpEnabled,

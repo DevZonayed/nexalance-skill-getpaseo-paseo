@@ -17,7 +17,7 @@ function createMeasurementState(
     offsetY: number;
     viewportMeasuredForKey: string | null;
     contentMeasuredForKey: string | null;
-  }>
+  }>,
 ) {
   return {
     containerKey: "scroll-view",
@@ -119,11 +119,10 @@ function createDriverHarness(input?: {
     agentId: "agent-1",
     authoritativeReady: input?.authoritativeReady ?? true,
     renderStrategy: "forward-stream",
-    transportBehavior:
-      input?.transportBehavior ?? {
-        verificationDelayFrames: 0,
-        verificationRetryMode: "rescroll",
-      },
+    transportBehavior: input?.transportBehavior ?? {
+      verificationDelayFrames: 0,
+      verificationRetryMode: "rescroll",
+    },
     measurementState,
     nearBottom: input?.isNearBottom ?? true,
   };
@@ -166,7 +165,7 @@ describe("deriveBottomAnchorBlockedReason", () => {
         isAuthoritativeHistoryReady: false,
         measurementState: createMeasurementState(),
         pendingVerificationRequestId: null,
-      })
+      }),
     ).toBe("waiting_for_history_readiness");
 
     expect(
@@ -178,7 +177,7 @@ describe("deriveBottomAnchorBlockedReason", () => {
           viewportMeasuredForKey: "scroll-view",
         }),
         pendingVerificationRequestId: null,
-      })
+      }),
     ).toBe("waiting_for_measurable_content");
 
     expect(
@@ -192,7 +191,7 @@ describe("deriveBottomAnchorBlockedReason", () => {
           contentMeasuredForKey: "scroll-view",
         }),
         pendingVerificationRequestId: pendingRequest.id,
-      })
+      }),
     ).toBe("waiting_for_post_layout_verification");
   });
 });
@@ -440,7 +439,7 @@ describe("bottom anchor controller driver", () => {
       harness.context.measurementState.offsetY = Math.max(
         0,
         harness.context.measurementState.contentHeight -
-          harness.context.measurementState.viewportHeight
+          harness.context.measurementState.viewportHeight,
       );
       harness.context.nearBottom = true;
     });
@@ -575,7 +574,7 @@ describe("controller helper predicates", () => {
           viewportMeasuredForKey: "scroll-view",
           contentMeasuredForKey: "scroll-view",
         }),
-      })
+      }),
     ).toBe("waiting_for_measurable_viewport");
   });
 
@@ -590,7 +589,7 @@ describe("controller helper predicates", () => {
           viewportMeasuredForKey: "scroll-view",
           contentMeasuredForKey: "scroll-view",
         }),
-      })
+      }),
     ).toBe("waiting_for_history_readiness");
 
     expect(
@@ -603,7 +602,7 @@ describe("controller helper predicates", () => {
           viewportMeasuredForKey: "scroll-view",
           contentMeasuredForKey: "scroll-view",
         }),
-      })
+      }),
     ).toBeNull();
   });
 
@@ -615,7 +614,7 @@ describe("controller helper predicates", () => {
         mode,
         previousContentHeight: 1000,
         contentHeight: 1100,
-      })
+      }),
     ).toBe(false);
     expect(
       __private__.shouldRestickOnViewportChange({
@@ -624,7 +623,7 @@ describe("controller helper predicates", () => {
         viewportWidth: 640,
         previousViewportHeight: 400,
         viewportHeight: 360,
-      })
+      }),
     ).toBe(false);
   });
 
@@ -637,7 +636,7 @@ describe("controller helper predicates", () => {
         hasPendingRequest: true,
         hasPendingVerification: false,
         hasUnverifiedStickyMeasurementChange: false,
-      })
+      }),
     ).toBe(false);
 
     expect(
@@ -648,7 +647,7 @@ describe("controller helper predicates", () => {
         hasPendingRequest: false,
         hasPendingVerification: true,
         hasUnverifiedStickyMeasurementChange: false,
-      })
+      }),
     ).toBe(false);
 
     expect(
@@ -659,7 +658,7 @@ describe("controller helper predicates", () => {
         hasPendingRequest: false,
         hasPendingVerification: false,
         hasUnverifiedStickyMeasurementChange: true,
-      })
+      }),
     ).toBe(false);
 
     expect(
@@ -670,7 +669,7 @@ describe("controller helper predicates", () => {
         hasPendingRequest: false,
         hasPendingVerification: false,
         hasUnverifiedStickyMeasurementChange: false,
-      })
+      }),
     ).toBe(true);
   });
 
@@ -683,7 +682,7 @@ describe("controller helper predicates", () => {
         hasPendingRequest: false,
         hasPendingVerification: false,
         hasUnverifiedStickyMeasurementChange: true,
-      })
+      }),
     ).toBe(true);
   });
 });

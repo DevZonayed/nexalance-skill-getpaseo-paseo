@@ -32,7 +32,7 @@ function generateServerId(): string {
  */
 export function getOrCreateServerId(
   paseoHome: string,
-  options?: { env?: NodeJS.ProcessEnv; logger?: LoggerLike }
+  options?: { env?: NodeJS.ProcessEnv; logger?: LoggerLike },
 ): string {
   const env = options?.env ?? process.env;
   const log = getLogger(options?.logger);
@@ -76,4 +76,3 @@ export function getOrCreateServerId(
   }
   return created;
 }
-

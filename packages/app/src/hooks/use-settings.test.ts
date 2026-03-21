@@ -26,7 +26,7 @@ describe("use-settings", () => {
     expect(result).toEqual(mod.DEFAULT_APP_SETTINGS);
     expect(asyncStorageMock.setItem).toHaveBeenCalledWith(
       mod.APP_SETTINGS_KEY,
-      JSON.stringify(mod.DEFAULT_APP_SETTINGS)
+      JSON.stringify(mod.DEFAULT_APP_SETTINGS),
     );
   });
 

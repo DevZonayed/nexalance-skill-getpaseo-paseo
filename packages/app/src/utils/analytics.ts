@@ -1,8 +1,4 @@
-type OfflineAction =
-  | "create"
-  | "resume"
-  | "dictation"
-  | "import_list";
+type OfflineAction = "create" | "resume" | "dictation" | "import_list";
 
 type AnalyticsEvent =
   | {

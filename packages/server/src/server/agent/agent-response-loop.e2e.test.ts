@@ -193,7 +193,7 @@ async function startAgentMcpServer(logger: pino.Logger): Promise<AgentMcpServerH
       expect(result.title.length).toBeGreaterThan(0);
       expect(typeof result.count).toBe("number");
     },
-    180000
+    180000,
   );
 
   test.runIf(hasClaudeCredentials)(
@@ -234,6 +234,6 @@ async function startAgentMcpServer(logger: pino.Logger): Promise<AgentMcpServerH
 
       expect(result.message.trim().toLowerCase()).toBe("hello");
     },
-    180000
+    180000,
   );
 });

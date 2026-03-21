@@ -1,10 +1,7 @@
 import type { ComponentType, ReactElement, ReactNode, RefObject } from "react";
 import type { StyleProp, ViewStyle } from "react-native";
 import type { StreamItem } from "@/types/stream";
-import type {
-  StreamHistoryBoundary,
-  StreamRenderSegments,
-} from "./agent-stream-render-model";
+import type { StreamHistoryBoundary, StreamRenderSegments } from "./agent-stream-render-model";
 import type {
   BottomAnchorLocalRequest,
   BottomAnchorRouteRequest,
@@ -49,21 +46,9 @@ export type StreamViewportHandle = {
 };
 
 export type StreamSegmentRenderers = {
-  renderHistoryVirtualizedRow: (
-    item: StreamItem,
-    index: number,
-    items: StreamItem[]
-  ) => ReactNode;
-  renderHistoryMountedRow: (
-    item: StreamItem,
-    index: number,
-    items: StreamItem[]
-  ) => ReactNode;
-  renderLiveHeadRow: (
-    item: StreamItem,
-    index: number,
-    items: StreamItem[]
-  ) => ReactNode;
+  renderHistoryVirtualizedRow: (item: StreamItem, index: number, items: StreamItem[]) => ReactNode;
+  renderHistoryMountedRow: (item: StreamItem, index: number, items: StreamItem[]) => ReactNode;
+  renderLiveHeadRow: (item: StreamItem, index: number, items: StreamItem[]) => ReactNode;
   renderLiveAuxiliary: () => ReactNode;
 };
 
@@ -96,18 +81,16 @@ export interface StreamStrategy {
   getNeighborItem: (
     items: StreamItem[],
     index: number,
-    relation: NeighborRelation
+    relation: NeighborRelation,
   ) => StreamItem | undefined;
   collectAssistantTurnContent: (items: StreamItem[], startIndex: number) => string;
   isNearBottom: (input: StreamNearBottomInput) => boolean;
   getBottomOffset: (metrics: StreamViewportMetrics) => number;
   getEdgeSlotProps: (
     component: ReactElement | ComponentType<any> | null,
-    gapSize: number
+    gapSize: number,
   ) => StreamEdgeSlotProps;
-  getMaintainVisibleContentPosition: () =>
-    | MaintainVisibleContentPositionConfig
-    | undefined;
+  getMaintainVisibleContentPosition: () => MaintainVisibleContentPositionConfig | undefined;
   getBottomAnchorTransportBehavior: () => BottomAnchorTransportBehavior;
   getFlatListInverted: () => boolean;
   getOverlayScrollbarInverted: () => boolean;
@@ -137,15 +120,12 @@ type StreamStrategyConfig = {
 
 const NATIVE_SETTLING_VERIFICATION_DELAY_FRAMES = 4;
 
-export function createStreamStrategy(
-  config: StreamStrategyConfig
-): StreamStrategy {
+export function createStreamStrategy(config: StreamStrategyConfig): StreamStrategy {
   return {
     render: config.render,
     orderTail: (streamItems) =>
       config.orderTailReverse ? [...streamItems].reverse() : streamItems,
-    orderHead: (streamHead) =>
-      config.orderHeadReverse ? [...streamHead].reverse() : streamHead,
+    orderHead: (streamHead) => (config.orderHeadReverse ? [...streamHead].reverse() : streamHead),
     getNeighborIndex: (index, relation) =>
       relation === "above"
         ? index + config.assistantTurnTraversalStep
@@ -197,15 +177,14 @@ export function createStreamStrategy(
     getOverlayScrollbarInverted: () => config.overlayScrollbarInverted,
     shouldDisableParentScrollOnInlineDetailsExpansion: () =>
       config.disableParentScrollOnInlineDetailsExpansion,
-    shouldAnchorBottomOnContentSizeChange: () =>
-      config.anchorBottomOnContentSizeChange,
+    shouldAnchorBottomOnContentSizeChange: () => config.anchorBottomOnContentSizeChange,
     shouldAnimateManualScrollToBottom: () => config.animateManualScrollToBottom,
     shouldUseVirtualizedList: () => config.useVirtualizedList,
   };
 }
 
 export function resolveStreamRenderStrategy(
-  input: ResolveStreamRenderStrategyInput
+  input: ResolveStreamRenderStrategyInput,
 ): StreamStrategy {
   if (input.platform === "web") {
     return createWebStreamStrategy({
@@ -226,7 +205,7 @@ export function resolveBottomAnchorTransportBehavior(input: {
   return {
     verificationDelayFrames: Math.max(
       baseBehavior.verificationDelayFrames,
-      NATIVE_SETTLING_VERIFICATION_DELAY_FRAMES
+      NATIVE_SETTLING_VERIFICATION_DELAY_FRAMES,
     ),
     verificationRetryMode: "recheck",
   };
@@ -260,11 +239,7 @@ export function getStreamNeighborItem(params: {
   index: number;
   relation: NeighborRelation;
 }): StreamItem | undefined {
-  return params.strategy.getNeighborItem(
-    params.items,
-    params.index,
-    params.relation
-  );
+  return params.strategy.getNeighborItem(params.items, params.index, params.relation);
 }
 
 export function collectAssistantTurnContentForStreamRenderStrategy(params: {
@@ -272,14 +247,11 @@ export function collectAssistantTurnContentForStreamRenderStrategy(params: {
   items: StreamItem[];
   startIndex: number;
 }): string {
-  return params.strategy.collectAssistantTurnContent(
-    params.items,
-    params.startIndex
-  );
+  return params.strategy.collectAssistantTurnContent(params.items, params.startIndex);
 }
 
 export function isNearBottomForStreamRenderStrategy(
-  params: StreamNearBottomInput & { strategy: StreamStrategy }
+  params: StreamNearBottomInput & { strategy: StreamStrategy },
 ): boolean {
   return params.strategy.isNearBottom({
     offsetY: params.offsetY,
@@ -292,7 +264,7 @@ export function isNearBottomForStreamRenderStrategy(
 export function getBottomOffsetForStreamRenderStrategy(
   params: StreamViewportMetrics & {
     strategy: StreamStrategy;
-  }
+  },
 ): number {
   return params.strategy.getBottomOffset({
     contentHeight: params.contentHeight,

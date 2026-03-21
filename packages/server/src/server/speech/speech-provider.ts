@@ -44,14 +44,8 @@ export type StreamingTranscriptionSession = {
   clear(): void;
   close(): void;
 
-  on(
-    event: "committed",
-    handler: (payload: StreamingTranscriptionCommittedEvent) => void
-  ): unknown;
-  on(
-    event: "transcript",
-    handler: (payload: StreamingTranscriptionEvent) => void
-  ): unknown;
+  on(event: "committed", handler: (payload: StreamingTranscriptionCommittedEvent) => void): unknown;
+  on(event: "transcript", handler: (payload: StreamingTranscriptionEvent) => void): unknown;
   on(event: "error", handler: (err: unknown) => void): unknown;
 };
 

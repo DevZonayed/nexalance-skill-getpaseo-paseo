@@ -16,14 +16,9 @@ type PendingCreateAttempt = {
 
 type CreateFlowState = {
   pendingByDraftId: Record<string, PendingCreateAttempt>;
-  setPending: (
-    pending: Omit<PendingCreateAttempt, "lifecycle">
-  ) => void;
+  setPending: (pending: Omit<PendingCreateAttempt, "lifecycle">) => void;
   updateAgentId: (input: { draftId: string; agentId: string }) => void;
-  markLifecycle: (input: {
-    draftId: string;
-    lifecycle: CreateFlowLifecycleState;
-  }) => void;
+  markLifecycle: (input: { draftId: string; lifecycle: CreateFlowLifecycleState }) => void;
   rekeyDraft: (input: { fromDraftId: string; toDraftId: string }) => void;
   clear: (input: { draftId: string }) => void;
   clearAll: () => void;

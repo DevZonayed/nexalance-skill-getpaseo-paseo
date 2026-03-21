@@ -14,7 +14,7 @@ export interface ClipboardDataLike {
 export type ImageAttachmentFromFile = AttachmentMetadata;
 
 export function collectImageFilesFromClipboardData(
-  clipboardData?: ClipboardDataLike | null
+  clipboardData?: ClipboardDataLike | null,
 ): File[] {
   if (!clipboardData?.items) {
     return [];
@@ -39,7 +39,7 @@ export function collectImageFilesFromClipboardData(
 }
 
 export async function filesToImageAttachments(
-  files: readonly File[]
+  files: readonly File[],
 ): Promise<ImageAttachmentFromFile[]> {
   const attachments = await Promise.all(
     files.map(async (file) => {
@@ -56,10 +56,8 @@ export async function filesToImageAttachments(
         });
         return null;
       }
-    })
+    }),
   );
 
-  return attachments.filter(
-    (entry): entry is ImageAttachmentFromFile => entry !== null
-  );
+  return attachments.filter((entry): entry is ImageAttachmentFromFile => entry !== null);
 }

@@ -44,9 +44,7 @@ class FakeDaemonClient {
     return this.state;
   }
 
-  subscribeConnectionStatus(
-    listener: (status: ConnectionState) => void
-  ): () => void {
+  subscribeConnectionStatus(listener: (status: ConnectionState) => void): () => void {
     this.listeners.add(listener);
     listener(this.state);
     return () => {
@@ -59,7 +57,7 @@ class FakeDaemonClient {
   }
 
   async fetchAgents(
-    options?: FetchAgentsOptions
+    options?: FetchAgentsOptions,
   ): Promise<Awaited<ReturnType<DaemonClient["fetchAgents"]>>> {
     this.fetchAgentsCalls.push(options ?? {});
     const queued = this.fetchAgentsResponses.shift();
@@ -146,8 +144,7 @@ function makeFetchAgentsEntry(input: {
       thinkingOptionId: null,
       requiresAttention: input.requiresAttention ?? false,
       attentionReason: input.attentionReason ?? null,
-      attentionTimestamp:
-        input.requiresAttention && input.attentionReason ? input.updatedAt : null,
+      attentionTimestamp: input.requiresAttention && input.attentionReason ? input.updatedAt : null,
       archivedAt: null,
       labels: {},
     },
@@ -192,7 +189,7 @@ function makeHost(input?: Partial<HostProfile>): HostProfile {
 
 function makeDeps(
   latencyByConnectionId: Record<string, number | Error>,
-  createdClients: FakeDaemonClient[]
+  createdClients: FakeDaemonClient[],
 ): HostRuntimeControllerDeps {
   return {
     createClient: () => {
@@ -364,9 +361,7 @@ describe("HostRuntimeController", () => {
           throw new Error("should adopt the probe client");
         },
         connectToDaemon: async ({ host, connection }) => {
-          const client = makeConnectedProbeClient(
-            connection.id === "direct:lan:6767" ? 12 : 30
-          );
+          const client = makeConnectedProbeClient(connection.id === "direct:lan:6767" ? 12 : 30);
           if (connection.id === "relay:relay.paseo.sh:443") {
             client.ping = async () => ({ rttMs: await slowPing.promise });
           }
@@ -460,9 +455,7 @@ describe("HostRuntimeController", () => {
     for (let index = 0; index < 6 && !switched; index += 1) {
       clearProbeBackoff(controller);
       await controller.runProbeCycleNow();
-      switched =
-        controller.getSnapshot().activeConnectionId ===
-        "relay:relay.paseo.sh:443";
+      switched = controller.getSnapshot().activeConnectionId === "relay:relay.paseo.sh:443";
     }
     expect(switched).toBe(true);
     expect(controller.getSnapshot().client).not.toBeNull();
@@ -509,9 +502,7 @@ describe("HostRuntimeController", () => {
     for (let index = 0; index < 6 && !switched; index += 1) {
       clearProbeBackoff(controller);
       await controller.runProbeCycleNow();
-      switched =
-        controller.getSnapshot().activeConnectionId ===
-        "relay:relay.paseo.sh:443";
+      switched = controller.getSnapshot().activeConnectionId === "relay:relay.paseo.sh:443";
     }
     expect(switched).toBe(true);
   });
@@ -566,7 +557,7 @@ describe("HostRuntimeController", () => {
           {
             "direct:lan:6767": 12,
           },
-          clients
+          clients,
         ),
       });
 
@@ -579,8 +570,7 @@ describe("HostRuntimeController", () => {
       const transitionPayloads = infoSpy.mock.calls
         .filter((call) => call[0] === "[HostRuntimeTransition]")
         .map((call) => call[1] as { reasonCode?: string | null });
-      const lastTransition =
-        transitionPayloads[transitionPayloads.length - 1] ?? null;
+      const lastTransition = transitionPayloads[transitionPayloads.length - 1] ?? null;
 
       expect(lastTransition?.reasonCode).toBe("transport_error");
     } finally {
@@ -731,10 +721,7 @@ describe("HostRuntimeController", () => {
       deps,
     });
 
-    const waitUntil = async (
-      predicate: () => boolean,
-      timeoutMs = 200
-    ): Promise<void> => {
+    const waitUntil = async (predicate: () => boolean, timeoutMs = 200): Promise<void> => {
       const timeoutAt = Date.now() + timeoutMs;
       while (!predicate()) {
         if (Date.now() >= timeoutAt) {
@@ -830,9 +817,7 @@ describe("HostRuntimeController", () => {
 
     fastProbe.resolve(12);
     await second;
-    const probeAfterSecond = controller
-      .getSnapshot()
-      .probeByConnectionId.get("direct:lan:6767");
+    const probeAfterSecond = controller.getSnapshot().probeByConnectionId.get("direct:lan:6767");
     expect(probeAfterSecond).toEqual({
       status: "available",
       latencyMs: 12,
@@ -888,9 +873,7 @@ describe("HostRuntimeController", () => {
     clearProbeBackoff(controller);
     await controller.runProbeCycleNow();
     expect(controller.getSnapshot().client).toBe(activeClientBeforeProbes);
-    expect(controller.getSnapshot().clientGeneration).toBe(
-      generationBeforeProbes
-    );
+    expect(controller.getSnapshot().clientGeneration).toBe(generationBeforeProbes);
     expect(createdClients).toHaveLength(0);
   });
 });
@@ -920,10 +903,9 @@ describe("HostRuntimeStore", () => {
       },
     });
 
-    useSessionStore.getState().initializeSession(
-      host.serverId,
-      fakeClient as unknown as DaemonClient
-    );
+    useSessionStore
+      .getState()
+      .initializeSession(host.serverId, fakeClient as unknown as DaemonClient);
     store.syncHosts([host]);
 
     const timeoutAt = Date.now() + 200;
@@ -1029,7 +1011,7 @@ describe("HostRuntimeStore", () => {
           }),
         ],
         hasMore: false,
-      })
+      }),
     );
     const store = new HostRuntimeStore({
       deps: {
@@ -1043,17 +1025,13 @@ describe("HostRuntimeStore", () => {
       },
     });
 
-    useSessionStore.getState().initializeSession(
-      host.serverId,
-      fakeClient as unknown as DaemonClient
-    );
+    useSessionStore
+      .getState()
+      .initializeSession(host.serverId, fakeClient as unknown as DaemonClient);
     store.syncHosts([host]);
 
     const timeoutAt = Date.now() + 300;
-    while (
-      fakeClient.fetchAgentsCalls.length < 2 &&
-      Date.now() < timeoutAt
-    ) {
+    while (fakeClient.fetchAgentsCalls.length < 2 && Date.now() < timeoutAt) {
       await new Promise((resolve) => setTimeout(resolve, 0));
     }
 
@@ -1071,16 +1049,14 @@ describe("HostRuntimeStore", () => {
     });
 
     let staleAgent =
-      useSessionStore.getState().sessions[host.serverId]?.agents?.get(
-        "agent-stale-attention"
-      ) ?? null;
+      useSessionStore.getState().sessions[host.serverId]?.agents?.get("agent-stale-attention") ??
+      null;
     const staleTimeoutAt = Date.now() + 300;
     while (!staleAgent && Date.now() < staleTimeoutAt) {
       await new Promise((resolve) => setTimeout(resolve, 0));
       staleAgent =
-        useSessionStore.getState().sessions[host.serverId]?.agents?.get(
-          "agent-stale-attention"
-        ) ?? null;
+        useSessionStore.getState().sessions[host.serverId]?.agents?.get("agent-stale-attention") ??
+        null;
     }
     expect(staleAgent?.requiresAttention).toBe(true);
     expect(staleAgent?.attentionReason).toBe("error");
@@ -1118,10 +1094,9 @@ describe("HostRuntimeStore", () => {
       },
     });
 
-    useSessionStore.getState().initializeSession(
-      host.serverId,
-      fakeClient as unknown as DaemonClient
-    );
+    useSessionStore
+      .getState()
+      .initializeSession(host.serverId, fakeClient as unknown as DaemonClient);
     store.syncHosts([host]);
 
     const initialTimeoutAt = Date.now() + 200;

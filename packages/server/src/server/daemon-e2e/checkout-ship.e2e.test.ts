@@ -4,10 +4,7 @@ import { tmpdir } from "os";
 import path from "path";
 import { execSync } from "child_process";
 
-import {
-  createDaemonTestContext,
-  type DaemonTestContext,
-} from "../test-utils/index.js";
+import { createDaemonTestContext, type DaemonTestContext } from "../test-utils/index.js";
 import { createWorktree } from "../../utils/worktree.js";
 
 const CODEX_TEST_MODEL = "gpt-5.1-codex-mini";
@@ -52,9 +49,7 @@ function createTempRepoName(): string {
 }
 
 function getGhLogin(): string {
-  return execSync("gh api user --jq .login", { stdio: "pipe" })
-    .toString()
-    .trim();
+  return execSync("gh api user --jq .login", { stdio: "pipe" }).toString().trim();
 }
 
 function createPrivateRepo(repoName: string): void {
@@ -89,9 +84,9 @@ describe("daemon checkout ship loop", () => {
     await ctx.cleanup();
   }, 60000);
 
-	testWithGitHubCliAuth(
-		"runs the full checkout ship loop via checkout RPCs",
-		async () => {
+  testWithGitHubCliAuth(
+    "runs the full checkout ship loop via checkout RPCs",
+    async () => {
       const repoDir = tmpCwd("checkout-ship-");
       let repoFullName: string | null = null;
       let agentId: string | null = null;
@@ -110,7 +105,7 @@ describe("daemon checkout ship loop", () => {
           {
             cwd: repoDir,
             stdio: "pipe",
-          }
+          },
         );
         execSync("git push -u origin main", { cwd: repoDir, stdio: "pipe" });
 
@@ -156,15 +151,13 @@ describe("daemon checkout ship loop", () => {
         expect(diffUncommitted.error).toBeNull();
         expect(diffUncommitted.files.length).toBeGreaterThan(0);
 
-        const timelineBeforeCommit =
-          ctx.daemon.daemon.agentManager.getTimeline(agent.id).length;
+        const timelineBeforeCommit = ctx.daemon.daemon.agentManager.getTimeline(agent.id).length;
         const commitResult = await ctx.client.checkoutCommit(worktree.worktreePath, {
           addAll: true,
         });
         expect(commitResult.error).toBeNull();
         expect(commitResult.success).toBe(true);
-        const timelineAfterCommit =
-          ctx.daemon.daemon.agentManager.getTimeline(agent.id).length;
+        const timelineAfterCommit = ctx.daemon.daemon.agentManager.getTimeline(agent.id).length;
         expect(timelineAfterCommit).toBe(timelineBeforeCommit);
 
         const diffAfterCommit = await ctx.client.getCheckoutDiff(worktree.worktreePath, {
@@ -178,15 +171,13 @@ describe("daemon checkout ship loop", () => {
         });
         expect(baseDiff.files.length).toBeGreaterThan(0);
 
-        const timelineBeforePr =
-          ctx.daemon.daemon.agentManager.getTimeline(agent.id).length;
+        const timelineBeforePr = ctx.daemon.daemon.agentManager.getTimeline(agent.id).length;
         const prCreate = await ctx.client.checkoutPrCreate(worktree.worktreePath, {
           baseRef: "main",
         });
         expect(prCreate.error).toBeNull();
         expect(prCreate.url).toContain(repoName);
-        const timelineAfterPr =
-          ctx.daemon.daemon.agentManager.getTimeline(agent.id).length;
+        const timelineAfterPr = ctx.daemon.daemon.agentManager.getTimeline(agent.id).length;
         expect(timelineAfterPr).toBe(timelineBeforePr);
 
         const prStatus = await ctx.client.checkoutPrStatus(worktree.worktreePath);
@@ -222,8 +213,8 @@ describe("daemon checkout ship loop", () => {
           worktreeList.worktrees.some(
             (entry) =>
               entry.worktreePath === worktree.worktreePath &&
-              entry.branchName === "ship-loop-ready"
-          )
+              entry.branchName === "ship-loop-ready",
+          ),
         ).toBe(true);
 
         const archiveResult = await ctx.client.archivePaseoWorktree({
@@ -236,16 +227,12 @@ describe("daemon checkout ship loop", () => {
           cwd: repoDir,
         });
         expect(
-          worktreeListAfter.worktrees.some(
-            (entry) => entry.worktreePath === worktree.worktreePath
-          )
+          worktreeListAfter.worktrees.some((entry) => entry.worktreePath === worktree.worktreePath),
         ).toBe(false);
         expect(existsSync(worktree.worktreePath)).toBe(false);
 
         const remainingAgents = await ctx.client.fetchAgents();
-        expect(
-          remainingAgents.entries.some((entry) => entry.agent.id === agent.id)
-        ).toBe(false);
+        expect(remainingAgents.entries.some((entry) => entry.agent.id === agent.id)).toBe(false);
       } finally {
         if (agentId) {
           await ctx.client.deleteAgent(agentId).catch(() => undefined);
@@ -254,131 +241,122 @@ describe("daemon checkout ship loop", () => {
         rmSync(repoDir, { recursive: true, force: true });
       }
     },
-		180000
-	);
-
-	test(
-		"merge-from-base and push RPCs work with a local origin remote",
-		async () => {
-			const repoDir = tmpCwd("checkout-merge-from-base-");
-			let agentId: string | null = null;
-
-			try {
-				initGitRepo(repoDir);
-
-				const remoteDir = path.join(repoDir, "remote.git");
-				execSync(`git init --bare -b main ${remoteDir}`, { stdio: "pipe" });
-				execSync(`git remote add origin ${remoteDir}`, { cwd: repoDir, stdio: "pipe" });
-				execSync("git push -u origin main", { cwd: repoDir, stdio: "pipe" });
-
-				const worktree = await createWorktree({
-					branchName: "merge-from-base",
-					cwd: repoDir,
-					baseBranch: "main",
-					worktreeSlug: "merge-from-base",
-					paseoHome: ctx.daemon.paseoHome,
-				});
-
-				const agent = await ctx.client.createAgent({
-					provider: "codex",
-					model: CODEX_TEST_MODEL,
-					thinkingOptionId: CODEX_TEST_THINKING_OPTION_ID,
-					cwd: worktree.worktreePath,
-					title: "Merge From Base Test",
-				});
-				agentId = agent.id;
-
-				const status = await ctx.client.getCheckoutStatus(worktree.worktreePath);
-				expect(status.isGit).toBe(true);
-				if (status.isGit) {
-					expect(status.hasRemote).toBe(true);
-					expect(status.baseRef).toBe("main");
-				}
-
-				// Advance local main, but leave the agent branch behind it.
-				execSync("git checkout main", { cwd: repoDir, stdio: "pipe" });
-				writeFileSync(path.join(repoDir, "base.txt"), "base update\n");
-				execSync("git add base.txt", { cwd: repoDir, stdio: "pipe" });
-				execSync("git -c commit.gpgsign=false commit -m 'base update'", {
-					cwd: repoDir,
-					stdio: "pipe",
-				});
-				const baseCommit = execSync("git rev-parse HEAD", { cwd: repoDir, stdio: "pipe" })
-					.toString()
-					.trim();
-
-				// Add a commit on the agent branch.
-				writeFileSync(path.join(worktree.worktreePath, "feature.txt"), "feature\n");
-				const commitResult = await ctx.client.checkoutCommit(worktree.worktreePath, {
-					message: "feature commit",
-					addAll: true,
-				});
-				expect(commitResult.error).toBeNull();
-				expect(commitResult.success).toBe(true);
-
-				const mergeFromBase = await ctx.client.checkoutMergeFromBase(worktree.worktreePath, {
-					baseRef: "main",
-					requireCleanTarget: true,
-				});
-				expect(mergeFromBase.error).toBeNull();
-				expect(mergeFromBase.success).toBe(true);
-
-				// Verify the agent branch now contains the base commit.
-				execSync(`git merge-base --is-ancestor ${baseCommit} HEAD`, {
-					cwd: worktree.worktreePath,
-					stdio: "pipe",
-				});
-
-				const pushResult = await ctx.client.checkoutPush(worktree.worktreePath);
-				expect(pushResult.error).toBeNull();
-				expect(pushResult.success).toBe(true);
-			} finally {
-				if (agentId) {
-					await ctx.client.deleteAgent(agentId).catch(() => undefined);
-				}
-				rmSync(repoDir, { recursive: true, force: true });
-			}
-		},
-		90000
-	);
-
-	test(
-		"checkout RPCs return NOT_GIT_REPO for non-git directories",
-		async () => {
-			const cwd = tmpCwd("checkout-ship-non-git-");
-      let agentId: string | null = null;
-
-      try {
-        const agent = await ctx.client.createAgent({
-          provider: "codex",
-          model: CODEX_TEST_MODEL,
-          thinkingOptionId: CODEX_TEST_THINKING_OPTION_ID,
-          cwd,
-          title: "Checkout Non-Git",
-        });
-        agentId = agent.id;
-
-        const status = await ctx.client.getCheckoutStatus(cwd);
-        expect(status.isGit).toBe(false);
-
-        const diff = await ctx.client.getCheckoutDiff(cwd, {
-          mode: "uncommitted",
-        });
-        expect(diff.error?.code).toBe("NOT_GIT_REPO");
-
-        const commit = await ctx.client.checkoutCommit(cwd, {
-          message: "Should fail",
-          addAll: true,
-        });
-        expect(commit.error?.code).toBe("NOT_GIT_REPO");
-      } finally {
-        if (agentId) {
-          await ctx.client.deleteAgent(agentId).catch(() => undefined);
-        }
-        rmSync(cwd, { recursive: true, force: true });
-      }
-    },
-    60000
+    180000,
   );
 
+  test("merge-from-base and push RPCs work with a local origin remote", async () => {
+    const repoDir = tmpCwd("checkout-merge-from-base-");
+    let agentId: string | null = null;
+
+    try {
+      initGitRepo(repoDir);
+
+      const remoteDir = path.join(repoDir, "remote.git");
+      execSync(`git init --bare -b main ${remoteDir}`, { stdio: "pipe" });
+      execSync(`git remote add origin ${remoteDir}`, { cwd: repoDir, stdio: "pipe" });
+      execSync("git push -u origin main", { cwd: repoDir, stdio: "pipe" });
+
+      const worktree = await createWorktree({
+        branchName: "merge-from-base",
+        cwd: repoDir,
+        baseBranch: "main",
+        worktreeSlug: "merge-from-base",
+        paseoHome: ctx.daemon.paseoHome,
+      });
+
+      const agent = await ctx.client.createAgent({
+        provider: "codex",
+        model: CODEX_TEST_MODEL,
+        thinkingOptionId: CODEX_TEST_THINKING_OPTION_ID,
+        cwd: worktree.worktreePath,
+        title: "Merge From Base Test",
+      });
+      agentId = agent.id;
+
+      const status = await ctx.client.getCheckoutStatus(worktree.worktreePath);
+      expect(status.isGit).toBe(true);
+      if (status.isGit) {
+        expect(status.hasRemote).toBe(true);
+        expect(status.baseRef).toBe("main");
+      }
+
+      // Advance local main, but leave the agent branch behind it.
+      execSync("git checkout main", { cwd: repoDir, stdio: "pipe" });
+      writeFileSync(path.join(repoDir, "base.txt"), "base update\n");
+      execSync("git add base.txt", { cwd: repoDir, stdio: "pipe" });
+      execSync("git -c commit.gpgsign=false commit -m 'base update'", {
+        cwd: repoDir,
+        stdio: "pipe",
+      });
+      const baseCommit = execSync("git rev-parse HEAD", { cwd: repoDir, stdio: "pipe" })
+        .toString()
+        .trim();
+
+      // Add a commit on the agent branch.
+      writeFileSync(path.join(worktree.worktreePath, "feature.txt"), "feature\n");
+      const commitResult = await ctx.client.checkoutCommit(worktree.worktreePath, {
+        message: "feature commit",
+        addAll: true,
+      });
+      expect(commitResult.error).toBeNull();
+      expect(commitResult.success).toBe(true);
+
+      const mergeFromBase = await ctx.client.checkoutMergeFromBase(worktree.worktreePath, {
+        baseRef: "main",
+        requireCleanTarget: true,
+      });
+      expect(mergeFromBase.error).toBeNull();
+      expect(mergeFromBase.success).toBe(true);
+
+      // Verify the agent branch now contains the base commit.
+      execSync(`git merge-base --is-ancestor ${baseCommit} HEAD`, {
+        cwd: worktree.worktreePath,
+        stdio: "pipe",
+      });
+
+      const pushResult = await ctx.client.checkoutPush(worktree.worktreePath);
+      expect(pushResult.error).toBeNull();
+      expect(pushResult.success).toBe(true);
+    } finally {
+      if (agentId) {
+        await ctx.client.deleteAgent(agentId).catch(() => undefined);
+      }
+      rmSync(repoDir, { recursive: true, force: true });
+    }
+  }, 90000);
+
+  test("checkout RPCs return NOT_GIT_REPO for non-git directories", async () => {
+    const cwd = tmpCwd("checkout-ship-non-git-");
+    let agentId: string | null = null;
+
+    try {
+      const agent = await ctx.client.createAgent({
+        provider: "codex",
+        model: CODEX_TEST_MODEL,
+        thinkingOptionId: CODEX_TEST_THINKING_OPTION_ID,
+        cwd,
+        title: "Checkout Non-Git",
+      });
+      agentId = agent.id;
+
+      const status = await ctx.client.getCheckoutStatus(cwd);
+      expect(status.isGit).toBe(false);
+
+      const diff = await ctx.client.getCheckoutDiff(cwd, {
+        mode: "uncommitted",
+      });
+      expect(diff.error?.code).toBe("NOT_GIT_REPO");
+
+      const commit = await ctx.client.checkoutCommit(cwd, {
+        message: "Should fail",
+        addAll: true,
+      });
+      expect(commit.error?.code).toBe("NOT_GIT_REPO");
+    } finally {
+      if (agentId) {
+        await ctx.client.deleteAgent(agentId).catch(() => undefined);
+      }
+      rmSync(cwd, { recursive: true, force: true });
+    }
+  }, 60000);
 });

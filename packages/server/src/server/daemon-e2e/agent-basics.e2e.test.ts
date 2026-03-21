@@ -1,11 +1,16 @@
 import { describe, test, expect, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, writeFileSync, existsSync, rmSync, mkdirSync, readFileSync, readdirSync } from "fs";
+import {
+  mkdtempSync,
+  writeFileSync,
+  existsSync,
+  rmSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+} from "fs";
 import { tmpdir } from "os";
 import path from "path";
-import {
-  createDaemonTestContext,
-  type DaemonTestContext,
-} from "../test-utils/index.js";
+import { createDaemonTestContext, type DaemonTestContext } from "../test-utils/index.js";
 import { createMessageCollector, type MessageCollector } from "../test-utils/message-collector.js";
 import type { AgentTimelineItem } from "../agent/agent-sdk-types.js";
 import type { AgentSnapshotPayload, SessionOutboundMessage } from "../messages.js";
@@ -35,7 +40,9 @@ describe("daemon E2E", () => {
   test("creates agent and receives response", async () => {
     // Create a Codex agent
     const agent = await ctx.client.createAgent({
-      provider: "codex", model: CODEX_TEST_MODEL, thinkingOptionId: CODEX_TEST_THINKING_OPTION_ID,
+      provider: "codex",
+      model: CODEX_TEST_MODEL,
+      thinkingOptionId: CODEX_TEST_THINKING_OPTION_ID,
       cwd: "/tmp",
       title: "Test Agent",
     });
@@ -60,21 +67,19 @@ describe("daemon E2E", () => {
     // Verify we received some stream events
     const queue = collector.messages;
     const streamEvents = queue.filter(
-      (m) => m.type === "agent_stream" && m.payload.agentId === agent.id
+      (m) => m.type === "agent_stream" && m.payload.agentId === agent.id,
     );
     expect(streamEvents.length).toBeGreaterThan(0);
 
     // Verify there was a turn_started event
     const hasTurnStarted = streamEvents.some(
-      (m) =>
-        m.type === "agent_stream" && m.payload.event.type === "turn_started"
+      (m) => m.type === "agent_stream" && m.payload.event.type === "turn_started",
     );
     expect(hasTurnStarted).toBe(true);
 
     // Verify there was a turn_completed event
     const hasTurnCompleted = streamEvents.some(
-      (m) =>
-        m.type === "agent_stream" && m.payload.event.type === "turn_completed"
+      (m) => m.type === "agent_stream" && m.payload.event.type === "turn_completed",
     );
     expect(hasTurnCompleted).toBe(true);
 
@@ -89,18 +94,17 @@ describe("daemon E2E", () => {
     expect(hasAssistantMessage).toBe(true);
   }, 180000); // 3 minute timeout for E2E test
 
-
   test("fails to create agent with non-existent cwd", async () => {
     const nonExistentCwd = "/this/path/does/not/exist/12345";
 
     await expect(
       ctx.client.createAgent({
-        provider: "codex", model: CODEX_TEST_MODEL, thinkingOptionId: CODEX_TEST_THINKING_OPTION_ID,
+        provider: "codex",
+        model: CODEX_TEST_MODEL,
+        thinkingOptionId: CODEX_TEST_THINKING_OPTION_ID,
         cwd: nonExistentCwd,
         title: "Should Fail Agent",
-      })
+      }),
     ).rejects.toThrow(nonExistentCwd);
   });
-
-
 });

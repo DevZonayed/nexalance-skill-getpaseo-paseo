@@ -23,11 +23,7 @@ export function buildSplitDropZoneId(paneId: string): string {
   return `split-pane-drop:${paneId}`;
 }
 
-export function SplitDropZone({
-  paneId,
-  active,
-  preview,
-}: SplitDropZoneProps) {
+export function SplitDropZone({ paneId, active, preview }: SplitDropZoneProps) {
   const { theme } = useUnistyles();
   const { setNodeRef } = useDroppable({
     id: buildSplitDropZoneId(paneId),
@@ -66,11 +62,7 @@ export function SplitDropZone({
   }
 
   return (
-    <View
-      ref={setNodeRef as any}
-      style={styles.overlay}
-      pointerEvents="none"
-    >
+    <View ref={setNodeRef as any} style={styles.overlay} pointerEvents="none">
       {previewStyles ? (
         <>
           <View pointerEvents="none" style={previewStyles.overlay} />
@@ -89,10 +81,8 @@ export function resolveSplitDropPosition(input: {
 }): SplitDropZonePosition {
   const centerInsetX = input.width * ((1 - CENTER_RATIO) / 2);
   const centerInsetY = input.height * ((1 - CENTER_RATIO) / 2);
-  const insideCenterX =
-    input.x >= centerInsetX && input.x <= input.width - centerInsetX;
-  const insideCenterY =
-    input.y >= centerInsetY && input.y <= input.height - centerInsetY;
+  const insideCenterX = input.x >= centerInsetX && input.x <= input.width - centerInsetX;
+  const insideCenterY = input.y >= centerInsetY && input.y <= input.height - centerInsetY;
 
   if (insideCenterX && insideCenterY) {
     return "center";

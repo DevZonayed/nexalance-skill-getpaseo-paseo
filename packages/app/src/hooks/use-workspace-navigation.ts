@@ -16,11 +16,8 @@ export function navigateToWorkspace(serverId: string, workspaceId: string) {
 
 export function useWorkspaceNavigation() {
   return {
-    navigateToWorkspace: useCallback(
-      (serverId: string, workspaceId: string) => {
-        navigateToWorkspace(serverId, workspaceId);
-      },
-      []
-    ),
+    navigateToWorkspace: useCallback((serverId: string, workspaceId: string) => {
+      navigateToWorkspace(serverId, workspaceId);
+    }, []),
   };
 }

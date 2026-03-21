@@ -1,31 +1,31 @@
-import { describe, expect, it } from 'vitest'
-import { resolveStatusControlMode } from './agent-input-area.status-controls'
+import { describe, expect, it } from "vitest";
+import { resolveStatusControlMode } from "./agent-input-area.status-controls";
 
-describe('resolveStatusControlMode', () => {
-  it('uses ready mode when no controlled status controls are provided', () => {
-    expect(resolveStatusControlMode(undefined)).toBe('ready')
-  })
+describe("resolveStatusControlMode", () => {
+  it("uses ready mode when no controlled status controls are provided", () => {
+    expect(resolveStatusControlMode(undefined)).toBe("ready");
+  });
 
-  it('uses draft mode when controlled status controls are provided', () => {
+  it("uses draft mode when controlled status controls are provided", () => {
     expect(
       resolveStatusControlMode({
         providerDefinitions: [],
-        selectedProvider: 'codex',
+        selectedProvider: "codex",
         onSelectProvider: () => undefined,
         modeOptions: [],
-        selectedMode: '',
+        selectedMode: "",
         onSelectMode: () => undefined,
         models: [],
-        selectedModel: '',
+        selectedModel: "",
         onSelectModel: () => undefined,
         isModelLoading: false,
         allProviderModels: new Map(),
         isAllModelsLoading: false,
         onSelectProviderAndModel: () => undefined,
         thinkingOptions: [],
-        selectedThinkingOptionId: '',
+        selectedThinkingOptionId: "",
         onSelectThinkingOption: () => undefined,
-      })
-    ).toBe('draft')
-  })
-})
+      }),
+    ).toBe("draft");
+  });
+});

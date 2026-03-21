@@ -1,20 +1,6 @@
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type ReactNode,
-} from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import {
-  Animated,
-  Easing,
-  Platform,
-  Text,
-  ToastAndroid,
-  View,
-} from "react-native";
+import { Animated, Easing, Platform, Text, ToastAndroid, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, UnistylesRuntime, useUnistyles } from "react-native-unistyles";
 import { AlertTriangle, CheckCircle2 } from "lucide-react-native";
@@ -63,46 +49,33 @@ export function useToastHost(): {
   const [toast, setToast] = useState<ToastState | null>(null);
   const idRef = useRef(0);
 
-  const show = useCallback(
-    (content: ReactNode, options?: ToastShowOptions) => {
-      const nativeMessage =
-        typeof content === "string"
-          ? content.trim()
-          : null;
-      if (!content || nativeMessage === "") {
-        return;
-      }
+  const show = useCallback((content: ReactNode, options?: ToastShowOptions) => {
+    const nativeMessage = typeof content === "string" ? content.trim() : null;
+    if (!content || nativeMessage === "") {
+      return;
+    }
 
-      const variant = options?.variant ?? "default";
-      const durationMs = options?.durationMs ?? DEFAULT_DURATION_MS;
-      const nativeAndroid = options?.nativeAndroid ?? false;
+    const variant = options?.variant ?? "default";
+    const durationMs = options?.durationMs ?? DEFAULT_DURATION_MS;
+    const nativeAndroid = options?.nativeAndroid ?? false;
 
-      if (Platform.OS === "android" && nativeAndroid && nativeMessage) {
-        const duration =
-          durationMs <= 2500
-            ? ToastAndroid.SHORT
-            : ToastAndroid.LONG;
-        ToastAndroid.showWithGravity(
-          nativeMessage,
-          duration,
-          ToastAndroid.TOP
-        );
-        return;
-      }
+    if (Platform.OS === "android" && nativeAndroid && nativeMessage) {
+      const duration = durationMs <= 2500 ? ToastAndroid.SHORT : ToastAndroid.LONG;
+      ToastAndroid.showWithGravity(nativeMessage, duration, ToastAndroid.TOP);
+      return;
+    }
 
-      idRef.current += 1;
-      setToast({
-        id: idRef.current,
-        content,
-        nativeMessage,
-        icon: options?.icon,
-        variant,
-        durationMs,
-        testID: options?.testID,
-      });
-    },
-    []
-  );
+    idRef.current += 1;
+    setToast({
+      id: idRef.current,
+      content,
+      nativeMessage,
+      icon: options?.icon,
+      variant,
+      durationMs,
+      testID: options?.testID,
+    });
+  }, []);
 
   const api = useMemo<ToastApi>(
     () => ({
@@ -112,10 +85,9 @@ export function useToastHost(): {
           variant: "success",
           icon: <CheckCircle2 size={18} />,
         }),
-      error: (message: string) =>
-        show(message, { variant: "error", durationMs: 3200 }),
+      error: (message: string) => show(message, { variant: "error", durationMs: 3200 }),
     }),
-    [show]
+    [show],
   );
 
   const dismiss = useCallback(() => {
@@ -209,8 +181,7 @@ export function ToastViewport({
     return null;
   }
 
-  const isMobile =
-    UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
+  const isMobile = UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
   const headerHeight = isMobile ? HEADER_INNER_HEIGHT_MOBILE : HEADER_INNER_HEIGHT;
   const headerTopPadding = isMobile ? HEADER_TOP_PADDING_MOBILE : 0;
   const topOffset =
@@ -219,13 +190,12 @@ export function ToastViewport({
       : theme.spacing[3];
 
   const icon =
-    toast.icon ?? (
-      toast.variant === "success" ? (
-        <CheckCircle2 size={18} color={theme.colors.primary} />
-      ) : toast.variant === "error" ? (
-        <AlertTriangle size={18} color={theme.colors.destructive} />
-      ) : null
-    );
+    toast.icon ??
+    (toast.variant === "success" ? (
+      <CheckCircle2 size={18} color={theme.colors.primary} />
+    ) : toast.variant === "error" ? (
+      <AlertTriangle size={18} color={theme.colors.destructive} />
+    ) : null);
 
   const content = (
     <View style={styles.container} pointerEvents="box-none">
@@ -247,10 +217,7 @@ export function ToastViewport({
         {typeof toast.content === "string" ? (
           <Text
             testID="app-toast-message"
-            style={[
-              styles.message,
-              toast.variant === "error" ? styles.messageError : null,
-            ]}
+            style={[styles.message, toast.variant === "error" ? styles.messageError : null]}
             numberOfLines={2}
           >
             {toast.content}
@@ -264,11 +231,7 @@ export function ToastViewport({
     </View>
   );
 
-  if (
-    placement === "app-shell" &&
-    Platform.OS === "web" &&
-    typeof document !== "undefined"
-  ) {
+  if (placement === "app-shell" && Platform.OS === "web" && typeof document !== "undefined") {
     return createPortal(content, getOverlayRoot());
   }
 

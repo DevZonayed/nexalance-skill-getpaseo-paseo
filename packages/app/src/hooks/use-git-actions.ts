@@ -4,10 +4,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useCheckoutGitActionsStore } from "@/stores/checkout-git-actions-store";
 import { useCheckoutStatusQuery } from "@/hooks/use-checkout-status-query";
 import { useCheckoutPrStatusQuery } from "@/hooks/use-checkout-pr-status-query";
-import {
-  buildGitActions,
-  type GitActions,
-} from "@/components/git-actions-policy";
+import { buildGitActions, type GitActions } from "@/components/git-actions-policy";
 import { buildNewAgentRoute, resolveNewAgentWorkingDir } from "@/utils/new-agent-routing";
 import { openExternalUrl } from "@/utils/open-external-url";
 
@@ -44,8 +41,7 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
   const [postShipArchiveSuggested, setPostShipArchiveSuggested] = useState(false);
   const [shipDefault, setShipDefault] = useState<"merge" | "pr">("merge");
 
-  const { status, isLoading: isStatusLoading } =
-    useCheckoutStatusQuery({ serverId, cwd });
+  const { status, isLoading: isStatusLoading } = useCheckoutStatusQuery({ serverId, cwd });
   const gitStatus = status && status.isGit ? status : null;
   const isGit = Boolean(gitStatus);
   const notGit = status !== null && !status.isGit && !status.error;
@@ -53,10 +49,7 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
 
   const hasUncommittedChanges = Boolean(gitStatus?.isDirty);
 
-  const {
-    status: prStatus,
-    githubFeaturesEnabled,
-  } = useCheckoutPrStatusQuery({
+  const { status: prStatus, githubFeaturesEnabled } = useCheckoutPrStatusQuery({
     serverId,
     cwd,
     enabled: isGit,
@@ -98,7 +91,7 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
         // Ignore persistence failures; default will reset to "merge".
       }
     },
-    [shipDefaultStorageKey]
+    [shipDefaultStorageKey],
   );
 
   useEffect(() => {
@@ -107,22 +100,22 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
 
   // Store selectors
   const commitStatus = useCheckoutGitActionsStore((state) =>
-    state.getStatus({ serverId, cwd, actionId: "commit" })
+    state.getStatus({ serverId, cwd, actionId: "commit" }),
   );
   const pushStatus = useCheckoutGitActionsStore((state) =>
-    state.getStatus({ serverId, cwd, actionId: "push" })
+    state.getStatus({ serverId, cwd, actionId: "push" }),
   );
   const prCreateStatus = useCheckoutGitActionsStore((state) =>
-    state.getStatus({ serverId, cwd, actionId: "create-pr" })
+    state.getStatus({ serverId, cwd, actionId: "create-pr" }),
   );
   const mergeStatus = useCheckoutGitActionsStore((state) =>
-    state.getStatus({ serverId, cwd, actionId: "merge-branch" })
+    state.getStatus({ serverId, cwd, actionId: "merge-branch" }),
   );
   const mergeFromBaseStatus = useCheckoutGitActionsStore((state) =>
-    state.getStatus({ serverId, cwd, actionId: "merge-from-base" })
+    state.getStatus({ serverId, cwd, actionId: "merge-from-base" }),
   );
   const archiveStatus = useCheckoutGitActionsStore((state) =>
-    state.getStatus({ serverId, cwd, actionId: "archive-worktree" })
+    state.getStatus({ serverId, cwd, actionId: "archive-worktree" }),
   );
 
   const runCommit = useCheckoutGitActionsStore((state) => state.commit);
@@ -228,14 +221,10 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
 
   const commitDisabled = actionsDisabled || commitStatus === "pending";
   const prDisabled = actionsDisabled || prCreateStatus === "pending";
-  const mergeDisabled =
-    actionsDisabled || mergeStatus === "pending";
-  const mergeFromBaseDisabled =
-    actionsDisabled || mergeFromBaseStatus === "pending";
-  const pushDisabled =
-    actionsDisabled || pushStatus === "pending";
-  const archiveDisabled =
-    actionsDisabled || archiveStatus === "pending";
+  const mergeDisabled = actionsDisabled || mergeStatus === "pending";
+  const mergeFromBaseDisabled = actionsDisabled || mergeFromBaseStatus === "pending";
+  const pushDisabled = actionsDisabled || pushStatus === "pending";
+  const archiveDisabled = actionsDisabled || archiveStatus === "pending";
 
   const branchLabel =
     gitStatus?.currentBranch && gitStatus.currentBranch !== "HEAD"
@@ -308,12 +297,40 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
       },
     });
   }, [
-    isGit, hasRemote, hasPullRequest, prStatus?.url, aheadCount, isPaseoOwnedWorktree, isOnBaseBranch, githubFeaturesEnabled,
-    hasUncommittedChanges, aheadOfOrigin, behindOfOrigin, shipDefault, baseRefLabel, shouldPromoteArchive,
-    commitDisabled, pushDisabled, prDisabled, mergeDisabled, mergeFromBaseDisabled, archiveDisabled,
-    commitStatus, pushStatus, prCreateStatus, mergeStatus, mergeFromBaseStatus, archiveStatus,
-    handleCommit, handlePush, handleCreatePr, handleMergeBranch, handleMergeFromBase, handleArchiveWorktree,
-    icons, baseRef,
+    isGit,
+    hasRemote,
+    hasPullRequest,
+    prStatus?.url,
+    aheadCount,
+    isPaseoOwnedWorktree,
+    isOnBaseBranch,
+    githubFeaturesEnabled,
+    hasUncommittedChanges,
+    aheadOfOrigin,
+    behindOfOrigin,
+    shipDefault,
+    baseRefLabel,
+    shouldPromoteArchive,
+    commitDisabled,
+    pushDisabled,
+    prDisabled,
+    mergeDisabled,
+    mergeFromBaseDisabled,
+    archiveDisabled,
+    commitStatus,
+    pushStatus,
+    prCreateStatus,
+    mergeStatus,
+    mergeFromBaseStatus,
+    archiveStatus,
+    handleCommit,
+    handlePush,
+    handleCreatePr,
+    handleMergeBranch,
+    handleMergeFromBase,
+    handleArchiveWorktree,
+    icons,
+    baseRef,
   ]);
 
   return { gitActions, branchLabel, actionError, isGit };

@@ -22,24 +22,22 @@ interface KeyboardShortcutsState {
   resetModifiers: () => void;
 }
 
-export const useKeyboardShortcutsStore = create<KeyboardShortcutsState>(
-  (set) => ({
-    commandCenterOpen: false,
-    projectPickerOpen: false,
-    shortcutsDialogOpen: false,
-    altDown: false,
-    cmdOrCtrlDown: false,
-    sidebarShortcutWorkspaceTargets: [],
-    visibleWorkspaceTargets: [],
+export const useKeyboardShortcutsStore = create<KeyboardShortcutsState>((set) => ({
+  commandCenterOpen: false,
+  projectPickerOpen: false,
+  shortcutsDialogOpen: false,
+  altDown: false,
+  cmdOrCtrlDown: false,
+  sidebarShortcutWorkspaceTargets: [],
+  visibleWorkspaceTargets: [],
 
-    setCommandCenterOpen: (open) => set({ commandCenterOpen: open }),
-    setProjectPickerOpen: (open) => set({ projectPickerOpen: open }),
-    setShortcutsDialogOpen: (open) => set({ shortcutsDialogOpen: open }),
-    setAltDown: (down) => set({ altDown: down }),
-    setCmdOrCtrlDown: (down) => set({ cmdOrCtrlDown: down }),
-    setSidebarShortcutWorkspaceTargets: (targets) =>
-      set({ sidebarShortcutWorkspaceTargets: targets }),
-    setVisibleWorkspaceTargets: (targets) => set({ visibleWorkspaceTargets: targets }),
-    resetModifiers: () => set({ altDown: false, cmdOrCtrlDown: false }),
-  })
-);
+  setCommandCenterOpen: (open) => set({ commandCenterOpen: open }),
+  setProjectPickerOpen: (open) => set({ projectPickerOpen: open }),
+  setShortcutsDialogOpen: (open) => set({ shortcutsDialogOpen: open }),
+  setAltDown: (down) => set({ altDown: down }),
+  setCmdOrCtrlDown: (down) => set({ cmdOrCtrlDown: down }),
+  setSidebarShortcutWorkspaceTargets: (targets) =>
+    set({ sidebarShortcutWorkspaceTargets: targets }),
+  setVisibleWorkspaceTargets: (targets) => set({ visibleWorkspaceTargets: targets }),
+  resetModifiers: () => set({ altDown: false, cmdOrCtrlDown: false }),
+}));

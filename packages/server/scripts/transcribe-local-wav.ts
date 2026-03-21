@@ -49,7 +49,9 @@ function parseArgs(argv: string[]): CliOptions {
 
   const positional: string[] = [];
   let outPath: string | undefined;
-  let model = LocalSttModelIdSchema.parse(process.env.PASEO_LOCAL_STT_MODEL ?? DEFAULT_LOCAL_STT_MODEL);
+  let model = LocalSttModelIdSchema.parse(
+    process.env.PASEO_LOCAL_STT_MODEL ?? DEFAULT_LOCAL_STT_MODEL,
+  );
   let modelsDir = defaultModelsDir;
 
   for (let i = 0; i < argv.length; i++) {
@@ -146,13 +148,15 @@ async function main(): Promise<void> {
       throw new Error(
         "Local STT service is unavailable. Check model files or run `npm run speech:download -- --model " +
           options.model +
-          "`."
+          "`.",
       );
     }
 
     const audio = await readFile(options.wavPath);
     const manager = new STTManager("dev-local-wav-transcribe", logger, runtime.sttService);
-    const result = await manager.transcribe(audio, "audio/wav", { label: "dev-local-wav-transcribe" });
+    const result = await manager.transcribe(audio, "audio/wav", {
+      label: "dev-local-wav-transcribe",
+    });
 
     const transcript = result.text.trim();
 

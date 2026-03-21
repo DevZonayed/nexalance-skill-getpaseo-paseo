@@ -62,8 +62,7 @@ export function deriveBootstrapTailTimelinePolicy({
     return { replace: true, catchUpCursor: null };
   }
 
-  const isBootstrapTailInit =
-    direction === "tail" && isInitializing && hasActiveInitDeferred;
+  const isBootstrapTailInit = direction === "tail" && isInitializing && hasActiveInitDeferred;
   if (!isBootstrapTailInit) {
     return { replace: false, catchUpCursor: null };
   }

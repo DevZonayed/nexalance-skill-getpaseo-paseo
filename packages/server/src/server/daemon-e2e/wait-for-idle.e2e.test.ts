@@ -2,10 +2,7 @@ import { describe, test, expect, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, rmSync } from "fs";
 import { tmpdir } from "os";
 import path from "path";
-import {
-  createDaemonTestContext,
-  type DaemonTestContext,
-} from "../test-utils/index.js";
+import { createDaemonTestContext, type DaemonTestContext } from "../test-utils/index.js";
 import { DaemonClient } from "../test-utils/index.js";
 import { createMessageCollector, type MessageCollector } from "../test-utils/message-collector.js";
 import { getFullAccessConfig } from "./agent-configs.js";
@@ -81,7 +78,7 @@ describe("waitForFinish edge cases", () => {
         m.type === "agent_stream" &&
         m.payload.agentId === agent.id &&
         m.payload.event.type === "timeline" &&
-        m.payload.event.item.type === "user_message"
+        m.payload.event.item.type === "user_message",
     );
     expect(userMessages.length).toBe(3);
 
@@ -151,18 +148,14 @@ describe("waitForFinish edge cases", () => {
           sawRunning = true;
           return;
         }
-        if (
-          event.agent.lifecycle !== "idle" ||
-          !sawRunning ||
-          spawnedSecondRun
-        ) {
+        if (event.agent.lifecycle !== "idle" || !sawRunning || spawnedSecondRun) {
           return;
         }
 
         spawnedSecondRun = true;
         const stream = ctx.daemon.daemon.agentManager.streamAgent(
           agent.id,
-          "Use your shell tool to run sleep 1 and then reply done."
+          "Use your shell tool to run sleep 1 and then reply done.",
         );
         secondRunDrain = (async () => {
           for await (const _event of stream) {
@@ -170,7 +163,7 @@ describe("waitForFinish edge cases", () => {
           }
         })();
       },
-      { agentId: agent.id, replayState: false }
+      { agentId: agent.id, replayState: false },
     );
 
     try {
@@ -207,7 +200,7 @@ describe("waitForFinish edge cases", () => {
       await ctx.client.waitForAgentUpsert(
         agent.id,
         (snapshot) => snapshot.status === "running",
-        5_000
+        5_000,
       );
 
       const waitPromise = ctx.client.waitForFinish(agent.id, 5_000);
@@ -216,7 +209,7 @@ describe("waitForFinish edge cases", () => {
       await secondary.waitForAgentUpsert(
         agent.id,
         (snapshot) => snapshot.status === "running",
-        5_000
+        5_000,
       );
 
       const prematureResolution = await Promise.race([

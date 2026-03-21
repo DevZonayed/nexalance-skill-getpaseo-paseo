@@ -1,9 +1,5 @@
 import { createContext, useContext, type ReactNode } from "react";
-import {
-  ToastViewport,
-  useToastHost,
-  type ToastApi,
-} from "@/components/toast-host";
+import { ToastViewport, useToastHost, type ToastApi } from "@/components/toast-host";
 
 const ToastContext = createContext<ToastApi | null>(null);
 

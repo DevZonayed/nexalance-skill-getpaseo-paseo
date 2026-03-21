@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import type { SidebarProjectEntry, SidebarWorkspaceEntry } from "@/hooks/use-sidebar-workspaces-list";
+import type {
+  SidebarProjectEntry,
+  SidebarWorkspaceEntry,
+} from "@/hooks/use-sidebar-workspaces-list";
 
 import { buildSidebarShortcutModel } from "./sidebar-shortcuts";
 
@@ -56,7 +59,9 @@ describe("buildSidebarShortcutModel", () => {
   });
 
   it("limits shortcuts to 9", () => {
-    const workspaces = Array.from({ length: 20 }, (_, index) => workspace("s", `/repo/w${index + 1}`));
+    const workspaces = Array.from({ length: 20 }, (_, index) =>
+      workspace("s", `/repo/w${index + 1}`),
+    );
     const projects = [project("p", workspaces)];
 
     const model = buildSidebarShortcutModel({

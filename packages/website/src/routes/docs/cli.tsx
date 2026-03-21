@@ -1,22 +1,22 @@
-import { createFileRoute } from '@tanstack/react-router'
-import { pageMeta } from '~/meta'
+import { createFileRoute } from "@tanstack/react-router";
+import { pageMeta } from "~/meta";
 
-export const Route = createFileRoute('/docs/cli')({
+export const Route = createFileRoute("/docs/cli")({
   head: () => ({
     meta: pageMeta(
-      'CLI - Paseo Docs',
-      'Paseo CLI reference: manage agents, daemons, permissions, and worktrees from your terminal.',
+      "CLI - Paseo Docs",
+      "Paseo CLI reference: manage agents, daemons, permissions, and worktrees from your terminal.",
     ),
   }),
   component: CLI,
-})
+});
 
 function Code({ children }: { children: React.ReactNode }) {
   return (
     <div className="bg-card border border-border rounded-lg p-4 font-mono text-sm overflow-x-auto">
       {children}
     </div>
-  )
+  );
 }
 
 function CLI() {
@@ -25,8 +25,8 @@ function CLI() {
       <div>
         <h1 className="text-3xl font-medium font-title mb-4">CLI</h1>
         <p className="text-white/60 leading-relaxed">
-          The Paseo CLI lets you manage agents from your terminal. It's the same interface exposed by
-          the daemon's API, so anything you can do in the app you can do from the command line.
+          The Paseo CLI lets you manage agents from your terminal. It's the same interface exposed
+          by the daemon's API, so anything you can do in the app you can do from the command line.
         </p>
       </div>
 
@@ -67,16 +67,16 @@ paseo run --output-schema schema.json "extract release notes"
 paseo run --output-schema '{"type":"object","properties":{"summary":{"type":"string"}},"required":["summary"]}' "summarize release notes"`}</pre>
         </Code>
         <p className="text-white/60 leading-relaxed">
-          The <code className="font-mono">--worktree</code> flag creates the agent in an isolated git
-          worktree, useful for parallel feature development.
+          The <code className="font-mono">--worktree</code> flag creates the agent in an isolated
+          git worktree, useful for parallel feature development.
         </p>
         <p className="text-white/60 leading-relaxed">
-          Use <code className="font-mono">--output-schema</code> to return only matching JSON output.
-          You can pass a schema file path or an inline JSON schema object.
-          This mode cannot be used with <code className="font-mono">--detach</code>.
+          Use <code className="font-mono">--output-schema</code> to return only matching JSON
+          output. You can pass a schema file path or an inline JSON schema object. This mode cannot
+          be used with <code className="font-mono">--detach</code>.
         </p>
         <p className="text-white/60 leading-relaxed">
-          By default, <code className="font-mono">paseo run</code> waits for completion. Use{' '}
+          By default, <code className="font-mono">paseo run</code> waits for completion. Use{" "}
           <code className="font-mono">--detach</code> to run in the background.
         </p>
       </section>
@@ -96,13 +96,15 @@ paseo ls -a -g --json       # Full list as JSON`}</pre>
       <section className="space-y-4">
         <h2 className="text-xl font-medium">Streaming output</h2>
         <p className="text-white/60 leading-relaxed">
-          Use <code className="font-mono">paseo attach</code> to stream an agent's output in real-time:
+          Use <code className="font-mono">paseo attach</code> to stream an agent's output in
+          real-time:
         </p>
         <Code>
           <pre className="text-white/80">{`paseo attach abc123   # Attach to agent (Ctrl+C to detach)`}</pre>
         </Code>
         <p className="text-white/60 leading-relaxed">
-          Agent IDs can be shortened — <code className="font-mono">abc</code> works if it's unambiguous.
+          Agent IDs can be shortened — <code className="font-mono">abc</code> works if it's
+          unambiguous.
         </p>
       </section>
 
@@ -180,7 +182,8 @@ paseo daemon status            # Check status
 paseo daemon stop              # Stop the daemon`}</pre>
         </Code>
         <p className="text-white/60 leading-relaxed">
-          Use <code className="font-mono">PASEO_HOME</code> to run multiple isolated daemon instances.
+          Use <code className="font-mono">PASEO_HOME</code> to run multiple isolated daemon
+          instances.
         </p>
       </section>
 
@@ -197,9 +200,7 @@ paseo run --detach "implement the API" --name api-agent
 paseo wait api-agent
 paseo logs api-agent --tail 5`}</pre>
         </Code>
-        <p className="text-white/60 leading-relaxed">
-          Simple implement + verify loop:
-        </p>
+        <p className="text-white/60 leading-relaxed">Simple implement + verify loop:</p>
         <Code>
           <pre className="text-white/80">{`# Requires jq
 while true; do
@@ -236,7 +237,8 @@ paseo ls -q                    # IDs only (quiet)`}</pre>
         <h2 className="text-xl font-medium">Global options</h2>
         <ul className="text-white/60 space-y-2 list-disc list-inside">
           <li>
-            <code className="font-mono">--host &lt;host:port&gt;</code> — connect to a different daemon
+            <code className="font-mono">--host &lt;host:port&gt;</code> — connect to a different
+            daemon
           </li>
           <li>
             <code className="font-mono">--json</code> — JSON output
@@ -250,5 +252,5 @@ paseo ls -q                    # IDs only (quiet)`}</pre>
         </ul>
       </section>
     </div>
-  )
+  );
 }

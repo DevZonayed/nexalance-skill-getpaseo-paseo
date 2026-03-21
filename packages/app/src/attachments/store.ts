@@ -13,15 +13,11 @@ async function createAttachmentStore(): Promise<AttachmentStore> {
       return createDesktopAttachmentStore();
     }
 
-    const { createIndexedDbAttachmentStore } = await import(
-      "./web/indexeddb-attachment-store"
-    );
+    const { createIndexedDbAttachmentStore } = await import("./web/indexeddb-attachment-store");
     return createIndexedDbAttachmentStore();
   }
 
-  const { createNativeFileAttachmentStore } = await import(
-    "./native/native-file-attachment-store"
-  );
+  const { createNativeFileAttachmentStore } = await import("./native/native-file-attachment-store");
   return createNativeFileAttachmentStore();
 }
 

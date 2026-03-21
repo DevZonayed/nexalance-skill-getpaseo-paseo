@@ -226,7 +226,7 @@ describe("AgentManager", () => {
       manager.createAgent({
         provider: "codex",
         cwd: join(workdir, "does-not-exist"),
-      })
+      }),
     ).rejects.toThrow("Working directory does not exist");
   });
 
@@ -250,7 +250,7 @@ describe("AgentManager", () => {
 
       async resumeSession(
         handle: AgentPersistenceHandle,
-        overrides?: Partial<AgentSessionConfig>
+        overrides?: Partial<AgentSessionConfig>,
       ): Promise<AgentSession> {
         this.lastResumeOverrides = overrides;
         const metadata = (handle.metadata ?? {}) as Partial<AgentSessionConfig>;
@@ -331,7 +331,7 @@ describe("AgentManager", () => {
     class HistoryProbeSession extends TestAgentSession {
       constructor(
         config: AgentSessionConfig,
-        private readonly historyText: string | null
+        private readonly historyText: string | null,
       ) {
         super(config);
       }
@@ -362,7 +362,7 @@ describe("AgentManager", () => {
 
       async resumeSession(
         handle: AgentPersistenceHandle,
-        overrides?: Partial<AgentSessionConfig>
+        overrides?: Partial<AgentSessionConfig>,
       ): Promise<AgentSession> {
         const metadata = (handle.metadata ?? {}) as Partial<AgentSessionConfig>;
         const merged: AgentSessionConfig = {
@@ -487,7 +487,7 @@ describe("AgentManager", () => {
       constructor(
         config: AgentSessionConfig,
         private readonly stableSessionId: string,
-        initiallyReady = false
+        initiallyReady = false,
       ) {
         super(config);
         this.persistenceReady = initiallyReady;
@@ -558,7 +558,7 @@ describe("AgentManager", () => {
 
       async resumeSession(
         handle: AgentPersistenceHandle,
-        overrides?: Partial<AgentSessionConfig>
+        overrides?: Partial<AgentSessionConfig>,
       ): Promise<AgentSession> {
         this.resumeSessionCalls += 1;
         const metadata = (handle.metadata ?? {}) as Partial<AgentSessionConfig>;
@@ -705,7 +705,7 @@ describe("AgentManager", () => {
           itemType: event.event.type === "timeline" ? event.event.item.type : undefined,
         });
       },
-      { agentId: snapshot.id, replayState: false }
+      { agentId: snapshot.id, replayState: false },
     );
 
     await manager.emitLiveTimelineItem(snapshot.id, {
@@ -846,7 +846,7 @@ describe("AgentManager", () => {
       manager.createAgent({
         provider: "codex",
         cwd: workdir,
-      })
+      }),
     ).rejects.toThrow("createAgent: agentId must be a UUID");
   });
 
@@ -868,8 +868,8 @@ describe("AgentManager", () => {
           provider: "codex",
           cwd: workdir,
         },
-        "not-a-uuid"
-      )
+        "not-a-uuid",
+      ),
     ).rejects.toThrow("createAgent: agentId must be a UUID");
   });
 
@@ -1000,7 +1000,7 @@ describe("AgentManager", () => {
             resolve();
           }
         },
-        { agentId: snapshot.id, replayState: false }
+        { agentId: snapshot.id, replayState: false },
       );
     });
 
@@ -1087,7 +1087,7 @@ describe("AgentManager", () => {
         }
         lifecycleUpdates.push(event.agent.lifecycle);
       },
-      { agentId: snapshot.id, replayState: false }
+      { agentId: snapshot.id, replayState: false },
     );
 
     const firstRun = manager.streamAgent(snapshot.id, "first run");
@@ -1124,9 +1124,7 @@ describe("AgentManager", () => {
     expect(runningIndexes.length).toBeGreaterThanOrEqual(2);
 
     const firstReplacementRunningIndex = runningIndexes[1]!;
-    expect(
-      lifecycleUpdates.slice(0, firstReplacementRunningIndex).includes("idle")
-    ).toBe(false);
+    expect(lifecycleUpdates.slice(0, firstReplacementRunningIndex).includes("idle")).toBe(false);
 
     allowSecondRunToEnd.resolve();
 
@@ -1194,7 +1192,7 @@ describe("AgentManager", () => {
           }
         }
       },
-      { agentId: snapshot.id, replayState: false }
+      { agentId: snapshot.id, replayState: false },
     );
 
     liveEvents.push({ type: "turn_started", provider: "codex" });
@@ -1280,7 +1278,7 @@ describe("AgentManager", () => {
           unsubscribe();
           resolve();
         },
-        { agentId: snapshot.id, replayState: false }
+        { agentId: snapshot.id, replayState: false },
       );
       liveEvents.push({ type: "turn_started", provider: "codex" });
     });
@@ -1288,7 +1286,7 @@ describe("AgentManager", () => {
     const beforeCancel = manager.getAgent(snapshot.id);
     expect(beforeCancel?.lifecycle).toBe("running");
     expect(Boolean(beforeCancel && "pendingRun" in beforeCancel && beforeCancel.pendingRun)).toBe(
-      false
+      false,
     );
 
     const cancelled = await manager.cancelAgentRun(snapshot.id);
@@ -1417,7 +1415,7 @@ describe("AgentManager", () => {
           resolveAutonomousTurnStarted();
         }
       },
-      { agentId: snapshot.id, replayState: true }
+      { agentId: snapshot.id, replayState: true },
     );
 
     const foreground = manager.streamAgent(snapshot.id, "foreground run");
@@ -1444,16 +1442,14 @@ describe("AgentManager", () => {
 
     const replaying = manager.getAgent(snapshot.id);
     expect(replaying?.lifecycle).toBe("running");
-    expect(
-      foregroundEvents.some((event) => event.type === "turn_completed")
-    ).toBe(true);
+    expect(foregroundEvents.some((event) => event.type === "turn_completed")).toBe(true);
     expect(
       foregroundEvents.some(
         (event) =>
           event.type === "timeline" &&
           event.item.type === "assistant_message" &&
-          event.item.text.includes("AUTONOMOUS_DURING_FOREGROUND")
-      )
+          event.item.text.includes("AUTONOMOUS_DURING_FOREGROUND"),
+      ),
     ).toBe(false);
 
     await autonomousTurnStarted;
@@ -1535,7 +1531,7 @@ describe("AgentManager", () => {
             resolve();
           }
         },
-        { agentId: snapshot.id, replayState: false }
+        { agentId: snapshot.id, replayState: false },
       );
     });
 
@@ -1629,7 +1625,7 @@ describe("AgentManager", () => {
     const storagePath = join(workdir, "agents");
     const storage = new AgentStorage(storagePath, logger);
     const expectedFinalText =
-      "```json\n{\"message\":\"Reserve space for archive button in sidebar agent list\"}\n```";
+      '```json\n{"message":"Reserve space for archive button in sidebar agent list"}\n```';
 
     class ChunkedAssistantSession implements AgentSession {
       readonly provider = "codex" as const;
@@ -1651,7 +1647,7 @@ describe("AgentManager", () => {
           provider: this.provider,
           item: {
             type: "assistant_message",
-            text: "```json\n{\"message\":\"Reserve space for archive button in side",
+            text: '```json\n{"message":"Reserve space for archive button in side',
           },
         };
         yield {
@@ -1659,7 +1655,7 @@ describe("AgentManager", () => {
           provider: this.provider,
           item: {
             type: "assistant_message",
-            text: "bar agent list\"}\n```",
+            text: 'bar agent list"}\n```',
           },
         };
         yield { type: "turn_completed", provider: this.provider };
@@ -1870,7 +1866,7 @@ describe("AgentManager", () => {
           receivedEvents.push(event.agent.id);
         }
       },
-      { agentId: internalAgentId, replayState: false }
+      { agentId: internalAgentId, replayState: false },
     );
 
     await manager.createAgent({
@@ -1895,7 +1891,7 @@ describe("AgentManager", () => {
     expect(() =>
       manager.subscribe(() => {}, {
         agentId: "invalid-agent-id",
-      })
+      }),
     ).toThrow("subscribe: agentId must be a UUID");
   });
 
@@ -2070,7 +2066,7 @@ describe("AgentManager", () => {
       .getTimeline(agent.id)
       .filter(
         (item): item is Extract<AgentTimelineItem, { type: "assistant_message" }> =>
-          item.type === "assistant_message" && item.text.includes("[System Error]")
+          item.type === "assistant_message" && item.text.includes("[System Error]"),
       );
     expect(systemErrors).toHaveLength(1);
     expect(systemErrors[0]?.text).toContain("invalid model id");
@@ -2129,15 +2125,13 @@ describe("AgentManager", () => {
       title: "Detailed failure test",
     });
 
-    await expect(manager.runAgent(agent.id, "hello")).rejects.toThrow(
-      "Provider execution failed"
-    );
+    await expect(manager.runAgent(agent.id, "hello")).rejects.toThrow("Provider execution failed");
 
     const systemError = manager
       .getTimeline(agent.id)
       .find(
         (item): item is Extract<AgentTimelineItem, { type: "assistant_message" }> =>
-          item.type === "assistant_message" && item.text.includes("[System Error]")
+          item.type === "assistant_message" && item.text.includes("[System Error]"),
       );
     expect(systemError?.text).toContain("Provider execution failed");
     expect(systemError?.text).toContain("code: 126");
@@ -2273,10 +2267,7 @@ describe("AgentManager", () => {
         return [];
       }
 
-      async respondToPermission(
-        _requestId: string,
-        response: { behavior: string }
-      ): Promise<void> {
+      async respondToPermission(_requestId: string, response: { behavior: string }): Promise<void> {
         // Simulate what claude-agent.ts does: when plan permission is approved,
         // it calls setMode("acceptEdits") internally
         if (response.behavior === "allow") {
@@ -2548,9 +2539,7 @@ describe("AgentManager", () => {
     });
 
     const beforeHydrate = manager.getTimeline(snapshot.id);
-    const userMessagesBefore = beforeHydrate.filter(
-      (item) => item.type === "user_message"
-    );
+    const userMessagesBefore = beforeHydrate.filter((item) => item.type === "user_message");
     expect(userMessagesBefore).toHaveLength(2);
 
     // hydrateTimeline replays provider history which includes user_message
@@ -2559,17 +2548,13 @@ describe("AgentManager", () => {
     await manager.hydrateTimelineFromProvider(snapshot.id);
 
     const afterHydrate = manager.getTimeline(snapshot.id);
-    const userMessagesAfter = afterHydrate.filter(
-      (item) => item.type === "user_message"
-    );
+    const userMessagesAfter = afterHydrate.filter((item) => item.type === "user_message");
 
     // Should still have exactly 2 user messages, not 4
     expect(userMessagesAfter).toHaveLength(2);
 
     // Non-user_message items from history should still be replayed
-    const assistantMessages = afterHydrate.filter(
-      (item) => item.type === "assistant_message"
-    );
+    const assistantMessages = afterHydrate.filter((item) => item.type === "assistant_message");
     expect(assistantMessages).toHaveLength(2);
   });
 
@@ -2719,17 +2704,10 @@ describe("AgentManager", () => {
     expect(userMessages).toHaveLength(2);
     expect(
       userMessages.map(
-        (item) =>
-          (item as Extract<AgentTimelineItem, { type: "user_message" }>).messageId
-      )
-    ).toEqual([
-      "msg_client_hello",
-      "msg_provider_distinct",
-    ]);
-    expect(userMessages.map((item) => item.text)).toEqual([
-      "hello from user",
-      "hello from user",
-    ]);
+        (item) => (item as Extract<AgentTimelineItem, { type: "user_message" }>).messageId,
+      ),
+    ).toEqual(["msg_client_hello", "msg_provider_distinct"]);
+    expect(userMessages.map((item) => item.text)).toEqual(["hello from user", "hello from user"]);
   });
 
   test("recordUserMessage normalizes blank/whitespace messageId to undefined", async () => {
@@ -2768,7 +2746,7 @@ describe("AgentManager", () => {
     const timeline = manager.getTimeline(snapshot.id);
     const userMessages = timeline.filter(
       (item): item is Extract<AgentTimelineItem, { type: "user_message" }> =>
-        item.type === "user_message"
+        item.type === "user_message",
     );
 
     expect(userMessages).toHaveLength(3);
@@ -2814,20 +2792,18 @@ describe("AgentManager", () => {
     const timeline = manager.getTimeline(snapshot.id);
     const userMsg = timeline.find(
       (item): item is Extract<AgentTimelineItem, { type: "user_message" }> =>
-        item.type === "user_message"
+        item.type === "user_message",
     );
     expect(userMsg).toBeDefined();
     expect(userMsg!.messageId).toBe(clientMsgId);
 
     // Dispatched stream event should also carry the messageId
-    const streamEvent = events.find(
-      (e) => e.type === "timeline" && e.item.type === "user_message"
-    );
+    const streamEvent = events.find((e) => e.type === "timeline" && e.item.type === "user_message");
     expect(streamEvent).toBeDefined();
     if (streamEvent?.type === "timeline") {
-      expect(
-        (streamEvent.item as { type: "user_message"; messageId?: string }).messageId
-      ).toBe(clientMsgId);
+      expect((streamEvent.item as { type: "user_message"; messageId?: string }).messageId).toBe(
+        clientMsgId,
+      );
     }
   });
 
@@ -2866,11 +2842,15 @@ describe("AgentManager", () => {
     class EchoClient implements AgentClient {
       readonly provider = "codex" as const;
       readonly capabilities = TEST_CAPABILITIES;
-      async isAvailable(): Promise<boolean> { return true; }
+      async isAvailable(): Promise<boolean> {
+        return true;
+      }
       async createSession(config: AgentSessionConfig): Promise<AgentSession> {
         return new EchoUserMessageSession(config);
       }
-      async resumeSession(): Promise<AgentSession> { throw new Error("unused"); }
+      async resumeSession(): Promise<AgentSession> {
+        throw new Error("unused");
+      }
     }
 
     const manager = new AgentManager({
@@ -2891,21 +2871,17 @@ describe("AgentManager", () => {
     await manager.runAgent(snapshot.id, { text: "hello from user" });
 
     const timeline = manager.getTimeline(snapshot.id);
-    const userMessages = timeline.filter(
-      (item) => item.type === "user_message"
-    );
+    const userMessages = timeline.filter((item) => item.type === "user_message");
 
     // Should be exactly 1 (canonical), not 2 (canonical + provider echo)
     expect(userMessages).toHaveLength(1);
     // The canonical one must carry the client messageId for optimistic matching
     expect(
-      (userMessages[0] as Extract<AgentTimelineItem, { type: "user_message" }>).messageId
+      (userMessages[0] as Extract<AgentTimelineItem, { type: "user_message" }>).messageId,
     ).toBe("msg_client_echo_1");
 
     // Assistant messages from the run should still appear
-    const assistantMessages = timeline.filter(
-      (item) => item.type === "assistant_message"
-    );
+    const assistantMessages = timeline.filter((item) => item.type === "assistant_message");
     expect(assistantMessages).toHaveLength(1);
   });
 
@@ -2937,11 +2913,15 @@ describe("AgentManager", () => {
     class DifferentMessageIdClient implements AgentClient {
       readonly provider = "codex" as const;
       readonly capabilities = TEST_CAPABILITIES;
-      async isAvailable(): Promise<boolean> { return true; }
+      async isAvailable(): Promise<boolean> {
+        return true;
+      }
       async createSession(config: AgentSessionConfig): Promise<AgentSession> {
         return new DifferentMessageIdSession(config);
       }
-      async resumeSession(): Promise<AgentSession> { throw new Error("unused"); }
+      async resumeSession(): Promise<AgentSession> {
+        throw new Error("unused");
+      }
     }
 
     const manager = new AgentManager({
@@ -2962,7 +2942,7 @@ describe("AgentManager", () => {
     const timeline = manager.getTimeline(snapshot.id);
     const userMessages = timeline.filter(
       (item): item is Extract<AgentTimelineItem, { type: "user_message" }> =>
-        item.type === "user_message"
+        item.type === "user_message",
     );
     expect(userMessages).toHaveLength(2);
     expect(userMessages.map((item) => item.messageId)).toEqual([
@@ -2995,11 +2975,15 @@ describe("AgentManager", () => {
     class NoMessageIdClient implements AgentClient {
       readonly provider = "codex" as const;
       readonly capabilities = TEST_CAPABILITIES;
-      async isAvailable(): Promise<boolean> { return true; }
+      async isAvailable(): Promise<boolean> {
+        return true;
+      }
       async createSession(config: AgentSessionConfig): Promise<AgentSession> {
         return new NoMessageIdSession(config);
       }
-      async resumeSession(): Promise<AgentSession> { throw new Error("unused"); }
+      async resumeSession(): Promise<AgentSession> {
+        throw new Error("unused");
+      }
     }
 
     const manager = new AgentManager({
@@ -3053,11 +3037,15 @@ describe("AgentManager", () => {
     class UnexpectedUserMsgClient implements AgentClient {
       readonly provider = "codex" as const;
       readonly capabilities = TEST_CAPABILITIES;
-      async isAvailable(): Promise<boolean> { return true; }
+      async isAvailable(): Promise<boolean> {
+        return true;
+      }
       async createSession(config: AgentSessionConfig): Promise<AgentSession> {
         return new UnexpectedUserMessageSession(config);
       }
-      async resumeSession(): Promise<AgentSession> { throw new Error("unused"); }
+      async resumeSession(): Promise<AgentSession> {
+        throw new Error("unused");
+      }
     }
 
     const manager = new AgentManager({
@@ -3073,14 +3061,12 @@ describe("AgentManager", () => {
     await manager.runAgent(snapshot.id, { text: "do something" });
 
     const timeline = manager.getTimeline(snapshot.id);
-    const userMessages = timeline.filter(
-      (item) => item.type === "user_message"
-    );
+    const userMessages = timeline.filter((item) => item.type === "user_message");
 
     // Provider's user_message should be recorded (no canonical to dedup against)
     expect(userMessages).toHaveLength(1);
-    expect(
-      (userMessages[0] as Extract<AgentTimelineItem, { type: "user_message" }>).text
-    ).toBe("continuation prompt");
+    expect((userMessages[0] as Extract<AgentTimelineItem, { type: "user_message" }>).text).toBe(
+      "continuation prompt",
+    );
   });
 });

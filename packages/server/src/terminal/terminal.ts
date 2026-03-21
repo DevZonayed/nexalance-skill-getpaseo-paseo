@@ -73,7 +73,7 @@ export interface TerminalSession {
   onExit(listener: () => void): () => void;
   subscribeRaw(
     listener: (chunk: TerminalRawChunk) => void,
-    options?: { fromOffset?: number }
+    options?: { fromOffset?: number },
   ): TerminalRawSubscriptionResult;
   getOutputOffset(): number;
   getState(): TerminalState;
@@ -121,7 +121,7 @@ function ensureExecutableBit(path: string): void {
 }
 
 export function ensureNodePtySpawnHelperExecutableForCurrentPlatform(
-  options: EnsureNodePtySpawnHelperExecutableOptions = {}
+  options: EnsureNodePtySpawnHelperExecutableOptions = {},
 ): void {
   const platform = options.platform ?? process.platform;
   if (platform !== "darwin") {
@@ -492,7 +492,7 @@ export async function createTerminal(options: CreateTerminalOptions): Promise<Te
 
   function subscribeRaw(
     listener: (chunk: TerminalRawChunk) => void,
-    options?: { fromOffset?: number }
+    options?: { fromOffset?: number },
   ): TerminalRawSubscriptionResult {
     const requestedOffset = Math.max(0, Math.floor(options?.fromOffset ?? 0));
     const earliestAvailableOffset = getEarliestAvailableOffset();
@@ -545,12 +545,12 @@ export async function createTerminal(options: CreateTerminalOptions): Promise<Te
     id,
     name,
     cwd,
-      send,
-      subscribe,
-      onExit,
-      subscribeRaw,
-      getOutputOffset,
-      getState,
-      kill,
+    send,
+    subscribe,
+    onExit,
+    subscribeRaw,
+    getOutputOffset,
+    getState,
+    kill,
   };
 }

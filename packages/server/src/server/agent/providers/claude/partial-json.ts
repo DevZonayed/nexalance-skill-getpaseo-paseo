@@ -12,11 +12,8 @@ function skipWhitespace(input: string, index: number): number {
   return currentIndex;
 }
 
-function parsePartialString(
-  input: string,
-  index: number
-): PartialParseResult<string> | null {
-  if (input[index] !== "\"") {
+function parsePartialString(input: string, index: number): PartialParseResult<string> | null {
+  if (input[index] !== '"') {
     return null;
   }
 
@@ -25,7 +22,7 @@ function parsePartialString(
 
   while (currentIndex < input.length) {
     const character = input[currentIndex];
-    if (character === "\"") {
+    if (character === '"') {
       return {
         value,
         nextIndex: currentIndex + 1,
@@ -44,7 +41,7 @@ function parsePartialString(
       }
 
       switch (escapeCharacter) {
-        case "\"":
+        case '"':
         case "\\":
         case "/":
           value += escapeCharacter;
@@ -105,7 +102,7 @@ function parsePartialString(
 
 function parsePartialLiteral(
   input: string,
-  index: number
+  index: number,
 ): PartialParseResult<boolean | null> | null {
   const remaining = input.slice(index);
   if (remaining.startsWith("true")) {
@@ -120,13 +117,8 @@ function parsePartialLiteral(
   return null;
 }
 
-function parsePartialNumber(
-  input: string,
-  index: number
-): PartialParseResult<number> | null {
-  const match = /^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?/u.exec(
-    input.slice(index)
-  );
+function parsePartialNumber(input: string, index: number): PartialParseResult<number> | null {
+  const match = /^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?/u.exec(input.slice(index));
   if (!match?.[0]) {
     return null;
   }
@@ -138,10 +130,7 @@ function parsePartialNumber(
   };
 }
 
-function parsePartialArray(
-  input: string,
-  index: number
-): PartialParseResult<unknown[]> | null {
+function parsePartialArray(input: string, index: number): PartialParseResult<unknown[]> | null {
   if (input[index] !== "[") {
     return null;
   }
@@ -225,7 +214,7 @@ function parsePartialArray(
 
 function parsePartialObject(
   input: string,
-  index: number
+  index: number,
 ): PartialParseResult<Record<string, unknown>> | null {
   if (input[index] !== "{") {
     return null;
@@ -327,10 +316,7 @@ function parsePartialObject(
   };
 }
 
-function parsePartialJsonValue(
-  input: string,
-  index: number
-): PartialParseResult<unknown> | null {
+function parsePartialJsonValue(input: string, index: number): PartialParseResult<unknown> | null {
   const currentIndex = skipWhitespace(input, index);
   const character = input[currentIndex];
 
@@ -338,7 +324,7 @@ function parsePartialJsonValue(
     return null;
   }
 
-  if (character === "\"") {
+  if (character === '"') {
     return parsePartialString(input, currentIndex);
   }
   if (character === "{") {
@@ -358,7 +344,7 @@ function parsePartialJsonValue(
 }
 
 export function parsePartialJsonObject(
-  input: string
+  input: string,
 ): { value: Record<string, unknown>; complete: boolean } | null {
   const currentIndex = skipWhitespace(input, 0);
   const parsed = parsePartialObject(input, currentIndex);
@@ -368,7 +354,6 @@ export function parsePartialJsonObject(
 
   return {
     value: parsed.value,
-    complete:
-      parsed.complete && skipWhitespace(input, parsed.nextIndex) === input.length,
+    complete: parsed.complete && skipWhitespace(input, parsed.nextIndex) === input.length,
   };
 }

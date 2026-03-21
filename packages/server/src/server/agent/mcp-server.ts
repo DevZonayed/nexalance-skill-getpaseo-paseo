@@ -3,21 +3,10 @@ import { z } from "zod";
 import { ensureValidJson } from "../json-utils.js";
 import type { Logger } from "pino";
 import type { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/protocol.js";
-import type {
-  ServerNotification,
-  ServerRequest,
-} from "@modelcontextprotocol/sdk/types.js";
+import type { ServerNotification, ServerRequest } from "@modelcontextprotocol/sdk/types.js";
 
-import type {
-  AgentPromptInput,
-  AgentProvider,
-  AgentPermissionRequest,
-} from "./agent-sdk-types.js";
-import type {
-  AgentManager,
-  ManagedAgent,
-  WaitForAgentResult,
-} from "./agent-manager.js";
+import type { AgentPromptInput, AgentProvider, AgentPermissionRequest } from "./agent-sdk-types.js";
+import type { AgentManager, ManagedAgent, WaitForAgentResult } from "./agent-manager.js";
 import {
   AgentPermissionRequestPayloadSchema,
   AgentPermissionResponseSchema,
@@ -35,16 +24,10 @@ import {
 import { type WorktreeConfig } from "../../utils/worktree.js";
 import { WaitForAgentTracker } from "./wait-for-agent-tracker.js";
 import { scheduleAgentMetadataGeneration } from "./agent-metadata-generator.js";
-import type {
-  VoiceCallerContext,
-  VoiceSpeakHandler,
-} from "../voice-types.js";
+import type { VoiceCallerContext, VoiceSpeakHandler } from "../voice-types.js";
 import { expandUserPath, resolvePathFromBase } from "../path-utils.js";
 import type { TerminalManager } from "../../terminal/terminal-manager.js";
-import {
-  createAgentWorktree,
-  runAsyncWorktreeBootstrap,
-} from "../worktree-bootstrap.js";
+import { createAgentWorktree, runAsyncWorktreeBootstrap } from "../worktree-bootstrap.js";
 
 export interface AgentMcpServerOptions {
   agentManager: AgentManager;
@@ -60,12 +43,8 @@ export interface AgentMcpServerOptions {
    * Optional resolver for session-bound speak handlers.
    * Used by hidden voice agents to narrate through daemon-managed TTS.
    */
-  resolveSpeakHandler?: (
-    callerAgentId: string
-  ) => VoiceSpeakHandler | null;
-  resolveCallerContext?: (
-    callerAgentId: string
-  ) => VoiceCallerContext | null;
+  resolveSpeakHandler?: (callerAgentId: string) => VoiceSpeakHandler | null;
+  resolveCallerContext?: (callerAgentId: string) => VoiceCallerContext | null;
   enableVoiceTools?: boolean;
   voiceOnly?: boolean;
   logger: Logger;
@@ -87,7 +66,7 @@ const CODEX_TO_CLAUDE_MODE: Record<string, string> = {
 function mapModeAcrossProviders(
   sourceMode: string,
   sourceProvider: AgentProvider,
-  targetProvider: AgentProvider
+  targetProvider: AgentProvider,
 ): string {
   if (sourceProvider === targetProvider) {
     return sourceMode;
@@ -116,16 +95,10 @@ const AgentProviderEnum = z.enum(
   AGENT_PROVIDER_DEFINITIONS.map((definition) => definition.id) as [
     AgentProvider,
     ...AgentProvider[],
-  ]
+  ],
 );
 
-const AgentStatusEnum = z.enum([
-  "initializing",
-  "idle",
-  "running",
-  "error",
-  "closed",
-]);
+const AgentStatusEnum = z.enum(["initializing", "idle", "running", "error", "closed"]);
 
 // 50 seconds - surface friendly message before SDK tool timeout (~60s)
 const AGENT_WAIT_TIMEOUT_MS = 50000;
@@ -162,7 +135,7 @@ async function waitForAgentWithTimeout(
   options?: {
     signal?: AbortSignal;
     waitForActive?: boolean;
-  }
+  },
 ): Promise<WaitForAgentResult> {
   const timeoutController = new AbortController();
   const combinedController = new AbortController();
@@ -182,11 +155,9 @@ async function waitForAgentWithTimeout(
     if (options.signal.aborted) {
       forwardAbort(options.signal.reason);
     } else {
-      options.signal.addEventListener(
-        "abort",
-        () => forwardAbort(options.signal!.reason),
-        { once: true }
-      );
+      options.signal.addEventListener("abort", () => forwardAbort(options.signal!.reason), {
+        once: true,
+      });
     }
   }
 
@@ -194,7 +165,7 @@ async function waitForAgentWithTimeout(
   timeoutController.signal.addEventListener(
     "abort",
     () => forwardAbort(timeoutController.signal.reason),
-    { once: true }
+    { once: true },
   );
 
   try {
@@ -226,7 +197,7 @@ function startAgentRun(
   agentId: string,
   prompt: AgentPromptInput,
   logger: Logger,
-  options?: { replaceRunning?: boolean }
+  options?: { replaceRunning?: boolean },
 ): void {
   const snapshot = agentManager.getAgent(agentId);
   const shouldReplace =
@@ -241,16 +212,13 @@ function startAgentRun(
         // Events are broadcast via AgentManager subscribers.
       }
     } catch (error) {
-      logger.error(
-        { err: error, agentId },
-        "Agent stream failed"
-      );
+      logger.error({ err: error, agentId }, "Agent stream failed");
     }
   })();
 }
 
 function sanitizePermissionRequest(
-  permission: AgentPermissionRequest | null | undefined
+  permission: AgentPermissionRequest | null | undefined,
 ): AgentPermissionRequest | null {
   if (!permission) {
     return null;
@@ -277,16 +245,13 @@ function sanitizePermissionRequest(
 async function resolveAgentTitle(
   agentStorage: AgentStorage,
   agentId: string,
-  logger: Logger
+  logger: Logger,
 ): Promise<string | null> {
   try {
     const record = await agentStorage.get(agentId);
     return record?.title ?? null;
   } catch (error) {
-    logger.error(
-      { err: error, agentId },
-      "Failed to load agent title"
-    );
+    logger.error({ err: error, agentId }, "Failed to load agent title");
     return null;
   }
 }
@@ -294,15 +259,13 @@ async function resolveAgentTitle(
 async function serializeSnapshotWithMetadata(
   agentStorage: AgentStorage,
   snapshot: ManagedAgent,
-  logger: Logger
+  logger: Logger,
 ) {
   const title = await resolveAgentTitle(agentStorage, snapshot.id, logger);
   return serializeAgentSnapshot(snapshot, { title });
 }
 
-export async function createAgentMcpServer(
-  options: AgentMcpServerOptions
-): Promise<McpServer> {
+export async function createAgentMcpServer(options: AgentMcpServerOptions): Promise<McpServer> {
   const {
     agentManager,
     agentStorage,
@@ -314,7 +277,7 @@ export async function createAgentMcpServer(
   } = options;
   const childLogger = logger.child({ module: "agent", component: "mcp-server" });
   const waitTracker = new WaitForAgentTracker(logger);
-  const callerContext = callerAgentId ? resolveCallerContext?.(callerAgentId) ?? null : null;
+  const callerContext = callerAgentId ? (resolveCallerContext?.(callerAgentId) ?? null) : null;
 
   const server = new McpServer({
     name: "agent-mcp",
@@ -325,87 +288,67 @@ export async function createAgentMcpServer(
     cwd: z
       .string()
       .optional()
-      .describe(
-        "Optional working directory. Defaults to the caller agent working directory."
-      ),
+      .describe("Optional working directory. Defaults to the caller agent working directory."),
     title: z
       .string()
       .trim()
       .min(1, "Title is required")
       .max(60, "Title must be 60 characters or fewer")
-      .describe(
-        "Short descriptive title (<= 60 chars) summarizing the agent's focus."
-      ),
+      .describe("Short descriptive title (<= 60 chars) summarizing the agent's focus."),
     agentType: AgentProviderEnum.optional().describe(
-      "Optional agent implementation to spawn. Defaults to 'claude'."
+      "Optional agent implementation to spawn. Defaults to 'claude'.",
     ),
     initialPrompt: z
       .string()
       .trim()
       .min(1, "initialPrompt is required")
-      .describe(
-        "Required first task to run immediately after creation."
-      ),
+      .describe("Required first task to run immediately after creation."),
     background: z
       .boolean()
       .optional()
       .default(false)
       .describe(
-        "Run agent in background. If false (default), waits for completion or permission request. If true, returns immediately."
+        "Run agent in background. If false (default), waits for completion or permission request. If true, returns immediately.",
       ),
   };
 
   const topLevelInputSchema = {
     cwd: z
       .string()
-      .describe(
-        "Required working directory for the agent (absolute, relative, or ~)."
-      ),
+      .describe("Required working directory for the agent (absolute, relative, or ~)."),
     title: z
       .string()
       .trim()
       .min(1, "Title is required")
       .max(60, "Title must be 60 characters or fewer")
-      .describe(
-        "Short descriptive title (<= 60 chars) summarizing the agent's focus."
-      ),
+      .describe("Short descriptive title (<= 60 chars) summarizing the agent's focus."),
     agentType: AgentProviderEnum.optional().describe(
-      "Optional agent implementation to spawn. Defaults to 'claude'."
+      "Optional agent implementation to spawn. Defaults to 'claude'.",
     ),
     initialPrompt: z
       .string()
       .trim()
       .min(1, "initialPrompt is required")
-      .describe(
-        "Required first task to run immediately after creation."
-      ),
-    initialMode: z
-      .string()
-      .describe("Required session mode to configure before the first run."),
+      .describe("Required first task to run immediately after creation."),
+    initialMode: z.string().describe("Required session mode to configure before the first run."),
     worktreeName: z
       .string()
       .optional()
-      .describe(
-        "Optional git worktree branch name (lowercase alphanumerics + hyphen)."
-      ),
+      .describe("Optional git worktree branch name (lowercase alphanumerics + hyphen)."),
     baseBranch: z
       .string()
       .optional()
-      .describe(
-        "Required when worktreeName is set: the base branch to diff/merge against."
-      ),
+      .describe("Required when worktreeName is set: the base branch to diff/merge against."),
     background: z
       .boolean()
       .optional()
       .default(false)
       .describe(
-        "Run agent in background. If false (default), waits for completion or permission request. If true, returns immediately."
+        "Run agent in background. If false (default), waits for completion or permission request. If true, returns immediately.",
       ),
   };
 
-  const createAgentInputSchema = callerAgentId
-    ? agentToAgentInputSchema
-    : topLevelInputSchema;
+  const createAgentInputSchema = callerAgentId ? agentToAgentInputSchema : topLevelInputSchema;
   const agentToAgentCreateAgentArgsSchema = z.object(agentToAgentInputSchema);
   const topLevelCreateAgentArgsSchema = z.object({
     ...topLevelInputSchema,
@@ -447,7 +390,7 @@ export async function createAgentMcpServer(
           content: [],
           structuredContent: ensureValidJson({ ok: true }),
         };
-      }
+      },
     );
   }
 
@@ -473,7 +416,7 @@ export async function createAgentMcpServer(
             id: z.string(),
             label: z.string(),
             description: z.string().nullable().optional(),
-          })
+          }),
         ),
         lastMessage: z.string().nullable().optional(),
         permission: AgentPermissionRequestPayloadSchema.nullable().optional(),
@@ -508,11 +451,7 @@ export async function createAgentMcpServer(
         });
         const parentMode = parentAgent.currentModeId;
         if (parentMode) {
-          resolvedMode = mapModeAcrossProviders(
-            parentMode,
-            parentAgent.provider,
-            provider
-          );
+          resolvedMode = mapModeAcrossProviders(parentMode, parentAgent.provider, provider);
         }
       } else {
         const topLevelArgs = topLevelCreateAgentArgsSchema.parse(args);
@@ -520,12 +459,7 @@ export async function createAgentMcpServer(
         initialPrompt = topLevelArgs.initialPrompt;
         background = topLevelArgs.background ?? false;
         normalizedTitle = topLevelArgs.title.trim();
-        const {
-          cwd,
-          initialMode,
-          worktreeName,
-          baseBranch,
-        } = topLevelArgs;
+        const { cwd, initialMode, worktreeName, baseBranch } = topLevelArgs;
 
         resolvedCwd = expandUserPath(cwd);
 
@@ -559,7 +493,7 @@ export async function createAgentMcpServer(
           title: normalizedTitle ?? undefined,
         },
         undefined,
-        childAgentDefaultLabels ? { labels: childAgentDefaultLabels } : undefined
+        childAgentDefaultLabels ? { labels: childAgentDefaultLabels } : undefined,
       );
 
       if (worktreeConfig) {
@@ -599,10 +533,7 @@ export async function createAgentMcpServer(
           emitState: false,
         });
       } catch (error) {
-        childLogger.error(
-          { err: error, agentId: snapshot.id },
-          "Failed to record initial prompt"
-        );
+        childLogger.error({ err: error, agentId: snapshot.id }, "Failed to record initial prompt");
       }
 
       try {
@@ -610,11 +541,9 @@ export async function createAgentMcpServer(
 
         // If not running in background, wait for completion
         if (!background) {
-          const result = await waitForAgentWithTimeout(
-            agentManager,
-            snapshot.id,
-            { waitForActive: true }
-          );
+          const result = await waitForAgentWithTimeout(agentManager, snapshot.id, {
+            waitForActive: true,
+          });
 
           const responseData = {
             agentId: snapshot.id,
@@ -635,10 +564,7 @@ export async function createAgentMcpServer(
           return response;
         }
       } catch (error) {
-        childLogger.error(
-          { err: error, agentId: snapshot.id },
-          "Failed to run initial prompt"
-        );
+        childLogger.error({ err: error, agentId: snapshot.id }, "Failed to run initial prompt");
       }
 
       // Return immediately if background=true
@@ -656,7 +582,7 @@ export async function createAgentMcpServer(
         }),
       };
       return response;
-    }
+    },
   );
 
   server.registerTool(
@@ -666,9 +592,7 @@ export async function createAgentMcpServer(
       description:
         "Block until the agent requests permission or the current run completes. Returns the pending permission (if any) and recent activity summary.",
       inputSchema: {
-        agentId: z
-          .string()
-          .describe("Agent identifier returned by the create_agent tool"),
+        agentId: z.string().describe("Agent identifier returned by the create_agent tool"),
       },
       outputSchema: {
         agentId: z.string(),
@@ -704,9 +628,7 @@ export async function createAgentMcpServer(
           forwardExternalAbort();
         } else {
           signal.addEventListener("abort", forwardExternalAbort, { once: true });
-          cleanupFns.push(() =>
-            signal.removeEventListener("abort", forwardExternalAbort)
-          );
+          cleanupFns.push(() => signal.removeEventListener("abort", forwardExternalAbort));
         }
       }
 
@@ -718,11 +640,9 @@ export async function createAgentMcpServer(
       cleanupFns.push(unregister);
 
       try {
-        const result: WaitForAgentResult = await waitForAgentWithTimeout(
-          agentManager,
-          agentId,
-          { signal: abortController.signal }
-        );
+        const result: WaitForAgentResult = await waitForAgentWithTimeout(agentManager, agentId, {
+          signal: abortController.signal,
+        });
 
         const validJson = ensureValidJson({
           agentId,
@@ -739,7 +659,7 @@ export async function createAgentMcpServer(
       } finally {
         cleanup();
       }
-    }
+    },
   );
 
   server.registerTool(
@@ -760,7 +680,7 @@ export async function createAgentMcpServer(
           .optional()
           .default(false)
           .describe(
-            "Run agent in background. If false (default), waits for completion or permission request. If true, returns immediately."
+            "Run agent in background. If false (default), waits for completion or permission request. If true, returns immediately.",
           ),
       },
       outputSchema: {
@@ -789,10 +709,7 @@ export async function createAgentMcpServer(
           emitState: false,
         });
       } catch (error) {
-        childLogger.error(
-          { err: error, agentId },
-          "Failed to record user message"
-        );
+        childLogger.error({ err: error, agentId }, "Failed to record user message");
       }
 
       startAgentRun(agentManager, agentId, prompt, childLogger, {
@@ -820,7 +737,6 @@ export async function createAgentMcpServer(
         return response;
       }
 
-
       // Return immediately if background=true
       // Re-fetch snapshot since the state may have changed
       const currentSnapshot = agentManager.getAgent(agentId);
@@ -838,7 +754,7 @@ export async function createAgentMcpServer(
         structuredContent: validJson,
       };
       return response;
-    }
+    },
   );
 
   server.registerTool(
@@ -864,7 +780,7 @@ export async function createAgentMcpServer(
       const structuredSnapshot = await serializeSnapshotWithMetadata(
         agentStorage,
         snapshot,
-        childLogger
+        childLogger,
       );
       return {
         content: [],
@@ -873,7 +789,7 @@ export async function createAgentMcpServer(
           snapshot: structuredSnapshot,
         }),
       };
-    }
+    },
   );
 
   server.registerTool(
@@ -890,22 +806,21 @@ export async function createAgentMcpServer(
       const snapshots = agentManager.listAgents();
       const agents = await Promise.all(
         snapshots.map((snapshot) =>
-          serializeSnapshotWithMetadata(agentStorage, snapshot, childLogger)
-        )
+          serializeSnapshotWithMetadata(agentStorage, snapshot, childLogger),
+        ),
       );
       return {
         content: [],
         structuredContent: ensureValidJson({ agents }),
       };
-    }
+    },
   );
 
   server.registerTool(
     "cancel_agent",
     {
       title: "Cancel Agent Run",
-      description:
-        "Abort the agent's current run but keep the agent alive for future tasks.",
+      description: "Abort the agent's current run but keep the agent alive for future tasks.",
       inputSchema: {
         agentId: z.string(),
       },
@@ -922,7 +837,7 @@ export async function createAgentMcpServer(
         content: [],
         structuredContent: ensureValidJson({ success }),
       };
-    }
+    },
   );
 
   server.registerTool(
@@ -944,15 +859,14 @@ export async function createAgentMcpServer(
         content: [],
         structuredContent: ensureValidJson({ success: true }),
       };
-    }
+    },
   );
 
   server.registerTool(
     "get_agent_activity",
     {
       title: "Get Agent Activity",
-      description:
-        "Return recent agent timeline entries as a curated summary.",
+      description: "Return recent agent timeline entries as a curated summary.",
       inputSchema: {
         agentId: z.string(),
         limit: z
@@ -971,9 +885,7 @@ export async function createAgentMcpServer(
       const timeline = agentManager.getTimeline(agentId);
       const snapshot = agentManager.getAgent(agentId);
 
-      const activitiesToCurate = limit
-        ? timeline.slice(-limit)
-        : timeline;
+      const activitiesToCurate = limit ? timeline.slice(-limit) : timeline;
 
       const curatedContent = curateAgentActivity(activitiesToCurate);
       const totalCount = timeline.length;
@@ -981,9 +893,9 @@ export async function createAgentMcpServer(
 
       let countHeader: string;
       if (limit && shownCount < totalCount) {
-        countHeader = `Showing ${shownCount} of ${totalCount} ${totalCount === 1 ? 'activity' : 'activities'} (limited to ${limit})`;
+        countHeader = `Showing ${shownCount} of ${totalCount} ${totalCount === 1 ? "activity" : "activities"} (limited to ${limit})`;
       } else {
-        countHeader = `Showing all ${totalCount} ${totalCount === 1 ? 'activity' : 'activities'}`;
+        countHeader = `Showing all ${totalCount} ${totalCount === 1 ? "activity" : "activities"}`;
       }
 
       const contentWithCount = `${countHeader}\n\n${curatedContent}`;
@@ -997,7 +909,7 @@ export async function createAgentMcpServer(
           content: contentWithCount,
         }),
       };
-    }
+    },
   );
 
   server.registerTool(
@@ -1021,7 +933,7 @@ export async function createAgentMcpServer(
         content: [],
         structuredContent: ensureValidJson({ success: true, newMode: modeId }),
       };
-    }
+    },
   );
 
   server.registerTool(
@@ -1037,7 +949,7 @@ export async function createAgentMcpServer(
             agentId: z.string(),
             status: AgentStatusEnum,
             request: AgentPermissionRequestPayloadSchema,
-          })
+          }),
         ),
       },
     },
@@ -1055,7 +967,7 @@ export async function createAgentMcpServer(
         content: [],
         structuredContent: ensureValidJson({ permissions }),
       };
-    }
+    },
   );
 
   server.registerTool(
@@ -1079,7 +991,7 @@ export async function createAgentMcpServer(
         content: [],
         structuredContent: ensureValidJson({ success: true }),
       };
-    }
+    },
   );
 
   return server;

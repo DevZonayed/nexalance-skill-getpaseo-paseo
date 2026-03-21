@@ -13,7 +13,7 @@ describe("relay websocket URL versioning", () => {
         endpoint: "relay.paseo.sh:443",
         serverId: "srv_test",
         role: "client",
-      })
+      }),
     );
 
     expect(url.searchParams.get("v")).toBe(CURRENT_RELAY_PROTOCOL_VERSION);
@@ -27,7 +27,7 @@ describe("relay websocket URL versioning", () => {
         serverId: "srv_test",
         role: "server",
         connectionId: "conn_abc123",
-      })
+      }),
     );
 
     expect(url.searchParams.get("connectionId")).toBe("conn_abc123");
@@ -40,7 +40,7 @@ describe("relay websocket URL versioning", () => {
         serverId: "srv_test",
         role: "server",
         version: "1",
-      })
+      }),
     );
 
     expect(url.searchParams.get("v")).toBe("1");
@@ -52,8 +52,6 @@ describe("relay websocket URL versioning", () => {
   });
 
   test("rejects unsupported relay versions", () => {
-    expect(() => normalizeRelayProtocolVersion("3")).toThrow(
-      'Relay version must be "1" or "2"'
-    );
+    expect(() => normalizeRelayProtocolVersion("3")).toThrow('Relay version must be "1" or "2"');
   });
 });

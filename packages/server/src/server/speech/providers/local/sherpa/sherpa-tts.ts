@@ -82,7 +82,10 @@ export class SherpaOnnxTTS implements TextToSpeechProvider {
     };
 
     this.tts = new sherpa.OfflineTts(offlineTtsConfig);
-    this.logger.info({ preset: config.preset, modelDir: config.modelDir }, "Sherpa offline TTS initialized");
+    this.logger.info(
+      { preset: config.preset, modelDir: config.modelDir },
+      "Sherpa offline TTS initialized",
+    );
   }
 
   async synthesizeSpeech(text: string): Promise<SpeechStreamResult> {
@@ -99,7 +102,10 @@ export class SherpaOnnxTTS implements TextToSpeechProvider {
           ? Float32Array.from(audio.samples as number[])
           : null;
     const sampleRate: number =
-      audio && typeof audio.sampleRate === "number" && Number.isFinite(audio.sampleRate) && audio.sampleRate > 0
+      audio &&
+      typeof audio.sampleRate === "number" &&
+      Number.isFinite(audio.sampleRate) &&
+      audio.sampleRate > 0
         ? audio.sampleRate
         : typeof this.tts.sampleRate === "number"
           ? this.tts.sampleRate

@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { deriveWorkspacePaneState, getWorkspacePaneDescriptors } from "@/screens/workspace/workspace-pane-state";
+import {
+  deriveWorkspacePaneState,
+  getWorkspacePaneDescriptors,
+} from "@/screens/workspace/workspace-pane-state";
 import type { WorkspaceLayout } from "@/stores/workspace-layout-store";
 import type { WorkspaceTab } from "@/stores/workspace-tabs-store";
 

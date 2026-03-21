@@ -15,15 +15,9 @@ const turnFailedEvent: AgentStreamEventPayload = {
 
 describe("session stream lifecycle helpers", () => {
   it("derives optimistic terminal lifecycle only when current status is running", () => {
-    expect(deriveOptimisticLifecycleStatus("running", turnCompletedEvent)).toBe(
-      "idle"
-    );
-    expect(deriveOptimisticLifecycleStatus("running", turnFailedEvent)).toBe(
-      "error"
-    );
-    expect(deriveOptimisticLifecycleStatus("initializing", turnCompletedEvent)).toBe(
-      null
-    );
+    expect(deriveOptimisticLifecycleStatus("running", turnCompletedEvent)).toBe("idle");
+    expect(deriveOptimisticLifecycleStatus("running", turnFailedEvent)).toBe("error");
+    expect(deriveOptimisticLifecycleStatus("initializing", turnCompletedEvent)).toBe(null);
     expect(deriveOptimisticLifecycleStatus("idle", turnFailedEvent)).toBe(null);
   });
 });

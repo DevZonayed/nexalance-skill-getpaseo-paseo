@@ -1,8 +1,7 @@
 import { z } from "zod";
 import { stripCwdPrefix } from "../shared/path-utils.js";
 
-const SHELL_WRAPPER_PREFIX_PATTERN =
-  /^\/bin\/(?:zsh|bash|sh)\s+(?:-[a-zA-Z]+\s+)?/;
+const SHELL_WRAPPER_PREFIX_PATTERN = /^\/bin\/(?:zsh|bash|sh)\s+(?:-[a-zA-Z]+\s+)?/;
 const CD_AND_PATTERN = /^cd\s+(?:"[^"]+"|'[^']+'|\S+)\s+&&\s+/;
 export { stripCwdPrefix };
 
@@ -36,7 +35,7 @@ const TodosSchema = z.object({
       content: z.string(),
       status: z.enum(["pending", "in_progress", "completed"]),
       activeForm: z.string().optional(),
-    })
+    }),
   ),
 });
 

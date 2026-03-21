@@ -29,11 +29,7 @@ import {
 import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
 import { StyleSheet, UnistylesRuntime, useUnistyles } from "react-native-unistyles";
 import { Check, CheckCircle } from "lucide-react-native";
-import {
-  BottomSheetBackdrop,
-  BottomSheetModal,
-  BottomSheetScrollView,
-} from "@gorhom/bottom-sheet";
+import { BottomSheetBackdrop, BottomSheetModal, BottomSheetScrollView } from "@gorhom/bottom-sheet";
 
 // Keep parity with dropdown-menu action statuses.
 export type ActionStatus = "idle" | "pending" | "success";
@@ -88,7 +84,7 @@ function useControllableOpenState({
       if (!isControlled) setInternalOpen(next);
       onOpenChange?.(next);
     },
-    [isControlled, onOpenChange]
+    [isControlled, onOpenChange],
   );
   return [value, setValue];
 }
@@ -120,8 +116,7 @@ function computePosition({
 
   // Calculate available space
   const spaceTop = triggerRect.y - displayArea.y;
-  const spaceBottom =
-    displayArea.y + displayArea.height - (triggerRect.y + triggerRect.height);
+  const spaceBottom = displayArea.y + displayArea.height - (triggerRect.y + triggerRect.height);
 
   // Flip if needed
   let actualPlacement = placement;
@@ -163,7 +158,7 @@ function computePosition({
   x = Math.max(padding, Math.min(displayArea.width - contentWidth - padding, x!));
   y = Math.max(
     displayArea.y + padding,
-    Math.min(displayArea.y + displayArea.height - contentHeight - padding, y!)
+    Math.min(displayArea.y + displayArea.height - contentHeight - padding, y!),
   );
 
   return { x, y, actualPlacement };
@@ -226,7 +221,7 @@ export function ContextMenu({
       anchorRect,
       setAnchorRect,
     }),
-    [anchorRect, isOpen, setAnchorRect, setIsOpen]
+    [anchorRect, isOpen, setAnchorRect, setIsOpen],
   );
 
   return <ContextMenuContext.Provider value={value}>{children}</ContextMenuContext.Provider>;
@@ -258,8 +253,7 @@ export function ContextMenuTrigger({
   const ctx = useContextMenuContext("ContextMenuTrigger");
 
   const shouldEnableOnThisPlatform =
-    enabled &&
-    (Platform.OS === "web" ? enabledOnWeb : enabledOnMobile);
+    enabled && (Platform.OS === "web" ? enabledOnWeb : enabledOnMobile);
 
   const openAtEvent = useCallback(
     (event: unknown) => {
@@ -279,7 +273,7 @@ export function ContextMenuTrigger({
       });
       ctx.setOpen(true);
     },
-    [ctx, disabled, shouldEnableOnThisPlatform]
+    [ctx, disabled, shouldEnableOnThisPlatform],
   );
 
   const handleRef = useCallback(
@@ -287,7 +281,7 @@ export function ContextMenuTrigger({
       assignRef(ctx.triggerRef, node);
       assignRef(triggerRef, node);
     },
-    [ctx.triggerRef, triggerRef]
+    [ctx.triggerRef, triggerRef],
   );
 
   return (
@@ -380,19 +374,14 @@ export function ContextMenuContent({
         handleClose();
       }
     },
-    [handleClose]
+    [handleClose],
   );
 
   const renderSheetBackdrop = useCallback(
     (props: ComponentProps<typeof BottomSheetBackdrop>) => (
-      <BottomSheetBackdrop
-        {...props}
-        appearsOnIndex={0}
-        disappearsOnIndex={-1}
-        opacity={0.45}
-      />
+      <BottomSheetBackdrop {...props} appearsOnIndex={0} disappearsOnIndex={-1} opacity={0.45} />
     ),
-    []
+    [],
   );
 
   // Measure trigger when opening (fallback) and capture point anchors.
@@ -468,7 +457,7 @@ export function ContextMenuContent({
       const { width: w, height: h } = event.nativeEvent.layout;
       setContentSize({ width: w, height: h });
     },
-    []
+    [],
   );
 
   if (useMobileSheet) {
@@ -543,7 +532,11 @@ export function ContextMenuContent({
             },
           ]}
         >
-          <ScrollView bounces={false} showsVerticalScrollIndicator contentContainerStyle={{ flexGrow: 1 }}>
+          <ScrollView
+            bounces={false}
+            showsVerticalScrollIndicator
+            contentContainerStyle={{ flexGrow: 1 }}
+          >
             {children}
           </ScrollView>
         </Animated.View>
@@ -564,7 +557,13 @@ export function ContextMenuLabel({
   );
 }
 
-export function ContextMenuSeparator({ style, testID }: { style?: ViewStyle; testID?: string }): ReactElement {
+export function ContextMenuSeparator({
+  style,
+  testID,
+}: {
+  style?: ViewStyle;
+  testID?: string;
+}): ReactElement {
   return <View style={[styles.separator, style]} testID={testID} />;
 }
 
@@ -638,7 +637,10 @@ export function ContextMenuItem({
   }
 
   const trailingContent =
-    trailing ?? (!showSelectedCheck && selected ? <Check size={16} color={theme.colors.foregroundMuted} /> : null);
+    trailing ??
+    (!showSelectedCheck && selected ? (
+      <Check size={16} color={theme.colors.foregroundMuted} />
+    ) : null);
 
   return (
     <Pressable
@@ -654,8 +656,14 @@ export function ContextMenuItem({
       }}
       style={({ pressed, hovered }) => [
         styles.item,
-        selected ? (selectedVariant === "accent" ? styles.itemSelectedAccent : styles.itemSelected) : null,
-        selected && (hovered || pressed) && selectedVariant !== "accent" ? styles.itemSelectedInteractive : null,
+        selected
+          ? selectedVariant === "accent"
+            ? styles.itemSelectedAccent
+            : styles.itemSelected
+          : null,
+        selected && (hovered || pressed) && selectedVariant !== "accent"
+          ? styles.itemSelectedInteractive
+          : null,
         isDisabled ? styles.itemDisabled : null,
         hovered && !pressed && !isDisabled ? styles.itemHovered : null,
         pressed && !isDisabled ? styles.itemPressed : null,
@@ -684,7 +692,9 @@ export function ContextMenuItem({
             numberOfLines={2}
             style={[
               styles.itemDescription,
-              selected && selectedVariant === "accent" ? styles.itemDescriptionSelectedAccent : null,
+              selected && selectedVariant === "accent"
+                ? styles.itemDescriptionSelectedAccent
+                : null,
             ]}
           >
             {description}

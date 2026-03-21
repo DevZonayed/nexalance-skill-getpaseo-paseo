@@ -8,7 +8,12 @@ import type {
   TranscriptionResult,
 } from "../../../speech-provider.js";
 import { Pcm16MonoResampler } from "../../../../agent/pcm16-resampler.js";
-import { parsePcm16MonoWav, parsePcmRateFromFormat, pcm16lePeakAbs, pcm16leToFloat32 } from "../../../audio.js";
+import {
+  parsePcm16MonoWav,
+  parsePcmRateFromFormat,
+  pcm16lePeakAbs,
+  pcm16leToFloat32,
+} from "../../../audio.js";
 import { SherpaOnlineRecognizerEngine } from "./sherpa-online-recognizer.js";
 
 export type SherpaSttConfig = {
@@ -136,9 +141,7 @@ export class SherpaOnnxSTT implements SpeechToTextProvider {
     const targetPeak = 0.6;
     const maxGain = 50;
     const gain =
-      peakFloat > 0 && peakFloat < targetPeak
-        ? Math.min(maxGain, targetPeak / peakFloat)
-        : 1;
+      peakFloat > 0 && peakFloat < targetPeak ? Math.min(maxGain, targetPeak / peakFloat) : 1;
 
     const stream = this.engine.createStream();
     try {
@@ -149,7 +152,10 @@ export class SherpaOnnxSTT implements SpeechToTextProvider {
         this.engine.recognizer.decode(stream);
       }
 
-      const padSamples = Math.max(0, Math.round((this.engine.sampleRate * this.tailPaddingMs) / 1000));
+      const padSamples = Math.max(
+        0,
+        Math.round((this.engine.sampleRate * this.tailPaddingMs) / 1000),
+      );
       if (padSamples > 0) {
         stream.acceptWaveform(this.engine.sampleRate, new Float32Array(padSamples));
       }

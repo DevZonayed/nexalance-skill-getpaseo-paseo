@@ -98,7 +98,7 @@ describe("workspace agent visibility", () => {
         agentsHydrated: true,
         knownAgentIds,
         activeAgentIds,
-      })
+      }),
     ).toBe(true);
   });
 
@@ -112,7 +112,7 @@ describe("workspace agent visibility", () => {
         agentsHydrated: true,
         knownAgentIds,
         activeAgentIds,
-      })
+      }),
     ).toBe(false);
   });
 
@@ -123,7 +123,7 @@ describe("workspace agent visibility", () => {
         agentsHydrated: true,
         knownAgentIds: new Set<string>(),
         activeAgentIds: new Set<string>(),
-      })
+      }),
     ).toBe(true);
   });
 

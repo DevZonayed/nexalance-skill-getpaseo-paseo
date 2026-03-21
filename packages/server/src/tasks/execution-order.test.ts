@@ -100,7 +100,7 @@ function makeTask(
     deps?: string[];
     priority?: number;
     created?: string;
-  } = {}
+  } = {},
 ): Task {
   return {
     id,
@@ -202,17 +202,15 @@ describe("computeExecutionOrder", () => {
         parentId: "epic",
         priority: 0,
         created: "2024-01-02",
-      })
+      }),
     );
-    store.addTask(
-      makeTask("p1-task1", { parentId: "phase1", created: "2024-01-03" })
-    );
+    store.addTask(makeTask("p1-task1", { parentId: "phase1", created: "2024-01-03" }));
     store.addTask(
       makeTask("p1-task2", {
         parentId: "phase1",
         deps: ["p1-task1"],
         created: "2024-01-04",
-      })
+      }),
     );
 
     // Phase 2 - depends on phase1
@@ -221,14 +219,10 @@ describe("computeExecutionOrder", () => {
         parentId: "epic",
         deps: ["phase1"],
         created: "2024-01-05",
-      })
+      }),
     );
-    store.addTask(
-      makeTask("p2-task1", { parentId: "phase2", created: "2024-01-06" })
-    );
-    store.addTask(
-      makeTask("p2-task2", { parentId: "phase2", created: "2024-01-07" })
-    );
+    store.addTask(makeTask("p2-task1", { parentId: "phase2", created: "2024-01-06" }));
+    store.addTask(makeTask("p2-task2", { parentId: "phase2", created: "2024-01-07" }));
 
     // Cleanup - no priority, depends on phase2
     store.addTask(
@@ -236,7 +230,7 @@ describe("computeExecutionOrder", () => {
         parentId: "epic",
         deps: ["phase2"],
         created: "2024-01-08",
-      })
+      }),
     );
 
     const result = await computeExecutionOrder(store, "epic");
@@ -274,22 +268,20 @@ describe("computeExecutionOrder", () => {
      */
 
     store.addTask(makeTask("parent", { created: "2024-01-01" }));
-    store.addTask(
-      makeTask("child-a", { parentId: "parent", created: "2024-01-02" })
-    );
+    store.addTask(makeTask("child-a", { parentId: "parent", created: "2024-01-02" }));
     store.addTask(
       makeTask("child-b", {
         parentId: "parent",
         priority: 0,
         created: "2024-01-03",
-      })
+      }),
     );
     store.addTask(
       makeTask("child-c", {
         parentId: "parent",
         priority: 1,
         created: "2024-01-04",
-      })
+      }),
     );
 
     const result = await computeExecutionOrder(store, "parent");
@@ -300,12 +292,8 @@ describe("computeExecutionOrder", () => {
   });
 
   it("should place done tasks first in historical order", async () => {
-    store.addTask(
-      makeTask("done-later", { status: "done", created: "2024-01-03" })
-    );
-    store.addTask(
-      makeTask("done-first", { status: "done", created: "2024-01-01" })
-    );
+    store.addTask(makeTask("done-later", { status: "done", created: "2024-01-03" }));
+    store.addTask(makeTask("done-first", { status: "done", created: "2024-01-01" }));
     store.addTask(makeTask("pending", { created: "2024-01-02" }));
 
     const result = await computeExecutionOrder(store);
@@ -318,9 +306,7 @@ describe("computeExecutionOrder", () => {
   it("should mark tasks with unresolvable deps as blocked", async () => {
     // b depends on external-dep which doesn't exist in scope
     store.addTask(makeTask("a", { created: "2024-01-01" }));
-    store.addTask(
-      makeTask("b", { deps: ["external-dep"], created: "2024-01-02" })
-    );
+    store.addTask(makeTask("b", { deps: ["external-dep"], created: "2024-01-02" }));
 
     const result = await computeExecutionOrder(store);
 

@@ -19,14 +19,8 @@ import {
   arrayMove,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import type {
-  DraggableListProps,
-  DraggableRenderItemInfo,
-} from "./draggable-list.types";
-import {
-  WebDesktopScrollbarOverlay,
-  useWebDesktopScrollbarMetrics,
-} from "./web-desktop-scrollbar";
+import type { DraggableListProps, DraggableRenderItemInfo } from "./draggable-list.types";
+import { WebDesktopScrollbarOverlay, useWebDesktopScrollbarMetrics } from "./web-desktop-scrollbar";
 
 export type { DraggableListProps, DraggableRenderItemInfo };
 
@@ -79,7 +73,7 @@ function SortableItem<T>({
   // the "ghost" stretches. Keep the dragged item's size stable by zeroing
   // out the dnd-kit scaling component.
   const baseTransform = CSS.Transform.toString(
-    transform && isDragging ? { ...transform, scaleX: 1, scaleY: 1 } : transform
+    transform && isDragging ? { ...transform, scaleX: 1, scaleY: 1 } : transform,
   );
   const scaleTransform = isDragging ? "scale(1.02)" : "";
   const combinedTransform = [baseTransform, scaleTransform].filter(Boolean).join(" ");
@@ -100,9 +94,7 @@ function SortableItem<T>({
       ? {
           attributes: attributes as unknown as Record<string, unknown>,
           listeners: listeners as unknown as Record<string, unknown>,
-          setActivatorNodeRef: setActivatorNodeRef as unknown as (
-            node: unknown
-          ) => void,
+          setActivatorNodeRef: setActivatorNodeRef as unknown as (node: unknown) => void,
         }
       : undefined,
   };
@@ -152,7 +144,7 @@ export function DraggableList<T>({
     }),
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
-    })
+    }),
   );
 
   const handleDragStart = useCallback(
@@ -161,7 +153,7 @@ export function DraggableList<T>({
       setActiveId(String(event.active.id));
       onDragBegin?.();
     },
-    [data, onDragBegin]
+    [data, onDragBegin],
   );
 
   const handleDragEnd = useCallback(
@@ -172,12 +164,8 @@ export function DraggableList<T>({
       setDragItems(null);
 
       if (over && active.id !== over.id) {
-        const oldIndex = items.findIndex(
-          (item, i) => keyExtractor(item, i) === active.id
-        );
-        const newIndex = items.findIndex(
-          (item, i) => keyExtractor(item, i) === over.id
-        );
+        const oldIndex = items.findIndex((item, i) => keyExtractor(item, i) === active.id);
+        const newIndex = items.findIndex((item, i) => keyExtractor(item, i) === over.id);
 
         if (oldIndex >= 0 && newIndex >= 0 && oldIndex !== newIndex) {
           const newItems = arrayMove(items, oldIndex, newIndex);
@@ -185,7 +173,7 @@ export function DraggableList<T>({
         }
       }
     },
-    [items, keyExtractor, onDragEnd]
+    [items, keyExtractor, onDragEnd],
   );
 
   const ids = items.map((item, index) => keyExtractor(item, index));
@@ -204,9 +192,7 @@ export function DraggableList<T>({
           testID={testID}
           style={style}
           contentContainerStyle={contentContainerStyle}
-          showsVerticalScrollIndicator={
-            showCustomScrollbar ? false : showsVerticalScrollIndicator
-          }
+          showsVerticalScrollIndicator={showCustomScrollbar ? false : showsVerticalScrollIndicator}
           onLayout={showCustomScrollbar ? scrollbarMetrics.onLayout : undefined}
           onContentSizeChange={
             showCustomScrollbar ? scrollbarMetrics.onContentSizeChange : undefined

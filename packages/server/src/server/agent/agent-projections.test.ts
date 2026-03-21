@@ -1,9 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  AGENT_LIFECYCLE_STATUSES,
-  type AgentLifecycleStatus,
-} from "./agent-manager.js";
+import { AGENT_LIFECYCLE_STATUSES, type AgentLifecycleStatus } from "./agent-manager.js";
 import { toAgentPayload, toStoredAgentRecord, type ManagedAgent } from "./agent-projections.js";
 import type {
   AgentPermissionRequest,
@@ -11,17 +8,12 @@ import type {
   AgentSessionConfig,
 } from "./agent-sdk-types.js";
 
-type ManagedAgentOverrides = Omit<
-  Partial<ManagedAgent>,
-  "config" | "pendingPermissions"
-> & {
+type ManagedAgentOverrides = Omit<Partial<ManagedAgent>, "config" | "pendingPermissions"> & {
   config?: Partial<AgentSessionConfig>;
   pendingPermissions?: Map<string, AgentPermissionRequest>;
 };
 
-function createManagedAgent(
-  overrides: ManagedAgentOverrides = {}
-): ManagedAgent {
+function createManagedAgent(overrides: ManagedAgentOverrides = {}): ManagedAgent {
   const now = new Date("2025-01-01T00:00:00.000Z");
   const baseConfig: AgentSessionConfig = {
     provider: "claude",
@@ -47,14 +39,11 @@ function createManagedAgent(
     ...restOverrides
   } = overrides;
 
-  const sessionValue =
-    lifecycle === "closed" ? null : restOverrides.session ?? ({} as any);
+  const sessionValue = lifecycle === "closed" ? null : (restOverrides.session ?? ({} as any));
   const pendingRunValue =
-    restOverrides.pendingRun ??
-    (lifecycle === "running" ? (async function* noop() {})() : null);
+    restOverrides.pendingRun ?? (lifecycle === "running" ? (async function* noop() {})() : null);
   const lastErrorValue =
-    restOverrides.lastError ??
-    (lifecycle === "error" ? "encountered error" : undefined);
+    restOverrides.lastError ?? (lifecycle === "error" ? "encountered error" : undefined);
 
   const agent: ManagedAgent = {
     id: "agent-123",
@@ -79,8 +68,7 @@ function createManagedAgent(
       { id: "build", label: "Building", description: "Detailed" },
     ],
     currentModeId: "plan",
-    pendingPermissions:
-      pendingPermissionsOverride ?? new Map<string, AgentPermissionRequest>(),
+    pendingPermissions: pendingPermissionsOverride ?? new Map<string, AgentPermissionRequest>(),
     pendingRun: pendingRunValue as ManagedAgent["pendingRun"],
     timeline: [],
     runtimeInfo: {
@@ -106,9 +94,7 @@ function createManagedAgent(
   };
 }
 
-function createPermission(
-  overrides: Partial<AgentPermissionRequest> = {}
-): AgentPermissionRequest {
+function createPermission(overrides: Partial<AgentPermissionRequest> = {}): AgentPermissionRequest {
   const base: AgentPermissionRequest = {
     id: "perm-1",
     provider: "claude",
@@ -127,12 +113,12 @@ describe("toStoredAgentRecord", () => {
   it("captures lifecycle metadata, config, and persistence", () => {
     const agent = createManagedAgent({
       currentModeId: "focus",
-    persistence: {
-      provider: "claude",
-      sessionId: "persist-2",
-      metadata: { resumedAt: new Date("2025-01-05T00:00:00.000Z"), note: "warm" },
-    },
-  });
+      persistence: {
+        provider: "claude",
+        sessionId: "persist-2",
+        metadata: { resumedAt: new Date("2025-01-05T00:00:00.000Z"), note: "warm" },
+      },
+    });
 
     const record = toStoredAgentRecord(agent, { title: "Refactor Agent" });
 
@@ -235,10 +221,7 @@ describe("toAgentPayload", () => {
     expect(payload.title).toBe("UI Payload");
     expect(payload.model).toBe(agent.config.model);
     expect(payload.thinkingOptionId).toBeNull();
-    expect(payload.pendingPermissions.map((item) => item.id)).toEqual([
-      "perm-a",
-      "perm-b",
-    ]);
+    expect(payload.pendingPermissions.map((item) => item.id)).toEqual(["perm-a", "perm-b"]);
     expect(payload.pendingPermissions[0]).not.toBe(permissionA);
     expect(payload.pendingPermissions[0].input).toEqual({ command: "ls" });
     expect(payload.pendingPermissions[1].metadata).toEqual({

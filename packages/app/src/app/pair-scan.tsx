@@ -11,10 +11,7 @@ import { NameHostModal } from "@/components/name-host-modal";
 import { decodeOfferFragmentPayload, normalizeHostPort } from "@/utils/daemon-endpoints";
 import { connectToDaemon } from "@/utils/test-daemon-connection";
 import { ConnectionOfferSchema } from "@server/shared/connection-offer";
-import {
-  buildHostRootRoute,
-  buildHostSettingsRoute,
-} from "@/utils/host-routes";
+import { buildHostRootRoute, buildHostSettingsRoute } from "@/utils/host-routes";
 
 const styles = StyleSheet.create((theme) => ({
   container: {
@@ -148,8 +145,7 @@ export default function PairScanScreen() {
     targetServerId?: string;
   }>();
   const source = typeof params.source === "string" ? params.source : "settings";
-  const sourceServerId =
-    typeof params.sourceServerId === "string" ? params.sourceServerId : null;
+  const sourceServerId = typeof params.sourceServerId === "string" ? params.sourceServerId : null;
   const targetServerId = typeof params.targetServerId === "string" ? params.targetServerId : null;
   const daemons = useHosts();
   const { upsertConnectionFromOfferUrl: upsertDaemonFromOfferUrl, renameHost } = useHostMutations();
@@ -157,15 +153,22 @@ export default function PairScanScreen() {
   const [permission, requestPermission] = useCameraPermissions();
   const [isPairing, setIsPairing] = useState(false);
   const lastScannedRef = useRef<string | null>(null);
-  const [pendingNameHost, setPendingNameHost] = useState<{ serverId: string; hostname: string | null } | null>(null);
+  const [pendingNameHost, setPendingNameHost] = useState<{
+    serverId: string;
+    hostname: string | null;
+  } | null>(null);
   const pendingNameHostname = useSessionStore(
     useCallback(
       (state) => {
         if (!pendingNameHost) return null;
-        return state.sessions[pendingNameHost.serverId]?.serverInfo?.hostname ?? pendingNameHost.hostname ?? null;
+        return (
+          state.sessions[pendingNameHost.serverId]?.serverInfo?.hostname ??
+          pendingNameHost.hostname ??
+          null
+        );
       },
-      [pendingNameHost]
-    )
+      [pendingNameHost],
+    ),
   );
 
   const returnToSource = useCallback(
@@ -190,7 +193,7 @@ export default function PairScanScreen() {
         router.replace(buildHostSettingsRoute(settingsServerId) as any);
       }
     },
-    [router, source, sourceServerId, targetServerId]
+    [router, source, sourceServerId, targetServerId],
   );
 
   const closeToSource = useCallback(() => {
@@ -238,7 +241,10 @@ export default function PairScanScreen() {
 
         if (targetServerId && offer.serverId !== targetServerId) {
           lastScannedRef.current = null;
-          Alert.alert("Wrong daemon", `That QR code belongs to ${offer.serverId}, not ${targetServerId}.`);
+          Alert.alert(
+            "Wrong daemon",
+            `That QR code belongs to ${offer.serverId}, not ${targetServerId}.`,
+          );
           return;
         }
 
@@ -270,7 +276,7 @@ export default function PairScanScreen() {
         setIsPairing(false);
       }
     },
-    [daemons, isPairing, pendingNameHost, returnToSource, targetServerId, upsertDaemonFromOfferUrl]
+    [daemons, isPairing, pendingNameHost, returnToSource, targetServerId, upsertDaemonFromOfferUrl],
   );
 
   if (Platform.OS === "web") {
@@ -334,10 +340,7 @@ export default function PairScanScreen() {
             <Text style={styles.permissionBody}>
               Allow camera access to scan the pairing QR code from your daemon.
             </Text>
-            <Pressable
-              style={styles.permissionButton}
-              onPress={() => void requestPermission()}
-            >
+            <Pressable style={styles.permissionButton} onPress={() => void requestPermission()}>
               <Text style={styles.permissionButtonText}>Grant permission</Text>
             </Pressable>
           </View>
@@ -356,9 +359,7 @@ export default function PairScanScreen() {
                 <View style={[styles.corner, styles.cornerBL]} />
                 <View style={[styles.corner, styles.cornerBR]} />
               </View>
-              <Text style={styles.helperText}>
-                Point your camera at the pairing QR code.
-              </Text>
+              <Text style={styles.helperText}>Point your camera at the pairing QR code.</Text>
               {isPairing ? (
                 <Text style={[styles.helperText, { color: theme.colors.foreground }]}>
                   Pairing…

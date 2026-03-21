@@ -6,5 +6,4 @@ export const AGENT_LIFECYCLE_STATUSES = [
   "closed",
 ] as const;
 
-export type AgentLifecycleStatus =
-  (typeof AGENT_LIFECYCLE_STATUSES)[number];
+export type AgentLifecycleStatus = (typeof AGENT_LIFECYCLE_STATUSES)[number];

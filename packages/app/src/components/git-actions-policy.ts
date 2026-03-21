@@ -54,12 +54,7 @@ export interface BuildGitActionsInput {
   runtime: Record<GitActionId, GitActionRuntimeState>;
 }
 
-const SECONDARY_ACTION_IDS: GitActionId[] = [
-  "merge-branch",
-  "pr",
-  "merge-from-base",
-  "push",
-];
+const SECONDARY_ACTION_IDS: GitActionId[] = ["merge-branch", "pr", "merge-from-base", "push"];
 
 export function buildGitActions(input: BuildGitActionsInput): GitActions {
   if (!input.isGit) {
@@ -134,7 +129,7 @@ export function buildGitActions(input: BuildGitActionsInput): GitActions {
   });
 
   const primaryActionId = getPrimaryActionId(input);
-  const primary = primaryActionId ? allActions.get(primaryActionId) ?? null : null;
+  const primary = primaryActionId ? (allActions.get(primaryActionId) ?? null) : null;
   const secondary = SECONDARY_ACTION_IDS.map((id) => allActions.get(id)!);
   if (input.isPaseoOwnedWorktree) {
     secondary.push(allActions.get("archive-worktree")!);
@@ -189,10 +184,7 @@ function buildPrAction(input: BuildGitActionsInput): GitAction {
     label: "Create PR",
     pendingLabel: "Creating PR...",
     successLabel: "PR Created",
-    disabled:
-      input.runtime.pr.disabled ||
-      !input.githubFeaturesEnabled ||
-      input.aheadCount === 0,
+    disabled: input.runtime.pr.disabled || !input.githubFeaturesEnabled || input.aheadCount === 0,
     status: input.runtime.pr.status,
     description: getCreatePrDescription(input),
     icon: input.runtime.pr.icon,

@@ -11,7 +11,7 @@ describe("useArchiveAgent", () => {
         queryClient,
         serverId: "server-a",
         agentId: "agent-1",
-      })
+      }),
     ).toBe(false);
 
     __private__.setAgentArchiving({
@@ -26,14 +26,14 @@ describe("useArchiveAgent", () => {
         queryClient,
         serverId: "server-a",
         agentId: "agent-1",
-      })
+      }),
     ).toBe(true);
     expect(
       __private__.isAgentArchiving({
         queryClient,
         serverId: "server-a",
         agentId: "agent-2",
-      })
+      }),
     ).toBe(false);
 
     __private__.setAgentArchiving({
@@ -48,16 +48,13 @@ describe("useArchiveAgent", () => {
         queryClient,
         serverId: "server-a",
         agentId: "agent-1",
-      })
+      }),
     ).toBe(false);
   });
 
   it("removes an archived agent from cached list payloads", () => {
     const payload = {
-      entries: [
-        { agent: { id: "agent-1" } },
-        { agent: { id: "agent-2" } },
-      ],
+      entries: [{ agent: { id: "agent-1" } }, { agent: { id: "agent-2" } }],
       pageInfo: { hasMore: false },
     };
 

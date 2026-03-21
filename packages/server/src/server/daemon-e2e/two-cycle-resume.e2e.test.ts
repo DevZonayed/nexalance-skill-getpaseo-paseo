@@ -25,62 +25,54 @@ describe("two-cycle Codex agent resume", () => {
     await ctx.cleanup();
   }, 60_000);
 
-  test(
-    "Codex agent remembers original marker after two resume cycles",
-    async () => {
-      const cwd = tmpCwd();
-      const marker = `project-unicorn-${Date.now()}`;
-      try {
-        const agent = await ctx.client.createAgent({
-          provider: "codex",
-          cwd,
-          title: "Two Cycle Resume Test",
-          modeId: "full-access",
-        });
+  test("Codex agent remembers original marker after two resume cycles", async () => {
+    const cwd = tmpCwd();
+    const marker = `project-unicorn-${Date.now()}`;
+    try {
+      const agent = await ctx.client.createAgent({
+        provider: "codex",
+        cwd,
+        title: "Two Cycle Resume Test",
+        modeId: "full-access",
+      });
 
-        collector.clear();
-        await ctx.client.sendMessage(
-          agent.id,
-          `Remember this project name for a test: "${marker}".`
-        );
-        const afterRemember = await ctx.client.waitForFinish(agent.id, 5_000);
-        expect(afterRemember.status).toBe("idle");
-        expect(afterRemember.final?.persistence).toBeTruthy();
+      collector.clear();
+      await ctx.client.sendMessage(agent.id, `Remember this project name for a test: "${marker}".`);
+      const afterRemember = await ctx.client.waitForFinish(agent.id, 5_000);
+      expect(afterRemember.status).toBe("idle");
+      expect(afterRemember.final?.persistence).toBeTruthy();
 
-        const persistence0 = afterRemember.final!.persistence as PersistenceHandle;
-        await ctx.client.deleteAgent(agent.id);
+      const persistence0 = afterRemember.final!.persistence as PersistenceHandle;
+      await ctx.client.deleteAgent(agent.id);
 
-        collector.clear();
-        const resumed1 = await ctx.client.resumeAgent(persistence0);
-        await ctx.client.sendMessage(
-          resumed1.id,
-          "What was the project name I asked you to remember at the very beginning of our conversation?"
-        );
-        const afterRecall1 = await ctx.client.waitForFinish(resumed1.id, 5_000);
-        expect(afterRecall1.status).toBe("idle");
-        expect(afterRecall1.final?.persistence).toBeTruthy();
-        expect(afterRecall1.final!.persistence!.metadata).toMatchObject({ marker });
+      collector.clear();
+      const resumed1 = await ctx.client.resumeAgent(persistence0);
+      await ctx.client.sendMessage(
+        resumed1.id,
+        "What was the project name I asked you to remember at the very beginning of our conversation?",
+      );
+      const afterRecall1 = await ctx.client.waitForFinish(resumed1.id, 5_000);
+      expect(afterRecall1.status).toBe("idle");
+      expect(afterRecall1.final?.persistence).toBeTruthy();
+      expect(afterRecall1.final!.persistence!.metadata).toMatchObject({ marker });
 
-        const persistence1 = afterRecall1.final!.persistence as PersistenceHandle;
-        await ctx.client.deleteAgent(resumed1.id);
+      const persistence1 = afterRecall1.final!.persistence as PersistenceHandle;
+      await ctx.client.deleteAgent(resumed1.id);
 
-        collector.clear();
-        const resumed2 = await ctx.client.resumeAgent(persistence1);
-        await ctx.client.sendMessage(
-          resumed2.id,
-          "What was the project name I asked you to remember at the very beginning of our conversation?"
-        );
-        const afterRecall2 = await ctx.client.waitForFinish(resumed2.id, 5_000);
-        expect(afterRecall2.status).toBe("idle");
-        expect(afterRecall2.final?.persistence).toBeTruthy();
-        expect(afterRecall2.final!.persistence!.metadata).toMatchObject({ marker });
+      collector.clear();
+      const resumed2 = await ctx.client.resumeAgent(persistence1);
+      await ctx.client.sendMessage(
+        resumed2.id,
+        "What was the project name I asked you to remember at the very beginning of our conversation?",
+      );
+      const afterRecall2 = await ctx.client.waitForFinish(resumed2.id, 5_000);
+      expect(afterRecall2.status).toBe("idle");
+      expect(afterRecall2.final?.persistence).toBeTruthy();
+      expect(afterRecall2.final!.persistence!.metadata).toMatchObject({ marker });
 
-        await ctx.client.deleteAgent(resumed2.id);
-      } finally {
-        rmSync(cwd, { recursive: true, force: true });
-      }
-    },
-    30_000
-  );
+      await ctx.client.deleteAgent(resumed2.id);
+    } finally {
+      rmSync(cwd, { recursive: true, force: true });
+    }
+  }, 30_000);
 });
-

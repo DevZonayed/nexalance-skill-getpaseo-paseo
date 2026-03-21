@@ -2,9 +2,7 @@ import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { EventEmitter } from "node:events";
 import pino from "pino";
 
-import {
-  DictationStreamManager,
-} from "./dictation-stream-manager.js";
+import { DictationStreamManager } from "./dictation-stream-manager.js";
 import type {
   SpeechToTextProvider,
   StreamingTranscriptionSession,
@@ -54,7 +52,11 @@ class FakeRealtimeSession extends EventEmitter implements StreamingTranscription
 class FakeSttProvider implements SpeechToTextProvider {
   public readonly id = "fake";
   constructor(private readonly session: FakeRealtimeSession) {}
-  createSession(_params: { logger: any; language?: string; prompt?: string }): StreamingTranscriptionSession {
+  createSession(_params: {
+    logger: any;
+    language?: string;
+    prompt?: string;
+  }): StreamingTranscriptionSession {
     return this.session;
   }
 }
@@ -110,7 +112,7 @@ describe("DictationStreamManager (finish buffer-too-small tolerance)", () => {
     await tick();
 
     session.emitError(
-      "Error committing input audio buffer: buffer too small. Expected at least 100ms of audio, but buffer only has 0.00ms of audio."
+      "Error committing input audio buffer: buffer too small. Expected at least 100ms of audio, but buffer only has 0.00ms of audio.",
     );
     await tick();
 
@@ -227,9 +229,7 @@ describe("DictationStreamManager (provider-agnostic provider)", () => {
 
     await manager.handleFinish("d-timeout", 0);
 
-    const finishAccepted = emitted.find(
-      (msg) => msg.type === "dictation_stream_finish_accepted"
-    );
+    const finishAccepted = emitted.find((msg) => msg.type === "dictation_stream_finish_accepted");
     expect(finishAccepted).toBeDefined();
     expect(finishAccepted?.payload.timeoutMs).toBeGreaterThan(5000);
   });
@@ -259,9 +259,7 @@ describe("DictationStreamManager (provider-agnostic provider)", () => {
 
     await manager.handleFinish("d-uncommitted-timeout", 0);
 
-    const finishAccepted = emitted.find(
-      (msg) => msg.type === "dictation_stream_finish_accepted"
-    );
+    const finishAccepted = emitted.find((msg) => msg.type === "dictation_stream_finish_accepted");
     expect(finishAccepted).toBeDefined();
     expect(finishAccepted?.payload.timeoutMs).toBeGreaterThan(5000);
   });

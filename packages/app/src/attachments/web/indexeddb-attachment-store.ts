@@ -53,7 +53,7 @@ function openAttachmentDb(): Promise<IDBDatabase> {
 function runTx<T>(
   db: IDBDatabase,
   mode: IDBTransactionMode,
-  run: (store: IDBObjectStore) => IDBRequest<T>
+  run: (store: IDBObjectStore) => IDBRequest<T>,
 ): Promise<T> {
   return new Promise((resolve, reject) => {
     const transaction = db.transaction(STORE_NAME, mode);
@@ -78,7 +78,10 @@ async function sourceToBlob(input: SaveAttachmentInput): Promise<{ blob: Blob; m
   const source = input.source;
   if (source.kind === "blob") {
     const mimeType = normalizeMimeType(input.mimeType ?? source.blob.type);
-    const blob = source.blob.type === mimeType ? source.blob : source.blob.slice(0, source.blob.size, mimeType);
+    const blob =
+      source.blob.type === mimeType
+        ? source.blob
+        : source.blob.slice(0, source.blob.size, mimeType);
     return { blob, mimeType };
   }
 
@@ -104,7 +107,7 @@ async function sourceToBlob(input: SaveAttachmentInput): Promise<{ blob: Blob; m
 
 async function loadBlob(db: IDBDatabase, id: string): Promise<Blob> {
   const record = await runTx<StoredBlobRecord | undefined>(db, "readonly", (store) =>
-    store.get(id)
+    store.get(id),
   );
   if (!record?.blob) {
     throw new Error(`Attachment ${id} was not found in IndexedDB.`);
@@ -125,7 +128,7 @@ export function createIndexedDbAttachmentStore(): AttachmentStore {
 
       try {
         await runTx(db, "readwrite", (store) =>
-          store.put({ id, blob, createdAt, fileName } satisfies StoredBlobRecord)
+          store.put({ id, blob, createdAt, fileName } satisfies StoredBlobRecord),
         );
       } finally {
         db.close();
@@ -184,7 +187,9 @@ export function createIndexedDbAttachmentStore(): AttachmentStore {
           const cursorRequest = store.openCursor();
 
           cursorRequest.onerror = () => {
-            reject(cursorRequest.error ?? new Error("Failed to iterate IndexedDB attachment store."));
+            reject(
+              cursorRequest.error ?? new Error("Failed to iterate IndexedDB attachment store."),
+            );
           };
 
           cursorRequest.onsuccess = () => {

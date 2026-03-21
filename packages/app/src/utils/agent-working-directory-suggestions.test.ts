@@ -18,10 +18,7 @@ describe("collectAgentWorkingDirectorySuggestions", () => {
       },
     ]);
 
-    expect(results).toEqual([
-      "/Users/me/project-alpha",
-      "/Users/me/project-beta",
-    ]);
+    expect(results).toEqual(["/Users/me/project-alpha", "/Users/me/project-beta"]);
   });
 
   it("excludes Paseo-owned worktree paths", () => {

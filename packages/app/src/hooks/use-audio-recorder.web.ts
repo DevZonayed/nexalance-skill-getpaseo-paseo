@@ -46,7 +46,7 @@ export function useAudioRecorder(config?: AudioCaptureConfig) {
     }
 
     const detected = MIME_TYPE_CANDIDATES.find((candidate) =>
-      window.MediaRecorder.isTypeSupported(candidate)
+      window.MediaRecorder.isTypeSupported(candidate),
     );
 
     supportedMimeTypeRef.current = detected ?? null;
@@ -165,13 +165,13 @@ export function useAudioRecorder(config?: AudioCaptureConfig) {
 
     if (!secureContext && !isDesktopApp) {
       throw new Error(
-        `Microphone access requires HTTPS or localhost. Current origin: ${currentOrigin}`
+        `Microphone access requires HTTPS or localhost. Current origin: ${currentOrigin}`,
       );
     }
     if (!secureContext && isDesktopApp) {
       console.warn(
         "[AudioRecorder][Web] Insecure context reported under Desktop; attempting getUserMedia anyway",
-        { currentOrigin }
+        { currentOrigin },
       );
     }
 
@@ -335,9 +335,10 @@ export function useAudioRecorder(config?: AudioCaptureConfig) {
     };
   }, [hardReset]);
 
-  const getSupportedMimeType = useCallback(() => detectSupportedMimeType(), [
-    detectSupportedMimeType,
-  ]);
+  const getSupportedMimeType = useCallback(
+    () => detectSupportedMimeType(),
+    [detectSupportedMimeType],
+  );
 
   return {
     start,

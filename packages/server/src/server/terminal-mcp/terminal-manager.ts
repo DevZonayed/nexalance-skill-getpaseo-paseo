@@ -78,9 +78,7 @@ export class TerminalManager {
     const session = await findSessionByName(this.sessionName);
 
     if (!session) {
-      throw new Error(
-        `Session '${this.sessionName}' not found. Call initialize() first.`
-      );
+      throw new Error(`Session '${this.sessionName}' not found. Call initialize() first.`);
     }
 
     const windows = await listWindows(session.id);
@@ -110,22 +108,18 @@ export class TerminalManager {
    * Create a new terminal (tmux window) with specified name and working directory
    * Optionally execute an initial command
    */
-  async createTerminal(
-    params: CreateTerminalParams
-  ): Promise<CreateTerminalResult> {
+  async createTerminal(params: CreateTerminalParams): Promise<CreateTerminalResult> {
     const session = await findSessionByName(this.sessionName);
 
     if (!session) {
-      throw new Error(
-        `Session '${this.sessionName}' not found. Call initialize() first.`
-      );
+      throw new Error(`Session '${this.sessionName}' not found. Call initialize() first.`);
     }
 
     // Validate name uniqueness
     const isUnique = await isWindowNameUnique(session.id, params.name);
     if (!isUnique) {
       throw new Error(
-        `Terminal with name '${params.name}' already exists. Please choose a unique name.`
+        `Terminal with name '${params.name}' already exists. Please choose a unique name.`,
       );
     }
 
@@ -162,7 +156,7 @@ export class TerminalManager {
   async captureTerminal(
     terminalName: string,
     lines: number = 200,
-    maxWait?: number
+    maxWait?: number,
   ): Promise<string> {
     const session = await findSessionByName(this.sessionName);
     if (!session) {
@@ -175,7 +169,7 @@ export class TerminalManager {
       const windows = await listWindows(session.id);
       const availableNames = windows.map((w) => w.name).join(", ");
       throw new Error(
-        `Terminal '${terminalName}' not found. Available terminals: ${availableNames}`
+        `Terminal '${terminalName}' not found. Available terminals: ${availableNames}`,
       );
     }
 
@@ -201,7 +195,7 @@ export class TerminalManager {
     terminalName: string,
     text: string,
     pressEnter: boolean = false,
-    return_output?: { lines?: number; waitForSettled?: boolean; maxWait?: number }
+    return_output?: { lines?: number; waitForSettled?: boolean; maxWait?: number },
   ): Promise<string | null> {
     const session = await findSessionByName(this.sessionName);
     if (!session) {
@@ -214,7 +208,7 @@ export class TerminalManager {
       const windows = await listWindows(session.id);
       const availableNames = windows.map((w) => w.name).join(", ");
       throw new Error(
-        `Terminal '${terminalName}' not found. Available terminals: ${availableNames}`
+        `Terminal '${terminalName}' not found. Available terminals: ${availableNames}`,
       );
     }
 
@@ -241,7 +235,7 @@ export class TerminalManager {
     terminalName: string,
     keys: string,
     repeat: number = 1,
-    return_output?: { lines?: number; waitForSettled?: boolean; maxWait?: number }
+    return_output?: { lines?: number; waitForSettled?: boolean; maxWait?: number },
   ): Promise<string | null> {
     const session = await findSessionByName(this.sessionName);
     if (!session) {
@@ -254,7 +248,7 @@ export class TerminalManager {
       const windows = await listWindows(session.id);
       const availableNames = windows.map((w) => w.name).join(", ");
       throw new Error(
-        `Terminal '${terminalName}' not found. Available terminals: ${availableNames}`
+        `Terminal '${terminalName}' not found. Available terminals: ${availableNames}`,
       );
     }
 
@@ -277,10 +271,7 @@ export class TerminalManager {
    * Rename a terminal by name
    * Validates that the new name is unique
    */
-  async renameTerminal(
-    terminalName: string,
-    newName: string
-  ): Promise<void> {
+  async renameTerminal(terminalName: string, newName: string): Promise<void> {
     const session = await findSessionByName(this.sessionName);
 
     if (!session) {
@@ -307,7 +298,7 @@ export class TerminalManager {
       const windows = await listWindows(session.id);
       const availableNames = windows.map((w) => w.name).join(", ");
       throw new Error(
-        `Terminal '${terminalName}' not found. Available terminals: ${availableNames}`
+        `Terminal '${terminalName}' not found. Available terminals: ${availableNames}`,
       );
     }
 
@@ -322,7 +313,7 @@ export class TerminalManager {
   async executeCommand(
     command: string,
     workingDirectory: string,
-    maxWait?: number
+    maxWait?: number,
   ): Promise<{
     commandId: string;
     output: string;
@@ -331,9 +322,7 @@ export class TerminalManager {
   }> {
     const session = await findSessionByName(this.sessionName);
     if (!session) {
-      throw new Error(
-        `Session '${this.sessionName}' not found. Call initialize() first.`
-      );
+      throw new Error(`Session '${this.sessionName}' not found. Call initialize() first.`);
     }
 
     const result = await tmuxExecuteCommand({
@@ -359,9 +348,7 @@ export class TerminalManager {
     const session = await findSessionByName(this.sessionName);
 
     if (!session) {
-      throw new Error(
-        `Session '${this.sessionName}' not found. Call initialize() first.`
-      );
+      throw new Error(`Session '${this.sessionName}' not found. Call initialize() first.`);
     }
 
     const windows = await listWindows(session.id);
@@ -371,13 +358,7 @@ export class TerminalManager {
       const paneId = `${window.id}.0`;
 
       // Check if pane is dead first
-      const deadStatus = await executeTmux([
-        "display-message",
-        "-p",
-        "-t",
-        paneId,
-        "#{pane_dead}",
-      ]);
+      const deadStatus = await executeTmux(["display-message", "-p", "-t", paneId, "#{pane_dead}"]);
       const isDead = deadStatus === "1";
 
       // Use stored values for dead panes, current values for live ones
@@ -419,7 +400,7 @@ export class TerminalManager {
    */
   async captureCommand(
     commandId: string,
-    lines: number = 200
+    lines: number = 200,
   ): Promise<{
     output: string;
     exitCode: number | null;
@@ -430,19 +411,13 @@ export class TerminalManager {
       throw new Error(`Session '${this.sessionName}' not found.`);
     }
 
-      const paneId = `${commandId}.0`;
+    const paneId = `${commandId}.0`;
 
     const rawOutput = await capturePaneContent(paneId, lines, false);
     const extracted = extractExitCodeMarkerFromOutput(rawOutput);
     const output = extracted.output;
 
-    const deadStatus = await executeTmux([
-      "display-message",
-      "-p",
-      "-t",
-      paneId,
-      "#{pane_dead}",
-    ]);
+    const deadStatus = await executeTmux(["display-message", "-p", "-t", paneId, "#{pane_dead}"]);
     const isDead = deadStatus === "1";
 
     let exitCode: number | null = null;
@@ -472,7 +447,7 @@ export class TerminalManager {
     commandId: string,
     text: string,
     pressEnter: boolean = false,
-    return_output?: { lines?: number; waitForSettled?: boolean; maxWait?: number }
+    return_output?: { lines?: number; waitForSettled?: boolean; maxWait?: number },
   ): Promise<string | null> {
     const session = await findSessionByName(this.sessionName);
     if (!session) {
@@ -496,7 +471,7 @@ export class TerminalManager {
     commandId: string,
     keys: string,
     repeat: number = 1,
-    return_output?: { lines?: number; waitForSettled?: boolean; maxWait?: number }
+    return_output?: { lines?: number; waitForSettled?: boolean; maxWait?: number },
   ): Promise<string | null> {
     const session = await findSessionByName(this.sessionName);
     if (!session) {

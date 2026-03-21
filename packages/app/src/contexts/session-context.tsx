@@ -5,10 +5,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useClientActivity } from "@/hooks/use-client-activity";
 import { usePushTokenRegistration } from "@/hooks/use-push-token-registration";
 import { clearArchiveAgentPending } from "@/hooks/use-archive-agent";
-import {
-  generateMessageId,
-  type StreamItem,
-} from "@/types/stream";
+import { generateMessageId, type StreamItem } from "@/types/stream";
 import {
   processTimelineResponse,
   processAgentStreamEvent,
@@ -27,14 +24,8 @@ import {
 import type { AgentLifecycleStatus } from "@server/shared/agent-lifecycle";
 import type { DaemonClient } from "@server/client/daemon-client";
 import { File } from "expo-file-system";
-import {
-  getHostRuntimeStore,
-  useHostRuntimeIsConnected,
-} from "@/runtime/host-runtime";
-import {
-  useVoiceAudioEngineOptional,
-  useVoiceRuntimeOptional,
-} from "@/contexts/voice-context";
+import { getHostRuntimeStore, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
+import { useVoiceAudioEngineOptional, useVoiceRuntimeOptional } from "@/contexts/voice-context";
 import type { AudioPlaybackSource } from "@/voice/audio-engine-types";
 import {
   useSessionStore,
@@ -54,10 +45,7 @@ import {
   rejectInitDeferred,
 } from "@/utils/agent-initialization";
 import { encodeImages } from "@/utils/encode-images";
-import {
-  derivePendingPermissionKey,
-  normalizeAgentSnapshot,
-} from "@/utils/agent-snapshots";
+import { derivePendingPermissionKey, normalizeAgentSnapshot } from "@/utils/agent-snapshots";
 import { resolveProjectPlacement } from "@/utils/project-placement";
 import { buildDraftStoreKey } from "@/stores/draft-keys";
 import type { AttachmentMetadata } from "@/attachments/types";
@@ -78,10 +66,7 @@ export type {
 const HISTORY_STALE_AFTER_MS = 60_000;
 const AUTHORITATIVE_REVALIDATION_DEBOUNCE_MS = 300;
 
-type AudioOutputPayload = Extract<
-  SessionOutboundMessage,
-  { type: "audio_output" }
->["payload"];
+type AudioOutputPayload = Extract<SessionOutboundMessage, { type: "audio_output" }>["payload"];
 
 interface BufferedAudioChunk {
   chunkIndex: number;
@@ -94,9 +79,7 @@ function decodeBase64Chunk(base64: string): Uint8Array {
   return Buffer.from(base64, "base64");
 }
 
-function buildAudioPlaybackSource(
-  chunks: BufferedAudioChunk[]
-): AudioPlaybackSource {
+function buildAudioPlaybackSource(chunks: BufferedAudioChunk[]): AudioPlaybackSource {
   const decodedChunks = chunks.map((chunk) => decodeBase64Chunk(chunk.audio));
   const totalSize = decodedChunks.reduce((sum, chunk) => sum + chunk.length, 0);
   const output = new Uint8Array(totalSize);
@@ -111,7 +94,7 @@ function buildAudioPlaybackSource(
     format === "pcm"
       ? "audio/pcm;rate=24000;bits=16"
       : format === "mp3"
-      ? "audio/mpeg"
+        ? "audio/mpeg"
         : `audio/${format}`;
 
   const bytes = output.slice();
@@ -119,10 +102,7 @@ function buildAudioPlaybackSource(
     size: bytes.byteLength,
     type: mimeType,
     async arrayBuffer() {
-      return bytes.buffer.slice(
-        bytes.byteOffset,
-        bytes.byteOffset + bytes.byteLength
-      );
+      return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
     },
   };
 }
@@ -139,7 +119,7 @@ const findLatestAssistantMessageText = (items: StreamItem[]): string | null => {
 
 const getLatestPermissionRequest = (
   session: SessionState | undefined,
-  agentId: string
+  agentId: string,
 ): NotificationPermissionRequest | null => {
   if (!session) {
     return null;
@@ -173,10 +153,7 @@ type FileDownloadTokenPayload = Extract<
   { type: "file_download_token_response" }
 >["payload"];
 
-type AgentUpdatePayload = Extract<
-  SessionOutboundMessage,
-  { type: "agent_update" }
->["payload"];
+type AgentUpdatePayload = Extract<SessionOutboundMessage, { type: "agent_update" }>["payload"];
 type WorkspaceUpdatePayload = Extract<
   SessionOutboundMessage,
   { type: "workspace_update" }
@@ -197,14 +174,14 @@ function pendingKey(serverId: string, agentId: string): string {
 export function bufferPendingAgentUpdate(
   serverId: string,
   agentId: string,
-  update: AgentUpdatePayload
+  update: AgentUpdatePayload,
 ): void {
   pendingAgentUpdates.set(pendingKey(serverId, agentId), update);
 }
 
 export function flushPendingAgentUpdate(
   serverId: string,
-  agentId: string
+  agentId: string,
 ): AgentUpdatePayload | undefined {
   const key = pendingKey(serverId, agentId);
   const update = pendingAgentUpdates.get(key);
@@ -212,10 +189,7 @@ export function flushPendingAgentUpdate(
   return update;
 }
 
-export function deletePendingAgentUpdate(
-  serverId: string,
-  agentId: string
-): void {
+export function deletePendingAgentUpdate(serverId: string, agentId: string): void {
   pendingAgentUpdates.delete(pendingKey(serverId, agentId));
 }
 
@@ -238,11 +212,7 @@ interface SessionProviderClientProps extends SessionProviderSharedProps {
 
 export type SessionProviderProps = SessionProviderClientProps;
 
-function SessionProviderWithClient({
-  children,
-  serverId,
-  client,
-}: SessionProviderClientProps) {
+function SessionProviderWithClient({ children, serverId, client }: SessionProviderClientProps) {
   return (
     <SessionProviderInternal serverId={serverId} client={client}>
       {children}
@@ -255,11 +225,7 @@ export function SessionProvider(props: SessionProviderProps) {
   return <SessionProviderWithClient {...props} />;
 }
 
-function SessionProviderInternal({
-  children,
-  serverId,
-  client,
-}: SessionProviderClientProps) {
+function SessionProviderInternal({ children, serverId, client }: SessionProviderClientProps) {
   const voiceRuntime = useVoiceRuntimeOptional();
   const voiceAudioEngine = useVoiceAudioEngineOptional();
   const queryClient = useQueryClient();
@@ -270,55 +236,29 @@ function SessionProviderInternal({
   const clearSession = useSessionStore((state) => state.clearSession);
   const setIsPlayingAudio = useSessionStore((state) => state.setIsPlayingAudio);
   const setMessages = useSessionStore((state) => state.setMessages);
-  const setCurrentAssistantMessage = useSessionStore(
-    (state) => state.setCurrentAssistantMessage
-  );
-  const setAgentStreamTail = useSessionStore(
-    (state) => state.setAgentStreamTail
-  );
-  const setAgentStreamHead = useSessionStore(
-    (state) => state.setAgentStreamHead
-  );
-  const setAgentStreamState = useSessionStore(
-    (state) => state.setAgentStreamState
-  );
-  const clearAgentStreamHead = useSessionStore(
-    (state) => state.clearAgentStreamHead
-  );
-  const setAgentTimelineCursor = useSessionStore(
-    (state) => state.setAgentTimelineCursor
-  );
-  const setInitializingAgents = useSessionStore(
-    (state) => state.setInitializingAgents
-  );
-  const bumpHistorySyncGeneration = useSessionStore(
-    (state) => state.bumpHistorySyncGeneration
-  );
+  const setCurrentAssistantMessage = useSessionStore((state) => state.setCurrentAssistantMessage);
+  const setAgentStreamTail = useSessionStore((state) => state.setAgentStreamTail);
+  const setAgentStreamHead = useSessionStore((state) => state.setAgentStreamHead);
+  const setAgentStreamState = useSessionStore((state) => state.setAgentStreamState);
+  const clearAgentStreamHead = useSessionStore((state) => state.clearAgentStreamHead);
+  const setAgentTimelineCursor = useSessionStore((state) => state.setAgentTimelineCursor);
+  const setInitializingAgents = useSessionStore((state) => state.setInitializingAgents);
+  const bumpHistorySyncGeneration = useSessionStore((state) => state.bumpHistorySyncGeneration);
   const markAgentHistorySynchronized = useSessionStore(
-    (state) => state.markAgentHistorySynchronized
+    (state) => state.markAgentHistorySynchronized,
   );
   const setAgentAuthoritativeHistoryApplied = useSessionStore(
-    (state) => state.setAgentAuthoritativeHistoryApplied
+    (state) => state.setAgentAuthoritativeHistoryApplied,
   );
-  const setHasHydratedAgents = useSessionStore(
-    (state) => state.setHasHydratedAgents
-  );
-  const setHasHydratedWorkspaces = useSessionStore(
-    (state) => state.setHasHydratedWorkspaces
-  );
+  const setHasHydratedAgents = useSessionStore((state) => state.setHasHydratedAgents);
+  const setHasHydratedWorkspaces = useSessionStore((state) => state.setHasHydratedWorkspaces);
   const setAgents = useSessionStore((state) => state.setAgents);
   const setWorkspaces = useSessionStore((state) => state.setWorkspaces);
   const mergeWorkspaces = useSessionStore((state) => state.mergeWorkspaces);
   const removeWorkspace = useSessionStore((state) => state.removeWorkspace);
-  const setAgentLastActivity = useSessionStore(
-    (state) => state.setAgentLastActivity
-  );
-  const flushAgentLastActivity = useSessionStore(
-    (state) => state.flushAgentLastActivity
-  );
-  const setPendingPermissions = useSessionStore(
-    (state) => state.setPendingPermissions
-  );
+  const setAgentLastActivity = useSessionStore((state) => state.setAgentLastActivity);
+  const flushAgentLastActivity = useSessionStore((state) => state.flushAgentLastActivity);
+  const setPendingPermissions = useSessionStore((state) => state.setPendingPermissions);
   const clearDraftInput = useDraftStore((state) => state.clearDraftInput);
   const setQueuedMessages = useSessionStore((state) => state.setQueuedMessages);
   const updateSessionClient = useSessionStore((state) => state.updateSessionClient);
@@ -326,37 +266,22 @@ function SessionProviderInternal({
 
   // Track focused agent for heartbeat
   const focusedAgentId = useSessionStore(
-    (state) => state.sessions[serverId]?.focusedAgentId ?? null
+    (state) => state.sessions[serverId]?.focusedAgentId ?? null,
   );
-  const sessionAgents = useSessionStore(
-    (state) => state.sessions[serverId]?.agents
-  );
+  const sessionAgents = useSessionStore((state) => state.sessions[serverId]?.agents);
 
-  const previousAgentStatusRef = useRef<Map<string, AgentLifecycleStatus>>(
-    new Map()
-  );
+  const previousAgentStatusRef = useRef<Map<string, AgentLifecycleStatus>>(new Map());
   const sendAgentMessageRef = useRef<
-    | ((
-        agentId: string,
-        message: string,
-        images?: AttachmentMetadata[]
-      ) => Promise<void>)
-    | null
+    ((agentId: string, message: string, images?: AttachmentMetadata[]) => Promise<void>) | null
   >(null);
-  const sessionStateTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
-    null
-  );
+  const sessionStateTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const attentionNotifiedRef = useRef<Map<string, number>>(new Map());
   const appStateRef = useRef(AppState.currentState);
-  const revalidationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
-    null
-  );
+  const revalidationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const revalidationInFlightRef = useRef<Promise<void> | null>(null);
   const revalidationQueuedRef = useRef(false);
   const wasConnectedRef = useRef(isConnected);
-  const audioOutputBuffersRef = useRef<Map<string, BufferedAudioChunk[]>>(
-    new Map()
-  );
+  const audioOutputBuffersRef = useRef<Map<string, BufferedAudioChunk[]>>(new Map());
   const activeAudioGroupsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
@@ -420,7 +345,7 @@ function SessionProviderInternal({
       setWorkspaces(serverId, workspaces);
       setHasHydratedWorkspaces(serverId, true);
     },
-    [client, isConnected, serverId, setHasHydratedWorkspaces, setWorkspaces]
+    [client, isConnected, serverId, setHasHydratedWorkspaces, setWorkspaces],
   );
 
   const applyAuthoritativeAgentSnapshot = useCallback(
@@ -523,7 +448,7 @@ function SessionProviderInternal({
       setAgents,
       setPendingPermissions,
       setQueuedMessages,
-    ]
+    ],
   );
 
   const runAuthoritativeRevalidation = useCallback(async () => {
@@ -596,7 +521,7 @@ function SessionProviderInternal({
       }
       bumpHistorySyncGeneration(serverId);
     },
-    [bumpHistorySyncGeneration, scheduleAuthoritativeRevalidation, serverId]
+    [bumpHistorySyncGeneration, scheduleAuthoritativeRevalidation, serverId],
   );
 
   // Client activity tracking (heartbeat, push token registration)
@@ -617,8 +542,7 @@ function SessionProviderInternal({
         return;
       }
       const isActivelyVisible = getIsAppActivelyVisible(appState);
-      const isAwayFromAgent =
-        !isActivelyVisible || focusedAgentId !== params.agentId;
+      const isAwayFromAgent = !isActivelyVisible || focusedAgentId !== params.agentId;
       if (!isAwayFromAgent) {
         return;
       }
@@ -633,12 +557,8 @@ function SessionProviderInternal({
       const head = session?.agentStreamHead.get(params.agentId) ?? [];
       const tail = session?.agentStreamTail.get(params.agentId) ?? [];
       const assistantMessage =
-        findLatestAssistantMessageText(head) ??
-        findLatestAssistantMessageText(tail);
-      const permissionRequest = getLatestPermissionRequest(
-        session,
-        params.agentId
-      );
+        findLatestAssistantMessageText(head) ?? findLatestAssistantMessageText(tail);
+      const permissionRequest = getLatestPermissionRequest(session, params.agentId);
 
       const notification =
         params.notification ??
@@ -647,10 +567,7 @@ function SessionProviderInternal({
           serverId,
           agentId: params.agentId,
           assistantMessage: params.reason === "finished" ? assistantMessage : null,
-          permissionRequest:
-            params.reason === "permission"
-              ? permissionRequest
-              : null,
+          permissionRequest: params.reason === "permission" ? permissionRequest : null,
         });
 
       void sendOsNotification({
@@ -659,7 +576,7 @@ function SessionProviderInternal({
         data: notification.data,
       });
     },
-    [serverId]
+    [serverId],
   );
 
   // Initialize session in store
@@ -676,7 +593,7 @@ function SessionProviderInternal({
       return;
     }
 
-  return voiceRuntime.registerSession({
+    return voiceRuntime.registerSession({
       serverId,
       setVoiceMode: async (enabled, agentId) => {
         if (!client) {
@@ -706,12 +623,7 @@ function SessionProviderInternal({
         setIsPlayingAudio(serverId, isPlaying);
       },
     });
-  }, [
-    client,
-    serverId,
-    setIsPlayingAudio,
-    voiceRuntime,
-  ]);
+  }, [client, serverId, setIsPlayingAudio, voiceRuntime]);
 
   useEffect(() => {
     voiceRuntime?.updateSessionConnection(serverId, isConnected);
@@ -818,7 +730,7 @@ function SessionProviderInternal({
       setAgents,
       setPendingPermissions,
       setAgentTimelineCursor,
-    ]
+    ],
   );
 
   const requestCanonicalCatchUp = useCallback(
@@ -831,14 +743,10 @@ function SessionProviderInternal({
           projection: "canonical",
         })
         .catch((error) => {
-          console.warn(
-            "[Session] failed to fetch canonical catch-up timeline",
-            agentId,
-            error
-          );
+          console.warn("[Session] failed to fetch canonical catch-up timeline", agentId, error);
         });
     },
-    [client]
+    [client],
   );
 
   const applyTimelineResponse = useCallback(
@@ -846,7 +754,7 @@ function SessionProviderInternal({
       payload: Extract<
         SessionOutboundMessage,
         { type: "fetch_agent_timeline_response" }
-      >["payload"]
+      >["payload"],
     ) => {
       const agentId = payload.agentId;
       const initKey = getInitKey(serverId, agentId);
@@ -992,7 +900,7 @@ function SessionProviderInternal({
       setAgentStreamTail,
       setAgentTimelineCursor,
       setInitializingAgents,
-    ]
+    ],
   );
 
   useEffect(() => {
@@ -1027,8 +935,7 @@ function SessionProviderInternal({
       const initKey = getInitKey(serverId, agentId);
       const session = useSessionStore.getState().sessions[serverId];
       const isSyncingHistory =
-        session?.initializingAgents.get(agentId) === true &&
-        Boolean(getInitDeferred(initKey));
+        session?.initializingAgents.get(agentId) === true && Boolean(getInitDeferred(initKey));
 
       if (isSyncingHistory) {
         bufferPendingAgentUpdate(serverId, agentId, update);
@@ -1160,13 +1067,10 @@ function SessionProviderInternal({
       // on status changes, which is sufficient for sorting and display purposes.
     });
 
-    const unsubAgentTimeline = client.on(
-      "fetch_agent_timeline_response",
-      (message) => {
-        if (message.type !== "fetch_agent_timeline_response") return;
-        applyTimelineResponse(message.payload);
-      }
-    );
+    const unsubAgentTimeline = client.on("fetch_agent_timeline_response", (message) => {
+      if (message.type !== "fetch_agent_timeline_response") return;
+      applyTimelineResponse(message.payload);
+    });
 
     const unsubWorkspaceUpdate = client.on("workspace_update", (message) => {
       if (message.type !== "workspace_update") return;
@@ -1174,9 +1078,7 @@ function SessionProviderInternal({
         removeWorkspace(serverId, message.payload.id);
         return;
       }
-      mergeWorkspaces(serverId, [
-        normalizeWorkspaceDescriptor(message.payload.workspace),
-      ]);
+      mergeWorkspaces(serverId, [normalizeWorkspaceDescriptor(message.payload.workspace)]);
     });
 
     const unsubStatus = client.on("status", (message) => {
@@ -1187,53 +1089,42 @@ function SessionProviderInternal({
           serverId: serverInfo.serverId,
           hostname: serverInfo.hostname,
           version: serverInfo.version,
-          ...(serverInfo.capabilities
-            ? { capabilities: serverInfo.capabilities }
-            : {}),
+          ...(serverInfo.capabilities ? { capabilities: serverInfo.capabilities } : {}),
         });
         return;
       }
     });
 
-    const unsubPermissionRequest = client.on(
-      "agent_permission_request",
-      (message) => {
-        if (message.type !== "agent_permission_request") return;
-        const { agentId, request } = message.payload;
+    const unsubPermissionRequest = client.on("agent_permission_request", (message) => {
+      if (message.type !== "agent_permission_request") return;
+      const { agentId, request } = message.payload;
 
-        setPendingPermissions(serverId, (prev) => {
-          const next = new Map(prev);
-          const key = derivePendingPermissionKey(agentId, request);
-          next.set(key, { key, agentId, request });
-          return next;
-        });
-      }
-    );
+      setPendingPermissions(serverId, (prev) => {
+        const next = new Map(prev);
+        const key = derivePendingPermissionKey(agentId, request);
+        next.set(key, { key, agentId, request });
+        return next;
+      });
+    });
 
-    const unsubPermissionResolved = client.on(
-      "agent_permission_resolved",
-      (message) => {
-        if (message.type !== "agent_permission_resolved") return;
-        const { requestId, agentId } = message.payload;
+    const unsubPermissionResolved = client.on("agent_permission_resolved", (message) => {
+      if (message.type !== "agent_permission_resolved") return;
+      const { requestId, agentId } = message.payload;
 
-        setPendingPermissions(serverId, (prev) => {
-          const next = new Map(prev);
-          const derivedKey = `${agentId}:${requestId}`;
-          if (!next.delete(derivedKey)) {
-            for (const [key, pending] of next.entries()) {
-              if (
-                pending.agentId === agentId &&
-                pending.request.id === requestId
-              ) {
-                next.delete(key);
-                break;
-              }
+      setPendingPermissions(serverId, (prev) => {
+        const next = new Map(prev);
+        const derivedKey = `${agentId}:${requestId}`;
+        if (!next.delete(derivedKey)) {
+          for (const [key, pending] of next.entries()) {
+            if (pending.agentId === agentId && pending.request.id === requestId) {
+              next.delete(key);
+              break;
             }
           }
-          return next;
-        });
-      }
-    );
+        }
+        return next;
+      });
+    });
 
     const unsubAudioOutput = client.on("audio_output", async (message) => {
       if (message.type !== "audio_output") return;
@@ -1273,16 +1164,15 @@ function SessionProviderInternal({
       bufferedChunks.sort((left, right) => left.chunkIndex - right.chunkIndex);
       const chunkIds = bufferedChunks.map((chunk) => chunk.id);
       const shouldPlay =
-        !payload.isVoiceMode ||
-        (voiceRuntime?.shouldPlayVoiceAudio(serverId) ?? false);
+        !payload.isVoiceMode || (voiceRuntime?.shouldPlayVoiceAudio(serverId) ?? false);
       const audioBlob = buildAudioPlaybackSource(bufferedChunks);
       const confirmAudioPlayed = async () => {
         await Promise.all(
           chunkIds.map((chunkId) =>
             client.audioPlayed(chunkId).catch((error) => {
               console.warn("[Session] Failed to confirm audio playback:", error);
-            })
-          )
+            }),
+          ),
         );
       };
 
@@ -1352,17 +1242,13 @@ function SessionProviderInternal({
           prev.map((msg) =>
             msg.type === "tool_call" && msg.id === toolCallId
               ? { ...msg, result, status: "completed" as const }
-              : msg
-          )
+              : msg,
+          ),
         );
         return;
       }
 
-      if (
-        data.type === "error" &&
-        data.metadata &&
-        "toolCallId" in data.metadata
-      ) {
+      if (data.type === "error" && data.metadata && "toolCallId" in data.metadata) {
         const { toolCallId, error } = data.metadata as {
           toolCallId: string;
           error: unknown;
@@ -1372,8 +1258,8 @@ function SessionProviderInternal({
           prev.map((msg) =>
             msg.type === "tool_call" && msg.id === toolCallId
               ? { ...msg, error, status: "failed" as const }
-              : msg
-          )
+              : msg,
+          ),
         );
       }
 
@@ -1422,10 +1308,7 @@ function SessionProviderInternal({
 
     const unsubChunk = client.on("assistant_chunk", (message) => {
       if (message.type !== "assistant_chunk") return;
-      setCurrentAssistantMessage(
-        serverId,
-        (prev) => prev + message.payload.chunk
-      );
+      setCurrentAssistantMessage(serverId, (prev) => prev + message.payload.chunk);
     });
 
     const unsubTranscription = client.on("transcription_result", (message) => {
@@ -1442,10 +1325,7 @@ function SessionProviderInternal({
 
     const unsubVoiceInputState = client.on("voice_input_state", (message) => {
       if (message.type !== "voice_input_state") return;
-      voiceRuntime?.onServerSpeechStateChanged(
-        serverId,
-        message.payload.isSpeaking
-      );
+      voiceRuntime?.onServerSpeechStateChanged(serverId, message.payload.isSpeaking);
     });
 
     const unsubAgentDeleted = client.on("agent_deleted", (message) => {
@@ -1589,11 +1469,7 @@ function SessionProviderInternal({
   ]);
 
   const sendAgentMessage = useCallback(
-    async (
-      agentId: string,
-      message: string,
-      images?: AttachmentMetadata[]
-    ) => {
+    async (agentId: string, message: string, images?: AttachmentMetadata[]) => {
       const messageId = generateMessageId();
       const userMessage: StreamItem = {
         kind: "user_message",
@@ -1605,7 +1481,9 @@ function SessionProviderInternal({
       // Append to head if streaming (keeps the user message with the current
       // turn so late text_deltas still find the existing assistant_message).
       // Otherwise append to tail.
-      const currentHead = useSessionStore.getState().sessions[serverId]?.agentStreamHead?.get(agentId);
+      const currentHead = useSessionStore
+        .getState()
+        .sessions[serverId]?.agentStreamHead?.get(agentId);
       if (currentHead && currentHead.length > 0) {
         setAgentStreamHead(serverId, (prev) => {
           const head = prev.get(agentId) || [];
@@ -1630,15 +1508,13 @@ function SessionProviderInternal({
       void client
         .sendAgentMessage(agentId, message, {
           messageId,
-          ...(imagesData && imagesData.length > 0
-            ? { images: imagesData }
-            : {}),
+          ...(imagesData && imagesData.length > 0 ? { images: imagesData } : {}),
         })
         .catch((error) => {
           console.error("[Session] Failed to send agent message:", error);
         });
     },
-    [encodeImages, serverId, client, setAgentStreamTail, setAgentStreamHead]
+    [encodeImages, serverId, client, setAgentStreamTail, setAgentStreamHead],
   );
 
   // Keep the ref updated so the agent_update handler can call it
@@ -1654,7 +1530,7 @@ function SessionProviderInternal({
         console.error("[Session] Failed to cancel agent:", error);
       });
     },
-    [client]
+    [client],
   );
 
   const deleteAgent = useCallback(
@@ -1667,7 +1543,7 @@ function SessionProviderInternal({
         console.error("[Session] Failed to delete agent:", error);
       });
     },
-    [client]
+    [client],
   );
 
   const archiveAgent = useCallback(
@@ -1680,7 +1556,7 @@ function SessionProviderInternal({
         console.error("[Session] Failed to archive agent:", error);
       });
     },
-    [client]
+    [client],
   );
 
   const restartServer = useCallback(
@@ -1693,7 +1569,7 @@ function SessionProviderInternal({
         console.error("[Session] Failed to restart server:", error);
       });
     },
-    [client]
+    [client],
   );
 
   const createAgent = useCallback(
@@ -1721,10 +1597,7 @@ function SessionProviderInternal({
       try {
         imagesData = await encodeImages(images);
       } catch (error) {
-        console.error(
-          "[Session] Failed to prepare images for agent creation:",
-          error
-        );
+        console.error("[Session] Failed to prepare images for agent creation:", error);
       }
       return client.createAgent({
         config,
@@ -1735,7 +1608,7 @@ function SessionProviderInternal({
         ...(requestId ? { requestId } : {}),
       });
     },
-    [encodeImages, client]
+    [encodeImages, client],
   );
 
   const setAgentMode = useCallback(
@@ -1748,7 +1621,7 @@ function SessionProviderInternal({
         console.error("[Session] Failed to set agent mode:", error);
       });
     },
-    [client]
+    [client],
   );
 
   const setAgentModel = useCallback(
@@ -1761,7 +1634,7 @@ function SessionProviderInternal({
         console.error("[Session] Failed to set agent model:", error);
       });
     },
-    [client]
+    [client],
   );
 
   const setAgentThinkingOption = useCallback(
@@ -1770,13 +1643,11 @@ function SessionProviderInternal({
         console.warn("[Session] setAgentThinkingOption skipped: daemon unavailable");
         return;
       }
-      void client
-        .setAgentThinkingOption(agentId, thinkingOptionId)
-        .catch((error) => {
-          console.error("[Session] Failed to set agent thinking option:", error);
-        });
+      void client.setAgentThinkingOption(agentId, thinkingOptionId).catch((error) => {
+        console.error("[Session] Failed to set agent thinking option:", error);
+      });
     },
-    [client]
+    [client],
   );
 
   const respondToPermission = useCallback(
@@ -1785,13 +1656,11 @@ function SessionProviderInternal({
         console.warn("[Session] respondToPermission skipped: daemon unavailable");
         return;
       }
-      void client
-        .respondToPermission(agentId, requestId, response)
-        .catch((error) => {
-          console.error("[Session] Failed to respond to permission:", error);
-        });
+      void client.respondToPermission(agentId, requestId, response).catch((error) => {
+        console.error("[Session] Failed to respond to permission:", error);
+      });
     },
-    [client]
+    [client],
   );
 
   // Cleanup on unmount

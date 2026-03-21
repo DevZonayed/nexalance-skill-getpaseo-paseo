@@ -114,7 +114,11 @@ export class SherpaParakeetRealtimeTranscriptionSession
       this.lastDecodeAt = Date.now();
       if (text !== this.lastPartialText) {
         this.lastPartialText = text;
-        this.emit("transcript", { segmentId: this.currentSegmentId, transcript: text, isFinal: false });
+        this.emit("transcript", {
+          segmentId: this.currentSegmentId,
+          transcript: text,
+          isFinal: false,
+        });
       }
     } finally {
       this.decoding = false;
@@ -134,7 +138,8 @@ export class SherpaParakeetRealtimeTranscriptionSession
     const peakFloat = peak / 32768.0;
     const targetPeak = 0.6;
     const maxGain = 50;
-    const gain = peakFloat > 0 && peakFloat < targetPeak ? Math.min(maxGain, targetPeak / peakFloat) : 1;
+    const gain =
+      peakFloat > 0 && peakFloat < targetPeak ? Math.min(maxGain, targetPeak / peakFloat) : 1;
 
     const stream = this.engine.createStream();
     try {

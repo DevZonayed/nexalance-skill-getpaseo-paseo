@@ -1,186 +1,188 @@
-import { existsSync, readFileSync } from 'node:fs'
-import { loadConfig, resolvePaseoHome, DaemonClient } from '@getpaseo/server'
-import path from 'node:path'
-import WebSocket from 'ws'
-import { getOrCreateCliClientId } from './client-id.js'
+import { existsSync, readFileSync } from "node:fs";
+import { loadConfig, resolvePaseoHome, DaemonClient } from "@getpaseo/server";
+import path from "node:path";
+import WebSocket from "ws";
+import { getOrCreateCliClientId } from "./client-id.js";
 
 export interface ConnectOptions {
-  host?: string
-  timeout?: number
+  host?: string;
+  timeout?: number;
 }
 
-const DEFAULT_HOST = 'localhost:6767'
-const DEFAULT_TIMEOUT = 5000
-const PID_FILENAME = 'paseo.pid'
+const DEFAULT_HOST = "localhost:6767";
+const DEFAULT_TIMEOUT = 5000;
+const PID_FILENAME = "paseo.pid";
 
 type DaemonTarget =
   | {
-      type: 'tcp'
-      url: string
+      type: "tcp";
+      url: string;
     }
   | {
-      type: 'ipc'
-      url: string
-      socketPath: string
-    }
+      type: "ipc";
+      url: string;
+      socketPath: string;
+    };
 
 /**
  * Get the daemon host from environment or options
  */
 export function getDaemonHost(options?: ConnectOptions): string {
-  return resolveDaemonHostCandidates(options)[0] ?? DEFAULT_HOST
+  return resolveDaemonHostCandidates(options)[0] ?? DEFAULT_HOST;
 }
 
 export function normalizeDaemonHost(raw: string): string | null {
-  const trimmed = raw.trim()
+  const trimmed = raw.trim();
   if (!trimmed) {
-    return null
+    return null;
   }
 
   if (
-    trimmed.startsWith('unix://') ||
-    trimmed.startsWith('pipe://') ||
-    trimmed.startsWith('\\\\.\\pipe\\')
+    trimmed.startsWith("unix://") ||
+    trimmed.startsWith("pipe://") ||
+    trimmed.startsWith("\\\\.\\pipe\\")
   ) {
-    return trimmed.startsWith('\\\\.\\pipe\\') ? `pipe://${trimmed}` : trimmed
+    return trimmed.startsWith("\\\\.\\pipe\\") ? `pipe://${trimmed}` : trimmed;
   }
 
   if (path.isAbsolute(trimmed)) {
-    return `unix://${trimmed}`
+    return `unix://${trimmed}`;
   }
 
   if (/^\d+$/.test(trimmed)) {
-    return `127.0.0.1:${trimmed}`
+    return `127.0.0.1:${trimmed}`;
   }
 
-  return trimmed.includes(':') ? trimmed : null
+  return trimmed.includes(":") ? trimmed : null;
 }
 
 export function resolveDefaultDaemonHost(env: NodeJS.ProcessEnv = process.env): string {
-  return resolveDefaultDaemonHosts(env)[0] ?? DEFAULT_HOST
+  return resolveDefaultDaemonHosts(env)[0] ?? DEFAULT_HOST;
 }
 
 function isIpcDaemonHost(host: string | null): host is string {
-  return host !== null && (host.startsWith('unix://') || host.startsWith('pipe://'))
+  return host !== null && (host.startsWith("unix://") || host.startsWith("pipe://"));
 }
 
 function isTcpDaemonHost(host: string | null): host is string {
-  return host !== null && !isIpcDaemonHost(host)
+  return host !== null && !isIpcDaemonHost(host);
 }
 
 function readPidSocketTarget(paseoHome: string): string | null {
-  const pidPath = path.join(paseoHome, PID_FILENAME)
+  const pidPath = path.join(paseoHome, PID_FILENAME);
   if (!existsSync(pidPath)) {
-    return null
+    return null;
   }
 
   try {
-    const parsed = JSON.parse(readFileSync(pidPath, 'utf-8')) as { listen?: unknown; sockPath?: unknown }
-    return typeof parsed.listen === 'string' ? parsed.listen : typeof parsed.sockPath === 'string' ? parsed.sockPath : null
+    const parsed = JSON.parse(readFileSync(pidPath, "utf-8")) as {
+      listen?: unknown;
+      sockPath?: unknown;
+    };
+    return typeof parsed.listen === "string"
+      ? parsed.listen
+      : typeof parsed.sockPath === "string"
+        ? parsed.sockPath
+        : null;
   } catch {
-    return null
+    return null;
   }
 }
 
 function resolveConfiguredIpcDaemonHost(env: NodeJS.ProcessEnv, paseoHome: string): string | null {
-  const directEnvHost = normalizeDaemonHost(env.PASEO_LISTEN ?? '')
+  const directEnvHost = normalizeDaemonHost(env.PASEO_LISTEN ?? "");
   if (isIpcDaemonHost(directEnvHost)) {
-    return directEnvHost
+    return directEnvHost;
   }
 
-  const pidHost = normalizeDaemonHost(readPidSocketTarget(paseoHome) ?? '')
+  const pidHost = normalizeDaemonHost(readPidSocketTarget(paseoHome) ?? "");
   if (isIpcDaemonHost(pidHost)) {
-    return pidHost
+    return pidHost;
   }
 
-  const config = loadConfig(paseoHome, { env })
-  const configuredHost = normalizeDaemonHost(config.listen)
-  return isIpcDaemonHost(configuredHost) ? configuredHost : null
+  const config = loadConfig(paseoHome, { env });
+  const configuredHost = normalizeDaemonHost(config.listen);
+  return isIpcDaemonHost(configuredHost) ? configuredHost : null;
 }
 
 function resolveConfiguredTcpDaemonHost(env: NodeJS.ProcessEnv, paseoHome: string): string | null {
-  const configuredHost = normalizeDaemonHost(loadConfig(paseoHome, { env }).listen)
+  const configuredHost = normalizeDaemonHost(loadConfig(paseoHome, { env }).listen);
   if (!isTcpDaemonHost(configuredHost)) {
-    return null
+    return null;
   }
-  return configuredHost === '127.0.0.1:6767' ? null : configuredHost
+  return configuredHost === "127.0.0.1:6767" ? null : configuredHost;
 }
 
 export function resolveDefaultDaemonHosts(env: NodeJS.ProcessEnv = process.env): string[] {
-  const paseoHome = resolvePaseoHome(env)
-  const candidates: string[] = []
-  const configuredIpcHost = resolveConfiguredIpcDaemonHost(env, paseoHome)
+  const paseoHome = resolvePaseoHome(env);
+  const candidates: string[] = [];
+  const configuredIpcHost = resolveConfiguredIpcDaemonHost(env, paseoHome);
   if (configuredIpcHost) {
-    candidates.push(configuredIpcHost)
+    candidates.push(configuredIpcHost);
   }
-  const configuredTcpHost = resolveConfiguredTcpDaemonHost(env, paseoHome)
+  const configuredTcpHost = resolveConfiguredTcpDaemonHost(env, paseoHome);
   if (configuredTcpHost) {
-    candidates.push(configuredTcpHost)
+    candidates.push(configuredTcpHost);
   }
-  candidates.push(DEFAULT_HOST)
-  return Array.from(new Set(candidates))
+  candidates.push(DEFAULT_HOST);
+  return Array.from(new Set(candidates));
 }
 
 function resolveDaemonHostCandidates(options?: ConnectOptions): string[] {
-  const explicitHost = options?.host ?? process.env.PASEO_HOST
+  const explicitHost = options?.host ?? process.env.PASEO_HOST;
   if (explicitHost) {
-    return [explicitHost]
+    return [explicitHost];
   }
 
-  return resolveDefaultDaemonHosts()
+  return resolveDefaultDaemonHosts();
 }
 
 export function resolveDaemonTarget(host: string): DaemonTarget {
-  const trimmed = host.trim()
+  const trimmed = host.trim();
   if (
-    trimmed.startsWith('unix://') ||
-    trimmed.startsWith('pipe://') ||
-    trimmed.startsWith('\\\\.\\pipe\\')
+    trimmed.startsWith("unix://") ||
+    trimmed.startsWith("pipe://") ||
+    trimmed.startsWith("\\\\.\\pipe\\")
   ) {
-    const socketPath = trimmed.startsWith('unix://')
-      ? trimmed.slice('unix://'.length).trim()
-      : trimmed.startsWith('pipe://')
-        ? trimmed.slice('pipe://'.length).trim()
-        : trimmed
+    const socketPath = trimmed.startsWith("unix://")
+      ? trimmed.slice("unix://".length).trim()
+      : trimmed.startsWith("pipe://")
+        ? trimmed.slice("pipe://".length).trim()
+        : trimmed;
     if (!socketPath) {
-      throw new Error('Invalid IPC daemon target: missing socket path')
+      throw new Error("Invalid IPC daemon target: missing socket path");
     }
-    const isUnixSocket = trimmed.startsWith('unix://')
+    const isUnixSocket = trimmed.startsWith("unix://");
     return {
-      type: 'ipc',
-      url: isUnixSocket
-        ? `ws+unix://${socketPath}:/ws`
-        : 'ws://localhost/ws',
+      type: "ipc",
+      url: isUnixSocket ? `ws+unix://${socketPath}:/ws` : "ws://localhost/ws",
       socketPath,
-    }
+    };
   }
 
   return {
-    type: 'tcp',
+    type: "tcp",
     url: `ws://${trimmed}/ws`,
-  }
+  };
 }
 
 /**
  * Create a WebSocket factory that works in Node.js
  */
 function createNodeWebSocketFactory() {
-  return (
-    url: string,
-    options?: { headers?: Record<string, string>; socketPath?: string }
-  ) => {
+  return (url: string, options?: { headers?: Record<string, string>; socketPath?: string }) => {
     return new WebSocket(url, {
       headers: options?.headers,
       ...(options?.socketPath ? { socketPath: options.socketPath } : {}),
     }) as unknown as {
-      readyState: number
-      send: (data: string | Uint8Array | ArrayBuffer) => void
-      close: (code?: number, reason?: string) => void
-      binaryType?: string
-      on: (event: string, listener: (...args: unknown[]) => void) => void
-      off: (event: string, listener: (...args: unknown[]) => void) => void
-    }
-  }
+      readyState: number;
+      send: (data: string | Uint8Array | ArrayBuffer) => void;
+      close: (code?: number, reason?: string) => void;
+      binaryType?: string;
+      on: (event: string, listener: (...args: unknown[]) => void) => void;
+      off: (event: string, listener: (...args: unknown[]) => void) => void;
+    };
+  };
 }
 
 /**
@@ -188,56 +190,54 @@ function createNodeWebSocketFactory() {
  * Returns the connected client or throws if connection fails
  */
 export async function connectToDaemon(options?: ConnectOptions): Promise<DaemonClient> {
-  const timeout = options?.timeout ?? DEFAULT_TIMEOUT
-  const clientId = await getOrCreateCliClientId()
-  const hosts = resolveDaemonHostCandidates(options)
-  const nodeWebSocketFactory = createNodeWebSocketFactory()
-  let lastError: unknown = null
+  const timeout = options?.timeout ?? DEFAULT_TIMEOUT;
+  const clientId = await getOrCreateCliClientId();
+  const hosts = resolveDaemonHostCandidates(options);
+  const nodeWebSocketFactory = createNodeWebSocketFactory();
+  let lastError: unknown = null;
 
   for (const host of hosts) {
-    const target = resolveDaemonTarget(host)
-    const client = new DaemonClient(
-      {
-        url: target.url,
-        clientId,
-        clientType: 'cli',
-        webSocketFactory: (url: string, config?: { headers?: Record<string, string> }) =>
-          nodeWebSocketFactory(url, {
-            headers: config?.headers,
-            ...(target.type === 'ipc' ? { socketPath: target.socketPath } : {}),
-          }),
-        reconnect: { enabled: false },
-      } as unknown as ConstructorParameters<typeof DaemonClient>[0]
-    )
+    const target = resolveDaemonTarget(host);
+    const client = new DaemonClient({
+      url: target.url,
+      clientId,
+      clientType: "cli",
+      webSocketFactory: (url: string, config?: { headers?: Record<string, string> }) =>
+        nodeWebSocketFactory(url, {
+          headers: config?.headers,
+          ...(target.type === "ipc" ? { socketPath: target.socketPath } : {}),
+        }),
+      reconnect: { enabled: false },
+    } as unknown as ConstructorParameters<typeof DaemonClient>[0]);
 
-    const connectPromise = client.connect()
-    let timeoutHandle: ReturnType<typeof setTimeout> | null = null
+    const connectPromise = client.connect();
+    let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
     const timeoutPromise = new Promise<never>((_, reject) => {
       timeoutHandle = setTimeout(() => {
-        reject(new Error(`Connection timeout after ${timeout}ms`))
-      }, timeout)
-    })
+        reject(new Error(`Connection timeout after ${timeout}ms`));
+      }, timeout);
+    });
 
     try {
-      await Promise.race([connectPromise, timeoutPromise])
+      await Promise.race([connectPromise, timeoutPromise]);
       if (timeoutHandle) {
-        clearTimeout(timeoutHandle)
+        clearTimeout(timeoutHandle);
       }
-      return client
+      return client;
     } catch (err) {
       if (timeoutHandle) {
-        clearTimeout(timeoutHandle)
+        clearTimeout(timeoutHandle);
       }
-      lastError = err
-      await client.close().catch(() => {})
+      lastError = err;
+      await client.close().catch(() => {});
     }
   }
 
   if (lastError instanceof Error) {
-    throw lastError
+    throw lastError;
   }
 
-  throw new Error(`Unable to connect to Paseo daemon via ${hosts.join(', ')}`)
+  throw new Error(`Unable to connect to Paseo daemon via ${hosts.join(", ")}`);
 }
 
 /**
@@ -245,16 +245,16 @@ export async function connectToDaemon(options?: ConnectOptions): Promise<DaemonC
  */
 export async function tryConnectToDaemon(options?: ConnectOptions): Promise<DaemonClient | null> {
   try {
-    return await connectToDaemon(options)
+    return await connectToDaemon(options);
   } catch {
-    return null
+    return null;
   }
 }
 
 /** Minimal agent type for ID resolution */
 interface AgentLike {
-  id: string
-  title?: string | null
+  id: string;
+  title?: string | null;
 }
 
 /**
@@ -268,40 +268,40 @@ interface AgentLike {
  */
 export function resolveAgentId(idOrName: string, agents: AgentLike[]): string | null {
   if (!idOrName || agents.length === 0) {
-    return null
+    return null;
   }
 
-  const query = idOrName.toLowerCase()
+  const query = idOrName.toLowerCase();
 
   // Try exact ID match first
-  const exactMatch = agents.find((a) => a.id === idOrName)
+  const exactMatch = agents.find((a) => a.id === idOrName);
   if (exactMatch) {
-    return exactMatch.id
+    return exactMatch.id;
   }
 
   // Try ID prefix match
-  const prefixMatches = agents.filter((a) => a.id.toLowerCase().startsWith(query))
+  const prefixMatches = agents.filter((a) => a.id.toLowerCase().startsWith(query));
   if (prefixMatches.length === 1 && prefixMatches[0]) {
-    return prefixMatches[0].id
+    return prefixMatches[0].id;
   }
 
   // Try title/name match (case-insensitive)
-  const titleMatches = agents.filter((a) => a.title?.toLowerCase() === query)
+  const titleMatches = agents.filter((a) => a.title?.toLowerCase() === query);
   if (titleMatches.length === 1 && titleMatches[0]) {
-    return titleMatches[0].id
+    return titleMatches[0].id;
   }
 
   // Try partial title match
-  const partialTitleMatches = agents.filter((a) => a.title?.toLowerCase().includes(query))
+  const partialTitleMatches = agents.filter((a) => a.title?.toLowerCase().includes(query));
   if (partialTitleMatches.length === 1 && partialTitleMatches[0]) {
-    return partialTitleMatches[0].id
+    return partialTitleMatches[0].id;
   }
 
   // If we have multiple prefix matches and no unique title match, return first prefix match
-  const firstPrefixMatch = prefixMatches[0]
+  const firstPrefixMatch = prefixMatches[0];
   if (firstPrefixMatch) {
-    return firstPrefixMatch.id
+    return firstPrefixMatch.id;
   }
 
-  return null
+  return null;
 }

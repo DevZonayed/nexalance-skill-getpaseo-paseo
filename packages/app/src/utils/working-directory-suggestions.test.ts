@@ -23,35 +23,23 @@ describe("buildWorkingDirectorySuggestions", () => {
       query: "pla",
     });
 
-    expect(results).toEqual([
-      "/Users/me/projects/playground",
-      "/Users/me/projects/planbook",
-    ]);
+    expect(results).toEqual(["/Users/me/projects/playground", "/Users/me/projects/planbook"]);
   });
 
   it("puts matching recommended items first when they also match query", () => {
     const results = buildWorkingDirectorySuggestions({
       recommendedPaths: ["/Users/me/projects/playground", "/Users/me/projects/paseo"],
-      serverPaths: [
-        "/Users/me/projects/planbook",
-        "/Users/me/projects/playground",
-      ],
+      serverPaths: ["/Users/me/projects/planbook", "/Users/me/projects/playground"],
       query: "pla",
     });
 
-    expect(results).toEqual([
-      "/Users/me/projects/playground",
-      "/Users/me/projects/planbook",
-    ]);
+    expect(results).toEqual(["/Users/me/projects/playground", "/Users/me/projects/planbook"]);
   });
 
   it("treats '~' as an active query and includes server suggestions", () => {
     const results = buildWorkingDirectorySuggestions({
       recommendedPaths: ["/Users/me/projects/paseo"],
-      serverPaths: [
-        "/Users/me/documents",
-        "/Users/me/projects",
-      ],
+      serverPaths: ["/Users/me/documents", "/Users/me/projects"],
       query: "~",
     });
 

@@ -1,11 +1,6 @@
 import { useMemo } from "react";
 import { Gesture } from "react-native-gesture-handler";
-import {
-  Extrapolation,
-  interpolate,
-  runOnJS,
-  useSharedValue,
-} from "react-native-reanimated";
+import { Extrapolation, interpolate, runOnJS, useSharedValue } from "react-native-reanimated";
 import { useExplorerSidebarAnimation } from "@/contexts/explorer-sidebar-animation-context";
 
 interface UseExplorerOpenGestureParams {
@@ -13,18 +8,9 @@ interface UseExplorerOpenGestureParams {
   onOpen: () => void;
 }
 
-export function useExplorerOpenGesture({
-  enabled,
-  onOpen,
-}: UseExplorerOpenGestureParams) {
-  const {
-    translateX,
-    backdropOpacity,
-    windowWidth,
-    animateToOpen,
-    animateToClose,
-    isGesturing,
-  } = useExplorerSidebarAnimation();
+export function useExplorerOpenGesture({ enabled, onOpen }: UseExplorerOpenGestureParams) {
+  const { translateX, backdropOpacity, windowWidth, animateToOpen, animateToClose, isGesturing } =
+    useExplorerSidebarAnimation();
   const touchStartX = useSharedValue(0);
   const touchStartY = useSharedValue(0);
 
@@ -75,14 +61,14 @@ export function useExplorerOpenGesture({
           // Right sidebar: start from closed position (+windowWidth) and move towards 0.
           const newTranslateX = Math.max(
             0,
-            Math.min(windowWidth, windowWidth + event.translationX)
+            Math.min(windowWidth, windowWidth + event.translationX),
           );
           translateX.value = newTranslateX;
           backdropOpacity.value = interpolate(
             newTranslateX,
             [windowWidth, 0],
             [0, 1],
-            Extrapolation.CLAMP
+            Extrapolation.CLAMP,
           );
         })
         .onEnd((event) => {
@@ -111,6 +97,6 @@ export function useExplorerOpenGesture({
       onOpen,
       touchStartX,
       touchStartY,
-    ]
+    ],
   );
 }

@@ -9,7 +9,7 @@ describe("deriveSidebarStateBucket", () => {
         pendingPermissionCount: 1,
         requiresAttention: false,
         attentionReason: null,
-      })
+      }),
     ).toBe("needs_input");
   });
 
@@ -20,7 +20,7 @@ describe("deriveSidebarStateBucket", () => {
         pendingPermissionCount: 0,
         requiresAttention: true,
         attentionReason: "permission",
-      })
+      }),
     ).toBe("needs_input");
   });
 
@@ -31,7 +31,7 @@ describe("deriveSidebarStateBucket", () => {
         pendingPermissionCount: 0,
         requiresAttention: true,
         attentionReason: "finished",
-      })
+      }),
     ).toBe("attention");
   });
 
@@ -42,7 +42,7 @@ describe("deriveSidebarStateBucket", () => {
         pendingPermissionCount: 0,
         requiresAttention: false,
         attentionReason: null,
-      })
+      }),
     ).toBe("running");
   });
 });

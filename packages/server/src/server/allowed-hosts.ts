@@ -56,7 +56,7 @@ function isDefaultAllowedHostname(hostname: string): boolean {
  */
 export function isHostAllowed(
   hostHeader: string | undefined,
-  allowedHosts: AllowedHostsConfig
+  allowedHosts: AllowedHostsConfig,
 ): boolean {
   const hostname = hostHeader ? parseHostnameFromHostHeader(hostHeader) : null;
   if (!hostname) return false;
@@ -73,9 +73,7 @@ export function isHostAllowed(
   return false;
 }
 
-export function mergeAllowedHosts(
-  values: Array<AllowedHostsConfig>
-): AllowedHostsConfig {
+export function mergeAllowedHosts(values: Array<AllowedHostsConfig>): AllowedHostsConfig {
   let merged: string[] = [];
   for (const value of values) {
     if (value === true) return true;
@@ -83,15 +81,11 @@ export function mergeAllowedHosts(
     merged = merged.concat(value);
   }
 
-  const deduped = Array.from(
-    new Set(merged.map((v) => v.trim()).filter((v) => v.length > 0))
-  );
+  const deduped = Array.from(new Set(merged.map((v) => v.trim()).filter((v) => v.length > 0)));
   return deduped;
 }
 
-export function parseAllowedHostsEnv(
-  raw: string | undefined
-): AllowedHostsConfig {
+export function parseAllowedHostsEnv(raw: string | undefined): AllowedHostsConfig {
   if (!raw) return undefined;
   const trimmed = raw.trim();
   if (!trimmed) return undefined;
@@ -101,4 +95,3 @@ export function parseAllowedHostsEnv(
     .map((s) => s.trim())
     .filter((s) => s.length > 0);
 }
-

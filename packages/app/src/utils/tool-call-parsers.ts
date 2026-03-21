@@ -48,7 +48,10 @@ function splitIntoWords(text: string): string[] {
   return result;
 }
 
-function computeWordLevelDiff(oldLine: string, newLine: string): { oldSegments: DiffSegment[]; newSegments: DiffSegment[] } {
+function computeWordLevelDiff(
+  oldLine: string,
+  newLine: string,
+): { oldSegments: DiffSegment[]; newSegments: DiffSegment[] } {
   const oldWords = splitIntoWords(oldLine);
   const newWords = splitIntoWords(newLine);
 
@@ -138,9 +141,7 @@ export function buildLineDiff(originalText: string, updatedText: string): DiffLi
 
   const m = originalLines.length;
   const n = updatedLines.length;
-  const dp: number[][] = Array.from({ length: m + 1 }, () =>
-    Array(n + 1).fill(0)
-  );
+  const dp: number[][] = Array.from({ length: m + 1 }, () => Array(n + 1).fill(0));
 
   for (let i = m - 1; i >= 0; i -= 1) {
     for (let j = n - 1; j >= 0; j -= 1) {
@@ -270,7 +271,7 @@ const ClaudeTodoWriteSchema = z.object({
       content: z.string(),
       status: TaskStatusSchema,
       activeForm: z.string().optional(),
-    })
+    }),
   ),
 });
 
@@ -279,17 +280,20 @@ const UpdatePlanSchema = z.object({
     z.object({
       step: z.string(),
       status: TaskStatusSchema.catch("pending"),
-    })
+    }),
   ),
 });
 
 function normalizeToolName(toolName: string): string {
-  return toolName.trim().replace(/[.\s-]+/g, "_").toLowerCase();
+  return toolName
+    .trim()
+    .replace(/[.\s-]+/g, "_")
+    .toLowerCase();
 }
 
 export function extractTaskEntriesFromToolCall(
   toolName: string,
-  input: unknown
+  input: unknown,
 ): TaskEntry[] | null {
   const normalized = normalizeToolName(toolName);
 

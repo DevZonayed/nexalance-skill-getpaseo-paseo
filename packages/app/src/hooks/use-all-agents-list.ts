@@ -6,10 +6,7 @@ import {
   useHostRuntimeConnectionStatus,
   useHostRuntimeIsDirectoryLoading,
 } from "@/runtime/host-runtime";
-import type {
-  AggregatedAgent,
-  AggregatedAgentsResult,
-} from "@/hooks/use-aggregated-agents";
+import type { AggregatedAgent, AggregatedAgentsResult } from "@/hooks/use-aggregated-agents";
 
 function toAggregatedAgent(params: {
   source: Agent;
@@ -80,14 +77,12 @@ export function useAllAgentsList(options?: {
 
   const serverId = useMemo(() => {
     const value = options?.serverId;
-    return typeof value === "string" && value.trim().length > 0
-      ? value.trim()
-      : null;
+    return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
   }, [options?.serverId]);
   const includeArchived = options?.includeArchived ?? false;
 
   const liveAgents = useSessionStore((state) =>
-    serverId ? state.sessions[serverId]?.agents ?? null : null
+    serverId ? (state.sessions[serverId]?.agents ?? null) : null,
   );
   const connectionStatus = useHostRuntimeConnectionStatus(serverId ?? "");
 
@@ -102,8 +97,7 @@ export function useAllAgentsList(options?: {
     if (!serverId || !liveAgents) {
       return [];
     }
-    const serverLabel =
-      daemons.find((daemon) => daemon.serverId === serverId)?.label ?? serverId;
+    const serverLabel = daemons.find((daemon) => daemon.serverId === serverId)?.label ?? serverId;
     return buildAllAgentsList({
       agents: liveAgents.values(),
       serverId,

@@ -2,10 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 
 import type { ToolCallDetail } from "@server/server/agent/agent-sdk-types";
-import {
-  hasMeaningfulToolCallDetail,
-  isPendingToolCallDetail,
-} from "./tool-call-detail-state";
+import { hasMeaningfulToolCallDetail, isPendingToolCallDetail } from "./tool-call-detail-state";
 
 describe("tool-call detail state", () => {
   it("treats empty unknown payloads as not meaningful", () => {
@@ -39,7 +36,7 @@ describe("tool-call detail state", () => {
         status: "running",
         error: null,
       }),
-      true
+      true,
     );
   });
 
@@ -54,7 +51,7 @@ describe("tool-call detail state", () => {
         status: "completed",
         error: null,
       }),
-      false
+      false,
     );
   });
 

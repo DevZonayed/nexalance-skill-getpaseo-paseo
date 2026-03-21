@@ -46,12 +46,7 @@ export function useDelayedHistoryRefreshToast({
           return;
         }
         showToastRef.current("Refreshing", {
-          icon: (
-            <ActivityIndicator
-              size="small"
-              color={indicatorColorRef.current}
-            />
-          ),
+          icon: <ActivityIndicator size="small" color={indicatorColorRef.current} />,
           durationMs: HISTORY_REFRESH_TOAST_DURATION_MS,
           testID: "agent-history-refresh-toast",
         });

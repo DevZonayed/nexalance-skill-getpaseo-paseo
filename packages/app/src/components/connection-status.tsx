@@ -40,18 +40,8 @@ export function ConnectionStatus({ isConnected }: ConnectionStatusProps) {
   return (
     <View style={styles.container}>
       <View style={styles.row}>
-        <View
-          style={[
-            styles.dot,
-            isConnected ? styles.dotConnected : styles.dotDisconnected,
-          ]}
-        />
-        <Text
-          style={[
-            styles.text,
-            isConnected ? styles.textConnected : styles.textDisconnected,
-          ]}
-        >
+        <View style={[styles.dot, isConnected ? styles.dotConnected : styles.dotDisconnected]} />
+        <Text style={[styles.text, isConnected ? styles.textConnected : styles.textDisconnected]}>
           {isConnected ? "Connected" : "Disconnected"}
         </Text>
       </View>

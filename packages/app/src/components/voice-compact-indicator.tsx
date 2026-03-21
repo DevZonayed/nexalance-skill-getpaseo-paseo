@@ -7,13 +7,7 @@ import { useVoice, useVoiceTelemetry } from "@/contexts/voice-context";
 export function VoiceCompactIndicator() {
   const { theme } = useUnistyles();
   const { volume, isSpeaking } = useVoiceTelemetry();
-  const {
-    isVoiceMode,
-    isVoiceSwitching,
-    isMuted,
-    toggleMute,
-    stopVoice,
-  } = useVoice();
+  const { isVoiceMode, isVoiceSwitching, isMuted, toggleMute, stopVoice } = useVoice();
   if (!isVoiceMode) {
     return null;
   }
@@ -36,10 +30,7 @@ export function VoiceCompactIndicator() {
           disabled={isVoiceSwitching}
           accessibilityRole="button"
           accessibilityLabel={isMuted ? "Unmute voice" : "Mute voice"}
-          style={[
-            styles.muteButton,
-            isVoiceSwitching ? styles.buttonDisabled : undefined,
-          ]}
+          style={[styles.muteButton, isVoiceSwitching ? styles.buttonDisabled : undefined]}
           hitSlop={8}
         >
           {isMuted ? (
@@ -59,10 +50,7 @@ export function VoiceCompactIndicator() {
           disabled={isVoiceSwitching}
           accessibilityRole="button"
           accessibilityLabel="Disable realtime voice mode"
-          style={[
-            styles.stopButton,
-            isVoiceSwitching ? styles.buttonDisabled : undefined,
-          ]}
+          style={[styles.stopButton, isVoiceSwitching ? styles.buttonDisabled : undefined]}
           hitSlop={8}
         >
           {isVoiceSwitching ? (

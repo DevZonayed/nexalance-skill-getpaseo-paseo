@@ -28,7 +28,7 @@ export interface ExecutionOrderResult {
  */
 export async function computeExecutionOrder(
   store: TaskStore,
-  scopeId?: string
+  scopeId?: string,
 ): Promise<ExecutionOrderResult> {
   const allTasks = await store.list();
   const taskMap = new Map(allTasks.map((t) => [t.id, t]));
@@ -57,13 +57,9 @@ export async function computeExecutionOrder(
 
   // Simulate execution: track done status
   // Include all done tasks (not just in scope) for dep resolution
-  const simDone = new Set(
-    allTasks.filter((t) => t.status === "done").map((t) => t.id)
-  );
+  const simDone = new Set(allTasks.filter((t) => t.status === "done").map((t) => t.id));
   const remaining = new Set(
-    candidates
-      .filter((t) => t.status === "open" || t.status === "in_progress")
-      .map((t) => t.id)
+    candidates.filter((t) => t.status === "open" || t.status === "in_progress").map((t) => t.id),
   );
 
   const isReady = (taskId: string): boolean => {
@@ -72,9 +68,7 @@ export async function computeExecutionOrder(
     // All deps done (deps can be outside scope)
     const depsOk = task.deps.every((depId) => simDone.has(depId));
     // All children done (only consider children in scope)
-    const children = (childrenMap.get(taskId) ?? []).filter((c) =>
-      candidateIds.has(c.id)
-    );
+    const children = (childrenMap.get(taskId) ?? []).filter((c) => candidateIds.has(c.id));
     const childrenOk = children.every((c) => simDone.has(c.id));
     return depsOk && childrenOk;
   };
@@ -119,7 +113,7 @@ export async function computeExecutionOrder(
  */
 export function buildSortedChildrenMap(
   tasks: Task[],
-  orderMap: Map<string, number>
+  orderMap: Map<string, number>,
 ): Map<string, Task[]> {
   const childrenMap = new Map<string, Task[]>();
 

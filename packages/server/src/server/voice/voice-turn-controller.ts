@@ -43,10 +43,7 @@ export interface VoiceUtteranceSink {
 export interface VoiceTurnController {
   start(): Promise<void>;
   stop(): Promise<void>;
-  appendClientChunk(input: {
-    audioBase64: string;
-    format: string;
-  }): Promise<void>;
+  appendClientChunk(input: { audioBase64: string; format: string }): Promise<void>;
 }
 
 export function createVoiceTurnController(params: {
@@ -82,11 +79,9 @@ export function createVoiceTurnController(params: {
   }
 
   function runSerial(task: () => Promise<void>): Promise<void> {
-    queued = queued
-      .then(task)
-      .catch((error) => {
-        fail(error);
-      });
+    queued = queued.then(task).catch((error) => {
+      fail(error);
+    });
     return queued;
   }
 
@@ -123,7 +118,7 @@ export function createVoiceTurnController(params: {
         prefixBytes: prefix.length,
         rollingPrefixBytes: prefixBuffer.byteLength,
       },
-      "voice_turn.speech_started"
+      "voice_turn.speech_started",
     );
   }
 
@@ -146,7 +141,7 @@ export function createVoiceTurnController(params: {
         utteranceBytes: utterance.length,
         utteranceAgeMs: Math.max(0, endedAt - startedAt),
       },
-      "voice_turn.speech_stopped"
+      "voice_turn.speech_stopped",
     );
 
     if (utterance.length === 0) {
@@ -213,8 +208,7 @@ export function createVoiceTurnController(params: {
                 });
         }
 
-        const normalized =
-          resampler === null ? pcm16 : resampler.processChunk(pcm16);
+        const normalized = resampler === null ? pcm16 : resampler.processChunk(pcm16);
         if (normalized.length === 0) {
           return;
         }

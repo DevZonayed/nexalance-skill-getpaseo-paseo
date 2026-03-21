@@ -82,7 +82,7 @@ describe("image-attachment-picker", () => {
         multiple: true,
         directory: false,
         title: "Attach images",
-      })
+      }),
     );
     expect(result).toEqual(["/tmp/one.png", "/tmp/two.jpg"]);
   });
@@ -91,7 +91,7 @@ describe("image-attachment-picker", () => {
     desktopHostState.api = {};
 
     await expect(openImagePathsWithDesktopDialog()).rejects.toThrow(
-      "Desktop dialog API is not available."
+      "Desktop dialog API is not available.",
     );
   });
 });

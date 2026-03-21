@@ -65,7 +65,9 @@ export function DesktopPermissionRow({
             {isRequesting ? "Requesting..." : "Request"}
           </Button>
         )}
-        {shouldShowDetail ? <Text style={styles.permissionDetailText}>{status?.detail}</Text> : null}
+        {shouldShowDetail ? (
+          <Text style={styles.permissionDetailText}>{status?.detail}</Text>
+        ) : null}
       </View>
     </View>
   );

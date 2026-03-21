@@ -25,10 +25,8 @@ function escapeRegExp(value: string): string {
 
 function makeVoicePromptBlockRegex(): RegExp {
   return new RegExp(
-    `${escapeRegExp(VOICE_PROMPT_BLOCK_START)}[\\s\\S]*?${escapeRegExp(
-      VOICE_PROMPT_BLOCK_END
-    )}`,
-    "g"
+    `${escapeRegExp(VOICE_PROMPT_BLOCK_START)}[\\s\\S]*?${escapeRegExp(VOICE_PROMPT_BLOCK_END)}`,
+    "g",
   );
 }
 
@@ -47,7 +45,7 @@ export function buildVoiceModeSystemPrompt(existing: string | undefined, enabled
     ? VOICE_AGENT_SYSTEM_INSTRUCTION
     : VOICE_AGENT_DISABLED_INSTRUCTION;
   const voiceBlock = [VOICE_PROMPT_BLOCK_START, voiceInstruction, VOICE_PROMPT_BLOCK_END].join(
-    "\n"
+    "\n",
   );
 
   return [basePrompt, voiceBlock]

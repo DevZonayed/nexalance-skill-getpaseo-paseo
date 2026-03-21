@@ -1,181 +1,181 @@
-import { resolve } from 'node:path'
+import { resolve } from "node:path";
 
-import { getCheckoutStatusLite } from '../utils/checkout-git.js'
-import type { ProjectCheckoutLitePayload, ProjectPlacementPayload } from '../shared/messages.js'
-import type { PersistedWorkspaceRecord } from './workspace-registry.js'
+import { getCheckoutStatusLite } from "../utils/checkout-git.js";
+import type { ProjectCheckoutLitePayload, ProjectPlacementPayload } from "../shared/messages.js";
+import type { PersistedWorkspaceRecord } from "./workspace-registry.js";
 
-export type PersistedProjectKind = 'git' | 'non_git'
-export type PersistedWorkspaceKind = 'local_checkout' | 'worktree' | 'directory'
+export type PersistedProjectKind = "git" | "non_git";
+export type PersistedWorkspaceKind = "local_checkout" | "worktree" | "directory";
 export type StaleWorkspaceAgentRecord = {
-  cwd: string
-  archivedAt: string | null
-}
+  cwd: string;
+  archivedAt: string | null;
+};
 
 export type DetectStaleWorkspacesInput = {
-  activeWorkspaces: PersistedWorkspaceRecord[]
-  agentRecords: StaleWorkspaceAgentRecord[]
-  checkDirectoryExists: (cwd: string) => Promise<boolean>
-}
+  activeWorkspaces: PersistedWorkspaceRecord[];
+  agentRecords: StaleWorkspaceAgentRecord[];
+  checkDirectoryExists: (cwd: string) => Promise<boolean>;
+};
 
 export function normalizeWorkspaceId(cwd: string): string {
-  const trimmed = cwd.trim()
+  const trimmed = cwd.trim();
   if (!trimmed) {
-    return cwd
+    return cwd;
   }
-  return resolve(trimmed)
+  return resolve(trimmed);
 }
 
 function deriveRemoteProjectKey(remoteUrl: string | null): string | null {
   if (!remoteUrl) {
-    return null
+    return null;
   }
 
-  const trimmed = remoteUrl.trim()
+  const trimmed = remoteUrl.trim();
   if (!trimmed) {
-    return null
+    return null;
   }
 
-  let host: string | null = null
-  let remotePath: string | null = null
+  let host: string | null = null;
+  let remotePath: string | null = null;
 
-  const scpLike = trimmed.match(/^[^@]+@([^:]+):(.+)$/)
+  const scpLike = trimmed.match(/^[^@]+@([^:]+):(.+)$/);
   if (scpLike) {
-    host = scpLike[1] ?? null
-    remotePath = scpLike[2] ?? null
-  } else if (trimmed.includes('://')) {
+    host = scpLike[1] ?? null;
+    remotePath = scpLike[2] ?? null;
+  } else if (trimmed.includes("://")) {
     try {
-      const parsed = new URL(trimmed)
-      host = parsed.hostname || null
-      remotePath = parsed.pathname ? parsed.pathname.replace(/^\/+/, '') : null
+      const parsed = new URL(trimmed);
+      host = parsed.hostname || null;
+      remotePath = parsed.pathname ? parsed.pathname.replace(/^\/+/, "") : null;
     } catch {
-      return null
+      return null;
     }
   }
 
   if (!host || !remotePath) {
-    return null
+    return null;
   }
 
-  let cleanedPath = remotePath.trim().replace(/^\/+/, '').replace(/\/+$/, '')
-  if (cleanedPath.endsWith('.git')) {
-    cleanedPath = cleanedPath.slice(0, -4)
+  let cleanedPath = remotePath.trim().replace(/^\/+/, "").replace(/\/+$/, "");
+  if (cleanedPath.endsWith(".git")) {
+    cleanedPath = cleanedPath.slice(0, -4);
   }
-  if (!cleanedPath.includes('/')) {
-    return null
-  }
-
-  const cleanedHost = host.toLowerCase()
-  if (cleanedHost === 'github.com') {
-    return `remote:github.com/${cleanedPath}`
+  if (!cleanedPath.includes("/")) {
+    return null;
   }
 
-  return `remote:${cleanedHost}/${cleanedPath}`
+  const cleanedHost = host.toLowerCase();
+  if (cleanedHost === "github.com") {
+    return `remote:github.com/${cleanedPath}`;
+  }
+
+  return `remote:${cleanedHost}/${cleanedPath}`;
 }
 
 export function deriveProjectGroupingKey(options: {
-  cwd: string
-  remoteUrl: string | null
-  isPaseoOwnedWorktree: boolean
-  mainRepoRoot: string | null
+  cwd: string;
+  remoteUrl: string | null;
+  isPaseoOwnedWorktree: boolean;
+  mainRepoRoot: string | null;
 }): string {
-  const remoteKey = deriveRemoteProjectKey(options.remoteUrl)
+  const remoteKey = deriveRemoteProjectKey(options.remoteUrl);
   if (remoteKey) {
-    return remoteKey
+    return remoteKey;
   }
 
-  const mainRepoRoot = options.mainRepoRoot?.trim()
+  const mainRepoRoot = options.mainRepoRoot?.trim();
   if (options.isPaseoOwnedWorktree && mainRepoRoot) {
-    return mainRepoRoot
+    return mainRepoRoot;
   }
 
-  return options.cwd
+  return options.cwd;
 }
 
 export function deriveProjectGroupingName(projectKey: string): string {
-  const githubRemotePrefix = 'remote:github.com/'
+  const githubRemotePrefix = "remote:github.com/";
   if (projectKey.startsWith(githubRemotePrefix)) {
-    return projectKey.slice(githubRemotePrefix.length) || projectKey
+    return projectKey.slice(githubRemotePrefix.length) || projectKey;
   }
 
-  const segments = projectKey.split(/[\\/]/).filter(Boolean)
-  return segments[segments.length - 1] || projectKey
+  const segments = projectKey.split(/[\\/]/).filter(Boolean);
+  return segments[segments.length - 1] || projectKey;
 }
 
 function deriveWorkspaceDirectoryName(cwd: string): string {
-  const normalized = cwd.replace(/\\/g, '/')
-  const segments = normalized.split('/').filter(Boolean)
-  return segments[segments.length - 1] ?? cwd
+  const normalized = cwd.replace(/\\/g, "/");
+  const segments = normalized.split("/").filter(Boolean);
+  return segments[segments.length - 1] ?? cwd;
 }
 
 export function deriveWorkspaceDisplayName(input: {
-  cwd: string
-  checkout: ProjectCheckoutLitePayload
+  cwd: string;
+  checkout: ProjectCheckoutLitePayload;
 }): string {
-  const branch = input.checkout.currentBranch?.trim() ?? null
-  if (branch && branch.toUpperCase() !== 'HEAD') {
-    return branch
+  const branch = input.checkout.currentBranch?.trim() ?? null;
+  if (branch && branch.toUpperCase() !== "HEAD") {
+    return branch;
   }
-  return deriveWorkspaceDirectoryName(input.cwd)
+  return deriveWorkspaceDirectoryName(input.cwd);
 }
 
 export function deriveProjectRootPath(input: {
-  cwd: string
-  checkout: ProjectCheckoutLitePayload
+  cwd: string;
+  checkout: ProjectCheckoutLitePayload;
 }): string {
   if (input.checkout.isGit && input.checkout.isPaseoOwnedWorktree) {
-    return input.checkout.mainRepoRoot
+    return input.checkout.mainRepoRoot;
   }
-  return input.cwd
+  return input.cwd;
 }
 
 export function deriveProjectKind(checkout: ProjectCheckoutLitePayload): PersistedProjectKind {
-  return checkout.isGit ? 'git' : 'non_git'
+  return checkout.isGit ? "git" : "non_git";
 }
 
 export function deriveWorkspaceKind(checkout: ProjectCheckoutLitePayload): PersistedWorkspaceKind {
   if (!checkout.isGit) {
-    return 'directory'
+    return "directory";
   }
-  return checkout.isPaseoOwnedWorktree ? 'worktree' : 'local_checkout'
+  return checkout.isPaseoOwnedWorktree ? "worktree" : "local_checkout";
 }
 
 export async function detectStaleWorkspaces(
-  input: DetectStaleWorkspacesInput
+  input: DetectStaleWorkspacesInput,
 ): Promise<Set<string>> {
-  const staleWorkspaceIds = new Set<string>()
-  const cwdsWithActiveAgents = new Set<string>()
-  const cwdsWithAnyAgent = new Set<string>()
+  const staleWorkspaceIds = new Set<string>();
+  const cwdsWithActiveAgents = new Set<string>();
+  const cwdsWithAnyAgent = new Set<string>();
 
   for (const agent of input.agentRecords) {
-    const normalizedCwd = normalizeWorkspaceId(agent.cwd)
-    cwdsWithAnyAgent.add(normalizedCwd)
+    const normalizedCwd = normalizeWorkspaceId(agent.cwd);
+    cwdsWithAnyAgent.add(normalizedCwd);
     if (!agent.archivedAt) {
-      cwdsWithActiveAgents.add(normalizedCwd)
+      cwdsWithActiveAgents.add(normalizedCwd);
     }
   }
 
   for (const workspace of input.activeWorkspaces) {
-    const dirExists = await input.checkDirectoryExists(workspace.cwd)
+    const dirExists = await input.checkDirectoryExists(workspace.cwd);
     if (!dirExists) {
-      staleWorkspaceIds.add(workspace.workspaceId)
-      continue
+      staleWorkspaceIds.add(workspace.workspaceId);
+      continue;
     }
 
-    const hasAgents = cwdsWithAnyAgent.has(workspace.workspaceId)
-    const hasActiveAgents = cwdsWithActiveAgents.has(workspace.workspaceId)
+    const hasAgents = cwdsWithAnyAgent.has(workspace.workspaceId);
+    const hasActiveAgents = cwdsWithActiveAgents.has(workspace.workspaceId);
     if (hasAgents && !hasActiveAgents) {
-      staleWorkspaceIds.add(workspace.workspaceId)
+      staleWorkspaceIds.add(workspace.workspaceId);
     }
   }
 
-  return staleWorkspaceIds
+  return staleWorkspaceIds;
 }
 
 export async function buildProjectPlacementForCwd(input: {
-  cwd: string
-  paseoHome: string
+  cwd: string;
+  paseoHome: string;
 }): Promise<ProjectPlacementPayload> {
-  const normalizedCwd = normalizeWorkspaceId(input.cwd)
+  const normalizedCwd = normalizeWorkspaceId(input.cwd);
   const checkout = await getCheckoutStatusLite(normalizedCwd, { paseoHome: input.paseoHome })
     .then((status): ProjectCheckoutLitePayload => {
       if (!status.isGit) {
@@ -186,7 +186,7 @@ export async function buildProjectPlacementForCwd(input: {
           remoteUrl: null,
           isPaseoOwnedWorktree: false,
           mainRepoRoot: null,
-        }
+        };
       }
 
       if (status.isPaseoOwnedWorktree && status.mainRepoRoot) {
@@ -197,7 +197,7 @@ export async function buildProjectPlacementForCwd(input: {
           remoteUrl: status.remoteUrl,
           isPaseoOwnedWorktree: true,
           mainRepoRoot: status.mainRepoRoot,
-        }
+        };
       }
 
       return {
@@ -207,7 +207,7 @@ export async function buildProjectPlacementForCwd(input: {
         remoteUrl: status.remoteUrl,
         isPaseoOwnedWorktree: false,
         mainRepoRoot: null,
-      }
+      };
     })
     .catch(
       (): ProjectCheckoutLitePayload => ({
@@ -217,19 +217,19 @@ export async function buildProjectPlacementForCwd(input: {
         remoteUrl: null,
         isPaseoOwnedWorktree: false,
         mainRepoRoot: null,
-      })
-    )
+      }),
+    );
 
   const projectKey = deriveProjectGroupingKey({
     cwd: normalizedCwd,
     remoteUrl: checkout.remoteUrl,
     isPaseoOwnedWorktree: checkout.isPaseoOwnedWorktree,
     mainRepoRoot: checkout.mainRepoRoot,
-  })
+  });
 
   return {
     projectKey,
     projectName: deriveProjectGroupingName(projectKey),
     checkout,
-  }
+  };
 }

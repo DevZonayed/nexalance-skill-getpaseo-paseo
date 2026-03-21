@@ -43,7 +43,7 @@ async function showNativeConfirmDialog(input: ConfirmDialogInput): Promise<boole
       {
         cancelable: true,
         onDismiss: () => resolve(false),
-      }
+      },
     );
   });
 }

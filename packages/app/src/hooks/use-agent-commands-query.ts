@@ -18,11 +18,7 @@ export interface DraftCommandConfig {
   thinkingOptionId?: string;
 }
 
-function commandsQueryKey(
-  serverId: string,
-  agentId: string,
-  draftConfig?: DraftCommandConfig
-) {
+function commandsQueryKey(serverId: string, agentId: string, draftConfig?: DraftCommandConfig) {
   return [
     "agentCommands",
     serverId,

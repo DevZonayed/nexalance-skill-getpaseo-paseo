@@ -11,8 +11,7 @@ describe("buildAgentAttentionNotificationPayload", () => {
       reason: "finished",
       serverId: "srv-1",
       agentId: "agent-1",
-      assistantMessage:
-        "**Done**. Updated `README.md` and [link](https://example.com).",
+      assistantMessage: "**Done**. Updated `README.md` and [link](https://example.com).",
     });
 
     expect(payload).toEqual({
@@ -81,7 +80,7 @@ describe("findLatestAssistantMessageFromTimeline", () => {
         { type: "reasoning", text: "thinking..." },
         { type: "assistant_message", text: "Done " },
         { type: "assistant_message", text: "now" },
-      ])
+      ]),
     ).toBe("Done now");
   });
 });
@@ -89,14 +88,8 @@ describe("findLatestAssistantMessageFromTimeline", () => {
 describe("findLatestPermissionRequest", () => {
   it("returns the most recently inserted request", () => {
     const pending = new Map([
-      [
-        "first",
-        { id: "first", provider: "claude", name: "a", kind: "tool" } as const,
-      ],
-      [
-        "second",
-        { id: "second", provider: "claude", name: "b", kind: "tool" } as const,
-      ],
+      ["first", { id: "first", provider: "claude", name: "a", kind: "tool" } as const],
+      ["second", { id: "second", provider: "claude", name: "b", kind: "tool" } as const],
     ]);
 
     expect(findLatestPermissionRequest(pending)?.id).toBe("second");

@@ -91,7 +91,9 @@ export class RelayDurableObject {
   }
 
   private createWebSocketPair(): [WebSocket, WebSocket] {
-    const pair = new (globalThis as unknown as { WebSocketPair: new () => WebSocketPair }).WebSocketPair();
+    const pair = new (
+      globalThis as unknown as { WebSocketPair: new () => WebSocketPair }
+    ).WebSocketPair();
     return [pair[0], pair[1]];
   }
 
@@ -188,8 +190,14 @@ export class RelayDurableObject {
     const out = new Set<string>();
     for (const ws of this.state.getWebSockets("client")) {
       try {
-        const attachment = (ws as WebSocketWithAttachment).deserializeAttachment() as RelaySessionAttachment | null;
-        if (attachment?.role === "client" && typeof attachment.connectionId === "string" && attachment.connectionId) {
+        const attachment = (
+          ws as WebSocketWithAttachment
+        ).deserializeAttachment() as RelaySessionAttachment | null;
+        if (
+          attachment?.role === "client" &&
+          typeof attachment.connectionId === "string" &&
+          attachment.connectionId
+        ) {
           out.add(attachment.connectionId);
         }
       } catch {
@@ -244,7 +252,7 @@ export class RelayDurableObject {
     request: Request,
     role: ConnectionRole,
     serverId: string,
-    connectionId: string
+    connectionId: string,
   ): Response {
     const upgradeError = this.requireWebSocketUpgrade(request);
     if (upgradeError) return upgradeError;
@@ -295,7 +303,7 @@ export class RelayDurableObject {
     (server as WebSocketWithAttachment).serializeAttachment(attachment);
 
     console.log(
-      `[Relay DO] v2:${role}${isServerControl ? "(control)" : ""}${isServerData ? `(data:${resolvedConnectionId})` : role === "client" ? `(${resolvedConnectionId})` : ""} connected to session ${serverId}`
+      `[Relay DO] v2:${role}${isServerControl ? "(control)" : ""}${isServerData ? `(data:${resolvedConnectionId})` : role === "client" ? `(${resolvedConnectionId})` : ""} connected to session ${serverId}`,
     );
 
     if (role === "client") {
@@ -306,7 +314,9 @@ export class RelayDurableObject {
     if (isServerControl) {
       // Send current connection list so the daemon can attach existing connections.
       try {
-        server.send(JSON.stringify({ type: "sync", connectionIds: this.listConnectedConnectionIds() }));
+        server.send(
+          JSON.stringify({ type: "sync", connectionIds: this.listConnectedConnectionIds() }),
+        );
       } catch {
         // ignore
       }
@@ -350,7 +360,9 @@ export class RelayDurableObject {
    * Called when a WebSocket message is received (wakes from hibernation).
    */
   webSocketMessage(ws: WebSocket, message: string | ArrayBuffer): void {
-    const attachment = (ws as WebSocketWithAttachment).deserializeAttachment() as RelaySessionAttachment | null;
+    const attachment = (
+      ws as WebSocketWithAttachment
+    ).deserializeAttachment() as RelaySessionAttachment | null;
     if (!attachment) {
       console.error("[Relay DO] Message from WebSocket without attachment");
       return;
@@ -421,18 +433,15 @@ export class RelayDurableObject {
   /**
    * Called when a WebSocket closes (wakes from hibernation).
    */
-  webSocketClose(
-    ws: WebSocket,
-    code: number,
-    reason: string,
-    _wasClean: boolean
-  ): void {
-    const attachment = (ws as WebSocketWithAttachment).deserializeAttachment() as RelaySessionAttachment | null;
+  webSocketClose(ws: WebSocket, code: number, reason: string, _wasClean: boolean): void {
+    const attachment = (
+      ws as WebSocketWithAttachment
+    ).deserializeAttachment() as RelaySessionAttachment | null;
     if (!attachment) return;
 
     const version = attachment.version ?? LEGACY_RELAY_VERSION;
     console.log(
-      `[Relay DO] v${version}:${attachment.role}${attachment.connectionId ? `(${attachment.connectionId})` : ""} disconnected from session ${attachment.serverId} (${code}: ${reason})`
+      `[Relay DO] v${version}:${attachment.role}${attachment.connectionId ? `(${attachment.connectionId})` : ""} disconnected from session ${attachment.serverId} (${code}: ${reason})`,
     );
 
     if (version === LEGACY_RELAY_VERSION) {
@@ -476,11 +485,10 @@ export class RelayDurableObject {
    * Called on WebSocket error.
    */
   webSocketError(ws: WebSocket, error: unknown): void {
-    const attachment = (ws as WebSocketWithAttachment).deserializeAttachment() as RelaySessionAttachment | null;
-    console.error(
-      `[Relay DO] WebSocket error for ${attachment?.role ?? "unknown"}:`,
-      error
-    );
+    const attachment = (
+      ws as WebSocketWithAttachment
+    ).deserializeAttachment() as RelaySessionAttachment | null;
+    console.error(`[Relay DO] WebSocket error for ${attachment?.role ?? "unknown"}:`, error);
   }
 }
 

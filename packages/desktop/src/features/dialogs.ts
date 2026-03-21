@@ -19,7 +19,8 @@ export function registerDialogHandlers(): void {
   ipcMain.handle("paseo:dialog:ask", async (event, message: string, options?: AskOptions) => {
     const win = BrowserWindow.fromWebContents(event.sender);
     const result = await dialog.showMessageBox(win ?? BrowserWindow.getFocusedWindow()!, {
-      type: options?.kind === "warning" ? "warning" : options?.kind === "error" ? "error" : "question",
+      type:
+        options?.kind === "warning" ? "warning" : options?.kind === "error" ? "error" : "question",
       title: options?.title ?? "Confirm",
       message,
       buttons: [options?.cancelLabel ?? "Cancel", options?.okLabel ?? "OK"],

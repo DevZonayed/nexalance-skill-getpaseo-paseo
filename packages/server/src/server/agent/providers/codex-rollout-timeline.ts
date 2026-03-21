@@ -19,10 +19,7 @@ function resolveCodexSessionRoot(): string | null {
   return path.join(codexHome, "sessions");
 }
 
-async function findRolloutFile(
-  threadId: string,
-  root: string
-): Promise<string | null> {
+async function findRolloutFile(threadId: string, root: string): Promise<string | null> {
   const stack: { dir: string; depth: number }[] = [{ dir: root, depth: 0 }];
   while (stack.length > 0) {
     const { dir, depth } = stack.pop()!;
@@ -37,8 +34,7 @@ async function findRolloutFile(
       if (entry.isFile()) {
         const matchesThread = entry.name.includes(threadId);
         const matchesPrefix = entry.name.startsWith("rollout-");
-        const matchesExtension =
-          entry.name.endsWith(".json") || entry.name.endsWith(".jsonl");
+        const matchesExtension = entry.name.endsWith(".json") || entry.name.endsWith(".jsonl");
         if (matchesThread && matchesPrefix && matchesExtension) {
           return entryPath;
         }
@@ -50,20 +46,19 @@ async function findRolloutFile(
   return null;
 }
 
-const RolloutContentItemSchema = z
-  .union([
-    z.object({ type: z.literal("input_text"), text: z.string() }),
-    z.object({ type: z.literal("output_text"), text: z.string() }),
-    z.object({ type: z.literal("reasoning_text"), text: z.string() }),
-    z.object({ type: z.literal("text"), text: z.string() }),
-    z
-      .object({
-        type: z.string(),
-        text: z.string().optional(),
-        message: z.string().optional(),
-      })
-      .passthrough(),
-  ]);
+const RolloutContentItemSchema = z.union([
+  z.object({ type: z.literal("input_text"), text: z.string() }),
+  z.object({ type: z.literal("output_text"), text: z.string() }),
+  z.object({ type: z.literal("reasoning_text"), text: z.string() }),
+  z.object({ type: z.literal("text"), text: z.string() }),
+  z
+    .object({
+      type: z.string(),
+      text: z.string().optional(),
+      message: z.string().optional(),
+    })
+    .passthrough(),
+]);
 
 const RolloutContentArraySchema = z.array(RolloutContentItemSchema);
 
@@ -162,34 +157,33 @@ const RolloutEventUserMessagePayloadSchema = z.object({
     .optional(),
 });
 
-type RolloutResponseReasoningPayload = z.infer<
-  typeof RolloutResponseReasoningPayloadSchema
->;
+type RolloutResponseReasoningPayload = z.infer<typeof RolloutResponseReasoningPayloadSchema>;
 type ParsedRolloutRecord =
   | { kind: "timeline"; item: AgentTimelineItem }
   | { kind: "call"; name: string; callId?: string; input?: unknown }
   | { kind: "output"; callId: string; output: unknown }
   | { kind: "ignore" };
 
-const RolloutMessageContentSchema = z
-  .union([
-    z.string().transform((content) => content.trim()),
-    z.array(
+const RolloutMessageContentSchema = z.union([
+  z.string().transform((content) => content.trim()),
+  z
+    .array(
       z
         .object({
           text: z.string().optional(),
           message: z.string().optional(),
         })
-        .passthrough()
-    ).transform((content) =>
+        .passthrough(),
+    )
+    .transform((content) =>
       content
         .map((block) => block.text ?? block.message ?? "")
         .map((text) => text.trim())
         .filter(Boolean)
         .join("\n")
-        .trim()
+        .trim(),
     ),
-  ]);
+]);
 
 function extractMessageText(content: unknown): string {
   const parsed = RolloutMessageContentSchema.safeParse(content);
@@ -199,17 +193,16 @@ function extractMessageText(content: unknown): string {
   return parsed.data;
 }
 
-const RolloutEventMessageTextSchema = z
-  .union([
-    z.string(),
-    z
-      .object({
-        message: z.string().optional(),
-        text: z.string().optional(),
-      })
-      .passthrough()
-      .transform((message) => message.message ?? message.text ?? ""),
-  ]);
+const RolloutEventMessageTextSchema = z.union([
+  z.string(),
+  z
+    .object({
+      message: z.string().optional(),
+      text: z.string().optional(),
+    })
+    .passthrough()
+    .transform((message) => message.message ?? message.text ?? ""),
+]);
 
 function extractEventMessageText(message: unknown): string {
   const parsed = RolloutEventMessageTextSchema.safeParse(message);
@@ -225,10 +218,7 @@ function isSyntheticRolloutUserMessage(text: string): boolean {
     return false;
   }
   const lower = normalized.toLowerCase();
-  if (
-    lower.startsWith("# agents.md instructions for") &&
-    lower.includes("<instructions>")
-  ) {
+  if (lower.startsWith("# agents.md instructions for") && lower.includes("<instructions>")) {
     return true;
   }
   if (lower.startsWith("<environment_context>")) {
@@ -291,7 +281,7 @@ function mapCodexTerminalInteractionToToolCall(params: {
   const processId = nonEmptyString(params.processId);
   const callId = processId
     ? `terminal-session-${processId}`
-    : nonEmptyString(params.fallbackCallId) ?? "terminal-interaction";
+    : (nonEmptyString(params.fallbackCallId) ?? "terminal-interaction");
   const label = nonEmptyString(params.command);
   return {
     type: "tool_call",
@@ -309,10 +299,13 @@ function mapCodexTerminalInteractionToToolCall(params: {
 }
 
 function buildTerminalCommandBySessionId(
-  parsedRecords: ParsedRolloutRecord[]
+  parsedRecords: ParsedRolloutRecord[],
 ): Map<string, string> {
   const outputsByCallId = parsedRecords
-    .filter((record): record is Extract<ParsedRolloutRecord, { kind: "output" }> => record.kind === "output")
+    .filter(
+      (record): record is Extract<ParsedRolloutRecord, { kind: "output" }> =>
+        record.kind === "output",
+    )
     .reduce((map, record) => map.set(record.callId, record.output), new Map<string, unknown>());
 
   const commandsBySessionId = new Map<string, string>();
@@ -325,7 +318,7 @@ function buildTerminalCommandBySessionId(
       callId: record.callId ?? null,
       name: record.name,
       input: record.input ?? null,
-      output: record.callId ? outputsByCallId.get(record.callId) ?? null : null,
+      output: record.callId ? (outputsByCallId.get(record.callId) ?? null) : null,
     });
     if (!mapped || mapped.detail.type !== "shell") {
       continue;
@@ -350,91 +343,86 @@ function readOutputPayloadValue(payload: Record<string, unknown>): unknown {
   return Object.keys(rest).length > 0 ? rest : undefined;
 }
 
-const FunctionCallInputNormalizationSchema = z
-  .union([
-    z.object({ cmd: z.string() }).transform((input) => ({ name: "Bash", input: { command: input.cmd } })),
-    z
-      .object({ command: z.array(z.string()) })
-      .transform((input) => ({ name: "Bash", input: { command: input.command[2] ?? "" } })),
-    z.unknown().transform((input) => ({ name: "unknown", input })),
-  ]);
+const FunctionCallInputNormalizationSchema = z.union([
+  z
+    .object({ cmd: z.string() })
+    .transform((input) => ({ name: "Bash", input: { command: input.cmd } })),
+  z
+    .object({ command: z.array(z.string()) })
+    .transform((input) => ({ name: "Bash", input: { command: input.command[2] ?? "" } })),
+  z.unknown().transform((input) => ({ name: "unknown", input })),
+]);
 
-const RolloutResponseRecordSchema = z
-  .union([
-    RolloutResponseMessagePayloadSchema.transform((payload): ParsedRolloutRecord => {
-      const text = extractMessageText(payload.content);
-      const itemType = payload.role === "assistant" ? "assistant_message" : "user_message";
-      const shouldEmit = text.length > 0 && (itemType !== "user_message" || !isSyntheticRolloutUserMessage(text));
-      return shouldEmit
-        ? { kind: "timeline", item: { type: itemType, text } }
+const RolloutResponseRecordSchema = z.union([
+  RolloutResponseMessagePayloadSchema.transform((payload): ParsedRolloutRecord => {
+    const text = extractMessageText(payload.content);
+    const itemType = payload.role === "assistant" ? "assistant_message" : "user_message";
+    const shouldEmit =
+      text.length > 0 && (itemType !== "user_message" || !isSyntheticRolloutUserMessage(text));
+    return shouldEmit ? { kind: "timeline", item: { type: itemType, text } } : { kind: "ignore" };
+  }),
+  RolloutResponseReasoningPayloadSchema.transform((payload): ParsedRolloutRecord => {
+    const text = extractReasoningText(payload);
+    return text.length > 0
+      ? { kind: "timeline", item: { type: "reasoning", text } }
+      : { kind: "ignore" };
+  }),
+  z
+    .union([RolloutResponseFunctionCallPayloadSchema, RolloutResponseCustomToolCallPayloadSchema])
+    .transform((payload): ParsedRolloutRecord => {
+      const rawName = payload.name ?? "unknown";
+      const rawInput = payload.arguments ?? ("input" in payload ? payload.input : undefined);
+      const parsedArguments = parseJsonLikeValue(rawInput);
+      const normalized =
+        rawName === "exec_command" || rawName === "shell"
+          ? FunctionCallInputNormalizationSchema.parse(parsedArguments)
+          : { name: rawName, input: parsedArguments };
+      return {
+        kind: "call",
+        name: normalized.name,
+        callId: payload.call_id,
+        input: normalized.input,
+      };
+    }),
+  z
+    .union([
+      RolloutResponseFunctionCallOutputPayloadSchema,
+      RolloutResponseCustomToolCallOutputPayloadSchema,
+    ])
+    .transform((payload): ParsedRolloutRecord => {
+      if (!payload.call_id) {
+        return { kind: "ignore" };
+      }
+      const output = readOutputPayloadValue(payload);
+      return output !== undefined
+        ? { kind: "output", callId: payload.call_id, output }
         : { kind: "ignore" };
     }),
-    RolloutResponseReasoningPayloadSchema.transform((payload): ParsedRolloutRecord => {
-      const text = extractReasoningText(payload);
-      return text.length > 0
-        ? { kind: "timeline", item: { type: "reasoning", text } }
-        : { kind: "ignore" };
-    }),
-    z
-      .union([
-        RolloutResponseFunctionCallPayloadSchema,
-        RolloutResponseCustomToolCallPayloadSchema,
-      ])
-      .transform((payload): ParsedRolloutRecord => {
-        const rawName = payload.name ?? "unknown";
-        const rawInput = payload.arguments ?? ("input" in payload ? payload.input : undefined);
-        const parsedArguments = parseJsonLikeValue(rawInput);
-        const normalized =
-          rawName === "exec_command" || rawName === "shell"
-            ? FunctionCallInputNormalizationSchema.parse(parsedArguments)
-            : { name: rawName, input: parsedArguments };
-        return {
-          kind: "call",
-          name: normalized.name,
-          callId: payload.call_id,
-          input: normalized.input,
-        };
-      }),
-    z
-      .union([
-        RolloutResponseFunctionCallOutputPayloadSchema,
-        RolloutResponseCustomToolCallOutputPayloadSchema,
-      ])
-      .transform((payload): ParsedRolloutRecord => {
-        if (!payload.call_id) {
-          return { kind: "ignore" };
-        }
-        const output = readOutputPayloadValue(payload);
-        return output !== undefined
-          ? { kind: "output", callId: payload.call_id, output }
-          : { kind: "ignore" };
-      }),
-    z.unknown().transform((): ParsedRolloutRecord => ({ kind: "ignore" })),
-  ]);
+  z.unknown().transform((): ParsedRolloutRecord => ({ kind: "ignore" })),
+]);
 
-const RolloutEventRecordSchema = z
-  .union([
-    RolloutEventAgentReasoningPayloadSchema.transform(
-      (payload): ParsedRolloutRecord =>
-        payload.text
-          ? { kind: "timeline", item: { type: "reasoning", text: payload.text } }
-          : { kind: "ignore" }
-    ),
-    RolloutEventAgentMessagePayloadSchema.transform((payload): ParsedRolloutRecord => {
-      const text = extractEventMessageText(payload.message);
-      return text.length > 0
-        ? { kind: "timeline", item: { type: "assistant_message", text } }
-        : { kind: "ignore" };
-    }),
-    RolloutEventUserMessagePayloadSchema.transform((payload): ParsedRolloutRecord => {
-      const text = extractEventMessageText(payload.message);
-      const shouldEmit = text.length > 0 && !isSyntheticRolloutUserMessage(text);
-      return shouldEmit
-        ? { kind: "timeline", item: { type: "user_message", text } }
-        : { kind: "ignore" };
-    }),
-    z.unknown().transform((): ParsedRolloutRecord => ({ kind: "ignore" })),
-  ]);
+const RolloutEventRecordSchema = z.union([
+  RolloutEventAgentReasoningPayloadSchema.transform(
+    (payload): ParsedRolloutRecord =>
+      payload.text
+        ? { kind: "timeline", item: { type: "reasoning", text: payload.text } }
+        : { kind: "ignore" },
+  ),
+  RolloutEventAgentMessagePayloadSchema.transform((payload): ParsedRolloutRecord => {
+    const text = extractEventMessageText(payload.message);
+    return text.length > 0
+      ? { kind: "timeline", item: { type: "assistant_message", text } }
+      : { kind: "ignore" };
+  }),
+  RolloutEventUserMessagePayloadSchema.transform((payload): ParsedRolloutRecord => {
+    const text = extractEventMessageText(payload.message);
+    const shouldEmit = text.length > 0 && !isSyntheticRolloutUserMessage(text);
+    return shouldEmit
+      ? { kind: "timeline", item: { type: "user_message", text } }
+      : { kind: "ignore" };
+  }),
+  z.unknown().transform((): ParsedRolloutRecord => ({ kind: "ignore" })),
+]);
 
 const RolloutRecordSchema = z
   .object({
@@ -446,12 +434,10 @@ const RolloutRecordSchema = z
   .transform((entry) =>
     entry.type === "response_item"
       ? RolloutResponseRecordSchema.parse(entry.payload ?? entry.item)
-      : RolloutEventRecordSchema.parse(entry.payload ?? entry.msg)
+      : RolloutEventRecordSchema.parse(entry.payload ?? entry.msg),
   );
 
-function parseJsonRolloutTimeline(
-  parsed: unknown
-): AgentTimelineItem[] | null {
+function parseJsonRolloutTimeline(parsed: unknown): AgentTimelineItem[] | null {
   if (!parsed || typeof parsed !== "object") {
     return null;
   }
@@ -464,8 +450,7 @@ function parseJsonRolloutTimeline(
     if (!entry || typeof entry !== "object") {
       continue;
     }
-    const messagePayloadResult =
-      RolloutResponseMessagePayloadSchema.safeParse(entry);
+    const messagePayloadResult = RolloutResponseMessagePayloadSchema.safeParse(entry);
     if (messagePayloadResult.success) {
       const payload = messagePayloadResult.data;
       const text = extractMessageText(payload.content);
@@ -482,8 +467,7 @@ function parseJsonRolloutTimeline(
       continue;
     }
 
-    const reasoningPayloadResult =
-      RolloutResponseReasoningPayloadSchema.safeParse(entry);
+    const reasoningPayloadResult = RolloutResponseReasoningPayloadSchema.safeParse(entry);
     if (reasoningPayloadResult.success) {
       const text = extractReasoningText(reasoningPayloadResult.data);
       if (text) {
@@ -506,9 +490,7 @@ function timelineTextFingerprint(item: AgentTimelineItem): string | null {
   }
 }
 
-function dedupeMirroredTextTimelineItems(
-  timeline: AgentTimelineItem[]
-): AgentTimelineItem[] {
+function dedupeMirroredTextTimelineItems(timeline: AgentTimelineItem[]): AgentTimelineItem[] {
   const deduped: AgentTimelineItem[] = [];
   for (const item of timeline) {
     const prev = deduped[deduped.length - 1];
@@ -526,9 +508,7 @@ function dedupeMirroredTextTimelineItems(
   return deduped;
 }
 
-export async function parseRolloutFile(
-  filePath: string
-): Promise<AgentTimelineItem[]> {
+export async function parseRolloutFile(filePath: string): Promise<AgentTimelineItem[]> {
   const content = await fs.readFile(filePath, "utf8");
   const trimmed = content.trim();
   if (!trimmed) {
@@ -562,7 +542,10 @@ export async function parseRolloutFile(
     .map((result) => result.data);
 
   const outputsByCallId = parsedRecords
-    .filter((record): record is Extract<ParsedRolloutRecord, { kind: "output" }> => record.kind === "output")
+    .filter(
+      (record): record is Extract<ParsedRolloutRecord, { kind: "output" }> =>
+        record.kind === "output",
+    )
     .reduce((map, record) => map.set(record.callId, record.output), new Map<string, unknown>());
   const terminalCommandsBySessionId = buildTerminalCommandBySessionId(parsedRecords);
 
@@ -577,8 +560,7 @@ export async function parseRolloutFile(
                   ? (record.input as { session_id?: unknown; sessionId?: unknown })
                   : null;
               const sessionId =
-                readTerminalSessionId(input?.session_id) ??
-                readTerminalSessionId(input?.sessionId);
+                readTerminalSessionId(input?.session_id) ?? readTerminalSessionId(input?.sessionId);
               return [
                 mapCodexTerminalInteractionToToolCall({
                   processId: sessionId,
@@ -591,11 +573,11 @@ export async function parseRolloutFile(
               callId: record.callId ?? null,
               name: record.name,
               input: record.input ?? null,
-              output: record.callId ? outputsByCallId.get(record.callId) ?? null : null,
+              output: record.callId ? (outputsByCallId.get(record.callId) ?? null) : null,
             });
             return mapped ? [mapped] : [];
           })()
-        : []
+        : [],
   );
   return dedupeMirroredTextTimelineItems(timeline);
 }
@@ -608,7 +590,7 @@ export type CodexPersistedTimelineOptions = {
 export async function loadCodexPersistedTimeline(
   sessionId: string,
   options?: CodexPersistedTimelineOptions,
-  logger?: Logger
+  logger?: Logger,
 ): Promise<AgentTimelineItem[]> {
   const rolloutPath = options?.rolloutPath ?? null;
   if (rolloutPath) {
@@ -633,11 +615,7 @@ export async function loadCodexPersistedTimeline(
     if (preferredRoot) {
       rolloutFile = await findRolloutFile(sessionId, preferredRoot);
     }
-    if (
-      !rolloutFile &&
-      fallbackRoot &&
-      fallbackRoot !== preferredRoot
-    ) {
+    if (!rolloutFile && fallbackRoot && fallbackRoot !== preferredRoot) {
       rolloutFile = await findRolloutFile(sessionId, fallbackRoot);
     }
     if (!rolloutFile) {
@@ -646,10 +624,7 @@ export async function loadCodexPersistedTimeline(
 
     return await parseRolloutFile(rolloutFile);
   } catch (error) {
-    logger?.warn(
-      { err: error, sessionId },
-      "Failed to load persisted timeline"
-    );
+    logger?.warn({ err: error, sessionId }, "Failed to load persisted timeline");
     return [];
   }
 }

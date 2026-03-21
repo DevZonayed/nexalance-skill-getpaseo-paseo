@@ -64,7 +64,7 @@ export function normalizeBaseRefName(input: string): string {
 
 export function writePaseoWorktreeMetadata(
   worktreeRoot: string,
-  options: { baseRefName: string }
+  options: { baseRefName: string },
 ): void {
   const baseRefName = normalizeBaseRefName(options.baseRefName);
   if (baseRefName === "HEAD") {
@@ -85,7 +85,7 @@ export function writePaseoWorktreeMetadata(
 
 export function writePaseoWorktreeRuntimeMetadata(
   worktreeRoot: string,
-  options: { worktreePort: number }
+  options: { worktreePort: number },
 ): void {
   if (!Number.isInteger(options.worktreePort) || options.worktreePort <= 0) {
     throw new Error(`Invalid worktree runtime port: ${options.worktreePort}`);

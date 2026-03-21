@@ -1,16 +1,16 @@
-import type { Command } from 'commander'
-import { connectToDaemon, getDaemonHost } from '../../utils/client.js'
-import { fetchProjectedTimelineItems } from '../../utils/timeline.js'
+import type { Command } from "commander";
+import { connectToDaemon, getDaemonHost } from "../../utils/client.js";
+import { fetchProjectedTimelineItems } from "../../utils/timeline.js";
 import type {
   DaemonClient,
   AgentStreamMessage,
   AgentStreamEventPayload,
   AgentTimelineItem,
-} from '@getpaseo/server'
+} from "@getpaseo/server";
 
 export interface AgentAttachOptions {
-  host?: string
-  [key: string]: unknown
+  host?: string;
+  [key: string]: unknown;
 }
 
 /**
@@ -18,41 +18,41 @@ export interface AgentAttachOptions {
  */
 function printTimelineItem(item: AgentTimelineItem): void {
   switch (item.type) {
-    case 'assistant_message':
+    case "assistant_message":
       // Print assistant text directly
-      process.stdout.write(item.text)
-      break
+      process.stdout.write(item.text);
+      break;
 
-    case 'reasoning':
+    case "reasoning":
       // Print reasoning in a muted color if available
-      console.log(`\n[Reasoning] ${item.text}`)
-      break
+      console.log(`\n[Reasoning] ${item.text}`);
+      break;
 
-    case 'tool_call': {
-      const toolName = item.name
-      const status = item.status ?? 'started'
-      console.log(`\n[Tool: ${toolName}] ${status}`)
-      break
+    case "tool_call": {
+      const toolName = item.name;
+      const status = item.status ?? "started";
+      console.log(`\n[Tool: ${toolName}] ${status}`);
+      break;
     }
 
-    case 'todo': {
-      const completed = item.items.filter((i) => i.completed).length
-      const total = item.items.length
-      console.log(`\n[Todo] ${completed}/${total} completed`)
-      break
+    case "todo": {
+      const completed = item.items.filter((i) => i.completed).length;
+      const total = item.items.length;
+      console.log(`\n[Todo] ${completed}/${total} completed`);
+      break;
     }
 
-    case 'error':
-      console.error(`\n[Error] ${item.message}`)
-      break
+    case "error":
+      console.error(`\n[Error] ${item.message}`);
+      break;
 
-    case 'user_message':
-      console.log(`\n[User] ${item.text}`)
-      break
+    case "user_message":
+      console.log(`\n[User] ${item.text}`);
+      break;
 
     default:
       // Unknown item type, skip
-      break
+      break;
   }
 }
 
@@ -61,33 +61,33 @@ function printTimelineItem(item: AgentTimelineItem): void {
  */
 function printStreamEvent(event: AgentStreamEventPayload): void {
   switch (event.type) {
-    case 'timeline':
+    case "timeline":
       // Print the timeline item
-      printTimelineItem(event.item)
-      break
+      printTimelineItem(event.item);
+      break;
 
-    case 'permission_requested':
-      console.log(`\n[Permission Required] ${event.request.name}`)
+    case "permission_requested":
+      console.log(`\n[Permission Required] ${event.request.name}`);
       if (event.request.description) {
-        console.log(`  ${event.request.description}`)
+        console.log(`  ${event.request.description}`);
       }
-      break
+      break;
 
-    case 'permission_resolved':
-      console.log(`\n[Permission ${event.resolution.behavior}]`)
-      break
+    case "permission_resolved":
+      console.log(`\n[Permission ${event.resolution.behavior}]`);
+      break;
 
-    case 'turn_failed':
-      console.error(`\n[Turn Failed] ${event.error}`)
-      break
+    case "turn_failed":
+      console.error(`\n[Turn Failed] ${event.error}`);
+      break;
 
-    case 'attention_required':
-      console.log(`\n[Attention Required: ${event.reason}]`)
-      break
+    case "attention_required":
+      console.log(`\n[Attention Required: ${event.reason}]`);
+      break;
 
     default:
       // Other event types are internal
-      break
+      break;
   }
 }
 
@@ -97,91 +97,91 @@ function printStreamEvent(event: AgentStreamEventPayload): void {
 export async function runAttachCommand(
   id: string,
   options: AgentAttachOptions,
-  _command: Command
+  _command: Command,
 ): Promise<void> {
-  const host = getDaemonHost({ host: options.host as string | undefined })
+  const host = getDaemonHost({ host: options.host as string | undefined });
 
   if (!id) {
-    console.error('Error: Agent ID required')
-    console.error('Usage: paseo attach <id>')
-    process.exit(1)
+    console.error("Error: Agent ID required");
+    console.error("Usage: paseo attach <id>");
+    process.exit(1);
   }
 
-  let client: DaemonClient
+  let client: DaemonClient;
   try {
-    client = await connectToDaemon({ host: options.host as string | undefined })
+    client = await connectToDaemon({ host: options.host as string | undefined });
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err)
-    console.error(`Error: Cannot connect to daemon at ${host}: ${message}`)
-    console.error('Start the daemon with: paseo daemon start')
-    process.exit(1)
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(`Error: Cannot connect to daemon at ${host}: ${message}`);
+    console.error("Start the daemon with: paseo daemon start");
+    process.exit(1);
   }
 
   try {
-    const fetchResult = await client.fetchAgent(id)
+    const fetchResult = await client.fetchAgent(id);
     if (!fetchResult) {
-      console.error(`Error: No agent found matching: ${id}`)
-      console.error('Use `paseo ls` to list available agents')
-      await client.close()
-      process.exit(1)
+      console.error(`Error: No agent found matching: ${id}`);
+      console.error("Use `paseo ls` to list available agents");
+      await client.close();
+      process.exit(1);
     }
-    const resolvedId = fetchResult.agent.id
+    const resolvedId = fetchResult.agent.id;
 
     // Print header
-    console.log(`Attaching to agent ${resolvedId.substring(0, 7)}...`)
-    console.log(`(Press Ctrl+C to detach)\n`)
+    console.log(`Attaching to agent ${resolvedId.substring(0, 7)}...`);
+    console.log(`(Press Ctrl+C to detach)\n`);
 
     // Print existing output from timeline fetch.
     try {
       const timelineItems = await fetchProjectedTimelineItems({
         client,
         agentId: resolvedId,
-      })
+      });
       for (const item of timelineItems) {
-        printTimelineItem(item)
+        printTimelineItem(item);
       }
     } catch (error) {
-      console.warn('Warning: failed to fetch existing timeline', error)
+      console.warn("Warning: failed to fetch existing timeline", error);
     }
 
     // Subscribe to new events
-    const unsubscribe = client.on('agent_stream', (msg: unknown) => {
-      const message = msg as AgentStreamMessage
-      if (message.type !== 'agent_stream') return
-      if (message.payload.agentId !== resolvedId) return
+    const unsubscribe = client.on("agent_stream", (msg: unknown) => {
+      const message = msg as AgentStreamMessage;
+      if (message.type !== "agent_stream") return;
+      if (message.payload.agentId !== resolvedId) return;
 
-      printStreamEvent(message.payload.event)
-    })
+      printStreamEvent(message.payload.event);
+    });
 
     // Handle Ctrl+C to detach gracefully
-    let detached = false
+    let detached = false;
     const detach = () => {
-      if (detached) return
-      detached = true
+      if (detached) return;
+      detached = true;
 
-      console.log('\n\nDetaching from agent...')
-      unsubscribe()
+      console.log("\n\nDetaching from agent...");
+      unsubscribe();
       client
         .close()
         .then(() => {
-          process.exit(0)
+          process.exit(0);
         })
         .catch(() => {
-          process.exit(1)
-        })
-    }
+          process.exit(1);
+        });
+    };
 
-    process.on('SIGINT', detach)
-    process.on('SIGTERM', detach)
+    process.on("SIGINT", detach);
+    process.on("SIGTERM", detach);
 
     // Keep the process alive
     await new Promise(() => {
       // Wait indefinitely until interrupted
-    })
+    });
   } catch (err) {
-    await client.close().catch(() => {})
-    const message = err instanceof Error ? err.message : String(err)
-    console.error(`Error: Failed to attach to agent: ${message}`)
-    process.exit(1)
+    await client.close().catch(() => {});
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(`Error: Failed to attach to agent: ${message}`);
+    process.exit(1);
   }
 }

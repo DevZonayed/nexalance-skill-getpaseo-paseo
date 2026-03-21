@@ -11,7 +11,7 @@ export type SherpaLoaderEnvResolution = {
 
 export function sherpaPlatformArch(
   platform: NodeJS.Platform = process.platform,
-  arch: string = process.arch
+  arch: string = process.arch,
 ): string {
   const normalizedPlatform = platform === "win32" ? "win" : platform;
   return `${normalizedPlatform}-${arch}`;
@@ -19,13 +19,13 @@ export function sherpaPlatformArch(
 
 export function sherpaPlatformPackageName(
   platform: NodeJS.Platform = process.platform,
-  arch: string = process.arch
+  arch: string = process.arch,
 ): string {
   return `sherpa-onnx-${sherpaPlatformArch(platform, arch)}`;
 }
 
 export function sherpaLoaderEnvKey(
-  platform: NodeJS.Platform = process.platform
+  platform: NodeJS.Platform = process.platform,
 ): SherpaLoaderEnvKey | null {
   if (platform === "linux") {
     return "LD_LIBRARY_PATH";
@@ -49,7 +49,7 @@ export function prependEnvPath(existing: string | undefined, value: string): str
 
 export function resolveSherpaLoaderEnv(
   platform: NodeJS.Platform = process.platform,
-  arch: string = process.arch
+  arch: string = process.arch,
 ): SherpaLoaderEnvResolution | null {
   const key = sherpaLoaderEnvKey(platform);
   if (!key) {
@@ -73,7 +73,7 @@ export function resolveSherpaLoaderEnv(
 export function applySherpaLoaderEnv(
   env: NodeJS.ProcessEnv,
   platform: NodeJS.Platform = process.platform,
-  arch: string = process.arch
+  arch: string = process.arch,
 ): {
   changed: boolean;
   key: SherpaLoaderEnvKey | null;
@@ -100,4 +100,3 @@ export function applySherpaLoaderEnv(
     packageName: resolved.packageName,
   };
 }
-

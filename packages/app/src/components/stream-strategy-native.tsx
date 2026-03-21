@@ -9,11 +9,7 @@ import {
 } from "react-native";
 import type { StreamItem } from "@/types/stream";
 import { useBottomAnchorController } from "./use-bottom-anchor-controller";
-import type {
-  StreamRenderInput,
-  StreamStrategy,
-  StreamViewportHandle,
-} from "./stream-strategy";
+import type { StreamRenderInput, StreamStrategy, StreamViewportHandle } from "./stream-strategy";
 import {
   createStreamStrategy,
   isNearBottomForStreamRenderStrategy,
@@ -92,7 +88,7 @@ function NativeStreamViewport(props: StreamRenderInput & { strategy: StreamStrat
         strategy,
         isViewportSettling: isNativeViewportSettling,
       }),
-    [isNativeViewportSettling, strategy]
+    [isNativeViewportSettling, strategy],
   );
 
   const scrollToBottom = useCallback(
@@ -109,7 +105,7 @@ function NativeStreamViewport(props: StreamRenderInput & { strategy: StreamStrat
       };
       onNearBottomChange(true);
     },
-    [onNearBottomChange]
+    [onNearBottomChange],
   );
 
   const bottomAnchorController = useBottomAnchorController({
@@ -159,7 +155,7 @@ function NativeStreamViewport(props: StreamRenderInput & { strategy: StreamStrat
     const subscriptions = keyboardEvents.map((eventName) =>
       Keyboard.addListener(eventName, () => {
         markNativeViewportSettling();
-      })
+      }),
     );
     return () => {
       for (const subscription of subscriptions) {
@@ -228,7 +224,7 @@ function NativeStreamViewport(props: StreamRenderInput & { strategy: StreamStrat
         });
       }
     },
-    [bottomAnchorController, onNearBottomChange, strategy]
+    [bottomAnchorController, onNearBottomChange, strategy],
   );
 
   const handleListLayout = useCallback(
@@ -257,7 +253,7 @@ function NativeStreamViewport(props: StreamRenderInput & { strategy: StreamStrat
         viewportHeight,
       });
     },
-    [bottomAnchorController, markNativeViewportSettling]
+    [bottomAnchorController, markNativeViewportSettling],
   );
 
   const handleContentSizeChange = useCallback(
@@ -275,7 +271,7 @@ function NativeStreamViewport(props: StreamRenderInput & { strategy: StreamStrat
         contentHeight: nextContentHeight,
       });
     },
-    [bottomAnchorController]
+    [bottomAnchorController],
   );
 
   const renderItem = useCallback(
@@ -283,7 +279,7 @@ function NativeStreamViewport(props: StreamRenderInput & { strategy: StreamStrat
       const rendered = renderers.renderHistoryMountedRow(item, index, historyRows);
       return rendered ? <Fragment>{rendered}</Fragment> : null;
     },
-    [historyRows, renderers]
+    [historyRows, renderers],
   );
 
   const liveHeaderContent = useMemo(() => {
@@ -336,12 +332,7 @@ function NativeStreamViewport(props: StreamRenderInput & { strategy: StreamStrat
 
 export function createNativeStreamStrategy(): StreamStrategy {
   const strategy = createStreamStrategy({
-    render: (renderInput) => (
-      <NativeStreamViewport
-        {...renderInput}
-        strategy={strategy}
-      />
-    ),
+    render: (renderInput) => <NativeStreamViewport {...renderInput} strategy={strategy} />,
     orderTailReverse: true,
     orderHeadReverse: true,
     assistantTurnTraversalStep: 1,

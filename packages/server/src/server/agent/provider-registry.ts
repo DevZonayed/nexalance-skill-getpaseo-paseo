@@ -17,14 +17,9 @@ import {
   type AgentProviderDefinition,
 } from "./provider-manifest.js";
 
-export type {
-  AgentProviderDefinition,
-};
+export type { AgentProviderDefinition };
 
-export {
-  AGENT_PROVIDER_DEFINITIONS,
-  getAgentProviderDefinition,
-};
+export { AGENT_PROVIDER_DEFINITIONS, getAgentProviderDefinition };
 
 export interface ProviderDefinition extends AgentProviderDefinition {
   createClient: (logger: Logger) => AgentClient;
@@ -37,21 +32,15 @@ type BuildProviderRegistryOptions = {
 
 export function buildProviderRegistry(
   logger: Logger,
-  options?: BuildProviderRegistryOptions
+  options?: BuildProviderRegistryOptions,
 ): Record<AgentProvider, ProviderDefinition> {
   const runtimeSettings = options?.runtimeSettings;
   const claudeClient = new ClaudeAgentClient({
     logger,
     runtimeSettings: runtimeSettings?.claude,
   });
-  const codexClient = new CodexAppServerAgentClient(
-    logger,
-    runtimeSettings?.codex
-  );
-  const opencodeClient = new OpenCodeAgentClient(
-    logger,
-    runtimeSettings?.opencode
-  );
+  const codexClient = new CodexAppServerAgentClient(logger, runtimeSettings?.codex);
+  const opencodeClient = new OpenCodeAgentClient(logger, runtimeSettings?.opencode);
 
   return {
     claude: {
@@ -68,8 +57,7 @@ export function buildProviderRegistry(
     },
     opencode: {
       ...AGENT_PROVIDER_DEFINITIONS.find((d) => d.id === "opencode")!,
-      createClient: (logger: Logger) =>
-        new OpenCodeAgentClient(logger, runtimeSettings?.opencode),
+      createClient: (logger: Logger) => new OpenCodeAgentClient(logger, runtimeSettings?.opencode),
       fetchModels: (options) => opencodeClient.listModels(options),
     },
   };
@@ -80,7 +68,7 @@ export const PROVIDER_REGISTRY: Record<AgentProvider, ProviderDefinition> = null
 
 export function createAllClients(
   logger: Logger,
-  options?: BuildProviderRegistryOptions
+  options?: BuildProviderRegistryOptions,
 ): Record<AgentProvider, AgentClient> {
   const registry = buildProviderRegistry(logger, options);
   return {
@@ -92,10 +80,7 @@ export function createAllClients(
 
 export async function shutdownProviders(
   logger: Logger,
-  options?: BuildProviderRegistryOptions
+  options?: BuildProviderRegistryOptions,
 ): Promise<void> {
-  await OpenCodeServerManager.getInstance(
-    logger,
-    options?.runtimeSettings?.opencode
-  ).shutdown();
+  await OpenCodeServerManager.getInstance(logger, options?.runtimeSettings?.opencode).shutdown();
 }

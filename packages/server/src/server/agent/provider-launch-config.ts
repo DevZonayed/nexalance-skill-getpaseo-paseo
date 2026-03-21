@@ -42,7 +42,7 @@ export const ProviderRuntimeSettingsSchema = z
 
 export const AgentProviderRuntimeSettingsMapSchema = z.record(
   AgentProviderSchema,
-  ProviderRuntimeSettingsSchema
+  ProviderRuntimeSettingsSchema,
 );
 
 export type ProviderCommand = z.infer<typeof ProviderCommandSchema>;
@@ -67,7 +67,7 @@ interface FindExecutableDependencies {
 function resolveExecutableFromWhichOutput(
   name: string,
   output: string,
-  source: "login-shell" | "which"
+  source: "login-shell" | "which",
 ): string | null {
   const lines = output
     .split(/\r?\n/)
@@ -81,7 +81,7 @@ function resolveExecutableFromWhichOutput(
 
   if (!candidate.startsWith("/")) {
     console.warn(
-      `[findExecutable] Ignoring non-absolute ${source} output for '${name}': ${JSON.stringify(candidate)}`
+      `[findExecutable] Ignoring non-absolute ${source} output for '${name}': ${JSON.stringify(candidate)}`,
     );
     return null;
   }
@@ -91,7 +91,7 @@ function resolveExecutableFromWhichOutput(
 
 export function resolveProviderCommandPrefix(
   commandConfig: ProviderCommand | undefined,
-  resolveDefaultCommand: () => string
+  resolveDefaultCommand: () => string,
 ): ProviderCommandPrefix {
   if (!commandConfig || commandConfig.mode === "default") {
     return {
@@ -128,7 +128,7 @@ export function resolveShellEnv(): Record<string, string> {
 export function applyProviderEnv(
   baseEnv: Record<string, string | undefined>,
   runtimeSettings?: ProviderRuntimeSettings,
-  shellEnv?: Record<string, string>
+  shellEnv?: Record<string, string>,
 ): Record<string, string | undefined> {
   return {
     ...baseEnv,
@@ -149,7 +149,7 @@ export function applyProviderEnv(
  */
 export function findExecutable(
   name: string,
-  dependencies?: FindExecutableDependencies
+  dependencies?: FindExecutableDependencies,
 ): string | null {
   const trimmed = name.trim();
   if (!trimmed) {
@@ -183,10 +183,12 @@ export function findExecutable(
   const shell = deps.shell;
   if (shell) {
     try {
-      const out = deps.execSync(`${shell} -lic "which ${trimmed}"`, {
-        encoding: "utf8",
-        timeout: 5000,
-      }).trim();
+      const out = deps
+        .execSync(`${shell} -lic "which ${trimmed}"`, {
+          encoding: "utf8",
+          timeout: 5000,
+        })
+        .trim();
       const resolved = resolveExecutableFromWhichOutput(trimmed, out, "login-shell");
       if (resolved) {
         return resolved;
@@ -200,7 +202,7 @@ export function findExecutable(
     return resolveExecutableFromWhichOutput(
       trimmed,
       deps.execFileSync("which", [trimmed], { encoding: "utf8" }).trim(),
-      "which"
+      "which",
     );
   } catch {
     return null;
@@ -213,7 +215,7 @@ export function isCommandAvailable(command: string): boolean {
 
 export function isProviderCommandAvailable(
   commandConfig: ProviderCommand | undefined,
-  resolveDefaultCommand: () => string
+  resolveDefaultCommand: () => string,
 ): boolean {
   try {
     const prefix = resolveProviderCommandPrefix(commandConfig, resolveDefaultCommand);

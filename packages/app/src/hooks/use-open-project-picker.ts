@@ -7,9 +7,7 @@ import { useOpenProject } from "./use-open-project";
 export function useOpenProjectPicker(serverId: string | null): () => Promise<void> {
   const normalizedServerId = serverId?.trim() ?? "";
   const isLocalDaemon = useIsLocalDaemon(normalizedServerId);
-  const setProjectPickerOpen = useKeyboardShortcutsStore(
-    (state) => state.setProjectPickerOpen
-  );
+  const setProjectPickerOpen = useKeyboardShortcutsStore((state) => state.setProjectPickerOpen);
   const openProject = useOpenProject(serverId);
 
   return useCallback(async () => {

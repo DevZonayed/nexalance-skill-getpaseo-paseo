@@ -29,7 +29,7 @@ export type DaemonKeyPairBundle = {
 
 export async function loadOrCreateDaemonKeyPair(
   paseoHome: string,
-  logger?: pino.Logger
+  logger?: pino.Logger,
 ): Promise<DaemonKeyPairBundle> {
   const log = logger?.child({ module: "daemon-keypair" });
   const filePath = path.join(paseoHome, KEYPAIR_FILENAME);
@@ -65,4 +65,3 @@ export async function loadOrCreateDaemonKeyPair(
 
   return { keyPair, publicKeyB64 };
 }
-

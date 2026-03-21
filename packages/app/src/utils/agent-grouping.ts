@@ -87,9 +87,7 @@ export function deriveRemoteProjectKey(remoteUrl: string | null): string | null 
  *   https://github.com/anthropics/claude-code.git -> anthropics/claude-code
  *   https://github.com/anthropics/claude-code -> anthropics/claude-code
  */
-export function parseRepoNameFromRemoteUrl(
-  remoteUrl: string | null
-): string | null {
+export function parseRepoNameFromRemoteUrl(remoteUrl: string | null): string | null {
   if (!remoteUrl) {
     return null;
   }
@@ -133,9 +131,7 @@ export function parseRepoNameFromRemoteUrl(
  * Examples:
  *   git@github.com:anthropics/claude-code.git -> claude-code
  */
-export function parseRepoShortNameFromRemoteUrl(
-  remoteUrl: string | null
-): string | null {
+export function parseRepoShortNameFromRemoteUrl(remoteUrl: string | null): string | null {
   const fullName = parseRepoNameFromRemoteUrl(remoteUrl);
   if (!fullName) {
     return null;
@@ -204,7 +200,7 @@ export function deriveDateGroup(lastActivityAt: Date): string {
   const activityDate = new Date(
     lastActivityAt.getFullYear(),
     lastActivityAt.getMonth(),
-    lastActivityAt.getDate()
+    lastActivityAt.getDate(),
   );
 
   if (activityDate.getTime() >= today.getTime()) {
@@ -268,7 +264,7 @@ const MAX_INACTIVE_PER_PROJECT = 5;
  */
 export function groupAgents(
   agents: AggregatedAgent[],
-  options?: GroupAgentsOptions
+  options?: GroupAgentsOptions,
 ): GroupedAgents {
   const activeAgents: AggregatedAgent[] = [];
   const inactiveAgents: AggregatedAgent[] = [];
@@ -302,9 +298,7 @@ export function groupAgents(
     { trulyActive: AggregatedAgent[]; recentlyActive: AggregatedAgent[] }
   >();
   for (const agent of activeAgents) {
-    const remoteKey = deriveRemoteProjectKey(
-      options?.getRemoteUrl?.(agent) ?? null
-    );
+    const remoteKey = deriveRemoteProjectKey(options?.getRemoteUrl?.(agent) ?? null);
     const projectKey = remoteKey ?? deriveProjectKey(agent.cwd);
     const existing = projectMap.get(projectKey) || {
       trulyActive: [],
@@ -328,24 +322,15 @@ export function groupAgents(
   const activeGroups: ProjectGroup[] = [];
   for (const [projectKey, { trulyActive, recentlyActive }] of projectMap) {
     // Sort both arrays by lastActivityAt (newest first)
-    trulyActive.sort(
-      (a, b) => b.lastActivityAt.getTime() - a.lastActivityAt.getTime()
-    );
-    recentlyActive.sort(
-      (a, b) => b.lastActivityAt.getTime() - a.lastActivityAt.getTime()
-    );
+    trulyActive.sort((a, b) => b.lastActivityAt.getTime() - a.lastActivityAt.getTime());
+    recentlyActive.sort((a, b) => b.lastActivityAt.getTime() - a.lastActivityAt.getTime());
 
     // All truly active agents shown, limit recently active to MAX_INACTIVE_PER_PROJECT
-    const limitedRecentlyActive = recentlyActive.slice(
-      0,
-      MAX_INACTIVE_PER_PROJECT
-    );
+    const limitedRecentlyActive = recentlyActive.slice(0, MAX_INACTIVE_PER_PROJECT);
     const combinedAgents = [...trulyActive, ...limitedRecentlyActive];
 
     // Re-sort combined list by lastActivityAt
-    combinedAgents.sort(
-      (a, b) => b.lastActivityAt.getTime() - a.lastActivityAt.getTime()
-    );
+    combinedAgents.sort((a, b) => b.lastActivityAt.getTime() - a.lastActivityAt.getTime());
 
     activeGroups.push({
       projectKey,
@@ -378,9 +363,7 @@ export function groupAgents(
   for (const label of dateOrder) {
     const dateAgents = dateMap.get(label);
     if (dateAgents && dateAgents.length > 0) {
-      dateAgents.sort(
-        (a, b) => b.lastActivityAt.getTime() - a.lastActivityAt.getTime()
-      );
+      dateAgents.sort((a, b) => b.lastActivityAt.getTime() - a.lastActivityAt.getTime());
       inactiveGroups.push({ label, agents: dateAgents });
     }
   }

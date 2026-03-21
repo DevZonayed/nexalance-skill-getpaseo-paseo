@@ -79,9 +79,7 @@ export function appendTerminalOutputBuffer(input: {
   });
 }
 
-export function readTerminalOutputBuffer(input: {
-  buffer: TerminalOutputBuffer;
-}): string {
+export function readTerminalOutputBuffer(input: { buffer: TerminalOutputBuffer }): string {
   const { buffer } = input;
   if (buffer.totalChars <= 0) {
     return "";

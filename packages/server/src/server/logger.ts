@@ -107,9 +107,7 @@ function minLogLevel(levels: LogLevel[]): LogLevel {
   return minLevel;
 }
 
-function resolveConfiguredPaseoHome(
-  options: ResolveLogConfigOptions | undefined
-): string {
+function resolveConfiguredPaseoHome(options: ResolveLogConfigOptions | undefined): string {
   if (options?.paseoHome) {
     return options.paseoHome;
   }
@@ -183,7 +181,7 @@ function toRotatingFileStreamSize(size: string): string {
 
 export function resolveLogConfig(
   configInput: LoggerConfigInput,
-  options?: ResolveLogConfigOptions
+  options?: ResolveLogConfigOptions,
 ): ResolvedLogConfig {
   const persistedConfig = normalizeLoggerConfigInput(configInput);
   const env = options?.env ?? process.env;
@@ -212,10 +210,7 @@ export function resolveLogConfig(
     persistedLog?.format ??
     DEFAULT_CONSOLE_FORMAT;
 
-  const filePath = resolveFilePath(
-    paseoHome,
-    env.PASEO_LOG_FILE_PATH ?? persistedLog?.file?.path
-  );
+  const filePath = resolveFilePath(paseoHome, env.PASEO_LOG_FILE_PATH ?? persistedLog?.file?.path);
 
   const rotateMaxSize =
     env.PASEO_LOG_FILE_ROTATE_SIZE?.trim() ||
@@ -246,7 +241,7 @@ export function resolveLogConfig(
 
 export function createRootLogger(
   configInput: LoggerConfigInput,
-  options?: ResolveLogConfigOptions
+  options?: ResolveLogConfigOptions,
 ): pino.Logger {
   const config = resolveLogConfig(configInput, options);
 
@@ -274,7 +269,7 @@ export function createRootLogger(
     pino.multistream([
       { level: config.console.level, stream: consoleStream },
       { level: config.file.level, stream: fileStream },
-    ])
+    ]),
   );
 }
 

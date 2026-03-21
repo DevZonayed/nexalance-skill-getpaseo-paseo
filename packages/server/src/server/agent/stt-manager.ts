@@ -45,7 +45,7 @@ export class STTManager {
   constructor(
     sessionId: string,
     logger: pino.Logger,
-    stt: Resolvable<SpeechToTextProvider | null>
+    stt: Resolvable<SpeechToTextProvider | null>,
   ) {
     this.sessionId = sessionId;
     this.logger = logger.child({ module: "agent", component: "stt-manager", sessionId });
@@ -58,7 +58,7 @@ export class STTManager {
   public async transcribe(
     audio: Buffer,
     format: string,
-    metadata?: TranscriptionMetadata
+    metadata?: TranscriptionMetadata,
   ): Promise<SessionTranscriptionResult> {
     const stt = this.resolveStt();
     if (!stt) {
@@ -67,7 +67,7 @@ export class STTManager {
 
     this.logger.debug(
       { bytes: audio.length, format, label: metadata?.label },
-      "Transcribing audio"
+      "Transcribing audio",
     );
 
     let debugRecordingPath: string | null = null;
@@ -81,7 +81,7 @@ export class STTManager {
           label: metadata?.label,
           format,
         },
-        this.logger
+        this.logger,
       );
     } catch (error) {
       this.logger.warn({ err: error }, "Failed to persist debug audio");
@@ -100,8 +100,7 @@ export class STTManager {
       pcm16 = parsed.pcm16;
     } else if (format.toLowerCase().includes("audio/pcm")) {
       inputRate =
-        parsePcmRateFromFormat(format, session.requiredSampleRate) ??
-        session.requiredSampleRate;
+        parsePcmRateFromFormat(format, session.requiredSampleRate) ?? session.requiredSampleRate;
       pcm16 = audio;
     } else {
       throw new Error(`Unsupported audio format for STT: ${format}`);
@@ -193,7 +192,7 @@ export class STTManager {
 
       const appendChunkBytes = Math.max(
         1,
-        Math.round(session.requiredSampleRate * 2 * BATCH_APPEND_CHUNK_SECONDS)
+        Math.round(session.requiredSampleRate * 2 * BATCH_APPEND_CHUNK_SECONDS),
       );
       const commitEverySeconds = resolveBatchCommitEverySeconds();
       const commitEveryBytes =
@@ -205,7 +204,7 @@ export class STTManager {
       for (let offset = 0; offset < pcmForModel.length; offset += appendChunkBytes) {
         const chunk = pcmForModel.subarray(
           offset,
-          Math.min(pcmForModel.length, offset + appendChunkBytes)
+          Math.min(pcmForModel.length, offset + appendChunkBytes),
         );
         if (chunk.length === 0) {
           continue;
@@ -234,7 +233,7 @@ export class STTManager {
             receivedFinals: finalTranscriptSegmentIds.size,
             label: metadata?.label,
           },
-          "Timed out waiting for final STT segments; returning available transcripts"
+          "Timed out waiting for final STT segments; returning available transcripts",
         );
         settle?.();
       }, BATCH_FINAL_TIMEOUT_MS);
@@ -259,13 +258,13 @@ export class STTManager {
         .map((segmentId) => transcriptMetaBySegmentId.get(segmentId))
         .filter(
           (
-            meta
+            meta,
           ): meta is {
             language?: string;
             logprobs?: TranscriptionResult["logprobs"];
             avgLogprob?: number;
             isLowConfidence?: boolean;
-          } => Boolean(meta)
+          } => Boolean(meta),
         );
       const language = orderedFinalMeta.find((meta) => meta.language)?.language;
       const singleSegmentMeta = orderedFinalMeta.length === 1 ? orderedFinalMeta[0] : null;
@@ -288,7 +287,7 @@ export class STTManager {
       if (result.isLowConfidence) {
         this.logger.debug(
           { text: result.text, avgLogprob: result.avgLogprob },
-          "Filtered low-confidence transcription (likely non-speech)"
+          "Filtered low-confidence transcription (likely non-speech)",
         );
 
         // Return empty text to ignore this transcription
@@ -303,7 +302,7 @@ export class STTManager {
 
       this.logger.debug(
         { text: result.text, avgLogprob: result.avgLogprob },
-        "Transcription complete"
+        "Transcription complete",
       );
 
       return {

@@ -27,7 +27,7 @@ export function useAggregatedAgents(options?: {
   const runtimeVersion = useSyncExternalStore(
     (onStoreChange) => runtime.subscribeAll(onStoreChange),
     () => runtime.getVersion(),
-    () => runtime.getVersion()
+    () => runtime.getVersion(),
   );
 
   const sessionAgents = useSessionStore(
@@ -37,7 +37,7 @@ export function useAggregatedAgents(options?: {
         result[serverId] = session.agents;
       }
       return result;
-    })
+    }),
   );
 
   const refreshAll = useCallback(() => {
@@ -47,7 +47,7 @@ export function useAggregatedAgents(options?: {
   const result = useMemo(() => {
     const allAgents: AggregatedAgent[] = [];
     const serverLabelById = new Map(
-      daemons.map((daemon) => [daemon.serverId, daemon.label] as const)
+      daemons.map((daemon) => [daemon.serverId, daemon.label] as const),
     );
 
     // Derive agent directory from all sessions
@@ -102,8 +102,7 @@ export function useAggregatedAgents(options?: {
     // Align list loading with the runtime directory-sync machine.
     const isLoading = daemons.some((daemon) => {
       const status =
-        runtime.getSnapshot(daemon.serverId)?.agentDirectoryStatus ??
-        "initial_loading";
+        runtime.getSnapshot(daemon.serverId)?.agentDirectoryStatus ?? "initial_loading";
       return status === "initial_loading" || status === "revalidating";
     });
     const isInitialLoad = isLoading && !hasAnyData;

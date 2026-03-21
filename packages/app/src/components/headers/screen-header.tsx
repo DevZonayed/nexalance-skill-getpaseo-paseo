@@ -22,12 +22,7 @@ interface ScreenHeaderProps {
  * Shared frame for the home/back headers so we only maintain padding, border,
  * and safe-area logic in one place.
  */
-export function ScreenHeader({
-  left,
-  right,
-  leftStyle,
-  rightStyle,
-}: ScreenHeaderProps) {
+export function ScreenHeader({ left, right, leftStyle, rightStyle }: ScreenHeaderProps) {
   const { theme } = useUnistyles();
   const insets = useSafeAreaInsets();
   const isMobile = UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
@@ -37,9 +32,7 @@ export function ScreenHeader({
   const topPadding = isMobile ? HEADER_TOP_PADDING_MOBILE : 0;
   const baseHorizontalPadding = theme.spacing[2];
   const collapsedSidebarTrafficLightInset =
-    !isMobile && !desktopAgentListOpen && getIsDesktopMac()
-      ? trafficLightPadding.left
-      : 0;
+    !isMobile && !desktopAgentListOpen && getIsDesktopMac() ? trafficLightPadding.left : 0;
 
   const dragHandlers = useDesktopDragHandlers();
 

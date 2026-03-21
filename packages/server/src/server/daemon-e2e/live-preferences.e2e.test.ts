@@ -3,10 +3,7 @@ import { mkdtempSync, rmSync } from "fs";
 import { tmpdir } from "os";
 import path from "path";
 import { execFileSync } from "node:child_process";
-import {
-  createDaemonTestContext,
-  type DaemonTestContext,
-} from "../test-utils/index.js";
+import { createDaemonTestContext, type DaemonTestContext } from "../test-utils/index.js";
 import type { AgentSnapshotPayload, SessionOutboundMessage } from "../messages.js";
 
 function tmpCwd(): string {
@@ -17,7 +14,7 @@ function waitForAgentUpdate(
   messages: SessionOutboundMessage[],
   startIndex: number,
   predicate: (agent: AgentSnapshotPayload) => boolean,
-  options?: { timeoutMs?: number }
+  options?: { timeoutMs?: number },
 ): Promise<AgentSnapshotPayload> {
   const timeoutMs = options?.timeoutMs ?? 15000;
   return new Promise((resolve, reject) => {
@@ -81,87 +78,84 @@ describe("daemon E2E", () => {
     await ctx.cleanup();
   }, 60000);
 
-  describe.each(["claude", "codex", "opencode"] as const)(
-    "live model switching (%s)",
-    (provider) => {
-      const shouldRun =
-        provider === "claude" ||
-        (provider === "codex" && hasCodex) ||
-        (provider === "opencode" && hasOpenCode);
+  describe.each([
+    "claude",
+    "codex",
+    "opencode",
+  ] as const)("live model switching (%s)", (provider) => {
+    const shouldRun =
+      provider === "claude" ||
+      (provider === "codex" && hasCodex) ||
+      (provider === "opencode" && hasOpenCode);
 
-      test.runIf(shouldRun)(
-        "updates agent model without restarting",
-        async () => {
-          const cwd = tmpCwd();
-          try {
-            const modelList = await ctx.client.listProviderModels(provider);
-            if (!modelList.models || modelList.models.length === 0) {
-              throw new Error(`No models returned for provider ${provider}`);
-            }
-            const [modelA, modelB] = pickTwoDistinctModels(modelList.models);
-
-            const agent = await ctx.client.createAgent({
-              provider,
-              cwd,
-              title: `Model Switch (${provider})`,
-              model: modelA,
-            });
-
-            const startIndex = messages.length;
-            await ctx.client.setAgentModel(agent.id, modelB);
-
-            const updated = await waitForAgentUpdate(
-              messages,
-              startIndex,
-              (a) => a.id === agent.id && a.model === modelB,
-              { timeoutMs: 20000 }
-            );
-
-            expect(updated.model).toBe(modelB);
-          } finally {
-            rmSync(cwd, { recursive: true, force: true });
+    test.runIf(shouldRun)(
+      "updates agent model without restarting",
+      async () => {
+        const cwd = tmpCwd();
+        try {
+          const modelList = await ctx.client.listProviderModels(provider);
+          if (!modelList.models || modelList.models.length === 0) {
+            throw new Error(`No models returned for provider ${provider}`);
           }
-        },
-        180000
-      );
-    }
-  );
+          const [modelA, modelB] = pickTwoDistinctModels(modelList.models);
 
-  test(
-    "live thinking switching works for Claude (off -> on)",
-    async () => {
-      const cwd = tmpCwd();
-      try {
-        const modelList = await ctx.client.listProviderModels("claude");
-        if (!modelList.models || modelList.models.length === 0) {
-          throw new Error("No Claude models returned");
+          const agent = await ctx.client.createAgent({
+            provider,
+            cwd,
+            title: `Model Switch (${provider})`,
+            model: modelA,
+          });
+
+          const startIndex = messages.length;
+          await ctx.client.setAgentModel(agent.id, modelB);
+
+          const updated = await waitForAgentUpdate(
+            messages,
+            startIndex,
+            (a) => a.id === agent.id && a.model === modelB,
+            { timeoutMs: 20000 },
+          );
+
+          expect(updated.model).toBe(modelB);
+        } finally {
+          rmSync(cwd, { recursive: true, force: true });
         }
-        const modelId = modelList.models[0]!.id;
+      },
+      180000,
+    );
+  });
 
-        const agent = await ctx.client.createAgent({
-          provider: "claude",
-          cwd,
-          title: "Claude Thinking Switch",
-          model: modelId,
-        });
-
-        const startIndex = messages.length;
-        await ctx.client.setAgentThinkingOption(agent.id, "on");
-
-        const updated = await waitForAgentUpdate(
-          messages,
-          startIndex,
-          (a) => a.id === agent.id && a.thinkingOptionId === "on",
-          { timeoutMs: 20000 }
-        );
-
-        expect(updated.thinkingOptionId).toBe("on");
-      } finally {
-        rmSync(cwd, { recursive: true, force: true });
+  test("live thinking switching works for Claude (off -> on)", async () => {
+    const cwd = tmpCwd();
+    try {
+      const modelList = await ctx.client.listProviderModels("claude");
+      if (!modelList.models || modelList.models.length === 0) {
+        throw new Error("No Claude models returned");
       }
-    },
-    120000
-  );
+      const modelId = modelList.models[0]!.id;
+
+      const agent = await ctx.client.createAgent({
+        provider: "claude",
+        cwd,
+        title: "Claude Thinking Switch",
+        model: modelId,
+      });
+
+      const startIndex = messages.length;
+      await ctx.client.setAgentThinkingOption(agent.id, "on");
+
+      const updated = await waitForAgentUpdate(
+        messages,
+        startIndex,
+        (a) => a.id === agent.id && a.thinkingOptionId === "on",
+        { timeoutMs: 20000 },
+      );
+
+      expect(updated.thinkingOptionId).toBe("on");
+    } finally {
+      rmSync(cwd, { recursive: true, force: true });
+    }
+  }, 120000);
 
   test.runIf(hasCodex)(
     "live thinking switching works for Codex (default -> non-default)",
@@ -173,9 +167,7 @@ describe("daemon E2E", () => {
           throw new Error("No Codex models returned");
         }
 
-        const modelWithOptions = modelList.models.find(
-          (m) => (m.thinkingOptions?.length ?? 0) > 1
-        );
+        const modelWithOptions = modelList.models.find((m) => (m.thinkingOptions?.length ?? 0) > 1);
         if (!modelWithOptions) {
           throw new Error("No Codex model with thinkingOptions returned");
         }
@@ -202,7 +194,7 @@ describe("daemon E2E", () => {
           messages,
           startIndex,
           (a) => a.id === agent.id && a.thinkingOptionId === nonDefault,
-          { timeoutMs: 20000 }
+          { timeoutMs: 20000 },
         );
 
         expect(updated.thinkingOptionId).toBe(nonDefault);
@@ -210,7 +202,7 @@ describe("daemon E2E", () => {
         rmSync(cwd, { recursive: true, force: true });
       }
     },
-    120000
+    120000,
   );
 
   test.runIf(hasOpenCode)(
@@ -224,7 +216,7 @@ describe("daemon E2E", () => {
         }
 
         const modelWithThinkingOptions = modelList.models.find(
-          (m) => (m.thinkingOptions?.length ?? 0) > 1
+          (m) => (m.thinkingOptions?.length ?? 0) > 1,
         );
         if (!modelWithThinkingOptions) {
           throw new Error("No OpenCode model with thinkingOptions returned");
@@ -251,13 +243,13 @@ describe("daemon E2E", () => {
           messages,
           startIndex,
           (a) => a.id === agent.id && a.thinkingOptionId === thinkingId,
-          { timeoutMs: 20000 }
+          { timeoutMs: 20000 },
         );
         expect(updatedThinking.thinkingOptionId).toBe(thinkingId);
       } finally {
         rmSync(cwd, { recursive: true, force: true });
       }
     },
-    180000
+    180000,
   );
 });

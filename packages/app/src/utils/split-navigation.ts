@@ -25,7 +25,7 @@ interface PaneCandidate {
 export function findAdjacentPane(
   root: SplitNode,
   focusedPaneId: string,
-  direction: "left" | "right" | "up" | "down"
+  direction: "left" | "right" | "up" | "down",
 ): string | null {
   const panes = collectPaneBounds(root, {
     left: ROOT_MIN,
@@ -168,7 +168,7 @@ function buildCandidate(input: {
 
 function collectPaneBounds(
   node: SplitNode,
-  bounds: { left: number; top: number; right: number; bottom: number }
+  bounds: { left: number; top: number; right: number; bottom: number },
 ): PaneBounds[] {
   if (node.kind === "pane") {
     return [
@@ -203,7 +203,7 @@ function collectPaneBounds(
           top: bounds.top,
           right: childRight,
           bottom: bounds.bottom,
-        })
+        }),
       );
       continue;
     }
@@ -217,7 +217,7 @@ function collectPaneBounds(
         top: childTop,
         right: bounds.right,
         bottom: childBottom,
-      })
+      }),
     );
   }
 

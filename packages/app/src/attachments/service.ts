@@ -47,7 +47,7 @@ export async function persistAttachmentFromFileUri(input: {
 }
 
 export async function encodeAttachmentsForSend(
-  attachments: readonly AttachmentMetadata[] | undefined
+  attachments: readonly AttachmentMetadata[] | undefined,
 ): Promise<Array<{ data: string; mimeType: string }> | undefined> {
   if (!attachments || attachments.length === 0) {
     return undefined;
@@ -69,18 +69,16 @@ export async function encodeAttachmentsForSend(
         });
         return null;
       }
-    })
+    }),
   );
 
   const valid = encoded.filter(
-    (entry): entry is { data: string; mimeType: string } => entry !== null
+    (entry): entry is { data: string; mimeType: string } => entry !== null,
   );
   return valid.length > 0 ? valid : undefined;
 }
 
-export async function resolveAttachmentPreviewUrl(
-  attachment: AttachmentMetadata
-): Promise<string> {
+export async function resolveAttachmentPreviewUrl(attachment: AttachmentMetadata): Promise<string> {
   const store = await getAttachmentStore();
   return await store.resolvePreviewUrl({ attachment });
 }
@@ -97,7 +95,7 @@ export async function releaseAttachmentPreviewUrl(input: {
 }
 
 export async function deleteAttachments(
-  attachments: readonly AttachmentMetadata[] | undefined
+  attachments: readonly AttachmentMetadata[] | undefined,
 ): Promise<void> {
   if (!attachments || attachments.length === 0) {
     return;
@@ -113,7 +111,7 @@ export async function deleteAttachments(
           error,
         });
       }
-    })
+    }),
   );
 }
 

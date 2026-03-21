@@ -18,13 +18,7 @@ function useFilePanelDescriptor(target: { kind: "file"; path: string }) {
 function FilePanel() {
   const { serverId, workspaceId, target } = usePaneContext();
   invariant(target.kind === "file", "FilePanel requires file target");
-  return (
-    <FilePane
-      serverId={serverId}
-      workspaceRoot={workspaceId}
-      filePath={target.path}
-    />
-  );
+  return <FilePane serverId={serverId} workspaceRoot={workspaceId} filePath={target.path} />;
 }
 
 export const filePanelRegistration: PanelRegistration<"file"> = {

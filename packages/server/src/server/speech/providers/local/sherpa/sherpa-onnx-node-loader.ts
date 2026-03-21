@@ -67,7 +67,7 @@ function maybePatchLinuxAddonRunpath(addonPath: string): void {
 function loadWithRequire(
   requireFn: NodeRequire,
   target: string,
-  attempts: LoadAttempt[]
+  attempts: LoadAttempt[],
 ): SherpaOnnxNodeModule | null {
   try {
     return requireFn(target) as SherpaOnnxNodeModule;

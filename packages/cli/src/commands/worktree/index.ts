@@ -1,24 +1,22 @@
-import { Command } from 'commander'
-import { runLsCommand } from './ls.js'
-import { runArchiveCommand } from './archive.js'
-import { withOutput } from '../../output/index.js'
-import { addJsonAndDaemonHostOptions } from '../../utils/command-options.js'
+import { Command } from "commander";
+import { runLsCommand } from "./ls.js";
+import { runArchiveCommand } from "./archive.js";
+import { withOutput } from "../../output/index.js";
+import { addJsonAndDaemonHostOptions } from "../../utils/command-options.js";
 
 export function createWorktreeCommand(): Command {
-  const worktree = new Command('worktree').description('Manage Paseo-managed git worktrees')
+  const worktree = new Command("worktree").description("Manage Paseo-managed git worktrees");
+
+  addJsonAndDaemonHostOptions(
+    worktree.command("ls").description("List Paseo-managed git worktrees"),
+  ).action(withOutput(runLsCommand));
 
   addJsonAndDaemonHostOptions(
     worktree
-      .command('ls')
-      .description('List Paseo-managed git worktrees')
-  ).action(withOutput(runLsCommand))
+      .command("archive")
+      .description("Archive a worktree (removes worktree and associated branch)")
+      .argument("<name>", "Worktree name or branch name"),
+  ).action(withOutput(runArchiveCommand));
 
-  addJsonAndDaemonHostOptions(
-    worktree
-      .command('archive')
-      .description('Archive a worktree (removes worktree and associated branch)')
-      .argument('<name>', 'Worktree name or branch name')
-  ).action(withOutput(runArchiveCommand))
-
-  return worktree
+  return worktree;
 }

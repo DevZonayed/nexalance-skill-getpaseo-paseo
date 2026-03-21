@@ -1,207 +1,230 @@
-import { Command } from 'commander'
-import { createRequire } from 'node:module'
-import { createAgentCommand } from './commands/agent/index.js'
-import { createDaemonCommand } from './commands/daemon/index.js'
-import { createPermitCommand } from './commands/permit/index.js'
-import { createProviderCommand } from './commands/provider/index.js'
-import { createSpeechCommand } from './commands/speech/index.js'
-import { createWorktreeCommand } from './commands/worktree/index.js'
-import { startCommand as daemonStartCommand } from './commands/daemon/start.js'
-import { runStatusCommand as runDaemonStatusCommand } from './commands/daemon/status.js'
-import { runRestartCommand as runDaemonRestartCommand } from './commands/daemon/restart.js'
-import { runLsCommand } from './commands/agent/ls.js'
-import { runRunCommand } from './commands/agent/run.js'
-import { runLogsCommand } from './commands/agent/logs.js'
-import { runDeleteCommand } from './commands/agent/delete.js'
-import { runStopCommand } from './commands/agent/stop.js'
-import { runSendCommand } from './commands/agent/send.js'
-import { runInspectCommand } from './commands/agent/inspect.js'
-import { runWaitCommand } from './commands/agent/wait.js'
-import { runAttachCommand } from './commands/agent/attach.js'
-import { withOutput } from './output/index.js'
-import { onboardCommand } from './commands/onboard.js'
+import { Command } from "commander";
+import { createRequire } from "node:module";
+import { createAgentCommand } from "./commands/agent/index.js";
+import { createDaemonCommand } from "./commands/daemon/index.js";
+import { createPermitCommand } from "./commands/permit/index.js";
+import { createProviderCommand } from "./commands/provider/index.js";
+import { createSpeechCommand } from "./commands/speech/index.js";
+import { createWorktreeCommand } from "./commands/worktree/index.js";
+import { startCommand as daemonStartCommand } from "./commands/daemon/start.js";
+import { runStatusCommand as runDaemonStatusCommand } from "./commands/daemon/status.js";
+import { runRestartCommand as runDaemonRestartCommand } from "./commands/daemon/restart.js";
+import { runLsCommand } from "./commands/agent/ls.js";
+import { runRunCommand } from "./commands/agent/run.js";
+import { runLogsCommand } from "./commands/agent/logs.js";
+import { runDeleteCommand } from "./commands/agent/delete.js";
+import { runStopCommand } from "./commands/agent/stop.js";
+import { runSendCommand } from "./commands/agent/send.js";
+import { runInspectCommand } from "./commands/agent/inspect.js";
+import { runWaitCommand } from "./commands/agent/wait.js";
+import { runAttachCommand } from "./commands/agent/attach.js";
+import { withOutput } from "./output/index.js";
+import { onboardCommand } from "./commands/onboard.js";
 import {
   addDaemonHostOption,
   addJsonAndDaemonHostOptions,
   addJsonOption,
   collectMultiple,
-} from './utils/command-options.js'
+} from "./utils/command-options.js";
 
-const require = createRequire(import.meta.url)
+const require = createRequire(import.meta.url);
 
 type CliPackageJson = {
-  version?: unknown
-}
+  version?: unknown;
+};
 
 function resolveCliVersion(): string {
-  const packageJson = require('../package.json') as CliPackageJson
-  if (typeof packageJson.version === 'string' && packageJson.version.trim().length > 0) {
-    return packageJson.version.trim()
+  const packageJson = require("../package.json") as CliPackageJson;
+  if (typeof packageJson.version === "string" && packageJson.version.trim().length > 0) {
+    return packageJson.version.trim();
   }
-  throw new Error('Unable to resolve @getpaseo/cli version from package.json.')
+  throw new Error("Unable to resolve @getpaseo/cli version from package.json.");
 }
 
-const VERSION = resolveCliVersion()
+const VERSION = resolveCliVersion();
 
 export function createCli(): Command {
-  const program = new Command()
+  const program = new Command();
 
   program
-    .name('paseo')
-    .description('Paseo CLI - control your AI coding agents from the command line')
-    .version(VERSION, '-v, --version', 'output the version number')
+    .name("paseo")
+    .description("Paseo CLI - control your AI coding agents from the command line")
+    .version(VERSION, "-v, --version", "output the version number")
     // Global output options
-    .option('-o, --format <format>', 'output format: table, json, yaml', 'table')
-    .option('--json', 'output in JSON format (alias for --format json)')
-    .option('-q, --quiet', 'minimal output (IDs only)')
-    .option('--no-headers', 'omit table headers')
-    .option('--no-color', 'disable colored output')
+    .option("-o, --format <format>", "output format: table, json, yaml", "table")
+    .option("--json", "output in JSON format (alias for --format json)")
+    .option("-q, --quiet", "minimal output (IDs only)")
+    .option("--no-headers", "omit table headers")
+    .option("--no-color", "disable colored output");
 
   // Primary agent commands (top-level)
   addJsonAndDaemonHostOptions(
     program
-      .command('ls')
-      .description('List agents. By default excludes archived agents.')
-      .option('-a, --all', 'Include archived agents')
-      .option('-g, --global', 'Legacy no-op (kept for compatibility)')
-      .option('--label <key=value>', 'Filter by label (can be used multiple times)', collectMultiple, [])
-      .option('--thinking <id>', 'Filter by thinking option ID')
-  ).action(withOutput(runLsCommand))
-
-  addJsonAndDaemonHostOptions(
-    program
-      .command('run')
-      .description('Create and start an agent with a task')
-      .argument('<prompt>', 'The task/prompt for the agent')
-      .option('-d, --detach', 'Run in background (detached)')
-      .option('--name <name>', 'Assign a name/title to the agent')
-      .option('--provider <provider>', 'Agent provider, or provider/model (e.g. codex or codex/gpt-5.4)', 'claude')
-      .option('--model <model>', 'Model to use (e.g., claude-sonnet-4-20250514, claude-3-5-haiku-20241022)')
-      .option('--thinking <id>', 'Thinking option ID to use for this run')
-      .option('--mode <mode>', 'Provider-specific mode (e.g., plan, default, bypass)')
-      .option('--worktree <name>', 'Create agent in a new git worktree')
-      .option('--base <branch>', 'Base branch for worktree (default: current branch)')
+      .command("ls")
+      .description("List agents. By default excludes archived agents.")
+      .option("-a, --all", "Include archived agents")
+      .option("-g, --global", "Legacy no-op (kept for compatibility)")
       .option(
-        '--image <path>',
-        'Attach image(s) to the initial prompt (can be used multiple times)',
+        "--label <key=value>",
+        "Filter by label (can be used multiple times)",
         collectMultiple,
-        []
+        [],
       )
-      .option('--cwd <path>', 'Working directory (default: current)')
-      .option('--label <key=value>', 'Add label(s) to the agent (can be used multiple times)', collectMultiple, [])
-      .option('--output-schema <schema>', 'Output JSON matching the provided schema file path or inline JSON schema')
-  ).action(withOutput(runRunCommand))
+      .option("--thinking <id>", "Filter by thinking option ID"),
+  ).action(withOutput(runLsCommand));
+
+  addJsonAndDaemonHostOptions(
+    program
+      .command("run")
+      .description("Create and start an agent with a task")
+      .argument("<prompt>", "The task/prompt for the agent")
+      .option("-d, --detach", "Run in background (detached)")
+      .option("--name <name>", "Assign a name/title to the agent")
+      .option(
+        "--provider <provider>",
+        "Agent provider, or provider/model (e.g. codex or codex/gpt-5.4)",
+        "claude",
+      )
+      .option(
+        "--model <model>",
+        "Model to use (e.g., claude-sonnet-4-20250514, claude-3-5-haiku-20241022)",
+      )
+      .option("--thinking <id>", "Thinking option ID to use for this run")
+      .option("--mode <mode>", "Provider-specific mode (e.g., plan, default, bypass)")
+      .option("--worktree <name>", "Create agent in a new git worktree")
+      .option("--base <branch>", "Base branch for worktree (default: current branch)")
+      .option(
+        "--image <path>",
+        "Attach image(s) to the initial prompt (can be used multiple times)",
+        collectMultiple,
+        [],
+      )
+      .option("--cwd <path>", "Working directory (default: current)")
+      .option(
+        "--label <key=value>",
+        "Add label(s) to the agent (can be used multiple times)",
+        collectMultiple,
+        [],
+      )
+      .option(
+        "--output-schema <schema>",
+        "Output JSON matching the provided schema file path or inline JSON schema",
+      ),
+  ).action(withOutput(runRunCommand));
 
   addDaemonHostOption(
     program
-      .command('attach')
+      .command("attach")
       .description("Attach to a running agent's output stream")
-      .argument('<id>', 'Agent ID (or prefix)')
-  ).action(runAttachCommand)
+      .argument("<id>", "Agent ID (or prefix)"),
+  ).action(runAttachCommand);
 
   addDaemonHostOption(
     program
-      .command('logs')
-      .description('View agent activity/timeline')
-      .argument('<id>', 'Agent ID (or prefix)')
-      .option('-f, --follow', 'Follow log output (streaming)')
-      .option('--tail <n>', 'Show last n entries')
-      .option('--filter <type>', 'Filter by event type (tools, text, errors, permissions)')
-      .option('--since <time>', 'Show logs since timestamp')
-  ).action(runLogsCommand)
+      .command("logs")
+      .description("View agent activity/timeline")
+      .argument("<id>", "Agent ID (or prefix)")
+      .option("-f, --follow", "Follow log output (streaming)")
+      .option("--tail <n>", "Show last n entries")
+      .option("--filter <type>", "Filter by event type (tools, text, errors, permissions)")
+      .option("--since <time>", "Show logs since timestamp"),
+  ).action(runLogsCommand);
 
   addJsonAndDaemonHostOptions(
     program
-      .command('stop')
-      .description('Interrupt an agent if it is running (no-op for idle agents)')
-      .argument('[id]', 'Agent ID (or prefix) - optional if --all or --cwd specified')
-      .option('--all', 'Stop all agents')
-      .option('--cwd <path>', 'Stop all agents in directory')
-  ).action(withOutput(runStopCommand))
+      .command("stop")
+      .description("Interrupt an agent if it is running (no-op for idle agents)")
+      .argument("[id]", "Agent ID (or prefix) - optional if --all or --cwd specified")
+      .option("--all", "Stop all agents")
+      .option("--cwd <path>", "Stop all agents in directory"),
+  ).action(withOutput(runStopCommand));
 
   addJsonAndDaemonHostOptions(
     program
-      .command('delete')
-      .description('Delete an agent (interrupt if running, then hard-delete)')
-      .argument('[id]', 'Agent ID (or prefix) - optional if --all or --cwd specified')
-      .option('--all', 'Delete all agents')
-      .option('--cwd <path>', 'Delete all agents in directory')
-  ).action(withOutput(runDeleteCommand))
+      .command("delete")
+      .description("Delete an agent (interrupt if running, then hard-delete)")
+      .argument("[id]", "Agent ID (or prefix) - optional if --all or --cwd specified")
+      .option("--all", "Delete all agents")
+      .option("--cwd <path>", "Delete all agents in directory"),
+  ).action(withOutput(runDeleteCommand));
 
   addJsonAndDaemonHostOptions(
     program
-      .command('send')
-      .description('Send a message/task to an existing agent')
-      .argument('<id>', 'Agent ID (or prefix)')
-      .argument('[prompt]', 'The message to send')
-      .option('--prompt <text>', 'Provide the message inline as a flag')
-      .option('--prompt-file <path>', 'Read the message from a UTF-8 text file')
-      .option('--no-wait', 'Return immediately without waiting for completion')
-      .option('--image <path>', 'Attach image(s) to the message', collectMultiple, [])
-  ).action(withOutput(runSendCommand))
+      .command("send")
+      .description("Send a message/task to an existing agent")
+      .argument("<id>", "Agent ID (or prefix)")
+      .argument("[prompt]", "The message to send")
+      .option("--prompt <text>", "Provide the message inline as a flag")
+      .option("--prompt-file <path>", "Read the message from a UTF-8 text file")
+      .option("--no-wait", "Return immediately without waiting for completion")
+      .option("--image <path>", "Attach image(s) to the message", collectMultiple, []),
+  ).action(withOutput(runSendCommand));
 
   addJsonAndDaemonHostOptions(
     program
-      .command('inspect')
-      .description('Show detailed information about an agent')
-      .argument('<id>', 'Agent ID (or prefix)')
-  ).action(withOutput(runInspectCommand))
+      .command("inspect")
+      .description("Show detailed information about an agent")
+      .argument("<id>", "Agent ID (or prefix)"),
+  ).action(withOutput(runInspectCommand));
 
   addJsonAndDaemonHostOptions(
     program
-      .command('wait')
-      .description('Wait for an agent to become idle')
-      .argument('<id>', 'Agent ID (or prefix)')
-      .option('--timeout <seconds>', 'Maximum wait time (default: no limit)')
-  ).action(withOutput(runWaitCommand))
+      .command("wait")
+      .description("Wait for an agent to become idle")
+      .argument("<id>", "Agent ID (or prefix)")
+      .option("--timeout <seconds>", "Maximum wait time (default: no limit)"),
+  ).action(withOutput(runWaitCommand));
 
   // Top-level local daemon shortcuts
-  program.addCommand(onboardCommand())
-  program.addCommand(daemonStartCommand())
+  program.addCommand(onboardCommand());
+  program.addCommand(daemonStartCommand());
 
   addJsonOption(
     program
-      .command('status')
-      .description('Show local daemon status (alias for "paseo daemon status")')
+      .command("status")
+      .description('Show local daemon status (alias for "paseo daemon status")'),
   )
-    .option('--home <path>', 'Paseo home directory (default: ~/.paseo)')
-    .action(withOutput(runDaemonStatusCommand))
+    .option("--home <path>", "Paseo home directory (default: ~/.paseo)")
+    .action(withOutput(runDaemonStatusCommand));
 
   addJsonOption(
     program
-      .command('restart')
-      .description('Restart local daemon (alias for "paseo daemon restart")')
+      .command("restart")
+      .description('Restart local daemon (alias for "paseo daemon restart")'),
   )
-    .option('--home <path>', 'Paseo home directory (default: ~/.paseo)')
-    .option('--timeout <seconds>', 'Wait timeout before force step (default: 15)')
-    .option('--force', 'Send SIGKILL if graceful stop times out')
-    .option('--listen <listen>', 'Listen target for restarted daemon (host:port, port, or unix socket)')
-    .option('--port <port>', 'Port for restarted daemon listen target')
-    .option('--no-relay', 'Disable relay on restarted daemon')
-    .option('--no-mcp', 'Disable Agent MCP on restarted daemon')
+    .option("--home <path>", "Paseo home directory (default: ~/.paseo)")
+    .option("--timeout <seconds>", "Wait timeout before force step (default: 15)")
+    .option("--force", "Send SIGKILL if graceful stop times out")
     .option(
-      '--allowed-hosts <hosts>',
-      'Comma-separated Host allowlist values (example: "localhost,.example.com" or "true")'
+      "--listen <listen>",
+      "Listen target for restarted daemon (host:port, port, or unix socket)",
     )
-    .action(withOutput(runDaemonRestartCommand))
+    .option("--port <port>", "Port for restarted daemon listen target")
+    .option("--no-relay", "Disable relay on restarted daemon")
+    .option("--no-mcp", "Disable Agent MCP on restarted daemon")
+    .option(
+      "--allowed-hosts <hosts>",
+      'Comma-separated Host allowlist values (example: "localhost,.example.com" or "true")',
+    )
+    .action(withOutput(runDaemonRestartCommand));
 
   // Advanced agent commands (less common operations)
-  program.addCommand(createAgentCommand())
+  program.addCommand(createAgentCommand());
 
   // Daemon commands
-  program.addCommand(createDaemonCommand())
+  program.addCommand(createDaemonCommand());
 
   // Permission commands
-  program.addCommand(createPermitCommand())
+  program.addCommand(createPermitCommand());
 
   // Provider commands
-  program.addCommand(createProviderCommand())
+  program.addCommand(createProviderCommand());
 
   // Speech model commands
-  program.addCommand(createSpeechCommand())
+  program.addCommand(createSpeechCommand());
 
   // Worktree commands
-  program.addCommand(createWorktreeCommand())
+  program.addCommand(createWorktreeCommand());
 
-  return program
+  return program;
 }

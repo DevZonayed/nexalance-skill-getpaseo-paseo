@@ -16,7 +16,7 @@ export interface TtsDebugAudioMetadata {
 export async function maybePersistTtsDebugAudio(
   audio: Buffer,
   metadata: TtsDebugAudioMetadata,
-  logger: pino.Logger
+  logger: pino.Logger,
 ): Promise<string | null> {
   if (!debugDir) {
     return null;

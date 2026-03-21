@@ -16,7 +16,7 @@ export function KeyboardShortcutsDialog() {
   const isDesktopApp = getIsDesktop();
   const sections = useMemo(
     () => buildKeyboardShortcutHelpSections({ isMac, isDesktop: isDesktopApp }),
-    [isDesktopApp, isMac]
+    [isDesktopApp, isMac],
   );
 
   return (

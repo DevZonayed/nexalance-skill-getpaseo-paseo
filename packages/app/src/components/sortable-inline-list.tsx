@@ -5,4 +5,3 @@
 // Metro's platform-specific extensions will pick the right one at runtime.
 
 export * from "./sortable-inline-list.native";
-

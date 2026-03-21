@@ -17,7 +17,7 @@ export type ListenTarget =
 
 function resolveBoundListenTarget(
   listenTarget: ListenTarget,
-  httpServer: ReturnType<typeof createHTTPServer>
+  httpServer: ReturnType<typeof createHTTPServer>,
 ): ListenTarget {
   if (listenTarget.type !== "tcp") {
     return listenTarget;
@@ -89,24 +89,15 @@ import { attachAgentStoragePersistence } from "./persistence-hooks.js";
 import { createAgentMcpServer } from "./agent/mcp-server.js";
 import { createAllClients, shutdownProviders } from "./agent/provider-registry.js";
 import { bootstrapWorkspaceRegistries } from "./workspace-registry-bootstrap.js";
-import {
-  FileBackedProjectRegistry,
-  FileBackedWorkspaceRegistry,
-} from "./workspace-registry.js";
+import { FileBackedProjectRegistry, FileBackedWorkspaceRegistry } from "./workspace-registry.js";
 import { createTerminalManager, type TerminalManager } from "../terminal/terminal-manager.js";
-import {
-  createConnectionOfferV2,
-  encodeOfferToFragmentUrl,
-} from "./connection-offer.js";
+import { createConnectionOfferV2, encodeOfferToFragmentUrl } from "./connection-offer.js";
 import { loadOrCreateDaemonKeyPair } from "./daemon-keypair.js";
 import { generateLocalPairingOffer } from "./pairing-offer.js";
 import { startRelayTransport, type RelayTransportController } from "./relay-transport.js";
 import { getOrCreateServerId } from "./server-id.js";
 import { resolveDaemonVersion } from "./daemon-version.js";
-import type {
-  AgentClient,
-  AgentProvider,
-} from "./agent/agent-sdk-types.js";
+import type { AgentClient, AgentProvider } from "./agent/agent-sdk-types.js";
 import type { AgentProviderRuntimeSettingsMap } from "./agent/provider-launch-config.js";
 import { acquirePidLock, releasePidLock } from "./pid-lock.js";
 import { isHostAllowed, type AllowedHostsConfig } from "./allowed-hosts.js";
@@ -130,7 +121,7 @@ function resolveVoiceMcpBridgeCommand(logger: Logger): { command: string; baseAr
       command: decision.resolved.command,
       baseArgs: decision.resolved.baseArgs,
     },
-    "Resolved voice MCP bridge command"
+    "Resolved voice MCP bridge command",
   );
   return decision.resolved;
 }
@@ -197,7 +188,7 @@ export interface PaseoDaemon {
 
 export async function createPaseoDaemon(
   config: PaseoDaemonConfig,
-  rootLogger: Logger
+  rootLogger: Logger,
 ): Promise<PaseoDaemon> {
   const logger = rootLogger.child({ module: "bootstrap" });
   const bootstrapStart = performance.now();
@@ -230,489 +221,488 @@ export async function createPaseoDaemon(
     const app = express();
     let boundListenTarget: ListenTarget | null = null;
 
-  // Host allowlist / DNS rebinding protection (vite-like semantics).
-  // For non-TCP (unix sockets), skip host validation.
-  if (listenTarget.type === "tcp") {
+    // Host allowlist / DNS rebinding protection (vite-like semantics).
+    // For non-TCP (unix sockets), skip host validation.
+    if (listenTarget.type === "tcp") {
+      app.use((req, res, next) => {
+        const hostHeader = typeof req.headers.host === "string" ? req.headers.host : undefined;
+        if (!isHostAllowed(hostHeader, config.allowedHosts)) {
+          res.status(403).json({ error: "Invalid Host header" });
+          return;
+        }
+        next();
+      });
+    }
+
+    // CORS - allow same-origin + configured origins
+    const allowedOrigins = new Set([
+      ...config.corsAllowedOrigins,
+      // Packaged desktop renderers may send `file://` or `null` as the origin.
+      "file://",
+      "null",
+      // For TCP, add localhost variants
+      ...(listenTarget.type === "tcp"
+        ? [
+            `http://${listenTarget.host}:${listenTarget.port}`,
+            `http://localhost:${listenTarget.port}`,
+            `http://127.0.0.1:${listenTarget.port}`,
+          ]
+        : []),
+    ]);
+
     app.use((req, res, next) => {
-      const hostHeader = typeof req.headers.host === "string" ? req.headers.host : undefined;
-      if (!isHostAllowed(hostHeader, config.allowedHosts)) {
-        res.status(403).json({ error: "Invalid Host header" });
+      const origin = req.headers.origin;
+      if (origin && allowedOrigins.has(origin)) {
+        res.setHeader("Access-Control-Allow-Origin", origin);
+        res.setHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
+        res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+        res.setHeader("Access-Control-Allow-Credentials", "true");
+      }
+      if (req.method === "OPTIONS") {
+        res.status(204).end();
         return;
       }
       next();
     });
-  }
 
-  // CORS - allow same-origin + configured origins
-  const allowedOrigins = new Set([
-    ...config.corsAllowedOrigins,
-    // Packaged desktop renderers may send `file://` or `null` as the origin.
-    "file://",
-    "null",
-    // For TCP, add localhost variants
-    ...(listenTarget.type === "tcp"
-      ? [
-          `http://${listenTarget.host}:${listenTarget.port}`,
-          `http://localhost:${listenTarget.port}`,
-          `http://127.0.0.1:${listenTarget.port}`,
-        ]
-      : []),
-  ]);
+    // Serve static files from public directory
+    app.use("/public", express.static(staticDir));
 
-  app.use((req, res, next) => {
-    const origin = req.headers.origin;
-    if (origin && allowedOrigins.has(origin)) {
-      res.setHeader("Access-Control-Allow-Origin", origin);
-      res.setHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
-      res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
-      res.setHeader("Access-Control-Allow-Credentials", "true");
-    }
-    if (req.method === "OPTIONS") {
-      res.status(204).end();
-      return;
-    }
-    next();
-  });
+    // Middleware
+    app.use(express.json());
 
-  // Serve static files from public directory
-  app.use("/public", express.static(staticDir));
-
-  // Middleware
-  app.use(express.json());
-
-  // Health check endpoint
-  app.get("/api/health", (_req, res) => {
-    res.json({ status: "ok", timestamp: new Date().toISOString() });
-  });
-
-  app.get("/api/status", (_req, res) => {
-    res.json({
-      status: "server_info",
-      serverId,
-      hostname: getHostname(),
-      version: daemonVersion,
-      listen: formatListenTarget(boundListenTarget ?? listenTarget),
+    // Health check endpoint
+    app.get("/api/health", (_req, res) => {
+      res.json({ status: "ok", timestamp: new Date().toISOString() });
     });
-  });
 
-  app.get("/pairing", async (_req, res) => {
-    try {
-      const offer = await generateLocalPairingOffer({
-        paseoHome: config.paseoHome,
-        relayEnabled: config.relayEnabled,
-        relayEndpoint: config.relayEndpoint,
-        relayPublicEndpoint: config.relayPublicEndpoint,
-        appBaseUrl: config.appBaseUrl,
-        logger,
+    app.get("/api/status", (_req, res) => {
+      res.json({
+        status: "server_info",
+        serverId,
+        hostname: getHostname(),
+        version: daemonVersion,
+        listen: formatListenTarget(boundListenTarget ?? listenTarget),
       });
-      res.json(offer);
-    } catch (error) {
-      logger.error({ err: error }, "Failed to generate pairing offer");
-      res.status(500).json({
-        relayEnabled: false,
-        url: null,
-        qr: null,
-      });
-    }
-  });
+    });
 
-  app.get("/api/files/download", async (req, res) => {
-    const token =
-      typeof req.query.token === "string" && req.query.token.trim().length > 0
-        ? req.query.token.trim()
-        : null;
+    app.get("/pairing", async (_req, res) => {
+      try {
+        const offer = await generateLocalPairingOffer({
+          paseoHome: config.paseoHome,
+          relayEnabled: config.relayEnabled,
+          relayEndpoint: config.relayEndpoint,
+          relayPublicEndpoint: config.relayPublicEndpoint,
+          appBaseUrl: config.appBaseUrl,
+          logger,
+        });
+        res.json(offer);
+      } catch (error) {
+        logger.error({ err: error }, "Failed to generate pairing offer");
+        res.status(500).json({
+          relayEnabled: false,
+          url: null,
+          qr: null,
+        });
+      }
+    });
 
-    if (!token) {
-      res.status(400).json({ error: "Missing download token" });
-      return;
-    }
+    app.get("/api/files/download", async (req, res) => {
+      const token =
+        typeof req.query.token === "string" && req.query.token.trim().length > 0
+          ? req.query.token.trim()
+          : null;
 
-    const entry = downloadTokenStore.consumeToken(token);
-    if (!entry) {
-      res.status(403).json({ error: "Invalid or expired token" });
-      return;
-    }
-
-    try {
-      const fileStats = await stat(entry.absolutePath);
-      if (!fileStats.isFile()) {
-        res.status(404).json({ error: "File not found" });
+      if (!token) {
+        res.status(400).json({ error: "Missing download token" });
         return;
       }
 
-      const safeFileName = entry.fileName.replace(/["\r\n]/g, "_");
-      res.setHeader("Content-Type", entry.mimeType);
-      res.setHeader(
-        "Content-Disposition",
-        `attachment; filename="${safeFileName}"`
-      );
-      res.setHeader("Content-Length", entry.size.toString());
-
-      const stream = createReadStream(entry.absolutePath);
-      stream.on("error", (err) => {
-        logger.error({ err }, "Failed to stream download");
-        if (!res.headersSent) {
-          res.status(500).json({ error: "Failed to read file" });
-        } else {
-          res.end();
-        }
-      });
-      stream.pipe(res);
-    } catch (err) {
-      logger.error({ err }, "Failed to download file");
-      if (!res.headersSent) {
-        res.status(404).json({ error: "File not found" });
+      const entry = downloadTokenStore.consumeToken(token);
+      if (!entry) {
+        res.status(403).json({ error: "Invalid or expired token" });
+        return;
       }
-    }
-  });
 
-  const httpServer = createHTTPServer(app);
+      try {
+        const fileStats = await stat(entry.absolutePath);
+        if (!fileStats.isFile()) {
+          res.status(404).json({ error: "File not found" });
+          return;
+        }
 
-  const agentStorage = new AgentStorage(config.agentStoragePath, logger);
-  const projectRegistry = new FileBackedProjectRegistry(
-    path.join(config.paseoHome, "projects", "projects.json"),
-    logger
-  );
-  const workspaceRegistry = new FileBackedWorkspaceRegistry(
-    path.join(config.paseoHome, "projects", "workspaces.json"),
-    logger
-  );
-  const agentManager = new AgentManager({
-    clients: {
-      ...createAllClients(logger, {
-        runtimeSettings: config.agentProviderSettings,
-      }),
-      ...config.agentClients,
-    },
-    registry: agentStorage,
-    logger,
-  });
+        const safeFileName = entry.fileName.replace(/["\r\n]/g, "_");
+        res.setHeader("Content-Type", entry.mimeType);
+        res.setHeader("Content-Disposition", `attachment; filename="${safeFileName}"`);
+        res.setHeader("Content-Length", entry.size.toString());
 
-  const terminalManager = createTerminalManager();
+        const stream = createReadStream(entry.absolutePath);
+        stream.on("error", (err) => {
+          logger.error({ err }, "Failed to stream download");
+          if (!res.headersSent) {
+            res.status(500).json({ error: "Failed to read file" });
+          } else {
+            res.end();
+          }
+        });
+        stream.pipe(res);
+      } catch (err) {
+        logger.error({ err }, "Failed to download file");
+        if (!res.headersSent) {
+          res.status(404).json({ error: "File not found" });
+        }
+      }
+    });
 
-  const detachAgentStoragePersistence = attachAgentStoragePersistence(
-    logger,
-    agentManager,
-    agentStorage
-  );
-  await agentStorage.initialize();
-  logger.info({ elapsed: elapsed() }, "Agent storage initialized");
-  await bootstrapWorkspaceRegistries({
-    paseoHome: config.paseoHome,
-    agentStorage,
-    projectRegistry,
-    workspaceRegistry,
-    logger,
-  });
-  logger.info({ elapsed: elapsed() }, "Workspace registries bootstrapped");
-  const persistedRecords = await agentStorage.list();
-  logger.info(
-    { elapsed: elapsed() },
-    `Agent registry loaded (${persistedRecords.length} record${persistedRecords.length === 1 ? "" : "s"}); agents will initialize on demand`
-  );
-  logger.info(
-    "Voice mode configured for agent-scoped resume flow (no dedicated voice assistant provider)"
-  );
-  let wsServer: VoiceAssistantWebSocketServer | null = null;
-  let voiceMcpBridgeManager: VoiceMcpSocketBridgeManager | null = null;
-  let unsubscribeSpeechReadiness: (() => void) | null = null;
+    const httpServer = createHTTPServer(app);
 
-  // Create in-memory transport for Session's Agent MCP client (voice assistant tools)
-  const createInMemoryAgentMcpTransport = async (): Promise<InMemoryTransport> => {
-    const agentMcpServer = await createAgentMcpServer({
-      agentManager,
-      agentStorage,
-      terminalManager,
-      paseoHome: config.paseoHome,
-      enableVoiceTools: false,
-      resolveSpeakHandler: (callerAgentId) => wsServer?.resolveVoiceSpeakHandler(callerAgentId) ?? null,
-      resolveCallerContext: (callerAgentId) => wsServer?.resolveVoiceCallerContext(callerAgentId) ?? null,
+    const agentStorage = new AgentStorage(config.agentStoragePath, logger);
+    const projectRegistry = new FileBackedProjectRegistry(
+      path.join(config.paseoHome, "projects", "projects.json"),
+      logger,
+    );
+    const workspaceRegistry = new FileBackedWorkspaceRegistry(
+      path.join(config.paseoHome, "projects", "workspaces.json"),
+      logger,
+    );
+    const agentManager = new AgentManager({
+      clients: {
+        ...createAllClients(logger, {
+          runtimeSettings: config.agentProviderSettings,
+        }),
+        ...config.agentClients,
+      },
+      registry: agentStorage,
       logger,
     });
 
-    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    const terminalManager = createTerminalManager();
 
-    await agentMcpServer.connect(serverTransport);
+    const detachAgentStoragePersistence = attachAgentStoragePersistence(
+      logger,
+      agentManager,
+      agentStorage,
+    );
+    await agentStorage.initialize();
+    logger.info({ elapsed: elapsed() }, "Agent storage initialized");
+    await bootstrapWorkspaceRegistries({
+      paseoHome: config.paseoHome,
+      agentStorage,
+      projectRegistry,
+      workspaceRegistry,
+      logger,
+    });
+    logger.info({ elapsed: elapsed() }, "Workspace registries bootstrapped");
+    const persistedRecords = await agentStorage.list();
+    logger.info(
+      { elapsed: elapsed() },
+      `Agent registry loaded (${persistedRecords.length} record${persistedRecords.length === 1 ? "" : "s"}); agents will initialize on demand`,
+    );
+    logger.info(
+      "Voice mode configured for agent-scoped resume flow (no dedicated voice assistant provider)",
+    );
+    let wsServer: VoiceAssistantWebSocketServer | null = null;
+    let voiceMcpBridgeManager: VoiceMcpSocketBridgeManager | null = null;
+    let unsubscribeSpeechReadiness: (() => void) | null = null;
 
-    return clientTransport;
-  };
-
-  const mcpEnabled = config.mcpEnabled ?? true;
-  if (mcpEnabled) {
-    const agentMcpRoute = "/mcp/agents";
-    const agentMcpTransports: AgentMcpTransportMap = new Map();
-
-    const createAgentMcpTransport = async (callerAgentId?: string) => {
+    // Create in-memory transport for Session's Agent MCP client (voice assistant tools)
+    const createInMemoryAgentMcpTransport = async (): Promise<InMemoryTransport> => {
       const agentMcpServer = await createAgentMcpServer({
         agentManager,
         agentStorage,
         terminalManager,
         paseoHome: config.paseoHome,
-        callerAgentId,
         enableVoiceTools: false,
-        resolveSpeakHandler: (agentId) => wsServer?.resolveVoiceSpeakHandler(agentId) ?? null,
-        resolveCallerContext: (agentId) => wsServer?.resolveVoiceCallerContext(agentId) ?? null,
+        resolveSpeakHandler: (callerAgentId) =>
+          wsServer?.resolveVoiceSpeakHandler(callerAgentId) ?? null,
+        resolveCallerContext: (callerAgentId) =>
+          wsServer?.resolveVoiceCallerContext(callerAgentId) ?? null,
         logger,
       });
 
-      const transport = new StreamableHTTPServerTransport({
-        sessionIdGenerator: () => randomUUID(),
-        onsessioninitialized: (sessionId) => {
-          agentMcpTransports.set(sessionId, transport);
-          logger.debug({ sessionId }, "Agent MCP session initialized");
-        },
-        onsessionclosed: (sessionId) => {
-          agentMcpTransports.delete(sessionId);
-          logger.debug({ sessionId }, "Agent MCP session closed");
-        },
-        // NOTE: We enforce a Vite-like host allowlist at the app/websocket layer.
-        // StreamableHTTPServerTransport's built-in check requires exact Host header matches.
-        enableDnsRebindingProtection: false,
-      });
+      const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
 
-      transport.onclose = () => {
-        if (transport.sessionId) {
-          agentMcpTransports.delete(transport.sessionId);
-        }
-      };
-      transport.onerror = (err) => {
-        logger.error({ err }, "Agent MCP transport error");
-      };
+      await agentMcpServer.connect(serverTransport);
 
-      await agentMcpServer.connect(transport);
-      return transport;
+      return clientTransport;
     };
 
-    const handleAgentMcpRequest: express.RequestHandler = async (req, res) => {
-      if (config.mcpDebug) {
-        logger.debug(
-          {
-            method: req.method,
-            url: req.originalUrl,
-            sessionId: req.header("mcp-session-id"),
-            authorization: req.header("authorization"),
-            body: req.body,
+    const mcpEnabled = config.mcpEnabled ?? true;
+    if (mcpEnabled) {
+      const agentMcpRoute = "/mcp/agents";
+      const agentMcpTransports: AgentMcpTransportMap = new Map();
+
+      const createAgentMcpTransport = async (callerAgentId?: string) => {
+        const agentMcpServer = await createAgentMcpServer({
+          agentManager,
+          agentStorage,
+          terminalManager,
+          paseoHome: config.paseoHome,
+          callerAgentId,
+          enableVoiceTools: false,
+          resolveSpeakHandler: (agentId) => wsServer?.resolveVoiceSpeakHandler(agentId) ?? null,
+          resolveCallerContext: (agentId) => wsServer?.resolveVoiceCallerContext(agentId) ?? null,
+          logger,
+        });
+
+        const transport = new StreamableHTTPServerTransport({
+          sessionIdGenerator: () => randomUUID(),
+          onsessioninitialized: (sessionId) => {
+            agentMcpTransports.set(sessionId, transport);
+            logger.debug({ sessionId }, "Agent MCP session initialized");
           },
-          "Agent MCP request"
-        );
-      }
-      try {
-        const sessionId = req.header("mcp-session-id");
-        let transport = sessionId ? agentMcpTransports.get(sessionId) : undefined;
+          onsessionclosed: (sessionId) => {
+            agentMcpTransports.delete(sessionId);
+            logger.debug({ sessionId }, "Agent MCP session closed");
+          },
+          // NOTE: We enforce a Vite-like host allowlist at the app/websocket layer.
+          // StreamableHTTPServerTransport's built-in check requires exact Host header matches.
+          enableDnsRebindingProtection: false,
+        });
 
-        if (!transport) {
-          if (req.method !== "POST") {
-            res.status(400).json({
-              jsonrpc: "2.0",
-              error: {
-                code: -32000,
-                message: "Missing or invalid MCP session",
-              },
-              id: null,
-            });
-            return;
+        transport.onclose = () => {
+          if (transport.sessionId) {
+            agentMcpTransports.delete(transport.sessionId);
           }
-          if (!isInitializeRequest(req.body)) {
-            res.status(400).json({
-              jsonrpc: "2.0",
-              error: {
-                code: -32000,
-                message: "Initialization request expected",
-              },
-              id: null,
-            });
-            return;
-          }
-          const callerAgentIdRaw = req.query.callerAgentId;
-          const callerAgentId =
-            typeof callerAgentIdRaw === "string"
-              ? callerAgentIdRaw
-              : Array.isArray(callerAgentIdRaw) && typeof callerAgentIdRaw[0] === "string"
-                ? callerAgentIdRaw[0]
-                : undefined;
-          transport = await createAgentMcpTransport(callerAgentId);
-        }
+        };
+        transport.onerror = (err) => {
+          logger.error({ err }, "Agent MCP transport error");
+        };
 
-        await transport.handleRequest(req as any, res as any, req.body);
-      } catch (err) {
-        logger.error({ err }, "Failed to handle Agent MCP request");
-        if (!res.headersSent) {
-          res.status(500).json({
-            jsonrpc: "2.0",
-            error: {
-              code: -32603,
-              message: "Internal MCP server error",
+        await agentMcpServer.connect(transport);
+        return transport;
+      };
+
+      const handleAgentMcpRequest: express.RequestHandler = async (req, res) => {
+        if (config.mcpDebug) {
+          logger.debug(
+            {
+              method: req.method,
+              url: req.originalUrl,
+              sessionId: req.header("mcp-session-id"),
+              authorization: req.header("authorization"),
+              body: req.body,
             },
-            id: null,
-          });
+            "Agent MCP request",
+          );
         }
-      }
-    };
+        try {
+          const sessionId = req.header("mcp-session-id");
+          let transport = sessionId ? agentMcpTransports.get(sessionId) : undefined;
 
-    app.post(agentMcpRoute, handleAgentMcpRequest);
-    app.get(agentMcpRoute, handleAgentMcpRequest);
-    app.delete(agentMcpRoute, handleAgentMcpRequest);
-    logger.info({ route: agentMcpRoute }, "Agent MCP server mounted on main app");
-  } else {
-    logger.info("Agent MCP HTTP endpoint disabled");
-  }
+          if (!transport) {
+            if (req.method !== "POST") {
+              res.status(400).json({
+                jsonrpc: "2.0",
+                error: {
+                  code: -32000,
+                  message: "Missing or invalid MCP session",
+                },
+                id: null,
+              });
+              return;
+            }
+            if (!isInitializeRequest(req.body)) {
+              res.status(400).json({
+                jsonrpc: "2.0",
+                error: {
+                  code: -32000,
+                  message: "Initialization request expected",
+                },
+                id: null,
+              });
+              return;
+            }
+            const callerAgentIdRaw = req.query.callerAgentId;
+            const callerAgentId =
+              typeof callerAgentIdRaw === "string"
+                ? callerAgentIdRaw
+                : Array.isArray(callerAgentIdRaw) && typeof callerAgentIdRaw[0] === "string"
+                  ? callerAgentIdRaw[0]
+                  : undefined;
+            transport = await createAgentMcpTransport(callerAgentId);
+          }
 
-  const voiceMcpSocketDir = path.join(config.paseoHome, "runtime", "voice-mcp");
-  const voiceMcpBridgeCommand = resolveVoiceMcpBridgeCommand(logger);
-  voiceMcpBridgeManager = createVoiceMcpSocketBridgeManager({
-    runtimeDir: voiceMcpSocketDir,
-    logger,
-    createAgentMcpServerForCaller: async (callerAgentId) => {
-      return createAgentMcpServer({
-        agentManager,
-        agentStorage,
-        terminalManager,
-        paseoHome: config.paseoHome,
-        callerAgentId,
-        voiceOnly: true,
-        resolveSpeakHandler: (agentId) => wsServer?.resolveVoiceSpeakHandler(agentId) ?? null,
-        resolveCallerContext: (agentId) => wsServer?.resolveVoiceCallerContext(agentId) ?? null,
-        logger,
-      });
-    },
-  });
-  const {
-    resolveVoiceTurnDetection,
-    resolveVoiceStt,
-    resolveVoiceTts,
-    resolveDictationStt,
-    getSpeechReadiness,
-    subscribeSpeechReadiness,
-    cleanup: cleanupSpeechRuntime,
-    localModelConfig,
-  } = await initializeSpeechRuntime({
-    logger,
-    openaiConfig: config.openai,
-    speechConfig: config.speech,
-  });
-  logger.info({ elapsed: elapsed() }, "Speech runtime initialized");
+          await transport.handleRequest(req as any, res as any, req.body);
+        } catch (err) {
+          logger.error({ err }, "Failed to handle Agent MCP request");
+          if (!res.headersSent) {
+            res.status(500).json({
+              jsonrpc: "2.0",
+              error: {
+                code: -32603,
+                message: "Internal MCP server error",
+              },
+              id: null,
+            });
+          }
+        }
+      };
 
-  wsServer = new VoiceAssistantWebSocketServer(
-    httpServer,
-    logger,
-    serverId,
-    agentManager,
-    agentStorage,
-    downloadTokenStore,
-    config.paseoHome,
-    createInMemoryAgentMcpTransport,
-    { allowedOrigins, allowedHosts: config.allowedHosts },
-    { turnDetection: resolveVoiceTurnDetection, stt: resolveVoiceStt, tts: resolveVoiceTts },
-    terminalManager,
-    {
-      voiceAgentMcpStdio: {
-        command: voiceMcpBridgeCommand.command,
-        baseArgs: [...voiceMcpBridgeCommand.baseArgs],
-        env: {
-          PASEO_HOME: config.paseoHome,
-        },
+      app.post(agentMcpRoute, handleAgentMcpRequest);
+      app.get(agentMcpRoute, handleAgentMcpRequest);
+      app.delete(agentMcpRoute, handleAgentMcpRequest);
+      logger.info({ route: agentMcpRoute }, "Agent MCP server mounted on main app");
+    } else {
+      logger.info("Agent MCP HTTP endpoint disabled");
+    }
+
+    const voiceMcpSocketDir = path.join(config.paseoHome, "runtime", "voice-mcp");
+    const voiceMcpBridgeCommand = resolveVoiceMcpBridgeCommand(logger);
+    voiceMcpBridgeManager = createVoiceMcpSocketBridgeManager({
+      runtimeDir: voiceMcpSocketDir,
+      logger,
+      createAgentMcpServerForCaller: async (callerAgentId) => {
+        return createAgentMcpServer({
+          agentManager,
+          agentStorage,
+          terminalManager,
+          paseoHome: config.paseoHome,
+          callerAgentId,
+          voiceOnly: true,
+          resolveSpeakHandler: (agentId) => wsServer?.resolveVoiceSpeakHandler(agentId) ?? null,
+          resolveCallerContext: (agentId) => wsServer?.resolveVoiceCallerContext(agentId) ?? null,
+          logger,
+        });
       },
-      ensureVoiceMcpSocketForAgent: (agentId) =>
-        voiceMcpBridgeManager?.ensureBridgeForCaller(agentId) ??
-        Promise.reject(new Error("Voice MCP bridge manager is not initialized")),
-      removeVoiceMcpSocketForAgent: (agentId) =>
-        voiceMcpBridgeManager?.removeBridgeForCaller(agentId) ?? Promise.resolve(),
-    },
-    {
-      finalTimeoutMs: config.dictationFinalTimeoutMs,
-      stt: resolveDictationStt,
-      localModels: localModelConfig ?? undefined,
+    });
+    const {
+      resolveVoiceTurnDetection,
+      resolveVoiceStt,
+      resolveVoiceTts,
+      resolveDictationStt,
       getSpeechReadiness,
-    },
-    config.agentProviderSettings,
-    daemonVersion,
-    (intent) => {
-      try {
-        config.onLifecycleIntent?.(intent);
-      } catch (error) {
-        logger.error({ err: error, intent }, "Failed to handle daemon lifecycle intent");
-      }
-    },
-    projectRegistry,
-    workspaceRegistry
-  );
-  unsubscribeSpeechReadiness = subscribeSpeechReadiness((snapshot) => {
-    wsServer?.publishSpeechReadiness(snapshot);
-  });
+      subscribeSpeechReadiness,
+      cleanup: cleanupSpeechRuntime,
+      localModelConfig,
+    } = await initializeSpeechRuntime({
+      logger,
+      openaiConfig: config.openai,
+      speechConfig: config.speech,
+    });
+    logger.info({ elapsed: elapsed() }, "Speech runtime initialized");
+
+    wsServer = new VoiceAssistantWebSocketServer(
+      httpServer,
+      logger,
+      serverId,
+      agentManager,
+      agentStorage,
+      downloadTokenStore,
+      config.paseoHome,
+      createInMemoryAgentMcpTransport,
+      { allowedOrigins, allowedHosts: config.allowedHosts },
+      { turnDetection: resolveVoiceTurnDetection, stt: resolveVoiceStt, tts: resolveVoiceTts },
+      terminalManager,
+      {
+        voiceAgentMcpStdio: {
+          command: voiceMcpBridgeCommand.command,
+          baseArgs: [...voiceMcpBridgeCommand.baseArgs],
+          env: {
+            PASEO_HOME: config.paseoHome,
+          },
+        },
+        ensureVoiceMcpSocketForAgent: (agentId) =>
+          voiceMcpBridgeManager?.ensureBridgeForCaller(agentId) ??
+          Promise.reject(new Error("Voice MCP bridge manager is not initialized")),
+        removeVoiceMcpSocketForAgent: (agentId) =>
+          voiceMcpBridgeManager?.removeBridgeForCaller(agentId) ?? Promise.resolve(),
+      },
+      {
+        finalTimeoutMs: config.dictationFinalTimeoutMs,
+        stt: resolveDictationStt,
+        localModels: localModelConfig ?? undefined,
+        getSpeechReadiness,
+      },
+      config.agentProviderSettings,
+      daemonVersion,
+      (intent) => {
+        try {
+          config.onLifecycleIntent?.(intent);
+        } catch (error) {
+          logger.error({ err: error, intent }, "Failed to handle daemon lifecycle intent");
+        }
+      },
+      projectRegistry,
+      workspaceRegistry,
+    );
+    unsubscribeSpeechReadiness = subscribeSpeechReadiness((snapshot) => {
+      wsServer?.publishSpeechReadiness(snapshot);
+    });
 
     logger.info({ elapsed: elapsed() }, "Bootstrap complete, ready to start listening");
 
     const start = async () => {
       // Start main HTTP server
       await new Promise<void>((resolve, reject) => {
-      const onError = (err: Error) => {
-        httpServer.off("listening", onListening);
-        reject(err);
-      };
-      const onListening = () => {
-        httpServer.off("error", onError);
-        const logAndResolve = async () => {
-          boundListenTarget = resolveBoundListenTarget(listenTarget, httpServer);
-          const relayEnabled = config.relayEnabled ?? true;
-          const relayEndpoint = config.relayEndpoint ?? "relay.paseo.sh:443";
-          const relayPublicEndpoint = config.relayPublicEndpoint ?? relayEndpoint;
-          const appBaseUrl = config.appBaseUrl ?? "https://app.paseo.sh";
-
-          if (boundListenTarget.type === "tcp") {
-            logger.info(
-              {
-                host: boundListenTarget.host,
-                port: boundListenTarget.port,
-                elapsed: elapsed(),
-              },
-              `Server listening on http://${boundListenTarget.host}:${boundListenTarget.port}`
-            );
-          } else {
-            logger.info(
-              { path: boundListenTarget.path, elapsed: elapsed() },
-              `Server listening on ${boundListenTarget.path}`
-            );
-          }
-
-          if (relayEnabled) {
-            const offer = await createConnectionOfferV2({
-              serverId,
-              daemonPublicKeyB64: daemonKeyPair.publicKeyB64,
-              relay: { endpoint: relayPublicEndpoint },
-            });
-
-            const url = encodeOfferToFragmentUrl({ offer, appBaseUrl });
-            logger.info({ url }, "pairing_offer");
-
-            relayTransport?.stop().catch(() => undefined);
-            relayTransport = startRelayTransport({
-              logger,
-              attachSocket: (ws, metadata) => {
-                if (!wsServer) {
-                  throw new Error("WebSocket server not initialized");
-                }
-                return wsServer.attachExternalSocket(ws, metadata);
-              },
-              relayEndpoint,
-              serverId,
-              daemonKeyPair: daemonKeyPair.keyPair,
-            });
-          }
+        const onError = (err: Error) => {
+          httpServer.off("listening", onListening);
+          reject(err);
         };
+        const onListening = () => {
+          httpServer.off("error", onError);
+          const logAndResolve = async () => {
+            boundListenTarget = resolveBoundListenTarget(listenTarget, httpServer);
+            const relayEnabled = config.relayEnabled ?? true;
+            const relayEndpoint = config.relayEndpoint ?? "relay.paseo.sh:443";
+            const relayPublicEndpoint = config.relayPublicEndpoint ?? relayEndpoint;
+            const appBaseUrl = config.appBaseUrl ?? "https://app.paseo.sh";
 
-        logAndResolve().then(resolve, reject);
-      };
-      httpServer.once("error", onError);
-      httpServer.once("listening", onListening);
+            if (boundListenTarget.type === "tcp") {
+              logger.info(
+                {
+                  host: boundListenTarget.host,
+                  port: boundListenTarget.port,
+                  elapsed: elapsed(),
+                },
+                `Server listening on http://${boundListenTarget.host}:${boundListenTarget.port}`,
+              );
+            } else {
+              logger.info(
+                { path: boundListenTarget.path, elapsed: elapsed() },
+                `Server listening on ${boundListenTarget.path}`,
+              );
+            }
 
-      if (listenTarget.type === "tcp") {
-        httpServer.listen(listenTarget.port, listenTarget.host);
-      } else {
-        if (listenTarget.type === "socket" && existsSync(listenTarget.path)) {
-          unlinkSync(listenTarget.path);
+            if (relayEnabled) {
+              const offer = await createConnectionOfferV2({
+                serverId,
+                daemonPublicKeyB64: daemonKeyPair.publicKeyB64,
+                relay: { endpoint: relayPublicEndpoint },
+              });
+
+              const url = encodeOfferToFragmentUrl({ offer, appBaseUrl });
+              logger.info({ url }, "pairing_offer");
+
+              relayTransport?.stop().catch(() => undefined);
+              relayTransport = startRelayTransport({
+                logger,
+                attachSocket: (ws, metadata) => {
+                  if (!wsServer) {
+                    throw new Error("WebSocket server not initialized");
+                  }
+                  return wsServer.attachExternalSocket(ws, metadata);
+                },
+                relayEndpoint,
+                serverId,
+                daemonKeyPair: daemonKeyPair.keyPair,
+              });
+            }
+          };
+
+          logAndResolve().then(resolve, reject);
+        };
+        httpServer.once("error", onError);
+        httpServer.once("listening", onListening);
+
+        if (listenTarget.type === "tcp") {
+          httpServer.listen(listenTarget.port, listenTarget.host);
+        } else {
+          if (listenTarget.type === "socket" && existsSync(listenTarget.path)) {
+            unlinkSync(listenTarget.path);
+          }
+          httpServer.listen(listenTarget.path);
         }
-        httpServer.listen(listenTarget.path);
-      }
       });
     };
 
@@ -769,10 +759,7 @@ export async function createPaseoDaemon(
   }
 }
 
-async function closeAllAgents(
-  logger: Logger,
-  agentManager: AgentManager
-): Promise<void> {
+async function closeAllAgents(logger: Logger, agentManager: AgentManager): Promise<void> {
   const agents = agentManager.listAgents();
   for (const agent of agents) {
     try {

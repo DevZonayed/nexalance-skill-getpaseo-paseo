@@ -5,7 +5,7 @@ import { CLAUDE_MODEL_CATALOG } from "./claude/model-catalog.js";
 describe("normalizeClaudeRuntimeModelId", () => {
   function latestModelId(family: "sonnet" | "opus" | "haiku"): string {
     const latest = CLAUDE_MODEL_CATALOG.find(
-      (model) => model.family === family && model.isLatestInFamily
+      (model) => model.family === family && model.isLatestInFamily,
     );
     if (latest) {
       return latest.modelId;

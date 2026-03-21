@@ -11,10 +11,7 @@ function normalizePhase(value: number): number {
   return wrapped < 0 ? wrapped + 1 : wrapped;
 }
 
-export function getWorkingIndicatorDotStrength(
-  progress: number,
-  offset: number
-): number {
+export function getWorkingIndicatorDotStrength(progress: number, offset: number): number {
   "worklet";
   const phase = normalizePhase(progress + offset);
   if (phase <= 0.5) {

@@ -5,10 +5,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { createTestLogger } from "../../../test-utils/test-logger.js";
 import { ClaudeAgentClient } from "./claude-agent.js";
-import type {
-  AgentPersistenceHandle,
-  AgentStreamEvent,
-} from "../agent-sdk-types.js";
+import type { AgentPersistenceHandle, AgentStreamEvent } from "../agent-sdk-types.js";
 
 const sdkMocks = vi.hoisted(() => ({
   query: vi.fn(),
@@ -103,7 +100,7 @@ function collectTimelineText(events: AgentStreamEvent[]): string {
 
 async function readNextEvent(
   iterator: AsyncIterator<AgentStreamEvent>,
-  timeoutMs: number
+  timeoutMs: number,
 ): Promise<AgentStreamEvent> {
   const outcome = await Promise.race([
     iterator.next().then((result) => ({ kind: "result" as const, result })),
@@ -168,7 +165,7 @@ describe("ClaudeAgentSession history replay regression", () => {
           },
         }),
       ].join("\n"),
-      "utf8"
+      "utf8",
     );
 
     previousClaudeConfigDir = process.env.CLAUDE_CONFIG_DIR;
@@ -272,12 +269,7 @@ describe("ClaudeAgentSession history replay regression", () => {
     };
 
     const sanitized = cwd.replace(/[\\/\.]/g, "-").replace(/_/g, "-");
-    const historyPath = path.join(
-      configDir,
-      "projects",
-      sanitized,
-      "history-session.jsonl"
-    );
+    const historyPath = path.join(configDir, "projects", sanitized, "history-session.jsonl");
 
     const session = await client.resumeSession(handle, { cwd });
 
@@ -312,7 +304,7 @@ describe("ClaudeAgentSession history replay regression", () => {
             content: APPENDED_ASSISTANT_MARKER,
           },
         })}`,
-        "utf8"
+        "utf8",
       );
 
       const appendedEvents: AgentStreamEvent[] = [];
@@ -322,13 +314,13 @@ describe("ClaudeAgentSession history replay regression", () => {
           (event): event is Extract<AgentStreamEvent, { type: "timeline" }> =>
             event.type === "timeline" &&
             event.item.type === "tool_call" &&
-            event.item.name === "task_notification"
+            event.item.name === "task_notification",
         );
         const sawAssistant = appendedEvents.some(
           (event): event is Extract<AgentStreamEvent, { type: "timeline" }> =>
             event.type === "timeline" &&
             event.item.type === "assistant_message" &&
-            event.item.text.includes(APPENDED_ASSISTANT_MARKER)
+            event.item.text.includes(APPENDED_ASSISTANT_MARKER),
         );
         if (sawTaskNotification && sawAssistant) {
           break;
@@ -339,11 +331,11 @@ describe("ClaudeAgentSession history replay regression", () => {
         (event): event is Extract<AgentStreamEvent, { type: "timeline" }> =>
           event.type === "timeline" &&
           event.item.type === "tool_call" &&
-          event.item.name === "task_notification"
+          event.item.name === "task_notification",
       );
       const turnStartedEvent = appendedEvents.find(
         (event): event is Extract<AgentStreamEvent, { type: "turn_started" }> =>
-          event.type === "turn_started"
+          event.type === "turn_started",
       );
 
       expect(taskNotificationEvent).toBeTruthy();
@@ -420,9 +412,8 @@ describe("ClaudeAgentSession history replay regression", () => {
     expect(events.some((event) => event.type === "turn_completed")).toBe(true);
     expect(sdkMocks.lastQuery).toBeTruthy();
     expect(sdkMocks.lastQuery?.rewindFiles).toHaveBeenCalledTimes(1);
-    expect(sdkMocks.lastQuery?.rewindFiles).toHaveBeenCalledWith(
-      "history-user-uuid",
-      { dryRun: false }
-    );
+    expect(sdkMocks.lastQuery?.rewindFiles).toHaveBeenCalledWith("history-user-uuid", {
+      dryRun: false,
+    });
   });
 });

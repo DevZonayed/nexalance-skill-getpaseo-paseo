@@ -10,8 +10,8 @@ describe("task-notification-tool-call", () => {
   it("detects task notification user content in string payloads", () => {
     expect(
       isTaskNotificationUserContent(
-        "<task-notification>\n<task-id>bg-1</task-id>\n</task-notification>"
-      )
+        "<task-notification>\n<task-id>bg-1</task-id>\n</task-notification>",
+      ),
     ).toBe(true);
     expect(isTaskNotificationUserContent("hello")).toBe(false);
   });

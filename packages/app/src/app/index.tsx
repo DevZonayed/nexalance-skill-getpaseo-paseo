@@ -1,82 +1,82 @@
-import { useEffect, useSyncExternalStore, useState } from 'react'
-import { usePathname, useRouter } from 'expo-router'
-import { useHosts } from '@/runtime/host-runtime'
-import { shouldUseDesktopDaemon } from '@/desktop/daemon/desktop-daemon'
-import { buildHostRootRoute } from '@/utils/host-routes'
-import { StartupSplashScreen } from '@/screens/startup-splash-screen'
-import { WelcomeScreen } from '@/components/welcome-screen'
-import { getHostRuntimeStore, isHostRuntimeConnected } from '@/runtime/host-runtime'
+import { useEffect, useSyncExternalStore, useState } from "react";
+import { usePathname, useRouter } from "expo-router";
+import { useHosts } from "@/runtime/host-runtime";
+import { shouldUseDesktopDaemon } from "@/desktop/daemon/desktop-daemon";
+import { buildHostRootRoute } from "@/utils/host-routes";
+import { StartupSplashScreen } from "@/screens/startup-splash-screen";
+import { WelcomeScreen } from "@/components/welcome-screen";
+import { getHostRuntimeStore, isHostRuntimeConnected } from "@/runtime/host-runtime";
 import {
   shouldRedirectToWelcome,
   shouldWaitOnStartupRace,
   WELCOME_ROUTE,
-} from '@/app-support/index-startup'
+} from "@/app-support/index-startup";
 
-const STARTUP_TIMEOUT_MS = 30_000
+const STARTUP_TIMEOUT_MS = 30_000;
 function useAnyHostOnline(serverIds: string[]): string | null {
-  const runtime = getHostRuntimeStore()
+  const runtime = getHostRuntimeStore();
   return useSyncExternalStore(
     (onStoreChange) => runtime.subscribeAll(onStoreChange),
     () => {
-      let firstOnlineServerId: string | null = null
-      let firstOnlineAt: string | null = null
+      let firstOnlineServerId: string | null = null;
+      let firstOnlineAt: string | null = null;
       for (const serverId of serverIds) {
-        const snapshot = runtime.getSnapshot(serverId)
-        const lastOnlineAt = snapshot?.lastOnlineAt ?? null
+        const snapshot = runtime.getSnapshot(serverId);
+        const lastOnlineAt = snapshot?.lastOnlineAt ?? null;
         if (!isHostRuntimeConnected(snapshot) || !lastOnlineAt) {
-          continue
+          continue;
         }
         if (!firstOnlineAt || lastOnlineAt < firstOnlineAt) {
-          firstOnlineAt = lastOnlineAt
-          firstOnlineServerId = serverId
+          firstOnlineAt = lastOnlineAt;
+          firstOnlineServerId = serverId;
         }
       }
-      return firstOnlineServerId
+      return firstOnlineServerId;
     },
     () => {
-      let firstOnlineServerId: string | null = null
-      let firstOnlineAt: string | null = null
+      let firstOnlineServerId: string | null = null;
+      let firstOnlineAt: string | null = null;
       for (const serverId of serverIds) {
-        const snapshot = runtime.getSnapshot(serverId)
-        const lastOnlineAt = snapshot?.lastOnlineAt ?? null
+        const snapshot = runtime.getSnapshot(serverId);
+        const lastOnlineAt = snapshot?.lastOnlineAt ?? null;
         if (!isHostRuntimeConnected(snapshot) || !lastOnlineAt) {
-          continue
+          continue;
         }
         if (!firstOnlineAt || lastOnlineAt < firstOnlineAt) {
-          firstOnlineAt = lastOnlineAt
-          firstOnlineServerId = serverId
+          firstOnlineAt = lastOnlineAt;
+          firstOnlineServerId = serverId;
         }
       }
-      return firstOnlineServerId
-    }
-  )
+      return firstOnlineServerId;
+    },
+  );
 }
 
 export default function Index() {
-  const router = useRouter()
-  const pathname = usePathname()
-  const daemons = useHosts()
-  const [hasTimedOut, setHasTimedOut] = useState(false)
-  const isDesktopStartupRace = shouldUseDesktopDaemon()
-  const onlineServerId = useAnyHostOnline(daemons.map((daemon) => daemon.serverId))
+  const router = useRouter();
+  const pathname = usePathname();
+  const daemons = useHosts();
+  const [hasTimedOut, setHasTimedOut] = useState(false);
+  const isDesktopStartupRace = shouldUseDesktopDaemon();
+  const onlineServerId = useAnyHostOnline(daemons.map((daemon) => daemon.serverId));
   useEffect(() => {
     const timer = setTimeout(() => {
-      setHasTimedOut(true)
-    }, STARTUP_TIMEOUT_MS)
+      setHasTimedOut(true);
+    }, STARTUP_TIMEOUT_MS);
     return () => {
-      clearTimeout(timer)
-    }
-  }, [])
+      clearTimeout(timer);
+    };
+  }, []);
 
   useEffect(() => {
     if (!onlineServerId) {
-      return
+      return;
     }
-    if (pathname !== '/' && pathname !== '') {
-      return
+    if (pathname !== "/" && pathname !== "") {
+      return;
     }
-    router.replace(buildHostRootRoute(onlineServerId) as any)
-  }, [onlineServerId, pathname, router])
+    router.replace(buildHostRootRoute(onlineServerId) as any);
+  }, [onlineServerId, pathname, router]);
 
   useEffect(() => {
     if (
@@ -88,10 +88,10 @@ export default function Index() {
         daemonCount: daemons.length,
       })
     ) {
-      return
+      return;
     }
-    router.replace(WELCOME_ROUTE as any)
-  }, [daemons.length, hasTimedOut, isDesktopStartupRace, onlineServerId, pathname, router])
+    router.replace(WELCOME_ROUTE as any);
+  }, [daemons.length, hasTimedOut, isDesktopStartupRace, onlineServerId, pathname, router]);
 
   if (
     shouldWaitOnStartupRace({
@@ -102,12 +102,12 @@ export default function Index() {
       pathname,
     })
   ) {
-    return <StartupSplashScreen />
+    return <StartupSplashScreen />;
   }
 
   if (!onlineServerId) {
-    return <WelcomeScreen />
+    return <WelcomeScreen />;
   }
 
-  return null
+  return null;
 }

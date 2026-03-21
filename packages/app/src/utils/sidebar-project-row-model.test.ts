@@ -1,150 +1,155 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it } from "vitest";
 import {
   buildSidebarProjectRowModel,
   isSidebarProjectFlattened,
-} from './sidebar-project-row-model'
+} from "./sidebar-project-row-model";
 import type {
   SidebarProjectEntry,
   SidebarWorkspaceEntry,
-} from '@/hooks/use-sidebar-workspaces-list'
+} from "@/hooks/use-sidebar-workspaces-list";
 
 function workspace(overrides: Partial<SidebarWorkspaceEntry> = {}): SidebarWorkspaceEntry {
   return {
-    workspaceKey: 'srv:/repo',
-    serverId: 'srv',
-    workspaceId: '/repo',
-    workspaceKind: 'directory',
-    name: 'paseo',
+    workspaceKey: "srv:/repo",
+    serverId: "srv",
+    workspaceId: "/repo",
+    workspaceKind: "directory",
+    name: "paseo",
     activityAt: null,
-    statusBucket: 'done',
+    statusBucket: "done",
     diffStat: null,
     ...overrides,
-  }
+  };
 }
 
 function project(overrides: Partial<SidebarProjectEntry> = {}): SidebarProjectEntry {
   return {
-    projectKey: 'project-1',
-    projectName: 'paseo',
-    projectKind: 'git',
-    iconWorkingDir: '/repo',
-    statusBucket: 'done',
+    projectKey: "project-1",
+    projectName: "paseo",
+    projectKind: "git",
+    iconWorkingDir: "/repo",
+    statusBucket: "done",
     activeCount: 0,
     totalWorkspaces: 1,
     latestActivityAt: null,
     workspaces: [workspace()],
     ...overrides,
-  }
+  };
 }
 
-describe('buildSidebarProjectRowModel', () => {
-  it('flattens non-git projects with one workspace into a direct workspace row model', () => {
+describe("buildSidebarProjectRowModel", () => {
+  it("flattens non-git projects with one workspace into a direct workspace row model", () => {
     const flattenedWorkspace = workspace({
-      workspaceId: '/repo/non-git',
-      workspaceKind: 'directory',
-      statusBucket: 'running',
-    })
+      workspaceId: "/repo/non-git",
+      workspaceKind: "directory",
+      statusBucket: "running",
+    });
 
     const result = buildSidebarProjectRowModel({
       project: project({
-        projectKind: 'non_git',
+        projectKind: "non_git",
         workspaces: [flattenedWorkspace],
       }),
       collapsed: false,
-    })
+    });
 
     expect(result).toEqual({
-      kind: 'workspace_link',
+      kind: "workspace_link",
       workspace: flattenedWorkspace,
       selected: false,
       chevron: null,
-      trailingAction: 'none',
-    })
-  })
+      trailingAction: "none",
+    });
+  });
 
-  it('marks flattened non-git project rows as selected when their workspace is active', () => {
+  it("marks flattened non-git project rows as selected when their workspace is active", () => {
     const flattenedWorkspace = workspace({
-      serverId: 'srv-2',
-      workspaceId: '/repo/non-git',
-    })
+      serverId: "srv-2",
+      workspaceId: "/repo/non-git",
+    });
 
     const result = buildSidebarProjectRowModel({
       project: project({
-        projectKind: 'non_git',
+        projectKind: "non_git",
         workspaces: [flattenedWorkspace],
       }),
       collapsed: false,
-      serverId: 'srv-2',
+      serverId: "srv-2",
       activeWorkspaceSelection: {
-        serverId: 'srv-2',
-        workspaceId: '/repo/non-git',
+        serverId: "srv-2",
+        workspaceId: "/repo/non-git",
       },
-    })
+    });
 
     expect(result).toMatchObject({
-      kind: 'workspace_link',
+      kind: "workspace_link",
       selected: true,
-    })
-  })
+    });
+  });
 
-  it('flattens git projects with a single workspace and keeps the new worktree action', () => {
+  it("flattens git projects with a single workspace and keeps the new worktree action", () => {
     const flattenedWorkspace = workspace({
-      workspaceId: '/repo/main',
-      workspaceKind: 'local_checkout',
-    })
+      workspaceId: "/repo/main",
+      workspaceKind: "local_checkout",
+    });
 
     const result = buildSidebarProjectRowModel({
       project: project({
-        projectKind: 'git',
+        projectKind: "git",
         workspaces: [flattenedWorkspace],
       }),
       collapsed: true,
-    })
+    });
 
     expect(result).toEqual({
-      kind: 'workspace_link',
+      kind: "workspace_link",
       workspace: flattenedWorkspace,
       selected: false,
       chevron: null,
-      trailingAction: 'new_worktree',
-    })
-  })
+      trailingAction: "new_worktree",
+    });
+  });
 
-  it('keeps multi-workspace git projects as expandable sections with a new worktree action', () => {
+  it("keeps multi-workspace git projects as expandable sections with a new worktree action", () => {
     const result = buildSidebarProjectRowModel({
       project: project({
-        projectKind: 'git',
+        projectKind: "git",
         workspaces: [
-          workspace({ workspaceId: '/repo/main', workspaceKind: 'local_checkout' }),
-          workspace({ workspaceId: '/repo/feature', workspaceKind: 'worktree' }),
+          workspace({ workspaceId: "/repo/main", workspaceKind: "local_checkout" }),
+          workspace({ workspaceId: "/repo/feature", workspaceKind: "worktree" }),
         ],
       }),
       collapsed: true,
-    })
+    });
 
     expect(result).toEqual({
-      kind: 'project_section',
-      chevron: 'expand',
-      trailingAction: 'new_worktree',
-    })
-  })
-})
+      kind: "project_section",
+      chevron: "expand",
+      trailingAction: "new_worktree",
+    });
+  });
+});
 
-describe('isSidebarProjectFlattened', () => {
-  it('returns true for single-workspace projects regardless of kind', () => {
-    expect(isSidebarProjectFlattened(project({ projectKind: 'git', workspaces: [workspace()] }))).toBe(true)
+describe("isSidebarProjectFlattened", () => {
+  it("returns true for single-workspace projects regardless of kind", () => {
     expect(
-      isSidebarProjectFlattened(project({ projectKind: 'non_git', workspaces: [workspace()] }))
-    ).toBe(true)
-  })
+      isSidebarProjectFlattened(project({ projectKind: "git", workspaces: [workspace()] })),
+    ).toBe(true);
+    expect(
+      isSidebarProjectFlattened(project({ projectKind: "non_git", workspaces: [workspace()] })),
+    ).toBe(true);
+  });
 
-  it('returns false for multi-workspace projects', () => {
+  it("returns false for multi-workspace projects", () => {
     expect(
       isSidebarProjectFlattened(
         project({
-          workspaces: [workspace({ workspaceId: '/repo/main' }), workspace({ workspaceId: '/repo/feat' })],
-        })
-      )
-    ).toBe(false)
-  })
-})
+          workspaces: [
+            workspace({ workspaceId: "/repo/main" }),
+            workspace({ workspaceId: "/repo/feat" }),
+          ],
+        }),
+      ),
+    ).toBe(false);
+  });
+});

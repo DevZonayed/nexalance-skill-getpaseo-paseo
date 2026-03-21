@@ -26,11 +26,7 @@ export class Pcm16MonoResampler {
       throw new Error(`PCM16 chunk byteLength must be even, got ${pcm16le.length}`);
     }
 
-    const srcChunk = new Int16Array(
-      pcm16le.buffer,
-      pcm16le.byteOffset,
-      pcm16le.byteLength / 2
-    );
+    const srcChunk = new Int16Array(pcm16le.buffer, pcm16le.byteOffset, pcm16le.byteLength / 2);
 
     const hasCarry = this.carrySample !== null;
     const srcLen = srcChunk.length + (hasCarry ? 1 : 0);
@@ -80,4 +76,3 @@ export class Pcm16MonoResampler {
     return Buffer.from(outArr.buffer, outArr.byteOffset, outArr.byteLength);
   }
 }
-

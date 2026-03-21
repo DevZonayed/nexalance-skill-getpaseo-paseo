@@ -44,4 +44,3 @@ describe("getOrCreateServerId", () => {
     expect(readFileSync(idPath, "utf8").trim()).toBe("test-daemon-id");
   });
 });
-

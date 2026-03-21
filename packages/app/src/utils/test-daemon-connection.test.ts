@@ -99,7 +99,7 @@ describe("test-daemon-connection connectToDaemon", () => {
     await result.client.close();
 
     expect(daemonClientMock.createdConfigs[0]?.url).toBe(
-      "paseo+local://socket?path=%2Ftmp%2Fpaseo.sock"
+      "paseo+local://socket?path=%2Ftmp%2Fpaseo.sock",
     );
   });
 });

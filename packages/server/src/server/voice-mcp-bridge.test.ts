@@ -46,7 +46,7 @@ describe("voice MCP bridge", () => {
                 value: args.value ?? null,
               },
             };
-          }
+          },
         );
 
         return server;
@@ -75,8 +75,8 @@ describe("voice MCP bridge", () => {
       });
 
       const payload =
-        ((result as { structuredContent?: { callerAgentId?: string; value?: string | null } })
-          .structuredContent) ?? null;
+        (result as { structuredContent?: { callerAgentId?: string; value?: string | null } })
+          .structuredContent ?? null;
 
       expect(payload?.callerAgentId).toBe(callerAgentId);
     } finally {

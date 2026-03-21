@@ -89,7 +89,7 @@ export function listClaudeCatalogModels(): AgentModelDefinition[] {
       label: model.name,
       description: model.description,
       isDefault: model.isDefault,
-    })
+    }),
   );
 }
 

@@ -29,9 +29,9 @@ describe("workspace route parsing", () => {
   });
 
   it("decodes non-canonical base64url workspace IDs used by older links", () => {
-    expect(
-      decodeWorkspaceIdFromPathSegment("L1VzZXJzL21vYm91ZHJhL2Rldi9wYXNlby")
-    ).toBe("/Users/moboudra/dev/paseo");
+    expect(decodeWorkspaceIdFromPathSegment("L1VzZXJzL21vYm91ZHJhL2Rldi9wYXNlby")).toBe(
+      "/Users/moboudra/dev/paseo",
+    );
   });
 
   it("encodes file paths as base64url (no padding)", () => {
@@ -49,7 +49,7 @@ describe("workspace route parsing", () => {
 
   it("does not treat /tab routes as valid workspace routes", () => {
     expect(
-      parseHostWorkspaceRouteFromPathname("/h/local/workspace/L3RtcC9yZXBv/tab/draft_abc123")
+      parseHostWorkspaceRouteFromPathname("/h/local/workspace/L3RtcC9yZXBv/tab/draft_abc123"),
     ).toBeNull();
   });
 
@@ -64,8 +64,8 @@ describe("workspace route parsing", () => {
   it("parses workspace open intent from pathname query", () => {
     expect(
       parseHostWorkspaceOpenIntentFromPathname(
-        "/h/local/workspace/L3RtcC9yZXBv?open=agent%3Aagent-1"
-      )
+        "/h/local/workspace/L3RtcC9yZXBv?open=agent%3Aagent-1",
+      ),
     ).toEqual({
       kind: "agent",
       agentId: "agent-1",
@@ -86,7 +86,7 @@ describe("workspace route parsing", () => {
 
   it("uses the plain workspace route when workspace context is provided", () => {
     expect(buildHostAgentDetailRoute("local", "agent-1", "/tmp/repo")).toBe(
-      "/h/local/workspace/L3RtcC9yZXBv?open=agent%3Aagent-1"
+      "/h/local/workspace/L3RtcC9yZXBv?open=agent%3Aagent-1",
     );
   });
 });

@@ -22,10 +22,7 @@ function createScriptedCaller(responses: string[]) {
 describe("getStructuredAgentResponse", () => {
   it("retries on invalid JSON and succeeds", async () => {
     const schema = z.object({ title: z.string() });
-    const { caller, prompts } = createScriptedCaller([
-      "not json",
-      '{"title":"ok"}',
-    ]);
+    const { caller, prompts } = createScriptedCaller(["not json", '{"title":"ok"}']);
 
     const result = await getStructuredAgentResponse({
       caller,
@@ -42,10 +39,7 @@ describe("getStructuredAgentResponse", () => {
 
   it("retries on schema mismatch with validation errors", async () => {
     const schema = z.object({ count: z.number() });
-    const { caller, prompts } = createScriptedCaller([
-      '{"count":"nope"}',
-      '{"count":2}',
-    ]);
+    const { caller, prompts } = createScriptedCaller(['{"count":"nope"}', '{"count":2}']);
 
     const result = await getStructuredAgentResponse({
       caller,
@@ -62,10 +56,7 @@ describe("getStructuredAgentResponse", () => {
 
   it("fails after maxRetries with last response and validation errors", async () => {
     const schema = z.object({ count: z.number() });
-    const { caller } = createScriptedCaller([
-      '{"count":"nope"}',
-      '{"count":"still"}',
-    ]);
+    const { caller } = createScriptedCaller(['{"count":"nope"}', '{"count":"still"}']);
 
     try {
       await getStructuredAgentResponse({
@@ -82,7 +73,7 @@ describe("getStructuredAgentResponse", () => {
           name: "StructuredAgentResponseError",
           lastResponse: '{"count":"still"}',
           validationErrors: expect.arrayContaining([expect.stringContaining("count")]),
-        })
+        }),
       );
     }
   });
@@ -96,10 +87,7 @@ describe("getStructuredAgentResponse", () => {
       required: ["name"],
       additionalProperties: false,
     };
-    const { caller, prompts } = createScriptedCaller([
-      '{"name": 123}',
-      '{"name": "ok"}',
-    ]);
+    const { caller, prompts } = createScriptedCaller(['{"name": 123}', '{"name": "ok"}']);
 
     const result = await getStructuredAgentResponse({
       caller,
@@ -115,9 +103,7 @@ describe("getStructuredAgentResponse", () => {
 
   it("extracts JSON from markdown code fences", async () => {
     const schema = z.object({ message: z.string() });
-    const { caller } = createScriptedCaller([
-      '```json\n{"message": "hello"}\n```',
-    ]);
+    const { caller } = createScriptedCaller(['```json\n{"message": "hello"}\n```']);
 
     const result = await getStructuredAgentResponse({
       caller,
@@ -131,9 +117,7 @@ describe("getStructuredAgentResponse", () => {
 
   it("extracts JSON from plain code fences", async () => {
     const schema = z.object({ value: z.number() });
-    const { caller } = createScriptedCaller([
-      '```\n{"value": 42}\n```',
-    ]);
+    const { caller } = createScriptedCaller(['```\n{"value": 42}\n```']);
 
     const result = await getStructuredAgentResponse({
       caller,
@@ -149,7 +133,9 @@ describe("getStructuredAgentResponse", () => {
 describe("generateStructuredAgentResponseWithFallback", () => {
   const schema = z.object({ summary: z.string() });
 
-  function createManager(availability: Array<{ provider: string; available: boolean; error: string | null }>) {
+  function createManager(
+    availability: Array<{ provider: string; available: boolean; error: string | null }>,
+  ) {
     return {
       listProviderAvailability: async () => availability,
     } as unknown as AgentManager;
@@ -272,7 +258,7 @@ describe("generateStructuredAgentResponseWithFallback", () => {
         runner: async () => {
           throw new Error("failed");
         },
-      })
+      }),
     ).rejects.toBeInstanceOf(StructuredAgentFallbackError);
   });
 });

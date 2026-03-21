@@ -44,10 +44,7 @@ export class WaitForAgentTracker {
       try {
         cancel(reason);
       } catch (error) {
-        this.logger.warn(
-          { err: error, agentId },
-          "Cancel callback failed"
-        );
+        this.logger.warn({ err: error, agentId }, "Cancel callback failed");
       }
     }
     return true;

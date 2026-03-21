@@ -13,14 +13,14 @@ export function resolveVoiceMcpBridgeScriptPath(params: {
   if (explicitScriptPath) {
     if (!existsSync(explicitScriptPath)) {
       throw new Error(
-        `MCP stdio-socket bridge script not found at configured path: ${explicitScriptPath}`
+        `MCP stdio-socket bridge script not found at configured path: ${explicitScriptPath}`,
       );
     }
     return explicitScriptPath;
   }
 
   const scriptPath = fileURLToPath(
-    new URL(DEFAULT_BRIDGE_SCRIPT_RELATIVE_URL, params.bootstrapModuleUrl)
+    new URL(DEFAULT_BRIDGE_SCRIPT_RELATIVE_URL, params.bootstrapModuleUrl),
   );
   if (!existsSync(scriptPath)) {
     throw new Error(`MCP stdio-socket bridge script not found: ${scriptPath}`);

@@ -27,7 +27,10 @@ export function useImageAttachmentPicker(): UseImageAttachmentPickerResult {
     }
 
     if (!currentPermission?.granted) {
-      Alert.alert("Permission required", "Please allow access to your photo library to attach images.");
+      Alert.alert(
+        "Permission required",
+        "Please allow access to your photo library to attach images.",
+      );
       return false;
     }
 

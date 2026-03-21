@@ -1,21 +1,24 @@
-import { useCallback, useEffect, useMemo, useRef } from 'react'
-import { Keyboard, Platform, ScrollView, Text, View } from 'react-native'
-import { StyleSheet } from 'react-native-unistyles'
-import { AgentInputArea } from '@/components/agent-input-area'
-import { FileDropZone } from '@/components/file-drop-zone'
-import { AgentStreamView } from '@/components/agent-stream-view'
-import type { ImageAttachment } from '@/components/message-input'
-import { useAgentFormState } from '@/hooks/use-agent-form-state'
-import { useAgentInputDraft } from '@/hooks/use-agent-input-draft'
-import { useDraftAgentCreateFlow } from '@/hooks/use-draft-agent-create-flow'
-import { useHostRuntimeClient, useHostRuntimeIsConnected } from '@/runtime/host-runtime'
-import { buildDraftStoreKey } from '@/stores/draft-keys'
-import type { Agent } from '@/stores/session-store'
-import { encodeImages } from '@/utils/encode-images'
-import type { AgentCapabilityFlags, AgentSessionConfig } from '@server/server/agent/agent-sdk-types'
-import type { AgentSnapshotPayload } from '@server/shared/messages'
+import { useCallback, useEffect, useMemo, useRef } from "react";
+import { Keyboard, Platform, ScrollView, Text, View } from "react-native";
+import { StyleSheet } from "react-native-unistyles";
+import { AgentInputArea } from "@/components/agent-input-area";
+import { FileDropZone } from "@/components/file-drop-zone";
+import { AgentStreamView } from "@/components/agent-stream-view";
+import type { ImageAttachment } from "@/components/message-input";
+import { useAgentFormState } from "@/hooks/use-agent-form-state";
+import { useAgentInputDraft } from "@/hooks/use-agent-input-draft";
+import { useDraftAgentCreateFlow } from "@/hooks/use-draft-agent-create-flow";
+import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
+import { buildDraftStoreKey } from "@/stores/draft-keys";
+import type { Agent } from "@/stores/session-store";
+import { encodeImages } from "@/utils/encode-images";
+import type {
+  AgentCapabilityFlags,
+  AgentSessionConfig,
+} from "@server/server/agent/agent-sdk-types";
+import type { AgentSnapshotPayload } from "@server/shared/messages";
 
-const EMPTY_PENDING_PERMISSIONS = new Map()
+const EMPTY_PENDING_PERMISSIONS = new Map();
 const DRAFT_CAPABILITIES: AgentCapabilityFlags = {
   supportsStreaming: true,
   supportsSessionPersistence: false,
@@ -23,16 +26,16 @@ const DRAFT_CAPABILITIES: AgentCapabilityFlags = {
   supportsMcpServers: false,
   supportsReasoningStream: false,
   supportsToolInvocations: false,
-}
+};
 
 type WorkspaceDraftAgentTabProps = {
-  serverId: string
-  workspaceId: string
-  tabId: string
-  draftId: string
-  onCreated: (snapshot: AgentSnapshotPayload) => void
-  onOpenWorkspaceFile: (input: { filePath: string }) => void
-}
+  serverId: string;
+  workspaceId: string;
+  tabId: string;
+  draftId: string;
+  onCreated: (snapshot: AgentSnapshotPayload) => void;
+  onOpenWorkspaceFile: (input: { filePath: string }) => void;
+};
 
 export function WorkspaceDraftAgentTab({
   serverId,
@@ -42,16 +45,16 @@ export function WorkspaceDraftAgentTab({
   onCreated,
   onOpenWorkspaceFile,
 }: WorkspaceDraftAgentTabProps) {
-  const client = useHostRuntimeClient(serverId)
-  const isConnected = useHostRuntimeIsConnected(serverId)
-  const addImagesRef = useRef<((images: ImageAttachment[]) => void) | null>(null)
+  const client = useHostRuntimeClient(serverId);
+  const isConnected = useHostRuntimeIsConnected(serverId);
+  const addImagesRef = useRef<((images: ImageAttachment[]) => void) | null>(null);
   const draftInput = useAgentInputDraft(
     buildDraftStoreKey({
       serverId,
       agentId: tabId,
       draftId,
-    })
-  )
+    }),
+  );
 
   const {
     selectedProvider,
@@ -79,15 +82,15 @@ export function WorkspaceDraftAgentTab({
     isVisible: true,
     isCreateFlow: true,
     onlineServerIds: isConnected ? [serverId] : [],
-  })
+  });
 
   // Lock working directory to workspace.
   useEffect(() => {
     if (workingDir.trim() === workspaceId.trim()) {
-      return
+      return;
     }
-    setWorkingDir(workspaceId)
-  }, [setWorkingDir, workingDir, workspaceId])
+    setWorkingDir(workspaceId);
+  }, [setWorkingDir, workingDir, workspaceId]);
 
   const {
     formErrorMessage,
@@ -100,33 +103,33 @@ export function WorkspaceDraftAgentTab({
     getPendingServerId: () => serverId,
     validateBeforeSubmit: ({ text }) => {
       if (!text.trim()) {
-        return 'Initial prompt is required'
+        return "Initial prompt is required";
       }
       if (providerDefinitions.length === 0) {
-        return 'No available providers on the selected host'
+        return "No available providers on the selected host";
       }
       if (!client) {
-        return 'Host is not connected'
+        return "Host is not connected";
       }
-      return null
+      return null;
     },
     onBeforeSubmit: () => {
-      void persistFormPreferences()
-      if (Platform.OS === 'web') {
-        ;(document.activeElement as HTMLElement | null)?.blur?.()
+      void persistFormPreferences();
+      if (Platform.OS === "web") {
+        (document.activeElement as HTMLElement | null)?.blur?.();
       }
-      Keyboard.dismiss()
+      Keyboard.dismiss();
     },
     buildDraftAgent: (attempt) => {
-      const now = attempt.timestamp
-      const model = selectedModel.trim() || null
-      const thinkingOptionId = selectedThinkingOptionId.trim() || null
-      const modeId = modeOptions.length > 0 && selectedMode !== '' ? selectedMode : null
+      const now = attempt.timestamp;
+      const model = selectedModel.trim() || null;
+      const thinkingOptionId = selectedThinkingOptionId.trim() || null;
+      const modeId = modeOptions.length > 0 && selectedMode !== "" ? selectedMode : null;
       return {
         serverId,
         id: tabId,
         provider: selectedProvider,
-        status: 'running',
+        status: "running",
         createdAt: now,
         updatedAt: now,
         lastUserMessageAt: now,
@@ -137,57 +140,57 @@ export function WorkspaceDraftAgentTab({
         pendingPermissions: [],
         persistence: null,
         runtimeInfo: { provider: selectedProvider, sessionId: null, model, modeId },
-        title: 'Agent',
+        title: "Agent",
         cwd: workspaceId,
         model,
         thinkingOptionId,
         labels: {},
-      }
+      };
     },
     createRequest: async ({ attempt, text, images }) => {
       if (!client) {
-        throw new Error('Host is not connected')
+        throw new Error("Host is not connected");
       }
 
-      const modeId = modeOptions.length > 0 && selectedMode !== '' ? selectedMode : undefined
-      const trimmedModel = selectedModel.trim()
-      const trimmedThinkingOptionId = selectedThinkingOptionId.trim()
+      const modeId = modeOptions.length > 0 && selectedMode !== "" ? selectedMode : undefined;
+      const trimmedModel = selectedModel.trim();
+      const trimmedThinkingOptionId = selectedThinkingOptionId.trim();
       const config: AgentSessionConfig = {
         provider: selectedProvider,
         cwd: workspaceId,
         ...(modeId ? { modeId } : {}),
         ...(trimmedModel ? { model: trimmedModel } : {}),
         ...(trimmedThinkingOptionId ? { thinkingOptionId: trimmedThinkingOptionId } : {}),
-      }
+      };
 
-      const imagesData = await encodeImages(images)
+      const imagesData = await encodeImages(images);
       const result = await client.createAgent({
         config,
         initialPrompt: text,
         clientMessageId: attempt.clientMessageId,
         ...(imagesData && imagesData.length > 0 ? { images: imagesData } : {}),
-      })
+      });
 
       return {
         agentId: result.id,
         result,
-      }
+      };
     },
     onCreateSuccess: ({ result }) => {
-      onCreated(result)
+      onCreated(result);
     },
-  })
+  });
 
   const draftCommandConfig = useMemo(() => {
     return {
       provider: selectedProvider,
       cwd: workspaceId,
-      ...(modeOptions.length > 0 && selectedMode !== '' ? { modeId: selectedMode } : {}),
+      ...(modeOptions.length > 0 && selectedMode !== "" ? { modeId: selectedMode } : {}),
       ...(selectedModel.trim() ? { model: selectedModel.trim() } : {}),
       ...(selectedThinkingOptionId.trim()
         ? { thinkingOptionId: selectedThinkingOptionId.trim() }
         : {}),
-    }
+    };
   }, [
     modeOptions.length,
     selectedMode,
@@ -195,15 +198,15 @@ export function WorkspaceDraftAgentTab({
     selectedProvider,
     selectedThinkingOptionId,
     workspaceId,
-  ])
+  ]);
 
   const handleFilesDropped = useCallback((files: ImageAttachment[]) => {
-    addImagesRef.current?.(files)
-  }, [])
+    addImagesRef.current?.(files);
+  }, []);
 
   const handleAddImagesCallback = useCallback((addImages: (images: ImageAttachment[]) => void) => {
-    addImagesRef.current = addImages
-  }, [])
+    addImagesRef.current = addImages;
+  }, []);
 
   return (
     <FileDropZone onFilesDropped={handleFilesDropped}>
@@ -221,7 +224,10 @@ export function WorkspaceDraftAgentTab({
               />
             </View>
           ) : (
-            <ScrollView style={styles.scrollView} contentContainerStyle={styles.configScrollContent}>
+            <ScrollView
+              style={styles.scrollView}
+              contentContainerStyle={styles.configScrollContent}
+            >
               <View style={styles.configSection}>
                 {formErrorMessage ? (
                   <View style={styles.errorContainer}>
@@ -271,13 +277,13 @@ export function WorkspaceDraftAgentTab({
         </View>
       </View>
     </FileDropZone>
-  )
+  );
 }
 
 const styles = StyleSheet.create((theme) => ({
   container: {
     flex: 1,
-    width: '100%',
+    width: "100%",
     backgroundColor: theme.colors.surface0,
   },
   contentContainer: {
@@ -298,7 +304,7 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[3],
   },
   inputAreaWrapper: {
-    width: '100%',
+    width: "100%",
     backgroundColor: theme.colors.surface0,
   },
   errorContainer: {
@@ -313,4 +319,4 @@ const styles = StyleSheet.create((theme) => ({
   errorText: {
     color: theme.colors.destructive,
   },
-}))
+}));

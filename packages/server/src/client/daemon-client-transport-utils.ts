@@ -6,7 +6,7 @@ export function copyArrayBufferViewToBuffer(data: ArrayBufferView): ArrayBuffer 
 }
 
 export function normalizeTransportPayload(
-  data: string | Uint8Array | ArrayBuffer
+  data: string | Uint8Array | ArrayBuffer,
 ): string | ArrayBuffer {
   if (typeof data === "string" || data instanceof ArrayBuffer) {
     return data;

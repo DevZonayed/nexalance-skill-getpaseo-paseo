@@ -15,9 +15,7 @@ const NON_GIT_CHECKOUT_STATUS = {
   isPaseoOwnedWorktree: false,
   currentBranch: null,
   repoRoot: "/tmp/repo",
-} as Awaited<
-  ReturnType<NonNullable<AgentMetadataGeneratorDeps["getCheckoutStatus"]>>
->;
+} as Awaited<ReturnType<NonNullable<AgentMetadataGeneratorDeps["getCheckoutStatus"]>>>;
 
 const ELIGIBLE_WORKTREE_CHECKOUT_STATUS = {
   isGit: true,
@@ -32,20 +30,16 @@ const ELIGIBLE_WORKTREE_CHECKOUT_STATUS = {
   hasRemote: false,
   remoteUrl: null,
   isPaseoOwnedWorktree: true,
-} as Awaited<
-  ReturnType<NonNullable<AgentMetadataGeneratorDeps["getCheckoutStatus"]>>
->;
+} as Awaited<ReturnType<NonNullable<AgentMetadataGeneratorDeps["getCheckoutStatus"]>>>;
 
 function createDeps(
   generateStructuredAgentResponseWithFallback: NonNullable<
     AgentMetadataGeneratorDeps["generateStructuredAgentResponseWithFallback"]
-  >
+  >,
 ): AgentMetadataGeneratorDeps {
   return {
     generateStructuredAgentResponseWithFallback,
-    getCheckoutStatus: vi
-      .fn()
-      .mockResolvedValue(NON_GIT_CHECKOUT_STATUS) as NonNullable<
+    getCheckoutStatus: vi.fn().mockResolvedValue(NON_GIT_CHECKOUT_STATUS) as NonNullable<
       AgentMetadataGeneratorDeps["getCheckoutStatus"]
     >,
   };
@@ -71,10 +65,7 @@ describe("agent metadata generator auto-title", () => {
     });
 
     expect(setTitle).toHaveBeenCalledTimes(1);
-    expect(setTitle).toHaveBeenCalledWith(
-      "agent-1",
-      "x".repeat(MAX_AUTO_AGENT_TITLE_CHARS)
-    );
+    expect(setTitle).toHaveBeenCalledWith("agent-1", "x".repeat(MAX_AUTO_AGENT_TITLE_CHARS));
   });
 
   it("does not generate an auto title when an explicit title is provided", async () => {
@@ -105,17 +96,13 @@ describe("agent metadata generator auto-title", () => {
       setTitle,
       notifyAgentState,
     } as unknown as AgentManager;
-    const renameCurrentBranch = vi
-      .fn()
-      .mockResolvedValue({
-        previousBranch: "metadata-worktree",
-        currentBranch: "feature/metadata-worktree",
-      }) as NonNullable<AgentMetadataGeneratorDeps["renameCurrentBranch"]>;
+    const renameCurrentBranch = vi.fn().mockResolvedValue({
+      previousBranch: "metadata-worktree",
+      currentBranch: "feature/metadata-worktree",
+    }) as NonNullable<AgentMetadataGeneratorDeps["renameCurrentBranch"]>;
     const generateStructured = vi.fn().mockResolvedValue({
       branch: "feature/metadata-worktree",
-    }) as NonNullable<
-      AgentMetadataGeneratorDeps["generateStructuredAgentResponseWithFallback"]
-    >;
+    }) as NonNullable<AgentMetadataGeneratorDeps["generateStructuredAgentResponseWithFallback"]>;
     const getCheckoutStatus = vi
       .fn()
       .mockResolvedValue(ELIGIBLE_WORKTREE_CHECKOUT_STATUS) as NonNullable<
@@ -139,7 +126,7 @@ describe("agent metadata generator auto-title", () => {
 
     expect(renameCurrentBranch).toHaveBeenCalledWith(
       "/tmp/repo/metadata-worktree",
-      "feature/metadata-worktree"
+      "feature/metadata-worktree",
     );
     expect(notifyAgentState).toHaveBeenCalledWith("agent-branch");
     expect(setTitle).not.toHaveBeenCalled();

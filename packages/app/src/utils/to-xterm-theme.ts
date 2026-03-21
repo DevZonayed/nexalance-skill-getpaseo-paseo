@@ -32,4 +32,3 @@ export function toXtermTheme(terminal: TerminalPalette): ITheme {
     brightWhite: terminal.brightWhite,
   };
 }
-

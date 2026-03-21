@@ -1,15 +1,12 @@
-import { test as base, expect, type Page } from '@playwright/test';
-import {
-  buildCreateAgentPreferences,
-  buildSeededHost,
-} from './helpers/daemon-registry';
+import { test as base, expect, type Page } from "@playwright/test";
+import { buildCreateAgentPreferences, buildSeededHost } from "./helpers/daemon-registry";
 
 // Extend base test to provide dynamic baseURL from global-setup
 const test = base.extend({
   baseURL: async ({}, use) => {
     const metroPort = process.env.E2E_METRO_PORT;
     if (!metroPort) {
-      throw new Error('E2E_METRO_PORT not set - globalSetup must run first');
+      throw new Error("E2E_METRO_PORT not set - globalSetup must run first");
     }
     await use(`http://localhost:${metroPort}`);
   },
@@ -22,19 +19,19 @@ test.beforeEach(async ({ page }) => {
   const metroPort = process.env.E2E_METRO_PORT;
   if (!daemonPort) {
     throw new Error(
-      'E2E_DAEMON_PORT is not set. Refusing to run e2e against the default daemon (e.g. localhost:6767). ' +
-        'Ensure Playwright `globalSetup` starts the e2e daemon and exports E2E_DAEMON_PORT.'
+      "E2E_DAEMON_PORT is not set. Refusing to run e2e against the default daemon (e.g. localhost:6767). " +
+        "Ensure Playwright `globalSetup` starts the e2e daemon and exports E2E_DAEMON_PORT.",
     );
   }
-  if (daemonPort === '6767') {
+  if (daemonPort === "6767") {
     throw new Error(
-      'E2E_DAEMON_PORT is 6767. Refusing to run e2e against the default local daemon. ' +
-        'Fix Playwright globalSetup to start an isolated test daemon and export its port.'
+      "E2E_DAEMON_PORT is 6767. Refusing to run e2e against the default local daemon. " +
+        "Fix Playwright globalSetup to start an isolated test daemon and export its port.",
     );
   }
   if (!metroPort) {
     throw new Error(
-      'E2E_METRO_PORT is not set. Ensure Playwright `globalSetup` starts Metro and exports E2E_METRO_PORT.'
+      "E2E_METRO_PORT is not set. Ensure Playwright `globalSetup` starts Metro and exports E2E_METRO_PORT.",
     );
   }
 
@@ -42,17 +39,17 @@ test.beforeEach(async ({ page }) => {
   // This blocks both HTTP and WS attempts to :6767 (before any navigation).
   await page.route(/:(6767)\b/, (route) => route.abort());
   await page.routeWebSocket(/:(6767)\b/, async (ws) => {
-    await ws.close({ code: 1008, reason: 'Blocked connection to localhost:6767 during e2e.' });
+    await ws.close({ code: 1008, reason: "Blocked connection to localhost:6767 during e2e." });
   });
 
   const entries: string[] = [];
   consoleEntries.set(page, entries);
 
-  page.on('console', (message) => {
+  page.on("console", (message) => {
     entries.push(`[console:${message.type()}] ${message.text()}`);
   });
 
-  page.on('pageerror', (error) => {
+  page.on("pageerror", (error) => {
     entries.push(`[pageerror] ${error.message}`);
   });
 
@@ -60,7 +57,7 @@ test.beforeEach(async ({ page }) => {
   const seedNonce = Math.random().toString(36).slice(2);
   const serverId = process.env.E2E_SERVER_ID;
   if (!serverId) {
-    throw new Error('E2E_SERVER_ID is not set - expected from Playwright globalSetup.');
+    throw new Error("E2E_SERVER_ID is not set - expected from Playwright globalSetup.");
   }
   const testDaemon = buildSeededHost({
     serverId,
@@ -74,7 +71,7 @@ test.beforeEach(async ({ page }) => {
       // `addInitScript` runs on every navigation (including reloads). Some tests intentionally
       // override storage and reload; they can opt out of seeding for the *next* navigation by
       // setting this flag before the reload.
-      const disableOnceKey = '@paseo:e2e-disable-default-seed-once';
+      const disableOnceKey = "@paseo:e2e-disable-default-seed-once";
       const disableValue = localStorage.getItem(disableOnceKey);
       if (disableValue) {
         localStorage.removeItem(disableOnceKey);
@@ -83,15 +80,15 @@ test.beforeEach(async ({ page }) => {
         }
       }
 
-      localStorage.setItem('@paseo:e2e', '1');
-      localStorage.setItem('@paseo:e2e-seed-nonce', seedNonce);
+      localStorage.setItem("@paseo:e2e", "1");
+      localStorage.setItem("@paseo:e2e-seed-nonce", seedNonce);
 
       // Hard-reset anything that could point to a developer's real daemon.
-      localStorage.setItem('@paseo:daemon-registry', JSON.stringify([daemon]));
-      localStorage.removeItem('@paseo:settings');
-      localStorage.setItem('@paseo:create-agent-preferences', JSON.stringify(preferences));
+      localStorage.setItem("@paseo:daemon-registry", JSON.stringify([daemon]));
+      localStorage.removeItem("@paseo:settings");
+      localStorage.setItem("@paseo:create-agent-preferences", JSON.stringify(preferences));
     },
-    { daemon: testDaemon, preferences: createAgentPreferences, seedNonce }
+    { daemon: testDaemon, preferences: createAgentPreferences, seedNonce },
   );
 });
 
@@ -105,9 +102,9 @@ test.afterEach(async ({ page }, testInfo) => {
     return;
   }
 
-  await testInfo.attach('browser-console', {
-    body: entries.join('\n'),
-    contentType: 'text/plain',
+  await testInfo.attach("browser-console", {
+    body: entries.join("\n"),
+    contentType: "text/plain",
   });
 });
 

@@ -20,9 +20,24 @@ import {
 } from "../tool-call-detail-primitives.js";
 
 const OpencodeKnownToolDetailSchema = z.union([
-  toolDetailBranchByToolName("shell", ToolShellInputSchema, ToolShellOutputSchema, toShellToolDetail),
-  toolDetailBranchByToolName("bash", ToolShellInputSchema, ToolShellOutputSchema, toShellToolDetail),
-  toolDetailBranchByToolName("exec_command", ToolShellInputSchema, ToolShellOutputSchema, toShellToolDetail),
+  toolDetailBranchByToolName(
+    "shell",
+    ToolShellInputSchema,
+    ToolShellOutputSchema,
+    toShellToolDetail,
+  ),
+  toolDetailBranchByToolName(
+    "bash",
+    ToolShellInputSchema,
+    ToolShellOutputSchema,
+    toShellToolDetail,
+  ),
+  toolDetailBranchByToolName(
+    "exec_command",
+    ToolShellInputSchema,
+    ToolShellOutputSchema,
+    toShellToolDetail,
+  ),
   toolDetailBranchByToolName("read", ToolReadInputSchema, z.unknown(), (input, output) => {
     const parsedOutput = ToolReadOutputSchema.safeParse(output);
     return toReadToolDetail(input, parsedOutput.success ? parsedOutput.data : null);
@@ -31,24 +46,49 @@ const OpencodeKnownToolDetailSchema = z.union([
     const parsedOutput = ToolReadOutputSchema.safeParse(output);
     return toReadToolDetail(input, parsedOutput.success ? parsedOutput.data : null);
   }),
-  toolDetailBranchByToolName("write", ToolWriteInputSchema, ToolWriteOutputSchema, toWriteToolDetail),
-  toolDetailBranchByToolName("write_file", ToolWriteInputSchema, ToolWriteOutputSchema, toWriteToolDetail),
-  toolDetailBranchByToolName("create_file", ToolWriteInputSchema, ToolWriteOutputSchema, toWriteToolDetail),
+  toolDetailBranchByToolName(
+    "write",
+    ToolWriteInputSchema,
+    ToolWriteOutputSchema,
+    toWriteToolDetail,
+  ),
+  toolDetailBranchByToolName(
+    "write_file",
+    ToolWriteInputSchema,
+    ToolWriteOutputSchema,
+    toWriteToolDetail,
+  ),
+  toolDetailBranchByToolName(
+    "create_file",
+    ToolWriteInputSchema,
+    ToolWriteOutputSchema,
+    toWriteToolDetail,
+  ),
   toolDetailBranchByToolName("edit", ToolEditInputSchema, ToolEditOutputSchema, toEditToolDetail),
-  toolDetailBranchByToolName("apply_patch", ToolEditInputSchema, ToolEditOutputSchema, toEditToolDetail),
-  toolDetailBranchByToolName("apply_diff", ToolEditInputSchema, ToolEditOutputSchema, toEditToolDetail),
+  toolDetailBranchByToolName(
+    "apply_patch",
+    ToolEditInputSchema,
+    ToolEditOutputSchema,
+    toEditToolDetail,
+  ),
+  toolDetailBranchByToolName(
+    "apply_diff",
+    ToolEditInputSchema,
+    ToolEditOutputSchema,
+    toEditToolDetail,
+  ),
   toolDetailBranchByToolName("search", ToolSearchInputSchema, z.unknown(), (input) =>
-    toSearchToolDetail({ input, toolName: "search" })
+    toSearchToolDetail({ input, toolName: "search" }),
   ),
   toolDetailBranchByToolName("web_search", ToolSearchInputSchema, z.unknown(), (input) =>
-    toSearchToolDetail({ input, toolName: "web_search" })
+    toSearchToolDetail({ input, toolName: "web_search" }),
   ),
 ]);
 
 export function deriveOpencodeToolDetail(
   toolName: string,
   input: unknown,
-  output: unknown
+  output: unknown,
 ): ToolCallDetail {
   const parsed = OpencodeKnownToolDetailSchema.safeParse({
     toolName,

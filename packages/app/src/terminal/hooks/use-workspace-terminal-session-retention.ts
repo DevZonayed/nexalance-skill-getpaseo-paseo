@@ -4,9 +4,7 @@ import {
   retainWorkspaceTerminalSession,
 } from "@/terminal/runtime/workspace-terminal-session";
 
-export function useWorkspaceTerminalSessionRetention(input: {
-  scopeKey: string | null;
-}): void {
+export function useWorkspaceTerminalSessionRetention(input: { scopeKey: string | null }): void {
   useEffect(() => {
     if (!input.scopeKey) {
       return;

@@ -40,11 +40,7 @@ import {
   TriangleAlertIcon,
   Scissors,
 } from "lucide-react-native";
-import {
-  StyleSheet,
-  useUnistyles,
-  UnistylesRuntime,
-} from "react-native-unistyles";
+import { StyleSheet, useUnistyles, UnistylesRuntime } from "react-native-unistyles";
 import Animated, {
   Easing,
   cancelAnimation,
@@ -53,23 +49,14 @@ import Animated, {
   withRepeat,
   withTiming,
 } from "react-native-reanimated";
-import Svg, {
-  Defs,
-  LinearGradient as SvgLinearGradient,
-  Rect,
-  Stop,
-} from "react-native-svg";
+import Svg, { Defs, LinearGradient as SvgLinearGradient, Rect, Stop } from "react-native-svg";
 import { theme } from "@/styles/theme";
-import {
-  createMarkdownStyles,
-} from "@/styles/markdown-styles";
+import { createMarkdownStyles } from "@/styles/markdown-styles";
 import { Colors, Fonts } from "@/constants/theme";
 import * as Clipboard from "expo-clipboard";
 import type { TodoEntry, UserMessageImageAttachment } from "@/types/stream";
 import type { ToolCallDetail } from "@server/server/agent/agent-sdk-types";
-import {
-  buildToolCallDisplayModel,
-} from "@/utils/tool-call-display";
+import { buildToolCallDisplayModel } from "@/utils/tool-call-display";
 import { resolveToolCallIcon } from "@/utils/tool-call-icon";
 import {
   hasMeaningfulToolCallDetail,
@@ -159,10 +146,7 @@ function ensureWebToolCallShimmerKeyframes() {
   webToolCallShimmerRegistered = true;
 }
 
-function getWheelEventElementTarget(
-  event: WheelEvent,
-  fallback: HTMLElement
-): HTMLElement {
+function getWheelEventElementTarget(event: WheelEvent, fallback: HTMLElement): HTMLElement {
   const { target } = event;
   if (target instanceof HTMLElement) {
     return target;
@@ -176,7 +160,7 @@ function getWheelEventElementTarget(
 function canElementScrollInDirection(
   element: HTMLElement,
   axis: ScrollAxis,
-  delta: number
+  delta: number,
 ): boolean {
   if (delta === 0) {
     return false;
@@ -192,7 +176,9 @@ function canElementScrollInDirection(
 
   const scrollPosition = axis === "x" ? element.scrollLeft : element.scrollTop;
   const scrollSize =
-    axis === "x" ? element.scrollWidth - element.clientWidth : element.scrollHeight - element.clientHeight;
+    axis === "x"
+      ? element.scrollWidth - element.clientWidth
+      : element.scrollHeight - element.clientHeight;
   if (scrollSize <= SCROLL_EDGE_EPSILON) {
     return false;
   }
@@ -207,7 +193,7 @@ function canScrollInsideDetailFromTarget(
   detailRoot: HTMLElement,
   startElement: HTMLElement,
   axis: ScrollAxis,
-  delta: number
+  delta: number,
 ): boolean {
   if (delta === 0) {
     return false;
@@ -226,14 +212,10 @@ function canScrollInsideDetailFromTarget(
   return false;
 }
 
-function shouldStopDetailWheelPropagation(
-  detailRoot: HTMLElement,
-  event: WheelEvent
-): boolean {
+function shouldStopDetailWheelPropagation(detailRoot: HTMLElement, event: WheelEvent): boolean {
   const startElement = getWheelEventElementTarget(event, detailRoot);
   const verticalDelta = event.deltaY;
-  const horizontalDelta =
-    event.deltaX !== 0 ? event.deltaX : (event.shiftKey ? event.deltaY : 0);
+  const horizontalDelta = event.deltaX !== 0 ? event.deltaX : event.shiftKey ? event.deltaY : 0;
 
   const hasVerticalIntent = Math.abs(verticalDelta) > SCROLL_EDGE_EPSILON;
   const hasHorizontalIntent = Math.abs(horizontalDelta) > SCROLL_EDGE_EPSILON;
@@ -245,12 +227,7 @@ function shouldStopDetailWheelPropagation(
     ? canScrollInsideDetailFromTarget(detailRoot, startElement, "y", verticalDelta)
     : false;
   const canScrollHorizontally = hasHorizontalIntent
-    ? canScrollInsideDetailFromTarget(
-        detailRoot,
-        startElement,
-        "x",
-        horizontalDelta
-      )
+    ? canScrollInsideDetailFromTarget(detailRoot, startElement, "x", horizontalDelta)
     : false;
 
   if (hasVerticalIntent && hasHorizontalIntent) {
@@ -336,11 +313,7 @@ const userMessageStylesheet = StyleSheet.create((theme) => ({
   },
 }));
 
-function UserMessageAttachmentThumbnail({
-  image,
-}: {
-  image: UserMessageImageAttachment;
-}) {
+function UserMessageAttachmentThumbnail({ image }: { image: UserMessageImageAttachment }) {
   const uri = useAttachmentPreviewUrl(image);
   if (!uri) {
     return <View style={userMessageStylesheet.imageThumbnailPlaceholder} />;
@@ -358,12 +331,10 @@ export const UserMessage = memo(function UserMessage({
 }: UserMessageProps) {
   const [messageHovered, setMessageHovered] = useState(false);
   const [copyButtonHovered, setCopyButtonHovered] = useState(false);
-  const resolvedDisableOuterSpacing =
-    useDisableOuterSpacing(disableOuterSpacing);
+  const resolvedDisableOuterSpacing = useDisableOuterSpacing(disableOuterSpacing);
   const hasText = message.trim().length > 0;
   const hasImages = images.length > 0;
-  const showCopyButton =
-    hasText && (Platform.OS !== "web" || messageHovered || copyButtonHovered);
+  const showCopyButton = hasText && (Platform.OS !== "web" || messageHovered || copyButtonHovered);
 
   return (
     <View
@@ -372,20 +343,14 @@ export const UserMessage = memo(function UserMessage({
         !resolvedDisableOuterSpacing && [
           isFirstInGroup && { marginTop: theme.spacing[4] },
           isLastInGroup && { marginBottom: theme.spacing[4] },
-          !isFirstInGroup || !isLastInGroup
-            ? { marginBottom: theme.spacing[1] }
-            : undefined,
+          !isFirstInGroup || !isLastInGroup ? { marginBottom: theme.spacing[1] } : undefined,
         ],
       ]}
     >
       <Pressable
         style={userMessageStylesheet.content}
-        onHoverIn={
-          Platform.OS === "web" ? () => setMessageHovered(true) : undefined
-        }
-        onHoverOut={
-          Platform.OS === "web" ? () => setMessageHovered(false) : undefined
-        }
+        onHoverIn={Platform.OS === "web" ? () => setMessageHovered(true) : undefined}
+        onHoverOut={Platform.OS === "web" ? () => setMessageHovered(false) : undefined}
       >
         <View style={userMessageStylesheet.bubble}>
           {hasImages ? (
@@ -396,10 +361,7 @@ export const UserMessage = memo(function UserMessage({
               ]}
             >
               {images.map((image, index) => (
-                <View
-                  key={`${image.id}-${index}`}
-                  style={userMessageStylesheet.imagePill}
-                >
+                <View key={`${image.id}-${index}`} style={userMessageStylesheet.imagePill}>
                   <UserMessageAttachmentThumbnail image={image} />
                 </View>
               ))}
@@ -475,11 +437,7 @@ function MarkdownLink({
   const [hovered, setHovered] = useState(false);
   if (Platform.OS !== "web") {
     return (
-      <Text
-        accessibilityRole="link"
-        onPress={() => onPress(href)}
-        style={style}
-      >
+      <Text accessibilityRole="link" onPress={() => onPress(href)} style={style}>
         {children}
       </Text>
     );
@@ -492,25 +450,25 @@ function MarkdownLink({
       onHoverIn={() => setHovered(true)}
       onHoverOut={() => setHovered(false)}
     >
-      <Text style={[style, hovered && { textDecorationLine: "underline" }]}>
-        {children}
-      </Text>
+      <Text style={[style, hovered && { textDecorationLine: "underline" }]}>{children}</Text>
     </Pressable>
   );
 }
 
 function getInlineCodeAutoLinkUrl(
   markdownParser: ReturnType<typeof MarkdownIt>,
-  content: string
+  content: string,
 ): string | null {
   const trimmed = content.trim();
   if (!trimmed) {
     return null;
   }
 
-  const matches = markdownParser.linkify.match(trimmed) as
-    | Array<{ index: number; lastIndex: number; url: string }>
-    | null;
+  const matches = markdownParser.linkify.match(trimmed) as Array<{
+    index: number;
+    lastIndex: number;
+    url: string;
+  }> | null;
   if (!matches || matches.length !== 1) {
     return null;
   }
@@ -604,9 +562,7 @@ export const TurnCopyButton = memo(function TurnCopyButton({
       style={[turnCopyButtonStylesheet.container, containerStyle]}
       accessibilityRole="button"
       accessibilityLabel={
-        copied
-          ? (copiedAccessibilityLabel ?? "Copied")
-          : (accessibilityLabel ?? "Copy turn")
+        copied ? (copiedAccessibilityLabel ?? "Copied") : (accessibilityLabel ?? "Copy turn")
       }
     >
       {({ hovered }) => {
@@ -767,41 +723,38 @@ export const AssistantMessage = memo(function AssistantMessage({
   });
 
   const { theme, rt } = useUnistyles();
-  const resolvedDisableOuterSpacing =
-    useDisableOuterSpacing(disableOuterSpacing);
+  const resolvedDisableOuterSpacing = useDisableOuterSpacing(disableOuterSpacing);
 
   const markdownStyles = useMemo(() => createMarkdownStyles(theme), [rt.themeName]);
 
-  const markdownParser = useMemo(
-    () => {
-      const parser = MarkdownIt({ typographer: true, linkify: true });
-      const defaultValidateLink = parser.validateLink.bind(parser);
-      parser.validateLink = (url: string) => {
-        if (url.trim().toLowerCase().startsWith("file://")) {
-          return true;
-        }
+  const markdownParser = useMemo(() => {
+    const parser = MarkdownIt({ typographer: true, linkify: true });
+    const defaultValidateLink = parser.validateLink.bind(parser);
+    parser.validateLink = (url: string) => {
+      if (url.trim().toLowerCase().startsWith("file://")) {
+        return true;
+      }
 
-        return defaultValidateLink(url);
-      };
-      return parser;
-    },
-    []
-  );
+      return defaultValidateLink(url);
+    };
+    return parser;
+  }, []);
 
-  const handleLinkPress = useCallback((url: string) => {
-    const fileTarget = onInlinePathPress
-      ? parseAssistantFileLink(url, { workspaceRoot })
-      : null;
-    if (fileTarget) {
-      onInlinePathPress?.(fileTarget);
+  const handleLinkPress = useCallback(
+    (url: string) => {
+      const fileTarget = onInlinePathPress ? parseAssistantFileLink(url, { workspaceRoot }) : null;
+      if (fileTarget) {
+        onInlinePathPress?.(fileTarget);
+        return false;
+      }
+
+      void openExternalUrl(url);
+      // react-native-markdown-display opens the link itself when this returns true.
+      // We already handled it above, so return false to avoid duplicate opens.
       return false;
-    }
-
-    void openExternalUrl(url);
-    // react-native-markdown-display opens the link itself when this returns true.
-    // We already handled it above, so return false to avoid duplicate opens.
-    return false;
-  }, [onInlinePathPress, workspaceRoot]);
+    },
+    [onInlinePathPress, workspaceRoot],
+  );
 
   const markdownRules = useMemo(() => {
     return {
@@ -810,7 +763,7 @@ export const AssistantMessage = memo(function AssistantMessage({
         _children: ReactNode[],
         _parent: any,
         styles: any,
-        inheritedStyles: any = {}
+        inheritedStyles: any = {},
       ) => (
         <Text key={node.key} style={[inheritedStyles, styles.text]}>
           {node.content}
@@ -821,12 +774,9 @@ export const AssistantMessage = memo(function AssistantMessage({
         children: ReactNode[],
         _parent: any,
         styles: any,
-        inheritedStyles: any = {}
+        inheritedStyles: any = {},
       ) => (
-        <Text
-          key={node.key}
-          style={[inheritedStyles, styles.textgroup]}
-        >
+        <Text key={node.key} style={[inheritedStyles, styles.textgroup]}>
           {children}
         </Text>
       ),
@@ -835,12 +785,9 @@ export const AssistantMessage = memo(function AssistantMessage({
         _children: ReactNode[],
         _parent: any,
         styles: any,
-        inheritedStyles: any = {}
+        inheritedStyles: any = {},
       ) => (
-        <Text
-          key={node.key}
-          style={[inheritedStyles, styles.code_block]}
-        >
+        <Text key={node.key} style={[inheritedStyles, styles.code_block]}>
           {node.content}
         </Text>
       ),
@@ -849,7 +796,7 @@ export const AssistantMessage = memo(function AssistantMessage({
         _children: ReactNode[],
         _parent: any,
         styles: any,
-        inheritedStyles: any = {}
+        inheritedStyles: any = {},
       ) => (
         <Text key={node.key} style={[inheritedStyles, styles.fence]}>
           {node.content}
@@ -860,16 +807,14 @@ export const AssistantMessage = memo(function AssistantMessage({
         _children: ReactNode[],
         parent: any,
         styles: any,
-        inheritedStyles: any = {}
+        inheritedStyles: any = {},
       ) => {
         const content = node.content ?? "";
         const isLinkedInlineCode =
           nodeHasParentType(parent, "link") ||
-          (!Array.isArray(parent) &&
-            typeof parent?.attributes?.href === "string");
-        const parsed = onInlinePathPress && !isLinkedInlineCode
-          ? parseInlinePathToken(content)
-          : null;
+          (!Array.isArray(parent) && typeof parent?.attributes?.href === "string");
+        const parsed =
+          onInlinePathPress && !isLinkedInlineCode ? parseInlinePathToken(content) : null;
 
         if (parsed) {
           return (
@@ -877,10 +822,7 @@ export const AssistantMessage = memo(function AssistantMessage({
               key={node.key}
               onPress={() => parsed && onInlinePathPress?.(parsed)}
               selectable={false}
-              style={[
-                assistantMessageStylesheet.pathChip,
-                assistantMessageStylesheet.pathChipText,
-              ]}
+              style={[assistantMessageStylesheet.pathChip, assistantMessageStylesheet.pathChipText]}
             >
               {content}
             </Text>
@@ -902,81 +844,42 @@ export const AssistantMessage = memo(function AssistantMessage({
         }
 
         return (
-          <Text
-            key={node.key}
-            style={[inheritedStyles, styles.code_inline]}
-          >
+          <Text key={node.key} style={[inheritedStyles, styles.code_inline]}>
             {content}
           </Text>
         );
       },
-      bullet_list: (
-        node: any,
-        children: ReactNode[],
-        _parent: any,
-        styles: any
-      ) => (
+      bullet_list: (node: any, children: ReactNode[], _parent: any, styles: any) => (
         <View key={node.key} style={styles.bullet_list}>
           {children}
         </View>
       ),
-      ordered_list: (
-        node: any,
-        children: ReactNode[],
-        _parent: any,
-        styles: any
-      ) => (
+      ordered_list: (node: any, children: ReactNode[], _parent: any, styles: any) => (
         <View key={node.key} style={styles.ordered_list}>
           {children}
         </View>
       ),
-      list_item: (
-        node: any,
-        children: ReactNode[],
-        parent: any,
-        styles: any
-      ) => {
+      list_item: (node: any, children: ReactNode[], parent: any, styles: any) => {
         const { isOrdered, marker } = getMarkdownListMarker(node, parent);
-        const iconStyle = isOrdered
-          ? styles.ordered_list_icon
-          : styles.bullet_list_icon;
-        const contentStyle = isOrdered
-          ? styles.ordered_list_content
-          : styles.bullet_list_content;
+        const iconStyle = isOrdered ? styles.ordered_list_icon : styles.bullet_list_icon;
+        const contentStyle = isOrdered ? styles.ordered_list_content : styles.bullet_list_content;
 
         return (
           <View key={node.key} style={styles.list_item}>
             <Text style={iconStyle}>{marker}</Text>
-            <View
-              style={[contentStyle, { flex: 1, flexShrink: 1, minWidth: 0 }]}
-            >
-              {children}
-            </View>
+            <View style={[contentStyle, { flex: 1, flexShrink: 1, minWidth: 0 }]}>{children}</View>
           </View>
         );
       },
-      paragraph: (
-        node: any,
-        children: ReactNode[],
-        parent: any,
-        styles: any,
-      ) => {
+      paragraph: (node: any, children: ReactNode[], parent: any, styles: any) => {
         const isLastChild = parent[0]?.children?.at(-1)?.key === node.key;
         return (
-          <View
-            key={node.key}
-            style={[styles.paragraph, isLastChild && { marginBottom: 0 }]}
-          >
+          <View key={node.key} style={[styles.paragraph, isLastChild && { marginBottom: 0 }]}>
             {children}
           </View>
         );
       },
-      link: (
-        node: any,
-        children: ReactNode[],
-        _parent: any,
-        styles: any,
-      ) => (
+      link: (node: any, children: ReactNode[], _parent: any, styles: any) => (
         <MarkdownLink
           key={node.key}
           href={node.attributes?.href ?? ""}
@@ -985,8 +888,10 @@ export const AssistantMessage = memo(function AssistantMessage({
         >
           {Children.map(children, (child) =>
             isValidElement(child)
-              ? cloneElement(child, { style: [(child.props as any).style, { color: styles.link.color }] } as any)
-              : child
+              ? cloneElement(child, {
+                  style: [(child.props as any).style, { color: styles.link.color }],
+                } as any)
+              : child,
           )}
         </MarkdownLink>
       ),
@@ -998,8 +903,7 @@ export const AssistantMessage = memo(function AssistantMessage({
       testID="assistant-message"
       style={[
         assistantMessageStylesheet.container,
-        !resolvedDisableOuterSpacing &&
-          assistantMessageStylesheet.containerSpacing,
+        !resolvedDisableOuterSpacing && assistantMessageStylesheet.containerSpacing,
       ]}
     >
       <Markdown
@@ -1109,8 +1013,7 @@ export const ActivityLog = memo(function ActivityLog({
   onArtifactClick,
   disableOuterSpacing,
 }: ActivityLogProps) {
-  const resolvedDisableOuterSpacing =
-    useDisableOuterSpacing(disableOuterSpacing);
+  const resolvedDisableOuterSpacing = useDisableOuterSpacing(disableOuterSpacing);
   const [isExpanded, setIsExpanded] = useState(false);
 
   const typeConfig = {
@@ -1149,9 +1052,7 @@ export const ActivityLog = memo(function ActivityLog({
   };
 
   const displayMessage =
-    type === "artifact" && artifactType && title
-      ? `${artifactType}: ${title}`
-      : message;
+    type === "artifact" && artifactType && title ? `${artifactType}: ${title}` : message;
 
   const isInteractive = type === "artifact" || metadata;
 
@@ -1172,12 +1073,7 @@ export const ActivityLog = memo(function ActivityLog({
             <IconComponent size={16} color={config.color} />
           </View>
           <View style={activityLogStylesheet.textContainer}>
-            <Text
-              style={[
-                activityLogStylesheet.messageText,
-                { color: config.color },
-              ]}
-            >
+            <Text style={[activityLogStylesheet.messageText, { color: config.color }]}>
               {displayMessage}
             </Text>
             {metadata && (
@@ -1402,21 +1298,17 @@ const ExpandableBadge = memo(function ExpandableBadge({
   testID,
 }: ExpandableBadgeProps) {
   const { theme } = useUnistyles();
-  const resolvedDisableOuterSpacing =
-    useDisableOuterSpacing(disableOuterSpacing);
+  const resolvedDisableOuterSpacing = useDisableOuterSpacing(disableOuterSpacing);
   const [isHovered, setIsHovered] = useState(false);
   const [isPressed, setIsPressed] = useState(false);
   const isInteractive = Boolean(onToggle);
   const hasDetailContent = Boolean(renderDetails);
-  const detailContent =
-    hasDetailContent && isExpanded ? renderDetails?.() : null;
+  const detailContent = hasDetailContent && isExpanded ? renderDetails?.() : null;
   const detailWrapperRef = useRef<View | null>(null);
-  const wheelInvestigationComponentId = `ExpandableBadgeWheel:${
-    testID ?? label
-  }`;
+  const wheelInvestigationComponentId = `ExpandableBadgeWheel:${testID ?? label}`;
 
   const nativeGradientIdRef = useRef(
-    `shimmer-gradient-${Math.random().toString(36).substring(2, 9)}`
+    `shimmer-gradient-${Math.random().toString(36).substring(2, 9)}`,
   );
   const [labelRowWidth, setLabelRowWidth] = useState(0);
   const [labelRowHeight, setLabelRowHeight] = useState(0);
@@ -1426,77 +1318,64 @@ const ExpandableBadge = memo(function ExpandableBadge({
   const [secondaryWidth, setSecondaryWidth] = useState(0);
   const shimmerTranslateX = useSharedValue(0);
 
-  const totalShimmerChars =
-    label.trim().length + (secondaryLabel?.trim().length ?? 0);
+  const totalShimmerChars = label.trim().length + (secondaryLabel?.trim().length ?? 0);
   const shortTextDurationAdjustment = totalShimmerChars <= 12 ? 0.25 : 0;
   const shimmerDuration = Math.max(
     1,
-    Math.min(2.3, 1.25 + totalShimmerChars * 0.008 - shortTextDurationAdjustment)
+    Math.min(2.3, 1.25 + totalShimmerChars * 0.008 - shortTextDurationAdjustment),
   );
   const nativeShimmerPeakWidth = Math.max(
     32,
-    Math.min(120, labelRowWidth > 0 ? labelRowWidth * 0.28 : 0)
+    Math.min(120, labelRowWidth > 0 ? labelRowWidth * 0.28 : 0),
   );
   const isWebShimmer = isLoading && Platform.OS === "web";
   const shouldMeasureWebShimmer = isWebShimmer;
   const shouldMeasureNativeShimmer = isLoading && Platform.OS !== "web";
-  const isNativeShimmer =
-    shouldMeasureNativeShimmer &&
-    labelRowWidth > 0 &&
-    labelRowHeight > 0;
+  const isNativeShimmer = shouldMeasureNativeShimmer && labelRowWidth > 0 && labelRowHeight > 0;
   const webShimmerSpanStartX = labelOffsetX;
   const webShimmerSpanEndX = secondaryLabel
     ? secondaryOffsetX + secondaryWidth
     : labelOffsetX + labelWidth;
-  const webShimmerSpanWidth = Math.max(
-    1,
-    webShimmerSpanEndX - webShimmerSpanStartX
-  );
-  const webShimmerPeakWidth = Math.max(
-    42,
-    Math.min(120, webShimmerSpanWidth * 0.22)
-  );
+  const webShimmerSpanWidth = Math.max(1, webShimmerSpanEndX - webShimmerSpanStartX);
+  const webShimmerPeakWidth = Math.max(42, Math.min(120, webShimmerSpanWidth * 0.22));
   const webShimmerTrackStart = webShimmerSpanStartX - webShimmerPeakWidth;
   const webShimmerTrackEnd = webShimmerSpanEndX;
 
-  const handleLabelRowLayout = useCallback((event: LayoutChangeEvent) => {
-    if (!shouldMeasureNativeShimmer) {
-      return;
-    }
-    const { width, height } = event.nativeEvent.layout;
-    setLabelRowWidth((previous) =>
-      Math.abs(previous - width) > 0.5 ? width : previous
-    );
-    setLabelRowHeight((previous) =>
-      Math.abs(previous - height) > 0.5 ? height : previous
-    );
-  }, [shouldMeasureNativeShimmer]);
+  const handleLabelRowLayout = useCallback(
+    (event: LayoutChangeEvent) => {
+      if (!shouldMeasureNativeShimmer) {
+        return;
+      }
+      const { width, height } = event.nativeEvent.layout;
+      setLabelRowWidth((previous) => (Math.abs(previous - width) > 0.5 ? width : previous));
+      setLabelRowHeight((previous) => (Math.abs(previous - height) > 0.5 ? height : previous));
+    },
+    [shouldMeasureNativeShimmer],
+  );
 
-  const handleLabelLayout = useCallback((event: LayoutChangeEvent) => {
-    if (!shouldMeasureWebShimmer) {
-      return;
-    }
-    const { x, width } = event.nativeEvent.layout;
-    setLabelOffsetX((previous) =>
-      Math.abs(previous - x) > 0.5 ? x : previous
-    );
-    setLabelWidth((previous) =>
-      Math.abs(previous - width) > 0.5 ? width : previous
-    );
-  }, [shouldMeasureWebShimmer]);
+  const handleLabelLayout = useCallback(
+    (event: LayoutChangeEvent) => {
+      if (!shouldMeasureWebShimmer) {
+        return;
+      }
+      const { x, width } = event.nativeEvent.layout;
+      setLabelOffsetX((previous) => (Math.abs(previous - x) > 0.5 ? x : previous));
+      setLabelWidth((previous) => (Math.abs(previous - width) > 0.5 ? width : previous));
+    },
+    [shouldMeasureWebShimmer],
+  );
 
-  const handleSecondaryLayout = useCallback((event: LayoutChangeEvent) => {
-    if (!shouldMeasureWebShimmer || !secondaryLabel) {
-      return;
-    }
-    const { x, width } = event.nativeEvent.layout;
-    setSecondaryOffsetX((previous) =>
-      Math.abs(previous - x) > 0.5 ? x : previous
-    );
-    setSecondaryWidth((previous) =>
-      Math.abs(previous - width) > 0.5 ? width : previous
-    );
-  }, [shouldMeasureWebShimmer, secondaryLabel]);
+  const handleSecondaryLayout = useCallback(
+    (event: LayoutChangeEvent) => {
+      if (!shouldMeasureWebShimmer || !secondaryLabel) {
+        return;
+      }
+      const { x, width } = event.nativeEvent.layout;
+      setSecondaryOffsetX((previous) => (Math.abs(previous - x) > 0.5 ? x : previous));
+      setSecondaryWidth((previous) => (Math.abs(previous - width) > 0.5 ? width : previous));
+    },
+    [shouldMeasureWebShimmer, secondaryLabel],
+  );
 
   useEffect(() => {
     if (!isWebShimmer) {
@@ -1520,18 +1399,12 @@ const ExpandableBadge = memo(function ExpandableBadge({
         easing: Easing.linear,
       }),
       -1,
-      false
+      false,
     );
     return () => {
       cancelAnimation(shimmerTranslateX);
     };
-  }, [
-    isNativeShimmer,
-    labelRowWidth,
-    nativeShimmerPeakWidth,
-    shimmerDuration,
-    shimmerTranslateX,
-  ]);
+  }, [isNativeShimmer, labelRowWidth, nativeShimmerPeakWidth, shimmerDuration, shimmerTranslateX]);
 
   useEffect(() => {
     if (Platform.OS !== "web" || !isExpanded || !hasDetailContent) {
@@ -1605,23 +1478,21 @@ const ExpandableBadge = memo(function ExpandableBadge({
           : expandableBadgeStylesheet.containerSpacing),
       style,
     ],
-    [isLastInSequence, resolvedDisableOuterSpacing, style]
+    [isLastInSequence, resolvedDisableOuterSpacing, style],
   );
 
   const pressableStyle = useMemo(
     () => [
       expandableBadgeStylesheet.pressable,
-      isPressed && isInteractive
-        ? expandableBadgeStylesheet.pressablePressed
-        : null,
+      isPressed && isInteractive ? expandableBadgeStylesheet.pressablePressed : null,
       isExpanded && expandableBadgeStylesheet.pressableExpanded,
     ],
-    [isExpanded, isInteractive, isPressed]
+    [isExpanded, isInteractive, isPressed],
   );
 
   const accessibilityState = useMemo(
     () => (isInteractive ? { expanded: isExpanded } : undefined),
-    [isExpanded, isInteractive]
+    [isExpanded, isInteractive],
   );
 
   const isActive = isHovered || isExpanded;
@@ -1632,7 +1503,7 @@ const ExpandableBadge = memo(function ExpandableBadge({
       isActive && expandableBadgeStylesheet.labelActive,
       isLoading && expandableBadgeStylesheet.labelLoading,
     ],
-    [isActive, isLoading]
+    [isActive, isLoading],
   );
 
   const secondaryLabelStyle = useMemo(
@@ -1640,7 +1511,7 @@ const ExpandableBadge = memo(function ExpandableBadge({
       expandableBadgeStylesheet.secondaryLabel,
       isActive && expandableBadgeStylesheet.secondaryLabelActive,
     ],
-    [isActive]
+    [isActive],
   );
 
   const shimmerLabelTextStyle = useMemo(
@@ -1650,7 +1521,7 @@ const ExpandableBadge = memo(function ExpandableBadge({
       expandableBadgeStylesheet.shimmerText,
       shimmerLabelStyle,
     ],
-    [isLoading, shimmerLabelStyle]
+    [isLoading, shimmerLabelStyle],
   );
 
   const shimmerSecondaryTextStyle = useMemo(
@@ -1659,7 +1530,7 @@ const ExpandableBadge = memo(function ExpandableBadge({
       expandableBadgeStylesheet.shimmerText,
       shimmerSecondaryStyle,
     ],
-    [shimmerSecondaryStyle]
+    [shimmerSecondaryStyle],
   );
 
   const nativeShimmerTrackStyle = useMemo(
@@ -1667,7 +1538,7 @@ const ExpandableBadge = memo(function ExpandableBadge({
       expandableBadgeStylesheet.nativeShimmerTrack,
       { width: labelRowWidth, height: labelRowHeight },
     ],
-    [labelRowHeight, labelRowWidth]
+    [labelRowHeight, labelRowWidth],
   );
 
   const nativeShimmerMaskStyle = useMemo(
@@ -1675,20 +1546,17 @@ const ExpandableBadge = memo(function ExpandableBadge({
       expandableBadgeStylesheet.shimmerMaskRow,
       { width: labelRowWidth, height: labelRowHeight },
     ],
-    [labelRowHeight, labelRowWidth]
+    [labelRowHeight, labelRowWidth],
   );
 
   const nativeLabelMaskStyle = useMemo(
     () => [expandableBadgeStylesheet.label, { color: "#000000", opacity: 1 }],
-    []
+    [],
   );
 
   const nativeSecondaryMaskStyle = useMemo(
-    () => [
-      expandableBadgeStylesheet.secondaryLabel,
-      { color: "#000000", opacity: 1 },
-    ],
-    []
+    () => [expandableBadgeStylesheet.secondaryLabel, { color: "#000000", opacity: 1 }],
+    [],
   );
 
   const nativeShimmerPeakCombinedStyle = useMemo(
@@ -1697,7 +1565,7 @@ const ExpandableBadge = memo(function ExpandableBadge({
       nativeShimmerPeakStyle,
       { width: nativeShimmerPeakWidth, height: labelRowHeight },
     ],
-    [labelRowHeight, nativeShimmerPeakStyle, nativeShimmerPeakWidth]
+    [labelRowHeight, nativeShimmerPeakStyle, nativeShimmerPeakWidth],
   );
 
   const chevronStyle = useMemo(
@@ -1705,7 +1573,7 @@ const ExpandableBadge = memo(function ExpandableBadge({
       expandableBadgeStylesheet.chevron,
       isExpanded && expandableBadgeStylesheet.chevronExpanded,
     ],
-    [isExpanded]
+    [isExpanded],
   );
 
   const IconComponent = icon;
@@ -1723,10 +1591,7 @@ const ExpandableBadge = memo(function ExpandableBadge({
   }
 
   return (
-    <View
-      style={containerStyle}
-      testID={testID}
-    >
+    <View style={containerStyle} testID={testID}>
       <Pressable
         onPress={isInteractive ? onToggle : undefined}
         onHoverIn={isInteractive ? () => setIsHovered(true) : undefined}
@@ -1770,21 +1635,12 @@ const ExpandableBadge = memo(function ExpandableBadge({
               <View style={expandableBadgeStylesheet.spacer} />
             )}
             {isWebShimmer ? (
-              <View
-                style={expandableBadgeStylesheet.shimmerOverlay}
-                pointerEvents="none"
-              >
-                <Text
-                  style={shimmerLabelTextStyle}
-                  numberOfLines={1}
-                >
+              <View style={expandableBadgeStylesheet.shimmerOverlay} pointerEvents="none">
+                <Text style={shimmerLabelTextStyle} numberOfLines={1}>
                   {label}
                 </Text>
                 {secondaryLabel ? (
-                  <Text
-                    style={shimmerSecondaryTextStyle}
-                    numberOfLines={1}
-                  >
+                  <Text style={shimmerSecondaryTextStyle} numberOfLines={1}>
                     {secondaryLabel}
                   </Text>
                 ) : (
@@ -1793,25 +1649,16 @@ const ExpandableBadge = memo(function ExpandableBadge({
               </View>
             ) : null}
             {isNativeShimmer ? (
-              <View
-                style={expandableBadgeStylesheet.shimmerOverlay}
-                pointerEvents="none"
-              >
+              <View style={expandableBadgeStylesheet.shimmerOverlay} pointerEvents="none">
                 <MaskedView
                   style={nativeShimmerTrackStyle}
                   maskElement={
                     <View style={nativeShimmerMaskStyle}>
-                      <Text
-                        style={nativeLabelMaskStyle}
-                        numberOfLines={1}
-                      >
+                      <Text style={nativeLabelMaskStyle} numberOfLines={1}>
                         {label}
                       </Text>
                       {secondaryLabel ? (
-                        <Text
-                          style={nativeSecondaryMaskStyle}
-                          numberOfLines={1}
-                        >
+                        <Text style={nativeSecondaryMaskStyle} numberOfLines={1}>
                           {secondaryLabel}
                         </Text>
                       ) : (
@@ -1820,9 +1667,7 @@ const ExpandableBadge = memo(function ExpandableBadge({
                     </View>
                   }
                 >
-                  <View
-                    style={nativeShimmerTrackStyle}
-                  >
+                  <View style={nativeShimmerTrackStyle}>
                     <Animated.View style={nativeShimmerPeakCombinedStyle}>
                       <Svg width="100%" height="100%" preserveAspectRatio="none">
                         <Defs>
@@ -1853,11 +1698,7 @@ const ExpandableBadge = memo(function ExpandableBadge({
             ) : null}
           </View>
           {isInteractive && isHovered ? (
-            <ChevronRight
-              size={14}
-              color={theme.colors.foreground}
-              style={chevronStyle}
-            />
+            <ChevronRight size={14} color={theme.colors.foreground} style={chevronStyle} />
           ) : null}
         </View>
       </Pressable>
@@ -1875,10 +1716,7 @@ const ExpandableBadge = memo(function ExpandableBadge({
   );
 }, areExpandableBadgePropsEqual);
 
-function areExpandableBadgePropsEqual(
-  previous: ExpandableBadgeProps,
-  next: ExpandableBadgeProps
-) {
+function areExpandableBadgePropsEqual(previous: ExpandableBadgeProps, next: ExpandableBadgeProps) {
   if (previous.label !== next.label) return false;
   if (previous.secondaryLabel !== next.secondaryLabel) return false;
   if (previous.icon !== next.icon) return false;
@@ -1932,9 +1770,7 @@ export const ToolCall = memo(function ToolCall({
   const [isExpanded, setIsExpanded] = useState(false);
 
   // Check if we're on mobile (use bottom sheet) or desktop (inline expand)
-  const isMobile =
-    UnistylesRuntime.breakpoint === "xs" ||
-    UnistylesRuntime.breakpoint === "sm";
+  const isMobile = UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
 
   const effectiveDetail = useMemo<ToolCallDetail | undefined>(() => {
     if (detail) {
@@ -1950,12 +1786,11 @@ export const ToolCall = memo(function ToolCall({
     return undefined;
   }, [detail, args, result]);
 
-  const displayDetail =
-    effectiveDetail ?? {
-      type: "unknown",
-      input: null,
-      output: null,
-    };
+  const displayDetail = effectiveDetail ?? {
+    type: "unknown",
+    input: null,
+    output: null,
+  };
 
   const displayModel = useMemo(
     () =>
@@ -1967,7 +1802,7 @@ export const ToolCall = memo(function ToolCall({
         metadata,
         cwd,
       }),
-    [toolName, status, error, displayDetail, metadata, cwd]
+    [toolName, status, error, displayDetail, metadata, cwd],
   );
   const displayName = displayModel.displayName;
   const summary = displayModel.summary;
@@ -1981,9 +1816,7 @@ export const ToolCall = memo(function ToolCall({
   const secondaryLabel = summary;
 
   // Check if there's any content to display
-  const hasDetails =
-    Boolean(error) ||
-    hasMeaningfulToolCallDetail(effectiveDetail);
+  const hasDetails = Boolean(error) || hasMeaningfulToolCallDetail(effectiveDetail);
   const canOpenDetails = hasDetails || isLoadingDetails;
 
   const handleToggle = useCallback(() => {

@@ -1,7 +1,4 @@
-import {
-  TerminalOutputPump,
-  type TerminalOutputChunk,
-} from "./terminal-output-pump";
+import { TerminalOutputPump, type TerminalOutputChunk } from "./terminal-output-pump";
 import {
   TerminalOutputDeliveryQueue,
   type TerminalOutputDeliveryChunk,

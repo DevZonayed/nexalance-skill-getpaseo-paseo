@@ -81,9 +81,7 @@ export async function listDirectoryEntries({
   const entriesWithNulls = await Promise.all(
     dirents.map(async (dirent) => {
       const targetPath = path.join(directoryPath, dirent.name);
-      const kind: ExplorerEntryKind = dirent.isDirectory()
-        ? "directory"
-        : "file";
+      const kind: ExplorerEntryKind = dirent.isDirectory() ? "directory" : "file";
       try {
         return await buildEntryPayload({
           root,
@@ -99,15 +97,12 @@ export async function listDirectoryEntries({
         }
         throw error;
       }
-    })
+    }),
   );
-  const entries = entriesWithNulls.filter(
-    (entry): entry is FileExplorerEntry => entry !== null
-  );
+  const entries = entriesWithNulls.filter((entry): entry is FileExplorerEntry => entry !== null);
 
   entries.sort((a, b) => {
-    const modifiedComparison =
-      new Date(b.modifiedAt).getTime() - new Date(a.modifiedAt).getTime();
+    const modifiedComparison = new Date(b.modifiedAt).getTime() - new Date(a.modifiedAt).getTime();
     if (modifiedComparison !== 0) {
       return modifiedComparison;
     }
@@ -168,10 +163,7 @@ export async function readExplorerFile({
   };
 }
 
-export async function getDownloadableFileInfo({
-  root,
-  relativePath,
-}: ReadFileParams): Promise<{
+export async function getDownloadableFileInfo({ root, relativePath }: ReadFileParams): Promise<{
   path: string;
   absolutePath: string;
   fileName: string;
@@ -213,18 +205,12 @@ export async function getDownloadableFileInfo({
   };
 }
 
-async function resolveScopedPath({
-  root,
-  relativePath = ".",
-}: ScopedPathParams): Promise<string> {
+async function resolveScopedPath({ root, relativePath = "." }: ScopedPathParams): Promise<string> {
   const normalizedRoot = path.resolve(root);
   const requestedPath = path.resolve(normalizedRoot, relativePath);
   const relative = path.relative(normalizedRoot, requestedPath);
 
-  if (
-    relative === "" ||
-    (!relative.startsWith("..") && !path.isAbsolute(relative))
-  ) {
+  if (relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative))) {
     return requestedPath;
   }
 
@@ -252,13 +238,7 @@ function isMissingEntryError(error: unknown): boolean {
   return code === "ENOENT" || code === "ENOTDIR" || code === "ELOOP";
 }
 
-function normalizeRelativePath({
-  root,
-  targetPath,
-}: {
-  root: string;
-  targetPath: string;
-}): string {
+function normalizeRelativePath({ root, targetPath }: { root: string; targetPath: string }): string {
   const normalizedRoot = path.resolve(root);
   const normalizedTarget = path.resolve(targetPath);
   const relative = path.relative(normalizedRoot, normalizedTarget);

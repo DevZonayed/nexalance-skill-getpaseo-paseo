@@ -48,15 +48,25 @@ export interface PairLinkModalProps {
   onClose: () => void;
   targetServerId?: string;
   onCancel?: () => void;
-  onSaved?: (result: { profile: HostProfile; serverId: string; hostname: string | null; isNewHost: boolean }) => void;
+  onSaved?: (result: {
+    profile: HostProfile;
+    serverId: string;
+    hostname: string | null;
+    isNewHost: boolean;
+  }) => void;
 }
 
-export function PairLinkModal({ visible, onClose, onCancel, onSaved, targetServerId }: PairLinkModalProps) {
+export function PairLinkModal({
+  visible,
+  onClose,
+  onCancel,
+  onSaved,
+  targetServerId,
+}: PairLinkModalProps) {
   const { theme } = useUnistyles();
   const daemons = useHosts();
   const { upsertConnectionFromOfferUrl: upsertDaemonFromOfferUrl } = useHostMutations();
-  const isMobile =
-    UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
+  const isMobile = UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
 
   const [offerUrl, setOfferUrl] = useState("");
   const [isSaving, setIsSaving] = useState(false);
@@ -148,10 +158,24 @@ export function PairLinkModal({ visible, onClose, onCancel, onSaved, targetServe
     } finally {
       setIsSaving(false);
     }
-  }, [daemons, handleClose, isMobile, isSaving, offerUrl, onSaved, targetServerId, upsertDaemonFromOfferUrl]);
+  }, [
+    daemons,
+    handleClose,
+    isMobile,
+    isSaving,
+    offerUrl,
+    onSaved,
+    targetServerId,
+    upsertDaemonFromOfferUrl,
+  ]);
 
   return (
-    <AdaptiveModalSheet title="Paste pairing link" visible={visible} onClose={handleClose} testID="pair-link-modal">
+    <AdaptiveModalSheet
+      title="Paste pairing link"
+      visible={visible}
+      onClose={handleClose}
+      testID="pair-link-modal"
+    >
       <Text style={styles.helper}>Paste the pairing link from your server.</Text>
 
       <View style={styles.field}>

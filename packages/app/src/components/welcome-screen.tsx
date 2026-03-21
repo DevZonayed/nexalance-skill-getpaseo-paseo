@@ -100,70 +100,78 @@ export function WelcomeScreen({ onHostAdded }: WelcomeScreenProps) {
   const appVersionText = formatVersionWithPrefix(appVersion);
   const [isDirectOpen, setIsDirectOpen] = useState(false);
   const [isPasteLinkOpen, setIsPasteLinkOpen] = useState(false);
-  const [pendingNameHost, setPendingNameHost] = useState<{ serverId: string; hostname: string | null } | null>(null);
+  const [pendingNameHost, setPendingNameHost] = useState<{
+    serverId: string;
+    hostname: string | null;
+  } | null>(null);
   const [pendingRedirectServerId, setPendingRedirectServerId] = useState<string | null>(null);
   const pendingNameHostname = useSessionStore(
     useCallback(
       (state) => {
         if (!pendingNameHost) return null;
-        return state.sessions[pendingNameHost.serverId]?.serverInfo?.hostname ?? pendingNameHost.hostname ?? null;
+        return (
+          state.sessions[pendingNameHost.serverId]?.serverInfo?.hostname ??
+          pendingNameHost.hostname ??
+          null
+        );
       },
-      [pendingNameHost]
-    )
+      [pendingNameHost],
+    ),
   );
 
   const finishOnboarding = useCallback(
     (serverId: string) => {
       router.replace(buildHostRootRoute(serverId) as any);
     },
-    [router]
+    [router],
   );
 
-  const actions: WelcomeAction[] = Platform.OS === "web"
-    ? [
-        {
-          key: "direct-connection",
-          label: "Direct connection",
-          testID: "welcome-direct-connection",
-          primary: true,
-          icon: Link2,
-          onPress: () => setIsDirectOpen(true),
-        },
-        {
-          key: "paste-pairing-link",
-          label: "Paste pairing link",
-          testID: "welcome-paste-pairing-link",
-          primary: false,
-          icon: ClipboardPaste,
-          onPress: () => setIsPasteLinkOpen(true),
-        },
-      ]
-    : [
-        {
-          key: "scan-qr",
-          label: "Scan QR code",
-          testID: "welcome-scan-qr",
-          primary: true,
-          icon: QrCode,
-          onPress: () => router.push("/pair-scan?source=onboarding"),
-        },
-        {
-          key: "direct-connection",
-          label: "Direct connection",
-          testID: "welcome-direct-connection",
-          primary: false,
-          icon: Link2,
-          onPress: () => setIsDirectOpen(true),
-        },
-        {
-          key: "paste-pairing-link",
-          label: "Paste pairing link",
-          testID: "welcome-paste-pairing-link",
-          primary: false,
-          icon: ClipboardPaste,
-          onPress: () => setIsPasteLinkOpen(true),
-        },
-      ];
+  const actions: WelcomeAction[] =
+    Platform.OS === "web"
+      ? [
+          {
+            key: "direct-connection",
+            label: "Direct connection",
+            testID: "welcome-direct-connection",
+            primary: true,
+            icon: Link2,
+            onPress: () => setIsDirectOpen(true),
+          },
+          {
+            key: "paste-pairing-link",
+            label: "Paste pairing link",
+            testID: "welcome-paste-pairing-link",
+            primary: false,
+            icon: ClipboardPaste,
+            onPress: () => setIsPasteLinkOpen(true),
+          },
+        ]
+      : [
+          {
+            key: "scan-qr",
+            label: "Scan QR code",
+            testID: "welcome-scan-qr",
+            primary: true,
+            icon: QrCode,
+            onPress: () => router.push("/pair-scan?source=onboarding"),
+          },
+          {
+            key: "direct-connection",
+            label: "Direct connection",
+            testID: "welcome-direct-connection",
+            primary: false,
+            icon: Link2,
+            onPress: () => setIsDirectOpen(true),
+          },
+          {
+            key: "paste-pairing-link",
+            label: "Paste pairing link",
+            testID: "welcome-paste-pairing-link",
+            primary: false,
+            icon: ClipboardPaste,
+            onPress: () => setIsPasteLinkOpen(true),
+          },
+        ];
 
   return (
     <ScrollView
@@ -184,20 +192,20 @@ export function WelcomeScreen({ onHostAdded }: WelcomeScreenProps) {
           {actions.map((action) => {
             const Icon = action.icon;
             return (
-            <Pressable
-              key={action.key}
-              style={[styles.actionButton, action.primary ? styles.actionButtonPrimary : null]}
-              onPress={action.onPress}
-              testID={action.testID}
-            >
-              <Icon
-                size={18}
-                color={action.primary ? theme.colors.accentForeground : theme.colors.foreground}
-              />
-              <Text style={[styles.actionText, action.primary ? styles.actionTextPrimary : null]}>
-                {action.label}
-              </Text>
-            </Pressable>
+              <Pressable
+                key={action.key}
+                style={[styles.actionButton, action.primary ? styles.actionButtonPrimary : null]}
+                onPress={action.onPress}
+                testID={action.testID}
+              >
+                <Icon
+                  size={18}
+                  color={action.primary ? theme.colors.accentForeground : theme.colors.foreground}
+                />
+                <Text style={[styles.actionText, action.primary ? styles.actionTextPrimary : null]}>
+                  {action.label}
+                </Text>
+              </Pressable>
             );
           })}
         </View>

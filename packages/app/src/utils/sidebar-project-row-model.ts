@@ -1,58 +1,58 @@
 import type {
   SidebarProjectEntry,
   SidebarWorkspaceEntry,
-} from '@/hooks/use-sidebar-workspaces-list'
+} from "@/hooks/use-sidebar-workspaces-list";
 
 export interface SidebarProjectWorkspaceLinkRowModel {
-  kind: 'workspace_link'
-  workspace: SidebarWorkspaceEntry
-  selected: boolean
-  chevron: null
-  trailingAction: 'new_worktree' | 'none'
+  kind: "workspace_link";
+  workspace: SidebarWorkspaceEntry;
+  selected: boolean;
+  chevron: null;
+  trailingAction: "new_worktree" | "none";
 }
 
 export interface SidebarProjectSectionRowModel {
-  kind: 'project_section'
-  chevron: 'expand' | 'collapse'
-  trailingAction: 'new_worktree' | 'none'
+  kind: "project_section";
+  chevron: "expand" | "collapse";
+  trailingAction: "new_worktree" | "none";
 }
 
 export type SidebarProjectRowModel =
   | SidebarProjectWorkspaceLinkRowModel
-  | SidebarProjectSectionRowModel
+  | SidebarProjectSectionRowModel;
 
 export function isSidebarProjectFlattened(project: SidebarProjectEntry): boolean {
-  return project.workspaces.length === 1
+  return project.workspaces.length === 1;
 }
 
 export function buildSidebarProjectRowModel(input: {
-  project: SidebarProjectEntry
-  collapsed: boolean
-  serverId?: string | null
-  activeWorkspaceSelection?: { serverId: string; workspaceId: string } | null
+  project: SidebarProjectEntry;
+  collapsed: boolean;
+  serverId?: string | null;
+  activeWorkspaceSelection?: { serverId: string; workspaceId: string } | null;
 }): SidebarProjectRowModel {
   const flattenedWorkspace = isSidebarProjectFlattened(input.project)
     ? (input.project.workspaces[0] ?? null)
-    : null
+    : null;
   const selected =
     flattenedWorkspace !== null &&
     Boolean(input.serverId) &&
     input.activeWorkspaceSelection?.serverId === input.serverId &&
-    input.activeWorkspaceSelection?.workspaceId === flattenedWorkspace.workspaceId
+    input.activeWorkspaceSelection?.workspaceId === flattenedWorkspace.workspaceId;
 
   if (flattenedWorkspace) {
     return {
-      kind: 'workspace_link',
+      kind: "workspace_link",
       workspace: flattenedWorkspace,
       selected,
       chevron: null,
-      trailingAction: input.project.projectKind === 'git' ? 'new_worktree' : 'none',
-    }
+      trailingAction: input.project.projectKind === "git" ? "new_worktree" : "none",
+    };
   }
 
   return {
-    kind: 'project_section',
-    chevron: input.collapsed ? 'expand' : 'collapse',
-    trailingAction: input.project.projectKind === 'git' ? 'new_worktree' : 'none',
-  }
+    kind: "project_section",
+    chevron: input.collapsed ? "expand" : "collapse",
+    trailingAction: input.project.projectKind === "git" ? "new_worktree" : "none",
+  };
 }

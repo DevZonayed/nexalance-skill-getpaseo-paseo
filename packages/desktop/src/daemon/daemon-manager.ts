@@ -2,11 +2,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { app, ipcMain } from "electron";
-import {
-  loadConfig,
-  resolvePaseoHome,
-  getOrCreateServerId,
-} from "@getpaseo/server";
+import { loadConfig, resolvePaseoHome, getOrCreateServerId } from "@getpaseo/server";
 import {
   copyAttachmentFileToManagedStorage,
   deleteManagedAttachmentFile,
@@ -14,19 +10,13 @@ import {
   readManagedFileBase64,
   writeAttachmentBase64,
 } from "../features/attachments.js";
-import {
-  checkForAppUpdate,
-  downloadAndInstallUpdate,
-} from "../features/auto-updater.js";
+import { checkForAppUpdate, downloadAndInstallUpdate } from "../features/auto-updater.js";
 import {
   openLocalTransportSession,
   sendLocalTransportMessage,
   closeLocalTransportSession,
 } from "./local-transport.js";
-import {
-  createElectronNodeEnv,
-  resolveDaemonRunnerEntrypoint,
-} from "./runtime-paths.js";
+import { createElectronNodeEnv, resolveDaemonRunnerEntrypoint } from "./runtime-paths.js";
 
 const DAEMON_LOG_FILENAME = "daemon.log";
 const DAEMON_PID_FILENAME = "paseo.pid";
@@ -155,7 +145,7 @@ function buildDesktopDaemonCorsOriginsEnv(): string | undefined {
     (process.env.PASEO_CORS_ORIGINS ?? "")
       .split(",")
       .map((value) => value.trim())
-      .filter((value) => value.length > 0)
+      .filter((value) => value.length > 0),
   );
 
   origins.add("paseo://app");
@@ -315,7 +305,7 @@ async function startDaemon(): Promise<DesktopDaemonStatus> {
         ...(corsOrigins ? { PASEO_CORS_ORIGINS: corsOrigins } : {}),
       }),
       stdio: ["ignore", "ignore", "ignore"],
-    }
+    },
   );
 
   child.unref();
@@ -343,9 +333,7 @@ async function startDaemon(): Promise<DesktopDaemonStatus> {
 
   if (exitedEarly) {
     const logs = tailFile(logFilePath(), 15);
-    throw new Error(
-      `Daemon failed to start.${logs ? `\n\nRecent logs:\n${logs}` : ""}`
-    );
+    throw new Error(`Daemon failed to start.${logs ? `\n\nRecent logs:\n${logs}` : ""}`);
   }
 
   // Poll for PID file with server ID
@@ -524,19 +512,21 @@ export function createDaemonCommandHandlers(): Record<string, DesktopCommandHand
     copy_attachment_file: (args) => copyAttachmentFileToManagedStorage(args ?? {}),
     read_file_base64: (args) => readManagedFileBase64(args ?? {}),
     delete_attachment_file: (args) => deleteManagedAttachmentFile(args ?? {}),
-    garbage_collect_attachment_files: (args) =>
-      garbageCollectManagedAttachmentFiles(args ?? {}),
+    garbage_collect_attachment_files: (args) => garbageCollectManagedAttachmentFiles(args ?? {}),
     open_local_daemon_transport: async (args) => {
       const target = args as { transportType: "socket" | "pipe"; transportPath: string };
       return await openLocalTransportSession(target);
     },
     send_local_daemon_transport_message: async (args) => {
-      await sendLocalTransportMessage(args as { sessionId: string; text?: string; binaryBase64?: string });
+      await sendLocalTransportMessage(
+        args as { sessionId: string; text?: string; binaryBase64?: string },
+      );
     },
     close_local_daemon_transport: (args) => {
-      const sessionId = typeof args === "object" && args !== null && "sessionId" in args
-        ? (args as { sessionId: string }).sessionId
-        : "";
+      const sessionId =
+        typeof args === "object" && args !== null && "sessionId" in args
+          ? (args as { sessionId: string }).sessionId
+          : "";
       if (sessionId) closeLocalTransportSession(sessionId);
     },
     check_app_update: async () => {
@@ -568,6 +558,6 @@ export function registerDaemonManager(): void {
         throw new Error(`Unknown desktop command: ${command}`);
       }
       return await handler(args);
-    }
+    },
   );
 }

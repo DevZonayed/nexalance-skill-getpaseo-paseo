@@ -48,10 +48,7 @@ export interface SherpaSileroVadSessionConfig {
   bufferSizeInSeconds?: number;
 }
 
-export class SherpaSileroVadSession
-  extends EventEmitter
-  implements TurnDetectionSession
-{
+export class SherpaSileroVadSession extends EventEmitter implements TurnDetectionSession {
   public readonly requiredSampleRate: number;
 
   private readonly vad: SherpaVadHandle;
@@ -77,10 +74,8 @@ export class SherpaSileroVadSession
         sileroVad: {
           model: config.modelPath ?? resolveBundledSileroVadModelPath(),
           threshold: config.threshold ?? DEFAULT_SILERO_THRESHOLD,
-          minSilenceDuration:
-            config.minSilenceDuration ?? DEFAULT_MIN_SILENCE_DURATION,
-          minSpeechDuration:
-            config.minSpeechDuration ?? DEFAULT_MIN_SPEECH_DURATION,
+          minSilenceDuration: config.minSilenceDuration ?? DEFAULT_MIN_SILENCE_DURATION,
+          minSpeechDuration: config.minSpeechDuration ?? DEFAULT_MIN_SPEECH_DURATION,
           windowSize: config.windowSize ?? DEFAULT_WINDOW_SIZE,
         },
         sampleRate: this.requiredSampleRate,
@@ -88,10 +83,10 @@ export class SherpaSileroVadSession
         provider: "cpu",
         debug: 0,
       },
-      config.bufferSizeInSeconds ?? DEFAULT_BUFFER_SIZE_SECONDS
+      config.bufferSizeInSeconds ?? DEFAULT_BUFFER_SIZE_SECONDS,
     );
     this.inputBuffer = new sherpa.CircularBuffer(
-      (config.bufferSizeInSeconds ?? DEFAULT_BUFFER_SIZE_SECONDS) * this.requiredSampleRate
+      (config.bufferSizeInSeconds ?? DEFAULT_BUFFER_SIZE_SECONDS) * this.requiredSampleRate,
     );
   }
 

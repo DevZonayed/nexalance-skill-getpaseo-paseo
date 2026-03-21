@@ -4,7 +4,7 @@ import type { AgentPermissionRequest } from "@server/server/agent/agent-sdk-type
 
 export function derivePendingPermissionKey(
   agentId: string,
-  request: AgentPermissionRequest
+  request: AgentPermissionRequest,
 ): string {
   const fallbackId =
     request.id ||
@@ -19,7 +19,9 @@ export function derivePendingPermissionKey(
 export function normalizeAgentSnapshot(snapshot: AgentSnapshotPayload, serverId: string) {
   const createdAt = new Date(snapshot.createdAt);
   const updatedAt = new Date(snapshot.updatedAt);
-  const lastUserMessageAt = snapshot.lastUserMessageAt ? new Date(snapshot.lastUserMessageAt) : null;
+  const lastUserMessageAt = snapshot.lastUserMessageAt
+    ? new Date(snapshot.lastUserMessageAt)
+    : null;
   const attentionTimestamp = snapshot.attentionTimestamp
     ? new Date(snapshot.attentionTimestamp)
     : null;
@@ -53,4 +55,3 @@ export function normalizeAgentSnapshot(snapshot: AgentSnapshotPayload, serverId:
     labels: snapshot.labels,
   };
 }
-

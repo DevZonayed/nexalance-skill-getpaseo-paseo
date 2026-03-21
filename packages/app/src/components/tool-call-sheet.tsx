@@ -1,11 +1,4 @@
-import React, {
-  createContext,
-  useContext,
-  useCallback,
-  useMemo,
-  useRef,
-  ReactNode,
-} from "react";
+import React, { createContext, useContext, useCallback, useMemo, useRef, ReactNode } from "react";
 import { View, Text, Pressable } from "react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import Animated from "react-native-reanimated";
@@ -54,7 +47,7 @@ function CustomSheetBackground({ style }: BottomSheetBackgroundProps) {
   const { theme } = useUnistyles();
   const containerStyle = useMemo(
     () => [style, { backgroundColor: theme.colors.surface2, borderRadius: 16 }],
-    [style, theme.colors.surface2]
+    [style, theme.colors.surface2],
   );
   return <Animated.View pointerEvents="none" style={containerStyle} />;
 }
@@ -88,19 +81,14 @@ export function ToolCallSheetProvider({ children }: ToolCallSheetProviderProps) 
 
   const renderBackdrop = useCallback(
     (props: React.ComponentProps<typeof BottomSheetBackdrop>) => (
-      <BottomSheetBackdrop
-        {...props}
-        disappearsOnIndex={-1}
-        appearsOnIndex={0}
-        opacity={0.5}
-      />
+      <BottomSheetBackdrop {...props} disappearsOnIndex={-1} appearsOnIndex={0} opacity={0.5} />
     ),
-    []
+    [],
   );
 
   const contextValue = useMemo(
     () => ({ openToolCall, closeToolCall }),
-    [openToolCall, closeToolCall]
+    [openToolCall, closeToolCall],
   );
 
   return (
@@ -152,10 +140,7 @@ function ToolCallSheetContent({ data, onClose }: ToolCallSheetContentProps) {
       </View>
 
       {/* Content */}
-      <BottomSheetScrollView
-        style={styles.content}
-        contentContainerStyle={styles.contentContainer}
-      >
+      <BottomSheetScrollView style={styles.content} contentContainerStyle={styles.contentContainer}>
         <ToolCallDetailsContent
           detail={detail}
           errorText={errorText}

@@ -1,7 +1,4 @@
-import type {
-  CreateTerminalResponse,
-  ListTerminalsResponse,
-} from "@server/shared/messages";
+import type { CreateTerminalResponse, ListTerminalsResponse } from "@server/shared/messages";
 
 type TerminalListEntry = ListTerminalsResponse["payload"]["terminals"][number];
 type CreatedTerminal = NonNullable<CreateTerminalResponse["payload"]["terminal"]>;
@@ -18,9 +15,7 @@ export function upsertTerminalListEntry(input: {
   terminal: CreatedTerminal;
 }): TerminalListEntry[] {
   const createdTerminal = toTerminalListEntry({ terminal: input.terminal });
-  const existingIndex = input.terminals.findIndex(
-    (terminal) => terminal.id === createdTerminal.id
-  );
+  const existingIndex = input.terminals.findIndex((terminal) => terminal.id === createdTerminal.id);
 
   if (existingIndex < 0) {
     return [...input.terminals, createdTerminal];

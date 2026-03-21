@@ -3,11 +3,21 @@ import { pathToFileURL } from "node:url";
 import { existsSync } from "node:fs";
 import { app, BrowserWindow, nativeImage, net, protocol } from "electron";
 import { registerDaemonManager } from "./daemon/daemon-manager.js";
-import { parseCliPassthroughArgsFromArgv, runCliPassthroughCommand } from "./daemon/runtime-paths.js";
+import {
+  parseCliPassthroughArgsFromArgv,
+  runCliPassthroughCommand,
+} from "./daemon/runtime-paths.js";
 import { closeAllTransportSessions } from "./daemon/local-transport.js";
-import { registerWindowManager, setupWindowResizeEvents, setupDragDropPrevention } from "./window/window-manager.js";
+import {
+  registerWindowManager,
+  setupWindowResizeEvents,
+  setupDragDropPrevention,
+} from "./window/window-manager.js";
 import { registerDialogHandlers } from "./features/dialogs.js";
-import { registerNotificationHandlers, ensureNotificationCenterRegistration } from "./features/notifications.js";
+import {
+  registerNotificationHandlers,
+  ensureNotificationCenterRegistration,
+} from "./features/notifications.js";
 import { registerOpenerHandlers } from "./features/opener.js";
 import { setupApplicationMenu } from "./features/menu.js";
 
@@ -38,12 +48,15 @@ function getAppDistDir(): string {
 function getWindowIconPath(): string | null {
   const candidates = app.isPackaged
     ? process.platform === "win32"
-        ? [path.join(process.resourcesPath, "icon.ico"), path.join(process.resourcesPath, "icon.png")]
-        : [path.join(process.resourcesPath, "icon.png")]
+      ? [path.join(process.resourcesPath, "icon.ico"), path.join(process.resourcesPath, "icon.png")]
+      : [path.join(process.resourcesPath, "icon.png")]
     : process.platform === "darwin"
       ? [path.resolve(__dirname, "../assets/icon.png")]
       : process.platform === "win32"
-        ? [path.resolve(__dirname, "../assets/icon.ico"), path.resolve(__dirname, "../assets/icon.png")]
+        ? [
+            path.resolve(__dirname, "../assets/icon.ico"),
+            path.resolve(__dirname, "../assets/icon.png"),
+          ]
         : [path.resolve(__dirname, "../assets/icon.png")];
 
   return candidates.find((candidate) => existsSync(candidate)) ?? null;
@@ -136,7 +149,7 @@ async function runCliPassthroughIfRequested(): Promise<boolean> {
     const exitCode = runCliPassthroughCommand(cliArgs);
     process.exit(exitCode);
   } catch (error) {
-    const message = error instanceof Error ? error.stack ?? error.message : String(error);
+    const message = error instanceof Error ? (error.stack ?? error.message) : String(error);
     process.stderr.write(`${message}\n`);
     process.exit(1);
   }
@@ -200,7 +213,7 @@ async function bootstrap(): Promise<void> {
 }
 
 void bootstrap().catch((error) => {
-  const message = error instanceof Error ? error.stack ?? error.message : String(error);
+  const message = error instanceof Error ? (error.stack ?? error.message) : String(error);
   process.stderr.write(`${message}\n`);
   process.exit(1);
 });

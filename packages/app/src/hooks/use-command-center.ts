@@ -11,10 +11,7 @@ import {
   clearCommandCenterFocusRestoreElement,
   takeCommandCenterFocusRestoreElement,
 } from "@/utils/command-center-focus-restore";
-import {
-  buildHostSettingsRoute,
-  parseServerIdFromPathname,
-} from "@/utils/host-routes";
+import { buildHostSettingsRoute, parseServerIdFromPathname } from "@/utils/host-routes";
 import type { ShortcutKey } from "@/utils/format-shortcut";
 import { prepareWorkspaceTab } from "@/utils/workspace-navigation";
 import { focusWithRetries } from "@/utils/web-focus";
@@ -74,10 +71,7 @@ const COMMAND_CENTER_ACTIONS: readonly CommandCenterActionDefinition[] = [
   },
 ];
 
-function matchesActionQuery(
-  query: string,
-  action: CommandCenterActionDefinition
-): boolean {
+function matchesActionQuery(query: string, action: CommandCenterActionDefinition): boolean {
   const normalized = query.trim().toLowerCase();
   if (!normalized) return true;
   if (action.title.toLowerCase().includes(normalized)) {
@@ -157,7 +151,7 @@ export function useCommandCenter() {
       return EMPTY_ACTION_ITEMS;
     }
     return COMMAND_CENTER_ACTIONS.filter((action) =>
-      matchesActionQuery(query, action)
+      matchesActionQuery(query, action),
     ).map<CommandCenterActionItem>((action) => ({
       kind: "action",
       id: action.id,
@@ -206,24 +200,27 @@ export function useCommandCenter() {
       });
       router.navigate(route as any);
     },
-    [setOpen]
+    [setOpen],
   );
 
   const openProjectPicker = useOpenProjectPicker(activeServerId);
 
-  const handleSelectAction = useCallback((action: CommandCenterActionItem) => {
-    clearCommandCenterFocusRestoreElement();
-    setOpen(false);
-    if (action.id === "new-agent") {
-      void openProjectPicker();
-      return;
-    }
-    if (!action.route) {
-      return;
-    }
-    didNavigateRef.current = true;
-    router.push(action.route);
-  }, [openProjectPicker, setOpen]);
+  const handleSelectAction = useCallback(
+    (action: CommandCenterActionItem) => {
+      clearCommandCenterFocusRestoreElement();
+      setOpen(false);
+      if (action.id === "new-agent") {
+        void openProjectPicker();
+        return;
+      }
+      if (!action.route) {
+        return;
+      }
+      didNavigateRef.current = true;
+      router.push(action.route);
+    },
+    [openProjectPicker, setOpen],
+  );
 
   const handleSelectItem = useCallback(
     (item: CommandCenterItem) => {
@@ -233,7 +230,7 @@ export function useCommandCenter() {
       }
       handleSelectAgent(item.agent);
     },
-    [handleSelectAction, handleSelectAgent]
+    [handleSelectAction, handleSelectAgent],
   );
 
   useEffect(() => {
@@ -263,9 +260,7 @@ export function useCommandCenter() {
       if (prevOpen && !didNavigateRef.current) {
         const el = takeCommandCenterFocusRestoreElement();
         const isFocused = () =>
-          Boolean(el) &&
-          typeof document !== "undefined" &&
-          document.activeElement === el;
+          Boolean(el) && typeof document !== "undefined" && document.activeElement === el;
 
         const cancel = focusWithRetries({
           focus: () => el?.focus(),
@@ -304,12 +299,7 @@ export function useCommandCenter() {
     const handler = (event: KeyboardEvent) => {
       const currentItems = itemsRef.current;
       const key = event.key;
-      if (
-        key !== "ArrowDown" &&
-        key !== "ArrowUp" &&
-        key !== "Enter" &&
-        key !== "Escape"
-      ) {
+      if (key !== "ArrowDown" && key !== "ArrowUp" && key !== "Enter" && key !== "Escape") {
         return;
       }
 
@@ -322,10 +312,7 @@ export function useCommandCenter() {
       if (key === "Enter") {
         if (currentItems.length === 0) return;
         event.preventDefault();
-        const index = Math.max(
-          0,
-          Math.min(activeIndexRef.current, currentItems.length - 1)
-        );
+        const index = Math.max(0, Math.min(activeIndexRef.current, currentItems.length - 1));
         handleSelectItemRef.current(currentItems[index]!);
         return;
       }

@@ -18,9 +18,7 @@ export default function LegacySettingsRoute() {
       return null;
     }
     if (preferences.serverId) {
-      const match = daemons.find(
-        (daemon) => daemon.serverId === preferences.serverId
-      );
+      const match = daemons.find((daemon) => daemon.serverId === preferences.serverId);
       if (match) {
         return match.serverId;
       }

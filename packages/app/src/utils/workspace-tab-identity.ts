@@ -1,7 +1,7 @@
 import type { WorkspaceTabTarget } from "@/stores/workspace-tabs-store";
 
 export function normalizeWorkspaceTabTarget(
-  value: WorkspaceTabTarget | null | undefined
+  value: WorkspaceTabTarget | null | undefined,
 ): WorkspaceTabTarget | null {
   if (!value || typeof value !== "object" || typeof value.kind !== "string") {
     return null;
@@ -27,7 +27,7 @@ export function normalizeWorkspaceTabTarget(
 
 export function workspaceTabTargetsEqual(
   left: WorkspaceTabTarget,
-  right: WorkspaceTabTarget
+  right: WorkspaceTabTarget,
 ): boolean {
   if (left.kind !== right.kind) {
     return false;

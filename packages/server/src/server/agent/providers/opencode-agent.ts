@@ -146,15 +146,16 @@ const OpencodeToolPartTimelineEnvelopeSchema = OpencodeToolPartSchema.transform(
   error: part.error,
 }));
 
-const OpencodeToolPartToTimelineItemSchema = OpencodeToolPartTimelineEnvelopeSchema.transform((part) =>
-  mapOpencodeToolCall({
-    toolName: part.toolName,
-    callId: part.callId,
-    status: part.status,
-    input: part.input,
-    output: part.output,
-    error: part.error,
-  })
+const OpencodeToolPartToTimelineItemSchema = OpencodeToolPartTimelineEnvelopeSchema.transform(
+  (part) =>
+    mapOpencodeToolCall({
+      toolName: part.toolName,
+      callId: part.callId,
+      status: part.status,
+      input: part.input,
+      output: part.output,
+      error: part.error,
+    }),
 );
 
 function resolveOpenCodeBinary(): string {
@@ -163,7 +164,7 @@ function resolveOpenCodeBinary(): string {
     return found;
   }
   throw new Error(
-    "OpenCode binary not found. Install OpenCode (https://github.com/opencode-ai/opencode) and ensure it is available in your shell PATH."
+    "OpenCode binary not found. Install OpenCode (https://github.com/opencode-ai/opencode) and ensure it is available in your shell PATH.",
   );
 }
 
@@ -198,9 +199,7 @@ function stringifyUnknownError(error: unknown): string {
 
 function isAlreadyPresentMcpError(error: unknown): boolean {
   const normalized = stringifyUnknownError(error).toLowerCase();
-  return MCP_ALREADY_PRESENT_ERROR_TOKENS.some((token) =>
-    normalized.includes(token)
-  );
+  return MCP_ALREADY_PRESENT_ERROR_TOKENS.some((token) => normalized.includes(token));
 }
 
 async function findAvailablePort(): Promise<number> {
@@ -219,10 +218,7 @@ async function findAvailablePort(): Promise<number> {
   });
 }
 
-function resolvePartDedupeKey(
-  part: AgentMetadata,
-  partType: "text" | "reasoning"
-): string | null {
+function resolvePartDedupeKey(part: AgentMetadata, partType: "text" | "reasoning"): string | null {
   const partId = part.id;
   if (typeof partId === "string" && partId.trim().length > 0) {
     return `${partType}:${partId}`;
@@ -272,7 +268,7 @@ export class OpenCodeServerManager {
 
   static getInstance(
     logger: Logger,
-    runtimeSettings?: ProviderRuntimeSettings
+    runtimeSettings?: ProviderRuntimeSettings,
   ): OpenCodeServerManager {
     const nextSettingsKey = JSON.stringify(runtimeSettings ?? {});
     if (!OpenCodeServerManager.instance) {
@@ -284,7 +280,7 @@ export class OpenCodeServerManager {
           existingRuntimeSettings: OpenCodeServerManager.instance.runtimeSettingsKey,
           requestedRuntimeSettings: nextSettingsKey,
         },
-        "OpenCode server manager already initialized with different runtime settings"
+        "OpenCode server manager already initialized with different runtime settings",
       );
     }
     return OpenCodeServerManager.instance;
@@ -331,7 +327,7 @@ export class OpenCodeServerManager {
     const url = `http://127.0.0.1:${this.port}`;
     const launchPrefix = resolveProviderCommandPrefix(
       this.runtimeSettings?.command,
-      resolveOpenCodeBinary
+      resolveOpenCodeBinary,
     );
 
     return new Promise((resolve, reject) => {
@@ -339,9 +335,9 @@ export class OpenCodeServerManager {
         launchPrefix.command,
         [...launchPrefix.args, "serve", "--port", String(this.port)],
         {
-        stdio: ["ignore", "pipe", "pipe"],
-        env: applyProviderEnv(process.env, this.runtimeSettings),
-      }
+          stdio: ["ignore", "pipe", "pipe"],
+          env: applyProviderEnv(process.env, this.runtimeSettings),
+        },
       );
 
       let started = false;
@@ -410,10 +406,7 @@ export class OpenCodeAgentClient implements AgentClient {
   constructor(logger: Logger, runtimeSettings?: ProviderRuntimeSettings) {
     this.logger = logger.child({ module: "agent", provider: "opencode" });
     this.runtimeSettings = runtimeSettings;
-    this.serverManager = OpenCodeServerManager.getInstance(
-      this.logger,
-      runtimeSettings
-    );
+    this.serverManager = OpenCodeServerManager.getInstance(this.logger, runtimeSettings);
   }
 
   async createSession(config: AgentSessionConfig): Promise<AgentSession> {
@@ -448,7 +441,7 @@ export class OpenCodeAgentClient implements AgentClient {
 
   async resumeSession(
     handle: AgentPersistenceHandle,
-    overrides?: Partial<AgentSessionConfig>
+    overrides?: Partial<AgentSessionConfig>,
   ): Promise<AgentSession> {
     const cwd = overrides?.cwd ?? (handle.metadata?.cwd as string);
     if (!cwd) {
@@ -479,7 +472,15 @@ export class OpenCodeAgentClient implements AgentClient {
 
     // Set a timeout for the API call to fail fast if OpenCode isn't responding
     const timeoutPromise = new Promise<never>((_, reject) => {
-      setTimeout(() => reject(new Error("OpenCode provider.list timed out after 10s - server may not be authenticated or connected to any providers")), 10_000);
+      setTimeout(
+        () =>
+          reject(
+            new Error(
+              "OpenCode provider.list timed out after 10s - server may not be authenticated or connected to any providers",
+            ),
+          ),
+        10_000,
+      );
     });
 
     const response = await Promise.race([
@@ -501,7 +502,9 @@ export class OpenCodeAgentClient implements AgentClient {
 
     // Fail fast if no providers are connected
     if (connectedProviderIds.size === 0) {
-      throw new Error("OpenCode has no connected providers. Please authenticate with at least one provider (e.g., openai, anthropic) or set appropriate environment variables (e.g., OPENAI_API_KEY).");
+      throw new Error(
+        "OpenCode has no connected providers. Please authenticate with at least one provider (e.g., openai, anthropic) or set appropriate environment variables (e.g., OPENAI_API_KEY).",
+      );
     }
 
     const models: AgentModelDefinition[] = [];
@@ -543,7 +546,9 @@ export class OpenCodeAgentClient implements AgentClient {
     return models;
   }
 
-  async listPersistedAgents(_options?: ListPersistedAgentsOptions): Promise<PersistedAgentDescriptor[]> {
+  async listPersistedAgents(
+    _options?: ListPersistedAgentsOptions,
+  ): Promise<PersistedAgentDescriptor[]> {
     // TODO: Implement by listing sessions from OpenCode
     return [];
   }
@@ -589,7 +594,7 @@ function stringifyStructuredAssistantMessage(value: unknown): string | null {
 
 export function translateOpenCodeEvent(
   event: unknown,
-  state: OpenCodeEventTranslationState
+  state: OpenCodeEventTranslationState,
 ): AgentStreamEvent[] {
   const events: AgentStreamEvent[] = [];
 
@@ -728,12 +733,16 @@ export function translateOpenCodeEvent(
           });
         }
       } else if (partType === "step-finish") {
-        const tokens = part.tokens as { input?: number; output?: number; reasoning?: number } | undefined;
+        const tokens = part.tokens as
+          | { input?: number; output?: number; reasoning?: number }
+          | undefined;
         const cost = part.cost as number | undefined;
 
         if (tokens) {
-          state.accumulatedUsage.inputTokens = (state.accumulatedUsage.inputTokens ?? 0) + (tokens.input ?? 0);
-          state.accumulatedUsage.outputTokens = (state.accumulatedUsage.outputTokens ?? 0) + (tokens.output ?? 0);
+          state.accumulatedUsage.inputTokens =
+            (state.accumulatedUsage.inputTokens ?? 0) + (tokens.input ?? 0);
+          state.accumulatedUsage.outputTokens =
+            (state.accumulatedUsage.outputTokens ?? 0) + (tokens.output ?? 0);
         }
         if (cost !== undefined) {
           state.accumulatedUsage.totalCostUsd = (state.accumulatedUsage.totalCostUsd ?? 0) + cost;
@@ -823,11 +832,7 @@ class OpenCodeAgentSession implements AgentSession {
   private emittedStructuredMessageIds = new Set<string>();
   private availableModesCache: AgentMode[] | null = null;
 
-  constructor(
-    config: OpenCodeAgentConfig,
-    client: OpencodeClient,
-    sessionId: string
-  ) {
+  constructor(config: OpenCodeAgentConfig, client: OpencodeClient, sessionId: string) {
     this.config = config;
     this.client = client;
     this.sessionId = sessionId;
@@ -890,7 +895,7 @@ class OpenCodeAgentSession implements AgentSession {
 
   async *stream(
     prompt: AgentPromptInput,
-    options?: AgentRunOptions
+    options?: AgentRunOptions,
   ): AsyncGenerator<AgentStreamEvent> {
     this.abortController = new AbortController();
     await this.ensureMcpServersConfigured();
@@ -986,12 +991,8 @@ class OpenCodeAgentSession implements AgentSession {
 
       if (role === "user") {
         // Extract user message text from parts
-        const textParts = parts.filter(
-          (p) => (p as { type?: string }).type === "text"
-        );
-        const text = textParts
-          .map((p) => (p as { text?: string }).text ?? "")
-          .join("");
+        const textParts = parts.filter((p) => (p as { type?: string }).type === "text");
+        const text = textParts.map((p) => (p as { text?: string }).text ?? "").join("");
 
         if (text) {
           yield {
@@ -1041,7 +1042,7 @@ class OpenCodeAgentSession implements AgentSession {
 
         if (!emittedAssistantText) {
           const text = stringifyStructuredAssistantMessage(
-            (info as { structured?: unknown }).structured
+            (info as { structured?: unknown }).structured,
           );
           if (text) {
             yield {
@@ -1172,38 +1173,33 @@ class OpenCodeAgentSession implements AgentSession {
     }
   }
 
-  private async configureMcpServers(
-    mcpServers: Record<string, McpServerConfig>
-  ): Promise<void> {
+  private async configureMcpServers(mcpServers: Record<string, McpServerConfig>): Promise<void> {
     for (const [name, serverConfig] of Object.entries(mcpServers)) {
       const mappedConfig = toOpenCodeMcpConfig(serverConfig);
       await this.registerMcpServer(name, mappedConfig);
     }
   }
 
-  private async registerMcpServer(
-    name: string,
-    config: OpenCodeMcpConfig
-  ): Promise<void> {
+  private async registerMcpServer(name: string, config: OpenCodeMcpConfig): Promise<void> {
     await this.runMcpOperation("add", name, () =>
       this.client.mcp.add({
         directory: this.config.cwd,
         name,
         config,
-      })
+      }),
     );
     await this.runMcpOperation("connect", name, () =>
       this.client.mcp.connect({
         directory: this.config.cwd,
         name,
-      })
+      }),
     );
   }
 
   private async runMcpOperation(
     operation: "add" | "connect",
     name: string,
-    run: () => Promise<{ error?: unknown }>
+    run: () => Promise<{ error?: unknown }>,
   ): Promise<void> {
     const response = await run();
     const error = response.error;
@@ -1216,7 +1212,7 @@ class OpenCodeAgentSession implements AgentSession {
     }
 
     throw new Error(
-      `Failed to ${operation} OpenCode MCP server '${name}': ${stringifyUnknownError(error)}`
+      `Failed to ${operation} OpenCode MCP server '${name}': ${stringifyUnknownError(error)}`,
     );
   }
 

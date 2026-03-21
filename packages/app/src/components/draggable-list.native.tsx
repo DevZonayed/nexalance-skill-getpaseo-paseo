@@ -5,10 +5,7 @@ import DraggableFlatList, {
   type RenderItemParams,
 } from "react-native-draggable-flatlist";
 import { useUnistyles } from "react-native-unistyles";
-import type {
-  DraggableListProps,
-  DraggableRenderItemInfo,
-} from "./draggable-list.types";
+import type { DraggableListProps, DraggableRenderItemInfo } from "./draggable-list.types";
 
 export type { DraggableListProps, DraggableRenderItemInfo };
 
@@ -53,7 +50,7 @@ export function DraggableList<T>({
       };
       return renderItem(info);
     },
-    [renderItem]
+    [renderItem],
   );
 
   const handleDragEnd = useCallback(
@@ -61,7 +58,7 @@ export function DraggableList<T>({
       setIsDragging(false);
       onDragEnd(newData);
     },
-    [onDragEnd]
+    [onDragEnd],
   );
 
   const handleDragBegin = useCallback(() => {
@@ -74,12 +71,11 @@ export function DraggableList<T>({
   }, []);
 
   const showRefreshControl = Boolean(onRefresh) && (!isDragging || Boolean(refreshing));
-  const resolvedContainerStyle =
-    containerStyle ?? (scrollEnabled ? { flex: 1 } : undefined);
+  const resolvedContainerStyle = containerStyle ?? (scrollEnabled ? { flex: 1 } : undefined);
   const shouldShowRefreshControl = showRefreshControl && !nestable;
-  const ListComponent: typeof DraggableFlatList = (nestable
-    ? (NestableDraggableFlatList as any)
-    : DraggableFlatList) as any;
+  const ListComponent: typeof DraggableFlatList = (
+    nestable ? (NestableDraggableFlatList as any) : DraggableFlatList
+  ) as any;
 
   return (
     <ListComponent

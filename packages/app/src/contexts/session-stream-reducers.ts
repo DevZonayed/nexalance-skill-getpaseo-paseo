@@ -1,11 +1,7 @@
 import type { AgentStreamEventPayload } from "@server/shared/messages";
 import type { AgentLifecycleStatus } from "@server/shared/agent-lifecycle";
 import type { StreamItem } from "@/types/stream";
-import {
-  applyStreamEvent,
-  hydrateStreamState,
-  reduceStreamUpdate,
-} from "@/types/stream";
+import { applyStreamEvent, hydrateStreamState, reduceStreamUpdate } from "@/types/stream";
 import {
   classifySessionTimelineSeq,
   type SessionTimelineSeqDecision,
@@ -84,7 +80,7 @@ export interface ProcessTimelineResponseOutput {
 }
 
 export function processTimelineResponse(
-  input: ProcessTimelineResponseInput
+  input: ProcessTimelineResponseInput,
 ): ProcessTimelineResponseOutput {
   const {
     payload,
@@ -126,7 +122,7 @@ export function processTimelineResponse(
   }));
 
   const toHydratedEvents = (
-    units: typeof timelineUnits
+    units: typeof timelineUnits,
   ): Array<{ event: AgentStreamEventPayload; timestamp: Date }> =>
     units.map(({ event, timestamp }) => ({ event, timestamp }));
 
@@ -186,17 +182,13 @@ export function processTimelineResponse(
 
     for (const unit of timelineUnits) {
       const decision: SessionTimelineSeqDecision = classifySessionTimelineSeq({
-        cursor: cursor
-          ? { epoch: cursor.epoch, endSeq: cursor.endSeq }
-          : null,
+        cursor: cursor ? { epoch: cursor.epoch, endSeq: cursor.endSeq } : null,
         epoch: payload.epoch,
         seq: unit.seq,
       });
 
       if (decision === "gap") {
-        gapCursor = cursor
-          ? { epoch: cursor.epoch, endSeq: cursor.endSeq }
-          : null;
+        gapCursor = cursor ? { epoch: cursor.epoch, endSeq: cursor.endSeq } : null;
         break;
       }
       if (decision === "drop_stale" || decision === "drop_epoch") {
@@ -227,7 +219,7 @@ export function processTimelineResponse(
           reduceStreamUpdate(state, event, timestamp, {
             source: "canonical",
           }),
-        currentTail
+        currentTail,
       );
     }
 
@@ -262,12 +254,9 @@ export function processTimelineResponse(
     responseDirection: payload.direction,
     reset: payload.reset,
   });
-  const clearInitializing =
-    shouldResolveDeferredInit || (isInitializing && !hasActiveInitDeferred);
+  const clearInitializing = shouldResolveDeferredInit || (isInitializing && !hasActiveInitDeferred);
 
-  const initResolution: "resolve" | "reject" | null = shouldResolveDeferredInit
-    ? "resolve"
-    : null;
+  const initResolution: "resolve" | "reject" | null = shouldResolveDeferredInit ? "resolve" : null;
 
   return {
     tail: nextTail,
@@ -319,18 +308,10 @@ export interface ProcessAgentStreamEventOutput {
 }
 
 export function processAgentStreamEvent(
-  input: ProcessAgentStreamEventInput
+  input: ProcessAgentStreamEventInput,
 ): ProcessAgentStreamEventOutput {
-  const {
-    event,
-    seq,
-    epoch,
-    currentTail,
-    currentHead,
-    currentCursor,
-    currentAgent,
-    timestamp,
-  } = input;
+  const { event, seq, epoch, currentTail, currentHead, currentCursor, currentAgent, timestamp } =
+    input;
 
   let shouldApplyStreamEvent = true;
   let nextTimelineCursor: TimelineCursor | null = null;
@@ -340,15 +321,9 @@ export function processAgentStreamEvent(
   // ------------------------------------------------------------------
   // Timeline sequencing gate
   // ------------------------------------------------------------------
-  if (
-    event.type === "timeline" &&
-    typeof seq === "number" &&
-    typeof epoch === "string"
-  ) {
+  if (event.type === "timeline" && typeof seq === "number" && typeof epoch === "string") {
     const decision = classifySessionTimelineSeq({
-      cursor: currentCursor
-        ? { epoch: currentCursor.epoch, endSeq: currentCursor.endSeq }
-        : null,
+      cursor: currentCursor ? { epoch: currentCursor.epoch, endSeq: currentCursor.endSeq } : null,
       epoch,
       seq,
     });
@@ -410,18 +385,12 @@ export function processAgentStreamEvent(
       event.type === "turn_canceled" ||
       event.type === "turn_failed")
   ) {
-    const optimisticStatus = deriveOptimisticLifecycleStatus(
-      currentAgent.status,
-      event
-    );
+    const optimisticStatus = deriveOptimisticLifecycleStatus(currentAgent.status, event);
     if (optimisticStatus) {
-      const nextUpdatedAtMs = Math.max(
-        currentAgent.updatedAt.getTime(),
-        timestamp.getTime()
-      );
+      const nextUpdatedAtMs = Math.max(currentAgent.updatedAt.getTime(), timestamp.getTime());
       const nextLastActivityAtMs = Math.max(
         currentAgent.lastActivityAt.getTime(),
-        timestamp.getTime()
+        timestamp.getTime(),
       );
       agentPatch = {
         status: optimisticStatus,

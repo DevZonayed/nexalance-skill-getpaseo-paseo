@@ -73,10 +73,7 @@ function resolvePackagedAsarPath(): string {
   return path.join(process.resourcesPath, "app.asar");
 }
 
-function assertPathExists(input: {
-  label: string;
-  filePath: string;
-}): string {
+function assertPathExists(input: { label: string; filePath: string }): string {
   if (!existsSync(input.filePath)) {
     throw new Error(`${input.label} is missing at ${input.filePath}`);
   }
@@ -105,7 +102,7 @@ export function resolveDaemonRunnerEntrypoint(): NodeEntrypointSpec {
           "server",
           "dist",
           "scripts",
-          "daemon-runner.js"
+          "daemon-runner.js",
         ),
       }),
       execArgv: [],
@@ -141,7 +138,7 @@ export function resolveCliEntrypoint(): NodeEntrypointSpec {
           "@getpaseo",
           "cli",
           "dist",
-          "index.js"
+          "index.js",
         ),
       }),
       execArgv: [],

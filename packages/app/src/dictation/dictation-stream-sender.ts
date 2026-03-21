@@ -139,18 +139,20 @@ export class DictationStreamSender {
       }
       this.streamReady = true;
       this.flush();
-    })().catch((error) => {
-      // If starting failed, keep the segments for retry but clear the stream so finish can error cleanly.
-      if (this.startGeneration === generation && this.dictationId === dictationId) {
-        this.dictationId = null;
-        this.streamReady = false;
-      }
-      throw error;
-    }).finally(() => {
-      if (this.startPromise === start) {
-        this.startPromise = null;
-      }
-    });
+    })()
+      .catch((error) => {
+        // If starting failed, keep the segments for retry but clear the stream so finish can error cleanly.
+        if (this.startGeneration === generation && this.dictationId === dictationId) {
+          this.dictationId = null;
+          this.streamReady = false;
+        }
+        throw error;
+      })
+      .finally(() => {
+        if (this.startPromise === start) {
+          this.startPromise = null;
+        }
+      });
 
     this.startPromise = start;
     await start;

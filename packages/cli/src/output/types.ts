@@ -6,74 +6,74 @@
  */
 
 /** Supported output formats */
-export type OutputFormat = 'table' | 'json' | 'yaml'
+export type OutputFormat = "table" | "json" | "yaml";
 
 /** Options controlling output rendering */
 export interface OutputOptions {
   /** Output format (table, json, yaml) */
-  format: OutputFormat
+  format: OutputFormat;
   /** Minimal output - IDs only */
-  quiet: boolean
+  quiet: boolean;
   /** Omit table headers */
-  noHeaders: boolean
+  noHeaders: boolean;
   /** Disable color output */
-  noColor: boolean
+  noColor: boolean;
 }
 
 /** Column definition for table output */
 export interface ColumnDef<T> {
   /** Header text for the column */
-  header: string
+  header: string;
   /** Field key or accessor function */
-  field: keyof T | ((item: T) => unknown)
+  field: keyof T | ((item: T) => unknown);
   /** Optional width hint (characters) */
-  width?: number
+  width?: number;
   /** Optional alignment */
-  align?: 'left' | 'right' | 'center'
+  align?: "left" | "right" | "center";
   /** Optional color function - returns chalk color name */
-  color?: (value: unknown, item: T) => string | undefined
+  color?: (value: unknown, item: T) => string | undefined;
 }
 
 /** Schema describing how to render command output */
 export interface OutputSchema<T> {
   /** Field to use for quiet mode (--quiet outputs just this) */
-  idField: keyof T | ((item: T) => string)
+  idField: keyof T | ((item: T) => string);
   /** Column definitions for table output */
-  columns: ColumnDef<T>[]
+  columns: ColumnDef<T>[];
   /** Optional: transform data before JSON/YAML output */
-  serialize?: (data: T) => unknown
+  serialize?: (data: T) => unknown;
 }
 
 /** Result type for commands returning a single item */
 export interface SingleResult<T> {
-  type: 'single'
+  type: "single";
   /** The structured data to render */
-  data: T
+  data: T;
   /** Schema describing how to render this data (for item type T) */
-  schema: OutputSchema<T>
+  schema: OutputSchema<T>;
 }
 
 /** Result type for commands returning a list */
 export interface ListResult<T> {
-  type: 'list'
+  type: "list";
   /** The structured data to render */
-  data: T[]
+  data: T[];
   /** Schema describing how to render this data (for item type T) */
-  schema: OutputSchema<T>
+  schema: OutputSchema<T>;
 }
 
 /** Union type for all command results */
-export type AnyCommandResult<T> = SingleResult<T> | ListResult<T>
+export type AnyCommandResult<T> = SingleResult<T> | ListResult<T>;
 
 /** Base interface for command results (deprecated, use SingleResult or ListResult) */
-export type CommandResult<T> = SingleResult<T> | ListResult<T>
+export type CommandResult<T> = SingleResult<T> | ListResult<T>;
 
 /** Structured error for command failures */
 export interface CommandError {
   /** Machine-readable error code */
-  code: string
+  code: string;
   /** Human-readable message */
-  message: string
+  message: string;
   /** Additional context */
-  details?: unknown
+  details?: unknown;
 }

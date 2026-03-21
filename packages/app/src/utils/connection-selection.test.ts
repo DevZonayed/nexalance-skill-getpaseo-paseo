@@ -10,17 +10,11 @@ function makeDirect(id: string, endpoint: string): HostConnection {
   return { id, type: "directTcp", endpoint };
 }
 
-function makeRelay(
-  id: string,
-  relayEndpoint: string,
-  daemonPublicKeyB64 = "abc"
-): HostConnection {
+function makeRelay(id: string, relayEndpoint: string, daemonPublicKeyB64 = "abc"): HostConnection {
   return { id, type: "relay", relayEndpoint, daemonPublicKeyB64 };
 }
 
-function probes(
-  input: Record<string, ConnectionProbeState>
-): Map<string, ConnectionProbeState> {
+function probes(input: Record<string, ConnectionProbeState>): Map<string, ConnectionProbeState> {
   return new Map(Object.entries(input));
 }
 

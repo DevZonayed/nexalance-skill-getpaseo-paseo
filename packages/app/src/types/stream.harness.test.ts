@@ -38,7 +38,8 @@ const STREAM_HARNESS_LIVE: HarnessUpdate[] = [
       status: "running",
       input: {
         file_path: "README.md",
-        patch: "*** Begin Patch\n*** Update File: README.md\n@@\n-Old line\n+New line\n*** End Patch",
+        patch:
+          "*** Begin Patch\n*** Update File: README.md\n@@\n-Old line\n+New line\n*** End Patch",
       },
       detail: {
         type: "edit",
@@ -247,7 +248,7 @@ function buildToolEvent({
 }
 
 function extractHarnessSnapshots(
-  state: StreamItem[]
+  state: StreamItem[],
 ): Record<keyof typeof HARNESS_CALL_IDS, AgentToolCallItem | undefined> {
   const lookup = Object.values(HARNESS_CALL_IDS).reduce<
     Record<string, AgentToolCallItem | undefined>
@@ -266,6 +267,6 @@ function extractHarnessSnapshots(
 function findToolByCallId(state: StreamItem[], callId: string): AgentToolCallItem | undefined {
   return state.find(
     (item): item is AgentToolCallItem =>
-      isAgentToolCallItem(item) && item.payload.data.callId === callId
+      isAgentToolCallItem(item) && item.payload.data.callId === callId,
   );
 }

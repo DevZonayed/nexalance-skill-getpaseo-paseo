@@ -20,9 +20,7 @@ export function formatConnectionStatus(status: HostRuntimeConnectionStatus): str
 
 export type ConnectionStatusTone = "success" | "warning" | "error" | "muted";
 
-export function getConnectionStatusTone(
-  status: HostRuntimeConnectionStatus
-): ConnectionStatusTone {
+export function getConnectionStatusTone(status: HostRuntimeConnectionStatus): ConnectionStatusTone {
   switch (status) {
     case "online":
       return "success";

@@ -56,9 +56,7 @@ describe("daemon E2E (real claude) - rewind user message dedupe", () => {
         });
 
         const rewindUserMessages = timeline.entries.filter(
-          (entry) =>
-            entry.item.type === "user_message" &&
-            entry.item.text.trim() === "/rewind"
+          (entry) => entry.item.type === "user_message" && entry.item.text.trim() === "/rewind",
         );
 
         expect(rewindUserMessages).toHaveLength(1);
@@ -68,6 +66,6 @@ describe("daemon E2E (real claude) - rewind user message dedupe", () => {
         rmSync(cwd, { recursive: true, force: true });
       }
     },
-    300_000
+    300_000,
   );
 });

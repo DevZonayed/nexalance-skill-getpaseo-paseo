@@ -337,7 +337,8 @@ describe("codex rollout parsing", () => {
           payload: {
             type: "custom_tool_call_output",
             call_id: "call_patch_custom_1",
-            output: '{"output":"Success. Updated the following files:\\nA src/new-file.ts\\n","metadata":{"exit_code":0}}',
+            output:
+              '{"output":"Success. Updated the following files:\\nA src/new-file.ts\\n","metadata":{"exit_code":0}}',
           },
         }),
       ];

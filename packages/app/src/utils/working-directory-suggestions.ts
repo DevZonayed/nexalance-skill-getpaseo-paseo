@@ -5,7 +5,7 @@ export interface BuildWorkingDirectorySuggestionsInput {
 }
 
 export function buildWorkingDirectorySuggestions(
-  input: BuildWorkingDirectorySuggestionsInput
+  input: BuildWorkingDirectorySuggestionsInput,
 ): string[] {
   const rawQuery = input.query.trim();
   const recommended = uniquePaths(input.recommendedPaths);

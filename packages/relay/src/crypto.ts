@@ -103,10 +103,7 @@ export function importSecretKey(base64: string): Uint8Array {
   return bytes;
 }
 
-export function deriveSharedKey(
-  ourSecretKey: Uint8Array,
-  peerPublicKey: Uint8Array
-): SharedKey {
+export function deriveSharedKey(ourSecretKey: Uint8Array, peerPublicKey: Uint8Array): SharedKey {
   if (ourSecretKey.byteLength !== nacl.box.secretKeyLength) {
     throw new Error(`Invalid secret key length (expected ${nacl.box.secretKeyLength})`);
   }

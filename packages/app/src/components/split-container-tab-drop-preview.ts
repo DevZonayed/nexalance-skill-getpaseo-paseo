@@ -22,9 +22,7 @@ interface ComputeTabDropPreviewInput {
   };
 }
 
-export function computeTabDropPreview(
-  input: ComputeTabDropPreviewInput
-): TabDropPreview | null {
+export function computeTabDropPreview(input: ComputeTabDropPreviewInput): TabDropPreview | null {
   const targetIndex = input.targetTabs.findIndex((tab) => tab.tabId === input.overTabId);
   if (targetIndex < 0 || input.overRect.width <= 0) {
     return null;

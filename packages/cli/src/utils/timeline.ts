@@ -1,17 +1,17 @@
-import type { AgentTimelineItem, DaemonClient } from '@getpaseo/server'
+import type { AgentTimelineItem, DaemonClient } from "@getpaseo/server";
 
 type FetchProjectedTimelineItemsInput = {
-  client: DaemonClient
-  agentId: string
-}
+  client: DaemonClient;
+  agentId: string;
+};
 
 export async function fetchProjectedTimelineItems(
-  input: FetchProjectedTimelineItemsInput
+  input: FetchProjectedTimelineItemsInput,
 ): Promise<AgentTimelineItem[]> {
   const timeline = await input.client.fetchAgentTimeline(input.agentId, {
-    direction: 'tail',
+    direction: "tail",
     limit: 0,
-    projection: 'projected',
-  })
-  return timeline.entries.map((entry) => entry.item)
+    projection: "projected",
+  });
+  return timeline.entries.map((entry) => entry.item);
 }

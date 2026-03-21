@@ -1,23 +1,31 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
 const desktopDaemonMock = vi.hoisted(() => {
-  let eventHandler: ((payload: {
-    sessionId: string;
-    kind: "open" | "message" | "close" | "error";
-    text?: string | null;
-    binaryBase64?: string | null;
-    code?: number | null;
-    reason?: string | null;
-    error?: string | null;
-  }) => void) | null = null;
+  let eventHandler:
+    | ((payload: {
+        sessionId: string;
+        kind: "open" | "message" | "close" | "error";
+        text?: string | null;
+        binaryBase64?: string | null;
+        code?: number | null;
+        reason?: string | null;
+        error?: string | null;
+      }) => void)
+    | null = null;
 
   const openLocalTransportSession = vi.fn<(...args: unknown[]) => Promise<string>>();
-  const listenToLocalTransportEvents = vi.fn(async (handler: typeof eventHandler extends ((...args: infer A) => any) | null ? (...args: A) => void : never) => {
-    eventHandler = handler;
-    return () => {
-      eventHandler = null;
-    };
-  });
+  const listenToLocalTransportEvents = vi.fn(
+    async (
+      handler: typeof eventHandler extends ((...args: infer A) => any) | null
+        ? (...args: A) => void
+        : never,
+    ) => {
+      eventHandler = handler;
+      return () => {
+        eventHandler = null;
+      };
+    },
+  );
   const sendLocalTransportMessage = vi.fn(async () => undefined);
   const closeLocalTransportSession = vi.fn(async () => undefined);
 
@@ -61,7 +69,7 @@ describe("desktop-daemon-transport", () => {
       () =>
         new Promise<string>((resolve) => {
           resolveSession = resolve;
-        })
+        }),
     );
 
     const mod = await import("./desktop-daemon-transport");
@@ -97,13 +105,13 @@ describe("desktop-daemon-transport", () => {
       () =>
         new Promise<string>((resolve) => {
           resolveSession = resolve;
-        })
+        }),
     );
     desktopDaemonMock.listenToLocalTransportEvents.mockImplementation(
       () =>
         new Promise<() => void>((resolve) => {
           resolveListen = resolve;
-        })
+        }),
     );
 
     const mod = await import("./desktop-daemon-transport");

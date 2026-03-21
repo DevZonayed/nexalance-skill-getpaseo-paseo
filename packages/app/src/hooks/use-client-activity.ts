@@ -26,7 +26,7 @@ export function useClientActivity({
   const appVisibleRef = useRef(AppState.currentState === "active");
   const appVisibilityChangedAtRef = useRef<Date>(new Date());
   const backgroundedAtMsRef = useRef<number | null>(
-    AppState.currentState === "active" ? null : Date.now()
+    AppState.currentState === "active" ? null : Date.now(),
   );
   const heartbeatIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const prevFocusedAgentIdRef = useRef<string | null>(focusedAgentId);
@@ -70,7 +70,7 @@ export function useClientActivity({
       }
       recordUserActivity();
     },
-    [onAppResumed, recordUserActivity]
+    [onAppResumed, recordUserActivity],
   );
 
   const maybeSendImmediateHeartbeat = useCallback(() => {

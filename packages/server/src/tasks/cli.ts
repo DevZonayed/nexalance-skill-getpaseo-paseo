@@ -4,10 +4,7 @@ import { spawnSync } from "node:child_process";
 import { appendFileSync, existsSync, openSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { FileTaskStore } from "./task-store.js";
-import {
-  computeExecutionOrder,
-  buildSortedChildrenMap,
-} from "./execution-order.js";
+import { computeExecutionOrder, buildSortedChildrenMap } from "./execution-order.js";
 import { resolvePackageVersion } from "../server/package-version.js";
 import type { AgentType, ModelName, Task } from "./types.js";
 
@@ -164,7 +161,7 @@ Acceptance Criteria vs Body Guidance:
   "git status shows clean working tree" to each subtask's criteria.
 
   This makes process requirements verifiable at each step, not just at the end.
-`
+`,
   );
 
 program
@@ -177,7 +174,12 @@ program
   .option("--assignee <agent>", "Agent to assign (claude or codex)")
   .option("--draft", "Create as draft (not actionable)")
   .option("-p, --priority <n>", "Priority (lower number = higher priority)")
-  .option("-a, --accept <criterion>", "Acceptance criterion (repeatable)", (val: string, prev: string[]) => prev.concat(val), [] as string[])
+  .option(
+    "-a, --accept <criterion>",
+    "Acceptance criterion (repeatable)",
+    (val: string, prev: string[]) => prev.concat(val),
+    [] as string[],
+  )
   .action(async (title, opts) => {
     let body = opts.body ?? "";
     if (body === "-") {
@@ -186,9 +188,7 @@ program
 
     const task = await store.create(title, {
       body,
-      deps: opts.deps
-        ? opts.deps.split(",").map((s: string) => s.trim())
-        : [],
+      deps: opts.deps ? opts.deps.split(",").map((s: string) => s.trim()) : [],
       parentId: opts.parent,
       status: opts.draft ? "draft" : "open",
       assignee: opts.assignee as AgentType | undefined,
@@ -207,9 +207,7 @@ program
   .option("--roots", "Show only root tasks (no parent)")
   .action(async (opts) => {
     const tasks = await store.list();
-    let filtered = opts.status
-      ? tasks.filter((t) => t.status === opts.status)
-      : tasks;
+    let filtered = opts.status ? tasks.filter((t) => t.status === opts.status) : tasks;
 
     if (opts.roots) {
       filtered = filtered.filter((t) => !t.parentId);
@@ -220,7 +218,9 @@ program
       const assignee = t.assignee ? ` @${t.assignee}` : "";
       const parent = t.parentId ? ` ^${t.parentId}` : "";
       const priority = t.priority !== undefined ? ` !${t.priority}` : "";
-      process.stdout.write(`${t.id}  [${t.status}]  ${t.title}${priority}${assignee}${parent}${deps}\n`);
+      process.stdout.write(
+        `${t.id}  [${t.status}]  ${t.title}${priority}${assignee}${parent}${deps}\n`,
+      );
     }
   });
 
@@ -326,10 +326,7 @@ program
   .option("--flat", "Show flat list instead of tree")
   .option("-d, --depth <n>", "Limit tree depth (0 = root only)")
   .action(async (scopeId: string | undefined, opts) => {
-    const { timeline, orderMap, blocked } = await computeExecutionOrder(
-      store,
-      scopeId
-    );
+    const { timeline, orderMap, blocked } = await computeExecutionOrder(store, scopeId);
     const allTasks = await store.list();
     const taskMap = new Map(allTasks.map((t) => [t.id, t]));
     const maxDepth = opts.depth !== undefined ? parseInt(opts.depth, 10) : Infinity;
@@ -347,9 +344,7 @@ program
         const num = String(idx + 1).padStart(3, " ");
         const mark = t.status === "done" ? "✓" : " ";
         const deps = formatDeps(t);
-        process.stdout.write(
-          `${mark}${num}. ${priority}${t.id}  ${t.title}${assignee}${deps}\n`
-        );
+        process.stdout.write(`${mark}${num}. ${priority}${t.id}  ${t.title}${assignee}${deps}\n`);
       };
 
       for (let i = 0; i < timeline.length; i++) {
@@ -370,30 +365,23 @@ program
 
       const sortedChildrenMap = buildSortedChildrenMap(allTasks, orderMap);
 
-      const printTask = (
-        task: Task,
-        prefix: string,
-        connector: string,
-        depth: number
-      ) => {
+      const printTask = (task: Task, prefix: string, connector: string, depth: number) => {
         const assignee = task.assignee ? ` @${task.assignee}` : "";
-        const priority =
-          task.priority !== undefined ? ` !${task.priority}` : "";
+        const priority = task.priority !== undefined ? ` !${task.priority}` : "";
         const mark = task.status === "done" ? "✓ " : "  ";
         const deps = formatDeps(task);
         process.stdout.write(
-          `${mark}${prefix}${connector}${task.id} [${task.status}] ${task.title}${priority}${assignee}${deps}\n`
+          `${mark}${prefix}${connector}${task.id} [${task.status}] ${task.title}${priority}${assignee}${deps}\n`,
         );
       };
 
       // Print root
       const rootAssignee = root.assignee ? ` @${root.assignee}` : "";
-      const rootPriority =
-        root.priority !== undefined ? ` !${root.priority}` : "";
+      const rootPriority = root.priority !== undefined ? ` !${root.priority}` : "";
       const rootMark = root.status === "done" ? "✓ " : "  ";
       const rootDeps = formatDeps(root);
       process.stdout.write(
-        `${rootMark}${root.id} [${root.status}] ${root.title}${rootPriority}${rootAssignee}${rootDeps}\n`
+        `${rootMark}${root.id} [${root.status}] ${root.title}${rootPriority}${rootAssignee}${rootDeps}\n`,
       );
 
       // Recursively print children in execution order
@@ -450,7 +438,12 @@ program
   .option("-p, --priority <n>", "Priority (lower number = higher priority)")
   .option("-s, --status <status>", "Set status (draft, open, in_progress, done, failed)")
   .option("--clear-acceptance", "Clear all acceptance criteria (combine with -a to replace)")
-  .option("-a, --accept <criterion>", "Add acceptance criterion (repeatable)", (val: string, prev: string[]) => prev.concat(val), [] as string[])
+  .option(
+    "-a, --accept <criterion>",
+    "Add acceptance criterion (repeatable)",
+    (val: string, prev: string[]) => prev.concat(val),
+    [] as string[],
+  )
   .action(async (id, opts) => {
     const task = await store.get(id);
     if (!task) {
@@ -478,7 +471,9 @@ program
 
     if (opts.status) {
       if (!VALID_STATUSES.includes(opts.status)) {
-        process.stderr.write(`Invalid status: ${opts.status}. Must be one of: ${VALID_STATUSES.join(", ")}\n`);
+        process.stderr.write(
+          `Invalid status: ${opts.status}. Must be one of: ${VALID_STATUSES.join(", ")}\n`,
+        );
         process.exit(1);
       }
       changes.status = opts.status as Task["status"];
@@ -547,7 +542,9 @@ program
     for (const child of children) {
       const assignee = child.assignee ? ` @${child.assignee}` : "";
       const priority = child.priority !== undefined ? ` !${child.priority}` : "";
-      process.stdout.write(`${child.id}  [${child.status}]  ${child.title}${priority}${assignee}\n`);
+      process.stdout.write(
+        `${child.id}  [${child.status}]  ${child.title}${priority}${assignee}\n`,
+      );
     }
   });
 
@@ -644,7 +641,7 @@ function getAgentConfig(modelStr: string): AgentConfig {
 function runAgentWithModel(
   prompt: string,
   modelStr: string,
-  logFile: string
+  logFile: string,
 ): { success: boolean; output: string } {
   const config = getAgentConfig(modelStr);
   let args: string[];
@@ -1070,7 +1067,11 @@ program
   .description("Run agent loop on tasks with planner/worker/judge")
   .option("--plan", "Enable planner agent")
   .option("--planner <model>", "Planner model (default: gpt-5.2)", "gpt-5.2")
-  .option("--worker-model <model>", "Worker model (default: sonnet). For GPT models, append effort: gpt-5.2-high", "sonnet")
+  .option(
+    "--worker-model <model>",
+    "Worker model (default: sonnet). For GPT models, append effort: gpt-5.2-high",
+    "sonnet",
+  )
   .option("--judge-model <model>", "Judge model (default: haiku)", "haiku")
   .option("--max-iterations <n>", "Max worker/judge iterations per task (0 = no limit)", "0")
   .option("-w, --watch", "Keep running and wait for new tasks")
@@ -1092,7 +1093,10 @@ program
     process.stdout.write(`Log: ${logFile}\n`);
     process.stdout.write("\n");
 
-    log(logFile, `Started with planner=${enablePlanner ? plannerModel : "disabled"} worker=${baseWorkerModel} judge=${judgeModel} maxIter=${maxIterations} scope=${scopeId || "all"}`);
+    log(
+      logFile,
+      `Started with planner=${enablePlanner ? plannerModel : "disabled"} worker=${baseWorkerModel} judge=${judgeModel} maxIter=${maxIterations} scope=${scopeId || "all"}`,
+    );
 
     const runPlanner = async (task: Task, reason: string): Promise<boolean> => {
       log(logFile, `[PLANNER] Running ${plannerModel} (${reason})...`);
@@ -1121,12 +1125,17 @@ program
       // First check for in_progress tasks (resuming from crash)
       const allTasks = await store.list();
       let candidates = scopeId
-        ? [await store.get(scopeId), ...(await store.getDescendants(scopeId))].filter(Boolean) as Task[]
+        ? ([await store.get(scopeId), ...(await store.getDescendants(scopeId))].filter(
+            Boolean,
+          ) as Task[])
         : allTasks;
 
       const inProgress = candidates.filter((t) => t.status === "in_progress");
       if (inProgress.length > 0) {
-        log(logFile, `Found ${inProgress.length} in_progress task(s) from previous run, resuming...`);
+        log(
+          logFile,
+          `Found ${inProgress.length} in_progress task(s) from previous run, resuming...`,
+        );
         for (const t of inProgress) {
           await store.update(t.id, { status: "open" });
           log(logFile, `Reset ${t.id} to open`);
@@ -1172,7 +1181,8 @@ program
         let consecutiveNotDone = 0;
         // Track steering notes on scope (not leaf task) since that's where user adds them
         const scopeTaskForSteer = scopeId ? await store.get(scopeId) : null;
-        let lastSeenSteerCount = scopeTaskForSteer?.notes.filter(n => n.content.startsWith("STEER:")).length ?? 0;
+        let lastSeenSteerCount =
+          scopeTaskForSteer?.notes.filter((n) => n.content.startsWith("STEER:")).length ?? 0;
 
         while ((maxIterations === 0 || iteration <= maxIterations) && !taskDone) {
           const iterLabel = maxIterations === 0 ? `${iteration}` : `${iteration}/${maxIterations}`;
@@ -1182,12 +1192,14 @@ program
           if (enablePlanner && scopeId) {
             const freshScope = await store.get(scopeId);
             if (freshScope) {
-              const currentSteerCount = freshScope.notes.filter(n => n.content.startsWith("STEER:")).length;
+              const currentSteerCount = freshScope.notes.filter((n) =>
+                n.content.startsWith("STEER:"),
+              ).length;
               if (currentSteerCount > lastSeenSteerCount) {
                 const newSteers = freshScope.notes
-                  .filter(n => n.content.startsWith("STEER:"))
+                  .filter((n) => n.content.startsWith("STEER:"))
                   .slice(lastSeenSteerCount)
-                  .map(n => n.content.replace(/^STEER:\s*/, ""));
+                  .map((n) => n.content.replace(/^STEER:\s*/, ""));
                 log(logFile, `[STEER] New steering note detected - triggering planner`);
                 lastSeenSteerCount = currentSteerCount;
                 const reason = `User steering: ${newSteers.join("; ")}`;
@@ -1236,7 +1248,10 @@ program
             }
             // Only replan after 5 consecutive NOT_DONEs - use scope for bird's eye view
             if (enablePlanner && consecutiveNotDone >= 5 && scopeId) {
-              log(logFile, `[JUDGE] ${consecutiveNotDone} consecutive NOT_DONE on ${task.id} - triggering planner`);
+              log(
+                logFile,
+                `[JUDGE] ${consecutiveNotDone} consecutive NOT_DONE on ${task.id} - triggering planner`,
+              );
               const scopeTask = await store.get(scopeId);
               if (scopeTask) {
                 const reason = `task ${task.id} "${task.title}" got ${consecutiveNotDone} consecutive NOT_DONE`;

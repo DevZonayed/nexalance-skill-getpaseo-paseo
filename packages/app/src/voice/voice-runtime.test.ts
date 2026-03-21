@@ -119,7 +119,7 @@ describe("voice runtime", () => {
 
     expect(adapter.sendVoiceAudioChunk).toHaveBeenLastCalledWith(
       expect.any(String),
-      "audio/pcm;rate=16000;bits=16"
+      "audio/pcm;rate=16000;bits=16",
     );
 
     runtime.onTranscriptionResult("server-1", "hello");
@@ -146,7 +146,7 @@ describe("voice runtime", () => {
       () =>
         new Promise<number>((resolve) => {
           resolvePlay = resolve;
-        })
+        }),
     );
     const { runtime } = createRuntime({ engine });
     runtime.registerSession(adapter);
@@ -161,7 +161,7 @@ describe("voice runtime", () => {
         groupId: "group-1",
         chunkIndex: 0,
         isLastChunk: false,
-      })
+      }),
     );
 
     await vi.waitFor(() => {
@@ -177,7 +177,7 @@ describe("voice runtime", () => {
         groupId: "group-1",
         chunkIndex: 1,
         isLastChunk: true,
-      })
+      }),
     );
 
     expect(engine.play).toHaveBeenCalledTimes(1);
@@ -197,7 +197,7 @@ describe("voice runtime", () => {
       () =>
         new Promise<number>((resolve) => {
           playResolvers.push(resolve);
-        })
+        }),
     );
     const { runtime } = createRuntime({ engine });
     runtime.registerSession(adapter);
@@ -212,7 +212,7 @@ describe("voice runtime", () => {
         groupId: "group-1",
         chunkIndex: 0,
         isLastChunk: false,
-      })
+      }),
     );
     runtime.handleAudioOutput(
       "server-1",
@@ -221,7 +221,7 @@ describe("voice runtime", () => {
         groupId: "group-1",
         chunkIndex: 1,
         isLastChunk: true,
-      })
+      }),
     );
 
     await vi.waitFor(() => {
@@ -276,7 +276,7 @@ describe("voice runtime", () => {
       () =>
         new Promise<number>((resolve) => {
           resolvePlay = resolve;
-        })
+        }),
     );
     const { runtime } = createRuntime({ engine });
     runtime.registerSession(adapter);
@@ -385,7 +385,7 @@ describe("voice runtime", () => {
   it("returns an explicit not-ready error when the adapter is missing", async () => {
     const { runtime } = createRuntime();
     await expect(runtime.startVoice("server-1", "agent-1")).rejects.toThrow(
-      "Voice runtime is not ready for host server-1"
+      "Voice runtime is not ready for host server-1",
     );
   });
 

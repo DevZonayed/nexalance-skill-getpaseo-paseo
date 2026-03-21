@@ -3,7 +3,7 @@ import type { AgentStreamEventPayload } from "@server/shared/messages";
 
 export function deriveOptimisticLifecycleStatus(
   currentStatus: AgentLifecycleStatus,
-  event: AgentStreamEventPayload
+  event: AgentStreamEventPayload,
 ): AgentLifecycleStatus | null {
   if (currentStatus !== "running") {
     return null;

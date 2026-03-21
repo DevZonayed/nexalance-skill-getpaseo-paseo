@@ -25,14 +25,7 @@ export const ICON_PATTERNS = [
 /**
  * Directories or directory paths to search first (in priority order).
  */
-export const PRIORITY_DIRS = [
-  "public",
-  "static",
-  "priv/static",
-  "assets",
-  "images",
-  "img",
-];
+export const PRIORITY_DIRS = ["public", "static", "priv/static", "assets", "images", "img"];
 
 /**
  * Monorepo package directory patterns to scan (e.g., packages/app, apps/web).
@@ -194,18 +187,13 @@ function getMimeType(filename: string): string {
 function matchesPattern(filename: string, pattern: string): boolean {
   if (pattern.includes("*")) {
     // Convert glob pattern to regex
-    const regexPattern = pattern
-      .replace(/\./g, "\\.")
-      .replace(/\*/g, ".*");
+    const regexPattern = pattern.replace(/\./g, "\\.").replace(/\*/g, ".*");
     return new RegExp(`^${regexPattern}$`).test(filename);
   }
   return filename === pattern;
 }
 
-async function findIconInDir(
-  dir: string,
-  patterns: string[]
-): Promise<string | null> {
+async function findIconInDir(dir: string, patterns: string[]): Promise<string | null> {
   let entries: string[];
   try {
     entries = await readdir(dir);
@@ -238,7 +226,7 @@ async function searchDirRecursively(
   patterns: string[],
   ignoredDirs: Set<string>,
   maxDepth: number,
-  currentDepth: number = 0
+  currentDepth: number = 0,
 ): Promise<string | null> {
   if (currentDepth > maxDepth) {
     return null;
@@ -272,7 +260,7 @@ async function searchDirRecursively(
           patterns,
           ignoredDirs,
           maxDepth,
-          currentDepth + 1
+          currentDepth + 1,
         );
         if (result) {
           return result;
@@ -296,7 +284,7 @@ async function searchDirRecursively(
  */
 export async function findProjectIcon(
   projectDir: string,
-  maxDepth: number = 3
+  maxDepth: number = 3,
 ): Promise<string | null> {
   const ignoredDirsSet = new Set(IGNORED_DIRS);
 
@@ -310,7 +298,7 @@ export async function findProjectIcon(
           priorityPath,
           ICON_PATTERNS,
           ignoredDirsSet,
-          maxDepth - 1
+          maxDepth - 1,
         );
         if (result) {
           return result;
@@ -350,7 +338,7 @@ export async function findProjectIcon(
               priorityPath,
               ICON_PATTERNS,
               ignoredDirsSet,
-              maxDepth - 1
+              maxDepth - 1,
             );
             if (result) {
               return result;
@@ -381,7 +369,7 @@ export async function findProjectIcon(
 async function findDirRecursively(
   dir: string,
   maxDepth: number = 2,
-  currentDepth: number = 0
+  currentDepth: number = 0,
 ): Promise<string | null> {
   const ignoredDirsSet = new Set(IGNORED_DIRS);
   const priorityDirsSet = new Set(PRIORITY_DIRS);
@@ -414,11 +402,7 @@ async function findDirRecursively(
       try {
         const stats = await stat(fullPath);
         if (stats.isDirectory()) {
-          const result = await findDirRecursively(
-            fullPath,
-            maxDepth,
-            currentDepth + 1
-          );
+          const result = await findDirRecursively(fullPath, maxDepth, currentDepth + 1);
           if (result) {
             return result;
           }
@@ -439,9 +423,7 @@ async function findDirRecursively(
  * @param projectDir - The root directory of the project to search
  * @returns The icon data with mime type, or null if not found
  */
-export async function getProjectIcon(
-  projectDir: string
-): Promise<ProjectIcon | null> {
+export async function getProjectIcon(projectDir: string): Promise<ProjectIcon | null> {
   const iconPath = await findProjectIcon(projectDir);
   if (!iconPath) {
     return null;

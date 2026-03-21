@@ -43,7 +43,7 @@ describe("terminal key helpers", () => {
         shiftKey: true,
         altKey: false,
         metaKey: false,
-      })
+      }),
     ).toEqual({
       ctrl: true,
       shift: true,
@@ -59,7 +59,7 @@ describe("terminal key helpers", () => {
         ctrlKey: false,
         altKey: false,
         pendingModifiers: { ctrl: false, shift: false, alt: false },
-      })
+      }),
     ).toBe(true);
     expect(
       shouldInterceptDomTerminalKey({
@@ -67,7 +67,7 @@ describe("terminal key helpers", () => {
         ctrlKey: true,
         altKey: false,
         pendingModifiers: { ctrl: false, shift: false, alt: false },
-      })
+      }),
     ).toBe(true);
     expect(
       shouldInterceptDomTerminalKey({
@@ -75,17 +75,13 @@ describe("terminal key helpers", () => {
         ctrlKey: false,
         altKey: false,
         pendingModifiers: { ctrl: false, shift: false, alt: false },
-      })
+      }),
     ).toBe(false);
   });
 
   it("detects pending modifier state", () => {
-    expect(hasPendingTerminalModifiers({ ctrl: false, shift: false, alt: false })).toBe(
-      false
-    );
-    expect(hasPendingTerminalModifiers({ ctrl: true, shift: false, alt: false })).toBe(
-      true
-    );
+    expect(hasPendingTerminalModifiers({ ctrl: false, shift: false, alt: false })).toBe(false);
+    expect(hasPendingTerminalModifiers({ ctrl: true, shift: false, alt: false })).toBe(true);
   });
 
   it("maps onData bytes to terminal keys for modifier fallback", () => {
@@ -103,7 +99,7 @@ describe("terminal key helpers", () => {
       resolvePendingModifierDataInput({
         data: "hello",
         pendingModifiers: { ctrl: true, shift: false, alt: false },
-      })
+      }),
     ).toEqual({
       mode: "raw",
       clearPendingModifiers: true,
@@ -115,7 +111,7 @@ describe("terminal key helpers", () => {
       resolvePendingModifierDataInput({
         data: "c",
         pendingModifiers: { ctrl: true, shift: false, alt: false },
-      })
+      }),
     ).toEqual({
       mode: "key",
       key: "c",
@@ -128,7 +124,7 @@ describe("terminal key helpers", () => {
       resolvePendingModifierDataInput({
         data: "c",
         pendingModifiers: { ctrl: false, shift: false, alt: false },
-      })
+      }),
     ).toEqual({
       mode: "raw",
       clearPendingModifiers: false,

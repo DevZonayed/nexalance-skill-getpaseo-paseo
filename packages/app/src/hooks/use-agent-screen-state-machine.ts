@@ -19,9 +19,7 @@ export interface AgentScreenMachineInput {
   hasHydratedHistoryBefore: boolean;
 }
 
-function shouldBlockInitialAuthoritativeReadyState(
-  input: AgentScreenMachineInput
-): boolean {
+function shouldBlockInitialAuthoritativeReadyState(input: AgentScreenMachineInput): boolean {
   return (
     !input.shouldUseOptimisticStream &&
     !input.hasHydratedHistoryBefore &&
@@ -96,24 +94,19 @@ export function deriveAgentScreenViewState({
     nextMemory.hadInitialSyncFailure = false;
   }
 
-  if (
-    input.missingAgentState.kind === "error" &&
-    !input.hasHydratedHistoryBefore
-  ) {
+  if (input.missingAgentState.kind === "error" && !input.hasHydratedHistoryBefore) {
     nextMemory.hadInitialSyncFailure = true;
   }
 
   const useOptimisticCreateFlowAgent =
     input.shouldUseOptimisticStream &&
     Boolean(input.placeholderAgent) &&
-    (!input.agent ||
-      input.agent.status === "initializing" ||
-      input.agent.status === "idle");
+    (!input.agent || input.agent.status === "initializing" || input.agent.status === "idle");
 
   const candidateAgent =
     input.agent && useOptimisticCreateFlowAgent && input.placeholderAgent
       ? { ...input.agent, status: input.placeholderAgent.status }
-      : input.agent ?? input.placeholderAgent;
+      : (input.agent ?? input.placeholderAgent);
   const shouldBlockReadyState = shouldBlockInitialAuthoritativeReadyState(input);
 
   if (input.missingAgentState.kind === "not_found") {
@@ -197,8 +190,7 @@ export function deriveAgentScreenViewState({
     }
 
     if (ui === "toast") {
-      const shouldEmitHistoryRefreshToast =
-        memory.activeToastLatch !== "history_refresh";
+      const shouldEmitHistoryRefreshToast = memory.activeToastLatch !== "history_refresh";
       nextMemory.activeToastLatch = "history_refresh";
       sync = {
         status: "catching_up",

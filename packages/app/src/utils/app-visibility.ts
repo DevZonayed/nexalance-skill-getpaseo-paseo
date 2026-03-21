@@ -1,8 +1,6 @@
 import { AppState, Platform } from "react-native";
 
-export function getIsAppActivelyVisible(
-  appState: string = AppState.currentState
-): boolean {
+export function getIsAppActivelyVisible(appState: string = AppState.currentState): boolean {
   if (appState !== "active") {
     return false;
   }
@@ -11,8 +9,7 @@ export function getIsAppActivelyVisible(
     return true;
   }
 
-  const documentVisible =
-    typeof document === "undefined" || document.visibilityState === "visible";
+  const documentVisible = typeof document === "undefined" || document.visibilityState === "visible";
   const windowFocused =
     typeof document === "undefined" ||
     typeof document.hasFocus !== "function" ||

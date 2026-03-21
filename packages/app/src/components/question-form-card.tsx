@@ -1,12 +1,5 @@
 import { useState, useCallback } from "react";
-import {
-  View,
-  Text,
-  TextInput,
-  Pressable,
-  ActivityIndicator,
-  Platform,
-} from "react-native";
+import { View, Text, TextInput, Pressable, ActivityIndicator, Platform } from "react-native";
 import { StyleSheet, useUnistyles, UnistylesRuntime } from "react-native-unistyles";
 import { Check, CircleHelp, X } from "lucide-react-native";
 import type { PendingPermission } from "@/types/shared";
@@ -68,52 +61,42 @@ interface QuestionFormCardProps {
 
 const IS_WEB = Platform.OS === "web";
 
-export function QuestionFormCard({
-  permission,
-  onRespond,
-  isResponding,
-}: QuestionFormCardProps) {
+export function QuestionFormCard({ permission, onRespond, isResponding }: QuestionFormCardProps) {
   const { theme } = useUnistyles();
-  const isMobile =
-    UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
+  const isMobile = UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
   const questions = parseQuestions(permission.request.input);
 
   const [selections, setSelections] = useState<Record<number, Set<number>>>({});
   const [otherTexts, setOtherTexts] = useState<Record<number, string>>({});
-  const [respondingAction, setRespondingAction] = useState<
-    "submit" | "dismiss" | null
-  >(null);
+  const [respondingAction, setRespondingAction] = useState<"submit" | "dismiss" | null>(null);
 
-  const toggleOption = useCallback(
-    (qIndex: number, optIndex: number, multiSelect: boolean) => {
-      setSelections((prev) => {
-        const current = prev[qIndex] ?? new Set<number>();
-        const next = new Set(current);
-        if (multiSelect) {
-          if (next.has(optIndex)) {
-            next.delete(optIndex);
-          } else {
-            next.add(optIndex);
-          }
+  const toggleOption = useCallback((qIndex: number, optIndex: number, multiSelect: boolean) => {
+    setSelections((prev) => {
+      const current = prev[qIndex] ?? new Set<number>();
+      const next = new Set(current);
+      if (multiSelect) {
+        if (next.has(optIndex)) {
+          next.delete(optIndex);
         } else {
-          if (next.has(optIndex)) {
-            next.clear();
-          } else {
-            next.clear();
-            next.add(optIndex);
-          }
+          next.add(optIndex);
         }
-        return { ...prev, [qIndex]: next };
-      });
-      setOtherTexts((prev) => {
-        if (!prev[qIndex]) return prev;
-        const next = { ...prev };
-        delete next[qIndex];
-        return next;
-      });
-    },
-    []
-  );
+      } else {
+        if (next.has(optIndex)) {
+          next.clear();
+        } else {
+          next.clear();
+          next.add(optIndex);
+        }
+      }
+      return { ...prev, [qIndex]: next };
+    });
+    setOtherTexts((prev) => {
+      if (!prev[qIndex]) return prev;
+      const next = { ...prev };
+      delete next[qIndex];
+      return next;
+    });
+  }, []);
 
   const setOtherText = useCallback((qIndex: number, text: string) => {
     setOtherTexts((prev) => ({ ...prev, [qIndex]: text }));
@@ -182,9 +165,7 @@ export function QuestionFormCard({
         return (
           <View key={qIndex} style={styles.questionBlock}>
             <View style={styles.questionHeader}>
-              <Text
-                style={[styles.questionText, { color: theme.colors.foreground }]}
-              >
+              <Text style={[styles.questionText, { color: theme.colors.foreground }]}>
                 {q.question}
               </Text>
               <CircleHelp size={14} color={theme.colors.foregroundMuted} />
@@ -202,19 +183,12 @@ export function QuestionFormCard({
                       },
                       pressed && styles.optionItemPressed,
                     ]}
-                    onPress={() =>
-                      toggleOption(qIndex, optIndex, q.multiSelect)
-                    }
+                    onPress={() => toggleOption(qIndex, optIndex, q.multiSelect)}
                     disabled={isResponding}
                   >
                     <View style={styles.optionItemContent}>
                       <View style={styles.optionTextBlock}>
-                        <Text
-                          style={[
-                            styles.optionLabel,
-                            { color: theme.colors.foreground },
-                          ]}
-                        >
+                        <Text style={[styles.optionLabel, { color: theme.colors.foreground }]}>
                           {opt.label}
                         </Text>
                         {opt.description ? (
@@ -230,10 +204,7 @@ export function QuestionFormCard({
                       </View>
                       {isSelected ? (
                         <View style={styles.optionCheckSlot}>
-                          <Check
-                            size={16}
-                            color={theme.colors.foregroundMuted}
-                          />
+                          <Check size={16} color={theme.colors.foregroundMuted} />
                         </View>
                       ) : null}
                     </View>
@@ -245,9 +216,8 @@ export function QuestionFormCard({
               style={[
                 styles.otherInput,
                 {
-                  borderColor: otherText.length > 0
-                    ? theme.colors.borderAccent
-                    : theme.colors.border,
+                  borderColor:
+                    otherText.length > 0 ? theme.colors.borderAccent : theme.colors.border,
                   color: theme.colors.foreground,
                   backgroundColor: theme.colors.surface2,
                 },
@@ -264,19 +234,12 @@ export function QuestionFormCard({
         );
       })}
 
-      <View
-        style={[
-          styles.actionsContainer,
-          !isMobile && styles.actionsContainerDesktop,
-        ]}
-      >
+      <View style={[styles.actionsContainer, !isMobile && styles.actionsContainerDesktop]}>
         <Pressable
           style={({ pressed, hovered = false }) => [
             styles.actionButton,
             {
-              backgroundColor: hovered
-                ? theme.colors.surface2
-                : theme.colors.surface1,
+              backgroundColor: hovered ? theme.colors.surface2 : theme.colors.surface1,
               borderColor: theme.colors.borderAccent,
             },
             pressed && styles.optionItemPressed,
@@ -285,19 +248,11 @@ export function QuestionFormCard({
           disabled={isResponding}
         >
           {respondingAction === "dismiss" ? (
-            <ActivityIndicator
-              size="small"
-              color={theme.colors.foregroundMuted}
-            />
+            <ActivityIndicator size="small" color={theme.colors.foregroundMuted} />
           ) : (
             <View style={styles.actionContent}>
               <X size={14} color={theme.colors.foregroundMuted} />
-              <Text
-                style={[
-                  styles.actionText,
-                  { color: theme.colors.foregroundMuted },
-                ]}
-              >
+              <Text style={[styles.actionText, { color: theme.colors.foregroundMuted }]}>
                 Dismiss
               </Text>
             </View>
@@ -311,12 +266,8 @@ export function QuestionFormCard({
               styles.actionButton,
               {
                 backgroundColor:
-                  hovered && !disabled
-                    ? theme.colors.surface2
-                    : theme.colors.surface1,
-                borderColor: disabled
-                  ? theme.colors.border
-                  : theme.colors.borderAccent,
+                  hovered && !disabled ? theme.colors.surface2 : theme.colors.surface1,
+                borderColor: disabled ? theme.colors.border : theme.colors.borderAccent,
                 opacity: disabled ? 0.5 : 1,
               },
               pressed && !disabled ? styles.optionItemPressed : null,
@@ -326,27 +277,18 @@ export function QuestionFormCard({
           disabled={!allAnswered || isResponding}
         >
           {respondingAction === "submit" ? (
-            <ActivityIndicator
-              size="small"
-              color={theme.colors.foreground}
-            />
+            <ActivityIndicator size="small" color={theme.colors.foreground} />
           ) : (
             <View style={styles.actionContent}>
               <Check
                 size={14}
-                color={
-                  allAnswered
-                    ? theme.colors.foreground
-                    : theme.colors.foregroundMuted
-                }
+                color={allAnswered ? theme.colors.foreground : theme.colors.foregroundMuted}
               />
               <Text
                 style={[
                   styles.actionText,
                   {
-                    color: allAnswered
-                      ? theme.colors.foreground
-                      : theme.colors.foregroundMuted,
+                    color: allAnswered ? theme.colors.foreground : theme.colors.foregroundMuted,
                   },
                 ]}
               >

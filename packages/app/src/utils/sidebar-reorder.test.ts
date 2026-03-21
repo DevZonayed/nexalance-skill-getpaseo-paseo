@@ -8,7 +8,7 @@ describe("hasVisibleOrderChanged", () => {
       hasVisibleOrderChanged({
         currentOrder: ["a", "b", "c", "d"],
         reorderedVisibleKeys: ["a", "b", "c"],
-      })
+      }),
     ).toBe(false);
   });
 
@@ -17,7 +17,7 @@ describe("hasVisibleOrderChanged", () => {
       hasVisibleOrderChanged({
         currentOrder: ["a", "b", "c", "d"],
         reorderedVisibleKeys: ["b", "a", "c"],
-      })
+      }),
     ).toBe(true);
   });
 
@@ -26,7 +26,7 @@ describe("hasVisibleOrderChanged", () => {
       hasVisibleOrderChanged({
         currentOrder: ["a", "b"],
         reorderedVisibleKeys: ["a", "c"],
-      })
+      }),
     ).toBe(true);
   });
 });
@@ -37,7 +37,7 @@ describe("mergeWithRemainder", () => {
       mergeWithRemainder({
         currentOrder: ["a", "x", "b", "y"],
         reorderedVisibleKeys: ["b", "a"],
-      })
+      }),
     ).toEqual(["b", "a", "x", "y"]);
   });
 
@@ -46,8 +46,7 @@ describe("mergeWithRemainder", () => {
       mergeWithRemainder({
         currentOrder: ["stale", "hidden"],
         reorderedVisibleKeys: [],
-      })
+      }),
     ).toEqual(["stale", "hidden"]);
   });
 });
-

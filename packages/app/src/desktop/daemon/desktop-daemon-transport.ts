@@ -142,15 +142,15 @@ export function createDesktopLocalDaemonTransportFactory(): DaemonTransportFacto
         }
         if (typeof data === "string") {
           void sendLocalTransportMessage({ sessionId, text: data }).catch((error) =>
-            emitError(error)
+            emitError(error),
           );
           return;
         }
         const binaryBase64 = encodeBinaryToBase64(
-          data instanceof ArrayBuffer ? data : new Uint8Array(data)
+          data instanceof ArrayBuffer ? data : new Uint8Array(data),
         );
         void sendLocalTransportMessage({ sessionId, binaryBase64 }).catch((error) =>
-          emitError(error)
+          emitError(error),
         );
       },
       close: () => {

@@ -27,13 +27,12 @@ export function resolveWorkspaceArchiveRedirectWorkspaceId(input: {
   }
 
   const sameProjectWorkspaces = workspaces.filter(
-    (workspace) => workspace.projectId === archivedWorkspace.projectId
+    (workspace) => workspace.projectId === archivedWorkspace.projectId,
   );
   const rootCheckoutWorkspace =
     sameProjectWorkspaces.find(
       (workspace) =>
-        workspace.workspaceKind === "local_checkout" &&
-        workspace.id !== archivedWorkspace.id
+        workspace.workspaceKind === "local_checkout" && workspace.id !== archivedWorkspace.id,
     ) ?? null;
   if (rootCheckoutWorkspace) {
     return rootCheckoutWorkspace.id;

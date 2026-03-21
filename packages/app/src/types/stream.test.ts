@@ -14,7 +14,10 @@ import { buildToolCallDisplayModel } from "@/utils/tool-call-display";
 
 type CanonicalToolStatus = "running" | "completed" | "failed" | "canceled";
 
-function assistantTimeline(text: string, provider: AgentProvider = "claude"): AgentStreamEventPayload {
+function assistantTimeline(
+  text: string,
+  provider: AgentProvider = "claude",
+): AgentStreamEventPayload {
   return {
     type: "timeline",
     provider,
@@ -22,7 +25,10 @@ function assistantTimeline(text: string, provider: AgentProvider = "claude"): Ag
   };
 }
 
-function reasoningTimeline(text: string, provider: AgentProvider = "claude"): AgentStreamEventPayload {
+function reasoningTimeline(
+  text: string,
+  provider: AgentProvider = "claude",
+): AgentStreamEventPayload {
   return {
     type: "timeline",
     provider,
@@ -89,7 +95,7 @@ function todoTimeline(items: { text: string; completed: boolean }[]): AgentStrea
 function findToolByCallId(state: StreamItem[], callId: string): AgentToolCallItem | undefined {
   return state.find(
     (item): item is AgentToolCallItem =>
-      isAgentToolCallItem(item) && item.payload.data.callId === callId
+      isAgentToolCallItem(item) && item.payload.data.callId === callId,
   );
 }
 
@@ -446,7 +452,9 @@ describe("stream reducer canonical tool calls", () => {
       },
     ]);
 
-    const todos = state.find((item): item is Extract<StreamItem, { kind: "todo_list" }> => item.kind === "todo_list");
+    const todos = state.find(
+      (item): item is Extract<StreamItem, { kind: "todo_list" }> => item.kind === "todo_list",
+    );
 
     assert.ok(todos);
     assert.strictEqual(todos.items.length, 2);
@@ -473,7 +481,9 @@ describe("stream reducer canonical tool calls", () => {
     ]);
 
     const tools = state.filter(isAgentToolCallItem);
-    const todos = state.find((item): item is Extract<StreamItem, { kind: "todo_list" }> => item.kind === "todo_list");
+    const todos = state.find(
+      (item): item is Extract<StreamItem, { kind: "todo_list" }> => item.kind === "todo_list",
+    );
 
     assert.strictEqual(tools.length, 0);
     assert.ok(todos);
@@ -517,10 +527,7 @@ describe("stream reducer canonical tool calls", () => {
     assert.ok(message);
     assert.strictEqual(message.id, messageId);
     assert.deepStrictEqual(message.images, optimisticImages);
-    assert.strictEqual(
-      message.timestamp.getTime(),
-      authoritativeTimestamp.getTime()
-    );
+    assert.strictEqual(message.timestamp.getTime(), authoritativeTimestamp.getTime());
   });
 
   it("keeps canonical assistant/user/assistant order during replay", () => {
@@ -548,25 +555,21 @@ describe("stream reducer canonical tool calls", () => {
       },
     };
 
-    const next = reduceStreamUpdate(
-      state,
-      event,
-      new Date("2025-01-01T11:20:02Z"),
-      { source: "canonical" }
-    );
+    const next = reduceStreamUpdate(state, event, new Date("2025-01-01T11:20:02Z"), {
+      source: "canonical",
+    });
 
-    assert.deepStrictEqual(next.map((item) => item.kind), [
-      "assistant_message",
-      "user_message",
-      "assistant_message",
-    ]);
+    assert.deepStrictEqual(
+      next.map((item) => item.kind),
+      ["assistant_message", "user_message", "assistant_message"],
+    );
     assert.strictEqual(
       next[0]?.kind === "assistant_message" ? next[0].text : null,
-      "Saved that preference. "
+      "Saved that preference. ",
     );
     assert.strictEqual(
       next[2]?.kind === "assistant_message" ? next[2].text : null,
-      "Right. And it probably isn't."
+      "Right. And it probably isn't.",
     );
   });
 
@@ -595,20 +598,17 @@ describe("stream reducer canonical tool calls", () => {
       },
     };
 
-    const next = reduceStreamUpdate(
-      state,
-      event,
-      new Date("2025-01-01T11:21:02Z"),
-      { source: "live" }
-    );
+    const next = reduceStreamUpdate(state, event, new Date("2025-01-01T11:21:02Z"), {
+      source: "live",
+    });
 
-    assert.deepStrictEqual(next.map((item) => item.kind), [
-      "assistant_message",
-      "user_message",
-    ]);
+    assert.deepStrictEqual(
+      next.map((item) => item.kind),
+      ["assistant_message", "user_message"],
+    );
     assert.strictEqual(
       next[0]?.kind === "assistant_message" ? next[0].text : null,
-      "Saved that preference. Right. And it probably isn't."
+      "Saved that preference. Right. And it probably isn't.",
     );
   });
 });

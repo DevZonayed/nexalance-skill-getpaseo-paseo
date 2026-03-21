@@ -4,7 +4,12 @@ import { Readable } from "node:stream";
 import type pino from "pino";
 
 import type { SpeechStreamResult, TextToSpeechProvider } from "../../../speech-provider.js";
-import { chunkBuffer, float32ToPcm16le, parsePcm16MonoWav, pcm16leToFloat32 } from "../../../audio.js";
+import {
+  chunkBuffer,
+  float32ToPcm16le,
+  parsePcm16MonoWav,
+  pcm16leToFloat32,
+} from "../../../audio.js";
 import { Pcm16MonoResampler } from "../../../../agent/pcm16-resampler.js";
 
 type OrtModule = typeof import("onnxruntime-node");
@@ -45,11 +50,13 @@ function normalizeDims(dims: Array<number | string | null | undefined>): number[
 
 function getSessionInputMeta(
   session: OrtSession,
-  inputName: string
+  inputName: string,
 ): { type?: string; dims?: Array<number | string | null> } | undefined {
   const metaAny = (session as any).inputMetadata as unknown;
   if (Array.isArray(metaAny)) {
-    const entry = metaAny.find((m) => m && typeof m === "object" && (m as any).name === inputName) as any;
+    const entry = metaAny.find(
+      (m) => m && typeof m === "object" && (m as any).name === inputName,
+    ) as any;
     if (!entry) return undefined;
     return { type: entry.type, dims: entry.shape };
   }
@@ -134,7 +141,11 @@ function getOrtProviders(ort: OrtModule, device: "auto" | "cpu" | "cuda"): strin
   return ["cpu"];
 }
 
-function createZeroTensorForInput(ort: OrtModule, session: OrtSession, inputName: string): OrtTensor {
+function createZeroTensorForInput(
+  ort: OrtModule,
+  session: OrtSession,
+  inputName: string,
+): OrtTensor {
   const meta = getSessionInputMeta(session, inputName);
   const dims = normalizeDims(meta?.dims ?? []);
   if (dims.length === 0) {
@@ -165,7 +176,7 @@ function initState(session: OrtSession, ort: OrtModule): Record<string, OrtTenso
 
 function updateStateFromOutputs(
   state: Record<string, OrtTensor>,
-  outputs: Record<string, OrtTensor>
+  outputs: Record<string, OrtTensor>,
 ): void {
   for (const [name, tensor] of Object.entries(outputs)) {
     if (!name.startsWith("out_state_")) continue;
@@ -252,8 +263,15 @@ class PocketTtsOnnxEngine {
     this.voiceEmbeddings = args.voiceEmbeddings;
   }
 
-  static async create(config: PocketTtsOnnxConfig, logger: pino.Logger): Promise<PocketTtsOnnxEngine> {
-    const log = logger.child({ module: "speech", provider: "pocket-tts", component: "onnx-engine" });
+  static async create(
+    config: PocketTtsOnnxConfig,
+    logger: pino.Logger,
+  ): Promise<PocketTtsOnnxEngine> {
+    const log = logger.child({
+      module: "speech",
+      provider: "pocket-tts",
+      component: "onnx-engine",
+    });
 
     const modelDir = config.modelDir;
     const onnxDir = `${modelDir}/onnx`;
@@ -284,14 +302,23 @@ class PocketTtsOnnxEngine {
     const ort = await loadOrt();
     const providers = getOrtProviders(ort, device);
 
-    const [tokenizer, mimiEncoder, textConditioner, flowLmMain, flowLmFlow, mimiDecoder] = await Promise.all([
-      loadSentencePiece(tokenizerPath),
-      ort.InferenceSession.create(`${onnxDir}/mimi_encoder.onnx`, { executionProviders: providers }),
-      ort.InferenceSession.create(`${onnxDir}/text_conditioner.onnx`, { executionProviders: providers }),
-      ort.InferenceSession.create(`${onnxDir}/${flowMainFile}`, { executionProviders: providers }),
-      ort.InferenceSession.create(`${onnxDir}/${flowFlowFile}`, { executionProviders: providers }),
-      ort.InferenceSession.create(`${onnxDir}/${decoderFile}`, { executionProviders: providers }),
-    ]);
+    const [tokenizer, mimiEncoder, textConditioner, flowLmMain, flowLmFlow, mimiDecoder] =
+      await Promise.all([
+        loadSentencePiece(tokenizerPath),
+        ort.InferenceSession.create(`${onnxDir}/mimi_encoder.onnx`, {
+          executionProviders: providers,
+        }),
+        ort.InferenceSession.create(`${onnxDir}/text_conditioner.onnx`, {
+          executionProviders: providers,
+        }),
+        ort.InferenceSession.create(`${onnxDir}/${flowMainFile}`, {
+          executionProviders: providers,
+        }),
+        ort.InferenceSession.create(`${onnxDir}/${flowFlowFile}`, {
+          executionProviders: providers,
+        }),
+        ort.InferenceSession.create(`${onnxDir}/${decoderFile}`, { executionProviders: providers }),
+      ]);
 
     // Precompute flow matching time-step buffers.
     const stBuffers: Array<{ s: OrtTensor; t: OrtTensor }> = [];
@@ -316,23 +343,18 @@ class PocketTtsOnnxEngine {
       pcm16 = resampler.processChunk(pcm16);
     }
     const floatAudio = pcm16leToFloat32(pcm16);
-    const audioTensor = new ort.Tensor(
-      "float32",
-      floatAudio,
-      [1, 1, floatAudio.length]
-    );
+    const audioTensor = new ort.Tensor("float32", floatAudio, [1, 1, floatAudio.length]);
 
     const encoded = await mimiEncoder.run({ audio: audioTensor });
     const firstOutName = (mimiEncoder as any).outputNames?.[0] as string | undefined;
-    const voiceEmb = firstOutName ? (encoded as any)[firstOutName] : (Object.values(encoded)[0] as any);
+    const voiceEmb = firstOutName
+      ? (encoded as any)[firstOutName]
+      : (Object.values(encoded)[0] as any);
     if (!voiceEmb) {
       throw new Error("PocketTTS mimi_encoder: missing output");
     }
 
-    log.info(
-      { precision, device, providers, lsdSteps, temperature },
-      "PocketTTS ONNX initialized"
-    );
+    log.info({ precision, device, providers, lsdSteps, temperature }, "PocketTTS ONNX initialized");
 
     return new PocketTtsOnnxEngine({
       ort,
@@ -457,7 +479,7 @@ class PocketTtsOnnxEngine {
 
   private async decodeLatentsChunk(
     frames: Float32Array[],
-    state: Record<string, OrtTensor>
+    state: Record<string, OrtTensor>,
   ): Promise<Float32Array> {
     const ort = this.ort;
     const frameCount = frames.length;
@@ -503,7 +525,7 @@ class PocketTtsOnnxEngine {
       if (chunkSize > 0) {
         const audio = await this.decodeLatentsChunk(
           generated.slice(decodedFrames, decodedFrames + chunkSize),
-          decoderState
+          decoderState,
         );
         decodedFrames += chunkSize;
         yield audio;
@@ -549,7 +571,10 @@ export class PocketTtsOnnxTTS implements TextToSpeechProvider {
       }
     })(this.engine);
 
-    this.logger.debug({ ms: Date.now() - start, textLength: text.length }, "PocketTTS stream ready");
+    this.logger.debug(
+      { ms: Date.now() - start, textLength: text.length },
+      "PocketTTS stream ready",
+    );
 
     return {
       stream: Readable.from(iterable),

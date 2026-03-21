@@ -32,14 +32,8 @@ import {
   useHosts,
   type HostRuntimeConnectionStatus,
 } from "@/runtime/host-runtime";
-import {
-  getInitDeferred,
-  getInitKey,
-} from "@/utils/agent-initialization";
-import {
-  derivePendingPermissionKey,
-  normalizeAgentSnapshot,
-} from "@/utils/agent-snapshots";
+import { getInitDeferred, getInitKey } from "@/utils/agent-initialization";
+import { derivePendingPermissionKey, normalizeAgentSnapshot } from "@/utils/agent-snapshots";
 import { mergePendingCreateImages } from "@/utils/pending-create-images";
 import { deriveSidebarStateBucket } from "@/utils/sidebar-agent-state";
 import { useCreateFlowStore } from "@/stores/create-flow-store";
@@ -81,10 +75,10 @@ function resolveWorkspaceAgentTabLabel(title: string | null | undefined): string
 
 function useAgentPanelDescriptor(
   target: { kind: "agent"; agentId: string },
-  context: { serverId: string }
+  context: { serverId: string },
 ): PanelDescriptor {
   const agent = useSessionStore(
-    (state) => state.sessions[context.serverId]?.agents?.get(target.agentId) ?? null
+    (state) => state.sessions[context.serverId]?.agents?.get(target.agentId) ?? null,
   );
   const provider = agent?.provider ?? "codex";
   const label = resolveWorkspaceAgentTabLabel(agent?.title);
@@ -113,7 +107,7 @@ function AgentPanel() {
     (input: { filePath: string }) => {
       openFileInWorkspace(input.filePath);
     },
-    [openFileInWorkspace]
+    [openFileInWorkspace],
   );
   return (
     <AgentPanelContent
@@ -133,10 +127,7 @@ export const agentPanelRegistration: PanelRegistration<"agent"> = {
 
 const EMPTY_STREAM_ITEMS: StreamItem[] = [];
 
-function logWebStickyBottom(
-  _event: string,
-  _details: Record<string, unknown>
-): void {}
+function logWebStickyBottom(_event: string, _details: Record<string, unknown>): void {}
 
 function toErrorMessage(error: unknown): string {
   if (error instanceof Error) {
@@ -171,10 +162,9 @@ function AgentPanelContent({
 
   const connectionServerId = resolvedServerId ?? null;
   const daemon = connectionServerId
-    ? daemons.find((entry) => entry.serverId === connectionServerId) ?? null
+    ? (daemons.find((entry) => entry.serverId === connectionServerId) ?? null)
     : null;
-  const serverLabel =
-    daemon?.label ?? connectionServerId ?? "Selected host";
+  const serverLabel = daemon?.label ?? connectionServerId ?? "Selected host";
   const isUnknownDaemon = Boolean(connectionServerId && !daemon);
   const connectionStatus: HostRuntimeConnectionStatus =
     isUnknownDaemon && runtimeConnectionStatus === "connecting"
@@ -240,61 +230,47 @@ function AgentPanelBody({
     buildDraftStoreKey({
       serverId,
       agentId: agentId ?? "__pending__",
-    })
+    }),
   );
 
   const handleFilesDropped = useCallback((files: ImageAttachment[]) => {
     addImagesRef.current?.(files);
   }, []);
 
-  const handleAddImagesCallback = useCallback(
-    (addImages: (images: ImageAttachment[]) => void) => {
-      addImagesRef.current = addImages;
-    },
-    []
-  );
+  const handleAddImagesCallback = useCallback((addImages: (images: ImageAttachment[]) => void) => {
+    addImagesRef.current = addImages;
+  }, []);
 
   const agent = useSessionStore((state) =>
-    agentId ? state.sessions[serverId]?.agents?.get(agentId) : undefined
+    agentId ? state.sessions[serverId]?.agents?.get(agentId) : undefined,
   );
   const streamItemsRaw = useSessionStore((state) =>
-    agentId
-      ? state.sessions[serverId]?.agentStreamTail?.get(agentId)
-      : undefined
+    agentId ? state.sessions[serverId]?.agentStreamTail?.get(agentId) : undefined,
   );
   const streamItems = streamItemsRaw ?? EMPTY_STREAM_ITEMS;
   const pendingByDraftId = useCreateFlowStore((state) => state.pendingByDraftId);
-  const markPendingCreateLifecycle = useCreateFlowStore(
-    (state) => state.markLifecycle
-  );
+  const markPendingCreateLifecycle = useCreateFlowStore((state) => state.markLifecycle);
   const clearPendingCreate = useCreateFlowStore((state) => state.clear);
   const isInitializingFromMap = useSessionStore((state) =>
-    agentId
-      ? state.sessions[serverId]?.initializingAgents?.get(agentId) ?? false
-      : false
+    agentId ? (state.sessions[serverId]?.initializingAgents?.get(agentId) ?? false) : false,
   );
   const historySyncGeneration = useSessionStore(
-    (state) => state.sessions[serverId]?.historySyncGeneration ?? 0
+    (state) => state.sessions[serverId]?.historySyncGeneration ?? 0,
   );
   const hasAppliedAuthoritativeHistory = useSessionStore((state) =>
     agentId
-      ? state.sessions[serverId]?.agentAuthoritativeHistoryApplied?.get(agentId) ===
-        true
-      : false
+      ? state.sessions[serverId]?.agentAuthoritativeHistoryApplied?.get(agentId) === true
+      : false,
   );
   const agentHistorySyncGeneration = useSessionStore((state) =>
-    agentId
-      ? state.sessions[serverId]?.agentHistorySyncGeneration?.get(agentId) ?? -1
-      : -1
+    agentId ? (state.sessions[serverId]?.agentHistorySyncGeneration?.get(agentId) ?? -1) : -1,
   );
   const allPendingPermissions = useSessionStore(
-    (state) => state.sessions[serverId]?.pendingPermissions
+    (state) => state.sessions[serverId]?.pendingPermissions,
   );
   const setAgents = useSessionStore((state) => state.setAgents);
   const setAgentStreamTail = useSessionStore((state) => state.setAgentStreamTail);
-  const setPendingPermissions = useSessionStore(
-    (state) => state.setPendingPermissions
-  );
+  const setPendingPermissions = useSessionStore((state) => state.setPendingPermissions);
   const hasSession = useSessionStore((state) => Boolean(state.sessions[serverId]));
   const { ensureAgentIsInitialized } = useAgentInitialization({
     serverId,
@@ -379,9 +355,7 @@ function AgentPanelBody({
     }
     if (changed.length > 0 && Object.keys(prev).length > 0) {
       console.log("[AgentPanelBody] values changed:", changed.join(", "), {
-        changed: Object.fromEntries(
-          changed.map((k) => [k, { prev: prev[k], curr: curr[k] }])
-        ),
+        changed: Object.fromEntries(changed.map((k) => [k, { prev: prev[k], curr: curr[k] }])),
       });
     }
     debugPrevRef.current = curr;
@@ -409,7 +383,7 @@ function AgentPanelBody({
         return { kind: "error", message };
       });
     },
-    [agentId]
+    [agentId],
   );
 
   const ensureInitializedWithSyncErrorHandling = useCallback(
@@ -421,7 +395,7 @@ function AgentPanelBody({
         handleHistorySyncFailure({ origin, error });
       });
     },
-    [agentId, ensureAgentIsInitialized, handleHistorySyncFailure]
+    [agentId, ensureAgentIsInitialized, handleHistorySyncFailure],
   );
 
   useEffect(() => {
@@ -446,18 +420,9 @@ function AgentPanelBody({
       return;
     }
     ensureInitializedWithSyncErrorHandling("focus");
-  }, [
-    agentId,
-    ensureInitializedWithSyncErrorHandling,
-    hasSession,
-    isConnected,
-    isPaneFocused,
-  ]);
+  }, [agentId, ensureInitializedWithSyncErrorHandling, hasSession, isConnected, isPaneFocused]);
 
-  const isArchivingCurrentAgent = Boolean(
-    agentId &&
-      isArchivingAgent({ serverId, agentId })
-  );
+  const isArchivingCurrentAgent = Boolean(agentId && isArchivingAgent({ serverId, agentId }));
 
   useEffect(() => {
     if (wasPaneFocusedRef.current && !isPaneFocused) {
@@ -515,21 +480,18 @@ function AgentPanelBody({
       return streamItems;
     }
     const alreadyHasOptimistic = streamItems.some(
-      (item) => item.kind === "user_message" && item.id === optimistic.id
+      (item) => item.kind === "user_message" && item.id === optimistic.id,
     );
     return alreadyHasOptimistic ? streamItems : [...optimisticStreamItems, ...streamItems];
   }, [optimisticStreamItems, streamItems]);
 
-  const shouldUseOptimisticStream =
-    isPendingCreateForPanel && optimisticStreamItems.length > 0;
+  const shouldUseOptimisticStream = isPendingCreateForPanel && optimisticStreamItems.length > 0;
   const authoritativeStatus = agent?.status;
   const isAuthoritativeBootstrapping =
     authoritativeStatus === "initializing" || authoritativeStatus === "idle";
   const showPendingCreateSubmitLoading =
-    isPendingCreateForPanel &&
-    (!authoritativeStatus || isAuthoritativeBootstrapping);
-  const canFinalizePendingCreate =
-    Boolean(authoritativeStatus) && !isAuthoritativeBootstrapping;
+    isPendingCreateForPanel && (!authoritativeStatus || isAuthoritativeBootstrapping);
+  const canFinalizePendingCreate = Boolean(authoritativeStatus) && !isAuthoritativeBootstrapping;
 
   const placeholderAgent: Agent | null = useMemo(() => {
     if (!shouldUseOptimisticStream || !agentId) {
@@ -598,7 +560,7 @@ function AgentPanelBody({
         intent: routeBottomAnchorRequestRef.current,
         effectiveAgentId: effectiveAgent?.id ?? null,
       }),
-    [effectiveAgent?.id]
+    [effectiveAgent?.id],
   );
 
   useEffect(() => {
@@ -606,16 +568,10 @@ function AgentPanelBody({
       return;
     }
     const hasUserMessage = streamItems.some(
-      (item) =>
-        item.kind === "user_message" &&
-        item.id === pendingCreate.clientMessageId
+      (item) => item.kind === "user_message" && item.id === pendingCreate.clientMessageId,
     );
     if (hasUserMessage && canFinalizePendingCreate) {
-      if (
-        agentId &&
-        pendingCreate.images &&
-        pendingCreate.images.length > 0
-      ) {
+      if (agentId && pendingCreate.images && pendingCreate.images.length > 0) {
         setAgentStreamTail(serverId, (previous) => {
           const current = previous.get(agentId);
           if (!current) {
@@ -705,10 +661,7 @@ function AgentPanelBody({
         if (attemptToken !== initAttemptTokenRef.current) {
           return;
         }
-        const currentAgent = useSessionStore
-          .getState()
-          .sessions[serverId]
-          ?.agents.get(agentId);
+        const currentAgent = useSessionStore.getState().sessions[serverId]?.agents.get(agentId);
         if (!currentAgent) {
           const result = await client.fetchAgent(agentId);
           if (attemptToken !== initAttemptTokenRef.current) {
@@ -830,23 +783,16 @@ function AgentPanelBody({
 
   return (
     <View style={styles.root}>
-      <FileDropZone
-        onFilesDropped={handleFilesDropped}
-        disabled={isArchivingCurrentAgent}
-      >
+      <FileDropZone onFilesDropped={handleFilesDropped} disabled={isArchivingCurrentAgent}>
         <View style={styles.container}>
           <View style={styles.contentContainer}>
-            <ReanimatedAnimated.View
-              style={[styles.content, animatedKeyboardStyle]}
-            >
+            <ReanimatedAnimated.View style={[styles.content, animatedKeyboardStyle]}>
               <AgentStreamView
                 ref={streamViewRef}
                 agentId={effectiveAgent.id}
                 serverId={serverId}
                 agent={effectiveAgent}
-                streamItems={
-                  shouldUseOptimisticStream ? mergedStreamItems : streamItems
-                }
+                streamItems={shouldUseOptimisticStream ? mergedStreamItems : streamItems}
                 pendingPermissions={pendingPermissions}
                 routeBottomAnchorRequest={routeBottomAnchorRequest}
                 isAuthoritativeHistoryReady={hasAppliedAuthoritativeHistory}
@@ -907,9 +853,7 @@ function AgentPanelBody({
         <View style={styles.archivingOverlay} testID="agent-archiving-overlay">
           <ActivityIndicator size="large" color={theme.colors.foreground} />
           <Text style={styles.archivingTitle}>Archiving agent...</Text>
-          <Text style={styles.archivingSubtitle}>
-            Please wait while we archive this agent.
-          </Text>
+          <Text style={styles.archivingSubtitle}>Please wait while we archive this agent.</Text>
         </View>
       ) : null}
     </View>
@@ -932,12 +876,10 @@ function AgentSessionUnavailableState({
       <View style={styles.container}>
         <View style={styles.centerState}>
           <Text style={styles.errorText}>
-            Cannot open this agent because {serverLabel} is not configured on
-            this device.
+            Cannot open this agent because {serverLabel} is not configured on this device.
           </Text>
           <Text style={styles.statusText}>
-            Add the host in Settings or open an agent on a configured server to
-            continue.
+            Add the host in Settings or open an agent on a configured server to continue.
           </Text>
         </View>
       </View>
@@ -966,15 +908,11 @@ function AgentSessionUnavailableState({
           </>
         ) : (
           <>
-            <Text style={styles.offlineTitle}>
-              Reconnecting to {serverLabel}...
-            </Text>
+            <Text style={styles.offlineTitle}>Reconnecting to {serverLabel}...</Text>
             <Text style={styles.offlineDescription}>
               We will show this agent again as soon as the host is reachable.
             </Text>
-            {lastError ? (
-              <Text style={styles.offlineDetails}>{lastError}</Text>
-            ) : null}
+            {lastError ? <Text style={styles.offlineDetails}>{lastError}</Text> : null}
           </>
         )}
       </View>

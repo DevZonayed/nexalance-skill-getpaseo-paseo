@@ -1,18 +1,8 @@
 import type { AgentLifecycleStatus } from "@server/shared/agent-lifecycle";
 
-export type SidebarAttentionReason =
-  | "finished"
-  | "error"
-  | "permission"
-  | null
-  | undefined;
+export type SidebarAttentionReason = "finished" | "error" | "permission" | null | undefined;
 
-export type SidebarStateBucket =
-  | "needs_input"
-  | "failed"
-  | "running"
-  | "attention"
-  | "done";
+export type SidebarStateBucket = "needs_input" | "failed" | "running" | "attention" | "done";
 
 export function deriveSidebarStateBucket(input: {
   status: AgentLifecycleStatus;

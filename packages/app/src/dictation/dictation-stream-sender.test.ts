@@ -21,7 +21,10 @@ class FakeDaemonClient {
     this.chunks.push({ dictationId, seq, audio, format });
   }
 
-  async finishDictationStream(dictationId: string, finalSeq: number): Promise<{ dictationId: string; text: string }> {
+  async finishDictationStream(
+    dictationId: string,
+    finalSeq: number,
+  ): Promise<{ dictationId: string; text: string }> {
     this.finishes.push({ dictationId, finalSeq });
     return { dictationId, text: "ok" };
   }
@@ -123,4 +126,3 @@ describe("DictationStreamSender", () => {
     expect(client.chunks.map((c) => c.seq)).toEqual([0, 1]);
   });
 });
-

@@ -37,8 +37,7 @@ export type AssistantTimelineItem =
   | { type: "assistant_message"; text: string }
   | { type: string; text?: string };
 
-const normalizeNotificationText = (text: string): string =>
-  text.replace(/\s+/g, " ").trim();
+const normalizeNotificationText = (text: string): string => text.replace(/\s+/g, " ").trim();
 
 const truncateNotificationText = (text: string, limit: number): string => {
   if (text.length <= limit) {
@@ -79,9 +78,7 @@ const stripMarkdownToText = (markdown: string): string => {
   return text;
 };
 
-const buildNotificationPreview = (
-  text: string | null | undefined
-): string | null => {
+const buildNotificationPreview = (text: string | null | undefined): string | null => {
   if (!text) {
     return null;
   }
@@ -103,7 +100,7 @@ const safeStringify = (value: unknown): string | null => {
 };
 
 const buildPermissionDetails = (
-  request: NotificationPermissionRequest | null | undefined
+  request: NotificationPermissionRequest | null | undefined,
 ): string | null => {
   if (!request) {
     return null;
@@ -137,7 +134,7 @@ const buildPermissionDetails = (
 };
 
 export function findLatestAssistantMessageFromTimeline(
-  timeline: readonly AssistantTimelineItem[]
+  timeline: readonly AssistantTimelineItem[],
 ): string | null {
   // Providers may stream assistant content in consecutive chunks.
   const chunks: string[] = [];
@@ -160,7 +157,7 @@ export function findLatestAssistantMessageFromTimeline(
 }
 
 export function findLatestPermissionRequest(
-  pendingPermissions: ReadonlyMap<string, NotificationPermissionRequest>
+  pendingPermissions: ReadonlyMap<string, NotificationPermissionRequest>,
 ): NotificationPermissionRequest | null {
   let latest: NotificationPermissionRequest | null = null;
   for (const request of pendingPermissions.values()) {
@@ -170,7 +167,7 @@ export function findLatestPermissionRequest(
 }
 
 export function buildAgentAttentionNotificationPayload(
-  input: BuildAgentAttentionNotificationPayloadInput
+  input: BuildAgentAttentionNotificationPayloadInput,
 ): AgentAttentionNotificationPayload {
   const title =
     input.reason === "permission"

@@ -19,15 +19,10 @@ export async function readDesktopFileBase64(pathOrUri: string): Promise<string> 
   });
 }
 
-export async function resolveDesktopPreviewUrl(
-  attachment: AttachmentMetadata
-): Promise<string> {
+export async function resolveDesktopPreviewUrl(attachment: AttachmentMetadata): Promise<string> {
   const base64 = await readDesktopFileBase64(attachment.storageKey);
 
-  if (
-    typeof URL !== "undefined" &&
-    typeof URL.createObjectURL === "function"
-  ) {
+  if (typeof URL !== "undefined" && typeof URL.createObjectURL === "function") {
     const bytes = base64ToUint8Array(base64);
     const buffer = new ArrayBuffer(bytes.byteLength);
     new Uint8Array(buffer).set(bytes);
@@ -40,9 +35,7 @@ export async function resolveDesktopPreviewUrl(
   return `data:${attachment.mimeType};base64,${base64}`;
 }
 
-export async function releaseDesktopPreviewUrl(input: {
-  url: string;
-}): Promise<void> {
+export async function releaseDesktopPreviewUrl(input: { url: string }): Promise<void> {
   if (!activeObjectUrls.has(input.url)) {
     return;
   }

@@ -50,7 +50,7 @@ type ScrollInvestigationStore = {
       | "wheelAttach"
       | "wheelDetach"
       | "inputChange"
-      | "keyPress"
+      | "keyPress",
   ) => void;
   snapshot: () => {
     listeners: {
@@ -92,11 +92,7 @@ const SOURCE_LABEL = "[ScrollJankInvestigation]";
 function shouldInstall(): boolean {
   const runtime = globalThis as ScrollInvestigationGlobal;
   const isDev = Boolean((globalThis as { __DEV__?: boolean }).__DEV__);
-  return (
-    Platform.OS === "web" &&
-    isDev &&
-    !runtime.__PASEO_SCROLL_JANK_INVESTIGATION_DISABLED__
-  );
+  return Platform.OS === "web" && isDev && !runtime.__PASEO_SCROLL_JANK_INVESTIGATION_DISABLED__;
 }
 
 function normalizeCapture(options?: AddEventListenerOptions | boolean): boolean {
@@ -137,8 +133,7 @@ function describeEventTarget(target: EventTarget): string {
       .join("");
   }
 
-  const ctorName = (target as { constructor?: { name?: string } }).constructor
-    ?.name;
+  const ctorName = (target as { constructor?: { name?: string } }).constructor?.name;
   return ctorName || "unknown-target";
 }
 
@@ -164,10 +159,7 @@ function inferCallsite(): string {
   return "unknown";
 }
 
-function ensureListenerStats(
-  map: Map<string, ListenerStats>,
-  type: string
-): ListenerStats {
+function ensureListenerStats(map: Map<string, ListenerStats>, type: string): ListenerStats {
   const existing = map.get(type);
   if (existing) {
     return existing;
@@ -179,7 +171,7 @@ function ensureListenerStats(
 
 function ensureComponentStats(
   map: Map<string, ComponentStats>,
-  componentId: string
+  componentId: string,
 ): ComponentStats {
   const existing = map.get(componentId);
   if (existing) {
@@ -216,10 +208,7 @@ export function installScrollJankInvestigation(): void {
   const targetIds = new WeakMap<object, number>();
   const listenerIds = new WeakMap<object, number>();
   const activeListenerKeys = new Set<string>();
-  const activeListenerMeta = new Map<
-    string,
-    { type: string; target: string }
-  >();
+  const activeListenerMeta = new Map<string, { type: string; target: string }>();
   const listenerStatsByType = new Map<string, ListenerStats>();
   const listenerCallsiteCount = new Map<string, number>();
   const componentStatsById = new Map<string, ComponentStats>();
@@ -276,7 +265,7 @@ export function installScrollJankInvestigation(): void {
     target: EventTarget,
     type: string,
     listener: EventListenerOrEventListenerObject,
-    options?: AddEventListenerOptions | boolean
+    options?: AddEventListenerOptions | boolean,
   ): string {
     return [
       getTargetId(target),
@@ -290,7 +279,7 @@ export function installScrollJankInvestigation(): void {
     this: EventTarget,
     type: string,
     listener: EventListenerOrEventListenerObject | null,
-    options?: AddEventListenerOptions | boolean
+    options?: AddEventListenerOptions | boolean,
   ): void {
     nativeAddEventListener.call(this, type, listener as any, options as any);
     if (!listener) {
@@ -312,10 +301,7 @@ export function installScrollJankInvestigation(): void {
     if (TRACKED_EVENT_TYPES.has(type)) {
       const callsite = inferCallsite();
       const metricKey = `${type} :: ${callsite}`;
-      listenerCallsiteCount.set(
-        metricKey,
-        (listenerCallsiteCount.get(metricKey) ?? 0) + 1
-      );
+      listenerCallsiteCount.set(metricKey, (listenerCallsiteCount.get(metricKey) ?? 0) + 1);
     }
   };
 
@@ -323,7 +309,7 @@ export function installScrollJankInvestigation(): void {
     this: EventTarget,
     type: string,
     listener: EventListenerOrEventListenerObject | null,
-    options?: EventListenerOptions | boolean
+    options?: EventListenerOptions | boolean,
   ): void {
     nativeRemoveEventListener.call(this, type, listener as any, options as any);
     if (!listener) {
@@ -343,10 +329,8 @@ export function installScrollJankInvestigation(): void {
   const nativeClearTimeout = globalThis.clearTimeout.bind(globalThis);
   const nativeSetInterval = globalThis.setInterval.bind(globalThis);
   const nativeClearInterval = globalThis.clearInterval.bind(globalThis);
-  const nativeRequestAnimationFrame =
-    globalThis.requestAnimationFrame.bind(globalThis);
-  const nativeCancelAnimationFrame =
-    globalThis.cancelAnimationFrame.bind(globalThis);
+  const nativeRequestAnimationFrame = globalThis.requestAnimationFrame.bind(globalThis);
+  const nativeCancelAnimationFrame = globalThis.cancelAnimationFrame.bind(globalThis);
 
   globalThis.setTimeout = ((handler: TimerHandler, timeout?: number, ...args: unknown[]) => {
     timerStats.timeout.created += 1;
@@ -545,7 +529,7 @@ export function installScrollJankInvestigation(): void {
   runtime.__PASEO_SCROLL_JANK_INVESTIGATION__ = store;
   console.log(
     `${SOURCE_LABEL} installed`,
-    "Use window.__PASEO_SCROLL_JANK_INVESTIGATION__.snapshot()"
+    "Use window.__PASEO_SCROLL_JANK_INVESTIGATION__.snapshot()",
   );
 }
 
@@ -573,7 +557,7 @@ export function markScrollInvestigationEvent(
     | "wheelAttach"
     | "wheelDetach"
     | "inputChange"
-    | "keyPress"
+    | "keyPress",
 ): void {
   if (!shouldInstall()) {
     return;

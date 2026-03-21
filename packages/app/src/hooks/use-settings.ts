@@ -36,7 +36,8 @@ export function useAppSettings(): UseAppSettingsReturn {
   const updateSettings = useCallback(
     async (updates: Partial<AppSettings>) => {
       try {
-        const prev = queryClient.getQueryData<AppSettings>(APP_SETTINGS_QUERY_KEY) ?? DEFAULT_APP_SETTINGS;
+        const prev =
+          queryClient.getQueryData<AppSettings>(APP_SETTINGS_QUERY_KEY) ?? DEFAULT_APP_SETTINGS;
         const next = { ...prev, ...updates };
         queryClient.setQueryData<AppSettings>(APP_SETTINGS_QUERY_KEY, next);
         await AsyncStorage.setItem(APP_SETTINGS_KEY, JSON.stringify(next));
@@ -45,7 +46,7 @@ export function useAppSettings(): UseAppSettingsReturn {
         throw err;
       }
     },
-    [queryClient]
+    [queryClient],
   );
 
   const resetSettings = useCallback(async () => {

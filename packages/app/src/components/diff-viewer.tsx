@@ -71,7 +71,8 @@ export function DiffViewer({
                       key={segIdx}
                       style={[
                         line.type === "add" ? styles.addText : styles.removeText,
-                        segment.changed && (line.type === "add" ? styles.addHighlight : styles.removeHighlight),
+                        segment.changed &&
+                          (line.type === "add" ? styles.addHighlight : styles.removeHighlight),
                       ]}
                     >
                       {segment.text}

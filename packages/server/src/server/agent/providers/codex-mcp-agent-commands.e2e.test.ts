@@ -2,10 +2,7 @@ import { describe, test, expect, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import {
-  createDaemonTestContext,
-  type DaemonTestContext,
-} from "../../test-utils/index.js";
+import { createDaemonTestContext, type DaemonTestContext } from "../../test-utils/index.js";
 import { getFullAccessConfig } from "../../daemon-e2e/agent-configs.js";
 
 function tmpDir(prefix: string): string {
@@ -32,14 +29,31 @@ describe("codex agent commands E2E", () => {
     mkdirSync(skillsDir, { recursive: true });
     writeFileSync(
       path.join(promptsDir, "hello.md"),
-      ["---", "description: Test prompt", "argument-hint: NAME=<name>", "---", "", "Say hello to $NAME and then output exactly PASEO_OK.", ""].join("\n"),
-      "utf8"
+      [
+        "---",
+        "description: Test prompt",
+        "argument-hint: NAME=<name>",
+        "---",
+        "",
+        "Say hello to $NAME and then output exactly PASEO_OK.",
+        "",
+      ].join("\n"),
+      "utf8",
     );
     mkdirSync(path.join(skillsDir, "my-skill"), { recursive: true });
     writeFileSync(
       path.join(skillsDir, "my-skill", "SKILL.md"),
-      ["---", "name: my-skill", "description: Test skill", "user-invocable: true", "---", "", "When invoked, respond with exactly PASEO_SKILL_OK.", ""].join("\n"),
-      "utf8"
+      [
+        "---",
+        "name: my-skill",
+        "description: Test skill",
+        "user-invocable: true",
+        "---",
+        "",
+        "When invoked, respond with exactly PASEO_SKILL_OK.",
+        "",
+      ].join("\n"),
+      "utf8",
     );
     process.env.CODEX_HOME = codexHome;
 
@@ -85,8 +99,16 @@ describe("codex agent commands E2E", () => {
     const promptPath = path.join(promptsDir, "paseo-test-sayok.md");
     writeFileSync(
       promptPath,
-      ["---", "description: Say OK", "argument-hint: NAME=<name>", "---", "", "Output exactly: PASEO_OK $NAME", ""].join("\n"),
-      "utf8"
+      [
+        "---",
+        "description: Say OK",
+        "argument-hint: NAME=<name>",
+        "---",
+        "",
+        "Output exactly: PASEO_OK $NAME",
+        "",
+      ].join("\n"),
+      "utf8",
     );
 
     const agent = await ctx.client.createAgent({
@@ -95,10 +117,7 @@ describe("codex agent commands E2E", () => {
       title: "Codex Prompt Execute Test Agent",
     });
 
-    await ctx.client.sendMessage(
-      agent.id,
-      "/prompts:paseo-test-sayok NAME=world"
-    );
+    await ctx.client.sendMessage(agent.id, "/prompts:paseo-test-sayok NAME=world");
     const state = await ctx.client.waitForFinish(agent.id, 30_000);
 
     expect(state.status).toBe("idle");
@@ -115,7 +134,7 @@ describe("codex agent commands E2E", () => {
     writeFileSync(
       path.join(promptsDir, "paseo-test-sayok.md"),
       ["---", "description: Say OK", "---", "", "Output exactly: PASEO_OK", ""].join("\n"),
-      "utf8"
+      "utf8",
     );
     process.env.CODEX_HOME = codexHome;
 
@@ -149,10 +168,7 @@ describe("codex agent commands E2E", () => {
     });
 
     const token = `RAW_PROMPT_TOKEN_${Date.now()}`;
-    await ctx.client.sendMessage(
-      agent.id,
-      `/not-a-real-command respond with exactly: ${token}`
-    );
+    await ctx.client.sendMessage(agent.id, `/not-a-real-command respond with exactly: ${token}`);
     const state = await ctx.client.waitForFinish(agent.id, 30_000);
 
     expect(state.status).toBe("idle");

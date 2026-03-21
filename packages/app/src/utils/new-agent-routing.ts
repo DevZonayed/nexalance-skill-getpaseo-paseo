@@ -7,7 +7,7 @@ import {
 } from "@/utils/host-routes";
 
 export function parseAgentKey(
-  key: string | null | undefined
+  key: string | null | undefined,
 ): { serverId: string; agentId: string } | null {
   if (!key) {
     return null;
@@ -36,10 +36,7 @@ export function resolveSelectedAgentForNewAgent(input: {
       return { serverId: workspaceRoute.serverId, agentId };
     }
   }
-  return (
-    parseHostAgentRouteFromPathname(input.pathname) ??
-    parseAgentKey(input.selectedAgentId)
-  );
+  return parseHostAgentRouteFromPathname(input.pathname) ?? parseAgentKey(input.selectedAgentId);
 }
 
 function inferMainRepoRootFromPaseoWorktreePath(cwd: string): string | null {
@@ -60,7 +57,7 @@ function inferMainRepoRootFromPaseoWorktreePath(cwd: string): string | null {
 
 export function resolveNewAgentWorkingDir(
   cwd: string,
-  checkout: CheckoutStatusPayload | null
+  checkout: CheckoutStatusPayload | null,
 ): string {
   const explicitMainRepoRoot = checkout?.isPaseoOwnedWorktree
     ? checkout.mainRepoRoot?.trim() || null
@@ -72,10 +69,7 @@ export function resolveNewAgentWorkingDir(
   return inferMainRepoRootFromPaseoWorktreePath(cwd) ?? cwd;
 }
 
-export function buildNewAgentRoute(
-  serverId: string,
-  workingDir?: string | null
-): string {
+export function buildNewAgentRoute(serverId: string, workingDir?: string | null): string {
   const trimmedWorkingDir = workingDir?.trim();
   return buildHostWorkspaceRoute(serverId, trimmedWorkingDir || ".");
 }

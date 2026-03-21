@@ -11,172 +11,165 @@ import {
   Image,
   Platform,
   BackHandler,
-} from 'react-native'
-import { useState, useRef, useCallback, useEffect, useImperativeHandle, forwardRef } from 'react'
-import { StyleSheet, useUnistyles } from 'react-native-unistyles'
-import { Mic, MicOff, ArrowUp, Paperclip, Plus, X, Square } from 'lucide-react-native'
-import Animated, { useSharedValue, useAnimatedStyle, withTiming } from 'react-native-reanimated'
-import { useDictation } from '@/hooks/use-dictation'
-import { DictationOverlay } from './dictation-controls'
-import { RealtimeVoiceOverlay } from './realtime-voice-overlay'
-import type { DaemonClient } from '@server/client/daemon-client'
-import { useSessionStore } from '@/stores/session-store'
-import { useVoiceOptional } from '@/contexts/voice-context'
-import { useToast } from '@/contexts/toast-context'
-import { resolveVoiceUnavailableMessage } from '@/utils/server-info-capabilities'
+} from "react-native";
+import { useState, useRef, useCallback, useEffect, useImperativeHandle, forwardRef } from "react";
+import { StyleSheet, useUnistyles } from "react-native-unistyles";
+import { Mic, MicOff, ArrowUp, Paperclip, Plus, X, Square } from "lucide-react-native";
+import Animated, { useSharedValue, useAnimatedStyle, withTiming } from "react-native-reanimated";
+import { useDictation } from "@/hooks/use-dictation";
+import { DictationOverlay } from "./dictation-controls";
+import { RealtimeVoiceOverlay } from "./realtime-voice-overlay";
+import type { DaemonClient } from "@server/client/daemon-client";
+import { useSessionStore } from "@/stores/session-store";
+import { useVoiceOptional } from "@/contexts/voice-context";
+import { useToast } from "@/contexts/toast-context";
+import { resolveVoiceUnavailableMessage } from "@/utils/server-info-capabilities";
 import {
   collectImageFilesFromClipboardData,
   filesToImageAttachments,
-} from '@/utils/image-attachments-from-files'
-import type { AttachmentMetadata } from '@/attachments/types'
-import { useAttachmentPreviewUrl } from '@/attachments/use-attachment-preview-url'
-import { focusWithRetries } from '@/utils/web-focus'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { Shortcut } from '@/components/ui/shortcut'
-import type { MessageInputKeyboardActionKind } from '@/keyboard/actions'
+} from "@/utils/image-attachments-from-files";
+import type { AttachmentMetadata } from "@/attachments/types";
+import { useAttachmentPreviewUrl } from "@/attachments/use-attachment-preview-url";
+import { focusWithRetries } from "@/utils/web-focus";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Shortcut } from "@/components/ui/shortcut";
+import type { MessageInputKeyboardActionKind } from "@/keyboard/actions";
 import {
   markScrollInvestigationEvent,
   markScrollInvestigationRender,
-} from '@/utils/scroll-jank-investigation'
+} from "@/utils/scroll-jank-investigation";
 
-export type ImageAttachment = AttachmentMetadata
+export type ImageAttachment = AttachmentMetadata;
 
 export interface MessagePayload {
-  text: string
-  images?: ImageAttachment[]
+  text: string;
+  images?: ImageAttachment[];
   /** When true, bypasses queue and sends immediately even if agent is running */
-  forceSend?: boolean
+  forceSend?: boolean;
 }
 
 export interface MessageInputProps {
-  value: string
-  onChangeText: (text: string) => void
-  onSubmit: (payload: MessagePayload) => void
-  isSubmitDisabled?: boolean
-  isSubmitLoading?: boolean
-  images?: ImageAttachment[]
-  onPickImages?: () => void
-  onAddImages?: (images: ImageAttachment[]) => void
-  onRemoveImage?: (index: number) => void
-  client: DaemonClient | null
+  value: string;
+  onChangeText: (text: string) => void;
+  onSubmit: (payload: MessagePayload) => void;
+  isSubmitDisabled?: boolean;
+  isSubmitLoading?: boolean;
+  images?: ImageAttachment[];
+  onPickImages?: () => void;
+  onAddImages?: (images: ImageAttachment[]) => void;
+  onRemoveImage?: (index: number) => void;
+  client: DaemonClient | null;
   /** Dictation start gate from host runtime (socket connected + directory ready). */
-  isReadyForDictation?: boolean
-  placeholder?: string
-  autoFocus?: boolean
-  autoFocusKey?: string
-  disabled?: boolean
+  isReadyForDictation?: boolean;
+  placeholder?: string;
+  autoFocus?: boolean;
+  autoFocusKey?: string;
+  disabled?: boolean;
   /** True when the containing screen is focused (React Navigation). Used to disable global hotkeys and cancel dictation when unfocused. */
-  isScreenFocused?: boolean
+  isScreenFocused?: boolean;
   /** Content to render on the left side of the button row (e.g., AgentStatusBar) */
-  leftContent?: React.ReactNode
+  leftContent?: React.ReactNode;
   /** Content to render on the right side after voice button (e.g., realtime button, cancel button) */
-  rightContent?: React.ReactNode
-  voiceServerId?: string
-  voiceAgentId?: string
+  rightContent?: React.ReactNode;
+  voiceServerId?: string;
+  voiceAgentId?: string;
   /** When true and there's sendable content, calls onQueue instead of onSubmit */
-  isAgentRunning?: boolean
+  isAgentRunning?: boolean;
   /** Callback for queue button when agent is running */
-  onQueue?: (payload: MessagePayload) => void
+  onQueue?: (payload: MessagePayload) => void;
   /** Optional handler used when submit button is in loading state. */
-  onSubmitLoadingPress?: () => void
+  onSubmitLoadingPress?: () => void;
   /** Intercept key press events before default handling. Return true to prevent default. */
-  onKeyPress?: (event: { key: string; preventDefault: () => void }) => boolean
+  onKeyPress?: (event: { key: string; preventDefault: () => void }) => boolean;
   /** Reports cursor selection updates from the underlying input. */
-  onSelectionChange?: (selection: { start: number; end: number }) => void
-  onFocusChange?: (focused: boolean) => void
-  onHeightChange?: (height: number) => void
+  onSelectionChange?: (selection: { start: number; end: number }) => void;
+  onFocusChange?: (focused: boolean) => void;
+  onHeightChange?: (height: number) => void;
 }
 
 export interface MessageInputRef {
-  focus: () => void
-  blur: () => void
-  runKeyboardAction: (action: MessageInputKeyboardActionKind) => void
+  focus: () => void;
+  blur: () => void;
+  runKeyboardAction: (action: MessageInputKeyboardActionKind) => void;
   /**
    * Web-only: return the underlying DOM element for focus assertions/retries.
    * May return null if not mounted or on native.
    */
-  getNativeElement?: () => HTMLElement | null
+  getNativeElement?: () => HTMLElement | null;
 }
 
-const MIN_INPUT_HEIGHT = 30
-const MAX_INPUT_HEIGHT = 160
-const IS_WEB = Platform.OS === 'web'
+const MIN_INPUT_HEIGHT = 30;
+const MAX_INPUT_HEIGHT = 160;
+const IS_WEB = Platform.OS === "web";
 
 type WebTextInputKeyPressEvent = NativeSyntheticEvent<
   TextInputKeyPressEventData & {
-    metaKey?: boolean
-    ctrlKey?: boolean
-    shiftKey?: boolean
+    metaKey?: boolean;
+    ctrlKey?: boolean;
+    shiftKey?: boolean;
   }
->
+>;
 
 type TextAreaHandle = {
-  scrollHeight?: number
-  clientHeight?: number
-  offsetHeight?: number
-  scrollTop?: number
-  selectionStart?: number | null
-  selectionEnd?: number | null
+  scrollHeight?: number;
+  clientHeight?: number;
+  offsetHeight?: number;
+  scrollTop?: number;
+  selectionStart?: number | null;
+  selectionEnd?: number | null;
   style?: {
-    height?: string
-    overflowY?: string
-  } & Record<string, unknown>
-}
+    height?: string;
+    overflowY?: string;
+  } & Record<string, unknown>;
+};
 
-function logWebStickyBottom(
-  _event: string,
-  _details: Record<string, unknown>
-): void {
+function logWebStickyBottom(_event: string, _details: Record<string, unknown>): void {
   // Intentionally disabled: this path is too noisy during voice debugging.
 }
 
 function getDebugNow(): number | null {
-  if (typeof performance !== 'undefined' && typeof performance.now === 'function') {
-    return Number(performance.now().toFixed(3))
+  if (typeof performance !== "undefined" && typeof performance.now === "function") {
+    return Number(performance.now().toFixed(3));
   }
-  return null
+  return null;
 }
 
 function getElementDescriptor(element: HTMLElement | null): string | null {
-  if (!element) return null
-  const tag = element.tagName?.toLowerCase() ?? 'unknown'
-  const id = element.id ? `#${element.id}` : ''
-  const testId = element.getAttribute?.('data-testid')
-  const label = element.getAttribute?.('aria-label')
-  const suffix = testId
-    ? `[data-testid="${testId}"]`
-    : label
-      ? `[aria-label="${label}"]`
-      : ''
-  return `${tag}${id}${suffix}`
+  if (!element) return null;
+  const tag = element.tagName?.toLowerCase() ?? "unknown";
+  const id = element.id ? `#${element.id}` : "";
+  const testId = element.getAttribute?.("data-testid");
+  const label = element.getAttribute?.("aria-label");
+  const suffix = testId ? `[data-testid="${testId}"]` : label ? `[aria-label="${label}"]` : "";
+  return `${tag}${id}${suffix}`;
 }
 
 function getScrollableAncestorChain(element: HTMLElement | null): string[] {
-  if (!element || typeof window === 'undefined') {
-    return []
+  if (!element || typeof window === "undefined") {
+    return [];
   }
-  const results: string[] = []
-  let current = element.parentElement
+  const results: string[] = [];
+  let current = element.parentElement;
   while (current) {
-    const style = window.getComputedStyle(current)
-    const overflowY = style.overflowY
+    const style = window.getComputedStyle(current);
+    const overflowY = style.overflowY;
     const canScroll =
-      (overflowY === 'auto' || overflowY === 'scroll' || overflowY === 'overlay') &&
-      current.scrollHeight > current.clientHeight
+      (overflowY === "auto" || overflowY === "scroll" || overflowY === "overlay") &&
+      current.scrollHeight > current.clientHeight;
     if (canScroll) {
-      results.push(getElementDescriptor(current) ?? current.tagName.toLowerCase())
+      results.push(getElementDescriptor(current) ?? current.tagName.toLowerCase());
     }
-    current = current.parentElement
+    current = current.parentElement;
   }
-  return results
+  return results;
 }
 
 function ImageAttachmentThumbnail({ image }: { image: ImageAttachment }) {
-  const uri = useAttachmentPreviewUrl(image)
+  const uri = useAttachmentPreviewUrl(image);
   if (!uri) {
-    return <View style={styles.imageThumbnailPlaceholder} />
+    return <View style={styles.imageThumbnailPlaceholder} />;
   }
-  return <Image source={{ uri }} style={styles.imageThumbnail} />
+  return <Image source={{ uri }} style={styles.imageThumbnail} />;
 }
 
 export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(function MessageInput(
@@ -192,7 +185,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
     onRemoveImage,
     client,
     isReadyForDictation,
-    placeholder = 'Message...',
+    placeholder = "Message...",
     autoFocus = false,
     autoFocusKey,
     disabled = false,
@@ -209,163 +202,166 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
     onFocusChange,
     onHeightChange,
   },
-  ref
+  ref,
 ) {
-  const { theme } = useUnistyles()
-  const buttonIconSize = IS_WEB ? theme.iconSize.md : theme.iconSize.lg
-  const investigationComponentId = `MessageInput:${voiceServerId ?? 'unknown-server'}:${voiceAgentId ?? 'unknown-agent'}`
-  markScrollInvestigationRender(investigationComponentId)
-  const toast = useToast()
-  const voice = useVoiceOptional()
-  const [inputHeight, setInputHeight] = useState(MIN_INPUT_HEIGHT)
-  const rootRef = useRef<View | null>(null)
-  const inputWrapperRef = useRef<View | null>(null)
+  const { theme } = useUnistyles();
+  const buttonIconSize = IS_WEB ? theme.iconSize.md : theme.iconSize.lg;
+  const investigationComponentId = `MessageInput:${voiceServerId ?? "unknown-server"}:${voiceAgentId ?? "unknown-agent"}`;
+  markScrollInvestigationRender(investigationComponentId);
+  const toast = useToast();
+  const voice = useVoiceOptional();
+  const [inputHeight, setInputHeight] = useState(MIN_INPUT_HEIGHT);
+  const rootRef = useRef<View | null>(null);
+  const inputWrapperRef = useRef<View | null>(null);
   const textInputRef = useRef<TextInput | (TextInput & { getNativeRef?: () => unknown }) | null>(
-    null
-  )
-  const isInputFocusedRef = useRef(false)
+    null,
+  );
+  const isInputFocusedRef = useRef(false);
 
   useImperativeHandle(ref, () => ({
     focus: () => {
-      textInputRef.current?.focus()
+      textInputRef.current?.focus();
     },
     blur: () => {
-      textInputRef.current?.blur?.()
+      textInputRef.current?.blur?.();
     },
     runKeyboardAction: (action) => {
-      if (action === 'focus') {
-        textInputRef.current?.focus()
-        return
+      if (action === "focus") {
+        textInputRef.current?.focus();
+        return;
       }
 
-      if (action === 'voice-toggle') {
-        handleToggleRealtimeVoiceShortcut()
-        return
+      if (action === "voice-toggle") {
+        handleToggleRealtimeVoiceShortcut();
+        return;
       }
 
-      if (action === 'voice-mute-toggle') {
+      if (action === "voice-mute-toggle") {
         if (isRealtimeVoiceForCurrentAgent) {
-          voice?.toggleMute()
+          voice?.toggleMute();
         }
-        return
+        return;
       }
 
-      if (action === 'dictation-cancel') {
+      if (action === "dictation-cancel") {
         if (isDictatingRef.current) {
-          cancelDictation()
+          cancelDictation();
         }
-        return
+        return;
       }
 
-      if (action === 'dictation-toggle') {
+      if (action === "dictation-toggle") {
         if (isDictatingRef.current) {
-          sendAfterTranscriptRef.current = true
-          confirmDictation()
+          sendAfterTranscriptRef.current = true;
+          confirmDictation();
         } else {
-          void startDictationIfAvailable()
+          void startDictationIfAvailable();
         }
       }
     },
     getNativeElement: () => {
-      if (!IS_WEB) return null
-      const current = textInputRef.current as (TextInput & { getNativeRef?: () => unknown }) | null
-      const native = typeof current?.getNativeRef === 'function' ? current.getNativeRef() : current
-      return native instanceof HTMLElement ? native : null
+      if (!IS_WEB) return null;
+      const current = textInputRef.current as (TextInput & { getNativeRef?: () => unknown }) | null;
+      const native = typeof current?.getNativeRef === "function" ? current.getNativeRef() : current;
+      return native instanceof HTMLElement ? native : null;
     },
-  }))
-  const inputHeightRef = useRef(MIN_INPUT_HEIGHT)
-  const baselineInputHeightRef = useRef<number | null>(null)
-  const overlayTransition = useSharedValue(0)
-  const sendAfterTranscriptRef = useRef(false)
-  const valueRef = useRef(value)
+  }));
+  const inputHeightRef = useRef(MIN_INPUT_HEIGHT);
+  const baselineInputHeightRef = useRef<number | null>(null);
+  const overlayTransition = useSharedValue(0);
+  const sendAfterTranscriptRef = useRef(false);
+  const valueRef = useRef(value);
   const serverInfo = useSessionStore(
     useCallback(
       (state) => {
         if (!voiceServerId) {
-          return null
+          return null;
         }
-        return state.sessions[voiceServerId]?.serverInfo ?? null
+        return state.sessions[voiceServerId]?.serverInfo ?? null;
       },
-      [voiceServerId]
-    )
-  )
+      [voiceServerId],
+    ),
+  );
 
   useEffect(() => {
-    valueRef.current = value
-  }, [value])
+    valueRef.current = value;
+  }, [value]);
 
   useEffect(() => {
     return () => {
-      onFocusChange?.(false)
-    }
-  }, [onFocusChange])
+      onFocusChange?.(false);
+    };
+  }, [onFocusChange]);
 
   // Autofocus on web when autoFocus is true, and re-run when focus key changes.
   useEffect(() => {
-    if (!IS_WEB || !autoFocus) return
+    if (!IS_WEB || !autoFocus) return;
     return focusWithRetries({
       focus: () => textInputRef.current?.focus(),
       isFocused: () => {
-        const current = textInputRef.current as (TextInput & { getNativeRef?: () => unknown }) | null
-        const native = typeof current?.getNativeRef === 'function' ? current.getNativeRef() : current
-        const element = native instanceof HTMLElement ? native : null
-        const active = typeof document !== 'undefined' ? document.activeElement : null
-        return Boolean(element) && active === element
+        const current = textInputRef.current as
+          | (TextInput & { getNativeRef?: () => unknown })
+          | null;
+        const native =
+          typeof current?.getNativeRef === "function" ? current.getNativeRef() : current;
+        const element = native instanceof HTMLElement ? native : null;
+        const active = typeof document !== "undefined" ? document.activeElement : null;
+        return Boolean(element) && active === element;
       },
-    })
-  }, [autoFocus, autoFocusKey])
+    });
+  }, [autoFocus, autoFocusKey]);
 
   const handleDictationTranscript = useCallback(
     (text: string, _meta: { requestId: string }) => {
-      if (!text) return
-      const current = valueRef.current
-      const shouldPad = current.length > 0 && !/\s$/.test(current)
-      const nextValue = `${current}${shouldPad ? ' ' : ''}${text}`
+      if (!text) return;
+      const current = valueRef.current;
+      const shouldPad = current.length > 0 && !/\s$/.test(current);
+      const nextValue = `${current}${shouldPad ? " " : ""}${text}`;
 
-      const shouldAutoSend = sendAfterTranscriptRef.current
-      sendAfterTranscriptRef.current = false
+      const shouldAutoSend = sendAfterTranscriptRef.current;
+      sendAfterTranscriptRef.current = false;
 
       if (shouldAutoSend) {
-        const imageAttachments = images.length > 0 ? images : undefined
+        const imageAttachments = images.length > 0 ? images : undefined;
         onSubmit({
           text: nextValue,
           images: imageAttachments,
           forceSend: isAgentRunning || undefined,
-        })
+        });
       } else {
-        onChangeText(nextValue)
+        onChangeText(nextValue);
       }
 
-      if (IS_WEB && typeof requestAnimationFrame === 'function') {
+      if (IS_WEB && typeof requestAnimationFrame === "function") {
         requestAnimationFrame(() => {
-          measureWebInputHeight('dictation')
-        })
+          measureWebInputHeight("dictation");
+        });
       }
     },
-    [onChangeText, onSubmit, images, isAgentRunning]
-  )
+    [onChangeText, onSubmit, images, isAgentRunning],
+  );
 
   const handleDictationError = useCallback((error: Error) => {
-    console.error('[MessageInput] Dictation error:', error)
-  }, [])
+    console.error("[MessageInput] Dictation error:", error);
+  }, []);
 
   const dictationUnavailableMessage = resolveVoiceUnavailableMessage({
     serverInfo,
-    mode: 'dictation',
-  })
+    mode: "dictation",
+  });
 
   const canStartDictation = useCallback(() => {
-    const socketConnected = client?.isConnected ?? false
-    const readyForDictation = isReadyForDictation ?? socketConnected
-    return socketConnected && readyForDictation && !disabled && !dictationUnavailableMessage
-  }, [client, disabled, dictationUnavailableMessage, isReadyForDictation])
+    const socketConnected = client?.isConnected ?? false;
+    const readyForDictation = isReadyForDictation ?? socketConnected;
+    return socketConnected && readyForDictation && !disabled && !dictationUnavailableMessage;
+  }, [client, disabled, dictationUnavailableMessage, isReadyForDictation]);
 
   const canConfirmDictation = useCallback(() => {
-    const socketConnected = client?.isConnected ?? false
-    return socketConnected
-  }, [client])
-  const isConnected = client?.isConnected ?? false
-  const isDictationStartEnabled = (isReadyForDictation ?? isConnected) && !disabled
+    const socketConnected = client?.isConnected ?? false;
+    return socketConnected;
+  }, [client]);
+  const isConnected = client?.isConnected ?? false;
+  const isDictationStartEnabled = (isReadyForDictation ?? isConnected) && !disabled;
 
   const {
     isRecording: isDictating,
@@ -388,68 +384,67 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
     canConfirm: canConfirmDictation,
     autoStopWhenHidden: { isVisible: isScreenFocused },
     enableDuration: true,
-  })
+  });
 
-  const isDictatingRef = useRef(isDictating)
+  const isDictatingRef = useRef(isDictating);
   useEffect(() => {
-    isDictatingRef.current = isDictating
-  }, [isDictating])
+    isDictatingRef.current = isDictating;
+  }, [isDictating]);
 
   const isRealtimeVoiceForCurrentAgent =
     !!voice &&
     !!voiceServerId &&
     !!voiceAgentId &&
-    voice.isVoiceModeForAgent(voiceServerId, voiceAgentId)
-  const showDictationOverlay = isDictating || isDictationProcessing || dictationStatus === 'failed'
-  const showRealtimeOverlay = isRealtimeVoiceForCurrentAgent
-  const showOverlay = showDictationOverlay || showRealtimeOverlay
-
+    voice.isVoiceModeForAgent(voiceServerId, voiceAgentId);
+  const showDictationOverlay = isDictating || isDictationProcessing || dictationStatus === "failed";
+  const showRealtimeOverlay = isRealtimeVoiceForCurrentAgent;
+  const showOverlay = showDictationOverlay || showRealtimeOverlay;
 
   useEffect(() => {
     if (isDictating || isDictationProcessing) {
-      return
+      return;
     }
-    sendAfterTranscriptRef.current = false
-  }, [dictationStatus, isDictating, isDictationProcessing])
+    sendAfterTranscriptRef.current = false;
+  }, [dictationStatus, isDictating, isDictationProcessing]);
 
   const startDictationIfAvailable = useCallback(async () => {
     if (dictationUnavailableMessage) {
-      isDictatingRef.current = false
-      toast.error(dictationUnavailableMessage)
-      return
+      isDictatingRef.current = false;
+      toast.error(dictationUnavailableMessage);
+      return;
     }
     // Keep hotkey toggling deterministic between the async start call and the
     // state-ref sync effect, so a rapid second toggle routes to confirm.
-    isDictatingRef.current = true
-    await startDictation()
-  }, [dictationUnavailableMessage, startDictation, toast])
+    isDictatingRef.current = true;
+    await startDictation();
+  }, [dictationUnavailableMessage, startDictation, toast]);
 
   // Animate overlay
   useEffect(() => {
     overlayTransition.value = withTiming(showOverlay ? 1 : 0, {
       duration: 200,
-    })
-  }, [overlayTransition, showOverlay])
+    });
+  }, [overlayTransition, showOverlay]);
 
   const overlayAnimatedStyle = useAnimatedStyle(() => ({
     opacity: overlayTransition.value,
-    pointerEvents: overlayTransition.value > 0.5 ? 'auto' : 'none',
-  }))
+    pointerEvents: overlayTransition.value > 0.5 ? "auto" : "none",
+  }));
 
   const inputAnimatedStyle = useAnimatedStyle(() => ({
     opacity: 1 - overlayTransition.value,
-  }))
+  }));
 
   const handleVoicePress = useCallback(async () => {
     if (isRealtimeVoiceForCurrentAgent && voice) {
-      voice.toggleMute()
-      return
+      voice.toggleMute();
+      return;
     }
 
     if (isDictating) {
-      await cancelDictation()
+      await cancelDictation();
     } else {
-      await startDictationIfAvailable()
+      await startDictationIfAvailable();
     }
   }, [
     cancelDictation,
@@ -457,165 +452,169 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
     isRealtimeVoiceForCurrentAgent,
     startDictationIfAvailable,
     voice,
-  ])
+  ]);
 
   const handleCancelRecording = useCallback(async () => {
-    await cancelDictation()
-  }, [cancelDictation])
+    await cancelDictation();
+  }, [cancelDictation]);
 
   const handleAcceptRecording = useCallback(async () => {
-    sendAfterTranscriptRef.current = false
-    await confirmDictation()
-  }, [confirmDictation])
+    sendAfterTranscriptRef.current = false;
+    await confirmDictation();
+  }, [confirmDictation]);
 
   const handleAcceptAndSendRecording = useCallback(async () => {
-    sendAfterTranscriptRef.current = true
-    await confirmDictation()
-  }, [confirmDictation])
+    sendAfterTranscriptRef.current = true;
+    await confirmDictation();
+  }, [confirmDictation]);
 
   const handleRetryFailedRecording = useCallback(() => {
-    void retryFailedDictation()
-  }, [retryFailedDictation])
+    void retryFailedDictation();
+  }, [retryFailedDictation]);
 
   const handleDiscardFailedRecording = useCallback(() => {
-    discardFailedDictation()
-  }, [discardFailedDictation])
+    discardFailedDictation();
+  }, [discardFailedDictation]);
 
   const handleStopRealtimeVoice = useCallback(async () => {
     if (!voice || !isRealtimeVoiceForCurrentAgent) {
-      return
+      return;
     }
 
-    const tasks: Promise<unknown>[] = []
+    const tasks: Promise<unknown>[] = [];
     if (isAgentRunning && client && voiceAgentId) {
-      tasks.push(client.cancelAgent(voiceAgentId))
+      tasks.push(client.cancelAgent(voiceAgentId));
     }
-    tasks.push(voice.stopVoice())
+    tasks.push(voice.stopVoice());
 
-    const results = await Promise.allSettled(tasks)
+    const results = await Promise.allSettled(tasks);
     results.forEach((result) => {
-      if (result.status === 'rejected') {
-        console.error('[MessageInput] Failed to stop realtime voice', result.reason)
+      if (result.status === "rejected") {
+        console.error("[MessageInput] Failed to stop realtime voice", result.reason);
       }
-    })
-  }, [client, isAgentRunning, isRealtimeVoiceForCurrentAgent, voice, voiceAgentId])
+    });
+  }, [client, isAgentRunning, isRealtimeVoiceForCurrentAgent, voice, voiceAgentId]);
 
   const handleToggleRealtimeVoiceShortcut = useCallback(() => {
     if (!voice || !voiceServerId || !voiceAgentId || !isConnected || disabled) {
-      return
+      return;
     }
     if (voice.isVoiceSwitching) {
-      return
+      return;
     }
     if (voice.isVoiceModeForAgent(voiceServerId, voiceAgentId)) {
-      void handleStopRealtimeVoice()
-      return
+      void handleStopRealtimeVoice();
+      return;
     }
     void voice.startVoice(voiceServerId, voiceAgentId).catch((error) => {
-      console.error('[MessageInput] Failed to start realtime voice', error)
+      console.error("[MessageInput] Failed to start realtime voice", error);
       const message =
-        error instanceof Error ? error.message : typeof error === 'string' ? error : null
+        error instanceof Error ? error.message : typeof error === "string" ? error : null;
       if (message && message.trim().length > 0) {
-        toast.error(message)
+        toast.error(message);
       }
-    })
-  }, [disabled, handleStopRealtimeVoice, isConnected, toast, voice, voiceAgentId, voiceServerId])
+    });
+  }, [disabled, handleStopRealtimeVoice, isConnected, toast, voice, voiceAgentId, voiceServerId]);
 
   const handleSendMessage = useCallback(() => {
-    const trimmed = value.trim()
-    if (!trimmed && images.length === 0) return
+    const trimmed = value.trim();
+    if (!trimmed && images.length === 0) return;
     const payload = {
       text: trimmed,
       images: images.length > 0 ? images : undefined,
       forceSend: isAgentRunning || undefined,
-    }
-    onSubmit(payload)
-    inputHeightRef.current = MIN_INPUT_HEIGHT
-    setInputHeight(MIN_INPUT_HEIGHT)
-    onHeightChange?.(MIN_INPUT_HEIGHT)
-  }, [value, images, onSubmit, isAgentRunning, onHeightChange])
+    };
+    onSubmit(payload);
+    inputHeightRef.current = MIN_INPUT_HEIGHT;
+    setInputHeight(MIN_INPUT_HEIGHT);
+    onHeightChange?.(MIN_INPUT_HEIGHT);
+  }, [value, images, onSubmit, isAgentRunning, onHeightChange]);
 
   const handleQueueMessage = useCallback(() => {
-    if (!onQueue) return
-    const trimmed = value.trim()
-    if (!trimmed && images.length === 0) return
+    if (!onQueue) return;
+    const trimmed = value.trim();
+    if (!trimmed && images.length === 0) return;
     const payload = {
       text: trimmed,
       images: images.length > 0 ? images : undefined,
-    }
-    onQueue(payload)
-    onChangeText('')
-    inputHeightRef.current = MIN_INPUT_HEIGHT
-    setInputHeight(MIN_INPUT_HEIGHT)
-    onHeightChange?.(MIN_INPUT_HEIGHT)
-  }, [value, images, onQueue, onChangeText, onHeightChange])
+    };
+    onQueue(payload);
+    onChangeText("");
+    inputHeightRef.current = MIN_INPUT_HEIGHT;
+    setInputHeight(MIN_INPUT_HEIGHT);
+    onHeightChange?.(MIN_INPUT_HEIGHT);
+  }, [value, images, onQueue, onChangeText, onHeightChange]);
 
   // Web input height measurement
   function isTextAreaLike(v: unknown): v is TextAreaHandle {
-    return typeof v === 'object' && v !== null && 'scrollHeight' in v
+    return typeof v === "object" && v !== null && "scrollHeight" in v;
   }
 
   const getWebTextArea = useCallback((): TextAreaHandle | null => {
-    const ref = textInputRef.current
-    if (!ref) return null
-    if (typeof (ref as any).getNativeRef === 'function') {
-      const native = (ref as any).getNativeRef()
-      if (isTextAreaLike(native)) return native
+    const ref = textInputRef.current;
+    if (!ref) return null;
+    if (typeof (ref as any).getNativeRef === "function") {
+      const native = (ref as any).getNativeRef();
+      if (isTextAreaLike(native)) return native;
     }
-    if (isTextAreaLike(ref)) return ref
-    return null
-  }, [])
+    if (isTextAreaLike(ref)) return ref;
+    return null;
+  }, []);
 
-  const getWebElement = useCallback((target: 'root' | 'wrapper'): HTMLElement | null => {
-    const ref = target === 'root' ? rootRef.current : inputWrapperRef.current
-    if (!ref) return null
-    return ref instanceof HTMLElement ? ref : ((ref as unknown as { getBoundingClientRect?: () => DOMRect }).getBoundingClientRect ? (ref as unknown as HTMLElement) : null)
-  }, [])
+  const getWebElement = useCallback((target: "root" | "wrapper"): HTMLElement | null => {
+    const ref = target === "root" ? rootRef.current : inputWrapperRef.current;
+    if (!ref) return null;
+    return ref instanceof HTMLElement
+      ? ref
+      : (ref as unknown as { getBoundingClientRect?: () => DOMRect }).getBoundingClientRect
+        ? (ref as unknown as HTMLElement)
+        : null;
+  }, []);
 
   useEffect(() => {
     if (!IS_WEB || !onAddImages) {
-      return
+      return;
     }
 
-    const textarea = getWebTextArea()
+    const textarea = getWebTextArea();
     if (
       !textarea ||
-      typeof (textarea as any).addEventListener !== 'function' ||
-      typeof (textarea as any).removeEventListener !== 'function'
+      typeof (textarea as any).addEventListener !== "function" ||
+      typeof (textarea as any).removeEventListener !== "function"
     ) {
-      return
+      return;
     }
 
-    let disposed = false
+    let disposed = false;
     const handlePaste = (event: ClipboardEvent) => {
       if (!isConnected || disabled || isDictating || isRealtimeVoiceForCurrentAgent) {
-        return
+        return;
       }
 
-      const imageFiles = collectImageFilesFromClipboardData(event.clipboardData)
+      const imageFiles = collectImageFilesFromClipboardData(event.clipboardData);
       if (imageFiles.length === 0) {
-        return
+        return;
       }
 
-      event.preventDefault()
+      event.preventDefault();
 
       void filesToImageAttachments(imageFiles)
         .then((attachments) => {
           if (disposed || attachments.length === 0) {
-            return
+            return;
           }
-          onAddImages(attachments)
+          onAddImages(attachments);
         })
         .catch((error) => {
-          console.error('[MessageInput] Failed to process pasted images:', error)
-        })
-    }
+          console.error("[MessageInput] Failed to process pasted images:", error);
+        });
+    };
 
-    ;(textarea as any).addEventListener('paste', handlePaste)
+    (textarea as any).addEventListener("paste", handlePaste);
     return () => {
-      disposed = true
-      ;(textarea as any).removeEventListener('paste', handlePaste)
-    }
+      disposed = true;
+      (textarea as any).removeEventListener("paste", handlePaste);
+    };
   }, [
     disabled,
     getWebTextArea,
@@ -623,35 +622,38 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
     isDictating,
     isRealtimeVoiceForCurrentAgent,
     onAddImages,
-  ])
+  ]);
 
   useEffect(() => {
-    if (!IS_WEB || typeof ResizeObserver === 'undefined') {
-      return
+    if (!IS_WEB || typeof ResizeObserver === "undefined") {
+      return;
     }
 
-    const textarea = getWebTextArea()
-    const root = getWebElement('root')
-    const wrapper = getWebElement('wrapper')
+    const textarea = getWebTextArea();
+    const root = getWebElement("root");
+    const wrapper = getWebElement("wrapper");
     const observed = [
-      { name: 'composer_root', element: root },
-      { name: 'composer_wrapper', element: wrapper },
-      { name: 'composer_textarea', element: textarea as unknown as HTMLElement | null },
-    ].filter((entry): entry is { name: string; element: HTMLElement } => entry.element instanceof HTMLElement)
+      { name: "composer_root", element: root },
+      { name: "composer_wrapper", element: wrapper },
+      { name: "composer_textarea", element: textarea as unknown as HTMLElement | null },
+    ].filter(
+      (entry): entry is { name: string; element: HTMLElement } =>
+        entry.element instanceof HTMLElement,
+    );
 
     if (observed.length === 0) {
-      return
+      return;
     }
 
     const observer = new ResizeObserver((entries) => {
       for (const entry of entries) {
-        const target = entry.target as HTMLElement
-        const match = observed.find((item) => item.element === target)
+        const target = entry.target as HTMLElement;
+        const match = observed.find((item) => item.element === target);
         if (!match) {
-          continue
+          continue;
         }
-        const textareaNode = getWebTextArea()
-        logWebStickyBottom('composer_element_resized', {
+        const textareaNode = getWebTextArea();
+        logWebStickyBottom("composer_element_resized", {
           target: match.name,
           width: target.clientWidth,
           height: target.clientHeight,
@@ -660,37 +662,38 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
           textareaClientHeight: textareaNode?.clientHeight ?? null,
           textareaOffsetHeight: textareaNode?.offsetHeight ?? null,
           textareaScrollHeight: textareaNode?.scrollHeight ?? null,
-          textareaScrollTop: (textareaNode as unknown as HTMLTextAreaElement | null)?.scrollTop ?? null,
+          textareaScrollTop:
+            (textareaNode as unknown as HTMLTextAreaElement | null)?.scrollTop ?? null,
           valueLength: valueRef.current.length,
-        })
+        });
       }
-    })
+    });
 
     for (const entry of observed) {
-      observer.observe(entry.element)
+      observer.observe(entry.element);
     }
 
     return () => {
-      observer.disconnect()
-    }
-  }, [getWebElement, getWebTextArea])
+      observer.disconnect();
+    };
+  }, [getWebElement, getWebTextArea]);
 
   useEffect(() => {
     if (!IS_WEB) {
-      return
+      return;
     }
-    const textarea = getWebTextArea() as (HTMLTextAreaElement & TextAreaHandle) | null
-    if (!textarea || typeof textarea.addEventListener !== 'function') {
-      return
+    const textarea = getWebTextArea() as (HTMLTextAreaElement & TextAreaHandle) | null;
+    if (!textarea || typeof textarea.addEventListener !== "function") {
+      return;
     }
 
     const handleScroll = () => {
-      const textareaElement = textarea as unknown as HTMLElement
+      const textareaElement = textarea as unknown as HTMLElement;
       const chatScroller =
-        typeof document !== 'undefined'
+        typeof document !== "undefined"
           ? (document.querySelector('[data-testid="agent-chat-scroll"]') as HTMLElement | null)
-          : null
-      logWebStickyBottom('composer_textarea_scrolled', {
+          : null;
+      logWebStickyBottom("composer_textarea_scrolled", {
         now: getDebugNow(),
         scrollTop: textarea.scrollTop,
         clientHeight: textarea.clientHeight ?? null,
@@ -699,42 +702,44 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
         selectionEnd: textarea.selectionEnd ?? null,
         textareaDescriptor: getElementDescriptor(textareaElement),
         chatScrollerDescriptor: getElementDescriptor(chatScroller),
-        chatScrollerContainsTextarea: Boolean(chatScroller && textareaElement && chatScroller.contains(textareaElement)),
+        chatScrollerContainsTextarea: Boolean(
+          chatScroller && textareaElement && chatScroller.contains(textareaElement),
+        ),
         textareaScrollableAncestors: getScrollableAncestorChain(textareaElement),
         valueLength: valueRef.current.length,
-      })
-    }
+      });
+    };
 
-    textarea.addEventListener('scroll', handleScroll, { passive: true })
+    textarea.addEventListener("scroll", handleScroll, { passive: true });
     return () => {
-      textarea.removeEventListener('scroll', handleScroll)
-    }
-  }, [getWebTextArea])
+      textarea.removeEventListener("scroll", handleScroll);
+    };
+  }, [getWebTextArea]);
 
   function measureWebInputHeight(source: string): boolean {
-    if (!IS_WEB) return false
-    const textarea = getWebTextArea()
-    if (!textarea || typeof textarea.scrollHeight !== 'number') return false
-    const scrollHeight = textarea.scrollHeight ?? 0
+    if (!IS_WEB) return false;
+    const textarea = getWebTextArea();
+    if (!textarea || typeof textarea.scrollHeight !== "number") return false;
+    const scrollHeight = textarea.scrollHeight ?? 0;
 
     if (baselineInputHeightRef.current === null && scrollHeight > 0) {
-      baselineInputHeightRef.current = scrollHeight
-      logWebStickyBottom('composer_baseline_measured', {
+      baselineInputHeightRef.current = scrollHeight;
+      logWebStickyBottom("composer_baseline_measured", {
         source,
         baseline: scrollHeight,
-      })
+      });
     }
 
-    const baseline = baselineInputHeightRef.current ?? MIN_INPUT_HEIGHT
-    const rawTarget = scrollHeight > 0 ? scrollHeight : baseline
-    const bounded = Math.max(MIN_INPUT_HEIGHT, Math.min(MAX_INPUT_HEIGHT, rawTarget))
+    const baseline = baselineInputHeightRef.current ?? MIN_INPUT_HEIGHT;
+    const rawTarget = scrollHeight > 0 ? scrollHeight : baseline;
+    const bounded = Math.max(MIN_INPUT_HEIGHT, Math.min(MAX_INPUT_HEIGHT, rawTarget));
 
-    const previousHeight = inputHeightRef.current
+    const previousHeight = inputHeightRef.current;
     if (Math.abs(previousHeight - bounded) >= 1) {
-      inputHeightRef.current = bounded
-      setInputHeight(bounded)
-      onHeightChange?.(bounded)
-      logWebStickyBottom('composer_height_changed', {
+      inputHeightRef.current = bounded;
+      setInputHeight(bounded);
+      onHeightChange?.(bounded);
+      logWebStickyBottom("composer_height_changed", {
         source,
         previousHeight,
         nextHeight: bounded,
@@ -743,124 +748,124 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
         offsetHeight: textarea.offsetHeight ?? null,
         baseline,
         rawTarget,
-      })
-      return true
+      });
+      return true;
     }
-    return false
+    return false;
   }
 
   function setBoundedInputHeight(nextHeight: number) {
-    const bounded = Math.max(MIN_INPUT_HEIGHT, Math.min(MAX_INPUT_HEIGHT, nextHeight))
-    if (Math.abs(inputHeightRef.current - bounded) < 1) return
-    const previousHeight = inputHeightRef.current
-    inputHeightRef.current = bounded
-    setInputHeight(bounded)
-    onHeightChange?.(bounded)
-    logWebStickyBottom('composer_height_changed_native', {
+    const bounded = Math.max(MIN_INPUT_HEIGHT, Math.min(MAX_INPUT_HEIGHT, nextHeight));
+    if (Math.abs(inputHeightRef.current - bounded) < 1) return;
+    const previousHeight = inputHeightRef.current;
+    inputHeightRef.current = bounded;
+    setInputHeight(bounded);
+    onHeightChange?.(bounded);
+    logWebStickyBottom("composer_height_changed_native", {
       previousHeight,
       nextHeight: bounded,
-    })
+    });
   }
 
   function handleContentSizeChange(
-    event: NativeSyntheticEvent<TextInputContentSizeChangeEventData>
+    event: NativeSyntheticEvent<TextInputContentSizeChangeEventData>,
   ) {
-    const contentHeight = event.nativeEvent.contentSize.height
+    const contentHeight = event.nativeEvent.contentSize.height;
     if (IS_WEB) {
-      logWebStickyBottom('composer_content_size_change', {
+      logWebStickyBottom("composer_content_size_change", {
         reportedHeight: contentHeight,
-      })
+      });
       if (baselineInputHeightRef.current === null && contentHeight > 0) {
-        baselineInputHeightRef.current = contentHeight
-        logWebStickyBottom('composer_baseline_measured', {
-          source: 'contentSizeChange',
+        baselineInputHeightRef.current = contentHeight;
+        logWebStickyBottom("composer_baseline_measured", {
+          source: "contentSizeChange",
           baseline: contentHeight,
-        })
+        });
       }
-      setBoundedInputHeight(contentHeight)
-      return
+      setBoundedInputHeight(contentHeight);
+      return;
     }
-    setBoundedInputHeight(contentHeight)
+    setBoundedInputHeight(contentHeight);
   }
 
   function handleSelectionChange(event: NativeSyntheticEvent<TextInputSelectionChangeEventData>) {
-    const start = event.nativeEvent.selection?.start ?? 0
-    const end = event.nativeEvent.selection?.end ?? start
+    const start = event.nativeEvent.selection?.start ?? 0;
+    const end = event.nativeEvent.selection?.end ?? start;
     if (IS_WEB) {
-      const textarea = getWebTextArea()
-      logWebStickyBottom('composer_selection_changed', {
+      const textarea = getWebTextArea();
+      logWebStickyBottom("composer_selection_changed", {
         now: getDebugNow(),
         start,
         end,
         textareaScrollTop: textarea?.scrollTop ?? null,
         textareaClientHeight: textarea?.clientHeight ?? null,
         textareaScrollHeight: textarea?.scrollHeight ?? null,
-      })
+      });
     }
-    onSelectionChangeCallback?.({ start, end })
+    onSelectionChangeCallback?.({ start, end });
   }
 
-  const shouldHandleDesktopSubmit = IS_WEB
+  const shouldHandleDesktopSubmit = IS_WEB;
 
   function handleDesktopKeyPress(event: WebTextInputKeyPressEvent) {
-    markScrollInvestigationEvent(investigationComponentId, 'keyPress')
-    if (!shouldHandleDesktopSubmit) return
+    markScrollInvestigationEvent(investigationComponentId, "keyPress");
+    if (!shouldHandleDesktopSubmit) return;
 
     // Allow parent to intercept key events (e.g., for autocomplete navigation)
     if (onKeyPressCallback) {
       const handled = onKeyPressCallback({
         key: event.nativeEvent.key,
         preventDefault: () => event.preventDefault(),
-      })
-      if (handled) return
+      });
+      if (handled) return;
     }
 
-    const { shiftKey, metaKey, ctrlKey } = event.nativeEvent
+    const { shiftKey, metaKey, ctrlKey } = event.nativeEvent;
 
-    if (event.nativeEvent.key !== 'Enter') return
+    if (event.nativeEvent.key !== "Enter") return;
 
     // Shift+Enter: add newline (default behavior, don't intercept)
-    if (shiftKey) return
+    if (shiftKey) return;
 
     // Cmd+Enter (Mac) or Ctrl+Enter (Windows/Linux): queue when agent is running
     if ((metaKey || ctrlKey) && isAgentRunning && onQueue) {
-      if (isSubmitDisabled || isSubmitLoading || disabled) return
-      event.preventDefault()
-      handleQueueMessage()
-      return
+      if (isSubmitDisabled || isSubmitLoading || disabled) return;
+      event.preventDefault();
+      handleQueueMessage();
+      return;
     }
 
     // Enter: send (interrupts agent if running)
-    if (isSubmitDisabled || isSubmitLoading || disabled) return
-    event.preventDefault()
-    handleSendMessage()
+    if (isSubmitDisabled || isSubmitLoading || disabled) return;
+    event.preventDefault();
+    handleSendMessage();
   }
 
-  const hasImages = images.length > 0
-  const hasSendableContent = value.trim().length > 0 || hasImages
-  const shouldShowSendButton = hasSendableContent || isSubmitLoading
-  const canPressLoadingButton = isSubmitLoading && typeof onSubmitLoadingPress === 'function'
+  const hasImages = images.length > 0;
+  const hasSendableContent = value.trim().length > 0 || hasImages;
+  const shouldShowSendButton = hasSendableContent || isSubmitLoading;
+  const canPressLoadingButton = isSubmitLoading && typeof onSubmitLoadingPress === "function";
   const isSendButtonDisabled =
-    disabled || (!canPressLoadingButton && (isSubmitDisabled || isSubmitLoading))
+    disabled || (!canPressLoadingButton && (isSubmitDisabled || isSubmitLoading));
   const submitAccessibilityLabel = canPressLoadingButton
-    ? 'Interrupt agent'
+    ? "Interrupt agent"
     : isAgentRunning
-      ? 'Send and interrupt'
-      : 'Send message'
+      ? "Send and interrupt"
+      : "Send message";
 
   const handleInputChange = useCallback(
     (nextValue: string) => {
-      markScrollInvestigationEvent(investigationComponentId, 'inputChange')
-      onChangeText(nextValue)
+      markScrollInvestigationEvent(investigationComponentId, "inputChange");
+      onChangeText(nextValue);
       if (IS_WEB) {
-        logWebStickyBottom('composer_text_changed', {
+        logWebStickyBottom("composer_text_changed", {
           valueLength: nextValue.length,
-          lineCount: nextValue.split('\n').length,
-        })
+          lineCount: nextValue.split("\n").length,
+        });
       }
     },
-    [investigationComponentId, onChangeText]
-  )
+    [investigationComponentId, onChangeText],
+  );
 
   return (
     <View ref={rootRef} style={styles.container} testID="message-input-root">
@@ -905,12 +910,12 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
           placeholderTextColor={theme.colors.surface4}
           accessibilityLabel="Message agent..."
           onFocus={() => {
-            isInputFocusedRef.current = true
-            onFocusChange?.(true)
+            isInputFocusedRef.current = true;
+            onFocusChange?.(true);
           }}
           onBlur={() => {
-            isInputFocusedRef.current = false
-            onFocusChange?.(false)
+            isInputFocusedRef.current = false;
+            onFocusChange?.(false);
           }}
           style={[
             styles.textInput,
@@ -971,16 +976,16 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
                 accessibilityLabel={
                   isRealtimeVoiceForCurrentAgent
                     ? voice?.isMuted
-                      ? 'Unmute Voice mode'
-                      : 'Mute Voice mode'
+                      ? "Unmute Voice mode"
+                      : "Mute Voice mode"
                     : isDictating
-                      ? 'Stop dictation'
-                      : 'Start dictation'
+                      ? "Stop dictation"
+                      : "Start dictation"
                 }
                 style={({ hovered }) => [
                   styles.voiceButton,
                   hovered && !isDictating && styles.iconButtonHovered,
-                  (!isDictationStartEnabled) && styles.buttonDisabled,
+                  !isDictationStartEnabled && styles.buttonDisabled,
                   isDictating && styles.voiceButtonRecording,
                 ]}
               >
@@ -997,12 +1002,12 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
                   <Text style={styles.tooltipText}>
                     {isRealtimeVoiceForCurrentAgent
                       ? voice?.isMuted
-                        ? 'Unmute voice'
-                        : 'Mute voice'
-                      : 'Dictation'}
+                        ? "Unmute voice"
+                        : "Mute voice"
+                      : "Dictation"}
                   </Text>
                   <Shortcut
-                    keys={isRealtimeVoiceForCurrentAgent ? ['Space'] : ['mod', 'D']}
+                    keys={isRealtimeVoiceForCurrentAgent ? ["Space"] : ["mod", "D"]}
                     style={styles.tooltipShortcut}
                   />
                 </View>
@@ -1027,7 +1032,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
                 <TooltipContent side="top" align="center" offset={8}>
                   <View style={styles.tooltipRow}>
                     <Text style={styles.tooltipText}>Queue</Text>
-                    <Shortcut keys={['mod', 'Enter']} style={styles.tooltipShortcut} />
+                    <Shortcut keys={["mod", "Enter"]} style={styles.tooltipShortcut} />
                   </View>
                 </TooltipContent>
               </Tooltip>
@@ -1050,7 +1055,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
                 <TooltipContent side="top" align="center" offset={8}>
                   <View style={styles.tooltipRow}>
                     <Text style={styles.tooltipText}>Send</Text>
-                    <Shortcut keys={['Enter']} style={styles.tooltipShortcut} />
+                    <Shortcut keys={["Enter"]} style={styles.tooltipShortcut} />
                   </View>
                 </TooltipContent>
               </Tooltip>
@@ -1068,12 +1073,12 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
             isRecording={isDictating}
             isProcessing={isDictationProcessing}
             status={dictationStatus}
-            errorText={dictationStatus === 'failed' ? (dictationError ?? undefined) : undefined}
+            errorText={dictationStatus === "failed" ? (dictationError ?? undefined) : undefined}
             onCancel={handleCancelRecording}
             onAccept={handleAcceptRecording}
             onAcceptAndSend={handleAcceptAndSendRecording}
-            onRetry={dictationStatus === 'failed' ? handleRetryFailedRecording : undefined}
-            onDiscard={dictationStatus === 'failed' ? handleDiscardFailedRecording : undefined}
+            onRetry={dictationStatus === "failed" ? handleRetryFailedRecording : undefined}
+            onDiscard={dictationStatus === "failed" ? handleDiscardFailedRecording : undefined}
           />
         ) : showRealtimeOverlay && voice ? (
           <RealtimeVoiceOverlay
@@ -1081,26 +1086,26 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
             isSwitching={voice.isVoiceSwitching}
             onToggleMute={voice.toggleMute}
             onStop={() => {
-              void handleStopRealtimeVoice()
+              void handleStopRealtimeVoice();
             }}
           />
         ) : null}
       </Animated.View>
     </View>
-  )
-})
+  );
+});
 
 const styles = StyleSheet.create(((theme: any) => ({
   container: {
-    position: 'relative',
+    position: "relative",
   },
   inputWrapper: {
-    flexDirection: 'column',
+    flexDirection: "column",
     gap: theme.spacing[3],
     backgroundColor: theme.colors.surface1,
     borderWidth: theme.borderWidth[1],
     borderColor: theme.colors.borderAccent,
-    borderRadius: theme.borderRadius['2xl'],
+    borderRadius: theme.borderRadius["2xl"],
     paddingVertical: {
       xs: theme.spacing[2],
       md: theme.spacing[4],
@@ -1111,26 +1116,26 @@ const styles = StyleSheet.create(((theme: any) => ({
     },
     ...(IS_WEB
       ? {
-          transitionProperty: 'border-color',
-          transitionDuration: '200ms',
-          transitionTimingFunction: 'ease-in-out',
+          transitionProperty: "border-color",
+          transitionDuration: "200ms",
+          transitionTimingFunction: "ease-in-out",
         }
       : {}),
   },
   imagePreviewContainer: {
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: theme.spacing[2],
-    flexWrap: 'wrap',
+    flexWrap: "wrap",
   },
   imagePill: {
-    position: 'relative',
+    position: "relative",
     borderRadius: theme.borderRadius.md,
     borderWidth: 1,
     borderColor: theme.colors.borderAccent,
-    overflow: 'hidden',
+    overflow: "hidden",
     ...(IS_WEB
       ? {
-          cursor: 'pointer',
+          cursor: "pointer",
         }
       : {}),
   },
@@ -1144,19 +1149,19 @@ const styles = StyleSheet.create(((theme: any) => ({
     backgroundColor: theme.colors.surface2,
   },
   removeImageButton: {
-    position: 'absolute',
+    position: "absolute",
     top: 0,
     left: 0,
     right: 0,
     bottom: 0,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
     opacity: 0,
     ...(IS_WEB
       ? {
-          transitionProperty: 'opacity',
-          transitionDuration: '150ms',
+          transitionProperty: "opacity",
+          transitionDuration: "150ms",
         }
       : {}),
   },
@@ -1164,47 +1169,47 @@ const styles = StyleSheet.create(((theme: any) => ({
     opacity: 1,
   },
   textInput: {
-    width: '100%',
+    width: "100%",
     color: theme.colors.foreground,
     fontSize: theme.fontSize.base,
     fontWeight: theme.fontWeight.normal,
     lineHeight: theme.fontSize.base * 1.4,
     ...(IS_WEB
       ? {
-          outlineStyle: 'none' as const,
+          outlineStyle: "none" as const,
           outlineWidth: 0,
-          outlineColor: 'transparent',
+          outlineColor: "transparent",
         }
       : {}),
   },
   buttonRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "flex-end",
+    justifyContent: "space-between",
   },
   leftButtonGroup: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: Platform.OS === 'web' ? theme.spacing[2] : theme.spacing[1],
+    flexDirection: "row",
+    alignItems: "flex-end",
+    gap: Platform.OS === "web" ? theme.spacing[2] : theme.spacing[1],
   },
   rightButtonGroup: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Platform.OS === 'web' ? theme.spacing[2] : theme.spacing[1],
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Platform.OS === "web" ? theme.spacing[2] : theme.spacing[1],
   },
   attachButton: {
     width: 28,
     height: 28,
     borderRadius: theme.borderRadius.full,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
   },
   voiceButton: {
     width: 28,
     height: 28,
     borderRadius: theme.borderRadius.full,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
   },
   voiceButtonRecording: {
     backgroundColor: theme.colors.destructive,
@@ -1214,23 +1219,23 @@ const styles = StyleSheet.create(((theme: any) => ({
     height: 28,
     borderRadius: theme.borderRadius.full,
     backgroundColor: theme.colors.surface1,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
   },
   sendButton: {
     width: 28,
     height: 28,
     borderRadius: theme.borderRadius.full,
     backgroundColor: theme.colors.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
   },
   iconButtonHovered: {
     backgroundColor: theme.colors.surface2,
   },
   tooltipRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: theme.spacing[2],
   },
   tooltipText: {
@@ -1245,15 +1250,15 @@ const styles = StyleSheet.create(((theme: any) => ({
     opacity: 0.5,
   },
   overlayContainer: {
-    position: 'absolute',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
+    position: "absolute",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
     top: 0,
     left: 0,
-    width: '100%',
-    height: '100%',
+    width: "100%",
+    height: "100%",
     right: 0,
     bottom: 0,
   },
-})) as any) as Record<string, any>
+})) as any) as Record<string, any>;

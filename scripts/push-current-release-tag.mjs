@@ -67,7 +67,7 @@ try {
 if (localTagCommit !== headCommit) {
   throw new Error(
     `Local tag ${tag} points to ${localTagCommit}, but HEAD is ${headCommit}. ` +
-      "Create a new release commit before pushing this tag."
+      "Create a new release commit before pushing this tag.",
   );
 }
 

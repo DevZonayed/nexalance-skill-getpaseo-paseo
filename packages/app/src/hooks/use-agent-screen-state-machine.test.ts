@@ -47,13 +47,7 @@ function createAgent(id: string): Agent {
   };
 }
 
-function createAgentWithStatus({
-  id,
-  status,
-}: {
-  id: string;
-  status: Agent["status"];
-}): Agent {
+function createAgentWithStatus({ id, status }: { id: string; status: Agent["status"] }): Agent {
   return {
     ...createAgent(id),
     status,
@@ -75,7 +69,7 @@ function createBaseInput(): AgentScreenMachineInput {
 }
 
 function createBaseMemory(
-  overrides: Partial<AgentScreenMachineMemory> = {}
+  overrides: Partial<AgentScreenMachineMemory> = {},
 ): AgentScreenMachineMemory {
   return {
     hasRenderedReady: false,

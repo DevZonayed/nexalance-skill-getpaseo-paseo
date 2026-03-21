@@ -20,14 +20,10 @@ export type VerticalScrollbarGeometry = {
 };
 
 export function computeVerticalScrollbarGeometry(
-  input: VerticalScrollbarGeometryInput
+  input: VerticalScrollbarGeometryInput,
 ): VerticalScrollbarGeometry {
-  const viewportSize = Number.isFinite(input.viewportSize)
-    ? Math.max(0, input.viewportSize)
-    : 0;
-  const contentSize = Number.isFinite(input.contentSize)
-    ? Math.max(0, input.contentSize)
-    : 0;
+  const viewportSize = Number.isFinite(input.viewportSize) ? Math.max(0, input.viewportSize) : 0;
+  const contentSize = Number.isFinite(input.contentSize) ? Math.max(0, input.contentSize) : 0;
   const minHandleSize = Number.isFinite(input.minHandleSize)
     ? Math.max(0, input.minHandleSize ?? DEFAULT_MIN_HANDLE_SIZE)
     : DEFAULT_MIN_HANDLE_SIZE;
@@ -48,9 +44,7 @@ export function computeVerticalScrollbarGeometry(
   const maxHandleOffset = Math.max(0, viewportSize - handleSize);
   const clampedOffset = clamp(input.offset, 0, maxScrollOffset);
   const handleOffset =
-    maxScrollOffset > 0
-      ? (clampedOffset / maxScrollOffset) * maxHandleOffset
-      : 0;
+    maxScrollOffset > 0 ? (clampedOffset / maxScrollOffset) * maxHandleOffset : 0;
 
   return {
     isVisible: true,
@@ -68,9 +62,7 @@ export type ScrollOffsetFromDragDeltaInput = {
   maxHandleOffset: number;
 };
 
-export function computeScrollOffsetFromDragDelta(
-  input: ScrollOffsetFromDragDeltaInput
-): number {
+export function computeScrollOffsetFromDragDelta(input: ScrollOffsetFromDragDeltaInput): number {
   if (input.maxScrollOffset <= 0 || input.maxHandleOffset <= 0) {
     return clamp(input.startOffset, 0, Math.max(0, input.maxScrollOffset));
   }

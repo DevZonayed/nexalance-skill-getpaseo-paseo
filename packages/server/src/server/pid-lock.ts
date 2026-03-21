@@ -14,7 +14,7 @@ export interface PidLockInfo {
 export class PidLockError extends Error {
   constructor(
     message: string,
-    public readonly existingLock?: PidLockInfo
+    public readonly existingLock?: PidLockInfo,
   ) {
     super(message);
     this.name = "PidLockError";
@@ -44,7 +44,7 @@ function resolveOwnerPid(ownerPid?: number): number {
 export async function acquirePidLock(
   paseoHome: string,
   listen: string,
-  options?: { ownerPid?: number }
+  options?: { ownerPid?: number },
 ): Promise<void> {
   const pidPath = getPidFilePath(paseoHome);
 
@@ -72,7 +72,7 @@ export async function acquirePidLock(
 
       throw new PidLockError(
         `Another Paseo daemon is already running (PID ${existingLock.pid}, started ${existingLock.startedAt})`,
-        existingLock
+        existingLock,
       );
     }
     // Stale lock - remove it
@@ -101,7 +101,7 @@ export async function acquirePidLock(
         const raceLock = JSON.parse(content) as PidLockInfo;
         throw new PidLockError(
           `Another Paseo daemon is already running (PID ${raceLock.pid})`,
-          raceLock
+          raceLock,
         );
       } catch (innerErr) {
         if (innerErr instanceof PidLockError) throw innerErr;
@@ -116,7 +116,7 @@ export async function acquirePidLock(
 
 export async function releasePidLock(
   paseoHome: string,
-  options?: { ownerPid?: number }
+  options?: { ownerPid?: number },
 ): Promise<void> {
   const pidPath = getPidFilePath(paseoHome);
   const lockOwnerPid = resolveOwnerPid(options?.ownerPid);
@@ -132,9 +132,7 @@ export async function releasePidLock(
   }
 }
 
-export async function getPidLockInfo(
-  paseoHome: string
-): Promise<PidLockInfo | null> {
+export async function getPidLockInfo(paseoHome: string): Promise<PidLockInfo | null> {
   const pidPath = getPidFilePath(paseoHome);
   try {
     const content = await readFile(pidPath, "utf-8");
@@ -145,7 +143,7 @@ export async function getPidLockInfo(
 }
 
 export async function isLocked(
-  paseoHome: string
+  paseoHome: string,
 ): Promise<{ locked: boolean; info?: PidLockInfo }> {
   const info = await getPidLockInfo(paseoHome);
   if (!info) {

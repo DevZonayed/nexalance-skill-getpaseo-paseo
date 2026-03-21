@@ -4,10 +4,7 @@ import { ScrollView as GHScrollView } from "react-native-gesture-handler";
 import { StyleSheet } from "react-native-unistyles";
 import { Fonts } from "@/constants/theme";
 import type { ToolCallDetail } from "@server/server/agent/agent-sdk-types";
-import {
-  buildLineDiff,
-  parseUnifiedDiff,
-} from "@/utils/tool-call-parsers";
+import { buildLineDiff, parseUnifiedDiff } from "@/utils/tool-call-parsers";
 import { hasMeaningfulToolCallDetail } from "@/utils/tool-call-detail-state";
 import { DiffViewer } from "./diff-viewer";
 import { getCodeInsets } from "./code-insets";
@@ -60,10 +57,7 @@ export function ToolCallDetailsContent({
     const commandOutput = (detail.output ?? "").replace(/^\n+/, "");
     const hasOutput = commandOutput.length > 0;
     sections.push(
-      <View
-        key="shell"
-        style={[styles.section, shouldFill && styles.fillHeight]}
-      >
+      <View key="shell" style={[styles.section, shouldFill && styles.fillHeight]}>
         <View style={[codeBlockStyle, shouldFill && styles.fillHeight]}>
           <ScrollView
             style={[
@@ -91,16 +85,13 @@ export function ToolCallDetailsContent({
             </ScrollView>
           </ScrollView>
         </View>
-      </View>
+      </View>,
     );
   } else if (detail?.type === "worktree_setup") {
     const setupLog = detail.log.replace(/^\n+/, "");
     const hasLog = setupLog.length > 0;
     sections.push(
-      <View
-        key="worktree-setup"
-        style={[styles.section, shouldFill && styles.fillHeight]}
-      >
+      <View key="worktree-setup" style={[styles.section, shouldFill && styles.fillHeight]}>
         <View style={[codeBlockStyle, shouldFill && styles.fillHeight]}>
           <ScrollView
             style={[
@@ -128,7 +119,7 @@ export function ToolCallDetailsContent({
             </ScrollView>
           </ScrollView>
         </View>
-      </View>
+      </View>,
     );
   } else if (detail?.type === "sub_agent") {
     const activityLog = detail.log.replace(/^\n+/, "");
@@ -136,12 +127,9 @@ export function ToolCallDetailsContent({
     const fallbackHeader =
       detail.subAgentType && detail.description
         ? `${detail.subAgentType}: ${detail.description}`
-        : detail.subAgentType ?? detail.description ?? "Sub-agent activity";
+        : (detail.subAgentType ?? detail.description ?? "Sub-agent activity");
     sections.push(
-      <View
-        key="sub-agent"
-        style={[styles.section, shouldFill && styles.fillHeight]}
-      >
+      <View key="sub-agent" style={[styles.section, shouldFill && styles.fillHeight]}>
         <View style={[codeBlockStyle, shouldFill && styles.fillHeight]}>
           <ScrollView
             style={[
@@ -167,14 +155,11 @@ export function ToolCallDetailsContent({
             </ScrollView>
           </ScrollView>
         </View>
-      </View>
+      </View>,
     );
   } else if (detail?.type === "edit") {
     sections.push(
-      <View
-        key="edit"
-        style={[styles.section, shouldFill && styles.fillHeight]}
-      >
+      <View key="edit" style={[styles.section, shouldFill && styles.fillHeight]}>
         {diffLines ? (
           <View style={[codeBlockStyle, shouldFill && styles.fillHeight]}>
             <DiffViewer
@@ -184,14 +169,11 @@ export function ToolCallDetailsContent({
             />
           </View>
         ) : null}
-      </View>
+      </View>,
     );
   } else if (detail?.type === "write") {
     sections.push(
-      <View
-        key="write"
-        style={[styles.section, shouldFill && styles.fillHeight]}
-      >
+      <View key="write" style={[styles.section, shouldFill && styles.fillHeight]}>
         {detail.content ? (
           <ScrollView
             style={[
@@ -203,24 +185,19 @@ export function ToolCallDetailsContent({
             nestedScrollEnabled
             showsVerticalScrollIndicator={true}
           >
-            <ScrollView
-              horizontal
-              nestedScrollEnabled
-              showsHorizontalScrollIndicator={true}
-            >
-              <Text selectable style={styles.scrollText}>{detail.content}</Text>
+            <ScrollView horizontal nestedScrollEnabled showsHorizontalScrollIndicator={true}>
+              <Text selectable style={styles.scrollText}>
+                {detail.content}
+              </Text>
             </ScrollView>
           </ScrollView>
         ) : null}
-      </View>
+      </View>,
     );
   } else if (detail?.type === "read") {
     if (detail.content) {
       sections.push(
-        <View
-          key="read"
-          style={[styles.section, shouldFill && styles.fillHeight]}
-        >
+        <View key="read" style={[styles.section, shouldFill && styles.fillHeight]}>
           <ScrollView
             style={[
               styles.scrollArea,
@@ -231,15 +208,13 @@ export function ToolCallDetailsContent({
             nestedScrollEnabled
             showsVerticalScrollIndicator={true}
           >
-            <ScrollView
-              horizontal
-              nestedScrollEnabled
-              showsHorizontalScrollIndicator={true}
-            >
-              <Text selectable style={styles.scrollText}>{detail.content}</Text>
+            <ScrollView horizontal nestedScrollEnabled showsHorizontalScrollIndicator={true}>
+              <Text selectable style={styles.scrollText}>
+                {detail.content}
+              </Text>
             </ScrollView>
           </ScrollView>
-        </View>
+        </View>,
       );
     }
   } else if (detail?.type === "search") {
@@ -247,8 +222,10 @@ export function ToolCallDetailsContent({
     if (detail.query) {
       searchSections.push(
         <View key="search-query" style={styles.section}>
-          <Text selectable style={styles.scrollText}>{detail.query}</Text>
-        </View>
+          <Text selectable style={styles.scrollText}>
+            {detail.query}
+          </Text>
+        </View>,
       );
     }
     if (detail.content) {
@@ -264,17 +241,21 @@ export function ToolCallDetailsContent({
             showsVerticalScrollIndicator
           >
             <ScrollView horizontal nestedScrollEnabled showsHorizontalScrollIndicator>
-              <Text selectable style={styles.scrollText}>{detail.content}</Text>
+              <Text selectable style={styles.scrollText}>
+                {detail.content}
+              </Text>
             </ScrollView>
           </ScrollView>
-        </View>
+        </View>,
       );
     }
     if (detail.filePaths && detail.filePaths.length > 0) {
       searchSections.push(
         <View key="search-files" style={styles.section}>
-          <Text selectable style={styles.scrollText}>{detail.filePaths.join("\n")}</Text>
-        </View>
+          <Text selectable style={styles.scrollText}>
+            {detail.filePaths.join("\n")}
+          </Text>
+        </View>,
       );
     }
     if (detail.webResults && detail.webResults.length > 0) {
@@ -283,23 +264,22 @@ export function ToolCallDetailsContent({
           <Text selectable style={styles.scrollText}>
             {detail.webResults.map((entry) => `${entry.title}\n${entry.url}`).join("\n\n")}
           </Text>
-        </View>
+        </View>,
       );
     }
     if (detail.annotations && detail.annotations.length > 0) {
       searchSections.push(
         <View key="search-annotations" style={styles.section}>
-          <Text selectable style={styles.scrollText}>{detail.annotations.join("\n\n")}</Text>
-        </View>
+          <Text selectable style={styles.scrollText}>
+            {detail.annotations.join("\n\n")}
+          </Text>
+        </View>,
       );
     }
     sections.push(...searchSections);
   } else if (detail?.type === "fetch") {
     sections.push(
-      <View
-        key="fetch"
-        style={[styles.section, shouldFill && styles.fillHeight]}
-      >
+      <View key="fetch" style={[styles.section, shouldFill && styles.fillHeight]}>
         <ScrollView
           style={[
             styles.scrollArea,
@@ -316,37 +296,41 @@ export function ToolCallDetailsContent({
             </Text>
           </ScrollView>
         </ScrollView>
-      </View>
+      </View>,
     );
   } else if (detail?.type === "plain_text") {
     if (detail.text) {
       sections.push(
         <View key="plain-text" style={styles.plainTextSection}>
-          <Text selectable style={styles.plainText}>{detail.text}</Text>
-        </View>
+          <Text selectable style={styles.plainText}>
+            {detail.text}
+          </Text>
+        </View>,
       );
     }
   } else if (detail?.type === "unknown") {
     const plainInputText =
-      typeof detail.input === "string" && detail.output === null
-        ? detail.input
-        : null;
+      typeof detail.input === "string" && detail.output === null ? detail.input : null;
 
     if (plainInputText !== null) {
       sections.push(
         <View key="unknown-plain-text" style={styles.plainTextSection}>
-          <Text selectable style={styles.plainText}>{plainInputText}</Text>
-        </View>
+          <Text selectable style={styles.plainText}>
+            {plainInputText}
+          </Text>
+        </View>,
       );
     } else {
       const sectionsFromTopLevel = [
         { title: "Input", value: detail.input },
         { title: "Output", value: detail.output },
-      ].filter((entry) => hasMeaningfulToolCallDetail({
-        type: "unknown",
-        input: entry.value ?? null,
-        output: null,
-      }));
+      ].filter((entry) =>
+        hasMeaningfulToolCallDetail({
+          type: "unknown",
+          input: entry.value ?? null,
+          output: null,
+        }),
+      );
 
       for (const section of sectionsFromTopLevel) {
         let value = "";
@@ -364,7 +348,7 @@ export function ToolCallDetailsContent({
         sections.push(
           <View key={`${section.title}-header`} style={styles.groupHeader}>
             <Text style={styles.groupHeaderText}>{section.title}</Text>
-          </View>
+          </View>,
         );
         sections.push(
           <View key={`${section.title}-value`} style={styles.section}>
@@ -375,9 +359,11 @@ export function ToolCallDetailsContent({
               contentContainerStyle={styles.jsonContent}
               showsHorizontalScrollIndicator={true}
             >
-              <Text selectable style={styles.scrollText}>{value}</Text>
+              <Text selectable style={styles.scrollText}>
+                {value}
+              </Text>
             </ScrollView>
-          </View>
+          </View>,
         );
       }
     }
@@ -399,28 +385,21 @@ export function ToolCallDetailsContent({
             {errorText}
           </Text>
         </ScrollView>
-      </View>
+      </View>,
     );
   }
 
   if (sections.length === 0) {
     if (showLoadingSkeleton) {
       return (
-        <View
-          style={[
-            styles.loadingContainer,
-            fillAvailableHeight && styles.fillHeight,
-          ]}
-        >
+        <View style={[styles.loadingContainer, fillAvailableHeight && styles.fillHeight]}>
           <View style={styles.loadingLineWide} />
           <View style={styles.loadingLineMedium} />
           <View style={styles.loadingLineShort} />
         </View>
       );
     }
-    return (
-      <Text style={styles.emptyStateText}>No additional details available</Text>
-    );
+    return <Text style={styles.emptyStateText}>No additional details available</Text>;
   }
 
   return (
@@ -449,20 +428,20 @@ const styles = StyleSheet.create((theme) => {
       gap: theme.spacing[2],
       padding: 0,
     },
-  groupHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing[2],
-    paddingHorizontal: theme.spacing[3],
-    paddingVertical: theme.spacing[2],
-    borderBottomWidth: theme.borderWidth[1],
-    borderBottomColor: theme.colors.border,
-  },
-  groupHeaderText: {
-    color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.sm,
-    fontWeight: theme.fontWeight.normal,
-  },
+    groupHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: theme.spacing[2],
+      paddingHorizontal: theme.spacing[3],
+      paddingVertical: theme.spacing[2],
+      borderBottomWidth: theme.borderWidth[1],
+      borderBottomColor: theme.colors.border,
+    },
+    groupHeaderText: {
+      color: theme.colors.foregroundMuted,
+      fontSize: theme.fontSize.sm,
+      fontWeight: theme.fontWeight.normal,
+    },
     section: {
       gap: theme.spacing[2],
     },
@@ -470,28 +449,28 @@ const styles = StyleSheet.create((theme) => {
       flex: 1,
       minHeight: 0,
     },
-  plainTextSection: {
-    gap: theme.spacing[2],
-    padding: theme.spacing[3],
-  },
-  plainText: {
-    fontFamily: Fonts.sans,
-    fontSize: theme.fontSize.base,
-    color: theme.colors.foreground,
-    lineHeight: 22,
-    overflowWrap: "anywhere",
-  },
-  sectionTitle: {
-    color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
-    fontWeight: theme.fontWeight.semibold,
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
-  },
-  rangeText: {
-    color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
-  },
+    plainTextSection: {
+      gap: theme.spacing[2],
+      padding: theme.spacing[3],
+    },
+    plainText: {
+      fontFamily: Fonts.sans,
+      fontSize: theme.fontSize.base,
+      color: theme.colors.foreground,
+      lineHeight: 22,
+      overflowWrap: "anywhere",
+    },
+    sectionTitle: {
+      color: theme.colors.foregroundMuted,
+      fontSize: theme.fontSize.xs,
+      fontWeight: theme.fontWeight.semibold,
+      textTransform: "uppercase",
+      letterSpacing: 0.5,
+    },
+    rangeText: {
+      color: theme.colors.foregroundMuted,
+      fontSize: theme.fontSize.xs,
+    },
     diffContainer: {
       borderWidth: theme.borderWidth[1],
       borderColor: theme.colors.border,
@@ -505,28 +484,28 @@ const styles = StyleSheet.create((theme) => {
       overflow: "hidden",
       backgroundColor: theme.colors.surface1,
     },
-  codeVerticalScroll: {},
-  codeVerticalContent: {
-    flexGrow: 1,
-    paddingBottom: insets.extraBottom,
-  },
-  codeHorizontalContent: {
-    paddingRight: insets.extraRight,
-  },
-  codeLine: {
-    minWidth: "100%",
-    paddingHorizontal: insets.padding,
-    paddingVertical: insets.padding,
-  },
-  scrollArea: {
-    borderWidth: theme.borderWidth[1],
-    borderColor: theme.colors.border,
-    borderRadius: theme.borderRadius.base,
-    backgroundColor: theme.colors.surface2,
-  },
-  scrollContent: {
-    padding: insets.padding,
-  },
+    codeVerticalScroll: {},
+    codeVerticalContent: {
+      flexGrow: 1,
+      paddingBottom: insets.extraBottom,
+    },
+    codeHorizontalContent: {
+      paddingRight: insets.extraRight,
+    },
+    codeLine: {
+      minWidth: "100%",
+      paddingHorizontal: insets.padding,
+      paddingVertical: insets.padding,
+    },
+    scrollArea: {
+      borderWidth: theme.borderWidth[1],
+      borderColor: theme.colors.border,
+      borderRadius: theme.borderRadius.base,
+      backgroundColor: theme.colors.surface2,
+    },
+    scrollContent: {
+      padding: insets.padding,
+    },
     scrollText: {
       fontFamily: Fonts.mono,
       fontSize: theme.fontSize.xs,
@@ -546,43 +525,43 @@ const styles = StyleSheet.create((theme) => {
       borderWidth: theme.borderWidth[1],
       borderColor: theme.colors.border,
       borderRadius: theme.borderRadius.base,
-    backgroundColor: theme.colors.surface2,
-  },
-  jsonScrollError: {
-    borderColor: theme.colors.destructive,
-  },
-  jsonContent: {
-    padding: insets.padding,
-  },
-  errorText: {
-    color: theme.colors.destructive,
-  },
-  emptyStateText: {
-    color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.sm,
-    fontStyle: "italic",
-  },
-  loadingContainer: {
-    gap: theme.spacing[2],
-    padding: theme.spacing[3],
-  },
-  loadingLineWide: {
-    height: 12,
-    width: "100%",
-    borderRadius: theme.borderRadius.full,
-    backgroundColor: theme.colors.surface3,
-  },
-  loadingLineMedium: {
-    height: 12,
-    width: "72%",
-    borderRadius: theme.borderRadius.full,
-    backgroundColor: theme.colors.surface3,
-  },
-  loadingLineShort: {
-    height: 12,
-    width: "48%",
-    borderRadius: theme.borderRadius.full,
-    backgroundColor: theme.colors.surface3,
-  },
+      backgroundColor: theme.colors.surface2,
+    },
+    jsonScrollError: {
+      borderColor: theme.colors.destructive,
+    },
+    jsonContent: {
+      padding: insets.padding,
+    },
+    errorText: {
+      color: theme.colors.destructive,
+    },
+    emptyStateText: {
+      color: theme.colors.foregroundMuted,
+      fontSize: theme.fontSize.sm,
+      fontStyle: "italic",
+    },
+    loadingContainer: {
+      gap: theme.spacing[2],
+      padding: theme.spacing[3],
+    },
+    loadingLineWide: {
+      height: 12,
+      width: "100%",
+      borderRadius: theme.borderRadius.full,
+      backgroundColor: theme.colors.surface3,
+    },
+    loadingLineMedium: {
+      height: 12,
+      width: "72%",
+      borderRadius: theme.borderRadius.full,
+      backgroundColor: theme.colors.surface3,
+    },
+    loadingLineShort: {
+      height: 12,
+      width: "48%",
+      borderRadius: theme.borderRadius.full,
+      backgroundColor: theme.colors.surface3,
+    },
   };
 });

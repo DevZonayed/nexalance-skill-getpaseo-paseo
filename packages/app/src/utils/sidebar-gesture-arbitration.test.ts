@@ -13,7 +13,7 @@ describe("decideLongPressMove", () => {
         didStartDrag: false,
         startPoint: { x: 0, y: 0 },
         currentPoint: { x: 3, y: 2 },
-      })
+      }),
     ).toBe("none");
   });
 
@@ -24,7 +24,7 @@ describe("decideLongPressMove", () => {
         didStartDrag: false,
         startPoint: { x: 0, y: 0 },
         currentPoint: { x: 8, y: 8 },
-      })
+      }),
     ).toBe("cancel_long_press");
   });
 
@@ -35,7 +35,7 @@ describe("decideLongPressMove", () => {
         didStartDrag: false,
         startPoint: { x: 0, y: 0 },
         currentPoint: { x: 2, y: 7 },
-      })
+      }),
     ).toBe("vertical_scroll");
   });
 
@@ -46,7 +46,7 @@ describe("decideLongPressMove", () => {
         didStartDrag: false,
         startPoint: { x: 0, y: 0 },
         currentPoint: { x: 5, y: 7 },
-      })
+      }),
     ).toBe("none");
   });
 
@@ -57,7 +57,7 @@ describe("decideLongPressMove", () => {
         didStartDrag: false,
         startPoint: { x: 0, y: 0 },
         currentPoint: { x: -10, y: 2 },
-      })
+      }),
     ).toBe("horizontal_swipe");
   });
 
@@ -68,7 +68,7 @@ describe("decideLongPressMove", () => {
         didStartDrag: false,
         startPoint: { x: 0, y: 0 },
         currentPoint: { x: 0, y: 9 },
-      })
+      }),
     ).toBe("start_drag");
   });
 
@@ -79,7 +79,7 @@ describe("decideLongPressMove", () => {
         didStartDrag: true,
         startPoint: { x: 0, y: 0 },
         currentPoint: { x: 20, y: 20 },
-      })
+      }),
     ).toBe("none");
   });
 });
@@ -90,21 +90,21 @@ describe("shouldOpenContextMenuOnPressOut", () => {
       shouldOpenContextMenuOnPressOut({
         longPressArmed: true,
         didStartDrag: false,
-      })
+      }),
     ).toBe(true);
 
     expect(
       shouldOpenContextMenuOnPressOut({
         longPressArmed: false,
         didStartDrag: false,
-      })
+      }),
     ).toBe(false);
 
     expect(
       shouldOpenContextMenuOnPressOut({
         longPressArmed: true,
         didStartDrag: true,
-      })
+      }),
     ).toBe(false);
   });
 });

@@ -35,18 +35,11 @@ export type { LocalSpeechModelId, LocalSttModelId, LocalTtsModelId };
 
 const DEFAULT_LOCAL_MODELS_SUBDIR = path.join("models", "local-speech");
 
-const NumberLikeSchema = z.union([
-  z.number(),
-  z.string().trim().min(1),
-]);
+const NumberLikeSchema = z.union([z.number(), z.string().trim().min(1)]);
 
-const OptionalFiniteNumberSchema = NumberLikeSchema
-  .pipe(z.coerce.number().finite())
-  .optional();
+const OptionalFiniteNumberSchema = NumberLikeSchema.pipe(z.coerce.number().finite()).optional();
 
-const OptionalIntegerSchema = NumberLikeSchema
-  .pipe(z.coerce.number().int())
-  .optional();
+const OptionalIntegerSchema = NumberLikeSchema.pipe(z.coerce.number().int()).optional();
 
 const LocalSpeechResolutionSchema = z.object({
   includeProviderConfig: z.boolean(),
@@ -61,7 +54,7 @@ const LocalSpeechResolutionSchema = z.object({
 function persistedLocalFeatureModel(
   provider: RequestedSpeechProviders[keyof RequestedSpeechProviders]["provider"],
   enabled: boolean | undefined,
-  model: string | undefined
+  model: string | undefined,
 ): string | undefined {
   if (provider !== "local" || enabled === false) {
     return undefined;
@@ -79,8 +72,7 @@ function shouldIncludeLocalProviderConfig(params: {
       params.providers.dictationStt.provider === "local") ||
     (params.providers.voiceStt.enabled !== false &&
       params.providers.voiceStt.provider === "local") ||
-    (params.providers.voiceTts.enabled !== false &&
-      params.providers.voiceTts.provider === "local");
+    (params.providers.voiceTts.enabled !== false && params.providers.voiceTts.provider === "local");
 
   return (
     localRequestedByFeature ||
@@ -108,7 +100,7 @@ export function resolveLocalSpeechConfig(params: {
       persistedLocalFeatureModel(
         params.providers.dictationStt.provider,
         params.providers.dictationStt.enabled,
-        params.persisted.features?.dictation?.stt?.model
+        params.persisted.features?.dictation?.stt?.model,
       ) ??
       DEFAULT_LOCAL_STT_MODEL,
     voiceLocalSttModel:
@@ -116,7 +108,7 @@ export function resolveLocalSpeechConfig(params: {
       persistedLocalFeatureModel(
         params.providers.voiceStt.provider,
         params.providers.voiceStt.enabled,
-        params.persisted.features?.voiceMode?.stt?.model
+        params.persisted.features?.voiceMode?.stt?.model,
       ) ??
       DEFAULT_LOCAL_STT_MODEL,
     voiceLocalTtsModel:
@@ -124,15 +116,14 @@ export function resolveLocalSpeechConfig(params: {
       persistedLocalFeatureModel(
         params.providers.voiceTts.provider,
         params.providers.voiceTts.enabled,
-        params.persisted.features?.voiceMode?.tts?.model
+        params.persisted.features?.voiceMode?.tts?.model,
       ) ??
       DEFAULT_LOCAL_TTS_MODEL,
     voiceLocalTtsSpeakerId:
       params.env.PASEO_VOICE_LOCAL_TTS_SPEAKER_ID ??
       params.persisted.features?.voiceMode?.tts?.speakerId,
     voiceLocalTtsSpeed:
-      params.env.PASEO_VOICE_LOCAL_TTS_SPEED ??
-      params.persisted.features?.voiceMode?.tts?.speed,
+      params.env.PASEO_VOICE_LOCAL_TTS_SPEED ?? params.persisted.features?.voiceMode?.tts?.speed,
   });
 
   const resolvedVoiceTtsSpeakerId =
@@ -140,22 +131,21 @@ export function resolveLocalSpeechConfig(params: {
     (parsed.voiceLocalTtsModel === "kokoro-en-v0_19" ? 0 : undefined);
 
   return {
-    local:
-      parsed.includeProviderConfig
-        ? {
-            modelsDir: parsed.modelsDir,
-            models: {
-              dictationStt: parsed.dictationLocalSttModel,
-              voiceStt: parsed.voiceLocalSttModel,
-              voiceTts: parsed.voiceLocalTtsModel,
-              ...(resolvedVoiceTtsSpeakerId !== undefined
-                ? { voiceTtsSpeakerId: resolvedVoiceTtsSpeakerId }
-                : {}),
-              ...(parsed.voiceLocalTtsSpeed !== undefined
-                ? { voiceTtsSpeed: parsed.voiceLocalTtsSpeed }
-                : {}),
-            },
-          }
-        : undefined,
+    local: parsed.includeProviderConfig
+      ? {
+          modelsDir: parsed.modelsDir,
+          models: {
+            dictationStt: parsed.dictationLocalSttModel,
+            voiceStt: parsed.voiceLocalSttModel,
+            voiceTts: parsed.voiceLocalTtsModel,
+            ...(resolvedVoiceTtsSpeakerId !== undefined
+              ? { voiceTtsSpeakerId: resolvedVoiceTtsSpeakerId }
+              : {}),
+            ...(parsed.voiceLocalTtsSpeed !== undefined
+              ? { voiceTtsSpeed: parsed.voiceLocalTtsSpeed }
+              : {}),
+          },
+        }
+      : undefined,
   };
 }

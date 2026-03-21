@@ -1,10 +1,4 @@
-export type ShortcutKey =
-  | "mod"
-  | "shift"
-  | "alt"
-  | "ctrl"
-  | "meta"
-  | string;
+export type ShortcutKey = "mod" | "shift" | "alt" | "ctrl" | "meta" | string;
 
 export type ShortcutOs = "mac" | "non-mac";
 
@@ -28,9 +22,7 @@ export function formatShortcut(keys: ShortcutKey[], os: ShortcutOs): string {
     };
 
     const modifierSet = new Set(normalized);
-    const mods = order
-      .filter((k) => modifierSet.has(k))
-      .map((k) => symbols[k] ?? "");
+    const mods = order.filter((k) => modifierSet.has(k)).map((k) => symbols[k] ?? "");
     const main = normalized
       .filter((k) => !order.includes(k))
       .map(normalizeKey)
@@ -50,4 +42,3 @@ export function formatShortcut(keys: ShortcutKey[], os: ShortcutOs): string {
     .filter(Boolean)
     .join("+");
 }
-

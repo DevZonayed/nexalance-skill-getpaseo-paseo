@@ -26,12 +26,5 @@ export function useKeyboardActionHandler(input: UseKeyboardActionHandlerInput) {
       isActive: input.isActive,
       handle: input.handle,
     });
-  }, [
-    input.actions,
-    input.enabled,
-    input.handle,
-    input.handlerId,
-    input.isActive,
-    input.priority,
-  ]);
+  }, [input.actions, input.enabled, input.handle, input.handlerId, input.isActive, input.priority]);
 }

@@ -39,7 +39,10 @@ const TOOL_ICON_BY_NAME: Record<ToolCallIconName, ToolCallIconComponent> = {
   mic_vocal: MicVocal,
 };
 
-export function resolveToolCallIcon(toolName: string, detail?: ToolCallDetail): ToolCallIconComponent {
+export function resolveToolCallIcon(
+  toolName: string,
+  detail?: ToolCallDetail,
+): ToolCallIconComponent {
   const lowerName = toolName.trim().toLowerCase();
 
   if (detail?.type === "plain_text" && detail.icon) {

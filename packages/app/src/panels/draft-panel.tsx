@@ -17,14 +17,8 @@ function useDraftPanelDescriptor() {
 }
 
 function DraftPanel() {
-  const {
-    serverId,
-    workspaceId,
-    tabId,
-    target,
-    openFileInWorkspace,
-    retargetCurrentTab,
-  } = usePaneContext();
+  const { serverId, workspaceId, tabId, target, openFileInWorkspace, retargetCurrentTab } =
+    usePaneContext();
   invariant(target.kind === "draft", "DraftPanel requires draft target");
 
   return (

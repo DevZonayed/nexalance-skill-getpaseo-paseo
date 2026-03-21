@@ -10,14 +10,8 @@ const CHANGELOG_URL = "https://paseo.sh/changelog";
 
 export function UpdateBanner() {
   const { theme } = useUnistyles();
-  const {
-    isDesktop,
-    status,
-    availableUpdate,
-    checkForUpdates,
-    installUpdate,
-    isInstalling,
-  } = useDesktopAppUpdater();
+  const { isDesktop, status, availableUpdate, checkForUpdates, installUpdate, isInstalling } =
+    useDesktopAppUpdater();
   const [dismissed, setDismissed] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -46,18 +40,12 @@ export function UpdateBanner() {
   return (
     <View style={styles.container} pointerEvents="box-none">
       <View style={styles.banner}>
-        <Pressable
-          onPress={() => setDismissed(true)}
-          hitSlop={8}
-          style={styles.closeButton}
-        >
+        <Pressable onPress={() => setDismissed(true)} hitSlop={8} style={styles.closeButton}>
           <X size={14} color={theme.colors.foregroundMuted} />
         </Pressable>
 
         <View style={styles.textSection}>
-          <Text style={styles.title}>
-            {isInstalled ? "Update installed" : "Update available"}
-          </Text>
+          <Text style={styles.title}>{isInstalled ? "Update installed" : "Update available"}</Text>
           <Text style={styles.subtitle}>
             {isInstalled
               ? "Restart to use the new version."
@@ -68,10 +56,7 @@ export function UpdateBanner() {
         <View style={styles.actions}>
           <Pressable
             onPress={() => void openExternalUrl(CHANGELOG_URL)}
-            style={({ pressed }) => [
-              styles.outlineButton,
-              pressed && styles.buttonPressed,
-            ]}
+            style={({ pressed }) => [styles.outlineButton, pressed && styles.buttonPressed]}
           >
             <Text style={styles.outlineButtonText}>What's new</Text>
           </Pressable>

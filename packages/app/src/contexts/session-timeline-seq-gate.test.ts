@@ -8,7 +8,7 @@ describe("classifySessionTimelineSeq", () => {
         cursor: { epoch: "epoch-1", endSeq: 4 },
         epoch: "epoch-1",
         seq: 5,
-      })
+      }),
     ).toBe("accept");
   });
 
@@ -18,7 +18,7 @@ describe("classifySessionTimelineSeq", () => {
         cursor: { epoch: "epoch-1", endSeq: 8 },
         epoch: "epoch-1",
         seq: 7,
-      })
+      }),
     ).toBe("drop_stale");
   });
 
@@ -28,7 +28,7 @@ describe("classifySessionTimelineSeq", () => {
         cursor: { epoch: "epoch-1", endSeq: 8 },
         epoch: "epoch-1",
         seq: 8,
-      })
+      }),
     ).toBe("drop_stale");
   });
 
@@ -38,7 +38,7 @@ describe("classifySessionTimelineSeq", () => {
         cursor: { epoch: "epoch-1", endSeq: 4 },
         epoch: "epoch-2",
         seq: 5,
-      })
+      }),
     ).toBe("drop_epoch");
   });
 
@@ -48,7 +48,7 @@ describe("classifySessionTimelineSeq", () => {
         cursor: null,
         epoch: "epoch-1",
         seq: 1,
-      })
+      }),
     ).toBe("init");
   });
 
@@ -58,7 +58,7 @@ describe("classifySessionTimelineSeq", () => {
         cursor: { epoch: "epoch-1", endSeq: 4 },
         epoch: "epoch-1",
         seq: 9,
-      })
+      }),
     ).toBe("gap");
   });
 });

@@ -43,7 +43,7 @@ function createMockState() {
 }
 
 async function withMockWebSocketPair(
-  run: (sockets: { clientWs: MockSocket; serverWs: MockSocket }) => Promise<void> | void
+  run: (sockets: { clientWs: MockSocket; serverWs: MockSocket }) => Promise<void> | void,
 ): Promise<void> {
   const serverWs = createMockSocket();
   const clientWs = createMockSocket();
@@ -173,7 +173,7 @@ describe("RelayDurableObject control nudge/reset behavior", () => {
           headers: {
             Upgrade: "websocket",
           },
-        }
+        },
       );
 
       await relay.fetch(req).catch(() => undefined);
@@ -211,25 +211,27 @@ describe("RelayDurableObject control nudge/reset behavior", () => {
       disconnectedClient as unknown as WebSocket,
       1001,
       "Client disconnected",
-      true
+      true,
     );
 
     expect(serverData.close).not.toHaveBeenCalled();
     expect(control.send).not.toHaveBeenCalledWith(
-      JSON.stringify({ type: "disconnected", connectionId: clientId })
+      JSON.stringify({ type: "disconnected", connectionId: clientId }),
     );
   });
 });
 
 describe("relay worker endpoint routing", () => {
   it("routes missing v to legacy v1 isolated DO ids", async () => {
-    const fetch = vi.fn(async (request: Request) => new Response(`ok:${new URL(request.url).searchParams.get("v")}`));
+    const fetch = vi.fn(
+      async (request: Request) => new Response(`ok:${new URL(request.url).searchParams.get("v")}`),
+    );
     const get = vi.fn(() => ({ fetch }));
     const idFromName = vi.fn(() => ({ toString: () => "id" }));
 
     const response = await relayWorker.fetch(
       new Request("https://relay.test/ws?serverId=srv_test&role=server"),
-      { RELAY: { idFromName, get } } as any
+      { RELAY: { idFromName, get } } as any,
     );
 
     expect(idFromName).toHaveBeenCalledWith("relay-v1:srv_test");
@@ -238,13 +240,15 @@ describe("relay worker endpoint routing", () => {
   });
 
   it("routes v=2 to v2 isolated DO ids", async () => {
-    const fetch = vi.fn(async (request: Request) => new Response(`ok:${new URL(request.url).searchParams.get("v")}`));
+    const fetch = vi.fn(
+      async (request: Request) => new Response(`ok:${new URL(request.url).searchParams.get("v")}`),
+    );
     const get = vi.fn(() => ({ fetch }));
     const idFromName = vi.fn(() => ({ toString: () => "id" }));
 
     const response = await relayWorker.fetch(
       new Request("https://relay.test/ws?serverId=srv_test&role=server&v=2"),
-      { RELAY: { idFromName, get } } as any
+      { RELAY: { idFromName, get } } as any,
     );
 
     expect(idFromName).toHaveBeenCalledWith("relay-v2:srv_test");
@@ -259,7 +263,7 @@ describe("relay worker endpoint routing", () => {
 
     const response = await relayWorker.fetch(
       new Request("https://relay.test/ws?serverId=srv_test&role=server&v=nope"),
-      { RELAY: { idFromName, get } } as any
+      { RELAY: { idFromName, get } } as any,
     );
 
     expect(response.status).toBe(400);

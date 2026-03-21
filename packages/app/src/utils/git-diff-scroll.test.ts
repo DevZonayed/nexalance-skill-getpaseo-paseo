@@ -9,7 +9,7 @@ describe("shouldAnchorHeaderBeforeCollapse", () => {
         headerHeight: 44,
         viewportOffset: 80,
         viewportHeight: 400,
-      })
+      }),
     ).toBe(false);
   });
 
@@ -20,7 +20,7 @@ describe("shouldAnchorHeaderBeforeCollapse", () => {
         headerHeight: 44,
         viewportOffset: 80,
         viewportHeight: 300,
-      })
+      }),
     ).toBe(false);
   });
 
@@ -31,7 +31,7 @@ describe("shouldAnchorHeaderBeforeCollapse", () => {
         headerHeight: 44,
         viewportOffset: 500,
         viewportHeight: 300,
-      })
+      }),
     ).toBe(true);
   });
 
@@ -42,7 +42,7 @@ describe("shouldAnchorHeaderBeforeCollapse", () => {
         headerHeight: 44,
         viewportOffset: 100,
         viewportHeight: 300,
-      })
+      }),
     ).toBe(true);
   });
 
@@ -53,7 +53,7 @@ describe("shouldAnchorHeaderBeforeCollapse", () => {
         headerHeight: 44,
         viewportOffset: 0,
         viewportHeight: 0,
-      })
+      }),
     ).toBe(true);
   });
 });

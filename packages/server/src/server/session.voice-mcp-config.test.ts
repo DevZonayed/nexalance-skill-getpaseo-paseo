@@ -69,8 +69,8 @@ describe("voice mode prompt instructions", () => {
     expect(stripVoiceModeSystemPrompt(existing)).toBe("Base system prompt");
     expect(
       stripVoiceModeSystemPrompt(
-        ["<paseo_voice_mode>", "legacy voice instruction", "</paseo_voice_mode>"].join("\n\n")
-      )
+        ["<paseo_voice_mode>", "legacy voice instruction", "</paseo_voice_mode>"].join("\n\n"),
+      ),
     ).toBeUndefined();
   });
 });

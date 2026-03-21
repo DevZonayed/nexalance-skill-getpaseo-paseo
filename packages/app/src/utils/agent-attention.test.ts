@@ -10,7 +10,7 @@ describe("shouldClearAgentAttention", () => {
         isConnected: true,
         requiresAttention: true,
         attentionReason: "finished",
-      })
+      }),
     ).toBe(true);
   });
 
@@ -21,7 +21,7 @@ describe("shouldClearAgentAttention", () => {
         isConnected: false,
         requiresAttention: true,
         attentionReason: "finished",
-      })
+      }),
     ).toBe(false);
   });
 
@@ -32,7 +32,7 @@ describe("shouldClearAgentAttention", () => {
         isConnected: true,
         requiresAttention: false,
         attentionReason: null,
-      })
+      }),
     ).toBe(false);
   });
 
@@ -43,7 +43,7 @@ describe("shouldClearAgentAttention", () => {
         isConnected: true,
         requiresAttention: true,
         attentionReason: "finished",
-      })
+      }),
     ).toBe(false);
   });
 
@@ -54,7 +54,7 @@ describe("shouldClearAgentAttention", () => {
         isConnected: true,
         requiresAttention: true,
         attentionReason: "permission",
-      })
+      }),
     ).toBe(false);
   });
 
@@ -67,7 +67,7 @@ describe("shouldClearAgentAttention", () => {
         attentionReason: "finished",
         trigger: "focus-entry",
         hasDeferredFocusEntryClear: true,
-      })
+      }),
     ).toBe(false);
   });
 
@@ -80,7 +80,7 @@ describe("shouldClearAgentAttention", () => {
         attentionReason: "finished",
         trigger: "input-focus",
         hasDeferredFocusEntryClear: true,
-      })
+      }),
     ).toBe(true);
 
     expect(
@@ -91,7 +91,7 @@ describe("shouldClearAgentAttention", () => {
         attentionReason: "finished",
         trigger: "prompt-send",
         hasDeferredFocusEntryClear: true,
-      })
+      }),
     ).toBe(true);
 
     expect(
@@ -102,7 +102,7 @@ describe("shouldClearAgentAttention", () => {
         attentionReason: "finished",
         trigger: "agent-blur",
         hasDeferredFocusEntryClear: true,
-      })
+      }),
     ).toBe(true);
   });
 });

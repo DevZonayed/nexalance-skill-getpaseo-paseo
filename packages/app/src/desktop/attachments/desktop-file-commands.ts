@@ -10,14 +10,11 @@ export async function writeDesktopAttachmentBase64(input: {
   base64: string;
   extension?: string | null;
 }): Promise<AttachmentFileResult> {
-  return await invokeDesktopCommand<AttachmentFileResult>(
-    "write_attachment_base64",
-    {
-      attachmentId: input.attachmentId,
-      base64: input.base64,
-      extension: input.extension ?? null,
-    }
-  );
+  return await invokeDesktopCommand<AttachmentFileResult>("write_attachment_base64", {
+    attachmentId: input.attachmentId,
+    base64: input.base64,
+    extension: input.extension ?? null,
+  });
 }
 
 export async function copyDesktopAttachmentFile(input: {
@@ -32,9 +29,7 @@ export async function copyDesktopAttachmentFile(input: {
   });
 }
 
-export async function deleteDesktopAttachmentFile(input: {
-  path: string;
-}): Promise<boolean> {
+export async function deleteDesktopAttachmentFile(input: { path: string }): Promise<boolean> {
   return await invokeDesktopCommand<boolean>("delete_attachment_file", {
     path: input.path,
   });

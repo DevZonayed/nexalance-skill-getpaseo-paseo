@@ -95,13 +95,15 @@ describe("create_agent MCP tool", () => {
       title: "Short title",
     });
     expect(parsed.success).toBe(false);
-    expect(parsed.error.issues.some((issue: { path: string[] }) => issue.path[0] === "initialPrompt")).toBe(true);
+    expect(
+      parsed.error.issues.some((issue: { path: string[] }) => issue.path[0] === "initialPrompt"),
+    ).toBe(true);
   });
 
   it("surfaces createAgent validation failures", async () => {
     const { agentManager, agentStorage, spies } = createTestDeps();
     spies.agentManager.createAgent.mockRejectedValue(
-      new Error("Working directory does not exist: /path/that/does/not/exist")
+      new Error("Working directory does not exist: /path/that/does/not/exist"),
     );
     const server = await createAgentMcpServer({ agentManager, agentStorage, logger });
     const tool = (server as any)._registeredTools["create_agent"];
@@ -111,7 +113,7 @@ describe("create_agent MCP tool", () => {
         cwd: "/path/that/does/not/exist",
         title: "Short title",
         initialPrompt: "Do work",
-      })
+      }),
     ).rejects.toThrow("Working directory does not exist");
   });
 
@@ -140,7 +142,7 @@ describe("create_agent MCP tool", () => {
         title: "Fix auth bug",
       }),
       undefined,
-      undefined
+      undefined,
     );
   });
 
@@ -168,7 +170,7 @@ describe("create_agent MCP tool", () => {
         title: "Fix auth",
       }),
       undefined,
-      undefined
+      undefined,
     );
   });
 
@@ -216,7 +218,7 @@ describe("create_agent MCP tool", () => {
         cwd: subdir,
       }),
       undefined,
-      { labels: { source: "voice" } }
+      { labels: { source: "voice" } },
     );
     await rm(baseDir, { recursive: true, force: true });
   });
@@ -244,7 +246,7 @@ describe("speak MCP tool", () => {
       expect.objectContaining({
         text: "Hello from voice agent.",
         callerAgentId: "voice-agent-1",
-      })
+      }),
     );
   });
 
@@ -260,7 +262,7 @@ describe("speak MCP tool", () => {
     });
     const tool = (server as any)._registeredTools["speak"];
     await expect(tool.callback({ text: "Hello." })).rejects.toThrow(
-      "No speak handler registered for caller agent"
+      "No speak handler registered for caller agent",
     );
   });
 

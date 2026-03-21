@@ -6,7 +6,7 @@ import {
 import type { WorkspaceDescriptor } from "@/stores/session-store";
 
 function workspace(
-  input: Partial<WorkspaceDescriptor> & Pick<WorkspaceDescriptor, "id">
+  input: Partial<WorkspaceDescriptor> & Pick<WorkspaceDescriptor, "id">,
 ): WorkspaceDescriptor {
   return {
     id: input.id,
@@ -33,7 +33,7 @@ describe("resolveWorkspaceArchiveRedirectWorkspaceId", () => {
       resolveWorkspaceArchiveRedirectWorkspaceId({
         archivedWorkspaceId: "/repo/.paseo/worktrees/feature",
         workspaces,
-      })
+      }),
     ).toBe("/repo");
   });
 
@@ -50,7 +50,7 @@ describe("resolveWorkspaceArchiveRedirectWorkspaceId", () => {
       resolveWorkspaceArchiveRedirectWorkspaceId({
         archivedWorkspaceId: "/repo/.paseo/worktrees/feature",
         workspaces,
-      })
+      }),
     ).toBe("/repo");
   });
 
@@ -70,7 +70,7 @@ describe("resolveWorkspaceArchiveRedirectWorkspaceId", () => {
         serverId: "server-1",
         archivedWorkspaceId: "/notes",
         workspaces,
-      })
+      }),
     ).toBe("/h/server-1");
   });
 });

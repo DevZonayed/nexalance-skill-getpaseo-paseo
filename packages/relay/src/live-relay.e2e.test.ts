@@ -13,7 +13,7 @@ const RELAY_BASE_URL = "wss://relay.paseo.sh";
 
 async function withRetry<T>(
   fn: () => Promise<T>,
-  options: { retries: number; delayMs: number }
+  options: { retries: number; delayMs: number },
 ): Promise<T> {
   let lastError: unknown;
   for (let attempt = 0; attempt <= options.retries; attempt++) {
@@ -39,10 +39,10 @@ describe("Live relay (relay.paseo.sh) E2E", () => {
         const connectionId = `clt_live_${Date.now()}_${Math.random().toString(16).slice(2)}`;
         const serverControlUrl = `${RELAY_BASE_URL}/ws?serverId=${encodeURIComponent(serverId)}&role=server&v=2`;
         const serverDataUrl = `${RELAY_BASE_URL}/ws?serverId=${encodeURIComponent(
-          serverId
+          serverId,
         )}&role=server&connectionId=${encodeURIComponent(connectionId)}&v=2`;
         const clientUrl = `${RELAY_BASE_URL}/ws?serverId=${encodeURIComponent(
-          serverId
+          serverId,
         )}&role=client&connectionId=${encodeURIComponent(connectionId)}&v=2`;
 
         // === Key setup ===
@@ -55,7 +55,7 @@ describe("Live relay (relay.paseo.sh) E2E", () => {
         const daemonPubKeyOnClient = await importPublicKey(daemonPubKeyB64);
         const clientSharedKey = await deriveSharedKey(
           clientKeyPair.secretKey,
-          daemonPubKeyOnClient
+          daemonPubKeyOnClient,
         );
 
         // === Connect ===
@@ -67,7 +67,7 @@ describe("Live relay (relay.paseo.sh) E2E", () => {
           new Promise<void>((resolve, reject) => {
             const timeout = setTimeout(
               () => reject(new Error(`Timed out opening ${label} websocket`)),
-              10_000
+              10_000,
             );
             ws.once("open", () => {
               clearTimeout(timeout);
@@ -88,7 +88,7 @@ describe("Live relay (relay.paseo.sh) E2E", () => {
           await new Promise<void>((resolve, reject) => {
             const timeout = setTimeout(
               () => reject(new Error("Timed out waiting for connected")),
-              10_000
+              10_000,
             );
             daemonControlWs.on("message", (raw) => {
               try {
@@ -113,7 +113,7 @@ describe("Live relay (relay.paseo.sh) E2E", () => {
           const daemonReceivedHello = await new Promise<string>((resolve, reject) => {
             const timeout = setTimeout(
               () => reject(new Error("Timed out waiting for hello")),
-              10_000
+              10_000,
             );
             daemonWs!.once("message", (data) => {
               clearTimeout(timeout);
@@ -131,67 +131,55 @@ describe("Live relay (relay.paseo.sh) E2E", () => {
           const clientPubKeyOnDaemon = await importPublicKey(hello.key!);
           const daemonSharedKey = await deriveSharedKey(
             daemonKeyPair.secretKey,
-            clientPubKeyOnDaemon
+            clientPubKeyOnDaemon,
           );
 
           // === Encrypted exchange ===
           const plaintextFromClient = "hello-from-client";
-          const ciphertextFromClient = await encrypt(
-            clientSharedKey,
-            plaintextFromClient
-          );
+          const ciphertextFromClient = await encrypt(clientSharedKey, plaintextFromClient);
           clientWs.send(Buffer.from(ciphertextFromClient));
 
-          const daemonReceivedCiphertext = await new Promise<Buffer>(
-            (resolve, reject) => {
-              const timeout = setTimeout(
-                () => reject(new Error("Timed out waiting for encrypted message")),
-                10_000
-              );
-              daemonWs!.once("message", (data) => {
-                clearTimeout(timeout);
-                resolve(data as Buffer);
-              });
-            }
-          );
+          const daemonReceivedCiphertext = await new Promise<Buffer>((resolve, reject) => {
+            const timeout = setTimeout(
+              () => reject(new Error("Timed out waiting for encrypted message")),
+              10_000,
+            );
+            daemonWs!.once("message", (data) => {
+              clearTimeout(timeout);
+              resolve(data as Buffer);
+            });
+          });
 
           const decryptedOnDaemon = await decrypt(
             daemonSharedKey,
             daemonReceivedCiphertext.buffer.slice(
               daemonReceivedCiphertext.byteOffset,
-              daemonReceivedCiphertext.byteOffset +
-                daemonReceivedCiphertext.byteLength
-            )
+              daemonReceivedCiphertext.byteOffset + daemonReceivedCiphertext.byteLength,
+            ),
           );
           expect(decryptedOnDaemon).toBe(plaintextFromClient);
 
           const plaintextFromDaemon = "hello-from-daemon";
-          const ciphertextFromDaemon = await encrypt(
-            daemonSharedKey,
-            plaintextFromDaemon
-          );
+          const ciphertextFromDaemon = await encrypt(daemonSharedKey, plaintextFromDaemon);
           daemonWs!.send(Buffer.from(ciphertextFromDaemon));
 
-          const clientReceivedCiphertext = await new Promise<Buffer>(
-            (resolve, reject) => {
-              const timeout = setTimeout(
-                () => reject(new Error("Timed out waiting for encrypted response")),
-                10_000
-              );
-              clientWs.once("message", (data) => {
-                clearTimeout(timeout);
-                resolve(data as Buffer);
-              });
-            }
-          );
+          const clientReceivedCiphertext = await new Promise<Buffer>((resolve, reject) => {
+            const timeout = setTimeout(
+              () => reject(new Error("Timed out waiting for encrypted response")),
+              10_000,
+            );
+            clientWs.once("message", (data) => {
+              clearTimeout(timeout);
+              resolve(data as Buffer);
+            });
+          });
 
           const decryptedOnClient = await decrypt(
             clientSharedKey,
             clientReceivedCiphertext.buffer.slice(
               clientReceivedCiphertext.byteOffset,
-              clientReceivedCiphertext.byteOffset +
-                clientReceivedCiphertext.byteLength
-            )
+              clientReceivedCiphertext.byteOffset + clientReceivedCiphertext.byteLength,
+            ),
           );
           expect(decryptedOnClient).toBe(plaintextFromDaemon);
         } finally {
@@ -200,7 +188,7 @@ describe("Live relay (relay.paseo.sh) E2E", () => {
           clientWs.close();
         }
       },
-      { retries: 2, delayMs: 250 }
+      { retries: 2, delayMs: 250 },
     );
   });
 });

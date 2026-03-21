@@ -27,24 +27,24 @@ export interface PanelRegistration<
   component: ComponentType;
   useDescriptor(
     target: Extract<WorkspaceTabTarget, { kind: K }>,
-    context: PanelDescriptorContext
+    context: PanelDescriptorContext,
   ): PanelDescriptor;
   confirmClose?(
     target: Extract<WorkspaceTabTarget, { kind: K }>,
-    context: PanelDescriptorContext
+    context: PanelDescriptorContext,
   ): Promise<boolean>;
 }
 
 const panelRegistry = new Map<WorkspaceTabTarget["kind"], PanelRegistration>();
 
 export function registerPanel<K extends WorkspaceTabTarget["kind"]>(
-  registration: PanelRegistration<K>
+  registration: PanelRegistration<K>,
 ): void {
   panelRegistry.set(registration.kind, registration as unknown as PanelRegistration);
 }
 
 export function getPanelRegistration(
-  kind: WorkspaceTabTarget["kind"]
+  kind: WorkspaceTabTarget["kind"],
 ): PanelRegistration | undefined {
   return panelRegistry.get(kind);
 }

@@ -33,11 +33,22 @@ async function readFixtureWav(): Promise<Buffer> {
 }
 
 async function readBaseline(): Promise<string> {
-  const baselinePath = path.resolve(process.cwd(), "..", "app", "e2e", "fixtures", "recording.baseline.txt");
-  return import("node:fs/promises").then((fs) => fs.readFile(baselinePath, "utf-8")).then((t) => t.trim());
+  const baselinePath = path.resolve(
+    process.cwd(),
+    "..",
+    "app",
+    "e2e",
+    "fixtures",
+    "recording.baseline.txt",
+  );
+  return import("node:fs/promises")
+    .then((fs) => fs.readFile(baselinePath, "utf-8"))
+    .then((t) => t.trim());
 }
 
-async function readAllChunks(stream: NodeJS.ReadableStream): Promise<{ chunks: Buffer[]; combined: Buffer }> {
+async function readAllChunks(
+  stream: NodeJS.ReadableStream,
+): Promise<{ chunks: Buffer[]; combined: Buffer }> {
   const chunks: Buffer[] = [];
   for await (const chunk of stream as any) {
     chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
@@ -47,10 +58,7 @@ async function readAllChunks(stream: NodeJS.ReadableStream): Promise<{ chunks: B
 
 function waitForSignal<T>(
   timeoutMs: number,
-  setup: (
-    resolve: (value: T) => void,
-    reject: (error: Error) => void
-  ) => () => void
+  setup: (resolve: (value: T) => void, reject: (error: Error) => void) => () => void,
 ): Promise<T> {
   return new Promise((resolve, reject) => {
     let cleanup: (() => void) | null = null;
@@ -69,7 +77,7 @@ function waitForSignal<T>(
         clearTimeout(timeout);
         cleanup?.();
         reject(error);
-      }
+      },
     );
   });
 }
@@ -215,7 +223,10 @@ describe("speech models (download E2E)", () => {
         const ttsText = "This is a voice note.";
         if (set === "parakeet-pocket") {
           const modelDir = getSherpaOnnxModelDir(modelsDir, "pocket-tts-onnx-int8");
-          const tts = await PocketTtsOnnxTTS.create({ modelDir, precision: "int8", targetChunkMs: 50 }, logger);
+          const tts = await PocketTtsOnnxTTS.create(
+            { modelDir, precision: "int8", targetChunkMs: 50 },
+            logger,
+          );
           const { stream, format: ttsFormat } = await tts.synthesizeSpeech(ttsText);
           const { chunks, combined } = await readAllChunks(stream);
 
@@ -237,7 +248,7 @@ describe("speech models (download E2E)", () => {
               numThreads: 2,
               debug: 0,
             },
-            logger
+            logger,
           );
           const stt = new SherpaOnnxParakeetSTT({ engine }, logger);
           const rt = await stt.transcribeAudio(combined, toAudioPcmFormat(ttsFormat));
@@ -245,7 +256,10 @@ describe("speech models (download E2E)", () => {
           expect(wordSimilarity(rt.text, ttsText)).toBeGreaterThan(0.25);
         } else {
           const ttsModelDir = path.join(modelsDir, "kitten-nano-en-v0_1-fp16");
-          const tts = new SherpaOnnxTTS({ preset: "kitten-nano-en-v0_1-fp16", modelDir: ttsModelDir }, logger);
+          const tts = new SherpaOnnxTTS(
+            { preset: "kitten-nano-en-v0_1-fp16", modelDir: ttsModelDir },
+            logger,
+          );
           const { stream, format: ttsFormat } = await tts.synthesizeSpeech(ttsText);
           const { chunks, combined } = await readAllChunks(stream);
           tts.free();
@@ -255,7 +269,10 @@ describe("speech models (download E2E)", () => {
           expect(combined.byteLength).toBeGreaterThan(2000);
 
           // Round trip: TTS -> STT (online zipformer, offline segment)
-          const sttModelDir = path.join(modelsDir, "sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20");
+          const sttModelDir = path.join(
+            modelsDir,
+            "sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20",
+          );
           const engine = new SherpaOnlineRecognizerEngine(
             {
               model: {
@@ -269,7 +286,7 @@ describe("speech models (download E2E)", () => {
               numThreads: 1,
               debug: 0,
             },
-            logger
+            logger,
           );
           const stt = new SherpaOnnxSTT({ engine }, logger);
           const rt = await stt.transcribeAudio(combined, toAudioPcmFormat(ttsFormat));
@@ -280,6 +297,6 @@ describe("speech models (download E2E)", () => {
         await ctx.cleanup();
       }
     },
-    15 * 60_000
+    15 * 60_000,
   );
 });

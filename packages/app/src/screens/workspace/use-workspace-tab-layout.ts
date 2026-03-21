@@ -25,7 +25,9 @@ type UseWorkspaceTabLayoutResult = {
   layout: WorkspaceTabLayoutResult;
 };
 
-export function useWorkspaceTabLayout(input: UseWorkspaceTabLayoutInput): UseWorkspaceTabLayoutResult {
+export function useWorkspaceTabLayout(
+  input: UseWorkspaceTabLayoutInput,
+): UseWorkspaceTabLayoutResult {
   const { width: viewportWidth } = useWindowDimensions();
   const resolvedViewportWidth =
     typeof input.viewportWidthOverride === "number" && input.viewportWidthOverride > 0
@@ -39,7 +41,7 @@ export function useWorkspaceTabLayout(input: UseWorkspaceTabLayoutInput): UseWor
         tabLabelLengths: input.tabLabelLengths,
         metrics: input.metrics,
       }),
-    [input.metrics, input.tabLabelLengths, resolvedViewportWidth]
+    [input.metrics, input.tabLabelLengths, resolvedViewportWidth],
   );
 
   return {

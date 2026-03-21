@@ -40,7 +40,7 @@ describe("daemon-client transport helpers", () => {
         onMessage: () => () => {},
       },
       "daemon-public-key",
-      { warn: vi.fn() }
+      { warn: vi.fn() },
     );
 
     expect(openHandler).not.toBeNull();

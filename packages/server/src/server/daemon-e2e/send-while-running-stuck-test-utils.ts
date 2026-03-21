@@ -35,11 +35,7 @@ export function applyAgentInputProcessingTransition(input: {
       wasRunning && isRunning && updatedAt > input.latestUpdatedAt;
     const hasStoppedRunning = wasRunning && !isRunning;
 
-    if (
-      hasEnteredRunning ||
-      hasFreshRunningUpdateWhileRunning ||
-      hasStoppedRunning
-    ) {
+    if (hasEnteredRunning || hasFreshRunningUpdateWhileRunning || hasStoppedRunning) {
       isProcessing = false;
     }
   }

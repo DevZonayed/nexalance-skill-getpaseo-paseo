@@ -65,8 +65,7 @@ export default {
     ios: {
       supportsTablet: true,
       infoPlist: {
-        NSMicrophoneUsageDescription:
-          "This app needs access to the microphone for voice commands.",
+        NSMicrophoneUsageDescription: "This app needs access to the microphone for voice commands.",
         ITSAppUsesNonExemptEncryption: false,
       },
       bundleIdentifier: variant.packageId,
@@ -92,9 +91,7 @@ export default {
         "android.permission.CAMERA",
       ],
       package: variant.packageId,
-      ...(variant.googleServicesFile
-        ? { googleServicesFile: variant.googleServicesFile }
-        : {}),
+      ...(variant.googleServicesFile ? { googleServicesFile: variant.googleServicesFile } : {}),
     },
     web: {
       output: "single",

@@ -105,7 +105,7 @@ function getHeadTailBudgets(maxBytes: number): { headBytes: number; tailBytes: n
 
 function appendToMiddleTruncationAccumulator(
   accumulator: MiddleTruncationAccumulator,
-  chunk: string
+  chunk: string,
 ): void {
   if (!chunk) {
     return;
@@ -118,9 +118,7 @@ function appendToMiddleTruncationAccumulator(
       accumulator.head = combined;
       return;
     }
-    const { headBytes, tailBytes } = getHeadTailBudgets(
-      MAX_WORKTREE_SETUP_COMMAND_OUTPUT_BYTES
-    );
+    const { headBytes, tailBytes } = getHeadTailBudgets(MAX_WORKTREE_SETUP_COMMAND_OUTPUT_BYTES);
     accumulator.head = sliceFirstBytes(combined, headBytes);
     accumulator.tail = sliceLastBytes(combined, tailBytes);
     accumulator.truncated = true;
@@ -133,7 +131,7 @@ function appendToMiddleTruncationAccumulator(
 
 function truncateTextInMiddle(
   text: string,
-  maxBytes: number
+  maxBytes: number,
 ): { text: string; truncated: boolean } {
   if (maxBytes <= 0 || !text) {
     return { text: "", truncated: text.length > 0 };
@@ -148,9 +146,10 @@ function truncateTextInMiddle(
   };
 }
 
-function renderMiddleTruncationAccumulator(
-  accumulator: MiddleTruncationAccumulator
-): { text: string; truncated: boolean } {
+function renderMiddleTruncationAccumulator(accumulator: MiddleTruncationAccumulator): {
+  text: string;
+  truncated: boolean;
+} {
   if (!accumulator.truncated) {
     return { text: accumulator.head, truncated: false };
   }
@@ -161,7 +160,7 @@ function renderMiddleTruncationAccumulator(
 }
 
 export async function createAgentWorktree(
-  options: CreateAgentWorktreeOptions
+  options: CreateAgentWorktreeOptions,
 ): Promise<WorktreeConfig> {
   const existingWorktree = await findExistingPaseoWorktreeBySlug(options);
   if (existingWorktree) {
@@ -212,7 +211,7 @@ function formatDurationMs(durationMs: number): string {
 }
 
 function commandStatusFromResult(
-  result: WorktreeSetupCommandResult
+  result: WorktreeSetupCommandResult,
 ): "running" | "completed" | "failed" {
   if (result.exitCode === null) {
     return "running";
@@ -242,7 +241,7 @@ function buildWorktreeSetupLog(input: {
       ? renderMiddleTruncationAccumulator(accumulator)
       : truncateTextInMiddle(
           `${result.stdout ?? ""}${result.stderr ?? ""}`,
-          MAX_WORKTREE_SETUP_COMMAND_OUTPUT_BYTES
+          MAX_WORKTREE_SETUP_COMMAND_OUTPUT_BYTES,
         );
     if (output.text.length > 0) {
       lines.push(output.text.replace(/\n$/, ""));
@@ -252,7 +251,7 @@ function buildWorktreeSetupLog(input: {
     }
     if (result.exitCode !== null) {
       lines.push(
-        `<== [${index + 1}/${total}] Exit ${result.exitCode} in ${formatDurationMs(result.durationMs)}`
+        `<== [${index + 1}/${total}] Exit ${result.exitCode} in ${formatDurationMs(result.durationMs)}`,
       );
     }
   }
@@ -384,7 +383,7 @@ function buildTerminalTimelineItem(input: {
 }
 
 async function waitForTerminalBootstrapReadiness(
-  terminal: Pick<TerminalSession, "getOutputOffset" | "subscribeRaw">
+  terminal: Pick<TerminalSession, "getOutputOffset" | "subscribeRaw">,
 ): Promise<void> {
   if (terminal.getOutputOffset() > 0) {
     return;
@@ -427,7 +426,7 @@ async function waitForTerminalBootstrapReadiness(
 
 async function runWorktreeTerminalBootstrap(
   options: RunAsyncWorktreeBootstrapOptions,
-  runtimeEnv: WorktreeRuntimeEnv
+  runtimeEnv: WorktreeRuntimeEnv,
 ): Promise<void> {
   const terminalSpecs = getWorktreeTerminalSpecs(options.worktree.worktreePath);
   if (terminalSpecs.length === 0) {
@@ -442,7 +441,7 @@ async function runWorktreeTerminalBootstrap(
       worktree: options.worktree,
       results: [],
       errorMessage: null,
-    })
+    }),
   );
   if (!started) {
     return;
@@ -456,7 +455,7 @@ async function runWorktreeTerminalBootstrap(
         worktree: options.worktree,
         results: [],
         errorMessage: "Terminal manager not available",
-      })
+      }),
     );
     return;
   }
@@ -485,7 +484,7 @@ async function runWorktreeTerminalBootstrap(
       const message = error instanceof Error ? error.message : String(error);
       options.logger?.warn(
         { agentId: options.agentId, command: spec.command, err: error },
-        "Failed to bootstrap worktree terminal"
+        "Failed to bootstrap worktree terminal",
       );
       results.push({
         name: spec.name ?? null,
@@ -504,12 +503,12 @@ async function runWorktreeTerminalBootstrap(
       worktree: options.worktree,
       results,
       errorMessage: null,
-    })
+    }),
   );
 }
 
 export async function runAsyncWorktreeBootstrap(
-  options: RunAsyncWorktreeBootstrapOptions
+  options: RunAsyncWorktreeBootstrapOptions,
 ): Promise<void> {
   if (worktreeSetupEligibility.get(options.worktree) === false) {
     return;
@@ -540,12 +539,12 @@ export async function runAsyncWorktreeBootstrap(
             results: runningResults,
             outputAccumulatorsByIndex,
             errorMessage: null,
-          })
+          }),
         );
       } catch (error) {
         options.logger?.warn(
           { err: error, agentId: options.agentId },
-          "Failed to emit live worktree setup timeline update"
+          "Failed to emit live worktree setup timeline update",
         );
       }
     });
@@ -578,8 +577,7 @@ export async function runAsyncWorktreeBootstrap(
         };
         if (event.type === "output") {
           const outputAccumulator =
-            outputAccumulatorsByIndex.get(event.index) ??
-            createMiddleTruncationAccumulator();
+            outputAccumulatorsByIndex.get(event.index) ?? createMiddleTruncationAccumulator();
           appendToMiddleTruncationAccumulator(outputAccumulator, event.chunk);
           outputAccumulatorsByIndex.set(event.index, outputAccumulator);
           runningResultsByIndex.set(event.index, {
@@ -617,7 +615,7 @@ export async function runAsyncWorktreeBootstrap(
         results: setupResults,
         outputAccumulatorsByIndex,
         errorMessage: null,
-      })
+      }),
     );
     if (!completed) {
       return;
@@ -636,7 +634,7 @@ export async function runAsyncWorktreeBootstrap(
         results: setupResults,
         outputAccumulatorsByIndex,
         errorMessage: message,
-      })
+      }),
     );
     return;
   }

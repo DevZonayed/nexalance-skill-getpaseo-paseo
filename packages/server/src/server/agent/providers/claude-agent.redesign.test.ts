@@ -127,13 +127,11 @@ function createSpyLogger(): {
 }
 
 function extractStringLogArgs(calls: unknown[][]): string[] {
-  return calls.flatMap((args) =>
-    args.filter((arg): arg is string => typeof arg === "string")
-  );
+  return calls.flatMap((args) => args.filter((arg): arg is string => typeof arg === "string"));
 }
 
 async function collectUntilTerminal(
-  stream: AsyncGenerator<AgentStreamEvent>
+  stream: AsyncGenerator<AgentStreamEvent>,
 ): Promise<AgentStreamEvent[]> {
   const events: AgentStreamEvent[] = [];
   for await (const event of stream) {
@@ -149,10 +147,7 @@ async function collectUntilTerminal(
   return events;
 }
 
-async function waitForCondition(
-  check: () => boolean,
-  timeoutMs: number
-): Promise<void> {
+async function waitForCondition(check: () => boolean, timeoutMs: number): Promise<void> {
   const started = Date.now();
   while (Date.now() - started < timeoutMs) {
     if (check()) {
@@ -219,7 +214,7 @@ describe("ClaudeAgentSession redesign invariants", () => {
             };
           }
           return { done: true, value: undefined };
-        })
+        }),
       );
     });
 
@@ -242,13 +237,9 @@ describe("ClaudeAgentSession redesign invariants", () => {
     try {
       await session.run("redaction check");
 
-      const queryLogCall = spy.debug.mock.calls.find(
-        (args) => args[1] === "claude query"
-      );
+      const queryLogCall = spy.debug.mock.calls.find((args) => args[1] === "claude query");
       expect(queryLogCall).toBeDefined();
-      const payload = queryLogCall?.[0] as
-        | { options?: Record<string, unknown> }
-        | undefined;
+      const payload = queryLogCall?.[0] as { options?: Record<string, unknown> } | undefined;
       expect(payload?.options).toBeDefined();
       expect(payload?.options).not.toHaveProperty("env");
       expect(payload?.options).not.toHaveProperty("systemPrompt");
@@ -256,9 +247,8 @@ describe("ClaudeAgentSession redesign invariants", () => {
       expect(payload?.options).toHaveProperty("hasEnv");
       expect(payload?.options).toHaveProperty("envKeyCount");
 
-      const serialized = JSON.stringify(
-        spy.calls,
-        (_key, value) => (typeof value === "function" ? "[function]" : value)
+      const serialized = JSON.stringify(spy.calls, (_key, value) =>
+        typeof value === "function" ? "[function]" : value,
       );
       expect(serialized).not.toContain(envSecret);
       expect(serialized).not.toContain(runtimeSecret);
@@ -277,12 +267,10 @@ describe("ClaudeAgentSession redesign invariants", () => {
     const spy = createSpyLogger();
     const session = await createSessionWithLogger(spy.logger);
     const internal = session as unknown as {
-      query:
-        | {
-            interrupt: () => Promise<void>;
-            return?: () => Promise<void>;
-          }
-        | null;
+      query: {
+        interrupt: () => Promise<void>;
+        return?: () => Promise<void>;
+      } | null;
       input: { end: () => void } | null;
       queryRestartNeeded: boolean;
       interruptActiveTurn: () => Promise<void>;
@@ -300,12 +288,12 @@ describe("ClaudeAgentSession redesign invariants", () => {
     try {
       await internal.interruptActiveTurn();
 
-      const interruptInfoMessages = extractStringLogArgs(spy.info.mock.calls).filter(
-        (message) => message.includes("interruptActiveTurn")
+      const interruptInfoMessages = extractStringLogArgs(spy.info.mock.calls).filter((message) =>
+        message.includes("interruptActiveTurn"),
       );
-      const interruptDebugMessages = extractStringLogArgs(
-        spy.debug.mock.calls
-      ).filter((message) => message.includes("interruptActiveTurn"));
+      const interruptDebugMessages = extractStringLogArgs(spy.debug.mock.calls).filter((message) =>
+        message.includes("interruptActiveTurn"),
+      );
 
       expect(interruptInfoMessages).toEqual([]);
       expect(interruptDebugMessages).toEqual([
@@ -401,8 +389,8 @@ describe("ClaudeAgentSession redesign invariants", () => {
     for (const fixture of fixtures) {
       expect(
         readEventIdentifiers(
-          fixture.message as unknown as Parameters<typeof readEventIdentifiers>[0]
-        )
+          fixture.message as unknown as Parameters<typeof readEventIdentifiers>[0],
+        ),
       ).toEqual(fixture.expected);
     }
   });
@@ -482,7 +470,7 @@ describe("ClaudeAgentSession redesign invariants", () => {
             index,
             delta: {
               type: "input_json_delta",
-              partial_json: "{\"command\":\"echo ",
+              partial_json: '{"command":"echo ',
             },
           },
           expectedCommand: "echo ",
@@ -493,7 +481,7 @@ describe("ClaudeAgentSession redesign invariants", () => {
             index,
             delta: {
               type: "input_json_delta",
-              partial_json: "delta\"}",
+              partial_json: 'delta"}',
             },
           },
           expectedCommand: "echo delta",
@@ -503,7 +491,7 @@ describe("ClaudeAgentSession redesign invariants", () => {
             type: "content_block_delta",
             delta: {
               type: "input_json_delta",
-              partial_json: "{\"command\":\"ignored\"}",
+              partial_json: '{"command":"ignored"}',
             },
           },
           expectedCommand: "echo delta",
@@ -511,9 +499,7 @@ describe("ClaudeAgentSession redesign invariants", () => {
       ] as const;
 
       for (const fixture of deltaFixtures) {
-        internal.mapPartialEvent(
-          fixture.event as unknown as Record<string, unknown>
-        );
+        internal.mapPartialEvent(fixture.event as unknown as Record<string, unknown>);
         expect(readCommand()).toBe(fixture.expectedCommand);
       }
 
@@ -553,8 +539,7 @@ describe("ClaudeAgentSession redesign invariants", () => {
         index,
         delta: {
           type: "input_json_delta",
-          partial_json:
-            "{\"file_path\":\"src/message.tsx\",\"old_string\":\"before",
+          partial_json: '{"file_path":"src/message.tsx","old_string":"before',
         },
       });
 
@@ -572,7 +557,7 @@ describe("ClaudeAgentSession redesign invariants", () => {
     const internal = session as unknown as {
       buildToolOutput: (
         block: Record<string, unknown>,
-        entry: Record<string, unknown> | undefined
+        entry: Record<string, unknown> | undefined,
       ) => Record<string, unknown> | undefined;
     };
 
@@ -611,7 +596,7 @@ describe("ClaudeAgentSession redesign invariants", () => {
           },
           a: 0,
         },
-        expectedOutput: "{\"a\":0,\"nested\":{\"a\":1,\"b\":2},\"z\":3}",
+        expectedOutput: '{"a":0,"nested":{"a":1,"b":2},"z":3}',
       },
     ] as const;
 
@@ -625,14 +610,14 @@ describe("ClaudeAgentSession redesign invariants", () => {
             content: fixture.content,
             is_error: false,
           },
-          toolEntry
+          toolEntry,
         );
         expect(output).toEqual(
           expect.objectContaining({
             type: "command",
             command: "echo hello",
             output: fixture.expectedOutput,
-          })
+          }),
         );
       }
     } finally {
@@ -647,12 +632,16 @@ describe("ClaudeAgentSession redesign invariants", () => {
       runTracker: {
         bindIdentifiers: (
           run: { id: string },
-          ids: { taskId: string | null; parentMessageId: string | null; messageId: string | null }
+          ids: { taskId: string | null; parentMessageId: string | null; messageId: string | null },
         ) => void;
       };
       routeMessage: (input: {
         message: AgentStreamEvent | Record<string, unknown>;
-        identifiers: { taskId: string | null; parentMessageId: string | null; messageId: string | null };
+        identifiers: {
+          taskId: string | null;
+          parentMessageId: string | null;
+          messageId: string | null;
+        };
         metadataOnly: boolean;
       }) => { run: { id: string } | null; reason: string };
       turnState: "autonomous";
@@ -727,14 +716,18 @@ describe("ClaudeAgentSession redesign invariants", () => {
       runTracker: {
         bindIdentifiers: (
           run: { id: string },
-          ids: { taskId: string | null; parentMessageId: string | null; messageId: string | null }
+          ids: { taskId: string | null; parentMessageId: string | null; messageId: string | null },
         ) => void;
       };
       activeForegroundTurn: { runId: string; queue: unknown } | null;
       turnState: "foreground";
       routeMessage: (input: {
         message: Record<string, unknown>;
-        identifiers: { taskId: string | null; parentMessageId: string | null; messageId: string | null };
+        identifiers: {
+          taskId: string | null;
+          parentMessageId: string | null;
+          messageId: string | null;
+        };
         metadataOnly: boolean;
       }) => { run: { id: string } | null; reason: string };
     };
@@ -846,8 +839,8 @@ describe("ClaudeAgentSession redesign invariants", () => {
             };
           }
           return { done: true, value: undefined };
-        })
-      )
+        }),
+      ),
     );
 
     const session = await createSession();
@@ -857,7 +850,7 @@ describe("ClaudeAgentSession redesign invariants", () => {
         new Promise<never>((_, reject) => {
           setTimeout(
             () => reject(new Error("Timed out waiting for foreground terminal event")),
-            1_000
+            1_000,
           );
         }),
       ]);
@@ -867,7 +860,7 @@ describe("ClaudeAgentSession redesign invariants", () => {
       const assistantText = events
         .filter(
           (event): event is Extract<AgentStreamEvent, { type: "timeline" }> =>
-            event.type === "timeline" && event.item.type === "assistant_message"
+            event.type === "timeline" && event.item.type === "assistant_message",
         )
         .map((event) => event.item.text)
         .join("");
@@ -938,7 +931,10 @@ describe("ClaudeAgentSession redesign invariants", () => {
     const internal = session as unknown as {
       createRun: (owner: "foreground" | "autonomous", queue: unknown) => { id: string };
       activeForegroundTurn: { runId: string; queue: unknown } | null;
-      runTracker: { getRun: (runId: string) => unknown; complete: (run: unknown, state: "completed") => void };
+      runTracker: {
+        getRun: (runId: string) => unknown;
+        complete: (run: unknown, state: "completed") => void;
+      };
       pushEvent: (event: AgentStreamEvent) => void;
     };
 
@@ -1068,7 +1064,7 @@ describe("ClaudeAgentSession redesign invariants", () => {
             };
           }
           return { done: true, value: undefined };
-        })
+        }),
       );
 
       mock.interrupt.mockImplementation(async () => {
@@ -1079,41 +1075,28 @@ describe("ClaudeAgentSession redesign invariants", () => {
 
     streamCase = "success";
     const successEvents = await collectUntilTerminal(session.stream("success prompt"));
-    expect(successEvents.some((event) => event.type === "turn_completed")).toBe(
-      true
-    );
-    expect(successEvents.some((event) => event.type === "turn_failed")).toBe(
-      false
-    );
-    expect(successEvents.some((event) => event.type === "turn_canceled")).toBe(
-      false
-    );
+    expect(successEvents.some((event) => event.type === "turn_completed")).toBe(true);
+    expect(successEvents.some((event) => event.type === "turn_failed")).toBe(false);
+    expect(successEvents.some((event) => event.type === "turn_canceled")).toBe(false);
 
     streamCase = "error";
     const errorEvents = await collectUntilTerminal(session.stream("error prompt"));
     expect(errorEvents.some((event) => event.type === "turn_failed")).toBe(true);
-    expect(errorEvents.some((event) => event.type === "turn_completed")).toBe(
-      false
-    );
+    expect(errorEvents.some((event) => event.type === "turn_completed")).toBe(false);
 
     streamCase = "interrupt";
     const interruptStream = session.stream("interrupt prompt");
     const interruptEvents: AgentStreamEvent[] = [];
     for await (const event of interruptStream) {
       interruptEvents.push(event);
-      if (
-        event.type === "timeline" &&
-        event.item.type === "assistant_message"
-      ) {
+      if (event.type === "timeline" && event.item.type === "assistant_message") {
         await session.interrupt();
       }
       if (event.type === "turn_canceled") {
         break;
       }
     }
-    expect(interruptEvents.some((event) => event.type === "turn_canceled")).toBe(
-      true
-    );
+    expect(interruptEvents.some((event) => event.type === "turn_canceled")).toBe(true);
 
     await session.close();
   });
@@ -1216,7 +1199,7 @@ describe("ClaudeAgentSession redesign invariants", () => {
             };
           }
           return { done: true, value: undefined };
-        })
+        }),
       );
     });
 
@@ -1225,7 +1208,7 @@ describe("ClaudeAgentSession redesign invariants", () => {
     const assistantText = events
       .filter(
         (event): event is Extract<AgentStreamEvent, { type: "timeline" }> =>
-          event.type === "timeline" && event.item.type === "assistant_message"
+          event.type === "timeline" && event.item.type === "assistant_message",
       )
       .map((event) => event.item.text)
       .join("");
@@ -1335,7 +1318,7 @@ describe("ClaudeAgentSession redesign invariants", () => {
             };
           }
           return { done: true, value: undefined };
-        })
+        }),
       );
     });
 
@@ -1344,7 +1327,7 @@ describe("ClaudeAgentSession redesign invariants", () => {
     const assistantText = events
       .filter(
         (event): event is Extract<AgentStreamEvent, { type: "timeline" }> =>
-          event.type === "timeline" && event.item.type === "assistant_message"
+          event.type === "timeline" && event.item.type === "assistant_message",
       )
       .map((event) => event.item.text)
       .join("");
@@ -1358,5 +1341,4 @@ describe("ClaudeAgentSession redesign invariants", () => {
 
     await session.close();
   });
-
 });

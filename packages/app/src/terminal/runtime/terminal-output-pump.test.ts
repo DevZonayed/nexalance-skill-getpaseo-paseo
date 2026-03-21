@@ -22,9 +22,7 @@ describe("terminal-output-pump", () => {
 
     vi.runOnlyPendingTimers();
 
-    expect(chunks).toEqual([
-      { sequence: 1, text: "abc", replay: false },
-    ]);
+    expect(chunks).toEqual([{ sequence: 1, text: "abc", replay: false }]);
 
     vi.useRealTimers();
   });

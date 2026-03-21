@@ -60,8 +60,8 @@ function formatTechnicalTransportDetails(details: Array<string | null>): string 
         .map((value) => normalizeTransportMessage(value))
         .filter((value): value is string => Boolean(value))
         .map((value) => value.trim())
-        .filter((value) => value.length > 0)
-    )
+        .filter((value) => value.length > 0),
+    ),
   );
 
   if (unique.length === 0) return null;
@@ -78,7 +78,10 @@ function formatTechnicalTransportDetails(details: Array<string | null>): string 
   return unique.join(" — ");
 }
 
-function buildConnectionFailureCopy(endpoint: string, error: unknown): { title: string; detail: string | null; raw: string | null } {
+function buildConnectionFailureCopy(
+  endpoint: string,
+  error: unknown,
+): { title: string; detail: string | null; raw: string | null } {
   const title = `We failed to connect to ${endpoint}.`;
 
   const raw = (() => {
@@ -109,8 +112,13 @@ function buildConnectionFailureCopy(endpoint: string, error: unknown): { title: 
     detail = "Host not found. Check the hostname and try again.";
   } else if (rawLower.includes("ehostunreach") || rawLower.includes("host is unreachable")) {
     detail = "Host is unreachable. Check your network and firewall.";
-  } else if (rawLower.includes("certificate") || rawLower.includes("tls") || rawLower.includes("ssl")) {
-    detail = "TLS error. Direct connections use an unencrypted local connection. Use relay for remote access.";
+  } else if (
+    rawLower.includes("certificate") ||
+    rawLower.includes("tls") ||
+    rawLower.includes("ssl")
+  ) {
+    detail =
+      "TLS error. Direct connections use an unencrypted local connection. Use relay for remote access.";
   } else if (raw) {
     detail = "Unable to connect. Check the host/port and that the daemon is reachable.";
   } else {
@@ -125,15 +133,25 @@ export interface AddHostModalProps {
   onClose: () => void;
   targetServerId?: string;
   onCancel?: () => void;
-  onSaved?: (result: { profile: HostProfile; serverId: string; hostname: string | null; isNewHost: boolean }) => void;
+  onSaved?: (result: {
+    profile: HostProfile;
+    serverId: string;
+    hostname: string | null;
+    isNewHost: boolean;
+  }) => void;
 }
 
-export function AddHostModal({ visible, onClose, onCancel, onSaved, targetServerId }: AddHostModalProps) {
+export function AddHostModal({
+  visible,
+  onClose,
+  onCancel,
+  onSaved,
+  targetServerId,
+}: AddHostModalProps) {
   const { theme } = useUnistyles();
   const daemons = useHosts();
   const { upsertDirectConnection } = useHostMutations();
-  const isMobile =
-    UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
+  const isMobile = UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
 
   const hostInputRef = useRef<TextInput>(null);
 
@@ -220,10 +238,24 @@ export function AddHostModal({ visible, onClose, onCancel, onSaved, targetServer
     } finally {
       setIsSaving(false);
     }
-  }, [daemons, endpointRaw, handleClose, isMobile, isSaving, onSaved, targetServerId, upsertDirectConnection]);
+  }, [
+    daemons,
+    endpointRaw,
+    handleClose,
+    isMobile,
+    isSaving,
+    onSaved,
+    targetServerId,
+    upsertDirectConnection,
+  ]);
 
   return (
-    <AdaptiveModalSheet title="Direct connection" visible={visible} onClose={handleClose} testID="add-host-modal">
+    <AdaptiveModalSheet
+      title="Direct connection"
+      visible={visible}
+      onClose={handleClose}
+      testID="add-host-modal"
+    >
       <Text style={styles.helper}>Enter the address of a Paseo server.</Text>
 
       <View style={styles.field}>

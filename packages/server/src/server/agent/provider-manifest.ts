@@ -1,8 +1,8 @@
 import { z } from "zod";
 import type { AgentMode } from "./agent-sdk-types.js";
 
-export type AgentModeColorTier = 'default' | 'safe' | 'moderate' | 'dangerous' | 'readonly';
-export type AgentModeIcon = 'ShieldCheck' | 'ShieldAlert' | 'ShieldOff';
+export type AgentModeColorTier = "default" | "safe" | "moderate" | "dangerous" | "readonly";
+export type AgentModeIcon = "ShieldCheck" | "ShieldAlert" | "ShieldOff";
 
 export interface AgentModeVisuals {
   icon: AgentModeIcon;
@@ -25,29 +25,83 @@ export interface AgentProviderDefinition {
 }
 
 const CLAUDE_MODES: AgentProviderModeDefinition[] = [
-  { id: "default", label: "Always Ask", description: "Prompts for permission the first time a tool is used", icon: "ShieldCheck", colorTier: "safe" },
-  { id: "acceptEdits", label: "Accept File Edits", description: "Automatically approves edit-focused tools without prompting", icon: "ShieldAlert", colorTier: "moderate" },
-  { id: "plan", label: "Plan Mode", description: "Analyze the codebase without executing tools or edits", icon: "ShieldCheck", colorTier: "readonly" },
-  { id: "bypassPermissions", label: "Bypass", description: "Skip all permission prompts (use with caution)", icon: "ShieldAlert", colorTier: "dangerous" },
+  {
+    id: "default",
+    label: "Always Ask",
+    description: "Prompts for permission the first time a tool is used",
+    icon: "ShieldCheck",
+    colorTier: "safe",
+  },
+  {
+    id: "acceptEdits",
+    label: "Accept File Edits",
+    description: "Automatically approves edit-focused tools without prompting",
+    icon: "ShieldAlert",
+    colorTier: "moderate",
+  },
+  {
+    id: "plan",
+    label: "Plan Mode",
+    description: "Analyze the codebase without executing tools or edits",
+    icon: "ShieldCheck",
+    colorTier: "readonly",
+  },
+  {
+    id: "bypassPermissions",
+    label: "Bypass",
+    description: "Skip all permission prompts (use with caution)",
+    icon: "ShieldAlert",
+    colorTier: "dangerous",
+  },
 ];
 
 const CODEX_MODES: AgentProviderModeDefinition[] = [
-  { id: "read-only", label: "Read Only", description: "Read files and answer questions. Manual approval required for edits, commands, or network ops.", icon: "ShieldCheck", colorTier: "readonly" },
-  { id: "auto", label: "Auto", description: "Edit files and run commands but still request approval before escalating scope.", icon: "ShieldAlert", colorTier: "moderate" },
-  { id: "full-access", label: "Full Access", description: "Edit files, run commands, and access the network without additional prompts.", icon: "ShieldAlert", colorTier: "dangerous" },
+  {
+    id: "read-only",
+    label: "Read Only",
+    description:
+      "Read files and answer questions. Manual approval required for edits, commands, or network ops.",
+    icon: "ShieldCheck",
+    colorTier: "readonly",
+  },
+  {
+    id: "auto",
+    label: "Auto",
+    description: "Edit files and run commands but still request approval before escalating scope.",
+    icon: "ShieldAlert",
+    colorTier: "moderate",
+  },
+  {
+    id: "full-access",
+    label: "Full Access",
+    description: "Edit files, run commands, and access the network without additional prompts.",
+    icon: "ShieldAlert",
+    colorTier: "dangerous",
+  },
 ];
 
 const OPENCODE_MODES: AgentProviderModeDefinition[] = [
-  { id: "build", label: "Build", description: "Allows edits and tool execution for implementation work", icon: "ShieldCheck", colorTier: "default" },
-  { id: "plan", label: "Plan", description: "Read-only planning mode that avoids file edits", icon: "ShieldCheck", colorTier: "readonly" },
+  {
+    id: "build",
+    label: "Build",
+    description: "Allows edits and tool execution for implementation work",
+    icon: "ShieldCheck",
+    colorTier: "default",
+  },
+  {
+    id: "plan",
+    label: "Plan",
+    description: "Read-only planning mode that avoids file edits",
+    icon: "ShieldCheck",
+    colorTier: "readonly",
+  },
 ];
 
 export const AGENT_PROVIDER_DEFINITIONS: AgentProviderDefinition[] = [
   {
     id: "claude",
     label: "Claude",
-    description:
-      "Anthropic's multi-tool assistant with MCP support, streaming, and deep reasoning",
+    description: "Anthropic's multi-tool assistant with MCP support, streaming, and deep reasoning",
     defaultModeId: "default",
     modes: CLAUDE_MODES,
     voice: {
@@ -59,8 +113,7 @@ export const AGENT_PROVIDER_DEFINITIONS: AgentProviderDefinition[] = [
   {
     id: "codex",
     label: "Codex",
-    description:
-      "OpenAI's Codex workspace agent with sandbox controls and optional network access",
+    description: "OpenAI's Codex workspace agent with sandbox controls and optional network access",
     defaultModeId: "auto",
     modes: CODEX_MODES,
     voice: {
@@ -72,8 +125,7 @@ export const AGENT_PROVIDER_DEFINITIONS: AgentProviderDefinition[] = [
   {
     id: "opencode",
     label: "OpenCode",
-    description:
-      "Open-source coding assistant with multi-provider model support",
+    description: "Open-source coding assistant with multi-provider model support",
     defaultModeId: "build",
     modes: OPENCODE_MODES,
     voice: {
@@ -91,7 +143,10 @@ export function getAgentProviderDefinition(provider: string): AgentProviderDefin
   return definition;
 }
 
-export const AGENT_PROVIDER_IDS = AGENT_PROVIDER_DEFINITIONS.map((d) => d.id) as [string, ...string[]];
+export const AGENT_PROVIDER_IDS = AGENT_PROVIDER_DEFINITIONS.map((d) => d.id) as [
+  string,
+  ...string[],
+];
 
 export const AgentProviderSchema = z.enum(AGENT_PROVIDER_IDS);
 

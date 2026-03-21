@@ -57,24 +57,22 @@ function buildModelDownloadHint(modelId: LocalSpeechModelId): string {
   return `Use 'paseo speech download --model ${modelId}' to download this model.`;
 }
 
-function resolveConfiguredLocalModels(
-  speechConfig: PaseoSpeechConfig | null
-): ResolvedLocalModels {
+function resolveConfiguredLocalModels(speechConfig: PaseoSpeechConfig | null): ResolvedLocalModels {
   return {
     dictationLocalSttModel: LocalSttModelIdSchema.parse(
-      speechConfig?.local?.models.dictationStt ?? DEFAULT_LOCAL_STT_MODEL
+      speechConfig?.local?.models.dictationStt ?? DEFAULT_LOCAL_STT_MODEL,
     ),
     voiceLocalSttModel: LocalSttModelIdSchema.parse(
-      speechConfig?.local?.models.voiceStt ?? DEFAULT_LOCAL_STT_MODEL
+      speechConfig?.local?.models.voiceStt ?? DEFAULT_LOCAL_STT_MODEL,
     ),
     voiceLocalTtsModel: LocalTtsModelIdSchema.parse(
-      speechConfig?.local?.models.voiceTts ?? DEFAULT_LOCAL_TTS_MODEL
+      speechConfig?.local?.models.voiceTts ?? DEFAULT_LOCAL_TTS_MODEL,
     ),
   };
 }
 
 export function getLocalSpeechAvailability(
-  speechConfig: PaseoSpeechConfig | null
+  speechConfig: PaseoSpeechConfig | null,
 ): LocalSpeechAvailability {
   const localConfig = speechConfig?.local ?? null;
   return {
@@ -132,7 +130,7 @@ async function createLocalSttEngine(params: {
           numThreads: 2,
           debug: 0,
         },
-        logger
+        logger,
       ),
     };
   }
@@ -152,7 +150,7 @@ async function createLocalSttEngine(params: {
           numThreads: 1,
           debug: 0,
         },
-        logger
+        logger,
       ),
     };
   }
@@ -174,7 +172,7 @@ async function createLocalSttEngine(params: {
           numThreads: 1,
           debug: 0,
         },
-        logger
+        logger,
       ),
     };
   }
@@ -204,9 +202,7 @@ export async function initializeLocalSpeechServices(params: {
 
   const localSttEngines = new Map<LocalSttModelId, LocalSttEngine>();
 
-  const getLocalSttEngine = async (
-    modelId: LocalSttModelId
-  ): Promise<LocalSttEngine | null> => {
+  const getLocalSttEngine = async (modelId: LocalSttModelId): Promise<LocalSttEngine | null> => {
     const existing = localSttEngines.get(modelId);
     if (existing) {
       return existing;
@@ -230,7 +226,7 @@ export async function initializeLocalSpeechServices(params: {
           modelId,
           hint: buildModelDownloadHint(modelId),
         },
-        "Local STT engine unavailable"
+        "Local STT engine unavailable",
       );
       return null;
     }
@@ -247,7 +243,7 @@ export async function initializeLocalSpeechServices(params: {
     if (!localConfig) {
       logger.warn(
         { configured: false },
-        "Local STT selected for voice but local provider config is missing; STT will be unavailable"
+        "Local STT selected for voice but local provider config is missing; STT will be unavailable",
       );
     } else {
       const voiceEngine = await getLocalSttEngine(localModels.voiceLocalSttModel);
@@ -263,7 +259,7 @@ export async function initializeLocalSpeechServices(params: {
     if (!localConfig) {
       logger.warn(
         { configured: false },
-        "Local STT selected for dictation but local provider config is missing; dictation STT will be unavailable"
+        "Local STT selected for dictation but local provider config is missing; dictation STT will be unavailable",
       );
     } else {
       const dictationEngine = await getLocalSttEngine(localModels.dictationLocalSttModel);
@@ -276,7 +272,8 @@ export async function initializeLocalSpeechServices(params: {
       } else if (dictationEngine?.kind === "online") {
         dictationSttService = {
           id: "local",
-          createSession: () => new SherpaRealtimeTranscriptionSession({ engine: dictationEngine.engine }),
+          createSession: () =>
+            new SherpaRealtimeTranscriptionSession({ engine: dictationEngine.engine }),
         };
       }
     }
@@ -286,22 +283,28 @@ export async function initializeLocalSpeechServices(params: {
     if (!localConfig) {
       logger.warn(
         { configured: false },
-        "Local TTS selected for voice but local provider config is missing; TTS will be unavailable"
+        "Local TTS selected for voice but local provider config is missing; TTS will be unavailable",
       );
     } else {
       try {
         if (localModels.voiceLocalTtsModel === "pocket-tts-onnx-int8") {
-          const modelDir = getLocalSpeechModelDir(localConfig.modelsDir, localModels.voiceLocalTtsModel);
+          const modelDir = getLocalSpeechModelDir(
+            localConfig.modelsDir,
+            localModels.voiceLocalTtsModel,
+          );
           localVoiceTtsProvider = await PocketTtsOnnxTTS.create(
             {
               modelDir,
               precision: "int8",
               targetChunkMs: 50,
             },
-            logger
+            logger,
           );
         } else {
-          const modelDir = getLocalSpeechModelDir(localConfig.modelsDir, localModels.voiceLocalTtsModel);
+          const modelDir = getLocalSpeechModelDir(
+            localConfig.modelsDir,
+            localModels.voiceLocalTtsModel,
+          );
           localVoiceTtsProvider = new SherpaOnnxTTS(
             {
               preset: localModels.voiceLocalTtsModel,
@@ -309,7 +312,7 @@ export async function initializeLocalSpeechServices(params: {
               speakerId: speechConfig?.local?.models.voiceTtsSpeakerId,
               speed: speechConfig?.local?.models.voiceTtsSpeed,
             },
-            logger
+            logger,
           );
         }
         ttsService = localVoiceTtsProvider;
@@ -321,7 +324,7 @@ export async function initializeLocalSpeechServices(params: {
             modelId: localModels.voiceLocalTtsModel,
             hint: buildModelDownloadHint(localModels.voiceLocalTtsModel),
           },
-          "Local TTS engine unavailable"
+          "Local TTS engine unavailable",
         );
       }
     }
@@ -343,13 +346,12 @@ export async function initializeLocalSpeechServices(params: {
     ttsService,
     dictationSttService,
     localVoiceTtsProvider,
-    localModelConfig:
-      localConfig
-        ? {
-            modelsDir: localConfig.modelsDir,
-            defaultModelIds: requiredLocalModelIds,
-          }
-        : null,
+    localModelConfig: localConfig
+      ? {
+          modelsDir: localConfig.modelsDir,
+          defaultModelIds: requiredLocalModelIds,
+        }
+      : null,
     availability: getLocalSpeechAvailability(speechConfig),
     cleanup,
   };

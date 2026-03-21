@@ -14,7 +14,7 @@ export type DaemonTransportFactory = (options: {
 
 export type WebSocketFactory = (
   url: string,
-  options?: { headers?: Record<string, string> }
+  options?: { headers?: Record<string, string> },
 ) => WebSocketLike;
 
 export type WebSocketLike = {

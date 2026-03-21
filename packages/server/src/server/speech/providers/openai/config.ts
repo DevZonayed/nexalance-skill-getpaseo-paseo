@@ -15,25 +15,13 @@ export type OpenAiSpeechProviderConfig = {
   realtimeTranscriptionModel?: string;
 };
 
-const OpenAiTtsVoiceSchema = z.enum([
-  "alloy",
-  "echo",
-  "fable",
-  "onyx",
-  "nova",
-  "shimmer",
-]);
+const OpenAiTtsVoiceSchema = z.enum(["alloy", "echo", "fable", "onyx", "nova", "shimmer"]);
 
 const OpenAiTtsModelSchema = z.enum(["tts-1", "tts-1-hd"]);
 
-const NumberLikeSchema = z.union([
-  z.number(),
-  z.string().trim().min(1),
-]);
+const NumberLikeSchema = z.union([z.number(), z.string().trim().min(1)]);
 
-const OptionalFiniteNumberSchema = NumberLikeSchema
-  .pipe(z.coerce.number().finite())
-  .optional();
+const OptionalFiniteNumberSchema = NumberLikeSchema.pipe(z.coerce.number().finite()).optional();
 
 const OptionalTrimmedStringSchema = z
   .string()
@@ -45,12 +33,7 @@ const OpenAiSpeechResolutionSchema = z.object({
   apiKey: OptionalTrimmedStringSchema,
   sttConfidenceThreshold: OptionalFiniteNumberSchema,
   sttModel: OptionalTrimmedStringSchema,
-  ttsVoice: z
-    .string()
-    .trim()
-    .toLowerCase()
-    .pipe(OpenAiTtsVoiceSchema)
-    .default("alloy"),
+  ttsVoice: z.string().trim().toLowerCase().pipe(OpenAiTtsVoiceSchema).default("alloy"),
   ttsModel: z
     .string()
     .trim()
@@ -58,7 +41,7 @@ const OpenAiSpeechResolutionSchema = z.object({
     .pipe(OpenAiTtsModelSchema)
     .default(DEFAULT_OPENAI_TTS_MODEL),
   realtimeTranscriptionModel: OptionalTrimmedStringSchema.default(
-    DEFAULT_OPENAI_REALTIME_TRANSCRIPTION_MODEL
+    DEFAULT_OPENAI_REALTIME_TRANSCRIPTION_MODEL,
   ),
 });
 
@@ -116,9 +99,7 @@ export function resolveOpenAiSpeechConfig(params: {
       ...(parsed.sttConfidenceThreshold !== undefined
         ? { confidenceThreshold: parsed.sttConfidenceThreshold }
         : {}),
-      ...(parsed.sttModel
-        ? { model: parsed.sttModel }
-        : {}),
+      ...(parsed.sttModel ? { model: parsed.sttModel } : {}),
     },
     tts: {
       apiKey: parsed.apiKey,

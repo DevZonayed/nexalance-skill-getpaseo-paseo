@@ -74,14 +74,14 @@ function createServer(agentManagerOverrides?: Record<string, unknown>) {
     {} as any,
     {} as any,
     "/tmp/paseo-test",
-    async () => ({} as any),
+    async () => ({}) as any,
     { allowedOrigins: new Set() },
     undefined,
     undefined,
     undefined,
     undefined,
     undefined,
-    "1.2.3-test"
+    "1.2.3-test",
   );
 
   return { server, agentManager };
@@ -113,18 +113,15 @@ describe("VoiceAssistantWebSocketServer notification payloads", () => {
       reason: "finished",
     });
 
-    expect(pushMocks.sendPush).toHaveBeenCalledWith(
-      ["ExponentPushToken[token-1]"],
-      {
-        title: "Agent finished",
-        body: "Done. Updated README.md and link.",
-        data: {
-          serverId: "srv-test",
-          agentId: "agent-1",
-          reason: "finished",
-        },
-      }
-    );
+    expect(pushMocks.sendPush).toHaveBeenCalledWith(["ExponentPushToken[token-1]"], {
+      title: "Agent finished",
+      body: "Done. Updated README.md and link.",
+      data: {
+        serverId: "srv-test",
+        agentId: "agent-1",
+        reason: "finished",
+      },
+    });
   });
 
   it("sends push notifications regardless of UI label presence", () => {

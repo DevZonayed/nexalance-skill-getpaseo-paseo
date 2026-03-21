@@ -18,18 +18,10 @@ import {
   type WSOutboundMessage,
   wrapSessionMessage,
 } from "./messages.js";
-import {
-  asUint8Array,
-  decodeBinaryMuxFrame,
-  encodeBinaryMuxFrame,
-} from "../shared/binary-mux.js";
+import { asUint8Array, decodeBinaryMuxFrame, encodeBinaryMuxFrame } from "../shared/binary-mux.js";
 import type { AllowedHostsConfig } from "./allowed-hosts.js";
 import { isHostAllowed } from "./allowed-hosts.js";
-import {
-  Session,
-  type SessionLifecycleIntent,
-  type SessionRuntimeMetrics,
-} from "./session.js";
+import { Session, type SessionLifecycleIntent, type SessionRuntimeMetrics } from "./session.js";
 import type { AgentProvider } from "./agent/agent-sdk-types.js";
 import type { AgentProviderRuntimeSettingsMap } from "./agent/provider-launch-config.js";
 import { PushTokenStore } from "./push/token-store.js";
@@ -39,11 +31,7 @@ import type { TurnDetectionProvider } from "./speech/turn-detection-provider.js"
 import type { Resolvable } from "./speech/provider-resolver.js";
 import type { SpeechReadinessSnapshot } from "./speech/speech-runtime.js";
 import type { LocalSpeechModelId } from "./speech/providers/local/models.js";
-import type {
-  VoiceCallerContext,
-  VoiceMcpStdioConfig,
-  VoiceSpeakHandler,
-} from "./voice-types.js";
+import type { VoiceCallerContext, VoiceMcpStdioConfig, VoiceSpeakHandler } from "./voice-types.js";
 import {
   computeShouldNotifyClient,
   computeShouldSendPush,
@@ -95,12 +83,10 @@ function createNoopWorkspaceRegistry(): WorkspaceRegistry {
   };
 }
 
-function toServerCapabilityState(
-  params: {
-    state: SpeechReadinessSnapshot["dictation"];
-    reason: string;
-  }
-): ServerCapabilityState {
+function toServerCapabilityState(params: {
+  state: SpeechReadinessSnapshot["dictation"];
+  reason: string;
+}): ServerCapabilityState {
   const { state, reason } = params;
   return {
     enabled: state.enabled,
@@ -157,7 +143,7 @@ function buildServerCapabilities(params: {
 
 function areServerCapabilitiesEqual(
   current: ServerCapabilities | undefined,
-  next: ServerCapabilities | undefined
+  next: ServerCapabilities | undefined,
 ): boolean {
   return JSON.stringify(current ?? null) === JSON.stringify(next ?? null);
 }
@@ -166,9 +152,7 @@ function bufferFromWsData(data: Buffer | ArrayBuffer | Buffer[] | string): Buffe
   if (typeof data === "string") return Buffer.from(data, "utf8");
   if (Array.isArray(data)) {
     return Buffer.concat(
-      data.map((item) =>
-        Buffer.isBuffer(item) ? item : Buffer.from(item as ArrayBuffer)
-      )
+      data.map((item) => (Buffer.isBuffer(item) ? item : Buffer.from(item as ArrayBuffer))),
     );
   }
   if (Buffer.isBuffer(data)) return data;
@@ -262,10 +246,7 @@ export class VoiceAssistantWebSocketServer {
     ensureVoiceMcpSocketForAgent?: (agentId: string) => Promise<string>;
     removeVoiceMcpSocketForAgent?: (agentId: string) => Promise<void>;
   } | null;
-  private readonly voiceSpeakHandlers = new Map<
-    string,
-    VoiceSpeakHandler
-  >();
+  private readonly voiceSpeakHandlers = new Map<string, VoiceSpeakHandler>();
   private readonly voiceCallerContexts = new Map<string, VoiceCallerContext>();
   private readonly agentProviderRuntimeSettings: AgentProviderRuntimeSettingsMap | undefined;
   private readonly onLifecycleIntent: ((intent: SessionLifecycleIntent) => void) | null;
@@ -326,7 +307,7 @@ export class VoiceAssistantWebSocketServer {
     daemonVersion?: string,
     onLifecycleIntent?: (intent: SessionLifecycleIntent) => void,
     projectRegistry?: ProjectRegistry,
-    workspaceRegistry?: WorkspaceRegistry
+    workspaceRegistry?: WorkspaceRegistry,
   ) {
     this.logger = logger.child({ module: "websocket-server" });
     this.serverId = serverId;
@@ -354,10 +335,7 @@ export class VoiceAssistantWebSocketServer {
     });
 
     const pushLogger = this.logger.child({ module: "push" });
-    this.pushTokenStore = new PushTokenStore(
-      pushLogger,
-      join(paseoHome, "push-tokens.json")
-    );
+    this.pushTokenStore = new PushTokenStore(pushLogger, join(paseoHome, "push-tokens.json"));
     this.pushService = new PushService(pushLogger, this.pushTokenStore);
 
     this.agentManager.setAgentAttentionCallback((params) => {
@@ -376,7 +354,7 @@ export class VoiceAssistantWebSocketServer {
           this.incrementRuntimeCounter("hostRejected");
           this.logger.warn(
             { ...requestMetadata, host: requestHost },
-            "Rejected connection from disallowed host"
+            "Rejected connection from disallowed host",
           );
           callback(false, 403, "Host not allowed");
           return;
@@ -390,10 +368,7 @@ export class VoiceAssistantWebSocketServer {
           callback(true);
         } else {
           this.incrementRuntimeCounter("originRejected");
-          this.logger.warn(
-            { ...requestMetadata, origin },
-            "Rejected connection from origin"
-          );
+          this.logger.warn({ ...requestMetadata, origin }, "Rejected connection from origin");
           callback(false, 403, "Origin not allowed");
         }
       },
@@ -426,9 +401,7 @@ export class VoiceAssistantWebSocketServer {
     this.updateServerCapabilities(buildServerCapabilities({ readiness }));
   }
 
-  public updateServerCapabilities(
-    capabilities: ServerCapabilities | null | undefined
-  ): void {
+  public updateServerCapabilities(capabilities: ServerCapabilities | null | undefined): void {
     const next = capabilities ?? undefined;
     if (areServerCapabilitiesEqual(this.serverCapabilities, next)) {
       return;
@@ -439,7 +412,7 @@ export class VoiceAssistantWebSocketServer {
 
   public async attachExternalSocket(
     ws: WebSocketLike,
-    metadata?: ExternalSocketMetadata
+    metadata?: ExternalSocketMetadata,
   ): Promise<void> {
     if (metadata?.transport === "relay") {
       this.incrementRuntimeCounter("relayExternalSocketAttached");
@@ -485,7 +458,7 @@ export class VoiceAssistantWebSocketServer {
             }
             ws.once("close", () => resolve());
             ws.close();
-          })
+          }),
         );
       }
     }
@@ -499,7 +472,7 @@ export class VoiceAssistantWebSocketServer {
           }
           ws.once("close", () => resolve());
           ws.close();
-        })
+        }),
       );
     }
 
@@ -519,7 +492,7 @@ export class VoiceAssistantWebSocketServer {
 
   private sendBinaryToClient(
     ws: WebSocketLike,
-    frame: Parameters<typeof encodeBinaryMuxFrame>[0]
+    frame: Parameters<typeof encodeBinaryMuxFrame>[0],
   ): void {
     if (ws.readyState !== 1) {
       return;
@@ -535,7 +508,7 @@ export class VoiceAssistantWebSocketServer {
 
   private sendBinaryToConnection(
     connection: SessionConnection,
-    frame: Parameters<typeof encodeBinaryMuxFrame>[0]
+    frame: Parameters<typeof encodeBinaryMuxFrame>[0],
   ): void {
     for (const ws of connection.sockets) {
       this.sendBinaryToClient(ws, frame);
@@ -545,7 +518,7 @@ export class VoiceAssistantWebSocketServer {
   private async attachSocket(
     ws: WebSocketLike,
     request?: unknown,
-    metadata?: ExternalSocketMetadata
+    metadata?: ExternalSocketMetadata,
   ): Promise<void> {
     const requestMetadata = extractSocketRequestMetadata(request);
     const connectionLoggerFields: Record<string, string> = {
@@ -577,7 +550,7 @@ export class VoiceAssistantWebSocketServer {
       this.pendingConnections.delete(ws);
       pending.connectionLogger.warn(
         { timeoutMs: HELLO_TIMEOUT_MS },
-        "Closing connection due to missing hello"
+        "Closing connection due to missing hello",
       );
       try {
         ws.close(WS_CLOSE_HELLO_TIMEOUT, "Hello timeout");
@@ -596,7 +569,7 @@ export class VoiceAssistantWebSocketServer {
       {
         totalPendingConnections: this.pendingConnections.size,
       },
-      "Client connected; awaiting hello"
+      "Client connected; awaiting hello",
     );
   }
 
@@ -698,7 +671,7 @@ export class VoiceAssistantWebSocketServer {
           receivedProtocolVersion: message.protocolVersion,
           expectedProtocolVersion: WS_PROTOCOL_VERSION,
         },
-        "Rejected hello due to protocol version mismatch"
+        "Rejected hello due to protocol version mismatch",
       );
       try {
         ws.close(WS_CLOSE_INCOMPATIBLE_PROTOCOL, "Incompatible protocol version");
@@ -737,7 +710,7 @@ export class VoiceAssistantWebSocketServer {
           resumed: true,
           totalSessions: this.sessions.size,
         },
-        "Client connected via hello"
+        "Client connected via hello",
       );
       return;
     }
@@ -758,7 +731,7 @@ export class VoiceAssistantWebSocketServer {
         resumed: false,
         totalSessions: this.sessions.size,
       },
-      "Client connected via hello"
+      "Client connected via hello",
     );
   }
 
@@ -808,15 +781,11 @@ export class VoiceAssistantWebSocketServer {
     });
   }
 
-  public resolveVoiceSpeakHandler(
-    callerAgentId: string
-  ): VoiceSpeakHandler | null {
+  public resolveVoiceSpeakHandler(callerAgentId: string): VoiceSpeakHandler | null {
     return this.voiceSpeakHandlers.get(callerAgentId) ?? null;
   }
 
-  public resolveVoiceCallerContext(
-    callerAgentId: string
-  ): VoiceCallerContext | null {
+  public resolveVoiceCallerContext(callerAgentId: string): VoiceCallerContext | null {
     return this.voiceCallerContexts.get(callerAgentId) ?? null;
   }
 
@@ -826,7 +795,7 @@ export class VoiceAssistantWebSocketServer {
       code?: number;
       reason?: unknown;
       error?: Error;
-    }
+    },
   ): Promise<void> {
     const pending = this.clearPendingConnection(ws);
     if (pending) {
@@ -836,7 +805,7 @@ export class VoiceAssistantWebSocketServer {
           code: details.code,
           reason: stringifyCloseReason(details.reason),
         },
-        "Pending client disconnected"
+        "Pending client disconnected",
       );
       return;
     }
@@ -870,7 +839,7 @@ export class VoiceAssistantWebSocketServer {
           reason: stringifyCloseReason(details.reason),
           reconnectGraceMs: EXTERNAL_SESSION_DISCONNECT_GRACE_MS,
         },
-        "Client disconnected; waiting for reconnect"
+        "Client disconnected; waiting for reconnect",
       );
       return;
     }
@@ -884,7 +853,7 @@ export class VoiceAssistantWebSocketServer {
           code: details.code,
           reason: stringifyCloseReason(details.reason),
         },
-        "Client socket disconnected; session remains attached"
+        "Client socket disconnected; session remains attached",
       );
       return;
     }
@@ -894,7 +863,7 @@ export class VoiceAssistantWebSocketServer {
 
   private async cleanupConnection(
     connection: SessionConnection,
-    logMessage: string
+    logMessage: string,
   ): Promise<void> {
     this.incrementRuntimeCounter("sessionCleanup");
     if (connection.externalDisconnectCleanupTimeout) {
@@ -913,18 +882,19 @@ export class VoiceAssistantWebSocketServer {
 
     connection.connectionLogger.trace(
       { clientId: connection.clientId, totalSessions: this.sessions.size },
-      logMessage
+      logMessage,
     );
     await connection.session.cleanup();
   }
 
   private async handleRawMessage(
     ws: WebSocketLike,
-    data: Buffer | ArrayBuffer | Buffer[] | string
+    data: Buffer | ArrayBuffer | Buffer[] | string,
   ): Promise<void> {
     const activeConnection = this.sessions.get(ws);
     const pendingConnection = this.pendingConnections.get(ws);
-    const log = activeConnection?.connectionLogger ?? pendingConnection?.connectionLogger ?? this.logger;
+    const log =
+      activeConnection?.connectionLogger ?? pendingConnection?.connectionLogger ?? this.logger;
 
     try {
       const buffer = bufferFromWsData(data);
@@ -956,7 +926,7 @@ export class VoiceAssistantWebSocketServer {
             {
               error: parsedMessage.error.message,
             },
-            "Rejected pending message before hello"
+            "Rejected pending message before hello",
           );
           this.clearPendingConnection(ws);
           try {
@@ -982,7 +952,7 @@ export class VoiceAssistantWebSocketServer {
             requestType: requestInfo?.requestType,
             error: parsedMessage.error.message,
           },
-          "WS inbound message validation failed"
+          "WS inbound message validation failed",
         );
 
         if (requestInfo) {
@@ -996,7 +966,7 @@ export class VoiceAssistantWebSocketServer {
                 error: isUnknownSchema ? "Unknown request schema" : "Invalid message",
                 code: isUnknownSchema ? "unknown_schema" : "invalid_message",
               },
-            })
+            }),
           );
           return;
         }
@@ -1010,7 +980,7 @@ export class VoiceAssistantWebSocketServer {
               status: "error",
               message: errorMessage,
             },
-          })
+          }),
         );
         return;
       }
@@ -1041,7 +1011,7 @@ export class VoiceAssistantWebSocketServer {
           {
             messageType: message.type,
           },
-          "Rejected pending message before hello"
+          "Rejected pending message before hello",
         );
         this.incrementRuntimeCounter("pendingMessageRejectedBeforeHello");
         this.clearPendingConnection(ws);
@@ -1102,7 +1072,7 @@ export class VoiceAssistantWebSocketServer {
           rawPayload: trimmedRawPayload,
           parsedPayload,
         },
-        "Failed to parse/handle message"
+        "Failed to parse/handle message",
       );
 
       if (this.pendingConnections.has(ws)) {
@@ -1127,7 +1097,7 @@ export class VoiceAssistantWebSocketServer {
               error: "Invalid message",
               code: "invalid_message",
             },
-          })
+          }),
         );
         return;
       }
@@ -1140,7 +1110,7 @@ export class VoiceAssistantWebSocketServer {
             status: "error",
             message: `Invalid message: ${err.message}`,
           },
-        })
+        }),
       );
     }
   }
@@ -1208,8 +1178,7 @@ export class VoiceAssistantWebSocketServer {
     const pendingConnections = this.pendingConnections.size;
     const reconnectGraceSessions = [...this.externalSessionsByKey.values()].filter(
       (connection) =>
-        connection.sockets.size === 0 &&
-        connection.externalDisconnectCleanupTimeout !== null
+        connection.sockets.size === 0 && connection.externalDisconnectCleanupTimeout !== null,
     ).length;
     const sessionMetrics = this.collectSessionRuntimeMetrics();
 
@@ -1228,13 +1197,10 @@ export class VoiceAssistantWebSocketServer {
         },
         counters: { ...this.runtimeCounters },
         inboundMessageTypesTop: this.getTopCounts(this.inboundMessageCounts, 12),
-        inboundSessionRequestTypesTop: this.getTopCounts(
-          this.inboundSessionRequestCounts,
-          20
-        ),
+        inboundSessionRequestTypesTop: this.getTopCounts(this.inboundSessionRequestCounts, 20),
         runtime: sessionMetrics,
       },
-      "ws_runtime_metrics"
+      "ws_runtime_metrics",
     );
 
     for (const counter of Object.keys(this.runtimeCounters) as Array<
@@ -1286,12 +1252,8 @@ export class VoiceAssistantWebSocketServer {
       reason: params.reason,
       serverId: this.serverId,
       agentId: params.agentId,
-      assistantMessage: agent
-        ? findLatestAssistantMessageFromTimeline(agent.timeline)
-        : null,
-      permissionRequest: agent
-        ? findLatestPermissionRequest(agent.pendingPermissions)
-        : null,
+      assistantMessage: agent ? findLatestAssistantMessageFromTimeline(agent.timeline) : null,
+      permissionRequest: agent ? findLatestPermissionRequest(agent.pendingPermissions) : null,
     });
 
     // Push is only a fallback when the user is away from desktop/web.
@@ -1362,16 +1324,11 @@ function extractSocketRequestMetadata(request: unknown): SocketRequestMetadata {
   };
 
   const host = typeof record.headers?.host === "string" ? record.headers.host : undefined;
-  const origin =
-    typeof record.headers?.origin === "string" ? record.headers.origin : undefined;
+  const origin = typeof record.headers?.origin === "string" ? record.headers.origin : undefined;
   const userAgent =
-    typeof record.headers?.["user-agent"] === "string"
-      ? record.headers["user-agent"]
-      : undefined;
+    typeof record.headers?.["user-agent"] === "string" ? record.headers["user-agent"] : undefined;
   const remoteAddress =
-    typeof record.socket?.remoteAddress === "string"
-      ? record.socket.remoteAddress
-      : undefined;
+    typeof record.socket?.remoteAddress === "string" ? record.socket.remoteAddress : undefined;
 
   return {
     ...(host ? { host } : {}),
@@ -1397,7 +1354,7 @@ function stringifyCloseReason(reason: unknown): string | null {
 }
 
 function extractRequestInfoFromUnknownWsInbound(
-  payload: unknown
+  payload: unknown,
 ): { requestId: string; requestType?: string } | null {
   if (!payload || typeof payload !== "object") {
     return null;

@@ -2,11 +2,7 @@ import { useCallback, useEffect, useMemo, useRef } from "react";
 import { View, Text, Pressable, Platform, useWindowDimensions } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useIsFocused } from "@react-navigation/native";
-import Animated, {
-  useAnimatedStyle,
-  useSharedValue,
-  runOnJS,
-} from "react-native-reanimated";
+import Animated, { useAnimatedStyle, useSharedValue, runOnJS } from "react-native-reanimated";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import { StyleSheet, UnistylesRuntime, useUnistyles } from "react-native-unistyles";
 import { X } from "lucide-react-native";
@@ -23,8 +19,7 @@ import { FileExplorerPane } from "./file-explorer-pane";
 import { useKeyboardShiftStyle } from "@/hooks/use-keyboard-shift-style";
 
 const MIN_CHAT_WIDTH = 400;
-function logExplorerSidebar(_event: string, _details: Record<string, unknown>): void {
-}
+function logExplorerSidebar(_event: string, _details: Record<string, unknown>): void {}
 
 interface ExplorerSidebarProps {
   serverId: string;
@@ -44,8 +39,7 @@ export function ExplorerSidebar({
   const { theme } = useUnistyles();
   const isScreenFocused = useIsFocused();
   const insets = useSafeAreaInsets();
-  const isMobile =
-    UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
+  const isMobile = UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
   const mobileView = usePanelStore((state) => state.mobileView);
   const desktopFileExplorerOpen = usePanelStore((state) => state.desktop.fileExplorerOpen);
   const closeToAgent = usePanelStore((state) => state.closeToAgent);
@@ -68,7 +62,7 @@ export function ExplorerSidebar({
     }
     const maxWidth = Math.max(
       MIN_EXPLORER_SIDEBAR_WIDTH,
-      Math.min(MAX_EXPLORER_SIDEBAR_WIDTH, viewportWidth - MIN_CHAT_WIDTH)
+      Math.min(MAX_EXPLORER_SIDEBAR_WIDTH, viewportWidth - MIN_CHAT_WIDTH),
     );
     if (explorerWidth > maxWidth) {
       setExplorerWidth(maxWidth);
@@ -102,7 +96,7 @@ export function ExplorerSidebar({
       });
       closeToAgent();
     },
-    [closeToAgent, desktopFileExplorerOpen, isOpen, mobileView]
+    [closeToAgent, desktopFileExplorerOpen, isOpen, mobileView],
   );
 
   const enableSidebarCloseGesture = isMobile && isOpen;
@@ -111,7 +105,7 @@ export function ExplorerSidebar({
     (tab: ExplorerTab) => {
       setExplorerTabForCheckout({ serverId, cwd: workspaceRoot, isGit, tab });
     },
-    [isGit, serverId, setExplorerTabForCheckout, workspaceRoot]
+    [isGit, serverId, setExplorerTabForCheckout, workspaceRoot],
   );
 
   // Swipe gesture to close (swipe right on mobile)
@@ -170,8 +164,7 @@ export function ExplorerSidebar({
         })
         .onEnd((event) => {
           isGesturing.value = false;
-          const shouldClose =
-            event.translationX > windowWidth / 3 || event.velocityX > 500;
+          const shouldClose = event.translationX > windowWidth / 3 || event.velocityX > 500;
           runOnJS(logExplorerSidebar)("closeGestureEnd", {
             translationX: event.translationX,
             velocityX: event.velocityX,
@@ -200,7 +193,7 @@ export function ExplorerSidebar({
       closeGestureRef,
       closeTouchStartX,
       closeTouchStartY,
-    ]
+    ],
   );
 
   // Desktop resize gesture (drag left edge)
@@ -218,18 +211,15 @@ export function ExplorerSidebar({
           const newWidth = startWidthRef.current - event.translationX;
           const maxWidth = Math.max(
             MIN_EXPLORER_SIDEBAR_WIDTH,
-            Math.min(MAX_EXPLORER_SIDEBAR_WIDTH, viewportWidth - MIN_CHAT_WIDTH)
+            Math.min(MAX_EXPLORER_SIDEBAR_WIDTH, viewportWidth - MIN_CHAT_WIDTH),
           );
-          const clampedWidth = Math.max(
-            MIN_EXPLORER_SIDEBAR_WIDTH,
-            Math.min(maxWidth, newWidth)
-          );
+          const clampedWidth = Math.max(MIN_EXPLORER_SIDEBAR_WIDTH, Math.min(maxWidth, newWidth));
           resizeWidth.value = clampedWidth;
         })
         .onEnd(() => {
           runOnJS(setExplorerWidth)(resizeWidth.value);
         }),
-    [isMobile, explorerWidth, resizeWidth, setExplorerWidth, viewportWidth]
+    [isMobile, explorerWidth, resizeWidth, setExplorerWidth, viewportWidth],
   );
 
   const sidebarAnimatedStyle = useAnimatedStyle(() => ({
@@ -299,16 +289,11 @@ export function ExplorerSidebar({
   }
 
   return (
-    <Animated.View
-      style={[styles.desktopSidebar, resizeAnimatedStyle, { paddingTop: insets.top }]}
-    >
+    <Animated.View style={[styles.desktopSidebar, resizeAnimatedStyle, { paddingTop: insets.top }]}>
       {/* Resize handle - absolutely positioned over left border */}
       <GestureDetector gesture={resizeGesture}>
         <View
-          style={[
-            styles.resizeHandle,
-            Platform.OS === "web" && ({ cursor: "col-resize" } as any),
-          ]}
+          style={[styles.resizeHandle, Platform.OS === "web" && ({ cursor: "col-resize" } as any)]}
         />
       </GestureDetector>
 
@@ -351,8 +336,7 @@ function SidebarContent({
   onOpenFile,
 }: SidebarContentProps) {
   const { theme } = useUnistyles();
-  const resolvedTab: ExplorerTab =
-    !isGit && activeTab === "changes" ? "files" : activeTab;
+  const resolvedTab: ExplorerTab = !isGit && activeTab === "changes" ? "files" : activeTab;
 
   return (
     <View style={styles.sidebarContent} pointerEvents="auto">
@@ -365,12 +349,7 @@ function SidebarContent({
               style={[styles.tab, resolvedTab === "changes" && styles.tabActive]}
               onPress={() => onTabPress("changes")}
             >
-              <Text
-                style={[
-                  styles.tabText,
-                  resolvedTab === "changes" && styles.tabTextActive,
-                ]}
-              >
+              <Text style={[styles.tabText, resolvedTab === "changes" && styles.tabTextActive]}>
                 Changes
               </Text>
             </Pressable>
@@ -380,12 +359,7 @@ function SidebarContent({
             style={[styles.tab, resolvedTab === "files" && styles.tabActive]}
             onPress={() => onTabPress("files")}
           >
-            <Text
-              style={[
-                styles.tabText,
-                resolvedTab === "files" && styles.tabTextActive,
-              ]}
-            >
+            <Text style={[styles.tabText, resolvedTab === "files" && styles.tabTextActive]}>
               Files
             </Text>
           </Pressable>

@@ -190,7 +190,9 @@ describe("workspace-layout-store tree transforms", () => {
 
     expect(nextGroup.group.sizes).toEqual([0.2, 0.8]);
     expect(collectAllPanes(nextRoot).map((pane) => pane.id)).toEqual(["left", "bottom-right"]);
-    expect(nextGroup.group.children[1]).toEqual(createPane({ id: "bottom-right", tabIds: ["tab-c"] }));
+    expect(nextGroup.group.children[1]).toEqual(
+      createPane({ id: "bottom-right", tabIds: ["tab-c"] }),
+    );
   });
 
   it("removeTabFromTree collapses empty panes but keeps the final root pane", () => {
@@ -228,7 +230,7 @@ describe("workspace-layout-store actions", () => {
 
   it("opens tabs into the focused pane and focuses duplicate opens instead of creating them", () => {
     vi.spyOn(globalThis.crypto, "randomUUID").mockReturnValue(
-      "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+      "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
     );
     const workspaceKey = createWorkspaceKey();
     const store = useWorkspaceLayoutStore.getState();
@@ -244,7 +246,10 @@ describe("workspace-layout-store actions", () => {
     expect(splitPaneId).toBe("pane_aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
 
     store.focusPane(workspaceKey, "main");
-    const duplicateTabId = store.openTab(workspaceKey, { kind: "file", path: "/repo/worktree/b.ts" });
+    const duplicateTabId = store.openTab(workspaceKey, {
+      kind: "file",
+      path: "/repo/worktree/b.ts",
+    });
     const layout = useWorkspaceLayoutStore.getState().layoutByWorkspace[workspaceKey]!;
 
     expect(firstTabId).toBe("file_/repo/worktree/a.ts");
@@ -259,7 +264,7 @@ describe("workspace-layout-store actions", () => {
 
   it("focusTab moves workspace focus to the pane containing the tab", () => {
     vi.spyOn(globalThis.crypto, "randomUUID").mockReturnValue(
-      "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
+      "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
     );
     const workspaceKey = createWorkspaceKey();
     const store = useWorkspaceLayoutStore.getState();
@@ -285,7 +290,7 @@ describe("workspace-layout-store actions", () => {
 
   it("retargetTab updates the existing tab target without moving it to a different pane", () => {
     vi.spyOn(globalThis.crypto, "randomUUID").mockReturnValue(
-      "12121212-1212-1212-1212-121212121212"
+      "12121212-1212-1212-1212-121212121212",
     );
     const workspaceKey = createWorkspaceKey();
     const store = useWorkspaceLayoutStore.getState();
@@ -333,16 +338,28 @@ describe("workspace-layout-store actions", () => {
       tabIds: [thirdTabId!, firstTabId!, secondTabId!],
       focusedTabId: thirdTabId,
       tabs: [
-        { tabId: thirdTabId, target: { kind: "file", path: "/repo/worktree/c.ts" }, createdAt: expect.any(Number) },
-        { tabId: firstTabId, target: { kind: "file", path: "/repo/worktree/a.ts" }, createdAt: expect.any(Number) },
-        { tabId: secondTabId, target: { kind: "file", path: "/repo/worktree/b.ts" }, createdAt: expect.any(Number) },
+        {
+          tabId: thirdTabId,
+          target: { kind: "file", path: "/repo/worktree/c.ts" },
+          createdAt: expect.any(Number),
+        },
+        {
+          tabId: firstTabId,
+          target: { kind: "file", path: "/repo/worktree/a.ts" },
+          createdAt: expect.any(Number),
+        },
+        {
+          tabId: secondTabId,
+          target: { kind: "file", path: "/repo/worktree/b.ts" },
+          createdAt: expect.any(Number),
+        },
       ],
     });
   });
 
   it("reorderTabsInPane reorders tabs in the requested pane without changing focused pane", () => {
     vi.spyOn(globalThis.crypto, "randomUUID").mockReturnValue(
-      "34343434-3434-3434-3434-343434343434"
+      "34343434-3434-3434-3434-343434343434",
     );
     const workspaceKey = createWorkspaceKey();
     const store = useWorkspaceLayoutStore.getState();
@@ -369,15 +386,23 @@ describe("workspace-layout-store actions", () => {
       tabIds: [fourthTabId!, thirdTabId!],
       focusedTabId: fourthTabId,
       tabs: [
-        { tabId: fourthTabId, target: { kind: "file", path: "/repo/worktree/d.ts" }, createdAt: expect.any(Number) },
-        { tabId: thirdTabId, target: { kind: "file", path: "/repo/worktree/c.ts" }, createdAt: expect.any(Number) },
+        {
+          tabId: fourthTabId,
+          target: { kind: "file", path: "/repo/worktree/d.ts" },
+          createdAt: expect.any(Number),
+        },
+        {
+          tabId: thirdTabId,
+          target: { kind: "file", path: "/repo/worktree/c.ts" },
+          createdAt: expect.any(Number),
+        },
       ],
     });
   });
 
   it("focusPane switches workspace focus to a different pane", () => {
     vi.spyOn(globalThis.crypto, "randomUUID").mockReturnValue(
-      "56565656-5656-5656-5656-565656565656"
+      "56565656-5656-5656-5656-565656565656",
     );
     const workspaceKey = createWorkspaceKey();
     const store = useWorkspaceLayoutStore.getState();
@@ -403,7 +428,7 @@ describe("workspace-layout-store actions", () => {
 
   it("closeTab collapses an emptied pane and keeps the nearest sibling focused", () => {
     vi.spyOn(globalThis.crypto, "randomUUID").mockReturnValue(
-      "cccccccc-cccc-cccc-cccc-cccccccccccc"
+      "cccccccc-cccc-cccc-cccc-cccccccccccc",
     );
     const workspaceKey = createWorkspaceKey();
     const store = useWorkspaceLayoutStore.getState();
@@ -475,7 +500,7 @@ describe("workspace-layout-store actions", () => {
 
   it("moveTabToPane collapses the source pane when its last tab moves out", () => {
     vi.spyOn(globalThis.crypto, "randomUUID").mockReturnValue(
-      "dddddddd-dddd-dddd-dddd-dddddddddddd"
+      "dddddddd-dddd-dddd-dddd-dddddddddddd",
     );
     const workspaceKey = createWorkspaceKey();
     const store = useWorkspaceLayoutStore.getState();
@@ -542,7 +567,7 @@ describe("workspace-layout-store actions", () => {
           tabIds: child.pane.tabIds,
           focusedTabId: child.pane.focusedTabId,
         };
-      })
+      }),
     ).toEqual([
       {
         id: "main",
@@ -560,7 +585,7 @@ describe("workspace-layout-store actions", () => {
 
   it("openTab focuses the existing tab instead of creating a duplicate entry", () => {
     vi.spyOn(globalThis.crypto, "randomUUID").mockReturnValue(
-      "abababab-abab-abab-abab-abababababab"
+      "abababab-abab-abab-abab-abababababab",
     );
     const workspaceKey = createWorkspaceKey();
     const store = useWorkspaceLayoutStore.getState();
@@ -574,7 +599,10 @@ describe("workspace-layout-store actions", () => {
     });
 
     store.focusPane(workspaceKey, "main");
-    const duplicateTabId = store.openTab(workspaceKey, { kind: "file", path: "/repo/worktree/b.ts" });
+    const duplicateTabId = store.openTab(workspaceKey, {
+      kind: "file",
+      path: "/repo/worktree/b.ts",
+    });
     const layout = useWorkspaceLayoutStore.getState().layoutByWorkspace[workspaceKey]!;
 
     expect(splitPaneId).toBe("pane_abababab-abab-abab-abab-abababababab");

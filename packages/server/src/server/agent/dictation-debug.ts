@@ -19,7 +19,7 @@ export interface DictationDebugChunkWriter {
 
 export function createDictationDebugChunkWriter(
   metadata: Pick<DictationDebugAudioMetadata, "sessionId" | "dictationId">,
-  logger: pino.Logger
+  logger: pino.Logger,
 ): DictationDebugChunkWriter | null {
   const debugDir = resolveRecordingsDebugDir("DICTATION_DEBUG_AUDIO_DIR");
   if (!debugDir) {
@@ -35,7 +35,7 @@ export function createDictationDebugChunkWriter(
   const folder = join(
     debugDir,
     sanitizeForFilename(metadata.sessionId, "session"),
-    `${timestamp}_${sanitizeForFilename(metadata.dictationId, "dictation")}`
+    `${timestamp}_${sanitizeForFilename(metadata.dictationId, "dictation")}`,
   );
 
   let folderCreated = false;
@@ -58,7 +58,7 @@ export async function maybePersistDictationDebugAudio(
   audio: Buffer,
   metadata: DictationDebugAudioMetadata,
   logger: pino.Logger,
-  chunkWriterFolder?: string | null
+  chunkWriterFolder?: string | null,
 ): Promise<string | null> {
   const debugDir = resolveRecordingsDebugDir("DICTATION_DEBUG_AUDIO_DIR");
   if (!debugDir) {
@@ -71,7 +71,8 @@ export async function maybePersistDictationDebugAudio(
   }
 
   const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-  const folder = chunkWriterFolder ?? join(debugDir, sanitizeForFilename(metadata.sessionId, "session"));
+  const folder =
+    chunkWriterFolder ?? join(debugDir, sanitizeForFilename(metadata.sessionId, "session"));
   await mkdir(folder, { recursive: true });
 
   const filename = chunkWriterFolder

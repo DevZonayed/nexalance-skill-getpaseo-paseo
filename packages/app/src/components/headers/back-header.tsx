@@ -11,21 +11,14 @@ interface BackHeaderProps {
   onBack?: () => void;
 }
 
-export function BackHeader({
-  title,
-  rightContent,
-  onBack,
-}: BackHeaderProps) {
+export function BackHeader({ title, rightContent, onBack }: BackHeaderProps) {
   const { theme } = useUnistyles();
 
   return (
     <ScreenHeader
       left={
         <>
-          <Pressable
-            onPress={onBack ?? (() => router.back())}
-            style={styles.backButton}
-          >
+          <Pressable onPress={onBack ?? (() => router.back())} style={styles.backButton}>
             <ArrowLeft size={theme.iconSize.lg} color={theme.colors.foregroundMuted} />
           </Pressable>
           {title && (

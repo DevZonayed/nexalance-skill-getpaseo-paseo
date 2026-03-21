@@ -2,13 +2,7 @@ import { useEffect, useRef } from "react";
 import { Animated, View, type StyleProp, type ViewStyle } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 
-function SkeletonPulse({
-  pulse,
-  style,
-}: {
-  pulse: Animated.Value;
-  style: StyleProp<ViewStyle>;
-}) {
+function SkeletonPulse({ pulse, style }: { pulse: Animated.Value; style: StyleProp<ViewStyle> }) {
   const opacity = pulse.interpolate({
     inputRange: [0, 1],
     outputRange: [0.4, 0.8],
@@ -33,7 +27,7 @@ export function SidebarAgentListSkeleton() {
           duration: 1000,
           useNativeDriver: true,
         }),
-      ])
+      ]),
     );
 
     animation.start();
@@ -55,10 +49,7 @@ export function SidebarAgentListSkeleton() {
 
           <View style={styles.rows}>
             {Array.from({ length: 3 }).map((__, rowIdx) => (
-              <View
-                key={`skeleton-row-${sectionIdx}-${rowIdx}`}
-                style={styles.row}
-              >
+              <View key={`skeleton-row-${sectionIdx}-${rowIdx}`} style={styles.row}>
                 <SkeletonPulse pulse={pulse} style={styles.rowDot} />
                 <SkeletonPulse pulse={pulse} style={styles.rowTitle} />
                 <SkeletonPulse pulse={pulse} style={styles.rowBadge} />

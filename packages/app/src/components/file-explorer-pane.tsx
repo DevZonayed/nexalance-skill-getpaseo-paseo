@@ -38,10 +38,7 @@ import {
   RotateCw,
   X,
 } from "lucide-react-native";
-import type {
-  AgentFileExplorerState,
-  ExplorerEntry,
-} from "@/stores/session-store";
+import type { AgentFileExplorerState, ExplorerEntry } from "@/stores/session-store";
 import { useHosts } from "@/runtime/host-runtime";
 import { useSessionStore } from "@/stores/session-store";
 import { useDownloadStore } from "@/stores/download-store";
@@ -54,10 +51,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useFileExplorerActions } from "@/hooks/use-file-explorer-actions";
 import { buildWorkspaceExplorerStateKey } from "@/hooks/use-file-explorer-actions";
-import {
-  usePanelStore,
-  type SortOption,
-} from "@/stores/panel-store";
+import { usePanelStore, type SortOption } from "@/stores/panel-store";
 import { formatTimeAgo } from "@/utils/time";
 import { buildAbsoluteExplorerPath } from "@/utils/explorer-paths";
 import {
@@ -102,36 +96,32 @@ export function FileExplorerPane({
   onOpenFile,
 }: FileExplorerPaneProps) {
   const { theme } = useUnistyles();
-  const isMobile =
-    UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
+  const isMobile = UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
   const showDesktopWebScrollbar = Platform.OS === "web" && !isMobile;
 
   const daemons = useHosts();
   const daemonProfile = useMemo(
     () => daemons.find((daemon) => daemon.serverId === serverId),
-    [daemons, serverId]
+    [daemons, serverId],
   );
-  const normalizedWorkspaceRoot = useMemo(
-    () => workspaceRoot.trim(),
-    [workspaceRoot]
-  );
+  const normalizedWorkspaceRoot = useMemo(() => workspaceRoot.trim(), [workspaceRoot]);
   const workspaceStateKey = useMemo(
     () =>
       buildWorkspaceExplorerStateKey({
         workspaceId,
         workspaceRoot: normalizedWorkspaceRoot,
       }),
-    [normalizedWorkspaceRoot, workspaceId]
+    [normalizedWorkspaceRoot, workspaceId],
   );
   const workspaceScopeId = useMemo(
     () => workspaceId?.trim() || normalizedWorkspaceRoot,
-    [normalizedWorkspaceRoot, workspaceId]
+    [normalizedWorkspaceRoot, workspaceId],
   );
   const hasWorkspaceScope = Boolean(workspaceStateKey && normalizedWorkspaceRoot);
   const explorerState = useSessionStore((state) =>
     workspaceStateKey && state.sessions[serverId]
       ? state.sessions[serverId]?.fileExplorer.get(workspaceStateKey)
-      : undefined
+      : undefined,
   );
 
   const {
@@ -156,9 +146,9 @@ export function FileExplorerPane({
   const isDirectoryLoading = useCallback(
     (path: string) =>
       Boolean(
-        isExplorerLoading && pendingRequest?.mode === "list" && pendingRequest?.path === path
+        isExplorerLoading && pendingRequest?.mode === "list" && pendingRequest?.path === path,
       ),
-    [isExplorerLoading, pendingRequest?.mode, pendingRequest?.path]
+    [isExplorerLoading, pendingRequest?.mode, pendingRequest?.path],
   );
 
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(() => new Set(["."]));
@@ -235,7 +225,7 @@ export function FileExplorerPane({
         });
       }
     },
-    [directories, expandedPaths, hasWorkspaceScope, requestDirectoryListing]
+    [directories, expandedPaths, hasWorkspaceScope, requestDirectoryListing],
   );
 
   const handleOpenFile = useCallback(
@@ -246,7 +236,7 @@ export function FileExplorerPane({
       selectExplorerEntry(entry.path);
       onOpenFile?.(entry.path);
     },
-    [hasWorkspaceScope, onOpenFile, selectExplorerEntry]
+    [hasWorkspaceScope, onOpenFile, selectExplorerEntry],
   );
 
   const handleEntryPress = useCallback(
@@ -257,7 +247,7 @@ export function FileExplorerPane({
       }
       handleOpenFile(entry);
     },
-    [handleOpenFile, handleToggleDirectory]
+    [handleOpenFile, handleToggleDirectory],
   );
 
   const handleCopyPath = useCallback(
@@ -266,10 +256,10 @@ export function FileExplorerPane({
         buildAbsoluteExplorerPath({
           workspaceRoot: normalizedWorkspaceRoot,
           entryPath: path,
-        })
+        }),
       );
     },
-    [normalizedWorkspaceRoot]
+    [normalizedWorkspaceRoot],
   );
 
   const startDownload = useDownloadStore((state) => state.startDownload);
@@ -288,13 +278,7 @@ export function FileExplorerPane({
         requestFileDownloadToken: (targetPath) => requestFileDownloadToken(targetPath),
       });
     },
-    [
-      daemonProfile,
-      requestFileDownloadToken,
-      serverId,
-      startDownload,
-      workspaceScopeId,
-    ]
+    [daemonProfile, requestFileDownloadToken, serverId, startDownload, workspaceScopeId],
   );
 
   const handleSortCycle = useCallback(() => {
@@ -320,7 +304,7 @@ export function FileExplorerPane({
           requestDirectoryListing(path, {
             recordHistory: false,
             setCurrentPath: false,
-          })
+          }),
         ),
       ]);
       return null;
@@ -342,7 +326,7 @@ export function FileExplorerPane({
           easing: Easing.linear,
         }),
         -1,
-        false
+        false,
       );
       return;
     }
@@ -366,7 +350,7 @@ export function FileExplorerPane({
         if (finished) {
           refreshIconRotation.value = 0;
         }
-      }
+      },
     );
   }, [isRefreshFetching, refreshIconRotation]);
 
@@ -394,10 +378,7 @@ export function FileExplorerPane({
     !directories.has(".") &&
     Boolean(isExplorerLoading && pendingRequest?.mode === "list" && pendingRequest?.path === ".");
   const showBackFromError = Boolean(error && selectedEntryPath);
-  const errorRecoveryPath = useMemo(
-    () => getErrorRecoveryPath(explorerState),
-    [explorerState]
-  );
+  const errorRecoveryPath = useMemo(() => getErrorRecoveryPath(explorerState), [explorerState]);
 
   const renderTreeRow = useCallback(
     ({ item }: ListRenderItemInfo<TreeRow>) => {
@@ -495,7 +476,7 @@ export function FileExplorerPane({
       selectedEntryPath,
       theme.colors,
       theme.spacing,
-    ]
+    ],
   );
 
   const handleBackFromError = useCallback(() => {
@@ -515,7 +496,7 @@ export function FileExplorerPane({
         treeScrollbarMetrics.onScroll(event);
       }
     },
-    [showDesktopWebScrollbar, treeScrollbarMetrics]
+    [showDesktopWebScrollbar, treeScrollbarMetrics],
   );
 
   const handleTreeListLayout = useCallback(
@@ -524,7 +505,7 @@ export function FileExplorerPane({
         treeScrollbarMetrics.onLayout(event);
       }
     },
-    [showDesktopWebScrollbar, treeScrollbarMetrics]
+    [showDesktopWebScrollbar, treeScrollbarMetrics],
   );
 
   if (!hasWorkspaceScope) {
@@ -536,9 +517,7 @@ export function FileExplorerPane({
   }
 
   return (
-    <View
-      style={styles.container}
-    >
+    <View style={styles.container}>
       {error ? (
         <View style={styles.centerState}>
           <Text style={styles.errorText}>{error}</Text>
@@ -632,16 +611,7 @@ export function FileExplorerPane({
 
 type EntryDisplayKind = "directory" | "image" | "text" | "other";
 
-const IMAGE_EXTENSIONS = new Set([
-  "png",
-  "jpg",
-  "jpeg",
-  "gif",
-  "bmp",
-  "svg",
-  "webp",
-  "ico",
-]);
+const IMAGE_EXTENSIONS = new Set(["png", "jpg", "jpeg", "gif", "bmp", "svg", "webp", "ico"]);
 
 const TEXT_EXTENSIONS = new Set([
   "txt",
@@ -684,7 +654,7 @@ const TEXT_EXTENSIONS = new Set([
 
 function renderEntryIcon(
   kind: EntryDisplayKind,
-  colors: { foreground: string; primary: string; directoryOpen?: boolean }
+  colors: { foreground: string; primary: string; directoryOpen?: boolean },
 ) {
   const color = colors.foreground;
   switch (kind) {
@@ -783,7 +753,7 @@ function buildTreeRows({
           sortOption,
           path: entry.path,
           depth: depth + 1,
-        })
+        }),
       );
     }
   }

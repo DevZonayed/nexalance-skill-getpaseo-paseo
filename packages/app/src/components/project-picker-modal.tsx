@@ -1,13 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  Modal,
-  Pressable,
-  ScrollView,
-  Text,
-  TextInput,
-  View,
-  Platform,
-} from "react-native";
+import { Modal, Pressable, ScrollView, Text, TextInput, View, Platform } from "react-native";
 import { Folder } from "lucide-react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { useQuery } from "@tanstack/react-query";
@@ -37,7 +29,7 @@ export function ProjectPickerModal() {
   const client = useHostRuntimeClient(serverId ?? "");
   const isConnected = useHostRuntimeIsConnected(serverId ?? "");
   const workspaces = useSessionStore((state) =>
-    serverId ? state.sessions[serverId]?.workspaces : undefined
+    serverId ? state.sessions[serverId]?.workspaces : undefined,
   );
 
   const inputRef = useRef<TextInput>(null);
@@ -49,7 +41,7 @@ export function ProjectPickerModal() {
   const recommendedPaths = useMemo(() => {
     if (!workspaces) return [];
     return Array.from(workspaces.values()).map(
-      (workspace) => workspace.projectRootPath || workspace.id
+      (workspace) => workspace.projectRootPath || workspace.id,
     );
   }, [workspaces]);
 
@@ -64,9 +56,7 @@ export function ProjectPickerModal() {
         limit: 30,
       });
       return (
-        result.entries?.flatMap((entry) =>
-          entry.kind === "directory" ? [entry.path] : []
-        ) ?? []
+        result.entries?.flatMap((entry) => (entry.kind === "directory" ? [entry.path] : [])) ?? []
       );
     },
     enabled: Boolean(client) && isConnected && open,
@@ -81,7 +71,7 @@ export function ProjectPickerModal() {
         serverPaths: directorySuggestionsQuery.data ?? [],
         query,
       }),
-    [query, directorySuggestionsQuery.data, recommendedPaths]
+    [query, directorySuggestionsQuery.data, recommendedPaths],
   );
 
   const handleClose = useCallback(() => {
@@ -103,7 +93,7 @@ export function ProjectPickerModal() {
         setIsSubmitting(false);
       }
     },
-    [client, openProject, serverId, setOpen]
+    [client, openProject, serverId, setOpen],
   );
 
   const handleSubmitCustom = useCallback(() => {
@@ -136,13 +126,7 @@ export function ProjectPickerModal() {
 
     function handler(event: KeyboardEvent) {
       const key = event.key;
-      if (
-        key !== "ArrowDown" &&
-        key !== "ArrowUp" &&
-        key !== "Enter" &&
-        key !== "Escape"
-      )
-        return;
+      if (key !== "ArrowDown" && key !== "ArrowUp" && key !== "Enter" && key !== "Escape") return;
 
       if (key === "Escape") {
         event.preventDefault();
@@ -180,12 +164,7 @@ export function ProjectPickerModal() {
   if (!serverId) return null;
 
   return (
-    <Modal
-      visible={open}
-      transparent
-      animationType="fade"
-      onRequestClose={handleClose}
-    >
+    <Modal visible={open} transparent animationType="fade" onRequestClose={handleClose}>
       <View style={styles.overlay}>
         <Pressable style={styles.backdrop} onPress={handleClose} />
 
@@ -198,9 +177,7 @@ export function ProjectPickerModal() {
             },
           ]}
         >
-          <View
-            style={[styles.header, { borderBottomColor: theme.colors.border }]}
-          >
+          <View style={[styles.header, { borderBottomColor: theme.colors.border }]}>
             <TextInput
               ref={inputRef}
               value={query}
@@ -225,21 +202,11 @@ export function ProjectPickerModal() {
             showsVerticalScrollIndicator={false}
           >
             {isSubmitting ? (
-              <Text
-                style={[
-                  styles.emptyText,
-                  { color: theme.colors.foregroundMuted },
-                ]}
-              >
+              <Text style={[styles.emptyText, { color: theme.colors.foregroundMuted }]}>
                 Opening project...
               </Text>
             ) : options.length === 0 && !query.trim() ? (
-              <Text
-                style={[
-                  styles.emptyText,
-                  { color: theme.colors.foregroundMuted },
-                ]}
-              >
+              <Text style={[styles.emptyText, { color: theme.colors.foregroundMuted }]}>
                 Start typing a path
               </Text>
             ) : (
@@ -266,10 +233,7 @@ export function ProjectPickerModal() {
                           />
                         </View>
                         <Text
-                          style={[
-                            styles.rowText,
-                            { color: theme.colors.foreground },
-                          ]}
+                          style={[styles.rowText, { color: theme.colors.foreground }]}
                           numberOfLines={1}
                         >
                           {shortenPath(path)}

@@ -7,13 +7,7 @@ import {
   useRef,
   useState,
 } from "react";
-import {
-  View,
-  Text,
-  Pressable,
-  Platform,
-  ActivityIndicator,
-} from "react-native";
+import { View, Text, Pressable, Platform, ActivityIndicator } from "react-native";
 import Markdown from "react-native-markdown-display";
 import { StyleSheet, UnistylesRuntime, useUnistyles } from "react-native-unistyles";
 import { useMutation } from "@tanstack/react-query";
@@ -94,521 +88,493 @@ export interface AgentStreamViewProps {
   onOpenWorkspaceFile?: (input: { filePath: string }) => void;
 }
 
-export const AgentStreamView = forwardRef<AgentStreamViewHandle, AgentStreamViewProps>(function AgentStreamView({
-  agentId,
-  serverId,
-  agent,
-  streamItems,
-  pendingPermissions,
-  routeBottomAnchorRequest = null,
-  isAuthoritativeHistoryReady = true,
-  onOpenWorkspaceFile,
-}, ref) {
-  const viewportRef = useRef<StreamViewportHandle | null>(null);
-  const { theme } = useUnistyles();
-  const router = useRouter();
-  const isMobile =
-    UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
-  const streamRenderStrategy = useMemo(
-    () =>
-      resolveStreamRenderStrategy({
-        platform: Platform.OS,
-        isMobileBreakpoint: isMobile,
-      }),
-    [isMobile]
-  );
-  const [isNearBottom, setIsNearBottom] = useState(true);
-  const [expandedInlineToolCallIds, setExpandedInlineToolCallIds] = useState<Set<string>>(new Set());
-  const openFileExplorer = usePanelStore((state) => state.openFileExplorer);
-  const setExplorerTabForCheckout = usePanelStore((state) => state.setExplorerTabForCheckout);
-
-  // Get serverId (fallback to agent's serverId if not provided)
-  const resolvedServerId = serverId ?? agent.serverId ?? "";
-
-  const client = useSessionStore(
-    (state) => state.sessions[resolvedServerId]?.client ?? null
-  );
-  const streamHead = useSessionStore((state) =>
-    state.sessions[resolvedServerId]?.agentStreamHead?.get(agentId)
-  );
-
-  const workspaceRoot = agent.cwd?.trim() || "";
-  const workspaceId = agent.projectPlacement?.checkout?.cwd?.trim() || workspaceRoot;
-  const { requestDirectoryListing } = useFileExplorerActions({
-    serverId: resolvedServerId,
-    workspaceId,
-    workspaceRoot,
-  });
-  // Keep entry/exit animations off on Android due to RN dispatchDraw crashes
-  // tracked in react-native-reanimated#8422.
-  const shouldDisableEntryExitAnimations = Platform.OS === "android";
-  const scrollIndicatorFadeIn = shouldDisableEntryExitAnimations
-    ? undefined
-    : FadeIn.duration(200);
-  const scrollIndicatorFadeOut = shouldDisableEntryExitAnimations
-    ? undefined
-    : FadeOut.duration(200);
-
-  useEffect(() => {
-    setIsNearBottom(true);
-    setExpandedInlineToolCallIds(new Set());
-  }, [agentId]);
-
-  const handleInlinePathPress = useCallback(
-    (target: InlinePathTarget) => {
-      if (!target.path) {
-        return;
-      }
-
-      const normalized = normalizeInlinePathTarget(target.path, agent.cwd);
-      if (!normalized) {
-        return;
-      }
-
-      if (normalized.file) {
-        if (onOpenWorkspaceFile) {
-          onOpenWorkspaceFile({ filePath: normalized.file });
-          return;
-        }
-
-        const route = prepareWorkspaceTab({
-          serverId: resolvedServerId,
-          workspaceId,
-          target: { kind: "file", path: normalized.file },
-        });
-        router.navigate(route as any);
-        return;
-      }
-
-      void requestDirectoryListing(normalized.directory, {
-        recordHistory: false,
-        setCurrentPath: false,
-      });
-
-      setExplorerTabForCheckout({
-        serverId: resolvedServerId,
-        cwd: agent.cwd,
-        isGit: agent.projectPlacement?.checkout?.isGit ?? true,
-        tab: "files",
-      });
-      openFileExplorer();
-    },
-    [
-      agent.cwd,
-      openFileExplorer,
-      requestDirectoryListing,
-      resolvedServerId,
-      router,
-      setExplorerTabForCheckout,
-      onOpenWorkspaceFile,
-      workspaceId,
-    ]
-  );
-
-  const baseRenderModel = useMemo(() => {
-    return buildAgentStreamRenderModel({
-      tail: streamItems,
-      head: streamHead ?? [],
-      platform: Platform.OS === "web" ? "web" : "native",
-      isMobileBreakpoint: isMobile,
-    });
-  }, [isMobile, streamHead, streamItems]);
-  useImperativeHandle(ref, () => ({
-    scrollToBottom(reason = "jump-to-bottom") {
-      viewportRef.current?.scrollToBottom(reason);
-    },
-    prepareForViewportChange() {
-      viewportRef.current?.prepareForViewportChange();
-    },
-  }), []);
-
-  function scrollToBottom() {
-    viewportRef.current?.scrollToBottom("jump-to-bottom");
-  }
-
-  const tightGap = theme.spacing[1]; // 4px
-  const looseGap = theme.spacing[4]; // 16px
-
-  const getGapBetween = useCallback(
-    (item: StreamItem | null, belowItem: StreamItem | null) => {
-      if (!item || !belowItem) {
-        return 0;
-      }
-
-      if (isUserMessageItem(item) && isUserMessageItem(belowItem)) {
-        return tightGap;
-      }
-      if (isToolSequenceItem(item) && isToolSequenceItem(belowItem)) {
-        return tightGap;
-      }
-      if (item.kind === "user_message" && isToolSequenceItem(belowItem)) {
-        return looseGap;
-      }
-      if (
-        (item.kind === "user_message" || item.kind === "assistant_message") &&
-        isToolSequenceItem(belowItem)
-      ) {
-        return tightGap;
-      }
-      if (item.kind === "todo_list" && isToolSequenceItem(belowItem)) {
-        return tightGap;
-      }
-      if (isToolSequenceItem(item) && belowItem.kind === "assistant_message") {
-        return tightGap;
-      }
-      return looseGap;
-    },
-    [looseGap, tightGap]
-  );
-
-  // ---------------------------------------------------------------------------
-  // DEBUG: track when render callback deps change
-  // ---------------------------------------------------------------------------
-  const debugStreamPrevRef = useRef<Record<string, unknown>>({});
-  useEffect(() => {
-    const prev = debugStreamPrevRef.current;
-    const curr: Record<string, unknown> = {
-      // handleInlinePathPress deps (line 196-205)
-      "hip.agent.cwd": agent.cwd,
-      "hip.openFileExplorer": openFileExplorer,
-      "hip.requestDirectoryListing": requestDirectoryListing,
-      "hip.resolvedServerId": resolvedServerId,
-      "hip.router": router,
-      "hip.setExplorerTabForCheckout": setExplorerTabForCheckout,
-      "hip.onOpenWorkspaceFile": onOpenWorkspaceFile,
-      "hip.workspaceId": workspaceId,
-      // top-level deps
-      handleInlinePathPress,
-      "agent.status": agent.status,
-      streamRenderStrategy,
-      getGapBetween,
+export const AgentStreamView = forwardRef<AgentStreamViewHandle, AgentStreamViewProps>(
+  function AgentStreamView(
+    {
+      agentId,
+      serverId,
+      agent,
       streamItems,
-      "streamItems.length": streamItems.length,
-      streamHead,
-      baseRenderModel,
-    };
-    const changed: string[] = [];
-    for (const key of Object.keys(curr)) {
-      if (!Object.is(prev[key], curr[key])) {
-        changed.push(key);
-      }
-    }
-    if (changed.length > 0 && Object.keys(prev).length > 0) {
-      console.log("[AgentStreamView] deps changed:", changed.join(", "));
-    }
-    debugStreamPrevRef.current = curr;
-  });
+      pendingPermissions,
+      routeBottomAnchorRequest = null,
+      isAuthoritativeHistoryReady = true,
+      onOpenWorkspaceFile,
+    },
+    ref,
+  ) {
+    const viewportRef = useRef<StreamViewportHandle | null>(null);
+    const { theme } = useUnistyles();
+    const router = useRouter();
+    const isMobile = UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
+    const streamRenderStrategy = useMemo(
+      () =>
+        resolveStreamRenderStrategy({
+          platform: Platform.OS,
+          isMobileBreakpoint: isMobile,
+        }),
+      [isMobile],
+    );
+    const [isNearBottom, setIsNearBottom] = useState(true);
+    const [expandedInlineToolCallIds, setExpandedInlineToolCallIds] = useState<Set<string>>(
+      new Set(),
+    );
+    const openFileExplorer = usePanelStore((state) => state.openFileExplorer);
+    const setExplorerTabForCheckout = usePanelStore((state) => state.setExplorerTabForCheckout);
 
-  const renderStreamItemContent = useCallback(
-    (
-      item: StreamItem,
-      index: number,
-      items: StreamItem[],
-      seamAboveItem: StreamItem | null = null
-    ) => {
-      const handleInlineDetailsExpandedChange = (expanded: boolean) => {
-        if (
-          !streamRenderStrategy.shouldDisableParentScrollOnInlineDetailsExpansion()
-        ) {
+    // Get serverId (fallback to agent's serverId if not provided)
+    const resolvedServerId = serverId ?? agent.serverId ?? "";
+
+    const client = useSessionStore((state) => state.sessions[resolvedServerId]?.client ?? null);
+    const streamHead = useSessionStore((state) =>
+      state.sessions[resolvedServerId]?.agentStreamHead?.get(agentId),
+    );
+
+    const workspaceRoot = agent.cwd?.trim() || "";
+    const workspaceId = agent.projectPlacement?.checkout?.cwd?.trim() || workspaceRoot;
+    const { requestDirectoryListing } = useFileExplorerActions({
+      serverId: resolvedServerId,
+      workspaceId,
+      workspaceRoot,
+    });
+    // Keep entry/exit animations off on Android due to RN dispatchDraw crashes
+    // tracked in react-native-reanimated#8422.
+    const shouldDisableEntryExitAnimations = Platform.OS === "android";
+    const scrollIndicatorFadeIn = shouldDisableEntryExitAnimations
+      ? undefined
+      : FadeIn.duration(200);
+    const scrollIndicatorFadeOut = shouldDisableEntryExitAnimations
+      ? undefined
+      : FadeOut.duration(200);
+
+    useEffect(() => {
+      setIsNearBottom(true);
+      setExpandedInlineToolCallIds(new Set());
+    }, [agentId]);
+
+    const handleInlinePathPress = useCallback(
+      (target: InlinePathTarget) => {
+        if (!target.path) {
           return;
         }
-        setExpandedInlineToolCallIds((previous) => {
-          const next = new Set(previous);
-          if (expanded) {
-            next.add(item.id);
-          } else {
-            next.delete(item.id);
-          }
-          return next;
-        });
-      };
 
-      switch (item.kind) {
-        case "user_message": {
-          const aboveItem =
-            getStreamNeighborItem({
+        const normalized = normalizeInlinePathTarget(target.path, agent.cwd);
+        if (!normalized) {
+          return;
+        }
+
+        if (normalized.file) {
+          if (onOpenWorkspaceFile) {
+            onOpenWorkspaceFile({ filePath: normalized.file });
+            return;
+          }
+
+          const route = prepareWorkspaceTab({
+            serverId: resolvedServerId,
+            workspaceId,
+            target: { kind: "file", path: normalized.file },
+          });
+          router.navigate(route as any);
+          return;
+        }
+
+        void requestDirectoryListing(normalized.directory, {
+          recordHistory: false,
+          setCurrentPath: false,
+        });
+
+        setExplorerTabForCheckout({
+          serverId: resolvedServerId,
+          cwd: agent.cwd,
+          isGit: agent.projectPlacement?.checkout?.isGit ?? true,
+          tab: "files",
+        });
+        openFileExplorer();
+      },
+      [
+        agent.cwd,
+        openFileExplorer,
+        requestDirectoryListing,
+        resolvedServerId,
+        router,
+        setExplorerTabForCheckout,
+        onOpenWorkspaceFile,
+        workspaceId,
+      ],
+    );
+
+    const baseRenderModel = useMemo(() => {
+      return buildAgentStreamRenderModel({
+        tail: streamItems,
+        head: streamHead ?? [],
+        platform: Platform.OS === "web" ? "web" : "native",
+        isMobileBreakpoint: isMobile,
+      });
+    }, [isMobile, streamHead, streamItems]);
+    useImperativeHandle(
+      ref,
+      () => ({
+        scrollToBottom(reason = "jump-to-bottom") {
+          viewportRef.current?.scrollToBottom(reason);
+        },
+        prepareForViewportChange() {
+          viewportRef.current?.prepareForViewportChange();
+        },
+      }),
+      [],
+    );
+
+    function scrollToBottom() {
+      viewportRef.current?.scrollToBottom("jump-to-bottom");
+    }
+
+    const tightGap = theme.spacing[1]; // 4px
+    const looseGap = theme.spacing[4]; // 16px
+
+    const getGapBetween = useCallback(
+      (item: StreamItem | null, belowItem: StreamItem | null) => {
+        if (!item || !belowItem) {
+          return 0;
+        }
+
+        if (isUserMessageItem(item) && isUserMessageItem(belowItem)) {
+          return tightGap;
+        }
+        if (isToolSequenceItem(item) && isToolSequenceItem(belowItem)) {
+          return tightGap;
+        }
+        if (item.kind === "user_message" && isToolSequenceItem(belowItem)) {
+          return looseGap;
+        }
+        if (
+          (item.kind === "user_message" || item.kind === "assistant_message") &&
+          isToolSequenceItem(belowItem)
+        ) {
+          return tightGap;
+        }
+        if (item.kind === "todo_list" && isToolSequenceItem(belowItem)) {
+          return tightGap;
+        }
+        if (isToolSequenceItem(item) && belowItem.kind === "assistant_message") {
+          return tightGap;
+        }
+        return looseGap;
+      },
+      [looseGap, tightGap],
+    );
+
+    // ---------------------------------------------------------------------------
+    // DEBUG: track when render callback deps change
+    // ---------------------------------------------------------------------------
+    const debugStreamPrevRef = useRef<Record<string, unknown>>({});
+    useEffect(() => {
+      const prev = debugStreamPrevRef.current;
+      const curr: Record<string, unknown> = {
+        // handleInlinePathPress deps (line 196-205)
+        "hip.agent.cwd": agent.cwd,
+        "hip.openFileExplorer": openFileExplorer,
+        "hip.requestDirectoryListing": requestDirectoryListing,
+        "hip.resolvedServerId": resolvedServerId,
+        "hip.router": router,
+        "hip.setExplorerTabForCheckout": setExplorerTabForCheckout,
+        "hip.onOpenWorkspaceFile": onOpenWorkspaceFile,
+        "hip.workspaceId": workspaceId,
+        // top-level deps
+        handleInlinePathPress,
+        "agent.status": agent.status,
+        streamRenderStrategy,
+        getGapBetween,
+        streamItems,
+        "streamItems.length": streamItems.length,
+        streamHead,
+        baseRenderModel,
+      };
+      const changed: string[] = [];
+      for (const key of Object.keys(curr)) {
+        if (!Object.is(prev[key], curr[key])) {
+          changed.push(key);
+        }
+      }
+      if (changed.length > 0 && Object.keys(prev).length > 0) {
+        console.log("[AgentStreamView] deps changed:", changed.join(", "));
+      }
+      debugStreamPrevRef.current = curr;
+    });
+
+    const renderStreamItemContent = useCallback(
+      (
+        item: StreamItem,
+        index: number,
+        items: StreamItem[],
+        seamAboveItem: StreamItem | null = null,
+      ) => {
+        const handleInlineDetailsExpandedChange = (expanded: boolean) => {
+          if (!streamRenderStrategy.shouldDisableParentScrollOnInlineDetailsExpansion()) {
+            return;
+          }
+          setExpandedInlineToolCallIds((previous) => {
+            const next = new Set(previous);
+            if (expanded) {
+              next.add(item.id);
+            } else {
+              next.delete(item.id);
+            }
+            return next;
+          });
+        };
+
+        switch (item.kind) {
+          case "user_message": {
+            const aboveItem =
+              getStreamNeighborItem({
+                strategy: streamRenderStrategy,
+                items,
+                index,
+                relation: "above",
+              }) ??
+              seamAboveItem ??
+              undefined;
+            const belowItem = getStreamNeighborItem({
               strategy: streamRenderStrategy,
               items,
               index,
-              relation: "above",
-            }) ?? seamAboveItem ?? undefined;
-          const belowItem = getStreamNeighborItem({
-            strategy: streamRenderStrategy,
-            items,
-            index,
-            relation: "below",
-          });
-          const isFirstInGroup = aboveItem?.kind !== "user_message";
-          const isLastInGroup = belowItem?.kind !== "user_message";
-          return (
-            <UserMessage
-              message={item.text}
-              images={item.images}
-              timestamp={item.timestamp.getTime()}
-              isFirstInGroup={isFirstInGroup}
-              isLastInGroup={isLastInGroup}
-            />
-          );
-        }
+              relation: "below",
+            });
+            const isFirstInGroup = aboveItem?.kind !== "user_message";
+            const isLastInGroup = belowItem?.kind !== "user_message";
+            return (
+              <UserMessage
+                message={item.text}
+                images={item.images}
+                timestamp={item.timestamp.getTime()}
+                isFirstInGroup={isFirstInGroup}
+                isLastInGroup={isLastInGroup}
+              />
+            );
+          }
 
-        case "assistant_message":
-          return (
-            <AssistantMessage
-              message={item.text}
-              timestamp={item.timestamp.getTime()}
-              onInlinePathPress={handleInlinePathPress}
-              workspaceRoot={workspaceRoot}
-            />
-          );
+          case "assistant_message":
+            return (
+              <AssistantMessage
+                message={item.text}
+                timestamp={item.timestamp.getTime()}
+                onInlinePathPress={handleInlinePathPress}
+                workspaceRoot={workspaceRoot}
+              />
+            );
 
-        case "thought": {
-          const nextItem = getStreamNeighborItem({
-            strategy: streamRenderStrategy,
-            items,
-            index,
-            relation: "below",
-          });
-          const isLastInSequence =
-            nextItem?.kind !== "tool_call" && nextItem?.kind !== "thought";
-          return (
-            <ToolCall
-              toolName="thinking"
-              args={item.text}
-              status={item.status === "ready" ? "completed" : "executing"}
-              isLastInSequence={isLastInSequence}
-              onInlineDetailsExpandedChange={handleInlineDetailsExpandedChange}
-            />
-          );
-        }
-
-        case "tool_call": {
-          const { payload } = item;
-          const nextItem = getStreamNeighborItem({
-            strategy: streamRenderStrategy,
-            items,
-            index,
-            relation: "below",
-          });
-          const isLastInSequence =
-            nextItem?.kind !== "tool_call" && nextItem?.kind !== "thought";
-
-          if (payload.source === "agent") {
-            const data = payload.data;
+          case "thought": {
+            const nextItem = getStreamNeighborItem({
+              strategy: streamRenderStrategy,
+              items,
+              index,
+              relation: "below",
+            });
+            const isLastInSequence = nextItem?.kind !== "tool_call" && nextItem?.kind !== "thought";
             return (
               <ToolCall
-                toolName={data.name}
-                error={data.error}
-                status={data.status}
-                detail={data.detail}
-                cwd={agent.cwd}
-                metadata={data.metadata}
+                toolName="thinking"
+                args={item.text}
+                status={item.status === "ready" ? "completed" : "executing"}
                 isLastInSequence={isLastInSequence}
                 onInlineDetailsExpandedChange={handleInlineDetailsExpandedChange}
               />
             );
           }
 
-          const data = payload.data;
-          return (
-            <ToolCall
-              toolName={data.toolName}
-              args={data.arguments}
-              result={data.result}
-              status={data.status}
-              isLastInSequence={isLastInSequence}
-              onInlineDetailsExpandedChange={handleInlineDetailsExpandedChange}
-            />
-          );
+          case "tool_call": {
+            const { payload } = item;
+            const nextItem = getStreamNeighborItem({
+              strategy: streamRenderStrategy,
+              items,
+              index,
+              relation: "below",
+            });
+            const isLastInSequence = nextItem?.kind !== "tool_call" && nextItem?.kind !== "thought";
+
+            if (payload.source === "agent") {
+              const data = payload.data;
+              return (
+                <ToolCall
+                  toolName={data.name}
+                  error={data.error}
+                  status={data.status}
+                  detail={data.detail}
+                  cwd={agent.cwd}
+                  metadata={data.metadata}
+                  isLastInSequence={isLastInSequence}
+                  onInlineDetailsExpandedChange={handleInlineDetailsExpandedChange}
+                />
+              );
+            }
+
+            const data = payload.data;
+            return (
+              <ToolCall
+                toolName={data.toolName}
+                args={data.arguments}
+                result={data.result}
+                status={data.status}
+                isLastInSequence={isLastInSequence}
+                onInlineDetailsExpandedChange={handleInlineDetailsExpandedChange}
+              />
+            );
+          }
+
+          case "activity_log":
+            return (
+              <ActivityLog
+                type={item.activityType}
+                message={item.message}
+                timestamp={item.timestamp.getTime()}
+                metadata={item.metadata}
+              />
+            );
+
+          case "todo_list":
+            return <TodoListCard items={item.items} />;
+
+          case "compaction":
+            return <CompactionMarker status={item.status} preTokens={item.preTokens} />;
+
+          default:
+            return null;
+        }
+      },
+      [handleInlinePathPress, agent.cwd, streamRenderStrategy],
+    );
+
+    const renderStreamItem = useCallback(
+      (
+        item: StreamItem,
+        index: number,
+        items: StreamItem[],
+        seamAboveItem: StreamItem | null = null,
+      ) => {
+        const content = renderStreamItemContent(item, index, items, seamAboveItem);
+        if (!content) {
+          return null;
         }
 
-        case "activity_log":
-          return (
-            <ActivityLog
-              type={item.activityType}
-              message={item.message}
-              timestamp={item.timestamp.getTime()}
-              metadata={item.metadata}
-            />
-          );
-
-        case "todo_list":
-          return (
-            <TodoListCard
-              items={item.items}
-            />
-          );
-
-        case "compaction":
-          return (
-            <CompactionMarker
-              status={item.status}
-              preTokens={item.preTokens}
-            />
-          );
-
-        default:
-          return null;
-      }
-    },
-    [handleInlinePathPress, agent.cwd, streamRenderStrategy]
-  );
-
-  const renderStreamItem = useCallback(
-    (
-      item: StreamItem,
-      index: number,
-      items: StreamItem[],
-      seamAboveItem: StreamItem | null = null
-    ) => {
-      const content = renderStreamItemContent(item, index, items, seamAboveItem);
-      if (!content) {
-        return null;
-      }
-
-      const nextItem = getStreamNeighborItem({
-        strategy: streamRenderStrategy,
-        items,
-        index,
-        relation: "below",
-      });
-      const gapBelow = getGapBetween(item, nextItem ?? null);
-      const isEndOfAssistantTurn =
-        item.kind === "assistant_message" &&
-        (nextItem?.kind === "user_message" ||
-          (nextItem === undefined && agent.status !== "running"));
-      const getTurnContent = () =>
-        collectAssistantTurnContentForStreamRenderStrategy({
+        const nextItem = getStreamNeighborItem({
           strategy: streamRenderStrategy,
           items,
-          startIndex: index,
+          index,
+          relation: "below",
         });
+        const gapBelow = getGapBetween(item, nextItem ?? null);
+        const isEndOfAssistantTurn =
+          item.kind === "assistant_message" &&
+          (nextItem?.kind === "user_message" ||
+            (nextItem === undefined && agent.status !== "running"));
+        const getTurnContent = () =>
+          collectAssistantTurnContentForStreamRenderStrategy({
+            strategy: streamRenderStrategy,
+            items,
+            startIndex: index,
+          });
 
-      return (
-        <View style={[stylesheet.streamItemWrapper, { marginBottom: gapBelow }]}>
-          {content}
-          {isEndOfAssistantTurn ? (
-            <TurnCopyButton getContent={getTurnContent} />
-          ) : null}
-        </View>
-      );
-    },
-    [
-      getGapBetween,
-      renderStreamItemContent,
-      agent.status,
-      streamRenderStrategy,
-    ]
-  );
+        return (
+          <View style={[stylesheet.streamItemWrapper, { marginBottom: gapBelow }]}>
+            {content}
+            {isEndOfAssistantTurn ? <TurnCopyButton getContent={getTurnContent} /> : null}
+          </View>
+        );
+      },
+      [getGapBetween, renderStreamItemContent, agent.status, streamRenderStrategy],
+    );
 
-  const pendingPermissionItems = useMemo(
-    () =>
-      Array.from(pendingPermissions.values()).filter(
-        (perm) => perm.agentId === agentId
-      ),
-    [pendingPermissions, agentId]
-  );
+    const pendingPermissionItems = useMemo(
+      () => Array.from(pendingPermissions.values()).filter((perm) => perm.agentId === agentId),
+      [pendingPermissions, agentId],
+    );
 
-  const showWorkingIndicator = agent.status === "running";
-  const renderModel = useMemo<AgentStreamRenderModel>(() => {
-    const pendingPermissionsNode =
-      pendingPermissionItems.length > 0 ? (
-        <View style={stylesheet.permissionsContainer}>
-          {pendingPermissionItems.map((permission) => (
-            <PermissionRequestCard
-              key={permission.key}
-              permission={permission}
-              client={client}
-            />
-          ))}
+    const showWorkingIndicator = agent.status === "running";
+    const renderModel = useMemo<AgentStreamRenderModel>(() => {
+      const pendingPermissionsNode =
+        pendingPermissionItems.length > 0 ? (
+          <View style={stylesheet.permissionsContainer}>
+            {pendingPermissionItems.map((permission) => (
+              <PermissionRequestCard key={permission.key} permission={permission} client={client} />
+            ))}
+          </View>
+        ) : null;
+      const workingIndicatorNode = showWorkingIndicator ? (
+        <View style={stylesheet.bottomBarWrapper}>
+          <WorkingIndicator />
         </View>
       ) : null;
-    const workingIndicatorNode = showWorkingIndicator ? (
-      <View style={stylesheet.bottomBarWrapper}>
-        <WorkingIndicator />
-      </View>
-    ) : null;
 
-    return {
-      ...baseRenderModel,
-      boundary: {
-        ...baseRenderModel.boundary,
-        historyToHeadGap: getGapBetween(
-          baseRenderModel.history.at(-1) ?? null,
-          baseRenderModel.segments.liveHead[0] ?? null
-        ),
-      },
-      auxiliary: {
-        pendingPermissions: pendingPermissionsNode,
-        workingIndicator: workingIndicatorNode,
-      },
-    };
-  }, [
-    baseRenderModel,
-    client,
-    getGapBetween,
-    pendingPermissionItems,
-    showWorkingIndicator,
-  ]);
+      return {
+        ...baseRenderModel,
+        boundary: {
+          ...baseRenderModel.boundary,
+          historyToHeadGap: getGapBetween(
+            baseRenderModel.history.at(-1) ?? null,
+            baseRenderModel.segments.liveHead[0] ?? null,
+          ),
+        },
+        auxiliary: {
+          pendingPermissions: pendingPermissionsNode,
+          workingIndicator: workingIndicatorNode,
+        },
+      };
+    }, [baseRenderModel, client, getGapBetween, pendingPermissionItems, showWorkingIndicator]);
 
-  const listEmptyComponent = useMemo(() => {
-    if (
-      renderModel.boundary.hasVirtualizedHistory ||
-      renderModel.boundary.hasMountedHistory ||
-      renderModel.boundary.hasLiveHead ||
-      renderModel.auxiliary.pendingPermissions ||
-      renderModel.auxiliary.workingIndicator
-    ) {
-      return null;
-    }
-
-    return (
-      <View style={[stylesheet.emptyState, stylesheet.contentWrapper]}>
-        <Text style={stylesheet.emptyStateText}>
-          Start chatting with this agent...
-        </Text>
-      </View>
-    );
-  }, [renderModel]);
-
-  const historyItems = renderModel.history;
-  const liveHeadItems = renderModel.segments.liveHead;
-  const { boundary, auxiliary } = renderModel;
-  const lastHistoryItem = historyItems.at(-1) ?? null;
-
-  const historyIndexById = useMemo(() => {
-    const indexById = new Map<string, number>();
-    historyItems.forEach((item, index) => {
-      indexById.set(item.id, index);
-    });
-    return indexById;
-  }, [historyItems]);
-
-  const renderHistoryRow = useCallback(
-    (item: StreamItem) => {
-      const historyIndex = historyIndexById.get(item.id);
-      if (historyIndex === undefined) {
+    const listEmptyComponent = useMemo(() => {
+      if (
+        renderModel.boundary.hasVirtualizedHistory ||
+        renderModel.boundary.hasMountedHistory ||
+        renderModel.boundary.hasLiveHead ||
+        renderModel.auxiliary.pendingPermissions ||
+        renderModel.auxiliary.workingIndicator
+      ) {
         return null;
       }
-      return renderStreamItem(item, historyIndex, historyItems);
-    },
-    [historyIndexById, historyItems, renderStreamItem]
-  );
 
-  const renderHistoryVirtualizedRow = useCallback<StreamSegmentRenderers["renderHistoryVirtualizedRow"]>(
-    (item) => renderHistoryRow(item),
-    [renderHistoryRow]
-  );
-  const renderHistoryMountedRow = useCallback<StreamSegmentRenderers["renderHistoryMountedRow"]>(
-    (item) => renderHistoryRow(item),
-    [renderHistoryRow]
-  );
-  const renderLiveHeadRow = useCallback<StreamSegmentRenderers["renderLiveHeadRow"]>(
-    (item, index, items) =>
-      renderStreamItem(item, index, items, index === 0 ? lastHistoryItem : null),
-    [lastHistoryItem, renderStreamItem]
-  );
-  const renderLiveAuxiliary = useCallback<StreamSegmentRenderers["renderLiveAuxiliary"]>(
-    () => {
+      return (
+        <View style={[stylesheet.emptyState, stylesheet.contentWrapper]}>
+          <Text style={stylesheet.emptyStateText}>Start chatting with this agent...</Text>
+        </View>
+      );
+    }, [renderModel]);
+
+    const historyItems = renderModel.history;
+    const liveHeadItems = renderModel.segments.liveHead;
+    const { boundary, auxiliary } = renderModel;
+    const lastHistoryItem = historyItems.at(-1) ?? null;
+
+    const historyIndexById = useMemo(() => {
+      const indexById = new Map<string, number>();
+      historyItems.forEach((item, index) => {
+        indexById.set(item.id, index);
+      });
+      return indexById;
+    }, [historyItems]);
+
+    const renderHistoryRow = useCallback(
+      (item: StreamItem) => {
+        const historyIndex = historyIndexById.get(item.id);
+        if (historyIndex === undefined) {
+          return null;
+        }
+        return renderStreamItem(item, historyIndex, historyItems);
+      },
+      [historyIndexById, historyItems, renderStreamItem],
+    );
+
+    const renderHistoryVirtualizedRow = useCallback<
+      StreamSegmentRenderers["renderHistoryVirtualizedRow"]
+    >((item) => renderHistoryRow(item), [renderHistoryRow]);
+    const renderHistoryMountedRow = useCallback<StreamSegmentRenderers["renderHistoryMountedRow"]>(
+      (item) => renderHistoryRow(item),
+      [renderHistoryRow],
+    );
+    const renderLiveHeadRow = useCallback<StreamSegmentRenderers["renderLiveHeadRow"]>(
+      (item, index, items) =>
+        renderStreamItem(item, index, items, index === 0 ? lastHistoryItem : null),
+      [lastHistoryItem, renderStreamItem],
+    );
+    const renderLiveAuxiliary = useCallback<StreamSegmentRenderers["renderLiveAuxiliary"]>(() => {
       if (!auxiliary.pendingPermissions && !auxiliary.workingIndicator) {
         return null;
       }
@@ -625,80 +591,71 @@ export const AgentStreamView = forwardRef<AgentStreamViewHandle, AgentStreamView
           </View>
         </View>
       );
-    },
-    [
-      auxiliary.pendingPermissions,
-      auxiliary.workingIndicator,
-      boundary.hasLiveHead,
-      tightGap,
-    ]
-  );
+    }, [auxiliary.pendingPermissions, auxiliary.workingIndicator, boundary.hasLiveHead, tightGap]);
 
-  const renderers = useMemo<StreamSegmentRenderers>(
-    () => ({
-      renderHistoryVirtualizedRow,
-      renderHistoryMountedRow,
-      renderLiveHeadRow,
-      renderLiveAuxiliary,
-    }),
-    [
-      renderHistoryVirtualizedRow,
-      renderHistoryMountedRow,
-      renderLiveHeadRow,
-      renderLiveAuxiliary,
-    ]
-  );
+    const renderers = useMemo<StreamSegmentRenderers>(
+      () => ({
+        renderHistoryVirtualizedRow,
+        renderHistoryMountedRow,
+        renderLiveHeadRow,
+        renderLiveAuxiliary,
+      }),
+      [
+        renderHistoryVirtualizedRow,
+        renderHistoryMountedRow,
+        renderLiveHeadRow,
+        renderLiveAuxiliary,
+      ],
+    );
 
-  const streamScrollEnabled =
-    !streamRenderStrategy.shouldDisableParentScrollOnInlineDetailsExpansion() ||
-    expandedInlineToolCallIds.size === 0;
+    const streamScrollEnabled =
+      !streamRenderStrategy.shouldDisableParentScrollOnInlineDetailsExpansion() ||
+      expandedInlineToolCallIds.size === 0;
 
-  return (
-    <ToolCallSheetProvider>
-      <View style={stylesheet.container}>
-        <MessageOuterSpacingProvider disableOuterSpacing>
-          {streamRenderStrategy.render({
-            agentId,
-            segments: renderModel.segments,
-            boundary,
-            renderers,
-            listEmptyComponent,
-            viewportRef,
-            routeBottomAnchorRequest,
-            isAuthoritativeHistoryReady,
-            onNearBottomChange: setIsNearBottom,
-            scrollEnabled: streamScrollEnabled,
-            listStyle: stylesheet.list,
-            baseListContentContainerStyle: stylesheet.listContentContainer,
-            forwardListContentContainerStyle: stylesheet.forwardListContentContainer,
-          })}
-        </MessageOuterSpacingProvider>
-        {!isNearBottom && (
-          <Animated.View
-            style={stylesheet.scrollToBottomContainer}
-            entering={scrollIndicatorFadeIn}
-            exiting={scrollIndicatorFadeOut}
-          >
-            <View style={stylesheet.scrollToBottomInner}>
-              <Pressable
-                style={stylesheet.scrollToBottomButton}
-                onPress={scrollToBottom}
-                accessibilityRole="button"
-                accessibilityLabel="Scroll to bottom"
-                testID="scroll-to-bottom-button"
-              >
-                <ChevronDown
-                  size={24}
-                  color={stylesheet.scrollToBottomIcon.color}
-                />
-              </Pressable>
-            </View>
-          </Animated.View>
-        )}
-      </View>
-    </ToolCallSheetProvider>
-  );
-});
+    return (
+      <ToolCallSheetProvider>
+        <View style={stylesheet.container}>
+          <MessageOuterSpacingProvider disableOuterSpacing>
+            {streamRenderStrategy.render({
+              agentId,
+              segments: renderModel.segments,
+              boundary,
+              renderers,
+              listEmptyComponent,
+              viewportRef,
+              routeBottomAnchorRequest,
+              isAuthoritativeHistoryReady,
+              onNearBottomChange: setIsNearBottom,
+              scrollEnabled: streamScrollEnabled,
+              listStyle: stylesheet.list,
+              baseListContentContainerStyle: stylesheet.listContentContainer,
+              forwardListContentContainerStyle: stylesheet.forwardListContentContainer,
+            })}
+          </MessageOuterSpacingProvider>
+          {!isNearBottom && (
+            <Animated.View
+              style={stylesheet.scrollToBottomContainer}
+              entering={scrollIndicatorFadeIn}
+              exiting={scrollIndicatorFadeOut}
+            >
+              <View style={stylesheet.scrollToBottomInner}>
+                <Pressable
+                  style={stylesheet.scrollToBottomButton}
+                  onPress={scrollToBottom}
+                  accessibilityRole="button"
+                  accessibilityLabel="Scroll to bottom"
+                  testID="scroll-to-bottom-button"
+                >
+                  <ChevronDown size={24} color={stylesheet.scrollToBottomIcon.color} />
+                </Pressable>
+              </View>
+            </Animated.View>
+          )}
+        </View>
+      </ToolCallSheetProvider>
+    );
+  },
+);
 
 function WorkingIndicator() {
   const progress = useSharedValue(0);
@@ -711,7 +668,7 @@ function WorkingIndicator() {
         easing: Easing.linear,
       }),
       -1,
-      false
+      false,
     );
 
     return () => {
@@ -722,10 +679,7 @@ function WorkingIndicator() {
 
   const translateDistance = -2;
   const dotOneStyle = useAnimatedStyle(() => {
-    const strength = getWorkingIndicatorDotStrength(
-      progress.value,
-      WORKING_INDICATOR_OFFSETS[0]
-    );
+    const strength = getWorkingIndicatorDotStrength(progress.value, WORKING_INDICATOR_OFFSETS[0]);
     return {
       opacity: 0.3 + strength * 0.7,
       transform: [{ translateY: strength * translateDistance }],
@@ -733,10 +687,7 @@ function WorkingIndicator() {
   });
 
   const dotTwoStyle = useAnimatedStyle(() => {
-    const strength = getWorkingIndicatorDotStrength(
-      progress.value,
-      WORKING_INDICATOR_OFFSETS[1]
-    );
+    const strength = getWorkingIndicatorDotStrength(progress.value, WORKING_INDICATOR_OFFSETS[1]);
     return {
       opacity: 0.3 + strength * 0.7,
       transform: [{ translateY: strength * translateDistance }],
@@ -744,10 +695,7 @@ function WorkingIndicator() {
   });
 
   const dotThreeStyle = useAnimatedStyle(() => {
-    const strength = getWorkingIndicatorDotStrength(
-      progress.value,
-      WORKING_INDICATOR_OFFSETS[2]
-    );
+    const strength = getWorkingIndicatorDotStrength(progress.value, WORKING_INDICATOR_OFFSETS[2]);
     return {
       opacity: 0.3 + strength * 0.7,
       transform: [{ translateY: strength * translateDistance }],
@@ -774,14 +722,11 @@ function PermissionRequestCard({
   client: DaemonClient | null;
 }) {
   const { theme } = useUnistyles();
-  const isMobile =
-    UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
+  const isMobile = UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
 
   const { request } = permission;
   const isPlanRequest = request.kind === "plan";
-  const title = isPlanRequest
-    ? "Plan"
-    : request.title ?? request.name ?? "Permission Required";
+  const title = isPlanRequest ? "Plan" : (request.title ?? request.name ?? "Permission Required");
   const description = request.description ?? "";
 
   const planMarkdown = useMemo(() => {
@@ -789,9 +734,7 @@ function PermissionRequestCard({
       return undefined;
     }
     const planFromMetadata =
-      typeof request.metadata?.planText === "string"
-        ? request.metadata.planText
-        : undefined;
+      typeof request.metadata?.planText === "string" ? request.metadata.planText : undefined;
     if (planFromMetadata) {
       return planFromMetadata;
     }
@@ -811,7 +754,7 @@ function PermissionRequestCard({
         _children: React.ReactNode[],
         _parent: any,
         styles: any,
-        inheritedStyles: any = {}
+        inheritedStyles: any = {},
       ) => (
         <Text key={node.key} style={[inheritedStyles, styles.text]}>
           {node.content}
@@ -822,12 +765,9 @@ function PermissionRequestCard({
         children: React.ReactNode[],
         _parent: any,
         styles: any,
-        inheritedStyles: any = {}
+        inheritedStyles: any = {},
       ) => (
-        <Text
-          key={node.key}
-          style={[inheritedStyles, styles.textgroup]}
-        >
+        <Text key={node.key} style={[inheritedStyles, styles.textgroup]}>
           {children}
         </Text>
       ),
@@ -836,12 +776,9 @@ function PermissionRequestCard({
         _children: React.ReactNode[],
         _parent: any,
         styles: any,
-        inheritedStyles: any = {}
+        inheritedStyles: any = {},
       ) => (
-        <Text
-          key={node.key}
-          style={[inheritedStyles, styles.code_block]}
-        >
+        <Text key={node.key} style={[inheritedStyles, styles.code_block]}>
           {node.content}
         </Text>
       ),
@@ -850,7 +787,7 @@ function PermissionRequestCard({
         _children: React.ReactNode[],
         _parent: any,
         styles: any,
-        inheritedStyles: any = {}
+        inheritedStyles: any = {},
       ) => (
         <Text key={node.key} style={[inheritedStyles, styles.fence]}>
           {node.content}
@@ -861,57 +798,31 @@ function PermissionRequestCard({
         _children: React.ReactNode[],
         _parent: any,
         styles: any,
-        inheritedStyles: any = {}
+        inheritedStyles: any = {},
       ) => (
-        <Text
-          key={node.key}
-          style={[inheritedStyles, styles.code_inline]}
-        >
+        <Text key={node.key} style={[inheritedStyles, styles.code_inline]}>
           {node.content}
         </Text>
       ),
-      bullet_list: (
-        node: any,
-        children: React.ReactNode[],
-        _parent: any,
-        styles: any
-      ) => (
+      bullet_list: (node: any, children: React.ReactNode[], _parent: any, styles: any) => (
         <View key={node.key} style={styles.bullet_list}>
           {children}
         </View>
       ),
-      ordered_list: (
-        node: any,
-        children: React.ReactNode[],
-        _parent: any,
-        styles: any
-      ) => (
+      ordered_list: (node: any, children: React.ReactNode[], _parent: any, styles: any) => (
         <View key={node.key} style={styles.ordered_list}>
           {children}
         </View>
       ),
-      list_item: (
-        node: any,
-        children: React.ReactNode[],
-        parent: any,
-        styles: any
-      ) => {
+      list_item: (node: any, children: React.ReactNode[], parent: any, styles: any) => {
         const { isOrdered, marker } = getMarkdownListMarker(node, parent);
-        const iconStyle = isOrdered
-          ? styles.ordered_list_icon
-          : styles.bullet_list_icon;
-        const contentStyle = isOrdered
-          ? styles.ordered_list_content
-          : styles.bullet_list_content;
+        const iconStyle = isOrdered ? styles.ordered_list_icon : styles.bullet_list_icon;
+        const contentStyle = isOrdered ? styles.ordered_list_content : styles.bullet_list_content;
 
         return (
           <View key={node.key} style={[styles.list_item, { flexShrink: 0 }]}>
             <Text style={iconStyle}>{marker}</Text>
-            <Text
-              style={[contentStyle, { flex: 1, flexShrink: 1, minWidth: 0 }]}
-            >
-              {children}
-            </Text>
+            <Text style={[contentStyle, { flex: 1, flexShrink: 1, minWidth: 0 }]}>{children}</Text>
           </View>
         );
       },
@@ -931,7 +842,7 @@ function PermissionRequestCard({
         input.agentId,
         input.requestId,
         input.response,
-        15000
+        15000,
       );
     },
   });
@@ -954,13 +865,10 @@ function PermissionRequestCard({
         requestId: permission.request.id,
         response,
       }).catch((error) => {
-        console.error(
-          "[PermissionRequestCard] Failed to respond to permission:",
-          error
-        );
+        console.error("[PermissionRequestCard] Failed to respond to permission:", error);
       });
     },
-    [permission.agentId, permission.request.id, respondToPermission]
+    [permission.agentId, permission.request.id, respondToPermission],
   );
 
   if (request.kind === "question") {
@@ -983,19 +891,10 @@ function PermissionRequestCard({
         },
       ]}
     >
-      <Text
-        style={[permissionStyles.title, { color: theme.colors.foreground }]}
-      >
-        {title}
-      </Text>
+      <Text style={[permissionStyles.title, { color: theme.colors.foreground }]}>{title}</Text>
 
       {description ? (
-        <Text
-          style={[
-            permissionStyles.description,
-            { color: theme.colors.foregroundMuted },
-          ]}
-        >
+        <Text style={[permissionStyles.description, { color: theme.colors.foregroundMuted }]}>
           {description}
         </Text>
       ) : null}
@@ -1003,12 +902,7 @@ function PermissionRequestCard({
       {planMarkdown ? (
         <View style={permissionStyles.section}>
           {!isPlanRequest ? (
-            <Text
-              style={[
-                permissionStyles.sectionTitle,
-                { color: theme.colors.foregroundMuted },
-              ]}
-            >
+            <Text style={[permissionStyles.sectionTitle, { color: theme.colors.foregroundMuted }]}>
               Proposed plan
             </Text>
           ) : null}
@@ -1033,10 +927,7 @@ function PermissionRequestCard({
 
       <Text
         testID="permission-request-question"
-        style={[
-          permissionStyles.question,
-          { color: theme.colors.foregroundMuted },
-        ]}
+        style={[permissionStyles.question, { color: theme.colors.foregroundMuted }]}
       >
         How would you like to proceed?
       </Text>
@@ -1052,9 +943,7 @@ function PermissionRequestCard({
           style={({ pressed, hovered = false }) => [
             permissionStyles.optionButton,
             {
-              backgroundColor: hovered
-                ? theme.colors.surface2
-                : theme.colors.surface1,
+              backgroundColor: hovered ? theme.colors.surface2 : theme.colors.surface1,
               borderColor: theme.colors.borderAccent,
             },
             pressed ? permissionStyles.optionButtonPressed : null,
@@ -1073,12 +962,7 @@ function PermissionRequestCard({
           ) : (
             <View style={permissionStyles.optionContent}>
               <X size={14} color={theme.colors.foregroundMuted} />
-              <Text
-                style={[
-                  permissionStyles.optionText,
-                  { color: theme.colors.foregroundMuted },
-                ]}
-              >
+              <Text style={[permissionStyles.optionText, { color: theme.colors.foregroundMuted }]}>
                 Deny
               </Text>
             </View>
@@ -1090,9 +974,7 @@ function PermissionRequestCard({
           style={({ pressed, hovered = false }) => [
             permissionStyles.optionButton,
             {
-              backgroundColor: hovered
-                ? theme.colors.surface2
-                : theme.colors.surface1,
+              backgroundColor: hovered ? theme.colors.surface2 : theme.colors.surface1,
               borderColor: theme.colors.borderAccent,
             },
             pressed ? permissionStyles.optionButtonPressed : null,
@@ -1108,12 +990,7 @@ function PermissionRequestCard({
           ) : (
             <View style={permissionStyles.optionContent}>
               <Check size={14} color={theme.colors.foreground} />
-              <Text
-                style={[
-                  permissionStyles.optionText,
-                  { color: theme.colors.foreground },
-                ]}
-              >
+              <Text style={[permissionStyles.optionText, { color: theme.colors.foreground }]}>
                 Accept
               </Text>
             </View>

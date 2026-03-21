@@ -25,10 +25,7 @@ async function ensurePushPermission(): Promise<boolean> {
   return requested.status === "granted";
 }
 
-export function usePushTokenRegistration(params: {
-  client: DaemonClient;
-  serverId: string;
-}): void {
+export function usePushTokenRegistration(params: { client: DaemonClient; serverId: string }): void {
   const { client, serverId } = params;
   const tokenRef = useRef<string | null>(null);
   const lastSentTokenRef = useRef<string | null>(null);

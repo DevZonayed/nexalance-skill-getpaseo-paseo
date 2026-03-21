@@ -4,9 +4,7 @@ import type { CheckoutStatusPayload } from "@/hooks/use-checkout-status-query";
  * Derives the branch label to display for an agent.
  * Returns null if there's no branch to show (not a git repo, or on the base branch).
  */
-export function deriveBranchLabel(
-  checkout: CheckoutStatusPayload | null
-): string | null {
+export function deriveBranchLabel(checkout: CheckoutStatusPayload | null): string | null {
   if (!checkout || !checkout.isGit) {
     return null;
   }
@@ -29,10 +27,7 @@ export function deriveBranchLabel(
  * If inside a Paseo worktree, shows just the worktree-relative path.
  * Otherwise uses the repo root or cwd.
  */
-export function deriveProjectPath(
-  cwd: string,
-  checkout: CheckoutStatusPayload | null
-): string {
+export function deriveProjectPath(cwd: string, checkout: CheckoutStatusPayload | null): string {
   const basePath = checkout?.isGit ? (checkout.repoRoot ?? cwd) : cwd;
   const worktreeMarker = ".paseo/worktrees/";
   const idx = basePath.indexOf(worktreeMarker);

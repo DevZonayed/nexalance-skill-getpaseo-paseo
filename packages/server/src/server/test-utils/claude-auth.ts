@@ -17,10 +17,10 @@ export function seedClaudeAuth(targetDir: string): void {
   if (!oauthTokenEnv && !apiKeyEnv) {
     throw new Error(
       "Claude credentials not found in environment. Please provide credentials via:\n" +
-      "  Environment variables: CLAUDE_CODE_OAUTH_TOKEN or ANTHROPIC_API_KEY\n" +
-      "\n" +
-      "For CI: Set CLAUDE_CODE_OAUTH_TOKEN or ANTHROPIC_API_KEY in GitHub Actions secrets\n" +
-      "For local development: Set these environment variables before running tests"
+        "  Environment variables: CLAUDE_CODE_OAUTH_TOKEN or ANTHROPIC_API_KEY\n" +
+        "\n" +
+        "For CI: Set CLAUDE_CODE_OAUTH_TOKEN or ANTHROPIC_API_KEY in GitHub Actions secrets\n" +
+        "For local development: Set these environment variables before running tests",
     );
   }
 

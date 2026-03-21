@@ -47,7 +47,7 @@ function buildQueryMock(events: unknown[]): QueryMock {
 }
 
 async function collectUntilTerminal(
-  stream: AsyncGenerator<AgentStreamEvent>
+  stream: AsyncGenerator<AgentStreamEvent>,
 ): Promise<AgentStreamEvent[]> {
   const events: AgentStreamEvent[] = [];
   for await (const event of stream) {
@@ -235,7 +235,7 @@ describe("ClaudeAgentSession sub-agent sidechain updates", () => {
           },
           total_cost_usd: 0,
         },
-      ])
+      ]),
     );
   });
 
@@ -255,16 +255,14 @@ describe("ClaudeAgentSession sub-agent sidechain updates", () => {
     const timelineToolCalls = events
       .filter(
         (event): event is Extract<AgentStreamEvent, { type: "timeline" }> =>
-          event.type === "timeline" && event.item.type === "tool_call"
+          event.type === "timeline" && event.item.type === "tool_call",
       )
       .map((event) => event.item)
       .filter((item) => item.callId === "task-call-1");
 
     expect(timelineToolCalls.length).toBeGreaterThanOrEqual(2);
 
-    const subAgentUpdates = timelineToolCalls.filter(
-      (item) => item.detail.type === "sub_agent"
-    );
+    const subAgentUpdates = timelineToolCalls.filter((item) => item.detail.type === "sub_agent");
     expect(subAgentUpdates.length).toBeGreaterThanOrEqual(1);
 
     const latest = subAgentUpdates[subAgentUpdates.length - 1];
@@ -298,7 +296,7 @@ describe("ClaudeAgentSession sub-agent sidechain updates", () => {
     }));
     const projected = projectTimelineRows(rows, "claude", "projected");
     const projectedTaskCalls = projected.filter(
-      (entry) => entry.item.type === "tool_call" && entry.item.callId === "task-call-1"
+      (entry) => entry.item.type === "tool_call" && entry.item.callId === "task-call-1",
     );
 
     expect(projectedTaskCalls).toHaveLength(1);
@@ -318,13 +316,11 @@ describe("ClaudeAgentSession sub-agent sidechain updates", () => {
     const timelineToolCalls = events
       .filter(
         (event): event is Extract<AgentStreamEvent, { type: "timeline" }> =>
-          event.type === "timeline" && event.item.type === "tool_call"
+          event.type === "timeline" && event.item.type === "tool_call",
       )
       .map((event) => event.item)
       .filter((item) => item.callId === "task-tail-1");
-    const subAgentUpdates = timelineToolCalls.filter(
-      (item) => item.detail.type === "sub_agent"
-    );
+    const subAgentUpdates = timelineToolCalls.filter((item) => item.detail.type === "sub_agent");
     const latest = subAgentUpdates[subAgentUpdates.length - 1];
     expect(latest).toBeDefined();
     if (!latest || latest.detail.type !== "sub_agent") {

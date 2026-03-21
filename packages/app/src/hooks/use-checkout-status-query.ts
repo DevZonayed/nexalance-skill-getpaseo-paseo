@@ -24,7 +24,7 @@ export type CheckoutStatusPayload = CheckoutStatusResponse["payload"];
 
 function fetchCheckoutStatus(
   client: { getCheckoutStatus: (cwd: string) => Promise<CheckoutStatusPayload> },
-  cwd: string
+  cwd: string,
 ): Promise<CheckoutStatusPayload> {
   return client.getCheckoutStatus(cwd);
 }
@@ -32,8 +32,7 @@ function fetchCheckoutStatus(
 export function useCheckoutStatusQuery({ serverId, cwd }: UseCheckoutStatusQueryOptions) {
   const client = useHostRuntimeClient(serverId);
   const isConnected = useHostRuntimeIsConnected(serverId);
-  const isMobile =
-    UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
+  const isMobile = UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
   const mobileView = usePanelStore((state) => state.mobileView);
   const desktopFileExplorerOpen = usePanelStore((state) => state.desktop.fileExplorerOpen);
   const explorerTab = usePanelStore((state) => state.explorerTab);
@@ -62,11 +61,14 @@ export function useCheckoutStatusQuery({ serverId, cwd }: UseCheckoutStatusQuery
   // Revalidate when sidebar is open with "changes" tab active.
   const revalidationKey = useMemo(
     () => checkoutStatusRevalidationKey({ serverId, cwd, isOpen, explorerTab }),
-    [serverId, cwd, isOpen, explorerTab]
+    [serverId, cwd, isOpen, explorerTab],
   );
   const lastRevalidationKey = useRef<string | null>(null);
   useEffect(() => {
-    const decision = nextCheckoutStatusRefetchDecision(lastRevalidationKey.current, revalidationKey);
+    const decision = nextCheckoutStatusRefetchDecision(
+      lastRevalidationKey.current,
+      revalidationKey,
+    );
     lastRevalidationKey.current = decision.nextSeenKey;
     if (!decision.shouldRefetch) return;
     void query.refetch();

@@ -1,13 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
-import {
-  View,
-  Text,
-  Pressable,
-  TextInput,
-  ActivityIndicator,
-  Platform,
-} from "react-native";
+import { View, Text, Pressable, TextInput, ActivityIndicator, Platform } from "react-native";
 import type { StyleProp, ViewStyle, TextProps } from "react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import {
@@ -17,7 +10,18 @@ import {
   BottomSheetBackgroundProps,
 } from "@gorhom/bottom-sheet";
 import Animated from "react-native-reanimated";
-import { ChevronDown, ChevronRight, Pencil, Check, X, Bot, Brain, ShieldCheck, ShieldAlert, ShieldOff } from "lucide-react-native";
+import {
+  ChevronDown,
+  ChevronRight,
+  Pencil,
+  Check,
+  X,
+  Bot,
+  Brain,
+  ShieldCheck,
+  ShieldAlert,
+  ShieldOff,
+} from "lucide-react-native";
 import { theme as defaultTheme } from "@/styles/theme";
 import type {
   AgentMode,
@@ -107,19 +111,14 @@ export function DropdownField({
         testID={testID}
         style={[styles.dropdownControl, disabled && styles.dropdownControlDisabled]}
       >
-        <Text
-          style={value ? styles.dropdownValue : styles.dropdownPlaceholder}
-          numberOfLines={1}
-        >
+        <Text style={value ? styles.dropdownValue : styles.dropdownPlaceholder} numberOfLines={1}>
           {value || placeholder}
         </Text>
         <ChevronDown size={defaultTheme.iconSize.md} color={defaultTheme.colors.foregroundMuted} />
       </Pressable>
       {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
       {warningMessage ? <Text style={styles.warningText}>{warningMessage}</Text> : null}
-      {!errorMessage && helperText ? (
-        <Text style={styles.helperText}>{helperText}</Text>
-      ) : null}
+      {!errorMessage && helperText ? <Text style={styles.helperText}>{helperText}</Text> : null}
     </View>
   );
 }
@@ -176,7 +175,7 @@ export function SelectField({
         onPress();
       }
     },
-    [getWebKey, onPress, preventWebDefault]
+    [getWebKey, onPress, preventWebDefault],
   );
 
   const normalizedValue = (value ?? "").trim();
@@ -184,9 +183,7 @@ export function SelectField({
   const hasConcreteValue =
     normalizedValue.length > 0 &&
     (normalizedPlaceholder.length === 0 || normalizedValue !== normalizedPlaceholder);
-  const displayText = hasConcreteValue
-    ? normalizedValue
-    : (normalizedPlaceholder || "Select...");
+  const displayText = hasConcreteValue ? normalizedValue : normalizedPlaceholder || "Select...";
 
   return (
     <View style={styles.selectFieldContainer}>
@@ -231,12 +228,7 @@ interface DropdownSheetProps {
 }
 
 function DropdownSheetBackground({ style }: BottomSheetBackgroundProps) {
-  return (
-    <Animated.View
-      pointerEvents="none"
-      style={[style, styles.bottomSheetBackground]}
-    />
-  );
+  return <Animated.View pointerEvents="none" style={[style, styles.bottomSheetBackground]} />;
 }
 
 export function DropdownSheet({
@@ -267,19 +259,14 @@ export function DropdownSheet({
         onClose();
       }
     },
-    [onClose]
+    [onClose],
   );
 
   const renderBackdrop = useCallback(
     (props: React.ComponentProps<typeof BottomSheetBackdrop>) => (
-      <BottomSheetBackdrop
-        {...props}
-        disappearsOnIndex={-1}
-        appearsOnIndex={0}
-        opacity={0.45}
-      />
+      <BottomSheetBackdrop {...props} disappearsOnIndex={-1} appearsOnIndex={0} opacity={0.45} />
     ),
-    []
+    [],
   );
 
   return (
@@ -450,16 +437,14 @@ export function FormSelectTrigger({
         onPress();
       }
     },
-    [getWebKey, onPress, preventWebDefault]
+    [getWebKey, onPress, preventWebDefault],
   );
   const normalizedValue = (value ?? "").trim();
   const normalizedPlaceholder = (placeholder ?? "").trim();
   const hasConcreteValue =
     normalizedValue.length > 0 &&
     (normalizedPlaceholder.length === 0 || normalizedValue !== normalizedPlaceholder);
-  const displayText = hasConcreteValue
-    ? normalizedValue
-    : (normalizedPlaceholder || "Select...");
+  const displayText = hasConcreteValue ? normalizedValue : normalizedPlaceholder || "Select...";
 
   return (
     <Pressable
@@ -481,9 +466,7 @@ export function FormSelectTrigger({
     >
       {icon ? <View style={styles.compactSelectLeading}>{icon}</View> : null}
       <View style={styles.compactSelectValueContainer}>
-        {showLabel ? (
-          <Text style={styles.compactSelectLabel}>{label}</Text>
-        ) : null}
+        {showLabel ? <Text style={styles.compactSelectLabel}>{label}</Text> : null}
         {isLoading ? (
           <ActivityIndicator size="small" color={defaultTheme.colors.foregroundMuted} />
         ) : (
@@ -540,7 +523,7 @@ export function AgentConfigRow({
         id: def.id,
         label: def.label,
       })),
-    [providerDefinitions]
+    [providerDefinitions],
   );
 
   const modeSelectOptions: ComboSelectOption[] = useMemo(() => {
@@ -554,9 +537,7 @@ export function AgentConfigRow({
   }, [modeOptions]);
 
   const modelSelectOptions: ComboSelectOption[] = useMemo(() => {
-    const opts: ComboSelectOption[] = [
-      { id: "", label: "Auto" },
-    ];
+    const opts: ComboSelectOption[] = [{ id: "", label: "Auto" }];
     for (const model of models) {
       opts.push({
         id: model.id,
@@ -572,7 +553,7 @@ export function AgentConfigRow({
         id: option.id,
         label: option.label,
       })),
-    [thinkingOptions]
+    [thinkingOptions],
   );
 
   const effectiveSelectedMode = selectedMode || (modeOptions.length > 0 ? modeOptions[0]?.id : "");
@@ -609,7 +590,9 @@ export function AgentConfigRow({
           disabled={disabled}
           isLoading={isModelLoading}
           onSelect={onSelectModel}
-          icon={<Brain size={defaultTheme.iconSize.md} color={defaultTheme.colors.foregroundMuted} />}
+          icon={
+            <Brain size={defaultTheme.iconSize.md} color={defaultTheme.colors.foregroundMuted} />
+          }
           showLabel={false}
           testID="draft-model-select"
         />
@@ -638,7 +621,9 @@ export function AgentConfigRow({
             placeholder="Select..."
             disabled={disabled}
             onSelect={onSelectThinkingOption}
-            icon={<Brain size={defaultTheme.iconSize.md} color={defaultTheme.colors.foregroundMuted} />}
+            icon={
+              <Brain size={defaultTheme.iconSize.md} color={defaultTheme.colors.foregroundMuted} />
+            }
             showLabel={false}
           />
         </View>
@@ -664,7 +649,7 @@ export function AssistantDropdown({
   const anchorRef = useRef<View>(null);
 
   const selectedDefinition = providerDefinitions.find(
-    (definition) => definition.id === selectedProvider
+    (definition) => definition.id === selectedProvider,
   );
 
   const options = useMemo(
@@ -673,7 +658,7 @@ export function AssistantDropdown({
         id: def.id,
         label: def.label,
       })),
-    [providerDefinitions]
+    [providerDefinitions],
   );
 
   const handleOpen = useCallback(() => setIsOpen(true), []);
@@ -720,9 +705,9 @@ export function PermissionsDropdown({
 
   const hasOptions = modeOptions.length > 0;
   const selectedModeLabel = hasOptions
-    ? modeOptions.find((mode) => mode.id === selectedMode)?.label ??
+    ? (modeOptions.find((mode) => mode.id === selectedMode)?.label ??
       modeOptions[0]?.label ??
-      "Default"
+      "Default")
     : "Automatic";
 
   const options = useMemo(
@@ -732,7 +717,7 @@ export function PermissionsDropdown({
         label: mode.label,
         description: mode.description,
       })),
-    [modeOptions]
+    [modeOptions],
   );
 
   const handleOpen = useCallback(() => {
@@ -751,9 +736,7 @@ export function PermissionsDropdown({
         onPress={handleOpen}
         disabled={disabled || !hasOptions}
         helperText={
-          hasOptions
-            ? undefined
-            : "This assistant does not expose selectable permissions."
+          hasOptions ? undefined : "This assistant does not expose selectable permissions."
         }
         controlRef={anchorRef}
       />
@@ -795,7 +778,7 @@ export function ModelDropdown({
   const anchorRef = useRef<View>(null);
 
   const selectedLabel = selectedModel
-    ? models.find((model) => model.id === selectedModel)?.label ?? selectedModel
+    ? (models.find((model) => model.id === selectedModel)?.label ?? selectedModel)
     : "Automatic";
   const placeholder = isLoading && models.length === 0 ? "Loading..." : "Automatic";
   const helperText = error
@@ -834,7 +817,7 @@ export function ModelDropdown({
         onSelect(id);
       }
     },
-    [onClear, onSelect]
+    [onClear, onSelect],
   );
 
   return (
@@ -882,7 +865,7 @@ export function WorkingDirectoryDropdown({
 
   const options = useMemo(
     () => suggestedPaths.map((path) => ({ id: path, label: path })),
-    [suggestedPaths]
+    [suggestedPaths],
   );
 
   const handleOpen = useCallback(() => setIsOpen(true), []);
@@ -957,9 +940,7 @@ export function ToggleRow({
       </View>
       <View style={styles.toggleTextContainer}>
         <Text style={styles.toggleLabel}>{label}</Text>
-        {description ? (
-          <Text style={styles.helperText}>{description}</Text>
-        ) : null}
+        {description ? <Text style={styles.helperText}>{description}</Text> : null}
       </View>
     </Pressable>
   );
@@ -1052,9 +1033,7 @@ export function GitOptionsSection({
     <View style={styles.gitOptionsContainer}>
       <Pressable
         testID="worktree-create-toggle"
-        onPress={() =>
-          onWorktreeModeChange(isCreateMode ? "none" : "create")
-        }
+        onPress={() => onWorktreeModeChange(isCreateMode ? "none" : "create")}
         disabled={isLoading}
         style={[styles.worktreeToggle, isLoading && styles.worktreeToggleDisabled]}
       >
@@ -1077,9 +1056,7 @@ export function GitOptionsSection({
 
       <Pressable
         testID="worktree-attach-toggle"
-        onPress={() =>
-          onWorktreeModeChange(isAttachMode ? "none" : "attach")
-        }
+        onPress={() => onWorktreeModeChange(isAttachMode ? "none" : "attach")}
         disabled={isLoading}
         style={[styles.worktreeToggle, isLoading && styles.worktreeToggleDisabled]}
       >
@@ -1143,8 +1120,15 @@ export function GitOptionsSection({
                 placeholderTextColor={defaultTheme.colors.foregroundMuted}
                 onSubmitEditing={handleConfirmEdit}
               />
-              <Pressable onPress={handleConfirmEdit} hitSlop={8} style={styles.baseBranchIconButton}>
-                <Check size={defaultTheme.iconSize.md} color={defaultTheme.colors.palette.green[500]} />
+              <Pressable
+                onPress={handleConfirmEdit}
+                hitSlop={8}
+                style={styles.baseBranchIconButton}
+              >
+                <Check
+                  size={defaultTheme.iconSize.md}
+                  color={defaultTheme.colors.palette.green[500]}
+                />
               </Pressable>
               <Pressable onPress={handleCancelEdit} hitSlop={8} style={styles.baseBranchIconButton}>
                 <X size={defaultTheme.iconSize.md} color={defaultTheme.colors.foregroundMuted} />
@@ -1159,17 +1143,11 @@ export function GitOptionsSection({
         </View>
       ) : null}
 
-      {baseBranchError ? (
-        <Text style={styles.errorText}>{baseBranchError}</Text>
-      ) : null}
+      {baseBranchError ? <Text style={styles.errorText}>{baseBranchError}</Text> : null}
 
-      {repoError ? (
-        <Text style={styles.errorText}>{repoError}</Text>
-      ) : null}
+      {repoError ? <Text style={styles.errorText}>{repoError}</Text> : null}
 
-      {gitValidationError ? (
-        <Text style={styles.errorText}>{gitValidationError}</Text>
-      ) : null}
+      {gitValidationError ? <Text style={styles.errorText}>{gitValidationError}</Text> : null}
     </View>
   );
 }

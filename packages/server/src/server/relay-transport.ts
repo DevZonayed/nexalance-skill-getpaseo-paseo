@@ -51,13 +51,23 @@ function tryParseControlMessage(raw: unknown): ControlMessage | null {
     if (parsed.type === "ping") return { type: "ping" };
     if (parsed.type === "pong") return { type: "pong" };
     if (parsed.type === "sync" && Array.isArray(parsed.connectionIds)) {
-      const connectionIds = parsed.connectionIds.filter((id: unknown) => typeof id === "string" && id.trim().length > 0);
+      const connectionIds = parsed.connectionIds.filter(
+        (id: unknown) => typeof id === "string" && id.trim().length > 0,
+      );
       return { type: "sync", connectionIds };
     }
-    if (parsed.type === "connected" && typeof parsed.connectionId === "string" && parsed.connectionId.trim()) {
+    if (
+      parsed.type === "connected" &&
+      typeof parsed.connectionId === "string" &&
+      parsed.connectionId.trim()
+    ) {
       return { type: "connected", connectionId: parsed.connectionId.trim() };
     }
-    if (parsed.type === "disconnected" && typeof parsed.connectionId === "string" && parsed.connectionId.trim()) {
+    if (
+      parsed.type === "disconnected" &&
+      typeof parsed.connectionId === "string" &&
+      parsed.connectionId.trim()
+    ) {
       return { type: "disconnected", connectionId: parsed.connectionId.trim() };
     }
     return null;
@@ -160,7 +170,7 @@ export function startRelayTransport({
         if (controlConnected) return;
         relayLogger.warn(
           { url, connectionId, waitedMs: CONTROL_READY_TIMEOUT_MS },
-          "relay_control_ready_timeout_terminating"
+          "relay_control_ready_timeout_terminating",
         );
         try {
           socket.terminate();
@@ -180,7 +190,7 @@ export function startRelayTransport({
         if (staleForMs > CONTROL_STALE_TIMEOUT_MS) {
           relayLogger.warn(
             { url, staleForMs, connectionId, staleTimeoutMs: CONTROL_STALE_TIMEOUT_MS },
-            "relay_control_stale_terminating"
+            "relay_control_stale_terminating",
           );
           try {
             socket.terminate();
@@ -218,7 +228,7 @@ export function startRelayTransport({
       if (controlWs !== socket) return;
       relayLogger.warn(
         { code, reason: reason?.toString?.(), url, connectionId },
-        "relay_control_disconnected"
+        "relay_control_disconnected",
       );
       controlWs = null;
       if (controlKeepaliveInterval) {
@@ -332,7 +342,7 @@ export function startRelayTransport({
           daemonKeyPair,
           relayLogger.child({ connectionId }),
           attachSocket,
-          externalMetadata
+          externalMetadata,
         );
       } else {
         void attachSocket(socket, externalMetadata);
@@ -343,7 +353,7 @@ export function startRelayTransport({
       clearTimeout(openTimeout);
       relayLogger.warn(
         { code, reason: reason?.toString?.(), url, connectionId },
-        "relay_data_disconnected"
+        "relay_data_disconnected",
       );
       if (dataSockets.get(connectionId) === socket) {
         dataSockets.delete(connectionId);
@@ -365,7 +375,7 @@ async function attachEncryptedSocket(
   daemonKeyPair: KeyPair,
   logger: pino.Logger,
   attachSocket: (ws: RelaySocketLike, metadata?: ExternalSocketMetadata) => Promise<void>,
-  metadata?: ExternalSocketMetadata
+  metadata?: ExternalSocketMetadata,
 ): Promise<void> {
   try {
     const relayTransport = createRelayTransportAdapter(socket);
@@ -412,10 +422,7 @@ function createRelayTransportAdapter(socket: WebSocket): RelayTransport {
   return relayTransport;
 }
 
-function createEncryptedSocket(
-  channel: EncryptedChannel,
-  emitter: EventEmitter
-): RelaySocketLike {
+function createEncryptedSocket(channel: EncryptedChannel, emitter: EventEmitter): RelaySocketLike {
   let readyState = 1;
 
   channel.setState("open");

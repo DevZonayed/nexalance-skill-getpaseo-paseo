@@ -1,20 +1,20 @@
-import { createFileRoute, Link, Outlet } from '@tanstack/react-router'
-import '~/styles.css'
+import { createFileRoute, Link, Outlet } from "@tanstack/react-router";
+import "~/styles.css";
 
-export const Route = createFileRoute('/docs')({
+export const Route = createFileRoute("/docs")({
   component: DocsLayout,
-})
+});
 
 const navigation = [
-  { name: 'Getting started', href: '/docs' },
-  { name: 'Updates', href: '/docs/updates' },
-  { name: 'Voice', href: '/docs/voice' },
-  { name: 'Git worktrees', href: '/docs/worktrees' },
-  { name: 'CLI', href: '/docs/cli' },
-  { name: 'Configuration', href: '/docs/configuration' },
-  { name: 'Security', href: '/docs/security' },
-  { name: 'Best practices', href: '/docs/best-practices' },
-]
+  { name: "Getting started", href: "/docs" },
+  { name: "Updates", href: "/docs/updates" },
+  { name: "Voice", href: "/docs/voice" },
+  { name: "Git worktrees", href: "/docs/worktrees" },
+  { name: "CLI", href: "/docs/cli" },
+  { name: "Configuration", href: "/docs/configuration" },
+  { name: "Security", href: "/docs/security" },
+  { name: "Best practices", href: "/docs/best-practices" },
+];
 
 function DocsLayout() {
   return (
@@ -32,7 +32,7 @@ function DocsLayout() {
               to={item.href}
               activeOptions={{ exact: true }}
               className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-              activeProps={{ className: 'text-foreground' }}
+              activeProps={{ className: "text-foreground" }}
             >
               {item.name}
             </Link>
@@ -54,7 +54,7 @@ function DocsLayout() {
                 to={item.href}
                 activeOptions={{ exact: true }}
                 className="block px-3 py-2 text-sm rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-                activeProps={{ className: 'bg-muted text-foreground' }}
+                activeProps={{ className: "bg-muted text-foreground" }}
               >
                 {item.name}
               </Link>
@@ -66,5 +66,5 @@ function DocsLayout() {
         </main>
       </div>
     </div>
-  )
+  );
 }

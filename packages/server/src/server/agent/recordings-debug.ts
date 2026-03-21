@@ -21,4 +21,3 @@ export function resolveRecordingsDebugDir(explicitEnvVarName: string): string | 
 
   return resolve(process.cwd(), ".debug/recordings");
 }
-

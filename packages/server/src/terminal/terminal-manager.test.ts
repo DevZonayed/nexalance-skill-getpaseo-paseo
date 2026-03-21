@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 async function waitForCondition(
   predicate: () => boolean,
   timeoutMs: number,
-  intervalMs = 25
+  intervalMs = 25,
 ): Promise<void> {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
@@ -116,7 +116,9 @@ describe("TerminalManager", () => {
 
     it("throws for relative paths", async () => {
       manager = createTerminalManager();
-      await expect(manager.createTerminal({ cwd: "tmp" })).rejects.toThrow("cwd must be absolute path");
+      await expect(manager.createTerminal({ cwd: "tmp" })).rejects.toThrow(
+        "cwd must be absolute path",
+      );
     });
 
     it("inherits registered env for the worktree root cwd", async () => {

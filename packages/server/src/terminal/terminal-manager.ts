@@ -114,7 +114,7 @@ export function createTerminalManager(): TerminalManager {
     }
 
     const terminals = (terminalsByCwd.get(input.cwd) ?? []).map((session) =>
-      toTerminalListItem({ session })
+      toTerminalListItem({ session }),
     );
     const event: TerminalsChangedEvent = {
       cwd: input.cwd,
@@ -156,7 +156,7 @@ export function createTerminalManager(): TerminalManager {
           cwd: options.cwd,
           name: options.name ?? defaultName,
           ...(mergedEnv ? { env: mergedEnv } : {}),
-        })
+        }),
       );
 
       terminals.push(session);

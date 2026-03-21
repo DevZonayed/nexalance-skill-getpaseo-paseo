@@ -21,7 +21,7 @@ function trimNonEmpty(value: string | null | undefined): string | null {
 
 function useTerminalPanelDescriptor(
   target: { kind: "terminal"; terminalId: string },
-  context: { serverId: string; workspaceId: string }
+  context: { serverId: string; workspaceId: string },
 ): PanelDescriptor {
   const client = useSessionStore((state) => state.sessions[context.serverId]?.client ?? null);
   const terminalsQuery = useQuery({

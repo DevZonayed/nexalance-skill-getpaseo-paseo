@@ -33,7 +33,7 @@ function resolveClient(serverId: string) {
 function setStatus(
   key: CheckoutKey,
   actionId: CheckoutGitAsyncActionId,
-  status: CheckoutGitActionStatus
+  status: CheckoutGitActionStatus,
 ) {
   useCheckoutGitActionsStore.setState((state) => {
     const current = state.statusByCheckout[key]?.[actionId] ?? "idle";
@@ -61,10 +61,7 @@ function invalidateCheckoutGitQueries(serverId: string, cwd: string) {
     predicate: (query) => {
       const key = query.queryKey;
       return (
-        Array.isArray(key) &&
-        key[0] === "checkoutDiff" &&
-        key[1] === serverId &&
-        key[2] === cwd
+        Array.isArray(key) && key[0] === "checkoutDiff" && key[1] === serverId && key[2] === cwd
       );
     },
   });
@@ -72,10 +69,7 @@ function invalidateCheckoutGitQueries(serverId: string, cwd: string) {
     predicate: (query) => {
       const key = query.queryKey;
       return (
-        Array.isArray(key) &&
-        key[0] === "checkoutPrStatus" &&
-        key[1] === serverId &&
-        key[2] === cwd
+        Array.isArray(key) && key[0] === "checkoutPrStatus" && key[1] === serverId && key[2] === cwd
       );
     },
   });
@@ -92,10 +86,7 @@ function invalidateWorktreeList() {
   });
 }
 
-function removeWorktreeFromCachedLists(input: {
-  serverId: string;
-  worktreePath: string;
-}): void {
+function removeWorktreeFromCachedLists(input: { serverId: string; worktreePath: string }): void {
   const serverId = input.serverId.trim();
   const worktreePath = input.worktreePath.trim();
   if (!serverId || !worktreePath) {
@@ -117,7 +108,7 @@ function removeWorktreeFromCachedLists(input: {
         query.queryKey[0] === "paseoWorktreeList" &&
         query.queryKey[1] === serverId,
     },
-    removeFromList
+    removeFromList,
   );
 
   queryClient.setQueriesData(
@@ -127,7 +118,7 @@ function removeWorktreeFromCachedLists(input: {
         query.queryKey[0] === "sidebarPaseoWorktreeList" &&
         query.queryKey[1] === serverId,
     },
-    removeFromList
+    removeFromList,
   );
 }
 

@@ -1,22 +1,22 @@
-import { createFileRoute } from '@tanstack/react-router'
-import { pageMeta } from '~/meta'
+import { createFileRoute } from "@tanstack/react-router";
+import { pageMeta } from "~/meta";
 
-export const Route = createFileRoute('/docs/security')({
+export const Route = createFileRoute("/docs/security")({
   head: () => ({
     meta: pageMeta(
-      'Security - Paseo Docs',
-      'Security model for Paseo: architecture overview, connection methods, relay encryption, and best practices.',
+      "Security - Paseo Docs",
+      "Security model for Paseo: architecture overview, connection methods, relay encryption, and best practices.",
     ),
   }),
   component: Security,
-})
+});
 
 function Callout({ children }: { children: React.ReactNode }) {
   return (
     <div className="bg-primary/10 border border-primary/30 rounded-lg p-4 text-white/80">
       {children}
     </div>
-  )
+  );
 }
 
 function Security() {
@@ -79,7 +79,7 @@ function Security() {
         <h3 className="text-lg font-medium mt-6">How it works</h3>
         <ol className="text-white/60 space-y-2 list-decimal list-inside">
           <li>
-            The daemon generates a persistent ECDH keypair and stores it in{' '}
+            The daemon generates a persistent ECDH keypair and stores it in{" "}
             <code className="font-mono">$PASEO_HOME/daemon-keypair.json</code>
           </li>
           <li>
@@ -140,7 +140,7 @@ function Security() {
       <section className="space-y-4">
         <h2 className="text-xl font-medium">Direct connections</h2>
         <p className="text-white/60 leading-relaxed">
-          By default, the daemon listens on <code className="font-mono">127.0.0.1:6767</code>{' '}
+          By default, the daemon listens on <code className="font-mono">127.0.0.1:6767</code>{" "}
           (localhost only). This is safe for local CLI usage but not reachable from your phone or
           other devices.
         </p>
@@ -155,7 +155,7 @@ function Security() {
 
         <h3 className="text-lg font-medium mt-6">VPN access</h3>
         <p className="text-white/60 leading-relaxed">
-          If you prefer direct connections over the relay, you can use a VPN like{' '}
+          If you prefer direct connections over the relay, you can use a VPN like{" "}
           <a
             href="https://tailscale.com"
             target="_blank"
@@ -170,7 +170,7 @@ function Security() {
         <p className="text-white/60 leading-relaxed">To set this up:</p>
         <ol className="text-white/60 space-y-2 list-decimal list-inside">
           <li>
-            Install Tailscale on your machine and phone and join them to the same{' '}
+            Install Tailscale on your machine and phone and join them to the same{" "}
             <a
               href="https://tailscale.com/kb/1136/tailnet"
               target="_blank"
@@ -181,14 +181,16 @@ function Security() {
             </a>
           </li>
           <li>
-            Configure the daemon to listen on your Tailscale IP (e.g.,{' '}
+            Configure the daemon to listen on your Tailscale IP (e.g.,{" "}
             <code className="font-mono">100.x.y.z:6767</code>)
           </li>
           <li>
-            Add your Tailscale hostname to <code className="font-mono">allowedHosts</code> and{' '}
+            Add your Tailscale hostname to <code className="font-mono">allowedHosts</code> and{" "}
             <code className="font-mono">cors.allowedOrigins</code>
           </li>
-          <li>Add the daemon as a direct connection in the Paseo app using the Tailscale address</li>
+          <li>
+            Add the daemon as a direct connection in the Paseo app using the Tailscale address
+          </li>
         </ol>
 
         <h3 className="text-lg font-medium mt-6">Binding to 0.0.0.0</h3>
@@ -196,7 +198,7 @@ function Security() {
           <strong>Warning:</strong> Binding to <code className="font-mono">0.0.0.0</code> makes the
           daemon reachable on all network interfaces, including public Wi-Fi and local networks.
           This can expose your daemon to unauthorized access. If you must bind to all interfaces,
-          ensure you have proper firewall rules and review your{' '}
+          ensure you have proper firewall rules and review your{" "}
           <code className="font-mono">allowedHosts</code> configuration.
         </div>
       </section>
@@ -214,17 +216,17 @@ function Security() {
           on incoming requests. Requests with unrecognized hosts are rejected.
         </p>
         <p className="text-white/60 leading-relaxed">
-          Configure via <code className="font-mono">daemon.allowedHosts</code> in{' '}
+          Configure via <code className="font-mono">daemon.allowedHosts</code> in{" "}
           <code className="font-mono">config.json</code>:
         </p>
         <ul className="text-white/60 space-y-2 list-disc list-inside">
           <li>
-            Default (<code className="font-mono">[]</code>): allow{' '}
-            <code className="font-mono">localhost</code>,{' '}
+            Default (<code className="font-mono">[]</code>): allow{" "}
+            <code className="font-mono">localhost</code>,{" "}
             <code className="font-mono">*.localhost</code>, and all IP addresses
           </li>
           <li>
-            <code className="font-mono">['.example.com']</code>: allow{' '}
+            <code className="font-mono">['.example.com']</code>: allow{" "}
             <code className="font-mono">example.com</code> and any subdomain, plus defaults
           </li>
           <li>
@@ -283,5 +285,5 @@ function Security() {
         </ul>
       </section>
     </div>
-  )
+  );
 }

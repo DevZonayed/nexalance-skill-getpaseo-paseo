@@ -1,7 +1,4 @@
-import {
-  PackageVersionResolutionError,
-  resolvePackageVersion,
-} from "./package-version.js";
+import { PackageVersionResolutionError, resolvePackageVersion } from "./package-version.js";
 
 const SERVER_PACKAGE_NAME = "@getpaseo/server";
 

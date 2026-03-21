@@ -54,7 +54,7 @@ function resolveRequestedSpeechProviders(params: {
   const resolveFeatureProvider = (
     configuredValue: string | undefined,
     parsedValue: z.infer<typeof SpeechProviderIdSchema>,
-    enabled: boolean
+    enabled: boolean,
   ): RequestedSpeechProvider => ({
     provider: parsedValue,
     explicit: configuredValue !== undefined,
@@ -62,7 +62,7 @@ function resolveRequestedSpeechProviders(params: {
   });
 
   const voiceModeEnabled = resolveOptionalBooleanFlag(
-    params.env.PASEO_VOICE_MODE_ENABLED ?? params.persisted.features?.voiceMode?.enabled
+    params.env.PASEO_VOICE_MODE_ENABLED ?? params.persisted.features?.voiceMode?.enabled,
   );
   const featureProviders = {
     dictationStt: {
@@ -70,7 +70,7 @@ function resolveRequestedSpeechProviders(params: {
         params.env.PASEO_DICTATION_STT_PROVIDER ??
         params.persisted.features?.dictation?.stt?.provider,
       enabled: resolveOptionalBooleanFlag(
-        params.env.PASEO_DICTATION_ENABLED ?? params.persisted.features?.dictation?.enabled
+        params.env.PASEO_DICTATION_ENABLED ?? params.persisted.features?.dictation?.enabled,
       ),
     },
     voiceTurnDetection: {
@@ -81,14 +81,12 @@ function resolveRequestedSpeechProviders(params: {
     },
     voiceStt: {
       configuredValue:
-        params.env.PASEO_VOICE_STT_PROVIDER ??
-        params.persisted.features?.voiceMode?.stt?.provider,
+        params.env.PASEO_VOICE_STT_PROVIDER ?? params.persisted.features?.voiceMode?.stt?.provider,
       enabled: voiceModeEnabled,
     },
     voiceTts: {
       configuredValue:
-        params.env.PASEO_VOICE_TTS_PROVIDER ??
-        params.persisted.features?.voiceMode?.tts?.provider,
+        params.env.PASEO_VOICE_TTS_PROVIDER ?? params.persisted.features?.voiceMode?.tts?.provider,
       enabled: voiceModeEnabled,
     },
   } satisfies Record<
@@ -110,22 +108,22 @@ function resolveRequestedSpeechProviders(params: {
     dictationStt: resolveFeatureProvider(
       featureProviders.dictationStt.configuredValue,
       parsed.dictationStt,
-      featureProviders.dictationStt.enabled
+      featureProviders.dictationStt.enabled,
     ),
     voiceTurnDetection: resolveFeatureProvider(
       featureProviders.voiceTurnDetection.configuredValue,
       parsed.voiceTurnDetection,
-      featureProviders.voiceTurnDetection.enabled
+      featureProviders.voiceTurnDetection.enabled,
     ),
     voiceStt: resolveFeatureProvider(
       featureProviders.voiceStt.configuredValue,
       parsed.voiceStt,
-      featureProviders.voiceStt.enabled
+      featureProviders.voiceStt.enabled,
     ),
     voiceTts: resolveFeatureProvider(
       featureProviders.voiceTts.configuredValue,
       parsed.voiceTts,
-      featureProviders.voiceTts.enabled
+      featureProviders.voiceTts.enabled,
     ),
   };
 }
@@ -160,9 +158,7 @@ export function resolveSpeechConfig(params: {
     openai,
     speech: {
       providers,
-      ...(local.local
-        ? { local: local.local }
-        : {}),
+      ...(local.local ? { local: local.local } : {}),
     },
   };
 }

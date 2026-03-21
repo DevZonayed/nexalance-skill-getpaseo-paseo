@@ -32,7 +32,7 @@ export function createRelayE2eeTransportFactory(args: {
 export function createEncryptedTransport(
   base: DaemonTransport,
   daemonPublicKeyB64: string,
-  logger: TransportLogger
+  logger: TransportLogger,
 ): DaemonTransport {
   let channel: EncryptedChannel | null = null;
   let opened = false;
@@ -124,9 +124,7 @@ export function createEncryptedTransport(
     emitClose(event);
   });
   base.onError((event) => {
-    relayTransport.onerror?.(
-      event instanceof Error ? event : new Error(String(event))
-    );
+    relayTransport.onerror?.(event instanceof Error ? event : new Error(String(event)));
     emitError(event);
   });
 
@@ -181,10 +179,7 @@ function emitHandlers<TArgs extends unknown[]>(
   }
 }
 
-function invokeHandler<TArgs extends unknown[]>(
-  handler: (...args: TArgs) => void,
-  ...args: TArgs
-) {
+function invokeHandler<TArgs extends unknown[]>(handler: (...args: TArgs) => void, ...args: TArgs) {
   try {
     handler(...args);
   } catch {

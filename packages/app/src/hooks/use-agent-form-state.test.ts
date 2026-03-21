@@ -4,10 +4,7 @@ import {
   AGENT_PROVIDER_DEFINITIONS,
   type AgentProviderDefinition,
 } from "@server/server/agent/provider-manifest";
-import type {
-  AgentModelDefinition,
-  AgentProvider,
-} from "@server/server/agent/agent-sdk-types";
+import type { AgentModelDefinition, AgentProvider } from "@server/server/agent/agent-sdk-types";
 
 describe("useAgentFormState", () => {
   describe("__private__.combineInitialValues", () => {
@@ -80,7 +77,7 @@ describe("useAgentFormState", () => {
           thinkingOptionId: "",
           workingDir: "",
         },
-        new Set<string>()
+        new Set<string>(),
       );
 
       expect(resolved.thinkingOptionId).toBe("xhigh");
@@ -114,7 +111,7 @@ describe("useAgentFormState", () => {
           thinkingOptionId: "",
           workingDir: "",
         },
-        new Set<string>()
+        new Set<string>(),
       );
 
       expect(resolved.thinkingOptionId).toBe("low");
@@ -148,7 +145,7 @@ describe("useAgentFormState", () => {
           thinkingOptionId: "",
           workingDir: "",
         },
-        new Set<string>()
+        new Set<string>(),
       );
 
       expect(resolved.thinkingOptionId).toBe("xhigh");
@@ -175,7 +172,7 @@ describe("useAgentFormState", () => {
           thinkingOptionId: "",
           workingDir: "",
         },
-        new Set<string>()
+        new Set<string>(),
       );
 
       expect(resolved.model).toBe("");
@@ -209,7 +206,7 @@ describe("useAgentFormState", () => {
           thinkingOptionId: "",
           workingDir: "",
         },
-        new Set<string>()
+        new Set<string>(),
       );
 
       expect(resolved.model).toBe("");
@@ -217,9 +214,9 @@ describe("useAgentFormState", () => {
 
     it("resolves provider only from allowed provider map", () => {
       const allowedProviderMap = new Map<AgentProvider, AgentProviderDefinition>(
-        AGENT_PROVIDER_DEFINITIONS
-          .filter((definition) => definition.id === "claude")
-          .map((definition) => [definition.id as AgentProvider, definition])
+        AGENT_PROVIDER_DEFINITIONS.filter((definition) => definition.id === "claude").map(
+          (definition) => [definition.id as AgentProvider, definition],
+        ),
       );
       const resolved = __private__.resolveFormState(
         undefined,
@@ -242,7 +239,7 @@ describe("useAgentFormState", () => {
           workingDir: "",
         },
         new Set<string>(),
-        allowedProviderMap
+        allowedProviderMap,
       );
 
       expect(resolved.provider).toBe("claude");
@@ -270,7 +267,7 @@ describe("useAgentFormState", () => {
           workingDir: "",
         },
         new Set<string>(),
-        new Map<AgentProvider, AgentProviderDefinition>()
+        new Map<AgentProvider, AgentProviderDefinition>(),
       );
 
       expect(resolved.provider).toBe("codex");

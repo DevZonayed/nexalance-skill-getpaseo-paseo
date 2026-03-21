@@ -1,9 +1,7 @@
 import { useCallback } from "react";
 import { Platform } from "react-native";
 import { useSessionStore } from "@/stores/session-store";
-import type {
-  DaemonClient,
-} from "@server/client/daemon-client";
+import type { DaemonClient } from "@server/client/daemon-client";
 import {
   attachInitTimeout,
   createInitDeferred,
@@ -18,9 +16,7 @@ const NATIVE_INITIAL_TIMELINE_LIMIT = 200;
 const UNBOUNDED_TIMELINE_LIMIT = 0;
 
 function resolveInitialTimelineLimit(): number {
-  return Platform.OS === "web"
-    ? UNBOUNDED_TIMELINE_LIMIT
-    : NATIVE_INITIAL_TIMELINE_LIMIT;
+  return Platform.OS === "web" ? UNBOUNDED_TIMELINE_LIMIT : NATIVE_INITIAL_TIMELINE_LIMIT;
 }
 
 export const __private__ = {
@@ -47,7 +43,7 @@ export function useAgentInitialization({
         return next;
       });
     },
-    [serverId, setInitializingAgents]
+    [serverId, setInitializingAgents],
   );
 
   const ensureAgentIsInitialized = useCallback(
@@ -64,23 +60,18 @@ export function useAgentInitialization({
       const hasAuthoritativeHistory =
         session?.agentAuthoritativeHistoryApplied.get(agentId) === true;
       const timelineRequest = deriveInitialTimelineRequest({
-        cursor: cursor
-          ? { epoch: cursor.epoch, seq: cursor.endSeq }
-          : null,
+        cursor: cursor ? { epoch: cursor.epoch, seq: cursor.endSeq } : null,
         hasAuthoritativeHistory,
         initialTimelineLimit,
       });
-      const initRequestDirection =
-        timelineRequest.direction === "after" ? "after" : "tail";
+      const initRequestDirection = timelineRequest.direction === "after" ? "after" : "tail";
 
       const deferred = createInitDeferred(key, initRequestDirection);
       const timeoutId = setTimeout(() => {
         setAgentInitializing(agentId, false);
         rejectInitDeferred(
           key,
-          new Error(
-            `History sync timed out after ${Math.round(INIT_TIMEOUT_MS / 1000)}s`
-          )
+          new Error(`History sync timed out after ${Math.round(INIT_TIMEOUT_MS / 1000)}s`),
         );
       }, INIT_TIMEOUT_MS);
       attachInitTimeout(key, timeoutId);
@@ -93,19 +84,14 @@ export function useAgentInitialization({
         return deferred.promise;
       }
 
-      client
-        .fetchAgentTimeline(agentId, timelineRequest)
-        .catch((error) => {
-          setAgentInitializing(agentId, false);
-          rejectInitDeferred(
-            key,
-            error instanceof Error ? error : new Error(String(error))
-          );
-        });
+      client.fetchAgentTimeline(agentId, timelineRequest).catch((error) => {
+        setAgentInitializing(agentId, false);
+        rejectInitDeferred(key, error instanceof Error ? error : new Error(String(error)));
+      });
 
       return deferred.promise;
     },
-    [client, serverId, setAgentInitializing]
+    [client, serverId, setAgentInitializing],
   );
 
   const refreshAgent = useCallback(
@@ -128,7 +114,7 @@ export function useAgentInitialization({
         throw error;
       }
     },
-    [client, setAgentInitializing]
+    [client, setAgentInitializing],
   );
 
   return { ensureAgentIsInitialized, refreshAgent };

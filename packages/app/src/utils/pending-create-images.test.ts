@@ -5,7 +5,13 @@ import { mergePendingCreateImages } from "./pending-create-images";
 function userMessage(params: {
   id: string;
   text: string;
-  images?: Array<{ id: string; storageType: "native-file"; storageKey: string; mimeType: string; createdAt: number }>;
+  images?: Array<{
+    id: string;
+    storageType: "native-file";
+    storageKey: string;
+    mimeType: string;
+    createdAt: number;
+  }>;
 }): StreamItem {
   return {
     kind: "user_message",
@@ -71,9 +77,7 @@ describe("mergePendingCreateImages", () => {
 
   it("does not overwrite existing user message images", () => {
     const existingImages = buildImage("existing");
-    const streamItems = [
-      userMessage({ id: "msg-1", text: "hello", images: existingImages }),
-    ];
+    const streamItems = [userMessage({ id: "msg-1", text: "hello", images: existingImages })];
     const result = mergePendingCreateImages({
       streamItems,
       clientMessageId: "msg-1",

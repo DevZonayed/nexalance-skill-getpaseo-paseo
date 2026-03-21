@@ -20,7 +20,7 @@ interface UseAutocompleteResult {
 }
 
 export function useAutocomplete<TOption>(
-  input: UseAutocompleteInput<TOption>
+  input: UseAutocompleteInput<TOption>,
 ): UseAutocompleteResult {
   const [selectedIndex, setSelectedIndex] = useState(-1);
   const previousQueryRef = useRef("");
@@ -42,7 +42,7 @@ export function useAutocomplete<TOption>(
 
       const fallbackIndex = getAutocompleteFallbackIndex(
         input.options.length,
-        input.optionsPosition
+        input.optionsPosition,
       );
 
       if (queryChanged) {
@@ -68,7 +68,7 @@ export function useAutocomplete<TOption>(
             currentIndex: current,
             itemCount: input.options.length,
             key: "ArrowUp",
-          })
+          }),
         );
         return true;
       }
@@ -80,7 +80,7 @@ export function useAutocomplete<TOption>(
             currentIndex: current,
             itemCount: input.options.length,
             key: "ArrowDown",
-          })
+          }),
         );
         return true;
       }
@@ -89,7 +89,7 @@ export function useAutocomplete<TOption>(
         event.preventDefault();
         const fallbackIndex = getAutocompleteFallbackIndex(
           input.options.length,
-          input.optionsPosition
+          input.optionsPosition,
         );
         const resolvedIndex =
           selectedIndex >= 0 && selectedIndex < input.options.length
@@ -110,7 +110,7 @@ export function useAutocomplete<TOption>(
 
       return false;
     },
-    [input, selectedIndex]
+    [input, selectedIndex],
   );
 
   return {

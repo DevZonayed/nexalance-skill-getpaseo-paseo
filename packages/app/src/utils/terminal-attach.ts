@@ -53,15 +53,13 @@ export function updateTerminalResumeOffset(input: {
 
 export function getTerminalAttachRetryDelayMs(input: { attempt: number }): number {
   const clampedAttempt = Math.max(0, input.attempt);
-  const exponentialDelay = 250 * (2 ** clampedAttempt);
+  const exponentialDelay = 250 * 2 ** clampedAttempt;
   return Math.min(2_000, exponentialDelay);
 }
 
 export function isTerminalAttachRetryableError(input: { message: string }): boolean {
   const normalized = input.message.toLowerCase();
-  return TERMINAL_ATTACH_RETRYABLE_ERROR_PATTERNS.some((pattern) =>
-    normalized.includes(pattern)
-  );
+  return TERMINAL_ATTACH_RETRYABLE_ERROR_PATTERNS.some((pattern) => normalized.includes(pattern));
 }
 
 export async function waitForDuration(input: { durationMs: number }): Promise<void> {
@@ -77,9 +75,12 @@ export async function withPromiseTimeout<T>(input: {
 }): Promise<T> {
   let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
   const timeoutPromise = new Promise<never>((_, reject) => {
-    timeoutHandle = setTimeout(() => {
-      reject(new Error(input.timeoutMessage));
-    }, Math.max(0, input.timeoutMs));
+    timeoutHandle = setTimeout(
+      () => {
+        reject(new Error(input.timeoutMessage));
+      },
+      Math.max(0, input.timeoutMs),
+    );
   });
   try {
     return await Promise.race([input.promise, timeoutPromise]);

@@ -97,10 +97,7 @@ interface ShortcutBinding {
 
 // --- Constants ---
 
-const SHORTCUT_HELP_SECTION_TITLES: Record<
-  KeyboardShortcutHelpSection["id"],
-  string
-> = {
+const SHORTCUT_HELP_SECTION_TITLES: Record<KeyboardShortcutHelpSection["id"], string> = {
   global: "Global",
   "agent-input": "Agent Input",
 };
@@ -724,32 +721,24 @@ function matchesCombo(combo: KeyCombo, event: KeyboardEvent): boolean {
   }
 
   const codeMatch = event.code === combo.code;
-  const keyMatch =
-    combo.key !== undefined &&
-    event.key.toLowerCase() === combo.key.toLowerCase();
+  const keyMatch = combo.key !== undefined && event.key.toLowerCase() === combo.key.toLowerCase();
   return codeMatch || keyMatch;
 }
 
-function matchesWhen(
-  when: ShortcutWhen | undefined,
-  context: KeyboardShortcutContext
-): boolean {
+function matchesWhen(when: ShortcutWhen | undefined, context: KeyboardShortcutContext): boolean {
   if (!when) return true;
   if (when.mac !== undefined && when.mac !== context.isMac) return false;
-  if (when.desktop !== undefined && when.desktop !== context.isDesktop)
-    return false;
-  if (when.terminal === false && context.focusScope === "terminal")
-    return false;
+  if (when.desktop !== undefined && when.desktop !== context.isDesktop) return false;
+  if (when.terminal === false && context.focusScope === "terminal") return false;
   if (when.commandCenter === false && context.commandCenterOpen) return false;
   if (when.hasSelectedAgent === true && !context.hasSelectedAgent) return false;
-  if (when.focusScope !== undefined && context.focusScope !== when.focusScope)
-    return false;
+  if (when.focusScope !== undefined && context.focusScope !== when.focusScope) return false;
   return true;
 }
 
 function resolvePayload(
   def: ShortcutPayloadDef | undefined,
-  event: KeyboardEvent
+  event: KeyboardEvent,
 ): KeyboardShortcutPayload {
   if (!def) return null;
   switch (def.type) {
@@ -766,11 +755,10 @@ function resolvePayload(
 
 function helpMatchesPlatform(
   when: ShortcutWhen | undefined,
-  context: KeyboardShortcutPlatformContext
+  context: KeyboardShortcutPlatformContext,
 ): boolean {
   if (when?.mac !== undefined && when.mac !== context.isMac) return false;
-  if (when?.desktop !== undefined && when.desktop !== context.isDesktop)
-    return false;
+  if (when?.desktop !== undefined && when.desktop !== context.isDesktop) return false;
   return true;
 }
 
@@ -799,13 +787,10 @@ export function resolveKeyboardShortcut(input: {
 }
 
 export function buildKeyboardShortcutHelpSections(
-  input: KeyboardShortcutPlatformContext
+  input: KeyboardShortcutPlatformContext,
 ): KeyboardShortcutHelpSection[] {
   const seenRows = new Set<string>();
-  const rowsBySection = new Map<
-    KeyboardShortcutHelpSection["id"],
-    KeyboardShortcutHelpRow[]
-  >([
+  const rowsBySection = new Map<KeyboardShortcutHelpSection["id"], KeyboardShortcutHelpRow[]>([
     ["global", []],
     ["agent-input", []],
   ]);
@@ -836,10 +821,7 @@ export function buildKeyboardShortcutHelpSections(
     });
   }
 
-  const sectionOrder: KeyboardShortcutHelpSection["id"][] = [
-    "global",
-    "agent-input",
-  ];
+  const sectionOrder: KeyboardShortcutHelpSection["id"][] = ["global", "agent-input"];
 
   return sectionOrder.flatMap((sectionId) => {
     const rows = rowsBySection.get(sectionId) ?? [];

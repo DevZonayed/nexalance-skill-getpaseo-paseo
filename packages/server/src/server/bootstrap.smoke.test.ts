@@ -26,14 +26,11 @@ describe("paseo daemon bootstrap", () => {
       },
     });
     try {
-      const response = await fetch(
-        `http://127.0.0.1:${daemonHandle.port}/api/health`,
-        {
-          headers: daemonHandle.agentMcpAuthHeader
-            ? { Authorization: daemonHandle.agentMcpAuthHeader }
-            : undefined,
-        }
-      );
+      const response = await fetch(`http://127.0.0.1:${daemonHandle.port}/api/health`, {
+        headers: daemonHandle.agentMcpAuthHeader
+          ? { Authorization: daemonHandle.agentMcpAuthHeader }
+          : undefined,
+      });
       expect(response.ok).toBe(true);
       const payload = await response.json();
       expect(payload.status).toBe("ok");
@@ -73,7 +70,7 @@ describe("paseo daemon bootstrap", () => {
 
     try {
       await expect(createPaseoDaemon(config, pino({ level: "silent" }))).rejects.toThrow(
-        "Missing OpenAI credentials"
+        "Missing OpenAI credentials",
       );
     } finally {
       await rm(paseoHomeRoot, { recursive: true, force: true });
@@ -87,7 +84,10 @@ describe("paseo daemon bootstrap", () => {
     const fetchGate = new Promise<Response>((resolve) => {
       releaseFetch = resolve;
     });
-    vi.stubGlobal("fetch", vi.fn(() => fetchGate));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => fetchGate),
+    );
 
     const daemonHandle = await createTestPaseoDaemon({
       speech: {
@@ -116,7 +116,7 @@ describe("paseo daemon bootstrap", () => {
         new Response(null, {
           status: 500,
           statusText: "test cleanup",
-        })
+        }),
       );
       await daemonHandle.close();
     }
@@ -149,7 +149,7 @@ describe("paseo daemon bootstrap", () => {
           lines.push(chunk.toString("utf8"));
           callback();
         },
-      })
+      }),
     );
 
     const config: PaseoDaemonConfig = {

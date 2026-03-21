@@ -43,4 +43,3 @@ describe("allowed hosts (vite-style)", () => {
     expect(parseAllowedHostsEnv("localhost,.example.com")).toEqual(["localhost", ".example.com"]);
   });
 });
-

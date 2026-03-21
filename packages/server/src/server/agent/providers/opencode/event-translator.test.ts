@@ -1,9 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  translateOpenCodeEvent,
-  type OpenCodeEventTranslationState,
-} from "../opencode-agent.js";
+import { translateOpenCodeEvent, type OpenCodeEventTranslationState } from "../opencode-agent.js";
 
 function createState(sessionId = "session-1"): OpenCodeEventTranslationState {
   return {
@@ -30,7 +27,7 @@ describe("translateOpenCodeEvent", () => {
           },
         },
       },
-      state
+      state,
     );
 
     const streamed = translateOpenCodeEvent(
@@ -47,7 +44,7 @@ describe("translateOpenCodeEvent", () => {
           },
         },
       },
-      state
+      state,
     );
 
     const completed = translateOpenCodeEvent(
@@ -64,11 +61,11 @@ describe("translateOpenCodeEvent", () => {
           },
         },
       },
-      state
+      state,
     );
 
     const assistantEvents = [...streamed, ...completed].filter(
-      (event) => event.type === "timeline" && event.item.type === "assistant_message"
+      (event) => event.type === "timeline" && event.item.type === "assistant_message",
     );
 
     expect(assistantEvents).toEqual([
@@ -94,7 +91,7 @@ describe("translateOpenCodeEvent", () => {
           },
         },
       },
-      state
+      state,
     );
 
     const completed = translateOpenCodeEvent(
@@ -111,7 +108,7 @@ describe("translateOpenCodeEvent", () => {
           },
         },
       },
-      state
+      state,
     );
 
     expect(completed).toEqual([
@@ -140,7 +137,7 @@ describe("translateOpenCodeEvent", () => {
           },
         },
       },
-      state
+      state,
     );
 
     const completed = translateOpenCodeEvent(
@@ -157,11 +154,11 @@ describe("translateOpenCodeEvent", () => {
           },
         },
       },
-      state
+      state,
     );
 
     const reasoningEvents = [...streamed, ...completed].filter(
-      (event) => event.type === "timeline" && event.item.type === "reasoning"
+      (event) => event.type === "timeline" && event.item.type === "reasoning",
     );
 
     expect(reasoningEvents).toEqual([
@@ -189,7 +186,7 @@ describe("translateOpenCodeEvent", () => {
           },
         },
       },
-      state
+      state,
     );
 
     const second = translateOpenCodeEvent(
@@ -205,7 +202,7 @@ describe("translateOpenCodeEvent", () => {
           },
         },
       },
-      state
+      state,
     );
 
     expect(first).toEqual([

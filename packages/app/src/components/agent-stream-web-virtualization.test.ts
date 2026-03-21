@@ -62,7 +62,7 @@ describe("findMountedWindowStart", () => {
       findMountedWindowStart({
         items,
         minMountedCount: 50,
-      })
+      }),
     ).toBe(0);
   });
 
@@ -79,7 +79,7 @@ describe("findMountedWindowStart", () => {
       findMountedWindowStart({
         items,
         minMountedCount: 50,
-      })
+      }),
     ).toBe(39);
   });
 });
@@ -136,20 +136,16 @@ describe("web virtualization test overrides", () => {
       __PASEO_E2E_WEB_PARTIAL_VIRTUALIZATION_THRESHOLD?: unknown;
       __PASEO_E2E_WEB_MOUNTED_RECENT_STREAM_ITEMS?: unknown;
     };
-    const previousThreshold =
-      globalWithOverrides.__PASEO_E2E_WEB_PARTIAL_VIRTUALIZATION_THRESHOLD;
-    const previousMounted =
-      globalWithOverrides.__PASEO_E2E_WEB_MOUNTED_RECENT_STREAM_ITEMS;
+    const previousThreshold = globalWithOverrides.__PASEO_E2E_WEB_PARTIAL_VIRTUALIZATION_THRESHOLD;
+    const previousMounted = globalWithOverrides.__PASEO_E2E_WEB_MOUNTED_RECENT_STREAM_ITEMS;
 
     try {
       delete globalWithOverrides.__PASEO_E2E_WEB_PARTIAL_VIRTUALIZATION_THRESHOLD;
       delete globalWithOverrides.__PASEO_E2E_WEB_MOUNTED_RECENT_STREAM_ITEMS;
       expect(getWebPartialVirtualizationThreshold()).toBe(
-        DEFAULT_WEB_PARTIAL_VIRTUALIZATION_THRESHOLD
+        DEFAULT_WEB_PARTIAL_VIRTUALIZATION_THRESHOLD,
       );
-      expect(getWebMountedRecentStreamItems()).toBe(
-        DEFAULT_WEB_MOUNTED_RECENT_STREAM_ITEMS
-      );
+      expect(getWebMountedRecentStreamItems()).toBe(DEFAULT_WEB_MOUNTED_RECENT_STREAM_ITEMS);
 
       globalWithOverrides.__PASEO_E2E_WEB_PARTIAL_VIRTUALIZATION_THRESHOLD = 6;
       globalWithOverrides.__PASEO_E2E_WEB_MOUNTED_RECENT_STREAM_ITEMS = 4;
@@ -159,14 +155,12 @@ describe("web virtualization test overrides", () => {
       if (previousThreshold === undefined) {
         delete globalWithOverrides.__PASEO_E2E_WEB_PARTIAL_VIRTUALIZATION_THRESHOLD;
       } else {
-        globalWithOverrides.__PASEO_E2E_WEB_PARTIAL_VIRTUALIZATION_THRESHOLD =
-          previousThreshold;
+        globalWithOverrides.__PASEO_E2E_WEB_PARTIAL_VIRTUALIZATION_THRESHOLD = previousThreshold;
       }
       if (previousMounted === undefined) {
         delete globalWithOverrides.__PASEO_E2E_WEB_MOUNTED_RECENT_STREAM_ITEMS;
       } else {
-        globalWithOverrides.__PASEO_E2E_WEB_MOUNTED_RECENT_STREAM_ITEMS =
-          previousMounted;
+        globalWithOverrides.__PASEO_E2E_WEB_MOUNTED_RECENT_STREAM_ITEMS = previousMounted;
       }
     }
   });

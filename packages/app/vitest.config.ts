@@ -25,11 +25,7 @@ export default defineConfig({
     server: {
       deps: {
         fallbackCJS: true,
-        inline: [
-          "zustand",
-          "@tanstack/react-query",
-          "react-native-web",
-        ],
+        inline: ["zustand", "@tanstack/react-query", "react-native-web"],
       },
     },
   },

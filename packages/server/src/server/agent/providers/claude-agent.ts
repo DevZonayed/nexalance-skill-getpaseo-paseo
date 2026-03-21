@@ -68,17 +68,11 @@ import type {
   McpServerConfig,
   PersistedAgentDescriptor,
 } from "../agent-sdk-types.js";
-import {
-  applyProviderEnv,
-  type ProviderRuntimeSettings,
-} from "../provider-launch-config.js";
+import { applyProviderEnv, type ProviderRuntimeSettings } from "../provider-launch-config.js";
 import { getOrchestratorModeInstructions } from "../orchestrator-instructions.js";
 
 const fsPromises = promises;
-const CLAUDE_SETTING_SOURCES: NonNullable<Options["settingSources"]> = [
-  "user",
-  "project",
-];
+const CLAUDE_SETTING_SOURCES: NonNullable<Options["settingSources"]> = ["user", "project"];
 
 type TurnState = "idle" | "foreground" | "autonomous";
 
@@ -116,7 +110,7 @@ function normalizeModelIdCandidate(modelId: string | null | undefined): string |
 
 function pickSupportedModelId(
   supportedModelIds: ReadonlySet<string>,
-  candidate: string | null | undefined
+  candidate: string | null | undefined,
 ): string | null {
   const normalizedCandidate = normalizeModelIdCandidate(candidate);
   if (!normalizedCandidate) {
@@ -125,9 +119,7 @@ function pickSupportedModelId(
   return supportedModelIds.has(normalizedCandidate) ? normalizedCandidate : null;
 }
 
-function inferClaudeModelFamilyFromText(
-  text: string | null | undefined
-): ClaudeModelFamily | null {
+function inferClaudeModelFamilyFromText(text: string | null | undefined): ClaudeModelFamily | null {
   if (typeof text !== "string") {
     return null;
   }
@@ -146,7 +138,7 @@ function inferClaudeModelFamilyFromText(
 
 function pickFamilyAliasModelId(
   familyAliases: ReadonlyMap<ClaudeModelFamily, string> | null | undefined,
-  family: ClaudeModelFamily
+  family: ClaudeModelFamily,
 ): string | null {
   if (!familyAliases) {
     return null;
@@ -155,7 +147,7 @@ function pickFamilyAliasModelId(
 }
 
 export function normalizeClaudeRuntimeModelId(
-  options: NormalizeClaudeRuntimeModelIdOptions
+  options: NormalizeClaudeRuntimeModelIdOptions,
 ): string {
   const runtimeModel = options.runtimeModelId.trim();
   if (!runtimeModel) {
@@ -207,18 +199,12 @@ export function normalizeClaudeRuntimeModelId(
     }
   }
 
-  const configuredModelId = pickSupportedModelId(
-    supportedModelIds,
-    options.configuredModelId
-  );
+  const configuredModelId = pickSupportedModelId(supportedModelIds, options.configuredModelId);
   if (configuredModelId) {
     return configuredModelId;
   }
 
-  const currentModelId = pickSupportedModelId(
-    supportedModelIds,
-    options.currentModelId
-  );
+  const currentModelId = pickSupportedModelId(supportedModelIds, options.currentModelId);
   if (currentModelId) {
     return currentModelId;
   }
@@ -268,9 +254,7 @@ const DEFAULT_MODES: AgentMode[] = [
   },
 ];
 
-const VALID_CLAUDE_MODES = new Set(
-  DEFAULT_MODES.map((mode) => mode.id)
-);
+const VALID_CLAUDE_MODES = new Set(DEFAULT_MODES.map((mode) => mode.id));
 
 const REWIND_COMMAND_NAME = "rewind";
 const REWIND_COMMAND: AgentSlashCommand = {
@@ -279,11 +263,9 @@ const REWIND_COMMAND: AgentSlashCommand = {
   argumentHint: "[user_message_uuid]",
 };
 const INTERRUPT_TOOL_USE_PLACEHOLDER = "[Request interrupted by user for tool use]";
-const INTERRUPT_PLACEHOLDER_PATTERN =
-  /^\[Request interrupted by user(?:[^\]]*)\]$/;
+const INTERRUPT_PLACEHOLDER_PATTERN = /^\[Request interrupted by user(?:[^\]]*)\]$/;
 const NO_RESPONSE_REQUESTED_PLACEHOLDER = "No response requested.";
-const UUID_PATTERN =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 type SlashCommandInvocation = {
   commandName: string;
@@ -315,7 +297,7 @@ type ClaudeAgentSessionOptions = {
 
 function resolveClaudeSpawnCommand(
   spawnOptions: SpawnOptions,
-  runtimeSettings?: ProviderRuntimeSettings
+  runtimeSettings?: ProviderRuntimeSettings,
 ): { command: string; args: string[] } {
   const commandConfig = runtimeSettings?.command;
   if (!commandConfig || commandConfig.mode === "default") {
@@ -340,21 +322,17 @@ function resolveClaudeSpawnCommand(
 
 function applyRuntimeSettingsToClaudeOptions(
   options: ClaudeOptions,
-  runtimeSettings?: ProviderRuntimeSettings
+  runtimeSettings?: ProviderRuntimeSettings,
 ): ClaudeOptions {
   return {
     ...options,
     spawnClaudeCodeProcess: (spawnOptions) => {
-      const resolved = resolveClaudeSpawnCommand(
-        spawnOptions,
-        runtimeSettings
-      );
+      const resolved = resolveClaudeSpawnCommand(spawnOptions, runtimeSettings);
       // The SDK defaults to spawning "node" via PATH lookup, which fails when
       // running from the managed runtime bundle where node isn't in PATH.
       // Always use process.execPath — the actual node binary running the daemon.
-      const command = resolved.command === spawnOptions.command
-        ? process.execPath
-        : resolved.command;
+      const command =
+        resolved.command === spawnOptions.command ? process.execPath : resolved.command;
       return spawn(command, resolved.args, {
         cwd: spawnOptions.cwd,
         env: applyProviderEnv(spawnOptions.env, runtimeSettings),
@@ -397,40 +375,24 @@ function summarizeClaudeOptionsForLog(options: ClaudeOptions): ClaudeOptionsLogS
       return { mode: "string" as const, preset: null };
     }
     const prompt = systemPromptRaw as Record<string, unknown>;
-    const promptType =
-      typeof prompt.type === "string" ? prompt.type : "custom";
+    const promptType = typeof prompt.type === "string" ? prompt.type : "custom";
     return {
-      mode:
-        promptType === "preset"
-          ? ("preset" as const)
-          : ("custom" as const),
-      preset:
-        typeof prompt.preset === "string" && prompt.preset.length > 0
-          ? prompt.preset
-          : null,
+      mode: promptType === "preset" ? ("preset" as const) : ("custom" as const),
+      preset: typeof prompt.preset === "string" && prompt.preset.length > 0 ? prompt.preset : null,
     };
   })();
-  const mcpServerNames = options.mcpServers
-    ? Object.keys(options.mcpServers).sort()
-    : [];
+  const mcpServerNames = options.mcpServers ? Object.keys(options.mcpServers).sort() : [];
 
   return {
     cwd: typeof options.cwd === "string" ? options.cwd : null,
-    permissionMode:
-      typeof options.permissionMode === "string"
-        ? options.permissionMode
-        : null,
+    permissionMode: typeof options.permissionMode === "string" ? options.permissionMode : null,
     model: typeof options.model === "string" ? options.model : null,
     includePartialMessages: options.includePartialMessages === true,
-    settingSources: Array.isArray(options.settingSources)
-      ? options.settingSources
-      : [],
+    settingSources: Array.isArray(options.settingSources) ? options.settingSources : [],
     enableFileCheckpointing: options.enableFileCheckpointing === true,
     hasResume: typeof options.resume === "string" && options.resume.length > 0,
     maxThinkingTokens:
-      typeof options.maxThinkingTokens === "number"
-        ? options.maxThinkingTokens
-        : null,
+      typeof options.maxThinkingTokens === "number" ? options.maxThinkingTokens : null,
     hasEnv: !!options.env,
     envKeyCount: Object.keys(options.env ?? {}).length,
     hasMcpServers: mcpServerNames.length > 0,
@@ -443,9 +405,7 @@ function summarizeClaudeOptionsForLog(options: ClaudeOptions): ClaudeOptionsLogS
   };
 }
 
-function isToolResultTextBlock(
-  value: unknown
-): value is { type: "text"; text: string } {
+function isToolResultTextBlock(value: unknown): value is { type: "text"; text: string } {
   return (
     !!value &&
     typeof value === "object" &&
@@ -454,10 +414,7 @@ function isToolResultTextBlock(
   );
 }
 
-function normalizeForDeterministicString(
-  value: unknown,
-  seen: WeakSet<object>
-): unknown {
+function normalizeForDeterministicString(value: unknown, seen: WeakSet<object>): unknown {
   if (
     value === null ||
     typeof value === "string" ||
@@ -479,9 +436,7 @@ function normalizeForDeterministicString(
     return "[undefined]";
   }
   if (Array.isArray(value)) {
-    return value.map((entry) =>
-      normalizeForDeterministicString(entry, seen)
-    );
+    return value.map((entry) => normalizeForDeterministicString(entry, seen));
   }
   if (typeof value === "object") {
     const objectValue = value as object;
@@ -505,10 +460,7 @@ function deterministicStringify(value: unknown): string {
     return "";
   }
   try {
-    const normalized = normalizeForDeterministicString(
-      value,
-      new WeakSet<object>()
-    );
+    const normalized = normalizeForDeterministicString(value, new WeakSet<object>());
     if (typeof normalized === "string") {
       return normalized;
     }
@@ -546,16 +498,11 @@ function isClaudeInterruptPlaceholderText(value: unknown): boolean {
 }
 
 function isClaudeNoResponsePlaceholderText(value: unknown): boolean {
-  return (
-    normalizeClaudeTranscriptText(value) === NO_RESPONSE_REQUESTED_PLACEHOLDER
-  );
+  return normalizeClaudeTranscriptText(value) === NO_RESPONSE_REQUESTED_PLACEHOLDER;
 }
 
 function isClaudeTranscriptNoiseText(value: unknown): boolean {
-  return (
-    isClaudeInterruptPlaceholderText(value) ||
-    isClaudeNoResponsePlaceholderText(value)
-  );
+  return isClaudeInterruptPlaceholderText(value) || isClaudeNoResponsePlaceholderText(value);
 }
 
 function collectClaudeTextContentParts(content: unknown): string[] {
@@ -573,16 +520,12 @@ function collectClaudeTextContentParts(content: unknown): string[] {
     if (!block || typeof block !== "object") {
       continue;
     }
-    const text = normalizeClaudeTranscriptText(
-      (block as { text?: unknown }).text
-    );
+    const text = normalizeClaudeTranscriptText((block as { text?: unknown }).text);
     if (text) {
       parts.push(text);
       continue;
     }
-    const input = normalizeClaudeTranscriptText(
-      (block as { input?: unknown }).input
-    );
+    const input = normalizeClaudeTranscriptText((block as { input?: unknown }).input);
     if (input) {
       parts.push(input);
     }
@@ -593,10 +536,7 @@ function collectClaudeTextContentParts(content: unknown): string[] {
 
 function isClaudeTranscriptNoiseContent(content: unknown): boolean {
   const parts = collectClaudeTextContentParts(content);
-  return (
-    parts.length > 0 &&
-    parts.every((part) => isClaudeTranscriptNoiseText(part))
-  );
+  return parts.length > 0 && parts.every((part) => isClaudeTranscriptNoiseText(part));
 }
 
 export function extractUserMessageText(content: unknown): string | null {
@@ -757,9 +697,7 @@ function coerceSessionMetadata(metadata: AgentMetadata | undefined): Partial<Age
   return result;
 }
 
-function toClaudeSdkMcpConfig(
-  config: McpServerConfig
-): ClaudeSdkMcpServerConfig {
+function toClaudeSdkMcpConfig(config: McpServerConfig): ClaudeSdkMcpServerConfig {
   switch (config.type) {
     case "stdio":
       return {
@@ -807,7 +745,7 @@ function isPermissionUpdate(value: AgentPermissionUpdate): value is PermissionUp
 
 function resolvePermissionKind(
   toolName: string,
-  input: Record<string, unknown>
+  input: Record<string, unknown>,
 ): AgentPermissionRequestKind {
   if (toolName === "ExitPlanMode") return "plan";
   if (toolName === "AskUserQuestion" && Array.isArray(input.questions)) {
@@ -841,18 +779,10 @@ class TimelineAssembler {
     messageIdHint?: string | null;
   }): AgentTimelineItem[] {
     if (input.message.type === "assistant") {
-      return this.consumeAssistantMessage(
-        input.message,
-        input.runId,
-        input.messageIdHint ?? null
-      );
+      return this.consumeAssistantMessage(input.message, input.runId, input.messageIdHint ?? null);
     }
     if (input.message.type === "stream_event") {
-      return this.consumeStreamEvent(
-        input.message,
-        input.runId,
-        input.messageIdHint ?? null
-      );
+      return this.consumeStreamEvent(input.message, input.runId, input.messageIdHint ?? null);
     }
     return [];
   }
@@ -860,7 +790,7 @@ class TimelineAssembler {
   private consumeAssistantMessage(
     message: SDKMessage & { type: "assistant" },
     runId: string | null,
-    messageIdHint: string | null
+    messageIdHint: string | null,
   ): AgentTimelineItem[] {
     const messageId =
       this.readMessageIdFromAssistantMessage(message) ??
@@ -877,12 +807,11 @@ class TimelineAssembler {
   private consumeStreamEvent(
     message: SDKMessage & { type: "stream_event" },
     runId: string | null,
-    messageIdHint: string | null
+    messageIdHint: string | null,
   ): AgentTimelineItem[] {
     const event = message.event as Record<string, unknown>;
     const eventType = readTrimmedString(event.type);
-    const streamEventMessageId =
-      this.readMessageIdFromStreamEvent(event) ?? messageIdHint;
+    const streamEventMessageId = this.readMessageIdFromStreamEvent(event) ?? messageIdHint;
 
     if (eventType === "message_start") {
       const messageId = this.resolveMessageId({
@@ -910,11 +839,7 @@ class TimelineAssembler {
     }
 
     if (eventType === "content_block_start") {
-      return this.consumeDeltaContent(
-        event.content_block,
-        runId,
-        streamEventMessageId
-      );
+      return this.consumeDeltaContent(event.content_block, runId, streamEventMessageId);
     }
 
     if (eventType === "content_block_delta") {
@@ -927,7 +852,7 @@ class TimelineAssembler {
   private consumeDeltaContent(
     content: unknown,
     runId: string | null,
-    messageIdHint: string | null
+    messageIdHint: string | null,
   ): AgentTimelineItem[] {
     const fragments = this.extractFragments(content);
     if (fragments.length === 0) {
@@ -947,7 +872,7 @@ class TimelineAssembler {
 
   private appendFragments(
     state: TimelineMessageState,
-    fragments: TimelineFragment[]
+    fragments: TimelineFragment[],
   ): AgentTimelineItem[] {
     for (const fragment of fragments) {
       if (fragment.kind === "assistant") {
@@ -961,7 +886,7 @@ class TimelineAssembler {
 
   private applyAbsoluteFragments(
     state: TimelineMessageState,
-    fragments: TimelineFragment[]
+    fragments: TimelineFragment[],
   ): AgentTimelineItem[] {
     const assistantText = fragments
       .filter((fragment) => fragment.kind === "assistant")
@@ -987,10 +912,7 @@ class TimelineAssembler {
     return this.emitNewContent(state);
   }
 
-  private finalizeMessage(
-    messageId: string,
-    runId: string | null
-  ): AgentTimelineItem[] {
+  private finalizeMessage(messageId: string, runId: string | null): AgentTimelineItem[] {
     const state = this.messages.get(messageId);
     if (!state) {
       return [];
@@ -1023,10 +945,7 @@ class TimelineAssembler {
     return items;
   }
 
-  private ensureMessageState(
-    messageId: string,
-    runId: string | null
-  ): TimelineMessageState {
+  private ensureMessageState(messageId: string, runId: string | null): TimelineMessageState {
     const existing = this.messages.get(messageId);
     if (existing) {
       existing.stopped = false;
@@ -1106,26 +1025,20 @@ class TimelineAssembler {
   }
 
   private readMessageIdFromAssistantMessage(
-    message: SDKMessage & { type: "assistant" }
+    message: SDKMessage & { type: "assistant" },
   ): string | null {
     const candidate = message as unknown as {
       message_id?: unknown;
       message?: { id?: unknown } | null;
     };
-    return readTrimmedString(candidate.message_id) ??
-      readTrimmedString(candidate.message?.id) ??
-      null;
+    return (
+      readTrimmedString(candidate.message_id) ?? readTrimmedString(candidate.message?.id) ?? null
+    );
   }
 
-  private readMessageIdFromStreamEvent(
-    event: Record<string, unknown>
-  ): string | null {
+  private readMessageIdFromStreamEvent(event: Record<string, unknown>): string | null {
     const message = event.message as { id?: unknown } | undefined;
-    return (
-      readTrimmedString(event.message_id) ??
-      readTrimmedString(message?.id) ??
-      null
-    );
+    return readTrimmedString(event.message_id) ?? readTrimmedString(message?.id) ?? null;
   }
 }
 
@@ -1140,9 +1053,7 @@ export function readEventIdentifiers(message: SDKMessage): EventIdentifiers {
   const root = message as unknown as Record<string, unknown>;
   const messageType = readTrimmedString(root.type);
   const streamEvent = root.event as Record<string, unknown> | undefined;
-  const streamEventMessage = streamEvent?.message as
-    | Record<string, unknown>
-    | undefined;
+  const streamEventMessage = streamEvent?.message as Record<string, unknown> | undefined;
   const messageContainer = root.message as Record<string, unknown> | undefined;
 
   return {
@@ -1198,7 +1109,7 @@ export class ClaudeAgentClient implements AgentClient {
 
   async resumeSession(
     handle: AgentPersistenceHandle,
-    overrides?: Partial<AgentSessionConfig>
+    overrides?: Partial<AgentSessionConfig>,
   ): Promise<AgentSession> {
     const metadata = coerceSessionMetadata(handle.metadata);
     const merged: Partial<AgentSessionConfig> = { ...metadata, ...overrides };
@@ -1220,7 +1131,9 @@ export class ClaudeAgentClient implements AgentClient {
     return listClaudeCatalogModels();
   }
 
-  async listPersistedAgents(options?: ListPersistedAgentsOptions): Promise<PersistedAgentDescriptor[]> {
+  async listPersistedAgents(
+    options?: ListPersistedAgentsOptions,
+  ): Promise<PersistedAgentDescriptor[]> {
     const configDir = process.env.CLAUDE_CONFIG_DIR ?? path.join(os.homedir(), ".claude");
     const projectsRoot = path.join(configDir, "projects");
     if (!(await pathExists(projectsRoot))) {
@@ -1307,10 +1220,7 @@ class ClaudeAgentSession implements AgentSession {
   private recentStderr = "";
   private closed = false;
 
-  constructor(
-    config: ClaudeAgentConfig,
-    options: ClaudeAgentSessionOptions
-  ) {
+  constructor(config: ClaudeAgentConfig, options: ClaudeAgentSessionOptions) {
     this.config = config;
     this.defaults = options.defaults;
     this.runtimeSettings = options.runtimeSettings;
@@ -1334,7 +1244,7 @@ class ClaudeAgentSession implements AgentSession {
     if (config.modeId && !VALID_CLAUDE_MODES.has(config.modeId)) {
       const validModesList = Array.from(VALID_CLAUDE_MODES).join(", ");
       throw new Error(
-        `Invalid mode '${config.modeId}' for Claude provider. Valid modes: ${validModesList}`
+        `Invalid mode '${config.modeId}' for Claude provider. Valid modes: ${validModesList}`,
       );
     }
 
@@ -1405,7 +1315,7 @@ class ClaudeAgentSession implements AgentSession {
 
   async *stream(
     prompt: AgentPromptInput,
-    options?: AgentRunOptions
+    options?: AgentRunOptions,
   ): AsyncGenerator<AgentStreamEvent> {
     void options;
     if (this.cancelCurrentTurn) {
@@ -1469,9 +1379,7 @@ class ClaudeAgentSession implements AgentSession {
       this.input.push(sdkMessage);
     } catch (error) {
       this.finishForegroundTurn(
-        this.buildTurnFailedEvent(
-          error instanceof Error ? error.message : "Claude stream failed"
-        )
+        this.buildTurnFailedEvent(error instanceof Error ? error.message : "Claude stream failed"),
       );
       finishedNaturally = true;
     }
@@ -1557,7 +1465,7 @@ class ClaudeAgentSession implements AgentSession {
     if (!VALID_CLAUDE_MODES.has(modeId)) {
       const validModesList = Array.from(VALID_CLAUDE_MODES).join(", ");
       throw new Error(
-        `Invalid mode '${modeId}' for Claude provider. Valid modes: ${validModesList}`
+        `Invalid mode '${modeId}' for Claude provider. Valid modes: ${validModesList}`,
       );
     }
 
@@ -1614,11 +1522,11 @@ class ClaudeAgentSession implements AgentSession {
         await this.setMode("acceptEdits");
         this.pushToolCall(
           mapClaudeCompletedToolCall({
-          name: "plan_approval",
-          callId: pending.request.id,
-          input: pending.request.input ?? null,
-          output: { approved: true },
-        })
+            name: "plan_approval",
+            callId: pending.request.id,
+            input: pending.request.input ?? null,
+            output: { approved: true },
+          }),
         );
       }
       const result: PermissionResult = {
@@ -1639,7 +1547,7 @@ class ClaudeAgentSession implements AgentSession {
             input: pending.request.input ?? null,
             output: null,
             error: { message: response.message ?? "Permission denied" },
-          })
+          }),
         );
       }
       const result: PermissionResult = {
@@ -1683,7 +1591,7 @@ class ClaudeAgentSession implements AgentSession {
         hasInput: Boolean(this.input),
         hasActiveForegroundTurn: Boolean(this.activeForegroundTurn),
       },
-      "Claude session close: start"
+      "Claude session close: start",
     );
     this.closed = true;
     this.rejectAllPendingPermissions(new Error("Claude session closed"));
@@ -1703,7 +1611,7 @@ class ClaudeAgentSession implements AgentSession {
     this.input = null;
     this.logger.trace(
       { claudeSessionId: this.claudeSessionId, turnState: this.turnState },
-      "Claude session close: completed"
+      "Claude session close: completed",
     );
   }
 
@@ -1723,14 +1631,10 @@ class ClaudeAgentSession implements AgentSession {
     if (!commandMap.has(REWIND_COMMAND_NAME)) {
       commandMap.set(REWIND_COMMAND_NAME, REWIND_COMMAND);
     }
-    return Array.from(commandMap.values()).sort((a, b) =>
-      a.name.localeCompare(b.name)
-    );
+    return Array.from(commandMap.values()).sort((a, b) => a.name.localeCompare(b.name));
   }
 
-  private resolveSlashCommandInvocation(
-    prompt: AgentPromptInput
-  ): SlashCommandInvocation | null {
+  private resolveSlashCommandInvocation(prompt: AgentPromptInput): SlashCommandInvocation | null {
     if (typeof prompt !== "string") {
       return null;
     }
@@ -1749,23 +1653,19 @@ class ClaudeAgentSession implements AgentSession {
     const withoutPrefix = trimmed.slice(1);
     const firstWhitespaceIdx = withoutPrefix.search(/\s/);
     const commandName =
-      firstWhitespaceIdx === -1
-        ? withoutPrefix
-        : withoutPrefix.slice(0, firstWhitespaceIdx);
+      firstWhitespaceIdx === -1 ? withoutPrefix : withoutPrefix.slice(0, firstWhitespaceIdx);
     if (!commandName || commandName.includes("/")) {
       return null;
     }
     const rawArgs =
-      firstWhitespaceIdx === -1
-        ? ""
-        : withoutPrefix.slice(firstWhitespaceIdx + 1).trim();
+      firstWhitespaceIdx === -1 ? "" : withoutPrefix.slice(firstWhitespaceIdx + 1).trim();
     return rawArgs.length > 0
       ? { commandName, args: rawArgs, rawInput: trimmed }
       : { commandName, rawInput: trimmed };
   }
 
   private async *streamRewindCommand(
-    invocation: SlashCommandInvocation
+    invocation: SlashCommandInvocation,
   ): AsyncGenerator<AgentStreamEvent> {
     yield { type: "turn_started", provider: "claude" };
 
@@ -1786,10 +1686,7 @@ class ClaudeAgentSession implements AgentSession {
         provider: "claude",
         item: {
           type: "assistant_message",
-          text: this.buildRewindSuccessMessage(
-            rewindAttempt.messageId,
-            rewindAttempt.result
-          ),
+          text: this.buildRewindSuccessMessage(rewindAttempt.messageId, rewindAttempt.result),
         },
       };
       yield { type: "turn_completed", provider: "claude" };
@@ -1797,17 +1694,14 @@ class ClaudeAgentSession implements AgentSession {
       yield {
         type: "turn_failed",
         provider: "claude",
-        error:
-          error instanceof Error
-            ? error.message
-            : "Failed to rewind tracked files",
+        error: error instanceof Error ? error.message : "Failed to rewind tracked files",
       };
     }
   }
 
   private buildRewindSuccessMessage(
     targetUserMessageId: string,
-    rewindResult: { filesChanged?: string[]; insertions?: number; deletions?: number }
+    rewindResult: { filesChanged?: string[]; insertions?: number; deletions?: number },
   ): string {
     const fileCount = Array.isArray(rewindResult.filesChanged)
       ? rewindResult.filesChanged.length
@@ -1828,9 +1722,7 @@ class ClaudeAgentSession implements AgentSession {
     return `Rewound tracked files to message ${targetUserMessageId}.`;
   }
 
-  private async attemptRewind(
-    args: string | undefined
-  ): Promise<{
+  private async attemptRewind(args: string | undefined): Promise<{
     messageId: string | null;
     result?: { filesChanged?: string[]; insertions?: number; deletions?: number };
     error?: string;
@@ -1840,8 +1732,7 @@ class ClaudeAgentSession implements AgentSession {
       if (!UUID_PATTERN.test(candidate)) {
         return {
           messageId: null,
-          error:
-            "Invalid message UUID. Usage: /rewind <user_message_uuid> or /rewind",
+          error: "Invalid message UUID. Usage: /rewind <user_message_uuid> or /rewind",
         };
       }
       const rewindResult = await this.rewindFilesOnce(candidate);
@@ -1850,9 +1741,7 @@ class ClaudeAgentSession implements AgentSession {
       }
       return {
         messageId: null,
-        error:
-          rewindResult.error ??
-          `No file checkpoint found for message ${candidate}.`,
+        error: rewindResult.error ?? `No file checkpoint found for message ${candidate}.`,
       };
     }
 
@@ -1860,8 +1749,7 @@ class ClaudeAgentSession implements AgentSession {
     if (candidates.length === 0) {
       return {
         messageId: null,
-        error:
-          "No prior user message available to rewind. Use /rewind <user_message_uuid>.",
+        error: "No prior user message available to rewind. Use /rewind <user_message_uuid>.",
       };
     }
 
@@ -1876,18 +1764,13 @@ class ClaudeAgentSession implements AgentSession {
           lastError = rewindResult.error;
         }
       } catch (error) {
-        lastError =
-          error instanceof Error
-            ? error.message
-            : "Failed to rewind tracked files.";
+        lastError = error instanceof Error ? error.message : "Failed to rewind tracked files.";
       }
     }
 
     return {
       messageId: null,
-      error:
-        lastError ??
-        "No rewind checkpoints are currently available for this session.",
+      error: lastError ?? "No rewind checkpoints are currently available for this session.",
     };
   }
 
@@ -1919,11 +1802,7 @@ class ClaudeAgentSession implements AgentSession {
   private getRewindCandidateUserMessageIds(): string[] {
     const candidates: string[] = [];
     const pushUnique = (value: string | null | undefined) => {
-      if (
-        typeof value === "string" &&
-        value.length > 0 &&
-        !candidates.includes(value)
-      ) {
+      if (typeof value === "string" && value.length > 0 && !candidates.includes(value)) {
         candidates.push(value);
       }
     };
@@ -1992,7 +1871,11 @@ class ClaudeAgentSession implements AgentSession {
 
     if (this.queryRestartNeeded && this.query) {
       this.input?.end();
-      try { await this.query.return?.(); } catch { /* ignore */ }
+      try {
+        await this.query.return?.();
+      } catch {
+        /* ignore */
+      }
       this.query = null;
       this.input = null;
       this.queryRestartNeeded = false;
@@ -2000,10 +1883,7 @@ class ClaudeAgentSession implements AgentSession {
 
     const input = new Pushable<SDKUserMessage>();
     const options = this.buildOptions();
-    this.logger.debug(
-      { options: summarizeClaudeOptionsForLog(options) },
-      "claude query"
-    );
+    this.logger.debug({ options: summarizeClaudeOptionsForLog(options) }, "claude query");
     this.input = input;
     this.query = this.queryFactory({ prompt: input, options });
     // Do not kick off background control-plane queries here. Methods like
@@ -2015,7 +1895,7 @@ class ClaudeAgentSession implements AgentSession {
 
   private async awaitWithTimeout(
     promise: Promise<unknown> | undefined,
-    label: string
+    label: string,
   ): Promise<void> {
     if (!promise) {
       this.logger.trace({ label }, "Claude query operation skipped (no promise)");
@@ -2032,7 +1912,7 @@ class ClaudeAgentSession implements AgentSession {
       ]);
       this.logger.trace(
         { label, durationMs: Date.now() - startedAt },
-        "Claude query operation settled"
+        "Claude query operation settled",
       );
     } catch (error) {
       this.logger.warn({ err: error, label }, "Claude query operation did not settle cleanly");
@@ -2107,14 +1987,11 @@ class ClaudeAgentSession implements AgentSession {
   }
 
   private applyRuntimeSettings(options: ClaudeOptions): ClaudeOptions {
-    return applyRuntimeSettingsToClaudeOptions(
-      options,
-      this.runtimeSettings
-    );
+    return applyRuntimeSettingsToClaudeOptions(options, this.runtimeSettings);
   }
 
   private normalizeMcpServers(
-    servers: Record<string, McpServerConfig>
+    servers: Record<string, McpServerConfig>,
   ): Record<string, ClaudeSdkMcpServerConfig> {
     const result: Record<string, ClaudeSdkMcpServerConfig> = {};
     for (const [name, config] of Object.entries(servers)) {
@@ -2124,7 +2001,10 @@ class ClaudeAgentSession implements AgentSession {
   }
 
   private toSdkUserMessage(prompt: AgentPromptInput): SDKUserMessage {
-    const content: Array<{ type: "text"; text: string } | { type: "image"; source: { type: "base64"; media_type: string; data: string } }> = [];
+    const content: Array<
+      | { type: "text"; text: string }
+      | { type: "image"; source: { type: "base64"; media_type: string; data: string } }
+    > = [];
     if (Array.isArray(prompt)) {
       for (const chunk of prompt) {
         if (chunk.type === "text") {
@@ -2163,10 +2043,7 @@ class ClaudeAgentSession implements AgentSession {
     if (this.turnState === next) {
       return;
     }
-    this.logger.debug(
-      { from: this.turnState, to: next, reason },
-      "Claude turn state transition"
-    );
+    this.logger.debug({ from: this.turnState, to: next, reason }, "Claude turn state transition");
     this.turnState = next;
   }
 
@@ -2183,7 +2060,7 @@ class ClaudeAgentSession implements AgentSession {
   }
 
   private buildTurnFailedEvent(
-    errorMessage: string
+    errorMessage: string,
   ): Extract<AgentStreamEvent, { type: "turn_failed" }> {
     const normalized = errorMessage.trim() || "Claude run failed";
     const exitCodeMatch = normalized.match(/\bcode\s+(\d+)\b/i);
@@ -2229,7 +2106,7 @@ class ClaudeAgentSession implements AgentSession {
 
   private shouldRecoverInterruptedQueryAbort(
     error: unknown,
-    consecutiveRecoveries: number
+    consecutiveRecoveries: number,
   ): boolean {
     if (consecutiveRecoveries >= 3) {
       return false;
@@ -2243,10 +2120,9 @@ class ClaudeAgentSession implements AgentSession {
     return message.toLowerCase().includes("request was aborted");
   }
 
-  private finishForegroundTurn(event: Extract<
-    AgentStreamEvent,
-    { type: "turn_completed" | "turn_failed" | "turn_canceled" }
-  >): void {
+  private finishForegroundTurn(
+    event: Extract<AgentStreamEvent, { type: "turn_completed" | "turn_failed" | "turn_canceled" }>,
+  ): void {
     if (event.type === "turn_failed" || event.type === "turn_canceled") {
       this.flushPendingToolCalls();
     }
@@ -2383,15 +2259,12 @@ class ClaudeAgentSession implements AgentSession {
           if (
             !this.closed &&
             this.query === activeQuery &&
-            this.shouldRecoverInterruptedQueryAbort(
-              error,
-              consecutiveInterruptAbortRecoveries
-            )
+            this.shouldRecoverInterruptedQueryAbort(error, consecutiveInterruptAbortRecoveries)
           ) {
             consecutiveInterruptAbortRecoveries += 1;
             this.logger.debug(
               { recoveries: consecutiveInterruptAbortRecoveries },
-              "Recovering Claude query pump after interrupt abort"
+              "Recovering Claude query pump after interrupt abort",
             );
             continue;
           }
@@ -2433,7 +2306,7 @@ class ClaudeAgentSession implements AgentSession {
         routedTo: routeToForeground ? "foreground_queue" : "live_queue",
         turnId,
       },
-      "Claude query pump routed SDK message"
+      "Claude query pump routed SDK message",
     );
 
     const messageEvents = this.translateMessageToEvents(message, {
@@ -2446,11 +2319,14 @@ class ClaudeAgentSession implements AgentSession {
         runId: turnId,
         messageIdHint: identifiers.messageId,
       })
-      .map((item) => ({
-        type: "timeline",
-        item,
-        provider: "claude",
-      }) satisfies AgentStreamEvent);
+      .map(
+        (item) =>
+          ({
+            type: "timeline",
+            item,
+            provider: "claude",
+          }) satisfies AgentStreamEvent,
+      );
     const events = [...messageEvents, ...assistantTimelineEvents];
 
     if (events.length === 0) {
@@ -2460,9 +2336,7 @@ class ClaudeAgentSession implements AgentSession {
     if (
       this.pendingInterruptAbort &&
       message.type === "result" &&
-      events.some(
-        (event) => event.type === "turn_completed" || event.type === "turn_failed"
-      ) &&
+      events.some((event) => event.type === "turn_completed" || event.type === "turn_failed") &&
       (!this.activeForegroundTurn || !this.activeForegroundTurn.hasVisibleActivity)
     ) {
       this.pendingInterruptAbort = false;
@@ -2475,7 +2349,7 @@ class ClaudeAgentSession implements AgentSession {
         (event) =>
           event.type === "timeline" ||
           event.type === "permission_requested" ||
-          event.type === "permission_resolved"
+          event.type === "permission_resolved",
       )
     ) {
       this.activeForegroundTurn.hasVisibleActivity = true;
@@ -2491,7 +2365,7 @@ class ClaudeAgentSession implements AgentSession {
 
   private async handleMissingResumedConversation(
     message: SDKMessage,
-    query: Query
+    query: Query,
   ): Promise<boolean> {
     const staleResumeError = this.readMissingResumedConversationError(message);
     if (!staleResumeError) {
@@ -2503,14 +2377,14 @@ class ClaudeAgentSession implements AgentSession {
         claudeSessionId: this.claudeSessionId,
         error: staleResumeError,
       },
-      "Claude resumed session no longer exists; invalidating persisted session"
+      "Claude resumed session no longer exists; invalidating persisted session",
     );
 
     this.failActiveTurns(staleResumeError);
     this.input?.end();
     await this.awaitWithTimeout(
       query.return?.(),
-      "query pump return on missing resumed conversation"
+      "query pump return on missing resumed conversation",
     );
     if (this.query === query) {
       this.query = null;
@@ -2541,7 +2415,7 @@ class ClaudeAgentSession implements AgentSession {
     try {
       await this.awaitWithTimeout(
         queryToInterrupt.interrupt(),
-        "interruptActiveTurn query.interrupt()"
+        "interruptActiveTurn query.interrupt()",
       );
     } catch (error) {
       this.logger.warn({ err: error }, "Failed to interrupt active turn");
@@ -2553,11 +2427,12 @@ class ClaudeAgentSession implements AgentSession {
     options?: {
       suppressAssistantText?: boolean;
       suppressReasoning?: boolean;
-    }
+    },
   ): AgentStreamEvent[] {
-    const parentToolUseId = "parent_tool_use_id" in message
-      ? (message as { parent_tool_use_id: string | null }).parent_tool_use_id
-      : null;
+    const parentToolUseId =
+      "parent_tool_use_id" in message
+        ? (message as { parent_tool_use_id: string | null }).parent_tool_use_id
+        : null;
     if (parentToolUseId) {
       return this.sidechainTracker.handleMessage(message, parentToolUseId);
     }
@@ -2594,9 +2469,7 @@ class ClaudeAgentSession implements AgentSession {
             });
           }
         } else if (message.subtype === "compact_boundary") {
-          const compactMetadata = readCompactionMetadata(
-            message as Record<string, unknown>
-          );
+          const compactMetadata = readCompactionMetadata(message as Record<string, unknown>);
           events.push({
             type: "timeline",
             item: {
@@ -2608,9 +2481,7 @@ class ClaudeAgentSession implements AgentSession {
             provider: "claude",
           });
         } else if (message.subtype === "task_notification") {
-          const taskNotificationItem = mapTaskNotificationSystemRecordToToolCall(
-            message
-          );
+          const taskNotificationItem = mapTaskNotificationSystemRecordToToolCall(message);
           if (taskNotificationItem) {
             events.push({
               type: "timeline",
@@ -2629,9 +2500,7 @@ class ClaudeAgentSession implements AgentSession {
           break;
         }
         const messageId =
-          typeof message.uuid === "string" && message.uuid.length > 0
-            ? message.uuid
-            : undefined;
+          typeof message.uuid === "string" && message.uuid.length > 0 ? message.uuid : undefined;
         this.rememberUserMessageId(messageId);
         const content = message.message?.content;
         const taskNotificationItem = mapTaskNotificationUserContentToToolCall({
@@ -2745,7 +2614,7 @@ class ClaudeAgentSession implements AgentSession {
     throw new Error(
       `CRITICAL: Claude session ID overwrite detected! ` +
         `Existing: ${this.claudeSessionId}, New: ${sessionId}. ` +
-        `This indicates a session identity corruption bug.`
+        `This indicates a session identity corruption bug.`,
     );
   }
 
@@ -2777,20 +2646,14 @@ class ClaudeAgentSession implements AgentSession {
     if (existingSessionId === null) {
       this.claudeSessionId = newSessionId;
       threadStartedSessionId = newSessionId;
-      this.logger.debug(
-        { sessionId: newSessionId },
-        "Claude session ID set for the first time"
-      );
+      this.logger.debug({ sessionId: newSessionId }, "Claude session ID set for the first time");
     } else if (existingSessionId === newSessionId) {
-      this.logger.debug(
-        { sessionId: newSessionId },
-        "Claude session ID unchanged (same value)"
-      );
+      this.logger.debug({ sessionId: newSessionId }, "Claude session ID unchanged (same value)");
     } else {
       throw new Error(
         `CRITICAL: Claude session ID overwrite detected! ` +
           `Existing: ${existingSessionId}, New: ${newSessionId}. ` +
-          `This indicates a session identity corruption bug.`
+          `This indicates a session identity corruption bug.`,
       );
     }
     this.availableModes = DEFAULT_MODES;
@@ -2804,10 +2667,7 @@ class ClaudeAgentSession implements AgentSession {
         configuredModelId: this.config.model ?? null,
         currentModelId: this.lastOptionsModel,
       });
-      this.logger.debug(
-        { model: message.model, normalizedModel },
-        "Captured model from SDK init"
-      );
+      this.logger.debug({ model: message.model, normalizedModel }, "Captured model from SDK init");
       this.lastOptionsModel = normalizedModel;
       this.cachedRuntimeInfo = null;
     }
@@ -2821,8 +2681,7 @@ class ClaudeAgentSession implements AgentSession {
     if (!this.claudeSessionId) {
       return null;
     }
-    const errors =
-      "errors" in message && Array.isArray(message.errors) ? message.errors : [];
+    const errors = "errors" in message && Array.isArray(message.errors) ? message.errors : [];
     for (const entry of errors) {
       if (typeof entry !== "string") {
         continue;
@@ -2853,7 +2712,7 @@ class ClaudeAgentSession implements AgentSession {
   private handlePermissionRequest: CanUseTool = async (
     toolName,
     input,
-    options
+    options,
   ): Promise<PermissionResult> => {
     const requestId = `permission-${randomUUID()}`;
     const kind = resolvePermissionKind(toolName, input);
@@ -2937,7 +2796,7 @@ class ClaudeAgentSession implements AgentSession {
             callId: id,
             input: entry.input ?? null,
             output: null,
-          })
+          }),
         );
       }
     }
@@ -2947,7 +2806,7 @@ class ClaudeAgentSession implements AgentSession {
 
   private pushToolCall(
     item: Extract<AgentTimelineItem, { type: "tool_call" }> | null,
-    target?: AgentTimelineItem[]
+    target?: AgentTimelineItem[],
   ) {
     if (!item) {
       return;
@@ -2969,7 +2828,7 @@ class ClaudeAgentSession implements AgentSession {
   }
 
   private normalizePermissionUpdates(
-    updates?: AgentPermissionUpdate[]
+    updates?: AgentPermissionUpdate[],
   ): PermissionUpdate[] | undefined {
     if (!updates || updates.length === 0) {
       return undefined;
@@ -2986,10 +2845,7 @@ class ClaudeAgentSession implements AgentSession {
     }
   }
 
-  private loadPersistedHistory(
-    sessionId: string,
-    options?: { dispatchLive?: boolean }
-  ) {
+  private loadPersistedHistory(sessionId: string, options?: { dispatchLive?: boolean }) {
     try {
       const historyPath = this.resolveHistoryPath(sessionId);
       if (!historyPath || !fs.existsSync(historyPath)) {
@@ -3009,9 +2865,7 @@ class ClaudeAgentSession implements AgentSession {
         return;
       }
 
-      const unreadChunk = content
-        .subarray(this.historyReadOffsetBytes)
-        .toString("utf8");
+      const unreadChunk = content.subarray(this.historyReadOffsetBytes).toString("utf8");
       this.historyReadOffsetBytes = content.byteLength;
       this.ingestPersistedHistoryChunk(unreadChunk, {
         dispatchLive: options?.dispatchLive ?? false,
@@ -3021,10 +2875,7 @@ class ClaudeAgentSession implements AgentSession {
     }
   }
 
-  private ingestPersistedHistoryChunk(
-    chunk: string,
-    options: { dispatchLive: boolean }
-  ): void {
+  private ingestPersistedHistoryChunk(chunk: string, options: { dispatchLive: boolean }): void {
     if (!chunk) {
       return;
     }
@@ -3063,7 +2914,7 @@ class ClaudeAgentSession implements AgentSession {
     options: {
       dispatchLive: boolean;
       timeline: AgentTimelineItem[];
-    }
+    },
   ): boolean {
     const trimmed = line.trim();
     if (!trimmed) {
@@ -3114,10 +2965,9 @@ class ClaudeAgentSession implements AgentSession {
   }
 
   private normalizePersistedHistoryEntryToLiveMessage(
-    entry: Record<string, unknown>
+    entry: Record<string, unknown>,
   ): SDKMessage | null {
-    const taskNotificationMessage =
-      coerceTaskNotificationHistoryRecordToSystemMessage(entry);
+    const taskNotificationMessage = coerceTaskNotificationHistoryRecordToSystemMessage(entry);
     if (taskNotificationMessage) {
       return taskNotificationMessage as unknown as SDKMessage;
     }
@@ -3147,9 +2997,7 @@ class ClaudeAgentSession implements AgentSession {
   }
 
   private convertHistoryEntry(entry: any): AgentTimelineItem[] {
-    return convertClaudeHistoryEntry(entry, (content) =>
-      this.mapBlocksToTimeline(content)
-    );
+    return convertClaudeHistoryEntry(entry, (content) => this.mapBlocksToTimeline(content));
   }
 
   // Maps Claude content blocks into AgentTimelineItems.
@@ -3170,12 +3018,11 @@ class ClaudeAgentSession implements AgentSession {
       textMessageType?: "assistant_message" | "user_message";
       suppressAssistantText?: boolean;
       suppressReasoning?: boolean;
-    }
+    },
   ): AgentTimelineItem[] {
     const textMessageType = options?.textMessageType ?? "assistant_message";
     const suppressText =
-      textMessageType === "assistant_message" &&
-      (options?.suppressAssistantText ?? false);
+      textMessageType === "assistant_message" && (options?.suppressAssistantText ?? false);
     const suppressReasoning = options?.suppressReasoning ?? false;
 
     if (typeof content === "string") {
@@ -3270,17 +3117,18 @@ class ClaudeAgentSession implements AgentSession {
         input: entry.input ?? this.normalizeToolInput(block.input) ?? null,
         output: null,
       }),
-      items
+      items,
     );
   }
 
   private handleToolResult(block: ClaudeContentChunk, items: AgentTimelineItem[]): void {
-    const entry = typeof block.tool_use_id === "string" ? this.toolUseCache.get(block.tool_use_id) : undefined;
+    const entry =
+      typeof block.tool_use_id === "string" ? this.toolUseCache.get(block.tool_use_id) : undefined;
     const toolName = entry?.name ?? block.tool_name ?? "tool";
     const callId =
       typeof block.tool_use_id === "string" && block.tool_use_id.length > 0
         ? block.tool_use_id
-        : entry?.id ?? null;
+        : (entry?.id ?? null);
 
     // Extract output from block.content (SDK always returns content in string form)
     const output = this.buildToolOutput(block, entry);
@@ -3294,7 +3142,7 @@ class ClaudeAgentSession implements AgentSession {
           output: output ?? null,
           error: block,
         }),
-        items
+        items,
       );
     } else {
       this.pushToolCall(
@@ -3304,7 +3152,7 @@ class ClaudeAgentSession implements AgentSession {
           input: entry?.input ?? null,
           output: output ?? null,
         }),
-        items
+        items,
       );
     }
 
@@ -3316,7 +3164,7 @@ class ClaudeAgentSession implements AgentSession {
 
   private buildToolOutput(
     block: ClaudeContentChunk,
-    entry: ToolUseCacheEntry | undefined
+    entry: ToolUseCacheEntry | undefined,
   ): AgentMetadata | undefined {
     if (block.is_error) {
       return undefined;
@@ -3359,7 +3207,7 @@ class ClaudeAgentSession implements AgentSession {
     server: string,
     tool: string,
     output: string,
-    input?: AgentMetadata | null
+    input?: AgentMetadata | null,
   ): AgentMetadata | undefined {
     const normalizedServer = server.toLowerCase();
     const normalizedTool = tool.toLowerCase();
@@ -3408,12 +3256,27 @@ class ClaudeAgentSession implements AgentSession {
     ) {
       if (input && typeof input.file_path === "string") {
         // Support both old_str/new_str and old_string/new_string parameter names
-        const oldContent = typeof input.old_str === "string" ? input.old_str : typeof input.old_string === "string" ? input.old_string : undefined;
-        const newContent = typeof input.new_str === "string" ? input.new_str : typeof input.new_string === "string" ? input.new_string : undefined;
+        const oldContent =
+          typeof input.old_str === "string"
+            ? input.old_str
+            : typeof input.old_string === "string"
+              ? input.old_string
+              : undefined;
+        const newContent =
+          typeof input.new_str === "string"
+            ? input.new_str
+            : typeof input.new_string === "string"
+              ? input.new_string
+              : undefined;
         return {
           type: "file_edit",
           filePath: input.file_path,
-          diff: typeof input.patch === "string" ? input.patch : typeof input.diff === "string" ? input.diff : undefined,
+          diff:
+            typeof input.patch === "string"
+              ? input.patch
+              : typeof input.diff === "string"
+                ? input.diff
+                : undefined,
           oldContent,
           newContent,
         };
@@ -3443,11 +3306,15 @@ class ClaudeAgentSession implements AgentSession {
     options?: {
       suppressAssistantText?: boolean;
       suppressReasoning?: boolean;
-    }
+    },
   ): AgentTimelineItem[] {
     if (event.type === "content_block_start") {
       const block = isClaudeContentChunk(event.content_block) ? event.content_block : null;
-      if (block?.type === "tool_use" && typeof event.index === "number" && typeof block.id === "string") {
+      if (
+        block?.type === "tool_use" &&
+        typeof event.index === "number" &&
+        typeof block.id === "string"
+      ) {
         this.toolUseIndexToId.set(event.index, block.id);
         this.toolUseInputBuffers.delete(block.id);
       }
@@ -3515,7 +3382,11 @@ class ClaudeAgentSession implements AgentSession {
       existing.server = existing.name;
     }
 
-    if (block.type === "tool_use" || block.type === "mcp_tool_use" || block.type === "server_tool_use") {
+    if (
+      block.type === "tool_use" ||
+      block.type === "mcp_tool_use" ||
+      block.type === "server_tool_use"
+    ) {
       const input = this.normalizeToolInput(block.input);
       if (input) {
         this.applyToolInput(existing, input);
@@ -3559,7 +3430,7 @@ class ClaudeAgentSession implements AgentSession {
         callId: toolId,
         input: normalized,
         output: null,
-      })
+      }),
     );
   }
 
@@ -3570,10 +3441,7 @@ class ClaudeAgentSession implements AgentSession {
     return input;
   }
 
-  private areToolInputsEqual(
-    left: AgentMetadata | undefined,
-    right: AgentMetadata
-  ): boolean {
+  private areToolInputsEqual(left: AgentMetadata | undefined, right: AgentMetadata): boolean {
     if (!left) {
       return false;
     }
@@ -3601,7 +3469,12 @@ class ClaudeAgentSession implements AgentSession {
 
   private isCommandTool(name: string, input: AgentMetadata): boolean {
     const normalized = name.toLowerCase();
-    if (normalized.includes("bash") || normalized.includes("shell") || normalized.includes("terminal") || normalized.includes("command")) {
+    if (
+      normalized.includes("bash") ||
+      normalized.includes("shell") ||
+      normalized.includes("terminal") ||
+      normalized.includes("command")
+    ) {
       return true;
     }
     if (typeof input.command === "string" || Array.isArray(input.command)) {
@@ -3647,7 +3520,10 @@ class ClaudeAgentSession implements AgentSession {
       const files: { path: string; kind: string }[] = [];
       for (const value of input.files) {
         if (typeof value === "string" && value.length > 0) {
-          files.push({ path: this.relativizePath(value) ?? value, kind: this.detectFileKind(value) });
+          files.push({
+            path: this.relativizePath(value) ?? value,
+            kind: this.detectFileKind(value),
+          });
         }
       }
       if (files.length > 0) {
@@ -3712,23 +3588,17 @@ function hasToolLikeBlock(block?: ClaudeContentChunk | null): boolean {
 }
 
 function readCompactionMetadata(
-  source: Record<string, unknown>
+  source: Record<string, unknown>,
 ): { trigger?: string; preTokens?: number } | null {
-  const candidates = [
-    source.compact_metadata,
-    source.compactMetadata,
-    source.compactionMetadata,
-  ];
+  const candidates = [source.compact_metadata, source.compactMetadata, source.compactionMetadata];
   for (const candidate of candidates) {
     if (!candidate || typeof candidate !== "object") {
       continue;
     }
     const metadata = candidate as Record<string, unknown>;
-    const trigger =
-      typeof metadata.trigger === "string" ? metadata.trigger : undefined;
+    const trigger = typeof metadata.trigger === "string" ? metadata.trigger : undefined;
     const preTokensRaw = metadata.preTokens ?? metadata.pre_tokens;
-    const preTokens =
-      typeof preTokensRaw === "number" ? preTokensRaw : undefined;
+    const preTokens = typeof preTokensRaw === "number" ? preTokensRaw : undefined;
     return { trigger, preTokens };
   }
   return null;
@@ -3747,18 +3617,18 @@ function normalizeHistoryBlocks(content: unknown): ClaudeContentChunk[] | null {
 
 export function convertClaudeHistoryEntry(
   entry: any,
-  mapBlocks: (content: string | ClaudeContentChunk[]) => AgentTimelineItem[]
+  mapBlocks: (content: string | ClaudeContentChunk[]) => AgentTimelineItem[],
 ): AgentTimelineItem[] {
   if (entry.type === "system" && entry.subtype === "compact_boundary") {
-    const compactMetadata = readCompactionMetadata(
-      entry as Record<string, unknown>
-    );
-    return [{
-      type: "compaction",
-      status: "completed",
-      trigger: compactMetadata?.trigger === "manual" ? "manual" : "auto",
-      preTokens: compactMetadata?.preTokens,
-    }];
+    const compactMetadata = readCompactionMetadata(entry as Record<string, unknown>);
+    return [
+      {
+        type: "compaction",
+        status: "completed",
+        trigger: compactMetadata?.trigger === "manual" ? "manual" : "auto",
+        preTokens: compactMetadata?.preTokens,
+      },
+    ];
   }
 
   const taskNotificationItem = mapTaskNotificationSystemRecordToToolCall(entry);
@@ -3786,10 +3656,7 @@ export function convertClaudeHistoryEntry(
     return [];
   }
   const normalizedBlocks = normalizeHistoryBlocks(content);
-  const contentValue =
-    typeof content === "string"
-      ? content
-      : normalizedBlocks;
+  const contentValue = typeof content === "string" ? content : normalizedBlocks;
   const hasToolBlock = normalizedBlocks?.some((block) => hasToolLikeBlock(block)) ?? false;
   const userMessageId =
     entry.type === "user" && typeof entry.uuid === "string" && entry.uuid.length > 0
@@ -3894,7 +3761,10 @@ async function pathExists(target: string): Promise<boolean> {
   }
 }
 
-async function collectRecentClaudeSessions(root: string, limit: number): Promise<ClaudeSessionCandidate[]> {
+async function collectRecentClaudeSessions(
+  root: string,
+  limit: number,
+): Promise<ClaudeSessionCandidate[]> {
   let projectDirs: string[];
   try {
     projectDirs = await fsPromises.readdir(root);
@@ -3932,14 +3802,12 @@ async function collectRecentClaudeSessions(root: string, limit: number): Promise
       }
     }
   }
-  return candidates
-    .sort((a, b) => b.mtime.getTime() - a.mtime.getTime())
-    .slice(0, limit);
+  return candidates.sort((a, b) => b.mtime.getTime() - a.mtime.getTime()).slice(0, limit);
 }
 
 async function parseClaudeSessionDescriptor(
   filePath: string,
-  mtime: Date
+  mtime: Date,
 ): Promise<PersistedAgentDescriptor | null> {
   let content: string;
   try {
@@ -4024,15 +3892,11 @@ function extractClaudeUserText(message: any): string | null {
   }
   if (typeof message.content === "string") {
     const normalized = message.content.trim();
-    return normalized && !isClaudeTranscriptNoiseText(normalized)
-      ? normalized
-      : null;
+    return normalized && !isClaudeTranscriptNoiseText(normalized) ? normalized : null;
   }
   if (typeof message.text === "string") {
     const normalized = message.text.trim();
-    return normalized && !isClaudeTranscriptNoiseText(normalized)
-      ? normalized
-      : null;
+    return normalized && !isClaudeTranscriptNoiseText(normalized) ? normalized : null;
   }
   if (Array.isArray(message.content)) {
     for (const block of message.content) {

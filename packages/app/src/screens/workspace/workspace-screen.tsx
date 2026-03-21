@@ -38,11 +38,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { ExplorerSidebar } from "@/components/explorer-sidebar";
 import { SplitContainer } from "@/components/split-container";
 import { SourceControlPanelIcon } from "@/components/icons/source-control-panel-icon";
@@ -51,9 +47,7 @@ import { ExplorerSidebarAnimationProvider } from "@/contexts/explorer-sidebar-an
 import { useToast } from "@/contexts/toast-context";
 import { useExplorerOpenGesture } from "@/hooks/use-explorer-open-gesture";
 import { usePanelStore, type ExplorerCheckoutContext } from "@/stores/panel-store";
-import {
-  useSessionStore,
-} from "@/stores/session-store";
+import { useSessionStore } from "@/stores/session-store";
 import {
   buildWorkspaceTabPersistenceKey,
   collectAllTabs,
@@ -63,9 +57,7 @@ import type { WorkspaceTab, WorkspaceTabTarget } from "@/stores/workspace-tabs-s
 import { useKeyboardActionHandler } from "@/hooks/use-keyboard-action-handler";
 import type { KeyboardActionDefinition } from "@/keyboard/keyboard-action-dispatcher";
 import { useCreateFlowStore } from "@/stores/create-flow-store";
-import {
-  decodeWorkspaceIdFromPathSegment,
-} from "@/utils/host-routes";
+import { decodeWorkspaceIdFromPathSegment } from "@/utils/host-routes";
 import { normalizeWorkspaceIdentity } from "@/utils/workspace-identity";
 import {
   normalizeWorkspaceTabTarget,
@@ -99,9 +91,7 @@ import {
   shouldPruneWorkspaceAgentTab,
   workspaceAgentVisibilityEqual,
 } from "@/screens/workspace/workspace-agent-visibility";
-import {
-  deriveWorkspacePaneState,
-} from "@/screens/workspace/workspace-pane-state";
+import { deriveWorkspacePaneState } from "@/screens/workspace/workspace-pane-state";
 import {
   buildWorkspacePaneContentModel,
   WorkspacePaneContent,
@@ -248,8 +238,7 @@ function WorkspaceDocumentTitleEffect({
       return;
     }
     const resolvedLabel = label.trim();
-    document.title =
-      titleState === "loading" ? "Loading..." : resolvedLabel || "Workspace";
+    document.title = titleState === "loading" ? "Loading..." : resolvedLabel || "Workspace";
   }, [label, titleState]);
 
   return null;
@@ -326,17 +315,9 @@ function MobileWorkspaceTabOption({
                   (open || pressed) && styles.mobileTabMenuTriggerActive,
                 ]}
               >
-                <Ellipsis
-                  size={theme.iconSize.sm}
-                  color={theme.colors.foregroundMuted}
-                />
+                <Ellipsis size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
               </DropdownMenuTrigger>
-              <DropdownMenuContent
-                side="bottom"
-                align="end"
-                width={220}
-                testID={menuTestIDBase}
-              >
+              <DropdownMenuContent side="bottom" align="end" width={220} testID={menuTestIDBase}>
                 {menuEntries.map((entry) =>
                   entry.kind === "separator" ? (
                     <DropdownMenuSeparator key={entry.key} />
@@ -350,7 +331,7 @@ function MobileWorkspaceTabOption({
                     >
                       {entry.label}
                     </DropdownMenuItem>
-                  )
+                  ),
                 )}
               </DropdownMenuContent>
             </DropdownMenu>
@@ -389,19 +370,13 @@ const MobileWorkspaceTabSwitcher = memo(function MobileWorkspaceTabSwitcher({
   }, [tabs]);
 
   return (
-    <View
-      style={styles.mobileTabsRow}
-      testID="workspace-tabs-row"
-    >
+    <View style={styles.mobileTabsRow} testID="workspace-tabs-row">
       <Pressable
         ref={anchorRef}
         testID="workspace-tab-switcher-trigger"
         accessibilityRole="button"
         accessibilityLabel={`Switch tabs (${tabs.length} open)`}
-        style={({ pressed }) => [
-          styles.switcherTrigger,
-          pressed && styles.switcherTriggerPressed,
-        ]}
+        style={({ pressed }) => [styles.switcherTrigger, pressed && styles.switcherTriggerPressed]}
         onPress={() => setIsOpen(true)}
       >
         <View style={styles.switcherTriggerLeft}>
@@ -458,10 +433,7 @@ const MobileWorkspaceTabSwitcher = memo(function MobileWorkspaceTabSwitcher({
   );
 });
 
-export function WorkspaceScreen({
-  serverId,
-  workspaceId,
-}: WorkspaceScreenProps) {
+export function WorkspaceScreen({ serverId, workspaceId }: WorkspaceScreenProps) {
   const isFocused = useIsFocused();
 
   if (!isFocused) {
@@ -470,10 +442,7 @@ export function WorkspaceScreen({
 
   return (
     <ExplorerSidebarAnimationProvider>
-      <WorkspaceScreenContent
-        serverId={serverId}
-        workspaceId={workspaceId}
-      />
+      <WorkspaceScreenContent serverId={serverId} workspaceId={workspaceId} />
     </ExplorerSidebarAnimationProvider>
   );
 }
@@ -487,38 +456,31 @@ function useCloseTabs(): UseCloseTabsResult {
   const pendingRef = useRef(new Set<string>());
   const [closingTabIds, setClosingTabIds] = useState<Set<string>>(EMPTY_SET);
 
-  const closeTab = useCallback(
-    async (tabId: string, action: () => Promise<void>) => {
-      const normalized = tabId.trim();
-      if (!normalized || pendingRef.current.has(normalized)) {
-        return;
-      }
-      pendingRef.current.add(normalized);
+  const closeTab = useCallback(async (tabId: string, action: () => Promise<void>) => {
+    const normalized = tabId.trim();
+    if (!normalized || pendingRef.current.has(normalized)) {
+      return;
+    }
+    pendingRef.current.add(normalized);
+    setClosingTabIds(new Set(pendingRef.current));
+    try {
+      await action();
+    } finally {
+      pendingRef.current.delete(normalized);
       setClosingTabIds(new Set(pendingRef.current));
-      try {
-        await action();
-      } finally {
-        pendingRef.current.delete(normalized);
-        setClosingTabIds(new Set(pendingRef.current));
-      }
-    },
-    []
-  );
+    }
+  }, []);
 
   return { closingTabIds, closeTab };
 }
 
-function WorkspaceScreenContent({
-  serverId,
-  workspaceId,
-}: WorkspaceScreenProps) {
+function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps) {
   const { theme } = useUnistyles();
   const insets = useSafeAreaInsets();
   const isDarkMode = useColorScheme() === "dark";
   const mainBackgroundColor = isDarkMode ? theme.colors.surface1 : theme.colors.surface0;
   const toast = useToast();
-  const isMobile =
-    UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
+  const isMobile = UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
 
   const normalizedServerId = trimNonEmpty(decodeSegment(serverId)) ?? "";
   const normalizedWorkspaceId =
@@ -547,7 +509,7 @@ function WorkspaceScreenContent({
 
   const terminalsQueryKey = useMemo(
     () => ["terminals", normalizedServerId, normalizedWorkspaceId] as const,
-    [normalizedServerId, normalizedWorkspaceId]
+    [normalizedServerId, normalizedWorkspaceId],
   );
   type ListTerminalsPayload = ListTerminalsResponse["payload"];
   const terminalsQuery = useQuery({
@@ -575,20 +537,17 @@ function WorkspaceScreenContent({
     onSuccess: (payload, input) => {
       const createdTerminal = payload.terminal;
       if (createdTerminal) {
-        queryClient.setQueryData<ListTerminalsPayload>(
-          terminalsQueryKey,
-          (current) => {
-            const nextTerminals = upsertTerminalListEntry({
-              terminals: current?.terminals ?? [],
-              terminal: createdTerminal,
-            });
-            return {
-              cwd: current?.cwd ?? normalizedWorkspaceId,
-              terminals: nextTerminals,
-              requestId: current?.requestId ?? `terminal-create-${createdTerminal.id}`,
-            };
-          }
-        );
+        queryClient.setQueryData<ListTerminalsPayload>(terminalsQueryKey, (current) => {
+          const nextTerminals = upsertTerminalListEntry({
+            terminals: current?.terminals ?? [],
+            terminal: createdTerminal,
+          });
+          return {
+            cwd: current?.cwd ?? normalizedWorkspaceId,
+            terminals: nextTerminals,
+            requestId: current?.requestId ?? `terminal-create-${createdTerminal.id}`,
+          };
+        });
       }
 
       void queryClient.invalidateQueries({ queryKey: terminalsQueryKey });
@@ -671,23 +630,19 @@ function WorkspaceScreenContent({
       if (!client) {
         throw new Error("Host is not connected");
       }
-      return (await client.getCheckoutStatus(
-        normalizedWorkspaceId
-      )) as CheckoutStatusPayload;
+      return (await client.getCheckoutStatus(normalizedWorkspaceId)) as CheckoutStatusPayload;
     },
     staleTime: 15_000,
   });
 
   const workspaceDescriptor = useSessionStore(
-    (state) =>
-      state.sessions[normalizedServerId]?.workspaces.get(normalizedWorkspaceId) ??
-      null
+    (state) => state.sessions[normalizedServerId]?.workspaces.get(normalizedWorkspaceId) ?? null,
   );
   const hasHydratedWorkspaces = useSessionStore(
-    (state) => state.sessions[normalizedServerId]?.hasHydratedWorkspaces ?? false
+    (state) => state.sessions[normalizedServerId]?.hasHydratedWorkspaces ?? false,
   );
   const hasHydratedAgents = useSessionStore(
-    (state) => state.sessions[normalizedServerId]?.hasHydratedAgents ?? false
+    (state) => state.sessions[normalizedServerId]?.hasHydratedAgents ?? false,
   );
   const workspaceHeader = workspaceDescriptor
     ? resolveWorkspaceHeader({ workspace: workspaceDescriptor })
@@ -700,22 +655,16 @@ function WorkspaceScreenContent({
       ? trimNonEmpty(checkoutQuery.data.currentBranch)
       : null;
   const mobileView = usePanelStore((state) => state.mobileView);
-  const desktopFileExplorerOpen = usePanelStore(
-    (state) => state.desktop.fileExplorerOpen
-  );
+  const desktopFileExplorerOpen = usePanelStore((state) => state.desktop.fileExplorerOpen);
   const toggleFileExplorer = usePanelStore((state) => state.toggleFileExplorer);
   const openFileExplorer = usePanelStore((state) => state.openFileExplorer);
   const activateExplorerTabForCheckout = usePanelStore(
-    (state) => state.activateExplorerTabForCheckout
+    (state) => state.activateExplorerTabForCheckout,
   );
   const closeToAgent = usePanelStore((state) => state.closeToAgent);
-  const setActiveExplorerCheckout = usePanelStore(
-    (state) => state.setActiveExplorerCheckout
-  );
+  const setActiveExplorerCheckout = usePanelStore((state) => state.setActiveExplorerCheckout);
 
-  const isExplorerOpen = isMobile
-    ? mobileView === "file-explorer"
-    : desktopFileExplorerOpen;
+  const isExplorerOpen = isMobile ? mobileView === "file-explorer" : desktopFileExplorerOpen;
 
   const activeExplorerCheckout = useMemo<ExplorerCheckoutContext | null>(() => {
     if (!normalizedServerId || !normalizedWorkspaceId.startsWith("/")) {
@@ -738,11 +687,7 @@ function WorkspaceScreenContent({
     }
     activateExplorerTabForCheckout(activeExplorerCheckout);
     openFileExplorer();
-  }, [
-    activateExplorerTabForCheckout,
-    activeExplorerCheckout,
-    openFileExplorer,
-  ]);
+  }, [activateExplorerTabForCheckout, activeExplorerCheckout, openFileExplorer]);
 
   const handleToggleExplorer = useCallback(() => {
     if (isExplorerOpen) {
@@ -779,15 +724,15 @@ function WorkspaceScreenContent({
         serverId: normalizedServerId,
         workspaceId: normalizedWorkspaceId,
       }),
-    [normalizedServerId, normalizedWorkspaceId]
+    [normalizedServerId, normalizedWorkspaceId],
   );
 
   const workspaceLayout = useWorkspaceLayoutStore((state) =>
-    persistenceKey ? state.layoutByWorkspace[persistenceKey] ?? null : null
+    persistenceKey ? (state.layoutByWorkspace[persistenceKey] ?? null) : null,
   );
   const uiTabs = useMemo(
     () => (workspaceLayout ? collectAllTabs(workspaceLayout.root) : EMPTY_UI_TABS),
-    [workspaceLayout]
+    [workspaceLayout],
   );
   const openWorkspaceTab = useWorkspaceLayoutStore((state) => state.openTab);
   const focusWorkspaceTab = useWorkspaceLayoutStore((state) => state.focusTab);
@@ -802,8 +747,8 @@ function WorkspaceScreenContent({
   const reorderWorkspaceTabsInPane = useWorkspaceLayoutStore((state) => state.reorderTabsInPane);
   const pinnedAgentIds = useWorkspaceLayoutStore((state) =>
     persistenceKey
-      ? state.pinnedAgentIdsByWorkspace[persistenceKey] ?? EMPTY_PINNED_AGENT_IDS
-      : EMPTY_PINNED_AGENT_IDS
+      ? (state.pinnedAgentIdsByWorkspace[persistenceKey] ?? EMPTY_PINNED_AGENT_IDS)
+      : EMPTY_PINNED_AGENT_IDS,
   );
   const pendingByDraftId = useCreateFlowStore((state) => state.pendingByDraftId);
   const { closingTabIds, closeTab } = useCloseTabs();
@@ -822,7 +767,7 @@ function WorkspaceScreenContent({
       }
       closeWorkspaceTab(persistenceKey, normalizedTabId);
     },
-    [closeWorkspaceTab, persistenceKey, unpinWorkspaceAgent]
+    [closeWorkspaceTab, persistenceKey, unpinWorkspaceAgent],
   );
 
   const focusedPaneTabState = useMemo(
@@ -831,7 +776,7 @@ function WorkspaceScreenContent({
         layout: workspaceLayout,
         tabs: uiTabs,
       }),
-    [uiTabs, workspaceLayout]
+    [uiTabs, workspaceLayout],
   );
   const setFocusedAgentId = useSessionStore((state) => state.setFocusedAgentId);
   const focusedPaneAgentId = useMemo(() => {
@@ -876,7 +821,7 @@ function WorkspaceScreenContent({
       }
       return tabId;
     },
-    [focusWorkspaceTab, focusedPaneTabState, openWorkspaceTab, persistenceKey, uiTabs]
+    [focusWorkspaceTab, focusedPaneTabState, openWorkspaceTab, persistenceKey, uiTabs],
   );
 
   const openWorkspaceDraftTab = useCallback(
@@ -900,7 +845,7 @@ function WorkspaceScreenContent({
       }
       return tabId;
     },
-    [ensureWorkspaceTab, focusWorkspaceTab, openWorkspaceTab, persistenceKey]
+    [ensureWorkspaceTab, focusWorkspaceTab, openWorkspaceTab, persistenceKey],
   );
 
   useEffect(() => {
@@ -919,10 +864,10 @@ function WorkspaceScreenContent({
 
     for (const agentId of workspaceAgentVisibility.activeAgentIds) {
       const representedByTarget = uiTabs.some(
-        (tab) => tab.target.kind === "agent" && tab.target.agentId === agentId
+        (tab) => tab.target.kind === "agent" && tab.target.agentId === agentId,
       );
       const representedByDeterministicTabId = uiTabs.some(
-        (tab) => tab.tabId === `agent_${agentId}`
+        (tab) => tab.tabId === `agent_${agentId}`,
       );
       if (
         hasActivePendingDraftCreateInWorkspace &&
@@ -986,7 +931,7 @@ function WorkspaceScreenContent({
 
   const tabs = useMemo<WorkspaceTabDescriptor[]>(
     () => focusedPaneTabState.tabs.map((tab) => tab.descriptor),
-    [focusedPaneTabState.tabs]
+    [focusedPaneTabState.tabs],
   );
 
   const navigateToTabId = useCallback(
@@ -996,7 +941,7 @@ function WorkspaceScreenContent({
       }
       focusWorkspaceTab(persistenceKey, tabId);
     },
-    [focusWorkspaceTab, persistenceKey]
+    [focusWorkspaceTab, persistenceKey],
   );
 
   const emptyWorkspaceSeedRef = useRef<string | null>(null);
@@ -1041,7 +986,7 @@ function WorkspaceScreenContent({
         navigateToTabId(tabId);
       }
     },
-    [closeToAgent, isMobile, navigateToTabId, openWorkspaceTab, persistenceKey]
+    [closeToAgent, isMobile, navigateToTabId, openWorkspaceTab, persistenceKey],
   );
 
   const handleOpenFileFromChat = useCallback(
@@ -1052,13 +997,11 @@ function WorkspaceScreenContent({
       }
       handleOpenFileFromExplorer(normalizedFilePath);
     },
-    [handleOpenFileFromExplorer]
+    [handleOpenFileFromExplorer],
   );
 
   const [hoveredTabKey, setHoveredTabKey] = useState<string | null>(null);
-  const [hoveredCloseTabKey, setHoveredCloseTabKey] = useState<string | null>(
-    null
-  );
+  const [hoveredCloseTabKey, setHoveredCloseTabKey] = useState<string | null>(null);
 
   const tabByKey = useMemo(() => {
     const map = new Map<string, WorkspaceTabDescriptor>();
@@ -1090,28 +1033,31 @@ function WorkspaceScreenContent({
         label: getFallbackTabOptionLabel(tab),
         description: getFallbackTabOptionDescription(tab),
       })),
-    [tabs]
+    [tabs],
   );
 
   const handleCreateDraftTab = useCallback(() => {
     openWorkspaceDraftTab();
   }, [openWorkspaceDraftTab]);
 
-  const handleCreateTerminal = useCallback((input?: { paneId?: string }) => {
-    if (createTerminalMutation.isPending) {
-      return;
-    }
-    if (!normalizedWorkspaceId.startsWith("/")) {
-      return;
-    }
-    createTerminalMutation.mutate(input);
-  }, [createTerminalMutation, normalizedWorkspaceId]);
+  const handleCreateTerminal = useCallback(
+    (input?: { paneId?: string }) => {
+      if (createTerminalMutation.isPending) {
+        return;
+      }
+      if (!normalizedWorkspaceId.startsWith("/")) {
+        return;
+      }
+      createTerminalMutation.mutate(input);
+    },
+    [createTerminalMutation, normalizedWorkspaceId],
+  );
 
   const handleSelectSwitcherTab = useCallback(
     (key: string) => {
       navigateToTabId(key);
     },
-    [navigateToTabId]
+    [navigateToTabId],
   );
 
   const handleSelectNewTabOption = useCallback(
@@ -1125,7 +1071,7 @@ function WorkspaceScreenContent({
         handleCreateTerminal({ paneId: selection.paneId });
       }
     },
-    [focusWorkspacePane, handleCreateDraftTab, handleCreateTerminal, persistenceKey]
+    [focusWorkspacePane, handleCreateDraftTab, handleCreateTerminal, persistenceKey],
   );
 
   const handleCreateDraftSplit = useCallback(
@@ -1142,7 +1088,7 @@ function WorkspaceScreenContent({
       focusWorkspacePane(persistenceKey, paneId);
       openWorkspaceDraftTab();
     },
-    [focusWorkspacePane, openWorkspaceDraftTab, persistenceKey, splitWorkspacePaneEmpty]
+    [focusWorkspacePane, openWorkspaceDraftTab, persistenceKey, splitWorkspacePaneEmpty],
   );
 
   const killTerminalAsync = killTerminalMutation.mutateAsync;
@@ -1166,20 +1112,15 @@ function WorkspaceScreenContent({
         setHoveredTabKey((current) => (current === tabId ? null : current));
         setHoveredCloseTabKey((current) => (current === tabId ? null : current));
 
-        queryClient.setQueryData<ListTerminalsPayload>(
-          terminalsQueryKey,
-          (current) => {
-            if (!current) {
-              return current;
-            }
-            return {
-              ...current,
-              terminals: current.terminals.filter(
-                (terminal) => terminal.id !== terminalId
-              ),
-            };
+        queryClient.setQueryData<ListTerminalsPayload>(terminalsQueryKey, (current) => {
+          if (!current) {
+            return current;
           }
-        );
+          return {
+            ...current,
+            terminals: current.terminals.filter((terminal) => terminal.id !== terminalId),
+          };
+        });
 
         if (persistenceKey) {
           closeWorkspaceTabWithCleanup({
@@ -1196,7 +1137,7 @@ function WorkspaceScreenContent({
       persistenceKey,
       queryClient,
       terminalsQueryKey,
-    ]
+    ],
   );
 
   const handleCloseAgentTab = useCallback(
@@ -1229,13 +1170,7 @@ function WorkspaceScreenContent({
         }
       });
     },
-    [
-      archiveAgent,
-      closeTab,
-      closeWorkspaceTabWithCleanup,
-      normalizedServerId,
-      persistenceKey,
-    ]
+    [archiveAgent, closeTab, closeWorkspaceTabWithCleanup, normalizedServerId, persistenceKey],
   );
 
   const handleCloseDraftOrFileTab = useCallback(
@@ -1246,7 +1181,7 @@ function WorkspaceScreenContent({
         closeWorkspaceTabWithCleanup({ tabId });
       }
     },
-    [closeWorkspaceTabWithCleanup, persistenceKey]
+    [closeWorkspaceTabWithCleanup, persistenceKey],
   );
 
   const handleCloseTabById = useCallback(
@@ -1265,19 +1200,31 @@ function WorkspaceScreenContent({
       }
       handleCloseDraftOrFileTab(tabId);
     },
-    [allTabDescriptorsById, handleCloseAgentTab, handleCloseDraftOrFileTab, handleCloseTerminalTab]
+    [allTabDescriptorsById, handleCloseAgentTab, handleCloseDraftOrFileTab, handleCloseTerminalTab],
   );
 
-  const prevCloseTabDeps = useRef({ allTabDescriptorsById, handleCloseAgentTab, handleCloseDraftOrFileTab, handleCloseTerminalTab });
+  const prevCloseTabDeps = useRef({
+    allTabDescriptorsById,
+    handleCloseAgentTab,
+    handleCloseDraftOrFileTab,
+    handleCloseTerminalTab,
+  });
   useEffect(() => {
     const prev = prevCloseTabDeps.current;
     const changed: string[] = [];
-    if (prev.allTabDescriptorsById !== allTabDescriptorsById) changed.push('allTabDescriptorsById');
-    if (prev.handleCloseAgentTab !== handleCloseAgentTab) changed.push('handleCloseAgentTab');
-    if (prev.handleCloseDraftOrFileTab !== handleCloseDraftOrFileTab) changed.push('handleCloseDraftOrFileTab');
-    if (prev.handleCloseTerminalTab !== handleCloseTerminalTab) changed.push('handleCloseTerminalTab');
-    if (changed.length > 0) console.log('[handleCloseTabById] deps changed:', changed.join(', '));
-    prevCloseTabDeps.current = { allTabDescriptorsById, handleCloseAgentTab, handleCloseDraftOrFileTab, handleCloseTerminalTab };
+    if (prev.allTabDescriptorsById !== allTabDescriptorsById) changed.push("allTabDescriptorsById");
+    if (prev.handleCloseAgentTab !== handleCloseAgentTab) changed.push("handleCloseAgentTab");
+    if (prev.handleCloseDraftOrFileTab !== handleCloseDraftOrFileTab)
+      changed.push("handleCloseDraftOrFileTab");
+    if (prev.handleCloseTerminalTab !== handleCloseTerminalTab)
+      changed.push("handleCloseTerminalTab");
+    if (changed.length > 0) console.log("[handleCloseTabById] deps changed:", changed.join(", "));
+    prevCloseTabDeps.current = {
+      allTabDescriptorsById,
+      handleCloseAgentTab,
+      handleCloseDraftOrFileTab,
+      handleCloseTerminalTab,
+    };
   });
   const handleCopyAgentId = useCallback(
     async (agentId: string) => {
@@ -1289,13 +1236,14 @@ function WorkspaceScreenContent({
         toast.error("Copy failed");
       }
     },
-    [toast]
+    [toast],
   );
 
   const handleCopyResumeCommand = useCallback(
     async (agentId: string) => {
       if (!agentId) return;
-      const agent = useSessionStore.getState().sessions[normalizedServerId]?.agents?.get(agentId) ?? null;
+      const agent =
+        useSessionStore.getState().sessions[normalizedServerId]?.agents?.get(agentId) ?? null;
       const providerSessionId =
         agent?.runtimeInfo?.sessionId ?? agent?.persistence?.sessionId ?? null;
       if (!agent || !providerSessionId) {
@@ -1320,7 +1268,7 @@ function WorkspaceScreenContent({
         toast.error("Copy failed");
       }
     },
-    [normalizedServerId, toast]
+    [normalizedServerId, toast],
   );
 
   const handleCopyWorkspacePath = useCallback(async () => {
@@ -1390,7 +1338,10 @@ function WorkspaceScreenContent({
               });
             }
           } catch (error) {
-            console.warn(`[WorkspaceScreen] Failed to close terminal tab ${logLabel}`, { terminalId, error });
+            console.warn(`[WorkspaceScreen] Failed to close terminal tab ${logLabel}`, {
+              terminalId,
+              error,
+            });
           }
         });
       }
@@ -1409,7 +1360,10 @@ function WorkspaceScreenContent({
               });
             }
           } catch (error) {
-            console.warn(`[WorkspaceScreen] Failed to archive agent tab ${logLabel}`, { agentId, error });
+            console.warn(`[WorkspaceScreen] Failed to archive agent tab ${logLabel}`, {
+              agentId,
+              error,
+            });
           }
         });
       }
@@ -1435,7 +1389,7 @@ function WorkspaceScreenContent({
       persistenceKey,
       queryClient,
       terminalsQueryKey,
-    ]
+    ],
   );
 
   const handleCloseTabsToLeftInPane = useCallback(
@@ -1450,14 +1404,14 @@ function WorkspaceScreenContent({
         logLabel: "to the left",
       });
     },
-    [handleBulkCloseTabs]
+    [handleBulkCloseTabs],
   );
 
   const handleCloseTabsToLeft = useCallback(
     async (tabId: string) => {
       await handleCloseTabsToLeftInPane(tabId, tabs);
     },
-    [handleCloseTabsToLeftInPane, tabs]
+    [handleCloseTabsToLeftInPane, tabs],
   );
 
   const handleCloseTabsToRightInPane = useCallback(
@@ -1472,14 +1426,14 @@ function WorkspaceScreenContent({
         logLabel: "to the right",
       });
     },
-    [handleBulkCloseTabs]
+    [handleBulkCloseTabs],
   );
 
   const handleCloseTabsToRight = useCallback(
     async (tabId: string) => {
       await handleCloseTabsToRightInPane(tabId, tabs);
     },
-    [handleCloseTabsToRightInPane, tabs]
+    [handleCloseTabsToRightInPane, tabs],
   );
 
   const handleCloseOtherTabsInPane = useCallback(
@@ -1491,14 +1445,14 @@ function WorkspaceScreenContent({
         logLabel: "from close other tabs",
       });
     },
-    [handleBulkCloseTabs]
+    [handleBulkCloseTabs],
   );
 
   const handleCloseOtherTabs = useCallback(
     async (tabId: string) => {
       await handleCloseOtherTabsInPane(tabId, tabs);
     },
-    [handleCloseOtherTabsInPane, tabs]
+    [handleCloseOtherTabsInPane, tabs],
   );
 
   const handleWorkspaceTabAction = useCallback(
@@ -1535,7 +1489,7 @@ function WorkspaceScreenContent({
           return false;
       }
     },
-    [activeTabId, handleCloseTabById, handleCreateDraftTab, navigateToTabId, tabs]
+    [activeTabId, handleCloseTabById, handleCreateDraftTab, navigateToTabId, tabs],
   );
 
   const handleWorkspacePaneAction = useCallback(
@@ -1630,7 +1584,7 @@ function WorkspaceScreenContent({
       focusedPaneTabState.activeTabId,
       focusedPaneTabState.pane,
       workspaceLayout,
-    ]
+    ],
   );
 
   useKeyboardActionHandler({
@@ -1725,23 +1679,45 @@ function WorkspaceScreenContent({
       openWorkspaceTab,
       persistenceKey,
       retargetWorkspaceTab,
-    ]
+    ],
   );
-  const prevBuildDeps = useRef({ handleCloseTabById, handleOpenFileFromChat, focusWorkspacePane, navigateToTabId, normalizedServerId, normalizedWorkspaceId, openWorkspaceTab, persistenceKey, retargetWorkspaceTab });
+  const prevBuildDeps = useRef({
+    handleCloseTabById,
+    handleOpenFileFromChat,
+    focusWorkspacePane,
+    navigateToTabId,
+    normalizedServerId,
+    normalizedWorkspaceId,
+    openWorkspaceTab,
+    persistenceKey,
+    retargetWorkspaceTab,
+  });
   useEffect(() => {
     const prev = prevBuildDeps.current;
     const changed: string[] = [];
-    if (prev.handleCloseTabById !== handleCloseTabById) changed.push('handleCloseTabById');
-    if (prev.handleOpenFileFromChat !== handleOpenFileFromChat) changed.push('handleOpenFileFromChat');
-    if (prev.focusWorkspacePane !== focusWorkspacePane) changed.push('focusWorkspacePane');
-    if (prev.navigateToTabId !== navigateToTabId) changed.push('navigateToTabId');
-    if (prev.normalizedServerId !== normalizedServerId) changed.push('normalizedServerId');
-    if (prev.normalizedWorkspaceId !== normalizedWorkspaceId) changed.push('normalizedWorkspaceId');
-    if (prev.openWorkspaceTab !== openWorkspaceTab) changed.push('openWorkspaceTab');
-    if (prev.persistenceKey !== persistenceKey) changed.push('persistenceKey');
-    if (prev.retargetWorkspaceTab !== retargetWorkspaceTab) changed.push('retargetWorkspaceTab');
-    if (changed.length > 0) console.log('[buildPaneContentModel] deps changed:', changed.join(', '));
-    prevBuildDeps.current = { handleCloseTabById, handleOpenFileFromChat, focusWorkspacePane, navigateToTabId, normalizedServerId, normalizedWorkspaceId, openWorkspaceTab, persistenceKey, retargetWorkspaceTab };
+    if (prev.handleCloseTabById !== handleCloseTabById) changed.push("handleCloseTabById");
+    if (prev.handleOpenFileFromChat !== handleOpenFileFromChat)
+      changed.push("handleOpenFileFromChat");
+    if (prev.focusWorkspacePane !== focusWorkspacePane) changed.push("focusWorkspacePane");
+    if (prev.navigateToTabId !== navigateToTabId) changed.push("navigateToTabId");
+    if (prev.normalizedServerId !== normalizedServerId) changed.push("normalizedServerId");
+    if (prev.normalizedWorkspaceId !== normalizedWorkspaceId) changed.push("normalizedWorkspaceId");
+    if (prev.openWorkspaceTab !== openWorkspaceTab) changed.push("openWorkspaceTab");
+    if (prev.persistenceKey !== persistenceKey) changed.push("persistenceKey");
+    if (prev.retargetWorkspaceTab !== retargetWorkspaceTab) changed.push("retargetWorkspaceTab");
+    if (changed.length > 0)
+      console.log("[buildPaneContentModel] deps changed:", changed.join(", "));
+    prevBuildDeps.current = {
+      handleCloseTabById,
+      handleOpenFileFromChat,
+      focusWorkspacePane,
+      navigateToTabId,
+      normalizedServerId,
+      normalizedWorkspaceId,
+      openWorkspaceTab,
+      persistenceKey,
+      retargetWorkspaceTab,
+    };
   });
   const activePaneContent = useMemo(
     () =>
@@ -1753,15 +1729,26 @@ function WorkspaceScreenContent({
             focusPaneBeforeOpen: false,
           })
         : null,
-    [activeTabDescriptor, buildPaneContentModel, focusedPaneTabState.pane?.id]
+    [activeTabDescriptor, buildPaneContentModel, focusedPaneTabState.pane?.id],
   );
-  const prevActivePaneDeps = useRef({ activeTabDescriptor, buildPaneContentModel, paneId: focusedPaneTabState.pane?.id });
+  const prevActivePaneDeps = useRef({
+    activeTabDescriptor,
+    buildPaneContentModel,
+    paneId: focusedPaneTabState.pane?.id,
+  });
   useEffect(() => {
     const prev = prevActivePaneDeps.current;
-    if (prev.activeTabDescriptor !== activeTabDescriptor) console.log('[activePaneContent] activeTabDescriptor changed');
-    if (prev.buildPaneContentModel !== buildPaneContentModel) console.log('[activePaneContent] buildPaneContentModel changed');
-    if (prev.paneId !== focusedPaneTabState.pane?.id) console.log('[activePaneContent] paneId changed');
-    prevActivePaneDeps.current = { activeTabDescriptor, buildPaneContentModel, paneId: focusedPaneTabState.pane?.id };
+    if (prev.activeTabDescriptor !== activeTabDescriptor)
+      console.log("[activePaneContent] activeTabDescriptor changed");
+    if (prev.buildPaneContentModel !== buildPaneContentModel)
+      console.log("[activePaneContent] buildPaneContentModel changed");
+    if (prev.paneId !== focusedPaneTabState.pane?.id)
+      console.log("[activePaneContent] paneId changed");
+    prevActivePaneDeps.current = {
+      activeTabDescriptor,
+      buildPaneContentModel,
+      paneId: focusedPaneTabState.pane?.id,
+    };
   });
   const content = shouldRenderMissingWorkspaceDescriptor({
     workspace: workspaceDescriptor,
@@ -1844,36 +1831,26 @@ function WorkspaceScreenContent({
                         return (
                           <Icon
                             size={theme.iconSize.md}
-                            color={hovered || open ? theme.colors.foreground : theme.colors.foregroundMuted}
+                            color={
+                              hovered || open
+                                ? theme.colors.foreground
+                                : theme.colors.foregroundMuted
+                            }
                           />
                         );
                       }}
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent
-                      align="start"
-                      width={220}
-                      testID="workspace-header-menu"
-                    >
+                    <DropdownMenuContent align="start" width={220} testID="workspace-header-menu">
                       <DropdownMenuItem
                         testID="workspace-header-new-agent"
-                        leading={
-                          <SquarePen
-                            size={16}
-                            color={theme.colors.foregroundMuted}
-                          />
-                        }
+                        leading={<SquarePen size={16} color={theme.colors.foregroundMuted} />}
                         onSelect={handleCreateDraftTab}
                       >
                         New agent
                       </DropdownMenuItem>
                       <DropdownMenuItem
                         testID="workspace-header-new-terminal"
-                        leading={
-                          <SquareTerminal
-                            size={16}
-                            color={theme.colors.foregroundMuted}
-                          />
-                        }
+                        leading={<SquareTerminal size={16} color={theme.colors.foregroundMuted} />}
                         disabled={createTerminalMutation.isPending}
                         onSelect={handleCreateTerminal}
                       >
@@ -1881,12 +1858,7 @@ function WorkspaceScreenContent({
                       </DropdownMenuItem>
                       <DropdownMenuItem
                         testID="workspace-header-copy-path"
-                        leading={
-                          <Copy
-                            size={16}
-                            color={theme.colors.foregroundMuted}
-                          />
-                        }
+                        leading={<Copy size={16} color={theme.colors.foregroundMuted} />}
                         disabled={!normalizedWorkspaceId.startsWith("/")}
                         onSelect={handleCopyWorkspacePath}
                       >
@@ -1895,12 +1867,7 @@ function WorkspaceScreenContent({
                       {currentBranchName ? (
                         <DropdownMenuItem
                           testID="workspace-header-copy-branch-name"
-                          leading={
-                            <Copy
-                              size={16}
-                              color={theme.colors.foregroundMuted}
-                            />
-                          }
+                          leading={<Copy size={16} color={theme.colors.foregroundMuted} />}
                           onSelect={handleCopyBranchName}
                         >
                           Copy branch name
@@ -1933,14 +1900,20 @@ function WorkspaceScreenContent({
                     >
                       {({ hovered, pressed }) => {
                         const active = isExplorerOpen || hovered || pressed;
-                        const iconColor = active ? theme.colors.foreground : theme.colors.foregroundMuted;
+                        const iconColor = active
+                          ? theme.colors.foreground
+                          : theme.colors.foregroundMuted;
                         return (
                           <>
                             <SourceControlPanelIcon size={theme.iconSize.md} color={iconColor} />
                             {workspaceDescriptor?.diffStat ? (
                               <View style={styles.diffStatRow}>
-                                <Text style={styles.diffStatAdditions}>+{workspaceDescriptor.diffStat.additions}</Text>
-                                <Text style={styles.diffStatDeletions}>-{workspaceDescriptor.diffStat.deletions}</Text>
+                                <Text style={styles.diffStatAdditions}>
+                                  +{workspaceDescriptor.diffStat.additions}
+                                </Text>
+                                <Text style={styles.diffStatDeletions}>
+                                  -{workspaceDescriptor.diffStat.deletions}
+                                </Text>
                               </View>
                             ) : null}
                           </>
@@ -1963,7 +1936,10 @@ function WorkspaceScreenContent({
                     accessibilityState={{ expanded: isExplorerOpen }}
                   >
                     {({ hovered }) => {
-                      const color = isExplorerOpen || hovered ? theme.colors.foreground : theme.colors.foregroundMuted;
+                      const color =
+                        isExplorerOpen || hovered
+                          ? theme.colors.foreground
+                          : theme.colors.foregroundMuted;
                       return <PanelRight size={theme.iconSize.md} color={color} />;
                     }}
                   </HeaderToggleButton>
@@ -1982,10 +1958,19 @@ function WorkspaceScreenContent({
                     accessibilityState={{ expanded: isExplorerOpen }}
                   >
                     {({ hovered }) => {
-                      const color = isExplorerOpen || hovered ? theme.colors.foreground : theme.colors.foregroundMuted;
-                      return isGitCheckout
-                        ? <SourceControlPanelIcon size={theme.iconSize.lg} color={color} strokeWidth={1.5} />
-                        : <PanelRight size={theme.iconSize.lg} color={color} />;
+                      const color =
+                        isExplorerOpen || hovered
+                          ? theme.colors.foreground
+                          : theme.colors.foregroundMuted;
+                      return isGitCheckout ? (
+                        <SourceControlPanelIcon
+                          size={theme.iconSize.lg}
+                          color={color}
+                          strokeWidth={1.5}
+                        />
+                      ) : (
+                        <PanelRight size={theme.iconSize.lg} color={color} />
+                      );
                     }}
                   </HeaderToggleButton>
                 ) : null}

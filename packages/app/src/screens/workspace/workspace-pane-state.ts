@@ -182,10 +182,9 @@ export function deriveWorkspacePaneState(input: {
     tabs: normalizedTabs.tabs,
     focusedTabId,
     activeTabId,
-    activeTab:
-      activeTabId
-        ? normalizedTabs.tabs.find((tab) => tab.descriptor.tabId === activeTabId) ?? null
-        : null,
+    activeTab: activeTabId
+      ? (normalizedTabs.tabs.find((tab) => tab.descriptor.tabId === activeTabId) ?? null)
+      : null,
   };
 }
 

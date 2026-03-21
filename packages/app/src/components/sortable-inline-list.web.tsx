@@ -66,7 +66,7 @@ function SortableItem<T>({
   const baseTransform = externalDndContext
     ? undefined
     : CSS.Transform.toString(
-        transform && isDragging ? { ...transform, scaleX: 1, scaleY: 1 } : transform
+        transform && isDragging ? { ...transform, scaleX: 1, scaleY: 1 } : transform,
       );
   const scaleTransform = !externalDndContext && isDragging ? "scale(1.01)" : "";
   const combinedTransform = [baseTransform, scaleTransform].filter(Boolean).join(" ");
@@ -87,9 +87,7 @@ function SortableItem<T>({
       ? {
           attributes: attributes as unknown as Record<string, unknown>,
           listeners: listeners as unknown as Record<string, unknown>,
-          setActivatorNodeRef: setActivatorNodeRef as unknown as (
-            node: unknown
-          ) => void,
+          setActivatorNodeRef: setActivatorNodeRef as unknown as (node: unknown) => void,
         }
       : undefined,
   };
@@ -132,7 +130,7 @@ export function SortableInlineList<T>({
 }): ReactElement {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [dragItems, setDragItems] = useState<T[] | null>(null);
-  const items = externalDndContext ? data : dragItems ?? data;
+  const items = externalDndContext ? data : (dragItems ?? data);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -142,7 +140,7 @@ export function SortableInlineList<T>({
     }),
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
-    })
+    }),
   );
 
   const handleDragStart = useCallback(
@@ -154,7 +152,7 @@ export function SortableInlineList<T>({
       setActiveId(String(event.active.id));
       onDragBegin?.();
     },
-    [data, disabled, onDragBegin]
+    [data, disabled, onDragBegin],
   );
 
   const handleDragEnd = useCallback(
@@ -169,21 +167,16 @@ export function SortableInlineList<T>({
       }
 
       if (over && active.id !== over.id) {
-        const oldIndex = items.findIndex(
-          (item, i) => keyExtractor(item, i) === active.id
-        );
-        const newIndex = items.findIndex(
-          (item, i) => keyExtractor(item, i) === over.id
-        );
+        const oldIndex = items.findIndex((item, i) => keyExtractor(item, i) === active.id);
+        const newIndex = items.findIndex((item, i) => keyExtractor(item, i) === over.id);
 
         if (oldIndex >= 0 && newIndex >= 0 && oldIndex !== newIndex) {
           const newItems = arrayMove(items, oldIndex, newIndex);
           onDragEnd?.(newItems);
         }
       }
-
     },
-    [disabled, items, keyExtractor, onDragEnd]
+    [disabled, items, keyExtractor, onDragEnd],
   );
 
   const ids = items.map((item, index) => keyExtractor(item, index));

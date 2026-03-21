@@ -41,7 +41,7 @@ async function loadModuleForPlatform(
         }) => Promise<boolean>;
       };
     } | null;
-  }
+  },
 ) {
   vi.resetModules();
   vi.doMock("react-native", () => ({ Platform: { OS: platform } }));
@@ -107,7 +107,10 @@ describe("sendOsNotification", () => {
       onclick: ((event: Event) => void) | null = null;
       close = vi.fn();
 
-      constructor(public title: string, public options?: MockNotificationOptions) {
+      constructor(
+        public title: string,
+        public options?: MockNotificationOptions,
+      ) {
         created.push(this);
       }
     }
@@ -122,8 +125,7 @@ describe("sendOsNotification", () => {
     (globalThis as { dispatchEvent?: unknown }).dispatchEvent = dispatchEvent;
     (globalThis as { location?: unknown }).location = { assign };
 
-    const { sendOsNotification, WEB_NOTIFICATION_CLICK_EVENT } =
-      await loadModuleForPlatform("web");
+    const { sendOsNotification, WEB_NOTIFICATION_CLICK_EVENT } = await loadModuleForPlatform("web");
 
     const sent = await sendOsNotification({
       title: "Agent finished",
@@ -159,7 +161,10 @@ describe("sendOsNotification", () => {
       onclick: ((event: Event) => void) | null = null;
       close = vi.fn();
 
-      constructor(public title: string, public options?: MockNotificationOptions) {
+      constructor(
+        public title: string,
+        public options?: MockNotificationOptions,
+      ) {
         created.push(this);
       }
     }
@@ -209,7 +214,10 @@ describe("sendOsNotification", () => {
       onclick: ((event: Event) => void) | null = null;
       close = vi.fn();
 
-      constructor(public title: string, public options?: MockNotificationOptions) {
+      constructor(
+        public title: string,
+        public options?: MockNotificationOptions,
+      ) {
         created.push(this);
       }
     }

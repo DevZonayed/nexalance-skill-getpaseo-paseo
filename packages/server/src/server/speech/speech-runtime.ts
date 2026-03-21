@@ -54,7 +54,7 @@ export type SpeechReadinessSnapshot = {
 };
 
 function resolveRequestedSpeechProviders(
-  speechConfig: PaseoSpeechConfig | null
+  speechConfig: PaseoSpeechConfig | null,
 ): RequestedSpeechProviders {
   const defaults: RequestedSpeechProviders = {
     dictationStt: { provider: "local", explicit: false, enabled: true },
@@ -328,12 +328,11 @@ function resolveEffectiveProviderIds(params: {
     dictationStt: params.dictationSttService?.id ?? "unavailable",
     voiceTurnDetection: params.turnDetectionService?.id ?? "unavailable",
     voiceStt: params.sttService?.id ?? "unavailable",
-    voiceTts:
-      !params.ttsService
-        ? "unavailable"
-        : params.ttsService === params.localVoiceTtsProvider
-          ? "local"
-          : "openai",
+    voiceTts: !params.ttsService
+      ? "unavailable"
+      : params.ttsService === params.localVoiceTtsProvider
+        ? "local"
+        : "openai",
   };
 }
 
@@ -343,9 +342,7 @@ export type InitializedSpeechRuntime = {
   resolveVoiceTts: () => TextToSpeechProvider | null;
   resolveDictationStt: () => SpeechToTextProvider | null;
   getSpeechReadiness: () => SpeechReadinessSnapshot;
-  subscribeSpeechReadiness: (
-    listener: (snapshot: SpeechReadinessSnapshot) => void
-  ) => () => void;
+  subscribeSpeechReadiness: (listener: (snapshot: SpeechReadinessSnapshot) => void) => () => void;
   cleanup: () => void;
   localModelConfig: {
     modelsDir: string;
@@ -377,7 +374,7 @@ export async function initializeSpeechRuntime(params: {
         openai: getOpenAiSpeechAvailability(openaiConfig),
       },
     },
-    "Speech provider reconciliation started"
+    "Speech provider reconciliation started",
   );
 
   let sttService: SpeechToTextProvider | null = null;
@@ -457,16 +454,13 @@ export async function initializeSpeechRuntime(params: {
       try {
         listener(snapshot);
       } catch (error) {
-        logger.warn(
-          { err: error },
-          "Speech readiness listener threw an error"
-        );
+        logger.warn({ err: error }, "Speech readiness listener threw an error");
       }
     }
   };
 
   const subscribeSpeechReadiness = (
-    listener: (snapshot: SpeechReadinessSnapshot) => void
+    listener: (snapshot: SpeechReadinessSnapshot) => void,
   ): (() => void) => {
     readinessListeners.add(listener);
     const snapshot = lastPublishedReadinessSnapshot ?? computeReadinessSnapshot();
@@ -477,10 +471,7 @@ export async function initializeSpeechRuntime(params: {
     try {
       listener(snapshot);
     } catch (error) {
-      logger.warn(
-        { err: error },
-        "Speech readiness listener threw an error during subscribe"
-      );
+      logger.warn({ err: error }, "Speech readiness listener threw an error during subscribe");
     }
     return () => {
       readinessListeners.delete(listener);
@@ -548,7 +539,7 @@ export async function initializeSpeechRuntime(params: {
           unavailableFeatures,
           missingLocalModelIds,
         },
-        "Speech provider reconciliation completed with unavailable features"
+        "Speech provider reconciliation completed with unavailable features",
       );
     } else {
       logger.info(
@@ -556,7 +547,7 @@ export async function initializeSpeechRuntime(params: {
           requestedProviders,
           effectiveProviders,
         },
-        "Speech provider reconciliation completed"
+        "Speech provider reconciliation completed",
       );
     }
   };
@@ -603,7 +594,7 @@ export async function initializeSpeechRuntime(params: {
         modelsDir,
         modelIds,
       },
-      "Starting background download for missing local speech models"
+      "Starting background download for missing local speech models",
     );
 
     void (async () => {
@@ -623,7 +614,7 @@ export async function initializeSpeechRuntime(params: {
             err: error,
             modelIds,
           },
-          "Background local speech model download failed"
+          "Background local speech model download failed",
         );
       } finally {
         backgroundDownloadInProgress = false;
@@ -690,8 +681,7 @@ export async function initializeSpeechRuntime(params: {
     resolveVoiceStt: () => sttService,
     resolveVoiceTts: () => ttsService,
     resolveDictationStt: () => dictationSttService,
-    getSpeechReadiness: () =>
-      lastPublishedReadinessSnapshot ?? computeReadinessSnapshot(),
+    getSpeechReadiness: () => lastPublishedReadinessSnapshot ?? computeReadinessSnapshot(),
     subscribeSpeechReadiness,
     cleanup,
     localModelConfig,

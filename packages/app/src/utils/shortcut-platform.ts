@@ -11,7 +11,6 @@ export function getShortcutOs(): ShortcutOs {
   const ua = navigator.userAgent ?? "";
   const platform = (navigator as any).platform ?? "";
   const isApple =
-    /Macintosh|Mac OS|iPhone|iPad|iPod/i.test(ua) ||
-    /Mac|iPhone|iPad|iPod/i.test(platform);
+    /Macintosh|Mac OS|iPhone|iPad|iPod/i.test(ua) || /Mac|iPhone|iPad|iPod/i.test(platform);
   return isApple ? "mac" : "non-mac";
 }

@@ -1,16 +1,16 @@
-import { Pressable, View, Text, Animated } from 'react-native';
-import { useEffect, useRef } from 'react';
-import { StyleSheet } from 'react-native-unistyles';
+import { Pressable, View, Text, Animated } from "react-native";
+import { useEffect, useRef } from "react";
+import { StyleSheet } from "react-native-unistyles";
 
 interface VoiceButtonProps {
-  state: 'idle' | 'recording' | 'processing' | 'playing';
+  state: "idle" | "recording" | "processing" | "playing";
   onPress: () => void;
   disabled?: boolean;
 }
 
 const styles = StyleSheet.create((theme) => ({
   container: {
-    alignItems: 'center',
+    alignItems: "center",
     gap: theme.spacing[4],
   },
   pressable: {
@@ -23,9 +23,9 @@ const styles = StyleSheet.create((theme) => ({
     width: 80,
     height: 80,
     borderRadius: theme.borderRadius.full,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,
@@ -64,7 +64,7 @@ const styles = StyleSheet.create((theme) => ({
     height: 6,
     backgroundColor: theme.colors.primaryForeground,
     borderRadius: theme.borderRadius.full,
-    position: 'absolute',
+    position: "absolute",
   },
   processingDotTop: {
     top: 0,
@@ -80,8 +80,8 @@ const styles = StyleSheet.create((theme) => ({
   },
   // Playing icon
   playingIconContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: theme.spacing[1],
   },
   playingBar: {
@@ -104,10 +104,10 @@ const styles = StyleSheet.create((theme) => ({
   micContainer: {
     width: 24,
     height: 32,
-    position: 'relative',
+    position: "relative",
   },
   micCapsule: {
-    position: 'absolute',
+    position: "absolute",
     bottom: 0,
     left: 4,
     width: 16,
@@ -117,7 +117,7 @@ const styles = StyleSheet.create((theme) => ({
     borderTopRightRadius: 999,
   },
   micBase: {
-    position: 'absolute',
+    position: "absolute",
     bottom: 0,
     left: 0,
     width: 24,
@@ -131,7 +131,7 @@ export function VoiceButton({ state, onPress, disabled = false }: VoiceButtonPro
   const pulseAnim = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
-    if (state === 'recording') {
+    if (state === "recording") {
       Animated.loop(
         Animated.sequence([
           Animated.timing(pulseAnim, {
@@ -144,7 +144,7 @@ export function VoiceButton({ state, onPress, disabled = false }: VoiceButtonPro
             duration: 800,
             useNativeDriver: true,
           }),
-        ])
+        ]),
       ).start();
     } else {
       pulseAnim.setValue(1);
@@ -153,11 +153,11 @@ export function VoiceButton({ state, onPress, disabled = false }: VoiceButtonPro
 
   const getButtonStyle = () => {
     switch (state) {
-      case 'recording':
+      case "recording":
         return styles.buttonRecording;
-      case 'processing':
+      case "processing":
         return styles.buttonProcessing;
-      case 'playing':
+      case "playing":
         return styles.buttonPlaying;
       default:
         return styles.buttonIdle;
@@ -166,9 +166,9 @@ export function VoiceButton({ state, onPress, disabled = false }: VoiceButtonPro
 
   const getIcon = () => {
     switch (state) {
-      case 'recording':
+      case "recording":
         return <View style={styles.recordingIcon} />;
-      case 'processing':
+      case "processing":
         return (
           <View style={styles.processingIconContainer}>
             <View style={[styles.processingDot, styles.processingDotTop]} />
@@ -176,7 +176,7 @@ export function VoiceButton({ state, onPress, disabled = false }: VoiceButtonPro
             <View style={[styles.processingDot, styles.processingDotBottom]} />
           </View>
         );
-      case 'playing':
+      case "playing":
         return (
           <View style={styles.playingIconContainer}>
             <View style={[styles.playingBar, styles.playingBar1]} />
@@ -196,14 +196,14 @@ export function VoiceButton({ state, onPress, disabled = false }: VoiceButtonPro
 
   const getLabel = () => {
     switch (state) {
-      case 'recording':
-        return 'Recording...';
-      case 'processing':
-        return 'Processing...';
-      case 'playing':
-        return 'Playing...';
+      case "recording":
+        return "Recording...";
+      case "processing":
+        return "Processing...";
+      case "playing":
+        return "Playing...";
       default:
-        return 'Tap to speak';
+        return "Tap to speak";
     }
   };
 
@@ -214,7 +214,9 @@ export function VoiceButton({ state, onPress, disabled = false }: VoiceButtonPro
         disabled={disabled}
         style={disabled ? styles.pressableDisabled : styles.pressable}
       >
-        <Animated.View style={[styles.button, getButtonStyle(), { transform: [{ scale: pulseAnim }] }]}>
+        <Animated.View
+          style={[styles.button, getButtonStyle(), { transform: [{ scale: pulseAnim }] }]}
+        >
           {getIcon()}
         </Animated.View>
       </Pressable>

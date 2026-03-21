@@ -1,128 +1,129 @@
-import { useCallback, useMemo, useRef, useState } from 'react'
-import { View, Text, Platform, Pressable } from 'react-native'
-import { StyleSheet, useUnistyles } from 'react-native-unistyles'
-import {
-  Brain,
-  ChevronDown,
-  ShieldAlert,
-  ShieldCheck,
-  ShieldOff,
-
-} from 'lucide-react-native'
-import { getProviderIcon } from '@/components/provider-icons'
-import { CombinedModelSelector } from '@/components/combined-model-selector'
-import { useQuery } from '@tanstack/react-query'
-import { useSessionStore } from '@/stores/session-store'
+import { useCallback, useMemo, useRef, useState } from "react";
+import { View, Text, Platform, Pressable } from "react-native";
+import { StyleSheet, useUnistyles } from "react-native-unistyles";
+import { Brain, ChevronDown, ShieldAlert, ShieldCheck, ShieldOff } from "lucide-react-native";
+import { getProviderIcon } from "@/components/provider-icons";
+import { CombinedModelSelector } from "@/components/combined-model-selector";
+import { useQuery } from "@tanstack/react-query";
+import { useSessionStore } from "@/stores/session-store";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
-import { Combobox, ComboboxItem, type ComboboxOption } from '@/components/ui/combobox'
-import { AdaptiveModalSheet } from '@/components/adaptive-modal-sheet'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+} from "@/components/ui/dropdown-menu";
+import { Combobox, ComboboxItem, type ComboboxOption } from "@/components/ui/combobox";
+import { AdaptiveModalSheet } from "@/components/adaptive-modal-sheet";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type {
   AgentMode,
   AgentModelDefinition,
   AgentProvider,
-} from '@server/server/agent/agent-sdk-types'
-import type { AgentProviderDefinition } from '@server/server/agent/provider-manifest'
+} from "@server/server/agent/agent-sdk-types";
+import type { AgentProviderDefinition } from "@server/server/agent/provider-manifest";
 import {
   getModeVisuals,
   type AgentModeColorTier,
   type AgentModeIcon,
-} from '@server/server/agent/provider-manifest'
+} from "@server/server/agent/provider-manifest";
 import {
   getStatusSelectorHint,
   resolveAgentModelSelection,
-} from '@/components/agent-status-bar.utils'
+} from "@/components/agent-status-bar.utils";
 
 type StatusOption = {
-  id: string
-  label: string
-}
+  id: string;
+  label: string;
+};
 
-type StatusSelector = 'provider' | 'mode' | 'model' | 'thinking'
+type StatusSelector = "provider" | "mode" | "model" | "thinking";
 
 type ControlledAgentStatusBarProps = {
-  provider: string
-  providerOptions?: StatusOption[]
-  selectedProviderId?: string
-  onSelectProvider?: (providerId: string) => void
-  modeOptions?: StatusOption[]
-  selectedModeId?: string
-  onSelectMode?: (modeId: string) => void
-  modelOptions?: StatusOption[]
-  selectedModelId?: string
-  onSelectModel?: (modelId: string) => void
-  thinkingOptions?: StatusOption[]
-  selectedThinkingOptionId?: string
-  onSelectThinkingOption?: (thinkingOptionId: string) => void
-  disabled?: boolean
-  isModelLoading?: boolean
-}
+  provider: string;
+  providerOptions?: StatusOption[];
+  selectedProviderId?: string;
+  onSelectProvider?: (providerId: string) => void;
+  modeOptions?: StatusOption[];
+  selectedModeId?: string;
+  onSelectMode?: (modeId: string) => void;
+  modelOptions?: StatusOption[];
+  selectedModelId?: string;
+  onSelectModel?: (modelId: string) => void;
+  thinkingOptions?: StatusOption[];
+  selectedThinkingOptionId?: string;
+  onSelectThinkingOption?: (thinkingOptionId: string) => void;
+  disabled?: boolean;
+  isModelLoading?: boolean;
+};
 
 export interface DraftAgentStatusBarProps {
-  providerDefinitions: AgentProviderDefinition[]
-  selectedProvider: AgentProvider
-  onSelectProvider: (provider: AgentProvider) => void
-  modeOptions: AgentMode[]
-  selectedMode: string
-  onSelectMode: (modeId: string) => void
-  models: AgentModelDefinition[]
-  selectedModel: string
-  onSelectModel: (modelId: string) => void
-  isModelLoading: boolean
-  allProviderModels: Map<string, AgentModelDefinition[]>
-  isAllModelsLoading: boolean
-  onSelectProviderAndModel: (provider: AgentProvider, modelId: string) => void
-  thinkingOptions: NonNullable<AgentModelDefinition['thinkingOptions']>
-  selectedThinkingOptionId: string
-  onSelectThinkingOption: (thinkingOptionId: string) => void
-  disabled?: boolean
+  providerDefinitions: AgentProviderDefinition[];
+  selectedProvider: AgentProvider;
+  onSelectProvider: (provider: AgentProvider) => void;
+  modeOptions: AgentMode[];
+  selectedMode: string;
+  onSelectMode: (modeId: string) => void;
+  models: AgentModelDefinition[];
+  selectedModel: string;
+  onSelectModel: (modelId: string) => void;
+  isModelLoading: boolean;
+  allProviderModels: Map<string, AgentModelDefinition[]>;
+  isAllModelsLoading: boolean;
+  onSelectProviderAndModel: (provider: AgentProvider, modelId: string) => void;
+  thinkingOptions: NonNullable<AgentModelDefinition["thinkingOptions"]>;
+  selectedThinkingOptionId: string;
+  onSelectThinkingOption: (thinkingOptionId: string) => void;
+  disabled?: boolean;
 }
 
 interface AgentStatusBarProps {
-  agentId: string
-  serverId: string
+  agentId: string;
+  serverId: string;
 }
 
-function findOptionLabel(options: StatusOption[] | undefined, selectedId: string | undefined, fallback: string) {
+function findOptionLabel(
+  options: StatusOption[] | undefined,
+  selectedId: string | undefined,
+  fallback: string,
+) {
   if (!options || options.length === 0) {
-    return fallback
+    return fallback;
   }
-  const selected = options.find((option) => option.id === selectedId)
-  return selected?.label ?? fallback
+  const selected = options.find((option) => option.id === selectedId);
+  return selected?.label ?? fallback;
 }
 
 const MODE_ICONS = {
   ShieldCheck,
   ShieldAlert,
   ShieldOff,
-} as const
-
+} as const;
 
 function getModeIconColor(
   colorTier: AgentModeColorTier | undefined,
-  palette: { blue: { 500: string }; green: { 500: string }; amber: { 500: string }; red: { 500: string }; purple: { 500: string } }
+  palette: {
+    blue: { 500: string };
+    green: { 500: string };
+    amber: { 500: string };
+    red: { 500: string };
+    purple: { 500: string };
+  },
 ): string {
   switch (colorTier) {
-    case 'default':
-      return palette.blue[500]
-    case 'safe':
-      return palette.green[500]
-    case 'moderate':
-      return palette.amber[500]
-    case 'dangerous':
-      return palette.red[500]
-    case 'readonly':
-      return palette.purple[500]
+    case "default":
+      return palette.blue[500];
+    case "safe":
+      return palette.green[500];
+    case "moderate":
+      return palette.amber[500];
+    case "dangerous":
+      return palette.red[500];
+    case "readonly":
+      return palette.purple[500];
     default:
-      return palette.blue[500]
+      return palette.blue[500];
   }
 }
-
 
 function ControlledStatusBar({
   provider,
@@ -141,71 +142,83 @@ function ControlledStatusBar({
   disabled = false,
   isModelLoading = false,
 }: ControlledAgentStatusBarProps) {
-  const { theme } = useUnistyles()
-  const isWeb = Platform.OS === 'web'
-  const [prefsOpen, setPrefsOpen] = useState(false)
-  const [openSelector, setOpenSelector] = useState<StatusSelector | null>(null)
+  const { theme } = useUnistyles();
+  const isWeb = Platform.OS === "web";
+  const [prefsOpen, setPrefsOpen] = useState(false);
+  const [openSelector, setOpenSelector] = useState<StatusSelector | null>(null);
 
-  const providerAnchorRef = useRef<View>(null)
-  const modeAnchorRef = useRef<View>(null)
-  const modelAnchorRef = useRef<View>(null)
-  const thinkingAnchorRef = useRef<View>(null)
+  const providerAnchorRef = useRef<View>(null);
+  const modeAnchorRef = useRef<View>(null);
+  const modelAnchorRef = useRef<View>(null);
+  const thinkingAnchorRef = useRef<View>(null);
 
-  const canSelectProvider = Boolean(onSelectProvider && providerOptions && providerOptions.length > 0)
-  const canSelectMode = Boolean(onSelectMode && modeOptions && modeOptions.length > 0)
-  const canSelectModel = Boolean(onSelectModel)
+  const canSelectProvider = Boolean(
+    onSelectProvider && providerOptions && providerOptions.length > 0,
+  );
+  const canSelectMode = Boolean(onSelectMode && modeOptions && modeOptions.length > 0);
+  const canSelectModel = Boolean(onSelectModel);
   const canSelectThinking = Boolean(
-    onSelectThinkingOption && thinkingOptions && thinkingOptions.length > 0
-  )
+    onSelectThinkingOption && thinkingOptions && thinkingOptions.length > 0,
+  );
 
-  const displayProvider = findOptionLabel(providerOptions, selectedProviderId, 'Provider')
-  const displayMode = findOptionLabel(modeOptions, selectedModeId, 'Default')
+  const displayProvider = findOptionLabel(providerOptions, selectedProviderId, "Provider");
+  const displayMode = findOptionLabel(modeOptions, selectedModeId, "Default");
   const displayModel =
     isModelLoading && (!modelOptions || modelOptions.length === 0)
-      ? 'Loading models...'
-      : findOptionLabel(modelOptions, selectedModelId, 'Auto')
-  const displayThinking = findOptionLabel(thinkingOptions, selectedThinkingOptionId, 'auto')
+      ? "Loading models..."
+      : findOptionLabel(modelOptions, selectedModelId, "Auto");
+  const displayThinking = findOptionLabel(thinkingOptions, selectedThinkingOptionId, "auto");
 
-  const modeVisuals = selectedModeId ? getModeVisuals(provider, selectedModeId) : undefined
-  const ModeIconComponent = modeVisuals?.icon ? MODE_ICONS[modeVisuals.icon] : null
-  const modeIconColor = getModeIconColor(modeVisuals?.colorTier, theme.colors.palette)
-  const ProviderIcon = getProviderIcon(provider)
+  const modeVisuals = selectedModeId ? getModeVisuals(provider, selectedModeId) : undefined;
+  const ModeIconComponent = modeVisuals?.icon ? MODE_ICONS[modeVisuals.icon] : null;
+  const modeIconColor = getModeIconColor(modeVisuals?.colorTier, theme.colors.palette);
+  const ProviderIcon = getProviderIcon(provider);
 
   const hasAnyControl =
     Boolean(providerOptions?.length) ||
     Boolean(modeOptions?.length) ||
     canSelectModel ||
-    Boolean(thinkingOptions?.length)
+    Boolean(thinkingOptions?.length);
 
   if (!hasAnyControl) {
-    return null
+    return null;
   }
 
-  const modelDisabled = disabled || isModelLoading || !modelOptions || modelOptions.length === 0
+  const modelDisabled = disabled || isModelLoading || !modelOptions || modelOptions.length === 0;
 
-  const SEARCH_THRESHOLD = 6
+  const SEARCH_THRESHOLD = 6;
 
   const comboboxProviderOptions = useMemo<ComboboxOption[]>(
     () => (providerOptions ?? []).map((o) => ({ id: o.id, label: o.label })),
-    [providerOptions]
-  )
+    [providerOptions],
+  );
   const comboboxModeOptions = useMemo<ComboboxOption[]>(
     () => (modeOptions ?? []).map((o) => ({ id: o.id, label: o.label })),
-    [modeOptions]
-  )
+    [modeOptions],
+  );
   const comboboxModelOptions = useMemo<ComboboxOption[]>(
     () => (modelOptions ?? []).map((o) => ({ id: o.id, label: o.label })),
-    [modelOptions]
-  )
+    [modelOptions],
+  );
   const comboboxThinkingOptions = useMemo<ComboboxOption[]>(
     () => (thinkingOptions ?? []).map((o) => ({ id: o.id, label: o.label })),
-    [thinkingOptions]
-  )
+    [thinkingOptions],
+  );
 
   const renderModeOption = useCallback(
-    ({ option, selected, active, onPress }: { option: ComboboxOption; selected: boolean; active: boolean; onPress: () => void }) => {
-      const visuals = getModeVisuals(provider, option.id)
-      const IconComponent = visuals?.icon ? MODE_ICONS[visuals.icon] : ShieldCheck
+    ({
+      option,
+      selected,
+      active,
+      onPress,
+    }: {
+      option: ComboboxOption;
+      selected: boolean;
+      active: boolean;
+      onPress: () => void;
+    }) => {
+      const visuals = getModeVisuals(provider, option.id);
+      const IconComponent = visuals?.icon ? MODE_ICONS[visuals.icon] : ShieldCheck;
       return (
         <ComboboxItem
           label={option.label}
@@ -214,24 +227,24 @@ function ControlledStatusBar({
           onPress={onPress}
           leadingSlot={<IconComponent size={16} color={theme.colors.foreground} />}
         />
-      )
+      );
     },
-    [provider, theme.colors.foreground]
-  )
+    [provider, theme.colors.foreground],
+  );
 
   const handleOpenChange = useCallback(
     (selector: StatusSelector) => (nextOpen: boolean) => {
-      setOpenSelector(nextOpen ? selector : null)
+      setOpenSelector(nextOpen ? selector : null);
     },
-    []
-  )
+    [],
+  );
 
   const handleSelectorPress = useCallback(
     (selector: StatusSelector) => {
-      handleOpenChange(selector)(openSelector !== selector)
+      handleOpenChange(selector)(openSelector !== selector);
     },
-    [handleOpenChange, openSelector]
-  )
+    [handleOpenChange, openSelector],
+  );
 
   return (
     <View style={styles.container}>
@@ -243,11 +256,11 @@ function ControlledStatusBar({
                 ref={providerAnchorRef}
                 collapsable={false}
                 disabled={disabled || !canSelectProvider}
-                onPress={() => handleSelectorPress('provider')}
+                onPress={() => handleSelectorPress("provider")}
                 style={({ pressed, hovered }) => [
                   styles.modeBadge,
                   hovered && styles.modeBadgeHovered,
-                  (pressed || openSelector === 'provider') && styles.modeBadgePressed,
+                  (pressed || openSelector === "provider") && styles.modeBadgePressed,
                   (disabled || !canSelectProvider) && styles.disabledBadge,
                 ]}
                 accessibilityRole="button"
@@ -259,11 +272,11 @@ function ControlledStatusBar({
               </Pressable>
               <Combobox
                 options={comboboxProviderOptions}
-                value={selectedProviderId ?? ''}
+                value={selectedProviderId ?? ""}
                 onSelect={(id) => onSelectProvider?.(id)}
                 searchable={comboboxProviderOptions.length > SEARCH_THRESHOLD}
-                open={openSelector === 'provider'}
-                onOpenChange={handleOpenChange('provider')}
+                open={openSelector === "provider"}
+                onOpenChange={handleOpenChange("provider")}
                 anchorRef={providerAnchorRef}
                 desktopPlacement="top-start"
               />
@@ -273,7 +286,7 @@ function ControlledStatusBar({
           {modeOptions && modeOptions.length > 0 ? (
             <>
               <Tooltip
-                key={`mode-${openSelector === 'mode' ? 'open' : 'closed'}`}
+                key={`mode-${openSelector === "mode" ? "open" : "closed"}`}
                 delayDuration={0}
                 enabledOnDesktop
                 enabledOnMobile={false}
@@ -283,11 +296,11 @@ function ControlledStatusBar({
                     ref={modeAnchorRef}
                     collapsable={false}
                     disabled={disabled || !canSelectMode}
-                    onPress={() => handleSelectorPress('mode')}
+                    onPress={() => handleSelectorPress("mode")}
                     style={({ pressed, hovered }) => [
                       styles.modeIconBadge,
                       hovered && styles.modeBadgeHovered,
-                      (pressed || openSelector === 'mode') && styles.modeBadgePressed,
+                      (pressed || openSelector === "mode") && styles.modeBadgePressed,
                       (disabled || !canSelectMode) && styles.disabledBadge,
                     ]}
                     accessibilityRole="button"
@@ -302,16 +315,16 @@ function ControlledStatusBar({
                   </Pressable>
                 </TooltipTrigger>
                 <TooltipContent side="top" align="center" offset={8}>
-                  <Text style={styles.tooltipText}>{getStatusSelectorHint('mode')}</Text>
+                  <Text style={styles.tooltipText}>{getStatusSelectorHint("mode")}</Text>
                 </TooltipContent>
               </Tooltip>
               <Combobox
                 options={comboboxModeOptions}
-                value={selectedModeId ?? ''}
+                value={selectedModeId ?? ""}
                 onSelect={(id) => onSelectMode?.(id)}
                 searchable={comboboxModeOptions.length > SEARCH_THRESHOLD}
-                open={openSelector === 'mode'}
-                onOpenChange={handleOpenChange('mode')}
+                open={openSelector === "mode"}
+                onOpenChange={handleOpenChange("mode")}
                 anchorRef={modeAnchorRef}
                 desktopPlacement="top-start"
                 renderOption={renderModeOption}
@@ -322,7 +335,7 @@ function ControlledStatusBar({
           {canSelectModel ? (
             <>
               <Tooltip
-                key={`model-${openSelector === 'model' ? 'open' : 'closed'}`}
+                key={`model-${openSelector === "model" ? "open" : "closed"}`}
                 delayDuration={0}
                 enabledOnDesktop
                 enabledOnMobile={false}
@@ -332,11 +345,11 @@ function ControlledStatusBar({
                     ref={modelAnchorRef}
                     collapsable={false}
                     disabled={modelDisabled}
-                    onPress={() => handleSelectorPress('model')}
+                    onPress={() => handleSelectorPress("model")}
                     style={({ pressed, hovered }) => [
                       styles.modeBadge,
                       hovered && styles.modeBadgeHovered,
-                      (pressed || openSelector === 'model') && styles.modeBadgePressed,
+                      (pressed || openSelector === "model") && styles.modeBadgePressed,
                       modelDisabled && styles.disabledBadge,
                     ]}
                     accessibilityRole="button"
@@ -349,16 +362,16 @@ function ControlledStatusBar({
                   </Pressable>
                 </TooltipTrigger>
                 <TooltipContent side="top" align="center" offset={8}>
-                  <Text style={styles.tooltipText}>{getStatusSelectorHint('model')}</Text>
+                  <Text style={styles.tooltipText}>{getStatusSelectorHint("model")}</Text>
                 </TooltipContent>
               </Tooltip>
               <Combobox
                 options={comboboxModelOptions}
-                value={selectedModelId ?? ''}
+                value={selectedModelId ?? ""}
                 onSelect={(id) => onSelectModel?.(id)}
                 searchable={comboboxModelOptions.length > SEARCH_THRESHOLD}
-                open={openSelector === 'model'}
-                onOpenChange={handleOpenChange('model')}
+                open={openSelector === "model"}
+                onOpenChange={handleOpenChange("model")}
                 anchorRef={modelAnchorRef}
                 desktopPlacement="top-start"
               />
@@ -368,7 +381,7 @@ function ControlledStatusBar({
           {thinkingOptions && thinkingOptions.length > 0 ? (
             <>
               <Tooltip
-                key={`thinking-${openSelector === 'thinking' ? 'open' : 'closed'}`}
+                key={`thinking-${openSelector === "thinking" ? "open" : "closed"}`}
                 delayDuration={0}
                 enabledOnDesktop
                 enabledOnMobile={false}
@@ -378,11 +391,11 @@ function ControlledStatusBar({
                     ref={thinkingAnchorRef}
                     collapsable={false}
                     disabled={disabled || !canSelectThinking}
-                    onPress={() => handleSelectorPress('thinking')}
+                    onPress={() => handleSelectorPress("thinking")}
                     style={({ pressed, hovered }) => [
                       styles.modeBadge,
                       hovered && styles.modeBadgeHovered,
-                      (pressed || openSelector === 'thinking') && styles.modeBadgePressed,
+                      (pressed || openSelector === "thinking") && styles.modeBadgePressed,
                       (disabled || !canSelectThinking) && styles.disabledBadge,
                     ]}
                     accessibilityRole="button"
@@ -395,16 +408,16 @@ function ControlledStatusBar({
                   </Pressable>
                 </TooltipTrigger>
                 <TooltipContent side="top" align="center" offset={8}>
-                  <Text style={styles.tooltipText}>{getStatusSelectorHint('thinking')}</Text>
+                  <Text style={styles.tooltipText}>{getStatusSelectorHint("thinking")}</Text>
                 </TooltipContent>
               </Tooltip>
               <Combobox
                 options={comboboxThinkingOptions}
-                value={selectedThinkingOptionId ?? ''}
+                value={selectedThinkingOptionId ?? ""}
                 onSelect={(id) => onSelectThinkingOption?.(id)}
                 searchable={comboboxThinkingOptions.length > SEARCH_THRESHOLD}
-                open={openSelector === 'thinking'}
-                onOpenChange={handleOpenChange('thinking')}
+                open={openSelector === "thinking"}
+                onOpenChange={handleOpenChange("thinking")}
                 anchorRef={thinkingAnchorRef}
                 desktopPlacement="top-start"
               />
@@ -415,16 +428,15 @@ function ControlledStatusBar({
         <>
           <Pressable
             onPress={() => setPrefsOpen(true)}
-            style={({ pressed }) => [
-              styles.prefsButton,
-              pressed && styles.prefsButtonPressed,
-            ]}
+            style={({ pressed }) => [styles.prefsButton, pressed && styles.prefsButtonPressed]}
             accessibilityRole="button"
             accessibilityLabel="Agent preferences"
             testID="agent-preferences-button"
           >
             <ProviderIcon size={theme.iconSize.lg} color={theme.colors.foregroundMuted} />
-            <Text style={styles.prefsButtonText} numberOfLines={1}>{displayModel}</Text>
+            <Text style={styles.prefsButtonText} numberOfLines={1}>
+              {displayModel}
+            </Text>
           </Pressable>
 
           <AdaptiveModalSheet
@@ -436,8 +448,8 @@ function ControlledStatusBar({
             {providerOptions && providerOptions.length > 0 ? (
               <View style={styles.sheetSection}>
                 <DropdownMenu
-                  open={openSelector === 'provider'}
-                  onOpenChange={handleOpenChange('provider')}
+                  open={openSelector === "provider"}
+                  onOpenChange={handleOpenChange("provider")}
                 >
                   <DropdownMenuTrigger
                     disabled={disabled || !canSelectProvider}
@@ -471,8 +483,8 @@ function ControlledStatusBar({
             {modeOptions && modeOptions.length > 0 ? (
               <View style={styles.sheetSection}>
                 <DropdownMenu
-                  open={openSelector === 'mode'}
-                  onOpenChange={handleOpenChange('mode')}
+                  open={openSelector === "mode"}
+                  onOpenChange={handleOpenChange("mode")}
                 >
                   <DropdownMenuTrigger
                     disabled={disabled || !canSelectMode}
@@ -493,8 +505,8 @@ function ControlledStatusBar({
                   </DropdownMenuTrigger>
                   <DropdownMenuContent side="top" align="start">
                     {modeOptions.map((mode) => {
-                      const visuals = getModeVisuals(provider, mode.id)
-                      const Icon = visuals?.icon ? MODE_ICONS[visuals.icon] : ShieldCheck
+                      const visuals = getModeVisuals(provider, mode.id);
+                      const Icon = visuals?.icon ? MODE_ICONS[visuals.icon] : ShieldCheck;
                       return (
                         <DropdownMenuItem
                           key={mode.id}
@@ -504,7 +516,7 @@ function ControlledStatusBar({
                         >
                           {mode.label}
                         </DropdownMenuItem>
-                      )
+                      );
                     })}
                   </DropdownMenuContent>
                 </DropdownMenu>
@@ -514,8 +526,8 @@ function ControlledStatusBar({
             {canSelectModel ? (
               <View style={styles.sheetSection}>
                 <DropdownMenu
-                  open={openSelector === 'model'}
-                  onOpenChange={handleOpenChange('model')}
+                  open={openSelector === "model"}
+                  onOpenChange={handleOpenChange("model")}
                 >
                   <DropdownMenuTrigger
                     disabled={modelDisabled}
@@ -549,8 +561,8 @@ function ControlledStatusBar({
             {thinkingOptions && thinkingOptions.length > 0 ? (
               <View style={styles.sheetSection}>
                 <DropdownMenu
-                  open={openSelector === 'thinking'}
-                  onOpenChange={handleOpenChange('thinking')}
+                  open={openSelector === "thinking"}
+                  onOpenChange={handleOpenChange("thinking")}
                 >
                   <DropdownMenuTrigger
                     disabled={disabled || !canSelectThinking}
@@ -584,68 +596,68 @@ function ControlledStatusBar({
         </>
       )}
     </View>
-  )
+  );
 }
 
 export function AgentStatusBar({ agentId, serverId }: AgentStatusBarProps) {
-  const agent = useSessionStore((state) => state.sessions[serverId]?.agents?.get(agentId))
-  const client = useSessionStore((state) => state.sessions[serverId]?.client ?? null)
+  const agent = useSessionStore((state) => state.sessions[serverId]?.agents?.get(agentId));
+  const client = useSessionStore((state) => state.sessions[serverId]?.client ?? null);
 
   const modelsQuery = useQuery({
     queryKey: [
-      'providerModels',
+      "providerModels",
       serverId,
-      agent?.provider ?? '__missing_provider__',
-      agent?.cwd ?? '__missing_cwd__',
+      agent?.provider ?? "__missing_provider__",
+      agent?.cwd ?? "__missing_cwd__",
     ],
     enabled: Boolean(client && agent?.provider),
     staleTime: 5 * 60 * 1000,
     queryFn: async () => {
       if (!client || !agent) {
-        throw new Error('Daemon client unavailable')
+        throw new Error("Daemon client unavailable");
       }
-      const payload = await client.listProviderModels(agent.provider, { cwd: agent.cwd })
+      const payload = await client.listProviderModels(agent.provider, { cwd: agent.cwd });
       if (payload.error) {
-        throw new Error(payload.error)
+        throw new Error(payload.error);
       }
-      return payload.models ?? []
+      return payload.models ?? [];
     },
-  })
+  });
 
-  const models = modelsQuery.data ?? null
+  const models = modelsQuery.data ?? null;
 
   const displayMode =
     agent?.availableModes?.find((mode) => mode.id === agent.currentModeId)?.label ||
     agent?.currentModeId ||
-    'default'
+    "default";
 
   const modelSelection = resolveAgentModelSelection({
     models,
     runtimeModelId: agent?.runtimeInfo?.model,
     configuredModelId: agent?.model,
     explicitThinkingOptionId: agent?.thinkingOptionId,
-  })
+  });
 
   const modeOptions = useMemo<StatusOption[]>(() => {
     return (agent?.availableModes ?? []).map((mode) => ({
       id: mode.id,
       label: mode.label,
-    }))
-  }, [agent?.availableModes])
+    }));
+  }, [agent?.availableModes]);
 
   const modelOptions = useMemo<StatusOption[]>(() => {
-    return (models ?? []).map((model) => ({ id: model.id, label: model.label }))
-  }, [models])
+    return (models ?? []).map((model) => ({ id: model.id, label: model.label }));
+  }, [models]);
 
   const thinkingOptions = useMemo<StatusOption[]>(() => {
     return (modelSelection.thinkingOptions ?? []).map((option) => ({
       id: option.id,
       label: option.label,
-    }))
-  }, [modelSelection.thinkingOptions])
+    }));
+  }, [modelSelection.thinkingOptions]);
 
   if (!agent) {
-    return null
+    return null;
   }
 
   return (
@@ -654,41 +666,41 @@ export function AgentStatusBar({ agentId, serverId }: AgentStatusBarProps) {
       modeOptions={
         modeOptions.length > 0
           ? modeOptions
-          : [{ id: agent.currentModeId ?? '', label: displayMode }]
+          : [{ id: agent.currentModeId ?? "", label: displayMode }]
       }
       selectedModeId={agent.currentModeId ?? undefined}
       onSelectMode={(modeId) => {
         if (!client) {
-          return
+          return;
         }
         void client.setAgentMode(agentId, modeId).catch((error) => {
-          console.warn('[AgentStatusBar] setAgentMode failed', error)
-        })
+          console.warn("[AgentStatusBar] setAgentMode failed", error);
+        });
       }}
       modelOptions={modelOptions}
       selectedModelId={modelSelection.activeModelId ?? undefined}
       onSelectModel={(modelId) => {
         if (!client) {
-          return
+          return;
         }
         void client.setAgentModel(agentId, modelId).catch((error) => {
-          console.warn('[AgentStatusBar] setAgentModel failed', error)
-        })
+          console.warn("[AgentStatusBar] setAgentModel failed", error);
+        });
       }}
       thinkingOptions={thinkingOptions.length > 1 ? thinkingOptions : undefined}
       selectedThinkingOptionId={modelSelection.selectedThinkingId ?? undefined}
       onSelectThinkingOption={(thinkingOptionId) => {
         if (!client) {
-          return
+          return;
         }
         void client.setAgentThinkingOption(agentId, thinkingOptionId).catch((error) => {
-          console.warn('[AgentStatusBar] setAgentThinkingOption failed', error)
-        })
+          console.warn("[AgentStatusBar] setAgentThinkingOption failed", error);
+        });
       }}
       isModelLoading={modelsQuery.isPending || modelsQuery.isFetching}
       disabled={!client}
     />
-  )
+  );
 }
 
 export function DraftAgentStatusBar({
@@ -710,25 +722,25 @@ export function DraftAgentStatusBar({
   onSelectThinkingOption,
   disabled = false,
 }: DraftAgentStatusBarProps) {
-  const isWeb = Platform.OS === 'web'
+  const isWeb = Platform.OS === "web";
 
   const mappedModeOptions = useMemo<StatusOption[]>(() => {
     if (modeOptions.length === 0) {
-      return [{ id: '', label: 'Default' }]
+      return [{ id: "", label: "Default" }];
     }
     return modeOptions.map((mode) => ({
       id: mode.id,
       label: mode.label,
-    }))
-  }, [modeOptions])
+    }));
+  }, [modeOptions]);
 
   const mappedThinkingOptions = useMemo<StatusOption[]>(() => {
-    return thinkingOptions.map((option) => ({ id: option.id, label: option.label }))
-  }, [thinkingOptions])
+    return thinkingOptions.map((option) => ({ id: option.id, label: option.label }));
+  }, [thinkingOptions]);
 
-  const effectiveSelectedMode = selectedMode || mappedModeOptions[0]?.id || ''
+  const effectiveSelectedMode = selectedMode || mappedModeOptions[0]?.id || "";
   const effectiveSelectedThinkingOption =
-    selectedThinkingOptionId || mappedThinkingOptions[0]?.id || undefined
+    selectedThinkingOptionId || mappedThinkingOptions[0]?.id || undefined;
 
   if (isWeb) {
     return (
@@ -753,17 +765,17 @@ export function DraftAgentStatusBar({
           disabled={disabled}
         />
       </View>
-    )
+    );
   }
 
   const providerOptions = providerDefinitions.map((definition) => ({
     id: definition.id,
     label: definition.label,
-  }))
+  }));
 
-  const modelOptions: StatusOption[] = [{ id: '', label: 'Auto' }]
+  const modelOptions: StatusOption[] = [{ id: "", label: "Auto" }];
   for (const model of models) {
-    modelOptions.push({ id: model.id, label: model.label })
+    modelOptions.push({ id: model.id, label: model.label });
   }
 
   return (
@@ -784,30 +796,30 @@ export function DraftAgentStatusBar({
       onSelectThinkingOption={onSelectThinkingOption}
       disabled={disabled}
     />
-  )
+  );
 }
 
 const styles = StyleSheet.create((theme) => ({
   container: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
+    flexDirection: "row",
+    alignItems: "flex-end",
     gap: theme.spacing[1],
   },
   modeBadge: {
     height: 28,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'transparent',
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "transparent",
     gap: theme.spacing[1],
     paddingHorizontal: theme.spacing[2],
-    borderRadius: theme.borderRadius['2xl'],
+    borderRadius: theme.borderRadius["2xl"],
   },
   modeIconBadge: {
     width: 28,
     height: 28,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'transparent',
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "transparent",
     borderRadius: theme.borderRadius.full,
   },
   modeBadgeHovered: {
@@ -831,11 +843,11 @@ const styles = StyleSheet.create((theme) => ({
   },
   prefsButton: {
     height: 28,
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: theme.spacing[1],
     paddingHorizontal: theme.spacing[2],
-    borderRadius: theme.borderRadius['2xl'],
+    borderRadius: theme.borderRadius["2xl"],
   },
   prefsButtonPressed: {
     backgroundColor: theme.colors.surface0,
@@ -850,9 +862,9 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[2],
   },
   sheetSelect: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     gap: theme.spacing[3],
     paddingHorizontal: theme.spacing[4],
     paddingVertical: theme.spacing[3],
@@ -873,4 +885,4 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.base,
     fontWeight: theme.fontWeight.semibold,
   },
-}))
+}));

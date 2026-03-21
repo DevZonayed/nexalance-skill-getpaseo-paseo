@@ -9,9 +9,7 @@ export function compareCheckoutDiffPaths(left: string, right: string): number {
   return left < right ? -1 : 1;
 }
 
-export function orderCheckoutDiffFiles(
-  files: ParsedDiffFile[]
-): ParsedDiffFile[] {
+export function orderCheckoutDiffFiles(files: ParsedDiffFile[]): ParsedDiffFile[] {
   if (files.length < 2) {
     return files;
   }

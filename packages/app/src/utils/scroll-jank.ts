@@ -12,5 +12,5 @@ export function markScrollInvestigationRender(_componentId: string): void {}
 
 export function markScrollInvestigationEvent(
   _componentId: string,
-  _event: ScrollInvestigationEvent
+  _event: ScrollInvestigationEvent,
 ): void {}

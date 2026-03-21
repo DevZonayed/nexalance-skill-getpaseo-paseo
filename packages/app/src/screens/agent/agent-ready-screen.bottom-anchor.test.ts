@@ -26,7 +26,7 @@ describe("agent-ready-screen bottom anchor intent", () => {
       deriveRouteBottomAnchorRequest({
         intent: intentAfterHistoryApplies,
         effectiveAgentId: "agent-1",
-      })
+      }),
     ).toEqual({
       agentId: "agent-1",
       reason: "initial-entry",
@@ -45,7 +45,7 @@ describe("agent-ready-screen bottom anchor intent", () => {
       deriveRouteBottomAnchorRequest({
         intent,
         effectiveAgentId: "agent-2",
-      })
+      }),
     ).toEqual({
       agentId: "agent-2",
       reason: "resume",
@@ -64,7 +64,7 @@ describe("agent-ready-screen bottom anchor intent", () => {
       deriveRouteBottomAnchorRequest({
         intent,
         effectiveAgentId: null,
-      })
+      }),
     ).toBeNull();
   });
 });

@@ -13,11 +13,7 @@ import {
 // Test helpers
 // ---------------------------------------------------------------------------
 
-function makeTimelineEntry(
-  seq: number,
-  text: string,
-  type: string = "assistant_message"
-) {
+function makeTimelineEntry(seq: number, text: string, type: string = "assistant_message") {
   return {
     seqStart: seq,
     provider: "claude",
@@ -28,7 +24,7 @@ function makeTimelineEntry(
 
 function makeTimelineEvent(
   text: string,
-  type: string = "assistant_message"
+  type: string = "assistant_message",
 ): AgentStreamEventPayload {
   return {
     type: "timeline",
@@ -161,9 +157,7 @@ describe("processTimelineResponse", () => {
       endSeq: 3,
     });
     expect(result.error).toBe(null);
-    expect(
-      result.sideEffects.some((e) => e.type === "flush_pending_updates")
-    ).toBe(true);
+    expect(result.sideEffects.some((e) => e.type === "flush_pending_updates")).toBe(true);
   });
 
   it("sets cursor to null when reset=true but no cursors in payload", () => {
@@ -193,10 +187,7 @@ describe("processTimelineResponse", () => {
         epoch: "epoch-1",
         startCursor: { seq: 1 },
         endCursor: { seq: 5 },
-        entries: [
-          makeTimelineEntry(1, "first"),
-          makeTimelineEntry(5, "last"),
-        ],
+        entries: [makeTimelineEntry(1, "first"), makeTimelineEntry(5, "last")],
       },
     });
 
@@ -232,10 +223,7 @@ describe("processTimelineResponse", () => {
       payload: {
         ...baseTimelineInput.payload,
         epoch: "epoch-1",
-        entries: [
-          makeTimelineEntry(4, "next-1"),
-          makeTimelineEntry(5, "next-2"),
-        ],
+        entries: [makeTimelineEntry(4, "next-1"), makeTimelineEntry(5, "next-2")],
       },
     });
 
@@ -262,9 +250,7 @@ describe("processTimelineResponse", () => {
       payload: {
         ...baseTimelineInput.payload,
         epoch: "epoch-1",
-        entries: [
-          makeTimelineEntry(10, "far ahead"),
-        ],
+        entries: [makeTimelineEntry(10, "far ahead")],
       },
     });
 
@@ -290,10 +276,7 @@ describe("processTimelineResponse", () => {
       payload: {
         ...baseTimelineInput.payload,
         epoch: "epoch-1",
-        entries: [
-          makeTimelineEntry(5, "old"),
-          makeTimelineEntry(7, "also old"),
-        ],
+        entries: [makeTimelineEntry(5, "old"), makeTimelineEntry(7, "also old")],
       },
     });
 
@@ -315,9 +298,7 @@ describe("processTimelineResponse", () => {
       payload: {
         ...baseTimelineInput.payload,
         epoch: "epoch-2",
-        entries: [
-          makeTimelineEntry(6, "different epoch"),
-        ],
+        entries: [makeTimelineEntry(6, "different epoch")],
       },
     });
 
@@ -386,9 +367,7 @@ describe("processTimelineResponse", () => {
       },
     });
 
-    expect(
-      result.sideEffects.some((e) => e.type === "flush_pending_updates")
-    ).toBe(true);
+    expect(result.sideEffects.some((e) => e.type === "flush_pending_updates")).toBe(true);
   });
 
   it("initializes cursor when no existing cursor on first entries", () => {
@@ -398,10 +377,7 @@ describe("processTimelineResponse", () => {
       payload: {
         ...baseTimelineInput.payload,
         epoch: "epoch-1",
-        entries: [
-          makeTimelineEntry(1, "first"),
-          makeTimelineEntry(2, "second"),
-        ],
+        entries: [makeTimelineEntry(1, "first"), makeTimelineEntry(2, "second")],
       },
     });
 

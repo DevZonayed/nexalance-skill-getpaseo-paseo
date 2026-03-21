@@ -1,9 +1,6 @@
 import type { FetchAgentsEntry } from "@server/client/daemon-client";
 import { useSessionStore, type Agent } from "@/stores/session-store";
-import {
-  derivePendingPermissionKey,
-  normalizeAgentSnapshot,
-} from "@/utils/agent-snapshots";
+import { derivePendingPermissionKey, normalizeAgentSnapshot } from "@/utils/agent-snapshots";
 import { resolveProjectPlacement } from "@/utils/project-placement";
 
 type PendingPermissionEntry = {

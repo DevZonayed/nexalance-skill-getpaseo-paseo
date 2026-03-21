@@ -26,16 +26,8 @@ import { z } from "zod";
 import { ensureValidJson } from "../json-utils.js";
 import type { Logger } from "pino";
 
-import type {
-  AgentPromptInput,
-  AgentProvider,
-  AgentPermissionRequest,
-} from "./agent-sdk-types.js";
-import type {
-  AgentManager,
-  ManagedAgent,
-  WaitForAgentResult,
-} from "./agent-manager.js";
+import type { AgentPromptInput, AgentProvider, AgentPermissionRequest } from "./agent-sdk-types.js";
+import type { AgentManager, ManagedAgent, WaitForAgentResult } from "./agent-manager.js";
 import {
   AgentPermissionRequestPayloadSchema,
   AgentPermissionResponseSchema,
@@ -55,10 +47,7 @@ import { WaitForAgentTracker } from "./wait-for-agent-tracker.js";
 import { scheduleAgentMetadataGeneration } from "./agent-metadata-generator.js";
 import { expandUserPath } from "../path-utils.js";
 import type { TerminalManager } from "../../terminal/terminal-manager.js";
-import {
-  createAgentWorktree,
-  runAsyncWorktreeBootstrap,
-} from "../worktree-bootstrap.js";
+import { createAgentWorktree, runAsyncWorktreeBootstrap } from "../worktree-bootstrap.js";
 
 export interface AgentManagementMcpOptions {
   agentManager: AgentManager;
@@ -72,16 +61,10 @@ const AgentProviderEnum = z.enum(
   AGENT_PROVIDER_DEFINITIONS.map((definition) => definition.id) as [
     AgentProvider,
     ...AgentProvider[],
-  ]
+  ],
 );
 
-const AgentStatusEnum = z.enum([
-  "initializing",
-  "idle",
-  "running",
-  "error",
-  "closed",
-]);
+const AgentStatusEnum = z.enum(["initializing", "idle", "running", "error", "closed"]);
 
 // 50 seconds - surface friendly message before SDK tool timeout (~60s)
 const AGENT_WAIT_TIMEOUT_MS = 50000;
@@ -92,7 +75,7 @@ async function waitForAgentWithTimeout(
   options?: {
     signal?: AbortSignal;
     waitForActive?: boolean;
-  }
+  },
 ): Promise<WaitForAgentResult> {
   const timeoutController = new AbortController();
   const combinedController = new AbortController();
@@ -111,18 +94,16 @@ async function waitForAgentWithTimeout(
     if (options.signal.aborted) {
       forwardAbort(options.signal.reason);
     } else {
-      options.signal.addEventListener(
-        "abort",
-        () => forwardAbort(options.signal!.reason),
-        { once: true }
-      );
+      options.signal.addEventListener("abort", () => forwardAbort(options.signal!.reason), {
+        once: true,
+      });
     }
   }
 
   timeoutController.signal.addEventListener(
     "abort",
     () => forwardAbort(timeoutController.signal.reason),
-    { once: true }
+    { once: true },
   );
 
   try {
@@ -154,7 +135,7 @@ function startAgentRun(
   agentId: string,
   prompt: AgentPromptInput,
   logger: Logger,
-  options?: { replaceRunning?: boolean }
+  options?: { replaceRunning?: boolean },
 ): void {
   const snapshot = agentManager.getAgent(agentId);
   const shouldReplace =
@@ -175,7 +156,7 @@ function startAgentRun(
 }
 
 function sanitizePermissionRequest(
-  permission: AgentPermissionRequest | null | undefined
+  permission: AgentPermissionRequest | null | undefined,
 ): AgentPermissionRequest | null {
   if (!permission) {
     return null;
@@ -202,7 +183,7 @@ function sanitizePermissionRequest(
 async function resolveAgentTitle(
   agentStorage: AgentStorage,
   agentId: string,
-  logger: Logger
+  logger: Logger,
 ): Promise<string | null> {
   try {
     const record = await agentStorage.get(agentId);
@@ -216,14 +197,14 @@ async function resolveAgentTitle(
 async function serializeSnapshotWithMetadata(
   agentStorage: AgentStorage,
   snapshot: ManagedAgent,
-  logger: Logger
+  logger: Logger,
 ) {
   const title = await resolveAgentTitle(agentStorage, snapshot.id, logger);
   return serializeAgentSnapshot(snapshot, { title });
 }
 
 export async function createAgentManagementMcpServer(
-  options: AgentManagementMcpOptions
+  options: AgentManagementMcpOptions,
 ): Promise<McpServer> {
   const { agentManager, agentStorage, logger } = options;
   const childLogger = logger.child({
@@ -240,47 +221,35 @@ export async function createAgentManagementMcpServer(
   const inputSchema = {
     cwd: z
       .string()
-      .describe(
-        "Required working directory for the agent (absolute, relative, or ~)."
-      ),
+      .describe("Required working directory for the agent (absolute, relative, or ~)."),
     title: z
       .string()
       .trim()
       .min(1, "Title is required")
       .max(60, "Title must be 60 characters or fewer")
-      .describe(
-        "Short descriptive title (<= 60 chars) summarizing the agent's focus."
-      ),
+      .describe("Short descriptive title (<= 60 chars) summarizing the agent's focus."),
     agentType: AgentProviderEnum.optional().describe(
-      "Optional agent implementation to spawn. Defaults to 'claude'."
+      "Optional agent implementation to spawn. Defaults to 'claude'.",
     ),
     initialPrompt: z
       .string()
       .optional()
-      .describe(
-        "Optional task to start immediately after creation (non-blocking)."
-      ),
-    initialMode: z
-      .string()
-      .describe("Required session mode to configure before the first run."),
+      .describe("Optional task to start immediately after creation (non-blocking)."),
+    initialMode: z.string().describe("Required session mode to configure before the first run."),
     worktreeName: z
       .string()
       .optional()
-      .describe(
-        "Optional git worktree branch name (lowercase alphanumerics + hyphen)."
-      ),
+      .describe("Optional git worktree branch name (lowercase alphanumerics + hyphen)."),
     baseBranch: z
       .string()
       .optional()
-      .describe(
-        "Required when worktreeName is set: the base branch to diff/merge against."
-      ),
+      .describe("Required when worktreeName is set: the base branch to diff/merge against."),
     background: z
       .boolean()
       .optional()
       .default(false)
       .describe(
-        "Run agent in background. If false (default), waits for completion or permission request. If true, returns immediately."
+        "Run agent in background. If false (default), waits for completion or permission request. If true, returns immediately.",
       ),
   };
 
@@ -302,7 +271,7 @@ export async function createAgentManagementMcpServer(
             id: z.string(),
             label: z.string(),
             description: z.string().nullable().optional(),
-          })
+          }),
         ),
         lastMessage: z.string().nullable().optional(),
         permission: AgentPermissionRequestPayloadSchema.nullable().optional(),
@@ -396,7 +365,7 @@ export async function createAgentManagementMcpServer(
         } catch (error) {
           childLogger.error(
             { err: error, agentId: snapshot.id },
-            "Failed to record initial prompt"
+            "Failed to record initial prompt",
           );
         }
 
@@ -404,11 +373,9 @@ export async function createAgentManagementMcpServer(
           startAgentRun(agentManager, snapshot.id, trimmedPrompt, childLogger);
 
           if (!background) {
-            const result = await waitForAgentWithTimeout(
-              agentManager,
-              snapshot.id,
-              { waitForActive: true }
-            );
+            const result = await waitForAgentWithTimeout(agentManager, snapshot.id, {
+              waitForActive: true,
+            });
 
             const responseData = {
               agentId: snapshot.id,
@@ -428,10 +395,7 @@ export async function createAgentManagementMcpServer(
             };
           }
         } catch (error) {
-          childLogger.error(
-            { err: error, agentId: snapshot.id },
-            "Failed to run initial prompt"
-          );
+          childLogger.error({ err: error, agentId: snapshot.id }, "Failed to run initial prompt");
         }
       }
 
@@ -448,7 +412,7 @@ export async function createAgentManagementMcpServer(
           permission: null,
         }),
       };
-    }
+    },
   );
 
   server.registerTool(
@@ -458,9 +422,7 @@ export async function createAgentManagementMcpServer(
       description:
         "Block until the agent requests permission or the current run completes. Returns the pending permission (if any) and recent activity summary.",
       inputSchema: {
-        agentId: z
-          .string()
-          .describe("Agent identifier returned by the create_agent tool"),
+        agentId: z.string().describe("Agent identifier returned by the create_agent tool"),
       },
       outputSchema: {
         agentId: z.string(),
@@ -498,27 +460,21 @@ export async function createAgentManagementMcpServer(
           signal.addEventListener("abort", forwardExternalAbort, {
             once: true,
           });
-          cleanupFns.push(() =>
-            signal.removeEventListener("abort", forwardExternalAbort)
-          );
+          cleanupFns.push(() => signal.removeEventListener("abort", forwardExternalAbort));
         }
       }
 
       const unregister = waitTracker.register(agentId, (reason) => {
         if (!abortController.signal.aborted) {
-          abortController.abort(
-            new Error(reason ?? "wait_for_agent cancelled")
-          );
+          abortController.abort(new Error(reason ?? "wait_for_agent cancelled"));
         }
       });
       cleanupFns.push(unregister);
 
       try {
-        const result: WaitForAgentResult = await waitForAgentWithTimeout(
-          agentManager,
-          agentId,
-          { signal: abortController.signal }
-        );
+        const result: WaitForAgentResult = await waitForAgentWithTimeout(agentManager, agentId, {
+          signal: abortController.signal,
+        });
 
         const validJson = ensureValidJson({
           agentId,
@@ -534,7 +490,7 @@ export async function createAgentManagementMcpServer(
       } finally {
         cleanup();
       }
-    }
+    },
   );
 
   server.registerTool(
@@ -555,7 +511,7 @@ export async function createAgentManagementMcpServer(
           .optional()
           .default(false)
           .describe(
-            "Run agent in background. If false (default), waits for completion or permission request. If true, returns immediately."
+            "Run agent in background. If false (default), waits for completion or permission request. If true, returns immediately.",
           ),
       },
       outputSchema: {
@@ -584,10 +540,7 @@ export async function createAgentManagementMcpServer(
           emitState: false,
         });
       } catch (error) {
-        childLogger.error(
-          { err: error, agentId },
-          "Failed to record user message"
-        );
+        childLogger.error({ err: error, agentId }, "Failed to record user message");
       }
 
       startAgentRun(agentManager, agentId, prompt, childLogger, {
@@ -627,7 +580,7 @@ export async function createAgentManagementMcpServer(
         content: [],
         structuredContent: validJson,
       };
-    }
+    },
   );
 
   server.registerTool(
@@ -653,7 +606,7 @@ export async function createAgentManagementMcpServer(
       const structuredSnapshot = await serializeSnapshotWithMetadata(
         agentStorage,
         snapshot,
-        childLogger
+        childLogger,
       );
       return {
         content: [],
@@ -662,7 +615,7 @@ export async function createAgentManagementMcpServer(
           snapshot: structuredSnapshot,
         }),
       };
-    }
+    },
   );
 
   server.registerTool(
@@ -679,22 +632,21 @@ export async function createAgentManagementMcpServer(
       const snapshots = agentManager.listAgents();
       const agents = await Promise.all(
         snapshots.map((snapshot) =>
-          serializeSnapshotWithMetadata(agentStorage, snapshot, childLogger)
-        )
+          serializeSnapshotWithMetadata(agentStorage, snapshot, childLogger),
+        ),
       );
       return {
         content: [],
         structuredContent: ensureValidJson({ agents }),
       };
-    }
+    },
   );
 
   server.registerTool(
     "cancel_agent",
     {
       title: "Cancel Agent Run",
-      description:
-        "Abort the agent's current run but keep the agent alive for future tasks.",
+      description: "Abort the agent's current run but keep the agent alive for future tasks.",
       inputSchema: {
         agentId: z.string(),
       },
@@ -711,7 +663,7 @@ export async function createAgentManagementMcpServer(
         content: [],
         structuredContent: ensureValidJson({ success }),
       };
-    }
+    },
   );
 
   server.registerTool(
@@ -733,23 +685,20 @@ export async function createAgentManagementMcpServer(
         content: [],
         structuredContent: ensureValidJson({ success: true }),
       };
-    }
+    },
   );
 
   server.registerTool(
     "get_agent_activity",
     {
       title: "Get Agent Activity",
-      description:
-        "Return recent agent timeline entries as a curated summary.",
+      description: "Return recent agent timeline entries as a curated summary.",
       inputSchema: {
         agentId: z.string(),
         limit: z
           .number()
           .optional()
-          .describe(
-            "Optional limit for number of activities to include (most recent first)."
-          ),
+          .describe("Optional limit for number of activities to include (most recent first)."),
       },
       outputSchema: {
         agentId: z.string(),
@@ -786,7 +735,7 @@ export async function createAgentManagementMcpServer(
           content: contentWithCount,
         }),
       };
-    }
+    },
   );
 
   server.registerTool(
@@ -810,7 +759,7 @@ export async function createAgentManagementMcpServer(
         content: [],
         structuredContent: ensureValidJson({ success: true, newMode: modeId }),
       };
-    }
+    },
   );
 
   server.registerTool(
@@ -826,7 +775,7 @@ export async function createAgentManagementMcpServer(
             agentId: z.string(),
             status: AgentStatusEnum,
             request: AgentPermissionRequestPayloadSchema,
-          })
+          }),
         ),
       },
     },
@@ -844,7 +793,7 @@ export async function createAgentManagementMcpServer(
         content: [],
         structuredContent: ensureValidJson({ permissions }),
       };
-    }
+    },
   );
 
   server.registerTool(
@@ -868,7 +817,7 @@ export async function createAgentManagementMcpServer(
         content: [],
         structuredContent: ensureValidJson({ success: true }),
       };
-    }
+    },
   );
 
   return server;

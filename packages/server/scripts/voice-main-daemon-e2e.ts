@@ -34,7 +34,7 @@ async function synthesizeInput(text: string, logger: pino.Logger): Promise<Buffe
       responseFormat: "pcm",
       voice: "alloy",
     },
-    logger
+    logger,
   );
 
   const generated = await tts.synthesizeSpeech(text);
@@ -98,7 +98,7 @@ async function runVoiceRoundTrip(params: {
     await client.sendVoiceAudioChunk(
       chunk.toString("base64"),
       "audio/pcm;rate=24000;bits=16",
-      isLast
+      isLast,
     );
   }
 
@@ -141,16 +141,14 @@ async function main(): Promise<void> {
   const newAgentResult = await runVoiceRoundTrip({
     daemonUrl,
     voiceAgentId,
-    speechText:
-      "Use the speak tool and say exactly: new voice agent round trip successful.",
+    speechText: "Use the speak tool and say exactly: new voice agent round trip successful.",
     timeoutMs,
   });
 
   const resumedResult = await runVoiceRoundTrip({
     daemonUrl,
     voiceAgentId: newAgentResult.voiceAgentId,
-    speechText:
-      "Use the speak tool and say exactly: resumed voice agent round trip successful.",
+    speechText: "Use the speak tool and say exactly: resumed voice agent round trip successful.",
     timeoutMs,
   });
 
@@ -163,8 +161,8 @@ async function main(): Promise<void> {
         resumedResult,
       },
       null,
-      2
-    )
+      2,
+    ),
   );
 }
 

@@ -258,10 +258,10 @@ function toCsv(rows: GeneratedSample[]): string {
     lines.push(
       cells
         .map((cell) => {
-          const escaped = cell.replace(/"/g, "\"\"");
+          const escaped = cell.replace(/"/g, '""');
           return escaped.includes(",") ? `"${escaped}"` : escaped;
         })
-        .join(",")
+        .join(","),
     );
   }
   return `${lines.join("\n")}\n`;
@@ -278,7 +278,7 @@ logger.info(
     speed: options.speed,
     text: options.text,
   },
-  "Generating TTS matrix across all model/voice combinations"
+  "Generating TTS matrix across all model/voice combinations",
 );
 
 await ensureLocalSpeechModels({
@@ -303,7 +303,7 @@ for (const modelId of options.modelIds) {
         precision: "int8",
         targetChunkMs: 50,
       },
-      logger
+      logger,
     );
     const result = await tts.synthesizeSpeech(options.text);
     const pcm16 = await readStreamToBuffer(result.stream);
@@ -354,7 +354,9 @@ for (const modelId of options.modelIds) {
     logger.info({ modelId, numSpeakers }, "Discovered Sherpa speaker count");
 
     for (let sid = 0; sid < numSpeakers; sid += 1) {
-      const audio = (tts as { generate: (config: { text: string; sid: number; speed: number }) => unknown }).generate({
+      const audio = (
+        tts as { generate: (config: { text: string; sid: number; speed: number }) => unknown }
+      ).generate({
         text: options.text,
         sid,
         speed,
@@ -402,7 +404,7 @@ const manifest = {
 
 await writeFile(
   path.join(options.outputDir, "manifest.json"),
-  `${JSON.stringify(manifest, null, 2)}\n`
+  `${JSON.stringify(manifest, null, 2)}\n`,
 );
 await writeFile(path.join(options.outputDir, "samples.csv"), toCsv(generated));
 await writeFile(
@@ -419,7 +421,7 @@ await writeFile(
     "  voice-label = default for Pocket TTS",
     "",
     `Total files: ${generated.length}`,
-  ].join("\n")
+  ].join("\n"),
 );
 
 logger.info(
@@ -428,5 +430,5 @@ logger.info(
     generatedCount: generated.length,
     models: Array.from(new Set(generated.map((item) => item.modelId))),
   },
-  "TTS matrix generation complete"
+  "TTS matrix generation complete",
 );

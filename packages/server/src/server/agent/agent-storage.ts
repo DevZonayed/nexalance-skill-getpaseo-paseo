@@ -65,13 +65,7 @@ const STORED_AGENT_SCHEMA = z.object({
 
 export type SerializableAgentConfig = Pick<
   AgentSessionConfig,
-  | "title"
-  | "modeId"
-  | "model"
-  | "thinkingOptionId"
-  | "extra"
-  | "systemPrompt"
-  | "mcpServers"
+  "title" | "modeId" | "model" | "thinkingOptionId" | "extra" | "systemPrompt" | "mcpServers"
 >;
 
 export type StoredAgentRecord = z.infer<typeof STORED_AGENT_SCHEMA>;
@@ -141,7 +135,7 @@ export class AgentStorage {
         if (this.pendingWrites.get(agentId) === next) {
           this.pendingWrites.delete(agentId);
         }
-      })
+      }),
     );
 
     await next;
@@ -162,10 +156,7 @@ export class AgentStorage {
       } catch (error) {
         const code = (error as NodeJS.ErrnoException).code;
         if (code && code !== "ENOENT") {
-          this.logger.warn(
-            { err: error, agentId, filePath },
-            "Failed to remove agent record file"
-          );
+          this.logger.warn({ err: error, agentId, filePath }, "Failed to remove agent record file");
         }
       }
     }
@@ -177,7 +168,7 @@ export class AgentStorage {
 
   async applySnapshot(
     agent: ManagedAgent,
-    options?: { title?: string | null; internal?: boolean }
+    options?: { title?: string | null; internal?: boolean },
   ): Promise<void> {
     await this.load();
     await this.waitForPendingWrite(agent.id);
@@ -187,11 +178,9 @@ export class AgentStorage {
     const hasInternalOverride =
       options !== undefined && Object.prototype.hasOwnProperty.call(options, "internal");
     const record = toStoredAgentRecord(agent, {
-      title: hasTitleOverride ? options?.title ?? null : existing?.title ?? null,
+      title: hasTitleOverride ? (options?.title ?? null) : (existing?.title ?? null),
       createdAt: existing?.createdAt,
-      internal: hasInternalOverride
-        ? options?.internal
-        : (agent.internal ?? existing?.internal),
+      internal: hasInternalOverride ? options?.internal : (agent.internal ?? existing?.internal),
     });
 
     // Preserve soft-delete/archive status across snapshot flushes.
@@ -341,9 +330,7 @@ export class AgentStorage {
   }
 
   private async waitForPendingWrite(agentId: string): Promise<void> {
-    await (this.pendingWrites.get(agentId) ?? Promise.resolve()).catch(
-      () => undefined
-    );
+    await (this.pendingWrites.get(agentId) ?? Promise.resolve()).catch(() => undefined);
   }
 }
 
@@ -357,10 +344,7 @@ function projectDirNameFromCwd(cwd: string): string {
 
 async function writeFileAtomically(targetPath: string, payload: string) {
   const directory = path.dirname(targetPath);
-  const tempPath = path.join(
-    directory,
-    `.agent.tmp-${process.pid}-${Date.now()}-${randomUUID()}`
-  );
+  const tempPath = path.join(directory, `.agent.tmp-${process.pid}-${Date.now()}-${randomUUID()}`);
   await fs.writeFile(tempPath, payload, "utf8");
   await fs.rename(tempPath, targetPath);
 }

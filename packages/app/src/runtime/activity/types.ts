@@ -1,8 +1,6 @@
 export type AgentLastActivityUpdates = Map<string, Date>;
 
-export type AgentLastActivityCommitter = (
-  updates: AgentLastActivityUpdates
-) => void;
+export type AgentLastActivityCommitter = (updates: AgentLastActivityUpdates) => void;
 
 export interface ActivityFlushHandle {
   cancel: () => void;

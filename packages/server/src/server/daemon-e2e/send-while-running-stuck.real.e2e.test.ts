@@ -45,7 +45,7 @@ describe("daemon E2E (real codex) - send while running recovery", () => {
         await primary.waitForAgentUpsert(
           agent.id,
           (snapshot) => snapshot.status === "running",
-          30_000
+          30_000,
         );
 
         let isProcessing = true;
@@ -58,14 +58,14 @@ describe("daemon E2E (real codex) - send while running recovery", () => {
         await secondary.waitForAgentUpsert(
           agent.id,
           (snapshot) => snapshot.status === "running",
-          30_000
+          30_000,
         );
 
         const reconnected = new DaemonClient({ url: `ws://127.0.0.1:${daemon.port}/ws` });
         try {
           await reconnected.connect();
           const applySnapshot = (
-            snapshot: Parameters<typeof applyAgentInputProcessingTransition>[0]["snapshot"]
+            snapshot: Parameters<typeof applyAgentInputProcessingTransition>[0]["snapshot"],
           ) => {
             const next = applyAgentInputProcessingTransition({
               snapshot,
@@ -92,7 +92,7 @@ describe("daemon E2E (real codex) - send while running recovery", () => {
             subscribe: { subscriptionId: "reconnected" },
           });
           const hydratedSnapshot = initial.entries.find(
-            (candidate) => candidate.agent.id === agent.id
+            (candidate) => candidate.agent.id === agent.id,
           )?.agent;
           if (hydratedSnapshot) {
             applySnapshot(hydratedSnapshot);
@@ -116,6 +116,6 @@ describe("daemon E2E (real codex) - send while running recovery", () => {
         rmSync(cwd, { recursive: true, force: true });
       }
     },
-    240_000
+    240_000,
   );
 });

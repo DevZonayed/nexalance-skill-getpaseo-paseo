@@ -43,7 +43,7 @@ describe("resolveProviderCommandPrefix", () => {
         mode: "append",
         args: ["--chrome"],
       },
-      resolveDefault
+      resolveDefault,
     );
 
     expect(resolveDefault).toHaveBeenCalledTimes(1);
@@ -61,7 +61,7 @@ describe("resolveProviderCommandPrefix", () => {
         mode: "replace",
         argv: ["docker", "run", "--rm", "my-wrapper"],
       },
-      resolveDefault
+      resolveDefault,
     );
 
     expect(resolveDefault).not.toHaveBeenCalled();
@@ -117,12 +117,10 @@ describe("findExecutable", () => {
   test("uses the last line from login-shell which output", () => {
     findExecutableDependencies.shell = "/bin/zsh";
     findExecutableDependencies.execSync.mockReturnValue(
-      "echo from profile\n/usr/local/bin/codex\n"
+      "echo from profile\n/usr/local/bin/codex\n",
     );
 
-    expect(findExecutable("codex", findExecutableDependencies)).toBe(
-      "/usr/local/bin/codex"
-    );
+    expect(findExecutable("codex", findExecutableDependencies)).toBe("/usr/local/bin/codex");
     expect(findExecutableDependencies.execSync).toHaveBeenCalledOnce();
     expect(findExecutableDependencies.execFileSync).not.toHaveBeenCalled();
   });
@@ -143,10 +141,8 @@ describe("findExecutable", () => {
     findExecutableDependencies.existsSync.mockReturnValue(true);
 
     expect(findExecutable("/usr/local/bin/codex", findExecutableDependencies)).toBe(
-      "/usr/local/bin/codex"
+      "/usr/local/bin/codex",
     );
-    expect(findExecutableDependencies.existsSync).toHaveBeenCalledWith(
-      "/usr/local/bin/codex"
-    );
+    expect(findExecutableDependencies.existsSync).toHaveBeenCalledWith("/usr/local/bin/codex");
   });
 });

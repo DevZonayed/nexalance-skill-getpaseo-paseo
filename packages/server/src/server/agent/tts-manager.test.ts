@@ -36,7 +36,7 @@ describe("TTSManager", () => {
         }
       },
       abort.signal,
-      true
+      true,
     );
 
     await task;
@@ -46,7 +46,7 @@ describe("TTSManager", () => {
     const [audioMessage] = emitted.filter(isAudioOutputMessage);
     expect(audioMessage).toBeDefined();
     expect(audioMessage?.payload.groupId).toMatch(
-      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
     );
     expect(audioMessage?.payload.chunkIndex).toBe(0);
     expect(audioMessage?.payload.isLastChunk).toBe(true);
@@ -78,7 +78,7 @@ describe("TTSManager", () => {
         }
       },
       abort.signal,
-      true
+      true,
     );
 
     expect(calls.length).toBeGreaterThan(1);
@@ -135,7 +135,7 @@ describe("TTSManager", () => {
         manager.confirmAudioPlayed(msg.payload.id);
       },
       abort.signal,
-      true
+      true,
     );
 
     expect(started).toEqual([segments[0], segments[1]]);
@@ -177,7 +177,7 @@ describe("TTSManager", () => {
         });
         const destroySpy = vi.spyOn(stream, "destroy").mockImplementation(function (
           this: Readable,
-          error?: Error
+          error?: Error,
         ) {
           destroyed.push(text);
           return Readable.prototype.destroy.call(this, error);
@@ -206,7 +206,7 @@ describe("TTSManager", () => {
         }
       },
       abort.signal,
-      true
+      true,
     );
 
     await vi.waitFor(() => {
@@ -235,7 +235,7 @@ describe("TTSManager", () => {
             (async function* () {
               yield Buffer.from("a");
               throw new Error("stream exploded");
-            })()
+            })(),
           );
           return {
             stream,
@@ -256,8 +256,8 @@ describe("TTSManager", () => {
             }
           },
           abort.signal,
-          true
-        )
+          true,
+        ),
       ).rejects.toThrow("stream exploded");
 
       await new Promise((resolve) => setTimeout(resolve, 0));
@@ -283,13 +283,15 @@ describe("TTSManager", () => {
         }
       },
       abort.signal,
-      true
+      true,
     );
 
     const firstAudio = emitted.find((msg) => msg.type === "audio_output");
     expect(firstAudio?.type).toBe("audio_output");
 
-    manager.confirmAudioPlayed((firstAudio as Extract<SessionOutboundMessage, { type: "audio_output" }>).payload.id);
+    manager.confirmAudioPlayed(
+      (firstAudio as Extract<SessionOutboundMessage, { type: "audio_output" }>).payload.id,
+    );
 
     expect(warnSpy).not.toHaveBeenCalled();
   });

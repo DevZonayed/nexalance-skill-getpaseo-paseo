@@ -148,7 +148,7 @@ export function parseFileProtocolUrl(value: string): InlinePathTarget | null {
 
 export function parseAssistantFileLink(
   value: string,
-  options: AssistantHrefParseOptions = {}
+  options: AssistantHrefParseOptions = {},
 ): InlinePathTarget | null {
   const fileUrlTarget = parseFileProtocolUrl(value);
   if (fileUrlTarget) {
@@ -217,7 +217,7 @@ export function parseAssistantFileLink(
 
 export function normalizeInlinePathTarget(
   rawPath: string,
-  cwd?: string
+  cwd?: string,
 ): NormalizedInlinePathTarget | null {
   if (!rawPath) {
     return null;
@@ -268,15 +268,11 @@ function isAllowedAbsolutePath(pathValue: string, workspaceRoot?: string): boole
 
   const comparePath = normalizePathForCompare(pathValue);
   const compareWorkspaceRoot = normalizePathForCompare(
-    normalizedWorkspaceRoot.replace(/\/+$/, "") || "/"
+    normalizedWorkspaceRoot.replace(/\/+$/, "") || "/",
   );
-  const comparePrefix =
-    compareWorkspaceRoot === "/" ? "/" : `${compareWorkspaceRoot}/`;
+  const comparePrefix = compareWorkspaceRoot === "/" ? "/" : `${compareWorkspaceRoot}/`;
 
-  return (
-    comparePath === compareWorkspaceRoot ||
-    comparePath.startsWith(comparePrefix)
-  );
+  return comparePath === compareWorkspaceRoot || comparePath.startsWith(comparePrefix);
 }
 
 function normalizeFileUrlPath(pathname: string): string | null {
@@ -314,11 +310,7 @@ function normalizePathInput(value: string | undefined): string | null {
 
 function resolvePathAgainstCwd(pathValue: string, cwd?: string): string | null {
   const normalizedCwd = normalizePathInput(cwd);
-  if (
-    !normalizedCwd ||
-    !isAbsolutePath(pathValue) ||
-    !isAbsolutePath(normalizedCwd)
-  ) {
+  if (!normalizedCwd || !isAbsolutePath(pathValue) || !isAbsolutePath(normalizedCwd)) {
     return null;
   }
 

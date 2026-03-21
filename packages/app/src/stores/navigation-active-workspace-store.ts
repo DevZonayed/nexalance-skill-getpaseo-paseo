@@ -36,10 +36,7 @@ function getSnapshot(): ActiveWorkspaceSelection | null {
 }
 
 function emitIfChanged(next: ActiveWorkspaceSelection | null) {
-  if (
-    snapshot?.serverId === next?.serverId &&
-    snapshot?.workspaceId === next?.workspaceId
-  ) {
+  if (snapshot?.serverId === next?.serverId && snapshot?.workspaceId === next?.workspaceId) {
     return;
   }
   snapshot = next;
@@ -48,7 +45,9 @@ function emitIfChanged(next: ActiveWorkspaceSelection | null) {
   }
 }
 
-function extractActiveWorkspaceFromRoute(route: NavigationRouteLike | undefined): ActiveWorkspaceSelection | null {
+function extractActiveWorkspaceFromRoute(
+  route: NavigationRouteLike | undefined,
+): ActiveWorkspaceSelection | null {
   if (!route) {
     return null;
   }
@@ -84,11 +83,11 @@ function extractActiveWorkspaceFromRoute(route: NavigationRouteLike | undefined)
   return { serverId, workspaceId };
 }
 
-export function syncNavigationActiveWorkspace(
-  navigationRef: NavigationObserverRef
-) {
+export function syncNavigationActiveWorkspace(navigationRef: NavigationObserverRef) {
   emitIfChanged(
-    extractActiveWorkspaceFromRoute(navigationRef.current?.getCurrentRoute() as NavigationRouteLike | undefined)
+    extractActiveWorkspaceFromRoute(
+      navigationRef.current?.getCurrentRoute() as NavigationRouteLike | undefined,
+    ),
   );
 }
 

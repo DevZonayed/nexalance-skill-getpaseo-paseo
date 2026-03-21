@@ -4,9 +4,12 @@ export function parsePcm16MonoWav(buffer: Buffer): { sampleRate: number; pcm16: 
   }
 
   let offset = 12;
-  let fmt:
-    | { audioFormat: number; channels: number; sampleRate: number; bitsPerSample: number }
-    | null = null;
+  let fmt: {
+    audioFormat: number;
+    channels: number;
+    sampleRate: number;
+    bitsPerSample: number;
+  } | null = null;
   let dataChunk: Buffer | null = null;
 
   while (offset + 8 <= buffer.length) {
@@ -39,7 +42,7 @@ export function parsePcm16MonoWav(buffer: Buffer): { sampleRate: number; pcm16: 
   }
   if (fmt.channels !== 1 || fmt.bitsPerSample !== 16) {
     throw new Error(
-      `Unexpected WAV format: channels=${fmt.channels} rate=${fmt.sampleRate} bits=${fmt.bitsPerSample}`
+      `Unexpected WAV format: channels=${fmt.channels} rate=${fmt.sampleRate} bits=${fmt.bitsPerSample}`,
     );
   }
   if (dataChunk.length % 2 !== 0) {
@@ -48,7 +51,10 @@ export function parsePcm16MonoWav(buffer: Buffer): { sampleRate: number; pcm16: 
   return { sampleRate: fmt.sampleRate, pcm16: dataChunk };
 }
 
-export function parsePcmRateFromFormat(format: string, fallback: number | null = null): number | null {
+export function parsePcmRateFromFormat(
+  format: string,
+  fallback: number | null = null,
+): number | null {
   const match = /(?:^|[;,\s])rate\s*=\s*(\d+)(?:$|[;,\s])/i.exec(format);
   if (!match) {
     return fallback;

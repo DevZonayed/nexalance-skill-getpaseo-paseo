@@ -312,7 +312,7 @@ export class TerminalEmulatorRuntime {
     const fitTimeouts = FIT_TIMEOUT_DELAYS_MS.map((delayMs) =>
       window.setTimeout(() => {
         fitAndEmitResize(true);
-      }, delayMs)
+      }, delayMs),
     );
 
     const fontSet = document.fonts;
@@ -555,8 +555,9 @@ export class TerminalEmulatorRuntime {
     const previousDocumentElementHeight = documentElement.style.height;
     const previousDocumentElementTextSizeAdjust =
       documentElement.style.getPropertyValue("text-size-adjust");
-    const previousDocumentElementWebkitTextSizeAdjust =
-      documentElement.style.getPropertyValue("-webkit-text-size-adjust");
+    const previousDocumentElementWebkitTextSizeAdjust = documentElement.style.getPropertyValue(
+      "-webkit-text-size-adjust",
+    );
 
     const previousBodyOverflow = body.style.overflow;
     const previousBodyWidth = body.style.width;
@@ -564,8 +565,9 @@ export class TerminalEmulatorRuntime {
     const previousBodyMargin = body.style.margin;
     const previousBodyPadding = body.style.padding;
     const previousBodyTextSizeAdjust = body.style.getPropertyValue("text-size-adjust");
-    const previousBodyWebkitTextSizeAdjust =
-      body.style.getPropertyValue("-webkit-text-size-adjust");
+    const previousBodyWebkitTextSizeAdjust = body.style.getPropertyValue(
+      "-webkit-text-size-adjust",
+    );
 
     const previousRootOverflow = rootContainer?.style.overflow ?? "";
     const previousRootWidth = rootContainer?.style.width ?? "";
@@ -598,7 +600,7 @@ export class TerminalEmulatorRuntime {
       documentElement.style.setProperty("text-size-adjust", previousDocumentElementTextSizeAdjust);
       documentElement.style.setProperty(
         "-webkit-text-size-adjust",
-        previousDocumentElementWebkitTextSizeAdjust
+        previousDocumentElementWebkitTextSizeAdjust,
       );
 
       body.style.overflow = previousBodyOverflow;
@@ -651,7 +653,7 @@ export class TerminalEmulatorRuntime {
         viewportElement.style.pointerEvents = previousViewportPointerEvents;
         viewportElement.style.setProperty(
           "-webkit-overflow-scrolling",
-          previousViewportWebkitOverflowScrolling
+          previousViewportWebkitOverflowScrolling,
         );
       }
       if (screenElement) {
@@ -667,12 +669,10 @@ export class TerminalEmulatorRuntime {
   }): () => void {
     let touchScrollRemainderPx = 0;
     const measuredLineHeight =
-      input.host.querySelector<HTMLElement>(".xterm-rows > div")?.getBoundingClientRect()
-        .height ?? 0;
+      input.host.querySelector<HTMLElement>(".xterm-rows > div")?.getBoundingClientRect().height ??
+      0;
     const touchScrollLineHeightPx =
-      measuredLineHeight > 0
-        ? measuredLineHeight
-        : DEFAULT_TOUCH_SCROLL_LINE_HEIGHT_PX;
+      measuredLineHeight > 0 ? measuredLineHeight : DEFAULT_TOUCH_SCROLL_LINE_HEIGHT_PX;
 
     const activeTouch = {
       identifier: -1,
@@ -714,7 +714,7 @@ export class TerminalEmulatorRuntime {
       }
 
       const touch = Array.from(event.touches).find(
-        (candidate) => candidate.identifier === activeTouch.identifier
+        (candidate) => candidate.identifier === activeTouch.identifier,
       );
       if (!touch) {
         return;
@@ -750,7 +750,7 @@ export class TerminalEmulatorRuntime {
 
     const touchEndHandler = (event: TouchEvent) => {
       const activeTouchEnded = Array.from(event.changedTouches).some(
-        (touch) => touch.identifier === activeTouch.identifier
+        (touch) => touch.identifier === activeTouch.identifier,
       );
       if (activeTouchEnded || event.touches.length === 0) {
         touchScrollRemainderPx = 0;

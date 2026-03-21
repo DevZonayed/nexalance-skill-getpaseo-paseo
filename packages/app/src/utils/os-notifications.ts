@@ -1,10 +1,7 @@
 import { Asset } from "expo-asset";
 import { Platform } from "react-native";
 import { getDesktopHost } from "@/desktop/host";
-import {
-  buildNotificationRoute,
-  resolveNotificationTarget,
-} from "./notification-routing";
+import { buildNotificationRoute, resolveNotificationTarget } from "./notification-routing";
 
 type OsNotificationPayload = {
   title: string;
@@ -51,7 +48,7 @@ function getWebNotificationConstructor(): {
       body?: string;
       data?: Record<string, unknown>;
       icon?: string;
-    }
+    },
   ): unknown;
 } | null {
   const NotificationConstructor = (globalThis as { Notification?: any }).Notification;
@@ -75,7 +72,7 @@ async function ensureNotificationPermission(): Promise<boolean> {
   permissionRequest = Promise.resolve(
     NotificationConstructor.requestPermission
       ? NotificationConstructor.requestPermission()
-      : "denied"
+      : "denied",
   ).then((permission) => permission === "granted");
   const result = await permissionRequest;
   permissionRequest = null;
@@ -89,9 +86,7 @@ export async function ensureOsNotificationPermission(): Promise<boolean> {
   return await ensureNotificationPermission();
 }
 
-function hasNotificationClickTarget(
-  data: Record<string, unknown> | undefined
-): boolean {
+function hasNotificationClickTarget(data: Record<string, unknown> | undefined): boolean {
   const target = resolveNotificationTarget(data);
   return target.serverId !== null || target.agentId !== null || target.workspaceId !== null;
 }
@@ -102,9 +97,7 @@ function getWebNotificationIconUrl(): string | undefined {
   }
 
   try {
-    const asset = Asset.fromModule(
-      require("../../assets/images/notification-icon.png")
-    );
+    const asset = Asset.fromModule(require("../../assets/images/notification-icon.png"));
     notificationIconUrl = asset.uri ?? null;
   } catch {
     notificationIconUrl = null;
@@ -115,8 +108,7 @@ function getWebNotificationIconUrl(): string | undefined {
 
 function dispatchWebNotificationClick(detail: WebNotificationClickDetail): boolean {
   const dispatch = (globalThis as { dispatchEvent?: (event: Event) => boolean }).dispatchEvent;
-  const CustomEventConstructor = (globalThis as { CustomEvent?: typeof CustomEvent })
-    .CustomEvent;
+  const CustomEventConstructor = (globalThis as { CustomEvent?: typeof CustomEvent }).CustomEvent;
 
   if (typeof dispatch !== "function" || !CustomEventConstructor) {
     return false;
@@ -127,14 +119,12 @@ function dispatchWebNotificationClick(detail: WebNotificationClickDetail): boole
     {
       detail,
       cancelable: true,
-    }
+    },
   );
   return dispatch(event) === false;
 }
 
-function fallbackNavigateToNotificationTarget(
-  data: Record<string, unknown> | undefined
-): void {
+function fallbackNavigateToNotificationTarget(data: Record<string, unknown> | undefined): void {
   const route = buildNotificationRoute(data);
   const location = (globalThis as { location?: { assign?: (url: string) => void; href?: string } })
     .location;
@@ -152,7 +142,7 @@ function fallbackNavigateToNotificationTarget(
 
 function attachWebClickHandler(
   notification: WebNotificationInstance,
-  data: Record<string, unknown> | undefined
+  data: Record<string, unknown> | undefined,
 ): void {
   notification.onclick = () => {
     const handledByApp = dispatchWebNotificationClick({ data });
@@ -162,9 +152,7 @@ function attachWebClickHandler(
   };
 }
 
-export async function sendOsNotification(
-  payload: OsNotificationPayload
-): Promise<boolean> {
+export async function sendOsNotification(payload: OsNotificationPayload): Promise<boolean> {
   // Mobile/native notifications should be remote push only.
   if (Platform.OS !== "web") {
     return false;

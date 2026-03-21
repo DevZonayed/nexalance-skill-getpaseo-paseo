@@ -52,10 +52,7 @@ function describeTransportTarget(target: TransportTarget): string {
   return target.transportType === "pipe" ? "local daemon pipe" : "local daemon socket";
 }
 
-function decodeTransportMessage(input: {
-  text?: string;
-  binaryBase64?: string;
-}): string | Buffer {
+function decodeTransportMessage(input: { text?: string; binaryBase64?: string }): string | Buffer {
   if (typeof input.text === "string") {
     return input.text;
   }
@@ -125,7 +122,7 @@ export function openLocalTransportSession(target: TransportTarget): Promise<stri
 
       if (!openSettled) {
         finalizeOpenFailure(
-          `${describeTransportTarget(target)} closed before the session became ready.`
+          `${describeTransportTarget(target)} closed before the session became ready.`,
         );
         return;
       }
@@ -143,7 +140,7 @@ export function openLocalTransportSession(target: TransportTarget): Promise<stri
     ws.on("error", (err: Error) => {
       if (!openSettled) {
         finalizeOpenFailure(
-          `Failed to connect to ${describeTransportTarget(target)}: ${err.message}`
+          `Failed to connect to ${describeTransportTarget(target)}: ${err.message}`,
         );
         return;
       }
@@ -171,7 +168,7 @@ export async function sendLocalTransportMessage(input: {
     throw new Error(
       session.state === "opening"
         ? "Local transport session is not open yet."
-        : "Local transport session is closed."
+        : "Local transport session is closed.",
     );
   }
 

@@ -24,9 +24,7 @@ interface DictationControlsProps {
 function formatDuration(seconds: number): string {
   const mins = Math.floor(seconds / 60);
   const secs = seconds % 60;
-  return `${mins.toString().padStart(2, "0")}:${secs
-    .toString()
-    .padStart(2, "0")}`;
+  return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
 }
 
 export function DictationControls({
@@ -66,12 +64,7 @@ export function DictationControls({
   return (
     <View style={styles.activeContainer}>
       <View style={styles.meterWrapper}>
-        <VolumeMeter
-          volume={volume}
-          isMuted={false}
-          isSpeaking={false}
-          orientation="horizontal"
-        />
+        <VolumeMeter volume={volume} isMuted={false} isSpeaking={false} orientation="horizontal" />
       </View>
       <Text style={[styles.timerText, { color: theme.colors.foreground }]}>
         {formatDuration(duration)}
@@ -152,12 +145,7 @@ export function DictationOverlay({
   }
 
   return (
-    <View
-      style={[
-        overlayStyles.container,
-        { backgroundColor: theme.colors.accent },
-      ]}
-    >
+    <View style={[overlayStyles.container, { backgroundColor: theme.colors.accent }]}>
       <Pressable
         onPress={handleCancel}
         disabled={actionsDisabled && !isFailed}
@@ -180,12 +168,7 @@ export function DictationOverlay({
             orientation="horizontal"
             color={theme.colors.palette.white}
           />
-          <Text
-            style={[
-              overlayStyles.timerText,
-              { color: theme.colors.palette.white },
-            ]}
-          >
+          <Text style={[overlayStyles.timerText, { color: theme.colors.palette.white }]}>
             {formatDuration(duration)}
           </Text>
         </View>
@@ -205,26 +188,16 @@ export function DictationOverlay({
       <View style={overlayStyles.actionButtonsContainer}>
         {actionsDisabled ? (
           <View style={overlayStyles.loadingContainer}>
-            <ActivityIndicator
-              size="small"
-              color={theme.colors.palette.white}
-            />
+            <ActivityIndicator size="small" color={theme.colors.palette.white} />
           </View>
         ) : isFailed ? (
           <Pressable
             onPress={onRetry}
             accessibilityRole="button"
             accessibilityLabel="Retry dictation"
-            style={[
-              overlayStyles.actionButton,
-              { backgroundColor: theme.colors.palette.white },
-            ]}
+            style={[overlayStyles.actionButton, { backgroundColor: theme.colors.palette.white }]}
           >
-            <RefreshCcw
-              size={theme.iconSize.lg}
-              color={theme.colors.accent}
-              strokeWidth={2.5}
-            />
+            <RefreshCcw size={theme.iconSize.lg} color={theme.colors.accent} strokeWidth={2.5} />
           </Pressable>
         ) : (
           <>
@@ -232,10 +205,7 @@ export function DictationOverlay({
               onPress={onAccept}
               accessibilityRole="button"
               accessibilityLabel="Insert transcription"
-              style={[
-                overlayStyles.actionButton,
-                { backgroundColor: "rgba(255, 255, 255, 0.25)" },
-              ]}
+              style={[overlayStyles.actionButton, { backgroundColor: "rgba(255, 255, 255, 0.25)" }]}
             >
               <Pencil
                 size={theme.iconSize.lg}
@@ -247,16 +217,9 @@ export function DictationOverlay({
               onPress={onAcceptAndSend}
               accessibilityRole="button"
               accessibilityLabel="Insert transcription and send"
-              style={[
-                overlayStyles.actionButton,
-                { backgroundColor: theme.colors.palette.white },
-              ]}
+              style={[overlayStyles.actionButton, { backgroundColor: theme.colors.palette.white }]}
             >
-              <ArrowUp
-                size={theme.iconSize.lg}
-                color={theme.colors.accent}
-                strokeWidth={2.5}
-              />
+              <ArrowUp size={theme.iconSize.lg} color={theme.colors.accent} strokeWidth={2.5} />
             </Pressable>
           </>
         )}

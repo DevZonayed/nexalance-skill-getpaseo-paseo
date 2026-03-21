@@ -6,12 +6,7 @@ export type SessionTimelineSeqCursor =
   | null
   | undefined;
 
-export type SessionTimelineSeqDecision =
-  | "accept"
-  | "drop_stale"
-  | "drop_epoch"
-  | "gap"
-  | "init";
+export type SessionTimelineSeqDecision = "accept" | "drop_stale" | "drop_epoch" | "gap" | "init";
 
 export function classifySessionTimelineSeq({
   cursor,

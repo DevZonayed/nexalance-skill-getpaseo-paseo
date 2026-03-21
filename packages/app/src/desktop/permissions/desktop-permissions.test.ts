@@ -1,198 +1,192 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from "vitest";
 
-type MockPlatform = 'web' | 'ios' | 'android'
+type MockPlatform = "web" | "ios" | "android";
 
 type GlobalSnapshot = {
-  Notification: unknown
-  navigatorDescriptor?: PropertyDescriptor
-  paseoDesktop: unknown
-}
+  Notification: unknown;
+  navigatorDescriptor?: PropertyDescriptor;
+  paseoDesktop: unknown;
+};
 
 const originalGlobals: GlobalSnapshot = {
   Notification: (globalThis as { Notification?: unknown }).Notification,
-  navigatorDescriptor: Object.getOwnPropertyDescriptor(globalThis, 'navigator'),
+  navigatorDescriptor: Object.getOwnPropertyDescriptor(globalThis, "navigator"),
   paseoDesktop:
-    typeof window === 'undefined'
-      ? undefined
-      : (window as { paseoDesktop?: unknown }).paseoDesktop,
-}
+    typeof window === "undefined" ? undefined : (window as { paseoDesktop?: unknown }).paseoDesktop,
+};
 
 function setNavigator(value: unknown): void {
-  Object.defineProperty(globalThis, 'navigator', {
+  Object.defineProperty(globalThis, "navigator", {
     configurable: true,
     writable: true,
     value,
-  })
+  });
 }
 
 function restoreGlobals(): void {
-  ;(globalThis as { Notification?: unknown }).Notification = originalGlobals.Notification
+  (globalThis as { Notification?: unknown }).Notification = originalGlobals.Notification;
 
   if (originalGlobals.navigatorDescriptor) {
-    Object.defineProperty(globalThis, 'navigator', originalGlobals.navigatorDescriptor)
+    Object.defineProperty(globalThis, "navigator", originalGlobals.navigatorDescriptor);
   } else {
-    delete (globalThis as { navigator?: unknown }).navigator
+    delete (globalThis as { navigator?: unknown }).navigator;
   }
 
-  if (typeof window !== 'undefined') {
-    ;(window as { paseoDesktop?: unknown }).paseoDesktop = originalGlobals.paseoDesktop
+  if (typeof window !== "undefined") {
+    (window as { paseoDesktop?: unknown }).paseoDesktop = originalGlobals.paseoDesktop;
   }
 }
 
 async function loadModuleForPlatform(platform: MockPlatform) {
-  vi.resetModules()
-  vi.doMock('react-native', () => ({ Platform: { OS: platform } }))
-  return import('./desktop-permissions')
+  vi.resetModules();
+  vi.doMock("react-native", () => ({ Platform: { OS: platform } }));
+  return import("./desktop-permissions");
 }
 
-describe('desktop-permissions', () => {
+describe("desktop-permissions", () => {
   afterEach(() => {
-    vi.doUnmock('react-native')
-    vi.restoreAllMocks()
-    vi.resetModules()
-    restoreGlobals()
-  })
+    vi.doUnmock("react-native");
+    vi.restoreAllMocks();
+    vi.resetModules();
+    restoreGlobals();
+  });
 
-  it('shows section only in desktop web runtime', async () => {
-    const { shouldShowDesktopPermissionSection } = await loadModuleForPlatform('web')
+  it("shows section only in desktop web runtime", async () => {
+    const { shouldShowDesktopPermissionSection } = await loadModuleForPlatform("web");
 
-    expect(shouldShowDesktopPermissionSection()).toBe(false)
+    expect(shouldShowDesktopPermissionSection()).toBe(false);
 
-    ;(window as { paseoDesktop?: unknown }).paseoDesktop = {}
-    expect(shouldShowDesktopPermissionSection()).toBe(true)
-  })
+    (window as { paseoDesktop?: unknown }).paseoDesktop = {};
+    expect(shouldShowDesktopPermissionSection()).toBe(true);
+  });
 
-  it('reads notification and microphone status', async () => {
+  it("reads notification and microphone status", async () => {
     class MockNotification {
-      static permission = 'default'
+      static permission = "default";
     }
-    ;(globalThis as { Notification?: unknown }).Notification = MockNotification
+    (globalThis as { Notification?: unknown }).Notification = MockNotification;
     setNavigator({
       permissions: {
-        query: vi.fn(async () => ({ state: 'granted' })),
+        query: vi.fn(async () => ({ state: "granted" })),
       },
       mediaDevices: {
         getUserMedia: vi.fn(),
       },
-    })
+    });
 
-    const { getDesktopPermissionSnapshot } = await loadModuleForPlatform('web')
-    const snapshot = await getDesktopPermissionSnapshot()
+    const { getDesktopPermissionSnapshot } = await loadModuleForPlatform("web");
+    const snapshot = await getDesktopPermissionSnapshot();
 
-    expect(snapshot.notifications.state).toBe('prompt')
-    expect(snapshot.microphone.state).toBe('granted')
-    expect(snapshot.checkedAt).toBeTypeOf('number')
-  })
+    expect(snapshot.notifications.state).toBe("prompt");
+    expect(snapshot.microphone.state).toBe("granted");
+    expect(snapshot.checkedAt).toBeTypeOf("number");
+  });
 
-  it('queries microphone permission with correct Permissions instance binding', async () => {
+  it("queries microphone permission with correct Permissions instance binding", async () => {
     const permissions = {
       query(this: unknown, _descriptor: { name: string }) {
         if (this !== permissions) {
-          throw new TypeError(
-            'Can only call Permissions.query on instances of Permissions'
-          )
+          throw new TypeError("Can only call Permissions.query on instances of Permissions");
         }
-        return Promise.resolve({ state: 'granted' as const })
+        return Promise.resolve({ state: "granted" as const });
       },
-    }
+    };
 
     setNavigator({
       permissions,
       mediaDevices: {
         getUserMedia: vi.fn(),
       },
-    })
+    });
 
-    const { getDesktopPermissionSnapshot } = await loadModuleForPlatform('web')
-    const snapshot = await getDesktopPermissionSnapshot()
+    const { getDesktopPermissionSnapshot } = await loadModuleForPlatform("web");
+    const snapshot = await getDesktopPermissionSnapshot();
 
-    expect(snapshot.microphone.state).toBe('granted')
-  })
+    expect(snapshot.microphone.state).toBe("granted");
+  });
 
-  it('returns a fallback message when runtime blocks Permissions.query', async () => {
+  it("returns a fallback message when runtime blocks Permissions.query", async () => {
     setNavigator({
       permissions: {
         query: vi.fn(async () => {
-          throw new TypeError(
-            'Can only call Permissions.query on instances of Permissions'
-          )
+          throw new TypeError("Can only call Permissions.query on instances of Permissions");
         }),
       },
       mediaDevices: {
         getUserMedia: vi.fn(),
       },
-    })
+    });
 
-    const { getDesktopPermissionSnapshot } = await loadModuleForPlatform('web')
-    const snapshot = await getDesktopPermissionSnapshot()
+    const { getDesktopPermissionSnapshot } = await loadModuleForPlatform("web");
+    const snapshot = await getDesktopPermissionSnapshot();
 
-    expect(snapshot.microphone.state).toBe('unknown')
+    expect(snapshot.microphone.state).toBe("unknown");
     expect(snapshot.microphone.detail).toContain(
-      'Microphone status API is unavailable in this runtime.'
-    )
-  })
+      "Microphone status API is unavailable in this runtime.",
+    );
+  });
 
-  it('requests notification permission via the browser Notification API', async () => {
+  it("requests notification permission via the browser Notification API", async () => {
     class MockNotification {
-      static permission = 'default'
-      static requestPermission = vi.fn(async () => 'granted')
+      static permission = "default";
+      static requestPermission = vi.fn(async () => "granted");
     }
-    ;(globalThis as { Notification?: unknown }).Notification = MockNotification
+    (globalThis as { Notification?: unknown }).Notification = MockNotification;
 
-    const { requestDesktopPermission } = await loadModuleForPlatform('web')
-    const result = await requestDesktopPermission({ kind: 'notifications' })
+    const { requestDesktopPermission } = await loadModuleForPlatform("web");
+    const result = await requestDesktopPermission({ kind: "notifications" });
 
-    expect(result.state).toBe('granted')
-    expect(MockNotification.requestPermission).toHaveBeenCalledTimes(1)
-  })
+    expect(result.state).toBe("granted");
+    expect(MockNotification.requestPermission).toHaveBeenCalledTimes(1);
+  });
 
-  it('reads browser Notification permission when available', async () => {
+  it("reads browser Notification permission when available", async () => {
     class MockNotification {
-      static permission = 'denied'
+      static permission = "denied";
     }
-    ;(globalThis as { Notification?: unknown }).Notification = MockNotification
-    setNavigator({})
+    (globalThis as { Notification?: unknown }).Notification = MockNotification;
+    setNavigator({});
 
-    const { getDesktopPermissionSnapshot } = await loadModuleForPlatform('web')
-    const snapshot = await getDesktopPermissionSnapshot()
+    const { getDesktopPermissionSnapshot } = await loadModuleForPlatform("web");
+    const snapshot = await getDesktopPermissionSnapshot();
 
-    expect(snapshot.notifications.state).toBe('denied')
-  })
+    expect(snapshot.notifications.state).toBe("denied");
+  });
 
-  it('requests microphone permission and stops acquired tracks', async () => {
-    const stop = vi.fn()
+  it("requests microphone permission and stops acquired tracks", async () => {
+    const stop = vi.fn();
     const getUserMedia = vi.fn(async () => ({
       getTracks: () => [{ stop }],
-    }))
+    }));
     setNavigator({
       permissions: {
-        query: vi.fn(async () => ({ state: 'granted' })),
+        query: vi.fn(async () => ({ state: "granted" })),
       },
       mediaDevices: {
         getUserMedia,
       },
-    })
+    });
 
-    const { requestDesktopPermission } = await loadModuleForPlatform('web')
-    const result = await requestDesktopPermission({ kind: 'microphone' })
+    const { requestDesktopPermission } = await loadModuleForPlatform("web");
+    const result = await requestDesktopPermission({ kind: "microphone" });
 
-    expect(result.state).toBe('granted')
-    expect(getUserMedia).toHaveBeenCalledWith({ audio: true })
-    expect(stop).toHaveBeenCalledTimes(1)
-  })
+    expect(result.state).toBe("granted");
+    expect(getUserMedia).toHaveBeenCalledWith({ audio: true });
+    expect(stop).toHaveBeenCalledTimes(1);
+  });
 
-  it('maps microphone request denial to denied status', async () => {
+  it("maps microphone request denial to denied status", async () => {
     setNavigator({
       mediaDevices: {
         getUserMedia: vi.fn(async () => {
-          throw { name: 'NotAllowedError', message: 'denied' }
+          throw { name: "NotAllowedError", message: "denied" };
         }),
       },
-    })
+    });
 
-    const { requestDesktopPermission } = await loadModuleForPlatform('web')
-    const result = await requestDesktopPermission({ kind: 'microphone' })
+    const { requestDesktopPermission } = await loadModuleForPlatform("web");
+    const result = await requestDesktopPermission({ kind: "microphone" });
 
-    expect(result.state).toBe('denied')
-  })
-})
+    expect(result.state).toBe("denied");
+  });
+});

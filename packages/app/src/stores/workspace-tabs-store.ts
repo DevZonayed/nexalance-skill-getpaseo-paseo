@@ -38,7 +38,9 @@ export function buildWorkspaceTabPersistenceKey(input: {
   return `${serverId}:${normalizeWorkspaceId(workspaceId)}`;
 }
 
-function normalizeTabTarget(value: WorkspaceTabTarget | null | undefined): WorkspaceTabTarget | null {
+function normalizeTabTarget(
+  value: WorkspaceTabTarget | null | undefined,
+): WorkspaceTabTarget | null {
   if (!value || typeof value !== "object" || typeof value.kind !== "string") {
     return null;
   }
@@ -121,7 +123,11 @@ type WorkspaceTabsState = {
   uiTabsByWorkspace: Record<string, WorkspaceTab[]>;
   tabOrderByWorkspace: Record<string, string[]>;
   focusedTabIdByWorkspace: Record<string, string>;
-  openDraftTab: (input: { serverId: string; workspaceId: string; draftId: string }) => string | null;
+  openDraftTab: (input: {
+    serverId: string;
+    workspaceId: string;
+    draftId: string;
+  }) => string | null;
   ensureTab: (input: {
     serverId: string;
     workspaceId: string;
@@ -184,14 +190,17 @@ export const useWorkspaceTabsStore = create<WorkspaceTabsState>()(
           const existingIndex = currentTabs.findIndex((tab) => tab.tabId === effectiveTabId);
           const nextTabs = (() => {
             if (existingIndex < 0) {
-              return [...currentTabs, { tabId: effectiveTabId, target: normalizedTarget, createdAt: now }];
+              return [
+                ...currentTabs,
+                { tabId: effectiveTabId, target: normalizedTarget, createdAt: now },
+              ];
             }
             const existing = currentTabs[existingIndex];
             if (existing && tabTargetsEqual(existing.target, normalizedTarget)) {
               return currentTabs;
             }
             return currentTabs.map((tab, index) =>
-              index === existingIndex ? { ...tab, target: normalizedTarget } : tab
+              index === existingIndex ? { ...tab, target: normalizedTarget } : tab,
             );
           })();
 
@@ -271,7 +280,9 @@ export const useWorkspaceTabsStore = create<WorkspaceTabsState>()(
 
           const currentFocused = state.focusedTabIdByWorkspace[key] ?? null;
           const nextFocused =
-            currentFocused !== normalizedTabId ? currentFocused : nextOrder[nextOrder.length - 1] ?? null;
+            currentFocused !== normalizedTabId
+              ? currentFocused
+              : (nextOrder[nextOrder.length - 1] ?? null);
           const nextFocusedByWorkspace = (() => {
             if (!nextFocused) {
               const { [key]: _removed, ...rest } = state.focusedTabIdByWorkspace;
@@ -319,7 +330,7 @@ export const useWorkspaceTabsStore = create<WorkspaceTabsState>()(
           }
 
           const nextTabs = currentTabs.map((tab, tabIndex) =>
-            tabIndex === index ? { ...tab, target: normalizedTarget } : tab
+            tabIndex === index ? { ...tab, target: normalizedTarget } : tab,
           );
           retargetedTabId = normalizedTabId;
           return {
@@ -435,12 +446,23 @@ export const useWorkspaceTabsStore = create<WorkspaceTabsState>()(
         const rawState = (legacy as any)?.state ?? legacy ?? {};
 
         const rawUiTabsByWorkspace =
-          rawState.uiTabsByWorkspace ?? rawState.openTabsByWorkspace ?? legacy?.uiTabsByWorkspace ?? legacy?.openTabsByWorkspace ?? {};
+          rawState.uiTabsByWorkspace ??
+          rawState.openTabsByWorkspace ??
+          legacy?.uiTabsByWorkspace ??
+          legacy?.openTabsByWorkspace ??
+          {};
         const rawFocused =
-          rawState.focusedTabIdByWorkspace ?? legacy?.focusedTabIdByWorkspace ?? rawState.lastFocusedTabByWorkspace ?? {};
+          rawState.focusedTabIdByWorkspace ??
+          legacy?.focusedTabIdByWorkspace ??
+          rawState.lastFocusedTabByWorkspace ??
+          {};
         const rawOrder =
-          rawState.tabOrderByWorkspace ?? legacy?.tabOrderByWorkspace ?? rawState.tabOrderByWorkspace ?? {};
-        const legacyOrder = rawState.tabOrderByWorkspace ?? rawState.tabOrderLegacyByWorkspace ?? {};
+          rawState.tabOrderByWorkspace ??
+          legacy?.tabOrderByWorkspace ??
+          rawState.tabOrderByWorkspace ??
+          {};
+        const legacyOrder =
+          rawState.tabOrderByWorkspace ?? rawState.tabOrderLegacyByWorkspace ?? {};
 
         const uiTabsByWorkspace: Record<string, WorkspaceTab[]> = {};
         const tabOrderByWorkspace: Record<string, string[]> = {};
@@ -544,7 +566,11 @@ export const useWorkspaceTabsStore = create<WorkspaceTabsState>()(
             focusedTabIdByWorkspace[key] = `agent_${value.agentId.trim()}`;
             continue;
           }
-          if (value.kind === "terminal" && typeof value.terminalId === "string" && value.terminalId.trim()) {
+          if (
+            value.kind === "terminal" &&
+            typeof value.terminalId === "string" &&
+            value.terminalId.trim()
+          ) {
             focusedTabIdByWorkspace[key] = `terminal_${value.terminalId.trim()}`;
             continue;
           }
@@ -559,6 +585,6 @@ export const useWorkspaceTabsStore = create<WorkspaceTabsState>()(
           focusedTabIdByWorkspace,
         };
       },
-    }
-  )
+    },
+  ),
 );

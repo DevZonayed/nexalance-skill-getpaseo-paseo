@@ -119,9 +119,7 @@ function buildUnknownDetailOverride(input: ToolCallDisplayInput): DetailDisplay 
   if (input.detail.type === "unknown" && lowerName === "task") {
     return {
       displayName: "Task",
-      summary: isRecord(input.metadata)
-        ? readString(input.metadata.subAgentActivity)
-        : undefined,
+      summary: isRecord(input.metadata) ? readString(input.metadata.subAgentActivity) : undefined,
     };
   }
   if (input.detail.type === "unknown" && lowerName === "thinking") {

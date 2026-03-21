@@ -11,15 +11,17 @@ async function main() {
 
   const client = new Client(
     { name: "test-client", version: "1.0.0" },
-    { capabilities: { elicitation: {} } }
+    { capabilities: { elicitation: {} } },
   );
 
   // Listen for events
   client.setNotificationHandler(
-    z.object({
-      method: z.literal("codex/event"),
-      params: z.object({ msg: z.any() }),
-    }).passthrough(),
+    z
+      .object({
+        method: z.literal("codex/event"),
+        params: z.object({ msg: z.any() }),
+      })
+      .passthrough(),
     (data) => {
       const event = (data.params as { msg: unknown }).msg as {
         type?: string;
@@ -41,7 +43,7 @@ async function main() {
       } else {
         process.stdout.write("Event: " + event.type + "\n");
       }
-    }
+    },
   );
 
   await client.connect(transport);
@@ -50,22 +52,26 @@ async function main() {
   process.stdout.write("\n=== Testing dynamic MCP server config ===\n\n");
 
   try {
-    const result = await client.callTool({
-      name: "codex",
-      arguments: {
-        prompt: "List all the MCP tools you have available. Just list them, don't use any.",
-        sandbox: "danger-full-access",
-        "approval-policy": "never",
-        config: {
-          mcp_servers: {
-            "test-server": {
-              command: "npx",
-              args: ["-y", "mcp-server-time"]
-            }
-          }
-        }
-      }
-    }, undefined, { timeout: 60000 });
+    const result = await client.callTool(
+      {
+        name: "codex",
+        arguments: {
+          prompt: "List all the MCP tools you have available. Just list them, don't use any.",
+          sandbox: "danger-full-access",
+          "approval-policy": "never",
+          config: {
+            mcp_servers: {
+              "test-server": {
+                command: "npx",
+                args: ["-y", "mcp-server-time"],
+              },
+            },
+          },
+        },
+      },
+      undefined,
+      { timeout: 60000 },
+    );
 
     process.stdout.write("\n=== RESULT ===\n");
     const content = (result as { content: { text?: string }[] }).content;

@@ -1,8 +1,5 @@
 import type { AgentSnapshotPayload } from "../messages.js";
-import type {
-  SerializableAgentConfig,
-  StoredAgentRecord,
-} from "./agent-storage.js";
+import type { SerializableAgentConfig, StoredAgentRecord } from "./agent-storage.js";
 import type {
   AgentCapabilityFlags,
   AgentMetadata,
@@ -43,7 +40,7 @@ export function resolveEffectiveThinkingOptionId(options: {
 
 export function toStoredAgentRecord(
   agent: ManagedAgent,
-  options?: ProjectionOptions
+  options?: ProjectionOptions,
 ): StoredAgentRecord {
   const createdAt = options?.createdAt ?? agent.createdAt.toISOString();
   const config = buildSerializableConfig(agent.config);
@@ -57,9 +54,7 @@ export function toStoredAgentRecord(
     createdAt,
     updatedAt: agent.updatedAt.toISOString(),
     lastActivityAt: agent.updatedAt.toISOString(),
-    lastUserMessageAt: agent.lastUserMessageAt
-      ? agent.lastUserMessageAt.toISOString()
-      : null,
+    lastUserMessageAt: agent.lastUserMessageAt ? agent.lastUserMessageAt.toISOString() : null,
     title: options?.title ?? null,
     labels: agent.labels,
     lastStatus: agent.lifecycle,
@@ -68,9 +63,7 @@ export function toStoredAgentRecord(
     runtimeInfo,
     persistence,
     requiresAttention: agent.attention.requiresAttention,
-    attentionReason: agent.attention.requiresAttention
-      ? agent.attention.attentionReason
-      : null,
+    attentionReason: agent.attention.requiresAttention ? agent.attention.attentionReason : null,
     attentionTimestamp: agent.attention.requiresAttention
       ? agent.attention.attentionTimestamp.toISOString()
       : null,
@@ -80,7 +73,7 @@ export function toStoredAgentRecord(
 
 export function toAgentPayload(
   agent: ManagedAgent,
-  options?: ProjectionOptions
+  options?: ProjectionOptions,
 ): AgentSnapshotPayload {
   const runtimeInfo = sanitizeRuntimeInfo(agent.runtimeInfo);
   const thinkingOptionId = agent.config.thinkingOptionId ?? null;
@@ -99,9 +92,7 @@ export function toAgentPayload(
     runtimeInfo,
     createdAt: agent.createdAt.toISOString(),
     updatedAt: agent.updatedAt.toISOString(),
-    lastUserMessageAt: agent.lastUserMessageAt
-      ? agent.lastUserMessageAt.toISOString()
-      : null,
+    lastUserMessageAt: agent.lastUserMessageAt ? agent.lastUserMessageAt.toISOString() : null,
     status: agent.lifecycle,
     capabilities: cloneCapabilities(agent.capabilities),
     currentModeId: agent.currentModeId,
@@ -134,9 +125,7 @@ export function toAgentPayload(
   return payload;
 }
 
-function buildSerializableConfig(
-  config: AgentSessionConfig
-): SerializableAgentConfig | null {
+function buildSerializableConfig(config: AgentSessionConfig): SerializableAgentConfig | null {
   const serializable: SerializableAgentConfig = {};
   if (Object.prototype.hasOwnProperty.call(config, "title")) {
     serializable.title = config.title ?? null;
@@ -164,20 +153,18 @@ function buildSerializableConfig(
 }
 
 function sanitizePendingPermissions(
-  pending: Map<string, AgentPermissionRequest>
+  pending: Map<string, AgentPermissionRequest>,
 ): AgentPermissionRequest[] {
-  return Array.from(pending.values()).map((request) => (
-    {
-      ...request,
-      input: sanitizeMetadata(request.input),
-      suggestions: sanitizeMetadataArray(request.suggestions),
-      metadata: sanitizeMetadata(request.metadata),
-    }
-  ));
+  return Array.from(pending.values()).map((request) => ({
+    ...request,
+    input: sanitizeMetadata(request.input),
+    suggestions: sanitizeMetadataArray(request.suggestions),
+    metadata: sanitizeMetadata(request.metadata),
+  }));
 }
 
 function sanitizePersistenceHandle(
-  handle: AgentPersistenceHandle | null
+  handle: AgentPersistenceHandle | null,
 ): AgentPersistenceHandle | null {
   if (!handle) {
     return null;
@@ -196,9 +183,7 @@ function sanitizePersistenceHandle(
   return sanitized;
 }
 
-function cloneCapabilities(
-  capabilities: AgentCapabilityFlags
-): AgentCapabilityFlags {
+function cloneCapabilities(capabilities: AgentCapabilityFlags): AgentCapabilityFlags {
   return { ...capabilities };
 }
 
@@ -232,19 +217,13 @@ function sanitizeOptionalJson(value: unknown): JsonValue | undefined {
     }
     return Object.keys(result).length ? result : undefined;
   }
-  if (
-    typeof value === "string" ||
-    typeof value === "number" ||
-    typeof value === "boolean"
-  ) {
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
     return value;
   }
   return undefined;
 }
 
-function isJsonObject(
-  value: JsonValue
-): value is { [key: string]: JsonValue } {
+function isJsonObject(value: JsonValue): value is { [key: string]: JsonValue } {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
@@ -300,7 +279,7 @@ function sanitizeUsage(value: unknown): AgentUsage | undefined {
 }
 
 function sanitizeRuntimeInfo(
-  runtimeInfo: AgentRuntimeInfo | undefined
+  runtimeInfo: AgentRuntimeInfo | undefined,
 ): AgentRuntimeInfo | undefined {
   if (!runtimeInfo) {
     return undefined;

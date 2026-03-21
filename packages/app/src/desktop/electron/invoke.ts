@@ -2,7 +2,7 @@ import { getDesktopHost } from "@/desktop/host";
 
 export async function invokeDesktopCommand<T>(
   command: string,
-  args?: Record<string, unknown>
+  args?: Record<string, unknown>,
 ): Promise<T> {
   const invoke = getDesktopHost()?.invoke;
   if (typeof invoke !== "function") {

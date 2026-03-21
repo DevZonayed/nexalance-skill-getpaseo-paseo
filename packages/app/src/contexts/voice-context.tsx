@@ -59,7 +59,7 @@ export function useVoiceOptional(): VoiceContextValue | null {
   const snapshot = useSyncExternalStore(
     runtime ? runtime.subscribe : noopSubscribe,
     runtime ? runtime.getSnapshot : getEmptySnapshot,
-    runtime ? runtime.getSnapshot : getEmptySnapshot
+    runtime ? runtime.getSnapshot : getEmptySnapshot,
   );
 
   if (!runtime) {
@@ -88,7 +88,7 @@ export function useVoiceTelemetryOptional(): VoiceRuntimeTelemetrySnapshot | nul
   const snapshot = useSyncExternalStore(
     runtime ? runtime.subscribeTelemetry : noopSubscribe,
     runtime ? runtime.getTelemetrySnapshot : getEmptyTelemetry,
-    runtime ? runtime.getTelemetrySnapshot : getEmptyTelemetry
+    runtime ? runtime.getTelemetrySnapshot : getEmptyTelemetry,
   );
 
   return runtime ? snapshot : null;
@@ -153,9 +153,7 @@ export function VoiceProvider({ children }: VoiceProviderProps) {
 
   return (
     <VoiceAudioEngineContext.Provider value={engine}>
-      <VoiceRuntimeContext.Provider value={runtime}>
-        {children}
-      </VoiceRuntimeContext.Provider>
+      <VoiceRuntimeContext.Provider value={runtime}>{children}</VoiceRuntimeContext.Provider>
     </VoiceAudioEngineContext.Provider>
   );
 }

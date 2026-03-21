@@ -1,9 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  deriveProjectDisplayName,
-  deriveRemoteProjectKey,
-  groupAgents,
-} from "./agent-grouping";
+import { deriveProjectDisplayName, deriveRemoteProjectKey, groupAgents } from "./agent-grouping";
 import type { AggregatedAgent } from "@/hooks/use-aggregated-agents";
 
 function makeAgent(overrides: Partial<AggregatedAgent> = {}): AggregatedAgent {
@@ -33,9 +29,7 @@ describe("deriveRemoteProjectKey", () => {
 
   it("includes host for non-GitHub remotes", () => {
     const gitlab = "git@gitlab.example.com:group/repo.git";
-    expect(deriveRemoteProjectKey(gitlab)).toBe(
-      "remote:gitlab.example.com/group/repo"
-    );
+    expect(deriveRemoteProjectKey(gitlab)).toBe("remote:gitlab.example.com/group/repo");
   });
 });
 
@@ -45,7 +39,7 @@ describe("deriveProjectDisplayName", () => {
       deriveProjectDisplayName({
         projectKey: "remote:github.com/getpaseo/paseo",
         projectName: "paseo",
-      })
+      }),
     ).toBe("getpaseo/paseo");
   });
 
@@ -54,7 +48,7 @@ describe("deriveProjectDisplayName", () => {
       deriveProjectDisplayName({
         projectKey: "remote:gitlab.example.com/group/repo",
         projectName: "repo",
-      })
+      }),
     ).toBe("group/repo");
   });
 
@@ -63,7 +57,7 @@ describe("deriveProjectDisplayName", () => {
       deriveProjectDisplayName({
         projectKey: "/Users/me/dev/paseo",
         projectName: "paseo",
-      })
+      }),
     ).toBe("paseo");
   });
 });
@@ -80,10 +74,7 @@ describe("groupAgents", () => {
     });
 
     expect(activeGroups).toHaveLength(1);
-    expect(activeGroups[0]?.agents.map((a) => a.id).sort()).toEqual([
-      "a1",
-      "a2",
-    ]);
+    expect(activeGroups[0]?.agents.map((a) => a.id).sort()).toEqual(["a1", "a2"]);
   });
 
   it("falls back to cwd grouping when remote URL is unavailable", () => {

@@ -49,7 +49,11 @@ function formatDuration(duration?: number): string | null {
   return `${seconds.toFixed(seconds >= 10 ? 0 : 1)} s`;
 }
 
-export function AudioDebugNotice({ info, onDismiss, title = "Dictation Debug" }: AudioDebugNoticeProps) {
+export function AudioDebugNotice({
+  info,
+  onDismiss,
+  title = "Dictation Debug",
+}: AudioDebugNoticeProps) {
   const { theme } = useUnistyles();
   const [copied, setCopied] = useState(false);
 
@@ -115,11 +119,12 @@ export function AudioDebugNotice({ info, onDismiss, title = "Dictation Debug" }:
       </View>
 
       {info.debugRecordingPath ? (
-        <Pressable style={styles.pathRow} onPress={handleCopyPath} accessibilityLabel="Copy raw audio path">
-          <Text
-            numberOfLines={2}
-            style={[styles.pathText, { color: theme.colors.foreground }]}
-          >
+        <Pressable
+          style={styles.pathRow}
+          onPress={handleCopyPath}
+          accessibilityLabel="Copy raw audio path"
+        >
+          <Text numberOfLines={2} style={[styles.pathText, { color: theme.colors.foreground }]}>
             {info.debugRecordingPath}
           </Text>
           <View style={[styles.copyPill, { backgroundColor: theme.colors.primary }]}>
@@ -137,9 +142,7 @@ export function AudioDebugNotice({ info, onDismiss, title = "Dictation Debug" }:
       )}
 
       {stats ? (
-        <Text style={[styles.stats, { color: theme.colors.foregroundMuted }]}>
-          {stats}
-        </Text>
+        <Text style={[styles.stats, { color: theme.colors.foregroundMuted }]}>{stats}</Text>
       ) : null}
     </View>
   );

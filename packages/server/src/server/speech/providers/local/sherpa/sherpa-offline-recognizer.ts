@@ -34,7 +34,11 @@ export class SherpaOfflineRecognizerEngine {
   private readonly logger: pino.Logger;
 
   constructor(config: SherpaOfflineRecognizerConfig, logger: pino.Logger) {
-    this.logger = logger.child({ module: "speech", provider: "local", component: "offline-recognizer" });
+    this.logger = logger.child({
+      module: "speech",
+      provider: "local",
+      component: "offline-recognizer",
+    });
 
     assertFileExists(config.model.encoder, "offline encoder");
     assertFileExists(config.model.decoder, "offline decoder");
@@ -66,13 +70,14 @@ export class SherpaOfflineRecognizerEngine {
 
     this.recognizer = new sherpa.OfflineRecognizer(recognizerConfig);
     const sr = this.recognizer?.config?.featConfig?.sampleRate;
-    this.sampleRate = typeof sr === "number" && Number.isFinite(sr) && sr > 0
-      ? sr
-      : recognizerConfig.featConfig.sampleRate;
+    this.sampleRate =
+      typeof sr === "number" && Number.isFinite(sr) && sr > 0
+        ? sr
+        : recognizerConfig.featConfig.sampleRate;
 
     this.logger.info(
       { sampleRate: this.sampleRate, numThreads: recognizerConfig.modelConfig.numThreads },
-      "Sherpa offline recognizer initialized"
+      "Sherpa offline recognizer initialized",
     );
   }
 

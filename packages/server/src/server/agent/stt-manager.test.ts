@@ -99,7 +99,7 @@ describe("STTManager", () => {
     const manager = new STTManager(
       "s1",
       pino({ level: "silent" }),
-      new FakeStt({ text: "um", isLowConfidence: true, avgLogprob: -10 })
+      new FakeStt({ text: "um", isLowConfidence: true, avgLogprob: -10 }),
     );
 
     const result = await manager.transcribe(Buffer.alloc(2), "audio/pcm;rate=24000", {
@@ -114,7 +114,7 @@ describe("STTManager", () => {
     const manager = new STTManager(
       "s1",
       pino({ level: "silent" }),
-      new FakeStt({ text: "hello world", language: "en", isLowConfidence: false })
+      new FakeStt({ text: "hello world", language: "en", isLowConfidence: false }),
     );
 
     const result = await manager.transcribe(Buffer.alloc(4), "audio/pcm;rate=24000");
@@ -131,7 +131,7 @@ describe("STTManager", () => {
       const manager = new STTManager(
         "s1",
         pino({ level: "silent" }),
-        new SequencedFakeStt(["alpha", "beta", "gamma"])
+        new SequencedFakeStt(["alpha", "beta", "gamma"]),
       );
 
       const threeSecondsPcm = Buffer.alloc(24000 * 2 * 3);

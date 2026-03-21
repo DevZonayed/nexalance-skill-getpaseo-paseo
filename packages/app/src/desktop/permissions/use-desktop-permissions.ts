@@ -35,7 +35,7 @@ export function useDesktopPermissions(): UseDesktopPermissionsReturn {
   const [snapshot, setSnapshot] = useState<DesktopPermissionSnapshot | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [requestingPermission, setRequestingPermission] = useState<DesktopPermissionKind | null>(
-    null
+    null,
   );
   const [isSendingTestNotification, setIsSendingTestNotification] = useState(false);
 
@@ -80,12 +80,11 @@ export function useDesktopPermissions(): UseDesktopPermissionsReturn {
         }
 
         setSnapshot((previous) => {
-          const base: DesktopPermissionSnapshot =
-            previous ?? {
-              checkedAt: Date.now(),
-              notifications: EMPTY_NOTIFICATION_STATUS,
-              microphone: EMPTY_MICROPHONE_STATUS,
-            };
+          const base: DesktopPermissionSnapshot = previous ?? {
+            checkedAt: Date.now(),
+            notifications: EMPTY_NOTIFICATION_STATUS,
+            microphone: EMPTY_MICROPHONE_STATUS,
+          };
 
           if (kind === "notifications") {
             return {
@@ -110,7 +109,7 @@ export function useDesktopPermissions(): UseDesktopPermissionsReturn {
         await refreshPermissions();
       }
     },
-    [isDesktop, refreshPermissions]
+    [isDesktop, refreshPermissions],
   );
 
   const sendTestNotification = useCallback(async () => {

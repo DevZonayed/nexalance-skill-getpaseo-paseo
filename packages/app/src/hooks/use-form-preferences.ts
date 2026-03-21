@@ -39,7 +39,7 @@ export interface UseFormPreferencesReturn {
   updatePreferences: (updates: Partial<FormPreferences>) => Promise<void>;
   updateProviderPreferences: (
     provider: AgentProvider,
-    updates: Partial<ProviderPreferences>
+    updates: Partial<ProviderPreferences>,
   ) => Promise<void>;
 }
 
@@ -58,7 +58,7 @@ export function useFormPreferences(): UseFormPreferencesReturn {
     (provider: AgentProvider): ProviderPreferences | undefined => {
       return preferences.providerPreferences?.[provider];
     },
-    [preferences.providerPreferences]
+    [preferences.providerPreferences],
   );
 
   const updatePreferences = useCallback(
@@ -70,7 +70,7 @@ export function useFormPreferences(): UseFormPreferencesReturn {
       queryClient.setQueryData<FormPreferences>(FORM_PREFERENCES_QUERY_KEY, next);
       await AsyncStorage.setItem(FORM_PREFERENCES_STORAGE_KEY, JSON.stringify(next));
     },
-    [queryClient]
+    [queryClient],
   );
 
   const updateProviderPreferences = useCallback(
@@ -91,7 +91,7 @@ export function useFormPreferences(): UseFormPreferencesReturn {
       queryClient.setQueryData<FormPreferences>(FORM_PREFERENCES_QUERY_KEY, next);
       await AsyncStorage.setItem(FORM_PREFERENCES_STORAGE_KEY, JSON.stringify(next));
     },
-    [queryClient]
+    [queryClient],
   );
 
   return {

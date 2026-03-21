@@ -57,17 +57,23 @@ function spawnRelayDevServer(port: number): ChildProcess {
       env: { ...process.env },
       stdio: ["ignore", "pipe", "pipe"],
       detached: false,
-    }
+    },
   );
 }
 
 function assertRelayStillRunning(relayProcess: ChildProcess): void {
   if (relayProcess.exitCode !== null) {
-    throw new Error(`relay process exited before startup completed (code: ${relayProcess.exitCode})`);
+    throw new Error(
+      `relay process exited before startup completed (code: ${relayProcess.exitCode})`,
+    );
   }
 }
 
-async function waitForServer(port: number, relayProcess: ChildProcess, timeout = 15000): Promise<void> {
+async function waitForServer(
+  port: number,
+  relayProcess: ChildProcess,
+  timeout = 15000,
+): Promise<void> {
   const start = Date.now();
   while (Date.now() - start < timeout) {
     assertRelayStillRunning(relayProcess);
@@ -90,7 +96,7 @@ async function waitForServer(port: number, relayProcess: ChildProcess, timeout =
 async function waitForRelayWebSocketReady(
   port: number,
   relayProcess: ChildProcess,
-  timeout = 60000
+  timeout = 60000,
 ): Promise<void> {
   const start = Date.now();
   while (Date.now() - start < timeout) {
@@ -156,14 +162,20 @@ async function stopRelayProcess(relayProcess: ChildProcess): Promise<void> {
     relayProcess = spawnRelayDevServer(relayPort);
 
     relayProcess.stdout?.on("data", (data: Buffer) => {
-      const lines = data.toString().split("\n").filter((l) => l.trim());
+      const lines = data
+        .toString()
+        .split("\n")
+        .filter((l) => l.trim());
       for (const line of lines) {
         // eslint-disable-next-line no-console
         console.log(`[relay] ${line}`);
       }
     });
     relayProcess.stderr?.on("data", (data: Buffer) => {
-      const lines = data.toString().split("\n").filter((l) => l.trim());
+      const lines = data
+        .toString()
+        .split("\n")
+        .filter((l) => l.trim());
       for (const line of lines) {
         // eslint-disable-next-line no-console
         console.error(`[relay] ${line}`);
@@ -187,7 +199,9 @@ async function stopRelayProcess(relayProcess: ChildProcess): Promise<void> {
     }
   }, SHUTDOWN_TIMEOUT_MS);
 
-  it("full flow: daemon and client exchange encrypted messages through relay", { timeout: 90_000 }, async () => {
+  it("full flow: daemon and client exchange encrypted messages through relay", {
+    timeout: 90_000,
+  }, async () => {
     const serverId = "test-session-" + Date.now();
     const connectionId = "clt_test_" + Date.now() + "_" + Math.random().toString(36).slice(2);
 
@@ -200,7 +214,7 @@ async function stopRelayProcess(relayProcess: ChildProcess): Promise<void> {
 
     // Daemon connects to relay as "server" control role
     const daemonControlWs = new WebSocket(
-      `ws://127.0.0.1:${relayPort}/ws?serverId=${serverId}&role=server&v=2`
+      `ws://127.0.0.1:${relayPort}/ws?serverId=${serverId}&role=server&v=2`,
     );
 
     await new Promise<void>((resolve, reject) => {
@@ -216,16 +230,10 @@ async function stopRelayProcess(relayProcess: ChildProcess): Promise<void> {
 
     // Client imports daemon's public key and derives shared secret
     const daemonPubKeyOnClient = await importPublicKey(daemonPubKeyB64);
-    const clientSharedKey = await deriveSharedKey(
-      clientKeyPair.secretKey,
-      daemonPubKeyOnClient
-    );
+    const clientSharedKey = await deriveSharedKey(clientKeyPair.secretKey, daemonPubKeyOnClient);
 
     const waitForClientSeen = new Promise<void>((resolve, reject) => {
-      const timeout = setTimeout(
-        () => reject(new Error("timed out waiting for connected")),
-        5000
-      );
+      const timeout = setTimeout(() => reject(new Error("timed out waiting for connected")), 5000);
       const onMessage = (raw: unknown) => {
         try {
           const text =
@@ -241,7 +249,11 @@ async function stopRelayProcess(relayProcess: ChildProcess): Promise<void> {
             resolve();
             return;
           }
-          if (msg?.type === "sync" && Array.isArray(msg.connectionIds) && msg.connectionIds.includes(connectionId)) {
+          if (
+            msg?.type === "sync" &&
+            Array.isArray(msg.connectionIds) &&
+            msg.connectionIds.includes(connectionId)
+          ) {
             clearTimeout(timeout);
             daemonControlWs.off("message", onMessage);
             resolve();
@@ -255,7 +267,7 @@ async function stopRelayProcess(relayProcess: ChildProcess): Promise<void> {
 
     // Client connects to relay as "client" role (must include connectionId)
     const clientWs = new WebSocket(
-      `ws://127.0.0.1:${relayPort}/ws?serverId=${serverId}&role=client&connectionId=${connectionId}&v=2`
+      `ws://127.0.0.1:${relayPort}/ws?serverId=${serverId}&role=client&connectionId=${connectionId}&v=2`,
     );
 
     await new Promise<void>((resolve, reject) => {
@@ -266,7 +278,7 @@ async function stopRelayProcess(relayProcess: ChildProcess): Promise<void> {
     await waitForClientSeen;
 
     const daemonWs = new WebSocket(
-      `ws://127.0.0.1:${relayPort}/ws?serverId=${serverId}&role=server&connectionId=${connectionId}&v=2`
+      `ws://127.0.0.1:${relayPort}/ws?serverId=${serverId}&role=server&connectionId=${connectionId}&v=2`,
     );
     await new Promise<void>((resolve, reject) => {
       daemonWs.on("open", resolve);
@@ -288,10 +300,7 @@ async function stopRelayProcess(relayProcess: ChildProcess): Promise<void> {
 
     // Daemon imports client's public key and derives shared secret
     const clientPubKeyOnDaemon = await importPublicKey(hello.key);
-    const daemonSharedKey = await deriveSharedKey(
-      daemonKeyPair.secretKey,
-      clientPubKeyOnDaemon
-    );
+    const daemonSharedKey = await deriveSharedKey(daemonKeyPair.secretKey, clientPubKeyOnDaemon);
 
     // === VERIFY BOTH HAVE SAME KEY - Exchange encrypted messages ===
 
@@ -308,8 +317,8 @@ async function stopRelayProcess(relayProcess: ChildProcess): Promise<void> {
       clientSharedKey,
       clientReceivedReady.buffer.slice(
         clientReceivedReady.byteOffset,
-        clientReceivedReady.byteOffset + clientReceivedReady.byteLength
-      )
+        clientReceivedReady.byteOffset + clientReceivedReady.byteLength,
+      ),
     );
     expect(JSON.parse(decryptedReady as string)).toEqual({ type: "ready" });
 
@@ -326,8 +335,8 @@ async function stopRelayProcess(relayProcess: ChildProcess): Promise<void> {
       daemonSharedKey,
       daemonReceivedMsg.buffer.slice(
         daemonReceivedMsg.byteOffset,
-        daemonReceivedMsg.byteOffset + daemonReceivedMsg.byteLength
-      )
+        daemonReceivedMsg.byteOffset + daemonReceivedMsg.byteLength,
+      ),
     );
     expect(decryptedClientMsg).toBe(clientMessage);
 
@@ -344,8 +353,8 @@ async function stopRelayProcess(relayProcess: ChildProcess): Promise<void> {
       clientSharedKey,
       clientReceivedMsg.buffer.slice(
         clientReceivedMsg.byteOffset,
-        clientReceivedMsg.byteOffset + clientReceivedMsg.byteLength
-      )
+        clientReceivedMsg.byteOffset + clientReceivedMsg.byteLength,
+      ),
     );
     expect(decryptedDaemonMsg).toBe(daemonMessage);
 
@@ -368,25 +377,16 @@ async function stopRelayProcess(relayProcess: ChildProcess): Promise<void> {
     const clientPubKey = await importPublicKey(clientPubKeyB64);
     const daemonPubKey = await importPublicKey(daemonPubKeyB64);
 
-    const daemonSharedKey = await deriveSharedKey(
-      daemonKeyPair.secretKey,
-      clientPubKey
-    );
-    const clientSharedKey = await deriveSharedKey(
-      clientKeyPair.secretKey,
-      daemonPubKey
-    );
+    const daemonSharedKey = await deriveSharedKey(daemonKeyPair.secretKey, clientPubKey);
+    const clientSharedKey = await deriveSharedKey(clientKeyPair.secretKey, daemonPubKey);
 
     const daemonControlWs = new WebSocket(
-      `ws://127.0.0.1:${relayPort}/ws?serverId=${serverId}&role=server&v=2`
+      `ws://127.0.0.1:${relayPort}/ws?serverId=${serverId}&role=server&v=2`,
     );
     await new Promise<void>((r) => daemonControlWs.on("open", r));
 
     const waitForClientSeen = new Promise<void>((resolve, reject) => {
-      const timeout = setTimeout(
-        () => reject(new Error("timed out waiting for connected")),
-        5000
-      );
+      const timeout = setTimeout(() => reject(new Error("timed out waiting for connected")), 5000);
       const onMessage = (raw: unknown) => {
         try {
           const text =
@@ -402,7 +402,11 @@ async function stopRelayProcess(relayProcess: ChildProcess): Promise<void> {
             resolve();
             return;
           }
-          if (msg?.type === "sync" && Array.isArray(msg.connectionIds) && msg.connectionIds.includes(connectionId)) {
+          if (
+            msg?.type === "sync" &&
+            Array.isArray(msg.connectionIds) &&
+            msg.connectionIds.includes(connectionId)
+          ) {
             clearTimeout(timeout);
             daemonControlWs.off("message", onMessage);
             resolve();
@@ -415,13 +419,13 @@ async function stopRelayProcess(relayProcess: ChildProcess): Promise<void> {
     });
 
     const clientWs = new WebSocket(
-      `ws://127.0.0.1:${relayPort}/ws?serverId=${serverId}&role=client&connectionId=${connectionId}&v=2`
+      `ws://127.0.0.1:${relayPort}/ws?serverId=${serverId}&role=client&connectionId=${connectionId}&v=2`,
     );
     await new Promise<void>((r) => clientWs.on("open", r));
     await waitForClientSeen;
 
     const daemonWs = new WebSocket(
-      `ws://127.0.0.1:${relayPort}/ws?serverId=${serverId}&role=server&connectionId=${connectionId}&v=2`
+      `ws://127.0.0.1:${relayPort}/ws?serverId=${serverId}&role=server&connectionId=${connectionId}&v=2`,
     );
     await new Promise<void>((r) => daemonWs.on("open", r));
 
@@ -448,10 +452,7 @@ async function stopRelayProcess(relayProcess: ChildProcess): Promise<void> {
     // But daemon can decrypt
     const decrypted = await decrypt(
       daemonSharedKey,
-      received.buffer.slice(
-        received.byteOffset,
-        received.byteOffset + received.byteLength
-      )
+      received.buffer.slice(received.byteOffset, received.byteOffset + received.byteLength),
     );
     expect(decrypted).toBe(secret);
 
@@ -468,22 +469,12 @@ async function stopRelayProcess(relayProcess: ChildProcess): Promise<void> {
     const clientKeyPair = await generateKeyPair();
     const attackerKeyPair = await generateKeyPair();
 
-    const clientPubKey = await importPublicKey(
-      await exportPublicKey(clientKeyPair.publicKey)
-    );
-    const daemonSharedKey = await deriveSharedKey(
-      daemonKeyPair.secretKey,
-      clientPubKey
-    );
+    const clientPubKey = await importPublicKey(await exportPublicKey(clientKeyPair.publicKey));
+    const daemonSharedKey = await deriveSharedKey(daemonKeyPair.secretKey, clientPubKey);
 
     // Attacker tries to derive key with their own keypair
-    const attackerPubKey = await importPublicKey(
-      await exportPublicKey(attackerKeyPair.publicKey)
-    );
-    const attackerKey = await deriveSharedKey(
-      attackerKeyPair.secretKey,
-      attackerPubKey
-    );
+    const attackerPubKey = await importPublicKey(await exportPublicKey(attackerKeyPair.publicKey));
+    const attackerKey = await deriveSharedKey(attackerKeyPair.secretKey, attackerPubKey);
 
     // Encrypt with daemon's key
     const secret = "Top secret message";

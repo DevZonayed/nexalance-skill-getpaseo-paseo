@@ -4,10 +4,7 @@ import type {
   TurnDetectionProvider,
   TurnDetectionSession,
 } from "../../../turn-detection-provider.js";
-import {
-  SherpaSileroVadSession,
-  type SherpaSileroVadSessionConfig,
-} from "./silero-vad-session.js";
+import { SherpaSileroVadSession, type SherpaSileroVadSessionConfig } from "./silero-vad-session.js";
 
 export class SherpaSileroTurnDetectionProvider implements TurnDetectionProvider {
   public readonly id = "local" as const;
@@ -27,7 +24,7 @@ export class SherpaSileroTurnDetectionProvider implements TurnDetectionProvider 
   createSession(params: { logger: Logger }): TurnDetectionSession {
     this.logger.debug(
       { sampleRate: this.config.sampleRate, modelPath: this.config.modelPath },
-      "Creating Silero VAD turn-detection session"
+      "Creating Silero VAD turn-detection session",
     );
     return new SherpaSileroVadSession({
       logger: params.logger.child({

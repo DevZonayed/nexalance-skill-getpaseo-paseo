@@ -16,10 +16,10 @@ describe("sherpa model downloader", () => {
   test("getSherpaOnnxModelDir maps modelId to extractedDir", () => {
     const modelsDir = "/tmp/models";
     expect(getSherpaOnnxModelDir(modelsDir, "parakeet-tdt-0.6b-v3-int8")).toContain(
-      "sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8"
+      "sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8",
     );
     expect(getSherpaOnnxModelDir(modelsDir, "pocket-tts-onnx-int8")).toContain(
-      "pocket-tts-onnx-int8"
+      "pocket-tts-onnx-int8",
     );
   });
 

@@ -5,9 +5,7 @@ interface BuildAbsoluteExplorerPathInput {
 
 function isAbsolutePath(pathValue: string): boolean {
   return (
-    pathValue.startsWith("/") ||
-    pathValue.startsWith("\\\\") ||
-    /^[A-Za-z]:[\\/]/.test(pathValue)
+    pathValue.startsWith("/") || pathValue.startsWith("\\\\") || /^[A-Za-z]:[\\/]/.test(pathValue)
   );
 }
 

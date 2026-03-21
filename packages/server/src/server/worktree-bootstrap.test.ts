@@ -5,10 +5,7 @@ import { join } from "path";
 import { tmpdir } from "os";
 
 import type { AgentTimelineItem } from "./agent/agent-sdk-types.js";
-import {
-  createAgentWorktree,
-  runAsyncWorktreeBootstrap,
-} from "./worktree-bootstrap.js";
+import { createAgentWorktree, runAsyncWorktreeBootstrap } from "./worktree-bootstrap.js";
 
 describe("runAsyncWorktreeBootstrap", () => {
   let tempDir: string;
@@ -51,7 +48,7 @@ describe("runAsyncWorktreeBootstrap", () => {
         worktree: {
           setup: ['echo "line-one"; echo "line-two" 1>&2', 'echo "line-three"'],
         },
-      })
+      }),
     );
     execSync("git add paseo.json", { cwd: repoDir, stdio: "pipe" });
     execSync("git -c commit.gpgsign=false commit -m 'add setup'", {
@@ -88,12 +85,12 @@ describe("runAsyncWorktreeBootstrap", () => {
       (item) =>
         item.type === "tool_call" &&
         item.name === "paseo_worktree_setup" &&
-        item.status === "running"
+        item.status === "running",
     );
     expect(liveSetupItems.length).toBeGreaterThan(0);
 
     const persistedSetupItems = persisted.filter(
-      (item) => item.type === "tool_call" && item.name === "paseo_worktree_setup"
+      (item) => item.type === "tool_call" && item.name === "paseo_worktree_setup",
     );
     expect(persistedSetupItems).toHaveLength(1);
     expect(persistedSetupItems[0]?.type).toBe("tool_call");
@@ -103,13 +100,11 @@ describe("runAsyncWorktreeBootstrap", () => {
 
       if (persistedSetupItems[0].detail.type === "worktree_setup") {
         expect(persistedSetupItems[0].detail.log).toContain(
-          "==> [1/2] Running: echo \"line-one\"; echo \"line-two\" 1>&2"
+          '==> [1/2] Running: echo "line-one"; echo "line-two" 1>&2',
         );
         expect(persistedSetupItems[0].detail.log).toContain("line-one");
         expect(persistedSetupItems[0].detail.log).toContain("line-two");
-        expect(persistedSetupItems[0].detail.log).toContain(
-          "==> [2/2] Running: echo \"line-three\""
-        );
+        expect(persistedSetupItems[0].detail.log).toContain('==> [2/2] Running: echo "line-three"');
         expect(persistedSetupItems[0].detail.log).toContain("line-three");
         expect(persistedSetupItems[0].detail.log).toMatch(/<== \[1\/2\] Exit 0 in \d+\.\d{2}s/);
         expect(persistedSetupItems[0].detail.log).toMatch(/<== \[2\/2\] Exit 0 in \d+\.\d{2}s/);
@@ -127,19 +122,22 @@ describe("runAsyncWorktreeBootstrap", () => {
           status: "completed",
           exitCode: 0,
         });
-        expect(
-          typeof persistedSetupItems[0].detail.commands[0]?.durationMs === "number"
-        ).toBe(true);
-        expect(
-          typeof persistedSetupItems[0].detail.commands[1]?.durationMs === "number"
-        ).toBe(true);
+        expect(typeof persistedSetupItems[0].detail.commands[0]?.durationMs === "number").toBe(
+          true,
+        );
+        expect(typeof persistedSetupItems[0].detail.commands[1]?.durationMs === "number").toBe(
+          true,
+        );
       }
     }
 
     const liveCallIds = new Set(
       liveSetupItems
-        .filter((item): item is Extract<AgentTimelineItem, { type: "tool_call" }> => item.type === "tool_call")
-        .map((item) => item.callId)
+        .filter(
+          (item): item is Extract<AgentTimelineItem, { type: "tool_call" }> =>
+            item.type === "tool_call",
+        )
+        .map((item) => item.callId),
     );
     expect(liveCallIds.size).toBe(1);
     if (persistedSetupItems[0]?.type === "tool_call") {
@@ -154,7 +152,7 @@ describe("runAsyncWorktreeBootstrap", () => {
         worktree: {
           setup: ['echo "ok"'],
         },
-      })
+      }),
     );
     execSync("git add paseo.json", { cwd: repoDir, stdio: "pipe" });
     execSync("git -c commit.gpgsign=false commit -m 'add setup'", {
@@ -183,11 +181,11 @@ describe("runAsyncWorktreeBootstrap", () => {
         emitLiveTimelineItem: async () => {
           throw new Error("live emit failed");
         },
-      })
+      }),
     ).resolves.toBeUndefined();
 
     const persistedSetupItems = persisted.filter(
-      (item) => item.type === "tool_call" && item.name === "paseo_worktree_setup"
+      (item) => item.type === "tool_call" && item.name === "paseo_worktree_setup",
     );
     expect(persistedSetupItems).toHaveLength(1);
     if (persistedSetupItems[0]?.type === "tool_call") {
@@ -204,7 +202,7 @@ describe("runAsyncWorktreeBootstrap", () => {
         worktree: {
           setup: [largeOutputCommand],
         },
-      })
+      }),
     );
     execSync("git add paseo.json", { cwd: repoDir, stdio: "pipe" });
     execSync("git -c commit.gpgsign=false commit -m 'add large output setup'", {
@@ -234,7 +232,7 @@ describe("runAsyncWorktreeBootstrap", () => {
 
     const persistedSetupItem = persisted.find(
       (item): item is Extract<AgentTimelineItem, { type: "tool_call" }> =>
-        item.type === "tool_call" && item.name === "paseo_worktree_setup"
+        item.type === "tool_call" && item.name === "paseo_worktree_setup",
     );
     expect(persistedSetupItem).toBeDefined();
     expect(persistedSetupItem?.detail.type).toBe("worktree_setup");
@@ -260,7 +258,7 @@ describe("runAsyncWorktreeBootstrap", () => {
             },
           ],
         },
-      })
+      }),
     );
     execSync("git add paseo.json", { cwd: repoDir, stdio: "pipe" });
     execSync("git -c commit.gpgsign=false commit -m 'add terminal bootstrap config'", {
@@ -365,7 +363,7 @@ describe("runAsyncWorktreeBootstrap", () => {
             },
           ],
         },
-      })
+      }),
     );
     execSync("git add paseo.json", { cwd: repoDir, stdio: "pipe" });
     execSync("git -c commit.gpgsign=false commit -m 'add port setup and terminals'", {
@@ -455,7 +453,7 @@ describe("runAsyncWorktreeBootstrap", () => {
       (item): item is Extract<AgentTimelineItem, { type: "tool_call" }> =>
         item.type === "tool_call" &&
         item.name === "paseo_worktree_terminals" &&
-        item.status === "completed"
+        item.status === "completed",
     );
     expect(terminalToolCall?.status).toBe("completed");
   });

@@ -1,12 +1,17 @@
 import { describe, test, expect, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, writeFileSync, existsSync, rmSync, mkdirSync, readFileSync, readdirSync } from "fs";
+import {
+  mkdtempSync,
+  writeFileSync,
+  existsSync,
+  rmSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+} from "fs";
 import { tmpdir } from "os";
 import path from "path";
 import { execFileSync } from "node:child_process";
-import {
-  createDaemonTestContext,
-  type DaemonTestContext,
-} from "../test-utils/index.js";
+import { createDaemonTestContext, type DaemonTestContext } from "../test-utils/index.js";
 import type { AgentTimelineItem } from "../agent/agent-sdk-types.js";
 import type { AgentSnapshotPayload, SessionOutboundMessage } from "../messages.js";
 
@@ -61,32 +66,28 @@ describe("daemon E2E", () => {
         expect(model.id).toBeTruthy();
         expect(model.label).toBeTruthy();
       },
-      60000 // 1 minute timeout
+      60000, // 1 minute timeout
     );
 
-    test(
-      "returns model list for Claude provider",
-      async () => {
-        // List models for Claude provider - no agent needed
-        const result = await ctx.client.listProviderModels("claude");
+    test("returns model list for Claude provider", async () => {
+      // List models for Claude provider - no agent needed
+      const result = await ctx.client.listProviderModels("claude");
 
-        // Verify response structure
-        expect(result.provider).toBe("claude");
-        expect(result.error).toBeNull();
-        expect(result.fetchedAt).toBeTruthy();
+      // Verify response structure
+      expect(result.provider).toBe("claude");
+      expect(result.error).toBeNull();
+      expect(result.fetchedAt).toBeTruthy();
 
-        // Should return at least one model
-        expect(result.models).toBeTruthy();
-        expect(result.models.length).toBeGreaterThan(0);
+      // Should return at least one model
+      expect(result.models).toBeTruthy();
+      expect(result.models.length).toBeGreaterThan(0);
 
-        // Verify model structure
-        const model = result.models[0];
-        expect(model.provider).toBe("claude");
-        expect(model.id).toBeTruthy();
-        expect(model.label).toBeTruthy();
-      },
-      60000 // 1 minute timeout
-    );
+      // Verify model structure
+      const model = result.models[0];
+      expect(model.provider).toBe("claude");
+      expect(model.id).toBeTruthy();
+      expect(model.label).toBeTruthy();
+    }, 60000); // 1 minute timeout
 
     test.runIf(hasOpenCode)(
       "returns model list for OpenCode provider",
@@ -105,9 +106,7 @@ describe("daemon E2E", () => {
         expect(model.id).toBeTruthy();
         expect(model.label).toBeTruthy();
       },
-      60000
+      60000,
     );
   });
-
-
 });

@@ -1,11 +1,6 @@
 import { createContext, useContext, useEffect, useRef, type ReactNode } from "react";
 import { useWindowDimensions } from "react-native";
-import {
-  useSharedValue,
-  withTiming,
-  Easing,
-  type SharedValue,
-} from "react-native-reanimated";
+import { useSharedValue, withTiming, Easing, type SharedValue } from "react-native-reanimated";
 import { type GestureType } from "react-native-gesture-handler";
 import { UnistylesRuntime } from "react-native-unistyles";
 import { usePanelStore } from "@/stores/panel-store";
@@ -22,12 +17,13 @@ interface ExplorerSidebarAnimationContextValue {
   closeGestureRef: React.MutableRefObject<GestureType | undefined>;
 }
 
-const ExplorerSidebarAnimationContext = createContext<ExplorerSidebarAnimationContextValue | null>(null);
+const ExplorerSidebarAnimationContext = createContext<ExplorerSidebarAnimationContextValue | null>(
+  null,
+);
 
 export function ExplorerSidebarAnimationProvider({ children }: { children: ReactNode }) {
   const { width: windowWidth } = useWindowDimensions();
-  const isMobile =
-    UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
+  const isMobile = UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
   const mobileView = usePanelStore((state) => state.mobileView);
   const desktopFileExplorerOpen = usePanelStore((state) => state.desktop.fileExplorerOpen);
 
@@ -130,7 +126,9 @@ export function ExplorerSidebarAnimationProvider({ children }: { children: React
 export function useExplorerSidebarAnimation() {
   const context = useContext(ExplorerSidebarAnimationContext);
   if (!context) {
-    throw new Error("useExplorerSidebarAnimation must be used within ExplorerSidebarAnimationProvider");
+    throw new Error(
+      "useExplorerSidebarAnimation must be used within ExplorerSidebarAnimationProvider",
+    );
   }
   return context;
 }

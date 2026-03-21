@@ -134,9 +134,7 @@ async function saveDesktopAttachmentFromBase64(input: {
 
 function assertDesktopAttachment(attachment: AttachmentMetadata): void {
   if (attachment.storageType !== "desktop-file") {
-    throw new Error(
-      `Unsupported desktop attachment storage type '${attachment.storageType}'.`
-    );
+    throw new Error(`Unsupported desktop attachment storage type '${attachment.storageType}'.`);
   }
 }
 

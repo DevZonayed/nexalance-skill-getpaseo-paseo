@@ -182,7 +182,7 @@ function createScriptedQuery(params: {
 }
 
 async function collectUntilTerminal(
-  stream: AsyncGenerator<AgentStreamEvent>
+  stream: AsyncGenerator<AgentStreamEvent>,
 ): Promise<AgentStreamEvent[]> {
   const events: AgentStreamEvent[] = [];
   for await (const event of stream) {
@@ -211,7 +211,7 @@ function collectAssistantText(events: AgentStreamEvent[]): string {
 
 async function waitFor(
   predicate: () => boolean,
-  options?: { timeoutMs?: number; intervalMs?: number }
+  options?: { timeoutMs?: number; intervalMs?: number },
 ): Promise<void> {
   const timeoutMs = options?.timeoutMs ?? 2_000;
   const intervalMs = options?.intervalMs ?? 5;
@@ -259,9 +259,7 @@ describe("ClaudeAgentSession interrupt regression", () => {
     expect(queries[0]?.return).not.toHaveBeenCalled();
 
     const firstTurnEvents = await collectUntilTerminal(firstTurn);
-    expect(
-      firstTurnEvents.find((event) => event.type === "turn_canceled")
-    ).toMatchObject({
+    expect(firstTurnEvents.find((event) => event.type === "turn_canceled")).toMatchObject({
       type: "turn_canceled",
       provider: "claude",
       reason: "Interrupted",
@@ -546,8 +544,8 @@ describe("ClaudeAgentSession autonomous turns", () => {
     expect(collectAssistantText(foregroundEvents)).toContain("FOREGROUND_RESPONSE");
     expect(
       [autonomousStart.value, autonomousTimeline.value, autonomousComplete.value].some(
-        (event) => event?.type === "turn_canceled"
-      )
+        (event) => event?.type === "turn_canceled",
+      ),
     ).toBe(false);
     expect(sdkMocks.query).toHaveBeenCalledTimes(1);
     expect(queryRef?.prompts.map((prompt) => prompt.text)).toEqual([

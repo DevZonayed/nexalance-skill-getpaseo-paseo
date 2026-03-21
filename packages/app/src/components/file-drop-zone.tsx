@@ -1,10 +1,6 @@
 import { View, Text, Platform } from "react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
-import Animated, {
-  useAnimatedStyle,
-  withTiming,
-  useSharedValue,
-} from "react-native-reanimated";
+import Animated, { useAnimatedStyle, withTiming, useSharedValue } from "react-native-reanimated";
 import { useEffect } from "react";
 import { Upload } from "lucide-react-native";
 import { useFileDropZone } from "@/hooks/use-file-drop-zone";
@@ -18,11 +14,7 @@ interface FileDropZoneProps {
 
 const IS_WEB = Platform.OS === "web";
 
-export function FileDropZone({
-  children,
-  onFilesDropped,
-  disabled = false,
-}: FileDropZoneProps) {
+export function FileDropZone({ children, onFilesDropped, disabled = false }: FileDropZoneProps) {
   const { theme } = useUnistyles();
   const { isDragging, containerRef } = useFileDropZone({
     onFilesDropped,

@@ -222,7 +222,7 @@ const SYSTEM_ERROR_PREFIX = "[System Error]";
 
 function attachPersistenceCwd(
   handle: AgentPersistenceHandle | null,
-  cwd: string
+  cwd: string,
 ): AgentPersistenceHandle | null {
   if (!handle) {
     return null;
@@ -247,10 +247,7 @@ type LiveEventStreamingSession = AgentSession & {
 
 const DEFAULT_TIMELINE_FETCH_LIMIT = 200;
 const LIVE_BACKLOG_TERMINAL_REPLAY_DELAY_MS = 300;
-const BUSY_STATUSES: AgentLifecycleStatus[] = [
-  "initializing",
-  "running",
-];
+const BUSY_STATUSES: AgentLifecycleStatus[] = ["initializing", "running"];
 const AgentIdSchema = z.string().uuid();
 
 function isAgentBusy(status: AgentLifecycleStatus): boolean {
@@ -265,10 +262,7 @@ function isTurnTerminalEvent(event: AgentStreamEvent): boolean {
   );
 }
 
-function createAbortError(
-  signal: AbortSignal | undefined,
-  fallbackMessage: string
-): Error {
+function createAbortError(signal: AbortSignal | undefined, fallbackMessage: string): Error {
   const reason = signal?.reason;
   const message =
     typeof reason === "string"
@@ -287,13 +281,10 @@ function validateAgentId(agentId: string, source: string): string {
   return result.data;
 }
 
-function supportsLiveEventStream(
-  session: AgentSession
-): session is LiveEventStreamingSession {
+function supportsLiveEventStream(session: AgentSession): session is LiveEventStreamingSession {
   return (
     "streamLiveEvents" in session &&
-    typeof (session as { streamLiveEvents?: unknown }).streamLiveEvents ===
-      "function"
+    typeof (session as { streamLiveEvents?: unknown }).streamLiveEvents === "function"
   );
 }
 
@@ -316,10 +307,7 @@ export class AgentManager {
   private readonly backgroundTasks = new Set<Promise<void>>();
   private readonly liveEventPumps = new Map<string, Promise<void>>();
   private readonly liveEventBacklog = new Map<string, AgentStreamEvent[]>();
-  private readonly liveEventBacklogFlushTimers = new Map<
-    string,
-    ReturnType<typeof setTimeout>
-  >();
+  private readonly liveEventBacklogFlushTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private onAgentAttention?: AgentAttentionCallback;
   private logger: Logger;
 
@@ -363,9 +351,7 @@ export class AgentManager {
 
   subscribe(callback: AgentSubscriber, options?: SubscribeOptions): () => void {
     const targetAgentId =
-      options?.agentId == null
-        ? null
-        : validateAgentId(options.agentId, "subscribe");
+      options?.agentId == null ? null : validateAgentId(options.agentId, "subscribe");
     const record: SubscriptionRecord = {
       callback,
       agentId: targetAgentId,
@@ -409,7 +395,7 @@ export class AgentManager {
   }
 
   async listPersistedAgents(
-    options?: PersistedAgentQueryOptions
+    options?: PersistedAgentQueryOptions,
   ): Promise<PersistedAgentDescriptor[]> {
     if (options?.provider) {
       const client = this.requireClient(options.provider);
@@ -430,19 +416,13 @@ export class AgentManager {
         });
         descriptors.push(...entries);
       } catch (error) {
-        this.logger.warn(
-          { err: error, provider },
-          "Failed to list persisted agents for provider"
-        );
+        this.logger.warn({ err: error, provider }, "Failed to list persisted agents for provider");
       }
     }
 
     const limit = options?.limit ?? 20;
     return descriptors
-      .sort(
-        (a, b) =>
-          b.lastActivityAt.getTime() - a.lastActivityAt.getTime()
-      )
+      .sort((a, b) => b.lastActivityAt.getTime() - a.lastActivityAt.getTime())
       .slice(0, limit);
   }
 
@@ -467,10 +447,7 @@ export class AgentManager {
         } satisfies ProviderAvailability;
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        this.logger.warn(
-          { err: error, provider },
-          "Failed to check provider availability"
-        );
+        this.logger.warn({ err: error, provider }, "Failed to check provider availability");
         return {
           provider,
           available: false,
@@ -488,7 +465,7 @@ export class AgentManager {
     const available = await client.isAvailable();
     if (!available) {
       throw new Error(
-        `Provider '${normalizedConfig.provider}' is not available. Please ensure the CLI is installed.`
+        `Provider '${normalizedConfig.provider}' is not available. Please ensure the CLI is installed.`,
       );
     }
 
@@ -496,7 +473,7 @@ export class AgentManager {
     try {
       if (!session.listCommands) {
         throw new Error(
-          `Provider '${normalizedConfig.provider}' does not support listing commands`
+          `Provider '${normalizedConfig.provider}' does not support listing commands`,
         );
       }
       return await session.listCommands();
@@ -506,7 +483,7 @@ export class AgentManager {
       } catch (error) {
         this.logger.warn(
           { err: error, provider: normalizedConfig.provider },
-          "Failed to close draft command listing session"
+          "Failed to close draft command listing session",
         );
       }
     }
@@ -528,18 +505,9 @@ export class AgentManager {
     return rows.map((row) => ({ ...row }));
   }
 
-  fetchTimeline(
-    id: string,
-    options?: AgentTimelineFetchOptions
-  ): AgentTimelineFetchResult {
+  fetchTimeline(id: string, options?: AgentTimelineFetchOptions): AgentTimelineFetchResult {
     const agent = this.requireAgent(id);
-    const {
-      rows,
-      epoch,
-      nextSeq,
-      minSeq,
-      maxSeq,
-    } = this.ensureTimelineState(agent);
+    const { rows, epoch, nextSeq, minSeq, maxSeq } = this.ensureTimelineState(agent);
     const direction = options?.direction ?? "tail";
     const requestedLimit = options?.limit;
     const limit =
@@ -596,8 +564,7 @@ export class AgentManager {
     }
 
     if (direction === "tail") {
-      const selected =
-        selectAll || limit >= rows.length ? rows : rows.slice(rows.length - limit);
+      const selected = selectAll || limit >= rows.length ? rows : rows.slice(rows.length - limit);
       const hasOlder = selected.length > 0 && selected[0]!.seq > minSeq;
       return {
         epoch,
@@ -629,8 +596,7 @@ export class AgentManager {
         };
       }
 
-      const selected =
-        selectAll ? rows.slice(startIdx) : rows.slice(startIdx, startIdx + limit);
+      const selected = selectAll ? rows.slice(startIdx) : rows.slice(startIdx, startIdx + limit);
       const lastSelected = selected[selected.length - 1];
       return {
         epoch,
@@ -648,8 +614,7 @@ export class AgentManager {
     // direction === "before"
     const beforeSeq = cursor?.seq ?? nextSeq;
     const endExclusive = rows.findIndex((row) => row.seq >= beforeSeq);
-    const boundedRows =
-      endExclusive < 0 ? rows : rows.slice(0, endExclusive);
+    const boundedRows = endExclusive < 0 ? rows : rows.slice(0, endExclusive);
     const selected =
       selectAll || limit >= boundedRows.length
         ? boundedRows
@@ -672,13 +637,10 @@ export class AgentManager {
   async createAgent(
     config: AgentSessionConfig,
     agentId?: string,
-    options?: { labels?: Record<string, string> }
+    options?: { labels?: Record<string, string> },
   ): Promise<ManagedAgent> {
     // Generate agent ID early so we can use it in MCP config
-    const resolvedAgentId = validateAgentId(
-      agentId ?? this.idFactory(),
-      "createAgent"
-    );
+    const resolvedAgentId = validateAgentId(agentId ?? this.idFactory(), "createAgent");
     const normalizedConfig = await this.normalizeConfig(config, {
       labels: options?.labels,
       agentId: resolvedAgentId,
@@ -686,15 +648,14 @@ export class AgentManager {
     const client = this.requireClient(normalizedConfig.provider);
     const available = await client.isAvailable();
     if (!available) {
-      throw new Error(`Provider '${normalizedConfig.provider}' is not available. Please ensure the CLI is installed.`);
+      throw new Error(
+        `Provider '${normalizedConfig.provider}' is not available. Please ensure the CLI is installed.`,
+      );
     }
     const session = await client.createSession(normalizedConfig);
-    return this.registerSession(
-      session,
-      normalizedConfig,
-      resolvedAgentId,
-      { labels: options?.labels }
-    );
+    return this.registerSession(session, normalizedConfig, resolvedAgentId, {
+      labels: options?.labels,
+    });
   }
 
   // Reconstruct an agent from provider persistence. Callers should explicitly
@@ -708,11 +669,11 @@ export class AgentManager {
       updatedAt?: Date;
       lastUserMessageAt?: Date | null;
       labels?: Record<string, string>;
-    }
+    },
   ): Promise<ManagedAgent> {
     const resolvedAgentId = validateAgentId(
       agentId ?? this.idFactory(),
-      "resumeAgentFromPersistence"
+      "resumeAgentFromPersistence",
     );
     const metadata = (handle.metadata ?? {}) as Partial<AgentSessionConfig>;
     const mergedConfig = {
@@ -727,19 +688,14 @@ export class AgentManager {
         : overrides;
     const client = this.requireClient(handle.provider);
     const session = await client.resumeSession(handle, resumeOverrides);
-    return this.registerSession(
-      session,
-      normalizedConfig,
-      resolvedAgentId,
-      options
-    );
+    return this.registerSession(session, normalizedConfig, resolvedAgentId, options);
   }
 
   // Hot-reload an active agent session with config overrides while preserving
   // in-memory timeline state.
   async reloadAgentSession(
     agentId: string,
-    overrides?: Partial<AgentSessionConfig>
+    overrides?: Partial<AgentSessionConfig>,
   ): Promise<ManagedAgent> {
     let existing = this.requireAgent(agentId);
     if (existing.lifecycle === "running" || existing.pendingRun) {
@@ -777,10 +733,7 @@ export class AgentManager {
     try {
       await existing.session.close();
     } catch (error) {
-      this.logger.warn(
-        { err: error, agentId },
-        "Failed to close previous session during refresh"
-      );
+      this.logger.warn({ err: error, agentId }, "Failed to close previous session during refresh");
     }
 
     // Preserve existing labels and timeline during reload.
@@ -809,7 +762,7 @@ export class AgentManager {
         hasPendingRun: Boolean(agent.pendingRun),
         pendingPermissions: agent.pendingPermissions.size,
       },
-      "closeAgent: start"
+      "closeAgent: start",
     );
     this.agents.delete(agentId);
     this.liveEventPumps.delete(agentId);
@@ -856,10 +809,7 @@ export class AgentManager {
     this.emitState(agent);
   }
 
-  async setAgentThinkingOption(
-    agentId: string,
-    thinkingOptionId: string | null
-  ): Promise<void> {
+  async setAgentThinkingOption(agentId: string, thinkingOptionId: string | null): Promise<void> {
     const agent = this.requireAgent(agentId);
     const normalizedThinkingOptionId =
       typeof thinkingOptionId === "string" && thinkingOptionId.trim().length > 0
@@ -885,10 +835,7 @@ export class AgentManager {
     this.emitState(agent);
   }
 
-  async setLabels(
-    agentId: string,
-    labels: Record<string, string>
-  ): Promise<void> {
+  async setLabels(agentId: string, labels: Record<string, string>): Promise<void> {
     const agent = this.requireAgent(agentId);
     agent.labels = { ...agent.labels, ...labels };
     await this.persistSnapshot(agent);
@@ -916,7 +863,7 @@ export class AgentManager {
   async runAgent(
     agentId: string,
     prompt: AgentPromptInput,
-    options?: AgentRunOptions
+    options?: AgentRunOptions,
   ): Promise<AgentRunResult> {
     const events = this.streamAgent(agentId, prompt, options);
     const timeline: AgentTimelineItem[] = [];
@@ -941,9 +888,7 @@ export class AgentManager {
     const agent = this.requireAgent(agentId);
     const sessionId = agent.persistence?.sessionId;
     if (!sessionId) {
-      throw new Error(
-        `Agent ${agentId} has no persistence.sessionId after run completed`
-      );
+      throw new Error(`Agent ${agentId} has no persistence.sessionId after run completed`);
     }
     return {
       sessionId,
@@ -957,7 +902,7 @@ export class AgentManager {
   recordUserMessage(
     agentId: string,
     text: string,
-    options?: { messageId?: string; emitState?: boolean }
+    options?: { messageId?: string; emitState?: boolean },
   ): void {
     const agent = this.requireAgent(agentId);
     const normalizedMessageId = normalizeMessageId(options?.messageId);
@@ -969,14 +914,18 @@ export class AgentManager {
     const updatedAt = this.touchUpdatedAt(agent);
     agent.lastUserMessageAt = updatedAt;
     const row = this.recordTimeline(agent, item);
-    this.dispatchStream(agentId, {
-      type: "timeline",
-      item,
-      provider: agent.provider,
-    }, {
-      seq: row.seq,
-      epoch: this.ensureTimelineState(agent).epoch,
-    });
+    this.dispatchStream(
+      agentId,
+      {
+        type: "timeline",
+        item,
+        provider: agent.provider,
+      },
+      {
+        seq: row.seq,
+        epoch: this.ensureTimelineState(agent).epoch,
+      },
+    );
     if (options?.emitState !== false) {
       this.emitState(agent);
     }
@@ -986,21 +935,22 @@ export class AgentManager {
     const agent = this.requireAgent(agentId);
     this.touchUpdatedAt(agent);
     const row = this.recordTimeline(agent, item);
-    this.dispatchStream(agentId, {
-      type: "timeline",
-      item,
-      provider: agent.provider,
-    }, {
-      seq: row.seq,
-      epoch: this.ensureTimelineState(agent).epoch,
-    });
+    this.dispatchStream(
+      agentId,
+      {
+        type: "timeline",
+        item,
+        provider: agent.provider,
+      },
+      {
+        seq: row.seq,
+        epoch: this.ensureTimelineState(agent).epoch,
+      },
+    );
     await this.persistSnapshot(agent);
   }
 
-  async emitLiveTimelineItem(
-    agentId: string,
-    item: AgentTimelineItem
-  ): Promise<void> {
+  async emitLiveTimelineItem(agentId: string, item: AgentTimelineItem): Promise<void> {
     const agent = this.requireAgent(agentId);
     this.touchUpdatedAt(agent);
     this.dispatchStream(agentId, {
@@ -1013,7 +963,7 @@ export class AgentManager {
   streamAgent(
     agentId: string,
     prompt: AgentPromptInput,
-    options?: AgentRunOptions
+    options?: AgentRunOptions,
   ): AsyncGenerator<AgentStreamEvent> {
     const existingAgent = this.requireAgent(agentId);
     this.logger.trace(
@@ -1024,7 +974,7 @@ export class AgentManager {
         promptType: typeof prompt === "string" ? "string" : "structured",
         hasRunOptions: Boolean(options),
       },
-      "streamAgent: requested"
+      "streamAgent: requested",
     );
     if (existingAgent.pendingRun) {
       this.logger.trace(
@@ -1032,7 +982,7 @@ export class AgentManager {
           agentId,
           lifecycle: existingAgent.lifecycle,
         },
-        "streamAgent: rejected because pendingRun already exists"
+        "streamAgent: rejected because pendingRun already exists",
       );
       throw new Error(`Agent ${agentId} already has an active run`);
     }
@@ -1052,7 +1002,7 @@ export class AgentManager {
           lifecycle: agent.lifecycle,
           hasPendingRun: Boolean(agent.pendingRun),
         },
-        "streamAgent.finalize: invoked"
+        "streamAgent.finalize: invoked",
       );
       if (finalized) {
         return;
@@ -1067,7 +1017,7 @@ export class AgentManager {
             lifecycle: agent.lifecycle,
             hasPendingRun: Boolean(agent.pendingRun),
           },
-          "streamAgent.finalize: skipped because pendingRun no longer points to streamForwarder"
+          "streamAgent.finalize: skipped because pendingRun no longer points to streamForwarder",
         );
         if (error) {
           agent.lastError = error;
@@ -1078,8 +1028,7 @@ export class AgentManager {
       const mutableAgent = agent as ActiveManagedAgent;
       mutableAgent.pendingRun = null;
       const terminalError = error ?? mutableAgent.lastError;
-      const shouldHoldBusyForReplacement =
-        mutableAgent.pendingReplacement && !terminalError;
+      const shouldHoldBusyForReplacement = mutableAgent.pendingReplacement && !terminalError;
       mutableAgent.lifecycle = shouldHoldBusyForReplacement
         ? "running"
         : terminalError
@@ -1092,10 +1041,7 @@ export class AgentManager {
           ? { provider: mutableAgent.provider, sessionId: mutableAgent.runtimeInfo.sessionId }
           : null);
       if (persistenceHandle) {
-        mutableAgent.persistence = attachPersistenceCwd(
-          persistenceHandle,
-          mutableAgent.cwd
-        );
+        mutableAgent.persistence = attachPersistenceCwd(persistenceHandle, mutableAgent.cwd);
       }
       this.logger.trace(
         {
@@ -1105,7 +1051,7 @@ export class AgentManager {
           terminalError,
           pendingReplacement: mutableAgent.pendingReplacement,
         },
-        "streamAgent.finalize: applying terminal state"
+        "streamAgent.finalize: applying terminal state",
       );
       if (!shouldHoldBusyForReplacement) {
         this.emitState(mutableAgent);
@@ -1133,14 +1079,13 @@ export class AgentManager {
                 lifecycle: agent.lifecycle,
                 hasPendingRun: Boolean(agent.pendingRun),
               },
-              "streamAgent: forwarded terminal/turn event"
+              "streamAgent: forwarded terminal/turn event",
             );
           }
           yield event;
         }
       } catch (error) {
-        finalizeError =
-          error instanceof Error ? error.message : "Agent stream failed";
+        finalizeError = error instanceof Error ? error.message : "Agent stream failed";
         self.handleStreamEvent(agent, {
           type: "turn_failed",
           provider: agent.provider,
@@ -1167,7 +1112,7 @@ export class AgentManager {
         lifecycle: agent.lifecycle,
         hasPendingRun: Boolean(agent.pendingRun),
       },
-      "streamAgent: started"
+      "streamAgent: started",
     );
 
     return streamForwarder;
@@ -1176,7 +1121,7 @@ export class AgentManager {
   replaceAgentRun(
     agentId: string,
     prompt: AgentPromptInput,
-    options?: AgentRunOptions
+    options?: AgentRunOptions,
   ): AsyncGenerator<AgentStreamEvent> {
     const snapshot = this.requireAgent(agentId);
     if (snapshot.lifecycle !== "running" && !snapshot.pendingRun) {
@@ -1200,7 +1145,7 @@ export class AgentManager {
           const latestActive = latest as ActiveManagedAgent;
           latestActive.pendingReplacement = false;
           const hasForegroundRun = Boolean(
-            (latestActive as { pendingRun: AsyncGenerator<AgentStreamEvent> | null }).pendingRun
+            (latestActive as { pendingRun: AsyncGenerator<AgentStreamEvent> | null }).pendingRun,
           );
           const lifecycle = (latestActive as { lifecycle: AgentLifecycleStatus }).lifecycle;
           if (!hasForegroundRun && lifecycle === "running") {
@@ -1224,10 +1169,7 @@ export class AgentManager {
       return;
     }
 
-    if (
-      (!("pendingRun" in snapshot) || !snapshot.pendingRun) &&
-      !snapshot.pendingReplacement
-    ) {
+    if ((!("pendingRun" in snapshot) || !snapshot.pendingRun) && !snapshot.pendingReplacement) {
       throw new Error(`Agent ${agentId} has no pending run`);
     }
 
@@ -1274,7 +1216,8 @@ export class AgentManager {
       };
 
       if (options?.signal) {
-        abortHandler = () => finishErr(createAbortError(options.signal!, "wait_for_agent_start aborted"));
+        abortHandler = () =>
+          finishErr(createAbortError(options.signal!, "wait_for_agent_start aborted"));
         options.signal.addEventListener("abort", abortHandler, { once: true });
       }
 
@@ -1299,7 +1242,7 @@ export class AgentManager {
             return;
           }
         },
-        { agentId, replayState: true }
+        { agentId, replayState: true },
       );
     });
   }
@@ -1307,7 +1250,7 @@ export class AgentManager {
   async respondToPermission(
     agentId: string,
     requestId: string,
-    response: AgentPermissionResponse
+    response: AgentPermissionResponse,
   ): Promise<void> {
     const agent = this.requireAgent(agentId);
     await agent.session.respondToPermission(requestId, response);
@@ -1327,8 +1270,7 @@ export class AgentManager {
   async cancelAgentRun(agentId: string): Promise<boolean> {
     const agent = this.requireAgent(agentId);
     const pendingRun = agent.pendingRun;
-    const hasForegroundPendingRun =
-      Boolean(pendingRun) && typeof pendingRun?.return === "function";
+    const hasForegroundPendingRun = Boolean(pendingRun) && typeof pendingRun?.return === "function";
     const isAutonomousRunning = agent.lifecycle === "running" && !hasForegroundPendingRun;
 
     if (!hasForegroundPendingRun && !isAutonomousRunning) {
@@ -1338,10 +1280,7 @@ export class AgentManager {
     try {
       await agent.session.interrupt();
     } catch (error) {
-      this.logger.error(
-        { err: error, agentId },
-        "Failed to interrupt session"
-      );
+      this.logger.error({ err: error, agentId }, "Failed to interrupt session");
     }
 
     if (hasForegroundPendingRun && pendingRun) {
@@ -1350,10 +1289,7 @@ export class AgentManager {
         // and pendingRun is properly cleared before we return.
         await pendingRun.return(undefined as unknown as AgentStreamEvent);
       } catch (error) {
-        this.logger.error(
-          { err: error, agentId },
-          "Failed to cancel run"
-        );
+        this.logger.error({ err: error, agentId }, "Failed to cancel run");
         throw error;
       }
     }
@@ -1402,7 +1338,7 @@ export class AgentManager {
   }
 
   private getLastAssistantMessageFromTimeline(
-    timeline: readonly AgentTimelineItem[]
+    timeline: readonly AgentTimelineItem[],
   ): string | null {
     // Collect the last contiguous assistant messages (Claude streams chunks)
     const chunks: string[] = [];
@@ -1426,22 +1362,21 @@ export class AgentManager {
 
   async waitForAgentEvent(
     agentId: string,
-    options?: WaitForAgentOptions
+    options?: WaitForAgentOptions,
   ): Promise<WaitForAgentResult> {
     const snapshot = this.getAgent(agentId);
     if (!snapshot) {
       throw new Error(`Agent ${agentId} not found`);
     }
 
-    const hasPendingRun =
-      "pendingRun" in snapshot && Boolean(snapshot.pendingRun);
+    const hasPendingRun = "pendingRun" in snapshot && Boolean(snapshot.pendingRun);
 
     const immediatePermission = this.peekPendingPermission(snapshot);
     if (immediatePermission) {
       return {
         status: snapshot.lifecycle,
         permission: immediatePermission,
-        lastMessage: this.getLastAssistantMessage(agentId)
+        lastMessage: this.getLastAssistantMessage(agentId),
       };
     }
 
@@ -1452,21 +1387,20 @@ export class AgentManager {
       return {
         status: initialStatus,
         permission: null,
-        lastMessage: this.getLastAssistantMessage(agentId)
+        lastMessage: this.getLastAssistantMessage(agentId),
       };
     }
     if (waitForActive && !initialBusy && !hasPendingRun) {
       return {
         status: initialStatus,
         permission: null,
-        lastMessage: this.getLastAssistantMessage(agentId)
+        lastMessage: this.getLastAssistantMessage(agentId),
       };
     }
 
     if (options?.signal?.aborted) {
       throw createAbortError(options.signal, "wait_for_agent aborted");
     }
-
 
     return await new Promise<WaitForAgentResult>((resolve, reject) => {
       // Bug #1 Fix: Check abort signal AGAIN inside Promise constructor
@@ -1511,7 +1445,7 @@ export class AgentManager {
         resolve({
           status: currentStatus,
           permission,
-          lastMessage: this.getLastAssistantMessage(agentId)
+          lastMessage: this.getLastAssistantMessage(agentId),
         });
       };
 
@@ -1567,7 +1501,7 @@ export class AgentManager {
             }
           }
         },
-        { agentId, replayState: true }
+        { agentId, replayState: true },
       );
     });
   }
@@ -1589,27 +1523,23 @@ export class AgentManager {
       lastUsage?: AgentUsage;
       lastError?: string;
       attention?: AttentionState;
-    }
+    },
   ): Promise<ManagedAgent> {
     const resolvedAgentId = validateAgentId(agentId, "registerSession");
     if (this.agents.has(resolvedAgentId)) {
       throw new Error(`Agent with id ${resolvedAgentId} already exists`);
     }
-    const initialPersistedTitle = await this.resolveInitialPersistedTitle(
-      resolvedAgentId,
-      config
-    );
+    const initialPersistedTitle = await this.resolveInitialPersistedTitle(resolvedAgentId, config);
 
     const now = new Date();
     const initialTimeline = options?.timeline ? [...options.timeline] : [];
-    const initialTimelineRows =
-      options?.timelineRows?.length
-        ? options.timelineRows.map((row) => ({ ...row }))
-        : this.buildTimelineRowsFromItems(
-            initialTimeline,
-            options?.timelineNextSeq ?? 1,
-            (options?.updatedAt ?? options?.createdAt ?? now).toISOString()
-          );
+    const initialTimelineRows = options?.timelineRows?.length
+      ? options.timelineRows.map((row) => ({ ...row }))
+      : this.buildTimelineRowsFromItems(
+          initialTimeline,
+          options?.timelineNextSeq ?? 1,
+          (options?.updatedAt ?? options?.createdAt ?? now).toISOString(),
+        );
     const derivedNextSeq =
       options?.timelineNextSeq ??
       (initialTimelineRows.length
@@ -1674,7 +1604,7 @@ export class AgentManager {
 
   private async resolveInitialPersistedTitle(
     agentId: string,
-    config: AgentSessionConfig
+    config: AgentSessionConfig,
   ): Promise<string | null> {
     const existing = await this.registry?.get(agentId);
     if (existing) {
@@ -1689,7 +1619,7 @@ export class AgentManager {
   private buildTimelineRowsFromItems(
     items: readonly AgentTimelineItem[],
     startSeq: number,
-    timestamp: string
+    timestamp: string,
   ): AgentTimelineRow[] {
     let nextSeq = startSeq;
     return items.map((item) => {
@@ -1726,7 +1656,7 @@ export class AgentManager {
 
   private async persistSnapshot(
     agent: ManagedAgent,
-    options?: { title?: string | null; internal?: boolean }
+    options?: { title?: string | null; internal?: boolean },
   ): Promise<void> {
     if (!this.registry) {
       return;
@@ -1754,9 +1684,7 @@ export class AgentManager {
 
     try {
       const pending = agent.session.getPendingPermissions();
-      agent.pendingPermissions = new Map(
-        pending.map((request) => [request.id, request])
-      );
+      agent.pendingPermissions = new Map(pending.map((request) => [request.id, request]));
     } catch {
       agent.pendingPermissions.clear();
     }
@@ -1776,7 +1704,7 @@ export class AgentManager {
       if (!agent.persistence && newInfo.sessionId) {
         agent.persistence = attachPersistenceCwd(
           { provider: agent.provider, sessionId: newInfo.sessionId },
-          agent.cwd
+          agent.cwd,
         );
       }
       // Emit state if runtimeInfo changed so clients get the updated model
@@ -1803,7 +1731,7 @@ export class AgentManager {
           return [];
         }
         return [[messageId, row.item.text]];
-      })
+      }),
     );
     try {
       for await (const event of agent.session.streamHistory()) {
@@ -1824,7 +1752,7 @@ export class AgentManager {
     options?: {
       fromHistory?: boolean;
       canonicalUserMessagesById?: ReadonlyMap<string, string>;
-    }
+    },
   ): void {
     // Only update timestamp for live events, not history replay
     if (!options?.fromHistory) {
@@ -1853,10 +1781,7 @@ export class AgentManager {
         // These are already canonically recorded by recordUserMessage() and replaying them would
         // create duplicates. Match by messageId (not text) to avoid dropping legitimate
         // provider-origin messages that happen to reuse the same text.
-        if (
-          options?.fromHistory &&
-          event.item.type === "user_message"
-        ) {
+        if (options?.fromHistory && event.item.type === "user_message") {
           const eventMessageId = normalizeMessageId(event.item.messageId);
           if (eventMessageId) {
             const canonicalText = options?.canonicalUserMessagesById?.get(eventMessageId);
@@ -1869,10 +1794,7 @@ export class AgentManager {
           break;
         }
         timelineRow = this.recordTimeline(agent, event.item);
-        if (
-          !options?.fromHistory &&
-          event.item.type === "user_message"
-        ) {
+        if (!options?.fromHistory && event.item.type === "user_message") {
           agent.lastUserMessageAt = new Date();
           this.emitState(agent);
         }
@@ -1884,7 +1806,7 @@ export class AgentManager {
             lifecycle: agent.lifecycle,
             hasPendingRun: Boolean(agent.pendingRun),
           },
-          "handleStreamEvent: turn_completed"
+          "handleStreamEvent: turn_completed",
         );
         agent.lastUsage = event.usage;
         agent.lastError = undefined;
@@ -1901,7 +1823,7 @@ export class AgentManager {
           agent,
           event.provider,
           this.formatTurnFailedMessage(event),
-          options
+          options,
         );
         for (const [requestId] of agent.pendingPermissions) {
           agent.pendingPermissions.delete(requestId);
@@ -1923,7 +1845,7 @@ export class AgentManager {
             lifecycle: agent.lifecycle,
             hasPendingRun: Boolean(agent.pendingRun),
           },
-          "handleStreamEvent: turn_canceled"
+          "handleStreamEvent: turn_canceled",
         );
         if (!agent.pendingRun) {
           (agent as ActiveManagedAgent).lifecycle = "idle";
@@ -1949,7 +1871,7 @@ export class AgentManager {
             lifecycle: agent.lifecycle,
             hasPendingRun: Boolean(agent.pendingRun),
           },
-          "handleStreamEvent: turn_started"
+          "handleStreamEvent: turn_started",
         );
         if (!agent.pendingRun) {
           (agent as ActiveManagedAgent).lifecycle = "running";
@@ -1976,12 +1898,16 @@ export class AgentManager {
 
     // Skip dispatching individual stream events during history replay.
     if (!options?.fromHistory) {
-      this.dispatchStream(agent.id, event, timelineRow
-        ? {
-            seq: timelineRow.seq,
-            epoch: this.ensureTimelineState(agent).epoch,
-          }
-        : undefined);
+      this.dispatchStream(
+        agent.id,
+        event,
+        timelineRow
+          ? {
+              seq: timelineRow.seq,
+              epoch: this.ensureTimelineState(agent).epoch,
+            }
+          : undefined,
+      );
     }
   }
 
@@ -1992,7 +1918,7 @@ export class AgentManager {
     options?: {
       fromHistory?: boolean;
       canonicalUserMessagesById?: ReadonlyMap<string, string>;
-    }
+    },
   ): void {
     if (options?.fromHistory) {
       return;
@@ -2021,12 +1947,12 @@ export class AgentManager {
       {
         seq: row.seq,
         epoch: this.ensureTimelineState(agent).epoch,
-      }
+      },
     );
   }
 
   private formatTurnFailedMessage(
-    event: Extract<AgentStreamEvent, { type: "turn_failed" }>
+    event: Extract<AgentStreamEvent, { type: "turn_failed" }>,
   ): string {
     const base = event.error.trim();
     const parts = [base.length > 0 ? base : "Provider run failed"];
@@ -2047,7 +1973,7 @@ export class AgentManager {
     options?: {
       fromHistory?: boolean;
       canonicalUserMessagesById?: ReadonlyMap<string, string>;
-    }
+    },
   ): boolean {
     if (options?.fromHistory || event.type !== "timeline") {
       return false;
@@ -2070,10 +1996,7 @@ export class AgentManager {
     });
   }
 
-  private recordTimeline(
-    agent: ManagedAgent,
-    item: AgentTimelineItem
-  ): AgentTimelineRow {
+  private recordTimeline(agent: ManagedAgent, item: AgentTimelineItem): AgentTimelineRow {
     const timelineState = this.ensureTimelineState(agent);
     const row: AgentTimelineRow = {
       seq: timelineState.nextSeq,
@@ -2174,7 +2097,7 @@ export class AgentManager {
 
   private broadcastAgentAttention(
     agent: ManagedAgent,
-    reason: "finished" | "error" | "permission"
+    reason: "finished" | "error" | "permission",
   ): void {
     this.onAgentAttention?.({
       agentId: agent.id,
@@ -2186,7 +2109,7 @@ export class AgentManager {
   private dispatchStream(
     agentId: string,
     event: AgentStreamEvent,
-    metadata?: { seq?: number; epoch?: string }
+    metadata?: { seq?: number; epoch?: string },
   ): void {
     this.dispatch({ type: "agent_stream", agentId, event, ...metadata });
   }
@@ -2223,10 +2146,9 @@ export class AgentManager {
     }
   }
 
-
   private async normalizeConfig(
     config: AgentSessionConfig,
-    _options?: { labels?: Record<string, string>; agentId?: string }
+    _options?: { labels?: Record<string, string>; agentId?: string },
   ): Promise<AgentSessionConfig> {
     const normalized: AgentSessionConfig = { ...config };
 
@@ -2239,7 +2161,11 @@ export class AgentManager {
           throw new Error(`Working directory is not a directory: ${normalized.cwd}`);
         }
       } catch (error) {
-        if (error instanceof Error && "code" in error && (error as NodeJS.ErrnoException).code === "ENOENT") {
+        if (
+          error instanceof Error &&
+          "code" in error &&
+          (error as NodeJS.ErrnoException).code === "ENOENT"
+        ) {
           throw new Error(`Working directory does not exist: ${normalized.cwd}`);
         }
         if (error instanceof Error) {
@@ -2252,8 +2178,7 @@ export class AgentManager {
     if (typeof normalized.model === "string") {
       const trimmed = normalized.model.trim();
       const normalizedId = trimmed.toLowerCase();
-      normalized.model =
-        trimmed.length > 0 && normalizedId !== "default" ? trimmed : undefined;
+      normalized.model = trimmed.length > 0 && normalizedId !== "default" ? trimmed : undefined;
     }
 
     return normalized;
@@ -2308,7 +2233,7 @@ export class AgentManager {
                   eventType: event.type,
                   backlogSize: (this.liveEventBacklog.get(latest.id)?.length ?? 0) + 1,
                 },
-                "Live event pump: queued event because pendingRun is active"
+                "Live event pump: queued event because pendingRun is active",
               );
               this.enqueueLiveEvent(latest.id, event);
               continue;
@@ -2316,15 +2241,9 @@ export class AgentManager {
             this.flushLiveEventBacklog(latest);
             this.handleStreamEvent(latest, event);
           }
-          this.logger.warn(
-            { agentId: agent.id },
-            "Live event pump stream ended; restarting"
-          );
+          this.logger.warn({ agentId: agent.id }, "Live event pump stream ended; restarting");
         } catch (error) {
-          this.logger.warn(
-            { err: error, agentId: agent.id },
-            "Live event pump failed"
-          );
+          this.logger.warn({ err: error, agentId: agent.id }, "Live event pump failed");
         }
 
         // Keep pump alive unless the agent is gone.
@@ -2377,10 +2296,7 @@ export class AgentManager {
         return;
       }
       if (latest.pendingRun) {
-        this.scheduleLiveEventBacklogFlush(
-          agentId,
-          LIVE_BACKLOG_TERMINAL_REPLAY_DELAY_MS
-        );
+        this.scheduleLiveEventBacklogFlush(agentId, LIVE_BACKLOG_TERMINAL_REPLAY_DELAY_MS);
         return;
       }
       this.flushLiveEventBacklog(latest);
@@ -2433,9 +2349,6 @@ export class AgentManager {
     } else {
       this.liveEventBacklog.set(agent.id, deferred);
     }
-    this.scheduleLiveEventBacklogFlush(
-      agent.id,
-      LIVE_BACKLOG_TERMINAL_REPLAY_DELAY_MS
-    );
+    this.scheduleLiveEventBacklogFlush(agent.id, LIVE_BACKLOG_TERMINAL_REPLAY_DELAY_MS);
   }
 }

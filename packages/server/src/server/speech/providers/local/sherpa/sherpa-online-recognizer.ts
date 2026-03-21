@@ -46,7 +46,11 @@ export class SherpaOnlineRecognizerEngine {
   private readonly logger: pino.Logger;
 
   constructor(config: SherpaOnlineRecognizerConfig, logger: pino.Logger) {
-    this.logger = logger.child({ module: "speech", provider: "local", component: "online-recognizer" });
+    this.logger = logger.child({
+      module: "speech",
+      provider: "local",
+      component: "online-recognizer",
+    });
 
     const { model } = config;
     if (model.kind === "transducer") {
@@ -105,11 +109,12 @@ export class SherpaOnlineRecognizerEngine {
 
     this.recognizer = sherpa.createOnlineRecognizer(recognizerConfig);
     const sr = this.recognizer?.config?.featConfig?.sampleRate;
-    this.sampleRate = typeof sr === "number" && Number.isFinite(sr) && sr > 0 ? sr : featConfig.sampleRate;
+    this.sampleRate =
+      typeof sr === "number" && Number.isFinite(sr) && sr > 0 ? sr : featConfig.sampleRate;
 
     this.logger.info(
       { sampleRate: this.sampleRate, modelKind: model.kind, numThreads: config.numThreads ?? 2 },
-      "Sherpa online recognizer initialized"
+      "Sherpa online recognizer initialized",
     );
   }
 

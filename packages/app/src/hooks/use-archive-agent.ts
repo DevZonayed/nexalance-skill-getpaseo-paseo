@@ -34,11 +34,7 @@ function toArchiveKey(input: ArchiveAgentInput): string {
 }
 
 function readPendingState(queryClient: QueryClient): ArchiveAgentPendingState {
-  return (
-    queryClient.getQueryData<ArchiveAgentPendingState>(
-      ARCHIVE_AGENT_PENDING_QUERY_KEY
-    ) ?? {}
-  );
+  return queryClient.getQueryData<ArchiveAgentPendingState>(ARCHIVE_AGENT_PENDING_QUERY_KEY) ?? {};
 }
 
 function setAgentArchiving(input: SetAgentArchivingInput): void {
@@ -65,7 +61,7 @@ function setAgentArchiving(input: SetAgentArchivingInput): void {
       const next = { ...state };
       delete next[key];
       return next;
-    }
+    },
   );
 }
 
@@ -79,7 +75,7 @@ function isAgentArchiving(input: IsAgentArchivingInput): boolean {
 
 function removeAgentFromListPayload<T extends AgentsListQueryData | undefined>(
   payload: T,
-  agentId: string
+  agentId: string,
 ): T {
   if (!payload || !Array.isArray(payload.entries) || !agentId) {
     return payload;
@@ -94,10 +90,7 @@ function removeAgentFromListPayload<T extends AgentsListQueryData | undefined>(
   } as T;
 }
 
-function removeAgentFromCachedLists(
-  queryClient: QueryClient,
-  input: ArchiveAgentInput
-): void {
+function removeAgentFromCachedLists(queryClient: QueryClient, input: ArchiveAgentInput): void {
   const agentId = input.agentId.trim();
   if (!agentId) {
     return;
@@ -105,11 +98,11 @@ function removeAgentFromCachedLists(
 
   queryClient.setQueryData<AgentsListQueryData | undefined>(
     ["sidebarAgentsList", input.serverId],
-    (current) => removeAgentFromListPayload(current, agentId)
+    (current) => removeAgentFromListPayload(current, agentId),
   );
   queryClient.setQueryData<AgentsListQueryData | undefined>(
     ["allAgents", input.serverId],
-    (current) => removeAgentFromListPayload(current, agentId)
+    (current) => removeAgentFromListPayload(current, agentId),
   );
 }
 
@@ -200,7 +193,7 @@ export function useArchiveAgent() {
     async (input: ArchiveAgentInput): Promise<void> => {
       await archiveMutateAsync(input);
     },
-    [archiveMutateAsync]
+    [archiveMutateAsync],
   );
 
   const isArchivingAgent = useCallback(
@@ -211,7 +204,7 @@ export function useArchiveAgent() {
       }
       return Boolean((pendingQuery.data ?? {})[key]);
     },
-    [pendingQuery.data]
+    [pendingQuery.data],
   );
 
   return {

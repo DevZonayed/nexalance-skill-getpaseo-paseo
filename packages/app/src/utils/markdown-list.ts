@@ -25,8 +25,7 @@ function toParentNodes(parent: unknown): MarkdownNode[] {
 
 function getNearestListParent(parent: unknown): MarkdownNode | undefined {
   return toParentNodes(parent).find(
-    (ancestor) =>
-      ancestor?.type === "ordered_list" || ancestor?.type === "bullet_list"
+    (ancestor) => ancestor?.type === "ordered_list" || ancestor?.type === "bullet_list",
   );
 }
 
@@ -61,7 +60,10 @@ function parseOrderedListStart(node: MarkdownNode): number {
   return 1;
 }
 
-export function getMarkdownListMarker(node: MarkdownNode, parent: unknown): {
+export function getMarkdownListMarker(
+  node: MarkdownNode,
+  parent: unknown,
+): {
   isOrdered: boolean;
   marker: string;
 } {

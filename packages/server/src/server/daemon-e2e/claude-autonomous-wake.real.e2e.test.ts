@@ -31,10 +31,7 @@ function sanitizeClaudeProjectPath(cwd: string): string {
   return cwd.replace(/[\\/\.]/g, "-").replace(/_/g, "-");
 }
 
-function resolveClaudeTranscriptPath(params: {
-  cwd: string;
-  sessionId: string;
-}): string {
+function resolveClaudeTranscriptPath(params: { cwd: string; sessionId: string }): string {
   const configDir = process.env.CLAUDE_CONFIG_DIR ?? path.join(homedir(), ".claude");
   const cwdCandidates = [params.cwd];
   try {
@@ -51,7 +48,7 @@ function resolveClaudeTranscriptPath(params: {
       configDir,
       "projects",
       sanitizeClaudeProjectPath(cwd),
-      `${params.sessionId}.jsonl`
+      `${params.sessionId}.jsonl`,
     );
     if (existsSync(candidate)) {
       return candidate;
@@ -62,7 +59,7 @@ function resolveClaudeTranscriptPath(params: {
     configDir,
     "projects",
     sanitizeClaudeProjectPath(params.cwd),
-    `${params.sessionId}.jsonl`
+    `${params.sessionId}.jsonl`,
   );
 }
 
@@ -169,7 +166,7 @@ type TranscriptRaceEvidence = {
 };
 
 function extractTranscriptRaceEvidence(
-  lines: ClaudeTranscriptLine[]
+  lines: ClaudeTranscriptLine[],
 ): TranscriptRaceEvidence | null {
   const userLines = lines.filter((line) => line.type === "user");
   const assistantLines = lines.filter((line) => line.type === "assistant");
@@ -180,9 +177,7 @@ function extractTranscriptRaceEvidence(
     const text = readUserText(line).trim().toLowerCase();
     return text === "hello" || text === "say exactly hello";
   };
-  const helloUser = [...userLines]
-    .reverse()
-    .find((line) => isHelloPrompt(line));
+  const helloUser = [...userLines].reverse().find((line) => isHelloPrompt(line));
 
   if (!doItAgain || !helloUser || typeof helloUser.uuid !== "string") {
     return null;
@@ -192,7 +187,7 @@ function extractTranscriptRaceEvidence(
     (line) =>
       typeof line.parentUuid === "string" &&
       line.parentUuid === helloUser.uuid &&
-      readAssistantText(line).length > 0
+      readAssistantText(line).length > 0,
   );
   if (!helloAssistant) {
     return null;
@@ -207,17 +202,16 @@ function extractTranscriptRaceEvidence(
     }
     return readUserText(line).includes("<task-notification>");
   });
-  const taskNotificationUser = [...taskNotificationCandidates]
-    .reverse()
-    .find((line) => parseTimestamp(line) >= helloTs) ?? taskNotificationCandidates[0];
+  const taskNotificationUser =
+    [...taskNotificationCandidates].reverse().find((line) => parseTimestamp(line) >= helloTs) ??
+    taskNotificationCandidates[0];
   if (!taskNotificationUser || typeof taskNotificationUser.uuid !== "string") {
     return null;
   }
-  const helloAssistantUuid =
-    typeof helloAssistant.uuid === "string" ? helloAssistant.uuid : null;
+  const helloAssistantUuid = typeof helloAssistant.uuid === "string" ? helloAssistant.uuid : null;
   const taskNotificationTs = parseTimestamp(taskNotificationUser);
   const sortedAssistantLines = [...assistantLines].sort(
-    (a, b) => parseTimestamp(a) - parseTimestamp(b)
+    (a, b) => parseTimestamp(a) - parseTimestamp(b),
   );
   const byTaskNotificationParent = sortedAssistantLines.find((line) => {
     const lineTs = parseTimestamp(line);
@@ -232,7 +226,8 @@ function extractTranscriptRaceEvidence(
     }
     return readAssistantText(line).length > 0;
   });
-  const notificationOutcomeAssistant = byTaskNotificationParent ??
+  const notificationOutcomeAssistant =
+    byTaskNotificationParent ??
     sortedAssistantLines.find((line) => {
       const lineTs = parseTimestamp(line);
       if (lineTs < taskNotificationTs) {
@@ -287,10 +282,7 @@ function summarizeTranscriptTail(lines: ClaudeTranscriptLine[], limit = 14): str
     .join("\n");
 }
 
-async function runPreHelloNoise(params: {
-  wsUrl: string;
-  durationMs: number;
-}): Promise<void> {
+async function runPreHelloNoise(params: { wsUrl: string; durationMs: number }): Promise<void> {
   const deadline = Date.now() + params.durationMs;
   while (Date.now() < deadline) {
     await new Promise<void>((resolve) => {
@@ -315,7 +307,7 @@ async function runPreHelloNoise(params: {
                 type: "fetch_agents_request",
                 requestId: `noise-${Date.now()}`,
               },
-            })
+            }),
           );
         } catch {
           // ignore
@@ -391,7 +383,7 @@ describe("daemon E2E (real claude) - autonomous wake from background task", () =
           [
             BACKGROUND_TASK_SLEEP_5_PROMPT,
             `When you later receive the task completion notification, reply with exactly: ${autonomousWakeToken}`,
-          ].join(" ")
+          ].join(" "),
         );
         const firstFinish = await client.waitForFinish(agent.id, 240_000);
         expect(firstFinish.status).toBe("idle");
@@ -405,7 +397,7 @@ describe("daemon E2E (real claude) - autonomous wake from background task", () =
         await client.waitForAgentUpsert(
           agent.id,
           (snapshot) => snapshot.status === "running",
-          30_000
+          30_000,
         );
 
         const autonomousFinish = await client.waitForFinish(agent.id, 120_000);
@@ -417,10 +409,9 @@ describe("daemon E2E (real claude) - autonomous wake from background task", () =
           projection: "canonical",
         });
         expect(timelineAfterWake.entries.length).toBeGreaterThanOrEqual(
-          timelineAtIdle.entries.length
+          timelineAtIdle.entries.length,
         );
-        let sawTimelineGrowth =
-          timelineAfterWake.entries.length > timelineAtIdle.entries.length;
+        let sawTimelineGrowth = timelineAfterWake.entries.length > timelineAtIdle.entries.length;
         const growthDeadline = Date.now() + 20_000;
         while (!sawTimelineGrowth && Date.now() < growthDeadline) {
           await sleep(250);
@@ -429,8 +420,7 @@ describe("daemon E2E (real claude) - autonomous wake from background task", () =
             limit: 0,
             projection: "canonical",
           });
-          sawTimelineGrowth =
-            nextTimeline.entries.length > timelineAtIdle.entries.length;
+          sawTimelineGrowth = nextTimeline.entries.length > timelineAtIdle.entries.length;
         }
         expect(sawTimelineGrowth).toBe(true);
       } finally {
@@ -439,7 +429,7 @@ describe("daemon E2E (real claude) - autonomous wake from background task", () =
         rmSync(cwd, { recursive: true, force: true });
       }
     },
-    420_000
+    420_000,
   );
 
   test.runIf(isCommandAvailable("claude"))(
@@ -477,7 +467,7 @@ describe("daemon E2E (real claude) - autonomous wake from background task", () =
         await client.waitForAgentUpsert(
           agent.id,
           (snapshot) => snapshot.status === "running",
-          30_000
+          30_000,
         );
         const autonomousFinish = await client.waitForFinish(agent.id, 120_000);
         expect(autonomousFinish.status).toBe("idle");
@@ -487,7 +477,7 @@ describe("daemon E2E (real claude) - autonomous wake from background task", () =
         rmSync(cwd, { recursive: true, force: true });
       }
     },
-    420_000
+    420_000,
   );
 
   test.runIf(isCommandAvailable("claude"))(
@@ -519,7 +509,7 @@ describe("daemon E2E (real claude) - autonomous wake from background task", () =
         await client.waitForAgentUpsert(
           agent.id,
           (snapshot) => snapshot.status === "running",
-          30_000
+          30_000,
         );
         const firstAutonomousFinish = await client.waitForFinish(agent.id, 120_000);
         expect(firstAutonomousFinish.status).toBe("idle");
@@ -535,7 +525,7 @@ describe("daemon E2E (real claude) - autonomous wake from background task", () =
         await client.waitForAgentUpsert(
           agent.id,
           (snapshot) => snapshot.status === "running",
-          30_000
+          30_000,
         );
 
         const startedAt = Date.now();
@@ -553,7 +543,7 @@ describe("daemon E2E (real claude) - autonomous wake from background task", () =
         rmSync(cwd, { recursive: true, force: true });
       }
     },
-    600_000
+    600_000,
   );
 
   test.runIf(isCommandAvailable("claude"))(
@@ -585,7 +575,7 @@ describe("daemon E2E (real claude) - autonomous wake from background task", () =
             "Use a background task to run exactly: sleep 5",
             "Do not wait for it to finish.",
             "After launching it, reply with exactly: SPAWNED",
-          ].join(" ")
+          ].join(" "),
         );
 
         const firstFinish = await client.waitForFinish(agent.id, 240_000);
@@ -607,7 +597,7 @@ describe("daemon E2E (real claude) - autonomous wake from background task", () =
         await client.waitForAgentUpsert(
           agent.id,
           (snapshot) => snapshot.status === "running",
-          30_000
+          30_000,
         );
       } finally {
         await client.close();
@@ -615,7 +605,7 @@ describe("daemon E2E (real claude) - autonomous wake from background task", () =
         rmSync(cwd, { recursive: true, force: true });
       }
     },
-    420_000
+    420_000,
   );
 
   test.runIf(isCommandAvailable("claude"))(
@@ -647,7 +637,7 @@ describe("daemon E2E (real claude) - autonomous wake from background task", () =
             "Use a background task to run exactly: sleep 5",
             "Do not wait for it to finish.",
             "After launching it, reply with exactly: SPAWNED",
-          ].join(" ")
+          ].join(" "),
         );
         const firstFinish = await client.waitForFinish(agent.id, 240_000);
         expect(firstFinish.status).toBe("idle");
@@ -664,7 +654,7 @@ describe("daemon E2E (real claude) - autonomous wake from background task", () =
         rmSync(cwd, { recursive: true, force: true });
       }
     },
-    420_000
+    420_000,
   );
 
   test.runIf(isCommandAvailable("claude"))(
@@ -701,7 +691,7 @@ describe("daemon E2E (real claude) - autonomous wake from background task", () =
           await client.waitForAgentUpsert(
             agent.id,
             (snapshot) => snapshot.status === "running",
-            30_000
+            30_000,
           );
           const firstCompletion = await client.waitForFinish(agent.id, 90_000);
           expect(firstCompletion.status).toBe("idle");
@@ -718,7 +708,7 @@ describe("daemon E2E (real claude) - autonomous wake from background task", () =
           const runningSnapshot = await client.waitForAgentUpsert(
             agent.id,
             (snapshot) => snapshot.status === "running",
-            30_000
+            30_000,
           );
 
           const timelineAtWake = await client.fetchAgentTimeline(agent.id, {
@@ -733,7 +723,7 @@ describe("daemon E2E (real claude) - autonomous wake from background task", () =
               cycle,
               wakeUpdatedAt: runningSnapshot.updatedAt,
               entriesAtWake: timelineAtWake.entries.length,
-            })
+            }),
           );
 
           await sleep(6_000);
@@ -743,7 +733,7 @@ describe("daemon E2E (real claude) - autonomous wake from background task", () =
             projection: "canonical",
           });
           expect(timelineAfterWake.entries.length).toBeGreaterThanOrEqual(
-            timelineAtWake.entries.length
+            timelineAtWake.entries.length,
           );
 
           let secondCompletion;
@@ -757,7 +747,7 @@ describe("daemon E2E (real claude) - autonomous wake from background task", () =
                 cycle,
                 phase: "second_completion_timeout",
                 statusAtTimeout: atTimeoutResult?.agent.status ?? "unknown",
-              })
+              }),
             );
             secondCompletion = await client.waitForFinish(agent.id, 30_000);
           }
@@ -771,7 +761,7 @@ describe("daemon E2E (real claude) - autonomous wake from background task", () =
         rmSync(cwd, { recursive: true, force: true });
       }
     },
-    900_000
+    900_000,
   );
 
   test.runIf(isCommandAvailable("claude"))(
@@ -804,7 +794,7 @@ describe("daemon E2E (real claude) - autonomous wake from background task", () =
         await client.waitForAgentUpsert(
           agent.id,
           (snapshot) => snapshot.status === "running",
-          30_000
+          30_000,
         );
         const firstCompletion = await client.waitForFinish(agent.id, 60_000);
         expect(firstCompletion.status).toBe("idle");
@@ -821,7 +811,7 @@ describe("daemon E2E (real claude) - autonomous wake from background task", () =
         await client.waitForAgentUpsert(
           agent.id,
           (snapshot) => snapshot.status === "running",
-          30_000
+          30_000,
         );
 
         // This is the failure point seen in production: agent flips to running
@@ -836,7 +826,7 @@ describe("daemon E2E (real claude) - autonomous wake from background task", () =
             JSON.stringify({
               phase: "second_background_completion_timeout",
               statusAtTimeout: atTimeoutResult?.agent.status ?? "unknown",
-            })
+            }),
           );
           secondCompletion = await client.waitForFinish(agent.id, 30_000);
         }
@@ -847,7 +837,7 @@ describe("daemon E2E (real claude) - autonomous wake from background task", () =
         rmSync(cwd, { recursive: true, force: true });
       }
     },
-    600_000
+    600_000,
   );
 
   test.runIf(isCommandAvailable("claude"))(
@@ -883,7 +873,7 @@ describe("daemon E2E (real claude) - autonomous wake from background task", () =
               "Start a background task that runs exactly: sleep 3",
               "Do not wait for the task result.",
               "Immediately reply with exactly: SPAWNED",
-            ].join(" ")
+            ].join(" "),
           );
 
           const firstFinish = await client.waitForFinish(agent.id, 240_000);
@@ -899,7 +889,7 @@ describe("daemon E2E (real claude) - autonomous wake from background task", () =
           const wakeSnapshot = await client.waitForAgentUpsert(
             agent.id,
             (snapshot) => snapshot.status === "running",
-            20_000
+            20_000,
           );
 
           const timelineAtWake = await client.fetchAgentTimeline(agent.id, {
@@ -914,7 +904,7 @@ describe("daemon E2E (real claude) - autonomous wake from background task", () =
               cycle,
               autonomousWakeUpdatedAt: wakeSnapshot.updatedAt,
               timelineEntriesAtWake: timelineAtWake.entries.length,
-            })
+            }),
           );
 
           await sleep(3_000);
@@ -924,7 +914,7 @@ describe("daemon E2E (real claude) - autonomous wake from background task", () =
             projection: "canonical",
           });
           expect(timelineAfterWake.entries.length).toBeGreaterThanOrEqual(
-            timelineAtWake.entries.length
+            timelineAtWake.entries.length,
           );
 
           await client.cancelAgent(agent.id);
@@ -937,7 +927,7 @@ describe("daemon E2E (real claude) - autonomous wake from background task", () =
         rmSync(cwd, { recursive: true, force: true });
       }
     },
-    900_000
+    900_000,
   );
 
   test.runIf(isCommandAvailable("claude"))(
@@ -970,7 +960,7 @@ describe("daemon E2E (real claude) - autonomous wake from background task", () =
         await client.waitForAgentUpsert(
           agent.id,
           (snapshot) => snapshot.status === "running",
-          30_000
+          30_000,
         );
         const firstAutonomousCompletion = await client.waitForFinish(agent.id, 60_000);
         expect(firstAutonomousCompletion.status).toBe("idle");
@@ -982,7 +972,7 @@ describe("daemon E2E (real claude) - autonomous wake from background task", () =
         await client.waitForAgentUpsert(
           agent.id,
           (snapshot) => snapshot.status === "running",
-          30_000
+          30_000,
         );
         await sleep(500);
         await client.sendMessage(agent.id, "say exactly HELLO");
@@ -1013,9 +1003,7 @@ describe("daemon E2E (real claude) - autonomous wake from background task", () =
 
         const afterWait = afterWaitResult?.agent ?? null;
         const sessionId =
-          afterWait?.persistence?.sessionId ??
-          afterWait?.runtimeInfo?.sessionId ??
-          null;
+          afterWait?.persistence?.sessionId ?? afterWait?.runtimeInfo?.sessionId ?? null;
         expect(typeof sessionId === "string" && sessionId.length > 0).toBe(true);
         const transcriptCwd = afterWait?.cwd ?? cwd;
         const transcriptPath = resolveClaudeTranscriptPath({
@@ -1044,14 +1032,12 @@ describe("daemon E2E (real claude) - autonomous wake from background task", () =
               `cancelRecovered=${cancelRecovered}`,
               "transcriptTail:",
               transcriptDump,
-            ].join("\n")
+            ].join("\n"),
           );
         }
 
         const helloAssistant = compactText(evidence.helloAssistantText);
-        const notificationAssistant = compactText(
-          evidence.notificationOutcomeAssistantText
-        );
+        const notificationAssistant = compactText(evidence.notificationOutcomeAssistantText);
         let assistantTexts: string[] = [];
         let assistantTextCombined = "";
         const timelineDeadline = Date.now() + 20_000;
@@ -1064,10 +1050,10 @@ describe("daemon E2E (real claude) - autonomous wake from background task", () =
           assistantTexts = timeline.entries
             .filter(
               (
-                entry
+                entry,
               ): entry is {
                 item: { type: "assistant_message"; text: string };
-              } => entry.item.type === "assistant_message"
+              } => entry.item.type === "assistant_message",
             )
             .map((entry) => compactText(entry.item.text));
           assistantTextCombined = assistantTexts.join("");
@@ -1088,6 +1074,6 @@ describe("daemon E2E (real claude) - autonomous wake from background task", () =
         rmSync(cwd, { recursive: true, force: true });
       }
     },
-    600_000
+    600_000,
   );
 });

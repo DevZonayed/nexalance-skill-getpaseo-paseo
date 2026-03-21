@@ -19,7 +19,5 @@ export type TurnDetectionSession = {
 
 export interface TurnDetectionProvider {
   id: "openai" | "local" | (string & {});
-  createSession(params: {
-    logger: pino.Logger;
-  }): TurnDetectionSession;
+  createSession(params: { logger: pino.Logger }): TurnDetectionSession;
 }

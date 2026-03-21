@@ -153,10 +153,7 @@ export class OpenAIRealtimeTranscriptionSession
         }
 
         const event = parsed as OpenAIServerEvent;
-        if (
-          event.type === "session.created" ||
-          event.type === "session.updated"
-        ) {
+        if (event.type === "session.created" || event.type === "session.updated") {
           if (!resolved) {
             resolved = true;
             resolve();
@@ -193,7 +190,11 @@ export class OpenAIRealtimeTranscriptionSession
 
         if (event.type === "conversation.item.input_audio_transcription.completed") {
           this.partialByItemId.set(event.item_id, event.transcript);
-          this.emit("transcript", { segmentId: event.item_id, transcript: event.transcript, isFinal: true });
+          this.emit("transcript", {
+            segmentId: event.item_id,
+            transcript: event.transcript,
+            isFinal: true,
+          });
           return;
         }
 

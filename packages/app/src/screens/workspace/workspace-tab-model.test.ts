@@ -42,7 +42,11 @@ describe("deriveWorkspaceTabModel", () => {
   it("applies stored order and appends unordered tabs deterministically", () => {
     const model = deriveWorkspaceTabModel({
       tabs: [
-        { tabId: "terminal_term-1", target: { kind: "terminal", terminalId: "term-1" }, createdAt: 3 },
+        {
+          tabId: "terminal_term-1",
+          target: { kind: "terminal", terminalId: "term-1" },
+          createdAt: 3,
+        },
         { tabId: "agent_agent-b", target: { kind: "agent", agentId: "agent-b" }, createdAt: 2 },
         { tabId: "agent_agent-a", target: { kind: "agent", agentId: "agent-a" }, createdAt: 1 },
       ],
@@ -67,7 +71,7 @@ describe("deriveWorkspaceTabModel", () => {
       deriveWorkspaceTabModel({
         ...base,
         focusedTabId: "agent_agent-b",
-      }).activeTabId
+      }).activeTabId,
     ).toBe("agent_agent-b");
 
     expect(deriveWorkspaceTabModel(base).activeTabId).toBe("agent_agent-a");

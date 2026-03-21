@@ -1,12 +1,7 @@
-import type {
-  AgentProvider,
-  ToolCallDetail,
-} from "@server/server/agent/agent-sdk-types";
+import type { AgentProvider, ToolCallDetail } from "@server/server/agent/agent-sdk-types";
 import type { AgentStreamEventPayload } from "@server/shared/messages";
 import type { AttachmentMetadata } from "@/attachments/types";
-import {
-  extractTaskEntriesFromToolCall,
-} from "../utils/tool-call-parsers";
+import { extractTaskEntriesFromToolCall } from "../utils/tool-call-parsers";
 
 /**
  * Simple hash function for deterministic ID generation
@@ -29,11 +24,7 @@ export function generateMessageId(): string {
   return `msg_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
 }
 
-function createTimelineId(
-  prefix: string,
-  text: string,
-  timestamp: Date
-): string {
+function createTimelineId(prefix: string, text: string, timestamp: Date): string {
   return `${prefix}_${timestamp.getTime()}_${simpleHash(text)}`;
 }
 
@@ -41,7 +32,7 @@ function createUniqueTimelineId(
   state: StreamItem[],
   prefix: string,
   text: string,
-  timestamp: Date
+  timestamp: Date,
 ): string {
   const base = createTimelineId(prefix, text, timestamp);
   // We only ever append new timeline items, and we incorporate the current
@@ -124,9 +115,7 @@ export type AgentToolCallItem = ToolCallItem & {
   payload: { source: "agent"; data: AgentToolCallData };
 };
 
-export function isAgentToolCallItem(
-  item: StreamItem
-): item is AgentToolCallItem {
+export function isAgentToolCallItem(item: StreamItem): item is AgentToolCallItem {
   return item.kind === "tool_call" && item.payload.source === "agent";
 }
 
@@ -191,7 +180,7 @@ function appendUserMessage(
   state: StreamItem[],
   text: string,
   timestamp: Date,
-  messageId?: string
+  messageId?: string,
 ): StreamItem[] {
   const { chunk, hasContent } = normalizeChunk(text);
   if (!hasContent) {
@@ -199,10 +188,9 @@ function appendUserMessage(
   }
 
   const chunkSeed = chunk.trim() || chunk;
-  const entryId =
-    messageId ?? createUniqueTimelineId(state, "user", chunkSeed, timestamp);
+  const entryId = messageId ?? createUniqueTimelineId(state, "user", chunkSeed, timestamp);
   const existingIndex = state.findIndex(
-    (entry) => entry.kind === "user_message" && entry.id === entryId
+    (entry) => entry.kind === "user_message" && entry.id === entryId,
   );
   const existing =
     existingIndex >= 0 && state[existingIndex]?.kind === "user_message"
@@ -215,9 +203,7 @@ function appendUserMessage(
     id: entryId,
     text: chunk,
     timestamp,
-    ...(preservedImages && preservedImages.length > 0
-      ? { images: preservedImages }
-      : {}),
+    ...(preservedImages && preservedImages.length > 0 ? { images: preservedImages } : {}),
   };
 
   if (existingIndex >= 0) {
@@ -233,7 +219,7 @@ function appendAssistantMessage(
   state: StreamItem[],
   text: string,
   timestamp: Date,
-  source: StreamUpdateSource
+  source: StreamUpdateSource,
 ): StreamItem[] {
   const { chunk, hasContent } = normalizeChunk(text);
   if (!chunk) {
@@ -280,11 +266,7 @@ function appendAssistantMessage(
   return [...state, item];
 }
 
-function appendThought(
-  state: StreamItem[],
-  text: string,
-  timestamp: Date
-): StreamItem[] {
+function appendThought(state: StreamItem[], text: string, timestamp: Date): StreamItem[] {
   const { chunk, hasContent } = normalizeChunk(text);
   if (!chunk) {
     return state;
@@ -329,15 +311,12 @@ function finalizeActiveThoughts(state: StreamItem[]): StreamItem[] {
   return mutated ? nextState : state;
 }
 
-function findExistingAgentToolCallIndex(
-  state: StreamItem[],
-  callId: string
-): number {
+function findExistingAgentToolCallIndex(state: StreamItem[], callId: string): number {
   return state.findIndex(
     (entry) =>
       entry.kind === "tool_call" &&
       entry.payload.source === "agent" &&
-      entry.payload.data.callId === callId
+      entry.payload.data.callId === callId,
   );
 }
 
@@ -345,10 +324,7 @@ function hasNonEmptyObject(value: unknown): boolean {
   return isRecord(value) && Object.keys(value).length > 0;
 }
 
-function mergeUnknownValue(
-  existing: unknown | null,
-  incoming: unknown | null
-): unknown | null {
+function mergeUnknownValue(existing: unknown | null, incoming: unknown | null): unknown | null {
   if (incoming === null) {
     return existing;
   }
@@ -390,7 +366,7 @@ function inputFromUnknownDetail(detail: ToolCallDetail): unknown | null {
 
 function mergeAgentToolCallStatus(
   existing: AgentToolCallStatus,
-  incoming: AgentToolCallStatus
+  incoming: AgentToolCallStatus,
 ): AgentToolCallStatus {
   if (existing === "failed" || incoming === "failed") {
     return "failed";
@@ -410,7 +386,7 @@ function mergeAgentToolCallStatus(
 function appendAgentToolCall(
   state: StreamItem[],
   data: AgentToolCallData,
-  timestamp: Date
+  timestamp: Date,
 ): StreamItem[] {
   const existingIndex = findExistingAgentToolCallIndex(state, data.callId);
 
@@ -420,13 +396,10 @@ function appendAgentToolCall(
     if (!existing || !isAgentToolCallItem(existing)) {
       return state;
     }
-    const mergedStatus = mergeAgentToolCallStatus(
-      existing.payload.data.status,
-      data.status
-    );
+    const mergedStatus = mergeAgentToolCallStatus(existing.payload.data.status, data.status);
     const mergedError =
       mergedStatus === "failed"
-        ? data.error ?? existing.payload.data.error ?? { message: "Tool call failed" }
+        ? (data.error ?? existing.payload.data.error ?? { message: "Tool call failed" })
         : null;
     const mergedMetadata =
       data.metadata || existing.payload.data.metadata
@@ -468,10 +441,7 @@ function appendAgentToolCall(
   return [...state, item];
 }
 
-function appendActivityLog(
-  state: StreamItem[],
-  entry: ActivityLogItem
-): StreamItem[] {
+function appendActivityLog(state: StreamItem[], entry: ActivityLogItem): StreamItem[] {
   const index = state.findIndex((existing) => existing.id === entry.id);
   if (index >= 0) {
     const next = [...state];
@@ -485,7 +455,7 @@ function appendTodoList(
   state: StreamItem[],
   provider: AgentProvider,
   items: TodoEntry[],
-  timestamp: Date
+  timestamp: Date,
 ): StreamItem[] {
   const normalizedItems = items.map((item) => ({
     text: item.text,
@@ -493,11 +463,7 @@ function appendTodoList(
   }));
 
   const lastItem = state[state.length - 1];
-  if (
-    lastItem &&
-    lastItem.kind === "todo_list" &&
-    lastItem.provider === provider
-  ) {
+  if (lastItem && lastItem.kind === "todo_list" && lastItem.provider === provider) {
     const next = [...state];
     const updated: TodoListItem = {
       ...lastItem,
@@ -533,7 +499,7 @@ export function reduceStreamUpdate(
   state: StreamItem[],
   event: AgentStreamEventPayload,
   timestamp: Date,
-  options?: { source?: StreamUpdateSource }
+  options?: { source?: StreamUpdateSource },
 ): StreamItem[] {
   const source = options?.source ?? "live";
   switch (event.type) {
@@ -542,20 +508,10 @@ export function reduceStreamUpdate(
       let nextState = state;
       switch (item.type) {
         case "user_message":
-          nextState = appendUserMessage(
-            state,
-            item.text,
-            timestamp,
-            item.messageId
-          );
+          nextState = appendUserMessage(state, item.text, timestamp, item.messageId);
           break;
         case "assistant_message":
-          nextState = appendAssistantMessage(
-            state,
-            item.text,
-            timestamp,
-            source
-          );
+          nextState = appendAssistantMessage(state, item.text, timestamp, source);
           break;
         case "reasoning":
           return appendThought(state, item.text, timestamp);
@@ -571,14 +527,13 @@ export function reduceStreamUpdate(
 
           if (
             event.provider === "claude" &&
-            (normalizedToolName === "todowrite" ||
-              normalizedToolName === "todo_write")
+            (normalizedToolName === "todowrite" || normalizedToolName === "todo_write")
           ) {
             // For Claude: TodoWrite often appears as a tool call that never resolves. Always render it
             // as Tasks when possible and otherwise hide it to avoid a stuck loading tool call.
             const tasks = extractTaskEntriesFromToolCall(
               item.name,
-              inputFromUnknownDetail(item.detail)
+              inputFromUnknownDetail(item.detail),
             );
             if (tasks) {
               nextState = appendTodoList(
@@ -588,7 +543,7 @@ export function reduceStreamUpdate(
                   text: entry.text,
                   completed: entry.completed,
                 })),
-                timestamp
+                timestamp,
               );
             }
             break;
@@ -596,7 +551,7 @@ export function reduceStreamUpdate(
 
           const tasks = extractTaskEntriesFromToolCall(
             item.name,
-            inputFromUnknownDetail(item.detail)
+            inputFromUnknownDetail(item.detail),
           );
           if (tasks) {
             nextState = appendTodoList(
@@ -606,7 +561,7 @@ export function reduceStreamUpdate(
                 text: entry.text,
                 completed: entry.completed,
               })),
-              timestamp
+              timestamp,
             );
             break;
           }
@@ -622,7 +577,7 @@ export function reduceStreamUpdate(
               detail: item.detail,
               metadata: item.metadata,
             },
-            timestamp
+            timestamp,
           );
           break;
         }
@@ -653,7 +608,7 @@ export function reduceStreamUpdate(
         case "compaction": {
           if (item.status === "completed") {
             const loadingIdx = state.findIndex(
-              (s) => s.kind === "compaction" && s.status === "loading"
+              (s) => s.kind === "compaction" && s.status === "loading",
             );
             if (loadingIdx >= 0) {
               const existing = state[loadingIdx];
@@ -706,14 +661,11 @@ export function reduceStreamUpdate(
  */
 export function hydrateStreamState(
   events: Array<{ event: AgentStreamEventPayload; timestamp: Date }>,
-  options?: { source?: StreamUpdateSource }
+  options?: { source?: StreamUpdateSource },
 ): StreamItem[] {
-  const hydrated = events.reduce<StreamItem[]>(
-    (state, { event, timestamp }) => {
-      return reduceStreamUpdate(state, event, timestamp, options);
-    },
-    []
-  );
+  const hydrated = events.reduce<StreamItem[]>((state, { event, timestamp }) => {
+    return reduceStreamUpdate(state, event, timestamp, options);
+  }, []);
 
   return finalizeActiveThoughts(hydrated);
 }
@@ -724,10 +676,7 @@ export function hydrateStreamState(
  */
 type StreamableKind = "assistant_message" | "thought";
 
-const STREAMABLE_KINDS = new Set<StreamItem["kind"]>([
-  "assistant_message",
-  "thought",
-]);
+const STREAMABLE_KINDS = new Set<StreamItem["kind"]>(["assistant_message", "thought"]);
 
 function isStreamableKind(kind: StreamItem["kind"]): kind is StreamableKind {
   return STREAMABLE_KINDS.has(kind);
@@ -742,9 +691,7 @@ const STREAM_COMPLETION_EVENTS = new Set<AgentStreamEventPayload["type"]>([
 /**
  * Determine what kind of StreamItem an event would produce
  */
-function getEventItemKind(
-  event: AgentStreamEventPayload
-): StreamItem["kind"] | null {
+function getEventItemKind(event: AgentStreamEventPayload): StreamItem["kind"] | null {
   if (event.type !== "timeline") {
     return null;
   }
@@ -782,10 +729,7 @@ function finalizeHeadItems(head: StreamItem[]): StreamItem[] {
 /**
  * Flush head items to tail, avoiding duplicates.
  */
-function flushHeadToTail(
-  tail: StreamItem[],
-  head: StreamItem[]
-): StreamItem[] {
+function flushHeadToTail(tail: StreamItem[], head: StreamItem[]): StreamItem[] {
   if (head.length === 0) {
     return tail;
   }
@@ -805,10 +749,7 @@ function flushHeadToTail(
  * Determine if the head should be flushed based on incoming event kind.
  * Flush when a different kind arrives or when the incoming kind is not streamable.
  */
-function shouldFlushHead(
-  head: StreamItem[],
-  incomingKind: StreamItem["kind"] | null
-): boolean {
+function shouldFlushHead(head: StreamItem[], incomingKind: StreamItem["kind"] | null): boolean {
   if (head.length === 0) {
     return false;
   }

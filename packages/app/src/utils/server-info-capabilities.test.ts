@@ -41,13 +41,13 @@ describe("server-info-capabilities", () => {
       getVoiceReadinessState({
         serverInfo,
         mode: "dictation",
-      })
+      }),
     ).toEqual(capabilities.voice?.dictation);
     expect(
       getVoiceReadinessState({
         serverInfo,
         mode: "voice",
-      })
+      }),
     ).toEqual(capabilities.voice?.voice);
   });
 
@@ -69,7 +69,7 @@ describe("server-info-capabilities", () => {
       resolveVoiceUnavailableMessage({
         serverInfo,
         mode: "dictation",
-      })
+      }),
     ).toBeNull();
   });
 
@@ -91,7 +91,7 @@ describe("server-info-capabilities", () => {
       resolveVoiceUnavailableMessage({
         serverInfo,
         mode: "dictation",
-      })
+      }),
     ).toBe("Dictation models are still downloading.");
   });
 
@@ -113,7 +113,7 @@ describe("server-info-capabilities", () => {
       resolveVoiceUnavailableMessage({
         serverInfo,
         mode: "dictation",
-      })
+      }),
     ).toBeNull();
   });
 });

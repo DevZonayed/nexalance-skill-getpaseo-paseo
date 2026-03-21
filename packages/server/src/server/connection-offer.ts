@@ -1,24 +1,17 @@
 import os from "node:os";
 
-import {
-  ConnectionOfferV2Schema,
-  type ConnectionOffer,
-} from "../shared/connection-offer.js";
+import { ConnectionOfferV2Schema, type ConnectionOffer } from "../shared/connection-offer.js";
 
 type BuildOfferEndpointsArgs = {
   listenHost: string;
   port: number;
 };
 
-export function buildOfferEndpoints({
-  listenHost,
-  port,
-}: BuildOfferEndpointsArgs): string[] {
+export function buildOfferEndpoints({ listenHost, port }: BuildOfferEndpointsArgs): string[] {
   const endpoints: string[] = [];
 
   const isLoopbackHost = listenHost === "127.0.0.1" || listenHost === "localhost";
-  const isWildcardHost =
-    listenHost === "0.0.0.0" || listenHost === "::" || listenHost === "[::]";
+  const isWildcardHost = listenHost === "0.0.0.0" || listenHost === "::" || listenHost === "[::]";
 
   if (isWildcardHost) {
     const lanIp = getPrimaryLanIp();

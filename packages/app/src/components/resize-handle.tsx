@@ -73,8 +73,7 @@ export function ResizeHandle({
           return;
         }
 
-        const pointerCurrent =
-          direction === "horizontal" ? moveEvent.clientX : moveEvent.clientY;
+        const pointerCurrent = direction === "horizontal" ? moveEvent.clientX : moveEvent.clientY;
         const deltaRatio =
           (pointerCurrent - pointerState.pointerStart) / pointerState.containerSize;
 
@@ -91,7 +90,7 @@ export function ResizeHandle({
       window.addEventListener("pointermove", handlePointerMove);
       window.addEventListener("pointerup", handlePointerUp, { once: true });
     },
-    [direction, groupId, index, onResizeSplit, sizes]
+    [direction, groupId, index, onResizeSplit, sizes],
   );
 
   return (
@@ -107,9 +106,7 @@ export function ResizeHandle({
           pointerEvents="none"
           style={[
             styles.highlight,
-            direction === "horizontal"
-              ? styles.highlightHorizontal
-              : styles.highlightVertical,
+            direction === "horizontal" ? styles.highlightHorizontal : styles.highlightVertical,
             { backgroundColor: theme.colors.accent },
           ]}
         />

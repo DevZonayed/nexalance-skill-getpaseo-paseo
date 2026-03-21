@@ -8,7 +8,12 @@ import type {
   TranscriptionResult,
 } from "../../../speech-provider.js";
 import { Pcm16MonoResampler } from "../../../../agent/pcm16-resampler.js";
-import { parsePcm16MonoWav, parsePcmRateFromFormat, pcm16lePeakAbs, pcm16leToFloat32 } from "../../../audio.js";
+import {
+  parsePcm16MonoWav,
+  parsePcmRateFromFormat,
+  pcm16lePeakAbs,
+  pcm16leToFloat32,
+} from "../../../audio.js";
 import { SherpaOfflineRecognizerEngine } from "./sherpa-offline-recognizer.js";
 
 export type SherpaParakeetSttConfig = {
@@ -134,9 +139,7 @@ export class SherpaOnnxParakeetSTT implements SpeechToTextProvider {
     const targetPeak = 0.6;
     const maxGain = 50;
     const gain =
-      peakFloat > 0 && peakFloat < targetPeak
-        ? Math.min(maxGain, targetPeak / peakFloat)
-        : 1;
+      peakFloat > 0 && peakFloat < targetPeak ? Math.min(maxGain, targetPeak / peakFloat) : 1;
 
     const stream = this.engine.createStream();
     try {

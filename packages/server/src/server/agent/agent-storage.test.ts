@@ -25,9 +25,7 @@ type ManagedAgentOverrides = Omit<
   attention?: ManagedAgent["attention"];
 };
 
-function createManagedAgent(
-  overrides: ManagedAgentOverrides = {}
-): ManagedAgent {
+function createManagedAgent(overrides: ManagedAgentOverrides = {}): ManagedAgent {
   const now = overrides.updatedAt ?? new Date("2025-01-01T00:00:00.000Z");
   const provider = overrides.provider ?? "claude";
   const cwd = overrides.cwd ?? "/tmp/project";
@@ -43,48 +41,39 @@ function createManagedAgent(
     systemPrompt: configOverrides.systemPrompt,
     mcpServers: configOverrides.mcpServers,
   };
-  const session =
-    lifecycle === "closed"
-      ? null
-      : overrides.session ?? ({} as AgentSession);
+  const session = lifecycle === "closed" ? null : (overrides.session ?? ({} as AgentSession));
   const pendingRun =
-    overrides.pendingRun ??
-    (lifecycle === "running" ? (async function* noop() {})() : null);
+    overrides.pendingRun ?? (lifecycle === "running" ? (async function* noop() {})() : null);
 
   const agent: ManagedAgent = {
     id: overrides.id ?? "agent-test",
     provider,
     cwd,
     session,
-    capabilities:
-      overrides.capabilities ??
-      {
-        supportsStreaming: true,
-        supportsSessionPersistence: true,
-        supportsDynamicModes: true,
-        supportsMcpServers: true,
-        supportsReasoningStream: true,
-        supportsToolInvocations: true,
-      },
+    capabilities: overrides.capabilities ?? {
+      supportsStreaming: true,
+      supportsSessionPersistence: true,
+      supportsDynamicModes: true,
+      supportsMcpServers: true,
+      supportsReasoningStream: true,
+      supportsToolInvocations: true,
+    },
     config,
     lifecycle,
     createdAt: overrides.createdAt ?? now,
     updatedAt: overrides.updatedAt ?? now,
     availableModes: overrides.availableModes ?? [],
     currentModeId: overrides.currentModeId ?? config.modeId ?? null,
-    pendingPermissions:
-      overrides.pendingPermissions ??
-      new Map<string, AgentPermissionRequest>(),
+    pendingPermissions: overrides.pendingPermissions ?? new Map<string, AgentPermissionRequest>(),
     pendingRun,
     timeline: overrides.timeline ?? [],
     attention: overrides.attention ?? { requiresAttention: false },
-    runtimeInfo:
-      overrides.runtimeInfo ?? {
-        provider,
-        sessionId: overrides.sessionId ?? "session-123",
-        model: config.model ?? null,
-        modeId: config.modeId ?? null,
-      },
+    runtimeInfo: overrides.runtimeInfo ?? {
+      provider,
+      sessionId: overrides.sessionId ?? "session-123",
+      model: config.model ?? null,
+      modeId: config.modeId ?? null,
+    },
     persistence: overrides.persistence ?? null,
     historyPrimed: overrides.historyPrimed ?? true,
     lastUserMessageAt: overrides.lastUserMessageAt ?? now,
@@ -132,7 +121,7 @@ describe("AgentStorage", () => {
             },
           },
         },
-      })
+      }),
     );
 
     const records = await storage.list();
@@ -162,9 +151,7 @@ describe("AgentStorage", () => {
   test("applySnapshot preserves original createdAt timestamp", async () => {
     const agentId = "agent-created-at";
     const firstTimestamp = new Date("2025-01-01T00:00:00.000Z");
-    await storage.applySnapshot(
-      createManagedAgent({ id: agentId, createdAt: firstTimestamp })
-    );
+    await storage.applySnapshot(createManagedAgent({ id: agentId, createdAt: firstTimestamp }));
 
     const initialRecord = await storage.get(agentId);
     expect(initialRecord?.createdAt).toBe(firstTimestamp.toISOString());
@@ -175,7 +162,7 @@ describe("AgentStorage", () => {
         createdAt: new Date("2025-02-01T00:00:00.000Z"),
         updatedAt: new Date("2025-02-01T00:00:00.000Z"),
         lifecycle: "running",
-      })
+      }),
     );
 
     const updatedRecord = await storage.get(agentId);
@@ -189,7 +176,7 @@ describe("AgentStorage", () => {
       createManagedAgent({
         id: agentId,
         lifecycle: "idle",
-      })
+      }),
     );
 
     const archivedAt = "2025-01-03T00:00:00.000Z";
@@ -202,7 +189,7 @@ describe("AgentStorage", () => {
         id: agentId,
         lifecycle: "running",
         updatedAt: new Date("2025-01-04T00:00:00.000Z"),
-      })
+      }),
     );
 
     const recordAfterSnapshot = await storage.get(agentId);
@@ -215,7 +202,7 @@ describe("AgentStorage", () => {
         id: "agent-2",
         provider: "codex",
         cwd: "/tmp/second",
-      })
+      }),
     );
     await storage.setTitle("agent-2", "Fix Login Bug");
 
@@ -228,16 +215,14 @@ describe("AgentStorage", () => {
   });
 
   test("setTitle throws when the agent record does not exist", async () => {
-    await expect(storage.setTitle("missing-agent", "Impossible"))
-      .rejects.toThrow("Agent missing-agent not found");
+    await expect(storage.setTitle("missing-agent", "Impossible")).rejects.toThrow(
+      "Agent missing-agent not found",
+    );
   });
 
   test("applySnapshot accepts explicit title overrides", async () => {
     const agentId = "agent-override";
-    await storage.applySnapshot(
-      createManagedAgent({ id: agentId }),
-      { title: "Provided Title" }
-    );
+    await storage.applySnapshot(createManagedAgent({ id: agentId }), { title: "Provided Title" });
 
     const record = await storage.get(agentId);
     expect(record?.title).toBe("Provided Title");
@@ -250,7 +235,7 @@ describe("AgentStorage", () => {
         id: agentId,
         lifecycle: "idle",
         currentModeId: "plan",
-      })
+      }),
     );
     await storage.setTitle(agentId, "Important Bug Fix");
 
@@ -260,7 +245,7 @@ describe("AgentStorage", () => {
         lifecycle: "running",
         currentModeId: "build",
         updatedAt: new Date("2025-01-02T00:00:00.000Z"),
-      })
+      }),
     );
 
     const record = await storage.get(agentId);
@@ -291,7 +276,7 @@ describe("AgentStorage", () => {
         id: agentId,
         lifecycle: "running",
         updatedAt: new Date("2025-01-02T00:00:00.000Z"),
-      })
+      }),
     );
 
     storageInternals.cache.set(agentId, {
@@ -311,7 +296,7 @@ describe("AgentStorage", () => {
       createManagedAgent({
         id: "normal-agent",
         cwd: "/tmp/project",
-      })
+      }),
     );
 
     // Create an internal agent
@@ -321,7 +306,7 @@ describe("AgentStorage", () => {
         cwd: "/tmp/project",
         config: { internal: true },
       }),
-      { internal: true }
+      { internal: true },
     );
 
     // Registry should return all agents - filtering is done at the manager level
@@ -336,7 +321,7 @@ describe("AgentStorage", () => {
         cwd: "/tmp/project",
         config: { internal: true },
       }),
-      { internal: true }
+      { internal: true },
     );
 
     const record = await storage.get("internal-agent");
@@ -351,7 +336,7 @@ describe("AgentStorage", () => {
         cwd: "/tmp/project",
         config: { internal: true },
       }),
-      { internal: true }
+      { internal: true },
     );
 
     // Reload the registry from disk
@@ -377,7 +362,7 @@ describe("AgentStorage", () => {
           id: agentId,
           cwd: "/tmp/project-a",
           provider: "codex",
-        })
+        }),
       );
       const record = await storage.get(agentId);
       expect(record).not.toBeNull();
@@ -390,7 +375,7 @@ describe("AgentStorage", () => {
     await fs.writeFile(
       duplicatePathB,
       JSON.stringify({ ...recordA, cwd: "/tmp/project-b" }, null, 2),
-      "utf8"
+      "utf8",
     );
 
     // Force a reload so the registry has to discover from disk (and may choose either copy).

@@ -34,9 +34,7 @@ describe("buildWorkspaceTabMenuEntries", () => {
       onCloseOtherTabs,
     });
 
-    expect(
-      entries.filter((entry) => entry.kind === "item").map((entry) => entry.label)
-    ).toEqual([
+    expect(entries.filter((entry) => entry.kind === "item").map((entry) => entry.label)).toEqual([
       "Copy resume command",
       "Copy agent id",
       "Close to the left",
@@ -61,9 +59,7 @@ describe("buildWorkspaceTabMenuEntries", () => {
       onCloseOtherTabs: vi.fn(),
     });
 
-    expect(
-      entries.filter((entry) => entry.kind === "item").map((entry) => entry.label)
-    ).toEqual([
+    expect(entries.filter((entry) => entry.kind === "item").map((entry) => entry.label)).toEqual([
       "Copy resume command",
       "Copy agent id",
       "Close tabs above",
@@ -94,7 +90,7 @@ describe("buildWorkspaceTabMenuEntries", () => {
     });
 
     expect(entries.some((entry) => entry.kind === "item" && entry.label === "Copy agent id")).toBe(
-      false
+      false,
     );
     expect(entries.some((entry) => entry.kind === "separator")).toBe(false);
   });

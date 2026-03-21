@@ -8,7 +8,7 @@ export interface AppendTimelineItemIfAgentKnownOptions {
 }
 
 export async function appendTimelineItemIfAgentKnown(
-  options: AppendTimelineItemIfAgentKnownOptions
+  options: AppendTimelineItemIfAgentKnownOptions,
 ): Promise<boolean> {
   try {
     await options.agentManager.appendTimelineItem(options.agentId, options.item);
@@ -23,7 +23,7 @@ export async function appendTimelineItemIfAgentKnown(
 }
 
 export async function emitLiveTimelineItemIfAgentKnown(
-  options: AppendTimelineItemIfAgentKnownOptions
+  options: AppendTimelineItemIfAgentKnownOptions,
 ): Promise<boolean> {
   try {
     await options.agentManager.emitLiveTimelineItem(options.agentId, options.item);

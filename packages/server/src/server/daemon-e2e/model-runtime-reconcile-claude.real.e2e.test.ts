@@ -58,6 +58,6 @@ describe("daemon E2E (real claude) - runtime model reconciliation", () => {
         rmSync(cwd, { recursive: true, force: true });
       }
     },
-    300_000
+    300_000,
   );
 });

@@ -1,331 +1,338 @@
-import type { Command } from 'commander'
+import type { Command } from "commander";
 import {
   getStructuredAgentResponse,
   StructuredAgentResponseError,
   type AgentSnapshotPayload,
-} from '@getpaseo/server'
-import { connectToDaemon, getDaemonHost } from '../../utils/client.js'
-import type { CommandOptions, SingleResult, OutputSchema, CommandError } from '../../output/index.js'
-import { readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
-import { lookup } from 'mime-types'
-import { parseDuration } from '../../utils/duration.js'
+} from "@getpaseo/server";
+import { connectToDaemon, getDaemonHost } from "../../utils/client.js";
+import type {
+  CommandOptions,
+  SingleResult,
+  OutputSchema,
+  CommandError,
+} from "../../output/index.js";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { lookup } from "mime-types";
+import { parseDuration } from "../../utils/duration.js";
 
 /** Result type for agent run command */
 export interface AgentRunResult {
-  agentId: string
-  status: 'created' | 'running' | 'completed' | 'timeout' | 'permission' | 'error'
-  provider: string
-  cwd: string
-  title: string | null
+  agentId: string;
+  status: "created" | "running" | "completed" | "timeout" | "permission" | "error";
+  provider: string;
+  cwd: string;
+  title: string | null;
 }
 
 /** Schema for agent run output */
 export const agentRunSchema: OutputSchema<AgentRunResult> = {
-  idField: 'agentId',
+  idField: "agentId",
   columns: [
-    { header: 'AGENT ID', field: 'agentId', width: 12 },
-    { header: 'STATUS', field: 'status', width: 10 },
-    { header: 'PROVIDER', field: 'provider', width: 10 },
-    { header: 'CWD', field: 'cwd', width: 30 },
-    { header: 'TITLE', field: 'title', width: 20 },
+    { header: "AGENT ID", field: "agentId", width: 12 },
+    { header: "STATUS", field: "status", width: 10 },
+    { header: "PROVIDER", field: "provider", width: 10 },
+    { header: "CWD", field: "cwd", width: 30 },
+    { header: "TITLE", field: "title", width: 20 },
   ],
-}
+};
 
 export interface AgentRunOptions extends CommandOptions {
-  detach?: boolean
-  name?: string
-  provider?: string
-  model?: string
-  thinking?: string
-  mode?: string
-  worktree?: string
-  base?: string
-  image?: string[]
-  cwd?: string
-  label?: string[]
-  waitTimeout?: string
-  outputSchema?: string
+  detach?: boolean;
+  name?: string;
+  provider?: string;
+  model?: string;
+  thinking?: string;
+  mode?: string;
+  worktree?: string;
+  base?: string;
+  image?: string[];
+  cwd?: string;
+  label?: string[];
+  waitTimeout?: string;
+  outputSchema?: string;
 }
 
 interface ResolvedProviderModel {
-  provider: string
-  model: string | undefined
+  provider: string;
+  model: string | undefined;
 }
 
 function toRunResult(
   agent: AgentSnapshotPayload,
-  statusOverride?: AgentRunResult['status']
+  statusOverride?: AgentRunResult["status"],
 ): AgentRunResult {
   return {
     agentId: agent.id,
-    status: statusOverride ?? (agent.status === 'running' ? 'running' : 'created'),
+    status: statusOverride ?? (agent.status === "running" ? "running" : "created"),
     provider: agent.provider,
     cwd: agent.cwd,
     title: agent.title,
-  }
+  };
 }
 
 function loadOutputSchema(value: string): Record<string, unknown> {
-  const trimmed = value.trim()
+  const trimmed = value.trim();
   if (!trimmed) {
     const error: CommandError = {
-      code: 'INVALID_OUTPUT_SCHEMA',
-      message: '--output-schema cannot be empty',
-      details: 'Provide a JSON schema file path or inline JSON object',
-    }
-    throw error
+      code: "INVALID_OUTPUT_SCHEMA",
+      message: "--output-schema cannot be empty",
+      details: "Provide a JSON schema file path or inline JSON object",
+    };
+    throw error;
   }
 
-  let source = trimmed
-  if (!trimmed.startsWith('{')) {
+  let source = trimmed;
+  if (!trimmed.startsWith("{")) {
     try {
-      source = readFileSync(resolve(trimmed), 'utf8')
+      source = readFileSync(resolve(trimmed), "utf8");
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
+      const message = err instanceof Error ? err.message : String(err);
       const error: CommandError = {
-        code: 'INVALID_OUTPUT_SCHEMA',
+        code: "INVALID_OUTPUT_SCHEMA",
         message: `Failed to read output schema file: ${trimmed}`,
         details: message,
-      }
-      throw error
+      };
+      throw error;
     }
   }
 
-  let parsed: unknown
+  let parsed: unknown;
   try {
-    parsed = JSON.parse(source)
+    parsed = JSON.parse(source);
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err)
+    const message = err instanceof Error ? err.message : String(err);
     const error: CommandError = {
-      code: 'INVALID_OUTPUT_SCHEMA',
-      message: 'Failed to parse output schema JSON',
+      code: "INVALID_OUTPUT_SCHEMA",
+      message: "Failed to parse output schema JSON",
       details: message,
-    }
-    throw error
+    };
+    throw error;
   }
 
-  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
     const error: CommandError = {
-      code: 'INVALID_OUTPUT_SCHEMA',
-      message: 'Output schema must be a JSON object',
-    }
-    throw error
+      code: "INVALID_OUTPUT_SCHEMA",
+      message: "Output schema must be a JSON object",
+    };
+    throw error;
   }
 
-  return parsed as Record<string, unknown>
+  return parsed as Record<string, unknown>;
 }
 
 class StructuredRunStatusError extends Error {
-  readonly kind: 'timeout' | 'permission' | 'error' | 'empty'
+  readonly kind: "timeout" | "permission" | "error" | "empty";
 
-  constructor(kind: 'timeout' | 'permission' | 'error' | 'empty', message: string) {
-    super(message)
-    this.name = 'StructuredRunStatusError'
-    this.kind = kind
+  constructor(kind: "timeout" | "permission" | "error" | "empty", message: string) {
+    super(message);
+    this.name = "StructuredRunStatusError";
+    this.kind = kind;
   }
 }
 
-type ConnectedDaemonClient = Awaited<ReturnType<typeof connectToDaemon>>
+type ConnectedDaemonClient = Awaited<ReturnType<typeof connectToDaemon>>;
 
 export interface StructuredResponseTimelineClient {
-  fetchAgentTimeline: ConnectedDaemonClient['fetchAgentTimeline']
+  fetchAgentTimeline: ConnectedDaemonClient["fetchAgentTimeline"];
 }
 
 export async function resolveStructuredResponseMessage(options: {
-  client: StructuredResponseTimelineClient
-  agentId: string
-  lastMessage: string | null
+  client: StructuredResponseTimelineClient;
+  agentId: string;
+  lastMessage: string | null;
 }): Promise<string | null> {
-  const direct = options.lastMessage?.trim()
+  const direct = options.lastMessage?.trim();
   if (direct) {
-    return direct
+    return direct;
   }
 
   try {
     const timeline = await options.client.fetchAgentTimeline(options.agentId, {
-      direction: 'tail',
-      projection: 'projected',
+      direction: "tail",
+      projection: "projected",
       limit: 200,
-    })
+    });
     for (let index = timeline.entries.length - 1; index >= 0; index -= 1) {
-      const entry = timeline.entries[index]
-      if (!entry || entry.item.type !== 'assistant_message') {
-        continue
+      const entry = timeline.entries[index];
+      if (!entry || entry.item.type !== "assistant_message") {
+        continue;
       }
-      const text = entry.item.text.trim()
+      const text = entry.item.text.trim();
       if (text.length > 0) {
-        return text
+        return text;
       }
     }
   } catch {
     // Leave empty; caller will surface a consistent structured-output failure message.
   }
 
-  return null
+  return null;
 }
 
 function structuredRunSchema(output: Record<string, unknown>): OutputSchema<AgentRunResult> {
   return {
     ...agentRunSchema,
     serialize: () => output,
-  }
+  };
 }
 
-export function resolveProviderAndModel(options: Pick<AgentRunOptions, 'provider' | 'model'>): ResolvedProviderModel {
-  const providerInput = options.provider?.trim() || 'claude'
-  const modelInput = options.model?.trim()
+export function resolveProviderAndModel(
+  options: Pick<AgentRunOptions, "provider" | "model">,
+): ResolvedProviderModel {
+  const providerInput = options.provider?.trim() || "claude";
+  const modelInput = options.model?.trim();
 
   if (options.model !== undefined && !modelInput) {
     const error: CommandError = {
-      code: 'INVALID_MODEL',
-      message: '--model cannot be empty',
-    }
-    throw error
+      code: "INVALID_MODEL",
+      message: "--model cannot be empty",
+    };
+    throw error;
   }
 
-  const slashIndex = providerInput.indexOf('/')
+  const slashIndex = providerInput.indexOf("/");
   if (slashIndex === -1) {
     return {
       provider: providerInput,
       model: modelInput,
-    }
+    };
   }
 
-  const provider = providerInput.slice(0, slashIndex).trim()
-  const modelFromProvider = providerInput.slice(slashIndex + 1).trim()
+  const provider = providerInput.slice(0, slashIndex).trim();
+  const modelFromProvider = providerInput.slice(slashIndex + 1).trim();
   if (!provider || !modelFromProvider) {
     const error: CommandError = {
-      code: 'INVALID_PROVIDER',
-      message: 'Invalid --provider value',
-      details: 'Use --provider <provider> or --provider <provider>/<model>',
-    }
-    throw error
+      code: "INVALID_PROVIDER",
+      message: "Invalid --provider value",
+      details: "Use --provider <provider> or --provider <provider>/<model>",
+    };
+    throw error;
   }
 
   if (modelInput && modelInput !== modelFromProvider) {
     const error: CommandError = {
-      code: 'CONFLICTING_MODEL_OPTIONS',
-      message: 'Conflicting model values provided',
+      code: "CONFLICTING_MODEL_OPTIONS",
+      message: "Conflicting model values provided",
       details: `--provider specifies model ${modelFromProvider}, but --model specifies ${modelInput}`,
-    }
-    throw error
+    };
+    throw error;
   }
 
   return {
     provider,
     model: modelInput ?? modelFromProvider,
-  }
+  };
 }
 
 export async function runRunCommand(
   prompt: string,
   options: AgentRunOptions,
-  _command: Command
+  _command: Command,
 ): Promise<SingleResult<AgentRunResult>> {
-  const host = getDaemonHost({ host: options.host as string | undefined })
-  const outputSchema = options.outputSchema ? loadOutputSchema(options.outputSchema) : undefined
-  let waitTimeoutMs = 0
+  const host = getDaemonHost({ host: options.host as string | undefined });
+  const outputSchema = options.outputSchema ? loadOutputSchema(options.outputSchema) : undefined;
+  let waitTimeoutMs = 0;
 
   // Validate prompt is provided
   if (!prompt || prompt.trim().length === 0) {
     const error: CommandError = {
-      code: 'MISSING_PROMPT',
-      message: 'A prompt is required',
-      details: 'Usage: paseo agent run [options] <prompt>',
-    }
-    throw error
+      code: "MISSING_PROMPT",
+      message: "A prompt is required",
+      details: "Usage: paseo agent run [options] <prompt>",
+    };
+    throw error;
   }
 
   // Validate --base is only used with --worktree
   if (options.base && !options.worktree) {
     const error: CommandError = {
-      code: 'INVALID_OPTIONS',
-      message: '--base can only be used with --worktree',
-      details: 'Usage: paseo agent run --worktree <name> --base <branch> <prompt>',
-    }
-    throw error
+      code: "INVALID_OPTIONS",
+      message: "--base can only be used with --worktree",
+      details: "Usage: paseo agent run --worktree <name> --base <branch> <prompt>",
+    };
+    throw error;
   }
 
   // --output-schema always runs in attached/wait mode
   if (outputSchema && options.detach) {
     const error: CommandError = {
-      code: 'INVALID_OPTIONS',
-      message: '--output-schema cannot be used with --detach',
-      details: 'Structured output requires waiting for the agent to finish',
-    }
-    throw error
+      code: "INVALID_OPTIONS",
+      message: "--output-schema cannot be used with --detach",
+      details: "Structured output requires waiting for the agent to finish",
+    };
+    throw error;
   }
 
   if (options.waitTimeout) {
     try {
-      waitTimeoutMs = parseDuration(options.waitTimeout)
+      waitTimeoutMs = parseDuration(options.waitTimeout);
       if (waitTimeoutMs <= 0) {
-        throw new Error('Timeout must be positive')
+        throw new Error("Timeout must be positive");
       }
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
+      const message = err instanceof Error ? err.message : String(err);
       const error: CommandError = {
-        code: 'INVALID_TIMEOUT',
-        message: 'Invalid wait timeout value',
+        code: "INVALID_TIMEOUT",
+        message: "Invalid wait timeout value",
         details: message,
-      }
-      throw error
+      };
+      throw error;
     }
   }
 
-  const resolvedProviderModel = resolveProviderAndModel(options)
+  const resolvedProviderModel = resolveProviderAndModel(options);
 
-  let client
+  let client;
   try {
-    client = await connectToDaemon({ host: options.host as string | undefined })
+    client = await connectToDaemon({ host: options.host as string | undefined });
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err)
+    const message = err instanceof Error ? err.message : String(err);
     const error: CommandError = {
-      code: 'DAEMON_NOT_RUNNING',
+      code: "DAEMON_NOT_RUNNING",
       message: `Cannot connect to daemon at ${host}: ${message}`,
-      details: 'Start the daemon with: paseo daemon start',
-    }
-    throw error
+      details: "Start the daemon with: paseo daemon start",
+    };
+    throw error;
   }
 
   try {
     // Resolve working directory
-    const cwd = options.cwd ?? process.cwd()
-    const thinkingOptionId = options.thinking?.trim()
+    const cwd = options.cwd ?? process.cwd();
+    const thinkingOptionId = options.thinking?.trim();
     if (options.thinking !== undefined && !thinkingOptionId) {
       const error: CommandError = {
-        code: 'INVALID_THINKING_OPTION',
-        message: '--thinking cannot be empty',
+        code: "INVALID_THINKING_OPTION",
+        message: "--thinking cannot be empty",
         details:
           'Provide a thinking option ID. Use "paseo provider models <provider> --thinking" to list valid IDs.',
-      }
-      throw error
+      };
+      throw error;
     }
 
     // Process images if provided
-    let images: Array<{ data: string; mimeType: string }> | undefined
+    let images: Array<{ data: string; mimeType: string }> | undefined;
     if (options.image && options.image.length > 0) {
       images = options.image.map((imagePath) => {
-        const resolvedPath = resolve(imagePath)
+        const resolvedPath = resolve(imagePath);
         try {
-          const imageData = readFileSync(resolvedPath)
-          const mimeType = lookup(resolvedPath) || 'application/octet-stream'
+          const imageData = readFileSync(resolvedPath);
+          const mimeType = lookup(resolvedPath) || "application/octet-stream";
 
           // Verify it's an image MIME type
-          if (!mimeType.startsWith('image/')) {
-            throw new Error(`File is not an image: ${imagePath} (detected type: ${mimeType})`)
+          if (!mimeType.startsWith("image/")) {
+            throw new Error(`File is not an image: ${imagePath} (detected type: ${mimeType})`);
           }
 
           return {
-            data: imageData.toString('base64'),
+            data: imageData.toString("base64"),
             mimeType,
-          }
+          };
         } catch (err) {
-          const message = err instanceof Error ? err.message : String(err)
-          throw new Error(`Failed to read image ${imagePath}: ${message}`)
+          const message = err instanceof Error ? err.message : String(err);
+          throw new Error(`Failed to read image ${imagePath}: ${message}`);
         }
-      })
+      });
     }
 
     // Build git options if worktree is specified
@@ -335,34 +342,34 @@ export async function runRunCommand(
           worktreeSlug: options.worktree,
           baseBranch: options.base,
         }
-      : undefined
+      : undefined;
 
     // Build labels from --label flags
-    const labels: Record<string, string> = {}
+    const labels: Record<string, string> = {};
     if (options.label) {
       for (const labelStr of options.label) {
-        const eqIndex = labelStr.indexOf('=')
+        const eqIndex = labelStr.indexOf("=");
         if (eqIndex === -1) {
           const error: CommandError = {
-            code: 'INVALID_LABEL',
+            code: "INVALID_LABEL",
             message: `Invalid label format: ${labelStr}`,
-            details: 'Labels must be in key=value format',
-          }
-          throw error
+            details: "Labels must be in key=value format",
+          };
+          throw error;
         }
-        const key = labelStr.slice(0, eqIndex)
-        const value = labelStr.slice(eqIndex + 1)
-        labels[key] = value
+        const key = labelStr.slice(0, eqIndex);
+        const value = labelStr.slice(eqIndex + 1);
+        labels[key] = value;
       }
     }
 
     if (outputSchema) {
-      let structuredAgent: AgentSnapshotPayload | null = null
+      let structuredAgent: AgentSnapshotPayload | null = null;
 
       const callStructuredTurn = async (structuredPrompt: string): Promise<string> => {
         if (!structuredAgent) {
           structuredAgent = await client.createAgent({
-            provider: resolvedProviderModel.provider as 'claude' | 'codex' | 'opencode',
+            provider: resolvedProviderModel.provider as "claude" | "codex" | "opencode",
             cwd,
             title: options.name,
             modeId: options.mode,
@@ -374,94 +381,94 @@ export async function runRunCommand(
             git,
             worktreeName: options.worktree,
             labels: Object.keys(labels).length > 0 ? labels : undefined,
-          })
+          });
         } else {
-          await client.sendMessage(structuredAgent.id, structuredPrompt)
+          await client.sendMessage(structuredAgent.id, structuredPrompt);
         }
 
-        const state = await client.waitForFinish(structuredAgent.id, waitTimeoutMs)
-        if (state.status === 'timeout') {
-          throw new StructuredRunStatusError('timeout', 'Timed out waiting for structured output')
+        const state = await client.waitForFinish(structuredAgent.id, waitTimeoutMs);
+        if (state.status === "timeout") {
+          throw new StructuredRunStatusError("timeout", "Timed out waiting for structured output");
         }
-        if (state.status === 'permission') {
+        if (state.status === "permission") {
           throw new StructuredRunStatusError(
-            'permission',
-            'Agent is waiting for permission before producing structured output'
-          )
+            "permission",
+            "Agent is waiting for permission before producing structured output",
+          );
         }
-        if (state.status === 'error') {
+        if (state.status === "error") {
           throw new StructuredRunStatusError(
-            'error',
-            state.error ?? 'Agent failed before producing structured output'
-          )
+            "error",
+            state.error ?? "Agent failed before producing structured output",
+          );
         }
 
         const lastMessage = await resolveStructuredResponseMessage({
           client,
           agentId: structuredAgent.id,
           lastMessage: state.lastMessage,
-        })
+        });
         if (!lastMessage) {
           throw new StructuredRunStatusError(
-            'empty',
-            'Agent finished without a structured output message'
-          )
+            "empty",
+            "Agent finished without a structured output message",
+          );
         }
 
-        return lastMessage
-      }
+        return lastMessage;
+      };
 
-      let output: Record<string, unknown>
+      let output: Record<string, unknown>;
       try {
         output = await getStructuredAgentResponse<Record<string, unknown>>({
           caller: callStructuredTurn,
           prompt,
           schema: outputSchema,
-          schemaName: 'RunOutput',
+          schemaName: "RunOutput",
           maxRetries: 2,
-        })
+        });
       } catch (err) {
         if (err instanceof StructuredRunStatusError) {
           const error: CommandError = {
-            code: 'OUTPUT_SCHEMA_FAILED',
+            code: "OUTPUT_SCHEMA_FAILED",
             message: err.message,
-          }
-          throw error
+          };
+          throw error;
         }
         if (err instanceof StructuredAgentResponseError) {
           const error: CommandError = {
-            code: 'OUTPUT_SCHEMA_FAILED',
-            message: 'Agent response did not match the required output schema',
+            code: "OUTPUT_SCHEMA_FAILED",
+            message: "Agent response did not match the required output schema",
             details:
               err.validationErrors.length > 0
-                ? err.validationErrors.join('\n')
-                : err.lastResponse || 'No response',
-          }
-          throw error
+                ? err.validationErrors.join("\n")
+                : err.lastResponse || "No response",
+          };
+          throw error;
         }
-        throw err
+        throw err;
       }
 
       if (!structuredAgent) {
         const error: CommandError = {
-          code: 'OUTPUT_SCHEMA_FAILED',
-          message: 'Agent finished without a structured output message',
-        }
-        throw error
+          code: "OUTPUT_SCHEMA_FAILED",
+          message: "Agent finished without a structured output message",
+        };
+        throw error;
       }
 
-      await client.close()
+      await client.close();
 
       return {
-        type: 'single',
-        data: toRunResult(structuredAgent, 'completed'),
+        type: "single",
+        data: toRunResult(structuredAgent, "completed"),
         schema: structuredRunSchema(output),
-      }
+      };
     }
 
     // Create the agent
     const agent = await client.createAgent({
-      provider: resolvedProviderModel.provider as 'claude' | 'codex' | 'opencode',
+      provider: resolvedProviderModel.provider as "claude" | "codex" | "opencode",
       cwd,
       title: options.name,
       modeId: options.mode,
@@ -472,43 +479,42 @@ export async function runRunCommand(
       git,
       worktreeName: options.worktree,
       labels: Object.keys(labels).length > 0 ? labels : undefined,
-    })
+    });
 
     // Default run behavior is foreground: wait for completion unless --detach is set.
     if (!options.detach) {
-      const state = await client.waitForFinish(agent.id, waitTimeoutMs)
-      await client.close()
+      const state = await client.waitForFinish(agent.id, waitTimeoutMs);
+      await client.close();
 
-      const finalAgent = state.final ?? agent
-      const status: AgentRunResult['status'] =
-        state.status === 'idle' ? 'completed' : state.status
+      const finalAgent = state.final ?? agent;
+      const status: AgentRunResult["status"] = state.status === "idle" ? "completed" : state.status;
 
       return {
-        type: 'single',
+        type: "single",
         data: toRunResult(finalAgent, status),
         schema: agentRunSchema,
-      }
+      };
     }
 
-    await client.close()
+    await client.close();
 
     return {
-      type: 'single',
+      type: "single",
       data: toRunResult(agent),
       schema: agentRunSchema,
-    }
+    };
   } catch (err) {
-    await client.close().catch(() => {})
+    await client.close().catch(() => {});
 
-    if (err && typeof err === 'object' && 'code' in err) {
-      throw err
+    if (err && typeof err === "object" && "code" in err) {
+      throw err;
     }
 
-    const message = err instanceof Error ? err.message : String(err)
+    const message = err instanceof Error ? err.message : String(err);
     const error: CommandError = {
-      code: 'AGENT_CREATE_FAILED',
+      code: "AGENT_CREATE_FAILED",
       message: `Failed to create agent: ${message}`,
-    }
-    throw error
+    };
+    throw error;
   }
 }

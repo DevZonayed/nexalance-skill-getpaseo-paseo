@@ -136,7 +136,9 @@ async function executeCommand(commandName: string): Promise<void> {
     // Iterate the query to process the command
     let gotSystemInit = false;
     for await (const message of claudeQuery) {
-      process.stdout.write(`  [${message.type}] ${message.type === "system" ? message.subtype : ""}\n`);
+      process.stdout.write(
+        `  [${message.type}] ${message.type === "system" ? message.subtype : ""}\n`,
+      );
 
       if (message.type === "system" && message.subtype === "init") {
         gotSystemInit = true;
@@ -149,7 +151,9 @@ async function executeCommand(commandName: string): Promise<void> {
         if (Array.isArray(content)) {
           for (const block of content) {
             if (block.type === "text") {
-              process.stdout.write(`    Response: ${block.text.slice(0, 200)}${block.text.length > 200 ? "..." : ""}\n`);
+              process.stdout.write(
+                `    Response: ${block.text.slice(0, 200)}${block.text.length > 200 ? "..." : ""}\n`,
+              );
             }
           }
         }
@@ -199,7 +203,6 @@ async function main() {
     // Actually execute a command to demonstrate it works:
     // Using "context" as it's fast and doesn't require arguments
     await executeCommand("context");
-
   } catch (error) {
     process.stderr.write(`ERROR: ${error}\n`);
     process.exit(1);

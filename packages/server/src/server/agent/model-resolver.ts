@@ -11,7 +11,7 @@ type ResolveAgentModelOptions = {
 };
 
 export async function resolveAgentModel(
-  options: ResolveAgentModelOptions
+  options: ResolveAgentModelOptions,
 ): Promise<string | undefined> {
   const trimmed = options.requestedModel?.trim();
   if (trimmed) {
@@ -28,7 +28,7 @@ export async function resolveAgentModel(
   } catch (error) {
     options.logger.warn(
       { err: error, provider: options.provider },
-      "Failed to resolve default model"
+      "Failed to resolve default model",
     );
     return undefined;
   }

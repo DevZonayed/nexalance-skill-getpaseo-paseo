@@ -1,23 +1,23 @@
-import type { Command } from 'commander'
+import type { Command } from "commander";
 
-const JSON_OPTION_DESCRIPTION = 'Output in JSON format'
+const JSON_OPTION_DESCRIPTION = "Output in JSON format";
 const DAEMON_HOST_OPTION_DESCRIPTION =
-  'Daemon host target (default: local socket/pipe, then localhost:6767)'
+  "Daemon host target (default: local socket/pipe, then localhost:6767)";
 
 export function collectMultiple(value: string, previous: string[]): string[] {
-  return previous.concat([value])
+  return previous.concat([value]);
 }
 
 export function addJsonOption<T extends Command>(command: T): T {
-  command.option('--json', JSON_OPTION_DESCRIPTION)
-  return command
+  command.option("--json", JSON_OPTION_DESCRIPTION);
+  return command;
 }
 
 export function addDaemonHostOption<T extends Command>(command: T): T {
-  command.option('--host <host>', DAEMON_HOST_OPTION_DESCRIPTION)
-  return command
+  command.option("--host <host>", DAEMON_HOST_OPTION_DESCRIPTION);
+  return command;
 }
 
 export function addJsonAndDaemonHostOptions<T extends Command>(command: T): T {
-  return addDaemonHostOption(addJsonOption(command))
+  return addDaemonHostOption(addJsonOption(command));
 }

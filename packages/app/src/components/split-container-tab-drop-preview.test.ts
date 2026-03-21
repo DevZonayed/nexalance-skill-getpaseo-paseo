@@ -27,7 +27,7 @@ describe("computeTabDropPreview", () => {
         targetTabs,
         activeRect: { left: 180, width: 40 },
         overRect: { left: 200, width: 100 },
-      })
+      }),
     ).toEqual({
       paneId: "target",
       insertionIndex: 2,
@@ -45,7 +45,7 @@ describe("computeTabDropPreview", () => {
         targetTabs,
         activeRect: { left: 280, width: 40 },
         overRect: { left: 200, width: 100 },
-      })
+      }),
     ).toEqual({
       paneId: "target",
       insertionIndex: 3,
@@ -63,7 +63,7 @@ describe("computeTabDropPreview", () => {
         targetTabs,
         activeRect: { left: 460, width: 40 },
         overRect: { left: 400, width: 100 },
-      })
+      }),
     ).toEqual({
       paneId: "pane",
       insertionIndex: 3,

@@ -5,11 +5,7 @@ import { mkdtempSync, rmSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, it, expect } from "vitest";
-import {
-  query,
-  type SDKMessage,
-  type SDKUserMessage,
-} from "@anthropic-ai/claude-agent-sdk";
+import { query, type SDKMessage, type SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 
 class Pushable<T> implements AsyncIterable<T> {
   private queue: T[] = [];

@@ -23,7 +23,7 @@ const FAVICON_IMAGES: Record<ColorScheme, Record<FaviconStatus, { uri: string } 
 /* eslint-enable @typescript-eslint/no-require-imports */
 
 function deriveFaviconStatus(
-  agents: ReturnType<typeof useAggregatedAgents>["agents"]
+  agents: ReturnType<typeof useAggregatedAgents>["agents"],
 ): FaviconStatus {
   const hasRunning = agents.some((agent) => agent.status === "running");
   if (hasRunning) {
@@ -38,12 +38,12 @@ function deriveFaviconStatus(
 }
 
 function deriveMacDockBadgeCount(
-  agents: ReturnType<typeof useAggregatedAgents>["agents"]
+  agents: ReturnType<typeof useAggregatedAgents>["agents"],
 ): number | undefined {
   const attentionCount = agents.filter(
     (agent) =>
       (agent.pendingPermissionCount ?? 0) > 0 ||
-      (agent.requiresAttention && agent.attentionReason === "finished")
+      (agent.requiresAttention && agent.attentionReason === "finished"),
   ).length;
   if (attentionCount > 0) {
     return attentionCount;
@@ -85,7 +85,11 @@ function updateFavicon(status: FaviconStatus, colorScheme: ColorScheme) {
 }
 
 function getSystemColorScheme(): ColorScheme {
-  if (Platform.OS !== "web" || typeof window === "undefined" || typeof window.matchMedia !== "function") {
+  if (
+    Platform.OS !== "web" ||
+    typeof window === "undefined" ||
+    typeof window.matchMedia !== "function"
+  ) {
     return "dark";
   }
   return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";

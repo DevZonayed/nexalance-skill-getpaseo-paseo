@@ -217,12 +217,16 @@ function generateNodeId(prefix: "pane" | "group"): string {
   return `${prefix}_${randomValue}`;
 }
 
-function createPaneNode(input: { id: string; tabs?: WorkspaceTab[]; focusedTabId?: string | null }): SplitNodeInternal {
+function createPaneNode(input: {
+  id: string;
+  tabs?: WorkspaceTab[];
+  focusedTabId?: string | null;
+}): SplitNodeInternal {
   const normalizedTabs = normalizeWorkspaceTabs(input.tabs ?? []);
   const tabIds = normalizedTabs.map((tab) => tab.tabId);
   const focusedTabId = tabIds.includes(input.focusedTabId ?? "")
     ? (input.focusedTabId ?? null)
-    : tabIds[tabIds.length - 1] ?? null;
+    : (tabIds[tabIds.length - 1] ?? null);
 
   return {
     kind: "pane",
@@ -370,11 +374,18 @@ function asInternalNode(node: SplitNode): SplitNodeInternal {
   return node as SplitNodeInternal;
 }
 
-function asInternalLayout(layout: WorkspaceLayout): { root: SplitNodeInternal; focusedPaneId: string } {
+function asInternalLayout(layout: WorkspaceLayout): {
+  root: SplitNodeInternal;
+  focusedPaneId: string;
+} {
   return layout as { root: SplitNodeInternal; focusedPaneId: string };
 }
 
-function findPanePathById(node: SplitNodeInternal, paneId: string, path: number[] = []): number[] | null {
+function findPanePathById(
+  node: SplitNodeInternal,
+  paneId: string,
+  path: number[] = [],
+): number[] | null {
   if (node.kind === "pane") {
     return node.pane.id === paneId ? path : null;
   }
@@ -387,12 +398,19 @@ function findPanePathById(node: SplitNodeInternal, paneId: string, path: number[
   return null;
 }
 
-function findPanePathContainingTab(node: SplitNodeInternal, tabId: string, path: number[] = []): number[] | null {
+function findPanePathContainingTab(
+  node: SplitNodeInternal,
+  tabId: string,
+  path: number[] = [],
+): number[] | null {
   if (node.kind === "pane") {
     return node.pane.tabs.some((tab) => tab.tabId === tabId) ? path : null;
   }
   for (let index = 0; index < node.group.children.length; index += 1) {
-    const childPath = findPanePathContainingTab(node.group.children[index], tabId, [...path, index]);
+    const childPath = findPanePathContainingTab(node.group.children[index], tabId, [
+      ...path,
+      index,
+    ]);
     if (childPath) {
       return childPath;
     }
@@ -400,7 +418,11 @@ function findPanePathContainingTab(node: SplitNodeInternal, tabId: string, path:
   return null;
 }
 
-function findGroupPathById(node: SplitNodeInternal, groupId: string, path: number[] = []): number[] | null {
+function findGroupPathById(
+  node: SplitNodeInternal,
+  groupId: string,
+  path: number[] = [],
+): number[] | null {
   if (node.kind === "pane") {
     return null;
   }
@@ -428,7 +450,7 @@ function getNodeAtPath(node: SplitNodeInternal, path: number[]): SplitNodeIntern
 function replaceNodeAtPath(
   node: SplitNodeInternal,
   path: number[],
-  updater: (node: SplitNodeInternal) => SplitNodeInternal
+  updater: (node: SplitNodeInternal) => SplitNodeInternal,
 ): SplitNodeInternal {
   if (path.length === 0) {
     return updater(node);
@@ -437,7 +459,7 @@ function replaceNodeAtPath(
   invariant(node.kind === "group", "Expected group while replacing split tree node");
   const [index, ...rest] = path;
   const nextChildren = node.group.children.map((child, childIndex) =>
-    childIndex === index ? replaceNodeAtPath(child, rest, updater) : child
+    childIndex === index ? replaceNodeAtPath(child, rest, updater) : child,
   );
 
   return createGroupNode({
@@ -450,7 +472,7 @@ function replaceNodeAtPath(
 
 function insertChildIntoGroup(
   groupNode: SplitNodeInternal,
-  input: InsertChildIntoGroupInput
+  input: InsertChildIntoGroupInput,
 ): SplitNodeInternal {
   invariant(groupNode.kind === "group", "Expected group for split insertion");
   const nextChildren = groupNode.group.children.slice();
@@ -509,7 +531,7 @@ function normalizePaneAfterTabChange(pane: SplitPaneInternal): SplitPaneInternal
   const tabIds = tabs.map((tab) => tab.tabId);
   const focusedTabId = tabIds.includes(pane.focusedTabId ?? "")
     ? pane.focusedTabId
-    : tabIds[tabIds.length - 1] ?? null;
+    : (tabIds[tabIds.length - 1] ?? null);
 
   return {
     id: pane.id,
@@ -561,7 +583,9 @@ function normalizeNode(node: unknown): SplitNodeInternal | null {
     }
 
     const children = Array.isArray(rawGroup.children)
-      ? rawGroup.children.map((child) => normalizeNode(child)).filter((child): child is SplitNodeInternal => child !== null)
+      ? rawGroup.children
+          .map((child) => normalizeNode(child))
+          .filter((child): child is SplitNodeInternal => child !== null)
       : [];
     if (children.length === 0) {
       return null;
@@ -639,7 +663,7 @@ function removePaneByPath(root: SplitNodeInternal, path: number[]): SplitNodeInt
 
 function detachTabFromTree(
   root: SplitNodeInternal,
-  input: DetachTabFromTreeInput
+  input: DetachTabFromTreeInput,
 ): DetachTabFromTreeResult {
   const panePath = findPanePathContainingTab(root, input.tabId);
   if (!panePath) {
@@ -670,7 +694,10 @@ function detachTabFromTree(
   };
 }
 
-function insertTabIntoPane(root: SplitNodeInternal, input: InsertTabIntoPaneInput): SplitNodeInternal {
+function insertTabIntoPane(
+  root: SplitNodeInternal,
+  input: InsertTabIntoPaneInput,
+): SplitNodeInternal {
   const panePath = findPanePathById(root, input.paneId);
   invariant(panePath, `Pane not found: ${input.paneId}`);
   return replaceNodeAtPath(root, panePath, (node) => {
@@ -716,14 +743,17 @@ function updateTabInTree(root: SplitNodeInternal, input: UpdateTabInTreeInput): 
       pane: normalizePaneAfterTabChange({
         ...node.pane,
         tabs: node.pane.tabs.map((tab) =>
-          tab.tabId === input.tabId ? { ...tab, target: input.target } : tab
+          tab.tabId === input.tabId ? { ...tab, target: input.target } : tab,
         ),
       }),
     };
   });
 }
 
-function updateGroupSizesInTree(root: SplitNodeInternal, input: UpdateGroupSizesInTreeInput): SplitNodeInternal {
+function updateGroupSizesInTree(
+  root: SplitNodeInternal,
+  input: UpdateGroupSizesInTreeInput,
+): SplitNodeInternal {
   const groupPath = findGroupPathById(root, input.groupId);
   if (!groupPath) {
     return root;
@@ -742,7 +772,10 @@ function updateGroupSizesInTree(root: SplitNodeInternal, input: UpdateGroupSizes
   });
 }
 
-function updatePaneInTree(root: SplitNodeInternal, input: UpdatePaneInTreeInput): SplitNodeInternal {
+function updatePaneInTree(
+  root: SplitNodeInternal,
+  input: UpdatePaneInTreeInput,
+): SplitNodeInternal {
   const panePath = findPanePathById(root, input.paneId);
   if (!panePath) {
     return root;
@@ -757,7 +790,8 @@ function updatePaneInTree(root: SplitNodeInternal, input: UpdatePaneInTreeInput)
 }
 
 function insertSplitInternal(input: InsertSplitInternalInput): InsertSplitInternalResult {
-  const direction = input.position === "left" || input.position === "right" ? "horizontal" : "vertical";
+  const direction =
+    input.position === "left" || input.position === "right" ? "horizontal" : "vertical";
   const insertAfter = input.position === "right" || input.position === "bottom";
 
   const targetPathBeforeDetach = findPanePathById(input.root, input.targetPaneId);
@@ -783,10 +817,7 @@ function insertSplitInternal(input: InsertSplitInternalInput): InsertSplitIntern
 
   const parentPath = targetPath.slice(0, -1);
   const targetIndex = targetPath[targetPath.length - 1] ?? 0;
-  const parentNode =
-    parentPath.length > 0
-      ? getNodeAtPath(detached.root, parentPath)
-      : null;
+  const parentNode = parentPath.length > 0 ? getNodeAtPath(detached.root, parentPath) : null;
 
   if (parentNode?.kind === "group" && parentNode.group.direction === direction) {
     const targetSize = parentNode.group.sizes[targetIndex] ?? 0;
@@ -801,7 +832,7 @@ function insertSplitInternal(input: InsertSplitInternalInput): InsertSplitIntern
           index: insertIndex,
           node: newPaneNode,
           sizes: nextSizes,
-        })
+        }),
       ),
       newPaneId,
     };
@@ -902,7 +933,7 @@ export function insertSplit(
   root: SplitNode,
   targetPaneId: string,
   tabId: string,
-  position: "left" | "right" | "top" | "bottom"
+  position: "left" | "right" | "top" | "bottom",
 ): SplitNode {
   return insertSplitInternal({
     root: asInternalNode(root),
@@ -929,15 +960,16 @@ export function removeTabFromTree(root: SplitNode, tabId: string): SplitNode {
 export function openTabInLayout(input: OpenTabInLayoutInput): OpenTabInLayoutResult {
   const layout = asInternalLayout(input.layout);
   const existingTab = collectAllTabs(layout.root).find((tab) =>
-    workspaceTabTargetsEqual(tab.target, input.target)
+    workspaceTabTargetsEqual(tab.target, input.target),
   );
   if (existingTab) {
     return {
       tabId: existingTab.tabId,
-      layout: focusTabInLayout({
-        layout,
-        tabId: existingTab.tabId,
-      }) ?? input.layout,
+      layout:
+        focusTabInLayout({
+          layout,
+          tabId: existingTab.tabId,
+        }) ?? input.layout,
     };
   }
 
@@ -1005,7 +1037,9 @@ export function focusTabInLayout(input: FocusTabInLayoutInput): WorkspaceLayout 
   };
 }
 
-export function retargetTabInLayout(input: RetargetTabInLayoutInput): RetargetTabInLayoutResult | null {
+export function retargetTabInLayout(
+  input: RetargetTabInLayoutInput,
+): RetargetTabInLayoutResult | null {
   const layout = asInternalLayout(input.layout);
   const pane = findPaneContainingTab(layout.root, input.tabId);
   if (!pane) {
@@ -1033,7 +1067,7 @@ export function retargetTabInLayout(input: RetargetTabInLayoutInput): RetargetTa
 }
 
 export function reorderFocusedPaneTabsInLayout(
-  input: ReorderFocusedPaneTabsInLayoutInput
+  input: ReorderFocusedPaneTabsInLayoutInput,
 ): WorkspaceLayout | null {
   const layout = asInternalLayout(input.layout);
   if (!findPaneById(layout.root, layout.focusedPaneId)) {
@@ -1078,13 +1112,16 @@ export function splitPaneInLayout(input: SplitPaneInLayoutInput): SplitPaneInLay
   };
 }
 
-export function splitPaneEmptyInLayout(input: SplitPaneEmptyInLayoutInput): SplitPaneInLayoutResult | null {
+export function splitPaneEmptyInLayout(
+  input: SplitPaneEmptyInLayoutInput,
+): SplitPaneInLayoutResult | null {
   const layout = asInternalLayout(input.layout);
   if (!findPaneById(layout.root, input.targetPaneId)) {
     return null;
   }
 
-  const direction = input.position === "left" || input.position === "right" ? "horizontal" : "vertical";
+  const direction =
+    input.position === "left" || input.position === "right" ? "horizontal" : "vertical";
   const insertAfter = input.position === "right" || input.position === "bottom";
 
   const targetPath = findPanePathById(layout.root, input.targetPaneId);
@@ -1107,7 +1144,7 @@ export function splitPaneEmptyInLayout(input: SplitPaneEmptyInLayoutInput): Spli
     nextSizes.splice(insertIndex, 0, targetSize / 2);
     nextSizes[targetIndex + (insertAfter ? 0 : 1)] = targetSize / 2;
     nextRoot = replaceNodeAtPath(layout.root, parentPath, () =>
-      insertChildIntoGroup(parentNode, { index: insertIndex, node: newPaneNode, sizes: nextSizes })
+      insertChildIntoGroup(parentNode, { index: insertIndex, node: newPaneNode, sizes: nextSizes }),
     );
   } else {
     const newGroup = createGroupNode({
@@ -1181,7 +1218,9 @@ export function resizeSplitInLayout(input: ResizeSplitInLayoutInput): WorkspaceL
   };
 }
 
-export function reorderPaneTabsInLayout(input: ReorderPaneTabsInLayoutInput): WorkspaceLayout | null {
+export function reorderPaneTabsInLayout(
+  input: ReorderPaneTabsInLayoutInput,
+): WorkspaceLayout | null {
   const layout = asInternalLayout(input.layout);
   if (!findPaneById(layout.root, input.paneId)) {
     return null;

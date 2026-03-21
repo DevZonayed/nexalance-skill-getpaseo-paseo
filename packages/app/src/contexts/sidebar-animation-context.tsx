@@ -1,11 +1,14 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, type ReactNode } from "react";
-import { useWindowDimensions } from "react-native";
 import {
-  useSharedValue,
-  withTiming,
-  Easing,
-  type SharedValue,
-} from "react-native-reanimated";
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  type ReactNode,
+} from "react";
+import { useWindowDimensions } from "react-native";
+import { useSharedValue, withTiming, Easing, type SharedValue } from "react-native-reanimated";
 import { type GestureType } from "react-native-gesture-handler";
 import { UnistylesRuntime } from "react-native-unistyles";
 import { usePanelStore } from "@/stores/panel-store";
@@ -27,8 +30,7 @@ const SidebarAnimationContext = createContext<SidebarAnimationContextValue | nul
 
 export function SidebarAnimationProvider({ children }: { children: ReactNode }) {
   const { width: windowWidth } = useWindowDimensions();
-  const isMobile =
-    UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
+  const isMobile = UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
   const mobileView = usePanelStore((state) => state.mobileView);
   const desktopAgentListOpen = usePanelStore((state) => state.desktop.agentListOpen);
 
@@ -112,13 +114,19 @@ export function SidebarAnimationProvider({ children }: { children: ReactNode }) 
       isGesturing,
       closeGestureRef,
     }),
-    [translateX, backdropOpacity, windowWidth, animateToOpen, animateToClose, isGesturing, closeGestureRef]
+    [
+      translateX,
+      backdropOpacity,
+      windowWidth,
+      animateToOpen,
+      animateToClose,
+      isGesturing,
+      closeGestureRef,
+    ],
   );
 
   return (
-    <SidebarAnimationContext.Provider value={value}>
-      {children}
-    </SidebarAnimationContext.Provider>
+    <SidebarAnimationContext.Provider value={value}>{children}</SidebarAnimationContext.Provider>
   );
 }
 

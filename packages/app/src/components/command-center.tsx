@@ -1,12 +1,4 @@
-import {
-  Modal,
-  Pressable,
-  ScrollView,
-  Text,
-  TextInput,
-  View,
-  Platform,
-} from "react-native";
+import { Modal, Pressable, ScrollView, Text, TextInput, View, Platform } from "react-native";
 import { memo, useEffect, useRef, type ReactNode } from "react";
 import { Plus, Settings } from "lucide-react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
@@ -54,16 +46,8 @@ const CommandCenterRow = memo(function CommandCenterRow({
 
 export function CommandCenter() {
   const { theme } = useUnistyles();
-  const {
-    open,
-    inputRef,
-    query,
-    setQuery,
-    activeIndex,
-    items,
-    handleClose,
-    handleSelectItem,
-  } = useCommandCenter();
+  const { open, inputRef, query, setQuery, activeIndex, items, handleClose, handleSelectItem } =
+    useCommandCenter();
 
   const rowRefs = useRef<Map<number, View>>(new Map());
   const resultsRef = useRef<ScrollView>(null);
@@ -77,11 +61,13 @@ export function CommandCenter() {
       return;
     }
     const scrollNode =
-      (resultsRef.current as
-        | (ScrollView & {
-            getScrollableNode?: () => HTMLElement | null;
-          })
-        | null)?.getScrollableNode?.() ?? null;
+      (
+        resultsRef.current as
+          | (ScrollView & {
+              getScrollableNode?: () => HTMLElement | null;
+            })
+          | null
+      )?.getScrollableNode?.() ?? null;
     const rowEl = row as unknown as HTMLElement;
 
     if (!scrollNode) {
@@ -110,18 +96,16 @@ export function CommandCenter() {
   const agentItems = items.filter((item) => item.kind === "agent");
 
   return (
-    <Modal
-      visible={open}
-      transparent
-      animationType="fade"
-      onRequestClose={handleClose}
-    >
+    <Modal visible={open} transparent animationType="fade" onRequestClose={handleClose}>
       <View style={styles.overlay}>
         <Pressable style={styles.backdrop} onPress={handleClose} />
 
         <View
           testID="command-center-panel"
-          style={[styles.panel, { borderColor: theme.colors.border, backgroundColor: theme.colors.surface0 }]}
+          style={[
+            styles.panel,
+            { borderColor: theme.colors.border, backgroundColor: theme.colors.surface0 },
+          ]}
         >
           <View style={[styles.header, { borderBottomColor: theme.colors.border }]}>
             <TextInput
@@ -131,10 +115,7 @@ export function CommandCenter() {
               onChangeText={setQuery}
               placeholder="Type a command or search agents..."
               placeholderTextColor={theme.colors.foregroundMuted}
-              style={[
-                styles.input,
-                { color: theme.colors.foreground },
-              ]}
+              style={[styles.input, { color: theme.colors.foreground }]}
               autoCapitalize="none"
               autoCorrect={false}
               autoFocus
@@ -164,11 +145,7 @@ export function CommandCenter() {
                       const action = item.action;
                       const actionIcon =
                         action.icon === "plus" ? (
-                          <Plus
-                            size={16}
-                            strokeWidth={2.4}
-                            color={theme.colors.foregroundMuted}
-                          />
+                          <Plus size={16} strokeWidth={2.4} color={theme.colors.foregroundMuted} />
                         ) : action.icon === "settings" ? (
                           <Settings
                             size={16}

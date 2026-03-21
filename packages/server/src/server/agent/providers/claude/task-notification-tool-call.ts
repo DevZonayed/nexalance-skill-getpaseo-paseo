@@ -8,7 +8,7 @@ const TAG_NAME_PATTERN = /[.*+?^${}()|[\]\\]/g;
 
 const OptionalNonEmptyTrimmedStringSchema = z.preprocess(
   (value) => (typeof value === "string" ? value.trim() : value),
-  z.string().min(1).optional()
+  z.string().min(1).optional(),
 );
 
 const TaskNotificationEnvelopeSchema = z.object({
@@ -130,10 +130,7 @@ function extractUserContentText(content: unknown): string | null {
 
 function readTaskNotificationTagValue(input: ReadTaskNotificationTagInput): string | null {
   const escapedTagName = input.tagName.replace(TAG_NAME_PATTERN, "\\$&");
-  const pattern = new RegExp(
-    `<${escapedTagName}>\\s*([\\s\\S]*?)\\s*</${escapedTagName}>`,
-    "i"
-  );
+  const pattern = new RegExp(`<${escapedTagName}>\\s*([\\s\\S]*?)\\s*</${escapedTagName}>`, "i");
   const match = input.text.match(pattern);
   if (!match) {
     return null;
@@ -142,7 +139,7 @@ function readTaskNotificationTagValue(input: ReadTaskNotificationTagInput): stri
 }
 
 function parseTaskNotificationFromUserContent(
-  input: MapTaskNotificationUserContentToToolCallInput
+  input: MapTaskNotificationUserContentToToolCallInput,
 ): TaskNotificationEnvelope | null {
   const parsedInput = MapTaskNotificationUserContentToToolCallInputSchema.safeParse(input);
   if (!parsedInput.success) {
@@ -166,9 +163,7 @@ function parseTaskNotificationFromUserContent(
   });
 }
 
-function parseTaskNotificationFromSystemRecord(
-  record: unknown
-): TaskNotificationEnvelope | null {
+function parseTaskNotificationFromSystemRecord(record: unknown): TaskNotificationEnvelope | null {
   const parsedRecord = TaskNotificationHistoryRecordSchema.safeParse(record);
   if (!parsedRecord.success) {
     return null;
@@ -187,24 +182,18 @@ function parseTaskNotificationFromSystemRecord(
     messageId: toNonEmptyString(systemRecord.uuid) ?? toNonEmptyString(systemRecord.message_id),
     taskId:
       toNonEmptyString(systemRecord.task_id) ??
-      (rawText
-        ? readTaskNotificationTagValue({ text: rawText, tagName: "task-id" })
-        : null),
+      (rawText ? readTaskNotificationTagValue({ text: rawText, tagName: "task-id" }) : null),
     status:
       toNonEmptyString(systemRecord.status) ??
-      (rawText
-        ? readTaskNotificationTagValue({ text: rawText, tagName: "status" })
-        : null),
+      (rawText ? readTaskNotificationTagValue({ text: rawText, tagName: "status" }) : null),
     summary:
       toNonEmptyString(systemRecord.summary) ??
-      (rawText
-        ? readTaskNotificationTagValue({ text: rawText, tagName: "summary" })
-        : null),
+      (rawText ? readTaskNotificationTagValue({ text: rawText, tagName: "summary" }) : null),
     outputFile:
       toNonEmptyString(systemRecord.output_file) ??
       (rawText
-        ? readTaskNotificationTagValue({ text: rawText, tagName: "output-file" }) ??
-          readTaskNotificationTagValue({ text: rawText, tagName: "output_file" })
+        ? (readTaskNotificationTagValue({ text: rawText, tagName: "output-file" }) ??
+          readTaskNotificationTagValue({ text: rawText, tagName: "output_file" }))
         : null),
     rawText,
   });
@@ -231,12 +220,7 @@ function buildTaskNotificationCallId(envelope: TaskNotificationEnvelope): string
   }
 
   const seed =
-    [
-      envelope.status,
-      envelope.summary,
-      envelope.outputFile,
-      envelope.rawText,
-    ]
+    [envelope.status, envelope.summary, envelope.outputFile, envelope.rawText]
       .filter((value): value is string => typeof value === "string")
       .join("|") || "task_notification";
   const digest = createHash("sha1").update(seed).digest("hex").slice(0, 12);
@@ -254,7 +238,7 @@ function buildTaskNotificationLabel(envelope: TaskNotificationEnvelope): string 
 }
 
 function buildTaskNotificationStatus(
-  input: BuildTaskNotificationStatusInput
+  input: BuildTaskNotificationStatusInput,
 ): TaskNotificationLifecycle {
   const normalizedStatus = input.status?.toLowerCase() ?? null;
   if (normalizedStatus === "failed" || normalizedStatus === "error") {
@@ -270,7 +254,7 @@ function buildTaskNotificationStatus(
 }
 
 function toTaskNotificationToolCall(
-  envelope: TaskNotificationEnvelope
+  envelope: TaskNotificationEnvelope,
 ): TaskNotificationToolCallItem {
   const lifecycle = buildTaskNotificationStatus({
     status: envelope.status,
@@ -330,7 +314,7 @@ export function isTaskNotificationUserContent(content: unknown): boolean {
 }
 
 export function mapTaskNotificationUserContentToToolCall(
-  input: MapTaskNotificationUserContentToToolCallInput
+  input: MapTaskNotificationUserContentToToolCallInput,
 ): TaskNotificationToolCallItem | null {
   const parsed = parseTaskNotificationFromUserContent(input);
   if (!parsed) {
@@ -340,7 +324,7 @@ export function mapTaskNotificationUserContentToToolCall(
 }
 
 export function mapTaskNotificationSystemRecordToToolCall(
-  record: unknown
+  record: unknown,
 ): TaskNotificationToolCallItem | null {
   const parsed = parseTaskNotificationFromSystemRecord(record);
   if (!parsed) {
@@ -350,7 +334,7 @@ export function mapTaskNotificationSystemRecordToToolCall(
 }
 
 export function coerceTaskNotificationHistoryRecordToSystemMessage(
-  record: unknown
+  record: unknown,
 ): TaskNotificationSystemMessageLike | null {
   const parsed = parseTaskNotificationFromSystemRecord(record);
   if (!parsed) {

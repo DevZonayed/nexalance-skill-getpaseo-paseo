@@ -80,7 +80,7 @@ function getCloseButtonTestId(tab: WorkspaceTabDescriptor): string {
 }
 
 export function buildWorkspaceTabMenuEntries(
-  input: BuildWorkspaceTabMenuEntriesInput
+  input: BuildWorkspaceTabMenuEntriesInput,
 ): WorkspaceTabMenuEntry[] {
   const {
     surface,
@@ -170,7 +170,7 @@ export function buildWorkspaceTabMenuEntries(
 }
 
 export function buildWorkspaceDesktopTabActions(
-  input: BuildWorkspaceDesktopTabActionsInput
+  input: BuildWorkspaceDesktopTabActionsInput,
 ): WorkspaceDesktopTabActions {
   const contextMenuTestId = `workspace-tab-context-${input.tab.key}`;
   return {

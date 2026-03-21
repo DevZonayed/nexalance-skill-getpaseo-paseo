@@ -11,7 +11,7 @@ export const CURRENT_RELAY_PROTOCOL_VERSION: RelayProtocolVersion = "2";
 
 export function normalizeRelayProtocolVersion(
   value: unknown,
-  fallback: RelayProtocolVersion = CURRENT_RELAY_PROTOCOL_VERSION
+  fallback: RelayProtocolVersion = CURRENT_RELAY_PROTOCOL_VERSION,
 ): RelayProtocolVersion {
   if (value == null) {
     return fallback;
@@ -93,9 +93,7 @@ function shouldUseSecureWebSocket(port: number): boolean {
   return port === 443;
 }
 
-export function buildDaemonWebSocketUrl(
-  endpoint: string
-): string {
+export function buildDaemonWebSocketUrl(endpoint: string): string {
   const { host, port, isIpv6 } = parseHostPort(endpoint);
   const protocol = shouldUseSecureWebSocket(port) ? "wss" : "ws";
   const hostPart = isIpv6 ? `[${host}]` : host;
@@ -151,10 +149,7 @@ export function extractHostPortFromWebSocketUrl(wsUrl: string): string {
 export function isRelayClientWebSocketUrl(url: string): boolean {
   try {
     const parsed = new URL(url);
-    return (
-      parsed.searchParams.get("role") === "client" &&
-      parsed.searchParams.has("serverId")
-    );
+    return parsed.searchParams.get("role") === "client" && parsed.searchParams.has("serverId");
   } catch {
     return false;
   }

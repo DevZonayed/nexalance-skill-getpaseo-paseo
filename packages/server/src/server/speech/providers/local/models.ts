@@ -1,7 +1,4 @@
-import {
-  ensureSherpaOnnxModels,
-  getSherpaOnnxModelDir,
-} from "./sherpa/model-downloader.js";
+import { ensureSherpaOnnxModels, getSherpaOnnxModelDir } from "./sherpa/model-downloader.js";
 import {
   DEFAULT_LOCAL_STT_MODEL,
   DEFAULT_LOCAL_TTS_MODEL,

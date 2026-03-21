@@ -40,7 +40,11 @@ describe("resolveAgentModel", () => {
       opencode: { fetchModels: vi.fn() },
     } as any);
 
-    const result = await resolveAgentModel({ provider: "claude", cwd: "~/repo", logger: testLogger });
+    const result = await resolveAgentModel({
+      provider: "claude",
+      cwd: "~/repo",
+      logger: testLogger,
+    });
 
     expect(result).toBe("claude-3.5-sonnet");
     expect(fetchModels).toHaveBeenCalledWith({

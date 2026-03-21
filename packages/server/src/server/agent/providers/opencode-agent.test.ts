@@ -44,9 +44,7 @@ interface TurnResult {
   error?: string;
 }
 
-async function collectTurnEvents(
-  iterator: AsyncGenerator<AgentStreamEvent>
-): Promise<TurnResult> {
+async function collectTurnEvents(iterator: AsyncGenerator<AgentStreamEvent>): Promise<TurnResult> {
   const result: TurnResult = {
     events: [],
     assistantMessages: [],
@@ -108,16 +106,20 @@ const hasOpenCode = isBinaryInstalled("opencode");
     const client = new OpenCodeAgentClient(logger);
     const models = await client.listModels();
 
-    logger.info({ modelCount: models.length, elapsed: Date.now() - startTime }, "beforeAll: Retrieved models");
+    logger.info(
+      { modelCount: models.length, elapsed: Date.now() - startTime },
+      "beforeAll: Retrieved models",
+    );
 
     // Prefer fast models for tests - nano models are typically fastest
-    const fastModel = models.find((m) =>
-      m.id.includes("gpt-4.1-nano") ||
-      m.id.includes("gpt-5-nano") ||
-      m.id.includes("gpt-5.1-codex-mini") ||
-      m.id.includes("gpt-4o-mini") ||
-      m.id.includes("gpt-3.5") ||
-      m.id.includes("free")
+    const fastModel = models.find(
+      (m) =>
+        m.id.includes("gpt-4.1-nano") ||
+        m.id.includes("gpt-5-nano") ||
+        m.id.includes("gpt-5.1-codex-mini") ||
+        m.id.includes("gpt-4o-mini") ||
+        m.id.includes("gpt-3.5") ||
+        m.id.includes("free"),
     );
 
     if (fastModel) {
@@ -126,155 +128,139 @@ const hasOpenCode = isBinaryInstalled("opencode");
       // Fallback to any available model
       TEST_MODEL = models[0].id;
     } else {
-      throw new Error("No OpenCode models available. Please authenticate with a provider (e.g., set OPENAI_API_KEY).");
+      throw new Error(
+        "No OpenCode models available. Please authenticate with a provider (e.g., set OPENAI_API_KEY).",
+      );
     }
 
-    logger.info({ model: TEST_MODEL, totalElapsed: Date.now() - startTime }, "beforeAll: Selected OpenCode test model");
+    logger.info(
+      { model: TEST_MODEL, totalElapsed: Date.now() - startTime },
+      "beforeAll: Selected OpenCode test model",
+    );
   }, 30_000);
 
-  test(
-    "creates a session with valid id and provider",
-    async () => {
-      const cwd = tmpCwd();
-      const client = new OpenCodeAgentClient(logger);
-      const session = await client.createSession(buildConfig(cwd));
+  test("creates a session with valid id and provider", async () => {
+    const cwd = tmpCwd();
+    const client = new OpenCodeAgentClient(logger);
+    const session = await client.createSession(buildConfig(cwd));
 
-      // HARD ASSERT: Session has required fields
-      expect(typeof session.id).toBe("string");
-      expect(session.id.length).toBeGreaterThan(0);
-      expect(session.provider).toBe("opencode");
+    // HARD ASSERT: Session has required fields
+    expect(typeof session.id).toBe("string");
+    expect(session.id.length).toBeGreaterThan(0);
+    expect(session.provider).toBe("opencode");
 
-      await session.close();
-      rmSync(cwd, { recursive: true, force: true });
-    },
-    60_000
-  );
+    await session.close();
+    rmSync(cwd, { recursive: true, force: true });
+  }, 60_000);
 
-  test(
-    "single turn completes with streaming deltas",
-    async () => {
-      const cwd = tmpCwd();
-      const client = new OpenCodeAgentClient(logger);
-      const session = await client.createSession(buildConfig(cwd));
+  test("single turn completes with streaming deltas", async () => {
+    const cwd = tmpCwd();
+    const client = new OpenCodeAgentClient(logger);
+    const session = await client.createSession(buildConfig(cwd));
 
-      const iterator = session.stream("Say hello");
-      const turn = await collectTurnEvents(iterator);
+    const iterator = session.stream("Say hello");
+    const turn = await collectTurnEvents(iterator);
 
-      // HARD ASSERT: Turn completed successfully
-      expect(turn.turnCompleted).toBe(true);
-      expect(turn.turnFailed).toBe(false);
+    // HARD ASSERT: Turn completed successfully
+    expect(turn.turnCompleted).toBe(true);
+    expect(turn.turnFailed).toBe(false);
 
-      // HARD ASSERT: Got at least one assistant message
-      expect(turn.assistantMessages.length).toBeGreaterThan(0);
+    // HARD ASSERT: Got at least one assistant message
+    expect(turn.assistantMessages.length).toBeGreaterThan(0);
 
-      // HARD ASSERT: Each delta is non-empty
-      for (const msg of turn.assistantMessages) {
-        expect(msg.text.length).toBeGreaterThan(0);
-      }
+    // HARD ASSERT: Each delta is non-empty
+    for (const msg of turn.assistantMessages) {
+      expect(msg.text.length).toBeGreaterThan(0);
+    }
 
-      // HARD ASSERT: Concatenated deltas form non-empty response
-      const fullResponse = turn.assistantMessages.map((m) => m.text).join("");
-      expect(fullResponse.length).toBeGreaterThan(0);
+    // HARD ASSERT: Concatenated deltas form non-empty response
+    const fullResponse = turn.assistantMessages.map((m) => m.text).join("");
+    expect(fullResponse.length).toBeGreaterThan(0);
 
-      await session.close();
-      rmSync(cwd, { recursive: true, force: true });
-    },
-    120_000
-  );
+    await session.close();
+    rmSync(cwd, { recursive: true, force: true });
+  }, 120_000);
 
-  test(
-    "listModels returns models with required fields",
-    async () => {
-      const client = new OpenCodeAgentClient(logger);
-      const models = await client.listModels();
+  test("listModels returns models with required fields", async () => {
+    const client = new OpenCodeAgentClient(logger);
+    const models = await client.listModels();
 
-      // HARD ASSERT: Returns an array
-      expect(Array.isArray(models)).toBe(true);
+    // HARD ASSERT: Returns an array
+    expect(Array.isArray(models)).toBe(true);
 
-      // HARD ASSERT: At least one model is returned (OpenCode has connected providers)
-      expect(models.length).toBeGreaterThan(0);
+    // HARD ASSERT: At least one model is returned (OpenCode has connected providers)
+    expect(models.length).toBeGreaterThan(0);
 
-      // HARD ASSERT: Each model has required fields with correct types
-      for (const model of models) {
-        expect(model.provider).toBe("opencode");
-        expect(typeof model.id).toBe("string");
-        expect(model.id.length).toBeGreaterThan(0);
-        expect(typeof model.label).toBe("string");
-        expect(model.label.length).toBeGreaterThan(0);
+    // HARD ASSERT: Each model has required fields with correct types
+    for (const model of models) {
+      expect(model.provider).toBe("opencode");
+      expect(typeof model.id).toBe("string");
+      expect(model.id.length).toBeGreaterThan(0);
+      expect(typeof model.label).toBe("string");
+      expect(model.label.length).toBeGreaterThan(0);
 
-        // HARD ASSERT: Model ID contains provider prefix (format: providerId/modelId)
-        expect(model.id).toContain("/");
-      }
-    },
-    60_000
-  );
+      // HARD ASSERT: Model ID contains provider prefix (format: providerId/modelId)
+      expect(model.id).toContain("/");
+    }
+  }, 60_000);
 
-  test(
-    "available modes include build and plan",
-    async () => {
-      const cwd = tmpCwd();
-      const client = new OpenCodeAgentClient(logger);
-      const session = await client.createSession(buildConfig(cwd));
+  test("available modes include build and plan", async () => {
+    const cwd = tmpCwd();
+    const client = new OpenCodeAgentClient(logger);
+    const session = await client.createSession(buildConfig(cwd));
 
-      const modes = await session.getAvailableModes();
+    const modes = await session.getAvailableModes();
 
-      expect(modes.some((mode) => mode.id === "build")).toBe(true);
-      expect(modes.some((mode) => mode.id === "plan")).toBe(true);
+    expect(modes.some((mode) => mode.id === "build")).toBe(true);
+    expect(modes.some((mode) => mode.id === "plan")).toBe(true);
 
-      await session.close();
-      rmSync(cwd, { recursive: true, force: true });
-    },
-    60_000
-  );
+    await session.close();
+    rmSync(cwd, { recursive: true, force: true });
+  }, 60_000);
 
-  test(
-    "plan mode blocks edits while build mode can write files",
-    async () => {
-      const cwd = tmpCwd();
-      const planFile = path.join(cwd, "plan-mode-output.txt");
-      const buildFile = path.join(cwd, "build-mode-output.txt");
-      const client = new OpenCodeAgentClient(logger);
+  test("plan mode blocks edits while build mode can write files", async () => {
+    const cwd = tmpCwd();
+    const planFile = path.join(cwd, "plan-mode-output.txt");
+    const buildFile = path.join(cwd, "build-mode-output.txt");
+    const client = new OpenCodeAgentClient(logger);
 
-      const planSession = await client.createSession({
-        ...buildConfig(cwd),
-        modeId: "plan",
-      });
+    const planSession = await client.createSession({
+      ...buildConfig(cwd),
+      modeId: "plan",
+    });
 
-      const planTurn = await collectTurnEvents(
-        planSession.stream(
-          "Create a file named plan-mode-output.txt in the current directory containing exactly hello."
-        )
-      );
+    const planTurn = await collectTurnEvents(
+      planSession.stream(
+        "Create a file named plan-mode-output.txt in the current directory containing exactly hello.",
+      ),
+    );
 
-      expect(planTurn.turnCompleted).toBe(true);
-      expect(planTurn.turnFailed).toBe(false);
-      expect(existsSync(planFile)).toBe(false);
+    expect(planTurn.turnCompleted).toBe(true);
+    expect(planTurn.turnFailed).toBe(false);
+    expect(existsSync(planFile)).toBe(false);
 
-      const planResponse = planTurn.assistantMessages.map((message) => message.text).join("");
-      expect(planResponse.toLowerCase()).toContain("plan mode");
+    const planResponse = planTurn.assistantMessages.map((message) => message.text).join("");
+    expect(planResponse.toLowerCase()).toContain("plan mode");
 
-      await planSession.close();
+    await planSession.close();
 
-      const buildSession = await client.createSession({
-        ...buildConfig(cwd),
-        modeId: "build",
-      });
+    const buildSession = await client.createSession({
+      ...buildConfig(cwd),
+      modeId: "build",
+    });
 
-      const buildTurn = await collectTurnEvents(
-        buildSession.stream(
-          "Create a file named build-mode-output.txt in the current directory containing exactly hello."
-        )
-      );
+    const buildTurn = await collectTurnEvents(
+      buildSession.stream(
+        "Create a file named build-mode-output.txt in the current directory containing exactly hello.",
+      ),
+    );
 
-      expect(buildTurn.turnCompleted).toBe(true);
-      expect(buildTurn.turnFailed).toBe(false);
-      expect(existsSync(buildFile)).toBe(true);
-      expect(readFileSync(buildFile, "utf8")).toContain("hello");
+    expect(buildTurn.turnCompleted).toBe(true);
+    expect(buildTurn.turnFailed).toBe(false);
+    expect(existsSync(buildFile)).toBe(true);
+    expect(readFileSync(buildFile, "utf8")).toContain("hello");
 
-      await buildSession.close();
-      rmSync(cwd, { recursive: true, force: true });
-    },
-    180_000
-  );
-
+    await buildSession.close();
+    rmSync(cwd, { recursive: true, force: true });
+  }, 180_000);
 });

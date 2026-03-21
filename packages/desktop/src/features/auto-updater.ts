@@ -96,7 +96,9 @@ export async function checkForAppUpdate(currentVersion: string): Promise<AppUpda
   }
 }
 
-export async function downloadAndInstallUpdate(currentVersion: string): Promise<AppUpdateInstallResult> {
+export async function downloadAndInstallUpdate(
+  currentVersion: string,
+): Promise<AppUpdateInstallResult> {
   if (!app.isPackaged) {
     return {
       installed: false,

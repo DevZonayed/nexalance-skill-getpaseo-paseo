@@ -122,9 +122,7 @@ export async function readManagedFileBase64(input: { path?: unknown }): Promise<
   return bytes.toString("base64");
 }
 
-export async function deleteManagedAttachmentFile(input: {
-  path?: unknown;
-}): Promise<boolean> {
+export async function deleteManagedAttachmentFile(input: { path?: unknown }): Promise<boolean> {
   const filePath = resolveManagedAttachmentPath(input.path);
   await rm(filePath, { force: true });
   return true;
@@ -139,7 +137,7 @@ export async function garbageCollectManagedAttachmentFiles(input: {
         input.referencedIds
           .filter((value): value is string => typeof value === "string")
           .map((value) => value.trim())
-          .filter((value) => ATTACHMENT_ID_PATTERN.test(value))
+          .filter((value) => ATTACHMENT_ID_PATTERN.test(value)),
       )
     : new Set<string>();
 

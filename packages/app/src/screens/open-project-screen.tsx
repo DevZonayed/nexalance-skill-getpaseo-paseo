@@ -38,10 +38,7 @@ export function OpenProjectScreen({ serverId }: { serverId: string }) {
         <PaseoLogo size={56} />
         <Text style={styles.heading}>What shall we build today?</Text>
         <Pressable
-          style={({ hovered }) => [
-            styles.openButton,
-            hovered && styles.openButtonHovered,
-          ]}
+          style={({ hovered }) => [styles.openButton, hovered && styles.openButtonHovered]}
           onPress={() => {
             void openProjectPicker();
           }}

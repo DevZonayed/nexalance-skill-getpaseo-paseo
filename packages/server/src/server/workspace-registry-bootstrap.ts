@@ -1,9 +1,9 @@
-import path from 'node:path'
+import path from "node:path";
 
-import type { Logger } from 'pino'
+import type { Logger } from "pino";
 
-import type { StoredAgentRecord } from './agent/agent-storage.js'
-import type { AgentStorage } from './agent/agent-storage.js'
+import type { StoredAgentRecord } from "./agent/agent-storage.js";
+import type { AgentStorage } from "./agent/agent-storage.js";
 import {
   buildProjectPlacementForCwd,
   deriveProjectKind,
@@ -11,87 +11,87 @@ import {
   deriveWorkspaceDisplayName,
   deriveWorkspaceKind,
   normalizeWorkspaceId,
-} from './workspace-registry-model.js'
+} from "./workspace-registry-model.js";
 import {
   createPersistedProjectRecord,
   createPersistedWorkspaceRecord,
   type ProjectRegistry,
   type WorkspaceRegistry,
-} from './workspace-registry.js'
+} from "./workspace-registry.js";
 
 function minIsoDate(left: string | null, right: string | null): string | null {
   if (!left) {
-    return right
+    return right;
   }
   if (!right) {
-    return left
+    return left;
   }
-  return Date.parse(left) <= Date.parse(right) ? left : right
+  return Date.parse(left) <= Date.parse(right) ? left : right;
 }
 
 function maxIsoDate(left: string | null, right: string | null): string | null {
   if (!left) {
-    return right
+    return right;
   }
   if (!right) {
-    return left
+    return left;
   }
-  return Date.parse(left) >= Date.parse(right) ? left : right
+  return Date.parse(left) >= Date.parse(right) ? left : right;
 }
 
 function resolveAgentCreatedAt(record: StoredAgentRecord): string {
-  return record.createdAt || record.updatedAt || new Date(0).toISOString()
+  return record.createdAt || record.updatedAt || new Date(0).toISOString();
 }
 
 function resolveAgentUpdatedAt(record: StoredAgentRecord): string {
-  return record.lastActivityAt || record.updatedAt || record.createdAt || new Date(0).toISOString()
+  return record.lastActivityAt || record.updatedAt || record.createdAt || new Date(0).toISOString();
 }
 
 export async function bootstrapWorkspaceRegistries(options: {
-  paseoHome: string
-  agentStorage: AgentStorage
-  projectRegistry: ProjectRegistry
-  workspaceRegistry: WorkspaceRegistry
-  logger: Logger
+  paseoHome: string;
+  agentStorage: AgentStorage;
+  projectRegistry: ProjectRegistry;
+  workspaceRegistry: WorkspaceRegistry;
+  logger: Logger;
 }): Promise<void> {
   const [projectsExists, workspacesExists] = await Promise.all([
     options.projectRegistry.existsOnDisk(),
     options.workspaceRegistry.existsOnDisk(),
-  ])
+  ]);
 
-  await Promise.all([options.projectRegistry.initialize(), options.workspaceRegistry.initialize()])
+  await Promise.all([options.projectRegistry.initialize(), options.workspaceRegistry.initialize()]);
 
   if (projectsExists && workspacesExists) {
-    return
+    return;
   }
 
-  const records = await options.agentStorage.list()
-  const activeRecords = records.filter((record) => !record.archivedAt)
-  const recordsByWorkspaceId = new Map<string, StoredAgentRecord[]>()
+  const records = await options.agentStorage.list();
+  const activeRecords = records.filter((record) => !record.archivedAt);
+  const recordsByWorkspaceId = new Map<string, StoredAgentRecord[]>();
   for (const record of activeRecords) {
-    const workspaceId = normalizeWorkspaceId(record.cwd)
-    const existing = recordsByWorkspaceId.get(workspaceId) ?? []
-    existing.push(record)
-    recordsByWorkspaceId.set(workspaceId, existing)
+    const workspaceId = normalizeWorkspaceId(record.cwd);
+    const existing = recordsByWorkspaceId.get(workspaceId) ?? [];
+    existing.push(record);
+    recordsByWorkspaceId.set(workspaceId, existing);
   }
 
-  const projectRanges = new Map<string, { createdAt: string | null; updatedAt: string | null }>()
+  const projectRanges = new Map<string, { createdAt: string | null; updatedAt: string | null }>();
 
   for (const [workspaceId, workspaceRecords] of recordsByWorkspaceId.entries()) {
     const placement = await buildProjectPlacementForCwd({
       cwd: workspaceId,
       paseoHome: options.paseoHome,
-    })
+    });
 
-    let workspaceCreatedAt: string | null = null
-    let workspaceUpdatedAt: string | null = null
+    let workspaceCreatedAt: string | null = null;
+    let workspaceUpdatedAt: string | null = null;
     for (const record of workspaceRecords) {
-      workspaceCreatedAt = minIsoDate(workspaceCreatedAt, resolveAgentCreatedAt(record))
-      workspaceUpdatedAt = maxIsoDate(workspaceUpdatedAt, resolveAgentUpdatedAt(record))
+      workspaceCreatedAt = minIsoDate(workspaceCreatedAt, resolveAgentCreatedAt(record));
+      workspaceUpdatedAt = maxIsoDate(workspaceUpdatedAt, resolveAgentUpdatedAt(record));
     }
 
-    const createdAt = workspaceCreatedAt ?? new Date().toISOString()
-    const updatedAt = workspaceUpdatedAt ?? createdAt
+    const createdAt = workspaceCreatedAt ?? new Date().toISOString();
+    const updatedAt = workspaceUpdatedAt ?? createdAt;
     await options.workspaceRegistry.upsert(
       createPersistedWorkspaceRecord({
         workspaceId,
@@ -104,16 +104,16 @@ export async function bootstrapWorkspaceRegistries(options: {
         }),
         createdAt,
         updatedAt,
-      })
-    )
+      }),
+    );
 
     const existingProjectRange = projectRanges.get(placement.projectKey) ?? {
       createdAt: null,
       updatedAt: null,
-    }
-    existingProjectRange.createdAt = minIsoDate(existingProjectRange.createdAt, createdAt)
-    existingProjectRange.updatedAt = maxIsoDate(existingProjectRange.updatedAt, updatedAt)
-    projectRanges.set(placement.projectKey, existingProjectRange)
+    };
+    existingProjectRange.createdAt = minIsoDate(existingProjectRange.createdAt, createdAt);
+    existingProjectRange.updatedAt = maxIsoDate(existingProjectRange.updatedAt, updatedAt);
+    projectRanges.set(placement.projectKey, existingProjectRange);
 
     await options.projectRegistry.upsert(
       createPersistedProjectRecord({
@@ -126,17 +126,17 @@ export async function bootstrapWorkspaceRegistries(options: {
         displayName: placement.projectName,
         createdAt: existingProjectRange.createdAt ?? createdAt,
         updatedAt: existingProjectRange.updatedAt ?? updatedAt,
-      })
-    )
+      }),
+    );
   }
 
   options.logger.info(
     {
-      projectsFile: path.join(options.paseoHome, 'projects', 'projects.json'),
-      workspacesFile: path.join(options.paseoHome, 'projects', 'workspaces.json'),
+      projectsFile: path.join(options.paseoHome, "projects", "projects.json"),
+      workspacesFile: path.join(options.paseoHome, "projects", "workspaces.json"),
       materializedProjects: projectRanges.size,
       materializedWorkspaces: recordsByWorkspaceId.size,
     },
-    'Workspace registries bootstrapped from existing agent storage'
-  )
+    "Workspace registries bootstrapped from existing agent storage",
+  );
 }

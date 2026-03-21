@@ -21,10 +21,7 @@ export function EmptyState({ onCreateAgent, onImportAgent }: EmptyStateProps) {
           <Text style={styles.primaryButtonText}>New agent</Text>
         </Pressable>
         {hasImportCta ? (
-          <Pressable
-            onPress={onImportAgent}
-            style={[styles.button, styles.secondaryButton]}
-          >
+          <Pressable onPress={onImportAgent} style={[styles.button, styles.secondaryButton]}>
             <Download size={20} color={styles.secondaryButtonText.color} />
             <Text style={styles.secondaryButtonText}>Import agent</Text>
           </Pressable>

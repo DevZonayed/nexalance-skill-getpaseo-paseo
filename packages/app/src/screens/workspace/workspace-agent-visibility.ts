@@ -42,7 +42,9 @@ export function workspaceAgentVisibilityEqual(
   a: WorkspaceAgentVisibility,
   b: WorkspaceAgentVisibility,
 ): boolean {
-  return setsEqual(a.activeAgentIds, b.activeAgentIds) && setsEqual(a.knownAgentIds, b.knownAgentIds);
+  return (
+    setsEqual(a.activeAgentIds, b.activeAgentIds) && setsEqual(a.knownAgentIds, b.knownAgentIds)
+  );
 }
 
 function setsEqual(a: Set<string>, b: Set<string>): boolean {

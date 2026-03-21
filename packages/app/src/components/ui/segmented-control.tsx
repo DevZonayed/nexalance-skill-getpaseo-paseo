@@ -5,10 +5,7 @@ import { StyleSheet, useUnistyles } from "react-native-unistyles";
 
 type SegmentedControlSize = "sm" | "md";
 
-type SegmentedControlIconRenderer = (props: {
-  color: string;
-  size: number;
-}) => ReactNode;
+type SegmentedControlIconRenderer = (props: { color: string; size: number }) => ReactNode;
 
 export type SegmentedControlOption<T extends string> = {
   value: T;

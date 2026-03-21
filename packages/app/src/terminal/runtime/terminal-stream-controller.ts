@@ -30,12 +30,12 @@ export type TerminalStreamControllerClient = {
       resumeOffset?: number;
       rows?: number;
       cols?: number;
-    }
+    },
   ) => Promise<TerminalStreamControllerAttachPayload>;
   detachTerminalStream: (streamId: number) => Promise<unknown>;
   onTerminalStreamData: (
     streamId: number,
-    handler: (chunk: TerminalStreamControllerChunk) => void
+    handler: (chunk: TerminalStreamControllerChunk) => void,
   ) => () => void;
 };
 
@@ -175,8 +175,7 @@ export class TerminalStreamController {
         terminalId: input.terminalId,
         streamId: null,
         isAttaching: true,
-        error:
-          this.options.reconnectErrorMessage ?? DEFAULT_RECONNECT_ERROR_MESSAGE,
+        error: this.options.reconnectErrorMessage ?? DEFAULT_RECONNECT_ERROR_MESSAGE,
       });
       void this.attachTerminal({
         terminalId: input.terminalId,
@@ -220,10 +219,7 @@ export class TerminalStreamController {
     });
   }
 
-  private async attachTerminal(input: {
-    terminalId: string;
-    generation: number;
-  }): Promise<void> {
+  private async attachTerminal(input: { terminalId: string; generation: number }): Promise<void> {
     const {
       maxAttachAttempts = DEFAULT_ATTACH_MAX_ATTEMPTS,
       attachTimeoutMs = DEFAULT_ATTACH_TIMEOUT_MS,
@@ -236,7 +232,12 @@ export class TerminalStreamController {
     let lastErrorMessage = "Unable to attach terminal stream";
 
     for (let attempt = 0; attempt < maxAttachAttempts; attempt += 1) {
-      if (!this.isAttachGenerationCurrent({ generation: input.generation, terminalId: input.terminalId })) {
+      if (
+        !this.isAttachGenerationCurrent({
+          generation: input.generation,
+          terminalId: input.terminalId,
+        })
+      ) {
         return;
       }
 
@@ -249,9 +250,7 @@ export class TerminalStreamController {
         const attachPayload = await withTimeout({
           promise: this.options.client.attachTerminalStream(input.terminalId, {
             ...(resumeOffset !== undefined ? { resumeOffset } : {}),
-            ...(preferredSize
-              ? { rows: preferredSize.rows, cols: preferredSize.cols }
-              : {}),
+            ...(preferredSize ? { rows: preferredSize.rows, cols: preferredSize.cols } : {}),
           }),
           timeoutMs: attachTimeoutMs,
           timeoutMessage: "Timed out attaching terminal stream",
@@ -263,7 +262,12 @@ export class TerminalStreamController {
           resumeOffsetStore: this.getResumeOffsetStore(),
         });
 
-        if (!this.isAttachGenerationCurrent({ generation: input.generation, terminalId: input.terminalId })) {
+        if (
+          !this.isAttachGenerationCurrent({
+            generation: input.generation,
+            terminalId: input.terminalId,
+          })
+        ) {
           if (typeof attachPayload.streamId === "number") {
             void this.options.client.detachTerminalStream(attachPayload.streamId).catch(() => {});
           }
@@ -309,10 +313,7 @@ export class TerminalStreamController {
           typeof attachPayload.replayedFrom === "number"
             ? Math.max(0, Math.floor(attachPayload.replayedFrom))
             : null;
-        const currentOffset = Math.max(
-          0,
-          Math.floor(attachPayload.currentOffset)
-        );
+        const currentOffset = Math.max(0, Math.floor(attachPayload.currentOffset));
         const shouldResetForReplayBootstrap =
           typeof resumeOffset !== "number" &&
           typeof replayedFromOffset === "number" &&
@@ -490,8 +491,7 @@ export class TerminalStreamController {
       terminalId: input.terminalId,
       streamId: null,
       isAttaching: true,
-      error:
-        this.options.reconnectErrorMessage ?? DEFAULT_RECONNECT_ERROR_MESSAGE,
+      error: this.options.reconnectErrorMessage ?? DEFAULT_RECONNECT_ERROR_MESSAGE,
     });
     void this.attachTerminal({
       terminalId: input.terminalId,
@@ -536,16 +536,12 @@ export class TerminalStreamController {
     }
   }
 
-  private isAttachGenerationCurrent(input: {
-    generation: number;
-    terminalId: string;
-  }): boolean {
+  private isAttachGenerationCurrent(input: { generation: number; terminalId: string }): boolean {
     if (this.isDisposed) {
       return false;
     }
     return (
-      this.attachGeneration === input.generation &&
-      this.selectedTerminalId === input.terminalId
+      this.attachGeneration === input.generation && this.selectedTerminalId === input.terminalId
     );
   }
 

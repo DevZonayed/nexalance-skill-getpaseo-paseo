@@ -22,7 +22,7 @@ describe("claude tool-call mapper", () => {
         name: "Bash",
         input: { command: "pwd", cwd: "/tmp/repo" },
         output: null,
-      })
+      }),
     );
 
     expect(item.type).toBe("tool_call");
@@ -43,7 +43,7 @@ describe("claude tool-call mapper", () => {
         name: "Bash",
         input: { command: "echo " },
         output: null,
-      })
+      }),
     );
 
     expect(item.detail).toEqual({
@@ -59,7 +59,7 @@ describe("claude tool-call mapper", () => {
         name: "read_file",
         input: { file_path: "README.md" },
         output: null,
-      })
+      }),
     );
     expect(readItem.detail).toEqual({
       type: "read",
@@ -72,7 +72,7 @@ describe("claude tool-call mapper", () => {
         name: "write_file",
         input: { file_path: "src/new.ts" },
         output: null,
-      })
+      }),
     );
     expect(writeItem.detail).toEqual({
       type: "write",
@@ -85,7 +85,7 @@ describe("claude tool-call mapper", () => {
         name: "apply_patch",
         input: { file_path: "src/index.ts" },
         output: null,
-      })
+      }),
     );
     expect(editItem.detail).toEqual({
       type: "edit",
@@ -98,7 +98,7 @@ describe("claude tool-call mapper", () => {
         name: "web_search",
         input: { query: "tool call mapping" },
         output: null,
-      })
+      }),
     );
     expect(searchItem.detail).toEqual({
       type: "search",
@@ -114,7 +114,7 @@ describe("claude tool-call mapper", () => {
         name: "read_file",
         input: { file_path: "README.md" },
         output: { content: "hello" },
-      })
+      }),
     );
 
     expect(item.status).toBe("completed");
@@ -139,7 +139,7 @@ describe("claude tool-call mapper", () => {
             { type: "output_text", content: "beta" },
           ],
         },
-      })
+      }),
     );
 
     expect(arrayContent.detail?.type).toBe("read");
@@ -157,7 +157,7 @@ describe("claude tool-call mapper", () => {
             content: { type: "output_text", text: "gamma" },
           },
         },
-      })
+      }),
     );
 
     expect(objectContent.detail?.type).toBe("read");
@@ -174,7 +174,7 @@ describe("claude tool-call mapper", () => {
         input: { command: "false" },
         output: null,
         error: { message: "Command failed" },
-      })
+      }),
     );
 
     expect(item.status).toBe("failed");
@@ -189,7 +189,7 @@ describe("claude tool-call mapper", () => {
         name: "write_file",
         input: { file_path: "src/new.ts", content: "export const x = 1;" },
         output: null,
-      })
+      }),
     );
     expect(writeItem.detail?.type).toBe("write");
     if (writeItem.detail?.type === "write") {
@@ -202,7 +202,7 @@ describe("claude tool-call mapper", () => {
         name: "apply_patch",
         input: { file_path: "src/index.ts", patch: "@@\\n-old\\n+new\\n" },
         output: null,
-      })
+      }),
     );
     expect(editItem.detail?.type).toBe("edit");
     if (editItem.detail?.type === "edit") {
@@ -216,7 +216,7 @@ describe("claude tool-call mapper", () => {
         name: "web_search",
         input: { query: "tool call mapping" },
         output: null,
-      })
+      }),
     );
     expect(searchItem.detail).toEqual({
       type: "search",
@@ -232,7 +232,7 @@ describe("claude tool-call mapper", () => {
         name: "my_custom_tool",
         input: { foo: "bar" },
         output: { ok: true },
-      })
+      }),
     );
 
     expect(item.status).toBe("completed");
@@ -256,7 +256,7 @@ describe("claude tool-call mapper", () => {
           filenames: ["a.txt", "b.txt"],
           truncated: false,
         },
-      })
+      }),
     );
 
     expect(item.status).toBe("completed");
@@ -292,7 +292,7 @@ describe("claude tool-call mapper", () => {
           numLines: 1,
           numMatches: 1,
         },
-      })
+      }),
     );
 
     expect(item.status).toBe("completed");
@@ -330,7 +330,7 @@ describe("claude tool-call mapper", () => {
           ],
           durationSeconds: 1.5,
         },
-      })
+      }),
     );
 
     expect(item.detail).toEqual({
@@ -363,7 +363,7 @@ describe("claude tool-call mapper", () => {
           durationMs: 250,
           url: "https://example.com/article",
         },
-      })
+      }),
     );
 
     expect(item.detail).toEqual({
@@ -385,7 +385,7 @@ describe("claude tool-call mapper", () => {
         name: "mcp__paseo__speak",
         input: { text: "Voice response from Claude." },
         output: { ok: true },
-      })
+      }),
     );
 
     expect(item.name).toBe("speak");
@@ -403,7 +403,7 @@ describe("claude tool-call mapper", () => {
         name: "mcp__paseo_voice__speak",
         input: { text: "Hey! I can hear you." },
         output: { ok: true },
-      })
+      }),
     );
 
     expect(item.name).toBe("speak");

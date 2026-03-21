@@ -18,18 +18,14 @@ describe("terminal-attach", () => {
   });
 
   it("matches retryable attach errors", () => {
-    expect(
-      isTerminalAttachRetryableError({ message: "Terminal not found while attaching" })
-    ).toBe(true);
-    expect(
-      isTerminalAttachRetryableError({ message: "Network disconnected during attach" })
-    ).toBe(true);
-    expect(
-      isTerminalAttachRetryableError({ message: "stream ended before ack" })
-    ).toBe(true);
-    expect(
-      isTerminalAttachRetryableError({ message: "permission denied" })
-    ).toBe(false);
+    expect(isTerminalAttachRetryableError({ message: "Terminal not found while attaching" })).toBe(
+      true,
+    );
+    expect(isTerminalAttachRetryableError({ message: "Network disconnected during attach" })).toBe(
+      true,
+    );
+    expect(isTerminalAttachRetryableError({ message: "stream ended before ack" })).toBe(true);
+    expect(isTerminalAttachRetryableError({ message: "permission denied" })).toBe(false);
   });
 
   it("reads and updates resume offsets monotonically", () => {
@@ -46,7 +42,7 @@ describe("terminal-attach", () => {
       getTerminalResumeOffset({
         terminalId,
         resumeOffsetStore,
-      })
+      }),
     ).toBeUndefined();
 
     updateTerminalResumeOffset({
@@ -58,7 +54,7 @@ describe("terminal-attach", () => {
       getTerminalResumeOffset({
         terminalId,
         resumeOffsetStore,
-      })
+      }),
     ).toBe(8);
 
     // Stale offsets must not move resume backwards.
@@ -71,7 +67,7 @@ describe("terminal-attach", () => {
       getTerminalResumeOffset({
         terminalId,
         resumeOffsetStore,
-      })
+      }),
     ).toBe(8);
   });
 
@@ -81,7 +77,7 @@ describe("terminal-attach", () => {
         promise: Promise.resolve("ok"),
         timeoutMs: 50,
         timeoutMessage: "timed out",
-      })
+      }),
     ).resolves.toBe("ok");
   });
 
@@ -91,7 +87,7 @@ describe("terminal-attach", () => {
         promise: new Promise<string>(() => {}),
         timeoutMs: 10,
         timeoutMessage: "timed out",
-      })
+      }),
     ).rejects.toThrow("timed out");
   });
 });

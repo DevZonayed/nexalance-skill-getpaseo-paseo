@@ -15,7 +15,7 @@ describe("panel-store explorer tab resolution", () => {
         cwd,
         isGit: true,
         explorerTabByCheckout: {},
-      })
+      }),
     ).toBe("changes");
   });
 
@@ -26,7 +26,7 @@ describe("panel-store explorer tab resolution", () => {
         cwd,
         isGit: false,
         explorerTabByCheckout: {},
-      })
+      }),
     ).toBe("files");
   });
 
@@ -40,7 +40,7 @@ describe("panel-store explorer tab resolution", () => {
         explorerTabByCheckout: {
           [key]: "files",
         },
-      })
+      }),
     ).toBe("files");
   });
 
@@ -54,7 +54,7 @@ describe("panel-store explorer tab resolution", () => {
         explorerTabByCheckout: {
           [key]: "terminals" as any,
         },
-      })
+      }),
     ).toBe("changes");
   });
 
@@ -68,7 +68,7 @@ describe("panel-store explorer tab resolution", () => {
         explorerTabByCheckout: {
           [key]: "changes",
         },
-      })
+      }),
     ).toBe("files");
   });
 });

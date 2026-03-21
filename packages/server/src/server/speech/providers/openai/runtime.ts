@@ -32,7 +32,7 @@ export type SpeechServices = {
 };
 
 function resolveOpenAiCredentials(
-  openaiConfig: OpenAiSpeechProviderConfig | undefined
+  openaiConfig: OpenAiSpeechProviderConfig | undefined,
 ): OpenAiCredentialState {
   const openaiApiKey = openaiConfig?.apiKey;
   return {
@@ -43,7 +43,7 @@ function resolveOpenAiCredentials(
 }
 
 export function getOpenAiSpeechAvailability(
-  openaiConfig: OpenAiSpeechProviderConfig | undefined
+  openaiConfig: OpenAiSpeechProviderConfig | undefined,
 ): OpenAiSpeechAvailability {
   const credentials = resolveOpenAiCredentials(openaiConfig);
   return {
@@ -94,10 +94,10 @@ export function validateOpenAiCredentialRequirements(params: {
         },
         missingOpenAiCredentialsFor,
       },
-      "Invalid speech configuration: OpenAI provider selected but credentials are missing"
+      "Invalid speech configuration: OpenAI provider selected but credentials are missing",
     );
     throw new Error(
-      `Missing OpenAI credentials for configured speech features: ${missingOpenAiCredentialsFor.join(", ")}`
+      `Missing OpenAI credentials for configured speech features: ${missingOpenAiCredentialsFor.join(", ")}`,
     );
   }
 }
@@ -117,13 +117,9 @@ export function initializeOpenAiSpeechServices(params: {
   const turnDetectionService = existing.turnDetectionService;
 
   const needsOpenAiStt =
-    !sttService &&
-    providers.voiceStt.enabled !== false &&
-    providers.voiceStt.provider === "openai";
+    !sttService && providers.voiceStt.enabled !== false && providers.voiceStt.provider === "openai";
   const needsOpenAiTts =
-    !ttsService &&
-    providers.voiceTts.enabled !== false &&
-    providers.voiceTts.provider === "openai";
+    !ttsService && providers.voiceTts.enabled !== false && providers.voiceTts.provider === "openai";
   const needsOpenAiDictation =
     !dictationSttService &&
     providers.dictationStt.enabled !== false &&
@@ -144,7 +140,7 @@ export function initializeOpenAiSpeechServices(params: {
           apiKey: openAiCredentials.openaiSttApiKey,
           ...sttConfig,
         },
-        logger
+        logger,
       );
     }
 
@@ -158,7 +154,7 @@ export function initializeOpenAiSpeechServices(params: {
           responseFormat: "pcm",
           ...ttsConfig,
         },
-        logger
+        logger,
       );
     }
 

@@ -18,12 +18,7 @@ export function ModeSelectorModal({
   const { theme } = useUnistyles();
 
   return (
-    <Modal
-      visible={visible}
-      animationType="fade"
-      transparent={true}
-      onRequestClose={onClose}
-    >
+    <Modal visible={visible} animationType="fade" transparent={true} onRequestClose={onClose}>
       <Pressable style={styles.modalOverlay} onPress={onClose}>
         <View style={styles.modeSelectorContent}>
           {agent?.availableModes?.map((mode) => {
@@ -35,26 +30,13 @@ export function ModeSelectorModal({
                   onModeChange(mode.id);
                   onClose();
                 }}
-                style={[
-                  styles.modeItem,
-                  isActive && styles.modeItemActive,
-                ]}
+                style={[styles.modeItem, isActive && styles.modeItemActive]}
               >
-                <Text
-                  style={[
-                    styles.modeName,
-                    isActive && styles.modeNameActive,
-                  ]}
-                >
+                <Text style={[styles.modeName, isActive && styles.modeNameActive]}>
                   {mode.label}
                 </Text>
                 {mode.description && (
-                  <Text
-                    style={[
-                      styles.modeDescription,
-                      isActive && styles.modeDescriptionActive,
-                    ]}
-                  >
+                  <Text style={[styles.modeDescription, isActive && styles.modeDescriptionActive]}>
                     {mode.description}
                   </Text>
                 )}

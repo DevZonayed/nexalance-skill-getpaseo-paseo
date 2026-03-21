@@ -4,14 +4,7 @@ export type PendingTerminalModifiers = {
   alt: boolean;
 };
 
-const MODIFIER_DOM_KEYS = new Set([
-  "Control",
-  "Shift",
-  "Alt",
-  "Meta",
-  "AltGraph",
-  "OS",
-]);
+const MODIFIER_DOM_KEYS = new Set(["Control", "Shift", "Alt", "Meta", "AltGraph", "OS"]);
 
 const DOM_KEY_ALIASES: Record<string, string> = {
   Esc: "Escape",
@@ -63,12 +56,7 @@ export function normalizeDomTerminalKey(rawKey: string): string | null {
   }
 
   const key = DOM_KEY_ALIASES[rawKey] ?? rawKey;
-  if (
-    key === "Unidentified" ||
-    key === "Dead" ||
-    key === "Compose" ||
-    key === "Process"
-  ) {
+  if (key === "Unidentified" || key === "Dead" || key === "Compose" || key === "Process") {
     return null;
   }
 
@@ -90,9 +78,7 @@ export function normalizeTerminalTransportKey(key: string): string {
   return key;
 }
 
-export function hasPendingTerminalModifiers(
-  modifiers: PendingTerminalModifiers
-): boolean {
+export function hasPendingTerminalModifiers(modifiers: PendingTerminalModifiers): boolean {
   return modifiers.ctrl || modifiers.shift || modifiers.alt;
 }
 

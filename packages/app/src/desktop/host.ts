@@ -23,15 +23,13 @@ export interface DesktopDialogOpenOptions {
 
 export interface DesktopDialogBridge {
   ask?: (message: string, options?: DesktopDialogAskOptions) => Promise<boolean>;
-  open?: (
-    options?: DesktopDialogOpenOptions
-  ) => Promise<string | string[] | null>;
+  open?: (options?: DesktopDialogOpenOptions) => Promise<string | string[] | null>;
 }
 
 export interface DesktopNotificationBridge {
   isSupported?: () => Promise<boolean>;
   sendNotification?: (
-    payload: string | { title: string; body?: string; data?: Record<string, unknown> }
+    payload: string | { title: string; body?: string; data?: Record<string, unknown> },
   ) => Promise<boolean>;
 }
 
@@ -47,11 +45,11 @@ export interface DesktopWindowBridge {
   toggleMaximize?: () => Promise<void>;
   isFullscreen?: () => Promise<boolean>;
   onResized?: <TEvent = unknown>(
-    handler: (event: TEvent) => void
+    handler: (event: TEvent) => void,
   ) => Promise<() => void> | (() => void);
   setBadgeCount?: (count?: number) => Promise<void>;
   onDragDropEvent?: <TEvent = unknown>(
-    handler: (event: TEvent) => void
+    handler: (event: TEvent) => void,
   ) => Promise<() => void> | (() => void);
 }
 
@@ -60,10 +58,7 @@ export interface DesktopWindowModuleBridge {
 }
 
 export interface DesktopEventsBridge {
-  on?: (
-    event: string,
-    handler: (payload: unknown) => void
-  ) => Promise<() => void> | (() => void);
+  on?: (event: string, handler: (payload: unknown) => void) => Promise<() => void> | (() => void);
 }
 
 export interface DesktopInvokeBridge {

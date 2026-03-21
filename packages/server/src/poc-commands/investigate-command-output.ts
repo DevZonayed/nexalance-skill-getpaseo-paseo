@@ -7,11 +7,7 @@
  * to understand how command output is delivered.
  */
 
-import {
-  query,
-  type SDKUserMessage,
-  type SDKMessage,
-} from "@anthropic-ai/claude-agent-sdk";
+import { query, type SDKUserMessage, type SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 
 class Pushable<T> implements AsyncIterable<T> {
   private queue: T[] = [];
@@ -103,7 +99,9 @@ async function investigateCommand(commandName: string): Promise<void> {
           break;
 
         case "user":
-          process.stdout.write(`User message content: ${JSON.stringify(message.message?.content, null, 2)}\n`);
+          process.stdout.write(
+            `User message content: ${JSON.stringify(message.message?.content, null, 2)}\n`,
+          );
           break;
 
         case "assistant":
@@ -142,7 +140,7 @@ async function investigateCommand(commandName: string): Promise<void> {
             process.stdout.write(`Errors: ${JSON.stringify(message.errors)}\n`);
           }
           // Check for any other properties
-          const resultKeys = Object.keys(message).filter(k => !["type", "subtype"].includes(k));
+          const resultKeys = Object.keys(message).filter((k) => !["type", "subtype"].includes(k));
           if (resultKeys.length > 0) {
             process.stdout.write(`Other result properties: ${resultKeys.join(", ")}\n`);
             for (const key of resultKeys) {
@@ -161,7 +159,6 @@ async function investigateCommand(commandName: string): Promise<void> {
     }
 
     process.stdout.write(`\nTotal messages received: ${messageCount}\n`);
-
   } finally {
     input.end();
     await claudeQuery.return?.();

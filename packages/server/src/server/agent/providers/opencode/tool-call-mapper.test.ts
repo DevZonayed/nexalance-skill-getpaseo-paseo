@@ -19,7 +19,7 @@ describe("opencode tool-call mapper", () => {
         status: "running",
         input: { command: "pwd", cwd: "/tmp/repo" },
         output: null,
-      })
+      }),
     );
 
     expect(item.status).toBe("running");
@@ -39,7 +39,7 @@ describe("opencode tool-call mapper", () => {
         status: "running",
         input: { file_path: "README.md" },
         output: null,
-      })
+      }),
     );
     expect(readItem.detail).toEqual({
       type: "read",
@@ -53,7 +53,7 @@ describe("opencode tool-call mapper", () => {
         status: "running",
         input: { file_path: "src/new.ts" },
         output: null,
-      })
+      }),
     );
     expect(writeItem.detail).toEqual({
       type: "write",
@@ -67,7 +67,7 @@ describe("opencode tool-call mapper", () => {
         status: "running",
         input: { file_path: "src/index.ts" },
         output: null,
-      })
+      }),
     );
     expect(editItem.detail).toEqual({
       type: "edit",
@@ -81,7 +81,7 @@ describe("opencode tool-call mapper", () => {
         status: "running",
         input: { query: "opencode mapper" },
         output: null,
-      })
+      }),
     );
     expect(searchItem.detail).toEqual({
       type: "search",
@@ -98,7 +98,7 @@ describe("opencode tool-call mapper", () => {
         status: "complete",
         input: { file_path: "README.md" },
         output: { content: "hello" },
-      })
+      }),
     );
 
     expect(item.status).toBe("completed");
@@ -124,7 +124,7 @@ describe("opencode tool-call mapper", () => {
             { type: "output_text", output: "beta" },
           ],
         },
-      })
+      }),
     );
 
     expect(arrayContent.detail?.type).toBe("read");
@@ -143,7 +143,7 @@ describe("opencode tool-call mapper", () => {
             content: { type: "output_text", text: "gamma" },
           },
         },
-      })
+      }),
     );
 
     expect(objectContent.detail?.type).toBe("read");
@@ -161,7 +161,7 @@ describe("opencode tool-call mapper", () => {
         input: { command: "false" },
         output: null,
         error: "command failed",
-      })
+      }),
     );
 
     expect(item.status).toBe("failed");
@@ -177,7 +177,7 @@ describe("opencode tool-call mapper", () => {
         status: "completed",
         input: { file_path: "src/new.ts", content: "const x = 1;" },
         output: null,
-      })
+      }),
     );
     expect(writeItem.detail?.type).toBe("write");
     if (writeItem.detail?.type === "write") {
@@ -191,7 +191,7 @@ describe("opencode tool-call mapper", () => {
         status: "completed",
         input: { file_path: "src/index.ts", diff: "@@\\n-old\\n+new\\n" },
         output: null,
-      })
+      }),
     );
     expect(editItem.detail?.type).toBe("edit");
     if (editItem.detail?.type === "edit") {
@@ -206,7 +206,7 @@ describe("opencode tool-call mapper", () => {
         status: "completed",
         input: { query: "opencode mapper" },
         output: null,
-      })
+      }),
     );
     expect(searchItem.detail).toEqual({
       type: "search",
@@ -223,7 +223,7 @@ describe("opencode tool-call mapper", () => {
         status: "completed",
         input: { foo: "bar" },
         output: { ok: true },
-      })
+      }),
     );
 
     expect(item.status).toBe("completed");
@@ -243,7 +243,7 @@ describe("opencode tool-call mapper", () => {
         status: "completed",
         input: { text: "Voice response from OpenCode." },
         output: { ok: true },
-      })
+      }),
     );
 
     expect(item.name).toBe("paseo_voice.speak");

@@ -7,7 +7,7 @@ describe("buildAbsoluteExplorerPath", () => {
       buildAbsoluteExplorerPath({
         workspaceRoot: "/Users/moboudra/dev/paseo",
         entryPath: "packages/app/src/components/file-explorer-pane.tsx",
-      })
+      }),
     ).toBe("/Users/moboudra/dev/paseo/packages/app/src/components/file-explorer-pane.tsx");
   });
 
@@ -16,7 +16,7 @@ describe("buildAbsoluteExplorerPath", () => {
       buildAbsoluteExplorerPath({
         workspaceRoot: "/Users/moboudra/dev/paseo",
         entryPath: ".",
-      })
+      }),
     ).toBe("/Users/moboudra/dev/paseo");
   });
 
@@ -25,7 +25,7 @@ describe("buildAbsoluteExplorerPath", () => {
       buildAbsoluteExplorerPath({
         workspaceRoot: "/Users/moboudra/dev/paseo/",
         entryPath: "README.md",
-      })
+      }),
     ).toBe("/Users/moboudra/dev/paseo/README.md");
   });
 
@@ -34,7 +34,7 @@ describe("buildAbsoluteExplorerPath", () => {
       buildAbsoluteExplorerPath({
         workspaceRoot: "C:\\repo\\paseo",
         entryPath: "packages/app/src/components/file-explorer-pane.tsx",
-      })
+      }),
     ).toBe("C:\\repo\\paseo\\packages\\app\\src\\components\\file-explorer-pane.tsx");
   });
 
@@ -43,7 +43,7 @@ describe("buildAbsoluteExplorerPath", () => {
       buildAbsoluteExplorerPath({
         workspaceRoot: "/Users/moboudra/dev/paseo",
         entryPath: "/tmp/another/location.txt",
-      })
+      }),
     ).toBe("/tmp/another/location.txt");
   });
 });

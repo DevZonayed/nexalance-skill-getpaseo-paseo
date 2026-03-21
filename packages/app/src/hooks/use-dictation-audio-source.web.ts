@@ -2,9 +2,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { parsePcm16Wav } from "@/utils/pcm16-wav";
 import { isDesktop } from "@/desktop/host";
 
-import type { DictationAudioSource, DictationAudioSourceConfig } from "./use-dictation-audio-source.types";
+import type {
+  DictationAudioSource,
+  DictationAudioSourceConfig,
+} from "./use-dictation-audio-source.types";
 
-const getAudioContextCtor = (): (typeof AudioContext) | null => {
+const getAudioContextCtor = (): typeof AudioContext | null => {
   if (typeof window === "undefined") {
     return null;
   }
@@ -19,7 +22,11 @@ const floatToInt16 = (sample: number): number => {
   return clamped < 0 ? Math.round(clamped * 0x8000) : Math.round(clamped * 0x7fff);
 };
 
-const resampleToPcm16 = (input: Float32Array, inputRate: number, outputRate: number): Int16Array => {
+const resampleToPcm16 = (
+  input: Float32Array,
+  inputRate: number,
+  outputRate: number,
+): Int16Array => {
   if (input.length === 0) {
     return new Int16Array(0);
   }
@@ -122,15 +129,18 @@ export function useDictationAudioSource(config: DictationAudioSourceConfig): Dic
     },
   });
 
-  const decodeAudioData = useCallback(async (context: AudioContext, buffer: ArrayBuffer): Promise<AudioBuffer> => {
-    const maybePromise = context.decodeAudioData(buffer);
-    if (maybePromise && typeof (maybePromise as Promise<AudioBuffer>).then === "function") {
-      return maybePromise as Promise<AudioBuffer>;
-    }
-    return await new Promise<AudioBuffer>((resolve, reject) => {
-      context.decodeAudioData(buffer, resolve, reject);
-    });
-  }, []);
+  const decodeAudioData = useCallback(
+    async (context: AudioContext, buffer: ArrayBuffer): Promise<AudioBuffer> => {
+      const maybePromise = context.decodeAudioData(buffer);
+      if (maybePromise && typeof (maybePromise as Promise<AudioBuffer>).then === "function") {
+        return maybePromise as Promise<AudioBuffer>;
+      }
+      return await new Promise<AudioBuffer>((resolve, reject) => {
+        context.decodeAudioData(buffer, resolve, reject);
+      });
+    },
+    [],
+  );
 
   const emitPcmSegments = useCallback((pcm: Int16Array) => {
     const outputRate = 16000;
@@ -164,12 +174,14 @@ export function useDictationAudioSource(config: DictationAudioSourceConfig): Dic
       throw new Error("Microphone capture is not supported in this environment");
     }
     if (!secureContext && !isDesktopApp) {
-      throw new Error(`Microphone access requires HTTPS or localhost. Current origin: ${currentOrigin}`);
+      throw new Error(
+        `Microphone access requires HTTPS or localhost. Current origin: ${currentOrigin}`,
+      );
     }
     if (!secureContext && isDesktopApp) {
       console.warn(
         "[DictationAudio][Web] Insecure context reported under Desktop; attempting getUserMedia anyway",
-        { currentOrigin }
+        { currentOrigin },
       );
     }
 
@@ -253,7 +265,9 @@ export function useDictationAudioSource(config: DictationAudioSourceConfig): Dic
       throw new Error("MediaRecorder unavailable");
     }
 
-    const recorder = new RecorderCtor(stream, { mimeType: "audio/webm;codecs=opus" } as MediaRecorderOptions) as MediaRecorder;
+    const recorder = new RecorderCtor(stream, {
+      mimeType: "audio/webm;codecs=opus",
+    } as MediaRecorderOptions) as MediaRecorder;
 
     const recorderRefs: RecorderRefs = {
       recorder,
@@ -274,7 +288,10 @@ export function useDictationAudioSource(config: DictationAudioSourceConfig): Dic
     };
     recorder.addEventListener("stop", () => {
       try {
-        const blob = recorderRefs.audioChunks.length > 0 ? new Blob(recorderRefs.audioChunks, { type: recorder.mimeType }) : new Blob([], { type: recorder.mimeType });
+        const blob =
+          recorderRefs.audioChunks.length > 0
+            ? new Blob(recorderRefs.audioChunks, { type: recorder.mimeType })
+            : new Blob([], { type: recorder.mimeType });
         recorderRefs.stoppedResolve?.(blob);
       } catch (err) {
         recorderRefs.stoppedReject?.(err);
@@ -310,8 +327,7 @@ export function useDictationAudioSource(config: DictationAudioSourceConfig): Dic
     refs.current.started = false;
     setVolume(0);
 
-    const { processor, source, gain, context, stream, pending, mode, recorder } =
-      refs.current;
+    const { processor, source, gain, context, stream, pending, mode, recorder } = refs.current;
 
     if (processor) {
       try {
@@ -434,6 +450,6 @@ export function useDictationAudioSource(config: DictationAudioSourceConfig): Dic
       stop,
       volume,
     }),
-    [start, stop, volume]
+    [start, stop, volume],
   );
 }

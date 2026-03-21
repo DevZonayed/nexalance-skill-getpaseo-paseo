@@ -16,4 +16,3 @@ export function getNextActiveIndex(args: {
     ? (normalizedCurrent + 1) % itemCount
     : (normalizedCurrent - 1 + itemCount) % itemCount;
 }
-

@@ -4,7 +4,10 @@ import { useState } from "react";
 
 import { createAudioEngine } from "@/voice/audio-engine";
 
-import type { DictationAudioSource, DictationAudioSourceConfig } from "./use-dictation-audio-source.types";
+import type {
+  DictationAudioSource,
+  DictationAudioSourceConfig,
+} from "./use-dictation-audio-source.types";
 
 export function useDictationAudioSource(config: DictationAudioSourceConfig): DictationAudioSource {
   const onPcmSegmentRef = useRef(config.onPcmSegment);

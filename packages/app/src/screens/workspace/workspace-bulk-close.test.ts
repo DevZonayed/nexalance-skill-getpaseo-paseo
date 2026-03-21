@@ -54,21 +54,21 @@ describe("workspace bulk close helpers", () => {
         makeAgentTab("a2"),
         makeTerminalTab("t1"),
         makeFileTab("/repo/README.md"),
-      ])
+      ]),
     );
 
     expect(message).toBe(
-      "This will archive 2 agent(s), close 1 terminal(s), and close 1 tab(s). Any running process in a closed terminal will be stopped immediately."
+      "This will archive 2 agent(s), close 1 terminal(s), and close 1 tab(s). Any running process in a closed terminal will be stopped immediately.",
     );
   });
 
   it("keeps terminal-only confirmations explicit about stopping running processes", () => {
     const message = buildBulkCloseConfirmationMessage(
-      classifyBulkClosableTabs([makeTerminalTab("t1")])
+      classifyBulkClosableTabs([makeTerminalTab("t1")]),
     );
 
     expect(message).toBe(
-      "This will close 1 terminal(s). Any running process in a closed terminal will be stopped immediately."
+      "This will close 1 terminal(s). Any running process in a closed terminal will be stopped immediately.",
     );
   });
 });

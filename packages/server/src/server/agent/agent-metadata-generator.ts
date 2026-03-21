@@ -55,7 +55,7 @@ function normalizeAutoTitle(title: string): string | null {
 async function canRenameBranch(
   cwd: string,
   paseoHome: string | undefined,
-  getCheckoutStatusImpl: typeof getCheckoutStatus
+  getCheckoutStatusImpl: typeof getCheckoutStatus,
 ): Promise<boolean> {
   let status: CheckoutStatusResult;
   try {
@@ -77,7 +77,10 @@ async function canRenameBranch(
 }
 
 export async function determineAgentMetadataNeeds(
-  options: Pick<AgentMetadataGenerationOptions, "initialPrompt" | "explicitTitle" | "cwd" | "paseoHome" | "deps">
+  options: Pick<
+    AgentMetadataGenerationOptions,
+    "initialPrompt" | "explicitTitle" | "cwd" | "paseoHome" | "deps"
+  >,
 ): Promise<AgentMetadataNeeds> {
   const prompt = options.initialPrompt?.trim();
   if (!prompt) {
@@ -86,11 +89,7 @@ export async function determineAgentMetadataNeeds(
 
   const needsTitle = !hasExplicitTitle(options.explicitTitle);
   const getCheckoutStatusImpl = options.deps?.getCheckoutStatus ?? getCheckoutStatus;
-  const needsBranch = await canRenameBranch(
-    options.cwd,
-    options.paseoHome,
-    getCheckoutStatusImpl
-  );
+  const needsBranch = await canRenameBranch(options.cwd, options.paseoHome, getCheckoutStatusImpl);
 
   return {
     prompt,
@@ -116,21 +115,17 @@ function buildMetadataSchema(needs: AgentMetadataNeeds): z.ZodObject<any> | null
 
 function buildPrompt(needs: AgentMetadataNeeds): string {
   const fields = [needs.needsTitle ? "title" : null, needs.needsBranch ? "branch" : null].filter(
-    Boolean
+    Boolean,
   ) as string[];
 
-  const instructions: string[] = [
-    "Generate metadata for a coding agent based on the user prompt.",
-  ];
+  const instructions: string[] = ["Generate metadata for a coding agent based on the user prompt."];
 
   if (needs.needsTitle) {
-    instructions.push(
-      `Title: short descriptive label (<= ${MAX_AUTO_AGENT_TITLE_CHARS} chars).`
-    );
+    instructions.push(`Title: short descriptive label (<= ${MAX_AUTO_AGENT_TITLE_CHARS} chars).`);
   }
   if (needs.needsBranch) {
     instructions.push(
-      "Branch: lowercase slug using letters, numbers, hyphens, and slashes only; no spaces, no uppercase, no leading/trailing hyphen, no consecutive hyphens."
+      "Branch: lowercase slug using letters, numbers, hyphens, and slashes only; no spaces, no uppercase, no leading/trailing hyphen, no consecutive hyphens.",
     );
   }
 
@@ -145,7 +140,7 @@ function buildPrompt(needs: AgentMetadataNeeds): string {
 }
 
 export async function generateAndApplyAgentMetadata(
-  options: AgentMetadataGenerationOptions
+  options: AgentMetadataGenerationOptions,
 ): Promise<void> {
   const needs = await determineAgentMetadataNeeds(options);
   if (!needs.prompt) {
@@ -186,13 +181,13 @@ export async function generateAndApplyAgentMetadata(
     ) {
       options.logger.warn(
         { err: error, agentId: options.agentId },
-        "Structured metadata generation failed"
+        "Structured metadata generation failed",
       );
       return;
     }
     options.logger.error(
       { err: error, agentId: options.agentId },
-      "Agent metadata generation failed"
+      "Agent metadata generation failed",
     );
     return;
   }
@@ -210,7 +205,7 @@ export async function generateAndApplyAgentMetadata(
     if (!validation.valid) {
       options.logger.warn(
         { agentId: options.agentId, branch: normalizedBranch, error: validation.error },
-        "Generated branch name is invalid"
+        "Generated branch name is invalid",
       );
       return;
     }
@@ -221,7 +216,7 @@ export async function generateAndApplyAgentMetadata(
     } catch (error) {
       options.logger.warn(
         { err: error, agentId: options.agentId },
-        "Failed to re-check branch eligibility"
+        "Failed to re-check branch eligibility",
       );
       return;
     }
@@ -241,20 +236,18 @@ export async function generateAndApplyAgentMetadata(
     } catch (error) {
       options.logger.warn(
         { err: error, agentId: options.agentId, branch: normalizedBranch },
-        "Failed to rename branch"
+        "Failed to rename branch",
       );
     }
   }
 }
 
-export function scheduleAgentMetadataGeneration(
-  options: AgentMetadataGenerationOptions
-): void {
+export function scheduleAgentMetadataGeneration(options: AgentMetadataGenerationOptions): void {
   queueMicrotask(() => {
     void generateAndApplyAgentMetadata(options).catch((error) => {
       options.logger.error(
         { err: error, agentId: options.agentId },
-        "Agent metadata generation crashed"
+        "Agent metadata generation crashed",
       );
     });
   });

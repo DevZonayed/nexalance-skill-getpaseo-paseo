@@ -19,7 +19,7 @@ function keyboardEvent(overrides: Partial<KeyboardEvent>): KeyboardEvent {
 }
 
 function shortcutContext(
-  overrides: Partial<KeyboardShortcutContext> = {}
+  overrides: Partial<KeyboardShortcutContext> = {},
 ): KeyboardShortcutContext {
   return {
     isMac: false,
@@ -260,7 +260,14 @@ describe("keyboard-shortcuts", () => {
     },
   ];
 
-  it.each(matchingCases)("$name", ({ event, context, action, payload, preventDefault, stopPropagation }) => {
+  it.each(matchingCases)("$name", ({
+    event,
+    context,
+    action,
+    payload,
+    preventDefault,
+    stopPropagation,
+  }) => {
     expectShortcutResolution({
       event,
       context,
@@ -334,10 +341,7 @@ describe("keyboard-shortcuts", () => {
 });
 
 describe("keyboard-shortcut help sections", () => {
-  function findRow(
-    sections: ReturnType<typeof buildKeyboardShortcutHelpSections>,
-    id: string
-  ) {
+  function findRow(sections: ReturnType<typeof buildKeyboardShortcutHelpSections>, id: string) {
     for (const section of sections) {
       const row = section.rows.find((candidate) => candidate.id === id);
       if (row) {

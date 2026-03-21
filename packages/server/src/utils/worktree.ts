@@ -182,9 +182,8 @@ export function getWorktreeTerminalSpecs(repoRoot: string): WorktreeTerminalConf
     }
 
     const rawName = terminal.name;
-    const name = typeof rawName === "string" && rawName.trim().length > 0
-      ? rawName.trim()
-      : undefined;
+    const name =
+      typeof rawName === "string" && rawName.trim().length > 0 ? rawName.trim() : undefined;
 
     specs.push({
       ...(name ? { name } : {}),
@@ -197,7 +196,7 @@ export function getWorktreeTerminalSpecs(repoRoot: string): WorktreeTerminalConf
 
 async function execSetupCommand(
   command: string,
-  options: { cwd: string; env: NodeJS.ProcessEnv }
+  options: { cwd: string; env: NodeJS.ProcessEnv },
 ): Promise<WorktreeSetupCommandResult> {
   const startedAt = Date.now();
   try {
@@ -219,9 +218,7 @@ async function execSetupCommand(
       command,
       cwd: options.cwd,
       stdout: error?.stdout ?? "",
-      stderr:
-        error?.stderr ??
-        (error instanceof Error ? error.message : String(error)),
+      stderr: error?.stderr ?? (error instanceof Error ? error.message : String(error)),
       exitCode: typeof error?.code === "number" ? error.code : null,
       durationMs: Date.now() - startedAt,
     };
@@ -347,11 +344,12 @@ async function assertPortAvailable(port: number): Promise<void> {
   await new Promise<void>((resolve, reject) => {
     const server = net.createServer();
     server.once("error", (error: NodeJS.ErrnoException) => {
-      const message = error?.code === "EADDRINUSE"
-        ? `Persisted worktree port ${port} is already in use`
-        : error instanceof Error
-          ? error.message
-          : String(error);
+      const message =
+        error?.code === "EADDRINUSE"
+          ? `Persisted worktree port ${port} is already in use`
+          : error instanceof Error
+            ? error.message
+            : String(error);
       reject(new Error(message));
     });
     server.listen(port, () => {
@@ -379,10 +377,10 @@ async function inferRepoRootPathFromWorktreePath(worktreePath: string): Promise<
   } catch {
     // Fallback: best-effort resolve toplevel (will be the worktree root in typical cases)
     try {
-      const { stdout } = await execAsync(
-        "git rev-parse --path-format=absolute --show-toplevel",
-        { cwd: worktreePath, env: READ_ONLY_GIT_ENV }
-      );
+      const { stdout } = await execAsync("git rev-parse --path-format=absolute --show-toplevel", {
+        cwd: worktreePath,
+        env: READ_ONLY_GIT_ENV,
+      });
       const topLevel = stdout.trim();
       if (topLevel) {
         return normalizePathForOwnership(topLevel);
@@ -449,7 +447,7 @@ export async function runWorktreeSetupCommands(options: {
       }
       throw new WorktreeSetupError(
         `Worktree setup command failed: ${cmd}\n${result.stderr}`.trim(),
-        results
+        results,
       );
     }
   }
@@ -547,7 +545,7 @@ export async function runWorktreeDestroyCommands(options: {
     if (result.exitCode !== 0) {
       throw new WorktreeDestroyError(
         `Worktree destroy command failed: ${cmd}\n${result.stderr}`.trim(),
-        results
+        results,
       );
     }
   }
@@ -560,10 +558,10 @@ export async function runWorktreeDestroyCommands(options: {
  * This is where refs, objects, etc. are stored.
  */
 export async function getGitCommonDir(cwd: string): Promise<string> {
-  const { stdout } = await execAsync(
-    "git rev-parse --path-format=absolute --git-common-dir",
-    { cwd, env: READ_ONLY_GIT_ENV }
-  );
+  const { stdout } = await execAsync("git rev-parse --path-format=absolute --git-common-dir", {
+    cwd,
+    env: READ_ONLY_GIT_ENV,
+  });
   const commonDir = stdout.trim();
   if (!commonDir) {
     throw new Error("Not in a git repository");
@@ -649,19 +647,15 @@ function deriveShortAlphanumericHash(value: string): string {
   for (let index = 0; index < 8; index += 1) {
     hashValue = (hashValue << 8n) | BigInt(digest[index] ?? 0);
   }
-  return hashValue
-    .toString(36)
-    .padStart(13, "0")
-    .slice(0, WORKTREE_PROJECT_HASH_LENGTH);
+  return hashValue.toString(36).padStart(13, "0").slice(0, WORKTREE_PROJECT_HASH_LENGTH);
 }
 
 export async function deriveWorktreeProjectHash(cwd: string): Promise<string> {
   try {
     const commonDir = await getGitCommonDir(cwd);
     const normalizedCommonDir = normalizePathForOwnership(commonDir);
-    const repoRoot = basename(normalizedCommonDir) === ".git"
-      ? dirname(normalizedCommonDir)
-      : normalizedCommonDir;
+    const repoRoot =
+      basename(normalizedCommonDir) === ".git" ? dirname(normalizedCommonDir) : normalizedCommonDir;
     return deriveShortAlphanumericHash(repoRoot);
   } catch {
     return deriveShortAlphanumericHash(normalizePathForOwnership(cwd));
@@ -677,7 +671,7 @@ export async function getPaseoWorktreesRoot(cwd: string, paseoHome?: string): Pr
 export async function computeWorktreePath(
   cwd: string,
   slug: string,
-  paseoHome?: string
+  paseoHome?: string,
 ): Promise<string> {
   const worktreesRoot = await getPaseoWorktreesRoot(cwd, paseoHome);
   return join(worktreesRoot, slug);
@@ -700,7 +694,7 @@ function resolveRepoRootFromGitCommonDir(commonDir: string): string {
 
 export async function isPaseoOwnedWorktreeCwd(
   cwd: string,
-  options?: { paseoHome?: string }
+  options?: { paseoHome?: string },
 ): Promise<PaseoWorktreeOwnership> {
   let gitCommonDir: string;
   try {
@@ -759,9 +753,7 @@ function parseWorktreeList(output: string): ParsedPaseoWorktreeInfo[] {
 
     if (line.startsWith("branch ")) {
       const ref = line.slice("branch ".length).trim();
-      current.branchName = ref.startsWith("refs/heads/")
-        ? ref.slice("refs/heads/".length)
-        : ref;
+      current.branchName = ref.startsWith("refs/heads/") ? ref.slice("refs/heads/".length) : ref;
     } else if (line.startsWith("HEAD ")) {
       current.head = line.slice("HEAD ".length).trim();
     } else if (line.trim().length === 0) {
@@ -816,7 +808,7 @@ export async function listPaseoWorktrees({
 
 export async function resolvePaseoWorktreeRootForCwd(
   cwd: string,
-  options?: { paseoHome?: string }
+  options?: { paseoHome?: string },
 ): Promise<{ repoRoot: string; worktreeRoot: string; worktreePath: string } | null> {
   let gitCommonDir: string;
   try {
@@ -830,10 +822,10 @@ export async function resolvePaseoWorktreeRootForCwd(
 
   let worktreeRoot: string | null = null;
   try {
-    const { stdout } = await execAsync(
-      "git rev-parse --path-format=absolute --show-toplevel",
-      { cwd, env: READ_ONLY_GIT_ENV }
-    );
+    const { stdout } = await execAsync("git rev-parse --path-format=absolute --show-toplevel", {
+      cwd,
+      env: READ_ONLY_GIT_ENV,
+    });
     const trimmed = stdout.trim();
     worktreeRoot = trimmed.length > 0 ? trimmed : null;
   } catch {
@@ -905,7 +897,6 @@ export async function deletePaseoWorktree({
   }
 }
 
-
 /**
  * Create a git worktree with proper naming conventions
  */
@@ -954,10 +945,7 @@ export async function createWorktree({
   // Check if branch already exists
   let branchExists = false;
   try {
-    await execAsync(
-      `git show-ref --verify --quiet refs/heads/${branchName}`,
-      { cwd }
-    );
+    await execAsync(`git show-ref --verify --quiet refs/heads/${branchName}`, { cwd });
     branchExists = true;
   } catch {
     branchExists = false;
@@ -974,10 +962,7 @@ export async function createWorktree({
   let suffix = 1;
   while (true) {
     try {
-      await execAsync(
-        `git show-ref --verify --quiet refs/heads/${newBranchName}`,
-        { cwd }
-      );
+      await execAsync(`git show-ref --verify --quiet refs/heads/${newBranchName}`, { cwd });
       // Branch exists, try with suffix
       newBranchName = `${candidateBranch}-${suffix}`;
       suffix++;

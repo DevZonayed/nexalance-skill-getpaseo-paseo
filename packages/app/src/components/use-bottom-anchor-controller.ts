@@ -222,9 +222,7 @@ function deriveRetryDisposition(input: {
   if (input.mode !== "sticky-bottom" || input.retries >= MAX_VERIFICATION_RETRIES) {
     return "fail";
   }
-  return input.verificationRetryMode === "recheck"
-    ? "retry-verify"
-    : "retry-scroll";
+  return input.verificationRetryMode === "recheck" ? "retry-verify" : "retry-scroll";
 }
 
 function shouldRequireRouteRequestConfirmation(input: {
@@ -235,10 +233,7 @@ function shouldRequireRouteRequestConfirmation(input: {
   if (!input.request) {
     return false;
   }
-  if (
-    input.request.reason !== "initial-entry" &&
-    input.request.reason !== "resume"
-  ) {
+  if (input.request.reason !== "initial-entry" && input.request.reason !== "resume") {
     return false;
   }
   if (input.measurementState.containerKey !== "web-partial-virtualized") {
@@ -248,12 +243,11 @@ function shouldRequireRouteRequestConfirmation(input: {
 }
 
 function getDetailedMeasurementState(
-  measurementState: ControllerMeasurementState
+  measurementState: ControllerMeasurementState,
 ): Record<string, unknown> {
   const distanceFromBottom = Math.max(
     0,
-    measurementState.contentHeight -
-      (measurementState.offsetY + measurementState.viewportHeight)
+    measurementState.contentHeight - (measurementState.offsetY + measurementState.viewportHeight),
   );
   return {
     containerKey: measurementState.containerKey,
@@ -268,7 +262,7 @@ function getDetailedMeasurementState(
 }
 
 function createBottomAnchorControllerDriver(
-  input: CreateBottomAnchorControllerDriverInput
+  input: CreateBottomAnchorControllerDriverInput,
 ): BottomAnchorControllerDriver {
   let requestSequence = 0;
   let mode: BottomAnchorMode = "sticky-bottom";
@@ -285,8 +279,7 @@ function createBottomAnchorControllerDriver(
     const measurementState = input.getMeasurementState();
     const distanceFromBottom = Math.max(
       0,
-      measurementState.contentHeight -
-        (measurementState.offsetY + measurementState.viewportHeight)
+      measurementState.contentHeight - (measurementState.offsetY + measurementState.viewportHeight),
     );
     return {
       agentId: input.getAgentId(),
@@ -355,34 +348,27 @@ function createBottomAnchorControllerDriver(
     setBlockedReason(null);
   };
 
-  const deriveDriverBlockedReason = (
-    measurementState: ControllerMeasurementState
-  ) =>
+  const deriveDriverBlockedReason = (measurementState: ControllerMeasurementState) =>
     deriveBottomAnchorBlockedReason({
       pendingRequest,
       isAuthoritativeHistoryReady: input.getIsAuthoritativeHistoryReady(),
       measurementState,
       pendingVerificationRequestId:
-        verificationHandle !== null ? pendingVerification?.requestId ?? null : null,
+        verificationHandle !== null ? (pendingVerification?.requestId ?? null) : null,
     });
 
-  const scheduleVerification = (
-    attemptContext: AttemptContext,
-    delayFramesOverride?: number
-  ) => {
+  const scheduleVerification = (attemptContext: AttemptContext, delayFramesOverride?: number) => {
     const scheduledMeasurementState = input.getMeasurementState();
     if (verificationHandle) {
       input.cancelFrame(verificationHandle);
     }
     verificationHandle = input.scheduleFrame({
       kind: "verification",
-      delayFrames:
-        delayFramesOverride ?? input.getTransportBehavior().verificationDelayFrames,
+      delayFrames: delayFramesOverride ?? input.getTransportBehavior().verificationDelayFrames,
       callback: () => {
         verificationHandle = null;
         const currentRequest = pendingRequest;
-        const isRequestAttempt =
-          currentRequest && attemptContext.requestId === currentRequest.id;
+        const isRequestAttempt = currentRequest && attemptContext.requestId === currentRequest.id;
         const measurementState = input.getMeasurementState();
         const verificationBlockedReason = deriveVerificationBlockedReason({
           isAuthoritativeHistoryReady: input.getIsAuthoritativeHistoryReady(),
@@ -401,8 +387,7 @@ function createBottomAnchorControllerDriver(
           : deriveRetryDisposition({
               mode,
               retries: attemptContext.retries,
-              verificationRetryMode:
-                input.getTransportBehavior().verificationRetryMode,
+              verificationRetryMode: input.getTransportBehavior().verificationRetryMode,
             });
 
         if (verifiedNearBottom) {
@@ -421,7 +406,7 @@ function createBottomAnchorControllerDriver(
             setBlockedReason("waiting_for_post_layout_verification");
             scheduleVerification(
               pendingVerification,
-              WEB_PARTIAL_VIRTUALIZED_CONFIRMATION_DELAY_FRAMES
+              WEB_PARTIAL_VIRTUALIZED_CONFIRMATION_DELAY_FRAMES,
             );
             return;
           }
@@ -454,9 +439,7 @@ function createBottomAnchorControllerDriver(
         }
 
         pendingVerification = null;
-        setBlockedReason(
-          isRequestAttempt ? "waiting_for_post_layout_verification" : null
-        );
+        setBlockedReason(isRequestAttempt ? "waiting_for_post_layout_verification" : null);
       },
     });
   };
@@ -485,7 +468,7 @@ function createBottomAnchorControllerDriver(
       | "scroll_near_bottom_change"
       | "history_readiness_change"
       | "manual_reevaluate"
-      | "retry_scroll"
+      | "retry_scroll",
   ) => {
     if (attemptHandle) {
       return;
@@ -501,14 +484,9 @@ function createBottomAnchorControllerDriver(
         const shouldAttemptForPendingRequest =
           pendingRequest !== null && nextBlockedReason === null;
         const shouldAttemptForStickyVerification =
-          mode === "sticky-bottom" &&
-          pendingVerification !== null &&
-          nextBlockedReason === null;
+          mode === "sticky-bottom" && pendingVerification !== null && nextBlockedReason === null;
 
-        if (
-          !shouldAttemptForPendingRequest &&
-          !shouldAttemptForStickyVerification
-        ) {
+        if (!shouldAttemptForPendingRequest && !shouldAttemptForStickyVerification) {
           return;
         }
 
@@ -534,7 +512,7 @@ function createBottomAnchorControllerDriver(
     setModeInternal(
       "requestKey" in request
         ? "sticky-bottom"
-        : __private__.deriveModeForLocalRequest({ reason: request.reason })
+        : __private__.deriveModeForLocalRequest({ reason: request.reason }),
     );
     evaluate(request.reason === "jump-to-bottom", "request_created");
   };
@@ -654,11 +632,7 @@ function createBottomAnchorControllerDriver(
         this.detachByUser();
         return;
       }
-      if (
-        mode === "sticky-bottom" &&
-        !nextIsNearBottom &&
-        hasUnverifiedStickyMeasurementChange
-      ) {
+      if (mode === "sticky-bottom" && !nextIsNearBottom && hasUnverifiedStickyMeasurementChange) {
         if (!pendingRequest && !pendingVerification) {
           pendingVerification = { requestId: null, retries: 0 };
         }
@@ -727,8 +701,7 @@ export const __private__ = {
     hasPendingVerification: boolean;
     hasUnverifiedStickyMeasurementChange: boolean;
   }): boolean {
-    const scrolledAwayIntentionally =
-      Math.abs(input.scrollDelta) >= USER_SCROLL_AWAY_DELTA_PX;
+    const scrolledAwayIntentionally = Math.abs(input.scrollDelta) >= USER_SCROLL_AWAY_DELTA_PX;
     return (
       input.mode === "sticky-bottom" &&
       !input.nextIsNearBottom &&
@@ -819,10 +792,7 @@ export function useBottomAnchorController(input: {
     }) {
       driverRef.current?.handleViewportMetricsChange(params);
     },
-    handleContentSizeChange(params: {
-      previousContentHeight: number;
-      contentHeight: number;
-    }) {
+    handleContentSizeChange(params: { previousContentHeight: number; contentHeight: number }) {
       driverRef.current?.handleContentSizeChange(params);
     },
     prepareForStickyViewportChange() {
@@ -831,10 +801,7 @@ export function useBottomAnchorController(input: {
     prepareForStickyContentChange() {
       driverRef.current?.prepareForStickyContentChange();
     },
-    handleScrollNearBottomChange(params: {
-      nextIsNearBottom: boolean;
-      scrollDelta: number;
-    }) {
+    handleScrollNearBottomChange(params: { nextIsNearBottom: boolean; scrollDelta: number }) {
       driverRef.current?.handleScrollNearBottomChange(params);
     },
     reevaluate(animated = false) {

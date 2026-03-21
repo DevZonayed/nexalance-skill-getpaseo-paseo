@@ -94,9 +94,7 @@ describe("confirmDialog", () => {
 
     expect(confirmed).toBe(true);
     expect(blurMock).toHaveBeenCalledTimes(1);
-    expect(browserConfirm).toHaveBeenCalledWith(
-      "Restart host\n\nThis will restart the daemon."
-    );
+    expect(browserConfirm).toHaveBeenCalledWith("Restart host\n\nThis will restart the daemon.");
   });
 
   it("throws on web when no confirm backend exists", async () => {
@@ -106,22 +104,16 @@ describe("confirmDialog", () => {
       confirmDialog({
         title: "Restart host",
         message: "This will restart the daemon.",
-      })
+      }),
     ).rejects.toThrow("[ConfirmDialog] No web confirmation backend is available.");
   });
 
   it("uses native Alert on iOS/Android", async () => {
     const { confirmDialog, alertMock } = await loadModuleForPlatform("ios");
-    alertMock.mockImplementation(
-      (
-        _title: string,
-        _message: string,
-        buttons?: AlertButton[]
-      ) => {
-        const confirmButton = buttons?.[1];
-        confirmButton?.onPress?.();
-      }
-    );
+    alertMock.mockImplementation((_title: string, _message: string, buttons?: AlertButton[]) => {
+      const confirmButton = buttons?.[1];
+      confirmButton?.onPress?.();
+    });
 
     const confirmed = await confirmDialog({
       title: "Restart host",

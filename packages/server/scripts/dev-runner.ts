@@ -14,7 +14,7 @@ const result = spawnSync(
   {
     stdio: "inherit",
     env: process.env,
-  }
+  },
 );
 
 if (result.error) {

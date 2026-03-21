@@ -9,10 +9,7 @@ export function resolveKeyboardFocusScope(input: {
     return commandCenterOpen ? "command-center" : "other";
   }
 
-  if (
-    target.closest("[data-testid='terminal-surface']") ||
-    target.closest(".xterm")
-  ) {
+  if (target.closest("[data-testid='terminal-surface']") || target.closest(".xterm")) {
     return "terminal";
   }
 

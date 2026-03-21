@@ -37,10 +37,7 @@ export interface McpSseServerConfig {
  * Discriminated union by `type` field.
  * Each provider normalizes this to their expected format.
  */
-export type McpServerConfig =
-  | McpStdioServerConfig
-  | McpHttpServerConfig
-  | McpSseServerConfig;
+export type McpServerConfig = McpStdioServerConfig | McpHttpServerConfig | McpSseServerConfig;
 
 export type AgentMode = {
   id: string;
@@ -425,7 +422,10 @@ export interface AgentClient {
   readonly provider: AgentProvider;
   readonly capabilities: AgentCapabilityFlags;
   createSession(config: AgentSessionConfig): Promise<AgentSession>;
-  resumeSession(handle: AgentPersistenceHandle, overrides?: Partial<AgentSessionConfig>): Promise<AgentSession>;
+  resumeSession(
+    handle: AgentPersistenceHandle,
+    overrides?: Partial<AgentSessionConfig>,
+  ): Promise<AgentSession>;
   listModels(options?: ListModelsOptions): Promise<AgentModelDefinition[]>;
   listPersistedAgents?(options?: ListPersistedAgentsOptions): Promise<PersistedAgentDescriptor[]>;
   /**

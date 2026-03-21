@@ -5,13 +5,13 @@ describe("shouldFocusPaneFromEventTarget", () => {
   it("returns false for links and buttons", () => {
     expect(
       shouldFocusPaneFromEventTarget({
-        closest: () => ({ tagName: "A" } as Element),
-      } as unknown as EventTarget)
+        closest: () => ({ tagName: "A" }) as Element,
+      } as unknown as EventTarget),
     ).toBe(false);
     expect(
       shouldFocusPaneFromEventTarget({
-        closest: () => ({ tagName: "BUTTON" } as Element),
-      } as unknown as EventTarget)
+        closest: () => ({ tagName: "BUTTON" }) as Element,
+      } as unknown as EventTarget),
     ).toBe(false);
   });
 
@@ -19,7 +19,7 @@ describe("shouldFocusPaneFromEventTarget", () => {
     expect(
       shouldFocusPaneFromEventTarget({
         closest: () => null,
-      } as unknown as EventTarget)
+      } as unknown as EventTarget),
     ).toBe(true);
     expect(shouldFocusPaneFromEventTarget(null)).toBe(true);
   });

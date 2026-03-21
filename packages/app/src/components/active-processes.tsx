@@ -68,16 +68,16 @@ const styles = StyleSheet.create((theme) => ({
   backButtonText: {
     color: theme.colors.foreground,
     fontSize: theme.fontSize.sm,
-    fontWeight: '600',
-    textAlign: 'center',
+    fontWeight: "600",
+    textAlign: "center",
   },
   scrollView: {
     paddingHorizontal: theme.spacing[4],
     paddingVertical: theme.spacing[3],
   },
   processItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: theme.spacing[2],
     paddingHorizontal: theme.spacing[3],
     paddingVertical: theme.spacing[2],
@@ -104,7 +104,7 @@ const styles = StyleSheet.create((theme) => ({
   processText: {
     color: theme.colors.foreground,
     fontSize: theme.fontSize.xs,
-    fontWeight: '500',
+    fontWeight: "500",
   },
   processTextActive: {
     color: theme.colors.primaryForeground,
@@ -147,20 +147,21 @@ export function ActiveProcesses({
           onPress={onSelectOrchestrator}
           style={({ pressed }) => [
             styles.processItem,
-            viewMode === 'orchestrator' ? styles.processItemActive : styles.processItemInactive,
+            viewMode === "orchestrator" ? styles.processItemActive : styles.processItemInactive,
             pressed && { opacity: 0.7 },
           ]}
         >
           <View style={styles.agentIcon} />
-          <Text style={[
-            styles.processText,
-            viewMode === 'orchestrator' && styles.processTextActive,
-          ]}>Orchestrator</Text>
+          <Text
+            style={[styles.processText, viewMode === "orchestrator" && styles.processTextActive]}
+          >
+            Orchestrator
+          </Text>
         </Pressable>
 
         {/* Agent pills */}
         {agents.map((agent) => {
-          const isActive = viewMode === 'agent' && activeAgentId === agent.id;
+          const isActive = viewMode === "agent" && activeAgentId === agent.id;
 
           return (
             <Pressable
@@ -174,15 +175,21 @@ export function ActiveProcesses({
             >
               <View style={styles.agentIcon} />
 
-              <Text style={[
-                styles.processText,
-                isActive && styles.processTextActive,
-              ]}>{agent.id.substring(0, 8)}</Text>
+              <Text style={[styles.processText, isActive && styles.processTextActive]}>
+                {agent.id.substring(0, 8)}
+              </Text>
 
-              <View style={[styles.statusDot, { backgroundColor: getAgentStatusColor(agent.status) }]} />
+              <View
+                style={[styles.statusDot, { backgroundColor: getAgentStatusColor(agent.status) }]}
+              />
 
               {agent.currentModeId && (
-                <View style={[styles.modeIndicator, { backgroundColor: getModeColor(agent.currentModeId) }]} />
+                <View
+                  style={[
+                    styles.modeIndicator,
+                    { backgroundColor: getModeColor(agent.currentModeId) },
+                  ]}
+                />
               )}
             </Pressable>
           );

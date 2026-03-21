@@ -7,7 +7,7 @@ export interface AgentWorkingDirectorySource {
 const PASEO_WORKTREE_PATH_PATTERN = /(^|\/)\.paseo\/worktrees(\/|$)/;
 
 export function collectAgentWorkingDirectorySuggestions(
-  sources: Iterable<AgentWorkingDirectorySource>
+  sources: Iterable<AgentWorkingDirectorySource>,
 ): string[] {
   const lastSeenByPath = new Map<string, number>();
 

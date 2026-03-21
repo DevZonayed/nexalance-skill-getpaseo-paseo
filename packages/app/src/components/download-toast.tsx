@@ -41,7 +41,10 @@ export function DownloadToast() {
   }
 
   return (
-    <View style={[styles.container, { bottom: theme.spacing[4] + insets.bottom }]} pointerEvents="box-none">
+    <View
+      style={[styles.container, { bottom: theme.spacing[4] + insets.bottom }]}
+      pointerEvents="box-none"
+    >
       <View style={styles.toast}>
         {activeDownload.status === "downloading" ? (
           <ActivityIndicator size="small" color={theme.colors.foreground} />
@@ -61,7 +64,7 @@ export function DownloadToast() {
                 : "Starting..."
               : activeDownload.status === "complete"
                 ? "Download complete"
-                : activeDownload.message ?? "Download failed"}
+                : (activeDownload.message ?? "Download failed")}
           </Text>
           {activeDownload.status === "downloading" && activeDownload.progress && (
             <View style={styles.progressBar}>

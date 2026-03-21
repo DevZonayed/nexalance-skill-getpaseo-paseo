@@ -9,103 +9,108 @@ import {
   type Dispatch,
   type RefObject,
   type SetStateAction,
-} from 'react'
-import { View, Pressable, Text, Platform } from 'react-native'
-import { useSafeAreaInsets } from 'react-native-safe-area-context'
+} from "react";
+import { View, Pressable, Text, Platform } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, {
   useAnimatedStyle,
   interpolate,
   Extrapolation,
   runOnJS,
   useSharedValue,
-} from 'react-native-reanimated'
-import { Gesture, GestureDetector } from 'react-native-gesture-handler'
-import { StyleSheet, UnistylesRuntime, useUnistyles } from 'react-native-unistyles'
-import { MessagesSquare, Plus, Settings } from 'lucide-react-native'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { Shortcut } from '@/components/ui/shortcut'
-import { router, usePathname } from 'expo-router'
-import { usePanelStore } from '@/stores/panel-store'
-import { SidebarWorkspaceList } from './sidebar-workspace-list'
-import { SidebarAgentListSkeleton } from './sidebar-agent-list-skeleton'
-import { useSidebarShortcutModel } from '@/hooks/use-sidebar-shortcut-model'
-import { useSidebarWorkspacesList, type SidebarProjectEntry } from '@/hooks/use-sidebar-workspaces-list'
-import { useSidebarAnimation } from '@/contexts/sidebar-animation-context'
-import { useDesktopDragHandlers, useTrafficLightPadding } from '@/utils/desktop-window'
-import { Combobox } from '@/components/ui/combobox'
-import { getHostRuntimeStore, useHosts } from '@/runtime/host-runtime'
-import { formatConnectionStatus } from '@/utils/daemons'
-import { HEADER_INNER_HEIGHT, HEADER_INNER_HEIGHT_MOBILE } from '@/constants/layout'
+} from "react-native-reanimated";
+import { Gesture, GestureDetector } from "react-native-gesture-handler";
+import { StyleSheet, UnistylesRuntime, useUnistyles } from "react-native-unistyles";
+import { MessagesSquare, Plus, Settings } from "lucide-react-native";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Shortcut } from "@/components/ui/shortcut";
+import { router, usePathname } from "expo-router";
+import { usePanelStore } from "@/stores/panel-store";
+import { SidebarWorkspaceList } from "./sidebar-workspace-list";
+import { SidebarAgentListSkeleton } from "./sidebar-agent-list-skeleton";
+import { useSidebarShortcutModel } from "@/hooks/use-sidebar-shortcut-model";
+import {
+  useSidebarWorkspacesList,
+  type SidebarProjectEntry,
+} from "@/hooks/use-sidebar-workspaces-list";
+import { useSidebarAnimation } from "@/contexts/sidebar-animation-context";
+import { useDesktopDragHandlers, useTrafficLightPadding } from "@/utils/desktop-window";
+import { Combobox } from "@/components/ui/combobox";
+import { getHostRuntimeStore, useHosts } from "@/runtime/host-runtime";
+import { formatConnectionStatus } from "@/utils/daemons";
+import { HEADER_INNER_HEIGHT, HEADER_INNER_HEIGHT_MOBILE } from "@/constants/layout";
 import {
   buildHostSessionsRoute,
   buildHostSettingsRoute,
   mapPathnameToServer,
   parseServerIdFromPathname,
-} from '@/utils/host-routes'
-import { useOpenProjectPicker } from '@/hooks/use-open-project-picker'
+} from "@/utils/host-routes";
+import { useOpenProjectPicker } from "@/hooks/use-open-project-picker";
 
-const DESKTOP_SIDEBAR_WIDTH = 320
-type SidebarShortcutModel = ReturnType<typeof useSidebarShortcutModel>
-type SidebarTheme = ReturnType<typeof useUnistyles>['theme']
+const DESKTOP_SIDEBAR_WIDTH = 320;
+type SidebarShortcutModel = ReturnType<typeof useSidebarShortcutModel>;
+type SidebarTheme = ReturnType<typeof useUnistyles>["theme"];
 
 interface LeftSidebarProps {
-  selectedAgentId?: string
+  selectedAgentId?: string;
 }
 
 interface HostOption {
-  id: string
-  label: string
-  description: string
+  id: string;
+  label: string;
+  description: string;
 }
 
 interface SidebarSharedProps {
-  theme: SidebarTheme
-  activeServerId: string | null
-  activeHostLabel: string
-  activeHostStatusColor: string
-  hostOptions: HostOption[]
-  hostTriggerRef: RefObject<View | null>
-  isHostPickerOpen: boolean
-  setIsHostPickerOpen: Dispatch<SetStateAction<boolean>>
-  projects: SidebarProjectEntry[]
-  isInitialLoad: boolean
-  isRevalidating: boolean
-  isManualRefresh: boolean
-  collapsedProjectKeys: SidebarShortcutModel['collapsedProjectKeys']
-  shortcutIndexByWorkspaceKey: SidebarShortcutModel['shortcutIndexByWorkspaceKey']
-  toggleProjectCollapsed: SidebarShortcutModel['toggleProjectCollapsed']
-  setProjectCollapsed: SidebarShortcutModel['setProjectCollapsed']
-  handleRefresh: () => void
-  handleHostSelect: (nextServerId: string) => void
-  handleOpenProject: () => void
-  handleSettings: () => void
+  theme: SidebarTheme;
+  activeServerId: string | null;
+  activeHostLabel: string;
+  activeHostStatusColor: string;
+  hostOptions: HostOption[];
+  hostTriggerRef: RefObject<View | null>;
+  isHostPickerOpen: boolean;
+  setIsHostPickerOpen: Dispatch<SetStateAction<boolean>>;
+  projects: SidebarProjectEntry[];
+  isInitialLoad: boolean;
+  isRevalidating: boolean;
+  isManualRefresh: boolean;
+  collapsedProjectKeys: SidebarShortcutModel["collapsedProjectKeys"];
+  shortcutIndexByWorkspaceKey: SidebarShortcutModel["shortcutIndexByWorkspaceKey"];
+  toggleProjectCollapsed: SidebarShortcutModel["toggleProjectCollapsed"];
+  setProjectCollapsed: SidebarShortcutModel["setProjectCollapsed"];
+  handleRefresh: () => void;
+  handleHostSelect: (nextServerId: string) => void;
+  handleOpenProject: () => void;
+  handleSettings: () => void;
 }
 
 interface MobileSidebarProps extends SidebarSharedProps {
-  insetsTop: number
-  insetsBottom: number
-  isOpen: boolean
-  closeToAgent: () => void
-  handleViewMoreNavigate: () => void
+  insetsTop: number;
+  insetsBottom: number;
+  isOpen: boolean;
+  closeToAgent: () => void;
+  handleViewMoreNavigate: () => void;
 }
 
 interface DesktopSidebarProps extends SidebarSharedProps {
-  isOpen: boolean
-  handleViewMore: () => void
+  isOpen: boolean;
+  handleViewMore: () => void;
 }
 
-export const LeftSidebar = memo(function LeftSidebar({ selectedAgentId: _selectedAgentId }: LeftSidebarProps) {
-  void _selectedAgentId
+export const LeftSidebar = memo(function LeftSidebar({
+  selectedAgentId: _selectedAgentId,
+}: LeftSidebarProps) {
+  void _selectedAgentId;
 
-  const { theme } = useUnistyles()
-  const insets = useSafeAreaInsets()
-  const isMobile = UnistylesRuntime.breakpoint === 'xs' || UnistylesRuntime.breakpoint === 'sm'
-  const mobileView = usePanelStore((state) => state.mobileView)
-  const desktopAgentListOpen = usePanelStore((state) => state.desktop.agentListOpen)
-  const closeToAgent = usePanelStore((state) => state.closeToAgent)
-  const pathname = usePathname()
-  const daemons = useHosts()
-  const runtime = getHostRuntimeStore()
+  const { theme } = useUnistyles();
+  const insets = useSafeAreaInsets();
+  const isMobile = UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
+  const mobileView = usePanelStore((state) => state.mobileView);
+  const desktopAgentListOpen = usePanelStore((state) => state.desktop.agentListOpen);
+  const closeToAgent = usePanelStore((state) => state.closeToAgent);
+  const pathname = usePathname();
+  const daemons = useHosts();
+  const runtime = getHostRuntimeStore();
   const runtimeConnectionStatusSignature = useSyncExternalStore(
     (onStoreChange) => runtime.subscribeAll(onStoreChange),
     () =>
@@ -113,128 +118,132 @@ export const LeftSidebar = memo(function LeftSidebar({ selectedAgentId: _selecte
         .map(
           (daemon) =>
             `${daemon.serverId}:${
-              runtime.getSnapshot(daemon.serverId)?.connectionStatus ?? 'connecting'
-            }`
+              runtime.getSnapshot(daemon.serverId)?.connectionStatus ?? "connecting"
+            }`,
         )
-        .join('|'),
+        .join("|"),
     () =>
       daemons
         .map(
           (daemon) =>
             `${daemon.serverId}:${
-              runtime.getSnapshot(daemon.serverId)?.connectionStatus ?? 'connecting'
-            }`
+              runtime.getSnapshot(daemon.serverId)?.connectionStatus ?? "connecting"
+            }`,
         )
-        .join('|')
-  )
-  const activeServerIdFromPath = useMemo(() => parseServerIdFromPathname(pathname), [pathname])
+        .join("|"),
+  );
+  const activeServerIdFromPath = useMemo(() => parseServerIdFromPathname(pathname), [pathname]);
   const activeDaemon = useMemo(() => {
     if (daemons.length === 0) {
-      return null
+      return null;
     }
     if (activeServerIdFromPath) {
-      const routeMatch = daemons.find((entry) => entry.serverId === activeServerIdFromPath)
+      const routeMatch = daemons.find((entry) => entry.serverId === activeServerIdFromPath);
       if (routeMatch) {
-        return routeMatch
+        return routeMatch;
       }
     }
-    return daemons[0] ?? null
-  }, [activeServerIdFromPath, daemons])
-  const activeServerId = activeDaemon?.serverId ?? null
+    return daemons[0] ?? null;
+  }, [activeServerIdFromPath, daemons]);
+  const activeServerId = activeDaemon?.serverId ?? null;
   const activeHostLabel = useMemo(() => {
-    if (!activeDaemon) return 'No host'
-    const trimmed = activeDaemon.label?.trim()
-    return trimmed && trimmed.length > 0 ? trimmed : activeDaemon.serverId
-  }, [activeDaemon])
+    if (!activeDaemon) return "No host";
+    const trimmed = activeDaemon.label?.trim();
+    return trimmed && trimmed.length > 0 ? trimmed : activeDaemon.serverId;
+  }, [activeDaemon]);
   const activeHostStatus = activeServerId
-    ? (runtime.getSnapshot(activeServerId)?.connectionStatus ?? 'connecting')
-    : 'idle'
+    ? (runtime.getSnapshot(activeServerId)?.connectionStatus ?? "connecting")
+    : "idle";
   const activeHostStatusColor =
-    activeHostStatus === 'online'
+    activeHostStatus === "online"
       ? theme.colors.palette.green[400]
-      : activeHostStatus === 'connecting'
+      : activeHostStatus === "connecting"
         ? theme.colors.palette.amber[500]
-        : theme.colors.palette.red[500]
+        : theme.colors.palette.red[500];
   const hostOptions = useMemo(
     () =>
       daemons.map((daemon) => ({
         id: daemon.serverId,
         label: daemon.label?.trim() || daemon.serverId,
         description: formatConnectionStatus(
-          runtime.getSnapshot(daemon.serverId)?.connectionStatus ?? 'connecting'
+          runtime.getSnapshot(daemon.serverId)?.connectionStatus ?? "connecting",
         ),
       })),
-    [daemons, runtime, runtimeConnectionStatusSignature]
-  )
-  const hostTriggerRef = useRef<View | null>(null)
-  const [isHostPickerOpen, setIsHostPickerOpen] = useState(false)
+    [daemons, runtime, runtimeConnectionStatusSignature],
+  );
+  const hostTriggerRef = useRef<View | null>(null);
+  const [isHostPickerOpen, setIsHostPickerOpen] = useState(false);
 
-  const isOpen = isMobile ? mobileView === 'agent-list' : desktopAgentListOpen
+  const isOpen = isMobile ? mobileView === "agent-list" : desktopAgentListOpen;
 
   const { projects, isInitialLoad, isRevalidating, refreshAll } = useSidebarWorkspacesList({
     serverId: activeServerId,
     enabled: isOpen,
-  })
-  const { collapsedProjectKeys, shortcutIndexByWorkspaceKey, toggleProjectCollapsed, setProjectCollapsed } =
-    useSidebarShortcutModel(projects)
+  });
+  const {
+    collapsedProjectKeys,
+    shortcutIndexByWorkspaceKey,
+    toggleProjectCollapsed,
+    setProjectCollapsed,
+  } = useSidebarShortcutModel(projects);
 
-  const [isManualRefresh, setIsManualRefresh] = useState(false)
+  const [isManualRefresh, setIsManualRefresh] = useState(false);
 
   const handleRefresh = useCallback(() => {
-    setIsManualRefresh(true)
-    refreshAll()
-  }, [refreshAll])
+    setIsManualRefresh(true);
+    refreshAll();
+  }, [refreshAll]);
 
   useEffect(() => {
     if (!isRevalidating && isManualRefresh) {
-      setIsManualRefresh(false)
+      setIsManualRefresh(false);
     }
-  }, [isRevalidating, isManualRefresh])
+  }, [isRevalidating, isManualRefresh]);
 
-  const openProjectPicker = useOpenProjectPicker(activeServerId)
+  const openProjectPicker = useOpenProjectPicker(activeServerId);
 
   const handleOpenProjectMobile = useCallback(() => {
-    closeToAgent()
-    void openProjectPicker()
-  }, [closeToAgent, openProjectPicker])
+    closeToAgent();
+    void openProjectPicker();
+  }, [closeToAgent, openProjectPicker]);
 
   const handleOpenProjectDesktop = useCallback(() => {
-    void openProjectPicker()
-  }, [openProjectPicker])
+    void openProjectPicker();
+  }, [openProjectPicker]);
 
   const handleSettingsMobile = useCallback(() => {
     if (!activeServerId) {
-      return
+      return;
     }
-    closeToAgent()
-    router.push(buildHostSettingsRoute(activeServerId) as any)
-  }, [activeServerId, closeToAgent])
+    closeToAgent();
+    router.push(buildHostSettingsRoute(activeServerId) as any);
+  }, [activeServerId, closeToAgent]);
 
   const handleSettingsDesktop = useCallback(() => {
     if (!activeServerId) {
-      return
+      return;
     }
-    router.push(buildHostSettingsRoute(activeServerId) as any)
-  }, [activeServerId])
+    router.push(buildHostSettingsRoute(activeServerId) as any);
+  }, [activeServerId]);
 
   const handleViewMoreNavigate = useCallback(() => {
     if (!activeServerId) {
-      return
+      return;
     }
-    router.push(buildHostSessionsRoute(activeServerId) as any)
-  }, [activeServerId])
+    router.push(buildHostSessionsRoute(activeServerId) as any);
+  }, [activeServerId]);
 
   const handleHostSelect = useCallback(
     (nextServerId: string) => {
       if (!nextServerId) {
-        return
+        return;
       }
-      const nextPath = mapPathnameToServer(pathname, nextServerId)
-      setIsHostPickerOpen(false)
-      router.push(nextPath as any)
+      const nextPath = mapPathnameToServer(pathname, nextServerId);
+      setIsHostPickerOpen(false);
+      router.push(nextPath as any);
     },
-    [pathname]
-  )
+    [pathname],
+  );
 
   const sharedProps = {
     theme,
@@ -255,7 +264,7 @@ export const LeftSidebar = memo(function LeftSidebar({ selectedAgentId: _selecte
     setProjectCollapsed,
     handleRefresh,
     handleHostSelect,
-  }
+  };
 
   if (isMobile) {
     return (
@@ -269,7 +278,7 @@ export const LeftSidebar = memo(function LeftSidebar({ selectedAgentId: _selecte
         handleSettings={handleSettingsMobile}
         handleViewMoreNavigate={handleViewMoreNavigate}
       />
-    )
+    );
   }
 
   return (
@@ -280,13 +289,13 @@ export const LeftSidebar = memo(function LeftSidebar({ selectedAgentId: _selecte
       handleSettings={handleSettingsDesktop}
       handleViewMore={handleViewMoreNavigate}
     />
-  )
-})
+  );
+});
 
 function SessionsButton({ onPress }: { onPress: () => void }) {
-  const { theme } = useUnistyles()
-  const pathname = usePathname()
-  const isActive = pathname.includes('/sessions')
+  const { theme } = useUnistyles();
+  const pathname = usePathname();
+  const isActive = pathname.includes("/sessions");
 
   return (
     <Pressable
@@ -308,14 +317,17 @@ function SessionsButton({ onPress }: { onPress: () => void }) {
             color={hovered || isActive ? theme.colors.foreground : theme.colors.foregroundMuted}
           />
           <Text
-            style={[styles.newAgentButtonText, (hovered || isActive) && styles.newAgentButtonTextHovered]}
+            style={[
+              styles.newAgentButtonText,
+              (hovered || isActive) && styles.newAgentButtonTextHovered,
+            ]}
           >
             Sessions
           </Text>
         </>
       )}
     </Pressable>
-  )
+  );
 }
 
 function MobileSidebar({
@@ -353,22 +365,22 @@ function MobileSidebar({
     animateToClose,
     isGesturing,
     closeGestureRef,
-  } = useSidebarAnimation()
-  const closeTouchStartX = useSharedValue(0)
-  const closeTouchStartY = useSharedValue(0)
+  } = useSidebarAnimation();
+  const closeTouchStartX = useSharedValue(0);
+  const closeTouchStartY = useSharedValue(0);
 
   const handleClose = useCallback(() => {
-    closeToAgent()
-  }, [closeToAgent])
+    closeToAgent();
+  }, [closeToAgent]);
 
   const handleViewMore = useCallback(() => {
     if (!activeServerId) {
-      return
+      return;
     }
-    translateX.value = -windowWidth
-    backdropOpacity.value = 0
-    closeToAgent()
-    handleViewMoreNavigate()
+    translateX.value = -windowWidth;
+    backdropOpacity.value = 0;
+    closeToAgent();
+    handleViewMoreNavigate();
   }, [
     activeServerId,
     backdropOpacity,
@@ -376,7 +388,7 @@ function MobileSidebar({
     handleViewMoreNavigate,
     translateX,
     windowWidth,
-  ])
+  ]);
 
   const closeGesture = useMemo(
     () =>
@@ -385,62 +397,62 @@ function MobileSidebar({
         .enabled(isOpen)
         .manualActivation(true)
         .onTouchesDown((event) => {
-          const touch = event.changedTouches[0]
+          const touch = event.changedTouches[0];
           if (!touch) {
-            return
+            return;
           }
-          closeTouchStartX.value = touch.absoluteX
-          closeTouchStartY.value = touch.absoluteY
+          closeTouchStartX.value = touch.absoluteX;
+          closeTouchStartY.value = touch.absoluteY;
         })
         .onTouchesMove((event, stateManager) => {
-          const touch = event.changedTouches[0]
+          const touch = event.changedTouches[0];
           if (!touch || event.numberOfTouches !== 1) {
-            stateManager.fail()
-            return
+            stateManager.fail();
+            return;
           }
 
-          const deltaX = touch.absoluteX - closeTouchStartX.value
-          const deltaY = touch.absoluteY - closeTouchStartY.value
-          const absDeltaX = Math.abs(deltaX)
-          const absDeltaY = Math.abs(deltaY)
+          const deltaX = touch.absoluteX - closeTouchStartX.value;
+          const deltaY = touch.absoluteY - closeTouchStartY.value;
+          const absDeltaX = Math.abs(deltaX);
+          const absDeltaY = Math.abs(deltaY);
 
           if (deltaX >= 10) {
-            stateManager.fail()
-            return
+            stateManager.fail();
+            return;
           }
           if (absDeltaY > 10 && absDeltaY > absDeltaX) {
-            stateManager.fail()
-            return
+            stateManager.fail();
+            return;
           }
           if (deltaX <= -15 && absDeltaX > absDeltaY) {
-            stateManager.activate()
+            stateManager.activate();
           }
         })
         .onStart(() => {
-          isGesturing.value = true
+          isGesturing.value = true;
         })
         .onUpdate((event) => {
-          const newTranslateX = Math.min(0, Math.max(-windowWidth, event.translationX))
-          translateX.value = newTranslateX
+          const newTranslateX = Math.min(0, Math.max(-windowWidth, event.translationX));
+          translateX.value = newTranslateX;
           backdropOpacity.value = interpolate(
             newTranslateX,
             [-windowWidth, 0],
             [0, 1],
-            Extrapolation.CLAMP
-          )
+            Extrapolation.CLAMP,
+          );
         })
         .onEnd((event) => {
-          isGesturing.value = false
-          const shouldClose = event.translationX < -windowWidth / 3 || event.velocityX < -500
+          isGesturing.value = false;
+          const shouldClose = event.translationX < -windowWidth / 3 || event.velocityX < -500;
           if (shouldClose) {
-            animateToClose()
-            runOnJS(handleClose)()
+            animateToClose();
+            runOnJS(handleClose)();
           } else {
-            animateToOpen()
+            animateToOpen();
           }
         })
         .onFinalize(() => {
-          isGesturing.value = false
+          isGesturing.value = false;
         }),
     [
       isOpen,
@@ -454,29 +466,29 @@ function MobileSidebar({
       animateToClose,
       animateToOpen,
       handleClose,
-    ]
-  )
+    ],
+  );
 
   const mobileSidebarInsetStyle = useMemo(
     () => ({ width: windowWidth, paddingTop: insetsTop, paddingBottom: insetsBottom }),
-    [windowWidth, insetsTop, insetsBottom]
-  )
+    [windowWidth, insetsTop, insetsBottom],
+  );
 
   const hostStatusDotStyle = useMemo(
     () => [styles.hostStatusDot, { backgroundColor: activeHostStatusColor }],
-    [activeHostStatusColor]
-  )
+    [activeHostStatusColor],
+  );
 
   const sidebarAnimatedStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: translateX.value }],
-  }))
+  }));
 
   const backdropAnimatedStyle = useAnimatedStyle(() => ({
     opacity: backdropOpacity.value,
-    pointerEvents: backdropOpacity.value > 0.01 ? 'auto' : 'none',
-  }))
+    pointerEvents: backdropOpacity.value > 0.01 ? "auto" : "none",
+  }));
 
-  const overlayPointerEvents = Platform.OS === 'web' ? (isOpen ? 'auto' : 'none') : 'box-none'
+  const overlayPointerEvents = Platform.OS === "web" ? (isOpen ? "auto" : "none") : "box-none";
 
   return (
     <View style={StyleSheet.absoluteFillObject} pointerEvents={overlayPointerEvents}>
@@ -554,7 +566,7 @@ function MobileSidebar({
                   <TooltipContent side="top" align="center" offset={8}>
                     <View style={styles.tooltipRow}>
                       <Text style={styles.tooltipText}>Add project</Text>
-                      <Shortcut keys={['⌘', '⇧', 'O']} />
+                      <Shortcut keys={["⌘", "⇧", "O"]} />
                     </View>
                   </TooltipContent>
                 </Tooltip>
@@ -578,7 +590,7 @@ function MobileSidebar({
               </View>
               <Combobox
                 options={hostOptions}
-                value={activeServerId ?? ''}
+                value={activeServerId ?? ""}
                 onSelect={handleHostSelect}
                 searchable={false}
                 title="Switch host"
@@ -592,7 +604,7 @@ function MobileSidebar({
         </Animated.View>
       </GestureDetector>
     </View>
-  )
+  );
 }
 
 function DesktopSidebar({
@@ -619,15 +631,15 @@ function DesktopSidebar({
   isOpen,
   handleViewMore,
 }: DesktopSidebarProps) {
-  const dragHandlers = useDesktopDragHandlers()
-  const trafficLightPadding = useTrafficLightPadding()
+  const dragHandlers = useDesktopDragHandlers();
+  const trafficLightPadding = useTrafficLightPadding();
   const hostStatusDotStyle = useMemo(
     () => [styles.hostStatusDot, { backgroundColor: activeHostStatusColor }],
-    [activeHostStatusColor]
-  )
+    [activeHostStatusColor],
+  );
 
   if (!isOpen) {
-    return null
+    return null;
   }
 
   return (
@@ -697,7 +709,7 @@ function DesktopSidebar({
             <TooltipContent side="top" align="center" offset={8}>
               <View style={styles.tooltipRow}>
                 <Text style={styles.tooltipText}>Add project</Text>
-                <Shortcut keys={['⌘', '⇧', 'O']} />
+                <Shortcut keys={["⌘", "⇧", "O"]} />
               </View>
             </TooltipContent>
           </Tooltip>
@@ -721,7 +733,7 @@ function DesktopSidebar({
         </View>
         <Combobox
           options={hostOptions}
-          value={activeServerId ?? ''}
+          value={activeServerId ?? ""}
           onSelect={handleHostSelect}
           searchable={false}
           title="Switch host"
@@ -732,29 +744,29 @@ function DesktopSidebar({
         />
       </View>
     </View>
-  )
+  );
 }
 
 const styles = StyleSheet.create((theme) => ({
   backdrop: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
   },
   backdropPressable: {
     flex: 1,
   },
   mobileSidebar: {
-    position: 'absolute',
+    position: "absolute",
     top: 0,
     left: 0,
     bottom: 0,
     backgroundColor: theme.colors.surfaceSidebar,
-    overflow: 'hidden',
+    overflow: "hidden",
   },
   sidebarContent: {
     flex: 1,
     minHeight: 0,
-    overflow: 'hidden',
+    overflow: "hidden",
   },
   desktopSidebar: {
     borderRightWidth: 1,
@@ -767,21 +779,21 @@ const styles = StyleSheet.create((theme) => ({
       md: HEADER_INNER_HEIGHT,
     },
     paddingHorizontal: theme.spacing[2],
-    justifyContent: 'center',
+    justifyContent: "center",
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.border,
-    userSelect: 'none',
+    userSelect: "none",
   },
   sidebarHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     gap: theme.spacing[2],
   },
   newAgentButton: {
     flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: theme.spacing[2],
     paddingVertical: theme.spacing[2],
     paddingHorizontal: theme.spacing[3],
@@ -802,9 +814,9 @@ const styles = StyleSheet.create((theme) => ({
     backgroundColor: theme.colors.surface1,
   },
   hostTrigger: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'flex-start',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-start",
     gap: theme.spacing[2],
     minWidth: 0,
     paddingVertical: theme.spacing[1],
@@ -826,9 +838,9 @@ const styles = StyleSheet.create((theme) => ({
     minWidth: 0,
   },
   sidebarFooter: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     paddingHorizontal: theme.spacing[4],
     paddingVertical: theme.spacing[3],
     borderTopWidth: 1,
@@ -841,16 +853,16 @@ const styles = StyleSheet.create((theme) => ({
     marginRight: theme.spacing[2],
   },
   footerIconRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: theme.spacing[2],
     flexShrink: 0,
   },
   footerIconButton: {
     width: 28,
     height: 28,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     paddingVertical: theme.spacing[1],
     paddingHorizontal: theme.spacing[1],
   },
@@ -876,19 +888,19 @@ const styles = StyleSheet.create((theme) => ({
     backgroundColor: theme.colors.surface0,
     borderWidth: theme.borderWidth[1],
     borderColor: theme.colors.border,
-    alignItems: 'center',
+    alignItems: "center",
   },
   hostPickerCancelText: {
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.sm,
   },
   tooltipRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: theme.spacing[2],
   },
   tooltipText: {
     fontSize: theme.fontSize.sm,
     color: theme.colors.popoverForeground,
   },
-}))
+}));

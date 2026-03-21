@@ -69,7 +69,8 @@ export const SHERPA_ONNX_MODEL_CATALOG = {
   },
   "kokoro-en-v0_19": {
     kind: "tts",
-    archiveUrl: "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/kokoro-en-v0_19.tar.bz2",
+    archiveUrl:
+      "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/kokoro-en-v0_19.tar.bz2",
     extractedDir: "kokoro-en-v0_19",
     requiredFiles: ["model.onnx", "voices.bin", "tokens.txt", "espeak-ng-data"],
     description: "Kokoro TTS (higher quality; larger).",
@@ -127,9 +128,7 @@ export type SherpaOnnxModelId = keyof typeof SHERPA_ONNX_MODEL_CATALOG;
 export type LocalSpeechModelId = SherpaOnnxModelId;
 
 type ModelIdByKind<K extends SherpaOnnxModelKind> = {
-  [Id in SherpaOnnxModelId]: (typeof SHERPA_ONNX_MODEL_CATALOG)[Id]["kind"] extends K
-    ? Id
-    : never;
+  [Id in SherpaOnnxModelId]: (typeof SHERPA_ONNX_MODEL_CATALOG)[Id]["kind"] extends K ? Id : never;
 }[SherpaOnnxModelId];
 
 export type LocalSttModelId = ModelIdByKind<"stt-online"> | ModelIdByKind<"stt-offline">;
@@ -138,11 +137,11 @@ export type LocalTtsModelId = ModelIdByKind<"tts">;
 const ALL_MODEL_IDS = Object.keys(SHERPA_ONNX_MODEL_CATALOG) as SherpaOnnxModelId[];
 
 export const LOCAL_STT_MODEL_IDS = ALL_MODEL_IDS.filter(
-  (id): id is LocalSttModelId => SHERPA_ONNX_MODEL_CATALOG[id].kind !== "tts"
+  (id): id is LocalSttModelId => SHERPA_ONNX_MODEL_CATALOG[id].kind !== "tts",
 );
 
 export const LOCAL_TTS_MODEL_IDS = ALL_MODEL_IDS.filter(
-  (id): id is LocalTtsModelId => SHERPA_ONNX_MODEL_CATALOG[id].kind === "tts"
+  (id): id is LocalTtsModelId => SHERPA_ONNX_MODEL_CATALOG[id].kind === "tts",
 );
 
 function resolveDefaultModelId(role: "stt"): LocalSttModelId;
@@ -186,7 +185,7 @@ function createAliasedModelIdSchema<T extends string>(params: {
         validIds.has(value as T) || Object.prototype.hasOwnProperty.call(params.aliases, value),
       {
         message: "Invalid model id",
-      }
+      },
     )
     .transform((value) => params.aliases[value] ?? (value as T));
 }

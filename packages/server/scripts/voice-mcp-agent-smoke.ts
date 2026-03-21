@@ -52,7 +52,7 @@ function parseArgs(argv: string[]): CliOptions {
 async function streamWithTimeout(
   iterator: AsyncGenerator<AgentStreamEvent>,
   timeoutMs: number,
-  onEvent: (event: AgentStreamEvent) => Promise<void> | void
+  onEvent: (event: AgentStreamEvent) => Promise<void> | void,
 ): Promise<void> {
   const timeout = new Promise<never>((_, reject) => {
     setTimeout(() => reject(new Error(`Timed out after ${timeoutMs}ms`)), timeoutMs);
@@ -171,7 +171,10 @@ async function main(): Promise<void> {
       }
       if (event.type === "timeline" && event.item.type === "tool_call") {
         logger.info({ name: event.item.name, callId: event.item.callId }, "Timeline tool call");
-        if (typeof event.item.name === "string" && event.item.name.toLowerCase().includes("speak")) {
+        if (
+          typeof event.item.name === "string" &&
+          event.item.name.toLowerCase().includes("speak")
+        ) {
           sawSpeakTimeline = true;
         }
       }
@@ -189,8 +192,8 @@ async function main(): Promise<void> {
           failureError,
         },
         null,
-        2
-      )
+        2,
+      ),
     );
   } finally {
     await agentManager.closeAgent(agentId).catch(() => undefined);

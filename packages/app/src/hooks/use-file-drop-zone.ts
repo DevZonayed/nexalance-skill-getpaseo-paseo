@@ -2,10 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { Platform } from "react-native";
 import type { ImageAttachment } from "@/components/message-input";
 import { getDesktopHost } from "@/desktop/host";
-import {
-  persistAttachmentFromBlob,
-  persistAttachmentFromFileUri,
-} from "@/attachments/service";
+import { persistAttachmentFromBlob, persistAttachmentFromFileUri } from "@/attachments/service";
 
 interface UseFileDropZoneOptions {
   onFilesDropped: (files: ImageAttachment[]) => void;
@@ -140,43 +137,41 @@ export function useFileDropZone({
       }
 
       try {
-        const unlisten = await desktopWindow.onDragDropEvent(
-          (event: DesktopDragDropEvent) => {
-            const payload = event.payload;
-            if (payload.type === "leave") {
-              setIsDragging(false);
-              return;
-            }
-
-            if (payload.type === "enter" || payload.type === "over") {
-              if (!disabled) {
-                setIsDragging(true);
-              }
-              return;
-            }
-
-            // Drop always ends the current drag operation.
+        const unlisten = await desktopWindow.onDragDropEvent((event: DesktopDragDropEvent) => {
+          const payload = event.payload;
+          if (payload.type === "leave") {
             setIsDragging(false);
-
-            if (disabled) return;
-
-            const imagePaths = payload.paths.filter(isImagePath);
-            if (imagePaths.length === 0) {
-              return;
-            }
-
-            void Promise.all(imagePaths.map(filePathToImageAttachment))
-              .then((attachments) => {
-                if (attachments.length === 0) {
-                  return;
-                }
-                onFilesDroppedRef.current(attachments);
-              })
-              .catch((error) => {
-                console.error("[useFileDropZone] Failed to persist dropped files:", error);
-              });
+            return;
           }
-        );
+
+          if (payload.type === "enter" || payload.type === "over") {
+            if (!disabled) {
+              setIsDragging(true);
+            }
+            return;
+          }
+
+          // Drop always ends the current drag operation.
+          setIsDragging(false);
+
+          if (disabled) return;
+
+          const imagePaths = payload.paths.filter(isImagePath);
+          if (imagePaths.length === 0) {
+            return;
+          }
+
+          void Promise.all(imagePaths.map(filePathToImageAttachment))
+            .then((attachments) => {
+              if (attachments.length === 0) {
+                return;
+              }
+              onFilesDroppedRef.current(attachments);
+            })
+            .catch((error) => {
+              console.error("[useFileDropZone] Failed to persist dropped files:", error);
+            });
+        });
 
         if (disposed) {
           runCleanup(unlisten);
@@ -247,9 +242,7 @@ export function useFileDropZone({
         if (imageFiles.length === 0) return;
 
         try {
-          const attachments = await Promise.all(
-            imageFiles.map(fileToImageAttachment)
-          );
+          const attachments = await Promise.all(imageFiles.map(fileToImageAttachment));
           onFilesDroppedRef.current(attachments);
         } catch (error) {
           console.error("[useFileDropZone] Failed to process dropped files:", error);

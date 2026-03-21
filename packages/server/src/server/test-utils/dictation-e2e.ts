@@ -16,9 +16,12 @@ export function parsePcm16MonoWav(buffer: Buffer): { sampleRate: number; pcm16: 
     throw new Error("Invalid WAV header");
   }
   let offset = 12;
-  let fmt:
-    | { audioFormat: number; channels: number; sampleRate: number; bitsPerSample: number }
-    | null = null;
+  let fmt: {
+    audioFormat: number;
+    channels: number;
+    sampleRate: number;
+    bitsPerSample: number;
+  } | null = null;
   let dataChunk: Buffer | null = null;
 
   while (offset + 8 <= buffer.length) {
@@ -51,7 +54,7 @@ export function parsePcm16MonoWav(buffer: Buffer): { sampleRate: number; pcm16: 
   }
   if (fmt.channels !== 1 || fmt.bitsPerSample !== 16) {
     throw new Error(
-      `Unexpected WAV format: channels=${fmt.channels} rate=${fmt.sampleRate} bits=${fmt.bitsPerSample}`
+      `Unexpected WAV format: channels=${fmt.channels} rate=${fmt.sampleRate} bits=${fmt.bitsPerSample}`,
     );
   }
   if (dataChunk.length % 2 !== 0) {
@@ -65,7 +68,9 @@ export async function findLargestDebugWavFixture(): Promise<string> {
   const files: Array<{ filePath: string; size: number }> = [];
 
   const walk = async (dir: string): Promise<void> => {
-    const entries = await import("node:fs/promises").then((fs) => fs.readdir(dir, { withFileTypes: true }));
+    const entries = await import("node:fs/promises").then((fs) =>
+      fs.readdir(dir, { withFileTypes: true }),
+    );
     for (const entry of entries) {
       const full = path.join(dir, entry.name);
       if (entry.isDirectory()) {
@@ -161,4 +166,3 @@ export async function transcribeBaselineOpenAI(params: {
     rmSync(tempDir, { recursive: true, force: true });
   }
 }
-

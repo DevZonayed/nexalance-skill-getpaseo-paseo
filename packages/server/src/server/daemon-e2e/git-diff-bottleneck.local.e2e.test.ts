@@ -9,7 +9,7 @@ import { createDaemonTestContext } from "../test-utils/index.js";
 const RUN = process.env.PASEO_GIT_DIFF_BOTTLENECK_E2E === "1";
 const LARGE_CHANGESET_SIZE = Number.parseInt(
   process.env.PASEO_GIT_DIFF_BOTTLENECK_FILE_COUNT ?? "1200",
-  10
+  10,
 );
 
 function tmpRepo(): string {
@@ -43,59 +43,55 @@ function seedLargeDirtyRepo(cwd: string, fileCount: number): void {
 const runDescribe = RUN ? describe : describe.skip;
 
 runDescribe("daemon E2E git diff bottleneck profiling", () => {
-  test(
-    "shows per-file git diff subprocess fanout and timeout pressure",
-    async () => {
-      const cwd = tmpRepo();
+  test("shows per-file git diff subprocess fanout and timeout pressure", async () => {
+    const cwd = tmpRepo();
 
+    try {
+      initGitRepo(cwd);
+      seedLargeDirtyRepo(cwd, LARGE_CHANGESET_SIZE);
+
+      const cliStart = performance.now();
+      const cliDiff = execSync("git diff HEAD", { cwd, stdio: "pipe" }).toString();
+      const cliMs = performance.now() - cliStart;
+
+      const ctx = await createDaemonTestContext();
       try {
-        initGitRepo(cwd);
-        seedLargeDirtyRepo(cwd, LARGE_CHANGESET_SIZE);
+        const checkoutStart = performance.now();
+        const checkoutPayload = await ctx.client.getCheckoutDiff(cwd, {
+          mode: "uncommitted",
+        });
+        const checkoutMs = performance.now() - checkoutStart;
 
-        const cliStart = performance.now();
-        const cliDiff = execSync("git diff HEAD", { cwd, stdio: "pipe" }).toString();
-        const cliMs = performance.now() - cliStart;
+        expect(checkoutPayload.error).toBeNull();
+        expect(checkoutPayload.files.length).toBeGreaterThanOrEqual(LARGE_CHANGESET_SIZE);
 
-        const ctx = await createDaemonTestContext();
-        try {
-          const checkoutStart = performance.now();
-          const checkoutPayload = await ctx.client.getCheckoutDiff(cwd, {
-            mode: "uncommitted",
-          });
-          const checkoutMs = performance.now() - checkoutStart;
+        const binaryEntry = checkoutPayload.files.find((file) => file.path === "blob.bin");
+        expect(binaryEntry).toBeTruthy();
+        expect(binaryEntry?.status).toBe("binary");
 
-          expect(checkoutPayload.error).toBeNull();
-          expect(checkoutPayload.files.length).toBeGreaterThanOrEqual(LARGE_CHANGESET_SIZE);
+        // Keep this visible in test output for local bottleneck analysis.
+        console.info(
+          "[git-diff-bottleneck]",
+          JSON.stringify(
+            {
+              fileCount: LARGE_CHANGESET_SIZE,
+              cliMs: Math.round(cliMs),
+              cliDiffBytes: cliDiff.length,
+              checkoutMs: Math.round(checkoutMs),
+              checkoutFiles: checkoutPayload.files.length,
+              speedRatio: Number((checkoutMs / Math.max(cliMs, 1)).toFixed(2)),
+            },
+            null,
+            2,
+          ),
+        );
 
-          const binaryEntry = checkoutPayload.files.find((file) => file.path === "blob.bin");
-          expect(binaryEntry).toBeTruthy();
-          expect(binaryEntry?.status).toBe("binary");
-
-          // Keep this visible in test output for local bottleneck analysis.
-          console.info(
-            "[git-diff-bottleneck]",
-            JSON.stringify(
-              {
-                fileCount: LARGE_CHANGESET_SIZE,
-                cliMs: Math.round(cliMs),
-                cliDiffBytes: cliDiff.length,
-                checkoutMs: Math.round(checkoutMs),
-                checkoutFiles: checkoutPayload.files.length,
-                speedRatio: Number((checkoutMs / Math.max(cliMs, 1)).toFixed(2)),
-              },
-              null,
-              2
-            )
-          );
-
-          expect(checkoutMs).toBeLessThan(cliMs * 10);
-        } finally {
-          await ctx.cleanup();
-        }
+        expect(checkoutMs).toBeLessThan(cliMs * 10);
       } finally {
-        rmSync(cwd, { recursive: true, force: true });
+        await ctx.cleanup();
       }
-    },
-    240000
-  );
+    } finally {
+      rmSync(cwd, { recursive: true, force: true });
+    }
+  }, 240000);
 });

@@ -29,7 +29,7 @@ export const ToolShellInputSchema = z
   ])
   .transform((value) => {
     const parsedCommand = CommandValueSchema.safeParse(
-      "command" in value ? value.command : value.cmd
+      "command" in value ? value.command : value.cmd,
     );
     const command = parsedCommand.success
       ? typeof parsedCommand.data === "string"
@@ -127,7 +127,10 @@ export const ToolShellOutputSchema = z.union([
 ]);
 
 export const ToolPathInputSchema = z.union([
-  z.object({ path: z.string() }).passthrough().transform((value) => ({ filePath: value.path })),
+  z
+    .object({ path: z.string() })
+    .passthrough()
+    .transform((value) => ({ filePath: value.path })),
   z
     .object({ file_path: z.string() })
     .passthrough()
@@ -154,7 +157,11 @@ export const ToolReadInputSchema = z.union([
       limit: z.number().finite().optional(),
     })
     .passthrough()
-    .transform((value) => ({ filePath: value.file_path, offset: value.offset, limit: value.limit })),
+    .transform((value) => ({
+      filePath: value.file_path,
+      offset: value.offset,
+      limit: value.limit,
+    })),
   z
     .object({
       filePath: z.string(),
@@ -189,7 +196,11 @@ const ToolReadChunkSchema = z.union([
     .passthrough(),
 ]);
 
-const ToolReadContentSchema = z.union([z.string(), ToolReadChunkSchema, z.array(ToolReadChunkSchema)]);
+const ToolReadContentSchema = z.union([
+  z.string(),
+  ToolReadChunkSchema,
+  z.array(ToolReadChunkSchema),
+]);
 
 const ToolReadPayloadSchema = z.union([
   z
@@ -216,7 +227,7 @@ const ToolReadPayloadSchema = z.union([
 ]);
 
 function flattenReadContent(
-  value: z.infer<typeof ToolReadContentSchema> | undefined
+  value: z.infer<typeof ToolReadContentSchema> | undefined,
 ): string | undefined {
   return flattenToolReadContent(value);
 }
@@ -326,11 +337,8 @@ type ToolReadOutputValue = {
 export const ToolReadOutputSchema: z.ZodType<ToolReadOutputValue, z.ZodTypeDef, unknown> =
   ToolReadOutputContentSchema;
 
-export const ToolReadOutputWithPathSchema: z.ZodType<
-  ToolReadOutputValue,
-  z.ZodTypeDef,
-  unknown
-> = z.union([ToolReadOutputContentSchema, ToolReadOutputPathSchema]);
+export const ToolReadOutputWithPathSchema: z.ZodType<ToolReadOutputValue, z.ZodTypeDef, unknown> =
+  z.union([ToolReadOutputContentSchema, ToolReadOutputPathSchema]);
 
 export const ToolWriteContentSchema = z
   .object({
@@ -351,15 +359,13 @@ export const ToolWriteInputSchema = z
   }));
 
 export const ToolWriteOutputSchema = z.union([
-  z
-    .intersection(ToolPathInputSchema, ToolWriteContentSchema)
-    .transform((value) => ({
-      filePath: value.filePath,
-      content:
-        nonEmptyString(value.content) ??
-        nonEmptyString(value.new_content) ??
-        nonEmptyString(value.newContent),
-    })),
+  z.intersection(ToolPathInputSchema, ToolWriteContentSchema).transform((value) => ({
+    filePath: value.filePath,
+    content:
+      nonEmptyString(value.content) ??
+      nonEmptyString(value.new_content) ??
+      nonEmptyString(value.newContent),
+  })),
   ToolWriteContentSchema.transform((value) => ({
     filePath: undefined,
     content:
@@ -406,7 +412,7 @@ export const ToolEditInputSchema = z
       nonEmptyString(value.patch) ??
         nonEmptyString(value.diff) ??
         nonEmptyString(value.unified_diff) ??
-        nonEmptyString(value.unifiedDiff)
+        nonEmptyString(value.unifiedDiff),
     ),
   }));
 
@@ -426,7 +432,7 @@ const ToolEditOutputFileSchema = z.union([
         nonEmptyString(value.patch) ??
           nonEmptyString(value.diff) ??
           nonEmptyString(value.unified_diff) ??
-          nonEmptyString(value.unifiedDiff)
+          nonEmptyString(value.unifiedDiff),
       ),
     })),
   z
@@ -444,7 +450,7 @@ const ToolEditOutputFileSchema = z.union([
         nonEmptyString(value.patch) ??
           nonEmptyString(value.diff) ??
           nonEmptyString(value.unified_diff) ??
-          nonEmptyString(value.unifiedDiff)
+          nonEmptyString(value.unifiedDiff),
       ),
     })),
   z
@@ -462,27 +468,25 @@ const ToolEditOutputFileSchema = z.union([
         nonEmptyString(value.patch) ??
           nonEmptyString(value.diff) ??
           nonEmptyString(value.unified_diff) ??
-          nonEmptyString(value.unifiedDiff)
+          nonEmptyString(value.unifiedDiff),
       ),
     })),
 ]);
 
 export const ToolEditOutputSchema = z.union([
-  z
-    .intersection(ToolPathInputSchema, ToolEditTextSchema)
-    .transform((value) => ({
-      filePath: value.filePath,
-      newString:
-        nonEmptyString(value.newContent) ??
-        nonEmptyString(value.new_content) ??
-        nonEmptyString(value.content),
-      unifiedDiff: truncateDiffText(
-        nonEmptyString(value.patch) ??
-          nonEmptyString(value.diff) ??
-          nonEmptyString(value.unified_diff) ??
-          nonEmptyString(value.unifiedDiff)
-      ),
-    })),
+  z.intersection(ToolPathInputSchema, ToolEditTextSchema).transform((value) => ({
+    filePath: value.filePath,
+    newString:
+      nonEmptyString(value.newContent) ??
+      nonEmptyString(value.new_content) ??
+      nonEmptyString(value.content),
+    unifiedDiff: truncateDiffText(
+      nonEmptyString(value.patch) ??
+        nonEmptyString(value.diff) ??
+        nonEmptyString(value.unified_diff) ??
+        nonEmptyString(value.unifiedDiff),
+    ),
+  })),
   z
     .object({ files: z.array(ToolEditOutputFileSchema).min(1) })
     .passthrough()
@@ -501,15 +505,24 @@ export const ToolEditOutputSchema = z.union([
       nonEmptyString(value.patch) ??
         nonEmptyString(value.diff) ??
         nonEmptyString(value.unified_diff) ??
-        nonEmptyString(value.unifiedDiff)
+        nonEmptyString(value.unifiedDiff),
     ),
   })),
 ]);
 
 export const ToolSearchInputSchema = z.union([
-  z.object({ query: z.string() }).passthrough().transform((value) => ({ query: value.query })),
-  z.object({ q: z.string() }).passthrough().transform((value) => ({ query: value.q })),
-  z.object({ pattern: z.string() }).passthrough().transform((value) => ({ query: value.pattern })),
+  z
+    .object({ query: z.string() })
+    .passthrough()
+    .transform((value) => ({ query: value.query })),
+  z
+    .object({ q: z.string() })
+    .passthrough()
+    .transform((value) => ({ query: value.q })),
+  z
+    .object({ pattern: z.string() })
+    .passthrough()
+    .transform((value) => ({ query: value.pattern })),
 ]);
 
 export const ToolGlobOutputSchema = z
@@ -597,7 +610,7 @@ type NormalizePathFn = (filePath: string) => string | undefined;
 
 function normalizeDetailPath(
   filePath: string | undefined,
-  normalizePath?: NormalizePathFn
+  normalizePath?: NormalizePathFn,
 ): string | undefined {
   if (typeof filePath !== "string") {
     return undefined;
@@ -610,26 +623,41 @@ function normalizeDetailPath(
 }
 
 function isParsedToolGlobOutput(
-  output: ParsedToolGrepOutput | ParsedToolGlobOutput | ParsedToolWebSearchOutput | null | undefined
+  output:
+    | ParsedToolGrepOutput
+    | ParsedToolGlobOutput
+    | ParsedToolWebSearchOutput
+    | null
+    | undefined,
 ): output is ParsedToolGlobOutput {
   return Boolean(output && "truncated" in output);
 }
 
 function isParsedToolGrepOutput(
-  output: ParsedToolGrepOutput | ParsedToolGlobOutput | ParsedToolWebSearchOutput | null | undefined
+  output:
+    | ParsedToolGrepOutput
+    | ParsedToolGlobOutput
+    | ParsedToolWebSearchOutput
+    | null
+    | undefined,
 ): output is ParsedToolGrepOutput {
   return Boolean(output && "filenames" in output && !("truncated" in output));
 }
 
 function isParsedToolWebSearchOutput(
-  output: ParsedToolGrepOutput | ParsedToolGlobOutput | ParsedToolWebSearchOutput | null | undefined
+  output:
+    | ParsedToolGrepOutput
+    | ParsedToolGlobOutput
+    | ParsedToolWebSearchOutput
+    | null
+    | undefined,
 ): output is ParsedToolWebSearchOutput {
   return Boolean(output && "results" in output);
 }
 
 export function toShellToolDetail(
   input: ParsedToolShellInput | null,
-  output: ParsedToolShellOutput | null
+  output: ParsedToolShellOutput | null,
 ): ToolCallDetail | undefined {
   const command = input?.command ?? output?.command;
   if (!command) {
@@ -648,12 +676,9 @@ export function toShellToolDetail(
 export function toReadToolDetail(
   input: ParsedToolReadInput | null,
   output: ParsedToolReadOutput | ParsedToolReadOutputWithPath | null,
-  options?: { normalizePath?: NormalizePathFn }
+  options?: { normalizePath?: NormalizePathFn },
 ): ToolCallDetail | undefined {
-  const filePath = normalizeDetailPath(
-    input?.filePath ?? output?.filePath,
-    options?.normalizePath
-  );
+  const filePath = normalizeDetailPath(input?.filePath ?? output?.filePath, options?.normalizePath);
   if (!filePath) {
     return undefined;
   }
@@ -670,12 +695,9 @@ export function toReadToolDetail(
 export function toWriteToolDetail(
   input: ParsedToolWriteInput | null,
   output: ParsedToolWriteOutput | null,
-  options?: { normalizePath?: NormalizePathFn }
+  options?: { normalizePath?: NormalizePathFn },
 ): ToolCallDetail | undefined {
-  const filePath = normalizeDetailPath(
-    input?.filePath ?? output?.filePath,
-    options?.normalizePath
-  );
+  const filePath = normalizeDetailPath(input?.filePath ?? output?.filePath, options?.normalizePath);
   if (!filePath) {
     return undefined;
   }
@@ -683,19 +705,20 @@ export function toWriteToolDetail(
   return {
     type: "write",
     filePath,
-    ...(input?.content ? { content: input.content } : output?.content ? { content: output.content } : {}),
+    ...(input?.content
+      ? { content: input.content }
+      : output?.content
+        ? { content: output.content }
+        : {}),
   };
 }
 
 export function toEditToolDetail(
   input: ParsedToolEditInput | null,
   output: ParsedToolEditOutput | null,
-  options?: { normalizePath?: NormalizePathFn }
+  options?: { normalizePath?: NormalizePathFn },
 ): ToolCallDetail | undefined {
-  const filePath = normalizeDetailPath(
-    input?.filePath ?? output?.filePath,
-    options?.normalizePath
-  );
+  const filePath = normalizeDetailPath(input?.filePath ?? output?.filePath, options?.normalizePath);
   if (!filePath) {
     return undefined;
   }
@@ -704,7 +727,11 @@ export function toEditToolDetail(
     type: "edit",
     filePath,
     ...(input?.oldString ? { oldString: input.oldString } : {}),
-    ...(input?.newString ? { newString: input.newString } : output?.newString ? { newString: output.newString } : {}),
+    ...(input?.newString
+      ? { newString: input.newString }
+      : output?.newString
+        ? { newString: output.newString }
+        : {}),
     ...(input?.unifiedDiff
       ? { unifiedDiff: input.unifiedDiff }
       : output?.unifiedDiff
@@ -751,9 +778,7 @@ export function toSearchToolDetail(params: {
       ? { numMatches: output.numMatches }
       : {}),
     ...(isParsedToolGlobOutput(output) ? { durationMs: output.durationMs } : {}),
-    ...(isParsedToolWebSearchOutput(output)
-      ? { durationSeconds: output.durationSeconds }
-      : {}),
+    ...(isParsedToolWebSearchOutput(output) ? { durationSeconds: output.durationSeconds } : {}),
     ...(isParsedToolGlobOutput(output) ? { truncated: output.truncated } : {}),
     ...(isParsedToolGrepOutput(output) && output.mode ? { mode: output.mode } : {}),
   };
@@ -761,7 +786,7 @@ export function toSearchToolDetail(params: {
 
 export function toFetchToolDetail(
   input: ParsedToolWebFetchInput | null,
-  output: ParsedToolWebFetchOutput | null
+  output: ParsedToolWebFetchOutput | null,
 ): ToolCallDetail | undefined {
   const url = input?.url ?? output?.url;
   if (!url) {
@@ -790,8 +815,8 @@ export function toolDetailBranchByName<
   outputSchema: OutputSchema,
   mapper: (
     input: z.infer<InputSchema> | null,
-    output: z.infer<OutputSchema> | null
-  ) => ToolCallDetail | undefined
+    output: z.infer<OutputSchema> | null,
+  ) => ToolCallDetail | undefined,
 ) {
   return z
     .object({
@@ -818,8 +843,8 @@ export function toolDetailBranchByToolName<
   outputSchema: OutputSchema,
   mapper: (
     input: z.infer<InputSchema> | null,
-    output: z.infer<OutputSchema> | null
-  ) => ToolCallDetail | undefined
+    output: z.infer<OutputSchema> | null,
+  ) => ToolCallDetail | undefined,
 ) {
   return z
     .object({
@@ -847,8 +872,8 @@ export function toolDetailBranchByNameWithCwd<
   mapper: (
     input: z.infer<InputSchema> | null,
     output: z.infer<OutputSchema> | null,
-    cwd: string | null
-  ) => ToolCallDetail | undefined
+    cwd: string | null,
+  ) => ToolCallDetail | undefined,
 ) {
   return z
     .object({

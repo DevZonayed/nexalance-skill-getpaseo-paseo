@@ -78,7 +78,7 @@ describe("resolveStreamRenderStrategy", () => {
       resolveBottomAnchorTransportBehavior({
         strategy,
         isViewportSettling: true,
-      })
+      }),
     ).toEqual({
       verificationDelayFrames: 4,
       verificationRetryMode: "recheck",
@@ -95,7 +95,7 @@ describe("resolveStreamRenderStrategy", () => {
       resolveBottomAnchorTransportBehavior({
         strategy,
         isViewportSettling: true,
-      })
+      }),
     ).toEqual({
       verificationDelayFrames: 0,
       verificationRetryMode: "rescroll",
@@ -172,7 +172,7 @@ describe("neighbor and traversal semantics", () => {
         strategy: forward,
         items: chronological,
         startIndex: forwardStartIndex,
-      })
+      }),
     ).toBe("assistant-1\n\nassistant-2");
 
     const inverted = resolveStreamRenderStrategy({
@@ -189,7 +189,7 @@ describe("neighbor and traversal semantics", () => {
         strategy: inverted,
         items: invertedItems,
         startIndex: invertedStartIndex,
-      })
+      }),
     ).toBe("assistant-1\n\nassistant-2");
   });
 
@@ -206,7 +206,7 @@ describe("neighbor and traversal semantics", () => {
         items,
         index: 0,
         relation: "above",
-      })
+      }),
     ).toBeUndefined();
     expect(
       getStreamNeighborItem({
@@ -214,7 +214,7 @@ describe("neighbor and traversal semantics", () => {
         items,
         index: 0,
         relation: "below",
-      })
+      }),
     ).toBeUndefined();
   });
 });
@@ -233,7 +233,7 @@ describe("scroll/bottom calculations", () => {
         viewportHeight: 300,
         contentHeight: 1000,
         threshold: 24,
-      })
+      }),
     ).toBe(true);
     expect(
       isNearBottomForStreamRenderStrategy({
@@ -242,7 +242,7 @@ describe("scroll/bottom calculations", () => {
         viewportHeight: 300,
         contentHeight: 1000,
         threshold: 24,
-      })
+      }),
     ).toBe(false);
   });
 
@@ -259,7 +259,7 @@ describe("scroll/bottom calculations", () => {
         viewportHeight: 300,
         contentHeight: 1000,
         threshold: 24,
-      })
+      }),
     ).toBe(true);
     expect(
       isNearBottomForStreamRenderStrategy({
@@ -268,14 +268,14 @@ describe("scroll/bottom calculations", () => {
         viewportHeight: 300,
         contentHeight: 1000,
         threshold: 24,
-      })
+      }),
     ).toBe(false);
     expect(
       getBottomOffsetForStreamRenderStrategy({
         strategy,
         viewportHeight: 300,
         contentHeight: 1000,
-      })
+      }),
     ).toBe(0);
   });
 
@@ -290,7 +290,7 @@ describe("scroll/bottom calculations", () => {
         strategy,
         viewportHeight: 320,
         contentHeight: 1000,
-      })
+      }),
     ).toBe(680);
   });
 });

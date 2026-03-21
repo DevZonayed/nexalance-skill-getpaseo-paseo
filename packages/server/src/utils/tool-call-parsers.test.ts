@@ -1,10 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  extractTodos,
-  stripCwdPrefix,
-  stripShellWrapperPrefix,
-} from "./tool-call-parsers.js";
+import { extractTodos, stripCwdPrefix, stripShellWrapperPrefix } from "./tool-call-parsers.js";
 
 describe("tool-call-parsers utilities", () => {
   it("strips cwd prefixes", () => {
@@ -24,7 +20,7 @@ describe("tool-call-parsers utilities", () => {
           { content: "Task 1", status: "pending" },
           { content: "Task 2", status: "completed" },
         ],
-      })
+      }),
     ).toHaveLength(2);
 
     expect(extractTodos({ plan: [] })).toEqual([]);

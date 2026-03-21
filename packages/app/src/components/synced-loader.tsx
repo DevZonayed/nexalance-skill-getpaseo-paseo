@@ -26,8 +26,7 @@ function ensureSharedStepLoopStarted(): void {
   }
 
   sharedLoopStarted = true;
-  const elapsedMs =
-    (Date.now() - SYNCED_LOADER_EPOCH_MS) % SYNCED_LOADER_DURATION_MS;
+  const elapsedMs = (Date.now() - SYNCED_LOADER_EPOCH_MS) % SYNCED_LOADER_DURATION_MS;
   sharedStepProgress.value = (elapsedMs / SYNCED_LOADER_DURATION_MS) * DOT_COUNT;
   sharedStepProgress.value = withTiming(
     DOT_COUNT,
@@ -47,19 +46,13 @@ function ensureSharedStepLoopStarted(): void {
           easing: Easing.linear,
         }),
         -1,
-        false
+        false,
       );
-    }
+    },
   );
 }
 
-export function SyncedLoader({
-  size = 10,
-  color,
-}: {
-  size?: number;
-  color: string;
-}) {
+export function SyncedLoader({ size = 10, color }: { size?: number; color: string }) {
   useEffect(() => {
     ensureSharedStepLoopStarted();
   }, []);
@@ -94,9 +87,7 @@ export function SyncedLoader({
         {Array.from({ length: DOT_COUNT }).map((_, dotIndex) => {
           const rowIndex = Math.floor(dotIndex / GRID_COLUMNS);
           const columnIndex = dotIndex % GRID_COLUMNS;
-          const sequenceIndex = DOT_SEQUENCE.indexOf(
-            dotIndex as (typeof DOT_SEQUENCE)[number]
-          );
+          const sequenceIndex = DOT_SEQUENCE.indexOf(dotIndex as (typeof DOT_SEQUENCE)[number]);
 
           return (
             <SpinnerDot

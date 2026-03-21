@@ -83,7 +83,7 @@ export function extractCodexTerminalSessionId(value: string | undefined): string
 }
 
 export function flattenReadContent<Chunk extends ReadChunkLike>(
-  value: string | Chunk | Chunk[] | undefined
+  value: string | Chunk | Chunk[] | undefined,
 ): string | undefined {
   if (typeof value === "string") {
     return nonEmptyString(value);
@@ -97,21 +97,19 @@ export function flattenReadContent<Chunk extends ReadChunkLike>(
         (chunk) =>
           nonEmptyString(chunk.text) ??
           nonEmptyString(chunk.content) ??
-          nonEmptyString(chunk.output)
+          nonEmptyString(chunk.output),
       )
       .filter((part): part is string => typeof part === "string");
     return parts.length > 0 ? parts.join("\n") : undefined;
   }
   return (
-    nonEmptyString(value.text) ??
-    nonEmptyString(value.content) ??
-    nonEmptyString(value.output)
+    nonEmptyString(value.text) ?? nonEmptyString(value.content) ?? nonEmptyString(value.output)
   );
 }
 
 export function truncateDiffText(
   text: string | undefined,
-  maxChars: number = 12_000
+  maxChars: number = 12_000,
 ): string | undefined {
   if (typeof text !== "string") {
     return undefined;

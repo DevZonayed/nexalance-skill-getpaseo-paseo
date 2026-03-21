@@ -1,12 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import type { AttachmentMetadata } from "@/attachments/types";
-import {
-  releaseAttachmentPreviewUrl,
-  resolveAttachmentPreviewUrl,
-} from "@/attachments/service";
+import { releaseAttachmentPreviewUrl, resolveAttachmentPreviewUrl } from "@/attachments/service";
 
 export function useAttachmentPreviewUrl(
-  attachment: AttachmentMetadata | null | undefined
+  attachment: AttachmentMetadata | null | undefined,
 ): string | null {
   const [url, setUrl] = useState<string | null>(null);
   const activeAttachmentRef = useRef<AttachmentMetadata | null>(null);
@@ -52,12 +49,7 @@ export function useAttachmentPreviewUrl(
         url: currentUrl,
       });
     };
-  }, [
-    attachment?.id,
-    attachment?.storageType,
-    attachment?.storageKey,
-    attachment?.mimeType,
-  ]);
+  }, [attachment?.id, attachment?.storageType, attachment?.storageKey, attachment?.mimeType]);
 
   return url;
 }

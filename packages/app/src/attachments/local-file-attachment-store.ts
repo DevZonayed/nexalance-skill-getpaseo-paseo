@@ -86,10 +86,7 @@ export function createLocalFileAttachmentStore(params: {
   storageType: Extract<AttachmentStorageType, "desktop-file" | "native-file">;
   baseDirectoryName: string;
   resolvePreviewUrl: (attachment: AttachmentMetadata) => Promise<string>;
-  releasePreviewUrl?: (input: {
-    attachment: AttachmentMetadata;
-    url: string;
-  }) => Promise<void>;
+  releasePreviewUrl?: (input: { attachment: AttachmentMetadata; url: string }) => Promise<void>;
 }): AttachmentStore {
   const baseDirectory = FileSystem.cacheDirectory
     ? `${FileSystem.cacheDirectory}${params.baseDirectoryName}/`
@@ -201,7 +198,7 @@ export function createLocalFileAttachmentStore(params: {
           await FileSystem.deleteAsync(`${baseDirectory}${entryName}`, {
             idempotent: true,
           });
-        })
+        }),
       );
     },
   };

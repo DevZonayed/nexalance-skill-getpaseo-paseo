@@ -13,17 +13,12 @@ import {
   DaemonClient,
 } from "./test-utils/index.js";
 import { getFullAccessConfig, getAskModeConfig } from "./daemon-e2e/agent-configs.js";
-import {
-  chunkPcm16,
-  parsePcm16MonoWav,
-  wordSimilarity,
-} from "./test-utils/dictation-e2e.js";
+import { chunkPcm16, parsePcm16MonoWav, wordSimilarity } from "./test-utils/dictation-e2e.js";
 
 const openaiApiKey = process.env.OPENAI_API_KEY ?? null;
 
 const localModelsDir =
-  process.env.PASEO_LOCAL_MODELS_DIR ??
-  path.join(homedir(), ".paseo", "models", "local-speech");
+  process.env.PASEO_LOCAL_MODELS_DIR ?? path.join(homedir(), ".paseo", "models", "local-speech");
 const testFileDir = path.dirname(fileURLToPath(import.meta.url));
 const appE2eFixturesDir = path.resolve(testFileDir, "../../../app/e2e/fixtures");
 
@@ -41,15 +36,15 @@ function hasSherpaZipformerModels(modelsDir: string): boolean {
       path.join(
         modelsDir,
         "sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20",
-        "encoder-epoch-99-avg-1.onnx"
-      )
+        "encoder-epoch-99-avg-1.onnx",
+      ),
     ) &&
     existsSync(
       path.join(
         modelsDir,
         "sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20",
-        "tokens.txt"
-      )
+        "tokens.txt",
+      ),
     )
   );
 }
@@ -62,7 +57,8 @@ function hasSherpaKittenModels(modelsDir: string): boolean {
   );
 }
 
-const hasLocalSpeech = hasSherpaZipformerModels(localModelsDir) && hasSherpaKittenModels(localModelsDir);
+const hasLocalSpeech =
+  hasSherpaZipformerModels(localModelsDir) && hasSherpaKittenModels(localModelsDir);
 const hasAnySpeech = hasLocalSpeech || Boolean(openaiApiKey);
 const speechTest = hasAnySpeech ? test : test.skip;
 
@@ -72,10 +68,7 @@ function tmpCwd(): string {
 
 function waitForSignal<T>(
   timeoutMs: number,
-  setup: (
-    resolve: (value: T) => void,
-    reject: (error: Error) => void
-  ) => () => void
+  setup: (resolve: (value: T) => void, reject: (error: Error) => void) => () => void,
 ): Promise<T> {
   return new Promise((resolve, reject) => {
     let cleanup: (() => void) | null = null;
@@ -96,7 +89,7 @@ function waitForSignal<T>(
         clearTimeout(timeout);
         cleanup?.();
         reject(error);
-      }
+      },
     );
   });
 }
@@ -105,37 +98,34 @@ describe("daemon client E2E", () => {
   let ctx: DaemonTestContext;
 
   beforeAll(async () => {
-    const speechConfig =
-      hasLocalSpeech
+    const speechConfig = hasLocalSpeech
+      ? {
+          providers: {
+            dictationStt: { provider: "local" as const, explicit: true },
+            voiceStt: { provider: "local" as const, explicit: true },
+            voiceTts: { provider: "local" as const, explicit: true },
+          },
+          local: {
+            modelsDir: localModelsDir,
+            models: {
+              dictationStt:
+                process.env.PASEO_DICTATION_LOCAL_STT_MODEL ??
+                "zipformer-bilingual-zh-en-2023-02-20",
+              voiceStt:
+                process.env.PASEO_VOICE_LOCAL_STT_MODEL ?? "zipformer-bilingual-zh-en-2023-02-20",
+              voiceTts: process.env.PASEO_VOICE_LOCAL_TTS_MODEL ?? "kitten-nano-en-v0_1-fp16",
+            },
+          },
+        }
+      : openaiApiKey
         ? {
             providers: {
-              dictationStt: { provider: "local" as const, explicit: true },
-              voiceStt: { provider: "local" as const, explicit: true },
-              voiceTts: { provider: "local" as const, explicit: true },
-            },
-            local: {
-              modelsDir: localModelsDir,
-              models: {
-                dictationStt:
-                  process.env.PASEO_DICTATION_LOCAL_STT_MODEL ??
-                  "zipformer-bilingual-zh-en-2023-02-20",
-                voiceStt:
-                  process.env.PASEO_VOICE_LOCAL_STT_MODEL ??
-                  "zipformer-bilingual-zh-en-2023-02-20",
-                voiceTts:
-                  process.env.PASEO_VOICE_LOCAL_TTS_MODEL ?? "kitten-nano-en-v0_1-fp16",
-              },
+              dictationStt: { provider: "openai" as const, explicit: true },
+              voiceStt: { provider: "openai" as const, explicit: true },
+              voiceTts: { provider: "openai" as const, explicit: true },
             },
           }
-        : openaiApiKey
-          ? {
-              providers: {
-                dictationStt: { provider: "openai" as const, explicit: true },
-                voiceStt: { provider: "openai" as const, explicit: true },
-                voiceTts: { provider: "openai" as const, explicit: true },
-              },
-            }
-          : undefined;
+        : undefined;
 
     ctx = await createDaemonTestContext({
       dictationFinalTimeoutMs: 5000,
@@ -219,12 +209,12 @@ describe("daemon client E2E", () => {
 
       await ctx.client.sendMessage(
         created.id,
-        "Use your shell tool to run `sleep 30` and then confirm when done."
+        "Use your shell tool to run `sleep 30` and then confirm when done.",
       );
       await ctx.client.waitForAgentUpsert(
         created.id,
         (snapshot) => snapshot.status === "running",
-        15000
+        15000,
       );
 
       const result = await ctx.client.archiveAgent(created.id);
@@ -240,9 +230,7 @@ describe("daemon client E2E", () => {
       const runningAgents = await ctx.client.fetchAgents({
         filter: { includeArchived: true, statuses: ["running"] },
       });
-      expect(
-        runningAgents.entries.some((entry) => entry.agent.id === created.id)
-      ).toBe(false);
+      expect(runningAgents.entries.some((entry) => entry.agent.id === created.id)).toBe(false);
     } finally {
       rmSync(cwd, { recursive: true, force: true });
     }
@@ -416,392 +404,365 @@ describe("daemon client E2E", () => {
     expect(Array.isArray(second.entries)).toBe(true);
   }, 15000);
 
-  test(
-    "creates agent and exercises lifecycle",
-    async () => {
-      const cwd = tmpCwd();
+  test("creates agent and exercises lifecycle", async () => {
+    const cwd = tmpCwd();
 
-      await ctx.client.fetchAgents({
-        subscribe: { subscriptionId: "daemon-client-lifecycle" },
-      });
+    await ctx.client.fetchAgents({
+      subscribe: { subscriptionId: "daemon-client-lifecycle" },
+    });
 
-      const agentUpdatePromise = waitForSignal(15000, (resolve) => {
-        const unsubscribe = ctx.client.on("agent_update", (message) => {
-          if (message.type !== "agent_update") {
-            return;
-          }
-          if (message.payload.kind !== "upsert") {
-            return;
-          }
-          resolve(message);
-        });
-        return unsubscribe;
-      });
-
-      const createRequestId = `create-${Date.now()}`;
-      const createdStatusPromise = waitForSignal(15000, (resolve) => {
-        const unsubscribe = ctx.client.on("status", (message) => {
-          if (message.type !== "status") {
-            return;
-          }
-          const payload = message.payload as {
-            status?: string;
-            agentId?: string;
-            requestId?: string;
-          };
-          if (payload.status !== "agent_created") {
-            return;
-          }
-          if (payload.requestId !== createRequestId) {
-            return;
-          }
-          resolve(message);
-        });
-        return unsubscribe;
-      });
-
-      const agent = await ctx.client.createAgent({
-        ...getFullAccessConfig("codex"),
-        cwd,
-        title: "Daemon Client V2",
-        requestId: createRequestId,
-      });
-
-      expect(agent.id).toBeTruthy();
-      expect(agent.status).toBe("idle");
-      const fetchedResult = await ctx.client.fetchAgent(agent.id);
-      expect(fetchedResult?.agent.id).toBe(agent.id);
-
-      const agentUpdate = await agentUpdatePromise;
-      expect(agentUpdate.payload.agent.id).toBe(agent.id);
-      const createdStatus = await createdStatusPromise;
-      expect(
-        (createdStatus.payload as { agentId?: string }).agentId
-      ).toBe(agent.id);
-
-      const failRequestId = `fail-${Date.now()}`;
-      const failedStatusPromise = waitForSignal(15000, (resolve) => {
-        const unsubscribe = ctx.client.on("status", (message) => {
-          if (message.type !== "status") {
-            return;
-          }
-          const payload = message.payload as {
-            status?: string;
-            requestId?: string;
-          };
-          if (payload.status !== "agent_create_failed") {
-            return;
-          }
-          if (payload.requestId !== failRequestId) {
-            return;
-          }
-          resolve(message);
-        });
-        return unsubscribe;
-      });
-
-      await expect(
-        ctx.client.createAgent({
-          ...getFullAccessConfig("codex"),
-          cwd: "/this/path/does/not/exist/12345",
-          title: "Should Fail",
-          requestId: failRequestId,
-        })
-      ).rejects.toThrow("Working directory does not exist");
-      await failedStatusPromise;
-
-      let sawRefresh = false;
-      const unsubscribe = ctx.client.subscribe((event) => {
-        if (event.type === "status" && event.payload.status === "agent_refreshed") {
-          sawRefresh = true;
-        }
-      });
-
-      const statusPromise = waitForSignal(15000, (resolve) => {
-        const unsubscribeStatus = ctx.client.on("status", (message) => {
-          if (message.type !== "status") {
-            return;
-          }
-          if (message.payload.status !== "agent_refreshed") {
-            return;
-          }
-          if ((message.payload as { agentId?: string }).agentId !== agent.id) {
-            return;
-          }
-          resolve(message);
-        });
-        return unsubscribeStatus;
-      });
-
-      const refreshResult = await ctx.client.refreshAgent(agent.id);
-      unsubscribe();
-
-      expect(refreshResult.status).toBe("agent_refreshed");
-      expect(refreshResult.agentId).toBe(agent.id);
-      expect(sawRefresh).toBe(true);
-      const statusMessage = await statusPromise;
-      expect((statusMessage.payload as { agentId?: string }).agentId).toBe(
-        agent.id
-      );
-
-      const timelineResult = await ctx.client.fetchAgentTimeline(agent.id, {
-        direction: "tail",
-        limit: 1,
-        projection: "projected",
-      });
-      expect(timelineResult.agentId).toBe(agent.id);
-
-      const nextMode = agent.availableModes.find(
-        (mode) => mode.id !== agent.currentModeId
-      )?.id;
-
-      if (nextMode) {
-        await ctx.client.setAgentMode(agent.id, nextMode);
-        const modeState = await ctx.client.waitForAgentUpsert(
-          agent.id,
-          (snapshot) => snapshot.currentModeId === nextMode,
-          15000
-        );
-        expect(modeState.currentModeId).toBe(nextMode);
-      } else {
-        await ctx.client.setAgentMode(agent.id, agent.currentModeId ?? "auto");
-      }
-
-      let sawAssistantMessage = false;
-      let sawRawAssistantMessage = false;
-      const unsubscribeStream = ctx.client.subscribe((event) => {
-        if (event.type !== "agent_stream" || event.agentId !== agent.id) {
+    const agentUpdatePromise = waitForSignal(15000, (resolve) => {
+      const unsubscribe = ctx.client.on("agent_update", (message) => {
+        if (message.type !== "agent_update") {
           return;
         }
-        if (
-          event.event.type === "timeline" &&
-          event.event.item.type === "assistant_message"
-        ) {
-          sawAssistantMessage = true;
+        if (message.payload.kind !== "upsert") {
+          return;
         }
+        resolve(message);
       });
-      const unsubscribeRawStream = ctx.client.on("agent_stream", (message) => {
-        if (message.type !== "agent_stream") {
+      return unsubscribe;
+    });
+
+    const createRequestId = `create-${Date.now()}`;
+    const createdStatusPromise = waitForSignal(15000, (resolve) => {
+      const unsubscribe = ctx.client.on("status", (message) => {
+        if (message.type !== "status") {
+          return;
+        }
+        const payload = message.payload as {
+          status?: string;
+          agentId?: string;
+          requestId?: string;
+        };
+        if (payload.status !== "agent_created") {
+          return;
+        }
+        if (payload.requestId !== createRequestId) {
+          return;
+        }
+        resolve(message);
+      });
+      return unsubscribe;
+    });
+
+    const agent = await ctx.client.createAgent({
+      ...getFullAccessConfig("codex"),
+      cwd,
+      title: "Daemon Client V2",
+      requestId: createRequestId,
+    });
+
+    expect(agent.id).toBeTruthy();
+    expect(agent.status).toBe("idle");
+    const fetchedResult = await ctx.client.fetchAgent(agent.id);
+    expect(fetchedResult?.agent.id).toBe(agent.id);
+
+    const agentUpdate = await agentUpdatePromise;
+    expect(agentUpdate.payload.agent.id).toBe(agent.id);
+    const createdStatus = await createdStatusPromise;
+    expect((createdStatus.payload as { agentId?: string }).agentId).toBe(agent.id);
+
+    const failRequestId = `fail-${Date.now()}`;
+    const failedStatusPromise = waitForSignal(15000, (resolve) => {
+      const unsubscribe = ctx.client.on("status", (message) => {
+        if (message.type !== "status") {
+          return;
+        }
+        const payload = message.payload as {
+          status?: string;
+          requestId?: string;
+        };
+        if (payload.status !== "agent_create_failed") {
+          return;
+        }
+        if (payload.requestId !== failRequestId) {
+          return;
+        }
+        resolve(message);
+      });
+      return unsubscribe;
+    });
+
+    await expect(
+      ctx.client.createAgent({
+        ...getFullAccessConfig("codex"),
+        cwd: "/this/path/does/not/exist/12345",
+        title: "Should Fail",
+        requestId: failRequestId,
+      }),
+    ).rejects.toThrow("Working directory does not exist");
+    await failedStatusPromise;
+
+    let sawRefresh = false;
+    const unsubscribe = ctx.client.subscribe((event) => {
+      if (event.type === "status" && event.payload.status === "agent_refreshed") {
+        sawRefresh = true;
+      }
+    });
+
+    const statusPromise = waitForSignal(15000, (resolve) => {
+      const unsubscribeStatus = ctx.client.on("status", (message) => {
+        if (message.type !== "status") {
+          return;
+        }
+        if (message.payload.status !== "agent_refreshed") {
+          return;
+        }
+        if ((message.payload as { agentId?: string }).agentId !== agent.id) {
+          return;
+        }
+        resolve(message);
+      });
+      return unsubscribeStatus;
+    });
+
+    const refreshResult = await ctx.client.refreshAgent(agent.id);
+    unsubscribe();
+
+    expect(refreshResult.status).toBe("agent_refreshed");
+    expect(refreshResult.agentId).toBe(agent.id);
+    expect(sawRefresh).toBe(true);
+    const statusMessage = await statusPromise;
+    expect((statusMessage.payload as { agentId?: string }).agentId).toBe(agent.id);
+
+    const timelineResult = await ctx.client.fetchAgentTimeline(agent.id, {
+      direction: "tail",
+      limit: 1,
+      projection: "projected",
+    });
+    expect(timelineResult.agentId).toBe(agent.id);
+
+    const nextMode = agent.availableModes.find((mode) => mode.id !== agent.currentModeId)?.id;
+
+    if (nextMode) {
+      await ctx.client.setAgentMode(agent.id, nextMode);
+      const modeState = await ctx.client.waitForAgentUpsert(
+        agent.id,
+        (snapshot) => snapshot.currentModeId === nextMode,
+        15000,
+      );
+      expect(modeState.currentModeId).toBe(nextMode);
+    } else {
+      await ctx.client.setAgentMode(agent.id, agent.currentModeId ?? "auto");
+    }
+
+    let sawAssistantMessage = false;
+    let sawRawAssistantMessage = false;
+    const unsubscribeStream = ctx.client.subscribe((event) => {
+      if (event.type !== "agent_stream" || event.agentId !== agent.id) {
+        return;
+      }
+      if (event.event.type === "timeline" && event.event.item.type === "assistant_message") {
+        sawAssistantMessage = true;
+      }
+    });
+    const unsubscribeRawStream = ctx.client.on("agent_stream", (message) => {
+      if (message.type !== "agent_stream") {
+        return;
+      }
+      if (message.payload.agentId !== agent.id) {
+        return;
+      }
+      if (
+        message.payload.event.type === "timeline" &&
+        message.payload.event.item.type === "assistant_message"
+      ) {
+        sawRawAssistantMessage = true;
+      }
+    });
+    await ctx.client.sendMessage(agent.id, "Say 'hello' and nothing else");
+    const finalState = await ctx.client.waitForFinish(agent.id, 120000);
+    unsubscribeStream();
+    unsubscribeRawStream();
+    expect(finalState.status).toBe("idle");
+    expect(sawAssistantMessage).toBe(true);
+    expect(sawRawAssistantMessage).toBe(true);
+
+    await ctx.client.setVoiceMode(false);
+
+    await ctx.client.abortRequest();
+    await ctx.client.audioPlayed("audio-1");
+    ctx.client.clearAgentAttention(agent.id);
+    await ctx.client.cancelAgent(agent.id);
+
+    const modelsRequestId = `models-${Date.now()}`;
+    const modelsPromise = waitForSignal(30000, (resolve) => {
+      const unsubscribeModels = ctx.client.on("list_provider_models_response", (message) => {
+        if (message.type !== "list_provider_models_response") {
+          return;
+        }
+        if (message.payload.provider !== "codex") {
+          return;
+        }
+        if (message.payload.requestId !== modelsRequestId) {
+          return;
+        }
+        resolve(message);
+      });
+      return unsubscribeModels;
+    });
+
+    const models = await ctx.client.listProviderModels("codex", {
+      cwd,
+      requestId: modelsRequestId,
+    });
+    const modelsMessage = await modelsPromise;
+    expect(models.provider).toBe("codex");
+    expect(models.fetchedAt).toBeTruthy();
+    expect(models.requestId).toBe(modelsRequestId);
+    expect(modelsMessage.payload.provider).toBe("codex");
+    expect(modelsMessage.payload.requestId).toBe(modelsRequestId);
+
+    const commandsRequestId = `commands-${Date.now()}`;
+    const commandsResponsePromise = waitForSignal(15000, (resolve) => {
+      const unsubscribeCommands = ctx.client.on("list_commands_response", (message) => {
+        if (message.type !== "list_commands_response") {
           return;
         }
         if (message.payload.agentId !== agent.id) {
           return;
         }
-        if (
-          message.payload.event.type === "timeline" &&
-          message.payload.event.item.type === "assistant_message"
-        ) {
-          sawRawAssistantMessage = true;
+        if (message.payload.requestId !== commandsRequestId) {
+          return;
         }
+        resolve(message);
       });
-      await ctx.client.sendMessage(agent.id, "Say 'hello' and nothing else");
+      return unsubscribeCommands;
+    });
+
+    const commands = await ctx.client.listCommands(agent.id, commandsRequestId);
+    const commandsMessage = await commandsResponsePromise;
+    expect(commands.agentId).toBe(agent.id);
+    expect(Array.isArray(commands.commands)).toBe(true);
+    expect(commands.requestId).toBe(commandsRequestId);
+    expect(commandsMessage.payload.agentId).toBe(agent.id);
+    expect(commandsMessage.payload.requestId).toBe(commandsRequestId);
+
+    const persistence = finalState.final?.persistence;
+
+    const agentDeletedPromise = waitForSignal(15000, (resolve) => {
+      const unsubscribeDeleted = ctx.client.on("agent_deleted", (message) => {
+        if (message.type !== "agent_deleted") {
+          return;
+        }
+        if (message.payload.agentId !== agent.id) {
+          return;
+        }
+        resolve(message);
+      });
+      return unsubscribeDeleted;
+    });
+
+    await ctx.client.deleteAgent(agent.id);
+    const agentDeleted = await agentDeletedPromise;
+    expect(agentDeleted.payload.agentId).toBe(agent.id);
+
+    if (persistence) {
+      const resumed = await ctx.client.resumeAgent(persistence);
+      expect(resumed.id).toBeTruthy();
+      expect(resumed.status).toBe("idle");
+      await ctx.client.deleteAgent(resumed.id);
+    }
+
+    rmSync(cwd, { recursive: true, force: true });
+  }, 300000);
+
+  test("handles permission flow", async () => {
+    const cwd = tmpCwd();
+    const filePath = path.join(cwd, "permission.txt");
+
+    const agent = await ctx.client.createAgent({
+      ...getAskModeConfig("codex"),
+      cwd,
+      title: "Permission Test",
+    });
+
+    const permissionRequestPromise = waitForSignal(60000, (resolve) => {
+      const unsubscribe = ctx.client.on("agent_permission_request", (message) => {
+        if (message.type !== "agent_permission_request") {
+          return;
+        }
+        if (message.payload.agentId !== agent.id) {
+          return;
+        }
+        resolve(message);
+      });
+      return unsubscribe;
+    });
+
+    const permissionResolvedPromise = waitForSignal(60000, (resolve) => {
+      const unsubscribe = ctx.client.on("agent_permission_resolved", (message) => {
+        if (message.type !== "agent_permission_resolved") {
+          return;
+        }
+        if (message.payload.agentId !== agent.id) {
+          return;
+        }
+        resolve(message);
+      });
+      return unsubscribe;
+    });
+
+    try {
+      await ctx.client.sendMessage(
+        agent.id,
+        [
+          'Use your shell tool to run: `printf "ok" > permission.txt`.',
+          "This will require approval. Request permission and wait for approval before continuing.",
+        ].join("\n"),
+      );
+
+      const permissionState = await ctx.client.waitForFinish(agent.id, 60000);
+      expect(permissionState.status).toBe("permission");
+      expect(permissionState.final?.pendingPermissions?.length).toBeGreaterThan(0);
+      const permission = permissionState.final!.pendingPermissions[0];
+      expect(permission).toBeTruthy();
+      expect(permission.id).toBeTruthy();
+
+      const permissionRequest = await permissionRequestPromise;
+      expect(permissionRequest.payload.agentId).toBe(agent.id);
+
+      await ctx.client.respondToPermission(agent.id, permission.id, {
+        behavior: "allow",
+      });
+
+      const permissionResolved = await permissionResolvedPromise;
+      expect(permissionResolved.payload.requestId).toBe(permission.id);
+
       const finalState = await ctx.client.waitForFinish(agent.id, 120000);
-      unsubscribeStream();
-      unsubscribeRawStream();
       expect(finalState.status).toBe("idle");
-      expect(sawAssistantMessage).toBe(true);
-      expect(sawRawAssistantMessage).toBe(true);
-
-      await ctx.client.setVoiceMode(false);
-
-      await ctx.client.abortRequest();
-      await ctx.client.audioPlayed("audio-1");
-      ctx.client.clearAgentAttention(agent.id);
-      await ctx.client.cancelAgent(agent.id);
-
-      const modelsRequestId = `models-${Date.now()}`;
-      const modelsPromise = waitForSignal(30000, (resolve) => {
-        const unsubscribeModels = ctx.client.on(
-          "list_provider_models_response",
-          (message) => {
-            if (message.type !== "list_provider_models_response") {
-              return;
-            }
-            if (message.payload.provider !== "codex") {
-              return;
-            }
-            if (message.payload.requestId !== modelsRequestId) {
-              return;
-            }
-            resolve(message);
-          }
-        );
-        return unsubscribeModels;
-      });
-
-      const models = await ctx.client.listProviderModels("codex", {
-        cwd,
-        requestId: modelsRequestId,
-      });
-      const modelsMessage = await modelsPromise;
-      expect(models.provider).toBe("codex");
-      expect(models.fetchedAt).toBeTruthy();
-      expect(models.requestId).toBe(modelsRequestId);
-      expect(modelsMessage.payload.provider).toBe("codex");
-      expect(modelsMessage.payload.requestId).toBe(modelsRequestId);
-
-      const commandsRequestId = `commands-${Date.now()}`;
-      const commandsResponsePromise = waitForSignal(15000, (resolve) => {
-        const unsubscribeCommands = ctx.client.on(
-          "list_commands_response",
-          (message) => {
-            if (message.type !== "list_commands_response") {
-              return;
-            }
-            if (message.payload.agentId !== agent.id) {
-              return;
-            }
-            if (message.payload.requestId !== commandsRequestId) {
-              return;
-            }
-            resolve(message);
-          }
-        );
-        return unsubscribeCommands;
-      });
-
-      const commands = await ctx.client.listCommands(agent.id, commandsRequestId);
-      const commandsMessage = await commandsResponsePromise;
-      expect(commands.agentId).toBe(agent.id);
-      expect(Array.isArray(commands.commands)).toBe(true);
-      expect(commands.requestId).toBe(commandsRequestId);
-      expect(commandsMessage.payload.agentId).toBe(agent.id);
-      expect(commandsMessage.payload.requestId).toBe(commandsRequestId);
-
-      const persistence = finalState.final?.persistence;
-
-      const agentDeletedPromise = waitForSignal(15000, (resolve) => {
-        const unsubscribeDeleted = ctx.client.on("agent_deleted", (message) => {
-          if (message.type !== "agent_deleted") {
-            return;
-          }
-          if (message.payload.agentId !== agent.id) {
-            return;
-          }
-          resolve(message);
-        });
-        return unsubscribeDeleted;
-      });
-
-      await ctx.client.deleteAgent(agent.id);
-      const agentDeleted = await agentDeletedPromise;
-      expect(agentDeleted.payload.agentId).toBe(agent.id);
-
-      if (persistence) {
-        const resumed = await ctx.client.resumeAgent(persistence);
-        expect(resumed.id).toBeTruthy();
-        expect(resumed.status).toBe("idle");
-        await ctx.client.deleteAgent(resumed.id);
-      }
-
-      rmSync(cwd, { recursive: true, force: true });
-    },
-    300000
-  );
-
-  test(
-    "handles permission flow",
-    async () => {
-      const cwd = tmpCwd();
-      const filePath = path.join(cwd, "permission.txt");
-
-      const agent = await ctx.client.createAgent({
-        ...getAskModeConfig("codex"),
-        cwd,
-        title: "Permission Test",
-      });
-
-      const permissionRequestPromise = waitForSignal(60000, (resolve) => {
-        const unsubscribe = ctx.client.on("agent_permission_request", (message) => {
-          if (message.type !== "agent_permission_request") {
-            return;
-          }
-          if (message.payload.agentId !== agent.id) {
-            return;
-          }
-          resolve(message);
-        });
-        return unsubscribe;
-      });
-
-      const permissionResolvedPromise = waitForSignal(60000, (resolve) => {
-        const unsubscribe = ctx.client.on("agent_permission_resolved", (message) => {
-          if (message.type !== "agent_permission_resolved") {
-            return;
-          }
-          if (message.payload.agentId !== agent.id) {
-            return;
-          }
-          resolve(message);
-        });
-        return unsubscribe;
-      });
-
-      try {
-        await ctx.client.sendMessage(
-          agent.id,
-          [
-            "Use your shell tool to run: `printf \"ok\" > permission.txt`.",
-            "This will require approval. Request permission and wait for approval before continuing.",
-          ].join("\n")
-        );
-
-        const permissionState = await ctx.client.waitForFinish(agent.id, 60000);
-        expect(permissionState.status).toBe("permission");
-        expect(permissionState.final?.pendingPermissions?.length).toBeGreaterThan(0);
-        const permission = permissionState.final!.pendingPermissions[0];
-        expect(permission).toBeTruthy();
-        expect(permission.id).toBeTruthy();
-
-        const permissionRequest = await permissionRequestPromise;
-        expect(permissionRequest.payload.agentId).toBe(agent.id);
-
-        await ctx.client.respondToPermission(agent.id, permission.id, {
-          behavior: "allow",
-        });
-
-        const permissionResolved = await permissionResolvedPromise;
-        expect(permissionResolved.payload.requestId).toBe(permission.id);
-
-        const finalState = await ctx.client.waitForFinish(agent.id, 120000);
-        expect(finalState.status).toBe("idle");
-        expect(existsSync(filePath)).toBe(true);
-      } finally {
-        // Prevent unhandled rejections if the test fails before promises resolve.
-        await permissionRequestPromise.catch(() => {});
-        await permissionResolvedPromise.catch(() => {});
-        await ctx.client.deleteAgent(agent.id);
-        rmSync(cwd, { recursive: true, force: true });
-      }
-    },
-    180000
-  );
-
-  test(
-    "exposes raw session events for reachable screens",
-    async () => {
-      const cwd = tmpCwd();
-      const agent = await ctx.client.createAgent({
-        ...getFullAccessConfig("codex"),
-        cwd,
-        title: "Raw Events Test",
-      });
-
-      await ctx.client.sendMessage(agent.id, "Say 'hello' and nothing else");
-      await ctx.client.waitForFinish(agent.id, 120000);
-
-      const timeline = await ctx.client.fetchAgentTimeline(agent.id, {
-        direction: "tail",
-        limit: 0,
-        projection: "projected",
-      });
-      expect(timeline.entries.length).toBeGreaterThan(0);
-
+      expect(existsSync(filePath)).toBe(true);
+    } finally {
+      // Prevent unhandled rejections if the test fails before promises resolve.
+      await permissionRequestPromise.catch(() => {});
+      await permissionResolvedPromise.catch(() => {});
       await ctx.client.deleteAgent(agent.id);
       rmSync(cwd, { recursive: true, force: true });
-    },
-    120000
-  );
+    }
+  }, 180000);
+
+  test("exposes raw session events for reachable screens", async () => {
+    const cwd = tmpCwd();
+    const agent = await ctx.client.createAgent({
+      ...getFullAccessConfig("codex"),
+      cwd,
+      title: "Raw Events Test",
+    });
+
+    await ctx.client.sendMessage(agent.id, "Say 'hello' and nothing else");
+    await ctx.client.waitForFinish(agent.id, 120000);
+
+    const timeline = await ctx.client.fetchAgentTimeline(agent.id, {
+      direction: "tail",
+      limit: 0,
+      projection: "projected",
+    });
+    expect(timeline.entries.length).toBeGreaterThan(0);
+
+    await ctx.client.deleteAgent(agent.id);
+    rmSync(cwd, { recursive: true, force: true });
+  }, 120000);
 
   speechTest(
     "does not process non-voice audio through the voice agent path",
@@ -850,7 +811,7 @@ describe("daemon client E2E", () => {
       expect(sawAssistantChunk).toBe(false);
       expect(sawAssistantLog).toBe(false);
     },
-    90000
+    90000,
   );
 
   speechTest(
@@ -954,7 +915,7 @@ describe("daemon client E2E", () => {
         rmSync(voiceCwd, { recursive: true, force: true });
       }
     },
-    90_000
+    90_000,
   );
 
   speechTest(
@@ -982,7 +943,7 @@ describe("daemon client E2E", () => {
       expect(result.dictationId).toBe(dictationId);
       expect(result.text.toLowerCase()).toContain("voice note");
     },
-    30_000
+    30_000,
   );
 
   speechTest(
@@ -1012,7 +973,7 @@ describe("daemon client E2E", () => {
       expect(result.dictationId).toBe(dictationId);
       expect(wordSimilarity(result.text, baseline)).toBeGreaterThan(0.6);
     },
-    30_000
+    30_000,
   );
 
   speechTest(
@@ -1025,174 +986,156 @@ describe("daemon client E2E", () => {
 
       // Claim that we sent chunk 0, but actually send no chunks.
       await expect(ctx.client.finishDictationStream(dictationId, 0)).rejects.toThrow(
-        /no audio chunks were received/i
+        /no audio chunks were received/i,
       );
     },
-    15_000
+    15_000,
   );
 
-  test(
-    "supports git and file operations",
-    async () => {
-      const cwd = tmpCwd();
+  test("supports git and file operations", async () => {
+    const cwd = tmpCwd();
 
-      execSync("git init -b main", { cwd, stdio: "pipe" });
-      execSync("git config user.email 'test@test.com'", {
-        cwd,
-        stdio: "pipe",
+    execSync("git init -b main", { cwd, stdio: "pipe" });
+    execSync("git config user.email 'test@test.com'", {
+      cwd,
+      stdio: "pipe",
+    });
+    execSync("git config user.name 'Test'", { cwd, stdio: "pipe" });
+
+    const testFile = path.join(cwd, "test.txt");
+    writeFileSync(testFile, "original content\n");
+    execSync("git add test.txt", { cwd, stdio: "pipe" });
+    execSync("git -c commit.gpgSign=false commit -m 'Initial commit'", {
+      cwd,
+      stdio: "pipe",
+    });
+
+    writeFileSync(testFile, "modified content\n");
+
+    const downloadFile = path.join(cwd, "download.txt");
+    const downloadContents = "download payload";
+    writeFileSync(downloadFile, downloadContents, "utf-8");
+
+    const agent = await ctx.client.createAgent({
+      ...getFullAccessConfig("codex"),
+      cwd,
+      title: "Git/File Test",
+    });
+
+    // Test checkout status RPC
+    const checkoutStatus = await ctx.client.getCheckoutStatus(cwd);
+    expect(checkoutStatus.error).toBeNull();
+    expect(checkoutStatus.isGit).toBe(true);
+    expect(checkoutStatus.repoRoot).toContain(cwd);
+
+    const diffResult = await ctx.client.getCheckoutDiff(cwd, { mode: "uncommitted" });
+    expect(diffResult.error).toBeNull();
+    expect(Array.isArray(diffResult.files)).toBe(true);
+    expect(diffResult.files.length).toBeGreaterThan(0);
+    expect(diffResult.files.some((file) => file.path === "test.txt")).toBe(true);
+
+    const listRequestId = `list-${Date.now()}`;
+    const listMessagePromise = waitForSignal(15000, (resolve) => {
+      const unsubscribeList = ctx.client.on("file_explorer_response", (message) => {
+        if (message.type !== "file_explorer_response") {
+          return;
+        }
+        if (message.payload.cwd !== cwd) {
+          return;
+        }
+        if (message.payload.mode !== "list") {
+          return;
+        }
+        if (message.payload.requestId !== listRequestId) {
+          return;
+        }
+        resolve(message);
       });
-      execSync("git config user.name 'Test'", { cwd, stdio: "pipe" });
+      return unsubscribeList;
+    });
 
-      const testFile = path.join(cwd, "test.txt");
-      writeFileSync(testFile, "original content\n");
-      execSync("git add test.txt", { cwd, stdio: "pipe" });
-      execSync("git -c commit.gpgSign=false commit -m 'Initial commit'", {
-        cwd,
-        stdio: "pipe",
+    const listResult = await ctx.client.exploreFileSystem(cwd, ".", "list", listRequestId);
+    const listMessage = await listMessagePromise;
+    expect(listResult.error).toBeNull();
+    expect(listResult.directory).toBeTruthy();
+    expect(listResult.requestId).toBe(listRequestId);
+    expect(listMessage.payload.mode).toBe("list");
+    expect(listMessage.payload.requestId).toBe(listRequestId);
+
+    const fileRequestId = `file-${Date.now()}`;
+    const fileMessagePromise = waitForSignal(15000, (resolve) => {
+      const unsubscribeFile = ctx.client.on("file_explorer_response", (message) => {
+        if (message.type !== "file_explorer_response") {
+          return;
+        }
+        if (message.payload.cwd !== cwd) {
+          return;
+        }
+        if (message.payload.mode !== "file") {
+          return;
+        }
+        if (message.payload.requestId !== fileRequestId) {
+          return;
+        }
+        resolve(message);
       });
+      return unsubscribeFile;
+    });
 
-      writeFileSync(testFile, "modified content\n");
+    const fileResult = await ctx.client.exploreFileSystem(
+      cwd,
+      "download.txt",
+      "file",
+      fileRequestId,
+    );
+    const fileMessage = await fileMessagePromise;
+    expect(fileResult.error).toBeNull();
+    expect(fileResult.file?.content).toBe(downloadContents);
+    expect(fileResult.requestId).toBe(fileRequestId);
+    expect(fileMessage.payload.mode).toBe("file");
+    expect(fileMessage.payload.requestId).toBe(fileRequestId);
 
-      const downloadFile = path.join(cwd, "download.txt");
-      const downloadContents = "download payload";
-      writeFileSync(downloadFile, downloadContents, "utf-8");
-
-      const agent = await ctx.client.createAgent({
-        ...getFullAccessConfig("codex"),
-        cwd,
-        title: "Git/File Test",
+    const tokenRequestId = `token-${Date.now()}`;
+    const tokenMessagePromise = waitForSignal(15000, (resolve) => {
+      const unsubscribeToken = ctx.client.on("file_download_token_response", (message) => {
+        if (message.type !== "file_download_token_response") {
+          return;
+        }
+        if (message.payload.cwd !== cwd) {
+          return;
+        }
+        if (!message.payload.path.endsWith("download.txt")) {
+          return;
+        }
+        if (message.payload.requestId !== tokenRequestId) {
+          return;
+        }
+        resolve(message);
       });
+      return unsubscribeToken;
+    });
 
-      // Test checkout status RPC
-      const checkoutStatus = await ctx.client.getCheckoutStatus(cwd);
-      expect(checkoutStatus.error).toBeNull();
-      expect(checkoutStatus.isGit).toBe(true);
-      expect(checkoutStatus.repoRoot).toContain(cwd);
+    const tokenResponse = await ctx.client.requestDownloadToken(
+      cwd,
+      "download.txt",
+      tokenRequestId,
+    );
+    const tokenMessage = await tokenMessagePromise;
+    expect(tokenResponse.error).toBeNull();
+    expect(tokenResponse.token).toBeTruthy();
+    expect(tokenResponse.requestId).toBe(tokenRequestId);
+    expect(tokenMessage.payload.cwd).toBe(cwd);
+    expect(tokenMessage.payload.requestId).toBe(tokenRequestId);
 
-      const diffResult = await ctx.client.getCheckoutDiff(cwd, { mode: "uncommitted" });
-      expect(diffResult.error).toBeNull();
-      expect(Array.isArray(diffResult.files)).toBe(true);
-      expect(diffResult.files.length).toBeGreaterThan(0);
-      expect(diffResult.files.some((file) => file.path === "test.txt")).toBe(true);
+    const response = await fetch(
+      `http://127.0.0.1:${ctx.daemon.port}/api/files/download?token=${tokenResponse.token}`,
+    );
 
-      const listRequestId = `list-${Date.now()}`;
-      const listMessagePromise = waitForSignal(15000, (resolve) => {
-        const unsubscribeList = ctx.client.on(
-          "file_explorer_response",
-          (message) => {
-            if (message.type !== "file_explorer_response") {
-              return;
-            }
-            if (message.payload.cwd !== cwd) {
-              return;
-            }
-            if (message.payload.mode !== "list") {
-              return;
-            }
-            if (message.payload.requestId !== listRequestId) {
-              return;
-            }
-            resolve(message);
-          }
-        );
-        return unsubscribeList;
-      });
+    expect(response.status).toBe(200);
+    const body = await response.text();
+    expect(body).toBe(downloadContents);
 
-      const listResult = await ctx.client.exploreFileSystem(
-        cwd,
-        ".",
-        "list",
-        listRequestId
-      );
-      const listMessage = await listMessagePromise;
-      expect(listResult.error).toBeNull();
-      expect(listResult.directory).toBeTruthy();
-      expect(listResult.requestId).toBe(listRequestId);
-      expect(listMessage.payload.mode).toBe("list");
-      expect(listMessage.payload.requestId).toBe(listRequestId);
-
-      const fileRequestId = `file-${Date.now()}`;
-      const fileMessagePromise = waitForSignal(15000, (resolve) => {
-        const unsubscribeFile = ctx.client.on(
-          "file_explorer_response",
-          (message) => {
-            if (message.type !== "file_explorer_response") {
-              return;
-            }
-            if (message.payload.cwd !== cwd) {
-              return;
-            }
-            if (message.payload.mode !== "file") {
-              return;
-            }
-            if (message.payload.requestId !== fileRequestId) {
-              return;
-            }
-            resolve(message);
-          }
-        );
-        return unsubscribeFile;
-      });
-
-      const fileResult = await ctx.client.exploreFileSystem(
-        cwd,
-        "download.txt",
-        "file",
-        fileRequestId
-      );
-      const fileMessage = await fileMessagePromise;
-      expect(fileResult.error).toBeNull();
-      expect(fileResult.file?.content).toBe(downloadContents);
-      expect(fileResult.requestId).toBe(fileRequestId);
-      expect(fileMessage.payload.mode).toBe("file");
-      expect(fileMessage.payload.requestId).toBe(fileRequestId);
-
-      const tokenRequestId = `token-${Date.now()}`;
-      const tokenMessagePromise = waitForSignal(15000, (resolve) => {
-        const unsubscribeToken = ctx.client.on(
-          "file_download_token_response",
-          (message) => {
-            if (message.type !== "file_download_token_response") {
-              return;
-            }
-            if (message.payload.cwd !== cwd) {
-              return;
-            }
-            if (!message.payload.path.endsWith("download.txt")) {
-              return;
-            }
-            if (message.payload.requestId !== tokenRequestId) {
-              return;
-            }
-            resolve(message);
-          }
-        );
-        return unsubscribeToken;
-      });
-
-      const tokenResponse = await ctx.client.requestDownloadToken(
-        cwd,
-        "download.txt",
-        tokenRequestId
-      );
-      const tokenMessage = await tokenMessagePromise;
-      expect(tokenResponse.error).toBeNull();
-      expect(tokenResponse.token).toBeTruthy();
-      expect(tokenResponse.requestId).toBe(tokenRequestId);
-      expect(tokenMessage.payload.cwd).toBe(cwd);
-      expect(tokenMessage.payload.requestId).toBe(tokenRequestId);
-
-      const response = await fetch(
-        `http://127.0.0.1:${ctx.daemon.port}/api/files/download?token=${tokenResponse.token}`
-      );
-
-      expect(response.status).toBe(200);
-      const body = await response.text();
-      expect(body).toBe(downloadContents);
-
-      await ctx.client.deleteAgent(agent.id);
-      rmSync(cwd, { recursive: true, force: true });
-    },
-    120000
-  );
+    await ctx.client.deleteAgent(agent.id);
+    rmSync(cwd, { recursive: true, force: true });
+  }, 120000);
 });

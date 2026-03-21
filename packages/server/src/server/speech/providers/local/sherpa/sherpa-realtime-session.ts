@@ -47,9 +47,7 @@ export class SherpaRealtimeTranscriptionSession
       const targetPeak = 0.6;
       const maxGain = 50;
       const gain =
-        peakFloat > 0 && peakFloat < targetPeak
-          ? Math.min(maxGain, targetPeak / peakFloat)
-          : 1;
+        peakFloat > 0 && peakFloat < targetPeak ? Math.min(maxGain, targetPeak / peakFloat) : 1;
       const floatSamples = pcm16leToFloat32(pcm16le, gain);
       this.stream.acceptWaveform(this.engine.sampleRate, floatSamples);
 
@@ -78,7 +76,10 @@ export class SherpaRealtimeTranscriptionSession
     }
 
     try {
-      const padSamples = Math.max(0, Math.round((this.engine.sampleRate * this.tailPaddingMs) / 1000));
+      const padSamples = Math.max(
+        0,
+        Math.round((this.engine.sampleRate * this.tailPaddingMs) / 1000),
+      );
       if (padSamples > 0) {
         this.stream.acceptWaveform(this.engine.sampleRate, new Float32Array(padSamples));
       }

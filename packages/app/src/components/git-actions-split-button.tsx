@@ -49,7 +49,9 @@ export function GitActionsSplitButton({ gitActions }: GitActionsSplitButtonProps
             ) : (
               <View style={styles.splitButtonContent}>
                 {gitActions.primary.icon}
-                <Text style={styles.splitButtonText}>{getActionDisplayLabel(gitActions.primary)}</Text>
+                <Text style={styles.splitButtonText}>
+                  {getActionDisplayLabel(gitActions.primary)}
+                </Text>
               </View>
             )}
           </Pressable>

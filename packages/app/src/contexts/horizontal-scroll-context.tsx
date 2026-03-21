@@ -31,7 +31,7 @@ export function HorizontalScrollProvider({ children }: { children: ReactNode }) 
       scrollOffsetsRef.current.set(id, offset);
       updateIsAnyScrolled();
     },
-    [updateIsAnyScrolled]
+    [updateIsAnyScrolled],
   );
 
   const unregisterScrollOffset = useCallback(
@@ -39,7 +39,7 @@ export function HorizontalScrollProvider({ children }: { children: ReactNode }) 
       scrollOffsetsRef.current.delete(id);
       updateIsAnyScrolled();
     },
-    [updateIsAnyScrolled]
+    [updateIsAnyScrolled],
   );
 
   return (

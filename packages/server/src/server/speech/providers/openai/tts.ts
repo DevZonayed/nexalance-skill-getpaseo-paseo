@@ -31,7 +31,7 @@ export class OpenAITTS implements TextToSpeechProvider {
 
     this.logger.info(
       { voice: this.config.voice, model: this.config.model, format: this.config.responseFormat },
-      "TTS (OpenAI) initialized"
+      "TTS (OpenAI) initialized",
     );
   }
 
@@ -49,14 +49,20 @@ export class OpenAITTS implements TextToSpeechProvider {
     try {
       this.logger.debug(
         { textLength: text.length, preview: text.substring(0, 50) },
-        "Synthesizing speech"
+        "Synthesizing speech",
       );
 
       const response = await this.openaiClient.audio.speech.create({
         model: this.config.model!,
         voice: this.config.voice!,
         input: text,
-        response_format: this.config.responseFormat as "mp3" | "opus" | "aac" | "flac" | "wav" | "pcm",
+        response_format: this.config.responseFormat as
+          | "mp3"
+          | "opus"
+          | "aac"
+          | "flac"
+          | "wav"
+          | "pcm",
       });
 
       const audioStream = response.body as unknown as Readable;

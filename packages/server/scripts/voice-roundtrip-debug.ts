@@ -75,7 +75,11 @@ async function main(): Promise<void> {
 
     const offActivity = client.on("activity_log", (msg) => {
       if (msg.type !== "activity_log") return;
-      if (msg.payload.type === "transcript" || msg.payload.type === "error" || msg.payload.type === "assistant") {
+      if (
+        msg.payload.type === "transcript" ||
+        msg.payload.type === "error" ||
+        msg.payload.type === "assistant"
+      ) {
         console.log("activity_log", {
           type: msg.payload.type,
           content: msg.payload.content,
@@ -129,10 +133,10 @@ async function main(): Promise<void> {
         responseFormat: "pcm",
         voice: "alloy",
       },
-      logger
+      logger,
     );
     const generated = await tts.synthesizeSpeech(
-      "Use the speak tool and say exactly round trip successful."
+      "Use the speak tool and say exactly round trip successful.",
     );
     const pcm = await streamToBuffer(generated.stream as AsyncIterable<unknown>);
 
@@ -143,20 +147,20 @@ async function main(): Promise<void> {
       await client.sendVoiceAudioChunk(
         chunk.toString("base64"),
         "audio/pcm;rate=24000;bits=16",
-        isLast
+        isLast,
       );
     }
 
     await Promise.race([
       firstAudio,
       new Promise((_, reject) =>
-        setTimeout(() => reject(new Error("Timed out waiting for first audio_output")), 120000)
+        setTimeout(() => reject(new Error("Timed out waiting for first audio_output")), 120000),
       ),
     ]);
     await Promise.race([
       lastAudio,
       new Promise((_, reject) =>
-        setTimeout(() => reject(new Error("Timed out waiting for final audio_output")), 120000)
+        setTimeout(() => reject(new Error("Timed out waiting for final audio_output")), 120000),
       ),
     ]);
 

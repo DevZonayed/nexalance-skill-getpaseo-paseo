@@ -1,23 +1,23 @@
-import { useQuery } from '@tanstack/react-query'
-import { getDesktopDaemonStatus, shouldUseDesktopDaemon } from '@/desktop/daemon/desktop-daemon'
+import { useQuery } from "@tanstack/react-query";
+import { getDesktopDaemonStatus, shouldUseDesktopDaemon } from "@/desktop/daemon/desktop-daemon";
 
-const DESKTOP_DAEMON_SERVER_ID_QUERY_KEY = ['desktop-daemon-server-id'] as const
+const DESKTOP_DAEMON_SERVER_ID_QUERY_KEY = ["desktop-daemon-server-id"] as const;
 
 interface DesktopDaemonServerIdResult {
-  serverId: string | null
+  serverId: string | null;
 }
 
 async function loadDesktopDaemonServerId(): Promise<DesktopDaemonServerIdResult> {
-  const status = await getDesktopDaemonStatus()
-  const serverId = status.serverId.trim()
+  const status = await getDesktopDaemonStatus();
+  const serverId = status.serverId.trim();
   return {
     serverId: serverId.length > 0 ? serverId : null,
-  }
+  };
 }
 
 export function useIsLocalDaemon(serverId: string): boolean {
-  const normalizedServerId = serverId.trim()
-  const isDesktop = shouldUseDesktopDaemon()
+  const normalizedServerId = serverId.trim();
+  const isDesktop = shouldUseDesktopDaemon();
 
   const query = useQuery({
     queryKey: DESKTOP_DAEMON_SERVER_ID_QUERY_KEY,
@@ -30,11 +30,11 @@ export function useIsLocalDaemon(serverId: string): boolean {
     refetchOnReconnect: false,
     refetchOnWindowFocus: false,
     retry: false,
-  })
+  });
 
   if (!isDesktop || normalizedServerId.length === 0) {
-    return false
+    return false;
   }
 
-  return query.data?.serverId === normalizedServerId
+  return query.data?.serverId === normalizedServerId;
 }

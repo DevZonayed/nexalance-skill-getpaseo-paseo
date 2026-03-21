@@ -1,8 +1,6 @@
 import { getDesktopHost } from "@/desktop/host";
 
-export type PickedImageSource =
-  | { kind: "file_uri"; uri: string }
-  | { kind: "blob"; blob: Blob };
+export type PickedImageSource = { kind: "file_uri"; uri: string } | { kind: "blob"; blob: Blob };
 
 export interface PickedImageAttachmentInput {
   source: PickedImageSource;
@@ -48,7 +46,7 @@ async function blobFromUri(uri: string): Promise<Blob> {
 }
 
 export async function normalizePickedImageAssets(
-  assets: readonly ExpoImagePickerAssetLike[]
+  assets: readonly ExpoImagePickerAssetLike[],
 ): Promise<PickedImageAttachmentInput[]> {
   return await Promise.all(
     assets.map(async (asset) => {
@@ -73,7 +71,7 @@ export async function normalizePickedImageAssets(
         mimeType: asset.mimeType ?? null,
         fileName: asset.fileName ?? null,
       };
-    })
+    }),
   );
 }
 

@@ -10,7 +10,7 @@ export function normalizeClientMessageId(clientMessageId: string | undefined): s
 
 export function resolveClientMessageId(
   clientMessageId: string | undefined,
-  generateId: () => string = uuidv4
+  generateId: () => string = uuidv4,
 ): string {
   return normalizeClientMessageId(clientMessageId) ?? generateId();
 }

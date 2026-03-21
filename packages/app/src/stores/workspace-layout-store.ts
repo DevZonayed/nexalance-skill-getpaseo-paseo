@@ -66,14 +66,14 @@ interface WorkspaceLayoutStore {
       tabId: string;
       targetPaneId: string;
       position: "left" | "right" | "top" | "bottom";
-    }
+    },
   ) => string | null;
   splitPaneEmpty: (
     workspaceKey: string,
     input: {
       targetPaneId: string;
       position: "left" | "right" | "top" | "bottom";
-    }
+    },
   ) => string | null;
   moveTabToPane: (workspaceKey: string, tabId: string, toPaneId: string) => void;
   focusPane: (workspaceKey: string, paneId: string) => void;
@@ -93,7 +93,10 @@ function trimNonEmpty(value: string | null | undefined): string | null {
   return trimmed.length > 0 ? trimmed : null;
 }
 
-function getWorkspaceLayout(state: Record<string, WorkspaceLayout>, workspaceKey: string): WorkspaceLayout {
+function getWorkspaceLayout(
+  state: Record<string, WorkspaceLayout>,
+  workspaceKey: string,
+): WorkspaceLayout {
   return normalizeLayout(state[workspaceKey] ?? createDefaultLayout());
 }
 
@@ -227,7 +230,9 @@ export const useWorkspaceLayoutStore = create<WorkspaceLayoutStore>()(
         if (!normalizedWorkspaceKey) {
           return [];
         }
-        return collectAllTabs(getWorkspaceLayout(get().layoutByWorkspace, normalizedWorkspaceKey).root);
+        return collectAllTabs(
+          getWorkspaceLayout(get().layoutByWorkspace, normalizedWorkspaceKey).root,
+        );
       },
       splitPane: (workspaceKey, input) => {
         const normalizedWorkspaceKey = trimNonEmpty(workspaceKey);
@@ -464,6 +469,6 @@ export const useWorkspaceLayoutStore = create<WorkspaceLayoutStore>()(
           splitSizesByWorkspace: state.splitSizesByWorkspace,
         };
       },
-    }
-  )
+    },
+  ),
 );

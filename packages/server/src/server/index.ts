@@ -55,7 +55,7 @@ async function main() {
     signal: string,
     options?: {
       successExitCode?: number;
-    }
+    },
   ) => {
     if (!shutdownPromise) {
       logger.info(`${signal} received, shutting down gracefully...`);
@@ -106,7 +106,7 @@ async function main() {
     if (intent.type === "shutdown") {
       logger.warn(
         { clientId: intent.clientId, requestId: intent.requestId },
-        "Shutdown requested via websocket"
+        "Shutdown requested via websocket",
       );
       if (sendSupervisorLifecycleMessage({ type: "paseo:shutdown" })) {
         return;
@@ -117,7 +117,7 @@ async function main() {
 
     logger.warn(
       { clientId: intent.clientId, requestId: intent.requestId, reason: intent.reason },
-      "Restart requested via websocket"
+      "Restart requested via websocket",
     );
     if (
       sendSupervisorLifecycleMessage({
@@ -140,7 +140,7 @@ async function main() {
           mode: pidLockMode,
         },
       },
-      logger
+      logger,
     );
   } catch (err) {
     if (err instanceof PidLockError) {
@@ -166,7 +166,7 @@ async function main() {
 
 main().catch((err) => {
   if (process.env.PASEO_DEBUG === "1") {
-    process.stderr.write(`${err instanceof Error ? err.stack ?? err.message : String(err)}\n`);
+    process.stderr.write(`${err instanceof Error ? (err.stack ?? err.message) : String(err)}\n`);
   } else {
     process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
   }

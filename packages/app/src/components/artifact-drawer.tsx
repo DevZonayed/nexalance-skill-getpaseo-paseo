@@ -1,10 +1,4 @@
-import {
-  View,
-  Text,
-  ScrollView,
-  Pressable,
-  Modal,
-} from "react-native";
+import { View, Text, ScrollView, Pressable, Modal } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { StyleSheet } from "react-native-unistyles";
 import { Fonts } from "@/constants/theme";
@@ -185,15 +179,8 @@ export function ArtifactDrawer({ artifact, onClose }: ArtifactDrawerProps) {
               </Text>
             </View>
             <View style={styles.headerActions}>
-              <View
-                style={[
-                  styles.badge,
-                  typeBadgeStyles[artifact.type],
-                ]}
-              >
-                <Text style={styles.badgeText}>
-                  {artifact.type.toUpperCase()}
-                </Text>
+              <View style={[styles.badge, typeBadgeStyles[artifact.type]]}>
+                <Text style={styles.badgeText}>{artifact.type.toUpperCase()}</Text>
               </View>
               <Pressable onPress={onClose} style={styles.closeButton}>
                 <Text style={styles.closeButtonText}>×</Text>
@@ -208,12 +195,8 @@ export function ArtifactDrawer({ artifact, onClose }: ArtifactDrawerProps) {
         >
           {artifact.type === "image" ? (
             <View style={styles.imagePlaceholder}>
-              <Text style={styles.imagePlaceholderText}>
-                Image viewing not yet implemented
-              </Text>
-              <Text style={styles.imagePlaceholderSubtext}>
-                Base64 image data received
-              </Text>
+              <Text style={styles.imagePlaceholderText}>Image viewing not yet implemented</Text>
+              <Text style={styles.imagePlaceholderSubtext}>Base64 image data received</Text>
             </View>
           ) : (
             <View style={styles.codeContainer}>
@@ -244,9 +227,7 @@ export function ArtifactDrawer({ artifact, onClose }: ArtifactDrawerProps) {
             </View>
             <View style={styles.metadataRow}>
               <Text style={styles.metadataLabel}>Size:</Text>
-              <Text style={styles.metadataValue}>
-                {content.length.toLocaleString()} characters
-              </Text>
+              <Text style={styles.metadataValue}>{content.length.toLocaleString()} characters</Text>
             </View>
           </View>
         </View>

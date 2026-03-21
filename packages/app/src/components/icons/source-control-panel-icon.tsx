@@ -25,10 +25,34 @@ export function SourceControlPanelIcon({
         strokeLinejoin="round"
       />
       {/* Plus */}
-      <Line x1={9} y1={9.5} x2={15} y2={9.5} stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" />
-      <Line x1={12} y1={6.5} x2={12} y2={12.5} stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" />
+      <Line
+        x1={9}
+        y1={9.5}
+        x2={15}
+        y2={9.5}
+        stroke={color}
+        strokeWidth={strokeWidth}
+        strokeLinecap="round"
+      />
+      <Line
+        x1={12}
+        y1={6.5}
+        x2={12}
+        y2={12.5}
+        stroke={color}
+        strokeWidth={strokeWidth}
+        strokeLinecap="round"
+      />
       {/* Minus */}
-      <Line x1={9} y1={16} x2={15} y2={16} stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" />
+      <Line
+        x1={9}
+        y1={16}
+        x2={15}
+        y2={16}
+        stroke={color}
+        strokeWidth={strokeWidth}
+        strokeLinecap="round"
+      />
     </Svg>
   );
 }

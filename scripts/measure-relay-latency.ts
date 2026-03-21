@@ -45,7 +45,8 @@ async function measurePings(
   }
 
   const results: number[] = [];
-  const serverTimings: { serverReceivedAt: number; serverSentAt: number; clientSentAt: number }[] = [];
+  const serverTimings: { serverReceivedAt: number; serverSentAt: number; clientSentAt: number }[] =
+    [];
 
   for (let i = 0; i < count; i++) {
     const result = await client.ping({ timeoutMs: 10_000 });
@@ -117,7 +118,9 @@ async function main() {
   for (let i = 0; i < 5; i++) {
     const start = Date.now();
     const { WebSocket } = await import("ws");
-    const ws = new WebSocket(`wss://relay.paseo.sh/ws?serverId=latency_probe_${Date.now()}&role=client&clientId=probe_${i}`);
+    const ws = new WebSocket(
+      `wss://relay.paseo.sh/ws?serverId=latency_probe_${Date.now()}&role=client&clientId=probe_${i}`,
+    );
     await new Promise<void>((resolve, reject) => {
       ws.on("open", () => {
         wsConnectTimes.push(Date.now() - start);

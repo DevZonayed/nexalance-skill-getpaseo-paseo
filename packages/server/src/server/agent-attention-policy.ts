@@ -18,12 +18,9 @@ type ComputePushNotificationInput = {
   allClientStates: ClientAttentionState[];
 };
 
-function hasActiveClientOnAgent(
-  allClientStates: ClientAttentionState[],
-  agentId: string
-): boolean {
+function hasActiveClientOnAgent(allClientStates: ClientAttentionState[], agentId: string): boolean {
   return allClientStates.some(
-    (state) => state.focusedAgentId === agentId && state.appVisible && !state.isStale
+    (state) => state.focusedAgentId === agentId && state.appVisible && !state.isStale,
   );
 }
 
@@ -33,17 +30,17 @@ function hasActiveWebClient(allClientStates: ClientAttentionState[]): boolean {
 
 function hasOtherCompetingClient(
   clientState: ClientAttentionState,
-  allClientStates: ClientAttentionState[]
+  allClientStates: ClientAttentionState[],
 ): boolean {
   return allClientStates.some(
     (state) =>
-      state !== clientState && (state.deviceType === "mobile" || state.deviceType === null)
+      state !== clientState && (state.deviceType === "mobile" || state.deviceType === null),
   );
 }
 
 function hasActiveForegroundMobileClient(allClientStates: ClientAttentionState[]): boolean {
   return allClientStates.some(
-    (state) => state.deviceType === "mobile" && state.appVisible && !state.isStale
+    (state) => state.deviceType === "mobile" && state.appVisible && !state.isStale,
   );
 }
 

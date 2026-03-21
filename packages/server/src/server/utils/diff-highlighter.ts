@@ -1,29 +1,29 @@
-import { readFile } from 'node:fs/promises'
-import { resolve } from 'node:path'
-import { highlightCode, isLanguageSupported, type HighlightToken } from '@getpaseo/highlight'
+import { readFile } from "node:fs/promises";
+import { resolve } from "node:path";
+import { highlightCode, isLanguageSupported, type HighlightToken } from "@getpaseo/highlight";
 
 export interface DiffLine {
-  type: 'add' | 'remove' | 'context' | 'header'
-  content: string
-  tokens?: HighlightToken[]
+  type: "add" | "remove" | "context" | "header";
+  content: string;
+  tokens?: HighlightToken[];
 }
 
 export interface DiffHunk {
-  oldStart: number
-  oldCount: number
-  newStart: number
-  newCount: number
-  lines: DiffLine[]
+  oldStart: number;
+  oldCount: number;
+  newStart: number;
+  newCount: number;
+  lines: DiffLine[];
 }
 
 export interface ParsedDiffFile {
-  path: string
-  isNew: boolean
-  isDeleted: boolean
-  additions: number
-  deletions: number
-  hunks: DiffHunk[]
-  status?: 'ok' | 'too_large' | 'binary'
+  path: string;
+  isNew: boolean;
+  isDeleted: boolean;
+  additions: number;
+  deletions: number;
+  hunks: DiffHunk[];
+  status?: "ok" | "too_large" | "binary";
 }
 
 /**
@@ -31,87 +31,87 @@ export interface ParsedDiffFile {
  */
 export function parseDiff(diffText: string): ParsedDiffFile[] {
   if (!diffText || diffText.trim().length === 0) {
-    return []
+    return [];
   }
 
-  const files: ParsedDiffFile[] = []
-  const fileSections = diffText.split(/^diff --git /m).filter(Boolean)
+  const files: ParsedDiffFile[] = [];
+  const fileSections = diffText.split(/^diff --git /m).filter(Boolean);
 
   for (const section of fileSections) {
-    const lines = section.split('\n')
-    const firstLine = lines[0]
+    const lines = section.split("\n");
+    const firstLine = lines[0];
 
     // Detect new/deleted file
-    const isNew = section.includes('new file mode') || section.includes('--- /dev/null')
-    const isDeleted = section.includes('deleted file mode') || section.includes('+++ /dev/null')
+    const isNew = section.includes("new file mode") || section.includes("--- /dev/null");
+    const isDeleted = section.includes("deleted file mode") || section.includes("+++ /dev/null");
 
     // Extract path
-    let path = 'unknown'
-    const pathMatch = firstLine.match(/a\/(.*?) b\//)
+    let path = "unknown";
+    const pathMatch = firstLine.match(/a\/(.*?) b\//);
     if (pathMatch) {
-      path = pathMatch[1]
+      path = pathMatch[1];
     } else {
-      const newFileMatch = firstLine.match(/b\/(.+)$/)
+      const newFileMatch = firstLine.match(/b\/(.+)$/);
       if (newFileMatch) {
-        path = newFileMatch[1]
+        path = newFileMatch[1];
       }
     }
 
-    const hunks: DiffHunk[] = []
-    let currentHunk: DiffHunk | null = null
-    let additions = 0
-    let deletions = 0
+    const hunks: DiffHunk[] = [];
+    let currentHunk: DiffHunk | null = null;
+    let additions = 0;
+    let deletions = 0;
 
     for (let i = 1; i < lines.length; i++) {
-      const line = lines[i]
+      const line = lines[i];
 
       // Skip metadata lines
-      if (line.startsWith('index ')) continue
-      if (line.startsWith('--- ')) continue
-      if (line.startsWith('+++ ')) continue
-      if (line.startsWith('new file mode')) continue
-      if (line.startsWith('deleted file mode')) continue
+      if (line.startsWith("index ")) continue;
+      if (line.startsWith("--- ")) continue;
+      if (line.startsWith("+++ ")) continue;
+      if (line.startsWith("new file mode")) continue;
+      if (line.startsWith("deleted file mode")) continue;
 
       // Parse hunk header: @@ -oldStart,oldCount +newStart,newCount @@
-      const hunkMatch = line.match(/^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/)
+      const hunkMatch = line.match(/^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/);
       if (hunkMatch) {
         if (currentHunk) {
-          hunks.push(currentHunk)
+          hunks.push(currentHunk);
         }
         currentHunk = {
           oldStart: parseInt(hunkMatch[1], 10),
-          oldCount: parseInt(hunkMatch[2] ?? '1', 10),
+          oldCount: parseInt(hunkMatch[2] ?? "1", 10),
           newStart: parseInt(hunkMatch[3], 10),
-          newCount: parseInt(hunkMatch[4] ?? '1', 10),
-          lines: [{ type: 'header', content: line.match(/^(@@ .+? @@)/)?.[1] ?? line }],
-        }
-        continue
+          newCount: parseInt(hunkMatch[4] ?? "1", 10),
+          lines: [{ type: "header", content: line.match(/^(@@ .+? @@)/)?.[1] ?? line }],
+        };
+        continue;
       }
 
-      if (!currentHunk) continue
+      if (!currentHunk) continue;
 
-      if (line.startsWith('+')) {
-        currentHunk.lines.push({ type: 'add', content: line.slice(1) })
-        additions++
-      } else if (line.startsWith('-')) {
-        currentHunk.lines.push({ type: 'remove', content: line.slice(1) })
-        deletions++
-      } else if (line.startsWith(' ')) {
-        currentHunk.lines.push({ type: 'context', content: line.slice(1) })
-      } else if (line.length > 0 && !line.startsWith('\\')) {
+      if (line.startsWith("+")) {
+        currentHunk.lines.push({ type: "add", content: line.slice(1) });
+        additions++;
+      } else if (line.startsWith("-")) {
+        currentHunk.lines.push({ type: "remove", content: line.slice(1) });
+        deletions++;
+      } else if (line.startsWith(" ")) {
+        currentHunk.lines.push({ type: "context", content: line.slice(1) });
+      } else if (line.length > 0 && !line.startsWith("\\")) {
         // Non-empty line that's not a "\ No newline" marker
-        currentHunk.lines.push({ type: 'context', content: line })
+        currentHunk.lines.push({ type: "context", content: line });
       }
     }
 
     if (currentHunk) {
-      hunks.push(currentHunk)
+      hunks.push(currentHunk);
     }
 
-    files.push({ path, isNew, isDeleted, additions, deletions, hunks })
+    files.push({ path, isNew, isDeleted, additions, deletions, hunks });
   }
 
-  return files
+  return files;
 }
 
 /**
@@ -119,22 +119,22 @@ export function parseDiff(diffText: string): ParsedDiffFile[] {
  * Returns a map of new line numbers to their content.
  */
 export function reconstructNewFile(hunks: DiffHunk[]): Map<number, string> {
-  const lines = new Map<number, string>()
+  const lines = new Map<number, string>();
 
   for (const hunk of hunks) {
-    let newLineNum = hunk.newStart
+    let newLineNum = hunk.newStart;
 
     for (const line of hunk.lines) {
-      if (line.type === 'header') continue
+      if (line.type === "header") continue;
 
-      if (line.type === 'add' || line.type === 'context') {
-        lines.set(newLineNum, line.content)
-        newLineNum++
+      if (line.type === "add" || line.type === "context") {
+        lines.set(newLineNum, line.content);
+        newLineNum++;
       }
     }
   }
 
-  return lines
+  return lines;
 }
 
 /**
@@ -142,58 +142,58 @@ export function reconstructNewFile(hunks: DiffHunk[]): Map<number, string> {
  * Returns a map of old line numbers to their content.
  */
 export function reconstructOldFile(hunks: DiffHunk[]): Map<number, string> {
-  const lines = new Map<number, string>()
+  const lines = new Map<number, string>();
 
   for (const hunk of hunks) {
-    let oldLineNum = hunk.oldStart
+    let oldLineNum = hunk.oldStart;
 
     for (const line of hunk.lines) {
-      if (line.type === 'header') continue
+      if (line.type === "header") continue;
 
-      if (line.type === 'remove' || line.type === 'context') {
-        lines.set(oldLineNum, line.content)
-        oldLineNum++
+      if (line.type === "remove" || line.type === "context") {
+        lines.set(oldLineNum, line.content);
+        oldLineNum++;
       }
     }
   }
 
-  return lines
+  return lines;
 }
 
 function buildFileContent(lineMap: Map<number, string>): string {
-  if (lineMap.size === 0) return ''
+  if (lineMap.size === 0) return "";
 
-  const lineNumbers = Array.from(lineMap.keys()).sort((a, b) => a - b)
-  const minLine = lineNumbers[0]
-  const maxLine = lineNumbers[lineNumbers.length - 1]
+  const lineNumbers = Array.from(lineMap.keys()).sort((a, b) => a - b);
+  const minLine = lineNumbers[0];
+  const maxLine = lineNumbers[lineNumbers.length - 1];
 
-  const lines: string[] = []
+  const lines: string[] = [];
   for (let i = minLine; i <= maxLine; i++) {
-    lines.push(lineMap.get(i) ?? '')
+    lines.push(lineMap.get(i) ?? "");
   }
 
-  return lines.join('\n')
+  return lines.join("\n");
 }
 
 function buildTokenLookup(
   lineMap: Map<number, string>,
-  highlighted: HighlightToken[][]
+  highlighted: HighlightToken[][],
 ): Map<number, HighlightToken[]> {
-  const lookup = new Map<number, HighlightToken[]>()
+  const lookup = new Map<number, HighlightToken[]>();
 
-  if (lineMap.size === 0) return lookup
+  if (lineMap.size === 0) return lookup;
 
-  const lineNumbers = Array.from(lineMap.keys()).sort((a, b) => a - b)
-  const minLine = lineNumbers[0]
+  const lineNumbers = Array.from(lineMap.keys()).sort((a, b) => a - b);
+  const minLine = lineNumbers[0];
 
   for (let i = 0; i < highlighted.length; i++) {
-    const lineNum = minLine + i
+    const lineNum = minLine + i;
     if (lineMap.has(lineNum)) {
-      lookup.set(lineNum, highlighted[i])
+      lookup.set(lineNum, highlighted[i]);
     }
   }
 
-  return lookup
+  return lookup;
 }
 
 /**
@@ -202,26 +202,26 @@ function buildTokenLookup(
  */
 export function highlightDiffFromHunks(file: ParsedDiffFile): ParsedDiffFile {
   if (!isLanguageSupported(file.path)) {
-    return file
+    return file;
   }
 
   // Reconstruct both versions from hunks
-  const newFileLines = reconstructNewFile(file.hunks)
-  const oldFileLines = reconstructOldFile(file.hunks)
+  const newFileLines = reconstructNewFile(file.hunks);
+  const oldFileLines = reconstructOldFile(file.hunks);
 
   // Build complete file content strings for highlighting
-  const newFileContent = buildFileContent(newFileLines)
-  const oldFileContent = buildFileContent(oldFileLines)
+  const newFileContent = buildFileContent(newFileLines);
+  const oldFileContent = buildFileContent(oldFileLines);
 
   // Highlight both versions
-  const newHighlighted = highlightCode(newFileContent, file.path)
-  const oldHighlighted = highlightCode(oldFileContent, file.path)
+  const newHighlighted = highlightCode(newFileContent, file.path);
+  const oldHighlighted = highlightCode(oldFileContent, file.path);
 
   // Build lookup maps: line number -> tokens
-  const newTokensByLine = buildTokenLookup(newFileLines, newHighlighted)
-  const oldTokensByLine = buildTokenLookup(oldFileLines, oldHighlighted)
+  const newTokensByLine = buildTokenLookup(newFileLines, newHighlighted);
+  const oldTokensByLine = buildTokenLookup(oldFileLines, oldHighlighted);
 
-  return applyTokensToHunks(file, newTokensByLine, oldTokensByLine)
+  return applyTokensToHunks(file, newTokensByLine, oldTokensByLine);
 }
 
 /**
@@ -230,76 +230,76 @@ export function highlightDiffFromHunks(file: ParsedDiffFile): ParsedDiffFile {
  */
 export async function highlightDiffWithFileContent(
   file: ParsedDiffFile,
-  cwd: string
+  cwd: string,
 ): Promise<ParsedDiffFile> {
   if (!isLanguageSupported(file.path)) {
-    return file
+    return file;
   }
 
-  const filePath = resolve(cwd, file.path)
+  const filePath = resolve(cwd, file.path);
 
   try {
     // Read the current file content (the "new" version)
-    const fileContent = await readFile(filePath, 'utf-8')
+    const fileContent = await readFile(filePath, "utf-8");
 
     // Highlight the entire file
-    const highlighted = highlightCode(fileContent, file.path)
+    const highlighted = highlightCode(fileContent, file.path);
 
     // Build lookup: line number (1-indexed) -> tokens
-    const tokensByLine = new Map<number, HighlightToken[]>()
+    const tokensByLine = new Map<number, HighlightToken[]>();
     for (let i = 0; i < highlighted.length; i++) {
-      tokensByLine.set(i + 1, highlighted[i])
+      tokensByLine.set(i + 1, highlighted[i]);
     }
 
     // For removed lines, we need to reconstruct from hunks since they're not in the file
-    const oldFileLines = reconstructOldFile(file.hunks)
-    const oldFileContent = buildFileContent(oldFileLines)
-    const oldHighlighted = highlightCode(oldFileContent, file.path)
-    const oldTokensByLine = buildTokenLookup(oldFileLines, oldHighlighted)
+    const oldFileLines = reconstructOldFile(file.hunks);
+    const oldFileContent = buildFileContent(oldFileLines);
+    const oldHighlighted = highlightCode(oldFileContent, file.path);
+    const oldTokensByLine = buildTokenLookup(oldFileLines, oldHighlighted);
 
-    return applyTokensToHunks(file, tokensByLine, oldTokensByLine)
+    return applyTokensToHunks(file, tokensByLine, oldTokensByLine);
   } catch {
     // If file read fails (deleted file, etc.), fall back to hunk-based highlighting
-    return highlightDiffFromHunks(file)
+    return highlightDiffFromHunks(file);
   }
 }
 
 function applyTokensToHunks(
   file: ParsedDiffFile,
   newTokensByLine: Map<number, HighlightToken[]>,
-  oldTokensByLine: Map<number, HighlightToken[]>
+  oldTokensByLine: Map<number, HighlightToken[]>,
 ): ParsedDiffFile {
   const highlightedHunks = file.hunks.map((hunk) => {
-    let oldLineNum = hunk.oldStart
-    let newLineNum = hunk.newStart
+    let oldLineNum = hunk.oldStart;
+    let newLineNum = hunk.newStart;
 
     const highlightedLines = hunk.lines.map((line): DiffLine => {
-      if (line.type === 'header') {
-        return line
+      if (line.type === "header") {
+        return line;
       }
 
-      let tokens: HighlightToken[] | undefined
+      let tokens: HighlightToken[] | undefined;
 
-      if (line.type === 'add') {
-        tokens = newTokensByLine.get(newLineNum)
-        newLineNum++
-      } else if (line.type === 'remove') {
-        tokens = oldTokensByLine.get(oldLineNum)
-        oldLineNum++
-      } else if (line.type === 'context') {
+      if (line.type === "add") {
+        tokens = newTokensByLine.get(newLineNum);
+        newLineNum++;
+      } else if (line.type === "remove") {
+        tokens = oldTokensByLine.get(oldLineNum);
+        oldLineNum++;
+      } else if (line.type === "context") {
         // Context lines exist in both - use new file version
-        tokens = newTokensByLine.get(newLineNum)
-        oldLineNum++
-        newLineNum++
+        tokens = newTokensByLine.get(newLineNum);
+        oldLineNum++;
+        newLineNum++;
       }
 
-      return tokens ? { ...line, tokens } : line
-    })
+      return tokens ? { ...line, tokens } : line;
+    });
 
-    return { ...hunk, lines: highlightedLines }
-  })
+    return { ...hunk, lines: highlightedLines };
+  });
 
-  return { ...file, hunks: highlightedHunks }
+  return { ...file, hunks: highlightedHunks };
 }
 
 /**
@@ -307,16 +307,16 @@ function applyTokensToHunks(
  */
 export async function parseAndHighlightDiff(
   diffText: string,
-  cwd: string
+  cwd: string,
 ): Promise<ParsedDiffFile[]> {
-  const files = parseDiff(diffText)
+  const files = parseDiff(diffText);
 
   const highlightedFiles = await Promise.all(
-    files.map((file) => highlightDiffWithFileContent(file, cwd))
-  )
+    files.map((file) => highlightDiffWithFileContent(file, cwd)),
+  );
 
-  return highlightedFiles
+  return highlightedFiles;
 }
 
 // Re-export types
-export type { HighlightToken }
+export type { HighlightToken };

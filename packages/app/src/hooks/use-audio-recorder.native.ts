@@ -1,7 +1,14 @@
-import { useAudioRecorder as useExpoAudioRecorder, useAudioRecorderState, RecordingOptions, RecordingPresets, requestRecordingPermissionsAsync, setAudioModeAsync } from 'expo-audio';
-import { Paths, File, Directory, FileInfo } from 'expo-file-system';
-import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { AttemptCancelledError, AttemptGuard } from '@/utils/attempt-guard';
+import {
+  useAudioRecorder as useExpoAudioRecorder,
+  useAudioRecorderState,
+  RecordingOptions,
+  RecordingPresets,
+  requestRecordingPermissionsAsync,
+  setAudioModeAsync,
+} from "expo-audio";
+import { Paths, File, Directory, FileInfo } from "expo-file-system";
+import { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import { AttemptCancelledError, AttemptGuard } from "@/utils/attempt-guard";
 
 export interface AudioCaptureConfig {
   sampleRate?: number;
@@ -18,8 +25,7 @@ export interface AudioCaptureConfig {
  */
 async function getActualRecordingUri(createdAt: Date): Promise<string | null> {
   try {
-
-    const audioDir = new Directory(Paths.cache, 'Audio');
+    const audioDir = new Directory(Paths.cache, "Audio");
 
     if (!audioDir.exists) {
       return null;
@@ -32,11 +38,11 @@ async function getActualRecordingUri(createdAt: Date): Promise<string | null> {
     }
 
     const validFiles = files
-      .map(file => {
+      .map((file) => {
         const info = file.info();
         return info;
       })
-      .filter(f => f.size && f.size > 0);
+      .filter((f) => f.size && f.size > 0);
 
     if (validFiles.length === 0) {
       return null;
@@ -61,7 +67,7 @@ async function getActualRecordingUri(createdAt: Date): Promise<string | null> {
 
     return null;
   } catch (e) {
-    console.error('[AudioRecorder] Error finding actual recording file:', e);
+    console.error("[AudioRecorder] Error finding actual recording file:", e);
     return null;
   }
 }
@@ -79,7 +85,7 @@ async function uriToBlob(uri: string): Promise<Blob> {
   // React Native doesn't support creating Blobs from binary data
   // Create a Blob-like object that has the methods we need
   const blobLike = {
-    type: 'audio/m4a',
+    type: "audio/m4a",
     size: size,
     arrayBuffer: async () => {
       // Convert base64 to ArrayBuffer
@@ -114,33 +120,36 @@ export function useAudioRecorder(config?: AudioCaptureConfig) {
   }, [config]);
 
   // Create stable recording options - only recreate if actual config values change
-  const recordingOptions: RecordingOptions = useMemo(() => ({
-    ...RecordingPresets.HIGH_QUALITY,
-    sampleRate: config?.sampleRate || 16000,
-    numberOfChannels: config?.numberOfChannels || 1,
-    bitRate: config?.bitRate || 128000,
-    extension: '.m4a',
-    isMeteringEnabled: !!config?.onAudioLevel, // Enable metering if callback provided
-    android: {
-      extension: '.m4a',
-      outputFormat: 'mpeg4',
-      audioEncoder: 'aac',
+  const recordingOptions: RecordingOptions = useMemo(
+    () => ({
+      ...RecordingPresets.HIGH_QUALITY,
       sampleRate: config?.sampleRate || 16000,
-      audioSource: 'voice_communication', // Enables echo cancellation, noise suppression, auto gain control
-    },
-    ios: {
-      extension: '.m4a',
-      audioQuality: 127, // High quality
-      sampleRate: config?.sampleRate || 16000,
-      linearPCMBitDepth: 16,
-      linearPCMIsBigEndian: false,
-      linearPCMIsFloat: false,
-    },
-    web: {
-      mimeType: 'audio/webm;codecs=opus',
-      bitsPerSecond: config?.bitRate || 128000,
-    },
-  }), [config?.sampleRate, config?.numberOfChannels, config?.bitRate, config?.onAudioLevel]);
+      numberOfChannels: config?.numberOfChannels || 1,
+      bitRate: config?.bitRate || 128000,
+      extension: ".m4a",
+      isMeteringEnabled: !!config?.onAudioLevel, // Enable metering if callback provided
+      android: {
+        extension: ".m4a",
+        outputFormat: "mpeg4",
+        audioEncoder: "aac",
+        sampleRate: config?.sampleRate || 16000,
+        audioSource: "voice_communication", // Enables echo cancellation, noise suppression, auto gain control
+      },
+      ios: {
+        extension: ".m4a",
+        audioQuality: 127, // High quality
+        sampleRate: config?.sampleRate || 16000,
+        linearPCMBitDepth: 16,
+        linearPCMIsBigEndian: false,
+        linearPCMIsFloat: false,
+      },
+      web: {
+        mimeType: "audio/webm;codecs=opus",
+        bitsPerSecond: config?.bitRate || 128000,
+      },
+    }),
+    [config?.sampleRate, config?.numberOfChannels, config?.bitRate, config?.onAudioLevel],
+  );
 
   const audioRecorder = useExpoAudioRecorder(recordingOptions);
   const recorderState = useAudioRecorderState(audioRecorder, 100);
@@ -176,7 +185,7 @@ export function useAudioRecorder(config?: AudioCaptureConfig) {
 
     // Use expo's isRecording as single source of truth
     if (recorder.isRecording) {
-      throw new Error('Already recording');
+      throw new Error("Already recording");
     }
 
     try {
@@ -188,7 +197,9 @@ export function useAudioRecorder(config?: AudioCaptureConfig) {
       attemptGuardRef.current.assertCurrent(attemptId);
 
       if (!permissionResponse.granted) {
-        throw new Error('Microphone permission denied. Please enable microphone access in your device settings.');
+        throw new Error(
+          "Microphone permission denied. Please enable microphone access in your device settings.",
+        );
       }
 
       // Configure audio mode for recording
@@ -208,14 +219,13 @@ export function useAudioRecorder(config?: AudioCaptureConfig) {
 
       await recorder.record();
       attemptGuardRef.current.assertCurrent(attemptId);
-
     } catch (error: any) {
       setRecordingStartTime(null);
       if (error instanceof AttemptCancelledError) {
         return;
       }
-      if (error?.message !== 'Recording cancelled') {
-        console.error('[AudioRecorder] Failed to start recording:', error);
+      if (error?.message !== "Recording cancelled") {
+        console.error("[AudioRecorder] Failed to start recording:", error);
       }
       throw new Error(`Failed to start audio recording: ${error.message}`);
     }
@@ -236,24 +246,26 @@ export function useAudioRecorder(config?: AudioCaptureConfig) {
         if (recorder.isRecording) {
           await recorder.stop();
         } else {
-          console.warn('[AudioRecorder] Recorder already stopped before stop() call, continuing cleanup.');
+          console.warn(
+            "[AudioRecorder] Recorder already stopped before stop() call, continuing cleanup.",
+          );
         }
 
         // Get URI from recorder
         let uri = recorder.uri;
 
         // Workaround for Expo SDK 54 Android bug - find actual recording file
-        if (recordingStartTime && (!uri || uri === '')) {
+        if (recordingStartTime && (!uri || uri === "")) {
           const actualUri = await getActualRecordingUri(recordingStartTime);
           if (actualUri) {
             uri = actualUri;
           }
         }
 
-        if (!uri || uri === '') {
+        if (!uri || uri === "") {
           // Cancellation / early stop: return an empty blob, but guarantee cleanup.
           setRecordingStartTime(null);
-          return new Blob([], { type: 'audio/m4a' });
+          return new Blob([], { type: "audio/m4a" });
         }
 
         // Get file info
@@ -262,7 +274,7 @@ export function useAudioRecorder(config?: AudioCaptureConfig) {
 
         if (!exists) {
           setRecordingStartTime(null);
-          return new Blob([], { type: 'audio/m4a' });
+          return new Blob([], { type: "audio/m4a" });
         }
 
         // Convert URI to Blob
@@ -280,7 +292,7 @@ export function useAudioRecorder(config?: AudioCaptureConfig) {
       return await stopPromise;
     } catch (error: any) {
       setRecordingStartTime(null);
-      console.error('[AudioRecorder] Failed to stop recording:', error);
+      console.error("[AudioRecorder] Failed to stop recording:", error);
       throw new Error(`Failed to stop audio recording: ${error.message}`);
     } finally {
       startStopMutexRef.current = null;
@@ -290,7 +302,7 @@ export function useAudioRecorder(config?: AudioCaptureConfig) {
   const getSupportedMimeType = useCallback((): string | null => {
     // On native platforms, expo-audio uses m4a/AAC
     // On web, it can use webm/opus
-    return 'audio/m4a';
+    return "audio/m4a";
   }, []);
 
   const isRecording = useCallback(() => {
@@ -298,10 +310,13 @@ export function useAudioRecorder(config?: AudioCaptureConfig) {
   }, [recorderState.isRecording]);
 
   // Return stable object using useMemo
-  return useMemo(() => ({
-    start,
-    stop,
-    isRecording,
-    getSupportedMimeType,
-  }), [start, stop, isRecording, getSupportedMimeType]);
+  return useMemo(
+    () => ({
+      start,
+      stop,
+      isRecording,
+      getSupportedMimeType,
+    }),
+    [start, stop, isRecording, getSupportedMimeType],
+  );
 }

@@ -1,8 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  getWorkingIndicatorDotStrength,
-  WORKING_INDICATOR_OFFSETS,
-} from "./working-indicator";
+import { getWorkingIndicatorDotStrength, WORKING_INDICATOR_OFFSETS } from "./working-indicator";
 
 describe("getWorkingIndicatorDotStrength", () => {
   it("returns a stable triangular pulse over one cycle", () => {
@@ -16,7 +13,7 @@ describe("getWorkingIndicatorDotStrength", () => {
 
   it("keeps the dots phase-shifted instead of identical", () => {
     const strengths = WORKING_INDICATOR_OFFSETS.map((offset) =>
-      getWorkingIndicatorDotStrength(0, offset)
+      getWorkingIndicatorDotStrength(0, offset),
     );
 
     expect(strengths).toEqual([0, 0.26666666666666666, 0.5333333333333333]);
@@ -24,10 +21,10 @@ describe("getWorkingIndicatorDotStrength", () => {
 
   it("wraps progress cleanly across loop boundaries", () => {
     expect(getWorkingIndicatorDotStrength(1.1, 0)).toBeCloseTo(
-      getWorkingIndicatorDotStrength(0.1, 0)
+      getWorkingIndicatorDotStrength(0.1, 0),
     );
     expect(getWorkingIndicatorDotStrength(-0.1, 0)).toBeCloseTo(
-      getWorkingIndicatorDotStrength(0.9, 0)
+      getWorkingIndicatorDotStrength(0.9, 0),
     );
   });
 });

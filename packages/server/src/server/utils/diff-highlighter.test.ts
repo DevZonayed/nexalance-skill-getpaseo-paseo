@@ -304,17 +304,13 @@ describe("highlightDiffFromHunks", () => {
     const hunk = highlighted.hunks[0];
 
     // Removed line: "const bar = 2;"
-    const removedLine = hunk.lines.find(
-      (l) => l.type === "remove" && l.content.includes("bar")
-    );
+    const removedLine = hunk.lines.find((l) => l.type === "remove" && l.content.includes("bar"));
     expect(removedLine?.tokens).toBeDefined();
     const removedNumber = removedLine!.tokens!.find((t) => t.text === "2");
     expect(removedNumber?.style).toBe("number");
 
     // Added line: "const bar = 3;"
-    const addedLine = hunk.lines.find(
-      (l) => l.type === "add" && l.content.includes("bar")
-    );
+    const addedLine = hunk.lines.find((l) => l.type === "add" && l.content.includes("bar"));
     expect(addedLine?.tokens).toBeDefined();
     const addedNumber = addedLine!.tokens!.find((t) => t.text === "3");
     expect(addedNumber?.style).toBe("number");
@@ -359,12 +355,10 @@ describe("highlightDiffFromHunks", () => {
     expect(fnLine.tokens!.some((t) => t.text === "fn" && t.style === "keyword")).toBe(true);
 
     const addedLine = hunk.lines.find(
-      (line) => line.type === "add" && line.content.includes("version")
+      (line) => line.type === "add" && line.content.includes("version"),
     );
     expect(addedLine?.tokens).toBeDefined();
-    expect(
-      addedLine!.tokens!.some((t) => t.text === "2" && t.style === "number")
-    ).toBe(true);
+    expect(addedLine!.tokens!.some((t) => t.text === "2" && t.style === "number")).toBe(true);
   });
 
   it("adds syntax highlighting tokens to C code", () => {
@@ -377,12 +371,10 @@ describe("highlightDiffFromHunks", () => {
     expect(mainLine.tokens!.length).toBeGreaterThan(0);
 
     const addedLine = hunk.lines.find(
-      (line) => line.type === "add" && line.content.includes("version")
+      (line) => line.type === "add" && line.content.includes("version"),
     );
     expect(addedLine?.tokens).toBeDefined();
-    expect(
-      addedLine!.tokens!.some((t) => t.text === "2" && t.style === "number")
-    ).toBe(true);
+    expect(addedLine!.tokens!.some((t) => t.text === "2" && t.style === "number")).toBe(true);
   });
 
   it("adds syntax highlighting tokens to Java code", () => {
@@ -392,17 +384,13 @@ describe("highlightDiffFromHunks", () => {
 
     const classLine = hunk.lines[1];
     expect(classLine.tokens).toBeDefined();
-    expect(
-      classLine.tokens!.some((t) => t.text === "public" && t.style === "keyword")
-    ).toBe(true);
+    expect(classLine.tokens!.some((t) => t.text === "public" && t.style === "keyword")).toBe(true);
 
     const addedLine = hunk.lines.find(
-      (line) => line.type === "add" && line.content.includes("version")
+      (line) => line.type === "add" && line.content.includes("version"),
     );
     expect(addedLine?.tokens).toBeDefined();
-    expect(
-      addedLine!.tokens!.some((t) => t.text === "2" && t.style === "number")
-    ).toBe(true);
+    expect(addedLine!.tokens!.some((t) => t.text === "2" && t.style === "number")).toBe(true);
   });
 
   it("adds syntax highlighting tokens to Objective-C file extensions", () => {
@@ -411,45 +399,39 @@ describe("highlightDiffFromHunks", () => {
     const hunk = highlighted.hunks[0];
 
     const addedLine = hunk.lines.find(
-      (line) => line.type === "add" && line.content.includes("version")
+      (line) => line.type === "add" && line.content.includes("version"),
     );
     expect(addedLine?.tokens).toBeDefined();
-    expect(
-      addedLine!.tokens!.some((t) => t.text === "2" && t.style === "number")
-    ).toBe(true);
+    expect(addedLine!.tokens!.some((t) => t.text === "2" && t.style === "number")).toBe(true);
   });
 
   it("adds syntax highlighting tokens to Go code", () => {
     const files = parseDiff(GO_DIFF);
     const highlighted = highlightDiffFromHunks(files[0]);
     const addedLine = highlighted.hunks[0].lines.find(
-      (line) => line.type === "add" && line.content.includes("version")
+      (line) => line.type === "add" && line.content.includes("version"),
     );
 
     expect(addedLine?.tokens).toBeDefined();
-    expect(
-      addedLine!.tokens!.some((t) => t.text === "2" && t.style === "number")
-    ).toBe(true);
+    expect(addedLine!.tokens!.some((t) => t.text === "2" && t.style === "number")).toBe(true);
   });
 
   it("adds syntax highlighting tokens to PHP code", () => {
     const files = parseDiff(PHP_DIFF);
     const highlighted = highlightDiffFromHunks(files[0]);
     const addedLine = highlighted.hunks[0].lines.find(
-      (line) => line.type === "add" && line.content.includes("$version")
+      (line) => line.type === "add" && line.content.includes("$version"),
     );
 
     expect(addedLine?.tokens).toBeDefined();
-    expect(
-      addedLine!.tokens!.some((t) => t.text === "2" && t.style === "number")
-    ).toBe(true);
+    expect(addedLine!.tokens!.some((t) => t.text === "2" && t.style === "number")).toBe(true);
   });
 
   it("adds syntax highlighting tokens to YAML code", () => {
     const files = parseDiff(YAML_DIFF);
     const highlighted = highlightDiffFromHunks(files[0]);
     const addedLine = highlighted.hunks[0].lines.find(
-      (line) => line.type === "add" && line.content.includes("count")
+      (line) => line.type === "add" && line.content.includes("count"),
     );
 
     expect(addedLine?.tokens).toBeDefined();
@@ -460,7 +442,7 @@ describe("highlightDiffFromHunks", () => {
     const files = parseDiff(XML_DIFF);
     const highlighted = highlightDiffFromHunks(files[0]);
     const addedLine = highlighted.hunks[0].lines.find(
-      (line) => line.type === "add" && line.content.includes("<count>")
+      (line) => line.type === "add" && line.content.includes("<count>"),
     );
 
     expect(addedLine?.tokens).toBeDefined();

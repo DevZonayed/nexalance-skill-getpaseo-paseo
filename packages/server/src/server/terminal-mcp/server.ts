@@ -12,7 +12,7 @@ export interface TerminalMcpServerOptions {
  * Multiple instances can run independently with different session names
  */
 export async function createTerminalMcpServer(
-  options: TerminalMcpServerOptions
+  options: TerminalMcpServerOptions,
 ): Promise<McpServer> {
   const { sessionName } = options;
   const terminalManager = new TerminalManager(sessionName);
@@ -90,7 +90,7 @@ export async function createTerminalMcpServer(
             isDead: z.boolean(),
             exitCode: z.number().nullable(),
             lastLines: z.string().nullable(),
-          })
+          }),
         ),
       },
     },
@@ -101,7 +101,7 @@ export async function createTerminalMcpServer(
         content: [],
         structuredContent: ensureValidJson(output),
       };
-    }
+    },
   );
 
   // Tool: capture_command
@@ -115,12 +115,9 @@ export async function createTerminalMcpServer(
         commandId: z
           .string()
           .describe(
-            "Command ID (window ID like @123) returned from execute_command or list_commands"
+            "Command ID (window ID like @123) returned from execute_command or list_commands",
           ),
-        lines: z
-          .number()
-          .optional()
-          .describe("Number of lines to capture (default: 200)"),
+        lines: z.number().optional().describe("Number of lines to capture (default: 200)"),
       },
       outputSchema: {
         output: z.string(),
@@ -134,7 +131,7 @@ export async function createTerminalMcpServer(
         content: [],
         structuredContent: ensureValidJson(result),
       };
-    }
+    },
   );
 
   // Tool: send_text_to_command
@@ -147,9 +144,7 @@ export async function createTerminalMcpServer(
       inputSchema: {
         commandId: z
           .string()
-          .describe(
-            "Command ID (window ID like @123) from execute_command or list_commands"
-          ),
+          .describe("Command ID (window ID like @123) from execute_command or list_commands"),
         text: z.string().describe("Text to send to the command"),
         pressEnter: z
           .boolean()
@@ -157,22 +152,15 @@ export async function createTerminalMcpServer(
           .describe("Press Enter after typing text (default: false)"),
         return_output: z
           .object({
-            lines: z
-              .number()
-              .optional()
-              .describe("Number of lines to capture (default: 200)"),
+            lines: z.number().optional().describe("Number of lines to capture (default: 200)"),
             waitForSettled: z
               .boolean()
               .optional()
-              .describe(
-                "Wait for output to stabilize before returning (default: true)"
-              ),
+              .describe("Wait for output to stabilize before returning (default: true)"),
             maxWait: z
               .number()
               .optional()
-              .describe(
-                "Maximum milliseconds to wait for stability (default: 120000)"
-              ),
+              .describe("Maximum milliseconds to wait for stability (default: 120000)"),
           })
           .optional()
           .describe("Capture output after sending text"),
@@ -186,14 +174,14 @@ export async function createTerminalMcpServer(
         commandId,
         text,
         pressEnter,
-        return_output
+        return_output,
       );
       const result = { output: output || null };
       return {
         content: [],
         structuredContent: ensureValidJson(result),
       };
-    }
+    },
   );
 
   // Tool: send_keys_to_command
@@ -204,14 +192,10 @@ export async function createTerminalMcpServer(
       description:
         "Send special keys or key combinations to a running command. Use for control sequences and navigation. Examples: 'C-c' (Ctrl+C), 'Enter', 'Escape', 'BTab' (Shift+Tab). Only works if command is still running.",
       inputSchema: {
-        commandId: z
-          .string()
-          .describe("Command ID (window ID like @123)"),
+        commandId: z.string().describe("Command ID (window ID like @123)"),
         keys: z
           .string()
-          .describe(
-            "Special key or combination: 'C-c', 'Enter', 'Escape', 'BTab', etc."
-          ),
+          .describe("Special key or combination: 'C-c', 'Enter', 'Escape', 'BTab', etc."),
         repeat: z
           .number()
           .optional()
@@ -234,14 +218,14 @@ export async function createTerminalMcpServer(
         commandId,
         keys,
         repeat,
-        return_output
+        return_output,
       );
       const result = { output: output || null };
       return {
         content: [],
         structuredContent: ensureValidJson(result),
       };
-    }
+    },
   );
 
   // Tool: kill_command
@@ -256,7 +240,7 @@ export async function createTerminalMcpServer(
           .array(z.string())
           .min(1)
           .describe(
-            "Array of command IDs (window IDs like @123) from execute_command or list_commands. Can be a single ID or multiple IDs."
+            "Array of command IDs (window IDs like @123) from execute_command or list_commands. Can be a single ID or multiple IDs.",
           ),
       },
       outputSchema: {
@@ -275,7 +259,7 @@ export async function createTerminalMcpServer(
         content: [],
         structuredContent: ensureValidJson(output),
       };
-    }
+    },
   );
 
   return server;

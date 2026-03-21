@@ -1,18 +1,18 @@
-import { Link, createFileRoute } from '@tanstack/react-router'
-import ReactMarkdown from 'react-markdown'
-import changelogMarkdown from '../../../../CHANGELOG.md?raw'
-import { pageMeta } from '~/meta'
-import '~/styles.css'
+import { Link, createFileRoute } from "@tanstack/react-router";
+import ReactMarkdown from "react-markdown";
+import changelogMarkdown from "../../../../CHANGELOG.md?raw";
+import { pageMeta } from "~/meta";
+import "~/styles.css";
 
-export const Route = createFileRoute('/changelog')({
+export const Route = createFileRoute("/changelog")({
   head: () => ({
     meta: pageMeta(
-      'Changelog - Paseo',
-      'Product updates, fixes, and improvements shipped in each Paseo release.',
+      "Changelog - Paseo",
+      "Product updates, fixes, and improvements shipped in each Paseo release.",
     ),
   }),
   component: Changelog,
-})
+});
 
 function Changelog() {
   return (
@@ -73,5 +73,5 @@ function Changelog() {
         </article>
       </div>
     </div>
-  )
+  );
 }

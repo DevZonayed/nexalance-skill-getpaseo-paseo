@@ -60,8 +60,17 @@ export function AddHostMethodModal({
   }, [onPasteLink]);
 
   return (
-    <AdaptiveModalSheet title="Add connection" visible={visible} onClose={onClose} testID="add-host-method-modal">
-      <Pressable style={styles.option} onPress={handleDirect} accessibilityLabel="Direct connection">
+    <AdaptiveModalSheet
+      title="Add connection"
+      visible={visible}
+      onClose={onClose}
+      testID="add-host-method-modal"
+    >
+      <Pressable
+        style={styles.option}
+        onPress={handleDirect}
+        accessibilityLabel="Direct connection"
+      >
         <Link2 size={18} color={theme.colors.foreground} />
         <View style={styles.optionBody}>
           <Text style={styles.optionText}>Direct connection</Text>
@@ -79,7 +88,11 @@ export function AddHostMethodModal({
         </Pressable>
       ) : null}
 
-      <Pressable style={styles.option} onPress={handlePaste} accessibilityLabel="Paste pairing link">
+      <Pressable
+        style={styles.option}
+        onPress={handlePaste}
+        accessibilityLabel="Paste pairing link"
+      >
         <ClipboardPaste size={18} color={theme.colors.foreground} />
         <View style={styles.optionBody}>
           <Text style={styles.optionText}>Paste pairing link</Text>

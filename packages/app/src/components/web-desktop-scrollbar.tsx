@@ -29,10 +29,7 @@ const HANDLE_SCROLL_ACTIVE_MS = 110;
 
 function readClientY(event: any): number | null {
   const value =
-    event?.nativeEvent?.clientY ??
-    event?.clientY ??
-    event?.nativeEvent?.pageY ??
-    event?.pageY;
+    event?.nativeEvent?.clientY ?? event?.clientY ?? event?.nativeEvent?.pageY ?? event?.pageY;
   return typeof value === "number" ? value : null;
 }
 
@@ -74,19 +71,16 @@ export function useWebDesktopScrollbarMetrics() {
         contentSize: Math.max(0, contentSize.height),
       });
     },
-    [setMetricsIfChanged]
+    [setMetricsIfChanged],
   );
 
-  const onLayout = useCallback(
-    (event: LayoutChangeEvent) => {
-      const viewportSize = Math.max(0, event.nativeEvent.layout.height);
-      setMetrics((previous) => {
-        const next = { ...previous, viewportSize };
-        return areMetricsEqual(previous, next) ? previous : next;
-      });
-    },
-    []
-  );
+  const onLayout = useCallback((event: LayoutChangeEvent) => {
+    const viewportSize = Math.max(0, event.nativeEvent.layout.height);
+    setMetrics((previous) => {
+      const next = { ...previous, viewportSize };
+      return areMetricsEqual(previous, next) ? previous : next;
+    });
+  }, []);
 
   const onContentSizeChange = useCallback((_width: number, height: number) => {
     const contentSize = Math.max(0, height);
@@ -156,7 +150,7 @@ export function WebDesktopScrollbarOverlay({
         contentSize: metrics.contentSize,
         offset: normalizedOffset,
       }),
-    [metrics.contentSize, metrics.viewportSize, normalizedOffset]
+    [metrics.contentSize, metrics.viewportSize, normalizedOffset],
   );
 
   useEffect(() => {
@@ -243,7 +237,7 @@ export function WebDesktopScrollbarOverlay({
       clearScrollActiveTimeout();
       clearScrollVisibilityTimeout();
     },
-    [clearScrollActiveTimeout, clearScrollVisibilityTimeout]
+    [clearScrollActiveTimeout, clearScrollVisibilityTimeout],
   );
 
   const applyDragDelta = useCallback(
@@ -260,7 +254,7 @@ export function WebDesktopScrollbarOverlay({
         : nextNormalizedOffset;
       onScrollToOffsetRef.current(nextOffset);
     },
-    [inverted]
+    [inverted],
   );
 
   const panResponder = useMemo(() => {
@@ -304,7 +298,7 @@ export function WebDesktopScrollbarOverlay({
       dragStartClientYRef.current = clientY;
       setIsDragging(true);
     },
-    [isWeb]
+    [isWeb],
   );
 
   const handleGrabHoverIn = useCallback(() => {
@@ -357,16 +351,14 @@ export function WebDesktopScrollbarOverlay({
         : 0;
   const handleWidth = isDragging || isHandleHovered ? HANDLE_WIDTH_ACTIVE : HANDLE_WIDTH_IDLE;
   const isDark = theme.colors.surface0 === "#18181c";
-  const handleColor = isDark
-    ? theme.colors.palette.zinc[500]
-    : theme.colors.palette.zinc[700];
+  const handleColor = isDark ? theme.colors.palette.zinc[500] : theme.colors.palette.zinc[700];
   const handleCursor = isDragging ? "grabbing" : "grab";
   const handleTravelDurationMs =
     isDragging || isScrollActive ? 0 : HANDLE_TRAVEL_TRANSITION_DURATION_MS;
   const thumbRegionOffset = Math.max(0, geometry.handleOffset - HANDLE_GRAB_VERTICAL_PADDING);
   const thumbRegionHeight = Math.min(
     metrics.viewportSize - thumbRegionOffset,
-    geometry.handleSize + HANDLE_GRAB_VERTICAL_PADDING * 2
+    geometry.handleSize + HANDLE_GRAB_VERTICAL_PADDING * 2,
   );
   const handleInsetTop = Math.max(0, (thumbRegionHeight - geometry.handleSize) / 2);
 
@@ -416,8 +408,7 @@ export function WebDesktopScrollbarOverlay({
               ({
                 transitionProperty: "opacity, width, background-color",
                 transitionDuration: `${HANDLE_FADE_DURATION_MS}ms, ${HANDLE_WIDTH_TRANSITION_DURATION_MS}ms, ${HANDLE_FADE_DURATION_MS}ms`,
-                transitionTimingFunction:
-                  "ease-out, cubic-bezier(0.22, 0.75, 0.2, 1), ease-out",
+                transitionTimingFunction: "ease-out, cubic-bezier(0.22, 0.75, 0.2, 1), ease-out",
               } as any),
           ]}
           pointerEvents="none"

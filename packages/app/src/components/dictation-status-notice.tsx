@@ -1,6 +1,14 @@
 import { View, Text, Pressable } from "react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
-import { AlertTriangle, CheckCircle2, Info, RefreshCcw, RotateCcw, WifiOff, X } from "lucide-react-native";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  Info,
+  RefreshCcw,
+  RotateCcw,
+  WifiOff,
+  X,
+} from "lucide-react-native";
 
 export type DictationToastVariant = "info" | "success" | "warning" | "error";
 
@@ -53,7 +61,8 @@ export function DictationStatusNotice({
   })();
 
   const foregroundColor = variant === "info" ? theme.colors.foreground : theme.colors.palette.white;
-  const secondaryColor = variant === "info" ? theme.colors.foregroundMuted : theme.colors.palette.white;
+  const secondaryColor =
+    variant === "info" ? theme.colors.foregroundMuted : theme.colors.palette.white;
 
   return (
     <View
@@ -83,11 +92,7 @@ export function DictationStatusNotice({
 
       {(meta || (actionLabel && onAction)) && (
         <View style={styles.actionsRow}>
-          {meta ? (
-            <Text style={[styles.meta, { color: secondaryColor }]}>{meta}</Text>
-          ) : (
-            <View />
-          )}
+          {meta ? <Text style={[styles.meta, { color: secondaryColor }]}>{meta}</Text> : <View />}
           {actionLabel && onAction ? (
             <Pressable
               style={[

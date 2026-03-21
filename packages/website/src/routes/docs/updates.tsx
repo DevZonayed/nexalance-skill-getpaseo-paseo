@@ -1,15 +1,15 @@
-import { createFileRoute } from '@tanstack/react-router'
-import { pageMeta } from '~/meta'
+import { createFileRoute } from "@tanstack/react-router";
+import { pageMeta } from "~/meta";
 
-export const Route = createFileRoute('/docs/updates')({
+export const Route = createFileRoute("/docs/updates")({
   head: () => ({
     meta: pageMeta(
-      'Updates - Paseo Docs',
-      'How to update Paseo daemon and apps across web, desktop, and mobile.',
+      "Updates - Paseo Docs",
+      "How to update Paseo daemon and apps across web, desktop, and mobile.",
     ),
   }),
   component: UpdatesDocs,
-})
+});
 
 function UpdatesDocs() {
   return (
@@ -53,7 +53,7 @@ function UpdatesDocs() {
             className="underline hover:text-white/80"
           >
             app.paseo.sh
-          </a>{' '}
+          </a>{" "}
           is always up to date. No manual update needed.
         </p>
       </section>
@@ -82,5 +82,5 @@ function UpdatesDocs() {
         </p>
       </section>
     </div>
-  )
+  );
 }

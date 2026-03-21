@@ -10,19 +10,11 @@ const OPTIONS = ["alpha", "beta", "gamma"];
 
 describe("orderAutocompleteOptions", () => {
   it("keeps first logical option closest to the input by default", () => {
-    expect(orderAutocompleteOptions(OPTIONS)).toEqual([
-      "gamma",
-      "beta",
-      "alpha",
-    ]);
+    expect(orderAutocompleteOptions(OPTIONS)).toEqual(["gamma", "beta", "alpha"]);
   });
 
   it("keeps normal top-down order when below-input is selected", () => {
-    expect(orderAutocompleteOptions(OPTIONS, "below-input")).toEqual([
-      "alpha",
-      "beta",
-      "gamma",
-    ]);
+    expect(orderAutocompleteOptions(OPTIONS, "below-input")).toEqual(["alpha", "beta", "gamma"]);
   });
 });
 
@@ -45,7 +37,7 @@ describe("getAutocompleteScrollOffset", () => {
         viewportHeight: 80,
         itemTop: 90,
         itemHeight: 20,
-      })
+      }),
     ).toBe(90);
   });
 
@@ -56,7 +48,7 @@ describe("getAutocompleteScrollOffset", () => {
         viewportHeight: 100,
         itemTop: 150,
         itemHeight: 24,
-      })
+      }),
     ).toBe(74);
   });
 });

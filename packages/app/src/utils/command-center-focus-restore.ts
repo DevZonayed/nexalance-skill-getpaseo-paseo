@@ -13,4 +13,3 @@ export function takeCommandCenterFocusRestoreElement(): HTMLElement | null {
 export function clearCommandCenterFocusRestoreElement(): void {
   focusRestoreElement = null;
 }
-

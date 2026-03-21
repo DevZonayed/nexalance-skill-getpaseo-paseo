@@ -52,7 +52,7 @@ describe("daemon E2E (real claude) - autonomous wake simple", () => {
             "Do not wait for the task result.",
             "Reply immediately with exactly: SPAWNED",
             `When the background task completes later, reply with exactly: ${autonomousWakeToken}`,
-          ].join(" ")
+          ].join(" "),
         );
 
         const firstFinish = await client.waitForFinish(agent.id, 240_000);
@@ -65,25 +65,25 @@ describe("daemon E2E (real claude) - autonomous wake simple", () => {
         });
         const idleAssistantText = timelineAtIdle.entries
           .filter(
-            (entry): entry is typeof entry & {
+            (
+              entry,
+            ): entry is typeof entry & {
               item: { type: "assistant_message"; text: string };
-            } => entry.item.type === "assistant_message"
+            } => entry.item.type === "assistant_message",
           )
           .map((entry) => entry.item.text)
           .join("\n");
         expect(compactText(idleAssistantText)).toContain("spawned");
         expect(
           timelineAtIdle.entries.some(
-            (entry) =>
-              entry.item.type === "tool_call" &&
-              entry.item.name === "Bash"
-          )
+            (entry) => entry.item.type === "tool_call" && entry.item.name === "Bash",
+          ),
         ).toBe(true);
 
         await client.waitForAgentUpsert(
           agent.id,
           (snapshot) => snapshot.status === "running",
-          30_000
+          30_000,
         );
 
         const autonomousFinish = await client.waitForFinish(agent.id, 120_000);
@@ -96,21 +96,21 @@ describe("daemon E2E (real claude) - autonomous wake simple", () => {
         });
         const finalAssistantText = finalTimeline.entries
           .filter(
-            (entry): entry is typeof entry & {
+            (
+              entry,
+            ): entry is typeof entry & {
               item: { type: "assistant_message"; text: string };
-            } => entry.item.type === "assistant_message"
+            } => entry.item.type === "assistant_message",
           )
           .map((entry) => entry.item.text)
           .join("\n");
-        expect(compactText(finalAssistantText)).toContain(
-          autonomousWakeToken.toLowerCase()
-        );
+        expect(compactText(finalAssistantText)).toContain(autonomousWakeToken.toLowerCase());
       } finally {
         await client.close().catch(() => undefined);
         await daemon.close().catch(() => undefined);
         rmSync(cwd, { recursive: true, force: true });
       }
     },
-    420_000
+    420_000,
   );
 });

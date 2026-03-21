@@ -1,14 +1,8 @@
 import { z } from "zod";
 
 import type { ToolCallTimelineItem } from "../../agent-sdk-types.js";
-import {
-  extractCodexShellOutput,
-  truncateDiffText,
-} from "../tool-call-mapper-utils.js";
-import {
-  deriveCodexToolDetail,
-  normalizeCodexFilePath,
-} from "./tool-call-detail-parser.js";
+import { extractCodexShellOutput, truncateDiffText } from "../tool-call-mapper-utils.js";
+import { deriveCodexToolDetail, normalizeCodexFilePath } from "./tool-call-detail-parser.js";
 
 type CodexMapperOptions = { cwd?: string | null };
 
@@ -17,12 +11,7 @@ const CANCELED_STATUSES = new Set(["canceled", "cancelled", "interrupted", "abor
 const COMPLETED_STATUSES = new Set(["completed", "complete", "done", "success", "succeeded"]);
 const CodexCommandValueSchema = z.union([z.string(), z.array(z.string())]);
 
-const CodexToolCallStatusSchema = z.enum([
-  "running",
-  "completed",
-  "failed",
-  "canceled",
-]);
+const CodexToolCallStatusSchema = z.enum(["running", "completed", "failed", "canceled"]);
 
 const CodexRolloutToolCallParamsSchema = z
   .object({
@@ -80,7 +69,15 @@ const CodexEditToolNameSchema = z.union([
 const CodexSearchToolNameSchema = z.union([z.literal("search"), z.literal("web_search")]);
 const CodexSpeakToolNameSchema = z.literal("paseo.speak");
 
-const CodexToolKindSchema = z.enum(["shell", "read", "write", "edit", "search", "speak", "unknown"]);
+const CodexToolKindSchema = z.enum([
+  "shell",
+  "read",
+  "write",
+  "edit",
+  "search",
+  "speak",
+  "unknown",
+]);
 
 const CodexToolCallPass2BaseSchema = CodexNormalizedToolCallPass1Schema.extend({
   toolKind: CodexToolKindSchema,
@@ -247,9 +244,7 @@ const CodexThreadItemSchema = z.discriminatedUnion("type", [
 
 function maybeUnwrapShellWrapperCommand(command: string): string {
   const trimmed = command.trim();
-  const wrapperMatch = trimmed.match(
-    /^(?:\/bin\/)?(?:zsh|bash|sh)\s+-(?:lc|c)\s+([\s\S]+)$/
-  );
+  const wrapperMatch = trimmed.match(/^(?:\/bin\/)?(?:zsh|bash|sh)\s+-(?:lc|c)\s+([\s\S]+)$/);
   if (!wrapperMatch) {
     return trimmed;
   }
@@ -407,7 +402,7 @@ function codexApplyPatchToUnifiedDiff(text: string): string {
 }
 
 function classifyDiffLikeText(
-  text: string
+  text: string,
 ): { isDiff: true; text: string } | { isDiff: false; text: string } {
   if (looksLikeUnifiedDiff(text)) {
     return { isDiff: true, text };
@@ -418,9 +413,7 @@ function classifyDiffLikeText(
   return { isDiff: false, text };
 }
 
-function asEditTextFields(
-  text: string | undefined
-): { unifiedDiff?: string; newString?: string } {
+function asEditTextFields(text: string | undefined): { unifiedDiff?: string; newString?: string } {
   if (typeof text !== "string" || text.length === 0) {
     return {};
   }
@@ -489,9 +482,7 @@ function normalizeRolloutEditInput(input: unknown): unknown {
   return normalized;
 }
 
-function asEditFileOutputFields(
-  text: string | undefined
-): { patch?: string; content?: string } {
+function asEditFileOutputFields(text: string | undefined): { patch?: string; content?: string } {
   if (typeof text !== "string" || text.length === 0) {
     return {};
   }
@@ -525,7 +516,7 @@ function hasRenderableEditDetail(detail: ToolCallTimelineItem["detail"]): boolea
 function resolveStatus(
   rawStatus: string | undefined,
   error: unknown,
-  output: unknown
+  output: unknown,
 ): ToolCallTimelineItem["status"] {
   if (error !== undefined && error !== null) {
     return "failed";
@@ -569,7 +560,7 @@ function toNullableObject(value: Record<string, unknown>): Record<string, unknow
 }
 
 function toToolCallFromNormalizedEnvelope(
-  envelope: CodexNormalizedToolCallEnvelope
+  envelope: CodexNormalizedToolCallEnvelope,
 ): ToolCallTimelineItem | null {
   const pass2Envelope = CodexToolCallPass2EnvelopeSchema.safeParse(envelope);
   if (!pass2Envelope.success) {
@@ -583,7 +574,7 @@ function toToolCallFromNormalizedEnvelope(
 }
 
 function mapCommandExecutionItem(
-  item: z.infer<typeof CodexCommandExecutionItemSchema>
+  item: z.infer<typeof CodexCommandExecutionItemSchema>,
 ): CodexNormalizedToolCallEnvelope {
   const command = normalizeCommandExecutionCommand(item.command);
   const parsedOutput = extractCodexShellOutput(item.aggregatedOutput);
@@ -625,7 +616,7 @@ type CodexFileChangeEntry = {
 function parseFileChangePath(
   entry: Record<string, unknown>,
   options?: CodexMapperOptions,
-  fallbackPath?: string
+  fallbackPath?: string,
 ): string | undefined {
   const rawPath =
     (typeof entry.path === "string" && entry.path.trim().length > 0
@@ -668,7 +659,7 @@ function parseFileChangeDiff(entry: Record<string, unknown>): string | undefined
 function toFileChangeEntry(
   entry: Record<string, unknown>,
   options?: CodexMapperOptions,
-  fallbackPath?: string
+  fallbackPath?: string,
 ): CodexFileChangeEntry | null {
   const path = parseFileChangePath(entry, options, fallbackPath);
   if (!path) {
@@ -683,7 +674,7 @@ function toFileChangeEntry(
 
 function parseFileChangeEntries(
   changes: unknown,
-  options?: CodexMapperOptions
+  options?: CodexMapperOptions,
 ): CodexFileChangeEntry[] {
   if (!changes) {
     return [];
@@ -691,9 +682,7 @@ function parseFileChangeEntries(
 
   if (Array.isArray(changes)) {
     return changes
-      .map((entry) =>
-        isRecord(entry) ? toFileChangeEntry(entry, options) : null
-      )
+      .map((entry) => (isRecord(entry) ? toFileChangeEntry(entry, options) : null))
       .filter((entry): entry is CodexFileChangeEntry => entry !== null);
   }
 
@@ -729,7 +718,7 @@ function parseFileChangeEntries(
 
 function mapFileChangeItem(
   item: z.infer<typeof CodexFileChangeItemSchema>,
-  options?: CodexMapperOptions
+  options?: CodexMapperOptions,
 ): CodexNormalizedToolCallEnvelope {
   const files = parseFileChangeEntries(item.changes, options);
 
@@ -786,7 +775,7 @@ function mapFileChangeItem(
 
 function mapMcpToolCallItem(
   item: z.infer<typeof CodexMcpToolCallItemSchema>,
-  options?: CodexMapperOptions
+  options?: CodexMapperOptions,
 ): CodexNormalizedToolCallEnvelope | null {
   const tool = item.tool.trim();
   if (!tool) {
@@ -810,7 +799,7 @@ function mapMcpToolCallItem(
 }
 
 function mapWebSearchItem(
-  item: z.infer<typeof CodexWebSearchItemSchema>
+  item: z.infer<typeof CodexWebSearchItemSchema>,
 ): CodexNormalizedToolCallEnvelope {
   const input = item.query !== undefined ? { query: item.query } : null;
   const output = item.action ?? null;
@@ -831,7 +820,7 @@ function mapWebSearchItem(
 
 function mapThreadItemToNormalizedEnvelope(
   item: z.infer<typeof CodexThreadItemSchema>,
-  options?: CodexMapperOptions
+  options?: CodexMapperOptions,
 ): CodexNormalizedToolCallEnvelope | null {
   switch (item.type) {
     case "commandExecution":
@@ -855,7 +844,7 @@ function mapThreadItemToNormalizedEnvelope(
 
 export function mapCodexToolCallFromThreadItem(
   item: unknown,
-  options?: CodexMapperOptions
+  options?: CodexMapperOptions,
 ): ToolCallTimelineItem | null {
   const parsed = CodexThreadItemSchema.safeParse(item);
   if (!parsed.success) {
@@ -885,11 +874,10 @@ export function mapCodexRolloutToolCall(params: {
   const normalizedInput =
     normalizedName === "apply_patch" || normalizedName === "apply_diff"
       ? normalizeRolloutEditInput(parsed.data.input ?? null)
-      : parsed.data.input ?? null;
+      : (parsed.data.input ?? null);
 
   const pass1 = CodexNormalizedToolCallPass1Schema.safeParse({
-    callId:
-      typeof parsed.data.callId === "string" ? parsed.data.callId.trim() : "",
+    callId: typeof parsed.data.callId === "string" ? parsed.data.callId.trim() : "",
     name: normalizedName,
     input: normalizedInput,
     output: parsed.data.output ?? null,

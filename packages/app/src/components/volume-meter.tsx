@@ -33,10 +33,8 @@ export function VolumeMeter({
   // Base dimensions
   const LINE_SPACING = isCompact ? 6 : 8;
   const LINE_WIDTH = isCompact ? 6 : 8;
-  const MAX_HEIGHT =
-    orientation === "horizontal" ? (isCompact ? 18 : 30) : isCompact ? 32 : 50;
-  const MIN_HEIGHT =
-    orientation === "horizontal" ? (isCompact ? 8 : 12) : isCompact ? 14 : 20;
+  const MAX_HEIGHT = orientation === "horizontal" ? (isCompact ? 18 : 30) : isCompact ? 32 : 50;
+  const MIN_HEIGHT = orientation === "horizontal" ? (isCompact ? 8 : 12) : isCompact ? 14 : 20;
 
   // Create shared values for 3 dots unconditionally
   const animatedVolume = useSharedValue(0);
@@ -59,30 +57,30 @@ export function VolumeMeter({
       withSequence(
         withTiming(1, { duration: 0 }),
         withTiming(1.15, { duration: 800, easing: Easing.inOut(Easing.ease) }),
-        withTiming(1, { duration: 800, easing: Easing.inOut(Easing.ease) })
+        withTiming(1, { duration: 800, easing: Easing.inOut(Easing.ease) }),
       ),
       -1,
-      false
+      false,
     );
 
     line2Pulse.value = withRepeat(
       withSequence(
         withTiming(1, { duration: 200 }),
-        withTiming(1.20, { duration: 1000, easing: Easing.inOut(Easing.ease) }),
-        withTiming(1, { duration: 1000, easing: Easing.inOut(Easing.ease) })
+        withTiming(1.2, { duration: 1000, easing: Easing.inOut(Easing.ease) }),
+        withTiming(1, { duration: 1000, easing: Easing.inOut(Easing.ease) }),
       ),
       -1,
-      false
+      false,
     );
 
     line3Pulse.value = withRepeat(
       withSequence(
         withTiming(1, { duration: 400 }),
         withTiming(1.25, { duration: 1200, easing: Easing.inOut(Easing.ease) }),
-        withTiming(1, { duration: 1200, easing: Easing.inOut(Easing.ease) })
+        withTiming(1, { duration: 1200, easing: Easing.inOut(Easing.ease) }),
       ),
       -1,
-      false
+      false,
     );
   }, [isMuted]);
 
@@ -109,11 +107,10 @@ export function VolumeMeter({
     const isActive = isSpeaking;
     const baseOpacity = isMuted ? 0.3 : isActive ? 0.9 : 0.5;
     const currentVolume = isMuted ? 0 : animatedVolume.value;
-    const currentHeight = MIN_HEIGHT + (MAX_HEIGHT * currentVolume * 1.2);
+    const currentHeight = MIN_HEIGHT + MAX_HEIGHT * currentVolume * 1.2;
     const volumeBoost = isMuted || !isActive ? 0 : currentVolume * 0.3;
     return {
-      height:
-        currentHeight * (isMuted || currentVolume > 0.001 ? 1 : line1Pulse.value),
+      height: currentHeight * (isMuted || currentVolume > 0.001 ? 1 : line1Pulse.value),
       opacity: baseOpacity + volumeBoost,
     };
   });
@@ -122,11 +119,10 @@ export function VolumeMeter({
     const isActive = isSpeaking;
     const baseOpacity = isMuted ? 0.3 : isActive ? 0.9 : 0.5;
     const currentVolume = isMuted ? 0 : animatedVolume.value;
-    const currentHeight = MIN_HEIGHT + (MAX_HEIGHT * currentVolume * 1.05);
+    const currentHeight = MIN_HEIGHT + MAX_HEIGHT * currentVolume * 1.05;
     const volumeBoost = isMuted || !isActive ? 0 : currentVolume * 0.3;
     return {
-      height:
-        currentHeight * (isMuted || currentVolume > 0.001 ? 1 : line2Pulse.value),
+      height: currentHeight * (isMuted || currentVolume > 0.001 ? 1 : line2Pulse.value),
       opacity: baseOpacity + volumeBoost,
     };
   });
@@ -135,11 +131,10 @@ export function VolumeMeter({
     const isActive = isSpeaking;
     const baseOpacity = isMuted ? 0.3 : isActive ? 0.9 : 0.5;
     const currentVolume = isMuted ? 0 : animatedVolume.value;
-    const currentHeight = MIN_HEIGHT + (MAX_HEIGHT * currentVolume * 0.9);
+    const currentHeight = MIN_HEIGHT + MAX_HEIGHT * currentVolume * 0.9;
     const volumeBoost = isMuted || !isActive ? 0 : currentVolume * 0.3;
     return {
-      height:
-        currentHeight * (isMuted || currentVolume > 0.001 ? 1 : line3Pulse.value),
+      height: currentHeight * (isMuted || currentVolume > 0.001 ? 1 : line3Pulse.value),
       opacity: baseOpacity + volumeBoost,
     };
   });
@@ -147,27 +142,15 @@ export function VolumeMeter({
   return (
     <View style={[styles.container, { height: containerHeight }]}>
       <ReanimatedAnimated.View
-        style={[
-          styles.line,
-          { width: LINE_WIDTH, backgroundColor: lineColor },
-          line1Style,
-        ]}
+        style={[styles.line, { width: LINE_WIDTH, backgroundColor: lineColor }, line1Style]}
       />
       <View style={{ width: LINE_SPACING }} />
       <ReanimatedAnimated.View
-        style={[
-          styles.line,
-          { width: LINE_WIDTH, backgroundColor: lineColor },
-          line2Style,
-        ]}
+        style={[styles.line, { width: LINE_WIDTH, backgroundColor: lineColor }, line2Style]}
       />
       <View style={{ width: LINE_SPACING }} />
       <ReanimatedAnimated.View
-        style={[
-          styles.line,
-          { width: LINE_WIDTH, backgroundColor: lineColor },
-          line3Style,
-        ]}
+        style={[styles.line, { width: LINE_WIDTH, backgroundColor: lineColor }, line3Style]}
       />
     </View>
   );

@@ -35,7 +35,7 @@ describe("computeShouldNotifyClient", () => {
         clientState: staleMobile,
         allClientStates: [activeOnAgent, staleMobile],
         agentId: "agent-1",
-      })
+      }),
     ).toBe(false);
   });
 
@@ -52,7 +52,7 @@ describe("computeShouldNotifyClient", () => {
         clientState: unknownClient,
         allClientStates: [unknownClient],
         agentId: "agent-2",
-      })
+      }),
     ).toBe(true);
   });
 
@@ -69,7 +69,7 @@ describe("computeShouldNotifyClient", () => {
         clientState: focusedWeb,
         allClientStates: [focusedWeb],
         agentId: "agent-3",
-      })
+      }),
     ).toBe(true);
   });
 
@@ -86,7 +86,7 @@ describe("computeShouldNotifyClient", () => {
         clientState: activeButNotFocused,
         allClientStates: [activeButNotFocused],
         agentId: "agent-4",
-      })
+      }),
     ).toBe(false);
   });
 
@@ -109,7 +109,7 @@ describe("computeShouldNotifyClient", () => {
         clientState: staleMobile,
         allClientStates: [staleMobile, activeWeb],
         agentId: "agent-5",
-      })
+      }),
     ).toBe(false);
   });
 
@@ -132,7 +132,7 @@ describe("computeShouldNotifyClient", () => {
         clientState: staleMobile,
         allClientStates: [staleMobile, staleWeb],
         agentId: "agent-6",
-      })
+      }),
     ).toBe(true);
   });
 
@@ -155,7 +155,7 @@ describe("computeShouldNotifyClient", () => {
         clientState: staleWeb,
         allClientStates: [staleWeb, staleMobile],
         agentId: "agent-7",
-      })
+      }),
     ).toBe(false);
   });
 
@@ -172,7 +172,7 @@ describe("computeShouldNotifyClient", () => {
         clientState: staleWeb,
         allClientStates: [staleWeb],
         agentId: "agent-8",
-      })
+      }),
     ).toBe(true);
   });
 });
@@ -183,7 +183,7 @@ describe("computeShouldSendPush", () => {
       computeShouldSendPush({
         reason: "error",
         allClientStates: [],
-      })
+      }),
     ).toBe(false);
   });
 
@@ -198,7 +198,7 @@ describe("computeShouldSendPush", () => {
             appVisible: true,
           }),
         ],
-      })
+      }),
     ).toBe(false);
   });
 
@@ -213,7 +213,7 @@ describe("computeShouldSendPush", () => {
             appVisible: true,
           }),
         ],
-      })
+      }),
     ).toBe(false);
   });
 
@@ -233,7 +233,7 @@ describe("computeShouldSendPush", () => {
             appVisible: false,
           }),
         ],
-      })
+      }),
     ).toBe(true);
   });
 });

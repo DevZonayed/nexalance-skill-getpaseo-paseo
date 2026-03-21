@@ -138,12 +138,7 @@ export class OpenAISTT implements SpeechToTextProvider {
             }
 
             const wav = convertPCMToWavBuffer(pcm16);
-            const result = await transcribeAudio(
-              wav,
-              "audio/wav",
-              params.language ?? "en",
-              logger
-            );
+            const result = await transcribeAudio(wav, "audio/wav", params.language ?? "en", logger);
 
             (emitter as any).emit("transcript", {
               segmentId: committedId,
@@ -182,7 +177,7 @@ export class OpenAISTT implements SpeechToTextProvider {
     audioBuffer: Buffer,
     format: string,
     language: string,
-    logger: pino.Logger
+    logger: pino.Logger,
   ): Promise<TranscriptionResult> {
     const startTime = Date.now();
     let tempFilePath: string | null = null;
@@ -192,10 +187,7 @@ export class OpenAISTT implements SpeechToTextProvider {
       tempFilePath = join(tmpdir(), `audio-${v4()}.${ext}`);
       await writeFile(tempFilePath, audioBuffer);
 
-      logger.debug(
-        { tempFilePath, bytes: audioBuffer.length },
-        "Transcribing audio file"
-      );
+      logger.debug({ tempFilePath, bytes: audioBuffer.length }, "Transcribing audio file");
 
       const modelToUse = this.config.model ?? "whisper-1";
       const supportsLogprobs =
@@ -216,9 +208,7 @@ export class OpenAISTT implements SpeechToTextProvider {
       let avgLogprob: number | undefined;
       let isLowConfidence = false;
       const logprobs =
-        supportsLogprobs &&
-        isObject(response) &&
-        isLogprobTokenArray(response.logprobs)
+        supportsLogprobs && isObject(response) && isLogprobTokenArray(response.logprobs)
           ? response.logprobs
           : undefined;
 
@@ -235,7 +225,7 @@ export class OpenAISTT implements SpeechToTextProvider {
               text: response.text,
               tokenLogprobs: logprobs.map((t) => `${t.token}:${t.logprob.toFixed(2)}`).join(", "),
             },
-            "Low confidence transcription detected"
+            "Low confidence transcription detected",
           );
         }
       }

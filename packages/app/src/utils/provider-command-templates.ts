@@ -19,10 +19,7 @@ export const PROVIDER_COMMAND_TEMPLATES: Record<
   },
 };
 
-function renderTemplate(
-  template: string,
-  vars: Record<string, string>
-): string {
+function renderTemplate(template: string, vars: Record<string, string>): string {
   return template.replace(/\{(\w+)\}/g, (_match, key: string) => vars[key] ?? "");
 }
 
@@ -37,4 +34,3 @@ export function buildProviderCommand(input: {
   }
   return renderTemplate(template, { sessionId: input.sessionId });
 }
-

@@ -1,5 +1,13 @@
 import { useCallback, useMemo, useState, type Dispatch, type SetStateAction } from "react";
-import { ActivityIndicator, Platform, Pressable, ScrollView, Text, View, type LayoutChangeEvent } from "react-native";
+import {
+  ActivityIndicator,
+  Platform,
+  Pressable,
+  ScrollView,
+  Text,
+  View,
+  type LayoutChangeEvent,
+} from "react-native";
 import { Columns2, Rows2, SquarePen, SquareTerminal, X } from "lucide-react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { SortableInlineList } from "@/components/sortable-inline-list";
@@ -144,9 +152,7 @@ function TabChip({
             enabledOnMobile={false}
             style={({ hovered, pressed }) => [
               styles.tab,
-              Platform.OS === "web" &&
-                isDragging &&
-                ({ cursor: "grabbing" } as const),
+              Platform.OS === "web" && isDragging && ({ cursor: "grabbing" } as const),
               {
                 minWidth: resolvedTabWidth,
                 width: resolvedTabWidth,
@@ -171,10 +177,7 @@ function TabChip({
           >
             {isActive && (
               <View
-                style={[
-                  styles.tabFocusIndicator,
-                  !isFocused && styles.tabFocusIndicatorUnfocused,
-                ]}
+                style={[styles.tabFocusIndicator, !isFocused && styles.tabFocusIndicatorUnfocused]}
               />
             )}
             <View style={styles.tabHandle}>
@@ -236,12 +239,16 @@ function TabChip({
                   isClosingTab ? (
                     <ActivityIndicator
                       size={12}
-                      color={hovered || pressed ? theme.colors.foreground : theme.colors.foregroundMuted}
+                      color={
+                        hovered || pressed ? theme.colors.foreground : theme.colors.foregroundMuted
+                      }
                     />
                   ) : (
                     <X
                       size={12}
-                      color={hovered || pressed ? theme.colors.foreground : theme.colors.foregroundMuted}
+                      color={
+                        hovered || pressed ? theme.colors.foreground : theme.colors.foregroundMuted
+                      }
                     />
                   )
                 }
@@ -268,7 +275,7 @@ function TabChip({
             >
               {entry.label}
             </ContextMenuItem>
-          )
+          ),
         )}
       </ContextMenuContent>
     </ContextMenu>
@@ -326,7 +333,7 @@ export function WorkspaceDesktopTabsRow({
       estimatedCharWidth: 7,
       closeButtonWidth: 22,
     }),
-    [tabsActionsWidth, theme.spacing]
+    [tabsActionsWidth, theme.spacing],
   );
 
   const tabLabelLengths = useMemo(
@@ -335,7 +342,7 @@ export function WorkspaceDesktopTabsRow({
         const label = getFallbackTabLabel(tab.tab);
         return label.length;
       }),
-    [tabs]
+    [tabs],
   );
 
   const { layout } = useWorkspaceTabLayout({
@@ -356,7 +363,9 @@ export function WorkspaceDesktopTabsRow({
         testID="workspace-tabs-scroll"
         style={[
           styles.tabsScroll,
-          layout.requiresHorizontalScrollFallback ? styles.tabsScrollOverflow : styles.tabsScrollFitContent,
+          layout.requiresHorizontalScrollFallback
+            ? styles.tabsScrollOverflow
+            : styles.tabsScrollFitContent,
         ]}
         contentContainerStyle={styles.tabsContent}
         showsHorizontalScrollIndicator={false}
@@ -422,7 +431,7 @@ export function WorkspaceDesktopTabsRow({
       </ScrollView>
       <View style={styles.tabsActions} onLayout={handleTabsActionsLayout}>
         <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
-        <TooltipTrigger
+          <TooltipTrigger
             testID="workspace-new-agent-tab"
             onPress={() =>
               onSelectNewTabOption({
@@ -569,7 +578,7 @@ function ResolvedDesktopTabChip({
       onCopyAgentId,
       onCopyResumeCommand,
       tabCount,
-    ]
+    ],
   );
 
   return (

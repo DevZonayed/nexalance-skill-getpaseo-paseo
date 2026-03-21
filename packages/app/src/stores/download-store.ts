@@ -97,7 +97,7 @@ export const useDownloadStore = create<DownloadState>()((set, get) => ({
       const downloadUrl = buildDownloadUrl(
         downloadTarget.baseUrl,
         tokenResponse.token,
-        Platform.OS === "web" ? downloadTarget.authCredentials : null
+        Platform.OS === "web" ? downloadTarget.authCredentials : null,
       );
 
       if (Platform.OS === "web") {
@@ -135,7 +135,7 @@ export const useDownloadStore = create<DownloadState>()((set, get) => ({
             speed,
             eta,
           });
-        }
+        },
       );
 
       const result = await downloadResumable.downloadAsync();
@@ -203,9 +203,7 @@ export const useDownloadStore = create<DownloadState>()((set, get) => ({
       const updated = new Map(state.downloads);
       updated.delete(id);
       const newActiveId =
-        state.activeDownloadId === id
-          ? findMostRecentDownloadId(updated)
-          : state.activeDownloadId;
+        state.activeDownloadId === id ? findMostRecentDownloadId(updated) : state.activeDownloadId;
       return { downloads: updated, activeDownloadId: newActiveId };
     });
   },
@@ -245,8 +243,7 @@ type DownloadTarget = {
 };
 
 function resolveDaemonDownloadTarget(daemon?: HostProfile): DownloadTarget {
-  const endpoint =
-    daemon?.connections.find((conn) => conn.type === "directTcp")?.endpoint ?? null;
+  const endpoint = daemon?.connections.find((conn) => conn.type === "directTcp")?.endpoint ?? null;
   if (!endpoint) {
     return { baseUrl: null, authHeader: null, authCredentials: null };
   }
@@ -287,7 +284,7 @@ function resolveDaemonDownloadTarget(daemon?: HostProfile): DownloadTarget {
 function buildDownloadUrl(
   baseUrl: string,
   token: string,
-  authCredentials: { username: string; password: string } | null
+  authCredentials: { username: string; password: string } | null,
 ): string {
   const url = new URL("/api/files/download", baseUrl);
   url.searchParams.set("token", token);

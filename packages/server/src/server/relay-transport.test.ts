@@ -75,7 +75,7 @@ const wsMock = vi.hoisted(() => {
       const handlers = this.listeners.get(event) ?? [];
       this.listeners.set(
         event,
-        handlers.filter((handler) => handler !== listener)
+        handlers.filter((handler) => handler !== listener),
       );
     }
 
@@ -212,12 +212,9 @@ describe("relay-transport control lifecycle", () => {
     await Promise.resolve();
 
     expect(attachSocket).toHaveBeenCalledTimes(1);
-    expect(attachSocket).toHaveBeenCalledWith(
-      dataSocket,
-      {
-        transport: "relay",
-        externalSessionKey: "session:clt_test",
-      }
-    );
+    expect(attachSocket).toHaveBeenCalledWith(dataSocket, {
+      transport: "relay",
+      externalSessionKey: "session:clt_test",
+    });
   });
 });

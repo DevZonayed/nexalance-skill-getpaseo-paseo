@@ -1,9 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import {
-  createClientChannel,
-  createDaemonChannel,
-  Transport,
-} from "./encrypted-channel.js";
+import { createClientChannel, createDaemonChannel, Transport } from "./encrypted-channel.js";
 import { generateKeyPair, exportPublicKey } from "./crypto.js";
 
 /**
@@ -28,17 +24,13 @@ function createMockTransportPair(): [Transport, Transport] {
   };
 
   // Wire them together
-  (transportA.send as ReturnType<typeof vi.fn>).mockImplementation(
-    (data: string | ArrayBuffer) => {
-      setTimeout(() => transportB.onmessage?.(data), 0);
-    }
-  );
+  (transportA.send as ReturnType<typeof vi.fn>).mockImplementation((data: string | ArrayBuffer) => {
+    setTimeout(() => transportB.onmessage?.(data), 0);
+  });
 
-  (transportB.send as ReturnType<typeof vi.fn>).mockImplementation(
-    (data: string | ArrayBuffer) => {
-      setTimeout(() => transportA.onmessage?.(data), 0);
-    }
-  );
+  (transportB.send as ReturnType<typeof vi.fn>).mockImplementation((data: string | ArrayBuffer) => {
+    setTimeout(() => transportA.onmessage?.(data), 0);
+  });
 
   return [transportA, transportB];
 }
@@ -60,11 +52,9 @@ describe("EncryptedChannel", () => {
     const daemonChannelPromise = createDaemonChannel(daemonTransport, daemonKeyPair);
 
     // Client connects (scanned QR, got daemon's public key)
-    const clientChannel = await createClientChannel(
-      clientTransport,
-      daemonPubKeyB64,
-      { onopen: () => clientOpenedResolve?.() }
-    );
+    const clientChannel = await createClientChannel(clientTransport, daemonPubKeyB64, {
+      onopen: () => clientOpenedResolve?.(),
+    });
 
     // Daemon receives hello and completes handshake
     const daemonChannel = await daemonChannelPromise;
@@ -88,17 +78,14 @@ describe("EncryptedChannel", () => {
       clientOpenedResolve = resolve;
     });
 
-    const daemonChannelPromise = createDaemonChannel(
-      daemonTransport,
-      daemonKeyPair,
-      { onmessage: (data) => daemonMessages.push(data) }
-    );
+    const daemonChannelPromise = createDaemonChannel(daemonTransport, daemonKeyPair, {
+      onmessage: (data) => daemonMessages.push(data),
+    });
 
-    const clientChannel = await createClientChannel(
-      clientTransport,
-      daemonPubKeyB64,
-      { onmessage: (data) => clientMessages.push(data), onopen: () => clientOpenedResolve?.() }
-    );
+    const clientChannel = await createClientChannel(clientTransport, daemonPubKeyB64, {
+      onmessage: (data) => clientMessages.push(data),
+      onopen: () => clientOpenedResolve?.(),
+    });
 
     const daemonChannel = await daemonChannelPromise;
     await clientOpened;
@@ -111,10 +98,7 @@ describe("EncryptedChannel", () => {
     // Wait for async delivery
     await new Promise((r) => setTimeout(r, 50));
 
-    expect(daemonMessages).toEqual([
-      "Hello from client",
-      "Second message from client",
-    ]);
+    expect(daemonMessages).toEqual(["Hello from client", "Second message from client"]);
     expect(clientMessages).toEqual(["Hello from daemon"]);
   });
 
@@ -130,11 +114,9 @@ describe("EncryptedChannel", () => {
     });
 
     const daemonChannelPromise = createDaemonChannel(daemonTransport, daemonKeyPair);
-    const clientChannel = await createClientChannel(
-      clientTransport,
-      daemonPubKeyB64,
-      { onopen: () => clientOpenedResolve?.() }
-    );
+    const clientChannel = await createClientChannel(clientTransport, daemonPubKeyB64, {
+      onopen: () => clientOpenedResolve?.(),
+    });
     await daemonChannelPromise;
     await clientOpened;
 
@@ -147,8 +129,7 @@ describe("EncryptedChannel", () => {
 
     // Check what was actually sent over the transport
     expect(clientTransport.send).toHaveBeenCalledTimes(1);
-    const sentData = (clientTransport.send as ReturnType<typeof vi.fn>).mock
-      .calls[0][0];
+    const sentData = (clientTransport.send as ReturnType<typeof vi.fn>).mock.calls[0][0];
 
     // Should be base64 string (encrypted)
     expect(typeof sentData).toBe("string");
@@ -189,9 +170,7 @@ describe("EncryptedChannel", () => {
 
       expect(onerror).toHaveBeenCalledTimes(1);
       expect(onerror.mock.calls[0][0]).toBeInstanceOf(Error);
-      expect((onerror.mock.calls[0][0] as Error).message).toContain(
-        "WebSocket not open"
-      );
+      expect((onerror.mock.calls[0][0] as Error).message).toContain("WebSocket not open");
 
       // Close the transport to stop retry timer.
       transport.onclose?.(1000, "closed");

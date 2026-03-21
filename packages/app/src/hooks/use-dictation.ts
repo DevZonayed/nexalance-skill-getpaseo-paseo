@@ -126,7 +126,7 @@ export function useDictation(options: UseDictationOptions): UseDictationResult {
       setError(normalized.message);
       onErrorRef.current?.(normalized);
     },
-    [setError]
+    [setError],
   );
 
   const clearStreamingState = useCallback(() => {
@@ -135,20 +135,14 @@ export function useDictation(options: UseDictationOptions): UseDictationResult {
     setPartialTranscript("");
   }, []);
 
-  const startNewStream = useCallback(
-    async (reason: string) => {
-      await senderRef.current?.restartStream(reason);
-    },
-    []
-  );
+  const startNewStream = useCallback(async (reason: string) => {
+    await senderRef.current?.restartStream(reason);
+  }, []);
 
-  const ensureFinalTranscript = useCallback(
-    async (finalSeq: number): Promise<string> => {
-      const result = await senderRef.current!.finish(finalSeq);
-      return result.text;
-    },
-    []
-  );
+  const ensureFinalTranscript = useCallback(async (finalSeq: number): Promise<string> => {
+    const result = await senderRef.current!.finish(finalSeq);
+    return result.text;
+  }, []);
 
   useEffect(() => {
     if (!client) {
@@ -209,9 +203,8 @@ export function useDictation(options: UseDictationOptions): UseDictationResult {
       setDuration(0);
       setStatus("idle");
 
-      const transcriptText = (
-        text.trim().length > 0 ? text.trim() : latestPartialTranscriptRef.current.trim()
-      );
+      const transcriptText =
+        text.trim().length > 0 ? text.trim() : latestPartialTranscriptRef.current.trim();
       clearStreamingState();
 
       if (!transcriptText) {
@@ -219,7 +212,7 @@ export function useDictation(options: UseDictationOptions): UseDictationResult {
       }
       onTranscriptRef.current?.(transcriptText, { requestId });
     },
-    [clearStreamingState]
+    [clearStreamingState],
   );
 
   const handleDictationFailure = useCallback(
@@ -240,11 +233,15 @@ export function useDictation(options: UseDictationOptions): UseDictationResult {
 
       reportError(normalized, "Failed to complete dictation");
     },
-    [reportError]
+    [reportError],
   );
 
   const startDictation = useCallback(async () => {
-    if (actionGateRef.current.starting || actionGateRef.current.confirming || actionGateRef.current.cancelling) {
+    if (
+      actionGateRef.current.starting ||
+      actionGateRef.current.confirming ||
+      actionGateRef.current.cancelling
+    ) {
       return;
     }
     if (isRecordingRef.current || isProcessingRef.current) {
@@ -438,10 +435,11 @@ export function useDictation(options: UseDictationOptions): UseDictationResult {
   }, [cancelDictation]);
 
   const visibilityRef = useRef<boolean | null>(
-    typeof autoStopWhenHidden?.isVisible === "boolean" ? autoStopWhenHidden.isVisible : null
+    typeof autoStopWhenHidden?.isVisible === "boolean" ? autoStopWhenHidden.isVisible : null,
   );
   useEffect(() => {
-    const nextVisible = typeof autoStopWhenHidden?.isVisible === "boolean" ? autoStopWhenHidden.isVisible : null;
+    const nextVisible =
+      typeof autoStopWhenHidden?.isVisible === "boolean" ? autoStopWhenHidden.isVisible : null;
     const prevVisible = visibilityRef.current;
     visibilityRef.current = nextVisible;
 

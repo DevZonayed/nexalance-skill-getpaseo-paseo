@@ -1,7 +1,7 @@
-import { createCli } from './cli.js'
+import { createCli } from "./cli.js";
 
-const program = createCli()
+const program = createCli();
 if (process.argv.length <= 2) {
-  process.argv.push('onboard')
+  process.argv.push("onboard");
 }
-program.parse()
+program.parse();

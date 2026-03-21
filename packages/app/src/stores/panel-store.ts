@@ -150,8 +150,7 @@ export const usePanelStore = create<PanelState>()(
         }),
       closeFileExplorer: () =>
         set((state) => ({
-          mobileView:
-            state.mobileView === "file-explorer" ? ("agent" as const) : state.mobileView,
+          mobileView: state.mobileView === "file-explorer" ? ("agent" as const) : state.mobileView,
           desktop: {
             ...state.desktop,
             fileExplorerOpen: false,
@@ -164,8 +163,7 @@ export const usePanelStore = create<PanelState>()(
           // On desktop, closing depends on which panel triggered it
           // This is called when closing via gesture/backdrop, so we close the currently active mobile panel
           desktop: {
-            agentListOpen:
-              state.mobileView === "agent-list" ? false : state.desktop.agentListOpen,
+            agentListOpen: state.mobileView === "agent-list" ? false : state.desktop.agentListOpen,
             fileExplorerOpen:
               state.mobileView === "file-explorer" ? false : state.desktop.fileExplorerOpen,
           },
@@ -174,7 +172,9 @@ export const usePanelStore = create<PanelState>()(
       toggleAgentList: () =>
         set((state) => ({
           // Mobile: toggle between agent and agent-list
-          mobileView: (state.mobileView === "agent-list" ? "agent" : "agent-list") as MobilePanelView,
+          mobileView: (state.mobileView === "agent-list"
+            ? "agent"
+            : "agent-list") as MobilePanelView,
           desktop: {
             ...state.desktop,
             agentListOpen: !state.desktop.agentListOpen,
@@ -186,9 +186,7 @@ export const usePanelStore = create<PanelState>()(
           // Mobile: toggle between agent and file-explorer
           const willOpenMobile = state.mobileView !== "file-explorer";
           const willOpenDesktop = !state.desktop.fileExplorerOpen;
-          const nextMobileView: MobilePanelView = willOpenMobile
-            ? "file-explorer"
-            : "agent";
+          const nextMobileView: MobilePanelView = willOpenMobile ? "file-explorer" : "agent";
           const nextDesktop = {
             ...state.desktop,
             fileExplorerOpen: willOpenDesktop,
@@ -275,7 +273,7 @@ export const usePanelStore = create<PanelState>()(
             state.explorerFilesSplitRatio = DEFAULT_EXPLORER_FILES_SPLIT_RATIO;
           } else {
             state.explorerFilesSplitRatio = clampExplorerFilesSplitRatio(
-              state.explorerFilesSplitRatio
+              state.explorerFilesSplitRatio,
             );
           }
         }
@@ -294,7 +292,11 @@ export const usePanelStore = create<PanelState>()(
           state.explorerTab = "changes";
         }
 
-        if (version < 4 || typeof state.explorerTabByCheckout !== "object" || !state.explorerTabByCheckout) {
+        if (
+          version < 4 ||
+          typeof state.explorerTabByCheckout !== "object" ||
+          !state.explorerTabByCheckout
+        ) {
           state.explorerTabByCheckout = {};
         } else {
           const entries = Object.entries(state.explorerTabByCheckout as Record<string, unknown>);
@@ -321,8 +323,8 @@ export const usePanelStore = create<PanelState>()(
         explorerSortOption: state.explorerSortOption,
         explorerFilesSplitRatio: state.explorerFilesSplitRatio,
       }),
-    }
-  )
+    },
+  ),
 );
 
 /**

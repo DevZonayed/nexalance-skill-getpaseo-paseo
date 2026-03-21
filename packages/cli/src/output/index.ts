@@ -47,16 +47,16 @@ export type {
   ListResult,
   AnyCommandResult,
   CommandError,
-} from './types.js'
+} from "./types.js";
 
 // Renderers
-export { renderTable, renderTableHeader, renderTableRow } from './table.js'
-export { renderJson, renderJsonLine } from './json.js'
-export { renderYaml, renderYamlDoc } from './yaml.js'
-export { renderQuiet } from './quiet.js'
+export { renderTable, renderTableHeader, renderTableRow } from "./table.js";
+export { renderJson, renderJsonLine } from "./json.js";
+export { renderYaml, renderYamlDoc } from "./yaml.js";
+export { renderQuiet } from "./quiet.js";
 
 // Main render function
-export { render, renderError, toCommandError, defaultOutputOptions } from './render.js'
+export { render, renderError, toCommandError, defaultOutputOptions } from "./render.js";
 
 // Command wrapper
-export { withOutput, createOutputOptions, type CommandOptions } from './with-output.js'
+export { withOutput, createOutputOptions, type CommandOptions } from "./with-output.js";

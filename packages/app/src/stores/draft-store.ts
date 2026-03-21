@@ -46,10 +46,7 @@ interface DraftStoreActions {
   getDraftInput: (draftKey: string) => DraftInput | undefined;
   hydrateDraftInput: (draftKey: string) => Promise<DraftInput | undefined>;
   saveDraftInput: (input: { draftKey: string; draft: DraftInput }) => void;
-  markDraftLifecycle: (input: {
-    draftKey: string;
-    lifecycle: DraftLifecycleState;
-  }) => void;
+  markDraftLifecycle: (input: { draftKey: string; lifecycle: DraftLifecycleState }) => void;
   clearDraftInput: (input: {
     draftKey: string;
     lifecycle?: Exclude<DraftLifecycleState, "active">;
@@ -57,10 +54,7 @@ interface DraftStoreActions {
   getCreateModalDraft: () => DraftInput | null;
   saveCreateModalDraft: (draft: DraftInput | null) => void;
   beginDraftGeneration: (draftKey: string) => number;
-  isDraftGenerationCurrent: (input: {
-    draftKey: string;
-    generation: number;
-  }) => boolean;
+  isDraftGenerationCurrent: (input: { draftKey: string; generation: number }) => boolean;
   collectActiveAttachmentIds: () => string[];
 }
 
@@ -158,9 +152,7 @@ function toDraftInputIfReady(record: DraftRecord | null | undefined): DraftInput
   }
   return {
     text: record.input.text,
-    images: (record.input.images as AttachmentMetadata[]).map(
-      normalizeAttachmentMetadata
-    ),
+    images: (record.input.images as AttachmentMetadata[]).map(normalizeAttachmentMetadata),
   };
 }
 
@@ -197,10 +189,7 @@ function pruneFinalizedDraftRecords(input: {
   let changed = false;
   const next: Record<string, DraftRecord> = {};
   for (const [draftKey, record] of Object.entries(input.drafts)) {
-    if (
-      record.lifecycle !== "active" &&
-      input.nowMs - record.updatedAt >= FINALIZED_DRAFT_TTL_MS
-    ) {
+    if (record.lifecycle !== "active" && input.nowMs - record.updatedAt >= FINALIZED_DRAFT_TTL_MS) {
       changed = true;
       continue;
     }
@@ -331,7 +320,9 @@ async function migrateAllLegacyDrafts(): Promise<void> {
   }
 }
 
-async function migrateLegacyImages(images: readonly PersistedDraftImage[]): Promise<AttachmentMetadata[]> {
+async function migrateLegacyImages(
+  images: readonly PersistedDraftImage[],
+): Promise<AttachmentMetadata[]> {
   if (images.length === 0) {
     return [];
   }
@@ -364,7 +355,7 @@ async function migrateLegacyImages(images: readonly PersistedDraftImage[]): Prom
         });
         return null;
       }
-    })
+    }),
   );
 
   return migrated.filter((entry): entry is AttachmentMetadata => entry !== null);
@@ -389,9 +380,9 @@ function migratePersistedState(state: unknown): DraftStoreState {
         input: {
           text: typeof recordInput.text === "string" ? recordInput.text : "",
           images: Array.isArray(recordInput.images)
-            ? (recordInput.images
+            ? recordInput.images
                 .map((entry) => normalizePersistedImage(entry))
-                .filter((entry): entry is PersistedDraftImage => entry !== null))
+                .filter((entry): entry is PersistedDraftImage => entry !== null)
             : [],
         },
         lifecycle:
@@ -410,9 +401,9 @@ function migratePersistedState(state: unknown): DraftStoreState {
       input: {
         text: typeof legacy.text === "string" ? legacy.text : "",
         images: Array.isArray(legacy.images)
-          ? (legacy.images
+          ? legacy.images
               .map((entry) => normalizePersistedImage(entry))
-              .filter((entry): entry is PersistedDraftImage => entry !== null))
+              .filter((entry): entry is PersistedDraftImage => entry !== null)
           : [],
       },
       lifecycle: "active",
@@ -430,9 +421,9 @@ function migratePersistedState(state: unknown): DraftStoreState {
         input: {
           text: typeof recordInput.text === "string" ? recordInput.text : "",
           images: Array.isArray(recordInput.images)
-            ? (recordInput.images
+            ? recordInput.images
                 .map((entry) => normalizePersistedImage(entry))
-                .filter((entry): entry is PersistedDraftImage => entry !== null))
+                .filter((entry): entry is PersistedDraftImage => entry !== null)
             : [],
         },
         lifecycle:
@@ -448,9 +439,9 @@ function migratePersistedState(state: unknown): DraftStoreState {
         input: {
           text: typeof legacy.text === "string" ? legacy.text : "",
           images: Array.isArray(legacy.images)
-            ? (legacy.images
+            ? legacy.images
                 .map((entry) => normalizePersistedImage(entry))
-                .filter((entry): entry is PersistedDraftImage => entry !== null))
+                .filter((entry): entry is PersistedDraftImage => entry !== null)
             : [],
         },
         lifecycle: "active",
@@ -631,8 +622,8 @@ export const useDraftStore = create<DraftStore>()(
           scheduleAttachmentGc();
         };
       },
-    }
-  )
+    },
+  ),
 );
 
 export const __draftStoreTestUtils = {

@@ -72,79 +72,79 @@ function initGitRepo(repoDir: string): void {
     rmSync(codexSessionDir, { recursive: true, force: true });
   }, 60000);
 
-  test(
-    "generates a title using a real Codex agent",
-    async () => {
-      const agent = await manager.createAgent({
+  test("generates a title using a real Codex agent", async () => {
+    const agent = await manager.createAgent(
+      {
         provider: "codex",
         model: CODEX_TEST_MODEL,
         thinkingOptionId: CODEX_TEST_THINKING_OPTION_ID,
         modeId: "auto",
         cwd: repoDir,
         title: "Main Agent",
-      }, "4e0a4508-e522-4fe9-8384-cf3bf889f16d");
+      },
+      "4e0a4508-e522-4fe9-8384-cf3bf889f16d",
+    );
 
-      await generateAndApplyAgentMetadata({
-        agentManager: manager,
-        agentId: agent.id,
-        cwd: repoDir,
-        initialPrompt: "Use the exact title 'Metadata Title E2E'.",
-        explicitTitle: null,
-        paseoHome,
-        logger,
-      });
+    await generateAndApplyAgentMetadata({
+      agentManager: manager,
+      agentId: agent.id,
+      cwd: repoDir,
+      initialPrompt: "Use the exact title 'Metadata Title E2E'.",
+      explicitTitle: null,
+      paseoHome,
+      logger,
+    });
 
-      await storage.flush();
-      const record = await storage.get(agent.id);
-      expect(record?.title).toBe("Metadata Title E2E");
+    await storage.flush();
+    const record = await storage.get(agent.id);
+    expect(record?.title).toBe("Metadata Title E2E");
 
-      await manager.closeAgent(agent.id);
-    },
-    180000
-  );
+    await manager.closeAgent(agent.id);
+  }, 180000);
 
-  test(
-    "renames the worktree branch using a real Codex agent",
-    async () => {
-      const worktreeSlug = "metadata-worktree";
-      const worktree = await createWorktree({
-        branchName: worktreeSlug,
-        cwd: repoDir,
-        baseBranch: "main",
-        worktreeSlug,
-        paseoHome,
-      });
+  test("renames the worktree branch using a real Codex agent", async () => {
+    const worktreeSlug = "metadata-worktree";
+    const worktree = await createWorktree({
+      branchName: worktreeSlug,
+      cwd: repoDir,
+      baseBranch: "main",
+      worktreeSlug,
+      paseoHome,
+    });
 
-      const agent = await manager.createAgent({
+    const agent = await manager.createAgent(
+      {
         provider: "codex",
         model: CODEX_TEST_MODEL,
         thinkingOptionId: CODEX_TEST_THINKING_OPTION_ID,
         modeId: "auto",
         cwd: worktree.worktreePath,
         title: "Worktree Agent",
-      }, "32bb765d-f637-44a2-9820-f2efd5261418");
+      },
+      "32bb765d-f637-44a2-9820-f2efd5261418",
+    );
 
-      await generateAndApplyAgentMetadata({
-        agentManager: manager,
-        agentId: agent.id,
-        cwd: worktree.worktreePath,
-        initialPrompt: "Use the exact branch 'feat/metadata-worktree'.",
-        explicitTitle: "Explicit Title",
-        paseoHome,
-        logger,
-      });
+    await generateAndApplyAgentMetadata({
+      agentManager: manager,
+      agentId: agent.id,
+      cwd: worktree.worktreePath,
+      initialPrompt: "Use the exact branch 'feat/metadata-worktree'.",
+      explicitTitle: "Explicit Title",
+      paseoHome,
+      logger,
+    });
 
-      const currentBranch = execSync("git rev-parse --abbrev-ref HEAD", {
-        cwd: worktree.worktreePath,
-        stdio: "pipe",
-      }).toString().trim();
+    const currentBranch = execSync("git rev-parse --abbrev-ref HEAD", {
+      cwd: worktree.worktreePath,
+      stdio: "pipe",
+    })
+      .toString()
+      .trim();
 
-      const validation = validateBranchSlug(currentBranch);
-      expect(validation.valid).toBe(true);
-      expect(currentBranch).toBe("feat/metadata-worktree");
+    const validation = validateBranchSlug(currentBranch);
+    expect(validation.valid).toBe(true);
+    expect(currentBranch).toBe("feat/metadata-worktree");
 
-      await manager.closeAgent(agent.id);
-    },
-    180000
-  );
+    await manager.closeAgent(agent.id);
+  }, 180000);
 });

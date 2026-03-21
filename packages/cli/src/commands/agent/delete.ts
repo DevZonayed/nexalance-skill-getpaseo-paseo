@@ -1,114 +1,119 @@
-import type { Command } from 'commander'
-import { connectToDaemon, getDaemonHost } from '../../utils/client.js'
-import type { CommandOptions, SingleResult, OutputSchema, CommandError } from '../../output/index.js'
+import type { Command } from "commander";
+import { connectToDaemon, getDaemonHost } from "../../utils/client.js";
+import type {
+  CommandOptions,
+  SingleResult,
+  OutputSchema,
+  CommandError,
+} from "../../output/index.js";
 
 export interface DeleteResult {
-  deletedCount: number
-  agentIds: string[]
+  deletedCount: number;
+  agentIds: string[];
 }
 
 export const deleteSchema: OutputSchema<DeleteResult> = {
-  idField: (item) => item.agentIds.join('\n'),
-  columns: [{ header: 'DELETED', field: 'deletedCount' }],
-}
+  idField: (item) => item.agentIds.join("\n"),
+  columns: [{ header: "DELETED", field: "deletedCount" }],
+};
 
 export interface AgentDeleteOptions extends CommandOptions {
-  all?: boolean
-  cwd?: string
+  all?: boolean;
+  cwd?: string;
 }
 
-export type AgentDeleteResult = SingleResult<DeleteResult>
+export type AgentDeleteResult = SingleResult<DeleteResult>;
 
 export async function runDeleteCommand(
   id: string | undefined,
   options: AgentDeleteOptions,
-  _command: Command
+  _command: Command,
 ): Promise<AgentDeleteResult> {
-  const host = getDaemonHost({ host: options.host as string | undefined })
+  const host = getDaemonHost({ host: options.host as string | undefined });
 
   if (!id && !options.all && !options.cwd) {
     const error: CommandError = {
-      code: 'MISSING_ARGUMENT',
-      message: 'Agent ID required unless --all or --cwd is specified',
-      details: 'Usage: paseo agent delete <id> | --all | --cwd <path>',
-    }
-    throw error
+      code: "MISSING_ARGUMENT",
+      message: "Agent ID required unless --all or --cwd is specified",
+      details: "Usage: paseo agent delete <id> | --all | --cwd <path>",
+    };
+    throw error;
   }
 
-  let client
+  let client;
   try {
-    client = await connectToDaemon({ host: options.host as string | undefined })
+    client = await connectToDaemon({ host: options.host as string | undefined });
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err)
+    const message = err instanceof Error ? err.message : String(err);
     const error: CommandError = {
-      code: 'DAEMON_NOT_RUNNING',
+      code: "DAEMON_NOT_RUNNING",
       message: `Cannot connect to daemon at ${host}: ${message}`,
-      details: 'Start the daemon with: paseo daemon start',
-    }
-    throw error
+      details: "Start the daemon with: paseo daemon start",
+    };
+    throw error;
   }
 
   try {
-    const fetchPayload = await client.fetchAgents({ filter: { includeArchived: true } })
-    let agents = fetchPayload.entries.map((entry) => entry.agent)
-    const deletedIds: string[] = []
+    const fetchPayload = await client.fetchAgents({ filter: { includeArchived: true } });
+    let agents = fetchPayload.entries.map((entry) => entry.agent);
+    const deletedIds: string[] = [];
 
     if (options.all) {
-      agents = agents.filter((a) => !a.archivedAt)
+      agents = agents.filter((a) => !a.archivedAt);
     } else if (options.cwd) {
-      const filterCwd = options.cwd
+      const filterCwd = options.cwd;
       agents = agents.filter((a) => {
-        if (a.archivedAt) return false
-        const agentCwd = a.cwd.replace(/\/$/, '')
-        const targetCwd = filterCwd.replace(/\/$/, '')
-        return agentCwd === targetCwd || agentCwd.startsWith(targetCwd + '/')
-      })
+        if (a.archivedAt) return false;
+        const agentCwd = a.cwd.replace(/\/$/, "");
+        const targetCwd = filterCwd.replace(/\/$/, "");
+        return agentCwd === targetCwd || agentCwd.startsWith(targetCwd + "/");
+      });
     } else if (id) {
-      const fetchResult = await client.fetchAgent(id)
+      const fetchResult = await client.fetchAgent(id);
       if (!fetchResult) {
         const error: CommandError = {
-          code: 'AGENT_NOT_FOUND',
+          code: "AGENT_NOT_FOUND",
           message: `No agent found matching: ${id}`,
-          details: 'Use `paseo ls` to list available agents',
-        }
-        throw error
+          details: "Use `paseo ls` to list available agents",
+        };
+        throw error;
       }
-      agents = [fetchResult.agent]
+      agents = [fetchResult.agent];
     }
 
     for (const agent of agents) {
       try {
-        if (agent.status === 'running') {
-          await client.cancelAgent(agent.id)
+        if (agent.status === "running") {
+          await client.cancelAgent(agent.id);
         }
-        await client.deleteAgent(agent.id)
-        deletedIds.push(agent.id)
+        await client.deleteAgent(agent.id);
+        deletedIds.push(agent.id);
       } catch (err) {
-        const message = err instanceof Error ? err.message : String(err)
-        console.error(`Warning: Failed to delete agent ${agent.id.slice(0, 7)}: ${message}`)
+        const message = err instanceof Error ? err.message : String(err);
+        console.error(`Warning: Failed to delete agent ${agent.id.slice(0, 7)}: ${message}`);
       }
     }
 
-    await client.close()
+    await client.close();
 
     return {
-      type: 'single',
+      type: "single",
       data: {
         deletedCount: deletedIds.length,
         agentIds: deletedIds,
       },
       schema: deleteSchema,
-    }
+    };
   } catch (err) {
-    await client.close().catch(() => {})
-    if (err && typeof err === 'object' && 'code' in err) {
-      throw err
+    await client.close().catch(() => {});
+    if (err && typeof err === "object" && "code" in err) {
+      throw err;
     }
-    const message = err instanceof Error ? err.message : String(err)
+    const message = err instanceof Error ? err.message : String(err);
     const error: CommandError = {
-      code: 'DELETE_AGENT_FAILED',
+      code: "DELETE_AGENT_FAILED",
       message: `Failed to delete agent(s): ${message}`,
-    }
-    throw error
+    };
+    throw error;
   }
 }

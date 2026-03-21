@@ -2,9 +2,7 @@ import { useEffect, useRef } from "react";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSessionStore } from "@/stores/session-store";
 import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
-import {
-  buildHostRootRoute,
-} from "@/utils/host-routes";
+import { buildHostRootRoute } from "@/utils/host-routes";
 import { prepareWorkspaceTab } from "@/utils/workspace-navigation";
 
 export default function HostAgentReadyRoute() {
@@ -43,7 +41,7 @@ export default function HostAgentReadyRoute() {
           serverId,
           workspaceId: normalizedCwd,
           target: { kind: "agent", agentId },
-        }) as any
+        }) as any,
       );
     }
   }, [agentCwd, agentId, router, serverId]);
@@ -87,7 +85,7 @@ export default function HostAgentReadyRoute() {
               serverId,
               workspaceId: cwd,
               target: { kind: "agent", agentId },
-            }) as any
+            }) as any,
           );
           return;
         }

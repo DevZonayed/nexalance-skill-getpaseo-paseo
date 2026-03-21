@@ -19,10 +19,6 @@
     "declaration": false,
     "sourceMap": true
   },
-  "include": [
-    "scripts/daemon-runner.ts",
-    "scripts/dev-runner.ts",
-    "scripts/supervisor.ts"
-  ],
+  "include": ["scripts/daemon-runner.ts", "scripts/dev-runner.ts", "scripts/supervisor.ts"],
   "exclude": ["node_modules", "dist"]
 }

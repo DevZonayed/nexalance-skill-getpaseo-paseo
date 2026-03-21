@@ -46,7 +46,12 @@ function formatToolInputJson(input: unknown): string | null {
 }
 
 function hasNonEmptyObject(value: unknown): boolean {
-  return typeof value === "object" && value !== null && !Array.isArray(value) && Object.keys(value).length > 0;
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    !Array.isArray(value) &&
+    Object.keys(value).length > 0
+  );
 }
 
 function mergeUnknownValue(existing: unknown | null, incoming: unknown | null): unknown | null {
@@ -171,7 +176,7 @@ function collapseTimeline(items: AgentTimelineItem[]): AgentTimelineItem[] {
  */
 export function curateAgentActivity(
   timeline: AgentTimelineItem[],
-  options?: { maxItems?: number }
+  options?: { maxItems?: number },
 ): string {
   if (timeline.length === 0) {
     return "No activity to display.";
@@ -182,9 +187,7 @@ export function curateAgentActivity(
 
   const maxItems = options?.maxItems ?? DEFAULT_MAX_ITEMS;
   const recentItems =
-    maxItems > 0 && collapsed.length > maxItems
-      ? collapsed.slice(-maxItems)
-      : collapsed;
+    maxItems > 0 && collapsed.length > maxItems ? collapsed.slice(-maxItems) : collapsed;
 
   const lines: string[] = [];
   const buffers = { message: "", thought: "" };

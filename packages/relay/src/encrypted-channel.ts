@@ -58,18 +58,15 @@ interface E2EEReadyMessage {
 
 function buildInvalidHelloError(rawText: string, parsed?: unknown): Error {
   const parsedRecord =
-    parsed && typeof parsed === "object"
-      ? (parsed as Record<string, unknown>)
-      : null;
+    parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : null;
   const rawType = parsedRecord?.type;
   const receivedType =
     typeof rawType === "string" ? rawType : rawType === undefined ? "undefined" : typeof rawType;
-  const hasKey =
-    typeof parsedRecord?.key === "string" && parsedRecord.key.trim().length > 0;
+  const hasKey = typeof parsedRecord?.key === "string" && parsedRecord.key.trim().length > 0;
   const compact = rawText.replace(/\s+/g, " ").trim();
   const preview = compact.length > 160 ? `${compact.slice(0, 157)}...` : compact;
   return new Error(
-    `Invalid hello message (receivedType=${receivedType}, hasKey=${hasKey}, preview=${JSON.stringify(preview)})`
+    `Invalid hello message (receivedType=${receivedType}, hasKey=${hasKey}, preview=${JSON.stringify(preview)})`,
   );
 }
 
@@ -88,7 +85,7 @@ const MAX_PENDING_SENDS = 200;
 export async function createClientChannel(
   transport: Transport,
   daemonPublicKeyB64: string,
-  events: EncryptedChannelEvents = {}
+  events: EncryptedChannelEvents = {},
 ): Promise<EncryptedChannel> {
   const keyPair = generateKeyPair();
   const daemonPublicKey = importPublicKey(daemonPublicKeyB64);
@@ -152,7 +149,7 @@ export async function createClientChannel(
 export async function createDaemonChannel(
   transport: Transport,
   daemonKeyPair: KeyPair,
-  events: EncryptedChannelEvents = {}
+  events: EncryptedChannelEvents = {},
 ): Promise<EncryptedChannel> {
   return new Promise((resolve, reject) => {
     const bufferedMessages: Array<string | ArrayBuffer> = [];
@@ -168,8 +165,7 @@ export async function createDaemonChannel(
 
     transport.onmessage = async (data) => {
       try {
-        const helloText =
-          typeof data === "string" ? data : new TextDecoder().decode(data);
+        const helloText = typeof data === "string" ? data : new TextDecoder().decode(data);
 
         let parsed: unknown;
         try {
@@ -195,9 +191,7 @@ export async function createDaemonChannel(
         const sharedKey = deriveSharedKey(daemonKeyPair.secretKey, clientPublicKey);
 
         const channel = new EncryptedChannel(transport, sharedKey, events, { daemonKeyPair });
-        transport.send(
-          JSON.stringify({ type: "e2ee_ready" } satisfies E2EEReadyMessage)
-        );
+        transport.send(JSON.stringify({ type: "e2ee_ready" } satisfies E2EEReadyMessage));
 
         channel.setState("open");
         events.onopen?.();
@@ -240,7 +234,7 @@ export class EncryptedChannel {
     transport: Transport,
     sharedKey: SharedKey,
     events: EncryptedChannelEvents = {},
-    options: EncryptedChannelOptions = {}
+    options: EncryptedChannelOptions = {},
   ) {
     this.transport = transport;
     this.sharedKey = sharedKey;
@@ -287,9 +281,7 @@ export class EncryptedChannel {
         try {
           const text = typeof data === "string" ? data : new TextDecoder().decode(data);
           if (text.trim().startsWith("{")) {
-            const parsed = JSON.parse(text) as Partial<
-              E2EEHelloMessage | E2EEReadyMessage
-            >;
+            const parsed = JSON.parse(text) as Partial<E2EEHelloMessage | E2EEReadyMessage>;
 
             if (parsed.type === "e2ee_hello" && typeof parsed.key === "string") {
               if (this.options.daemonKeyPair) {
@@ -297,7 +289,7 @@ export class EncryptedChannel {
                   const clientPublicKey = importPublicKey(parsed.key);
                   const nextSharedKey = deriveSharedKey(
                     this.options.daemonKeyPair.secretKey,
-                    clientPublicKey
+                    clientPublicKey,
                   );
 
                   // If it's the same client key (handshake retry), re-send
@@ -305,7 +297,7 @@ export class EncryptedChannel {
                   // the channel and cause decrypt failures.
                   if (keysEqual(nextSharedKey, this.sharedKey)) {
                     this.transport.send(
-                      JSON.stringify({ type: "e2ee_ready" } satisfies E2EEReadyMessage)
+                      JSON.stringify({ type: "e2ee_ready" } satisfies E2EEReadyMessage),
                     );
                     return null;
                   }
@@ -318,7 +310,7 @@ export class EncryptedChannel {
                   this.sharedKey = nextSharedKey;
                   this.pendingSends = [];
                   this.transport.send(
-                    JSON.stringify({ type: "e2ee_ready" } satisfies E2EEReadyMessage)
+                    JSON.stringify({ type: "e2ee_ready" } satisfies E2EEReadyMessage),
                   );
                   this.state = "open";
                   await this.flushPendingSends();

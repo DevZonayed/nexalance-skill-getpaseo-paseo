@@ -10,19 +10,27 @@ import { tmpdir } from "node:os";
 
 // Extract text from a single row
 function getRowText(state: ReturnType<TerminalSession["getState"]>, rowIndex: number): string {
-  return state.grid[rowIndex].map((cell) => cell.char).join("").trimEnd();
+  return state.grid[rowIndex]
+    .map((cell) => cell.char)
+    .join("")
+    .trimEnd();
 }
 
 // Extract all visible lines as array (trimmed, empty lines included)
 function getLines(state: ReturnType<TerminalSession["getState"]>): string[] {
-  return state.grid.map((row) => row.map((cell) => cell.char).join("").trimEnd());
+  return state.grid.map((row) =>
+    row
+      .map((cell) => cell.char)
+      .join("")
+      .trimEnd(),
+  );
 }
 
 // Wait for terminal state to match expected lines
 async function waitForLines(
   session: TerminalSession,
   expectedLines: string[],
-  timeoutMs = 5000
+  timeoutMs = 5000,
 ): Promise<void> {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
@@ -41,7 +49,7 @@ async function waitForLines(
   }
   const actual = getLines(session.getState()).slice(0, expectedLines.length);
   throw new Error(
-    `Timeout waiting for expected lines.\nExpected:\n${JSON.stringify(expectedLines, null, 2)}\nActual:\n${JSON.stringify(actual, null, 2)}`
+    `Timeout waiting for expected lines.\nExpected:\n${JSON.stringify(expectedLines, null, 2)}\nActual:\n${JSON.stringify(actual, null, 2)}`,
   );
 }
 
@@ -92,7 +100,7 @@ describe("Terminal", () => {
           cwd: "/tmp",
           shell: "/bin/sh",
           env: { PS1: "$ " },
-        })
+        }),
       );
 
       expect(session.id).toBeDefined();
@@ -109,7 +117,7 @@ describe("Terminal", () => {
           shell: "/bin/sh",
           env: { PS1: "$ " },
           name: "Dev Server",
-        })
+        }),
       );
 
       expect(session.name).toBe("Dev Server");
@@ -119,7 +127,7 @@ describe("Terminal", () => {
       const session = trackSession(
         await createTerminal({
           cwd: "/tmp",
-        })
+        }),
       );
 
       expect(session.id).toBeDefined();
@@ -131,7 +139,7 @@ describe("Terminal", () => {
           cwd: "/tmp",
           shell: "/bin/sh",
           env: { PS1: "$ " },
-        })
+        }),
       );
 
       const state = session.getState();
@@ -147,7 +155,7 @@ describe("Terminal", () => {
           env: { PS1: "$ " },
           rows: 40,
           cols: 120,
-        })
+        }),
       );
 
       const state = session.getState();
@@ -163,7 +171,7 @@ describe("Terminal", () => {
           cwd: "/tmp",
           shell: "/bin/sh",
           env: { PS1: "$ " },
-        })
+        }),
       );
 
       // Wait for initial prompt, then send command
@@ -189,7 +197,7 @@ describe("Terminal", () => {
           cwd: "/tmp",
           shell: "/bin/sh",
           env: { PS1: "$ " },
-        })
+        }),
       );
 
       await waitForLines(session, ["$"]);
@@ -198,13 +206,7 @@ describe("Terminal", () => {
       await waitForLines(session, ["$ echo first", "first", "$"]);
 
       session.send({ type: "input", data: "echo second\r" });
-      await waitForLines(session, [
-        "$ echo first",
-        "first",
-        "$ echo second",
-        "second",
-        "$",
-      ]);
+      await waitForLines(session, ["$ echo first", "first", "$ echo second", "second", "$"]);
 
       const state = session.getState();
       expect(getRowText(state, 0)).toBe("$ echo first");
@@ -220,7 +222,7 @@ describe("Terminal", () => {
           cwd: "/tmp",
           shell: "/bin/sh",
           env: { PS1: "$ " },
-        })
+        }),
       );
 
       await waitForLines(session, ["$"]);
@@ -243,7 +245,7 @@ describe("Terminal", () => {
           cwd: "/tmp",
           shell: "/bin/sh",
           env: { PS1: "$ ", TERM: "xterm-256color" },
-        })
+        }),
       );
 
       await waitForLines(session, ["$"]);
@@ -272,7 +274,7 @@ describe("Terminal", () => {
           cwd: "/tmp",
           shell: "/bin/sh",
           env: { PS1: "$ ", TERM: "xterm-256color" },
-        })
+        }),
       );
 
       await waitForLines(session, ["$"]);
@@ -297,7 +299,7 @@ describe("Terminal", () => {
           cwd: "/tmp",
           shell: "/bin/sh",
           env: { PS1: "$ ", TERM: "xterm-256color" },
-        })
+        }),
       );
 
       await waitForLines(session, ["$"]);
@@ -325,7 +327,7 @@ describe("Terminal", () => {
           cwd: "/tmp",
           shell: "/bin/sh",
           env: { PS1: "$ ", TERM: "xterm-256color" },
-        })
+        }),
       );
 
       await waitForLines(session, ["$"]);
@@ -353,7 +355,7 @@ describe("Terminal", () => {
           env: { PS1: "$ " },
           rows: 24,
           cols: 80,
-        })
+        }),
       );
 
       session.send({ type: "resize", rows: 40, cols: 120 });
@@ -373,7 +375,7 @@ describe("Terminal", () => {
           env: { PS1: "$ " },
           rows: 24,
           cols: 80,
-        })
+        }),
       );
 
       session.send({ type: "resize", rows: 10, cols: 40 });
@@ -392,7 +394,7 @@ describe("Terminal", () => {
           cwd: "/tmp",
           shell: "/bin/sh",
           env: { PS1: "$ " },
-        })
+        }),
       );
 
       const messages: Array<{ type: string }> = [];
@@ -414,7 +416,7 @@ describe("Terminal", () => {
           cwd: "/tmp",
           shell: "/bin/sh",
           env: { PS1: "$ " },
-        })
+        }),
       );
 
       await waitForLines(session, ["$"]);
@@ -441,7 +443,7 @@ describe("Terminal", () => {
           cwd: "/tmp",
           shell: "/bin/sh",
           env: { PS1: "$ " },
-        })
+        }),
       );
 
       await waitForLines(session, ["$"]);
@@ -468,7 +470,7 @@ describe("Terminal", () => {
           cwd: "/tmp",
           shell: "/bin/sh",
           env: { PS1: "$ " },
-        })
+        }),
       );
 
       await waitForLines(session, ["$"]);
@@ -500,7 +502,7 @@ describe("Terminal", () => {
           cwd: "/tmp",
           shell: "/bin/sh",
           env: { PS1: "$ " },
-        })
+        }),
       );
 
       await waitForLines(session, ["$"]);
@@ -536,7 +538,7 @@ describe("Terminal", () => {
             replayed.push(chunk.data);
           }
         },
-        { fromOffset: resumeOffset }
+        { fromOffset: resumeOffset },
       );
 
       const replayText = replayed.join("");
@@ -555,7 +557,7 @@ describe("Terminal", () => {
           env: { PS1: "$ " },
           rows: 24,
           cols: 80,
-        })
+        }),
       );
 
       const state = session.getState();
@@ -576,7 +578,7 @@ describe("Terminal", () => {
           cwd: "/tmp",
           shell: "/bin/sh",
           env: { PS1: "$ " },
-        })
+        }),
       );
 
       await waitForLines(session, ["$"]);
@@ -598,7 +600,7 @@ describe("Terminal", () => {
           env: { PS1: "$ " },
           rows: 5,
           cols: 80,
-        })
+        }),
       );
 
       await waitForLines(session, ["$"]);
@@ -618,7 +620,12 @@ describe("Terminal", () => {
       expect(state.scrollback.length).toBeGreaterThan(0);
 
       const scrollbackText = state.scrollback
-        .map((row) => row.map((cell) => cell.char).join("").trimEnd())
+        .map((row) =>
+          row
+            .map((cell) => cell.char)
+            .join("")
+            .trimEnd(),
+        )
         .filter((line) => line.length > 0);
 
       // The scrollback should contain the command and early numbers
@@ -636,7 +643,7 @@ describe("Terminal", () => {
           cwd: "/tmp",
           shell: "/bin/sh",
           env: { PS1: "$ " },
-        })
+        }),
       );
 
       await waitForLines(session, ["$"]);
@@ -654,7 +661,7 @@ describe("Terminal", () => {
           cwd: "/tmp",
           shell: "/bin/sh",
           env: { PS1: "$ " },
-        })
+        }),
       );
 
       session.kill();
@@ -671,7 +678,7 @@ describe("Terminal", () => {
           cwd: "/tmp",
           shell: "/bin/sh",
           env: { PS1: "$ " },
-        })
+        }),
       );
 
       // Should not throw

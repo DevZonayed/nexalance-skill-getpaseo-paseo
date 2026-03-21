@@ -81,9 +81,7 @@ vi.mock("./push/push-service.js", () => ({
   },
 }));
 
-import {
-  VoiceAssistantWebSocketServer,
-} from "./websocket-server";
+import { VoiceAssistantWebSocketServer } from "./websocket-server";
 import { parseServerInfoStatusPayload } from "./messages.js";
 import type { SpeechReadinessSnapshot } from "./speech/speech-runtime.js";
 
@@ -128,7 +126,7 @@ class MockSocket {
     const handlers = this.listeners.get(event) ?? [];
     this.listeners.set(
       event,
-      handlers.filter((handler) => handler !== listener)
+      handlers.filter((handler) => handler !== listener),
     );
   }
 }
@@ -158,7 +156,7 @@ function createServer(options?: { speechReadiness?: SpeechReadinessSnapshot | nu
     {} as any,
     {} as any,
     "/tmp/paseo-test",
-    async () => ({} as any),
+    async () => ({}) as any,
     { allowedOrigins: new Set() },
     undefined,
     undefined,
@@ -169,7 +167,7 @@ function createServer(options?: { speechReadiness?: SpeechReadinessSnapshot | nu
         }
       : undefined,
     undefined,
-    TEST_DAEMON_VERSION
+    TEST_DAEMON_VERSION,
   );
 }
 
@@ -212,12 +210,8 @@ function createReadySpeechReadinessSnapshot(): SpeechReadinessSnapshot {
 function createDownloadInProgressSpeechReadinessSnapshot(): SpeechReadinessSnapshot {
   return {
     generatedAt: "2026-02-14T00:00:00.000Z",
-    requiredLocalModelIds: [
-      "sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20",
-    ],
-    missingLocalModelIds: [
-      "sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20",
-    ],
+    requiredLocalModelIds: ["sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20"],
+    missingLocalModelIds: ["sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20"],
     download: {
       inProgress: true,
       error: null,
@@ -438,7 +432,7 @@ describe("relay external socket reconnect behavior", () => {
         message: {
           type: "ping",
         },
-      })
+      }),
     );
     await Promise.resolve();
 
@@ -549,11 +543,11 @@ describe("relay external socket reconnect behavior", () => {
     const server = createServer({ speechReadiness });
 
     const socket = new MockSocket();
-    const serverInfo = await attachRelayAndHello({
+    const serverInfo = (await attachRelayAndHello({
       server,
       socket,
       clientId: "cid-server-info-capabilities",
-    }) as {
+    })) as {
       version?: unknown;
       capabilities?: {
         voice?: {
@@ -564,11 +558,11 @@ describe("relay external socket reconnect behavior", () => {
     };
     expect(serverInfo.version).toBe(TEST_DAEMON_VERSION);
     expect(serverInfo.capabilities?.voice?.dictation?.enabled).toBe(
-      speechReadiness.dictation.enabled
+      speechReadiness.dictation.enabled,
     );
     expect(serverInfo.capabilities?.voice?.dictation?.reason).toBe("");
     expect(serverInfo.capabilities?.voice?.voice?.enabled).toBe(
-      speechReadiness.realtimeVoice.enabled
+      speechReadiness.realtimeVoice.enabled,
     );
     expect(serverInfo.capabilities?.voice?.voice?.reason).toBe("");
 
@@ -623,12 +617,8 @@ describe("relay external socket reconnect behavior", () => {
     const payload = parseServerInfoStatusPayload(envelope.message?.payload);
     expect(payload?.capabilities?.voice?.dictation.enabled).toBe(true);
     expect(payload?.capabilities?.voice?.voice.enabled).toBe(true);
-    expect(payload?.capabilities?.voice?.dictation.reason).toContain(
-      "Try again in a few minutes."
-    );
-    expect(payload?.capabilities?.voice?.voice.reason).toContain(
-      "Try again in a few minutes."
-    );
+    expect(payload?.capabilities?.voice?.dictation.reason).toContain("Try again in a few minutes.");
+    expect(payload?.capabilities?.voice?.voice.reason).toContain("Try again in a few minutes.");
 
     await server.close();
   });
@@ -654,8 +644,8 @@ describe("relay external socket reconnect behavior", () => {
           streamId: 9,
           offset: 0,
           payload: new TextEncoder().encode("ls\r"),
-        })
-      )
+        }),
+      ),
     );
     await Promise.resolve();
 

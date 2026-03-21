@@ -13,4 +13,3 @@ describe("formatShortcut", () => {
     expect(formatShortcut(["mod", "E"], "non-mac")).toBe("Ctrl+E");
   });
 });
-

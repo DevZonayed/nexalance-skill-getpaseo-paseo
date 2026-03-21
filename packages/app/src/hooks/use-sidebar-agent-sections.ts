@@ -55,15 +55,14 @@ export function useSidebarAgentSections(agents: AggregatedAgent[]): SidebarSecti
   const { activeGroups } = useMemo(
     () =>
       groupAgents(agents, {
-        getRemoteUrl: (agent) =>
-          remoteUrlByAgentKey.get(`${agent.serverId}:${agent.id}`) ?? null,
+        getRemoteUrl: (agent) => remoteUrlByAgentKey.get(`${agent.serverId}:${agent.id}`) ?? null,
       }),
-    [agents, remoteUrlByAgentKey]
+    [agents, remoteUrlByAgentKey],
   );
 
   const sortedGroups = useMemo(
     () => sortProjectsByStoredOrder(activeGroups, projectOrder),
-    [activeGroups, projectOrder]
+    [activeGroups, projectOrder],
   );
 
   const sections: SidebarSectionData[] = useMemo(() => {

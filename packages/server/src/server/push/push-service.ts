@@ -76,7 +76,7 @@ export class PushService {
       if (!response.ok) {
         this.logger.error(
           { status: response.status, statusText: response.statusText },
-          "Expo push API error"
+          "Expo push API error",
         );
         return;
       }
@@ -88,10 +88,7 @@ export class PushService {
     }
   }
 
-  private handleTickets(
-    messages: ExpoPushMessage[],
-    tickets: ExpoPushTicket[]
-  ): void {
+  private handleTickets(messages: ExpoPushMessage[], tickets: ExpoPushTicket[]): void {
     for (let i = 0; i < tickets.length; i++) {
       const ticket = tickets[i];
       const message = messages[i];
@@ -99,7 +96,7 @@ export class PushService {
       if (ticket.status === "error") {
         this.logger.error(
           { token: message.to, message: ticket.message, details: ticket.details },
-          "Push failed for token"
+          "Push failed for token",
         );
 
         // Remove invalid tokens

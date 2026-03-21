@@ -1,21 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useFocusEffect, useIsFocused } from "@react-navigation/native";
-import {
-  ActivityIndicator,
-  Pressable,
-  ScrollView,
-  Text,
-  View,
-} from "react-native";
+import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
 import { Plus, X } from "lucide-react-native";
 import Animated, { runOnJS, useAnimatedReaction } from "react-native-reanimated";
-import Svg, {
-  Defs,
-  LinearGradient as SvgLinearGradient,
-  Rect,
-  Stop,
-} from "react-native-svg";
+import Svg, { Defs, LinearGradient as SvgLinearGradient, Rect, Stop } from "react-native-svg";
 import { StyleSheet, UnistylesRuntime, useUnistyles } from "react-native-unistyles";
 import type { ListTerminalsResponse } from "@server/shared/messages";
 import { encodeTerminalKeyInput } from "@server/shared/terminal-key-input";
@@ -28,9 +17,7 @@ import {
 } from "@/utils/terminal-keys";
 import { upsertTerminalListEntry } from "@/utils/terminal-list";
 import { confirmDialog } from "@/utils/confirm-dialog";
-import {
-  getWorkspaceTerminalSession,
-} from "@/terminal/runtime/workspace-terminal-session";
+import { getWorkspaceTerminalSession } from "@/terminal/runtime/workspace-terminal-session";
 import {
   TerminalStreamController,
   type TerminalStreamControllerStatus,
@@ -109,13 +96,7 @@ function TerminalCloseGradient({ color, gradientId }: { color: string; gradientI
     <View style={styles.terminalTabCloseGradient} pointerEvents="none">
       <Svg width="100%" height="100%" preserveAspectRatio="none">
         <Defs>
-          <SvgLinearGradient
-            id={gradientId}
-            x1="0%"
-            y1="0%"
-            x2="100%"
-            y2="0%"
-          >
+          <SvgLinearGradient id={gradientId} x1="0%" y1="0%" x2="100%" y2="0%">
             <Stop offset="0%" stopColor={color} stopOpacity={0} />
             <Stop offset="10%" stopColor={color} stopOpacity={1} />
             <Stop offset="100%" stopColor={color} stopOpacity={1} />
@@ -138,8 +119,7 @@ export function TerminalPane({
   const isScreenFocused = useIsFocused();
   const { theme } = useUnistyles();
   const xtermTheme = useMemo(() => toXtermTheme(theme.colors.terminal), [theme.colors.terminal]);
-  const isMobile =
-    UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
+  const isMobile = UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
   const mobileView = usePanelStore((state) => state.mobileView);
   const openAgentList = usePanelStore((state) => state.openAgentList);
   const openFileExplorer = usePanelStore((state) => state.openFileExplorer);
@@ -163,21 +143,18 @@ export function TerminalPane({
         scopeKey,
         maxOutputChars: MAX_OUTPUT_CHARS,
       }),
-    [scopeKey]
+    [scopeKey],
   );
   const outputSession = workspaceTerminalSession.outputSession;
   const subscribeOutputSession = useCallback(
     (listener: () => void) => outputSession.subscribe(listener),
-    [outputSession]
+    [outputSession],
   );
-  const getOutputSessionState = useCallback(
-    () => outputSession.getState(),
-    [outputSession]
-  );
+  const getOutputSessionState = useCallback(() => outputSession.getState(), [outputSession]);
   const outputState = useSyncExternalStore(
     subscribeOutputSession,
     getOutputSessionState,
-    getOutputSessionState
+    getOutputSessionState,
   );
   const selectedOutputState = useMemo(() => {
     if (outputState.selectedTerminalId === selectedTerminalId) {
@@ -204,9 +181,7 @@ export function TerminalPane({
   const [focusRequestToken, setFocusRequestToken] = useState(0);
   const [resizeRequestToken, setResizeRequestToken] = useState(0);
   const [hoveredTerminalId, setHoveredTerminalId] = useState<string | null>(null);
-  const [hoveredCloseTerminalId, setHoveredCloseTerminalId] = useState<string | null>(
-    null
-  );
+  const [hoveredCloseTerminalId, setHoveredCloseTerminalId] = useState<string | null>(null);
   const hoverOutTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const selectedTerminalIdRef = useRef<string | null>(selectedTerminalId);
   const pendingTerminalInputRef = useRef<PendingTerminalInput[]>([]);
@@ -217,7 +192,7 @@ export function TerminalPane({
     (next: string | null) => {
       onSelectedTerminalIdChange?.(next);
     },
-    [onSelectedTerminalIdChange]
+    [onSelectedTerminalIdChange],
   );
 
   useEffect(() => {
@@ -237,7 +212,7 @@ export function TerminalPane({
       clearHoverOutTimeout();
       setHoveredTerminalId(terminalId);
     },
-    [clearHoverOutTimeout]
+    [clearHoverOutTimeout],
   );
 
   const handleTerminalTabHoverOut = useCallback(
@@ -245,12 +220,10 @@ export function TerminalPane({
       clearHoverOutTimeout();
       hoverOutTimeoutRef.current = setTimeout(() => {
         setHoveredTerminalId((current) => (current === terminalId ? null : current));
-        setHoveredCloseTerminalId((current) =>
-          current === terminalId ? null : current
-        );
+        setHoveredCloseTerminalId((current) => (current === terminalId ? null : current));
       }, 50);
     },
-    [clearHoverOutTimeout]
+    [clearHoverOutTimeout],
   );
 
   const handleTerminalCloseHoverIn = useCallback(
@@ -259,7 +232,7 @@ export function TerminalPane({
       setHoveredTerminalId(terminalId);
       setHoveredCloseTerminalId(terminalId);
     },
-    [clearHoverOutTimeout]
+    [clearHoverOutTimeout],
   );
 
   const handleTerminalCloseHoverOut = useCallback((terminalId: string) => {
@@ -308,7 +281,7 @@ export function TerminalPane({
     keyboardRefitTimeoutsRef.current = TERMINAL_REFIT_DELAYS_MS.map((delayMs) =>
       setTimeout(() => {
         requestTerminalReflow();
-      }, delayMs)
+      }, delayMs),
     );
   }, [clearKeyboardRefitTimeouts, requestTerminalReflow]);
 
@@ -324,7 +297,7 @@ export function TerminalPane({
       }
       runOnJS(pulseKeyboardRefits)();
     },
-    [pulseKeyboardRefits]
+    [pulseKeyboardRefits],
   );
 
   useFocusEffect(
@@ -337,7 +310,7 @@ export function TerminalPane({
       const timeoutHandles = TERMINAL_REFIT_DELAYS_MS.map((delayMs) =>
         setTimeout(() => {
           requestTerminalReflow();
-        }, delayMs)
+        }, delayMs),
       );
 
       return () => {
@@ -345,7 +318,7 @@ export function TerminalPane({
           clearTimeout(handle);
         }
       };
-    }, [requestTerminalReflow, selectedTerminalId])
+    }, [requestTerminalReflow, selectedTerminalId]),
   );
 
   const terminalsQuery = useQuery({
@@ -386,12 +359,7 @@ export function TerminalPane({
   }, [client, isConnected]);
 
   useEffect(() => {
-    if (
-      !manageTerminalDirectorySubscription ||
-      !client ||
-      !isConnected ||
-      !cwd.startsWith("/")
-    ) {
+    if (!manageTerminalDirectorySubscription || !client || !isConnected || !cwd.startsWith("/")) {
       return;
     }
 
@@ -494,21 +462,18 @@ export function TerminalPane({
     streamControllerRef.current?.pruneResumeOffsets({ terminalIds });
   }, [outputSession, terminals]);
 
-  const handleStreamControllerStatus = useCallback(
-    (status: TerminalStreamControllerStatus) => {
-      setIsAttaching(status.isAttaching);
-      setStreamError(status.error);
-      if (status.terminalId && typeof status.streamId === "number") {
-        setActiveStream({
-          terminalId: status.terminalId,
-          streamId: status.streamId,
-        });
-        return;
-      }
-      setActiveStream(null);
-    },
-    []
-  );
+  const handleStreamControllerStatus = useCallback((status: TerminalStreamControllerStatus) => {
+    setIsAttaching(status.isAttaching);
+    setStreamError(status.error);
+    if (status.terminalId && typeof status.streamId === "number") {
+      setActiveStream({
+        terminalId: status.terminalId,
+        streamId: status.streamId,
+      });
+      return;
+    }
+    setActiveStream(null);
+  }, []);
 
   useEffect(() => {
     streamControllerRef.current?.dispose();
@@ -566,16 +531,14 @@ export function TerminalPane({
   }, [isScreenFocused, outputSession, selectedTerminalId]);
 
   const activeStreamId =
-    activeStream && activeStream.terminalId === selectedTerminalId
-      ? activeStream.streamId
-      : null;
+    activeStream && activeStream.terminalId === selectedTerminalId ? activeStream.streamId : null;
   const getCurrentActiveStreamId = useCallback(() => {
     return streamControllerRef.current?.getActiveStreamId() ?? null;
   }, []);
 
   const selectedTerminal = useMemo(
     () => terminals.find((terminal) => terminal.id === selectedTerminalId) ?? null,
-    [terminals, selectedTerminalId]
+    [terminals, selectedTerminalId],
   );
   const handleCreateTerminal = useCallback(() => {
     createTerminalMutation.mutate();
@@ -618,7 +581,7 @@ export function TerminalPane({
       });
       return true;
     },
-    [client]
+    [client],
   );
 
   const flushPendingTerminalInput = useCallback(() => {
@@ -650,10 +613,7 @@ export function TerminalPane({
 
   const handleCloseTerminal = useCallback(
     async (terminalId: string) => {
-      if (
-        killTerminalMutation.isPending &&
-        killTerminalMutation.variables === terminalId
-      ) {
+      if (killTerminalMutation.isPending && killTerminalMutation.variables === terminalId) {
         return;
       }
 
@@ -671,7 +631,7 @@ export function TerminalPane({
 
       killTerminalMutation.mutate(terminalId);
     },
-    [killTerminalMutation]
+    [killTerminalMutation],
   );
 
   const clearPendingModifiers = useCallback(() => {
@@ -679,15 +639,13 @@ export function TerminalPane({
   }, []);
 
   const sendTerminalKey = useCallback(
-    (
-      input: {
-        key: string;
-        ctrl: boolean;
-        shift: boolean;
-        alt: boolean;
-        meta?: boolean;
-      }
-    ): boolean => {
+    (input: {
+      key: string;
+      ctrl: boolean;
+      shift: boolean;
+      alt: boolean;
+      meta?: boolean;
+    }): boolean => {
       if (!client || !selectedTerminalIdRef.current) {
         enqueuePendingTerminalInput({
           type: "key",
@@ -718,12 +676,7 @@ export function TerminalPane({
       }
       return true;
     },
-    [
-      client,
-      dispatchTerminalInputEntry,
-      enqueuePendingTerminalInput,
-      getCurrentActiveStreamId,
-    ]
+    [client, dispatchTerminalInputEntry, enqueuePendingTerminalInput, getCurrentActiveStreamId],
   );
 
   const handleTerminalData = useCallback(
@@ -782,7 +735,7 @@ export function TerminalPane({
       modifiers.shift,
       sendTerminalKey,
       enqueuePendingTerminalInput,
-    ]
+    ],
   );
 
   const handleTerminalResize = useCallback(
@@ -794,11 +747,7 @@ export function TerminalPane({
       const normalizedRows = Math.floor(rows);
       const normalizedCols = Math.floor(cols);
       const previous = lastReportedSizeRef.current;
-      if (
-        previous &&
-        previous.rows === normalizedRows &&
-        previous.cols === normalizedCols
-      ) {
+      if (previous && previous.rows === normalizedRows && previous.cols === normalizedCols) {
         return;
       }
       lastReportedSizeRef.current = { rows: normalizedRows, cols: normalizedCols };
@@ -808,36 +757,33 @@ export function TerminalPane({
         cols: normalizedCols,
       });
     },
-    [client, selectedTerminalId]
+    [client, selectedTerminalId],
   );
 
   const handleTerminalKey = useCallback(
-    async (input: {
-      key: string;
-      ctrl: boolean;
-      shift: boolean;
-      alt: boolean;
-      meta: boolean;
-    }) => {
+    async (input: { key: string; ctrl: boolean; shift: boolean; alt: boolean; meta: boolean }) => {
       sendTerminalKey(input);
     },
-    [sendTerminalKey]
+    [sendTerminalKey],
   );
 
   const handlePendingModifiersConsumed = useCallback(() => {
     clearPendingModifiers();
   }, [clearPendingModifiers]);
 
-  const handleOutputChunkConsumed = useCallback((sequence: number) => {
-    outputSession.consume({ sequence });
-  }, [outputSession]);
+  const handleOutputChunkConsumed = useCallback(
+    (sequence: number) => {
+      outputSession.consume({ sequence });
+    },
+    [outputSession],
+  );
 
   const toggleModifier = useCallback(
     (modifier: keyof ModifierState) => {
       setModifiers((current) => ({ ...current, [modifier]: !current[modifier] }));
       requestTerminalFocus();
     },
-    [requestTerminalFocus]
+    [requestTerminalFocus],
   );
 
   const sendVirtualKey = useCallback(
@@ -859,7 +805,7 @@ export function TerminalPane({
       modifiers.shift,
       requestTerminalFocus,
       sendTerminalKey,
-    ]
+    ],
   );
 
   if (!client || !isConnected) {
@@ -870,17 +816,12 @@ export function TerminalPane({
     );
   }
 
-  const queryError =
-    terminalsQuery.error instanceof Error ? terminalsQuery.error.message : null;
+  const queryError = terminalsQuery.error instanceof Error ? terminalsQuery.error.message : null;
   const isCreating = createTerminalMutation.isPending;
   const createError =
-    createTerminalMutation.error instanceof Error
-      ? createTerminalMutation.error.message
-      : null;
+    createTerminalMutation.error instanceof Error ? createTerminalMutation.error.message : null;
   const closeError =
-    killTerminalMutation.error instanceof Error
-      ? killTerminalMutation.error.message
-      : null;
+    killTerminalMutation.error instanceof Error ? killTerminalMutation.error.message : null;
   const combinedError = streamError ?? closeError ?? createError ?? queryError;
 
   return (
@@ -898,13 +839,11 @@ export function TerminalPane({
               const isTabHovered = hoveredTerminalId === terminal.id;
               const isCloseHovered = hoveredCloseTerminalId === terminal.id;
               const isClosingTerminal =
-                killTerminalMutation.isPending &&
-                killTerminalMutation.variables === terminal.id;
-              const shouldShowCloseButton =
-                isTabHovered || isCloseHovered || isClosingTerminal;
+                killTerminalMutation.isPending && killTerminalMutation.variables === terminal.id;
+              const shouldShowCloseButton = isTabHovered || isCloseHovered || isClosingTerminal;
               const gradientId = `terminal-close-gradient-${terminal.id.replace(
                 /[^a-zA-Z0-9_-]/g,
-                "-"
+                "-",
               )}`;
               return (
                 <Pressable
@@ -946,9 +885,7 @@ export function TerminalPane({
                   >
                     {({ hovered = false, pressed = false }) => {
                       const iconColor =
-                        hovered || pressed
-                          ? theme.colors.foreground
-                          : theme.colors.foregroundMuted;
+                        hovered || pressed ? theme.colors.foreground : theme.colors.foregroundMuted;
                       return (
                         <>
                           <TerminalCloseGradient
@@ -1044,11 +981,7 @@ export function TerminalPane({
         )}
 
         {isAttaching && isScreenFocused ? (
-          <View
-            style={styles.attachOverlay}
-            pointerEvents="none"
-            testID="terminal-attach-loading"
-          >
+          <View style={styles.attachOverlay} pointerEvents="none" testID="terminal-attach-loading">
             <ActivityIndicator size="small" color={theme.colors.foregroundMuted} />
           </View>
         ) : null}
@@ -1077,7 +1010,12 @@ export function TerminalPane({
                     (hovered || pressed) && styles.keyButtonHovered,
                   ]}
                 >
-                  <Text style={[styles.keyButtonText, modifiers[modifier] && styles.keyButtonTextActive]}>
+                  <Text
+                    style={[
+                      styles.keyButtonText,
+                      modifiers[modifier] && styles.keyButtonTextActive,
+                    ]}
+                  >
                     {MODIFIER_LABELS[modifier]}
                   </Text>
                 </Pressable>

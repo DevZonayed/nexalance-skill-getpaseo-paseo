@@ -106,11 +106,11 @@ export const baseColors = {
 // Semantic color tokens - Layer-based system
 const lightSemanticColors = {
   // Surfaces (layers) - shifted one step lighter
-  surface0: "#ffffff",       // App background
-  surface1: "#fafafa",       // Subtle hover (was zinc-100, now zinc-50)
-  surface2: "#f4f4f5",       // Elevated: badges, inputs, sheets (was zinc-200, now zinc-100)
-  surface3: "#e4e4e7",       // Highest elevation (was zinc-300, now zinc-200)
-  surface4: "#d4d4d8",       // Extra emphasis (was zinc-400, now zinc-300)
+  surface0: "#ffffff", // App background
+  surface1: "#fafafa", // Subtle hover (was zinc-100, now zinc-50)
+  surface2: "#f4f4f5", // Elevated: badges, inputs, sheets (was zinc-200, now zinc-100)
+  surface3: "#e4e4e7", // Highest elevation (was zinc-300, now zinc-200)
+  surface4: "#d4d4d8", // Extra emphasis (was zinc-400, now zinc-300)
   surfaceSidebar: "#f4f4f5", // Sidebar background (darker than main)
 
   // Text
@@ -118,8 +118,8 @@ const lightSemanticColors = {
   foregroundMuted: "#71717a",
 
   // Borders - shifted one step lighter
-  border: "#e4e4e7",         // (was zinc-200, now zinc-200 - keep for contrast)
-  borderAccent: "#ececf1",   // Softer accent border for low-emphasis outlines
+  border: "#e4e4e7", // (was zinc-200, now zinc-200 - keep for contrast)
+  borderAccent: "#ececf1", // Softer accent border for low-emphasis outlines
 
   // Brand
   accent: "#20744A",
@@ -176,11 +176,11 @@ const lightSemanticColors = {
 
 const darkSemanticColors = {
   // Surfaces (layers)
-  surface0: "#18181c",       // App background
-  surface1: "#1f1f23",       // Subtle hover
-  surface2: "#27272a",       // Elevated: badges, inputs, sheets
-  surface3: "#3f3f46",       // Highest elevation
-  surface4: "#52525b",       // Extra emphasis
+  surface0: "#18181c", // App background
+  surface1: "#1f1f23", // Subtle hover
+  surface2: "#27272a", // Elevated: badges, inputs, sheets
+  surface3: "#3f3f46", // Highest elevation
+  surface4: "#52525b", // Extra emphasis
   surfaceSidebar: "#121216", // Sidebar background (darker than main)
 
   // Text

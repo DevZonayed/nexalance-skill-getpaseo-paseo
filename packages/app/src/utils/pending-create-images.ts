@@ -16,7 +16,7 @@ export function mergePendingCreateImages({
   }
 
   const targetIndex = streamItems.findIndex(
-    (item) => item.kind === "user_message" && item.id === clientMessageId
+    (item) => item.kind === "user_message" && item.id === clientMessageId,
   );
   if (targetIndex < 0) {
     return streamItems;

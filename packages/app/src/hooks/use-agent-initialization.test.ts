@@ -11,7 +11,7 @@ describe("useAgentInitialization timeline request policy", () => {
         },
         hasAuthoritativeHistory: false,
         initialTimelineLimit: 200,
-      })
+      }),
     ).toEqual({
       direction: "tail",
       limit: 200,
@@ -25,7 +25,7 @@ describe("useAgentInitialization timeline request policy", () => {
         cursor: null,
         hasAuthoritativeHistory: true,
         initialTimelineLimit: 200,
-      })
+      }),
     ).toEqual({
       direction: "tail",
       limit: 200,
@@ -42,7 +42,7 @@ describe("useAgentInitialization timeline request policy", () => {
         },
         hasAuthoritativeHistory: true,
         initialTimelineLimit: 200,
-      })
+      }),
     ).toEqual({
       direction: "after",
       cursor: { epoch: "epoch-1", seq: 42 },
@@ -57,7 +57,7 @@ describe("useAgentInitialization timeline request policy", () => {
         cursor: null,
         hasAuthoritativeHistory: false,
         initialTimelineLimit: 0,
-      })
+      }),
     ).toEqual({
       direction: "tail",
       limit: 0,
@@ -66,8 +66,6 @@ describe("useAgentInitialization timeline request policy", () => {
   });
 
   it("does not expose an RPC-success init fallback", () => {
-    expect(
-      "shouldResolveInitFromRpcSuccess" in __private__
-    ).toBe(false);
+    expect("shouldResolveInitFromRpcSuccess" in __private__).toBe(false);
   });
 });

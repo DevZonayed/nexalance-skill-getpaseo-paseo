@@ -15,15 +15,9 @@ import {
 } from "@/types/host-connection";
 import { decodeOfferFragmentPayload, normalizeHostPort } from "@/utils/daemon-endpoints";
 import { ConnectionOfferSchema, type ConnectionOffer } from "@server/shared/connection-offer";
-import {
-  shouldUseDesktopDaemon,
-  startDesktopDaemon,
-} from "@/desktop/daemon/desktop-daemon";
+import { shouldUseDesktopDaemon, startDesktopDaemon } from "@/desktop/daemon/desktop-daemon";
 import { connectToDaemon } from "@/utils/test-daemon-connection";
-import {
-  buildDaemonWebSocketUrl,
-  buildRelayWebSocketUrl,
-} from "@/utils/daemon-endpoints";
+import { buildDaemonWebSocketUrl, buildRelayWebSocketUrl } from "@/utils/daemon-endpoints";
 import { getOrCreateClientId } from "@/utils/client-id";
 import {
   selectBestConnection,
@@ -37,12 +31,7 @@ import {
 import { applyFetchedAgentDirectory } from "@/utils/agent-directory-sync";
 import { useSessionStore, type Agent } from "@/stores/session-store";
 
-export type HostRuntimeConnectionStatus =
-  | "idle"
-  | "connecting"
-  | "online"
-  | "offline"
-  | "error";
+export type HostRuntimeConnectionStatus = "idle" | "connecting" | "online" | "offline" | "error";
 
 export type ActiveConnection =
   | { type: "directTcp"; endpoint: string; display: string }
@@ -73,15 +62,11 @@ export type HostRuntimeSnapshot = {
   clientGeneration: number;
 };
 
-export function isHostRuntimeConnected(
-  snapshot: HostRuntimeSnapshot | null
-): boolean {
+export function isHostRuntimeConnected(snapshot: HostRuntimeSnapshot | null): boolean {
   return snapshot?.connectionStatus === "online";
 }
 
-export function isHostRuntimeDirectoryLoading(
-  snapshot: HostRuntimeSnapshot | null
-): boolean {
+export function isHostRuntimeDirectoryLoading(snapshot: HostRuntimeSnapshot | null): boolean {
   if (!snapshot) {
     return true;
   }
@@ -93,8 +78,7 @@ export function isHostRuntimeDirectoryLoading(
   }
   return (
     !snapshot.hasEverLoadedAgentDirectory &&
-    (snapshot.connectionStatus === "connecting" ||
-      snapshot.connectionStatus === "online")
+    (snapshot.connectionStatus === "connecting" || snapshot.connectionStatus === "online")
   );
 }
 
@@ -117,10 +101,7 @@ export type HostRuntimeControllerDeps = {
     clientId: string;
     runtimeGeneration: number;
   }) => DaemonClient;
-  connectToDaemon: (input: {
-    host: HostProfile;
-    connection: HostConnection;
-  }) => Promise<{
+  connectToDaemon: (input: { host: HostProfile; connection: HostConnection }) => Promise<{
     client: DaemonClient;
     serverId: string;
     hostname: string | null;
@@ -148,7 +129,7 @@ const DEFAULT_AGENT_DIRECTORY_SORT: NonNullable<FetchAgentsOptions["sort"]> = [
 ];
 
 function readFetchAgentsHasMore(
-  pageInfo: Awaited<ReturnType<DaemonClient["fetchAgents"]>>["pageInfo"]
+  pageInfo: Awaited<ReturnType<DaemonClient["fetchAgents"]>>["pageInfo"],
 ): boolean {
   const page = pageInfo as {
     hasMore?: boolean;
@@ -164,7 +145,7 @@ function readFetchAgentsHasMore(
 }
 
 function readFetchAgentsNextCursor(
-  pageInfo: Awaited<ReturnType<DaemonClient["fetchAgents"]>>["pageInfo"]
+  pageInfo: Awaited<ReturnType<DaemonClient["fetchAgents"]>>["pageInfo"],
 ): string | null {
   const page = pageInfo as {
     nextCursor?: string | null;
@@ -347,7 +328,7 @@ function nextConnectionMachineState(input: {
 }
 
 function toSnapshotConnectionPatch(
-  state: HostRuntimeConnectionMachineState
+  state: HostRuntimeConnectionMachineState,
 ): Pick<
   HostRuntimeSnapshot,
   "activeConnectionId" | "activeConnection" | "connectionStatus" | "lastError" | "lastOnlineAt"
@@ -404,10 +385,7 @@ function buildConnectionCandidates(host: HostProfile): ConnectionCandidate[] {
   }));
 }
 
-function findConnectionById(
-  host: HostProfile,
-  connectionId: string | null
-): HostConnection | null {
+function findConnectionById(host: HostProfile, connectionId: string | null): HostConnection | null {
   if (!connectionId) {
     return null;
   }
@@ -417,7 +395,7 @@ function findConnectionById(
 function probeIntervalForConnection(
   firstSeenAt: number,
   isActiveOnline: boolean,
-  now: number
+  now: number,
 ): number {
   if (isActiveOnline) {
     return PROBE_STEADY_MS;
@@ -583,9 +561,7 @@ export class HostRuntimeController {
   }
 
   markAgentDirectorySyncLoading(): void {
-    const status = this.snapshot.hasEverLoadedAgentDirectory
-      ? "revalidating"
-      : "initial_loading";
+    const status = this.snapshot.hasEverLoadedAgentDirectory ? "revalidating" : "initial_loading";
     this.updateSnapshot({
       agentDirectoryStatus: status,
       agentDirectoryError: null,
@@ -687,7 +663,7 @@ export class HostRuntimeController {
 
     const maybeActivateFirstAvailable = async (
       connectionId: string,
-      client: DaemonClient
+      client: DaemonClient,
     ): Promise<boolean> => {
       while (!this.snapshot.activeConnectionId) {
         if (!activationLock) {
@@ -716,10 +692,7 @@ export class HostRuntimeController {
         ? probeByConnectionId.get(currentActiveConnectionId)
         : null;
 
-      if (
-        !currentActiveConnectionId ||
-        !findConnectionById(this.host, currentActiveConnectionId)
-      ) {
+      if (!currentActiveConnectionId || !findConnectionById(this.host, currentActiveConnectionId)) {
         const nextConnectionId = selectBestConnection({
           candidates: buildConnectionCandidates(this.host),
           probeByConnectionId,
@@ -755,10 +728,8 @@ export class HostRuntimeController {
 
       const available = Array.from(probeByConnectionId.entries())
         .filter(
-          (
-            entry
-          ): entry is [string, Extract<ConnectionProbeState, { status: "available" }>] =>
-            entry[1].status === "available"
+          (entry): entry is [string, Extract<ConnectionProbeState, { status: "available" }>] =>
+            entry[1].status === "available",
         )
         .map(([connectionId, probe]) => ({
           connectionId,
@@ -787,9 +758,7 @@ export class HostRuntimeController {
         this.switchCandidateHitCount = 1;
       }
 
-      if (
-        this.switchCandidateHitCount >= ADAPTIVE_SWITCH_CONSECUTIVE_PROBES
-      ) {
+      if (this.switchCandidateHitCount >= ADAPTIVE_SWITCH_CONSECUTIVE_PROBES) {
         this.switchCandidateConnectionId = null;
         this.switchCandidateHitCount = 0;
         await this.switchToConnection({
@@ -857,7 +826,7 @@ export class HostRuntimeController {
   }
 
   private updateSnapshot(
-    patch: Partial<Omit<HostRuntimeSnapshot, "serverId" | "clientGeneration">>
+    patch: Partial<Omit<HostRuntimeSnapshot, "serverId" | "clientGeneration">>,
   ): void {
     const next: HostRuntimeSnapshot = {
       ...this.snapshot,
@@ -916,9 +885,7 @@ export class HostRuntimeController {
     return version === this.probeRequestVersion;
   }
 
-  private canProceedForProbe(
-    expectedProbeVersion: number | undefined
-  ): boolean {
+  private canProceedForProbe(expectedProbeVersion: number | undefined): boolean {
     if (expectedProbeVersion === undefined) {
       return true;
     }
@@ -1006,12 +973,14 @@ export class HostRuntimeController {
     if (existingClient) {
       existingClient.setReconnectEnabled(true);
     }
-    const client = existingClient ?? this.deps.createClient({
-      host: this.host,
-      connection,
-      clientId,
-      runtimeGeneration: nextGeneration,
-    });
+    const client =
+      existingClient ??
+      this.deps.createClient({
+        host: this.host,
+        connection,
+        clientId,
+        runtimeGeneration: nextGeneration,
+      });
     if (!this.isCurrentSwitchRequest(requestVersion)) {
       await client.close().catch(() => undefined);
       return;
@@ -1038,10 +1007,7 @@ export class HostRuntimeController {
     }
 
     this.unsubscribeClientStatus = client.subscribeConnectionStatus((state) => {
-      if (
-        !this.isCurrentSwitchRequest(requestVersion) ||
-        this.activeClient !== client
-      ) {
+      if (!this.isCurrentSwitchRequest(requestVersion) || this.activeClient !== client) {
         return;
       }
       this.applyConnectionEvent({
@@ -1077,10 +1043,7 @@ export class HostRuntimeController {
         await client.connect();
       }
     } catch (error) {
-      if (
-        !this.isCurrentSwitchRequest(requestVersion) ||
-        this.activeClient !== client
-      ) {
+      if (!this.isCurrentSwitchRequest(requestVersion) || this.activeClient !== client) {
         return;
       }
       const message = toErrorMessage(error);
@@ -1235,7 +1198,7 @@ export class HostRuntimeStore {
             type: "directTcp",
             endpoint: DEFAULT_LOCALHOST_ENDPOINT,
           },
-          { timeoutMs: DEFAULT_LOCALHOST_BOOTSTRAP_TIMEOUT_MS }
+          { timeoutMs: DEFAULT_LOCALHOST_BOOTSTRAP_TIMEOUT_MS },
         );
 
         await this.upsertDirectConnection({
@@ -1320,9 +1283,7 @@ export class HostRuntimeStore {
 
   async renameHost(serverId: string, label: string): Promise<void> {
     const next = this.hosts.map((h) =>
-      h.serverId === serverId
-        ? { ...h, label, updatedAt: new Date().toISOString() }
-        : h
+      h.serverId === serverId ? { ...h, label, updatedAt: new Date().toISOString() } : h,
     );
     this.setHostsAndSync(next);
     await this.persistHosts();
@@ -1397,7 +1358,7 @@ export class HostRuntimeStore {
         string,
         { connectionId: string; existingClient: DaemonClient }
       >;
-    }
+    },
   ): void {
     this.hosts = hosts;
     this.syncHosts(hosts, options);
@@ -1426,7 +1387,7 @@ export class HostRuntimeStore {
         string,
         { connectionId: string; existingClient: DaemonClient }
       >;
-    }
+    },
   ): void {
     const nextIds = new Set(hosts.map((host) => host.serverId));
     for (const [serverId, controller] of this.controllers) {
@@ -1459,22 +1420,24 @@ export class HostRuntimeStore {
       this.controllers.set(host.serverId, controller);
       this.lastConnectionStatusByServer.set(
         host.serverId,
-        controller.getSnapshot().connectionStatus
+        controller.getSnapshot().connectionStatus,
       );
       controller.subscribe(() => {
         this.maybeAutoBootstrapAgentDirectory(host.serverId);
         this.emit(host.serverId);
       });
-      void controller.start({
-        ...(initialConnection
-          ? {
-              initialConnection,
-            }
-          : {}),
-      }).catch((error) => {
-        const message = error instanceof Error ? error.message : String(error);
-        controller.markStartupError(message);
-      });
+      void controller
+        .start({
+          ...(initialConnection
+            ? {
+                initialConnection,
+              }
+            : {}),
+        })
+        .catch((error) => {
+          const message = error instanceof Error ? error.message : String(error);
+          controller.markStartupError(message);
+        });
       this.emit(host.serverId);
     }
   }
@@ -1513,7 +1476,7 @@ export class HostRuntimeStore {
           serverId,
           subscribe: { subscriptionId: `app:${serverId}` },
           page: { limit: DEFAULT_AGENT_DIRECTORY_PAGE_LIMIT },
-        })
+        }),
       )
       .then(() => undefined)
       .catch((error) => {
@@ -1578,9 +1541,7 @@ export class HostRuntimeStore {
       return this.controllers.get(serverId)?.runProbeCycleNow() ?? Promise.resolve();
     }
     return Promise.all(
-      Array.from(this.controllers.values(), (controller) =>
-        controller.runProbeCycleNow()
-      )
+      Array.from(this.controllers.values(), (controller) => controller.runProbeCycleNow()),
     ).then(() => undefined);
   }
 
@@ -1653,9 +1614,7 @@ export class HostRuntimeStore {
   }
 
   refreshAllAgentDirectories(input?: { serverIds?: string[] }): void {
-    const targetServerIds = input?.serverIds
-      ? new Set(input.serverIds)
-      : null;
+    const targetServerIds = input?.serverIds ? new Set(input.serverIds) : null;
     for (const [serverId] of this.controllers) {
       if (targetServerIds && !targetServerIds.has(serverId)) {
         continue;
@@ -1723,14 +1682,12 @@ export function getHostRuntimeStore(): HostRuntimeStore {
   return singletonHostRuntimeStore;
 }
 
-export function useHostRuntimeSnapshot(
-  serverId: string
-): HostRuntimeSnapshot | null {
+export function useHostRuntimeSnapshot(serverId: string): HostRuntimeSnapshot | null {
   const store = getHostRuntimeStore();
   return useSyncExternalStore(
     (onStoreChange) => store.subscribe(serverId, onStoreChange),
     () => store.getSnapshot(serverId),
-    () => store.getSnapshot(serverId)
+    () => store.getSnapshot(serverId),
   );
 }
 
@@ -1739,7 +1696,7 @@ export function useHostRuntimeClient(serverId: string): DaemonClient | null {
   return useSyncExternalStore(
     (onStoreChange) => store.subscribe(serverId, onStoreChange),
     () => store.getSnapshot(serverId)?.client ?? null,
-    () => store.getSnapshot(serverId)?.client ?? null
+    () => store.getSnapshot(serverId)?.client ?? null,
   );
 }
 
@@ -1748,18 +1705,16 @@ export function useHostRuntimeIsConnected(serverId: string): boolean {
   return useSyncExternalStore(
     (onStoreChange) => store.subscribe(serverId, onStoreChange),
     () => isHostRuntimeConnected(store.getSnapshot(serverId)),
-    () => isHostRuntimeConnected(store.getSnapshot(serverId))
+    () => isHostRuntimeConnected(store.getSnapshot(serverId)),
   );
 }
 
-export function useHostRuntimeConnectionStatus(
-  serverId: string
-): HostRuntimeConnectionStatus {
+export function useHostRuntimeConnectionStatus(serverId: string): HostRuntimeConnectionStatus {
   const store = getHostRuntimeStore();
   return useSyncExternalStore(
     (onStoreChange) => store.subscribe(serverId, onStoreChange),
     () => store.getSnapshot(serverId)?.connectionStatus ?? "connecting",
-    () => store.getSnapshot(serverId)?.connectionStatus ?? "connecting"
+    () => store.getSnapshot(serverId)?.connectionStatus ?? "connecting",
   );
 }
 
@@ -1768,18 +1723,18 @@ export function useHostRuntimeLastError(serverId: string): string | null {
   return useSyncExternalStore(
     (onStoreChange) => store.subscribe(serverId, onStoreChange),
     () => store.getSnapshot(serverId)?.lastError ?? null,
-    () => store.getSnapshot(serverId)?.lastError ?? null
+    () => store.getSnapshot(serverId)?.lastError ?? null,
   );
 }
 
 export function useHostRuntimeAgentDirectoryStatus(
-  serverId: string
+  serverId: string,
 ): HostRuntimeAgentDirectoryStatus {
   const store = getHostRuntimeStore();
   return useSyncExternalStore(
     (onStoreChange) => store.subscribe(serverId, onStoreChange),
     () => store.getSnapshot(serverId)?.agentDirectoryStatus ?? "idle",
-    () => store.getSnapshot(serverId)?.agentDirectoryStatus ?? "idle"
+    () => store.getSnapshot(serverId)?.agentDirectoryStatus ?? "idle",
   );
 }
 
@@ -1788,7 +1743,7 @@ export function useHostRuntimeIsDirectoryLoading(serverId: string): boolean {
   return useSyncExternalStore(
     (onStoreChange) => store.subscribe(serverId, onStoreChange),
     () => isHostRuntimeDirectoryLoading(store.getSnapshot(serverId)),
-    () => isHostRuntimeDirectoryLoading(store.getSnapshot(serverId))
+    () => isHostRuntimeDirectoryLoading(store.getSnapshot(serverId)),
   );
 }
 
@@ -1797,7 +1752,7 @@ export function useHosts(): HostProfile[] {
   return useSyncExternalStore(
     (onStoreChange) => store.subscribeHostList(onStoreChange),
     () => store.getHosts(),
-    () => store.getHosts()
+    () => store.getHosts(),
   );
 }
 
@@ -1832,6 +1787,6 @@ export function useHostMutations(): HostMutations {
       removeHost: (serverId) => store.removeHost(serverId),
       removeConnection: (serverId, connectionId) => store.removeConnection(serverId, connectionId),
     }),
-    [store]
+    [store],
   );
 }

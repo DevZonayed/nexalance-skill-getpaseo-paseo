@@ -33,7 +33,7 @@ export interface DaemonTestContext {
  * ```
  */
 export async function createDaemonTestContext(
-  options?: Parameters<typeof createTestPaseoDaemon>[0]
+  options?: Parameters<typeof createTestPaseoDaemon>[0],
 ): Promise<DaemonTestContext> {
   const daemon = await createTestPaseoDaemon({
     agentClients: createTestAgentClients(),

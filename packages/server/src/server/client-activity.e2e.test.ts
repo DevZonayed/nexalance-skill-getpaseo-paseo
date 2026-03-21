@@ -1,14 +1,5 @@
-import {
-  describe,
-  test,
-  expect,
-  beforeEach,
-  afterEach,
-} from "vitest";
-import {
-  createTestPaseoDaemon,
-  type TestPaseoDaemon,
-} from "./test-utils/paseo-daemon.js";
+import { describe, test, expect, beforeEach, afterEach } from "vitest";
+import { createTestPaseoDaemon, type TestPaseoDaemon } from "./test-utils/paseo-daemon.js";
 import { DaemonClient } from "./test-utils/daemon-client.js";
 import type { AgentStreamEventPayload } from "../shared/messages.js";
 import type { AgentSnapshotPayload } from "./messages.js";
@@ -75,7 +66,7 @@ describe("client activity tracking", () => {
   function waitForAttentionRequired(
     client: DaemonClient,
     agentId: string,
-    timeout = 60000
+    timeout = 60000,
   ): Promise<Extract<AgentStreamEventPayload, { type: "attention_required" }>> {
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
@@ -263,10 +254,7 @@ describe("client activity tracking", () => {
       const attention2Promise = waitForAttentionRequired(client2, agent.id);
       await client1.sendMessage(agent.id, "Say 'hello' and nothing else");
 
-      const [attention1, attention2] = await Promise.all([
-        attention1Promise,
-        attention2Promise,
-      ]);
+      const [attention1, attention2] = await Promise.all([attention1Promise, attention2Promise]);
 
       // Neither should notify - user is actively watching on client2
       expect(attention1.shouldNotify).toBe(false);
@@ -305,10 +293,7 @@ describe("client activity tracking", () => {
       const attention2Promise = waitForAttentionRequired(client2, agent.id);
       await client1.sendMessage(agent.id, "Say 'hello' and nothing else");
 
-      const [attention1, attention2] = await Promise.all([
-        attention1Promise,
-        attention2Promise,
-      ]);
+      const [attention1, attention2] = await Promise.all([attention1Promise, attention2Promise]);
 
       // Both should notify - no one is watching
       expect(attention1.shouldNotify).toBe(true);
@@ -352,10 +337,7 @@ describe("client activity tracking", () => {
       const attention2Promise = waitForAttentionRequired(client2, agent.id);
       await client1.sendMessage(agent.id, "Say 'hello' and nothing else");
 
-      const [attention1, attention2] = await Promise.all([
-        attention1Promise,
-        attention2Promise,
-      ]);
+      const [attention1, attention2] = await Promise.all([attention1Promise, attention2Promise]);
 
       // Neither should notify - user sees it on web
       expect(attention1.shouldNotify).toBe(false);
@@ -393,10 +375,7 @@ describe("client activity tracking", () => {
       const attention2Promise = waitForAttentionRequired(client2, agent.id);
       await client1.sendMessage(agent.id, "Say 'hello' and nothing else");
 
-      const [attention1, attention2] = await Promise.all([
-        attention1Promise,
-        attention2Promise,
-      ]);
+      const [attention1, attention2] = await Promise.all([attention1Promise, attention2Promise]);
 
       // Neither should notify - user sees it on mobile
       expect(attention1.shouldNotify).toBe(false);
@@ -434,10 +413,7 @@ describe("client activity tracking", () => {
       const attention2Promise = waitForAttentionRequired(client2, agent.id);
       await client1.sendMessage(agent.id, "Say 'hello' and nothing else");
 
-      const [attention1, attention2] = await Promise.all([
-        attention1Promise,
-        attention2Promise,
-      ]);
+      const [attention1, attention2] = await Promise.all([attention1Promise, attention2Promise]);
 
       // Web stale → don't notify web, notify mobile instead
       expect(attention1.shouldNotify).toBe(false);
@@ -474,10 +450,7 @@ describe("client activity tracking", () => {
       const attention2Promise = waitForAttentionRequired(client2, agent1.id);
       await client1.sendMessage(agent1.id, "Say 'hello' and nothing else");
 
-      const [attention1, attention2] = await Promise.all([
-        attention1Promise,
-        attention2Promise,
-      ]);
+      const [attention1, attention2] = await Promise.all([attention1Promise, attention2Promise]);
 
       // User is active on web, notify them there (they'll see it)
       expect(attention1.shouldNotify).toBe(true);
@@ -518,15 +491,12 @@ describe("client activity tracking", () => {
       const attention2Promise = waitForAttentionRequired(client2, agent.id);
       await client1.sendMessage(agent.id, "Say 'hello' and nothing else");
 
-      const [attention1, attention2] = await Promise.all([
-        attention1Promise,
-        attention2Promise,
-      ]);
+      const [attention1, attention2] = await Promise.all([attention1Promise, attention2Promise]);
 
       // Mobile always notifies when no one is watching
       // Web is stale so don't bother notifying there
       expect(attention1.shouldNotify).toBe(false); // web stale
-      expect(attention2.shouldNotify).toBe(true);  // mobile fallback
+      expect(attention2.shouldNotify).toBe(true); // mobile fallback
     }, 120000);
   });
 
@@ -561,10 +531,7 @@ describe("client activity tracking", () => {
       const attention2Promise = waitForAttentionRequired(client2, agent.id);
       await client1.sendMessage(agent.id, "Say 'hello' and nothing else");
 
-      const [attention1, attention2] = await Promise.all([
-        attention1Promise,
-        attention2Promise,
-      ]);
+      const [attention1, attention2] = await Promise.all([attention1Promise, attention2Promise]);
 
       // Web stale → no notification
       // Mobile has no heartbeat → treat as should notify (we don't know device type)
@@ -630,10 +597,7 @@ describe("client activity tracking", () => {
       const attention2Promise = waitForAttentionRequired(client2, agent.id);
       await client1.sendMessage(agent.id, "Say 'hello' and nothing else");
 
-      const [attention1, attention2] = await Promise.all([
-        attention1Promise,
-        attention2Promise,
-      ]);
+      const [attention1, attention2] = await Promise.all([attention1Promise, attention2Promise]);
 
       // Both have recent activity - user is present, no notification needed
       expect(attention1.shouldNotify).toBe(false);

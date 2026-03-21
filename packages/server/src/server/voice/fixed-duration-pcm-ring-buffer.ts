@@ -9,12 +9,8 @@ export class FixedDurationPcmRingBuffer {
     bitsPerSample: number;
     durationMs: number;
   }) {
-    const bytesPerSecond =
-      params.sampleRate * params.channels * (params.bitsPerSample / 8);
-    this.maxBytes = Math.max(
-      1,
-      Math.round((bytesPerSecond * params.durationMs) / 1000)
-    );
+    const bytesPerSecond = params.sampleRate * params.channels * (params.bitsPerSample / 8);
+    this.maxBytes = Math.max(1, Math.round((bytesPerSecond * params.durationMs) / 1000));
   }
 
   append(chunk: Buffer): void {

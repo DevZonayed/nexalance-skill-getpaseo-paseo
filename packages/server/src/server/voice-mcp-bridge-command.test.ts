@@ -16,7 +16,7 @@ describe("resolveVoiceMcpBridgeFromRuntime", () => {
     });
 
     const expectedScriptPath = fileURLToPath(
-      new URL("../../scripts/mcp-stdio-socket-bridge-cli.mjs", bootstrapModuleUrl)
+      new URL("../../scripts/mcp-stdio-socket-bridge-cli.mjs", bootstrapModuleUrl),
     );
 
     expect(result.source).toBe("default-js-script");
@@ -26,7 +26,7 @@ describe("resolveVoiceMcpBridgeFromRuntime", () => {
 
   test("uses explicit script override when provided", () => {
     const explicitScriptPath = fileURLToPath(
-      new URL("../../scripts/mcp-stdio-socket-bridge-cli.mjs", bootstrapModuleUrl)
+      new URL("../../scripts/mcp-stdio-socket-bridge-cli.mjs", bootstrapModuleUrl),
     );
 
     const result = resolveVoiceMcpBridgeFromRuntime({
@@ -45,7 +45,7 @@ describe("resolveVoiceMcpBridgeFromRuntime", () => {
       resolveVoiceMcpBridgeScriptPath({
         bootstrapModuleUrl,
         explicitScriptPath: "/tmp/does-not-exist-voice-bridge-script.mjs",
-      })
+      }),
     ).toThrow("MCP stdio-socket bridge script not found");
   });
 });

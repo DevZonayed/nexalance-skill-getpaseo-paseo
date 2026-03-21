@@ -1,10 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { execFileSync } from "node:child_process";
 
-import {
-  createDaemonTestContext,
-  type DaemonTestContext,
-} from "../test-utils/index.js";
+import { createDaemonTestContext, type DaemonTestContext } from "../test-utils/index.js";
 
 function isBinaryInstalled(binary: string): boolean {
   try {
@@ -29,22 +26,18 @@ describe("provider model catalogs (e2e)", () => {
     await ctx.cleanup();
   }, 60_000);
 
-  test(
-    "Claude catalog exposes Sonnet and Haiku variants",
-    async () => {
-      const result = await ctx.client.listProviderModels("claude");
+  test("Claude catalog exposes Sonnet and Haiku variants", async () => {
+    const result = await ctx.client.listProviderModels("claude");
 
-      expect(result.error).toBeNull();
-      expect(result.models.length).toBeGreaterThan(0);
+    expect(result.error).toBeNull();
+    expect(result.models.length).toBeGreaterThan(0);
 
-      const descriptions = result.models.map(
-        (model) => `${model.label} ${model.description ?? ""}`.toLowerCase()
-      );
-      expect(descriptions.some((text) => text.includes("sonnet 4.5"))).toBe(true);
-      expect(descriptions.some((text) => text.includes("haiku"))).toBe(true);
-    },
-    180_000
-  );
+    const descriptions = result.models.map((model) =>
+      `${model.label} ${model.description ?? ""}`.toLowerCase(),
+    );
+    expect(descriptions.some((text) => text.includes("sonnet 4.5"))).toBe(true);
+    expect(descriptions.some((text) => text.includes("haiku"))).toBe(true);
+  }, 180_000);
 
   test.runIf(hasCodex)(
     "Codex catalog exposes gpt-5.1-codex",
@@ -55,7 +48,7 @@ describe("provider model catalogs (e2e)", () => {
       const ids = result.models.map((model) => model.id);
       expect(ids.some((id) => id.startsWith("gpt-5.1-codex"))).toBe(true);
     },
-    180_000
+    180_000,
   );
 
   test.runIf(hasOpenCode)(
@@ -78,6 +71,6 @@ describe("provider model catalogs (e2e)", () => {
       const providerIds = new Set(result.models.map((m) => m.metadata?.providerId));
       expect(providerIds.size).toBeGreaterThan(0);
     },
-    180_000
+    180_000,
   );
 });

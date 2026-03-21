@@ -1,312 +1,313 @@
-import { spawn, spawnSync } from 'node:child_process'
-import { existsSync, readFileSync } from 'node:fs'
-import { createRequire } from 'node:module'
-import path from 'node:path'
-import { loadConfig, resolvePaseoHome } from '@getpaseo/server'
-import { tryConnectToDaemon } from '../../utils/client.js'
+import { spawn, spawnSync } from "node:child_process";
+import { existsSync, readFileSync } from "node:fs";
+import { createRequire } from "node:module";
+import path from "node:path";
+import { loadConfig, resolvePaseoHome } from "@getpaseo/server";
+import { tryConnectToDaemon } from "../../utils/client.js";
 
 export interface DaemonStartOptions {
-  port?: string
-  listen?: string
-  home?: string
-  foreground?: boolean
-  relay?: boolean
-  mcp?: boolean
-  allowedHosts?: string
+  port?: string;
+  listen?: string;
+  home?: string;
+  foreground?: boolean;
+  relay?: boolean;
+  mcp?: boolean;
+  allowedHosts?: string;
 }
 
 export interface LocalDaemonPidInfo {
-  pid: number
-  startedAt?: string
-  hostname?: string
-  uid?: number
-  listen?: string
+  pid: number;
+  startedAt?: string;
+  hostname?: string;
+  uid?: number;
+  listen?: string;
 }
 
 export interface LocalDaemonState {
-  home: string
-  listen: string
-  logPath: string
-  pidPath: string
-  pidInfo: LocalDaemonPidInfo | null
-  running: boolean
-  stalePidFile: boolean
+  home: string;
+  listen: string;
+  logPath: string;
+  pidPath: string;
+  pidInfo: LocalDaemonPidInfo | null;
+  running: boolean;
+  stalePidFile: boolean;
 }
 
 export interface DetachedStartResult {
-  pid: number | null
-  logPath: string
+  pid: number | null;
+  logPath: string;
 }
 
 export interface StopLocalDaemonOptions {
-  home?: string
-  timeoutMs?: number
-  force?: boolean
+  home?: string;
+  timeoutMs?: number;
+  force?: boolean;
 }
 
 export interface StopLocalDaemonResult {
-  action: 'stopped' | 'not_running'
-  home: string
-  pid: number | null
-  forced: boolean
-  message: string
+  action: "stopped" | "not_running";
+  home: string;
+  pid: number | null;
+  forced: boolean;
+  message: string;
 }
 
 type ProcessExitDetails = {
-  code: number | null
-  signal: NodeJS.Signals | null
-  error?: Error
-}
+  code: number | null;
+  signal: NodeJS.Signals | null;
+  error?: Error;
+};
 
-type DetachedStartupResult =
-  | { exitedEarly: false }
-  | ({ exitedEarly: true } & ProcessExitDetails)
+type DetachedStartupResult = { exitedEarly: false } | ({ exitedEarly: true } & ProcessExitDetails);
 
-const DETACHED_STARTUP_GRACE_MS = 1200
-const PID_POLL_INTERVAL_MS = 100
-const KILL_TIMEOUT_MS = 3000
-const DAEMON_LOG_FILENAME = 'daemon.log'
-const DAEMON_PID_FILENAME = 'paseo.pid'
+const DETACHED_STARTUP_GRACE_MS = 1200;
+const PID_POLL_INTERVAL_MS = 100;
+const KILL_TIMEOUT_MS = 3000;
+const DAEMON_LOG_FILENAME = "daemon.log";
+const DAEMON_PID_FILENAME = "paseo.pid";
 
-export const DEFAULT_STOP_TIMEOUT_MS = 15_000
+export const DEFAULT_STOP_TIMEOUT_MS = 15_000;
 
-const require = createRequire(import.meta.url)
+const require = createRequire(import.meta.url);
 
-const startupReady = (): DetachedStartupResult => ({ exitedEarly: false })
+const startupReady = (): DetachedStartupResult => ({ exitedEarly: false });
 
 const startupExited = (details: ProcessExitDetails): DetachedStartupResult => ({
   exitedEarly: true,
   ...details,
-})
+});
 
 function envWithHome(home?: string): NodeJS.ProcessEnv {
   if (!home) {
-    return process.env
+    return process.env;
   }
 
-  return { ...process.env, PASEO_HOME: home }
+  return { ...process.env, PASEO_HOME: home };
 }
 
 function buildRunnerArgs(options: DaemonStartOptions): string[] {
-  const args: string[] = []
+  const args: string[] = [];
   if (options.relay === false) {
-    args.push('--no-relay')
+    args.push("--no-relay");
   }
 
   if (options.mcp === false) {
-    args.push('--no-mcp')
+    args.push("--no-mcp");
   }
 
-  return args
+  return args;
 }
 
 function buildChildEnv(options: DaemonStartOptions): NodeJS.ProcessEnv {
-  const childEnv: NodeJS.ProcessEnv = { ...process.env }
+  const childEnv: NodeJS.ProcessEnv = { ...process.env };
   if (options.home) {
-    childEnv.PASEO_HOME = options.home
+    childEnv.PASEO_HOME = options.home;
   }
   if (options.listen) {
-    childEnv.PASEO_LISTEN = options.listen
+    childEnv.PASEO_LISTEN = options.listen;
   } else if (options.port) {
-    childEnv.PASEO_LISTEN = `127.0.0.1:${options.port}`
+    childEnv.PASEO_LISTEN = `127.0.0.1:${options.port}`;
   }
   if (options.allowedHosts) {
-    childEnv.PASEO_ALLOWED_HOSTS = options.allowedHosts
+    childEnv.PASEO_ALLOWED_HOSTS = options.allowedHosts;
   }
-  return childEnv
+  return childEnv;
 }
 
 function resolveDaemonRunnerEntry(): string {
-  const serverExportPath = require.resolve('@getpaseo/server')
-  let currentDir = path.dirname(serverExportPath)
+  const serverExportPath = require.resolve("@getpaseo/server");
+  let currentDir = path.dirname(serverExportPath);
 
   while (true) {
-    const packageJsonPath = path.join(currentDir, 'package.json')
+    const packageJsonPath = path.join(currentDir, "package.json");
     if (existsSync(packageJsonPath)) {
       try {
-        const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf-8')) as { name?: string }
-        if (packageJson.name === '@getpaseo/server') {
-          const distRunner = path.join(currentDir, 'dist', 'scripts', 'daemon-runner.js')
+        const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf-8")) as { name?: string };
+        if (packageJson.name === "@getpaseo/server") {
+          const distRunner = path.join(currentDir, "dist", "scripts", "daemon-runner.js");
           if (existsSync(distRunner)) {
-            return distRunner
+            return distRunner;
           }
-          return path.join(currentDir, 'scripts', 'daemon-runner.ts')
+          return path.join(currentDir, "scripts", "daemon-runner.ts");
         }
       } catch {
         // Continue searching up if package.json exists but is invalid.
       }
     }
 
-    const parentDir = path.dirname(currentDir)
+    const parentDir = path.dirname(currentDir);
     if (parentDir === currentDir) {
-      break
+      break;
     }
-    currentDir = parentDir
+    currentDir = parentDir;
   }
 
-  throw new Error('Unable to resolve @getpaseo/server package root for daemon runner')
+  throw new Error("Unable to resolve @getpaseo/server package root for daemon runner");
 }
 
 function pidFilePath(paseoHome: string): string {
-  return path.join(paseoHome, DAEMON_PID_FILENAME)
+  return path.join(paseoHome, DAEMON_PID_FILENAME);
 }
 
 function readPidFile(pidPath: string): LocalDaemonPidInfo | null {
   try {
-    const parsed = JSON.parse(readFileSync(pidPath, 'utf-8')) as Record<string, unknown>
-    const pidValue = parsed.pid
-    if (typeof pidValue !== 'number' || !Number.isInteger(pidValue) || pidValue <= 0) {
-      return null
+    const parsed = JSON.parse(readFileSync(pidPath, "utf-8")) as Record<string, unknown>;
+    const pidValue = parsed.pid;
+    if (typeof pidValue !== "number" || !Number.isInteger(pidValue) || pidValue <= 0) {
+      return null;
     }
 
     return {
       pid: pidValue,
-      startedAt: typeof parsed.startedAt === 'string' ? parsed.startedAt : undefined,
-      hostname: typeof parsed.hostname === 'string' ? parsed.hostname : undefined,
-      uid: typeof parsed.uid === 'number' ? parsed.uid : undefined,
-      listen: typeof parsed.listen === 'string' ? parsed.listen : typeof parsed.sockPath === 'string' ? parsed.sockPath : undefined,
-    }
+      startedAt: typeof parsed.startedAt === "string" ? parsed.startedAt : undefined,
+      hostname: typeof parsed.hostname === "string" ? parsed.hostname : undefined,
+      uid: typeof parsed.uid === "number" ? parsed.uid : undefined,
+      listen:
+        typeof parsed.listen === "string"
+          ? parsed.listen
+          : typeof parsed.sockPath === "string"
+            ? parsed.sockPath
+            : undefined,
+    };
   } catch {
-    return null
+    return null;
   }
 }
 
 function tailFile(filePath: string, lines = 30): string | null {
   try {
-    const content = readFileSync(filePath, 'utf-8')
-    return content.split('\n').filter(Boolean).slice(-lines).join('\n')
+    const content = readFileSync(filePath, "utf-8");
+    return content.split("\n").filter(Boolean).slice(-lines).join("\n");
   } catch {
-    return null
+    return null;
   }
 }
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => {
-    setTimeout(resolve, ms)
-  })
+    setTimeout(resolve, ms);
+  });
 }
 
 function readNodeErrnoCode(error: unknown): string | undefined {
-  if (typeof error !== 'object' || error === null || !('code' in error)) {
-    return undefined
+  if (typeof error !== "object" || error === null || !("code" in error)) {
+    return undefined;
   }
 
-  return typeof error.code === 'string' ? error.code : undefined
+  return typeof error.code === "string" ? error.code : undefined;
 }
 
 function isProcessRunning(pid: number): boolean {
   try {
-    process.kill(pid, 0)
-    return true
+    process.kill(pid, 0);
+    return true;
   } catch (err) {
-    const code = readNodeErrnoCode(err)
-    if (code === 'EPERM') {
-      return true
+    const code = readNodeErrnoCode(err);
+    if (code === "EPERM") {
+      return true;
     }
-    return false
+    return false;
   }
 }
 
 function signalProcess(pid: number, signal: NodeJS.Signals): boolean {
   try {
-    process.kill(pid, signal)
-    return true
+    process.kill(pid, signal);
+    return true;
   } catch (err) {
-    const code = readNodeErrnoCode(err)
-    if (code === 'ESRCH') {
-      return false
+    const code = readNodeErrnoCode(err);
+    if (code === "ESRCH") {
+      return false;
     }
-    throw err
+    throw err;
   }
 }
 
 function signalProcessSafely(pid: number, signal: NodeJS.Signals): boolean {
   if (!Number.isInteger(pid) || pid <= 1 || pid === process.pid) {
-    return false
+    return false;
   }
 
   try {
-    return signalProcess(pid, signal)
+    return signalProcess(pid, signal);
   } catch (err) {
-    const code = readNodeErrnoCode(err)
-    if (code === 'EPERM') {
-      return true
+    const code = readNodeErrnoCode(err);
+    if (code === "EPERM") {
+      return true;
     }
-    throw err
+    throw err;
   }
 }
 
 function signalProcessGroupSafely(pid: number, signal: NodeJS.Signals): boolean {
   if (!Number.isInteger(pid) || pid <= 1 || pid === process.pid) {
-    return false
+    return false;
   }
 
-  if (process.platform === 'win32') {
-    return signalProcessSafely(pid, signal)
+  if (process.platform === "win32") {
+    return signalProcessSafely(pid, signal);
   }
 
   try {
-    process.kill(-pid, signal)
-    return true
+    process.kill(-pid, signal);
+    return true;
   } catch (err) {
-    const code = readNodeErrnoCode(err)
-    if (code === 'ESRCH') {
-      return signalProcessSafely(pid, signal)
+    const code = readNodeErrnoCode(err);
+    if (code === "ESRCH") {
+      return signalProcessSafely(pid, signal);
     }
-    if (code === 'EPERM') {
-      return true
+    if (code === "EPERM") {
+      return true;
     }
-    throw err
+    throw err;
   }
 }
 
 async function waitForPidExit(pid: number, timeoutMs: number): Promise<boolean> {
-  const deadline = Date.now() + timeoutMs
+  const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     if (!isProcessRunning(pid)) {
-      return true
+      return true;
     }
-    await sleep(PID_POLL_INTERVAL_MS)
+    await sleep(PID_POLL_INTERVAL_MS);
   }
-  return !isProcessRunning(pid)
+  return !isProcessRunning(pid);
 }
 
-type LifecycleShutdownAttempt =
-  | { requested: true }
-  | { requested: false; reason: string }
+type LifecycleShutdownAttempt = { requested: true } | { requested: false; reason: string };
 
 function getErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
+  return error instanceof Error ? error.message : String(error);
 }
 
 export function resolveLocalPaseoHome(home?: string): string {
-  return resolvePaseoHome(envWithHome(home))
+  return resolvePaseoHome(envWithHome(home));
 }
 
 export function resolveTcpHostFromListen(listen: string): string | null {
-  const normalized = listen.trim()
+  const normalized = listen.trim();
   if (!normalized) {
-    return null
+    return null;
   }
 
   if (
-    normalized.startsWith('/') ||
-    normalized.startsWith('unix://') ||
-    normalized.startsWith('pipe://') ||
-    normalized.startsWith('\\\\.\\pipe\\')
+    normalized.startsWith("/") ||
+    normalized.startsWith("unix://") ||
+    normalized.startsWith("pipe://") ||
+    normalized.startsWith("\\\\.\\pipe\\")
   ) {
-    return null
+    return null;
   }
 
   if (/^\d+$/.test(normalized)) {
-    return `127.0.0.1:${normalized}`
+    return `127.0.0.1:${normalized}`;
   }
 
-  if (normalized.includes(':')) {
-    return normalized
+  if (normalized.includes(":")) {
+    return normalized;
   }
 
-  return null
+  return null;
 }
 
 export function resolveLocalDaemonState(options: { home?: string } = {}): LocalDaemonState {
@@ -315,14 +316,14 @@ export function resolveLocalDaemonState(options: { home?: string } = {}): LocalD
     // Status should reflect local persisted config + pid file, not inherited daemon env overrides.
     PASEO_LISTEN: undefined,
     PASEO_ALLOWED_HOSTS: undefined,
-  }
-  const home = resolvePaseoHome(env)
-  const config = loadConfig(home, { env })
-  const pidPath = pidFilePath(home)
-  const logPath = path.join(home, DAEMON_LOG_FILENAME)
-  const pidInfo = existsSync(pidPath) ? readPidFile(pidPath) : null
-  const running = pidInfo ? isProcessRunning(pidInfo.pid) : false
-  const listen = pidInfo?.listen ?? config.listen
+  };
+  const home = resolvePaseoHome(env);
+  const config = loadConfig(home, { env });
+  const pidPath = pidFilePath(home);
+  const logPath = path.join(home, DAEMON_LOG_FILENAME);
+  const pidInfo = existsSync(pidPath) ? readPidFile(pidPath) : null;
+  const running = pidInfo ? isProcessRunning(pidInfo.pid) : false;
+  const listen = pidInfo?.listen ?? config.listen;
 
   return {
     home,
@@ -332,199 +333,197 @@ export function resolveLocalDaemonState(options: { home?: string } = {}): LocalD
     pidInfo,
     running,
     stalePidFile: Boolean(pidInfo) && !running,
-  }
+  };
 }
 
 export function tailDaemonLog(home?: string, lines = 30): string | null {
-  const logPath = path.join(resolveLocalPaseoHome(home), DAEMON_LOG_FILENAME)
-  return tailFile(logPath, lines)
+  const logPath = path.join(resolveLocalPaseoHome(home), DAEMON_LOG_FILENAME);
+  return tailFile(logPath, lines);
 }
 
 export async function startLocalDaemonDetached(
-  options: DaemonStartOptions
+  options: DaemonStartOptions,
 ): Promise<DetachedStartResult> {
   if (options.listen && options.port) {
-    throw new Error('Cannot use --listen and --port together')
+    throw new Error("Cannot use --listen and --port together");
   }
 
-  const childEnv = buildChildEnv(options)
+  const childEnv = buildChildEnv(options);
 
-  const paseoHome = resolvePaseoHome(childEnv)
-  const logPath = path.join(paseoHome, DAEMON_LOG_FILENAME)
-  const daemonRunnerEntry = resolveDaemonRunnerEntry()
+  const paseoHome = resolvePaseoHome(childEnv);
+  const logPath = path.join(paseoHome, DAEMON_LOG_FILENAME);
+  const daemonRunnerEntry = resolveDaemonRunnerEntry();
   const child = spawn(
     process.execPath,
     [...process.execArgv, daemonRunnerEntry, ...buildRunnerArgs(options)],
     {
       detached: true,
       env: childEnv,
-      stdio: ['ignore', 'ignore', 'ignore'],
-    }
-  )
+      stdio: ["ignore", "ignore", "ignore"],
+    },
+  );
 
-  child.unref()
+  child.unref();
 
   const startup = await new Promise<DetachedStartupResult>((resolve) => {
-    let settled = false
+    let settled = false;
 
     const finish = (value: DetachedStartupResult) => {
-      if (settled) return
-      settled = true
-      resolve(value)
-    }
+      if (settled) return;
+      settled = true;
+      resolve(value);
+    };
 
-    const timer = setTimeout(() => finish(startupReady()), DETACHED_STARTUP_GRACE_MS)
+    const timer = setTimeout(() => finish(startupReady()), DETACHED_STARTUP_GRACE_MS);
 
-    child.once('error', (error) => {
-      clearTimeout(timer)
-      finish(startupExited({ code: null, signal: null, error }))
-    })
+    child.once("error", (error) => {
+      clearTimeout(timer);
+      finish(startupExited({ code: null, signal: null, error }));
+    });
 
-    child.once('exit', (code, signal) => {
-      clearTimeout(timer)
-      finish(startupExited({ code, signal }))
-    })
-  })
+    child.once("exit", (code, signal) => {
+      clearTimeout(timer);
+      finish(startupExited({ code, signal }));
+    });
+  });
 
   if (startup.exitedEarly) {
     const reason = startup.error
       ? startup.error.message
-      : `exit code ${startup.code ?? 'unknown'}${startup.signal ? ` (${startup.signal})` : ''}`
-    const recentLogs = tailFile(logPath)
+      : `exit code ${startup.code ?? "unknown"}${startup.signal ? ` (${startup.signal})` : ""}`;
+    const recentLogs = tailFile(logPath);
     throw new Error(
       [
         `Daemon failed to start in background (${reason}).`,
         recentLogs ? `Recent daemon logs:\n${recentLogs}` : null,
       ]
         .filter(Boolean)
-        .join('\n\n')
-    )
+        .join("\n\n"),
+    );
   }
 
   return {
     pid: child.pid ?? null,
     logPath,
-  }
+  };
 }
 
 export function startLocalDaemonForeground(options: DaemonStartOptions): number {
   if (options.listen && options.port) {
-    throw new Error('Cannot use --listen and --port together')
+    throw new Error("Cannot use --listen and --port together");
   }
 
-  const childEnv = buildChildEnv(options)
-  const daemonRunnerEntry = resolveDaemonRunnerEntry()
+  const childEnv = buildChildEnv(options);
+  const daemonRunnerEntry = resolveDaemonRunnerEntry();
   const result = spawnSync(
     process.execPath,
     [...process.execArgv, daemonRunnerEntry, ...buildRunnerArgs(options)],
     {
       env: childEnv,
-      stdio: 'inherit',
-    }
-  )
+      stdio: "inherit",
+    },
+  );
 
   if (result.error) {
-    throw result.error
+    throw result.error;
   }
 
-  return result.status ?? 1
+  return result.status ?? 1;
 }
 
 async function requestLifecycleShutdown(
   state: LocalDaemonState,
-  timeoutMs: number
+  timeoutMs: number,
 ): Promise<LifecycleShutdownAttempt> {
-  const host = resolveTcpHostFromListen(state.listen)
+  const host = resolveTcpHostFromListen(state.listen);
   if (!host) {
     return {
       requested: false,
-      reason: 'daemon listen target is not TCP, falling back to owner PID signal',
-    }
+      reason: "daemon listen target is not TCP, falling back to owner PID signal",
+    };
   }
 
-  const client = await tryConnectToDaemon({ host, timeout: Math.min(timeoutMs, 5000) })
+  const client = await tryConnectToDaemon({ host, timeout: Math.min(timeoutMs, 5000) });
   if (!client) {
     return {
       requested: false,
       reason: `daemon websocket at ${host} is not reachable, falling back to owner PID signal`,
-    }
+    };
   }
 
   try {
-    await client.shutdownServer()
-    return { requested: true }
+    await client.shutdownServer();
+    return { requested: true };
   } catch (error) {
     return {
       requested: false,
       reason: `daemon lifecycle shutdown request failed (${getErrorMessage(
-        error
+        error,
       )}), falling back to owner PID signal`,
-    }
+    };
   } finally {
-    await client.close().catch(() => undefined)
+    await client.close().catch(() => undefined);
   }
 }
 
 export async function stopLocalDaemon(
-  options: StopLocalDaemonOptions = {}
+  options: StopLocalDaemonOptions = {},
 ): Promise<StopLocalDaemonResult> {
-  const timeoutMs = options.timeoutMs ?? DEFAULT_STOP_TIMEOUT_MS
-  const state = resolveLocalDaemonState({ home: options.home })
+  const timeoutMs = options.timeoutMs ?? DEFAULT_STOP_TIMEOUT_MS;
+  const state = resolveLocalDaemonState({ home: options.home });
 
   if (!state.pidInfo || !state.running) {
     const staleSuffix =
-      state.stalePidFile && state.pidInfo
-        ? ` (stale PID file for ${state.pidInfo.pid})`
-        : ''
+      state.stalePidFile && state.pidInfo ? ` (stale PID file for ${state.pidInfo.pid})` : "";
     return {
-      action: 'not_running',
+      action: "not_running",
       home: state.home,
       pid: state.pidInfo?.pid ?? null,
       forced: false,
       message: `Daemon is not running${staleSuffix}`,
-    }
+    };
   }
 
-  const pid = state.pidInfo.pid
-  const shutdownAttempt = await requestLifecycleShutdown(state, timeoutMs)
-  const lifecycleRequested = shutdownAttempt.requested
-  const fallbackMessage = shutdownAttempt.requested ? null : shutdownAttempt.reason
-  let forced = false
+  const pid = state.pidInfo.pid;
+  const shutdownAttempt = await requestLifecycleShutdown(state, timeoutMs);
+  const lifecycleRequested = shutdownAttempt.requested;
+  const fallbackMessage = shutdownAttempt.requested ? null : shutdownAttempt.reason;
+  let forced = false;
   if (!lifecycleRequested) {
-    const signaled = signalProcessSafely(pid, 'SIGTERM')
+    const signaled = signalProcessSafely(pid, "SIGTERM");
     if (!signaled) {
       return {
-        action: 'not_running',
+        action: "not_running",
         home: state.home,
         pid,
         forced: false,
-        message: 'Daemon process was already stopped',
-      }
+        message: "Daemon process was already stopped",
+      };
     }
   }
 
-  let stopped = await waitForPidExit(pid, timeoutMs)
+  let stopped = await waitForPidExit(pid, timeoutMs);
   if (!stopped && options.force) {
-    forced = true
-    signalProcessGroupSafely(pid, 'SIGKILL')
-    stopped = await waitForPidExit(pid, KILL_TIMEOUT_MS)
+    forced = true;
+    signalProcessGroupSafely(pid, "SIGKILL");
+    stopped = await waitForPidExit(pid, KILL_TIMEOUT_MS);
   }
 
   if (!stopped) {
     throw new Error(
-      `Timed out waiting for daemon PID ${pid} to stop after ${Math.ceil(timeoutMs / 1000)}s`
-    )
+      `Timed out waiting for daemon PID ${pid} to stop after ${Math.ceil(timeoutMs / 1000)}s`,
+    );
   }
 
   return {
-    action: 'stopped',
+    action: "stopped",
     home: state.home,
     pid,
     forced,
     message: forced
-      ? 'Daemon owner process was force-stopped'
+      ? "Daemon owner process was force-stopped"
       : lifecycleRequested
-        ? 'Daemon stopped gracefully'
-        : fallbackMessage ?? 'Daemon stopped via owner PID signal',
-  }
+        ? "Daemon stopped gracefully"
+        : (fallbackMessage ?? "Daemon stopped via owner PID signal"),
+  };
 }

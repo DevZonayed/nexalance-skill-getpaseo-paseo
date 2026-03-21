@@ -50,7 +50,7 @@ async function testMultiAgentSequence() {
   // Also log raw messages for debugging
   client.on("checkout_status_response", (msg: any) => {
     console.log(
-      `[RAW checkout_status_response] requestId=${msg.payload.requestId} cwd=${msg.payload.cwd}`
+      `[RAW checkout_status_response] requestId=${msg.payload.requestId} cwd=${msg.payload.cwd}`,
     );
   });
 
@@ -89,10 +89,7 @@ async function testMultiAgentSequence() {
     const arg2 = process.argv[3];
     const agent1 = (arg1 ? agents.find((a) => a.id === arg1) : null) ?? agents[0] ?? null;
     const agent2 =
-      (arg2 ? agents.find((a) => a.id === arg2) : null) ??
-      agents[1] ??
-      agents[0] ??
-      null;
+      (arg2 ? agents.find((a) => a.id === arg2) : null) ?? agents[1] ?? agents[0] ?? null;
 
     const cwd1 = arg1 && !agent1 ? arg1 : agent1?.cwd;
     const cwd2 = arg2 && !agent2 ? arg2 : agent2?.cwd;
@@ -107,7 +104,7 @@ async function testMultiAgentSequence() {
     try {
       const status1 = await client.getCheckoutStatus(cwd1);
       console.log(
-        `✓ Cwd1 completed in ${Date.now() - start1}ms - branch: ${status1.currentBranch}`
+        `✓ Cwd1 completed in ${Date.now() - start1}ms - branch: ${status1.currentBranch}`,
       );
     } catch (err) {
       console.log(`✗ Cwd1 failed after ${Date.now() - start1}ms:`, err);
@@ -119,7 +116,7 @@ async function testMultiAgentSequence() {
       try {
         const status2 = await client.getCheckoutStatus(cwd2);
         console.log(
-          `✓ Cwd2 completed in ${Date.now() - start2}ms - branch: ${status2.currentBranch}`
+          `✓ Cwd2 completed in ${Date.now() - start2}ms - branch: ${status2.currentBranch}`,
         );
       } catch (err) {
         console.log(`✗ Cwd2 failed after ${Date.now() - start2}ms:`, err);
@@ -131,7 +128,7 @@ async function testMultiAgentSequence() {
     try {
       const status3 = await client.getCheckoutStatus(cwd1);
       console.log(
-        `✓ Cwd1 (retry) completed in ${Date.now() - start3}ms - branch: ${status3.currentBranch}`
+        `✓ Cwd1 (retry) completed in ${Date.now() - start3}ms - branch: ${status3.currentBranch}`,
       );
     } catch (err) {
       console.log(`✗ Cwd1 (retry) failed after ${Date.now() - start3}ms:`, err);
@@ -152,7 +149,6 @@ async function testMultiAgentSequence() {
         console.log(`✗ Parallel failed after ${Date.now() - start4}ms:`, err);
       }
     }
-
   } catch (error) {
     console.error("Test failed:", error);
   } finally {

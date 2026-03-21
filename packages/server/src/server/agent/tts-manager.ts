@@ -137,7 +137,7 @@ export class TTSManager {
   constructor(
     sessionId: string,
     logger: pino.Logger,
-    tts: Resolvable<TextToSpeechProvider | null>
+    tts: Resolvable<TextToSpeechProvider | null>,
   ) {
     this.logger = logger.child({ module: "agent", component: "tts-manager", sessionId });
     this.resolveTts = toResolver(tts);
@@ -151,7 +151,7 @@ export class TTSManager {
     text: string,
     emitMessage: (msg: SessionOutboundMessage) => void,
     abortSignal: AbortSignal,
-    isVoiceMode: boolean
+    isVoiceMode: boolean,
   ): Promise<void> {
     const ttsStartMs = Date.now();
     this.logger.info(
@@ -160,23 +160,27 @@ export class TTSManager {
         textLength: text.length,
         text,
       },
-      "TTS input text"
+      "TTS input text",
     );
 
     const segments = splitTextForTts(text);
     this.logger.info(
-      { segmentCount: segments.length, segments: segments.map((s) => ({ index: s.index, chars: s.text.length, text: s.text.slice(0, 80) })) },
-      `TTS split into ${segments.length} segment(s)`
+      {
+        segmentCount: segments.length,
+        segments: segments.map((s) => ({
+          index: s.index,
+          chars: s.text.length,
+          text: s.text.slice(0, 80),
+        })),
+      },
+      `TTS split into ${segments.length} segment(s)`,
     );
 
     const inflight = new Map<number, Promise<PreparedSegmentResult>>();
     let nextSegmentToSchedule = 0;
 
     const scheduleNextSegments = () => {
-      while (
-        nextSegmentToSchedule < segments.length &&
-        inflight.size < TTS_PREFETCH_SEGMENTS
-      ) {
+      while (nextSegmentToSchedule < segments.length && inflight.size < TTS_PREFETCH_SEGMENTS) {
         const segment = segments[nextSegmentToSchedule]!;
         inflight.set(segment.index, this.scheduleSegmentSynthesis(segment, abortSignal));
         nextSegmentToSchedule += 1;
@@ -207,8 +211,13 @@ export class TTSManager {
         }
 
         this.logger.info(
-          { segmentIndex: segment.index, synthWaitMs, totalElapsedMs: Date.now() - ttsStartMs, chars: segment.text.length },
-          `TTS segment ${segment.index} synthesis ready (waited ${synthWaitMs}ms, total ${Date.now() - ttsStartMs}ms)`
+          {
+            segmentIndex: segment.index,
+            synthWaitMs,
+            totalElapsedMs: Date.now() - ttsStartMs,
+            chars: segment.text.length,
+          },
+          `TTS segment ${segment.index} synthesis ready (waited ${synthWaitMs}ms, total ${Date.now() - ttsStartMs}ms)`,
         );
 
         const emitStart = Date.now();
@@ -219,8 +228,12 @@ export class TTSManager {
           isVoiceMode,
         });
         this.logger.info(
-          { segmentIndex: segment.index, emitAndPlayMs: Date.now() - emitStart, totalElapsedMs: Date.now() - ttsStartMs },
-          `TTS segment ${segment.index} playback confirmed (emit+play ${Date.now() - emitStart}ms, total ${Date.now() - ttsStartMs}ms)`
+          {
+            segmentIndex: segment.index,
+            emitAndPlayMs: Date.now() - emitStart,
+            totalElapsedMs: Date.now() - ttsStartMs,
+          },
+          `TTS segment ${segment.index} playback confirmed (emit+play ${Date.now() - emitStart}ms, total ${Date.now() - ttsStartMs}ms)`,
         );
 
         scheduleNextSegments();
@@ -229,14 +242,14 @@ export class TTSManager {
       this.cleanupPrefetchedSegments(inflight);
       this.logger.info(
         { totalMs: Date.now() - ttsStartMs },
-        `TTS generateAndWaitForPlayback done (${Date.now() - ttsStartMs}ms)`
+        `TTS generateAndWaitForPlayback done (${Date.now() - ttsStartMs}ms)`,
       );
     }
   }
 
   private async synthesizeSegment(
     segment: TtsSegment,
-    abortSignal: AbortSignal
+    abortSignal: AbortSignal,
   ): Promise<PreparedTtsSegment> {
     const resolveStart = Date.now();
     const tts = this.resolveTts();
@@ -252,8 +265,13 @@ export class TTSManager {
     const synthStart = Date.now();
     const { stream, format } = await tts.synthesizeSpeech(segment.text);
     this.logger.info(
-      { segmentIndex: segment.index, resolveMs, synthMs: Date.now() - synthStart, chars: segment.text.length },
-      `TTS segment ${segment.index} synthesized (resolve=${resolveMs}ms, synth=${Date.now() - synthStart}ms, ${segment.text.length} chars)`
+      {
+        segmentIndex: segment.index,
+        resolveMs,
+        synthMs: Date.now() - synthStart,
+        chars: segment.text.length,
+      },
+      `TTS segment ${segment.index} synthesized (resolve=${resolveMs}ms, synth=${Date.now() - synthStart}ms, ${segment.text.length} chars)`,
     );
 
     if (abortSignal.aborted) {
@@ -270,7 +288,7 @@ export class TTSManager {
 
   private scheduleSegmentSynthesis(
     segment: TtsSegment,
-    abortSignal: AbortSignal
+    abortSignal: AbortSignal,
   ): Promise<PreparedSegmentResult> {
     return this.synthesizeSegment(segment, abortSignal).then(
       (prepared) => {
@@ -285,13 +303,11 @@ export class TTSManager {
           return { kind: "aborted" };
         }
         return { kind: "error", error };
-      }
+      },
     );
   }
 
-  private cleanupPrefetchedSegments(
-    inflight: Map<number, Promise<PreparedSegmentResult>>
-  ): void {
+  private cleanupPrefetchedSegments(inflight: Map<number, Promise<PreparedSegmentResult>>): void {
     if (inflight.size === 0) {
       return;
     }
@@ -431,9 +447,7 @@ export class TTSManager {
    * Resolves the corresponding promise
    */
   public confirmAudioPlayed(chunkId: string): void {
-    const [audioId] = chunkId.includes(":")
-      ? chunkId.split(":")
-      : [chunkId];
+    const [audioId] = chunkId.includes(":") ? chunkId.split(":") : [chunkId];
     const pending = this.pendingPlaybacks.get(audioId);
 
     if (!pending) {
@@ -467,7 +481,7 @@ export class TTSManager {
 
     this.logger.debug(
       { count: this.pendingPlaybacks.size, reason },
-      "Cancelling pending playbacks"
+      "Cancelling pending playbacks",
     );
 
     for (const [audioId, pending] of this.pendingPlaybacks.entries()) {

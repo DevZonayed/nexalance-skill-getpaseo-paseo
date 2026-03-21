@@ -17,24 +17,24 @@ export function useSessionForServer(serverId: string | null): SessionState | nul
 export function useSessionForServer<T>(
   serverId: string | null,
   selector: SessionSelector<T>,
-  equalityFn?: EqualityFn<T>
+  equalityFn?: EqualityFn<T>,
 ): T;
 export function useSessionForServer<T>(
   serverId: string | null,
   selector?: SessionSelector<T>,
-  equalityFn?: EqualityFn<T>
+  equalityFn?: EqualityFn<T>,
 ): SessionState | null | T {
   const storeSelector = useCallback(
     (state: ReturnType<typeof useSessionStore.getState>): SessionState | null | T => {
-      const session = serverId ? state.sessions[serverId] ?? null : null;
+      const session = serverId ? (state.sessions[serverId] ?? null) : null;
       return selector ? selector(session) : session;
     },
-    [selector, serverId]
+    [selector, serverId],
   );
 
   return useStoreWithEqualityFn(
     useSessionStore,
     storeSelector,
-    equalityFn as EqualityFn<SessionState | null | T>
+    equalityFn as EqualityFn<SessionState | null | T>,
   );
 }

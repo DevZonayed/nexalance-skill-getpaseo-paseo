@@ -8,7 +8,7 @@ type EventEnvelope = {
 
 export async function listenToDesktopEvent<TPayload>(
   event: string,
-  handler: (payload: TPayload) => void
+  handler: (payload: TPayload) => void,
 ): Promise<DesktopEventUnlisten> {
   const listen = getDesktopHost()?.events?.on;
   if (typeof listen !== "function") {

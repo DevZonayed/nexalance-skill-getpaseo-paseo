@@ -19,8 +19,7 @@ export class TerminalOutputDeliveryQueue {
   private readonly deliveryTimeoutMs: number;
 
   constructor(private readonly options: TerminalOutputDeliveryQueueOptions) {
-    this.deliveryTimeoutMs =
-      options.deliveryTimeoutMs ?? DEFAULT_DELIVERY_TIMEOUT_MS;
+    this.deliveryTimeoutMs = options.deliveryTimeoutMs ?? DEFAULT_DELIVERY_TIMEOUT_MS;
   }
 
   enqueue(chunk: TerminalOutputDeliveryChunk): void {

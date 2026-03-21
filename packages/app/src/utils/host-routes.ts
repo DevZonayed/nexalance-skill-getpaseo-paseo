@@ -88,11 +88,7 @@ function tryDecodeBase64UrlNoPadUtf8(input: string): string | null {
 }
 
 function isPathLikeWorkspaceIdentity(value: string): boolean {
-  return (
-    value.includes("/") ||
-    value.includes("\\") ||
-    /^[A-Za-z]:[\\/]/.test(value)
-  );
+  return value.includes("/") || value.includes("\\") || /^[A-Za-z]:[\\/]/.test(value);
 }
 
 function normalizeWorkspaceId(value: string): string {
@@ -106,7 +102,7 @@ export type WorkspaceOpenIntent =
   | { kind: "draft"; draftId: string };
 
 export function parseWorkspaceOpenIntent(
-  value: string | null | undefined
+  value: string | null | undefined,
 ): WorkspaceOpenIntent | null {
   const normalized = trimNonEmpty(value);
   if (!normalized) {
@@ -145,7 +141,7 @@ export function parseWorkspaceOpenIntent(
 }
 
 export function parseHostWorkspaceOpenIntentFromPathname(
-  pathname: string
+  pathname: string,
 ): WorkspaceOpenIntent | null {
   const search = extractSearch(pathname);
   if (!search) {
@@ -228,7 +224,7 @@ export function parseServerIdFromPathname(pathname: string): string | null {
 }
 
 export function parseHostAgentRouteFromPathname(
-  pathname: string
+  pathname: string,
 ): { serverId: string; agentId: string } | null {
   const pathOnly = stripSearchAndHash(pathname);
   const match = pathOnly.match(/^\/h\/([^/]+)\/agent\/([^/]+)(?:\/|$)/);
@@ -251,7 +247,7 @@ export function parseHostAgentRouteFromPathname(
 }
 
 export function parseHostWorkspaceRouteFromPathname(
-  pathname: string
+  pathname: string,
 ): { serverId: string; workspaceId: string } | null {
   const pathOnly = stripSearchAndHash(pathname);
   const match = pathOnly.match(/^\/h\/([^/]+)\/workspace\/([^/]+)\/?$/);
@@ -272,10 +268,7 @@ export function parseHostWorkspaceRouteFromPathname(
   return { serverId, workspaceId };
 }
 
-export function buildHostWorkspaceRoute(
-  serverId: string,
-  workspaceId: string
-): string {
+export function buildHostWorkspaceRoute(serverId: string, workspaceId: string): string {
   const normalizedServerId = trimNonEmpty(serverId);
   const normalizedWorkspaceId = trimNonEmpty(workspaceId);
   if (!normalizedServerId || !normalizedWorkspaceId) {
@@ -291,7 +284,7 @@ export function buildHostWorkspaceRoute(
 export function buildHostAgentDetailRoute(
   serverId: string,
   agentId: string,
-  workspaceId?: string
+  workspaceId?: string,
 ): string {
   const normalizedWorkspaceId = trimNonEmpty(workspaceId);
   if (normalizedWorkspaceId) {
@@ -310,9 +303,7 @@ export function buildHostAgentDetailRoute(
   if (!normalizedServerId || !normalizedAgentId) {
     return "/";
   }
-  return `${buildHostRootRoute(normalizedServerId)}/agent/${encodeSegment(
-    normalizedAgentId
-  )}`;
+  return `${buildHostRootRoute(normalizedServerId)}/agent/${encodeSegment(normalizedAgentId)}`;
 }
 
 export function buildHostRootRoute(serverId: string): string {
@@ -347,10 +338,7 @@ export function buildHostSettingsRoute(serverId: string): string {
   return `${base}/settings`;
 }
 
-export function mapPathnameToServer(
-  pathname: string,
-  nextServerId: string
-): string {
+export function mapPathnameToServer(pathname: string, nextServerId: string): string {
   const normalized = trimNonEmpty(nextServerId);
   if (!normalized) {
     return "/";
@@ -369,10 +357,7 @@ export function mapPathnameToServer(
   }
   const workspaceRoute = parseHostWorkspaceRouteFromPathname(pathname);
   if (workspaceRoute) {
-    return buildHostWorkspaceRoute(
-      normalized,
-      workspaceRoute.workspaceId
-    );
+    return buildHostWorkspaceRoute(normalized, workspaceRoute.workspaceId);
   }
   if (suffix.startsWith("agent/")) {
     return `${base}/${suffix}`;

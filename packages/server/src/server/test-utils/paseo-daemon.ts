@@ -3,7 +3,12 @@ import path from "node:path";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 
 import pino from "pino";
-import { createPaseoDaemon, type PaseoDaemonConfig, type PaseoOpenAIConfig, type PaseoSpeechConfig } from "../bootstrap.js";
+import {
+  createPaseoDaemon,
+  type PaseoDaemonConfig,
+  type PaseoOpenAIConfig,
+  type PaseoSpeechConfig,
+} from "../bootstrap.js";
 import type { AgentClient, AgentProvider } from "../agent/agent-sdk-types.js";
 import { createTestAgentClients } from "./fake-agent-client.js";
 
@@ -39,12 +44,12 @@ const TEST_DAEMON_START_TIMEOUT_MS = 20_000;
 
 async function startDaemonWithTimeout(
   daemon: Awaited<ReturnType<typeof createPaseoDaemon>>,
-  timeoutMs: number
+  timeoutMs: number,
 ): Promise<void> {
   await new Promise<void>((resolve, reject) => {
     const timeoutHandle = setTimeout(() => {
       const timeoutError = new Error(
-        `Timed out starting test daemon after ${timeoutMs}ms`
+        `Timed out starting test daemon after ${timeoutMs}ms`,
       ) as Error & { code?: string };
       timeoutError.code = "TEST_DAEMON_START_TIMEOUT";
       reject(timeoutError);
@@ -58,13 +63,13 @@ async function startDaemonWithTimeout(
       (error) => {
         clearTimeout(timeoutHandle);
         reject(error);
-      }
+      },
     );
   });
 }
 
 export async function createTestPaseoDaemon(
-  options: TestPaseoDaemonOptions = {}
+  options: TestPaseoDaemonOptions = {},
 ): Promise<TestPaseoDaemon> {
   const maxAttempts = 8;
   let lastError: unknown;
@@ -75,7 +80,7 @@ export async function createTestPaseoDaemon(
     const paseoHome = path.join(paseoHomeRoot, ".paseo");
     await mkdir(paseoHome, { recursive: true });
     const staticDir = options.staticDir ?? (await mkdtemp(path.join(os.tmpdir(), "paseo-static-")));
-    const listenHost = options.listen ?? '127.0.0.1';
+    const listenHost = options.listen ?? "127.0.0.1";
     const config: PaseoDaemonConfig = {
       listen: `${listenHost}:0`,
       paseoHome,

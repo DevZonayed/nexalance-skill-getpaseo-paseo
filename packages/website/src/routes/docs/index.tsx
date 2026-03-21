@@ -1,15 +1,15 @@
-import { createFileRoute } from '@tanstack/react-router'
-import { pageMeta } from '~/meta'
+import { createFileRoute } from "@tanstack/react-router";
+import { pageMeta } from "~/meta";
 
-export const Route = createFileRoute('/docs/')({
+export const Route = createFileRoute("/docs/")({
   head: () => ({
     meta: pageMeta(
-      'Getting Started - Paseo Docs',
-      'Learn how to set up and use Paseo to manage your coding agents from anywhere.',
+      "Getting Started - Paseo Docs",
+      "Learn how to set up and use Paseo to manage your coding agents from anywhere.",
     ),
   }),
   component: GettingStarted,
-})
+});
 
 function GettingStarted() {
   return (
@@ -17,15 +17,14 @@ function GettingStarted() {
       <div>
         <h1 className="text-3xl font-medium font-title mb-4">Getting Started</h1>
         <p className="text-white/60 leading-relaxed">
-          Paseo connects to your local development environment and lets you manage your coding agents from anywhere.
+          Paseo connects to your local development environment and lets you manage your coding
+          agents from anywhere.
         </p>
       </div>
 
       <section className="space-y-4">
         <h2 className="text-xl font-medium">Installation</h2>
-        <p className="text-white/60">
-          Install the CLI globally and run it on your machine:
-        </p>
+        <p className="text-white/60">Install the CLI globally and run it on your machine:</p>
         <div className="bg-card border border-border rounded-lg p-4 font-mono text-sm">
           <span className="text-muted-foreground select-none">$ </span>
           <span>npm install -g @getpaseo/cli</span>
@@ -39,14 +38,16 @@ function GettingStarted() {
       <section className="space-y-4">
         <h2 className="text-xl font-medium">Connect the App</h2>
         <p className="text-white/60">
-          Open Paseo on your phone and scan the QR code displayed in your terminal, or enter the server address manually.
+          Open Paseo on your phone and scan the QR code displayed in your terminal, or enter the
+          server address manually.
         </p>
       </section>
 
       <section className="space-y-4">
         <h2 className="text-xl font-medium">Prerequisites</h2>
         <p className="text-white/60">
-          Paseo wraps CLI tools like Claude Code and Codex. You'll need to have them installed and configured with your own credentials before Paseo can manage them.
+          Paseo wraps CLI tools like Claude Code and Codex. You'll need to have them installed and
+          configured with your own credentials before Paseo can manage them.
         </p>
         <ul className="text-white/60 space-y-2 list-disc list-inside">
           <li>
@@ -85,11 +86,12 @@ function GettingStarted() {
       <section className="space-y-4">
         <h2 className="text-xl font-medium">Voice Setup</h2>
         <p className="text-white/60">
-          Paseo includes first-class voice support with a local-first architecture and configurable speech
-          providers.
+          Paseo includes first-class voice support with a local-first architecture and configurable
+          speech providers.
         </p>
         <p className="text-white/60">
-          For architecture, local model behavior, and provider configuration, see the Voice docs page.
+          For architecture, local model behavior, and provider configuration, see the Voice docs
+          page.
         </p>
         <a href="/docs/voice" className="underline hover:text-white/80">
           Voice docs
@@ -122,5 +124,5 @@ function GettingStarted() {
         </ul>
       </section>
     </div>
-  )
+  );
 }

@@ -23,9 +23,7 @@ function getAvailableLatency(input: {
   return probe?.status === "available" ? probe.latencyMs : null;
 }
 
-export function selectBestConnection(
-  input: SelectBestConnectionInput
-): string | null {
+export function selectBestConnection(input: SelectBestConnectionInput): string | null {
   const { candidates, probeByConnectionId } = input;
   if (candidates.length === 0) {
     return null;

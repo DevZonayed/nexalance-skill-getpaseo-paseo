@@ -1,5 +1,5 @@
-import { WelcomeScreen } from '@/components/welcome-screen'
+import { WelcomeScreen } from "@/components/welcome-screen";
 
 export default function WelcomeRoute() {
-  return <WelcomeScreen />
+  return <WelcomeScreen />;
 }

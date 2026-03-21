@@ -7,7 +7,7 @@ import {
 describe("projectDisplayNameFromProjectId", () => {
   it("shows owner and repo for GitHub remote ids", () => {
     expect(projectDisplayNameFromProjectId("remote:github.com/getpaseo/paseo")).toBe(
-      "getpaseo/paseo"
+      "getpaseo/paseo",
     );
   });
 

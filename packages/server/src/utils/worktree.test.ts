@@ -53,16 +53,12 @@ describe("createWorktree", () => {
       paseoHome,
     });
 
-    expect(result.worktreePath).toBe(
-      join(paseoHome, "worktrees", projectHash, "hello-world")
-    );
+    expect(result.worktreePath).toBe(join(paseoHome, "worktrees", projectHash, "hello-world"));
     expect(existsSync(result.worktreePath)).toBe(true);
     expect(existsSync(join(result.worktreePath, "file.txt"))).toBe(true);
     const metadataPath = getPaseoWorktreeMetadataPath(result.worktreePath);
     expect(existsSync(metadataPath)).toBe(true);
-    const metadata = JSON.parse(
-      readFileSync(metadataPath, "utf8")
-    );
+    const metadata = JSON.parse(readFileSync(metadataPath, "utf8"));
     expect(metadata).toMatchObject({ version: 1, baseRefName: "main" });
   });
 
@@ -94,11 +90,13 @@ describe("createWorktree", () => {
       "paseo-home",
       "worktrees",
       projectHash,
-      "realpath-test"
+      "realpath-test",
     );
     expect(existsSync(privateWorktreePath)).toBe(true);
 
-    const ownership = await isPaseoOwnedWorktreeCwd(privateWorktreePath, { paseoHome: varPaseoHome });
+    const ownership = await isPaseoOwnedWorktreeCwd(privateWorktreePath, {
+      paseoHome: varPaseoHome,
+    });
     expect(ownership.allowed).toBe(true);
 
     rmSync(varTempDir, { recursive: true, force: true });
@@ -138,18 +136,14 @@ describe("createWorktree", () => {
       paseoHome,
     });
 
-    expect(result.worktreePath).toBe(
-      join(paseoHome, "worktrees", projectHash, "my-feature")
-    );
+    expect(result.worktreePath).toBe(join(paseoHome, "worktrees", projectHash, "my-feature"));
     expect(existsSync(result.worktreePath)).toBe(true);
 
     // Verify branch was created
     const branches = execSync("git branch", { cwd: repoDir }).toString();
     expect(branches).toContain("feature-branch");
     const metadataPath = getPaseoWorktreeMetadataPath(result.worktreePath);
-    const metadata = JSON.parse(
-      readFileSync(metadataPath, "utf8")
-    );
+    const metadata = JSON.parse(readFileSync(metadataPath, "utf8"));
     expect(metadata).toMatchObject({ version: 1, baseRefName: "main" });
   });
 
@@ -160,7 +154,7 @@ describe("createWorktree", () => {
         cwd: repoDir,
         baseBranch: "main",
         worktreeSlug: "test",
-      })
+      }),
     ).rejects.toThrow("Invalid branch name");
   });
 
@@ -178,9 +172,7 @@ describe("createWorktree", () => {
     });
 
     // Should create branch "hello-1" since "hello" exists
-    expect(result.worktreePath).toBe(
-      join(paseoHome, "worktrees", projectHash, "hello")
-    );
+    expect(result.worktreePath).toBe(join(paseoHome, "worktrees", projectHash, "hello"));
     expect(existsSync(result.worktreePath)).toBe(true);
 
     const branches = execSync("git branch", { cwd: repoDir }).toString();
@@ -220,7 +212,9 @@ describe("createWorktree", () => {
       },
     };
     writeFileSync(join(repoDir, "paseo.json"), JSON.stringify(paseoConfig));
-    execSync("git add paseo.json && git -c commit.gpgsign=false commit -m 'add paseo.json'", { cwd: repoDir });
+    execSync("git add paseo.json && git -c commit.gpgsign=false commit -m 'add paseo.json'", {
+      cwd: repoDir,
+    });
 
     const result = await createWorktree({
       branchName: "main",
@@ -238,9 +232,7 @@ describe("createWorktree", () => {
     expect(setupLog).toContain(`root_alias=${repoDir}`);
     expect(setupLog).toContain(`worktree=${result.worktreePath}`);
     expect(setupLog).toContain("branch=setup-test");
-    const portLine = setupLog
-      .split("\n")
-      .find((line) => line.startsWith("port="));
+    const portLine = setupLog.split("\n").find((line) => line.startsWith("port="));
     expect(portLine).toBeDefined();
     const portValue = Number(portLine?.slice("port=".length));
     expect(Number.isInteger(portValue)).toBe(true);
@@ -254,10 +246,9 @@ describe("createWorktree", () => {
       },
     };
     writeFileSync(join(repoDir, "paseo.json"), JSON.stringify(paseoConfig));
-    execSync(
-      "git add paseo.json && git -c commit.gpgsign=false commit -m 'add paseo.json'",
-      { cwd: repoDir }
-    );
+    execSync("git add paseo.json && git -c commit.gpgsign=false commit -m 'add paseo.json'", {
+      cwd: repoDir,
+    });
 
     const result = await createWorktree({
       branchName: "main",
@@ -275,16 +266,13 @@ describe("createWorktree", () => {
   it("streams setup command progress events while commands are executing", async () => {
     const paseoConfig = {
       worktree: {
-        setup: [
-          'echo "first line"; echo "second line" 1>&2',
-        ],
+        setup: ['echo "first line"; echo "second line" 1>&2'],
       },
     };
     writeFileSync(join(repoDir, "paseo.json"), JSON.stringify(paseoConfig));
-    execSync(
-      "git add paseo.json && git -c commit.gpgsign=false commit -m 'add streaming setup'",
-      { cwd: repoDir }
-    );
+    execSync("git add paseo.json && git -c commit.gpgsign=false commit -m 'add streaming setup'", {
+      cwd: repoDir,
+    });
 
     const progressEvents: WorktreeSetupCommandProgressEvent[] = [];
     const results = await runWorktreeSetupCommands({
@@ -350,7 +338,7 @@ describe("createWorktree", () => {
       resolveWorktreeRuntimeEnv({
         worktreePath: result.worktreePath,
         branchName: result.branchName,
-      })
+      }),
     ).rejects.toThrow(`Persisted worktree port ${port} is already in use`);
 
     await new Promise<void>((resolve, reject) => {
@@ -372,14 +360,11 @@ describe("createWorktree", () => {
       },
     };
     writeFileSync(join(repoDir, "paseo.json"), JSON.stringify(paseoConfig));
-    execSync("git add paseo.json && git -c commit.gpgsign=false commit -m 'add paseo.json'", { cwd: repoDir });
+    execSync("git add paseo.json && git -c commit.gpgsign=false commit -m 'add paseo.json'", {
+      cwd: repoDir,
+    });
 
-    const expectedWorktreePath = join(
-      paseoHome,
-      "worktrees",
-      "test-repo",
-      "fail-test"
-    );
+    const expectedWorktreePath = join(paseoHome, "worktrees", "test-repo", "fail-test");
 
     await expect(
       createWorktree({
@@ -388,7 +373,7 @@ describe("createWorktree", () => {
         baseBranch: "main",
         worktreeSlug: "fail-test",
         paseoHome,
-      })
+      }),
     ).rejects.toThrow("Worktree setup command failed");
 
     // Verify worktree was cleaned up
@@ -554,10 +539,9 @@ describe("paseo worktree manager", () => {
       },
     };
     writeFileSync(join(repoDir, "paseo.json"), JSON.stringify(paseoConfig));
-    execSync(
-      "git add paseo.json && git -c commit.gpgsign=false commit -m 'add destroy commands'",
-      { cwd: repoDir }
-    );
+    execSync("git add paseo.json && git -c commit.gpgsign=false commit -m 'add destroy commands'", {
+      cwd: repoDir,
+    });
 
     const created = await createWorktree({
       branchName: "destroy-branch",
@@ -589,7 +573,7 @@ describe("paseo worktree manager", () => {
     writeFileSync(join(repoDir, "paseo.json"), JSON.stringify(paseoConfig));
     execSync(
       "git add paseo.json && git -c commit.gpgsign=false commit -m 'add failing destroy commands'",
-      { cwd: repoDir }
+      { cwd: repoDir },
     );
 
     const created = await createWorktree({
@@ -601,13 +585,12 @@ describe("paseo worktree manager", () => {
     });
 
     await expect(
-      deletePaseoWorktree({ cwd: repoDir, worktreePath: created.worktreePath, paseoHome })
+      deletePaseoWorktree({ cwd: repoDir, worktreePath: created.worktreePath, paseoHome }),
     ).rejects.toThrow("Worktree destroy command failed");
 
     expect(existsSync(created.worktreePath)).toBe(true);
     expect(existsSync(join(repoDir, "destroy-start.log"))).toBe(true);
   });
-
 });
 
 describe("slugify", () => {
@@ -617,7 +600,8 @@ describe("slugify", () => {
   });
 
   it("truncates long strings at word boundary", () => {
-    const longInput = "https-stackoverflow-com-questions-68349031-only-run-actions-on-non-draft-pull-request";
+    const longInput =
+      "https-stackoverflow-com-questions-68349031-only-run-actions-on-non-draft-pull-request";
     const result = slugify(longInput);
     expect(result.length).toBeLessThanOrEqual(50);
     expect(result).toBe("https-stackoverflow-com-questions-68349031-only");

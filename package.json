@@ -23,8 +23,8 @@
     "typecheck": "npm run typecheck --workspaces --if-present",
     "typecheck:daemon": "npm run typecheck --workspace=@getpaseo/relay && npm run typecheck --workspace=@getpaseo/server && npm run typecheck --workspace=@getpaseo/cli",
     "test": "npm run test --workspaces --if-present",
-    "format": "prettier --write .",
-    "format:check": "prettier --check .",
+    "format": "biome format --write .",
+    "format:check": "biome format .",
     "start": "npm run start --workspace=@getpaseo/server",
     "android": "npm run android --workspace=@getpaseo/app",
     "android:development": "npm run android:development --workspace=@getpaseo/app",
@@ -57,10 +57,10 @@
     "release:major": "npm run version:all:major && npm run release:check && npm run release:publish && npm run release:push"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.4.8",
     "get-port-cli": "^3.0.0",
     "knip": "^5.82.1",
     "patch-package": "^8.0.1",
-    "prettier": "^3.5.3",
     "react": "19.1.4",
     "react-dom": "19.1.4",
     "typescript": "^5.9.3"

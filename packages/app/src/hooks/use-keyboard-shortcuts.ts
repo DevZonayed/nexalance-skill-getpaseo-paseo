@@ -89,7 +89,7 @@ export function useKeyboardShortcuts({
       const currentIndex = targets.findIndex(
         (target) =>
           target.serverId === workspaceRoute.serverId &&
-          target.workspaceId === workspaceRoute.workspaceId
+          target.workspaceId === workspaceRoute.workspaceId,
       );
       const fromIndex = currentIndex >= 0 ? currentIndex : delta > 0 ? -1 : 0;
       const nextIndex = (fromIndex + delta + targets.length) % targets.length;
@@ -106,9 +106,7 @@ export function useKeyboardShortcuts({
       return true;
     };
 
-    const dispatchMessageInputAction = (
-      kind: MessageInputKeyboardActionKind
-    ): boolean => {
+    const dispatchMessageInputAction = (kind: MessageInputKeyboardActionKind): boolean => {
       switch (kind) {
         case "focus":
           return keyboardActionDispatcher.dispatch({
@@ -229,7 +227,7 @@ export function useKeyboardShortcuts({
             const active = document.activeElement;
             const activeEl = active instanceof HTMLElement ? active : null;
             setCommandCenterFocusRestoreElement(
-              (targetEl as HTMLElement | null) ?? activeEl ?? null
+              (targetEl as HTMLElement | null) ?? activeEl ?? null,
             );
           }
           store.setCommandCenterOpen(!store.commandCenterOpen);

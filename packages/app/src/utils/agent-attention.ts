@@ -13,9 +13,7 @@ export type AgentAttentionClearTrigger =
   | "prompt-send"
   | "agent-blur";
 
-export function shouldClearAgentAttention(
-  input: ShouldClearAgentAttentionInput
-): boolean {
+export function shouldClearAgentAttention(input: ShouldClearAgentAttentionInput): boolean {
   const agentId = input.agentId?.trim();
   if (!agentId) {
     return false;
@@ -29,10 +27,7 @@ export function shouldClearAgentAttention(
   if (input.attentionReason === "permission") {
     return false;
   }
-  if (
-    input.trigger === "focus-entry" &&
-    input.hasDeferredFocusEntryClear === true
-  ) {
+  if (input.trigger === "focus-entry" && input.hasDeferredFocusEntryClear === true) {
     return false;
   }
   return true;

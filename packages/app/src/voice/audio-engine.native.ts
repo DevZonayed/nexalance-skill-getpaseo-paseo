@@ -82,7 +82,7 @@ function resamplePcm16(pcm: Uint8Array, fromRate: number, toRate: number): Uint8
 
 export function createAudioEngine(
   callbacks: AudioEngineCallbacks,
-  _options?: AudioEngineTraceOptions
+  _options?: AudioEngineTraceOptions,
 ): AudioEngine {
   const native = require("@getpaseo/expo-two-way-audio");
   const instanceId = nextAudioEngineInstanceId++;
@@ -115,7 +115,7 @@ export function createAudioEngine(
         `volume=${bridgeStats.volumeEvents}ev max=${bridgeStats.volumeMax.toFixed(3)} ` +
         `play=${bridgeStats.playbackEvents}ev/${bridgeStats.playbackInputBytes}B->${bridgeStats.playbackResampledBytes}B ` +
         `playMs=${bridgeStats.playbackDurationMs.toFixed(1)} ` +
-        `windowMs=${elapsedMs}`
+        `windowMs=${elapsedMs}`,
     );
     bridgeStats.windowStartedAtMs = now;
     bridgeStats.captureEvents = 0;
@@ -166,14 +166,14 @@ export function createAudioEngine(
       if (!refs.sawFirstMicChunk) {
         refs.sawFirstMicChunk = true;
         console.log(
-          `[AudioEngine.native#${instanceId}] firstMicChunk bytes=${pcm.byteLength} head=${toHexPreview(pcm)}`
+          `[AudioEngine.native#${instanceId}] firstMicChunk bytes=${pcm.byteLength} head=${toHexPreview(pcm)}`,
         );
       }
       bridgeStats.captureEvents += 1;
       bridgeStats.captureBytes += pcm.byteLength;
       maybeFlushBridgeStats("capture");
       callbacks.onCaptureData(pcm);
-    }
+    },
   );
   const volumeSubscription = native.addExpoTwoWayAudioEventListener(
     "onInputVolumeLevelData",
@@ -187,19 +187,19 @@ export function createAudioEngine(
       if (!refs.sawFirstVolumeEvent) {
         refs.sawFirstVolumeEvent = true;
         console.log(
-          `[AudioEngine.native#${instanceId}] firstInputVolume level=${level.toFixed(3)} muted=${refs.muted}`
+          `[AudioEngine.native#${instanceId}] firstInputVolume level=${level.toFixed(3)} muted=${refs.muted}`,
         );
       }
       maybeFlushBridgeStats("volume");
       callbacks.onVolumeLevel(level);
-    }
+    },
   );
 
   const outputVolumeSubscription = native.addExpoTwoWayAudioEventListener(
     "onOutputVolumeLevelData",
     (event: any) => {
       console.log(`[AudioEngine.native#${instanceId}] outputVolume=${event.data}`);
-    }
+    },
   );
 
   async function ensureInitialized(): Promise<void> {
@@ -217,17 +217,17 @@ export function createAudioEngine(
   async function ensureMicrophonePermission(): Promise<void> {
     let permission = await native.getMicrophonePermissionsAsync().catch(() => null);
     console.log(
-      `[AudioEngine.native#${instanceId}] microphonePermission initial=${permission?.status ?? "unknown"} granted=${String(permission?.granted ?? false)}`
+      `[AudioEngine.native#${instanceId}] microphonePermission initial=${permission?.status ?? "unknown"} granted=${String(permission?.granted ?? false)}`,
     );
     if (!permission?.granted) {
       permission = await native.requestMicrophonePermissionsAsync().catch(() => null);
       console.log(
-        `[AudioEngine.native#${instanceId}] microphonePermission requested=${permission?.status ?? "unknown"} granted=${String(permission?.granted ?? false)}`
+        `[AudioEngine.native#${instanceId}] microphonePermission requested=${permission?.status ?? "unknown"} granted=${String(permission?.granted ?? false)}`,
       );
     }
     if (!permission?.granted) {
       throw new Error(
-        "Microphone permission is required to capture audio. Please enable microphone access in system settings."
+        "Microphone permission is required to capture audio. Please enable microphone access in system settings.",
       );
     }
   }
@@ -261,7 +261,7 @@ export function createAudioEngine(
         console.log(
           `[AudioEngine.native#${instanceId}] playPCMData: inputRate=${inputRate} inputBytes=${pcm.length} ` +
             `resampled=${pcm16k.length} durationSec=${durationSec.toFixed(3)} ` +
-            `pcmHead=${toHexPreview(pcm)} resampledHead=${toHexPreview(pcm16k)}`
+            `pcmHead=${toHexPreview(pcm)} resampledHead=${toHexPreview(pcm16k)}`,
         );
         maybeFlushBridgeStats("play");
 
@@ -352,7 +352,7 @@ export function createAudioEngine(
         const isRecording = native.toggleRecording(true);
         refs.captureActive = true;
         console.log(
-          `[AudioEngine.native#${instanceId}] startCapture toggleRecording(true) => ${String(isRecording)}`
+          `[AudioEngine.native#${instanceId}] startCapture toggleRecording(true) => ${String(isRecording)}`,
         );
       } catch (error) {
         const wrapped = error instanceof Error ? error : new Error(String(error));
@@ -365,7 +365,7 @@ export function createAudioEngine(
       if (refs.captureActive) {
         const isRecording = native.toggleRecording(false);
         console.log(
-          `[AudioEngine.native#${instanceId}] stopCapture toggleRecording(false) => ${String(isRecording)}`
+          `[AudioEngine.native#${instanceId}] stopCapture toggleRecording(false) => ${String(isRecording)}`,
         );
       }
       refs.captureActive = false;

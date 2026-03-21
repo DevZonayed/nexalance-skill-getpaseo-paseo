@@ -12,7 +12,7 @@ function checkoutDiffQueryKey(
   serverId: string,
   cwd: string,
   mode: "uncommitted" | "base",
-  baseRef?: string
+  baseRef?: string,
 ) {
   return ["checkoutDiff", serverId, cwd, mode, baseRef ?? ""] as const;
 }
@@ -25,10 +25,7 @@ interface UseCheckoutDiffQueryOptions {
   enabled?: boolean;
 }
 
-type CheckoutDiffQueryPayload = Omit<
-  SubscribeCheckoutDiffResponse["payload"],
-  "subscriptionId"
->;
+type CheckoutDiffQueryPayload = Omit<SubscribeCheckoutDiffResponse["payload"], "subscriptionId">;
 
 export type ParsedDiffFile = CheckoutDiffQueryPayload["files"][number];
 export type DiffHunk = ParsedDiffFile["hunks"][number];
@@ -43,9 +40,7 @@ function normalizeCheckoutDiffCompare(compare: {
     return { mode: "uncommitted" };
   }
   const trimmedBaseRef = compare.baseRef?.trim();
-  return trimmedBaseRef
-    ? { mode: "base", baseRef: trimmedBaseRef }
-    : { mode: "base" };
+  return trimmedBaseRef ? { mode: "base", baseRef: trimmedBaseRef } : { mode: "base" };
 }
 
 export function useCheckoutDiffQuery({
@@ -58,8 +53,7 @@ export function useCheckoutDiffQuery({
   const queryClient = useQueryClient();
   const client = useHostRuntimeClient(serverId);
   const isConnected = useHostRuntimeIsConnected(serverId);
-  const isMobile =
-    UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
+  const isMobile = UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
   const mobileView = usePanelStore((state) => state.mobileView);
   const desktopFileExplorerOpen = usePanelStore((state) => state.desktop.fileExplorerOpen);
   const explorerTab = usePanelStore((state) => state.explorerTab);
@@ -67,13 +61,13 @@ export function useCheckoutDiffQuery({
   const hookInstanceId = useId();
   const normalizedCompare = useMemo(
     () => normalizeCheckoutDiffCompare({ mode, baseRef }),
-    [mode, baseRef]
+    [mode, baseRef],
   );
   const compareMode = normalizedCompare.mode;
   const compareBaseRef = normalizedCompare.baseRef;
   const queryKey = useMemo(
     () => checkoutDiffQueryKey(serverId, cwd, mode, baseRef),
-    [serverId, cwd, mode, baseRef]
+    [serverId, cwd, mode, baseRef],
   );
 
   const query = useQuery({
@@ -142,7 +136,7 @@ export function useCheckoutDiffQuery({
           error: message.payload.error,
           requestId: message.payload.requestId,
         });
-      }
+      },
     );
 
     void client
@@ -152,7 +146,7 @@ export function useCheckoutDiffQuery({
           mode: compareMode,
           baseRef: compareBaseRef,
         },
-        { subscriptionId }
+        { subscriptionId },
       )
       .then((payload) => {
         if (cancelled) {

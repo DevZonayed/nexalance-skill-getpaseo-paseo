@@ -3,10 +3,7 @@ import { beforeAll, afterAll } from "vitest";
 import { mkdtempSync } from "fs";
 import { tmpdir } from "os";
 import path from "path";
-import {
-  createDaemonTestContext,
-  type DaemonTestContext,
-} from "../test-utils/index.js";
+import { createDaemonTestContext, type DaemonTestContext } from "../test-utils/index.js";
 import { agentConfigs } from "./agent-configs.js";
 
 // Re-export for backward compatibility - prefer using agentConfigs instead

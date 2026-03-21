@@ -35,10 +35,8 @@ export class TerminalStreamManager {
   private readonly maxBufferedBytes: number;
 
   constructor(private readonly config: TerminalStreamManagerConfig) {
-    this.maxBufferedChunks =
-      config.maxBufferedChunks ?? DEFAULT_MAX_BUFFERED_CHUNKS;
-    this.maxBufferedBytes =
-      config.maxBufferedBytes ?? DEFAULT_MAX_BUFFERED_BYTES;
+    this.maxBufferedChunks = config.maxBufferedChunks ?? DEFAULT_MAX_BUFFERED_CHUNKS;
+    this.maxBufferedBytes = config.maxBufferedBytes ?? DEFAULT_MAX_BUFFERED_BYTES;
   }
 
   clearAll(): void {
@@ -53,10 +51,7 @@ export class TerminalStreamManager {
     this.ackOffsets.delete(input.streamId);
   }
 
-  subscribe(input: {
-    streamId: number;
-    handler: TerminalChunkHandler;
-  }): () => void {
+  subscribe(input: { streamId: number; handler: TerminalChunkHandler }): () => void {
     const { streamId, handler } = input;
     if (!this.handlers.has(streamId)) {
       this.handlers.set(streamId, new Set());
@@ -111,10 +106,7 @@ export class TerminalStreamManager {
     }
   }
 
-  private flushBufferedChunks(input: {
-    streamId: number;
-    handler: TerminalChunkHandler;
-  }): void {
+  private flushBufferedChunks(input: { streamId: number; handler: TerminalChunkHandler }): void {
     const buffered = this.bufferedChunks.get(input.streamId);
     if (!buffered || buffered.chunks.length === 0) {
       return;
@@ -143,10 +135,7 @@ export class TerminalStreamManager {
     queue.chunks.push(input.chunk);
     queue.bytes += input.chunk.data.byteLength;
 
-    while (
-      queue.chunks.length > this.maxBufferedChunks ||
-      queue.bytes > this.maxBufferedBytes
-    ) {
+    while (queue.chunks.length > this.maxBufferedChunks || queue.bytes > this.maxBufferedBytes) {
       const removed = queue.chunks.shift();
       if (!removed) {
         break;

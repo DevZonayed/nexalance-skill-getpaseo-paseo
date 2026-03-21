@@ -6,7 +6,7 @@ import type {
 
 export function defaultWebSocketFactory(
   url: string,
-  _options?: { headers?: Record<string, string> }
+  _options?: { headers?: Record<string, string> },
 ): WebSocketLike {
   const globalWs = (globalThis as { WebSocket?: any }).WebSocket;
   if (!globalWs) {
@@ -15,9 +15,7 @@ export function defaultWebSocketFactory(
   return new globalWs(url);
 }
 
-export function createWebSocketTransportFactory(
-  factory: WebSocketFactory
-): DaemonTransportFactory {
+export function createWebSocketTransportFactory(factory: WebSocketFactory): DaemonTransportFactory {
   return ({ url, headers }) => {
     const ws = factory(url, { headers });
     if ("binaryType" in ws) {
@@ -46,7 +44,7 @@ export function createWebSocketTransportFactory(
 export function bindWsHandler(
   ws: WebSocketLike,
   event: "open" | "close" | "error" | "message",
-  handler: (...args: any[]) => void
+  handler: (...args: any[]) => void,
 ): () => void {
   if (typeof ws.addEventListener === "function") {
     ws.addEventListener(event, handler);

@@ -1,7 +1,7 @@
 import { app, Menu, BrowserWindow } from "electron";
 
 function withBrowserWindow(
-  callback: (win: BrowserWindow) => void
+  callback: (win: BrowserWindow) => void,
 ): (_item: Electron.MenuItem, baseWin: Electron.BaseWindow | undefined) => void {
   return (_item, baseWin) => {
     const win = baseWin instanceof BrowserWindow ? baseWin : BrowserWindow.getFocusedWindow();

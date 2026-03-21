@@ -1,13 +1,7 @@
 import { readdir, readFile, writeFile, mkdir, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { randomBytes } from "node:crypto";
-import type {
-  Task,
-  TaskStore,
-  CreateTaskOptions,
-  TaskStatus,
-  AgentType,
-} from "./types.js";
+import type { Task, TaskStore, CreateTaskOptions, TaskStatus, AgentType } from "./types.js";
 
 function generateId(): string {
   return randomBytes(4).toString("hex");
@@ -106,7 +100,7 @@ function parseTask(content: string): Task {
   const notesSection = fileBody.match(/## Notes\n([\s\S]*?)$/);
   if (notesSection) {
     const noteMatches = notesSection[1].matchAll(
-      /\*\*(\d{4}-\d{2}-\d{2}T[\d:.Z]+)\*\*\n\n([\s\S]*?)(?=\n\*\*\d{4}|$)/g
+      /\*\*(\d{4}-\d{2}-\d{2}T[\d:.Z]+)\*\*\n\n([\s\S]*?)(?=\n\*\*\d{4}|$)/g,
     );
     for (const match of noteMatches) {
       notes.push({
@@ -118,13 +112,9 @@ function parseTask(content: string): Task {
 
   // Parse acceptance criteria
   const acceptanceCriteria: string[] = [];
-  const criteriaSection = fileBody.match(
-    /## Acceptance Criteria\n\n([\s\S]*?)(?=\n## Notes|$)/
-  );
+  const criteriaSection = fileBody.match(/## Acceptance Criteria\n\n([\s\S]*?)(?=\n## Notes|$)/);
   if (criteriaSection) {
-    const criteriaMatches = criteriaSection[1].matchAll(
-      /- \[[ x]\] (.+)$/gm
-    );
+    const criteriaMatches = criteriaSection[1].matchAll(/- \[[ x]\] (.+)$/gm);
     for (const match of criteriaMatches) {
       acceptanceCriteria.push(match[1].trim());
     }
@@ -267,9 +257,7 @@ export class FileTaskStore implements TaskStore {
 
   async getChildren(id: string): Promise<Task[]> {
     const allTasks = await this.list();
-    return allTasks
-      .filter((t) => t.parentId === id)
-      .sort(sortByPriorityThenCreated);
+    return allTasks.filter((t) => t.parentId === id).sort(sortByPriorityThenCreated);
   }
 
   async getDescendants(id: string): Promise<Task[]> {
@@ -397,10 +385,7 @@ export class FileTaskStore implements TaskStore {
     return saved!;
   }
 
-  async update(
-    id: string,
-    changes: Partial<Omit<Task, "id" | "created">>
-  ): Promise<Task> {
+  async update(id: string, changes: Partial<Omit<Task, "id" | "created">>): Promise<Task> {
     const task = await this.get(id);
     if (!task) {
       throw new Error(`Task not found: ${id}`);

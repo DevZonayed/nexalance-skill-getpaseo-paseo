@@ -1,15 +1,7 @@
 import { forwardRef, useCallback, useEffect, useMemo, useRef } from "react";
 import type { ReactNode } from "react";
 import { createPortal } from "react-dom";
-import {
-  Modal,
-  Platform,
-  Pressable,
-  ScrollView,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { Modal, Platform, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import type { TextInputProps } from "react-native";
 import { StyleSheet, UnistylesRuntime, useUnistyles } from "react-native-unistyles";
 import { getOverlayRoot, OVERLAY_Z } from "../lib/overlay-root";
@@ -121,8 +113,7 @@ export function AdaptiveModalSheet({
   testID,
 }: AdaptiveModalSheetProps) {
   const { theme } = useUnistyles();
-  const isMobile =
-    UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
+  const isMobile = UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
   const sheetRef = useRef<BottomSheetModal>(null);
   const dismissingForVisibilityRef = useRef(false);
   const resolvedSnapPoints = useMemo(() => snapPoints ?? ["65%", "90%"], [snapPoints]);
@@ -148,19 +139,14 @@ export function AdaptiveModalSheet({
         onClose();
       }
     },
-    [onClose]
+    [onClose],
   );
 
   const renderBackdrop = useCallback(
     (props: React.ComponentProps<typeof BottomSheetBackdrop>) => (
-      <BottomSheetBackdrop
-        {...props}
-        disappearsOnIndex={-1}
-        appearsOnIndex={0}
-        opacity={0.45}
-      />
+      <BottomSheetBackdrop {...props} disappearsOnIndex={-1} appearsOnIndex={0} opacity={0.45} />
     ),
-    []
+    [],
   );
 
   if (isMobile) {
@@ -180,11 +166,7 @@ export function AdaptiveModalSheet({
       >
         <View style={styles.bottomSheetHeader}>
           <Text style={styles.title}>{title}</Text>
-          <Pressable
-            accessibilityLabel="Close"
-            style={styles.closeButton}
-            onPress={onClose}
-          >
+          <Pressable accessibilityLabel="Close" style={styles.closeButton} onPress={onClose}>
             <X size={16} color={theme.colors.foregroundMuted} />
           </Pressable>
         </View>
@@ -209,11 +191,7 @@ export function AdaptiveModalSheet({
       <View style={styles.desktopCard}>
         <View style={styles.header}>
           <Text style={styles.title}>{title}</Text>
-          <Pressable
-            accessibilityLabel="Close"
-            style={styles.closeButton}
-            onPress={onClose}
-          >
+          <Pressable accessibilityLabel="Close" style={styles.closeButton} onPress={onClose}>
             <X size={16} color={theme.colors.foregroundMuted} />
           </Pressable>
         </View>
@@ -254,13 +232,12 @@ export function AdaptiveModalSheet({
  */
 export const AdaptiveTextInput = forwardRef<TextInput, TextInputProps>(
   function AdaptiveTextInput(props, ref) {
-    const isMobile =
-      UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
+    const isMobile = UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
 
     if (isMobile) {
       return <BottomSheetTextInput ref={ref as any} {...props} />;
     }
 
     return <TextInput ref={ref} {...props} />;
-  }
+  },
 );

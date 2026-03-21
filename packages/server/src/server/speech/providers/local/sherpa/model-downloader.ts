@@ -89,7 +89,9 @@ async function isNonEmptyFile(filePath: string): Promise<boolean> {
   }
 }
 
-export async function ensureSherpaOnnxModel(options: EnsureSherpaOnnxModelOptions): Promise<string> {
+export async function ensureSherpaOnnxModel(
+  options: EnsureSherpaOnnxModelOptions,
+): Promise<string> {
   const logger = options.logger.child({
     module: "speech",
     provider: "local",
@@ -124,7 +126,7 @@ export async function ensureSherpaOnnxModel(options: EnsureSherpaOnnxModelOption
           archivePath,
           modelDir,
         },
-        "Extracting model archive"
+        "Extracting model archive",
       );
       await extractTarArchive(archivePath, options.modelsDir);
 
@@ -133,11 +135,11 @@ export async function ensureSherpaOnnxModel(options: EnsureSherpaOnnxModelOption
           modelId: options.modelId,
           modelDir,
         },
-        "Verifying downloaded model files"
+        "Verifying downloaded model files",
       );
       if (!(await hasRequiredFiles(modelDir, spec.requiredFiles))) {
         throw new Error(
-          `Downloaded and extracted ${archiveFilename}, but required files are still missing in ${modelDir}.`
+          `Downloaded and extracted ${archiveFilename}, but required files are still missing in ${modelDir}.`,
         );
       }
 
@@ -146,7 +148,7 @@ export async function ensureSherpaOnnxModel(options: EnsureSherpaOnnxModelOption
           modelId: options.modelId,
           archivePath,
         },
-        "Finalizing model artifacts"
+        "Finalizing model artifacts",
       );
       try {
         await rm(archivePath, { force: true });
@@ -177,11 +179,11 @@ export async function ensureSherpaOnnxModel(options: EnsureSherpaOnnxModelOption
           modelId: options.modelId,
           modelDir,
         },
-        "Verifying downloaded model files"
+        "Verifying downloaded model files",
       );
       if (!(await hasRequiredFiles(modelDir, spec.requiredFiles))) {
         throw new Error(
-          `Downloaded files for ${options.modelId}, but required files are still missing in ${modelDir}.`
+          `Downloaded files for ${options.modelId}, but required files are still missing in ${modelDir}.`,
         );
       }
 

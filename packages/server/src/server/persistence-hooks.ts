@@ -1,12 +1,6 @@
 import type { AgentManager } from "./agent/agent-manager.js";
-import type {
-  AgentProvider,
-  AgentSessionConfig,
-} from "./agent/agent-sdk-types.js";
-import type {
-  AgentStorage,
-  StoredAgentRecord,
-} from "./agent/agent-storage.js";
+import type { AgentProvider, AgentSessionConfig } from "./agent/agent-sdk-types.js";
+import type { AgentStorage, StoredAgentRecord } from "./agent/agent-storage.js";
 
 type LoggerLike = {
   child(bindings: Record<string, unknown>): LoggerLike;
@@ -31,7 +25,7 @@ function isKnownProvider(provider: string): provider is AgentProvider {
 export function attachAgentStoragePersistence(
   logger: LoggerLike,
   agentManager: AgentManagerStateSource,
-  storage: AgentStoragePersistence
+  storage: AgentStoragePersistence,
 ): () => void {
   const log = getLogger(logger);
   const unsubscribe = agentManager.subscribe((event) => {
@@ -46,9 +40,7 @@ export function attachAgentStoragePersistence(
   return unsubscribe;
 }
 
-export function buildConfigOverrides(
-  record: StoredAgentRecord
-): Partial<AgentSessionConfig> {
+export function buildConfigOverrides(record: StoredAgentRecord): Partial<AgentSessionConfig> {
   return {
     cwd: record.cwd,
     modeId: record.lastModeId ?? record.config?.modeId ?? undefined,
@@ -61,9 +53,7 @@ export function buildConfigOverrides(
   };
 }
 
-export function buildSessionConfig(
-  record: StoredAgentRecord
-): AgentSessionConfig {
+export function buildSessionConfig(record: StoredAgentRecord): AgentSessionConfig {
   if (!isKnownProvider(record.provider)) {
     throw new Error(`Unknown provider '${record.provider}'`);
   }
@@ -81,9 +71,7 @@ export function buildSessionConfig(
   };
 }
 
-export function extractTimestamps(
-  record: StoredAgentRecord
-): {
+export function extractTimestamps(record: StoredAgentRecord): {
   createdAt: Date;
   updatedAt: Date;
   lastUserMessageAt: Date | null;

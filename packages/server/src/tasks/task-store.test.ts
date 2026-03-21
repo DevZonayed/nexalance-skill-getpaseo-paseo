@@ -60,9 +60,7 @@ describe("FileTaskStore", () => {
         body: "This is a **long** body\n\nWith multiple lines.",
       });
 
-      expect(task.body).toBe(
-        "This is a **long** body\n\nWith multiple lines."
-      );
+      expect(task.body).toBe("This is a **long** body\n\nWith multiple lines.");
     });
 
     it("creates a task with parentId", async () => {
@@ -73,9 +71,9 @@ describe("FileTaskStore", () => {
     });
 
     it("throws when creating task with non-existent parent", async () => {
-      await expect(
-        store.create("Child", { parentId: "nonexistent" })
-      ).rejects.toThrow("Parent task not found");
+      await expect(store.create("Child", { parentId: "nonexistent" })).rejects.toThrow(
+        "Parent task not found",
+      );
     });
 
     it("creates a task with assignee", async () => {
@@ -174,11 +172,7 @@ describe("FileTaskStore", () => {
       const tasks = await store.list();
 
       expect(tasks).toHaveLength(3);
-      expect(tasks.map((t) => t.title).sort()).toEqual([
-        "Task 1",
-        "Task 2",
-        "Task 3",
-      ]);
+      expect(tasks.map((t) => t.title).sort()).toEqual(["Task 1", "Task 2", "Task 3"]);
     });
   });
 
@@ -227,9 +221,7 @@ describe("FileTaskStore", () => {
     });
 
     it("throws for non-existent task", async () => {
-      await expect(
-        store.update("nonexistent", { title: "New" })
-      ).rejects.toThrow();
+      await expect(store.update("nonexistent", { title: "New" })).rejects.toThrow();
     });
 
     it("replaces acceptance criteria", async () => {
@@ -907,9 +899,7 @@ describe("FileTaskStore", () => {
       const tree = await store.getDepTree(root.id);
 
       expect(tree).toHaveLength(3);
-      expect(tree.map((t) => t.id).sort()).toEqual(
-        [shared.id, left.id, right.id].sort()
-      );
+      expect(tree.map((t) => t.id).sort()).toEqual([shared.id, left.id, right.id].sort());
     });
 
     it("handles circular deps gracefully", async () => {
@@ -1048,9 +1038,7 @@ describe("FileTaskStore", () => {
         const children = await store.getChildren(parent.id);
 
         expect(children).toHaveLength(2);
-        expect(children.map((c) => c.id).sort()).toEqual(
-          [child1.id, child2.id].sort()
-        );
+        expect(children.map((c) => c.id).sort()).toEqual([child1.id, child2.id].sort());
       });
 
       it("does not return grandchildren", async () => {
@@ -1100,10 +1088,7 @@ describe("FileTaskStore", () => {
 
         const children = await store.getChildren(parent.id);
 
-        expect(children.map((c) => c.id)).toEqual([
-          withPriority.id,
-          noPriority.id,
-        ]);
+        expect(children.map((c) => c.id)).toEqual([withPriority.id, noPriority.id]);
       });
     });
 
@@ -1131,16 +1116,14 @@ describe("FileTaskStore", () => {
       it("throws for non-existent task", async () => {
         const parent = await store.create("Parent");
 
-        await expect(store.setParent("nonexistent", parent.id)).rejects.toThrow(
-          "Task not found"
-        );
+        await expect(store.setParent("nonexistent", parent.id)).rejects.toThrow("Task not found");
       });
 
       it("throws for non-existent parent", async () => {
         const task = await store.create("Task");
 
         await expect(store.setParent(task.id, "nonexistent")).rejects.toThrow(
-          "Parent task not found"
+          "Parent task not found",
         );
       });
 
@@ -1148,7 +1131,7 @@ describe("FileTaskStore", () => {
         const task = await store.create("Task");
 
         await expect(store.setParent(task.id, task.id)).rejects.toThrow(
-          "Task cannot be its own parent"
+          "Task cannot be its own parent",
         );
       });
 
@@ -1156,9 +1139,7 @@ describe("FileTaskStore", () => {
         const parent = await store.create("Parent");
         const child = await store.create("Child", { parentId: parent.id });
 
-        await expect(store.setParent(parent.id, child.id)).rejects.toThrow(
-          "circular reference"
-        );
+        await expect(store.setParent(parent.id, child.id)).rejects.toThrow("circular reference");
       });
     });
   });

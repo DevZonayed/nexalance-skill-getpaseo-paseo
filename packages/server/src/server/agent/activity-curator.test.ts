@@ -13,19 +13,18 @@ function toolCallItem(params: {
   detail?: Extract<AgentTimelineItem, { type: "tool_call" }>["detail"];
 }): Extract<AgentTimelineItem, { type: "tool_call" }> {
   const status = params.status ?? "completed";
-  const detail =
-    params.detail ?? {
-      type: "unknown" as const,
-      input: params.input ?? null,
-      output: params.output ?? null,
-    };
+  const detail = params.detail ?? {
+    type: "unknown" as const,
+    input: params.input ?? null,
+    output: params.output ?? null,
+  };
   return {
     type: "tool_call",
     callId: params.callId,
     name: params.name,
     status,
     detail,
-    error: status === "failed" ? params.error ?? { message: "failed" } : null,
+    error: status === "failed" ? (params.error ?? { message: "failed" }) : null,
     metadata: params.metadata,
   };
 }
@@ -117,9 +116,7 @@ describe("curateAgentActivity", () => {
 
     const result = curateAgentActivity(timeline);
 
-    expect(result).toBe(
-      '[paseo__create_agent] {"cwd":"/tmp/repo","initialPrompt":"do the thing"}'
-    );
+    expect(result).toBe('[paseo__create_agent] {"cwd":"/tmp/repo","initialPrompt":"do the thing"}');
   });
 
   it("collapses repeated tool updates by callId", () => {

@@ -3,10 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import {
-  DaemonVersionResolutionError,
-  resolveDaemonVersion,
-} from "./daemon-version.js";
+import { DaemonVersionResolutionError, resolveDaemonVersion } from "./daemon-version.js";
 
 const createdDirs: string[] = [];
 
@@ -28,7 +25,7 @@ describe("resolveDaemonVersion", () => {
     writeFileSync(
       path.join(root, "package.json"),
       JSON.stringify({ name: "@getpaseo/server", version: "9.8.7" }),
-      "utf8"
+      "utf8",
     );
     const nestedDir = path.join(root, "dist", "server");
     mkdirSync(nestedDir, { recursive: true });
@@ -42,15 +39,13 @@ describe("resolveDaemonVersion", () => {
     writeFileSync(
       path.join(root, "package.json"),
       JSON.stringify({ name: "not-getpaseo-server", version: "1.2.3" }),
-      "utf8"
+      "utf8",
     );
     const nestedDir = path.join(root, "dist", "server");
     mkdirSync(nestedDir, { recursive: true });
 
     const moduleUrl = pathToFileURL(path.join(nestedDir, "index.js")).href;
-    expect(() => resolveDaemonVersion(moduleUrl)).toThrow(
-      DaemonVersionResolutionError
-    );
+    expect(() => resolveDaemonVersion(moduleUrl)).toThrow(DaemonVersionResolutionError);
   });
 
   it("throws when @getpaseo/server version is missing", () => {
@@ -58,14 +53,12 @@ describe("resolveDaemonVersion", () => {
     writeFileSync(
       path.join(root, "package.json"),
       JSON.stringify({ name: "@getpaseo/server" }),
-      "utf8"
+      "utf8",
     );
     const nestedDir = path.join(root, "dist", "server");
     mkdirSync(nestedDir, { recursive: true });
 
     const moduleUrl = pathToFileURL(path.join(nestedDir, "index.js")).href;
-    expect(() => resolveDaemonVersion(moduleUrl)).toThrow(
-      DaemonVersionResolutionError
-    );
+    expect(() => resolveDaemonVersion(moduleUrl)).toThrow(DaemonVersionResolutionError);
   });
 });

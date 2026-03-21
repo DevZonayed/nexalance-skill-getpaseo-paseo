@@ -78,7 +78,7 @@ export function createVoiceMcpSocketBridgeManager(params: {
           } catch (error) {
             connectionLogger.error(
               { err: error, callerAgentId },
-              "Failed to initialize stream-level MCP bridge connection"
+              "Failed to initialize stream-level MCP bridge connection",
             );
             socket.destroy();
           }
@@ -96,10 +96,7 @@ export function createVoiceMcpSocketBridgeManager(params: {
       });
 
       entries.set(callerAgentId, { socketPath, server, sockets });
-      logger.info(
-        { callerAgentId, socketPath },
-        "Voice MCP per-agent socket bridge listening"
-      );
+      logger.info({ callerAgentId, socketPath }, "Voice MCP per-agent socket bridge listening");
       return socketPath;
     })();
 

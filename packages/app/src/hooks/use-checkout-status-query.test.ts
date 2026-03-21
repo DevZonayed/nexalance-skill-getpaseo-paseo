@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { checkoutStatusRevalidationKey, nextCheckoutStatusRefetchDecision } from "./checkout-status-revalidation";
+import {
+  checkoutStatusRevalidationKey,
+  nextCheckoutStatusRefetchDecision,
+} from "./checkout-status-revalidation";
 
 describe("useCheckoutStatusQuery", () => {
   describe("checkoutStatusRevalidationKey", () => {
@@ -10,7 +13,7 @@ describe("useCheckoutStatusQuery", () => {
           cwd: "/path/to/project",
           isOpen: false,
           explorerTab: "changes",
-        })
+        }),
       ).toBeNull();
     });
 
@@ -21,7 +24,7 @@ describe("useCheckoutStatusQuery", () => {
           cwd: "/path/to/project",
           isOpen: true,
           explorerTab: "files",
-        })
+        }),
       ).toBeNull();
     });
 
@@ -32,7 +35,7 @@ describe("useCheckoutStatusQuery", () => {
           cwd: "/path/to/project",
           isOpen: true,
           explorerTab: "changes",
-        })
+        }),
       ).toBe("daemon-1:/path/to/project");
     });
   });
@@ -63,9 +66,7 @@ describe("useCheckoutStatusQuery", () => {
     });
 
     it("refetches again when cwd changes while active", () => {
-      expect(
-        nextCheckoutStatusRefetchDecision("daemon-1:/path/a", "daemon-1:/path/b")
-      ).toEqual({
+      expect(nextCheckoutStatusRefetchDecision("daemon-1:/path/a", "daemon-1:/path/b")).toEqual({
         nextSeenKey: "daemon-1:/path/b",
         shouldRefetch: true,
       });

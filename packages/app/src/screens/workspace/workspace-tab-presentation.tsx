@@ -85,7 +85,7 @@ function WorkspaceTabPresentationResolverInner({
       descriptor.titleState,
       tab.key,
       tab.kind,
-    ]
+    ],
   );
 
   return <>{children(presentation)}</>;

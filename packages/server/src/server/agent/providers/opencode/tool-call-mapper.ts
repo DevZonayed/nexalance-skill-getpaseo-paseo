@@ -17,12 +17,7 @@ const FAILED_STATUSES = new Set(["error", "failed", "failure"]);
 const CANCELED_STATUSES = new Set(["canceled", "cancelled", "aborted", "interrupted"]);
 const COMPLETED_STATUSES = new Set(["complete", "completed", "success", "succeeded", "done"]);
 
-const OpencodeToolCallStatusSchema = z.enum([
-  "running",
-  "completed",
-  "failed",
-  "canceled",
-]);
+const OpencodeToolCallStatusSchema = z.enum(["running", "completed", "failed", "canceled"]);
 
 const OpencodeRawToolCallSchema = z
   .object({
@@ -41,9 +36,7 @@ const OpencodeNormalizedToolCallPass1Schema = OpencodeRawToolCallSchema.transfor
   const output = raw.output ?? null;
   const error = raw.error ?? null;
   const callId =
-    typeof raw.callId === "string" && raw.callId.trim().length > 0
-      ? raw.callId.trim()
-      : null;
+    typeof raw.callId === "string" && raw.callId.trim().length > 0 ? raw.callId.trim() : null;
   let status: z.infer<typeof OpencodeToolCallStatusSchema>;
 
   if (error !== null) {

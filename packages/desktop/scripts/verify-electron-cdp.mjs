@@ -6,14 +6,7 @@ import { chromium } from "playwright";
 const CDP_URL = process.env.CDP_URL ?? "http://127.0.0.1:9223";
 const OUTPUT_DIR = process.env.ELECTRON_VERIFY_OUTPUT_DIR ?? "/tmp/electron-verification";
 const APP_URL_FRAGMENT = process.env.ELECTRON_VERIFY_APP_URL_FRAGMENT ?? "localhost:8081";
-const REQUIRED_DESKTOP_KEYS = [
-  "invoke",
-  "events",
-  "window",
-  "dialog",
-  "notification",
-  "opener",
-];
+const REQUIRED_DESKTOP_KEYS = ["invoke", "events", "window", "dialog", "notification", "opener"];
 
 function assert(condition, message) {
   if (!condition) {
@@ -82,11 +75,10 @@ async function main() {
   const desktopDetection = await page.evaluate(() => {
     const bridge = window.paseoDesktop;
     const keys = bridge && typeof bridge === "object" ? Object.keys(bridge) : [];
-    const keyTypes = bridge && typeof bridge === "object"
-      ? Object.fromEntries(
-          Object.entries(bridge).map(([key, value]) => [key, typeof value])
-        )
-      : {};
+    const keyTypes =
+      bridge && typeof bridge === "object"
+        ? Object.fromEntries(Object.entries(bridge).map(([key, value]) => [key, typeof value]))
+        : {};
     return {
       exists: Boolean(bridge && typeof bridge === "object"),
       keys,
@@ -106,10 +98,12 @@ async function main() {
     screenshot: welcomeScreenshot,
   });
 
-  const desktopStatus = await page.evaluate(() => window.paseoDesktop.invoke("desktop_daemon_status"));
+  const desktopStatus = await page.evaluate(() =>
+    window.paseoDesktop.invoke("desktop_daemon_status"),
+  );
   assert(
     typeof desktopStatus?.serverId === "string" && desktopStatus.serverId.trim().length > 0,
-    "desktop_daemon_status did not return a serverId"
+    "desktop_daemon_status did not return a serverId",
   );
 
   const serverId = desktopStatus.serverId.trim();
@@ -132,7 +126,9 @@ async function main() {
     (await menuToggle.isVisible().catch(() => false))
   ) {
     await menuToggle.click();
-    await sidebarSettingsButton.waitFor({ state: "hidden", timeout: 10_000 }).catch(() => undefined);
+    await sidebarSettingsButton
+      .waitFor({ state: "hidden", timeout: 10_000 })
+      .catch(() => undefined);
     await page.waitForTimeout(500);
   }
 
@@ -165,10 +161,7 @@ async function main() {
     }
 
     function summarizeText(element) {
-      return (element.textContent ?? "")
-        .replace(/\s+/g, " ")
-        .trim()
-        .slice(0, 120);
+      return (element.textContent ?? "").replace(/\s+/g, " ").trim().slice(0, 120);
     }
 
     const regions = [];
@@ -179,8 +172,7 @@ async function main() {
         continue;
       }
       const style = window.getComputedStyle(element);
-      const appRegion =
-        style.webkitAppRegion || style.getPropertyValue("-webkit-app-region");
+      const appRegion = style.webkitAppRegion || style.getPropertyValue("-webkit-app-region");
       if (appRegion !== "drag" || !isVisible(element)) {
         continue;
       }
@@ -210,17 +202,14 @@ async function main() {
     }
 
     if (!candidate && regions.length > 0) {
-      candidate = regions
-        .slice()
-        .sort((left, right) => left.top - right.top)[0];
+      candidate = regions.slice().sort((left, right) => left.top - right.top)[0];
 
       for (const element of nodes) {
         if (!(element instanceof HTMLElement)) {
           continue;
         }
         const style = window.getComputedStyle(element);
-        const appRegion =
-          style.webkitAppRegion || style.getPropertyValue("-webkit-app-region");
+        const appRegion = style.webkitAppRegion || style.getPropertyValue("-webkit-app-region");
         if (appRegion !== "drag" || !isVisible(element)) {
           continue;
         }
@@ -285,7 +274,7 @@ async function main() {
   ]).then((values) => values.every(Boolean));
   const daemonManagementScreenshot = await captureScreenshot(
     page,
-    "05-settings-daemon-management.png"
+    "05-settings-daemon-management.png",
   );
 
   results.push({
@@ -299,10 +288,7 @@ async function main() {
     screenshot: daemonManagementScreenshot,
   });
 
-  const desktopDetectionScreenshot = await captureScreenshot(
-    page,
-    "06-desktop-detection.png"
-  );
+  const desktopDetectionScreenshot = await captureScreenshot(page, "06-desktop-detection.png");
   results[0].screenshot = desktopDetectionScreenshot;
 
   const report = {

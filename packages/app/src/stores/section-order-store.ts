@@ -36,8 +36,8 @@ export const useSectionOrderStore = create<SectionOrderState>()(
       partialize: (state) => ({
         projectOrder: state.projectOrder,
       }),
-    }
-  )
+    },
+  ),
 );
 
 /**
@@ -46,7 +46,7 @@ export const useSectionOrderStore = create<SectionOrderState>()(
  */
 export function sortProjectsByStoredOrder<T extends { projectKey: string }>(
   groups: T[],
-  storedOrder: string[]
+  storedOrder: string[],
 ): T[] {
   if (storedOrder.length === 0) {
     return groups;

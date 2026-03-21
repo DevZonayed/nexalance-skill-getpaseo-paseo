@@ -4,9 +4,7 @@ import { parsePartialJsonObject } from "./partial-json.js";
 
 describe("parsePartialJsonObject", () => {
   it("parses complete objects", () => {
-    expect(
-      parsePartialJsonObject("{\"command\":\"pwd\",\"cwd\":\"/tmp/repo\"}")
-    ).toEqual({
+    expect(parsePartialJsonObject('{"command":"pwd","cwd":"/tmp/repo"}')).toEqual({
       value: {
         command: "pwd",
         cwd: "/tmp/repo",
@@ -16,7 +14,7 @@ describe("parsePartialJsonObject", () => {
   });
 
   it("keeps partial string values without field-specific logic", () => {
-    expect(parsePartialJsonObject("{\"command\":\"echo ")).toEqual({
+    expect(parsePartialJsonObject('{"command":"echo ')).toEqual({
       value: {
         command: "echo ",
       },
@@ -25,11 +23,7 @@ describe("parsePartialJsonObject", () => {
   });
 
   it("returns parsed prefix fields from incomplete objects", () => {
-    expect(
-      parsePartialJsonObject(
-        "{\"file_path\":\"src/message.tsx\",\"old_string\":\"before"
-      )
-    ).toEqual({
+    expect(parsePartialJsonObject('{"file_path":"src/message.tsx","old_string":"before')).toEqual({
       value: {
         file_path: "src/message.tsx",
         old_string: "before",
@@ -39,11 +33,7 @@ describe("parsePartialJsonObject", () => {
   });
 
   it("parses nested partial values generically", () => {
-    expect(
-      parsePartialJsonObject(
-        "{\"payload\":{\"path\":\"src/index.ts\",\"content\":\"hello"
-      )
-    ).toEqual({
+    expect(parsePartialJsonObject('{"payload":{"path":"src/index.ts","content":"hello')).toEqual({
       value: {
         payload: {
           path: "src/index.ts",
@@ -55,6 +45,6 @@ describe("parsePartialJsonObject", () => {
   });
 
   it("returns null for non-object payloads", () => {
-    expect(parsePartialJsonObject("\"text\"")).toBeNull();
+    expect(parsePartialJsonObject('"text"')).toBeNull();
   });
 });

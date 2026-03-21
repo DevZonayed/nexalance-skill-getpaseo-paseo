@@ -46,7 +46,7 @@ export class DaemonConnectionTestError extends Error {
 
 export async function buildClientConfig(
   connection: HostConnection,
-  serverId?: string
+  serverId?: string,
 ): Promise<DaemonClientConfig> {
   const clientId = await getOrCreateClientId();
   const localTransportFactory = createDesktopLocalDaemonTransportFactory();
@@ -99,44 +99,51 @@ export function connectAndProbe(
 ): Promise<{ client: DaemonClient; serverId: string; hostname: string | null }> {
   const client = new DaemonClient(config);
 
-  return new Promise<{ client: DaemonClient; serverId: string; hostname: string | null }>((resolve, reject) => {
-    const timer = setTimeout(() => {
-      void client.close().catch(() => undefined);
-      reject(
-        new DaemonConnectionTestError("Connection timed out", {
-          reason: "Connection timed out",
-          lastError: client.lastError ?? null,
-        })
-      );
-    }, timeoutMs);
-
-    void client.connect().then(() => {
-      clearTimeout(timer);
-      const serverInfo = client.getLastServerInfoMessage();
-      if (!serverInfo) {
+  return new Promise<{ client: DaemonClient; serverId: string; hostname: string | null }>(
+    (resolve, reject) => {
+      const timer = setTimeout(() => {
         void client.close().catch(() => undefined);
         reject(
-          new DaemonConnectionTestError("Missing server info message", {
-            reason: "Missing server info message",
+          new DaemonConnectionTestError("Connection timed out", {
+            reason: "Connection timed out",
             lastError: client.lastError ?? null,
-          })
+          }),
         );
-        return;
-      }
-      resolve({
-        client,
-        serverId: serverInfo.serverId,
-        hostname: serverInfo.hostname,
-      });
-    }).catch((error) => {
-      clearTimeout(timer);
-      const reason = normalizeNonEmptyString(error instanceof Error ? error.message : String(error));
-      const lastError = normalizeNonEmptyString(client.lastError);
-      const message = pickBestReason(reason, lastError);
-      void client.close().catch(() => undefined);
-      reject(new DaemonConnectionTestError(message, { reason, lastError }));
-    });
-  });
+      }, timeoutMs);
+
+      void client
+        .connect()
+        .then(() => {
+          clearTimeout(timer);
+          const serverInfo = client.getLastServerInfoMessage();
+          if (!serverInfo) {
+            void client.close().catch(() => undefined);
+            reject(
+              new DaemonConnectionTestError("Missing server info message", {
+                reason: "Missing server info message",
+                lastError: client.lastError ?? null,
+              }),
+            );
+            return;
+          }
+          resolve({
+            client,
+            serverId: serverInfo.serverId,
+            hostname: serverInfo.hostname,
+          });
+        })
+        .catch((error) => {
+          clearTimeout(timer);
+          const reason = normalizeNonEmptyString(
+            error instanceof Error ? error.message : String(error),
+          );
+          const lastError = normalizeNonEmptyString(client.lastError);
+          const message = pickBestReason(reason, lastError);
+          void client.close().catch(() => undefined);
+          reject(new DaemonConnectionTestError(message, { reason, lastError }));
+        });
+    },
+  );
 }
 
 interface ProbeOptions {

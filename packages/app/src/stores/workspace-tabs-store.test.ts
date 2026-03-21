@@ -15,7 +15,10 @@ vi.mock("@react-native-async-storage/async-storage", () => {
   };
 });
 
-import { buildWorkspaceTabPersistenceKey, useWorkspaceTabsStore } from "@/stores/workspace-tabs-store";
+import {
+  buildWorkspaceTabPersistenceKey,
+  useWorkspaceTabsStore,
+} from "@/stores/workspace-tabs-store";
 
 const SERVER_ID = "server-1";
 const WORKSPACE_ID = "/repo/worktree";
@@ -97,7 +100,7 @@ describe("workspace-tabs-store retargetTab", () => {
     });
     expect(focusedTabId).toBe("terminal_term-1");
     expect(useWorkspaceTabsStore.getState().focusedTabIdByWorkspace[workspaceKey]).toBe(
-      "terminal_term-1"
+      "terminal_term-1",
     );
   });
 
@@ -129,7 +132,7 @@ describe("workspace-tabs-store retargetTab", () => {
     const tabs = state.uiTabsByWorkspace[workspaceKey] ?? [];
     const order = state.tabOrderByWorkspace[workspaceKey] ?? [];
     const matchingTabs = tabs.filter(
-      (tab) => tab.target.kind === "agent" && tab.target.agentId === "created-agent"
+      (tab) => tab.target.kind === "agent" && tab.target.agentId === "created-agent",
     );
 
     expect(ensured).toBe(draftTabId);
@@ -162,7 +165,7 @@ describe("workspace-tabs-store retargetTab", () => {
     });
 
     expect(useWorkspaceTabsStore.getState().focusedTabIdByWorkspace[workspaceKey]).toBe(
-      focusedFileTabId
+      focusedFileTabId,
     );
   });
 
@@ -185,7 +188,7 @@ describe("workspace-tabs-store retargetTab", () => {
     expect(fileTabId).toBe("file_/repo/worktree/src/index.ts");
     expect(terminalTabId).toBe("terminal_term-1");
     expect(useWorkspaceTabsStore.getState().focusedTabIdByWorkspace[workspaceKey]).toBe(
-      terminalTabId
+      terminalTabId,
     );
 
     const reopenedFileTabId = useWorkspaceTabsStore.getState().openOrFocusTab({
@@ -195,8 +198,6 @@ describe("workspace-tabs-store retargetTab", () => {
     });
 
     expect(reopenedFileTabId).toBe(fileTabId);
-    expect(useWorkspaceTabsStore.getState().focusedTabIdByWorkspace[workspaceKey]).toBe(
-      fileTabId
-    );
+    expect(useWorkspaceTabsStore.getState().focusedTabIdByWorkspace[workspaceKey]).toBe(fileTabId);
   });
 });

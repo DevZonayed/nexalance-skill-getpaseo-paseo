@@ -43,12 +43,12 @@ describe("daemon E2E (real claude) - send while running recovery", () => {
 
         await primary.sendMessage(
           agent.id,
-          "Run bash command sleep 30, wait for completion, then reply done."
+          "Run bash command sleep 30, wait for completion, then reply done.",
         );
         await primary.waitForAgentUpsert(
           agent.id,
           (snapshot) => snapshot.status === "running",
-          60_000
+          60_000,
         );
 
         let isProcessing = true;
@@ -61,14 +61,14 @@ describe("daemon E2E (real claude) - send while running recovery", () => {
         await secondary.waitForAgentUpsert(
           agent.id,
           (snapshot) => snapshot.status === "running",
-          60_000
+          60_000,
         );
 
         const reconnected = new DaemonClient({ url: `ws://127.0.0.1:${daemon.port}/ws` });
         try {
           await reconnected.connect();
           const applySnapshot = (
-            snapshot: Parameters<typeof applyAgentInputProcessingTransition>[0]["snapshot"]
+            snapshot: Parameters<typeof applyAgentInputProcessingTransition>[0]["snapshot"],
           ) => {
             const next = applyAgentInputProcessingTransition({
               snapshot,
@@ -95,7 +95,7 @@ describe("daemon E2E (real claude) - send while running recovery", () => {
             subscribe: { subscriptionId: "reconnected" },
           });
           const hydratedSnapshot = initial.entries.find(
-            (candidate) => candidate.agent.id === agent.id
+            (candidate) => candidate.agent.id === agent.id,
           )?.agent;
           if (hydratedSnapshot) {
             applySnapshot(hydratedSnapshot);
@@ -119,6 +119,6 @@ describe("daemon E2E (real claude) - send while running recovery", () => {
         rmSync(cwd, { recursive: true, force: true });
       }
     },
-    300_000
+    300_000,
   );
 });

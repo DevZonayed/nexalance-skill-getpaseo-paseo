@@ -60,7 +60,12 @@ const ClaudeToolDetailPass2Schema = z.union([
   toolDetailBranchByName("Bash", ToolShellInputSchema, ToolShellOutputSchema, toShellToolDetail),
   toolDetailBranchByName("bash", ToolShellInputSchema, ToolShellOutputSchema, toShellToolDetail),
   toolDetailBranchByName("shell", ToolShellInputSchema, ToolShellOutputSchema, toShellToolDetail),
-  toolDetailBranchByName("exec_command", ToolShellInputSchema, ToolShellOutputSchema, toShellToolDetail),
+  toolDetailBranchByName(
+    "exec_command",
+    ToolShellInputSchema,
+    ToolShellOutputSchema,
+    toShellToolDetail,
+  ),
   toolDetailBranchByName("Read", ToolReadInputSchema, z.unknown(), (input, output) => {
     const parsedOutput = ToolReadOutputSchema.safeParse(output);
     return toReadToolDetail(input, parsedOutput.success ? parsedOutput.data : null);
@@ -79,53 +84,116 @@ const ClaudeToolDetailPass2Schema = z.union([
   }),
   toolDetailBranchByName("Write", ToolWriteInputSchema, ToolWriteOutputSchema, toWriteToolDetail),
   toolDetailBranchByName("write", ToolWriteInputSchema, ToolWriteOutputSchema, toWriteToolDetail),
-  toolDetailBranchByName("write_file", ToolWriteInputSchema, ToolWriteOutputSchema, toWriteToolDetail),
-  toolDetailBranchByName("create_file", ToolWriteInputSchema, ToolWriteOutputSchema, toWriteToolDetail),
+  toolDetailBranchByName(
+    "write_file",
+    ToolWriteInputSchema,
+    ToolWriteOutputSchema,
+    toWriteToolDetail,
+  ),
+  toolDetailBranchByName(
+    "create_file",
+    ToolWriteInputSchema,
+    ToolWriteOutputSchema,
+    toWriteToolDetail,
+  ),
   toolDetailBranchByName("Edit", ToolEditInputSchema, ToolEditOutputSchema, toEditToolDetail),
   toolDetailBranchByName("MultiEdit", ToolEditInputSchema, ToolEditOutputSchema, toEditToolDetail),
   toolDetailBranchByName("multi_edit", ToolEditInputSchema, ToolEditOutputSchema, toEditToolDetail),
   toolDetailBranchByName("edit", ToolEditInputSchema, ToolEditOutputSchema, toEditToolDetail),
-  toolDetailBranchByName("apply_patch", ToolEditInputSchema, ToolEditOutputSchema, toEditToolDetail),
+  toolDetailBranchByName(
+    "apply_patch",
+    ToolEditInputSchema,
+    ToolEditOutputSchema,
+    toEditToolDetail,
+  ),
   toolDetailBranchByName("apply_diff", ToolEditInputSchema, ToolEditOutputSchema, toEditToolDetail),
   toolDetailBranchByName(
     "str_replace_editor",
     ToolEditInputSchema,
     ToolEditOutputSchema,
-    toEditToolDetail
+    toEditToolDetail,
   ),
-  toolDetailBranchByName("WebSearch", ToolSearchInputSchema, ToolWebSearchOutputSchema.nullable(), (input, output) =>
-    toSearchToolDetail({ input, output, toolName: "web_search" })
+  toolDetailBranchByName(
+    "WebSearch",
+    ToolSearchInputSchema,
+    ToolWebSearchOutputSchema.nullable(),
+    (input, output) => toSearchToolDetail({ input, output, toolName: "web_search" }),
   ),
-  toolDetailBranchByName("web_search", ToolSearchInputSchema, ToolWebSearchOutputSchema.nullable(), (input, output) =>
-    toSearchToolDetail({ input, output, toolName: "web_search" })
+  toolDetailBranchByName(
+    "web_search",
+    ToolSearchInputSchema,
+    ToolWebSearchOutputSchema.nullable(),
+    (input, output) => toSearchToolDetail({ input, output, toolName: "web_search" }),
   ),
   toolDetailBranchByName("search", ToolSearchInputSchema, z.unknown(), (input) =>
-    toSearchToolDetail({ input, toolName: "search" })
+    toSearchToolDetail({ input, toolName: "search" }),
   ),
-  toolDetailBranchByName("Grep", ToolSearchInputSchema, ToolGrepOutputSchema.nullable(), (input, output) =>
-    toSearchToolDetail({ input, output, toolName: "grep" })
+  toolDetailBranchByName(
+    "Grep",
+    ToolSearchInputSchema,
+    ToolGrepOutputSchema.nullable(),
+    (input, output) => toSearchToolDetail({ input, output, toolName: "grep" }),
   ),
-  toolDetailBranchByName("grep", ToolSearchInputSchema, ToolGrepOutputSchema.nullable(), (input, output) =>
-    toSearchToolDetail({ input, output, toolName: "grep" })
+  toolDetailBranchByName(
+    "grep",
+    ToolSearchInputSchema,
+    ToolGrepOutputSchema.nullable(),
+    (input, output) => toSearchToolDetail({ input, output, toolName: "grep" }),
   ),
-  toolDetailBranchByName("Glob", ToolSearchInputSchema, ToolGlobOutputSchema.nullable(), (input, output) =>
-    toSearchToolDetail({ input, output, toolName: "glob" })
+  toolDetailBranchByName(
+    "Glob",
+    ToolSearchInputSchema,
+    ToolGlobOutputSchema.nullable(),
+    (input, output) => toSearchToolDetail({ input, output, toolName: "glob" }),
   ),
-  toolDetailBranchByName("glob", ToolSearchInputSchema, ToolGlobOutputSchema.nullable(), (input, output) =>
-    toSearchToolDetail({ input, output, toolName: "glob" })
+  toolDetailBranchByName(
+    "glob",
+    ToolSearchInputSchema,
+    ToolGlobOutputSchema.nullable(),
+    (input, output) => toSearchToolDetail({ input, output, toolName: "glob" }),
   ),
-  toolDetailBranchByName("WebFetch", ToolWebFetchInputSchema, ToolWebFetchOutputSchema, toFetchToolDetail),
-  toolDetailBranchByName("web_fetch", ToolWebFetchInputSchema, ToolWebFetchOutputSchema, toFetchToolDetail),
-  toolDetailBranchByName("WebFetchTool", ToolWebFetchInputSchema, ToolWebFetchOutputSchema, toFetchToolDetail),
-  toolDetailBranchByName("web_fetch_tool", ToolWebFetchInputSchema, ToolWebFetchOutputSchema, toFetchToolDetail),
-  toolDetailBranchByName("webfetch", ToolWebFetchInputSchema, ToolWebFetchOutputSchema, toFetchToolDetail),
+  toolDetailBranchByName(
+    "WebFetch",
+    ToolWebFetchInputSchema,
+    ToolWebFetchOutputSchema,
+    toFetchToolDetail,
+  ),
+  toolDetailBranchByName(
+    "web_fetch",
+    ToolWebFetchInputSchema,
+    ToolWebFetchOutputSchema,
+    toFetchToolDetail,
+  ),
+  toolDetailBranchByName(
+    "WebFetchTool",
+    ToolWebFetchInputSchema,
+    ToolWebFetchOutputSchema,
+    toFetchToolDetail,
+  ),
+  toolDetailBranchByName(
+    "web_fetch_tool",
+    ToolWebFetchInputSchema,
+    ToolWebFetchOutputSchema,
+    toFetchToolDetail,
+  ),
+  toolDetailBranchByName(
+    "webfetch",
+    ToolWebFetchInputSchema,
+    ToolWebFetchOutputSchema,
+    toFetchToolDetail,
+  ),
   toolDetailBranchByName(
     "Skill",
     z.object({ skill: z.string() }).passthrough(),
-    z.union([
-      z.object({ output: z.string() }).passthrough().transform((value) => value.output),
-      z.string(),
-    ]).nullable(),
+    z
+      .union([
+        z
+          .object({ output: z.string() })
+          .passthrough()
+          .transform((value) => value.output),
+        z.string(),
+      ])
+      .nullable(),
     (input, output) => {
       const skillName = input?.skill;
       if (!skillName) {
@@ -137,7 +205,7 @@ const ClaudeToolDetailPass2Schema = z.union([
         icon: "sparkles" as const,
         ...(output ? { text: output } : {}),
       } satisfies ToolCallDetail;
-    }
+    },
   ),
   ClaudeSpeakToolDetailSchema,
 ]);
@@ -145,7 +213,7 @@ const ClaudeToolDetailPass2Schema = z.union([
 export function deriveClaudeToolDetail(
   name: string,
   input: unknown,
-  output: unknown
+  output: unknown,
 ): ToolCallDetail {
   const pass1 = ClaudeToolEnvelopeSchema.safeParse({
     name,

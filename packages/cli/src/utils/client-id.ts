@@ -5,7 +5,7 @@ import { homedir } from "node:os";
 
 const CLIENT_SESSION_KEY_FILE = join(
   process.env.PASEO_HOME ?? join(homedir(), ".paseo"),
-  "cli-client-id"
+  "cli-client-id",
 );
 
 let cachedClientId: string | null = null;
@@ -25,9 +25,7 @@ export async function getOrCreateCliClientId(): Promise<string> {
   }
 
   try {
-    const existing = normalizeClientId(
-      await readFile(CLIENT_SESSION_KEY_FILE, "utf8")
-    );
+    const existing = normalizeClientId(await readFile(CLIENT_SESSION_KEY_FILE, "utf8"));
     if (existing) {
       cachedClientId = existing;
       return existing;

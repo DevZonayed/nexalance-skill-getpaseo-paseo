@@ -170,7 +170,6 @@ export function useDropdownFloating({
   }, []);
 
   const update = useCallback(async () => {
-
     if (!referenceEl || !floatingElRef.current) {
       return;
     }
@@ -209,7 +208,6 @@ export function useDropdownFloating({
   }, []);
 
   useEffect(() => {
-
     if (!open) {
       setGeometry(null);
       setFloatingReady(false);

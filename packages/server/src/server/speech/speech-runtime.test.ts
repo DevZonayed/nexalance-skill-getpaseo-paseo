@@ -8,9 +8,7 @@ import type { TurnDetectionProvider } from "./turn-detection-provider.js";
 import { initializeSpeechRuntime } from "./speech-runtime.js";
 
 const { initializeLocalSpeechServicesMock } = vi.hoisted(() => ({
-  initializeLocalSpeechServicesMock: vi.fn<
-    (args: unknown) => Promise<InitializedLocalSpeech>
-  >(),
+  initializeLocalSpeechServicesMock: vi.fn<(args: unknown) => Promise<InitializedLocalSpeech>>(),
 }));
 
 vi.mock("./providers/local/runtime.js", () => ({
@@ -68,9 +66,7 @@ function createStubTurnDetection(id: string): TurnDetectionProvider {
   };
 }
 
-function createSpeechConfig(
-  providers: PaseoSpeechConfig["providers"]
-): PaseoSpeechConfig {
+function createSpeechConfig(providers: PaseoSpeechConfig["providers"]): PaseoSpeechConfig {
   return { providers };
 }
 

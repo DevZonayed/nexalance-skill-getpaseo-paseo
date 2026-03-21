@@ -31,7 +31,7 @@ class FakeTerminalStreamClient implements TerminalStreamControllerClient {
       resumeOffset?: number;
       rows?: number;
       cols?: number;
-    }
+    },
   ): Promise<TerminalStreamControllerAttachPayload> {
     this.attachCalls.push({ terminalId, options });
     const response = this.nextAttachResponses.shift();
@@ -47,7 +47,7 @@ class FakeTerminalStreamClient implements TerminalStreamControllerClient {
 
   onTerminalStreamData(
     streamId: number,
-    handler: (chunk: TerminalStreamControllerChunk) => void
+    handler: (chunk: TerminalStreamControllerChunk) => void,
   ): () => void {
     const pendingChunks = this.pendingChunksByStreamId.get(streamId);
     if (pendingChunks && pendingChunks.length > 0) {
@@ -343,9 +343,7 @@ describe("terminal-stream-controller", () => {
     harness.controller.setTerminal({ terminalId: "term-buffered" });
     await flushAsyncWork();
 
-    expect(harness.chunks).toEqual([
-      { terminalId: "term-buffered", text: "buffered-replay" },
-    ]);
+    expect(harness.chunks).toEqual([{ terminalId: "term-buffered", text: "buffered-replay" }]);
   });
 
   it("clears stale selected output when bootstrap replay starts before current offset", async () => {

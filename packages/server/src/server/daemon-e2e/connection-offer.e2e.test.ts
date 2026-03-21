@@ -170,86 +170,80 @@ describe("ConnectionOfferV2 (daemon E2E)", () => {
     }
   });
 
-  test(
-    "respects --no-relay (CLI) by not emitting a pairing offer",
-    async () => {
-      process.env.PASEO_PRIMARY_LAN_IP = "192.168.1.12";
+  test("respects --no-relay (CLI) by not emitting a pairing offer", async () => {
+    process.env.PASEO_PRIMARY_LAN_IP = "192.168.1.12";
 
-      const tempHome = await mkdtemp(path.join(os.tmpdir(), "paseo-offer-e2e-"));
-      const port = await getAvailablePort();
+    const tempHome = await mkdtemp(path.join(os.tmpdir(), "paseo-offer-e2e-"));
+    const port = await getAvailablePort();
 
-      const indexPath = fileURLToPath(new URL("../index.ts", import.meta.url));
-      const tsxBin = path.resolve(process.cwd(), "../../node_modules/.bin/tsx");
+    const indexPath = fileURLToPath(new URL("../index.ts", import.meta.url));
+    const tsxBin = path.resolve(process.cwd(), "../../node_modules/.bin/tsx");
 
-      const env = {
-        ...process.env,
-        PASEO_HOME: tempHome,
-        PASEO_LISTEN: `0.0.0.0:${port}`,
-        OPENAI_API_KEY: "",
-        PASEO_DICTATION_ENABLED: "0",
-        PASEO_VOICE_MODE_ENABLED: "0",
-        PASEO_LOG_FORMAT: "json",
-      };
+    const env = {
+      ...process.env,
+      PASEO_HOME: tempHome,
+      PASEO_LISTEN: `0.0.0.0:${port}`,
+      OPENAI_API_KEY: "",
+      PASEO_DICTATION_ENABLED: "0",
+      PASEO_VOICE_MODE_ENABLED: "0",
+      PASEO_LOG_FORMAT: "json",
+    };
 
-      const stdoutLines: string[] = [];
-      const proc = spawn(tsxBin, [indexPath, "--no-relay"], {
-        env,
-        stdio: ["ignore", "pipe", "pipe"],
+    const stdoutLines: string[] = [];
+    const proc = spawn(tsxBin, [indexPath, "--no-relay"], {
+      env,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+
+    try {
+      const sawListeningLog = await new Promise<boolean>((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          proc.kill();
+          reject(new Error("timed out waiting for server listening log"));
+        }, 15000);
+
+        const onData = (data: Buffer) => {
+          const text = data.toString("utf8");
+          stdoutLines.push(text);
+          for (const line of text.split("\n")) {
+            if (!line.trim()) continue;
+            if (line.includes("pairing_offer")) {
+              clearTimeout(timeout);
+              reject(new Error("unexpected pairing_offer log when --no-relay is set"));
+              return;
+            }
+
+            try {
+              const parsed = JSON.parse(line) as { msg?: string };
+              if (parsed.msg !== `Server listening on http://0.0.0.0:${port}`) continue;
+              clearTimeout(timeout);
+              resolve(true);
+              return;
+            } catch {
+              // ignore
+            }
+          }
+        };
+
+        proc.stdout?.on("data", onData);
+        proc.on("error", (err) => {
+          clearTimeout(timeout);
+          reject(err);
+        });
+        proc.on("exit", (code) => {
+          if (code && code !== 0) {
+            clearTimeout(timeout);
+            reject(new Error(`daemon process exited early with code ${code}`));
+          }
+        });
       });
 
-      try {
-        const sawListeningLog = await new Promise<boolean>((resolve, reject) => {
-          const timeout = setTimeout(() => {
-            proc.kill();
-            reject(new Error("timed out waiting for server listening log"));
-          }, 15000);
-
-          const onData = (data: Buffer) => {
-            const text = data.toString("utf8");
-            stdoutLines.push(text);
-            for (const line of text.split("\n")) {
-              if (!line.trim()) continue;
-              if (line.includes("pairing_offer")) {
-                clearTimeout(timeout);
-                reject(new Error("unexpected pairing_offer log when --no-relay is set"));
-                return;
-              }
-
-              try {
-                const parsed = JSON.parse(line) as { msg?: string };
-                if (parsed.msg !== `Server listening on http://0.0.0.0:${port}`) continue;
-                clearTimeout(timeout);
-                resolve(true);
-                return;
-              } catch {
-                // ignore
-              }
-            }
-          };
-
-          proc.stdout?.on("data", onData);
-          proc.on("error", (err) => {
-            clearTimeout(timeout);
-            reject(err);
-          });
-          proc.on("exit", (code) => {
-            if (code && code !== 0) {
-              clearTimeout(timeout);
-              reject(new Error(`daemon process exited early with code ${code}`));
-            }
-          });
-        });
-
-        expect(sawListeningLog).toBe(true);
-      } catch (err) {
-        throw new Error(
-          `failed; stdout so far:\\n${stdoutLines.join("")}\\n\\n${String(err)}`
-        );
-      } finally {
-        proc.kill();
-        await rm(tempHome, { recursive: true, force: true });
-      }
-    },
-    30000
-  );
+      expect(sawListeningLog).toBe(true);
+    } catch (err) {
+      throw new Error(`failed; stdout so far:\\n${stdoutLines.join("")}\\n\\n${String(err)}`);
+    } finally {
+      proc.kill();
+      await rm(tempHome, { recursive: true, force: true });
+    }
+  }, 30000);
 });

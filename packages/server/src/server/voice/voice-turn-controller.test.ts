@@ -6,15 +6,9 @@ import type {
   TurnDetectionProvider,
   TurnDetectionSession,
 } from "../speech/turn-detection-provider.js";
-import {
-  createVoiceTurnController,
-  type DetectedVoiceUtterance,
-} from "./voice-turn-controller.js";
+import { createVoiceTurnController, type DetectedVoiceUtterance } from "./voice-turn-controller.js";
 
-class FakeTurnDetectionSession
-  extends EventEmitter
-  implements TurnDetectionSession
-{
+class FakeTurnDetectionSession extends EventEmitter implements TurnDetectionSession {
   public readonly requiredSampleRate = 16000;
   public readonly appendedChunks: Buffer[] = [];
 
@@ -28,9 +22,7 @@ class FakeTurnDetectionSession
   close(): void {}
 }
 
-function createFakeTurnDetectionProvider(
-  session: FakeTurnDetectionSession
-): TurnDetectionProvider {
+function createFakeTurnDetectionProvider(session: FakeTurnDetectionSession): TurnDetectionProvider {
   return {
     id: "local",
     createSession() {
@@ -119,7 +111,7 @@ describe("voice turn controller", () => {
         pcm16: Buffer.from([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]),
         sampleRate: 16000,
         format: "audio/pcm;rate=16000;bits=16",
-      })
+      }),
     );
     expect(harness.onError).not.toHaveBeenCalled();
   });
@@ -216,12 +208,12 @@ describe("voice turn controller", () => {
     expect(harness.submitUtterance.mock.calls[0]?.[0]).toEqual(
       expect.objectContaining({
         pcm16: Buffer.from([1, 2, 3, 4, 5, 6, 7, 8]),
-      })
+      }),
     );
     expect(harness.submitUtterance.mock.calls[1]?.[0]).toEqual(
       expect.objectContaining({
         pcm16: Buffer.from([5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]),
-      })
+      }),
     );
   });
 
@@ -278,5 +270,4 @@ describe("voice turn controller", () => {
     deferred.resolve();
     await settleSerialQueue();
   });
-
 });

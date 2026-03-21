@@ -31,7 +31,6 @@ const TEST_CAPABILITIES: AgentCapabilityFlags = {
   supportsToolInvocations: true,
 };
 
-
 type Deferred<T> = {
   promise: Promise<T>;
   resolve: (value: T) => void;
@@ -65,7 +64,12 @@ function isAskMode(config: AgentSessionConfig): boolean {
     return false;
   }
 
-  if (mode.includes("read-only") || mode.includes("default") || mode.includes("plan") || mode.includes("ask")) {
+  if (
+    mode.includes("read-only") ||
+    mode.includes("default") ||
+    mode.includes("plan") ||
+    mode.includes("ask")
+  ) {
     return true;
   }
 
@@ -80,7 +84,7 @@ function isAskMode(config: AgentSessionConfig): boolean {
 function buildPersistence(
   provider: string,
   sessionId: string,
-  metadata?: Record<string, unknown>
+  metadata?: Record<string, unknown>,
 ): AgentPersistenceHandle {
   if (provider === "codex") {
     return { provider, sessionId, metadata: { conversationId: sessionId, ...(metadata ?? {}) } };
@@ -145,11 +149,14 @@ function buildToolCallForPrompt(provider: string, prompt: string) {
       return { name: "apply_patch", input: { patch: "*** Begin Patch\n*** End Patch\n" }, output };
     }
     const printfMatch =
-      /printf\s+\"ok\"\s*>\s*([^\s`]+)/i.exec(text) ??
-      /printf\s+ok\s*>\s*([^\s`]+)/i.exec(text);
+      /printf\s+\"ok\"\s*>\s*([^\s`]+)/i.exec(text) ?? /printf\s+ok\s*>\s*([^\s`]+)/i.exec(text);
     if (printfMatch) {
       const fileName = printfMatch[1] ?? "permission.txt";
-      return { name: "shell", input: { command: `printf "ok" > ${fileName}` }, output: { ok: true } };
+      return {
+        name: "shell",
+        input: { command: `printf "ok" > ${fileName}` },
+        output: { ok: true },
+      };
     }
     if (text.includes("sleep")) {
       // Long-running command to test cancellation/overlap.
@@ -161,7 +168,11 @@ function buildToolCallForPrompt(provider: string, prompt: string) {
   // opencode: used by a small set of tests
   if (provider === "opencode") {
     if (text.includes("reason")) {
-      return { name: "shell", input: { command: "echo reasoning" }, output: { stdout: "reasoning\n" } };
+      return {
+        name: "shell",
+        input: { command: "echo reasoning" },
+        output: { stdout: "reasoning\n" },
+      };
     }
     return null;
   }
@@ -184,7 +195,7 @@ class FakeAgentSession implements AgentSession {
     providerName: string,
     config: AgentSessionConfig,
     sessionId?: string,
-    memoryMarker?: string | null
+    memoryMarker?: string | null,
   ) {
     this.providerName = providerName;
     this.config = config;
@@ -194,7 +205,7 @@ class FakeAgentSession implements AgentSession {
       tmpdir(),
       "paseo-fake-provider-history",
       this.providerName,
-      `${this.id}.jsonl`
+      `${this.id}.jsonl`,
     );
   }
 
@@ -208,9 +219,7 @@ class FakeAgentSession implements AgentSession {
     await appendFile(this.historyPath, JSON.stringify(event) + "\n", "utf8");
   }
 
-  private parseSlashCommandInput(
-    text: string
-  ): { commandName: string; args?: string } | null {
+  private parseSlashCommandInput(text: string): { commandName: string; args?: string } | null {
     const trimmed = text.trim();
     if (!trimmed.startsWith("/") || trimmed.length <= 1) {
       return null;
@@ -218,21 +227,17 @@ class FakeAgentSession implements AgentSession {
     const withoutPrefix = trimmed.slice(1);
     const firstWhitespaceIdx = withoutPrefix.search(/\s/);
     const commandName =
-      firstWhitespaceIdx === -1
-        ? withoutPrefix
-        : withoutPrefix.slice(0, firstWhitespaceIdx);
+      firstWhitespaceIdx === -1 ? withoutPrefix : withoutPrefix.slice(0, firstWhitespaceIdx);
     if (!commandName || commandName.includes("/")) {
       return null;
     }
     const rawArgs =
-      firstWhitespaceIdx === -1
-        ? ""
-        : withoutPrefix.slice(firstWhitespaceIdx + 1).trim();
+      firstWhitespaceIdx === -1 ? "" : withoutPrefix.slice(firstWhitespaceIdx + 1).trim();
     return rawArgs ? { commandName, args: rawArgs } : { commandName };
   }
 
   private async resolveSlashCommandInput(
-    prompt: AgentPromptInput
+    prompt: AgentPromptInput,
   ): Promise<{ commandName: string; args?: string } | null> {
     if (this.providerName !== "codex" || typeof prompt !== "string") {
       return null;
@@ -242,18 +247,13 @@ class FakeAgentSession implements AgentSession {
       return null;
     }
     const commands = await this.listCommands();
-    return commands.some((command) => command.name === parsed.commandName)
-      ? parsed
-      : null;
+    return commands.some((command) => command.name === parsed.commandName) ? parsed : null;
   }
 
   async run(prompt: AgentPromptInput, options?: AgentRunOptions): Promise<AgentRunResult> {
     const slashCommand = await this.resolveSlashCommandInput(prompt);
     if (slashCommand) {
-      const result = await this.runSlashCommand(
-        slashCommand.commandName,
-        slashCommand.args
-      );
+      const result = await this.runSlashCommand(slashCommand.commandName, slashCommand.args);
       return {
         sessionId: this.id,
         finalText: result.text,
@@ -289,10 +289,7 @@ class FakeAgentSession implements AgentSession {
       await this.appendHistoryEvent(turnStarted);
       yield turnStarted;
 
-      const result = await this.runSlashCommand(
-        slashCommand.commandName,
-        slashCommand.args
-      );
+      const result = await this.runSlashCommand(slashCommand.commandName, slashCommand.args);
       for (const item of result.timeline) {
         const timelineEvent: AgentStreamEvent = {
           type: "timeline",
@@ -314,11 +311,17 @@ class FakeAgentSession implements AgentSession {
     }
 
     const textPrompt = typeof prompt === "string" ? prompt : JSON.stringify(prompt);
-    const markerMatch = /remember (?:this )?(?:marker|string|project name)[^"]*"([^"]+)"/i.exec(textPrompt);
+    const markerMatch = /remember (?:this )?(?:marker|string|project name)[^"]*"([^"]+)"/i.exec(
+      textPrompt,
+    );
     if (markerMatch) {
       this.memoryMarker = markerMatch[1] ?? null;
     }
-    const threadStarted: AgentStreamEvent = { type: "thread_started", provider: this.providerName, sessionId: this.id };
+    const threadStarted: AgentStreamEvent = {
+      type: "thread_started",
+      provider: this.providerName,
+      sessionId: this.id,
+    };
     await this.appendHistoryEvent(threadStarted);
     yield threadStarted;
 
@@ -361,7 +364,11 @@ class FakeAgentSession implements AgentSession {
         };
         this.pendingPermissions = [request];
         this.permissionGate = createDeferred<AgentPermissionResponse>();
-        const permissionRequested: AgentStreamEvent = { type: "permission_requested", provider: this.providerName, request };
+        const permissionRequested: AgentStreamEvent = {
+          type: "permission_requested",
+          provider: this.providerName,
+          request,
+        };
         await this.appendHistoryEvent(permissionRequested);
         yield permissionRequested;
 
@@ -379,7 +386,11 @@ class FakeAgentSession implements AgentSession {
         if (response.behavior === "deny") {
           // Permission denied: do not execute the tool.
           if (response.interrupt) {
-            const canceled: AgentStreamEvent = { type: "turn_canceled", provider: this.providerName, reason: "permission denied" };
+            const canceled: AgentStreamEvent = {
+              type: "turn_canceled",
+              provider: this.providerName,
+              reason: "permission denied",
+            };
             await this.appendHistoryEvent(canceled);
             yield canceled;
             return;
@@ -394,15 +405,13 @@ class FakeAgentSession implements AgentSession {
           yield deniedCompleted;
           return;
         }
-
       }
 
       await this.applyToolSideEffects(tool.name, tool.input ?? {}, textPrompt);
 
       let toolOutput: unknown = tool.output;
       if (!toolOutput && (tool.name === "Read" || tool.name === "read_file")) {
-        const pathInput =
-          typeof tool.input?.path === "string" ? tool.input.path : "/etc/hosts";
+        const pathInput = typeof tool.input?.path === "string" ? tool.input.path : "/etc/hosts";
         const resolvedPath = path.isAbsolute(pathInput)
           ? pathInput
           : path.join(this.config.cwd ?? process.cwd(), pathInput);
@@ -520,7 +529,11 @@ class FakeAgentSession implements AgentSession {
   }
 
   describePersistence(): AgentPersistenceHandle | null {
-    return buildPersistence(this.providerName, this.id, this.memoryMarker ? { marker: this.memoryMarker } : undefined);
+    return buildPersistence(
+      this.providerName,
+      this.id,
+      this.memoryMarker ? { marker: this.memoryMarker } : undefined,
+    );
   }
 
   async interrupt(): Promise<void> {
@@ -531,9 +544,7 @@ class FakeAgentSession implements AgentSession {
 
   async listCommands(): Promise<AgentSlashCommand[]> {
     if (this.providerName === "codex") {
-      const codexHome =
-        process.env.CODEX_HOME ??
-        path.join(process.env.HOME ?? "/tmp", ".codex");
+      const codexHome = process.env.CODEX_HOME ?? path.join(process.env.HOME ?? "/tmp", ".codex");
 
       const commands: AgentSlashCommand[] = [];
 
@@ -591,7 +602,7 @@ class FakeAgentSession implements AgentSession {
 
   private async runSlashCommand(
     commandName: string,
-    args?: string
+    args?: string,
   ): Promise<{
     text: string;
     timeline: AgentRunResult["timeline"];
@@ -635,7 +646,8 @@ class FakeAgentSession implements AgentSession {
     if (lower.includes("quick brown fox") && lower.includes("lazy dog")) {
       return "The quick brown fox jumps over the lazy dog. Then the fox ran away.";
     }
-    if (lower.includes("what did i ask you to say earlier")) return "You asked me to say state saved.";
+    if (lower.includes("what did i ask you to say earlier"))
+      return "You asked me to say state saved.";
     if (lower.includes("say 'timeline test'")) return "timeline test";
     if (lower.includes("say 'state saved'")) return "state saved";
     if (lower.includes("return schema-valid json") || lower.includes("schema-valid json")) {
@@ -651,7 +663,7 @@ class FakeAgentSession implements AgentSession {
   private async applyToolSideEffects(
     toolName: string,
     toolInput: Record<string, unknown>,
-    prompt: string
+    prompt: string,
   ): Promise<void> {
     const lower = prompt.toLowerCase();
     const createFileMatch =
@@ -711,7 +723,9 @@ class FakeAgentSession implements AgentSession {
         // Simulate a long-running operation that can be interrupted.
         // Keep the duration small so tests stay fast.
         const interrupt = this.interruptSignal.promise.then(() => "interrupted" as const);
-        const completed = new Promise<"completed">((resolve) => setTimeout(() => resolve("completed"), 250));
+        const completed = new Promise<"completed">((resolve) =>
+          setTimeout(() => resolve("completed"), 250),
+        );
         const outcome = await Promise.race([interrupt, completed]);
         if (outcome === "interrupted") {
           return;
@@ -749,7 +763,8 @@ class FakeAgentSession implements AgentSession {
     if (toolName === "Edit" || toolName === "apply_patch") {
       const lowerPrompt = prompt.toLowerCase();
       const match = /edit the file\s+([^\s]+)\s+and change/i.exec(prompt);
-      const filePath = match?.[1] ?? (lowerPrompt.includes("tool-create.txt") ? "tool-create.txt" : null);
+      const filePath =
+        match?.[1] ?? (lowerPrompt.includes("tool-create.txt") ? "tool-create.txt" : null);
       if (filePath) {
         try {
           const resolved = path.isAbsolute(filePath)
@@ -788,7 +803,8 @@ class FakeAgentSession implements AgentSession {
       }
       if (toolName === "Bash" || toolName === "shell") {
         const cmd = typeof toolInput.command === "string" ? toolInput.command : "";
-        const writes = cmd.includes(">") || cmd.includes("rm ") || cmd.includes("mv ") || cmd.includes("cp ");
+        const writes =
+          cmd.includes(">") || cmd.includes("rm ") || cmd.includes("mv ") || cmd.includes("cp ");
         return writes;
       }
       return false;
@@ -809,7 +825,7 @@ class FakeAgentClient implements AgentClient {
 
   async resumeSession(
     handle: AgentPersistenceHandle,
-    overrides?: Partial<AgentSessionConfig>
+    overrides?: Partial<AgentSessionConfig>,
   ): Promise<AgentSession> {
     const cfg: AgentSessionConfig = {
       provider: this.provider,
@@ -824,7 +840,7 @@ class FakeAgentClient implements AgentClient {
       this.provider,
       cfg,
       handle.sessionId,
-      typeof marker === "string" ? marker : null
+      typeof marker === "string" ? marker : null,
     );
   }
 
@@ -837,7 +853,12 @@ class FakeAgentClient implements AgentClient {
     }
     if (this.provider === "codex") {
       return [
-        { provider: this.provider, id: "gpt-5.1-codex-mini", label: "gpt-5.1-codex-mini", isDefault: true },
+        {
+          provider: this.provider,
+          id: "gpt-5.1-codex-mini",
+          label: "gpt-5.1-codex-mini",
+          isDefault: true,
+        },
       ];
     }
     return [{ provider: this.provider, id: "test-model", label: "Test Model", isDefault: true }];

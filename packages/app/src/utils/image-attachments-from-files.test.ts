@@ -6,11 +6,7 @@ import {
 import { __setAttachmentStoreForTests } from "@/attachments/store";
 import type { AttachmentStore } from "@/attachments/types";
 
-function createClipboardItem(params: {
-  kind: string;
-  type: string;
-  file?: File | null;
-}) {
+function createClipboardItem(params: { kind: string; type: string; file?: File | null }) {
   return {
     kind: params.kind,
     type: params.type,

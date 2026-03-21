@@ -9,14 +9,9 @@ export function VoicePanel() {
   const { theme } = useUnistyles();
   const daemons = useHosts();
   const { volume, isSpeaking } = useVoiceTelemetry();
-  const {
-    isMuted,
-    stopVoice,
-    toggleMute,
-    activeServerId,
-  } = useVoice();
+  const { isMuted, stopVoice, toggleMute, activeServerId } = useVoice();
   const hostLabel = activeServerId
-    ? daemons.find((daemon) => daemon.serverId === activeServerId)?.label ?? null
+    ? (daemons.find((daemon) => daemon.serverId === activeServerId)?.label ?? null)
     : null;
   const hostSuffix = hostLabel ? ` (${hostLabel})` : "";
 
@@ -38,10 +33,7 @@ export function VoicePanel() {
             onPress={toggleMute}
             accessibilityRole="button"
             accessibilityLabel={`${isMuted ? "Unmute voice" : "Mute voice"}${hostSuffix}`}
-            style={[
-              styles.iconButton,
-              isMuted && styles.iconButtonMuted,
-            ]}
+            style={[styles.iconButton, isMuted && styles.iconButtonMuted]}
           >
             <MicOff
               size={18}

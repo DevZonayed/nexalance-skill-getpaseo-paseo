@@ -148,7 +148,7 @@ function buildNormalUsageScenario(provider: AgentProvider, seed: number): UiScen
 function buildOverlapScenario(
   provider: AgentProvider,
   seed: number,
-  firstPick: "first" | "last"
+  firstPick: "first" | "last",
 ): UiScenario {
   const oldToken = `UI_OLD_${provider}_${seed}`;
   const midToken = `UI_MID_${provider}_${seed}`;
@@ -283,7 +283,7 @@ function buildOverlapScenario(
 async function resolveLatestAssistantMessage(
   client: DaemonClient,
   agentId: string,
-  candidate: string | null
+  candidate: string | null,
 ): Promise<string | null> {
   async function findLastAssistantMessageInTimeline(): Promise<string | null> {
     const timeline = await client.fetchAgentTimeline(agentId, {
@@ -353,7 +353,7 @@ async function runUiScenario(params: {
     if (action.type === "ui_send_queued_now") {
       expect(
         queue.length,
-        `[${scenario.name}] ${action.label}: queue must not be empty`
+        `[${scenario.name}] ${action.label}: queue must not be empty`,
       ).toBeGreaterThan(0);
       const index = action.pick === "last" ? queue.length - 1 : 0;
       const selected = queue.splice(index, 1)[0];
@@ -376,7 +376,7 @@ async function runUiScenario(params: {
       await client.waitForAgentUpsert(
         agentId,
         (snapshot) => snapshot.status === "running",
-        action.timeoutMs
+        action.timeoutMs,
       );
       continue;
     }
@@ -384,71 +384,61 @@ async function runUiScenario(params: {
     if (action.type === "wait_for_finish") {
       const result = await client.waitForFinish(agentId, action.timeoutMs);
 
-      expect(
-        result.status,
-        `[${scenario.name}] ${action.label}: expected idle status`
-      ).toBe("idle");
+      expect(result.status, `[${scenario.name}] ${action.label}: expected idle status`).toBe(
+        "idle",
+      );
       expect(
         result.error,
-        `[${scenario.name}] ${action.label}: unexpected wait_for_finish error`
+        `[${scenario.name}] ${action.label}: unexpected wait_for_finish error`,
       ).toBeNull();
       expect(
         result.final?.status,
-        `[${scenario.name}] ${action.label}: wait_for_finish returned before run settled`
+        `[${scenario.name}] ${action.label}: wait_for_finish returned before run settled`,
       ).not.toBe("running");
-      lastMessage = await resolveLatestAssistantMessage(
-        client,
-        agentId,
-        result.lastMessage
-      );
+      lastMessage = await resolveLatestAssistantMessage(client, agentId, result.lastMessage);
       continue;
     }
 
     if (action.type === "assert_last_message") {
       const normalized = normalizeMessage(lastMessage);
-      expect(
-        normalized,
-        `[${scenario.name}] ${action.label}: missing expected token`
-      ).toContain(action.expectedToken);
+      expect(normalized, `[${scenario.name}] ${action.label}: missing expected token`).toContain(
+        action.expectedToken,
+      );
       for (const forbidden of action.forbiddenTokens) {
-        expect(
-          normalized,
-          `[${scenario.name}] ${action.label}: stale token leaked`
-        ).not.toContain(forbidden);
+        expect(normalized, `[${scenario.name}] ${action.label}: stale token leaked`).not.toContain(
+          forbidden,
+        );
       }
       continue;
     }
 
     if (action.type === "assert_last_message_any_of") {
       const normalized = normalizeMessage(lastMessage);
-      const hasAnyExpected = action.expectedTokens.some((token) =>
-        normalized.includes(token)
-      );
+      const hasAnyExpected = action.expectedTokens.some((token) => normalized.includes(token));
       expect(
         hasAnyExpected,
-        `[${scenario.name}] ${action.label}: missing expected tokens (${action.expectedTokens.join(", ")})`
+        `[${scenario.name}] ${action.label}: missing expected tokens (${action.expectedTokens.join(", ")})`,
       ).toBe(true);
       for (const forbidden of action.forbiddenTokens) {
         expect(
           normalized,
-          `[${scenario.name}] ${action.label}: forbidden token leaked`
+          `[${scenario.name}] ${action.label}: forbidden token leaked`,
         ).not.toContain(forbidden);
       }
       continue;
     }
 
     if (action.type === "assert_queue_size") {
-      expect(
-        queue.length,
-        `[${scenario.name}] ${action.label}: queue size mismatch`
-      ).toBe(action.size);
+      expect(queue.length, `[${scenario.name}] ${action.label}: queue size mismatch`).toBe(
+        action.size,
+      );
       continue;
     }
 
     if (action.type === "assert_queue_size_at_least") {
       expect(
         queue.length,
-        `[${scenario.name}] ${action.label}: queue size below expectation`
+        `[${scenario.name}] ${action.label}: queue size below expectation`,
       ).toBeGreaterThanOrEqual(action.minSize);
       continue;
     }
@@ -465,96 +455,93 @@ function createRealAgentClient(provider: AgentProvider, logger: pino.Logger): Ag
   return new OpenCodeAgentClient(logger);
 }
 
-describe.each(allProviders)(
-  "daemon E2E (real %s) - UI action stress",
-  (provider) => {
-    const shouldRun = isRealProviderReady(provider);
+describe.each(allProviders)("daemon E2E (real %s) - UI action stress", (provider) => {
+  const shouldRun = isRealProviderReady(provider);
 
-    test.runIf(shouldRun)(
-      "normal UI submit path (idle sends) stays correct",
-      async () => {
-        const logger = pino({ level: "silent" });
-        const cwd = tmpCwd();
-        const daemon = await createTestPaseoDaemon({
-          agentClients: {
-            [provider]: createRealAgentClient(provider, logger),
-          } as Partial<Record<AgentProvider, AgentClient>>,
-          logger,
+  test.runIf(shouldRun)(
+    "normal UI submit path (idle sends) stays correct",
+    async () => {
+      const logger = pino({ level: "silent" });
+      const cwd = tmpCwd();
+      const daemon = await createTestPaseoDaemon({
+        agentClients: {
+          [provider]: createRealAgentClient(provider, logger),
+        } as Partial<Record<AgentProvider, AgentClient>>,
+        logger,
+      });
+      const client = new DaemonClient({ url: `ws://127.0.0.1:${daemon.port}/ws` });
+
+      try {
+        await client.connect();
+        await client.fetchAgents({
+          subscribe: { subscriptionId: `ui-stress-normal-${provider}` },
         });
-        const client = new DaemonClient({ url: `ws://127.0.0.1:${daemon.port}/ws` });
+        const agent = await client.createAgent({
+          cwd,
+          title: `uist-n-${provider}`,
+          ...getFullAccessConfig(provider),
+        });
 
-        try {
-          await client.connect();
-          await client.fetchAgents({
-            subscribe: { subscriptionId: `ui-stress-normal-${provider}` },
-          });
+        await runUiScenario({
+          client,
+          agentId: agent.id,
+          scenario: buildNormalUsageScenario(provider, 7),
+        });
+
+        await client.deleteAgent(agent.id);
+      } finally {
+        await client.close();
+        await daemon.close();
+        rmSync(cwd, { recursive: true, force: true });
+      }
+    },
+    420_000,
+  );
+
+  test.runIf(shouldRun)(
+    "queued-send-now path is stable under overlap",
+    async () => {
+      const logger = pino({ level: "silent" });
+      const cwd = tmpCwd();
+      const daemon = await createTestPaseoDaemon({
+        agentClients: {
+          [provider]: createRealAgentClient(provider, logger),
+        } as Partial<Record<AgentProvider, AgentClient>>,
+        logger,
+      });
+      const client = new DaemonClient({ url: `ws://127.0.0.1:${daemon.port}/ws` });
+      const scenarios = [
+        buildOverlapScenario(provider, 17, "last"),
+        buildOverlapScenario(provider, 31, "first"),
+      ];
+
+      try {
+        await client.connect();
+        await client.fetchAgents({
+          subscribe: { subscriptionId: `ui-stress-overlap-${provider}` },
+        });
+
+        for (const scenario of scenarios) {
           const agent = await client.createAgent({
             cwd,
-            title: `uist-n-${provider}`,
+            title: `uist-o-${provider}`,
             ...getFullAccessConfig(provider),
           });
 
           await runUiScenario({
             client,
             agentId: agent.id,
-            scenario: buildNormalUsageScenario(provider, 7),
+            scenario,
           });
 
           await client.deleteAgent(agent.id);
-        } finally {
-          await client.close();
-          await daemon.close();
-          rmSync(cwd, { recursive: true, force: true });
         }
-      },
-      420_000
-    );
-
-    test.runIf(shouldRun)(
-      "queued-send-now path is stable under overlap",
-      async () => {
-        const logger = pino({ level: "silent" });
-        const cwd = tmpCwd();
-        const daemon = await createTestPaseoDaemon({
-          agentClients: {
-            [provider]: createRealAgentClient(provider, logger),
-          } as Partial<Record<AgentProvider, AgentClient>>,
-          logger,
-        });
-        const client = new DaemonClient({ url: `ws://127.0.0.1:${daemon.port}/ws` });
-        const scenarios = [
-          buildOverlapScenario(provider, 17, "last"),
-          buildOverlapScenario(provider, 31, "first"),
-        ];
-
-        try {
-          await client.connect();
-          await client.fetchAgents({
-            subscribe: { subscriptionId: `ui-stress-overlap-${provider}` },
-          });
-
-          for (const scenario of scenarios) {
-            const agent = await client.createAgent({
-              cwd,
-              title: `uist-o-${provider}`,
-              ...getFullAccessConfig(provider),
-            });
-
-            await runUiScenario({
-              client,
-              agentId: agent.id,
-              scenario,
-            });
-
-            await client.deleteAgent(agent.id);
-          }
-        } finally {
-          await client.close();
-          await daemon.close();
-          rmSync(cwd, { recursive: true, force: true });
-        }
-      },
-      600_000
-    );
-  }
-);
+      } finally {
+        await client.close();
+        await daemon.close();
+        rmSync(cwd, { recursive: true, force: true });
+      }
+    },
+    600_000,
+  );
+});

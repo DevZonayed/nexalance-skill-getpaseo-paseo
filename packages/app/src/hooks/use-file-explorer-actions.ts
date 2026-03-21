@@ -37,9 +37,7 @@ function normalizeWorkspaceValue(value: string | null | undefined): string | nul
   return trimmed.length > 0 ? trimmed : null;
 }
 
-export function buildWorkspaceExplorerStateKey(
-  scope: FileExplorerWorkspaceScope
-): string | null {
+export function buildWorkspaceExplorerStateKey(scope: FileExplorerWorkspaceScope): string | null {
   const normalizedWorkspaceId = normalizeWorkspaceValue(scope.workspaceId);
   if (normalizedWorkspaceId) {
     return `workspace:${normalizedWorkspaceId}`;
@@ -51,15 +49,13 @@ export function buildWorkspaceExplorerStateKey(
   return `root:${normalizedWorkspaceRoot}`;
 }
 
-export function useFileExplorerActions(
-  params: { serverId: string } & FileExplorerWorkspaceScope
-) {
+export function useFileExplorerActions(params: { serverId: string } & FileExplorerWorkspaceScope) {
   const { serverId, workspaceId, workspaceRoot } = params;
   const client = useSessionStore((state) => state.sessions[serverId]?.client ?? null);
   const setFileExplorer = useSessionStore((state) => state.setFileExplorer);
   const normalizedWorkspaceRoot = useMemo(
     () => normalizeWorkspaceValue(workspaceRoot),
-    [workspaceRoot]
+    [workspaceRoot],
   );
   const workspaceStateKey = useMemo(
     () =>
@@ -67,7 +63,7 @@ export function useFileExplorerActions(
         workspaceId,
         workspaceRoot: normalizedWorkspaceRoot,
       }),
-    [workspaceId, normalizedWorkspaceRoot]
+    [workspaceId, normalizedWorkspaceRoot],
   );
 
   const updateExplorerState = useCallback(
@@ -82,21 +78,17 @@ export function useFileExplorerActions(
         return next;
       });
     },
-    [serverId, setFileExplorer, workspaceStateKey]
+    [serverId, setFileExplorer, workspaceStateKey],
   );
 
   const requestDirectoryListing = useCallback(
-    async (
-      path: string,
-      options?: { recordHistory?: boolean; setCurrentPath?: boolean }
-    ) => {
+    async (path: string, options?: { recordHistory?: boolean; setCurrentPath?: boolean }) => {
       if (!workspaceStateKey) {
         return;
       }
       const normalizedPath = path && path.length > 0 ? path : ".";
       const shouldSetCurrentPath = options?.setCurrentPath ?? true;
-      const shouldRecordHistory =
-        options?.recordHistory ?? (shouldSetCurrentPath ? true : false);
+      const shouldRecordHistory = options?.recordHistory ?? (shouldSetCurrentPath ? true : false);
 
       updateExplorerState((state) => ({
         ...state,
@@ -138,7 +130,7 @@ export function useFileExplorerActions(
         const payload = await client.exploreFileSystem(
           normalizedWorkspaceRoot,
           normalizedPath,
-          "list"
+          "list",
         );
         updateExplorerState((state) => {
           const nextState: AgentFileExplorerState = {
@@ -167,7 +159,7 @@ export function useFileExplorerActions(
         }));
       }
     },
-    [client, normalizedWorkspaceRoot, updateExplorerState, workspaceStateKey]
+    [client, normalizedWorkspaceRoot, updateExplorerState, workspaceStateKey],
   );
 
   const requestFilePreview = useCallback(
@@ -207,7 +199,7 @@ export function useFileExplorerActions(
         const payload = await client.exploreFileSystem(
           normalizedWorkspaceRoot,
           normalizedPath,
-          "file"
+          "file",
         );
         updateExplorerState((state) => {
           const nextState: AgentFileExplorerState = {
@@ -236,7 +228,7 @@ export function useFileExplorerActions(
         }));
       }
     },
-    [client, normalizedWorkspaceRoot, updateExplorerState, workspaceStateKey]
+    [client, normalizedWorkspaceRoot, updateExplorerState, workspaceStateKey],
   );
 
   const requestFileDownloadToken = useCallback(
@@ -253,7 +245,7 @@ export function useFileExplorerActions(
       }
       return payload;
     },
-    [client, normalizedWorkspaceRoot]
+    [client, normalizedWorkspaceRoot],
   );
 
   const selectExplorerEntry = useCallback(
@@ -263,7 +255,7 @@ export function useFileExplorerActions(
         selectedEntryPath: path,
       }));
     },
-    [updateExplorerState]
+    [updateExplorerState],
   );
 
   return {

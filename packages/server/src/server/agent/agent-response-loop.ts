@@ -51,7 +51,7 @@ export class StructuredAgentFallbackError extends Error {
     super(
       summary.length > 0
         ? `Structured generation failed for all providers: ${summary}`
-        : "Structured generation failed for all providers"
+        : "Structured generation failed for all providers",
     );
     this.name = "StructuredAgentFallbackError";
     this.attempts = attempts;
@@ -109,7 +109,7 @@ function isZodSchema(value: unknown): value is z.ZodTypeAny {
 function buildZodValidator<T>(schema: z.ZodTypeAny, schemaName: string): SchemaValidator<T> {
   const zodToJsonSchemaAny = zodToJsonSchema as unknown as (
     input: z.ZodTypeAny,
-    name?: string
+    name?: string,
   ) => JsonSchema;
   const jsonSchema = zodToJsonSchemaAny(schema, schemaName);
   return {
@@ -130,7 +130,9 @@ function buildZodValidator<T>(schema: z.ZodTypeAny, schemaName: string): SchemaV
 
 function buildJsonSchemaValidator<T>(schema: JsonSchema): SchemaValidator<T> {
   const AjvConstructor = Ajv as unknown as {
-    new (options?: AjvOptions): {
+    new (
+      options?: AjvOptions,
+    ): {
       compile: (input: JsonSchema) => ((value: unknown) => boolean) & {
         errors?: ErrorObject[] | null;
       };
@@ -146,7 +148,8 @@ function buildJsonSchemaValidator<T>(schema: JsonSchema): SchemaValidator<T> {
         return { ok: true, value: value as T };
       }
       const errors = (validate.errors ?? []).map((error: ErrorObject) => {
-        const path = error.instancePath && error.instancePath.length > 0 ? error.instancePath : "(root)";
+        const path =
+          error.instancePath && error.instancePath.length > 0 ? error.instancePath : "(root)";
         const message = error.message ?? "is invalid";
         return `${path}: ${message}`;
       });
@@ -155,7 +158,10 @@ function buildJsonSchemaValidator<T>(schema: JsonSchema): SchemaValidator<T> {
   };
 }
 
-function buildValidator<T>(schema: z.ZodType<T> | JsonSchema, schemaName: string): SchemaValidator<T> {
+function buildValidator<T>(
+  schema: z.ZodType<T> | JsonSchema,
+  schemaName: string,
+): SchemaValidator<T> {
   if (isZodSchema(schema)) {
     return buildZodValidator(schema, schemaName);
   }
@@ -234,13 +240,13 @@ function extractFirstJsonSnippet(text: string): string | null {
           escaped = true;
           continue;
         }
-        if (ch === "\"") {
+        if (ch === '"') {
           inString = false;
         }
         continue;
       }
 
-      if (ch === "\"") {
+      if (ch === '"') {
         inString = true;
         continue;
       }
@@ -268,7 +274,7 @@ function extractFirstJsonSnippet(text: string): string | null {
 }
 
 export async function getStructuredAgentResponse<T>(
-  options: StructuredAgentResponseOptions<T>
+  options: StructuredAgentResponseOptions<T>,
 ): Promise<T> {
   const { caller, prompt, schema, maxRetries = 2, schemaName = "Response" } = options;
   const validator = buildValidator(schema, schemaName);
@@ -308,21 +314,20 @@ export async function getStructuredAgentResponse<T>(
     attemptPrompt = buildRetryPrompt(basePrompt, lastErrors);
   }
 
-  throw new StructuredAgentResponseError(
-    "Agent response did not match the required JSON schema",
-    {
-      lastResponse,
-      validationErrors: lastErrors,
-    }
-  );
+  throw new StructuredAgentResponseError("Agent response did not match the required JSON schema", {
+    lastResponse,
+    validationErrors: lastErrors,
+  });
 }
 
 export async function generateStructuredAgentResponse<T>(
-  options: StructuredAgentGenerationOptions<T>
+  options: StructuredAgentGenerationOptions<T>,
 ): Promise<T> {
   const { manager, agentConfig, agentId, prompt, schema, maxRetries, schemaName } = options;
   const modeId =
-    agentConfig.modeId ?? getAgentProviderDefinition(agentConfig.provider).defaultModeId ?? undefined;
+    agentConfig.modeId ??
+    getAgentProviderDefinition(agentConfig.provider).defaultModeId ??
+    undefined;
   const agent = await manager.createAgent({ ...agentConfig, modeId }, agentId);
   try {
     const caller: AgentCaller = async (nextPrompt) => {
@@ -360,7 +365,7 @@ function errorMessage(error: unknown): string {
 }
 
 export async function generateStructuredAgentResponseWithFallback<T>(
-  options: StructuredAgentGenerationWithFallbackOptions<T>
+  options: StructuredAgentGenerationWithFallbackOptions<T>,
 ): Promise<T> {
   const {
     manager,
@@ -380,12 +385,9 @@ export async function generateStructuredAgentResponseWithFallback<T>(
 
   const runStructured =
     runner ??
-    ((input: StructuredAgentGenerationOptions<T>) =>
-      generateStructuredAgentResponse<T>(input));
+    ((input: StructuredAgentGenerationOptions<T>) => generateStructuredAgentResponse<T>(input));
   const availability = await manager.listProviderAvailability();
-  const availabilityByProvider = new Map(
-    availability.map((entry) => [entry.provider, entry])
-  );
+  const availabilityByProvider = new Map(availability.map((entry) => [entry.provider, entry]));
   const attempts: StructuredGenerationAttempt[] = [];
 
   for (const candidate of providers) {
@@ -412,9 +414,7 @@ export async function generateStructuredAgentResponseWithFallback<T>(
           provider: candidate.provider,
           cwd,
           ...(candidate.model ? { model: candidate.model } : {}),
-          ...(candidate.thinkingOptionId
-            ? { thinkingOptionId: candidate.thinkingOptionId }
-            : {}),
+          ...(candidate.thinkingOptionId ? { thinkingOptionId: candidate.thinkingOptionId } : {}),
         },
       });
       return result;

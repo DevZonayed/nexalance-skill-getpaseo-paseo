@@ -233,10 +233,7 @@ function stripDeprecatedLocalSpeechConfigFields(parsed: unknown): unknown {
   return root;
 }
 
-export function loadPersistedConfig(
-  paseoHome: string,
-  logger?: LoggerLike
-): PersistedConfig {
+export function loadPersistedConfig(paseoHome: string, logger?: LoggerLike): PersistedConfig {
   const log = getLogger(logger);
   const configPath = getConfigPath(paseoHome);
 
@@ -283,7 +280,7 @@ export function loadPersistedConfig(
 export function savePersistedConfig(
   paseoHome: string,
   config: PersistedConfig,
-  logger?: LoggerLike
+  logger?: LoggerLike,
 ): void {
   const log = getLogger(logger);
   const configPath = getConfigPath(paseoHome);

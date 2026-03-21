@@ -78,7 +78,7 @@ describe("shouldResolveTimelineInit", () => {
         initRequestDirection: "tail",
         responseDirection: "tail",
         reset: false,
-      })
+      }),
     ).toBe(true);
   });
 
@@ -90,7 +90,7 @@ describe("shouldResolveTimelineInit", () => {
         initRequestDirection: "tail",
         responseDirection: "after",
         reset: false,
-      })
+      }),
     ).toBe(false);
   });
 
@@ -102,7 +102,7 @@ describe("shouldResolveTimelineInit", () => {
         initRequestDirection: "after",
         responseDirection: "after",
         reset: false,
-      })
+      }),
     ).toBe(true);
   });
 });

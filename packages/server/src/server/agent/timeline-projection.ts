@@ -51,7 +51,7 @@ function appendSeqToRanges(ranges: TimelineSeqRange[], seq: number): TimelineSeq
 
 function mergeSeqRanges(
   existing: TimelineSeqRange[],
-  incoming: TimelineSeqRange[]
+  incoming: TimelineSeqRange[],
 ): TimelineSeqRange[] {
   let merged = [...existing];
   for (const range of incoming) {
@@ -74,7 +74,7 @@ function mergeToolCallDetail(existing: ToolCallDetail, incoming: ToolCallDetail)
 
 function mergeToolCallItems(
   existing: Extract<AgentTimelineItem, { type: "tool_call" }>,
-  incoming: Extract<AgentTimelineItem, { type: "tool_call" }>
+  incoming: Extract<AgentTimelineItem, { type: "tool_call" }>,
 ): Extract<AgentTimelineItem, { type: "tool_call" }> {
   const mergedDetail = mergeToolCallDetail(existing.detail, incoming.detail);
   const mergedMetadata =
@@ -102,7 +102,7 @@ function mergeToolCallItems(
 
 function makeCanonicalEntries(
   rows: readonly AgentTimelineRow[],
-  provider: AgentProvider
+  provider: AgentProvider,
 ): WorkingEntry[] {
   return rows.map((row) => ({
     provider,
@@ -175,10 +175,7 @@ function mergeAssistantChunks(entries: readonly WorkingEntry[]): WorkingEntry[] 
       AgentTimelineItem,
       { type: "assistant_message" }
     >;
-    const entryAssistant = entry.item as Extract<
-      AgentTimelineItem,
-      { type: "assistant_message" }
-    >;
+    const entryAssistant = entry.item as Extract<AgentTimelineItem, { type: "assistant_message" }>;
 
     const collapsedKinds = new Set<TimelineProjectionKind>([
       ...previous.collapsed,
@@ -204,7 +201,7 @@ function mergeAssistantChunks(entries: readonly WorkingEntry[]): WorkingEntry[] 
 export function projectTimelineRows(
   rows: readonly AgentTimelineRow[],
   provider: AgentProvider,
-  mode: TimelineProjectionMode
+  mode: TimelineProjectionMode,
 ): TimelineProjectionEntry[] {
   const canonical = makeCanonicalEntries(rows, provider);
   if (mode === "canonical") {
@@ -232,7 +229,7 @@ export function selectTimelineWindowByProjectedLimit(input: {
   const collapseTools = input.collapseToolLifecycle ?? true;
   const canonical = makeCanonicalEntries(rows, provider);
   const projectedAll = mergeAssistantChunks(
-    collapseTools ? collapseToolLifecycle(canonical) : canonical
+    collapseTools ? collapseToolLifecycle(canonical) : canonical,
   );
 
   if (projectedAll.length === 0) {
@@ -283,7 +280,7 @@ export function selectTimelineWindowByProjectedLimit(input: {
     // seqEnd values, which would otherwise create cursor gaps.
     for (let iteration = 0; iteration < projectedAll.length + 1; iteration += 1) {
       const overlapping = projectedAll.filter(
-        (entry) => entry.seqStart <= maxSeq && entry.seqEnd >= minSeq
+        (entry) => entry.seqStart <= maxSeq && entry.seqEnd >= minSeq,
       );
       const nextBounds = computeWindowBounds(overlapping);
       if (

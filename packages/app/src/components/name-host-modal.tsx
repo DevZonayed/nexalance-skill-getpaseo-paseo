@@ -81,10 +81,13 @@ export function NameHostModal({ visible, serverId, hostname, onSkip, onSave }: N
   }, [label, onSave, onSkip]);
 
   return (
-    <AdaptiveModalSheet title="Name this host" visible={visible} onClose={onSkip} testID="name-host-modal">
-      <Text style={styles.helper}>
-        Optional. You can rename this later in Settings.
-      </Text>
+    <AdaptiveModalSheet
+      title="Name this host"
+      visible={visible}
+      onClose={onSkip}
+      testID="name-host-modal"
+    >
+      <Text style={styles.helper}>Optional. You can rename this later in Settings.</Text>
 
       <View style={styles.field}>
         <Text style={styles.label}>Label</Text>

@@ -1,8 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  compareCheckoutDiffPaths,
-  orderCheckoutDiffFiles,
-} from "./checkout-diff-order";
+import { compareCheckoutDiffPaths, orderCheckoutDiffFiles } from "./checkout-diff-order";
 
 function createFile(path: string, additions = 0) {
   return {
@@ -29,11 +26,7 @@ describe("checkout diff ordering", () => {
       createFile("beta.ts"),
     ]);
 
-    expect(ordered.map((file) => file.path)).toEqual([
-      "alpha.ts",
-      "beta.ts",
-      "zeta.ts",
-    ]);
+    expect(ordered.map((file) => file.path)).toEqual(["alpha.ts", "beta.ts", "zeta.ts"]);
   });
 
   it("preserves relative order for equal paths", () => {

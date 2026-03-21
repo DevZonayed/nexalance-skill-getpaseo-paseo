@@ -34,10 +34,7 @@ export type DaemonClientInstance = {
     initialPrompt: string;
   }): Promise<{ id: string }>;
   sendAgentMessage(agentId: string, text: string): Promise<void>;
-  waitForFinish(
-    agentId: string,
-    timeout?: number
-  ): Promise<{ status: string }>;
+  waitForFinish(agentId: string, timeout?: number): Promise<{ status: string }>;
 };
 
 function getDaemonWsUrl(): string {
@@ -86,14 +83,16 @@ export function createReplyTurn(label: string): {
   };
 }
 
-async function loadDaemonClientConstructor(): Promise<new (config: {
-  url: string;
-  clientId: string;
-  clientType: "cli";
-}) => DaemonClientInstance> {
+async function loadDaemonClientConstructor(): Promise<
+  new (config: {
+    url: string;
+    clientId: string;
+    clientType: "cli";
+  }) => DaemonClientInstance
+> {
   const repoRoot = path.resolve(process.cwd(), "../..");
   const moduleUrl = pathToFileURL(
-    path.join(repoRoot, "packages/server/dist/server/server/exports.js")
+    path.join(repoRoot, "packages/server/dist/server/server/exports.js"),
   ).href;
   const mod = (await import(moduleUrl)) as {
     DaemonClient: new (config: {
@@ -138,7 +137,7 @@ export async function seedBottomAnchorAgent(input: {
   const initialFinish = await input.client.waitForFinish(created.id, 120000);
   if (initialFinish.status !== "idle") {
     throw new Error(
-      `Expected seeded agent ${created.id} to become idle after initial prompt, got ${initialFinish.status}.`
+      `Expected seeded agent ${created.id} to become idle after initial prompt, got ${initialFinish.status}.`,
     );
   }
 
@@ -150,7 +149,7 @@ export async function seedBottomAnchorAgent(input: {
     const finish = await input.client.waitForFinish(created.id, 120000);
     if (finish.status !== "idle") {
       throw new Error(
-        `Expected seeded agent ${created.id} to become idle after turn ${index}, got ${finish.status}.`
+        `Expected seeded agent ${created.id} to become idle after turn ${index}, got ${finish.status}.`,
       );
     }
   }
@@ -183,18 +182,13 @@ export async function readScrollMetrics(page: Page): Promise<ScrollMetrics> {
     const scrollElement =
       candidates.sort(
         (left, right) =>
-          right.scrollHeight -
-          right.clientHeight -
-          (left.scrollHeight - left.clientHeight)
+          right.scrollHeight - right.clientHeight - (left.scrollHeight - left.clientHeight),
       )[0] ?? (root as HTMLElement);
 
     const offsetY = Math.max(0, scrollElement.scrollTop);
     const contentHeight = Math.max(0, scrollElement.scrollHeight);
     const viewportHeight = Math.max(0, scrollElement.clientHeight);
-    const distanceFromBottom = Math.max(
-      0,
-      contentHeight - (offsetY + viewportHeight)
-    );
+    const distanceFromBottom = Math.max(0, contentHeight - (offsetY + viewportHeight));
 
     return {
       offsetY,
@@ -218,7 +212,7 @@ export async function scrollUpFromBottom(page: Page, pixels: number): Promise<vo
           deltaY: -step,
           bubbles: true,
           cancelable: true,
-        })
+        }),
       );
       scrollContainer.scrollTop = Math.max(0, scrollContainer.scrollTop - step);
       scrollContainer.dispatchEvent(new Event("scroll", { bubbles: true }));
@@ -267,7 +261,7 @@ export async function expectDetachedFromBottom(page: Page): Promise<void> {
 
 export async function waitForContentGrowth(
   page: Page,
-  previousContentHeight: number
+  previousContentHeight: number,
 ): Promise<ScrollMetrics> {
   await expect
     .poll(async () => {
@@ -280,8 +274,8 @@ export async function waitForContentGrowth(
 
 export async function getChatContainerKey(page: Page): Promise<string | null> {
   return getVisibleChatScroll(page).evaluate((element) => {
-      const nativeId = (element as HTMLElement).id;
-      const prefix = "agent-chat-scroll-";
-      return nativeId.startsWith(prefix) ? nativeId.slice(prefix.length) : null;
-    });
+    const nativeId = (element as HTMLElement).id;
+    const prefix = "agent-chat-scroll-";
+    return nativeId.startsWith(prefix) ? nativeId.slice(prefix.length) : null;
+  });
 }

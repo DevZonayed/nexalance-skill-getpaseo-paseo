@@ -29,11 +29,7 @@ function MobileMenuIcon({ color }: { color: string }) {
       <View style={[styles.mobileMenuLine, { backgroundColor: color }]} />
       <View style={[styles.mobileMenuLine, { backgroundColor: color }]} />
       <View
-        style={[
-          styles.mobileMenuLine,
-          styles.mobileMenuLineShort,
-          { backgroundColor: color },
-        ]}
+        style={[styles.mobileMenuLine, styles.mobileMenuLineShort, { backgroundColor: color }]}
       />
     </View>
   );
@@ -46,17 +42,15 @@ export function SidebarMenuToggle({
   nativeID = "menu-button",
 }: SidebarMenuToggleProps = {}) {
   const { theme } = useUnistyles();
-  const isMobile =
-    UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
+  const isMobile = UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
   const mobileView = usePanelStore((state) => state.mobileView);
   const desktopAgentListOpen = usePanelStore((state) => state.desktop.agentListOpen);
   const toggleAgentList = usePanelStore((state) => state.toggleAgentList);
   const toggleShortcutKeys = getShortcutOs() === "mac" ? ["mod", "B"] : ["mod", "."];
 
   const isOpen = isMobile ? mobileView === "agent-list" : desktopAgentListOpen;
-  const menuIconColor = !isMobile && isOpen
-    ? theme.colors.foreground
-    : theme.colors.foregroundMuted;
+  const menuIconColor =
+    !isMobile && isOpen ? theme.colors.foreground : theme.colors.foregroundMuted;
 
   return (
     <HeaderToggleButton
@@ -81,10 +75,7 @@ export function SidebarMenuToggle({
   );
 }
 
-export function MenuHeader({
-  title,
-  rightContent,
-}: MenuHeaderProps) {
+export function MenuHeader({ title, rightContent }: MenuHeaderProps) {
   return (
     <ScreenHeader
       left={

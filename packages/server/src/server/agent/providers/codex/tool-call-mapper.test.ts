@@ -1,9 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  mapCodexRolloutToolCall,
-  mapCodexToolCallFromThreadItem,
-} from "./tool-call-mapper.js";
+import { mapCodexRolloutToolCall, mapCodexToolCallFromThreadItem } from "./tool-call-mapper.js";
 
 function expectMapped<T>(item: T | null): T {
   expect(item).toBeTruthy();
@@ -75,15 +72,13 @@ describe("codex tool-call mapper", () => {
       command: "echo hello",
       cwd: "/tmp/repo",
       aggregatedOutput:
-        "Chunk ID: e87d40\nWall time: 0.0521 seconds\nProcess exited with code 0\nOriginal token count: 192\nOutput:\n214  export type AgentPermissionRequestKind = \"tool\";",
+        'Chunk ID: e87d40\nWall time: 0.0521 seconds\nProcess exited with code 0\nOriginal token count: 192\nOutput:\n214  export type AgentPermissionRequestKind = "tool";',
       exitCode: 0,
     });
 
     expect(item?.detail?.type).toBe("shell");
     if (item?.detail?.type === "shell") {
-      expect(item.detail.output).toBe(
-        "214  export type AgentPermissionRequestKind = \"tool\";"
-      );
+      expect(item.detail.output).toBe('214  export type AgentPermissionRequestKind = "tool";');
       expect(item.detail.output).not.toContain("Chunk ID:");
       expect(item.detail.output).not.toContain("Wall time:");
       expect(item.detail.output).not.toContain("Process exited with code");
@@ -102,7 +97,7 @@ describe("codex tool-call mapper", () => {
         arguments: { path: "/tmp/repo/README.md" },
         result: null,
       },
-      { cwd: "/tmp/repo" }
+      { cwd: "/tmp/repo" },
     );
     expect(readItem?.detail).toEqual({
       type: "read",
@@ -118,7 +113,7 @@ describe("codex tool-call mapper", () => {
         arguments: { file_path: "/tmp/repo/src/new.ts" },
         result: null,
       },
-      { cwd: "/tmp/repo" }
+      { cwd: "/tmp/repo" },
     );
     expect(writeItem?.detail).toEqual({
       type: "write",
@@ -134,7 +129,7 @@ describe("codex tool-call mapper", () => {
         arguments: { file_path: "/tmp/repo/src/index.ts" },
         result: null,
       },
-      { cwd: "/tmp/repo" }
+      { cwd: "/tmp/repo" },
     );
     expect(editItem?.detail).toEqual({
       type: "edit",
@@ -165,7 +160,7 @@ describe("codex tool-call mapper", () => {
         arguments: { path: "/tmp/repo/README.md" },
         result: { content: "hello" },
       },
-      { cwd: "/tmp/repo" }
+      { cwd: "/tmp/repo" },
     );
 
     expect(item).toBeTruthy();
@@ -189,10 +184,13 @@ describe("codex tool-call mapper", () => {
         tool: "read_file",
         arguments: { path: "/tmp/repo/README.md" },
         result: {
-          content: [{ type: "text", text: "line one" }, { type: "text", text: "line two" }],
+          content: [
+            { type: "text", text: "line one" },
+            { type: "text", text: "line two" },
+          ],
         },
       },
-      { cwd: "/tmp/repo" }
+      { cwd: "/tmp/repo" },
     );
 
     expect(item).toBeTruthy();
@@ -212,7 +210,7 @@ describe("codex tool-call mapper", () => {
         status: "completed",
         changes: [{ path: "/tmp/repo/src/index.ts", kind: "modify", diff: hugeDiff }],
       },
-      { cwd: "/tmp/repo" }
+      { cwd: "/tmp/repo" },
     );
 
     expect(item).toBeTruthy();
@@ -231,9 +229,15 @@ describe("codex tool-call mapper", () => {
         type: "fileChange",
         id: "codex-content-1",
         status: "completed",
-        changes: [{ path: "/tmp/repo/src/content-only.ts", kind: "modify", content: "line one\nline two\n" }],
+        changes: [
+          {
+            path: "/tmp/repo/src/content-only.ts",
+            kind: "modify",
+            content: "line one\nline two\n",
+          },
+        ],
       },
-      { cwd: "/tmp/repo" }
+      { cwd: "/tmp/repo" },
     );
 
     expect(item).toBeTruthy();
@@ -258,7 +262,7 @@ describe("codex tool-call mapper", () => {
           },
         },
       },
-      { cwd: "/tmp/repo" }
+      { cwd: "/tmp/repo" },
     );
 
     expect(item).toBeTruthy();
@@ -284,7 +288,7 @@ describe("codex tool-call mapper", () => {
           },
         ],
       },
-      { cwd: "/tmp/repo" }
+      { cwd: "/tmp/repo" },
     );
 
     expect(item).toBeTruthy();
@@ -306,7 +310,7 @@ describe("codex tool-call mapper", () => {
         arguments: { file_path: "/tmp/repo/src/new.ts", content: "export {}" },
         result: null,
       },
-      { cwd: "/tmp/repo" }
+      { cwd: "/tmp/repo" },
     );
     expect(writeItem?.detail?.type).toBe("write");
     if (writeItem?.detail?.type === "write") {
@@ -322,7 +326,7 @@ describe("codex tool-call mapper", () => {
         arguments: { file_path: "/tmp/repo/src/index.ts", patch: "@@\\n-a\\n+b\\n" },
         result: null,
       },
-      { cwd: "/tmp/repo" }
+      { cwd: "/tmp/repo" },
     );
     expect(editItem?.detail?.type).toBe("edit");
     if (editItem?.detail?.type === "edit") {
@@ -368,7 +372,7 @@ describe("codex tool-call mapper", () => {
         name: "my_custom_tool",
         input: { foo: "bar" },
         output: { ok: true },
-      })
+      }),
     );
 
     expect(item.status).toBe("completed");
@@ -397,7 +401,7 @@ describe("codex tool-call mapper", () => {
         input: patch,
         output: '{"output":"Success. Updated the following files:\\nM src/index.ts\\n"}',
         cwd: "/tmp/repo",
-      })
+      }),
     );
 
     expect(item.status).toBe("completed");
@@ -434,7 +438,7 @@ describe("codex tool-call mapper", () => {
         },
         output: null,
         cwd: "/tmp/repo",
-      })
+      }),
     );
 
     expect(item.detail.type).toBe("edit");
@@ -466,7 +470,7 @@ describe("codex tool-call mapper", () => {
         status: "completed",
         changes: [{ path: "/tmp/repo/src/from-file-change.ts", kind: "modify", content: patch }],
       },
-      { cwd: "/tmp/repo" }
+      { cwd: "/tmp/repo" },
     );
 
     expect(item?.detail?.type).toBe("edit");
@@ -487,7 +491,7 @@ describe("codex tool-call mapper", () => {
         status: "completed",
         changes: [{ path: "/tmp/repo/src/path-only.ts", kind: "modify" }],
       },
-      { cwd: "/tmp/repo" }
+      { cwd: "/tmp/repo" },
     );
 
     expect(item?.detail.type).toBe("unknown");
@@ -506,7 +510,7 @@ describe("codex tool-call mapper", () => {
         input: { path: "/tmp/repo/src/path-only-rollout.ts" },
         output: { files: [{ path: "/tmp/repo/src/path-only-rollout.ts", kind: "modify" }] },
         cwd: "/tmp/repo",
-      })
+      }),
     );
 
     expect(item.detail.type).toBe("unknown");
@@ -542,7 +546,7 @@ describe("codex tool-call mapper", () => {
         name: "paseo.speak",
         input: { text: "Rollout speech text." },
         output: { ok: true },
-      })
+      }),
     );
 
     expect(item.name).toBe("speak");

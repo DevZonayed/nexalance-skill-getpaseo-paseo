@@ -55,9 +55,9 @@ describe("checkout git utilities", () => {
     const nonGitDir = join(tempDir, "not-git");
     execSync(`mkdir -p ${nonGitDir}`);
 
-    await expect(
-      getCheckoutDiff(nonGitDir, { mode: "uncommitted" })
-    ).rejects.toBeInstanceOf(NotGitRepoError);
+    await expect(getCheckoutDiff(nonGitDir, { mode: "uncommitted" })).rejects.toBeInstanceOf(
+      NotGitRepoError,
+    );
   });
 
   it("handles status/diff/commit in a normal repo", async () => {
@@ -77,9 +77,7 @@ describe("checkout git utilities", () => {
 
     const cleanStatus = await getCheckoutStatus(repoDir);
     expect(cleanStatus.isDirty).toBe(false);
-    const message = execSync("git log -1 --pretty=%B", { cwd: repoDir })
-      .toString()
-      .trim();
+    const message = execSync("git log -1 --pretty=%B", { cwd: repoDir }).toString().trim();
     expect(message).toBe("update file");
   });
 
@@ -179,9 +177,7 @@ describe("checkout git utilities", () => {
 
     await commitAll(repoDir, message);
 
-    const logMessage = execSync("git log -1 --pretty=%B", { cwd: repoDir })
-      .toString()
-      .trim();
+    const logMessage = execSync("git log -1 --pretty=%B", { cwd: repoDir }).toString().trim();
     expect(logMessage).toBe(message);
   });
 
@@ -211,7 +207,7 @@ describe("checkout git utilities", () => {
 
     const diff = await getCheckoutDiff(repoDir, { mode: "uncommitted", includeStructured: true });
     expect(diff.structured?.some((f) => f.path === "file.txt" && f.status === "too_large")).toBe(
-      true
+      true,
     );
   });
 
@@ -393,9 +389,7 @@ describe("checkout git utilities", () => {
     writeFileSync(join(otherClone, "remote-only.txt"), "remote\n");
     execSync("git add remote-only.txt", { cwd: otherClone });
     execSync("git -c commit.gpgsign=false commit -m 'remote only'", { cwd: otherClone });
-    const remoteOnlyCommit = execSync("git rev-parse HEAD", { cwd: otherClone })
-      .toString()
-      .trim();
+    const remoteOnlyCommit = execSync("git rev-parse HEAD", { cwd: otherClone }).toString().trim();
     execSync("git push", { cwd: otherClone });
     execSync("git fetch origin", { cwd: repoDir });
 
@@ -419,9 +413,7 @@ describe("checkout git utilities", () => {
     writeFileSync(join(repoDir, "local-only.txt"), "local\n");
     execSync("git add local-only.txt", { cwd: repoDir });
     execSync("git -c commit.gpgsign=false commit -m 'local only'", { cwd: repoDir });
-    const localOnlyCommit = execSync("git rev-parse HEAD", { cwd: repoDir })
-      .toString()
-      .trim();
+    const localOnlyCommit = execSync("git rev-parse HEAD", { cwd: repoDir }).toString().trim();
 
     execSync(`git checkout -b feature ${localOnlyCommit}~1`, { cwd: repoDir });
     writeFileSync(join(repoDir, "feature.txt"), "feature\n");
@@ -451,7 +443,7 @@ describe("checkout git utilities", () => {
     execSync("git checkout feature", { cwd: repoDir });
 
     await expect(
-      mergeFromBase(repoDir, { baseRef: "main", requireCleanTarget: true })
+      mergeFromBase(repoDir, { baseRef: "main", requireCleanTarget: true }),
     ).rejects.toBeInstanceOf(MergeFromBaseConflictError);
 
     const porcelain = execSync("git status --porcelain", { cwd: repoDir }).toString().trim();
@@ -556,24 +548,24 @@ describe("checkout git utilities", () => {
       [
         "#!/usr/bin/env bash",
         "set -euo pipefail",
-        "if [[ \"${1-}\" == \"--version\" ]]; then",
-        "  echo \"gh version 2.0.0\"",
+        'if [[ "${1-}" == "--version" ]]; then',
+        '  echo "gh version 2.0.0"',
         "  exit 0",
         "fi",
-        "args=\"$*\"",
-        "if [[ \"$args\" == *\"state=open\"* ]]; then",
-        "  echo \"[]\"",
+        'args="$*"',
+        'if [[ "$args" == *"state=open"* ]]; then',
+        '  echo "[]"',
         "  exit 0",
         "fi",
-        "if [[ \"$args\" == *\"state=closed\"* ]]; then",
-        "  echo '[{\"html_url\":\"https://github.com/getpaseo/paseo/pull/123\",\"title\":\"Ship feature\",\"state\":\"closed\",\"merged_at\":\"2026-02-18T00:00:00Z\",\"base\":{\"ref\":\"main\"},\"head\":{\"ref\":\"feature\"}}]'",
+        'if [[ "$args" == *"state=closed"* ]]; then',
+        '  echo \'[{"html_url":"https://github.com/getpaseo/paseo/pull/123","title":"Ship feature","state":"closed","merged_at":"2026-02-18T00:00:00Z","base":{"ref":"main"},"head":{"ref":"feature"}}]\'',
         "  exit 0",
         "fi",
-        "echo \"unexpected gh args: $args\" >&2",
+        'echo "unexpected gh args: $args" >&2',
         "exit 1",
         "",
       ].join("\n"),
-      "utf8"
+      "utf8",
     );
     execSync(`chmod +x ${join(fakeBinDir, "gh")}`);
 
@@ -610,24 +602,24 @@ describe("checkout git utilities", () => {
       [
         "#!/usr/bin/env bash",
         "set -euo pipefail",
-        "if [[ \"${1-}\" == \"--version\" ]]; then",
-        "  echo \"gh version 2.0.0\"",
+        'if [[ "${1-}" == "--version" ]]; then',
+        '  echo "gh version 2.0.0"',
         "  exit 0",
         "fi",
-        "args=\"$*\"",
-        "if [[ \"$args\" == *\"state=open\"* ]]; then",
-        "  echo \"[]\"",
+        'args="$*"',
+        'if [[ "$args" == *"state=open"* ]]; then',
+        '  echo "[]"',
         "  exit 0",
         "fi",
-        "if [[ \"$args\" == *\"state=closed\"* ]]; then",
-        "  echo '[{\"html_url\":\"https://github.com/getpaseo/paseo/pull/999\",\"title\":\"Closed without merge\",\"state\":\"closed\",\"merged_at\":null,\"base\":{\"ref\":\"main\"},\"head\":{\"ref\":\"feature\"}}]'",
+        'if [[ "$args" == *"state=closed"* ]]; then',
+        '  echo \'[{"html_url":"https://github.com/getpaseo/paseo/pull/999","title":"Closed without merge","state":"closed","merged_at":null,"base":{"ref":"main"},"head":{"ref":"feature"}}]\'',
         "  exit 0",
         "fi",
-        "echo \"unexpected gh args: $args\" >&2",
+        'echo "unexpected gh args: $args" >&2',
         "exit 1",
         "",
       ].join("\n"),
-      "utf8"
+      "utf8",
     );
     execSync(`chmod +x ${join(fakeBinDir, "gh")}`);
 
@@ -670,9 +662,9 @@ describe("checkout git utilities", () => {
 
     execSync("git checkout feature", { cwd: repoDir });
 
-    await expect(
-      mergeToBase(repoDir, { baseRef: "main" })
-    ).rejects.toBeInstanceOf(MergeConflictError);
+    await expect(mergeToBase(repoDir, { baseRef: "main" })).rejects.toBeInstanceOf(
+      MergeConflictError,
+    );
   });
 
   it("uses stored baseRefName for Paseo worktrees (no heuristics)", async () => {
@@ -714,7 +706,9 @@ describe("checkout git utilities", () => {
     execSync("git remote add origin https://github.com/acme/repo.git", { cwd: repoDir });
     execSync("git update-ref refs/remotes/origin/main refs/heads/main", { cwd: repoDir });
     execSync("git update-ref refs/remotes/origin/develop refs/heads/develop", { cwd: repoDir });
-    execSync("git symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/main", { cwd: repoDir });
+    execSync("git symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/main", {
+      cwd: repoDir,
+    });
 
     await expect(resolveRepositoryDefaultBranch(repoDir)).resolves.toBe("main");
   });
@@ -756,7 +750,7 @@ describe("checkout git utilities", () => {
       execSync(`git merge-base --is-ancestor ${featureCommit} main`, {
         cwd: repoDir,
         stdio: "pipe",
-      })
+      }),
     ).toThrow();
   });
 
@@ -772,12 +766,10 @@ describe("checkout git utilities", () => {
     const metadataPath = getPaseoWorktreeMetadataPath(worktree.worktreePath);
     rmSync(metadataPath, { force: true });
 
-    await expect(getCheckoutStatus(worktree.worktreePath, { paseoHome })).rejects.toThrow(
-      /base/i
-    );
-    await expect(getCheckoutDiff(worktree.worktreePath, { mode: "base" }, { paseoHome })).rejects.toThrow(
-      /base/i
-    );
+    await expect(getCheckoutStatus(worktree.worktreePath, { paseoHome })).rejects.toThrow(/base/i);
+    await expect(
+      getCheckoutDiff(worktree.worktreePath, { mode: "base" }, { paseoHome }),
+    ).rejects.toThrow(/base/i);
     await expect(mergeToBase(worktree.worktreePath, {}, { paseoHome })).rejects.toThrow(/base/i);
   });
 });

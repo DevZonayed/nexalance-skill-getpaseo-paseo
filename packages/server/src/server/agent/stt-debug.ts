@@ -18,7 +18,7 @@ export interface DebugAudioMetadata {
 export async function maybePersistDebugAudio(
   audio: Buffer,
   metadata: DebugAudioMetadata,
-  logger: pino.Logger
+  logger: pino.Logger,
 ): Promise<string | null> {
   if (!debugDir) {
     return null;

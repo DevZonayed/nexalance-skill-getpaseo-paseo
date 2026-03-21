@@ -11,7 +11,7 @@ interface QueuedAudio {
   reject: (error: Error) => void;
 }
 
-function getAudioContextCtor(): (typeof AudioContext) | null {
+function getAudioContextCtor(): typeof AudioContext | null {
   if (typeof window === "undefined") {
     return null;
   }
@@ -26,11 +26,7 @@ function floatToInt16(sample: number): number {
   return clamped < 0 ? Math.round(clamped * 0x8000) : Math.round(clamped * 0x7fff);
 }
 
-function resampleToPcm16(
-  input: Float32Array,
-  inputRate: number,
-  outputRate: number
-): Uint8Array {
+function resampleToPcm16(input: Float32Array, inputRate: number, outputRate: number): Uint8Array {
   if (input.length === 0) {
     return new Uint8Array(0);
   }
@@ -62,7 +58,7 @@ function parsePcmSampleRate(mimeType: string): number | null {
 function pcm16LeToAudioBuffer(
   context: AudioContext,
   bytes: Uint8Array,
-  sampleRate: number
+  sampleRate: number,
 ): AudioBuffer {
   const sampleCount = Math.floor(bytes.length / 2);
   const audioBuffer = context.createBuffer(1, sampleCount, sampleRate);
@@ -79,10 +75,7 @@ function pcm16LeToAudioBuffer(
   return audioBuffer;
 }
 
-async function decodeAudioData(
-  context: AudioContext,
-  buffer: ArrayBuffer
-): Promise<AudioBuffer> {
+async function decodeAudioData(context: AudioContext, buffer: ArrayBuffer): Promise<AudioBuffer> {
   const maybePromise = context.decodeAudioData(buffer.slice(0));
   if (maybePromise && typeof (maybePromise as Promise<AudioBuffer>).then === "function") {
     return maybePromise as Promise<AudioBuffer>;
@@ -94,7 +87,7 @@ async function decodeAudioData(
 
 export function createAudioEngine(
   callbacks: AudioEngineCallbacks,
-  _options?: { traceLabel?: string }
+  _options?: { traceLabel?: string },
 ): AudioEngine {
   const refs: {
     playbackContext: AudioContext | null;
@@ -177,7 +170,7 @@ export function createAudioEngine(
       ? pcm16LeToAudioBuffer(
           context,
           new Uint8Array(arrayBuffer),
-          parsePcmSampleRate(type) ?? 24000
+          parsePcmSampleRate(type) ?? 24000,
         )
       : await decodeAudioData(context, arrayBuffer);
 
@@ -206,9 +199,7 @@ export function createAudioEngine(
       try {
         source.start();
       } catch (error) {
-        settle(() =>
-          reject(error instanceof Error ? error : new Error(String(error)))
-        );
+        settle(() => reject(error instanceof Error ? error : new Error(String(error))));
       }
     });
   }
@@ -297,9 +288,7 @@ export function createAudioEngine(
           ? window.isSecureContext
           : true;
       const currentOrigin =
-        typeof window !== "undefined" && window.location
-          ? window.location.origin
-          : "unknown";
+        typeof window !== "undefined" && window.location ? window.location.origin : "unknown";
       const isDesktopApp = isDesktop();
 
       if (missingNavigator) {
@@ -307,7 +296,7 @@ export function createAudioEngine(
       }
       if (!secureContext && !isDesktopApp) {
         throw new Error(
-          `Microphone access requires HTTPS or localhost. Current origin: ${currentOrigin}`
+          `Microphone access requires HTTPS or localhost. Current origin: ${currentOrigin}`,
         );
       }
 

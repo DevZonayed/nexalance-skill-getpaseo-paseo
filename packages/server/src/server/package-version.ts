@@ -14,9 +14,7 @@ type PackageJson = {
 
 export class PackageVersionResolutionError extends Error {
   constructor(params: { moduleUrl: string; packageName: string }) {
-    super(
-      `Unable to resolve ${params.packageName} version from module URL ${params.moduleUrl}.`
-    );
+    super(`Unable to resolve ${params.packageName} version from module URL ${params.moduleUrl}.`);
     this.name = "PackageVersionResolutionError";
   }
 }
@@ -31,10 +29,7 @@ export function resolvePackageVersion(params: ResolvePackageVersionParams): stri
       try {
         const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf8")) as PackageJson;
         if (packageJson.name === params.packageName) {
-          if (
-            typeof packageJson.version === "string" &&
-            packageJson.version.trim().length > 0
-          ) {
+          if (typeof packageJson.version === "string" && packageJson.version.trim().length > 0) {
             return packageJson.version.trim();
           }
           throw new PackageVersionResolutionError({

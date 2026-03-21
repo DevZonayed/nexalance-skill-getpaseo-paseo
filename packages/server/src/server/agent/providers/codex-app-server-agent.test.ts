@@ -19,7 +19,7 @@ describe("Codex app-server provider", () => {
         { type: "text", text: "hello" },
         { type: "image", mimeType: "image/png", data: ONE_BY_ONE_PNG_BASE64 },
       ],
-      logger
+      logger,
     );
     const localImage = input.find((item) => (item as { type?: string })?.type === "localImage") as
       | { type: "localImage"; path?: string }

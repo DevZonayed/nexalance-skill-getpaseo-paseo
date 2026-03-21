@@ -24,7 +24,7 @@ const DICTATION_FINAL_TIMEOUT_PER_PENDING_AUDIO_SECOND_MS = 1500;
 const DICTATION_FINAL_TIMEOUT_PER_MISSING_SEQ_MS = 250;
 const DICTATION_SILENCE_PEAK_THRESHOLD = Number.parseInt(
   process.env.PASEO_DICTATION_SILENCE_PEAK_THRESHOLD ?? "300",
-  10
+  10,
 );
 
 function parseNonNegativeNumber(value: string | undefined): number | null {
@@ -42,7 +42,7 @@ function convertPCMToWavBuffer(
   pcmBuffer: Buffer,
   sampleRate: number,
   channels: number,
-  bitsPerSample: number
+  bitsPerSample: number,
 ): Buffer {
   const headerSize = 44;
   const wavBuffer = Buffer.alloc(headerSize + pcmBuffer.length);
@@ -101,8 +101,19 @@ export type DictationStreamOutboundMessage =
       payload: { dictationId: string; timeoutMs: number };
     }
   | { type: "dictation_stream_partial"; payload: { dictationId: string; text: string } }
-  | { type: "dictation_stream_final"; payload: { dictationId: string; text: string; debugRecordingPath?: string } }
-  | { type: "dictation_stream_error"; payload: { dictationId: string; error: string; retryable: boolean; debugRecordingPath?: string } }
+  | {
+      type: "dictation_stream_final";
+      payload: { dictationId: string; text: string; debugRecordingPath?: string };
+    }
+  | {
+      type: "dictation_stream_error";
+      payload: {
+        dictationId: string;
+        error: string;
+        retryable: boolean;
+        debugRecordingPath?: string;
+      };
+    }
   | {
       type: "activity_log";
       payload: {
@@ -245,7 +256,11 @@ export class DictationStreamManager {
 
     const inputRate = parsePcmRateFromFormat(format, 16000) ?? 16000;
     if (!Number.isFinite(inputRate) || inputRate <= 0) {
-      this.failDictationStream(dictationId, `Invalid dictation input rate in format: ${format}`, false);
+      this.failDictationStream(
+        dictationId,
+        `Invalid dictation input rate in format: ${format}`,
+        false,
+      );
       try {
         stt.close();
       } catch {
@@ -256,7 +271,7 @@ export class DictationStreamManager {
 
     const debugChunkWriter = createDictationDebugChunkWriter(
       { sessionId: this.sessionId, dictationId },
-      this.logger
+      this.logger,
     );
 
     const outputRate = stt.requiredSampleRate;
@@ -317,7 +332,7 @@ export class DictationStreamManager {
       void this.failAndCleanupDictationStream(
         params.dictationId,
         `Mismatched dictation stream format: ${params.format}`,
-        false
+        false,
       );
       return;
     }
@@ -352,7 +367,10 @@ export class DictationStreamManager {
 
         if (state.debugChunkWriter) {
           void state.debugChunkWriter.writeChunk(seq, resampled).catch((err) => {
-            this.logger.warn({ dictationId: params.dictationId, seq, err }, "Failed to write debug chunk");
+            this.logger.warn(
+              { dictationId: params.dictationId, seq, err },
+              "Failed to write debug chunk",
+            );
           });
         }
       }
@@ -376,7 +394,12 @@ export class DictationStreamManager {
     state.finishRequested = true;
     state.finalSeq = finalSeq;
 
-    if (finalSeq >= 0 && state.ackSeq < 0 && state.nextSeqToForward === 0 && state.receivedChunks.size === 0) {
+    if (
+      finalSeq >= 0 &&
+      state.ackSeq < 0 &&
+      state.nextSeqToForward === 0 &&
+      state.receivedChunks.size === 0
+    ) {
       this.logger.debug(
         {
           dictationId,
@@ -386,12 +409,12 @@ export class DictationStreamManager {
           receivedChunks: state.receivedChunks.size,
           bytesSinceCommit: state.bytesSinceCommit,
         },
-        "Dictation finish: no chunks received (failing fast)"
+        "Dictation finish: no chunks received (failing fast)",
       );
       this.failDictationStream(
         dictationId,
         `Dictation finished (finalSeq=${finalSeq}) but no audio chunks were received`,
-        true
+        true,
       );
       this.cleanupDictationStream(dictationId);
       return;
@@ -413,7 +436,7 @@ export class DictationStreamManager {
       void this.failAndCleanupDictationStream(
         dictationId,
         "Timed out waiting for final transcription",
-        true
+        true,
       );
     }, timeoutEstimate.timeoutMs);
 
@@ -435,7 +458,7 @@ export class DictationStreamManager {
         missingSeqCount: timeoutEstimate.missingSeqCount,
         timeoutMs: timeoutEstimate.timeoutMs,
       },
-      "Accepted dictation finish request with adaptive timeout budget"
+      "Accepted dictation finish request with adaptive timeout budget",
     );
   }
 
@@ -472,13 +495,13 @@ export class DictationStreamManager {
       pcmBuffer,
       state.outputRate,
       PCM_CHANNELS,
-      PCM_BITS_PER_SAMPLE
+      PCM_BITS_PER_SAMPLE,
     );
     const path = await maybePersistDictationDebugAudio(
       wavBuffer,
       { sessionId: state.sessionId, dictationId: state.dictationId, format: "audio/wav" },
       this.logger,
-      state.debugChunkWriter?.folder
+      state.debugChunkWriter?.folder,
     );
     state.debugRecordingPath = path;
     return path;
@@ -494,7 +517,7 @@ export class DictationStreamManager {
   private async failAndCleanupDictationStream(
     dictationId: string,
     error: string,
-    retryable: boolean
+    retryable: boolean,
   ): Promise<void> {
     const debugRecordingPath = await this.maybePersistDictationStreamAudio(dictationId);
     this.emit({
@@ -537,24 +560,19 @@ export class DictationStreamManager {
     this.streams.delete(dictationId);
   }
 
-  private estimateFinalizationTimeout(
-    state: DictationStreamState
-  ): {
+  private estimateFinalizationTimeout(state: DictationStreamState): {
     timeoutMs: number;
     pendingSegments: number;
     pendingAudioSeconds: number;
     missingSeqCount: number;
   } {
-    const bytesPerSecond = Math.max(
-      1,
-      state.outputRate * PCM_CHANNELS * (PCM_BITS_PER_SAMPLE / 8)
-    );
+    const bytesPerSecond = Math.max(1, state.outputRate * PCM_CHANNELS * (PCM_BITS_PER_SAMPLE / 8));
     const pendingCommittedSegments = state.committedSegmentIds.reduce((count, segmentId) => {
       return state.finalTranscriptSegmentIds.has(segmentId) ? count : count + 1;
     }, 0);
     const committedSet = new Set(state.committedSegmentIds);
     const pendingUncommittedTranscriptSegments = Array.from(
-      state.transcriptsBySegmentId.keys()
+      state.transcriptsBySegmentId.keys(),
     ).reduce((count, segmentId) => {
       if (committedSet.has(segmentId)) {
         return count;
@@ -565,9 +583,7 @@ export class DictationStreamManager {
       pendingCommittedSegments +
       pendingUncommittedTranscriptSegments +
       (state.awaitingFinalCommit ? 1 : 0);
-    const pendingAudioSeconds = Math.ceil(
-      Math.max(0, state.bytesSinceCommit) / bytesPerSecond
-    );
+    const pendingAudioSeconds = Math.ceil(Math.max(0, state.bytesSinceCommit) / bytesPerSecond);
     const missingSeqCount =
       state.finalSeq === null ? 0 : Math.max(0, state.finalSeq - state.ackSeq);
 
@@ -578,10 +594,7 @@ export class DictationStreamManager {
 
     const timeoutMs = Math.max(
       this.finalTimeoutMs,
-      Math.min(
-        DICTATION_FINAL_TIMEOUT_MAX_MS,
-        this.finalTimeoutMs + extraMs
-      )
+      Math.min(DICTATION_FINAL_TIMEOUT_MAX_MS, this.finalTimeoutMs + extraMs),
     );
 
     return {
@@ -634,7 +647,7 @@ export class DictationStreamManager {
             bytesSinceCommit: state.bytesSinceCommit,
             peakSinceCommit: state.peakSinceCommit,
           },
-          "Dictation finish: clearing silence-only tail (skip final commit)"
+          "Dictation finish: clearing silence-only tail (skip final commit)",
         );
         state.stt.clear();
         state.bytesSinceCommit = 0;
@@ -647,7 +660,7 @@ export class DictationStreamManager {
               dictationId,
               droppedSegments,
             },
-            "Dictation finish: dropped uncommitted non-final transcript segments after silence clear"
+            "Dictation finish: dropped uncommitted non-final transcript segments after silence clear",
           );
         }
       } else {
@@ -736,7 +749,7 @@ export class DictationStreamManager {
     }
 
     const allTranscriptsReady = orderedSegmentIds.every((segmentId) =>
-      state.finalTranscriptSegmentIds.has(segmentId)
+      state.finalTranscriptSegmentIds.has(segmentId),
     );
     if (!allTranscriptsReady) {
       return;

@@ -1,10 +1,5 @@
 import type { Command } from "commander";
-import type {
-  CommandError,
-  CommandOptions,
-  ListResult,
-  OutputSchema,
-} from "../../output/index.js";
+import type { CommandError, CommandOptions, ListResult, OutputSchema } from "../../output/index.js";
 import { connectToDaemon } from "../../utils/client.js";
 
 interface SpeechModelListItem {
@@ -39,7 +34,7 @@ export interface SpeechModelsOptions extends CommandOptions {
 
 export async function runSpeechModelsCommand(
   options: SpeechModelsOptions,
-  _command: Command
+  _command: Command,
 ): Promise<SpeechModelsResult> {
   const client = await connectToDaemon({ host: options.host });
   try {

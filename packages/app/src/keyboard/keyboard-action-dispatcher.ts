@@ -1,8 +1,4 @@
-export type KeyboardActionScope =
-  | "global"
-  | "message-input"
-  | "sidebar"
-  | "workspace";
+export type KeyboardActionScope = "global" | "message-input" | "sidebar" | "workspace";
 
 export type KeyboardActionId =
   | "message-input.focus"

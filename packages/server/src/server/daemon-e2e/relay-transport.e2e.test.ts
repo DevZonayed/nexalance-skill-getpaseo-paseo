@@ -151,18 +151,24 @@ async function waitForRelayWebSocketReady(port: number, timeout = 60000): Promis
         env: { ...process.env },
         stdio: ["ignore", "pipe", "pipe"],
         detached: false,
-      }
+      },
     );
 
     relayProcess.stdout?.on("data", (data: Buffer) => {
-      const lines = data.toString().split("\n").filter((l) => l.trim());
+      const lines = data
+        .toString()
+        .split("\n")
+        .filter((l) => l.trim());
       for (const line of lines) {
         // eslint-disable-next-line no-console
         console.log(`[relay] ${line}`);
       }
     });
     relayProcess.stderr?.on("data", (data: Buffer) => {
-      const lines = data.toString().split("\n").filter((l) => l.trim());
+      const lines = data
+        .toString()
+        .split("\n")
+        .filter((l) => l.trim());
       for (const line of lines) {
         // eslint-disable-next-line no-console
         console.error(`[relay] ${line}`);
@@ -179,197 +185,63 @@ async function waitForRelayWebSocketReady(port: number, timeout = 60000): Promis
     relayProcess = null;
   };
 
-  test(
-    "daemon connects to relay and client ping/pong works through relay",
-    async () => {
-      process.env.PASEO_PRIMARY_LAN_IP = "192.168.1.12";
+  test("daemon connects to relay and client ping/pong works through relay", async () => {
+    process.env.PASEO_PRIMARY_LAN_IP = "192.168.1.12";
 
-      const { logger, lines } = createCapturingLogger();
-      await startRelay();
+    const { logger, lines } = createCapturingLogger();
+    await startRelay();
 
-      const daemon = await createTestPaseoDaemon({
-        listen: "127.0.0.1",
-        logger,
-        relayEnabled: true,
-        relayEndpoint: `127.0.0.1:${relayPort}`,
-      });
+    const daemon = await createTestPaseoDaemon({
+      listen: "127.0.0.1",
+      logger,
+      relayEnabled: true,
+      relayEndpoint: `127.0.0.1:${relayPort}`,
+    });
 
-      try {
-        const offerUrl = parseOfferUrlFromLogs(lines);
-        const { serverId, daemonPublicKeyB64 } = decodeOfferFromFragmentUrl(offerUrl);
+    try {
+      const offerUrl = parseOfferUrlFromLogs(lines);
+      const { serverId, daemonPublicKeyB64 } = decodeOfferFromFragmentUrl(offerUrl);
 
-        const stableClientId = `cid_test_${Date.now().toString(36)}_${Math.random().toString(36).slice(2)}`;
-        const ws = new WebSocket(
-          buildRelayWebSocketUrl({
-            endpoint: `127.0.0.1:${relayPort}`,
-            serverId,
-            role: "client",
-          })
-        );
+      const stableClientId = `cid_test_${Date.now().toString(36)}_${Math.random().toString(36).slice(2)}`;
+      const ws = new WebSocket(
+        buildRelayWebSocketUrl({
+          endpoint: `127.0.0.1:${relayPort}`,
+          serverId,
+          role: "client",
+        }),
+      );
 
-        const received = await new Promise<unknown>((resolve, reject) => {
-          const timeout = setTimeout(() => {
-            ws.close();
-            reject(new Error("timed out waiting for pong"));
-          }, 20000);
+      const received = await new Promise<unknown>((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          ws.close();
+          reject(new Error("timed out waiting for pong"));
+        }, 20000);
 
-          const transport: Transport = {
-            send: (data) => ws.send(data),
-            close: (code?: number, reason?: string) => ws.close(code, reason),
-            onmessage: null,
-            onclose: null,
-            onerror: null,
-          };
+        const transport: Transport = {
+          send: (data) => ws.send(data),
+          close: (code?: number, reason?: string) => ws.close(code, reason),
+          onmessage: null,
+          onclose: null,
+          onerror: null,
+        };
 
-          ws.on("message", (data) => {
-            transport.onmessage?.(typeof data === "string" ? data : data.toString());
-          });
-          ws.on("close", (code, reason) => {
-            transport.onclose?.(code, reason.toString());
-          });
-          ws.on("error", (err) => {
-            transport.onerror?.(err);
-          });
-
-          ws.on("open", async () => {
-            try {
-              let pingSent = false;
-              let channelRef: Awaited<ReturnType<typeof createClientChannel>> | null = null;
-              const channel = await createClientChannel(
-                transport,
-                daemonPublicKeyB64,
-                {
-                  onmessage: (data) => {
-                    try {
-                      const payload =
-                        typeof data === "string" ? JSON.parse(data) : data;
-                      if (
-                        payload &&
-                        typeof payload === "object" &&
-                        (payload as any).type === "session" &&
-                        (payload as any).message?.type === "status" &&
-                        (payload as any).message?.payload?.status === "server_info"
-                      ) {
-                        if (!pingSent && channelRef) {
-                          pingSent = true;
-                          void channelRef.send(JSON.stringify({ type: "ping" }));
-                        }
-                        return;
-                      }
-                      if (payload && typeof payload === "object" && (payload as any).type === "pong") {
-                        clearTimeout(timeout);
-                        resolve(payload);
-                        ws.close();
-                      }
-                    } catch (err) {
-                      clearTimeout(timeout);
-                      reject(err);
-                    }
-                  },
-                  onerror: (err) => {
-                    clearTimeout(timeout);
-                    reject(err);
-                  },
-                }
-              );
-              channelRef = channel;
-              await channel.send(
-                JSON.stringify({
-                  type: "hello",
-                  clientId: stableClientId,
-                  clientType: "cli",
-                  protocolVersion: 1,
-                })
-              );
-            } catch (err) {
-              clearTimeout(timeout);
-              reject(err);
-            }
-          });
+        ws.on("message", (data) => {
+          transport.onmessage?.(typeof data === "string" ? data : data.toString());
+        });
+        ws.on("close", (code, reason) => {
+          transport.onclose?.(code, reason.toString());
+        });
+        ws.on("error", (err) => {
+          transport.onerror?.(err);
         });
 
-        expect(received).toEqual({ type: "pong" });
-      } catch (err) {
-        const tail = lines.slice(-50).join("");
-        // Only prints on failure to help diagnose relay handshake issues.
-        // eslint-disable-next-line no-console
-        console.error("daemon logs (tail):\n", tail);
-        throw err;
-      } finally {
-        await daemon.close();
-        await stopRelay();
-      }
-    },
-    90000
-  );
-
-  test(
-    "daemon keeps relay socket open while idle (no handshake timeout loop)",
-    async () => {
-      process.env.PASEO_PRIMARY_LAN_IP = "192.168.1.12";
-
-      const { logger, lines } = createCapturingLogger();
-      await startRelay();
-
-      const daemon = await createTestPaseoDaemon({
-        listen: "127.0.0.1",
-        logger,
-        relayEnabled: true,
-        relayEndpoint: `127.0.0.1:${relayPort}`,
-      });
-
-      try {
-        const offerUrl = parseOfferUrlFromLogs(lines);
-        const { serverId, daemonPublicKeyB64 } = decodeOfferFromFragmentUrl(offerUrl);
-
-        // Previously, the daemon would time out waiting for `hello` and reconnect every ~10s.
-        // Wait long enough to catch that regression.
-        await new Promise((r) => setTimeout(r, 12_000));
-
-        const handshakeFailures = lines.filter((line) =>
-          line.includes("relay_e2ee_handshake_failed")
-        );
-        expect(handshakeFailures.length).toBe(0);
-
-        const ws = new WebSocket(
-          buildRelayWebSocketUrl({
-            endpoint: `127.0.0.1:${relayPort}`,
-            serverId,
-            role: "client",
-          })
-        );
-        const stableClientId = `cid_test_${Date.now().toString(36)}_${Math.random().toString(36).slice(2)}`;
-
-        const received = await new Promise<unknown>((resolve, reject) => {
-          const timeout = setTimeout(() => {
-            ws.close();
-            reject(new Error("timed out waiting for pong"));
-          }, 20000);
-
-          const transport: Transport = {
-            send: (data) => ws.send(data),
-            close: (code?: number, reason?: string) => ws.close(code, reason),
-            onmessage: null,
-            onclose: null,
-            onerror: null,
-          };
-
-          ws.on("message", (data) => {
-            transport.onmessage?.(typeof data === "string" ? data : data.toString());
-          });
-          ws.on("close", (code, reason) => {
-            transport.onclose?.(code, reason.toString());
-          });
-          ws.on("error", (err) => {
-            transport.onerror?.(err);
-          });
-
-          ws.on("open", async () => {
-            try {
-              let pingSent = false;
-              let channelRef: Awaited<ReturnType<typeof createClientChannel>> | null = null;
-              const channel = await createClientChannel(transport, daemonPublicKeyB64, {
-                onmessage: (data) => {
+        ws.on("open", async () => {
+          try {
+            let pingSent = false;
+            let channelRef: Awaited<ReturnType<typeof createClientChannel>> | null = null;
+            const channel = await createClientChannel(transport, daemonPublicKeyB64, {
+              onmessage: (data) => {
+                try {
                   const payload = typeof data === "string" ? JSON.parse(data) : data;
                   if (
                     payload &&
@@ -389,39 +261,160 @@ async function waitForRelayWebSocketReady(port: number, timeout = 60000): Promis
                     resolve(payload);
                     ws.close();
                   }
-                },
-                onerror: (err) => {
+                } catch (err) {
                   clearTimeout(timeout);
                   reject(err);
-                },
-              });
-              channelRef = channel;
-              await channel.send(
-                JSON.stringify({
-                  type: "hello",
-                  clientId: stableClientId,
-                  clientType: "cli",
-                  protocolVersion: 1,
-                })
-              );
-            } catch (err) {
-              clearTimeout(timeout);
-              reject(err);
-            }
-          });
+                }
+              },
+              onerror: (err) => {
+                clearTimeout(timeout);
+                reject(err);
+              },
+            });
+            channelRef = channel;
+            await channel.send(
+              JSON.stringify({
+                type: "hello",
+                clientId: stableClientId,
+                clientType: "cli",
+                protocolVersion: 1,
+              }),
+            );
+          } catch (err) {
+            clearTimeout(timeout);
+            reject(err);
+          }
+        });
+      });
+
+      expect(received).toEqual({ type: "pong" });
+    } catch (err) {
+      const tail = lines.slice(-50).join("");
+      // Only prints on failure to help diagnose relay handshake issues.
+      // eslint-disable-next-line no-console
+      console.error("daemon logs (tail):\n", tail);
+      throw err;
+    } finally {
+      await daemon.close();
+      await stopRelay();
+    }
+  }, 90000);
+
+  test("daemon keeps relay socket open while idle (no handshake timeout loop)", async () => {
+    process.env.PASEO_PRIMARY_LAN_IP = "192.168.1.12";
+
+    const { logger, lines } = createCapturingLogger();
+    await startRelay();
+
+    const daemon = await createTestPaseoDaemon({
+      listen: "127.0.0.1",
+      logger,
+      relayEnabled: true,
+      relayEndpoint: `127.0.0.1:${relayPort}`,
+    });
+
+    try {
+      const offerUrl = parseOfferUrlFromLogs(lines);
+      const { serverId, daemonPublicKeyB64 } = decodeOfferFromFragmentUrl(offerUrl);
+
+      // Previously, the daemon would time out waiting for `hello` and reconnect every ~10s.
+      // Wait long enough to catch that regression.
+      await new Promise((r) => setTimeout(r, 12_000));
+
+      const handshakeFailures = lines.filter((line) =>
+        line.includes("relay_e2ee_handshake_failed"),
+      );
+      expect(handshakeFailures.length).toBe(0);
+
+      const ws = new WebSocket(
+        buildRelayWebSocketUrl({
+          endpoint: `127.0.0.1:${relayPort}`,
+          serverId,
+          role: "client",
+        }),
+      );
+      const stableClientId = `cid_test_${Date.now().toString(36)}_${Math.random().toString(36).slice(2)}`;
+
+      const received = await new Promise<unknown>((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          ws.close();
+          reject(new Error("timed out waiting for pong"));
+        }, 20000);
+
+        const transport: Transport = {
+          send: (data) => ws.send(data),
+          close: (code?: number, reason?: string) => ws.close(code, reason),
+          onmessage: null,
+          onclose: null,
+          onerror: null,
+        };
+
+        ws.on("message", (data) => {
+          transport.onmessage?.(typeof data === "string" ? data : data.toString());
+        });
+        ws.on("close", (code, reason) => {
+          transport.onclose?.(code, reason.toString());
+        });
+        ws.on("error", (err) => {
+          transport.onerror?.(err);
         });
 
-        expect(received).toEqual({ type: "pong" });
-      } catch (err) {
-        const tail = lines.slice(-50).join("");
-        // eslint-disable-next-line no-console
-        console.error("daemon logs (tail):\n", tail);
-        throw err;
-      } finally {
-        await daemon.close();
-        await stopRelay();
-      }
-    },
-    90000
-  );
+        ws.on("open", async () => {
+          try {
+            let pingSent = false;
+            let channelRef: Awaited<ReturnType<typeof createClientChannel>> | null = null;
+            const channel = await createClientChannel(transport, daemonPublicKeyB64, {
+              onmessage: (data) => {
+                const payload = typeof data === "string" ? JSON.parse(data) : data;
+                if (
+                  payload &&
+                  typeof payload === "object" &&
+                  (payload as any).type === "session" &&
+                  (payload as any).message?.type === "status" &&
+                  (payload as any).message?.payload?.status === "server_info"
+                ) {
+                  if (!pingSent && channelRef) {
+                    pingSent = true;
+                    void channelRef.send(JSON.stringify({ type: "ping" }));
+                  }
+                  return;
+                }
+                if (payload && typeof payload === "object" && (payload as any).type === "pong") {
+                  clearTimeout(timeout);
+                  resolve(payload);
+                  ws.close();
+                }
+              },
+              onerror: (err) => {
+                clearTimeout(timeout);
+                reject(err);
+              },
+            });
+            channelRef = channel;
+            await channel.send(
+              JSON.stringify({
+                type: "hello",
+                clientId: stableClientId,
+                clientType: "cli",
+                protocolVersion: 1,
+              }),
+            );
+          } catch (err) {
+            clearTimeout(timeout);
+            reject(err);
+          }
+        });
+      });
+
+      expect(received).toEqual({ type: "pong" });
+    } catch (err) {
+      const tail = lines.slice(-50).join("");
+      // eslint-disable-next-line no-console
+      console.error("daemon logs (tail):\n", tail);
+      throw err;
+    } finally {
+      await daemon.close();
+      await stopRelay();
+    }
+  }, 90000);
 });

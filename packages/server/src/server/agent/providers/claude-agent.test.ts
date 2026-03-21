@@ -129,9 +129,9 @@ describe("convertClaudeHistoryEntry", () => {
       },
     };
 
-    const mapBlocks = vi.fn().mockReturnValue([
-      { type: "assistant_message", text: "No response requested." },
-    ]);
+    const mapBlocks = vi
+      .fn()
+      .mockReturnValue([{ type: "assistant_message", text: "No response requested." }]);
 
     expect(convertClaudeHistoryEntry(interruptEntry, mapBlocks)).toEqual([]);
     expect(convertClaudeHistoryEntry(assistantNoiseEntry, mapBlocks)).toEqual([]);
@@ -241,34 +241,30 @@ describe("convertClaudeHistoryEntry", () => {
 describe("ClaudeAgentClient.listModels", () => {
   const logger = createTestLogger();
 
-  test(
-    "returns models with required fields",
-    async () => {
-      const client = new ClaudeAgentClient({ logger });
-      const models = await client.listModels();
+  test("returns models with required fields", async () => {
+    const client = new ClaudeAgentClient({ logger });
+    const models = await client.listModels();
 
-      expect(Array.isArray(models)).toBe(true);
-      expect(models.length).toBeGreaterThan(0);
+    expect(Array.isArray(models)).toBe(true);
+    expect(models.length).toBeGreaterThan(0);
 
-      for (const model of models) {
-        expect(model.provider).toBe("claude");
-        expect(typeof model.id).toBe("string");
-        expect(model.id.length).toBeGreaterThan(0);
-        expect(typeof model.label).toBe("string");
-        expect(model.label.length).toBeGreaterThan(0);
-      }
+    for (const model of models) {
+      expect(model.provider).toBe("claude");
+      expect(typeof model.id).toBe("string");
+      expect(model.id.length).toBeGreaterThan(0);
+      expect(typeof model.label).toBe("string");
+      expect(model.label.length).toBeGreaterThan(0);
+    }
 
-      const modelIds = models.map((model) => model.id);
-      expect(
-        modelIds.some(
-          (id) =>
-            id.includes("claude") ||
-            id.includes("sonnet") ||
-            id.includes("opus") ||
-            id.includes("haiku")
-        )
-      ).toBe(true);
-    },
-    60_000
-  );
+    const modelIds = models.map((model) => model.id);
+    expect(
+      modelIds.some(
+        (id) =>
+          id.includes("claude") ||
+          id.includes("sonnet") ||
+          id.includes("opus") ||
+          id.includes("haiku"),
+      ),
+    ).toBe(true);
+  }, 60_000);
 });

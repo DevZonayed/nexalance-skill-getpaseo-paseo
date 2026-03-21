@@ -1,9 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  buildNotificationRoute,
-  resolveNotificationTarget,
-} from "./notification-routing";
+import { buildNotificationRoute, resolveNotificationTarget } from "./notification-routing";
 
 describe("resolveNotificationTarget", () => {
   it("extracts non-empty server and agent ids", () => {
@@ -11,7 +8,7 @@ describe("resolveNotificationTarget", () => {
       resolveNotificationTarget({
         serverId: " server-123 ",
         agentId: " agent-456 ",
-      })
+      }),
     ).toEqual({
       serverId: "server-123",
       agentId: "agent-456",
@@ -40,13 +37,13 @@ describe("buildNotificationRoute", () => {
         serverId: "srv-1",
         agentId: "agent-1",
         workspaceId: "/tmp/repo",
-      })
+      }),
     ).toBe("/h/srv-1/workspace/L3RtcC9yZXBv?open=agent%3Aagent-1");
   });
 
   it("routes directly to server-scoped agent path when both ids are present", () => {
     expect(buildNotificationRoute({ serverId: "srv-1", agentId: "agent-1" })).toBe(
-      "/h/srv-1/agent/agent-1"
+      "/h/srv-1/agent/agent-1",
     );
   });
 
@@ -64,7 +61,7 @@ describe("buildNotificationRoute", () => {
       buildNotificationRoute({
         serverId: "srv/with/slash",
         agentId: "agent with space",
-      })
+      }),
     ).toBe("/h/srv%2Fwith%2Fslash/agent/agent%20with%20space");
   });
 });

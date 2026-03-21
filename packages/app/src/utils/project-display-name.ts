@@ -8,9 +8,7 @@ export function projectDisplayNameFromProjectId(projectId: string): string {
   return segments[segments.length - 1] || projectId;
 }
 
-export function projectIconPlaceholderLabelFromDisplayName(
-  displayName: string
-): string {
+export function projectIconPlaceholderLabelFromDisplayName(displayName: string): string {
   const trimmedDisplayName = displayName.trim();
   if (!trimmedDisplayName) {
     return "";
