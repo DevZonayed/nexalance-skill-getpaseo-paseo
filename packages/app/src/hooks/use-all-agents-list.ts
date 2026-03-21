@@ -31,6 +31,7 @@ function toAggregatedAgent(params: {
     attentionReason: source.attentionReason,
     attentionTimestamp: source.attentionTimestamp ?? null,
     archivedAt: source.archivedAt ?? null,
+    createdAt: source.createdAt,
     labels: source.labels,
   };
 }

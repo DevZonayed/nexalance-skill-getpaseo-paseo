@@ -1110,6 +1110,7 @@ export const useSessionStore = create<SessionStore>()(
           requiresAttention: agent.requiresAttention ?? false,
           attentionReason: agent.attentionReason ?? null,
           attentionTimestamp: agent.attentionTimestamp ?? null,
+          createdAt: agent.createdAt,
           labels: agent.labels,
         });
       }

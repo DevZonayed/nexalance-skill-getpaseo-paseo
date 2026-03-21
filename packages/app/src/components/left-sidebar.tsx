@@ -37,7 +37,7 @@ import { getHostRuntimeStore, useHosts } from '@/runtime/host-runtime'
 import { formatConnectionStatus } from '@/utils/daemons'
 import { HEADER_INNER_HEIGHT, HEADER_INNER_HEIGHT_MOBILE } from '@/constants/layout'
 import {
-  buildHostAgentsRoute,
+  buildHostSessionsRoute,
   buildHostSettingsRoute,
   mapPathnameToServer,
   parseServerIdFromPathname,
@@ -221,7 +221,7 @@ export const LeftSidebar = memo(function LeftSidebar({ selectedAgentId: _selecte
     if (!activeServerId) {
       return
     }
-    router.push(buildHostAgentsRoute(activeServerId) as any)
+    router.push(buildHostSessionsRoute(activeServerId) as any)
   }, [activeServerId])
 
   const handleHostSelect = useCallback(
@@ -282,6 +282,41 @@ export const LeftSidebar = memo(function LeftSidebar({ selectedAgentId: _selecte
     />
   )
 })
+
+function SessionsButton({ onPress }: { onPress: () => void }) {
+  const { theme } = useUnistyles()
+  const pathname = usePathname()
+  const isActive = pathname.includes('/sessions')
+
+  return (
+    <Pressable
+      style={({ hovered }) => [
+        styles.newAgentButton,
+        hovered && styles.newAgentButtonHovered,
+        isActive && styles.newAgentButtonActive,
+      ]}
+      testID="sidebar-sessions"
+      accessible
+      accessibilityRole="button"
+      accessibilityLabel="Sessions"
+      onPress={onPress}
+    >
+      {({ hovered }) => (
+        <>
+          <MessagesSquare
+            size={theme.iconSize.md}
+            color={hovered || isActive ? theme.colors.foreground : theme.colors.foregroundMuted}
+          />
+          <Text
+            style={[styles.newAgentButtonText, (hovered || isActive) && styles.newAgentButtonTextHovered]}
+          >
+            Sessions
+          </Text>
+        </>
+      )}
+    </Pressable>
+  )
+}
 
 function MobileSidebar({
   theme,
@@ -457,28 +492,7 @@ function MobileSidebar({
           <View style={styles.sidebarContent} pointerEvents="auto">
             <View style={styles.sidebarHeader}>
               <View style={styles.sidebarHeaderRow}>
-                <Pressable
-                  style={styles.newAgentButton}
-                  testID="sidebar-sessions"
-                  accessible
-                  accessibilityRole="button"
-                  accessibilityLabel="Sessions"
-                  onPress={handleViewMore}
-                >
-                  {({ hovered }) => (
-                    <>
-                      <MessagesSquare
-                        size={theme.iconSize.md}
-                        color={hovered ? theme.colors.foreground : theme.colors.foregroundMuted}
-                      />
-                      <Text
-                        style={[styles.newAgentButtonText, hovered && styles.newAgentButtonTextHovered]}
-                      >
-                        Sessions
-                      </Text>
-                    </>
-                  )}
-                </Pressable>
+                <SessionsButton onPress={handleViewMore} />
               </View>
             </View>
 
@@ -623,28 +637,7 @@ function DesktopSidebar({
       ) : null}
       <View style={styles.sidebarHeader} {...dragHandlers}>
         <View style={styles.sidebarHeaderRow}>
-          <Pressable
-            style={styles.newAgentButton}
-            testID="sidebar-sessions"
-            accessible
-            accessibilityRole="button"
-            accessibilityLabel="Sessions"
-            onPress={handleViewMore}
-          >
-            {({ hovered }) => (
-              <>
-                <MessagesSquare
-                  size={theme.iconSize.md}
-                  color={hovered ? theme.colors.foreground : theme.colors.foregroundMuted}
-                />
-                <Text
-                  style={[styles.newAgentButtonText, hovered && styles.newAgentButtonTextHovered]}
-                >
-                  Sessions
-                </Text>
-              </>
-            )}
-          </Pressable>
+          <SessionsButton onPress={handleViewMore} />
         </View>
       </View>
 
@@ -786,15 +779,14 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[2],
   },
   newAgentButton: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     gap: theme.spacing[2],
-    paddingVertical: theme.spacing[1],
-    paddingRight: theme.spacing[1],
-    paddingLeft: theme.spacing[3],
-    flexShrink: 0,
+    paddingVertical: theme.spacing[2],
+    paddingHorizontal: theme.spacing[3],
+    borderRadius: theme.borderRadius.lg,
   },
-  newAgentButtonHovered: {},
   newAgentButtonText: {
     fontSize: theme.fontSize.base,
     fontWeight: theme.fontWeight.normal,
@@ -802,6 +794,12 @@ const styles = StyleSheet.create((theme) => ({
   },
   newAgentButtonTextHovered: {
     color: theme.colors.foreground,
+  },
+  newAgentButtonHovered: {
+    backgroundColor: theme.colors.surface1,
+  },
+  newAgentButtonActive: {
+    backgroundColor: theme.colors.surface1,
   },
   hostTrigger: {
     flexDirection: 'row',

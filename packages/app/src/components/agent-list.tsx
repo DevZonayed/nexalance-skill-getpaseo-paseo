@@ -15,7 +15,7 @@ import { formatTimeAgo } from '@/utils/time'
 import { shortenPath } from '@/utils/shorten-path'
 import { type AggregatedAgent } from '@/hooks/use-aggregated-agents'
 import { useSessionStore } from '@/stores/session-store'
-import { AgentStatusDot } from '@/components/agent-status-dot'
+import { Archive } from 'lucide-react-native'
 import { prepareWorkspaceTab } from '@/utils/workspace-navigation'
 
 interface AgentListProps {
@@ -29,11 +29,9 @@ interface AgentListProps {
   showAttentionIndicator?: boolean
 }
 
-interface AgentListSection {
-  key: string
-  title: string
-  data: AggregatedAgent[]
-}
+type FlatListItem =
+  | { type: 'header'; key: string; title: string }
+  | { type: 'agent'; key: string; agent: AggregatedAgent }
 
 function deriveDateSectionLabel(lastActivityAt: Date): string {
   const now = new Date()
@@ -82,9 +80,11 @@ function formatStatusLabel(status: AggregatedAgent['status']): string {
 
 function SessionBadge({
   label,
+  icon,
   tone = 'neutral',
 }: {
   label: string
+  icon?: ReactElement
   tone?: 'neutral' | 'warning' | 'danger'
 }) {
   return (
@@ -95,6 +95,7 @@ function SessionBadge({
         tone === 'danger' && styles.badgeDanger,
       ]}
     >
+      {icon}
       <Text
         style={[
           styles.badgeText,
@@ -123,6 +124,7 @@ function SessionRow({
   onPress: (agent: AggregatedAgent) => void
   onLongPress: (agent: AggregatedAgent) => void
 }) {
+  const { theme } = useUnistyles()
   const timeAgo = formatTimeAgo(agent.lastActivityAt)
   const agentKey = `${agent.serverId}:${agent.id}`
   const isSelected = selectedAgentId === agentKey
@@ -141,9 +143,6 @@ function SessionRow({
       onLongPress={() => onLongPress(agent)}
       testID={`agent-row-${agent.serverId}-${agent.id}`}
     >
-      <View style={styles.rowLeading}>
-        <AgentStatusDot status={agent.status} requiresAttention={agent.requiresAttention} />
-      </View>
       <View style={styles.rowContent}>
         <View style={styles.rowTitleRow}>
           <Text
@@ -152,7 +151,12 @@ function SessionRow({
           >
             {agent.title || 'New session'}
           </Text>
-          {agent.archivedAt ? <SessionBadge label="Archived" /> : null}
+          {agent.archivedAt ? (
+            <SessionBadge
+              label="Archived"
+              icon={<Archive size={theme.fontSize.xs} color={theme.colors.foregroundMuted} />}
+            />
+          ) : null}
           {(agent.pendingPermissionCount ?? 0) > 0 ? (
             <SessionBadge label={`${agent.pendingPermissionCount} pending`} tone="warning" />
           ) : null}
@@ -198,47 +202,6 @@ function SessionRow({
   )
 }
 
-function SessionTableSection({
-  section,
-  isMobile,
-  selectedAgentId,
-  showAttentionIndicator,
-  onAgentPress,
-  onAgentLongPress,
-}: {
-  section: AgentListSection
-  isMobile: boolean
-  selectedAgentId?: string
-  showAttentionIndicator: boolean
-  onAgentPress: (agent: AggregatedAgent) => void
-  onAgentLongPress: (agent: AggregatedAgent) => void
-}) {
-  return (
-    <View style={styles.sectionBlock}>
-      <View style={styles.sectionHeading}>
-        <Text style={styles.sectionTitle}>{section.title}</Text>
-      </View>
-
-      <View style={styles.listCard}>
-        {section.data.map((agent, index) => (
-          <View
-            key={`${agent.serverId}:${agent.id}`}
-            style={index > 0 ? styles.rowDivider : undefined}
-          >
-            <SessionRow
-              agent={agent}
-              isMobile={isMobile}
-              selectedAgentId={selectedAgentId}
-              showAttentionIndicator={showAttentionIndicator}
-              onPress={onAgentPress}
-              onLongPress={onAgentLongPress}
-            />
-          </View>
-        ))}
-      </View>
-    </View>
-  )
-}
 
 export function AgentList({
   agents,
@@ -276,6 +239,7 @@ export function AgentList({
         serverId,
         workspaceId: agent.cwd,
         target: { kind: 'agent', agentId },
+        pin: Boolean(agent.archivedAt),
       })
       router.navigate(route as any)
     },
@@ -298,7 +262,7 @@ export function AgentList({
     setActionAgent(null)
   }, [actionAgent, actionClient])
 
-  const sections = useMemo((): AgentListSection[] => {
+  const flatItems = useMemo((): FlatListItem[] => {
     const order = ['Today', 'Yesterday', 'This week', 'This month', 'Older'] as const
     const buckets = new Map<string, AggregatedAgent[]>()
     for (const agent of agents) {
@@ -308,41 +272,53 @@ export function AgentList({
       buckets.set(label, existing)
     }
 
-    const result: AgentListSection[] = []
+    const result: FlatListItem[] = []
     for (const label of order) {
       const data = buckets.get(label)
       if (!data || data.length === 0) {
         continue
       }
-      result.push({ key: `date:${label}`, title: label, data })
+      result.push({ type: 'header', key: `header:${label}`, title: label })
+      for (const agent of data) {
+        result.push({ type: 'agent', key: `${agent.serverId}:${agent.id}`, agent })
+      }
     }
     return result
   }, [agents])
 
-  const renderSection: ListRenderItem<AgentListSection> = useCallback(
-    ({ item: section }) => (
-      <SessionTableSection
-        section={section}
-        isMobile={isMobile}
-        selectedAgentId={selectedAgentId}
-        showAttentionIndicator={showAttentionIndicator}
-        onAgentPress={handleAgentPress}
-        onAgentLongPress={handleAgentLongPress}
-      />
-    ),
+  const renderItem: ListRenderItem<FlatListItem> = useCallback(
+    ({ item }) => {
+      if (item.type === 'header') {
+        return (
+          <View style={styles.sectionHeading}>
+            <Text style={styles.sectionTitle}>{item.title}</Text>
+          </View>
+        )
+      }
+      return (
+        <SessionRow
+          agent={item.agent}
+          isMobile={isMobile}
+          selectedAgentId={selectedAgentId}
+          showAttentionIndicator={showAttentionIndicator}
+          onPress={handleAgentPress}
+          onLongPress={handleAgentLongPress}
+        />
+      )
+    },
     [handleAgentLongPress, handleAgentPress, isMobile, selectedAgentId, showAttentionIndicator]
   )
 
-  const keyExtractor = useCallback((section: AgentListSection) => section.key, [])
+  const keyExtractor = useCallback((item: FlatListItem) => item.key, [])
 
   return (
     <>
       <FlatList
-        data={sections}
+        data={flatItems}
         style={styles.list}
         contentContainerStyle={styles.listContent}
         keyExtractor={keyExtractor}
-        renderItem={renderSection}
+        renderItem={renderItem}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
         ListFooterComponent={listFooterComponent}
@@ -417,41 +393,22 @@ const styles = StyleSheet.create((theme) => ({
       xs: theme.spacing[3],
       md: theme.spacing[6],
     },
-    paddingTop: theme.spacing[2],
+    paddingTop: theme.spacing[4],
     paddingBottom: theme.spacing[6],
     gap: theme.spacing[1],
   },
-  sectionBlock: {
-    marginTop: theme.spacing[2],
-  },
   sectionHeading: {
+    marginTop: theme.spacing[2],
     flexDirection: 'row',
     alignItems: 'center',
     gap: theme.spacing[3],
-    paddingHorizontal: theme.spacing[1],
+    paddingHorizontal: theme.spacing[3],
     marginBottom: theme.spacing[2],
   },
   sectionTitle: {
     fontSize: theme.fontSize.sm,
     fontWeight: theme.fontWeight.medium,
     color: theme.colors.foregroundMuted,
-  },
-  listCard: {
-    overflow: {
-      xs: 'hidden' as const,
-      md: 'visible' as const,
-    },
-    borderRadius: {
-      xs: theme.borderRadius.lg,
-      md: 0,
-    },
-  },
-  rowDivider: {
-    borderTopWidth: {
-      xs: StyleSheet.hairlineWidth,
-      md: 0,
-    },
-    borderTopColor: theme.colors.border,
   },
   row: {
     flexDirection: 'row',
@@ -466,9 +423,6 @@ const styles = StyleSheet.create((theme) => ({
       xs: theme.spacing[1],
       md: 0,
     },
-  },
-  rowLeading: {
-    marginRight: theme.spacing[3],
   },
   rowContent: {
     flex: 1,
@@ -502,7 +456,7 @@ const styles = StyleSheet.create((theme) => ({
   sessionTitle: {
     flexShrink: 1,
     fontSize: theme.fontSize.sm,
-    fontWeight: '500',
+    fontWeight: '400',
     color: theme.colors.foreground,
     opacity: 0.86,
   },
@@ -535,6 +489,9 @@ const styles = StyleSheet.create((theme) => ({
     textAlign: 'right' as const,
   },
   badge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.spacing[1],
     paddingHorizontal: theme.spacing[2],
     paddingVertical: theme.spacing[1],
     borderRadius: theme.borderRadius.full,

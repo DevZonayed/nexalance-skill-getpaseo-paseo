@@ -2,23 +2,21 @@ import { useMemo, useState, useCallback, useEffect } from "react";
 import { View } from "react-native";
 import { useIsFocused } from "@react-navigation/native";
 import { StyleSheet } from "react-native-unistyles";
-import { BackHeader } from "@/components/headers/back-header";
+import { MenuHeader } from "@/components/headers/menu-header";
 import { AgentList } from "@/components/agent-list";
 import { useAllAgentsList } from "@/hooks/use-all-agents-list";
-import { router } from "expo-router";
-import { buildHostRootRoute } from "@/utils/host-routes";
 
-export function AgentsScreen({ serverId }: { serverId: string }) {
+export function SessionsScreen({ serverId }: { serverId: string }) {
   const isFocused = useIsFocused();
 
   if (!isFocused) {
     return <View style={styles.container} />;
   }
 
-  return <AgentsScreenContent serverId={serverId} />;
+  return <SessionsScreenContent serverId={serverId} />;
 }
 
-function AgentsScreenContent({ serverId }: { serverId: string }) {
+function SessionsScreenContent({ serverId }: { serverId: string }) {
   const { agents, isRevalidating, refreshAll } = useAllAgentsList({
     serverId,
     includeArchived: true,
@@ -40,24 +38,14 @@ function AgentsScreenContent({ serverId }: { serverId: string }) {
   }, [isRevalidating, isManualRefresh]);
 
   const sortedAgents = useMemo(() => {
-    return [...agents].sort((a, b) => {
-      const aNeedsInput = (a.pendingPermissionCount ?? 0) > 0;
-      const bNeedsInput = (b.pendingPermissionCount ?? 0) > 0;
-      if (aNeedsInput && !bNeedsInput) return -1;
-      if (!aNeedsInput && bNeedsInput) return 1;
-
-      if (a.requiresAttention && !b.requiresAttention) return -1;
-      if (!a.requiresAttention && b.requiresAttention) return 1;
-      return 0;
-    });
+    return [...agents].sort(
+      (a, b) => b.createdAt.getTime() - a.createdAt.getTime()
+    );
   }, [agents]);
 
   return (
     <View style={styles.container}>
-      <BackHeader
-        title="Sessions"
-        onBack={() => router.replace(buildHostRootRoute(serverId) as any)}
-      />
+      <MenuHeader title="Sessions" />
       <AgentList
         agents={sortedAgents}
         showCheckoutInfo={false}

@@ -13,6 +13,7 @@ export type AgentDirectoryEntry = Pick<
   | "attentionReason"
   | "attentionTimestamp"
   | "archivedAt"
+  | "createdAt"
   | "labels"
 > & {
   pendingPermissionCount?: number;

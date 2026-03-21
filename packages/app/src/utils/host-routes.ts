@@ -323,12 +323,12 @@ export function buildHostRootRoute(serverId: string): string {
   return `/h/${encodeSegment(normalized)}`;
 }
 
-export function buildHostAgentsRoute(serverId: string): string {
+export function buildHostSessionsRoute(serverId: string): string {
   const base = buildHostRootRoute(serverId);
   if (base === "/") {
     return "/";
   }
-  return `${base}/agents`;
+  return `${base}/sessions`;
 }
 
 export function buildHostOpenProjectRoute(serverId: string): string {
@@ -361,8 +361,8 @@ export function mapPathnameToServer(
   if (suffix.startsWith("settings")) {
     return `${base}/settings`;
   }
-  if (suffix.startsWith("agents")) {
-    return `${base}/agents`;
+  if (suffix.startsWith("sessions")) {
+    return `${base}/sessions`;
   }
   if (suffix.startsWith("open-project")) {
     return `${base}/open-project`;
