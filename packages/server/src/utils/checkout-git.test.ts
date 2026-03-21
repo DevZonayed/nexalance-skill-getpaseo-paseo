@@ -81,6 +81,49 @@ describe("checkout git utilities", () => {
     expect(message).toBe("update file");
   });
 
+  it("preserves removed-line syntax highlighting with structured diffs", async () => {
+    const originalContent = `/*
+comment line 1
+comment line 2
+comment line 3
+comment line 4
+comment line 5
+comment line 6
+old comment line
+comment line 8
+*/
+const x = 1;
+`;
+    const updatedContent = `/*
+comment line 1
+comment line 2
+comment line 3
+comment line 4
+comment line 5
+comment line 6
+new comment line
+comment line 8
+*/
+const x = 1;
+`;
+
+    writeFileSync(join(repoDir, "example.ts"), originalContent);
+    execSync("git add example.ts", { cwd: repoDir });
+    execSync("git -c commit.gpgsign=false commit -m 'add multiline comment fixture'", {
+      cwd: repoDir,
+    });
+
+    writeFileSync(join(repoDir, "example.ts"), updatedContent);
+
+    const diff = await getCheckoutDiff(repoDir, { mode: "uncommitted", includeStructured: true });
+    const file = diff.structured?.find((entry) => entry.path === "example.ts");
+    const removedLine = file?.hunks[0]?.lines.find((line) => line.type === "remove");
+    const addedLine = file?.hunks[0]?.lines.find((line) => line.type === "add");
+
+    expect(addedLine?.tokens).toEqual([{ text: "new comment line", style: "comment" }]);
+    expect(removedLine?.tokens).toEqual([{ text: "old comment line", style: "comment" }]);
+  });
+
   it("returns lightweight checkout status for normal repos", async () => {
     const status = await getCheckoutStatusLite(repoDir);
     expect(status.isGit).toBe(true);

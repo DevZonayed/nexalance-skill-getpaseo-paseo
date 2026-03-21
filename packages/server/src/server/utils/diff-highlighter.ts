@@ -26,6 +26,16 @@ export interface ParsedDiffFile {
   status?: "ok" | "too_large" | "binary";
 }
 
+interface HighlightDiffWithFileContentOptions {
+  oldFileContent?: string | null;
+  newFileContent?: string | null;
+}
+
+interface ParseAndHighlightDiffOptions {
+  getOldFileContent?: (file: ParsedDiffFile) => Promise<string | null>;
+  getNewFileContent?: (file: ParsedDiffFile) => Promise<string | null>;
+}
+
 /**
  * Parse a unified diff into structured data
  */
@@ -196,6 +206,37 @@ function buildTokenLookup(
   return lookup;
 }
 
+function buildFullFileTokenLookup(
+  fileContent: string,
+  path: string,
+): Map<number, HighlightToken[]> {
+  const lookup = new Map<number, HighlightToken[]>();
+  const highlighted = highlightCode(fileContent, path);
+
+  for (let i = 0; i < highlighted.length; i++) {
+    lookup.set(i + 1, highlighted[i]);
+  }
+
+  return lookup;
+}
+
+function buildReconstructedTokenLookups(file: ParsedDiffFile): {
+  newTokensByLine: Map<number, HighlightToken[]>;
+  oldTokensByLine: Map<number, HighlightToken[]>;
+} {
+  const newFileLines = reconstructNewFile(file.hunks);
+  const oldFileLines = reconstructOldFile(file.hunks);
+  const newFileContent = buildFileContent(newFileLines);
+  const oldFileContent = buildFileContent(oldFileLines);
+  const newHighlighted = highlightCode(newFileContent, file.path);
+  const oldHighlighted = highlightCode(oldFileContent, file.path);
+
+  return {
+    newTokensByLine: buildTokenLookup(newFileLines, newHighlighted),
+    oldTokensByLine: buildTokenLookup(oldFileLines, oldHighlighted),
+  };
+}
+
 /**
  * Apply syntax highlighting to diff hunks using reconstructed file content.
  * This is the fallback when actual file content is not available.
@@ -205,21 +246,7 @@ export function highlightDiffFromHunks(file: ParsedDiffFile): ParsedDiffFile {
     return file;
   }
 
-  // Reconstruct both versions from hunks
-  const newFileLines = reconstructNewFile(file.hunks);
-  const oldFileLines = reconstructOldFile(file.hunks);
-
-  // Build complete file content strings for highlighting
-  const newFileContent = buildFileContent(newFileLines);
-  const oldFileContent = buildFileContent(oldFileLines);
-
-  // Highlight both versions
-  const newHighlighted = highlightCode(newFileContent, file.path);
-  const oldHighlighted = highlightCode(oldFileContent, file.path);
-
-  // Build lookup maps: line number -> tokens
-  const newTokensByLine = buildTokenLookup(newFileLines, newHighlighted);
-  const oldTokensByLine = buildTokenLookup(oldFileLines, oldHighlighted);
+  const { newTokensByLine, oldTokensByLine } = buildReconstructedTokenLookups(file);
 
   return applyTokensToHunks(file, newTokensByLine, oldTokensByLine);
 }
@@ -231,37 +258,34 @@ export function highlightDiffFromHunks(file: ParsedDiffFile): ParsedDiffFile {
 export async function highlightDiffWithFileContent(
   file: ParsedDiffFile,
   cwd: string,
+  options: HighlightDiffWithFileContentOptions = {},
 ): Promise<ParsedDiffFile> {
   if (!isLanguageSupported(file.path)) {
     return file;
   }
 
-  const filePath = resolve(cwd, file.path);
+  const reconstructedTokens = buildReconstructedTokenLookups(file);
+  let newTokensByLine = reconstructedTokens.newTokensByLine;
+  let oldTokensByLine = reconstructedTokens.oldTokensByLine;
 
-  try {
-    // Read the current file content (the "new" version)
-    const fileContent = await readFile(filePath, "utf-8");
-
-    // Highlight the entire file
-    const highlighted = highlightCode(fileContent, file.path);
-
-    // Build lookup: line number (1-indexed) -> tokens
-    const tokensByLine = new Map<number, HighlightToken[]>();
-    for (let i = 0; i < highlighted.length; i++) {
-      tokensByLine.set(i + 1, highlighted[i]);
-    }
-
-    // For removed lines, we need to reconstruct from hunks since they're not in the file
-    const oldFileLines = reconstructOldFile(file.hunks);
-    const oldFileContent = buildFileContent(oldFileLines);
-    const oldHighlighted = highlightCode(oldFileContent, file.path);
-    const oldTokensByLine = buildTokenLookup(oldFileLines, oldHighlighted);
-
-    return applyTokensToHunks(file, tokensByLine, oldTokensByLine);
-  } catch {
-    // If file read fails (deleted file, etc.), fall back to hunk-based highlighting
-    return highlightDiffFromHunks(file);
+  if (typeof options.oldFileContent === "string") {
+    oldTokensByLine = buildFullFileTokenLookup(options.oldFileContent, file.path);
   }
+
+  if (typeof options.newFileContent === "string") {
+    newTokensByLine = buildFullFileTokenLookup(options.newFileContent, file.path);
+    return applyTokensToHunks(file, newTokensByLine, oldTokensByLine);
+  }
+
+  const filePath = resolve(cwd, file.path);
+  try {
+    const fileContent = await readFile(filePath, "utf-8");
+    newTokensByLine = buildFullFileTokenLookup(fileContent, file.path);
+  } catch {
+    // If file read fails (deleted file, etc.), fall back to reconstructed new-side tokens.
+  }
+
+  return applyTokensToHunks(file, newTokensByLine, oldTokensByLine);
 }
 
 function applyTokensToHunks(
@@ -308,11 +332,22 @@ function applyTokensToHunks(
 export async function parseAndHighlightDiff(
   diffText: string,
   cwd: string,
+  options: ParseAndHighlightDiffOptions = {},
 ): Promise<ParsedDiffFile[]> {
   const files = parseDiff(diffText);
 
   const highlightedFiles = await Promise.all(
-    files.map((file) => highlightDiffWithFileContent(file, cwd)),
+    files.map(async (file) => {
+      const [oldFileContent, newFileContent] = await Promise.all([
+        options.getOldFileContent?.(file),
+        options.getNewFileContent?.(file),
+      ]);
+
+      return highlightDiffWithFileContent(file, cwd, {
+        oldFileContent: oldFileContent ?? undefined,
+        newFileContent: newFileContent ?? undefined,
+      });
+    }),
   );
 
   return highlightedFiles;

@@ -304,6 +304,23 @@ async function listCheckoutFileChanges(cwd: string, ref: string): Promise<Checko
   return Array.from(byPath.values());
 }
 
+async function readGitFileContentAtRef(
+  cwd: string,
+  ref: string,
+  path: string,
+): Promise<string | null> {
+  try {
+    const { stdout } = await execFileAsync("git", ["show", `${ref}:${path}`], {
+      cwd,
+      env: READ_ONLY_GIT_ENV,
+      maxBuffer: SMALL_OUTPUT_MAX_BUFFER,
+    });
+    return stdout;
+  } catch {
+    return null;
+  }
+}
+
 async function tryResolveMergeBase(cwd: string, baseRef: string): Promise<string | null> {
   try {
     const { stdout } = await execGit(`git merge-base ${baseRef} HEAD`, {
@@ -1239,6 +1256,7 @@ export async function getCheckoutDiff(
 
   const trackedChanges = changes.filter((change) => !change.isUntracked);
   const untrackedChanges = changes.filter((change) => change.isUntracked === true);
+  const trackedChangeByPath = new Map(trackedChanges.map((change) => [change.path, change]));
 
   const trackedNumstatByPath =
     trackedChanges.length > 0
@@ -1294,7 +1312,18 @@ export async function getCheckoutDiff(
 
   if (compare.includeStructured) {
     const parsedTrackedFiles =
-      trackedDiffText.length > 0 ? await parseAndHighlightDiff(trackedDiffText, cwd) : [];
+      trackedDiffText.length > 0
+        ? await parseAndHighlightDiff(trackedDiffText, cwd, {
+            getOldFileContent: async (file) => {
+              const change = trackedChangeByPath.get(file.path);
+              if (!change || change.isNew) {
+                return null;
+              }
+              const refPath = change.oldPath ?? change.path;
+              return readGitFileContentAtRef(cwd, refForDiff, refPath);
+            },
+          })
+        : [];
     const parsedTrackedByPath = new Map(parsedTrackedFiles.map((file) => [file.path, file]));
 
     for (const change of trackedChanges) {

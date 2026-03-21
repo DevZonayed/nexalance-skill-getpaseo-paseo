@@ -1,9 +1,13 @@
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   parseDiff,
   reconstructNewFile,
   reconstructOldFile,
   highlightDiffFromHunks,
+  highlightDiffWithFileContent,
   type ParsedDiffFile,
 } from "./diff-highlighter.js";
 
@@ -447,5 +451,66 @@ describe("highlightDiffFromHunks", () => {
 
     expect(addedLine?.tokens).toBeDefined();
     expect(addedLine!.tokens!.some((t) => t.style === "tag")).toBe(true);
+  });
+});
+
+describe("highlightDiffWithFileContent", () => {
+  it("uses the old file content to preserve syntax context for removed lines", async () => {
+    const cwd = mkdtempSync(join(tmpdir(), "diff-highlight-old-file-"));
+
+    try {
+      const oldFileContent = `/*
+comment line 1
+comment line 2
+comment line 3
+comment line 4
+comment line 5
+comment line 6
+old comment line
+comment line 8
+*/
+const x = 1;
+`;
+      const newFileContent = `/*
+comment line 1
+comment line 2
+comment line 3
+comment line 4
+comment line 5
+comment line 6
+new comment line
+comment line 8
+*/
+const x = 1;
+`;
+      writeFileSync(join(cwd, "example.ts"), newFileContent, "utf8");
+
+      const diff = `diff --git a/example.ts b/example.ts
+index 1111111..2222222 100644
+--- a/example.ts
++++ b/example.ts
+@@ -5,7 +5,7 @@
+ comment line 4
+ comment line 5
+ comment line 6
+-old comment line
++new comment line
+ comment line 8
+ */
+ const x = 1;
+`;
+
+      const file = parseDiff(diff)[0];
+      const highlighted = await highlightDiffWithFileContent(file, cwd, {
+        oldFileContent,
+      });
+      const removedLine = highlighted.hunks[0].lines.find((line) => line.type === "remove");
+      const addedLine = highlighted.hunks[0].lines.find((line) => line.type === "add");
+
+      expect(addedLine?.tokens).toEqual([{ text: "new comment line", style: "comment" }]);
+      expect(removedLine?.tokens).toEqual([{ text: "old comment line", style: "comment" }]);
+    } finally {
+      rmSync(cwd, { recursive: true, force: true });
+    }
   });
 });
