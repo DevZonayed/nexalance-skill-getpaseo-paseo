@@ -10,7 +10,7 @@ import {
   type GestureResponderEvent,
 } from "react-native";
 import * as Haptics from "expo-haptics";
-import { useQueries } from "@tanstack/react-query";
+import { useMutation, useQueries } from "@tanstack/react-query";
 import {
   useCallback,
   useMemo,
@@ -97,7 +97,6 @@ interface SidebarWorkspaceListProps {
   serverId: string | null;
   collapsedProjectKeys: ReadonlySet<string>;
   onToggleProjectCollapsed: (projectKey: string) => void;
-  onSetProjectCollapsed: (projectKey: string, collapsed: boolean) => void;
   shortcutIndexByWorkspaceKey: Map<string, number>;
   isRefreshing?: boolean;
   onRefresh?: () => void;
@@ -115,7 +114,10 @@ interface ProjectHeaderRowProps {
   selected?: boolean;
   chevron: "expand" | "collapse" | null;
   onPress: () => void;
-  onCreateWorktree?: () => void;
+  serverId: string | null;
+  canCreateWorktree: boolean;
+  onWorkspacePress?: () => void;
+  onWorktreeCreated?: (workspaceId: string) => void;
   shortcutNumber?: number | null;
   showShortcutBadge?: boolean;
   drag: () => void;
@@ -263,11 +265,13 @@ function NewWorktreeButton({
   displayName,
   onPress,
   visible,
+  loading = false,
   testID,
 }: {
   displayName: string;
   onPress: () => void;
   visible: boolean;
+  loading?: boolean;
   testID: string;
 }) {
   const { theme } = useUnistyles();
@@ -280,22 +284,29 @@ function NewWorktreeButton({
             style={({ hovered, pressed }) => [
               styles.projectIconActionButton,
               !visible && styles.projectIconActionButtonHidden,
-              (hovered || pressed) && styles.projectIconActionButtonHovered,
+              (hovered || pressed) && !loading && styles.projectIconActionButtonHovered,
             ]}
             onPress={(event) => {
               event.stopPropagation();
               onPress();
             }}
+            disabled={loading}
             accessibilityRole="button"
             accessibilityLabel={`Create a new worktree for ${displayName}`}
             testID={testID}
           >
-            {({ hovered, pressed }) => (
-              <Plus
-                size={14}
-                color={hovered || pressed ? theme.colors.foreground : theme.colors.foregroundMuted}
-              />
-            )}
+            {({ hovered, pressed }) =>
+              loading ? (
+                <ActivityIndicator size={14} color={theme.colors.foregroundMuted} />
+              ) : (
+                <Plus
+                  size={14}
+                  color={
+                    hovered || pressed ? theme.colors.foreground : theme.colors.foregroundMuted
+                  }
+                />
+              )
+            }
           </Pressable>
         </TooltipTrigger>
         <TooltipContent side="bottom" align="end" offset={8}>
@@ -531,7 +542,10 @@ function ProjectHeaderRow({
   selected = false,
   chevron,
   onPress,
-  onCreateWorktree,
+  serverId,
+  canCreateWorktree,
+  onWorkspacePress,
+  onWorktreeCreated,
   shortcutNumber = null,
   showShortcutBadge = false,
   drag,
@@ -541,6 +555,45 @@ function ProjectHeaderRow({
   dragHandleProps,
 }: ProjectHeaderRowProps) {
   const [isHovered, setIsHovered] = useState(false);
+  const isMobileBreakpoint =
+    UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
+  const mergeWorkspaces = useSessionStore((state) => state.mergeWorkspaces);
+  const toast = useToast();
+
+  const createWorktreeMutation = useMutation({
+    mutationFn: async () => {
+      if (!serverId) {
+        throw new Error("No server");
+      }
+      const client = getHostRuntimeStore().getClient(serverId);
+      if (!client || !isHostRuntimeConnected(getHostRuntimeStore().getSnapshot(serverId))) {
+        throw new Error("Host is not connected");
+      }
+      const payload = await client.createPaseoWorktree({
+        cwd: project.iconWorkingDir,
+        worktreeSlug: createNameId(),
+      });
+      if (payload.error || !payload.workspace) {
+        throw new Error(payload.error ?? "Failed to create worktree");
+      }
+      return payload.workspace;
+    },
+    onSuccess: (workspace) => {
+      mergeWorkspaces(serverId!, [normalizeWorkspaceDescriptor(workspace)]);
+      onWorktreeCreated?.(workspace.id);
+      onWorkspacePress?.();
+      router.navigate(
+        prepareWorkspaceTab({
+          serverId: serverId!,
+          workspaceId: workspace.id,
+          target: { kind: "draft", draftId: "new" },
+        }) as any,
+      );
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : String(error));
+    },
+  });
   const interaction = useLongPressDragInteraction({
     drag,
     menuController,
@@ -577,11 +630,12 @@ function ProjectHeaderRow({
           </Text>
         </View>
       </View>
-      {onCreateWorktree ? (
+      {canCreateWorktree ? (
         <NewWorktreeButton
           displayName={displayName}
-          onPress={onCreateWorktree}
-          visible={isHovered}
+          onPress={() => createWorktreeMutation.mutate()}
+          visible={isHovered || isMobileBreakpoint}
+          loading={createWorktreeMutation.isPending}
           testID={`sidebar-project-new-worktree-${project.projectKey}`}
         />
       ) : null}
@@ -1064,6 +1118,8 @@ function NonGitProjectRowWithMenuContent({
         selected={selected}
         chevron={null}
         onPress={onPress}
+        serverId={null}
+        canCreateWorktree={false}
         shortcutNumber={shortcutNumber}
         showShortcutBadge={showShortcutBadge}
         drag={drag}
@@ -1118,7 +1174,9 @@ function FlattenedProjectRow({
   iconDataUri,
   rowModel,
   onPress,
-  onCreateWorktree,
+  serverId,
+  onWorkspacePress,
+  onWorktreeCreated,
   shortcutNumber,
   showShortcutBadge,
   drag,
@@ -1130,7 +1188,9 @@ function FlattenedProjectRow({
   iconDataUri: string | null;
   rowModel: Extract<ReturnType<typeof buildSidebarProjectRowModel>, { kind: "workspace_link" }>;
   onPress: () => void;
-  onCreateWorktree?: () => void;
+  serverId: string | null;
+  onWorkspacePress?: () => void;
+  onWorktreeCreated?: (workspaceId: string) => void;
   shortcutNumber: number | null;
   showShortcutBadge: boolean;
   drag: () => void;
@@ -1164,7 +1224,10 @@ function FlattenedProjectRow({
       selected={rowModel.selected}
       chevron={rowModel.chevron}
       onPress={onPress}
-      onCreateWorktree={rowModel.trailingAction === "new_worktree" ? onCreateWorktree : undefined}
+      serverId={serverId}
+      canCreateWorktree={rowModel.trailingAction === "new_worktree"}
+      onWorkspacePress={onWorkspacePress}
+      onWorktreeCreated={onWorktreeCreated}
       shortcutNumber={shortcutNumber}
       showShortcutBadge={showShortcutBadge}
       drag={drag}
@@ -1227,7 +1290,7 @@ function ProjectBlock({
   onToggleCollapsed,
   onWorkspacePress,
   onWorkspaceReorder,
-  onCreateWorktree,
+  onWorktreeCreated,
   drag,
   isDragging,
   dragHandleProps,
@@ -1246,7 +1309,7 @@ function ProjectBlock({
   onToggleCollapsed: () => void;
   onWorkspacePress?: () => void;
   onWorkspaceReorder: (projectKey: string, workspaces: SidebarWorkspaceEntry[]) => void;
-  onCreateWorktree?: (project: SidebarProjectEntry) => void;
+  onWorktreeCreated?: (workspaceId: string) => void;
   drag: () => void;
   isDragging: boolean;
   dragHandleProps?: DraggableListDragHandleProps;
@@ -1348,11 +1411,9 @@ function ProjectBlock({
             onWorkspacePress?.();
             navigateToWorkspace(serverId, rowModel.workspace.workspaceId);
           }}
-          onCreateWorktree={
-            rowModel.trailingAction === "new_worktree" && onCreateWorktree
-              ? () => onCreateWorktree(project)
-              : undefined
-          }
+          serverId={serverId}
+          onWorkspacePress={onWorkspacePress}
+          onWorktreeCreated={onWorktreeCreated}
           shortcutNumber={shortcutIndexByWorkspaceKey.get(rowModel.workspace.workspaceKey) ?? null}
           showShortcutBadge={showShortcutBadges}
           drag={drag}
@@ -1369,11 +1430,10 @@ function ProjectBlock({
             selected={false}
             chevron={rowModel.chevron}
             onPress={onToggleCollapsed}
-            onCreateWorktree={
-              rowModel.trailingAction === "new_worktree" && onCreateWorktree
-                ? () => onCreateWorktree(project)
-                : undefined
-            }
+            serverId={serverId}
+            canCreateWorktree={rowModel.trailingAction === "new_worktree"}
+            onWorkspacePress={onWorkspacePress}
+            onWorktreeCreated={onWorktreeCreated}
             drag={drag}
             isDragging={isDragging}
             menuController={null}
@@ -1405,7 +1465,6 @@ export function SidebarWorkspaceList({
   serverId,
   collapsedProjectKeys,
   onToggleProjectCollapsed,
-  onSetProjectCollapsed,
   shortcutIndexByWorkspaceKey,
   isRefreshing = false,
   onRefresh,
@@ -1417,9 +1476,6 @@ export function SidebarWorkspaceList({
   const isNative = Platform.OS !== "web";
   const pathname = usePathname();
   const activeWorkspaceSelection = useNavigationActiveWorkspaceSelection();
-  const toast = useToast();
-  const mergeWorkspaces = useSessionStore((state) => state.mergeWorkspaces);
-  const [creatingProjectKey, setCreatingProjectKey] = useState<string | null>(null);
   const [creatingWorkspaceIds, setCreatingWorkspaceIds] = useState<Set<string>>(() => new Set());
   const creatingWorkspaceTimeoutsRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(
     new Map(),
@@ -1608,68 +1664,33 @@ export function SidebarWorkspaceList({
     [getWorkspaceOrder, serverId, setWorkspaceOrder],
   );
 
-  const handleCreateWorktree = useCallback(
-    async (project: SidebarProjectEntry) => {
-      if (!serverId || project.projectKind !== "git") {
-        return;
+  const handleWorktreeCreated = useCallback(
+    (workspaceId: string) => {
+      setCreatingWorkspaceIds((current) => {
+        const next = new Set(current);
+        next.add(workspaceId);
+        return next;
+      });
+      const existingTimeout = creatingWorkspaceTimeoutsRef.current.get(workspaceId);
+      if (existingTimeout) {
+        clearTimeout(existingTimeout);
       }
-      if (creatingProjectKey) {
-        return;
-      }
-      onSetProjectCollapsed(project.projectKey, false);
-      setCreatingProjectKey(project.projectKey);
-      try {
-        const client = getHostRuntimeStore().getClient(serverId);
-        if (!client || !isHostRuntimeConnected(getHostRuntimeStore().getSnapshot(serverId))) {
-          throw new Error("Host is not connected");
-        }
-        const payload = await client.createPaseoWorktree({
-          cwd: project.iconWorkingDir,
-          worktreeSlug: createNameId(),
-        });
-        if (payload.error || !payload.workspace) {
-          throw new Error(payload.error ?? "Failed to create worktree");
-        }
-        const workspace = payload.workspace;
-        mergeWorkspaces(serverId, [normalizeWorkspaceDescriptor(workspace)]);
-        setCreatingWorkspaceIds((current) => {
-          const next = new Set(current);
-          next.add(workspace.id);
-          return next;
-        });
-        const existingTimeout = creatingWorkspaceTimeoutsRef.current.get(workspace.id);
-        if (existingTimeout) {
-          clearTimeout(existingTimeout);
-        }
-        creatingWorkspaceTimeoutsRef.current.set(
-          workspace.id,
-          setTimeout(() => {
-            creatingWorkspaceTimeoutsRef.current.delete(workspace.id);
-            setCreatingWorkspaceIds((current) => {
-              if (!current.has(workspace.id)) {
-                return current;
-              }
-              const next = new Set(current);
-              next.delete(workspace.id);
-              return next;
-            });
-          }, 3000),
-        );
-        onWorkspacePress?.();
-        router.navigate(
-          prepareWorkspaceTab({
-            serverId,
-            workspaceId: workspace.id,
-            target: { kind: "draft", draftId: "new" },
-          }) as any,
-        );
-      } catch (error) {
-        toast.error(error instanceof Error ? error.message : String(error));
-      } finally {
-        setCreatingProjectKey((current) => (current === project.projectKey ? null : current));
-      }
+      creatingWorkspaceTimeoutsRef.current.set(
+        workspaceId,
+        setTimeout(() => {
+          creatingWorkspaceTimeoutsRef.current.delete(workspaceId);
+          setCreatingWorkspaceIds((current) => {
+            if (!current.has(workspaceId)) {
+              return current;
+            }
+            const next = new Set(current);
+            next.delete(workspaceId);
+            return next;
+          });
+        }, 3000),
+      );
     },
-    [creatingProjectKey, mergeWorkspaces, onSetProjectCollapsed, onWorkspacePress, serverId, toast],
+    [],
   );
 
   const renderProject = useCallback(
@@ -1688,7 +1709,7 @@ export function SidebarWorkspaceList({
           onToggleCollapsed={() => onToggleProjectCollapsed(item.projectKey)}
           onWorkspacePress={onWorkspacePress}
           onWorkspaceReorder={handleWorkspaceReorder}
-          onCreateWorktree={handleCreateWorktree}
+          onWorktreeCreated={handleWorktreeCreated}
           drag={drag}
           isDragging={isActive}
           dragHandleProps={dragHandleProps}
@@ -1700,7 +1721,7 @@ export function SidebarWorkspaceList({
     [
       collapsedProjectKeys,
       effectiveActiveWorkspaceSelection,
-      handleCreateWorktree,
+      handleWorktreeCreated,
       handleWorkspaceReorder,
       onWorkspacePress,
       onToggleProjectCollapsed,

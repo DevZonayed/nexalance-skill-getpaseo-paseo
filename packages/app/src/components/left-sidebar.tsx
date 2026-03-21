@@ -77,7 +77,6 @@ interface SidebarSharedProps {
   collapsedProjectKeys: SidebarShortcutModel["collapsedProjectKeys"];
   shortcutIndexByWorkspaceKey: SidebarShortcutModel["shortcutIndexByWorkspaceKey"];
   toggleProjectCollapsed: SidebarShortcutModel["toggleProjectCollapsed"];
-  setProjectCollapsed: SidebarShortcutModel["setProjectCollapsed"];
   handleRefresh: () => void;
   handleHostSelect: (nextServerId: string) => void;
   handleOpenProject: () => void;
@@ -184,7 +183,6 @@ export const LeftSidebar = memo(function LeftSidebar({
     collapsedProjectKeys,
     shortcutIndexByWorkspaceKey,
     toggleProjectCollapsed,
-    setProjectCollapsed,
   } = useSidebarShortcutModel(projects);
 
   const [isManualRefresh, setIsManualRefresh] = useState(false);
@@ -261,7 +259,6 @@ export const LeftSidebar = memo(function LeftSidebar({
     collapsedProjectKeys,
     shortcutIndexByWorkspaceKey,
     toggleProjectCollapsed,
-    setProjectCollapsed,
     handleRefresh,
     handleHostSelect,
   };
@@ -346,7 +343,6 @@ function MobileSidebar({
   collapsedProjectKeys,
   shortcutIndexByWorkspaceKey,
   toggleProjectCollapsed,
-  setProjectCollapsed,
   handleRefresh,
   handleHostSelect,
   handleOpenProject,
@@ -515,7 +511,7 @@ function MobileSidebar({
                 serverId={activeServerId}
                 collapsedProjectKeys={collapsedProjectKeys}
                 onToggleProjectCollapsed={toggleProjectCollapsed}
-                onSetProjectCollapsed={setProjectCollapsed}
+
                 shortcutIndexByWorkspaceKey={shortcutIndexByWorkspaceKey}
                 projects={projects}
                 isRefreshing={isManualRefresh && isRevalidating}
@@ -623,7 +619,6 @@ function DesktopSidebar({
   collapsedProjectKeys,
   shortcutIndexByWorkspaceKey,
   toggleProjectCollapsed,
-  setProjectCollapsed,
   handleRefresh,
   handleHostSelect,
   handleOpenProject,
@@ -660,7 +655,6 @@ function DesktopSidebar({
           serverId={activeServerId}
           collapsedProjectKeys={collapsedProjectKeys}
           onToggleProjectCollapsed={toggleProjectCollapsed}
-          onSetProjectCollapsed={setProjectCollapsed}
           shortcutIndexByWorkspaceKey={shortcutIndexByWorkspaceKey}
           projects={projects}
           isRefreshing={isManualRefresh && isRevalidating}
