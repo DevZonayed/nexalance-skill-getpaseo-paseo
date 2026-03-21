@@ -35,7 +35,41 @@ env:
   DESKTOP_PACKAGE_PATH: 'packages/desktop'
 
 jobs:
+  cleanup-assets:
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve release tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          source_tag="${SOURCE_TAG}"
+          if [[ "$source_tag" =~ ^(desktop-(windows|linux|macos)-|desktop-)?v([0-9]+\.[0-9]+\.[0-9]+) ]]; then
+            release_tag="v${BASH_REMATCH[3]}"
+          else
+            release_tag="$source_tag"
+          fi
+          echo "RELEASE_TAG=$release_tag" >> "$GITHUB_ENV"
+
+      - name: Delete all existing release assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          assets=$(gh release view "$RELEASE_TAG" --repo "${{ github.repository }}" --json assets --jq '.assets[].name' 2>/dev/null || true)
+          if [[ -z "$assets" ]]; then
+            echo "No existing assets to clean up"
+            exit 0
+          fi
+          for asset in $assets; do
+            echo "Deleting $asset"
+            gh release delete-asset "$RELEASE_TAG" "$asset" --repo "${{ github.repository }}" --yes || true
+          done
+
   publish-macos:
+    needs: cleanup-assets
     if: ${{ (github.event_name == 'workflow_dispatch' && (github.event.inputs.platform == 'all' || github.event.inputs.platform == 'macos')) || (github.event_name == 'push' && (startsWith(github.ref_name, 'v') || startsWith(github.ref_name, 'desktop-v') || startsWith(github.ref_name, 'desktop-macos-v'))) }}
     strategy:
       fail-fast: false
@@ -149,6 +183,7 @@ jobs:
           npm run build --workspace="$DESKTOP_WORKSPACE" -- --publish "$publish_mode" --mac --${{ matrix.electron_arch }} "${publish_args[@]}"
 
   publish-linux:
+    needs: cleanup-assets
     if: ${{ (github.event_name == 'workflow_dispatch' && (github.event.inputs.platform == 'all' || github.event.inputs.platform == 'linux')) || (github.event_name == 'push' && (startsWith(github.ref_name, 'v') || startsWith(github.ref_name, 'desktop-v') || startsWith(github.ref_name, 'desktop-linux-v'))) }}
     permissions:
       contents: write
@@ -249,6 +284,7 @@ jobs:
           npm run build --workspace="$DESKTOP_WORKSPACE" -- --publish "$publish_mode" --linux --x64 "${publish_args[@]}"
 
   publish-windows:
+    needs: cleanup-assets
     if: ${{ (github.event_name == 'workflow_dispatch' && (github.event.inputs.platform == 'all' || github.event.inputs.platform == 'windows')) || (github.event_name == 'push' && (startsWith(github.ref_name, 'v') || startsWith(github.ref_name, 'desktop-v') || startsWith(github.ref_name, 'desktop-windows-v'))) }}
     permissions:
       contents: write
