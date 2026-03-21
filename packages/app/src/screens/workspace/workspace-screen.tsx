@@ -4,6 +4,7 @@ import { useIsFocused } from "@react-navigation/native";
 import {
   ActivityIndicator,
   BackHandler,
+  Keyboard,
   Platform,
   Pressable,
   Text,
@@ -377,7 +378,10 @@ const MobileWorkspaceTabSwitcher = memo(function MobileWorkspaceTabSwitcher({
         accessibilityRole="button"
         accessibilityLabel={`Switch tabs (${tabs.length} open)`}
         style={({ pressed }) => [styles.switcherTrigger, pressed && styles.switcherTriggerPressed]}
-        onPress={() => setIsOpen(true)}
+        onPress={() => {
+          Keyboard.dismiss();
+          setIsOpen(true);
+        }}
       >
         <View style={styles.switcherTriggerLeft}>
           <MobileActiveTabTrigger
