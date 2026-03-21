@@ -87,6 +87,8 @@ async function createMainWindow(): Promise<void> {
   });
 
   if (!app.isPackaged) {
+    const { loadReactDevTools } = await import("./features/react-devtools.js");
+    await loadReactDevTools();
     await mainWindow.loadURL(DEV_SERVER_URL);
     mainWindow.webContents.openDevTools({ mode: "detach" });
     return;
