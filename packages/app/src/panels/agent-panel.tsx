@@ -107,14 +107,18 @@ function useAgentPanelDescriptor(
 function AgentPanel() {
   const { serverId, target, isPaneFocused, openFileInWorkspace } = usePaneContext();
   invariant(target.kind === "agent", "AgentPanel requires agent target");
+  const handleOpenWorkspaceFile = useCallback(
+    (input: { filePath: string }) => {
+      openFileInWorkspace(input.filePath);
+    },
+    [openFileInWorkspace]
+  );
   return (
     <AgentPanelContent
       serverId={serverId}
       agentId={target.agentId}
       isPaneFocused={isPaneFocused}
-      onOpenWorkspaceFile={({ filePath }) => {
-        openFileInWorkspace(filePath);
-      }}
+      onOpenWorkspaceFile={handleOpenWorkspaceFile}
     />
   );
 }
@@ -335,6 +339,46 @@ function AgentPanelBody({
   useEffect(() => {
     clearOnAgentBlurRef.current = attentionController.clearOnAgentBlur;
   }, [attentionController.clearOnAgentBlur]);
+
+  // ---------------------------------------------------------------------------
+  // DEBUG: track which selector values change between renders
+  // ---------------------------------------------------------------------------
+  const debugPrevRef = useRef<Record<string, unknown>>({});
+  useEffect(() => {
+    const prev = debugPrevRef.current;
+    const curr: Record<string, unknown> = {
+      agent,
+      "agent?.status": agent?.status,
+      "agent?.cwd": agent?.cwd,
+      "agent?.updatedAt": agent?.updatedAt,
+      "agent?.requiresAttention": agent?.requiresAttention,
+      streamItemsRaw,
+      "streamItems.length": streamItems.length,
+      allPendingPermissions,
+      isInitializingFromMap,
+      historySyncGeneration,
+      hasAppliedAuthoritativeHistory,
+      agentHistorySyncGeneration,
+      hasSession,
+      isPaneFocused,
+      isConnected,
+    };
+    const changed: string[] = [];
+    for (const key of Object.keys(curr)) {
+      if (!Object.is(prev[key], curr[key])) {
+        changed.push(key);
+      }
+    }
+    if (changed.length > 0 && Object.keys(prev).length > 0) {
+      console.log("[AgentPanelBody] values changed:", changed.join(", "), {
+        changed: Object.fromEntries(
+          changed.map((k) => [k, { prev: prev[k], curr: curr[k] }])
+        ),
+      });
+    }
+    debugPrevRef.current = curr;
+  });
+  // ---------------------------------------------------------------------------
 
   const { style: animatedKeyboardStyle } = useKeyboardShiftStyle({
     mode: "translate",

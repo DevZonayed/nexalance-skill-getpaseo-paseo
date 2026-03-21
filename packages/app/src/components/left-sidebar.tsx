@@ -460,6 +460,9 @@ function MobileSidebar({
                 <Pressable
                   style={styles.newAgentButton}
                   testID="sidebar-sessions"
+                  accessible
+                  accessibilityRole="button"
+                  accessibilityLabel="Sessions"
                   onPress={handleViewMore}
                 >
                   {({ hovered }) => (
@@ -623,6 +626,9 @@ function DesktopSidebar({
           <Pressable
             style={styles.newAgentButton}
             testID="sidebar-sessions"
+            accessible
+            accessibilityRole="button"
+            accessibilityLabel="Sessions"
             onPress={handleViewMore}
           >
             {({ hovered }) => (

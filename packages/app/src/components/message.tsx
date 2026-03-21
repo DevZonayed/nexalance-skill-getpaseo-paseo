@@ -759,6 +759,13 @@ export const AssistantMessage = memo(function AssistantMessage({
   workspaceRoot,
   disableOuterSpacing,
 }: AssistantMessageProps) {
+  // DEBUG: log when AssistantMessage actually renders (inside memo boundary)
+  console.log("[AssistantMessage] render", {
+    messageLength: message?.length,
+    timestamp,
+    hasOnInlinePathPress: !!onInlinePathPress,
+  });
+
   const { theme, rt } = useUnistyles();
   const resolvedDisableOuterSpacing =
     useDisableOuterSpacing(disableOuterSpacing);
@@ -1918,6 +1925,9 @@ export const ToolCall = memo(function ToolCall({
   onInlineDetailsHoverChange,
   onInlineDetailsExpandedChange,
 }: ToolCallProps) {
+  // DEBUG: log when ToolCall actually renders (inside memo boundary)
+  console.log("[ToolCall] render", { toolName, status });
+
   const { openToolCall } = useToolCallSheet();
   const [isExpanded, setIsExpanded] = useState(false);
 

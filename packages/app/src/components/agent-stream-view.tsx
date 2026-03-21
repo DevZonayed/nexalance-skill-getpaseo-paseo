@@ -261,6 +261,44 @@ export const AgentStreamView = forwardRef<AgentStreamViewHandle, AgentStreamView
     [looseGap, tightGap]
   );
 
+  // ---------------------------------------------------------------------------
+  // DEBUG: track when render callback deps change
+  // ---------------------------------------------------------------------------
+  const debugStreamPrevRef = useRef<Record<string, unknown>>({});
+  useEffect(() => {
+    const prev = debugStreamPrevRef.current;
+    const curr: Record<string, unknown> = {
+      // handleInlinePathPress deps (line 196-205)
+      "hip.agent.cwd": agent.cwd,
+      "hip.openFileExplorer": openFileExplorer,
+      "hip.requestDirectoryListing": requestDirectoryListing,
+      "hip.resolvedServerId": resolvedServerId,
+      "hip.router": router,
+      "hip.setExplorerTabForCheckout": setExplorerTabForCheckout,
+      "hip.onOpenWorkspaceFile": onOpenWorkspaceFile,
+      "hip.workspaceId": workspaceId,
+      // top-level deps
+      handleInlinePathPress,
+      "agent.status": agent.status,
+      streamRenderStrategy,
+      getGapBetween,
+      streamItems,
+      "streamItems.length": streamItems.length,
+      streamHead,
+      baseRenderModel,
+    };
+    const changed: string[] = [];
+    for (const key of Object.keys(curr)) {
+      if (!Object.is(prev[key], curr[key])) {
+        changed.push(key);
+      }
+    }
+    if (changed.length > 0 && Object.keys(prev).length > 0) {
+      console.log("[AgentStreamView] deps changed:", changed.join(", "));
+    }
+    debugStreamPrevRef.current = curr;
+  });
+
   const renderStreamItemContent = useCallback(
     (
       item: StreamItem,

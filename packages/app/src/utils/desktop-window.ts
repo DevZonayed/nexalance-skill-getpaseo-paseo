@@ -31,7 +31,7 @@ const INTERACTIVE_SELECTOR =
   'button, a, input, textarea, select, ' +
   "[role='button'], [role='link'], [role='textbox'], [role='combobox'], " +
   "[role='tab'], [role='switch'], [role='checkbox'], [role='slider'], " +
-  "[role='menuitem'], [contenteditable='true']"
+  "[role='menuitem'], [tabindex], [contenteditable='true']"
 
 const DOUBLE_CLICK_MS = 300
 
@@ -39,6 +39,15 @@ type DesktopDragViewProps = Pick<
   ViewProps,
   'onPointerDown' | 'onPointerMove' | 'onPointerUp' | 'onPointerCancel'
 >
+
+export function isInteractiveDesktopDragTarget(target: unknown): boolean {
+  const candidate = target as unknown as { closest?: (selector: string) => Element | null } | null
+  if (!candidate || typeof candidate.closest !== 'function') {
+    return false
+  }
+
+  return Boolean(candidate.closest(INTERACTIVE_SELECTOR))
+}
 
 export function useDesktopDragHandlers(): DesktopDragViewProps {
   const isDragging = useRef(false)
@@ -74,9 +83,7 @@ export function useDesktopDragHandlers(): DesktopDragViewProps {
       onPointerDown: (e: RNPointerEvent) => {
         if (e.nativeEvent.button !== 0) return
 
-        // On web, e.target is a DOM Element (typed as HostInstance in RN)
-        const target = e.target as unknown as Element
-        if (target.closest?.(INTERACTIVE_SELECTOR)) return
+        if (isInteractiveDesktopDragTarget(e.target)) return
 
         e.preventDefault()
 
