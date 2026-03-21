@@ -1,6 +1,6 @@
 {
   "name": "@getpaseo/desktop",
-  "version": "0.1.30",
+  "version": "0.1.31",
   "private": true,
   "description": "Paseo desktop app (Electron wrapper)",
   "main": "dist/main.js",
@@ -11,8 +11,8 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
-    "@getpaseo/cli": "0.1.30",
-    "@getpaseo/server": "0.1.30",
+    "@getpaseo/cli": "0.1.31",
+    "@getpaseo/server": "0.1.31",
     "electron-updater": "^6.6.2",
     "ws": "^8.14.2"
   },
