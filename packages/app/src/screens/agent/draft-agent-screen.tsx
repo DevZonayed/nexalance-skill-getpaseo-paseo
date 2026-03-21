@@ -238,7 +238,7 @@ function DraftAgentScreenContent({
   const activateExplorerTabForCheckout = usePanelStore(
     (state) => state.activateExplorerTabForCheckout
   )
-  const { style: dragRegionStyle, ...dragHandlers } = useDesktopDragHandlers()
+  const dragHandlers = useDesktopDragHandlers()
   const isExplorerOpen = isMobile ? mobileView === 'file-explorer' : desktopFileExplorerOpen
   const draftIdRef = useRef(generateDraftId())
   const draftAgentIdRef = useRef(generateDraftId())
@@ -973,7 +973,7 @@ function DraftAgentScreenContent({
   const explorerServerId = draftExplorerCheckout?.serverId ?? null
   const explorerIsGit = draftExplorerCheckout?.isGit ?? false
   const mainContent = (
-    <View style={[styles.container, dragRegionStyle]} {...dragHandlers}>
+    <View style={styles.container} {...dragHandlers}>
       <View style={styles.outerContainer}>
         <View style={styles.agentPanel}>
           <View

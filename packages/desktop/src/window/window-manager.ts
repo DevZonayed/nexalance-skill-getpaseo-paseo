@@ -1,13 +1,45 @@
 import { app, BrowserWindow, ipcMain } from "electron";
 
 export function registerWindowManager(): void {
-  ipcMain.handle("paseo:window:startDragging", (event) => {
-    const win = BrowserWindow.fromWebContents(event.sender);
-    // Desktop dragging is handled via CSS `-webkit-app-region: drag`.
-    // This handler exists only to satisfy the renderer bridge contract.
-    if (win) {
-      // No-op.
+  // ---------------------------------------------------------------------------
+  // Manual window dragging (replaces flaky CSS -webkit-app-region: drag).
+  // State is keyed per window id to support multiple windows.
+  // ---------------------------------------------------------------------------
+  const moveStates = new Map<number, { offsetX: number; offsetY: number }>();
+
+  ipcMain.on(
+    "paseo:window:startMove",
+    (event, payload: { screenX: number; screenY: number }) => {
+      if (typeof payload?.screenX !== "number" || typeof payload?.screenY !== "number") return;
+      const win = BrowserWindow.fromWebContents(event.sender);
+      if (!win) return;
+      const [winX, winY] = win.getPosition();
+      moveStates.set(win.id, { offsetX: payload.screenX - winX, offsetY: payload.screenY - winY });
     }
+  );
+
+  ipcMain.on(
+    "paseo:window:moving",
+    (event, payload: { screenX: number; screenY: number }) => {
+      if (typeof payload?.screenX !== "number" || typeof payload?.screenY !== "number") return;
+      const win = BrowserWindow.fromWebContents(event.sender);
+      if (!win) return;
+      const state = moveStates.get(win.id);
+      if (!state) return;
+      win.setPosition(
+        Math.round(payload.screenX - state.offsetX),
+        Math.round(payload.screenY - state.offsetY)
+      );
+    }
+  );
+
+  ipcMain.on("paseo:window:endMove", (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    if (win) moveStates.delete(win.id);
+  });
+
+  app.on("browser-window-created", (_event, win) => {
+    win.on("closed", () => moveStates.delete(win.id));
   });
 
   ipcMain.handle("paseo:window:toggleMaximize", (event) => {

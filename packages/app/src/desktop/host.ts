@@ -41,7 +41,9 @@ export interface DesktopOpenerBridge {
 
 export interface DesktopWindowBridge {
   label?: string;
-  startDragging?: () => Promise<void>;
+  startMove?: (screenX: number, screenY: number) => void;
+  moving?: (screenX: number, screenY: number) => void;
+  endMove?: () => void;
   toggleMaximize?: () => Promise<void>;
   isFullscreen?: () => Promise<boolean>;
   onResized?: <TEvent = unknown>(

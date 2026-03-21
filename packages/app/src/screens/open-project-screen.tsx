@@ -21,7 +21,7 @@ export function OpenProjectScreen({ serverId }: { serverId: string }) {
   const isMobile = UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
   const needsTrafficLightInset = !isMobile && !desktopAgentListOpen && getIsDesktopMac();
   const trafficLightInset = needsTrafficLightInset ? trafficLightPadding.left : 0;
-  const { style: dragRegionStyle, ...dragHandlers } = useDesktopDragHandlers();
+  const dragHandlers = useDesktopDragHandlers();
 
   useEffect(() => {
     if (!isMobile) {
@@ -30,7 +30,7 @@ export function OpenProjectScreen({ serverId }: { serverId: string }) {
   }, [isMobile, openAgentList]);
 
   return (
-    <View style={[styles.container, dragRegionStyle]} {...dragHandlers}>
+    <View style={styles.container} {...dragHandlers}>
       <View style={[styles.menuToggle, { paddingTop: insets.top, paddingLeft: trafficLightInset }]}>
         <SidebarMenuToggle />
       </View>

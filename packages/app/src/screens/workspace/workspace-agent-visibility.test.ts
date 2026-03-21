@@ -101,14 +101,30 @@ describe("workspace agent visibility", () => {
     ).toBe(true);
   });
 
-  it("does not prune archived agent tabs when knownAgentIds contains the agent", () => {
+  it("prunes archived agent tabs so archiving on one client closes tabs on all clients", () => {
     const knownAgentIds = new Set(["archived-agent"]);
+    const activeAgentIds = new Set<string>();
 
     expect(
       shouldPruneWorkspaceAgentTab({
         agentId: "archived-agent",
         agentsHydrated: true,
         knownAgentIds,
+        activeAgentIds,
+      })
+    ).toBe(true);
+  });
+
+  it("does not prune active agent tabs", () => {
+    const knownAgentIds = new Set(["active-agent"]);
+    const activeAgentIds = new Set(["active-agent"]);
+
+    expect(
+      shouldPruneWorkspaceAgentTab({
+        agentId: "active-agent",
+        agentsHydrated: true,
+        knownAgentIds,
+        activeAgentIds,
       })
     ).toBe(false);
   });
@@ -119,6 +135,7 @@ describe("workspace agent visibility", () => {
         agentId: "missing-agent",
         agentsHydrated: true,
         knownAgentIds: new Set<string>(),
+        activeAgentIds: new Set<string>(),
       })
     ).toBe(true);
   });

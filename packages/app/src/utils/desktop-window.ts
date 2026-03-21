@@ -1,6 +1,5 @@
-import type { CSSProperties } from "react";
-import { useState, useEffect } from "react";
-import { Platform, type ViewStyle } from "react-native";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Platform, type PointerEvent as RNPointerEvent, type ViewProps } from "react-native";
 import {
   getIsDesktopMac,
   DESKTOP_TRAFFIC_LIGHT_WIDTH,
@@ -8,25 +7,6 @@ import {
 } from "@/constants/layout";
 import { getDesktopWindow } from "@/desktop/electron/window";
 import { isDesktop } from "@/desktop/host";
-
-type DesktopDragHandlers = {
-  style?: CSSProperties & ViewStyle;
-};
-
-const DESKTOP_DRAG_REGION_STYLE = {
-  WebkitAppRegion: "drag",
-} as CSSProperties & ViewStyle;
-
-export async function startDragging() {
-  const win = getDesktopWindow();
-  if (win && typeof win.startDragging === "function") {
-    try {
-      await win.startDragging();
-    } catch (error) {
-      console.warn("[DesktopWindow] startDragging failed", error);
-    }
-  }
-}
 
 export async function toggleMaximize() {
   const win = getDesktopWindow();
@@ -39,14 +19,90 @@ export async function toggleMaximize() {
   }
 }
 
-export function useDesktopDragHandlers(): DesktopDragHandlers {
-  if (Platform.OS !== "web" || !isDesktop()) {
-    return {};
-  }
+// ---------------------------------------------------------------------------
+// Manual window dragging via pointer events.
+// Mirrors the Tauri implementation: single pointerdown handler with
+// double-click-to-maximize via timing, closest() for interactive check,
+// and pointer capture for move tracking.
+// ---------------------------------------------------------------------------
 
-  return {
-    style: DESKTOP_DRAG_REGION_STYLE,
-  };
+const INTERACTIVE_SELECTOR =
+  "button, a, input, textarea, select, " +
+  "[role='button'], [role='link'], [role='textbox'], [role='combobox'], " +
+  "[role='tab'], [role='switch'], [role='checkbox'], [role='slider'], " +
+  "[role='menuitem'], [contenteditable='true']";
+
+const DOUBLE_CLICK_MS = 300;
+
+type DesktopDragViewProps = Pick<
+  ViewProps,
+  "onPointerDown" | "onPointerMove" | "onPointerUp" | "onPointerCancel"
+>;
+
+export function useDesktopDragHandlers(): DesktopDragViewProps {
+  const isDragging = useRef(false);
+  const lastPointerDownAt = useRef(0);
+  const isActive = Platform.OS === "web" && isDesktop();
+
+  useEffect(() => {
+    if (!isActive) return;
+    function handleBlur() {
+      if (!isDragging.current) return;
+      isDragging.current = false;
+      getDesktopWindow()?.endMove?.();
+    }
+    window.addEventListener("blur", handleBlur);
+    return () => window.removeEventListener("blur", handleBlur);
+  }, [isActive]);
+
+  return useMemo((): DesktopDragViewProps => {
+    if (!isActive) return {};
+
+    function stopDrag(e: RNPointerEvent) {
+      if (!isDragging.current) return;
+      isDragging.current = false;
+      // On web, currentTarget is a DOM Element (typed as HostInstance in RN)
+      const el = e.currentTarget as unknown as Element | null;
+      if (el && "releasePointerCapture" in el) {
+        el.releasePointerCapture(e.nativeEvent.pointerId);
+      }
+      getDesktopWindow()?.endMove?.();
+    }
+
+    return {
+      onPointerDown: (e: RNPointerEvent) => {
+        if (e.nativeEvent.button !== 0) return;
+
+        // On web, e.target is a DOM Element (typed as HostInstance in RN)
+        const target = e.target as unknown as Element;
+        if (target.closest?.(INTERACTIVE_SELECTOR)) return;
+
+        e.preventDefault();
+
+        const now = Date.now();
+        if (now - lastPointerDownAt.current < DOUBLE_CLICK_MS) {
+          lastPointerDownAt.current = 0;
+          void toggleMaximize();
+          return;
+        }
+        lastPointerDownAt.current = now;
+
+        const win = getDesktopWindow();
+        if (!win?.startMove) return;
+
+        isDragging.current = true;
+        const el = e.currentTarget as unknown as Element;
+        el.setPointerCapture(e.nativeEvent.pointerId);
+        win.startMove(e.nativeEvent.screenX, e.nativeEvent.screenY);
+      },
+      onPointerMove: (e: RNPointerEvent) => {
+        if (!isDragging.current) return;
+        getDesktopWindow()?.moving?.(e.nativeEvent.screenX, e.nativeEvent.screenY);
+      },
+      onPointerUp: stopDrag,
+      onPointerCancel: stopDrag,
+    };
+  }, [isActive]);
 }
 
 export function useTrafficLightPadding(): { left: number; top: number } {

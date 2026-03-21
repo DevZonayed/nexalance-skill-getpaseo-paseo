@@ -602,7 +602,7 @@ function DesktopSidebar({
   isOpen,
   handleViewMore,
 }: DesktopSidebarProps) {
-  const { style: dragRegionStyle, ...dragHandlers } = useDesktopDragHandlers()
+  const dragHandlers = useDesktopDragHandlers()
   const trafficLightPadding = useTrafficLightPadding()
   const hostStatusDotStyle = useMemo(
     () => [styles.hostStatusDot, { backgroundColor: activeHostStatusColor }],
@@ -616,9 +616,9 @@ function DesktopSidebar({
   return (
     <View style={[styles.desktopSidebar, { width: DESKTOP_SIDEBAR_WIDTH }]}>
       {trafficLightPadding.top > 0 ? (
-        <View style={[{ height: trafficLightPadding.top }, dragRegionStyle]} {...dragHandlers} />
+        <View style={{ height: trafficLightPadding.top }} {...dragHandlers} />
       ) : null}
-      <View style={[styles.sidebarHeader, dragRegionStyle]} {...dragHandlers}>
+      <View style={styles.sidebarHeader} {...dragHandlers}>
         <View style={styles.sidebarHeaderRow}>
           <Pressable
             style={styles.newAgentButton}

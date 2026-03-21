@@ -12,14 +12,6 @@ export function getDesktopWindow(): DesktopWindowBridge | null {
   }
 }
 
-export async function startDesktopDragging(): Promise<void> {
-  const win = getDesktopWindow();
-  if (!win || typeof win.startDragging !== "function") {
-    return;
-  }
-  await win.startDragging();
-}
-
 export async function toggleDesktopMaximize(): Promise<void> {
   const win = getDesktopWindow();
   if (!win || typeof win.toggleMaximize !== "function") {

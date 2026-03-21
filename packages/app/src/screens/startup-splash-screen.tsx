@@ -18,10 +18,10 @@ const styles = StyleSheet.create((theme) => ({
 }));
 
 export function StartupSplashScreen() {
-  const { style: dragRegionStyle, ...dragHandlers } = useDesktopDragHandlers();
+  const dragHandlers = useDesktopDragHandlers();
 
   return (
-    <View style={[styles.container, dragRegionStyle]} {...dragHandlers}>
+    <View style={styles.container} {...dragHandlers}>
       <PaseoLogo size={96} />
       <Text style={styles.status}>Starting up…</Text>
     </View>

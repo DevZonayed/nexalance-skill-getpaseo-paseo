@@ -41,7 +41,7 @@ export function ScreenHeader({
       ? trafficLightPadding.left
       : 0;
 
-  const { style: dragRegionStyle, ...dragHandlers } = useDesktopDragHandlers();
+  const dragHandlers = useDesktopDragHandlers();
 
   return (
     <View style={styles.header}>
@@ -50,7 +50,6 @@ export function ScreenHeader({
           style={[
             styles.row,
             { paddingLeft: baseHorizontalPadding + collapsedSidebarTrafficLightInset },
-            dragRegionStyle,
           ]}
           {...dragHandlers}
         >

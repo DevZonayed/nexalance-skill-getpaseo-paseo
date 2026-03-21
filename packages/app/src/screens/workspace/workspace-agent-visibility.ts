@@ -71,10 +71,15 @@ export function canOpenAgentTabFromRoute(input: {
   return input.knownAgentIds.has(input.agentId);
 }
 
+// Prune agent tabs that are unknown (deleted) or archived.
+// Archived agents get pruned so that archiving on one client closes the tab on all clients.
+// Users can still explicitly open archived agents via navigation (openIntent),
+// which re-creates the tab in a separate effect.
 export function shouldPruneWorkspaceAgentTab(input: {
   agentId: string;
   agentsHydrated: boolean;
   knownAgentIds: Set<string>;
+  activeAgentIds: Set<string>;
 }): boolean {
   if (!input.agentId.trim()) {
     return false;
@@ -82,5 +87,5 @@ export function shouldPruneWorkspaceAgentTab(input: {
   if (!input.agentsHydrated) {
     return false;
   }
-  return !input.knownAgentIds.has(input.agentId);
+  return !input.activeAgentIds.has(input.agentId);
 }
