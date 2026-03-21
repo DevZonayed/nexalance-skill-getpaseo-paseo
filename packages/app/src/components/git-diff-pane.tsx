@@ -25,6 +25,7 @@ import {
   ListChevronsUpDown,
   RefreshCcw,
   Upload,
+  WrapText,
 } from "lucide-react-native";
 import { useCheckoutGitActionsStore } from "@/stores/checkout-git-actions-store";
 import {
@@ -47,6 +48,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { GitHubIcon } from "@/components/icons/github-icon";
 import {
   buildGitActions,
@@ -153,7 +155,7 @@ interface DiffFileSectionProps {
   testID?: string;
 }
 
-function DiffLineView({ line }: { line: DiffLine }) {
+function DiffLineView({ line, lineNumber, gutterWidth }: { line: DiffLine; lineNumber: number | null; gutterWidth: number }) {
   return (
     <View
       style={[
@@ -164,6 +166,15 @@ function DiffLineView({ line }: { line: DiffLine }) {
         line.type === "context" && styles.contextLineContainer,
       ]}
     >
+      <View style={[styles.lineNumberGutter, { width: gutterWidth }]}>
+        <Text style={[
+          styles.lineNumberText,
+          line.type === "add" && styles.addLineNumberText,
+          line.type === "remove" && styles.removeLineNumberText,
+        ]}>
+          {lineNumber != null ? String(lineNumber) : ""}
+        </Text>
+      </View>
       {line.tokens && line.type !== "header" ? (
         <HighlightedText
           tokens={line.tokens}
@@ -280,10 +291,12 @@ const DiffFileHeader = memo(function DiffFileHeader({
 
 function DiffFileBody({
   file,
+  wrapLines,
   onBodyHeightChange,
   testID,
 }: {
   file: ParsedDiffFile;
+  wrapLines: boolean;
   onBodyHeightChange?: (path: string, height: number) => void;
   testID?: string;
 }) {
@@ -332,39 +345,86 @@ function DiffFileBody({
       }}
       testID={testID}
     >
-      {file.status === "too_large" || file.status === "binary" ? (
-        <View style={styles.statusMessageContainer}>
-          <Text style={styles.statusMessageText}>
-            {file.status === "binary" ? "Binary file" : "Diff too large to display"}
-          </Text>
-        </View>
-      ) : (
-        <ScrollView
-          ref={scrollViewRef}
-          horizontal
-          nestedScrollEnabled
-          showsHorizontalScrollIndicator
-          bounces={false}
-          style={styles.diffContent}
-          contentContainerStyle={styles.diffContentInner}
-          onScroll={handleScroll}
-          scrollEventThrottle={16}
-          onLayout={(e) => setScrollViewWidth(e.nativeEvent.layout.width)}
-          // When at left edge, wait for close gesture to fail before scrolling.
-          // The close gesture fails quickly on leftward swipes (failOffsetX=-10),
-          // so scrolling left works normally. On rightward swipes, close gesture
-          // activates and closes the sidebar.
-          waitFor={isAtLeftEdge && closeGestureRef?.current ? closeGestureRef : undefined}
-        >
-          <View style={[styles.linesContainer, scrollViewWidth > 0 && { minWidth: scrollViewWidth }]}>
-            {file.hunks.map((hunk, hunkIndex) =>
-              hunk.lines.map((line, lineIndex) => (
-                <DiffLineView key={`${hunkIndex}-${lineIndex}`} line={line} />
-              ))
-            )}
-          </View>
-        </ScrollView>
-      )}
+      {(() => {
+        if (file.status === "too_large" || file.status === "binary") {
+          return (
+            <View style={styles.statusMessageContainer}>
+              <Text style={styles.statusMessageText}>
+                {file.status === "binary" ? "Binary file" : "Diff too large to display"}
+              </Text>
+            </View>
+          );
+        }
+
+        const linesContent = (() => {
+          let maxLineNo = 0;
+          for (const hunk of file.hunks) {
+            maxLineNo = Math.max(maxLineNo, hunk.oldStart + hunk.oldCount, hunk.newStart + hunk.newCount);
+          }
+          const digitCount = Math.max(1, String(maxLineNo).length);
+          const gutterWidth = digitCount * 8 + 12;
+          return file.hunks.map((hunk, hunkIndex) => {
+            let oldLineNo = hunk.oldStart;
+            let newLineNo = hunk.newStart;
+            return hunk.lines.map((line, lineIndex) => {
+              let lineNumber: number | null = null;
+              if (line.type === "remove") {
+                lineNumber = oldLineNo;
+                oldLineNo++;
+              } else if (line.type === "add") {
+                lineNumber = newLineNo;
+                newLineNo++;
+              } else if (line.type === "context") {
+                lineNumber = newLineNo;
+                oldLineNo++;
+                newLineNo++;
+              }
+              return (
+                <DiffLineView
+                  key={`${hunkIndex}-${lineIndex}`}
+                  line={line}
+                  lineNumber={lineNumber}
+                  gutterWidth={gutterWidth}
+                />
+              );
+            });
+          });
+        })();
+
+        if (wrapLines) {
+          return (
+            <View style={styles.diffContent}>
+              <View style={styles.linesContainer}>
+                {linesContent}
+              </View>
+            </View>
+          );
+        }
+
+        return (
+          <ScrollView
+            ref={scrollViewRef}
+            horizontal
+            nestedScrollEnabled
+            showsHorizontalScrollIndicator
+            bounces={false}
+            style={styles.diffContent}
+            contentContainerStyle={styles.diffContentInner}
+            onScroll={handleScroll}
+            scrollEventThrottle={16}
+            onLayout={(e) => setScrollViewWidth(e.nativeEvent.layout.width)}
+            // When at left edge, wait for close gesture to fail before scrolling.
+            // The close gesture fails quickly on leftward swipes (failOffsetX=-10),
+            // so scrolling left works normally. On rightward swipes, close gesture
+            // activates and closes the sidebar.
+            waitFor={isAtLeftEdge && closeGestureRef?.current ? closeGestureRef : undefined}
+          >
+            <View style={[styles.linesContainer, scrollViewWidth > 0 && { minWidth: scrollViewWidth }]}>
+              {linesContent}
+            </View>
+          </ScrollView>
+        );
+      })()}
     </View>
   );
 }
@@ -390,6 +450,22 @@ export function GitDiffPane({ serverId, workspaceId, cwd, hideHeaderRow }: GitDi
   const [actionError, setActionError] = useState<string | null>(null);
   const [postShipArchiveSuggested, setPostShipArchiveSuggested] = useState(false);
   const [shipDefault, setShipDefault] = useState<"merge" | "pr">("merge");
+  const [wrapLines, setWrapLines] = useState(false);
+
+  useEffect(() => {
+    AsyncStorage.getItem("diff-wrap-lines").then((value) => {
+      if (value === "true") setWrapLines(true);
+    });
+  }, []);
+
+  const handleToggleWrapLines = useCallback(() => {
+    setWrapLines((prev) => {
+      const next = !prev;
+      AsyncStorage.setItem("diff-wrap-lines", String(next));
+      return next;
+    });
+  }, []);
+
   const { status, isLoading: isStatusLoading, isFetching: isStatusFetching, isError: isStatusError, error: statusError, refresh: refreshStatus } =
     useCheckoutStatusQuery({ serverId, cwd });
   const gitStatus = status && status.isGit ? status : null;
@@ -736,12 +812,13 @@ export function GitDiffPane({ serverId, workspaceId, cwd, hideHeaderRow }: GitDi
       return (
         <DiffFileBody
           file={item.file}
+          wrapLines={wrapLines}
           onBodyHeightChange={handleBodyHeightChange}
           testID={`diff-file-${item.fileIndex}-body`}
         />
       );
     },
-    [handleBodyHeightChange, handleHeaderHeightChange, handleToggleExpanded]
+    [handleBodyHeightChange, handleHeaderHeightChange, handleToggleExpanded, wrapLines]
   );
 
   const flatKeyExtractor = useCallback(
@@ -1018,19 +1095,48 @@ export function GitDiffPane({ serverId, workspaceId, cwd, hideHeaderRow }: GitDi
               </DropdownMenuContent>
             </DropdownMenu>
             {files.length > 0 ? (
-              <Pressable
-                style={({ hovered, pressed }) => [
-                  styles.expandAllButton,
-                  (hovered || pressed) && styles.diffStatusRowHovered,
-                ]}
-                onPress={handleToggleExpandAll}
-              >
-                {allExpanded ? (
-                  <ListChevronsDownUp size={14} color={theme.colors.foregroundMuted} />
-                ) : (
-                  <ListChevronsUpDown size={14} color={theme.colors.foregroundMuted} />
-                )}
-              </Pressable>
+              <View style={styles.diffStatusButtons}>
+                <Tooltip delayDuration={300}>
+                  <TooltipTrigger asChild>
+                    <Pressable
+                      style={({ hovered, pressed }) => [
+                        styles.expandAllButton,
+                        (hovered || pressed) && styles.diffStatusRowHovered,
+                      ]}
+                      onPress={handleToggleWrapLines}
+                    >
+                      <WrapText size={isMobile ? 18 : 14} color={theme.colors.foregroundMuted} />
+                    </Pressable>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">
+                    <Text style={styles.tooltipText}>
+                      {wrapLines ? "Scroll long lines" : "Wrap long lines"}
+                    </Text>
+                  </TooltipContent>
+                </Tooltip>
+                <Tooltip delayDuration={300}>
+                  <TooltipTrigger asChild>
+                    <Pressable
+                      style={({ hovered, pressed }) => [
+                        styles.expandAllButton,
+                        (hovered || pressed) && styles.diffStatusRowHovered,
+                      ]}
+                      onPress={handleToggleExpandAll}
+                    >
+                      {allExpanded ? (
+                        <ListChevronsDownUp size={isMobile ? 18 : 14} color={theme.colors.foregroundMuted} />
+                      ) : (
+                        <ListChevronsUpDown size={isMobile ? 18 : 14} color={theme.colors.foregroundMuted} />
+                      )}
+                    </Pressable>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">
+                    <Text style={styles.tooltipText}>
+                      {allExpanded ? "Collapse all files" : "Expand all files"}
+                    </Text>
+                  </TooltipContent>
+                </Tooltip>
+              </View>
             ) : null}
           </View>
         </View>
@@ -1125,13 +1231,30 @@ const styles = StyleSheet.create((theme) => ({
   diffStatusIconHidden: {
     opacity: 0,
   },
+  diffStatusButtons: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: {
+      xs: theme.spacing[1],
+      sm: theme.spacing[1],
+      md: 0,
+    },
+  },
   expandAllButton: {
     flexDirection: "row",
     alignItems: "center",
     gap: theme.spacing[1],
     marginVertical: theme.spacing[2],
-    paddingHorizontal: theme.spacing[1],
-    paddingVertical: theme.spacing[1],
+    paddingHorizontal: {
+      xs: theme.spacing[2],
+      sm: theme.spacing[2],
+      md: theme.spacing[1],
+    },
+    paddingVertical: {
+      xs: theme.spacing[2],
+      sm: theme.spacing[2],
+      md: theme.spacing[1],
+    },
     borderRadius: theme.borderRadius.base,
   },
   actionErrorText: {
@@ -1289,10 +1412,34 @@ const styles = StyleSheet.create((theme) => ({
     backgroundColor: theme.colors.surface1,
   },
   diffLineContainer: {
-    paddingHorizontal: theme.spacing[3],
+    flexDirection: "row",
+    alignItems: "stretch",
+  },
+  lineNumberGutter: {
+    borderRightWidth: theme.borderWidth[1],
+    borderRightColor: theme.colors.border,
+    marginRight: theme.spacing[2],
+    alignSelf: "stretch",
+    justifyContent: "center",
+  },
+  lineNumberText: {
+    textAlign: "right",
+    paddingRight: theme.spacing[2],
     paddingVertical: theme.spacing[1],
+    fontSize: theme.fontSize.xs,
+    fontFamily: Fonts.mono,
+    color: theme.colors.foregroundMuted,
+  },
+  addLineNumberText: {
+    color: theme.colors.palette.green[400],
+  },
+  removeLineNumberText: {
+    color: theme.colors.palette.red[500],
   },
   diffLineText: {
+    flex: 1,
+    paddingRight: theme.spacing[3],
+    paddingVertical: theme.spacing[1],
     fontSize: theme.fontSize.xs,
     fontFamily: Fonts.mono,
     color: theme.colors.foreground,
@@ -1332,5 +1479,9 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.sm,
     color: theme.colors.foregroundMuted,
     fontStyle: "italic",
+  },
+  tooltipText: {
+    fontSize: theme.fontSize.xs,
+    color: theme.colors.foreground,
   },
 }));

@@ -2,13 +2,12 @@ import { useCallback, useMemo, useRef, useState } from 'react'
 import { View, Text, Platform, Pressable } from 'react-native'
 import { StyleSheet, useUnistyles } from 'react-native-unistyles'
 import {
-  Bot,
   Brain,
   ChevronDown,
   ShieldAlert,
   ShieldCheck,
   ShieldOff,
-  SlidersHorizontal,
+
 } from 'lucide-react-native'
 import { getProviderIcon } from '@/components/provider-icons'
 import { CombinedModelSelector } from '@/components/combined-model-selector'
@@ -424,7 +423,8 @@ function ControlledStatusBar({
             accessibilityLabel="Agent preferences"
             testID="agent-preferences-button"
           >
-            <SlidersHorizontal size={theme.iconSize.md} color={theme.colors.foreground} />
+            <ProviderIcon size={theme.iconSize.lg} color={theme.colors.foregroundMuted} />
+            <Text style={styles.prefsButtonText} numberOfLines={1}>{displayModel}</Text>
           </Pressable>
 
           <AdaptiveModalSheet
@@ -830,14 +830,21 @@ const styles = StyleSheet.create((theme) => ({
     lineHeight: theme.fontSize.sm * 1.4,
   },
   prefsButton: {
-    width: 28,
     height: 28,
-    borderRadius: theme.borderRadius.full,
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    gap: theme.spacing[1],
+    paddingHorizontal: theme.spacing[2],
+    borderRadius: theme.borderRadius['2xl'],
   },
   prefsButtonPressed: {
     backgroundColor: theme.colors.surface0,
+  },
+  prefsButtonText: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.sm,
+    fontWeight: theme.fontWeight.normal,
+    flexShrink: 1,
   },
   sheetSection: {
     gap: theme.spacing[2],

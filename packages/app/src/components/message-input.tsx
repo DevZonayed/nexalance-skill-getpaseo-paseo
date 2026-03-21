@@ -212,6 +212,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
   ref
 ) {
   const { theme } = useUnistyles()
+  const buttonIconSize = IS_WEB ? theme.iconSize.md : theme.iconSize.lg
   const investigationComponentId = `MessageInput:${voiceServerId ?? 'unknown-server'}:${voiceAgentId ?? 'unknown-agent'}`
   markScrollInvestigationRender(investigationComponentId)
   const toast = useToast()
@@ -950,7 +951,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
                     (!isConnected || disabled) && styles.buttonDisabled,
                   ]}
                 >
-                  <Paperclip size={theme.iconSize.md} color={theme.colors.foreground} />
+                  <Paperclip size={buttonIconSize} color={theme.colors.foreground} />
                 </TooltipTrigger>
                 <TooltipContent side="top" align="center" offset={8}>
                   <Text style={styles.tooltipText}>Attach images</Text>
@@ -984,11 +985,11 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
                 ]}
               >
                 {isDictating ? (
-                  <Square size={theme.iconSize.md} color="white" fill="white" />
+                  <Square size={buttonIconSize} color="white" fill="white" />
                 ) : isRealtimeVoiceForCurrentAgent && voice?.isMuted ? (
-                  <MicOff size={theme.iconSize.md} color={theme.colors.foreground} />
+                  <MicOff size={buttonIconSize} color={theme.colors.foreground} />
                 ) : (
-                  <Mic size={theme.iconSize.md} color={theme.colors.foreground} />
+                  <Mic size={buttonIconSize} color={theme.colors.foreground} />
                 )}
               </TooltipTrigger>
               <TooltipContent side="top" align="center" offset={8}>
@@ -1021,7 +1022,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
                     (!isConnected || disabled) && styles.buttonDisabled,
                   ]}
                 >
-                  <Plus size={theme.iconSize.md} color="white" />
+                  <Plus size={buttonIconSize} color="white" />
                 </TooltipTrigger>
                 <TooltipContent side="top" align="center" offset={8}>
                   <View style={styles.tooltipRow}>
@@ -1043,7 +1044,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
                   {isSubmitLoading ? (
                     <ActivityIndicator size="small" color="white" />
                   ) : (
-                    <ArrowUp size={theme.iconSize.md} color="white" />
+                    <ArrowUp size={buttonIconSize} color="white" />
                   )}
                 </TooltipTrigger>
                 <TooltipContent side="top" align="center" offset={8}>
@@ -1184,12 +1185,12 @@ const styles = StyleSheet.create(((theme: any) => ({
   leftButtonGroup: {
     flexDirection: 'row',
     alignItems: 'flex-end',
-    gap: theme.spacing[2],
+    gap: Platform.OS === 'web' ? theme.spacing[2] : theme.spacing[1],
   },
   rightButtonGroup: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: theme.spacing[2],
+    gap: Platform.OS === 'web' ? theme.spacing[2] : theme.spacing[1],
   },
   attachButton: {
     width: 28,

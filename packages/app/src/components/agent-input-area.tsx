@@ -97,6 +97,7 @@ export function AgentInputArea({
 }: AgentInputAreaProps) {
   markScrollInvestigationRender(`AgentInputArea:${serverId}:${agentId}`)
   const { theme } = useUnistyles()
+  const buttonIconSize = Platform.OS === 'web' ? theme.iconSize.md : theme.iconSize.lg
   const insets = useSafeAreaInsets()
   const isScreenFocused = useIsFocused()
 
@@ -701,7 +702,7 @@ export function AgentInputArea({
           {isCancellingAgent ? (
             <ActivityIndicator size="small" color="white" />
           ) : (
-            <Square size={theme.iconSize.md} color="white" fill="white" />
+            <Square size={buttonIconSize} color="white" fill="white" />
           )}
         </TooltipTrigger>
         <TooltipContent side="top" align="center" offset={8}>
@@ -731,7 +732,7 @@ export function AgentInputArea({
             {voice?.isVoiceSwitching ? (
               <ActivityIndicator size="small" color="white" />
             ) : (
-              <AudioLines size={theme.iconSize.md} color={theme.colors.foreground} />
+              <AudioLines size={buttonIconSize} color={theme.colors.foreground} />
             )}
           </TooltipTrigger>
           <TooltipContent side="top" align="center" offset={8}>
