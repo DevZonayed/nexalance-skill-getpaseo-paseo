@@ -26,11 +26,11 @@ export type ClaudeCatalogModel = {
 
 export const CLAUDE_MODEL_CATALOG: readonly ClaudeCatalogModel[] = [
   {
-    family: "sonnet",
-    modelId: "claude-sonnet-4-5-20250929",
-    name: "Sonnet 4.5",
-    description: "Sonnet 4.5 · Best for everyday tasks",
-    isDefault: true,
+    family: "opus",
+    modelId: "claude-opus-4-6",
+    name: "Opus 4.6",
+    description: "Opus 4.6 · Most capable for complex work",
+    isLatestInFamily: true,
   },
   {
     family: "sonnet",
@@ -40,11 +40,11 @@ export const CLAUDE_MODEL_CATALOG: readonly ClaudeCatalogModel[] = [
     isLatestInFamily: true,
   },
   {
-    family: "opus",
-    modelId: "claude-opus-4-6",
-    name: "Opus 4.6",
-    description: "Opus 4.6 · Most capable for complex work",
-    isLatestInFamily: true,
+    family: "sonnet",
+    modelId: "claude-sonnet-4-5-20250929",
+    name: "Sonnet 4.5",
+    description: "Sonnet 4.5 · Best for everyday tasks",
+    isDefault: true,
   },
   {
     family: "haiku",
