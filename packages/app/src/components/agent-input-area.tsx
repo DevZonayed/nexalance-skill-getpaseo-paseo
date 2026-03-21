@@ -45,6 +45,7 @@ import { markScrollInvestigationRender } from "@/utils/scroll-jank-investigation
 import { useKeyboardShiftStyle } from "@/hooks/use-keyboard-shift-style";
 import { useKeyboardActionHandler } from "@/hooks/use-keyboard-action-handler";
 import type { KeyboardActionDefinition } from "@/keyboard/keyboard-action-dispatcher";
+import { submitAgentInput } from "@/components/agent-input-submit";
 
 type QueuedMessage = {
   id: string;
@@ -342,43 +343,31 @@ export function AgentInputArea({
     imageAttachments?: ImageAttachment[],
     forceSend?: boolean,
   ) {
-    const trimmedMessage = message.trim();
-    if (!trimmedMessage && !imageAttachments?.length) return;
-    // When the parent controls submission (e.g. draft agent creation), let it
-    // decide what to do even if the socket is currently disconnected (so we
-    // don't no-op and lose deterministic error handling in the UI/tests).
-    if (!sendAgentMessageRef.current && !onSubmitMessageRef.current) return;
-
-    if (agent?.status === "running" && !forceSend) {
-      queueMessage(trimmedMessage, imageAttachments);
-      return;
-    }
-
-    // Clear input optimistically before awaiting server ack.
-    // Save values so we can restore on error.
-    const savedImages = imageAttachments;
-    if (!onSubmitMessageRef.current) {
-      setUserInput("");
-      setSelectedImages([]);
-    }
-    setSendError(null);
-    setIsProcessing(true);
-
-    try {
-      await submitMessage(trimmedMessage, imageAttachments);
-      clearDraft("sent");
-    } catch (error) {
-      console.error("[AgentInput] Failed to send message:", error);
-      // Restore input so the user never loses their message
-      if (!onSubmitMessageRef.current) {
-        setUserInput(trimmedMessage);
-      }
-      if (savedImages) {
-        setSelectedImages(savedImages);
-      }
-      setSendError(error instanceof Error ? error.message : "Failed to send message");
-      setIsProcessing(false);
-    }
+    await submitAgentInput({
+      message,
+      imageAttachments,
+      forceSend,
+      isAgentRunning: agent?.status === "running",
+      // Parent-managed submits are still valid submit paths even when the
+      // transport is disconnected, because the parent decides the failure mode.
+      canSubmit: Boolean(sendAgentMessageRef.current || onSubmitMessageRef.current),
+      queueMessage: ({ message, imageAttachments }) => {
+        queueMessage(message, imageAttachments);
+      },
+      submitMessage: async ({ message, imageAttachments }) => {
+        await submitMessage(message, imageAttachments);
+      },
+      clearDraft,
+      setUserInput,
+      setSelectedImages: (images) => {
+        setSelectedImages(images);
+      },
+      setSendError,
+      setIsProcessing,
+      onSubmitError: (error) => {
+        console.error("[AgentInput] Failed to send message:", error);
+      },
+    });
   }
 
   function handleSubmit(payload: MessagePayload) {
