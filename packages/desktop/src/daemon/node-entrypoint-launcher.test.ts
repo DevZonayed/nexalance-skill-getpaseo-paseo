@@ -32,6 +32,26 @@ describe("node-entrypoint-launcher", () => {
       ).toBeNull();
     });
 
+    it("ignores --no-sandbox injected by Linux wrapper", () => {
+      expect(
+        parseCliPassthroughArgsFromArgv({
+          argv: ["/usr/bin/Paseo", "--no-sandbox", "status"],
+          isDefaultApp: false,
+          forceCli: false,
+        }),
+      ).toEqual(["status"]);
+    });
+
+    it("returns null when only --no-sandbox is present", () => {
+      expect(
+        parseCliPassthroughArgsFromArgv({
+          argv: ["/usr/bin/Paseo", "--no-sandbox"],
+          isDefaultApp: false,
+          forceCli: false,
+        }),
+      ).toBeNull();
+    });
+
     it("preserves CLI flags for direct app invocations", () => {
       expect(
         parseCliPassthroughArgsFromArgv({

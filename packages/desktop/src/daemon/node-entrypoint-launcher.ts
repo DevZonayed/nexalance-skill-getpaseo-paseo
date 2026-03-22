@@ -1,4 +1,4 @@
-const IGNORED_GUI_LAUNCH_ARG_PREFIX = "-psn_";
+const IGNORED_ARG_PREFIXES = ["-psn_", "--no-sandbox"];
 
 export const DESKTOP_CLI_ENV = "PASEO_DESKTOP_CLI";
 
@@ -44,7 +44,7 @@ export function parseCliPassthroughArgsFromArgv(
   const startIndex = input.isDefaultApp ? 2 : 1;
   const effective = input.argv
     .slice(startIndex)
-    .filter((arg) => !arg.startsWith(IGNORED_GUI_LAUNCH_ARG_PREFIX));
+    .filter((arg) => !IGNORED_ARG_PREFIXES.some((p) => arg.startsWith(p)));
 
   if (input.forceCli) {
     return effective;
