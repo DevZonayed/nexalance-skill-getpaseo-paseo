@@ -358,6 +358,7 @@ const TerminalEmulator = forwardRef<TerminalEmulatorHandle, TerminalEmulatorProp
     if (focusRequestToken <= 0) {
       return;
     }
+    runtimeRef.current?.resize({ force: true });
     return focusWithRetries({
       focus: () => {
         runtimeRef.current?.focus();

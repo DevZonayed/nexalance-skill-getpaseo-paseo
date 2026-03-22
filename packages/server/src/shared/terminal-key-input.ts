@@ -86,6 +86,9 @@ export function encodeTerminalKeyInput(input: TerminalKeyInput): string {
 
   switch (key) {
     case "Enter":
+      if (input.shift && !input.ctrl && !input.alt && !input.meta) {
+        return "\x1b[13;2u";
+      }
       return applyAltLikePrefix("\r", input);
     case "Tab":
       if (input.shift && !input.ctrl && !input.alt && !input.meta) {

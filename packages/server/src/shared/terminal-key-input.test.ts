@@ -19,6 +19,16 @@ describe("encodeTerminalKeyInput", () => {
     expect(encodeTerminalKeyInput({ key: "Backspace" })).toBe("\x7f");
   });
 
+  it("encodes shift+enter as kitty keyboard protocol CSI u", () => {
+    expect(encodeTerminalKeyInput({ key: "Enter", shift: true })).toBe("\x1b[13;2u");
+  });
+
+  it("encodes enter with other modifiers as plain carriage return", () => {
+    expect(encodeTerminalKeyInput({ key: "Enter", ctrl: true })).toBe("\r");
+    expect(encodeTerminalKeyInput({ key: "Enter", alt: true })).toBe("\x1b\r");
+    expect(encodeTerminalKeyInput({ key: "Enter", shift: true, ctrl: true })).toBe("\r");
+  });
+
   it("returns empty string for unsupported keys", () => {
     expect(encodeTerminalKeyInput({ key: "UnidentifiedKey" })).toBe("");
   });
