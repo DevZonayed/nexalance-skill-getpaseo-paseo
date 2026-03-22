@@ -13,7 +13,7 @@ export interface SidebarProjectWorkspaceLinkRowModel {
 
 export interface SidebarProjectSectionRowModel {
   kind: "project_section";
-  chevron: "expand" | "collapse";
+  chevron: "expand" | "collapse" | null;
   trailingAction: "new_worktree" | "none";
 }
 
@@ -22,7 +22,7 @@ export type SidebarProjectRowModel =
   | SidebarProjectSectionRowModel;
 
 export function isSidebarProjectFlattened(project: SidebarProjectEntry): boolean {
-  return project.workspaces.length === 1;
+  return project.workspaces.length === 1 && project.projectKind !== "git";
 }
 
 export function buildSidebarProjectRowModel(input: {
@@ -50,9 +50,11 @@ export function buildSidebarProjectRowModel(input: {
     };
   }
 
+  const collapsible = input.project.workspaces.length > 1;
+
   return {
     kind: "project_section",
-    chevron: input.collapsed ? "expand" : "collapse",
+    chevron: collapsible ? (input.collapsed ? "expand" : "collapse") : null,
     trailingAction: input.project.projectKind === "git" ? "new_worktree" : "none",
   };
 }

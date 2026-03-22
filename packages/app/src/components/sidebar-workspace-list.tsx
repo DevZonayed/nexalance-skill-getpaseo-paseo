@@ -27,10 +27,8 @@ import { type GestureType } from "react-native-gesture-handler";
 import * as Clipboard from "expo-clipboard";
 import {
   Archive,
-  Check,
   ChevronDown,
   ChevronRight,
-  CircleHelp,
   Copy,
   FolderGit2,
   GitPullRequest,
@@ -49,7 +47,6 @@ import { prepareWorkspaceTab } from "@/utils/workspace-navigation";
 import {
   type SidebarProjectEntry,
   type SidebarWorkspaceEntry,
-  type SidebarStateBucket,
 } from "@/hooks/use-sidebar-workspaces-list";
 import { useSidebarOrderStore } from "@/stores/sidebar-order-store";
 import { useKeyboardShortcutsStore } from "@/stores/keyboard-shortcuts-store";
@@ -74,6 +71,7 @@ import { decideLongPressMove } from "@/utils/sidebar-gesture-arbitration";
 import { confirmDialog } from "@/utils/confirm-dialog";
 import { projectIconPlaceholderLabelFromDisplayName } from "@/utils/project-display-name";
 import { shouldRenderSyncedStatusLoader } from "@/utils/status-loader";
+import { getStatusDotColor } from "@/utils/status-dot-color";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Shortcut } from "@/components/ui/shortcut";
 import type { ShortcutKey } from "@/utils/format-shortcut";
@@ -214,22 +212,6 @@ function WorkspacePrBadge({ hint }: { hint: PrHint }) {
   );
 }
 
-function resolveStatusDotColor(input: {
-  theme: ReturnType<typeof useUnistyles>["theme"];
-  bucket: SidebarStateBucket;
-}) {
-  const { theme, bucket } = input;
-  return bucket === "needs_input"
-    ? theme.colors.palette.amber[500]
-    : bucket === "failed"
-      ? theme.colors.palette.red[500]
-      : bucket === "running"
-        ? theme.colors.palette.blue[500]
-        : bucket === "attention"
-          ? theme.colors.palette.green[500]
-          : theme.colors.border;
-}
-
 function WorkspaceStatusIndicator({
   bucket,
   workspaceKind,
@@ -240,38 +222,48 @@ function WorkspaceStatusIndicator({
   loading?: boolean;
 }) {
   const { theme } = useUnistyles();
-  const color = resolveStatusDotColor({ theme, bucket });
   const shouldShowSyncedLoader = shouldRenderSyncedStatusLoader({ bucket });
-  const isIdle = !loading && !shouldShowSyncedLoader && bucket === "done";
 
-  if (isIdle) {
-    const KindIcon =
-      workspaceKind === "local_checkout"
-        ? Monitor
-        : workspaceKind === "worktree"
-          ? FolderGit2
-          : null;
-    if (!KindIcon) return null;
+  if (loading) {
     return (
       <View style={styles.workspaceStatusDot}>
-        <KindIcon size={14} color={theme.colors.foregroundMuted} />
+        <ActivityIndicator size={8} color={theme.colors.foregroundMuted} />
       </View>
     );
   }
 
+  if (shouldShowSyncedLoader) {
+    return (
+      <View style={styles.workspaceStatusDot}>
+        <SyncedLoader size={11} color={theme.colors.palette.amber[500]} />
+      </View>
+    );
+  }
+
+  const KindIcon =
+    workspaceKind === "local_checkout"
+      ? Monitor
+      : workspaceKind === "worktree"
+        ? FolderGit2
+        : null;
+  if (!KindIcon) return null;
+
+  const dotColor = getStatusDotColor({ theme, bucket, showDoneAsInactive: false });
+
   return (
     <View style={styles.workspaceStatusDot}>
-      {loading ? (
-        <ActivityIndicator size={8} color={theme.colors.foregroundMuted} />
-      ) : shouldShowSyncedLoader ? (
-        <SyncedLoader size={11} color={theme.colors.palette.amber[500]} />
-      ) : bucket === "needs_input" ? (
-        <CircleHelp size={14} color={theme.colors.palette.amber[500]} />
-      ) : bucket === "attention" ? (
-        <Check size={14} color={theme.colors.palette.green[500]} />
-      ) : (
-        <View style={[styles.workspaceStatusDotFill, { backgroundColor: color }]} />
-      )}
+      <KindIcon size={14} color={theme.colors.foregroundMuted} />
+      {dotColor ? (
+        <View
+          style={[
+            styles.statusDotOverlay,
+            {
+              backgroundColor: dotColor,
+              borderColor: theme.colors.surface0,
+            },
+          ]}
+        />
+      ) : null}
     </View>
   );
 }
@@ -291,29 +283,72 @@ function ProjectLeadingVisual({
   showChevron?: boolean;
   isArchiving?: boolean;
 }) {
+  const { theme } = useUnistyles();
   const placeholderLabel = projectIconPlaceholderLabelFromDisplayName(displayName);
   const placeholderInitial = placeholderLabel.charAt(0).toUpperCase();
   const activeWorkspace = workspace;
   const shouldShowWorkspaceStatus =
     activeWorkspace !== null && (isArchiving || activeWorkspace.statusBucket !== "done");
+  const shouldShowSyncedLoader = activeWorkspace
+    ? shouldRenderSyncedStatusLoader({ bucket: activeWorkspace.statusBucket })
+    : false;
+
+  if (showChevron && chevron !== null) {
+    return (
+      <View style={styles.projectLeadingVisualSlot}>
+        <ProjectInlineChevron chevron={chevron} />
+      </View>
+    );
+  }
+
+  const projectIcon = iconDataUri ? (
+    <Image source={{ uri: iconDataUri }} style={styles.projectIcon} />
+  ) : (
+    <View style={styles.projectIconFallback}>
+      <Text style={styles.projectIconFallbackText}>{placeholderInitial}</Text>
+    </View>
+  );
+
+  if (!shouldShowWorkspaceStatus || !activeWorkspace) {
+    return <View style={styles.projectLeadingVisualSlot}>{projectIcon}</View>;
+  }
+
+  if (isArchiving) {
+    return (
+      <View style={styles.projectLeadingVisualSlot}>
+        <ActivityIndicator size={8} color={theme.colors.foregroundMuted} />
+      </View>
+    );
+  }
+
+  if (shouldShowSyncedLoader) {
+    return (
+      <View style={styles.projectLeadingVisualSlot}>
+        <SyncedLoader size={11} color={theme.colors.palette.amber[500]} />
+      </View>
+    );
+  }
+
+  const dotColor = getStatusDotColor({
+    theme,
+    bucket: activeWorkspace.statusBucket,
+    showDoneAsInactive: false,
+  });
 
   return (
     <View style={styles.projectLeadingVisualSlot}>
-      {showChevron && chevron !== null ? (
-        <ProjectInlineChevron chevron={chevron} />
-      ) : shouldShowWorkspaceStatus && activeWorkspace ? (
-        <WorkspaceStatusIndicator
-          bucket={activeWorkspace.statusBucket}
-          workspaceKind={activeWorkspace.workspaceKind}
-          loading={isArchiving}
+      {projectIcon}
+      {dotColor ? (
+        <View
+          style={[
+            styles.statusDotOverlay,
+            {
+              backgroundColor: dotColor,
+              borderColor: theme.colors.surface0,
+            },
+          ]}
         />
-      ) : iconDataUri ? (
-        <Image source={{ uri: iconDataUri }} style={styles.projectIcon} />
-      ) : (
-        <View style={styles.projectIconFallback}>
-          <Text style={styles.projectIconFallbackText}>{placeholderInitial}</Text>
-        </View>
-      )}
+      ) : null}
     </View>
   );
 }
@@ -1993,6 +2028,7 @@ const styles = StyleSheet.create((theme) => ({
     borderRadius: theme.borderRadius.sm,
   },
   projectLeadingVisualSlot: {
+    position: "relative",
     width: theme.iconSize.md,
     height: theme.iconSize.md,
     flexShrink: 0,
@@ -2124,17 +2160,22 @@ const styles = StyleSheet.create((theme) => ({
     position: "relative",
   },
   workspaceStatusDot: {
+    position: "relative",
     width: WORKSPACE_STATUS_DOT_WIDTH,
     height: 16,
     borderRadius: theme.borderRadius.full,
     flexShrink: 0,
-    alignItems: "flex-start",
+    alignItems: "center",
     justifyContent: "center",
   },
-  workspaceStatusDotFill: {
+  statusDotOverlay: {
+    position: "absolute",
+    right: 0,
+    bottom: 0,
     width: 7,
     height: 7,
     borderRadius: theme.borderRadius.full,
+    borderWidth: 1,
   },
   workspaceArchivingOverlay: {
     ...StyleSheet.absoluteFillObject,
@@ -2179,7 +2220,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   workspacePrBadgeText: {
     fontSize: theme.fontSize.xs,
-    fontWeight: theme.fontWeight.medium,
+    fontWeight: theme.fontWeight.normal,
     lineHeight: 14,
   },
   workspacePrBadgeTextHovered: {
