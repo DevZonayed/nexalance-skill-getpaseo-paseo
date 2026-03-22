@@ -2187,7 +2187,7 @@ const styles = StyleSheet.create((theme) => ({
   workspaceBranchText: {
     color: theme.colors.foreground,
     fontSize: theme.fontSize.sm,
-    fontWeight: "300",
+    fontWeight: "400",
     lineHeight: 20,
     opacity: 0.76,
     flex: 1,
