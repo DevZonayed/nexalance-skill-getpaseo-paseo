@@ -153,7 +153,7 @@ export function KeyboardShortcutsSection() {
   if (Platform.OS !== "web") {
     return (
       <View style={settingsStyles.section}>
-        <Text style={settingsStyles.sectionTitle}>Keyboard Shortcuts</Text>
+        <Text style={settingsStyles.sectionTitle}>Shortcuts</Text>
         <View style={[settingsStyles.card, styles.mobileCard]}>
           <Text style={styles.mobileText}>
             Keyboard shortcuts are only available on desktop.
@@ -166,7 +166,7 @@ export function KeyboardShortcutsSection() {
   return (
     <View style={settingsStyles.section}>
       <View style={styles.sectionHeader}>
-        <Text style={settingsStyles.sectionTitle}>Keyboard Shortcuts</Text>
+        <Text style={settingsStyles.sectionTitle}>Shortcuts</Text>
         {hasOverrides && (
           <Button variant="ghost" size="sm" onPress={() => void resetAll()}>
             Reset all

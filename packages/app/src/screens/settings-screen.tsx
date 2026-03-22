@@ -67,7 +67,7 @@ import { useIsLocalDaemon } from "@/hooks/use-is-local-daemon";
 type SettingsSectionId =
   | "hosts"
   | "appearance"
-  | "keyboard-shortcuts"
+  | "shortcuts"
   | "diagnostics"
   | "about"
   | "permissions"
@@ -83,7 +83,7 @@ function getSettingsSections(context: { isDesktop: boolean }): SettingsSectionDe
   const sections: SettingsSectionDef[] = [
     { id: "hosts", label: "Hosts", icon: Server },
     { id: "appearance", label: "Appearance", icon: Palette },
-    { id: "keyboard-shortcuts", label: "Keyboard Shortcuts", icon: Keyboard },
+    { id: "shortcuts", label: "Shortcuts", icon: Keyboard },
     { id: "diagnostics", label: "Diagnostics", icon: Stethoscope },
     { id: "about", label: "About", icon: Info },
   ];
@@ -514,7 +514,7 @@ function SettingsSectionContent({
       return <HostsSection {...hostsProps} />;
     case "appearance":
       return <AppearanceSection {...appearanceProps} />;
-    case "keyboard-shortcuts":
+    case "shortcuts":
       return <KeyboardShortcutsSection />;
     case "diagnostics":
       return <DiagnosticsSection {...diagnosticsProps} />;

@@ -33,8 +33,15 @@ export type KeyboardShortcutHelpRow = {
   note?: string;
 };
 
+export type ShortcutSectionId =
+  | "navigation"
+  | "tabs-panes"
+  | "projects"
+  | "panels"
+  | "agent-input";
+
 export type KeyboardShortcutHelpSection = {
-  id: "global" | "agent-input";
+  id: ShortcutSectionId;
   title: string;
   rows: KeyboardShortcutHelpRow[];
 };
@@ -69,7 +76,7 @@ type ShortcutPayloadDef =
 
 interface ShortcutHelp {
   id: string;
-  section: "global" | "agent-input";
+  section: ShortcutSectionId;
   label: string;
   keys: ShortcutKey[];
   note?: string;
@@ -99,8 +106,11 @@ export interface ChordState {
 
 // --- Constants ---
 
-const SHORTCUT_HELP_SECTION_TITLES: Record<KeyboardShortcutHelpSection["id"], string> = {
-  global: "Global",
+const SHORTCUT_HELP_SECTION_TITLES: Record<ShortcutSectionId, string> = {
+  navigation: "Navigation",
+  "tabs-panes": "Tabs & Panes",
+  projects: "Projects",
+  panels: "Panels",
   "agent-input": "Agent Input",
 };
 
@@ -115,7 +125,7 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
     when: { mac: true },
     help: {
       id: "new-agent",
-      section: "global",
+      section: "projects",
       label: "Open project",
       keys: ["mod", "shift", "O"],
     },
@@ -127,7 +137,7 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
     when: { mac: false, terminal: false },
     help: {
       id: "new-agent",
-      section: "global",
+      section: "projects",
       label: "Open project",
       keys: ["mod", "shift", "O"],
     },
@@ -141,7 +151,7 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
     when: { mac: true, commandCenter: false },
     help: {
       id: "new-worktree",
-      section: "global",
+      section: "projects",
       label: "New worktree",
       keys: ["mod", "O"],
     },
@@ -153,7 +163,7 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
     when: { mac: false, commandCenter: false, terminal: false },
     help: {
       id: "new-worktree",
-      section: "global",
+      section: "projects",
       label: "New worktree",
       keys: ["mod", "O"],
     },
@@ -167,7 +177,7 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
     when: { mac: true, commandCenter: false },
     help: {
       id: "archive-worktree",
-      section: "global",
+      section: "projects",
       label: "Archive worktree",
       keys: ["mod", "shift", "Backspace"],
     },
@@ -179,7 +189,7 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
     when: { mac: false, commandCenter: false, terminal: false },
     help: {
       id: "archive-worktree",
-      section: "global",
+      section: "projects",
       label: "Archive worktree",
       keys: ["mod", "shift", "Backspace"],
     },
@@ -193,7 +203,7 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
     when: { mac: true, commandCenter: false },
     help: {
       id: "workspace-tab-new",
-      section: "global",
+      section: "tabs-panes",
       label: "New agent tab",
       keys: ["mod", "T"],
     },
@@ -205,7 +215,7 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
     when: { mac: false, commandCenter: false, terminal: false },
     help: {
       id: "workspace-tab-new",
-      section: "global",
+      section: "tabs-panes",
       label: "New agent tab",
       keys: ["mod", "T"],
     },
@@ -217,7 +227,7 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
     when: { mac: true, desktop: true, commandCenter: false },
     help: {
       id: "workspace-tab-close-current",
-      section: "global",
+      section: "tabs-panes",
       label: "Close current tab",
       keys: ["meta", "W"],
     },
@@ -229,7 +239,7 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
     when: { mac: false, desktop: true, commandCenter: false, terminal: false },
     help: {
       id: "workspace-tab-close-current",
-      section: "global",
+      section: "tabs-panes",
       label: "Close current tab",
       keys: ["ctrl", "W"],
     },
@@ -241,7 +251,7 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
     when: { desktop: false, commandCenter: false },
     help: {
       id: "workspace-tab-close-current",
-      section: "global",
+      section: "tabs-panes",
       label: "Close current tab",
       keys: ["alt", "shift", "W"],
     },
@@ -256,7 +266,7 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
     payload: { type: "index" },
     help: {
       id: "workspace-jump-index",
-      section: "global",
+      section: "navigation",
       label: "Jump to workspace",
       keys: ["mod", "1-9"],
     },
@@ -269,7 +279,7 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
     payload: { type: "index" },
     help: {
       id: "workspace-jump-index",
-      section: "global",
+      section: "navigation",
       label: "Jump to workspace",
       keys: ["mod", "1-9"],
     },
@@ -282,7 +292,7 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
     payload: { type: "index" },
     help: {
       id: "workspace-jump-index",
-      section: "global",
+      section: "navigation",
       label: "Jump to workspace",
       keys: ["alt", "1-9"],
     },
@@ -297,7 +307,7 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
     payload: { type: "index" },
     help: {
       id: "workspace-tab-jump-index",
-      section: "global",
+      section: "navigation",
       label: "Jump to tab",
       keys: ["alt", "1-9"],
     },
@@ -310,7 +320,7 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
     payload: { type: "index" },
     help: {
       id: "workspace-tab-jump-index",
-      section: "global",
+      section: "navigation",
       label: "Jump to tab",
       keys: ["alt", "shift", "1-9"],
     },
@@ -325,7 +335,7 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
     payload: { type: "delta", delta: -1 },
     help: {
       id: "workspace-prev",
-      section: "global",
+      section: "navigation",
       label: "Previous workspace",
       keys: ["mod", "["],
     },
@@ -338,7 +348,7 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
     payload: { type: "delta", delta: -1 },
     help: {
       id: "workspace-prev",
-      section: "global",
+      section: "navigation",
       label: "Previous workspace",
       keys: ["mod", "["],
     },
@@ -351,7 +361,7 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
     payload: { type: "delta", delta: 1 },
     help: {
       id: "workspace-next",
-      section: "global",
+      section: "navigation",
       label: "Next workspace",
       keys: ["mod", "]"],
     },
@@ -364,7 +374,7 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
     payload: { type: "delta", delta: 1 },
     help: {
       id: "workspace-next",
-      section: "global",
+      section: "navigation",
       label: "Next workspace",
       keys: ["mod", "]"],
     },
@@ -377,7 +387,7 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
     payload: { type: "delta", delta: -1 },
     help: {
       id: "workspace-prev",
-      section: "global",
+      section: "navigation",
       label: "Previous workspace",
       keys: ["alt", "["],
     },
@@ -390,7 +400,7 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
     payload: { type: "delta", delta: 1 },
     help: {
       id: "workspace-next",
-      section: "global",
+      section: "navigation",
       label: "Next workspace",
       keys: ["alt", "]"],
     },
@@ -405,7 +415,7 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
     payload: { type: "delta", delta: -1 },
     help: {
       id: "workspace-tab-prev",
-      section: "global",
+      section: "navigation",
       label: "Previous tab",
       keys: ["alt", "shift", "["],
     },
@@ -418,7 +428,7 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
     payload: { type: "delta", delta: 1 },
     help: {
       id: "workspace-tab-next",
-      section: "global",
+      section: "navigation",
       label: "Next tab",
       keys: ["alt", "shift", "]"],
     },
@@ -432,7 +442,7 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
     when: { mac: true, terminal: false, commandCenter: false },
     help: {
       id: "workspace-pane-split-right",
-      section: "global",
+      section: "tabs-panes",
       label: "Split pane right",
       keys: ["mod", "\\"],
     },
@@ -444,7 +454,7 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
     when: { mac: true, terminal: false, commandCenter: false },
     help: {
       id: "workspace-pane-split-down",
-      section: "global",
+      section: "tabs-panes",
       label: "Split pane down",
       keys: ["mod", "shift", "\\"],
     },
@@ -456,7 +466,7 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
     when: { mac: true, terminal: false, commandCenter: false },
     help: {
       id: "workspace-pane-focus-left",
-      section: "global",
+      section: "tabs-panes",
       label: "Focus pane left",
       keys: ["mod", "shift", "Left"],
     },
@@ -468,7 +478,7 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
     when: { mac: true, terminal: false, commandCenter: false },
     help: {
       id: "workspace-pane-focus-right",
-      section: "global",
+      section: "tabs-panes",
       label: "Focus pane right",
       keys: ["mod", "shift", "Right"],
     },
@@ -480,7 +490,7 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
     when: { mac: true, terminal: false, commandCenter: false },
     help: {
       id: "workspace-pane-focus-up",
-      section: "global",
+      section: "tabs-panes",
       label: "Focus pane up",
       keys: ["mod", "shift", "Up"],
     },
@@ -492,7 +502,7 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
     when: { mac: true, terminal: false, commandCenter: false },
     help: {
       id: "workspace-pane-focus-down",
-      section: "global",
+      section: "tabs-panes",
       label: "Focus pane down",
       keys: ["mod", "shift", "Down"],
     },
@@ -504,7 +514,7 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
     when: { mac: true, terminal: false, commandCenter: false },
     help: {
       id: "workspace-pane-move-tab-left",
-      section: "global",
+      section: "tabs-panes",
       label: "Move tab left",
       keys: ["mod", "shift", "alt", "Left"],
     },
@@ -516,7 +526,7 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
     when: { mac: true, terminal: false, commandCenter: false },
     help: {
       id: "workspace-pane-move-tab-right",
-      section: "global",
+      section: "tabs-panes",
       label: "Move tab right",
       keys: ["mod", "shift", "alt", "Right"],
     },
@@ -528,7 +538,7 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
     when: { mac: true, terminal: false, commandCenter: false },
     help: {
       id: "workspace-pane-move-tab-up",
-      section: "global",
+      section: "tabs-panes",
       label: "Move tab up",
       keys: ["mod", "shift", "alt", "Up"],
     },
@@ -540,7 +550,7 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
     when: { mac: true, terminal: false, commandCenter: false },
     help: {
       id: "workspace-pane-move-tab-down",
-      section: "global",
+      section: "tabs-panes",
       label: "Move tab down",
       keys: ["mod", "shift", "alt", "Down"],
     },
@@ -552,7 +562,7 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
     when: { mac: true, terminal: false, commandCenter: false },
     help: {
       id: "workspace-pane-close",
-      section: "global",
+      section: "tabs-panes",
       label: "Close pane",
       keys: ["mod", "shift", "W"],
     },
@@ -566,7 +576,7 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
     when: { mac: true, commandCenter: false },
     help: {
       id: "workspace-terminal-new",
-      section: "global",
+      section: "panels",
       label: "New terminal",
       keys: ["mod", "shift", "T"],
     },
@@ -578,7 +588,7 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
     when: { mac: false, commandCenter: false, terminal: false },
     help: {
       id: "workspace-terminal-new",
-      section: "global",
+      section: "panels",
       label: "New terminal",
       keys: ["mod", "shift", "T"],
     },
@@ -592,7 +602,7 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
     when: { mac: true },
     help: {
       id: "toggle-command-center",
-      section: "global",
+      section: "panels",
       label: "Toggle command center",
       keys: ["mod", "K"],
     },
@@ -604,7 +614,7 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
     when: { mac: false, terminal: false },
     help: {
       id: "toggle-command-center",
-      section: "global",
+      section: "panels",
       label: "Toggle command center",
       keys: ["mod", "K"],
     },
@@ -619,7 +629,7 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
     when: { focusScope: "other" },
     help: {
       id: "show-shortcuts",
-      section: "global",
+      section: "panels",
       label: "Show keyboard shortcuts",
       keys: ["?"],
       note: "Available when focus is not in a text field or terminal.",
@@ -634,7 +644,7 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
     when: { mac: true },
     help: {
       id: "toggle-left-sidebar",
-      section: "global",
+      section: "panels",
       label: "Toggle left sidebar",
       keys: ["mod", "B"],
     },
@@ -652,7 +662,7 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
     when: { mac: false, commandCenter: false, terminal: false },
     help: {
       id: "toggle-left-sidebar",
-      section: "global",
+      section: "panels",
       label: "Toggle left sidebar",
       keys: ["mod", "."],
     },
@@ -664,7 +674,7 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
     when: { mac: true, hasSelectedAgent: true, commandCenter: false },
     help: {
       id: "toggle-right-sidebar",
-      section: "global",
+      section: "panels",
       label: "Toggle right sidebar",
       keys: ["mod", "E"],
     },
@@ -676,7 +686,7 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
     when: { mac: false, hasSelectedAgent: true, commandCenter: false, terminal: false },
     help: {
       id: "toggle-right-sidebar",
-      section: "global",
+      section: "panels",
       label: "Toggle right sidebar",
       keys: ["mod", "E"],
     },
@@ -1128,8 +1138,11 @@ export function buildKeyboardShortcutHelpSections(
   bindings: readonly ParsedShortcutBinding[] = DEFAULT_BINDINGS,
 ): KeyboardShortcutHelpSection[] {
   const seenRows = new Set<string>();
-  const rowsBySection = new Map<KeyboardShortcutHelpSection["id"], KeyboardShortcutHelpRow[]>([
-    ["global", []],
+  const rowsBySection = new Map<ShortcutSectionId, KeyboardShortcutHelpRow[]>([
+    ["navigation", []],
+    ["tabs-panes", []],
+    ["projects", []],
+    ["panels", []],
     ["agent-input", []],
   ]);
 
@@ -1159,7 +1172,7 @@ export function buildKeyboardShortcutHelpSections(
     });
   }
 
-  const sectionOrder: KeyboardShortcutHelpSection["id"][] = ["global", "agent-input"];
+  const sectionOrder: ShortcutSectionId[] = ["navigation", "tabs-panes", "projects", "panels", "agent-input"];
 
   return sectionOrder.flatMap((sectionId) => {
     const rows = rowsBySection.get(sectionId) ?? [];

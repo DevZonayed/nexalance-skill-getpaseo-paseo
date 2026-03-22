@@ -21,7 +21,7 @@ export function KeyboardShortcutsDialog() {
 
   return (
     <AdaptiveModalSheet
-      title="Keyboard shortcuts"
+      title="Shortcuts"
       visible={open}
       onClose={() => setOpen(false)}
       testID="keyboard-shortcuts-dialog"
