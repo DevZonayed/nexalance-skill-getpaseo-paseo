@@ -178,7 +178,7 @@ export function CommandCenter() {
                               </View>
                             </View>
                             {action.shortcutKeys ? (
-                              <Shortcut keys={action.shortcutKeys} style={styles.rowShortcut} />
+                              <Shortcut chord={action.shortcutKeys} style={styles.rowShortcut} />
                             ) : null}
                           </View>
                         </CommandCenterRow>

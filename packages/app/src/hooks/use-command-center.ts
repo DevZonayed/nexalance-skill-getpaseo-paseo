@@ -13,7 +13,7 @@ import {
 } from "@/utils/command-center-focus-restore";
 import { buildHostSettingsRoute, parseServerIdFromPathname } from "@/utils/host-routes";
 import type { ShortcutKey } from "@/utils/format-shortcut";
-import { comboStringToShortcutKeys } from "@/keyboard/shortcut-string";
+import { chordStringToShortcutKeys } from "@/keyboard/shortcut-string";
 import { getBindingIdForAction, getDefaultKeysForAction } from "@/keyboard/keyboard-shortcuts";
 import { useKeyboardShortcutOverrides } from "@/hooks/use-keyboard-shortcut-overrides";
 import { getShortcutOs } from "@/utils/shortcut-platform";
@@ -91,7 +91,7 @@ export type CommandCenterActionItem = {
   title: string;
   icon?: "plus" | "settings";
   route?: Href;
-  shortcutKeys?: ShortcutKey[];
+  shortcutKeys?: ShortcutKey[][];
 };
 
 export type CommandCenterItem =
@@ -107,7 +107,7 @@ export type CommandCenterItem =
 function resolveActionShortcutKeys(
   actionId: string | undefined,
   overrides: Record<string, string>,
-): ShortcutKey[] | undefined {
+): ShortcutKey[][] | undefined {
   if (!actionId) return undefined;
   const isMac = getShortcutOs() === "mac";
   const isDesktop = getIsDesktop();
@@ -115,8 +115,9 @@ function resolveActionShortcutKeys(
   const bindingId = getBindingIdForAction(actionId, platform);
   if (!bindingId) return undefined;
   const override = overrides[bindingId];
-  if (override) return comboStringToShortcutKeys(override);
-  return getDefaultKeysForAction(actionId, platform) ?? undefined;
+  if (override) return chordStringToShortcutKeys(override);
+  const defaultKeys = getDefaultKeysForAction(actionId, platform);
+  return defaultKeys ? [defaultKeys] : undefined;
 }
 
 export function useCommandCenter() {

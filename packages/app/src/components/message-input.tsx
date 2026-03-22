@@ -1013,7 +1013,11 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
                   </Text>
                   {(isRealtimeVoiceForCurrentAgent ? voiceMuteToggleKeys : dictationToggleKeys) ? (
                     <Shortcut
-                      keys={(isRealtimeVoiceForCurrentAgent ? voiceMuteToggleKeys : dictationToggleKeys)!}
+                      chord={
+                        (isRealtimeVoiceForCurrentAgent
+                          ? voiceMuteToggleKeys
+                          : dictationToggleKeys)!
+                      }
                       style={styles.tooltipShortcut}
                     />
                   ) : null}
@@ -1039,7 +1043,9 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
                 <TooltipContent side="top" align="center" offset={8}>
                   <View style={styles.tooltipRow}>
                     <Text style={styles.tooltipText}>Queue</Text>
-                    {queueKeys ? <Shortcut keys={queueKeys} style={styles.tooltipShortcut} /> : null}
+                    {queueKeys ? (
+                      <Shortcut chord={queueKeys} style={styles.tooltipShortcut} />
+                    ) : null}
                   </View>
                 </TooltipContent>
               </Tooltip>
@@ -1062,7 +1068,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
                 <TooltipContent side="top" align="center" offset={8}>
                   <View style={styles.tooltipRow}>
                     <Text style={styles.tooltipText}>Send</Text>
-                    {sendKeys ? <Shortcut keys={sendKeys} style={styles.tooltipShortcut} /> : null}
+                    {sendKeys ? <Shortcut chord={sendKeys} style={styles.tooltipShortcut} /> : null}
                   </View>
                 </TooltipContent>
               </Tooltip>

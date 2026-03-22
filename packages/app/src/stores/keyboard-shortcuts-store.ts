@@ -5,6 +5,7 @@ interface KeyboardShortcutsState {
   commandCenterOpen: boolean;
   projectPickerOpen: boolean;
   shortcutsDialogOpen: boolean;
+  capturingShortcut: boolean;
   altDown: boolean;
   cmdOrCtrlDown: boolean;
   /** Sidebar-visible workspace targets (up to 9), in top-to-bottom visual order. */
@@ -15,6 +16,7 @@ interface KeyboardShortcutsState {
   setCommandCenterOpen: (open: boolean) => void;
   setProjectPickerOpen: (open: boolean) => void;
   setShortcutsDialogOpen: (open: boolean) => void;
+  setCapturingShortcut: (capturing: boolean) => void;
   setAltDown: (down: boolean) => void;
   setCmdOrCtrlDown: (down: boolean) => void;
   setSidebarShortcutWorkspaceTargets: (targets: SidebarShortcutWorkspaceTarget[]) => void;
@@ -26,6 +28,7 @@ export const useKeyboardShortcutsStore = create<KeyboardShortcutsState>((set) =>
   commandCenterOpen: false,
   projectPickerOpen: false,
   shortcutsDialogOpen: false,
+  capturingShortcut: false,
   altDown: false,
   cmdOrCtrlDown: false,
   sidebarShortcutWorkspaceTargets: [],
@@ -34,6 +37,7 @@ export const useKeyboardShortcutsStore = create<KeyboardShortcutsState>((set) =>
   setCommandCenterOpen: (open) => set({ commandCenterOpen: open }),
   setProjectPickerOpen: (open) => set({ projectPickerOpen: open }),
   setShortcutsDialogOpen: (open) => set({ shortcutsDialogOpen: open }),
+  setCapturingShortcut: (capturing) => set({ capturingShortcut: capturing }),
   setAltDown: (down) => set({ altDown: down }),
   setCmdOrCtrlDown: (down) => set({ cmdOrCtrlDown: down }),
   setSidebarShortcutWorkspaceTargets: (targets) =>

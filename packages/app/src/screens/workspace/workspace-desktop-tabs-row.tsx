@@ -457,7 +457,7 @@ export function WorkspaceDesktopTabsRow({
             <View style={styles.newTabTooltipRow}>
               <Text style={styles.newTabTooltipText}>New agent tab</Text>
               {newAgentTabKeys ? (
-                <Shortcut keys={newAgentTabKeys} style={styles.newTabTooltipShortcut} />
+                <Shortcut chord={newAgentTabKeys} style={styles.newTabTooltipShortcut} />
               ) : null}
             </View>
           </TooltipContent>
@@ -478,7 +478,7 @@ export function WorkspaceDesktopTabsRow({
             <View style={styles.newTabTooltipRow}>
               <Text style={styles.newTabTooltipText}>New terminal tab</Text>
               {newTerminalTabKeys ? (
-                <Shortcut keys={newTerminalTabKeys} style={styles.newTabTooltipShortcut} />
+                <Shortcut chord={newTerminalTabKeys} style={styles.newTabTooltipShortcut} />
               ) : null}
             </View>
           </TooltipContent>
@@ -499,7 +499,7 @@ export function WorkspaceDesktopTabsRow({
             <View style={styles.newTabTooltipRow}>
               <Text style={styles.newTabTooltipText}>Split pane right</Text>
               {splitRightKeys ? (
-                <Shortcut keys={splitRightKeys} style={styles.newTabTooltipShortcut} />
+                <Shortcut chord={splitRightKeys} style={styles.newTabTooltipShortcut} />
               ) : null}
             </View>
           </TooltipContent>
@@ -520,7 +520,7 @@ export function WorkspaceDesktopTabsRow({
             <View style={styles.newTabTooltipRow}>
               <Text style={styles.newTabTooltipText}>Split pane down</Text>
               {splitDownKeys ? (
-                <Shortcut keys={splitDownKeys} style={styles.newTabTooltipShortcut} />
+                <Shortcut chord={splitDownKeys} style={styles.newTabTooltipShortcut} />
               ) : null}
             </View>
           </TooltipContent>

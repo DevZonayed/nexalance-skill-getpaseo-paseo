@@ -1,8 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   buildKeyboardShortcutHelpSections,
+  buildEffectiveBindings,
   resolveKeyboardShortcut,
+  type ChordState,
   type KeyboardShortcutContext,
+  type ParsedShortcutBinding,
 } from "./keyboard-shortcuts";
 
 function keyboardEvent(overrides: Partial<KeyboardEvent>): KeyboardEvent {
@@ -31,6 +34,30 @@ function shortcutContext(
   };
 }
 
+function initialChordState(): ChordState {
+  return {
+    candidateIndices: [],
+    step: 0,
+    timeoutId: null,
+  };
+}
+
+function resolveShortcut(input: {
+  event: Partial<KeyboardEvent>;
+  context?: Partial<KeyboardShortcutContext>;
+  chordState?: ChordState;
+  onChordReset?: () => void;
+  bindings?: readonly ParsedShortcutBinding[];
+}) {
+  return resolveKeyboardShortcut({
+    event: keyboardEvent(input.event),
+    context: shortcutContext(input.context),
+    chordState: input.chordState ?? initialChordState(),
+    onChordReset: input.onChordReset ?? (() => undefined),
+    ...(input.bindings ? { bindings: input.bindings } : {}),
+  });
+}
+
 function expectShortcutResolution(input: {
   event: Partial<KeyboardEvent>;
   context?: Partial<KeyboardShortcutContext>;
@@ -39,29 +66,33 @@ function expectShortcutResolution(input: {
   preventDefault?: boolean;
   stopPropagation?: boolean;
 }) {
-  const match = resolveKeyboardShortcut({
-    event: keyboardEvent(input.event),
-    context: shortcutContext(input.context),
+  const result = resolveShortcut({
+    event: input.event,
+    context: input.context,
   });
 
-  expect(match?.action).toBe(input.action);
+  expect(result.match?.action).toBe(input.action);
   if ("payload" in input) {
-    expect(match?.payload).toEqual(input.payload);
+    expect(result.match?.payload).toEqual(input.payload);
   }
-  expect(match?.preventDefault).toBe(input.preventDefault ?? true);
-  expect(match?.stopPropagation).toBe(input.stopPropagation ?? true);
+  expect(result.match?.preventDefault).toBe(input.preventDefault ?? true);
+  expect(result.match?.stopPropagation).toBe(input.stopPropagation ?? true);
+  expect(result.preventDefault).toBe(false);
+  expect(result.nextChordState).toEqual(initialChordState());
 }
 
 function expectNoShortcutResolution(input: {
   event: Partial<KeyboardEvent>;
   context?: Partial<KeyboardShortcutContext>;
 }) {
-  const match = resolveKeyboardShortcut({
-    event: keyboardEvent(input.event),
-    context: shortcutContext(input.context),
+  const result = resolveShortcut({
+    event: input.event,
+    context: input.context,
   });
 
-  expect(match).toBeNull();
+  expect(result.match).toBeNull();
+  expect(result.preventDefault).toBe(false);
+  expect(result.nextChordState).toEqual(initialChordState());
 }
 
 type MatchingShortcutCase = {
@@ -337,6 +368,66 @@ describe("keyboard-shortcuts", () => {
 
   it.each(nonMatchingCases)("$name", ({ event, context }) => {
     expectNoShortcutResolution({ event, context });
+  });
+
+  it("prefers advancing chord candidates over single-combo matches on the same prefix", () => {
+    const bindings = buildEffectiveBindings({
+      "workspace-terminal-new-ctrl-shift-t-non-mac": "Ctrl+W S",
+    });
+    const chordBindingIndex = bindings.findIndex(
+      (binding) => binding.id === "workspace-terminal-new-ctrl-shift-t-non-mac",
+    );
+    expect(chordBindingIndex).toBeGreaterThan(-1);
+
+    const firstResult = resolveShortcut({
+      event: { key: "w", code: "KeyW", ctrlKey: true },
+      context: { isMac: false, isDesktop: true },
+      bindings,
+    });
+
+    expect(firstResult.match).toBeNull();
+    expect(firstResult.preventDefault).toBe(true);
+    expect(firstResult.nextChordState.step).toBe(1);
+    expect(firstResult.nextChordState.candidateIndices).toEqual([chordBindingIndex]);
+
+    const secondResult = resolveShortcut({
+      event: { key: "s", code: "KeyS" },
+      context: { isMac: false, isDesktop: true },
+      chordState: firstResult.nextChordState,
+      bindings,
+    });
+
+    expect(secondResult.match?.action).toBe("workspace.terminal.new");
+    expect(secondResult.match?.payload).toBeNull();
+    expect(secondResult.match?.preventDefault).toBe(true);
+    expect(secondResult.match?.stopPropagation).toBe(true);
+    expect(secondResult.preventDefault).toBe(false);
+    expect(secondResult.nextChordState).toEqual(initialChordState());
+  });
+
+  it("schedules a chord reset timeout for advancing candidates", () => {
+    vi.useFakeTimers();
+
+    const bindings = buildEffectiveBindings({
+      "workspace-terminal-new-ctrl-shift-t-non-mac": "Ctrl+W S",
+    });
+    const onChordReset = vi.fn();
+
+    const result = resolveShortcut({
+      event: { key: "w", code: "KeyW", ctrlKey: true },
+      context: { isMac: false, isDesktop: true },
+      onChordReset,
+      bindings,
+    });
+
+    expect(result.match).toBeNull();
+    expect(result.preventDefault).toBe(true);
+    expect(result.nextChordState.timeoutId).not.toBeNull();
+
+    vi.advanceTimersByTime(1500);
+
+    expect(onChordReset).toHaveBeenCalledTimes(1);
+    vi.useRealTimers();
   });
 });
 

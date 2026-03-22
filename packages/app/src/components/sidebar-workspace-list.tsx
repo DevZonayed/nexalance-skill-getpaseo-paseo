@@ -150,7 +150,7 @@ interface WorkspaceRowInnerProps {
   onArchive?: () => void;
   onCopyBranchName?: () => void;
   onCopyPath?: () => void;
-  archiveShortcutKeys?: ShortcutKey[] | null;
+  archiveShortcutKeys?: ShortcutKey[][] | null;
 }
 
 function resolveStatusDotColor(input: {
@@ -322,7 +322,7 @@ function NewWorktreeButton({
           <View style={styles.projectActionTooltipRow}>
             <Text style={styles.projectActionTooltipText}>New worktree</Text>
             {showShortcutHint && newWorktreeKeys ? (
-              <Shortcut keys={newWorktreeKeys} style={styles.projectActionTooltipShortcut} />
+              <Shortcut chord={newWorktreeKeys} style={styles.projectActionTooltipShortcut} />
             ) : null}
           </View>
         </TooltipContent>
@@ -842,7 +842,7 @@ function WorkspaceRowInner({
                 <DropdownMenuItem
                   testID={`sidebar-workspace-menu-archive-${workspace.workspaceKey}`}
                   leading={<Archive size={14} color={theme.colors.foregroundMuted} />}
-                  trailing={archiveShortcutKeys ? <Shortcut keys={archiveShortcutKeys} /> : null}
+                  trailing={archiveShortcutKeys ? <Shortcut chord={archiveShortcutKeys} /> : null}
                   status={archiveStatus}
                   pendingLabel={archivePendingLabel}
                   onSelect={onArchive}
