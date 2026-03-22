@@ -56,4 +56,50 @@ describe("terminal stream protocol", () => {
   it("rejects unknown opcodes", () => {
     expect(decodeTerminalStreamFrame(new Uint8Array([0xff, 0x01]))).toBeNull();
   });
+
+  it("rejects malformed JSON payloads", () => {
+    const malformed = new TextEncoder().encode("{");
+
+    expect(decodeTerminalResizePayload(malformed)).toBeNull();
+    expect(decodeTerminalSnapshotPayload(malformed)).toBeNull();
+  });
+
+  it("rejects invalid resize and snapshot shapes", () => {
+    expect(
+      decodeTerminalResizePayload(new TextEncoder().encode(JSON.stringify({ rows: "24", cols: 80 }))),
+    ).toBeNull();
+    expect(
+      decodeTerminalSnapshotPayload(
+        new TextEncoder().encode(
+          JSON.stringify({
+            rows: 1,
+            cols: 1,
+            grid: [[{ char: "A" }]],
+            scrollback: [],
+          }),
+        ),
+      ),
+    ).toBeNull();
+  });
+
+  it("rejects unknown fields in resize and snapshot payloads", () => {
+    expect(
+      decodeTerminalResizePayload(
+        new TextEncoder().encode(JSON.stringify({ rows: 24, cols: 80, extra: true })),
+      ),
+    ).toBeNull();
+    expect(
+      decodeTerminalSnapshotPayload(
+        new TextEncoder().encode(
+          JSON.stringify({
+            rows: 1,
+            cols: 1,
+            grid: [[{ char: "A", extra: true }]],
+            scrollback: [],
+            cursor: { row: 0, col: 1 },
+          }),
+        ),
+      ),
+    ).toBeNull();
+  });
 });

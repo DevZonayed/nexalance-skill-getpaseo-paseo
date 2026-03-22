@@ -4,7 +4,7 @@ import { TerminalStateSchema } from "./messages.js";
 export const TerminalStreamResizeSchema = z.object({
   rows: z.number().int().positive(),
   cols: z.number().int().positive(),
-});
+}).strict();
 
 export const TerminalStreamOpcode = {
   Output: 0x01,
@@ -115,6 +115,10 @@ function encodeJsonPayload(value: unknown): Uint8Array {
 }
 
 function decodeJsonPayload(bytes: Uint8Array): unknown {
-  const text = new TextDecoder().decode(bytes);
-  return JSON.parse(text);
+  try {
+    const text = new TextDecoder().decode(bytes);
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
 }

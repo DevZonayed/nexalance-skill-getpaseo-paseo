@@ -322,10 +322,13 @@ export async function createTerminal(options: CreateTerminalOptions): Promise<Te
   // Pipe PTY output to terminal emulator
   ptyProcess.onData((data) => {
     if (killed) return;
-    for (const listener of listeners) {
-      listener({ type: "output", data });
-    }
     terminal.write(data, () => {
+      if (disposed || killed) {
+        return;
+      }
+      for (const listener of listeners) {
+        listener({ type: "output", data });
+      }
       scheduleStateBroadcast();
     });
   });
@@ -359,6 +362,7 @@ export async function createTerminal(options: CreateTerminalOptions): Promise<Te
       case "resize":
         terminal.resize(msg.cols, msg.rows);
         ptyProcess.resize(msg.cols, msg.rows);
+        scheduleStateBroadcast();
         break;
       case "mouse":
         // Mouse events can be sent as escape sequences if terminal supports it
@@ -370,8 +374,8 @@ export async function createTerminal(options: CreateTerminalOptions): Promise<Te
   function subscribe(listener: (msg: ServerMessage) => void): () => void {
     listeners.add(listener);
 
-    queueMicrotask(() => {
-      if (listeners.has(listener)) {
+    terminal.write("", () => {
+      if (!disposed && listeners.has(listener)) {
         listener({ type: "snapshot", state: getState() });
       }
     });

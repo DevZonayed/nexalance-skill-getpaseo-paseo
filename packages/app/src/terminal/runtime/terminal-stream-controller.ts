@@ -1,15 +1,8 @@
 import type { TerminalState } from "@server/shared/messages";
-import {
-  getTerminalAttachRetryDelayMs,
-  isTerminalAttachRetryableError,
-  waitForDuration,
-  withPromiseTimeout,
-} from "@/utils/terminal-attach";
 
 export type TerminalStreamControllerClient = {
   subscribeTerminal: (terminalId: string) => Promise<{
     terminalId: string;
-    state: TerminalState | null;
     error?: string | null;
   }>;
   unsubscribeTerminal: (terminalId: string) => void;
@@ -43,227 +36,116 @@ export type TerminalStreamControllerOptions = {
   onOutput: (input: { terminalId: string; text: string }) => void;
   onSnapshot: (input: { terminalId: string; state: TerminalState }) => void;
   onStatusChange?: (status: TerminalStreamControllerStatus) => void;
-  maxAttachAttempts?: number;
-  attachTimeoutMs?: number;
-  reconnectErrorMessage?: string;
-  withTimeout?: <T>(input: {
-    promise: Promise<T>;
-    timeoutMs: number;
-    timeoutMessage: string;
-  }) => Promise<T>;
-  waitForDelay?: (input: { durationMs: number }) => Promise<void>;
-  isRetryableError?: (input: { message: string }) => boolean;
-  getRetryDelayMs?: (input: { attempt: number }) => number;
 };
 
-const DEFAULT_ATTACH_MAX_ATTEMPTS = 4;
-const DEFAULT_ATTACH_TIMEOUT_MS = 12_000;
-const DEFAULT_RECONNECT_ERROR_MESSAGE = "Terminal stream ended. Reconnecting…";
+const TERMINAL_EXITED_ERROR = "Terminal exited";
 
 export class TerminalStreamController {
-  private readonly unsubscribeStreamEvents: () => void;
   private readonly decoder = new TextDecoder();
-  private selectedTerminalId: string | null = null;
-  private attachGeneration = 0;
-  private isDisposed = false;
+  private readonly unsubscribeStreamEvents: () => void;
+  private terminalId: string | null = null;
+  private disposed = false;
 
   constructor(private readonly options: TerminalStreamControllerOptions) {
     this.unsubscribeStreamEvents = this.options.client.onTerminalStreamEvent((event) => {
-      if (this.isDisposed || event.terminalId !== this.selectedTerminalId) {
+      if (this.disposed || event.terminalId !== this.terminalId) {
         return;
       }
       if (event.type === "snapshot") {
         this.decoder.decode();
-        this.options.onSnapshot({
-          terminalId: event.terminalId,
-          state: event.state,
-        });
+        this.options.onSnapshot({ terminalId: event.terminalId, state: event.state });
         return;
       }
-
       const text = this.decoder.decode(event.data, { stream: true });
-      if (text.length === 0) {
-        return;
+      if (text.length > 0) {
+        this.options.onOutput({ terminalId: event.terminalId, text });
       }
-      this.options.onOutput({
-        terminalId: event.terminalId,
-        text,
-      });
     });
   }
 
   setTerminal(input: { terminalId: string | null }): void {
-    if (this.isDisposed) {
+    if (this.disposed || input.terminalId === this.terminalId) {
       return;
     }
-
     const nextTerminalId = input.terminalId;
-    if (this.selectedTerminalId === nextTerminalId) {
-      return;
-    }
-
-    const previousTerminalId = this.selectedTerminalId;
-    this.selectedTerminalId = nextTerminalId;
-    this.attachGeneration += 1;
-    const generation = this.attachGeneration;
-
+    const previousTerminalId = this.terminalId;
+    this.terminalId = nextTerminalId;
     this.decoder.decode();
     if (previousTerminalId) {
       this.options.client.unsubscribeTerminal(previousTerminalId);
     }
-
     if (!nextTerminalId) {
-      this.updateStatus({
-        terminalId: null,
-        isAttaching: false,
-        error: null,
-      });
+      this.options.onStatusChange?.({ terminalId: null, isAttaching: false, error: null });
       return;
     }
-
-    this.updateStatus({
-      terminalId: nextTerminalId,
-      isAttaching: true,
-      error: null,
-    });
-    void this.attachTerminal({
-      terminalId: nextTerminalId,
-      generation,
-    });
-  }
-
-  handleStreamExit(input: { terminalId: string }): void {
-    if (this.isDisposed || this.selectedTerminalId !== input.terminalId) {
-      return;
-    }
-
-    this.attachGeneration += 1;
-    const generation = this.attachGeneration;
-    this.decoder.decode();
-    this.updateStatus({
-      terminalId: input.terminalId,
-      isAttaching: true,
-      error: this.options.reconnectErrorMessage ?? DEFAULT_RECONNECT_ERROR_MESSAGE,
-    });
-    void this.attachTerminal({
-      terminalId: input.terminalId,
-      generation,
-    });
-  }
-
-  dispose(): void {
-    if (this.isDisposed) {
-      return;
-    }
-    this.isDisposed = true;
-    this.attachGeneration += 1;
-    this.decoder.decode();
-    const selectedTerminalId = this.selectedTerminalId;
-    this.selectedTerminalId = null;
-    if (selectedTerminalId) {
-      this.options.client.unsubscribeTerminal(selectedTerminalId);
-    }
-    this.unsubscribeStreamEvents();
-    this.updateStatus({
-      terminalId: null,
-      isAttaching: false,
-      error: null,
-    });
-  }
-
-  private async attachTerminal(input: { terminalId: string; generation: number }): Promise<void> {
-    const {
-      maxAttachAttempts = DEFAULT_ATTACH_MAX_ATTEMPTS,
-      attachTimeoutMs = DEFAULT_ATTACH_TIMEOUT_MS,
-      withTimeout = withPromiseTimeout,
-      waitForDelay = waitForDuration,
-      isRetryableError = isTerminalAttachRetryableError,
-      getRetryDelayMs = getTerminalAttachRetryDelayMs,
-    } = this.options;
-
-    let lastErrorMessage = "Unable to subscribe to terminal";
-
-    for (let attempt = 0; attempt < maxAttachAttempts; attempt += 1) {
-      if (!this.isAttachGenerationCurrent(input)) {
-        return;
-      }
-
-      try {
-        const payload = await withTimeout({
-          promise: this.options.client.subscribeTerminal(input.terminalId),
-          timeoutMs: attachTimeoutMs,
-          timeoutMessage: "Timed out subscribing to terminal",
-        });
-
-        if (!this.isAttachGenerationCurrent(input)) {
-          this.options.client.unsubscribeTerminal(input.terminalId);
+    this.options.onStatusChange?.({ terminalId: nextTerminalId, isAttaching: true, error: null });
+    void this.options.client
+      .subscribeTerminal(nextTerminalId)
+      .then((payload) => {
+        if (this.disposed || this.terminalId !== nextTerminalId) {
           return;
         }
-
         if (payload.error) {
-          lastErrorMessage = payload.error;
-          const hasRemainingAttempts = attempt < maxAttachAttempts - 1;
-          if (hasRemainingAttempts && isRetryableError({ message: lastErrorMessage })) {
-            await waitForDelay({ durationMs: getRetryDelayMs({ attempt }) });
-            continue;
-          }
-
-          this.updateStatus({
-            terminalId: input.terminalId,
+          this.terminalId = null;
+          this.options.onStatusChange?.({
+            terminalId: nextTerminalId,
             isAttaching: false,
-            error: lastErrorMessage,
+            error: payload.error,
           });
           return;
         }
-
         const preferredSize = this.options.getPreferredSize();
         if (preferredSize) {
-          this.options.client.sendTerminalInput(input.terminalId, {
+          this.options.client.sendTerminalInput(nextTerminalId, {
             type: "resize",
             rows: preferredSize.rows,
             cols: preferredSize.cols,
           });
         }
-
-        this.updateStatus({
-          terminalId: input.terminalId,
+        this.options.onStatusChange?.({
+          terminalId: nextTerminalId,
           isAttaching: false,
           error: null,
         });
-        return;
-      } catch (error) {
-        lastErrorMessage =
-          error instanceof Error ? error.message : "Unable to subscribe to terminal";
-        const hasRemainingAttempts = attempt < maxAttachAttempts - 1;
-        if (hasRemainingAttempts && isRetryableError({ message: lastErrorMessage })) {
-          await waitForDelay({ durationMs: getRetryDelayMs({ attempt }) });
-          continue;
+      })
+      .catch((error: unknown) => {
+        if (this.disposed || this.terminalId !== nextTerminalId) {
+          return;
         }
-
-        this.updateStatus({
-          terminalId: input.terminalId,
+        this.terminalId = null;
+        this.options.onStatusChange?.({
+          terminalId: nextTerminalId,
           isAttaching: false,
-          error: lastErrorMessage,
+          error: error instanceof Error ? error.message : "Unable to subscribe to terminal",
         });
-        return;
-      }
-    }
+      });
+  }
 
-    this.updateStatus({
+  handleTerminalExit(input: { terminalId: string }): void {
+    if (this.disposed || input.terminalId !== this.terminalId) {
+      return;
+    }
+    this.decoder.decode();
+    this.terminalId = null;
+    this.options.onStatusChange?.({
       terminalId: input.terminalId,
       isAttaching: false,
-      error: lastErrorMessage,
+      error: TERMINAL_EXITED_ERROR,
     });
   }
 
-  private isAttachGenerationCurrent(input: { terminalId: string; generation: number }): boolean {
-    if (this.isDisposed) {
-      return false;
+  dispose(): void {
+    if (this.disposed) {
+      return;
     }
-    return this.attachGeneration === input.generation && this.selectedTerminalId === input.terminalId;
-  }
-
-  private updateStatus(status: TerminalStreamControllerStatus): void {
-    this.options.onStatusChange?.(status);
+    this.disposed = true;
+    this.decoder.decode();
+    const terminalId = this.terminalId;
+    this.terminalId = null;
+    if (terminalId) {
+      this.options.client.unsubscribeTerminal(terminalId);
+    }
+    this.unsubscribeStreamEvents();
+    this.options.onStatusChange?.({ terminalId: null, isAttaching: false, error: null });
   }
 }

@@ -438,6 +438,31 @@ describe("Terminal", () => {
       unsubscribe();
     });
 
+    it("emits output only after getState reflects the new data", async () => {
+      const session = trackSession(
+        await createTerminal({
+          cwd: "/tmp",
+          shell: "/bin/sh",
+          env: { PS1: "$ " },
+        }),
+      );
+
+      await waitForLines(session, ["$"]);
+      const outputSeenInState = new Promise<boolean>((resolve) => {
+        const unsubscribe = session.subscribe((message) => {
+          if (message.type !== "output" || !message.data.includes("state-after-output")) {
+            return;
+          }
+          unsubscribe();
+          const stateText = getLines(session.getState()).join("\n");
+          resolve(stateText.includes("state-after-output"));
+        });
+      });
+
+      session.send({ type: "input", data: "echo state-after-output\r" });
+      expect(await outputSeenInState).toBe(true);
+    });
+
     it("unsubscribe stops receiving messages", async () => {
       const session = trackSession(
         await createTerminal({

@@ -216,7 +216,7 @@ export function TerminalPane({
       if (terminalIdRef.current === exitedTerminalId) {
         emulatorRef.current?.clear();
       }
-      streamControllerRef.current?.handleStreamExit({
+      streamControllerRef.current?.handleTerminalExit({
         terminalId: exitedTerminalId,
       });
       setModifiers({ ...EMPTY_MODIFIERS });

@@ -1257,7 +1257,6 @@ describe("DaemonClient", () => {
         type: "subscribe_terminal_response",
         payload: {
           terminalId: "term-1",
-          state: null,
           error: null,
           requestId: "sub-1",
         },
@@ -1308,7 +1307,6 @@ describe("DaemonClient", () => {
         type: "subscribe_terminal_response",
         payload: {
           terminalId: "term-1",
-          state: null,
           error: null,
           requestId: "sub-2",
         },
@@ -1356,7 +1354,6 @@ describe("DaemonClient", () => {
         type: "subscribe_terminal_response",
         payload: {
           terminalId: "term-1",
-          state: null,
           error: null,
           requestId: "sub-3",
         },
@@ -1418,7 +1415,6 @@ describe("DaemonClient", () => {
         type: "subscribe_terminal_response",
         payload: {
           terminalId: "term-1",
-          state: null,
           error: null,
           requestId: "sub-4",
         },

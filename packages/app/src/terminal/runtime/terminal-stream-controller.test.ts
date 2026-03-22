@@ -6,44 +6,32 @@ import {
   type TerminalStreamControllerStatus,
 } from "./terminal-stream-controller";
 
+type TerminalSnapshot = {
+  rows: number;
+  cols: number;
+  grid: Array<Array<{ char: string }>>;
+  scrollback: Array<Array<{ char: string }>>;
+  cursor: { row: number; col: number };
+};
+
 type TerminalStreamEvent =
   | { terminalId: string; type: "output"; data: Uint8Array }
-  | {
-      terminalId: string;
-      type: "snapshot";
-      state: {
-        rows: number;
-        cols: number;
-        grid: Array<Array<{ char: string }>>;
-        scrollback: Array<Array<{ char: string }>>;
-        cursor: { row: number; col: number };
-      };
-    };
+  | { terminalId: string; type: "snapshot"; state: TerminalSnapshot };
 
 class FakeTerminalStreamClient implements TerminalStreamControllerClient {
   private readonly listeners = new Set<(event: TerminalStreamEvent) => void>();
   public subscribeCalls: string[] = [];
   public unsubscribeCalls: string[] = [];
   public resizeCalls: Array<{ terminalId: string; rows: number; cols: number }> = [];
-  public nextSubscribeResponses: Array<{
-    terminalId: string;
-    state: {
-      rows: number;
-      cols: number;
-      grid: Array<Array<{ char: string }>>;
-      scrollback: Array<Array<{ char: string }>>;
-      cursor: { row: number; col: number };
-    } | null;
-    error?: string | null;
-  }> = [];
+  public nextSubscribeResults: Array<{ terminalId: string; error?: string | null }> = [];
 
   async subscribeTerminal(terminalId: string) {
     this.subscribeCalls.push(terminalId);
-    const response = this.nextSubscribeResponses.shift();
-    if (!response) {
-      throw new Error("Missing fake subscribe response");
+    const result = this.nextSubscribeResults.shift();
+    if (!result) {
+      throw new Error("Missing fake subscribe result");
     }
-    return response;
+    return result;
   }
 
   unsubscribeTerminal(terminalId: string): void {
@@ -54,11 +42,7 @@ class FakeTerminalStreamClient implements TerminalStreamControllerClient {
     terminalId: string,
     message: { type: "resize"; rows: number; cols: number },
   ): void {
-    this.resizeCalls.push({
-      terminalId,
-      rows: message.rows,
-      cols: message.cols,
-    });
+    this.resizeCalls.push({ terminalId, rows: message.rows, cols: message.cols });
   }
 
   onTerminalStreamEvent(handler: (event: TerminalStreamEvent) => void): () => void {
@@ -75,65 +59,40 @@ class FakeTerminalStreamClient implements TerminalStreamControllerClient {
   }
 }
 
-function createControllerHarness(input?: {
-  client?: FakeTerminalStreamClient;
-}): {
-  client: FakeTerminalStreamClient;
-  outputs: Array<{ terminalId: string; text: string }>;
-  snapshots: Array<{ terminalId: string; text: string }>;
-  statuses: TerminalStreamControllerStatus[];
-  controller: TerminalStreamController;
-} {
+function createHarness(input?: { client?: FakeTerminalStreamClient }) {
   const client = input?.client ?? new FakeTerminalStreamClient();
   const outputs: Array<{ terminalId: string; text: string }> = [];
   const snapshots: Array<{ terminalId: string; text: string }> = [];
   const statuses: TerminalStreamControllerStatus[] = [];
-
   const controller = new TerminalStreamController({
     client,
     getPreferredSize: () => ({ rows: 24, cols: 80 }),
-    onOutput: ({ terminalId, text }) => {
-      outputs.push({ terminalId, text });
+    onOutput: (output) => {
+      outputs.push(output);
     },
     onSnapshot: ({ terminalId, state }) => {
       snapshots.push({
         terminalId,
-        text: state.grid
-          .map((row) => row.map((cell) => cell.char).join(""))
-          .join("\n"),
+        text: state.grid.map((row) => row.map((cell) => cell.char).join("")).join("\n"),
       });
     },
     onStatusChange: (status) => {
       statuses.push(status);
     },
-    waitForDelay: async () => {},
   });
 
-  return {
-    client,
-    outputs,
-    snapshots,
-    statuses,
-    controller,
-  };
+  return { client, controller, outputs, snapshots, statuses };
 }
 
 async function flushAsyncWork(): Promise<void> {
   await Promise.resolve();
-  await new Promise<void>((resolve) => {
-    setTimeout(() => resolve(), 0);
-  });
   await Promise.resolve();
 }
 
 describe("terminal-stream-controller", () => {
-  it("subscribes to a terminal, resizes it, and forwards snapshot/output events", async () => {
-    const harness = createControllerHarness();
-    harness.client.nextSubscribeResponses.push({
-      terminalId: "term-1",
-      state: null,
-      error: null,
-    });
+  it("subscribes, resizes, and forwards snapshot/output events", async () => {
+    const harness = createHarness();
+    harness.client.nextSubscribeResults.push({ terminalId: "term-1", error: null });
 
     harness.controller.setTerminal({ terminalId: "term-1" });
     await flushAsyncWork();
@@ -166,76 +125,50 @@ describe("terminal-stream-controller", () => {
     });
   });
 
-  it("retries retryable subscribe failures and then attaches", async () => {
-    const harness = createControllerHarness();
-    harness.client.nextSubscribeResponses.push({
+  it("surfaces subscribe failures without retrying", async () => {
+    const harness = createHarness();
+    harness.client.nextSubscribeResults.push({
       terminalId: "term-1",
-      state: null,
       error: "network disconnected",
-    });
-    harness.client.nextSubscribeResponses.push({
-      terminalId: "term-1",
-      state: null,
-      error: null,
     });
 
     harness.controller.setTerminal({ terminalId: "term-1" });
     await flushAsyncWork();
 
-    expect(harness.client.subscribeCalls).toEqual(["term-1", "term-1"]);
+    expect(harness.client.subscribeCalls).toEqual(["term-1"]);
     expect(harness.statuses.at(-1)).toEqual({
       terminalId: "term-1",
       isAttaching: false,
-      error: null,
+      error: "network disconnected",
     });
   });
 
-  it("reconnects to the selected terminal when the stream exits", async () => {
-    const harness = createControllerHarness();
-    harness.client.nextSubscribeResponses.push({
-      terminalId: "term-1",
-      state: null,
-      error: null,
-    });
-    harness.client.nextSubscribeResponses.push({
-      terminalId: "term-1",
-      state: null,
-      error: null,
-    });
+  it("treats terminal exit as final and does not reconnect", async () => {
+    const harness = createHarness();
+    harness.client.nextSubscribeResults.push({ terminalId: "term-1", error: null });
 
     harness.controller.setTerminal({ terminalId: "term-1" });
     await flushAsyncWork();
-
-    harness.controller.handleStreamExit({ terminalId: "term-1" });
+    harness.controller.handleTerminalExit({ terminalId: "term-1" });
     await flushAsyncWork();
 
-    expect(harness.client.subscribeCalls).toEqual(["term-1", "term-1"]);
+    expect(harness.client.subscribeCalls).toEqual(["term-1"]);
     expect(harness.statuses.at(-1)).toEqual({
       terminalId: "term-1",
       isAttaching: false,
-      error: null,
+      error: "Terminal exited",
     });
   });
 
   it("unsubscribes when switching terminals and on dispose", async () => {
-    const harness = createControllerHarness();
-    harness.client.nextSubscribeResponses.push({
-      terminalId: "term-1",
-      state: null,
-      error: null,
-    });
-    harness.client.nextSubscribeResponses.push({
-      terminalId: "term-2",
-      state: null,
-      error: null,
-    });
+    const harness = createHarness();
+    harness.client.nextSubscribeResults.push({ terminalId: "term-1", error: null });
+    harness.client.nextSubscribeResults.push({ terminalId: "term-2", error: null });
 
     harness.controller.setTerminal({ terminalId: "term-1" });
     await flushAsyncWork();
-
     harness.controller.setTerminal({ terminalId: "term-2" });
     await flushAsyncWork();
-
     harness.controller.dispose();
 
     expect(harness.client.unsubscribeCalls).toEqual(["term-1", "term-2"]);

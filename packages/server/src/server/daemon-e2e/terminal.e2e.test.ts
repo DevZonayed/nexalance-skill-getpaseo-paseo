@@ -5,11 +5,18 @@ import path from "path";
 import WebSocket from "ws";
 import { DaemonClient } from "../../client/daemon-client.js";
 import {
+  WSOutboundMessageSchema,
+  type TerminalState,
+  type WSOutboundMessage,
+} from "../../shared/messages.js";
+import {
   decodeTerminalStreamFrame,
   TerminalStreamOpcode,
   type TerminalStreamFrame,
 } from "../../shared/terminal-stream-protocol.js";
 import { createDaemonTestContext, type DaemonTestContext } from "../test-utils/index.js";
+
+type RawSessionEnvelope = Extract<WSOutboundMessage, { type: "session" }>;
 
 function tmpCwd(): string {
   return mkdtempSync(path.join(tmpdir(), "daemon-terminal-e2e-"));
@@ -24,10 +31,7 @@ function createLogger() {
   };
 }
 
-function extractStateText(state: {
-  grid: Array<Array<{ char: string }>>;
-  scrollback: Array<Array<{ char: string }>>;
-}): string {
+function extractStateText(state: Pick<TerminalState, "grid" | "scrollback">): string {
   return [...state.scrollback, ...state.grid]
     .map((row) =>
       row
@@ -57,21 +61,9 @@ async function waitForCondition(
 async function waitForTerminalSnapshot(
   client: DaemonClient,
   terminalId: string,
-  predicate: (state: {
-    rows: number;
-    cols: number;
-    grid: Array<Array<{ char: string }>>;
-    scrollback: Array<Array<{ char: string }>>;
-    cursor: { row: number; col: number };
-  }) => boolean,
+  predicate: (state: TerminalState) => boolean,
   timeout = 10000,
-): Promise<{
-  rows: number;
-  cols: number;
-  grid: Array<Array<{ char: string }>>;
-  scrollback: Array<Array<{ char: string }>>;
-  cursor: { row: number; col: number };
-}> {
+): Promise<TerminalState> {
   return new Promise((resolve, reject) => {
     const timeoutHandle = setTimeout(() => {
       unsubscribe();
@@ -156,9 +148,7 @@ async function connectRawWebSocket(port: number): Promise<WebSocket> {
   const helloReady = waitForRawSessionMessage(
     ws,
     (message) =>
-      message.type === "session" &&
-      message.message?.type === "status" &&
-      message.message.payload?.status === "server_info",
+      message.message.type === "status" && message.message.payload.status === "server_info",
     10000,
   );
 
@@ -198,15 +188,9 @@ async function closeWebSocket(ws: WebSocket, timeout = 5000): Promise<void> {
 
 async function waitForRawSessionMessage(
   ws: WebSocket,
-  predicate: (message: {
-    type?: string;
-    message?: { type?: string; payload?: Record<string, any> };
-  }) => boolean,
+  predicate: (message: RawSessionEnvelope) => boolean,
   timeout = 10000,
-): Promise<{
-  type?: string;
-  message?: { type?: string; payload?: Record<string, any> };
-}> {
+): Promise<RawSessionEnvelope> {
   return new Promise((resolve, reject) => {
     const timeoutHandle = setTimeout(() => {
       cleanup();
@@ -220,10 +204,11 @@ async function waitForRawSessionMessage(
         return;
       }
       try {
-        const parsed = JSON.parse(text) as {
-          type?: string;
-          message?: { type?: string; payload?: Record<string, any> };
-        };
+        const parsedResult = WSOutboundMessageSchema.safeParse(JSON.parse(text));
+        if (!parsedResult.success || parsedResult.data.type !== "session") {
+          return;
+        }
+        const parsed = parsedResult.data;
         if (!predicate(parsed)) {
           return;
         }
@@ -294,9 +279,8 @@ async function subscribeRawTerminal(ws: WebSocket, terminalId: string, requestId
   const ready = waitForRawSessionMessage(
     ws,
     (message) =>
-      message.type === "session" &&
-      message.message?.type === "subscribe_terminal_response" &&
-      message.message.payload?.requestId === requestId,
+      message.message.type === "subscribe_terminal_response" &&
+      message.message.payload.requestId === requestId,
     10000,
   );
 
@@ -311,7 +295,11 @@ async function subscribeRawTerminal(ws: WebSocket, terminalId: string, requestId
     }),
   );
 
-  await ready;
+  const message = await ready;
+  if (message.message.type !== "subscribe_terminal_response") {
+    throw new Error("Expected subscribe_terminal_response");
+  }
+  expect(message.message.payload).not.toHaveProperty("state");
 }
 
 describe("daemon E2E terminal", () => {

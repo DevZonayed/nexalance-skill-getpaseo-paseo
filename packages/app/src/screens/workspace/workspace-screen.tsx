@@ -609,17 +609,10 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
       }));
     });
 
-    const unsubscribeStreamExit = client.on("terminal_stream_exit", (message) => {
-      if (message.type !== "terminal_stream_exit") {
-        return;
-      }
-    });
-
     client.subscribeTerminals({ cwd: normalizedWorkspaceId });
 
     return () => {
       unsubscribeChanged();
-      unsubscribeStreamExit();
       client.unsubscribeTerminals({ cwd: normalizedWorkspaceId });
     };
   }, [client, isConnected, normalizedWorkspaceId, queryClient, terminalsQueryKey]);

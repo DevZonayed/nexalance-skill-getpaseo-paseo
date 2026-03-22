@@ -2104,15 +2104,15 @@ export const TerminalCellSchema = z.object({
   bold: z.boolean().optional(),
   italic: z.boolean().optional(),
   underline: z.boolean().optional(),
-});
+}).strict();
 
 export const TerminalStateSchema = z.object({
   rows: z.number(),
   cols: z.number(),
   grid: z.array(z.array(TerminalCellSchema)),
   scrollback: z.array(z.array(TerminalCellSchema)),
-  cursor: z.object({ row: z.number(), col: z.number() }),
-});
+  cursor: z.object({ row: z.number(), col: z.number() }).strict(),
+}).strict();
 
 export const ListTerminalsResponseSchema = z.object({
   type: z.literal("list_terminals_response"),
@@ -2144,7 +2144,6 @@ export const SubscribeTerminalResponseSchema = z.object({
   type: z.literal("subscribe_terminal_response"),
   payload: z.object({
     terminalId: z.string(),
-    state: TerminalStateSchema.nullable(),
     error: z.string().nullable(),
     requestId: z.string(),
   }),
