@@ -34,35 +34,14 @@ export interface TerminalState {
   cursor: Pos;
 }
 
-export interface CellChange {
-  row: number;
-  col: number;
-  cell: Cell;
-}
-
-export interface TerminalRawChunk {
-  data: string;
-  startOffset: number;
-  endOffset: number;
-  replay: boolean;
-}
-
-export interface TerminalRawSubscriptionResult {
-  unsubscribe: () => void;
-  replayedFrom: number;
-  currentOffset: number;
-  earliestAvailableOffset: number;
-  reset: boolean;
-}
-
 export type ClientMessage =
   | { type: "input"; data: string }
   | { type: "resize"; rows: number; cols: number }
   | { type: "mouse"; row: number; col: number; button: number; action: "down" | "up" | "move" };
 
 export type ServerMessage =
-  | { type: "full"; state: TerminalState }
-  | { type: "diff"; changes: CellChange[]; cursor: Pos };
+  | { type: "output"; data: string }
+  | { type: "snapshot"; state: TerminalState };
 
 export interface TerminalSession {
   id: string;
@@ -71,11 +50,6 @@ export interface TerminalSession {
   send(msg: ClientMessage): void;
   subscribe(listener: (msg: ServerMessage) => void): () => void;
   onExit(listener: () => void): () => void;
-  subscribeRaw(
-    listener: (chunk: TerminalRawChunk) => void,
-    options?: { fromOffset?: number },
-  ): TerminalRawSubscriptionResult;
-  getOutputOffset(): number;
   getState(): TerminalState;
   kill(): void;
 }
@@ -263,16 +237,7 @@ export async function createTerminal(options: CreateTerminalOptions): Promise<Te
 
   const id = randomUUID();
   const listeners = new Set<(msg: ServerMessage) => void>();
-  const rawListeners = new Set<(chunk: TerminalRawChunk) => void>();
   const exitListeners = new Set<() => void>();
-  const rawOutputChunks: Array<{
-    startOffset: number;
-    endOffset: number;
-    data: string;
-  }> = [];
-  const maxRawBufferBytes = 8 * 1024 * 1024;
-  let rawBufferBytes = 0;
-  let outputOffset = 0;
   let killed = false;
   let disposed = false;
   let exitEmitted = false;
@@ -329,7 +294,6 @@ export async function createTerminal(options: CreateTerminalOptions): Promise<Te
     stateBroadcastScheduled = false;
     terminal.dispose();
     listeners.clear();
-    rawListeners.clear();
     exitListeners.clear();
   }
 
@@ -340,7 +304,7 @@ export async function createTerminal(options: CreateTerminalOptions): Promise<Te
     }
     const state = getState();
     for (const listener of listeners) {
-      listener({ type: "full", state });
+      listener({ type: "snapshot", state });
     }
   }
 
@@ -355,66 +319,12 @@ export async function createTerminal(options: CreateTerminalOptions): Promise<Te
     }, STATE_BROADCAST_INTERVAL_MS);
   }
 
-  function appendRawOutputChunk(data: string): void {
-    const chunkBytes = Buffer.byteLength(data);
-    if (chunkBytes <= 0) {
-      return;
-    }
-
-    const startOffset = outputOffset;
-    const endOffset = startOffset + chunkBytes;
-    outputOffset = endOffset;
-
-    rawOutputChunks.push({
-      startOffset,
-      endOffset,
-      data,
-    });
-    rawBufferBytes += chunkBytes;
-
-    while (rawBufferBytes > maxRawBufferBytes && rawOutputChunks.length > 0) {
-      const removed = rawOutputChunks.shift();
-      if (!removed) {
-        break;
-      }
-      rawBufferBytes -= removed.endOffset - removed.startOffset;
-    }
-
-    const chunk: TerminalRawChunk = {
-      data,
-      startOffset,
-      endOffset,
-      replay: false,
-    };
-    for (const listener of rawListeners) {
-      listener(chunk);
-    }
-  }
-
-  function getEarliestAvailableOffset(): number {
-    const earliest = rawOutputChunks[0];
-    return earliest ? earliest.startOffset : outputOffset;
-  }
-
-  function alignOffsetToChunkBoundary(offset: number): number {
-    if (offset === outputOffset) {
-      return offset;
-    }
-    for (const chunk of rawOutputChunks) {
-      if (offset === chunk.startOffset || offset === chunk.endOffset) {
-        return offset;
-      }
-      if (offset > chunk.startOffset && offset < chunk.endOffset) {
-        return chunk.startOffset;
-      }
-    }
-    return offset;
-  }
-
   // Pipe PTY output to terminal emulator
   ptyProcess.onData((data) => {
     if (killed) return;
-    appendRawOutputChunk(data);
+    for (const listener of listeners) {
+      listener({ type: "output", data });
+    }
     terminal.write(data, () => {
       scheduleStateBroadcast();
     });
@@ -460,10 +370,9 @@ export async function createTerminal(options: CreateTerminalOptions): Promise<Te
   function subscribe(listener: (msg: ServerMessage) => void): () => void {
     listeners.add(listener);
 
-    // Send initial full state
     queueMicrotask(() => {
       if (listeners.has(listener)) {
-        listener({ type: "full", state: getState() });
+        listener({ type: "snapshot", state: getState() });
       }
     });
 
@@ -490,45 +399,6 @@ export async function createTerminal(options: CreateTerminalOptions): Promise<Te
     };
   }
 
-  function subscribeRaw(
-    listener: (chunk: TerminalRawChunk) => void,
-    options?: { fromOffset?: number },
-  ): TerminalRawSubscriptionResult {
-    const requestedOffset = Math.max(0, Math.floor(options?.fromOffset ?? 0));
-    const earliestAvailableOffset = getEarliestAvailableOffset();
-    const clampedOffset = Math.max(requestedOffset, earliestAvailableOffset);
-    const replayedFrom = alignOffsetToChunkBoundary(clampedOffset);
-    const reset = replayedFrom !== requestedOffset;
-
-    for (const chunk of rawOutputChunks) {
-      if (chunk.endOffset <= replayedFrom) {
-        continue;
-      }
-      listener({
-        data: chunk.data,
-        startOffset: chunk.startOffset,
-        endOffset: chunk.endOffset,
-        replay: true,
-      });
-    }
-
-    rawListeners.add(listener);
-
-    return {
-      unsubscribe: () => {
-        rawListeners.delete(listener);
-      },
-      replayedFrom,
-      currentOffset: outputOffset,
-      earliestAvailableOffset,
-      reset,
-    };
-  }
-
-  function getOutputOffset(): number {
-    return outputOffset;
-  }
-
   function kill(): void {
     if (!killed) {
       killed = true;
@@ -548,8 +418,6 @@ export async function createTerminal(options: CreateTerminalOptions): Promise<Te
     send,
     subscribe,
     onExit,
-    subscribeRaw,
-    getOutputOffset,
     getState,
     kill,
   };

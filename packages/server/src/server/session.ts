@@ -23,8 +23,6 @@ import {
   type UnsubscribeTerminalRequest,
   type TerminalInput,
   type KillTerminalRequest,
-  type AttachTerminalStreamRequest,
-  type DetachTerminalStreamRequest,
   type SubscribeCheckoutDiffRequest,
   type UnsubscribeCheckoutDiffRequest,
   type DirectorySuggestionsRequest,
@@ -35,11 +33,12 @@ import {
 import type { TerminalManager, TerminalsChangedEvent } from "../terminal/terminal-manager.js";
 import type { TerminalSession } from "../terminal/terminal.js";
 import {
-  BinaryMuxChannel,
-  TerminalBinaryFlags,
-  TerminalBinaryMessageType,
-  type BinaryMuxFrame,
-} from "../shared/binary-mux.js";
+  TerminalStreamOpcode,
+  encodeTerminalSnapshotPayload,
+  encodeTerminalStreamFrame,
+  decodeTerminalResizePayload,
+  type TerminalStreamFrame,
+} from "../shared/terminal-stream-protocol.js";
 import { TTSManager } from "./agent/tts-manager.js";
 import { STTManager } from "./agent/stt-manager.js";
 import type { SpeechToTextProvider, TextToSpeechProvider } from "./speech/speech-provider.js";
@@ -191,9 +190,8 @@ const CHECKOUT_DIFF_WATCH_DEBOUNCE_MS = 150;
 const CHECKOUT_DIFF_FALLBACK_REFRESH_MS = 5_000;
 const WORKSPACE_GIT_WATCH_DEBOUNCE_MS = 500;
 const WORKSPACE_GIT_WATCH_REMOVED_FINGERPRINT = "__removed__";
-const TERMINAL_STREAM_WINDOW_BYTES = 256 * 1024;
-const TERMINAL_STREAM_MAX_PENDING_BYTES = 2 * 1024 * 1024;
-const TERMINAL_STREAM_MAX_PENDING_CHUNKS = 2048;
+const TERMINAL_STREAM_HIGH_WATER_BYTES = 256 * 1024;
+const TERMINAL_STREAM_LOW_WATER_BYTES = 16 * 1024;
 
 function deriveInitialAgentTitle(prompt: string): string | null {
   const firstContentLine = prompt
@@ -277,11 +275,12 @@ type CheckoutErrorPayload = {
   message: string;
 };
 
-type TerminalStreamPendingChunk = {
-  data: string;
-  startOffset: number;
-  endOffset: number;
-  replay: boolean;
+type ActiveTerminalStream = {
+  terminalId: string;
+  unsubscribe: () => void;
+  needsSnapshot: boolean;
+  primed: boolean;
+  snapshotTimer: ReturnType<typeof setTimeout> | null;
 };
 
 export type SessionRuntimeMetrics = {
@@ -395,7 +394,8 @@ type VoiceTranscriptionResultPayload = {
 export type SessionOptions = {
   clientId: string;
   onMessage: (msg: SessionOutboundMessage) => void;
-  onBinaryMessage?: (frame: BinaryMuxFrame) => void;
+  onBinaryMessage?: (frame: Uint8Array) => void;
+  getBinaryBufferedAmount?: () => number;
   onLifecycleIntent?: (intent: SessionLifecycleIntent) => void;
   logger: pino.Logger;
   downloadTokenStore: DownloadTokenStore;
@@ -546,7 +546,8 @@ export class Session {
   private readonly clientId: string;
   private readonly sessionId: string;
   private readonly onMessage: (msg: SessionOutboundMessage) => void;
-  private readonly onBinaryMessage: ((frame: BinaryMuxFrame) => void) | null;
+  private readonly onBinaryMessage: ((frame: Uint8Array) => void) | null;
+  private readonly getBinaryBufferedAmount: (() => number) | null;
   private readonly onLifecycleIntent: ((intent: SessionLifecycleIntent) => void) | null;
   private readonly sessionLogger: pino.Logger;
   private readonly paseoHome: string;
@@ -605,21 +606,8 @@ export class Session {
   private readonly terminalManager: TerminalManager | null;
   private readonly subscribedTerminalDirectories = new Set<string>();
   private unsubscribeTerminalsChanged: (() => void) | null = null;
-  private terminalSubscriptions: Map<string, () => void> = new Map();
   private terminalExitSubscriptions: Map<string, () => void> = new Map();
-  private readonly terminalStreams = new Map<
-    number,
-    {
-      terminalId: string;
-      unsubscribe: () => void;
-      lastOutputOffset: number;
-      lastAckOffset: number;
-      pendingChunks: TerminalStreamPendingChunk[];
-      pendingBytes: number;
-    }
-  >();
-  private readonly terminalStreamByTerminalId = new Map<string, number>();
-  private nextTerminalStreamId = 1;
+  private activeTerminalStream: ActiveTerminalStream | null = null;
   private readonly checkoutDiffSubscriptions = new Map<string, { targetKey: string }>();
   private readonly checkoutDiffTargets = new Map<string, CheckoutDiffWatchTarget>();
   private readonly workspaceGitWatchTargets = new Map<string, WorkspaceGitWatchTarget>();
@@ -648,6 +636,7 @@ export class Session {
       clientId,
       onMessage,
       onBinaryMessage,
+      getBinaryBufferedAmount,
       onLifecycleIntent,
       logger,
       downloadTokenStore,
@@ -670,6 +659,7 @@ export class Session {
     this.sessionId = uuidv4();
     this.onMessage = onMessage;
     this.onBinaryMessage = onBinaryMessage ?? null;
+    this.getBinaryBufferedAmount = getBinaryBufferedAmount ?? null;
     this.onLifecycleIntent = onLifecycleIntent ?? null;
     this.downloadTokenStore = downloadTokenStore;
     this.pushTokenStore = pushTokenStore;
@@ -761,8 +751,8 @@ export class Session {
       checkoutDiffWatcherCount,
       checkoutDiffFallbackRefreshTargetCount,
       terminalDirectorySubscriptionCount: this.subscribedTerminalDirectories.size,
-      terminalSubscriptionCount: this.terminalSubscriptions.size,
-      terminalStreamCount: this.terminalStreams.size,
+      terminalSubscriptionCount: this.activeTerminalStream ? 1 : 0,
+      terminalStreamCount: this.activeTerminalStream ? 1 : 0,
     };
   }
 
@@ -1764,13 +1754,6 @@ export class Session {
           await this.handleKillTerminalRequest(msg);
           break;
 
-        case "attach_terminal_stream_request":
-          await this.handleAttachTerminalStreamRequest(msg);
-          break;
-
-        case "detach_terminal_stream_request":
-          this.handleDetachTerminalStreamRequest(msg);
-          break;
       }
     } catch (error: any) {
       const err = error instanceof Error ? error : new Error(String(error));
@@ -1805,73 +1788,43 @@ export class Session {
     }
   }
 
-  public handleBinaryFrame(frame: BinaryMuxFrame): void {
-    switch (frame.channel) {
-      case BinaryMuxChannel.Terminal:
-        this.handleTerminalBinaryFrame(frame);
-        break;
-      default:
-        this.sessionLogger.warn(
-          { channel: frame.channel, messageType: frame.messageType },
-          "Unhandled binary mux channel",
-        );
-        break;
+  public handleBinaryFrame(frame: TerminalStreamFrame): void {
+    const activeStream = this.activeTerminalStream;
+    if (!activeStream || !this.terminalManager) {
+      return;
     }
-  }
-
-  private handleTerminalBinaryFrame(frame: BinaryMuxFrame): void {
-    if (frame.messageType === TerminalBinaryMessageType.InputUtf8) {
-      const binding = this.terminalStreams.get(frame.streamId);
-      if (!binding) {
-        this.sessionLogger.warn(
-          { streamId: frame.streamId },
-          "Terminal stream not found for input",
-        );
-        return;
-      }
-      if (!this.terminalManager) {
-        return;
-      }
-      const session = this.terminalManager.getTerminal(binding.terminalId);
-      if (!session) {
-        this.detachTerminalStream(frame.streamId, { emitExit: true });
-        return;
-      }
-
-      const payload = frame.payload ?? new Uint8Array(0);
-      if (payload.byteLength === 0) {
-        return;
-      }
-      const text = Buffer.from(payload).toString("utf8");
-      if (!text) {
-        return;
-      }
-      session.send({ type: "input", data: text });
+    const terminal = this.terminalManager.getTerminal(activeStream.terminalId);
+    if (!terminal) {
+      this.detachActiveTerminalStream({ emitExit: true });
       return;
     }
 
-    if (frame.messageType === TerminalBinaryMessageType.Ack) {
-      const binding = this.terminalStreams.get(frame.streamId);
-      if (binding) {
-        if (!Number.isFinite(frame.offset) || frame.offset < 0) {
+    switch (frame.opcode) {
+      case TerminalStreamOpcode.Input: {
+        if (frame.payload.byteLength === 0) {
           return;
         }
-        const nextAckOffset = Math.max(
-          binding.lastAckOffset,
-          Math.min(Math.floor(frame.offset), binding.lastOutputOffset),
-        );
-        if (nextAckOffset > binding.lastAckOffset) {
-          binding.lastAckOffset = nextAckOffset;
-          this.flushPendingTerminalStreamChunks(frame.streamId, binding);
+        const text = Buffer.from(frame.payload).toString("utf8");
+        if (!text) {
+          return;
         }
+        terminal.send({ type: "input", data: text });
+        return;
       }
-      return;
-    }
 
-    this.sessionLogger.warn(
-      { streamId: frame.streamId, messageType: frame.messageType },
-      "Unhandled terminal binary frame",
-    );
+      case TerminalStreamOpcode.Resize: {
+        const resize = decodeTerminalResizePayload(frame.payload);
+        if (!resize) {
+          return;
+        }
+        terminal.send({ type: "resize", rows: resize.rows, cols: resize.cols });
+        this.queueTerminalSnapshot(activeStream, terminal);
+        return;
+      }
+
+      default:
+        return;
+    }
   }
 
   private async handleRestartServerRequest(requestId: string, reason?: string): Promise<void> {
@@ -2032,7 +1985,21 @@ export class Session {
       attentionTimestamp: null,
     };
     await this.agentStorage.upsert(nextRecord);
-    this.agentManager.notifyAgentState(agentId);
+
+    // Unload the agent from memory — the storage record is the source of truth now.
+    // This tears down the provider session and drops the hydrated timeline,
+    // freeing memory. ensureAgentLoaded will re-initialize if needed later.
+    if (this.agentManager.getAgent(agentId)) {
+      try {
+        await this.agentManager.closeAgent(agentId);
+      } catch (error) {
+        this.sessionLogger.warn(
+          { err: error, agentId },
+          "Failed to close agent during archive",
+        );
+      }
+    }
+
     return { archivedAt, archivedRecord: nextRecord };
   }
 
@@ -7447,7 +7414,7 @@ export class Session {
     this.onMessage(msg);
   }
 
-  private emitBinary(frame: BinaryMuxFrame): void {
+  private emitBinary(frame: Uint8Array): void {
     if (!this.onBinaryMessage) {
       return;
     }
@@ -7506,15 +7473,11 @@ export class Session {
     }
     this.subscribedTerminalDirectories.clear();
 
-    for (const unsubscribe of this.terminalSubscriptions.values()) {
-      unsubscribe();
-    }
-    this.terminalSubscriptions.clear();
     for (const unsubscribeExit of this.terminalExitSubscriptions.values()) {
       unsubscribeExit();
     }
     this.terminalExitSubscriptions.clear();
-    this.detachAllTerminalStreams({ emitExit: false });
+    this.detachActiveTerminalStream({ emitExit: false });
 
     for (const target of this.checkoutDiffTargets.values()) {
       this.closeCheckoutDiffWatchTarget(target);
@@ -7550,22 +7513,8 @@ export class Session {
       this.terminalExitSubscriptions.delete(terminalId);
     }
 
-    const unsubscribe = this.terminalSubscriptions.get(terminalId);
-    if (unsubscribe) {
-      try {
-        unsubscribe();
-      } catch (error) {
-        this.sessionLogger.warn(
-          { err: error, terminalId },
-          "Failed to unsubscribe terminal after process exit",
-        );
-      }
-      this.terminalSubscriptions.delete(terminalId);
-    }
-
-    const streamId = this.terminalStreamByTerminalId.get(terminalId);
-    if (typeof streamId === "number") {
-      this.detachTerminalStream(streamId, { emitExit: true });
+    if (this.activeTerminalStream?.terminalId === terminalId) {
+      this.detachActiveTerminalStream({ emitExit: true });
     }
   }
 
@@ -7740,25 +7689,7 @@ export class Session {
     }
     this.ensureTerminalExitSubscription(session);
 
-    // Unsubscribe from previous subscription if any
-    const existing = this.terminalSubscriptions.get(msg.terminalId);
-    if (existing) {
-      existing();
-    }
-
-    // Subscribe to terminal updates
-    const unsubscribe = session.subscribe((serverMsg) => {
-      if (serverMsg.type === "full") {
-        this.emit({
-          type: "terminal_output",
-          payload: {
-            terminalId: msg.terminalId,
-            state: serverMsg.state,
-          },
-        });
-      }
-    });
-    this.terminalSubscriptions.set(msg.terminalId, unsubscribe);
+    const activeStream = this.bindActiveTerminalStream(session);
 
     // Send initial state
     this.emit({
@@ -7770,13 +7701,16 @@ export class Session {
         requestId: msg.requestId,
       },
     });
+
+    if (activeStream) {
+      this.sendTerminalSnapshot(activeStream, session);
+      activeStream.primed = true;
+    }
   }
 
   private handleUnsubscribeTerminalRequest(msg: UnsubscribeTerminalRequest): void {
-    const unsubscribe = this.terminalSubscriptions.get(msg.terminalId);
-    if (unsubscribe) {
-      unsubscribe();
-      this.terminalSubscriptions.delete(msg.terminalId);
+    if (this.activeTerminalStream?.terminalId === msg.terminalId) {
+      this.detachActiveTerminalStream({ emitExit: false });
     }
   }
 
@@ -7796,15 +7730,8 @@ export class Session {
   }
 
   private killTrackedTerminal(terminalId: string, options?: { emitExit: boolean }): void {
-    const unsubscribe = this.terminalSubscriptions.get(terminalId);
-    if (unsubscribe) {
-      unsubscribe();
-      this.terminalSubscriptions.delete(terminalId);
-    }
-
-    const streamId = this.terminalStreamByTerminalId.get(terminalId);
-    if (typeof streamId === "number") {
-      this.detachTerminalStream(streamId, { emitExit: options?.emitExit ?? true });
+    if (this.activeTerminalStream?.terminalId === terminalId) {
+      this.detachActiveTerminalStream({ emitExit: options?.emitExit ?? true });
     }
 
     this.terminalManager?.killTerminal(terminalId);
@@ -7867,277 +7794,156 @@ export class Session {
     });
   }
 
-  private async handleAttachTerminalStreamRequest(msg: AttachTerminalStreamRequest): Promise<void> {
-    if (!this.terminalManager || !this.onBinaryMessage) {
-      this.emit({
-        type: "attach_terminal_stream_response",
-        payload: {
-          terminalId: msg.terminalId,
-          streamId: null,
-          replayedFrom: 0,
-          currentOffset: 0,
-          earliestAvailableOffset: 0,
-          reset: true,
-          error: "Terminal streaming not available",
-          requestId: msg.requestId,
-        },
-      });
-      return;
+  private bindActiveTerminalStream(terminal: TerminalSession): ActiveTerminalStream | null {
+    this.detachActiveTerminalStream({ emitExit: false });
+    if (!this.onBinaryMessage) {
+      return null;
     }
 
-    const session = this.terminalManager.getTerminal(msg.terminalId);
-    if (!session) {
-      this.emit({
-        type: "attach_terminal_stream_response",
-        payload: {
-          terminalId: msg.terminalId,
-          streamId: null,
-          replayedFrom: 0,
-          currentOffset: 0,
-          earliestAvailableOffset: 0,
-          reset: true,
-          error: "Terminal not found",
-          requestId: msg.requestId,
-        },
-      });
-      return;
-    }
-
-    if (msg.rows || msg.cols) {
-      const state = session.getState();
-      session.send({
-        type: "resize",
-        rows: msg.rows ?? state.rows,
-        cols: msg.cols ?? state.cols,
-      });
-    }
-
-    const existingStreamId = this.terminalStreamByTerminalId.get(msg.terminalId);
-    if (typeof existingStreamId === "number") {
-      // Replacing an active stream can happen when multiple UI surfaces attach to the
-      // same terminal. Emit exit for the replaced stream so stale listeners reconnect
-      // instead of continuing to send input to an invalid stream id.
-      this.detachTerminalStream(existingStreamId, { emitExit: true });
-    }
-
-    const streamId = this.allocateTerminalStreamId();
-    const requestedResumeOffset = typeof msg.resumeOffset === "number" ? msg.resumeOffset : 0;
-    const initialOffset = Math.max(0, Math.floor(requestedResumeOffset));
-    const binding: {
-      terminalId: string;
-      unsubscribe: () => void;
-      lastOutputOffset: number;
-      lastAckOffset: number;
-      pendingChunks: TerminalStreamPendingChunk[];
-      pendingBytes: number;
-    } = {
-      terminalId: msg.terminalId,
+    const activeStream: ActiveTerminalStream = {
+      terminalId: terminal.id,
       unsubscribe: () => {},
-      lastOutputOffset: initialOffset,
-      lastAckOffset: initialOffset,
-      pendingChunks: [],
-      pendingBytes: 0,
+      needsSnapshot: false,
+      primed: false,
+      snapshotTimer: null,
     };
-    this.terminalStreams.set(streamId, binding);
-    this.terminalStreamByTerminalId.set(msg.terminalId, streamId);
-
-    let rawSub;
-    try {
-      rawSub = session.subscribeRaw(
-        (chunk) => {
-          const currentBinding = this.terminalStreams.get(streamId);
-          if (!currentBinding) {
-            return;
-          }
-          this.enqueueOrEmitTerminalStreamChunk(streamId, currentBinding, {
-            data: chunk.data,
-            startOffset: chunk.startOffset,
-            endOffset: chunk.endOffset,
-            replay: chunk.replay,
-          });
-        },
-        { fromOffset: requestedResumeOffset },
-      );
-    } catch (error) {
-      this.terminalStreams.delete(streamId);
-      this.terminalStreamByTerminalId.delete(msg.terminalId);
-      throw error;
-    }
-
-    binding.unsubscribe = rawSub.unsubscribe;
-    binding.lastAckOffset = rawSub.replayedFrom;
-    if (binding.lastOutputOffset < rawSub.replayedFrom) {
-      binding.lastOutputOffset = rawSub.replayedFrom;
-    }
-    this.flushPendingTerminalStreamChunks(streamId, binding);
-
-    this.emit({
-      type: "attach_terminal_stream_response",
-      payload: {
-        terminalId: msg.terminalId,
-        streamId,
-        replayedFrom: rawSub.replayedFrom,
-        currentOffset: rawSub.currentOffset,
-        earliestAvailableOffset: rawSub.earliestAvailableOffset,
-        reset: rawSub.reset,
-        error: null,
-        requestId: msg.requestId,
-      },
-    });
-  }
-
-  private getTerminalStreamChunkByteLength(chunk: TerminalStreamPendingChunk): number {
-    return Math.max(0, chunk.endOffset - chunk.startOffset);
-  }
-
-  private canEmitTerminalStreamChunk(
-    binding: {
-      lastAckOffset: number;
-    },
-    chunk: TerminalStreamPendingChunk,
-  ): boolean {
-    return chunk.startOffset < binding.lastAckOffset + TERMINAL_STREAM_WINDOW_BYTES;
-  }
-
-  private emitTerminalStreamChunk(
-    streamId: number,
-    binding: {
-      lastOutputOffset: number;
-    },
-    chunk: TerminalStreamPendingChunk,
-  ): void {
-    const payload = new Uint8Array(Buffer.from(chunk.data, "utf8"));
-    this.emitBinary({
-      channel: BinaryMuxChannel.Terminal,
-      messageType: TerminalBinaryMessageType.OutputUtf8,
-      streamId,
-      offset: chunk.startOffset,
-      flags: chunk.replay ? TerminalBinaryFlags.Replay : 0,
-      payload,
-    });
-    binding.lastOutputOffset = chunk.endOffset;
-  }
-
-  private enqueueOrEmitTerminalStreamChunk(
-    streamId: number,
-    binding: {
-      lastAckOffset: number;
-      lastOutputOffset: number;
-      pendingChunks: TerminalStreamPendingChunk[];
-      pendingBytes: number;
-    },
-    chunk: TerminalStreamPendingChunk,
-  ): void {
-    const chunkBytes = this.getTerminalStreamChunkByteLength(chunk);
-
-    if (binding.pendingChunks.length > 0 || !this.canEmitTerminalStreamChunk(binding, chunk)) {
-      if (
-        binding.pendingChunks.length >= TERMINAL_STREAM_MAX_PENDING_CHUNKS ||
-        binding.pendingBytes + chunkBytes > TERMINAL_STREAM_MAX_PENDING_BYTES
-      ) {
-        this.sessionLogger.warn(
-          {
-            streamId,
-            pendingChunks: binding.pendingChunks.length,
-            pendingBytes: binding.pendingBytes,
-            chunkBytes,
-          },
-          "Terminal stream pending buffer overflow; closing stream",
-        );
-        this.detachTerminalStream(streamId, { emitExit: true });
+    activeStream.unsubscribe = terminal.subscribe((message) => {
+      if (this.activeTerminalStream !== activeStream) {
         return;
       }
-      binding.pendingChunks.push(chunk);
-      binding.pendingBytes += chunkBytes;
+      if (message.type === "output") {
+        this.handleActiveTerminalOutput(activeStream, terminal, message.data);
+        return;
+      }
+      if (message.type === "snapshot") {
+        this.maybeSendQueuedTerminalSnapshot(activeStream, terminal);
+      }
+    });
+    this.activeTerminalStream = activeStream;
+    return activeStream;
+  }
+
+  private handleActiveTerminalOutput(
+    activeStream: ActiveTerminalStream,
+    terminal: TerminalSession,
+    data: string,
+  ): void {
+    if (!activeStream.primed || data.length === 0) {
       return;
     }
-
-    this.emitTerminalStreamChunk(streamId, binding, chunk);
+    if (activeStream.needsSnapshot) {
+      this.maybeSendQueuedTerminalSnapshot(activeStream, terminal);
+      return;
+    }
+    if (this.getCurrentBinaryBufferedAmount() > TERMINAL_STREAM_HIGH_WATER_BYTES) {
+      activeStream.needsSnapshot = true;
+      this.scheduleTerminalSnapshotRetry(activeStream, terminal);
+      return;
+    }
+    this.emitBinary(
+      encodeTerminalStreamFrame({
+        opcode: TerminalStreamOpcode.Output,
+        payload: new Uint8Array(Buffer.from(data, "utf8")),
+      }),
+    );
+    if (this.getCurrentBinaryBufferedAmount() > TERMINAL_STREAM_HIGH_WATER_BYTES) {
+      activeStream.needsSnapshot = true;
+      this.scheduleTerminalSnapshotRetry(activeStream, terminal);
+    }
   }
 
-  private flushPendingTerminalStreamChunks(
-    streamId: number,
-    binding: {
-      lastAckOffset: number;
-      lastOutputOffset: number;
-      pendingChunks: TerminalStreamPendingChunk[];
-      pendingBytes: number;
-    },
+  private queueTerminalSnapshot(
+    activeStream: ActiveTerminalStream,
+    terminal: TerminalSession,
   ): void {
-    while (binding.pendingChunks.length > 0) {
-      const next = binding.pendingChunks[0];
-      if (!next || !this.canEmitTerminalStreamChunk(binding, next)) {
-        break;
-      }
-      binding.pendingChunks.shift();
-      binding.pendingBytes -= this.getTerminalStreamChunkByteLength(next);
-      if (binding.pendingBytes < 0) {
-        binding.pendingBytes = 0;
-      }
-      this.emitTerminalStreamChunk(streamId, binding, next);
+    if (this.getCurrentBinaryBufferedAmount() > TERMINAL_STREAM_HIGH_WATER_BYTES) {
+      activeStream.needsSnapshot = true;
+      this.scheduleTerminalSnapshotRetry(activeStream, terminal);
+      return;
     }
+    this.sendTerminalSnapshot(activeStream, terminal);
   }
 
-  private handleDetachTerminalStreamRequest(msg: DetachTerminalStreamRequest): void {
-    const success = this.detachTerminalStream(msg.streamId, { emitExit: false });
-    this.emit({
-      type: "detach_terminal_stream_response",
-      payload: {
-        streamId: msg.streamId,
-        success,
-        requestId: msg.requestId,
-      },
-    });
-  }
-
-  private detachAllTerminalStreams(options?: { emitExit: boolean }): void {
-    for (const streamId of Array.from(this.terminalStreams.keys())) {
-      this.detachTerminalStream(streamId, options);
+  private maybeSendQueuedTerminalSnapshot(
+    activeStream: ActiveTerminalStream,
+    terminal: TerminalSession,
+  ): void {
+    if (!activeStream.needsSnapshot) {
+      return;
     }
+    if (this.getCurrentBinaryBufferedAmount() >= TERMINAL_STREAM_LOW_WATER_BYTES) {
+      this.scheduleTerminalSnapshotRetry(activeStream, terminal);
+      return;
+    }
+    this.sendTerminalSnapshot(activeStream, terminal);
   }
 
-  private detachTerminalStream(streamId: number, options?: { emitExit: boolean }): boolean {
-    const binding = this.terminalStreams.get(streamId);
-    if (!binding) {
+  private sendTerminalSnapshot(
+    activeStream: ActiveTerminalStream,
+    terminal: TerminalSession,
+  ): void {
+    this.clearTerminalSnapshotRetry(activeStream);
+    activeStream.needsSnapshot = false;
+    this.emitBinary(
+      encodeTerminalStreamFrame({
+        opcode: TerminalStreamOpcode.Snapshot,
+        payload: encodeTerminalSnapshotPayload(terminal.getState()),
+      }),
+    );
+  }
+
+  private scheduleTerminalSnapshotRetry(
+    activeStream: ActiveTerminalStream,
+    terminal: TerminalSession,
+  ): void {
+    if (activeStream.snapshotTimer) {
+      return;
+    }
+    activeStream.snapshotTimer = setTimeout(() => {
+      activeStream.snapshotTimer = null;
+      if (this.activeTerminalStream !== activeStream || !activeStream.needsSnapshot) {
+        return;
+      }
+      this.maybeSendQueuedTerminalSnapshot(activeStream, terminal);
+    }, 33);
+  }
+
+  private clearTerminalSnapshotRetry(activeStream: ActiveTerminalStream): void {
+    if (!activeStream.snapshotTimer) {
+      return;
+    }
+    clearTimeout(activeStream.snapshotTimer);
+    activeStream.snapshotTimer = null;
+  }
+
+  private detachActiveTerminalStream(options?: { emitExit: boolean }): boolean {
+    const activeStream = this.activeTerminalStream;
+    if (!activeStream) {
       return false;
     }
-
+    this.activeTerminalStream = null;
+    this.clearTerminalSnapshotRetry(activeStream);
     try {
-      binding.unsubscribe();
+      activeStream.unsubscribe();
     } catch (error) {
-      this.sessionLogger.warn({ err: error, streamId }, "Failed to unsubscribe terminal stream");
+      this.sessionLogger.warn({ err: error }, "Failed to unsubscribe terminal stream");
     }
-    this.terminalStreams.delete(streamId);
-    if (this.terminalStreamByTerminalId.get(binding.terminalId) === streamId) {
-      this.terminalStreamByTerminalId.delete(binding.terminalId);
-    }
-
     if (options?.emitExit) {
       this.emit({
         type: "terminal_stream_exit",
         payload: {
-          streamId,
-          terminalId: binding.terminalId,
+          terminalId: activeStream.terminalId,
         },
       });
     }
     return true;
   }
 
-  private allocateTerminalStreamId(): number {
-    let attempts = 0;
-    while (attempts < 0xffffffff) {
-      const candidate = this.nextTerminalStreamId >>> 0;
-      this.nextTerminalStreamId = ((this.nextTerminalStreamId + 1) & 0xffffffff) >>> 0;
-      if (candidate === 0) {
-        attempts += 1;
-        continue;
-      }
-      if (!this.terminalStreams.has(candidate)) {
-        return candidate;
-      }
-      attempts += 1;
+  private getCurrentBinaryBufferedAmount(): number {
+    const bufferedAmount = this.getBinaryBufferedAmount?.() ?? 0;
+    if (!Number.isFinite(bufferedAmount) || bufferedAmount < 0) {
+      return 0;
     }
-    throw new Error("Unable to allocate terminal stream id");
+    return Math.floor(bufferedAmount);
   }
 }

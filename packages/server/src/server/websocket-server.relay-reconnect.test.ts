@@ -1,11 +1,10 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
-  BinaryMuxChannel,
-  TerminalBinaryMessageType,
   asUint8Array,
-  decodeBinaryMuxFrame,
-  encodeBinaryMuxFrame,
-} from "../shared/binary-mux.js";
+  decodeTerminalStreamFrame,
+  encodeTerminalStreamFrame,
+  TerminalStreamOpcode,
+} from "../shared/terminal-stream-protocol.js";
 
 const wsModuleMock = vi.hoisted(() => {
   class MockWebSocketServer {
@@ -89,6 +88,7 @@ const TEST_DAEMON_VERSION = "1.2.3-test";
 
 class MockSocket {
   readyState = 1;
+  bufferedAmount = 0;
   sent: unknown[] = [];
   private listeners = new Map<string, Array<(...args: any[]) => void>>();
 
@@ -623,7 +623,7 @@ describe("relay external socket reconnect behavior", () => {
     await server.close();
   });
 
-  test("routes inbound binary mux frames to session.handleBinaryFrame", async () => {
+  test("routes inbound terminal frames to session.handleBinaryFrame", async () => {
     const server = createServer();
 
     const socket = new MockSocket();
@@ -638,11 +638,8 @@ describe("relay external socket reconnect behavior", () => {
     socket.emit(
       "message",
       Buffer.from(
-        encodeBinaryMuxFrame({
-          channel: BinaryMuxChannel.Terminal,
-          messageType: TerminalBinaryMessageType.InputUtf8,
-          streamId: 9,
-          offset: 0,
+        encodeTerminalStreamFrame({
+          opcode: TerminalStreamOpcode.Input,
           payload: new TextEncoder().encode("ls\r"),
         }),
       ),
@@ -651,20 +648,16 @@ describe("relay external socket reconnect behavior", () => {
 
     expect(session.handleBinaryFrame).toHaveBeenCalledTimes(1);
     const frame = session.handleBinaryFrame.mock.calls[0]?.[0] as {
-      channel: number;
-      messageType: number;
-      streamId: number;
-      offset: number;
+      opcode: number;
+      payload: Uint8Array;
     };
-    expect(frame.channel).toBe(BinaryMuxChannel.Terminal);
-    expect(frame.messageType).toBe(TerminalBinaryMessageType.InputUtf8);
-    expect(frame.streamId).toBe(9);
-    expect(frame.offset).toBe(0);
+    expect(frame.opcode).toBe(TerminalStreamOpcode.Input);
+    expect(new TextDecoder().decode(frame.payload)).toBe("ls\r");
 
     await server.close();
   });
 
-  test("sends outbound binary mux frames from session over websocket", async () => {
+  test("sends outbound terminal frames from session over websocket", async () => {
     const server = createServer();
 
     const socket = new MockSocket();
@@ -677,33 +670,18 @@ describe("relay external socket reconnect behavior", () => {
     const session = sessionMock.instances[0]!;
 
     const onBinaryMessage = session.args.onBinaryMessage as
-      | ((frame: {
-          channel: number;
-          messageType: number;
-          streamId: number;
-          offset: number;
-          payload?: Uint8Array;
-        }) => void)
+      | ((frame: Uint8Array) => void)
       | undefined;
     expect(onBinaryMessage).toBeTypeOf("function");
 
-    onBinaryMessage?.({
-      channel: BinaryMuxChannel.Terminal,
-      messageType: TerminalBinaryMessageType.OutputUtf8,
-      streamId: 11,
-      offset: 42,
-      payload: new TextEncoder().encode("ok"),
-    });
+    onBinaryMessage?.(new Uint8Array([TerminalStreamOpcode.Output, 0x6f, 0x6b]));
 
     expect(socket.sent).toHaveLength(2);
     const binaryPayload = asUint8Array(socket.sent[1]);
     expect(binaryPayload).not.toBeNull();
-    const frame = decodeBinaryMuxFrame(binaryPayload!);
+    const frame = decodeTerminalStreamFrame(binaryPayload!);
     expect(frame).not.toBeNull();
-    expect(frame!.channel).toBe(BinaryMuxChannel.Terminal);
-    expect(frame!.messageType).toBe(TerminalBinaryMessageType.OutputUtf8);
-    expect(frame!.streamId).toBe(11);
-    expect(frame!.offset).toBe(42);
+    expect(frame!.opcode).toBe(TerminalStreamOpcode.Output);
     expect(new TextDecoder().decode(frame!.payload ?? new Uint8Array())).toBe("ok");
 
     await server.close();

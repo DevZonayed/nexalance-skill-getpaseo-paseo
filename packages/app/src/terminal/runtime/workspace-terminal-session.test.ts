@@ -10,43 +10,56 @@ describe("workspace-terminal-session", () => {
   it("returns the same workspace session instance for the same scope", () => {
     const first = getWorkspaceTerminalSession({
       scopeKey: "workspace-a",
-      maxOutputChars: 1_000,
     });
     const second = getWorkspaceTerminalSession({
       scopeKey: "workspace-a",
-      maxOutputChars: 50,
     });
 
     expect(second).toBe(first);
   });
 
-  it("preserves resume offsets across repeated lookups", () => {
+  it("preserves snapshots across repeated lookups", () => {
     const first = getWorkspaceTerminalSession({
-      scopeKey: "workspace-resume",
-      maxOutputChars: 1_000,
+      scopeKey: "workspace-snapshots",
     });
-    first.resumeOffsets.set({
+    first.snapshots.set({
       terminalId: "term-1",
-      offset: 42,
+      state: {
+        rows: 1,
+        cols: 1,
+        grid: [[{ char: "A" }]],
+        scrollback: [],
+        cursor: { row: 0, col: 0 },
+      },
     });
 
     const second = getWorkspaceTerminalSession({
-      scopeKey: "workspace-resume",
-      maxOutputChars: 1_000,
+      scopeKey: "workspace-snapshots",
     });
 
-    expect(second.resumeOffsets.get({ terminalId: "term-1" })).toBe(42);
+    expect(second.snapshots.get({ terminalId: "term-1" })).toEqual({
+      rows: 1,
+      cols: 1,
+      grid: [[{ char: "A" }]],
+      scrollback: [],
+      cursor: { row: 0, col: 0 },
+    });
   });
 
-  it("evicts workspace terminal session state when the workspace retain count returns to zero", () => {
+  it("evicts workspace terminal session state when the retain count returns to zero", () => {
     const scopeKey = "workspace-release";
     const first = getWorkspaceTerminalSession({
       scopeKey,
-      maxOutputChars: 1_000,
     });
-    first.resumeOffsets.set({
+    first.snapshots.set({
       terminalId: "term-1",
-      offset: 128,
+      state: {
+        rows: 1,
+        cols: 1,
+        grid: [[{ char: "A" }]],
+        scrollback: [],
+        cursor: { row: 0, col: 0 },
+      },
     });
 
     retainWorkspaceTerminalSession({ scopeKey });
@@ -54,10 +67,9 @@ describe("workspace-terminal-session", () => {
 
     const second = getWorkspaceTerminalSession({
       scopeKey,
-      maxOutputChars: 1_000,
     });
 
     expect(second).not.toBe(first);
-    expect(second.resumeOffsets.get({ terminalId: "term-1" })).toBeUndefined();
+    expect(second.snapshots.get({ terminalId: "term-1" })).toBeNull();
   });
 });

@@ -1,9 +1,10 @@
 "use dom";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import type { DOMProps } from "expo/dom";
 import "@xterm/xterm/css/xterm.css";
 import type { ITheme } from "@xterm/xterm";
+import type { TerminalState } from "@server/shared/messages";
 import type { PendingTerminalModifiers } from "../utils/terminal-keys";
 import { TerminalEmulatorRuntime } from "../terminal/runtime/terminal-emulator-runtime";
 import { focusWithRetries } from "../utils/web-focus";
@@ -64,11 +65,7 @@ function buildXtermThemeKey(theme: ITheme): string {
 interface TerminalEmulatorProps {
   dom?: DOMProps;
   streamKey: string;
-  initialOutputText: string;
-  initialOutputChunkSequence?: number;
-  outputChunkText: string;
-  outputChunkSequence: number;
-  outputChunkReplay?: boolean;
+  initialSnapshot: TerminalState | null;
   testId?: string;
   xtermTheme?: ITheme;
   swipeGesturesEnabled?: boolean;
@@ -84,11 +81,16 @@ interface TerminalEmulatorProps {
     meta: boolean;
   }) => Promise<void> | void;
   onPendingModifiersConsumed?: () => Promise<void> | void;
-  onOutputChunkConsumed?: (sequence: number) => Promise<void> | void;
   pendingModifiers?: PendingTerminalModifiers;
   focusRequestToken?: number;
   resizeRequestToken?: number;
 }
+
+export type TerminalEmulatorHandle = {
+  writeOutput: (text: string) => void;
+  renderSnapshot: (state: TerminalState | null) => void;
+  clear: () => void;
+};
 
 declare global {
   interface Window {}
@@ -122,13 +124,9 @@ function ensureTerminalScrollbarStyle(): void {
   document.head.appendChild(styleElement);
 }
 
-export default function TerminalEmulator({
+const TerminalEmulator = forwardRef<TerminalEmulatorHandle, TerminalEmulatorProps>(function TerminalEmulator({
   streamKey,
-  initialOutputText,
-  initialOutputChunkSequence = 0,
-  outputChunkText,
-  outputChunkSequence,
-  outputChunkReplay = false,
+  initialSnapshot,
   testId = "terminal-surface",
   xtermTheme = {
     background: "#0b0b0b",
@@ -142,15 +140,13 @@ export default function TerminalEmulator({
   onResize,
   onTerminalKey,
   onPendingModifiersConsumed,
-  onOutputChunkConsumed,
   pendingModifiers = { ctrl: false, shift: false, alt: false },
   focusRequestToken = 0,
   resizeRequestToken = 0,
-}: TerminalEmulatorProps) {
+}, ref) {
   const rootRef = useRef<HTMLDivElement | null>(null);
   const hostRef = useRef<HTMLDivElement | null>(null);
   const runtimeRef = useRef<TerminalEmulatorRuntime | null>(null);
-  const appliedChunkSequenceRef = useRef(0);
   const mountedThemeRef = useRef<ITheme>(xtermTheme);
   const viewportRef = useRef<HTMLElement | null>(null);
   const dragStartOffsetRef = useRef(0);
@@ -315,17 +311,15 @@ export default function TerminalEmulator({
     runtime.mount({
       root,
       host,
-      initialOutputText,
+      initialSnapshot,
       theme: mountedThemeRef.current,
     });
-    appliedChunkSequenceRef.current = Math.max(0, Math.floor(initialOutputChunkSequence));
 
     return () => {
       runtime.unmount();
       if (runtimeRef.current === runtime) {
         runtimeRef.current = null;
       }
-      appliedChunkSequenceRef.current = 0;
     };
   }, [streamKey]);
 
@@ -344,40 +338,21 @@ export default function TerminalEmulator({
     runtimeRef.current?.setPendingModifiers({ pendingModifiers });
   }, [pendingModifiers]);
 
-  useEffect(() => {
-    const runtime = runtimeRef.current;
-    if (outputChunkSequence <= 0) {
-      return;
-    }
-
-    if (outputChunkSequence <= appliedChunkSequenceRef.current) {
-      onOutputChunkConsumed?.(outputChunkSequence);
-      return;
-    }
-
-    if (!runtime) {
-      onOutputChunkConsumed?.(outputChunkSequence);
-      return;
-    }
-
-    appliedChunkSequenceRef.current = outputChunkSequence;
-
-    if (outputChunkText.length === 0) {
-      runtime.clear({
-        onCommitted: () => {
-          onOutputChunkConsumed?.(outputChunkSequence);
-        },
-      });
-      return;
-    }
-    runtime.write({
-      text: outputChunkText,
-      suppressInput: outputChunkReplay,
-      onCommitted: () => {
-        onOutputChunkConsumed?.(outputChunkSequence);
+  useImperativeHandle(
+    ref,
+    () => ({
+      writeOutput: (text: string) => {
+        runtimeRef.current?.write({ text });
       },
-    });
-  }, [onOutputChunkConsumed, outputChunkReplay, outputChunkSequence, outputChunkText]);
+      renderSnapshot: (state: TerminalState | null) => {
+        runtimeRef.current?.renderSnapshot({ state });
+      },
+      clear: () => {
+        runtimeRef.current?.clear();
+      },
+    }),
+    [],
+  );
 
   useEffect(() => {
     if (focusRequestToken <= 0) {
@@ -694,4 +669,6 @@ export default function TerminalEmulator({
       ) : null}
     </div>
   );
-}
+});
+
+export default TerminalEmulator;

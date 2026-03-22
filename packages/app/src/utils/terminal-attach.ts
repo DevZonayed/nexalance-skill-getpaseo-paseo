@@ -8,49 +8,6 @@ const TERMINAL_ATTACH_RETRYABLE_ERROR_PATTERNS = [
   "stream ended",
 ] as const;
 
-export type TerminalResumeOffsetStore = {
-  get: (input: { terminalId: string }) => number | undefined;
-  set: (input: { terminalId: string; offset: number }) => void;
-};
-
-export function getTerminalResumeOffset(input: {
-  terminalId: string;
-  resumeOffsetStore: TerminalResumeOffsetStore;
-}): number | undefined {
-  const offset = input.resumeOffsetStore.get({ terminalId: input.terminalId });
-  if (typeof offset !== "number" || !Number.isFinite(offset)) {
-    return undefined;
-  }
-
-  const normalizedOffset = Math.max(0, Math.floor(offset));
-  return normalizedOffset;
-}
-
-export function updateTerminalResumeOffset(input: {
-  terminalId: string;
-  offset: number;
-  resumeOffsetStore: TerminalResumeOffsetStore;
-}): void {
-  if (!Number.isFinite(input.offset)) {
-    return;
-  }
-
-  const normalizedOffset = Math.max(0, Math.floor(input.offset));
-  const previousOffset =
-    getTerminalResumeOffset({
-      terminalId: input.terminalId,
-      resumeOffsetStore: input.resumeOffsetStore,
-    }) ?? -1;
-  if (normalizedOffset <= previousOffset) {
-    return;
-  }
-
-  input.resumeOffsetStore.set({
-    terminalId: input.terminalId,
-    offset: normalizedOffset,
-  });
-}
-
 export function getTerminalAttachRetryDelayMs(input: { attempt: number }): number {
   const clampedAttempt = Math.max(0, input.attempt);
   const exponentialDelay = 250 * 2 ** clampedAttempt;

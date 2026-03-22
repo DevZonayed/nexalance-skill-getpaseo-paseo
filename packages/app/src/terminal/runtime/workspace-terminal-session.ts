@@ -1,85 +1,63 @@
-import {
-  getTerminalOutputSession,
-  releaseTerminalOutputSession,
-  retainTerminalOutputSession,
-  type TerminalOutputSession,
-} from "./terminal-output-session";
+import type { TerminalState } from "@server/shared/messages";
 
-export type WorkspaceTerminalResumeOffsets = {
-  get: (input: { terminalId: string }) => number | undefined;
-  set: (input: { terminalId: string; offset: number }) => void;
+export type WorkspaceTerminalSnapshots = {
+  get: (input: { terminalId: string }) => TerminalState | null;
+  set: (input: { terminalId: string; state: TerminalState }) => void;
   clear: (input: { terminalId: string }) => void;
   prune: (input: { terminalIds: string[] }) => void;
 };
 
 export type WorkspaceTerminalSession = {
   scopeKey: string;
-  outputSession: TerminalOutputSession;
-  resumeOffsets: WorkspaceTerminalResumeOffsets;
+  snapshots: WorkspaceTerminalSnapshots;
 };
 
 type WorkspaceTerminalSessionRecord = {
-  resumeOffsetByTerminalId: Map<string, number>;
+  snapshotByTerminalId: Map<string, TerminalState>;
   session: WorkspaceTerminalSession;
 };
 
 const sessionsByScopeKey = new Map<string, WorkspaceTerminalSessionRecord>();
 const refCountByScopeKey = new Map<string, number>();
 
-function createResumeOffsets(input: {
-  resumeOffsetByTerminalId: Map<string, number>;
-}): WorkspaceTerminalResumeOffsets {
+function createSnapshots(input: {
+  snapshotByTerminalId: Map<string, TerminalState>;
+}): WorkspaceTerminalSnapshots {
   return {
-    get: ({ terminalId }) => {
-      const offset = input.resumeOffsetByTerminalId.get(terminalId);
-      if (typeof offset !== "number" || !Number.isFinite(offset)) {
-        return undefined;
-      }
-      return Math.max(0, Math.floor(offset));
-    },
-    set: ({ terminalId, offset }) => {
-      if (!Number.isFinite(offset)) {
-        return;
-      }
-      input.resumeOffsetByTerminalId.set(terminalId, Math.max(0, Math.floor(offset)));
+    get: ({ terminalId }) => input.snapshotByTerminalId.get(terminalId) ?? null,
+    set: ({ terminalId, state }) => {
+      input.snapshotByTerminalId.set(terminalId, state);
     },
     clear: ({ terminalId }) => {
-      input.resumeOffsetByTerminalId.delete(terminalId);
+      input.snapshotByTerminalId.delete(terminalId);
     },
     prune: ({ terminalIds }) => {
       const terminalIdSet = new Set(terminalIds);
-      for (const terminalId of Array.from(input.resumeOffsetByTerminalId.keys())) {
+      for (const terminalId of Array.from(input.snapshotByTerminalId.keys())) {
         if (!terminalIdSet.has(terminalId)) {
-          input.resumeOffsetByTerminalId.delete(terminalId);
+          input.snapshotByTerminalId.delete(terminalId);
         }
       }
     },
   };
 }
 
-export function getWorkspaceTerminalSession(input: {
-  scopeKey: string;
-  maxOutputChars: number;
-}): WorkspaceTerminalSession {
+export function getWorkspaceTerminalSession(input: { scopeKey: string }): WorkspaceTerminalSession {
   const existing = sessionsByScopeKey.get(input.scopeKey);
   if (existing) {
     return existing.session;
   }
 
-  const resumeOffsetByTerminalId = new Map<string, number>();
+  const snapshotByTerminalId = new Map<string, TerminalState>();
   const session: WorkspaceTerminalSession = {
     scopeKey: input.scopeKey,
-    outputSession: getTerminalOutputSession({
-      scopeKey: input.scopeKey,
-      maxOutputChars: input.maxOutputChars,
-    }),
-    resumeOffsets: createResumeOffsets({
-      resumeOffsetByTerminalId,
+    snapshots: createSnapshots({
+      snapshotByTerminalId,
     }),
   };
 
   sessionsByScopeKey.set(input.scopeKey, {
-    resumeOffsetByTerminalId,
+    snapshotByTerminalId,
     session,
   });
   return session;
@@ -88,11 +66,9 @@ export function getWorkspaceTerminalSession(input: {
 export function retainWorkspaceTerminalSession(input: { scopeKey: string }): void {
   const current = refCountByScopeKey.get(input.scopeKey) ?? 0;
   refCountByScopeKey.set(input.scopeKey, current + 1);
-  retainTerminalOutputSession(input);
 }
 
 export function releaseWorkspaceTerminalSession(input: { scopeKey: string }): void {
-  releaseTerminalOutputSession(input);
   const current = refCountByScopeKey.get(input.scopeKey) ?? 0;
   if (current > 1) {
     refCountByScopeKey.set(input.scopeKey, current - 1);

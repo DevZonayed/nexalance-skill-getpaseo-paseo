@@ -5,10 +5,12 @@ import { TerminalEmulatorRuntime } from "./terminal-emulator-runtime";
 type StubTerminal = {
   write: (text: string, callback?: () => void) => void;
   reset: () => void;
+  resize?: (cols: number, rows: number) => void;
   focus: () => void;
   refresh?: (start: number, end: number) => void;
   options?: { theme?: unknown };
   rows?: number;
+  cols?: number;
 };
 
 function createRuntimeWithTerminal(): {
@@ -35,10 +37,12 @@ function createRuntimeWithTerminal(): {
       resetCalls += 1;
       terminal.resetCalls = resetCalls;
     },
+    resize: () => {},
     focus: () => {},
     refresh: () => {},
     options: { theme: undefined },
     rows: 0,
+    cols: 0,
     resetCalls,
   };
 
@@ -188,12 +192,16 @@ describe("terminal-emulator-runtime", () => {
       refresh,
       options: { theme: { background: "before" } },
       rows: 12,
+      cols: 40,
     };
     (runtime as unknown as { terminal: StubTerminal }).terminal = terminal;
 
     runtime.setTheme({ theme: { background: "after" } as never });
 
-    expect(terminal.options?.theme).toEqual({ background: "after" });
+    expect(terminal.options?.theme).toEqual({
+      background: "after",
+      overviewRulerBorder: "after",
+    });
     expect(refresh).toHaveBeenCalledWith(0, 11);
   });
 

@@ -1,10 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  getTerminalResumeOffset,
   getTerminalAttachRetryDelayMs,
   isTerminalAttachRetryableError,
-  updateTerminalResumeOffset,
   withPromiseTimeout,
 } from "./terminal-attach";
 
@@ -24,51 +22,10 @@ describe("terminal-attach", () => {
     expect(isTerminalAttachRetryableError({ message: "Network disconnected during attach" })).toBe(
       true,
     );
-    expect(isTerminalAttachRetryableError({ message: "stream ended before ack" })).toBe(true);
+    expect(isTerminalAttachRetryableError({ message: "stream ended before snapshot" })).toBe(
+      true,
+    );
     expect(isTerminalAttachRetryableError({ message: "permission denied" })).toBe(false);
-  });
-
-  it("reads and updates resume offsets monotonically", () => {
-    const offsets = new Map<string, number>();
-    const terminalId = "term-1";
-    const resumeOffsetStore = {
-      get: ({ terminalId }: { terminalId: string }) => offsets.get(terminalId),
-      set: ({ terminalId, offset }: { terminalId: string; offset: number }) => {
-        offsets.set(terminalId, offset);
-      },
-    };
-
-    expect(
-      getTerminalResumeOffset({
-        terminalId,
-        resumeOffsetStore,
-      }),
-    ).toBeUndefined();
-
-    updateTerminalResumeOffset({
-      terminalId,
-      offset: 8,
-      resumeOffsetStore,
-    });
-    expect(
-      getTerminalResumeOffset({
-        terminalId,
-        resumeOffsetStore,
-      }),
-    ).toBe(8);
-
-    // Stale offsets must not move resume backwards.
-    updateTerminalResumeOffset({
-      terminalId,
-      offset: 3,
-      resumeOffsetStore,
-    });
-    expect(
-      getTerminalResumeOffset({
-        terminalId,
-        resumeOffsetStore,
-      }),
-    ).toBe(8);
   });
 
   it("resolves before timeout when promise completes", async () => {

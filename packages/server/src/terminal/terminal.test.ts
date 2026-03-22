@@ -388,7 +388,7 @@ describe("Terminal", () => {
   });
 
   describe("subscribe", () => {
-    it("receives full state on initial subscription", async () => {
+    it("receives a snapshot on initial subscription", async () => {
       const session = trackSession(
         await createTerminal({
           cwd: "/tmp",
@@ -405,12 +405,12 @@ describe("Terminal", () => {
       await new Promise((resolve) => setTimeout(resolve, 100));
 
       expect(messages.length).toBeGreaterThan(0);
-      expect(messages[0].type).toBe("full");
+      expect(messages[0].type).toBe("snapshot");
 
       unsubscribe();
     });
 
-    it("receives messages on updates", async () => {
+    it("receives output and snapshot messages on updates", async () => {
       const session = trackSession(
         await createTerminal({
           cwd: "/tmp",
@@ -432,7 +432,8 @@ describe("Terminal", () => {
 
       await waitForLines(session, ["$ echo test", "test", "$"]);
 
-      expect(messages.length).toBeGreaterThan(0);
+      expect(messages.some((message) => message.type === "output")).toBe(true);
+      expect(messages.some((message) => message.type === "snapshot")).toBe(true);
 
       unsubscribe();
     });
@@ -463,8 +464,8 @@ describe("Terminal", () => {
     });
   });
 
-  describe("raw output stream", () => {
-    it("streams raw output chunks with byte offsets", async () => {
+  describe("stream snapshots", () => {
+    it("streams raw output messages without replay metadata", async () => {
       const session = trackSession(
         await createTerminal({
           cwd: "/tmp",
@@ -475,28 +476,23 @@ describe("Terminal", () => {
 
       await waitForLines(session, ["$"]);
 
-      const chunks: Array<{ data: string; startOffset: number; endOffset: number }> = [];
-      const sub = session.subscribeRaw((chunk) => {
-        chunks.push({
-          data: chunk.data,
-          startOffset: chunk.startOffset,
-          endOffset: chunk.endOffset,
-        });
+      const outputMessages: string[] = [];
+      const unsubscribe = session.subscribe((message) => {
+        if (message.type !== "output") {
+          return;
+        }
+        outputMessages.push(message.data);
       });
 
       session.send({ type: "input", data: "echo raw-stream\r" });
       await waitForLines(session, ["$ echo raw-stream", "raw-stream", "$"]);
 
-      expect(chunks.length).toBeGreaterThan(0);
-      expect(chunks[chunks.length - 1].endOffset).toBe(session.getOutputOffset());
-      for (let i = 1; i < chunks.length; i++) {
-        expect(chunks[i].startOffset).toBe(chunks[i - 1].endOffset);
-      }
+      expect(outputMessages.join("")).toContain("raw-stream");
 
-      sub.unsubscribe();
+      unsubscribe();
     });
 
-    it("replays buffered output from offset", async () => {
+    it("sends the current snapshot to a new subscriber instead of replaying raw output", async () => {
       const session = trackSession(
         await createTerminal({
           cwd: "/tmp",
@@ -507,20 +503,8 @@ describe("Terminal", () => {
 
       await waitForLines(session, ["$"]);
 
-      const seen: Array<{ data: string; endOffset: number; replay: boolean }> = [];
-      const firstSub = session.subscribeRaw((chunk) => {
-        seen.push({
-          data: chunk.data,
-          endOffset: chunk.endOffset,
-          replay: chunk.replay,
-        });
-      });
-
       session.send({ type: "input", data: "echo before-detach\r" });
       await waitForLines(session, ["$ echo before-detach", "before-detach", "$"]);
-
-      const resumeOffset = seen[seen.length - 1]?.endOffset ?? 0;
-      firstSub.unsubscribe();
 
       session.send({ type: "input", data: "echo after-detach\r" });
       await waitForLines(session, [
@@ -531,20 +515,26 @@ describe("Terminal", () => {
         "$",
       ]);
 
-      const replayed: string[] = [];
-      const secondSub = session.subscribeRaw(
-        (chunk) => {
-          if (chunk.replay) {
-            replayed.push(chunk.data);
-          }
-        },
-        { fromOffset: resumeOffset },
-      );
+      let snapshotText = "";
+      const unsubscribe = session.subscribe((message) => {
+        if (message.type !== "snapshot") {
+          return;
+        }
+        snapshotText = [...message.state.scrollback, ...message.state.grid]
+          .map((row) =>
+            row
+              .map((cell) => cell.char)
+              .join("")
+              .trimEnd(),
+          )
+          .join("\n");
+      });
 
-      const replayText = replayed.join("");
-      expect(replayText).toContain("after-detach");
-      expect(secondSub.replayedFrom).toBeGreaterThanOrEqual(resumeOffset);
-      secondSub.unsubscribe();
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      expect(snapshotText).toContain("before-detach");
+      expect(snapshotText).toContain("after-detach");
+      unsubscribe();
     });
   });
 

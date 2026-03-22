@@ -383,9 +383,9 @@ function buildTerminalTimelineItem(input: {
 }
 
 async function waitForTerminalBootstrapReadiness(
-  terminal: Pick<TerminalSession, "getOutputOffset" | "subscribeRaw">,
+  terminal: Pick<TerminalSession, "getState" | "subscribe">,
 ): Promise<void> {
-  if (terminal.getOutputOffset() > 0) {
+  if (terminalHasOutput(terminal.getState())) {
     return;
   }
 
@@ -410,18 +410,31 @@ async function waitForTerminalBootstrapReadiness(
       resolve();
     };
 
-    const rawSubscription = terminal.subscribeRaw(() => {
+    unsubscribe = terminal.subscribe((message) => {
+      if (message.type !== "output") {
+        return;
+      }
       finish();
     });
-    unsubscribe = rawSubscription.unsubscribe;
 
-    if (terminal.getOutputOffset() > 0) {
+    if (terminalHasOutput(terminal.getState())) {
       finish();
       return;
     }
 
     timeout = setTimeout(finish, WORKTREE_BOOTSTRAP_TERMINAL_READY_TIMEOUT_MS);
   });
+}
+
+function terminalHasOutput(state: ReturnType<TerminalSession["getState"]>): boolean {
+  for (const row of [...state.scrollback, ...state.grid]) {
+    for (const cell of row) {
+      if (cell.char.trim().length > 0) {
+        return true;
+      }
+    }
+  }
+  return false;
 }
 
 async function runWorktreeTerminalBootstrap(

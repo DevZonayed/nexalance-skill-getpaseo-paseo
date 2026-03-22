@@ -297,27 +297,13 @@ describe("runAsyncWorktreeBootstrap", () => {
             send: () => {
               sendAt = Date.now();
             },
-            subscribe: () => () => {},
-            onExit: () => () => {},
-            subscribeRaw: (listener) => {
-              outputListener = (chunk) =>
-                listener({
-                  data: chunk.data,
-                  startOffset: 0,
-                  endOffset: chunk.data.length,
-                  replay: false,
-                });
-              return {
-                unsubscribe: () => {
-                  outputListener = null;
-                },
-                replayedFrom: 0,
-                currentOffset: 0,
-                earliestAvailableOffset: 0,
-                reset: false,
+            subscribe: (listener) => {
+              outputListener = (chunk) => listener({ type: "output", data: chunk.data });
+              return () => {
+                outputListener = null;
               };
             },
-            getOutputOffset: () => 0,
+            onExit: () => () => {},
             getState: () => ({
               rows: 0,
               cols: 0,
@@ -398,18 +384,10 @@ describe("runAsyncWorktreeBootstrap", () => {
             send: () => {},
             subscribe: () => () => {},
             onExit: () => () => {},
-            subscribeRaw: () => ({
-              unsubscribe: () => {},
-              replayedFrom: 0,
-              currentOffset: 0,
-              earliestAvailableOffset: 0,
-              reset: false,
-            }),
-            getOutputOffset: () => 1,
             getState: () => ({
-              rows: 0,
-              cols: 0,
-              grid: [],
+              rows: 1,
+              cols: 1,
+              grid: [[{ char: "$" }]],
               scrollback: [],
               cursor: { row: 0, col: 0 },
             }),

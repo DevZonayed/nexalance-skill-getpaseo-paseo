@@ -18,7 +18,10 @@ import {
   type WSOutboundMessage,
   wrapSessionMessage,
 } from "./messages.js";
-import { asUint8Array, decodeBinaryMuxFrame, encodeBinaryMuxFrame } from "../shared/binary-mux.js";
+import {
+  asUint8Array,
+  decodeTerminalStreamFrame,
+} from "../shared/terminal-stream-protocol.js";
 import type { AllowedHostsConfig } from "./allowed-hosts.js";
 import { isHostAllowed } from "./allowed-hosts.js";
 import { Session, type SessionLifecycleIntent, type SessionRuntimeMetrics } from "./session.js";
@@ -161,6 +164,7 @@ function bufferFromWsData(data: Buffer | ArrayBuffer | Buffer[] | string): Buffe
 
 type WebSocketLike = {
   readyState: number;
+  bufferedAmount?: number;
   send: (data: string | Uint8Array | ArrayBuffer) => void;
   close: (code?: number, reason?: string) => void;
   on: (event: "message" | "close" | "error", listener: (...args: any[]) => void) => void;
@@ -492,12 +496,12 @@ export class VoiceAssistantWebSocketServer {
 
   private sendBinaryToClient(
     ws: WebSocketLike,
-    frame: Parameters<typeof encodeBinaryMuxFrame>[0],
+    frame: Uint8Array,
   ): void {
     if (ws.readyState !== 1) {
       return;
     }
-    ws.send(encodeBinaryMuxFrame(frame));
+    ws.send(frame);
   }
 
   private sendToConnection(connection: SessionConnection, message: WSOutboundMessage): void {
@@ -508,7 +512,7 @@ export class VoiceAssistantWebSocketServer {
 
   private sendBinaryToConnection(
     connection: SessionConnection,
-    frame: Parameters<typeof encodeBinaryMuxFrame>[0],
+    frame: Uint8Array,
   ): void {
     for (const ws of connection.sockets) {
       this.sendBinaryToClient(ws, frame);
@@ -594,6 +598,16 @@ export class VoiceAssistantWebSocketServer {
           return;
         }
         this.sendBinaryToConnection(connection, frame);
+      },
+      getBinaryBufferedAmount: () => {
+        if (!connection) {
+          return 0;
+        }
+        let bufferedAmount = 0;
+        for (const socket of connection.sockets) {
+          bufferedAmount = Math.max(bufferedAmount, socket.bufferedAmount ?? 0);
+        }
+        return bufferedAmount;
       },
       onLifecycleIntent: (intent) => {
         this.onLifecycleIntent?.(intent);
@@ -900,7 +914,7 @@ export class VoiceAssistantWebSocketServer {
       const buffer = bufferFromWsData(data);
       const asBytes = asUint8Array(buffer);
       if (asBytes) {
-        const frame = decodeBinaryMuxFrame(asBytes);
+        const frame = decodeTerminalStreamFrame(asBytes);
         if (frame) {
           if (!activeConnection) {
             this.incrementRuntimeCounter("binaryBeforeHelloRejected");

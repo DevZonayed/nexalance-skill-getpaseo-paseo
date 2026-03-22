@@ -44,10 +44,8 @@ import type {
   ListTerminalsResponse,
   CreateTerminalResponse,
   SubscribeTerminalResponse,
-  TerminalOutput,
+  TerminalState,
   KillTerminalResponse,
-  AttachTerminalStreamResponse,
-  DetachTerminalStreamResponse,
   TerminalInput,
   SessionInboundMessage,
   SessionOutboundMessage,
@@ -63,18 +61,14 @@ import { getAgentProviderDefinition } from "../server/agent/provider-manifest.js
 import { isRelayClientWebSocketUrl } from "../shared/daemon-endpoints.js";
 import {
   asUint8Array,
-  decodeBinaryMuxFrame,
-  encodeBinaryMuxFrame,
-  BinaryMuxChannel,
-  TerminalBinaryFlags,
-  TerminalBinaryMessageType,
-  type BinaryMuxFrame,
-} from "../shared/binary-mux.js";
+  decodeTerminalSnapshotPayload,
+  decodeTerminalStreamFrame,
+  encodeTerminalResizePayload,
+  encodeTerminalStreamFrame,
+  TerminalStreamOpcode,
+  type TerminalStreamFrame,
+} from "../shared/terminal-stream-protocol.js";
 import { encodeTerminalKeyInput, type TerminalKeyInput } from "../shared/terminal-key-input.js";
-import {
-  TerminalStreamManager,
-  type TerminalStreamChunk,
-} from "./daemon-client-terminal-stream-manager.js";
 import {
   createRelayE2eeTransportFactory,
   createWebSocketTransportFactory,
@@ -108,7 +102,10 @@ export type {
   WebSocketFactory,
   WebSocketLike,
 } from "./daemon-client-transport.js";
-export type { TerminalStreamChunk } from "./daemon-client-terminal-stream-manager.js";
+
+export type TerminalStreamEvent =
+  | { terminalId: string; type: "output"; data: Uint8Array }
+  | { terminalId: string; type: "snapshot"; state: TerminalState };
 
 export type ConnectionState =
   | { status: "idle" }
@@ -244,10 +241,7 @@ type AgentPermissionResolvedPayload = AgentPermissionResolvedMessage["payload"];
 type ListTerminalsPayload = ListTerminalsResponse["payload"];
 type CreateTerminalPayload = CreateTerminalResponse["payload"];
 type SubscribeTerminalPayload = SubscribeTerminalResponse["payload"];
-type TerminalOutputPayload = TerminalOutput["payload"];
 type KillTerminalPayload = KillTerminalResponse["payload"];
-type AttachTerminalStreamPayload = AttachTerminalStreamResponse["payload"];
-type DetachTerminalStreamPayload = DetachTerminalStreamResponse["payload"];
 export type FetchAgentTimelinePayload = FetchAgentTimelineResponseMessage["payload"];
 
 export type FetchAgentTimelineDirection = FetchAgentTimelinePayload["direction"];
@@ -426,9 +420,10 @@ export class DaemonClient {
     { cwd: string; compare: { mode: "uncommitted" | "base"; baseRef?: string } }
   >();
   private terminalDirectorySubscriptions = new Set<string>();
+  private activeTerminalId: string | null = null;
+  private readonly terminalStreamListeners = new Set<(event: TerminalStreamEvent) => void>();
   private logger: Logger;
   private pendingSendQueue: PendingSend[] = [];
-  private terminalStreams: TerminalStreamManager;
   private readonly logConnectionPath: "direct" | "relay";
   private readonly logServerId: string | null;
   private readonly logClientIdHash: string;
@@ -457,17 +452,6 @@ export class DaemonClient {
       Number.isFinite(this.config.runtimeGeneration)
         ? this.config.runtimeGeneration
         : null;
-    this.terminalStreams = new TerminalStreamManager({
-      sendAck: (ack) => {
-        this.sendBinaryFrame({
-          channel: BinaryMuxChannel.Terminal,
-          messageType: TerminalBinaryMessageType.Ack,
-          streamId: ack.streamId,
-          offset: ack.offset,
-          payload: new Uint8Array(0),
-        });
-      },
-    });
   }
 
   // ============================================================================
@@ -676,7 +660,7 @@ export class DaemonClient {
     this.disposeTransport(1000, "Client closed");
     this.clearWaiters(new Error("Daemon client closed"));
     this.rejectPendingSendQueue(new Error("Daemon client closed"));
-    this.terminalStreams.clearAll();
+    this.activeTerminalId = null;
     this.lastServerInfoMessage = null;
     this.updateConnectionState(
       { status: "disposed" },
@@ -800,7 +784,7 @@ export class DaemonClient {
     }
   }
 
-  private sendBinaryFrame(frame: BinaryMuxFrame): void {
+  private sendBinaryFrame(frame: Uint8Array): void {
     if (!this.transport || this.connectionState.status !== "connected") {
       if (this.config.suppressSendErrors) {
         return;
@@ -808,7 +792,7 @@ export class DaemonClient {
       throw new Error(`Transport not connected (status: ${this.connectionState.status})`);
     }
     try {
-      this.transport.send(encodeBinaryMuxFrame(frame));
+      this.transport.send(frame);
     } catch (error) {
       if (this.config.suppressSendErrors) {
         return;
@@ -2622,16 +2606,23 @@ export class DaemonClient {
       terminalId,
       requestId: resolvedRequestId,
     });
-    return this.sendCorrelatedRequest({
+    const payload = await this.sendCorrelatedRequest({
       requestId: resolvedRequestId,
       message,
       responseType: "subscribe_terminal_response",
       timeout: 10000,
       options: { skipQueue: true },
     });
+    if (!payload.error) {
+      this.activeTerminalId = terminalId;
+    }
+    return payload;
   }
 
   unsubscribeTerminal(terminalId: string): void {
+    if (this.activeTerminalId === terminalId) {
+      this.activeTerminalId = null;
+    }
     this.sendSessionMessage({
       type: "unsubscribe_terminal_request",
       terminalId,
@@ -2639,6 +2630,29 @@ export class DaemonClient {
   }
 
   sendTerminalInput(terminalId: string, message: TerminalInput["message"]): void {
+    if (this.activeTerminalId === terminalId) {
+      if (message.type === "input") {
+        this.sendBinaryFrame(
+          encodeTerminalStreamFrame({
+            opcode: TerminalStreamOpcode.Input,
+            payload: encodeUtf8String(message.data),
+          }),
+        );
+        return;
+      }
+      if (message.type === "resize") {
+        this.sendBinaryFrame(
+          encodeTerminalStreamFrame({
+            opcode: TerminalStreamOpcode.Resize,
+            payload: encodeTerminalResizePayload({
+              rows: message.rows,
+              cols: message.cols,
+            }),
+          }),
+        );
+        return;
+      }
+    }
     this.sendSessionMessage({
       type: "terminal_input",
       terminalId,
@@ -2662,127 +2676,44 @@ export class DaemonClient {
     });
   }
 
-  async attachTerminalStream(
-    terminalId: string,
-    options?: {
-      resumeOffset?: number;
-      rows?: number;
-      cols?: number;
-    },
-    requestId?: string,
-  ): Promise<AttachTerminalStreamPayload> {
-    const resolvedRequestId = this.createRequestId(requestId);
-    const message = SessionInboundMessageSchema.parse({
-      type: "attach_terminal_stream_request",
-      terminalId,
-      requestId: resolvedRequestId,
-      ...(options?.resumeOffset !== undefined ? { resumeOffset: options.resumeOffset } : {}),
-      ...(options?.rows !== undefined ? { rows: options.rows } : {}),
-      ...(options?.cols !== undefined ? { cols: options.cols } : {}),
-    });
-    return this.sendCorrelatedRequest({
-      requestId: resolvedRequestId,
-      message,
-      responseType: "attach_terminal_stream_response",
-      timeout: 10000,
-      options: { skipQueue: true },
-    });
+  onTerminalStreamEvent(handler: (event: TerminalStreamEvent) => void): () => void {
+    this.terminalStreamListeners.add(handler);
+    return () => {
+      this.terminalStreamListeners.delete(handler);
+    };
   }
 
-  async detachTerminalStream(
-    streamId: number,
-    requestId?: string,
-  ): Promise<DetachTerminalStreamPayload> {
-    const resolvedRequestId = this.createRequestId(requestId);
-    const message = SessionInboundMessageSchema.parse({
-      type: "detach_terminal_stream_request",
-      streamId,
-      requestId: resolvedRequestId,
-    });
-    const payload = await this.sendCorrelatedRequest({
-      requestId: resolvedRequestId,
-      message,
-      responseType: "detach_terminal_stream_response",
-      timeout: 10000,
-      options: { skipQueue: true },
-    });
-    this.terminalStreams.clearStream({ streamId });
-    return payload;
-  }
-
-  onTerminalStreamData(
-    streamId: number,
-    handler: (chunk: TerminalStreamChunk) => void,
-  ): () => void {
-    return this.terminalStreams.subscribe({ streamId, handler });
-  }
-
-  async waitForTerminalStreamData(
-    streamId: number,
-    predicate: (chunk: TerminalStreamChunk) => boolean,
+  async waitForTerminalStreamEvent(
+    predicate: (event: TerminalStreamEvent) => boolean,
     timeout = 5000,
-  ): Promise<TerminalStreamChunk> {
-    return new Promise<TerminalStreamChunk>((resolve, reject) => {
+  ): Promise<TerminalStreamEvent> {
+    return new Promise<TerminalStreamEvent>((resolve, reject) => {
       const timeoutHandle = setTimeout(() => {
         unsubscribe();
-        reject(new Error(`Timeout waiting for terminal stream data (${timeout}ms)`));
+        reject(new Error(`Timeout waiting for terminal stream event (${timeout}ms)`));
       }, timeout);
 
-      const unsubscribe = this.onTerminalStreamData(streamId, (chunk) => {
-        if (!predicate(chunk)) {
+      const unsubscribe = this.onTerminalStreamEvent((event) => {
+        if (!predicate(event)) {
           return;
         }
         clearTimeout(timeoutHandle);
         unsubscribe();
-        resolve(chunk);
+        resolve(event);
       });
     });
   }
 
-  sendTerminalStreamInput(streamId: number, data: string | Uint8Array): void {
-    const payload = typeof data === "string" ? encodeUtf8String(data) : data;
-    this.sendBinaryFrame({
-      channel: BinaryMuxChannel.Terminal,
-      messageType: TerminalBinaryMessageType.InputUtf8,
-      streamId,
-      offset: 0,
-      payload,
-    });
-  }
-
-  sendTerminalStreamKey(streamId: number, input: TerminalKeyInput): void {
+  sendTerminalStreamKey(input: TerminalKeyInput): void {
     const encoded = encodeTerminalKeyInput(input);
     if (!encoded) {
       return;
     }
-    this.sendTerminalStreamInput(streamId, encoded);
-  }
-
-  sendTerminalStreamAck(streamId: number, offset: number): void {
-    const normalizedOffset = Math.max(0, Math.floor(offset));
-    this.terminalStreams.noteAck({ streamId, offset: normalizedOffset });
-    this.sendBinaryFrame({
-      channel: BinaryMuxChannel.Terminal,
-      messageType: TerminalBinaryMessageType.Ack,
-      streamId,
-      offset: normalizedOffset,
-      payload: new Uint8Array(0),
-    });
-  }
-
-  async waitForTerminalOutput(terminalId: string, timeout = 5000): Promise<TerminalOutputPayload> {
-    return this.waitFor(
-      (msg) => {
-        if (msg.type !== "terminal_output") {
-          return null;
-        }
-        if (msg.payload.terminalId !== terminalId) {
-          return null;
-        }
-        return msg.payload;
-      },
-      timeout,
-      { skipQueue: true },
+    this.sendBinaryFrame(
+      encodeTerminalStreamFrame({
+        opcode: TerminalStreamOpcode.Input,
+        payload: encodeUtf8String(encoded),
+      }),
     );
   }
 
@@ -2890,7 +2821,7 @@ export class DaemonClient {
 
     const rawBytes = asUint8Array(rawData);
     if (rawBytes) {
-      const frame = decodeBinaryMuxFrame(rawBytes);
+      const frame = decodeTerminalStreamFrame(rawBytes);
       if (frame) {
         this.handleBinaryFrame(frame);
         return;
@@ -2922,20 +2853,41 @@ export class DaemonClient {
     this.handleSessionMessage(parsed.data.message);
   }
 
-  private handleBinaryFrame(frame: BinaryMuxFrame): void {
-    if (
-      frame.channel === BinaryMuxChannel.Terminal &&
-      frame.messageType === TerminalBinaryMessageType.OutputUtf8
-    ) {
-      const chunk: TerminalStreamChunk = {
-        streamId: frame.streamId,
-        offset: frame.offset,
-        endOffset: frame.offset + (frame.payload?.byteLength ?? 0),
-        replay: Boolean((frame.flags ?? 0) & TerminalBinaryFlags.Replay),
-        data: frame.payload ?? new Uint8Array(0),
-      };
-      this.terminalStreams.receiveChunk({ chunk });
+  private handleBinaryFrame(frame: TerminalStreamFrame): void {
+    const terminalId = this.activeTerminalId;
+    if (!terminalId) {
       return;
+    }
+
+    if (frame.opcode === TerminalStreamOpcode.Output) {
+      this.emitTerminalStreamEvent({
+        terminalId,
+        type: "output",
+        data: frame.payload,
+      });
+      return;
+    }
+
+    if (frame.opcode === TerminalStreamOpcode.Snapshot) {
+      const state = decodeTerminalSnapshotPayload(frame.payload);
+      if (!state) {
+        return;
+      }
+      this.emitTerminalStreamEvent({
+        terminalId,
+        type: "snapshot",
+        state,
+      });
+    }
+  }
+
+  private emitTerminalStreamEvent(event: TerminalStreamEvent): void {
+    for (const listener of this.terminalStreamListeners) {
+      try {
+        listener(event);
+      } catch {
+        // no-op
+      }
     }
   }
 
@@ -2996,7 +2948,7 @@ export class DaemonClient {
     // and responses from the previous connection will never arrive.
     this.clearWaiters(new Error(reason ?? "Connection lost"));
     this.rejectPendingSendQueue(new Error(reason ?? "Connection lost"));
-    this.terminalStreams.clearAll();
+    this.activeTerminalId = null;
     this.lastServerInfoMessage = null;
 
     if (wasDisposed) {
@@ -3051,7 +3003,9 @@ export class DaemonClient {
     }
 
     if (msg.type === "terminal_stream_exit") {
-      this.terminalStreams.clearStream({ streamId: msg.payload.streamId });
+      if (this.activeTerminalId === msg.payload.terminalId) {
+        this.activeTerminalId = null;
+      }
     }
 
     if (this.rawMessageListeners.size > 0) {
@@ -3151,14 +3105,6 @@ export class DaemonClient {
       default:
         return null;
     }
-  }
-
-  private async waitFor<T>(
-    predicate: (msg: SessionOutboundMessage) => T | null,
-    timeout = 30000,
-    _options?: { skipQueue?: boolean },
-  ): Promise<T> {
-    return this.waitForWithCancel(predicate, timeout, _options).promise;
   }
 
   private waitForWithCancel<T>(

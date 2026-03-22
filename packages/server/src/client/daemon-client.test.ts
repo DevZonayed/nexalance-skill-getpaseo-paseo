@@ -1,12 +1,14 @@
 import { afterEach, describe, expect, expectTypeOf, test, vi } from "vitest";
 import { DaemonClient, type DaemonTransport } from "./daemon-client";
 import {
-  BinaryMuxChannel,
-  TerminalBinaryMessageType,
   asUint8Array,
-  decodeBinaryMuxFrame,
-  encodeBinaryMuxFrame,
-} from "../shared/binary-mux.js";
+  decodeTerminalResizePayload,
+  decodeTerminalSnapshotPayload,
+  decodeTerminalStreamFrame,
+  encodeTerminalSnapshotPayload,
+  encodeTerminalStreamFrame,
+  TerminalStreamOpcode,
+} from "../shared/terminal-stream-protocol.js";
 
 expectTypeOf<"getGitDiff" extends keyof DaemonClient ? true : false>().toEqualTypeOf<false>();
 expectTypeOf<
@@ -1224,7 +1226,7 @@ describe("DaemonClient", () => {
     });
   });
 
-  test("auto-acks terminal stream chunks after delivery", async () => {
+  test("emits output events for the active terminal stream", async () => {
     const logger = createMockLogger();
     const mock = createMockTransport();
 
@@ -1242,36 +1244,40 @@ describe("DaemonClient", () => {
     await connectPromise;
 
     const seen: string[] = [];
-    const decoder = new TextDecoder();
-    const unsubscribe = client.onTerminalStreamData(7, (chunk) => {
-      seen.push(decoder.decode(chunk.data));
+    const unsubscribe = client.onTerminalStreamEvent((event) => {
+      if (event.type !== "output") {
+        return;
+      }
+      seen.push(new TextDecoder().decode(event.data));
     });
 
-    const payload = new TextEncoder().encode("hello");
+    const subscribePromise = client.subscribeTerminal("term-1", "sub-1");
     mock.triggerMessage(
-      encodeBinaryMuxFrame({
-        channel: BinaryMuxChannel.Terminal,
-        messageType: TerminalBinaryMessageType.OutputUtf8,
-        streamId: 7,
-        offset: 10,
-        payload,
+      wrapSessionMessage({
+        type: "subscribe_terminal_response",
+        payload: {
+          terminalId: "term-1",
+          state: null,
+          error: null,
+          requestId: "sub-1",
+        },
+      }),
+    );
+    await subscribePromise;
+
+    mock.triggerMessage(
+      encodeTerminalStreamFrame({
+        opcode: TerminalStreamOpcode.Output,
+        payload: new TextEncoder().encode("hello"),
       }),
     );
 
     expect(seen).toEqual(["hello"]);
     expect(mock.sent).toHaveLength(1);
-    const ackBytes = asUint8Array(mock.sent[0]);
-    expect(ackBytes).not.toBeNull();
-    const ackFrame = decodeBinaryMuxFrame(ackBytes!);
-    expect(ackFrame).not.toBeNull();
-    expect(ackFrame!.channel).toBe(BinaryMuxChannel.Terminal);
-    expect(ackFrame!.messageType).toBe(TerminalBinaryMessageType.Ack);
-    expect(ackFrame!.streamId).toBe(7);
-    expect(ackFrame!.offset).toBe(15);
     unsubscribe();
   });
 
-  test("handles terminal binary frames delivered as UTF-8 strings", async () => {
+  test("emits snapshot events for the active terminal stream", async () => {
     const logger = createMockLogger();
     const mock = createMockTransport();
 
@@ -1288,76 +1294,100 @@ describe("DaemonClient", () => {
     mock.triggerOpen();
     await connectPromise;
 
-    const seen: string[] = [];
-    client.onTerminalStreamData(11, (chunk) => {
-      seen.push(new TextDecoder().decode(chunk.data));
+    const snapshots: unknown[] = [];
+    client.onTerminalStreamEvent((event) => {
+      if (event.type !== "snapshot") {
+        return;
+      }
+      snapshots.push(event.state);
     });
 
-    const payload = new TextEncoder().encode("ls\r\n");
-    const frame = encodeBinaryMuxFrame({
-      channel: BinaryMuxChannel.Terminal,
-      messageType: TerminalBinaryMessageType.OutputUtf8,
-      streamId: 11,
-      offset: 0,
-      payload,
-    });
-    const frameAsString = new TextDecoder("utf-8", { fatal: true }).decode(frame);
-
-    mock.triggerMessage(frameAsString);
-
-    expect(seen).toEqual(["ls\r\n"]);
-    expect(mock.sent).toHaveLength(1);
-    const ackFrame = decodeBinaryMuxFrame(asUint8Array(mock.sent[0])!);
-    expect(ackFrame?.channel).toBe(BinaryMuxChannel.Terminal);
-    expect(ackFrame?.messageType).toBe(TerminalBinaryMessageType.Ack);
-    expect(ackFrame?.streamId).toBe(11);
-    expect(ackFrame?.offset).toBe(4);
-  });
-
-  test("acks buffered terminal chunks when handler is attached", async () => {
-    const logger = createMockLogger();
-    const mock = createMockTransport();
-
-    const client = new DaemonClient({
-      url: "ws://test",
-      clientId: "clsk_unit_test",
-      logger,
-      reconnect: { enabled: false },
-      transportFactory: () => mock.transport,
-    });
-    clients.push(client);
-
-    const connectPromise = client.connect();
-    mock.triggerOpen();
-    await connectPromise;
-
+    const subscribePromise = client.subscribeTerminal("term-1", "sub-2");
     mock.triggerMessage(
-      encodeBinaryMuxFrame({
-        channel: BinaryMuxChannel.Terminal,
-        messageType: TerminalBinaryMessageType.OutputUtf8,
-        streamId: 19,
-        offset: 0,
-        payload: new TextEncoder().encode("buffered"),
+      wrapSessionMessage({
+        type: "subscribe_terminal_response",
+        payload: {
+          terminalId: "term-1",
+          state: null,
+          error: null,
+          requestId: "sub-2",
+        },
+      }),
+    );
+    await subscribePromise;
+
+    const state = {
+      rows: 1,
+      cols: 5,
+      grid: [[{ char: "h" }, { char: "e" }, { char: "l" }, { char: "l" }, { char: "o" }]],
+      scrollback: [],
+      cursor: { row: 0, col: 5 },
+    };
+    mock.triggerMessage(
+      encodeTerminalStreamFrame({
+        opcode: TerminalStreamOpcode.Snapshot,
+        payload: encodeTerminalSnapshotPayload(state),
       }),
     );
 
-    expect(mock.sent).toHaveLength(1);
-    const bufferedAck = decodeBinaryMuxFrame(asUint8Array(mock.sent[0])!);
-    expect(bufferedAck?.messageType).toBe(TerminalBinaryMessageType.Ack);
-    expect(bufferedAck?.streamId).toBe(19);
-    expect(bufferedAck?.offset).toBe(8);
-    mock.sent.length = 0;
-
-    const seen: string[] = [];
-    client.onTerminalStreamData(19, (chunk) => {
-      seen.push(new TextDecoder().decode(chunk.data));
-    });
-
-    expect(seen.join("")).toContain("buffered");
-    expect(mock.sent).toHaveLength(0);
+    expect(snapshots).toEqual([state]);
   });
 
-  test("stops delivering and acking after terminal_stream_exit", async () => {
+  test("sends input and resize frames for the active terminal", async () => {
+    const logger = createMockLogger();
+    const mock = createMockTransport();
+
+    const client = new DaemonClient({
+      url: "ws://test",
+      clientId: "clsk_unit_test",
+      logger,
+      reconnect: { enabled: false },
+      transportFactory: () => mock.transport,
+    });
+    clients.push(client);
+
+    const connectPromise = client.connect();
+    mock.triggerOpen();
+    await connectPromise;
+
+    const subscribePromise = client.subscribeTerminal("term-1", "sub-3");
+    mock.triggerMessage(
+      wrapSessionMessage({
+        type: "subscribe_terminal_response",
+        payload: {
+          terminalId: "term-1",
+          state: null,
+          error: null,
+          requestId: "sub-3",
+        },
+      }),
+    );
+    await subscribePromise;
+    mock.sent.length = 0;
+
+    client.sendTerminalInput("term-1", {
+      type: "input",
+      data: "echo hello\r",
+    });
+    client.sendTerminalInput("term-1", {
+      type: "resize",
+      rows: 24,
+      cols: 80,
+    });
+
+    const inputFrame = decodeTerminalStreamFrame(asUint8Array(mock.sent[0])!);
+    const resizeFrame = decodeTerminalStreamFrame(asUint8Array(mock.sent[1])!);
+
+    expect(inputFrame?.opcode).toBe(TerminalStreamOpcode.Input);
+    expect(new TextDecoder().decode(inputFrame?.payload ?? new Uint8Array())).toBe("echo hello\r");
+    expect(resizeFrame?.opcode).toBe(TerminalStreamOpcode.Resize);
+    expect(decodeTerminalResizePayload(resizeFrame?.payload ?? new Uint8Array())).toEqual({
+      rows: 24,
+      cols: 80,
+    });
+  });
+
+  test("ignores terminal stream frames after terminal_stream_exit", async () => {
     const logger = createMockLogger();
     const mock = createMockTransport();
 
@@ -1375,112 +1405,53 @@ describe("DaemonClient", () => {
     await connectPromise;
 
     const seen: string[] = [];
-    const unsubscribe = client.onTerminalStreamData(23, (chunk) => {
-      seen.push(new TextDecoder().decode(chunk.data));
+    const unsubscribe = client.onTerminalStreamEvent((event) => {
+      if (event.type !== "output") {
+        return;
+      }
+      seen.push(new TextDecoder().decode(event.data));
     });
+
+    const subscribePromise = client.subscribeTerminal("term-1", "sub-4");
     mock.triggerMessage(
-      encodeBinaryMuxFrame({
-        channel: BinaryMuxChannel.Terminal,
-        messageType: TerminalBinaryMessageType.OutputUtf8,
-        streamId: 23,
-        offset: 0,
+      wrapSessionMessage({
+        type: "subscribe_terminal_response",
+        payload: {
+          terminalId: "term-1",
+          state: null,
+          error: null,
+          requestId: "sub-4",
+        },
+      }),
+    );
+    await subscribePromise;
+
+    mock.triggerMessage(
+      encodeTerminalStreamFrame({
+        opcode: TerminalStreamOpcode.Output,
         payload: new TextEncoder().encode("before-exit"),
       }),
     );
     expect(seen).toEqual(["before-exit"]);
-    expect(mock.sent).toHaveLength(1);
-    mock.sent.length = 0;
 
     mock.triggerMessage(
       wrapSessionMessage({
         type: "terminal_stream_exit",
         payload: {
-          streamId: 23,
           terminalId: "term-1",
         },
       }),
     );
 
     mock.triggerMessage(
-      encodeBinaryMuxFrame({
-        channel: BinaryMuxChannel.Terminal,
-        messageType: TerminalBinaryMessageType.OutputUtf8,
-        streamId: 23,
-        offset: 12,
+      encodeTerminalStreamFrame({
+        opcode: TerminalStreamOpcode.Output,
         payload: new TextEncoder().encode("after-exit"),
       }),
     );
 
     expect(seen).toEqual(["before-exit"]);
-    expect(mock.sent).toHaveLength(1);
-    const postExitAck = decodeBinaryMuxFrame(asUint8Array(mock.sent[0])!);
-    expect(postExitAck?.messageType).toBe(TerminalBinaryMessageType.Ack);
-    expect(postExitAck?.streamId).toBe(23);
-    expect(postExitAck?.offset).toBe(22);
     unsubscribe();
-  });
-
-  test("cleans local stream state even when detach reports success=false", async () => {
-    const logger = createMockLogger();
-    const mock = createMockTransport();
-
-    const client = new DaemonClient({
-      url: "ws://test",
-      clientId: "clsk_unit_test",
-      logger,
-      reconnect: { enabled: false },
-      transportFactory: () => mock.transport,
-    });
-    clients.push(client);
-
-    const connectPromise = client.connect();
-    mock.triggerOpen();
-    await connectPromise;
-
-    const seen: string[] = [];
-    client.onTerminalStreamData(31, (chunk) => {
-      seen.push(new TextDecoder().decode(chunk.data));
-    });
-
-    const detachPromise = client.detachTerminalStream(31, "detach-31");
-    const detachRequest = JSON.parse(String(mock.sent[0])) as {
-      type: "session";
-      message: { type: string; streamId: number; requestId: string };
-    };
-    expect(detachRequest.message.type).toBe("detach_terminal_stream_request");
-    expect(detachRequest.message.streamId).toBe(31);
-
-    mock.triggerMessage(
-      wrapSessionMessage({
-        type: "detach_terminal_stream_response",
-        payload: {
-          streamId: 31,
-          success: false,
-          requestId: "detach-31",
-        },
-      }),
-    );
-
-    const payload = await detachPromise;
-    expect(payload.success).toBe(false);
-
-    mock.sent.length = 0;
-    mock.triggerMessage(
-      encodeBinaryMuxFrame({
-        channel: BinaryMuxChannel.Terminal,
-        messageType: TerminalBinaryMessageType.OutputUtf8,
-        streamId: 31,
-        offset: 0,
-        payload: new TextEncoder().encode("after-detach"),
-      }),
-    );
-
-    expect(seen).toEqual([]);
-    expect(mock.sent).toHaveLength(1);
-    const detachedAck = decodeBinaryMuxFrame(asUint8Array(mock.sent[0])!);
-    expect(detachedAck?.messageType).toBe(TerminalBinaryMessageType.Ack);
-    expect(detachedAck?.streamId).toBe(31);
-    expect(detachedAck?.offset).toBe(12);
   });
 
   test("parses canonical agent_stream tool_call payloads without crashing", async () => {

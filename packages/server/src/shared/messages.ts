@@ -1139,21 +1139,6 @@ export const KillTerminalRequestSchema = z.object({
   requestId: z.string(),
 });
 
-export const AttachTerminalStreamRequestSchema = z.object({
-  type: z.literal("attach_terminal_stream_request"),
-  terminalId: z.string(),
-  resumeOffset: z.number().int().nonnegative().optional(),
-  rows: z.number().int().positive().optional(),
-  cols: z.number().int().positive().optional(),
-  requestId: z.string(),
-});
-
-export const DetachTerminalStreamRequestSchema = z.object({
-  type: z.literal("detach_terminal_stream_request"),
-  streamId: z.number().int().nonnegative(),
-  requestId: z.string(),
-});
-
 export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   VoiceAudioChunkMessageSchema,
   AbortRequestMessageSchema,
@@ -1219,8 +1204,6 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   UnsubscribeTerminalRequestSchema,
   TerminalInputSchema,
   KillTerminalRequestSchema,
-  AttachTerminalStreamRequestSchema,
-  DetachTerminalStreamRequestSchema,
 ]);
 
 export type SessionInboundMessage = z.infer<typeof SessionInboundMessageSchema>;
@@ -2112,7 +2095,7 @@ const TerminalInfoSchema = z.object({
   cwd: z.string(),
 });
 
-const TerminalCellSchema = z.object({
+export const TerminalCellSchema = z.object({
   char: z.string(),
   fg: z.number().optional(),
   bg: z.number().optional(),
@@ -2123,7 +2106,7 @@ const TerminalCellSchema = z.object({
   underline: z.boolean().optional(),
 });
 
-const TerminalStateSchema = z.object({
+export const TerminalStateSchema = z.object({
   rows: z.number(),
   cols: z.number(),
   grid: z.array(z.array(TerminalCellSchema)),
@@ -2167,14 +2150,6 @@ export const SubscribeTerminalResponseSchema = z.object({
   }),
 });
 
-export const TerminalOutputSchema = z.object({
-  type: z.literal("terminal_output"),
-  payload: z.object({
-    terminalId: z.string(),
-    state: TerminalStateSchema,
-  }),
-});
-
 export const KillTerminalResponseSchema = z.object({
   type: z.literal("kill_terminal_response"),
   payload: z.object({
@@ -2184,33 +2159,9 @@ export const KillTerminalResponseSchema = z.object({
   }),
 });
 
-export const AttachTerminalStreamResponseSchema = z.object({
-  type: z.literal("attach_terminal_stream_response"),
-  payload: z.object({
-    terminalId: z.string(),
-    streamId: z.number().int().nonnegative().nullable(),
-    replayedFrom: z.number().int().nonnegative(),
-    currentOffset: z.number().int().nonnegative(),
-    earliestAvailableOffset: z.number().int().nonnegative(),
-    reset: z.boolean(),
-    error: z.string().nullable(),
-    requestId: z.string(),
-  }),
-});
-
-export const DetachTerminalStreamResponseSchema = z.object({
-  type: z.literal("detach_terminal_stream_response"),
-  payload: z.object({
-    streamId: z.number().int().nonnegative(),
-    success: z.boolean(),
-    requestId: z.string(),
-  }),
-});
-
 export const TerminalStreamExitSchema = z.object({
   type: z.literal("terminal_stream_exit"),
   payload: z.object({
-    streamId: z.number().int().nonnegative(),
     terminalId: z.string(),
   }),
 });
@@ -2278,10 +2229,7 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   TerminalsChangedSchema,
   CreateTerminalResponseSchema,
   SubscribeTerminalResponseSchema,
-  TerminalOutputSchema,
   KillTerminalResponseSchema,
-  AttachTerminalStreamResponseSchema,
-  DetachTerminalStreamResponseSchema,
   TerminalStreamExitSchema,
 ]);
 
@@ -2415,13 +2363,10 @@ export type SubscribeTerminalRequest = z.infer<typeof SubscribeTerminalRequestSc
 export type SubscribeTerminalResponse = z.infer<typeof SubscribeTerminalResponseSchema>;
 export type UnsubscribeTerminalRequest = z.infer<typeof UnsubscribeTerminalRequestSchema>;
 export type TerminalInput = z.infer<typeof TerminalInputSchema>;
-export type TerminalOutput = z.infer<typeof TerminalOutputSchema>;
+export type TerminalCell = z.infer<typeof TerminalCellSchema>;
+export type TerminalState = z.infer<typeof TerminalStateSchema>;
 export type KillTerminalRequest = z.infer<typeof KillTerminalRequestSchema>;
 export type KillTerminalResponse = z.infer<typeof KillTerminalResponseSchema>;
-export type AttachTerminalStreamRequest = z.infer<typeof AttachTerminalStreamRequestSchema>;
-export type AttachTerminalStreamResponse = z.infer<typeof AttachTerminalStreamResponseSchema>;
-export type DetachTerminalStreamRequest = z.infer<typeof DetachTerminalStreamRequestSchema>;
-export type DetachTerminalStreamResponse = z.infer<typeof DetachTerminalStreamResponseSchema>;
 export type TerminalStreamExit = z.infer<typeof TerminalStreamExitSchema>;
 
 // ============================================================================

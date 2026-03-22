@@ -2,154 +2,118 @@ import { describe, expect, it } from "vitest";
 
 import {
   TerminalStreamController,
-  type TerminalStreamControllerAttachPayload,
-  type TerminalStreamControllerChunk,
   type TerminalStreamControllerClient,
-  type TerminalStreamControllerResumeOffsets,
   type TerminalStreamControllerStatus,
 } from "./terminal-stream-controller";
 
-type FakeStreamSubscriber = (chunk: TerminalStreamControllerChunk) => void;
+type TerminalStreamEvent =
+  | { terminalId: string; type: "output"; data: Uint8Array }
+  | {
+      terminalId: string;
+      type: "snapshot";
+      state: {
+        rows: number;
+        cols: number;
+        grid: Array<Array<{ char: string }>>;
+        scrollback: Array<Array<{ char: string }>>;
+        cursor: { row: number; col: number };
+      };
+    };
 
 class FakeTerminalStreamClient implements TerminalStreamControllerClient {
-  private readonly streamSubscribers = new Map<number, Set<FakeStreamSubscriber>>();
-  private readonly pendingChunksByStreamId = new Map<number, TerminalStreamControllerChunk[]>();
-  public attachCalls: Array<{
+  private readonly listeners = new Set<(event: TerminalStreamEvent) => void>();
+  public subscribeCalls: string[] = [];
+  public unsubscribeCalls: string[] = [];
+  public resizeCalls: Array<{ terminalId: string; rows: number; cols: number }> = [];
+  public nextSubscribeResponses: Array<{
     terminalId: string;
-    options?: {
-      resumeOffset?: number;
-      rows?: number;
-      cols?: number;
-    };
+    state: {
+      rows: number;
+      cols: number;
+      grid: Array<Array<{ char: string }>>;
+      scrollback: Array<Array<{ char: string }>>;
+      cursor: { row: number; col: number };
+    } | null;
+    error?: string | null;
   }> = [];
-  public detachCalls: number[] = [];
-  public nextAttachResponses: TerminalStreamControllerAttachPayload[] = [];
 
-  async attachTerminalStream(
-    terminalId: string,
-    options?: {
-      resumeOffset?: number;
-      rows?: number;
-      cols?: number;
-    },
-  ): Promise<TerminalStreamControllerAttachPayload> {
-    this.attachCalls.push({ terminalId, options });
-    const response = this.nextAttachResponses.shift();
+  async subscribeTerminal(terminalId: string) {
+    this.subscribeCalls.push(terminalId);
+    const response = this.nextSubscribeResponses.shift();
     if (!response) {
-      throw new Error("Missing fake attach response");
+      throw new Error("Missing fake subscribe response");
     }
     return response;
   }
 
-  async detachTerminalStream(streamId: number): Promise<void> {
-    this.detachCalls.push(streamId);
+  unsubscribeTerminal(terminalId: string): void {
+    this.unsubscribeCalls.push(terminalId);
   }
 
-  onTerminalStreamData(
-    streamId: number,
-    handler: (chunk: TerminalStreamControllerChunk) => void,
-  ): () => void {
-    const pendingChunks = this.pendingChunksByStreamId.get(streamId);
-    if (pendingChunks && pendingChunks.length > 0) {
-      for (const chunk of pendingChunks) {
-        handler(chunk);
-      }
-      this.pendingChunksByStreamId.delete(streamId);
-    }
-
-    const subscribers = this.streamSubscribers.get(streamId) ?? new Set();
-    subscribers.add(handler);
-    this.streamSubscribers.set(streamId, subscribers);
-    return () => {
-      const current = this.streamSubscribers.get(streamId);
-      current?.delete(handler);
-      if (current && current.size === 0) {
-        this.streamSubscribers.delete(streamId);
-      }
-    };
-  }
-
-  emitChunk(input: {
-    streamId: number;
-    offset?: number;
-    endOffset: number;
-    replay?: boolean;
-    data: string;
-  }): void {
-    const subscribers = this.streamSubscribers.get(input.streamId);
-    if (!subscribers || subscribers.size === 0) {
-      return;
-    }
-    const bytes = new TextEncoder().encode(input.data);
-    const chunk: TerminalStreamControllerChunk = {
-      offset: input.offset ?? input.endOffset - bytes.byteLength,
-      endOffset: input.endOffset,
-      replay: input.replay,
-      data: bytes,
-    };
-    for (const subscriber of subscribers) {
-      subscriber(chunk);
-    }
-  }
-
-  bufferChunk(input: {
-    streamId: number;
-    offset?: number;
-    endOffset: number;
-    replay?: boolean;
-    data: string;
-  }): void {
-    const chunks = this.pendingChunksByStreamId.get(input.streamId) ?? [];
-    const bytes = new TextEncoder().encode(input.data);
-    chunks.push({
-      offset: input.offset ?? input.endOffset - bytes.byteLength,
-      endOffset: input.endOffset,
-      replay: input.replay,
-      data: bytes,
+  sendTerminalInput(
+    terminalId: string,
+    message: { type: "resize"; rows: number; cols: number },
+  ): void {
+    this.resizeCalls.push({
+      terminalId,
+      rows: message.rows,
+      cols: message.cols,
     });
-    this.pendingChunksByStreamId.set(input.streamId, chunks);
+  }
+
+  onTerminalStreamEvent(handler: (event: TerminalStreamEvent) => void): () => void {
+    this.listeners.add(handler);
+    return () => {
+      this.listeners.delete(handler);
+    };
+  }
+
+  emit(event: TerminalStreamEvent): void {
+    for (const listener of this.listeners) {
+      listener(event);
+    }
   }
 }
 
 function createControllerHarness(input?: {
   client?: FakeTerminalStreamClient;
-  resumeOffsets?: TerminalStreamControllerResumeOffsets;
 }): {
   client: FakeTerminalStreamClient;
-  chunks: Array<{ terminalId: string; text: string }>;
+  outputs: Array<{ terminalId: string; text: string }>;
+  snapshots: Array<{ terminalId: string; text: string }>;
   statuses: TerminalStreamControllerStatus[];
-  resets: string[];
   controller: TerminalStreamController;
 } {
   const client = input?.client ?? new FakeTerminalStreamClient();
-  const chunks: Array<{ terminalId: string; text: string }> = [];
+  const outputs: Array<{ terminalId: string; text: string }> = [];
+  const snapshots: Array<{ terminalId: string; text: string }> = [];
   const statuses: TerminalStreamControllerStatus[] = [];
-  const resets: string[] = [];
 
   const controller = new TerminalStreamController({
     client,
     getPreferredSize: () => ({ rows: 24, cols: 80 }),
-    resumeOffsets: input?.resumeOffsets,
-    onChunk: (chunk) => {
-      chunks.push({
-        terminalId: chunk.terminalId,
-        text: chunk.text,
+    onOutput: ({ terminalId, text }) => {
+      outputs.push({ terminalId, text });
+    },
+    onSnapshot: ({ terminalId, state }) => {
+      snapshots.push({
+        terminalId,
+        text: state.grid
+          .map((row) => row.map((cell) => cell.char).join(""))
+          .join("\n"),
       });
     },
     onStatusChange: (status) => {
       statuses.push(status);
-    },
-    onReset: ({ terminalId }) => {
-      resets.push(terminalId);
     },
     waitForDelay: async () => {},
   });
 
   return {
     client,
-    chunks,
+    outputs,
+    snapshots,
     statuses,
-    resets,
     controller,
   };
 }
@@ -163,425 +127,122 @@ async function flushAsyncWork(): Promise<void> {
 }
 
 describe("terminal-stream-controller", () => {
-  it("streams burst chunks in order without dropping intermediate chunks", async () => {
+  it("subscribes to a terminal, resizes it, and forwards snapshot/output events", async () => {
     const harness = createControllerHarness();
-    harness.client.nextAttachResponses.push({
-      streamId: 7,
-      currentOffset: 0,
-      reset: false,
+    harness.client.nextSubscribeResponses.push({
+      terminalId: "term-1",
+      state: null,
       error: null,
     });
 
     harness.controller.setTerminal({ terminalId: "term-1" });
     await flushAsyncWork();
 
-    harness.client.emitChunk({
-      streamId: 7,
-      endOffset: 1,
-      data: "a",
+    harness.client.emit({
+      terminalId: "term-1",
+      type: "snapshot",
+      state: {
+        rows: 1,
+        cols: 5,
+        grid: [[{ char: "h" }, { char: "e" }, { char: "l" }, { char: "l" }, { char: "o" }]],
+        scrollback: [],
+        cursor: { row: 0, col: 5 },
+      },
     });
-    harness.client.emitChunk({
-      streamId: 7,
-      endOffset: 2,
-      data: "b",
-    });
-    harness.client.emitChunk({
-      streamId: 7,
-      endOffset: 3,
-      data: "c",
+    harness.client.emit({
+      terminalId: "term-1",
+      type: "output",
+      data: new TextEncoder().encode(" world"),
     });
 
-    expect(harness.chunks).toEqual([
-      { terminalId: "term-1", text: "a" },
-      { terminalId: "term-1", text: "b" },
-      { terminalId: "term-1", text: "c" },
-    ]);
+    expect(harness.client.subscribeCalls).toEqual(["term-1"]);
+    expect(harness.client.resizeCalls).toEqual([{ terminalId: "term-1", rows: 24, cols: 80 }]);
+    expect(harness.snapshots).toEqual([{ terminalId: "term-1", text: "hello" }]);
+    expect(harness.outputs).toEqual([{ terminalId: "term-1", text: " world" }]);
+    expect(harness.statuses.at(-1)).toEqual({
+      terminalId: "term-1",
+      isAttaching: false,
+      error: null,
+    });
   });
 
-  it("retries retryable attach failures and then attaches", async () => {
+  it("retries retryable subscribe failures and then attaches", async () => {
     const harness = createControllerHarness();
-    harness.client.nextAttachResponses.push({
-      streamId: null,
-      currentOffset: 0,
-      reset: false,
+    harness.client.nextSubscribeResponses.push({
+      terminalId: "term-1",
+      state: null,
       error: "network disconnected",
     });
-    harness.client.nextAttachResponses.push({
-      streamId: 9,
-      currentOffset: 5,
-      reset: false,
+    harness.client.nextSubscribeResponses.push({
+      terminalId: "term-1",
+      state: null,
       error: null,
     });
 
     harness.controller.setTerminal({ terminalId: "term-1" });
     await flushAsyncWork();
 
-    expect(harness.client.attachCalls.length).toBe(2);
-    expect(harness.client.attachCalls[1]?.options).toEqual({
-      resumeOffset: 0,
-      rows: 24,
-      cols: 80,
-    });
-    expect(harness.controller.getActiveStreamId()).toBe(9);
+    expect(harness.client.subscribeCalls).toEqual(["term-1", "term-1"]);
     expect(harness.statuses.at(-1)).toEqual({
       terminalId: "term-1",
-      streamId: 9,
       isAttaching: false,
       error: null,
     });
   });
 
-  it("handles stream exit by reconnecting on the same terminal", async () => {
+  it("reconnects to the selected terminal when the stream exits", async () => {
     const harness = createControllerHarness();
-    harness.client.nextAttachResponses.push({
-      streamId: 3,
-      currentOffset: 0,
-      reset: false,
+    harness.client.nextSubscribeResponses.push({
+      terminalId: "term-1",
+      state: null,
       error: null,
     });
-    harness.client.nextAttachResponses.push({
-      streamId: 4,
-      currentOffset: 2,
-      reset: false,
+    harness.client.nextSubscribeResponses.push({
+      terminalId: "term-1",
+      state: null,
       error: null,
     });
 
     harness.controller.setTerminal({ terminalId: "term-1" });
     await flushAsyncWork();
 
-    harness.client.emitChunk({
-      streamId: 3,
-      endOffset: 2,
-      data: "hi",
-    });
-    harness.controller.handleStreamExit({
-      terminalId: "term-1",
-      streamId: 3,
-    });
+    harness.controller.handleStreamExit({ terminalId: "term-1" });
     await flushAsyncWork();
 
-    expect(harness.client.attachCalls.length).toBe(2);
-    expect(harness.client.attachCalls[1]?.options).toEqual({
-      resumeOffset: 2,
-      rows: 24,
-      cols: 80,
-    });
-    expect(harness.controller.getActiveStreamId()).toBe(4);
+    expect(harness.client.subscribeCalls).toEqual(["term-1", "term-1"]);
     expect(harness.statuses.at(-1)).toEqual({
       terminalId: "term-1",
-      streamId: 4,
       isAttaching: false,
       error: null,
     });
   });
 
-  it("recovers when stream exits before initial attach completes", async () => {
+  it("unsubscribes when switching terminals and on dispose", async () => {
     const harness = createControllerHarness();
-    harness.client.nextAttachResponses.push({
-      streamId: 1,
-      currentOffset: 1200,
-      reset: false,
+    harness.client.nextSubscribeResponses.push({
+      terminalId: "term-1",
+      state: null,
       error: null,
     });
-    harness.client.nextAttachResponses.push({
-      streamId: 2,
-      currentOffset: 1200,
-      reset: false,
-      error: null,
-    });
-
-    harness.controller.setTerminal({ terminalId: "term-attach-exit" });
-    harness.controller.handleStreamExit({
-      terminalId: "term-attach-exit",
-      streamId: 1,
-    });
-    await flushAsyncWork();
-
-    expect(harness.client.attachCalls).toHaveLength(2);
-    expect(harness.client.attachCalls[1]?.options).toEqual({
-      resumeOffset: 1200,
-      rows: 24,
-      cols: 80,
-    });
-    expect(harness.client.detachCalls).toContain(1);
-    expect(harness.controller.getActiveStreamId()).toBe(2);
-  });
-
-  it("emits reset callback when attach indicates output reset", async () => {
-    const harness = createControllerHarness();
-    harness.client.nextAttachResponses.push({
-      streamId: 12,
-      currentOffset: 0,
-      reset: true,
+    harness.client.nextSubscribeResponses.push({
+      terminalId: "term-2",
+      state: null,
       error: null,
     });
 
-    harness.controller.setTerminal({ terminalId: "term-reset" });
+    harness.controller.setTerminal({ terminalId: "term-1" });
     await flushAsyncWork();
 
-    expect(harness.resets).toEqual(["term-reset"]);
-    expect(harness.controller.getActiveStreamId()).toBe(12);
-  });
+    harness.controller.setTerminal({ terminalId: "term-2" });
+    await flushAsyncWork();
 
-  it("delivers buffered replay chunks flushed synchronously during subscribe", async () => {
-    const harness = createControllerHarness();
-    harness.client.nextAttachResponses.push({
-      streamId: 17,
-      replayedFrom: 0,
-      currentOffset: 10,
-      reset: false,
+    harness.controller.dispose();
+
+    expect(harness.client.unsubscribeCalls).toEqual(["term-1", "term-2"]);
+    expect(harness.statuses.at(-1)).toEqual({
+      terminalId: null,
+      isAttaching: false,
       error: null,
-    });
-    harness.client.bufferChunk({
-      streamId: 17,
-      offset: 0,
-      endOffset: 10,
-      replay: true,
-      data: "buffered-replay",
-    });
-
-    harness.controller.setTerminal({ terminalId: "term-buffered" });
-    await flushAsyncWork();
-
-    expect(harness.chunks).toEqual([{ terminalId: "term-buffered", text: "buffered-replay" }]);
-  });
-
-  it("clears stale selected output when bootstrap replay starts before current offset", async () => {
-    const harness = createControllerHarness();
-    harness.client.nextAttachResponses.push({
-      streamId: 61,
-      replayedFrom: 0,
-      currentOffset: 20,
-      reset: false,
-      error: null,
-    });
-
-    harness.controller.setTerminal({ terminalId: "term-bootstrap-reset" });
-    await flushAsyncWork();
-
-    expect(harness.resets).toEqual(["term-bootstrap-reset"]);
-  });
-
-  it("reattaches and replays from last contiguous offset when chunk offsets gap", async () => {
-    const harness = createControllerHarness();
-    harness.client.nextAttachResponses.push({
-      streamId: 31,
-      currentOffset: 0,
-      reset: false,
-      error: null,
-    });
-    harness.client.nextAttachResponses.push({
-      streamId: 32,
-      currentOffset: 8,
-      reset: false,
-      error: null,
-    });
-
-    harness.controller.setTerminal({ terminalId: "term-gap" });
-    await flushAsyncWork();
-
-    harness.client.emitChunk({
-      streamId: 31,
-      offset: 0,
-      endOffset: 2,
-      data: "ok",
-    });
-    harness.client.emitChunk({
-      streamId: 31,
-      offset: 4,
-      endOffset: 8,
-      data: "miss",
-    });
-    await flushAsyncWork();
-
-    expect(harness.chunks).toEqual([{ terminalId: "term-gap", text: "ok" }]);
-    expect(harness.client.detachCalls).toContain(31);
-    expect(harness.client.attachCalls.length).toBe(2);
-    expect(harness.client.attachCalls[1]?.options).toEqual({
-      resumeOffset: 2,
-      rows: 24,
-      cols: 80,
-    });
-    expect(harness.controller.getActiveStreamId()).toBe(32);
-  });
-
-  it("does not treat replay range before currentOffset as a live gap", async () => {
-    const harness = createControllerHarness();
-    harness.client.nextAttachResponses.push({
-      streamId: 41,
-      replayedFrom: 50,
-      currentOffset: 100,
-      reset: false,
-      error: null,
-    });
-    harness.client.bufferChunk({
-      streamId: 41,
-      offset: 80,
-      endOffset: 100,
-      data: "replay-tail",
-    });
-
-    harness.controller.setTerminal({ terminalId: "term-replay" });
-    await flushAsyncWork();
-
-    harness.client.emitChunk({
-      streamId: 41,
-      offset: 100,
-      endOffset: 102,
-      data: "ok",
-    });
-
-    expect(harness.client.detachCalls).toEqual([]);
-    expect(harness.client.attachCalls).toHaveLength(1);
-    expect(harness.controller.getActiveStreamId()).toBe(41);
-    expect(harness.chunks).toEqual([
-      { terminalId: "term-replay", text: "replay-tail" },
-      { terminalId: "term-replay", text: "ok" },
-    ]);
-  });
-
-  it("accepts clamped replay start after reconnect without entering a reconnect loop", async () => {
-    const harness = createControllerHarness();
-    harness.client.nextAttachResponses.push({
-      streamId: 71,
-      replayedFrom: 205,
-      currentOffset: 205,
-      reset: false,
-      error: null,
-    });
-    harness.client.nextAttachResponses.push({
-      streamId: 72,
-      replayedFrom: 396,
-      currentOffset: 978,
-      reset: true,
-      error: null,
-    });
-
-    harness.controller.setTerminal({ terminalId: "term-clamped-replay" });
-    await flushAsyncWork();
-
-    harness.client.emitChunk({
-      streamId: 71,
-      offset: 205,
-      endOffset: 299,
-      data: "first",
-    });
-    harness.client.emitChunk({
-      streamId: 71,
-      offset: 396,
-      endOffset: 493,
-      data: "gap",
-    });
-    await flushAsyncWork();
-
-    expect(harness.client.attachCalls).toHaveLength(2);
-    expect(harness.client.attachCalls[1]?.options).toEqual({
-      resumeOffset: 299,
-      rows: 24,
-      cols: 80,
-    });
-    expect(harness.controller.getActiveStreamId()).toBe(72);
-
-    harness.client.emitChunk({
-      streamId: 72,
-      replay: true,
-      offset: 396,
-      endOffset: 493,
-      data: "replay-1",
-    });
-    harness.client.emitChunk({
-      streamId: 72,
-      replay: true,
-      offset: 493,
-      endOffset: 590,
-      data: "replay-2",
-    });
-    harness.client.emitChunk({
-      streamId: 72,
-      replay: true,
-      offset: 687,
-      endOffset: 784,
-      data: "replay-3",
-    });
-    harness.client.emitChunk({
-      streamId: 72,
-      replay: false,
-      offset: 978,
-      endOffset: 1075,
-      data: "live",
-    });
-    await flushAsyncWork();
-
-    expect(harness.client.attachCalls).toHaveLength(2);
-    expect(harness.client.detachCalls.filter((streamId) => streamId === 71)).toHaveLength(1);
-    expect(harness.chunks.at(-1)).toEqual({
-      terminalId: "term-clamped-replay",
-      text: "live",
-    });
-  });
-
-  it("reuses external resume offsets across controller recreation", async () => {
-    const client = new FakeTerminalStreamClient();
-    const resumeOffsetByTerminalId = new Map<string, number>();
-    const resumeOffsets: TerminalStreamControllerResumeOffsets = {
-      get: ({ terminalId }) => resumeOffsetByTerminalId.get(terminalId),
-      set: ({ terminalId, offset }) => {
-        resumeOffsetByTerminalId.set(terminalId, offset);
-      },
-      clear: ({ terminalId }) => {
-        resumeOffsetByTerminalId.delete(terminalId);
-      },
-      prune: ({ terminalIds }) => {
-        const terminalIdSet = new Set(terminalIds);
-        for (const terminalId of Array.from(resumeOffsetByTerminalId.keys())) {
-          if (!terminalIdSet.has(terminalId)) {
-            resumeOffsetByTerminalId.delete(terminalId);
-          }
-        }
-      },
-    };
-
-    client.nextAttachResponses.push({
-      streamId: 81,
-      currentOffset: 0,
-      reset: false,
-      error: null,
-    });
-
-    const firstHarness = createControllerHarness({
-      client,
-      resumeOffsets,
-    });
-    firstHarness.controller.setTerminal({ terminalId: "term-shared-resume" });
-    await flushAsyncWork();
-
-    client.emitChunk({
-      streamId: 81,
-      offset: 0,
-      endOffset: 2,
-      data: "ok",
-    });
-    await flushAsyncWork();
-    firstHarness.controller.dispose();
-
-    client.nextAttachResponses.push({
-      streamId: 82,
-      currentOffset: 2,
-      reset: false,
-      error: null,
-    });
-
-    const secondHarness = createControllerHarness({
-      client,
-      resumeOffsets,
-    });
-    secondHarness.controller.setTerminal({ terminalId: "term-shared-resume" });
-    await flushAsyncWork();
-
-    expect(client.attachCalls.at(-1)?.options).toEqual({
-      resumeOffset: 2,
-      rows: 24,
-      cols: 80,
     });
   });
 });

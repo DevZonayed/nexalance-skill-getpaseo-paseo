@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useFocusEffect, useIsFocused } from "@react-navigation/native";
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
 import Animated, { runOnJS, useAnimatedReaction } from "react-native-reanimated";
@@ -18,7 +18,7 @@ import {
 } from "@/terminal/runtime/terminal-stream-controller";
 import { usePanelStore } from "@/stores/panel-store";
 import { toXtermTheme } from "@/utils/to-xterm-theme";
-import TerminalEmulator from "./terminal-emulator";
+import TerminalEmulator, { type TerminalEmulatorHandle } from "./terminal-emulator";
 
 interface TerminalPaneProps {
   serverId: string;
@@ -26,7 +26,6 @@ interface TerminalPaneProps {
   terminalId: string;
 }
 
-const MAX_OUTPUT_CHARS = 200_000;
 const TERMINAL_REFIT_DELAYS_MS = [0, 48, 144, 320];
 
 const MODIFIER_LABELS = {
@@ -103,44 +102,8 @@ export function TerminalPane({
   const scopeKey = useMemo(() => terminalScopeKey({ serverId, cwd }), [serverId, cwd]);
   const lastReportedSizeRef = useRef<{ rows: number; cols: number } | null>(null);
   const streamControllerRef = useRef<TerminalStreamController | null>(null);
-  const workspaceTerminalSession = useMemo(
-    () =>
-      getWorkspaceTerminalSession({
-        scopeKey,
-        maxOutputChars: MAX_OUTPUT_CHARS,
-      }),
-    [scopeKey],
-  );
-  const outputSession = workspaceTerminalSession.outputSession;
-  const subscribeOutputSession = useCallback(
-    (listener: () => void) => outputSession.subscribe(listener),
-    [outputSession],
-  );
-  const getOutputSessionState = useCallback(() => outputSession.getState(), [outputSession]);
-  const outputState = useSyncExternalStore(
-    subscribeOutputSession,
-    getOutputSessionState,
-    getOutputSessionState,
-  );
-  const selectedOutputState = useMemo(() => {
-    if (outputState.selectedTerminalId === terminalId) {
-      return outputState;
-    }
-
-    return {
-      ...outputState,
-      selectedTerminalId: terminalId,
-      snapshotText: outputSession.readSnapshot({ terminalId }),
-      snapshotSequence: 0,
-      chunkText: "",
-      chunkSequence: 0,
-      chunkReplay: false,
-    };
-  }, [outputSession, outputState, terminalId]);
-  const [activeStream, setActiveStream] = useState<{
-    terminalId: string;
-    streamId: number;
-  } | null>(null);
+  const emulatorRef = useRef<TerminalEmulatorHandle | null>(null);
+  const workspaceTerminalSession = useMemo(() => getWorkspaceTerminalSession({ scopeKey }), [scopeKey]);
   const [isAttaching, setIsAttaching] = useState(false);
   const [streamError, setStreamError] = useState<string | null>(null);
   const [modifiers, setModifiers] = useState<ModifierState>(EMPTY_MODIFIERS);
@@ -150,6 +113,7 @@ export function TerminalPane({
   const pendingTerminalInputRef = useRef<PendingTerminalInput[]>([]);
   const keyboardRefitTimeoutsRef = useRef<Array<ReturnType<typeof setTimeout>>>([]);
   const lastAutoFocusKeyRef = useRef<string | null>(null);
+  const initialSnapshot = workspaceTerminalSession.snapshots.get({ terminalId });
 
   useEffect(() => {
     terminalIdRef.current = terminalId;
@@ -248,13 +212,16 @@ export function TerminalPane({
         return;
       }
 
+      workspaceTerminalSession.snapshots.clear({ terminalId: exitedTerminalId });
+      if (terminalIdRef.current === exitedTerminalId) {
+        emulatorRef.current?.clear();
+      }
       streamControllerRef.current?.handleStreamExit({
         terminalId: exitedTerminalId,
-        streamId: message.payload.streamId,
       });
       setModifiers({ ...EMPTY_MODIFIERS });
     });
-  }, [client, isConnected]);
+  }, [client, isConnected, workspaceTerminalSession.snapshots]);
 
   useEffect(() => {
     lastReportedSizeRef.current = null;
@@ -263,20 +230,11 @@ export function TerminalPane({
   const handleStreamControllerStatus = useCallback((status: TerminalStreamControllerStatus) => {
     setIsAttaching(status.isAttaching);
     setStreamError(status.error);
-    if (status.terminalId && typeof status.streamId === "number") {
-      setActiveStream({
-        terminalId: status.terminalId,
-        streamId: status.streamId,
-      });
-      return;
-    }
-    setActiveStream(null);
   }, []);
 
   useEffect(() => {
     streamControllerRef.current?.dispose();
     streamControllerRef.current = null;
-    setActiveStream(null);
     setIsAttaching(false);
     setStreamError(null);
 
@@ -287,12 +245,18 @@ export function TerminalPane({
     const controller = new TerminalStreamController({
       client,
       getPreferredSize: () => lastReportedSizeRef.current,
-      resumeOffsets: workspaceTerminalSession.resumeOffsets,
-      onChunk: ({ terminalId, text, replay }) => {
-        outputSession.append({ terminalId, text, replay });
+      onOutput: ({ terminalId, text }) => {
+        if (!isScreenFocused || terminalIdRef.current !== terminalId) {
+          return;
+        }
+        emulatorRef.current?.writeOutput(text);
       },
-      onReset: ({ terminalId }) => {
-        outputSession.clearTerminal({ terminalId });
+      onSnapshot: ({ terminalId, state }) => {
+        workspaceTerminalSession.snapshots.set({ terminalId, state });
+        if (!isScreenFocused || terminalIdRef.current !== terminalId) {
+          return;
+        }
+        emulatorRef.current?.renderSnapshot(state);
       },
       onStatusChange: handleStreamControllerStatus,
     });
@@ -313,26 +277,16 @@ export function TerminalPane({
     handleStreamControllerStatus,
     isConnected,
     isScreenFocused,
-    outputSession,
-    workspaceTerminalSession.resumeOffsets,
+    workspaceTerminalSession.snapshots,
   ]);
 
   useEffect(() => {
     pendingTerminalInputRef.current = [];
     const nextTerminalId = isScreenFocused ? terminalId : null;
-    outputSession.setSelectedTerminal({
-      terminalId: nextTerminalId,
-    });
     streamControllerRef.current?.setTerminal({
       terminalId: nextTerminalId,
     });
-  }, [isScreenFocused, outputSession, terminalId]);
-
-  const activeStreamId =
-    activeStream && activeStream.terminalId === terminalId ? activeStream.streamId : null;
-  const getCurrentActiveStreamId = useCallback(() => {
-    return streamControllerRef.current?.getActiveStreamId() ?? null;
-  }, []);
+  }, [isScreenFocused, terminalId]);
 
   const enqueuePendingTerminalInput = useCallback((entry: PendingTerminalInput) => {
     const queue = pendingTerminalInputRef.current;
@@ -398,8 +352,10 @@ export function TerminalPane({
   }, [dispatchTerminalInputEntry]);
 
   useEffect(() => {
-    flushPendingTerminalInput();
-  }, [activeStreamId, flushPendingTerminalInput]);
+    if (!isAttaching && !streamError) {
+      flushPendingTerminalInput();
+    }
+  }, [flushPendingTerminalInput, isAttaching, streamError]);
 
   const clearPendingModifiers = useCallback(() => {
     setModifiers({ ...EMPTY_MODIFIERS });
@@ -443,7 +399,7 @@ export function TerminalPane({
       }
       return true;
     },
-    [client, dispatchTerminalInputEntry, enqueuePendingTerminalInput, getCurrentActiveStreamId],
+    [client, dispatchTerminalInputEntry, enqueuePendingTerminalInput],
   );
 
   const handleTerminalData = useCallback(
@@ -496,7 +452,6 @@ export function TerminalPane({
       clearPendingModifiers,
       client,
       dispatchTerminalInputEntry,
-      getCurrentActiveStreamId,
       modifiers.alt,
       modifiers.ctrl,
       modifiers.shift,
@@ -537,13 +492,6 @@ export function TerminalPane({
   const handlePendingModifiersConsumed = useCallback(() => {
     clearPendingModifiers();
   }, [clearPendingModifiers]);
-
-  const handleOutputChunkConsumed = useCallback(
-    (sequence: number) => {
-      outputSession.consume({ sequence });
-    },
-    [outputSession],
-  );
 
   const toggleModifier = useCallback(
     (modifier: keyof ModifierState) => {
@@ -589,6 +537,7 @@ export function TerminalPane({
         {isScreenFocused ? (
           <View style={styles.terminalGestureContainer}>
             <TerminalEmulator
+              ref={emulatorRef}
               dom={{
                 style: { flex: 1 },
                 matchContents: false,
@@ -600,11 +549,7 @@ export function TerminalPane({
                 contentInsetAdjustmentBehavior: "never",
               }}
               streamKey={`${scopeKey}:${terminalId}`}
-              initialOutputText={selectedOutputState.snapshotText}
-              initialOutputChunkSequence={selectedOutputState.snapshotSequence}
-              outputChunkText={selectedOutputState.chunkText}
-              outputChunkSequence={selectedOutputState.chunkSequence}
-              outputChunkReplay={selectedOutputState.chunkReplay}
+              initialSnapshot={initialSnapshot}
               testId="terminal-surface"
               xtermTheme={xtermTheme}
               swipeGesturesEnabled={swipeGesturesEnabled}
@@ -624,7 +569,6 @@ export function TerminalPane({
               onResize={handleTerminalResize}
               onTerminalKey={handleTerminalKey}
               onPendingModifiersConsumed={handlePendingModifiersConsumed}
-              onOutputChunkConsumed={handleOutputChunkConsumed}
               pendingModifiers={modifiers}
               focusRequestToken={focusRequestToken}
               resizeRequestToken={resizeRequestToken}

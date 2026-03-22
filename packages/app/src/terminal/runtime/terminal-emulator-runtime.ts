@@ -2,6 +2,7 @@ import { FitAddon } from "@xterm/addon-fit";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { Terminal, type ITheme } from "@xterm/xterm";
+import type { TerminalState } from "@server/shared/messages";
 import {
   type PendingTerminalModifiers,
   isTerminalModifierDomKey,
@@ -10,11 +11,12 @@ import {
   normalizeTerminalTransportKey,
   shouldInterceptDomTerminalKey,
 } from "@/utils/terminal-keys";
+import { renderTerminalSnapshotToAnsi } from "./terminal-snapshot";
 
 export type TerminalEmulatorRuntimeMountInput = {
   root: HTMLDivElement;
   host: HTMLDivElement;
-  initialOutputText: string;
+  initialSnapshot: TerminalState | null;
   theme: ITheme;
 };
 
@@ -50,8 +52,10 @@ type TerminalEmulatorRuntimeDisposables = {
 };
 
 type TerminalOutputOperation = {
-  type: "write" | "clear";
+  type: "write" | "clear" | "snapshot";
   text: string;
+  rows?: number;
+  cols?: number;
   suppressInput?: boolean;
   onCommitted?: () => void;
 };
@@ -332,8 +336,8 @@ export class TerminalEmulatorRuntime {
       fitAndEmitResize(true);
     }, 0);
 
-    if (input.initialOutputText.length > 0) {
-      this.write({ text: input.initialOutputText, suppressInput: true });
+    if (input.initialSnapshot) {
+      this.renderSnapshot({ state: input.initialSnapshot });
     }
 
     this.processOutputQueue();
@@ -434,6 +438,22 @@ export class TerminalEmulatorRuntime {
     this.processOutputQueue();
   }
 
+  renderSnapshot(input: { state: TerminalState | null; onCommitted?: () => void }): void {
+    if (!input.state) {
+      this.clear(input);
+      return;
+    }
+    this.outputOperations.push({
+      type: "snapshot",
+      text: renderTerminalSnapshotToAnsi(input.state),
+      rows: input.state.rows,
+      cols: input.state.cols,
+      suppressInput: true,
+      ...(input.onCommitted ? { onCommitted: input.onCommitted } : {}),
+    });
+    this.processOutputQueue();
+  }
+
   resize(input?: { force?: boolean }): void {
     this.fitAndEmitResize?.(input?.force ?? false);
   }
@@ -521,6 +541,22 @@ export class TerminalEmulatorRuntime {
       terminal.reset();
       finalizeOperation(operation);
       return;
+    }
+
+    if (operation.type === "snapshot") {
+      try {
+        if (
+          typeof operation.cols === "number" &&
+          typeof operation.rows === "number" &&
+          (terminal.cols !== operation.cols || terminal.rows !== operation.rows)
+        ) {
+          terminal.resize(operation.cols, operation.rows);
+        }
+        terminal.reset();
+      } catch {
+        finalizeOperation(operation);
+        return;
+      }
     }
 
     const text = operation.text;
