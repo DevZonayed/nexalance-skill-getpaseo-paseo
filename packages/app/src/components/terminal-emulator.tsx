@@ -617,9 +617,9 @@ export default function TerminalEmulator({
           height: "100%",
           overflow: "hidden",
           overscrollBehavior: "none",
-          paddingTop: 8,
-          paddingBottom: 8,
-          paddingLeft: 8,
+          paddingTop: 0,
+          paddingBottom: 0,
+          paddingLeft: 0,
           paddingRight: 0,
         }}
       />

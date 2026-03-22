@@ -516,12 +516,31 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
   const handleAppResumed = useCallback(
     (awayMs: number) => {
       scheduleAuthoritativeRevalidation();
+
+      if (Platform.OS !== "web") {
+        const session = useSessionStore.getState().sessions[serverId];
+        const agentId = session?.focusedAgentId;
+        const cursor = agentId ? session?.agentTimelineCursor.get(agentId) : undefined;
+        if (agentId && cursor) {
+          void client
+            .fetchAgentTimeline(agentId, {
+              direction: "after",
+              cursor: { epoch: cursor.epoch, seq: cursor.endSeq },
+              limit: 0,
+              projection: "canonical",
+            })
+            .catch((error) => {
+              console.warn("[Session] failed to fetch catch-up timeline on resume", agentId, error);
+            });
+        }
+      }
+
       if (awayMs < HISTORY_STALE_AFTER_MS) {
         return;
       }
       bumpHistorySyncGeneration(serverId);
     },
-    [bumpHistorySyncGeneration, scheduleAuthoritativeRevalidation, serverId],
+    [bumpHistorySyncGeneration, client, scheduleAuthoritativeRevalidation, serverId],
   );
 
   // Client activity tracking (heartbeat, push token registration)
