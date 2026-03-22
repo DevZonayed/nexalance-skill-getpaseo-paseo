@@ -5,8 +5,9 @@
   "main": "build/index.js",
   "types": "build/index.d.ts",
   "scripts": {
-    "build": "expo-module build",
+    "build": "EXPO_NONINTERACTIVE=1 expo-module build",
     "clean": "expo-module clean",
+    "dev": "expo-module build",
     "lint": "expo-module lint",
     "test": "expo-module test",
     "format": "biome check .",

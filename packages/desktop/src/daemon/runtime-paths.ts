@@ -3,19 +3,21 @@ import { spawnSync, type SpawnSyncReturns } from "node:child_process";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { app } from "electron";
+import {
+  DESKTOP_CLI_ENV,
+  createNodeEntrypointInvocation as createSharedNodeEntrypointInvocation,
+  parseCliPassthroughArgsFromArgv as parseCliPassthroughArgs,
+  type NodeEntrypointArgvMode,
+  type NodeEntrypointInvocation,
+  type NodeEntrypointSpec,
+} from "./node-entrypoint-launcher.js";
 
 const CLI_PACKAGE_NAME = "@getpaseo/cli";
 const SERVER_PACKAGE_NAME = "@getpaseo/server";
 const CLI_BIN_ENTRY = `${CLI_PACKAGE_NAME}/bin/paseo`;
-const IGNORED_GUI_LAUNCH_ARG_PREFIX = "-psn_";
 
 type PackageInfo = {
   root: string;
-};
-
-export type NodeEntrypointSpec = {
-  entryPath: string;
-  execArgv: string[];
 };
 
 const esmRequire = createRequire(__filename);
@@ -73,6 +75,10 @@ function resolvePackagedAsarPath(): string {
   return path.join(process.resourcesPath, "app.asar");
 }
 
+function resolvePackagedNodeEntrypointRunnerPath(): string {
+  return path.join(resolvePackagedAsarPath(), "dist", "daemon", "node-entrypoint-runner.js");
+}
+
 function assertPathExists(input: { label: string; filePath: string }): string {
   if (!existsSync(input.filePath)) {
     throw new Error(`${input.label} is missing at ${input.filePath}`);
@@ -82,16 +88,11 @@ function assertPathExists(input: { label: string; filePath: string }): string {
 }
 
 export function parseCliPassthroughArgsFromArgv(argv: string[]): string[] | null {
-  const startIndex = process.defaultApp ? 2 : 1;
-  const effective = argv
-    .slice(startIndex)
-    .filter(
-      (arg) =>
-        !arg.startsWith(IGNORED_GUI_LAUNCH_ARG_PREFIX) &&
-        !arg.startsWith("--"),
-    );
-
-  return effective.length > 0 ? effective : null;
+  return parseCliPassthroughArgs({
+    argv,
+    isDefaultApp: process.defaultApp,
+    forceCli: process.env[DESKTOP_CLI_ENV] === "1",
+  });
 }
 
 export function resolveDaemonRunnerEntrypoint(): NodeEntrypointSpec {
@@ -167,18 +168,39 @@ export function resolveCliEntrypoint(): NodeEntrypointSpec {
   };
 }
 
-export function createElectronNodeEnv(baseEnv: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
-  return {
-    ...baseEnv,
-    ELECTRON_RUN_AS_NODE: "1",
-  };
+export function createNodeEntrypointInvocation(input: {
+  entrypoint: NodeEntrypointSpec;
+  argvMode: NodeEntrypointArgvMode;
+  args: string[];
+  baseEnv: NodeJS.ProcessEnv;
+}): NodeEntrypointInvocation {
+  return createSharedNodeEntrypointInvocation({
+    execPath: process.execPath,
+    isPackaged: app.isPackaged,
+    packagedRunnerPath: app.isPackaged
+      ? assertPathExists({
+          label: "Bundled node entrypoint runner",
+          filePath: resolvePackagedNodeEntrypointRunnerPath(),
+        })
+      : null,
+    entrypoint: input.entrypoint,
+    argvMode: input.argvMode,
+    args: input.args,
+    baseEnv: input.baseEnv,
+  });
 }
 
 function spawnCliProcess(args: string[]): SpawnSyncReturns<Buffer> {
   const cli = resolveCliEntrypoint();
+  const invocation = createNodeEntrypointInvocation({
+    entrypoint: cli,
+    argvMode: "bare",
+    args,
+    baseEnv: process.env,
+  });
 
-  return spawnSync(process.execPath, [...cli.execArgv, cli.entryPath, ...args], {
-    env: createElectronNodeEnv(process.env),
+  return spawnSync(invocation.command, invocation.args, {
+    env: invocation.env,
     stdio: "inherit",
   });
 }

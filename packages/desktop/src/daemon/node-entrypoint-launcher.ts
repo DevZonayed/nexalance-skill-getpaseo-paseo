@@ -1,0 +1,78 @@
+const IGNORED_GUI_LAUNCH_ARG_PREFIX = "-psn_";
+
+export const DESKTOP_CLI_ENV = "PASEO_DESKTOP_CLI";
+
+export type NodeEntrypointSpec = {
+  entryPath: string;
+  execArgv: string[];
+};
+
+export type NodeEntrypointInvocation = {
+  command: string;
+  args: string[];
+  env: NodeJS.ProcessEnv;
+};
+
+export type NodeEntrypointArgvMode = "bare" | "node-script";
+
+type CreateNodeEntrypointInvocationInput = {
+  execPath: string;
+  isPackaged: boolean;
+  packagedRunnerPath: string | null;
+  entrypoint: NodeEntrypointSpec;
+  argvMode: NodeEntrypointArgvMode;
+  args: string[];
+  baseEnv: NodeJS.ProcessEnv;
+};
+
+type ParseCliPassthroughArgsFromArgvInput = {
+  argv: string[];
+  isDefaultApp: boolean;
+  forceCli: boolean;
+};
+
+export function createElectronNodeEnv(baseEnv: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  return {
+    ...baseEnv,
+    ELECTRON_RUN_AS_NODE: "1",
+  };
+}
+
+export function parseCliPassthroughArgsFromArgv(
+  input: ParseCliPassthroughArgsFromArgvInput,
+): string[] | null {
+  const startIndex = input.isDefaultApp ? 2 : 1;
+  const effective = input.argv
+    .slice(startIndex)
+    .filter((arg) => !arg.startsWith(IGNORED_GUI_LAUNCH_ARG_PREFIX));
+
+  if (input.forceCli) {
+    return effective;
+  }
+
+  return effective.length > 0 ? effective : null;
+}
+
+export function createNodeEntrypointInvocation(
+  input: CreateNodeEntrypointInvocationInput,
+): NodeEntrypointInvocation {
+  const env = createElectronNodeEnv(input.baseEnv);
+
+  if (input.isPackaged) {
+    if (!input.packagedRunnerPath) {
+      throw new Error("Packaged node entrypoint runner is required for desktop launches.");
+    }
+
+    return {
+      command: input.execPath,
+      args: [input.packagedRunnerPath, input.argvMode, input.entrypoint.entryPath, ...input.args],
+      env,
+    };
+  }
+
+  return {
+    command: input.execPath,
+    args: [...input.entrypoint.execArgv, input.entrypoint.entryPath, ...input.args],
+    env,
+  };
+}

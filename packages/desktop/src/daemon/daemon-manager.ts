@@ -16,7 +16,7 @@ import {
   sendLocalTransportMessage,
   closeLocalTransportSession,
 } from "./local-transport.js";
-import { createElectronNodeEnv, resolveDaemonRunnerEntrypoint } from "./runtime-paths.js";
+import { createNodeEntrypointInvocation, resolveDaemonRunnerEntrypoint } from "./runtime-paths.js";
 
 const DAEMON_LOG_FILENAME = "daemon.log";
 const DAEMON_PID_FILENAME = "paseo.pid";
@@ -293,17 +293,23 @@ async function startDaemon(): Promise<DesktopDaemonStatus> {
   const home = getPaseoHome();
   const daemonRunner = resolveDaemonRunnerEntrypoint();
   const corsOrigins = buildDesktopDaemonCorsOriginsEnv();
+  const invocation = createNodeEntrypointInvocation({
+    entrypoint: daemonRunner,
+    argvMode: "node-script",
+    args: [],
+    baseEnv: {
+      ...process.env,
+      PASEO_HOME: home,
+      ...(corsOrigins ? { PASEO_CORS_ORIGINS: corsOrigins } : {}),
+    },
+  });
 
   const child: ChildProcess = spawn(
-    process.execPath,
-    [...daemonRunner.execArgv, daemonRunner.entryPath],
+    invocation.command,
+    invocation.args,
     {
       detached: true,
-      env: createElectronNodeEnv({
-        ...process.env,
-        PASEO_HOME: home,
-        ...(corsOrigins ? { PASEO_CORS_ORIGINS: corsOrigins } : {}),
-      }),
+      env: invocation.env,
       stdio: ["ignore", "ignore", "ignore"],
     },
   );
