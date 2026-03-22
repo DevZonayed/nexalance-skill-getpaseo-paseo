@@ -9,6 +9,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Shortcut } from "@/components/ui/shortcut";
+import { useShortcutKeys } from "@/hooks/use-shortcut-keys";
 import type { GitAction, GitActions } from "@/components/git-actions-policy";
 
 interface GitActionsSplitButtonProps {
@@ -17,6 +19,7 @@ interface GitActionsSplitButtonProps {
 
 export function GitActionsSplitButton({ gitActions }: GitActionsSplitButtonProps) {
   const { theme } = useUnistyles();
+  const archiveShortcutKeys = useShortcutKeys("archive-worktree");
 
   const getActionDisplayLabel = useCallback((action: GitAction): string => {
     if (action.status === "pending") return action.pendingLabel;
@@ -77,6 +80,11 @@ export function GitActionsSplitButton({ gitActions }: GitActionsSplitButtonProps
                       <DropdownMenuItem
                         testID={`changes-menu-${action.id}`}
                         leading={action.icon}
+                        trailing={
+                          action.id === "archive-worktree" && archiveShortcutKeys
+                            ? <Shortcut chord={archiveShortcutKeys} />
+                            : undefined
+                        }
                         disabled={action.disabled}
                         status={action.status}
                         pendingLabel={action.pendingLabel}
