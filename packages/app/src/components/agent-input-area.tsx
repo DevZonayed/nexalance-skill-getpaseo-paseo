@@ -594,12 +594,14 @@ export function AgentInputArea({
           )}
         </TooltipTrigger>
         <TooltipContent side="top" align="center" offset={8}>
-          <View style={styles.tooltipRow}>
-            <Text style={styles.tooltipText}>Interrupt</Text>
-            {dictationCancelKeys ? <Shortcut keys={dictationCancelKeys} style={styles.tooltipShortcut} /> : null}
-          </View>
-        </TooltipContent>
-      </Tooltip>
+            <View style={styles.tooltipRow}>
+              <Text style={styles.tooltipText}>Interrupt</Text>
+              {dictationCancelKeys ? (
+                <Shortcut chord={dictationCancelKeys} style={styles.tooltipShortcut} />
+              ) : null}
+            </View>
+          </TooltipContent>
+        </Tooltip>
     ) : null;
 
   const rightContent = (
@@ -626,7 +628,9 @@ export function AgentInputArea({
           <TooltipContent side="top" align="center" offset={8}>
             <View style={styles.tooltipRow}>
               <Text style={styles.tooltipText}>Voice mode</Text>
-              {voiceToggleKeys && <Shortcut keys={voiceToggleKeys} style={styles.tooltipShortcut} />}
+              {voiceToggleKeys ? (
+                <Shortcut chord={voiceToggleKeys} style={styles.tooltipShortcut} />
+              ) : null}
             </View>
           </TooltipContent>
         </Tooltip>

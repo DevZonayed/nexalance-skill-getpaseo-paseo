@@ -103,6 +103,10 @@ export function parseShortcutString(s: string): KeyCombo {
   return combo;
 }
 
+export function parseChordString(s: string): KeyCombo[] {
+  return s.split(" ").map(parseShortcutString);
+}
+
 export function keyComboToString(combo: KeyCombo): string {
   const parts: string[] = [];
 
@@ -120,6 +124,10 @@ export function keyComboToString(combo: KeyCombo): string {
   }
 
   return parts.join("+");
+}
+
+export function chordToString(chord: KeyCombo[]): string {
+  return chord.map(keyComboToString).join(" ");
 }
 
 const MODIFIER_CODES = new Set([
@@ -156,6 +164,10 @@ export function comboStringToShortcutKeys(comboString: string): ShortcutKey[] {
     }
   }
   return keys;
+}
+
+export function chordStringToShortcutKeys(s: string): ShortcutKey[][] {
+  return s.split(" ").map(comboStringToShortcutKeys);
 }
 
 export function keyboardEventToComboString(event: KeyboardEvent): string | null {

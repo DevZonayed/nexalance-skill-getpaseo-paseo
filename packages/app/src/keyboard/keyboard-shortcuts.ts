@@ -5,7 +5,7 @@ import type {
   KeyboardShortcutPayload,
   MessageInputKeyboardActionKind,
 } from "@/keyboard/actions";
-import { type KeyCombo, parseShortcutString } from "@/keyboard/shortcut-string";
+import { type KeyCombo, parseChordString } from "@/keyboard/shortcut-string";
 
 export type { KeyCombo } from "@/keyboard/shortcut-string";
 
@@ -88,7 +88,13 @@ interface ShortcutBinding {
 }
 
 export interface ParsedShortcutBinding extends ShortcutBinding {
-  parsedCombo: KeyCombo;
+  parsedChord: KeyCombo[];
+}
+
+export interface ChordState {
+  candidateIndices: number[];
+  step: number;
+  timeoutId: ReturnType<typeof setTimeout> | null;
 }
 
 // --- Constants ---
@@ -817,11 +823,12 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
 // --- Parse bindings at module load ---
 
 function parseBinding(binding: ShortcutBinding): ParsedShortcutBinding {
-  const parsedCombo = parseShortcutString(binding.combo);
-  if (binding.repeat === false) {
-    parsedCombo.repeat = false;
+  const parsedChord = parseChordString(binding.combo);
+  const lastCombo = parsedChord.at(-1);
+  if (binding.repeat === false && lastCombo) {
+    lastCombo.repeat = false;
   }
-  return { ...binding, parsedCombo };
+  return { ...binding, parsedChord };
 }
 
 export const DEFAULT_BINDINGS: readonly ParsedShortcutBinding[] =
@@ -835,16 +842,17 @@ export function buildEffectiveBindings(
     if (override === undefined) {
       return binding;
     }
-    let parsedCombo: KeyCombo;
+    let parsedChord: KeyCombo[];
     try {
-      parsedCombo = parseShortcutString(override);
+      parsedChord = parseChordString(override);
     } catch {
       return binding;
     }
-    if (binding.repeat === false) {
-      parsedCombo.repeat = false;
+    const lastCombo = parsedChord.at(-1);
+    if (binding.repeat === false && lastCombo) {
+      lastCombo.repeat = false;
     }
-    return { ...binding, combo: override, parsedCombo };
+    return { ...binding, combo: override, parsedChord };
   });
 }
 
@@ -921,6 +929,27 @@ function resolvePayload(
   }
 }
 
+const CHORD_TIMEOUT_MS = 1500;
+
+function clearChordTimeout(timeoutId: ReturnType<typeof setTimeout> | null): void {
+  if (timeoutId !== null) {
+    clearTimeout(timeoutId);
+  }
+}
+
+function createChordTimeout(onChordReset: () => void): ReturnType<typeof setTimeout> {
+  return setTimeout(onChordReset, CHORD_TIMEOUT_MS);
+}
+
+function resetChordState(input: ChordState): ChordState {
+  clearChordTimeout(input.timeoutId);
+  return {
+    candidateIndices: [],
+    step: 0,
+    timeoutId: null,
+  };
+}
+
 function helpMatchesPlatform(
   when: ShortcutWhen | undefined,
   context: KeyboardShortcutPlatformContext,
@@ -935,24 +964,131 @@ function helpMatchesPlatform(
 export function resolveKeyboardShortcut(input: {
   event: KeyboardEvent;
   context: KeyboardShortcutContext;
+  chordState: ChordState;
+  onChordReset: () => void;
   bindings?: readonly ParsedShortcutBinding[];
-}): KeyboardShortcutMatch | null {
-  const { event, context, bindings = DEFAULT_BINDINGS } = input;
-  for (const binding of bindings) {
-    if (!matchesCombo(binding.parsedCombo, event, context.isMac)) {
+}): {
+  match: KeyboardShortcutMatch | null;
+  nextChordState: ChordState;
+  preventDefault: boolean;
+};
+export function resolveKeyboardShortcut(input: {
+  event: KeyboardEvent;
+  context: KeyboardShortcutContext;
+  chordState: ChordState;
+  onChordReset: () => void;
+  bindings?: readonly ParsedShortcutBinding[];
+}): {
+  match: KeyboardShortcutMatch | null;
+  nextChordState: ChordState;
+  preventDefault: boolean;
+} {
+  const { event, context, chordState, onChordReset, bindings = DEFAULT_BINDINGS } = input;
+
+  if (chordState.step === 0) {
+    const advancingCandidateIndices: number[] = [];
+    let singleComboMatch: KeyboardShortcutMatch | null = null;
+
+    for (const [index, binding] of bindings.entries()) {
+      const firstCombo = binding.parsedChord[0];
+      if (!firstCombo) {
+        continue;
+      }
+      if (!matchesCombo(firstCombo, event, context.isMac)) {
+        continue;
+      }
+      if (!matchesWhen(binding.when, context)) {
+        continue;
+      }
+      if (binding.parsedChord.length > 1) {
+        advancingCandidateIndices.push(index);
+        continue;
+      }
+      if (!singleComboMatch) {
+        singleComboMatch = {
+          action: binding.action,
+          payload: resolvePayload(binding.payload, event),
+          preventDefault: binding.preventDefault ?? true,
+          stopPropagation: binding.stopPropagation ?? true,
+        };
+      }
+    }
+
+    if (advancingCandidateIndices.length > 0) {
+      return {
+        match: null,
+        nextChordState: {
+          candidateIndices: advancingCandidateIndices,
+          step: 1,
+          timeoutId: createChordTimeout(onChordReset),
+        },
+        preventDefault: true,
+      };
+    }
+
+    return {
+      match: singleComboMatch,
+      nextChordState: resetChordState(chordState),
+      preventDefault: false,
+    };
+  }
+
+  const matchingCandidateIndices: number[] = [];
+  let completedMatch: KeyboardShortcutMatch | null = null;
+
+  for (const index of chordState.candidateIndices) {
+    const binding = bindings[index];
+    if (!binding) {
+      continue;
+    }
+    const combo = binding.parsedChord[chordState.step];
+    if (!combo) {
+      continue;
+    }
+    if (!matchesCombo(combo, event, context.isMac)) {
       continue;
     }
     if (!matchesWhen(binding.when, context)) {
       continue;
     }
+    if (chordState.step + 1 === binding.parsedChord.length) {
+      completedMatch = {
+        action: binding.action,
+        payload: resolvePayload(binding.payload, event),
+        preventDefault: binding.preventDefault ?? true,
+        stopPropagation: binding.stopPropagation ?? true,
+      };
+      break;
+    }
+    matchingCandidateIndices.push(index);
+  }
+
+  if (completedMatch) {
     return {
-      action: binding.action,
-      payload: resolvePayload(binding.payload, event),
-      preventDefault: binding.preventDefault ?? true,
-      stopPropagation: binding.stopPropagation ?? true,
+      match: completedMatch,
+      nextChordState: resetChordState(chordState),
+      preventDefault: false,
     };
   }
-  return null;
+
+  if (matchingCandidateIndices.length > 0) {
+    clearChordTimeout(chordState.timeoutId);
+    return {
+      match: null,
+      nextChordState: {
+        candidateIndices: matchingCandidateIndices,
+        step: chordState.step + 1,
+        timeoutId: createChordTimeout(onChordReset),
+      },
+      preventDefault: true,
+    };
+  }
+
+  return {
+    match: null,
+    nextChordState: resetChordState(chordState),
+    preventDefault: false,
+  };
 }
 
 export function getBindingIdForAction(

@@ -10,16 +10,31 @@ import {
   getBindingIdForAction,
   type KeyboardShortcutHelpRow,
 } from "@/keyboard/keyboard-shortcuts";
-import { comboStringToShortcutKeys, keyboardEventToComboString } from "@/keyboard/shortcut-string";
+import {
+  chordStringToShortcutKeys,
+  comboStringToShortcutKeys,
+  keyboardEventToComboString,
+} from "@/keyboard/shortcut-string";
+import { useKeyboardShortcutsStore } from "@/stores/keyboard-shortcuts-store";
 import { getShortcutOs } from "@/utils/shortcut-platform";
 import { getIsDesktop } from "@/constants/layout";
+
+function ShortcutSequence({ chord }: { chord: string[] | null }) {
+  if (!chord || chord.length === 0) {
+    return <Text style={styles.capturingText}>Press shortcut...</Text>;
+  }
+
+  return <Shortcut chord={chord.map(comboStringToShortcutKeys)} />;
+}
 
 function ShortcutRow({
   row,
   bindingId,
   overrideCombo,
   isCapturing,
+  capturedCombos,
   onRebind,
+  onDone,
   onCancel,
   onReset,
 }: {
@@ -27,29 +42,38 @@ function ShortcutRow({
   bindingId: string | null;
   overrideCombo: string | undefined;
   isCapturing: boolean;
+  capturedCombos: string[];
   onRebind: () => void;
+  onDone: () => void;
   onCancel: () => void;
   onReset: () => void;
 }) {
-  const displayKeys = overrideCombo ? comboStringToShortcutKeys(overrideCombo) : row.keys;
+  const displayChord = overrideCombo ? chordStringToShortcutKeys(overrideCombo) : [row.keys];
 
   return (
     <View style={[styles.row, isCapturing && styles.rowCapturing]}>
       <Text style={styles.rowLabel}>{row.label}</Text>
       <View style={styles.rowActions}>
         {isCapturing ? (
-          <Text style={styles.capturingText}>Press shortcut...</Text>
+          <ShortcutSequence chord={capturedCombos} />
         ) : (
-          <Shortcut keys={displayKeys} />
+          <Shortcut chord={displayChord} />
         )}
         {bindingId !== null && (
-          <Button
-            variant="ghost"
-            size="sm"
-            onPress={isCapturing ? onCancel : onRebind}
-          >
-            {isCapturing ? "Cancel" : "Rebind"}
-          </Button>
+          <>
+            {isCapturing && capturedCombos.length > 0 ? (
+              <Button variant="ghost" size="sm" onPress={onDone}>
+                Done
+              </Button>
+            ) : null}
+            <Button
+              variant="ghost"
+              size="sm"
+              onPress={isCapturing ? onCancel : onRebind}
+            >
+              {isCapturing ? "Cancel" : "Rebind"}
+            </Button>
+          </>
         )}
         {overrideCombo !== undefined && !isCapturing && (
           <Button variant="ghost" size="sm" onPress={onReset}>
@@ -63,46 +87,73 @@ function ShortcutRow({
 
 export function KeyboardShortcutsSection() {
   const [capturingBindingId, setCapturingBindingId] = useState<string | null>(null);
+  const [capturedCombos, setCapturedCombos] = useState<string[]>([]);
   const { overrides, hasOverrides, setOverride, removeOverride, resetAll } =
     useKeyboardShortcutOverrides();
+  const setCapturingShortcut = useKeyboardShortcutsStore((s) => s.setCapturingShortcut);
 
   const isMac = getShortcutOs() === "mac";
   const isDesktop = getIsDesktop();
   const sections = buildKeyboardShortcutHelpSections({ isMac, isDesktop });
 
+  function cancelCapture() {
+    setCapturedCombos([]);
+    setCapturingBindingId(null);
+    setCapturingShortcut(false);
+  }
+
+  function startCapture(bindingId: string) {
+    setCapturedCombos([]);
+    setCapturingBindingId(bindingId);
+    setCapturingShortcut(true);
+  }
+
+  function saveCapture() {
+    if (capturingBindingId === null || capturedCombos.length === 0) {
+      return;
+    }
+    void setOverride(capturingBindingId, capturedCombos.join(" "));
+    cancelCapture();
+  }
+
   useEffect(() => {
     if (Platform.OS !== "web") return;
     if (capturingBindingId === null) return;
 
-    const activeBindingId = capturingBindingId;
-
     function handleKeyDown(event: KeyboardEvent) {
+      event.preventDefault();
+      event.stopPropagation();
+
       const key = event.key ?? "";
       if (key === "Escape") {
-        event.preventDefault();
-        event.stopPropagation();
-        setCapturingBindingId(null);
+        cancelCapture();
         return;
       }
 
-      if (key === "Alt" || key === "Control" || key === "Meta" || key === "Shift") {
+      if (key === "Backspace") {
+        setCapturedCombos((current) => (current.length > 0 ? current.slice(0, -1) : current));
         return;
       }
 
       const comboString = keyboardEventToComboString(event);
-      if (comboString === null) return;
+      if (comboString === null) {
+        return;
+      }
 
-      event.preventDefault();
-      event.stopPropagation();
-      void setOverride(activeBindingId, comboString);
-      setCapturingBindingId(null);
+      setCapturedCombos((current) => [...current, comboString]);
     }
 
     window.addEventListener("keydown", handleKeyDown, true);
     return () => {
       window.removeEventListener("keydown", handleKeyDown, true);
     };
-  }, [capturingBindingId, setOverride]);
+  }, [cancelCapture, capturingBindingId]);
+
+  useEffect(() => {
+    return () => {
+      setCapturingShortcut(false);
+    };
+  }, [setCapturingShortcut]);
 
   if (Platform.OS !== "web") {
     return (
@@ -144,8 +195,14 @@ export function KeyboardShortcutsSection() {
                       bindingId={bindingId}
                       overrideCombo={overrideCombo}
                       isCapturing={capturingBindingId === bindingId}
-                      onRebind={() => setCapturingBindingId(bindingId)}
-                      onCancel={() => setCapturingBindingId(null)}
+                      capturedCombos={capturingBindingId === bindingId ? capturedCombos : []}
+                      onRebind={() => {
+                        if (bindingId) {
+                          startCapture(bindingId);
+                        }
+                      }}
+                      onDone={saveCapture}
+                      onCancel={cancelCapture}
                       onReset={() => {
                         if (bindingId) void removeOverride(bindingId);
                       }}

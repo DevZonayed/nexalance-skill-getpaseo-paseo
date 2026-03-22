@@ -565,7 +565,7 @@ function MobileSidebar({
                   <TooltipContent side="top" align="center" offset={8}>
                     <View style={styles.tooltipRow}>
                       <Text style={styles.tooltipText}>Add project</Text>
-                      {newAgentKeys && <Shortcut keys={newAgentKeys} />}
+                      {newAgentKeys ? <Shortcut chord={newAgentKeys} /> : null}
                     </View>
                   </TooltipContent>
                 </Tooltip>
@@ -745,7 +745,7 @@ function DesktopSidebar({
             <TooltipContent side="top" align="center" offset={8}>
               <View style={styles.tooltipRow}>
                 <Text style={styles.tooltipText}>Add project</Text>
-                {newAgentKeys ? <Shortcut keys={newAgentKeys} /> : null}
+                {newAgentKeys ? <Shortcut chord={newAgentKeys} /> : null}
               </View>
             </TooltipContent>
           </Tooltip>

@@ -4,7 +4,9 @@ import { useKeyboardShortcutsStore } from "./keyboard-shortcuts-store";
 beforeEach(() => {
   useKeyboardShortcutsStore.setState({
     commandCenterOpen: false,
+    projectPickerOpen: false,
     shortcutsDialogOpen: false,
+    capturingShortcut: false,
     altDown: false,
     cmdOrCtrlDown: false,
     sidebarShortcutWorkspaceTargets: [],
@@ -17,5 +19,11 @@ describe("keyboard-shortcuts-store", () => {
     expect(useKeyboardShortcutsStore.getState().commandCenterOpen).toBe(false);
     useKeyboardShortcutsStore.getState().setCommandCenterOpen(true);
     expect(useKeyboardShortcutsStore.getState().commandCenterOpen).toBe(true);
+  });
+
+  it("toggles shortcut capture state", () => {
+    expect(useKeyboardShortcutsStore.getState().capturingShortcut).toBe(false);
+    useKeyboardShortcutsStore.getState().setCapturingShortcut(true);
+    expect(useKeyboardShortcutsStore.getState().capturingShortcut).toBe(true);
   });
 });

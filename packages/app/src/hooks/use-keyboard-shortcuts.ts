@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { Platform } from "react-native";
 import { usePathname } from "expo-router";
 import { getIsDesktop } from "@/constants/layout";
@@ -17,7 +17,11 @@ import {
 } from "@/keyboard/actions";
 import { canToggleFileExplorerShortcut } from "@/keyboard/keyboard-shortcut-routing";
 import { keyboardActionDispatcher } from "@/keyboard/keyboard-action-dispatcher";
-import { resolveKeyboardShortcut, buildEffectiveBindings } from "@/keyboard/keyboard-shortcuts";
+import {
+  type ChordState,
+  resolveKeyboardShortcut,
+  buildEffectiveBindings,
+} from "@/keyboard/keyboard-shortcuts";
 import { resolveKeyboardFocusScope } from "@/keyboard/focus-scope";
 import { getShortcutOs } from "@/utils/shortcut-platform";
 import { useOpenProjectPicker } from "@/hooks/use-open-project-picker";
@@ -41,6 +45,11 @@ export function useKeyboardShortcuts({
   const resetModifiers = useKeyboardShortcutsStore((s) => s.resetModifiers);
   const { overrides } = useKeyboardShortcutOverrides();
   const bindings = useMemo(() => buildEffectiveBindings(overrides), [overrides]);
+  const chordStateRef = useRef<ChordState>({
+    candidateIndices: [],
+    step: 0,
+    timeoutId: null,
+  });
   const activeServerIdFromPath = parseServerIdFromPathname(pathname);
   const activeServerId =
     hosts.find((host) => host.serverId === activeServerIdFromPath)?.serverId ??
@@ -271,6 +280,11 @@ export function useKeyboardShortcuts({
         return;
       }
 
+      const store = useKeyboardShortcutsStore.getState();
+      if (store.capturingShortcut) {
+        return;
+      }
+
       const key = event.key ?? "";
       if (key === "Alt" && !event.shiftKey) {
         useKeyboardShortcutsStore.getState().setAltDown(true);
@@ -285,12 +299,11 @@ export function useKeyboardShortcuts({
         }
       }
 
-      const store = useKeyboardShortcutsStore.getState();
       const focusScope = resolveKeyboardFocusScope({
         target: event.target,
         commandCenterOpen: store.commandCenterOpen,
       });
-      const match = resolveKeyboardShortcut({
+      const result = resolveKeyboardShortcut({
         event,
         context: {
           isMac,
@@ -303,25 +316,41 @@ export function useKeyboardShortcuts({
             toggleFileExplorer,
           }),
         },
+        chordState: chordStateRef.current,
+        onChordReset: () => {
+          chordStateRef.current = {
+            candidateIndices: [],
+            step: 0,
+            timeoutId: null,
+          };
+        },
         bindings,
       });
-      if (!match) {
+
+      chordStateRef.current = result.nextChordState;
+
+      if (result.preventDefault) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+
+      if (!result.match) {
         return;
       }
 
       const handled = handleAction({
-        action: match.action,
-        payload: match.payload,
+        action: result.match.action,
+        payload: result.match.payload,
         event,
       });
       if (!handled) {
         return;
       }
 
-      if (match.preventDefault) {
+      if (result.match.preventDefault) {
         event.preventDefault();
       }
-      if (match.stopPropagation) {
+      if (result.match.stopPropagation) {
         event.stopPropagation();
       }
     };
@@ -345,6 +374,14 @@ export function useKeyboardShortcuts({
     window.addEventListener("blur", handleBlurOrHide);
     document.addEventListener("visibilitychange", handleBlurOrHide);
     return () => {
+      if (chordStateRef.current.timeoutId !== null) {
+        clearTimeout(chordStateRef.current.timeoutId);
+        chordStateRef.current = {
+          candidateIndices: [],
+          step: 0,
+          timeoutId: null,
+        };
+      }
       window.removeEventListener("keydown", handleKeyDown, true);
       window.removeEventListener("keyup", handleKeyUp, true);
       window.removeEventListener("blur", handleBlurOrHide);
