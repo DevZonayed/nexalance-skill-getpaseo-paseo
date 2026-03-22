@@ -1967,12 +1967,7 @@ const styles = StyleSheet.create((theme) => ({
   projectBlock: {
     marginBottom: theme.spacing[1],
   },
-  workspaceListContainer: {
-    marginLeft: theme.spacing[3],
-    paddingLeft: theme.spacing[2],
-    borderLeftWidth: StyleSheet.hairlineWidth,
-    borderLeftColor: theme.colors.surface1,
-  },
+  workspaceListContainer: {},
   emptyText: {
     color: theme.colors.foregroundMuted,
     textAlign: "center",
@@ -1982,7 +1977,7 @@ const styles = StyleSheet.create((theme) => ({
   projectRow: {
     minHeight: 36,
     paddingVertical: theme.spacing[2],
-    paddingHorizontal: theme.spacing[3],
+    paddingHorizontal: theme.spacing[2],
     borderRadius: theme.borderRadius.lg,
     marginBottom: theme.spacing[1],
     flexDirection: "row",
@@ -2051,6 +2046,7 @@ const styles = StyleSheet.create((theme) => ({
   projectTitle: {
     color: theme.colors.foreground,
     fontSize: theme.fontSize.sm,
+    fontWeight: "400",
     minWidth: 0,
     flexShrink: 1,
   },
@@ -2108,7 +2104,8 @@ const styles = StyleSheet.create((theme) => ({
     minHeight: 36,
     marginBottom: theme.spacing[1],
     paddingVertical: theme.spacing[2],
-    paddingHorizontal: theme.spacing[3],
+    paddingLeft: theme.spacing[3] + theme.spacing[3],
+    paddingRight: theme.spacing[3],
     borderRadius: theme.borderRadius.lg,
     flexDirection: "column",
     alignItems: "stretch",
@@ -2195,6 +2192,7 @@ const styles = StyleSheet.create((theme) => ({
   workspaceBranchText: {
     color: theme.colors.foreground,
     fontSize: theme.fontSize.sm,
+    fontWeight: "300",
     lineHeight: 20,
     opacity: 0.76,
     flex: 1,

@@ -24,7 +24,7 @@ import {
   type ViewStyle,
   type StyleProp,
 } from "react-native";
-import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
+import Animated, { Keyframe, runOnJS } from "react-native-reanimated";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { Check, CheckCircle } from "lucide-react-native";
 
@@ -226,6 +226,22 @@ export function DropdownMenuTrigger({
   );
 }
 
+function getTransformOrigin(placement: Placement, alignment: Alignment): string {
+  const vertical = placement === "bottom" ? "top" : placement === "top" ? "bottom" : "center";
+  const horizontal = alignment === "start" ? "left" : alignment === "end" ? "right" : "center";
+  return `${vertical} ${horizontal}`;
+}
+
+const contentEntering = new Keyframe({
+  0: { opacity: 0, transform: [{ scale: 0.97 }] },
+  100: { opacity: 1, transform: [{ scale: 1 }] },
+}).duration(150);
+
+const contentExiting = new Keyframe({
+  0: { opacity: 1, transform: [{ scale: 1 }] },
+  100: { opacity: 0, transform: [{ scale: 0.97 }] },
+}).duration(100);
+
 export function DropdownMenuContent({
   children,
   side = "bottom",
@@ -249,9 +265,22 @@ export function DropdownMenuContent({
   testID?: string;
 }>): ReactElement | null {
   const { open, setOpen, triggerRef } = useDropdownMenuContext("DropdownMenuContent");
+  const [modalVisible, setModalVisible] = useState(false);
+  const [closing, setClosing] = useState(false);
   const [triggerRect, setTriggerRect] = useState<Rect | null>(null);
   const [contentSize, setContentSize] = useState<{ width: number; height: number } | null>(null);
   const [position, setPosition] = useState<{ x: number; y: number } | null>(null);
+  const [actualPlacement, setActualPlacement] = useState<Placement>(side);
+
+  // Keep Modal mounted during exit animation
+  useEffect(() => {
+    if (open) {
+      setModalVisible(true);
+      setClosing(false);
+    } else if (modalVisible) {
+      setClosing(true);
+    }
+  }, [open, modalVisible]);
 
   const handleClose = useCallback(() => {
     setOpen(false);
@@ -314,6 +343,7 @@ export function DropdownMenuContent({
     // For fullWidth, x is simply the horizontal padding to center on screen
     const x = fullWidth ? horizontalPadding : result.x;
     setPosition({ x, y: result.y });
+    setActualPlacement(result.actualPlacement);
   }, [triggerRect, contentSize, side, align, offset, fullWidth, horizontalPadding]);
 
   const handleContentLayout = useCallback(
@@ -324,7 +354,7 @@ export function DropdownMenuContent({
     [],
   );
 
-  if (!open) return null;
+  if (!modalVisible) return null;
 
   const { width: screenWidth } = Dimensions.get("window");
   const resolvedWidthStyle: ViewStyle = fullWidth
@@ -337,7 +367,7 @@ export function DropdownMenuContent({
 
   return (
     <Modal
-      visible={open}
+      visible={modalVisible}
       transparent
       animationType="none"
       statusBarTranslucent={Platform.OS === "android"}
@@ -351,30 +381,38 @@ export function DropdownMenuContent({
           onPress={handleClose}
           testID={testID ? `${testID}-backdrop` : undefined}
         />
-        <Animated.View
-          entering={FadeIn.duration(100)}
-          exiting={FadeOut.duration(100)}
-          collapsable={false}
-          testID={testID}
-          onLayout={handleContentLayout}
-          style={[
-            styles.content,
-            resolvedWidthStyle,
-            {
-              position: "absolute",
-              top: position?.y ?? -9999,
-              left: position?.x ?? -9999,
-            },
-          ]}
-        >
-          <ScrollView
-            bounces={false}
-            showsVerticalScrollIndicator
-            contentContainerStyle={{ flexGrow: 1 }}
+        {!closing ? (
+          <Animated.View
+            entering={contentEntering}
+            exiting={contentExiting.withCallback((finished) => {
+              "worklet";
+              if (finished) {
+                runOnJS(setModalVisible)(false);
+              }
+            })}
+            collapsable={false}
+            testID={testID}
+            onLayout={handleContentLayout}
+            style={[
+              styles.content,
+              resolvedWidthStyle,
+              {
+                position: "absolute",
+                top: position?.y ?? -9999,
+                left: position?.x ?? -9999,
+                transformOrigin: getTransformOrigin(actualPlacement, align),
+              },
+            ]}
           >
-            {children}
-          </ScrollView>
-        </Animated.View>
+            <ScrollView
+              bounces={false}
+              showsVerticalScrollIndicator
+              contentContainerStyle={{ flexGrow: 1 }}
+            >
+              {children}
+            </ScrollView>
+          </Animated.View>
+        ) : null}
       </View>
     </Modal>
   );
