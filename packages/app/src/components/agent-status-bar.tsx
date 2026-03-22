@@ -283,55 +283,6 @@ function ControlledStatusBar({
             </>
           ) : null}
 
-          {modeOptions && modeOptions.length > 0 ? (
-            <>
-              <Tooltip
-                key={`mode-${openSelector === "mode" ? "open" : "closed"}`}
-                delayDuration={0}
-                enabledOnDesktop
-                enabledOnMobile={false}
-              >
-                <TooltipTrigger asChild triggerRefProp="ref">
-                  <Pressable
-                    ref={modeAnchorRef}
-                    collapsable={false}
-                    disabled={disabled || !canSelectMode}
-                    onPress={() => handleSelectorPress("mode")}
-                    style={({ pressed, hovered }) => [
-                      styles.modeIconBadge,
-                      hovered && styles.modeBadgeHovered,
-                      (pressed || openSelector === "mode") && styles.modeBadgePressed,
-                      (disabled || !canSelectMode) && styles.disabledBadge,
-                    ]}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Select agent mode (${displayMode})`}
-                    testID="agent-mode-selector"
-                  >
-                    {ModeIconComponent ? (
-                      <ModeIconComponent size={theme.iconSize.md} color={modeIconColor} />
-                    ) : (
-                      <ShieldCheck size={theme.iconSize.md} color={theme.colors.foregroundMuted} />
-                    )}
-                  </Pressable>
-                </TooltipTrigger>
-                <TooltipContent side="top" align="center" offset={8}>
-                  <Text style={styles.tooltipText}>{getStatusSelectorHint("mode")}</Text>
-                </TooltipContent>
-              </Tooltip>
-              <Combobox
-                options={comboboxModeOptions}
-                value={selectedModeId ?? ""}
-                onSelect={(id) => onSelectMode?.(id)}
-                searchable={comboboxModeOptions.length > SEARCH_THRESHOLD}
-                open={openSelector === "mode"}
-                onOpenChange={handleOpenChange("mode")}
-                anchorRef={modeAnchorRef}
-                desktopPlacement="top-start"
-                renderOption={renderModeOption}
-              />
-            </>
-          ) : null}
-
           {canSelectModel ? (
             <>
               <Tooltip
@@ -423,6 +374,55 @@ function ControlledStatusBar({
               />
             </>
           ) : null}
+
+          {modeOptions && modeOptions.length > 0 ? (
+            <>
+              <Tooltip
+                key={`mode-${openSelector === "mode" ? "open" : "closed"}`}
+                delayDuration={0}
+                enabledOnDesktop
+                enabledOnMobile={false}
+              >
+                <TooltipTrigger asChild triggerRefProp="ref">
+                  <Pressable
+                    ref={modeAnchorRef}
+                    collapsable={false}
+                    disabled={disabled || !canSelectMode}
+                    onPress={() => handleSelectorPress("mode")}
+                    style={({ pressed, hovered }) => [
+                      styles.modeIconBadge,
+                      hovered && styles.modeBadgeHovered,
+                      (pressed || openSelector === "mode") && styles.modeBadgePressed,
+                      (disabled || !canSelectMode) && styles.disabledBadge,
+                    ]}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Select agent mode (${displayMode})`}
+                    testID="agent-mode-selector"
+                  >
+                    {ModeIconComponent ? (
+                      <ModeIconComponent size={theme.iconSize.md} color={modeIconColor} />
+                    ) : (
+                      <ShieldCheck size={theme.iconSize.md} color={theme.colors.foregroundMuted} />
+                    )}
+                  </Pressable>
+                </TooltipTrigger>
+                <TooltipContent side="top" align="center" offset={8}>
+                  <Text style={styles.tooltipText}>{getStatusSelectorHint("mode")}</Text>
+                </TooltipContent>
+              </Tooltip>
+              <Combobox
+                options={comboboxModeOptions}
+                value={selectedModeId ?? ""}
+                onSelect={(id) => onSelectMode?.(id)}
+                searchable={comboboxModeOptions.length > SEARCH_THRESHOLD}
+                open={openSelector === "mode"}
+                onOpenChange={handleOpenChange("mode")}
+                anchorRef={modeAnchorRef}
+                desktopPlacement="top-start"
+                renderOption={renderModeOption}
+              />
+            </>
+          ) : null}
         </>
       ) : (
         <>
@@ -479,49 +479,6 @@ function ControlledStatusBar({
                         {provider.label}
                       </DropdownMenuItem>
                     ))}
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </View>
-            ) : null}
-
-            {modeOptions && modeOptions.length > 0 ? (
-              <View style={styles.sheetSection}>
-                <DropdownMenu
-                  open={openSelector === "mode"}
-                  onOpenChange={handleOpenChange("mode")}
-                >
-                  <DropdownMenuTrigger
-                    disabled={disabled || !canSelectMode}
-                    style={({ pressed }) => [
-                      styles.sheetSelect,
-                      pressed && styles.sheetSelectPressed,
-                      (disabled || !canSelectMode) && styles.disabledSheetSelect,
-                    ]}
-                    accessibilityRole="button"
-                    accessibilityLabel="Select agent mode"
-                    testID="agent-preferences-mode"
-                  >
-                    {ModeIconComponent ? (
-                      <ModeIconComponent size={theme.iconSize.md} color={modeIconColor} />
-                    ) : null}
-                    <Text style={styles.sheetSelectText}>{displayMode}</Text>
-                    <ChevronDown size={theme.iconSize.md} color={theme.colors.foregroundMuted} />
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent side="top" align="start">
-                    {modeOptions.map((mode) => {
-                      const visuals = getModeVisuals(provider, mode.id);
-                      const Icon = visuals?.icon ? MODE_ICONS[visuals.icon] : ShieldCheck;
-                      return (
-                        <DropdownMenuItem
-                          key={mode.id}
-                          selected={mode.id === selectedModeId}
-                          onSelect={() => onSelectMode?.(mode.id)}
-                          leading={<Icon size={16} color={theme.colors.foreground} />}
-                        >
-                          {mode.label}
-                        </DropdownMenuItem>
-                      );
-                    })}
                   </DropdownMenuContent>
                 </DropdownMenu>
               </View>
@@ -592,6 +549,49 @@ function ControlledStatusBar({
                         {thinking.label}
                       </DropdownMenuItem>
                     ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </View>
+            ) : null}
+
+            {modeOptions && modeOptions.length > 0 ? (
+              <View style={styles.sheetSection}>
+                <DropdownMenu
+                  open={openSelector === "mode"}
+                  onOpenChange={handleOpenChange("mode")}
+                >
+                  <DropdownMenuTrigger
+                    disabled={disabled || !canSelectMode}
+                    style={({ pressed }) => [
+                      styles.sheetSelect,
+                      pressed && styles.sheetSelectPressed,
+                      (disabled || !canSelectMode) && styles.disabledSheetSelect,
+                    ]}
+                    accessibilityRole="button"
+                    accessibilityLabel="Select agent mode"
+                    testID="agent-preferences-mode"
+                  >
+                    {ModeIconComponent ? (
+                      <ModeIconComponent size={theme.iconSize.md} color={modeIconColor} />
+                    ) : null}
+                    <Text style={styles.sheetSelectText}>{displayMode}</Text>
+                    <ChevronDown size={theme.iconSize.md} color={theme.colors.foregroundMuted} />
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent side="top" align="start">
+                    {modeOptions.map((mode) => {
+                      const visuals = getModeVisuals(provider, mode.id);
+                      const Icon = visuals?.icon ? MODE_ICONS[visuals.icon] : ShieldCheck;
+                      return (
+                        <DropdownMenuItem
+                          key={mode.id}
+                          selected={mode.id === selectedModeId}
+                          onSelect={() => onSelectMode?.(mode.id)}
+                          leading={<Icon size={16} color={theme.colors.foreground} />}
+                        >
+                          {mode.label}
+                        </DropdownMenuItem>
+                      );
+                    })}
                   </DropdownMenuContent>
                 </DropdownMenu>
               </View>
