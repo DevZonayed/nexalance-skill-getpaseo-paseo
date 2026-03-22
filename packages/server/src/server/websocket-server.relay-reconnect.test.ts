@@ -43,7 +43,6 @@ const sessionMock = vi.hoisted(() => {
       checkoutDiffFallbackRefreshTargetCount: 0,
       terminalDirectorySubscriptionCount: 0,
       terminalSubscriptionCount: 0,
-      terminalStreamCount: 0,
     }));
     readonly args: Record<string, unknown>;
 

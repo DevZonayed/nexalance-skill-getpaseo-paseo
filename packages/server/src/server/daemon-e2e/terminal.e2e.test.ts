@@ -10,6 +10,7 @@ import {
   type WSOutboundMessage,
 } from "../../shared/messages.js";
 import {
+  decodeTerminalSnapshotPayload,
   decodeTerminalStreamFrame,
   TerminalStreamOpcode,
   type TerminalStreamFrame,
@@ -275,6 +276,105 @@ async function waitForRawBinaryFrame(
   });
 }
 
+async function waitForNoRawBinaryFrame(ws: WebSocket, timeout = 500): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const timeoutHandle = setTimeout(() => {
+      cleanup();
+      resolve();
+    }, timeout);
+
+    const onMessage = (raw: WebSocket.RawData) => {
+      const buffer = toWsBuffer(raw);
+      if (!buffer) {
+        return;
+      }
+      const frame = decodeTerminalStreamFrame(new Uint8Array(buffer));
+      if (!frame) {
+        cleanup();
+        reject(new Error("Received malformed terminal frame"));
+        return;
+      }
+      cleanup();
+      reject(new Error(`Unexpected terminal frame with opcode ${frame.opcode}`));
+    };
+
+    const onError = (error: Error) => {
+      cleanup();
+      reject(error);
+    };
+
+    const cleanup = () => {
+      clearTimeout(timeoutHandle);
+      ws.off("message", onMessage);
+      ws.off("error", onError);
+    };
+
+    ws.on("message", onMessage);
+    ws.on("error", onError);
+  });
+}
+
+async function collectRawBinaryFrames(
+  ws: WebSocket,
+  predicate: (frames: TerminalStreamFrame[]) => boolean,
+  timeout = 10000,
+): Promise<TerminalStreamFrame[]> {
+  return new Promise((resolve, reject) => {
+    const frames: TerminalStreamFrame[] = [];
+    const timeoutHandle = setTimeout(() => {
+      cleanup();
+      reject(new Error(`Timed out collecting terminal frames (${timeout}ms)`));
+    }, timeout);
+
+    const onMessage = (raw: WebSocket.RawData) => {
+      const buffer = toWsBuffer(raw);
+      if (!buffer) {
+        return;
+      }
+      const frame = decodeTerminalStreamFrame(new Uint8Array(buffer));
+      if (!frame) {
+        cleanup();
+        reject(new Error("Received malformed terminal frame"));
+        return;
+      }
+      frames.push(frame);
+      if (!predicate(frames)) {
+        return;
+      }
+      cleanup();
+      resolve(frames);
+    };
+
+    const onError = (error: Error) => {
+      cleanup();
+      reject(error);
+    };
+
+    const cleanup = () => {
+      clearTimeout(timeoutHandle);
+      ws.off("message", onMessage);
+      ws.off("error", onError);
+    };
+
+    ws.on("message", onMessage);
+    ws.on("error", onError);
+  });
+}
+
+function getFrameText(frame: TerminalStreamFrame): string {
+  if (frame.opcode === TerminalStreamOpcode.Output) {
+    return new TextDecoder().decode(frame.payload);
+  }
+  if (frame.opcode === TerminalStreamOpcode.Snapshot) {
+    const state = decodeTerminalSnapshotPayload(frame.payload);
+    if (!state) {
+      return "";
+    }
+    return extractStateText(state);
+  }
+  return "";
+}
+
 async function subscribeRawTerminal(ws: WebSocket, terminalId: string, requestId: string): Promise<void> {
   const ready = waitForRawSessionMessage(
     ws,
@@ -512,4 +612,261 @@ describe("daemon E2E terminal", () => {
 
     rmSync(cwd, { recursive: true, force: true });
   }, 30000);
+
+  test("websocket terminate then new connection gets snapshot with all prior output", async () => {
+    const cwd = tmpCwd();
+    const created = await ctx.client.createTerminal(cwd);
+    const terminalId = created.terminal!.id;
+    const firstSocket = await connectRawWebSocket(ctx.daemon.port);
+
+    try {
+      await subscribeRawTerminal(firstSocket, terminalId, "sub-drop-a");
+      const initialSnapshot = await waitForRawBinaryFrame(
+        firstSocket,
+        (frame) => frame.opcode === TerminalStreamOpcode.Snapshot,
+        10000,
+      );
+      expect(initialSnapshot.opcode).toBe(TerminalStreamOpcode.Snapshot);
+
+      ctx.client.sendTerminalInput(terminalId, {
+        type: "input",
+        data: "printf 'before-drop\\n'\r",
+      });
+      const beforeDropFrame = await waitForRawBinaryFrame(
+        firstSocket,
+        (frame) => getFrameText(frame).includes("before-drop"),
+        10000,
+      );
+      expect(getFrameText(beforeDropFrame)).toContain("before-drop");
+
+      await new Promise<void>((resolve) => {
+        firstSocket.once("close", () => resolve());
+        firstSocket.terminate();
+      });
+
+      const secondClient = await connectClient(
+        ctx.daemon.port,
+        `terminal-drop-input-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      );
+      try {
+        secondClient.sendTerminalInput(terminalId, {
+          type: "input",
+          data: "printf 'while-dead\\n'\r",
+        });
+        await new Promise((resolve) => setTimeout(resolve, 300));
+      } finally {
+        await secondClient.close();
+      }
+
+      const secondSocket = await connectRawWebSocket(ctx.daemon.port);
+      try {
+        await subscribeRawTerminal(secondSocket, terminalId, "sub-drop-b");
+        const reconnectFrame = await waitForRawBinaryFrame(secondSocket, () => true, 10000);
+        expect(reconnectFrame.opcode).toBe(TerminalStreamOpcode.Snapshot);
+
+        const state = decodeTerminalSnapshotPayload(reconnectFrame.payload);
+        expect(state).not.toBeNull();
+        expect(extractStateText(state!)).toContain("before-drop");
+        expect(extractStateText(state!)).toContain("while-dead");
+      } finally {
+        await closeWebSocket(secondSocket);
+      }
+    } finally {
+      rmSync(cwd, { recursive: true, force: true });
+    }
+  }, 30000);
+
+  test("two clients can both send input and each sees its own output", async () => {
+    const cwd = tmpCwd();
+    const created = await ctx.client.createTerminal(cwd);
+    const terminalId = created.terminal!.id;
+    const secondClient = await connectClient(
+      ctx.daemon.port,
+      `terminal-input-dual-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    );
+
+    try {
+      await ctx.client.subscribeTerminal(terminalId);
+      await secondClient.subscribeTerminal(terminalId);
+
+      const firstOwnOutput = waitForTerminalOutput(
+        ctx.client,
+        terminalId,
+        (text) => text.includes("from-a"),
+      );
+      const secondOwnOutput = waitForTerminalOutput(
+        secondClient,
+        terminalId,
+        (text) => text.includes("from-b"),
+      );
+
+      ctx.client.sendTerminalInput(terminalId, {
+        type: "input",
+        data: "echo from-a\r",
+      });
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      secondClient.sendTerminalInput(terminalId, {
+        type: "input",
+        data: "echo from-b\r",
+      });
+
+      expect(await firstOwnOutput).toContain("from-a");
+      expect(await secondOwnOutput).toContain("from-b");
+    } finally {
+      await secondClient.close();
+      rmSync(cwd, { recursive: true, force: true });
+    }
+  }, 30000);
+
+  test("snapshot fidelity through websocket decode preserves dimensions and visible text", async () => {
+    const cwd = tmpCwd();
+    const created = await ctx.client.createTerminal(cwd, "Snapshot Fidelity");
+    const terminalId = created.terminal!.id;
+
+    ctx.client.sendTerminalInput(terminalId, {
+      type: "input",
+      data: "printf 'line1\\nline2\\nline3\\n'\r",
+    });
+    await new Promise((resolve) => setTimeout(resolve, 300));
+
+    const ws = await connectRawWebSocket(ctx.daemon.port);
+    try {
+      await subscribeRawTerminal(ws, terminalId, "sub-fidelity");
+      const snapshotFrame = await waitForRawBinaryFrame(
+        ws,
+        (frame) => frame.opcode === TerminalStreamOpcode.Snapshot,
+        10000,
+      );
+
+      const state = decodeTerminalSnapshotPayload(snapshotFrame.payload);
+      expect(state).not.toBeNull();
+      expect(state).toMatchObject({
+        rows: 24,
+        cols: 80,
+        cursor: expect.any(Object),
+        grid: expect.any(Array),
+        scrollback: expect.any(Array),
+      });
+      expect(extractStateText(state!)).toContain("line1");
+      expect(extractStateText(state!)).toContain("line2");
+      expect(extractStateText(state!)).toContain("line3");
+    } finally {
+      await closeWebSocket(ws);
+      rmSync(cwd, { recursive: true, force: true });
+    }
+  }, 30000);
+
+  test("terminal exit prevents resubscribe and sends no frames after exit", async () => {
+    const cwd = tmpCwd();
+    const created = await ctx.client.createTerminal(cwd);
+    const terminalId = created.terminal!.id;
+    const ws = await connectRawWebSocket(ctx.daemon.port);
+
+    try {
+      await subscribeRawTerminal(ws, terminalId, "sub-exit");
+      await waitForRawBinaryFrame(ws, (frame) => frame.opcode === TerminalStreamOpcode.Snapshot, 10000);
+
+      const exitMessagePromise = waitForRawSessionMessage(
+        ws,
+        (message) =>
+          message.message.type === "terminal_stream_exit" &&
+          message.message.payload.terminalId === terminalId,
+        10000,
+      );
+      const kill = await ctx.client.killTerminal(terminalId);
+      expect(kill.success).toBe(true);
+      const exitMessage = await exitMessagePromise;
+      expect(exitMessage.message.type).toBe("terminal_stream_exit");
+
+      const subscribeResult = await ctx.client.subscribeTerminal(terminalId);
+      expect(subscribeResult.error).toBe("Terminal not found");
+      await waitForNoRawBinaryFrame(ws, 750);
+    } finally {
+      await closeWebSocket(ws);
+      rmSync(cwd, { recursive: true, force: true });
+    }
+  }, 30000);
+
+  test("empty input frame does not crash the server", async () => {
+    const cwd = tmpCwd();
+    const created = await ctx.client.createTerminal(cwd);
+    const terminalId = created.terminal!.id;
+    const ws = await connectRawWebSocket(ctx.daemon.port);
+
+    try {
+      await subscribeRawTerminal(ws, terminalId, "sub-empty-input");
+      await waitForRawBinaryFrame(ws, (frame) => frame.opcode === TerminalStreamOpcode.Snapshot, 10000);
+
+      ws.send(new Uint8Array([TerminalStreamOpcode.Input]));
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      expect(ws.readyState).toBe(WebSocket.OPEN);
+
+      ctx.client.sendTerminalInput(terminalId, {
+        type: "input",
+        data: "echo alive\r",
+      });
+      const aliveFrame = await waitForRawBinaryFrame(
+        ws,
+        (frame) => getFrameText(frame).includes("alive"),
+        10000,
+      );
+      expect(getFrameText(aliveFrame)).toContain("alive");
+    } finally {
+      await closeWebSocket(ws);
+      rmSync(cwd, { recursive: true, force: true });
+    }
+  }, 30000);
+
+  test("1MB output burst keeps frames decodable and terminal usable afterward", async () => {
+    const cwd = tmpCwd();
+    const created = await ctx.client.createTerminal(cwd);
+    const terminalId = created.terminal!.id;
+    const ws = await connectRawWebSocket(ctx.daemon.port);
+
+    try {
+      await subscribeRawTerminal(ws, terminalId, "sub-large-output");
+      await waitForRawBinaryFrame(ws, (frame) => frame.opcode === TerminalStreamOpcode.Snapshot, 10000);
+
+      ctx.client.sendTerminalInput(terminalId, {
+        type: "input",
+        data: `node -e "process.stdout.write('X'.repeat(${1024 * 1024}))"\r`,
+      });
+
+      const frames = await collectRawBinaryFrames(
+        ws,
+        (collectedFrames) => {
+          const outputBytes = collectedFrames
+            .filter((frame) => frame.opcode === TerminalStreamOpcode.Output)
+            .reduce((sum, frame) => sum + frame.payload.byteLength, 0);
+          return (
+            outputBytes >= 1024 * 1024 ||
+            collectedFrames.some((frame) => frame.opcode === TerminalStreamOpcode.Snapshot)
+          );
+        },
+        20000,
+      );
+
+      expect(frames.length).toBeGreaterThan(0);
+      for (const frame of frames) {
+        expect(
+          frame.opcode === TerminalStreamOpcode.Output ||
+            frame.opcode === TerminalStreamOpcode.Snapshot,
+        ).toBe(true);
+      }
+
+      ctx.client.sendTerminalInput(terminalId, {
+        type: "input",
+        data: "echo after-burst\r",
+      });
+      const postBurstFrame = await waitForRawBinaryFrame(
+        ws,
+        (frame) => getFrameText(frame).includes("after-burst"),
+        10000,
+      );
+      expect(getFrameText(postBurstFrame)).toContain("after-burst");
+    } finally {
+      await closeWebSocket(ws);
+      rmSync(cwd, { recursive: true, force: true });
+    }
+  }, 40000);
 });

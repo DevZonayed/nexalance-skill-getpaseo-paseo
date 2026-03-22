@@ -68,7 +68,6 @@ import {
   TerminalStreamOpcode,
   type TerminalStreamFrame,
 } from "../shared/terminal-stream-protocol.js";
-import { encodeTerminalKeyInput, type TerminalKeyInput } from "../shared/terminal-key-input.js";
 import {
   createRelayE2eeTransportFactory,
   createWebSocketTransportFactory,
@@ -2702,19 +2701,6 @@ export class DaemonClient {
         resolve(event);
       });
     });
-  }
-
-  sendTerminalStreamKey(input: TerminalKeyInput): void {
-    const encoded = encodeTerminalKeyInput(input);
-    if (!encoded) {
-      return;
-    }
-    this.sendBinaryFrame(
-      encodeTerminalStreamFrame({
-        opcode: TerminalStreamOpcode.Input,
-        payload: encodeUtf8String(encoded),
-      }),
-    );
   }
 
   // ============================================================================

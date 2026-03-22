@@ -1159,7 +1159,6 @@ export class VoiceAssistantWebSocketServer {
     let checkoutDiffFallbackRefreshTargetCount = 0;
     let terminalDirectorySubscriptionCount = 0;
     let terminalSubscriptionCount = 0;
-    let terminalStreamCount = 0;
 
     for (const connection of uniqueConnections) {
       const sessionMetrics = connection.session.getRuntimeMetrics();
@@ -1170,7 +1169,6 @@ export class VoiceAssistantWebSocketServer {
         sessionMetrics.checkoutDiffFallbackRefreshTargetCount;
       terminalDirectorySubscriptionCount += sessionMetrics.terminalDirectorySubscriptionCount;
       terminalSubscriptionCount += sessionMetrics.terminalSubscriptionCount;
-      terminalStreamCount += sessionMetrics.terminalStreamCount;
     }
 
     return {
@@ -1180,7 +1178,6 @@ export class VoiceAssistantWebSocketServer {
       checkoutDiffFallbackRefreshTargetCount,
       terminalDirectorySubscriptionCount,
       terminalSubscriptionCount,
-      terminalStreamCount,
     };
   }
 

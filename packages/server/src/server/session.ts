@@ -289,7 +289,6 @@ export type SessionRuntimeMetrics = {
   checkoutDiffFallbackRefreshTargetCount: number;
   terminalDirectorySubscriptionCount: number;
   terminalSubscriptionCount: number;
-  terminalStreamCount: number;
 };
 
 type FetchAgentsRequestMessage = Extract<SessionInboundMessage, { type: "fetch_agents_request" }>;
@@ -751,7 +750,6 @@ export class Session {
       checkoutDiffFallbackRefreshTargetCount,
       terminalDirectorySubscriptionCount: this.subscribedTerminalDirectories.size,
       terminalSubscriptionCount: this.activeTerminalStream ? 1 : 0,
-      terminalStreamCount: this.activeTerminalStream ? 1 : 0,
     };
   }
 
