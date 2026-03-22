@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/context-menu";
 import { Shortcut } from "@/components/ui/shortcut";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { useShortcutKeys } from "@/hooks/use-shortcut-keys";
 import { WORKSPACE_SECONDARY_HEADER_HEIGHT } from "@/constants/layout";
 import { useWorkspaceTabLayout } from "@/screens/workspace/use-workspace-tab-layout";
 import {
@@ -308,6 +309,10 @@ export function WorkspaceDesktopTabsRow({
   tabDropPreviewIndex = null,
 }: WorkspaceDesktopTabsRowProps) {
   const { theme } = useUnistyles();
+  const newAgentTabKeys = useShortcutKeys("workspace-tab-new");
+  const newTerminalTabKeys = useShortcutKeys("workspace-terminal-new");
+  const splitRightKeys = useShortcutKeys("workspace-pane-split-right");
+  const splitDownKeys = useShortcutKeys("workspace-pane-split-down");
   const [tabsContainerWidth, setTabsContainerWidth] = useState<number>(0);
   const [tabsActionsWidth, setTabsActionsWidth] = useState<number>(0);
 
@@ -448,10 +453,12 @@ export function WorkspaceDesktopTabsRow({
           >
             <SquarePen size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
           </TooltipTrigger>
-          <TooltipContent side="bottom" align="end" offset={8}>
+          <TooltipContent side="bottom" align="center" offset={8}>
             <View style={styles.newTabTooltipRow}>
               <Text style={styles.newTabTooltipText}>New agent tab</Text>
-              <Shortcut keys={["mod", "T"]} style={styles.newTabTooltipShortcut} />
+              {newAgentTabKeys ? (
+                <Shortcut keys={newAgentTabKeys} style={styles.newTabTooltipShortcut} />
+              ) : null}
             </View>
           </TooltipContent>
         </Tooltip>
@@ -467,8 +474,13 @@ export function WorkspaceDesktopTabsRow({
           >
             <SquareTerminal size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
           </TooltipTrigger>
-          <TooltipContent side="bottom" align="end" offset={8}>
-            <Text style={styles.newTabTooltipText}>New terminal tab</Text>
+          <TooltipContent side="bottom" align="center" offset={8}>
+            <View style={styles.newTabTooltipRow}>
+              <Text style={styles.newTabTooltipText}>New terminal tab</Text>
+              {newTerminalTabKeys ? (
+                <Shortcut keys={newTerminalTabKeys} style={styles.newTabTooltipShortcut} />
+              ) : null}
+            </View>
           </TooltipContent>
         </Tooltip>
         <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
@@ -483,8 +495,13 @@ export function WorkspaceDesktopTabsRow({
           >
             <Columns2 size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
           </TooltipTrigger>
-          <TooltipContent side="bottom" align="end" offset={8}>
-            <Text style={styles.newTabTooltipText}>Split pane right</Text>
+          <TooltipContent side="bottom" align="center" offset={8}>
+            <View style={styles.newTabTooltipRow}>
+              <Text style={styles.newTabTooltipText}>Split pane right</Text>
+              {splitRightKeys ? (
+                <Shortcut keys={splitRightKeys} style={styles.newTabTooltipShortcut} />
+              ) : null}
+            </View>
           </TooltipContent>
         </Tooltip>
         <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
@@ -499,8 +516,13 @@ export function WorkspaceDesktopTabsRow({
           >
             <Rows2 size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
           </TooltipTrigger>
-          <TooltipContent side="bottom" align="end" offset={8}>
-            <Text style={styles.newTabTooltipText}>Split pane down</Text>
+          <TooltipContent side="bottom" align="center" offset={8}>
+            <View style={styles.newTabTooltipRow}>
+              <Text style={styles.newTabTooltipText}>Split pane down</Text>
+              {splitDownKeys ? (
+                <Shortcut keys={splitDownKeys} style={styles.newTabTooltipShortcut} />
+              ) : null}
+            </View>
           </TooltipContent>
         </Tooltip>
       </View>

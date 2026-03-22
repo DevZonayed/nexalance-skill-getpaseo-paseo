@@ -153,6 +153,21 @@ export function useKeyboardShortcuts({
             id: "workspace.tab.new",
             scope: "workspace",
           });
+        case "worktree.archive":
+          return keyboardActionDispatcher.dispatch({
+            id: "worktree.archive",
+            scope: "sidebar",
+          });
+        case "worktree.new":
+          return keyboardActionDispatcher.dispatch({
+            id: "worktree.new",
+            scope: "sidebar",
+          });
+        case "workspace.terminal.new":
+          return keyboardActionDispatcher.dispatch({
+            id: "workspace.terminal.new",
+            scope: "workspace",
+          });
         case "workspace.tab.close.current":
           return keyboardActionDispatcher.dispatch({
             id: "workspace.tab.close-current",

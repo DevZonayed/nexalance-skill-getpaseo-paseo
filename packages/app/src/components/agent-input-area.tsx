@@ -120,6 +120,7 @@ export function AgentInputArea({
   const toast = useToast();
   const voice = useVoiceOptional();
   const voiceToggleKeys = useShortcutKeys("voice-toggle");
+  const dictationCancelKeys = useShortcutKeys("dictation-cancel");
   const isDictationReady =
     isConnected &&
     (agentDirectoryStatus === "ready" ||
@@ -595,7 +596,7 @@ export function AgentInputArea({
         <TooltipContent side="top" align="center" offset={8}>
           <View style={styles.tooltipRow}>
             <Text style={styles.tooltipText}>Interrupt</Text>
-            <Shortcut keys={["Esc"]} style={styles.tooltipShortcut} />
+            {dictationCancelKeys ? <Shortcut keys={dictationCancelKeys} style={styles.tooltipShortcut} /> : null}
           </View>
         </TooltipContent>
       </Tooltip>

@@ -1465,6 +1465,9 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
         case "workspace.tab.new":
           handleCreateDraftTab();
           return true;
+        case "workspace.terminal.new":
+          handleCreateTerminal();
+          return true;
         case "workspace.tab.close-current":
           if (activeTabId) {
             void handleCloseTabById(activeTabId);
@@ -1493,7 +1496,7 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
           return false;
       }
     },
-    [activeTabId, handleCloseTabById, handleCreateDraftTab, navigateToTabId, tabs],
+    [activeTabId, handleCloseTabById, handleCreateDraftTab, handleCreateTerminal, navigateToTabId, tabs],
   );
 
   const handleWorkspacePaneAction = useCallback(
@@ -1598,6 +1601,7 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
       "workspace.tab.close-current",
       "workspace.tab.navigate-index",
       "workspace.tab.navigate-relative",
+      "workspace.terminal.new",
     ] as const,
     enabled: Boolean(normalizedServerId && normalizedWorkspaceId),
     priority: 100,

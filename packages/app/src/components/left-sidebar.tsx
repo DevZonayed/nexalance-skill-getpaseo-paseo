@@ -745,7 +745,7 @@ function DesktopSidebar({
             <TooltipContent side="top" align="center" offset={8}>
               <View style={styles.tooltipRow}>
                 <Text style={styles.tooltipText}>Add project</Text>
-                <Shortcut keys={["⌘", "⇧", "O"]} />
+                {newAgentKeys ? <Shortcut keys={newAgentKeys} /> : null}
               </View>
             </TooltipContent>
           </Tooltip>

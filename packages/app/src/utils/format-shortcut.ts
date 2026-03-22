@@ -2,8 +2,20 @@ export type ShortcutKey = "mod" | "shift" | "alt" | "ctrl" | "meta" | string;
 
 export type ShortcutOs = "mac" | "non-mac";
 
+const KEY_DISPLAY: Record<string, string> = {
+  Backspace: "⌫",
+  Enter: "↩",
+  Esc: "⎋",
+  Space: "␣",
+  Left: "←",
+  Right: "→",
+  Up: "↑",
+  Down: "↓",
+};
+
 function normalizeKey(key: string): string {
   if (!key) return "";
+  if (KEY_DISPLAY[key]) return KEY_DISPLAY[key];
   if (key.length === 1) return key.toUpperCase();
   return key;
 }

@@ -20,7 +20,10 @@ export type KeyboardActionId =
   | "workspace.pane.move-tab.right"
   | "workspace.pane.move-tab.up"
   | "workspace.pane.move-tab.down"
-  | "workspace.pane.close";
+  | "workspace.pane.close"
+  | "workspace.terminal.new"
+  | "worktree.new"
+  | "worktree.archive";
 
 export type KeyboardActionDefinition =
   | { id: "message-input.focus"; scope: KeyboardActionScope }
@@ -42,7 +45,10 @@ export type KeyboardActionDefinition =
   | { id: "workspace.pane.move-tab.right"; scope: KeyboardActionScope }
   | { id: "workspace.pane.move-tab.up"; scope: KeyboardActionScope }
   | { id: "workspace.pane.move-tab.down"; scope: KeyboardActionScope }
-  | { id: "workspace.pane.close"; scope: KeyboardActionScope };
+  | { id: "workspace.pane.close"; scope: KeyboardActionScope }
+  | { id: "workspace.terminal.new"; scope: KeyboardActionScope }
+  | { id: "worktree.new"; scope: KeyboardActionScope }
+  | { id: "worktree.archive"; scope: KeyboardActionScope };
 
 export type KeyboardActionHandler = {
   handlerId: string;

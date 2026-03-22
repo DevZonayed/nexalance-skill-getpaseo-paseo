@@ -49,7 +49,7 @@ function useTerminalPanelDescriptor(
 
 function TerminalPanel() {
   const isFocused = useIsFocused();
-  const { serverId, workspaceId, target, openTab } = usePaneContext();
+  const { serverId, workspaceId, target } = usePaneContext();
   invariant(target.kind === "terminal", "TerminalPanel requires terminal target");
 
   if (!isFocused) {
@@ -60,15 +60,7 @@ function TerminalPanel() {
     <TerminalPane
       serverId={serverId}
       cwd={workspaceId}
-      selectedTerminalId={target.terminalId}
-      onSelectedTerminalIdChange={(terminalId) => {
-        if (!terminalId) {
-          return;
-        }
-        openTab({ kind: "terminal", terminalId });
-      }}
-      hideHeader
-      manageTerminalDirectorySubscription={false}
+      terminalId={target.terminalId}
     />
   );
 }

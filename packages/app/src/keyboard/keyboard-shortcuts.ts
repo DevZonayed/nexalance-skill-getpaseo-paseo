@@ -127,6 +127,58 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
     },
   },
 
+  // --- New worktree ---
+  {
+    id: "worktree-new-cmd-o-mac",
+    action: "worktree.new",
+    combo: "Cmd+O",
+    when: { mac: true, commandCenter: false },
+    help: {
+      id: "new-worktree",
+      section: "global",
+      label: "New worktree",
+      keys: ["mod", "O"],
+    },
+  },
+  {
+    id: "worktree-new-ctrl-o-non-mac",
+    action: "worktree.new",
+    combo: "Ctrl+O",
+    when: { mac: false, commandCenter: false, terminal: false },
+    help: {
+      id: "new-worktree",
+      section: "global",
+      label: "New worktree",
+      keys: ["mod", "O"],
+    },
+  },
+
+  // --- Archive worktree ---
+  {
+    id: "worktree-archive-cmd-shift-backspace-mac",
+    action: "worktree.archive",
+    combo: "Cmd+Shift+Backspace",
+    when: { mac: true, commandCenter: false },
+    help: {
+      id: "archive-worktree",
+      section: "global",
+      label: "Archive worktree",
+      keys: ["mod", "shift", "Backspace"],
+    },
+  },
+  {
+    id: "worktree-archive-ctrl-shift-backspace-non-mac",
+    action: "worktree.archive",
+    combo: "Ctrl+Shift+Backspace",
+    when: { mac: false, commandCenter: false, terminal: false },
+    help: {
+      id: "archive-worktree",
+      section: "global",
+      label: "Archive worktree",
+      keys: ["mod", "shift", "Backspace"],
+    },
+  },
+
   // --- Tab management ---
   {
     id: "workspace-tab-new-cmd-t-mac",
@@ -500,6 +552,32 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
     },
   },
 
+  // --- New terminal ---
+  {
+    id: "workspace-terminal-new-cmd-shift-t-mac",
+    action: "workspace.terminal.new",
+    combo: "Cmd+Shift+T",
+    when: { mac: true, commandCenter: false },
+    help: {
+      id: "workspace-terminal-new",
+      section: "global",
+      label: "New terminal",
+      keys: ["mod", "shift", "T"],
+    },
+  },
+  {
+    id: "workspace-terminal-new-ctrl-shift-t-non-mac",
+    action: "workspace.terminal.new",
+    combo: "Ctrl+Shift+T",
+    when: { mac: false, commandCenter: false, terminal: false },
+    help: {
+      id: "workspace-terminal-new",
+      section: "global",
+      label: "New terminal",
+      keys: ["mod", "shift", "T"],
+    },
+  },
+
   // --- Command center ---
   {
     id: "command-center-toggle-cmd-k-mac",
@@ -674,6 +752,52 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
       keys: ["Esc"],
     },
   },
+  {
+    id: "message-input-send-enter",
+    action: "message-input.action",
+    combo: "Enter",
+    when: { focusScope: "message-input", commandCenter: false },
+    payload: { type: "message-input", kind: "send" },
+    preventDefault: false,
+    stopPropagation: false,
+    help: {
+      id: "message-input-send",
+      section: "agent-input",
+      label: "Send message",
+      keys: ["Enter"],
+    },
+  },
+  {
+    id: "message-input-queue-cmd-enter-mac",
+    action: "message-input.action",
+    combo: "Cmd+Enter",
+    when: { mac: true, focusScope: "message-input", commandCenter: false },
+    payload: { type: "message-input", kind: "queue" },
+    preventDefault: false,
+    stopPropagation: false,
+    help: {
+      id: "message-input-queue",
+      section: "agent-input",
+      label: "Queue message",
+      keys: ["mod", "Enter"],
+    },
+  },
+  {
+    id: "message-input-queue-ctrl-enter-non-mac",
+    action: "message-input.action",
+    combo: "Ctrl+Enter",
+    when: { mac: false, focusScope: "message-input", commandCenter: false },
+    payload: { type: "message-input", kind: "queue" },
+    preventDefault: false,
+    stopPropagation: false,
+    help: {
+      id: "message-input-queue",
+      section: "agent-input",
+      label: "Queue message",
+      keys: ["mod", "Enter"],
+    },
+  },
+
   {
     id: "message-input-voice-mute-toggle",
     action: "message-input.action",

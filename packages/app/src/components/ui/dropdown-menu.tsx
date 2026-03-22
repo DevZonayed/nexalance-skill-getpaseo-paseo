@@ -559,9 +559,9 @@ const styles = StyleSheet.create((theme) => ({
     left: 0,
   },
   content: {
-    backgroundColor: theme.colors.surface0,
+    backgroundColor: theme.colors.surface1,
     borderWidth: 1,
-    borderColor: theme.colors.border,
+    borderColor: theme.colors.borderAccent,
     borderRadius: theme.borderRadius.lg,
     overflow: "hidden",
     shadowColor: "#000",
@@ -604,16 +604,16 @@ const styles = StyleSheet.create((theme) => ({
     borderColor: "transparent",
   },
   itemHovered: {
-    backgroundColor: theme.colors.surface1,
+    backgroundColor: theme.colors.surface2,
   },
   itemPressed: {
-    backgroundColor: theme.colors.surface1,
+    backgroundColor: theme.colors.surface2,
   },
   itemSelected: {
-    backgroundColor: theme.colors.surface1,
+    backgroundColor: theme.colors.surface2,
   },
   itemSelectedInteractive: {
-    backgroundColor: theme.colors.surface1,
+    backgroundColor: theme.colors.surface2,
   },
   itemSelectedAccent: {
     backgroundColor: theme.colors.accent,

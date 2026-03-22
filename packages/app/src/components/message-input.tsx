@@ -33,6 +33,7 @@ import { useAttachmentPreviewUrl } from "@/attachments/use-attachment-preview-ur
 import { focusWithRetries } from "@/utils/web-focus";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Shortcut } from "@/components/ui/shortcut";
+import { useShortcutKeys } from "@/hooks/use-shortcut-keys";
 import type { MessageInputKeyboardActionKind } from "@/keyboard/actions";
 import {
   markScrollInvestigationEvent,
@@ -210,6 +211,10 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
   markScrollInvestigationRender(investigationComponentId);
   const toast = useToast();
   const voice = useVoiceOptional();
+  const sendKeys = useShortcutKeys("message-input-send");
+  const voiceMuteToggleKeys = useShortcutKeys("voice-mute-toggle");
+  const dictationToggleKeys = useShortcutKeys("dictation-toggle");
+  const queueKeys = useShortcutKeys("message-input-queue");
   const [inputHeight, setInputHeight] = useState(MIN_INPUT_HEIGHT);
   const rootRef = useRef<View | null>(null);
   const inputWrapperRef = useRef<View | null>(null);
@@ -1006,10 +1011,12 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
                         : "Mute voice"
                       : "Dictation"}
                   </Text>
-                  <Shortcut
-                    keys={isRealtimeVoiceForCurrentAgent ? ["Space"] : ["mod", "D"]}
-                    style={styles.tooltipShortcut}
-                  />
+                  {(isRealtimeVoiceForCurrentAgent ? voiceMuteToggleKeys : dictationToggleKeys) ? (
+                    <Shortcut
+                      keys={(isRealtimeVoiceForCurrentAgent ? voiceMuteToggleKeys : dictationToggleKeys)!}
+                      style={styles.tooltipShortcut}
+                    />
+                  ) : null}
                 </View>
               </TooltipContent>
             </Tooltip>
@@ -1032,7 +1039,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
                 <TooltipContent side="top" align="center" offset={8}>
                   <View style={styles.tooltipRow}>
                     <Text style={styles.tooltipText}>Queue</Text>
-                    <Shortcut keys={["mod", "Enter"]} style={styles.tooltipShortcut} />
+                    {queueKeys ? <Shortcut keys={queueKeys} style={styles.tooltipShortcut} /> : null}
                   </View>
                 </TooltipContent>
               </Tooltip>
@@ -1055,7 +1062,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
                 <TooltipContent side="top" align="center" offset={8}>
                   <View style={styles.tooltipRow}>
                     <Text style={styles.tooltipText}>Send</Text>
-                    <Shortcut keys={["Enter"]} style={styles.tooltipShortcut} />
+                    {sendKeys ? <Shortcut keys={sendKeys} style={styles.tooltipShortcut} /> : null}
                   </View>
                 </TooltipContent>
               </Tooltip>

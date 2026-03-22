@@ -74,6 +74,10 @@ import { confirmDialog } from "@/utils/confirm-dialog";
 import { projectIconPlaceholderLabelFromDisplayName } from "@/utils/project-display-name";
 import { shouldRenderSyncedStatusLoader } from "@/utils/status-loader";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Shortcut } from "@/components/ui/shortcut";
+import type { ShortcutKey } from "@/utils/format-shortcut";
+import { useShortcutKeys } from "@/hooks/use-shortcut-keys";
+import { useKeyboardActionHandler } from "@/hooks/use-keyboard-action-handler";
 import { buildSidebarProjectRowModel } from "@/utils/sidebar-project-row-model";
 import { useNavigationActiveWorkspaceSelection } from "@/stores/navigation-active-workspace-store";
 import { normalizeWorkspaceDescriptor, useSessionStore } from "@/stores/session-store";
@@ -116,6 +120,7 @@ interface ProjectHeaderRowProps {
   onPress: () => void;
   serverId: string | null;
   canCreateWorktree: boolean;
+  isProjectActive?: boolean;
   onWorkspacePress?: () => void;
   onWorktreeCreated?: (workspaceId: string) => void;
   shortcutNumber?: number | null;
@@ -145,6 +150,7 @@ interface WorkspaceRowInnerProps {
   onArchive?: () => void;
   onCopyBranchName?: () => void;
   onCopyPath?: () => void;
+  archiveShortcutKeys?: ShortcutKey[] | null;
 }
 
 function resolveStatusDotColor(input: {
@@ -267,14 +273,17 @@ function NewWorktreeButton({
   visible,
   loading = false,
   testID,
+  showShortcutHint = false,
 }: {
   displayName: string;
   onPress: () => void;
   visible: boolean;
   loading?: boolean;
   testID: string;
+  showShortcutHint?: boolean;
 }) {
   const { theme } = useUnistyles();
+  const newWorktreeKeys = useShortcutKeys("new-worktree");
 
   return (
     <View style={styles.projectTrailingControlSlot} pointerEvents={visible ? "auto" : "none"}>
@@ -309,8 +318,13 @@ function NewWorktreeButton({
             }
           </Pressable>
         </TooltipTrigger>
-        <TooltipContent side="bottom" align="end" offset={8}>
-          <Text style={styles.projectActionTooltipText}>New worktree</Text>
+        <TooltipContent side="bottom" align="center" offset={8}>
+          <View style={styles.projectActionTooltipRow}>
+            <Text style={styles.projectActionTooltipText}>New worktree</Text>
+            {showShortcutHint && newWorktreeKeys ? (
+              <Shortcut keys={newWorktreeKeys} style={styles.projectActionTooltipShortcut} />
+            ) : null}
+          </View>
         </TooltipContent>
       </Tooltip>
     </View>
@@ -544,6 +558,7 @@ function ProjectHeaderRow({
   onPress,
   serverId,
   canCreateWorktree,
+  isProjectActive = false,
   onWorkspacePress,
   onWorktreeCreated,
   shortcutNumber = null,
@@ -594,6 +609,17 @@ function ProjectHeaderRow({
       toast.error(error instanceof Error ? error.message : String(error));
     },
   });
+  useKeyboardActionHandler({
+    handlerId: `worktree-new-${project.projectKey}`,
+    actions: ["worktree.new"],
+    enabled: isProjectActive && canCreateWorktree && !createWorktreeMutation.isPending,
+    priority: 0,
+    handle: () => {
+      createWorktreeMutation.mutate();
+      return true;
+    },
+  });
+
   const interaction = useLongPressDragInteraction({
     drag,
     menuController,
@@ -636,6 +662,7 @@ function ProjectHeaderRow({
           onPress={() => createWorktreeMutation.mutate()}
           visible={isHovered || isMobileBreakpoint}
           loading={createWorktreeMutation.isPending}
+          showShortcutHint={isProjectActive}
           testID={`sidebar-project-new-worktree-${project.projectKey}`}
         />
       ) : null}
@@ -711,6 +738,7 @@ function WorkspaceRowInner({
   onArchive,
   onCopyBranchName,
   onCopyPath,
+  archiveShortcutKeys,
 }: WorkspaceRowInnerProps) {
   const { theme } = useUnistyles();
   const [isHovered, setIsHovered] = useState(false);
@@ -792,7 +820,7 @@ function WorkspaceRowInner({
                   />
                 )}
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" width={200}>
+              <DropdownMenuContent align="end" width={260}>
                 {onCopyPath ? (
                   <DropdownMenuItem
                     testID={`sidebar-workspace-menu-copy-path-${workspace.workspaceKey}`}
@@ -814,6 +842,7 @@ function WorkspaceRowInner({
                 <DropdownMenuItem
                   testID={`sidebar-workspace-menu-archive-${workspace.workspaceKey}`}
                   leading={<Archive size={14} color={theme.colors.foregroundMuted} />}
+                  trailing={archiveShortcutKeys ? <Shortcut keys={archiveShortcutKeys} /> : null}
                   status={archiveStatus}
                   pendingLabel={archivePendingLabel}
                   onSelect={onArchive}
@@ -903,7 +932,7 @@ function WorkspaceRowWithMenu({
     void (async () => {
       const confirmed = await confirmDialog({
         title: "Archive worktree?",
-        message: `Archive "${workspace.name}"?\n\nThis removes the worktree from the sidebar.`,
+        message: `Archive "${workspace.name}"?\n\nThe worktree will be removed from disk, terminals will be stopped, and agents inside will be archived.\n\nYour branch is still accessible if you committed.`,
         confirmLabel: "Archive",
         cancelLabel: "Cancel",
         destructive: true,
@@ -991,6 +1020,23 @@ function WorkspaceRowWithMenu({
     toast.copied("Branch name copied");
   }, [toast, workspace.name]);
 
+  const archiveShortcutKeys = useShortcutKeys("archive-worktree");
+
+  useKeyboardActionHandler({
+    handlerId: `worktree-archive-${workspace.workspaceKey}`,
+    actions: ["worktree.archive"],
+    enabled: selected && !isArchiving,
+    priority: 0,
+    handle: () => {
+      if (isWorktree) {
+        handleArchiveWorktree();
+      } else {
+        handleArchiveWorkspace();
+      }
+      return true;
+    },
+  });
+
   return (
     <WorkspaceRowInner
       workspace={workspace}
@@ -1010,6 +1056,7 @@ function WorkspaceRowWithMenu({
       onArchive={isWorktree ? handleArchiveWorktree : handleArchiveWorkspace}
       onCopyBranchName={canCopyBranchName ? handleCopyBranchName : undefined}
       onCopyPath={handleCopyPath}
+      archiveShortcutKeys={selected ? archiveShortcutKeys : null}
     />
   );
 }
@@ -1182,6 +1229,7 @@ function FlattenedProjectRow({
   drag,
   isDragging,
   dragHandleProps,
+  isProjectActive = false,
 }: {
   project: SidebarProjectEntry;
   displayName: string;
@@ -1196,6 +1244,7 @@ function FlattenedProjectRow({
   drag: () => void;
   isDragging: boolean;
   dragHandleProps?: DraggableListDragHandleProps;
+  isProjectActive?: boolean;
 }) {
   if (project.projectKind === "non_git") {
     return (
@@ -1226,6 +1275,7 @@ function FlattenedProjectRow({
       onPress={onPress}
       serverId={serverId}
       canCreateWorktree={rowModel.trailingAction === "new_worktree"}
+      isProjectActive={isProjectActive}
       onWorkspacePress={onWorkspacePress}
       onWorktreeCreated={onWorktreeCreated}
       shortcutNumber={shortcutNumber}
@@ -1327,6 +1377,13 @@ function ProjectBlock({
     [activeWorkspaceSelection, collapsed, project, serverId],
   );
 
+  const isProjectActive = useMemo(() => {
+    if (!serverId || !activeWorkspaceSelection || activeWorkspaceSelection.serverId !== serverId) {
+      return false;
+    }
+    return project.workspaces.some((w) => w.workspaceId === activeWorkspaceSelection.workspaceId);
+  }, [serverId, activeWorkspaceSelection, project.workspaces]);
+
   const renderWorkspaceRow = useCallback(
     (
       item: SidebarWorkspaceEntry,
@@ -1419,6 +1476,7 @@ function ProjectBlock({
           drag={drag}
           isDragging={isDragging}
           dragHandleProps={dragHandleProps}
+          isProjectActive={isProjectActive}
         />
       ) : (
         <>
@@ -1432,6 +1490,7 @@ function ProjectBlock({
             onPress={onToggleCollapsed}
             serverId={serverId}
             canCreateWorktree={rowModel.trailingAction === "new_worktree"}
+            isProjectActive={isProjectActive}
             onWorkspacePress={onWorkspacePress}
             onWorktreeCreated={onWorktreeCreated}
             drag={drag}
@@ -1923,9 +1982,18 @@ const styles = StyleSheet.create((theme) => ({
     justifyContent: "center",
     flexShrink: 0,
   },
+  projectActionTooltipRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[2],
+  },
   projectActionTooltipText: {
     color: theme.colors.foreground,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
+  },
+  projectActionTooltipShortcut: {
+    backgroundColor: theme.colors.surface3,
+    borderColor: theme.colors.borderAccent,
   },
   workspaceRow: {
     minHeight: 36,
