@@ -33,6 +33,7 @@ import {
   CircleHelp,
   Copy,
   FolderGit2,
+  GitPullRequest,
   Monitor,
   MoreVertical,
   Plus,
@@ -78,11 +79,13 @@ import { Shortcut } from "@/components/ui/shortcut";
 import type { ShortcutKey } from "@/utils/format-shortcut";
 import { useShortcutKeys } from "@/hooks/use-shortcut-keys";
 import { useKeyboardActionHandler } from "@/hooks/use-keyboard-action-handler";
+import { type PrHint, useWorkspacePrHint } from "@/hooks/use-checkout-pr-status-query";
 import { buildSidebarProjectRowModel } from "@/utils/sidebar-project-row-model";
 import { useNavigationActiveWorkspaceSelection } from "@/stores/navigation-active-workspace-store";
 import { normalizeWorkspaceDescriptor, useSessionStore } from "@/stores/session-store";
 import { createNameId } from "mnemonic-id";
 import { buildWorkspaceArchiveRedirectRoute } from "@/utils/workspace-archive-navigation";
+import { openExternalUrl } from "@/utils/open-external-url";
 
 function toProjectIconDataUri(icon: { mimeType: string; data: string } | null): string | null {
   if (!icon) {
@@ -95,6 +98,12 @@ const workspaceKeyExtractor = (workspace: SidebarWorkspaceEntry) => workspace.wo
 
 const projectKeyExtractor = (project: SidebarProjectEntry) => project.projectKey;
 const EMPTY_WORKSPACES = new Map();
+const WORKSPACE_STATUS_DOT_WIDTH = 14;
+const GITHUB_PR_STATE_COLORS: Record<PrHint["state"], string> = {
+  open: "#3fb950",
+  merged: "#a371f7",
+  closed: "#f85149",
+};
 
 interface SidebarWorkspaceListProps {
   projects: SidebarProjectEntry[];
@@ -151,6 +160,45 @@ interface WorkspaceRowInnerProps {
   onCopyBranchName?: () => void;
   onCopyPath?: () => void;
   archiveShortcutKeys?: ShortcutKey[][] | null;
+}
+
+function WorkspacePrBadge({ hint }: { hint: PrHint }) {
+  const color = GITHUB_PR_STATE_COLORS[hint.state];
+
+  const handlePressIn = useCallback((event: GestureResponderEvent) => {
+    event.stopPropagation();
+  }, []);
+
+  const handlePress = useCallback(
+    (event: GestureResponderEvent) => {
+      event.stopPropagation();
+      void openExternalUrl(hint.url);
+    },
+    [hint.url],
+  );
+
+  return (
+    <Pressable
+      accessibilityRole="link"
+      accessibilityLabel={`${hint.state} pull request #${hint.number}`}
+      hitSlop={4}
+      onPressIn={handlePressIn}
+      onPress={handlePress}
+      style={({ pressed }) => [
+        styles.workspacePrBadge,
+        {
+          borderColor: color,
+          backgroundColor: `${color}1a`,
+        },
+        pressed && styles.workspacePrBadgePressed,
+      ]}
+    >
+      <GitPullRequest size={12} color={color} />
+      <Text style={[styles.workspacePrBadgeText, { color }]} numberOfLines={1}>
+        #{hint.number}
+      </Text>
+    </Pressable>
+  );
 }
 
 function resolveStatusDotColor(input: {
@@ -743,6 +791,11 @@ function WorkspaceRowInner({
   const { theme } = useUnistyles();
   const [isHovered, setIsHovered] = useState(false);
   const isMobile = Platform.OS !== "web";
+  const prHint = useWorkspacePrHint({
+    serverId: workspace.serverId,
+    cwd: workspace.workspaceId,
+    enabled: workspace.workspaceKind !== "directory",
+  });
   const interaction = useLongPressDragInteraction({
     drag,
     menuController,
@@ -777,92 +830,99 @@ function WorkspaceRowInner({
         onPress={handlePress}
         testID={`sidebar-workspace-row-${workspace.workspaceKey}`}
       >
-        <View
-          {...(dragHandleProps?.attributes as any)}
-          {...(dragHandleProps?.listeners as any)}
-          ref={dragHandleProps?.setActivatorNodeRef as any}
-          style={styles.workspaceRowLeft}
-        >
-          <WorkspaceStatusIndicator
-            bucket={workspace.statusBucket}
-            workspaceKind={workspace.workspaceKind}
-            loading={isArchiving || isCreating}
-          />
-          <Text
-            style={[
-              styles.workspaceBranchText,
-              isHovered && styles.workspaceBranchTextHovered,
-              isCreating && styles.workspaceBranchTextCreating,
-            ]}
-            numberOfLines={1}
+        <View style={styles.workspaceRowMain}>
+          <View
+            {...(dragHandleProps?.attributes as any)}
+            {...(dragHandleProps?.listeners as any)}
+            ref={dragHandleProps?.setActivatorNodeRef as any}
+            style={styles.workspaceRowLeft}
           >
-            {workspace.name}
-          </Text>
-        </View>
-        <View style={styles.workspaceRowRight}>
-          {isCreating ? <Text style={styles.workspaceCreatingText}>Creating...</Text> : null}
-          {onArchive && (isHovered || isMobile) ? (
-            <DropdownMenu>
-              <DropdownMenuTrigger
-                hitSlop={8}
-                style={({ hovered = false }) => [
-                  styles.kebabButton,
-                  hovered && styles.kebabButtonHovered,
-                ]}
-                accessibilityRole="button"
-                accessibilityLabel="Workspace actions"
-                testID={`sidebar-workspace-kebab-${workspace.workspaceKey}`}
-              >
-                {({ hovered }) => (
-                  <MoreVertical
-                    size={14}
-                    color={hovered ? theme.colors.foreground : theme.colors.foregroundMuted}
-                  />
-                )}
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" width={260}>
-                {onCopyPath ? (
-                  <DropdownMenuItem
-                    testID={`sidebar-workspace-menu-copy-path-${workspace.workspaceKey}`}
-                    leading={<Copy size={14} color={theme.colors.foregroundMuted} />}
-                    onSelect={onCopyPath}
-                  >
-                    Copy path
-                  </DropdownMenuItem>
-                ) : null}
-                {onCopyBranchName ? (
-                  <DropdownMenuItem
-                    testID={`sidebar-workspace-menu-copy-branch-name-${workspace.workspaceKey}`}
-                    leading={<Copy size={14} color={theme.colors.foregroundMuted} />}
-                    onSelect={onCopyBranchName}
-                  >
-                    Copy branch name
-                  </DropdownMenuItem>
-                ) : null}
-                <DropdownMenuItem
-                  testID={`sidebar-workspace-menu-archive-${workspace.workspaceKey}`}
-                  leading={<Archive size={14} color={theme.colors.foregroundMuted} />}
-                  trailing={archiveShortcutKeys ? <Shortcut chord={archiveShortcutKeys} /> : null}
-                  status={archiveStatus}
-                  pendingLabel={archivePendingLabel}
-                  onSelect={onArchive}
+            <WorkspaceStatusIndicator
+              bucket={workspace.statusBucket}
+              workspaceKind={workspace.workspaceKind}
+              loading={isArchiving || isCreating}
+            />
+            <Text
+              style={[
+                styles.workspaceBranchText,
+                isHovered && styles.workspaceBranchTextHovered,
+                isCreating && styles.workspaceBranchTextCreating,
+              ]}
+              numberOfLines={1}
+            >
+              {workspace.name}
+            </Text>
+          </View>
+          <View style={styles.workspaceRowRight}>
+            {isCreating ? <Text style={styles.workspaceCreatingText}>Creating...</Text> : null}
+            {onArchive && (isHovered || isMobile) ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  hitSlop={8}
+                  style={({ hovered = false }) => [
+                    styles.kebabButton,
+                    hovered && styles.kebabButtonHovered,
+                  ]}
+                  accessibilityRole="button"
+                  accessibilityLabel="Workspace actions"
+                  testID={`sidebar-workspace-kebab-${workspace.workspaceKey}`}
                 >
-                  {archiveLabel ?? "Archive"}
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          ) : workspace.diffStat ? (
-            <View style={styles.diffStatRow}>
-              <Text style={styles.diffStatAdditions}>+{workspace.diffStat.additions}</Text>
-              <Text style={styles.diffStatDeletions}>-{workspace.diffStat.deletions}</Text>
-            </View>
-          ) : null}
-          {showShortcutBadge && shortcutNumber !== null ? (
-            <View style={styles.shortcutBadge}>
-              <Text style={styles.shortcutBadgeText}>{shortcutNumber}</Text>
-            </View>
-          ) : null}
+                  {({ hovered }) => (
+                    <MoreVertical
+                      size={14}
+                      color={hovered ? theme.colors.foreground : theme.colors.foregroundMuted}
+                    />
+                  )}
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" width={260}>
+                  {onCopyPath ? (
+                    <DropdownMenuItem
+                      testID={`sidebar-workspace-menu-copy-path-${workspace.workspaceKey}`}
+                      leading={<Copy size={14} color={theme.colors.foregroundMuted} />}
+                      onSelect={onCopyPath}
+                    >
+                      Copy path
+                    </DropdownMenuItem>
+                  ) : null}
+                  {onCopyBranchName ? (
+                    <DropdownMenuItem
+                      testID={`sidebar-workspace-menu-copy-branch-name-${workspace.workspaceKey}`}
+                      leading={<Copy size={14} color={theme.colors.foregroundMuted} />}
+                      onSelect={onCopyBranchName}
+                    >
+                      Copy branch name
+                    </DropdownMenuItem>
+                  ) : null}
+                  <DropdownMenuItem
+                    testID={`sidebar-workspace-menu-archive-${workspace.workspaceKey}`}
+                    leading={<Archive size={14} color={theme.colors.foregroundMuted} />}
+                    trailing={archiveShortcutKeys ? <Shortcut chord={archiveShortcutKeys} /> : null}
+                    status={archiveStatus}
+                    pendingLabel={archivePendingLabel}
+                    onSelect={onArchive}
+                  >
+                    {archiveLabel ?? "Archive"}
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : workspace.diffStat ? (
+              <View style={styles.diffStatRow}>
+                <Text style={styles.diffStatAdditions}>+{workspace.diffStat.additions}</Text>
+                <Text style={styles.diffStatDeletions}>-{workspace.diffStat.deletions}</Text>
+              </View>
+            ) : null}
+            {showShortcutBadge && shortcutNumber !== null ? (
+              <View style={styles.shortcutBadge}>
+                <Text style={styles.shortcutBadgeText}>{shortcutNumber}</Text>
+              </View>
+            ) : null}
+          </View>
         </View>
+        {prHint ? (
+          <View style={styles.workspacePrBadgeRow}>
+            <WorkspacePrBadge hint={prHint} />
+          </View>
+        ) : null}
       </Pressable>
     </View>
   );
@@ -2001,10 +2061,17 @@ const styles = StyleSheet.create((theme) => ({
     paddingVertical: theme.spacing[2],
     paddingHorizontal: theme.spacing[3],
     borderRadius: theme.borderRadius.lg,
+    flexDirection: "column",
+    alignItems: "stretch",
+    justifyContent: "center",
+    gap: theme.spacing[1],
+  },
+  workspaceRowMain: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     gap: theme.spacing[2],
+    width: "100%",
   },
   workspaceRowLeft: {
     flexDirection: "row",
@@ -2044,7 +2111,7 @@ const styles = StyleSheet.create((theme) => ({
     position: "relative",
   },
   workspaceStatusDot: {
-    width: 14,
+    width: WORKSPACE_STATUS_DOT_WIDTH,
     height: 16,
     borderRadius: theme.borderRadius.full,
     flexShrink: 0,
@@ -2084,6 +2151,27 @@ const styles = StyleSheet.create((theme) => ({
   },
   workspaceBranchTextHovered: {
     opacity: 1,
+  },
+  workspacePrBadgeRow: {
+    paddingLeft: WORKSPACE_STATUS_DOT_WIDTH + theme.spacing[2],
+  },
+  workspacePrBadge: {
+    alignSelf: "flex-start",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[1],
+    paddingHorizontal: theme.spacing[2],
+    paddingVertical: 3,
+    borderRadius: theme.borderRadius.full,
+    borderWidth: 1,
+  },
+  workspacePrBadgePressed: {
+    opacity: 0.82,
+  },
+  workspacePrBadgeText: {
+    fontSize: theme.fontSize.xs,
+    fontWeight: theme.fontWeight.medium,
+    lineHeight: 14,
   },
   workspaceCreatingText: {
     color: theme.colors.foregroundMuted,
