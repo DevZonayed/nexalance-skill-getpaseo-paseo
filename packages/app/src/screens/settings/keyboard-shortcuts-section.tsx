@@ -125,11 +125,6 @@ export function KeyboardShortcutsSection() {
       event.stopPropagation();
 
       const key = event.key ?? "";
-      if (key === "Escape") {
-        cancelCapture();
-        return;
-      }
-
       if (key === "Backspace") {
         setCapturedCombos((current) => (current.length > 0 ? current.slice(0, -1) : current));
         return;
@@ -147,7 +142,7 @@ export function KeyboardShortcutsSection() {
     return () => {
       window.removeEventListener("keydown", handleKeyDown, true);
     };
-  }, [cancelCapture, capturingBindingId]);
+  }, [capturingBindingId]);
 
   useEffect(() => {
     return () => {

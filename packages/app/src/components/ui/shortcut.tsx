@@ -35,11 +35,8 @@ export function Shortcut({
     <View style={[styles.sequence, style]}>
       {displayChord.map(function (combo, index) {
         return (
-          <View key={`${combo.join("+")}-${index}`} style={styles.sequenceItem}>
-            <View style={styles.badge}>
-              <Text style={[styles.text, textStyle]}>{formatShortcut(combo, shortcutOs)}</Text>
-            </View>
-            {index < displayChord.length - 1 ? <Text style={styles.separator}>→</Text> : null}
+          <View key={`${combo.join("+")}-${index}`} style={styles.badge}>
+            <Text style={[styles.text, textStyle]}>{formatShortcut(combo, shortcutOs)}</Text>
           </View>
         );
       })}
@@ -61,15 +58,6 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     flexWrap: "wrap",
     gap: theme.spacing[1],
-  },
-  sequenceItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing[1],
-  },
-  separator: {
-    fontSize: theme.fontSize.xs,
-    color: theme.colors.foregroundMuted,
   },
   text: {
     fontSize: theme.fontSize.xs,
