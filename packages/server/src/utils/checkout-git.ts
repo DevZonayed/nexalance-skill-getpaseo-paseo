@@ -1745,61 +1745,6 @@ async function resolveGitHubRepo(cwd: string): Promise<string | null> {
   return null;
 }
 
-async function listPullRequestsForHead(options: {
-  cwd: string;
-  repo: string;
-  owner: string;
-  head: string;
-  state: "open" | "closed";
-}): Promise<any[]> {
-  const { stdout } = await execFileAsync(
-    "gh",
-    [
-      "api",
-      `repos/${options.repo}/pulls`,
-      "-X",
-      "GET",
-      "-F",
-      `head=${options.owner}:${options.head}`,
-      "-F",
-      `state=${options.state}`,
-    ],
-    { cwd: options.cwd },
-  );
-  const parsed = JSON.parse(stdout.trim());
-  return Array.isArray(parsed) ? parsed : [];
-}
-
-function buildPullRequestStatus(current: any, fallbackHead: string): PullRequestStatus | null {
-  if (!current || typeof current !== "object") {
-    return null;
-  }
-  const url = current.html_url ?? current.url;
-  const title = current.title;
-  if (typeof url !== "string" || typeof title !== "string" || !url || !title) {
-    return null;
-  }
-
-  const mergedAt =
-    typeof current.merged_at === "string" && current.merged_at.trim().length > 0
-      ? current.merged_at
-      : null;
-  const state =
-    mergedAt !== null
-      ? "merged"
-      : typeof current.state === "string" && current.state.trim().length > 0
-        ? current.state
-        : "";
-
-  return {
-    url,
-    title,
-    state,
-    baseRefName: current.base?.ref ?? "",
-    headRefName: current.head?.ref ?? fallbackHead,
-    isMerged: mergedAt !== null,
-  };
-}
 
 export async function createPullRequest(
   cwd: string,
@@ -1844,9 +1789,8 @@ export async function createPullRequest(
 
 export async function getPullRequestStatus(cwd: string): Promise<PullRequestStatusResult> {
   await requireGitRepo(cwd);
-  const repo = await resolveGitHubRepo(cwd);
   const head = await getCurrentBranch(cwd);
-  if (!repo || !head) {
+  if (!head) {
     return {
       status: null,
       githubFeaturesEnabled: false,
@@ -1860,69 +1804,51 @@ export async function getPullRequestStatus(cwd: string): Promise<PullRequestStat
       githubFeaturesEnabled: false,
     };
   }
-  const owner = repo.split("/")[0];
-  let openPulls: any[];
   try {
-    openPulls = await listPullRequestsForHead({
-      cwd,
-      repo,
-      owner,
-      head,
-      state: "open",
-    });
+    const { stdout } = await execFileAsync(
+      "gh",
+      [
+        "pr",
+        "view",
+        "--json",
+        "url,title,state,baseRefName,headRefName,mergedAt",
+      ],
+      { cwd },
+    );
+    const pr = JSON.parse(stdout.trim());
+    if (!pr || typeof pr !== "object" || !pr.url || !pr.title) {
+      return { status: null, githubFeaturesEnabled: true };
+    }
+    const mergedAt =
+      typeof pr.mergedAt === "string" && pr.mergedAt.trim().length > 0
+        ? pr.mergedAt
+        : null;
+    const state =
+      mergedAt !== null
+        ? "merged"
+        : typeof pr.state === "string" && pr.state.trim().length > 0
+          ? pr.state.toLowerCase()
+          : "";
+    return {
+      status: {
+        url: pr.url,
+        title: pr.title,
+        state,
+        baseRefName: pr.baseRefName ?? "",
+        headRefName: pr.headRefName ?? head,
+        isMerged: mergedAt !== null,
+      },
+      githubFeaturesEnabled: true,
+    };
   } catch (error) {
     if (isGhAuthError(error)) {
-      return {
-        status: null,
-        githubFeaturesEnabled: false,
-      };
+      return { status: null, githubFeaturesEnabled: false };
+    }
+    // gh pr view exits non-zero when no PR exists for the branch
+    const message = error instanceof Error ? error.message : String(error);
+    if (message.includes("no pull requests found") || message.includes("Could not resolve")) {
+      return { status: null, githubFeaturesEnabled: true };
     }
     throw error;
   }
-  const openPull = openPulls[0] ?? null;
-  const openStatus = buildPullRequestStatus(openPull, head);
-  if (openStatus) {
-    return {
-      status: openStatus,
-      githubFeaturesEnabled: true,
-    };
-  }
-
-  let closedPulls: any[];
-  try {
-    closedPulls = await listPullRequestsForHead({
-      cwd,
-      repo,
-      owner,
-      head,
-      state: "closed",
-    });
-  } catch (error) {
-    if (isGhAuthError(error)) {
-      return {
-        status: null,
-        githubFeaturesEnabled: false,
-      };
-    }
-    throw error;
-  }
-  const mergedClosedPull =
-    closedPulls.find(
-      (entry) =>
-        entry &&
-        typeof entry === "object" &&
-        typeof entry.merged_at === "string" &&
-        entry.merged_at.trim().length > 0,
-    ) ?? null;
-  const mergedStatus = buildPullRequestStatus(mergedClosedPull, head);
-  if (!mergedStatus) {
-    return {
-      status: null,
-      githubFeaturesEnabled: true,
-    };
-  }
-  return {
-    status: mergedStatus,
-    githubFeaturesEnabled: true,
-  };
 }

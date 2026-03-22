@@ -104,6 +104,11 @@ const GITHUB_PR_STATE_COLORS: Record<PrHint["state"], string> = {
   merged: "#a371f7",
   closed: "#f85149",
 };
+const GITHUB_PR_STATE_COLORS_HOVER: Record<PrHint["state"], string> = {
+  open: "#56d364",
+  merged: "#bc8cff",
+  closed: "#ff7b72",
+};
 
 interface SidebarWorkspaceListProps {
   projects: SidebarProjectEntry[];
@@ -164,6 +169,9 @@ interface WorkspaceRowInnerProps {
 
 function WorkspacePrBadge({ hint }: { hint: PrHint }) {
   const color = GITHUB_PR_STATE_COLORS[hint.state];
+  const hoverColor = GITHUB_PR_STATE_COLORS_HOVER[hint.state];
+  const [isHovered, setIsHovered] = useState(false);
+  const activeColor = isHovered ? hoverColor : color;
 
   const handlePressIn = useCallback((event: GestureResponderEvent) => {
     event.stopPropagation();
@@ -184,17 +192,22 @@ function WorkspacePrBadge({ hint }: { hint: PrHint }) {
       hitSlop={4}
       onPressIn={handlePressIn}
       onPress={handlePress}
+      onPointerEnter={() => setIsHovered(true)}
+      onPointerLeave={() => setIsHovered(false)}
       style={({ pressed }) => [
         styles.workspacePrBadge,
-        {
-          borderColor: color,
-          backgroundColor: `${color}1a`,
-        },
         pressed && styles.workspacePrBadgePressed,
       ]}
     >
-      <GitPullRequest size={12} color={color} />
-      <Text style={[styles.workspacePrBadgeText, { color }]} numberOfLines={1}>
+      <GitPullRequest size={12} color={activeColor} />
+      <Text
+        style={[
+          styles.workspacePrBadgeText,
+          { color: activeColor },
+          isHovered && styles.workspacePrBadgeTextHovered,
+        ]}
+        numberOfLines={1}
+      >
         #{hint.number}
       </Text>
     </Pressable>
@@ -2160,10 +2173,6 @@ const styles = StyleSheet.create((theme) => ({
     flexDirection: "row",
     alignItems: "center",
     gap: theme.spacing[1],
-    paddingHorizontal: theme.spacing[2],
-    paddingVertical: 3,
-    borderRadius: theme.borderRadius.full,
-    borderWidth: 1,
   },
   workspacePrBadgePressed: {
     opacity: 0.82,
@@ -2172,6 +2181,9 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.xs,
     fontWeight: theme.fontWeight.medium,
     lineHeight: 14,
+  },
+  workspacePrBadgeTextHovered: {
+    textDecorationLine: "underline",
   },
   workspaceCreatingText: {
     color: theme.colors.foregroundMuted,
