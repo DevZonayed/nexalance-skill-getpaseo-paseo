@@ -1,5 +1,10 @@
+import { ClipboardAddon } from "@xterm/addon-clipboard";
 import { FitAddon } from "@xterm/addon-fit";
+import { ImageAddon } from "@xterm/addon-image";
+import { LigaturesAddon } from "@xterm/addon-ligatures";
+import { SearchAddon } from "@xterm/addon-search";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
+import { WebLinksAddon } from "@xterm/addon-web-links";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { Terminal, type ITheme } from "@xterm/xterm";
 import type { TerminalState } from "@server/shared/messages";
@@ -149,6 +154,9 @@ export class TerminalEmulatorRuntime {
       fontFamily: DEFAULT_TERMINAL_FONT_FAMILY,
       fontSize: 13,
       lineHeight: 1.0,
+      macOptionIsMeta: true,
+      minimumContrastRatio: 1,
+      rescaleOverlappingGlyphs: true,
       overviewRuler: {
         width: 8,
       },
@@ -160,6 +168,14 @@ export class TerminalEmulatorRuntime {
     let webglAddon: WebglAddon | null = null;
     terminal.loadAddon(fitAddon);
     terminal.loadAddon(unicode11Addon);
+    terminal.loadAddon(new WebLinksAddon());
+    terminal.loadAddon(new SearchAddon({ highlightLimit: 20_000 }));
+    terminal.loadAddon(new ClipboardAddon());
+    try {
+      terminal.loadAddon(new LigaturesAddon());
+    } catch {
+      // Ligatures require Font Access API or compatible environment
+    }
     terminal.open(input.host);
     try {
       terminal.unicode.activeVersion = "11";
@@ -193,6 +209,8 @@ export class TerminalEmulatorRuntime {
       }
     });
 
+    terminal.loadAddon(new ImageAddon());
+
     const restoreDocumentStyles = this.applyDocumentBoundsStyles({
       root: input.root,
     });
@@ -208,6 +226,10 @@ export class TerminalEmulatorRuntime {
       const currentTerminal = this.terminal;
       const currentFitAddon = this.fitAddon;
       if (!currentTerminal || !currentFitAddon) {
+        return;
+      }
+
+      if (input.root.offsetWidth === 0 || input.root.offsetHeight === 0) {
         return;
       }
 
@@ -657,7 +679,6 @@ export class TerminalEmulatorRuntime {
 
   private applyViewportTouchStyles(input: { host: HTMLDivElement }): () => void {
     const viewportElement = input.host.querySelector<HTMLElement>(".xterm-viewport");
-    const screenElement = input.host.querySelector<HTMLElement>(".xterm-screen");
 
     const previousViewportOverscroll = viewportElement?.style.overscrollBehavior ?? "";
     const previousViewportTouchAction = viewportElement?.style.touchAction ?? "";
@@ -666,8 +687,6 @@ export class TerminalEmulatorRuntime {
     const previousViewportPointerEvents = viewportElement?.style.pointerEvents ?? "";
     const previousViewportWebkitOverflowScrolling =
       viewportElement?.style.getPropertyValue("-webkit-overflow-scrolling") ?? "";
-    const previousScreenPointerEvents = screenElement?.style.pointerEvents ?? "";
-
     if (viewportElement) {
       viewportElement.style.overscrollBehavior = "none";
       viewportElement.style.touchAction = "pan-y";
@@ -675,9 +694,6 @@ export class TerminalEmulatorRuntime {
       viewportElement.style.overflowX = "hidden";
       viewportElement.style.pointerEvents = "auto";
       viewportElement.style.setProperty("-webkit-overflow-scrolling", "touch");
-    }
-    if (screenElement) {
-      screenElement.style.pointerEvents = "none";
     }
 
     return () => {
@@ -691,9 +707,6 @@ export class TerminalEmulatorRuntime {
           "-webkit-overflow-scrolling",
           previousViewportWebkitOverflowScrolling,
         );
-      }
-      if (screenElement) {
-        screenElement.style.pointerEvents = previousScreenPointerEvents;
       }
     };
   }

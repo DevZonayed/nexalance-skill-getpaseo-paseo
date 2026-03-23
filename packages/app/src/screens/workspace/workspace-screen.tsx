@@ -97,7 +97,9 @@ import { deriveWorkspacePaneState } from "@/screens/workspace/workspace-pane-sta
 import {
   buildWorkspacePaneContentModel,
   WorkspacePaneContent,
+  type WorkspacePaneContentModel,
 } from "@/screens/workspace/workspace-pane-content";
+import { useMountedTabSet } from "@/screens/workspace/use-mounted-tab-set";
 import {
   buildBulkCloseConfirmationMessage,
   classifyBulkClosableTabs,
@@ -437,6 +439,68 @@ const MobileWorkspaceTabSwitcher = memo(function MobileWorkspaceTabSwitcher({
     </View>
   );
 });
+
+interface MobileMountedTabSlotProps {
+  tabDescriptor: WorkspaceTabDescriptor;
+  isVisible: boolean;
+  isPaneFocused: boolean;
+  paneId: string | null;
+  buildPaneContentModel: (input: {
+    paneId: string | null;
+    isPaneFocused: boolean;
+    tab: WorkspaceTabDescriptor;
+  }) => WorkspacePaneContentModel;
+}
+
+const MobileMountedTabSlot = memo(function MobileMountedTabSlot({
+  tabDescriptor,
+  isVisible,
+  isPaneFocused,
+  paneId,
+  buildPaneContentModel,
+}: MobileMountedTabSlotProps) {
+  const content = useMemo(
+    () =>
+      buildPaneContentModel({
+        paneId,
+        isPaneFocused,
+        tab: tabDescriptor,
+      }),
+    [buildPaneContentModel, isPaneFocused, paneId, tabDescriptor],
+  );
+
+  return (
+    <View style={{ display: isVisible ? "flex" : "none", flex: 1 }}>
+      <WorkspacePaneContent content={content} />
+    </View>
+  );
+});
+
+function useStableTabDescriptorMap(tabDescriptors: WorkspaceTabDescriptor[]) {
+  const cacheRef = useRef(new Map<string, WorkspaceTabDescriptor>());
+  const tabDescriptorMap = useMemo(() => {
+    const next = new Map<string, WorkspaceTabDescriptor>();
+    for (const tabDescriptor of tabDescriptors) {
+      const cachedDescriptor = cacheRef.current.get(tabDescriptor.tabId);
+      if (
+        cachedDescriptor &&
+        cachedDescriptor.key === tabDescriptor.key &&
+        cachedDescriptor.kind === tabDescriptor.kind &&
+        workspaceTabTargetsEqual(cachedDescriptor.target, tabDescriptor.target)
+      ) {
+        next.set(tabDescriptor.tabId, cachedDescriptor);
+        continue;
+      }
+      next.set(tabDescriptor.tabId, tabDescriptor);
+    }
+    return next;
+  }, [tabDescriptors]);
+  useEffect(() => {
+    cacheRef.current = tabDescriptorMap;
+  }, [tabDescriptorMap]);
+
+  return tabDescriptorMap;
+}
 
 export function WorkspaceScreen({ serverId, workspaceId }: WorkspaceScreenProps) {
   const isFocused = useIsFocused();
@@ -1726,37 +1790,33 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
       retargetWorkspaceTab,
     };
   });
-  const activePaneContent = useMemo(
-    () =>
-      activeTabDescriptor
-        ? buildPaneContentModel({
-            tab: activeTabDescriptor,
-            paneId: focusedPaneTabState.pane?.id ?? null,
-            isPaneFocused: true,
-            focusPaneBeforeOpen: false,
-          })
-        : null,
-    [activeTabDescriptor, buildPaneContentModel, focusedPaneTabState.pane?.id],
+  const focusedPaneId = focusedPaneTabState.pane?.id ?? null;
+  const focusedPaneTabIds = useMemo(() => tabs.map((tab) => tab.tabId), [tabs]);
+  const focusedPaneTabDescriptorMap = useStableTabDescriptorMap(tabs);
+  const { mountedTabIds: mountedFocusedPaneTabIdsSet } = useMountedTabSet({
+    activeTabId: activeTabDescriptor?.tabId ?? null,
+    allTabIds: focusedPaneTabIds,
+    cap: 3,
+  });
+  const mountedFocusedPaneTabIds = useMemo(
+    () => focusedPaneTabIds.filter((tabId) => mountedFocusedPaneTabIdsSet.has(tabId)),
+    [focusedPaneTabIds, mountedFocusedPaneTabIdsSet],
   );
-  const prevActivePaneDeps = useRef({
-    activeTabDescriptor,
-    buildPaneContentModel,
-    paneId: focusedPaneTabState.pane?.id,
-  });
-  useEffect(() => {
-    const prev = prevActivePaneDeps.current;
-    if (prev.activeTabDescriptor !== activeTabDescriptor)
-      console.log("[activePaneContent] activeTabDescriptor changed");
-    if (prev.buildPaneContentModel !== buildPaneContentModel)
-      console.log("[activePaneContent] buildPaneContentModel changed");
-    if (prev.paneId !== focusedPaneTabState.pane?.id)
-      console.log("[activePaneContent] paneId changed");
-    prevActivePaneDeps.current = {
-      activeTabDescriptor,
-      buildPaneContentModel,
-      paneId: focusedPaneTabState.pane?.id,
-    };
-  });
+  const buildMobilePaneContentModel = useCallback(
+    function buildMobilePaneContentModel(input: {
+      paneId: string | null;
+      tab: WorkspaceTabDescriptor;
+      isPaneFocused: boolean;
+    }) {
+      return buildPaneContentModel({
+        tab: input.tab,
+        paneId: input.paneId,
+        isPaneFocused: input.isPaneFocused,
+        focusPaneBeforeOpen: false,
+      });
+    },
+    [buildPaneContentModel],
+  );
   const content = shouldRenderMissingWorkspaceDescriptor({
     workspace: workspaceDescriptor,
     hasHydratedWorkspaces,
@@ -1777,7 +1837,23 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
       </View>
     )
   ) : (
-    <WorkspacePaneContent content={activePaneContent!} />
+    mountedFocusedPaneTabIds.map((tabId) => {
+      const tabDescriptor = focusedPaneTabDescriptorMap.get(tabId);
+      if (!tabDescriptor) {
+        return null;
+      }
+
+      return (
+        <MobileMountedTabSlot
+          key={tabId}
+          tabDescriptor={tabDescriptor}
+          isVisible={tabId === activeTabDescriptor.tabId}
+          isPaneFocused={tabId === activeTabDescriptor.tabId}
+          paneId={focusedPaneId}
+          buildPaneContentModel={buildMobilePaneContentModel}
+        />
+      );
+    })
   );
 
   const buildDesktopPaneContentModel = useCallback(

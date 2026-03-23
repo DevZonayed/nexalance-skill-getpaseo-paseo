@@ -1,5 +1,6 @@
 import {
   Fragment,
+  memo,
   useCallback,
   useEffect,
   useMemo,
@@ -43,6 +44,7 @@ import {
   deriveWorkspacePaneState,
   getWorkspacePaneDescriptors,
 } from "@/screens/workspace/workspace-pane-state";
+import { useMountedTabSet } from "@/screens/workspace/use-mounted-tab-set";
 import {
   WorkspacePaneContent,
   type WorkspacePaneContentModel,
@@ -63,6 +65,7 @@ import {
   type WorkspaceLayout,
 } from "@/stores/workspace-layout-store";
 import type { WorkspaceTab } from "@/stores/workspace-tabs-store";
+import { workspaceTabTargetsEqual } from "@/utils/workspace-tab-identity";
 
 interface SplitContainerProps {
   layout: WorkspaceLayout;
@@ -148,6 +151,68 @@ interface SplitPaneViewProps
   showDropZones: boolean;
   dropPreview: SplitDropZoneHover | null;
   tabDropPreview: TabDropPreview | null;
+}
+
+interface MountedTabSlotProps {
+  tabDescriptor: WorkspaceTabDescriptor;
+  isVisible: boolean;
+  isPaneFocused: boolean;
+  paneId: string;
+  buildPaneContentModel: (input: {
+    paneId: string;
+    isPaneFocused: boolean;
+    tab: WorkspaceTabDescriptor;
+  }) => WorkspacePaneContentModel;
+}
+
+const MountedTabSlot = memo(function MountedTabSlot({
+  tabDescriptor,
+  isVisible,
+  isPaneFocused,
+  paneId,
+  buildPaneContentModel,
+}: MountedTabSlotProps) {
+  const content = useMemo(
+    () =>
+      buildPaneContentModel({
+        paneId,
+        isPaneFocused,
+        tab: tabDescriptor,
+      }),
+    [buildPaneContentModel, isPaneFocused, paneId, tabDescriptor],
+  );
+
+  return (
+    <View style={{ display: isVisible ? "flex" : "none", flex: 1 }}>
+      <WorkspacePaneContent content={content} />
+    </View>
+  );
+});
+
+function useStableTabDescriptorMap(tabDescriptors: WorkspaceTabDescriptor[]) {
+  const cacheRef = useRef(new Map<string, WorkspaceTabDescriptor>());
+  const tabDescriptorMap = useMemo(() => {
+    const next = new Map<string, WorkspaceTabDescriptor>();
+    for (const tabDescriptor of tabDescriptors) {
+      const cachedDescriptor = cacheRef.current.get(tabDescriptor.tabId);
+      if (
+        cachedDescriptor &&
+        cachedDescriptor.key === tabDescriptor.key &&
+        cachedDescriptor.kind === tabDescriptor.kind &&
+        workspaceTabTargetsEqual(cachedDescriptor.target, tabDescriptor.target)
+      ) {
+        next.set(tabDescriptor.tabId, cachedDescriptor);
+        continue;
+      }
+      next.set(tabDescriptor.tabId, tabDescriptor);
+    }
+    return next;
+  }, [tabDescriptors]);
+  useEffect(() => {
+    cacheRef.current = tabDescriptorMap;
+  }, [tabDescriptorMap]);
+
+  return tabDescriptorMap;
 }
 
 const dropCollisionDetection: CollisionDetection = (args) => {
@@ -725,7 +790,18 @@ function SplitPaneView({
     [pane, uiTabs],
   );
   const paneTabs = useMemo(() => paneState.tabs.map((tab) => tab.descriptor), [paneState.tabs]);
+  const paneTabIds = useMemo(() => paneTabs.map((tab) => tab.tabId), [paneTabs]);
+  const tabDescriptorMap = useStableTabDescriptorMap(paneTabs);
   const activeTabDescriptor = paneState.activeTab?.descriptor ?? null;
+  const { mountedTabIds } = useMountedTabSet({
+    activeTabId: activeTabDescriptor?.tabId ?? null,
+    allTabIds: paneTabIds,
+    cap: 3,
+  });
+  const mountedPaneTabIds = useMemo(
+    () => paneTabIds.filter((tabId) => mountedTabIds.has(tabId)),
+    [mountedTabIds, paneTabIds],
+  );
   const desktopTabRowItems = useMemo<WorkspaceDesktopTabRowItem[]>(
     () =>
       paneTabs.map((tab) => ({
@@ -735,17 +811,6 @@ function SplitPaneView({
         isClosingTab: closingTabIds.has(tab.tabId),
       })),
     [activeTabDescriptor?.key, closingTabIds, hoveredCloseTabKey, paneTabs],
-  );
-  const paneContent = useMemo(
-    () =>
-      activeTabDescriptor
-        ? buildPaneContentModel({
-            paneId: pane.id,
-            isPaneFocused: isFocused,
-            tab: activeTabDescriptor,
-          })
-        : null,
-    [activeTabDescriptor, buildPaneContentModel, isFocused, pane.id],
   );
 
   useEffect(() => {
@@ -823,8 +888,24 @@ function SplitPaneView({
       </View>
 
       <View style={styles.paneContent}>
-        {paneContent ? (
-          <WorkspacePaneContent content={paneContent} />
+        {mountedPaneTabIds.length > 0 ? (
+          mountedPaneTabIds.map((tabId) => {
+            const tabDescriptor = tabDescriptorMap.get(tabId);
+            if (!tabDescriptor) {
+              return null;
+            }
+
+            return (
+              <MountedTabSlot
+                key={tabId}
+                tabDescriptor={tabDescriptor}
+                isVisible={tabId === activeTabDescriptor?.tabId}
+                isPaneFocused={isFocused && tabId === activeTabDescriptor?.tabId}
+                paneId={pane.id}
+                buildPaneContentModel={buildPaneContentModel}
+              />
+            );
+          })
         ) : (
           (renderPaneEmptyState?.() ?? null)
         )}
