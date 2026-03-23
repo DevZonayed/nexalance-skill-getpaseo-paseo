@@ -2046,40 +2046,61 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
                       serverId={normalizedServerId}
                       cwd={normalizedWorkspaceId}
                     />
-                    <Pressable
-                      testID="workspace-explorer-toggle"
-                      onPress={handleToggleExplorer}
-                      accessibilityRole="button"
-                      accessibilityLabel={isExplorerOpen ? "Close explorer" : "Open explorer"}
-                      accessibilityState={{ expanded: isExplorerOpen }}
-                      style={({ hovered, pressed }) => [
-                        styles.sourceControlButton,
-                        workspaceDescriptor?.diffStat && styles.sourceControlButtonWithStats,
-                        (hovered || pressed || isExplorerOpen) && styles.sourceControlButtonHovered,
-                      ]}
-                    >
-                      {({ hovered, pressed }) => {
-                        const active = isExplorerOpen || hovered || pressed;
-                        const iconColor = active
-                          ? theme.colors.foreground
-                          : theme.colors.foregroundMuted;
-                        return (
-                          <>
-                            <SourceControlPanelIcon size={theme.iconSize.md} color={iconColor} />
-                            {workspaceDescriptor?.diffStat ? (
-                              <View style={styles.diffStatRow}>
-                                <Text style={styles.diffStatAdditions}>
-                                  +{workspaceDescriptor.diffStat.additions}
-                                </Text>
-                                <Text style={styles.diffStatDeletions}>
-                                  -{workspaceDescriptor.diffStat.deletions}
-                                </Text>
-                              </View>
-                            ) : null}
-                          </>
-                        );
-                      }}
-                    </Pressable>
+                    <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
+                      <TooltipTrigger asChild>
+                        <Pressable
+                          testID="workspace-explorer-toggle"
+                          onPress={handleToggleExplorer}
+                          accessibilityRole="button"
+                          accessibilityLabel={
+                            isExplorerOpen ? "Close explorer" : "Open explorer"
+                          }
+                          accessibilityState={{ expanded: isExplorerOpen }}
+                          style={({ hovered, pressed }) => [
+                            styles.sourceControlButton,
+                            workspaceDescriptor?.diffStat && styles.sourceControlButtonWithStats,
+                            (hovered || pressed || isExplorerOpen) &&
+                              styles.sourceControlButtonHovered,
+                          ]}
+                        >
+                          {({ hovered, pressed }) => {
+                            const active = isExplorerOpen || hovered || pressed;
+                            const iconColor = active
+                              ? theme.colors.foreground
+                              : theme.colors.foregroundMuted;
+                            return (
+                              <>
+                                <SourceControlPanelIcon
+                                  size={theme.iconSize.md}
+                                  color={iconColor}
+                                />
+                                {workspaceDescriptor?.diffStat ? (
+                                  <View style={styles.diffStatRow}>
+                                    <Text style={styles.diffStatAdditions}>
+                                      +{workspaceDescriptor.diffStat.additions}
+                                    </Text>
+                                    <Text style={styles.diffStatDeletions}>
+                                      -{workspaceDescriptor.diffStat.deletions}
+                                    </Text>
+                                  </View>
+                                ) : null}
+                              </>
+                            );
+                          }}
+                        </Pressable>
+                      </TooltipTrigger>
+                      <TooltipContent
+                        testID="workspace-explorer-toggle-tooltip"
+                        side="left"
+                        align="center"
+                        offset={8}
+                      >
+                        <View style={styles.explorerTooltipRow}>
+                          <Text style={styles.explorerTooltipText}>Toggle explorer</Text>
+                          <Shortcut keys={["mod", "E"]} style={styles.explorerTooltipShortcut} />
+                        </View>
+                      </TooltipContent>
+                    </Tooltip>
                   </>
                 ) : null}
                 {!isMobile && !isGitCheckout ? (
@@ -2344,6 +2365,19 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[2],
   },
   newTabTooltipShortcut: {
+    backgroundColor: theme.colors.surface3,
+    borderColor: theme.colors.borderAccent,
+  },
+  explorerTooltipRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[2],
+  },
+  explorerTooltipText: {
+    fontSize: theme.fontSize.sm,
+    color: theme.colors.popoverForeground,
+  },
+  explorerTooltipShortcut: {
     backgroundColor: theme.colors.surface3,
     borderColor: theme.colors.borderAccent,
   },
