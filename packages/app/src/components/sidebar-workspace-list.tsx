@@ -2230,12 +2230,12 @@ const styles = StyleSheet.create((theme) => ({
   diffStatAdditions: {
     fontSize: theme.fontSize.xs,
     fontWeight: theme.fontWeight.normal,
-    color: "#2d8a4e",
+    color: theme.colors.palette.green[400],
   },
   diffStatDeletions: {
     fontSize: theme.fontSize.xs,
     fontWeight: theme.fontWeight.normal,
-    color: "#c43a31",
+    color: theme.colors.palette.red[500],
   },
   kebabButton: {
     padding: 2,
