@@ -9,6 +9,7 @@ import {
   type ReactNode,
   type SetStateAction,
 } from "react";
+import { useStableEvent } from "@/hooks/use-stable-event";
 import {
   DndContext,
   DragOverlay,
@@ -714,6 +715,7 @@ function SplitPaneView({
 }: SplitPaneViewProps) {
   const { theme } = useUnistyles();
   const paneRef = useRef<View | null>(null);
+  const stableOnFocusPane = useStableEvent(onFocusPane);
   const paneState = useMemo(
     () =>
       deriveWorkspacePaneState({
@@ -743,7 +745,7 @@ function SplitPaneView({
             tab: activeTabDescriptor,
           })
         : null,
-    [activeTabDescriptor, buildPaneContentModel, pane.id],
+    [activeTabDescriptor, buildPaneContentModel, isFocused, pane.id],
   );
 
   useEffect(() => {
@@ -764,14 +766,14 @@ function SplitPaneView({
       if (!shouldFocusPaneFromEventTarget(event.target)) {
         return;
       }
-      onFocusPane(pane.id);
+      stableOnFocusPane(pane.id);
     };
 
     const handlePaneFocusIn = (event: FocusEvent) => {
       if (!shouldFocusPaneFromEventTarget(event.target)) {
         return;
       }
-      onFocusPane(pane.id);
+      stableOnFocusPane(pane.id);
     };
 
     paneElement.addEventListener("pointerdown", handlePanePointerDown, true);
@@ -781,7 +783,7 @@ function SplitPaneView({
       paneElement.removeEventListener("pointerdown", handlePanePointerDown, true);
       paneElement.removeEventListener("focusin", handlePaneFocusIn, true);
     };
-  }, [onFocusPane, pane.id]);
+  }, [stableOnFocusPane, pane.id]);
 
   return (
     <View ref={paneRef} collapsable={false} style={styles.pane}>

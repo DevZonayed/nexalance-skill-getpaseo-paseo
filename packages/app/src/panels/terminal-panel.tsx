@@ -49,7 +49,7 @@ function useTerminalPanelDescriptor(
 
 function TerminalPanel() {
   const isFocused = useIsFocused();
-  const { serverId, workspaceId, target } = usePaneContext();
+  const { serverId, workspaceId, target, isPaneFocused } = usePaneContext();
   invariant(target.kind === "terminal", "TerminalPanel requires terminal target");
 
   if (!isFocused) {
@@ -61,6 +61,7 @@ function TerminalPanel() {
       serverId={serverId}
       cwd={workspaceId}
       terminalId={target.terminalId}
+      isPaneFocused={isPaneFocused}
     />
   );
 }

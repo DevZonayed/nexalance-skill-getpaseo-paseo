@@ -74,6 +74,7 @@ import type { ListTerminalsResponse } from "@server/shared/messages";
 import { upsertTerminalListEntry } from "@/utils/terminal-list";
 import { confirmDialog } from "@/utils/confirm-dialog";
 import { useArchiveAgent } from "@/hooks/use-archive-agent";
+import { useStableEvent } from "@/hooks/use-stable-event";
 import { buildProviderCommand } from "@/utils/provider-command-templates";
 import { generateDraftId } from "@/stores/draft-keys";
 import {
@@ -740,6 +741,7 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
   const splitWorkspacePaneEmpty = useWorkspaceLayoutStore((state) => state.splitPaneEmpty);
   const moveWorkspaceTabToPane = useWorkspaceLayoutStore((state) => state.moveTabToPane);
   const focusWorkspacePane = useWorkspaceLayoutStore((state) => state.focusPane);
+  const paneFocusSuppressedRef = useRef(false);
   const resizeWorkspaceSplit = useWorkspaceLayoutStore((state) => state.resizeSplit);
   const reorderWorkspaceTabsInPane = useWorkspaceLayoutStore((state) => state.reorderTabsInPane);
   const pinnedAgentIds = useWorkspaceLayoutStore((state) =>
@@ -1556,7 +1558,11 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
           const activePaneTabId = focusedPaneTabState.activeTabId;
           const adjacentPaneId = findAdjacentPane(workspaceLayout.root, focusedPane.id, direction);
           if (activePaneTabId && adjacentPaneId) {
+            paneFocusSuppressedRef.current = true;
             moveWorkspaceTabToPane(persistenceKey, activePaneTabId, adjacentPaneId);
+            requestAnimationFrame(() => {
+              paneFocusSuppressedRef.current = false;
+            });
           }
         }
         return true;
@@ -1790,15 +1796,12 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
     [buildPaneContentModel],
   );
 
-  const handleFocusPane = useCallback(
-    function handleFocusPane(paneId: string) {
-      if (!persistenceKey) {
-        return;
-      }
-      focusWorkspacePane(persistenceKey, paneId);
-    },
-    [focusWorkspacePane, persistenceKey],
-  );
+  const handleFocusPane = useStableEvent(function handleFocusPane(paneId: string) {
+    if (!persistenceKey || paneFocusSuppressedRef.current) {
+      return;
+    }
+    focusWorkspacePane(persistenceKey, paneId);
+  });
 
   const handleSplitPane = useCallback(
     function handleSplitPane(input: {

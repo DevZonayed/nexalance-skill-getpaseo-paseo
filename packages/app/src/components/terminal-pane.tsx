@@ -24,6 +24,7 @@ interface TerminalPaneProps {
   serverId: string;
   cwd: string;
   terminalId: string;
+  isPaneFocused: boolean;
 }
 
 const TERMINAL_REFIT_DELAYS_MS = [0, 48, 144, 320];
@@ -82,6 +83,7 @@ export function TerminalPane({
   serverId,
   cwd,
   terminalId,
+  isPaneFocused,
 }: TerminalPaneProps) {
   const isScreenFocused = useIsFocused();
   const { theme } = useUnistyles();
@@ -127,7 +129,7 @@ export function TerminalPane({
   }, []);
 
   useEffect(() => {
-    if (isMobile || !isScreenFocused || !terminalId) {
+    if (isMobile || !isScreenFocused || !isPaneFocused || !terminalId) {
       lastAutoFocusKeyRef.current = null;
       return;
     }
@@ -139,7 +141,7 @@ export function TerminalPane({
 
     lastAutoFocusKeyRef.current = nextFocusKey;
     requestTerminalFocus();
-  }, [isMobile, isScreenFocused, requestTerminalFocus, scopeKey, terminalId]);
+  }, [isMobile, isPaneFocused, isScreenFocused, requestTerminalFocus, scopeKey, terminalId]);
 
   const clearKeyboardRefitTimeouts = useCallback(() => {
     if (keyboardRefitTimeoutsRef.current.length === 0) {

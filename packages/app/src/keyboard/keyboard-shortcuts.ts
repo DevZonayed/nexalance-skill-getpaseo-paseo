@@ -439,7 +439,7 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
     id: "workspace-pane-split-right-cmd-backslash",
     action: "workspace.pane.split.right",
     combo: "Cmd+\\",
-    when: { mac: true, terminal: false, commandCenter: false },
+    when: { mac: true, commandCenter: false },
     help: {
       id: "workspace-pane-split-right",
       section: "tabs-panes",
@@ -451,7 +451,7 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
     id: "workspace-pane-split-down-cmd-shift-backslash",
     action: "workspace.pane.split.down",
     combo: "Cmd+Shift+\\",
-    when: { mac: true, terminal: false, commandCenter: false },
+    when: { mac: true, commandCenter: false },
     help: {
       id: "workspace-pane-split-down",
       section: "tabs-panes",
@@ -463,7 +463,7 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
     id: "workspace-pane-focus-left-cmd-shift-left",
     action: "workspace.pane.focus.left",
     combo: "Cmd+Shift+ArrowLeft",
-    when: { mac: true, terminal: false, commandCenter: false },
+    when: { mac: true, commandCenter: false },
     help: {
       id: "workspace-pane-focus-left",
       section: "tabs-panes",
@@ -475,7 +475,7 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
     id: "workspace-pane-focus-right-cmd-shift-right",
     action: "workspace.pane.focus.right",
     combo: "Cmd+Shift+ArrowRight",
-    when: { mac: true, terminal: false, commandCenter: false },
+    when: { mac: true, commandCenter: false },
     help: {
       id: "workspace-pane-focus-right",
       section: "tabs-panes",
@@ -487,7 +487,7 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
     id: "workspace-pane-focus-up-cmd-shift-up",
     action: "workspace.pane.focus.up",
     combo: "Cmd+Shift+ArrowUp",
-    when: { mac: true, terminal: false, commandCenter: false },
+    when: { mac: true, commandCenter: false },
     help: {
       id: "workspace-pane-focus-up",
       section: "tabs-panes",
@@ -499,7 +499,7 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
     id: "workspace-pane-focus-down-cmd-shift-down",
     action: "workspace.pane.focus.down",
     combo: "Cmd+Shift+ArrowDown",
-    when: { mac: true, terminal: false, commandCenter: false },
+    when: { mac: true, commandCenter: false },
     help: {
       id: "workspace-pane-focus-down",
       section: "tabs-panes",
@@ -511,7 +511,7 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
     id: "workspace-pane-move-tab-left-cmd-shift-alt-left",
     action: "workspace.pane.move-tab.left",
     combo: "Cmd+Alt+Shift+ArrowLeft",
-    when: { mac: true, terminal: false, commandCenter: false },
+    when: { mac: true, commandCenter: false },
     help: {
       id: "workspace-pane-move-tab-left",
       section: "tabs-panes",
@@ -523,7 +523,7 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
     id: "workspace-pane-move-tab-right-cmd-shift-alt-right",
     action: "workspace.pane.move-tab.right",
     combo: "Cmd+Alt+Shift+ArrowRight",
-    when: { mac: true, terminal: false, commandCenter: false },
+    when: { mac: true, commandCenter: false },
     help: {
       id: "workspace-pane-move-tab-right",
       section: "tabs-panes",
@@ -535,7 +535,7 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
     id: "workspace-pane-move-tab-up-cmd-shift-alt-up",
     action: "workspace.pane.move-tab.up",
     combo: "Cmd+Alt+Shift+ArrowUp",
-    when: { mac: true, terminal: false, commandCenter: false },
+    when: { mac: true, commandCenter: false },
     help: {
       id: "workspace-pane-move-tab-up",
       section: "tabs-panes",
@@ -547,7 +547,7 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
     id: "workspace-pane-move-tab-down-cmd-shift-alt-down",
     action: "workspace.pane.move-tab.down",
     combo: "Cmd+Alt+Shift+ArrowDown",
-    when: { mac: true, terminal: false, commandCenter: false },
+    when: { mac: true, commandCenter: false },
     help: {
       id: "workspace-pane-move-tab-down",
       section: "tabs-panes",
@@ -559,7 +559,7 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
     id: "workspace-pane-close-cmd-shift-w",
     action: "workspace.pane.close",
     combo: "Cmd+Shift+W",
-    when: { mac: true, terminal: false, commandCenter: false },
+    when: { mac: true, commandCenter: false },
     help: {
       id: "workspace-pane-close",
       section: "tabs-panes",
