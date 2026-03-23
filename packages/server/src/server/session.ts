@@ -192,6 +192,7 @@ const WORKSPACE_GIT_WATCH_DEBOUNCE_MS = 500;
 const WORKSPACE_GIT_WATCH_REMOVED_FINGERPRINT = "__removed__";
 const TERMINAL_STREAM_HIGH_WATER_BYTES = 256 * 1024;
 const TERMINAL_STREAM_LOW_WATER_BYTES = 16 * 1024;
+const MAX_TERMINAL_STREAM_SLOTS = 256;
 
 function deriveInitialAgentTitle(prompt: string): string | null {
   const firstContentLine = prompt
@@ -277,6 +278,7 @@ type CheckoutErrorPayload = {
 
 type ActiveTerminalStream = {
   terminalId: string;
+  slot: number;
   unsubscribe: () => void;
   needsSnapshot: boolean;
   snapshotRetryTimer: ReturnType<typeof setTimeout> | null;
@@ -605,7 +607,9 @@ export class Session {
   private readonly subscribedTerminalDirectories = new Set<string>();
   private unsubscribeTerminalsChanged: (() => void) | null = null;
   private terminalExitSubscriptions: Map<string, () => void> = new Map();
-  private activeTerminalStream: ActiveTerminalStream | null = null;
+  private readonly activeTerminalStreams = new Map<number, ActiveTerminalStream>();
+  private readonly terminalIdToSlot = new Map<string, number>();
+  private nextTerminalSlot = 0;
   private readonly checkoutDiffSubscriptions = new Map<string, { targetKey: string }>();
   private readonly checkoutDiffTargets = new Map<string, CheckoutDiffWatchTarget>();
   private readonly workspaceGitWatchTargets = new Map<string, WorkspaceGitWatchTarget>();
@@ -749,7 +753,7 @@ export class Session {
       checkoutDiffWatcherCount,
       checkoutDiffFallbackRefreshTargetCount,
       terminalDirectorySubscriptionCount: this.subscribedTerminalDirectories.size,
-      terminalSubscriptionCount: this.activeTerminalStream ? 1 : 0,
+      terminalSubscriptionCount: this.activeTerminalStreams.size,
     };
   }
 
@@ -1750,7 +1754,6 @@ export class Session {
         case "kill_terminal_request":
           await this.handleKillTerminalRequest(msg);
           break;
-
       }
     } catch (error: any) {
       const err = error instanceof Error ? error : new Error(String(error));
@@ -1786,13 +1789,13 @@ export class Session {
   }
 
   public handleBinaryFrame(frame: TerminalStreamFrame): void {
-    const activeStream = this.activeTerminalStream;
+    const activeStream = this.activeTerminalStreams.get(frame.slot);
     if (!activeStream || !this.terminalManager) {
       return;
     }
     const terminal = this.terminalManager.getTerminal(activeStream.terminalId);
     if (!terminal) {
-      this.detachActiveTerminalStream({ emitExit: true });
+      this.detachTerminalStream(activeStream.terminalId, { emitExit: true });
       return;
     }
 
@@ -1990,10 +1993,7 @@ export class Session {
       try {
         await this.agentManager.closeAgent(agentId);
       } catch (error) {
-        this.sessionLogger.warn(
-          { err: error, agentId },
-          "Failed to close agent during archive",
-        );
+        this.sessionLogger.warn({ err: error, agentId }, "Failed to close agent during archive");
       }
     }
 
@@ -7474,7 +7474,7 @@ export class Session {
       unsubscribeExit();
     }
     this.terminalExitSubscriptions.clear();
-    this.detachActiveTerminalStream({ emitExit: false });
+    this.disposeTerminalSubscriptions();
 
     for (const target of this.checkoutDiffTargets.values()) {
       this.closeCheckoutDiffWatchTarget(target);
@@ -7510,9 +7510,7 @@ export class Session {
       this.terminalExitSubscriptions.delete(terminalId);
     }
 
-    if (this.activeTerminalStream?.terminalId === terminalId) {
-      this.detachActiveTerminalStream({ emitExit: true });
-    }
+    this.detachTerminalStream(terminalId, { emitExit: true });
   }
 
   private emitTerminalsChangedSnapshot(input: {
@@ -7684,22 +7682,39 @@ export class Session {
     }
     this.ensureTerminalExitSubscription(session);
 
+    const slot = this.bindActiveTerminalStream(session);
+    if (slot === null) {
+      this.sessionLogger.warn(
+        {
+          terminalId: msg.terminalId,
+          activeTerminalStreamCount: this.activeTerminalStreams.size,
+        },
+        "Terminal stream slot exhaustion",
+      );
+      this.emit({
+        type: "subscribe_terminal_response",
+        payload: {
+          terminalId: msg.terminalId,
+          error: "No terminal stream slots available",
+          requestId: msg.requestId,
+        },
+      });
+      return;
+    }
+
     this.emit({
       type: "subscribe_terminal_response",
       payload: {
         terminalId: msg.terminalId,
+        slot,
         error: null,
         requestId: msg.requestId,
       },
     });
-
-    this.bindActiveTerminalStream(session);
   }
 
   private handleUnsubscribeTerminalRequest(msg: UnsubscribeTerminalRequest): void {
-    if (this.activeTerminalStream?.terminalId === msg.terminalId) {
-      this.detachActiveTerminalStream({ emitExit: false });
-    }
+    this.detachTerminalStream(msg.terminalId, { emitExit: false });
   }
 
   private handleTerminalInput(msg: TerminalInput): void {
@@ -7718,10 +7733,7 @@ export class Session {
   }
 
   private killTrackedTerminal(terminalId: string, options?: { emitExit: boolean }): void {
-    if (this.activeTerminalStream?.terminalId === terminalId) {
-      this.detachActiveTerminalStream({ emitExit: options?.emitExit ?? true });
-    }
-
+    this.detachTerminalStream(terminalId, { emitExit: options?.emitExit ?? true });
     this.terminalManager?.killTerminal(terminalId);
   }
 
@@ -7782,82 +7794,137 @@ export class Session {
     });
   }
 
-  private bindActiveTerminalStream(terminal: TerminalSession): ActiveTerminalStream | null {
-    this.detachActiveTerminalStream({ emitExit: false });
+  private bindActiveTerminalStream(terminal: TerminalSession): number | null {
     if (!this.onBinaryMessage) {
+      return null;
+    }
+
+    const existingSlot = this.terminalIdToSlot.get(terminal.id);
+    if (typeof existingSlot === "number") {
+      const existingStream = this.activeTerminalStreams.get(existingSlot);
+      if (existingStream) {
+        existingStream.needsSnapshot = true;
+        this.trySendTerminalSnapshot(existingStream);
+        return existingSlot;
+      }
+      this.terminalIdToSlot.delete(terminal.id);
+    }
+
+    const slot = this.allocateTerminalSlot();
+    if (slot === null) {
       return null;
     }
 
     const activeStream: ActiveTerminalStream = {
       terminalId: terminal.id,
+      slot,
       unsubscribe: () => {},
       needsSnapshot: true,
       snapshotRetryTimer: null,
     };
 
-    const trySendSnapshot = () => {
-      if (this.activeTerminalStream !== activeStream || !activeStream.needsSnapshot) {
-        return;
-      }
-      if (this.getCurrentBinaryBufferedAmount() > TERMINAL_STREAM_LOW_WATER_BYTES) {
-        if (!activeStream.snapshotRetryTimer) {
-          activeStream.snapshotRetryTimer = setTimeout(() => {
-            activeStream.snapshotRetryTimer = null;
-            trySendSnapshot();
-          }, 33);
-        }
-        return;
-      }
-      if (activeStream.snapshotRetryTimer) {
-        clearTimeout(activeStream.snapshotRetryTimer);
-        activeStream.snapshotRetryTimer = null;
-      }
-      activeStream.needsSnapshot = false;
-      this.emitBinary(
-        encodeTerminalStreamFrame({
-          opcode: TerminalStreamOpcode.Snapshot,
-          payload: encodeTerminalSnapshotPayload(terminal.getState()),
-        }),
-      );
-    };
+    this.activeTerminalStreams.set(slot, activeStream);
+    this.terminalIdToSlot.set(terminal.id, slot);
 
     activeStream.unsubscribe = terminal.subscribe((message) => {
-      if (this.activeTerminalStream !== activeStream) {
+      if (this.activeTerminalStreams.get(slot) !== activeStream) {
         return;
       }
       if (message.type === "snapshot") {
-        trySendSnapshot();
+        this.trySendTerminalSnapshot(activeStream);
         return;
       }
       if (activeStream.needsSnapshot || message.data.length === 0) {
         return;
       }
       if (this.getCurrentBinaryBufferedAmount() >= TERMINAL_STREAM_HIGH_WATER_BYTES) {
-        activeStream.needsSnapshot = true;
-        trySendSnapshot();
+        this.markAllActiveTerminalStreamsForSnapshot();
         return;
       }
       this.emitBinary(
         encodeTerminalStreamFrame({
           opcode: TerminalStreamOpcode.Output,
+          slot,
           payload: new Uint8Array(Buffer.from(message.data, "utf8")),
         }),
       );
       if (this.getCurrentBinaryBufferedAmount() >= TERMINAL_STREAM_HIGH_WATER_BYTES) {
-        activeStream.needsSnapshot = true;
-        trySendSnapshot();
+        this.markAllActiveTerminalStreamsForSnapshot();
       }
     });
-    this.activeTerminalStream = activeStream;
-    return activeStream;
+    return slot;
   }
 
-  private detachActiveTerminalStream(options?: { emitExit: boolean }): boolean {
-    const activeStream = this.activeTerminalStream;
-    if (!activeStream) {
+  private trySendTerminalSnapshot(activeStream: ActiveTerminalStream): void {
+    if (
+      this.activeTerminalStreams.get(activeStream.slot) !== activeStream ||
+      !activeStream.needsSnapshot
+    ) {
+      return;
+    }
+
+    if (this.getCurrentBinaryBufferedAmount() > TERMINAL_STREAM_LOW_WATER_BYTES) {
+      if (!activeStream.snapshotRetryTimer) {
+        activeStream.snapshotRetryTimer = setTimeout(() => {
+          activeStream.snapshotRetryTimer = null;
+          this.trySendTerminalSnapshot(activeStream);
+        }, 33);
+      }
+      return;
+    }
+
+    if (activeStream.snapshotRetryTimer) {
+      clearTimeout(activeStream.snapshotRetryTimer);
+      activeStream.snapshotRetryTimer = null;
+    }
+
+    const terminal = this.terminalManager?.getTerminal(activeStream.terminalId);
+    if (!terminal) {
+      this.detachTerminalStream(activeStream.terminalId, { emitExit: true });
+      return;
+    }
+
+    activeStream.needsSnapshot = false;
+    this.emitBinary(
+      encodeTerminalStreamFrame({
+        opcode: TerminalStreamOpcode.Snapshot,
+        slot: activeStream.slot,
+        payload: encodeTerminalSnapshotPayload(terminal.getState()),
+      }),
+    );
+  }
+
+  private markAllActiveTerminalStreamsForSnapshot(): void {
+    for (const activeStream of this.activeTerminalStreams.values()) {
+      activeStream.needsSnapshot = true;
+      this.trySendTerminalSnapshot(activeStream);
+    }
+  }
+
+  private allocateTerminalSlot(): number | null {
+    for (let attempt = 0; attempt < MAX_TERMINAL_STREAM_SLOTS; attempt += 1) {
+      const slot = (this.nextTerminalSlot + attempt) % MAX_TERMINAL_STREAM_SLOTS;
+      if (this.activeTerminalStreams.has(slot)) {
+        continue;
+      }
+      this.nextTerminalSlot = (slot + 1) % MAX_TERMINAL_STREAM_SLOTS;
+      return slot;
+    }
+    return null;
+  }
+
+  private detachTerminalStream(terminalId: string, options?: { emitExit: boolean }): boolean {
+    const slot = this.terminalIdToSlot.get(terminalId);
+    if (typeof slot !== "number") {
       return false;
     }
-    this.activeTerminalStream = null;
+    const activeStream = this.activeTerminalStreams.get(slot);
+    if (!activeStream) {
+      this.terminalIdToSlot.delete(terminalId);
+      return false;
+    }
+    this.activeTerminalStreams.delete(slot);
+    this.terminalIdToSlot.delete(terminalId);
     if (activeStream.snapshotRetryTimer) {
       clearTimeout(activeStream.snapshotRetryTimer);
       activeStream.snapshotRetryTimer = null;
@@ -7876,6 +7943,12 @@ export class Session {
       });
     }
     return true;
+  }
+
+  private disposeTerminalSubscriptions(): void {
+    for (const terminalId of [...this.terminalIdToSlot.keys()]) {
+      this.detachTerminalStream(terminalId, { emitExit: false });
+    }
   }
 
   private getCurrentBinaryBufferedAmount(): number {

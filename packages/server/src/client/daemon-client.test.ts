@@ -1257,6 +1257,7 @@ describe("DaemonClient", () => {
         type: "subscribe_terminal_response",
         payload: {
           terminalId: "term-1",
+          slot: 11,
           error: null,
           requestId: "sub-1",
         },
@@ -1267,6 +1268,7 @@ describe("DaemonClient", () => {
     mock.triggerMessage(
       encodeTerminalStreamFrame({
         opcode: TerminalStreamOpcode.Output,
+        slot: 11,
         payload: new TextEncoder().encode("hello"),
       }),
     );
@@ -1276,7 +1278,7 @@ describe("DaemonClient", () => {
     unsubscribe();
   });
 
-  test("emits snapshot events for the active terminal stream", async () => {
+  test("emits snapshot events for the subscribed terminal stream", async () => {
     const logger = createMockLogger();
     const mock = createMockTransport();
 
@@ -1307,6 +1309,7 @@ describe("DaemonClient", () => {
         type: "subscribe_terminal_response",
         payload: {
           terminalId: "term-1",
+          slot: 12,
           error: null,
           requestId: "sub-2",
         },
@@ -1324,6 +1327,7 @@ describe("DaemonClient", () => {
     mock.triggerMessage(
       encodeTerminalStreamFrame({
         opcode: TerminalStreamOpcode.Snapshot,
+        slot: 12,
         payload: encodeTerminalSnapshotPayload(state),
       }),
     );
@@ -1331,7 +1335,7 @@ describe("DaemonClient", () => {
     expect(snapshots).toEqual([state]);
   });
 
-  test("sends input and resize frames for the active terminal", async () => {
+  test("sends input and resize frames for the subscribed terminal slot", async () => {
     const logger = createMockLogger();
     const mock = createMockTransport();
 
@@ -1354,6 +1358,7 @@ describe("DaemonClient", () => {
         type: "subscribe_terminal_response",
         payload: {
           terminalId: "term-1",
+          slot: 13,
           error: null,
           requestId: "sub-3",
         },
@@ -1376,12 +1381,103 @@ describe("DaemonClient", () => {
     const resizeFrame = decodeTerminalStreamFrame(asUint8Array(mock.sent[1])!);
 
     expect(inputFrame?.opcode).toBe(TerminalStreamOpcode.Input);
+    expect(inputFrame?.slot).toBe(13);
     expect(new TextDecoder().decode(inputFrame?.payload ?? new Uint8Array())).toBe("echo hello\r");
     expect(resizeFrame?.opcode).toBe(TerminalStreamOpcode.Resize);
+    expect(resizeFrame?.slot).toBe(13);
     expect(decodeTerminalResizePayload(resizeFrame?.payload ?? new Uint8Array())).toEqual({
       rows: 24,
       cols: 80,
     });
+  });
+
+  test("routes concurrent terminal stream frames by slot", async () => {
+    const logger = createMockLogger();
+    const mock = createMockTransport();
+
+    const client = new DaemonClient({
+      url: "ws://test",
+      clientId: "clsk_unit_test",
+      logger,
+      reconnect: { enabled: false },
+      transportFactory: () => mock.transport,
+    });
+    clients.push(client);
+
+    const connectPromise = client.connect();
+    mock.triggerOpen();
+    await connectPromise;
+
+    const seen: string[] = [];
+    client.onTerminalStreamEvent((event) => {
+      if (event.type !== "output") {
+        return;
+      }
+      seen.push(`${event.terminalId}:${new TextDecoder().decode(event.data)}`);
+    });
+
+    const subscribeFirstPromise = client.subscribeTerminal("term-1", "sub-multi-1");
+    mock.triggerMessage(
+      wrapSessionMessage({
+        type: "subscribe_terminal_response",
+        payload: {
+          terminalId: "term-1",
+          slot: 21,
+          error: null,
+          requestId: "sub-multi-1",
+        },
+      }),
+    );
+    await subscribeFirstPromise;
+
+    const subscribeSecondPromise = client.subscribeTerminal("term-2", "sub-multi-2");
+    mock.triggerMessage(
+      wrapSessionMessage({
+        type: "subscribe_terminal_response",
+        payload: {
+          terminalId: "term-2",
+          slot: 22,
+          error: null,
+          requestId: "sub-multi-2",
+        },
+      }),
+    );
+    await subscribeSecondPromise;
+    mock.sent.length = 0;
+
+    mock.triggerMessage(
+      encodeTerminalStreamFrame({
+        opcode: TerminalStreamOpcode.Output,
+        slot: 22,
+        payload: new TextEncoder().encode("beta"),
+      }),
+    );
+    mock.triggerMessage(
+      encodeTerminalStreamFrame({
+        opcode: TerminalStreamOpcode.Output,
+        slot: 21,
+        payload: new TextEncoder().encode("alpha"),
+      }),
+    );
+
+    client.sendTerminalInput("term-2", {
+      type: "input",
+      data: "echo beta\r",
+    });
+    client.sendTerminalInput("term-1", {
+      type: "resize",
+      rows: 10,
+      cols: 20,
+    });
+
+    const inputFrame = decodeTerminalStreamFrame(asUint8Array(mock.sent[0])!);
+    const resizeFrame = decodeTerminalStreamFrame(asUint8Array(mock.sent[1])!);
+
+    expect(seen).toEqual(["term-2:beta", "term-1:alpha"]);
+    expect(inputFrame?.opcode).toBe(TerminalStreamOpcode.Input);
+    expect(inputFrame?.slot).toBe(22);
+    expect(resizeFrame?.opcode).toBe(TerminalStreamOpcode.Resize);
+    expect(resizeFrame?.slot).toBe(21);
   });
 
   test("ignores terminal stream frames after terminal_stream_exit", async () => {
@@ -1415,6 +1511,7 @@ describe("DaemonClient", () => {
         type: "subscribe_terminal_response",
         payload: {
           terminalId: "term-1",
+          slot: 14,
           error: null,
           requestId: "sub-4",
         },
@@ -1425,6 +1522,7 @@ describe("DaemonClient", () => {
     mock.triggerMessage(
       encodeTerminalStreamFrame({
         opcode: TerminalStreamOpcode.Output,
+        slot: 14,
         payload: new TextEncoder().encode("before-exit"),
       }),
     );
@@ -1442,6 +1540,7 @@ describe("DaemonClient", () => {
     mock.triggerMessage(
       encodeTerminalStreamFrame({
         opcode: TerminalStreamOpcode.Output,
+        slot: 14,
         payload: new TextEncoder().encode("after-exit"),
       }),
     );

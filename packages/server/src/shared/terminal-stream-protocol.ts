@@ -1,10 +1,12 @@
 import { z } from "zod";
 import { TerminalStateSchema } from "./messages.js";
 
-export const TerminalStreamResizeSchema = z.object({
-  rows: z.number().int().positive(),
-  cols: z.number().int().positive(),
-}).strict();
+export const TerminalStreamResizeSchema = z
+  .object({
+    rows: z.number().int().positive(),
+    cols: z.number().int().positive(),
+  })
+  .strict();
 
 export const TerminalStreamOpcode = {
   Output: 0x01,
@@ -13,11 +15,11 @@ export const TerminalStreamOpcode = {
   Snapshot: 0x04,
 } as const;
 
-export type TerminalStreamOpcode =
-  (typeof TerminalStreamOpcode)[keyof typeof TerminalStreamOpcode];
+export type TerminalStreamOpcode = (typeof TerminalStreamOpcode)[keyof typeof TerminalStreamOpcode];
 
 export type TerminalStreamFrame = {
   opcode: TerminalStreamOpcode;
+  slot: number;
   payload: Uint8Array;
 };
 
@@ -61,17 +63,19 @@ function isTerminalStreamOpcode(value: number): value is TerminalStreamOpcode {
 
 export function encodeTerminalStreamFrame(input: {
   opcode: TerminalStreamOpcode;
+  slot: number;
   payload?: Uint8Array | ArrayBuffer | string;
 }): Uint8Array {
   const payload = asUint8Array(input.payload ?? new Uint8Array(0)) ?? new Uint8Array(0);
-  const bytes = new Uint8Array(1 + payload.byteLength);
+  const bytes = new Uint8Array(2 + payload.byteLength);
   bytes[0] = input.opcode;
-  bytes.set(payload, 1);
+  bytes[1] = input.slot & 0xff;
+  bytes.set(payload, 2);
   return bytes;
 }
 
 export function decodeTerminalStreamFrame(bytes: Uint8Array): TerminalStreamFrame | null {
-  if (bytes.byteLength < 1) {
+  if (bytes.byteLength < 2) {
     return null;
   }
   const opcode = bytes[0];
@@ -80,11 +84,14 @@ export function decodeTerminalStreamFrame(bytes: Uint8Array): TerminalStreamFram
   }
   return {
     opcode,
-    payload: bytes.subarray(1),
+    slot: bytes[1],
+    payload: bytes.subarray(2),
   };
 }
 
-export function encodeTerminalSnapshotPayload(state: z.infer<typeof TerminalStateSchema>): Uint8Array {
+export function encodeTerminalSnapshotPayload(
+  state: z.infer<typeof TerminalStateSchema>,
+): Uint8Array {
   return encodeJsonPayload(state);
 }
 

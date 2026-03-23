@@ -12,6 +12,7 @@ import {
 import {
   decodeTerminalSnapshotPayload,
   decodeTerminalStreamFrame,
+  encodeTerminalStreamFrame,
   TerminalStreamOpcode,
   type TerminalStreamFrame,
 } from "../../shared/terminal-stream-protocol.js";
@@ -375,7 +376,11 @@ function getFrameText(frame: TerminalStreamFrame): string {
   return "";
 }
 
-async function subscribeRawTerminal(ws: WebSocket, terminalId: string, requestId: string): Promise<void> {
+async function subscribeRawTerminal(
+  ws: WebSocket,
+  terminalId: string,
+  requestId: string,
+): Promise<number> {
   const ready = waitForRawSessionMessage(
     ws,
     (message) =>
@@ -399,7 +404,13 @@ async function subscribeRawTerminal(ws: WebSocket, terminalId: string, requestId
   if (message.message.type !== "subscribe_terminal_response") {
     throw new Error("Expected subscribe_terminal_response");
   }
+  if (message.message.payload.error !== null) {
+    throw new Error(
+      `Expected successful subscribe_terminal_response: ${message.message.payload.error}`,
+    );
+  }
   expect(message.message.payload).not.toHaveProperty("state");
+  return message.message.payload.slot;
 }
 
 describe("daemon E2E terminal", () => {
@@ -435,10 +446,8 @@ describe("daemon E2E terminal", () => {
     });
     await new Promise((resolve) => setTimeout(resolve, 300));
 
-    const snapshotPromise = waitForTerminalSnapshot(
-      ctx.client,
-      terminalId,
-      (state) => extractStateText(state).includes("hello"),
+    const snapshotPromise = waitForTerminalSnapshot(ctx.client, terminalId, (state) =>
+      extractStateText(state).includes("hello"),
     );
     await ctx.client.subscribeTerminal(terminalId);
     const snapshot = await snapshotPromise;
@@ -453,10 +462,8 @@ describe("daemon E2E terminal", () => {
     const created = await ctx.client.createTerminal(cwd);
     const terminalId = created.terminal!.id;
 
-    const outputPromise = waitForTerminalOutput(
-      ctx.client,
-      terminalId,
-      (text) => text.includes("binary-stream"),
+    const outputPromise = waitForTerminalOutput(ctx.client, terminalId, (text) =>
+      text.includes("binary-stream"),
     );
     await ctx.client.subscribeTerminal(terminalId);
     ctx.client.sendTerminalInput(terminalId, {
@@ -465,6 +472,42 @@ describe("daemon E2E terminal", () => {
     });
 
     expect(await outputPromise).toContain("binary-stream");
+
+    rmSync(cwd, { recursive: true, force: true });
+  }, 30000);
+
+  test("one client can stream two terminals concurrently", async () => {
+    const cwd = tmpCwd();
+    const firstCreated = await ctx.client.createTerminal(cwd, "first");
+    const secondCreated = await ctx.client.createTerminal(cwd, "second");
+    const firstTerminalId = firstCreated.terminal!.id;
+    const secondTerminalId = secondCreated.terminal!.id;
+
+    const firstSubscribe = await ctx.client.subscribeTerminal(firstTerminalId);
+    const secondSubscribe = await ctx.client.subscribeTerminal(secondTerminalId);
+
+    expect(firstSubscribe.error).toBeNull();
+    expect(secondSubscribe.error).toBeNull();
+    expect(firstSubscribe.slot).not.toBe(secondSubscribe.slot);
+
+    const firstOutput = waitForTerminalOutput(ctx.client, firstTerminalId, (text) =>
+      text.includes("from-first"),
+    );
+    const secondOutput = waitForTerminalOutput(ctx.client, secondTerminalId, (text) =>
+      text.includes("from-second"),
+    );
+
+    ctx.client.sendTerminalInput(firstTerminalId, {
+      type: "input",
+      data: "echo from-first\r",
+    });
+    ctx.client.sendTerminalInput(secondTerminalId, {
+      type: "input",
+      data: "echo from-second\r",
+    });
+
+    expect(await firstOutput).toContain("from-first");
+    expect(await secondOutput).toContain("from-second");
 
     rmSync(cwd, { recursive: true, force: true });
   }, 30000);
@@ -483,10 +526,8 @@ describe("daemon E2E terminal", () => {
     });
     await new Promise((resolve) => setTimeout(resolve, 300));
 
-    const snapshotPromise = waitForTerminalSnapshot(
-      ctx.client,
-      terminalId,
-      (state) => extractStateText(state).includes("while-detached"),
+    const snapshotPromise = waitForTerminalSnapshot(ctx.client, terminalId, (state) =>
+      extractStateText(state).includes("while-detached"),
     );
     await ctx.client.subscribeTerminal(terminalId);
 
@@ -502,9 +543,14 @@ describe("daemon E2E terminal", () => {
     const ws = await connectRawWebSocket(ctx.daemon.port);
 
     await subscribeRawTerminal(ws, terminalId, "sub-raw");
-    await waitForRawBinaryFrame(ws, (frame) => frame.opcode === TerminalStreamOpcode.Snapshot, 10000);
+    await waitForRawBinaryFrame(
+      ws,
+      (frame) => frame.opcode === TerminalStreamOpcode.Snapshot,
+      10000,
+    );
 
-    const rawSocket = (ws as WebSocket & { _socket?: { pause: () => void; resume: () => void } })._socket;
+    const rawSocket = (ws as WebSocket & { _socket?: { pause: () => void; resume: () => void } })
+      ._socket;
     expect(rawSocket).toBeDefined();
 
     rawSocket!.pause();
@@ -537,15 +583,11 @@ describe("daemon E2E terminal", () => {
     );
 
     try {
-      const firstOutput = waitForTerminalOutput(
-        ctx.client,
-        terminalId,
-        (text) => text.includes("fanout"),
+      const firstOutput = waitForTerminalOutput(ctx.client, terminalId, (text) =>
+        text.includes("fanout"),
       );
-      const secondOutput = waitForTerminalOutput(
-        secondClient,
-        terminalId,
-        (text) => text.includes("fanout"),
+      const secondOutput = waitForTerminalOutput(secondClient, terminalId, (text) =>
+        text.includes("fanout"),
       );
 
       await ctx.client.subscribeTerminal(terminalId);
@@ -689,15 +731,11 @@ describe("daemon E2E terminal", () => {
       await ctx.client.subscribeTerminal(terminalId);
       await secondClient.subscribeTerminal(terminalId);
 
-      const firstOwnOutput = waitForTerminalOutput(
-        ctx.client,
-        terminalId,
-        (text) => text.includes("from-a"),
+      const firstOwnOutput = waitForTerminalOutput(ctx.client, terminalId, (text) =>
+        text.includes("from-a"),
       );
-      const secondOwnOutput = waitForTerminalOutput(
-        secondClient,
-        terminalId,
-        (text) => text.includes("from-b"),
+      const secondOwnOutput = waitForTerminalOutput(secondClient, terminalId, (text) =>
+        text.includes("from-b"),
       );
 
       ctx.client.sendTerminalInput(terminalId, {
@@ -764,7 +802,11 @@ describe("daemon E2E terminal", () => {
 
     try {
       await subscribeRawTerminal(ws, terminalId, "sub-exit");
-      await waitForRawBinaryFrame(ws, (frame) => frame.opcode === TerminalStreamOpcode.Snapshot, 10000);
+      await waitForRawBinaryFrame(
+        ws,
+        (frame) => frame.opcode === TerminalStreamOpcode.Snapshot,
+        10000,
+      );
 
       const exitMessagePromise = waitForRawSessionMessage(
         ws,
@@ -794,10 +836,19 @@ describe("daemon E2E terminal", () => {
     const ws = await connectRawWebSocket(ctx.daemon.port);
 
     try {
-      await subscribeRawTerminal(ws, terminalId, "sub-empty-input");
-      await waitForRawBinaryFrame(ws, (frame) => frame.opcode === TerminalStreamOpcode.Snapshot, 10000);
+      const slot = await subscribeRawTerminal(ws, terminalId, "sub-empty-input");
+      await waitForRawBinaryFrame(
+        ws,
+        (frame) => frame.opcode === TerminalStreamOpcode.Snapshot,
+        10000,
+      );
 
-      ws.send(new Uint8Array([TerminalStreamOpcode.Input]));
+      ws.send(
+        encodeTerminalStreamFrame({
+          opcode: TerminalStreamOpcode.Input,
+          slot,
+        }),
+      );
       await new Promise((resolve) => setTimeout(resolve, 200));
       expect(ws.readyState).toBe(WebSocket.OPEN);
 
@@ -825,7 +876,11 @@ describe("daemon E2E terminal", () => {
 
     try {
       await subscribeRawTerminal(ws, terminalId, "sub-large-output");
-      await waitForRawBinaryFrame(ws, (frame) => frame.opcode === TerminalStreamOpcode.Snapshot, 10000);
+      await waitForRawBinaryFrame(
+        ws,
+        (frame) => frame.opcode === TerminalStreamOpcode.Snapshot,
+        10000,
+      );
 
       ctx.client.sendTerminalInput(terminalId, {
         type: "input",
