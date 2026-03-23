@@ -33,12 +33,14 @@ export function useKeyboardShortcuts({
   toggleAgentList,
   selectedAgentId,
   toggleFileExplorer,
+  toggleBothSidebars,
 }: {
   enabled: boolean;
   isMobile: boolean;
   toggleAgentList: () => void;
   selectedAgentId?: string;
   toggleFileExplorer?: () => void;
+  toggleBothSidebars?: () => void;
 }) {
   const pathname = usePathname();
   const hosts = useHosts();
@@ -227,6 +229,11 @@ export function useKeyboardShortcuts({
           return navigateRelativeWorkspace(input.payload.delta);
         case "sidebar.toggle.left":
           toggleAgentList();
+          return true;
+        case "sidebar.toggle.both":
+          if (toggleBothSidebars) {
+            toggleBothSidebars();
+          }
           return true;
         case "sidebar.toggle.right":
           if (!toggleFileExplorer) {

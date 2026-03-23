@@ -650,21 +650,15 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
     },
   },
   {
-    id: "sidebar-toggle-left-cmd-period-mac",
-    action: "sidebar.toggle.left",
-    combo: "Cmd+.",
-    when: { mac: true, commandCenter: false },
-  },
-  {
     id: "sidebar-toggle-left-ctrl-period-non-mac",
     action: "sidebar.toggle.left",
-    combo: "Ctrl+.",
+    combo: "Ctrl+B",
     when: { mac: false, commandCenter: false, terminal: false },
     help: {
       id: "toggle-left-sidebar",
       section: "panels",
       label: "Toggle left sidebar",
-      keys: ["mod", "."],
+      keys: ["mod", "B"],
     },
   },
   {
@@ -696,6 +690,32 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
     action: "sidebar.toggle.right",
     combo: "Ctrl+`",
     when: { hasSelectedAgent: true, commandCenter: false },
+  },
+
+  // --- Toggle both sidebars ---
+  {
+    id: "sidebar-toggle-both-cmd-period-mac",
+    action: "sidebar.toggle.both",
+    combo: "Cmd+.",
+    when: { mac: true, commandCenter: false },
+    help: {
+      id: "toggle-both-sidebars",
+      section: "panels",
+      label: "Toggle both sidebars",
+      keys: ["mod", "."],
+    },
+  },
+  {
+    id: "sidebar-toggle-both-ctrl-period-non-mac",
+    action: "sidebar.toggle.both",
+    combo: "Ctrl+.",
+    when: { mac: false, commandCenter: false, terminal: false },
+    help: {
+      id: "toggle-both-sidebars",
+      section: "panels",
+      label: "Toggle both sidebars",
+      keys: ["mod", "."],
+    },
   },
 
   // --- Message input ---

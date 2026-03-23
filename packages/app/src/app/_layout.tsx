@@ -264,6 +264,7 @@ function AppContainer({
   const daemons = useHosts();
   const toggleAgentList = usePanelStore((state) => state.toggleAgentList);
   const toggleFileExplorer = usePanelStore((state) => state.toggleFileExplorer);
+  const toggleBothSidebars = usePanelStore((state) => state.toggleBothSidebars);
 
   const isMobile = UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
   const chromeEnabled = chromeEnabledOverride ?? daemons.length > 0;
@@ -274,6 +275,7 @@ function AppContainer({
     toggleAgentList,
     selectedAgentId,
     toggleFileExplorer,
+    toggleBothSidebars,
   });
 
   const containerStyle = useMemo(

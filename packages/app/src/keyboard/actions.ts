@@ -35,6 +35,7 @@ export type KeyboardActionId =
   | "workspace.navigate.relative"
   | "sidebar.toggle.left"
   | "sidebar.toggle.right"
+  | "sidebar.toggle.both"
   | "command-center.toggle"
   | "shortcuts.dialog.toggle"
   | "workspace.terminal.new"

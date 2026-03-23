@@ -78,6 +78,7 @@ interface PanelState {
   closeToAgent: () => void;
   toggleAgentList: () => void;
   toggleFileExplorer: () => void;
+  toggleBothSidebars: () => void;
 
   // File explorer settings actions
   setExplorerTab: (tab: ExplorerTab) => void;
@@ -214,6 +215,24 @@ export const usePanelStore = create<PanelState>()(
             }
           }
           return nextState;
+        }),
+
+      toggleBothSidebars: () =>
+        set((state) => {
+          // If either sidebar is open, close both. Otherwise, open both.
+          const anyOpen = state.desktop.agentListOpen || state.desktop.fileExplorerOpen;
+          if (anyOpen) {
+            return {
+              mobileView: "agent" as MobilePanelView,
+              desktop: { agentListOpen: false, fileExplorerOpen: false },
+            };
+          }
+          const resolvedTab = resolveExplorerTabFromActiveCheckout(state);
+          return {
+            mobileView: "agent" as MobilePanelView,
+            desktop: { agentListOpen: true, fileExplorerOpen: true },
+            ...(resolvedTab ? { explorerTab: resolvedTab } : {}),
+          };
         }),
 
       setExplorerTab: (tab) => set({ explorerTab: tab }),
