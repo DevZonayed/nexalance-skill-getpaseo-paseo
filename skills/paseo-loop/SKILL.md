@@ -1,12 +1,18 @@
 ---
 name: paseo-loop
-description: Run a task in a loop until an exit condition is met. Use when the user says "loop", "loop this", "keep trying until", "babysit", "poll", or wants iterative autonomous execution.
+description: Run an agent loop until an exit condition is met. Use when the user says "loop", "babysit", "keep trying until", "check every X", "watch", or wants iterative autonomous execution.
 user-invocable: true
 ---
 
-# Loop Skill
+# Paseo Loop Skill
 
-You are setting up an autonomous loop. An agent runs repeatedly until an exit condition is met.
+You are setting up `/paseo-loop` as a flexible loop primitive.
+
+Think of it like a `while` loop:
+- each iteration sends work to a target
+- an optional verifier judges completion
+- optional sleep schedules the next iteration
+- hard caps stop the loop if it runs too long
 
 **User's arguments:** $ARGUMENTS
 
@@ -14,235 +20,319 @@ You are setting up an autonomous loop. An agent runs repeatedly until an exit co
 
 ## Prerequisites
 
-Load the **Paseo skill** first — it contains the CLI reference for all agent commands.
+Load the **Paseo skill** first. It contains the CLI reference for `paseo run`, `paseo send`, `paseo wait`, and related commands.
 
-## What Is a Loop
+## Core Model
 
-A loop runs an agent repeatedly until it's done. There are two modes:
+Every loop has these parts:
 
-### Self-terminating (no verifier)
+1. **Target**: who acts each iteration
+2. **Prompt**: what the target does each iteration
+3. **Verifier**: optional independent judge
+4. **Sleep**: optional pause between iterations
+5. **Stop conditions**: max iterations and/or max total runtime
 
-A single worker agent runs each iteration. It returns `{ done: boolean, reason: string }` via structured output. The loop exits when `done` is true.
+### Target
 
-### Worker + Verifier
+There are two target modes:
 
-A worker agent runs each iteration (detached, no structured output). After the worker finishes, a separate verifier agent evaluates the verification prompt and returns `{ done: boolean, reason: string }`. The loop exits when `done` is true.
+#### `self`
 
-### Feedback between iterations
+The loop sends the prompt back to the current agent each iteration. The current agent is identified by `$PASEO_AGENT_ID`.
 
-In both modes, the `reason` from the previous iteration is fed back to the next worker as `<previous-iteration-result>`. This gives the worker context about what happened last time.
+Use `self` when:
+- the current agent should keep ownership of the task
+- the user says "babysit", "watch", "check every X", "poll", or "monitor"
+- waking the same agent is cheaper and more natural than starting fresh
+
+#### `new-agent`
+
+The loop launches a fresh worker agent each iteration.
+
+Use `new-agent` when:
+- the user says "create a loop", "spin up a loop", or "launch a codex agent"
+- the task benefits from fresh context per iteration
+- you want isolated retries, often in a worktree
+
+### Verifier
+
+The verifier is orthogonal to the target:
+- no verifier: the target decides whether the loop is done
+- verifier present: the verifier decides whether the loop is done
+
+If a verifier exists, it is the source of truth for loop completion.
+
+## Defaults by User Intent
+
+Infer defaults from the user's phrasing:
+
+### Babysit / watch / check every X
+
+Default to:
+- `target=self`
+- `sleep=<explicit value or sensible default>`
+- no verifier unless the user asks for independent verification
+- `max-time=1h` if the user gives no bound and the task could run indefinitely
+
+### Ensure X is done
+
+Default to:
+- `target=self`
+- verifier enabled
+- no sleep unless the task is waiting on an external system
+
+Reason: by default, do not trust the same agent to judge its own completion when the user is asking for assurance.
+
+### Create a loop / launch a loop / loop a codex agent
+
+Default to:
+- `target=new-agent`
+- verifier enabled when success criteria need independent judgment
+- worktree enabled when code changes are involved
+
+## Stop Conditions
+
+Support both:
+- `--max-iterations N`
+- `--max-time DURATION`
+
+Use at least one bound for open-ended or polling loops when the user does not specify one.
+
+## Feedback Between Iterations
+
+Each iteration should receive the previous result as `<previous-iteration-result>`.
+
+This applies in all cases:
+- if there is a verifier, feed back the verifier's `reason`
+- otherwise feed back the target's `reason`
 
 ## Live Steering
 
-Each loop run persists state in:
+Each loop persists state in:
 
 ```text
 ~/.paseo/loops/<loop-id>/
-  worker-prompt.md     # worker prompt (live-editable)
-  verifier-prompt.md   # verifier prompt (live-editable, only when verifier is used)
-  last_reason.md       # latest iteration result
-  history.log          # per-iteration records
+  target-prompt.md       # prompt sent to self or worker (live-editable)
+  verifier-prompt.md     # verifier prompt (live-editable, optional)
+  last_reason.md         # latest reason used for feedback
+  history.log            # per-iteration records
 ```
 
 Edits to prompt files are picked up on the next iteration without restarting the loop.
 
-## Parsing Arguments
+## Script Interface
 
-Parse `$ARGUMENTS` to determine:
-
-1. **Worker prompt** — what the worker does each iteration
-2. **Verifier prompt** (optional) — what the verifier checks after each worker iteration
-3. **Worker** — which agent does the work (default: Codex)
-4. **Verifier** — which agent verifies (default: Claude sonnet)
-5. **Sleep** (optional) — delay between iterations
-6. **Name** — a short name for tracking
-7. **Max iterations** — safety cap (default: unlimited)
-8. **Archive** — whether to archive agents after each iteration
-9. **Worktree** — whether to run in an isolated git worktree
-
-### Examples
-
-```
-/loop babysit PR #42 until CI is green, check every 5 minutes
-→ worker-prompt: "Check the CI status of PR #42 using `gh pr checks 42`. Report done when ALL checks
-  have passed (no pending, no failures). If any checks are still running or have failed, report not
-  done and list which checks are pending or failing."
-  No verifier (self-terminating: the worker inspects CI and reports done when green)
-  sleep: 5m
-  archive: yes
-  name: babysit-pr-42
-
-/loop implement the auth refactor from the plan in /tmp/plan.md
-→ worker-prompt-file: /tmp/plan.md
-  verifier-prompt: "Verify every step of the plan was implemented. Check file changes, types, and
-  run `npm run typecheck` and `npm test`. Report each criterion individually with evidence."
-  name: auth-refactor
-  worktree: auth-refactor
-
-/loop run the test suite until it passes
-→ worker-prompt: "Run `npm test`. If any tests fail, read the failure output, investigate the root
-  cause in the source code, and fix it. Report done when `npm test` exits with code 0 and all
-  tests pass. Report not done if any test still fails, and explain which tests failed and why."
-  No verifier (self-terminating: worker reports done when tests pass)
-  name: fix-tests
-
-/loop watch error rates after deploy, check every 10 minutes
-→ worker-prompt: "Check the error rate for the canary deployment by running `./scripts/check-canary.sh`.
-  Report done when the error rate has been below 0.1% for at least 2 consecutive checks. Report not
-  done with the current error rate and trend."
-  No verifier (self-terminating: worker reports done when error rate is stable)
-  sleep: 10m
-  max-iterations: 30
-  archive: yes
-  name: canary-watch
-```
-
-## Using the Script
-
-The loop is implemented as a bash script at `~/.claude/skills/paseo-loop/bin/loop.sh`.
+The loop is implemented at:
 
 ```bash
-# Self-terminating: worker checks PR CI and reports done when all checks pass
-~/.claude/skills/paseo-loop/bin/loop.sh \
-  --worker-prompt "Check CI status of PR #42 using gh pr checks 42. Report done when ALL checks pass. Report not done with a list of pending/failing checks." \
-  --name "babysit-pr" \
-  --sleep 5m \
-  --archive
-
-# Worker + verifier: worker implements, verifier independently checks
-~/.claude/skills/paseo-loop/bin/loop.sh \
-  --worker-prompt "Implement the auth refactor: ..." \
-  --verifier-prompt "Verify the auth refactor is complete. Run npm run typecheck and npm test. Check that all file changes match the plan. Report each criterion with evidence." \
-  --name "auth-refactor" \
-  --worktree "auth-refactor"
+skills/paseo-loop/bin/loop.sh
 ```
 
-### Arguments
+### Flags
 
 | Flag | Required | Default | Description |
 |---|---|---|---|
-| `--worker-prompt` | Yes* | — | Prompt given to the worker each iteration |
-| `--worker-prompt-file` | Yes* | — | Read the worker prompt from a file |
-| `--worker` | No | `codex` | Worker agent (`provider/model`, e.g. `codex/gpt-5.4`, `claude/sonnet`) |
-| `--verifier-prompt` | No* | — | Verification prompt for a separate verifier agent |
-| `--verifier-prompt-file` | No* | — | Read the verifier prompt from a file |
-| `--verifier` | No | `claude/sonnet` | Verifier agent (`provider/model`) |
-| `--name` | Yes | — | Name prefix for agents |
-| `--sleep` | No | — | Delay between iterations (e.g. `30s`, `5m`, `1h`) |
-| `--max-iterations` | No | unlimited | Safety cap on iterations |
-| `--archive` | No | off | Archive agents after each iteration |
-| `--worktree` | No | — | Worktree name. Created on first use, reused after. |
+| `--target self|new-agent` | No | inferred / `new-agent` in raw script | Who acts each iteration |
+| `--target-prompt` | Yes* | — | Prompt given to the target each iteration |
+| `--target-prompt-file` | Yes* | — | Read the target prompt from a file |
+| `--worker` | No | `codex` | Worker agent for `new-agent` loops |
+| `--agent-id` | No | `$PASEO_AGENT_ID` | Existing agent id for `self` loops |
+| `--verifier-prompt` | No* | — | Prompt for an independent verifier |
+| `--verifier-prompt-file` | No* | — | Read verifier prompt from a file |
+| `--verifier` | No | `claude/sonnet` | Verifier agent |
+| `--name` | Yes | — | Name prefix for loop tracking |
+| `--sleep` | No | — | Delay between iterations |
+| `--max-iterations` | No | unlimited | Hard cap on iteration count |
+| `--max-time` | No | unlimited | Hard cap on total wall-clock runtime |
+| `--archive` | No | off | Archive newly created agents after iteration |
+| `--worktree` | No | — | Worktree name for `new-agent` loops |
 | `--thinking` | No | `medium` | Thinking level for worker |
 
-\* Provide exactly one of `--worker-prompt` or `--worker-prompt-file`. Provide at most one of `--verifier-prompt` or `--verifier-prompt-file`.
+\* Provide exactly one of `--target-prompt` or `--target-prompt-file`. Provide at most one of `--verifier-prompt` or `--verifier-prompt-file`.
 
-### Behavior by parameters
+## Behavior Rules
 
-| Parameters | Mode | Use case |
-|---|---|---|
-| `--worker-prompt` only | Self-terminating worker | Worker does work and decides when done |
-| `--worker-prompt` + `--verifier-prompt` | Worker + verifier | Worker implements, verifier independently checks |
-| `--worker-prompt` + `--sleep` | Polling with self-termination | Periodic check until a condition is met |
-| `--worker-prompt` + `--verifier-prompt` + `--sleep` | Periodic work + verifier | Periodic work with independent verification |
+### `target=self`, no verifier
 
-### Agent Naming
+The current agent must return structured JSON:
 
-Without verifier: agents are named `{name}-{N}`:
-```
-babysit-1     # First iteration
-babysit-2     # Second iteration
+```json
+{ "done": true, "reason": "..." }
 ```
 
-With verifier: workers are `{name}-{N}`, verifiers are `{name}-verify-{N}`:
-```
-feat-1          # First worker
-feat-verify-1   # First verifier
-feat-2          # Second worker (with previous result context)
-feat-verify-2   # Second verifier
-```
+Use this for:
+- babysitting a PR
+- scheduled status checks
+- monitoring a deployment
+- repeating an objective task the current agent can judge itself
 
-### Worktree Support
+### `target=self`, verifier enabled
 
-When `--worktree` is passed, all agents run in the same git worktree. The worktree is created on first launch and reused for all subsequent agents.
+The current agent does the work. A separate verifier decides whether the loop is done.
+
+Use this for:
+- "ensure X is done"
+- "work until the tests are passing"
+- cases where the user wants independent judgment but keeping the same agent is still the right execution model
+
+### `target=new-agent`, no verifier
+
+A fresh worker launches each iteration and must return structured JSON itself.
+
+Use this when:
+- the task is naturally self-judging
+- you want fresh context each retry
+
+### `target=new-agent`, verifier enabled
+
+A fresh worker launches each iteration. After it finishes, a separate verifier judges completion.
+
+Use this for:
+- implementation loops
+- fix-and-verify cycles
+- loops the user explicitly asks you to create
+
+## Examples
+
+### Babysit the PR
+
+Interpretation:
+- `target=self`
+- `sleep=2m`
+- no verifier unless requested
+- reasonable `max-time` if none given
+
+Example:
 
 ```bash
-~/.claude/skills/paseo-loop/bin/loop.sh \
-  --worker-prompt "Implement the feature..." \
-  --verifier-prompt "Verify the feature works and typecheck passes" \
-  --name "feature-x" \
-  --worktree "feature-x"
+skills/paseo-loop/bin/loop.sh \
+  --target self \
+  --target-prompt "Check PR #42. Review CI, review comments, and branch status. Fix issues as they arise. Return JSON with done=true only when the PR is fully green and ready." \
+  --sleep 2m \
+  --max-time 1h \
+  --name babysit-pr-42
+```
+
+### Launch a Codex agent to babysit the PR
+
+Interpretation:
+- `target=new-agent`
+- `worker=codex`
+- `sleep=2m`
+- usually archive
+
+```bash
+skills/paseo-loop/bin/loop.sh \
+  --target new-agent \
+  --worker codex \
+  --target-prompt "Check PR #42. Review CI, review comments, and branch status. Fix issues as they arise. Return JSON with done=true only when the PR is fully green and ready." \
+  --sleep 2m \
+  --max-time 1h \
+  --archive \
+  --name babysit-pr-42
+```
+
+### Work until the tests are passing
+
+Interpretation:
+- `target=self`
+- verifier enabled
+- no sleep
+
+```bash
+skills/paseo-loop/bin/loop.sh \
+  --target self \
+  --target-prompt "Run the test suite, investigate failures, and fix the code. Stop after you have made a coherent attempt for this iteration." \
+  --verifier-prompt "Run the relevant test suite. Return done=true only if all tests pass. Reason must cite the exact command and outcome." \
+  --max-iterations 10 \
+  --name fix-tests
+```
+
+### Create a loop to fix the tests
+
+Interpretation:
+- `target=new-agent`
+- verifier enabled
+- often use a worktree
+
+```bash
+skills/paseo-loop/bin/loop.sh \
+  --target new-agent \
+  --worker codex \
+  --target-prompt "Run the test suite, investigate failures, fix the code, and leave the repo in a clean verifiable state for this iteration." \
+  --verifier-prompt "Run the relevant test suite. Return done=true only if all tests pass. Reason must cite the exact command and outcome." \
+  --worktree fix-tests \
+  --max-iterations 10 \
+  --name fix-tests
+```
+
+### Loop a Codex agent to complete issue 456 in a worktree
+
+Interpretation:
+- `target=new-agent`
+- worker codex
+- verifier enabled
+- worktree enabled
+
+```bash
+skills/paseo-loop/bin/loop.sh \
+  --target new-agent \
+  --worker codex \
+  --target-prompt "Implement issue #456 in this repo. Use the issue description and surrounding code as context. Make incremental progress each iteration and leave clear evidence of what changed." \
+  --verifier-prompt "Verify issue #456 is complete. Check changed files, run typecheck and relevant tests, and return done=true only if the implementation meets the issue requirements with evidence." \
+  --worktree issue-456 \
+  --max-iterations 8 \
+  --max-time 2h \
+  --name issue-456
 ```
 
 ## Your Job
 
-1. **Understand the task** from the conversation context and `$ARGUMENTS`
-2. **Decide the mode** — does this need a separate verifier, or can the worker self-terminate?
-3. **Write the worker prompt** — what the worker does each iteration. Must be self-contained (the agent has zero prior context).
-4. **Write the verifier prompt** (if needed) — what the verifier checks. Should be factual and verifiable.
-5. **Choose sleep** — if the task is polling/monitoring, add a sleep duration
-6. **Choose archive** — use `--archive` for long-running or polling loops to keep the agent list clean
-7. **Choose agents** — default: `codex` worker + `claude/sonnet` verifier
-8. **Choose a name** — short, descriptive
-9. **Run the script** — call `loop.sh` with all the arguments
+1. Understand the user's intent from the conversation and `$ARGUMENTS`
+2. Decide `target=self` or `target=new-agent`
+3. Decide whether a verifier is needed
+4. Write the target prompt so it is self-contained for the selected target
+5. Write the verifier prompt, if used, so it is factual and evidence-based
+6. Choose sleep only when the task is naturally scheduled or polling
+7. Add sensible stop conditions
+8. Choose worker / verifier agents
+9. Choose a short name
+10. Run `skills/paseo-loop/bin/loop.sh` with the final arguments
 
-### When to use a verifier vs self-terminating
+## Prompt Writing Rules
 
-Use a verifier (`--verifier-prompt`) when:
-- The worker's job is to implement something and you want independent verification
-- You want the verification done by a different agent than the worker
-- The worker should focus on doing work, not on judging its own work
+### Target prompt
 
-Use self-terminating (no verifier) when:
-- The worker is checking/polling an external condition (CI status, deployment health)
-- The worker can objectively determine when it's done (tests pass, file exists)
-- You want a single agent doing both the work and the evaluation
+The target prompt must be:
+- self-contained
+- concrete about commands, files, branches, tests, PRs, or systems to inspect
+- explicit about what counts as progress this iteration
 
-### Writing a Good Worker Prompt
+If there is no verifier, the target prompt must instruct the target to end with strict JSON matching:
 
-The worker prompt is what the agent receives each iteration. It must be:
+```json
+{ "done": boolean, "reason": "string" }
+```
 
-1. **Self-contained** — The agent starts with zero context. Everything needed is in the prompt.
-2. **Specific** — Name files, functions, types, URLs. Be concrete.
-3. **Action-oriented** — Tell the agent what to do, not what to think about.
+### Verifier prompt
 
-### Writing a Good Verifier Prompt
+The verifier prompt should:
+- check facts, not offer fixes
+- cite commands, outputs, or file evidence
+- return strict JSON matching:
 
-The verifier prompt defines what the verifier checks after each worker iteration. It can range from strict factual checks to qualitative code review:
+```json
+{ "done": boolean, "reason": "string" }
+```
 
-**Factual / objective checks:**
-- "Run `npm test` and `npm run typecheck`. Report done only if both pass with zero failures."
-- "Check that PR #42 has all CI checks green and no unresolved review comments."
-- "Verify the API responds to `GET /health` with status 200 within 500ms."
+## Skill Stacking
 
-**Code quality / style checks:**
-- "Review the changes for DRY violations. Report done when there is no duplicated logic across files."
-- "Check that the implementation does not over-engineer. No unnecessary abstractions, no premature generalization, no feature flags for single-use code."
-- "Verify the code follows the project's conventions: functional style, no classes, explicit types, no `any`."
-
-**Performance / resource checks:**
-- "Run the benchmark suite. Report done when p99 latency is under 100ms."
-- "Check bundle size. Report done when the production build is under 500KB gzipped."
-
-**Comprehensive verification:**
-- "Verify every step of the plan was implemented. Check file changes, types, test output. Run `npm run typecheck` and `npm test`. Report each criterion individually with evidence."
-
-The verifier should report facts with evidence, not suggest fixes.
-
-### Skill Stacking
-
-You can instruct the worker to use other skills:
+The target prompt can instruct the worker to use other skills:
 
 ```bash
-~/.claude/skills/paseo-loop/bin/loop.sh \
-  --worker-prompt "Use /committee to plan, then fix the provider list bug. The bug is..." \
-  --verifier-prompt "The provider list renders correctly and npm run typecheck passes" \
-  --name "provider-fix"
-```
-
-### Composing with Handoff
-
-A handoff can launch a loop:
-
-```
-/handoff a loop in a worktree to babysit PR #42
+skills/paseo-loop/bin/loop.sh \
+  --target new-agent \
+  --target-prompt "Use /committee first if you are stuck, then fix the provider list bug." \
+  --verifier-prompt "Verify the provider list renders correctly and typecheck passes." \
+  --name provider-fix
 ```
