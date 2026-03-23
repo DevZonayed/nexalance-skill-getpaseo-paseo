@@ -4,35 +4,12 @@ import { randomUUID } from "crypto";
 import { chmodSync, existsSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { createRequire } from "node:module";
+import type { TerminalCell, TerminalState } from "../shared/messages.js";
 
 const { Terminal } = xterm;
 const require = createRequire(import.meta.url);
 let nodePtySpawnHelperChecked = false;
 const STATE_BROADCAST_INTERVAL_MS = 33;
-
-export interface Cell {
-  char: string;
-  fg: number | undefined;
-  bg: number | undefined;
-  fgMode?: number; // 0=default, 1=16 ANSI, 2=256, 3=RGB
-  bgMode?: number;
-  bold?: boolean;
-  italic?: boolean;
-  underline?: boolean;
-}
-
-export interface Pos {
-  row: number;
-  col: number;
-}
-
-export interface TerminalState {
-  rows: number;
-  cols: number;
-  grid: Cell[][];
-  scrollback: Cell[][];
-  cursor: Pos;
-}
 
 export type ClientMessage =
   | { type: "input"; data: string }
@@ -130,7 +107,7 @@ export function ensureNodePtySpawnHelperExecutableForCurrentPlatform(
   }
 }
 
-function extractCell(terminal: TerminalType, row: number, col: number): Cell {
+function extractCell(terminal: TerminalType, row: number, col: number): TerminalCell {
   const buffer = terminal.buffer.active;
   const line = buffer.getLine(row);
   if (!line) {
@@ -162,17 +139,20 @@ function extractCell(terminal: TerminalType, row: number, col: number): Cell {
     bold: cell.isBold() !== 0,
     italic: cell.isItalic() !== 0,
     underline: cell.isUnderline() !== 0,
+    dim: cell.isDim() !== 0,
+    inverse: cell.isInverse() !== 0,
+    strikethrough: cell.isStrikethrough() !== 0,
   };
 }
 
-function extractGrid(terminal: TerminalType): Cell[][] {
-  const grid: Cell[][] = [];
+function extractGrid(terminal: TerminalType): TerminalCell[][] {
+  const grid: TerminalCell[][] = [];
   const buffer = terminal.buffer.active;
   // Visible viewport starts at baseY
   const baseY = buffer.baseY;
 
   for (let row = 0; row < terminal.rows; row++) {
-    const rowCells: Cell[] = [];
+    const rowCells: TerminalCell[] = [];
     for (let col = 0; col < terminal.cols; col++) {
       rowCells.push(extractCell(terminal, baseY + row, col));
     }
@@ -182,15 +162,15 @@ function extractGrid(terminal: TerminalType): Cell[][] {
   return grid;
 }
 
-function extractScrollback(terminal: TerminalType): Cell[][] {
-  const scrollback: Cell[][] = [];
+function extractScrollback(terminal: TerminalType): TerminalCell[][] {
+  const scrollback: TerminalCell[][] = [];
   const buffer = terminal.buffer.active;
   // baseY is the first row of the visible viewport (0-indexed)
   // Lines 0 to baseY-1 are in scrollback, lines baseY onwards are visible
   const scrollbackLines = buffer.baseY;
 
   for (let row = 0; row < scrollbackLines; row++) {
-    const rowCells: Cell[] = [];
+    const rowCells: TerminalCell[] = [];
     const line = buffer.getLine(row);
     for (let col = 0; col < terminal.cols; col++) {
       if (line) {
@@ -211,6 +191,9 @@ function extractScrollback(terminal: TerminalType): Cell[][] {
             bold: cell.isBold() !== 0,
             italic: cell.isItalic() !== 0,
             underline: cell.isUnderline() !== 0,
+            dim: cell.isDim() !== 0,
+            inverse: cell.isInverse() !== 0,
+            strikethrough: cell.isStrikethrough() !== 0,
           });
         } else {
           rowCells.push({ char: " ", fg: undefined, bg: undefined });
@@ -223,6 +206,28 @@ function extractScrollback(terminal: TerminalType): Cell[][] {
   }
 
   return scrollback;
+}
+
+function extractCursorState(terminal: TerminalType): TerminalState["cursor"] {
+  const coreService = (terminal as any)._core?.coreService;
+  const cursorStyle = coreService?.decPrivateModes?.cursorStyle;
+  const normalizedCursorStyle =
+    cursorStyle === "block" || cursorStyle === "underline" || cursorStyle === "bar"
+      ? cursorStyle
+      : undefined;
+  const cursorBlink =
+    typeof coreService?.decPrivateModes?.cursorBlink === "boolean"
+      ? coreService.decPrivateModes.cursorBlink
+      : undefined;
+  const hidden = Boolean(coreService?.isCursorHidden);
+
+  return {
+    row: terminal.buffer.active.cursorY,
+    col: terminal.buffer.active.cursorX,
+    ...(hidden ? { hidden: true } : {}),
+    ...(normalizedCursorStyle ? { style: normalizedCursorStyle } : {}),
+    ...(typeof cursorBlink === "boolean" ? { blink: cursorBlink } : {}),
+  };
 }
 
 export async function createTerminal(options: CreateTerminalOptions): Promise<TerminalSession> {
@@ -345,13 +350,9 @@ export async function createTerminal(options: CreateTerminalOptions): Promise<Te
       cols: terminal.cols,
       grid: extractGrid(terminal),
       scrollback: extractScrollback(terminal),
-      cursor: {
-        row: terminal.buffer.active.cursorY,
-        col: terminal.buffer.active.cursorX,
-      },
+      cursor: extractCursorState(terminal),
     };
   }
-
   function send(msg: ClientMessage): void {
     if (killed) return;
 

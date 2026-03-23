@@ -53,6 +53,23 @@ async function waitForLines(
   );
 }
 
+async function waitForState(
+  session: TerminalSession,
+  predicate: (state: ReturnType<TerminalSession["getState"]>) => boolean,
+  timeoutMs = 5000,
+): Promise<ReturnType<TerminalSession["getState"]>> {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    const state = session.getState();
+    if (predicate(state)) {
+      return state;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+
+  throw new Error("Timeout waiting for terminal state predicate to match");
+}
+
 describe("Terminal", () => {
   const sessions: TerminalSession[] = [];
   const temporaryDirs: string[] = [];
@@ -585,6 +602,35 @@ describe("Terminal", () => {
       expect(state.cursor).toBeDefined();
       expect(typeof state.cursor.row).toBe("number");
       expect(typeof state.cursor.col).toBe("number");
+    });
+
+    it("captures cursor presentation modes emitted by terminal apps", async () => {
+      const session = trackSession(
+        await createTerminal({
+          cwd: "/tmp",
+          shell: "/bin/sh",
+          env: { PS1: "$ " },
+          rows: 24,
+          cols: 80,
+        }),
+      );
+
+      await waitForLines(session, ["$"]);
+      session.send({ type: "input", data: "printf '\\033[2 q\\033[?25l'\r" });
+
+      const state = await waitForState(
+        session,
+        (current) =>
+          current.cursor.style === "block" &&
+          current.cursor.blink === false &&
+          current.cursor.hidden === true,
+      );
+
+      expect(state.cursor).toMatchObject({
+        style: "block",
+        blink: false,
+        hidden: true,
+      });
     });
 
     it("grid cells have char and color attributes", async () => {

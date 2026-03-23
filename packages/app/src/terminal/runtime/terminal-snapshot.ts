@@ -8,6 +8,9 @@ type TerminalStyle = {
   bold: boolean;
   italic: boolean;
   underline: boolean;
+  dim: boolean;
+  inverse: boolean;
+  strikethrough: boolean;
 };
 
 const DEFAULT_STYLE: TerminalStyle = {
@@ -18,6 +21,9 @@ const DEFAULT_STYLE: TerminalStyle = {
   bold: false,
   italic: false,
   underline: false,
+  dim: false,
+  inverse: false,
+  strikethrough: false,
 };
 
 export function renderTerminalSnapshotToAnsi(state: TerminalState): string {
@@ -33,9 +39,32 @@ export function renderTerminalSnapshotToAnsi(state: TerminalState): string {
   }
 
   lines.push("\u001b[0m");
+  const cursorPresentationAnsi = renderCursorPresentationToAnsi(state.cursor);
+  if (cursorPresentationAnsi) {
+    lines.push(cursorPresentationAnsi);
+  }
   lines.push(`\u001b[${state.cursor.row + 1};${state.cursor.col + 1}H`);
+  lines.push(state.cursor.hidden ? "\u001b[?25l" : "\u001b[?25h");
   lines.push("\u001b[?7h");
   return lines.join("");
+}
+
+function renderCursorPresentationToAnsi(cursor: TerminalState["cursor"]): string | null {
+  if (!cursor.style) {
+    return null;
+  }
+
+  const cursorStyleCode = (() => {
+    if (cursor.style === "block") {
+      return cursor.blink === false ? 2 : 1;
+    }
+    if (cursor.style === "underline") {
+      return cursor.blink === false ? 4 : 3;
+    }
+    return cursor.blink === false ? 6 : 5;
+  })();
+
+  return `\u001b[${cursorStyleCode} q`;
 }
 
 function renderTerminalRow(row: TerminalCell[]): string {
@@ -76,7 +105,10 @@ function getTerminalRowLength(row: TerminalCell[]): number {
       cell.bgMode !== undefined ||
       cell.bold ||
       cell.italic ||
-      cell.underline
+      cell.underline ||
+      cell.dim ||
+      cell.inverse ||
+      cell.strikethrough
     ) {
       return index + 1;
     }
@@ -93,6 +125,9 @@ function getTerminalStyle(cell: TerminalCell): TerminalStyle {
     bold: Boolean(cell.bold),
     italic: Boolean(cell.italic),
     underline: Boolean(cell.underline),
+    dim: Boolean(cell.dim),
+    inverse: Boolean(cell.inverse),
+    strikethrough: Boolean(cell.strikethrough),
   };
 }
 
@@ -104,7 +139,10 @@ function terminalStylesEqual(left: TerminalStyle, right: TerminalStyle): boolean
     left.bgMode === right.bgMode &&
     left.bold === right.bold &&
     left.italic === right.italic &&
-    left.underline === right.underline
+    left.underline === right.underline &&
+    left.dim === right.dim &&
+    left.inverse === right.inverse &&
+    left.strikethrough === right.strikethrough
   );
 }
 
@@ -114,11 +152,20 @@ function styleToAnsi(style: TerminalStyle): string {
   if (style.bold) {
     codes.push("1");
   }
+  if (style.dim) {
+    codes.push("2");
+  }
   if (style.italic) {
     codes.push("3");
   }
   if (style.underline) {
     codes.push("4");
+  }
+  if (style.inverse) {
+    codes.push("7");
+  }
+  if (style.strikethrough) {
+    codes.push("9");
   }
 
   if (style.fg !== undefined && style.fgMode !== undefined) {

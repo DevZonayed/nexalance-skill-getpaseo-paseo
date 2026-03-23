@@ -2104,6 +2104,19 @@ export const TerminalCellSchema = z.object({
   bold: z.boolean().optional(),
   italic: z.boolean().optional(),
   underline: z.boolean().optional(),
+  dim: z.boolean().optional(),
+  inverse: z.boolean().optional(),
+  strikethrough: z.boolean().optional(),
+}).strict();
+
+export const TerminalCursorStyleSchema = z.enum(["block", "underline", "bar"]);
+
+export const TerminalCursorSchema = z.object({
+  row: z.number(),
+  col: z.number(),
+  hidden: z.boolean().optional(),
+  style: TerminalCursorStyleSchema.optional(),
+  blink: z.boolean().optional(),
 }).strict();
 
 export const TerminalStateSchema = z.object({
@@ -2111,7 +2124,7 @@ export const TerminalStateSchema = z.object({
   cols: z.number(),
   grid: z.array(z.array(TerminalCellSchema)),
   scrollback: z.array(z.array(TerminalCellSchema)),
-  cursor: z.object({ row: z.number(), col: z.number() }).strict(),
+  cursor: TerminalCursorSchema,
 }).strict();
 
 export const ListTerminalsResponseSchema = z.object({
@@ -2363,6 +2376,8 @@ export type SubscribeTerminalResponse = z.infer<typeof SubscribeTerminalResponse
 export type UnsubscribeTerminalRequest = z.infer<typeof UnsubscribeTerminalRequestSchema>;
 export type TerminalInput = z.infer<typeof TerminalInputSchema>;
 export type TerminalCell = z.infer<typeof TerminalCellSchema>;
+export type TerminalCursorStyle = z.infer<typeof TerminalCursorStyleSchema>;
+export type TerminalCursor = z.infer<typeof TerminalCursorSchema>;
 export type TerminalState = z.infer<typeof TerminalStateSchema>;
 export type KillTerminalRequest = z.infer<typeof KillTerminalRequestSchema>;
 export type KillTerminalResponse = z.infer<typeof KillTerminalResponseSchema>;

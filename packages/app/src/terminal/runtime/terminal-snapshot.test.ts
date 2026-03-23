@@ -20,7 +20,13 @@ type SnapshotState = {
   cols: number;
   grid: SnapshotCell[][];
   scrollback: SnapshotCell[][];
-  cursor: { row: number; col: number };
+  cursor: {
+    row: number;
+    col: number;
+    hidden?: boolean;
+    style?: "block" | "underline" | "bar";
+    blink?: boolean;
+  };
 };
 
 async function writeToTerminal(
@@ -50,10 +56,32 @@ function extractState(terminal: ClientTerminal | HeadlessTerminal): SnapshotStat
     cols: terminal.cols,
     grid,
     scrollback,
-    cursor: {
-      row: buffer.cursorY,
-      col: buffer.cursorX,
-    },
+    cursor: extractCursorState(terminal),
+  };
+}
+
+function extractCursorState(
+  terminal: ClientTerminal | HeadlessTerminal,
+): SnapshotState["cursor"] {
+  const buffer = terminal.buffer.active;
+  const coreService = (terminal as any)._core?.coreService;
+  const cursorStyle = coreService?.decPrivateModes?.cursorStyle;
+  const normalizedCursorStyle =
+    cursorStyle === "block" || cursorStyle === "underline" || cursorStyle === "bar"
+      ? cursorStyle
+      : undefined;
+  const cursorBlink =
+    typeof coreService?.decPrivateModes?.cursorBlink === "boolean"
+      ? coreService.decPrivateModes.cursorBlink
+      : undefined;
+  const hidden = Boolean(coreService?.isCursorHidden);
+
+  return {
+    row: buffer.cursorY,
+    col: buffer.cursorX,
+    ...(hidden ? { hidden: true } : {}),
+    ...(normalizedCursorStyle ? { style: normalizedCursorStyle } : {}),
+    ...(typeof cursorBlink === "boolean" ? { blink: cursorBlink } : {}),
   };
 }
 
@@ -87,7 +115,7 @@ function extractRow(terminal: ClientTerminal | HeadlessTerminal, row: number): S
 }
 
 describe("terminal-snapshot", () => {
-  it("replays extracted terminal state into a client xterm with matching grid, scrollback, and cursor", async () => {
+  it("replays extracted terminal state into a client xterm with matching grid, scrollback, and cursor presentation", async () => {
     const source = new HeadlessTerminal({
       rows: 4,
       cols: 12,
@@ -100,6 +128,8 @@ describe("terminal-snapshot", () => {
     await writeToTerminal(source, "\u001b[1mbold\u001b[0m\r\n");
     await writeToTerminal(source, "cursor");
     await writeToTerminal(source, "\u001b[2D");
+    await writeToTerminal(source, "\u001b[2 q");
+    await writeToTerminal(source, "\u001b[?25l");
 
     const snapshot = extractState(source);
 
