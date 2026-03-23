@@ -770,6 +770,7 @@ type TimelineMessageState = {
 
 class TimelineAssembler {
   private readonly messages = new Map<string, TimelineMessageState>();
+  private readonly finalizedMessageIds = new Set<string>();
   private readonly activeMessageByRun = new Map<string, string>();
   private syntheticMessageCounter = 0;
 
@@ -797,6 +798,9 @@ class TimelineAssembler {
       messageIdHint ??
       this.resolveMessageId({ runId, createIfMissing: true, messageId: null });
     if (!messageId) {
+      return [];
+    }
+    if (this.finalizedMessageIds.has(messageId)) {
       return [];
     }
     const state = this.ensureMessageState(messageId, runId);
@@ -922,6 +926,8 @@ class TimelineAssembler {
     if (runId && this.activeMessageByRun.get(runId) === messageId) {
       this.activeMessageByRun.delete(runId);
     }
+    this.finalizedMessageIds.add(messageId);
+    this.messages.delete(messageId);
     return items;
   }
 
