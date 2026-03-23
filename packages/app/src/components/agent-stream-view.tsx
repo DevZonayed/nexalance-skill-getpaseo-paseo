@@ -1,5 +1,6 @@
 import {
   forwardRef,
+  memo,
   useCallback,
   useEffect,
   useImperativeHandle,
@@ -63,6 +64,7 @@ import { MAX_CONTENT_WIDTH } from "@/constants/layout";
 import { getMarkdownListMarker } from "@/utils/markdown-list";
 import { normalizeInlinePathTarget } from "@/utils/inline-path";
 import { prepareWorkspaceTab } from "@/utils/workspace-navigation";
+import { useStableEvent } from "@/hooks/use-stable-event";
 import {
   getWorkingIndicatorDotStrength,
   WORKING_INDICATOR_CYCLE_MS,
@@ -88,7 +90,7 @@ export interface AgentStreamViewProps {
   onOpenWorkspaceFile?: (input: { filePath: string }) => void;
 }
 
-export const AgentStreamView = forwardRef<AgentStreamViewHandle, AgentStreamViewProps>(
+const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamViewProps>(
   function AgentStreamView(
     {
       agentId,
@@ -136,6 +138,11 @@ export const AgentStreamView = forwardRef<AgentStreamViewHandle, AgentStreamView
       workspaceId,
       workspaceRoot,
     });
+    const openWorkspaceFile = useStableEvent(function openWorkspaceFile(input: {
+      filePath: string;
+    }) {
+      onOpenWorkspaceFile?.(input);
+    });
     // Keep entry/exit animations off on Android due to RN dispatchDraw crashes
     // tracked in react-native-reanimated#8422.
     const shouldDisableEntryExitAnimations = Platform.OS === "android";
@@ -164,7 +171,7 @@ export const AgentStreamView = forwardRef<AgentStreamViewHandle, AgentStreamView
 
         if (normalized.file) {
           if (onOpenWorkspaceFile) {
-            onOpenWorkspaceFile({ filePath: normalized.file });
+            openWorkspaceFile({ filePath: normalized.file });
             return;
           }
 
@@ -197,7 +204,7 @@ export const AgentStreamView = forwardRef<AgentStreamViewHandle, AgentStreamView
         resolvedServerId,
         router,
         setExplorerTabForCheckout,
-        onOpenWorkspaceFile,
+        openWorkspaceFile,
         workspaceId,
       ],
     );
@@ -656,6 +663,9 @@ export const AgentStreamView = forwardRef<AgentStreamViewHandle, AgentStreamView
     );
   },
 );
+
+export const AgentStreamView = memo(AgentStreamViewComponent);
+AgentStreamView.displayName = "AgentStreamView";
 
 function WorkingIndicator() {
   const progress = useSharedValue(0);

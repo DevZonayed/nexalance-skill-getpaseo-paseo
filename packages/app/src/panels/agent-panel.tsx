@@ -22,6 +22,7 @@ import { useArchiveAgent } from "@/hooks/use-archive-agent";
 import { useDelayedHistoryRefreshToast } from "@/hooks/use-delayed-history-refresh-toast";
 import { useAgentInputDraft } from "@/hooks/use-agent-input-draft";
 import { useKeyboardShiftStyle } from "@/hooks/use-keyboard-shift-style";
+import { useStableEvent } from "@/hooks/use-stable-event";
 import { usePaneContext } from "@/panels/pane-context";
 import type { PanelDescriptor, PanelRegistration } from "@/panels/panel-registry";
 import {
@@ -103,12 +104,13 @@ function useAgentPanelDescriptor(
 function AgentPanel() {
   const { serverId, target, isPaneFocused, openFileInWorkspace } = usePaneContext();
   invariant(target.kind === "agent", "AgentPanel requires agent target");
-  const handleOpenWorkspaceFile = useCallback(
-    (input: { filePath: string }) => {
-      openFileInWorkspace(input.filePath);
-    },
-    [openFileInWorkspace],
-  );
+
+  function openWorkspaceFile(input: { filePath: string }) {
+    openFileInWorkspace(input.filePath);
+  }
+
+  const handleOpenWorkspaceFile = useStableEvent(openWorkspaceFile);
+
   return (
     <AgentPanelContent
       serverId={serverId}

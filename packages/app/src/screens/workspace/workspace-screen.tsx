@@ -1774,6 +1774,84 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
     <WorkspacePaneContent content={activePaneContent!} />
   );
 
+  const buildDesktopPaneContentModel = useCallback(
+    function buildDesktopPaneContentModel(input: {
+      paneId: string;
+      tab: WorkspaceTabDescriptor;
+      isPaneFocused: boolean;
+    }) {
+      return buildPaneContentModel({
+        tab: input.tab,
+        paneId: input.paneId,
+        isPaneFocused: input.isPaneFocused,
+        focusPaneBeforeOpen: true,
+      });
+    },
+    [buildPaneContentModel],
+  );
+
+  const handleFocusPane = useCallback(
+    function handleFocusPane(paneId: string) {
+      if (!persistenceKey) {
+        return;
+      }
+      focusWorkspacePane(persistenceKey, paneId);
+    },
+    [focusWorkspacePane, persistenceKey],
+  );
+
+  const handleSplitPane = useCallback(
+    function handleSplitPane(input: {
+      tabId: string;
+      targetPaneId: string;
+      position: "left" | "right" | "top" | "bottom";
+    }) {
+      if (!persistenceKey) {
+        return;
+      }
+      splitWorkspacePane(persistenceKey, input);
+    },
+    [persistenceKey, splitWorkspacePane],
+  );
+
+  const handleMoveTabToPane = useCallback(
+    function handleMoveTabToPane(tabId: string, toPaneId: string) {
+      if (!persistenceKey) {
+        return;
+      }
+      moveWorkspaceTabToPane(persistenceKey, tabId, toPaneId);
+    },
+    [moveWorkspaceTabToPane, persistenceKey],
+  );
+
+  const handleResizePaneSplit = useCallback(
+    function handleResizePaneSplit(groupId: string, sizes: number[]) {
+      if (!persistenceKey) {
+        return;
+      }
+      resizeWorkspaceSplit(persistenceKey, groupId, sizes);
+    },
+    [persistenceKey, resizeWorkspaceSplit],
+  );
+
+  const handleReorderTabsInPane = useCallback(
+    function handleReorderTabsInPane(paneId: string, tabIds: string[]) {
+      if (!persistenceKey) {
+        return;
+      }
+      reorderWorkspaceTabsInPane(persistenceKey, paneId, tabIds);
+    },
+    [persistenceKey, reorderWorkspaceTabsInPane],
+  );
+
+  const renderSplitPaneEmptyState = useCallback(function renderSplitPaneEmptyState() {
+    return (
+      <View style={styles.emptyState}>
+        <Text style={styles.emptyStateText}>No tabs in this pane.</Text>
+      </View>
+    );
+  }, []);
+
   return (
     <View style={[styles.container, { backgroundColor: mainBackgroundColor }]}>
       {Platform.OS === "web" && activeTabDescriptor ? (
@@ -2025,38 +2103,15 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
                     onCloseOtherTabs={handleCloseOtherTabsInPane}
                     onSelectNewTabOption={handleSelectNewTabOption}
                     newTabAgentOptionId={NEW_TAB_AGENT_OPTION_ID}
-                    buildPaneContentModel={({ paneId, tab, isPaneFocused }) =>
-                      buildPaneContentModel({
-                        tab,
-                        paneId,
-                        isPaneFocused,
-                        focusPaneBeforeOpen: true,
-                      })
-                    }
-                    onFocusPane={(paneId) => {
-                      focusWorkspacePane(persistenceKey, paneId);
-                    }}
+                    buildPaneContentModel={buildDesktopPaneContentModel}
+                    onFocusPane={handleFocusPane}
                     onNewTerminalTab={handleCreateTerminal}
-                    onSplitPane={(input) => {
-                      splitWorkspacePane(persistenceKey, input);
-                    }}
-                    onSplitPaneEmpty={(input) => {
-                      handleCreateDraftSplit(input);
-                    }}
-                    onMoveTabToPane={(tabId, toPaneId) => {
-                      moveWorkspaceTabToPane(persistenceKey, tabId, toPaneId);
-                    }}
-                    onResizeSplit={(groupId, sizes) => {
-                      resizeWorkspaceSplit(persistenceKey, groupId, sizes);
-                    }}
-                    onReorderTabsInPane={(paneId, tabIds) => {
-                      reorderWorkspaceTabsInPane(persistenceKey, paneId, tabIds);
-                    }}
-                    renderPaneEmptyState={() => (
-                      <View style={styles.emptyState}>
-                        <Text style={styles.emptyStateText}>No tabs in this pane.</Text>
-                      </View>
-                    )}
+                    onSplitPane={handleSplitPane}
+                    onSplitPaneEmpty={handleCreateDraftSplit}
+                    onMoveTabToPane={handleMoveTabToPane}
+                    onResizeSplit={handleResizePaneSplit}
+                    onReorderTabsInPane={handleReorderTabsInPane}
+                    renderPaneEmptyState={renderSplitPaneEmptyState}
                   />
                 ) : (
                   content
