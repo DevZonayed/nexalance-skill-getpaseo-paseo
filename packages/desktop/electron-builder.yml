@@ -29,6 +29,7 @@ mac:
 linux:
   category: Development
   icon: assets
+  artifactName: "Paseo-${version}-${arch}.${ext}"
   extraResources:
     - from: bin/paseo
       to: bin/paseo
