@@ -41,6 +41,7 @@ export type KeyboardActionId =
   | "workspace.terminal.new"
   | "worktree.new"
   | "worktree.archive"
+  | "view.toggle.focus"
   | "message-input.action";
 
 export type KeyboardShortcutPayload =

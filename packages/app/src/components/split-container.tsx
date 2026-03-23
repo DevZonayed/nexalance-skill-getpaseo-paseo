@@ -31,6 +31,8 @@ import { Platform, View, Text } from "react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { ResizeHandle } from "@/components/resize-handle";
 import { shouldFocusPaneFromEventTarget } from "@/components/split-container-pane-focus";
+import { usePanelStore } from "@/stores/panel-store";
+import { useTrafficLightPadding } from "@/utils/desktop-window";
 import {
   computeTabDropPreview,
   type TabDropPreview,
@@ -109,6 +111,7 @@ interface SplitContainerProps {
   onResizeSplit: (groupId: string, sizes: number[]) => void;
   onReorderTabsInPane: (paneId: string, tabIds: string[]) => void;
   renderPaneEmptyState?: () => ReactNode;
+  focusModeEnabled?: boolean;
 }
 
 interface WorkspaceTabDragData {
@@ -262,6 +265,7 @@ export function SplitContainer({
   onResizeSplit,
   onReorderTabsInPane,
   renderPaneEmptyState = () => null,
+  focusModeEnabled,
 }: SplitContainerProps) {
   const [activeDragTabId, setActiveDragTabId] = useState<string | null>(null);
   const [dropPreview, setDropPreview] = useState<SplitDropZoneHover | null>(null);
@@ -279,6 +283,17 @@ export function SplitContainer({
   );
 
   const panesById = useMemo(() => collectPanesById(layout.root), [layout.root]);
+
+  const effectiveRoot = useMemo(() => {
+    if (!focusModeEnabled) {
+      return layout.root;
+    }
+    const focusedPane = panesById.get(layout.focusedPaneId);
+    if (!focusedPane) {
+      return layout.root;
+    }
+    return { kind: "pane" as const, pane: focusedPane };
+  }, [focusModeEnabled, layout.root, layout.focusedPaneId, panesById]);
 
   const handleDragStart = useCallback((event: DragStartEvent) => {
     const data = event.active.data.current as WorkspaceTabDragData | undefined;
@@ -491,7 +506,7 @@ export function SplitContainer({
       onDragEnd={handleDragEnd}
     >
       <SplitNodeView
-        node={layout.root}
+        node={effectiveRoot}
         workspaceKey={workspaceKey}
         uiTabs={uiTabs}
         focusedPaneId={layout.focusedPaneId}
@@ -781,6 +796,8 @@ function SplitPaneView({
   const { theme } = useUnistyles();
   const paneRef = useRef<View | null>(null);
   const stableOnFocusPane = useStableEvent(onFocusPane);
+  const isFocusModeEnabled = usePanelStore((s) => s.desktop.focusModeEnabled);
+  const trafficLightPadding = useTrafficLightPadding();
   const paneState = useMemo(
     () =>
       deriveWorkspacePaneState({
@@ -852,7 +869,13 @@ function SplitPaneView({
 
   return (
     <View ref={paneRef} collapsable={false} style={styles.pane}>
-      <View style={styles.paneTabs}>
+      <View
+        style={[
+          styles.paneTabs,
+          isFocusModeEnabled &&
+            trafficLightPadding.left > 0 && { paddingLeft: trafficLightPadding.left },
+        ]}
+      >
         <WorkspaceDesktopTabsRow
           paneId={pane.id}
           isFocused={isFocused}

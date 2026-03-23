@@ -90,7 +90,7 @@ async function createMainWindow(): Promise<void> {
     show: false,
     ...(iconPath ? { icon: iconPath } : {}),
     titleBarStyle: isMac ? "hidden" : "default",
-    trafficLightPosition: isMac ? { x: 16, y: 17 } : undefined,
+    trafficLightPosition: isMac ? { x: 16, y: 14 } : undefined,
     webPreferences: {
       preload: getPreloadPath(),
       contextIsolation: true,

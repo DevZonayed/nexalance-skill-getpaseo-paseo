@@ -265,6 +265,8 @@ function AppContainer({
   const toggleAgentList = usePanelStore((state) => state.toggleAgentList);
   const toggleFileExplorer = usePanelStore((state) => state.toggleFileExplorer);
   const toggleBothSidebars = usePanelStore((state) => state.toggleBothSidebars);
+  const toggleFocusMode = usePanelStore((state) => state.toggleFocusMode);
+  const isFocusModeEnabled = usePanelStore((state) => state.desktop.focusModeEnabled);
 
   const isMobile = UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
   const chromeEnabled = chromeEnabledOverride ?? daemons.length > 0;
@@ -276,6 +278,7 @@ function AppContainer({
     selectedAgentId,
     toggleFileExplorer,
     toggleBothSidebars,
+    toggleFocusMode,
   });
 
   const containerStyle = useMemo(
@@ -286,7 +289,7 @@ function AppContainer({
   const content = (
     <View style={containerStyle}>
       <View style={rowStyle}>
-        {!isMobile && chromeEnabled && <LeftSidebar selectedAgentId={selectedAgentId} />}
+        {!isMobile && chromeEnabled && !isFocusModeEnabled && <LeftSidebar selectedAgentId={selectedAgentId} />}
         <View style={flexStyle}>{children}</View>
       </View>
       {isMobile && chromeEnabled && <LeftSidebar selectedAgentId={selectedAgentId} />}

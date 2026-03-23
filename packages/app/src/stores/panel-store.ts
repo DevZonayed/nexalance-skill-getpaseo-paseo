@@ -33,6 +33,7 @@ type MobilePanelView = "agent" | "agent-list" | "file-explorer";
 interface DesktopSidebarState {
   agentListOpen: boolean;
   fileExplorerOpen: boolean;
+  focusModeEnabled: boolean;
 }
 
 export type SortOption = "name" | "modified" | "size";
@@ -79,6 +80,7 @@ interface PanelState {
   toggleAgentList: () => void;
   toggleFileExplorer: () => void;
   toggleBothSidebars: () => void;
+  toggleFocusMode: () => void;
 
   // File explorer settings actions
   setExplorerTab: (tab: ExplorerTab) => void;
@@ -134,6 +136,7 @@ export const usePanelStore = create<PanelState>()(
       desktop: {
         agentListOpen: DEFAULT_DESKTOP_OPEN,
         fileExplorerOpen: false,
+        focusModeEnabled: false,
       },
 
       // File explorer defaults
@@ -175,6 +178,7 @@ export const usePanelStore = create<PanelState>()(
           // On desktop, closing depends on which panel triggered it
           // This is called when closing via gesture/backdrop, so we close the currently active mobile panel
           desktop: {
+            ...state.desktop,
             agentListOpen: state.mobileView === "agent-list" ? false : state.desktop.agentListOpen,
             fileExplorerOpen:
               state.mobileView === "file-explorer" ? false : state.desktop.fileExplorerOpen,
@@ -217,6 +221,11 @@ export const usePanelStore = create<PanelState>()(
           return nextState;
         }),
 
+      toggleFocusMode: () =>
+        set((state) => ({
+          desktop: { ...state.desktop, focusModeEnabled: !state.desktop.focusModeEnabled },
+        })),
+
       toggleBothSidebars: () =>
         set((state) => {
           // If either sidebar is open, close both. Otherwise, open both.
@@ -224,13 +233,13 @@ export const usePanelStore = create<PanelState>()(
           if (anyOpen) {
             return {
               mobileView: "agent" as MobilePanelView,
-              desktop: { agentListOpen: false, fileExplorerOpen: false },
+              desktop: { ...state.desktop, agentListOpen: false, fileExplorerOpen: false },
             };
           }
           const resolvedTab = resolveExplorerTabFromActiveCheckout(state);
           return {
             mobileView: "agent" as MobilePanelView,
-            desktop: { agentListOpen: true, fileExplorerOpen: true },
+            desktop: { ...state.desktop, agentListOpen: true, fileExplorerOpen: true },
             ...(resolvedTab ? { explorerTab: resolvedTab } : {}),
           };
         }),
@@ -286,7 +295,7 @@ export const usePanelStore = create<PanelState>()(
     }),
     {
       name: "panel-state",
-      version: 6,
+      version: 8,
       storage: createJSONStorage(() => AsyncStorage),
       migrate: (persistedState, version) => {
         const state = persistedState as Partial<PanelState> & Record<string, unknown>;
@@ -339,6 +348,23 @@ export const usePanelStore = create<PanelState>()(
             next[key] = value;
           }
           state.explorerTabByCheckout = next;
+        }
+
+        if (version < 8) {
+          const desktop = state.desktop as Record<string, unknown> | undefined;
+          if (desktop) {
+            if ("zoomed" in desktop) {
+              desktop.focusModeEnabled = desktop.zoomed;
+              delete desktop.zoomed;
+            }
+            if ("focused" in desktop) {
+              desktop.focusModeEnabled = desktop.focused;
+              delete desktop.focused;
+            }
+            if (typeof desktop.focusModeEnabled !== "boolean") {
+              desktop.focusModeEnabled = false;
+            }
+          }
         }
 
         if (version < 6 || typeof state.sidebarWidth !== "number") {

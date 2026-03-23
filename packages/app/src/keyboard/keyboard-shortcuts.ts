@@ -718,6 +718,32 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
     },
   },
 
+  // --- Focus mode ---
+  {
+    id: "view-toggle-focus-cmd-shift-f-mac",
+    action: "view.toggle.focus",
+    combo: "Cmd+Shift+F",
+    when: { mac: true, hasSelectedAgent: true, commandCenter: false },
+    help: {
+      id: "toggle-focus",
+      section: "panels",
+      label: "Toggle focus mode",
+      keys: ["mod", "shift", "F"],
+    },
+  },
+  {
+    id: "view-toggle-focus-ctrl-shift-f-non-mac",
+    action: "view.toggle.focus",
+    combo: "Ctrl+Shift+F",
+    when: { mac: false, hasSelectedAgent: true, commandCenter: false, terminal: false },
+    help: {
+      id: "toggle-focus",
+      section: "panels",
+      label: "Toggle focus mode",
+      keys: ["mod", "shift", "F"],
+    },
+  },
+
   // --- Message input ---
   {
     id: "message-input-voice-toggle-cmd-shift-d-mac",

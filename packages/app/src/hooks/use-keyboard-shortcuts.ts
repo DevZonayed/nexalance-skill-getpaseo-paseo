@@ -34,6 +34,7 @@ export function useKeyboardShortcuts({
   selectedAgentId,
   toggleFileExplorer,
   toggleBothSidebars,
+  toggleFocusMode,
 }: {
   enabled: boolean;
   isMobile: boolean;
@@ -41,6 +42,7 @@ export function useKeyboardShortcuts({
   selectedAgentId?: string;
   toggleFileExplorer?: () => void;
   toggleBothSidebars?: () => void;
+  toggleFocusMode?: () => void;
 }) {
   const pathname = usePathname();
   const hosts = useHosts();
@@ -250,6 +252,11 @@ export function useKeyboardShortcuts({
           }
           toggleFileExplorer();
           return true;
+        case "view.toggle.focus":
+          if (toggleFocusMode) {
+            toggleFocusMode();
+          }
+          return true;
         case "command-center.toggle": {
           const store = useKeyboardShortcutsStore.getState();
           if (!store.commandCenterOpen) {
@@ -404,5 +411,6 @@ export function useKeyboardShortcuts({
     selectedAgentId,
     toggleAgentList,
     toggleFileExplorer,
+    toggleFocusMode,
   ]);
 }

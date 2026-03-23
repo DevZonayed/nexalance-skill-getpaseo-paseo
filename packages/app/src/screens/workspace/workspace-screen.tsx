@@ -550,6 +550,7 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
   const mainBackgroundColor = isDarkMode ? theme.colors.surface1 : theme.colors.surface0;
   const toast = useToast();
   const isMobile = UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
+  const isFocusModeEnabled = usePanelStore((state) => state.desktop.focusModeEnabled);
 
   const normalizedServerId = trimNonEmpty(decodeSegment(serverId)) ?? "";
   const normalizedWorkspaceId =
@@ -1949,6 +1950,7 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
       ) : null}
       <View style={styles.threePaneRow}>
         <View style={styles.centerColumn}>
+          {(!isFocusModeEnabled || isMobile) && (
           <ScreenHeader
             left={
               <>
@@ -2135,6 +2137,7 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
               </View>
             }
           />
+          )}
 
           {isMobile ? (
             <MobileWorkspaceTabSwitcher
@@ -2165,6 +2168,7 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
                 {workspaceLayout && persistenceKey ? (
                   <SplitContainer
                     layout={workspaceLayout}
+                    focusModeEnabled={isFocusModeEnabled && !isMobile}
                     workspaceKey={persistenceKey}
                     normalizedServerId={normalizedServerId}
                     normalizedWorkspaceId={normalizedWorkspaceId}
@@ -2200,13 +2204,15 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
           </View>
         </View>
 
-        <ExplorerSidebar
-          serverId={normalizedServerId}
-          workspaceId={normalizedWorkspaceId}
-          workspaceRoot={normalizedWorkspaceId}
-          isGit={isGitCheckout}
-          onOpenFile={handleOpenFileFromExplorer}
-        />
+        {(!isFocusModeEnabled || isMobile) && (
+          <ExplorerSidebar
+            serverId={normalizedServerId}
+            workspaceId={normalizedWorkspaceId}
+            workspaceRoot={normalizedWorkspaceId}
+            isGit={isGitCheckout}
+            onOpenFile={handleOpenFileFromExplorer}
+          />
+        )}
       </View>
     </View>
   );
