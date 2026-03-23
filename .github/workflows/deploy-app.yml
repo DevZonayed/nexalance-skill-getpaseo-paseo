@@ -26,6 +26,9 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Build highlight dependency
+        run: npm run build --workspace=@getpaseo/highlight
+
       - name: Typecheck
         run: npm run typecheck --workspace=@getpaseo/app
 

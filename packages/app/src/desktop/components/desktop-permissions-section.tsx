@@ -60,7 +60,7 @@ export function DesktopPermissionsSection() {
           }}
         />
         {testNotificationError ? (
-          <Text style={[styles.errorText, { color: theme.colors.danger }]}>
+          <Text style={[styles.errorText, { color: theme.colors.destructive }]}>
             {testNotificationError}
           </Text>
         ) : null}
