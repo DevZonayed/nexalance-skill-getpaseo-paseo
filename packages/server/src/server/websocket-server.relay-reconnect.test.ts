@@ -639,6 +639,7 @@ describe("relay external socket reconnect behavior", () => {
       Buffer.from(
         encodeTerminalStreamFrame({
           opcode: TerminalStreamOpcode.Input,
+          slot: 9,
           payload: new TextEncoder().encode("ls\r"),
         }),
       ),
@@ -648,9 +649,11 @@ describe("relay external socket reconnect behavior", () => {
     expect(session.handleBinaryFrame).toHaveBeenCalledTimes(1);
     const frame = session.handleBinaryFrame.mock.calls[0]?.[0] as {
       opcode: number;
+      slot: number;
       payload: Uint8Array;
     };
     expect(frame.opcode).toBe(TerminalStreamOpcode.Input);
+    expect(frame.slot).toBe(9);
     expect(new TextDecoder().decode(frame.payload)).toBe("ls\r");
 
     await server.close();
@@ -673,7 +676,7 @@ describe("relay external socket reconnect behavior", () => {
       | undefined;
     expect(onBinaryMessage).toBeTypeOf("function");
 
-    onBinaryMessage?.(new Uint8Array([TerminalStreamOpcode.Output, 0x6f, 0x6b]));
+    onBinaryMessage?.(new Uint8Array([TerminalStreamOpcode.Output, 12, 0x6f, 0x6b]));
 
     expect(socket.sent).toHaveLength(2);
     const binaryPayload = asUint8Array(socket.sent[1]);
@@ -681,6 +684,7 @@ describe("relay external socket reconnect behavior", () => {
     const frame = decodeTerminalStreamFrame(binaryPayload!);
     expect(frame).not.toBeNull();
     expect(frame!.opcode).toBe(TerminalStreamOpcode.Output);
+    expect(frame!.slot).toBe(12);
     expect(new TextDecoder().decode(frame!.payload ?? new Uint8Array())).toBe("ok");
 
     await server.close();

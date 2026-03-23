@@ -419,7 +419,8 @@ export class DaemonClient {
     { cwd: string; compare: { mode: "uncommitted" | "base"; baseRef?: string } }
   >();
   private terminalDirectorySubscriptions = new Set<string>();
-  private activeTerminalId: string | null = null;
+  private terminalSlots = new Map<string, number>();
+  private slotTerminals = new Map<number, string>();
   private readonly terminalStreamListeners = new Set<(event: TerminalStreamEvent) => void>();
   private logger: Logger;
   private pendingSendQueue: PendingSend[] = [];
@@ -659,7 +660,7 @@ export class DaemonClient {
     this.disposeTransport(1000, "Client closed");
     this.clearWaiters(new Error("Daemon client closed"));
     this.rejectPendingSendQueue(new Error("Daemon client closed"));
-    this.activeTerminalId = null;
+    this.clearTerminalSlots();
     this.lastServerInfoMessage = null;
     this.updateConnectionState(
       { status: "disposed" },
@@ -2613,15 +2614,13 @@ export class DaemonClient {
       options: { skipQueue: true },
     });
     if (!payload.error) {
-      this.activeTerminalId = terminalId;
+      this.setTerminalSlot(terminalId, payload.slot);
     }
     return payload;
   }
 
   unsubscribeTerminal(terminalId: string): void {
-    if (this.activeTerminalId === terminalId) {
-      this.activeTerminalId = null;
-    }
+    this.removeTerminalSlot(terminalId);
     this.sendSessionMessage({
       type: "unsubscribe_terminal_request",
       terminalId,
@@ -2629,11 +2628,13 @@ export class DaemonClient {
   }
 
   sendTerminalInput(terminalId: string, message: TerminalInput["message"]): void {
-    if (this.activeTerminalId === terminalId) {
+    const slot = this.terminalSlots.get(terminalId);
+    if (typeof slot === "number") {
       if (message.type === "input") {
         this.sendBinaryFrame(
           encodeTerminalStreamFrame({
             opcode: TerminalStreamOpcode.Input,
+            slot,
             payload: encodeUtf8String(message.data),
           }),
         );
@@ -2643,6 +2644,7 @@ export class DaemonClient {
         this.sendBinaryFrame(
           encodeTerminalStreamFrame({
             opcode: TerminalStreamOpcode.Resize,
+            slot,
             payload: encodeTerminalResizePayload({
               rows: message.rows,
               cols: message.cols,
@@ -2709,6 +2711,37 @@ export class DaemonClient {
 
   private createRequestId(requestId?: string): string {
     return requestId ?? crypto.randomUUID();
+  }
+
+  private setTerminalSlot(terminalId: string, slot: number): void {
+    const existingTerminalId = this.slotTerminals.get(slot);
+    if (existingTerminalId && existingTerminalId !== terminalId) {
+      this.terminalSlots.delete(existingTerminalId);
+    }
+
+    const existingSlot = this.terminalSlots.get(terminalId);
+    if (typeof existingSlot === "number" && existingSlot !== slot) {
+      this.slotTerminals.delete(existingSlot);
+    }
+
+    this.terminalSlots.set(terminalId, slot);
+    this.slotTerminals.set(slot, terminalId);
+  }
+
+  private removeTerminalSlot(terminalId: string): void {
+    const slot = this.terminalSlots.get(terminalId);
+    if (typeof slot !== "number") {
+      return;
+    }
+    this.terminalSlots.delete(terminalId);
+    if (this.slotTerminals.get(slot) === terminalId) {
+      this.slotTerminals.delete(slot);
+    }
+  }
+
+  private clearTerminalSlots(): void {
+    this.terminalSlots.clear();
+    this.slotTerminals.clear();
   }
 
   getLastServerInfoMessage(): ServerInfoStatusPayload | null {
@@ -2840,7 +2873,7 @@ export class DaemonClient {
   }
 
   private handleBinaryFrame(frame: TerminalStreamFrame): void {
-    const terminalId = this.activeTerminalId;
+    const terminalId = this.slotTerminals.get(frame.slot);
     if (!terminalId) {
       return;
     }
@@ -2934,7 +2967,7 @@ export class DaemonClient {
     // and responses from the previous connection will never arrive.
     this.clearWaiters(new Error(reason ?? "Connection lost"));
     this.rejectPendingSendQueue(new Error(reason ?? "Connection lost"));
-    this.activeTerminalId = null;
+    this.clearTerminalSlots();
     this.lastServerInfoMessage = null;
 
     if (wasDisposed) {
@@ -2989,9 +3022,7 @@ export class DaemonClient {
     }
 
     if (msg.type === "terminal_stream_exit") {
-      if (this.activeTerminalId === msg.payload.terminalId) {
-        this.activeTerminalId = null;
-      }
+      this.removeTerminalSlot(msg.payload.terminalId);
     }
 
     if (this.rawMessageListeners.size > 0) {

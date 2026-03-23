@@ -2095,37 +2095,43 @@ const TerminalInfoSchema = z.object({
   cwd: z.string(),
 });
 
-export const TerminalCellSchema = z.object({
-  char: z.string(),
-  fg: z.number().optional(),
-  bg: z.number().optional(),
-  fgMode: z.number().optional(),
-  bgMode: z.number().optional(),
-  bold: z.boolean().optional(),
-  italic: z.boolean().optional(),
-  underline: z.boolean().optional(),
-  dim: z.boolean().optional(),
-  inverse: z.boolean().optional(),
-  strikethrough: z.boolean().optional(),
-}).strict();
+export const TerminalCellSchema = z
+  .object({
+    char: z.string(),
+    fg: z.number().optional(),
+    bg: z.number().optional(),
+    fgMode: z.number().optional(),
+    bgMode: z.number().optional(),
+    bold: z.boolean().optional(),
+    italic: z.boolean().optional(),
+    underline: z.boolean().optional(),
+    dim: z.boolean().optional(),
+    inverse: z.boolean().optional(),
+    strikethrough: z.boolean().optional(),
+  })
+  .strict();
 
 export const TerminalCursorStyleSchema = z.enum(["block", "underline", "bar"]);
 
-export const TerminalCursorSchema = z.object({
-  row: z.number(),
-  col: z.number(),
-  hidden: z.boolean().optional(),
-  style: TerminalCursorStyleSchema.optional(),
-  blink: z.boolean().optional(),
-}).strict();
+export const TerminalCursorSchema = z
+  .object({
+    row: z.number(),
+    col: z.number(),
+    hidden: z.boolean().optional(),
+    style: TerminalCursorStyleSchema.optional(),
+    blink: z.boolean().optional(),
+  })
+  .strict();
 
-export const TerminalStateSchema = z.object({
-  rows: z.number(),
-  cols: z.number(),
-  grid: z.array(z.array(TerminalCellSchema)),
-  scrollback: z.array(z.array(TerminalCellSchema)),
-  cursor: TerminalCursorSchema,
-}).strict();
+export const TerminalStateSchema = z
+  .object({
+    rows: z.number(),
+    cols: z.number(),
+    grid: z.array(z.array(TerminalCellSchema)),
+    scrollback: z.array(z.array(TerminalCellSchema)),
+    cursor: TerminalCursorSchema,
+  })
+  .strict();
 
 export const ListTerminalsResponseSchema = z.object({
   type: z.literal("list_terminals_response"),
@@ -2157,6 +2163,7 @@ export const SubscribeTerminalResponseSchema = z.object({
   type: z.literal("subscribe_terminal_response"),
   payload: z.object({
     terminalId: z.string(),
+    slot: z.number().int().min(0).max(255),
     error: z.string().nullable(),
     requestId: z.string(),
   }),
