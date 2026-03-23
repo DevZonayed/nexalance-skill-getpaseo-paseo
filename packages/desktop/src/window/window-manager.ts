@@ -6,6 +6,14 @@ import {
   type WindowMoveState,
 } from "./window-drag-coordinates.js";
 
+export function readBadgeCount(input: unknown): number {
+  if (typeof input !== "number" || !Number.isSafeInteger(input) || input < 0) {
+    return 0;
+  }
+
+  return input;
+}
+
 export function registerWindowManager(): void {
   // ---------------------------------------------------------------------------
   // Manual window dragging (replaces flaky CSS -webkit-app-region: drag).
@@ -79,9 +87,18 @@ export function registerWindowManager(): void {
     return win?.isFullScreen() ?? false;
   });
 
-  ipcMain.handle("paseo:window:setBadgeCount", (_event, count?: number) => {
+  ipcMain.handle("paseo:window:setBadgeCount", (_event, count?: unknown) => {
     if (process.platform === "darwin" || process.platform === "linux") {
-      app.setBadgeCount(count ?? 0);
+      const badgeCount = readBadgeCount(count);
+      try {
+        app.setBadgeCount(badgeCount);
+      } catch (error) {
+        console.warn("[window-manager] Failed to update badge count", {
+          count,
+          badgeCount,
+          error,
+        });
+      }
     }
   });
 }
