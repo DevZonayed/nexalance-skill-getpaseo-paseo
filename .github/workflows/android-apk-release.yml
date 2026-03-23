@@ -17,7 +17,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
+  SOURCE_TAG: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
 
 jobs:
   publish-android-apk:
@@ -31,6 +31,18 @@ jobs:
         with:
           fetch-depth: 0
           ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref }}
+
+      - name: Resolve release tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          source_tag="${SOURCE_TAG}"
+          if [[ "$source_tag" =~ ^(android-)?v([0-9]+\.[0-9]+\.[0-9]+) ]]; then
+            release_tag="v${BASH_REMATCH[2]}"
+          else
+            release_tag="$source_tag"
+          fi
+          echo "RELEASE_TAG=$release_tag" >> "$GITHUB_ENV"
 
       - name: Setup Node
         uses: actions/setup-node@v4
