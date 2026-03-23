@@ -318,6 +318,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
 
   const handleDictationTranscript = useCallback(
     (text: string, _meta: { requestId: string }) => {
+      console.log("[MessageInput] handleDictationTranscript: text=%s, sendAfterTranscript=%s", JSON.stringify(text), sendAfterTranscriptRef.current);
       if (!text) return;
       const current = valueRef.current;
       const shouldPad = current.length > 0 && !/\s$/.test(current);
@@ -328,12 +329,14 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
 
       if (shouldAutoSend) {
         const imageAttachments = images.length > 0 ? images : undefined;
+        console.log("[MessageInput] handleDictationTranscript: auto-sending, forceSend=%s", isAgentRunning);
         onSubmit({
           text: nextValue,
           images: imageAttachments,
           forceSend: isAgentRunning || undefined,
         });
       } else {
+        console.log("[MessageInput] handleDictationTranscript: inserting text into input");
         onChangeText(nextValue);
       }
 
@@ -464,11 +467,13 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
   }, [cancelDictation]);
 
   const handleAcceptRecording = useCallback(async () => {
+    console.log("[MessageInput] handleAcceptRecording (insert only)");
     sendAfterTranscriptRef.current = false;
     await confirmDictation();
   }, [confirmDictation]);
 
   const handleAcceptAndSendRecording = useCallback(async () => {
+    console.log("[MessageInput] handleAcceptAndSendRecording (auto-send)");
     sendAfterTranscriptRef.current = true;
     await confirmDictation();
   }, [confirmDictation]);

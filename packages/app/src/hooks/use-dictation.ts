@@ -205,11 +205,14 @@ export function useDictation(options: UseDictationOptions): UseDictationResult {
 
       const transcriptText =
         text.trim().length > 0 ? text.trim() : latestPartialTranscriptRef.current.trim();
+      console.log("[useDictation] transcriptionSuccess: text=%s, partial=%s, final=%s", JSON.stringify(text), JSON.stringify(latestPartialTranscriptRef.current), JSON.stringify(transcriptText));
       clearStreamingState();
 
       if (!transcriptText) {
+        console.warn("[useDictation] transcriptionSuccess: empty transcript, skipping callback");
         return;
       }
+      console.log("[useDictation] transcriptionSuccess: calling onTranscript");
       onTranscriptRef.current?.(transcriptText, { requestId });
     },
     [clearStreamingState],
@@ -328,13 +331,19 @@ export function useDictation(options: UseDictationOptions): UseDictationResult {
 
   const confirmDictation = useCallback(async () => {
     if (actionGateRef.current.confirming) {
+      console.warn("[useDictation] confirmDictation: already confirming, skipping");
       return;
     }
     if (!isRecordingRef.current || isProcessingRef.current) {
+      console.warn("[useDictation] confirmDictation: guard failed", {
+        isRecording: isRecordingRef.current,
+        isProcessing: isProcessingRef.current,
+      });
       return;
     }
     const confirmAllowed = canConfirm ? canConfirm() : true;
     if (!confirmAllowed) {
+      console.warn("[useDictation] confirmDictation: canConfirm returned false");
       return;
     }
 
@@ -355,18 +364,23 @@ export function useDictation(options: UseDictationOptions): UseDictationResult {
       setIsRecording(false);
 
       const finalSeq = senderRef.current?.getFinalSeq() ?? -1;
+      console.log("[useDictation] confirmDictation: finalSeq=%d, segments=%d", finalSeq, senderRef.current?.getSegmentCount() ?? 0);
       if (finalSeq < 0) {
+        console.warn("[useDictation] confirmDictation: no segments, returning empty");
         handleStreamingTranscriptionSuccess("", generateMessageId());
         return;
       }
 
       const transcriptText = await ensureFinalTranscript(finalSeq);
       attemptGuardRef.current.assertCurrent(attemptId);
+      console.log("[useDictation] confirmDictation: got transcript, length=%d", transcriptText.length);
       handleStreamingTranscriptionSuccess(transcriptText, generateMessageId());
     } catch (err) {
       if (err instanceof Error && err.name === "AttemptCancelledError") {
+        console.warn("[useDictation] confirmDictation: attempt cancelled");
         return;
       }
+      console.error("[useDictation] confirmDictation: failure", err);
       handleDictationFailure(err);
     } finally {
       actionGateRef.current.confirming = false;
