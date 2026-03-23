@@ -404,6 +404,11 @@ async function subscribeRawTerminal(
   if (message.message.type !== "subscribe_terminal_response") {
     throw new Error("Expected subscribe_terminal_response");
   }
+  if (message.message.payload.error !== null) {
+    throw new Error(
+      `Expected successful subscribe_terminal_response: ${message.message.payload.error}`,
+    );
+  }
   expect(message.message.payload).not.toHaveProperty("state");
   return message.message.payload.slot;
 }

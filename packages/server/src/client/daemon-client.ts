@@ -2613,7 +2613,7 @@ export class DaemonClient {
       timeout: 10000,
       options: { skipQueue: true },
     });
-    if (!payload.error) {
+    if (payload.error === null) {
       this.setTerminalSlot(terminalId, payload.slot);
     }
     return payload;

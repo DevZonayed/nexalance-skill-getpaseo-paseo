@@ -2161,12 +2161,19 @@ export const CreateTerminalResponseSchema = z.object({
 
 export const SubscribeTerminalResponseSchema = z.object({
   type: z.literal("subscribe_terminal_response"),
-  payload: z.object({
-    terminalId: z.string(),
-    slot: z.number().int().min(0).max(255),
-    error: z.string().nullable(),
-    requestId: z.string(),
-  }),
+  payload: z.union([
+    z.object({
+      terminalId: z.string(),
+      slot: z.number().int().min(0).max(255),
+      error: z.null(),
+      requestId: z.string(),
+    }),
+    z.object({
+      terminalId: z.string(),
+      error: z.string(),
+      requestId: z.string(),
+    }),
+  ]),
 });
 
 export const KillTerminalResponseSchema = z.object({

@@ -7661,7 +7661,6 @@ export class Session {
         type: "subscribe_terminal_response",
         payload: {
           terminalId: msg.terminalId,
-          slot: 0,
           error: "Terminal manager not available",
           requestId: msg.requestId,
         },
@@ -7675,7 +7674,6 @@ export class Session {
         type: "subscribe_terminal_response",
         payload: {
           terminalId: msg.terminalId,
-          slot: 0,
           error: "Terminal not found",
           requestId: msg.requestId,
         },
@@ -7686,11 +7684,17 @@ export class Session {
 
     const slot = this.bindActiveTerminalStream(session);
     if (slot === null) {
+      this.sessionLogger.warn(
+        {
+          terminalId: msg.terminalId,
+          activeTerminalStreamCount: this.activeTerminalStreams.size,
+        },
+        "Terminal stream slot exhaustion",
+      );
       this.emit({
         type: "subscribe_terminal_response",
         payload: {
           terminalId: msg.terminalId,
-          slot: 0,
           error: "No terminal stream slots available",
           requestId: msg.requestId,
         },

@@ -84,7 +84,7 @@ export function decodeTerminalStreamFrame(bytes: Uint8Array): TerminalStreamFram
   }
   return {
     opcode,
-    slot: bytes[1] ?? 0,
+    slot: bytes[1],
     payload: bytes.subarray(2),
   };
 }
