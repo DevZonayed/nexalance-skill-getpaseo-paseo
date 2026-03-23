@@ -626,6 +626,45 @@ describe("daemon E2E terminal", () => {
     rmSync(cwd, { recursive: true, force: true });
   }, 30000);
 
+  test("resize does not stall streamed output for an attached client", async () => {
+    const cwd = tmpCwd();
+    const created = await ctx.client.createTerminal(cwd);
+    const terminalId = created.terminal!.id;
+    const secondClient = await connectClient(
+      ctx.daemon.port,
+      `terminal-resize-stream-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    );
+
+    try {
+      await ctx.client.subscribeTerminal(terminalId);
+      await secondClient.subscribeTerminal(terminalId);
+
+      secondClient.sendTerminalInput(terminalId, {
+        type: "resize",
+        rows: 12,
+        cols: 40,
+      });
+
+      const firstOutput = waitForTerminalOutput(ctx.client, terminalId, (text) =>
+        text.includes("after-resize-stream"),
+      );
+      const secondOutput = waitForTerminalOutput(secondClient, terminalId, (text) =>
+        text.includes("after-resize-stream"),
+      );
+
+      secondClient.sendTerminalInput(terminalId, {
+        type: "input",
+        data: "printf 'after-resize-stream\\n'\r",
+      });
+
+      expect(await firstOutput).toContain("after-resize-stream");
+      expect(await secondOutput).toContain("after-resize-stream");
+    } finally {
+      await secondClient.close();
+      rmSync(cwd, { recursive: true, force: true });
+    }
+  }, 30000);
+
   test("terminal exits notify the client", async () => {
     const cwd = tmpCwd();
     const created = await ctx.client.createTerminal(cwd);

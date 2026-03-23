@@ -1817,7 +1817,6 @@ export class Session {
         if (!resize) {
           return;
         }
-        activeStream.needsSnapshot = true;
         terminal.send({ type: "resize", rows: resize.rows, cols: resize.cols });
         return;
       }
@@ -7859,6 +7858,7 @@ export class Session {
         this.markAllActiveTerminalStreamsForSnapshot();
       }
     });
+    this.trySendTerminalSnapshot(activeStream);
     return slot;
   }
 
