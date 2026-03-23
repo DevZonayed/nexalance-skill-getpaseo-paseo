@@ -21,25 +21,25 @@ const downloadOptions: DownloadOption[] = [
   {
     platform: "mac-silicon",
     label: "Mac",
-    href: `${releaseBase}/Paseo_${desktopVersion}_aarch64.dmg`,
+    href: `${releaseBase}/Paseo-${desktopVersion}-arm64.dmg`,
     icon: AppleIcon,
   },
   {
     platform: "mac-intel",
     label: "Mac Intel",
-    href: `${releaseBase}/Paseo_${desktopVersion}_x86_64.dmg`,
+    href: `${releaseBase}/Paseo-${desktopVersion}.dmg`,
     icon: AppleIcon,
   },
   {
     platform: "windows",
     label: "Windows",
-    href: `${releaseBase}/Paseo_${desktopVersion}_x64-setup.exe`,
+    href: `${releaseBase}/Paseo-Setup-${desktopVersion}.exe`,
     icon: WindowsIcon,
   },
   {
     platform: "linux",
     label: "Linux",
-    href: `${releaseBase}/Paseo_${desktopVersion}_amd64.AppImage`,
+    href: `${releaseBase}/Paseo-${desktopVersion}.AppImage`,
     icon: LinuxIcon,
   },
 ];
