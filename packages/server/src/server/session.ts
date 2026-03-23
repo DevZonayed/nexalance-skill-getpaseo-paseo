@@ -7729,6 +7729,13 @@ export class Session {
     }
     this.ensureTerminalExitSubscription(session);
 
+    if (msg.message.type === "resize") {
+      const currentSize = session.getSize();
+      if (currentSize.rows === msg.message.rows && currentSize.cols === msg.message.cols) {
+        return;
+      }
+    }
+
     session.send(msg.message);
   }
 

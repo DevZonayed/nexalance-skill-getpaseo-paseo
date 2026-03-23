@@ -175,6 +175,19 @@ const MountedTabSlot = memo(function MountedTabSlot({
   paneId,
   buildPaneContentModel,
 }: MountedTabSlotProps) {
+  useEffect(() => {
+    if (tabDescriptor.target.kind !== "terminal") {
+      return;
+    }
+    console.log("[terminal-tab-slot]", {
+      paneId,
+      tabId: tabDescriptor.tabId,
+      terminalId: tabDescriptor.target.terminalId,
+      isVisible,
+      isPaneFocused,
+    });
+  }, [isPaneFocused, isVisible, paneId, tabDescriptor]);
+
   const content = useMemo(
     () =>
       buildPaneContentModel({

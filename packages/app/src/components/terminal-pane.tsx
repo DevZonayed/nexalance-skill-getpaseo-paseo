@@ -107,13 +107,13 @@ export function TerminalPane({
   const scopeKey = useMemo(() => terminalScopeKey({ serverId, cwd }), [serverId, cwd]);
   const lastReportedSizeRef = useRef<{ rows: number; cols: number } | null>(null);
   const streamControllerRef = useRef<TerminalStreamController | null>(null);
-  const emulatorRef = useRef<TerminalEmulatorHandle | null>(null);
   const workspaceTerminalSession = useMemo(() => getWorkspaceTerminalSession({ scopeKey }), [scopeKey]);
   const [isAttaching, setIsAttaching] = useState(false);
   const [streamError, setStreamError] = useState<string | null>(null);
   const [modifiers, setModifiers] = useState<ModifierState>(EMPTY_MODIFIERS);
   const [focusRequestToken, setFocusRequestToken] = useState(0);
   const [resizeRequestToken, setResizeRequestToken] = useState(0);
+  const emulatorRef = useRef<TerminalEmulatorHandle>(null);
   const terminalIdRef = useRef<string>(terminalId);
   const pendingTerminalInputRef = useRef<PendingTerminalInput[]>([]);
   const keyboardRefitTimeoutsRef = useRef<Array<ReturnType<typeof setTimeout>>>([]);
@@ -560,10 +560,10 @@ export function TerminalPane({
                 contentInsetAdjustmentBehavior: "never",
               }}
               streamKey={`${scopeKey}:${terminalId}`}
-              initialSnapshot={initialSnapshot}
               testId="terminal-surface"
               xtermTheme={xtermTheme}
               swipeGesturesEnabled={swipeGesturesEnabled}
+              initialSnapshot={initialSnapshot}
               onSwipeRight={() => {
                 if (!swipeGesturesEnabled) {
                   return;

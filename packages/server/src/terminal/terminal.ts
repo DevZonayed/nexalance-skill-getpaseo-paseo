@@ -9,7 +9,6 @@ import type { TerminalCell, TerminalState } from "../shared/messages.js";
 const { Terminal } = xterm;
 const require = createRequire(import.meta.url);
 let nodePtySpawnHelperChecked = false;
-const STATE_BROADCAST_INTERVAL_MS = 33;
 
 export type ClientMessage =
   | { type: "input"; data: string }
@@ -27,6 +26,7 @@ export interface TerminalSession {
   send(msg: ClientMessage): void;
   subscribe(listener: (msg: ServerMessage) => void): () => void;
   onExit(listener: () => void): () => void;
+  getSize(): { rows: number; cols: number };
   getState(): TerminalState;
   kill(): void;
 }
@@ -246,8 +246,6 @@ export async function createTerminal(options: CreateTerminalOptions): Promise<Te
   let killed = false;
   let disposed = false;
   let exitEmitted = false;
-  let stateBroadcastScheduled = false;
-  let stateBroadcastTimer: ReturnType<typeof setTimeout> | null = null;
 
   // Create xterm.js headless terminal
   const terminal = new Terminal({
@@ -301,36 +299,9 @@ export async function createTerminal(options: CreateTerminalOptions): Promise<Te
       return;
     }
     disposed = true;
-    if (stateBroadcastTimer) {
-      clearTimeout(stateBroadcastTimer);
-      stateBroadcastTimer = null;
-    }
-    stateBroadcastScheduled = false;
     terminal.dispose();
     listeners.clear();
     exitListeners.clear();
-  }
-
-  function emitStateToListeners(): void {
-    stateBroadcastScheduled = false;
-    if (disposed || killed || listeners.size === 0) {
-      return;
-    }
-    const state = getState();
-    for (const listener of listeners) {
-      listener({ type: "snapshot", state });
-    }
-  }
-
-  function scheduleStateBroadcast(): void {
-    if (disposed || killed || listeners.size === 0 || stateBroadcastScheduled) {
-      return;
-    }
-    stateBroadcastScheduled = true;
-    stateBroadcastTimer = setTimeout(() => {
-      stateBroadcastTimer = null;
-      emitStateToListeners();
-    }, STATE_BROADCAST_INTERVAL_MS);
   }
 
   // Pipe PTY output to terminal emulator
@@ -343,7 +314,6 @@ export async function createTerminal(options: CreateTerminalOptions): Promise<Te
       for (const listener of listeners) {
         listener({ type: "output", data });
       }
-      scheduleStateBroadcast();
     });
   });
 
@@ -362,6 +332,14 @@ export async function createTerminal(options: CreateTerminalOptions): Promise<Te
       cursor: extractCursorState(terminal),
     };
   }
+
+  function getSize(): { rows: number; cols: number } {
+    return {
+      rows: terminal.rows,
+      cols: terminal.cols,
+    };
+  }
+
   function send(msg: ClientMessage): void {
     if (killed) return;
 
@@ -372,7 +350,6 @@ export async function createTerminal(options: CreateTerminalOptions): Promise<Te
       case "resize":
         terminal.resize(msg.cols, msg.rows);
         ptyProcess.resize(msg.cols, msg.rows);
-        scheduleStateBroadcast();
         break;
       case "mouse":
         // Mouse events can be sent as escape sequences if terminal supports it
@@ -432,6 +409,7 @@ export async function createTerminal(options: CreateTerminalOptions): Promise<Te
     send,
     subscribe,
     onExit,
+    getSize,
     getState,
     kill,
   };

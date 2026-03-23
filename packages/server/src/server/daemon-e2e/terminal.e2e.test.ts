@@ -606,16 +606,10 @@ describe("daemon E2E terminal", () => {
     rmSync(cwd, { recursive: true, force: true });
   }, 30000);
 
-  test("resize sends a new snapshot with the updated dimensions", async () => {
+  test("resize updates server dimensions without sending a live snapshot", async () => {
     const cwd = tmpCwd();
     const created = await ctx.client.createTerminal(cwd);
     const terminalId = created.terminal!.id;
-
-    const resizedSnapshot = waitForTerminalSnapshot(
-      ctx.client,
-      terminalId,
-      (state) => state.rows === 10 && state.cols === 40,
-    );
     await ctx.client.subscribeTerminal(terminalId);
     ctx.client.sendTerminalInput(terminalId, {
       type: "resize",
@@ -623,9 +617,11 @@ describe("daemon E2E terminal", () => {
       cols: 40,
     });
 
-    const snapshot = await resizedSnapshot;
-    expect(snapshot.rows).toBe(10);
-    expect(snapshot.cols).toBe(40);
+    await new Promise((resolve) => setTimeout(resolve, 300));
+
+    const state = ctx.daemon.daemon.terminalManager?.getTerminal(terminalId)?.getState();
+    expect(state?.rows).toBe(10);
+    expect(state?.cols).toBe(40);
 
     rmSync(cwd, { recursive: true, force: true });
   }, 30000);

@@ -23,10 +23,11 @@ describe("encodeTerminalKeyInput", () => {
     expect(encodeTerminalKeyInput({ key: "Enter", shift: true })).toBe("\x1b[13;2u");
   });
 
-  it("encodes enter with other modifiers as plain carriage return", () => {
-    expect(encodeTerminalKeyInput({ key: "Enter", ctrl: true })).toBe("\r");
-    expect(encodeTerminalKeyInput({ key: "Enter", alt: true })).toBe("\x1b\r");
-    expect(encodeTerminalKeyInput({ key: "Enter", shift: true, ctrl: true })).toBe("\r");
+  it("encodes enter with modifiers using CSI u", () => {
+    expect(encodeTerminalKeyInput({ key: "Enter", ctrl: true })).toBe("\x1b[13;5u");
+    expect(encodeTerminalKeyInput({ key: "Enter", alt: true })).toBe("\x1b[13;3u");
+    expect(encodeTerminalKeyInput({ key: "Enter", meta: true })).toBe("\x1b[13;9u");
+    expect(encodeTerminalKeyInput({ key: "Enter", shift: true, ctrl: true })).toBe("\x1b[13;6u");
   });
 
   it("returns empty string for unsupported keys", () => {

@@ -9,13 +9,14 @@ export interface TerminalKeyInput {
 function modifierParam(input: TerminalKeyInput): number {
   let value = 1;
   if (input.shift) value += 1;
-  if (input.alt || input.meta) value += 2;
+  if (input.alt) value += 2;
   if (input.ctrl) value += 4;
+  if (input.meta) value += 8;
   return value;
 }
 
 function applyAltLikePrefix(sequence: string, input: TerminalKeyInput): string {
-  return input.alt || input.meta ? `\x1b${sequence}` : sequence;
+  return input.alt ? `\x1b${sequence}` : sequence;
 }
 
 function encodePrintableKey(input: TerminalKeyInput): string {
@@ -85,11 +86,13 @@ export function encodeTerminalKeyInput(input: TerminalKeyInput): string {
   }
 
   switch (key) {
-    case "Enter":
-      if (input.shift && !input.ctrl && !input.alt && !input.meta) {
-        return "\x1b[13;2u";
+    case "Enter": {
+      const mod = modifierParam(input);
+      if (mod > 1) {
+        return `\x1b[13;${mod}u`;
       }
-      return applyAltLikePrefix("\r", input);
+      return "\r";
+    }
     case "Tab":
       if (input.shift && !input.ctrl && !input.alt && !input.meta) {
         return "\x1b[Z";

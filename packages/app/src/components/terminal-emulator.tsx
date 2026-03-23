@@ -1,7 +1,8 @@
 "use dom";
 
-import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type Ref } from "react";
 import type { DOMProps } from "expo/dom";
+import { useDOMImperativeHandle, type DOMImperativeFactory } from "expo/dom";
 import "@xterm/xterm/css/xterm.css";
 import type { ITheme } from "@xterm/xterm";
 import type { TerminalState } from "@server/shared/messages";
@@ -12,6 +13,12 @@ import {
   computeScrollOffsetFromDragDelta,
   computeVerticalScrollbarGeometry,
 } from "./web-desktop-scrollbar.math";
+
+export interface TerminalEmulatorHandle {
+  writeOutput: (text: string) => void;
+  renderSnapshot: (state: TerminalState | null) => void;
+  clear: () => void;
+}
 
 const SCROLLBAR_HANDLE_WIDTH_IDLE = 6;
 const SCROLLBAR_HANDLE_WIDTH_ACTIVE = 9;
@@ -64,13 +71,14 @@ function buildXtermThemeKey(theme: ITheme): string {
 
 interface TerminalEmulatorProps {
   dom?: DOMProps;
+  ref: Ref<TerminalEmulatorHandle>;
   streamKey: string;
-  initialSnapshot: TerminalState | null;
   testId?: string;
   xtermTheme?: ITheme;
   swipeGesturesEnabled?: boolean;
   onSwipeLeft?: () => void;
   onSwipeRight?: () => void;
+  initialSnapshot?: TerminalState | null;
   onInput?: (data: string) => Promise<void> | void;
   onResize?: (input: { rows: number; cols: number }) => Promise<void> | void;
   onTerminalKey?: (input: {
@@ -85,12 +93,6 @@ interface TerminalEmulatorProps {
   focusRequestToken?: number;
   resizeRequestToken?: number;
 }
-
-export type TerminalEmulatorHandle = {
-  writeOutput: (text: string) => void;
-  renderSnapshot: (state: TerminalState | null) => void;
-  clear: () => void;
-};
 
 declare global {
   interface Window {}
@@ -124,9 +126,9 @@ function ensureTerminalScrollbarStyle(): void {
   document.head.appendChild(styleElement);
 }
 
-const TerminalEmulator = forwardRef<TerminalEmulatorHandle, TerminalEmulatorProps>(function TerminalEmulator({
+export default function TerminalEmulator({
+  ref,
   streamKey,
-  initialSnapshot,
   testId = "terminal-surface",
   xtermTheme = {
     background: "#0b0b0b",
@@ -136,6 +138,7 @@ const TerminalEmulator = forwardRef<TerminalEmulatorHandle, TerminalEmulatorProp
   swipeGesturesEnabled = false,
   onSwipeLeft,
   onSwipeRight,
+  initialSnapshot = null,
   onInput,
   onResize,
   onTerminalKey,
@@ -143,7 +146,7 @@ const TerminalEmulator = forwardRef<TerminalEmulatorHandle, TerminalEmulatorProp
   pendingModifiers = { ctrl: false, shift: false, alt: false },
   focusRequestToken = 0,
   resizeRequestToken = 0,
-}, ref) {
+}: TerminalEmulatorProps) {
   const rootRef = useRef<HTMLDivElement | null>(null);
   const hostRef = useRef<HTMLDivElement | null>(null);
   const runtimeRef = useRef<TerminalEmulatorRuntime | null>(null);
@@ -164,6 +167,23 @@ const TerminalEmulator = forwardRef<TerminalEmulatorHandle, TerminalEmulatorProp
   const [isDraggingScrollbar, setIsDraggingScrollbar] = useState(false);
   const [isScrollVisible, setIsScrollVisible] = useState(false);
   const [isScrollActive, setIsScrollActive] = useState(false);
+
+  useDOMImperativeHandle(
+    ref as Ref<DOMImperativeFactory>,
+    () =>
+      ({
+        writeOutput: (text: string) => {
+          runtimeRef.current?.write({ text });
+        },
+        renderSnapshot: (state: TerminalState | null) => {
+          runtimeRef.current?.renderSnapshot({ state });
+        },
+        clear: () => {
+          runtimeRef.current?.clear();
+        },
+      }) as unknown as DOMImperativeFactory,
+    [],
+  );
 
   useEffect(() => {
     mountedThemeRef.current = xtermTheme;
@@ -337,22 +357,6 @@ const TerminalEmulator = forwardRef<TerminalEmulatorHandle, TerminalEmulatorProp
   useEffect(() => {
     runtimeRef.current?.setPendingModifiers({ pendingModifiers });
   }, [pendingModifiers]);
-
-  useImperativeHandle(
-    ref,
-    () => ({
-      writeOutput: (text: string) => {
-        runtimeRef.current?.write({ text });
-      },
-      renderSnapshot: (state: TerminalState | null) => {
-        runtimeRef.current?.renderSnapshot({ state });
-      },
-      clear: () => {
-        runtimeRef.current?.clear();
-      },
-    }),
-    [],
-  );
 
   useEffect(() => {
     if (focusRequestToken <= 0) {
@@ -670,6 +674,4 @@ const TerminalEmulator = forwardRef<TerminalEmulatorHandle, TerminalEmulatorProp
       ) : null}
     </div>
   );
-});
-
-export default TerminalEmulator;
+}

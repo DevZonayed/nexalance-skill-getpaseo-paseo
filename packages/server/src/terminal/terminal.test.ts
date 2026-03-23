@@ -402,6 +402,25 @@ describe("Terminal", () => {
       expect(state.grid.length).toBe(10);
       expect(state.grid[0].length).toBe(40);
     });
+
+    it("exposes the current size without extracting full state", async () => {
+      const session = trackSession(
+        await createTerminal({
+          cwd: "/tmp",
+          shell: "/bin/sh",
+          env: { PS1: "$ " },
+          rows: 24,
+          cols: 80,
+        }),
+      );
+
+      expect(session.getSize()).toEqual({ rows: 24, cols: 80 });
+
+      session.send({ type: "resize", rows: 10, cols: 40 });
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      expect(session.getSize()).toEqual({ rows: 10, cols: 40 });
+    });
   });
 
   describe("subscribe", () => {
@@ -427,7 +446,7 @@ describe("Terminal", () => {
       unsubscribe();
     });
 
-    it("receives output and snapshot messages on updates", async () => {
+    it("receives output messages on updates without replay snapshots", async () => {
       const session = trackSession(
         await createTerminal({
           cwd: "/tmp",
@@ -443,6 +462,7 @@ describe("Terminal", () => {
         messages.push(msg);
       });
 
+      await new Promise((resolve) => setTimeout(resolve, 100));
       messages.length = 0;
 
       session.send({ type: "input", data: "echo test\r" });
@@ -450,7 +470,35 @@ describe("Terminal", () => {
       await waitForLines(session, ["$ echo test", "test", "$"]);
 
       expect(messages.some((message) => message.type === "output")).toBe(true);
-      expect(messages.some((message) => message.type === "snapshot")).toBe(true);
+      expect(messages.some((message) => message.type === "snapshot")).toBe(false);
+
+      unsubscribe();
+    });
+
+    it("does not emit snapshot messages for resize-only updates", async () => {
+      const session = trackSession(
+        await createTerminal({
+          cwd: "/tmp",
+          shell: "/bin/sh",
+          env: { PS1: "$ " },
+          rows: 24,
+          cols: 80,
+        }),
+      );
+
+      const messages: Array<{ type: string }> = [];
+      const unsubscribe = session.subscribe((msg) => {
+        messages.push(msg);
+      });
+
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      messages.length = 0;
+
+      session.send({ type: "resize", rows: 30, cols: 100 });
+      await new Promise((resolve) => setTimeout(resolve, 200));
+
+      expect(messages.some((message) => message.type === "snapshot")).toBe(false);
+      expect(session.getSize()).toEqual({ rows: 30, cols: 100 });
 
       unsubscribe();
     });

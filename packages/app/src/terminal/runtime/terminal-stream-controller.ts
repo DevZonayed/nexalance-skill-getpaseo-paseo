@@ -40,6 +40,10 @@ export type TerminalStreamControllerOptions = {
 
 const TERMINAL_EXITED_ERROR = "Terminal exited";
 
+function logTerminalStreamController(event: string, details: Record<string, unknown>): void {
+  console.log("[terminal-stream-controller]", event, details);
+}
+
 export class TerminalStreamController {
   private readonly decoder = new TextDecoder();
   private readonly unsubscribeStreamEvents: () => void;
@@ -65,10 +69,19 @@ export class TerminalStreamController {
 
   setTerminal(input: { terminalId: string | null }): void {
     if (this.disposed || input.terminalId === this.terminalId) {
+      logTerminalStreamController("set_terminal_noop", {
+        disposed: this.disposed,
+        currentTerminalId: this.terminalId,
+        requestedTerminalId: input.terminalId,
+      });
       return;
     }
     const nextTerminalId = input.terminalId;
     const previousTerminalId = this.terminalId;
+    logTerminalStreamController("set_terminal", {
+      previousTerminalId,
+      nextTerminalId,
+    });
     this.terminalId = nextTerminalId;
     this.decoder.decode();
     if (previousTerminalId) {
@@ -82,6 +95,11 @@ export class TerminalStreamController {
     void this.options.client
       .subscribeTerminal(nextTerminalId)
       .then((payload) => {
+        logTerminalStreamController("subscribe_resolved", {
+          nextTerminalId,
+          payloadTerminalId: payload.terminalId,
+          error: payload.error ?? null,
+        });
         if (this.disposed || this.terminalId !== nextTerminalId) {
           return;
         }
@@ -95,6 +113,10 @@ export class TerminalStreamController {
           return;
         }
         const preferredSize = this.options.getPreferredSize();
+        logTerminalStreamController("preferred_size_after_subscribe", {
+          nextTerminalId,
+          preferredSize,
+        });
         if (preferredSize) {
           this.options.client.sendTerminalInput(nextTerminalId, {
             type: "resize",
@@ -109,6 +131,10 @@ export class TerminalStreamController {
         });
       })
       .catch((error: unknown) => {
+        logTerminalStreamController("subscribe_rejected", {
+          nextTerminalId,
+          error: error instanceof Error ? error.message : "Unable to subscribe to terminal",
+        });
         if (this.disposed || this.terminalId !== nextTerminalId) {
           return;
         }
@@ -122,6 +148,10 @@ export class TerminalStreamController {
   }
 
   handleTerminalExit(input: { terminalId: string }): void {
+    logTerminalStreamController("terminal_exit", {
+      currentTerminalId: this.terminalId,
+      exitedTerminalId: input.terminalId,
+    });
     if (this.disposed || input.terminalId !== this.terminalId) {
       return;
     }
@@ -138,6 +168,9 @@ export class TerminalStreamController {
     if (this.disposed) {
       return;
     }
+    logTerminalStreamController("dispose", {
+      terminalId: this.terminalId,
+    });
     this.disposed = true;
     this.decoder.decode();
     const terminalId = this.terminalId;
