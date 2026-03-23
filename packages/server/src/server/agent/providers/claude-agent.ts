@@ -1611,6 +1611,7 @@ class ClaudeAgentSession implements AgentSession {
     this.activeTurnPromise = null;
     this.sidechainTracker.clear();
     this.input?.end();
+    this.query?.close();
     await this.awaitWithTimeout(this.query?.interrupt?.(), "close query interrupt");
     await this.awaitWithTimeout(this.query?.return?.(), "close query return");
     this.query = null;
@@ -1877,6 +1878,7 @@ class ClaudeAgentSession implements AgentSession {
 
     if (this.queryRestartNeeded && this.query) {
       this.input?.end();
+      this.query.close();
       try {
         await this.query.return?.();
       } catch {
