@@ -1,5 +1,13 @@
 import type { Command } from "commander";
 import { connectToDaemon, getDaemonHost } from "../../utils/client.js";
+
+export function addDeleteOptions(cmd: Command): Command {
+  return cmd
+    .description("Delete an agent (interrupt if running, then hard-delete)")
+    .argument("[id]", "Agent ID (or prefix) - optional if --all or --cwd specified")
+    .option("--all", "Delete all agents")
+    .option("--cwd <path>", "Delete all agents in directory");
+}
 import type {
   CommandOptions,
   SingleResult,

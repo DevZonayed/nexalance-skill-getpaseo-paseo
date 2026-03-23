@@ -1,4 +1,4 @@
-import type { Command } from "commander";
+import { Command } from "commander";
 import { connectToDaemon, getDaemonHost } from "../../utils/client.js";
 import type {
   CommandOptions,
@@ -19,6 +19,14 @@ export const stopSchema: OutputSchema<StopResult> = {
   idField: (item) => item.agentIds.join("\n"),
   columns: [{ header: "INTERRUPTED", field: "stoppedCount" }],
 };
+
+export function addStopOptions(cmd: Command): Command {
+  return cmd
+    .description("Interrupt an agent if it is running (no-op for idle agents)")
+    .argument("[id]", "Agent ID (or prefix) - optional if --all or --cwd specified")
+    .option("--all", "Stop all agents")
+    .option("--cwd <path>", "Stop all agents in directory");
+}
 
 export interface AgentStopOptions extends CommandOptions {
   all?: boolean;

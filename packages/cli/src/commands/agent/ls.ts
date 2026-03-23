@@ -2,6 +2,21 @@ import type { Command } from "commander";
 import type { AgentSnapshotPayload } from "@getpaseo/server";
 import { connectToDaemon, getDaemonHost } from "../../utils/client.js";
 import type { CommandOptions, ListResult, OutputSchema, CommandError } from "../../output/index.js";
+import { collectMultiple } from "../../utils/command-options.js";
+
+export function addLsOptions(cmd: Command): Command {
+  return cmd
+    .description("List agents. By default excludes archived agents.")
+    .option("-a, --all", "Include archived agents")
+    .option("-g, --global", "Legacy no-op (kept for compatibility)")
+    .option(
+      "--label <key=value>",
+      "Filter by label (can be used multiple times)",
+      collectMultiple,
+      [],
+    )
+    .option("--thinking <id>", "Filter by thinking option ID");
+}
 
 /** Agent list item for display */
 export interface AgentListItem {

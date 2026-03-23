@@ -1,4 +1,5 @@
-import type { Command } from "commander";
+import { type Command } from "commander";
+import { collectMultiple } from "../../utils/command-options.js";
 import { connectToDaemon, getDaemonHost } from "../../utils/client.js";
 import type {
   CommandOptions,
@@ -31,6 +32,17 @@ export interface AgentSendOptions extends CommandOptions {
   image?: string[];
   prompt?: string;
   promptFile?: string;
+}
+
+export function addSendOptions(cmd: Command): Command {
+  return cmd
+    .description("Send a message/task to an existing agent")
+    .argument("<id>", "Agent ID (or prefix)")
+    .argument("[prompt]", "The message to send")
+    .option("--prompt <text>", "Provide the message inline as a flag")
+    .option("--prompt-file <path>", "Read the message from a UTF-8 text file")
+    .option("--image <path>", "Attach image(s) to the message", collectMultiple, [])
+    .option("--no-wait", "Return immediately without waiting for completion");
 }
 
 /**

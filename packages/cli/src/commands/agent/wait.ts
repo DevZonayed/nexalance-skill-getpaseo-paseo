@@ -1,4 +1,4 @@
-import type { Command } from "commander";
+import { Command } from "commander";
 import { connectToDaemon, getDaemonHost } from "../../utils/client.js";
 import type {
   CommandOptions,
@@ -51,6 +51,13 @@ async function getRecentActivityTranscript(
   } catch {
     return null;
   }
+}
+
+export function addWaitOptions(cmd: Command): Command {
+  return cmd
+    .description("Wait for an agent to become idle")
+    .argument("<id>", "Agent ID (or prefix)")
+    .option("--timeout <seconds>", "Maximum wait time (default: no limit)");
 }
 
 export async function runWaitCommand(

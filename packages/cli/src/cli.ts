@@ -9,22 +9,21 @@ import { createWorktreeCommand } from "./commands/worktree/index.js";
 import { startCommand as daemonStartCommand } from "./commands/daemon/start.js";
 import { runStatusCommand as runDaemonStatusCommand } from "./commands/daemon/status.js";
 import { runRestartCommand as runDaemonRestartCommand } from "./commands/daemon/restart.js";
-import { runLsCommand } from "./commands/agent/ls.js";
-import { runRunCommand } from "./commands/agent/run.js";
-import { runLogsCommand } from "./commands/agent/logs.js";
-import { runDeleteCommand } from "./commands/agent/delete.js";
-import { runStopCommand } from "./commands/agent/stop.js";
-import { runSendCommand } from "./commands/agent/send.js";
-import { runInspectCommand } from "./commands/agent/inspect.js";
-import { runWaitCommand } from "./commands/agent/wait.js";
-import { runAttachCommand } from "./commands/agent/attach.js";
+import { addLsOptions, runLsCommand } from "./commands/agent/ls.js";
+import { addRunOptions, runRunCommand } from "./commands/agent/run.js";
+import { addLogsOptions, runLogsCommand } from "./commands/agent/logs.js";
+import { addDeleteOptions, runDeleteCommand } from "./commands/agent/delete.js";
+import { addStopOptions, runStopCommand } from "./commands/agent/stop.js";
+import { addSendOptions, runSendCommand } from "./commands/agent/send.js";
+import { addInspectOptions, runInspectCommand } from "./commands/agent/inspect.js";
+import { addWaitOptions, runWaitCommand } from "./commands/agent/wait.js";
+import { addAttachOptions, runAttachCommand } from "./commands/agent/attach.js";
 import { withOutput } from "./output/index.js";
 import { onboardCommand } from "./commands/onboard.js";
 import {
   addDaemonHostOption,
   addJsonAndDaemonHostOptions,
   addJsonOption,
-  collectMultiple,
 } from "./utils/command-options.js";
 
 const require = createRequire(import.meta.url);
@@ -59,120 +58,39 @@ export function createCli(): Command {
 
   // Primary agent commands (top-level)
   addJsonAndDaemonHostOptions(
-    program
-      .command("ls")
-      .description("List agents. By default excludes archived agents.")
-      .option("-a, --all", "Include archived agents")
-      .option("-g, --global", "Legacy no-op (kept for compatibility)")
-      .option(
-        "--label <key=value>",
-        "Filter by label (can be used multiple times)",
-        collectMultiple,
-        [],
-      )
-      .option("--thinking <id>", "Filter by thinking option ID"),
+    addLsOptions(program.command("ls")),
   ).action(withOutput(runLsCommand));
 
   addJsonAndDaemonHostOptions(
-    program
-      .command("run")
-      .description("Create and start an agent with a task")
-      .argument("<prompt>", "The task/prompt for the agent")
-      .option("-d, --detach", "Run in background (detached)")
-      .option("--name <name>", "Assign a name/title to the agent")
-      .option(
-        "--provider <provider>",
-        "Agent provider, or provider/model (e.g. codex or codex/gpt-5.4)",
-        "claude",
-      )
-      .option(
-        "--model <model>",
-        "Model to use (e.g., claude-sonnet-4-20250514, claude-3-5-haiku-20241022)",
-      )
-      .option("--thinking <id>", "Thinking option ID to use for this run")
-      .option("--mode <mode>", "Provider-specific mode (e.g., plan, default, bypass)")
-      .option("--worktree <name>", "Create agent in a new git worktree")
-      .option("--base <branch>", "Base branch for worktree (default: current branch)")
-      .option(
-        "--image <path>",
-        "Attach image(s) to the initial prompt (can be used multiple times)",
-        collectMultiple,
-        [],
-      )
-      .option("--cwd <path>", "Working directory (default: current)")
-      .option(
-        "--label <key=value>",
-        "Add label(s) to the agent (can be used multiple times)",
-        collectMultiple,
-        [],
-      )
-      .option(
-        "--output-schema <schema>",
-        "Output JSON matching the provided schema file path or inline JSON schema",
-      ),
+    addRunOptions(program.command("run")),
   ).action(withOutput(runRunCommand));
 
   addDaemonHostOption(
-    program
-      .command("attach")
-      .description("Attach to a running agent's output stream")
-      .argument("<id>", "Agent ID (or prefix)"),
+    addAttachOptions(program.command("attach")),
   ).action(runAttachCommand);
 
   addDaemonHostOption(
-    program
-      .command("logs")
-      .description("View agent activity/timeline")
-      .argument("<id>", "Agent ID (or prefix)")
-      .option("-f, --follow", "Follow log output (streaming)")
-      .option("--tail <n>", "Show last n entries")
-      .option("--filter <type>", "Filter by event type (tools, text, errors, permissions)")
-      .option("--since <time>", "Show logs since timestamp"),
+    addLogsOptions(program.command("logs")),
   ).action(runLogsCommand);
 
   addJsonAndDaemonHostOptions(
-    program
-      .command("stop")
-      .description("Interrupt an agent if it is running (no-op for idle agents)")
-      .argument("[id]", "Agent ID (or prefix) - optional if --all or --cwd specified")
-      .option("--all", "Stop all agents")
-      .option("--cwd <path>", "Stop all agents in directory"),
+    addStopOptions(program.command("stop")),
   ).action(withOutput(runStopCommand));
 
   addJsonAndDaemonHostOptions(
-    program
-      .command("delete")
-      .description("Delete an agent (interrupt if running, then hard-delete)")
-      .argument("[id]", "Agent ID (or prefix) - optional if --all or --cwd specified")
-      .option("--all", "Delete all agents")
-      .option("--cwd <path>", "Delete all agents in directory"),
+    addDeleteOptions(program.command("delete")),
   ).action(withOutput(runDeleteCommand));
 
   addJsonAndDaemonHostOptions(
-    program
-      .command("send")
-      .description("Send a message/task to an existing agent")
-      .argument("<id>", "Agent ID (or prefix)")
-      .argument("[prompt]", "The message to send")
-      .option("--prompt <text>", "Provide the message inline as a flag")
-      .option("--prompt-file <path>", "Read the message from a UTF-8 text file")
-      .option("--no-wait", "Return immediately without waiting for completion")
-      .option("--image <path>", "Attach image(s) to the message", collectMultiple, []),
+    addSendOptions(program.command("send")),
   ).action(withOutput(runSendCommand));
 
   addJsonAndDaemonHostOptions(
-    program
-      .command("inspect")
-      .description("Show detailed information about an agent")
-      .argument("<id>", "Agent ID (or prefix)"),
+    addInspectOptions(program.command("inspect")),
   ).action(withOutput(runInspectCommand));
 
   addJsonAndDaemonHostOptions(
-    program
-      .command("wait")
-      .description("Wait for an agent to become idle")
-      .argument("<id>", "Agent ID (or prefix)")
-      .option("--timeout <seconds>", "Maximum wait time (default: no limit)"),
+    addWaitOptions(program.command("wait")),
   ).action(withOutput(runWaitCommand));
 
   // Top-level local daemon shortcuts

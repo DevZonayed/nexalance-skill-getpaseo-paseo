@@ -3,6 +3,12 @@ import type { AgentSnapshotPayload } from "@getpaseo/server";
 import { connectToDaemon, getDaemonHost } from "../../utils/client.js";
 import type { CommandOptions, ListResult, OutputSchema, CommandError } from "../../output/index.js";
 
+export function addInspectOptions(cmd: Command): Command {
+  return cmd
+    .description("Show detailed information about an agent")
+    .argument("<id>", "Agent ID (or prefix)");
+}
+
 /** Agent inspect data for display (matches CLI spec format) */
 interface AgentInspect {
   Id: string;

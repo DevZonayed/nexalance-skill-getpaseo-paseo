@@ -1,4 +1,4 @@
-import type { Command } from "commander";
+import { Command } from "commander";
 import {
   getStructuredAgentResponse,
   StructuredAgentResponseError,
@@ -15,6 +15,49 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { lookup } from "mime-types";
 import { parseDuration } from "../../utils/duration.js";
+import { collectMultiple } from "../../utils/command-options.js";
+
+export function addRunOptions(cmd: Command): Command {
+  return cmd
+    .description("Create and start an agent with a task")
+    .argument("<prompt>", "The task/prompt for the agent")
+    .option("-d, --detach", "Run in background (detached)")
+    .option("--name <name>", "Assign a name/title to the agent")
+    .option(
+      "--provider <provider>",
+      "Agent provider, or provider/model (e.g. codex or codex/gpt-5.4)",
+      "claude",
+    )
+    .option(
+      "--model <model>",
+      "Model to use (e.g., claude-sonnet-4-20250514, claude-3-5-haiku-20241022)",
+    )
+    .option("--thinking <id>", "Thinking option ID to use for this run")
+    .option("--mode <mode>", "Provider-specific mode (e.g., plan, default, bypass)")
+    .option("--worktree <name>", "Create agent in a new git worktree")
+    .option("--base <branch>", "Base branch for worktree (default: current branch)")
+    .option(
+      "--image <path>",
+      "Attach image(s) to the initial prompt (can be used multiple times)",
+      collectMultiple,
+      [],
+    )
+    .option("--cwd <path>", "Working directory (default: current)")
+    .option(
+      "--label <key=value>",
+      "Add label(s) to the agent (can be used multiple times)",
+      collectMultiple,
+      [],
+    )
+    .option(
+      "--wait-timeout <duration>",
+      "Maximum time to wait for agent to finish (e.g., 30s, 5m, 1h). Default: no limit",
+    )
+    .option(
+      "--output-schema <schema>",
+      "Output JSON matching the provided schema file path or inline JSON schema",
+    );
+}
 
 /** Result type for agent run command */
 export interface AgentRunResult {

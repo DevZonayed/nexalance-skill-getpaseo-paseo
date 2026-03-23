@@ -1,4 +1,10 @@
 import type { Command } from "commander";
+
+export function addAttachOptions(cmd: Command): Command {
+  return cmd
+    .description("Attach to a running agent's output stream")
+    .argument("<id>", "Agent ID (or prefix)");
+}
 import { connectToDaemon, getDaemonHost } from "../../utils/client.js";
 import { fetchProjectedTimelineItems } from "../../utils/timeline.js";
 import type {
