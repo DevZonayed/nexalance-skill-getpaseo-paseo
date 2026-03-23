@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.33 - 2026-03-23
+
+### Fixed
+- Fixed the desktop app failing to reopen after closing on macOS — the daemon and agent processes were registering with Launch Services as instances of the main app, blocking subsequent launches.
+- Fixed dictation not working in the packaged desktop app — the microphone entitlement was missing from the hardened runtime configuration.
+- Fixed leaked Claude Code child processes when agents were closed — the SDK query stream was not being properly shut down.
+- The notification test button now surfaces errors instead of failing silently.
+
 ## 0.1.32 - 2026-03-23
 
 ### Added
