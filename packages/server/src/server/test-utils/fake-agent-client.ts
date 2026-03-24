@@ -191,6 +191,9 @@ class FakeAgentSession implements AgentSession {
   private pendingPermissions: AgentPermissionRequest[] = [];
   private permissionGate: Deferred<AgentPermissionResponse> | null = null;
   private readonly historyPath: string;
+  private readonly subscribers = new Set<(event: AgentStreamEvent) => void>();
+  private nextTurnOrdinal = 0;
+  private activeForegroundTurnId: string | null = null;
 
   constructor(
     providerName: string,
@@ -270,205 +273,253 @@ class FakeAgentSession implements AgentSession {
     return { sessionId: this.id, finalText: resultText, timeline, usage };
   }
 
-  async *stream(prompt: AgentPromptInput): AsyncGenerator<AgentStreamEvent> {
-    // New run => reset interrupt gate.
+  async startTurn(prompt: AgentPromptInput): Promise<{ turnId: string }> {
+    if (this.activeForegroundTurnId) {
+      throw new Error("A foreground turn is already active");
+    }
+
+    const turnId = `fake-turn-${this.nextTurnOrdinal++}`;
+    this.activeForegroundTurnId = turnId;
+
+    void this.emitTurnEvents(prompt);
+
+    return { turnId };
+  }
+
+  subscribe(callback: (event: AgentStreamEvent) => void): () => void {
+    this.subscribers.add(callback);
+    return () => {
+      this.subscribers.delete(callback);
+    };
+  }
+
+  private notifySubscribers(event: AgentStreamEvent): void {
+    const turnId = this.activeForegroundTurnId;
+    const tagged = turnId ? { ...event, turnId } : event;
+    for (const callback of this.subscribers) {
+      try {
+        callback(tagged);
+      } catch {
+        // Error isolation
+      }
+    }
+  }
+
+  private async emitTurnEvents(prompt: AgentPromptInput): Promise<void> {
     this.interruptSignal = createDeferred<void>();
     const slashCommand = await this.resolveSlashCommandInput(prompt);
-    if (slashCommand) {
+    const textPrompt = typeof prompt === "string" ? prompt : JSON.stringify(prompt);
+    try {
+      if (slashCommand) {
+        const threadStarted: AgentStreamEvent = {
+          type: "thread_started",
+          provider: this.providerName,
+          sessionId: this.id,
+        };
+        await this.appendHistoryEvent(threadStarted);
+        this.notifySubscribers(threadStarted);
+
+        const turnStarted: AgentStreamEvent = {
+          type: "turn_started",
+          provider: this.providerName,
+        };
+        await this.appendHistoryEvent(turnStarted);
+        this.notifySubscribers(turnStarted);
+
+        const result = await this.runSlashCommand(slashCommand.commandName, slashCommand.args);
+        for (const item of result.timeline) {
+          const timelineEvent: AgentStreamEvent = {
+            type: "timeline",
+            provider: this.providerName,
+            item,
+          };
+          await this.appendHistoryEvent(timelineEvent);
+          this.notifySubscribers(timelineEvent);
+        }
+
+        const completed: AgentStreamEvent = {
+          type: "turn_completed",
+          provider: this.providerName,
+          usage: result.usage ?? { inputTokens: 1, outputTokens: 1 },
+        };
+        await this.appendHistoryEvent(completed);
+        this.notifySubscribers(completed);
+        return;
+      }
+
+      const markerMatch = /remember (?:this )?(?:marker|string|project name)[^"]*"([^"]+)"/i.exec(
+        textPrompt,
+      );
+      if (markerMatch) {
+        this.memoryMarker = markerMatch[1] ?? null;
+      }
+
       const threadStarted: AgentStreamEvent = {
         type: "thread_started",
         provider: this.providerName,
         sessionId: this.id,
       };
       await this.appendHistoryEvent(threadStarted);
-      yield threadStarted;
+      this.notifySubscribers(threadStarted);
 
       const turnStarted: AgentStreamEvent = {
         type: "turn_started",
         provider: this.providerName,
       };
       await this.appendHistoryEvent(turnStarted);
-      yield turnStarted;
+      this.notifySubscribers(turnStarted);
 
-      const result = await this.runSlashCommand(slashCommand.commandName, slashCommand.args);
-      for (const item of result.timeline) {
-        const timelineEvent: AgentStreamEvent = {
+      const tool = buildToolCallForPrompt(this.providerName, textPrompt);
+      if (tool) {
+        const needsPermission = this.needsPermissionForTool(tool.name, tool.input ?? {});
+        const callId = randomUUID();
+        const toolRunning: AgentStreamEvent = {
           type: "timeline",
           provider: this.providerName,
-          item,
+          item: {
+            type: "tool_call",
+            name: tool.name,
+            callId,
+            status: "running",
+            detail: {
+              type: "unknown",
+              input: tool.input ?? null,
+              output: null,
+            },
+            error: null,
+          },
         };
-        await this.appendHistoryEvent(timelineEvent);
-        yield timelineEvent;
+        await this.appendHistoryEvent(toolRunning);
+        this.notifySubscribers(toolRunning);
+
+        if (needsPermission) {
+          const request: AgentPermissionRequest = {
+            id: randomUUID(),
+            provider: this.providerName,
+            name: tool.name,
+            kind: "tool",
+            title: "Permission required",
+            description: "Test permission request",
+            input: tool.input ?? {},
+          };
+          this.pendingPermissions = [request];
+          this.permissionGate = createDeferred<AgentPermissionResponse>();
+          const permissionRequested: AgentStreamEvent = {
+            type: "permission_requested",
+            provider: this.providerName,
+            request,
+          };
+          await this.appendHistoryEvent(permissionRequested);
+          this.notifySubscribers(permissionRequested);
+
+          const response = await Promise.race([
+            this.permissionGate.promise,
+            this.interruptSignal.promise.then(
+              () =>
+                ({
+                  behavior: "deny",
+                  interrupt: true,
+                  message: "Interrupted",
+                }) satisfies AgentPermissionResponse,
+            ),
+          ]);
+          this.pendingPermissions = [];
+          this.permissionGate = null;
+          const permissionResolved: AgentStreamEvent = {
+            type: "permission_resolved",
+            provider: this.providerName,
+            requestId: request.id,
+            resolution: response,
+          };
+          await this.appendHistoryEvent(permissionResolved);
+          this.notifySubscribers(permissionResolved);
+
+          if (response.behavior === "deny") {
+            if (response.interrupt) {
+              const canceled: AgentStreamEvent = {
+                type: "turn_canceled",
+                provider: this.providerName,
+                reason: "permission denied",
+              };
+              await this.appendHistoryEvent(canceled);
+              this.notifySubscribers(canceled);
+              return;
+            }
+
+            const deniedCompleted: AgentStreamEvent = {
+              type: "turn_completed",
+              provider: this.providerName,
+              usage: { inputTokens: 1, outputTokens: 0 },
+            };
+            await this.appendHistoryEvent(deniedCompleted);
+            this.notifySubscribers(deniedCompleted);
+            return;
+          }
+        }
+
+        await this.applyToolSideEffects(tool.name, tool.input ?? {}, textPrompt);
+
+        let toolOutput: unknown = tool.output;
+        if (!toolOutput && (tool.name === "Read" || tool.name === "read_file")) {
+          const pathInput = typeof tool.input?.path === "string" ? tool.input.path : "/etc/hosts";
+          const resolvedPath = path.isAbsolute(pathInput)
+            ? pathInput
+            : path.join(this.config.cwd ?? process.cwd(), pathInput);
+          try {
+            const content = readFileSync(resolvedPath, "utf8");
+            toolOutput = { path: pathInput, content };
+          } catch {
+            toolOutput = { path: pathInput, content: "" };
+          }
+        }
+
+        const toolCompleted: AgentStreamEvent = {
+          type: "timeline",
+          provider: this.providerName,
+          item: {
+            type: "tool_call",
+            name: tool.name,
+            callId,
+            status: "completed",
+            detail: {
+              type: "unknown",
+              input: tool.input ?? null,
+              output: toolOutput ?? { ok: true },
+            },
+            error: null,
+          },
+        };
+        await this.appendHistoryEvent(toolCompleted);
+        this.notifySubscribers(toolCompleted);
       }
+
+      const assistantText = this.buildAssistantText(textPrompt);
+      const assistantChunkA: AgentStreamEvent = {
+        type: "timeline",
+        provider: this.providerName,
+        item: { type: "assistant_message", text: assistantText.slice(0, 6) },
+      };
+      await this.appendHistoryEvent(assistantChunkA);
+      this.notifySubscribers(assistantChunkA);
+
+      const assistantChunkB: AgentStreamEvent = {
+        type: "timeline",
+        provider: this.providerName,
+        item: { type: "assistant_message", text: assistantText.slice(6) },
+      };
+      await this.appendHistoryEvent(assistantChunkB);
+      this.notifySubscribers(assistantChunkB);
 
       const completed: AgentStreamEvent = {
         type: "turn_completed",
         provider: this.providerName,
-        usage: result.usage ?? { inputTokens: 1, outputTokens: 1 },
+        usage: { inputTokens: 1, outputTokens: 1 },
       };
       await this.appendHistoryEvent(completed);
-      yield completed;
-      return;
+      this.notifySubscribers(completed);
+    } finally {
+      this.activeForegroundTurnId = null;
     }
-
-    const textPrompt = typeof prompt === "string" ? prompt : JSON.stringify(prompt);
-    const markerMatch = /remember (?:this )?(?:marker|string|project name)[^"]*"([^"]+)"/i.exec(
-      textPrompt,
-    );
-    if (markerMatch) {
-      this.memoryMarker = markerMatch[1] ?? null;
-    }
-    const threadStarted: AgentStreamEvent = {
-      type: "thread_started",
-      provider: this.providerName,
-      sessionId: this.id,
-    };
-    await this.appendHistoryEvent(threadStarted);
-    yield threadStarted;
-
-    const turnStarted: AgentStreamEvent = { type: "turn_started", provider: this.providerName };
-    await this.appendHistoryEvent(turnStarted);
-    yield turnStarted;
-
-    const tool = buildToolCallForPrompt(this.providerName, textPrompt);
-    if (tool) {
-      const needsPermission = this.needsPermissionForTool(tool.name, tool.input ?? {});
-      const callId = randomUUID();
-      const toolRunning: AgentStreamEvent = {
-        type: "timeline",
-        provider: this.providerName,
-        item: {
-          type: "tool_call",
-          name: tool.name,
-          callId,
-          status: "running",
-          detail: {
-            type: "unknown",
-            input: tool.input ?? null,
-            output: null,
-          },
-          error: null,
-        },
-      };
-      await this.appendHistoryEvent(toolRunning);
-      yield toolRunning;
-
-      if (needsPermission) {
-        const request: AgentPermissionRequest = {
-          id: randomUUID(),
-          provider: this.providerName,
-          name: tool.name,
-          kind: "tool",
-          title: "Permission required",
-          description: "Test permission request",
-          input: tool.input ?? {},
-        };
-        this.pendingPermissions = [request];
-        this.permissionGate = createDeferred<AgentPermissionResponse>();
-        const permissionRequested: AgentStreamEvent = {
-          type: "permission_requested",
-          provider: this.providerName,
-          request,
-        };
-        await this.appendHistoryEvent(permissionRequested);
-        yield permissionRequested;
-
-        const response = await this.permissionGate.promise;
-        this.pendingPermissions = [];
-        const permissionResolved: AgentStreamEvent = {
-          type: "permission_resolved",
-          provider: this.providerName,
-          requestId: request.id,
-          resolution: response,
-        };
-        await this.appendHistoryEvent(permissionResolved);
-        yield permissionResolved;
-
-        if (response.behavior === "deny") {
-          // Permission denied: do not execute the tool.
-          if (response.interrupt) {
-            const canceled: AgentStreamEvent = {
-              type: "turn_canceled",
-              provider: this.providerName,
-              reason: "permission denied",
-            };
-            await this.appendHistoryEvent(canceled);
-            yield canceled;
-            return;
-          }
-
-          const deniedCompleted: AgentStreamEvent = {
-            type: "turn_completed",
-            provider: this.providerName,
-            usage: { inputTokens: 1, outputTokens: 0 },
-          };
-          await this.appendHistoryEvent(deniedCompleted);
-          yield deniedCompleted;
-          return;
-        }
-      }
-
-      await this.applyToolSideEffects(tool.name, tool.input ?? {}, textPrompt);
-
-      let toolOutput: unknown = tool.output;
-      if (!toolOutput && (tool.name === "Read" || tool.name === "read_file")) {
-        const pathInput = typeof tool.input?.path === "string" ? tool.input.path : "/etc/hosts";
-        const resolvedPath = path.isAbsolute(pathInput)
-          ? pathInput
-          : path.join(this.config.cwd ?? process.cwd(), pathInput);
-        try {
-          const content = readFileSync(resolvedPath, "utf8");
-          toolOutput = { path: pathInput, content };
-        } catch {
-          toolOutput = { path: pathInput, content: "" };
-        }
-      }
-
-      const toolCompleted: AgentStreamEvent = {
-        type: "timeline",
-        provider: this.providerName,
-        item: {
-          type: "tool_call",
-          name: tool.name,
-          callId,
-          status: "completed",
-          detail: {
-            type: "unknown",
-            input: tool.input ?? null,
-            output: toolOutput ?? { ok: true },
-          },
-          error: null,
-        },
-      };
-      await this.appendHistoryEvent(toolCompleted);
-      yield toolCompleted;
-    }
-
-    const assistantText = this.buildAssistantText(textPrompt);
-    // Stream in two chunks to exercise client chunk coalescing.
-    const assistantChunkA: AgentStreamEvent = {
-      type: "timeline",
-      provider: this.providerName,
-      item: { type: "assistant_message", text: assistantText.slice(0, 6) },
-    };
-    await this.appendHistoryEvent(assistantChunkA);
-    yield assistantChunkA;
-
-    const assistantChunkB: AgentStreamEvent = {
-      type: "timeline",
-      provider: this.providerName,
-      item: { type: "assistant_message", text: assistantText.slice(6) },
-    };
-    await this.appendHistoryEvent(assistantChunkB);
-    yield assistantChunkB;
-
-    const completed: AgentStreamEvent = {
-      type: "turn_completed",
-      provider: this.providerName,
-      usage: { inputTokens: 1, outputTokens: 1 },
-    };
-    await this.appendHistoryEvent(completed);
-    yield completed;
   }
 
   async *streamHistory(): AsyncGenerator<AgentStreamEvent> {

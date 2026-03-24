@@ -796,16 +796,17 @@ export class Session {
       throw new Error(`Agent ${agentId} not found`);
     }
 
-    if (snapshot.lifecycle !== "running" && !snapshot.pendingRun) {
+    const hasInFlightRun = this.agentManager.hasInFlightRun(agentId);
+    if (!hasInFlightRun) {
       this.sessionLogger.trace(
-        { agentId, lifecycle: snapshot.lifecycle, pendingRun: Boolean(snapshot.pendingRun) },
+        { agentId, lifecycle: snapshot.lifecycle, hasInFlightRun },
         "interruptAgentIfRunning: skipping because agent is not running",
       );
       return;
     }
 
     this.sessionLogger.debug(
-      { agentId, lifecycle: snapshot.lifecycle, pendingRun: Boolean(snapshot.pendingRun) },
+      { agentId, lifecycle: snapshot.lifecycle, hasInFlightRun },
       "interruptAgentIfRunning: interrupting",
     );
 
@@ -831,13 +832,7 @@ export class Session {
     if (!agentId) {
       return false;
     }
-
-    const snapshot = this.agentManager.getAgent(agentId);
-    if (!snapshot) {
-      return false;
-    }
-
-    return snapshot.lifecycle === "running" || Boolean(snapshot.pendingRun);
+    return this.agentManager.hasInFlightRun(agentId);
   }
 
   /**
@@ -858,10 +853,7 @@ export class Session {
     );
     let iterator: AsyncGenerator<AgentStreamEvent>;
     try {
-      const snapshot = this.agentManager.getAgent(agentId);
-      const shouldReplace = Boolean(
-        snapshot && (snapshot.lifecycle === "running" || snapshot.pendingRun),
-      );
+      const shouldReplace = this.agentManager.hasInFlightRun(agentId);
       iterator = shouldReplace
         ? this.agentManager.replaceAgentRun(agentId, prompt, runOptions)
         : this.agentManager.streamAgent(agentId, prompt, runOptions);
@@ -1462,6 +1454,7 @@ export class Session {
    * Main entry point for processing session messages
    */
   public async handleMessage(msg: SessionInboundMessage): Promise<void> {
+    this.sessionLogger.trace({ inbound: msg }, "inbound message");
     try {
       switch (msg.type) {
         case "voice_audio_chunk":
@@ -6589,6 +6582,10 @@ export class Session {
 
       await this.ensureAgentLoaded(agentId);
 
+      this.sessionLogger.trace(
+        { agentId, messageId: msg.messageId, textPrefix: msg.text.slice(0, 80) },
+        "send_agent_message_request: recording user message",
+      );
       try {
         this.agentManager.recordUserMessage(agentId, msg.text, {
           messageId: msg.messageId,
@@ -6602,6 +6599,10 @@ export class Session {
       }
 
       const prompt = this.buildAgentPrompt(msg.text, msg.images);
+      this.sessionLogger.trace(
+        { agentId, messageId: msg.messageId },
+        "send_agent_message_request: starting agent stream",
+      );
       const started = this.startAgentStream(agentId, prompt);
       if (!started.ok) {
         this.emit({
@@ -7359,6 +7360,7 @@ export class Session {
    * Emit a message to the client
    */
   private emit(msg: SessionOutboundMessage): void {
+    this.sessionLogger.trace({ outbound: msg }, "outbound message");
     if (
       msg.type === "audio_output" &&
       (process.env.TTS_DEBUG_AUDIO_DIR || isPaseoDictationDebugEnabled()) &&

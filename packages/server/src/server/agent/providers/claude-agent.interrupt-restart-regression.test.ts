@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 
 import { createTestLogger } from "../../../test-utils/test-logger.js";
 import { ClaudeAgentClient } from "./claude-agent.js";
+import { streamSession } from "./test-utils/session-stream-adapter.js";
 import type { AgentStreamEvent } from "../agent-sdk-types.js";
 
 type QueryMock = {
@@ -211,6 +212,21 @@ function collectAssistantText(events: AgentStreamEvent[]): string {
     .join("");
 }
 
+function subscribeToEvents(session: { subscribe: (callback: (event: AgentStreamEvent) => void) => () => void }) {
+  const queue = createAsyncQueue<AgentStreamEvent>();
+  const unsubscribe = session.subscribe((event) => {
+    queue.push(event);
+  });
+
+  return {
+    next: () => queue.next(),
+    close: () => {
+      unsubscribe();
+      queue.end();
+    },
+  };
+}
+
 async function waitFor(
   predicate: () => boolean,
   options?: { timeoutMs?: number; intervalMs?: number },
@@ -250,7 +266,7 @@ describe("ClaudeAgentSession interrupt regression", () => {
       cwd: process.cwd(),
     });
 
-    const firstTurn = session.stream("first prompt");
+    const firstTurn = streamSession(session, "first prompt");
     await firstTurn.next();
     await waitFor(() => queries[0]?.prompts.length === 1);
 
@@ -270,7 +286,7 @@ describe("ClaudeAgentSession interrupt regression", () => {
     await session.close();
   });
 
-  test("pushes the next prompt into the existing query instead of rebuilding it", async () => {
+  test("reuses the existing query after interrupt before starting the next prompt", async () => {
     const logger = createTestLogger();
     const queries: ScriptedQuery[] = [];
 
@@ -300,11 +316,14 @@ describe("ClaudeAgentSession interrupt regression", () => {
       cwd: process.cwd(),
     });
 
-    const firstTurn = session.stream("first prompt");
+    const firstTurn = streamSession(session, "first prompt");
     await firstTurn.next();
     await waitFor(() => queries[0]?.prompts.length === 1);
 
-    const secondTurnEvents = await collectUntilTerminal(session.stream("second prompt"));
+    await session.interrupt();
+    await collectUntilTerminal(firstTurn);
+
+    const secondTurnEvents = await collectUntilTerminal(streamSession(session, "second prompt"));
 
     expect(sdkMocks.query).toHaveBeenCalledTimes(1);
     expect(queries[0]?.prompts.map((prompt) => prompt.text)).toEqual([
@@ -315,7 +334,6 @@ describe("ClaudeAgentSession interrupt regression", () => {
     expect(queries[0]?.return).not.toHaveBeenCalled();
     expect(collectAssistantText(secondTurnEvents)).toContain("SECOND_PROMPT_RESPONSE");
 
-    await firstTurn.return?.();
     await session.close();
   });
 
@@ -396,12 +414,12 @@ describe("ClaudeAgentSession interrupt regression", () => {
       cwd: process.cwd(),
     });
 
-    const firstTurn = session.stream("first prompt");
+    const firstTurn = streamSession(session, "first prompt");
     await firstTurn.next();
     await session.interrupt();
     await collectUntilTerminal(firstTurn);
 
-    const secondTurnEvents = await collectUntilTerminal(session.stream("second prompt"));
+    const secondTurnEvents = await collectUntilTerminal(streamSession(session, "second prompt"));
 
     expect(sdkMocks.query).toHaveBeenCalledTimes(1);
     expect(prompts.map((prompt) => prompt.text)).toEqual(["first prompt", "second prompt"]);
@@ -442,9 +460,9 @@ describe("ClaudeAgentSession autonomous turns", () => {
       cwd: process.cwd(),
     });
 
-    await collectUntilTerminal(session.stream("seed prompt"));
+    await collectUntilTerminal(streamSession(session, "seed prompt"));
 
-    const liveIterator = session.streamLiveEvents();
+    const subscribedEvents = subscribeToEvents(session);
     queryRef?.emit({
       type: "assistant",
       message: { content: "AUTONOMOUS_WAKE_RESPONSE" },
@@ -452,9 +470,9 @@ describe("ClaudeAgentSession autonomous turns", () => {
     });
     queryRef?.emit(buildSuccessResult("autonomous-live-session"));
 
-    const started = await liveIterator.next();
-    const timeline = await liveIterator.next();
-    const completed = await liveIterator.next();
+    const started = await subscribedEvents.next();
+    const timeline = await subscribedEvents.next();
+    const completed = await subscribedEvents.next();
 
     expect(started.value).toMatchObject({ type: "turn_started", provider: "claude" });
     expect(timeline.value).toMatchObject({
@@ -470,7 +488,7 @@ describe("ClaudeAgentSession autonomous turns", () => {
       provider: "claude",
     });
 
-    await liveIterator.return?.();
+    subscribedEvents.close();
     await session.close();
   });
 
@@ -512,19 +530,21 @@ describe("ClaudeAgentSession autonomous turns", () => {
       cwd: process.cwd(),
     });
 
-    await collectUntilTerminal(session.stream("seed prompt"));
+    await collectUntilTerminal(streamSession(session, "seed prompt"));
 
-    const liveIterator = session.streamLiveEvents();
+    const subscribedEvents = subscribeToEvents(session);
     queryRef?.emit({
       type: "assistant",
       message: { content: "BACKGROUND_ONLY_RESPONSE" },
       session_id: "autonomous-handoff-session",
     });
 
-    const autonomousStart = await liveIterator.next();
-    const autonomousTimeline = await liveIterator.next();
-    const foregroundEvents = await collectUntilTerminal(session.stream("foreground prompt"));
-    const autonomousComplete = await liveIterator.next();
+    const autonomousStart = await subscribedEvents.next();
+    const autonomousTimeline = await subscribedEvents.next();
+    const foregroundEvents = await collectUntilTerminal(
+      streamSession(session, "foreground prompt"),
+    );
+    const autonomousComplete = await subscribedEvents.next();
 
     expect(autonomousStart.value).toMatchObject({
       type: "turn_started",
@@ -555,7 +575,7 @@ describe("ClaudeAgentSession autonomous turns", () => {
       "foreground prompt",
     ]);
 
-    await liveIterator.return?.();
+    subscribedEvents.close();
     await session.close();
   });
 });

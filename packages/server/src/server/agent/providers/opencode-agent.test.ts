@@ -13,6 +13,7 @@ import { execFileSync } from "node:child_process";
 
 import { createTestLogger } from "../../../test-utils/test-logger.js";
 import { OpenCodeAgentClient } from "./opencode-agent.js";
+import { streamSession } from "./test-utils/session-stream-adapter.js";
 import type {
   AgentSessionConfig,
   AgentStreamEvent,
@@ -158,7 +159,7 @@ const hasOpenCode = isBinaryInstalled("opencode");
     const client = new OpenCodeAgentClient(logger);
     const session = await client.createSession(buildConfig(cwd));
 
-    const iterator = session.stream("Say hello");
+    const iterator = streamSession(session, "Say hello");
     const turn = await collectTurnEvents(iterator);
 
     // HARD ASSERT: Turn completed successfully
@@ -230,7 +231,8 @@ const hasOpenCode = isBinaryInstalled("opencode");
     });
 
     const planTurn = await collectTurnEvents(
-      planSession.stream(
+      streamSession(
+        planSession,
         "Create a file named plan-mode-output.txt in the current directory containing exactly hello.",
       ),
     );
@@ -250,7 +252,8 @@ const hasOpenCode = isBinaryInstalled("opencode");
     });
 
     const buildTurn = await collectTurnEvents(
-      buildSession.stream(
+      streamSession(
+        buildSession,
         "Create a file named build-mode-output.txt in the current directory containing exactly hello.",
       ),
     );

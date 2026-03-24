@@ -20,12 +20,12 @@ const testLogger = {
 
 type ManagedAgentOverrides = Omit<
   Partial<ManagedAgent>,
-  "config" | "pendingPermissions" | "session" | "pendingRun"
+  "config" | "pendingPermissions" | "session" | "activeForegroundTurnId"
 > & {
   config?: Partial<AgentSessionConfig>;
   pendingPermissions?: Map<string, AgentPermissionRequest>;
   session?: AgentSession | null;
-  pendingRun?: ManagedAgent["pendingRun"];
+  activeForegroundTurnId?: string | null;
 };
 
 function createManagedAgent(overrides: ManagedAgentOverrides = {}): ManagedAgent {
@@ -42,8 +42,8 @@ function createManagedAgent(overrides: ManagedAgentOverrides = {}): ManagedAgent
     extra: configOverrides.extra ?? { claude: { tone: "focused" } },
   };
   const session = lifecycle === "closed" ? null : (overrides.session ?? ({} as AgentSession));
-  const pendingRun =
-    overrides.pendingRun ?? (lifecycle === "running" ? (async function* noop() {})() : null);
+  const activeForegroundTurnId =
+    overrides.activeForegroundTurnId ?? (lifecycle === "running" ? "test-turn-id" : null);
 
   const agent: ManagedAgent = {
     id: overrides.id ?? "agent-1",
@@ -65,7 +65,9 @@ function createManagedAgent(overrides: ManagedAgentOverrides = {}): ManagedAgent
     availableModes: overrides.availableModes ?? [],
     currentModeId: overrides.currentModeId ?? config.modeId ?? null,
     pendingPermissions: overrides.pendingPermissions ?? new Map<string, AgentPermissionRequest>(),
-    pendingRun,
+    activeForegroundTurnId,
+    foregroundTurnWaiters: new Set(),
+    unsubscribeSession: null,
     timeline: overrides.timeline ?? [],
     persistence: overrides.persistence ?? null,
     historyPrimed: overrides.historyPrimed ?? true,

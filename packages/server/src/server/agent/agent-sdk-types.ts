@@ -259,23 +259,25 @@ export type AgentTimelineItem =
 
 export type AgentStreamEvent =
   | { type: "thread_started"; sessionId: string; provider: AgentProvider }
-  | { type: "turn_started"; provider: AgentProvider }
-  | { type: "turn_completed"; provider: AgentProvider; usage?: AgentUsage }
+  | { type: "turn_started"; provider: AgentProvider; turnId?: string }
+  | { type: "turn_completed"; provider: AgentProvider; usage?: AgentUsage; turnId?: string }
   | {
       type: "turn_failed";
       provider: AgentProvider;
       error: string;
       code?: string;
       diagnostic?: string;
+      turnId?: string;
     }
-  | { type: "turn_canceled"; provider: AgentProvider; reason: string }
-  | { type: "timeline"; item: AgentTimelineItem; provider: AgentProvider }
-  | { type: "permission_requested"; provider: AgentProvider; request: AgentPermissionRequest }
+  | { type: "turn_canceled"; provider: AgentProvider; reason: string; turnId?: string }
+  | { type: "timeline"; item: AgentTimelineItem; provider: AgentProvider; turnId?: string }
+  | { type: "permission_requested"; provider: AgentProvider; request: AgentPermissionRequest; turnId?: string }
   | {
       type: "permission_resolved";
       provider: AgentProvider;
       requestId: string;
       resolution: AgentPermissionResponse;
+      turnId?: string;
     }
   | {
       type: "attention_required";
@@ -391,7 +393,8 @@ export interface AgentSession {
   readonly id: string | null;
   readonly capabilities: AgentCapabilityFlags;
   run(prompt: AgentPromptInput, options?: AgentRunOptions): Promise<AgentRunResult>;
-  stream(prompt: AgentPromptInput, options?: AgentRunOptions): AsyncGenerator<AgentStreamEvent>;
+  startTurn(prompt: AgentPromptInput, options?: AgentRunOptions): Promise<{ turnId: string }>;
+  subscribe(callback: (event: AgentStreamEvent) => void): () => void;
   streamHistory(): AsyncGenerator<AgentStreamEvent>;
   getRuntimeInfo(): Promise<AgentRuntimeInfo>;
   getAvailableModes(): Promise<AgentMode[]>;
@@ -402,19 +405,8 @@ export interface AgentSession {
   describePersistence(): AgentPersistenceHandle | null;
   interrupt(): Promise<void>;
   close(): Promise<void>;
-  /**
-   * List available slash commands for this session.
-   * Commands are provider-specific - Claude supports skills and built-in commands.
-   */
   listCommands?(): Promise<AgentSlashCommand[]>;
-  /**
-   * Update the model used for subsequent turns (if supported by provider).
-   */
   setModel?(modelId: string | null): Promise<void>;
-  /**
-   * Update the thinking/effort setting used for subsequent turns (if supported).
-   * Normalized to a string option id (provider-specific interpretation).
-   */
   setThinkingOption?(thinkingOptionId: string | null): Promise<void>;
 }
 

@@ -29,7 +29,6 @@ import {
   mapClaudeRunningToolCall,
 } from "./claude/tool-call-mapper.js";
 import {
-  coerceTaskNotificationHistoryRecordToSystemMessage,
   mapTaskNotificationSystemRecordToToolCall,
   mapTaskNotificationUserContentToToolCall,
 } from "./claude/task-notification-tool-call.js";
@@ -83,14 +82,14 @@ type EventIdentifiers = {
   messageId: string | null;
 };
 
-type ForegroundTurnState = {
-  id: string;
-  queue: Pushable<AgentStreamEvent>;
-  hasVisibleActivity: boolean;
-};
-
 type AutonomousTurnState = {
   id: string;
+};
+
+type AsyncMessageInput<T> = {
+  push: (item: T) => void;
+  end: () => void;
+  iterable: AsyncIterable<T>;
 };
 
 type NormalizeClaudeRuntimeModelIdOptions = {
@@ -1201,7 +1200,7 @@ class ClaudeAgentSession implements AgentSession {
   private readonly logger: Logger;
   private readonly queryFactory: typeof query;
   private query: Query | null = null;
-  private input: Pushable<SDKUserMessage> | null = null;
+  private input: AsyncMessageInput<SDKUserMessage> | null = null;
   private claudeSessionId: string | null;
   private persistence: AgentPersistenceHandle | null;
   private currentMode: PermissionMode;
@@ -1210,22 +1209,18 @@ class ClaudeAgentSession implements AgentSession {
   private toolUseIndexToId = new Map<number, string>();
   private toolUseInputBuffers = new Map<string, string>();
   private pendingPermissions = new Map<string, PendingPermission>();
-  private activeForegroundTurn: ForegroundTurnState | null = null;
+  private activeForegroundTurnId: string | null = null;
   private autonomousTurn: AutonomousTurnState | null = null;
-  private liveEventQueue = new Pushable<AgentStreamEvent>();
+  private readonly subscribers = new Set<(event: AgentStreamEvent) => void>();
   private readonly timelineAssembler = new TimelineAssembler();
   private readonly sidechainTracker = new ClaudeSidechainTracker({
     getToolInput: (toolUseId) => this.toolUseCache.get(toolUseId)?.input ?? null,
   });
   private persistedHistory: AgentTimelineItem[] = [];
   private historyPending = false;
-  private historyOffsetSessionId: string | null = null;
-  private historyReadOffsetBytes = 0;
-  private historyLineFragment = "";
   private turnState: TurnState = "idle";
   private nextTurnOrdinal = 1;
   private cancelCurrentTurn: (() => void) | null = null;
-  private activeTurnPromise: Promise<void> | null = null;
   private cachedRuntimeInfo: AgentRuntimeInfo | null = null;
   private lastOptionsModel: string | null = null;
   private selectableModelIds: Set<string> | null = buildClaudeSelectableModelIds();
@@ -1235,8 +1230,8 @@ class ClaudeAgentSession implements AgentSession {
   private queryPumpPromise: Promise<void> | null = null;
   private queryRestartNeeded = false;
   private pendingInterruptAbort = false;
-  private liveEventSubscriberCount = 0;
-  private liveHistoryPollTimer: NodeJS.Timeout | null = null;
+  private lastForegroundPromptText: string | null = null;
+  private foregroundHasVisibleActivity = false;
   private userMessageIds: string[] = [];
   private recentStderr = "";
   private closed = false;
@@ -1292,12 +1287,23 @@ class ClaudeAgentSession implements AgentSession {
   }
 
   async run(prompt: AgentPromptInput, options?: AgentRunOptions): Promise<AgentRunResult> {
-    const events = this.stream(prompt, options);
     const timeline: AgentTimelineItem[] = [];
     let finalText = "";
     let usage: AgentUsage | undefined;
+    let turnId: string | null = null;
+    const bufferedEvents: AgentStreamEvent[] = [];
+    let settled = false;
+    let resolveCompletion!: () => void;
+    let rejectCompletion!: (error: Error) => void;
 
-    for await (const event of events) {
+    const processEvent = (event: AgentStreamEvent) => {
+      if (settled) {
+        return;
+      }
+      const eventTurnId = (event as { turnId?: string }).turnId;
+      if (turnId && eventTurnId && eventTurnId !== turnId) {
+        return;
+      }
       if (event.type === "timeline") {
         timeline.push(event.item);
         if (event.item.type === "assistant_message") {
@@ -1309,11 +1315,48 @@ class ClaudeAgentSession implements AgentSession {
             finalText += event.item.text;
           }
         }
-      } else if (event.type === "turn_completed") {
-        usage = event.usage;
-      } else if (event.type === "turn_failed") {
-        throw new Error(event.error);
+        return;
       }
+      if (event.type === "turn_completed") {
+        usage = event.usage;
+        settled = true;
+        resolveCompletion();
+        return;
+      }
+      if (event.type === "turn_failed") {
+        settled = true;
+        rejectCompletion(new Error(event.error));
+        return;
+      }
+      if (event.type === "turn_canceled") {
+        settled = true;
+        resolveCompletion();
+      }
+    };
+
+    const completion = new Promise<void>((resolve, reject) => {
+      resolveCompletion = resolve;
+      rejectCompletion = reject;
+    });
+    const unsubscribe = this.subscribe((event) => {
+      if (!turnId) {
+        bufferedEvents.push(event);
+        return;
+      }
+      processEvent(event);
+    });
+
+    try {
+      const result = await this.startTurn(prompt, options);
+      turnId = result.turnId;
+      for (const event of bufferedEvents) {
+        processEvent(event);
+      }
+      if (!settled) {
+        await completion;
+      }
+    } finally {
+      unsubscribe();
     }
 
     this.cachedRuntimeInfo = {
@@ -1335,19 +1378,24 @@ class ClaudeAgentSession implements AgentSession {
     };
   }
 
-  async *stream(
+  async startTurn(
     prompt: AgentPromptInput,
-    options?: AgentRunOptions,
-  ): AsyncGenerator<AgentStreamEvent> {
-    void options;
-    if (this.cancelCurrentTurn) {
-      this.cancelCurrentTurn();
+    _options?: AgentRunOptions,
+  ): Promise<{ turnId: string }> {
+    if (this.closed) {
+      throw new Error("Claude session is closed");
+    }
+    if (this.activeForegroundTurnId) {
+      throw new Error("A foreground turn is already active");
     }
 
     const slashCommand = this.resolveSlashCommandInvocation(prompt);
     if (slashCommand?.commandName === REWIND_COMMAND_NAME) {
-      yield* this.streamRewindCommand(slashCommand);
-      return;
+      const turnId = this.createTurnId("foreground");
+      this.activeForegroundTurnId = turnId;
+      this.transitionTurnState("foreground", "rewind command");
+      void this.executeRewindTurn(turnId, slashCommand);
+      return { turnId };
     }
 
     if (this.autonomousTurn) {
@@ -1355,23 +1403,14 @@ class ClaudeAgentSession implements AgentSession {
     }
 
     const sdkMessage = this.toSdkUserMessage(prompt);
-    const queue = new Pushable<AgentStreamEvent>();
-    const foregroundTurn: ForegroundTurnState = {
-      id: this.createTurnId("foreground"),
-      queue,
-      hasVisibleActivity: false,
-    };
-    this.activeForegroundTurn = foregroundTurn;
-    this.transitionTurnState("foreground", "foreground stream started");
+    this.lastForegroundPromptText = this.extractPromptText(prompt);
+    const turnId = this.createTurnId("foreground");
+    this.activeForegroundTurnId = turnId;
+    this.foregroundHasVisibleActivity = false;
+    this.transitionTurnState("foreground", "foreground turn started");
     this.clearRecentStderr();
-    queue.push({ type: "turn_started", provider: "claude" });
 
-    let finishedNaturally = false;
     let cancelIssued = false;
-    let queueDrainedWithoutTerminal = false;
-    const turnPromise = Promise.resolve();
-    this.activeTurnPromise = turnPromise;
-
     const requestCancel = () => {
       if (cancelIssued) {
         return;
@@ -1392,6 +1431,8 @@ class ClaudeAgentSession implements AgentSession {
     };
     this.cancelCurrentTurn = requestCancel;
 
+    this.notifySubscribers({ type: "turn_started", provider: "claude" });
+
     try {
       await this.ensureQuery();
       if (!this.input) {
@@ -1403,40 +1444,16 @@ class ClaudeAgentSession implements AgentSession {
       this.finishForegroundTurn(
         this.buildTurnFailedEvent(error instanceof Error ? error.message : "Claude stream failed"),
       );
-      finishedNaturally = true;
     }
 
-    try {
-      for await (const event of queue) {
-        const isTerminalEvent =
-          event.type === "turn_completed" ||
-          event.type === "turn_failed" ||
-          event.type === "turn_canceled";
-        if (isTerminalEvent) {
-          finishedNaturally = true;
-        }
-        yield event;
-        if (isTerminalEvent) {
-          break;
-        }
-      }
-      if (!finishedNaturally && !cancelIssued) {
-        queueDrainedWithoutTerminal = true;
-      }
-    } finally {
-      if (!finishedNaturally && !cancelIssued && !queueDrainedWithoutTerminal) {
-        requestCancel();
-      }
-      if (this.activeForegroundTurn === foregroundTurn) {
-        this.activeForegroundTurn = null;
-      }
-      if (this.cancelCurrentTurn === requestCancel) {
-        this.cancelCurrentTurn = null;
-      }
-      if (this.activeTurnPromise === turnPromise) {
-        this.activeTurnPromise = null;
-      }
-    }
+    return { turnId };
+  }
+
+  subscribe(callback: (event: AgentStreamEvent) => void): () => void {
+    this.subscribers.add(callback);
+    return () => {
+      this.subscribers.delete(callback);
+    };
   }
 
   async interrupt(): Promise<void> {
@@ -1461,25 +1478,6 @@ class ClaudeAgentSession implements AgentSession {
     this.historyPending = false;
     for (const item of history) {
       yield { type: "timeline", item, provider: "claude" };
-    }
-  }
-
-  async *streamLiveEvents(): AsyncGenerator<AgentStreamEvent> {
-    if (this.claudeSessionId) {
-      this.startQueryPump();
-    }
-    this.liveEventSubscriberCount += 1;
-    this.startLiveHistoryPolling();
-
-    try {
-      for await (const event of this.liveEventQueue) {
-        yield event;
-      }
-    } finally {
-      this.liveEventSubscriberCount = Math.max(0, this.liveEventSubscriberCount - 1);
-      if (this.liveEventSubscriberCount === 0) {
-        this.stopLiveHistoryPolling();
-      }
     }
   }
 
@@ -1620,22 +1618,19 @@ class ClaudeAgentSession implements AgentSession {
         turnState: this.turnState,
         hasQuery: Boolean(this.query),
         hasInput: Boolean(this.input),
-        hasActiveForegroundTurn: Boolean(this.activeForegroundTurn),
+        hasActiveForegroundTurnId: Boolean(this.activeForegroundTurnId),
       },
       "Claude session close: start",
     );
     this.closed = true;
     this.rejectAllPendingPermissions(new Error("Claude session closed"));
     this.cancelCurrentTurn?.();
-    this.activeForegroundTurn?.queue.end();
-    this.activeForegroundTurn = null;
+    this.subscribers.clear();
+    this.activeForegroundTurnId = null;
     this.autonomousTurn = null;
     this.cancelCurrentTurn = null;
     this.turnState = "idle";
-    this.liveEventQueue.end();
-    this.activeTurnPromise = null;
     this.sidechainTracker.clear();
-    this.stopLiveHistoryPolling();
     this.input?.end();
     this.query?.close?.();
     await this.awaitWithTimeout(this.query?.interrupt?.(), "close query interrupt");
@@ -1695,41 +1690,6 @@ class ClaudeAgentSession implements AgentSession {
     return rawArgs.length > 0
       ? { commandName, args: rawArgs, rawInput: trimmed }
       : { commandName, rawInput: trimmed };
-  }
-
-  private async *streamRewindCommand(
-    invocation: SlashCommandInvocation,
-  ): AsyncGenerator<AgentStreamEvent> {
-    yield { type: "turn_started", provider: "claude" };
-
-    try {
-      const rewindAttempt = await this.attemptRewind(invocation.args);
-      if (!rewindAttempt.messageId || !rewindAttempt.result) {
-        yield {
-          type: "turn_failed",
-          provider: "claude",
-          error:
-            rewindAttempt.error ??
-            "No prior user message available to rewind. Use /rewind <user_message_uuid>.",
-        };
-        return;
-      }
-      yield {
-        type: "timeline",
-        provider: "claude",
-        item: {
-          type: "assistant_message",
-          text: this.buildRewindSuccessMessage(rewindAttempt.messageId, rewindAttempt.result),
-        },
-      };
-      yield { type: "turn_completed", provider: "claude" };
-    } catch (error) {
-      yield {
-        type: "turn_failed",
-        provider: "claude",
-        error: error instanceof Error ? error.message : "Failed to rewind tracked files",
-      };
-    }
   }
 
   private buildRewindSuccessMessage(
@@ -1915,11 +1875,11 @@ class ClaudeAgentSession implements AgentSession {
       this.queryRestartNeeded = false;
     }
 
-    const input = new Pushable<SDKUserMessage>();
+    const input = createAsyncMessageInput<SDKUserMessage>();
     const options = this.buildOptions();
     this.logger.debug({ options: summarizeClaudeOptionsForLog(options) }, "claude query");
     this.input = input;
-    this.query = this.queryFactory({ prompt: input, options });
+    this.query = this.queryFactory({ prompt: input.iterable, options });
     // Do not kick off background control-plane queries here. Methods like
     // supportedCommands()/setPermissionMode() may execute immediately after
     // ensureQuery() (for listCommands()/setMode()), and sharing the same query
@@ -2083,7 +2043,7 @@ class ClaudeAgentSession implements AgentSession {
   }
 
   private syncTurnState(reason: string): void {
-    if (this.activeForegroundTurn) {
+    if (this.activeForegroundTurnId) {
       this.transitionTurnState("foreground", reason);
       return;
     }
@@ -2139,6 +2099,51 @@ class ClaudeAgentSession implements AgentSession {
     );
   }
 
+  private extractPromptText(prompt: AgentPromptInput): string | null {
+    if (typeof prompt === "string") {
+      return prompt;
+    }
+    const textParts = prompt
+      .filter((block): block is { type: "text"; text: string } => block.type === "text")
+      .map((block) => block.text);
+    return textParts.length > 0 ? textParts.join("\n") : null;
+  }
+
+  private async executeRewindTurn(
+    _turnId: string,
+    invocation: SlashCommandInvocation,
+  ): Promise<void> {
+    this.notifySubscribers({ type: "turn_started", provider: "claude" });
+    try {
+      const rewindAttempt = await this.attemptRewind(invocation.args);
+      if (!rewindAttempt.messageId || !rewindAttempt.result) {
+        this.finishForegroundTurn({
+          type: "turn_failed",
+          provider: "claude",
+          error:
+            rewindAttempt.error ??
+            "No prior user message available to rewind. Use /rewind <user_message_uuid>.",
+        });
+        return;
+      }
+      this.notifySubscribers({
+        type: "timeline",
+        provider: "claude",
+        item: {
+          type: "assistant_message",
+          text: this.buildRewindSuccessMessage(rewindAttempt.messageId, rewindAttempt.result),
+        },
+      });
+      this.finishForegroundTurn({ type: "turn_completed", provider: "claude" });
+    } catch (error) {
+      this.finishForegroundTurn({
+        type: "turn_failed",
+        provider: "claude",
+        error: error instanceof Error ? error.message : "Failed to rewind tracked files",
+      });
+    }
+  }
+
   private shouldRecoverInterruptedQueryAbort(
     error: unknown,
     consecutiveRecoveries: number,
@@ -2161,43 +2166,30 @@ class ClaudeAgentSession implements AgentSession {
     if (event.type === "turn_failed" || event.type === "turn_canceled") {
       this.flushPendingToolCalls();
     }
-    this.dispatchForegroundEvents([event]);
-  }
-
-  private dispatchForegroundEvents(events: AgentStreamEvent[]): void {
-    const foregroundTurn = this.activeForegroundTurn;
-    if (!foregroundTurn) {
-      this.dispatchLiveEvents(events);
-      return;
-    }
-
-    let terminalSeen = false;
-    for (const event of events) {
-      foregroundTurn.queue.push(event);
-      terminalSeen ||= this.isTerminalTurnEvent(event);
-    }
-
-    if (!terminalSeen) {
-      return;
-    }
-
-    foregroundTurn.queue.end();
-    if (this.activeForegroundTurn === foregroundTurn) {
-      this.activeForegroundTurn = null;
-    }
+    this.notifySubscribers(event);
+    this.activeForegroundTurnId = null;
+    this.lastForegroundPromptText = null;
+    this.cancelCurrentTurn = null;
     this.syncTurnState("foreground turn terminal");
   }
 
-  private dispatchLiveEvents(events: AgentStreamEvent[]): void {
+  private dispatchEvents(events: AgentStreamEvent[]): void {
     let terminalSeen = false;
     for (const event of events) {
-      this.liveEventQueue.push(event);
+      this.notifySubscribers(event);
       terminalSeen ||= this.isTerminalTurnEvent(event);
     }
 
-    if (terminalSeen && this.autonomousTurn) {
-      this.autonomousTurn = null;
-      this.syncTurnState("autonomous turn terminal");
+    if (terminalSeen) {
+      if (this.activeForegroundTurnId) {
+        this.activeForegroundTurnId = null;
+        this.lastForegroundPromptText = null;
+        this.cancelCurrentTurn = null;
+        this.syncTurnState("foreground turn terminal");
+      } else if (this.autonomousTurn) {
+        this.autonomousTurn = null;
+        this.syncTurnState("autonomous turn terminal");
+      }
     }
   }
 
@@ -2208,7 +2200,7 @@ class ClaudeAgentSession implements AgentSession {
     this.autonomousTurn = {
       id: this.createTurnId("autonomous"),
     };
-    this.liveEventQueue.push({ type: "turn_started", provider: "claude" });
+    this.notifySubscribers({ type: "turn_started", provider: "claude" });
     this.syncTurnState("autonomous turn started");
   }
 
@@ -2216,8 +2208,8 @@ class ClaudeAgentSession implements AgentSession {
     if (!this.autonomousTurn) {
       return;
     }
+    this.notifySubscribers({ type: "turn_completed", provider: "claude" });
     this.autonomousTurn = null;
-    this.liveEventQueue.push({ type: "turn_completed", provider: "claude" });
     this.syncTurnState("autonomous turn completed");
   }
 
@@ -2226,25 +2218,24 @@ class ClaudeAgentSession implements AgentSession {
       return;
     }
     this.flushPendingToolCalls();
-    this.autonomousTurn = null;
-    this.liveEventQueue.push({
+    this.notifySubscribers({
       type: "turn_canceled",
       provider: "claude",
       reason,
     });
+    this.autonomousTurn = null;
     this.syncTurnState("autonomous turn canceled");
   }
 
   private failActiveTurns(errorMessage: string): void {
     const failure = this.buildTurnFailedEvent(errorMessage);
-    if (this.activeForegroundTurn) {
-      this.flushPendingToolCalls();
-      this.dispatchForegroundEvents([failure]);
+    this.flushPendingToolCalls();
+    if (this.activeForegroundTurnId) {
+      this.finishForegroundTurn(failure);
       return;
     }
     if (this.autonomousTurn) {
-      this.flushPendingToolCalls();
-      this.dispatchLiveEvents([failure]);
+      this.dispatchEvents([failure]);
     }
   }
 
@@ -2280,6 +2271,15 @@ class ClaudeAgentSession implements AgentSession {
       while (!this.closed && this.query === activeQuery) {
         try {
           for await (const message of activeQuery) {
+            this.logger.trace(
+              {
+                claudeSessionId: this.claudeSessionId,
+                messageType: message.type,
+                messageSubtype: "subtype" in message ? message.subtype : undefined,
+                messageUuid: "uuid" in message ? message.uuid : undefined,
+              },
+              "Claude query pump: raw SDK message",
+            );
             consecutiveInterruptAbortRecoveries = 0;
             if (await this.handleMissingResumedConversation(message, activeQuery)) {
               return;
@@ -2318,31 +2318,30 @@ class ClaudeAgentSession implements AgentSession {
   }
 
   private routeSdkMessageFromPump(message: SDKMessage): void {
-    const routeToForeground = Boolean(this.activeForegroundTurn);
+    const isForeground = Boolean(this.activeForegroundTurnId);
     const assistantishMessage =
       message.type === "assistant" ||
       message.type === "stream_event" ||
       message.type === "tool_progress" ||
       (message.type === "system" && message.subtype === "task_notification");
 
-    if (!routeToForeground && assistantishMessage) {
+    if (!isForeground && assistantishMessage) {
       this.startAutonomousTurn();
     }
-    if (!routeToForeground && !this.autonomousTurn && message.type === "result") {
+    if (!isForeground && !this.autonomousTurn && message.type === "result") {
       return;
     }
 
-    const turnId = this.activeForegroundTurn?.id ?? this.autonomousTurn?.id ?? null;
+    const turnId = this.activeForegroundTurnId ?? this.autonomousTurn?.id ?? null;
     const identifiers = readEventIdentifiers(message);
 
     this.logger.trace(
       {
         claudeSessionId: this.claudeSessionId,
         messageType: message.type,
-        routedTo: routeToForeground ? "foreground_queue" : "live_queue",
         turnId,
       },
-      "Claude query pump routed SDK message",
+      "Claude query pump: SDK message",
     );
 
     const messageEvents = this.translateMessageToEvents(message, {
@@ -2363,7 +2362,23 @@ class ClaudeAgentSession implements AgentSession {
             provider: "claude",
           }) satisfies AgentStreamEvent,
       );
-    const events = [...messageEvents, ...assistantTimelineEvents];
+
+    // User message dedup: suppress echoed user messages that match the foreground prompt
+    const filteredMessageEvents = messageEvents.filter((event) => {
+      if (
+        event.type === "timeline" &&
+        event.item.type === "user_message" &&
+        this.activeForegroundTurnId &&
+        this.lastForegroundPromptText
+      ) {
+        if (event.item.text.trim() === this.lastForegroundPromptText.trim()) {
+          return false;
+        }
+      }
+      return true;
+    });
+
+    const events = [...filteredMessageEvents, ...assistantTimelineEvents];
 
     if (events.length === 0) {
       return;
@@ -2373,14 +2388,14 @@ class ClaudeAgentSession implements AgentSession {
       this.pendingInterruptAbort &&
       message.type === "result" &&
       events.some((event) => event.type === "turn_completed" || event.type === "turn_failed") &&
-      (!this.activeForegroundTurn || !this.activeForegroundTurn.hasVisibleActivity)
+      (!this.activeForegroundTurnId || !this.foregroundHasVisibleActivity)
     ) {
       this.pendingInterruptAbort = false;
       this.logger.debug("Suppressing stale Claude interrupt terminal result");
       return;
     }
     if (
-      this.activeForegroundTurn &&
+      this.activeForegroundTurnId &&
       events.some(
         (event) =>
           event.type === "timeline" ||
@@ -2388,15 +2403,11 @@ class ClaudeAgentSession implements AgentSession {
           event.type === "permission_resolved",
       )
     ) {
-      this.activeForegroundTurn.hasVisibleActivity = true;
+      this.foregroundHasVisibleActivity = true;
       this.pendingInterruptAbort = false;
     }
 
-    if (routeToForeground) {
-      this.dispatchForegroundEvents(events);
-      return;
-    }
-    this.dispatchLiveEvents(events);
+    this.dispatchEvents(events);
   }
 
   private async handleMissingResumedConversation(
@@ -2430,13 +2441,10 @@ class ClaudeAgentSession implements AgentSession {
     this.persistence = null;
     this.persistedHistory = [];
     this.historyPending = false;
-    this.historyOffsetSessionId = null;
-    this.historyReadOffsetBytes = 0;
-    this.historyLineFragment = "";
     this.cachedRuntimeInfo = null;
     this.queryRestartNeeded = false;
     this.autonomousTurn = null;
-    this.activeForegroundTurn = null;
+    this.activeForegroundTurnId = null;
     this.syncTurnState("missing resumed conversation");
     return true;
   }
@@ -2855,12 +2863,19 @@ class ClaudeAgentSession implements AgentSession {
   }
 
   private pushEvent(event: AgentStreamEvent) {
-    const foregroundTurn = this.activeForegroundTurn;
-    if (foregroundTurn) {
-      foregroundTurn.queue.push(event);
-      return;
+    this.notifySubscribers(event);
+  }
+
+  private notifySubscribers(event: AgentStreamEvent): void {
+    const turnId = this.activeForegroundTurnId ?? this.autonomousTurn?.id;
+    const tagged = turnId ? { ...event, turnId } : event;
+    for (const callback of this.subscribers) {
+      try {
+        callback(tagged);
+      } catch (error) {
+        this.logger.warn({ err: error }, "Subscriber callback threw");
+      }
     }
-    this.liveEventQueue.push(event);
   }
 
   private normalizePermissionUpdates(
@@ -2881,165 +2896,57 @@ class ClaudeAgentSession implements AgentSession {
     }
   }
 
-  private loadPersistedHistory(sessionId: string, options?: { dispatchLive?: boolean }) {
+  private loadPersistedHistory(sessionId: string): void {
     try {
       const historyPath = this.resolveHistoryPath(sessionId);
       if (!historyPath || !fs.existsSync(historyPath)) {
         return;
       }
-      if (this.historyOffsetSessionId !== sessionId) {
-        this.historyOffsetSessionId = sessionId;
-        this.historyReadOffsetBytes = 0;
-        this.historyLineFragment = "";
-      }
-      const content = fs.readFileSync(historyPath);
-      if (content.byteLength < this.historyReadOffsetBytes) {
-        this.historyReadOffsetBytes = 0;
-        this.historyLineFragment = "";
-      }
-      if (content.byteLength === this.historyReadOffsetBytes) {
-        return;
-      }
-
-      const unreadChunk = content.subarray(this.historyReadOffsetBytes).toString("utf8");
-      this.historyReadOffsetBytes = content.byteLength;
-      this.ingestPersistedHistoryChunk(unreadChunk, {
-        dispatchLive: options?.dispatchLive ?? false,
-      });
+      this.ingestPersistedHistory(fs.readFileSync(historyPath, "utf8"));
     } catch (error) {
       // ignore history load failures
     }
   }
 
-  private startLiveHistoryPolling(): void {
-    if (this.liveHistoryPollTimer || !this.claudeSessionId) {
-      return;
-    }
-    this.liveHistoryPollTimer = setInterval(() => {
-      if (!this.claudeSessionId || this.closed) {
-        this.stopLiveHistoryPolling();
-        return;
-      }
-      this.loadPersistedHistory(this.claudeSessionId, { dispatchLive: true });
-    }, 200);
-  }
-
-  private stopLiveHistoryPolling(): void {
-    if (!this.liveHistoryPollTimer) {
-      return;
-    }
-    clearInterval(this.liveHistoryPollTimer);
-    this.liveHistoryPollTimer = null;
-  }
-
-  private ingestPersistedHistoryChunk(chunk: string, options: { dispatchLive: boolean }): void {
-    if (!chunk) {
+  private ingestPersistedHistory(content: string): void {
+    if (!content) {
       return;
     }
 
-    const combined = `${this.historyLineFragment}${chunk}`;
-    this.historyLineFragment = "";
-    const lines = combined.split(/\r?\n/);
-    const trailing = lines.pop() ?? "";
     const timeline: AgentTimelineItem[] = [];
-
-    for (const line of lines) {
-      this.ingestPersistedHistoryLine(line, {
-        dispatchLive: options.dispatchLive,
-        timeline,
-      });
+    for (const line of content.split(/\r?\n/)) {
+      this.ingestPersistedHistoryLine(line, timeline);
     }
 
-    if (trailing.trim().length > 0) {
-      const handled = this.ingestPersistedHistoryLine(trailing, {
-        dispatchLive: options.dispatchLive,
-        timeline,
-      });
-      if (!handled) {
-        this.historyLineFragment = trailing;
-      }
-    }
-
-    if (!options.dispatchLive && timeline.length > 0) {
+    if (timeline.length > 0) {
       this.persistedHistory = [...this.persistedHistory, ...timeline];
       this.historyPending = true;
     }
   }
 
-  private ingestPersistedHistoryLine(
-    line: string,
-    options: {
-      dispatchLive: boolean;
-      timeline: AgentTimelineItem[];
-    },
-  ): boolean {
+  private ingestPersistedHistoryLine(line: string, timeline: AgentTimelineItem[]): void {
     const trimmed = line.trim();
     if (!trimmed) {
-      return true;
+      return;
     }
 
     let entry: Record<string, unknown>;
     try {
       entry = JSON.parse(trimmed) as Record<string, unknown>;
     } catch {
-      return false;
+      return;
     }
 
     if (entry.isSidechain) {
-      return true;
+      return;
     }
     if (entry.type === "user" && typeof entry.uuid === "string") {
       this.rememberUserMessageId(entry.uuid);
     }
 
-    if (options.dispatchLive) {
-      this.dispatchPersistedHistoryEntry(entry);
-      return true;
-    }
-
     const items = this.convertHistoryEntry(entry);
     if (items.length > 0) {
-      options.timeline.push(...items);
-    }
-    return true;
-  }
-
-  private dispatchPersistedHistoryEntry(entry: Record<string, unknown>): void {
-    const liveMessage = this.normalizePersistedHistoryEntryToLiveMessage(entry);
-    if (liveMessage) {
-      this.routeSdkMessageFromPump(liveMessage);
-      return;
-    }
-
-    const items = this.convertHistoryEntry(entry);
-    for (const item of items) {
-      this.pushEvent({
-        type: "timeline",
-        item,
-        provider: "claude",
-      });
-    }
-  }
-
-  private normalizePersistedHistoryEntryToLiveMessage(
-    entry: Record<string, unknown>,
-  ): SDKMessage | null {
-    const taskNotificationMessage = coerceTaskNotificationHistoryRecordToSystemMessage(entry);
-    if (taskNotificationMessage) {
-      return taskNotificationMessage as unknown as SDKMessage;
-    }
-
-    const type = readTrimmedString(entry.type);
-    switch (type) {
-      case "assistant":
-      case "result":
-      case "stream_event":
-      case "system":
-      case "tool_progress":
-      case "user":
-        return entry as unknown as SDKMessage;
-      default:
-        return null;
+      timeline.push(...items);
     }
   }
 
@@ -3759,49 +3666,51 @@ export function convertClaudeHistoryEntry(
   return timeline;
 }
 
-class Pushable<T> implements AsyncIterable<T> {
-  private queue: T[] = [];
-  private resolvers: Array<(value: IteratorResult<T, void>) => void> = [];
-  private closed = false;
+function createAsyncMessageInput<T>(): AsyncMessageInput<T> {
+  const queue: T[] = [];
+  const resolvers: Array<(value: IteratorResult<T, void>) => void> = [];
+  let closed = false;
 
-  push(item: T) {
-    if (this.closed) {
-      return;
-    }
-    if (this.resolvers.length > 0) {
-      const resolve = this.resolvers.shift()!;
-      resolve({ value: item, done: false });
-    } else {
-      this.queue.push(item);
-    }
-  }
-
-  end() {
-    this.closed = true;
-    while (this.resolvers.length > 0) {
-      const resolve = this.resolvers.shift()!;
-      resolve({ value: undefined, done: true });
-    }
-  }
-
-  [Symbol.asyncIterator](): AsyncIterator<T, void> {
-    return {
-      next: (): Promise<IteratorResult<T, void>> => {
-        if (this.queue.length > 0) {
-          const value = this.queue.shift();
-          if (value !== undefined) {
-            return Promise.resolve({ value, done: false });
-          }
-        }
-        if (this.closed) {
-          return Promise.resolve({ value: undefined, done: true });
-        }
-        return new Promise<IteratorResult<T, void>>((resolve) => {
-          this.resolvers.push(resolve);
-        });
+  return {
+    push(item: T) {
+      if (closed) {
+        return;
+      }
+      const resolve = resolvers.shift();
+      if (resolve) {
+        resolve({ value: item, done: false });
+        return;
+      }
+      queue.push(item);
+    },
+    end() {
+      closed = true;
+      while (resolvers.length > 0) {
+        const resolve = resolvers.shift();
+        resolve?.({ value: undefined, done: true });
+      }
+    },
+    iterable: {
+      [Symbol.asyncIterator](): AsyncIterator<T, void> {
+        return {
+          next: (): Promise<IteratorResult<T, void>> => {
+            if (queue.length > 0) {
+              const value = queue.shift();
+              if (value !== undefined) {
+                return Promise.resolve({ value, done: false });
+              }
+            }
+            if (closed) {
+              return Promise.resolve({ value: undefined, done: true });
+            }
+            return new Promise<IteratorResult<T, void>>((resolve) => {
+              resolvers.push(resolve);
+            });
+          },
+        };
       },
-    };
-  }
+    },
+  };
 }
 
 type ClaudeSessionCandidate = {

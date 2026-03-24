@@ -1069,7 +1069,8 @@ export class HostRuntimeController {
 }
 
 const REGISTRY_STORAGE_KEY = "@paseo:daemon-registry";
-const DEFAULT_LOCALHOST_ENDPOINT = "localhost:6767";
+const DEFAULT_LOCALHOST_ENDPOINT =
+  process.env.EXPO_PUBLIC_LOCAL_DAEMON?.trim() || "localhost:6767";
 const DEFAULT_LOCALHOST_BOOTSTRAP_KEY = "@paseo:default-localhost-bootstrap-v1";
 const DEFAULT_LOCALHOST_BOOTSTRAP_TIMEOUT_MS = 2500;
 const E2E_STORAGE_KEY = "@paseo:e2e";

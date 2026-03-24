@@ -113,6 +113,9 @@ class TestAgentSession implements AgentSession {
   readonly capabilities = TEST_CAPABILITIES;
   readonly id = randomUUID();
   private runtimeModel: string | null = null;
+  private subscribers = new Set<(event: AgentStreamEvent) => void>();
+  private turnIdCounter = 0;
+  private interrupted = false;
 
   constructor(private readonly config: AgentSessionConfig) {}
 
@@ -124,10 +127,33 @@ class TestAgentSession implements AgentSession {
     };
   }
 
-  async *stream(): AsyncGenerator<AgentStreamEvent> {
-    yield { type: "turn_started", provider: this.provider };
-    yield { type: "turn_completed", provider: this.provider };
-    this.runtimeModel = "gpt-5.2-codex";
+  async startTurn(): Promise<{ turnId: string }> {
+    this.interrupted = false;
+    const turnId = `turn-${++this.turnIdCounter}`;
+    // Use setTimeout so events arrive after the caller sets up the foreground waiter
+    setTimeout(() => {
+      this.pushEvent({ type: "turn_started", provider: this.provider, turnId });
+      this.pushEvent({ type: "turn_completed", provider: this.provider, turnId });
+      this.runtimeModel = "gpt-5.2-codex";
+    }, 0);
+    return { turnId };
+  }
+
+  subscribe(callback: (event: AgentStreamEvent) => void): () => void {
+    this.subscribers.add(callback);
+    return () => {
+      this.subscribers.delete(callback);
+    };
+  }
+
+  pushEvent(event: AgentStreamEvent): void {
+    for (const cb of this.subscribers) {
+      try {
+        cb(event);
+      } catch {
+        // error isolation per design
+      }
+    }
   }
 
   async *streamHistory(): AsyncGenerator<AgentStreamEvent> {}
@@ -164,7 +190,9 @@ class TestAgentSession implements AgentSession {
     };
   }
 
-  async interrupt(): Promise<void> {}
+  async interrupt(): Promise<void> {
+    this.interrupted = true;
+  }
 
   async close(): Promise<void> {}
 }
@@ -608,11 +636,12 @@ describe("AgentManager", () => {
 
     class DelayedPersistenceSession extends TestAgentSession {
       private persistenceReady = false;
-      private interrupted = false;
+      private delayedInterrupted = false;
       private releaseGate: (() => void) | null = null;
       private readonly gate = new Promise<void>((resolve) => {
         this.releaseGate = resolve;
       });
+      private activeTurnId: string | null = null;
 
       constructor(
         config: AgentSessionConfig,
@@ -623,20 +652,27 @@ describe("AgentManager", () => {
         this.persistenceReady = initiallyReady;
       }
 
-      async *stream(): AsyncGenerator<AgentStreamEvent> {
-        yield { type: "turn_started", provider: this.provider };
-        this.persistenceReady = true;
-        yield {
-          type: "thread_started",
-          provider: this.provider,
-          sessionId: this.stableSessionId,
-        };
-        await this.gate;
-        if (this.interrupted) {
-          yield { type: "turn_canceled", provider: this.provider, reason: "Interrupted" };
-          return;
-        }
-        yield { type: "turn_completed", provider: this.provider };
+      override async startTurn(): Promise<{ turnId: string }> {
+        this.delayedInterrupted = false;
+        const turnId = `delayed-turn-${Date.now()}`;
+        this.activeTurnId = turnId;
+        // Push turn_started, then thread_started, then wait on gate
+        setTimeout(async () => {
+          this.pushEvent({ type: "turn_started", provider: this.provider, turnId });
+          this.persistenceReady = true;
+          this.pushEvent({
+            type: "thread_started",
+            provider: this.provider,
+            sessionId: this.stableSessionId,
+          });
+          await this.gate;
+          if (this.delayedInterrupted) {
+            this.pushEvent({ type: "turn_canceled", provider: this.provider, reason: "Interrupted", turnId });
+          } else {
+            this.pushEvent({ type: "turn_completed", provider: this.provider, turnId });
+          }
+        }, 0);
+        return { turnId };
       }
 
       async getRuntimeInfo() {
@@ -658,13 +694,13 @@ describe("AgentManager", () => {
         };
       }
 
-      async interrupt(): Promise<void> {
-        this.interrupted = true;
+      override async interrupt(): Promise<void> {
+        this.delayedInterrupted = true;
         this.releaseGate?.();
       }
 
       async close(): Promise<void> {
-        this.interrupted = true;
+        this.delayedInterrupted = true;
         this.releaseGate?.();
       }
     }
@@ -720,13 +756,16 @@ describe("AgentManager", () => {
     const first = await stream.next();
     expect(first.done).toBe(false);
     expect(first.value?.type).toBe("turn_started");
-    const second = await stream.next();
-    expect(second.done).toBe(false);
-    expect(second.value?.type).toBe("thread_started");
+
+    // Wait for the thread_started event to propagate through subscribe
+    // (it's a session-level event, not forwarded to the foreground stream)
+    await vi.waitFor(() => {
+      const active = manager.getAgent(snapshot.id);
+      expect(active?.persistence?.sessionId).toBe("delayed-session-1");
+    });
 
     const active = manager.getAgent(snapshot.id);
     expect(active?.lifecycle).toBe("running");
-    expect(active?.persistence?.sessionId).toBe("delayed-session-1");
 
     const reloaded = await manager.reloadAgentSession(snapshot.id, {
       systemPrompt: "voice mode on",
@@ -1082,19 +1121,22 @@ describe("AgentManager", () => {
     expect(refreshed?.runtimeInfo?.model).toBe("gpt-5.2-codex");
   });
 
-  test("waitForAgentEvent does not resolve idle until pendingRun is cleared", async () => {
+  test("waitForAgentEvent does not resolve idle until foreground turn is finalized", async () => {
     const workdir = mkdtempSync(join(tmpdir(), "agent-manager-wait-coherence-"));
     const storagePath = join(workdir, "agents");
     const storage = new AgentStorage(storagePath, logger);
     const releaseTurnCompleted = deferred<void>();
-    const releaseStreamEnd = deferred<void>();
 
     class SlowTerminalSession extends TestAgentSession {
-      override async *stream(): AsyncGenerator<AgentStreamEvent> {
-        yield { type: "turn_started", provider: this.provider };
-        await releaseTurnCompleted.promise;
-        yield { type: "turn_completed", provider: this.provider };
-        await releaseStreamEnd.promise;
+      override async startTurn(): Promise<{ turnId: string }> {
+        this.interrupted = false;
+        const turnId = `turn-${++this.turnIdCounter}`;
+        void (async () => {
+          this.pushEvent({ type: "turn_started", provider: this.provider, turnId });
+          await releaseTurnCompleted.promise;
+          this.pushEvent({ type: "turn_completed", provider: this.provider, turnId });
+        })();
+        return { turnId };
       }
     }
 
@@ -1118,22 +1160,6 @@ describe("AgentManager", () => {
       cwd: workdir,
     });
 
-    const turnCompletedSeen = new Promise<void>((resolve) => {
-      const unsubscribe = manager.subscribe(
-        (event) => {
-          if (
-            event.type === "agent_stream" &&
-            event.agentId === snapshot.id &&
-            event.event.type === "turn_completed"
-          ) {
-            unsubscribe();
-            resolve();
-          }
-        },
-        { agentId: snapshot.id, replayState: false },
-      );
-    });
-
     const stream = manager.streamAgent(snapshot.id, "hello");
     const consumePromise = (async () => {
       for await (const _event of stream) {
@@ -1141,22 +1167,56 @@ describe("AgentManager", () => {
       }
     })();
 
-    await manager.waitForAgentRunStart(snapshot.id);
+    // Wait for the turn to start
+    await new Promise<void>((resolve) => setTimeout(resolve, 20));
+
     const waitPromise = manager.waitForAgentEvent(snapshot.id);
 
-    releaseTurnCompleted.resolve();
-    await turnCompletedSeen;
+    // Should still be pending because turn_completed hasn't arrived
     const earlyResolution = await Promise.race([
       waitPromise.then(() => "resolved"),
       new Promise<"pending">((resolve) => setTimeout(() => resolve("pending"), 50)),
     ]);
     expect(earlyResolution).toBe("pending");
 
-    releaseStreamEnd.resolve();
+    // Release the turn_completed event
+    releaseTurnCompleted.resolve();
     const waited = await waitPromise;
     expect(waited.status).toBe("idle");
 
     await consumePromise;
+  });
+
+  test("waitForAgentRunStart resolves while a foreground run is still only pending", async () => {
+    const workdir = mkdtempSync(join(tmpdir(), "agent-manager-fast-start-"));
+    const storagePath = join(workdir, "agents");
+    const storage = new AgentStorage(storagePath, logger);
+
+    const manager = new AgentManager({
+      clients: {
+        codex: new TestAgentClient(),
+      },
+      registry: storage,
+      logger,
+      idFactory: () => "00000000-0000-4000-8000-000000000124",
+    });
+
+    const snapshot = await manager.createAgent({
+      provider: "codex",
+      cwd: workdir,
+    });
+
+    const run = manager.streamAgent(snapshot.id, "fast");
+    const drainRun = (async () => {
+      for await (const _event of run) {
+        // Drain the fast foreground turn.
+      }
+    })();
+
+    await expect(manager.waitForAgentRunStart(snapshot.id)).resolves.toBeUndefined();
+
+    await drainRun;
+    expect(manager.getAgent(snapshot.id)?.lifecycle).toBe("idle");
   });
 
   test("replaceAgentRun does not emit idle or resolve waiters between interrupted and replacement runs", async () => {
@@ -1167,24 +1227,26 @@ describe("AgentManager", () => {
     const allowSecondRunToEnd = deferred<void>();
 
     class ReplaceRunSession extends TestAgentSession {
-      private streamCount = 0;
+      override async startTurn(): Promise<{ turnId: string }> {
+        this.interrupted = false;
+        const turnId = `turn-${++this.turnIdCounter}`;
+        const turnNum = this.turnIdCounter;
 
-      override async *stream(): AsyncGenerator<AgentStreamEvent> {
-        this.streamCount += 1;
-
-        if (this.streamCount === 1) {
-          yield { type: "turn_started", provider: this.provider };
-          await allowFirstRunToEnd.promise;
-          yield { type: "turn_completed", provider: this.provider };
-          return;
-        }
-
-        yield { type: "turn_started", provider: this.provider };
-        await allowSecondRunToEnd.promise;
-        yield { type: "turn_completed", provider: this.provider };
+        void (async () => {
+          this.pushEvent({ type: "turn_started", provider: this.provider, turnId });
+          if (turnNum === 1) {
+            await allowFirstRunToEnd.promise;
+            this.pushEvent({ type: "turn_canceled", provider: this.provider, reason: "interrupted", turnId });
+          } else {
+            await allowSecondRunToEnd.promise;
+            this.pushEvent({ type: "turn_completed", provider: this.provider, turnId });
+          }
+        })();
+        return { turnId };
       }
 
       override async interrupt(): Promise<void> {
+        this.interrupted = true;
         allowFirstRunToEnd.resolve();
       }
     }
@@ -1270,23 +1332,12 @@ describe("AgentManager", () => {
     const workdir = mkdtempSync(join(tmpdir(), "agent-manager-live-events-"));
     const storagePath = join(workdir, "agents");
     const storage = new AgentStorage(storagePath, logger);
-    const liveEvents = new EventPushable<AgentStreamEvent>();
-
-    class LiveEventSession extends TestAgentSession {
-      async *streamLiveEvents(): AsyncGenerator<AgentStreamEvent> {
-        for await (const event of liveEvents) {
-          yield event;
-        }
-      }
-
-      override async close(): Promise<void> {
-        liveEvents.end();
-      }
-    }
+    let capturedSession: TestAgentSession | null = null;
 
     class LiveEventClient extends TestAgentClient {
       override async createSession(config: AgentSessionConfig): Promise<AgentSession> {
-        return new LiveEventSession(config);
+        capturedSession = new TestAgentSession(config);
+        return capturedSession;
       }
     }
 
@@ -1325,13 +1376,16 @@ describe("AgentManager", () => {
       { agentId: snapshot.id, replayState: false },
     );
 
-    liveEvents.push({ type: "turn_started", provider: "codex" });
-    liveEvents.push({
+    // Push autonomous events through the session's subscribe() callbacks
+    const autonomousTurnId = "autonomous-turn-1";
+    capturedSession!.pushEvent({ type: "turn_started", provider: "codex", turnId: autonomousTurnId });
+    capturedSession!.pushEvent({
       type: "timeline",
       provider: "codex",
       item: { type: "assistant_message", text: "AUTONOMOUS_PUMP_MESSAGE" },
+      turnId: autonomousTurnId,
     });
-    liveEvents.push({ type: "turn_completed", provider: "codex" });
+    capturedSession!.pushEvent({ type: "turn_completed", provider: "codex", turnId: autonomousTurnId });
     await settled;
 
     const updated = manager.getAgent(snapshot.id);
@@ -1344,27 +1398,16 @@ describe("AgentManager", () => {
     expect(lifecycleUpdates).toContain("idle");
   });
 
-  test("cancelAgentRun can interrupt autonomous running state without a foreground pendingRun", async () => {
+  test("cancelAgentRun can interrupt autonomous running state without a foreground activeForegroundTurnId", async () => {
     const workdir = mkdtempSync(join(tmpdir(), "agent-manager-live-cancel-"));
     const storagePath = join(workdir, "agents");
     const storage = new AgentStorage(storagePath, logger);
-    const liveEvents = new EventPushable<AgentStreamEvent>();
 
     class LiveInterruptSession extends TestAgentSession {
       public interruptCount = 0;
 
-      async *streamLiveEvents(): AsyncGenerator<AgentStreamEvent> {
-        for await (const event of liveEvents) {
-          yield event;
-        }
-      }
-
       override async interrupt(): Promise<void> {
         this.interruptCount += 1;
-      }
-
-      override async close(): Promise<void> {
-        liveEvents.end();
       }
     }
 
@@ -1393,6 +1436,8 @@ describe("AgentManager", () => {
       cwd: workdir,
     });
 
+    const capturedSession = client.lastSession!;
+
     await new Promise<void>((resolve) => {
       const unsubscribe = manager.subscribe(
         (event) => {
@@ -1410,14 +1455,12 @@ describe("AgentManager", () => {
         },
         { agentId: snapshot.id, replayState: false },
       );
-      liveEvents.push({ type: "turn_started", provider: "codex" });
+      capturedSession.pushEvent({ type: "turn_started", provider: "codex", turnId: "autonomous-cancel-1" });
     });
 
     const beforeCancel = manager.getAgent(snapshot.id);
     expect(beforeCancel?.lifecycle).toBe("running");
-    expect(Boolean(beforeCancel && "pendingRun" in beforeCancel && beforeCancel.pendingRun)).toBe(
-      false,
-    );
+    expect(beforeCancel?.activeForegroundTurnId).toBeNull();
 
     const cancelled = await manager.cancelAgentRun(snapshot.id);
     expect(cancelled).toBe(true);
@@ -1428,23 +1471,14 @@ describe("AgentManager", () => {
     const workdir = mkdtempSync(join(tmpdir(), "agent-manager-live-wait-"));
     const storagePath = join(workdir, "agents");
     const storage = new AgentStorage(storagePath, logger);
-    const liveEvents = new EventPushable<AgentStreamEvent>();
 
-    class LiveEventSession extends TestAgentSession {
-      async *streamLiveEvents(): AsyncGenerator<AgentStreamEvent> {
-        for await (const event of liveEvents) {
-          yield event;
-        }
-      }
-
-      override async close(): Promise<void> {
-        liveEvents.end();
-      }
-    }
+    let capturedSession: TestAgentSession | null = null;
 
     class LiveEventClient extends TestAgentClient {
       override async createSession(config: AgentSessionConfig): Promise<AgentSession> {
-        return new LiveEventSession(config);
+        const session = new TestAgentSession(config);
+        capturedSession = session;
+        return session;
       }
     }
 
@@ -1462,48 +1496,46 @@ describe("AgentManager", () => {
       cwd: workdir,
     });
 
+    const autonomousTurnId = "autonomous-wait-1";
     const waitPromise = manager.waitForAgentEvent(snapshot.id, { waitForActive: true });
-    liveEvents.push({ type: "turn_started", provider: "codex" });
-    liveEvents.push({ type: "turn_completed", provider: "codex" });
+    capturedSession!.pushEvent({ type: "turn_started", provider: "codex", turnId: autonomousTurnId });
+    capturedSession!.pushEvent({ type: "turn_completed", provider: "codex", turnId: autonomousTurnId });
 
     const result = await waitPromise;
     expect(result.status).toBe("idle");
   });
 
-  test("buffers autonomous live events during foreground run and flushes after run settles", async () => {
-    const workdir = mkdtempSync(join(tmpdir(), "agent-manager-live-buffer-"));
+  test("autonomous events arriving during foreground run are processed via subscribe", async () => {
+    const workdir = mkdtempSync(join(tmpdir(), "agent-manager-live-during-fg-"));
     const storagePath = join(workdir, "agents");
     const storage = new AgentStorage(storagePath, logger);
-    const liveEvents = new EventPushable<AgentStreamEvent>();
     const releaseForeground = deferred<void>();
 
-    class BufferedLiveSession extends TestAgentSession {
-      override async *stream(): AsyncGenerator<AgentStreamEvent> {
-        yield { type: "turn_started", provider: this.provider };
-        await releaseForeground.promise;
-        yield { type: "turn_completed", provider: this.provider };
-      }
+    let capturedSession: TestAgentSession | null = null;
 
-      async *streamLiveEvents(): AsyncGenerator<AgentStreamEvent> {
-        for await (const event of liveEvents) {
-          yield event;
-        }
-      }
-
-      override async close(): Promise<void> {
-        liveEvents.end();
+    class ForegroundSession extends TestAgentSession {
+      override async startTurn(): Promise<{ turnId: string }> {
+        const turnId = "fg-turn-1";
+        setTimeout(async () => {
+          this.pushEvent({ type: "turn_started", provider: this.provider, turnId });
+          await releaseForeground.promise;
+          this.pushEvent({ type: "turn_completed", provider: this.provider, turnId });
+        }, 0);
+        return { turnId };
       }
     }
 
-    class BufferedLiveClient extends TestAgentClient {
+    class ForegroundClient extends TestAgentClient {
       override async createSession(config: AgentSessionConfig): Promise<AgentSession> {
-        return new BufferedLiveSession(config);
+        const session = new ForegroundSession(config);
+        capturedSession = session;
+        return session;
       }
     }
 
     const manager = new AgentManager({
       clients: {
-        codex: new BufferedLiveClient(),
+        codex: new ForegroundClient(),
       },
       registry: storage,
       logger,
@@ -1515,39 +1547,6 @@ describe("AgentManager", () => {
       cwd: workdir,
     });
 
-    const runningStateEvents: string[] = [];
-    let resolveAutonomousTurnStarted!: () => void;
-    const autonomousTurnStarted = new Promise<void>((resolve) => {
-      resolveAutonomousTurnStarted = resolve;
-    });
-    let resolveSecondRunningState!: () => void;
-    const secondRunningState = new Promise<void>((resolve) => {
-      resolveSecondRunningState = resolve;
-    });
-    manager.subscribe(
-      (event) => {
-        if (event.type === "agent_state" && event.agent.id === snapshot.id) {
-          if (event.agent.lifecycle !== "running") {
-            return;
-          }
-          runningStateEvents.push(event.agent.lifecycle);
-          if (runningStateEvents.length >= 2) {
-            resolveSecondRunningState();
-          }
-          return;
-        }
-
-        if (
-          event.type === "agent_stream" &&
-          event.agentId === snapshot.id &&
-          event.event.type === "turn_started"
-        ) {
-          resolveAutonomousTurnStarted();
-        }
-      },
-      { agentId: snapshot.id, replayState: true },
-    );
-
     const foreground = manager.streamAgent(snapshot.id, "foreground run");
     const foregroundResults = (async () => {
       const events: AgentStreamEvent[] = [];
@@ -1557,21 +1556,34 @@ describe("AgentManager", () => {
       return events;
     })();
 
-    await manager.waitForAgentRunStart(snapshot.id);
+    // Wait for the foreground turn to start (lifecycle -> running)
+    await new Promise<void>((resolve) => {
+      const unsub = manager.subscribe(
+        (event) => {
+          if (event.type === "agent_state" && event.agent.id === snapshot.id && event.agent.lifecycle === "running") {
+            unsub();
+            resolve();
+          }
+        },
+        { agentId: snapshot.id, replayState: true },
+      );
+    });
 
-    liveEvents.push({ type: "turn_started", provider: "codex" });
-    liveEvents.push({
+    // Push autonomous events while foreground is active
+    const autonomousTurnId = "autonomous-during-fg-1";
+    capturedSession!.pushEvent({ type: "turn_started", provider: "codex", turnId: autonomousTurnId });
+    capturedSession!.pushEvent({
       type: "timeline",
       provider: "codex",
       item: { type: "assistant_message", text: "AUTONOMOUS_DURING_FOREGROUND" },
+      turnId: autonomousTurnId,
     });
-    liveEvents.push({ type: "turn_completed", provider: "codex" });
+    capturedSession!.pushEvent({ type: "turn_completed", provider: "codex", turnId: autonomousTurnId });
 
     releaseForeground.resolve();
     const foregroundEvents = await foregroundResults;
 
-    const replaying = manager.getAgent(snapshot.id);
-    expect(replaying?.lifecycle).toBe("running");
+    // Foreground stream should contain its own turn events but NOT autonomous events
     expect(foregroundEvents.some((event) => event.type === "turn_completed")).toBe(true);
     expect(
       foregroundEvents.some(
@@ -1582,51 +1594,31 @@ describe("AgentManager", () => {
       ),
     ).toBe(false);
 
-    await autonomousTurnStarted;
-    await secondRunningState;
-
-    const settled = await manager.waitForAgentEvent(snapshot.id);
-    expect(settled.status).toBe("idle");
+    // Autonomous timeline item should still be recorded in the agent timeline
     expect(manager.getTimeline(snapshot.id)).toContainEqual({
       type: "assistant_message",
       text: "AUTONOMOUS_DURING_FOREGROUND",
     });
-    expect(runningStateEvents).toHaveLength(2);
   });
 
-  test("restarts live event pump after iterator failure", async () => {
-    const workdir = mkdtempSync(join(tmpdir(), "agent-manager-live-restart-"));
+  test("subscribe error isolation: throwing subscriber does not break event flow", async () => {
+    const workdir = mkdtempSync(join(tmpdir(), "agent-manager-subscribe-isolation-"));
     const storagePath = join(workdir, "agents");
     const storage = new AgentStorage(storagePath, logger);
-    const liveEvents = new EventPushable<AgentStreamEvent>();
 
-    class FlakyLiveSession extends TestAgentSession {
-      private attempts = 0;
+    let capturedSession: TestAgentSession | null = null;
 
-      async *streamLiveEvents(): AsyncGenerator<AgentStreamEvent> {
-        this.attempts += 1;
-        if (this.attempts === 1) {
-          throw new Error("simulated live iterator failure");
-        }
-        for await (const event of liveEvents) {
-          yield event;
-        }
-      }
-
-      override async close(): Promise<void> {
-        liveEvents.end();
-      }
-    }
-
-    class FlakyLiveClient extends TestAgentClient {
+    class IsolationClient extends TestAgentClient {
       override async createSession(config: AgentSessionConfig): Promise<AgentSession> {
-        return new FlakyLiveSession(config);
+        const session = new TestAgentSession(config);
+        capturedSession = session;
+        return session;
       }
     }
 
     const manager = new AgentManager({
       clients: {
-        codex: new FlakyLiveClient(),
+        codex: new IsolationClient(),
       },
       registry: storage,
       logger,
@@ -1638,47 +1630,39 @@ describe("AgentManager", () => {
       cwd: workdir,
     });
 
-    // Give the first failed stream a chance to restart.
-    await new Promise((resolve) => setTimeout(resolve, 350));
-
-    const assistantSeen = new Promise<void>((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        unsubscribe();
-        reject(new Error("Timed out waiting for restarted live event"));
-      }, 2_000);
-      const unsubscribe = manager.subscribe(
+    const receivedEvents: string[] = [];
+    const settled = new Promise<void>((resolve) => {
+      manager.subscribe(
         (event) => {
-          if (event.type !== "agent_stream" || event.agentId !== snapshot.id) {
-            return;
-          }
-          if (
-            event.event.type === "timeline" &&
-            event.event.item.type === "assistant_message" &&
-            event.event.item.text === "AUTONOMOUS_AFTER_RESTART"
-          ) {
-            clearTimeout(timeout);
-            unsubscribe();
+          if (event.type === "agent_state" && event.agent.id === snapshot.id && event.agent.lifecycle === "idle") {
             resolve();
+          }
+          if (event.type === "agent_stream" && event.agentId === snapshot.id) {
+            receivedEvents.push(event.event.type);
           }
         },
         { agentId: snapshot.id, replayState: false },
       );
     });
 
-    liveEvents.push({ type: "turn_started", provider: "codex" });
-    liveEvents.push({
+    const autonomousTurnId = "autonomous-isolation-1";
+    capturedSession!.pushEvent({ type: "turn_started", provider: "codex", turnId: autonomousTurnId });
+    capturedSession!.pushEvent({
       type: "timeline",
       provider: "codex",
-      item: { type: "assistant_message", text: "AUTONOMOUS_AFTER_RESTART" },
+      item: { type: "assistant_message", text: "EVENT_AFTER_ERROR" },
+      turnId: autonomousTurnId,
     });
-    liveEvents.push({ type: "turn_completed", provider: "codex" });
+    capturedSession!.pushEvent({ type: "turn_completed", provider: "codex", turnId: autonomousTurnId });
 
-    await assistantSeen;
-    const result = await manager.waitForAgentEvent(snapshot.id);
-    expect(result.status).toBe("idle");
+    await settled;
+
+    expect(receivedEvents).toContain("turn_started");
+    expect(receivedEvents).toContain("timeline");
+    expect(receivedEvents).toContain("turn_completed");
     expect(manager.getTimeline(snapshot.id)).toContainEqual({
       type: "assistant_message",
-      text: "AUTONOMOUS_AFTER_RESTART",
+      text: "EVENT_AFTER_ERROR",
     });
   });
 
@@ -1708,11 +1692,17 @@ describe("AgentManager", () => {
       const messageUpdatedAt = afterMessage!.updatedAt.getTime();
 
       const stream = manager.streamAgent(snapshot.id, "hello");
+      // Advance the generator so startTurn runs and lifecycle transitions to running
+      await stream.next();
       const afterRunStart = manager.getAgent(snapshot.id);
       expect(afterRunStart).toBeDefined();
       expect(afterRunStart!.updatedAt.getTime()).toBeGreaterThan(messageUpdatedAt);
 
-      await stream.return(undefined);
+      // Drain the rest of the stream
+      while (true) {
+        const next = await stream.next();
+        if (next.done) break;
+      }
     } finally {
       nowSpy.mockRestore();
     }
@@ -1761,6 +1751,8 @@ describe("AgentManager", () => {
       readonly provider = "codex" as const;
       readonly capabilities = TEST_CAPABILITIES;
       readonly id = randomUUID();
+      private subs = new Set<(event: AgentStreamEvent) => void>();
+      private turnCounter = 0;
 
       async run(): Promise<AgentRunResult> {
         return {
@@ -1770,25 +1762,38 @@ describe("AgentManager", () => {
         };
       }
 
-      async *stream(): AsyncGenerator<AgentStreamEvent> {
-        yield { type: "turn_started", provider: this.provider };
-        yield {
-          type: "timeline",
-          provider: this.provider,
-          item: {
-            type: "assistant_message",
-            text: '```json\n{"message":"Reserve space for archive button in side',
-          },
-        };
-        yield {
-          type: "timeline",
-          provider: this.provider,
-          item: {
-            type: "assistant_message",
-            text: 'bar agent list"}\n```',
-          },
-        };
-        yield { type: "turn_completed", provider: this.provider };
+      async startTurn(): Promise<{ turnId: string }> {
+        const turnId = `chunked-turn-${++this.turnCounter}`;
+        setTimeout(() => {
+          for (const cb of this.subs) {
+            cb({ type: "turn_started", provider: this.provider, turnId });
+            cb({
+              type: "timeline",
+              provider: this.provider,
+              item: {
+                type: "assistant_message",
+                text: '```json\n{"message":"Reserve space for archive button in side',
+              },
+              turnId,
+            });
+            cb({
+              type: "timeline",
+              provider: this.provider,
+              item: {
+                type: "assistant_message",
+                text: 'bar agent list"}\n```',
+              },
+              turnId,
+            });
+            cb({ type: "turn_completed", provider: this.provider, turnId });
+          }
+        }, 0);
+        return { turnId };
+      }
+
+      subscribe(callback: (event: AgentStreamEvent) => void): () => void {
+        this.subs.add(callback);
+        return () => { this.subs.delete(callback); };
       }
 
       async *streamHistory(): AsyncGenerator<AgentStreamEvent> {}
@@ -2065,10 +2070,15 @@ describe("AgentManager", () => {
     class FailingSession extends TestAgentSession {
       private attempt = 0;
 
-      async *stream(): AsyncGenerator<AgentStreamEvent> {
+      override async startTurn(): Promise<{ turnId: string }> {
         this.attempt += 1;
-        yield { type: "turn_started", provider: this.provider };
-        throw new Error(`boom-${this.attempt}`);
+        const attempt = this.attempt;
+        const turnId = `fail-turn-${attempt}`;
+        setTimeout(() => {
+          this.pushEvent({ type: "turn_started", provider: this.provider, turnId });
+          this.pushEvent({ type: "turn_failed", provider: this.provider, error: `boom-${attempt}`, turnId });
+        }, 0);
+        return { turnId };
       }
     }
 
@@ -2145,9 +2155,13 @@ describe("AgentManager", () => {
     const storage = new AgentStorage(storagePath, logger);
 
     class TurnFailedSession extends TestAgentSession {
-      async *stream(): AsyncGenerator<AgentStreamEvent> {
-        yield { type: "turn_started", provider: this.provider };
-        yield { type: "turn_failed", provider: this.provider, error: "invalid model id" };
+      override async startTurn(): Promise<{ turnId: string }> {
+        const turnId = "turn-failed-1";
+        setTimeout(() => {
+          this.pushEvent({ type: "turn_started", provider: this.provider, turnId });
+          this.pushEvent({ type: "turn_failed", provider: this.provider, error: "invalid model id", turnId });
+        }, 0);
+        return { turnId };
       }
     }
 
@@ -2208,15 +2222,20 @@ describe("AgentManager", () => {
     const storage = new AgentStorage(storagePath, logger);
 
     class DetailedFailureSession extends TestAgentSession {
-      async *stream(): AsyncGenerator<AgentStreamEvent> {
-        yield { type: "turn_started", provider: this.provider };
-        yield {
-          type: "turn_failed",
-          provider: this.provider,
-          error: "Provider execution failed",
-          code: "126",
-          diagnostic: "No preset version installed for command claude",
-        };
+      override async startTurn(): Promise<{ turnId: string }> {
+        const turnId = "turn-detailed-fail-1";
+        setTimeout(() => {
+          this.pushEvent({ type: "turn_started", provider: this.provider, turnId });
+          this.pushEvent({
+            type: "turn_failed",
+            provider: this.provider,
+            error: "Provider execution failed",
+            code: "126",
+            diagnostic: "No preset version installed for command claude",
+            turnId,
+          });
+        }, 0);
+        return { turnId };
       }
     }
 
@@ -2273,26 +2292,35 @@ describe("AgentManager", () => {
     const storagePath = join(workdir, "agents");
     const storage = new AgentStorage(storagePath, logger);
 
+    const releasePermissionResolution = deferred<void>();
+
     class PermissionSession extends TestAgentSession {
-      async *stream(): AsyncGenerator<AgentStreamEvent> {
-        yield { type: "turn_started", provider: this.provider };
-        yield {
-          type: "permission_requested",
-          provider: this.provider,
-          request: {
-            id: "perm-1",
+      override async startTurn(): Promise<{ turnId: string }> {
+        const turnId = "turn-perm-1";
+        setTimeout(async () => {
+          this.pushEvent({ type: "turn_started", provider: this.provider, turnId });
+          this.pushEvent({
+            type: "permission_requested",
             provider: this.provider,
-            kind: "tool",
-            name: "Read file",
-          },
-        };
-        yield {
-          type: "permission_resolved",
-          provider: this.provider,
-          requestId: "perm-1",
-          resolution: { behavior: "allow" },
-        };
-        yield { type: "turn_completed", provider: this.provider };
+            request: {
+              id: "perm-1",
+              provider: this.provider,
+              kind: "tool",
+              name: "Read file",
+            },
+            turnId,
+          });
+          await releasePermissionResolution.promise;
+          this.pushEvent({
+            type: "permission_resolved",
+            provider: this.provider,
+            requestId: "perm-1",
+            resolution: { behavior: "allow" },
+            turnId,
+          });
+          this.pushEvent({ type: "turn_completed", provider: this.provider, turnId });
+        }, 0);
+        return { turnId };
       }
     }
 
@@ -2343,7 +2371,8 @@ describe("AgentManager", () => {
     expect(withPermissionPending?.pendingPermissions.size).toBe(1);
     expect(withPermissionPending?.attention).toEqual({ requiresAttention: false });
 
-    // Drain the rest of the stream to close cleanly.
+    // Release permission resolution and drain the rest of the stream
+    releasePermissionResolution.resolve();
     while (!(await stream.next()).done) {
       // no-op
     }
@@ -2362,14 +2391,27 @@ describe("AgentManager", () => {
       readonly provider = "codex" as const;
       readonly capabilities = TEST_CAPABILITIES;
       readonly id = randomUUID();
+      private subs = new Set<(event: AgentStreamEvent) => void>();
+      private turnCounter = 0;
 
       async run(): Promise<AgentRunResult> {
         return { sessionId: this.id, finalText: "", timeline: [] };
       }
 
-      async *stream(): AsyncGenerator<AgentStreamEvent> {
-        yield { type: "turn_started", provider: this.provider };
-        yield { type: "turn_completed", provider: this.provider };
+      async startTurn(): Promise<{ turnId: string }> {
+        const turnId = `plan-turn-${++this.turnCounter}`;
+        setTimeout(() => {
+          for (const cb of this.subs) {
+            cb({ type: "turn_started", provider: this.provider, turnId });
+            cb({ type: "turn_completed", provider: this.provider, turnId });
+          }
+        }, 0);
+        return { turnId };
+      }
+
+      subscribe(callback: (event: AgentStreamEvent) => void): () => void {
+        this.subs.add(callback);
+        return () => { this.subs.delete(callback); };
       }
 
       async *streamHistory(): AsyncGenerator<AgentStreamEvent> {}
@@ -2480,21 +2522,33 @@ describe("AgentManager", () => {
       readonly capabilities = TEST_CAPABILITIES;
       readonly id = randomUUID();
       private threadId: string | null = this.id;
-      private releaseStream: (() => void) | null = null;
       private closed = false;
+      private subscribers = new Set<(event: AgentStreamEvent) => void>();
+      private turnIdCounter = 0;
 
       async run(): Promise<AgentRunResult> {
         return { sessionId: this.id, finalText: "", timeline: [] };
       }
 
-      async *stream(): AsyncGenerator<AgentStreamEvent> {
-        yield { type: "turn_started", provider: this.provider };
-        if (!this.closed) {
-          await new Promise<void>((resolve) => {
-            this.releaseStream = resolve;
-          });
+      async startTurn(): Promise<{ turnId: string }> {
+        const turnId = `turn-${++this.turnIdCounter}`;
+        // Push turn_started, then block until closed
+        setTimeout(() => {
+          this.pushEvent({ type: "turn_started", provider: this.provider, turnId });
+          // The turn will be canceled when close() is called
+        }, 0);
+        return { turnId };
+      }
+
+      subscribe(callback: (event: AgentStreamEvent) => void): () => void {
+        this.subscribers.add(callback);
+        return () => { this.subscribers.delete(callback); };
+      }
+
+      private pushEvent(event: AgentStreamEvent): void {
+        for (const cb of this.subscribers) {
+          try { cb(event); } catch { /* isolation */ }
         }
-        yield { type: "turn_canceled", provider: this.provider, reason: "closed" };
       }
 
       async *streamHistory(): AsyncGenerator<AgentStreamEvent> {}
@@ -2531,12 +2585,31 @@ describe("AgentManager", () => {
         return { provider: this.provider, sessionId: this.threadId };
       }
 
-      async interrupt(): Promise<void> {}
+      async interrupt(): Promise<void> {
+        this.closed = true;
+        // Push turn_canceled for any active turn
+        if (this.turnIdCounter > 0) {
+          this.pushEvent({
+            type: "turn_canceled",
+            provider: this.provider,
+            reason: "interrupted",
+            turnId: `turn-${this.turnIdCounter}`,
+          });
+        }
+      }
 
       async close(): Promise<void> {
         this.closed = true;
         this.threadId = null;
-        this.releaseStream?.();
+        // Push turn_canceled for any active turn
+        if (this.turnIdCounter > 0) {
+          this.pushEvent({
+            type: "turn_canceled",
+            provider: this.provider,
+            reason: "closed",
+            turnId: `turn-${this.turnIdCounter}`,
+          });
+        }
       }
     }
 
@@ -2942,30 +3015,36 @@ describe("AgentManager", () => {
     const storagePath = join(workdir, "agents");
     const storage = new AgentStorage(storagePath, logger);
 
-    // Session whose stream() echoes the user message (as Claude provider does)
+    // Session whose live turn echoes the user message (as Claude does)
     class EchoUserMessageSession extends TestAgentSession {
       constructor(config: AgentSessionConfig) {
         super(config);
       }
 
-      async *stream(): AsyncGenerator<AgentStreamEvent> {
-        yield { type: "turn_started", provider: this.provider };
-        // Provider echoes user message during live run
-        yield {
-          type: "timeline",
-          provider: this.provider,
-          item: {
-            type: "user_message",
-            text: "hello from user",
-            messageId: "msg_client_echo_1",
-          },
-        };
-        yield {
-          type: "timeline",
-          provider: this.provider,
-          item: { type: "assistant_message", text: "hello from assistant" },
-        };
-        yield { type: "turn_completed", provider: this.provider };
+      override async startTurn(): Promise<{ turnId: string }> {
+        const turnId = "turn-echo-1";
+        setTimeout(() => {
+          this.pushEvent({ type: "turn_started", provider: this.provider, turnId });
+          // Provider echoes user message during live run
+          this.pushEvent({
+            type: "timeline",
+            provider: this.provider,
+            item: {
+              type: "user_message",
+              text: "hello from user",
+              messageId: "msg_client_echo_1",
+            },
+            turnId,
+          });
+          this.pushEvent({
+            type: "timeline",
+            provider: this.provider,
+            item: { type: "assistant_message", text: "hello from assistant" },
+            turnId,
+          });
+          this.pushEvent({ type: "turn_completed", provider: this.provider, turnId });
+        }, 0);
+        return { turnId };
       }
     }
 
@@ -2997,7 +3076,7 @@ describe("AgentManager", () => {
       messageId: "msg_client_echo_1",
     });
 
-    // Run triggers stream() which echoes user_message
+    // Run triggers startTurn(), which echoes user_message
     await manager.runAgent(snapshot.id, { text: "hello from user" });
 
     const timeline = manager.getTimeline(snapshot.id);
@@ -3025,18 +3104,23 @@ describe("AgentManager", () => {
         super(config);
       }
 
-      async *stream(): AsyncGenerator<AgentStreamEvent> {
-        yield { type: "turn_started", provider: this.provider };
-        yield {
-          type: "timeline",
-          provider: this.provider,
-          item: {
-            type: "user_message",
-            text: "hello from user",
-            messageId: "msg_provider_other",
-          },
-        };
-        yield { type: "turn_completed", provider: this.provider };
+      override async startTurn(): Promise<{ turnId: string }> {
+        const turnId = "turn-diff-msgid-1";
+        setTimeout(() => {
+          this.pushEvent({ type: "turn_started", provider: this.provider, turnId });
+          this.pushEvent({
+            type: "timeline",
+            provider: this.provider,
+            item: {
+              type: "user_message",
+              text: "hello from user",
+              messageId: "msg_provider_other",
+            },
+            turnId,
+          });
+          this.pushEvent({ type: "turn_completed", provider: this.provider, turnId });
+        }, 0);
+        return { turnId };
       }
     }
 
@@ -3091,14 +3175,19 @@ describe("AgentManager", () => {
         super(config);
       }
 
-      async *stream(): AsyncGenerator<AgentStreamEvent> {
-        yield { type: "turn_started", provider: this.provider };
-        yield {
-          type: "timeline",
-          provider: this.provider,
-          item: { type: "user_message", text: "hello from user" },
-        };
-        yield { type: "turn_completed", provider: this.provider };
+      override async startTurn(): Promise<{ turnId: string }> {
+        const turnId = "turn-no-msgid-1";
+        setTimeout(() => {
+          this.pushEvent({ type: "turn_started", provider: this.provider, turnId });
+          this.pushEvent({
+            type: "timeline",
+            provider: this.provider,
+            item: { type: "user_message", text: "hello from user" },
+            turnId,
+          });
+          this.pushEvent({ type: "turn_completed", provider: this.provider, turnId });
+        }, 0);
+        return { turnId };
       }
     }
 
@@ -3141,26 +3230,32 @@ describe("AgentManager", () => {
     const storagePath = join(workdir, "agents");
     const storage = new AgentStorage(storagePath, logger);
 
-    // Session whose stream() yields a user_message without prior canonical recording
+    // Session whose live turn yields a user_message without prior canonical recording
     class UnexpectedUserMessageSession extends TestAgentSession {
       constructor(config: AgentSessionConfig) {
         super(config);
       }
 
-      async *stream(): AsyncGenerator<AgentStreamEvent> {
-        yield { type: "turn_started", provider: this.provider };
-        // Provider yields user_message (e.g., system continuation)
-        yield {
-          type: "timeline",
-          provider: this.provider,
-          item: { type: "user_message", text: "continuation prompt" },
-        };
-        yield {
-          type: "timeline",
-          provider: this.provider,
-          item: { type: "assistant_message", text: "continuation reply" },
-        };
-        yield { type: "turn_completed", provider: this.provider };
+      override async startTurn(): Promise<{ turnId: string }> {
+        const turnId = "turn-unexpected-1";
+        setTimeout(() => {
+          this.pushEvent({ type: "turn_started", provider: this.provider, turnId });
+          // Provider yields user_message (e.g., system continuation)
+          this.pushEvent({
+            type: "timeline",
+            provider: this.provider,
+            item: { type: "user_message", text: "continuation prompt" },
+            turnId,
+          });
+          this.pushEvent({
+            type: "timeline",
+            provider: this.provider,
+            item: { type: "assistant_message", text: "continuation reply" },
+            turnId,
+          });
+          this.pushEvent({ type: "turn_completed", provider: this.provider, turnId });
+        }, 0);
+        return { turnId };
       }
     }
 

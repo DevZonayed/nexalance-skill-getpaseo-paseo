@@ -40,8 +40,8 @@ function createManagedAgent(overrides: ManagedAgentOverrides = {}): ManagedAgent
   } = overrides;
 
   const sessionValue = lifecycle === "closed" ? null : (restOverrides.session ?? ({} as any));
-  const pendingRunValue =
-    restOverrides.pendingRun ?? (lifecycle === "running" ? (async function* noop() {})() : null);
+  const activeForegroundTurnIdValue =
+    restOverrides.activeForegroundTurnId ?? (lifecycle === "running" ? "test-turn-id" : null);
   const lastErrorValue =
     restOverrides.lastError ?? (lifecycle === "error" ? "encountered error" : undefined);
 
@@ -69,7 +69,9 @@ function createManagedAgent(overrides: ManagedAgentOverrides = {}): ManagedAgent
     ],
     currentModeId: "plan",
     pendingPermissions: pendingPermissionsOverride ?? new Map<string, AgentPermissionRequest>(),
-    pendingRun: pendingRunValue as ManagedAgent["pendingRun"],
+    activeForegroundTurnId: activeForegroundTurnIdValue,
+    foregroundTurnWaiters: new Set(),
+    unsubscribeSession: null,
     timeline: [],
     runtimeInfo: {
       provider: "claude",

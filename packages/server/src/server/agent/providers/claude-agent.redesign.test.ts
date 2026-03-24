@@ -3,6 +3,7 @@ import type { Logger } from "pino";
 
 import { createTestLogger } from "../../../test-utils/test-logger.js";
 import { ClaudeAgentClient, readEventIdentifiers } from "./claude-agent.js";
+import { streamSession } from "./test-utils/session-stream-adapter.js";
 import type { AgentStreamEvent, AgentTimelineItem } from "../agent-sdk-types.js";
 
 type QueryMock = {
@@ -693,7 +694,7 @@ describe("ClaudeAgentSession redesign invariants", () => {
     const session = await createSession();
     try {
       const events = await Promise.race([
-        collectUntilTerminal(session.stream("metadata helper prompt")),
+        collectUntilTerminal(streamSession(session, "metadata helper prompt")),
         new Promise<never>((_, reject) => {
           setTimeout(
             () => reject(new Error("Timed out waiting for foreground terminal event")),
@@ -855,18 +856,18 @@ describe("ClaudeAgentSession redesign invariants", () => {
     });
 
     streamCase = "success";
-    const successEvents = await collectUntilTerminal(session.stream("success prompt"));
+    const successEvents = await collectUntilTerminal(streamSession(session, "success prompt"));
     expect(successEvents.some((event) => event.type === "turn_completed")).toBe(true);
     expect(successEvents.some((event) => event.type === "turn_failed")).toBe(false);
     expect(successEvents.some((event) => event.type === "turn_canceled")).toBe(false);
 
     streamCase = "error";
-    const errorEvents = await collectUntilTerminal(session.stream("error prompt"));
+    const errorEvents = await collectUntilTerminal(streamSession(session, "error prompt"));
     expect(errorEvents.some((event) => event.type === "turn_failed")).toBe(true);
     expect(errorEvents.some((event) => event.type === "turn_completed")).toBe(false);
 
     streamCase = "interrupt";
-    const interruptStream = session.stream("interrupt prompt");
+    const interruptStream = streamSession(session, "interrupt prompt");
     const interruptEvents: AgentStreamEvent[] = [];
     for await (const event of interruptStream) {
       interruptEvents.push(event);
@@ -985,7 +986,7 @@ describe("ClaudeAgentSession redesign invariants", () => {
     });
 
     const session = await createSession();
-    const events = await collectUntilTerminal(session.stream("timeline prompt"));
+    const events = await collectUntilTerminal(streamSession(session, "timeline prompt"));
     const assistantText = events
       .filter(
         (event): event is Extract<AgentStreamEvent, { type: "timeline" }> =>
@@ -1104,7 +1105,7 @@ describe("ClaudeAgentSession redesign invariants", () => {
     });
 
     const session = await createSession();
-    const events = await collectUntilTerminal(session.stream("uuid fallback prompt"));
+    const events = await collectUntilTerminal(streamSession(session, "uuid fallback prompt"));
     const assistantText = events
       .filter(
         (event): event is Extract<AgentStreamEvent, { type: "timeline" }> =>

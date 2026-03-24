@@ -7,6 +7,7 @@ import pino from "pino";
 import type { AgentSession, AgentStreamEvent, ToolCallTimelineItem } from "../agent-sdk-types.js";
 import { isCommandAvailable } from "../provider-launch-config.js";
 import { ClaudeAgentClient } from "./claude-agent.js";
+import { streamSession } from "./test-utils/session-stream-adapter.js";
 
 const logger = pino({ level: "silent" });
 const client = new ClaudeAgentClient({ logger });
@@ -92,6 +93,30 @@ async function collectUntil(
   }
 }
 
+function collectSubscribedUntil(
+  session: AgentSession,
+  predicate: (event: AgentStreamEvent) => boolean,
+  timeoutMs = 45_000,
+): Promise<AgentStreamEvent[]> {
+  return new Promise((resolve, reject) => {
+    const events: AgentStreamEvent[] = [];
+    const timeout = setTimeout(() => {
+      unsubscribe();
+      reject(new Error(`Timed out after ${timeoutMs}ms waiting for subscribed event`));
+    }, timeoutMs);
+
+    const unsubscribe = session.subscribe((event) => {
+      events.push(event);
+      if (!predicate(event)) {
+        return;
+      }
+      clearTimeout(timeout);
+      unsubscribe();
+      resolve(events);
+    });
+  });
+}
+
 function getAssistantText(events: AgentStreamEvent[]): string {
   return events
     .flatMap((event) => {
@@ -159,7 +184,7 @@ describe("ClaudeAgentSession integration", () => {
 
     try {
       const events = await collectUntilTerminal(
-        handle.session.stream("Respond with exactly: HELLO_WORLD"),
+        streamSession(handle.session, "Respond with exactly: HELLO_WORLD"),
       );
 
       expect(events[0]).toMatchObject({
@@ -190,7 +215,8 @@ describe("ClaudeAgentSession integration", () => {
 
     try {
       const events = await collectUntilTerminal(
-        handle.session.stream(
+        streamSession(
+          handle.session,
           [
             "Use the Bash tool.",
             "Run exactly: echo TOOL_TEST_OUTPUT",
@@ -227,7 +253,8 @@ describe("ClaudeAgentSession integration", () => {
     });
 
     try {
-      const firstStream = handle.session.stream(
+      const firstStream = streamSession(
+        handle.session,
         [
           "Use the Bash tool.",
           "Run exactly: sleep 10",
@@ -262,7 +289,7 @@ describe("ClaudeAgentSession integration", () => {
       ).toBe(true);
 
       const followUpEvents = await collectUntilTerminal(
-        handle.session.stream("Respond with exactly: AFTER_INTERRUPT_OK"),
+        streamSession(handle.session, "Respond with exactly: AFTER_INTERRUPT_OK"),
       );
       const secondQuery = getInternalQuery(handle.session);
 
@@ -288,9 +315,9 @@ describe("ClaudeAgentSession integration", () => {
     const autonomousWakeToken = `AUTONOMOUS_WAKE_${Date.now().toString(36)}`;
 
     try {
-      const liveEventsStream = handle.session.streamLiveEvents();
       const foregroundEvents = await collectUntilTerminal(
-        handle.session.stream(
+        streamSession(
+          handle.session,
           [
             "Use the Task tool to start a background sub-agent.",
             "In that task, run the Bash command exactly: sleep 3 && echo BACKGROUND_DONE",
@@ -304,9 +331,11 @@ describe("ClaudeAgentSession integration", () => {
 
       expect(compactText(getAssistantText(foregroundEvents))).toContain("spawned");
 
-      const liveEvents = await collectUntilTerminal(liveEventsStream, {
-        timeoutMs: 45_000,
-      });
+      const liveEvents = await collectSubscribedUntil(
+        handle.session,
+        (event) => isTerminalEvent(event),
+        45_000,
+      );
 
       expect(
         liveEvents.some((event) => event.type === "turn_started" && event.provider === "claude"),
@@ -334,7 +363,8 @@ describe("ClaudeAgentSession integration", () => {
 
     try {
       const events = await collectUntilTerminal(
-        handle.session.stream(
+        streamSession(
+          handle.session,
           [
             "Use the Bash tool to run exactly: printf 'PERM_TEST' > permission.txt",
             "If approval is required, wait for approval.",

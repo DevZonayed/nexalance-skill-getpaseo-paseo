@@ -137,10 +137,7 @@ function startAgentRun(
   logger: Logger,
   options?: { replaceRunning?: boolean },
 ): void {
-  const snapshot = agentManager.getAgent(agentId);
-  const shouldReplace =
-    options?.replaceRunning &&
-    Boolean(snapshot && (snapshot.lifecycle === "running" || snapshot.pendingRun));
+  const shouldReplace = Boolean(options?.replaceRunning && agentManager.hasInFlightRun(agentId));
   const iterator = shouldReplace
     ? agentManager.replaceAgentRun(agentId, prompt)
     : agentManager.streamAgent(agentId, prompt);
@@ -527,7 +524,7 @@ export async function createAgentManagementMcpServer(
         throw new Error(`Agent ${agentId} not found`);
       }
 
-      if (snapshot.lifecycle === "running" || snapshot.pendingRun) {
+      if (agentManager.hasInFlightRun(agentId)) {
         waitTracker.cancel(agentId, "Agent run interrupted by new prompt");
       }
 

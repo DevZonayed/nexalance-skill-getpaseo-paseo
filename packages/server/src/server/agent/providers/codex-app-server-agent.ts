@@ -435,50 +435,6 @@ function toCodexMcpConfig(config: McpServerConfig): CodexMcpServerConfig {
       };
   }
 }
-
-class Pushable<T> implements AsyncIterable<T> {
-  private queue: T[] = [];
-  private resolvers: ((value: IteratorResult<T>) => void)[] = [];
-  private closed = false;
-
-  push(item: T) {
-    if (this.closed) {
-      return;
-    }
-    if (this.resolvers.length > 0) {
-      const resolve = this.resolvers.shift()!;
-      resolve({ value: item, done: false });
-    } else {
-      this.queue.push(item);
-    }
-  }
-
-  end() {
-    this.closed = true;
-    while (this.resolvers.length > 0) {
-      const resolve = this.resolvers.shift()!;
-      resolve({ value: undefined, done: true });
-    }
-  }
-
-  [Symbol.asyncIterator](): AsyncIterator<T, void> {
-    return {
-      next: (): Promise<IteratorResult<T, void>> => {
-        if (this.queue.length > 0) {
-          const value = this.queue.shift()!;
-          return Promise.resolve({ value, done: false });
-        }
-        if (this.closed) {
-          return Promise.resolve({ value: undefined, done: true });
-        }
-        return new Promise<IteratorResult<T, void>>((resolve) => {
-          this.resolvers.push(resolve);
-        });
-      },
-    };
-  }
-}
-
 type JsonRpcRequest = {
   id: number;
   method: string;
@@ -2062,7 +2018,9 @@ class CodexAppServerAgentSession implements AgentSession {
   private currentThreadId: string | null = null;
   private currentTurnId: string | null = null;
   private client: CodexAppServerClient | null = null;
-  private eventQueue: Pushable<AgentStreamEvent> | null = null;
+  private readonly subscribers = new Set<(event: AgentStreamEvent) => void>();
+  private nextTurnOrdinal = 0;
+  private activeForegroundTurnId: string | null = null;
   private cachedRuntimeInfo: AgentRuntimeInfo | null = null;
   private historyPending = false;
   private persistedHistory: AgentTimelineItem[] = [];
@@ -2397,37 +2355,70 @@ class CodexAppServerAgentSession implements AgentSession {
   }
 
   async run(prompt: AgentPromptInput, options?: AgentRunOptions): Promise<AgentRunResult> {
-    const slashCommand = await this.resolveSlashCommandInvocation(prompt);
-    if (slashCommand) {
-      const commandInput = await this.buildCommandPromptInput(
-        slashCommand.commandName,
-        slashCommand.args,
-      );
-      return this.runInternal(commandInput, options);
-    }
-    return this.runInternal(prompt, options);
-  }
-
-  private async runInternal(
-    prompt: AgentPromptInput,
-    options?: AgentRunOptions,
-  ): Promise<AgentRunResult> {
-    const events = this.streamInternal(prompt, options);
     const timeline: AgentTimelineItem[] = [];
     let finalText = "";
     let usage: AgentUsage | undefined;
+    let turnId: string | null = null;
+    const bufferedEvents: AgentStreamEvent[] = [];
+    let settled = false;
+    let resolveCompletion!: () => void;
+    let rejectCompletion!: (error: Error) => void;
 
-    for await (const event of events) {
+    const processEvent = (event: AgentStreamEvent) => {
+      if (settled) {
+        return;
+      }
+      const eventTurnId = (event as { turnId?: string }).turnId;
+      if (turnId && eventTurnId && eventTurnId !== turnId) {
+        return;
+      }
       if (event.type === "timeline") {
         timeline.push(event.item);
         if (event.item.type === "assistant_message") {
           finalText = event.item.text;
         }
-      } else if (event.type === "turn_completed") {
-        usage = event.usage;
-      } else if (event.type === "turn_failed") {
-        throw new Error(event.error);
+        return;
       }
+      if (event.type === "turn_completed") {
+        usage = event.usage;
+        settled = true;
+        resolveCompletion();
+        return;
+      }
+      if (event.type === "turn_failed") {
+        settled = true;
+        rejectCompletion(new Error(event.error));
+        return;
+      }
+      if (event.type === "turn_canceled") {
+        settled = true;
+        resolveCompletion();
+      }
+    };
+
+    const completion = new Promise<void>((resolve, reject) => {
+      resolveCompletion = resolve;
+      rejectCompletion = reject;
+    });
+    const unsubscribe = this.subscribe((event) => {
+      if (!turnId) {
+        bufferedEvents.push(event);
+        return;
+      }
+      processEvent(event);
+    });
+
+    try {
+      const result = await this.startTurn(prompt, options);
+      turnId = result.turnId;
+      for (const event of bufferedEvents) {
+        processEvent(event);
+      }
+      if (!settled) {
+        await completion;
+      }
+    } finally {
+      unsubscribe();
     }
 
     const info = await this.getRuntimeInfo();
@@ -2439,114 +2430,92 @@ class CodexAppServerAgentSession implements AgentSession {
     };
   }
 
-  async *stream(
+  async startTurn(
     prompt: AgentPromptInput,
     options?: AgentRunOptions,
-  ): AsyncGenerator<AgentStreamEvent> {
-    const slashCommand = await this.resolveSlashCommandInvocation(prompt);
-    if (slashCommand) {
-      const commandInput = await this.buildCommandPromptInput(
-        slashCommand.commandName,
-        slashCommand.args,
-      );
-      yield* this.streamInternal(commandInput, options);
-      return;
+  ): Promise<{ turnId: string }> {
+    if (this.activeForegroundTurnId) {
+      throw new Error("A foreground turn is already active");
     }
-    yield* this.streamInternal(prompt, options);
-  }
 
-  private async *streamInternal(
-    prompt: AgentPromptInput,
-    options?: AgentRunOptions,
-  ): AsyncGenerator<AgentStreamEvent> {
     await this.connect();
-    if (!this.client) return;
+    if (!this.client) {
+      throw new Error("Codex client not initialized");
+    }
 
-    const queue = new Pushable<AgentStreamEvent>();
-    this.eventQueue = queue;
+    const slashCommand = await this.resolveSlashCommandInvocation(prompt);
+    const effectivePrompt = slashCommand
+      ? await this.buildCommandPromptInput(slashCommand.commandName, slashCommand.args)
+      : prompt;
+
+    if (this.currentThreadId) {
+      await this.ensureThreadLoaded();
+    } else {
+      await this.ensureThread();
+    }
+
+    const input = await this.buildUserInput(effectivePrompt);
+    const preset = MODE_PRESETS[this.currentMode] ?? MODE_PRESETS[DEFAULT_CODEX_MODE_ID];
+    const approvalPolicy = this.config.approvalPolicy ?? preset.approvalPolicy;
+    const sandboxPolicyType = this.config.sandboxMode ?? preset.sandbox;
+
+    const params: Record<string, unknown> = {
+      threadId: this.currentThreadId,
+      input,
+      approvalPolicy,
+      sandboxPolicy: toSandboxPolicy(
+        sandboxPolicyType,
+        typeof this.config.networkAccess === "boolean"
+          ? this.config.networkAccess
+          : preset.networkAccess,
+      ),
+    };
+
+    if (this.config.model) {
+      params.model = this.config.model;
+    }
+    const thinkingOptionId = normalizeCodexThinkingOptionId(this.config.thinkingOptionId);
+    if (thinkingOptionId) {
+      params.effort = thinkingOptionId;
+    }
+    if (this.resolvedCollaborationMode) {
+      params.collaborationMode = {
+        mode: this.resolvedCollaborationMode.mode,
+        settings: this.resolvedCollaborationMode.settings,
+      };
+    }
+    if (this.config.cwd) {
+      params.cwd = this.config.cwd;
+    }
+    if (options?.outputSchema) {
+      params.outputSchema = options.outputSchema;
+    }
+    if (this.config.systemPrompt?.trim()) {
+      params.developerInstructions = this.config.systemPrompt.trim();
+    }
+    const codexConfig = this.buildCodexInnerConfig();
+    if (codexConfig) {
+      params.config = codexConfig;
+    }
+
+    const turnId = this.createTurnId();
+    this.activeForegroundTurnId = turnId;
 
     try {
-      if (this.currentThreadId) {
-        await this.ensureThreadLoaded();
-      } else {
-        await this.ensureThread();
-      }
-      const input = await this.buildUserInput(prompt);
-      const preset = MODE_PRESETS[this.currentMode] ?? MODE_PRESETS[DEFAULT_CODEX_MODE_ID];
-      const approvalPolicy = this.config.approvalPolicy ?? preset.approvalPolicy;
-      const sandboxPolicyType = this.config.sandboxMode ?? preset.sandbox;
-
-      const params: Record<string, unknown> = {
-        threadId: this.currentThreadId,
-        input,
-        approvalPolicy,
-        sandboxPolicy: toSandboxPolicy(
-          sandboxPolicyType,
-          typeof this.config.networkAccess === "boolean"
-            ? this.config.networkAccess
-            : preset.networkAccess,
-        ),
-      };
-
-      if (this.config.model) {
-        params.model = this.config.model;
-      }
-      const thinkingOptionId = normalizeCodexThinkingOptionId(this.config.thinkingOptionId);
-      if (thinkingOptionId) {
-        params.effort = thinkingOptionId;
-      }
-      if (this.resolvedCollaborationMode) {
-        params.collaborationMode = {
-          mode: this.resolvedCollaborationMode.mode,
-          settings: this.resolvedCollaborationMode.settings,
-        };
-      }
-      if (this.config.cwd) {
-        params.cwd = this.config.cwd;
-      }
-      if (options?.outputSchema) {
-        params.outputSchema = options.outputSchema;
-      }
-      if (this.config.systemPrompt?.trim()) {
-        params.developerInstructions = this.config.systemPrompt.trim();
-      }
-      const codexConfig = this.buildCodexInnerConfig();
-      if (codexConfig) {
-        params.config = codexConfig;
-      }
-
       await this.client.request("turn/start", params, TURN_START_TIMEOUT_MS);
-
-      let sawTurnStarted = false;
-      for await (const event of queue) {
-        // Drop pre-start timeline noise that can leak from the previous turn.
-        // Keep permission events, which can legitimately arrive before turn_started.
-        if (!sawTurnStarted) {
-          if (event.type === "permission_requested" || event.type === "permission_resolved") {
-            yield event;
-            continue;
-          }
-          if (event.type === "turn_started") {
-            sawTurnStarted = true;
-          } else {
-            continue;
-          }
-        }
-
-        yield event;
-        if (
-          event.type === "turn_completed" ||
-          event.type === "turn_failed" ||
-          event.type === "turn_canceled"
-        ) {
-          break;
-        }
-      }
-    } finally {
-      if (this.eventQueue === queue) {
-        this.eventQueue = null;
-      }
+    } catch (error) {
+      this.activeForegroundTurnId = null;
+      throw error;
     }
+
+    return { turnId };
+  }
+
+  subscribe(callback: (event: AgentStreamEvent) => void): () => void {
+    this.subscribers.add(callback);
+    return () => {
+      this.subscribers.delete(callback);
+    };
   }
 
   async *streamHistory(): AsyncGenerator<AgentStreamEvent> {
@@ -2742,8 +2711,8 @@ class CodexAppServerAgentSession implements AgentSession {
     this.pendingPermissionHandlers.clear();
     this.pendingPermissions.clear();
     this.resolvedPermissionRequests.clear();
-    this.eventQueue?.end();
-    this.eventQueue = null;
+    this.subscribers.clear();
+    this.activeForegroundTurnId = null;
     if (this.client) {
       await this.client.dispose();
     }
@@ -2860,7 +2829,23 @@ class CodexAppServerAgentSession implements AgentSession {
         this.pendingAgentMessages.clear();
       }
     }
-    this.eventQueue?.push(event);
+    this.notifySubscribers(event);
+  }
+
+  private notifySubscribers(event: AgentStreamEvent): void {
+    const turnId = this.activeForegroundTurnId;
+    const tagged = turnId ? { ...event, turnId } : event;
+    for (const callback of this.subscribers) {
+      try {
+        callback(tagged);
+      } catch (error) {
+        this.logger.warn({ err: error }, "Subscriber callback threw");
+      }
+    }
+  }
+
+  private createTurnId(): string {
+    return `codex-turn-${this.nextTurnOrdinal++}`;
   }
 
   private handleNotification(method: string, params: unknown): void {
@@ -2905,6 +2890,7 @@ class CodexAppServerAgentSession implements AgentSession {
           usage: this.latestUsage,
         });
       }
+      this.activeForegroundTurnId = null;
       this.emittedItemStartedIds.clear();
       this.emittedItemCompletedIds.clear();
       this.emittedExecCommandStartedCallIds.clear();

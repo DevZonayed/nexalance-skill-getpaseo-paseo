@@ -5,6 +5,7 @@ import type { AgentStreamEvent } from "../agent-sdk-types.js";
 import type { AgentTimelineRow } from "../agent-manager.js";
 import { projectTimelineRows } from "../timeline-projection.js";
 import { ClaudeAgentClient } from "./claude-agent.js";
+import { streamSession } from "./test-utils/session-stream-adapter.js";
 
 const sdkMocks = vi.hoisted(() => ({
   query: vi.fn(),
@@ -255,7 +256,7 @@ describe("ClaudeAgentSession sub-agent sidechain updates", () => {
       cwd: process.cwd(),
     });
 
-    const events = await collectUntilTerminal(session.stream("delegate work"));
+    const events = await collectUntilTerminal(streamSession(session, "delegate work"));
     await session.close();
 
     const timelineToolCalls = events
@@ -316,7 +317,7 @@ describe("ClaudeAgentSession sub-agent sidechain updates", () => {
       cwd: process.cwd(),
     });
 
-    const events = await collectUntilTerminal(session.stream("delegate work"));
+    const events = await collectUntilTerminal(streamSession(session, "delegate work"));
     await session.close();
 
     const timelineToolCalls = events

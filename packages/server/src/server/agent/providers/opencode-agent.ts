@@ -836,6 +836,9 @@ class OpenCodeAgentSession implements AgentSession {
   /** Tracks assistant messages already emitted from structured payloads. */
   private emittedStructuredMessageIds = new Set<string>();
   private availableModesCache: AgentMode[] | null = null;
+  private readonly subscribers = new Set<(event: AgentStreamEvent) => void>();
+  private nextTurnOrdinal = 0;
+  private activeForegroundTurnId: string | null = null;
 
   constructor(config: OpenCodeAgentConfig, client: OpencodeClient, sessionId: string) {
     this.config = config;
@@ -872,22 +875,70 @@ class OpenCodeAgentSession implements AgentSession {
   }
 
   async run(prompt: AgentPromptInput, options?: AgentRunOptions): Promise<AgentRunResult> {
-    const events = this.stream(prompt, options);
     const timeline: AgentTimelineItem[] = [];
     let finalText = "";
     let usage: AgentUsage | undefined;
+    let turnId: string | null = null;
+    const bufferedEvents: AgentStreamEvent[] = [];
+    let settled = false;
+    let resolveCompletion!: () => void;
+    let rejectCompletion!: (error: Error) => void;
 
-    for await (const event of events) {
+    const processEvent = (event: AgentStreamEvent) => {
+      if (settled) {
+        return;
+      }
+      const eventTurnId = (event as { turnId?: string }).turnId;
+      if (turnId && eventTurnId && eventTurnId !== turnId) {
+        return;
+      }
       if (event.type === "timeline") {
         timeline.push(event.item);
         if (event.item.type === "assistant_message") {
           finalText = event.item.text;
         }
-      } else if (event.type === "turn_completed") {
-        usage = event.usage;
-      } else if (event.type === "turn_failed") {
-        throw new Error(event.error);
+        return;
       }
+      if (event.type === "turn_completed") {
+        usage = event.usage;
+        settled = true;
+        resolveCompletion();
+        return;
+      }
+      if (event.type === "turn_failed") {
+        settled = true;
+        rejectCompletion(new Error(event.error));
+        return;
+      }
+      if (event.type === "turn_canceled") {
+        settled = true;
+        resolveCompletion();
+      }
+    };
+
+    const completion = new Promise<void>((resolve, reject) => {
+      resolveCompletion = resolve;
+      rejectCompletion = reject;
+    });
+    const unsubscribe = this.subscribe((event) => {
+      if (!turnId) {
+        bufferedEvents.push(event);
+        return;
+      }
+      processEvent(event);
+    });
+
+    try {
+      const result = await this.startTurn(prompt, options);
+      turnId = result.turnId;
+      for (const event of bufferedEvents) {
+        processEvent(event);
+      }
+      if (!settled) {
+        await completion;
+      }
+    } finally {
+      unsubscribe();
     }
 
     return {
@@ -898,10 +949,22 @@ class OpenCodeAgentSession implements AgentSession {
     };
   }
 
-  async *stream(
+  async interrupt(): Promise<void> {
+    this.abortController?.abort();
+    await this.client.session.abort({
+      sessionID: this.sessionId,
+      directory: this.config.cwd,
+    });
+  }
+
+  async startTurn(
     prompt: AgentPromptInput,
     options?: AgentRunOptions,
-  ): AsyncGenerator<AgentStreamEvent> {
+  ): Promise<{ turnId: string }> {
+    if (this.activeForegroundTurnId) {
+      throw new Error("A foreground turn is already active");
+    }
+
     this.abortController = new AbortController();
     await this.ensureMcpServersConfigured();
 
@@ -912,7 +975,6 @@ class OpenCodeAgentSession implements AgentSession {
       thinkingOptionId && thinkingOptionId !== "default" ? thinkingOptionId : undefined;
     const effectiveMode = normalizeOpenCodeModeId(this.currentMode);
 
-    // Send prompt asynchronously
     const promptResponse = await this.client.session.promptAsync({
       sessionID: this.sessionId,
       directory: this.config.cwd,
@@ -932,50 +994,76 @@ class OpenCodeAgentSession implements AgentSession {
     });
 
     if (promptResponse.error) {
-      yield {
+      const errorMsg = JSON.stringify(promptResponse.error);
+      this.notifySubscribers({
         type: "turn_failed",
         provider: "opencode",
-        error: JSON.stringify(promptResponse.error),
-      };
-      return;
+        error: errorMsg,
+      });
+      throw new Error(errorMsg);
     }
 
-    // Subscribe to events
+    const turnId = this.createTurnId();
+    this.activeForegroundTurnId = turnId;
+
+    void this.consumeEventStream();
+
+    return { turnId };
+  }
+
+  subscribe(callback: (event: AgentStreamEvent) => void): () => void {
+    this.subscribers.add(callback);
+    return () => {
+      this.subscribers.delete(callback);
+    };
+  }
+
+  private async consumeEventStream(): Promise<void> {
     const eventsResult = await this.client.event.subscribe({
       directory: this.config.cwd,
     });
 
     try {
       for await (const event of eventsResult.stream) {
-        if (this.abortController.signal.aborted) {
+        if (this.abortController?.signal.aborted) {
           break;
         }
 
         const translated = this.translateEvent(event);
         for (const e of translated) {
-          yield e;
+          this.notifySubscribers(e);
           if (e.type === "turn_completed" || e.type === "turn_failed") {
+            this.activeForegroundTurnId = null;
             return;
           }
         }
       }
     } catch (error) {
-      if (!this.abortController.signal.aborted) {
-        yield {
+      if (!this.abortController?.signal.aborted) {
+        this.notifySubscribers({
           type: "turn_failed",
           provider: "opencode",
           error: error instanceof Error ? error.message : "Stream error",
-        };
+        });
+        this.activeForegroundTurnId = null;
       }
     }
   }
 
-  async interrupt(): Promise<void> {
-    this.abortController?.abort();
-    await this.client.session.abort({
-      sessionID: this.sessionId,
-      directory: this.config.cwd,
-    });
+  private notifySubscribers(event: AgentStreamEvent): void {
+    const turnId = this.activeForegroundTurnId;
+    const tagged = turnId ? { ...event, turnId } : event;
+    for (const callback of this.subscribers) {
+      try {
+        callback(tagged);
+      } catch {
+        // Subscriber callback error isolation
+      }
+    }
+  }
+
+  private createTurnId(): string {
+    return `opencode-turn-${this.nextTurnOrdinal++}`;
   }
 
   async *streamHistory(): AsyncGenerator<AgentStreamEvent> {
@@ -1132,6 +1220,8 @@ class OpenCodeAgentSession implements AgentSession {
 
   async close(): Promise<void> {
     this.abortController?.abort();
+    this.subscribers.clear();
+    this.activeForegroundTurnId = null;
   }
 
   private buildPromptParts(prompt: AgentPromptInput): Array<{ type: "text"; text: string }> {

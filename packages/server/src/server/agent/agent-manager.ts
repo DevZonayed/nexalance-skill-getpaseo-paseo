@@ -142,6 +142,22 @@ type AttentionState =
       attentionTimestamp: Date;
     };
 
+type ForegroundTurnWaiter = {
+  turnId: string;
+  callback: (event: AgentStreamEvent) => void;
+  settled: boolean;
+  settledPromise: Promise<void>;
+  resolveSettled: () => void;
+};
+
+type PendingForegroundRun = {
+  token: string;
+  started: boolean;
+  settled: boolean;
+  settledPromise: Promise<void>;
+  resolveSettled: () => void;
+};
+
 type ManagedAgentBase = {
   id: string;
   provider: AgentProvider;
@@ -165,6 +181,8 @@ type ManagedAgentBase = {
   lastUsage?: AgentUsage;
   lastError?: string;
   attention: AttentionState;
+  foregroundTurnWaiters: Set<ForegroundTurnWaiter>;
+  unsubscribeSession: (() => void) | null;
   /**
    * Internal agents are hidden from listings and don't trigger notifications.
    */
@@ -181,29 +199,29 @@ type ManagedAgentWithSession = ManagedAgentBase & {
 
 type ManagedAgentInitializing = ManagedAgentWithSession & {
   lifecycle: "initializing";
-  pendingRun: null;
+  activeForegroundTurnId: null;
 };
 
 type ManagedAgentIdle = ManagedAgentWithSession & {
   lifecycle: "idle";
-  pendingRun: null;
+  activeForegroundTurnId: null;
 };
 
 type ManagedAgentRunning = ManagedAgentWithSession & {
   lifecycle: "running";
-  pendingRun: AsyncGenerator<AgentStreamEvent>;
+  activeForegroundTurnId: string | null;
 };
 
 type ManagedAgentError = ManagedAgentWithSession & {
   lifecycle: "error";
-  pendingRun: null;
+  activeForegroundTurnId: null;
   lastError: string;
 };
 
 type ManagedAgentClosed = ManagedAgentBase & {
   lifecycle: "closed";
   session: null;
-  pendingRun: null;
+  activeForegroundTurnId: null;
 };
 
 export type ManagedAgent =
@@ -242,12 +260,7 @@ type SubscriptionRecord = {
   agentId: string | null;
 };
 
-type LiveEventStreamingSession = AgentSession & {
-  streamLiveEvents: () => AsyncGenerator<AgentStreamEvent>;
-};
-
 const DEFAULT_TIMELINE_FETCH_LIMIT = 200;
-const LIVE_BACKLOG_TERMINAL_REPLAY_DELAY_MS = 300;
 const BUSY_STATUSES: AgentLifecycleStatus[] = ["initializing", "running"];
 const AgentIdSchema = z.string().uuid();
 
@@ -282,13 +295,6 @@ function validateAgentId(agentId: string, source: string): string {
   return result.data;
 }
 
-function supportsLiveEventStream(session: AgentSession): session is LiveEventStreamingSession {
-  return (
-    "streamLiveEvents" in session &&
-    typeof (session as { streamLiveEvents?: unknown }).streamLiveEvents === "function"
-  );
-}
-
 function normalizeMessageId(messageId: string | undefined): string | undefined {
   if (typeof messageId !== "string") {
     return undefined;
@@ -300,15 +306,13 @@ function normalizeMessageId(messageId: string | undefined): string | undefined {
 export class AgentManager {
   private readonly clients = new Map<AgentProvider, AgentClient>();
   private readonly agents = new Map<string, ActiveManagedAgent>();
+  private readonly pendingForegroundRuns = new Map<string, PendingForegroundRun>();
   private readonly subscribers = new Set<SubscriptionRecord>();
   private readonly maxTimelineItems: number | null;
   private readonly idFactory: () => string;
   private readonly registry?: AgentStorage;
   private readonly previousStatuses = new Map<string, AgentLifecycleStatus>();
   private readonly backgroundTasks = new Set<Promise<void>>();
-  private readonly liveEventPumps = new Map<string, Promise<void>>();
-  private readonly liveEventBacklog = new Map<string, AgentStreamEvent[]>();
-  private readonly liveEventBacklogFlushTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private onAgentAttention?: AgentAttentionCallback;
   private logger: Logger;
 
@@ -348,6 +352,19 @@ export class AgentManager {
     const next = new Date(nextMs);
     agent.updatedAt = next;
     return next;
+  }
+
+  hasInFlightRun(agentId: string): boolean {
+    const agent = this.agents.get(agentId);
+    if (!agent) {
+      return false;
+    }
+
+    return (
+      agent.lifecycle === "running" ||
+      Boolean(agent.activeForegroundTurnId) ||
+      this.hasPendingForegroundRun(agentId)
+    );
   }
 
   subscribe(callback: AgentSubscriber, options?: SubscribeOptions): () => void {
@@ -698,7 +715,7 @@ export class AgentManager {
     overrides?: Partial<AgentSessionConfig>,
   ): Promise<ManagedAgent> {
     let existing = this.requireAgent(agentId);
-    if (existing.lifecycle === "running" || existing.pendingRun) {
+    if (this.hasInFlightRun(agentId)) {
       await this.cancelAgentRun(agentId);
       existing = this.requireAgent(agentId);
     }
@@ -728,9 +745,15 @@ export class AgentManager {
 
     // Remove the existing agent entry before swapping sessions
     this.agents.delete(agentId);
-    this.liveEventPumps.delete(agentId);
-    this.liveEventBacklog.delete(agentId);
-    this.clearLiveEventBacklogFlushTimer(agentId);
+    if (existing.unsubscribeSession) {
+      existing.unsubscribeSession();
+      existing.unsubscribeSession = null;
+    }
+    for (const waiter of existing.foregroundTurnWaiters) {
+      this.settleForegroundTurnWaiter(waiter);
+    }
+    existing.foregroundTurnWaiters.clear();
+    this.settlePendingForegroundRun(agentId);
     try {
       await existing.session.close();
     } catch (error) {
@@ -760,23 +783,36 @@ export class AgentManager {
       {
         agentId,
         lifecycle: agent.lifecycle,
-        hasPendingRun: Boolean(agent.pendingRun),
+        activeForegroundTurnId: agent.activeForegroundTurnId,
         pendingPermissions: agent.pendingPermissions.size,
       },
       "closeAgent: start",
     );
     this.agents.delete(agentId);
-    this.liveEventPumps.delete(agentId);
-    this.liveEventBacklog.delete(agentId);
-    this.clearLiveEventBacklogFlushTimer(agentId);
     // Clean up previousStatus to prevent memory leak
     this.previousStatuses.delete(agentId);
+    if (agent.unsubscribeSession) {
+      agent.unsubscribeSession();
+      agent.unsubscribeSession = null;
+    }
+    for (const waiter of agent.foregroundTurnWaiters) {
+      // Wake up the generator so it can exit the await loop
+      waiter.callback({
+        type: "turn_canceled",
+        provider: agent.provider,
+        reason: "agent closed",
+        turnId: waiter.turnId,
+      });
+      this.settleForegroundTurnWaiter(waiter);
+    }
+    agent.foregroundTurnWaiters.clear();
+    this.settlePendingForegroundRun(agentId);
     const session = agent.session;
     const closedAgent: ManagedAgent = {
       ...agent,
       lifecycle: "closed",
       session: null,
-      pendingRun: null,
+      activeForegroundTurnId: null,
     };
     await session.close();
     this.emitState(closedAgent);
@@ -975,153 +1011,154 @@ export class AgentManager {
       {
         agentId,
         lifecycle: existingAgent.lifecycle,
-        hasPendingRun: Boolean(existingAgent.pendingRun),
+        activeForegroundTurnId: existingAgent.activeForegroundTurnId,
+        hasPendingForegroundRun: this.hasPendingForegroundRun(agentId),
         promptType: typeof prompt === "string" ? "string" : "structured",
         hasRunOptions: Boolean(options),
       },
       "streamAgent: requested",
     );
-    if (existingAgent.pendingRun) {
+    if (existingAgent.activeForegroundTurnId || this.hasPendingForegroundRun(agentId)) {
       this.logger.trace(
         {
           agentId,
           lifecycle: existingAgent.lifecycle,
+          hasPendingForegroundRun: this.hasPendingForegroundRun(agentId),
         },
-        "streamAgent: rejected because pendingRun already exists",
+        "streamAgent: rejected because a foreground run is already in flight",
       );
       throw new Error(`Agent ${agentId} already has an active run`);
     }
 
     const agent = existingAgent as ActiveManagedAgent;
-    const iterator = agent.session.stream(prompt, options);
     agent.pendingReplacement = false;
     agent.lastError = undefined;
-
-    let finalized = false;
-    const finalize = (error?: string) => {
-      this.logger.trace(
-        {
-          agentId,
-          error,
-          alreadyFinalized: finalized,
-          lifecycle: agent.lifecycle,
-          hasPendingRun: Boolean(agent.pendingRun),
-        },
-        "streamAgent.finalize: invoked",
-      );
-      if (finalized) {
-        return;
-      }
-      finalized = true;
-
-      if (agent.pendingRun !== streamForwarder) {
-        this.logger.trace(
-          {
-            agentId,
-            error,
-            lifecycle: agent.lifecycle,
-            hasPendingRun: Boolean(agent.pendingRun),
-          },
-          "streamAgent.finalize: skipped because pendingRun no longer points to streamForwarder",
-        );
-        if (error) {
-          agent.lastError = error;
-        }
-        return;
-      }
-
-      const mutableAgent = agent as ActiveManagedAgent;
-      mutableAgent.pendingRun = null;
-      const terminalError = error ?? mutableAgent.lastError;
-      const shouldHoldBusyForReplacement = mutableAgent.pendingReplacement && !terminalError;
-      mutableAgent.lifecycle = shouldHoldBusyForReplacement
-        ? "running"
-        : terminalError
-          ? "error"
-          : "idle";
-      mutableAgent.lastError = terminalError;
-      const persistenceHandle =
-        mutableAgent.session.describePersistence() ??
-        (mutableAgent.runtimeInfo?.sessionId
-          ? { provider: mutableAgent.provider, sessionId: mutableAgent.runtimeInfo.sessionId }
-          : null);
-      if (persistenceHandle) {
-        mutableAgent.persistence = attachPersistenceCwd(persistenceHandle, mutableAgent.cwd);
-      }
-      this.logger.trace(
-        {
-          agentId,
-          lifecycle: mutableAgent.lifecycle,
-          hasPendingRun: Boolean(mutableAgent.pendingRun),
-          terminalError,
-          pendingReplacement: mutableAgent.pendingReplacement,
-        },
-        "streamAgent.finalize: applying terminal state",
-      );
-      if (!shouldHoldBusyForReplacement) {
-        this.touchUpdatedAt(mutableAgent);
-        this.emitState(mutableAgent);
-        this.flushLiveEventBacklog(mutableAgent);
-      }
-    };
 
     const self = this;
 
     const streamForwarder = (async function* streamForwarder() {
-      let finalizeError: string | undefined;
+      const pendingRun = self.createPendingForegroundRun();
+      self.pendingForegroundRuns.set(agentId, pendingRun);
+
+      let turnId: string;
+      let waiter: ForegroundTurnWaiter | null = null;
       try {
-        for await (const event of iterator) {
-          self.handleStreamEvent(agent, event);
-          if (
-            event.type === "turn_started" ||
-            event.type === "turn_completed" ||
-            event.type === "turn_failed" ||
-            event.type === "turn_canceled"
-          ) {
-            self.logger.trace(
-              {
-                agentId,
-                eventType: event.type,
-                lifecycle: agent.lifecycle,
-                hasPendingRun: Boolean(agent.pendingRun),
-              },
-              "streamAgent: forwarded terminal/turn event",
-            );
-          }
-          yield event;
-        }
+        const result = await agent.session.startTurn(prompt, options);
+        turnId = result.turnId;
       } catch (error) {
-        finalizeError = error instanceof Error ? error.message : "Agent stream failed";
+        const errorMsg = error instanceof Error ? error.message : "Failed to start turn";
         self.handleStreamEvent(agent, {
           type: "turn_failed",
           provider: agent.provider,
-          error: finalizeError,
+          error: errorMsg,
         });
+        self.finalizeForegroundTurn(agent);
         throw error;
+      }
+
+      pendingRun.started = true;
+      agent.activeForegroundTurnId = turnId;
+      agent.lifecycle = "running";
+      self.touchUpdatedAt(agent);
+      self.emitState(agent);
+      self.logger.trace(
+        {
+          agentId,
+          lifecycle: agent.lifecycle,
+          activeForegroundTurnId: agent.activeForegroundTurnId,
+        },
+        "streamAgent: started",
+      );
+
+      // Create a pushable queue for this foreground turn
+      const queue: AgentStreamEvent[] = [];
+      let queueResolve: (() => void) | null = null;
+      let done = false;
+      let resolveSettled!: () => void;
+      const settledPromise = new Promise<void>((resolve) => {
+        resolveSettled = resolve;
+      });
+
+      waiter = {
+        turnId,
+        settled: false,
+        settledPromise,
+        resolveSettled,
+        callback: (event: AgentStreamEvent) => {
+          queue.push(event);
+          if (queueResolve) {
+            queueResolve();
+            queueResolve = null;
+          }
+        },
+      };
+      agent.foregroundTurnWaiters.add(waiter);
+
+      try {
+        while (!done) {
+          while (queue.length > 0) {
+            const event = queue.shift()!;
+            yield event;
+            if (isTurnTerminalEvent(event)) {
+              done = true;
+              break;
+            }
+          }
+          if (!done && queue.length === 0) {
+            if (waiter.settled) {
+              break;
+            }
+            await new Promise<void>((resolve) => {
+              queueResolve = resolve;
+            });
+          }
+        }
       } finally {
-        await self.refreshRuntimeInfo(agent);
-        // Ensure we always clear the pending run and emit state when the stream is
-        // cancelled early (e.g., via .return()) so the UI can exit the cancelling state.
-        finalize(finalizeError);
+        if (waiter) {
+          agent.foregroundTurnWaiters.delete(waiter);
+          self.settleForegroundTurnWaiter(waiter);
+        }
+        self.settlePendingForegroundRun(agentId, pendingRun.token);
+        if (!agent.activeForegroundTurnId) {
+          await self.refreshRuntimeInfo(agent);
+        }
       }
     })();
 
-    agent.pendingRun = streamForwarder;
-    agent.lifecycle = "running";
-    // Bump updatedAt when lifecycle changes so downstream consumers can
-    // deterministically order idle->running transitions.
-    this.touchUpdatedAt(agent);
-    self.emitState(agent);
+    return streamForwarder;
+  }
+
+  private finalizeForegroundTurn(agent: ActiveManagedAgent): void {
+    const mutableAgent = agent as ActiveManagedAgent;
+    mutableAgent.activeForegroundTurnId = null;
+    const terminalError = mutableAgent.lastError;
+    const shouldHoldBusyForReplacement = mutableAgent.pendingReplacement && !terminalError;
+    mutableAgent.lifecycle = shouldHoldBusyForReplacement
+      ? "running"
+      : terminalError
+        ? "error"
+        : "idle";
+    const persistenceHandle =
+      mutableAgent.session.describePersistence() ??
+      (mutableAgent.runtimeInfo?.sessionId
+        ? { provider: mutableAgent.provider, sessionId: mutableAgent.runtimeInfo.sessionId }
+        : null);
+    if (persistenceHandle) {
+      mutableAgent.persistence = attachPersistenceCwd(persistenceHandle, mutableAgent.cwd);
+    }
     this.logger.trace(
       {
-        agentId,
-        lifecycle: agent.lifecycle,
-        hasPendingRun: Boolean(agent.pendingRun),
+        agentId: agent.id,
+        lifecycle: mutableAgent.lifecycle,
+        terminalError,
+        pendingReplacement: mutableAgent.pendingReplacement,
       },
-      "streamAgent: started",
+      "finalizeForegroundTurn: applying terminal state",
     );
-
-    return streamForwarder;
+    if (!shouldHoldBusyForReplacement) {
+      this.touchUpdatedAt(mutableAgent);
+      this.emitState(mutableAgent);
+    }
   }
 
   replaceAgentRun(
@@ -1130,7 +1167,11 @@ export class AgentManager {
     options?: AgentRunOptions,
   ): AsyncGenerator<AgentStreamEvent> {
     const snapshot = this.requireAgent(agentId);
-    if (snapshot.lifecycle !== "running" && !snapshot.pendingRun) {
+    if (
+      snapshot.lifecycle !== "running" &&
+      !snapshot.activeForegroundTurnId &&
+      !this.hasPendingForegroundRun(agentId)
+    ) {
       return this.streamAgent(agentId, prompt, options);
     }
 
@@ -1150,15 +1191,10 @@ export class AgentManager {
         if (latest) {
           const latestActive = latest as ActiveManagedAgent;
           latestActive.pendingReplacement = false;
-          const hasForegroundRun = Boolean(
-            (latestActive as { pendingRun: AsyncGenerator<AgentStreamEvent> | null }).pendingRun,
-          );
-          const lifecycle = (latestActive as { lifecycle: AgentLifecycleStatus }).lifecycle;
-          if (!hasForegroundRun && lifecycle === "running") {
-            latestActive.lifecycle = "idle";
+          if (!latestActive.activeForegroundTurnId && latestActive.lifecycle === "running") {
+            (latestActive as ActiveManagedAgent).lifecycle = "idle";
             self.touchUpdatedAt(latestActive);
             self.emitState(latestActive);
-            self.flushLiveEventBacklog(latestActive);
           }
         }
         throw error;
@@ -1172,11 +1208,15 @@ export class AgentManager {
       throw new Error(`Agent ${agentId} not found`);
     }
 
-    if (snapshot.lifecycle === "running" && !snapshot.pendingReplacement) {
+    const pendingRun = this.getPendingForegroundRun(agentId);
+    if (
+      (snapshot.lifecycle === "running" || pendingRun?.started) &&
+      !snapshot.pendingReplacement
+    ) {
       return;
     }
 
-    if ((!("pendingRun" in snapshot) || !snapshot.pendingRun) && !snapshot.pendingReplacement) {
+    if (!snapshot.activeForegroundTurnId && !pendingRun && !snapshot.pendingReplacement) {
       throw new Error(`Agent ${agentId} has no pending run`);
     }
 
@@ -1228,29 +1268,50 @@ export class AgentManager {
         options.signal.addEventListener("abort", abortHandler, { once: true });
       }
 
+      const checkCurrentState = () => {
+        const current = this.getAgent(agentId);
+        if (!current) {
+          finishErr(new Error(`Agent ${agentId} not found`));
+          return true;
+        }
+
+        const currentPendingRun = this.getPendingForegroundRun(agentId);
+        if (
+          (current.lifecycle === "running" || currentPendingRun?.started) &&
+          !current.pendingReplacement
+        ) {
+          finishOk();
+          return true;
+        }
+
+        if (current.lifecycle === "error" && !currentPendingRun?.started) {
+          finishErr(new Error(current.lastError ?? `Agent ${agentId} failed to start`));
+          return true;
+        }
+
+        if (
+          !currentPendingRun &&
+          !current.activeForegroundTurnId &&
+          !current.pendingReplacement
+        ) {
+          finishErr(new Error(`Agent ${agentId} run finished before starting`));
+          return true;
+        }
+
+        return false;
+      };
+
       unsubscribe = this.subscribe(
         (event) => {
-          if (event.type === "agent_state") {
-            if (event.agent.id !== agentId) {
-              return;
-            }
-            if (event.agent.lifecycle === "running" && !event.agent.pendingReplacement) {
-              finishOk();
-              return;
-            }
-            if (event.agent.lifecycle === "error") {
-              finishErr(new Error(event.agent.lastError ?? `Agent ${agentId} failed to start`));
-              return;
-            }
-            if ("pendingRun" in event.agent && !event.agent.pendingRun) {
-              finishErr(new Error(`Agent ${agentId} run finished before starting`));
-              return;
-            }
+          if (event.type !== "agent_state" || event.agent.id !== agentId) {
             return;
           }
+          checkCurrentState();
         },
-        { agentId, replayState: true },
+        { agentId, replayState: false },
       );
+
+      checkCurrentState();
     });
   }
 
@@ -1276,11 +1337,13 @@ export class AgentManager {
 
   async cancelAgentRun(agentId: string): Promise<boolean> {
     const agent = this.requireAgent(agentId);
-    const pendingRun = agent.pendingRun;
-    const hasForegroundPendingRun = Boolean(pendingRun) && typeof pendingRun?.return === "function";
-    const isAutonomousRunning = agent.lifecycle === "running" && !hasForegroundPendingRun;
+    const pendingRun = this.getPendingForegroundRun(agentId);
+    const foregroundTurnId = agent.activeForegroundTurnId;
+    const hasForegroundTurn = Boolean(foregroundTurnId);
+    const isAutonomousRunning =
+      agent.lifecycle === "running" && !hasForegroundTurn && !pendingRun;
 
-    if (!hasForegroundPendingRun && !isAutonomousRunning) {
+    if (!hasForegroundTurn && !isAutonomousRunning && !pendingRun) {
       return false;
     }
 
@@ -1290,20 +1353,42 @@ export class AgentManager {
       this.logger.error({ err: error, agentId }, "Failed to interrupt session");
     }
 
-    if (hasForegroundPendingRun && pendingRun) {
-      try {
-        // Await the generator's .return() to ensure the finally block runs
-        // and pendingRun is properly cleared before we return.
-        await pendingRun.return(undefined as unknown as AgentStreamEvent);
-      } catch (error) {
-        this.logger.error({ err: error, agentId }, "Failed to cancel run");
-        throw error;
+    // The interrupt will produce a turn_canceled/turn_failed event via subscribe(),
+    // which flows through the session event dispatcher and settles the foreground turn waiter.
+    // Wait briefly for the event to propagate if there's an active foreground turn.
+    if (foregroundTurnId) {
+      const waiter = Array.from(agent.foregroundTurnWaiters).find(
+        (candidate) => candidate.turnId === foregroundTurnId,
+      );
+      const timeout = new Promise<void>((resolve) => setTimeout(resolve, 2000));
+      if (waiter) {
+        await Promise.race([waiter.settledPromise, timeout]);
+      } else if (agent.activeForegroundTurnId === foregroundTurnId) {
+        await Promise.race([
+          new Promise<void>((resolve) => {
+            const unsubscribe = this.subscribe(
+              (event) => {
+                if (
+                  event.type === "agent_state" &&
+                  event.agent.id === agentId &&
+                  !event.agent.activeForegroundTurnId
+                ) {
+                  unsubscribe();
+                  resolve();
+                }
+              },
+              { agentId, replayState: false },
+            );
+          }),
+          timeout,
+        ]);
       }
+    } else if (pendingRun) {
+      const timeout = new Promise<void>((resolve) => setTimeout(resolve, 2000));
+      await Promise.race([pendingRun.settledPromise, timeout]);
     }
 
     // Clear any pending permissions that weren't cleaned up by handleStreamEvent.
-    // Due to microtask ordering, .return() may force the generator to its finally
-    // block before it consumes the turn_canceled event, skipping our cleanup code.
     if (agent.pendingPermissions.size > 0) {
       for (const [requestId] of agent.pendingPermissions) {
         this.dispatchStream(agent.id, {
@@ -1377,7 +1462,8 @@ export class AgentManager {
       throw new Error(`Agent ${agentId} not found`);
     }
 
-    const hasPendingRun = "pendingRun" in snapshot && Boolean(snapshot.pendingRun);
+    const hasForegroundTurn =
+      Boolean(snapshot.activeForegroundTurnId) || this.hasPendingForegroundRun(agentId);
 
     const immediatePermission = this.peekPendingPermission(snapshot);
     if (immediatePermission) {
@@ -1389,7 +1475,7 @@ export class AgentManager {
     }
 
     const initialStatus = snapshot.lifecycle;
-    const initialBusy = isAgentBusy(initialStatus) || hasPendingRun;
+    const initialBusy = isAgentBusy(initialStatus) || hasForegroundTurn;
     const waitForActive = options?.waitForActive ?? false;
     if (!waitForActive && !initialBusy) {
       return {
@@ -1398,7 +1484,7 @@ export class AgentManager {
         lastMessage: this.getLastAssistantMessage(agentId),
       };
     }
-    if (waitForActive && !initialBusy && !hasPendingRun) {
+    if (waitForActive && !initialBusy && !hasForegroundTurn) {
       return {
         status: initialStatus,
         permission: null,
@@ -1419,7 +1505,7 @@ export class AgentManager {
       }
 
       let currentStatus: AgentLifecycleStatus = initialStatus;
-      let hasStarted = initialBusy || hasPendingRun;
+      let hasStarted = initialBusy || hasForegroundTurn;
       let terminalStatusOverride: AgentLifecycleStatus | null = null;
 
       // Bug #3 Fix: Declare unsubscribe and abortHandler upfront so cleanup can reference them
@@ -1569,7 +1655,9 @@ export class AgentManager {
       currentModeId: null,
       pendingPermissions: new Map(),
       pendingReplacement: false,
-      pendingRun: null,
+      activeForegroundTurnId: null,
+      foregroundTurnWaiters: new Set(),
+      unsubscribeSession: null,
       timeline: initialTimeline,
       timelineRows: initialTimelineRows,
       timelineEpoch: options?.timelineEpoch ?? randomUUID(),
@@ -1606,8 +1694,89 @@ export class AgentManager {
     managed.lifecycle = "idle";
     await this.persistSnapshot(managed);
     this.emitState(managed);
-    this.startLiveEventPump(managed);
+    this.subscribeToSession(managed);
     return { ...managed };
+  }
+
+  private subscribeToSession(agent: ActiveManagedAgent): void {
+    if (agent.unsubscribeSession) {
+      return;
+    }
+    const agentId = agent.id;
+    const unsubscribe = agent.session.subscribe((event: AgentStreamEvent) => {
+      const current = this.agents.get(agentId);
+      if (!current) {
+        return;
+      }
+      this.dispatchSessionEvent(current, event);
+    });
+    agent.unsubscribeSession = unsubscribe;
+  }
+
+  private dispatchSessionEvent(agent: ActiveManagedAgent, event: AgentStreamEvent): void {
+    const turnId = (event as { turnId?: string }).turnId;
+    const matchingWaiters =
+      turnId == null
+        ? []
+        : Array.from(agent.foregroundTurnWaiters).filter(
+            (waiter) => waiter.turnId === turnId && !waiter.settled,
+          );
+
+    this.handleStreamEvent(agent, event);
+
+    for (const waiter of matchingWaiters) {
+      waiter.callback(event);
+      if (isTurnTerminalEvent(event)) {
+        this.settleForegroundTurnWaiter(waiter);
+      }
+    }
+  }
+
+  private settleForegroundTurnWaiter(waiter: ForegroundTurnWaiter): void {
+    if (waiter.settled) {
+      return;
+    }
+    waiter.settled = true;
+    waiter.resolveSettled();
+  }
+
+  private createPendingForegroundRun(): PendingForegroundRun {
+    let resolveSettled!: () => void;
+    const settledPromise = new Promise<void>((resolve) => {
+      resolveSettled = resolve;
+    });
+    return {
+      token: randomUUID(),
+      started: false,
+      settled: false,
+      settledPromise,
+      resolveSettled,
+    };
+  }
+
+  private getPendingForegroundRun(agentId: string): PendingForegroundRun | null {
+    return this.pendingForegroundRuns.get(agentId) ?? null;
+  }
+
+  private hasPendingForegroundRun(agentId: string): boolean {
+    return this.pendingForegroundRuns.has(agentId);
+  }
+
+  private settlePendingForegroundRun(agentId: string, token?: string): void {
+    const pendingRun = this.pendingForegroundRuns.get(agentId);
+    if (!pendingRun) {
+      return;
+    }
+    if (token && pendingRun.token !== token) {
+      return;
+    }
+
+    this.pendingForegroundRuns.delete(agentId);
+    if (pendingRun.settled) {
+      return;
+    }
+    pendingRun.settled = true;
+    pendingRun.resolveSettled();
   }
 
   private async resolveInitialPersistedTitle(
@@ -1762,6 +1931,11 @@ export class AgentManager {
       canonicalUserMessagesById?: ReadonlyMap<string, string>;
     },
   ): void {
+    const eventTurnId = (event as { turnId?: string }).turnId;
+    const isForegroundEvent = Boolean(
+      eventTurnId && agent.activeForegroundTurnId === eventTurnId,
+    );
+
     // Only update timestamp for live events, not history replay
     if (!options?.fromHistory) {
       this.touchUpdatedAt(agent);
@@ -1771,8 +1945,6 @@ export class AgentManager {
 
     switch (event.type) {
       case "thread_started":
-        // Update persistence with the new session ID from the provider.
-        // persistence.sessionId is the single source of truth for session identity.
         {
           const previousSessionId = agent.persistence?.sessionId ?? null;
           const handle = agent.session.describePersistence();
@@ -1786,9 +1958,6 @@ export class AgentManager {
         break;
       case "timeline":
         // Skip provider-replayed user_message items during history hydration.
-        // These are already canonically recorded by recordUserMessage() and replaying them would
-        // create duplicates. Match by messageId (not text) to avoid dropping legitimate
-        // provider-origin messages that happen to reuse the same text.
         if (options?.fromHistory && event.item.type === "user_message") {
           const eventMessageId = normalizeMessageId(event.item.messageId);
           if (eventMessageId) {
@@ -1798,8 +1967,27 @@ export class AgentManager {
             }
           }
         }
-        if (this.shouldSuppressLiveUserMessageEcho(agent, event, options)) {
-          break;
+        // Suppress user_message echoes for the active foreground turn —
+        // these are already recorded by recordUserMessage().
+        if (
+          !options?.fromHistory &&
+          event.item.type === "user_message" &&
+          isForegroundEvent
+        ) {
+          const eventMessageId = normalizeMessageId(event.item.messageId);
+          const eventText = event.item.text;
+          if (eventMessageId) {
+            const alreadyRecorded = agent.timelineRows.some((row) => {
+              if (row.item.type !== "user_message") {
+                return false;
+              }
+              const rowMessageId = normalizeMessageId(row.item.messageId);
+              return rowMessageId === eventMessageId && row.item.text === eventText;
+            });
+            if (alreadyRecorded) {
+              break;
+            }
+          }
         }
         timelineRow = this.recordTimeline(agent, event.item);
         if (!options?.fromHistory && event.item.type === "user_message") {
@@ -1812,20 +2000,34 @@ export class AgentManager {
           {
             agentId: agent.id,
             lifecycle: agent.lifecycle,
-            hasPendingRun: Boolean(agent.pendingRun),
+            activeForegroundTurnId: agent.activeForegroundTurnId,
+            eventTurnId,
           },
           "handleStreamEvent: turn_completed",
         );
         agent.lastUsage = event.usage;
         agent.lastError = undefined;
-        if (!agent.pendingRun && agent.lifecycle !== "idle") {
+        // For autonomous turns (not foreground), transition to idle
+        if (!isForegroundEvent && agent.lifecycle !== "idle") {
           (agent as ActiveManagedAgent).lifecycle = "idle";
           this.emitState(agent);
         }
         void this.refreshRuntimeInfo(agent);
         break;
       case "turn_failed":
-        agent.lifecycle = "error";
+        this.logger.trace(
+          {
+            agentId: agent.id,
+            lifecycle: agent.lifecycle,
+            activeForegroundTurnId: agent.activeForegroundTurnId,
+            eventTurnId,
+          },
+          "handleStreamEvent: turn_failed",
+        );
+        // For autonomous turns, set error state directly
+        if (!isForegroundEvent) {
+          agent.lifecycle = "error";
+        }
         agent.lastError = event.error;
         this.appendSystemErrorTimelineMessage(
           agent,
@@ -1844,18 +2046,22 @@ export class AgentManager {
             });
           }
         }
-        this.emitState(agent);
+        if (!isForegroundEvent) {
+          this.emitState(agent);
+        }
         break;
       case "turn_canceled":
         this.logger.trace(
           {
             agentId: agent.id,
             lifecycle: agent.lifecycle,
-            hasPendingRun: Boolean(agent.pendingRun),
+            activeForegroundTurnId: agent.activeForegroundTurnId,
+            eventTurnId,
           },
           "handleStreamEvent: turn_canceled",
         );
-        if (!agent.pendingRun) {
+        // For autonomous turns, transition to idle
+        if (!isForegroundEvent) {
           (agent as ActiveManagedAgent).lifecycle = "idle";
         }
         agent.lastError = undefined;
@@ -1870,18 +2076,22 @@ export class AgentManager {
             });
           }
         }
-        this.emitState(agent);
+        if (!isForegroundEvent) {
+          this.emitState(agent);
+        }
         break;
       case "turn_started":
         this.logger.trace(
           {
             agentId: agent.id,
             lifecycle: agent.lifecycle,
-            hasPendingRun: Boolean(agent.pendingRun),
+            activeForegroundTurnId: agent.activeForegroundTurnId,
+            eventTurnId,
           },
           "handleStreamEvent: turn_started",
         );
-        if (!agent.pendingRun) {
+        // For autonomous turn_started (no foreground match), set running
+        if (!isForegroundEvent) {
           (agent as ActiveManagedAgent).lifecycle = "running";
           this.emitState(agent);
         }
@@ -1902,6 +2112,10 @@ export class AgentManager {
         break;
       default:
         break;
+    }
+
+    if (!options?.fromHistory && isForegroundEvent && isTurnTerminalEvent(event)) {
+      this.finalizeForegroundTurn(agent);
     }
 
     // Skip dispatching individual stream events during history replay.
@@ -1973,35 +2187,6 @@ export class AgentManager {
       parts.push(diagnostic);
     }
     return parts.join("\n\n");
-  }
-
-  private shouldSuppressLiveUserMessageEcho(
-    agent: ActiveManagedAgent,
-    event: AgentStreamEvent,
-    options?: {
-      fromHistory?: boolean;
-      canonicalUserMessagesById?: ReadonlyMap<string, string>;
-    },
-  ): boolean {
-    if (options?.fromHistory || event.type !== "timeline") {
-      return false;
-    }
-    if (event.item.type !== "user_message" || !agent.pendingRun) {
-      return false;
-    }
-    const eventMessageId = normalizeMessageId(event.item.messageId);
-    const eventText = event.item.text;
-    if (!eventMessageId) {
-      return false;
-    }
-    return agent.timelineRows.some((row) => {
-      const rowItem = row.item;
-      if (rowItem.type !== "user_message") {
-        return false;
-      }
-      const rowMessageId = normalizeMessageId(rowItem.messageId);
-      return rowMessageId === eventMessageId && rowItem.text === eventText;
-    });
   }
 
   private recordTimeline(agent: ManagedAgent, item: AgentTimelineItem): AgentTimelineRow {
@@ -2216,154 +2401,4 @@ export class AgentManager {
     return agent;
   }
 
-  private startLiveEventPump(agent: ActiveManagedAgent): void {
-    if (!supportsLiveEventStream(agent.session)) {
-      return;
-    }
-    if (this.liveEventPumps.has(agent.id)) {
-      return;
-    }
-    const pump = (async () => {
-      while (true) {
-        const current = this.agents.get(agent.id);
-        if (!current) {
-          return;
-        }
-        if (!supportsLiveEventStream(current.session)) {
-          return;
-        }
-
-        try {
-          for await (const event of current.session.streamLiveEvents()) {
-            const latest = this.agents.get(agent.id);
-            if (!latest) {
-              return;
-            }
-            // Keep consuming provider events even during an active foreground run,
-            // then replay them immediately once that run settles.
-            if (latest.pendingRun) {
-              this.logger.trace(
-                {
-                  agentId: latest.id,
-                  eventType: event.type,
-                  backlogSize: (this.liveEventBacklog.get(latest.id)?.length ?? 0) + 1,
-                },
-                "Live event pump: queued event because pendingRun is active",
-              );
-              this.enqueueLiveEvent(latest.id, event);
-              continue;
-            }
-            this.flushLiveEventBacklog(latest);
-            this.handleStreamEvent(latest, event);
-          }
-          this.logger.warn({ agentId: agent.id }, "Live event pump stream ended; restarting");
-        } catch (error) {
-          this.logger.warn({ err: error, agentId: agent.id }, "Live event pump failed");
-        }
-
-        // Keep pump alive unless the agent is gone.
-        await new Promise((resolve) => setTimeout(resolve, 250));
-        const latest = this.agents.get(agent.id);
-        if (!latest) {
-          return;
-        }
-        if (!latest.pendingRun) {
-          this.flushLiveEventBacklog(latest);
-        }
-      }
-    })();
-    this.liveEventPumps.set(agent.id, pump);
-    pump.finally(() => {
-      const current = this.liveEventPumps.get(agent.id);
-      if (current === pump) {
-        this.liveEventPumps.delete(agent.id);
-      }
-    });
-  }
-
-  private enqueueLiveEvent(agentId: string, event: AgentStreamEvent): void {
-    const existing = this.liveEventBacklog.get(agentId);
-    if (existing) {
-      existing.push(event);
-      return;
-    }
-    this.liveEventBacklog.set(agentId, [event]);
-  }
-
-  private clearLiveEventBacklogFlushTimer(agentId: string): void {
-    const timer = this.liveEventBacklogFlushTimers.get(agentId);
-    if (!timer) {
-      return;
-    }
-    clearTimeout(timer);
-    this.liveEventBacklogFlushTimers.delete(agentId);
-  }
-
-  private scheduleLiveEventBacklogFlush(agentId: string, delayMs: number): void {
-    if (this.liveEventBacklogFlushTimers.has(agentId)) {
-      return;
-    }
-
-    const timer = setTimeout(() => {
-      this.liveEventBacklogFlushTimers.delete(agentId);
-      const latest = this.agents.get(agentId);
-      if (!latest) {
-        return;
-      }
-      if (latest.pendingRun) {
-        this.scheduleLiveEventBacklogFlush(agentId, LIVE_BACKLOG_TERMINAL_REPLAY_DELAY_MS);
-        return;
-      }
-      this.flushLiveEventBacklog(latest);
-    }, delayMs);
-
-    this.liveEventBacklogFlushTimers.set(agentId, timer);
-  }
-
-  private flushLiveEventBacklog(agent: ActiveManagedAgent): void {
-    if (agent.pendingRun) {
-      return;
-    }
-    const pending = this.liveEventBacklog.get(agent.id);
-    if (!pending || pending.length === 0) {
-      return;
-    }
-    this.clearLiveEventBacklogFlushTimer(agent.id);
-    this.liveEventBacklog.delete(agent.id);
-
-    const immediate: AgentStreamEvent[] = [];
-    const deferred: AgentStreamEvent[] = [];
-    let sawTurnStarted = false;
-    let deferRemainder = false;
-
-    for (const event of pending) {
-      if (!deferRemainder && sawTurnStarted && isTurnTerminalEvent(event)) {
-        deferRemainder = true;
-      }
-      if (deferRemainder) {
-        deferred.push(event);
-        continue;
-      }
-      immediate.push(event);
-      if (event.type === "turn_started") {
-        sawTurnStarted = true;
-      }
-    }
-
-    for (const event of immediate) {
-      this.handleStreamEvent(agent, event);
-    }
-
-    if (deferred.length === 0) {
-      return;
-    }
-
-    const existing = this.liveEventBacklog.get(agent.id);
-    if (existing && existing.length > 0) {
-      this.liveEventBacklog.set(agent.id, [...deferred, ...existing]);
-    } else {
-      this.liveEventBacklog.set(agent.id, deferred);
-    }
-    this.scheduleLiveEventBacklogFlush(agent.id, LIVE_BACKLOG_TERMINAL_REPLAY_DELAY_MS);
-  }
 }
