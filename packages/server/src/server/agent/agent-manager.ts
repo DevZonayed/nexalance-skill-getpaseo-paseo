@@ -1954,6 +1954,7 @@ export class AgentManager {
               this.emitState(agent);
             }
           }
+          void this.refreshRuntimeInfo(agent);
         }
         break;
       case "timeline":
@@ -2369,8 +2370,7 @@ export class AgentManager {
 
     if (typeof normalized.model === "string") {
       const trimmed = normalized.model.trim();
-      const normalizedId = trimmed.toLowerCase();
-      normalized.model = trimmed.length > 0 && normalizedId !== "default" ? trimmed : undefined;
+      normalized.model = trimmed.length > 0 ? trimmed : undefined;
     }
 
     return normalized;

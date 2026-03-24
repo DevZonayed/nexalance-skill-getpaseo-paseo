@@ -11,6 +11,13 @@ const INLINE_MODEL_THRESHOLD = 8;
 
 type DrillDownView = { provider: string };
 
+function resolveDefaultModelLabel(models: AgentModelDefinition[] | undefined): string | null {
+  if (!models || models.length === 0) {
+    return null;
+  }
+  return (models.find((model) => model.isDefault) ?? models[0])?.label ?? null;
+}
+
 interface CombinedModelSelectorProps {
   providerDefinitions: AgentProviderDefinition[];
   allProviderModels: Map<string, AgentModelDefinition[]>;
@@ -66,9 +73,9 @@ export function CombinedModelSelector({
 
   const selectedModelLabel = useMemo(() => {
     const models = allProviderModels.get(selectedProvider);
-    if (!models) return isLoading ? "Loading..." : "Auto";
+    if (!models) return isLoading ? "Loading..." : "Select model";
     const model = models.find((m) => m.id === selectedModel);
-    return model?.label ?? "Auto";
+    return model?.label ?? resolveDefaultModelLabel(models) ?? "Select model";
   }, [allProviderModels, selectedProvider, selectedModel, isLoading]);
 
   return (

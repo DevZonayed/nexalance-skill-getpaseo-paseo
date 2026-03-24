@@ -744,6 +744,20 @@ function DraftAgentScreenContent({
   }, [baseBranch, branchSearchQuery, branchSuggestionsQuery.data, checkout, worktreeOptions]);
 
   const createAgentClient = sessionClient;
+  const effectiveDraftModelId = useMemo(() => {
+    if (selectedModel.trim()) {
+      return selectedModel.trim();
+    }
+    return availableModels.find((model) => model.isDefault)?.id ?? availableModels[0]?.id ?? "";
+  }, [availableModels, selectedModel]);
+  const effectiveDraftThinkingOptionId = useMemo(() => {
+    if (selectedThinkingOptionId.trim()) {
+      return selectedThinkingOptionId.trim();
+    }
+    const selectedModelDefinition =
+      availableModels.find((model) => model.id === effectiveDraftModelId) ?? null;
+    return selectedModelDefinition?.defaultThinkingOptionId ?? "";
+  }, [availableModels, effectiveDraftModelId, selectedThinkingOptionId]);
   const draftCommandConfig = useMemo<DraftCommandConfig | undefined>(() => {
     const cwd = (
       isAttachWorktree && selectedWorktreePath ? selectedWorktreePath : workingDir
@@ -756,18 +770,18 @@ function DraftAgentScreenContent({
       provider: selectedProvider,
       cwd,
       ...(modeOptions.length > 0 && selectedMode !== "" ? { modeId: selectedMode } : {}),
-      ...(selectedModel.trim() ? { model: selectedModel.trim() } : {}),
-      ...(selectedThinkingOptionId.trim()
-        ? { thinkingOptionId: selectedThinkingOptionId.trim() }
+      ...(effectiveDraftModelId ? { model: effectiveDraftModelId } : {}),
+      ...(effectiveDraftThinkingOptionId
+        ? { thinkingOptionId: effectiveDraftThinkingOptionId }
         : {}),
     };
   }, [
+    effectiveDraftModelId,
+    effectiveDraftThinkingOptionId,
     isAttachWorktree,
     modeOptions.length,
     selectedMode,
-    selectedModel,
     selectedProvider,
-    selectedThinkingOptionId,
     selectedWorktreePath,
     workingDir,
   ]);
@@ -801,6 +815,12 @@ function DraftAgentScreenContent({
       if (gitBlockingError) {
         return gitBlockingError;
       }
+      if (isModelLoading) {
+        return "Model defaults are still loading";
+      }
+      if (!effectiveDraftModelId) {
+        return "No model is available for the selected provider";
+      }
       if (isAttachWorktree && !selectedWorktreePath) {
         return "Select a worktree to attach";
       }
@@ -832,8 +852,8 @@ function DraftAgentScreenContent({
         (isAttachWorktree && selectedWorktreePath ? selectedWorktreePath : workingDir).trim() ||
         ".";
       const provider = selectedProvider;
-      const model = selectedModel.trim() || null;
-      const thinkingOptionId = selectedThinkingOptionId.trim() || null;
+      const model = effectiveDraftModelId || null;
+      const thinkingOptionId = effectiveDraftThinkingOptionId || null;
       const modeId = modeOptions.length > 0 && selectedMode !== "" ? selectedMode : null;
 
       return {
@@ -869,14 +889,14 @@ function DraftAgentScreenContent({
         isAttachWorktree && selectedWorktreePath ? selectedWorktreePath : trimmedPath;
 
       const modeId = modeOptions.length > 0 && selectedMode !== "" ? selectedMode : undefined;
-      const trimmedModel = selectedModel.trim();
-      const trimmedThinkingOptionId = selectedThinkingOptionId.trim();
       const config: AgentSessionConfig = {
         provider: selectedProvider,
         cwd: resolvedWorkingDir,
         ...(modeId ? { modeId } : {}),
-        ...(trimmedModel ? { model: trimmedModel } : {}),
-        ...(trimmedThinkingOptionId ? { thinkingOptionId: trimmedThinkingOptionId } : {}),
+        ...(effectiveDraftModelId ? { model: effectiveDraftModelId } : {}),
+        ...(effectiveDraftThinkingOptionId
+          ? { thinkingOptionId: effectiveDraftThinkingOptionId }
+          : {}),
       };
 
       const effectiveBaseBranch = baseBranch.trim();

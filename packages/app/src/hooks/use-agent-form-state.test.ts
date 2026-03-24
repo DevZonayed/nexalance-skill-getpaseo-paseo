@@ -80,20 +80,14 @@ describe("useAgentFormState", () => {
         new Set<string>(),
       );
 
+      expect(resolved.model).toBe("gpt-5.3-codex");
       expect(resolved.thinkingOptionId).toBe("xhigh");
     });
 
-    it("keeps provider thinking preference when it is valid for the effective model", () => {
+    it("prefers provider defaults on fresh drafts", () => {
       const resolved = __private__.resolveFormState(
         undefined,
-        {
-          provider: "codex",
-          providerPreferences: {
-            codex: {
-              thinkingOptionId: "low",
-            },
-          },
-        },
+        { provider: "codex" },
         codexModels,
         {
           serverId: false,
@@ -114,20 +108,14 @@ describe("useAgentFormState", () => {
         new Set<string>(),
       );
 
-      expect(resolved.thinkingOptionId).toBe("low");
+      expect(resolved.model).toBe("gpt-5.3-codex");
+      expect(resolved.thinkingOptionId).toBe("xhigh");
     });
 
     it("falls back to model default when saved thinking preference is invalid", () => {
       const resolved = __private__.resolveFormState(
         undefined,
-        {
-          provider: "codex",
-          providerPreferences: {
-            codex: {
-              thinkingOptionId: "medium",
-            },
-          },
-        },
+        { provider: "codex" },
         codexModels,
         {
           serverId: false,
@@ -151,7 +139,7 @@ describe("useAgentFormState", () => {
       expect(resolved.thinkingOptionId).toBe("xhigh");
     });
 
-    it("normalizes legacy model id 'default' from initial values to auto", () => {
+    it("normalizes legacy model id 'default' from initial values to the provider default model", () => {
       const resolved = __private__.resolveFormState(
         { model: "default" },
         { provider: "codex" },
@@ -175,20 +163,13 @@ describe("useAgentFormState", () => {
         new Set<string>(),
       );
 
-      expect(resolved.model).toBe("");
+      expect(resolved.model).toBe("gpt-5.3-codex");
     });
 
-    it("normalizes legacy model id 'default' from provider preferences to auto", () => {
+    it("normalizes legacy model id 'default' to the provider default model", () => {
       const resolved = __private__.resolveFormState(
-        undefined,
-        {
-          provider: "codex",
-          providerPreferences: {
-            codex: {
-              model: "default",
-            },
-          },
-        },
+        { model: "default" },
+        { provider: "codex" },
         codexModels,
         {
           serverId: false,
@@ -209,7 +190,76 @@ describe("useAgentFormState", () => {
         new Set<string>(),
       );
 
-      expect(resolved.model).toBe("");
+      expect(resolved.model).toBe("gpt-5.3-codex");
+    });
+
+    it("keeps an explicit initial thinking option when it is valid", () => {
+      const resolved = __private__.resolveFormState(
+        { thinkingOptionId: "low" },
+        { provider: "codex" },
+        codexModels,
+        {
+          serverId: false,
+          provider: false,
+          modeId: false,
+          model: false,
+          thinkingOptionId: false,
+          workingDir: false,
+        },
+        {
+          serverId: null,
+          provider: "codex",
+          modeId: "",
+          model: "",
+          thinkingOptionId: "",
+          workingDir: "",
+        },
+        new Set<string>(),
+      );
+
+      expect(resolved.model).toBe("gpt-5.3-codex");
+      expect(resolved.thinkingOptionId).toBe("low");
+    });
+
+    it("leaves thinking unset when the model exposes options without a provider default", () => {
+      const claudeModels: AgentModelDefinition[] = [
+        {
+          provider: "claude",
+          id: "default",
+          label: "Default (Sonnet 4.6)",
+          isDefault: true,
+          thinkingOptions: [
+            { id: "low", label: "Low" },
+            { id: "medium", label: "Medium" },
+          ],
+        },
+      ];
+
+      const resolved = __private__.resolveFormState(
+        undefined,
+        { provider: "claude" },
+        claudeModels,
+        {
+          serverId: false,
+          provider: false,
+          modeId: false,
+          model: false,
+          thinkingOptionId: false,
+          workingDir: false,
+        },
+        {
+          serverId: null,
+          provider: "claude",
+          modeId: "",
+          model: "",
+          thinkingOptionId: "",
+          workingDir: "",
+        },
+        new Set<string>(),
+      );
+
+      expect(resolved.model).toBe("default");
+      expect(resolved.thinkingOptionId).toBe("");
     });
 
     it("resolves provider only from allowed provider map", () => {

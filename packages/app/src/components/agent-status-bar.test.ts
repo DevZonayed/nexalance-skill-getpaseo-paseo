@@ -14,14 +14,14 @@ describe("getStatusSelectorHint", () => {
 });
 
 describe("normalizeModelId", () => {
-  it("treats empty and default values as unset", () => {
+  it("treats empty values as unset", () => {
     expect(normalizeModelId("")).toBeNull();
-    expect(normalizeModelId(" default ")).toBeNull();
     expect(normalizeModelId(undefined)).toBeNull();
   });
 
   it("returns trimmed model ids", () => {
     expect(normalizeModelId(" gpt-5.1-codex ")).toBe("gpt-5.1-codex");
+    expect(normalizeModelId(" default ")).toBe("default");
   });
 });
 
@@ -68,5 +68,51 @@ describe("resolveAgentModelSelection", () => {
 
     expect(selection.selectedThinkingId).toBe("high");
     expect(selection.displayThinking).toBe("High");
+  });
+
+  it("falls back to the provider default model label instead of Auto", () => {
+    const selection = resolveAgentModelSelection({
+      models: [
+        {
+          id: "a",
+          provider: "codex",
+          label: "Model A",
+          isDefault: true,
+          thinkingOptions: [{ id: "low", label: "Low" }],
+          defaultThinkingOptionId: "low",
+        },
+      ],
+      runtimeModelId: null,
+      configuredModelId: null,
+      explicitThinkingOptionId: null,
+    });
+
+    expect(selection.displayModel).toBe("Model A");
+    expect(selection.displayThinking).toBe("Low");
+  });
+
+  it("prefers the configured model when runtime model is not in the model list", () => {
+    const selection = resolveAgentModelSelection({
+      models: [
+        {
+          id: "default",
+          provider: "claude",
+          label: "Default (Sonnet 4.6)",
+          isDefault: true,
+          thinkingOptions: [
+            { id: "low", label: "Low" },
+            { id: "medium", label: "Medium" },
+          ],
+        },
+      ],
+      runtimeModelId: "claude-sonnet-4-6-20260101",
+      configuredModelId: "default",
+      explicitThinkingOptionId: null,
+    });
+
+    expect(selection.activeModelId).toBe("default");
+    expect(selection.displayModel).toBe("Default (Sonnet 4.6)");
+    expect(selection.selectedThinkingId).toBeNull();
+    expect(selection.displayThinking).toBe("Default");
   });
 });

@@ -102,7 +102,7 @@ const DEFAULT_MODE_FOR_DEFAULT_PROVIDER = fallbackDefinition?.defaultModeId ?? "
 
 function normalizeSelectedModelId(modelId: string | null | undefined): string {
   const normalized = typeof modelId === "string" ? modelId.trim() : "";
-  if (!normalized || normalized.toLowerCase() === "default") {
+  if (!normalized) {
     return "";
   }
   return normalized;
@@ -115,6 +115,10 @@ function resolveDefaultModel(
     return null;
   }
   return availableModels.find((model) => model.isDefault) ?? availableModels[0] ?? null;
+}
+
+function resolveDefaultModelId(availableModels: AgentModelDefinition[] | null): string {
+  return resolveDefaultModel(availableModels)?.id ?? "";
 }
 
 function resolveEffectiveModel(
@@ -134,9 +138,31 @@ function resolveEffectiveModel(
   );
 }
 
+function resolveThinkingOptionId(args: {
+  availableModels: AgentModelDefinition[] | null;
+  modelId: string;
+  requestedThinkingOptionId: string;
+}): string {
+  const effectiveModel = resolveEffectiveModel(args.availableModels, args.modelId);
+  const thinkingOptions = effectiveModel?.thinkingOptions ?? [];
+  if (thinkingOptions.length === 0) {
+    return "";
+  }
+
+  const normalizedThinkingOptionId = args.requestedThinkingOptionId.trim();
+  if (
+    normalizedThinkingOptionId &&
+    thinkingOptions.some((option) => option.id === normalizedThinkingOptionId)
+  ) {
+    return normalizedThinkingOptionId;
+  }
+
+  return effectiveModel?.defaultThinkingOptionId ?? "";
+}
+
 /**
  * Pure function that resolves form state from multiple data sources.
- * Priority: explicit (URL params) > preferences > provider defaults > fallback
+ * Priority: explicit (URL params) > provider defaults > lightweight app prefs > fallback
  *
  * Only resolves fields that haven't been user-modified.
  */
@@ -171,8 +197,6 @@ function resolveFormState(
   }
 
   const providerDef = allowedProviderMap.get(result.provider);
-  const providerPrefs = preferences?.providerPreferences?.[result.provider];
-
   // 2. Resolve modeId (depends on provider)
   if (!userModified.modeId) {
     const validModeIds = providerDef?.modes.map((m) => m.id) ?? [];
@@ -183,8 +207,6 @@ function resolveFormState(
       validModeIds.includes(initialValues.modeId)
     ) {
       result.modeId = initialValues.modeId;
-    } else if (providerPrefs?.mode && validModeIds.includes(providerPrefs.mode)) {
-      result.modeId = providerPrefs.mode;
     } else {
       result.modeId = providerDef?.defaultModeId ?? validModeIds[0] ?? "";
     }
@@ -194,26 +216,18 @@ function resolveFormState(
   if (!userModified.model) {
     const isValidModel = (m: string) => availableModels?.some((am) => am.id === m) ?? false;
     const initialModel = normalizeSelectedModelId(initialValues?.model);
-    const preferredModel = normalizeSelectedModelId(providerPrefs?.model);
+    const defaultModelId = resolveDefaultModelId(availableModels);
 
     if (initialModel) {
       // If models aren't loaded yet, trust the initial value
       // It will be validated once models load
       if (!availableModels || isValidModel(initialModel)) {
         result.model = initialModel;
-      } else if (preferredModel && isValidModel(preferredModel)) {
-        result.model = preferredModel;
       } else {
-        result.model = "";
+        result.model = defaultModelId;
       }
-    } else if (preferredModel) {
-      // If models haven't loaded yet, optimistically apply the stored preference.
-      // We'll validate once models load and clear it if it isn't available.
-      if (!availableModels || isValidModel(preferredModel)) {
-        result.model = preferredModel;
-      } else {
-        result.model = "";
-      }
+    } else if (defaultModelId) {
+      result.model = defaultModelId;
     } else {
       result.model = "";
     }
@@ -224,13 +238,10 @@ function resolveFormState(
     typeof initialValues?.thinkingOptionId === "string"
       ? initialValues.thinkingOptionId.trim()
       : "";
-  const preferredThinkingOptionId = providerPrefs?.thinkingOptionId?.trim() ?? "";
 
   if (!userModified.thinkingOptionId) {
     if (initialThinkingOptionId.length > 0) {
       result.thinkingOptionId = initialThinkingOptionId;
-    } else if (preferredThinkingOptionId.length > 0) {
-      result.thinkingOptionId = preferredThinkingOptionId;
     } else {
       result.thinkingOptionId = "";
     }
@@ -238,18 +249,11 @@ function resolveFormState(
 
   // Validate thinking option once model metadata is available.
   if (availableModels) {
-    const effectiveModel = resolveEffectiveModel(availableModels, result.model);
-    const thinkingOptions = effectiveModel?.thinkingOptions ?? [];
-    if (thinkingOptions.length === 0) {
-      result.thinkingOptionId = "";
-    } else {
-      const thinkingIds = new Set(thinkingOptions.map((option) => option.id));
-      const defaultThinkingOptionId =
-        effectiveModel?.defaultThinkingOptionId ?? thinkingOptions[0]?.id ?? "";
-      if (!result.thinkingOptionId || !thinkingIds.has(result.thinkingOptionId)) {
-        result.thinkingOptionId = defaultThinkingOptionId;
-      }
-    }
+    result.thinkingOptionId = resolveThinkingOptionId({
+      availableModels,
+      modelId: result.model,
+      requestedThinkingOptionId: result.thinkingOptionId,
+    });
   }
 
   // 5. Resolve serverId (independent)
@@ -313,7 +317,6 @@ export function useAgentFormState(options: UseAgentFormStateOptions = {}): UseAg
     preferences,
     isLoading: isPreferencesLoading,
     updatePreferences,
-    updateProviderPreferences,
   } = useFormPreferences();
 
   const daemons = useHosts();
@@ -568,76 +571,89 @@ export function useAgentFormState(options: UseAgentFormStateOptions = {}): UseAg
 
   const setProviderFromUser = useCallback(
     (provider: AgentProvider) => {
-      setFormState((prev) => ({ ...prev, provider }));
+      const providerModels = allProviderModels.get(provider) ?? null;
+      const providerDef = providerDefinitionMap.get(provider);
+      const defaultModelId = resolveDefaultModelId(providerModels);
+      const defaultThinkingOptionId = resolveThinkingOptionId({
+        availableModels: providerModels,
+        modelId: defaultModelId,
+        requestedThinkingOptionId: "",
+      });
+
       setUserModified((prev) => ({ ...prev, provider: true }));
       void updatePreferences({ provider });
-
-      // When provider changes, reset mode and model to provider defaults
-      // (unless user has explicitly set them)
-      const providerDef = providerDefinitionMap.get(provider);
-      const providerPrefs = preferences?.providerPreferences?.[provider];
 
       setFormState((prev) => ({
         ...prev,
         provider,
-        modeId: providerPrefs?.mode ?? providerDef?.defaultModeId ?? "",
-        model: normalizeSelectedModelId(providerPrefs?.model),
-        thinkingOptionId: providerPrefs?.thinkingOptionId ?? "",
+        modeId: providerDef?.defaultModeId ?? "",
+        model: defaultModelId,
+        thinkingOptionId: defaultThinkingOptionId,
       }));
     },
-    [preferences?.providerPreferences, providerDefinitionMap, updatePreferences],
+    [allProviderModels, providerDefinitionMap, updatePreferences],
   );
 
   const setProviderAndModelFromUser = useCallback(
     (provider: AgentProvider, modelId: string) => {
       const providerDef = providerDefinitionMap.get(provider);
-      const providerPrefs = preferences?.providerPreferences?.[provider];
+      const providerModels = allProviderModels.get(provider) ?? null;
+      const normalizedModelId = normalizeSelectedModelId(modelId);
+      const nextModelId = normalizedModelId || resolveDefaultModelId(providerModels);
+      const nextThinkingOptionId = resolveThinkingOptionId({
+        availableModels: providerModels,
+        modelId: nextModelId,
+        requestedThinkingOptionId: "",
+      });
 
       setFormState((prev) => ({
         ...prev,
         provider,
-        model: modelId,
-        modeId: providerPrefs?.mode ?? providerDef?.defaultModeId ?? "",
-        thinkingOptionId: providerPrefs?.thinkingOptionId ?? "",
+        model: nextModelId,
+        modeId: providerDef?.defaultModeId ?? "",
+        thinkingOptionId: nextThinkingOptionId,
       }));
       setUserModified((prev) => ({ ...prev, provider: true, model: true }));
       void updatePreferences({ provider });
-      void updateProviderPreferences(provider, { model: modelId });
     },
-    [
-      preferences?.providerPreferences,
-      providerDefinitionMap,
-      updatePreferences,
-      updateProviderPreferences,
-    ],
+    [allProviderModels, providerDefinitionMap, updatePreferences],
   );
 
   const setModeFromUser = useCallback(
     (modeId: string) => {
       setFormState((prev) => ({ ...prev, modeId }));
       setUserModified((prev) => ({ ...prev, modeId: true }));
-      void updateProviderPreferences(formState.provider, { mode: modeId });
     },
-    [formState.provider, updateProviderPreferences],
+    [],
   );
 
   const setModelFromUser = useCallback(
     (modelId: string) => {
       const normalizedModelId = normalizeSelectedModelId(modelId);
-      setFormState((prev) => ({ ...prev, model: normalizedModelId }));
+      const nextModelId = normalizedModelId || resolveDefaultModelId(availableModels);
+      const nextThinkingOptionId = resolveThinkingOptionId({
+        availableModels,
+        modelId: nextModelId,
+        requestedThinkingOptionId: userModified.thinkingOptionId
+          ? formStateRef.current.thinkingOptionId
+          : "",
+      });
+      setFormState((prev) => ({
+        ...prev,
+        model: nextModelId,
+        thinkingOptionId: nextThinkingOptionId,
+      }));
       setUserModified((prev) => ({ ...prev, model: true }));
-      void updateProviderPreferences(formState.provider, { model: normalizedModelId });
     },
-    [formState.provider, updateProviderPreferences],
+    [availableModels, userModified.thinkingOptionId],
   );
 
   const setThinkingOptionFromUser = useCallback(
     (thinkingOptionId: string) => {
       setFormState((prev) => ({ ...prev, thinkingOptionId }));
       setUserModified((prev) => ({ ...prev, thinkingOptionId: true }));
-      void updateProviderPreferences(formState.provider, { thinkingOptionId });
     },
-    [formState.provider, updateProviderPreferences],
+    [],
   );
 
   const setWorkingDir = useCallback((value: string) => {
@@ -662,34 +678,16 @@ export function useAgentFormState(options: UseAgentFormStateOptions = {}): UseAg
   }, [providerModelsQuery]);
 
   const persistFormPreferences = useCallback(async () => {
-    const providerPreferenceUpdates: {
-      mode: string;
-      model: string;
-      thinkingOptionId?: string;
-    } = {
-      mode: formState.modeId,
-      model: formState.model,
-    };
-    if (userModified.thinkingOptionId) {
-      providerPreferenceUpdates.thinkingOptionId = formState.thinkingOptionId;
-    }
-
     await updatePreferences({
       workingDir: formState.workingDir,
       provider: formState.provider,
       serverId: formState.serverId ?? undefined,
     });
-    await updateProviderPreferences(formState.provider, providerPreferenceUpdates);
   }, [
-    formState.modeId,
-    formState.model,
     formState.provider,
     formState.serverId,
-    formState.thinkingOptionId,
     formState.workingDir,
-    userModified.thinkingOptionId,
     updatePreferences,
-    updateProviderPreferences,
   ]);
 
   const agentDefinition = providerDefinitionMap.get(formState.provider);
@@ -771,5 +769,7 @@ export type CreateAgentInitialValues = FormInitialValues;
 
 export const __private__ = {
   combineInitialValues,
+  resolveDefaultModel,
   resolveFormState,
+  resolveThinkingOptionId,
 };

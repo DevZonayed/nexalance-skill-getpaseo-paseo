@@ -3,6 +3,7 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import pino from "pino";
+import { query, type SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 
 import type { AgentSession, AgentStreamEvent, ToolCallTimelineItem } from "../agent-sdk-types.js";
 import { isCommandAvailable } from "../provider-launch-config.js";
@@ -16,6 +17,10 @@ const hasClaudeCredentials =
 
 function tmpCwd(prefix: string): string {
   return mkdtempSync(path.join(tmpdir(), prefix));
+}
+
+function createEmptyPrompt(): AsyncGenerator<SDKUserMessage, void, undefined> {
+  return (async function* empty() {})();
 }
 
 function compactText(value: string): string {
@@ -207,6 +212,50 @@ describe("ClaudeAgentSession integration", () => {
       await cleanupSession(handle);
     }
   }, 60_000);
+
+  test.runIf(canRunClaudeIntegration)(
+    "supportedModels returns the current abstract Claude SDK model shape",
+    async () => {
+      const claudeQuery = query({
+        prompt: createEmptyPrompt(),
+        options: {
+          cwd: process.cwd(),
+          permissionMode: "plan",
+          includePartialMessages: false,
+          settingSources: ["user", "project"],
+        },
+      });
+
+      try {
+        const models = await claudeQuery.supportedModels();
+
+        expect(models.length).toBeGreaterThanOrEqual(3);
+        expect(models).toContainEqual(
+          expect.objectContaining({
+            value: "default",
+            displayName: "Default (recommended)",
+            supportedEffortLevels: ["low", "medium", "high", "max"],
+          }),
+        );
+        expect(models).toContainEqual(
+          expect.objectContaining({
+            value: "haiku",
+            displayName: "Haiku",
+            description: expect.stringContaining("Haiku 4.5"),
+          }),
+        );
+        expect(
+          models.some(
+            (model) =>
+              model.description.includes("Opus 4.6") || model.description.includes("Sonnet 4.6"),
+          ),
+        ).toBe(true);
+      } finally {
+        await claudeQuery.return?.();
+      }
+    },
+    60_000,
+  );
 
   test.runIf(canRunClaudeIntegration)("runs a real Bash tool call and completes it", async () => {
     const handle = await createSession({

@@ -95,6 +95,22 @@ export function WorkspaceDraftAgentTab({
     setWorkingDir(workspaceId);
   }, [setWorkingDir, workingDir, workspaceId]);
 
+  const effectiveDraftModelId = useMemo(() => {
+    if (selectedModel.trim()) {
+      return selectedModel.trim();
+    }
+    return availableModels.find((model) => model.isDefault)?.id ?? availableModels[0]?.id ?? "";
+  }, [availableModels, selectedModel]);
+
+  const effectiveDraftThinkingOptionId = useMemo(() => {
+    if (selectedThinkingOptionId.trim()) {
+      return selectedThinkingOptionId.trim();
+    }
+    const selectedModelDefinition =
+      availableModels.find((model) => model.id === effectiveDraftModelId) ?? null;
+    return selectedModelDefinition?.defaultThinkingOptionId ?? "";
+  }, [availableModels, effectiveDraftModelId, selectedThinkingOptionId]);
+
   const {
     formErrorMessage,
     isSubmitting,
@@ -111,6 +127,12 @@ export function WorkspaceDraftAgentTab({
       if (providerDefinitions.length === 0) {
         return "No available providers on the selected host";
       }
+      if (isModelLoading) {
+        return "Model defaults are still loading";
+      }
+      if (!effectiveDraftModelId) {
+        return "No model is available for the selected provider";
+      }
       if (!client) {
         return "Host is not connected";
       }
@@ -125,8 +147,8 @@ export function WorkspaceDraftAgentTab({
     },
     buildDraftAgent: (attempt) => {
       const now = attempt.timestamp;
-      const model = selectedModel.trim() || null;
-      const thinkingOptionId = selectedThinkingOptionId.trim() || null;
+      const model = effectiveDraftModelId || null;
+      const thinkingOptionId = effectiveDraftThinkingOptionId || null;
       const modeId = modeOptions.length > 0 && selectedMode !== "" ? selectedMode : null;
       return {
         serverId,
@@ -156,14 +178,14 @@ export function WorkspaceDraftAgentTab({
       }
 
       const modeId = modeOptions.length > 0 && selectedMode !== "" ? selectedMode : undefined;
-      const trimmedModel = selectedModel.trim();
-      const trimmedThinkingOptionId = selectedThinkingOptionId.trim();
       const config: AgentSessionConfig = {
         provider: selectedProvider,
         cwd: workspaceId,
         ...(modeId ? { modeId } : {}),
-        ...(trimmedModel ? { model: trimmedModel } : {}),
-        ...(trimmedThinkingOptionId ? { thinkingOptionId: trimmedThinkingOptionId } : {}),
+        ...(effectiveDraftModelId ? { model: effectiveDraftModelId } : {}),
+        ...(effectiveDraftThinkingOptionId
+          ? { thinkingOptionId: effectiveDraftThinkingOptionId }
+          : {}),
       };
 
       const imagesData = await encodeImages(images);
@@ -189,17 +211,17 @@ export function WorkspaceDraftAgentTab({
       provider: selectedProvider,
       cwd: workspaceId,
       ...(modeOptions.length > 0 && selectedMode !== "" ? { modeId: selectedMode } : {}),
-      ...(selectedModel.trim() ? { model: selectedModel.trim() } : {}),
-      ...(selectedThinkingOptionId.trim()
-        ? { thinkingOptionId: selectedThinkingOptionId.trim() }
+      ...(effectiveDraftModelId ? { model: effectiveDraftModelId } : {}),
+      ...(effectiveDraftThinkingOptionId
+        ? { thinkingOptionId: effectiveDraftThinkingOptionId }
         : {}),
     };
   }, [
+    effectiveDraftModelId,
+    effectiveDraftThinkingOptionId,
     modeOptions.length,
     selectedMode,
-    selectedModel,
     selectedProvider,
-    selectedThinkingOptionId,
     workspaceId,
   ]);
 

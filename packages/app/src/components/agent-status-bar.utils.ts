@@ -15,7 +15,7 @@ export function getStatusSelectorHint(selector: ExplainedStatusSelector): string
 
 export function normalizeModelId(modelId: string | null | undefined): string | null {
   const normalized = typeof modelId === "string" ? modelId.trim() : "";
-  if (!normalized || normalized.toLowerCase() === "default") {
+  if (!normalized) {
     return null;
   }
   return normalized;
@@ -30,14 +30,22 @@ export function resolveAgentModelSelection(input: {
   const { models, runtimeModelId, configuredModelId, explicitThinkingOptionId } = input;
   const normalizedRuntimeModelId = normalizeModelId(runtimeModelId);
   const normalizedConfiguredModelId = normalizeModelId(configuredModelId);
-  const preferredModelId = normalizedRuntimeModelId ?? normalizedConfiguredModelId;
+  const runtimeSelectedModel =
+    models && normalizedRuntimeModelId
+      ? (models.find((model) => model.id === normalizedRuntimeModelId) ?? null)
+      : null;
+  const preferredModelId =
+    runtimeSelectedModel?.id ?? normalizedConfiguredModelId ?? normalizedRuntimeModelId;
+  const fallbackModel =
+    models?.find((model) => model.isDefault) ?? models?.[0] ?? null;
   const selectedModel =
     models && preferredModelId
-      ? (models.find((model) => model.id === preferredModelId) ?? null)
-      : null;
+      ? (models.find((model) => model.id === preferredModelId) ?? fallbackModel ?? null)
+      : fallbackModel;
 
   const activeModelId = selectedModel?.id ?? preferredModelId ?? null;
-  const displayModel = selectedModel?.label ?? preferredModelId ?? "Auto";
+  const displayModel =
+    selectedModel?.label ?? preferredModelId ?? fallbackModel?.label ?? "Unknown model";
 
   const thinkingOptions = selectedModel?.thinkingOptions ?? null;
   const selectedThinkingId =
@@ -48,7 +56,7 @@ export function resolveAgentModelSelection(input: {
     thinkingOptions?.find((option) => option.id === selectedThinkingId) ?? null;
   const displayThinking =
     selectedThinking?.label ??
-    (selectedThinkingId === "default" ? "Model default" : (selectedThinkingId ?? "auto"));
+    (selectedThinkingId === "default" ? "Model default" : (selectedThinkingId ?? "Default"));
 
   return {
     selectedModel,

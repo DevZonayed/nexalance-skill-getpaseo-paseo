@@ -25,7 +25,7 @@ import type { AgentSnapshotPayload } from "./messages.js";
  */
 describe("client activity tracking", () => {
   const TEST_PROVIDER = "claude";
-  const TEST_MODEL = "claude-haiku-4-5";
+  const TEST_MODEL = "haiku";
   const TEST_CWD = "/tmp";
   let daemon: TestPaseoDaemon;
   let client1: DaemonClient;

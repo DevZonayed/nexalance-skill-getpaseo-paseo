@@ -166,8 +166,8 @@ function ControlledStatusBar({
   const displayModel =
     isModelLoading && (!modelOptions || modelOptions.length === 0)
       ? "Loading models..."
-      : findOptionLabel(modelOptions, selectedModelId, "Auto");
-  const displayThinking = findOptionLabel(thinkingOptions, selectedThinkingOptionId, "auto");
+      : findOptionLabel(modelOptions, selectedModelId, "Select model");
+  const displayThinking = findOptionLabel(thinkingOptions, selectedThinkingOptionId, "Default");
 
   const modeVisuals = selectedModeId ? getModeVisuals(provider, selectedModeId) : undefined;
   const ModeIconComponent = modeVisuals?.icon ? MODE_ICONS[modeVisuals.icon] : null;
@@ -777,7 +777,7 @@ export function DraftAgentStatusBar({
     label: definition.label,
   }));
 
-  const modelOptions: StatusOption[] = [{ id: "", label: "Auto" }];
+  const modelOptions: StatusOption[] = [];
   for (const model of models) {
     modelOptions.push({ id: model.id, label: model.label });
   }

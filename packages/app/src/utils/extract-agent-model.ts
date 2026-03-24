@@ -6,13 +6,13 @@ export function extractAgentModel(agent?: Agent | null): string | null {
   const fallbackModel = agent.model;
   if (typeof runtimeModel === "string") {
     const normalized = runtimeModel.trim();
-    if (normalized.length > 0 && normalized.toLowerCase() !== "default") {
+    if (normalized.length > 0) {
       return normalized;
     }
   }
   if (typeof fallbackModel === "string") {
     const normalized = fallbackModel.trim();
-    if (normalized.length > 0 && normalized.toLowerCase() !== "default") {
+    if (normalized.length > 0) {
       return normalized;
     }
   }

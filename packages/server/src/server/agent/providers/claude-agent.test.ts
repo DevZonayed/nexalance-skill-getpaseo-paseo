@@ -1,4 +1,5 @@
 import { describe, expect, test, vi } from "vitest";
+import type { ModelInfo } from "@anthropic-ai/claude-agent-sdk";
 
 import { createTestLogger } from "../../../test-utils/test-logger.js";
 import { ClaudeAgentClient, convertClaudeHistoryEntry } from "./claude-agent.js";
@@ -241,6 +242,13 @@ describe("convertClaudeHistoryEntry", () => {
 describe("ClaudeAgentClient.listModels", () => {
   const logger = createTestLogger();
 
+  function createSupportedModelsQueryMock(models: ModelInfo[]) {
+    return {
+      supportedModels: vi.fn(async () => models),
+      return: vi.fn(async () => ({ done: true, value: undefined })),
+    };
+  }
+
   test("returns models with required fields", async () => {
     const client = new ClaudeAgentClient({ logger });
     const models = await client.listModels();
@@ -267,4 +275,87 @@ describe("ClaudeAgentClient.listModels", () => {
       ),
     ).toBe(true);
   }, 60_000);
+
+  test("prefers provider-discovered Claude defaults and effort levels", async () => {
+    const queryMock = createSupportedModelsQueryMock([
+      {
+        value: "default",
+        displayName: "Default (recommended)",
+        description: "Sonnet 4.6 · Best for everyday tasks",
+        supportsEffort: true,
+        supportedEffortLevels: ["low", "medium", "high", "max"],
+        supportsAdaptiveThinking: true,
+      },
+      {
+        value: "opus",
+        displayName: "Opus",
+        description: "Opus 4.6 · Most capable for complex work",
+        supportsEffort: true,
+        supportedEffortLevels: ["low", "medium", "high", "max"],
+        supportsAdaptiveThinking: true,
+      },
+      {
+        value: "haiku",
+        displayName: "Haiku",
+        description: "Haiku 4.5 · Fastest for quick answers",
+      },
+    ] satisfies ModelInfo[]);
+    const queryFactory = vi.fn(() => queryMock);
+    const client = new ClaudeAgentClient({
+      logger,
+      queryFactory: queryFactory as never,
+    });
+
+    const models = await client.listModels({ cwd: process.cwd() });
+
+    expect(queryFactory).toHaveBeenCalledTimes(1);
+    expect(queryMock.supportedModels).toHaveBeenCalledTimes(1);
+    expect(queryMock.return).toHaveBeenCalledTimes(1);
+    expect(models).toEqual([
+      expect.objectContaining({
+        id: "claude-sonnet-4-6",
+        isDefault: true,
+        label: "Sonnet 4.6",
+        thinkingOptions: [
+          { id: "low", label: "Low" },
+          { id: "medium", label: "Medium" },
+          { id: "high", label: "High" },
+          { id: "max", label: "Max" },
+        ],
+      }),
+      expect.objectContaining({
+        id: "claude-opus-4-6",
+        label: "Opus 4.6",
+      }),
+      expect.objectContaining({
+        id: "claude-haiku-4-5",
+        label: "Haiku 4.5",
+      }),
+    ]);
+  });
+
+  test("preserves SDK ids even when descriptions are weak", async () => {
+    const queryMock = createSupportedModelsQueryMock([
+      {
+        value: "default",
+        displayName: "Default (recommended)",
+        description: "Recommended model",
+      },
+    ] satisfies ModelInfo[]);
+    const client = new ClaudeAgentClient({
+      logger,
+      queryFactory: vi.fn(() => queryMock) as never,
+    });
+
+    const models = await client.listModels({ cwd: process.cwd() });
+
+    expect(models).toEqual([
+      expect.objectContaining({
+        id: "default",
+        label: "Default (recommended)",
+        description: "Recommended model",
+      }),
+    ]);
+    expect(queryMock.return).toHaveBeenCalledTimes(1);
+  });
 });

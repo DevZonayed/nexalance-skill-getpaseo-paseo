@@ -9,6 +9,7 @@ import {
   type AgentDefinition,
   type CanUseTool,
   type McpServerConfig as ClaudeSdkMcpServerConfig,
+  type ModelInfo,
   type Options,
   type PermissionMode,
   type PermissionResult,
@@ -33,11 +34,9 @@ import {
   mapTaskNotificationUserContentToToolCall,
 } from "./claude/task-notification-tool-call.js";
 import {
-  buildClaudeModelFamilyAliases,
-  buildClaudeSelectableModelIds,
-  listClaudeCatalogModels,
-  type ClaudeModelFamily,
-} from "./claude/model-catalog.js";
+  normalizeClaudeModelIdFromText,
+  resolveClaudeModelsFromSdkModels,
+} from "./claude/sdk-model-resolver.js";
 import { parsePartialJsonObject } from "./claude/partial-json.js";
 import { ClaudeSidechainTracker } from "./claude/sidechain-tracker.js";
 
@@ -91,136 +90,6 @@ type AsyncMessageInput<T> = {
   end: () => void;
   iterable: AsyncIterable<T>;
 };
-
-type NormalizeClaudeRuntimeModelIdOptions = {
-  runtimeModelId: string;
-  supportedModelIds: ReadonlySet<string> | null;
-  supportedModelFamilyAliases?: ReadonlyMap<ClaudeModelFamily, string> | null;
-  configuredModelId?: string | null;
-  currentModelId?: string | null;
-};
-
-function normalizeModelIdCandidate(modelId: string | null | undefined): string | null {
-  if (typeof modelId !== "string") {
-    return null;
-  }
-  const trimmed = modelId.trim();
-  return trimmed.length > 0 ? trimmed : null;
-}
-
-function pickSupportedModelId(
-  supportedModelIds: ReadonlySet<string>,
-  candidate: string | null | undefined,
-): string | null {
-  const normalizedCandidate = normalizeModelIdCandidate(candidate);
-  if (!normalizedCandidate) {
-    return null;
-  }
-  return supportedModelIds.has(normalizedCandidate) ? normalizedCandidate : null;
-}
-
-function inferClaudeModelFamilyFromText(text: string | null | undefined): ClaudeModelFamily | null {
-  if (typeof text !== "string") {
-    return null;
-  }
-  const lowerText = text.toLowerCase();
-  if (lowerText.includes("sonnet")) {
-    return "sonnet";
-  }
-  if (lowerText.includes("opus")) {
-    return "opus";
-  }
-  if (lowerText.includes("haiku")) {
-    return "haiku";
-  }
-  return null;
-}
-
-function pickFamilyAliasModelId(
-  familyAliases: ReadonlyMap<ClaudeModelFamily, string> | null | undefined,
-  family: ClaudeModelFamily,
-): string | null {
-  if (!familyAliases) {
-    return null;
-  }
-  return normalizeModelIdCandidate(familyAliases.get(family) ?? null);
-}
-
-export function normalizeClaudeRuntimeModelId(
-  options: NormalizeClaudeRuntimeModelIdOptions,
-): string {
-  const runtimeModel = options.runtimeModelId.trim();
-  if (!runtimeModel) {
-    return runtimeModel;
-  }
-
-  const supportedModelIds = options.supportedModelIds;
-  if (!supportedModelIds || supportedModelIds.size === 0) {
-    return runtimeModel;
-  }
-
-  if (supportedModelIds.has(runtimeModel)) {
-    return runtimeModel;
-  }
-
-  const runtimeFamily = inferClaudeModelFamilyFromText(runtimeModel);
-  const familyAlias = runtimeFamily
-    ? pickFamilyAliasModelId(options.supportedModelFamilyAliases, runtimeFamily)
-    : null;
-  if (runtimeFamily === "sonnet") {
-    const explicitSonnet = pickSupportedModelId(supportedModelIds, "sonnet");
-    if (explicitSonnet) {
-      return explicitSonnet;
-    }
-    if (familyAlias && supportedModelIds.has(familyAlias)) {
-      return familyAlias;
-    }
-    const defaultAlias = pickSupportedModelId(supportedModelIds, "default");
-    if (defaultAlias) {
-      return defaultAlias;
-    }
-  }
-  if (runtimeFamily === "opus") {
-    const alias = pickSupportedModelId(supportedModelIds, "opus");
-    if (alias) {
-      return alias;
-    }
-    if (familyAlias && supportedModelIds.has(familyAlias)) {
-      return familyAlias;
-    }
-  }
-  if (runtimeFamily === "haiku") {
-    const alias = pickSupportedModelId(supportedModelIds, "haiku");
-    if (alias) {
-      return alias;
-    }
-    if (familyAlias && supportedModelIds.has(familyAlias)) {
-      return familyAlias;
-    }
-  }
-
-  const configuredModelId = pickSupportedModelId(supportedModelIds, options.configuredModelId);
-  if (configuredModelId) {
-    return configuredModelId;
-  }
-
-  const currentModelId = pickSupportedModelId(supportedModelIds, options.currentModelId);
-  if (currentModelId) {
-    return currentModelId;
-  }
-
-  // If Claude reports a concrete family ID we can't map directly, prefer the
-  // provider default alias for unconfigured sessions so UI model/thinking state
-  // can still reconcile against the current model catalog.
-  const defaultAlias = pickSupportedModelId(supportedModelIds, "default");
-  const hasConfiguredModel = normalizeModelIdCandidate(options.configuredModelId) !== null;
-  const hasCurrentModel = normalizeModelIdCandidate(options.currentModelId) !== null;
-  if (runtimeFamily && defaultAlias && !hasConfiguredModel && !hasCurrentModel) {
-    return defaultAlias;
-  }
-
-  return runtimeModel;
-}
 
 const CLAUDE_CAPABILITIES: AgentCapabilityFlags = {
   supportsStreaming: true,
@@ -296,6 +165,8 @@ type ClaudeAgentSessionOptions = {
   queryFactory?: typeof query;
 };
 
+type ClaudeThinkingEffort = "low" | "medium" | "high" | "max";
+
 function resolveClaudeSpawnCommand(
   spawnOptions: SpawnOptions,
   runtimeSettings?: ProviderRuntimeSettings,
@@ -346,6 +217,14 @@ function applyRuntimeSettingsToClaudeOptions(
       });
     },
   };
+}
+
+function createEmptyClaudePrompt(): AsyncGenerator<SDKUserMessage, void, undefined> {
+  return (async function* empty() {})();
+}
+
+function isClaudeThinkingEffort(value: string | null | undefined): value is ClaudeThinkingEffort {
+  return value === "low" || value === "medium" || value === "high" || value === "max";
 }
 
 type ClaudeOptionsLogSummary = {
@@ -1144,8 +1023,34 @@ export class ClaudeAgentClient implements AgentClient {
     });
   }
 
-  async listModels(_options?: ListModelsOptions): Promise<AgentModelDefinition[]> {
-    return listClaudeCatalogModels();
+  async listModels(options?: ListModelsOptions): Promise<AgentModelDefinition[]> {
+    const claudeQuery = this.queryFactory({
+      prompt: createEmptyClaudePrompt(),
+      options: applyRuntimeSettingsToClaudeOptions(
+        {
+          cwd: options?.cwd ?? process.cwd(),
+          permissionMode: "plan",
+          includePartialMessages: false,
+          settingSources: CLAUDE_SETTING_SOURCES,
+        },
+        this.runtimeSettings,
+      ),
+    });
+
+    try {
+      const supportedModels = await claudeQuery.supportedModels();
+      return resolveClaudeModelsFromSdkModels(supportedModels as ModelInfo[]);
+    } catch (error) {
+      this.logger.warn({ err: error }, "Failed to query Claude supportedModels()");
+      throw error;
+    } finally {
+      try {
+        await claudeQuery.return?.();
+      } catch {
+        // ignore control-plane shutdown errors
+      }
+    }
+
   }
 
   async listPersistedAgents(
@@ -1223,9 +1128,7 @@ class ClaudeAgentSession implements AgentSession {
   private cancelCurrentTurn: (() => void) | null = null;
   private cachedRuntimeInfo: AgentRuntimeInfo | null = null;
   private lastOptionsModel: string | null = null;
-  private selectableModelIds: Set<string> | null = buildClaudeSelectableModelIds();
-  private selectableModelFamilyAliases: Map<ClaudeModelFamily, string> | null =
-    buildClaudeModelFamilyAliases();
+  private lastRuntimeModel: string | null = null;
   private compacting = false;
   private queryPumpPromise: Promise<void> | null = null;
   private queryRestartNeeded = false;
@@ -1281,6 +1184,13 @@ class ClaudeAgentSession implements AgentSession {
       sessionId: this.claudeSessionId,
       model: this.lastOptionsModel,
       modeId: this.currentMode ?? null,
+      ...(this.lastRuntimeModel
+        ? {
+            extra: {
+              runtimeModel: this.lastRuntimeModel,
+            },
+          }
+        : {}),
     };
     this.cachedRuntimeInfo = info;
     return { ...info };
@@ -1511,6 +1421,7 @@ class ClaudeAgentSession implements AgentSession {
     await query.setModel(normalizedModelId ?? undefined);
     this.config.model = normalizedModelId ?? undefined;
     this.lastOptionsModel = normalizedModelId ?? this.lastOptionsModel;
+    this.lastRuntimeModel = null;
     this.cachedRuntimeInfo = null;
     // Model change affects persistence metadata, so invalidate cached handle.
     this.persistence = null;
@@ -1524,10 +1435,8 @@ class ClaudeAgentSession implements AgentSession {
 
     if (!normalizedThinkingOptionId || normalizedThinkingOptionId === "default") {
       this.config.thinkingOptionId = undefined;
-    } else if (normalizedThinkingOptionId === "on") {
-      this.config.thinkingOptionId = "on";
-    } else if (normalizedThinkingOptionId === "off") {
-      this.config.thinkingOptionId = "off";
+    } else if (isClaudeThinkingEffort(normalizedThinkingOptionId)) {
+      this.config.thinkingOptionId = normalizedThinkingOptionId;
     } else {
       throw new Error(`Unknown thinking option: ${normalizedThinkingOptionId}`);
     }
@@ -1914,16 +1823,15 @@ class ClaudeAgentSession implements AgentSession {
   }
 
   private buildOptions(): ClaudeOptions {
-    const configuredThinkingOptionId = this.config.thinkingOptionId;
     const thinkingOptionId =
-      configuredThinkingOptionId && configuredThinkingOptionId !== "default"
-        ? configuredThinkingOptionId
-        : "off";
-    let maxThinkingTokens: number | undefined;
-    if (thinkingOptionId === "on") {
-      maxThinkingTokens = 10000;
-    } else if (thinkingOptionId === "off") {
-      maxThinkingTokens = 0;
+      this.config.thinkingOptionId && this.config.thinkingOptionId !== "default"
+        ? this.config.thinkingOptionId
+        : undefined;
+    let thinking: ClaudeOptions["thinking"];
+    let effort: ClaudeOptions["effort"];
+    if (thinkingOptionId && isClaudeThinkingEffort(thinkingOptionId)) {
+      thinking = { type: "adaptive" };
+      effort = thinkingOptionId;
     }
 
     const appendedSystemPrompt = [
@@ -1963,7 +1871,8 @@ class ClaudeAgentSession implements AgentSession {
       // If we have a session ID from a previous query (e.g., after interrupt),
       // resume that session to continue the conversation history.
       ...(this.claudeSessionId ? { resume: this.claudeSessionId } : {}),
-      ...(maxThinkingTokens !== undefined ? { maxThinkingTokens } : {}),
+      ...(thinking ? { thinking } : {}),
+      ...(effort ? { effort } : {}),
       ...this.config.extra?.claude,
     };
 
@@ -2704,15 +2613,17 @@ class ClaudeAgentSession implements AgentSession {
     this.currentMode = message.permissionMode;
     this.persistence = null;
     if (message.model) {
-      const normalizedModel = normalizeClaudeRuntimeModelId({
-        runtimeModelId: message.model,
-        supportedModelIds: this.selectableModelIds,
-        supportedModelFamilyAliases: this.selectableModelFamilyAliases,
-        configuredModelId: this.config.model ?? null,
-        currentModelId: this.lastOptionsModel,
-      });
-      this.logger.debug({ model: message.model, normalizedModel }, "Captured model from SDK init");
-      this.lastOptionsModel = normalizedModel;
+      const normalizedRuntimeModel = normalizeClaudeModelIdFromText(message.model);
+      this.logger.debug(
+        { runtimeModel: message.model, normalizedRuntimeModel },
+        "Captured runtime model from SDK init",
+      );
+      if (normalizedRuntimeModel) {
+        this.lastOptionsModel = normalizedRuntimeModel;
+      } else if (!this.lastOptionsModel) {
+        this.lastOptionsModel = this.config.model ?? null;
+      }
+      this.lastRuntimeModel = message.model;
       this.cachedRuntimeInfo = null;
     }
     return threadStartedSessionId;
