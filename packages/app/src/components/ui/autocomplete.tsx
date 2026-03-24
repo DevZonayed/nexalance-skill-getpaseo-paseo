@@ -150,70 +150,136 @@ export function Autocomplete({
     );
   }
 
+  const selectedOption = options[selectedIndex];
+
   return (
-    <View style={[styles.container, { maxHeight }]}>
-      <ScrollView
-        ref={scrollRef}
-        onLayout={handleScrollViewLayout}
-        onContentSizeChange={pinToBottom}
-        onScroll={(event) => {
-          scrollOffsetRef.current = event.nativeEvent.contentOffset.y;
-        }}
-        scrollEventThrottle={16}
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
-        keyboardShouldPersistTaps="always"
-      >
-        {options.map((option, index) => {
-          const isSelected = index === selectedIndex;
-          const optionLabel = removeBoltGlyphs(option.label) ?? option.label;
-          const optionDetail = removeBoltGlyphs(option.detail);
-          const optionDescription = removeBoltGlyphs(option.description);
-          return (
-            <Pressable
-              key={option.id}
-              onLayout={(event) => handleRowLayout(index, event)}
-              onPress={() => onSelect(option)}
-              style={({ hovered = false, pressed }) => [
-                styles.item,
-                (hovered || pressed || isSelected) && styles.itemActive,
-              ]}
-            >
-              {option.kind === "directory" || option.kind === "file" ? (
-                <View style={styles.itemLeading}>
-                  {option.kind === "directory" ? (
-                    <Folder size={14} color={theme.colors.foregroundMuted} />
-                  ) : (
-                    <File size={14} color={theme.colors.foregroundMuted} />
-                  )}
-                </View>
-              ) : null}
-              <View style={styles.itemMain}>
-                <View style={styles.itemHeader}>
-                  <Text style={styles.itemLabel}>{optionLabel}</Text>
-                  {optionDetail ? <Text style={styles.itemDetail}>{optionDetail}</Text> : null}
-                </View>
-                {optionDescription ? (
-                  <Text style={styles.itemDescription} numberOfLines={1}>
-                    {optionDescription}
-                  </Text>
-                ) : null}
-              </View>
-            </Pressable>
-          );
-        })}
-      </ScrollView>
+    <View style={styles.outerWrapper}>
+      {selectedOption?.kind === "command" && selectedOption.description ? (
+        <View style={styles.detailCard}>
+          <Text style={styles.detailLabel}>
+            {removeBoltGlyphs(selectedOption.label) ?? selectedOption.label}
+          </Text>
+          <Text style={styles.detailDescription}>
+            {removeBoltGlyphs(selectedOption.description)}
+          </Text>
+          {selectedOption.detail ? (
+            <Text style={styles.detailHint}>{removeBoltGlyphs(selectedOption.detail)}</Text>
+          ) : null}
+        </View>
+      ) : null}
+      <View style={[styles.container, { maxHeight }]}>
+        <ScrollView
+          ref={scrollRef}
+          onLayout={handleScrollViewLayout}
+          onContentSizeChange={pinToBottom}
+          onScroll={(event) => {
+            scrollOffsetRef.current = event.nativeEvent.contentOffset.y;
+          }}
+          scrollEventThrottle={16}
+          style={styles.scrollView}
+          contentContainerStyle={styles.scrollContent}
+          keyboardShouldPersistTaps="always"
+        >
+          {options.map((option, index) => {
+            const isSelected = index === selectedIndex;
+            const optionLabel = removeBoltGlyphs(option.label) ?? option.label;
+            const optionDescription = removeBoltGlyphs(option.description);
+            const isFileOrDir = option.kind === "directory" || option.kind === "file";
+            return (
+              <Pressable
+                key={option.id}
+                onLayout={(event) => handleRowLayout(index, event)}
+                onPress={() => onSelect(option)}
+                style={({ hovered = false, pressed }) => [
+                  styles.item,
+                  (hovered || pressed || isSelected) && styles.itemActive,
+                ]}
+              >
+                {isFileOrDir ? (
+                  <>
+                    <View style={styles.itemLeading}>
+                      {option.kind === "directory" ? (
+                        <Folder size={14} color={theme.colors.foregroundMuted} />
+                      ) : (
+                        <File size={14} color={theme.colors.foregroundMuted} />
+                      )}
+                    </View>
+                    <View style={styles.itemMain}>
+                      <View style={styles.itemHeader}>
+                        <Text style={styles.itemLabel}>{optionLabel}</Text>
+                        {removeBoltGlyphs(option.detail) ? (
+                          <Text style={styles.itemDetail}>{removeBoltGlyphs(option.detail)}</Text>
+                        ) : null}
+                      </View>
+                      {optionDescription ? (
+                        <Text style={styles.itemDescription} numberOfLines={1}>
+                          {optionDescription}
+                        </Text>
+                      ) : null}
+                    </View>
+                  </>
+                ) : (
+                  <View style={styles.itemMainRow}>
+                    <Text style={styles.itemLabel}>{optionLabel}</Text>
+                    {optionDescription ? (
+                      <Text style={styles.itemDescriptionInline} numberOfLines={1}>
+                        {optionDescription}
+                      </Text>
+                    ) : null}
+                  </View>
+                )}
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create(((theme: Theme) => ({
-  container: {
-    backgroundColor: theme.colors.surface0,
+  outerWrapper: {
+    gap: theme.spacing[1],
+  },
+  detailCard: {
+    backgroundColor: theme.colors.surface1,
     borderWidth: theme.borderWidth[1],
-    borderColor: theme.colors.border,
+    borderColor: theme.colors.borderAccent,
+    borderRadius: theme.borderRadius.lg,
+    paddingHorizontal: theme.spacing[3],
+    paddingVertical: theme.spacing[3],
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  detailLabel: {
+    color: theme.colors.foreground,
+    fontSize: theme.fontSize.sm,
+    fontWeight: theme.fontWeight.normal,
+  },
+  detailDescription: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.xs,
+    marginTop: theme.spacing[1],
+  },
+  detailHint: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.xs,
+    marginTop: theme.spacing[1],
+  },
+  container: {
+    backgroundColor: theme.colors.surface1,
+    borderWidth: theme.borderWidth[1],
+    borderColor: theme.colors.borderAccent,
     borderRadius: theme.borderRadius.lg,
     overflow: "hidden",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 8,
   },
   scrollView: {
     flexGrow: 0,
@@ -236,11 +302,18 @@ const styles = StyleSheet.create(((theme: Theme) => ({
     marginRight: theme.spacing[1],
   },
   itemActive: {
-    backgroundColor: theme.colors.surface1,
+    backgroundColor: theme.colors.surface2,
   },
   itemMain: {
     flex: 1,
     minWidth: 0,
+  },
+  itemMainRow: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[2],
   },
   itemHeader: {
     flexDirection: "row",
@@ -260,6 +333,11 @@ const styles = StyleSheet.create(((theme: Theme) => ({
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.xs,
     marginTop: 2,
+  },
+  itemDescriptionInline: {
+    flex: 1,
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.xs,
   },
   emptyItem: {
     paddingHorizontal: theme.spacing[3],
