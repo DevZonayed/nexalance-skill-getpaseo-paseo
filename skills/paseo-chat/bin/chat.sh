@@ -116,6 +116,14 @@ message_preview() {
   printf '%s' "$preview"
 }
 
+format_timestamp() {
+  local ts="$1"
+  local time_part="${ts#*T}"
+  time_part="${time_part%Z}"
+  local date_part="${ts%%T*}"
+  printf '%s %s' "$date_part" "$time_part"
+}
+
 print_message() {
   local file="$1"
   local created_at agent_id agent_name reply_to message_id
@@ -125,19 +133,29 @@ print_message() {
   reply_to="$(frontmatter_value "reply_to" "$file")"
   message_id="$(frontmatter_value "message_id" "$file")"
 
-  if [[ -n "$agent_name" ]]; then
-    printf '### %s · %s (%s)\n' "$created_at" "$agent_name" "$agent_id"
-  else
-    printf '### %s · %s\n' "$created_at" "$agent_id"
-  fi
-  printf 'message_id: %s\n' "$message_id"
-  if [[ -n "$reply_to" ]]; then
-    printf 'reply_to: %s\n' "$reply_to"
-  fi
-  printf '\n'
+  local display_time
+  display_time="$(format_timestamp "$created_at")"
 
-  message_body "$file"
+  local author
+  if [[ -n "$agent_name" ]]; then
+    author="$agent_name ($agent_id)"
+  else
+    author="$agent_id"
+  fi
+
+  printf '┌─ %s ── %s ── [%s]' "$author" "$display_time" "$message_id"
+  if [[ -n "$reply_to" ]]; then
+    printf ' ↩ %s' "$reply_to"
+  fi
   printf '\n'
+  printf '│\n'
+
+  message_body "$file" | sed '/./,$!d' | while IFS= read -r line; do
+    printf '│  %s\n' "$line"
+  done
+
+  printf '│\n'
+  printf '└─\n'
 }
 
 require_room() {
@@ -165,12 +183,16 @@ message_files_sorted() {
 
 print_message_files() {
   local files=("$@")
-  local index
 
+  if [[ ${#files[@]} -eq 0 ]]; then
+    return
+  fi
+
+  local index
   for ((index = 0; index < ${#files[@]}; index += 1)); do
     print_message "${files[$index]}"
     if [[ $index -lt $((${#files[@]} - 1)) ]]; then
-      printf -- '---\n\n'
+      printf '\n'
     fi
   done
 }
