@@ -43,6 +43,32 @@ Before any agent starts working, align with the user on logistics:
 
 These questions prevent wasted work. A perfectly implemented feature in the wrong branch or without a PR is still a failure.
 
+## Chat Rooms
+
+When agents need asynchronous coordination, shared status, or a lightweight handoff channel, use chat rooms.
+
+If you decide chat would help:
+- create a room for the task
+- tell agents the exact room id
+- tell agents to load the `paseo-chat` skill
+- tell agents to use `skills/paseo-chat/bin/chat.sh` for reading and posting
+- tell agents to post memories, useful context, findings, blockers, and handoffs there
+- tell agents to check chat very often while they are working
+
+Use chat when:
+- multiple agents need to coordinate without constant orchestrator relays
+- review findings should be visible to other agents
+- a task benefits from a shared running log
+
+When you launch planning, implementation, investigation, or review agents and chat is in play:
+- require them to add their findings to the room
+- require them to read recent chat before acting
+- require them to post back when they discover something another agent may need
+
+Chat is not just passive storage. Mentions and replies trigger direct notifications through chat, so agents can actively get each other's attention.
+
+Do not assume chat is required for every orchestration. Use it when it adds coordination value.
+
 ## Agent Types
 
 Implementation and review are not the only agent roles. Use the right agent for the job:
@@ -54,6 +80,50 @@ Implementation and review are not the only agent roles. Use the right agent for 
 - **Second opinion agents** — When you're unsure about an approach, launch an agent (different provider if possible) to evaluate the plan and poke holes in it.
 
 Don't limit yourself to implement → review. Explore first if you need context. Get a second opinion if the design is tricky. The user is paying for thoroughness, not speed.
+
+## Naming Agents
+
+Name sub-agents in kebab-case and include both role and scope.
+
+Use this format:
+
+```text
+<role>-<scope>[-<slice>]
+```
+
+Examples:
+- `plan-issue-456`
+- `impl-issue-456`
+- `review-issue-456`
+- `test-issue-456`
+- `qa-issue-456`
+- `refactor-relay-auth`
+- `investigate-ci-flake`
+- `explore-agent-chat`
+- `verify-pr-143`
+- `impl-issue-456-api`
+
+Approved role prefixes:
+- `plan`
+- `impl`
+- `review`
+- `test`
+- `qa`
+- `verify`
+- `investigate`
+- `explore`
+- `refactor`
+
+Rules:
+- always use kebab-case
+- no spaces
+- no emoji
+- no brackets
+- no vague names
+- always include the task scope
+- add a final slice only when needed to disambiguate
+
+Good names make chat, mentions, logs, and agent lists much easier to use.
 
 ## How to Write Agent Prompts
 
@@ -124,6 +194,13 @@ Agents start with **zero knowledge** of your conversation. Everything they need 
 - What feature was recently added
 - What decisions were made
 - What was already tried
+
+If agents should coordinate through chat, include:
+- the room id
+- the instruction to load `paseo-chat`
+- what they should post there
+- that they should check it very often
+- that they should use `@agent-id` and replies when they want to notify someone directly
 
 ## Always Review
 
