@@ -4,7 +4,6 @@ import { StyleSheet, UnistylesRuntime, useUnistyles } from "react-native-unistyl
 import { ArrowUp, Square, Pencil, AudioLines } from "lucide-react-native";
 import Animated from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useIsFocused } from "@react-navigation/native";
 import { FOOTER_HEIGHT, MAX_CONTENT_WIDTH } from "@/constants/layout";
 import { generateMessageId, type StreamItem } from "@/types/stream";
 import {
@@ -59,6 +58,7 @@ type ImageListUpdater = ImageAttachment[] | ((prev: ImageAttachment[]) => ImageA
 interface AgentInputAreaProps {
   agentId: string;
   serverId: string;
+  isInputActive: boolean;
   onSubmitMessage?: (payload: MessagePayload) => Promise<void>;
   /** Externally controlled loading state. When true, disables the submit button. */
   isSubmitLoading?: boolean;
@@ -91,6 +91,7 @@ const MOBILE_MESSAGE_PLACEHOLDER = "Message, @files, /commands";
 export function AgentInputArea({
   agentId,
   serverId,
+  isInputActive,
   onSubmitMessage,
   isSubmitLoading = false,
   blurOnSubmit = false,
@@ -112,8 +113,6 @@ export function AgentInputArea({
   const { theme } = useUnistyles();
   const buttonIconSize = Platform.OS === "web" ? theme.iconSize.md : theme.iconSize.lg;
   const insets = useSafeAreaInsets();
-  const isScreenFocused = useIsFocused();
-
   const client = useHostRuntimeClient(serverId);
   const isConnected = useHostRuntimeIsConnected(serverId);
   const agentDirectoryStatus = useHostRuntimeAgentDirectoryStatus(serverId);
@@ -423,7 +422,7 @@ export function AgentInputArea({
 
   const handleKeyboardAction = useCallback(
     (action: KeyboardActionDefinition): boolean => {
-      if (!isScreenFocused) {
+      if (!isInputActive) {
         return false;
       }
 
@@ -459,7 +458,7 @@ export function AgentInputArea({
           return false;
       }
     },
-    [isScreenFocused],
+    [isInputActive],
   );
 
   useKeyboardActionHandler({
@@ -471,9 +470,9 @@ export function AgentInputArea({
       "message-input.voice-toggle",
       "message-input.voice-mute-toggle",
     ],
-    enabled: isScreenFocused,
+    enabled: isInputActive,
     priority: isMessageInputFocused ? 200 : 100,
-    isActive: () => isScreenFocused,
+    isActive: () => isInputActive,
     handle: handleKeyboardAction,
   });
 
@@ -715,7 +714,7 @@ export function AgentInputArea({
               autoFocus={autoFocus && isDesktopWebBreakpoint}
               autoFocusKey={`${serverId}:${agentId}`}
               disabled={isSubmitLoading}
-              isScreenFocused={isScreenFocused}
+              isInputActive={isInputActive}
               leftContent={leftContent}
               rightContent={rightContent}
               voiceServerId={serverId}

@@ -807,6 +807,7 @@ function AgentPanelBody({
             <AgentInputArea
               agentId={agentId}
               serverId={serverId}
+              isInputActive={isPaneFocused}
               value={agentInputDraft.text}
               onChangeText={agentInputDraft.setText}
               images={agentInputDraft.images}

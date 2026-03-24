@@ -89,6 +89,43 @@ describe("keyboard-action-dispatcher", () => {
     expect(handle).toHaveBeenCalledTimes(1);
   });
 
+  it("dispatches to the active mounted tab when a newer hidden tab is inactive", () => {
+    const calls: string[] = [];
+    const action: KeyboardActionDefinition = {
+      id: "message-input.dictation-toggle",
+      scope: "message-input",
+    };
+
+    dispatcher.registerHandler({
+      handlerId: "visible-tab",
+      actions: [action.id],
+      enabled: true,
+      priority: 100,
+      isActive: () => true,
+      handle: () => {
+        calls.push("visible-tab");
+        return true;
+      },
+    });
+
+    dispatcher.registerHandler({
+      handlerId: "hidden-tab",
+      actions: [action.id],
+      enabled: true,
+      priority: 100,
+      isActive: () => false,
+      handle: () => {
+        calls.push("hidden-tab");
+        return true;
+      },
+    });
+
+    const handled = dispatcher.dispatch(action);
+
+    expect(handled).toBe(true);
+    expect(calls).toEqual(["visible-tab"]);
+  });
+
   it("tries lower-priority handlers when a higher one does not consume the action", () => {
     const calls: string[] = [];
     const action: KeyboardActionDefinition = {

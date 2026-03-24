@@ -66,8 +66,8 @@ export interface MessageInputProps {
   autoFocus?: boolean;
   autoFocusKey?: string;
   disabled?: boolean;
-  /** True when the containing screen is focused (React Navigation). Used to disable global hotkeys and cancel dictation when unfocused. */
-  isScreenFocused?: boolean;
+  /** True when this input is the active composer. Used to gate global hotkeys and stop dictation when hidden. */
+  isInputActive?: boolean;
   /** Content to render on the left side of the button row (e.g., AgentStatusBar) */
   leftContent?: React.ReactNode;
   /** Content to render on the right side after voice button (e.g., realtime button, cancel button) */
@@ -190,7 +190,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
     autoFocus = false,
     autoFocusKey,
     disabled = false,
-    isScreenFocused = true,
+    isInputActive = true,
     leftContent,
     rightContent,
     voiceServerId,
@@ -387,7 +387,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
     onError: handleDictationError,
     canStart: canStartDictation,
     canConfirm: canConfirmDictation,
-    autoStopWhenHidden: { isVisible: isScreenFocused },
+    autoStopWhenHidden: { isVisible: isInputActive },
     enableDuration: true,
   });
 
