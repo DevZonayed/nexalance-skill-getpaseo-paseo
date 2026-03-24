@@ -260,7 +260,6 @@ export function AgentInputArea({
           return updated;
         });
       }
-
       const imagesData = await encodeImages(images);
       await client.sendAgentMessage(agentId, text, {
         messageId: clientMessageId,

@@ -9,6 +9,7 @@ Usage:
   chat.sh room show --room ROOM
   chat.sh post --room ROOM (--body TEXT | --body-file PATH) [--agent-id ID] [--agent-name NAME] [--reply-to MESSAGE_ID]
   chat.sh read --room ROOM [--limit N] [--since ISO_TIMESTAMP] [--agent-id ID]
+  chat.sh wait --room ROOM [--since MESSAGE_ID] [--timeout SECONDS]
 
 Options:
   --root PATH   Override chat root (default: ~/.paseo/chat)
@@ -82,26 +83,8 @@ frontmatter_value() {
   ' "$file"
 }
 
-print_message() {
+message_body() {
   local file="$1"
-  local created_at agent_id agent_name reply_to message_id
-  created_at="$(frontmatter_value "created_at" "$file")"
-  agent_id="$(frontmatter_value "agent_id" "$file")"
-  agent_name="$(frontmatter_value "agent_name" "$file")"
-  reply_to="$(frontmatter_value "reply_to" "$file")"
-  message_id="$(frontmatter_value "message_id" "$file")"
-
-  printf '### %s · %s' "$created_at" "$agent_id"
-  if [[ -n "$agent_name" ]]; then
-    printf ' (%s)' "$agent_name"
-  fi
-  printf '\n'
-  printf 'message_id: %s\n' "$message_id"
-  if [[ -n "$reply_to" ]]; then
-    printf 'reply_to: %s\n' "$reply_to"
-  fi
-  printf '\n'
-
   awk '
     BEGIN { delim_count = 0 }
     /^---$/ {
@@ -112,6 +95,48 @@ print_message() {
       print
     }
   ' "$file"
+}
+
+message_preview() {
+  local file="$1"
+  local max_length="${2:-100}"
+  local preview
+
+  preview="$(
+    message_body "$file" |
+      awk 'NF { print; exit }' |
+      tr -s '[:space:]' ' ' |
+      sed 's/^ //; s/ $//'
+  )"
+
+  if [[ ${#preview} -gt "$max_length" ]]; then
+    preview="${preview:0:$((max_length - 3))}..."
+  fi
+
+  printf '%s' "$preview"
+}
+
+print_message() {
+  local file="$1"
+  local created_at agent_id agent_name reply_to message_id
+  created_at="$(frontmatter_value "created_at" "$file")"
+  agent_id="$(frontmatter_value "agent_id" "$file")"
+  agent_name="$(frontmatter_value "agent_name" "$file")"
+  reply_to="$(frontmatter_value "reply_to" "$file")"
+  message_id="$(frontmatter_value "message_id" "$file")"
+
+  if [[ -n "$agent_name" ]]; then
+    printf '### %s · %s (%s)\n' "$created_at" "$agent_name" "$agent_id"
+  else
+    printf '### %s · %s\n' "$created_at" "$agent_id"
+  fi
+  printf 'message_id: %s\n' "$message_id"
+  if [[ -n "$reply_to" ]]; then
+    printf 'reply_to: %s\n' "$reply_to"
+  fi
+  printf '\n'
+
+  message_body "$file"
   printf '\n'
 }
 
@@ -133,9 +158,35 @@ find_message_file_by_id() {
     done
 }
 
+message_files_sorted() {
+  local room="$1"
+  find "$rooms_root/$room/messages" -name '*.md' -type f | sort
+}
+
+print_message_files() {
+  local files=("$@")
+  local index
+
+  for ((index = 0; index < ${#files[@]}; index += 1)); do
+    print_message "${files[$index]}"
+    if [[ $index -lt $((${#files[@]} - 1)) ]]; then
+      printf -- '---\n\n'
+    fi
+  done
+}
+
 extract_mentions() {
   local body="$1"
   printf '%s\n' "$body" | grep -oE '@[A-Za-z0-9._:-]+' | sed 's/^@//' | awk '!seen[$0]++'
+}
+
+room_participant_ids() {
+  local room="$1"
+  find "$rooms_root/$room/messages" -name '*.md' -type f | sort |
+    while IFS= read -r file; do
+      frontmatter_value "agent_id" "$file"
+    done |
+    awk 'NF && $0 != "manual" && !seen[$0]++'
 }
 
 notify_agent() {
@@ -145,25 +196,39 @@ notify_agent() {
   local sender_agent_name="$4"
   local message_id="$5"
   local reason="$6"
+  local message_file="$7"
 
   if [[ -z "$target_agent_id" || "$target_agent_id" == "manual" || "$target_agent_id" == "$sender_agent_id" ]]; then
     return
   fi
 
-  local sender_label="$sender_agent_id"
+  local sender_label
   if [[ -n "$sender_agent_name" ]]; then
     sender_label="$sender_agent_name ($sender_agent_id)"
+  else
+    sender_label="$sender_agent_id"
   fi
 
-  local notification="You have a new chat message.
+  local notification full_message
+  notification="You have a new chat message.
 
 Room: $room
 From: $sender_label
 Message ID: $message_id
-Reason: $reason
+Reason: $reason"
 
-To read it:
-skills/paseo-chat/bin/chat.sh read --room $room --limit 10"
+  full_message="$(message_body "$message_file")"
+  if [[ -n "$full_message" ]]; then
+    notification="${notification}
+
+---
+
+$full_message"
+  fi
+
+  notification="${notification}
+
+-----"
 
   "$paseo_bin" send --no-wait "$target_agent_id" "$notification" >/dev/null 2>&1 || true
 }
@@ -287,6 +352,7 @@ case "$command_name" in
     agent_id="${PASEO_AGENT_ID:-manual}"
     agent_name=""
     reply_to=""
+    auto_resolve_name=true
 
     while [[ $# -gt 0 ]]; do
       case "$1" in
@@ -294,7 +360,7 @@ case "$command_name" in
         --body) body_input="$2"; shift 2 ;;
         --body-file) body_file="$2"; shift 2 ;;
         --agent-id) agent_id="$2"; shift 2 ;;
-        --agent-name) agent_name="$2"; shift 2 ;;
+        --agent-name) agent_name="$2"; auto_resolve_name=false; shift 2 ;;
         --reply-to) reply_to="$2"; shift 2 ;;
         *) echo "Unknown option: $1" >&2; usage ;;
       esac
@@ -303,6 +369,11 @@ case "$command_name" in
     [[ -n "$room" ]] || { echo "Error: --room is required" >&2; exit 1; }
     sanitize_room_path "$room"
     require_room "$room"
+
+    if [[ "$auto_resolve_name" == true && -z "$agent_name" && "$agent_id" != "manual" ]]; then
+      agent_name="$("$paseo_bin" inspect "$agent_id" --json 2>/dev/null | jq -r '.Name // empty' 2>/dev/null)" || agent_name=""
+    fi
+
     body="$(load_body "$body_input" "$body_file")"
 
     created_at="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
@@ -329,13 +400,31 @@ case "$command_name" in
       reply_file="$(find_message_file_by_id "$room" "$reply_to" || true)"
       if [[ -n "$reply_file" ]]; then
         reply_target_agent_id="$(frontmatter_value "agent_id" "$reply_file")"
-        notify_agent "$reply_target_agent_id" "$room" "$agent_id" "$agent_name" "$message_id" "reply to $reply_to"
+        notify_agent "$reply_target_agent_id" "$room" "$agent_id" "$agent_name" "$message_id" "reply to $reply_to" "$message_file"
         notified_agents+=("$reply_target_agent_id")
       fi
     fi
 
     while IFS= read -r mentioned_agent_id; do
       [[ -n "$mentioned_agent_id" ]] || continue
+      if [[ "$mentioned_agent_id" == "everyone" ]]; then
+        while IFS= read -r participant_agent_id; do
+          [[ -n "$participant_agent_id" ]] || continue
+          already_notified=false
+          for existing_id in "${notified_agents[@]}"; do
+            if [[ "$existing_id" == "$participant_agent_id" ]]; then
+              already_notified=true
+              break
+            fi
+          done
+          if [[ "$already_notified" == false ]]; then
+            notify_agent "$participant_agent_id" "$room" "$agent_id" "$agent_name" "$message_id" "@everyone mention" "$message_file"
+            notified_agents+=("$participant_agent_id")
+          fi
+        done < <(room_participant_ids "$room")
+        continue
+      fi
+
       already_notified=false
       for existing_id in "${notified_agents[@]}"; do
         if [[ "$existing_id" == "$mentioned_agent_id" ]]; then
@@ -344,7 +433,7 @@ case "$command_name" in
         fi
       done
       if [[ "$already_notified" == false ]]; then
-        notify_agent "$mentioned_agent_id" "$room" "$agent_id" "$agent_name" "$message_id" "direct mention"
+        notify_agent "$mentioned_agent_id" "$room" "$agent_id" "$agent_name" "$message_id" "direct mention" "$message_file"
         notified_agents+=("$mentioned_agent_id")
       fi
     done < <(extract_mentions "$body")
@@ -372,8 +461,7 @@ case "$command_name" in
     sanitize_room_path "$room"
     require_room "$room"
 
-    messages_dir="$rooms_root/$room/messages"
-    mapfile -t all_files < <(find "$messages_dir" -name '*.md' -type f | sort)
+    mapfile -t all_files < <(message_files_sorted "$room")
 
     filtered_files=()
     for file in "${all_files[@]}"; do
@@ -401,11 +489,79 @@ case "$command_name" in
       fi
     fi
 
-    for ((index = start_index; index < ${#filtered_files[@]}; index += 1)); do
-      print_message "${filtered_files[$index]}"
-      if [[ $index -lt $((${#filtered_files[@]} - 1)) ]]; then
-        printf -- '---\n\n'
+    print_message_files "${filtered_files[@]:$start_index}"
+    ;;
+
+  wait)
+    room=""
+    since_message_id=""
+    timeout_seconds=""
+    poll_interval_seconds="1"
+
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --room) room="$2"; shift 2 ;;
+        --since) since_message_id="$2"; shift 2 ;;
+        --timeout) timeout_seconds="$2"; shift 2 ;;
+        *) echo "Unknown option: $1" >&2; usage ;;
+      esac
+    done
+
+    [[ -n "$room" ]] || { echo "Error: --room is required" >&2; exit 1; }
+    sanitize_room_path "$room"
+    require_room "$room"
+
+    if [[ -n "$timeout_seconds" ]] && ! [[ "$timeout_seconds" =~ ^[0-9]+$ ]]; then
+      echo "Error: --timeout must be a number" >&2
+      exit 1
+    fi
+
+    baseline_file=""
+    if [[ -n "$since_message_id" ]]; then
+      baseline_file="$(find_message_file_by_id "$room" "$since_message_id" || true)"
+      [[ -n "$baseline_file" ]] || { echo "Error: message not found: $since_message_id" >&2; exit 1; }
+    else
+      while IFS= read -r file; do
+        baseline_file="$file"
+      done < <(message_files_sorted "$room")
+    fi
+
+    started_at="$(date +%s)"
+    trap 'exit 130' INT TERM
+
+    while true; do
+      mapfile -t all_files < <(message_files_sorted "$room")
+      new_files=()
+      after_baseline=false
+
+      if [[ -z "$baseline_file" ]]; then
+        after_baseline=true
       fi
+
+      for file in "${all_files[@]}"; do
+        if [[ "$after_baseline" == true ]]; then
+          new_files+=("$file")
+          continue
+        fi
+
+        if [[ "$file" == "$baseline_file" ]]; then
+          after_baseline=true
+        fi
+      done
+
+      if [[ ${#new_files[@]} -gt 0 ]]; then
+        print_message_files "${new_files[@]}"
+        exit 0
+      fi
+
+      if [[ -n "$timeout_seconds" ]]; then
+        now="$(date +%s)"
+        if (( now - started_at >= timeout_seconds )); then
+          exit 124
+        fi
+      fi
+
+      sleep "$poll_interval_seconds"
     done
     ;;
 

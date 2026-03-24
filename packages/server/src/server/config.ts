@@ -15,10 +15,6 @@ import {
 const DEFAULT_PORT = 6767;
 const DEFAULT_RELAY_ENDPOINT = "relay.paseo.sh:443";
 const DEFAULT_APP_BASE_URL = "https://app.paseo.sh";
-function getDefaultListen(): string {
-  // Main HTTP server defaults to TCP
-  return `127.0.0.1:${DEFAULT_PORT}`;
-}
 
 export type CliConfigOverrides = Partial<{
   listen: string;
@@ -55,7 +51,7 @@ export function loadConfig(
   // - unix:///path/to/socket (Unix socket)
   // Default is TCP at 127.0.0.1:6767
   const listen =
-    options?.cli?.listen ?? env.PASEO_LISTEN ?? persisted.daemon?.listen ?? getDefaultListen();
+    options?.cli?.listen ?? env.PASEO_LISTEN ?? persisted.daemon?.listen ?? `127.0.0.1:${env.PORT ?? DEFAULT_PORT}`;
 
   const envCorsOrigins = env.PASEO_CORS_ORIGINS
     ? env.PASEO_CORS_ORIGINS.split(",").map((s) => s.trim())

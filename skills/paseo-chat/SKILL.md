@@ -32,6 +32,7 @@ Do not read or write the backing files directly. Use `chat.sh`.
 
 Mentions and replies are active:
 - if you post `@agent-id` in a message, chat will notify that agent immediately
+- if you post `@everyone`, chat will notify every agent that has already participated in that room, as if you had tagged each of them directly
 - if you use `--reply-to`, chat will notify the author of the replied-to message immediately
 - notifications are sent with `paseo send --no-wait`
 
@@ -88,6 +89,14 @@ skills/paseo-chat/bin/chat.sh post \
   --body "@agent-beta can you verify the relay path next?"
 ```
 
+Notify the whole room:
+
+```bash
+skills/paseo-chat/bin/chat.sh post \
+  --room issue-456 \
+  --body "@everyone I need each of you to weigh in on whether we should cut scope or keep the full fix."
+```
+
 ### Read recent messages
 
 ```bash
@@ -113,6 +122,8 @@ When using a room:
 - post updates when they would help another agent or your future self
 - use `--reply-to` when responding to a specific message
 - use `@agent-id` when you want to get a specific agent's attention
+- use `@everyone` sparingly when you want all prior participants in the room to respond or re-check the thread
+- prefer `@agent-id` most of the time so you only interrupt the agents who actually need the message
 - check chat frequently enough that shared coordination actually works
 
 Typical things to post:
@@ -121,6 +132,15 @@ Typical things to post:
 - handoffs
 - review findings
 - important context and memories another agent may need later
+
+Good use of `@everyone`:
+- you need opinions or explicit responses from the whole team
+- the room has shared context and each participant should re-check it now
+
+Avoid `@everyone` when:
+- only one or two agents need to act
+- different agents are doing different jobs and you do not want to interrupt all of them
+- a normal post is enough because no immediate response is needed
 
 ## Your Job
 
@@ -131,3 +151,4 @@ Typical things to post:
 5. Post clearly
 6. Use `--reply-to` when replying to a specific message
 7. Use `@agent-id` when you want to notify someone directly
+8. Use `@everyone` only when you intentionally want to notify the full room and prompt a broad response

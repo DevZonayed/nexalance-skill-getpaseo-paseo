@@ -69,14 +69,42 @@ Chat is not just passive storage. Mentions and replies trigger direct notificati
 
 Do not assume chat is required for every orchestration. Use it when it adds coordination value.
 
+## Provider Selection: Claude vs Codex
+
+Claude and Codex have complementary strengths and weaknesses. Use each to cover the other's blind spots.
+
+**Codex** — the implementation workhorse (`--provider codex --mode full-access`):
+- Strengths: thorough, methodical, catches edge cases, good at deep implementation
+- Weakness: over-engineers. Sees every edge case and hardens against each with defensive code — coordination callbacks, guard clauses, retry wrappers, extra abstractions. Adds robustness through layers instead of designing simplicity.
+
+**Claude** — the design and review brain (`--mode bypassPermissions`):
+- Strengths: good design instinct, sees the simple solution, strong at architecture and reasoning
+- Weakness: can be careless. Misses details, skips steps, doesn't always verify thoroughly.
+
+**The workflow:**
+- Use **Codex for implementation** — it's the workhorse for writing code
+- Use **Claude for review after Codex implements** — specifically to catch over-engineering. Ask: "Flag any defensive code, coordination layers, or abstractions that could be eliminated by a simpler design"
+- Use **Codex for review after Claude implements** — specifically to catch carelessness, missed edge cases, and incomplete verification
+- Each one audits the other's blind spot: Claude simplifies Codex's complexity, Codex catches Claude's carelessness
+
+**What Codex over-engineering looks like:**
+- Guard clauses and null checks for states that can't happen if the data flow is designed right
+- Coordination callbacks or event bridges connecting things that shouldn't need connecting
+- Helper functions wrapping trivial operations — indirection without value
+- try/catch blocks duplicating error handling the caller already does
+- Optional fields and union types that create ambiguity instead of clarity
+- Code added "just in case" that can never execute given the current flow
+
+The fix is never "add more defensive code." The fix is design simpler types and data flow so the edge cases can't happen. Simplicity IS robustness.
+
 ## Agent Types
 
 Implementation and review are not the only agent roles. Use the right agent for the job:
 
 - **Exploration agents** — Read the codebase, map dependencies, understand how something works. Launch these when you need context before making decisions.
 - **Investigation agents** — Debug a problem, trace a bug, find root cause. Must NOT edit files.
-- **Implementation agents** — Write code to meet acceptance criteria.
-- **Review agents** — Independently verify implementation meets criteria. Must NOT edit files.
+- **Implementation agents** — Write code to meet acceptance criteria. **Default to Codex.**
+- **Review agents** — Independently verify implementation meets criteria. Must NOT edit files. **Use the opposite provider from whoever implemented** — Claude reviews Codex's work, Codex reviews Claude's.
 - **Second opinion agents** — When you're unsure about an approach, launch an agent (different provider if possible) to evaluate the plan and poke holes in it.
 
 Don't limit yourself to implement → review. Explore first if you need context. Get a second opinion if the design is tricky. The user is paying for thoroughness, not speed.
@@ -202,34 +230,136 @@ If agents should coordinate through chat, include:
 - that they should check it very often
 - that they should use `@agent-id` and replies when they want to notify someone directly
 
-## Always Review
+## Always Review — Audit Agents Are Your Eyes
 
-After every implementation agent finishes, spin up a **review agent** to independently verify the work.
+After every implementation agent finishes, spin up an **audit agent** to independently verify the work. Implementation agents will always drift — not because they're liars, but because that's how LLMs work. They sneak in workarounds, forget constraints, add defensive code, or silently skip hard parts. You cannot trust their self-assessment. Audit agents are how you actually see what happened.
 
-The review agent should:
-- Check that all acceptance criteria are met — not by reading the agent's claims, but by actually testing
-- Verify tests exist and pass
-- Check that the agent didn't hand-wave or work around the problem
-- Flag any regressions
-- Run typecheck and tests
+### Audit prompts must be structured checklists, not open-ended
 
-```bash
-paseo run --provider codex --mode full-access --name "[Review] Task description" \
-  "Review the recent changes in [repo]. The goal was [goal].
+Never say "review and let me know if you find issues." That produces vague, unfocused reports. Instead, define the **specific risks and acceptance criteria** you need verified, then ask **narrow yes/no questions**.
 
-Acceptance criteria:
-- [criterion 1]
-- [criterion 2]
+You know what the risks are because you wrote the acceptance criteria and you know what agents tend to get wrong. Turn that knowledge into verification questions.
 
-Verify EACH criterion independently. Run the tests. Run typecheck.
-Check that the implementation actually solves the problem — not that
-it appears to solve it. Look for workarounds, hand-waves, and missing
-edge cases.
-
-DO NOT edit any files. Report your findings."
+**Bad** (open-ended, unfocused):
+```
+Review the recent changes. Check for issues, regressions, and code quality problems.
+Report your findings.
 ```
 
-Don't skip this step. Don't trust the implementation agent's self-assessment.
+This produces a rambling report that misses the things you actually care about.
+
+**Good** (structured checklist with yes/no questions):
+```
+Verify the event stream redesign. Answer each question with YES/NO
+and evidence (grep output, test output, line reference). DO NOT edit files.
+
+## Acceptance criteria
+1. Does `grep -rn "async \*stream(" providers/` return zero matches?
+2. Does `grep -rn "Pushable" providers/` return zero matches?
+3. Does `npm run typecheck` pass with zero errors?
+4. Do all 77 manager tests pass? Run them and paste the summary.
+5. Do all 8 integration tests pass against real Claude? Run them.
+6. Is there any code path where events are emitted WITHOUT turnId?
+   grep for notifySubscribers and check each call site.
+7. Are there any new helper functions or abstractions that didn't
+   exist before? If yes, justify each one.
+8. Is there any try/catch that duplicates error handling from a caller?
+
+## What to flag
+- Any YES that should be NO, or NO that should be YES
+- Any question you cannot confidently answer
+```
+
+### How to design audit questions
+
+Your audit questions should come from three sources:
+
+1. **Acceptance criteria** — turn each criterion into a verification question
+2. **Known risks** — what does this provider (Claude/Codex) tend to get wrong? Ask about those specific patterns
+3. **Constraints** — what was the agent told NOT to do? Verify they didn't do it
+
+For Codex implementations, always ask:
+- "Are there any new abstractions, helpers, or utility functions?"
+- "Is there any defensive code (guard clauses, null checks, fallbacks) that could be designed away?"
+- "Are there any coordination layers between components?"
+
+For Claude implementations, always ask:
+- "Did the agent skip any acceptance criteria?"
+- "Are all edge cases actually tested, not just mentioned?"
+- "Did the agent verify by running tests, or just claim they pass?"
+
+### Use narrow, single-purpose audit passes
+
+Don't run one big audit that checks everything. Run multiple focused passes, each with a single concern. This produces sharper results because the agent stays focused on one thing instead of skimming many.
+
+The examples below are templates — every task will require different questions. Think about what specifically could go wrong for THIS task, with THIS provider, and write questions that probe those risks. The templates show the structure and tone, not the exact questions to ask.
+
+**Over-engineering pass** (after Codex implements):
+```
+Answer YES/NO with line references. DO NOT edit files.
+
+1. List every new function/method/class that didn't exist before this change.
+   For each one: is it necessary, or could the caller do this inline?
+2. List every try/catch block in the changed code.
+   For each one: does the caller already handle this error?
+3. List every guard clause (if !x return/throw) in the changed code.
+   For each one: can this state actually happen given the data flow?
+4. Are there any callbacks, event bridges, or adapters connecting
+   two things that could talk directly?
+```
+
+**Testing pass** (after any implementation):
+```
+Answer YES/NO with evidence. DO NOT edit files.
+
+1. Run the test suite. Paste the summary line. How many pass/fail/skip?
+2. For each acceptance criterion, name the specific test that covers it.
+   If no test exists, say MISSING.
+3. Are any tests using mocks where real implementations exist?
+4. Are any tests trivially passing (asserting true, empty test bodies,
+   testing the mock instead of the code)?
+5. Run each test in isolation — do any fail when run alone but pass
+   in the full suite? (ordering dependency)
+```
+
+**Correctness pass** (after any implementation):
+```
+Answer YES/NO with evidence. DO NOT edit files.
+
+1. For each acceptance criterion, trace the code path that implements it.
+   Does the path actually work end-to-end?
+2. Are there any TODO/FIXME/HACK comments in the changed code?
+3. Does npm run typecheck pass? Paste the output.
+4. Are there any type assertions (as X) or @ts-ignore in the changed code?
+5. Run grep for [specific patterns that should/shouldn't exist].
+```
+
+**Cleanup pass** (after deletion/refactoring):
+```
+Answer YES/NO with evidence. DO NOT edit files.
+
+1. grep for [each deleted concept]. Zero matches in production code?
+2. Are there any imports of deleted modules?
+3. Are there any dead code paths that reference deleted functionality?
+4. Are there any comments referencing deleted concepts?
+5. Does the test suite still pass after deletions?
+```
+
+Choose which passes to run based on the task and the provider that implemented it. You don't always need all of them — pick the ones that match the risks. Write fresh questions each time based on what you know about the specific task, the acceptance criteria, and what the implementation agent was likely to get wrong.
+
+### Audit agents must run commands, not read claims
+
+The audit agent must independently execute verification:
+- Run `npm run typecheck` — don't accept "typecheck passes" from the impl agent
+- Run the test suite — don't accept "all tests pass" from the impl agent
+- Run `grep` to confirm deletions — don't accept "I deleted it" from the impl agent
+- Read the actual diff — don't accept a summary of changes
+
+### Use the opposite provider for audits
+
+When Codex implements, use Claude to audit. When Claude implements, use Codex to audit. Each catches what the other misses.
+
+Don't skip this step. Don't trust the implementation agent's self-assessment. Your audit agents are the only way you actually know what happened.
 
 ## Course-Correcting Agents
 

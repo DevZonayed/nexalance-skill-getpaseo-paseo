@@ -5,10 +5,6 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export PATH="$SCRIPT_DIR/../node_modules/.bin:$PATH"
 
-# Find available ports with sequential fallback
-DAEMON_PORT=$(get-port 6767 6768 6769 6770 6771 6772 6773)
-METRO_PORT=$(get-port 8081 8082 8083 8084 8085 8086 8087)
-
 # Use a temporary PASEO_HOME to avoid conflicts between dev instances
 if [ -z "${PASEO_HOME}" ]; then
   export PASEO_HOME
@@ -16,23 +12,17 @@ if [ -z "${PASEO_HOME}" ]; then
   trap "rm -rf '$PASEO_HOME'" EXIT
 fi
 
-# Build CORS origins for this Expo instance
-CORS_ORIGINS="http://localhost:${METRO_PORT},http://127.0.0.1:${METRO_PORT}"
-
-# Configure app to auto-connect to this daemon
-LOCAL_DAEMON="localhost:${DAEMON_PORT}"
-
 echo "══════════════════════════════════════════════════════"
 echo "  Paseo Dev"
 echo "══════════════════════════════════════════════════════"
-echo "  Daemon:  http://localhost:${DAEMON_PORT}"
-echo "  Metro:   http://localhost:${METRO_PORT}"
 echo "  Home:    ${PASEO_HOME}"
 echo "══════════════════════════════════════════════════════"
 
-# Export for child processes (overrides .env values)
-export PASEO_LISTEN="0.0.0.0:${DAEMON_PORT}"
-export PASEO_CORS_ORIGINS="${CORS_ORIGINS}"
+# Configure the daemon for the Portless app origin and let the app bootstrap
+# through the daemon's Portless URL instead of a fixed localhost port.
+APP_ORIGIN="$(portless get app)"
+DAEMON_ENDPOINT="$(portless get daemon | sed -E 's#^https?://##')"
+export PASEO_CORS_ORIGINS="${APP_ORIGIN}"
 
 # Run both with concurrently
 # BROWSER=none prevents auto-opening browser
@@ -40,5 +30,5 @@ export PASEO_CORS_ORIGINS="${CORS_ORIGINS}"
 concurrently \
   --names "daemon,metro" \
   --prefix-colors "cyan,magenta" \
-  "npm run dev:server" \
-  "BROWSER=none EXPO_PUBLIC_LOCAL_DAEMON='${LOCAL_DAEMON}' npm run start --workspace=@getpaseo/app -- --port ${METRO_PORT}"
+  "portless run --name daemon sh -c 'PASEO_LISTEN=0.0.0.0:\$PORT exec npm run dev:server'" \
+  "cd packages/app && BROWSER=none EXPO_PUBLIC_LOCAL_DAEMON='${DAEMON_ENDPOINT}' portless run --name app npx expo start"
