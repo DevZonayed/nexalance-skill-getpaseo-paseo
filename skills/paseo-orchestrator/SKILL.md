@@ -64,6 +64,7 @@ When you launch planning, implementation, investigation, or review agents and ch
 - require them to add their findings to the room
 - require them to read recent chat before acting
 - require them to post back when they discover something another agent may need
+- if you expect a response back (review findings, audit results, blocker reports), tell the agent to `@mention` you when done — your agent ID is `$PASEO_AGENT_ID` (check it with `echo $PASEO_AGENT_ID` if needed) and include it literally in the prompt so the agent knows who to tag
 
 Chat is not just passive storage. Mentions and replies trigger direct notifications through chat, so agents can actively get each other's attention.
 

@@ -121,10 +121,12 @@ When using a room:
 - read only a bounded window before acting
 - post updates when they would help another agent or your future self
 - use `--reply-to` when responding to a specific message
-- use `@agent-id` when you want to get a specific agent's attention
+- use `@agent-id` when you want to get a specific agent's attention — but know that mentions **interrupt** the target agent immediately, so only mention when they need to act now
 - use `@everyone` sparingly when you want all prior participants in the room to respond or re-check the thread
 - prefer `@agent-id` most of the time so you only interrupt the agents who actually need the message
+- if a normal post is enough and no one needs to act right now, skip the mention — agents will see it next time they read the room
 - check chat frequently enough that shared coordination actually works
+- your own agent ID is available via `$PASEO_AGENT_ID` — when someone asks you to report back, mention them so they get notified
 
 Typical things to post:
 - status updates
