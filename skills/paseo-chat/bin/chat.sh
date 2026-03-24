@@ -211,6 +211,14 @@ room_participant_ids() {
     awk 'NF && $0 != "manual" && !seen[$0]++'
 }
 
+agent_is_archived() {
+  local target_agent_id="$1"
+  local archived_at
+
+  archived_at="$("$paseo_bin" inspect "$target_agent_id" --json 2>/dev/null | jq -r '.ArchivedAt // empty' 2>/dev/null)" || archived_at=""
+  [[ -n "$archived_at" ]]
+}
+
 notify_agent() {
   local target_agent_id="$1"
   local room="$2"
@@ -221,6 +229,10 @@ notify_agent() {
   local message_file="$7"
 
   if [[ -z "$target_agent_id" || "$target_agent_id" == "manual" || "$target_agent_id" == "$sender_agent_id" ]]; then
+    return
+  fi
+
+  if agent_is_archived "$target_agent_id"; then
     return
   fi
 
