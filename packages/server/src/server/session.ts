@@ -7712,6 +7712,11 @@ export class Session {
         requestId: msg.requestId,
       },
     });
+
+    const activeStream = this.activeTerminalStreams.get(slot);
+    if (activeStream) {
+      this.trySendTerminalSnapshot(activeStream);
+    }
   }
 
   private handleUnsubscribeTerminalRequest(msg: UnsubscribeTerminalRequest): void {
@@ -7812,7 +7817,6 @@ export class Session {
       const existingStream = this.activeTerminalStreams.get(existingSlot);
       if (existingStream) {
         existingStream.needsSnapshot = true;
-        this.trySendTerminalSnapshot(existingStream);
         return existingSlot;
       }
       this.terminalIdToSlot.delete(terminal.id);
@@ -7860,7 +7864,6 @@ export class Session {
         this.markAllActiveTerminalStreamsForSnapshot();
       }
     });
-    this.trySendTerminalSnapshot(activeStream);
     return slot;
   }
 

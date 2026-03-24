@@ -457,6 +457,102 @@ describe("daemon E2E terminal", () => {
     rmSync(cwd, { recursive: true, force: true });
   }, 30000);
 
+  test("subscribe response is sent before the initial snapshot frame", async () => {
+    const cwd = tmpCwd();
+    const created = await ctx.client.createTerminal(cwd);
+    const terminalId = created.terminal!.id;
+    const ws = await connectRawWebSocket(ctx.daemon.port);
+
+    try {
+      ctx.client.sendTerminalInput(terminalId, {
+        type: "input",
+        data: "printf 'hello-ordering\\n'\r",
+      });
+      await new Promise((resolve) => setTimeout(resolve, 300));
+
+      const observed = await new Promise<Array<"response" | "snapshot">>((resolve, reject) => {
+        const events: Array<"response" | "snapshot"> = [];
+        const timeoutHandle = setTimeout(() => {
+          cleanup();
+          reject(new Error("Timed out waiting for subscribe response and snapshot"));
+        }, 10000);
+
+        const cleanup = () => {
+          clearTimeout(timeoutHandle);
+          ws.off("message", onMessage);
+          ws.off("error", onError);
+        };
+
+        const maybeResolve = () => {
+          if (!events.includes("response") || !events.includes("snapshot")) {
+            return;
+          }
+          cleanup();
+          resolve(events);
+        };
+
+        const onMessage = (raw: WebSocket.RawData) => {
+          const buffer = toWsBuffer(raw);
+          const text = typeof raw === "string" ? raw : buffer?.toString("utf8");
+          if (text) {
+            try {
+              const parsedResult = WSOutboundMessageSchema.safeParse(JSON.parse(text));
+              if (
+                parsedResult.success &&
+                parsedResult.data.type === "session" &&
+                parsedResult.data.message.type === "subscribe_terminal_response" &&
+                parsedResult.data.message.payload.requestId === "sub-ordering"
+              ) {
+                events.push("response");
+                maybeResolve();
+                return;
+              }
+            } catch {
+              // ignore non-session text frames
+            }
+          }
+
+          if (!buffer) {
+            return;
+          }
+          const frame = decodeTerminalStreamFrame(new Uint8Array(buffer));
+          if (frame?.opcode !== TerminalStreamOpcode.Snapshot) {
+            return;
+          }
+          const state = decodeTerminalSnapshotPayload(frame.payload);
+          if (!state || !extractStateText(state).includes("hello-ordering")) {
+            return;
+          }
+          events.push("snapshot");
+          maybeResolve();
+        };
+
+        const onError = (error: Error) => {
+          cleanup();
+          reject(error);
+        };
+
+        ws.on("message", onMessage);
+        ws.on("error", onError);
+        ws.send(
+          JSON.stringify({
+            type: "session",
+            message: {
+              type: "subscribe_terminal_request",
+              terminalId,
+              requestId: "sub-ordering",
+            },
+          }),
+        );
+      });
+
+      expect(observed).toEqual(["response", "snapshot"]);
+    } finally {
+      await closeWebSocket(ws);
+      rmSync(cwd, { recursive: true, force: true });
+    }
+  }, 30000);
+
   test("client sends input and receives output as raw bytes", async () => {
     const cwd = tmpCwd();
     const created = await ctx.client.createTerminal(cwd);
