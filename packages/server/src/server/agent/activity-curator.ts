@@ -4,6 +4,7 @@ import { buildToolCallDisplayModel } from "../../shared/tool-call-display.js";
 
 const DEFAULT_MAX_ITEMS = 40;
 const MAX_TOOL_INPUT_CHARS = 400;
+const MAX_TOOL_SUMMARY_CHARS = 200;
 
 function appendText(buffer: string, text: string): string {
   const normalized = text.trim();
@@ -43,6 +44,20 @@ function formatToolInputJson(input: unknown): string | null {
   } catch {
     return null;
   }
+}
+
+function formatToolSummary(summary: string | undefined): string | null {
+  if (typeof summary !== "string") {
+    return null;
+  }
+  const normalized = summary.replace(/\s+/g, " ").trim();
+  if (!normalized) {
+    return null;
+  }
+  if (normalized.length <= MAX_TOOL_SUMMARY_CHARS) {
+    return normalized;
+  }
+  return `${normalized.slice(0, MAX_TOOL_SUMMARY_CHARS - 3)}...`;
 }
 
 function hasNonEmptyObject(value: unknown): boolean {
@@ -215,7 +230,7 @@ export function curateAgentActivity(
           metadata: item.metadata,
         });
         const displayName = display.displayName;
-        const summary = display.summary;
+        const summary = formatToolSummary(display.summary);
         if (isLikelyExternalToolName(item.name) && inputJson) {
           lines.push(`[${displayName}] ${inputJson}`);
           break;

@@ -73,6 +73,29 @@ describe("curateAgentActivity", () => {
     expect(result).toContain("[Shell] npm test");
   });
 
+  it("renders terminal tool calls as one-line command summaries", () => {
+    const timeline: AgentTimelineItem[] = [
+      toolCallItem({
+        callId: "terminal-1",
+        name: "terminal",
+        detail: {
+          type: "plain_text",
+          label: `skills/paseo-chat/bin/chat.sh post --room storage-revamp --body $'first line
+
+second line'`,
+          icon: "square_terminal",
+        },
+      }),
+    ];
+
+    const result = curateAgentActivity(timeline);
+
+    expect(result).toContain(
+      "[Terminal] skills/paseo-chat/bin/chat.sh post --room storage-revamp --body $'first line second line'",
+    );
+    expect(result).not.toContain("[Interacted with terminal]");
+  });
+
   it("does not infer summary from raw input when detail is missing", () => {
     const timeline: AgentTimelineItem[] = [
       toolCallItem({

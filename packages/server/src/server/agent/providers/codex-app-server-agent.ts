@@ -2039,6 +2039,7 @@ class CodexAppServerAgentSession implements AgentSession {
   private pendingCommandOutputDeltas = new Map<string, string[]>();
   private pendingFileChangeOutputDeltas = new Map<string, string[]>();
   private terminalCommandByProcessId = new Map<string, string>();
+  private pendingUnlabeledTerminalInteractions = new Set<string>();
   private emittedTerminalInteractionKeys = new Set<string>();
   private emittedExecCommandStartedCallIds = new Set<string>();
   private emittedExecCommandCompletedCallIds = new Set<string>();
@@ -3000,12 +3001,16 @@ class CodexAppServerAgentSession implements AgentSession {
       if (!this.shouldEmitTerminalInteractionKey(interactionKey)) {
         return;
       }
+      const command =
+        (parsed.processId ? this.terminalCommandByProcessId.get(parsed.processId) : undefined) ??
+        null;
+      if (!command && parsed.processId) {
+        this.pendingUnlabeledTerminalInteractions.add(parsed.processId);
+      }
       const timelineItem = mapCodexTerminalInteractionToToolCall({
         processId: parsed.processId,
         fallbackCallId: parsed.callId,
-        command:
-          (parsed.processId ? this.terminalCommandByProcessId.get(parsed.processId) : undefined) ??
-          null,
+        command,
       });
       this.emitEvent({ type: "timeline", provider: CODEX_PROVIDER, item: timelineItem });
       return;
@@ -3217,6 +3222,18 @@ class CodexAppServerAgentSession implements AgentSession {
       return;
     }
     this.terminalCommandByProcessId.set(processId, displayCommand);
+    if (!this.pendingUnlabeledTerminalInteractions.has(processId)) {
+      return;
+    }
+    this.pendingUnlabeledTerminalInteractions.delete(processId);
+    this.emitEvent({
+      type: "timeline",
+      provider: CODEX_PROVIDER,
+      item: mapCodexTerminalInteractionToToolCall({
+        processId,
+        command: displayCommand,
+      }),
+    });
   }
 
   private shouldEmitTerminalInteractionKey(key: string): boolean {

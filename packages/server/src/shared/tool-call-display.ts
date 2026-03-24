@@ -129,7 +129,7 @@ function buildUnknownDetailOverride(input: ToolCallDisplayInput): DetailDisplay 
   }
   if (lowerName === "terminal") {
     return {
-      displayName: "Interacted with terminal",
+      displayName: "Terminal",
       summary: input.detail.type === "plain_text" ? readString(input.detail.label) : undefined,
     };
   }

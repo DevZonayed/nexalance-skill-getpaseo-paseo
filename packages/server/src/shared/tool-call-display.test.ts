@@ -119,7 +119,7 @@ describe("shared tool-call display mapping", () => {
     });
 
     expect(display).toEqual({
-      displayName: "Interacted with terminal",
+      displayName: "Terminal",
     });
   });
 
@@ -136,7 +136,7 @@ describe("shared tool-call display mapping", () => {
     });
 
     expect(display).toEqual({
-      displayName: "Interacted with terminal",
+      displayName: "Terminal",
       summary: "npm run test",
     });
   });
