@@ -1325,7 +1325,6 @@ class ClaudeAgentSession implements AgentSession {
     const turnId = this.createTurnId("foreground");
     this.activeForegroundTurnId = turnId;
     this.foregroundHasVisibleActivity = false;
-    this.pendingInterruptAbort = false;
     this.transitionTurnState("foreground", "foreground turn started");
     this.clearRecentStderr();
 
@@ -1344,7 +1343,6 @@ class ClaudeAgentSession implements AgentSession {
         provider: "claude",
         reason: "Interrupted",
       });
-      this.queryRestartNeeded = true;
       void this.interruptActiveTurn().catch((error) => {
         this.logger.warn({ err: error }, "Failed to interrupt during cancel");
       });
