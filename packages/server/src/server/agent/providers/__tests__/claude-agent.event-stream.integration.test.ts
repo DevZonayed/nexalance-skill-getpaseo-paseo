@@ -336,11 +336,7 @@ describe("Agent event stream redesign — integration", () => {
     const handle = await createSession({ cwdPrefix: "event-stream-interrupt-" });
 
     try {
-      const { turnId } = await handle.session.startTurn(
-        "write a very long essay about the history of computing",
-      );
-
-      // Use a single subscription to avoid missing events between unsubscribe/resubscribe
+      let turnId: string | null = null;
       const events = await new Promise<AgentStreamEvent[]>((resolve, reject) => {
         const collected: AgentStreamEvent[] = [];
         let interrupted = false;
@@ -352,10 +348,14 @@ describe("Agent event stream redesign — integration", () => {
 
         const unsubscribe = handle.session.subscribe((event) => {
           collected.push(event);
+          if (!turnId && event.type === "turn_started" && hasTurnId(event)) {
+            turnId = event.turnId;
+          }
 
           // Once we see turn_started, fire the interrupt
           if (
             !interrupted &&
+            turnId &&
             event.type === "turn_started" &&
             hasTurnId(event) &&
             event.turnId === turnId
@@ -365,13 +365,36 @@ describe("Agent event stream redesign — integration", () => {
           }
 
           // Resolve when we get a terminal event for this turn
-          if (isTerminalEvent(event) && hasTurnId(event) && event.turnId === turnId) {
+          if (turnId && isTerminalEvent(event) && hasTurnId(event) && event.turnId === turnId) {
             clearTimeout(timeout);
             unsubscribe();
             resolve(collected);
           }
         });
+
+        void handle.session
+          .startTurn("write a very long essay about the history of computing")
+          .then((result) => {
+            if (turnId && turnId !== result.turnId) {
+              clearTimeout(timeout);
+              unsubscribe();
+              reject(
+                new Error(
+                  `Observed turn_started for ${turnId} but startTurn returned ${result.turnId}`,
+                ),
+              );
+              return;
+            }
+            turnId = result.turnId;
+          })
+          .catch((error) => {
+            clearTimeout(timeout);
+            unsubscribe();
+            reject(error);
+          });
       });
+
+      expect(turnId).toBeDefined();
 
       // turn_canceled or turn_failed arrives for that turnId
       const terminal = events.find(

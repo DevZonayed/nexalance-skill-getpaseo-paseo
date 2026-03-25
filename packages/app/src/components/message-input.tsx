@@ -950,18 +950,20 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
           <View style={styles.leftButtonGroup}>
             {onPickImages && (
               <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
-                <TooltipTrigger
-                  onPress={onPickImages}
-                  disabled={!isConnected || disabled}
-                  accessibilityLabel="Attach images"
-                  accessibilityRole="button"
-                  style={({ hovered }) => [
-                    styles.attachButton,
-                    hovered && styles.iconButtonHovered,
-                    (!isConnected || disabled) && styles.buttonDisabled,
-                  ]}
-                >
-                  <Paperclip size={buttonIconSize} color={theme.colors.foreground} />
+                <TooltipTrigger asChild>
+                  <Pressable
+                    onPress={onPickImages}
+                    disabled={!isConnected || disabled}
+                    accessibilityLabel="Attach images"
+                    accessibilityRole="button"
+                    style={({ hovered }) => [
+                      styles.attachButton,
+                      hovered && styles.iconButtonHovered,
+                      (!isConnected || disabled) && styles.buttonDisabled,
+                    ]}
+                  >
+                    <Paperclip size={buttonIconSize} color={theme.colors.foreground} />
+                  </Pressable>
                 </TooltipTrigger>
                 <TooltipContent side="top" align="center" offset={8}>
                   <Text style={styles.tooltipText}>Attach images</Text>
@@ -1203,7 +1205,7 @@ const styles = StyleSheet.create(((theme: any) => ({
   leftButtonGroup: {
     flexDirection: "row",
     alignItems: "flex-end",
-    gap: Platform.OS === "web" ? theme.spacing[2] : theme.spacing[1],
+    gap: theme.spacing[1],
   },
   rightButtonGroup: {
     flexDirection: "row",
