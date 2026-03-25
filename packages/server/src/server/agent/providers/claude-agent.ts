@@ -206,7 +206,7 @@ function applyRuntimeSettingsToClaudeOptions(
       // Always use process.execPath — the actual node binary running the daemon.
       const command =
         resolved.command === spawnOptions.command ? process.execPath : resolved.command;
-      return spawn(command, resolved.args, {
+      const child = spawn(command, resolved.args, {
         cwd: spawnOptions.cwd,
         env: {
           ...applyProviderEnv(spawnOptions.env, runtimeSettings),
@@ -215,6 +215,12 @@ function applyRuntimeSettingsToClaudeOptions(
         signal: spawnOptions.signal,
         stdio: ["pipe", "pipe", "pipe"],
       });
+      if (typeof options.stderr === "function") {
+        child.stderr?.on("data", (chunk: Buffer | string) => {
+          options.stderr?.(chunk.toString());
+        });
+      }
+      return child;
     },
   };
 }
@@ -248,6 +254,8 @@ type ClaudeOptionsLogSummary = {
 };
 
 const MAX_RECENT_STDERR_CHARS = 4000;
+const STDERR_FLUSH_WAIT_MS = 150;
+const STDERR_FLUSH_POLL_INTERVAL_MS = 10;
 
 function summarizeClaudeOptionsForLog(options: ClaudeOptions): ClaudeOptionsLogSummary {
   const systemPromptRaw = options.systemPrompt;
@@ -1996,6 +2004,25 @@ class ClaudeAgentSession implements AgentSession {
     return this.recentStderr.trim() || undefined;
   }
 
+  private async awaitRecentStderrAfterProcessExit(error: unknown): Promise<void> {
+    if (this.getRecentStderrDiagnostic()) {
+      return;
+    }
+    const message =
+      typeof error === "string" ? error : error instanceof Error ? error.message : "";
+    if (!/\bprocess exited with code\b/i.test(message) && !/\bterminated by signal\b/i.test(message)) {
+      return;
+    }
+
+    const startedAt = Date.now();
+    while (!this.closed && !this.getRecentStderrDiagnostic()) {
+      if (Date.now() - startedAt >= STDERR_FLUSH_WAIT_MS) {
+        return;
+      }
+      await new Promise((resolve) => setTimeout(resolve, STDERR_FLUSH_POLL_INTERVAL_MS));
+    }
+  }
+
   private createTurnId(owner: "foreground" | "autonomous"): string {
     return `${owner}-turn-${this.nextTurnOrdinal++}`;
   }
@@ -2213,6 +2240,7 @@ class ClaudeAgentSession implements AgentSession {
             continue;
           }
           if (!this.closed && this.query === activeQuery) {
+            await this.awaitRecentStderrAfterProcessExit(error);
             this.failActiveTurns(error instanceof Error ? error.message : "Claude stream failed");
           }
           return;

@@ -7,6 +7,9 @@ type ParsedClaudeSdkModelDescriptor = {
   version: string;
 };
 
+// Claude may advertise effort levels that are not usable for all account types.
+const DISABLED_CLAUDE_THINKING_EFFORT_LEVELS: readonly string[] = ["max"];
+
 function normalizeWhitespace(value: string): string {
   return value.replace(/\s+/g, " ").trim();
 }
@@ -67,15 +70,17 @@ function buildThinkingOptions(model: ModelInfo): {
   thinkingOptions?: AgentSelectOption[];
   defaultThinkingOptionId?: string;
 } {
-  const effortLevels = model.supportedEffortLevels ?? [];
+  const effortLevels = (model.supportedEffortLevels ?? []).filter(
+    (level) => !DISABLED_CLAUDE_THINKING_EFFORT_LEVELS.includes(level),
+  );
   if (!model.supportsEffort || effortLevels.length === 0) {
     return {};
   }
 
   const thinkingOptions: AgentSelectOption[] = effortLevels.map((level) => ({
-      id: level,
-      label: titleCase(level),
-    }));
+    id: level,
+    label: titleCase(level),
+  }));
 
   return {
     thinkingOptions,

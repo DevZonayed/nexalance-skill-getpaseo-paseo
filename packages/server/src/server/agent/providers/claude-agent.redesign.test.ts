@@ -718,6 +718,72 @@ describe("ClaudeAgentSession redesign invariants", () => {
     }
   });
 
+  test("captures Claude stderr in the turn failure diagnostic when stderr arrives after process exit", async () => {
+    const stderrMessage =
+      'Error: Effort level "max" is not available for Claude.ai subscribers. Please use "low", "medium", or "high".';
+    let capturedOptions:
+      | {
+          stderr?: (data: string) => void;
+          effort?: string;
+          permissionMode?: string;
+        }
+      | undefined;
+
+    sdkQueryFactory.mockImplementation(
+      ({ options }: { options: { stderr?: (data: string) => void; effort?: string } }) => {
+        capturedOptions = options;
+        let failed = false;
+        return createBaseQueryMock(
+          vi.fn(async () => {
+            if (!failed) {
+              failed = true;
+              setTimeout(() => {
+                options.stderr?.(`${stderrMessage}\n`);
+              }, 0);
+              throw new Error("Claude Code process exited with code 1");
+            }
+            return { done: true, value: undefined };
+          }),
+        );
+      },
+    );
+
+    const loggerSpy = createSpyLogger();
+    const client = new ClaudeAgentClient({
+      logger: loggerSpy.logger,
+      queryFactory: sdkQueryFactory,
+    });
+    const session = await client.createSession({
+      provider: "claude",
+      cwd: process.cwd(),
+      modeId: "bypassPermissions",
+      thinkingOptionId: "max",
+    });
+
+    try {
+      const events = await collectUntilTerminal(streamSession(session, "trigger max failure"));
+      const failure = events.find(
+        (event): event is Extract<AgentStreamEvent, { type: "turn_failed" }> =>
+          event.type === "turn_failed",
+      );
+
+      expect(capturedOptions?.permissionMode).toBe("bypassPermissions");
+      expect(capturedOptions?.effort).toBe("max");
+      expect(failure).toMatchObject({
+        type: "turn_failed",
+        error: "Claude Code process exited with code 1",
+        code: "1",
+        diagnostic: stderrMessage,
+      });
+      expect(loggerSpy.error).toHaveBeenCalledWith(
+        expect.objectContaining({ stderr: stderrMessage }),
+        "Claude Agent SDK stderr",
+      );
+    } finally {
+      await session.close();
+    }
+  });
+
   test("reuses one autonomous run for unbound stream_event bursts with no foreground run", async () => {
     const session = await createSession();
     const internal = session as unknown as {

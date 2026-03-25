@@ -2022,6 +2022,9 @@ export class AgentManager {
             lifecycle: agent.lifecycle,
             activeForegroundTurnId: agent.activeForegroundTurnId,
             eventTurnId,
+            error: event.error,
+            code: event.code,
+            diagnostic: event.diagnostic,
           },
           "handleStreamEvent: turn_failed",
         );
