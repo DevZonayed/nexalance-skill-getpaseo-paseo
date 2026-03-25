@@ -1381,7 +1381,8 @@ class ClaudeAgentSession implements AgentSession {
     }
 
     if (this.autonomousTurn) {
-      this.cancelAutonomousTurn("Interrupted");
+      this.flushPendingToolCalls();
+      this.completeAutonomousTurn();
     }
 
     await this.interruptActiveTurn();
@@ -2152,20 +2153,6 @@ class ClaudeAgentSession implements AgentSession {
     this.notifySubscribers({ type: "turn_completed", provider: "claude" });
     this.autonomousTurn = null;
     this.syncTurnState("autonomous turn completed");
-  }
-
-  private cancelAutonomousTurn(reason: string): void {
-    if (!this.autonomousTurn) {
-      return;
-    }
-    this.flushPendingToolCalls();
-    this.notifySubscribers({
-      type: "turn_canceled",
-      provider: "claude",
-      reason,
-    });
-    this.autonomousTurn = null;
-    this.syncTurnState("autonomous turn canceled");
   }
 
   private failActiveTurns(errorMessage: string): void {
