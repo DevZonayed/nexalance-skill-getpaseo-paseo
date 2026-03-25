@@ -6,7 +6,7 @@ import "~/styles.css";
 
 const desktopVersion = websitePackage.version;
 const releaseBase = `https://github.com/getpaseo/paseo/releases/download/v${desktopVersion}`;
-const androidApkHref = `${releaseBase}/paseo-v${desktopVersion}-android.apk`;
+
 
 type Platform = "mac-silicon" | "mac-intel" | "windows" | "linux";
 
@@ -199,6 +199,14 @@ export function LandingPage({ title, subtitle }: LandingPageProps) {
                   className="block text-white/40 hover:text-white/60 transition-colors"
                 >
                   App Store
+                </a>
+                <a
+                  href="https://play.google.com/store/apps/details?id=sh.paseo"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="block text-white/40 hover:text-white/60 transition-colors"
+                >
+                  Google Play
                 </a>
                 <a
                   href="https://github.com/getpaseo/paseo/releases"
@@ -497,16 +505,13 @@ function GetStarted() {
           <AppleIcon className="h-5 w-5" />
         </a>
         <a
-          href={androidApkHref}
+          href="https://play.google.com/store/apps/details?id=sh.paseo"
           target="_blank"
           rel="noopener noreferrer"
-          className="relative group inline-flex items-center justify-center rounded-lg border border-white/20 px-3 py-2 text-white hover:bg-white/10 transition-colors"
-          aria-label="Download APK"
+          className="inline-flex items-center justify-center rounded-lg border border-white/20 px-3 py-2 text-white hover:bg-white/10 transition-colors"
+          aria-label="Google Play"
         >
           <AndroidIcon className="h-5 w-5" />
-          <span className="absolute -top-8 right-0 sm:right-auto sm:left-1/2 sm:-translate-x-1/2 px-2 py-1 rounded bg-white text-black text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
-            Download APK (Play Store coming soon)
-          </span>
         </a>
         <ServerInstallButton />
       </div>
