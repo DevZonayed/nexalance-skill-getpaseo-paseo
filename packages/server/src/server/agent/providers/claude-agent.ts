@@ -1977,6 +1977,12 @@ class ClaudeAgentSession implements AgentSession {
     this.transitionTurnState("idle", reason);
   }
 
+  private isAbortError(message: SDKMessage): boolean {
+    const errors =
+      "errors" in message && Array.isArray(message.errors) ? message.errors : [];
+    return errors.some((e: string) => /\baborted\b/i.test(e));
+  }
+
   private buildTurnFailedEvent(
     errorMessage: string,
   ): Extract<AgentStreamEvent, { type: "turn_failed" }> {
@@ -2247,6 +2253,25 @@ class ClaudeAgentSession implements AgentSession {
   }
 
   private routeSdkMessageFromPump(message: SDKMessage): void {
+    // Suppress stale results from interrupted requests. The cancel path already
+    // emitted the terminal event; this result is leftover from the killed API
+    // request. Consume the flag on ANY result so it doesn't linger.
+    if (message.type === "result" && this.pendingInterruptAbort) {
+      this.pendingInterruptAbort = false;
+      if (message.subtype !== "success") {
+        this.logger.debug("Suppressing stale non-success result from interrupted request");
+        return;
+      }
+    }
+    if (
+      message.type === "result" &&
+      message.subtype !== "success" &&
+      this.isAbortError(message)
+    ) {
+      this.logger.debug("Suppressing abort result by content");
+      return;
+    }
+
     const isForeground = Boolean(this.activeForegroundTurnId);
     const assistantishMessage =
       message.type === "assistant" ||
@@ -2333,7 +2358,6 @@ class ClaudeAgentSession implements AgentSession {
       )
     ) {
       this.foregroundHasVisibleActivity = true;
-      this.pendingInterruptAbort = false;
     }
 
     this.dispatchEvents(events);

@@ -428,6 +428,73 @@ describe("ClaudeAgentSession interrupt regression", () => {
 
     await session.close();
   });
+
+  test("stale abort result after replacement start does not poison the new foreground turn", async () => {
+    const logger = createTestLogger();
+    let queryRef: ScriptedQuery | null = null;
+
+    sdkMocks.query.mockImplementation(({ prompt }: { prompt: AsyncIterable<unknown> }) => {
+      queryRef = createScriptedQuery({
+        prompt,
+        sessionId: "interrupt-stale-result-session",
+      });
+      return queryRef;
+    });
+
+    const client = new ClaudeAgentClient({ logger });
+    const session = await client.createSession({
+      provider: "claude",
+      cwd: process.cwd(),
+    });
+
+    const firstTurn = streamSession(session, "first prompt");
+    const firstStarted = await firstTurn.next();
+    await waitFor(() => queryRef?.prompts.length === 1);
+
+    await session.interrupt();
+    const firstTurnEvents = [firstStarted.value!, ...(await collectUntilTerminal(firstTurn))];
+    expect(firstTurnEvents.some((event) => event.type === "turn_canceled")).toBe(true);
+
+    const observedSecondTurnEvents: AgentStreamEvent[] = [];
+    const unsubscribe = session.subscribe((event) => {
+      observedSecondTurnEvents.push(event);
+    });
+
+    const secondTurn = streamSession(session, "second prompt");
+    const secondStarted = await secondTurn.next();
+    await waitFor(() => queryRef?.prompts.length === 2);
+
+    queryRef?.emit({
+      type: "result",
+      subtype: "error_during_execution",
+      errors: ["Request was aborted."],
+      session_id: "interrupt-stale-result-session",
+    });
+    queryRef?.emit({
+      type: "assistant",
+      message: { content: "SECOND_PROMPT_RESPONSE" },
+      session_id: "interrupt-stale-result-session",
+    });
+    queryRef?.emit(buildSuccessResult("interrupt-stale-result-session"));
+
+    const secondTurnEvents = [secondStarted.value!, ...(await collectUntilTerminal(secondTurn))];
+    unsubscribe();
+
+    expect(secondTurnEvents.some((event) => event.type === "turn_failed")).toBe(false);
+    expect(secondTurnEvents.some((event) => event.type === "turn_canceled")).toBe(false);
+    expect(secondTurnEvents.some((event) => event.type === "turn_completed")).toBe(true);
+    expect(collectAssistantText(secondTurnEvents)).toContain("SECOND_PROMPT_RESPONSE");
+    expect(
+      observedSecondTurnEvents.filter((event) => event.type === "turn_started").length,
+    ).toBe(1);
+    expect(
+      observedSecondTurnEvents.some(
+        (event) => event.type === "turn_failed" || event.type === "turn_canceled",
+      ),
+    ).toBe(false);
+
+    await session.close();
+  });
 });
 
 describe("ClaudeAgentSession autonomous turns", () => {

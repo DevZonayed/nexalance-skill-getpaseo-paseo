@@ -3,9 +3,15 @@
  * Enables running the same tests against Claude, Codex, and OpenCode providers.
  */
 import { existsSync } from "node:fs";
-import { join } from "node:path";
+import { join, dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
+import dotenv from "dotenv";
 import { isCommandAvailable } from "../agent/provider-launch-config.js";
+
+// Load .env.test eagerly so isProviderAvailable() has credentials at collection time.
+const serverRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
+dotenv.config({ path: resolve(serverRoot, ".env.test"), override: true });
 
 export interface AgentTestConfig {
   provider: "claude" | "codex" | "opencode";

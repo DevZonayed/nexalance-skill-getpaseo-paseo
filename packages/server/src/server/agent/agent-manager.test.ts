@@ -1328,6 +1328,120 @@ describe("AgentManager", () => {
     unsubscribe();
   });
 
+  test("replaceAgentRun stays running when a stale old terminal arrives before the replacement turn is current", async () => {
+    const workdir = mkdtempSync(join(tmpdir(), "agent-manager-replace-stale-terminal-"));
+    const storagePath = join(workdir, "agents");
+    const storage = new AgentStorage(storagePath, logger);
+    const secondStartEntered = deferred<void>();
+    const allowSecondStartToResolve = deferred<void>();
+    let capturedSession: StaleReplacementSession | null = null;
+
+    class StaleReplacementSession extends TestAgentSession {
+      private localTurnCounter = 0;
+
+      override async startTurn(): Promise<{ turnId: string }> {
+        const turnId = `turn-${++this.localTurnCounter}`;
+        const turnNum = this.localTurnCounter;
+
+        if (turnNum === 1) {
+          setTimeout(() => {
+            this.pushEvent({ type: "turn_started", provider: this.provider, turnId });
+          }, 0);
+          return { turnId };
+        }
+
+        secondStartEntered.resolve();
+        await allowSecondStartToResolve.promise;
+        setTimeout(() => {
+          this.pushEvent({ type: "turn_started", provider: this.provider, turnId });
+          this.pushEvent({ type: "turn_completed", provider: this.provider, turnId });
+        }, 0);
+        return { turnId };
+      }
+
+      override async interrupt(): Promise<void> {
+        this.pushEvent({
+          type: "turn_canceled",
+          provider: this.provider,
+          reason: "Interrupted",
+          turnId: "turn-1",
+        });
+      }
+    }
+
+    class StaleReplacementClient extends TestAgentClient {
+      override async createSession(config: AgentSessionConfig): Promise<AgentSession> {
+        capturedSession = new StaleReplacementSession(config);
+        return capturedSession;
+      }
+    }
+
+    const manager = new AgentManager({
+      clients: {
+        codex: new StaleReplacementClient(),
+      },
+      registry: storage,
+      logger,
+      idFactory: () => "00000000-0000-4000-8000-000000000126",
+    });
+
+    const snapshot = await manager.createAgent({
+      provider: "codex",
+      cwd: workdir,
+    });
+
+    const lifecycleUpdates: string[] = [];
+    const unsubscribe = manager.subscribe(
+      (event) => {
+        if (event.type !== "agent_state" || event.agent.id !== snapshot.id) {
+          return;
+        }
+        lifecycleUpdates.push(event.agent.lifecycle);
+      },
+      { agentId: snapshot.id, replayState: false },
+    );
+
+    const firstRun = manager.streamAgent(snapshot.id, "first run");
+    const firstRunDrain = (async () => {
+      for await (const _event of firstRun) {
+        // Drain events so lifecycle updates are applied.
+      }
+    })();
+
+    await manager.waitForAgentRunStart(snapshot.id);
+
+    const secondRun = manager.replaceAgentRun(snapshot.id, "replacement run");
+    const secondRunDrain = (async () => {
+      for await (const _event of secondRun) {
+        // Drain replacement run.
+      }
+    })();
+
+    await secondStartEntered.promise;
+
+    const replaceGapSnapshot = manager.getAgent(snapshot.id) as
+      | ({ pendingReplacement: boolean; activeForegroundTurnId: string | null; lifecycle: string })
+      | undefined;
+    expect(replaceGapSnapshot?.pendingReplacement).toBe(false);
+    expect(replaceGapSnapshot?.activeForegroundTurnId).toBeNull();
+    expect(replaceGapSnapshot?.lifecycle).toBe("running");
+
+    capturedSession!.pushEvent({ type: "turn_completed", provider: "codex", turnId: "turn-1" });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    // eslint-disable-next-line no-console
+    console.log("replace-gap-lifecycle", lifecycleUpdates, manager.getAgent(snapshot.id));
+    expect(manager.getAgent(snapshot.id)?.lifecycle).toBe("running");
+    expect(lifecycleUpdates.at(-1)).toBe("running");
+
+    allowSecondStartToResolve.resolve();
+
+    await manager.waitForAgentRunStart(snapshot.id);
+    await firstRunDrain;
+    await secondRunDrain;
+    unsubscribe();
+  });
+
   test("applies live autonomous events while no foreground run is active", async () => {
     const workdir = mkdtempSync(join(tmpdir(), "agent-manager-live-events-"));
     const storagePath = join(workdir, "agents");

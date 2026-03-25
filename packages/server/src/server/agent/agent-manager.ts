@@ -2038,7 +2038,8 @@ export class AgentManager {
         agent.lastUsage = event.usage;
         agent.lastError = undefined;
         // For autonomous turns (not foreground), transition to idle
-        if (!isForegroundEvent && agent.lifecycle !== "idle") {
+        // unless a replacement is pending (avoid idle flash during replace)
+        if (!isForegroundEvent && agent.lifecycle !== "idle" && !agent.pendingReplacement) {
           (agent as ActiveManagedAgent).lifecycle = "idle";
           this.emitState(agent);
         }
@@ -2094,7 +2095,8 @@ export class AgentManager {
           "handleStreamEvent: turn_canceled",
         );
         // For autonomous turns, transition to idle
-        if (!isForegroundEvent) {
+        // unless a replacement is pending (avoid idle flash during replace)
+        if (!isForegroundEvent && !agent.pendingReplacement) {
           (agent as ActiveManagedAgent).lifecycle = "idle";
         }
         agent.lastError = undefined;
