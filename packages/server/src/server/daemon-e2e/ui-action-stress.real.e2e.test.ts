@@ -13,7 +13,7 @@ import { DaemonClient } from "../test-utils/daemon-client.js";
 import {
   allProviders,
   getFullAccessConfig,
-  isRealProviderReady,
+  isProviderAvailable,
   type AgentProvider,
 } from "./agent-configs.js";
 
@@ -456,7 +456,7 @@ function createRealAgentClient(provider: AgentProvider, logger: pino.Logger): Ag
 }
 
 describe.each(allProviders)("daemon E2E (real %s) - UI action stress", (provider) => {
-  const shouldRun = isRealProviderReady(provider);
+  const shouldRun = isProviderAvailable(provider);
 
   test.runIf(shouldRun)(
     "normal UI submit path (idle sends) stays correct",

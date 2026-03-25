@@ -7,16 +7,15 @@ import pino from "pino";
 import { createTestPaseoDaemon } from "../test-utils/paseo-daemon.js";
 import { DaemonClient } from "../test-utils/daemon-client.js";
 import { CodexAppServerAgentClient } from "../agent/providers/codex-app-server-agent.js";
-import { getFullAccessConfig } from "./agent-configs.js";
+import { getFullAccessConfig, isProviderAvailable } from "./agent-configs.js";
 import { applyAgentInputProcessingTransition } from "./send-while-running-stuck-test-utils.js";
-import { isCommandAvailable } from "../agent/provider-launch-config.js";
 
 function tmpCwd(): string {
   return mkdtempSync(path.join(tmpdir(), "daemon-real-stuck-"));
 }
 
 describe("daemon E2E (real codex) - send while running recovery", () => {
-  test.runIf(isCommandAvailable("codex"))(
+  test.runIf(isProviderAvailable("codex"))(
     "clears input processing when the interrupt transition is missed",
     async () => {
       const logger = pino({ level: "silent" });

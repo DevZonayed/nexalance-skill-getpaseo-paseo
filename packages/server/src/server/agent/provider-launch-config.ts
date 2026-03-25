@@ -125,16 +125,31 @@ export function resolveShellEnv(): Record<string, string> {
   return cachedShellEnv;
 }
 
+// Env vars that indicate a running Claude Code session. If the daemon itself is
+// launched from inside Claude Code (e.g. by a Paseo agent), these leak into
+// child processes and cause "cannot be launched inside another session" errors.
+const PARENT_SESSION_ENV_VARS = [
+  "CLAUDECODE",
+  "CLAUDE_CODE_ENTRYPOINT",
+  "CLAUDE_CODE_SSE_PORT",
+  "CLAUDE_AGENT_SDK_VERSION",
+  "CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING",
+];
+
 export function applyProviderEnv(
   baseEnv: Record<string, string | undefined>,
   runtimeSettings?: ProviderRuntimeSettings,
   shellEnv?: Record<string, string>,
 ): Record<string, string | undefined> {
-  return {
+  const merged: Record<string, string | undefined> = {
     ...baseEnv,
     ...(shellEnv ?? resolveShellEnv()),
     ...(runtimeSettings?.env ?? {}),
   };
+  for (const key of PARENT_SESSION_ENV_VARS) {
+    delete merged[key];
+  }
+  return merged;
 }
 
 /**

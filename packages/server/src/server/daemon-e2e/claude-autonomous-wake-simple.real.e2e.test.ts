@@ -5,10 +5,9 @@ import path from "node:path";
 import pino from "pino";
 
 import { ClaudeAgentClient } from "../agent/providers/claude-agent.js";
-import { isCommandAvailable } from "../agent/provider-launch-config.js";
 import { DaemonClient } from "../test-utils/daemon-client.js";
 import { createTestPaseoDaemon } from "../test-utils/paseo-daemon.js";
-import { getFullAccessConfig } from "./agent-configs.js";
+import { getFullAccessConfig, isProviderAvailable } from "./agent-configs.js";
 
 function tmpCwd(): string {
   return mkdtempSync(path.join(tmpdir(), "daemon-real-claude-autonomous-simple-"));
@@ -19,7 +18,7 @@ function compactText(value: string): string {
 }
 
 describe("daemon E2E (real claude) - autonomous wake simple", () => {
-  test.runIf(isCommandAvailable("claude"))(
+  test.runIf(isProviderAvailable("claude"))(
     "hello + background sleep returns idle, then wakes once on completion",
     async () => {
       const logger = pino({ level: "silent" });

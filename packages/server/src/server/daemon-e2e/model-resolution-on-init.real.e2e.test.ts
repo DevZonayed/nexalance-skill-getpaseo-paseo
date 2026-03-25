@@ -7,14 +7,14 @@ import pino from "pino";
 import { createTestPaseoDaemon } from "../test-utils/paseo-daemon.js";
 import { DaemonClient } from "../test-utils/daemon-client.js";
 import { ClaudeAgentClient } from "../agent/providers/claude-agent.js";
-import { isCommandAvailable } from "../agent/provider-launch-config.js";
+import { isProviderAvailable } from "./agent-configs.js";
 
 function tmpCwd(): string {
   return mkdtempSync(path.join(tmpdir(), "daemon-claude-model-init-"));
 }
 
 describe("daemon E2E (real claude) - model resolution on init", () => {
-  test.runIf(isCommandAvailable("claude"))(
+  test.runIf(isProviderAvailable("claude"))(
     "runtimeInfo.model is set as soon as the agent starts running, not after turn completes",
     async () => {
       const logger = pino({ level: "silent" });

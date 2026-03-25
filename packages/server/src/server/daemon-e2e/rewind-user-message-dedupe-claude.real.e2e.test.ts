@@ -7,18 +7,14 @@ import pino from "pino";
 import { createTestPaseoDaemon } from "../test-utils/paseo-daemon.js";
 import { DaemonClient } from "../test-utils/daemon-client.js";
 import { ClaudeAgentClient } from "../agent/providers/claude-agent.js";
-import { getFullAccessConfig } from "./agent-configs.js";
-import { isCommandAvailable } from "../agent/provider-launch-config.js";
+import { getFullAccessConfig, isProviderAvailable } from "./agent-configs.js";
 
 function tmpCwd(): string {
   return mkdtempSync(path.join(tmpdir(), "daemon-rewind-dedupe-real-claude-"));
 }
 
-const hasClaudeCredentials =
-  !!process.env.CLAUDE_CODE_OAUTH_TOKEN || !!process.env.ANTHROPIC_API_KEY;
-
 describe("daemon E2E (real claude) - rewind user message dedupe", () => {
-  test.runIf(isCommandAvailable("claude") && hasClaudeCredentials)(
+  test.runIf(isProviderAvailable("claude"))(
     "emits /rewind user message once in persisted timeline",
     async () => {
       const logger = pino({ level: "silent" });

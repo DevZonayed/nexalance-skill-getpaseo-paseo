@@ -1388,6 +1388,28 @@ export class AgentManager {
       await Promise.race([pendingRun.settledPromise, timeout]);
     }
 
+    // If the foreground turn is still stuck after the timeout, force-dispatch a
+    // synthetic turn_canceled so the normal event pipeline cleans up
+    // activeForegroundTurnId, settles waiters, and unblocks the streamForwarder.
+    if (foregroundTurnId && agent.activeForegroundTurnId === foregroundTurnId) {
+      this.logger.warn(
+        { agentId, foregroundTurnId },
+        "cancelAgentRun: foreground turn still active after timeout, force-canceling",
+      );
+      this.dispatchSessionEvent(agent, {
+        type: "turn_canceled",
+        provider: agent.provider,
+        reason: "interrupted",
+        turnId: foregroundTurnId,
+      });
+      // The synthetic event unblocks the streamForwarder generator, whose finally
+      // block settles the pending foreground run asynchronously. Wait for it.
+      const staleRun = this.getPendingForegroundRun(agentId);
+      if (staleRun && !staleRun.settled) {
+        await staleRun.settledPromise;
+      }
+    }
+
     // Clear any pending permissions that weren't cleaned up by handleStreamEvent.
     if (agent.pendingPermissions.size > 0) {
       for (const [requestId] of agent.pendingPermissions) {

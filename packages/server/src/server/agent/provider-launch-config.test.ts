@@ -111,6 +111,26 @@ describe("applyProviderEnv", () => {
 
     expect(env.PATH).toBe("/custom/path");
   });
+
+  test("strips parent Claude Code session env vars", () => {
+    const base = {
+      PATH: "/usr/bin",
+      CLAUDECODE: "1",
+      CLAUDE_CODE_ENTRYPOINT: "sdk-ts",
+      CLAUDE_CODE_SSE_PORT: "11803",
+      CLAUDE_AGENT_SDK_VERSION: "0.2.71",
+      CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING: "true",
+    };
+
+    const env = applyProviderEnv(base, undefined, {});
+
+    expect(env.PATH).toBe("/usr/bin");
+    expect(env.CLAUDECODE).toBeUndefined();
+    expect(env.CLAUDE_CODE_ENTRYPOINT).toBeUndefined();
+    expect(env.CLAUDE_CODE_SSE_PORT).toBeUndefined();
+    expect(env.CLAUDE_AGENT_SDK_VERSION).toBeUndefined();
+    expect(env.CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING).toBeUndefined();
+  });
 });
 
 describe("findExecutable", () => {

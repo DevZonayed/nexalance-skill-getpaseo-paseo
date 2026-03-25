@@ -2,6 +2,9 @@
  * Shared agent configurations for e2e tests.
  * Enables running the same tests against Claude, Codex, and OpenCode providers.
  */
+import { existsSync } from "node:fs";
+import { join } from "node:path";
+import { homedir } from "node:os";
 import { isCommandAvailable } from "../agent/provider-launch-config.js";
 
 export interface AgentTestConfig {
@@ -44,9 +47,6 @@ export const agentConfigs = {
 
 export type AgentProvider = keyof typeof agentConfigs;
 
-const hasClaudeCredentials =
-  !!process.env.CLAUDE_CODE_OAUTH_TOKEN || !!process.env.ANTHROPIC_API_KEY;
-
 /**
  * Get test config for creating an agent with full permissions (no prompts).
  */
@@ -76,17 +76,28 @@ export function getAskModeConfig(provider: AgentProvider) {
 }
 
 /**
- * Whether the real provider is executable in this environment.
- * Claude additionally requires credentials.
+ * Whether a real provider can run in this environment.
+ * Checks binary availability AND credentials (env vars, OAuth tokens, auth files).
+ *
+ * Credentials are typically loaded from .env.test via the vitest setup file.
+ * This MUST be a function (not a const) so process.env is read at call time,
+ * after dotenv has injected the test credentials.
  */
-export function isRealProviderReady(provider: AgentProvider): boolean {
-  if (provider === "claude") {
-    return isCommandAvailable("claude") && hasClaudeCredentials;
+export function isProviderAvailable(provider: AgentProvider): boolean {
+  switch (provider) {
+    case "claude":
+      return (
+        isCommandAvailable("claude") &&
+        (Boolean(process.env.CLAUDE_CODE_OAUTH_TOKEN) || Boolean(process.env.ANTHROPIC_API_KEY))
+      );
+    case "codex":
+      return (
+        isCommandAvailable("codex") &&
+        (existsSync(join(homedir(), ".codex", "auth.json")) || Boolean(process.env.OPENAI_API_KEY))
+      );
+    case "opencode":
+      return isCommandAvailable("opencode");
   }
-  if (provider === "codex") {
-    return isCommandAvailable("codex");
-  }
-  return isCommandAvailable("opencode");
 }
 
 /**

@@ -3294,4 +3294,90 @@ describe("AgentManager", () => {
       "continuation prompt",
     );
   });
+
+  test("replaceAgentRun succeeds when foreground turn terminal event is never delivered", async () => {
+    const workdir = mkdtempSync(join(tmpdir(), "agent-manager-stale-fg-"));
+    const storagePath = join(workdir, "agents");
+    const storage = new AgentStorage(storagePath, logger);
+    const allowSecondRunToEnd = deferred<void>();
+
+    // Session where the first foreground turn never emits a terminal event
+    // (simulates the claude-agent pendingInterruptAbort suppression bug),
+    // and interrupt() does not produce events either.
+    class StaleForegroundSession extends TestAgentSession {
+      override async startTurn(): Promise<{ turnId: string }> {
+        this.interrupted = false;
+        const turnId = `turn-${++this.turnIdCounter}`;
+        const turnNum = this.turnIdCounter;
+
+        setTimeout(async () => {
+          this.pushEvent({ type: "turn_started", provider: this.provider, turnId });
+          if (turnNum === 1) {
+            // First turn: emit turn_started but NEVER emit a terminal event.
+            // This simulates the provider suppressing the result.
+          } else {
+            // Subsequent turns: complete normally
+            await allowSecondRunToEnd.promise;
+            this.pushEvent({ type: "turn_completed", provider: this.provider, turnId });
+          }
+        }, 0);
+        return { turnId };
+      }
+
+      override async interrupt(): Promise<void> {
+        this.interrupted = true;
+        // No events produced — the terminal event was suppressed
+      }
+    }
+
+    class StaleForegroundClient extends TestAgentClient {
+      override async createSession(config: AgentSessionConfig): Promise<AgentSession> {
+        return new StaleForegroundSession(config);
+      }
+    }
+
+    const manager = new AgentManager({
+      clients: { codex: new StaleForegroundClient() },
+      registry: storage,
+      logger,
+      idFactory: () => "00000000-0000-4000-8000-000000000500",
+    });
+
+    const snapshot = await manager.createAgent({ provider: "codex", cwd: workdir });
+
+    // Start first foreground run — it will hang (no terminal event)
+    const firstRun = manager.streamAgent(snapshot.id, "hanging prompt");
+    const firstRunDrain = (async () => {
+      for await (const _event of firstRun) {
+        // Draining — will hang until force-cleaned
+      }
+    })();
+
+    await manager.waitForAgentRunStart(snapshot.id);
+
+    const beforeReplace = manager.getAgent(snapshot.id);
+    expect(beforeReplace?.lifecycle).toBe("running");
+    expect(beforeReplace?.activeForegroundTurnId).toBe("turn-1");
+
+    // Replace the hung run. cancelAgentRun will time out after 2s because
+    // no terminal event arrives. After the fix, it should force-clear the
+    // stale foreground state so streamAgent can proceed.
+    const secondRun = manager.replaceAgentRun(snapshot.id, "replacement prompt");
+    const collectedEvents: AgentStreamEvent[] = [];
+    const secondRunDrain = (async () => {
+      for await (const event of secondRun) {
+        collectedEvents.push(event);
+      }
+    })();
+
+    await manager.waitForAgentRunStart(snapshot.id);
+    allowSecondRunToEnd.resolve();
+
+    await secondRunDrain;
+    await firstRunDrain;
+
+    expect(collectedEvents.some((e) => e.type === "turn_completed")).toBe(true);
+    expect(manager.getAgent(snapshot.id)?.lifecycle).toBe("idle");
+    expect(manager.getAgent(snapshot.id)?.activeForegroundTurnId).toBeNull();
+  }, 10_000);
 });

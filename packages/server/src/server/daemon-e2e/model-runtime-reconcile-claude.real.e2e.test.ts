@@ -7,14 +7,14 @@ import pino from "pino";
 import { createTestPaseoDaemon } from "../test-utils/paseo-daemon.js";
 import { DaemonClient } from "../test-utils/daemon-client.js";
 import { ClaudeAgentClient } from "../agent/providers/claude-agent.js";
-import { isCommandAvailable } from "../agent/provider-launch-config.js";
+import { isProviderAvailable } from "./agent-configs.js";
 
 function tmpCwd(): string {
   return mkdtempSync(path.join(tmpdir(), "daemon-claude-runtime-model-reconcile-"));
 }
 
 describe("daemon E2E (real claude) - runtime model reconciliation", () => {
-  test.runIf(isCommandAvailable("claude"))(
+  test.runIf(isProviderAvailable("claude"))(
     "normalizes runtime model to a model ID exposed by the provider catalog",
     async () => {
       const logger = pino({ level: "silent" });
