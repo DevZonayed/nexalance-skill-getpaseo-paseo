@@ -271,16 +271,16 @@ function parsePartialObject(
       };
     }
 
-    value[parsedKey.value] = parsedMemberValue.value;
-    currentIndex = skipWhitespace(input, parsedMemberValue.nextIndex);
-
     if (!parsedMemberValue.complete) {
       return {
         value,
-        nextIndex: currentIndex,
+        nextIndex: skipWhitespace(input, parsedMemberValue.nextIndex),
         complete: false,
       };
     }
+
+    value[parsedKey.value] = parsedMemberValue.value;
+    currentIndex = skipWhitespace(input, parsedMemberValue.nextIndex);
 
     const delimiter = input[currentIndex];
     if (delimiter === ",") {

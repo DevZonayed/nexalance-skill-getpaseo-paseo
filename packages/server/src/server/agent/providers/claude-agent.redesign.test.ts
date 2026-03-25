@@ -441,7 +441,7 @@ describe("ClaudeAgentSession redesign invariants", () => {
     }
   });
 
-  test("routes input_json_delta through partial parsing before buffered JSON is complete", async () => {
+  test("waits for complete JSON values before updating tool input from input_json_delta", async () => {
     const session = await createSession();
     const internal = session as unknown as {
       mapPartialEvent: (event: Record<string, unknown>) => AgentTimelineItem[];
@@ -479,7 +479,7 @@ describe("ClaudeAgentSession redesign invariants", () => {
               partial_json: '{"command":"echo ',
             },
           },
-          expectedCommand: "echo ",
+          expectedCommand: "echo seed",
         },
         {
           event: {
@@ -520,7 +520,7 @@ describe("ClaudeAgentSession redesign invariants", () => {
     }
   });
 
-  test("surfaces canonical partial tool input from input_json_delta before JSON is complete", async () => {
+  test("does not surface incomplete string values from input_json_delta", async () => {
     const session = await createSession();
     const internal = session as unknown as {
       mapPartialEvent: (event: Record<string, unknown>) => AgentTimelineItem[];
@@ -551,7 +551,6 @@ describe("ClaudeAgentSession redesign invariants", () => {
 
       expect(internal.toolUseCache.get(toolUseId)?.input).toEqual({
         file_path: "src/message.tsx",
-        old_string: "before",
       });
     } finally {
       await session.close();

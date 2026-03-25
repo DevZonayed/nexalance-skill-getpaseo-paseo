@@ -13,33 +13,25 @@ describe("parsePartialJsonObject", () => {
     });
   });
 
-  it("keeps partial string values without field-specific logic", () => {
+  it("does not emit incomplete string values", () => {
     expect(parsePartialJsonObject('{"command":"echo ')).toEqual({
-      value: {
-        command: "echo ",
-      },
+      value: {},
       complete: false,
     });
   });
 
-  it("returns parsed prefix fields from incomplete objects", () => {
+  it("returns only complete prefix fields from incomplete objects", () => {
     expect(parsePartialJsonObject('{"file_path":"src/message.tsx","old_string":"before')).toEqual({
       value: {
         file_path: "src/message.tsx",
-        old_string: "before",
       },
       complete: false,
     });
   });
 
-  it("parses nested partial values generically", () => {
+  it("does not emit incomplete nested values", () => {
     expect(parsePartialJsonObject('{"payload":{"path":"src/index.ts","content":"hello')).toEqual({
-      value: {
-        payload: {
-          path: "src/index.ts",
-          content: "hello",
-        },
-      },
+      value: {},
       complete: false,
     });
   });
