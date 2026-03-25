@@ -13,8 +13,7 @@
     "dist/scripts",
     "src/server/speech/providers/local/sherpa/assets",
     "README.md",
-    ".env.example",
-    "agent-prompt.md"
+    ".env.example"
   ],
   "exports": {
     ".": {
