@@ -36,10 +36,12 @@ function getModeName(modeId?: string, availableModes?: Agent["availableModes"]):
 function getModeColor(modeId?: string): string {
   if (!modeId) return "#9ca3af"; // gray
 
-  // Color based on common mode types
-  if (modeId.includes("ask")) return "#f59e0b"; // orange - asks permission
-  if (modeId.includes("code")) return "#22c55e"; // green - writes code
-  if (modeId.includes("architect") || modeId.includes("plan")) return "#3b82f6"; // blue - plans
+  if (modeId.includes("bypass") || modeId.includes("full-access")) return "#ef4444"; // red - dangerous
+  if (modeId.includes("auto") || modeId.includes("build") || modeId.includes("acceptEdits"))
+    return "#3b82f6"; // blue - build/auto
+  if (modeId.includes("plan") || modeId.includes("architect")) return "#a855f7"; // purple - planning
+  if (modeId.includes("ask") || modeId.includes("read-only") || modeId === "default")
+    return "#22c55e"; // green - safest
 
   return "#9ca3af"; // gray - unknown
 }

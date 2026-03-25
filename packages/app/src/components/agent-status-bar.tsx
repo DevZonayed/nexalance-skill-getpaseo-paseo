@@ -106,21 +106,18 @@ function getModeIconColor(
   palette: {
     blue: { 500: string };
     green: { 500: string };
-    amber: { 500: string };
     red: { 500: string };
     purple: { 500: string };
   },
 ): string {
   switch (colorTier) {
-    case "default":
-      return palette.blue[500];
     case "safe":
       return palette.green[500];
     case "moderate":
-      return palette.amber[500];
+      return palette.blue[500];
     case "dangerous":
       return palette.red[500];
-    case "readonly":
+    case "planning":
       return palette.purple[500];
     default:
       return palette.blue[500];

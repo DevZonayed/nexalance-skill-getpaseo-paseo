@@ -1383,6 +1383,13 @@ export class AgentManager {
           timeout,
         ]);
       }
+      // The waiter settling wakes up the streamForwarder generator, but its
+      // finally block (which deletes the pendingForegroundRun) runs asynchronously.
+      // Wait for the pending run to be fully cleaned up so the next streamAgent
+      // call doesn't see a stale entry and reject with "already has an active run".
+      if (pendingRun && !pendingRun.settled) {
+        await Promise.race([pendingRun.settledPromise, timeout]);
+      }
     } else if (pendingRun) {
       const timeout = new Promise<void>((resolve) => setTimeout(resolve, 2000));
       await Promise.race([pendingRun.settledPromise, timeout]);

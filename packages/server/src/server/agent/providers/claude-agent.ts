@@ -1325,6 +1325,7 @@ class ClaudeAgentSession implements AgentSession {
     const turnId = this.createTurnId("foreground");
     this.activeForegroundTurnId = turnId;
     this.foregroundHasVisibleActivity = false;
+    this.pendingInterruptAbort = false;
     this.transitionTurnState("foreground", "foreground turn started");
     this.clearRecentStderr();
 
@@ -1343,6 +1344,7 @@ class ClaudeAgentSession implements AgentSession {
         provider: "claude",
         reason: "Interrupted",
       });
+      this.queryRestartNeeded = true;
       void this.interruptActiveTurn().catch((error) => {
         this.logger.warn({ err: error }, "Failed to interrupt during cancel");
       });
@@ -1780,16 +1782,21 @@ class ClaudeAgentSession implements AgentSession {
     }
 
     if (this.queryRestartNeeded && this.query) {
-      this.input?.end();
-      this.query.close?.();
+      const oldQuery = this.query;
+      const oldInput = this.input;
+      // Null out query/input BEFORE awaiting the old iterator's return so the
+      // old pump sees this.query !== activeQuery and skips failActiveTurns.
+      this.query = null;
+      this.input = null;
+      this.queryPumpPromise = null;
+      this.queryRestartNeeded = false;
+      oldInput?.end();
+      oldQuery.close?.();
       try {
-        await this.query.return?.();
+        await oldQuery.return?.();
       } catch {
         /* ignore */
       }
-      this.query = null;
-      this.input = null;
-      this.queryRestartNeeded = false;
     }
 
     const input = createAsyncMessageInput<SDKUserMessage>();

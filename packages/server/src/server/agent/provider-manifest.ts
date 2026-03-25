@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { AgentMode } from "./agent-sdk-types.js";
 
-export type AgentModeColorTier = "default" | "safe" | "moderate" | "dangerous" | "readonly";
+export type AgentModeColorTier = "safe" | "moderate" | "dangerous" | "planning";
 export type AgentModeIcon = "ShieldCheck" | "ShieldAlert" | "ShieldOff";
 
 export interface AgentModeVisuals {
@@ -44,7 +44,7 @@ const CLAUDE_MODES: AgentProviderModeDefinition[] = [
     label: "Plan Mode",
     description: "Analyze the codebase without executing tools or edits",
     icon: "ShieldCheck",
-    colorTier: "readonly",
+    colorTier: "planning",
   },
   {
     id: "bypassPermissions",
@@ -62,7 +62,7 @@ const CODEX_MODES: AgentProviderModeDefinition[] = [
     description:
       "Read files and answer questions. Manual approval required for edits, commands, or network ops.",
     icon: "ShieldCheck",
-    colorTier: "readonly",
+    colorTier: "safe",
   },
   {
     id: "auto",
@@ -86,14 +86,14 @@ const OPENCODE_MODES: AgentProviderModeDefinition[] = [
     label: "Build",
     description: "Allows edits and tool execution for implementation work",
     icon: "ShieldCheck",
-    colorTier: "default",
+    colorTier: "moderate",
   },
   {
     id: "plan",
     label: "Plan",
     description: "Read-only planning mode that avoids file edits",
     icon: "ShieldCheck",
-    colorTier: "readonly",
+    colorTier: "planning",
   },
 ];
 
