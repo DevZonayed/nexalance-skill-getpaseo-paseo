@@ -8,7 +8,7 @@ Usage:
   chat.sh room list
   chat.sh room show --room ROOM
   chat.sh post --room ROOM (--body TEXT | --body-file PATH) [--agent-id ID] [--agent-name NAME] [--reply-to MESSAGE_ID]
-  chat.sh read --room ROOM [--limit N] [--since ISO_TIMESTAMP] [--agent-id ID]
+  chat.sh read --room ROOM [--limit N] [--since MESSAGE_ID|ISO_TIMESTAMP] [--agent-id ID]
   chat.sh wait --room ROOM [--since MESSAGE_ID] [--timeout SECONDS]
 
 Options:
@@ -497,14 +497,37 @@ case "$command_name" in
 
     mapfile -t all_files < <(message_files_sorted "$room")
 
-    filtered_files=()
-    for file in "${all_files[@]}"; do
-      created_at="$(frontmatter_value "created_at" "$file")"
-      file_agent_id="$(frontmatter_value "agent_id" "$file")"
-
-      if [[ -n "$since" && "$created_at" < "$since" ]]; then
-        continue
+    since_file=""
+    if [[ -n "$since" ]]; then
+      if [[ "$since" == msg-* ]]; then
+        since_file="$(find_message_file_by_id "$room" "$since" || true)"
+        [[ -n "$since_file" ]] || { echo "Error: message not found: $since" >&2; exit 1; }
       fi
+    fi
+
+    filtered_files=()
+    past_since=false
+    if [[ -z "$since" ]]; then
+      past_since=true
+    fi
+
+    for file in "${all_files[@]}"; do
+      if [[ -n "$since_file" ]]; then
+        if [[ "$file" == "$since_file" ]]; then
+          past_since=true
+          continue
+        fi
+        if [[ "$past_since" != true ]]; then
+          continue
+        fi
+      elif [[ -n "$since" ]]; then
+        created_at="$(frontmatter_value "created_at" "$file")"
+        if [[ "$created_at" < "$since" ]]; then
+          continue
+        fi
+      fi
+
+      file_agent_id="$(frontmatter_value "agent_id" "$file")"
       if [[ -n "$agent_id_filter" && "$file_agent_id" != "$agent_id_filter" ]]; then
         continue
       fi
