@@ -31,11 +31,11 @@ import {
   ChevronRight,
   Copy,
   ExternalLink,
+  FolderPlus,
   FolderGit2,
   GitPullRequest,
   Monitor,
   MoreVertical,
-  Plus,
 } from "lucide-react-native";
 import { NestableScrollContainer } from "react-native-draggable-flatlist";
 import { DraggableList, type DraggableRenderItemInfo } from "./draggable-list";
@@ -392,15 +392,15 @@ function NewWorktreeButton({
             }}
             disabled={loading}
             accessibilityRole="button"
-            accessibilityLabel={`Create a new worktree for ${displayName}`}
+            accessibilityLabel={`Create a new workspace for ${displayName}`}
             testID={testID}
           >
             {({ hovered, pressed }) =>
               loading ? (
                 <ActivityIndicator size={14} color={theme.colors.foregroundMuted} />
               ) : (
-                <Plus
-                  size={14}
+                <FolderPlus
+                  size={15}
                   color={
                     hovered || pressed ? theme.colors.foreground : theme.colors.foregroundMuted
                   }
@@ -411,7 +411,7 @@ function NewWorktreeButton({
         </TooltipTrigger>
         <TooltipContent side="bottom" align="center" offset={8}>
           <View style={styles.projectActionTooltipRow}>
-            <Text style={styles.projectActionTooltipText}>New worktree</Text>
+            <Text style={styles.projectActionTooltipText}>New workspace</Text>
             {showShortcutHint && newWorktreeKeys ? (
               <Shortcut chord={newWorktreeKeys} style={styles.projectActionTooltipShortcut} />
             ) : null}
