@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import { runModeCommand } from "./mode.js";
-import { runArchiveCommand } from "./archive.js";
+import { addArchiveOptions, runArchiveCommand } from "./archive.js";
 import { addDeleteOptions, runDeleteCommand } from "./delete.js";
 import { addLsOptions, runLsCommand } from "./ls.js";
 import { addRunOptions, runRunCommand } from "./run.js";
@@ -69,11 +69,7 @@ export function createAgentCommand(): Command {
   ).action(withOutput(runModeCommand));
 
   addJsonAndDaemonHostOptions(
-    agent
-      .command("archive")
-      .description("Archive an agent (soft-delete)")
-      .argument("<id>", "Agent ID, prefix, or name")
-      .option("--force", "Force archive running agent (interrupts active run first)"),
+    addArchiveOptions(agent.command("archive")),
   ).action(withOutput(runArchiveCommand));
 
   addJsonAndDaemonHostOptions(

@@ -1,4 +1,4 @@
-import type { Command } from "commander";
+import { Command } from "commander";
 import { connectToDaemon, getDaemonHost, resolveAgentId } from "../../utils/client.js";
 import type {
   CommandOptions,
@@ -23,6 +23,13 @@ export const archiveSchema: OutputSchema<AgentArchiveResult> = {
     { header: "ARCHIVED AT", field: "archivedAt" },
   ],
 };
+
+export function addArchiveOptions(cmd: Command): Command {
+  return cmd
+    .description('Archive an agent (soft-delete)')
+    .argument("<id>", "Agent ID, prefix, or name")
+    .option("--force", "Force archive running agent (interrupts active run first)");
+}
 
 export interface AgentArchiveOptions extends CommandOptions {
   force?: boolean;
