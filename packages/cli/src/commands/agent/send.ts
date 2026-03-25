@@ -28,7 +28,7 @@ export const agentSendSchema: OutputSchema<AgentSendResult> = {
 };
 
 export interface AgentSendOptions extends CommandOptions {
-  noWait?: boolean;
+  wait?: boolean;
   image?: string[];
   prompt?: string;
   promptFile?: string;
@@ -193,7 +193,7 @@ export async function runSendCommand(
     await client.sendAgentMessage(agentIdArg, promptInput, { images });
 
     // If --no-wait, return immediately
-    if (options.noWait) {
+    if (options.wait === false) {
       await client.close();
 
       return {
