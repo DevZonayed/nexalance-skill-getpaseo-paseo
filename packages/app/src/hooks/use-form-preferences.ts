@@ -2,15 +2,22 @@ import { useCallback } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
+
 const FORM_PREFERENCES_STORAGE_KEY = "@paseo:create-agent-preferences";
 const FORM_PREFERENCES_QUERY_KEY = ["form-preferences"];
 
-const formPreferencesSchema = z.object({
-  workingDir: z.string().optional(),
-  provider: z.string().optional(),
-  serverId: z.string().optional(),
+const providerPreferencesSchema = z.object({
+  model: z.string().optional(),
+  mode: z.string().optional(),
+  thinkingByModel: z.record(z.string()).optional(),
 });
 
+const formPreferencesSchema = z.object({
+  provider: z.string().optional(),
+  providerPreferences: z.record(providerPreferencesSchema).optional(),
+});
+
+export type ProviderPreferences = z.infer<typeof providerPreferencesSchema>;
 export type FormPreferences = z.infer<typeof formPreferencesSchema>;
 
 const DEFAULT_FORM_PREFERENCES: FormPreferences = {};

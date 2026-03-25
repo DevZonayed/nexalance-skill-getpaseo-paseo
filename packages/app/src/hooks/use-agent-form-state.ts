@@ -11,7 +11,11 @@ import type {
 } from "@server/server/agent/agent-sdk-types";
 import { useHosts } from "@/runtime/host-runtime";
 import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
-import { useFormPreferences, type FormPreferences } from "./use-form-preferences";
+import {
+  useFormPreferences,
+  type FormPreferences,
+  type ProviderPreferences,
+} from "./use-form-preferences";
 
 // Explicit overrides from URL params or "New Agent" button
 export interface FormInitialValues {
@@ -197,6 +201,8 @@ function resolveFormState(
   }
 
   const providerDef = allowedProviderMap.get(result.provider);
+  const providerPrefs = preferences?.providerPreferences?.[result.provider];
+
   // 2. Resolve modeId (depends on provider)
   if (!userModified.modeId) {
     const validModeIds = providerDef?.modes.map((m) => m.id) ?? [];
@@ -207,6 +213,8 @@ function resolveFormState(
       validModeIds.includes(initialValues.modeId)
     ) {
       result.modeId = initialValues.modeId;
+    } else if (providerPrefs?.mode && validModeIds.includes(providerPrefs.mode)) {
+      result.modeId = providerPrefs.mode;
     } else {
       result.modeId = providerDef?.defaultModeId ?? validModeIds[0] ?? "";
     }
@@ -216,13 +224,18 @@ function resolveFormState(
   if (!userModified.model) {
     const isValidModel = (m: string) => availableModels?.some((am) => am.id === m) ?? false;
     const initialModel = normalizeSelectedModelId(initialValues?.model);
+    const preferredModel = normalizeSelectedModelId(providerPrefs?.model);
     const defaultModelId = resolveDefaultModelId(availableModels);
 
     if (initialModel) {
-      // If models aren't loaded yet, trust the initial value
-      // It will be validated once models load
       if (!availableModels || isValidModel(initialModel)) {
         result.model = initialModel;
+      } else {
+        result.model = defaultModelId;
+      }
+    } else if (preferredModel) {
+      if (!availableModels || isValidModel(preferredModel)) {
+        result.model = preferredModel;
       } else {
         result.model = defaultModelId;
       }
@@ -240,8 +253,15 @@ function resolveFormState(
       : "";
 
   if (!userModified.thinkingOptionId) {
+    const effectiveModelId = result.model.trim();
+    const preferredThinking = effectiveModelId
+      ? providerPrefs?.thinkingByModel?.[effectiveModelId]?.trim() ?? ""
+      : "";
+
     if (initialThinkingOptionId.length > 0) {
       result.thinkingOptionId = initialThinkingOptionId;
+    } else if (preferredThinking.length > 0) {
+      result.thinkingOptionId = preferredThinking;
     } else {
       result.thinkingOptionId = "";
     }
@@ -257,12 +277,9 @@ function resolveFormState(
   }
 
   // 5. Resolve serverId (independent)
-  // Only use stored serverId if the host still exists in the registry
   if (!userModified.serverId) {
     if (initialValues?.serverId !== undefined) {
       result.serverId = initialValues.serverId;
-    } else if (preferences?.serverId && validServerIds.has(preferences.serverId)) {
-      result.serverId = preferences.serverId;
     }
     // else keep current
   }
@@ -271,8 +288,6 @@ function resolveFormState(
   if (!userModified.workingDir) {
     if (initialValues?.workingDir !== undefined) {
       result.workingDir = initialValues.workingDir;
-    } else if (preferences?.workingDir) {
-      result.workingDir = preferences.workingDir;
     }
     // else keep current (empty string)
   }
@@ -540,44 +555,43 @@ export function useAgentFormState(options: UseAgentFormStateOptions = {}): UseAg
     validServerIds,
   ]);
 
-  // Persist inferred serverId so reloads keep the selection (e.g. URL serverId or first-time load).
-  useEffect(() => {
-    if (!isVisible || !isCreateFlow) return;
-    if (isPreferencesLoading) return;
-    if (userModified.serverId) return;
-    const serverId = formState.serverId;
-    if (!serverId) return;
-    if (preferences?.serverId === serverId) return;
-    void updatePreferences({ serverId });
-  }, [
-    isVisible,
-    isCreateFlow,
-    isPreferencesLoading,
-    userModified.serverId,
-    formState.serverId,
-    preferences?.serverId,
-    updatePreferences,
-  ]);
-
   // User setters - mark fields as modified and persist to preferences
   const setSelectedServerIdFromUser = useCallback(
     (value: string | null) => {
       setFormState((prev) => ({ ...prev, serverId: value }));
       setUserModified((prev) => ({ ...prev, serverId: true }));
-      void updatePreferences({ serverId: value ?? undefined });
     },
-    [updatePreferences],
+    [],
   );
 
   const setProviderFromUser = useCallback(
     (provider: AgentProvider) => {
       const providerModels = allProviderModels.get(provider) ?? null;
       const providerDef = providerDefinitionMap.get(provider);
+      const providerPrefs = preferences?.providerPreferences?.[provider];
+
+      const isValidModel = (m: string) =>
+        providerModels?.some((am) => am.id === m) ?? false;
+      const preferredModel = normalizeSelectedModelId(providerPrefs?.model);
       const defaultModelId = resolveDefaultModelId(providerModels);
-      const defaultThinkingOptionId = resolveThinkingOptionId({
+      const nextModelId =
+        preferredModel && (!providerModels || isValidModel(preferredModel))
+          ? preferredModel
+          : defaultModelId;
+
+      const validModeIds = providerDef?.modes.map((m) => m.id) ?? [];
+      const nextModeId =
+        providerPrefs?.mode && validModeIds.includes(providerPrefs.mode)
+          ? providerPrefs.mode
+          : providerDef?.defaultModeId ?? "";
+
+      const preferredThinking = nextModelId
+        ? providerPrefs?.thinkingByModel?.[nextModelId]?.trim() ?? ""
+        : "";
+      const nextThinkingOptionId = resolveThinkingOptionId({
         availableModels: providerModels,
-        modelId: defaultModelId,
-        requestedThinkingOptionId: "",
+        modelId: nextModelId,
+        requestedThinkingOptionId: preferredThinking,
       });
 
       setUserModified((prev) => ({ ...prev, provider: true }));
@@ -586,12 +600,12 @@ export function useAgentFormState(options: UseAgentFormStateOptions = {}): UseAg
       setFormState((prev) => ({
         ...prev,
         provider,
-        modeId: providerDef?.defaultModeId ?? "",
-        model: defaultModelId,
-        thinkingOptionId: defaultThinkingOptionId,
+        modeId: nextModeId,
+        model: nextModelId,
+        thinkingOptionId: nextThinkingOptionId,
       }));
     },
-    [allProviderModels, providerDefinitionMap, updatePreferences],
+    [allProviderModels, preferences?.providerPreferences, providerDefinitionMap, updatePreferences],
   );
 
   const setProviderAndModelFromUser = useCallback(
@@ -664,9 +678,8 @@ export function useAgentFormState(options: UseAgentFormStateOptions = {}): UseAg
     (value: string) => {
       setFormState((prev) => ({ ...prev, workingDir: value }));
       setUserModified((prev) => ({ ...prev, workingDir: true }));
-      void updatePreferences({ workingDir: value });
     },
-    [updatePreferences],
+    [],
   );
 
   const setSelectedServerId = useCallback((value: string | null) => {
@@ -678,15 +691,35 @@ export function useAgentFormState(options: UseAgentFormStateOptions = {}): UseAg
   }, [providerModelsQuery]);
 
   const persistFormPreferences = useCallback(async () => {
+    const resolvedModel = resolveEffectiveModel(availableModels, formState.model);
+    const modelId = resolvedModel?.id ?? formState.model;
+    const existingProviderPrefs = preferences?.providerPreferences?.[formState.provider];
+
+    const nextProviderPrefs: ProviderPreferences = {
+      model: modelId || undefined,
+      mode: formState.modeId || undefined,
+      thinkingByModel: {
+        ...existingProviderPrefs?.thinkingByModel,
+        ...(modelId && formState.thinkingOptionId
+          ? { [modelId]: formState.thinkingOptionId }
+          : {}),
+      },
+    };
+
     await updatePreferences({
-      workingDir: formState.workingDir,
       provider: formState.provider,
-      serverId: formState.serverId ?? undefined,
+      providerPreferences: {
+        ...preferences?.providerPreferences,
+        [formState.provider]: nextProviderPrefs,
+      },
     });
   }, [
+    availableModels,
+    formState.model,
+    formState.modeId,
     formState.provider,
-    formState.serverId,
-    formState.workingDir,
+    formState.thinkingOptionId,
+    preferences?.providerPreferences,
     updatePreferences,
   ]);
 
