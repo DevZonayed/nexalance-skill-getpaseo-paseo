@@ -14,6 +14,7 @@ publish:
   owner: getpaseo
   repo: paseo
 mac:
+  artifactName: "Paseo-${version}-${arch}.${ext}"
   category: public.app-category.developer-tools
   icon: assets/icon.icns
   hardenedRuntime: true
@@ -35,6 +36,8 @@ linux:
       to: bin/paseo
   target:
     - AppImage
+    - deb
+    - rpm
     - tar.gz
 win:
   icon: assets/icon.ico
