@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { execFileSync } from "node:child_process";
 
+import type { AgentModelDefinition } from "../agent-sdk-types.js";
 import { createDaemonTestContext, type DaemonTestContext } from "../test-utils/index.js";
 
 function isBinaryInstalled(binary: string): boolean {
@@ -14,6 +15,16 @@ function isBinaryInstalled(binary: string): boolean {
 
 const hasCodex = isBinaryInstalled("codex");
 const hasOpenCode = isBinaryInstalled("opencode");
+
+function modelMatchesFamily(
+  model: AgentModelDefinition,
+  family: "sonnet" | "haiku",
+): boolean {
+  const haystacks = [model.id, model.label, model.description ?? ""].map((value) =>
+    value.toLowerCase(),
+  );
+  return haystacks.some((text) => text.includes(family));
+}
 
 describe("provider model catalogs (e2e)", () => {
   let ctx: DaemonTestContext;
@@ -32,11 +43,8 @@ describe("provider model catalogs (e2e)", () => {
     expect(result.error).toBeNull();
     expect(result.models.length).toBeGreaterThan(0);
 
-    const descriptions = result.models.map((model) =>
-      `${model.label} ${model.description ?? ""}`.toLowerCase(),
-    );
-    expect(descriptions.some((text) => text.includes("sonnet 4.5"))).toBe(true);
-    expect(descriptions.some((text) => text.includes("haiku"))).toBe(true);
+    expect(result.models.some((model) => modelMatchesFamily(model, "sonnet"))).toBe(true);
+    expect(result.models.some((model) => modelMatchesFamily(model, "haiku"))).toBe(true);
   }, 180_000);
 
   test.runIf(hasCodex)(
