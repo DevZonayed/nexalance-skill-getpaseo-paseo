@@ -166,7 +166,11 @@ function ControlledStatusBar({
     isModelLoading && (!modelOptions || modelOptions.length === 0)
       ? "Loading models..."
       : findOptionLabel(modelOptions, selectedModelId, "Select model");
-  const displayThinking = findOptionLabel(thinkingOptions, selectedThinkingOptionId, "Default");
+  const displayThinking = findOptionLabel(
+    thinkingOptions,
+    selectedThinkingOptionId,
+    thinkingOptions?.[0]?.label ?? "Unknown",
+  );
 
   const modeVisuals = selectedModeId ? getModeVisuals(provider, selectedModeId) : undefined;
   const ModeIconComponent = modeVisuals?.icon ? MODE_ICONS[modeVisuals.icon] : null;

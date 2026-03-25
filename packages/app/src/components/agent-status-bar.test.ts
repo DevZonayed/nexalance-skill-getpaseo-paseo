@@ -112,7 +112,7 @@ describe("resolveAgentModelSelection", () => {
 
     expect(selection.activeModelId).toBe("default");
     expect(selection.displayModel).toBe("Default (Sonnet 4.6)");
-    expect(selection.selectedThinkingId).toBeNull();
-    expect(selection.displayThinking).toBe("Default");
+    expect(selection.selectedThinkingId).toBe("low");
+    expect(selection.displayThinking).toBe("Low");
   });
 });

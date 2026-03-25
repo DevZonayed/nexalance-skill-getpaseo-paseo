@@ -48,15 +48,15 @@ export function resolveAgentModelSelection(input: {
     selectedModel?.label ?? preferredModelId ?? fallbackModel?.label ?? "Unknown model";
 
   const thinkingOptions = selectedModel?.thinkingOptions ?? null;
-  const selectedThinkingId =
+  const resolvedThinkingId =
     explicitThinkingOptionId && explicitThinkingOptionId !== "default"
       ? explicitThinkingOptionId
       : (selectedModel?.defaultThinkingOptionId ?? null);
   const selectedThinking =
-    thinkingOptions?.find((option) => option.id === selectedThinkingId) ?? null;
-  const displayThinking =
-    selectedThinking?.label ??
-    (selectedThinkingId === "default" ? "Model default" : (selectedThinkingId ?? "Default"));
+    thinkingOptions?.find((option) => option.id === resolvedThinkingId) ?? null;
+  const effectiveThinking = selectedThinking ?? thinkingOptions?.[0] ?? null;
+  const selectedThinkingId = effectiveThinking?.id ?? null;
+  const displayThinking = effectiveThinking?.label ?? selectedThinkingId ?? "Unknown";
 
   return {
     selectedModel,

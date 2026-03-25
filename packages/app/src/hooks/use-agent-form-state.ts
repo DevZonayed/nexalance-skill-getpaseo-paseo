@@ -161,7 +161,7 @@ function resolveThinkingOptionId(args: {
     return normalizedThinkingOptionId;
   }
 
-  return effectiveModel?.defaultThinkingOptionId ?? "";
+  return effectiveModel?.defaultThinkingOptionId ?? thinkingOptions[0]?.id ?? "";
 }
 
 /**
