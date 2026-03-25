@@ -256,6 +256,12 @@ function Nav() {
           Changelog
         </a>
         <a
+          href="/download"
+          className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+        >
+          Download
+        </a>
+        <a
           href="https://discord.gg/jz8T2uahpH"
           target="_blank"
           rel="noopener noreferrer"
@@ -515,7 +521,15 @@ function GetStarted() {
         </a>
         <ServerInstallButton />
       </div>
-      <div className="flex items-center gap-2 pt-8">
+      <div className="pt-3">
+        <a
+          href="/download"
+          className="text-xs text-white/40 hover:text-white/70 transition-colors"
+        >
+          All download options
+        </a>
+      </div>
+      <div className="flex items-center gap-2 pt-6">
         <span className="text-xs text-white/40">Supports</span>
         <div className="flex items-center gap-1">
           <AgentBadge name="Claude Code" icon={<ClaudeCodeIcon className="h-6 w-6" />} />
@@ -529,72 +543,19 @@ function GetStarted() {
 
 function DownloadButton() {
   const detectedPlatform = useDetectedPlatform();
-  const [open, setOpen] = React.useState(false);
-  const ref = React.useRef<HTMLDivElement>(null);
-
-  React.useEffect(() => {
-    function handleClickOutside(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
-    }
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
-
   const primary = downloadOptions.find((o) => o.platform === detectedPlatform)!;
-  const secondaryOptions = downloadOptions.filter((o) => o.platform !== detectedPlatform);
   const PrimaryIcon = primary.icon;
 
   return (
-    <div className="relative" ref={ref}>
-      <div className="flex items-stretch">
-        <a
-          href={primary.href}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-2 rounded-l-lg bg-foreground px-4 py-2 text-sm font-medium text-background hover:bg-foreground/90 transition-colors"
-        >
-          <PrimaryIcon className="h-4 w-4" />
-          Download for {primary.label}
-        </a>
-        <button
-          onClick={() => setOpen(!open)}
-          className="inline-flex items-center justify-center rounded-r-lg border-l border-background/20 bg-foreground px-2 py-2 text-background hover:bg-foreground/90 transition-colors"
-          aria-label="More download options"
-        >
-          <ChevronDownIcon className="h-4 w-4" />
-        </button>
-      </div>
-      <AnimatePresence>
-        {open && (
-          <motion.div
-            initial={{ opacity: 0, y: -4 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -4 }}
-            transition={{ duration: 0.15, ease: "easeOut" }}
-            className="absolute left-0 top-full mt-1 z-50 min-w-[200px] rounded-lg border border-white/20 bg-black/90 backdrop-blur-sm py-1"
-          >
-            {secondaryOptions.map((option) => {
-              const Icon = option.icon;
-              return (
-                <a
-                  key={option.platform}
-                  href={option.href}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  onClick={() => setOpen(false)}
-                  className="flex items-center gap-2 px-4 py-2 text-sm text-white/80 hover:bg-white/10 transition-colors"
-                >
-                  <Icon className="h-4 w-4" />
-                  {option.label}
-                </a>
-              );
-            })}
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
+    <a
+      href={primary.href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="inline-flex items-center gap-2 rounded-lg bg-foreground px-4 py-2 text-sm font-medium text-background hover:bg-foreground/90 transition-colors"
+    >
+      <PrimaryIcon className="h-4 w-4" />
+      Download for {primary.label}
+    </a>
   );
 }
 
