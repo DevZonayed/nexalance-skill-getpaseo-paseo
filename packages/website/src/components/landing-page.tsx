@@ -1191,7 +1191,7 @@ function SponsorCTA() {
           infrastructure like cloud sandboxes for teams. But Paseo itself will always be FOSS.
         </p>
         <p>
-          If you like Paseo, sponsoring keeps development going.
+          If you like Paseo, consider sponsoring development.
         </p>
         <p>- Mo</p>
       </div>
