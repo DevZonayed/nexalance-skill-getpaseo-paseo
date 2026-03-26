@@ -72,7 +72,7 @@ npx skills add getpaseo/paseo
 
 Then use them in any agent conversation:
 
-```
+```bash
 # Use handoff when you discuss something with an agent but want another one to implement.
 # I use this to plan with Claude and then handoff to Codex to implement.
 /paseo-handoff hand off the authentication fix to codex 5.4 in a worktree
