@@ -406,7 +406,7 @@ function Features() {
               <span className="text-white/40">{feature.icon}</span>
               <p className="font-medium text-lg">{feature.title}</p>
             </div>
-            <p className="text-sm text-white/60 leading-relaxed">{feature.description}</p>
+            <p className="text-sm text-muted-foreground leading-relaxed">{feature.description}</p>
           </motion.div>
         ))}
       </div>
@@ -549,7 +549,7 @@ function ServerInstallButton() {
             >
               <div className="space-y-2">
                 <p className="text-base font-medium text-white">Run agents on a remote machine</p>
-                <p className="text-sm text-white/60">
+                <p className="text-sm text-muted-foreground">
                   For headless machines you want to connect to from the Paseo apps. The desktop app
                   already includes a built-in daemon.
                 </p>
@@ -1008,7 +1008,7 @@ function MobileSection() {
     <section className="space-y-6">
       <div className="space-y-2">
         <h2 className="text-2xl font-medium">Mobile-first</h2>
-        <p className="text-sm text-white/60 max-w-lg">
+        <p className="text-sm text-muted-foreground max-w-lg">
           The mobile app has full feature parity with desktop. Launch agents, review diffs, talk through problems with voice, all from your phone.
         </p>
       </div>
@@ -1039,7 +1039,7 @@ function CLISection() {
     >
       <div className="space-y-2">
         <h2 className="text-2xl font-medium">CLI</h2>
-        <p className="text-sm text-white/60 max-w-lg">
+        <p className="text-sm text-muted-foreground max-w-lg">
           Everything you can do in the app, you can do from the terminal.
         </p>
       </div>
@@ -1061,7 +1061,7 @@ function CLISection() {
       </div>
 
       <div className="space-y-3">
-        <p className="text-sm text-white/50">{active.description}</p>
+        <p className="text-sm text-muted-foreground">{active.description}</p>
         <CLICodeBlock>{active.code}</CLICodeBlock>
       </div>
 
@@ -1118,7 +1118,7 @@ function FAQ() {
         </FAQItem>
         <FAQItem question="Do I need the desktop app?">
           No. You can run the daemon headless with{" "}
-          <code className="font-mono text-white/50">npm install -g @getpaseo/cli && paseo</code> and
+          <code className="font-mono text-muted-foreground">npm install -g @getpaseo/cli && paseo</code> and
           use the CLI, web app, or mobile app to connect. The desktop app just bundles the daemon
           with a UI.
         </FAQItem>
@@ -1175,13 +1175,26 @@ function SponsorCTA() {
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true, margin: "-60px" }}
       transition={{ duration: 0.5, ease: "easeOut" }}
-      className="rounded-xl bg-white/5 border border-white/10 p-8 md:p-10 text-center space-y-4"
+      className="rounded-xl bg-white/5 border border-white/10 p-8 md:p-10 text-left space-y-4 max-w-xl mx-auto"
     >
       <p className="text-lg font-medium">Paseo is an independent project</p>
-      <p className="text-sm text-white/50 max-w-md mx-auto leading-relaxed">
-        I built Paseo because the existing tools weren't good enough for me. There's no VC or big
-        team behind this. If it saves you time, sponsoring keeps development going.
-      </p>
+      <div className="text-sm text-muted-foreground leading-relaxed space-y-3">
+        <p>
+          I believe that open source and freedom of choice always win for developer tools.
+        </p>
+        <p>
+          Paseo has no VC funding and no big team behind it. I built it because the existing tools
+          weren't good enough for me. No tracking, no telemetry, no forced accounts, no vendor lock-in.
+        </p>
+        <p>
+          The monetization story is still taking shape. The obvious path is optional hosted
+          infrastructure like cloud sandboxes for teams. But Paseo itself will always be FOSS.
+        </p>
+        <p>
+          If you like Paseo, sponsoring keeps development going.
+        </p>
+        <p>- Mo</p>
+      </div>
       <div className="pt-2">
         <a
           href="https://github.com/sponsors/boudra"
@@ -1214,7 +1227,7 @@ function FAQItem({ question, children }: { question: string; children: React.Rea
         <span className="font-mono text-white/40 hidden group-open:inline">-</span>
         {question}
       </summary>
-      <div className="text-sm text-white/60 space-y-2 mt-2 ml-4">{children}</div>
+      <div className="text-sm text-muted-foreground space-y-2 mt-2 ml-4">{children}</div>
     </details>
   );
 }
