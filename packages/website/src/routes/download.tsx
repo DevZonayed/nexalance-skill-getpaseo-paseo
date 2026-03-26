@@ -1,4 +1,5 @@
 import { Link, createFileRoute } from "@tanstack/react-router";
+import { CommandDialog } from "~/components/command-dialog";
 import { pageMeta } from "~/meta";
 import {
   desktopVersion,
@@ -109,9 +110,18 @@ function Download() {
                 <AppleIcon className="h-5 w-5 text-foreground" />
                 <span className="font-medium">macOS</span>
               </div>
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <DownloadPill href={macAppleSiliconDownloadUrl} label="Apple Silicon" />
                 <DownloadPill href={macIntelDownloadUrl} label="Intel" />
+                <CommandDialog
+                  trigger={
+                    <span className="inline-flex items-center justify-center rounded-full bg-foreground px-4 py-1.5 text-sm font-medium text-background hover:bg-foreground/85 transition-colors">
+                      Homebrew
+                    </span>
+                  }
+                  title="Install via Homebrew"
+                  command="brew install --cask paseo"
+                />
               </div>
             </div>
 
@@ -168,7 +178,7 @@ function Download() {
                   external
                 />
                 <DownloadPill
-                  href={`${releaseBase}/paseo-${desktopVersion}.apk`}
+                  href={`${releaseBase}/paseo-v${desktopVersion}-android.apk`}
                   label="APK"
                 />
               </div>

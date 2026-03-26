@@ -1,6 +1,7 @@
 import * as React from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { CursorFieldProvider } from "~/components/butterfly";
+import { CommandDialog } from "~/components/command-dialog";
 import {
   appStoreUrl,
   playStoreUrl,
@@ -507,63 +508,23 @@ function DownloadButton() {
 }
 
 function ServerInstallButton() {
-  const [open, setOpen] = React.useState(false);
-  const ref = React.useRef<HTMLDivElement>(null);
-
-  React.useEffect(() => {
-    function handleClickOutside(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
-    }
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
-
   return (
-    <div className="relative" ref={ref}>
-      <button
-        onClick={() => setOpen(!open)}
-        className="inline-flex items-center justify-center rounded-lg border border-white/20 px-3 py-2 text-white hover:bg-white/10 transition-colors"
-        aria-label="Install on a server"
-      >
-        <TerminalIcon className="h-5 w-5" />
-      </button>
-      <AnimatePresence>
-        {open && (
-          <>
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.2 }}
-              className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm"
-              onClick={() => setOpen(false)}
-            />
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              transition={{ duration: 0.2, ease: "easeOut" }}
-              className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-full max-w-md rounded-xl border border-white/20 bg-background p-6 space-y-4"
-            >
-              <div className="space-y-2">
-                <p className="text-base font-medium text-white">Run agents on a remote machine</p>
-                <p className="text-sm text-muted-foreground">
-                  For headless machines you want to connect to from the Paseo apps. The desktop app
-                  already includes a built-in daemon.
-                </p>
-              </div>
-              <CodeBlock>npm install -g @getpaseo/cli && paseo</CodeBlock>
-              <p className="text-xs text-white/30">
-                Requires Node.js 18+. Run <span className="font-mono text-white/40">paseo</span> to
-                start the daemon.
-              </p>
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
-    </div>
+    <CommandDialog
+      trigger={
+        <span className="inline-flex items-center justify-center rounded-lg border border-white/20 px-3 py-2 text-white hover:bg-white/10 transition-colors">
+          <TerminalIcon className="h-5 w-5" />
+        </span>
+      }
+      title="Run agents on a remote machine"
+      description="For headless machines you want to connect to from the Paseo apps. The desktop app already includes a built-in daemon."
+      command="npm install -g @getpaseo/cli && paseo"
+      footnote={
+        <>
+          Requires Node.js 18+. Run <span className="font-mono text-white/40">paseo</span> to
+          start the daemon.
+        </>
+      }
+    />
   );
 }
 
@@ -671,52 +632,6 @@ function Step({ number, children }: { number: number; children: React.ReactNode 
   );
 }
 
-function CodeBlock({ children }: { children: React.ReactNode }) {
-  const [copied, setCopied] = React.useState(false);
-  const text = typeof children === "string" ? children : "";
-
-  function handleCopy() {
-    navigator.clipboard.writeText(text);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  }
-
-  return (
-    <div className="bg-black/30 backdrop-blur-sm rounded-lg p-3 md:p-4 font-mono text-sm flex items-center justify-between gap-2">
-      <div>
-        <span className="text-muted-foreground select-none">$ </span>
-        <span className="text-foreground">{children}</span>
-      </div>
-      <button
-        onClick={handleCopy}
-        className="text-muted-foreground hover:text-foreground transition-colors p-1"
-        title="Copy to clipboard"
-      >
-        {copied ? (
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            width="16"
-            height="16"
-            fill="currentColor"
-            viewBox="0 0 256 256"
-          >
-            <path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z" />
-          </svg>
-        ) : (
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            width="16"
-            height="16"
-            fill="currentColor"
-            viewBox="0 0 256 256"
-          >
-            <path d="M216,28H88A20,20,0,0,0,68,48V76H40A20,20,0,0,0,20,96V216a20,20,0,0,0,20,20H168a20,20,0,0,0,20-20V188h28a20,20,0,0,0,20-20V48A20,20,0,0,0,216,28ZM164,212H44V100H164Zm48-48H188V96a20,20,0,0,0-20-20H92V52H212Z" />
-          </svg>
-        )}
-      </button>
-    </div>
-  );
-}
 
 const bashKeywords = new Set([
   "while",
