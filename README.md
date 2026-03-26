@@ -44,6 +44,40 @@ For full setup and configuration, see:
 - [Docs](https://paseo.sh/docs)
 - [Configuration reference](https://paseo.sh/docs/configuration)
 
+## CLI
+
+Everything you can do in the app, you can do from the terminal.
+
+```bash
+paseo run --provider claude/opus-4.6 "implement user authentication"
+paseo run --provider codex/gpt-5.4 --worktree feature-x "implement feature X"
+
+paseo ls                           # list running agents
+paseo attach abc123                # stream live output
+paseo send abc123 "also add tests" # follow-up task
+
+# run on a remote daemon
+paseo --host workstation.local:6767 run "run the full test suite"
+```
+
+See the [full CLI reference](https://paseo.sh/docs/cli) for more.
+
+## Orchestration skills (Unstable)
+
+Skills that teach agents how to use the Paseo CLI to orchestrate other agents. These are actively being developed and updated.
+
+```bash
+npx skills add getpaseo/paseo
+```
+
+Then use them in any agent conversation:
+
+```
+/paseo-handoff hand off the authentication fix to codex 5.4 in a worktree
+/paseo-loop loop a codex agent to fix the backend tests, use sonnet to verify, max 10 iterations
+/paseo-orchestrator spin up a team to implement the database refactor, use chat to coordinate. use claude to plan and codex to implement and review
+```
+
 ## Development
 
 Quick monorepo package map:
