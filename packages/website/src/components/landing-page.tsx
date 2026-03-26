@@ -42,7 +42,7 @@ export function LandingPage({ title, subtitle }: LandingPageProps) {
         >
           <div className="max-w-6xl lg:max-w-7xl xl:max-w-[90rem] mx-auto">
             <img
-              src="/paseo-mockup.png"
+              src="/hero-mockup.png"
               alt="Paseo app showing agent management interface"
               className="w-full rounded-lg shadow-2xl"
             />
@@ -55,6 +55,7 @@ export function LandingPage({ title, subtitle }: LandingPageProps) {
         <main className="p-6 md:p-20 md:pt-8 max-w-5xl mx-auto">
           <div className="space-y-24">
             <Features />
+            <MobileSection />
             <CLISection />
             <FAQ />
             <SponsorCTA />
@@ -1001,6 +1002,28 @@ paseo --host gpu-server:6767 attach abc123`,
 done`,
   },
 ];
+
+function MobileSection() {
+  return (
+    <section className="space-y-6">
+      <div className="space-y-2">
+        <h2 className="text-2xl font-medium">Mobile-first</h2>
+        <p className="text-sm text-white/60 max-w-lg">
+          The mobile app has full feature parity with desktop. Launch agents, review diffs, talk through problems with voice, all from your phone.
+        </p>
+      </div>
+      <div className="-mx-[calc(50vw-50%)] px-6 md:px-8">
+        <div className="max-w-5xl lg:max-w-6xl mx-auto">
+          <img
+            src="/mobile-mockup.png"
+            alt="Paseo mobile app screens"
+            className="w-full rounded-lg"
+          />
+        </div>
+      </div>
+    </section>
+  );
+}
 
 function CLISection() {
   const [activeIndex, setActiveIndex] = React.useState(0);

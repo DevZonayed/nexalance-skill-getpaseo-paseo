@@ -7,7 +7,11 @@
 <p align="center">One interface for all your coding agents.</p>
 
 <p align="center">
-  <img src="https://paseo.sh/paseo-mockup.png" alt="Paseo app screenshot" width="100%">
+  <img src="https://paseo.sh/hero-mockup.png" alt="Paseo app screenshot" width="100%">
+</p>
+
+<p align="center">
+  <img src="https://paseo.sh/mobile-mockup.png" alt="Paseo mobile app" width="100%">
 </p>
 
 ---
@@ -59,7 +63,11 @@ npm run dev
 # run individual surfaces
 npm run dev:server
 npm run dev:app
+npm run dev:desktop
 npm run dev:website
+
+# build the daemon
+npm run build:daemon
 
 # repo-wide checks
 npm run typecheck
