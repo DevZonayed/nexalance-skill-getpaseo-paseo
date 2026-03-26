@@ -2,6 +2,9 @@ import { Link, createFileRoute } from "@tanstack/react-router";
 import { pageMeta } from "~/meta";
 import {
   desktopVersion,
+  linuxAppImageDownloadUrl,
+  linuxDebDownloadUrl,
+  linuxRpmDownloadUrl,
   releaseBase,
   macAppleSiliconDownloadUrl,
   macIntelDownloadUrl,
@@ -134,17 +137,11 @@ function Download() {
               </div>
               <div className="flex flex-wrap gap-2">
                 <DownloadPill
-                  href={`${releaseBase}/Paseo-${desktopVersion}.AppImage`}
+                  href={linuxAppImageDownloadUrl}
                   label="AppImage"
                 />
-                <DownloadPill
-                  href={`${releaseBase}/paseo_${desktopVersion}_amd64.deb`}
-                  label="DEB"
-                />
-                <DownloadPill
-                  href={`${releaseBase}/paseo-${desktopVersion}-1.x86_64.rpm`}
-                  label="RPM"
-                />
+                <DownloadPill href={linuxDebDownloadUrl} label="DEB" />
+                <DownloadPill href={linuxRpmDownloadUrl} label="RPM" />
               </div>
             </div>
           </div>
