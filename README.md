@@ -21,18 +21,20 @@ Run agents in parallel on your own machines. Ship from your phone or your desk.
 
 ## Getting Started
 
-Download the desktop app from [paseo.sh](https://paseo.sh) or the [GitHub releases page](https://github.com/getpaseo/paseo/releases) — it bundles the daemon so there's nothing else to install.
+### Desktop app
+
+Download from [paseo.sh/download](https://paseo.sh/download) or the [GitHub releases page](https://github.com/getpaseo/paseo/releases). The app bundles its own daemon, so there's nothing else to install. It can also connect to daemons running on other machines.
 
 ### Headless / server mode
 
-To run the daemon on a remote or headless machine:
+Run the daemon on any machine:
 
 ```bash
 npm install -g @getpaseo/cli
 paseo
 ```
 
-Then connect from the desktop app, mobile app, or CLI.
+Then connect from any client — desktop, web, mobile, or CLI. See [paseo.sh/download](https://paseo.sh/download) for all options.
 
 For full setup and configuration, see:
 - [Docs](https://paseo.sh/docs)
