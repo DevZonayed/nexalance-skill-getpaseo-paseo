@@ -73,8 +73,15 @@ npx skills add getpaseo/paseo
 Then use them in any agent conversation:
 
 ```
+# Use handoff when you discuss something with an agent but want another one to implement.
+# I use this to plan with Claude and then handoff to Codex to implement.
 /paseo-handoff hand off the authentication fix to codex 5.4 in a worktree
+
+# Use loops when you have clear acceptance criteria (aka Ralph loops).
 /paseo-loop loop a codex agent to fix the backend tests, use sonnet to verify, max 10 iterations
+
+# Orchestrator teaches the agent how to create teams and manage them via a chat room.
+# Very opinionated and expects both Codex and Claude to work.
 /paseo-orchestrator spin up a team to implement the database refactor, use chat to coordinate. use claude to plan and codex to implement and review
 ```
 
