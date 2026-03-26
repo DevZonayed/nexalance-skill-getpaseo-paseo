@@ -1,11 +1,17 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import { Pressable, Text, View, Platform, ScrollView } from "react-native";
 import { useRouter } from "expo-router";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { QrCode, Link2, ClipboardPaste } from "lucide-react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { HostProfile } from "@/types/host-connection";
-import { useHostMutations } from "@/runtime/host-runtime";
+import {
+  getHostRuntimeStore,
+  isHostRuntimeConnected,
+  useHostMutations,
+  useHostRuntimeSnapshot,
+  useHosts,
+} from "@/runtime/host-runtime";
 import { useSessionStore } from "@/stores/session-store";
 import { AddHostModal } from "./add-host-modal";
 import { PairLinkModal } from "./pair-link-modal";
@@ -79,6 +85,39 @@ const styles = StyleSheet.create((theme) => ({
   actionTextPrimary: {
     color: theme.colors.accentForeground,
   },
+  hostList: {
+    width: "100%",
+    maxWidth: 420,
+    marginTop: theme.spacing[6],
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.border,
+    paddingTop: theme.spacing[4],
+    gap: theme.spacing[2],
+  },
+  hostRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[3],
+    paddingVertical: theme.spacing[2],
+  },
+  statusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  hostLabel: {
+    flex: 1,
+    color: theme.colors.foreground,
+    fontSize: theme.fontSize.sm,
+  },
+  hostStatus: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.sm,
+  },
+  hostStatusError: {
+    color: theme.colors.destructive,
+    fontSize: theme.fontSize.sm,
+  },
   versionLabel: {
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.xs,
@@ -86,6 +125,89 @@ const styles = StyleSheet.create((theme) => ({
     marginTop: theme.spacing[6],
   },
 }));
+
+function useAnyHostOnline(serverIds: string[]): string | null {
+  const runtime = getHostRuntimeStore();
+  return useSyncExternalStore(
+    (onStoreChange) => runtime.subscribeAll(onStoreChange),
+    () => {
+      let firstOnlineServerId: string | null = null;
+      let firstOnlineAt: string | null = null;
+      for (const serverId of serverIds) {
+        const snapshot = runtime.getSnapshot(serverId);
+        const lastOnlineAt = snapshot?.lastOnlineAt ?? null;
+        if (!isHostRuntimeConnected(snapshot) || !lastOnlineAt) {
+          continue;
+        }
+        if (!firstOnlineAt || lastOnlineAt < firstOnlineAt) {
+          firstOnlineAt = lastOnlineAt;
+          firstOnlineServerId = serverId;
+        }
+      }
+      return firstOnlineServerId;
+    },
+    () => {
+      let firstOnlineServerId: string | null = null;
+      let firstOnlineAt: string | null = null;
+      for (const serverId of serverIds) {
+        const snapshot = runtime.getSnapshot(serverId);
+        const lastOnlineAt = snapshot?.lastOnlineAt ?? null;
+        if (!isHostRuntimeConnected(snapshot) || !lastOnlineAt) {
+          continue;
+        }
+        if (!firstOnlineAt || lastOnlineAt < firstOnlineAt) {
+          firstOnlineAt = lastOnlineAt;
+          firstOnlineServerId = serverId;
+        }
+      }
+      return firstOnlineServerId;
+    },
+  );
+}
+
+function HostStatusRow({ serverId, label }: { serverId: string; label: string }) {
+  const { theme } = useUnistyles();
+  const snapshot = useHostRuntimeSnapshot(serverId);
+  const status = snapshot?.connectionStatus ?? "connecting";
+  const lastError = snapshot?.lastError ?? null;
+
+  let dotColor: string;
+  let statusText: string;
+  let isError = false;
+
+  switch (status) {
+    case "online":
+      dotColor = theme.colors.success;
+      statusText = "Online";
+      break;
+    case "connecting":
+    case "idle":
+      dotColor = theme.colors.foregroundMuted;
+      statusText = "Connecting…";
+      break;
+    case "offline":
+      dotColor = theme.colors.foregroundMuted;
+      statusText = "Offline";
+      break;
+    case "error":
+      dotColor = theme.colors.destructive;
+      statusText = lastError ? lastError.slice(0, 40) : "Connection error";
+      isError = true;
+      break;
+  }
+
+  return (
+    <View style={styles.hostRow}>
+      <View style={[styles.statusDot, { backgroundColor: dotColor }]} />
+      <Text style={styles.hostLabel} numberOfLines={1}>
+        {label}
+      </Text>
+      <Text style={isError ? styles.hostStatusError : styles.hostStatus} numberOfLines={1}>
+        {statusText}
+      </Text>
+    </View>
+  );
+}
 
 export interface WelcomeScreenProps {
   onHostAdded?: (profile: HostProfile) => void;
@@ -105,6 +227,8 @@ export function WelcomeScreen({ onHostAdded }: WelcomeScreenProps) {
     hostname: string | null;
   } | null>(null);
   const [pendingRedirectServerId, setPendingRedirectServerId] = useState<string | null>(null);
+  const hosts = useHosts();
+  const anyOnlineServerId = useAnyHostOnline(hosts.map((h) => h.serverId));
   const pendingNameHostname = useSessionStore(
     useCallback(
       (state) => {
@@ -118,6 +242,16 @@ export function WelcomeScreen({ onHostAdded }: WelcomeScreenProps) {
       [pendingNameHost],
     ),
   );
+
+  useEffect(() => {
+    if (!anyOnlineServerId) {
+      return;
+    }
+    if (pendingNameHost) {
+      return;
+    }
+    router.replace(buildHostRootRoute(anyOnlineServerId) as any);
+  }, [anyOnlineServerId, pendingNameHost, router]);
 
   const finishOnboarding = useCallback(
     (serverId: string) => {
@@ -173,6 +307,8 @@ export function WelcomeScreen({ onHostAdded }: WelcomeScreenProps) {
           },
         ];
 
+  const showHostList = hosts.length > 0 && !anyOnlineServerId;
+
   return (
     <ScrollView
       style={{ flex: 1, backgroundColor: theme.colors.surface0 }}
@@ -186,7 +322,9 @@ export function WelcomeScreen({ onHostAdded }: WelcomeScreenProps) {
       <View style={styles.content}>
         <PaseoLogo size={96} color={theme.colors.foreground} />
         <Text style={styles.title}>Welcome to Paseo</Text>
-        <Text style={styles.subtitle}>Connect to your host to start</Text>
+        <Text style={styles.subtitle}>
+          {showHostList ? "Connecting to your hosts…" : "Connect to your host to start"}
+        </Text>
 
         <View style={styles.actions}>
           {actions.map((action) => {
@@ -209,6 +347,14 @@ export function WelcomeScreen({ onHostAdded }: WelcomeScreenProps) {
             );
           })}
         </View>
+
+        {showHostList && (
+          <View style={styles.hostList}>
+            {hosts.map((host) => (
+              <HostStatusRow key={host.serverId} serverId={host.serverId} label={host.label} />
+            ))}
+          </View>
+        )}
       </View>
       <Text style={styles.versionLabel}>{appVersionText}</Text>
 

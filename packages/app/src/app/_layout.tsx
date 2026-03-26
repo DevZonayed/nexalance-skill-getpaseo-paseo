@@ -25,6 +25,9 @@ import {
   useHostMutations,
   useHostRuntimeClient,
 } from "@/runtime/host-runtime";
+import { shouldUseDesktopDaemon } from "@/desktop/daemon/desktop-daemon";
+import { StartupSplashScreen } from "@/screens/startup-splash-screen";
+import { loadSettingsFromStorage } from "@/hooks/use-settings";
 import { SessionProvider } from "@/contexts/session-context";
 import type { HostProfile } from "@/types/host-connection";
 import {
@@ -210,14 +213,22 @@ function HostRuntimeBootstrapProvider({ children }: { children: ReactNode }) {
     let cancelled = false;
     const store = getHostRuntimeStore();
 
-    void store
-      .loadFromStorage()
+    const init = async () => {
+      const settings = await loadSettingsFromStorage();
+      const isDesktopManaged = shouldUseDesktopDaemon() && settings.manageBuiltInDaemon;
+      await store.loadFromStorage();
+      if (isDesktopManaged) {
+        await store.bootstrap({ manageBuiltInDaemon: true });
+      } else {
+        void store.bootstrap({ manageBuiltInDaemon: settings.manageBuiltInDaemon });
+      }
+    };
+
+    void init()
       .then(() => {
-        if (cancelled) {
-          return;
+        if (!cancelled) {
+          setReady(true);
         }
-        setReady(true);
-        void store.bootstrap();
       })
       .catch((error) => {
         console.error("[HostRuntime] Failed to initialize store", error);
@@ -415,7 +426,9 @@ function ProvidersWrapper({ children }: { children: ReactNode }) {
   }, [isLoading, settings.theme]);
 
   if (isLoading) {
-    return <LoadingView />;
+    const isDesktopManaged =
+      !settingsLoading && shouldUseDesktopDaemon() && settings.manageBuiltInDaemon;
+    return isDesktopManaged ? <StartupSplashScreen /> : <LoadingView />;
   }
 
   return (

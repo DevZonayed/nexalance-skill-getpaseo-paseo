@@ -1137,7 +1137,7 @@ export class HostRuntimeStore {
     }
   }
 
-  async bootstrap(): Promise<void> {
+  async bootstrap(options?: { manageBuiltInDaemon?: boolean }): Promise<void> {
     if (this.bootstrapAttempted) {
       return;
     }
@@ -1153,7 +1153,9 @@ export class HostRuntimeStore {
     }
 
     if (shouldUseDesktopDaemon()) {
-      await this.bootstrapDesktop();
+      if (options?.manageBuiltInDaemon ?? true) {
+        await this.bootstrapDesktop();
+      }
     } else {
       await this.bootstrapLocalhost();
     }
@@ -1163,20 +1165,16 @@ export class HostRuntimeStore {
     try {
       const daemon = await startDesktopDaemon();
       const connection = connectionFromListen(daemon.listen);
-      if (!connection) {
+      if (!connection || !daemon.serverId) {
         return;
       }
-      const { client, serverId, hostname } = await connectToDaemon(connection, {
-        timeoutMs: DEFAULT_LOCALHOST_BOOTSTRAP_TIMEOUT_MS,
-      });
       await this.upsertHostConnection({
-        serverId,
-        label: hostname ?? daemon.hostname ?? undefined,
+        serverId: daemon.serverId,
+        label: daemon.hostname ?? undefined,
         connection,
-        existingClient: client,
       });
     } catch (error) {
-      console.warn("[HostRuntime] Failed to bootstrap desktop daemon connection", error);
+      console.warn("[HostRuntime] Failed to bootstrap desktop daemon", error);
     }
   }
 
