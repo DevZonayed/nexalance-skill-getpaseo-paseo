@@ -579,4 +579,127 @@ describe("codex tool-call mapper", () => {
 
     expect(item).toBeNull();
   });
+
+  it("maps apply_patch with Delete File directive into edit detail with removed lines", () => {
+    const patch = [
+      "*** Begin Patch",
+      "*** Delete File: /tmp/repo/src/dead-module.ts",
+      "*** End Patch",
+    ].join("\n");
+    const item = expectMapped(
+      mapCodexRolloutToolCall({
+        callId: "codex-delete-rollout",
+        name: "apply_patch",
+        input: patch,
+        output:
+          '{"output":"Success. Updated the following files:\\nD /tmp/repo/src/dead-module.ts\\n"}',
+        cwd: "/tmp/repo",
+      }),
+    );
+
+    expect(item.status).toBe("completed");
+    expect(item.detail.type).toBe("edit");
+    if (item.detail.type === "edit") {
+      expect(item.detail.filePath).toBe("src/dead-module.ts");
+      expect(item.detail.unifiedDiff).toContain("/dev/null");
+    }
+  });
+
+  it("maps multi-file apply_patch with update + delete into edit detail referencing the deleted file", () => {
+    // Exact data shape from real Codex rollout: update one file, delete another
+    const patch = [
+      "*** Begin Patch",
+      "*** Update File: /tmp/repo/src/app/index.tsx",
+      "@@",
+      ' import { useEffect } from "react";',
+      '-import { WELCOME_ROUTE } from "@/app-support/index-startup";',
+      "+",
+      '+const WELCOME_ROUTE = "/welcome";',
+      "*** Delete File: /tmp/repo/src/app-support/index-startup.ts",
+      "*** End Patch",
+    ].join("\n");
+
+    const item = expectMapped(
+      mapCodexRolloutToolCall({
+        callId: "codex-delete-multi",
+        name: "apply_patch",
+        input: patch,
+        output: JSON.stringify({
+          output:
+            "Success. Updated the following files:\nM /tmp/repo/src/app/index.tsx\nD /tmp/repo/src/app-support/index-startup.ts\n",
+          metadata: { exit_code: 0, duration_seconds: 0.0 },
+        }),
+        cwd: "/tmp/repo",
+      }),
+    );
+
+    expect(item.detail.type).toBe("edit");
+    if (item.detail.type === "edit") {
+      // The unified diff should contain both file sections
+      const diff = item.detail.unifiedDiff ?? "";
+      // The update file section should have normal diff lines
+      expect(diff).toContain("-import");
+      expect(diff).toContain("+const WELCOME_ROUTE");
+      // The delete file section should reference /dev/null
+      expect(diff).toContain("/dev/null");
+    }
+  });
+
+  it("maps fileChange delete with content as removed lines, not added lines", () => {
+    const item = mapCodexToolCallFromThreadItem(
+      {
+        type: "fileChange",
+        id: "codex-file-delete-with-content",
+        status: "completed",
+        changes: [
+          {
+            path: "/tmp/repo/src/dead-module.ts",
+            kind: "delete",
+            content: 'export const FOO = "bar";\nexport function hello() {}\n',
+          },
+        ],
+      },
+      { cwd: "/tmp/repo" },
+    );
+
+    expect(item).toBeTruthy();
+    expect(item?.detail.type).toBe("edit");
+    if (item?.detail.type === "edit") {
+      expect(item.detail.filePath).toBe("src/dead-module.ts");
+      const diff = item.detail.unifiedDiff ?? "";
+      // For a deletion, the content should appear as REMOVED lines (-)
+      // not as ADDED lines (+). This is the core bug.
+      expect(diff).toContain("/dev/null");
+      expect(diff).toContain("-export const FOO");
+      expect(diff).toContain("-export function hello");
+      // The content must NOT appear as added lines
+      expect(diff).not.toContain("+export const FOO");
+      expect(diff).not.toContain("+export function hello");
+    }
+  });
+
+  it("maps fileChange delete without content to edit detail with /dev/null marker", () => {
+    const item = mapCodexToolCallFromThreadItem(
+      {
+        type: "fileChange",
+        id: "codex-file-delete-no-content",
+        status: "completed",
+        changes: [
+          {
+            path: "/tmp/repo/src/dead-module.ts",
+            kind: "delete",
+          },
+        ],
+      },
+      { cwd: "/tmp/repo" },
+    );
+
+    expect(item).toBeTruthy();
+    // A delete without content should still produce a meaningful detail
+    if (item?.detail.type === "edit") {
+      expect(item.detail.filePath).toBe("src/dead-module.ts");
+      const diff = item.detail.unifiedDiff ?? "";
+      expect(diff).toContain("/dev/null");
+    }
+  });
 });

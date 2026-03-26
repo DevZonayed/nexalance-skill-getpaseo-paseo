@@ -347,7 +347,7 @@ function normalizeDiffHeaderPath(rawPath: string): string {
 function codexApplyPatchToUnifiedDiff(text: string): string {
   const lines = text.replace(/\r\n/g, "\n").split("\n");
   const output: string[] = [];
-  let sawDiffBody = false;
+  let sawDiffContent = false;
 
   for (const line of lines) {
     const directive = parseCodexApplyPatchDirective(line);
@@ -362,6 +362,7 @@ function codexApplyPatchToUnifiedDiff(text: string): string {
         output.push(`diff --git a/${path} b/${path}`);
         output.push(`--- ${left}`);
         output.push(`+++ ${right}`);
+        sawDiffContent = true;
       }
       continue;
     }
@@ -378,27 +379,43 @@ function codexApplyPatchToUnifiedDiff(text: string): string {
 
     if (line.startsWith("@@")) {
       output.push(line);
-      sawDiffBody = true;
+      sawDiffContent = true;
       continue;
     }
     if (line.startsWith("+") || line.startsWith("-") || line.startsWith(" ")) {
       output.push(line);
-      sawDiffBody = true;
+      sawDiffContent = true;
       continue;
     }
     if (line.startsWith("\\ No newline at end of file")) {
       output.push(line);
-      sawDiffBody = true;
+      sawDiffContent = true;
       continue;
     }
   }
 
-  if (!sawDiffBody) {
+  if (!sawDiffContent) {
     return text;
   }
 
   const normalized = output.join("\n").trim();
   return normalized.length > 0 ? normalized : text;
+}
+
+function contentToDeletionDiff(filePath: string, content: string): string {
+  const lines = content.replace(/\r\n/g, "\n").split("\n");
+  const output: string[] = [];
+  output.push(`diff --git a/${filePath} b/${filePath}`);
+  output.push(`--- a/${filePath}`);
+  output.push(`+++ /dev/null`);
+  const nonEmpty = lines.filter((l) => l.length > 0 || lines.indexOf(l) < lines.length - 1);
+  if (nonEmpty.length > 0) {
+    output.push(`@@ -1,${nonEmpty.length} +0,0 @@`);
+    for (const line of nonEmpty) {
+      output.push(`-${line}`);
+    }
+  }
+  return output.join("\n");
 }
 
 function classifyDiffLikeText(
@@ -716,6 +733,26 @@ function parseFileChangeEntries(
     .filter((entry): entry is CodexFileChangeEntry => entry !== null);
 }
 
+function resolveFileChangeTextFields(
+  file: CodexFileChangeEntry | undefined,
+): { unifiedDiff?: string; newString?: string } {
+  if (!file) {
+    return {};
+  }
+  const isDelete = file.kind === "delete";
+  if (isDelete && file.diff) {
+    const classified = classifyDiffLikeText(file.diff);
+    if (classified.isDiff) {
+      return { unifiedDiff: truncateDiffText(classified.text) };
+    }
+    return { unifiedDiff: truncateDiffText(contentToDeletionDiff(file.path, file.diff)) };
+  }
+  if (isDelete && !file.diff) {
+    return { unifiedDiff: contentToDeletionDiff(file.path, "") };
+  }
+  return asEditTextFields(file.diff);
+}
+
 function mapFileChangeItem(
   item: z.infer<typeof CodexFileChangeItemSchema>,
   options?: CodexMapperOptions,
@@ -739,7 +776,9 @@ function mapFileChangeItem(
           files: files.map((file) => ({
             path: file.path,
             ...(file.kind !== undefined ? { kind: file.kind } : {}),
-            ...asEditFileOutputFields(file.diff),
+            ...(file.kind === "delete"
+              ? { patch: resolveFileChangeTextFields(file).unifiedDiff }
+              : asEditFileOutputFields(file.diff)),
           })),
         }
       : {}),
@@ -749,7 +788,7 @@ function mapFileChangeItem(
   const error = item.error ?? null;
   const status = resolveStatus(item.status, error, output);
   const firstFile = files[0];
-  const firstTextFields = asEditTextFields(firstFile?.diff);
+  const firstTextFields = resolveFileChangeTextFields(firstFile);
   const hasFirstTextFields = Object.keys(firstTextFields).length > 0;
   const input = toNullableObject({
     ...inputBase,
