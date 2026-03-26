@@ -495,7 +495,10 @@ case "$command_name" in
     sanitize_room_path "$room"
     require_room "$room"
 
-    mapfile -t all_files < <(message_files_sorted "$room")
+    all_files=()
+    while IFS= read -r _f; do
+      all_files+=("$_f")
+    done < <(message_files_sorted "$room")
 
     since_file=""
     if [[ -n "$since" ]]; then
@@ -587,7 +590,10 @@ case "$command_name" in
     trap 'exit 130' INT TERM
 
     while true; do
-      mapfile -t all_files < <(message_files_sorted "$room")
+      all_files=()
+      while IFS= read -r _f; do
+        all_files+=("$_f")
+      done < <(message_files_sorted "$room")
       new_files=()
       after_baseline=false
 
