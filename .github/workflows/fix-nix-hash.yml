@@ -1,6 +1,11 @@
 name: Fix Nix hash
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - 'package.json'
+      - 'package-lock.json'
   pull_request:
     paths:
       - 'package.json'
@@ -12,11 +17,10 @@ permissions:
 jobs:
   fix-nix-hash:
     runs-on: ubuntu-latest
-    if: github.actor == 'dependabot[bot]'
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.head_ref }}
+          ref: ${{ github.head_ref || github.ref }}
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - uses: actions/setup-node@v4
