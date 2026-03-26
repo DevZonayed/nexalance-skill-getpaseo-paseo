@@ -4,7 +4,7 @@
 
 <h1 align="center">Paseo</h1>
 
-<p align="center">One interface for all your coding agents.</p>
+<p align="center">One interface for all your Claude Code, Codex and OpenCode agents.</p>
 
 <p align="center">
   <img src="https://paseo.sh/hero-mockup.png" alt="Paseo app screenshot" width="100%">
