@@ -15,7 +15,8 @@ interface ProviderBinaryStatus {
 
 interface DaemonStatus {
   serverId: string | null;
-  status: "running" | "stopped" | "unresponsive";
+  localDaemon: "running" | "stopped" | "stale_pid" | "unresponsive";
+  connectedDaemon: "reachable" | "unreachable" | "not_probed";
   home: string;
   listen: string;
   hostname: string | null;
@@ -85,9 +86,14 @@ function createStatusSchema(status: DaemonStatus): OutputSchema<StatusRow> {
         header: "VALUE",
         field: "value",
         color: (_, item) => {
-          if (item.key === "Status") {
+          if (item.key === "Local Daemon") {
             if (item.value === "running") return "green";
             if (item.value === "unresponsive") return "yellow";
+            return "red";
+          }
+          if (item.key === "Connected Daemon") {
+            if (item.value === "reachable") return "green";
+            if (item.value === "not_probed") return "yellow";
             return "red";
           }
           if (item.key.startsWith("  ")) {
@@ -106,7 +112,8 @@ function createStatusSchema(status: DaemonStatus): OutputSchema<StatusRow> {
 function toStatusRows(status: DaemonStatus): StatusRow[] {
   const rows: StatusRow[] = [
     { key: "Server ID", value: status.serverId ?? "-" },
-    { key: "Status", value: status.status },
+    { key: "Local Daemon", value: status.localDaemon },
+    { key: "Connected Daemon", value: status.connectedDaemon },
     { key: "Home", value: status.home },
     { key: "Listen", value: status.listen },
     { key: "Hostname", value: status.hostname ?? "-" },
@@ -199,6 +206,7 @@ export async function runStatusCommand(
 ): Promise<StatusResult> {
   const home = typeof options.home === "string" ? options.home : undefined;
   const state = resolveLocalDaemonState({ home });
+  const host = resolveTcpHostFromListen(state.listen);
 
   const owner = resolveOwnerLabel(state.pidInfo?.uid, state.pidInfo?.hostname);
   let daemonNode: string;
@@ -211,38 +219,60 @@ export async function runStatusCommand(
     daemonNode = "unknown (no PID available)";
   }
   const cliNode = process.execPath;
-  let status: DaemonStatus["status"] = state.running ? "running" : "stopped";
+  let localDaemon: DaemonStatus["localDaemon"] = state.running ? "running" : "stopped";
+  let connectedDaemon: DaemonStatus["connectedDaemon"] = "not_probed";
   let runningAgents: number | null = null;
   let idleAgents: number | null = null;
   let note: string | undefined;
 
   if (!state.running && state.stalePidFile && state.pidInfo) {
+    localDaemon = "stale_pid";
     note = `Stale PID file found for PID ${state.pidInfo.pid}`;
   }
 
-  if (state.running) {
-    const host = resolveTcpHostFromListen(state.listen);
-    if (host) {
-      const client = await tryConnectToDaemon({ host, timeout: 1500 });
-      if (client) {
-        try {
-          const agentsPayload = await client.fetchAgents({ filter: { includeArchived: true } });
-          const agents = agentsPayload.entries.map((entry) => entry.agent);
-          runningAgents = agents.filter((a) => a.status === "running").length;
-          idleAgents = agents.filter((a) => a.status === "idle").length;
-        } catch {
-          status = "unresponsive";
-          note = appendNote(note, `Daemon PID is running but API requests to ${host} failed`);
-        } finally {
-          await client.close().catch(() => {});
+  if (host) {
+    const client = await tryConnectToDaemon({ host, timeout: 1500 });
+    if (client) {
+      connectedDaemon = "reachable";
+      try {
+        const agentsPayload = await client.fetchAgents({ filter: { includeArchived: true } });
+        const agents = agentsPayload.entries.map((entry) => entry.agent);
+        runningAgents = agents.filter((a) => a.status === "running").length;
+        idleAgents = agents.filter((a) => a.status === "idle").length;
+        if (!state.running) {
+          daemonNode = "unknown (API reachable, PID unresolved)";
+          note = appendNote(
+            note,
+            state.pidInfo
+              ? `Connected daemon is reachable at ${host} even though local daemon PID ${state.pidInfo.pid} is stale`
+              : `Connected daemon is reachable at ${host} but no local daemon PID file was found`,
+          );
         }
-      } else {
-        status = "unresponsive";
-        note = appendNote(note, `Daemon PID is running but websocket at ${host} is not reachable`);
+      } catch {
+        if (state.running) {
+          localDaemon = "unresponsive";
+        }
+        note = appendNote(
+          note,
+          state.running
+            ? `Local daemon PID is running but API requests to ${host} failed`
+            : `Connected daemon websocket is reachable at ${host} but fetch_agents failed`,
+        );
+      } finally {
+        await client.close().catch(() => {});
       }
+    } else if (state.running) {
+      connectedDaemon = "unreachable";
+      localDaemon = "unresponsive";
+      note = appendNote(
+        note,
+        `Local daemon PID is running but websocket at ${host} is not reachable`,
+      );
     } else {
-      note = appendNote(note, "Daemon is configured for unix socket listen; API probe skipped");
+      connectedDaemon = "unreachable";
     }
+  } else {
+    note = appendNote(note, "Daemon is configured for unix socket listen; API probe skipped");
   }
 
   const cliVersion = resolveCliVersion();
@@ -258,7 +288,8 @@ export async function runStatusCommand(
 
   const daemonStatus: DaemonStatus = {
     serverId,
-    status,
+    localDaemon,
+    connectedDaemon,
     home: state.home,
     listen: state.listen,
     hostname: state.pidInfo?.hostname ?? null,
