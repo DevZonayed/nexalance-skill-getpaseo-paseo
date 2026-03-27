@@ -1162,19 +1162,34 @@ export class HostRuntimeStore {
   }
 
   private async bootstrapDesktop(): Promise<void> {
-    try {
-      const daemon = await startDesktopDaemon();
-      const connection = connectionFromListen(daemon.listen);
-      if (!connection || !daemon.serverId) {
+    let lastError: unknown = null;
+
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+      try {
+        const daemon = await startDesktopDaemon();
+        const connection = connectionFromListen(daemon.listen);
+        if (!connection || !daemon.serverId) {
+          return;
+        }
+        await this.upsertHostConnection({
+          serverId: daemon.serverId,
+          label: daemon.hostname ?? undefined,
+          connection,
+        });
         return;
+      } catch (error) {
+        lastError = error;
+        console.warn(`[HostRuntime] Failed to bootstrap desktop daemon (attempt ${attempt}/3)`, error);
+        if (attempt < 3) {
+          await new Promise((resolve) => {
+            setTimeout(resolve, attempt * 500);
+          });
+        }
       }
-      await this.upsertHostConnection({
-        serverId: daemon.serverId,
-        label: daemon.hostname ?? undefined,
-        connection,
-      });
-    } catch (error) {
-      console.warn("[HostRuntime] Failed to bootstrap desktop daemon", error);
+    }
+
+    if (lastError) {
+      console.warn("[HostRuntime] Desktop daemon bootstrap exhausted retries", lastError);
     }
   }
 

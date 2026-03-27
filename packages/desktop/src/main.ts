@@ -1,5 +1,5 @@
 import log from "electron-log/main";
-log.initialize();
+log.initialize({ spyRendererConsole: true });
 
 import path from "node:path";
 import { pathToFileURL } from "node:url";
