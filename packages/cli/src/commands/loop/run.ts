@@ -18,8 +18,13 @@ export interface LoopRunRow {
 }
 
 export interface LoopRunOptions extends CommandOptions {
+  provider?: "claude" | "codex" | "opencode";
+  model?: string;
+  verifyProvider?: "claude" | "codex" | "opencode";
+  verifyModel?: string;
   verify?: string;
   verifyCheck?: string[];
+  archive?: boolean;
   name?: string;
   sleep?: string;
   maxIterations?: string;
@@ -40,6 +45,10 @@ export function addLoopRunOptions(command: Command): Command {
   return command
     .description("Start a loop")
     .argument("<prompt>", "Prompt for each fresh worker iteration")
+    .option("--provider <provider>", "Default provider for worker and verifier agents")
+    .option("--model <model>", "Default model for worker and verifier agents")
+    .option("--verify-provider <provider>", "Provider for the verifier agent")
+    .option("--verify-model <model>", "Model for the verifier agent")
     .option("--verify <prompt>", "Verifier agent prompt")
     .option(
       "--verify-check <command>",
@@ -47,6 +56,7 @@ export function addLoopRunOptions(command: Command): Command {
       collectMultiple,
       [],
     )
+    .option("--archive", "Archive worker and verifier agents after each iteration")
     .option("--name <name>", "Optional loop name")
     .option("--sleep <duration>", "Delay between iterations (for example: 30s, 5m)")
     .option("--max-iterations <n>", "Maximum number of iterations")
@@ -88,10 +98,15 @@ function buildLoopRunInput(prompt: string, options: LoopRunOptions): LoopRunInpu
   return {
     prompt,
     cwd: process.cwd(),
+    ...(options.provider ? { provider: options.provider } : {}),
+    ...(options.model?.trim() ? { model: options.model.trim() } : {}),
+    ...(options.verifyProvider ? { verifierProvider: options.verifyProvider } : {}),
+    ...(options.verifyModel?.trim() ? { verifierModel: options.verifyModel.trim() } : {}),
     ...(verifyPrompt ? { verifyPrompt } : {}),
     ...(options.verifyCheck && options.verifyCheck.length > 0
       ? { verifyChecks: options.verifyCheck }
       : {}),
+    ...(options.archive ? { archive: true } : {}),
     ...(options.name?.trim() ? { name: options.name.trim() } : {}),
     ...(options.sleep ? { sleepMs: parseDuration(options.sleep) } : {}),
     ...(options.maxIterations ? { maxIterations: parseMaxIterations(options.maxIterations) } : {}),

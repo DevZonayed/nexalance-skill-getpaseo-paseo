@@ -860,6 +860,39 @@ export class AgentManager {
     this.logger.trace({ agentId }, "closeAgent: completed");
   }
 
+  async archiveAgent(agentId: string): Promise<{ archivedAt: string }> {
+    const agent = this.requireAgent(agentId);
+    if (!this.registry) {
+      throw new Error("Agent storage is not configured");
+    }
+
+    await this.registry.applySnapshot(agent, {
+      internal: agent.internal,
+    });
+    const stored = await this.registry.get(agentId);
+    if (!stored) {
+      throw new Error(`Agent ${agentId} not found in storage after snapshot`);
+    }
+
+    const archivedAt = new Date().toISOString();
+    const normalizedStatus =
+      stored.lastStatus === "running" || stored.lastStatus === "initializing"
+        ? "idle"
+        : stored.lastStatus;
+
+    await this.registry.upsert({
+      ...stored,
+      archivedAt,
+      lastStatus: normalizedStatus,
+      requiresAttention: false,
+      attentionReason: null,
+      attentionTimestamp: null,
+    });
+    await this.closeAgent(agentId);
+
+    return { archivedAt };
+  }
+
   async setAgentMode(agentId: string, modeId: string): Promise<void> {
     const agent = this.requireAgent(agentId);
     await agent.session.setMode(modeId);

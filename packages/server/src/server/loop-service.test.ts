@@ -19,6 +19,7 @@ import type {
   AgentSlashCommand,
   AgentRuntimeInfo,
   ListModelsOptions,
+  AgentProvider,
 } from "./agent/agent-sdk-types.js";
 import { AgentStorage } from "./agent/agent-storage.js";
 import { AgentManager } from "./agent/agent-manager.js";
@@ -39,10 +40,15 @@ interface ScriptedAgentBehavior {
 }
 
 class ScriptedAgentClient implements AgentClient {
-  readonly provider = "claude" as const;
+  readonly provider: AgentProvider;
   readonly capabilities = TEST_CAPABILITIES;
 
-  constructor(private readonly behavior: ScriptedAgentBehavior) {}
+  constructor(
+    provider: AgentProvider,
+    private readonly behavior: ScriptedAgentBehavior,
+  ) {
+    this.provider = provider;
+  }
 
   async isAvailable(): Promise<boolean> {
     return true;
@@ -52,7 +58,7 @@ class ScriptedAgentClient implements AgentClient {
     config: AgentSessionConfig,
     _launchContext?: AgentLaunchContext,
   ): Promise<AgentSession> {
-    return new ScriptedAgentSession(config, this.behavior);
+    return new ScriptedAgentSession(config, this.provider, this.behavior);
   }
 
   async resumeSession(
@@ -61,10 +67,11 @@ class ScriptedAgentClient implements AgentClient {
   ): Promise<AgentSession> {
     return new ScriptedAgentSession(
       {
-        provider: "claude",
+        provider: this.provider,
         cwd: overrides?.cwd ?? process.cwd(),
         ...overrides,
       },
+      this.provider,
       this.behavior,
     );
   }
@@ -75,7 +82,6 @@ class ScriptedAgentClient implements AgentClient {
 }
 
 class ScriptedAgentSession implements AgentSession {
-  readonly provider = "claude" as const;
   readonly capabilities = TEST_CAPABILITIES;
   readonly id = randomUUID();
   private readonly subscribers = new Set<(event: AgentStreamEvent) => void>();
@@ -84,6 +90,7 @@ class ScriptedAgentSession implements AgentSession {
 
   constructor(
     private readonly config: AgentSessionConfig,
+    readonly provider: AgentProvider,
     private readonly behavior: ScriptedAgentBehavior,
   ) {}
 
@@ -220,7 +227,7 @@ describe("LoopService", () => {
     const state = { workerRuns: 0 };
     const manager = new AgentManager({
       clients: {
-        claude: new ScriptedAgentClient({
+        claude: new ScriptedAgentClient("claude", {
           async onRun({ config }) {
             state.workerRuns += 1;
             if (config.title?.includes("worker") && state.workerRuns >= 2) {
@@ -247,9 +254,7 @@ describe("LoopService", () => {
       maxIterations: 3,
     });
 
-    while ((await service.inspectLoop(loop.id)).status === "running") {
-      await new Promise((resolve) => setTimeout(resolve, 10));
-    }
+    await waitForLoopCompletion(service, loop.id);
 
     const finalLoop = await service.inspectLoop(loop.id);
     expect(finalLoop.status).toBe("succeeded");
@@ -262,10 +267,125 @@ describe("LoopService", () => {
     expect(readFileSync(path.join(paseoHome, "loops", "loops.json"), "utf8")).toContain(loop.id);
   });
 
+  test("uses worker and verifier provider-model settings when provided", async () => {
+    const workerConfigs: AgentSessionConfig[] = [];
+    const verifierConfigs: AgentSessionConfig[] = [];
+    const manager = new AgentManager({
+      clients: {
+        codex: new ScriptedAgentClient("codex", {
+          async onRun({ config }) {
+            workerConfigs.push(config);
+            writeFileSync(path.join(workspaceDir, "done.txt"), "ok");
+            return "done";
+          },
+        }),
+        claude: new ScriptedAgentClient("claude", {
+          async onRun({ config }) {
+            verifierConfigs.push(config);
+            return "{\"passed\":true,\"reason\":\"verified\"}";
+          },
+        }),
+      },
+      registry: storage,
+      logger,
+    });
+    const service = new LoopService({ paseoHome, agentManager: manager, logger });
+    await service.initialize();
+
+    const loop = await service.runLoop({
+      prompt: "Create done.txt",
+      cwd: workspaceDir,
+      provider: "codex",
+      model: "fallback-model",
+      workerModel: "gpt-5.4",
+      verifyPrompt: "Confirm that done.txt exists in the workspace.",
+      verifierProvider: "claude",
+      verifierModel: "sonnet",
+      maxIterations: 1,
+    });
+
+    await waitForLoopCompletion(service, loop.id);
+
+    const finalLoop = await service.inspectLoop(loop.id);
+    expect(finalLoop.status).toBe("succeeded");
+    expect(finalLoop.provider).toBe("codex");
+    expect(finalLoop.model).toBe("fallback-model");
+    expect(finalLoop.workerProvider).toBeNull();
+    expect(finalLoop.workerModel).toBe("gpt-5.4");
+    expect(finalLoop.verifierProvider).toBe("claude");
+    expect(finalLoop.verifierModel).toBe("sonnet");
+    expect(workerConfigs).toHaveLength(1);
+    expect(workerConfigs[0]).toMatchObject({
+      provider: "codex",
+      model: "gpt-5.4",
+      internal: true,
+    });
+    expect(verifierConfigs).toHaveLength(1);
+    expect(verifierConfigs[0]).toMatchObject({
+      provider: "claude",
+      model: "sonnet",
+      internal: true,
+    });
+  });
+
+  test("archives worker and verifier agents after each iteration when requested", async () => {
+    const archivedAgentIds: string[] = [];
+    const manager = new AgentManager({
+      clients: {
+        claude: new ScriptedAgentClient("claude", {
+          async onRun({ config }) {
+            if (config.title?.includes("worker")) {
+              writeFileSync(path.join(workspaceDir, "done.txt"), "ok");
+              return "created done.txt";
+            }
+            return "{\"passed\":true,\"reason\":\"done.txt exists\"}";
+          },
+        }),
+      },
+      registry: storage,
+      logger,
+    });
+    const archiveAgent = manager.archiveAgent.bind(manager);
+    manager.archiveAgent = async (agentId) => {
+      archivedAgentIds.push(agentId);
+      await archiveAgent(agentId);
+    };
+    const service = new LoopService({ paseoHome, agentManager: manager, logger });
+    await service.initialize();
+
+    const loop = await service.runLoop({
+      prompt: "Create done.txt",
+      cwd: workspaceDir,
+      verifyPrompt: "Confirm that done.txt exists in the workspace.",
+      archive: true,
+      maxIterations: 1,
+    });
+
+    await waitForLoopCompletion(service, loop.id);
+
+    const finalLoop = await service.inspectLoop(loop.id);
+    const iteration = finalLoop.iterations[0];
+    expect(finalLoop.archive).toBe(true);
+    expect(iteration?.workerAgentId).toBeTruthy();
+    expect(iteration?.verifierAgentId).toBeTruthy();
+    expect(archivedAgentIds).toEqual([iteration!.workerAgentId!, iteration!.verifierAgentId!]);
+    await storage.flush();
+    await expect(storage.get(iteration!.workerAgentId!)).resolves.toMatchObject({
+      id: iteration!.workerAgentId!,
+      archivedAt: expect.any(String),
+      internal: true,
+    });
+    await expect(storage.get(iteration!.verifierAgentId!)).resolves.toMatchObject({
+      id: iteration!.verifierAgentId!,
+      archivedAt: expect.any(String),
+      internal: true,
+    });
+  });
+
   test("uses verifier prompt when provided", async () => {
     const manager = new AgentManager({
       clients: {
-        claude: new ScriptedAgentClient({
+        claude: new ScriptedAgentClient("claude", {
           async onRun({ config }) {
             if (config.title?.includes("worker")) {
               await fsMkdir(workspaceDir);
@@ -292,9 +412,7 @@ describe("LoopService", () => {
       maxIterations: 1,
     });
 
-    while ((await service.inspectLoop(loop.id)).status === "running") {
-      await new Promise((resolve) => setTimeout(resolve, 10));
-    }
+    await waitForLoopCompletion(service, loop.id);
 
     const finalLoop = await service.inspectLoop(loop.id);
     expect(finalLoop.status).toBe("succeeded");
@@ -313,7 +431,7 @@ describe("LoopService", () => {
     });
     const manager = new AgentManager({
       clients: {
-        claude: new ScriptedAgentClient({
+        claude: new ScriptedAgentClient("claude", {
           async onRun({ config }) {
             if (config.title?.includes("worker")) {
               await blocker;
@@ -353,4 +471,10 @@ async function fsMkdir(target: string): Promise<void> {
 
 function pathExists(target: string): boolean {
   return existsSync(target);
+}
+
+async function waitForLoopCompletion(service: LoopService, loopId: string): Promise<void> {
+  while ((await service.inspectLoop(loopId)).status === "running") {
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
 }

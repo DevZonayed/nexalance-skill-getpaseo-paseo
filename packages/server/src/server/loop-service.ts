@@ -72,8 +72,14 @@ const LoopRecordSchema = z.object({
   prompt: z.string(),
   cwd: z.string(),
   provider: z.enum(["claude", "codex", "opencode"]),
+  model: z.string().nullable(),
+  workerProvider: z.enum(["claude", "codex", "opencode"]).nullable(),
+  workerModel: z.string().nullable(),
+  verifierProvider: z.enum(["claude", "codex", "opencode"]).nullable(),
+  verifierModel: z.string().nullable(),
   verifyPrompt: z.string().nullable(),
   verifyChecks: z.array(z.string()),
+  archive: z.boolean(),
   sleepMs: z.number().int().nonnegative(),
   maxIterations: z.number().int().positive().nullable(),
   maxTimeMs: z.number().int().positive().nullable(),
@@ -104,8 +110,14 @@ export interface LoopRunOptions {
   prompt: string;
   cwd: string;
   provider?: AgentProvider;
+  model?: string;
+  workerProvider?: AgentProvider;
+  workerModel?: string;
+  verifierProvider?: AgentProvider;
+  verifierModel?: string;
   verifyPrompt?: string;
   verifyChecks?: string[];
+  archive?: boolean;
   name?: string;
   sleepMs?: number;
   maxIterations?: number;
@@ -364,8 +376,14 @@ export class LoopService {
       prompt,
       cwd: path.resolve(input.cwd),
       provider: input.provider ?? DEFAULT_LOOP_PROVIDER,
+      model: normalizePrompt(input.model, "model"),
+      workerProvider: input.workerProvider ?? null,
+      workerModel: normalizePrompt(input.workerModel, "workerModel"),
+      verifierProvider: input.verifierProvider ?? null,
+      verifierModel: normalizePrompt(input.verifierModel, "verifierModel"),
       verifyPrompt,
       verifyChecks,
+      archive: input.archive ?? false,
       sleepMs: ensureNonNegativeInteger(input.sleepMs, "sleepMs"),
       maxIterations: ensurePositiveInteger(input.maxIterations, "maxIterations"),
       maxTimeMs: ensurePositiveInteger(input.maxTimeMs, "maxTimeMs"),
@@ -634,7 +652,11 @@ export class LoopService {
       loop.updatedAt = nowIso();
       await this.persist();
       try {
-        await this.options.agentManager.closeAgent(agent.id);
+        if (loop.archive) {
+          await this.options.agentManager.archiveAgent(agent.id);
+        } else {
+          await this.options.agentManager.closeAgent(agent.id);
+        }
       } catch {
         // Ignore cleanup errors for internal loop workers.
       }
@@ -745,7 +767,11 @@ export class LoopService {
       loop.updatedAt = nowIso();
       await this.persist();
       try {
-        await this.options.agentManager.closeAgent(verifierAgent.id);
+        if (loop.archive) {
+          await this.options.agentManager.archiveAgent(verifierAgent.id);
+        } else {
+          await this.options.agentManager.closeAgent(verifierAgent.id);
+        }
       } catch {
         // Ignore cleanup errors for internal loop verifiers.
       }
@@ -754,8 +780,9 @@ export class LoopService {
 
   private buildWorkerConfig(loop: LoopRecord, iteration: LoopIterationRecord): AgentSessionConfig {
     return {
-      provider: loop.provider,
+      provider: loop.workerProvider ?? loop.provider,
       cwd: loop.cwd,
+      model: loop.workerModel ?? loop.model ?? undefined,
       title: buildWorkerTitle(loop, iteration.index),
       internal: true,
     };
@@ -763,8 +790,9 @@ export class LoopService {
 
   private buildVerifierConfig(loop: LoopRecord, iteration: LoopIterationRecord): AgentSessionConfig {
     return {
-      provider: loop.provider,
+      provider: loop.verifierProvider ?? loop.provider,
       cwd: loop.cwd,
+      model: loop.verifierModel ?? loop.model ?? undefined,
       title: buildVerifierTitle(loop, iteration.index),
       internal: true,
     };

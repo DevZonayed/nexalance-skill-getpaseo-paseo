@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { AgentProviderSchema } from "../agent/provider-manifest.js";
 
 export const LoopLogEntrySchema = z.object({
   seq: z.number().int().positive(),
@@ -45,9 +46,15 @@ export const LoopRecordSchema = z.object({
   name: z.string().nullable(),
   prompt: z.string(),
   cwd: z.string(),
-  provider: z.enum(["claude", "codex", "opencode"]),
+  provider: AgentProviderSchema,
+  model: z.string().nullable(),
+  workerProvider: AgentProviderSchema.nullable(),
+  workerModel: z.string().nullable(),
+  verifierProvider: AgentProviderSchema.nullable(),
+  verifierModel: z.string().nullable(),
   verifyPrompt: z.string().nullable(),
   verifyChecks: z.array(z.string()),
+  archive: z.boolean(),
   sleepMs: z.number().int().nonnegative(),
   maxIterations: z.number().int().positive().nullable(),
   maxTimeMs: z.number().int().positive().nullable(),
@@ -80,8 +87,15 @@ export const LoopRunRequestSchema = z.object({
   requestId: z.string(),
   prompt: z.string().trim().min(1),
   cwd: z.string(),
+  provider: AgentProviderSchema.optional(),
+  model: z.string().trim().min(1).optional(),
+  workerProvider: AgentProviderSchema.optional(),
+  workerModel: z.string().trim().min(1).optional(),
+  verifierProvider: AgentProviderSchema.optional(),
+  verifierModel: z.string().trim().min(1).optional(),
   verifyPrompt: z.string().trim().min(1).optional(),
   verifyChecks: z.array(z.string().trim().min(1)).optional(),
+  archive: z.boolean().optional(),
   name: z.string().trim().min(1).optional(),
   sleepMs: z.number().int().nonnegative().optional(),
   maxIterations: z.number().int().positive().optional(),

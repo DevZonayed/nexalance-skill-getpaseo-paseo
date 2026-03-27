@@ -46,8 +46,14 @@ export interface LoopRecord {
   prompt: string;
   cwd: string;
   provider: "claude" | "codex" | "opencode";
+  model: string | null;
+  workerProvider: "claude" | "codex" | "opencode" | null;
+  workerModel: string | null;
+  verifierProvider: "claude" | "codex" | "opencode" | null;
+  verifierModel: string | null;
   verifyPrompt: string | null;
   verifyChecks: string[];
+  archive: boolean;
   sleepMs: number;
   maxIterations: number | null;
   maxTimeMs: number | null;
@@ -116,8 +122,15 @@ export interface LoopStopPayload {
 export interface LoopRunInput {
   prompt: string;
   cwd: string;
+  provider?: "claude" | "codex" | "opencode";
+  model?: string;
+  workerProvider?: "claude" | "codex" | "opencode";
+  workerModel?: string;
+  verifierProvider?: "claude" | "codex" | "opencode";
+  verifierModel?: string;
   verifyPrompt?: string;
   verifyChecks?: string[];
+  archive?: boolean;
   name?: string;
   sleepMs?: number;
   maxIterations?: number;
