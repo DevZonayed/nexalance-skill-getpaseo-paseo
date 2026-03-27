@@ -15,8 +15,8 @@ If asked to "release paseo" without specifying major/minor, treat it as a patch 
 ## Manual step-by-step
 
 ```bash
+npm run release:check        # Typecheck, build, dry-run pack
 npm run version:all:patch    # Bump version, create commit + tag
-npm run release:check        # Validate release
 npm run release:publish      # Publish to npm
 npm run release:push         # Push HEAD + tag (triggers CI workflows)
 ```
