@@ -150,7 +150,8 @@ function main() {
   const targetEntry = entries.find((entry) => entry.tag === targetTag);
 
   if (!targetEntry) {
-    throw new Error(`No matching changelog section found for ${targetTag}.`);
+    console.log(`No matching changelog section found for ${targetTag}. Skipping.`);
+    return;
   }
 
   const tempDir = mkdtempSync(path.join(tmpdir(), "paseo-release-notes-"));
