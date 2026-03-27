@@ -25,6 +25,7 @@ npm run release:push         # Push HEAD + tag (triggers CI workflows)
 
 ```bash
 npm run draft-release:patch    # Bump, push tag, create draft GitHub Release
+# ... test builds from the draft release assets ...
 npm run release:finalize       # Publish npm, promote draft to published
 ```
 
@@ -32,6 +33,7 @@ npm run release:finalize       # Publish npm, promote draft to published
 - `release:finalize` publishes npm and promotes the same draft release
 - Use the same semver tag for both; don't cut a second tag
 - Desktop assets now come from the Electron package at `packages/desktop`
+- **Do NOT create a changelog entry for drafts.** The changelog entry is written only when finalizing. The website parses `CHANGELOG.md` to determine the latest published version for download links — adding an entry for a draft will point the homepage at untested assets.
 
 ## Fixing a failed release build
 
@@ -62,12 +64,23 @@ This ensures the checkout ref matches the actual code on `main` with the fix inc
 - `release:prepare` refreshes workspace `node_modules` links to prevent stale types
 - `npm run dev:desktop` and `npm run build:desktop` target the Electron desktop package in `packages/desktop`
 - If `release:publish` partially fails, re-run it — npm skips already-published versions
-- Website Mac download CTA URL derives from `packages/website/package.json` version at build time
+- The website parses the first `## X.Y.Z` heading in `CHANGELOG.md` to determine the download version. This is why changelog entries must only be added at finalization, not during drafts.
+
+## Changelog format
+
+The website depends on the changelog to determine the latest download version. The heading format **must** be strictly followed:
+
+```
+## X.Y.Z - YYYY-MM-DD
+```
+
+No prefix (`v`), no extra text. The parser matches the first `## X.Y.Z` line to extract the version. A malformed heading will break download links on the homepage.
 
 ## Completion checklist
 
 - [ ] Update `CHANGELOG.md` with user-facing release notes (features, fixes — not refactors)
-- [ ] `npm run release:patch` completes successfully
+- [ ] Verify the changelog heading follows strict `## X.Y.Z - YYYY-MM-DD` format
+- [ ] `npm run release:patch` (or `release:finalize` for drafts) completes successfully
 - [ ] GitHub `Desktop Release` workflow for the `v*` tag is green
 - [ ] GitHub `Android APK Release` workflow for the same tag is green
 - [ ] EAS `release-mobile.yml` workflow for the same tag is green
