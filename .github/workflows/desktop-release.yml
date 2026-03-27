@@ -124,7 +124,7 @@ jobs:
               release_type="release"
             fi
           else
-            release_type="release"
+            release_type="draft"
           fi
           echo "RELEASE_TYPE=$release_type" >> "$GITHUB_ENV"
 
@@ -230,7 +230,7 @@ jobs:
               release_type="release"
             fi
           else
-            release_type="release"
+            release_type="draft"
           fi
           echo "RELEASE_TYPE=$release_type" >> "$GITHUB_ENV"
 
@@ -339,7 +339,7 @@ jobs:
               release_type="release"
             fi
           else
-            release_type="release"
+            release_type="draft"
           fi
           echo "RELEASE_TYPE=$release_type" >> "$GITHUB_ENV"
 
