@@ -346,9 +346,13 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
     [onChangeText, onSubmit, images, isAgentRunning],
   );
 
-  const handleDictationError = useCallback((error: Error) => {
-    console.error("[MessageInput] Dictation error:", error);
-  }, []);
+  const handleDictationError = useCallback(
+    (error: Error) => {
+      console.error("[MessageInput] Dictation error:", error);
+      toast.error(error.message);
+    },
+    [toast],
+  );
 
   const dictationUnavailableMessage = resolveVoiceUnavailableMessage({
     serverInfo,
