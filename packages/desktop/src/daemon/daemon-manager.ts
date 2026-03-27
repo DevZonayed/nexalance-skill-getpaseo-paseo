@@ -545,12 +545,6 @@ export function createDaemonCommandHandlers(): Record<string, DesktopCommandHand
       return downloadAndInstallUpdate(currentVersion);
     },
     get_local_daemon_version: () => getLocalDaemonVersion(),
-    webview_log: (args) => {
-      const level = typeof args?.level === "number" ? args.level : 1;
-      const message = typeof args?.message === "string" ? args.message : "";
-      const method = level === 0 ? "debug" : level === 2 ? "warn" : level >= 3 ? "error" : "info";
-      console[method]("[webview]", message);
-    },
   };
 }
 

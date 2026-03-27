@@ -1,3 +1,6 @@
+import log from "electron-log/main";
+log.initialize();
+
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { existsSync } from "node:fs";

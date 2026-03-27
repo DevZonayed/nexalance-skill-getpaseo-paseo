@@ -1,3 +1,4 @@
+import "electron-log/preload";
 import { contextBridge, ipcRenderer } from "electron";
 
 type EventHandler = (payload: unknown) => void;
