@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.36 - 2026-03-27
+
+### Fixed
+- Fixed Windows drive-letter path handling across the codebase.
+- Fixed stale Nix hash with automatic lockfile-change detection.
+
+### Added
+- Added metrics collection and terminal performance tests.
+
 ## 0.1.35 - 2026-03-26
 
 ### Improved
