@@ -99,6 +99,9 @@ import { createAgentMcpServer } from "./agent/mcp-server.js";
 import { createAllClients, shutdownProviders } from "./agent/provider-registry.js";
 import { bootstrapWorkspaceRegistries } from "./workspace-registry-bootstrap.js";
 import { FileBackedProjectRegistry, FileBackedWorkspaceRegistry } from "./workspace-registry.js";
+import { FileBackedChatService } from "./chat/chat-service.js";
+import { LoopService } from "./loop-service.js";
+import { ScheduleService } from "./schedule/service.js";
 import { createTerminalManager, type TerminalManager } from "../terminal/terminal-manager.js";
 import { createConnectionOfferV2, encodeOfferToFragmentUrl } from "./connection-offer.js";
 import { loadOrCreateDaemonKeyPair } from "./daemon-keypair.js";
@@ -374,6 +377,10 @@ export async function createPaseoDaemon(
       path.join(config.paseoHome, "projects", "workspaces.json"),
       logger,
     );
+    const chatService = new FileBackedChatService({
+      paseoHome: config.paseoHome,
+      logger,
+    });
     const agentManager = new AgentManager({
       clients: {
         ...createAllClients(logger, {
@@ -402,6 +409,23 @@ export async function createPaseoDaemon(
       logger,
     });
     logger.info({ elapsed: elapsed() }, "Workspace registries bootstrapped");
+    await chatService.initialize();
+    logger.info({ elapsed: elapsed() }, "Chat service initialized");
+    const loopService = new LoopService({
+      paseoHome: config.paseoHome,
+      logger,
+      agentManager,
+    });
+    await loopService.initialize();
+    logger.info({ elapsed: elapsed() }, "Loop service initialized");
+    const scheduleService = new ScheduleService({
+      paseoHome: config.paseoHome,
+      logger,
+      agentManager,
+      agentStorage,
+    });
+    await scheduleService.start();
+    logger.info({ elapsed: elapsed() }, "Schedule service initialized");
     const persistedRecords = await agentStorage.list();
     logger.info(
       { elapsed: elapsed() },
@@ -634,6 +658,9 @@ export async function createPaseoDaemon(
       },
       projectRegistry,
       workspaceRegistry,
+      chatService,
+      loopService,
+      scheduleService,
     );
     unsubscribeSpeechReadiness = subscribeSpeechReadiness((snapshot) => {
       wsServer?.publishSpeechReadiness(snapshot);
@@ -727,6 +754,7 @@ export async function createPaseoDaemon(
       unsubscribeSpeechReadiness?.();
       unsubscribeSpeechReadiness = null;
       cleanupSpeechRuntime();
+      await scheduleService.stop().catch(() => undefined);
       await relayTransport?.stop().catch(() => undefined);
       if (wsServer) {
         await wsServer.close();
