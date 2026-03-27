@@ -3,7 +3,7 @@ name: paseo
 description: Paseo CLI reference for managing agents. Load this skill whenever you need to use paseo commands.
 ---
 
-## CLI Commands
+## Agent Commands
 
 ```bash
 # List agents (directory-scoped by default)
@@ -12,15 +12,14 @@ paseo ls -g              # All agents across all projects (global)
 paseo ls --json          # JSON output for parsing
 
 # Create and run an agent (blocks until completion by default, no timeout)
-paseo run --mode bypass "<prompt>"
-paseo run --mode bypass --name "Task Name" "<prompt>"
-paseo run --mode bypass --model opus "<prompt>"
+paseo run --mode bypassPermissions "<prompt>"
+paseo run --mode bypassPermissions --name "task-name" "<prompt>"
+paseo run --mode bypassPermissions --model opus "<prompt>"
 paseo run --mode full-access --provider codex "<prompt>"
 
 # Wait timeout - limit how long run blocks (default: no limit)
 paseo run --wait-timeout 30m "<prompt>"   # Wait up to 30 minutes
 paseo run --wait-timeout 1h "<prompt>"    # Wait up to 1 hour
-paseo run --wait-timeout 3600 "<prompt>"  # Plain number = seconds
 
 # Detached mode - runs in background, returns agent ID immediately
 paseo run --detach "<prompt>"
@@ -28,9 +27,7 @@ paseo run -d "<prompt>"  # Short form
 
 # Structured output - agent returns only matching JSON
 paseo run --output-schema '{"type":"object","properties":{"summary":{"type":"string"}},"required":["summary"]}' "<prompt>"
-paseo run --output-schema schema.json "<prompt>"  # Or from a file
 # NOTE: --output-schema blocks until completion (cannot be used with --detach)
-# NOTE: --wait-timeout applies to --output-schema runs too
 
 # Worktrees - isolated git worktree for parallel feature development
 paseo run --worktree feature-x "<prompt>"
@@ -67,13 +64,89 @@ paseo permit ls                # List pending permission requests
 paseo permit allow <agent-id>  # Allow all pending for agent
 paseo permit deny <agent-id> --all  # Deny all pending
 
-# Agent mode switching
-paseo agent mode <agent-id> --list   # Show available modes
-paseo agent mode <agent-id> bypass   # Set bypass mode
-
 # Output formats
 paseo ls --json          # JSON output
 paseo ls -q              # IDs only (quiet mode, useful for scripting)
+```
+
+## Loop Commands
+
+Iterative worker loops: launch a worker agent, verify its output, repeat until done.
+
+```bash
+# Start a loop
+paseo loop run "<worker prompt>" [options]
+  --verify "<verifier prompt>"      # Verifier agent prompt
+  --verify-check "<command>"        # Shell command that must exit 0 (repeatable)
+  --name <name>                     # Optional loop name
+  --sleep <duration>                # Delay between iterations (30s, 5m)
+  --max-iterations <n>              # Maximum number of iterations
+  --max-time <duration>             # Maximum total runtime (1h, 30m)
+  --provider <provider>             # Worker agent provider (claude, codex)
+  --model <model>                   # Worker agent model
+  --verify-provider <provider>      # Verifier agent provider
+  --verify-model <model>            # Verifier agent model
+  --archive                         # Archive agents after each iteration
+
+# Manage loops
+paseo loop ls                       # List all loops
+paseo loop inspect <id>             # Show loop details and iterations
+paseo loop logs <id>                # Stream loop logs
+paseo loop stop <id>                # Stop a running loop
+```
+
+## Schedule Commands
+
+Recurring time-based execution: run a prompt on a cron or interval schedule.
+
+```bash
+# Create a schedule
+paseo schedule create "<prompt>" [options]
+  --every <duration>                # Fixed interval (5m, 1h)
+  --cron <expr>                     # Cron expression
+  --name <name>                     # Optional schedule name
+  --target <self|new-agent|id>      # Run target
+  --max-runs <n>                    # Maximum number of runs
+  --expires-in <duration>           # Time to live for schedule
+
+# Manage schedules
+paseo schedule ls                   # List schedules
+paseo schedule inspect <id>         # Inspect a schedule
+paseo schedule logs <id>            # Show recent run logs
+paseo schedule pause <id>           # Pause a schedule
+paseo schedule resume <id>          # Resume a paused schedule
+paseo schedule delete <id>          # Delete a schedule
+```
+
+## Chat Commands
+
+Asynchronous agent coordination through persistent chat rooms.
+
+```bash
+# Create a chat room
+paseo chat create <name> --purpose "<description>"
+
+# List and inspect rooms
+paseo chat ls
+paseo chat inspect <name-or-id>
+
+# Post a message
+paseo chat post <room> "<message>"
+paseo chat post <room> "<message>" --reply-to <msg-id>
+paseo chat post <room> "<message>" --mention <agent-id>   # Repeatable
+
+# Read messages
+paseo chat read <room>
+paseo chat read <room> --limit <n>
+paseo chat read <room> --since <duration-or-timestamp>
+paseo chat read <room> --agent <agent-id>
+
+# Wait for new messages
+paseo chat wait <room>
+paseo chat wait <room> --timeout <duration>
+
+# Delete a room
+paseo chat delete <name-or-id>
 ```
 
 ## Available Models
@@ -89,7 +162,7 @@ paseo ls -q              # IDs only (quiet mode, useful for scripting)
 
 ## Permissions
 
-Always launch agents fully permissioned. Use `--mode bypass` for Claude and `--mode full-access` for Codex. Control behavior through **strict prompting**, not permission modes.
+Always launch agents fully permissioned. Use `--mode bypassPermissions` for Claude and `--mode full-access` for Codex. Control behavior through **strict prompting**, not permission modes.
 
 ## Waiting for Agents
 
@@ -98,48 +171,19 @@ Both `paseo run` and `paseo wait` block until the agent completes. Trust them.
 - `paseo run` waits **forever** by default (no timeout). Use `--wait-timeout` to set a limit.
 - `paseo wait` also waits forever by default. Use `--timeout` to set a limit.
 - Agent tasks can legitimately take 10, 20, or even 30+ minutes. This is normal.
-- When a wait times out, **just re-run `paseo wait <id>`** — don't panic, don't start checking logs, don't inspect status. The agent is still working.
+- When a wait times out, **just re-run `paseo wait <id>`** — don't panic, don't start checking logs.
 - Do NOT poll with `paseo ls`, `paseo inspect`, or `paseo logs` in a loop to "check on" the agent.
-- Only check logs/inspect if you have a **specific reason** to believe something is wrong.
 - **Never launch a duplicate agent** because a wait timed out. The original is still running.
-
-```bash
-# Correct: just keep waiting
-paseo wait <id>              # timed out? just run it again:
-paseo wait <id>              # still going? keep waiting:
-paseo wait <id> --timeout 300  # or use a longer timeout
-
-# Wrong: anxious polling loop
-paseo wait <id>    # timed out
-paseo ls           # is it still running??
-paseo inspect <id> # what's it doing??
-paseo logs <id>    # let me check the logs!!
-```
 
 ## Composing Agents in Bash
 
 `paseo run` blocks by default and `--output-schema` returns structured JSON, making it easy to compose agents in bash loops and pipelines.
 
-**Implement-and-verify loop:**
-```bash
-while true; do
-  paseo run --provider codex "make the tests pass" >/dev/null
-
-  verdict=$(paseo run --provider claude --output-schema '{"type":"object","properties":{"criteria_met":{"type":"boolean"}},"required":["criteria_met"],"additionalProperties":false}' "ensure tests all pass")
-  if echo "$verdict" | jq -e '.criteria_met == true' >/dev/null; then
-    echo "criteria met"
-    break
-  fi
-done
-```
-
 **Detach + wait pattern for parallel work:**
 ```bash
-# Kick off parallel agents
-api_id=$(paseo run -d --name "API impl" "implement the API" -q)
-ui_id=$(paseo run -d --name "UI impl" "implement the UI" -q)
+api_id=$(paseo run -d --name "impl-api" "implement the API" -q)
+ui_id=$(paseo run -d --name "impl-ui" "implement the UI" -q)
 
-# Wait for both to finish
 paseo wait "$api_id"
 paseo wait "$ui_id"
 ```

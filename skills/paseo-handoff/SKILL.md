@@ -115,7 +115,7 @@ paseo run -d --mode full-access --provider codex --name "[Handoff] Task descript
 ### Claude (Opus, no worktree)
 
 ```bash
-paseo run -d --mode bypass --model opus --name "[Handoff] Task description" "$prompt"
+paseo run -d --mode bypassPermissions --model opus --name "[Handoff] Task description" "$prompt"
 ```
 
 ### Codex in a worktree
