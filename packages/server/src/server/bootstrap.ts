@@ -249,9 +249,8 @@ export async function createPaseoDaemon(
     // CORS - allow same-origin + configured origins
     const allowedOrigins = new Set([
       ...config.corsAllowedOrigins,
-      // Packaged desktop renderers may send `file://` or `null` as the origin.
-      "file://",
-      "null",
+      // Packaged desktop renderers use the custom paseo:// protocol scheme.
+      "paseo://app",
       // For TCP, add localhost variants
       ...(listenTarget.type === "tcp"
         ? [

@@ -148,8 +148,6 @@ function buildDesktopDaemonCorsOriginsEnv(): string | undefined {
       .filter((value) => value.length > 0),
   );
 
-  origins.add("paseo://app");
-
   const devServerUrl = process.env.EXPO_DEV_URL ?? DEFAULT_ELECTRON_DEV_SERVER_URL;
   try {
     const parsed = new URL(devServerUrl);
