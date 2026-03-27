@@ -6,7 +6,6 @@ import {
   HEADER_INNER_HEIGHT,
   HEADER_INNER_HEIGHT_MOBILE,
   HEADER_TOP_PADDING_MOBILE,
-  getIsDesktopMac,
 } from "@/constants/layout";
 import { useDesktopDragHandlers, useTrafficLightPadding } from "@/utils/desktop-window";
 import { usePanelStore } from "@/stores/panel-store";
@@ -31,8 +30,10 @@ export function ScreenHeader({ left, right, leftStyle, rightStyle }: ScreenHeade
   // Only add extra padding on mobile for better touch targets; on desktop, only use safe area insets
   const topPadding = isMobile ? HEADER_TOP_PADDING_MOBILE : 0;
   const baseHorizontalPadding = theme.spacing[2];
-  const collapsedSidebarTrafficLightInset =
-    !isMobile && !desktopAgentListOpen && getIsDesktopMac() ? trafficLightPadding.left : 0;
+  const collapsedSidebarInset =
+    !isMobile && !desktopAgentListOpen && trafficLightPadding.side
+      ? trafficLightPadding
+      : { left: 0, right: 0 };
 
   const dragHandlers = useDesktopDragHandlers();
 
@@ -42,7 +43,10 @@ export function ScreenHeader({ left, right, leftStyle, rightStyle }: ScreenHeade
         <View
           style={[
             styles.row,
-            { paddingLeft: baseHorizontalPadding + collapsedSidebarTrafficLightInset },
+            {
+              paddingLeft: baseHorizontalPadding + collapsedSidebarInset.left,
+              paddingRight: baseHorizontalPadding + collapsedSidebarInset.right,
+            },
           ]}
           {...dragHandlers}
         >

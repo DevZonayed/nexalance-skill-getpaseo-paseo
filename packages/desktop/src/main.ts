@@ -92,8 +92,17 @@ async function createMainWindow(): Promise<void> {
     height: 800,
     show: false,
     ...(iconPath ? { icon: iconPath } : {}),
-    titleBarStyle: isMac ? "hidden" : "default",
-    trafficLightPosition: isMac ? { x: 16, y: 14 } : undefined,
+    titleBarStyle: "hidden",
+    ...(isMac
+      ? { trafficLightPosition: { x: 16, y: 14 } }
+      : {
+          titleBarOverlay: {
+            color: "#18181c",
+            symbolColor: "#e4e4e7",
+            height: 48,
+          },
+          autoHideMenuBar: true,
+        }),
     webPreferences: {
       preload: getPreloadPath(),
       contextIsolation: true,

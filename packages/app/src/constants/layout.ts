@@ -19,6 +19,10 @@ export const MAX_CONTENT_WIDTH = 820;
 export const DESKTOP_TRAFFIC_LIGHT_WIDTH = 78;
 export const DESKTOP_TRAFFIC_LIGHT_HEIGHT = 45;
 
+// Windows/Linux window controls (minimize/maximize/close) — top-right
+export const DESKTOP_WINDOW_CONTROLS_WIDTH = 140;
+export const DESKTOP_WINDOW_CONTROLS_HEIGHT = 48;
+
 // Check if running in desktop app (any OS)
 function isDesktopEnvironment(): boolean {
   if (Platform.OS !== "web") return false;

@@ -7,7 +7,6 @@ import { PaseoLogo } from "@/components/icons/paseo-logo";
 import { SidebarMenuToggle } from "@/components/headers/menu-header";
 import { useOpenProjectPicker } from "@/hooks/use-open-project-picker";
 import { usePanelStore } from "@/stores/panel-store";
-import { getIsDesktopMac } from "@/constants/layout";
 import { useDesktopDragHandlers, useTrafficLightPadding } from "@/utils/desktop-window";
 
 export function OpenProjectScreen({ serverId }: { serverId: string }) {
@@ -19,8 +18,10 @@ export function OpenProjectScreen({ serverId }: { serverId: string }) {
   const openProjectPicker = useOpenProjectPicker(serverId);
 
   const isMobile = UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
-  const needsTrafficLightInset = !isMobile && !desktopAgentListOpen && getIsDesktopMac();
-  const trafficLightInset = needsTrafficLightInset ? trafficLightPadding.left : 0;
+  const collapsedSidebarInset =
+    !isMobile && !desktopAgentListOpen && trafficLightPadding.side
+      ? trafficLightPadding
+      : { left: 0, right: 0 };
   const dragHandlers = useDesktopDragHandlers();
 
   useEffect(() => {
@@ -31,7 +32,7 @@ export function OpenProjectScreen({ serverId }: { serverId: string }) {
 
   return (
     <View style={styles.container} {...dragHandlers}>
-      <View style={[styles.menuToggle, { paddingTop: insets.top, paddingLeft: trafficLightInset }]}>
+      <View style={[styles.menuToggle, { paddingTop: insets.top, paddingLeft: collapsedSidebarInset.left, paddingRight: collapsedSidebarInset.right }]}>
         <SidebarMenuToggle />
       </View>
       <View style={styles.content}>

@@ -2,8 +2,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Platform, type PointerEvent as RNPointerEvent, type ViewProps } from "react-native";
 import {
   getIsDesktopMac,
+  getIsDesktop,
   DESKTOP_TRAFFIC_LIGHT_WIDTH,
   DESKTOP_TRAFFIC_LIGHT_HEIGHT,
+  DESKTOP_WINDOW_CONTROLS_WIDTH,
+  DESKTOP_WINDOW_CONTROLS_HEIGHT,
 } from "@/constants/layout";
 import { getDesktopWindow } from "@/desktop/electron/window";
 import { isDesktop } from "@/desktop/host";
@@ -120,11 +123,11 @@ export function useDesktopDragHandlers(): DesktopDragViewProps {
   }, [isActive]);
 }
 
-export function useTrafficLightPadding(): { left: number; top: number } {
+export function useTrafficLightPadding(): { left: number; right: number; top: number; side: 'left' | 'right' | null } {
   const [isFullscreen, setIsFullscreen] = useState(false);
 
   useEffect(() => {
-    if (Platform.OS !== "web" || !getIsDesktopMac()) return;
+    if (Platform.OS !== "web" || !getIsDesktop()) return;
 
     let disposed = false;
     let cleanup: (() => void) | undefined;
@@ -175,12 +178,23 @@ export function useTrafficLightPadding(): { left: number; top: number } {
     };
   }, []);
 
-  if (!getIsDesktopMac() || isFullscreen) {
-    return { left: 0, top: 0 };
+  if (!getIsDesktop() || isFullscreen) {
+    return { left: 0, right: 0, top: 0, side: null };
+  }
+
+  if (getIsDesktopMac()) {
+    return {
+      left: DESKTOP_TRAFFIC_LIGHT_WIDTH,
+      right: 0,
+      top: DESKTOP_TRAFFIC_LIGHT_HEIGHT,
+      side: 'left',
+    };
   }
 
   return {
-    left: DESKTOP_TRAFFIC_LIGHT_WIDTH,
-    top: DESKTOP_TRAFFIC_LIGHT_HEIGHT,
+    left: 0,
+    right: DESKTOP_WINDOW_CONTROLS_WIDTH,
+    top: DESKTOP_WINDOW_CONTROLS_HEIGHT,
+    side: 'right',
   };
 }

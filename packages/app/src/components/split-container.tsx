@@ -886,7 +886,10 @@ function SplitPaneView({
         style={[
           styles.paneTabs,
           isFocusModeEnabled &&
-            trafficLightPadding.left > 0 && { paddingLeft: trafficLightPadding.left },
+            trafficLightPadding.side && {
+              paddingLeft: trafficLightPadding.left,
+              paddingRight: trafficLightPadding.right,
+            },
         ]}
       >
         <WorkspaceDesktopTabsRow

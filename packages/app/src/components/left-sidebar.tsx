@@ -681,7 +681,7 @@ function DesktopSidebar({
 
   return (
     <Animated.View style={[styles.desktopSidebar, resizeAnimatedStyle]}>
-      {trafficLightPadding.top > 0 ? (
+      {trafficLightPadding.side === 'left' ? (
         <View style={{ height: trafficLightPadding.top }} {...dragHandlers} />
       ) : null}
       <View style={styles.sidebarHeader} {...dragHandlers}>
