@@ -8,6 +8,7 @@ import { WebLinksAddon } from "@xterm/addon-web-links";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { Terminal, type ITheme } from "@xterm/xterm";
 import type { TerminalState } from "@server/shared/messages";
+import { openExternalUrl } from "@/utils/open-external-url";
 import {
   type PendingTerminalModifiers,
   isTerminalModifierDomKey,
@@ -168,7 +169,12 @@ export class TerminalEmulatorRuntime {
     let webglAddon: WebglAddon | null = null;
     terminal.loadAddon(fitAddon);
     terminal.loadAddon(unicode11Addon);
-    terminal.loadAddon(new WebLinksAddon());
+    terminal.loadAddon(
+      new WebLinksAddon((event, uri) => {
+        event.preventDefault();
+        void openExternalUrl(uri);
+      }),
+    );
     terminal.loadAddon(new SearchAddon({ highlightLimit: 20_000 }));
     terminal.loadAddon(new ClipboardAddon());
     try {
