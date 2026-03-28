@@ -425,6 +425,7 @@ export async function createPaseoDaemon(
     });
     await scheduleService.start();
     logger.info({ elapsed: elapsed() }, "Schedule service initialized");
+    logger.info({ elapsed: elapsed() }, "Loading persisted agent registry");
     const persistedRecords = await agentStorage.list();
     logger.info(
       { elapsed: elapsed() },
@@ -433,6 +434,7 @@ export async function createPaseoDaemon(
     logger.info(
       "Voice mode configured for agent-scoped resume flow (no dedicated voice assistant provider)",
     );
+    logger.info({ elapsed: elapsed() }, "Preparing voice and MCP runtime");
     let wsServer: VoiceAssistantWebSocketServer | null = null;
     let voiceMcpBridgeManager: VoiceMcpSocketBridgeManager | null = null;
     let unsubscribeSpeechReadiness: (() => void) | null = null;
