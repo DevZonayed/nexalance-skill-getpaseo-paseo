@@ -181,6 +181,7 @@ import {
   ChatServiceError,
   FileBackedChatService,
 } from "./chat/chat-service.js";
+import { notifyChatMentions } from "./chat/chat-mentions.js";
 import { LoopService } from "./loop-service.js";
 import { ScheduleService } from "./schedule/service.js";
 
@@ -7739,77 +7740,20 @@ export class Session {
           error: null,
         },
       });
-      void this.notifyMentionedAgents({
+      void notifyChatMentions({
         room: request.room,
         authorAgentId: this.clientId,
         body: request.body,
         mentionAgentIds: message.mentionAgentIds,
+        logger: this.sessionLogger,
+        listStoredAgents: () => this.agentStorage.list(),
+        listLiveAgents: () => this.agentManager.listAgents(),
+        resolveAgentIdentifier: (identifier) => this.resolveAgentIdentifier(identifier),
+        sendAgentMessage: (agentId, text) => this.handleSendAgentMessage(agentId, text),
       });
     } catch (error) {
       this.emitChatRpcError(request, error);
     }
-  }
-
-  private async notifyMentionedAgents(input: {
-    room: string;
-    authorAgentId: string;
-    body: string;
-    mentionAgentIds: string[];
-  }): Promise<void> {
-    const mentionAgentIds = input.mentionAgentIds.filter(
-      (agentId) => agentId !== input.authorAgentId,
-    );
-    if (mentionAgentIds.length === 0) {
-      return;
-    }
-
-    const notification = this.buildChatMentionNotification({
-      ...input,
-      mentionAgentIds,
-    });
-
-    await Promise.all(
-      mentionAgentIds.map(async (mentionedAgentId) => {
-        const resolved = await this.resolveAgentIdentifier(mentionedAgentId);
-        if (!resolved.ok) {
-          this.sessionLogger.warn(
-            { mentionedAgentId, room: input.room, error: resolved.error },
-            "Failed to resolve chat mention target",
-          );
-          return;
-        }
-
-        try {
-          await this.handleSendAgentMessage(resolved.agentId, notification);
-        } catch (error) {
-          this.sessionLogger.warn(
-            { err: error, mentionedAgentId: resolved.agentId, room: input.room },
-            "Failed to notify mentioned agent about chat message",
-          );
-        }
-      }),
-    );
-  }
-
-  private buildChatMentionNotification(input: {
-    room: string;
-    authorAgentId: string;
-    body: string;
-    mentionAgentIds: string[];
-  }): string {
-    const mentioned = input.mentionAgentIds.map((agentId) => `@${agentId}`).join(", ");
-    const bodyWithoutMentions = input.body
-      .replace(/(^|\s)@[A-Za-z0-9][A-Za-z0-9._-]*/g, "$1")
-      .trim();
-    const body = bodyWithoutMentions.length > 0 ? bodyWithoutMentions : input.body;
-
-    return [
-      `Chat mention from ${input.authorAgentId} in room "${input.room}".`,
-      `Mentioned agents: ${mentioned}.`,
-      "Message:",
-      body,
-      `Read the room with: paseo chat read ${input.room} --limit 20`,
-    ].join("\n");
   }
 
   private async handleChatReadRequest(

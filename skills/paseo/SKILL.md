@@ -134,6 +134,7 @@ paseo chat inspect <name-or-id>
 paseo chat post <room> "<message>"
 paseo chat post <room> "<message>" --reply-to <msg-id>
 paseo chat post <room> "@<agent-id> <message>"
+paseo chat post <room> "@everyone <message>"
 
 # Read messages
 paseo chat read <room>

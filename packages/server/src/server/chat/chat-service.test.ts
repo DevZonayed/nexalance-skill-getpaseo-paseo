@@ -143,8 +143,10 @@ describe("FileBackedChatService", () => {
 
   test("extracts inline mentions from chat bodies", () => {
     expect(
-      parseMentionAgentIds("Checking with @agent-a, (@agent_b), and duplicate @agent-a again."),
-    ).toEqual(["agent-a", "agent_b"]);
+      parseMentionAgentIds(
+        "Checking with @agent-a, (@agent_b), @everyone, and duplicate @agent-a again.",
+      ),
+    ).toEqual(["agent-a", "agent_b", "everyone"]);
     expect(parseMentionAgentIds("email@example.com is not a mention")).toEqual([]);
   });
 });

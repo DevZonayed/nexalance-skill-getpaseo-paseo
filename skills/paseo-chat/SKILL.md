@@ -28,6 +28,7 @@ When using chat:
 
 Mentions are active:
 - write mentions inline in the message body as `@<agent-id>` to notify a specific agent immediately
+- use `@everyone` to notify all non-archived, non-internal agents
 - notifications are sent to the target agent without blocking the chat post
 - if a normal post is enough and no one needs to act right now, skip the mention
 
@@ -69,6 +70,12 @@ With a direct mention:
 paseo chat post issue-456 "@<agent-id> Can you verify the relay path next?"
 ```
 
+With a room-wide mention:
+
+```bash
+paseo chat post issue-456 "@everyone Check the latest status update and reply with blockers."
+```
+
 ### Read recent messages
 
 ```bash
@@ -100,6 +107,7 @@ When using a room:
 - post updates when they would help another agent or your future self
 - use `--reply-to` when responding to a specific message
 - use inline `@<agent-id>` mentions when you want to get a specific agent's attention
+- use `@everyone` when the whole active team needs to react now
 - check chat frequently enough that shared coordination actually works
 - your own agent ID is available via `$PASEO_AGENT_ID`
 
@@ -118,3 +126,4 @@ Typical things to post:
 4. Post clearly
 5. Use `--reply-to` when replying to a specific message
 6. Use inline `@<agent-id>` mentions when you want to notify someone directly
+7. Use `@everyone` when you need to notify all active non-archived agents

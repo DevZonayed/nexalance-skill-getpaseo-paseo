@@ -102,6 +102,12 @@ Post your progress here. @$PASEO_AGENT_ID when done, and start on this now @<age
 
 The agent gets notified with the message and starts working. When done, it mentions you back in chat.
 
+Use `@everyone` when you need all active, non-archived agents in the room to react:
+
+```bash
+paseo chat post <room> "@everyone Stop current work and post a one-line status update plus blockers."
+```
+
 ### Role-based provider selection
 
 Pick the right provider for each role:
