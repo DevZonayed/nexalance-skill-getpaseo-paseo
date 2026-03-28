@@ -1,5 +1,6 @@
 import { fileURLToPath } from "url";
 import { existsSync } from "node:fs";
+import path from "node:path";
 import { loadConfig } from "../src/server/config.js";
 import { acquirePidLock, PidLockError, releasePidLock } from "../src/server/pid-lock.js";
 import { resolvePaseoHome } from "../src/server/paseo-home.js";
@@ -55,13 +56,30 @@ function resolveWorkerExecArgv(workerEntry: string): string[] {
   return workerEntry.endsWith(".ts") ? ["--import", "tsx"] : [];
 }
 
+function resolvePackagedNodeEntrypointRunnerPath(currentScriptPath: string): string | null {
+  const packageMarker = `${path.sep}node_modules${path.sep}@getpaseo${path.sep}server${path.sep}`;
+  const markerIndex = currentScriptPath.lastIndexOf(packageMarker);
+  if (markerIndex === -1) {
+    return null;
+  }
+
+  const appRoot = currentScriptPath.slice(0, markerIndex);
+  const runnerPath = path.join(appRoot, "dist", "daemon", "node-entrypoint-runner.js");
+  return existsSync(runnerPath) ? runnerPath : null;
+}
+
 async function main(): Promise<void> {
   const config = parseConfig(process.argv.slice(2));
   const workerEntry = config.devMode ? resolveDevWorkerEntry() : resolveWorkerEntry();
+  const workerExecArgv = resolveWorkerExecArgv(workerEntry);
   const workerEnv: NodeJS.ProcessEnv = {
     ...process.env,
     PASEO_PID_LOCK_MODE: "external",
   };
+  const packagedNodeEntrypointRunner =
+    process.env.ELECTRON_RUN_AS_NODE === "1"
+      ? resolvePackagedNodeEntrypointRunnerPath(fileURLToPath(import.meta.url))
+      : null;
 
   applySherpaLoaderEnv(workerEnv);
 
@@ -100,7 +118,22 @@ async function main(): Promise<void> {
     resolveWorkerEntry: () => workerEntry,
     workerArgs: config.workerArgs,
     workerEnv,
-    workerExecArgv: resolveWorkerExecArgv(workerEntry),
+    workerExecArgv,
+    resolveWorkerSpawnSpec: packagedNodeEntrypointRunner
+      ? (resolvedWorkerEntry) => ({
+          command: process.execPath,
+          args: [
+            packagedNodeEntrypointRunner,
+            "node-script",
+            resolvedWorkerEntry,
+            ...config.workerArgs,
+          ],
+          env: {
+            ...workerEnv,
+            ELECTRON_RUN_AS_NODE: "1",
+          },
+        })
+      : undefined,
     restartOnCrash: config.devMode,
     onSupervisorExit: releaseLock,
   });

@@ -1,4 +1,4 @@
-import { fork, type ChildProcess } from "child_process";
+import { fork, spawn, type ChildProcess } from "child_process";
 
 type WorkerLifecycleMessage =
   | {
@@ -16,6 +16,11 @@ type SupervisorOptions = {
   workerArgs?: string[];
   workerEnv?: NodeJS.ProcessEnv;
   workerExecArgv?: string[];
+  resolveWorkerSpawnSpec?: (workerEntry: string) => {
+    command: string;
+    args: string[];
+    env?: NodeJS.ProcessEnv;
+  } | null;
   restartOnCrash?: boolean;
   onSupervisorExit?: () => Promise<void> | void;
 };
@@ -47,6 +52,7 @@ export function runSupervisor(options: SupervisorOptions): void {
   const workerArgs = options.workerArgs ?? process.argv.slice(2);
   const workerEnv = options.workerEnv ?? process.env;
   const workerExecArgv = options.workerExecArgv ?? ["--import", "tsx"];
+  const resolveWorkerSpawnSpec = options.resolveWorkerSpawnSpec;
 
   let child: ChildProcess | null = null;
   let restarting = false;
@@ -84,11 +90,19 @@ export function runSupervisor(options: SupervisorOptions): void {
       return;
     }
 
-    child = fork(workerEntry, workerArgs, {
-      stdio: "inherit",
-      env: workerEnv,
-      execArgv: workerExecArgv,
-    });
+    const spawnSpec = resolveWorkerSpawnSpec?.(workerEntry) ?? null;
+    if (spawnSpec) {
+      child = spawn(spawnSpec.command, spawnSpec.args, {
+        stdio: ["inherit", "inherit", "inherit", "ipc"],
+        env: spawnSpec.env ?? workerEnv,
+      });
+    } else {
+      child = fork(workerEntry, workerArgs, {
+        stdio: "inherit",
+        env: workerEnv,
+        execArgv: workerExecArgv,
+      });
+    }
 
     child.on("message", (msg: unknown) => {
       const lifecycleMessage = parseLifecycleMessage(msg);
