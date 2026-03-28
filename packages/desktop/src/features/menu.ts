@@ -1,4 +1,9 @@
-import { app, Menu, BrowserWindow } from "electron";
+import { app, Menu, BrowserWindow, ipcMain } from "electron";
+
+type ShowContextMenuInput = {
+  kind?: "terminal";
+  hasSelection?: boolean;
+};
 
 function withBrowserWindow(
   callback: (win: BrowserWindow) => void,
@@ -89,4 +94,36 @@ export function setupApplicationMenu(): void {
 
   const menu = Menu.buildFromTemplate(template);
   Menu.setApplicationMenu(menu);
+
+  ipcMain.handle("paseo:menu:showContextMenu", (event, input?: ShowContextMenuInput) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    if (!win) {
+      return;
+    }
+
+    if (input?.kind !== "terminal") {
+      return;
+    }
+
+    const menu = Menu.buildFromTemplate([
+      {
+        label: "Copy",
+        role: "copy",
+        enabled: input.hasSelection === true,
+      },
+      {
+        label: "Paste",
+        role: "paste",
+      },
+      {
+        type: "separator",
+      },
+      {
+        label: "Select All",
+        role: "selectAll",
+      },
+    ]);
+
+    menu.popup({ window: win });
+  });
 }

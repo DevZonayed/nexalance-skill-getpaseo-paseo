@@ -37,6 +37,13 @@ export interface DesktopOpenerBridge {
   openUrl?: (url: string) => Promise<void>;
 }
 
+export interface DesktopMenuBridge {
+  showContextMenu?: (input?: {
+    kind?: "terminal";
+    hasSelection?: boolean;
+  }) => Promise<void>;
+}
+
 export interface DesktopWindowBridge {
   label?: string;
   startMove?: (screenX: number, screenY: number) => void;
@@ -73,6 +80,7 @@ export interface DesktopHostBridge {
   dialog?: DesktopDialogBridge;
   notification?: DesktopNotificationBridge;
   opener?: DesktopOpenerBridge;
+  menu?: DesktopMenuBridge;
 }
 
 declare global {

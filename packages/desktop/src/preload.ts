@@ -51,4 +51,8 @@ contextBridge.exposeInMainWorld("paseoDesktop", {
   opener: {
     openUrl: (url: string) => ipcRenderer.invoke("paseo:opener:openUrl", url),
   },
+  menu: {
+    showContextMenu: (input?: Record<string, unknown>) =>
+      ipcRenderer.invoke("paseo:menu:showContextMenu", input),
+  },
 });

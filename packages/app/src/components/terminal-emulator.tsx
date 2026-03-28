@@ -565,6 +565,18 @@ export default function TerminalEmulator({
   const handleInsetTop = Math.max(0, (thumbRegionHeight - scrollbarGeometry.handleSize) / 2);
   const handleTravelDurationMs =
     isDraggingScrollbar || isScrollActive ? 0 : SCROLLBAR_HANDLE_TRAVEL_DURATION_MS;
+  const handleContextMenu = () => {
+    const showContextMenu = window.paseoDesktop?.menu?.showContextMenu;
+    if (typeof showContextMenu !== "function") {
+      return;
+    }
+
+    const hasSelection = Boolean(window.getSelection()?.toString());
+    void showContextMenu({
+      kind: "terminal",
+      hasSelection,
+    });
+  };
 
   return (
     <div
@@ -585,6 +597,10 @@ export default function TerminalEmulator({
       }}
       onPointerDown={() => {
         runtimeRef.current?.focus();
+      }}
+      onContextMenu={(event) => {
+        event.preventDefault();
+        handleContextMenu();
       }}
     >
       <div
