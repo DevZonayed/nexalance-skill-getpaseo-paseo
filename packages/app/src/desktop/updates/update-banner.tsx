@@ -10,8 +10,15 @@ const CHANGELOG_URL = "https://paseo.sh/changelog";
 
 export function UpdateBanner() {
   const { theme } = useUnistyles();
-  const { isDesktop, status, availableUpdate, checkForUpdates, installUpdate, isInstalling } =
-    useDesktopAppUpdater();
+  const {
+    isDesktop,
+    status,
+    availableUpdate,
+    errorMessage,
+    checkForUpdates,
+    installUpdate,
+    isInstalling,
+  } = useDesktopAppUpdater();
   const [dismissed, setDismissed] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -33,24 +40,36 @@ export function UpdateBanner() {
 
   if (!isDesktop) return null;
   if (dismissed) return null;
-  if (status !== "available" && status !== "installed") return null;
+  if (status !== "available" && status !== "installed" && status !== "installing" && status !== "error")
+    return null;
 
   const isInstalled = status === "installed";
+  const isError = status === "error";
+
+  function getTitle(): string {
+    if (isInstalled) return "Update installed";
+    if (isInstalling) return "Installing update";
+    if (isError) return "Update failed";
+    return "Update available";
+  }
+
+  function getSubtitle(): string {
+    if (isInstalled) return "Restart to use the new version.";
+    if (isInstalling) return "Downloading and installing...";
+    if (isError) return errorMessage ?? "Something went wrong.";
+    return `${availableUpdate?.latestVersion ? `v${availableUpdate.latestVersion.replace(/^v/i, "")} is ready` : "A new version is ready"} to install.`;
+  }
 
   return (
     <View style={styles.container} pointerEvents="box-none">
-      <View style={styles.banner}>
-        <Pressable onPress={() => setDismissed(true)} hitSlop={8} style={styles.closeButton}>
-          <X size={14} color={theme.colors.foregroundMuted} />
-        </Pressable>
+      <Pressable onPress={() => setDismissed(true)} hitSlop={8} style={styles.closeButton}>
+        <X size={12} color={theme.colors.foregroundMuted} />
+      </Pressable>
 
+      <View style={styles.banner}>
         <View style={styles.textSection}>
-          <Text style={styles.title}>{isInstalled ? "Update installed" : "Update available"}</Text>
-          <Text style={styles.subtitle}>
-            {isInstalled
-              ? "Restart to use the new version."
-              : `${availableUpdate?.latestVersion ? `v${availableUpdate.latestVersion.replace(/^v/i, "")} is ready` : "A new version is ready"} to install.`}
-          </Text>
+          <Text style={styles.title}>{getTitle()}</Text>
+          <Text style={styles.subtitle}>{getSubtitle()}</Text>
         </View>
 
         <View style={styles.actions}>
@@ -61,7 +80,7 @@ export function UpdateBanner() {
             <Text style={styles.outlineButtonText}>What's new</Text>
           </Pressable>
 
-          {!isInstalled && (
+          {!isInstalled && !isError && (
             <Pressable
               onPress={() => void installUpdate()}
               disabled={isInstalling}
@@ -74,6 +93,15 @@ export function UpdateBanner() {
               <Text style={styles.primaryButtonText}>
                 {isInstalling ? "Installing..." : "Install & restart"}
               </Text>
+            </Pressable>
+          )}
+
+          {isError && (
+            <Pressable
+              onPress={() => void checkForUpdates()}
+              style={({ pressed }) => [styles.primaryButton, pressed && styles.buttonPressed]}
+            >
+              <Text style={styles.primaryButtonText}>Retry</Text>
             </Pressable>
           )}
         </View>
@@ -109,15 +137,21 @@ const styles = StyleSheet.create((theme) => ({
   },
   closeButton: {
     position: "absolute",
-    top: theme.spacing[2],
-    left: theme.spacing[2],
-    padding: theme.spacing[1],
+    top: -8,
+    left: -8,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: theme.colors.surface2,
+    borderWidth: theme.borderWidth[1],
+    borderColor: theme.colors.border,
+    alignItems: "center",
+    justifyContent: "center",
     zIndex: 1,
   },
   textSection: {
     flex: 1,
     gap: 2,
-    paddingTop: theme.spacing[1],
   },
   title: {
     color: theme.colors.foreground,
