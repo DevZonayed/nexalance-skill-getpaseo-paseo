@@ -31,6 +31,19 @@ function trimToNull(value: string | null | undefined): string | null {
   return trimmed.length > 0 ? trimmed : null;
 }
 
+const CHAT_MENTION_PATTERN = /(?:^|[\s(])@([A-Za-z0-9][A-Za-z0-9._-]*)/g;
+
+export function parseMentionAgentIds(body: string): string[] {
+  const mentionAgentIds = new Set<string>();
+  for (const match of body.matchAll(CHAT_MENTION_PATTERN)) {
+    const agentId = match[1]?.trim();
+    if (agentId) {
+      mentionAgentIds.add(agentId);
+    }
+  }
+  return Array.from(mentionAgentIds).sort();
+}
+
 export class ChatServiceError extends Error {
   readonly code: string;
 
@@ -67,7 +80,6 @@ export interface PostChatMessageInput {
   authorAgentId: string;
   body: string;
   replyToMessageId?: string | null;
-  mentionAgentIds?: string[];
 }
 
 export interface ReadChatMessagesInput {
@@ -195,9 +207,7 @@ export class FileBackedChatService {
       authorAgentId,
       body,
       replyToMessageId,
-      mentionAgentIds: [...new Set((input.mentionAgentIds ?? []).map((value) => value.trim()))]
-        .filter((value) => value.length > 0)
-        .sort(),
+      mentionAgentIds: parseMentionAgentIds(body),
       createdAt,
     });
 

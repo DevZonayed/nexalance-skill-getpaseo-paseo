@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import { withOutput } from "../../output/index.js";
-import { addJsonAndDaemonHostOptions, collectMultiple } from "../../utils/command-options.js";
+import { addJsonAndDaemonHostOptions } from "../../utils/command-options.js";
 import { runCreateCommand } from "./create.js";
 import { runLsCommand } from "./ls.js";
 import { runInspectCommand } from "./inspect.js";
@@ -44,13 +44,7 @@ export function createChatCommand(): Command {
       .description("Post a chat message")
       .argument("<name-or-id>", "Room name or ID")
       .argument("<message>", "Message body")
-      .option("--reply-to <msg-id>", "Reply to a specific message ID")
-      .option(
-        "--mention <agent-id>",
-        "Mention an agent ID (repeatable)",
-        collectMultiple,
-        [],
-      ),
+      .option("--reply-to <msg-id>", "Reply to a specific message ID"),
   ).action(withOutput(runPostCommand));
 
   addJsonAndDaemonHostOptions(

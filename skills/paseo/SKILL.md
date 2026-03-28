@@ -133,7 +133,7 @@ paseo chat inspect <name-or-id>
 # Post a message
 paseo chat post <room> "<message>"
 paseo chat post <room> "<message>" --reply-to <msg-id>
-paseo chat post <room> "<message>" --mention <agent-id>   # Repeatable
+paseo chat post <room> "@<agent-id> <message>"
 
 # Read messages
 paseo chat read <room>

@@ -31,9 +31,7 @@ try {
       "chat",
       "post",
       "coord-room",
-      "first message",
-      "--mention",
-      "agent-1",
+      "first message for @agent-1",
     ]);
     assert.strictEqual(posted.exitCode, 0, posted.stderr);
     assert(posted.stdout.includes("first message"), posted.stdout);

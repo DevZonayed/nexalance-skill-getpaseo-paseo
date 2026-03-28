@@ -31,7 +31,6 @@ export const ChatPostRequestSchema = z.object({
   room: z.string(),
   body: z.string(),
   replyToMessageId: z.string().optional(),
-  mentionAgentIds: z.array(z.string()).optional(),
 });
 
 export const ChatReadRequestSchema = z.object({

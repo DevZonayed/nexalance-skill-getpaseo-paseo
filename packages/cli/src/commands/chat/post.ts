@@ -9,7 +9,6 @@ import { chatMessageSchema, type ChatMessageRow, toChatMessageRow } from "./sche
 
 export interface ChatPostOptions extends ChatCommandOptions {
   replyTo?: string;
-  mention?: string[];
 }
 
 export async function runPostCommand(
@@ -24,7 +23,6 @@ export async function runPostCommand(
       room,
       body,
       replyToMessageId: options.replyTo,
-      mentionAgentIds: options.mention ?? [],
     });
     return {
       type: "single",

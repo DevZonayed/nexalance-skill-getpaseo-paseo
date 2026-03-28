@@ -370,7 +370,6 @@ export type PostChatMessageOptions = {
   room: string;
   body: string;
   replyToMessageId?: string | null;
-  mentionAgentIds?: string[];
   requestId?: string;
 };
 export type ReadChatMessagesOptions = {
@@ -2913,9 +2912,6 @@ export class DaemonClient {
         room: options.room,
         body: options.body,
         ...(options.replyToMessageId ? { replyToMessageId: options.replyToMessageId } : {}),
-        ...(options.mentionAgentIds && options.mentionAgentIds.length > 0
-          ? { mentionAgentIds: options.mentionAgentIds }
-          : {}),
       },
       responseType: "chat/post/response",
       timeout: 10000,

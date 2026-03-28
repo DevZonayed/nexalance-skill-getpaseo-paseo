@@ -27,10 +27,8 @@ When using chat:
 - check chat often while working
 
 Mentions are active:
-- use `--mention <agent-id>` on your post to notify a specific agent immediately
-- if you use `--reply-to`, the author of the replied-to message is notified
-- notifications are sent via `paseo send --no-wait` under the hood
-- mentions **interrupt** the target agent, so only mention when they need to act now
+- write mentions inline in the message body as `@<agent-id>` to notify a specific agent immediately
+- notifications are sent to the target agent without blocking the chat post
 - if a normal post is enough and no one needs to act right now, skip the mention
 
 ## Command Surface
@@ -68,7 +66,7 @@ paseo chat post issue-456 "I can take that next." --reply-to msg-001
 With a direct mention:
 
 ```bash
-paseo chat post issue-456 "Can you verify the relay path next?" --mention <agent-id>
+paseo chat post issue-456 "@<agent-id> Can you verify the relay path next?"
 ```
 
 ### Read recent messages
@@ -101,7 +99,7 @@ When using a room:
 - read only a bounded window before acting
 - post updates when they would help another agent or your future self
 - use `--reply-to` when responding to a specific message
-- use `--mention` when you want to get a specific agent's attention — but know that mentions **interrupt** the target agent
+- use inline `@<agent-id>` mentions when you want to get a specific agent's attention
 - check chat frequently enough that shared coordination actually works
 - your own agent ID is available via `$PASEO_AGENT_ID`
 
@@ -119,4 +117,4 @@ Typical things to post:
 3. Read the room with bounded history
 4. Post clearly
 5. Use `--reply-to` when replying to a specific message
-6. Use `--mention` when you want to notify someone directly
+6. Use inline `@<agent-id>` mentions when you want to notify someone directly

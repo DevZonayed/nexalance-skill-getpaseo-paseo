@@ -97,11 +97,10 @@ paseo chat post <room> "Focus on implementing the API layer. Acceptance criteria
 - all new endpoints have tests
 - typecheck passes
 
-Post your progress here. @mention me ($PASEO_AGENT_ID) when done." \
-  --mention <agent-id>
+Post your progress here. @$PASEO_AGENT_ID when done, and start on this now @<agent-id>."
 ```
 
-The agent gets interrupted with the message and starts working. When done, it @mentions you back.
+The agent gets notified with the message and starts working. When done, it mentions you back in chat.
 
 ### Role-based provider selection
 
@@ -148,13 +147,13 @@ paseo chat read <room> --limit 10
 ### Directing work
 
 ```bash
-paseo chat post <room> "The API is done. Now focus on the frontend integration." --mention <agent-id>
+paseo chat post <room> "@<agent-id> The API is done. Now focus on the frontend integration."
 ```
 
 ### Course-correcting
 
 ```bash
-paseo chat post <room> "The tests you wrote are asserting the mock, not the real implementation. Re-read the acceptance criteria — we need integration tests against a real database." --mention <agent-id>
+paseo chat post <room> "@<agent-id> The tests you wrote are asserting the mock, not the real implementation. Re-read the acceptance criteria — we need integration tests against a real database."
 ```
 
 ### Challenging agents

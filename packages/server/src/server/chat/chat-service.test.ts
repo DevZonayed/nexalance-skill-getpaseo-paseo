@@ -3,7 +3,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import pino from "pino";
-import { ChatServiceError, FileBackedChatService } from "./chat-service.js";
+import { ChatServiceError, FileBackedChatService, parseMentionAgentIds } from "./chat-service.js";
 
 describe("FileBackedChatService", () => {
   let paseoHome: string;
@@ -48,8 +48,7 @@ describe("FileBackedChatService", () => {
     const first = await service.postMessage({
       room: room.name,
       authorAgentId: "agent-a",
-      body: "first message",
-      mentionAgentIds: ["agent-b", "agent-b", "agent-c"],
+      body: "first message for @agent-b and @agent-c and again @agent-b",
     });
     await service.postMessage({
       room: room.id,
@@ -140,5 +139,12 @@ describe("FileBackedChatService", () => {
     >({
       code: "chat_room_not_found",
     });
+  });
+
+  test("extracts inline mentions from chat bodies", () => {
+    expect(
+      parseMentionAgentIds("Checking with @agent-a, (@agent_b), and duplicate @agent-a again."),
+    ).toEqual(["agent-a", "agent_b"]);
+    expect(parseMentionAgentIds("email@example.com is not a mention")).toEqual([]);
   });
 });
