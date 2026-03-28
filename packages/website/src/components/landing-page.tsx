@@ -1,5 +1,5 @@
 import * as React from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, useInView, useScroll, useTransform, useMotionValueEvent } from "framer-motion";
 import { CursorFieldProvider } from "~/components/butterfly";
 import { CommandDialog } from "~/components/command-dialog";
 import {
@@ -13,6 +13,9 @@ import {
   TerminalIcon,
   GlobeIcon,
 } from "~/downloads";
+import { Mic } from "lucide-react";
+import { HeroMockup } from "~/components/hero-mockup";
+import { ClaudeIcon } from "~/components/mockup";
 import "~/styles.css";
 
 interface LandingPageProps {
@@ -25,10 +28,8 @@ export function LandingPage({ title, subtitle }: LandingPageProps) {
     <CursorFieldProvider>
       {/* Hero section with background image */}
       <div className="relative bg-cover bg-center bg-no-repeat">
-        <div className="absolute inset-0 bg-background/90" />
-        <div className="absolute inset-x-0 bottom-0 h-64 bg-linear-to-t from-black to-transparent" />
 
-        <div className="relative p-6 pb-10 md:px-20 md:pt-20 md:pb-12 max-w-3xl mx-auto">
+        <div className="relative p-6 pb-10 md:px-32 md:pt-20 md:pb-12 max-w-7xl mx-auto">
           <Nav />
           <Hero title={title} subtitle={subtitle} />
           <GetStarted />
@@ -41,22 +42,24 @@ export function LandingPage({ title, subtitle }: LandingPageProps) {
           transition={{ duration: 0.8, delay: 0.5, ease: "easeOut" }}
           className="relative px-6 md:px-8 pb-8 md:pb-16"
         >
-          <div className="max-w-6xl lg:max-w-7xl xl:max-w-[90rem] mx-auto">
-            <img
-              src="/hero-mockup.png"
-              alt="Paseo app showing agent management interface"
-              className="w-full rounded-lg shadow-2xl"
-            />
+          <div className="max-w-7xl mx-auto">
+            <HeroMockup />
           </div>
         </motion.div>
+
       </div>
+
+      {/* Phone showcase */}
+      <PhoneShowcase />
 
       {/* Content section */}
       <div className="bg-black">
-        <main className="p-6 md:p-20 md:pt-8 max-w-5xl mx-auto">
+        <main className="p-6 md:p-20 md:pt-40 max-w-5xl mx-auto">
           <div className="space-y-24">
-            <Features />
-            <MobileSection />
+            <MultiProviderSection />
+            <SelfHostedSection />
+            <ShortcutsSection />
+            <LocalVoiceSection />
             <CLISection />
             <FAQ />
             <SponsorCTA />
@@ -256,7 +259,7 @@ function Hero({ title, subtitle }: { title: React.ReactNode; subtitle: string })
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6, ease: "easeOut" }}
-        className="text-3xl md:text-5xl font-semibold tracking-tight"
+        className="text-3xl md:text-5xl font-medium tracking-tight"
       >
         {title}
       </motion.h1>
@@ -299,134 +302,466 @@ function AgentBadge({ name, icon }: { name: string; icon: React.ReactNode }) {
   );
 }
 
-function Features() {
+function FeatureSection({
+  title,
+  description,
+  children,
+}: {
+  title: string;
+  description: string;
+  children: React.ReactNode;
+}) {
   return (
-    <div className="space-y-10">
-      {/* Primary differentiators - 2x2 */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-8">
-        {[
-          {
-            title: "Self-hosted",
-            description:
-              "Agents run on your machine with your full dev environment. Use your tools, your configs and your skills.",
-            icon: (
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="20"
-                height="20"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <rect x="2" y="2" width="20" height="8" rx="2" ry="2" />
-                <rect x="2" y="14" width="20" height="8" rx="2" ry="2" />
-                <line x1="6" y1="6" x2="6.01" y2="6" />
-                <line x1="6" y1="18" x2="6.01" y2="18" />
-              </svg>
-            ),
-          },
-          {
-            title: "Multi-provider",
-            description:
-              "Claude Code, Codex, and OpenCode through the same interface. Pick the right model for each job.",
-            icon: (
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="20"
-                height="20"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M16 3h5v5" />
-                <path d="M8 3H3v5" />
-                <path d="M12 22v-8.3a4 4 0 0 0-1.172-2.872L3 3" />
-                <path d="m15 9 6-6" />
-              </svg>
-            ),
-          },
-          {
-            title: "Voice control",
-            description:
-              "Dictate tasks or talk through problems in voice mode. Hands-free when you need it.",
-            icon: (
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="20"
-                height="20"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
-                <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-                <line x1="12" x2="12" y1="19" y2="22" />
-              </svg>
-            ),
-          },
-          {
-            title: "Cross-device",
-            description:
-              "iOS, Android, desktop, web, and CLI. Start work at your desk, check in from your phone, script it from the terminal.",
-            icon: (
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="20"
-                height="20"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <rect x="5" y="2" width="14" height="20" rx="2" ry="2" />
-                <line x1="12" y1="18" x2="12.01" y2="18" />
-              </svg>
-            ),
-          },
-        ].map((feature, i) => (
-          <motion.div
-            key={feature.title}
-            initial={{ opacity: 0, y: 16 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true, margin: "-40px" }}
-            transition={{ duration: 0.4, delay: i * 0.06, ease: "easeOut" }}
-            className="space-y-2"
+    <motion.section
+      initial={{ opacity: 0, y: 20 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true, margin: "-60px" }}
+      transition={{ duration: 0.5, ease: "easeOut" }}
+      className="space-y-8"
+    >
+      <div className="space-y-2">
+        <h2 className="text-3xl font-medium">{title}</h2>
+        <p className="text-base text-muted-foreground max-w-lg">{description}</p>
+      </div>
+      {children}
+    </motion.section>
+  );
+}
+
+function PrinciplesSection() {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 16 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true, margin: "-40px" }}
+      transition={{ duration: 0.5, ease: "easeOut" }}
+      className="py-32 px-6 md:px-20 max-w-3xl mx-auto text-center"
+    >
+      <p className="text-2xl md:text-4xl font-medium text-white/90">
+        Here's what's under the hood.
+      </p>
+    </motion.div>
+  );
+}
+
+function MultiProviderSection() {
+  const providers = [
+    { name: "Claude Code", icon: <ClaudeIcon size={28} /> },
+    { name: "Codex", icon: <CodexIcon className="w-7 h-7" /> },
+    { name: "OpenCode", icon: <OpenCodeIcon className="w-7 h-7" /> },
+  ];
+
+  return (
+    <FeatureSection
+      title="Multi-provider"
+      description="Escape the vendor lock, mix and match frontier models through a single interface."
+    >
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        {providers.map((p) => (
+          <div
+            key={p.name}
+            className="flex items-center justify-center gap-3 rounded-xl border border-white/10 bg-white/[0.03] px-5 py-4"
           >
-            <div className="flex items-center gap-2">
-              <span className="text-white/40">{feature.icon}</span>
-              <p className="font-medium text-lg">{feature.title}</p>
-            </div>
-            <p className="text-sm text-muted-foreground leading-relaxed">{feature.description}</p>
-          </motion.div>
+            <span className="text-white/80">{p.icon}</span>
+            <span className="font-medium">{p.name}</span>
+          </div>
+        ))}
+      </div>
+    </FeatureSection>
+  );
+}
+
+function SelfHostedDiagram() {
+  const clients = [
+    { name: "Desktop", icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-white/40"><rect x="2" y="3" width="20" height="14" rx="2" /><path d="M8 21h8M12 17v4" /></svg> },
+    { name: "Web", icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-white/40"><circle cx="12" cy="12" r="10" /><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" /></svg> },
+    { name: "Mobile", icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-white/40"><rect x="5" y="2" width="14" height="20" rx="2" /><path d="M12 18h.01" /></svg> },
+    { name: "CLI", icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-white/40"><polyline points="4 17 10 11 4 5" /><line x1="12" y1="19" x2="20" y2="19" /></svg> },
+  ];
+  const hosts = ["MacBook Pro", "Hetzner VM", "Dev server"];
+  const containerRef = React.useRef<HTMLDivElement>(null);
+  const clientRefs = React.useRef<(HTMLDivElement | null)[]>([]);
+  const hostRefs = React.useRef<(HTMLDivElement | null)[]>([]);
+  const centerRef = React.useRef<HTMLDivElement>(null);
+  const [paths, setPaths] = React.useState<{ left: string[]; right: string[] }>({ left: [], right: [] });
+
+  React.useEffect(() => {
+    function computePaths() {
+      const container = containerRef.current;
+      const center = centerRef.current;
+      if (!container || !center) return;
+
+      const cRect = container.getBoundingClientRect();
+      const mRect = center.getBoundingClientRect();
+      const midL = mRect.left - cRect.left;
+      const midR = mRect.right - cRect.left;
+      const midY = mRect.top - cRect.top + mRect.height / 2;
+
+      const left = clientRefs.current.map((el) => {
+        if (!el) return "";
+        const r = el.getBoundingClientRect();
+        const x1 = r.right - cRect.left;
+        const y1 = r.top - cRect.top + r.height / 2;
+        const cpx = x1 + (midL - x1) * 0.6;
+        return `M${x1},${y1} C${cpx},${y1} ${midL - (midL - x1) * 0.3},${midY} ${midL},${midY}`;
+      });
+
+      const right = hostRefs.current.map((el) => {
+        if (!el) return "";
+        const r = el.getBoundingClientRect();
+        const x2 = r.left - cRect.left;
+        const y2 = r.top - cRect.top + r.height / 2;
+        const cpx = midR + (x2 - midR) * 0.4;
+        return `M${midR},${midY} C${cpx},${midY} ${x2 - (x2 - midR) * 0.3},${y2} ${x2},${y2}`;
+      });
+
+      setPaths({ left, right });
+    }
+
+    computePaths();
+    window.addEventListener("resize", computePaths);
+    return () => window.removeEventListener("resize", computePaths);
+  }, []);
+
+  return (
+    <>
+    {/* Mobile: vertical stack */}
+    <div className="md:hidden flex flex-col items-center gap-4 py-4">
+      <div className="space-y-2 w-full">
+        {clients.map((c) => (
+          <div key={c.name} className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/[0.03] px-4 py-2.5 text-sm">
+            {c.icon}
+            {c.name}
+          </div>
+        ))}
+      </div>
+      <div className="w-px h-6 border-l border-dashed border-white/25" />
+      <div className="rounded-xl border border-white/10 bg-white/[0.03] px-6 py-5 text-center space-y-1">
+        <p className="text-xs font-medium text-white/50">E2E Encrypted Relay</p>
+        <p className="text-[10px] text-white/25">or</p>
+        <p className="text-xs font-medium text-white/50">Direct Connection</p>
+      </div>
+      <div className="w-px h-6 border-l border-dashed border-white/25" />
+      <div className="space-y-2 w-full">
+        {hosts.map((h) => (
+          <div key={h} className="flex items-center gap-3 rounded-lg border border-white/10 bg-white/[0.03] px-4 py-2.5 text-sm">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-white/40">
+              <rect x="2" y="2" width="20" height="8" rx="2" />
+              <rect x="2" y="14" width="20" height="8" rx="2" />
+              <circle cx="6" cy="6" r="1" />
+              <circle cx="6" cy="18" r="1" />
+            </svg>
+            {h}
+          </div>
+        ))}
+      </div>
+    </div>
+
+    {/* Desktop: horizontal with bezier curves */}
+    <div ref={containerRef} className="relative hidden md:flex items-center py-4 gap-0">
+      {/* SVG curves */}
+      <svg className="absolute inset-0 w-full h-full pointer-events-none" style={{ overflow: "visible" }}>
+        {[...paths.left, ...paths.right].map((d, i) => (
+          d && <path key={i} d={d} fill="none" stroke="rgba(255,255,255,0.25)" strokeWidth="1" strokeDasharray="4 4" />
+        ))}
+      </svg>
+
+      {/* Clients */}
+      <div className="space-y-3 flex-shrink-0 relative z-10">
+        {clients.map((c, i) => (
+          <div
+            key={c.name}
+            ref={(el) => { clientRefs.current[i] = el; }}
+            className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/[0.03] px-4 py-2.5 text-sm backdrop-blur-sm"
+          >
+            {c.icon}
+            {c.name}
+          </div>
         ))}
       </div>
 
-      {/* Also */}
-      <motion.div
-        initial={{ opacity: 0 }}
-        whileInView={{ opacity: 1 }}
-        viewport={{ once: true, margin: "-40px" }}
-        transition={{ duration: 0.4, delay: 0.25, ease: "easeOut" }}
-        className="flex flex-wrap gap-x-6 gap-y-1 text-sm text-white/40"
-      >
-        <span>Multi-host</span>
-        <span>Built-in terminal</span>
-        <span>Git worktrees</span>
-        <span>E2E encrypted relay</span>
-        <span>Open source</span>
-      </motion.div>
+      {/* Spacer */}
+      <div className="flex-1" />
+
+      {/* Center label */}
+      <div ref={centerRef} className="flex-shrink-0 rounded-xl border border-white/10 bg-white/[0.03] px-6 py-5 text-center space-y-1 relative z-10 backdrop-blur-sm">
+        <p className="text-xs font-medium text-white/50">E2E Encrypted Relay</p>
+        <p className="text-[10px] text-white/25">or</p>
+        <p className="text-xs font-medium text-white/50">Direct Connection</p>
+      </div>
+
+      {/* Spacer */}
+      <div className="flex-1" />
+
+      {/* Hosts */}
+      <div className="space-y-3 flex-shrink-0 relative z-10">
+        {hosts.map((h, i) => (
+          <div
+            key={h}
+            ref={(el) => { hostRefs.current[i] = el; }}
+            className="flex items-center gap-3 rounded-lg border border-white/10 bg-white/[0.03] px-4 py-2.5 text-sm backdrop-blur-sm"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-white/40">
+              <rect x="2" y="2" width="20" height="8" rx="2" />
+              <rect x="2" y="14" width="20" height="8" rx="2" />
+              <circle cx="6" cy="6" r="1" />
+              <circle cx="6" cy="18" r="1" />
+            </svg>
+            {h}
+          </div>
+        ))}
+      </div>
     </div>
+    </>
+  );
+}
+
+function SelfHostedSection() {
+  return (
+    <FeatureSection
+      title="Self-hosted"
+      description="Run the daemon wherever you want and connect however you want. Orchestrate agents in multiple hosts from a single interface."
+    >
+      <SelfHostedDiagram />
+    </FeatureSection>
+  );
+}
+
+
+function ShortcutsSection() {
+  const shortcuts = [
+    { keys: ["⌘", "1-9"], action: "Switch panels" },
+    { keys: ["⌘", "D"], action: "Split vertical" },
+    { keys: ["⌘", "Shift", "D"], action: "Split horizontal" },
+    { keys: ["⌘", "W"], action: "Close panel" },
+    { keys: ["⌘", "N"], action: "New agent" },
+    { keys: ["⌘", "K"], action: "Command palette" },
+  ];
+
+  return (
+    <FeatureSection
+      title="Keyboard-first"
+      description="Every action has a shortcut. Panels, splits, agents - all from the keyboard."
+    >
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        {shortcuts.map((s) => (
+          <div
+            key={s.action}
+            className="flex items-center justify-between rounded-lg border border-white/10 bg-white/[0.03] px-4 py-2.5"
+          >
+            <span className="text-sm text-white/60">{s.action}</span>
+            <div className="flex items-center gap-1">
+              {s.keys.map((k) => (
+                <kbd
+                  key={k}
+                  className="text-xs px-1.5 py-0.5 rounded bg-white/10 text-white/50 font-mono"
+                >
+                  {k}
+                </kbd>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </FeatureSection>
+  );
+}
+
+function VoiceWaveform() {
+  const barCount = 48;
+  return (
+    <div className="flex items-center justify-center gap-[3px] h-16">
+      {Array.from({ length: barCount }).map((_, i) => {
+        // Create a natural-looking waveform envelope — louder in center, quieter at edges
+        const center = barCount / 2;
+        const dist = Math.abs(i - center) / center;
+        const envelope = 1 - dist * dist; // quadratic falloff
+        const minH = 4;
+        const maxH = 56;
+        const baseH = minH + (maxH - minH) * envelope;
+        // Vary per-bar so it doesn't look uniform
+        const jitter = Math.sin(i * 2.3) * 0.3 + Math.cos(i * 1.7) * 0.2;
+        const h = Math.max(minH, baseH * (0.5 + 0.5 * Math.abs(jitter + Math.sin(i * 0.8))));
+
+        return (
+          <div
+            key={i}
+            className="w-[3px] rounded-full bg-white/30"
+            style={{
+              height: h,
+              animationName: "voice-bar",
+              animationDuration: `${800 + (i % 5) * 200}ms`,
+              animationTimingFunction: "ease-in-out",
+              animationIterationCount: "infinite",
+              animationDirection: "alternate",
+              animationDelay: `${(i % 7) * 80}ms`,
+            }}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+const USER_WORDS = "Refactor the auth middleware to use the new session store, then run the test suite".split(" ");
+const RESPONSE_WORDS = "I'll update the auth middleware to use SessionStore instead of the legacy cookie-based approach. Let me refactor the middleware and update the tests.".split(" ");
+const DICTATION_LAG = 2;
+const RESPONSE_LAG = 3;
+const WORD_APPEAR_MS = 150;
+const RESPONSE_WORD_MS = 60;
+const PHASE_GAP_MS = 800;
+const LOOP_PAUSE_MS = 3000;
+
+type VoicePhase = "dictation" | "dictation-flush" | "pause" | "response" | "response-flush" | "done";
+
+function useVoiceConversation() {
+  const [phase, setPhase] = React.useState<VoicePhase>("dictation");
+  const [wordIndex, setWordIndex] = React.useState(0);
+
+  React.useEffect(() => {
+    if (phase === "dictation") {
+      if (wordIndex < USER_WORDS.length) {
+        const t = setTimeout(() => setWordIndex((w) => w + 1), WORD_APPEAR_MS);
+        return () => clearTimeout(t);
+      }
+      setPhase("dictation-flush");
+      setWordIndex(0);
+      return;
+    }
+    if (phase === "dictation-flush") {
+      if (wordIndex < DICTATION_LAG) {
+        const t = setTimeout(() => setWordIndex((w) => w + 1), WORD_APPEAR_MS);
+        return () => clearTimeout(t);
+      }
+      const t = setTimeout(() => { setPhase("pause"); }, PHASE_GAP_MS);
+      return () => clearTimeout(t);
+    }
+    if (phase === "pause") {
+      const t = setTimeout(() => { setPhase("response"); setWordIndex(0); }, PHASE_GAP_MS);
+      return () => clearTimeout(t);
+    }
+    if (phase === "response") {
+      if (wordIndex < RESPONSE_WORDS.length) {
+        const t = setTimeout(() => setWordIndex((w) => w + 1), RESPONSE_WORD_MS);
+        return () => clearTimeout(t);
+      }
+      setPhase("response-flush");
+      setWordIndex(0);
+      return;
+    }
+    if (phase === "response-flush") {
+      if (wordIndex < RESPONSE_LAG) {
+        const t = setTimeout(() => setWordIndex((w) => w + 1), RESPONSE_WORD_MS);
+        return () => clearTimeout(t);
+      }
+      const t = setTimeout(() => { setPhase("done"); }, LOOP_PAUSE_MS);
+      return () => clearTimeout(t);
+    }
+    if (phase === "done") {
+      const t = setTimeout(() => { setPhase("dictation"); setWordIndex(0); }, 0);
+      return () => clearTimeout(t);
+    }
+  }, [phase, wordIndex]);
+
+  // Compute effective word indices for rendering
+  let dictationWordIndex: number;
+  if (phase === "dictation") {
+    dictationWordIndex = wordIndex;
+  } else if (phase === "dictation-flush") {
+    dictationWordIndex = USER_WORDS.length + wordIndex;
+  } else {
+    dictationWordIndex = USER_WORDS.length + DICTATION_LAG;
+  }
+
+  let responseWordIndex: number;
+  if (phase === "response") {
+    responseWordIndex = wordIndex;
+  } else if (phase === "response-flush") {
+    responseWordIndex = RESPONSE_WORDS.length + wordIndex;
+  } else if (phase === "done") {
+    responseWordIndex = RESPONSE_WORDS.length + RESPONSE_LAG;
+  } else {
+    responseWordIndex = 0;
+  }
+
+  const showResponse = phase === "response" || phase === "response-flush" || phase === "done";
+
+  return { dictationWordIndex, responseWordIndex, showResponse };
+}
+
+function StreamingWords({ words, wordIndex, confirmLag = 2 }: { words: string[]; wordIndex: number; confirmLag?: number }) {
+  return (
+    <div className="relative">
+      {/* Invisible full text to reserve height at any viewport width */}
+      <p className="text-sm leading-relaxed invisible" aria-hidden>
+        {words.join(" ")}
+      </p>
+      {/* Visible streaming text overlaid */}
+      <p className="text-sm leading-relaxed absolute inset-0">
+        {words.map((word, i) => {
+          if (i >= wordIndex) return null;
+          const confirmed = i < wordIndex - confirmLag;
+          return (
+            <span
+              key={i}
+              className={`transition-colors duration-300 ${confirmed ? "text-white/90" : "text-white/40"}`}
+            >
+              {word}{" "}
+            </span>
+          );
+        })}
+      </p>
+    </div>
+  );
+}
+
+function LocalVoiceSection() {
+  const { dictationWordIndex, responseWordIndex, showResponse } = useVoiceConversation();
+
+  return (
+    <FeatureSection
+      title="Local voice"
+      description="Fully local voice stack. Speech-to-text and text-to-speech run entirely on your machine, nothing leaves your network."
+    >
+      <div className="relative w-full rounded-2xl border border-white/10 bg-white/[0.02] overflow-hidden">
+        <div className="px-6 pt-8 pb-6 space-y-3">
+          {/* Waveform area */}
+          <div className="relative">
+            <VoiceWaveform />
+          </div>
+
+          {/* User dictation */}
+          <div className="flex items-start gap-3">
+            <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center flex-shrink-0">
+              <Mic size={16} className="text-white/60" />
+            </div>
+            <div className="pt-1">
+              <StreamingWords
+                words={USER_WORDS}
+                wordIndex={dictationWordIndex}
+                confirmLag={DICTATION_LAG}
+              />
+            </div>
+          </div>
+
+          {/* Agent response — always rendered to reserve space */}
+          <div
+            className={`flex items-start gap-3 transition-opacity duration-300 ${showResponse ? "opacity-100" : "opacity-0"}`}
+          >
+            <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center flex-shrink-0">
+              <ClaudeIcon size={16} className="text-white/60" />
+            </div>
+            <div className="pt-1">
+              <StreamingWords
+                words={RESPONSE_WORDS}
+                wordIndex={responseWordIndex}
+                confirmLag={RESPONSE_LAG}
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+    </FeatureSection>
   );
 }
 
@@ -849,94 +1184,131 @@ interface CLIExample {
 
 const cliExamples: CLIExample[] = [
   {
-    title: "Launch and monitor",
+    title: "Run agents",
     description:
-      "Give an agent a task and watch it work. The --worktree flag spins up an isolated git branch so you can run multiple agents on the same repo without conflicts.",
-    code: `paseo run --provider claude/opus-4.6 "implement user authentication"
-paseo run --provider codex/gpt-5.4 --worktree feature-x "implement feature X"
+      "Launch agents locally or on any remote host. The --worktree flag spins up an isolated git branch so you can run multiple agents on the same repo without conflicts.",
+    code: `paseo run "implement user authentication"
+paseo run --provider codex --worktree feature-x "implement feature X"
+paseo run --host devbox:6767 "run the full test suite"
 
 paseo ls                           # list running agents
 paseo attach abc123                # stream live output
 paseo send abc123 "also add tests" # follow-up task`,
   },
   {
-    title: "Orchestration",
+    title: "Loops",
     description:
-      "Agents can use the CLI too. Tell one agent to spawn others, split up the work, and pull everything together when they're done.",
-    code: `# Spawn two agents in parallel, wait, then synthesize
-paseo run --detach "implement the frontend" --name frontend
-paseo run --detach "implement the API layer" --name api
+      "Have one agent do the work, another verify the result, and loop until it passes. Built-in, no shell scripting needed.",
+    code: `# Worker-verifier loop: fix tests until they pass
+paseo loop run "make all tests pass" \\
+  --verify "verify tests pass and the code is production-ready" \\
+  --verify-check "npm test" \\
+  --max-iterations 5
 
-paseo wait frontend api
-
-paseo run "review both branches and write an integration plan"`,
+paseo loop ls                        # list running loops
+paseo loop logs abc123               # stream loop output`,
   },
   {
-    title: "Structured output",
+    title: "Schedules",
     description:
-      "Pass a JSON schema and get typed data back from any agent run. No output parsing, just the structured result you asked for.",
-    code: `result=$(paseo run \\
-  --output-schema '{
-    "type": "object",
-    "properties": {
-      "severity": { "type": "string", "enum": ["low", "medium", "high"] },
-      "issues":   { "type": "array", "items": { "type": "string" } }
-    },
-    "required": ["severity", "issues"]
-  }' \\
-  "audit this codebase for security issues")
+      "Run agents on a cron schedule. Automate recurring tasks like dependency updates, security audits, or report generation.",
+    code: `# Run a security audit every Monday at 9am
+paseo schedule create --cron "0 9 * * 1" \\
+  "audit the codebase for security issues and open PRs for fixes"
 
-echo $result | jq '.severity'   # "high"
-echo $result | jq '.issues[0]'  # "SQL injection on line 42"`,
-  },
-  {
-    title: "Remote",
-    description:
-      "Point at any daemon on your network or over the internet. Run agents on a beefy server from your laptop.",
-    code: `# Set once for the session
-export PASEO_HOST=workstation.local:6767
-paseo run "run the full test suite"
-paseo ls
-
-# Or per-command
-paseo --host gpu-server:6767 run "train the model"
-paseo --host gpu-server:6767 attach abc123`,
-  },
-  {
-    title: "Worker-judge loops",
-    description:
-      "Have one agent do the work and another judge the result. Loop until it passes. Good for test fixes, code review, or any task with clear acceptance criteria.",
-    code: `while true; do
-  paseo run "make all tests pass"
-
-  verdict=$(paseo run \\
-    --output-schema '{"type":"object","properties":{"passed":{"type":"boolean"}},"required":["passed"]}' \\
-    "verify tests pass and the code is production-ready")
-
-  echo "$verdict" | jq -e '.passed' && break
-done`,
+paseo schedule ls                    # list all schedules
+paseo schedule pause abc123          # pause a schedule
+paseo schedule delete abc123         # remove a schedule`,
   },
 ];
 
-function MobileSection() {
+function PhoneShowcase() {
+  const containerRef = React.useRef<HTMLDivElement>(null);
+  const textInView = useInView(containerRef, { once: true, margin: "-80px" });
+
+  // Scroll-linked animation: track how far through the container the user has scrolled
+  const { scrollYProgress } = useScroll({
+    target: containerRef,
+    offset: ["start end", "center center"],
+  });
+
+  // Responsive slide distance
+  const [slideDistance, setSlideDistance] = React.useState(260);
+  React.useEffect(() => {
+    function update() {
+      setSlideDistance(window.innerWidth < 768 ? 140 : 260);
+    }
+    update();
+    window.addEventListener("resize", update);
+    return () => window.removeEventListener("resize", update);
+  }, []);
+
+  // Side phones start at x=0 (behind center) and slide out to final position
+  const sideOpacity = useTransform(scrollYProgress, [0.2, 0.6], [0, 1]);
+  const leftX = useTransform(scrollYProgress, [0.2, 0.6], [0, -slideDistance]);
+  const rightX = useTransform(scrollYProgress, [0.2, 0.6], [0, slideDistance]);
+
   return (
-    <section className="space-y-6">
-      <div className="space-y-2">
-        <h2 className="text-2xl font-medium">Mobile-first</h2>
-        <p className="text-sm text-muted-foreground max-w-lg">
-          The mobile app has full feature parity with desktop. Launch agents, review diffs, talk through problems with voice, all from your phone.
+    <div ref={containerRef} className="flex flex-col items-center pt-4 pb-16 gap-20">
+      {/* Arrow + text */}
+      <motion.div
+        initial={{ opacity: 0, y: -10 }}
+        animate={textInView ? { opacity: 1, y: 0 } : {}}
+        transition={{ duration: 0.5 }}
+        className="flex flex-col items-center gap-1.5 px-6"
+      >
+        <svg width="24" height="24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24" className="text-white/20">
+          <path d="M12 5v14M5 12l7 7 7-7" />
+        </svg>
+        <p className="text-lg text-white/80 text-center">
+          When you want to step away from your desk,<br className="md:hidden" /> you can.
         </p>
-      </div>
-      <div className="-mx-[calc(50vw-50%)] px-6 md:px-8 overflow-x-auto">
-        <div className="max-w-5xl lg:max-w-6xl mx-auto">
+        <p className="text-sm text-white/50 text-center">
+          The native mobile app has full feature parity with desktop.
+        </p>
+      </motion.div>
+
+      {/* Phone trio — side phones are absolute, start behind center, slide outward with perspective rotation */}
+      <div className="relative flex items-center justify-center overflow-x-clip w-full" style={{ minHeight: 480, perspective: 1200 }}>
+        {/* Left phone — rotated to face inward */}
+        <motion.div
+          style={{ opacity: sideOpacity, x: leftX, rotateY: -15, scale: 0.97 }}
+          className="w-[160px] md:w-[240px] absolute"
+        >
           <img
-            src="/mobile-mockup.png"
-            alt="Paseo mobile app screens"
-            className="min-w-[900px] w-full rounded-lg"
+            src="/phone-1.png"
+            alt="Paseo sessions list"
+            className="w-full rounded-[40px] shadow-2xl border-[3px] border-black outline-[3px] outline-white/20"
           />
-        </div>
+        </motion.div>
+
+        {/* Center phone */}
+        <motion.div
+          initial={{ opacity: 0, y: 30 }}
+          animate={textInView ? { opacity: 1, y: 0 } : {}}
+          transition={{ duration: 0.6, delay: 0.1, ease: "easeOut" }}
+          className="w-[220px] md:w-[240px] relative z-10"
+        >
+          <img
+            src="/phone-2.png"
+            alt="Paseo agent chat"
+            className="w-full rounded-[40px] shadow-2xl border-[3px] border-black outline-[3px] outline-white/20"
+          />
+        </motion.div>
+
+        {/* Right phone — rotated to face inward */}
+        <motion.div
+          style={{ opacity: sideOpacity, x: rightX, rotateY: 15, scale: 0.97 }}
+          className="w-[160px] md:w-[240px] absolute"
+        >
+          <img
+            src="/phone-3.png"
+            alt="Paseo diff view"
+            className="w-full rounded-[40px] shadow-2xl border-[3px] border-black outline-[3px] outline-white/20"
+          />
+        </motion.div>
       </div>
-    </section>
+    </div>
   );
 }
 
@@ -945,20 +1317,10 @@ function CLISection() {
   const active = cliExamples[activeIndex];
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      whileInView={{ opacity: 1, y: 0 }}
-      viewport={{ once: true, margin: "-60px" }}
-      transition={{ duration: 0.5, ease: "easeOut" }}
-      className="space-y-6"
+    <FeatureSection
+      title="Fully scriptable"
+      description="Everything you can do in the app, you can do from the terminal."
     >
-      <div className="space-y-2">
-        <h2 className="text-2xl font-medium">CLI</h2>
-        <p className="text-sm text-muted-foreground max-w-lg">
-          Everything you can do in the app, you can do from the terminal.
-        </p>
-      </div>
-
       <div className="flex flex-wrap gap-2">
         {cliExamples.map((example, i) => (
           <button
@@ -976,7 +1338,6 @@ function CLISection() {
       </div>
 
       <div className="space-y-3">
-        <p className="text-sm text-muted-foreground">{active.description}</p>
         <CLICodeBlock>{active.code}</CLICodeBlock>
       </div>
 
@@ -999,7 +1360,7 @@ function CLISection() {
           <path d="M5 12h14M12 5l7 7-7 7" />
         </svg>
       </a>
-    </motion.div>
+    </FeatureSection>
   );
 }
 
@@ -1012,7 +1373,7 @@ function FAQ() {
       transition={{ duration: 0.5, ease: "easeOut" }}
       className="space-y-6"
     >
-      <h2 className="text-2xl font-medium">FAQ</h2>
+      <h2 className="text-3xl font-medium">FAQ</h2>
       <div className="space-y-6">
         <FAQItem question="Is this free?">
           Yes. Paseo is free and open source. You need Claude Code, Codex, or OpenCode installed
@@ -1092,21 +1453,9 @@ function SponsorCTA() {
       transition={{ duration: 0.5, ease: "easeOut" }}
       className="rounded-xl bg-white/5 border border-white/10 p-8 md:p-10 text-left space-y-4 max-w-xl mx-auto"
     >
-      <p className="text-lg font-medium">Paseo is an independent project</p>
       <div className="text-sm text-muted-foreground leading-relaxed space-y-3">
         <p>
-          I believe that open source and freedom of choice always win for developer tools.
-        </p>
-        <p>
-          Paseo has no VC funding and no big team behind it. I built it because the existing tools
-          weren't good enough for me. No tracking, no telemetry, no forced accounts, no vendor lock-in.
-        </p>
-        <p>
-          The monetization story is still taking shape. The obvious path is optional hosted
-          infrastructure like cloud sandboxes for teams. But Paseo itself will always be FOSS.
-        </p>
-        <p>
-          If you like Paseo, consider sponsoring development.
+          I built Paseo because I wanted better tools for coding agents on my own setup. It's an independent open source project, built around freedom of choice and real workflows. If you like what I'm building, consider becoming a supporter.
         </p>
         <p>- Mo</p>
       </div>
@@ -1137,12 +1486,12 @@ function SponsorCTA() {
 function FAQItem({ question, children }: { question: string; children: React.ReactNode }) {
   return (
     <details className="group">
-      <summary className="font-medium text-sm cursor-pointer list-none flex items-start gap-2">
-        <span className="font-mono text-white/40 group-open:hidden">+</span>
-        <span className="font-mono text-white/40 hidden group-open:inline">-</span>
+      <summary className="font-medium text-sm cursor-pointer list-none flex items-start gap-2 -ml-4">
+        <span className="font-mono text-white/40 flex-shrink-0 group-open:hidden">+</span>
+        <span className="font-mono text-white/40 flex-shrink-0 hidden group-open:inline">−</span>
         {question}
       </summary>
-      <div className="text-sm text-muted-foreground space-y-2 mt-2 ml-4">{children}</div>
+      <div className="text-sm text-muted-foreground space-y-2 mt-2 prose">{children}</div>
     </details>
   );
 }

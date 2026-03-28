@@ -15,12 +15,7 @@ export const Route = createFileRoute("/")({
 function Home() {
   return (
     <LandingPage
-      title={
-        <>
-          All your coding agents,
-          <br className="hidden md:block" /> from anywhere
-        </>
-      }
+      title={<>The development environment<br />built for coding agents</>}
       subtitle="Run any coding agent from your phone, desktop, or terminal. Self-hosted, multi-provider, open source."
     />
   );
