@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.1.37 - 2026-03-29
+
+### Added
+- Custom window controls on Windows and Linux — the native titlebar is replaced with overlay controls that match the app's design.
+- Desktop file logging with electron-log for easier debugging of daemon and app issues.
+
+### Fixed
+- Fixed broken PATH propagation and Claude binary resolution on Windows.
+- Dictation errors now show a visible toast instead of failing silently.
+
 ## 0.1.36 - 2026-03-27
 
 ### Fixed
