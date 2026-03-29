@@ -27,3 +27,12 @@ export async function isDesktopFullscreen(): Promise<boolean> {
   }
   return await win.isFullscreen();
 }
+
+export async function setDesktopTitleBarTheme(theme: "light" | "dark"): Promise<void> {
+  const win = getDesktopWindow();
+  if (!win || typeof win.setTitleBarTheme !== "function") {
+    return;
+  }
+
+  await win.setTitleBarTheme(theme);
+}

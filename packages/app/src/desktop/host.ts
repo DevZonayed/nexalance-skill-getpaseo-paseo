@@ -51,6 +51,7 @@ export interface DesktopWindowBridge {
   endMove?: () => void;
   toggleMaximize?: () => Promise<void>;
   isFullscreen?: () => Promise<boolean>;
+  setTitleBarTheme?: (theme: "light" | "dark") => Promise<void>;
   onResized?: <TEvent = unknown>(
     handler: (event: TEvent) => void,
   ) => Promise<() => void> | (() => void);

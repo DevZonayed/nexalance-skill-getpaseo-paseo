@@ -28,6 +28,7 @@ import {
 import { shouldUseDesktopDaemon } from "@/desktop/daemon/desktop-daemon";
 import { StartupSplashScreen } from "@/screens/startup-splash-screen";
 import { loadSettingsFromStorage } from "@/hooks/use-settings";
+import { useColorScheme } from "@/hooks/use-color-scheme";
 import { SessionProvider } from "@/contexts/session-context";
 import type { HostProfile } from "@/types/host-connection";
 import {
@@ -68,6 +69,7 @@ import {
   ensureOsNotificationPermission,
 } from "@/utils/os-notifications";
 import { getDesktopHost } from "@/desktop/host";
+import { setDesktopTitleBarTheme } from "@/desktop/electron/window";
 import { buildNotificationRoute } from "@/utils/notification-routing";
 import {
   buildHostRootRoute,
@@ -412,7 +414,9 @@ function ProvidersWrapper({ children }: { children: ReactNode }) {
   const { settings, isLoading: settingsLoading } = useAppSettings();
   const storeReady = useStoreReady();
   const { upsertConnectionFromOfferUrl } = useHostMutations();
+  const systemColorScheme = useColorScheme();
   const isLoading = settingsLoading || !storeReady;
+  const resolvedTheme = settings.theme === "auto" ? (systemColorScheme ?? "light") : settings.theme;
 
   // Apply theme setting on mount and when it changes
   useEffect(() => {
@@ -424,6 +428,16 @@ function ProvidersWrapper({ children }: { children: ReactNode }) {
       UnistylesRuntime.setTheme(settings.theme);
     }
   }, [isLoading, settings.theme]);
+
+  useEffect(() => {
+    if (isLoading || Platform.OS !== "web") {
+      return;
+    }
+
+    void setDesktopTitleBarTheme(resolvedTheme).catch((error) => {
+      console.warn("[DesktopWindow] Failed to update title bar theme", error);
+    });
+  }, [isLoading, resolvedTheme]);
 
   if (isLoading) {
     const isDesktopManaged =
