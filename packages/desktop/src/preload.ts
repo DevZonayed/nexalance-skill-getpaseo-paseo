@@ -26,6 +26,8 @@ contextBridge.exposeInMainWorld("paseoDesktop", {
       endMove: () => ipcRenderer.send("paseo:window:endMove"),
       toggleMaximize: () => ipcRenderer.invoke("paseo:window:toggleMaximize"),
       isFullscreen: () => ipcRenderer.invoke("paseo:window:isFullscreen"),
+      setTitleBarTheme: (theme: "light" | "dark") =>
+        ipcRenderer.invoke("paseo:window:setTitleBarTheme", theme),
       onResized: (handler: EventHandler): (() => void) => {
         const listener = (_ipcEvent: Electron.IpcRendererEvent, payload: unknown) => {
           handler(payload);

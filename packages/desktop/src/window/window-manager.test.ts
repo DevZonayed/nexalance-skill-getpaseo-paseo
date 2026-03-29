@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { readBadgeCount } from "./window-manager";
+import { getTitleBarOverlayOptions, readBadgeCount, readWindowTheme } from "./window-manager";
 
 describe("window-manager", () => {
   describe("readBadgeCount", () => {
@@ -18,6 +18,37 @@ describe("window-manager", () => {
       expect(readBadgeCount(1.5)).toBe(0);
       expect(readBadgeCount("2")).toBe(0);
       expect(readBadgeCount({ count: 2 })).toBe(0);
+    });
+  });
+
+  describe("readWindowTheme", () => {
+    it("accepts supported title bar themes", () => {
+      expect(readWindowTheme("light")).toBe("light");
+      expect(readWindowTheme("dark")).toBe("dark");
+    });
+
+    it("rejects invalid title bar themes", () => {
+      expect(readWindowTheme(undefined)).toBeNull();
+      expect(readWindowTheme("auto")).toBeNull();
+      expect(readWindowTheme("system")).toBeNull();
+    });
+  });
+
+  describe("getTitleBarOverlayOptions", () => {
+    it("returns light title bar overlay colors", () => {
+      expect(getTitleBarOverlayOptions("light")).toEqual({
+        color: "#ffffff",
+        symbolColor: "#09090b",
+        height: 48,
+      });
+    });
+
+    it("returns dark title bar overlay colors", () => {
+      expect(getTitleBarOverlayOptions("dark")).toEqual({
+        color: "#18181c",
+        symbolColor: "#e4e4e7",
+        height: 48,
+      });
     });
   });
 });

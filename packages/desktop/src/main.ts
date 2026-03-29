@@ -4,7 +4,7 @@ log.initialize({ spyRendererConsole: true });
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { existsSync } from "node:fs";
-import { app, BrowserWindow, nativeImage, nativeTheme, net, protocol } from "electron";
+import { app, BrowserWindow, nativeImage, net, protocol } from "electron";
 import { registerDaemonManager } from "./daemon/daemon-manager.js";
 import {
   parseCliPassthroughArgsFromArgv,
@@ -13,6 +13,8 @@ import {
 import { closeAllTransportSessions } from "./daemon/local-transport.js";
 import {
   registerWindowManager,
+  getTitleBarOverlayOptions,
+  resolveSystemWindowTheme,
   setupWindowResizeEvents,
   setupDragDropPrevention,
 } from "./window/window-manager.js";
@@ -31,17 +33,6 @@ app.setName("Paseo");
 protocol.registerSchemesAsPrivileged([
   { scheme: APP_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true } },
 ]);
-
-// ---------------------------------------------------------------------------
-// Window chrome
-// ---------------------------------------------------------------------------
-
-function getTitleBarOverlayColors(): Electron.TitleBarOverlayOptions {
-  if (nativeTheme.shouldUseDarkColors) {
-    return { color: "#18181c", symbolColor: "#e4e4e7", height: 48 };
-  }
-  return { color: "#ffffff", symbolColor: "#09090b", height: 48 };
-}
 
 // ---------------------------------------------------------------------------
 // Window creation
@@ -107,7 +98,7 @@ async function createMainWindow(): Promise<void> {
     ...(isMac
       ? { trafficLightPosition: { x: 16, y: 14 } }
       : {
-          titleBarOverlay: getTitleBarOverlayColors(),
+          titleBarOverlay: getTitleBarOverlayOptions(resolveSystemWindowTheme()),
           autoHideMenuBar: true,
         }),
     webPreferences: {
@@ -119,13 +110,6 @@ async function createMainWindow(): Promise<void> {
 
   setupWindowResizeEvents(mainWindow);
   setupDragDropPrevention(mainWindow);
-
-  if (!isMac) {
-    nativeTheme.on("updated", () => {
-      mainWindow.setTitleBarOverlay(getTitleBarOverlayColors());
-    });
-  }
-
   mainWindow.once("ready-to-show", () => {
     mainWindow.show();
   });

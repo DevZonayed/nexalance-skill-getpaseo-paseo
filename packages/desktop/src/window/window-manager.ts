@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain } from "electron";
+import { app, BrowserWindow, ipcMain, nativeTheme } from "electron";
 import {
   createWindowMoveState,
   readWindowMovePayload,
@@ -12,6 +12,28 @@ export function readBadgeCount(input: unknown): number {
   }
 
   return input;
+}
+
+export type WindowTheme = "light" | "dark";
+
+export function readWindowTheme(input: unknown): WindowTheme | null {
+  if (input === "light" || input === "dark") {
+    return input;
+  }
+
+  return null;
+}
+
+export function resolveSystemWindowTheme(): WindowTheme {
+  return nativeTheme.shouldUseDarkColors ? "dark" : "light";
+}
+
+export function getTitleBarOverlayOptions(theme: WindowTheme): Electron.TitleBarOverlayOptions {
+  if (theme === "dark") {
+    return { color: "#18181c", symbolColor: "#e4e4e7", height: 48 };
+  }
+
+  return { color: "#ffffff", symbolColor: "#09090b", height: 48 };
 }
 
 export function registerWindowManager(): void {
@@ -100,6 +122,20 @@ export function registerWindowManager(): void {
         });
       }
     }
+  });
+
+  ipcMain.handle("paseo:window:setTitleBarTheme", (event, theme?: unknown) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    if (!win || process.platform === "darwin") {
+      return;
+    }
+
+    const nextTheme = readWindowTheme(theme);
+    if (!nextTheme) {
+      return;
+    }
+
+    win.setTitleBarOverlay(getTitleBarOverlayOptions(nextTheme));
   });
 }
 
