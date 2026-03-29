@@ -36,6 +36,7 @@ import {
   GitPullRequest,
   Monitor,
   MoreVertical,
+  Plus,
 } from "lucide-react-native";
 import { NestableScrollContainer } from "react-native-draggable-flatlist";
 import { DraggableList, type DraggableRenderItemInfo } from "./draggable-list";
@@ -73,6 +74,7 @@ import { confirmDialog } from "@/utils/confirm-dialog";
 import { projectIconPlaceholderLabelFromDisplayName } from "@/utils/project-display-name";
 import { shouldRenderSyncedStatusLoader } from "@/utils/status-loader";
 import { getStatusDotColor } from "@/utils/status-dot-color";
+import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Shortcut } from "@/components/ui/shortcut";
 import type { ShortcutKey } from "@/utils/format-shortcut";
@@ -113,6 +115,7 @@ interface SidebarWorkspaceListProps {
   isRefreshing?: boolean;
   onRefresh?: () => void;
   onWorkspacePress?: () => void;
+  onAddProject?: () => void;
   listFooterComponent?: ReactElement | null;
   /** Gesture ref for coordinating with parent gestures (e.g., sidebar close) */
   parentGestureRef?: MutableRefObject<GestureType | undefined>;
@@ -1631,6 +1634,7 @@ export function SidebarWorkspaceList({
   isRefreshing = false,
   onRefresh,
   onWorkspacePress,
+  onAddProject,
   listFooterComponent,
   parentGestureRef,
 }: SidebarWorkspaceListProps) {
@@ -1900,7 +1904,18 @@ export function SidebarWorkspaceList({
   const content = (
     <>
       {projects.length === 0 ? (
-        <Text style={styles.emptyText}>No projects yet</Text>
+        <View style={styles.emptyContainer}>
+          <Text style={styles.emptyTitle}>No projects yet</Text>
+          <Text style={styles.emptyText}>Add a project to get started</Text>
+          <Button
+            variant="ghost"
+            size="sm"
+            leftIcon={Plus}
+            onPress={onAddProject}
+          >
+            Add project
+          </Button>
+        </View>
       ) : (
         <DraggableList
           testID="sidebar-project-list"
@@ -1963,11 +1978,27 @@ const styles = StyleSheet.create((theme) => ({
     marginBottom: theme.spacing[1],
   },
   workspaceListContainer: {},
+  emptyContainer: {
+    marginHorizontal: theme.spacing[2],
+    marginTop: theme.spacing[4],
+    paddingTop: theme.spacing[6],
+    paddingBottom: theme.spacing[4],
+    paddingHorizontal: theme.spacing[4],
+    borderRadius: theme.borderRadius.lg,
+    backgroundColor: theme.colors.surface0,
+    alignItems: "center",
+    gap: theme.spacing[3],
+  },
+  emptyTitle: {
+    color: theme.colors.foreground,
+    fontSize: theme.fontSize.sm,
+    fontWeight: theme.fontWeight.medium,
+    textAlign: "center",
+  },
   emptyText: {
     color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.sm,
     textAlign: "center",
-    marginTop: theme.spacing[8],
-    marginHorizontal: theme.spacing[2],
   },
   projectRow: {
     minHeight: 36,

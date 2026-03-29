@@ -1,27 +1,22 @@
 import { useEffect } from "react";
-import { View, Text, Pressable } from "react-native";
-import { StyleSheet, UnistylesRuntime, useUnistyles } from "react-native-unistyles";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { View, Text } from "react-native";
+import { StyleSheet, UnistylesRuntime } from "react-native-unistyles";
 import { FolderOpen } from "lucide-react-native";
 import { PaseoLogo } from "@/components/icons/paseo-logo";
-import { SidebarMenuToggle } from "@/components/headers/menu-header";
+import { Button } from "@/components/ui/button";
+import { MenuHeader } from "@/components/headers/menu-header";
 import { useOpenProjectPicker } from "@/hooks/use-open-project-picker";
 import { usePanelStore } from "@/stores/panel-store";
-import { useDesktopDragHandlers, useTrafficLightPadding } from "@/utils/desktop-window";
+import { useSessionStore } from "@/stores/session-store";
+import { useDesktopDragHandlers } from "@/utils/desktop-window";
 
 export function OpenProjectScreen({ serverId }: { serverId: string }) {
-  const { theme } = useUnistyles();
-  const insets = useSafeAreaInsets();
-  const trafficLightPadding = useTrafficLightPadding();
-  const desktopAgentListOpen = usePanelStore((s) => s.desktop.agentListOpen);
   const openAgentList = usePanelStore((s) => s.openAgentList);
   const openProjectPicker = useOpenProjectPicker(serverId);
+  const hasHydrated = useSessionStore((s) => s.sessions[serverId]?.hasHydratedWorkspaces ?? false);
+  const hasProjects = useSessionStore((s) => (s.sessions[serverId]?.workspaces?.size ?? 0) > 0);
 
   const isMobile = UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
-  const collapsedSidebarInset =
-    !isMobile && !desktopAgentListOpen && trafficLightPadding.side
-      ? trafficLightPadding
-      : { left: 0, right: 0 };
   const dragHandlers = useDesktopDragHandlers();
 
   useEffect(() => {
@@ -32,22 +27,24 @@ export function OpenProjectScreen({ serverId }: { serverId: string }) {
 
   return (
     <View style={styles.container} {...dragHandlers}>
-      <View style={[styles.menuToggle, { paddingTop: insets.top, paddingLeft: collapsedSidebarInset.left, paddingRight: collapsedSidebarInset.right }]}>
-        <SidebarMenuToggle />
-      </View>
+      <MenuHeader borderless />
       <View style={styles.content}>
-        <PaseoLogo size={56} />
-        <Text style={styles.heading}>What shall we build today?</Text>
-        <Pressable
-          style={({ hovered }) => [styles.openButton, hovered && styles.openButtonHovered]}
-          onPress={() => {
-            void openProjectPicker();
-          }}
-          testID="open-project-submit"
-        >
-          <FolderOpen size={16} color={theme.colors.foregroundMuted} />
-          <Text style={styles.openButtonText}>Add a project</Text>
-        </Pressable>
+        <View style={styles.logo}>
+          <PaseoLogo size={56} />
+        </View>
+        <View style={styles.headingGroup}>
+          <Text style={styles.heading}>What shall we build today?</Text>
+          {hasHydrated && !hasProjects ? (
+            <Text style={styles.subtitle}>
+              Add a project folder to start running agents on your codebase
+            </Text>
+          ) : null}
+        </View>
+        <View style={styles.cta}>
+          <Button variant="default" leftIcon={FolderOpen} onPress={() => void openProjectPicker()} testID="open-project-submit">
+            Add a project
+          </Button>
+        </View>
       </View>
     </View>
   );
@@ -59,18 +56,22 @@ const styles = StyleSheet.create((theme) => ({
     backgroundColor: theme.colors.surface0,
     userSelect: "none",
   },
-  menuToggle: {
-    position: "absolute",
-    top: theme.spacing[3],
-    left: theme.spacing[3],
-    zIndex: 1,
-  },
   content: {
     flexGrow: 1,
     justifyContent: "center",
     alignItems: "center",
-    gap: theme.spacing[6],
+    gap: 0,
     padding: theme.spacing[6],
+  },
+  logo: {
+    marginBottom: theme.spacing[8],
+  },
+  headingGroup: {
+    alignItems: "center",
+    gap: theme.spacing[3],
+  },
+  cta: {
+    marginTop: theme.spacing[12],
   },
   heading: {
     color: theme.colors.foreground,
@@ -78,24 +79,9 @@ const styles = StyleSheet.create((theme) => ({
     fontWeight: theme.fontWeight.normal,
     textAlign: "center",
   },
-  openButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing[2],
-    paddingVertical: theme.spacing[3],
-    paddingHorizontal: theme.spacing[4],
-    borderRadius: theme.borderRadius.lg,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    backgroundColor: "transparent",
-  },
-  openButtonHovered: {
-    borderColor: theme.colors.borderAccent,
-    backgroundColor: theme.colors.surface1,
-  },
-  openButtonText: {
+  subtitle: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.sm,
-    fontWeight: theme.fontWeight.normal,
+    fontSize: theme.fontSize.base,
+    textAlign: "center",
   },
 }));

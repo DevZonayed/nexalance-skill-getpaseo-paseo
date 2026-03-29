@@ -520,6 +520,7 @@ function MobileSidebar({
                 isRefreshing={isManualRefresh && isRevalidating}
                 onRefresh={handleRefresh}
                 onWorkspacePress={closeToAgent}
+                onAddProject={handleOpenProject}
                 parentGestureRef={closeGestureRef}
               />
             )}
@@ -701,6 +702,7 @@ function DesktopSidebar({
           projects={projects}
           isRefreshing={isManualRefresh && isRevalidating}
           onRefresh={handleRefresh}
+          onAddProject={handleOpenProject}
         />
       )}
 
