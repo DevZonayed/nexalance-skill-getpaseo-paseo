@@ -1,7 +1,10 @@
 import * as React from "react";
 import websitePackage from "../package.json";
 
-export const desktopVersion = websitePackage.version;
+declare const __DESKTOP_VERSION__: string | undefined;
+
+export const desktopVersion =
+  typeof __DESKTOP_VERSION__ !== "undefined" ? __DESKTOP_VERSION__ : websitePackage.version;
 export const releaseBase = `https://github.com/getpaseo/paseo/releases/download/v${desktopVersion}`;
 export const macAppleSiliconDownloadUrl = `${releaseBase}/Paseo-${desktopVersion}-arm64.dmg`;
 export const macIntelDownloadUrl = `${releaseBase}/Paseo-${desktopVersion}-x64.dmg`;
