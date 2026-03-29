@@ -183,6 +183,17 @@ function createServer(options?: { speechReadiness?: SpeechReadinessSnapshot | nu
     {} as any,
     {} as any,
     {} as any,
+    {
+      subscribe: vi.fn(),
+      scheduleRefreshForCwd: vi.fn(),
+      getMetrics: vi.fn(() => ({
+        checkoutDiffTargetCount: 0,
+        checkoutDiffSubscriptionCount: 0,
+        checkoutDiffWatcherCount: 0,
+        checkoutDiffFallbackRefreshTargetCount: 0,
+      })),
+      dispose: vi.fn(),
+    } as any,
   );
 }
 

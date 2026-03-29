@@ -12,6 +12,7 @@ import type { ProjectRegistry, WorkspaceRegistry } from "./workspace-registry.js
 import type { FileBackedChatService } from "./chat/chat-service.js";
 import type { LoopService } from "./loop-service.js";
 import type { ScheduleService } from "./schedule/service.js";
+import type { CheckoutDiffManager, CheckoutDiffMetrics } from "./checkout-diff-manager.js";
 import {
   type ServerInfoStatusPayload,
   type WSHelloMessage,
@@ -64,6 +65,8 @@ type WebSocketServerConfig = {
   allowedOrigins: Set<string>;
   allowedHosts?: AllowedHostsConfig;
 };
+
+type WebSocketRuntimeMetrics = SessionRuntimeMetrics & CheckoutDiffMetrics;
 
 function createNoopProjectRegistry(): ProjectRegistry {
   return {
@@ -234,6 +237,7 @@ export class VoiceAssistantWebSocketServer {
   private readonly chatService: FileBackedChatService;
   private readonly loopService: LoopService;
   private readonly scheduleService: ScheduleService;
+  private readonly checkoutDiffManager: CheckoutDiffManager;
   private readonly downloadTokenStore: DownloadTokenStore;
   private readonly paseoHome: string;
   private readonly pushTokenStore: PushTokenStore;
@@ -323,6 +327,7 @@ export class VoiceAssistantWebSocketServer {
     chatService?: FileBackedChatService,
     loopService?: LoopService,
     scheduleService?: ScheduleService,
+    checkoutDiffManager?: CheckoutDiffManager,
   ) {
     this.logger = logger.child({ module: "websocket-server" });
     this.serverId = serverId;
@@ -346,6 +351,10 @@ export class VoiceAssistantWebSocketServer {
       throw new Error("VoiceAssistantWebSocketServer requires a schedule service.");
     }
     this.scheduleService = scheduleService;
+    if (!checkoutDiffManager) {
+      throw new Error("VoiceAssistantWebSocketServer requires a checkout diff manager.");
+    }
+    this.checkoutDiffManager = checkoutDiffManager;
     this.downloadTokenStore = downloadTokenStore;
     this.paseoHome = paseoHome;
     this.createAgentMcpTransport = createAgentMcpTransport;
@@ -504,6 +513,7 @@ export class VoiceAssistantWebSocketServer {
     }
 
     await Promise.all(cleanupPromises);
+    this.checkoutDiffManager.dispose();
     this.pendingConnections.clear();
     this.sessions.clear();
     this.externalSessionsByKey.clear();
@@ -646,6 +656,7 @@ export class VoiceAssistantWebSocketServer {
       chatService: this.chatService,
       loopService: this.loopService,
       scheduleService: this.scheduleService,
+      checkoutDiffManager: this.checkoutDiffManager,
       createAgentMcpTransport: this.createAgentMcpTransport,
       stt: this.stt,
       tts: this.tts,
@@ -1230,12 +1241,8 @@ export class VoiceAssistantWebSocketServer {
     return stats.slice(0, 15);
   }
 
-  private collectSessionRuntimeMetrics(): SessionRuntimeMetrics {
+  private collectSessionRuntimeMetrics(): WebSocketRuntimeMetrics {
     const uniqueConnections = new Set<SessionConnection>(this.externalSessionsByKey.values());
-    let checkoutDiffTargetCount = 0;
-    let checkoutDiffSubscriptionCount = 0;
-    let checkoutDiffWatcherCount = 0;
-    let checkoutDiffFallbackRefreshTargetCount = 0;
     let terminalDirectorySubscriptionCount = 0;
     let terminalSubscriptionCount = 0;
     let inflightRequests = 0;
@@ -1243,11 +1250,6 @@ export class VoiceAssistantWebSocketServer {
 
     for (const connection of uniqueConnections) {
       const sessionMetrics = connection.session.getRuntimeMetrics();
-      checkoutDiffTargetCount += sessionMetrics.checkoutDiffTargetCount;
-      checkoutDiffSubscriptionCount += sessionMetrics.checkoutDiffSubscriptionCount;
-      checkoutDiffWatcherCount += sessionMetrics.checkoutDiffWatcherCount;
-      checkoutDiffFallbackRefreshTargetCount +=
-        sessionMetrics.checkoutDiffFallbackRefreshTargetCount;
       terminalDirectorySubscriptionCount += sessionMetrics.terminalDirectorySubscriptionCount;
       terminalSubscriptionCount += sessionMetrics.terminalSubscriptionCount;
       inflightRequests += sessionMetrics.inflightRequests;
@@ -1256,10 +1258,7 @@ export class VoiceAssistantWebSocketServer {
     }
 
     return {
-      checkoutDiffTargetCount,
-      checkoutDiffSubscriptionCount,
-      checkoutDiffWatcherCount,
-      checkoutDiffFallbackRefreshTargetCount,
+      ...this.checkoutDiffManager.getMetrics(),
       terminalDirectorySubscriptionCount,
       terminalSubscriptionCount,
       inflightRequests,

@@ -153,9 +153,6 @@ import {
   getCheckoutStatus,
   getCheckoutStatusLite,
   listBranchSuggestions,
-  NotGitRepoError,
-  MergeConflictError,
-  MergeFromBaseConflictError,
   commitChanges,
   mergeToBase,
   mergeFromBase,
@@ -167,6 +164,12 @@ import {
 import { getProjectIcon } from "../utils/project-icon.js";
 import { expandTilde } from "../utils/path.js";
 import { searchHomeDirectories, searchWorkspaceEntries } from "../utils/directory-suggestions.js";
+import {
+  READ_ONLY_GIT_ENV,
+  resolveCheckoutGitDir,
+  toCheckoutError,
+} from "./checkout-git-utils.js";
+import { CheckoutDiffManager } from "./checkout-diff-manager.js";
 import {
   ensureLocalSpeechModels,
   getLocalSpeechModelDir,
@@ -187,14 +190,8 @@ import { ScheduleService } from "./schedule/service.js";
 
 const execAsync = promisify(exec);
 const MAX_INITIAL_AGENT_TITLE_CHARS = Math.min(60, MAX_EXPLICIT_AGENT_TITLE_CHARS);
-const READ_ONLY_GIT_ENV: NodeJS.ProcessEnv = {
-  ...process.env,
-  GIT_OPTIONAL_LOCKS: "0",
-};
 const pendingAgentInitializations = new Map<string, Promise<ManagedAgent>>();
 const DEFAULT_AGENT_PROVIDER = AGENT_PROVIDER_IDS[0];
-const CHECKOUT_DIFF_WATCH_DEBOUNCE_MS = 150;
-const CHECKOUT_DIFF_FALLBACK_REFRESH_MS = 5_000;
 const WORKSPACE_GIT_WATCH_DEBOUNCE_MS = 500;
 const WORKSPACE_GIT_WATCH_REMOVED_FINGERPRINT = "__removed__";
 const TERMINAL_STREAM_HIGH_WATER_BYTES = 256 * 1024;
@@ -237,28 +234,6 @@ export function resolveCreateAgentTitles(options: {
 
 type ProcessingPhase = "idle" | "transcribing";
 
-type CheckoutDiffCompareInput = SubscribeCheckoutDiffRequest["compare"];
-
-type CheckoutDiffSnapshotPayload = Omit<
-  Extract<SessionOutboundMessage, { type: "checkout_diff_update" }>["payload"],
-  "subscriptionId"
->;
-
-type CheckoutDiffWatchTarget = {
-  key: string;
-  cwd: string;
-  diffCwd: string;
-  compare: CheckoutDiffCompareInput;
-  subscriptions: Set<string>;
-  watchers: FSWatcher[];
-  fallbackRefreshInterval: NodeJS.Timeout | null;
-  debounceTimer: NodeJS.Timeout | null;
-  refreshPromise: Promise<void> | null;
-  refreshQueued: boolean;
-  latestPayload: CheckoutDiffSnapshotPayload | null;
-  latestFingerprint: string | null;
-};
-
 type WorkspaceGitWatchTarget = {
   cwd: string;
   watchers: FSWatcher[];
@@ -276,13 +251,6 @@ type NormalizedGitOptions = {
   worktreeSlug?: string;
 };
 
-type CheckoutErrorCode = "NOT_GIT_REPO" | "NOT_ALLOWED" | "MERGE_CONFLICT" | "UNKNOWN";
-
-type CheckoutErrorPayload = {
-  code: CheckoutErrorCode;
-  message: string;
-};
-
 type ActiveTerminalStream = {
   terminalId: string;
   slot: number;
@@ -292,10 +260,6 @@ type ActiveTerminalStream = {
 };
 
 export type SessionRuntimeMetrics = {
-  checkoutDiffTargetCount: number;
-  checkoutDiffSubscriptionCount: number;
-  checkoutDiffWatcherCount: number;
-  checkoutDiffFallbackRefreshTargetCount: number;
   terminalDirectorySubscriptionCount: number;
   terminalSubscriptionCount: number;
   inflightRequests: number;
@@ -417,6 +381,7 @@ export type SessionOptions = {
   chatService: FileBackedChatService;
   scheduleService: ScheduleService;
   loopService: LoopService;
+  checkoutDiffManager: CheckoutDiffManager;
   createAgentMcpTransport: AgentMcpTransportFactory;
   stt: Resolvable<SpeechToTextProvider | null>;
   tts: Resolvable<TextToSpeechProvider | null>;
@@ -603,6 +568,7 @@ export class Session {
   private readonly chatService: FileBackedChatService;
   private readonly scheduleService: ScheduleService;
   private readonly loopService: LoopService;
+  private readonly checkoutDiffManager: CheckoutDiffManager;
   private readonly createAgentMcpTransport: AgentMcpTransportFactory;
   private readonly downloadTokenStore: DownloadTokenStore;
   private readonly pushTokenStore: PushTokenStore;
@@ -627,8 +593,7 @@ export class Session {
   private nextTerminalSlot = 0;
   private inflightRequests = 0;
   private peakInflightRequests = 0;
-  private readonly checkoutDiffSubscriptions = new Map<string, { targetKey: string }>();
-  private readonly checkoutDiffTargets = new Map<string, CheckoutDiffWatchTarget>();
+  private readonly checkoutDiffSubscriptions = new Map<string, () => void>();
   private readonly workspaceGitWatchTargets = new Map<string, WorkspaceGitWatchTarget>();
   private readonly voiceAgentMcpStdio: VoiceMcpStdioConfig | null;
   private readonly localSpeechModelsDir: string;
@@ -668,6 +633,7 @@ export class Session {
       chatService,
       scheduleService,
       loopService,
+      checkoutDiffManager,
       createAgentMcpTransport,
       stt,
       tts,
@@ -693,6 +659,7 @@ export class Session {
     this.chatService = chatService;
     this.scheduleService = scheduleService;
     this.loopService = loopService;
+    this.checkoutDiffManager = checkoutDiffManager;
     this.createAgentMcpTransport = createAgentMcpTransport;
     this.terminalManager = terminalManager;
     if (this.terminalManager) {
@@ -761,20 +728,7 @@ export class Session {
   }
 
   public getRuntimeMetrics(): SessionRuntimeMetrics {
-    let checkoutDiffWatcherCount = 0;
-    let checkoutDiffFallbackRefreshTargetCount = 0;
-    for (const target of this.checkoutDiffTargets.values()) {
-      checkoutDiffWatcherCount += target.watchers.length;
-      if (target.fallbackRefreshInterval) {
-        checkoutDiffFallbackRefreshTargetCount += 1;
-      }
-    }
-
     return {
-      checkoutDiffTargetCount: this.checkoutDiffTargets.size,
-      checkoutDiffSubscriptionCount: this.checkoutDiffSubscriptions.size,
-      checkoutDiffWatcherCount,
-      checkoutDiffFallbackRefreshTargetCount,
       terminalDirectorySubscriptionCount: this.subscribedTerminalDirectories.size,
       terminalSubscriptionCount: this.activeTerminalStreams.size,
       inflightRequests: this.inflightRequests,
@@ -3283,22 +3237,6 @@ export class Session {
     return baseBranch;
   }
 
-  private toCheckoutError(error: unknown): CheckoutErrorPayload {
-    if (error instanceof NotGitRepoError) {
-      return { code: "NOT_GIT_REPO", message: error.message };
-    }
-    if (error instanceof MergeConflictError) {
-      return { code: "MERGE_CONFLICT", message: error.message };
-    }
-    if (error instanceof MergeFromBaseConflictError) {
-      return { code: "MERGE_CONFLICT", message: error.message };
-    }
-    if (error instanceof Error) {
-      return { code: "UNKNOWN", message: error.message };
-    }
-    return { code: "UNKNOWN", message: String(error) };
-  }
-
   private isPathWithinRoot(rootPath: string, candidatePath: string): boolean {
     const resolvedRoot = resolve(rootPath);
     const resolvedCandidate = resolve(candidatePath);
@@ -3900,7 +3838,7 @@ export class Session {
           hasRemote: false,
           remoteUrl: null,
           isPaseoOwnedWorktree: false,
-          error: this.toCheckoutError(error),
+          error: toCheckoutError(error),
           requestId,
         },
       });
@@ -4055,70 +3993,6 @@ export class Session {
     }
   }
 
-  private normalizeCheckoutDiffCompare(
-    compare: CheckoutDiffCompareInput,
-  ): CheckoutDiffCompareInput {
-    if (compare.mode === "uncommitted") {
-      return { mode: "uncommitted" };
-    }
-    const trimmedBaseRef = compare.baseRef?.trim();
-    return trimmedBaseRef ? { mode: "base", baseRef: trimmedBaseRef } : { mode: "base" };
-  }
-
-  private buildCheckoutDiffTargetKey(cwd: string, compare: CheckoutDiffCompareInput): string {
-    return JSON.stringify([
-      cwd,
-      compare.mode,
-      compare.mode === "base" ? (compare.baseRef ?? "") : "",
-    ]);
-  }
-
-  private closeCheckoutDiffWatchTarget(target: CheckoutDiffWatchTarget): void {
-    if (target.debounceTimer) {
-      clearTimeout(target.debounceTimer);
-      target.debounceTimer = null;
-    }
-    if (target.fallbackRefreshInterval) {
-      clearInterval(target.fallbackRefreshInterval);
-      target.fallbackRefreshInterval = null;
-    }
-    for (const watcher of target.watchers) {
-      watcher.close();
-    }
-    target.watchers = [];
-  }
-
-  private removeCheckoutDiffSubscription(subscriptionId: string): void {
-    const subscription = this.checkoutDiffSubscriptions.get(subscriptionId);
-    if (!subscription) {
-      return;
-    }
-    this.checkoutDiffSubscriptions.delete(subscriptionId);
-
-    const target = this.checkoutDiffTargets.get(subscription.targetKey);
-    if (!target) {
-      return;
-    }
-    target.subscriptions.delete(subscriptionId);
-    if (target.subscriptions.size === 0) {
-      this.closeCheckoutDiffWatchTarget(target);
-      this.checkoutDiffTargets.delete(subscription.targetKey);
-    }
-  }
-
-  private async resolveCheckoutGitDir(cwd: string): Promise<string | null> {
-    try {
-      const { stdout } = await execAsync("git rev-parse --absolute-git-dir", {
-        cwd,
-        env: READ_ONLY_GIT_ENV,
-      });
-      const gitDir = stdout.trim();
-      return gitDir.length > 0 ? gitDir : null;
-    } catch {
-      return null;
-    }
-  }
-
   private async resolveWorkspaceGitRefsRoot(gitDir: string): Promise<string> {
     try {
       const commonDir = (await readFile(join(gitDir, "commondir"), "utf8")).trim();
@@ -4235,7 +4109,7 @@ export class Session {
       return;
     }
 
-    const gitDir = await this.resolveCheckoutGitDir(cwd);
+    const gitDir = await resolveCheckoutGitDir(cwd);
     if (!gitDir) {
       return;
     }
@@ -4292,267 +4166,39 @@ export class Session {
     await this.ensureWorkspaceGitWatchTarget(cwd);
   }
 
-  private async resolveCheckoutWatchRoot(cwd: string): Promise<string | null> {
-    try {
-      const { stdout } = await execAsync("git rev-parse --path-format=absolute --show-toplevel", {
-        cwd,
-        env: READ_ONLY_GIT_ENV,
-      });
-      const root = stdout.trim();
-      return root.length > 0 ? root : null;
-    } catch {
-      return null;
-    }
-  }
-
-  private scheduleCheckoutDiffTargetRefresh(target: CheckoutDiffWatchTarget): void {
-    if (target.debounceTimer) {
-      clearTimeout(target.debounceTimer);
-    }
-    target.debounceTimer = setTimeout(() => {
-      target.debounceTimer = null;
-      void this.refreshCheckoutDiffTarget(target);
-    }, CHECKOUT_DIFF_WATCH_DEBOUNCE_MS);
-  }
-
-  private emitCheckoutDiffUpdate(
-    target: CheckoutDiffWatchTarget,
-    snapshot: CheckoutDiffSnapshotPayload,
-  ): void {
-    if (target.subscriptions.size === 0) {
-      return;
-    }
-    for (const subscriptionId of target.subscriptions) {
-      this.emit({
-        type: "checkout_diff_update",
-        payload: {
-          subscriptionId,
-          ...snapshot,
-        },
-      });
-    }
-  }
-
-  private checkoutDiffSnapshotFingerprint(snapshot: CheckoutDiffSnapshotPayload): string {
-    return JSON.stringify(snapshot);
-  }
-
-  private async computeCheckoutDiffSnapshot(
-    cwd: string,
-    compare: CheckoutDiffCompareInput,
-    options?: { diffCwd?: string },
-  ): Promise<CheckoutDiffSnapshotPayload> {
-    const diffCwd = options?.diffCwd ?? cwd;
-    try {
-      const diffResult = await getCheckoutDiff(
-        diffCwd,
-        {
-          mode: compare.mode,
-          baseRef: compare.baseRef,
-          includeStructured: true,
-        },
-        { paseoHome: this.paseoHome },
-      );
-      const files = [...(diffResult.structured ?? [])];
-      files.sort((a, b) => {
-        if (a.path === b.path) return 0;
-        return a.path < b.path ? -1 : 1;
-      });
-      return {
-        cwd,
-        files,
-        error: null,
-      };
-    } catch (error) {
-      return {
-        cwd,
-        files: [],
-        error: this.toCheckoutError(error),
-      };
-    }
-  }
-
-  private async refreshCheckoutDiffTarget(target: CheckoutDiffWatchTarget): Promise<void> {
-    if (target.refreshPromise) {
-      target.refreshQueued = true;
-      return;
-    }
-
-    target.refreshPromise = (async () => {
-      do {
-        target.refreshQueued = false;
-        const snapshot = await this.computeCheckoutDiffSnapshot(target.cwd, target.compare, {
-          diffCwd: target.diffCwd,
-        });
-        target.latestPayload = snapshot;
-        const fingerprint = this.checkoutDiffSnapshotFingerprint(snapshot);
-        if (fingerprint !== target.latestFingerprint) {
-          target.latestFingerprint = fingerprint;
-          this.emitCheckoutDiffUpdate(target, snapshot);
-        }
-      } while (target.refreshQueued);
-    })();
-
-    try {
-      await target.refreshPromise;
-    } finally {
-      target.refreshPromise = null;
-    }
-  }
-
-  private async ensureCheckoutDiffWatchTarget(
-    cwd: string,
-    compare: CheckoutDiffCompareInput,
-  ): Promise<CheckoutDiffWatchTarget> {
-    const targetKey = this.buildCheckoutDiffTargetKey(cwd, compare);
-    const existing = this.checkoutDiffTargets.get(targetKey);
-    if (existing) {
-      return existing;
-    }
-
-    const watchRoot = await this.resolveCheckoutWatchRoot(cwd);
-    const target: CheckoutDiffWatchTarget = {
-      key: targetKey,
-      cwd,
-      diffCwd: watchRoot ?? cwd,
-      compare,
-      subscriptions: new Set(),
-      watchers: [],
-      fallbackRefreshInterval: null,
-      debounceTimer: null,
-      refreshPromise: null,
-      refreshQueued: false,
-      latestPayload: null,
-      latestFingerprint: null,
-    };
-
-    const repoWatchPath = watchRoot ?? cwd;
-    const watchPaths = new Set<string>([repoWatchPath]);
-    const gitDir = await this.resolveCheckoutGitDir(cwd);
-    if (gitDir) {
-      watchPaths.add(gitDir);
-    }
-
-    let hasRecursiveRepoCoverage = false;
-    const allowRecursiveRepoWatch = process.platform !== "linux";
-    for (const watchPath of watchPaths) {
-      const shouldTryRecursive = watchPath === repoWatchPath && allowRecursiveRepoWatch;
-      const createWatcher = (recursive: boolean): FSWatcher =>
-        watch(watchPath, { recursive }, () => {
-          this.scheduleCheckoutDiffTargetRefresh(target);
-        });
-
-      let watcher: FSWatcher | null = null;
-      let watcherIsRecursive = false;
-      try {
-        if (shouldTryRecursive) {
-          watcher = createWatcher(true);
-          watcherIsRecursive = true;
-        } else {
-          watcher = createWatcher(false);
-        }
-      } catch (error) {
-        if (shouldTryRecursive) {
-          try {
-            watcher = createWatcher(false);
-            this.sessionLogger.warn(
-              { err: error, watchPath, cwd, compare },
-              "Checkout diff recursive watch unavailable; using non-recursive fallback",
-            );
-          } catch (fallbackError) {
-            this.sessionLogger.warn(
-              { err: fallbackError, watchPath, cwd, compare },
-              "Failed to start checkout diff watcher",
-            );
-          }
-        } else {
-          this.sessionLogger.warn(
-            { err: error, watchPath, cwd, compare },
-            "Failed to start checkout diff watcher",
-          );
-        }
-      }
-
-      if (!watcher) {
-        continue;
-      }
-
-      watcher.on("error", (error) => {
-        this.sessionLogger.warn(
-          { err: error, watchPath, cwd, compare },
-          "Checkout diff watcher error",
-        );
-      });
-      target.watchers.push(watcher);
-      if (watchPath === repoWatchPath && watcherIsRecursive) {
-        hasRecursiveRepoCoverage = true;
-      }
-    }
-
-    const missingRepoCoverage = !hasRecursiveRepoCoverage;
-    if (target.watchers.length === 0 || missingRepoCoverage) {
-      target.fallbackRefreshInterval = setInterval(() => {
-        this.scheduleCheckoutDiffTargetRefresh(target);
-      }, CHECKOUT_DIFF_FALLBACK_REFRESH_MS);
-      this.sessionLogger.warn(
-        {
-          cwd,
-          compare,
-          intervalMs: CHECKOUT_DIFF_FALLBACK_REFRESH_MS,
-          reason:
-            target.watchers.length === 0 ? "no_watchers" : "missing_recursive_repo_root_coverage",
-        },
-        "Checkout diff watchers unavailable; using timed refresh fallback",
-      );
-    }
-
-    this.checkoutDiffTargets.set(targetKey, target);
-    return target;
-  }
-
   private async handleSubscribeCheckoutDiffRequest(
     msg: SubscribeCheckoutDiffRequest,
   ): Promise<void> {
     const cwd = expandTilde(msg.cwd);
-    const compare = this.normalizeCheckoutDiffCompare(msg.compare);
-
-    this.removeCheckoutDiffSubscription(msg.subscriptionId);
-    const target = await this.ensureCheckoutDiffWatchTarget(cwd, compare);
-    target.subscriptions.add(msg.subscriptionId);
-    this.checkoutDiffSubscriptions.set(msg.subscriptionId, {
-      targetKey: target.key,
-    });
-
-    const snapshot =
-      target.latestPayload ??
-      (await this.computeCheckoutDiffSnapshot(cwd, compare, {
-        diffCwd: target.diffCwd,
-      }));
-    target.latestPayload = snapshot;
-    target.latestFingerprint = this.checkoutDiffSnapshotFingerprint(snapshot);
+    this.checkoutDiffSubscriptions.get(msg.subscriptionId)?.();
+    this.checkoutDiffSubscriptions.delete(msg.subscriptionId);
+    const subscription = await this.checkoutDiffManager.subscribe(
+      { cwd, compare: msg.compare },
+      (snapshot) => {
+        this.emit({
+          type: "checkout_diff_update",
+          payload: {
+            subscriptionId: msg.subscriptionId,
+            ...snapshot,
+          },
+        });
+      },
+    );
+    this.checkoutDiffSubscriptions.set(msg.subscriptionId, subscription.unsubscribe);
 
     this.emit({
       type: "subscribe_checkout_diff_response",
       payload: {
         subscriptionId: msg.subscriptionId,
-        ...snapshot,
+        ...subscription.initial,
         requestId: msg.requestId,
       },
     });
   }
 
   private handleUnsubscribeCheckoutDiffRequest(msg: UnsubscribeCheckoutDiffRequest): void {
-    this.removeCheckoutDiffSubscription(msg.subscriptionId);
-  }
-
-  private scheduleCheckoutDiffRefreshForCwd(cwd: string): void {
-    const resolvedCwd = expandTilde(cwd);
-    for (const target of this.checkoutDiffTargets.values()) {
-      if (target.cwd !== resolvedCwd && target.diffCwd !== resolvedCwd) {
-        continue;
-      }
-      this.scheduleCheckoutDiffTargetRefresh(target);
-    }
+    this.checkoutDiffSubscriptions.get(msg.subscriptionId)?.();
+    this.checkoutDiffSubscriptions.delete(msg.subscriptionId);
   }
 
   private async handleCheckoutCommitRequest(
@@ -4573,7 +4219,7 @@ export class Session {
         message,
         addAll: msg.addAll ?? true,
       });
-      this.scheduleCheckoutDiffRefreshForCwd(cwd);
+      this.checkoutDiffManager.scheduleRefreshForCwd(cwd);
 
       this.emit({
         type: "checkout_commit_response",
@@ -4590,7 +4236,7 @@ export class Session {
         payload: {
           cwd,
           success: false,
-          error: this.toCheckoutError(error),
+          error: toCheckoutError(error),
           requestId,
         },
       });
@@ -4647,7 +4293,7 @@ export class Session {
         },
         { paseoHome: this.paseoHome },
       );
-      this.scheduleCheckoutDiffRefreshForCwd(cwd);
+      this.checkoutDiffManager.scheduleRefreshForCwd(cwd);
 
       this.emit({
         type: "checkout_merge_response",
@@ -4664,7 +4310,7 @@ export class Session {
         payload: {
           cwd,
           success: false,
-          error: this.toCheckoutError(error),
+          error: toCheckoutError(error),
           requestId,
         },
       });
@@ -4691,7 +4337,7 @@ export class Session {
         baseRef: msg.baseRef,
         requireCleanTarget: msg.requireCleanTarget ?? true,
       });
-      this.scheduleCheckoutDiffRefreshForCwd(cwd);
+      this.checkoutDiffManager.scheduleRefreshForCwd(cwd);
 
       this.emit({
         type: "checkout_merge_from_base_response",
@@ -4708,7 +4354,7 @@ export class Session {
         payload: {
           cwd,
           success: false,
-          error: this.toCheckoutError(error),
+          error: toCheckoutError(error),
           requestId,
         },
       });
@@ -4737,7 +4383,7 @@ export class Session {
         payload: {
           cwd,
           success: false,
-          error: this.toCheckoutError(error),
+          error: toCheckoutError(error),
           requestId,
         },
       });
@@ -4782,7 +4428,7 @@ export class Session {
           cwd,
           url: null,
           number: null,
-          error: this.toCheckoutError(error),
+          error: toCheckoutError(error),
           requestId,
         },
       });
@@ -4813,7 +4459,7 @@ export class Session {
           cwd,
           status: null,
           githubFeaturesEnabled: true,
-          error: this.toCheckoutError(error),
+          error: toCheckoutError(error),
           requestId,
         },
       });
@@ -4857,7 +4503,7 @@ export class Session {
         type: "paseo_worktree_list_response",
         payload: {
           worktrees: [],
-          error: this.toCheckoutError(error),
+          error: toCheckoutError(error),
           requestId,
         },
       });
@@ -5005,7 +4651,7 @@ export class Session {
         payload: {
           success: false,
           removedAgents: [],
-          error: this.toCheckoutError(error),
+          error: toCheckoutError(error),
           requestId,
         },
       });
@@ -7590,10 +7236,9 @@ export class Session {
     this.terminalExitSubscriptions.clear();
     this.disposeTerminalSubscriptions();
 
-    for (const target of this.checkoutDiffTargets.values()) {
-      this.closeCheckoutDiffWatchTarget(target);
+    for (const unsubscribe of this.checkoutDiffSubscriptions.values()) {
+      unsubscribe();
     }
-    this.checkoutDiffTargets.clear();
     this.checkoutDiffSubscriptions.clear();
 
     for (const target of this.workspaceGitWatchTargets.values()) {

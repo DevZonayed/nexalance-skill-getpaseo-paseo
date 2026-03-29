@@ -32,6 +32,8 @@ const { watchCalls, watchMock } = vi.hoisted(() => {
   };
 });
 
+const resolveCheckoutGitDirMock = vi.hoisted(() => vi.fn(async () => null));
+
 vi.mock("node:fs", async () => {
   const actual = await vi.importActual<typeof import("node:fs")>("node:fs");
   return {
@@ -39,6 +41,10 @@ vi.mock("node:fs", async () => {
     watch: watchMock,
   };
 });
+
+vi.mock("./checkout-git-utils.js", () => ({
+  resolveCheckoutGitDir: resolveCheckoutGitDirMock,
+}));
 
 import { Session } from "./session.js";
 
@@ -120,6 +126,20 @@ function createSessionForWorkspaceGitWatchTests(): {
         workspaces.delete(workspaceId);
       },
     } as any,
+    checkoutDiffManager: {
+      subscribe: async () => ({
+        initial: { cwd: "/tmp", files: [], error: null },
+        unsubscribe: () => {},
+      }),
+      scheduleRefreshForCwd: () => {},
+      getMetrics: () => ({
+        checkoutDiffTargetCount: 0,
+        checkoutDiffSubscriptionCount: 0,
+        checkoutDiffWatcherCount: 0,
+        checkoutDiffFallbackRefreshTargetCount: 0,
+      }),
+      dispose: () => {},
+    } as any,
     createAgentMcpTransport: async () => {
       throw new Error("not used");
     },
@@ -140,6 +160,8 @@ describe("workspace git watch targets", () => {
   beforeEach(() => {
     watchCalls.length = 0;
     watchMock.mockClear();
+    resolveCheckoutGitDirMock.mockReset();
+    resolveCheckoutGitDirMock.mockResolvedValue(null);
     vi.useFakeTimers();
   });
 
@@ -163,7 +185,7 @@ describe("workspace git watch targets", () => {
         mainRepoRoot: null,
       },
     });
-    sessionAny.resolveCheckoutGitDir = async () => "/tmp/repo/.git";
+    resolveCheckoutGitDirMock.mockResolvedValue("/tmp/repo/.git");
     sessionAny.workspaceUpdatesSubscription = {
       subscriptionId: "sub-1",
       filter: undefined,
@@ -250,7 +272,7 @@ describe("workspace git watch targets", () => {
       },
     });
 
-    sessionAny.resolveCheckoutGitDir = async (cwd: string) => path.join(cwd, ".git");
+    resolveCheckoutGitDirMock.mockImplementation(async (cwd: string) => path.join(cwd, ".git"));
 
     await sessionAny.ensureWorkspaceRegistered("/tmp/repo-one");
     expect(sessionAny.workspaceGitWatchTargets.size).toBe(1);

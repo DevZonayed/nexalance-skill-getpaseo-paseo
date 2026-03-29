@@ -105,6 +105,20 @@ function createSessionForWorkspaceTests(): Session {
       archive: async () => {},
       remove: async () => {},
     } as any,
+    checkoutDiffManager: {
+      subscribe: async () => ({
+        initial: { cwd: "/tmp", files: [], error: null },
+        unsubscribe: () => {},
+      }),
+      scheduleRefreshForCwd: () => {},
+      getMetrics: () => ({
+        checkoutDiffTargetCount: 0,
+        checkoutDiffSubscriptionCount: 0,
+        checkoutDiffWatcherCount: 0,
+        checkoutDiffFallbackRefreshTargetCount: 0,
+      }),
+      dispose: () => {},
+    } as any,
     createAgentMcpTransport: async () => {
       throw new Error("not used");
     },
@@ -277,6 +291,20 @@ describe("workspace aggregation", () => {
         upsert: async () => {},
         archive: async () => {},
         remove: async () => {},
+      } as any,
+      checkoutDiffManager: {
+        subscribe: async () => ({
+          initial: { cwd: "/tmp", files: [], error: null },
+          unsubscribe: () => {},
+        }),
+        scheduleRefreshForCwd: () => {},
+        getMetrics: () => ({
+          checkoutDiffTargetCount: 0,
+          checkoutDiffSubscriptionCount: 0,
+          checkoutDiffWatcherCount: 0,
+          checkoutDiffFallbackRefreshTargetCount: 0,
+        }),
+        dispose: () => {},
       } as any,
       createAgentMcpTransport: async () => {
         throw new Error("not used");
