@@ -4,7 +4,7 @@ import { pageMeta } from "~/meta";
 
 export const Route = createFileRoute("/blog/")({
   validateSearch: (search: Record<string, unknown>) => ({
-    drafts: search.drafts !== undefined,
+    drafts: search.drafts === true || search.drafts === "" || search.drafts === "true",
   }),
   head: () => ({
     meta: pageMeta("Blog - Paseo", "Updates, thoughts, and announcements from the Paseo team."),
