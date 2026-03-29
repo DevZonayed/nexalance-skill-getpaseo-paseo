@@ -12,7 +12,7 @@ export interface AppSettings {
 }
 
 export const DEFAULT_APP_SETTINGS: AppSettings = {
-  theme: "dark",
+  theme: "auto",
   manageBuiltInDaemon: true,
 };
 

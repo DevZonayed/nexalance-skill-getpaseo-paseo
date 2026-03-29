@@ -30,6 +30,16 @@ describe("use-settings", () => {
     );
   });
 
+  it("defaults theme to auto when storage is empty", async () => {
+    asyncStorageMock.getItem.mockResolvedValue(null);
+    asyncStorageMock.setItem.mockResolvedValue();
+
+    const mod = await import("./use-settings");
+    const result = await mod.loadSettingsFromStorage();
+
+    expect(result.theme).toBe("auto");
+  });
+
   it("loads persisted built-in daemon management state", async () => {
     asyncStorageMock.getItem.mockImplementation(async (key: string) => {
       if (key === "@paseo:app-settings") {
