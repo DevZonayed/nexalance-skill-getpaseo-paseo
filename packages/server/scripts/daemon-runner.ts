@@ -1,5 +1,5 @@
 import { fileURLToPath } from "url";
-import { existsSync } from "node:fs";
+import { appendFileSync, existsSync } from "node:fs";
 import path from "node:path";
 import { loadConfig } from "../src/server/config.js";
 import { acquirePidLock, PidLockError, releasePidLock } from "../src/server/pid-lock.js";
@@ -68,6 +68,28 @@ function resolvePackagedNodeEntrypointRunnerPath(currentScriptPath: string): str
   return existsSync(runnerPath) ? runnerPath : null;
 }
 
+function appendLaunchLog(
+  launchLogPath: string,
+  message: string,
+  details?: Record<string, unknown>,
+): void {
+  const line = [
+    new Date().toISOString(),
+    "[DaemonRunner]",
+    `pid=${process.pid}`,
+    message,
+    details ? JSON.stringify(details) : "",
+  ]
+    .filter((part) => part.length > 0)
+    .join(" ");
+
+  try {
+    appendFileSync(launchLogPath, `${line}\n`, "utf-8");
+  } catch {
+    // Keep launch debugging best-effort so daemon startup behavior is unchanged.
+  }
+}
+
 async function main(): Promise<void> {
   const config = parseConfig(process.argv.slice(2));
   const workerEntry = config.devMode ? resolveDevWorkerEntry() : resolveWorkerEntry();
@@ -84,14 +106,34 @@ async function main(): Promise<void> {
   applySherpaLoaderEnv(workerEnv);
 
   const paseoHome = resolvePaseoHome(workerEnv);
+  const launchLogPath = path.join(paseoHome, "daemon-launch.log");
   const daemonConfig = loadConfig(paseoHome, { env: workerEnv });
+
+  appendLaunchLog(launchLogPath, "daemon runner starting", {
+    argv: process.argv.slice(2),
+    execPath: process.execPath,
+    execArgv: process.execArgv,
+    workerEntry,
+    workerExecArgv,
+    devMode: config.devMode,
+    listen: daemonConfig.listen,
+    packagedNodeEntrypointRunner,
+  });
 
   try {
     await acquirePidLock(paseoHome, daemonConfig.listen, {
       ownerPid: process.pid,
     });
+    appendLaunchLog(launchLogPath, "pid lock acquired", {
+      ownerPid: process.pid,
+      listen: daemonConfig.listen,
+    });
   } catch (error) {
     if (error instanceof PidLockError) {
+      appendLaunchLog(launchLogPath, "pid lock acquisition failed", {
+        message: error.message,
+        existingLock: error.existingLock,
+      });
       process.stderr.write(`${error.message}\n`);
       process.exit(1);
       return;
@@ -105,6 +147,9 @@ async function main(): Promise<void> {
       return;
     }
     lockReleased = true;
+    appendLaunchLog(launchLogPath, "releasing pid lock", {
+      ownerPid: process.pid,
+    });
     await releasePidLock(paseoHome, {
       ownerPid: process.pid,
     });
@@ -112,6 +157,7 @@ async function main(): Promise<void> {
 
   runSupervisor({
     name: "DaemonRunner",
+    launchLogPath,
     startupMessage: config.devMode
       ? "Starting daemon worker (dev mode, crash restarts enabled)"
       : "Starting daemon worker (IPC restart enabled)",
