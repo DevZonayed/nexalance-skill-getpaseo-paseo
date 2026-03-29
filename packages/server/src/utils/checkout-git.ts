@@ -3,6 +3,7 @@ import { promisify } from "util";
 import { resolve, dirname, basename } from "path";
 import { realpathSync } from "fs";
 import { open as openFile, stat as statFile } from "fs/promises";
+import { TTLCache } from "@isaacs/ttlcache";
 import type { ParsedDiffFile } from "../server/utils/diff-highlighter.js";
 import { parseAndHighlightDiff } from "../server/utils/diff-highlighter.js";
 import { isPaseoOwnedWorktreeCwd } from "./worktree.js";
@@ -16,6 +17,40 @@ const READ_ONLY_GIT_ENV: NodeJS.ProcessEnv = {
 };
 
 const SMALL_OUTPUT_MAX_BUFFER = 20 * 1024 * 1024; // 20MB
+const DEFAULT_PULL_REQUEST_STATUS_CACHE_TTL_MS = 30_000;
+const PULL_REQUEST_STATUS_CACHE_MAX = 1_000;
+
+let pullRequestStatusCacheTtlMs = DEFAULT_PULL_REQUEST_STATUS_CACHE_TTL_MS;
+let pullRequestStatusCache = createPullRequestStatusCache(pullRequestStatusCacheTtlMs);
+const pullRequestStatusInFlight = new Map<string, Promise<PullRequestStatusResult>>();
+
+function createPullRequestStatusCache(ttlMs: number) {
+  return new TTLCache<string, PullRequestStatusResult>({
+    ttl: ttlMs,
+    max: PULL_REQUEST_STATUS_CACHE_MAX,
+    checkAgeOnGet: true,
+  });
+}
+
+function getPullRequestStatusCacheKey(cwd: string): string {
+  return resolve(cwd);
+}
+
+export function __resetPullRequestStatusCacheForTests(): void {
+  pullRequestStatusCache.clear();
+  pullRequestStatusCache.cancelTimer();
+  pullRequestStatusCacheTtlMs = DEFAULT_PULL_REQUEST_STATUS_CACHE_TTL_MS;
+  pullRequestStatusCache = createPullRequestStatusCache(pullRequestStatusCacheTtlMs);
+  pullRequestStatusInFlight.clear();
+}
+
+export function __setPullRequestStatusCacheTtlForTests(ttlMs: number): void {
+  pullRequestStatusCache.clear();
+  pullRequestStatusCache.cancelTimer();
+  pullRequestStatusCacheTtlMs = ttlMs;
+  pullRequestStatusCache = createPullRequestStatusCache(ttlMs);
+  pullRequestStatusInFlight.clear();
+}
 
 async function execGit(
   command: string,
@@ -1807,6 +1842,31 @@ export async function createPullRequest(
 }
 
 export async function getPullRequestStatus(cwd: string): Promise<PullRequestStatusResult> {
+  const cacheKey = getPullRequestStatusCacheKey(cwd);
+  const cached = pullRequestStatusCache.get(cacheKey);
+  if (cached) {
+    return cached;
+  }
+
+  const existing = pullRequestStatusInFlight.get(cacheKey);
+  if (existing) {
+    return existing;
+  }
+
+  const lookup = getPullRequestStatusUncached(cwd)
+    .then((status) => {
+      pullRequestStatusCache.set(cacheKey, status);
+      return status;
+    })
+    .finally(() => {
+      pullRequestStatusInFlight.delete(cacheKey);
+    });
+
+  pullRequestStatusInFlight.set(cacheKey, lookup);
+  return lookup;
+}
+
+async function getPullRequestStatusUncached(cwd: string): Promise<PullRequestStatusResult> {
   await requireGitRepo(cwd);
   const head = await getCurrentBranch(cwd);
   if (!head) {

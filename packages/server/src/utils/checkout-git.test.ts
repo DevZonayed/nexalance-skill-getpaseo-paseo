@@ -1,9 +1,19 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { execSync } from "child_process";
-import { mkdtempSync, rmSync, writeFileSync, realpathSync, mkdirSync, symlinkSync } from "fs";
+import {
+  mkdtempSync,
+  rmSync,
+  writeFileSync,
+  readFileSync,
+  realpathSync,
+  mkdirSync,
+  symlinkSync,
+} from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
 import {
+  __resetPullRequestStatusCacheForTests,
+  __setPullRequestStatusCacheTtlForTests,
   commitAll,
   getCheckoutDiff,
   getCheckoutShortstat,
@@ -38,6 +48,10 @@ function initRepo(): { tempDir: string; repoDir: string } {
   return { tempDir, repoDir };
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 describe("checkout git utilities", () => {
   let tempDir: string;
   let repoDir: string;
@@ -48,9 +62,11 @@ describe("checkout git utilities", () => {
     tempDir = setup.tempDir;
     repoDir = setup.repoDir;
     paseoHome = join(tempDir, "paseo-home");
+    __resetPullRequestStatusCacheForTests();
   });
 
   afterEach(() => {
+    __resetPullRequestStatusCacheForTests();
     rmSync(tempDir, { recursive: true, force: true });
   });
 
@@ -672,6 +688,167 @@ const x = 1;
       expect(status.status?.headRefName).toBe("feature");
       expect(status.status?.isMerged).toBe(false);
       expect(status.status?.state).toBe("closed");
+    } finally {
+      if (originalPath === undefined) {
+        delete process.env.PATH;
+      } else {
+        process.env.PATH = originalPath;
+      }
+    }
+  });
+
+  it("caches PR status results for duplicate lookups", async () => {
+    execSync("git checkout -b feature", { cwd: repoDir });
+    execSync("git remote add origin https://github.com/getpaseo/paseo.git", { cwd: repoDir });
+
+    const fakeBinDir = join(tempDir, "fake-bin-gh-cache-hit");
+    const callCountPath = join(tempDir, "gh-call-count.txt");
+    mkdirSync(fakeBinDir);
+    const gitPath = execSync("command -v git", { stdio: "pipe" }).toString().trim();
+    symlinkSync(gitPath, join(fakeBinDir, "git"));
+    writeFileSync(callCountPath, "0\n");
+    writeFileSync(
+      join(fakeBinDir, "gh"),
+      [
+        "#!/usr/bin/env bash",
+        "set -euo pipefail",
+        `count_file=${JSON.stringify(callCountPath)}`,
+        'if [[ "${1-}" == "--version" ]]; then',
+        '  echo "gh version 2.0.0"',
+        "  exit 0",
+        "fi",
+        'args="$*"',
+        'if [[ "$args" == "pr view --json url,title,state,baseRefName,headRefName,mergedAt" ]]; then',
+        '  count="$(cat "$count_file")"',
+        '  printf "%s\\n" "$((count + 1))" > "$count_file"',
+        '  echo \'{"url":"https://github.com/getpaseo/paseo/pull/123","title":"Ship feature","state":"OPEN","baseRefName":"main","headRefName":"feature","mergedAt":null}\'',
+        "  exit 0",
+        "fi",
+        'echo "unexpected gh args: $args" >&2',
+        "exit 1",
+        "",
+      ].join("\n"),
+      "utf8",
+    );
+    execSync(`chmod +x ${join(fakeBinDir, "gh")}`);
+
+    const originalPath = process.env.PATH;
+    process.env.PATH = `${fakeBinDir}:${originalPath ?? ""}`;
+    try {
+      const first = await getPullRequestStatus(repoDir);
+      const second = await getPullRequestStatus(repoDir);
+      expect(first).toEqual(second);
+      expect(first.status?.url).toContain("/pull/123");
+      expect(readFileSync(callCountPath, "utf8").trim()).toBe("1");
+    } finally {
+      if (originalPath === undefined) {
+        delete process.env.PATH;
+      } else {
+        process.env.PATH = originalPath;
+      }
+    }
+  });
+
+  it("expires cached PR status after the TTL", async () => {
+    execSync("git checkout -b feature", { cwd: repoDir });
+    execSync("git remote add origin https://github.com/getpaseo/paseo.git", { cwd: repoDir });
+
+    const fakeBinDir = join(tempDir, "fake-bin-gh-cache-expiry");
+    const callCountPath = join(tempDir, "gh-call-count-expiry.txt");
+    mkdirSync(fakeBinDir);
+    const gitPath = execSync("command -v git", { stdio: "pipe" }).toString().trim();
+    symlinkSync(gitPath, join(fakeBinDir, "git"));
+    writeFileSync(callCountPath, "0\n");
+    writeFileSync(
+      join(fakeBinDir, "gh"),
+      [
+        "#!/usr/bin/env bash",
+        "set -euo pipefail",
+        `count_file=${JSON.stringify(callCountPath)}`,
+        'if [[ "${1-}" == "--version" ]]; then',
+        '  echo "gh version 2.0.0"',
+        "  exit 0",
+        "fi",
+        'args="$*"',
+        'if [[ "$args" == "pr view --json url,title,state,baseRefName,headRefName,mergedAt" ]]; then',
+        '  count="$(cat "$count_file")"',
+        '  next="$((count + 1))"',
+        '  printf "%s\\n" "$next" > "$count_file"',
+        '  printf \'{"url":"https://github.com/getpaseo/paseo/pull/%s","title":"Ship feature","state":"OPEN","baseRefName":"main","headRefName":"feature","mergedAt":null}\\n\' "$next"',
+        "  exit 0",
+        "fi",
+        'echo "unexpected gh args: $args" >&2',
+        "exit 1",
+        "",
+      ].join("\n"),
+      "utf8",
+    );
+    execSync(`chmod +x ${join(fakeBinDir, "gh")}`);
+
+    const originalPath = process.env.PATH;
+    process.env.PATH = `${fakeBinDir}:${originalPath ?? ""}`;
+    __setPullRequestStatusCacheTtlForTests(50);
+    try {
+      const first = await getPullRequestStatus(repoDir);
+      await sleep(80);
+      const second = await getPullRequestStatus(repoDir);
+      expect(first.status?.url).toContain("/pull/1");
+      expect(second.status?.url).toContain("/pull/2");
+      expect(readFileSync(callCountPath, "utf8").trim()).toBe("2");
+    } finally {
+      if (originalPath === undefined) {
+        delete process.env.PATH;
+      } else {
+        process.env.PATH = originalPath;
+      }
+    }
+  });
+
+  it("dedupes concurrent PR status lookups for the same cwd", async () => {
+    execSync("git checkout -b feature", { cwd: repoDir });
+    execSync("git remote add origin https://github.com/getpaseo/paseo.git", { cwd: repoDir });
+
+    const fakeBinDir = join(tempDir, "fake-bin-gh-cache-concurrent");
+    const callCountPath = join(tempDir, "gh-call-count-concurrent.txt");
+    mkdirSync(fakeBinDir);
+    const gitPath = execSync("command -v git", { stdio: "pipe" }).toString().trim();
+    symlinkSync(gitPath, join(fakeBinDir, "git"));
+    writeFileSync(callCountPath, "0\n");
+    writeFileSync(
+      join(fakeBinDir, "gh"),
+      [
+        "#!/usr/bin/env bash",
+        "set -euo pipefail",
+        `count_file=${JSON.stringify(callCountPath)}`,
+        'if [[ "${1-}" == "--version" ]]; then',
+        '  echo "gh version 2.0.0"',
+        "  exit 0",
+        "fi",
+        'args="$*"',
+        'if [[ "$args" == "pr view --json url,title,state,baseRefName,headRefName,mergedAt" ]]; then',
+        '  count="$(cat "$count_file")"',
+        '  printf "%s\\n" "$((count + 1))" > "$count_file"',
+        "  sleep 0.2",
+        '  echo \'{"url":"https://github.com/getpaseo/paseo/pull/123","title":"Ship feature","state":"OPEN","baseRefName":"main","headRefName":"feature","mergedAt":null}\'',
+        "  exit 0",
+        "fi",
+        'echo "unexpected gh args: $args" >&2',
+        "exit 1",
+        "",
+      ].join("\n"),
+      "utf8",
+    );
+    execSync(`chmod +x ${join(fakeBinDir, "gh")}`);
+
+    const originalPath = process.env.PATH;
+    process.env.PATH = `${fakeBinDir}:${originalPath ?? ""}`;
+    try {
+      const [first, second] = await Promise.all([
+        getPullRequestStatus(repoDir),
+        getPullRequestStatus(repoDir),
+      ]);
+      expect(first).toEqual(second);
+      expect(readFileSync(callCountPath, "utf8").trim()).toBe("1");
     } finally {
       if (originalPath === undefined) {
         delete process.env.PATH;
