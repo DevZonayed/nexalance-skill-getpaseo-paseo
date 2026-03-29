@@ -40,10 +40,10 @@ function loadPosts(includeDrafts: boolean): Post[] {
   const posts: Post[] = [];
 
   for (const [path, raw] of Object.entries(postModules)) {
-    const isDraft = path.includes("/drafts/");
+    const { data, content } = parseFrontmatter(raw);
+    const isDraft = path.includes("/drafts/") || data.draft === "true";
     if (isDraft && !includeDrafts) continue;
 
-    const { data, content } = parseFrontmatter(raw);
     const fileName = path.split("/").pop()!.replace(".md", "");
     const slug = isDraft ? `drafts/${fileName}` : fileName;
 
