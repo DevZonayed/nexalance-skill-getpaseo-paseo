@@ -13,6 +13,7 @@ import { useHosts } from "@/runtime/host-runtime";
 import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
 import {
   useFormPreferences,
+  mergeProviderPreferences,
   type FormPreferences,
   type ProviderPreferences,
 } from "./use-form-preferences";
@@ -693,26 +694,23 @@ export function useAgentFormState(options: UseAgentFormStateOptions = {}): UseAg
   const persistFormPreferences = useCallback(async () => {
     const resolvedModel = resolveEffectiveModel(availableModels, formState.model);
     const modelId = resolvedModel?.id ?? formState.model;
-    const existingProviderPrefs = preferences?.providerPreferences?.[formState.provider];
-
-    const nextProviderPrefs: ProviderPreferences = {
-      model: modelId || undefined,
-      mode: formState.modeId || undefined,
-      thinkingByModel: {
-        ...existingProviderPrefs?.thinkingByModel,
-        ...(modelId && formState.thinkingOptionId
-          ? { [modelId]: formState.thinkingOptionId }
-          : {}),
-      },
-    };
-
-    await updatePreferences({
+    const nextPreferences = mergeProviderPreferences({
+      preferences: preferences ?? {},
       provider: formState.provider,
-      providerPreferences: {
-        ...preferences?.providerPreferences,
-        [formState.provider]: nextProviderPrefs,
-      },
+      updates: {
+        model: modelId || undefined,
+        mode: formState.modeId || undefined,
+        ...(modelId && formState.thinkingOptionId
+          ? {
+              thinkingByModel: {
+                [modelId]: formState.thinkingOptionId,
+              },
+            }
+          : {}),
+      } satisfies Partial<ProviderPreferences>,
     });
+
+    await updatePreferences(nextPreferences);
   }, [
     availableModels,
     formState.model,

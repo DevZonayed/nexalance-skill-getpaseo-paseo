@@ -8,6 +8,7 @@ import { getProviderIcon } from "@/components/provider-icons";
 import { CombinedModelSelector } from "@/components/combined-model-selector";
 import { useQuery } from "@tanstack/react-query";
 import { useSessionStore } from "@/stores/session-store";
+import { mergeProviderPreferences, useFormPreferences } from "@/hooks/use-form-preferences";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -609,6 +610,7 @@ function ControlledStatusBar({
 const EMPTY_MODES: AgentMode[] = [];
 
 export function AgentStatusBar({ agentId, serverId }: AgentStatusBarProps) {
+  const { preferences, updatePreferences } = useFormPreferences();
   const agent = useSessionStore(
     useShallow((state) => {
       const currentAgent = state.sessions[serverId]?.agents?.get(agentId) ?? null;
@@ -709,6 +711,17 @@ export function AgentStatusBar({ agentId, serverId }: AgentStatusBarProps) {
         if (!client) {
           return;
         }
+        void updatePreferences(
+          mergeProviderPreferences({
+            preferences,
+            provider: agent.provider,
+            updates: {
+              model: modelId,
+            },
+          }),
+        ).catch((error) => {
+          console.warn("[AgentStatusBar] persist model preference failed", error);
+        });
         void client.setAgentModel(agentId, modelId).catch((error) => {
           console.warn("[AgentStatusBar] setAgentModel failed", error);
         });
@@ -718,6 +731,23 @@ export function AgentStatusBar({ agentId, serverId }: AgentStatusBarProps) {
       onSelectThinkingOption={(thinkingOptionId) => {
         if (!client) {
           return;
+        }
+        const activeModelId = modelSelection.activeModelId;
+        if (activeModelId) {
+          void updatePreferences(
+            mergeProviderPreferences({
+              preferences,
+              provider: agent.provider,
+              updates: {
+                model: activeModelId,
+                thinkingByModel: {
+                  [activeModelId]: thinkingOptionId,
+                },
+              },
+            }),
+          ).catch((error) => {
+            console.warn("[AgentStatusBar] persist thinking preference failed", error);
+          });
         }
         void client.setAgentThinkingOption(agentId, thinkingOptionId).catch((error) => {
           console.warn("[AgentStatusBar] setAgentThinkingOption failed", error);

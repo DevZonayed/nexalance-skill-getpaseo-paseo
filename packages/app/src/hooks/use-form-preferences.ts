@@ -2,6 +2,7 @@ import { useCallback } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
+import type { AgentProvider } from "@server/server/agent/agent-sdk-types";
 
 const FORM_PREFERENCES_STORAGE_KEY = "@paseo:create-agent-preferences";
 const FORM_PREFERENCES_QUERY_KEY = ["form-preferences"];
@@ -33,6 +34,36 @@ export interface UseFormPreferencesReturn {
   preferences: FormPreferences;
   isLoading: boolean;
   updatePreferences: (updates: Partial<FormPreferences>) => Promise<void>;
+}
+
+export function mergeProviderPreferences(args: {
+  preferences: FormPreferences;
+  provider: AgentProvider;
+  updates: Partial<ProviderPreferences>;
+}): FormPreferences {
+  const { preferences, provider, updates } = args;
+  const existingProviderPreferences = preferences.providerPreferences ?? {};
+  const existing = existingProviderPreferences[provider] ?? {};
+  const nextThinkingByModel =
+    updates.thinkingByModel === undefined
+      ? existing.thinkingByModel
+      : {
+          ...existing.thinkingByModel,
+          ...updates.thinkingByModel,
+        };
+
+  return {
+    ...preferences,
+    provider,
+    providerPreferences: {
+      ...existingProviderPreferences,
+      [provider]: {
+        ...existing,
+        ...updates,
+        ...(nextThinkingByModel ? { thinkingByModel: nextThinkingByModel } : {}),
+      },
+    },
+  };
 }
 
 export function useFormPreferences(): UseFormPreferencesReturn {

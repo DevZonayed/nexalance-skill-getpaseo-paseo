@@ -278,7 +278,10 @@ export function DropdownMenuContent({
       setModalVisible(true);
       setClosing(false);
     } else if (modalVisible) {
-      setClosing(true);
+      // Avoid leaving an invisible full-screen Modal mounted on native when
+      // the exit animation callback does not fire.
+      setClosing(false);
+      setModalVisible(false);
     }
   }, [open, modalVisible]);
 
