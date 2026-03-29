@@ -53,6 +53,10 @@ paseo inspect <agent-id>
 # Interrupt an agent's current run
 paseo stop <agent-id>
 
+# Archive an agent (soft-delete, removes from UI)
+paseo archive <agent-id>
+paseo archive <agent-id> --force  # Force archive running agent (interrupts first)
+
 # Hard-delete an agent (interrupts first if needed)
 paseo delete <agent-id>
 
