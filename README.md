@@ -26,20 +26,32 @@ Run agents in parallel on your own machines. Ship from your phone or your desk.
 
 ## Getting Started
 
-### Desktop app
+Paseo runs a local server called the daemon that manages your coding agents. Clients like the desktop app, mobile app, web app, and CLI connect to it.
 
-Download from [paseo.sh/download](https://paseo.sh/download) or the [GitHub releases page](https://github.com/getpaseo/paseo/releases). The app bundles its own daemon, so there's nothing else to install. It can also connect to daemons running on other machines.
+### Prerequisites
 
-### Headless / server mode
+You need at least one agent CLI installed and configured with your credentials:
 
-Run the daemon on any machine:
+- [Claude Code](https://docs.anthropic.com/en/docs/claude-code)
+- [Codex](https://github.com/openai/codex)
+- [OpenCode](https://github.com/anomalyco/opencode)
+
+### Desktop app (recommended)
+
+Download it from [paseo.sh/download](https://paseo.sh/download) or the [GitHub releases page](https://github.com/getpaseo/paseo/releases). Open the app and the daemon starts automatically. Nothing else to install.
+
+To connect from your phone, scan the QR code shown in Settings.
+
+### CLI / headless
+
+Install the CLI and start Paseo:
 
 ```bash
 npm install -g @getpaseo/cli
 paseo
 ```
 
-Then connect from any client — desktop, web, mobile, or CLI. See [paseo.sh/download](https://paseo.sh/download) for all options.
+This shows a QR code in the terminal. Connect from any client. This path is useful for servers and remote machines.
 
 For full setup and configuration, see:
 - [Docs](https://paseo.sh/docs)

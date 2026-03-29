@@ -31,6 +31,14 @@ Your code never leaves your machine. Paseo is local-first.
 └───────────┘ └────────┘ └──────────┘
 ```
 
+## Components at a glance
+
+- **Daemon:** Local server that spawns and manages agent processes and exposes the WebSocket API.
+- **App:** Cross-platform Expo client for iOS, Android, web, and the shared UI used by desktop.
+- **CLI:** Terminal interface for agent workflows that can also start and manage the daemon.
+- **Desktop app:** Electron wrapper around the web app that bundles and auto-manages its own daemon.
+- **Relay:** Optional encrypted bridge for remote access without opening ports directly.
+
 ## Packages
 
 ### `packages/server` — The daemon
