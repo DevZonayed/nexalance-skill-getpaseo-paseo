@@ -40,6 +40,9 @@ export function render<T>(
       return renderYaml(result, opts);
     case "table":
     default:
+      if (result.schema.renderHuman) {
+        return result.schema.renderHuman(result, opts);
+      }
       return renderTable(result, opts);
   }
 }

@@ -40,6 +40,8 @@ export interface OutputSchema<T> {
   idField: keyof T | ((item: T) => string);
   /** Column definitions for table output */
   columns: ColumnDef<T>[];
+  /** Optional: custom renderer for human/table output */
+  renderHuman?: (result: AnyCommandResult<T>, options: OutputOptions) => string;
   /** Optional: transform data before JSON/YAML output */
   serialize?: (data: T) => unknown;
 }

@@ -29,6 +29,17 @@ interface Agent {
   provider: string;
 }
 
+interface ChatMessage {
+  id: string;
+  author: string;
+  authorName: string | null;
+  createdAt: string;
+  replyTo: string;
+  mentionAgentIds: string[];
+  mentionLabels: string[];
+  body: string;
+}
+
 // Schema for agents
 const agentSchema: OutputSchema<Agent> = {
   idField: "id",
@@ -209,6 +220,36 @@ console.log("\n=== Render Dispatcher ===\n");
 test("render uses table format by default", () => {
   const output = render(listResult, { noColor: true });
   assert.ok(output.includes("ID"), "Should use table format with headers");
+});
+
+test("render uses custom human renderer when provided", () => {
+  const chatSchema: OutputSchema<ChatMessage> = {
+    idField: "id",
+    columns: [{ header: "ID", field: "id" }],
+    renderHuman: (result) => {
+      const data = result.type === "list" ? result.data : [result.data];
+      return data.map((message) => `msg ${message.id}: ${message.body}`).join("\n");
+    },
+  };
+  const chatResult: ListResult<ChatMessage> = {
+    type: "list",
+    data: [
+      {
+        id: "m1",
+        author: "agent-1",
+        authorName: "Planner",
+        createdAt: "2026-03-29T10:00:00Z",
+        replyTo: "-",
+        mentionAgentIds: [],
+        mentionLabels: [],
+        body: "hello",
+      },
+    ],
+    schema: chatSchema,
+  };
+
+  const output = render(chatResult, { noColor: true });
+  assert.strictEqual(output, "msg m1: hello", "Should use custom human renderer");
 });
 
 test("render uses json format when specified", () => {

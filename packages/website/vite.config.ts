@@ -7,6 +7,26 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 
 const repoRoot = path.resolve(__dirname, "../..");
+const siteHost = "https://paseo.sh";
+const sitemapPages = [
+  "/",
+  "/changelog",
+  "/claude-code",
+  "/codex",
+  "/docs",
+  "/download",
+  "/opencode",
+  "/privacy",
+  "/docs/best-practices",
+  "/docs/cli",
+  "/docs/configuration",
+  "/docs/security",
+  "/docs/updates",
+  "/docs/voice",
+  "/docs/worktrees",
+].map((routePath) => ({
+  path: routePath,
+}));
 
 export default defineConfig({
   server: {
@@ -18,7 +38,12 @@ export default defineConfig({
   plugins: [
     cloudflare({ viteEnvironment: { name: "ssr" } }),
     tsConfigPaths(),
-    tanstackStart(),
+    tanstackStart({
+      pages: sitemapPages,
+      sitemap: {
+        host: siteHost,
+      },
+    }),
     react(),
     tailwindcss(),
   ],

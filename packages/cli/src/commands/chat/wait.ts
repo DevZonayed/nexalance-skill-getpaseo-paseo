@@ -1,6 +1,7 @@
 import type { Command } from "commander";
 import type { ListResult } from "../../output/index.js";
 import {
+  attachAgentNamesToMessages,
   connectChatClient,
   parseTimeoutMs,
   toChatCommandError,
@@ -29,9 +30,13 @@ export async function runWaitCommand(
       afterMessageId,
       timeoutMs: parseTimeoutMs(options.timeout),
     });
+    const messages = await attachAgentNamesToMessages(
+      client,
+      payload.messages.map(toChatMessageRow),
+    );
     return {
       type: "list",
-      data: payload.messages.map(toChatMessageRow),
+      data: messages,
       schema: chatMessageSchema,
     };
   } catch (err) {

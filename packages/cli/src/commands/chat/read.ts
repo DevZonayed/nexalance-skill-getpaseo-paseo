@@ -1,6 +1,7 @@
 import type { Command } from "commander";
 import type { ListResult } from "../../output/index.js";
 import {
+  attachAgentNamesToMessages,
   connectChatClient,
   parseSinceValue,
   toChatCommandError,
@@ -42,9 +43,13 @@ export async function runReadCommand(
       since: parseSinceValue(options.since),
       authorAgentId: options.agent,
     });
+    const messages = await attachAgentNamesToMessages(
+      client,
+      payload.messages.map(toChatMessageRow),
+    );
     return {
       type: "list",
-      data: payload.messages.map(toChatMessageRow),
+      data: messages,
       schema: chatMessageSchema,
     };
   } catch (err) {

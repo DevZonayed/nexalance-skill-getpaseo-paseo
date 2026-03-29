@@ -32,13 +32,22 @@ try {
       "post",
       "coord-room",
       "first message for @agent-1",
-    ]);
+    ], {
+      env: { PASEO_AGENT_ID: "00000000-0000-4000-8000-000000000111" },
+    });
     assert.strictEqual(posted.exitCode, 0, posted.stderr);
     assert(posted.stdout.includes("first message"), posted.stdout);
+    assert(posted.stdout.includes("00000000-0000-4000-8000-000000000111"), posted.stdout);
 
     const read = await ctx.paseo(["chat", "read", "coord-room", "--limit", "10"]);
     assert.strictEqual(read.exitCode, 0, read.stderr);
     assert(read.stdout.includes("first message"), read.stdout);
+    assert(read.stdout.includes("00000000-0000-4000-8000-000000000111"), read.stdout);
+
+    const readJson = await ctx.paseo(["chat", "read", "coord-room", "--limit", "10", "--json"]);
+    assert.strictEqual(readJson.exitCode, 0, readJson.stderr);
+    const readPayload = JSON.parse(readJson.stdout);
+    assert.strictEqual(readPayload[0]?.author, "00000000-0000-4000-8000-000000000111");
 
     const waitPromise = ctx.paseo(["chat", "wait", "coord-room", "--timeout", "5s"]);
     await new Promise((resolve) => setTimeout(resolve, 250));

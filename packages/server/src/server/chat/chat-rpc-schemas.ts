@@ -30,6 +30,7 @@ export const ChatPostRequestSchema = z.object({
   requestId: z.string(),
   room: z.string(),
   body: z.string(),
+  authorAgentId: z.string().optional(),
   replyToMessageId: z.string().optional(),
 });
 

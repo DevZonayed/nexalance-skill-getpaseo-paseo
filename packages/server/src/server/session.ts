@@ -7726,9 +7726,10 @@ export class Session {
     request: Extract<SessionInboundMessage, { type: "chat/post" }>,
   ): Promise<void> {
     try {
+      const authorAgentId = request.authorAgentId?.trim() || this.clientId;
       const message = await this.chatService.postMessage({
         room: request.room,
-        authorAgentId: this.clientId,
+        authorAgentId,
         body: request.body,
         replyToMessageId: request.replyToMessageId,
       });
@@ -7742,7 +7743,7 @@ export class Session {
       });
       void notifyChatMentions({
         room: request.room,
-        authorAgentId: this.clientId,
+        authorAgentId,
         body: request.body,
         mentionAgentIds: message.mentionAgentIds,
         logger: this.sessionLogger,

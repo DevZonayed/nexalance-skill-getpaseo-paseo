@@ -333,6 +333,7 @@ export async function runPaseoCli(
   options?: {
     timeout?: number;
     cwd?: string;
+    env?: NodeJS.ProcessEnv;
   },
 ): Promise<{ exitCode: number; stdout: string; stderr: string }> {
   const timeout = options?.timeout ?? 60000;
@@ -348,6 +349,7 @@ export async function runPaseoCli(
         ...TEST_DAEMON_ENV_DEFAULTS,
         PASEO_HOST: `${TEST_DAEMON_HOST}:${ctx.port}`,
         PASEO_HOME: ctx.paseoHome,
+        ...options?.env,
       },
       cwd,
       stdio: ["ignore", "pipe", "pipe"],
@@ -399,7 +401,7 @@ export async function createE2ETestContext(options?: { timeout?: number }): Prom
     /** Run a paseo CLI command against this daemon */
     paseo: (
       args: string[],
-      opts?: { timeout?: number; cwd?: string },
+      opts?: { timeout?: number; cwd?: string; env?: NodeJS.ProcessEnv },
     ) => Promise<{
       exitCode: number;
       stdout: string;
@@ -409,7 +411,7 @@ export async function createE2ETestContext(options?: { timeout?: number }): Prom
 > {
   const ctx = await startTestDaemon({ timeout: options?.timeout });
 
-  const paseo = (args: string[], opts?: { timeout?: number; cwd?: string }) =>
+  const paseo = (args: string[], opts?: { timeout?: number; cwd?: string; env?: NodeJS.ProcessEnv }) =>
     runPaseoCli(ctx, args, opts);
 
   return {

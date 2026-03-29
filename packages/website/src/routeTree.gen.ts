@@ -16,8 +16,10 @@ import { Route as DocsRouteImport } from './routes/docs'
 import { Route as CodexRouteImport } from './routes/codex'
 import { Route as ClaudeCodeRouteImport } from './routes/claude-code'
 import { Route as ChangelogRouteImport } from './routes/changelog'
+import { Route as BlogRouteImport } from './routes/blog'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as DocsIndexRouteImport } from './routes/docs/index'
+import { Route as BlogIndexRouteImport } from './routes/blog/index'
 import { Route as DocsWorktreesRouteImport } from './routes/docs/worktrees'
 import { Route as DocsVoiceRouteImport } from './routes/docs/voice'
 import { Route as DocsUpdatesRouteImport } from './routes/docs/updates'
@@ -25,6 +27,7 @@ import { Route as DocsSecurityRouteImport } from './routes/docs/security'
 import { Route as DocsConfigurationRouteImport } from './routes/docs/configuration'
 import { Route as DocsCliRouteImport } from './routes/docs/cli'
 import { Route as DocsBestPracticesRouteImport } from './routes/docs/best-practices'
+import { Route as BlogSplatRouteImport } from './routes/blog/$'
 
 const PrivacyRoute = PrivacyRouteImport.update({
   id: '/privacy',
@@ -61,6 +64,11 @@ const ChangelogRoute = ChangelogRouteImport.update({
   path: '/changelog',
   getParentRoute: () => rootRouteImport,
 } as any)
+const BlogRoute = BlogRouteImport.update({
+  id: '/blog',
+  path: '/blog',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
@@ -70,6 +78,11 @@ const DocsIndexRoute = DocsIndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => DocsRoute,
+} as any)
+const BlogIndexRoute = BlogIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => BlogRoute,
 } as any)
 const DocsWorktreesRoute = DocsWorktreesRouteImport.update({
   id: '/worktrees',
@@ -106,9 +119,15 @@ const DocsBestPracticesRoute = DocsBestPracticesRouteImport.update({
   path: '/best-practices',
   getParentRoute: () => DocsRoute,
 } as any)
+const BlogSplatRoute = BlogSplatRouteImport.update({
+  id: '/$',
+  path: '/$',
+  getParentRoute: () => BlogRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/blog': typeof BlogRouteWithChildren
   '/changelog': typeof ChangelogRoute
   '/claude-code': typeof ClaudeCodeRoute
   '/codex': typeof CodexRoute
@@ -116,6 +135,7 @@ export interface FileRoutesByFullPath {
   '/download': typeof DownloadRoute
   '/opencode': typeof OpencodeRoute
   '/privacy': typeof PrivacyRoute
+  '/blog/$': typeof BlogSplatRoute
   '/docs/best-practices': typeof DocsBestPracticesRoute
   '/docs/cli': typeof DocsCliRoute
   '/docs/configuration': typeof DocsConfigurationRoute
@@ -123,6 +143,7 @@ export interface FileRoutesByFullPath {
   '/docs/updates': typeof DocsUpdatesRoute
   '/docs/voice': typeof DocsVoiceRoute
   '/docs/worktrees': typeof DocsWorktreesRoute
+  '/blog/': typeof BlogIndexRoute
   '/docs/': typeof DocsIndexRoute
 }
 export interface FileRoutesByTo {
@@ -133,6 +154,7 @@ export interface FileRoutesByTo {
   '/download': typeof DownloadRoute
   '/opencode': typeof OpencodeRoute
   '/privacy': typeof PrivacyRoute
+  '/blog/$': typeof BlogSplatRoute
   '/docs/best-practices': typeof DocsBestPracticesRoute
   '/docs/cli': typeof DocsCliRoute
   '/docs/configuration': typeof DocsConfigurationRoute
@@ -140,11 +162,13 @@ export interface FileRoutesByTo {
   '/docs/updates': typeof DocsUpdatesRoute
   '/docs/voice': typeof DocsVoiceRoute
   '/docs/worktrees': typeof DocsWorktreesRoute
+  '/blog': typeof BlogIndexRoute
   '/docs': typeof DocsIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/blog': typeof BlogRouteWithChildren
   '/changelog': typeof ChangelogRoute
   '/claude-code': typeof ClaudeCodeRoute
   '/codex': typeof CodexRoute
@@ -152,6 +176,7 @@ export interface FileRoutesById {
   '/download': typeof DownloadRoute
   '/opencode': typeof OpencodeRoute
   '/privacy': typeof PrivacyRoute
+  '/blog/$': typeof BlogSplatRoute
   '/docs/best-practices': typeof DocsBestPracticesRoute
   '/docs/cli': typeof DocsCliRoute
   '/docs/configuration': typeof DocsConfigurationRoute
@@ -159,12 +184,14 @@ export interface FileRoutesById {
   '/docs/updates': typeof DocsUpdatesRoute
   '/docs/voice': typeof DocsVoiceRoute
   '/docs/worktrees': typeof DocsWorktreesRoute
+  '/blog/': typeof BlogIndexRoute
   '/docs/': typeof DocsIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/blog'
     | '/changelog'
     | '/claude-code'
     | '/codex'
@@ -172,6 +199,7 @@ export interface FileRouteTypes {
     | '/download'
     | '/opencode'
     | '/privacy'
+    | '/blog/$'
     | '/docs/best-practices'
     | '/docs/cli'
     | '/docs/configuration'
@@ -179,6 +207,7 @@ export interface FileRouteTypes {
     | '/docs/updates'
     | '/docs/voice'
     | '/docs/worktrees'
+    | '/blog/'
     | '/docs/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -189,6 +218,7 @@ export interface FileRouteTypes {
     | '/download'
     | '/opencode'
     | '/privacy'
+    | '/blog/$'
     | '/docs/best-practices'
     | '/docs/cli'
     | '/docs/configuration'
@@ -196,10 +226,12 @@ export interface FileRouteTypes {
     | '/docs/updates'
     | '/docs/voice'
     | '/docs/worktrees'
+    | '/blog'
     | '/docs'
   id:
     | '__root__'
     | '/'
+    | '/blog'
     | '/changelog'
     | '/claude-code'
     | '/codex'
@@ -207,6 +239,7 @@ export interface FileRouteTypes {
     | '/download'
     | '/opencode'
     | '/privacy'
+    | '/blog/$'
     | '/docs/best-practices'
     | '/docs/cli'
     | '/docs/configuration'
@@ -214,11 +247,13 @@ export interface FileRouteTypes {
     | '/docs/updates'
     | '/docs/voice'
     | '/docs/worktrees'
+    | '/blog/'
     | '/docs/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  BlogRoute: typeof BlogRouteWithChildren
   ChangelogRoute: typeof ChangelogRoute
   ClaudeCodeRoute: typeof ClaudeCodeRoute
   CodexRoute: typeof CodexRoute
@@ -279,6 +314,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ChangelogRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/blog': {
+      id: '/blog'
+      path: '/blog'
+      fullPath: '/blog'
+      preLoaderRoute: typeof BlogRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -292,6 +334,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/docs/'
       preLoaderRoute: typeof DocsIndexRouteImport
       parentRoute: typeof DocsRoute
+    }
+    '/blog/': {
+      id: '/blog/'
+      path: '/'
+      fullPath: '/blog/'
+      preLoaderRoute: typeof BlogIndexRouteImport
+      parentRoute: typeof BlogRoute
     }
     '/docs/worktrees': {
       id: '/docs/worktrees'
@@ -342,8 +391,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DocsBestPracticesRouteImport
       parentRoute: typeof DocsRoute
     }
+    '/blog/$': {
+      id: '/blog/$'
+      path: '/$'
+      fullPath: '/blog/$'
+      preLoaderRoute: typeof BlogSplatRouteImport
+      parentRoute: typeof BlogRoute
+    }
   }
 }
+
+interface BlogRouteChildren {
+  BlogSplatRoute: typeof BlogSplatRoute
+  BlogIndexRoute: typeof BlogIndexRoute
+}
+
+const BlogRouteChildren: BlogRouteChildren = {
+  BlogSplatRoute: BlogSplatRoute,
+  BlogIndexRoute: BlogIndexRoute,
+}
+
+const BlogRouteWithChildren = BlogRoute._addFileChildren(BlogRouteChildren)
 
 interface DocsRouteChildren {
   DocsBestPracticesRoute: typeof DocsBestPracticesRoute
@@ -371,6 +439,7 @@ const DocsRouteWithChildren = DocsRoute._addFileChildren(DocsRouteChildren)
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  BlogRoute: BlogRouteWithChildren,
   ChangelogRoute: ChangelogRoute,
   ClaudeCodeRoute: ClaudeCodeRoute,
   CodexRoute: CodexRoute,

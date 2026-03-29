@@ -369,6 +369,7 @@ export type DeleteChatRoomOptions = {
 export type PostChatMessageOptions = {
   room: string;
   body: string;
+  authorAgentId?: string;
   replyToMessageId?: string | null;
   requestId?: string;
 };
@@ -2911,6 +2912,7 @@ export class DaemonClient {
         type: "chat/post",
         room: options.room,
         body: options.body,
+        ...(options.authorAgentId ? { authorAgentId: options.authorAgentId } : {}),
         ...(options.replyToMessageId ? { replyToMessageId: options.replyToMessageId } : {}),
       },
       responseType: "chat/post/response",

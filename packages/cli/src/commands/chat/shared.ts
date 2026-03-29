@@ -1,6 +1,7 @@
 import { connectToDaemon, getDaemonHost } from "../../utils/client.js";
 import { parseDuration } from "../../utils/duration.js";
 import type { CommandError, CommandOptions } from "../../output/index.js";
+import type { ChatMessageRow } from "./schema.js";
 
 export interface ChatCommandOptions extends CommandOptions {
   host?: string;
@@ -20,6 +21,43 @@ export async function connectChatClient(host?: string) {
     };
     throw error;
   }
+}
+
+export async function attachAgentNamesToMessages(
+  client: Awaited<ReturnType<typeof connectToDaemon>>,
+  messages: ChatMessageRow[],
+): Promise<ChatMessageRow[]> {
+  const agentIds = new Set<string>();
+  for (const message of messages) {
+    agentIds.add(message.author);
+    for (const mentionId of message.mentionAgentIds) {
+      agentIds.add(mentionId);
+    }
+  }
+
+  if (agentIds.size === 0) {
+    return messages;
+  }
+
+  const payload = await client.fetchAgents({
+    filter: { includeArchived: true },
+  });
+  const agentNames = new Map<string, string>();
+  for (const entry of payload.entries) {
+    const title = entry.agent.title?.trim();
+    if (title) {
+      agentNames.set(entry.agent.id, title);
+    }
+  }
+
+  return messages.map((message) => ({
+    ...message,
+    authorName: agentNames.get(message.author) ?? null,
+    mentionLabels: message.mentionAgentIds.map((agentId) => {
+      const name = agentNames.get(agentId);
+      return name ? `${name} (${agentId})` : agentId;
+    }),
+  }));
 }
 
 export function toChatCommandError(code: string, action: string, err: unknown): CommandError {
@@ -81,4 +119,9 @@ export function parseTimeoutMs(input?: string): number | undefined {
     };
     throw error;
   }
+}
+
+export function resolveChatAuthorAgentId(): string {
+  const agentId = process.env.PASEO_AGENT_ID?.trim();
+  return agentId && agentId.length > 0 ? agentId : "manual";
 }

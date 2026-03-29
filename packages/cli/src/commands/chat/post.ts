@@ -1,7 +1,9 @@
 import type { Command } from "commander";
 import type { SingleResult } from "../../output/index.js";
 import {
+  attachAgentNamesToMessages,
   connectChatClient,
+  resolveChatAuthorAgentId,
   toChatCommandError,
   type ChatCommandOptions,
 } from "./shared.js";
@@ -22,11 +24,13 @@ export async function runPostCommand(
     const payload = await client.postChatMessage({
       room,
       body,
+      authorAgentId: resolveChatAuthorAgentId(),
       replyToMessageId: options.replyTo,
     });
+    const [message] = await attachAgentNamesToMessages(client, [toChatMessageRow(payload.message!)]);
     return {
       type: "single",
-      data: toChatMessageRow(payload.message!),
+      data: message!,
       schema: chatMessageSchema,
     };
   } catch (err) {
