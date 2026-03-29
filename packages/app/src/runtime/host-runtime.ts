@@ -15,7 +15,10 @@ import {
 } from "@/types/host-connection";
 import { decodeOfferFragmentPayload, normalizeHostPort } from "@/utils/daemon-endpoints";
 import { ConnectionOfferSchema, type ConnectionOffer } from "@server/shared/connection-offer";
-import { shouldUseDesktopDaemon, startDesktopDaemon } from "@/desktop/daemon/desktop-daemon";
+import {
+  shouldUseDesktopDaemon,
+  startDesktopDaemon,
+} from "@/desktop/daemon/desktop-daemon";
 import { connectToDaemon } from "@/utils/test-daemon-connection";
 import { buildDaemonWebSocketUrl, buildRelayWebSocketUrl } from "@/utils/daemon-endpoints";
 import { getOrCreateClientId } from "@/utils/client-id";
@@ -32,6 +35,10 @@ import { applyFetchedAgentDirectory } from "@/utils/agent-directory-sync";
 import { useSessionStore, type Agent } from "@/stores/session-store";
 
 export type HostRuntimeConnectionStatus = "idle" | "connecting" | "online" | "offline" | "error";
+
+export type HostRuntimeBootstrapResult =
+  | { ok: true; listenAddress: string; serverId: string; hostname: string | null }
+  | { ok: false; error: string };
 
 export type ActiveConnection =
   | { type: "directTcp"; endpoint: string; display: string }
@@ -1073,6 +1080,7 @@ const DEFAULT_LOCALHOST_ENDPOINT =
   process.env.EXPO_PUBLIC_LOCAL_DAEMON?.trim() || "localhost:6767";
 const DEFAULT_LOCALHOST_BOOTSTRAP_KEY = "@paseo:default-localhost-bootstrap-v1";
 const DEFAULT_LOCALHOST_BOOTSTRAP_TIMEOUT_MS = 2500;
+const CONNECTION_ONLINE_TIMEOUT_MS = 15_000;
 const E2E_STORAGE_KEY = "@paseo:e2e";
 
 export class HostRuntimeStore {
@@ -1161,35 +1169,40 @@ export class HostRuntimeStore {
     }
   }
 
-  private async bootstrapDesktop(): Promise<void> {
-    let lastError: unknown = null;
-
-    for (let attempt = 1; attempt <= 3; attempt += 1) {
-      try {
-        const daemon = await startDesktopDaemon();
-        const connection = connectionFromListen(daemon.listen);
-        if (!connection || !daemon.serverId) {
-          return;
-        }
-        await this.upsertHostConnection({
-          serverId: daemon.serverId,
-          label: daemon.hostname ?? undefined,
-          connection,
-        });
-        return;
-      } catch (error) {
-        lastError = error;
-        console.warn(`[HostRuntime] Failed to bootstrap desktop daemon (attempt ${attempt}/3)`, error);
-        if (attempt < 3) {
-          await new Promise((resolve) => {
-            setTimeout(resolve, attempt * 500);
-          });
-        }
+  async bootstrapDesktop(): Promise<HostRuntimeBootstrapResult> {
+    try {
+      const daemon = await startDesktopDaemon();
+      const listenAddress = daemon.listen.trim();
+      const serverId = daemon.serverId.trim();
+      if (!listenAddress) {
+        return {
+          ok: false,
+          error: "Desktop daemon did not return a listen address.",
+        };
       }
-    }
-
-    if (lastError) {
-      console.warn("[HostRuntime] Desktop daemon bootstrap exhausted retries", lastError);
+      if (!serverId) {
+        return {
+          ok: false,
+          error: "Desktop daemon did not return a server id.",
+        };
+      }
+      if (!connectionFromListen(listenAddress)) {
+        return {
+          ok: false,
+          error: `Desktop daemon returned an unsupported listen address: ${listenAddress}`,
+        };
+      }
+      return {
+        ok: true,
+        listenAddress,
+        serverId,
+        hostname: daemon.hostname,
+      };
+    } catch (error) {
+      return {
+        ok: false,
+        error: toErrorMessage(error),
+      };
     }
   }
 
@@ -1293,6 +1306,36 @@ export class HostRuntimeStore {
     const payload = decodeOfferFragmentPayload(encoded);
     const offer = ConnectionOfferSchema.parse(payload);
     return this.upsertConnectionFromOffer(offer);
+  }
+
+  async addConnectionFromListenAndWaitForOnline(input: {
+    listenAddress: string;
+    serverId: string;
+    hostname: string | null;
+    timeoutMs?: number;
+  }): Promise<HostProfile> {
+    const normalizedListenAddress = input.listenAddress.trim();
+    const serverId = input.serverId.trim();
+    const connection = connectionFromListen(normalizedListenAddress);
+    if (!connection) {
+      throw new Error(`Unsupported listen address: ${input.listenAddress}`);
+    }
+    if (!serverId) {
+      throw new Error("Desktop daemon did not return a server id.");
+    }
+    const profile = await this.upsertHostConnection({
+      serverId,
+      label: input.hostname ?? undefined,
+      connection,
+    });
+
+    await this.waitForConnectionOnline({
+      serverId,
+      connectionId: connection.id,
+      timeoutMs: input.timeoutMs,
+    });
+
+    return profile;
   }
 
   async renameHost(serverId: string, label: string): Promise<void> {
@@ -1454,6 +1497,100 @@ export class HostRuntimeStore {
         });
       this.emit(host.serverId);
     }
+  }
+
+  private waitForConnectionOnline(input: {
+    serverId: string;
+    connectionId: string;
+    timeoutMs?: number;
+  }): Promise<void> {
+    const { serverId, connectionId } = input;
+    const timeoutMs = input.timeoutMs ?? CONNECTION_ONLINE_TIMEOUT_MS;
+
+    return new Promise((resolve, reject) => {
+      let settled = false;
+      let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
+
+      const cleanup = (unsubscribe: (() => void) | null): void => {
+        if (timeoutHandle) {
+          clearTimeout(timeoutHandle);
+          timeoutHandle = null;
+        }
+        unsubscribe?.();
+      };
+
+      const settle = (
+        unsubscribe: (() => void) | null,
+        outcome: { ok: true } | { ok: false; error: Error },
+      ): void => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        cleanup(unsubscribe);
+        if (outcome.ok) {
+          resolve();
+        } else {
+          reject(outcome.error);
+        }
+      };
+
+      const readSnapshot = (): { ok: true } | { ok: false; error: Error } | null => {
+        const snapshot = this.getSnapshot(serverId);
+        if (!snapshot) {
+          return {
+            ok: false,
+            error: new Error(`Unknown host runtime for serverId ${serverId}`),
+          };
+        }
+
+        if (
+          snapshot.activeConnectionId === connectionId &&
+          snapshot.connectionStatus === "online"
+        ) {
+          return { ok: true };
+        }
+
+        if (
+          snapshot.activeConnectionId === connectionId &&
+          snapshot.connectionStatus === "error"
+        ) {
+          return {
+            ok: false,
+            error: new Error(snapshot.lastError ?? "Connection failed before coming online."),
+          };
+        }
+
+        return null;
+      };
+
+      const unsubscribe = this.subscribe(serverId, () => {
+        const outcome = readSnapshot();
+        if (outcome) {
+          settle(unsubscribe, outcome);
+        }
+      });
+
+      timeoutHandle = setTimeout(() => {
+        settle(unsubscribe, {
+          ok: false,
+          error: new Error(`Timed out waiting for connection ${connectionId} to come online.`),
+        });
+      }, timeoutMs);
+
+      const initialOutcome = readSnapshot();
+      if (initialOutcome) {
+        settle(unsubscribe, initialOutcome);
+        return;
+      }
+
+      void this.runProbeCycleNow(serverId).catch((error) => {
+        settle(unsubscribe, {
+          ok: false,
+          error: error instanceof Error ? error : new Error(String(error)),
+        });
+      });
+    });
   }
 
   private maybeAutoBootstrapAgentDirectory(serverId: string): void {

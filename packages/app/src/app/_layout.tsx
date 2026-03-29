@@ -15,7 +15,7 @@ import { PortalProvider } from "@gorhom/portal";
 import { VoiceProvider } from "@/contexts/voice-context";
 import { useAppSettings } from "@/hooks/use-settings";
 import { useFaviconStatus } from "@/hooks/use-favicon-status";
-import { View, ActivityIndicator, Text } from "react-native";
+import { View, Text } from "react-native";
 import { UnistylesRuntime, useUnistyles } from "react-native-unistyles";
 import { darkTheme } from "@/styles/theme";
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -26,13 +26,13 @@ import {
   useHostRuntimeClient,
 } from "@/runtime/host-runtime";
 import { shouldUseDesktopDaemon } from "@/desktop/daemon/desktop-daemon";
-import { StartupSplashScreen } from "@/screens/startup-splash-screen";
 import { loadSettingsFromStorage } from "@/hooks/use-settings";
 import { useColorScheme } from "@/hooks/use-color-scheme";
 import { SessionProvider } from "@/contexts/session-context";
 import type { HostProfile } from "@/types/host-connection";
 import {
   createContext,
+  useCallback,
   useContext,
   useState,
   useEffect,
@@ -81,7 +81,18 @@ import {
 import { syncNavigationActiveWorkspace } from "@/stores/navigation-active-workspace-store";
 
 polyfillCrypto();
-const HostRuntimeBootstrapContext = createContext(false);
+
+export type HostRuntimeBootstrapState = {
+  phase: "starting-daemon" | "connecting" | "online" | "error";
+  error: string | null;
+  retry: () => void;
+};
+
+const HostRuntimeBootstrapContext = createContext<HostRuntimeBootstrapState>({
+  phase: "starting-daemon",
+  error: null,
+  retry: () => {},
+});
 
 function PushNotificationRouter() {
   const router = useRouter();
@@ -209,49 +220,99 @@ function HostSessionManager() {
 }
 
 function HostRuntimeBootstrapProvider({ children }: { children: ReactNode }) {
-  const [ready, setReady] = useState(false);
+  const [phase, setPhase] = useState<HostRuntimeBootstrapState["phase"]>("starting-daemon");
+  const [error, setError] = useState<string | null>(null);
+  const [retryToken, setRetryToken] = useState(0);
+  const retry = useCallback(() => {
+    setPhase("starting-daemon");
+    setError(null);
+    setRetryToken((current) => current + 1);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
+    const shouldManageDesktop = shouldUseDesktopDaemon();
     const store = getHostRuntimeStore();
 
     const init = async () => {
       const settings = await loadSettingsFromStorage();
-      const isDesktopManaged = shouldUseDesktopDaemon() && settings.manageBuiltInDaemon;
+      const isDesktopManaged = shouldManageDesktop && settings.manageBuiltInDaemon;
       await store.loadFromStorage();
       if (isDesktopManaged) {
-        await store.bootstrap({ manageBuiltInDaemon: true });
+        setPhase("starting-daemon");
+        setError(null);
+        const bootstrapResult = await store.bootstrapDesktop();
+        if (!bootstrapResult.ok) {
+          if (!cancelled) {
+            setPhase("error");
+            setError(bootstrapResult.error);
+          }
+          return;
+        }
+
+        if (cancelled) {
+          return;
+        }
+
+        setPhase("connecting");
+        await store.addConnectionFromListenAndWaitForOnline({
+          listenAddress: bootstrapResult.listenAddress,
+          serverId: bootstrapResult.serverId,
+          hostname: bootstrapResult.hostname,
+        });
+        if (!cancelled) {
+          setPhase("online");
+          setError(null);
+        }
       } else {
         void store.bootstrap({ manageBuiltInDaemon: settings.manageBuiltInDaemon });
+        if (!cancelled) {
+          setPhase("online");
+          setError(null);
+        }
       }
     };
 
-    void init()
-      .then(() => {
-        if (!cancelled) {
-          setReady(true);
-        }
-      })
-      .catch((error) => {
-        console.error("[HostRuntime] Failed to initialize store", error);
-        if (!cancelled) {
-          setReady(true);
-        }
-      });
+    void init().catch((bootstrapError) => {
+      console.error("[HostRuntime] Failed to initialize store", bootstrapError);
+      if (cancelled) {
+        return;
+      }
+      if (shouldManageDesktop) {
+        setPhase("error");
+        setError(bootstrapError instanceof Error ? bootstrapError.message : String(bootstrapError));
+        return;
+      }
+      setPhase("online");
+      setError(null);
+    });
 
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [retryToken]);
+
+  const state = useMemo<HostRuntimeBootstrapState>(
+    () => ({
+      phase,
+      error,
+      retry,
+    }),
+    [error, phase, retry],
+  );
 
   return (
-    <HostRuntimeBootstrapContext.Provider value={ready}>
+    <HostRuntimeBootstrapContext.Provider value={state}>
       {children}
     </HostRuntimeBootstrapContext.Provider>
   );
 }
 
-function useStoreReady(): boolean {
+export function useStoreReady(): boolean {
+  return useContext(HostRuntimeBootstrapContext).phase === "online";
+}
+
+export function useHostRuntimeBootstrapState(): HostRuntimeBootstrapState {
   return useContext(HostRuntimeBootstrapContext);
 }
 
@@ -412,38 +473,30 @@ function MobileGestureWrapper({
 
 function ProvidersWrapper({ children }: { children: ReactNode }) {
   const { settings, isLoading: settingsLoading } = useAppSettings();
-  const storeReady = useStoreReady();
   const { upsertConnectionFromOfferUrl } = useHostMutations();
   const systemColorScheme = useColorScheme();
-  const isLoading = settingsLoading || !storeReady;
   const resolvedTheme = settings.theme === "auto" ? (systemColorScheme ?? "light") : settings.theme;
 
   // Apply theme setting on mount and when it changes
   useEffect(() => {
-    if (isLoading) return;
+    if (settingsLoading) return;
     if (settings.theme === "auto") {
       UnistylesRuntime.setAdaptiveThemes(true);
     } else {
       UnistylesRuntime.setAdaptiveThemes(false);
       UnistylesRuntime.setTheme(settings.theme);
     }
-  }, [isLoading, settings.theme]);
+  }, [settingsLoading, settings.theme]);
 
   useEffect(() => {
-    if (isLoading || Platform.OS !== "web") {
+    if (settingsLoading || Platform.OS !== "web") {
       return;
     }
 
     void setDesktopTitleBarTheme(resolvedTheme).catch((error) => {
       console.warn("[DesktopWindow] Failed to update title bar theme", error);
     });
-  }, [isLoading, resolvedTheme]);
-
-  if (isLoading) {
-    const isDesktopManaged =
-      !settingsLoading && shouldUseDesktopDaemon() && settings.manageBuiltInDaemon;
-    return isDesktopManaged ? <StartupSplashScreen /> : <LoadingView />;
-  }
+  }, [settingsLoading, resolvedTheme]);
 
   return (
     <VoiceProvider>
@@ -546,6 +599,38 @@ function FaviconStatusSync() {
   return null;
 }
 
+function RootStack() {
+  const storeReady = useStoreReady();
+
+  return (
+    <Stack
+      screenOptions={{
+        headerShown: false,
+        animation: "none",
+        contentStyle: {
+          backgroundColor: darkTheme.colors.surface0,
+        },
+      }}
+    >
+      <Stack.Protected guard={storeReady}>
+        <Stack.Screen name="welcome" />
+        <Stack.Screen name="settings" />
+        <Stack.Screen name="h/[serverId]/workspace/[workspaceId]" />
+        <Stack.Screen
+          name="h/[serverId]/agent/[agentId]"
+          options={{ gestureEnabled: false }}
+        />
+        <Stack.Screen name="h/[serverId]/index" />
+        <Stack.Screen name="h/[serverId]/sessions" />
+        <Stack.Screen name="h/[serverId]/open-project" />
+        <Stack.Screen name="h/[serverId]/settings" />
+        <Stack.Screen name="pair-scan" />
+      </Stack.Protected>
+      <Stack.Screen name="index" />
+    </Stack>
+  );
+}
+
 function NavigationActiveWorkspaceObserver() {
   const navigationRef = useNavigationContainerRef();
 
@@ -566,57 +651,6 @@ function NavigationActiveWorkspaceObserver() {
   return null;
 }
 
-function LoadingView({ message }: { message?: string } = {}) {
-  return (
-    <View
-      style={{
-        flex: 1,
-        justifyContent: "center",
-        alignItems: "center",
-        backgroundColor: darkTheme.colors.surface0,
-      }}
-    >
-      <ActivityIndicator size="large" color={darkTheme.colors.foreground} />
-      {message ? (
-        <Text
-          style={{
-            color: darkTheme.colors.foregroundMuted,
-            marginTop: 16,
-            fontSize: 14,
-          }}
-        >
-          {message}
-        </Text>
-      ) : null}
-    </View>
-  );
-}
-
-function MissingDaemonView() {
-  return (
-    <View
-      style={{
-        flex: 1,
-        justifyContent: "center",
-        alignItems: "center",
-        padding: 24,
-        backgroundColor: darkTheme.colors.surface0,
-      }}
-    >
-      <ActivityIndicator size="small" color={darkTheme.colors.foreground} />
-      <Text
-        style={{
-          color: darkTheme.colors.foreground,
-          marginTop: 16,
-          textAlign: "center",
-        }}
-      >
-        No host configured. Open Settings to add a server URL.
-      </Text>
-    </View>
-  );
-}
-
 export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: darkTheme.colors.surface0 }}>
@@ -633,28 +667,7 @@ export default function RootLayout() {
                       <HorizontalScrollProvider>
                         <ToastProvider>
                           <AppWithSidebar>
-                            <Stack
-                              screenOptions={{
-                                headerShown: false,
-                                animation: "none",
-                                contentStyle: {
-                                  backgroundColor: darkTheme.colors.surface0,
-                                },
-                              }}
-                            >
-                              <Stack.Screen name="index" />
-                              <Stack.Screen name="settings" />
-                              <Stack.Screen name="h/[serverId]/workspace/[workspaceId]" />
-                              <Stack.Screen
-                                name="h/[serverId]/agent/[agentId]"
-                                options={{ gestureEnabled: false }}
-                              />
-                              <Stack.Screen name="h/[serverId]/index" />
-                              <Stack.Screen name="h/[serverId]/sessions" />
-                              <Stack.Screen name="h/[serverId]/open-project" />
-                              <Stack.Screen name="h/[serverId]/settings" />
-                              <Stack.Screen name="pair-scan" />
-                            </Stack>
+                            <RootStack />
                           </AppWithSidebar>
                         </ToastProvider>
                       </HorizontalScrollProvider>
