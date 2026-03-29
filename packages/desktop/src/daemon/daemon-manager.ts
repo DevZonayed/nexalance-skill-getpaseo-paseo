@@ -1,7 +1,8 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { appendFileSync, existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { app, ipcMain } from "electron";
+import log from "electron-log/main";
 import { loadConfig, resolvePaseoHome, getOrCreateServerId } from "@getpaseo/server";
 import {
   copyAttachmentFileToManagedStorage,
@@ -27,7 +28,6 @@ const STOP_TIMEOUT_MS = 15_000;
 const KILL_TIMEOUT_MS = 3_000;
 const DETACHED_STARTUP_GRACE_MS = 1200;
 const DEFAULT_ELECTRON_DEV_SERVER_URL = "http://localhost:8081";
-const DAEMON_LAUNCH_LOG_FILENAME = "daemon-launch.log";
 
 type DesktopDaemonState = "starting" | "running" | "stopped" | "errored";
 
@@ -74,10 +74,6 @@ function pidFilePath(): string {
 
 function logFilePath(): string {
   return path.join(getPaseoHome(), DAEMON_LOG_FILENAME);
-}
-
-function launchLogFilePath(): string {
-  return path.join(getPaseoHome(), DAEMON_LAUNCH_LOG_FILENAME);
 }
 
 function isProcessRunning(pid: number): boolean {
@@ -145,22 +141,11 @@ function tailFile(filePath: string, lines = 50): string {
   }
 }
 
-function appendLaunchLog(message: string, details?: Record<string, unknown>): void {
-  const line = [
-    new Date().toISOString(),
-    "[desktop daemon]",
-    `pid=${process.pid}`,
-    message,
-    details ? JSON.stringify(details) : "",
-  ]
-    .filter((part) => part.length > 0)
-    .join(" ");
-
-  try {
-    appendFileSync(launchLogFilePath(), `${line}\n`, "utf-8");
-  } catch {
-    // Keep launch debugging best-effort so desktop startup behavior is unchanged.
-  }
+function logDesktopDaemonLifecycle(message: string, details?: Record<string, unknown>): void {
+  log.info("[desktop daemon]", message, {
+    pid: process.pid,
+    ...(details ?? {}),
+  });
 }
 
 function buildDesktopDaemonCorsOriginsEnv(): string | undefined {
@@ -326,7 +311,7 @@ async function startDaemon(): Promise<DesktopDaemonStatus> {
     },
   });
 
-  appendLaunchLog("starting detached daemon", {
+  logDesktopDaemonLifecycle("starting detached daemon", {
     appIsPackaged: app.isPackaged,
     daemonRunnerEntry: daemonRunner.entryPath,
     daemonRunnerExecArgv: daemonRunner.execArgv,
@@ -346,7 +331,7 @@ async function startDaemon(): Promise<DesktopDaemonStatus> {
     },
   );
 
-  appendLaunchLog("detached spawn returned", {
+  logDesktopDaemonLifecycle("detached spawn returned", {
     childPid: child.pid ?? null,
     spawnfile: child.spawnfile,
     spawnargs: child.spawnargs,
@@ -366,14 +351,14 @@ async function startDaemon(): Promise<DesktopDaemonStatus> {
     const timer = setTimeout(() => finish(false), DETACHED_STARTUP_GRACE_MS);
 
     child.once("error", () => {
-      appendLaunchLog("detached child emitted error during grace period", {
+      logDesktopDaemonLifecycle("detached child emitted error during grace period", {
         childPid: child.pid ?? null,
       });
       clearTimeout(timer);
       finish(true);
     });
     child.once("exit", () => {
-      appendLaunchLog("detached child emitted exit during grace period", {
+      logDesktopDaemonLifecycle("detached child emitted exit during grace period", {
         childPid: child.pid ?? null,
       });
       clearTimeout(timer);
@@ -381,7 +366,7 @@ async function startDaemon(): Promise<DesktopDaemonStatus> {
     });
   });
 
-  appendLaunchLog("detached startup grace period completed", {
+  logDesktopDaemonLifecycle("detached startup grace period completed", {
     childPid: child.pid ?? null,
     exitedEarly,
   });
@@ -395,7 +380,7 @@ async function startDaemon(): Promise<DesktopDaemonStatus> {
   for (let attempt = 0; attempt < STARTUP_POLL_MAX_ATTEMPTS; attempt++) {
     const status = resolveStatus();
     if (attempt === 0 || attempt === STARTUP_POLL_MAX_ATTEMPTS - 1 || attempt % 10 === 9) {
-      appendLaunchLog("polling daemon status after detached start", {
+      logDesktopDaemonLifecycle("polling daemon status after detached start", {
         attempt: attempt + 1,
         status: status.status,
         pid: status.pid,

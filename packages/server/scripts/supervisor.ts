@@ -1,5 +1,4 @@
 import { fork, spawn, type ChildProcess } from "child_process";
-import { appendFileSync } from "node:fs";
 
 type WorkerLifecycleMessage =
   | {
@@ -13,7 +12,6 @@ type WorkerLifecycleMessage =
 type SupervisorOptions = {
   name: string;
   startupMessage: string;
-  launchLogPath?: string;
   resolveWorkerEntry: () => string;
   workerArgs?: string[];
   workerEnv?: NodeJS.ProcessEnv;
@@ -65,28 +63,6 @@ export function runSupervisor(options: SupervisorOptions): void {
     process.stderr.write(`[${options.name}] ${message}\n`);
   };
 
-  const logLaunch = (message: string, details?: Record<string, unknown>): void => {
-    if (!options.launchLogPath) {
-      return;
-    }
-
-    const line = [
-      new Date().toISOString(),
-      `[${options.name}]`,
-      `pid=${process.pid}`,
-      message,
-      details ? JSON.stringify(details) : "",
-    ]
-      .filter((part) => part.length > 0)
-      .join(" ");
-
-    try {
-      appendFileSync(options.launchLogPath, `${line}\n`, "utf-8");
-    } catch {
-      // Keep launch debugging best-effort so daemon startup behavior is unchanged.
-    }
-  };
-
   const exitSupervisor = (code: number): void => {
     if (exiting) {
       return;
@@ -116,22 +92,11 @@ export function runSupervisor(options: SupervisorOptions): void {
 
     const spawnSpec = resolveWorkerSpawnSpec?.(workerEntry) ?? null;
     if (spawnSpec) {
-      logLaunch("spawning worker via explicit spawn spec", {
-        workerEntry,
-        command: spawnSpec.command,
-        args: spawnSpec.args,
-        workerArgs,
-      });
       child = spawn(spawnSpec.command, spawnSpec.args, {
         stdio: ["inherit", "inherit", "inherit", "ipc"],
         env: spawnSpec.env ?? workerEnv,
       });
     } else {
-      logLaunch("spawning worker via fork", {
-        workerEntry,
-        workerArgs,
-        workerExecArgv,
-      });
       child = fork(workerEntry, workerArgs, {
         stdio: "inherit",
         env: workerEnv,
@@ -139,35 +104,8 @@ export function runSupervisor(options: SupervisorOptions): void {
       });
     }
 
-    logLaunch("worker spawn returned", {
-      childPid: child.pid ?? null,
-      connected: child.connected,
-      spawnfile: child.spawnfile,
-      spawnargs: child.spawnargs,
-    });
-
-    child.on("spawn", () => {
-      logLaunch("worker emitted spawn", {
-        childPid: child?.pid ?? null,
-      });
-    });
-
-    child.on("error", (error) => {
-      logLaunch("worker emitted error", {
-        childPid: child?.pid ?? null,
-        message: error.message,
-      });
-    });
-
     child.on("message", (msg: unknown) => {
       const lifecycleMessage = parseLifecycleMessage(msg);
-      logLaunch("worker emitted ipc message", {
-        childPid: child?.pid ?? null,
-        rawType:
-          typeof msg === "object" && msg !== null && "type" in msg
-            ? (msg as { type?: unknown }).type
-            : typeof msg,
-      });
       if (!lifecycleMessage) {
         return;
       }
@@ -181,13 +119,6 @@ export function runSupervisor(options: SupervisorOptions): void {
     });
 
     child.on("exit", (code, signal) => {
-      logLaunch("worker emitted exit", {
-        childPid: child?.pid ?? null,
-        code,
-        signal,
-        restarting,
-        shuttingDown,
-      });
       const exitDescriptor = describeExit(code, signal);
 
       if (shuttingDown) {
@@ -205,20 +136,6 @@ export function runSupervisor(options: SupervisorOptions): void {
 
       log(`Worker exited (${exitDescriptor}). Supervisor exiting.`);
       exitSupervisor(typeof code === "number" ? code : 0);
-    });
-
-    child.on("close", (code, signal) => {
-      logLaunch("worker emitted close", {
-        childPid: child?.pid ?? null,
-        code,
-        signal,
-      });
-    });
-
-    child.on("disconnect", () => {
-      logLaunch("worker emitted disconnect", {
-        childPid: child?.pid ?? null,
-      });
     });
   };
 
@@ -252,12 +169,6 @@ export function runSupervisor(options: SupervisorOptions): void {
   process.on("SIGINT", () => forwardSignal("SIGINT"));
   process.on("SIGTERM", () => forwardSignal("SIGTERM"));
 
-  logLaunch("supervisor starting", {
-    startupMessage: options.startupMessage,
-    restartOnCrash,
-    workerArgs,
-    workerExecArgv,
-  });
   process.stdout.write(`[${options.name}] ${options.startupMessage}\n`);
   spawnWorker();
 }

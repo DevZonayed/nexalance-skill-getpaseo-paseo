@@ -1,5 +1,5 @@
 import { spawn, spawnSync } from "node:child_process";
-import { appendFileSync, existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { loadConfig, resolvePaseoHome } from "@getpaseo/server";
@@ -64,7 +64,6 @@ const DETACHED_STARTUP_GRACE_MS = 1200;
 const PID_POLL_INTERVAL_MS = 100;
 const KILL_TIMEOUT_MS = 3000;
 const DAEMON_LOG_FILENAME = "daemon.log";
-const DAEMON_LAUNCH_LOG_FILENAME = "daemon-launch.log";
 const DAEMON_PID_FILENAME = "paseo.pid";
 
 export const DEFAULT_STOP_TIMEOUT_MS = 15_000;
@@ -113,24 +112,6 @@ function buildChildEnv(options: DaemonStartOptions): NodeJS.ProcessEnv {
     childEnv.PASEO_ALLOWED_HOSTS = options.allowedHosts;
   }
   return childEnv;
-}
-
-function appendLaunchLog(home: string, message: string, details?: Record<string, unknown>): void {
-  const line = [
-    new Date().toISOString(),
-    "[CLI daemon]",
-    `pid=${process.pid}`,
-    message,
-    details ? JSON.stringify(details) : "",
-  ]
-    .filter((part) => part.length > 0)
-    .join(" ");
-
-  try {
-    appendFileSync(path.join(home, DAEMON_LAUNCH_LOG_FILENAME), `${line}\n`, "utf-8");
-  } catch {
-    // Keep launch debugging best-effort so daemon startup behavior is unchanged.
-  }
 }
 
 function resolveDaemonRunnerEntry(): string {
@@ -373,14 +354,6 @@ export async function startLocalDaemonDetached(
   const paseoHome = resolvePaseoHome(childEnv);
   const logPath = path.join(paseoHome, DAEMON_LOG_FILENAME);
   const daemonRunnerEntry = resolveDaemonRunnerEntry();
-  appendLaunchLog(paseoHome, "starting detached daemon", {
-    execPath: process.execPath,
-    execArgv: process.execArgv,
-    daemonRunnerEntry,
-    runnerArgs: buildRunnerArgs(options),
-    listen: childEnv.PASEO_LISTEN ?? null,
-    allowedHosts: childEnv.PASEO_ALLOWED_HOSTS ?? null,
-  });
   const child = spawn(
     process.execPath,
     [...process.execArgv, daemonRunnerEntry, ...buildRunnerArgs(options)],
@@ -390,12 +363,6 @@ export async function startLocalDaemonDetached(
       stdio: ["ignore", "ignore", "ignore"],
     },
   );
-
-  appendLaunchLog(paseoHome, "detached spawn returned", {
-    childPid: child.pid ?? null,
-    spawnfile: child.spawnfile,
-    spawnargs: child.spawnargs,
-  });
 
   child.unref();
 
@@ -411,31 +378,14 @@ export async function startLocalDaemonDetached(
     const timer = setTimeout(() => finish(startupReady()), DETACHED_STARTUP_GRACE_MS);
 
     child.once("error", (error) => {
-      appendLaunchLog(paseoHome, "detached child emitted error during grace period", {
-        childPid: child.pid ?? null,
-        message: error.message,
-      });
       clearTimeout(timer);
       finish(startupExited({ code: null, signal: null, error }));
     });
 
     child.once("exit", (code, signal) => {
-      appendLaunchLog(paseoHome, "detached child emitted exit during grace period", {
-        childPid: child.pid ?? null,
-        code,
-        signal,
-      });
       clearTimeout(timer);
       finish(startupExited({ code, signal }));
     });
-  });
-
-  appendLaunchLog(paseoHome, "detached startup grace period completed", {
-    childPid: child.pid ?? null,
-    exitedEarly: startup.exitedEarly,
-    code: startup.exitedEarly ? startup.code : null,
-    signal: startup.exitedEarly ? startup.signal : null,
-    error: startup.exitedEarly ? startup.error?.message ?? null : null,
   });
 
   if (startup.exitedEarly) {
