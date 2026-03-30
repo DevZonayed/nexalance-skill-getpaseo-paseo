@@ -730,7 +730,7 @@ describe("daemon E2E", () => {
   });
 
   describe("archivePaseoWorktree", () => {
-    test("archives worktree by running destroy commands and shutting down worktree terminals", async () => {
+    test("archives worktree by running teardown commands and shutting down worktree terminals", async () => {
       const repoRoot = tmpCwd();
 
       const { execSync } = await import("child_process");
@@ -749,7 +749,7 @@ describe("daemon E2E", () => {
       });
       execSync("git branch -M main", { cwd: repoRoot, stdio: "pipe" });
 
-      const destroyMarkerPath = path.join(repoRoot, "destroy-marker.txt");
+      const teardownMarkerPath = path.join(repoRoot, "teardown-marker.txt");
       writeFileSync(
         path.join(repoRoot, "paseo.json"),
         JSON.stringify({
@@ -760,12 +760,12 @@ describe("daemon E2E", () => {
                 command: 'echo "dev-server" > dev-terminal.txt; tail -f /dev/null',
               },
             ],
-            destroy: [`echo "$PASEO_WORKTREE_PATH" > "${destroyMarkerPath}"`],
+            teardown: [`echo "$PASEO_WORKTREE_PATH" > "${teardownMarkerPath}"`],
           },
         }),
       );
       execSync("git add paseo.json", { cwd: repoRoot, stdio: "pipe" });
-      execSync("git -c commit.gpgsign=false commit -m 'add worktree terminal + destroy'", {
+      execSync("git -c commit.gpgsign=false commit -m 'add worktree terminal + teardown'", {
         cwd: repoRoot,
         stdio: "pipe",
       });
@@ -813,8 +813,8 @@ describe("daemon E2E", () => {
       expect(archive.removedAgents).toContain(agent.id);
 
       expect(existsSync(agent.cwd)).toBe(false);
-      expect(existsSync(destroyMarkerPath)).toBe(true);
-      expect(readFileSync(destroyMarkerPath, "utf8").trim()).toBe(agent.cwd);
+      expect(existsSync(teardownMarkerPath)).toBe(true);
+      expect(readFileSync(teardownMarkerPath, "utf8").trim()).toBe(agent.cwd);
 
       const afterArchiveDirectories = ctx.daemon.daemon.terminalManager.listDirectories();
       expect(afterArchiveDirectories).not.toContain(agent.cwd);

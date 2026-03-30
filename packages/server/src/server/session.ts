@@ -136,22 +136,12 @@ import { DownloadTokenStore } from "./file-download/token-store.js";
 import { PushTokenStore } from "./push/token-store.js";
 import {
   type WorktreeConfig,
-  computeWorktreePath,
-  getWorktreeSetupCommands,
-  resolveWorktreeRuntimeEnv,
-  slugify,
-  validateBranchSlug,
-  listPaseoWorktrees,
-  deletePaseoWorktree,
-  isPaseoOwnedWorktreeCwd,
-  resolvePaseoWorktreeRootForCwd,
 } from "../utils/worktree.js";
-import { createAgentWorktree, runAsyncWorktreeBootstrap } from "./worktree-bootstrap.js";
+import { runAsyncWorktreeBootstrap } from "./worktree-bootstrap.js";
 import {
   getCheckoutDiff,
   getCheckoutShortstat,
   getCheckoutStatus,
-  getCheckoutStatusLite,
   listBranchSuggestions,
   commitChanges,
   mergeToBase,
@@ -159,7 +149,6 @@ import {
   pushCurrentBranch,
   createPullRequest,
   getPullRequestStatus,
-  resolveRepositoryDefaultBranch,
 } from "../utils/checkout-git.js";
 import { getProjectIcon } from "../utils/project-icon.js";
 import { expandTilde } from "../utils/path.js";
@@ -182,6 +171,16 @@ import {
 import { notifyChatMentions } from "./chat/chat-mentions.js";
 import { LoopService } from "./loop-service.js";
 import { ScheduleService } from "./schedule/service.js";
+import {
+  assertSafeGitRef as assertWorktreeSafeGitRef,
+  buildAgentSessionConfig as buildWorktreeAgentSessionConfig,
+  createPaseoWorktreeInBackground as createWorktreeInBackgroundSession,
+  handleCreatePaseoWorktreeRequest as handleCreateWorktreeRequest,
+  handlePaseoWorktreeArchiveRequest as handleWorktreeArchiveRequest,
+  handlePaseoWorktreeListRequest as handleWorktreeListRequest,
+  killTerminalsUnderPath as killWorktreeTerminalsUnderPath,
+  registerPendingWorktreeWorkspace as registerPendingWorktreeWorkspaceSession,
+} from "./worktree-session.js";
 
 const execAsync = promisify(exec);
 const MAX_INITIAL_AGENT_TITLE_CHARS = Math.min(60, MAX_EXPLICIT_AGENT_TITLE_CHARS);
@@ -236,14 +235,6 @@ type WorkspaceGitWatchTarget = {
   refreshPromise: Promise<void> | null;
   refreshQueued: boolean;
   latestFingerprint: string | null;
-};
-
-type NormalizedGitOptions = {
-  baseBranch?: string;
-  createNewBranch: boolean;
-  newBranchName?: string;
-  createWorktree: boolean;
-  worktreeSlug?: string;
 };
 
 type ActiveTerminalStream = {
@@ -330,7 +321,6 @@ const MIN_STREAMING_SEGMENT_DURATION_MS = 1000;
 const MIN_STREAMING_SEGMENT_BYTES = Math.round(
   PCM_BYTES_PER_MS * MIN_STREAMING_SEGMENT_DURATION_MS,
 );
-const SAFE_GIT_REF_PATTERN = /^[A-Za-z0-9._\/-]+$/;
 const AgentIdSchema = z.string().uuid();
 const VOICE_MCP_SERVER_NAME = "paseo_voice";
 const VOICE_INTERRUPT_CONFIRMATION_MS = 500;
@@ -2904,70 +2894,18 @@ export class Session {
     legacyWorktreeName?: string,
     _labels?: Record<string, string>,
   ): Promise<{ sessionConfig: AgentSessionConfig; worktreeConfig?: WorktreeConfig }> {
-    let cwd = expandTilde(config.cwd);
-    const normalized = this.normalizeGitOptions(gitOptions, legacyWorktreeName);
-    let worktreeConfig: WorktreeConfig | undefined;
-
-    if (!normalized) {
-      return {
-        sessionConfig: {
-          ...config,
-          cwd,
-        },
-      };
-    }
-
-    if (normalized.createWorktree) {
-      let targetBranch: string;
-
-      if (normalized.createNewBranch) {
-        targetBranch = normalized.newBranchName!;
-      } else {
-        // Resolve current branch name from HEAD
-        const { stdout } = await execAsync("git rev-parse --abbrev-ref HEAD", {
-          cwd,
-          env: READ_ONLY_GIT_ENV,
-        });
-        targetBranch = stdout.trim();
-      }
-
-      if (!targetBranch) {
-        throw new Error("A branch name is required when creating a worktree.");
-      }
-
-      this.sessionLogger.info(
-        { worktreeSlug: normalized.worktreeSlug ?? targetBranch, branch: targetBranch },
-        `Creating worktree '${normalized.worktreeSlug ?? targetBranch}' for branch ${targetBranch}`,
-      );
-
-      const baseBranch = normalized.baseBranch ?? (await this.resolveGitCreateBaseBranch(cwd));
-      const createdWorktree = await createAgentWorktree({
-        branchName: targetBranch,
-        cwd,
-        baseBranch,
-        worktreeSlug: normalized.worktreeSlug ?? targetBranch,
+    return buildWorktreeAgentSessionConfig(
+      {
         paseoHome: this.paseoHome,
-      });
-      cwd = createdWorktree.worktreePath;
-      worktreeConfig = createdWorktree;
-    } else if (normalized.createNewBranch) {
-      const baseBranch = normalized.baseBranch ?? (await this.resolveGitCreateBaseBranch(cwd));
-      await this.createBranchFromBase({
-        cwd,
-        baseBranch,
-        newBranchName: normalized.newBranchName!,
-      });
-    } else if (normalized.baseBranch) {
-      await this.checkoutExistingBranch(cwd, normalized.baseBranch);
-    }
-
-    return {
-      sessionConfig: {
-        ...config,
-        cwd,
+        sessionLogger: this.sessionLogger,
+        checkoutExistingBranch: (cwd, branch) => this.checkoutExistingBranch(cwd, branch),
+        createBranchFromBase: (params) => this.createBranchFromBase(params),
       },
-      worktreeConfig,
-    };
+      config,
+      gitOptions,
+      legacyWorktreeName,
+      _labels,
+    );
   }
 
   private async handleListProviderModelsRequest(
@@ -3034,84 +2972,8 @@ export class Session {
     }
   }
 
-  private normalizeGitOptions(
-    gitOptions?: GitSetupOptions,
-    legacyWorktreeName?: string,
-  ): NormalizedGitOptions | null {
-    const fallbackOptions: GitSetupOptions | undefined = legacyWorktreeName
-      ? {
-          createWorktree: true,
-          createNewBranch: true,
-          newBranchName: legacyWorktreeName,
-          worktreeSlug: legacyWorktreeName,
-        }
-      : undefined;
-
-    const merged = gitOptions ?? fallbackOptions;
-    if (!merged) {
-      return null;
-    }
-
-    const baseBranch = merged.baseBranch?.trim() || undefined;
-    const createWorktree = Boolean(merged.createWorktree);
-    const createNewBranch = Boolean(merged.createNewBranch);
-    const normalizedBranchName = merged.newBranchName ? slugify(merged.newBranchName) : undefined;
-    const normalizedWorktreeSlug = merged.worktreeSlug
-      ? slugify(merged.worktreeSlug)
-      : normalizedBranchName;
-
-    if (!createWorktree && !createNewBranch && !baseBranch) {
-      return null;
-    }
-
-    if (baseBranch) {
-      this.assertSafeGitRef(baseBranch, "base branch");
-    }
-
-    if (createNewBranch) {
-      if (!normalizedBranchName) {
-        throw new Error("New branch name is required");
-      }
-      const validation = validateBranchSlug(normalizedBranchName);
-      if (!validation.valid) {
-        throw new Error(`Invalid branch name: ${validation.error}`);
-      }
-    }
-
-    if (normalizedWorktreeSlug) {
-      const validation = validateBranchSlug(normalizedWorktreeSlug);
-      if (!validation.valid) {
-        throw new Error(`Invalid worktree name: ${validation.error}`);
-      }
-    }
-
-    return {
-      baseBranch,
-      createNewBranch,
-      newBranchName: normalizedBranchName,
-      createWorktree,
-      worktreeSlug: normalizedWorktreeSlug,
-    };
-  }
-
   private assertSafeGitRef(ref: string, label: string): void {
-    if (!SAFE_GIT_REF_PATTERN.test(ref) || ref.includes("..") || ref.includes("@{")) {
-      throw new Error(`Invalid ${label}: ${ref}`);
-    }
-  }
-
-  private async resolveGitCreateBaseBranch(cwd: string): Promise<string> {
-    const checkout = await getCheckoutStatusLite(cwd, { paseoHome: this.paseoHome });
-    if (!checkout.isGit) {
-      throw new Error("Cannot create a worktree outside a git repository");
-    }
-
-    const repoRoot = checkout.isPaseoOwnedWorktree ? checkout.mainRepoRoot : cwd;
-    const baseBranch = await resolveRepositoryDefaultBranch(repoRoot);
-    if (!baseBranch) {
-      throw new Error("Unable to resolve repository default branch");
-    }
-    return baseBranch;
+    assertWorktreeSafeGitRef(ref, label);
   }
 
   private isPathWithinRoot(rootPath: string, candidatePath: string): boolean {
@@ -4346,193 +4208,32 @@ export class Session {
   private async handlePaseoWorktreeListRequest(
     msg: Extract<SessionInboundMessage, { type: "paseo_worktree_list_request" }>,
   ): Promise<void> {
-    const { requestId } = msg;
-    const cwd = msg.repoRoot ?? msg.cwd;
-    if (!cwd) {
-      this.emit({
-        type: "paseo_worktree_list_response",
-        payload: {
-          worktrees: [],
-          error: { code: "UNKNOWN", message: "cwd or repoRoot is required" },
-          requestId,
-        },
-      });
-      return;
-    }
-
-    try {
-      const worktrees = await listPaseoWorktrees({ cwd, paseoHome: this.paseoHome });
-      this.emit({
-        type: "paseo_worktree_list_response",
-        payload: {
-          worktrees: worktrees.map((entry) => ({
-            worktreePath: entry.path,
-            createdAt: entry.createdAt,
-            branchName: entry.branchName ?? null,
-            head: entry.head ?? null,
-          })),
-          error: null,
-          requestId,
-        },
-      });
-    } catch (error) {
-      this.emit({
-        type: "paseo_worktree_list_response",
-        payload: {
-          worktrees: [],
-          error: toCheckoutError(error),
-          requestId,
-        },
-      });
-    }
-  }
-
-  private async archivePaseoWorktree(options: {
-    targetPath: string;
-    repoRoot: string;
-    requestId: string;
-  }): Promise<string[]> {
-    let targetPath = options.targetPath;
-    const resolvedWorktree = await resolvePaseoWorktreeRootForCwd(targetPath, {
-      paseoHome: this.paseoHome,
-    });
-    if (resolvedWorktree) {
-      targetPath = resolvedWorktree.worktreePath;
-    }
-
-    const removedAgents = new Set<string>();
-    const affectedWorkspaceCwds = new Set<string>([targetPath]);
-    const affectedWorkspaceIds = new Set<string>([normalizePersistedWorkspaceId(targetPath)]);
-    const agents = this.agentManager.listAgents();
-    for (const agent of agents) {
-      if (this.isPathWithinRoot(targetPath, agent.cwd)) {
-        removedAgents.add(agent.id);
-        affectedWorkspaceCwds.add(agent.cwd);
-        affectedWorkspaceIds.add(normalizePersistedWorkspaceId(agent.cwd));
-        try {
-          await this.agentManager.closeAgent(agent.id);
-        } catch {
-          // ignore cleanup errors
-        }
-        try {
-          await this.agentStorage.remove(agent.id);
-        } catch {
-          // ignore cleanup errors
-        }
-      }
-    }
-
-    const registryRecords = await this.agentStorage.list();
-    for (const record of registryRecords) {
-      if (this.isPathWithinRoot(targetPath, record.cwd)) {
-        removedAgents.add(record.id);
-        affectedWorkspaceCwds.add(record.cwd);
-        affectedWorkspaceIds.add(normalizePersistedWorkspaceId(record.cwd));
-        try {
-          await this.agentStorage.remove(record.id);
-        } catch {
-          // ignore cleanup errors
-        }
-      }
-    }
-
-    await this.killTerminalsUnderPath(targetPath);
-
-    await deletePaseoWorktree({
-      cwd: options.repoRoot,
-      worktreePath: targetPath,
-      paseoHome: this.paseoHome,
-    });
-
-    for (const workspaceId of affectedWorkspaceIds) {
-      await this.archiveWorkspaceRecord(workspaceId);
-    }
-
-    for (const agentId of removedAgents) {
-      this.emit({
-        type: "agent_deleted",
-        payload: {
-          agentId,
-          requestId: options.requestId,
-        },
-      });
-    }
-
-    await this.emitWorkspaceUpdatesForCwds(affectedWorkspaceCwds);
-
-    return Array.from(removedAgents);
+    return handleWorktreeListRequest(
+      {
+        emit: (message) => this.emit(message),
+        paseoHome: this.paseoHome,
+      },
+      msg,
+    );
   }
 
   private async handlePaseoWorktreeArchiveRequest(
     msg: Extract<SessionInboundMessage, { type: "paseo_worktree_archive_request" }>,
   ): Promise<void> {
-    const { requestId } = msg;
-    let targetPath = msg.worktreePath;
-    let repoRoot = msg.repoRoot ?? null;
-
-    try {
-      if (!targetPath) {
-        if (!repoRoot || !msg.branchName) {
-          throw new Error("worktreePath or repoRoot+branchName is required");
-        }
-        const worktrees = await listPaseoWorktrees({ cwd: repoRoot, paseoHome: this.paseoHome });
-        const match = worktrees.find((entry) => entry.branchName === msg.branchName);
-        if (!match) {
-          throw new Error(`Paseo worktree not found for branch ${msg.branchName}`);
-        }
-        targetPath = match.path;
-      }
-
-      const ownership = await isPaseoOwnedWorktreeCwd(targetPath, {
+    return handleWorktreeArchiveRequest(
+      {
         paseoHome: this.paseoHome,
-      });
-      if (!ownership.allowed) {
-        this.emit({
-          type: "paseo_worktree_archive_response",
-          payload: {
-            success: false,
-            removedAgents: [],
-            error: {
-              code: "NOT_ALLOWED",
-              message: "Worktree is not a Paseo-owned worktree",
-            },
-            requestId,
-          },
-        });
-        return;
-      }
-
-      repoRoot = ownership.repoRoot ?? repoRoot ?? null;
-      if (!repoRoot) {
-        throw new Error("Unable to resolve repo root for worktree");
-      }
-
-      const removedAgents = await this.archivePaseoWorktree({
-        targetPath,
-        repoRoot,
-        requestId,
-      });
-
-      this.emit({
-        type: "paseo_worktree_archive_response",
-        payload: {
-          success: true,
-          removedAgents,
-          error: null,
-          requestId,
-        },
-      });
-    } catch (error) {
-      this.emit({
-        type: "paseo_worktree_archive_response",
-        payload: {
-          success: false,
-          removedAgents: [],
-          error: toCheckoutError(error),
-          requestId,
-        },
-      });
-    }
+        agentManager: this.agentManager,
+        agentStorage: this.agentStorage,
+        archiveWorkspaceRecord: (workspaceId) => this.archiveWorkspaceRecord(workspaceId),
+        emit: (message) => this.emit(message),
+        emitWorkspaceUpdatesForCwds: (cwds) => this.emitWorkspaceUpdatesForCwds(cwds),
+        isPathWithinRoot: (rootPath, candidatePath) =>
+          this.isPathWithinRoot(rootPath, candidatePath),
+        killTerminalsUnderPath: (rootPath) => this.killTerminalsUnderPath(rootPath),
+      },
+      msg,
+    );
   }
 
   /**
@@ -5543,50 +5244,20 @@ export class Session {
     worktreePath: string;
     branchName: string;
   }): Promise<PersistedWorkspaceRecord> {
-    const workspaceId = normalizePersistedWorkspaceId(options.worktreePath);
-    const basePlacement = await this.buildProjectPlacement(options.repoRoot);
-    const placement: ProjectPlacementPayload = {
-      ...basePlacement,
-      checkout: {
-        cwd: workspaceId,
-        isGit: true,
-        currentBranch: options.branchName,
-        remoteUrl: basePlacement.checkout.remoteUrl,
-        isPaseoOwnedWorktree: true,
-        mainRepoRoot: options.repoRoot,
+    return registerPendingWorktreeWorkspaceSession(
+      {
+        buildPersistedProjectRecord: (input) => this.buildPersistedProjectRecord(input),
+        buildPersistedWorkspaceRecord: (input) => this.buildPersistedWorkspaceRecord(input),
+        buildProjectPlacement: (cwd) => this.buildProjectPlacement(cwd),
+        projectRegistry: this.projectRegistry,
+        syncWorkspaceGitWatchTarget: (cwd, syncOptions) =>
+          this.syncWorkspaceGitWatchTarget(cwd, syncOptions),
+        workspaceRegistry: this.workspaceRegistry,
+        archiveProjectRecordIfEmpty: (projectId, archivedAt) =>
+          this.archiveProjectRecordIfEmpty(projectId, archivedAt),
       },
-    };
-    const now = new Date().toISOString();
-    const existingWorkspace = await this.workspaceRegistry.get(workspaceId);
-    const existingProject = await this.projectRegistry.get(placement.projectKey);
-    const nextProjectRecord = this.buildPersistedProjectRecord({
-      workspaceId,
-      placement,
-      createdAt: existingProject?.createdAt ?? now,
-      updatedAt: now,
-    });
-    const nextWorkspaceRecord = this.buildPersistedWorkspaceRecord({
-      workspaceId,
-      placement,
-      createdAt: existingWorkspace?.createdAt ?? now,
-      updatedAt: now,
-    });
-
-    await this.projectRegistry.upsert(nextProjectRecord);
-    await this.workspaceRegistry.upsert(nextWorkspaceRecord);
-    await this.syncWorkspaceGitWatchTarget(workspaceId, {
-      isGit: placement.checkout.isGit,
-    });
-
-    if (
-      existingWorkspace &&
-      !existingWorkspace.archivedAt &&
-      existingWorkspace.projectId !== nextWorkspaceRecord.projectId
-    ) {
-      await this.archiveProjectRecordIfEmpty(existingWorkspace.projectId, now);
-    }
-
-    return nextWorkspaceRecord;
+      options,
+    );
   }
 
   private async archiveWorkspaceRecord(workspaceId: string, archivedAt?: string): Promise<void> {
@@ -5849,64 +5520,18 @@ export class Session {
   private async handleCreatePaseoWorktreeRequest(
     request: Extract<SessionInboundMessage, { type: "create_paseo_worktree_request" }>,
   ): Promise<void> {
-    try {
-      const checkout = await getCheckoutStatusLite(request.cwd, { paseoHome: this.paseoHome });
-      if (!checkout.isGit) {
-        throw new Error("Create worktree requires a git repository");
-      }
-
-      const repoRoot = checkout.isPaseoOwnedWorktree ? checkout.mainRepoRoot : request.cwd;
-      const baseBranch = await resolveRepositoryDefaultBranch(repoRoot);
-      if (!baseBranch) {
-        throw new Error("Unable to resolve repository default branch");
-      }
-
-      const normalizedSlug = request.worktreeSlug ? slugify(request.worktreeSlug) : uuidv4();
-      const validation = validateBranchSlug(normalizedSlug);
-      if (!validation.valid) {
-        throw new Error(`Invalid worktree name: ${validation.error}`);
-      }
-
-      const worktreePath = await computeWorktreePath(repoRoot, normalizedSlug, this.paseoHome);
-      const workspace = await this.registerPendingWorktreeWorkspace({
-        repoRoot,
-        worktreePath,
-        branchName: normalizedSlug,
-      });
-      const descriptor = await this.describeWorkspaceRecord(workspace);
-      this.emit({
-        type: "create_paseo_worktree_response",
-        payload: {
-          workspace: descriptor,
-          error: null,
-          setupTerminalId: null,
-          requestId: request.requestId,
-        },
-      });
-
-      void this.createPaseoWorktreeInBackground({
-        requestCwd: request.cwd,
-        repoRoot,
-        baseBranch,
-        slug: normalizedSlug,
-        worktreePath,
-      });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Failed to create worktree";
-      this.sessionLogger.error(
-        { err: error, cwd: request.cwd, worktreeSlug: request.worktreeSlug },
-        "Failed to create worktree",
-      );
-      this.emit({
-        type: "create_paseo_worktree_response",
-        payload: {
-          workspace: null,
-          error: message,
-          setupTerminalId: null,
-          requestId: request.requestId,
-        },
-      });
-    }
+    return handleCreateWorktreeRequest(
+      {
+        paseoHome: this.paseoHome,
+        describeWorkspaceRecord: (workspace) => this.describeWorkspaceRecord(workspace),
+        emit: (message) => this.emit(message),
+        registerPendingWorktreeWorkspace: (options) =>
+          this.registerPendingWorktreeWorkspace(options),
+        sessionLogger: this.sessionLogger,
+        createPaseoWorktreeInBackground: (options) => this.createPaseoWorktreeInBackground(options),
+      },
+      request,
+    );
   }
 
   private async createPaseoWorktreeInBackground(options: {
@@ -5916,57 +5541,16 @@ export class Session {
     slug: string;
     worktreePath: string;
   }): Promise<void> {
-    let setupTerminalId: string | null = null;
-
-    try {
-      await createAgentWorktree({
-        cwd: options.repoRoot,
-        branchName: options.slug,
-        baseBranch: options.baseBranch,
-        worktreeSlug: options.slug,
+    return createWorktreeInBackgroundSession(
+      {
         paseoHome: this.paseoHome,
-      });
-
-      const setupCommands = getWorktreeSetupCommands(options.worktreePath);
-      if (setupCommands.length > 0 && this.terminalManager) {
-        const runtimeEnv = await resolveWorktreeRuntimeEnv({
-          worktreePath: options.worktreePath,
-          branchName: options.slug,
-          repoRootPath: options.repoRoot,
-        });
-        this.terminalManager.registerCwdEnv({
-          cwd: options.worktreePath,
-          env: runtimeEnv,
-        });
-        const terminal = await this.terminalManager.createTerminal({
-          cwd: options.worktreePath,
-          name: `setup-${options.slug}`,
-          env: runtimeEnv,
-        });
-        setupTerminalId = terminal.id;
-
-        for (const command of setupCommands) {
-          terminal.send({
-            type: "input",
-            data: `${command}\r`,
-          });
-        }
-      }
-    } catch (error) {
-      this.sessionLogger.error(
-        {
-          err: error,
-          cwd: options.requestCwd,
-          repoRoot: options.repoRoot,
-          worktreeSlug: options.slug,
-          worktreePath: options.worktreePath,
-          setupTerminalId,
-        },
-        "Background worktree creation failed",
-      );
-    } finally {
-      await this.emitWorkspaceUpdateForCwd(options.worktreePath);
-    }
+        emitWorkspaceUpdateForCwd: (cwd, emitOptions) =>
+          this.emitWorkspaceUpdateForCwd(cwd, emitOptions),
+        sessionLogger: this.sessionLogger,
+        terminalManager: this.terminalManager,
+      },
+      options,
+    );
   }
 
   private async handleArchiveWorkspaceRequest(
@@ -7868,36 +7452,16 @@ export class Session {
   }
 
   private async killTerminalsUnderPath(rootPath: string): Promise<void> {
-    if (!this.terminalManager) {
-      return;
-    }
-
-    const cleanupErrors: Array<{ cwd: string; message: string }> = [];
-    const terminalDirectories = [...this.terminalManager.listDirectories()];
-    for (const terminalCwd of terminalDirectories) {
-      if (!this.isPathWithinRoot(rootPath, terminalCwd)) {
-        continue;
-      }
-
-      try {
-        const terminals = await this.terminalManager.getTerminals(terminalCwd);
-        for (const terminal of [...terminals]) {
-          this.killTrackedTerminal(terminal.id, { emitExit: true });
-        }
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        cleanupErrors.push({ cwd: terminalCwd, message });
-        this.sessionLogger.warn(
-          { err: error, cwd: terminalCwd },
-          "Failed to clean up worktree terminals during archive",
-        );
-      }
-    }
-
-    if (cleanupErrors.length > 0) {
-      const details = cleanupErrors.map((entry) => `${entry.cwd}: ${entry.message}`).join("; ");
-      throw new Error(`Failed to clean up worktree terminals during archive (${details})`);
-    }
+    return killWorktreeTerminalsUnderPath(
+      {
+        isPathWithinRoot: (pathRoot, candidatePath) =>
+          this.isPathWithinRoot(pathRoot, candidatePath),
+        killTrackedTerminal: (terminalId, options) => this.killTrackedTerminal(terminalId, options),
+        sessionLogger: this.sessionLogger,
+        terminalManager: this.terminalManager,
+      },
+      rootPath,
+    );
   }
 
   private async handleKillTerminalRequest(msg: KillTerminalRequest): Promise<void> {

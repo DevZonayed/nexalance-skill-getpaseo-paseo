@@ -11,7 +11,9 @@ import {
   runWorktreeSetupCommands,
   slugify,
 } from "./worktree";
-import { getPaseoWorktreeMetadataPath } from "./worktree-metadata.js";
+import {
+  getPaseoWorktreeMetadataPath,
+} from "./worktree-metadata.js";
 import { execSync } from "child_process";
 import { mkdtempSync, rmSync, existsSync, realpathSync, writeFileSync, readFileSync } from "fs";
 import { dirname, join } from "path";
@@ -527,69 +529,106 @@ describe("paseo worktree manager", () => {
     expect(remaining.some((worktree) => worktree.path === created.worktreePath)).toBe(false);
   });
 
-  it("runs destroy commands from paseo.json before deleting a worktree", async () => {
+  it("runs teardown commands from paseo.json before deleting a worktree", async () => {
     const paseoConfig = {
       worktree: {
-        destroy: [
-          'echo "source=$PASEO_SOURCE_CHECKOUT_PATH" > "$PASEO_SOURCE_CHECKOUT_PATH/destroy.log"',
-          'echo "root_alias=$PASEO_ROOT_PATH" >> "$PASEO_SOURCE_CHECKOUT_PATH/destroy.log"',
-          'echo "worktree=$PASEO_WORKTREE_PATH" >> "$PASEO_SOURCE_CHECKOUT_PATH/destroy.log"',
-          'echo "branch=$PASEO_BRANCH_NAME" >> "$PASEO_SOURCE_CHECKOUT_PATH/destroy.log"',
+        teardown: [
+          'echo "source=$PASEO_SOURCE_CHECKOUT_PATH" > "$PASEO_SOURCE_CHECKOUT_PATH/teardown.log"',
+          'echo "root_alias=$PASEO_ROOT_PATH" >> "$PASEO_SOURCE_CHECKOUT_PATH/teardown.log"',
+          'echo "worktree=$PASEO_WORKTREE_PATH" >> "$PASEO_SOURCE_CHECKOUT_PATH/teardown.log"',
+          'echo "branch=$PASEO_BRANCH_NAME" >> "$PASEO_SOURCE_CHECKOUT_PATH/teardown.log"',
+          'echo "port=$PASEO_WORKTREE_PORT" >> "$PASEO_SOURCE_CHECKOUT_PATH/teardown.log"',
         ],
       },
     };
     writeFileSync(join(repoDir, "paseo.json"), JSON.stringify(paseoConfig));
-    execSync("git add paseo.json && git -c commit.gpgsign=false commit -m 'add destroy commands'", {
-      cwd: repoDir,
-    });
+    execSync(
+      "git add paseo.json && git -c commit.gpgsign=false commit -m 'add teardown commands'",
+      {
+        cwd: repoDir,
+      },
+    );
 
     const created = await createWorktree({
-      branchName: "destroy-branch",
+      branchName: "teardown-branch",
       cwd: repoDir,
       baseBranch: "main",
-      worktreeSlug: "destroy-test",
+      worktreeSlug: "teardown-test",
       paseoHome,
+    });
+    const runtimeEnv = await resolveWorktreeRuntimeEnv({
+      worktreePath: created.worktreePath,
+      branchName: created.branchName,
     });
 
     await deletePaseoWorktree({ cwd: repoDir, worktreePath: created.worktreePath, paseoHome });
     expect(existsSync(created.worktreePath)).toBe(false);
 
-    const destroyLog = readFileSync(join(repoDir, "destroy.log"), "utf8");
-    expect(destroyLog).toContain(`source=${repoDir}`);
-    expect(destroyLog).toContain(`root_alias=${repoDir}`);
-    expect(destroyLog).toContain(`worktree=${created.worktreePath}`);
-    expect(destroyLog).toContain("branch=destroy-branch");
+    const teardownLog = readFileSync(join(repoDir, "teardown.log"), "utf8");
+    expect(teardownLog).toContain(`source=${repoDir}`);
+    expect(teardownLog).toContain(`root_alias=${repoDir}`);
+    expect(teardownLog).toContain(`worktree=${created.worktreePath}`);
+    expect(teardownLog).toContain("branch=teardown-branch");
+    expect(teardownLog).toContain(`port=${runtimeEnv.PASEO_WORKTREE_PORT}`);
   });
 
-  it("does not remove worktree when a destroy command fails", async () => {
+  it("omits PASEO_WORKTREE_PORT from teardown env when runtime metadata is missing", async () => {
     const paseoConfig = {
       worktree: {
-        destroy: [
-          'echo "started" > "$PASEO_SOURCE_CHECKOUT_PATH/destroy-start.log"',
+        teardown: [
+          'echo "port=${PASEO_WORKTREE_PORT-unset}" > "$PASEO_SOURCE_CHECKOUT_PATH/teardown-port.log"',
+        ],
+      },
+    };
+    writeFileSync(join(repoDir, "paseo.json"), JSON.stringify(paseoConfig));
+    execSync(
+      "git add paseo.json && git -c commit.gpgsign=false commit -m 'add teardown port logging'",
+      { cwd: repoDir },
+    );
+
+    const created = await createWorktree({
+      branchName: "teardown-port-missing-branch",
+      cwd: repoDir,
+      baseBranch: "main",
+      worktreeSlug: "teardown-port-missing-test",
+      paseoHome,
+    });
+
+    await deletePaseoWorktree({ cwd: repoDir, worktreePath: created.worktreePath, paseoHome });
+
+    expect(readFileSync(join(repoDir, "teardown-port.log"), "utf8").trim()).toBe("port=unset");
+    expect(existsSync(created.worktreePath)).toBe(false);
+  });
+
+  it("does not remove worktree when a teardown command fails", async () => {
+    const paseoConfig = {
+      worktree: {
+        teardown: [
+          'echo "started" > "$PASEO_SOURCE_CHECKOUT_PATH/teardown-start.log"',
           "echo boom 1>&2; exit 9",
         ],
       },
     };
     writeFileSync(join(repoDir, "paseo.json"), JSON.stringify(paseoConfig));
     execSync(
-      "git add paseo.json && git -c commit.gpgsign=false commit -m 'add failing destroy commands'",
+      "git add paseo.json && git -c commit.gpgsign=false commit -m 'add failing teardown commands'",
       { cwd: repoDir },
     );
 
     const created = await createWorktree({
-      branchName: "destroy-failure-branch",
+      branchName: "teardown-failure-branch",
       cwd: repoDir,
       baseBranch: "main",
-      worktreeSlug: "destroy-failure-test",
+      worktreeSlug: "teardown-failure-test",
       paseoHome,
     });
 
     await expect(
       deletePaseoWorktree({ cwd: repoDir, worktreePath: created.worktreePath, paseoHome }),
-    ).rejects.toThrow("Worktree destroy command failed");
+    ).rejects.toThrow("Worktree teardown command failed");
 
     expect(existsSync(created.worktreePath)).toBe(true);
-    expect(existsSync(join(repoDir, "destroy-start.log"))).toBe(true);
+    expect(existsSync(join(repoDir, "teardown-start.log"))).toBe(true);
   });
 });
 

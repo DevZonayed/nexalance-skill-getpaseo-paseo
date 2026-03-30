@@ -96,7 +96,7 @@ function Worktrees() {
 
       {/* paseo.json */}
       <section className="space-y-4">
-        <h2 className="text-xl font-medium">Setup with paseo.json</h2>
+        <h2 className="text-xl font-medium">Lifecycle hooks with paseo.json</h2>
         <p className="text-white/60 leading-relaxed">
           When Paseo creates a worktree, it's a fresh checkout. Dependencies aren't installed,
           config files aren't copied. You can automate setup by creating a{" "}
@@ -117,6 +117,20 @@ function Worktrees() {
           the worktree is created. Use it to install dependencies, copy local config files, or run
           any other initialization.
         </p>
+        <p className="text-white/60 leading-relaxed">
+          You can also add a <code className="font-mono">teardown</code> array for cleanup commands
+          that run before Paseo removes the worktree directory during archive:
+        </p>
+        <Code>
+          <pre className="text-white/80">{`{
+  "worktree": {
+    "teardown": [
+      "pkill -f \\"vite --port $PASEO_WORKTREE_PORT\\" || true",
+      "rm -rf \\"$PASEO_WORKTREE_PATH/.cache\\""
+    ]
+  }
+}`}</pre>
+        </Code>
         <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-4 text-white/80">
           <strong>Important:</strong> Setup commands come from{" "}
           <code className="font-mono">paseo.json</code> in the selected base branch. If you pick{" "}
@@ -130,7 +144,7 @@ function Worktrees() {
       <section className="space-y-4">
         <h2 className="text-xl font-medium">Environment variables</h2>
         <p className="text-white/60 leading-relaxed">
-          Setup commands have access to these environment variables:
+          Setup and teardown commands have access to these environment variables:
         </p>
         <ul className="text-white/60 space-y-2 list-disc list-inside">
           <li>
@@ -148,8 +162,8 @@ function Worktrees() {
             <code className="font-mono">$PASEO_BRANCH_NAME</code> — the branch name created
           </li>
           <li>
-            <code className="font-mono">$PASEO_WORKTREE_PORT</code> — an available local port for
-            setup scripts
+            <code className="font-mono">$PASEO_WORKTREE_PORT</code> — the worktree port, when
+            runtime metadata exists
           </li>
         </ul>
         <p className="text-white/60 leading-relaxed">
@@ -157,6 +171,39 @@ function Worktrees() {
           shouldn't be in git (like <code className="font-mono">.env</code>) from your source
           checkout to the worktree.
         </p>
+        <p className="text-white/60 leading-relaxed">
+          <code className="font-mono">$PASEO_WORKTREE_PORT</code> is available when the worktree
+          was bootstrapped with a port. That makes it useful for both starting services in setup
+          and stopping them again in teardown.
+        </p>
+      </section>
+
+      {/* Teardown */}
+      <section className="space-y-4">
+        <h2 className="text-xl font-medium">Teardown</h2>
+        <p className="text-white/60 leading-relaxed">
+          Teardown runs during archive, before Paseo removes the worktree directory. Use it for
+          cleanup that needs access to the worktree path or its assigned port.
+        </p>
+        <p className="text-white/60 leading-relaxed">
+          Common uses include stopping dev servers on{" "}
+          <code className="font-mono">$PASEO_WORKTREE_PORT</code>, deleting generated files, or
+          deregistering services tied to that worktree.
+        </p>
+        <Code>
+          <pre className="text-white/80">{`{
+  "worktree": {
+    "setup": [
+      "npm ci",
+      "nohup npm run dev -- --port $PASEO_WORKTREE_PORT > \\"$PASEO_WORKTREE_PATH/dev.log\\" 2>&1 &"
+    ],
+    "teardown": [
+      "pkill -f \\"npm run dev -- --port $PASEO_WORKTREE_PORT\\" || true",
+      "rm -f \\"$PASEO_WORKTREE_PATH/dev.log\\""
+    ]
+  }
+}`}</pre>
+        </Code>
       </section>
 
       {/* Common patterns */}
