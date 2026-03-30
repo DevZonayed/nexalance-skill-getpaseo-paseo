@@ -8,7 +8,7 @@ export interface PidLockInfo {
   startedAt: string;
   hostname: string;
   uid: number;
-  listen: string;
+  listen: string | null;
 }
 
 export class PidLockError extends Error {
@@ -43,7 +43,7 @@ function resolveOwnerPid(ownerPid?: number): number {
 
 export async function acquirePidLock(
   paseoHome: string,
-  listen: string,
+  listen: string | null,
   options?: { ownerPid?: number },
 ): Promise<void> {
   const pidPath = getPidFilePath(paseoHome);
@@ -111,6 +111,37 @@ export async function acquirePidLock(
     throw err;
   } finally {
     await fd?.close();
+  }
+}
+
+export async function updatePidLock(
+  paseoHome: string,
+  patch: { listen: string },
+  options?: { ownerPid?: number },
+): Promise<void> {
+  const pidPath = getPidFilePath(paseoHome);
+  const lockOwnerPid = resolveOwnerPid(options?.ownerPid);
+  const content = await readFile(pidPath, "utf-8");
+  const existingLock = JSON.parse(content) as PidLockInfo;
+
+  if (existingLock.pid !== lockOwnerPid) {
+    throw new PidLockError(
+      `Cannot update PID lock owned by PID ${existingLock.pid}`,
+      existingLock,
+    );
+  }
+
+  const updatedLock: PidLockInfo = {
+    ...existingLock,
+    ...patch,
+  };
+
+  const fd = await open(pidPath, "r+");
+  try {
+    await fd.truncate(0);
+    await fd.writeFile(JSON.stringify(updatedLock));
+  } finally {
+    await fd.close();
   }
 }
 

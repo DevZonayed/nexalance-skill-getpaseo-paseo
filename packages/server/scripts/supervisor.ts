@@ -5,6 +5,10 @@ type WorkerLifecycleMessage =
       type: "paseo:shutdown";
     }
   | {
+      type: "paseo:ready";
+      listen: string;
+    }
+  | {
       type: "paseo:restart";
       reason?: string;
     };
@@ -21,6 +25,7 @@ type SupervisorOptions = {
     args: string[];
     env?: NodeJS.ProcessEnv;
   } | null;
+  onWorkerReady?: (message: { listen: string }) => Promise<void> | void;
   restartOnCrash?: boolean;
   onSupervisorExit?: () => Promise<void> | void;
 };
@@ -36,6 +41,13 @@ function parseLifecycleMessage(msg: unknown): WorkerLifecycleMessage | null {
   const type = (msg as { type?: unknown }).type;
   if (type === "paseo:shutdown") {
     return { type: "paseo:shutdown" };
+  }
+  if (type === "paseo:ready") {
+    const listen = (msg as { listen?: unknown }).listen;
+    if (typeof listen !== "string" || listen.trim().length === 0) {
+      return null;
+    }
+    return { type: "paseo:ready", listen };
   }
   if (type === "paseo:restart") {
     const reason = (msg as { reason?: unknown }).reason;
@@ -110,6 +122,16 @@ export function runSupervisor(options: SupervisorOptions): void {
         return;
       }
 
+      if (lifecycleMessage.type === "paseo:ready") {
+        Promise.resolve(options.onWorkerReady?.({ listen: lifecycleMessage.listen })).catch(
+          (error) => {
+            const message = error instanceof Error ? error.message : String(error);
+            log(`Worker ready callback failed: ${message}`);
+          },
+        );
+        return;
+      }
+
       if (lifecycleMessage.type === "paseo:shutdown") {
         requestShutdown("Shutdown requested by worker");
         return;
@@ -127,7 +149,11 @@ export function runSupervisor(options: SupervisorOptions): void {
         return;
       }
 
-      if (restarting || (restartOnCrash && code !== 0 && code !== null)) {
+      const crashed =
+        restartOnCrash &&
+        ((code !== 0 && code !== null) || (signal !== null && signal === "SIGKILL"));
+
+      if (restarting || crashed) {
         restarting = false;
         log(`Worker exited (${exitDescriptor}). Restarting worker...`);
         spawnWorker();

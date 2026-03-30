@@ -1438,7 +1438,10 @@ export class Session {
       this.peakInflightRequests = this.inflightRequests;
     }
     try {
-    this.sessionLogger.trace({ inbound: msg }, "inbound message");
+    this.sessionLogger.trace(
+      { messageType: msg.type, payloadBytes: JSON.stringify(msg).length },
+      "inbound message",
+    );
     try {
       switch (msg.type) {
         case "voice_audio_chunk":
@@ -7119,7 +7122,10 @@ export class Session {
    * Emit a message to the client
    */
   private emit(msg: SessionOutboundMessage): void {
-    this.sessionLogger.trace({ outbound: msg }, "outbound message");
+    this.sessionLogger.trace(
+      { messageType: msg.type, payloadBytes: JSON.stringify(msg).length },
+      "outbound message",
+    );
     if (
       msg.type === "audio_output" &&
       (process.env.TTS_DEBUG_AUDIO_DIR || isPaseoDictationDebugEnabled()) &&

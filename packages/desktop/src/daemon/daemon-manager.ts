@@ -3,7 +3,7 @@ import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { app, ipcMain } from "electron";
 import log from "electron-log/main";
-import { loadConfig, resolvePaseoHome, getOrCreateServerId } from "@getpaseo/server";
+import { resolvePaseoHome, getOrCreateServerId } from "@getpaseo/server";
 import {
   copyAttachmentFileToManagedStorage,
   deleteManagedAttachmentFile,
@@ -27,14 +27,13 @@ const STARTUP_POLL_MAX_ATTEMPTS = 150;
 const STOP_TIMEOUT_MS = 15_000;
 const KILL_TIMEOUT_MS = 3_000;
 const DETACHED_STARTUP_GRACE_MS = 1200;
-const DEFAULT_ELECTRON_DEV_SERVER_URL = "http://localhost:8081";
 
 type DesktopDaemonState = "starting" | "running" | "stopped" | "errored";
 
 type DesktopDaemonStatus = {
   serverId: string;
   status: DesktopDaemonState;
-  listen: string;
+  listen: string | null;
   hostname: string | null;
   pid: number | null;
   home: string;
@@ -148,30 +147,6 @@ function logDesktopDaemonLifecycle(message: string, details?: Record<string, unk
   });
 }
 
-function buildDesktopDaemonCorsOriginsEnv(): string | undefined {
-  const origins = new Set(
-    (process.env.PASEO_CORS_ORIGINS ?? "")
-      .split(",")
-      .map((value) => value.trim())
-      .filter((value) => value.length > 0),
-  );
-
-  const devServerUrl = process.env.EXPO_DEV_URL ?? DEFAULT_ELECTRON_DEV_SERVER_URL;
-  try {
-    const parsed = new URL(devServerUrl);
-    origins.add(parsed.origin);
-
-    if (parsed.hostname === "localhost") {
-      origins.add(`${parsed.protocol}//127.0.0.1${parsed.port ? `:${parsed.port}` : ""}`);
-    } else if (parsed.hostname === "127.0.0.1") {
-      origins.add(`${parsed.protocol}//localhost${parsed.port ? `:${parsed.port}` : ""}`);
-    }
-  } catch {
-    // Ignore malformed dev server URLs and preserve any explicit env configuration.
-  }
-
-  return origins.size > 0 ? Array.from(origins).join(",") : undefined;
-}
 
 function toTrimmedString(value: unknown): string | null {
   if (typeof value !== "string") {
@@ -246,12 +221,11 @@ function resolveDesktopAppVersion(): string {
 
 function resolveStatus(): DesktopDaemonStatus {
   const home = getPaseoHome();
-  const config = loadConfig(home, { env: process.env });
   const pidPath = pidFilePath();
 
   let pid: number | null = null;
   let hostname: string | null = null;
-  let listen: string = config.listen;
+  let listen: string | null = null;
 
   try {
     if (existsSync(pidPath)) {
@@ -266,7 +240,7 @@ function resolveStatus(): DesktopDaemonStatus {
             : typeof parsed.sockPath === "string"
               ? (parsed.sockPath as string)
               : null;
-        if (pidListen) listen = pidListen;
+        listen = pidListen;
       }
     }
   } catch {
@@ -297,18 +271,12 @@ async function startDaemon(): Promise<DesktopDaemonStatus> {
   const current = resolveStatus();
   if (current.status === "running") return current;
 
-  const home = getPaseoHome();
   const daemonRunner = resolveDaemonRunnerEntrypoint();
-  const corsOrigins = buildDesktopDaemonCorsOriginsEnv();
   const invocation = createNodeEntrypointInvocation({
     entrypoint: daemonRunner,
     argvMode: "node-script",
     args: [],
-    baseEnv: {
-      ...process.env,
-      PASEO_HOME: home,
-      ...(corsOrigins ? { PASEO_CORS_ORIGINS: corsOrigins } : {}),
-    },
+    baseEnv: process.env,
   });
 
   logDesktopDaemonLifecycle("starting detached daemon", {
@@ -317,8 +285,6 @@ async function startDaemon(): Promise<DesktopDaemonStatus> {
     daemonRunnerExecArgv: daemonRunner.execArgv,
     command: invocation.command,
     args: invocation.args,
-    listen: process.env.PASEO_LISTEN ?? null,
-    corsOrigins: corsOrigins ?? null,
   });
 
   const child: ChildProcess = spawn(
@@ -388,7 +354,7 @@ async function startDaemon(): Promise<DesktopDaemonStatus> {
         serverId: status.serverId || null,
       });
     }
-    if (status.status === "running" && status.serverId) return status;
+    if (status.status === "running" && status.serverId && status.listen) return status;
     await sleep(STARTUP_POLL_INTERVAL_MS);
   }
 
@@ -439,6 +405,9 @@ async function getDaemonPairing(): Promise<DesktopPairingOffer> {
   }
 
   try {
+    if (!status.listen) {
+      throw new Error("Daemon listen target is unavailable.");
+    }
     const baseUrl = buildDaemonHttpBaseUrl(status.listen);
     if (!baseUrl) {
       throw new Error(`Daemon listen target is not a TCP endpoint: ${status.listen}`);
@@ -478,6 +447,10 @@ async function getLocalDaemonVersion(): Promise<{
       version: null,
       error: "Daemon is not running.",
     };
+  }
+
+  if (!status.listen) {
+    return { version: null, error: "Daemon listen target is unavailable." };
   }
 
   const baseUrl = buildDaemonHttpBaseUrl(status.listen);

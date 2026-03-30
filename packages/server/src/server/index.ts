@@ -131,14 +131,10 @@ async function main() {
   };
 
   try {
-    const pidLockMode = process.env.PASEO_PID_LOCK_MODE === "external" ? "external" : "self";
     daemon = await createPaseoDaemon(
       {
         ...config,
         onLifecycleIntent: handleLifecycleIntent,
-        pidLock: {
-          mode: pidLockMode,
-        },
       },
       logger,
     );

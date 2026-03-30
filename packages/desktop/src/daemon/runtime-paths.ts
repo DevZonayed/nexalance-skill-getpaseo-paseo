@@ -107,7 +107,7 @@ export function resolveDaemonRunnerEntrypoint(): NodeEntrypointSpec {
           "server",
           "dist",
           "scripts",
-          "daemon-runner.js",
+          "supervisor-entrypoint.js",
         ),
       }),
       execArgv: [],
@@ -115,7 +115,12 @@ export function resolveDaemonRunnerEntrypoint(): NodeEntrypointSpec {
   }
 
   const serverPackage = resolveServerPackageInfo();
-  const distRunner = path.join(serverPackage.root, "dist", "scripts", "daemon-runner.js");
+  const distRunner = path.join(
+    serverPackage.root,
+    "dist",
+    "scripts",
+    "supervisor-entrypoint.js",
+  );
   if (existsSync(distRunner)) {
     return {
       entryPath: distRunner,
@@ -126,7 +131,7 @@ export function resolveDaemonRunnerEntrypoint(): NodeEntrypointSpec {
   return {
     entryPath: assertPathExists({
       label: "Daemon runner source",
-      filePath: path.join(serverPackage.root, "scripts", "daemon-runner.ts"),
+      filePath: path.join(serverPackage.root, "scripts", "supervisor-entrypoint.ts"),
     }),
     execArgv: ["--import", "tsx"],
   };

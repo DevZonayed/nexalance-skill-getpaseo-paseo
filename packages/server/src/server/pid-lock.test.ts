@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
 
-import { acquirePidLock, getPidLockInfo, releasePidLock } from "./pid-lock.js";
+import { acquirePidLock, getPidLockInfo, releasePidLock, updatePidLock } from "./pid-lock.js";
 
 describe("pid-lock ownership", () => {
   test("writes and releases lock for explicit owner pid", async () => {
@@ -14,13 +14,25 @@ describe("pid-lock ownership", () => {
       await (
         acquirePidLock as unknown as (
           home: string,
-          sockPath: string,
+          sockPath: string | null,
           options: { ownerPid: number },
         ) => Promise<void>
-      )(paseoHome, "127.0.0.1:6767", { ownerPid });
+      )(paseoHome, null, { ownerPid });
 
       const lock = await getPidLockInfo(paseoHome);
       expect(lock?.pid).toBe(ownerPid);
+      expect(lock?.listen).toBeNull();
+
+      await (
+        updatePidLock as unknown as (
+          home: string,
+          patch: { listen: string },
+          options: { ownerPid: number },
+        ) => Promise<void>
+      )(paseoHome, { listen: "127.0.0.1:6767" }, { ownerPid });
+
+      const updatedLock = await getPidLockInfo(paseoHome);
+      expect(updatedLock?.listen).toBe("127.0.0.1:6767");
 
       await (
         releasePidLock as unknown as (home: string, options: { ownerPid: number }) => Promise<void>

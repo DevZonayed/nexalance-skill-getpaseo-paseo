@@ -114,7 +114,7 @@ buildNpmPackage rec {
       fi
     done
 
-    # Copy server scripts (daemon-runner, supervisor) needed by CLI
+    # Copy server scripts (including supervisor-entrypoint) needed by CLI
     if [ -d packages/server/dist/scripts ]; then
       mkdir -p $out/lib/paseo/packages/server/dist/scripts
       cp -a packages/server/dist/scripts/* $out/lib/paseo/packages/server/dist/scripts/

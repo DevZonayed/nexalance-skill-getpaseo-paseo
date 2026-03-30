@@ -124,11 +124,16 @@ function resolveDaemonRunnerEntry(): string {
       try {
         const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf-8")) as { name?: string };
         if (packageJson.name === "@getpaseo/server") {
-          const distRunner = path.join(currentDir, "dist", "scripts", "daemon-runner.js");
+          const distRunner = path.join(
+            currentDir,
+            "dist",
+            "scripts",
+            "supervisor-entrypoint.js",
+          );
           if (existsSync(distRunner)) {
             return distRunner;
           }
-          return path.join(currentDir, "scripts", "daemon-runner.ts");
+          return path.join(currentDir, "scripts", "supervisor-entrypoint.ts");
         }
       } catch {
         // Continue searching up if package.json exists but is invalid.

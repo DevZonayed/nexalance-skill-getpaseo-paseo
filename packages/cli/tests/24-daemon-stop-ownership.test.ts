@@ -62,7 +62,7 @@ try {
       "-e",
       // Keep the process alive long enough for stop command assertions.
       "setInterval(() => {}, 1000)",
-      "daemon-runner.ts",
+      "supervisor-entrypoint.ts",
     ],
     {
       env: {

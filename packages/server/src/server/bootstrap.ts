@@ -112,7 +112,6 @@ import { getOrCreateServerId } from "./server-id.js";
 import { resolveDaemonVersion } from "./daemon-version.js";
 import type { AgentClient, AgentProvider } from "./agent/agent-sdk-types.js";
 import type { AgentProviderRuntimeSettingsMap } from "./agent/provider-launch-config.js";
-import { acquirePidLock, releasePidLock } from "./pid-lock.js";
 import { isHostAllowed, type AllowedHostsConfig } from "./allowed-hosts.js";
 import {
   createVoiceMcpSocketBridgeManager,
@@ -183,10 +182,6 @@ export type PaseoDaemonConfig = {
   downloadTokenTtlMs?: number;
   agentProviderSettings?: AgentProviderRuntimeSettingsMap;
   onLifecycleIntent?: (intent: DaemonLifecycleIntent) => void;
-  pidLock?: {
-    mode?: "self" | "external";
-    ownerPid?: number;
-  };
 };
 
 export interface PaseoDaemon {
@@ -207,17 +202,6 @@ export async function createPaseoDaemon(
   const bootstrapStart = performance.now();
   const elapsed = () => `${(performance.now() - bootstrapStart).toFixed(0)}ms`;
   const daemonVersion = resolveDaemonVersion(import.meta.url);
-  const pidLockMode = config.pidLock?.mode ?? "self";
-  const pidLockOwnerPid = config.pidLock?.ownerPid;
-  const ownsPidLock = pidLockMode === "self";
-
-  // Acquire PID lock before expensive bootstrap work so duplicate starts fail immediately.
-  if (ownsPidLock) {
-    await acquirePidLock(config.paseoHome, config.listen, {
-      ownerPid: pidLockOwnerPid,
-    });
-    logger.info({ elapsed: elapsed() }, "PID lock acquired");
-  }
 
   try {
     const serverId = getOrCreateServerId(config.paseoHome, { logger });
@@ -707,6 +691,16 @@ export async function createPaseoDaemon(
               );
             }
 
+            if (typeof process.send === "function") {
+              process.send({
+                type: "paseo:ready",
+                listen:
+                  boundListenTarget.type === "tcp"
+                    ? `${boundListenTarget.host}:${boundListenTarget.port}`
+                    : boundListenTarget.path,
+              });
+            }
+
             if (relayEnabled) {
               const offer = await createConnectionOfferV2({
                 serverId,
@@ -776,12 +770,6 @@ export async function createPaseoDaemon(
       if (listenTarget.type === "socket" && existsSync(listenTarget.path)) {
         unlinkSync(listenTarget.path);
       }
-      // Release PID lock
-      if (ownsPidLock) {
-        await releasePidLock(config.paseoHome, {
-          ownerPid: pidLockOwnerPid,
-        });
-      }
     };
 
     return {
@@ -794,11 +782,6 @@ export async function createPaseoDaemon(
       getListenTarget: () => boundListenTarget,
     };
   } catch (err) {
-    if (ownsPidLock) {
-      await releasePidLock(config.paseoHome, {
-        ownerPid: pidLockOwnerPid,
-      }).catch(() => undefined);
-    }
     throw err;
   }
 }
