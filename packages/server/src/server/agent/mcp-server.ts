@@ -28,11 +28,14 @@ import type { VoiceCallerContext, VoiceSpeakHandler } from "../voice-types.js";
 import { expandUserPath, resolvePathFromBase } from "../path-utils.js";
 import type { TerminalManager } from "../../terminal/terminal-manager.js";
 import { createAgentWorktree, runAsyncWorktreeBootstrap } from "../worktree-bootstrap.js";
+import type { ServiceRouteStore } from "../service-proxy.js";
 
 export interface AgentMcpServerOptions {
   agentManager: AgentManager;
   agentStorage: AgentStorage;
   terminalManager?: TerminalManager | null;
+  serviceRouteStore?: ServiceRouteStore;
+  getDaemonTcpPort?: () => number | null;
   paseoHome?: string;
   /**
    * ID of the agent that is connecting to this MCP server.
@@ -510,6 +513,8 @@ export async function createAgentMcpServer(options: AgentMcpServerOptions): Prom
               agentId: snapshot.id,
               item,
             }),
+          serviceRouteStore: options.serviceRouteStore,
+          daemonPort: options.getDaemonTcpPort?.() ?? null,
           logger: childLogger,
         });
       }

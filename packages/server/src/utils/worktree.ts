@@ -20,6 +20,7 @@ interface PaseoConfig {
     teardown?: string[];
     terminals?: WorktreeTerminalConfig[];
   };
+  services?: Record<string, ServiceConfig>;
 }
 
 const execAsync = promisify(exec);
@@ -82,6 +83,11 @@ export type WorktreeSetupCommandProgressEvent =
 export interface WorktreeTerminalConfig {
   name?: string;
   command: string;
+}
+
+export interface ServiceConfig {
+  command: string;
+  port?: number; // explicit port override, otherwise auto-assigned
 }
 
 export class WorktreeSetupError extends Error {
@@ -192,6 +198,40 @@ export function getWorktreeTerminalSpecs(repoRoot: string): WorktreeTerminalConf
   }
 
   return specs;
+}
+
+export function getServiceConfigs(repoRoot: string): Map<string, ServiceConfig> {
+  const config = readPaseoConfig(repoRoot);
+  const services = config?.services;
+  if (!services || typeof services !== "object") {
+    return new Map();
+  }
+
+  const result = new Map<string, ServiceConfig>();
+  for (const [name, entry] of Object.entries(services)) {
+    if (!entry || typeof entry !== "object") {
+      continue;
+    }
+
+    const rawCommand = entry.command;
+    if (typeof rawCommand !== "string") {
+      continue;
+    }
+    const command = rawCommand.trim();
+    if (!command) {
+      continue;
+    }
+
+    const serviceConfig: ServiceConfig = { command };
+
+    if (typeof entry.port === "number" && Number.isFinite(entry.port)) {
+      serviceConfig.port = entry.port;
+    }
+
+    result.set(name, serviceConfig);
+  }
+
+  return result;
 }
 
 async function execSetupCommand(

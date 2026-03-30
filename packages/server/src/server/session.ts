@@ -139,6 +139,7 @@ import {
   type WorktreeConfig,
 } from "../utils/worktree.js";
 import { runAsyncWorktreeBootstrap } from "./worktree-bootstrap.js";
+import type { ServiceRouteStore } from "./service-proxy.js";
 import {
   getCheckoutDiff,
   getCheckoutShortstat,
@@ -372,6 +373,8 @@ export type SessionOptions = {
   stt: Resolvable<SpeechToTextProvider | null>;
   tts: Resolvable<TextToSpeechProvider | null>;
   terminalManager: TerminalManager | null;
+  serviceRouteStore?: ServiceRouteStore;
+  getDaemonTcpPort?: () => number | null;
   voice?: {
     voiceAgentMcpStdio?: VoiceMcpStdioConfig | null;
     turnDetection?: Resolvable<TurnDetectionProvider | null>;
@@ -567,6 +570,8 @@ export class Session {
   } | null = null;
   private readonly MOBILE_BACKGROUND_STREAM_GRACE_MS = 60_000;
   private readonly terminalManager: TerminalManager | null;
+  private readonly serviceRouteStore: ServiceRouteStore | null;
+  private readonly getDaemonTcpPort: (() => number | null) | null;
   private readonly subscribedTerminalDirectories = new Set<string>();
   private unsubscribeTerminalsChanged: (() => void) | null = null;
   private terminalExitSubscriptions: Map<string, () => void> = new Map();
@@ -618,6 +623,8 @@ export class Session {
       stt,
       tts,
       terminalManager,
+      serviceRouteStore,
+      getDaemonTcpPort,
       voice,
       voiceBridge,
       dictation,
@@ -642,6 +649,8 @@ export class Session {
     this.checkoutDiffManager = checkoutDiffManager;
     this.createAgentMcpTransport = createAgentMcpTransport;
     this.terminalManager = terminalManager;
+    this.serviceRouteStore = serviceRouteStore ?? null;
+    this.getDaemonTcpPort = getDaemonTcpPort ?? null;
     if (this.terminalManager) {
       this.unsubscribeTerminalsChanged = this.terminalManager.subscribeTerminalsChanged((event) =>
         this.handleTerminalsChanged(event),
@@ -2732,6 +2741,8 @@ export class Session {
               agentId: snapshot.id,
               item,
             }),
+          serviceRouteStore: this.serviceRouteStore ?? undefined,
+          daemonPort: this.getDaemonTcpPort?.() ?? null,
           logger: this.sessionLogger,
         });
       }

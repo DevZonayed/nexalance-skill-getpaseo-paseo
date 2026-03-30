@@ -7,15 +7,18 @@ import type { TerminalManager } from "../terminal/terminal-manager.js";
 import type { TerminalSession } from "../terminal/terminal.js";
 import {
   createWorktree,
+  getServiceConfigs,
   getWorktreeTerminalSpecs,
   listPaseoWorktrees,
   resolveWorktreeRuntimeEnv,
   runWorktreeSetupCommands,
+  slugify,
   WorktreeSetupError,
   type WorktreeConfig,
   type WorktreeSetupCommandResult,
   type WorktreeRuntimeEnv,
 } from "../utils/worktree.js";
+import { findFreePort, type ServiceRouteStore } from "./service-proxy.js";
 import type { AgentTimelineItem } from "./agent/agent-sdk-types.js";
 
 export interface WorktreeBootstrapTerminalResult {
@@ -30,6 +33,8 @@ export interface RunAsyncWorktreeBootstrapOptions {
   agentId: string;
   worktree: WorktreeConfig;
   terminalManager: TerminalManager | null;
+  serviceRouteStore?: ServiceRouteStore;
+  daemonPort?: number | null;
   appendTimelineItem: (item: AgentTimelineItem) => Promise<boolean>;
   emitLiveTimelineItem?: (item: AgentTimelineItem) => Promise<boolean>;
   logger?: Logger;
@@ -653,4 +658,111 @@ export async function runAsyncWorktreeBootstrap(
   }
 
   await runWorktreeTerminalBootstrap(options, runtimeEnv);
+
+  if (
+    !options.terminalManager ||
+    !options.serviceRouteStore ||
+    options.daemonPort === null ||
+    options.daemonPort === undefined
+  ) {
+    return;
+  }
+
+  try {
+    await spawnWorktreeServices({
+      repoRoot: options.worktree.worktreePath,
+      branchName: options.worktree.branchName,
+      daemonPort: options.daemonPort,
+      routeStore: options.serviceRouteStore,
+      terminalManager: options.terminalManager,
+      logger: options.logger,
+    });
+  } catch (error) {
+    options.logger?.warn(
+      { err: error, agentId: options.agentId, worktreePath: options.worktree.worktreePath },
+      "Failed to spawn worktree services",
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Service lifecycle helpers
+// ---------------------------------------------------------------------------
+
+export interface WorktreeServiceResult {
+  serviceName: string;
+  hostname: string;
+  port: number;
+  terminalId: string;
+}
+
+export async function spawnWorktreeServices(options: {
+  repoRoot: string;
+  branchName: string | null;
+  daemonPort: number;
+  routeStore: ServiceRouteStore;
+  terminalManager: TerminalManager;
+  logger?: Logger;
+}): Promise<WorktreeServiceResult[]> {
+  const { repoRoot, branchName, daemonPort, routeStore, terminalManager, logger } = options;
+  const serviceConfigs = getServiceConfigs(repoRoot);
+  if (serviceConfigs.size === 0) {
+    return [];
+  }
+
+  const results: WorktreeServiceResult[] = [];
+
+  for (const [serviceName, config] of serviceConfigs) {
+    const port = config.port ?? (await findFreePort());
+    const branchHostnameLabel = branchName ? slugify(branchName) : null;
+
+    const isDefaultBranch =
+      branchName === null || branchName === "main" || branchName === "master";
+    const hostname = isDefaultBranch
+      ? `${serviceName}.localhost`
+      : `${branchHostnameLabel}.${serviceName}.localhost`;
+
+    routeStore.addRoute(hostname, port);
+
+    const env: Record<string, string> = {
+      PORT: String(port),
+      HOST: "127.0.0.1",
+      PASEO_SERVICE_URL: `http://${hostname}:${daemonPort}`,
+    };
+
+    const terminal = await terminalManager.createTerminal({
+      cwd: repoRoot,
+      name: serviceName,
+      env,
+    });
+
+    await waitForTerminalBootstrapReadiness(terminal);
+    terminal.send({ type: "input", data: `${config.command}\r` });
+
+    logger?.info(
+      { serviceName, hostname, port, terminalId: terminal.id },
+      `Registered service proxy: ${hostname} -> 127.0.0.1:${port}`,
+    );
+
+    results.push({
+      serviceName,
+      hostname,
+      port,
+      terminalId: terminal.id,
+    });
+  }
+
+  return results;
+}
+
+export function teardownWorktreeServices(options: {
+  hostnames: string[];
+  routeStore: ServiceRouteStore;
+  logger: Logger;
+}): void {
+  const { hostnames, routeStore, logger } = options;
+  for (const hostname of hostnames) {
+    routeStore.removeRoute(hostname);
+    logger.info({ hostname }, "Removed service proxy route");
+  }
 }

@@ -114,6 +114,11 @@ import type { AgentClient, AgentProvider } from "./agent/agent-sdk-types.js";
 import type { AgentProviderRuntimeSettingsMap } from "./agent/provider-launch-config.js";
 import { isHostAllowed, type AllowedHostsConfig } from "./allowed-hosts.js";
 import {
+  ServiceRouteStore,
+  createServiceProxyMiddleware,
+  createServiceProxyUpgradeHandler,
+} from "./service-proxy.js";
+import {
   createVoiceMcpSocketBridgeManager,
   type VoiceMcpSocketBridgeManager,
 } from "./voice-mcp-bridge.js";
@@ -189,6 +194,7 @@ export interface PaseoDaemon {
   agentManager: AgentManager;
   agentStorage: AgentStorage;
   terminalManager: TerminalManager;
+  serviceRouteStore: ServiceRouteStore;
   start(): Promise<void>;
   stop(): Promise<void>;
   getListenTarget(): ListenTarget | null;
@@ -218,6 +224,8 @@ export async function createPaseoDaemon(
     const app = express();
     let boundListenTarget: ListenTarget | null = null;
 
+    const serviceRouteStore = new ServiceRouteStore();
+
     // Host allowlist / DNS rebinding protection (vite-like semantics).
     // For non-TCP (unix sockets), skip host validation.
     if (listenTarget.type === "tcp") {
@@ -230,6 +238,14 @@ export async function createPaseoDaemon(
         next();
       });
     }
+
+    // Service proxy — intercepts requests for registered *.localhost hostnames
+    // and forwards them to the corresponding local service port. Placed after
+    // the host allowlist (*.localhost is already allowed) but before CORS and
+    // the rest of the routes so proxied requests skip unnecessary middleware.
+    app.use(
+      createServiceProxyMiddleware({ routeStore: serviceRouteStore, logger }),
+    );
 
     // CORS - allow same-origin + configured origins
     const allowedOrigins = new Set([
@@ -352,6 +368,16 @@ export async function createPaseoDaemon(
 
     const httpServer = createHTTPServer(app);
 
+    // Service proxy WebSocket upgrade handler — must be registered before the
+    // VoiceAssistantWebSocketServer attaches its own "upgrade" listener so that
+    // service-bound upgrades are forwarded first. The handler is a no-op for
+    // requests that don't match a registered service route.
+    const serviceProxyUpgradeHandler = createServiceProxyUpgradeHandler({
+      routeStore: serviceRouteStore,
+      logger,
+    });
+    httpServer.on("upgrade", serviceProxyUpgradeHandler);
+
     const agentStorage = new AgentStorage(config.agentStoragePath, logger);
     const projectRegistry = new FileBackedProjectRegistry(
       path.join(config.paseoHome, "projects", "projects.json"),
@@ -433,6 +459,9 @@ export async function createPaseoDaemon(
         agentManager,
         agentStorage,
         terminalManager,
+        serviceRouteStore,
+        getDaemonTcpPort: () =>
+          boundListenTarget?.type === "tcp" ? boundListenTarget.port : null,
         paseoHome: config.paseoHome,
         enableVoiceTools: false,
         resolveSpeakHandler: (callerAgentId) =>
@@ -459,6 +488,9 @@ export async function createPaseoDaemon(
           agentManager,
           agentStorage,
           terminalManager,
+          serviceRouteStore,
+          getDaemonTcpPort: () =>
+            boundListenTarget?.type === "tcp" ? boundListenTarget.port : null,
           paseoHome: config.paseoHome,
           callerAgentId,
           enableVoiceTools: false,
@@ -579,6 +611,9 @@ export async function createPaseoDaemon(
           agentManager,
           agentStorage,
           terminalManager,
+          serviceRouteStore,
+          getDaemonTcpPort: () =>
+            boundListenTarget?.type === "tcp" ? boundListenTarget.port : null,
           paseoHome: config.paseoHome,
           callerAgentId,
           voiceOnly: true,
@@ -639,6 +674,8 @@ export async function createPaseoDaemon(
       loopService,
       scheduleService,
       checkoutDiffManager,
+      serviceRouteStore,
+      () => (boundListenTarget?.type === "tcp" ? boundListenTarget.port : null),
     );
 
     logger.info({ elapsed: elapsed() }, "Bootstrap complete, ready to start listening");
@@ -763,6 +800,7 @@ export async function createPaseoDaemon(
       agentManager,
       agentStorage,
       terminalManager,
+      serviceRouteStore,
       start,
       stop,
       getListenTarget: () => boundListenTarget,
