@@ -336,25 +336,23 @@ function resolveEffectiveProviderIds(params: {
   };
 }
 
-export type InitializedSpeechRuntime = {
-  resolveVoiceTurnDetection: () => TurnDetectionProvider | null;
-  resolveVoiceStt: () => SpeechToTextProvider | null;
-  resolveVoiceTts: () => TextToSpeechProvider | null;
+export type SpeechService = {
+  resolveStt: () => SpeechToTextProvider | null;
+  resolveTts: () => TextToSpeechProvider | null;
+  resolveTurnDetection: () => TurnDetectionProvider | null;
   resolveDictationStt: () => SpeechToTextProvider | null;
-  getSpeechReadiness: () => SpeechReadinessSnapshot;
-  subscribeSpeechReadiness: (listener: (snapshot: SpeechReadinessSnapshot) => void) => () => void;
-  cleanup: () => void;
-  localModelConfig: {
-    modelsDir: string;
-    defaultModelIds: LocalSpeechModelId[];
-  } | null;
+  getReadiness: () => SpeechReadinessSnapshot;
+  onReadinessChange: (listener: (snapshot: SpeechReadinessSnapshot) => void) => () => void;
+  start: () => void;
+  stop: () => void;
+  ready: Promise<void>;
 };
 
-export async function initializeSpeechRuntime(params: {
+export function createSpeechService(params: {
   logger: Logger;
   openaiConfig?: PaseoOpenAIConfig;
   speechConfig?: PaseoSpeechConfig;
-}): Promise<InitializedSpeechRuntime> {
+}): SpeechService {
   const logger = params.logger.child({ module: "speech-runtime" });
   const speechConfig = params.speechConfig ?? null;
   const openaiConfig = params.openaiConfig;
@@ -397,6 +395,14 @@ export async function initializeSpeechRuntime(params: {
   const readinessListeners = new Set<(snapshot: SpeechReadinessSnapshot) => void>();
   let lastReadinessFingerprint: string | null = null;
   let lastPublishedReadinessSnapshot: SpeechReadinessSnapshot | null = null;
+  let started = false;
+  let readySettled = false;
+  let resolveReady!: () => void;
+  let rejectReady!: (error: unknown) => void;
+  const ready = new Promise<void>((resolve, reject) => {
+    resolveReady = resolve;
+    rejectReady = reject;
+  });
 
   const computeReadinessSnapshot = (): SpeechReadinessSnapshot => {
     const realtimeVoice = buildRealtimeVoiceReadiness({
@@ -658,16 +664,36 @@ export async function initializeSpeechRuntime(params: {
     }
   };
 
-  await runReconcile();
-  const snapshot = computeReadinessSnapshot();
-  if (snapshot.voiceFeature.enabled && !snapshot.voiceFeature.available) {
-    if (missingLocalModelIds.length > 0) {
-      startBackgroundDownload();
+  const start = (): void => {
+    if (started || stopped) {
+      return;
     }
-    scheduleMonitor();
-  }
+    started = true;
+    void (async () => {
+      try {
+        await runReconcile();
+        const snapshot = computeReadinessSnapshot();
+        if (snapshot.voiceFeature.enabled && !snapshot.voiceFeature.available) {
+          if (missingLocalModelIds.length > 0) {
+            startBackgroundDownload();
+          }
+          scheduleMonitor();
+        }
+        if (!readySettled) {
+          readySettled = true;
+          resolveReady();
+        }
+      } catch (error) {
+        if (!readySettled) {
+          readySettled = true;
+          rejectReady(error);
+        }
+        logger.error({ err: error }, "Speech runtime failed during initial reconcile");
+      }
+    })();
+  };
 
-  const cleanup = (): void => {
+  const stop = (): void => {
     stopped = true;
     if (monitorTimeout) {
       clearTimeout(monitorTimeout);
@@ -677,13 +703,14 @@ export async function initializeSpeechRuntime(params: {
   };
 
   return {
-    resolveVoiceTurnDetection: () => turnDetectionService,
-    resolveVoiceStt: () => sttService,
-    resolveVoiceTts: () => ttsService,
+    resolveTurnDetection: () => turnDetectionService,
+    resolveStt: () => sttService,
+    resolveTts: () => ttsService,
     resolveDictationStt: () => dictationSttService,
-    getSpeechReadiness: () => lastPublishedReadinessSnapshot ?? computeReadinessSnapshot(),
-    subscribeSpeechReadiness,
-    cleanup,
-    localModelConfig,
+    getReadiness: () => lastPublishedReadinessSnapshot ?? computeReadinessSnapshot(),
+    onReadinessChange: subscribeSpeechReadiness,
+    start,
+    stop,
+    ready,
   };
 }

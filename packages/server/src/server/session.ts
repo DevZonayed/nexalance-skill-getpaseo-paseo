@@ -23,6 +23,7 @@ import {
   type UnsubscribeTerminalRequest,
   type TerminalInput,
   type KillTerminalRequest,
+  type CaptureTerminalRequest,
   type SubscribeCheckoutDiffRequest,
   type UnsubscribeCheckoutDiffRequest,
   type DirectorySuggestionsRequest,
@@ -31,7 +32,7 @@ import {
   type WorkspaceStateBucket,
 } from "./messages.js";
 import type { TerminalManager, TerminalsChangedEvent } from "../terminal/terminal-manager.js";
-import type { TerminalSession } from "../terminal/terminal.js";
+import { captureTerminalLines, type TerminalSession } from "../terminal/terminal.js";
 import {
   TerminalStreamOpcode,
   encodeTerminalSnapshotPayload,
@@ -122,22 +123,12 @@ import { DownloadTokenStore } from "./file-download/token-store.js";
 import { PushTokenStore } from "./push/token-store.js";
 import {
   type WorktreeConfig,
-  computeWorktreePath,
-  getWorktreeSetupCommands,
-  resolveWorktreeRuntimeEnv,
-  slugify,
-  validateBranchSlug,
-  listPaseoWorktrees,
-  deletePaseoWorktree,
-  isPaseoOwnedWorktreeCwd,
-  resolvePaseoWorktreeRootForCwd,
 } from "../utils/worktree.js";
-import { createAgentWorktree, runAsyncWorktreeBootstrap } from "./worktree-bootstrap.js";
+import { runAsyncWorktreeBootstrap } from "./worktree-bootstrap.js";
 import {
   getCheckoutDiff,
   getCheckoutShortstat,
   getCheckoutStatus,
-  getCheckoutStatusLite,
   listBranchSuggestions,
   commitChanges,
   mergeToBase,
@@ -145,7 +136,6 @@ import {
   pushCurrentBranch,
   createPullRequest,
   getPullRequestStatus,
-  resolveRepositoryDefaultBranch,
 } from "../utils/checkout-git.js";
 import { getProjectIcon } from "../utils/project-icon.js";
 import { expandTilde } from "../utils/path.js";
@@ -156,12 +146,7 @@ import {
   toCheckoutError,
 } from "./checkout-git-utils.js";
 import { CheckoutDiffManager } from "./checkout-diff-manager.js";
-import {
-  ensureLocalSpeechModels,
-  getLocalSpeechModelDir,
-  listLocalSpeechModels,
-  type LocalSpeechModelId,
-} from "./speech/providers/local/models.js";
+import type { LocalSpeechModelId } from "./speech/providers/local/models.js";
 import { toResolver, type Resolvable } from "./speech/provider-resolver.js";
 import type { SpeechReadinessSnapshot, SpeechReadinessState } from "./speech/speech-runtime.js";
 import type pino from "pino";
@@ -173,6 +158,16 @@ import {
 import { notifyChatMentions } from "./chat/chat-mentions.js";
 import { LoopService } from "./loop-service.js";
 import { ScheduleService } from "./schedule/service.js";
+import {
+  assertSafeGitRef as assertWorktreeSafeGitRef,
+  buildAgentSessionConfig as buildWorktreeAgentSessionConfig,
+  createPaseoWorktreeInBackground as createWorktreeInBackgroundSession,
+  handleCreatePaseoWorktreeRequest as handleCreateWorktreeRequest,
+  handlePaseoWorktreeArchiveRequest as handleWorktreeArchiveRequest,
+  handlePaseoWorktreeListRequest as handleWorktreeListRequest,
+  killTerminalsUnderPath as killWorktreeTerminalsUnderPath,
+  registerPendingWorktreeWorkspace as registerPendingWorktreeWorkspaceSession,
+} from "./worktree-session.js";
 
 const execAsync = promisify(exec);
 const MAX_INITIAL_AGENT_TITLE_CHARS = Math.min(60, MAX_EXPLICIT_AGENT_TITLE_CHARS);
@@ -237,14 +232,6 @@ type WorkspaceGitWatchTarget = {
   refreshPromise: Promise<void> | null;
   refreshQueued: boolean;
   latestFingerprint: string | null;
-};
-
-type NormalizedGitOptions = {
-  baseBranch?: string;
-  createNewBranch: boolean;
-  newBranchName?: string;
-  createWorktree: boolean;
-  worktreeSlug?: string;
 };
 
 type ActiveTerminalStream = {
@@ -331,7 +318,6 @@ const MIN_STREAMING_SEGMENT_DURATION_MS = 1000;
 const MIN_STREAMING_SEGMENT_BYTES = Math.round(
   PCM_BYTES_PER_MS * MIN_STREAMING_SEGMENT_DURATION_MS,
 );
-const SAFE_GIT_REF_PATTERN = /^[A-Za-z0-9._\/-]+$/;
 const AgentIdSchema = z.string().uuid();
 const VOICE_MCP_SERVER_NAME = "paseo_voice";
 const VOICE_INTERRUPT_CONFIRMATION_MS = 500;
@@ -398,10 +384,6 @@ export type SessionOptions = {
   dictation?: {
     finalTimeoutMs?: number;
     stt?: Resolvable<SpeechToTextProvider | null>;
-    localModels?: {
-      modelsDir: string;
-      defaultModelIds: LocalSpeechModelId[];
-    };
     getSpeechReadiness?: () => SpeechReadinessSnapshot;
   };
   agentProviderRuntimeSettings?: AgentProviderRuntimeSettingsMap;
@@ -570,8 +552,6 @@ export class Session {
   private readonly checkoutDiffSubscriptions = new Map<string, () => void>();
   private readonly workspaceGitWatchTargets = new Map<string, WorkspaceGitWatchTarget>();
   private readonly voiceAgentMcpStdio: VoiceMcpStdioConfig | null;
-  private readonly localSpeechModelsDir: string;
-  private readonly defaultLocalSpeechModelIds: LocalSpeechModelId[];
   private readonly registerVoiceSpeakHandler?: (
     agentId: string,
     handler: VoiceSpeakHandler,
@@ -656,15 +636,6 @@ export class Session {
     }
     this.voiceAgentMcpStdio = voice?.voiceAgentMcpStdio ?? null;
     this.resolveVoiceTurnDetection = toResolver(voice?.turnDetection ?? null);
-    const configuredModelsDir = dictation?.localModels?.modelsDir?.trim();
-    this.localSpeechModelsDir =
-      configuredModelsDir && configuredModelsDir.length > 0
-        ? configuredModelsDir
-        : join(this.paseoHome, "models", "local-speech");
-    this.defaultLocalSpeechModelIds =
-      dictation?.localModels?.defaultModelIds && dictation.localModels.defaultModelIds.length > 0
-        ? [...new Set(dictation.localModels.defaultModelIds)]
-        : ["parakeet-tdt-0.6b-v2-int8", "kokoro-en-v0_19"];
     this.registerVoiceSpeakHandler = voiceBridge?.registerVoiceSpeakHandler;
     this.unregisterVoiceSpeakHandler = voiceBridge?.unregisterVoiceSpeakHandler;
     this.registerVoiceCallerContext = voiceBridge?.registerVoiceCallerContext;
@@ -1339,7 +1310,10 @@ export class Session {
       this.peakInflightRequests = this.inflightRequests;
     }
     try {
-    this.sessionLogger.trace({ inbound: msg }, "inbound message");
+    this.sessionLogger.trace(
+      { messageType: msg.type, payloadBytes: JSON.stringify(msg).length },
+      "inbound message",
+    );
     try {
       switch (msg.type) {
         case "voice_audio_chunk":
@@ -1563,14 +1537,6 @@ export class Session {
           await this.handleListAvailableProvidersRequest(msg);
           break;
 
-        case "speech_models_list_request":
-          await this.handleSpeechModelsListRequest(msg);
-          break;
-
-        case "speech_models_download_request":
-          await this.handleSpeechModelsDownloadRequest(msg);
-          break;
-
         case "clear_agent_attention":
           await this.handleClearAgentAttention(msg.agentId);
           break;
@@ -1631,6 +1597,10 @@ export class Session {
 
         case "kill_terminal_request":
           await this.handleKillTerminalRequest(msg);
+          break;
+
+        case "capture_terminal_request":
+          await this.handleCaptureTerminalRequest(msg);
           break;
 
         case "chat/create":
@@ -2770,70 +2740,18 @@ export class Session {
     legacyWorktreeName?: string,
     _labels?: Record<string, string>,
   ): Promise<{ sessionConfig: AgentSessionConfig; worktreeConfig?: WorktreeConfig }> {
-    let cwd = expandTilde(config.cwd);
-    const normalized = this.normalizeGitOptions(gitOptions, legacyWorktreeName);
-    let worktreeConfig: WorktreeConfig | undefined;
-
-    if (!normalized) {
-      return {
-        sessionConfig: {
-          ...config,
-          cwd,
-        },
-      };
-    }
-
-    if (normalized.createWorktree) {
-      let targetBranch: string;
-
-      if (normalized.createNewBranch) {
-        targetBranch = normalized.newBranchName!;
-      } else {
-        // Resolve current branch name from HEAD
-        const { stdout } = await execAsync("git rev-parse --abbrev-ref HEAD", {
-          cwd,
-          env: READ_ONLY_GIT_ENV,
-        });
-        targetBranch = stdout.trim();
-      }
-
-      if (!targetBranch) {
-        throw new Error("A branch name is required when creating a worktree.");
-      }
-
-      this.sessionLogger.info(
-        { worktreeSlug: normalized.worktreeSlug ?? targetBranch, branch: targetBranch },
-        `Creating worktree '${normalized.worktreeSlug ?? targetBranch}' for branch ${targetBranch}`,
-      );
-
-      const baseBranch = normalized.baseBranch ?? (await this.resolveGitCreateBaseBranch(cwd));
-      const createdWorktree = await createAgentWorktree({
-        branchName: targetBranch,
-        cwd,
-        baseBranch,
-        worktreeSlug: normalized.worktreeSlug ?? targetBranch,
+    return buildWorktreeAgentSessionConfig(
+      {
         paseoHome: this.paseoHome,
-      });
-      cwd = createdWorktree.worktreePath;
-      worktreeConfig = createdWorktree;
-    } else if (normalized.createNewBranch) {
-      const baseBranch = normalized.baseBranch ?? (await this.resolveGitCreateBaseBranch(cwd));
-      await this.createBranchFromBase({
-        cwd,
-        baseBranch,
-        newBranchName: normalized.newBranchName!,
-      });
-    } else if (normalized.baseBranch) {
-      await this.checkoutExistingBranch(cwd, normalized.baseBranch);
-    }
-
-    return {
-      sessionConfig: {
-        ...config,
-        cwd,
+        sessionLogger: this.sessionLogger,
+        checkoutExistingBranch: (cwd, branch) => this.checkoutExistingBranch(cwd, branch),
+        createBranchFromBase: (params) => this.createBranchFromBase(params),
       },
-      worktreeConfig,
-    };
+      config,
+      gitOptions,
+      legacyWorktreeName,
+      _labels,
+    );
   }
 
   private async handleListProviderModelsRequest(
@@ -2900,182 +2818,8 @@ export class Session {
     }
   }
 
-  private async handleSpeechModelsListRequest(
-    msg: Extract<SessionInboundMessage, { type: "speech_models_list_request" }>,
-  ): Promise<void> {
-    const modelsDir = this.localSpeechModelsDir;
-
-    const models = await Promise.all(
-      listLocalSpeechModels().map(async (model) => {
-        const modelDir = getLocalSpeechModelDir(modelsDir, model.id);
-        const missingFiles: string[] = [];
-        for (const rel of model.requiredFiles) {
-          const filePath = join(modelDir, rel);
-          try {
-            const fileStat = await stat(filePath);
-            if (fileStat.isDirectory()) {
-              continue;
-            }
-            if (!fileStat.isFile() || fileStat.size <= 0) {
-              missingFiles.push(rel);
-            }
-          } catch {
-            missingFiles.push(rel);
-          }
-        }
-
-        return {
-          id: model.id,
-          kind: model.kind,
-          description: model.description,
-          modelDir,
-          isDownloaded: missingFiles.length === 0,
-          ...(missingFiles.length > 0 ? { missingFiles } : {}),
-        };
-      }),
-    );
-
-    this.emit({
-      type: "speech_models_list_response",
-      payload: {
-        modelsDir,
-        models,
-        requestId: msg.requestId,
-      },
-    });
-  }
-
-  private async handleSpeechModelsDownloadRequest(
-    msg: Extract<SessionInboundMessage, { type: "speech_models_download_request" }>,
-  ): Promise<void> {
-    const modelsDir = this.localSpeechModelsDir;
-
-    const modelIdsRaw =
-      msg.modelIds && msg.modelIds.length > 0 ? msg.modelIds : this.defaultLocalSpeechModelIds;
-
-    const allModelIds = new Set(listLocalSpeechModels().map((m) => m.id));
-    const invalid = modelIdsRaw.filter((id) => !allModelIds.has(id as LocalSpeechModelId));
-    if (invalid.length > 0) {
-      this.emit({
-        type: "speech_models_download_response",
-        payload: {
-          modelsDir,
-          downloadedModelIds: [],
-          error: `Unknown speech model id(s): ${invalid.join(", ")}`,
-          requestId: msg.requestId,
-        },
-      });
-      return;
-    }
-
-    const modelIds = modelIdsRaw as LocalSpeechModelId[];
-    try {
-      await ensureLocalSpeechModels({
-        modelsDir,
-        modelIds,
-        logger: this.sessionLogger,
-      });
-      this.emit({
-        type: "speech_models_download_response",
-        payload: {
-          modelsDir,
-          downloadedModelIds: modelIds,
-          error: null,
-          requestId: msg.requestId,
-        },
-      });
-    } catch (error) {
-      this.sessionLogger.error({ err: error, modelIds }, "Failed to download speech models");
-      this.emit({
-        type: "speech_models_download_response",
-        payload: {
-          modelsDir,
-          downloadedModelIds: [],
-          error: error instanceof Error ? error.message : String(error),
-          requestId: msg.requestId,
-        },
-      });
-    }
-  }
-
-  private normalizeGitOptions(
-    gitOptions?: GitSetupOptions,
-    legacyWorktreeName?: string,
-  ): NormalizedGitOptions | null {
-    const fallbackOptions: GitSetupOptions | undefined = legacyWorktreeName
-      ? {
-          createWorktree: true,
-          createNewBranch: true,
-          newBranchName: legacyWorktreeName,
-          worktreeSlug: legacyWorktreeName,
-        }
-      : undefined;
-
-    const merged = gitOptions ?? fallbackOptions;
-    if (!merged) {
-      return null;
-    }
-
-    const baseBranch = merged.baseBranch?.trim() || undefined;
-    const createWorktree = Boolean(merged.createWorktree);
-    const createNewBranch = Boolean(merged.createNewBranch);
-    const normalizedBranchName = merged.newBranchName ? slugify(merged.newBranchName) : undefined;
-    const normalizedWorktreeSlug = merged.worktreeSlug
-      ? slugify(merged.worktreeSlug)
-      : normalizedBranchName;
-
-    if (!createWorktree && !createNewBranch && !baseBranch) {
-      return null;
-    }
-
-    if (baseBranch) {
-      this.assertSafeGitRef(baseBranch, "base branch");
-    }
-
-    if (createNewBranch) {
-      if (!normalizedBranchName) {
-        throw new Error("New branch name is required");
-      }
-      const validation = validateBranchSlug(normalizedBranchName);
-      if (!validation.valid) {
-        throw new Error(`Invalid branch name: ${validation.error}`);
-      }
-    }
-
-    if (normalizedWorktreeSlug) {
-      const validation = validateBranchSlug(normalizedWorktreeSlug);
-      if (!validation.valid) {
-        throw new Error(`Invalid worktree name: ${validation.error}`);
-      }
-    }
-
-    return {
-      baseBranch,
-      createNewBranch,
-      newBranchName: normalizedBranchName,
-      createWorktree,
-      worktreeSlug: normalizedWorktreeSlug,
-    };
-  }
-
   private assertSafeGitRef(ref: string, label: string): void {
-    if (!SAFE_GIT_REF_PATTERN.test(ref) || ref.includes("..") || ref.includes("@{")) {
-      throw new Error(`Invalid ${label}: ${ref}`);
-    }
-  }
-
-  private async resolveGitCreateBaseBranch(cwd: string): Promise<string> {
-    const checkout = await getCheckoutStatusLite(cwd, { paseoHome: this.paseoHome });
-    if (!checkout.isGit) {
-      throw new Error("Cannot create a worktree outside a git repository");
-    }
-
-    const repoRoot = checkout.isPaseoOwnedWorktree ? checkout.mainRepoRoot : cwd;
-    const baseBranch = await resolveRepositoryDefaultBranch(repoRoot);
-    if (!baseBranch) {
-      throw new Error("Unable to resolve repository default branch");
-    }
-    return baseBranch;
+    assertWorktreeSafeGitRef(ref, label);
   }
 
   private isPathWithinRoot(rootPath: string, candidatePath: string): boolean {
@@ -4317,194 +4061,32 @@ export class Session {
   private async handlePaseoWorktreeListRequest(
     msg: Extract<SessionInboundMessage, { type: "paseo_worktree_list_request" }>,
   ): Promise<void> {
-    const { requestId } = msg;
-    const cwd = msg.repoRoot ?? msg.cwd;
-    if (!cwd) {
-      this.emit({
-        type: "paseo_worktree_list_response",
-        payload: {
-          worktrees: [],
-          error: { code: "UNKNOWN", message: "cwd or repoRoot is required" },
-          requestId,
-        },
-      });
-      return;
-    }
-
-    try {
-      const worktrees = await listPaseoWorktrees({ cwd, paseoHome: this.paseoHome });
-      this.emit({
-        type: "paseo_worktree_list_response",
-        payload: {
-          worktrees: worktrees.map((entry) => ({
-            worktreePath: entry.path,
-            createdAt: entry.createdAt,
-            branchName: entry.branchName ?? null,
-            head: entry.head ?? null,
-          })),
-          error: null,
-          requestId,
-        },
-      });
-    } catch (error) {
-      this.emit({
-        type: "paseo_worktree_list_response",
-        payload: {
-          worktrees: [],
-          error: toCheckoutError(error),
-          requestId,
-        },
-      });
-    }
-  }
-
-  private async archivePaseoWorktree(options: {
-    targetPath: string;
-    repoRoot: string;
-    requestId: string;
-  }): Promise<string[]> {
-    let targetPath = options.targetPath;
-    const resolvedWorktree = await resolvePaseoWorktreeRootForCwd(targetPath, {
-      paseoHome: this.paseoHome,
-    });
-    if (resolvedWorktree) {
-      targetPath = resolvedWorktree.worktreePath;
-    }
-
-    const removedAgents = new Set<string>();
-    const affectedWorkspaceCwds = new Set<string>([targetPath]);
-    const agents = this.agentManager.listAgents();
-    for (const agent of agents) {
-      if (this.isPathWithinRoot(targetPath, agent.cwd)) {
-        removedAgents.add(agent.id);
-        affectedWorkspaceCwds.add(agent.cwd);
-        try {
-          await this.agentManager.closeAgent(agent.id);
-        } catch {
-          // ignore cleanup errors
-        }
-        try {
-          await this.agentStorage.remove(agent.id);
-        } catch {
-          // ignore cleanup errors
-        }
-      }
-    }
-
-    const registryRecords = await this.agentStorage.list();
-    for (const record of registryRecords) {
-      if (this.isPathWithinRoot(targetPath, record.cwd)) {
-        removedAgents.add(record.id);
-        affectedWorkspaceCwds.add(record.cwd);
-        try {
-          await this.agentStorage.remove(record.id);
-        } catch {
-          // ignore cleanup errors
-        }
-      }
-    }
-
-    await this.killTerminalsUnderPath(targetPath);
-
-    await deletePaseoWorktree({
-      cwd: options.repoRoot,
-      worktreePath: targetPath,
-      paseoHome: this.paseoHome,
-    });
-
-    for (const workspaceCwd of affectedWorkspaceCwds) {
-      const workspace = await this.findWorkspaceByDirectory(workspaceCwd);
-      if (!workspace) {
-        continue;
-      }
-      await this.archiveWorkspaceRecord(workspace.id);
-    }
-
-    for (const agentId of removedAgents) {
-      this.emit({
-        type: "agent_deleted",
-        payload: {
-          agentId,
-          requestId: options.requestId,
-        },
-      });
-    }
-
-    await this.emitWorkspaceUpdatesForCwds(affectedWorkspaceCwds);
-
-    return Array.from(removedAgents);
+    return handleWorktreeListRequest(
+      {
+        emit: (message) => this.emit(message),
+        paseoHome: this.paseoHome,
+      },
+      msg,
+    );
   }
 
   private async handlePaseoWorktreeArchiveRequest(
     msg: Extract<SessionInboundMessage, { type: "paseo_worktree_archive_request" }>,
   ): Promise<void> {
-    const { requestId } = msg;
-    let targetPath = msg.worktreePath;
-    let repoRoot = msg.repoRoot ?? null;
-
-    try {
-      if (!targetPath) {
-        if (!repoRoot || !msg.branchName) {
-          throw new Error("worktreePath or repoRoot+branchName is required");
-        }
-        const worktrees = await listPaseoWorktrees({ cwd: repoRoot, paseoHome: this.paseoHome });
-        const match = worktrees.find((entry) => entry.branchName === msg.branchName);
-        if (!match) {
-          throw new Error(`Paseo worktree not found for branch ${msg.branchName}`);
-        }
-        targetPath = match.path;
-      }
-
-      const ownership = await isPaseoOwnedWorktreeCwd(targetPath, {
+    return handleWorktreeArchiveRequest(
+      {
         paseoHome: this.paseoHome,
-      });
-      if (!ownership.allowed) {
-        this.emit({
-          type: "paseo_worktree_archive_response",
-          payload: {
-            success: false,
-            removedAgents: [],
-            error: {
-              code: "NOT_ALLOWED",
-              message: "Worktree is not a Paseo-owned worktree",
-            },
-            requestId,
-          },
-        });
-        return;
-      }
-
-      repoRoot = ownership.repoRoot ?? repoRoot ?? null;
-      if (!repoRoot) {
-        throw new Error("Unable to resolve repo root for worktree");
-      }
-
-      const removedAgents = await this.archivePaseoWorktree({
-        targetPath,
-        repoRoot,
-        requestId,
-      });
-
-      this.emit({
-        type: "paseo_worktree_archive_response",
-        payload: {
-          success: true,
-          removedAgents,
-          error: null,
-          requestId,
-        },
-      });
-    } catch (error) {
-      this.emit({
-        type: "paseo_worktree_archive_response",
-        payload: {
-          success: false,
-          removedAgents: [],
-          error: toCheckoutError(error),
-          requestId,
-        },
-      });
-    }
+        agentManager: this.agentManager,
+        agentStorage: this.agentStorage,
+        archiveWorkspaceRecord: (workspaceId) => this.archiveWorkspaceRecord(workspaceId),
+        emit: (message) => this.emit(message),
+        emitWorkspaceUpdatesForCwds: (cwds) => this.emitWorkspaceUpdatesForCwds(cwds),
+        isPathWithinRoot: (rootPath, candidatePath) =>
+          this.isPathWithinRoot(rootPath, candidatePath),
+        killTerminalsUnderPath: (rootPath) => this.killTerminalsUnderPath(rootPath),
+      },
+      msg,
+    );
   }
 
   /**
@@ -5536,65 +5118,20 @@ export class Session {
     worktreePath: string;
     branchName: string;
   }): Promise<PersistedWorkspaceRecord> {
-    await this.findOrCreateWorkspaceForDirectory(options.repoRoot);
-    const workspaceDirectory = normalizePersistedWorkspaceId(options.worktreePath);
-    const basePlacement = await this.buildProjectPlacementForCwd(options.repoRoot);
-    if (!basePlacement) {
-      throw new Error(`Workspace not found for repo root ${options.repoRoot}`);
-    }
-
-    const projectId = Number(basePlacement.projectKey);
-    if (!Number.isInteger(projectId)) {
-      throw new Error(`Invalid project id for repo root ${options.repoRoot}`);
-    }
-
-    const now = new Date().toISOString();
-    const existingWorkspace = await this.findWorkspaceByDirectory(workspaceDirectory);
-    if (!existingWorkspace) {
-      const workspaceId = await this.workspaceRegistry.insert({
-        projectId,
-        directory: workspaceDirectory,
-        displayName: options.branchName,
-        kind: "worktree",
-        createdAt: now,
-        updatedAt: now,
-        archivedAt: null,
-      });
-      const workspace = await this.workspaceRegistry.get(workspaceId);
-      if (!workspace) {
-        throw new Error(`Workspace not found after insert: ${workspaceId}`);
-      }
-      await this.syncWorkspaceGitWatchTarget(workspace.directory, { isGit: true });
-      return workspace;
-    }
-
-    const nextWorkspaceRecord = createPersistedWorkspaceRecord({
-      id: existingWorkspace.id,
-      projectId,
-      directory: workspaceDirectory,
-      displayName: options.branchName,
-      kind: "worktree",
-      createdAt: existingWorkspace.createdAt,
-      updatedAt: now,
-      archivedAt: null,
-    });
-
-    await this.workspaceRegistry.upsert(nextWorkspaceRecord);
-    await this.syncWorkspaceGitWatchTarget(workspaceDirectory, { isGit: true });
-
-    if (!existingWorkspace.archivedAt && existingWorkspace.projectId !== projectId) {
-      const siblingWorkspaces = (await this.workspaceRegistry.list()).filter(
-        (workspace) =>
-          workspace.projectId === existingWorkspace.projectId &&
-          workspace.id !== existingWorkspace.id &&
-          !workspace.archivedAt,
-      );
-      if (siblingWorkspaces.length === 0) {
-        await this.projectRegistry.archive(existingWorkspace.projectId, now);
-      }
-    }
-
-    return nextWorkspaceRecord;
+    return registerPendingWorktreeWorkspaceSession(
+      {
+        buildPersistedProjectRecord: (input) => this.buildPersistedProjectRecord(input),
+        buildPersistedWorkspaceRecord: (input) => this.buildPersistedWorkspaceRecord(input),
+        buildProjectPlacement: (cwd) => this.buildProjectPlacement(cwd),
+        projectRegistry: this.projectRegistry,
+        syncWorkspaceGitWatchTarget: (cwd, syncOptions) =>
+          this.syncWorkspaceGitWatchTarget(cwd, syncOptions),
+        workspaceRegistry: this.workspaceRegistry,
+        archiveProjectRecordIfEmpty: (projectId, archivedAt) =>
+          this.archiveProjectRecordIfEmpty(projectId, archivedAt),
+      },
+      options,
+    );
   }
 
   private async archiveWorkspaceRecord(workspaceId: number, archivedAt?: string): Promise<void> {
@@ -5858,105 +5395,37 @@ export class Session {
   private async handleCreatePaseoWorktreeRequest(
     request: Extract<SessionInboundMessage, { type: "create_paseo_worktree_request" }>,
   ): Promise<void> {
-    try {
-      const checkout = await getCheckoutStatusLite(request.cwd, { paseoHome: this.paseoHome });
-      if (!checkout.isGit) {
-        throw new Error("Create worktree requires a git repository");
-      }
-
-      const repoRoot = checkout.isPaseoOwnedWorktree ? checkout.mainRepoRoot : request.cwd;
-      const baseBranch = await resolveRepositoryDefaultBranch(repoRoot);
-      if (!baseBranch) {
-        throw new Error("Unable to resolve repository default branch");
-      }
-
-      const normalizedSlug = request.worktreeSlug ? slugify(request.worktreeSlug) : uuidv4();
-      const validation = validateBranchSlug(normalizedSlug);
-      if (!validation.valid) {
-        throw new Error(`Invalid worktree name: ${validation.error}`);
-      }
-
-      const worktreePath = await computeWorktreePath(repoRoot, normalizedSlug, this.paseoHome);
-      await createAgentWorktree({
-        cwd: repoRoot,
-        branchName: normalizedSlug,
-        baseBranch,
-        worktreeSlug: normalizedSlug,
+    return handleCreateWorktreeRequest(
+      {
         paseoHome: this.paseoHome,
-      });
+        describeWorkspaceRecord: (workspace) => this.describeWorkspaceRecord(workspace),
+        emit: (message) => this.emit(message),
+        registerPendingWorktreeWorkspace: (options) =>
+          this.registerPendingWorktreeWorkspace(options),
+        sessionLogger: this.sessionLogger,
+        createPaseoWorktreeInBackground: (options) => this.createPaseoWorktreeInBackground(options),
+      },
+      request,
+    );
+  }
 
-      let setupTerminalId: string | null = null;
-      try {
-        const setupCommands = getWorktreeSetupCommands(worktreePath);
-        if (setupCommands.length > 0 && this.terminalManager) {
-          const runtimeEnv = await resolveWorktreeRuntimeEnv({
-            worktreePath,
-            branchName: normalizedSlug,
-            repoRootPath: repoRoot,
-          });
-          this.terminalManager.registerCwdEnv({
-            cwd: worktreePath,
-            env: runtimeEnv,
-          });
-          const terminal = await this.terminalManager.createTerminal({
-            cwd: worktreePath,
-            name: `setup-${normalizedSlug}`,
-            env: runtimeEnv,
-          });
-          setupTerminalId = terminal.id;
-
-          for (const command of setupCommands) {
-            terminal.send({
-              type: "input",
-              data: `${command}\r`,
-            });
-          }
-        }
-      } catch (error) {
-        this.sessionLogger.error(
-          {
-            err: error,
-            cwd: request.cwd,
-            repoRoot,
-            worktreeSlug: normalizedSlug,
-            worktreePath,
-          },
-          "Worktree setup terminal initialization failed",
-        );
-      }
-
-      const workspace = await this.registerWorktreeWorkspaceRecord({
-        repoRoot,
-        worktreePath,
-        branchName: normalizedSlug,
-      });
-      await this.emitWorkspaceUpdateForCwd(worktreePath);
-      const descriptor = await this.describeWorkspaceRecord(workspace);
-      this.emit({
-        type: "create_paseo_worktree_response",
-        payload: {
-          workspace: descriptor,
-          error: null,
-          setupTerminalId,
-          requestId: request.requestId,
-        },
-      });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Failed to create worktree";
-      this.sessionLogger.error(
-        { err: error, cwd: request.cwd, worktreeSlug: request.worktreeSlug },
-        "Failed to create worktree",
-      );
-      this.emit({
-        type: "create_paseo_worktree_response",
-        payload: {
-          workspace: null,
-          error: message,
-          setupTerminalId: null,
-          requestId: request.requestId,
-        },
-      });
-    }
+  private async createPaseoWorktreeInBackground(options: {
+    requestCwd: string;
+    repoRoot: string;
+    baseBranch: string;
+    slug: string;
+    worktreePath: string;
+  }): Promise<void> {
+    return createWorktreeInBackgroundSession(
+      {
+        paseoHome: this.paseoHome,
+        emitWorkspaceUpdateForCwd: (cwd, emitOptions) =>
+          this.emitWorkspaceUpdateForCwd(cwd, emitOptions),
+        sessionLogger: this.sessionLogger,
+        terminalManager: this.terminalManager,
+      },
+      options,
+    );
   }
 
   private async handleArchiveWorkspaceRequest(
@@ -6922,7 +6391,10 @@ export class Session {
    * Emit a message to the client
    */
   private emit(msg: SessionOutboundMessage): void {
-    this.sessionLogger.trace({ outbound: msg }, "outbound message");
+    this.sessionLogger.trace(
+      { messageType: msg.type, payloadBytes: JSON.stringify(msg).length },
+      "outbound message",
+    );
     if (
       msg.type === "audio_output" &&
       (process.env.TTS_DEBUG_AUDIO_DIR || isPaseoDictationDebugEnabled()) &&
@@ -7637,7 +7109,7 @@ export class Session {
       this.emit({
         type: "list_terminals_response",
         payload: {
-          cwd: msg.cwd,
+          ...(msg.cwd ? { cwd: msg.cwd } : {}),
           terminals: [],
           requestId: msg.requestId,
         },
@@ -7647,7 +7119,9 @@ export class Session {
 
     try {
       const terminals = this.filterStandaloneTerminals(
-        await this.terminalManager.getTerminals(msg.cwd),
+        typeof msg.cwd === "string"
+          ? await this.terminalManager.getTerminals(msg.cwd)
+          : await this.getAllTerminalSessions(),
       );
       for (const terminal of terminals) {
         this.ensureTerminalExitSubscription(terminal);
@@ -7655,7 +7129,7 @@ export class Session {
       this.emit({
         type: "list_terminals_response",
         payload: {
-          cwd: msg.cwd,
+          ...(msg.cwd ? { cwd: msg.cwd } : {}),
           terminals: terminals.map((terminal) => this.toTerminalInfo(terminal)),
           requestId: msg.requestId,
         },
@@ -7665,7 +7139,7 @@ export class Session {
       this.emit({
         type: "list_terminals_response",
         payload: {
-          cwd: msg.cwd,
+          ...(msg.cwd ? { cwd: msg.cwd } : {}),
           terminals: [],
           requestId: msg.requestId,
         },
@@ -7711,6 +7185,18 @@ export class Session {
       throw new Error(`Terminal not available for agent ${agentId}`);
     }
     return terminal;
+  }
+
+  private async getAllTerminalSessions(): Promise<TerminalSession[]> {
+    if (!this.terminalManager) {
+      return [];
+    }
+
+    const directories = this.terminalManager.listDirectories();
+    const terminalsByDirectory = await Promise.all(
+      directories.map((cwd) => this.terminalManager!.getTerminals(cwd)),
+    );
+    return terminalsByDirectory.flat();
   }
 
   private async handleCreateTerminalRequest(msg: CreateTerminalRequest): Promise<void> {
@@ -7874,36 +7360,16 @@ export class Session {
   }
 
   private async killTerminalsUnderPath(rootPath: string): Promise<void> {
-    if (!this.terminalManager) {
-      return;
-    }
-
-    const cleanupErrors: Array<{ cwd: string; message: string }> = [];
-    const terminalDirectories = [...this.terminalManager.listDirectories()];
-    for (const terminalCwd of terminalDirectories) {
-      if (!this.isPathWithinRoot(rootPath, terminalCwd)) {
-        continue;
-      }
-
-      try {
-        const terminals = await this.terminalManager.getTerminals(terminalCwd);
-        for (const terminal of [...terminals]) {
-          this.killTrackedTerminal(terminal.id, { emitExit: true });
-        }
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        cleanupErrors.push({ cwd: terminalCwd, message });
-        this.sessionLogger.warn(
-          { err: error, cwd: terminalCwd },
-          "Failed to clean up worktree terminals during archive",
-        );
-      }
-    }
-
-    if (cleanupErrors.length > 0) {
-      const details = cleanupErrors.map((entry) => `${entry.cwd}: ${entry.message}`).join("; ");
-      throw new Error(`Failed to clean up worktree terminals during archive (${details})`);
-    }
+    return killWorktreeTerminalsUnderPath(
+      {
+        isPathWithinRoot: (pathRoot, candidatePath) =>
+          this.isPathWithinRoot(pathRoot, candidatePath),
+        killTrackedTerminal: (terminalId, options) => this.killTrackedTerminal(terminalId, options),
+        sessionLogger: this.sessionLogger,
+        terminalManager: this.terminalManager,
+      },
+      rootPath,
+    );
   }
 
   private async handleKillTerminalRequest(msg: KillTerminalRequest): Promise<void> {
@@ -7928,6 +7394,68 @@ export class Session {
         requestId: msg.requestId,
       },
     });
+  }
+
+  private async handleCaptureTerminalRequest(msg: CaptureTerminalRequest): Promise<void> {
+    if (!this.terminalManager) {
+      this.emit({
+        type: "capture_terminal_response",
+        payload: {
+          terminalId: msg.terminalId,
+          lines: [],
+          totalLines: 0,
+          requestId: msg.requestId,
+        },
+      });
+      return;
+    }
+
+    const session = this.terminalManager.getTerminal(msg.terminalId);
+    if (!session) {
+      this.emit({
+        type: "capture_terminal_response",
+        payload: {
+          terminalId: msg.terminalId,
+          lines: [],
+          totalLines: 0,
+          requestId: msg.requestId,
+        },
+      });
+      return;
+    }
+
+    this.ensureTerminalExitSubscription(session);
+
+    try {
+      const capture = captureTerminalLines(session, {
+        start: msg.start,
+        end: msg.end,
+        stripAnsi: msg.stripAnsi,
+      });
+      this.emit({
+        type: "capture_terminal_response",
+        payload: {
+          terminalId: msg.terminalId,
+          lines: capture.lines,
+          totalLines: capture.totalLines,
+          requestId: msg.requestId,
+        },
+      });
+    } catch (error: any) {
+      this.sessionLogger.error(
+        { err: error, terminalId: msg.terminalId },
+        "Failed to capture terminal",
+      );
+      this.emit({
+        type: "capture_terminal_response",
+        payload: {
+          terminalId: msg.terminalId,
+          lines: [],
+          totalLines: 0,
+          requestId: msg.requestId,
+        },
+      });
+    }
   }
 
   private bindActiveTerminalStream(terminal: TerminalSession): number | null {

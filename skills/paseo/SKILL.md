@@ -154,6 +154,59 @@ paseo chat wait <room> --timeout <duration>
 paseo chat delete <name-or-id>
 ```
 
+## Terminal Commands
+
+Manage workspace terminals: create, inspect, send keystrokes, capture output.
+
+```bash
+# List terminals (scoped to current directory by default)
+paseo terminal ls                    # Terminals in current directory
+paseo terminal ls --all              # All terminals across all workspaces
+paseo terminal ls --cwd ~/dev/myapp  # Terminals in a specific directory
+
+# Create a terminal
+paseo terminal create                          # In current directory
+paseo terminal create --cwd ~/dev/myapp        # In a specific directory
+paseo terminal create --name "build-runner"    # With a custom name
+
+# Kill a terminal (supports short ID prefixes and name matching)
+paseo terminal kill <terminal-id>
+paseo terminal kill abc123           # Short prefix
+paseo terminal kill build-runner     # By name
+
+# Capture terminal output as plain text (like tmux capture-pane -p)
+paseo terminal capture <terminal-id>               # Visible pane only, ANSI stripped
+paseo terminal capture <terminal-id> --scrollback   # Full scrollback + visible
+paseo terminal capture <terminal-id> -S             # Short form of --scrollback
+paseo terminal capture <terminal-id> --start 0 --end 10   # Line range (tmux-style)
+paseo terminal capture <terminal-id> --start -5     # Last 5 lines
+paseo terminal capture <terminal-id> --ansi         # Preserve ANSI escape codes
+paseo terminal capture <terminal-id> --json         # JSON output with metadata
+
+# Send keystrokes (like tmux send-keys)
+paseo terminal send-keys <terminal-id> "ls -la" Enter
+paseo terminal send-keys <terminal-id> "echo hello" Enter
+paseo terminal send-keys <terminal-id> C-c          # Ctrl+C
+paseo terminal send-keys <terminal-id> C-d          # Ctrl+D
+paseo terminal send-keys <terminal-id> --literal "raw text"  # No special token interpretation
+```
+
+**Special key tokens** (interpreted by default, use `--literal` to send raw):
+`Enter`, `Tab`, `Escape`, `Space`, `BSpace`, `C-c`, `C-d`, `C-z`, `C-l`, `C-a`, `C-e`
+
+**Common pattern — launch a process and interact with it:**
+```bash
+id=$(paseo terminal create --name "my-shell" -q)
+paseo terminal send-keys "$id" "claude" Enter
+sleep 5
+paseo terminal capture "$id" --scrollback   # See what happened
+paseo terminal send-keys "$id" "Hello!" Enter
+sleep 10
+paseo terminal capture "$id" --scrollback   # See the response
+paseo terminal send-keys "$id" "/exit" Enter
+paseo terminal kill "$id"
+```
+
 ## Available Models
 
 **Claude (default provider)** — use aliases, CLI resolves to latest version:

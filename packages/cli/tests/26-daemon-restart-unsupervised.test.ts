@@ -134,11 +134,6 @@ try {
       env: {
         ...process.env,
         ...testEnv,
-        // This test validates direct unsupervised worker ownership semantics.
-        // Agent-orchestrated shells may export PASEO_PID_LOCK_MODE=external,
-        // which would delegate lock ownership away from this process and make
-        // daemon status checks fail to observe a running owner PID.
-        PASEO_PID_LOCK_MODE: "self",
         PASEO_HOME: paseoHome,
         PASEO_LISTEN: host,
         PASEO_RELAY_ENABLED: "false",

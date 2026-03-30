@@ -1,8 +1,12 @@
 import { fileURLToPath } from "url";
 import { existsSync } from "node:fs";
 import path from "node:path";
-import { loadConfig } from "../src/server/config.js";
-import { acquirePidLock, PidLockError, releasePidLock } from "../src/server/pid-lock.js";
+import {
+  acquirePidLock,
+  PidLockError,
+  releasePidLock,
+  updatePidLock,
+} from "../src/server/pid-lock.js";
 import { resolvePaseoHome } from "../src/server/paseo-home.js";
 import { runSupervisor } from "./supervisor.js";
 import { applySherpaLoaderEnv } from "../src/server/speech/providers/local/sherpa/sherpa-runtime-env.js";
@@ -72,10 +76,7 @@ async function main(): Promise<void> {
   const config = parseConfig(process.argv.slice(2));
   const workerEntry = config.devMode ? resolveDevWorkerEntry() : resolveWorkerEntry();
   const workerExecArgv = resolveWorkerExecArgv(workerEntry);
-  const workerEnv: NodeJS.ProcessEnv = {
-    ...process.env,
-    PASEO_PID_LOCK_MODE: "external",
-  };
+  const workerEnv: NodeJS.ProcessEnv = { ...process.env, PASEO_SUPERVISED: "1" };
   const packagedNodeEntrypointRunner =
     process.env.ELECTRON_RUN_AS_NODE === "1"
       ? resolvePackagedNodeEntrypointRunnerPath(fileURLToPath(import.meta.url))
@@ -84,10 +85,9 @@ async function main(): Promise<void> {
   applySherpaLoaderEnv(workerEnv);
 
   const paseoHome = resolvePaseoHome(workerEnv);
-  const daemonConfig = loadConfig(paseoHome, { env: workerEnv });
 
   try {
-    await acquirePidLock(paseoHome, daemonConfig.listen, {
+    await acquirePidLock(paseoHome, null, {
       ownerPid: process.pid,
     });
   } catch (error) {
@@ -135,6 +135,9 @@ async function main(): Promise<void> {
         })
       : undefined,
     restartOnCrash: config.devMode,
+    onWorkerReady: async ({ listen }) => {
+      await updatePidLock(paseoHome, { listen }, { ownerPid: process.pid });
+    },
     onSupervisorExit: releaseLock,
   });
 }

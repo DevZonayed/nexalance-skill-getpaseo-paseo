@@ -17,7 +17,7 @@ import { resolvePaseoHome } from "../server/paseo-home.js";
 interface PaseoConfig {
   worktree?: {
     setup?: string[];
-    destroy?: string[];
+    teardown?: string[];
     terminals?: WorktreeTerminalConfig[];
   };
 }
@@ -94,14 +94,14 @@ export class WorktreeSetupError extends Error {
   }
 }
 
-export type WorktreeDestroyCommandResult = WorktreeSetupCommandResult;
+export type WorktreeTeardownCommandResult = WorktreeSetupCommandResult;
 
-export class WorktreeDestroyError extends Error {
-  readonly results: WorktreeDestroyCommandResult[];
+export class WorktreeTeardownError extends Error {
+  readonly results: WorktreeTeardownCommandResult[];
 
-  constructor(message: string, results: WorktreeDestroyCommandResult[]) {
+  constructor(message: string, results: WorktreeTeardownCommandResult[]) {
     super(message);
-    this.name = "WorktreeDestroyError";
+    this.name = "WorktreeTeardownError";
     this.results = results;
   }
 }
@@ -150,13 +150,13 @@ export function getWorktreeSetupCommands(repoRoot: string): string[] {
   return setupCommands.filter((cmd) => typeof cmd === "string" && cmd.trim().length > 0);
 }
 
-export function getWorktreeDestroyCommands(repoRoot: string): string[] {
+export function getWorktreeTeardownCommands(repoRoot: string): string[] {
   const config = readPaseoConfig(repoRoot);
-  const destroyCommands = config?.worktree?.destroy;
-  if (!destroyCommands || destroyCommands.length === 0) {
+  const teardownCommands = config?.worktree?.teardown;
+  if (!teardownCommands || teardownCommands.length === 0) {
     return [];
   }
-  return destroyCommands.filter((cmd) => typeof cmd === "string" && cmd.trim().length > 0);
+  return teardownCommands.filter((cmd) => typeof cmd === "string" && cmd.trim().length > 0);
 }
 
 export function getWorktreeTerminalSpecs(repoRoot: string): WorktreeTerminalConfig[] {
@@ -506,14 +506,14 @@ export async function resolveWorktreeRuntimeEnv(options: {
   };
 }
 
-export async function runWorktreeDestroyCommands(options: {
+export async function runWorktreeTeardownCommands(options: {
   worktreePath: string;
   branchName?: string;
   repoRootPath?: string;
-}): Promise<WorktreeDestroyCommandResult[]> {
+}): Promise<WorktreeTeardownCommandResult[]> {
   // Read paseo.json from the worktree (it will have the same content as the source repo)
-  const destroyCommands = getWorktreeDestroyCommands(options.worktreePath);
-  if (destroyCommands.length === 0) {
+  const teardownCommands = getWorktreeTeardownCommands(options.worktreePath);
+  if (teardownCommands.length === 0) {
     return [];
   }
 
@@ -521,30 +521,32 @@ export async function runWorktreeDestroyCommands(options: {
     options.repoRootPath ?? (await inferRepoRootPathFromWorktreePath(options.worktreePath));
   const branchName =
     options.branchName ?? (await resolveBranchNameForWorktreePath(options.worktreePath));
+  const worktreePort = readPaseoWorktreeRuntimePort(options.worktreePath);
 
-  const destroyEnv = {
+  const teardownEnv: NodeJS.ProcessEnv = {
     ...process.env,
     // Source checkout path is the original git repo root (shared across worktrees), not the
-    // worktree itself. This allows destroy scripts to clean resources using paths from the
-    // source checkout.
+    // worktree itself. This allows lifecycle scripts to copy or clean resources using paths
+    // from the source checkout.
     PASEO_SOURCE_CHECKOUT_PATH: repoRootPath,
     // Backward-compatible alias.
     PASEO_ROOT_PATH: repoRootPath,
     PASEO_WORKTREE_PATH: options.worktreePath,
     PASEO_BRANCH_NAME: branchName,
+    ...(worktreePort !== null ? { PASEO_WORKTREE_PORT: String(worktreePort) } : {}),
   };
 
-  const results: WorktreeDestroyCommandResult[] = [];
-  for (const cmd of destroyCommands) {
+  const results: WorktreeTeardownCommandResult[] = [];
+  for (const cmd of teardownCommands) {
     const result = await execSetupCommand(cmd, {
       cwd: options.worktreePath,
-      env: destroyEnv,
+      env: teardownEnv,
     });
     results.push(result);
 
     if (result.exitCode !== 0) {
-      throw new WorktreeDestroyError(
-        `Worktree destroy command failed: ${cmd}\n${result.stderr}`.trim(),
+      throw new WorktreeTeardownError(
+        `Worktree teardown command failed: ${cmd}\n${result.stderr}`.trim(),
         results,
       );
     }
@@ -884,7 +886,7 @@ export async function deletePaseoWorktree({
     throw new Error("Refusing to delete non-Paseo worktree");
   }
 
-  await runWorktreeDestroyCommands({
+  await runWorktreeTeardownCommands({
     worktreePath: resolvedWorktree,
   });
 

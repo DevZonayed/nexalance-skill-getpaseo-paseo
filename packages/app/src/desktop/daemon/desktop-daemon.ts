@@ -6,7 +6,7 @@ export type DesktopDaemonState = "starting" | "running" | "stopped" | "errored";
 export type DesktopDaemonStatus = {
   serverId: string;
   status: DesktopDaemonState;
-  listen: string;
+  listen: string | null;
   hostname: string | null;
   pid: number | null;
   home: string;
@@ -82,7 +82,7 @@ function parseDesktopDaemonStatus(raw: unknown): DesktopDaemonStatus {
   return {
     serverId: toStringOrNull(raw.serverId) ?? "",
     status: parseDesktopDaemonState(raw.status),
-    listen: toStringOrNull(raw.listen) ?? "",
+    listen: toStringOrNull(raw.listen),
     hostname: toStringOrNull(raw.hostname),
     pid: toNumberOrNull(raw.pid),
     home: toStringOrNull(raw.home) ?? "",

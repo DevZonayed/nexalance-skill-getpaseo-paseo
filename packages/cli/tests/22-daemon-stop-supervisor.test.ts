@@ -2,7 +2,7 @@
 
 /**
  * Regression: `paseo daemon stop` must stop supervised dev daemons
- * without allowing daemon-runner to respawn a new worker process.
+ * without allowing the supervisor entrypoint to respawn a new worker process.
  */
 
 import assert from "node:assert";
@@ -120,20 +120,24 @@ let supervisorProcess: ChildProcess | null = null;
 let recentSupervisorLogs = "";
 
 try {
-  console.log("Test 1: start daemon-runner in dev mode with isolated PASEO_HOME");
+  console.log("Test 1: start supervisor-entrypoint in dev mode with isolated PASEO_HOME");
 
-  supervisorProcess = spawn("npx", ["tsx", "../server/scripts/daemon-runner.ts", "--dev"], {
-    cwd: cliRoot,
-    env: {
-      ...process.env,
-      ...testEnv,
-      PASEO_HOME: paseoHome,
-      PASEO_LISTEN: `127.0.0.1:${port}`,
-      PASEO_RELAY_ENABLED: "false",
-      CI: "true",
+  supervisorProcess = spawn(
+    "npx",
+    ["tsx", "../server/scripts/supervisor-entrypoint.ts", "--dev"],
+    {
+      cwd: cliRoot,
+      env: {
+        ...process.env,
+        ...testEnv,
+        PASEO_HOME: paseoHome,
+        PASEO_LISTEN: `127.0.0.1:${port}`,
+        PASEO_RELAY_ENABLED: "false",
+        CI: "true",
+      },
+      stdio: ["ignore", "pipe", "pipe"],
     },
-    stdio: ["ignore", "pipe", "pipe"],
-  });
+  );
 
   supervisorProcess.stdout?.on("data", (chunk) => {
     recentSupervisorLogs = (recentSupervisorLogs + chunk.toString()).slice(-8000);
@@ -161,8 +165,9 @@ try {
   const command = readProcessCommand(daemonPid);
   assert(command !== null, "pid lock pid should resolve to a running process command");
   assert(
-    command.includes("daemon-runner.ts") || command.includes("daemon-runner.js"),
-    `pid lock pid should be daemon-runner process, got: ${command}`,
+    command.includes("supervisor-entrypoint.ts") ||
+      command.includes("supervisor-entrypoint.js"),
+    `pid lock pid should be supervisor-entrypoint process, got: ${command}`,
   );
   console.log(`✓ dev daemon started with daemon pid ${daemonPid}\n`);
 
@@ -186,7 +191,7 @@ try {
     await waitFor(
       () => !isProcessRunning(supervisorProcess!.pid ?? -1),
       15000,
-      "daemon-runner supervisor remained running after stop",
+      "supervisor-entrypoint process remained running after stop",
     );
   }
 

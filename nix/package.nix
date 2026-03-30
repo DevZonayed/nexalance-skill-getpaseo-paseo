@@ -42,7 +42,7 @@ buildNpmPackage rec {
 
   # To update: run `nix build` with lib.fakeHash, copy the `got:` hash.
   # CI auto-updates this when package-lock.json changes (see .github/workflows/).
-  npmDepsHash = "sha256-odgbFOAjAsBTnfKu6RJ3PEgiYnvIXBLtkdkaHtIRPyw=";
+  npmDepsHash = "sha256-Cz3xidzBIWER4ktn3wWzT9PDm9PnipVA7XnsTQC440U=";
 
   # Prevent onnxruntime-node's install script from running during automatic
   # npm rebuild (it tries to download from api.nuget.org, which fails in the sandbox).
@@ -114,7 +114,7 @@ buildNpmPackage rec {
       fi
     done
 
-    # Copy server scripts (daemon-runner, supervisor) needed by CLI
+    # Copy server scripts (including supervisor-entrypoint) needed by CLI
     if [ -d packages/server/dist/scripts ]; then
       mkdir -p $out/lib/paseo/packages/server/dist/scripts
       cp -a packages/server/dist/scripts/* $out/lib/paseo/packages/server/dist/scripts/

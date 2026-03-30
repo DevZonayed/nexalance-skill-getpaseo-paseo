@@ -39,13 +39,12 @@ import type {
   ListCommandsResponse,
   ListProviderModelsResponseMessage,
   ListAvailableProvidersResponse,
-  SpeechModelsListResponse,
-  SpeechModelsDownloadResponse,
   ListTerminalsResponse,
   CreateTerminalResponse,
   SubscribeTerminalResponse,
   TerminalState,
   KillTerminalResponse,
+  CaptureTerminalResponse,
   TerminalInput,
   SessionInboundMessage,
   SessionOutboundMessage,
@@ -216,8 +215,6 @@ type FileExplorerPayload = FileExplorerResponse["payload"];
 type FileDownloadTokenPayload = FileDownloadTokenResponse["payload"];
 type ListProviderModelsPayload = ListProviderModelsResponseMessage["payload"];
 type ListAvailableProvidersPayload = ListAvailableProvidersResponse["payload"];
-type SpeechModelsListPayload = SpeechModelsListResponse["payload"];
-type SpeechModelsDownloadPayload = SpeechModelsDownloadResponse["payload"];
 type ListCommandsPayload = ListCommandsResponse["payload"];
 type ListCommandsDraftConfig = Pick<
   AgentSessionConfig,
@@ -240,6 +237,7 @@ type ListTerminalsPayload = ListTerminalsResponse["payload"];
 type CreateTerminalPayload = CreateTerminalResponse["payload"];
 type SubscribeTerminalPayload = SubscribeTerminalResponse["payload"];
 type KillTerminalPayload = KillTerminalResponse["payload"];
+type CaptureTerminalPayload = CaptureTerminalResponse["payload"];
 type ChatCreatePayload = Extract<
   SessionOutboundMessage,
   { type: "chat/create/response" }
@@ -2485,32 +2483,6 @@ export class DaemonClient {
     });
   }
 
-  async listSpeechModels(requestId?: string): Promise<SpeechModelsListPayload> {
-    return this.sendCorrelatedSessionRequest({
-      requestId,
-      message: {
-        type: "speech_models_list_request",
-      },
-      responseType: "speech_models_list_response",
-      timeout: 30000,
-    });
-  }
-
-  async downloadSpeechModels(options?: {
-    modelIds?: string[];
-    requestId?: string;
-  }): Promise<SpeechModelsDownloadPayload> {
-    return this.sendCorrelatedSessionRequest({
-      requestId: options?.requestId,
-      message: {
-        type: "speech_models_download_request",
-        modelIds: options?.modelIds,
-      },
-      responseType: "speech_models_download_response",
-      timeout: 30 * 60 * 1000,
-    });
-  }
-
   async listCommands(agentId: string, requestId?: string): Promise<ListCommandsPayload>;
   async listCommands(agentId: string, options?: ListCommandsOptions): Promise<ListCommandsPayload>;
   async listCommands(
@@ -2737,11 +2709,11 @@ export class DaemonClient {
     });
   }
 
-  async listTerminals(cwd: string, requestId?: string): Promise<ListTerminalsPayload> {
+  async listTerminals(cwd?: string, requestId?: string): Promise<ListTerminalsPayload> {
     const resolvedRequestId = this.createRequestId(requestId);
     const message = SessionInboundMessageSchema.parse({
       type: "list_terminals_request",
-      cwd,
+      ...(cwd === undefined ? {} : { cwd }),
       requestId: resolvedRequestId,
     });
     return this.sendCorrelatedRequest({
@@ -2854,6 +2826,29 @@ export class DaemonClient {
       requestId: resolvedRequestId,
       message,
       responseType: "kill_terminal_response",
+      timeout: 10000,
+      options: { skipQueue: true },
+    });
+  }
+
+  async captureTerminal(
+    terminalId: string,
+    options?: { start?: number; end?: number; stripAnsi?: boolean },
+    requestId?: string,
+  ): Promise<CaptureTerminalPayload> {
+    const resolvedRequestId = this.createRequestId(requestId);
+    const message = SessionInboundMessageSchema.parse({
+      type: "capture_terminal_request",
+      terminalId,
+      ...(options?.start === undefined ? {} : { start: options.start }),
+      ...(options?.end === undefined ? {} : { end: options.end }),
+      ...(options?.stripAnsi === undefined ? {} : { stripAnsi: options.stripAnsi }),
+      requestId: resolvedRequestId,
+    });
+    return this.sendCorrelatedRequest({
+      requestId: resolvedRequestId,
+      message,
+      responseType: "capture_terminal_response",
       timeout: 10000,
       options: { skipQueue: true },
     });

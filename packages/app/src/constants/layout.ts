@@ -60,14 +60,3 @@ export function getIsDesktop(): boolean {
   }
   return result;
 }
-
-// Get traffic light padding values (only non-zero on desktop macOS)
-export function getTrafficLightPadding(): { left: number; top: number } {
-  if (!getIsDesktopMac()) {
-    return { left: 0, top: 0 };
-  }
-  return {
-    left: DESKTOP_TRAFFIC_LIGHT_WIDTH,
-    top: DESKTOP_TRAFFIC_LIGHT_HEIGHT,
-  };
-}

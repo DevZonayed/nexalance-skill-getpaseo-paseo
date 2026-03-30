@@ -32,7 +32,7 @@ import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { ResizeHandle } from "@/components/resize-handle";
 import { shouldFocusPaneFromEventTarget } from "@/components/split-container-pane-focus";
 import { usePanelStore } from "@/stores/panel-store";
-import { useTrafficLightPadding } from "@/utils/desktop-window";
+import { useWindowControlsPadding } from "@/utils/desktop-window";
 import {
   computeTabDropPreview,
   type TabDropPreview,
@@ -792,8 +792,7 @@ function SplitPaneView({
   const { theme } = useUnistyles();
   const paneRef = useRef<View | null>(null);
   const stableOnFocusPane = useStableEvent(onFocusPane);
-  const isFocusModeEnabled = usePanelStore((s) => s.desktop.focusModeEnabled);
-  const trafficLightPadding = useTrafficLightPadding();
+  const padding = useWindowControlsPadding("tabRow");
   const paneState = useMemo(
     () =>
       deriveWorkspacePaneState({
@@ -868,11 +867,7 @@ function SplitPaneView({
       <View
         style={[
           styles.paneTabs,
-          isFocusModeEnabled &&
-            trafficLightPadding.side && {
-              paddingLeft: trafficLightPadding.left,
-              paddingRight: trafficLightPadding.right,
-            },
+          { paddingLeft: padding.left, paddingRight: padding.right },
         ]}
       >
         <WorkspaceDesktopTabsRow

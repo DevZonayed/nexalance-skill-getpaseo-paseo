@@ -91,7 +91,7 @@ import { DownloadTokenStore } from "./file-download/token-store.js";
 import type { OpenAiSpeechProviderConfig } from "./speech/providers/openai/config.js";
 import type { LocalSpeechProviderConfig } from "./speech/providers/local/config.js";
 import type { RequestedSpeechProviders } from "./speech/speech-types.js";
-import { initializeSpeechRuntime } from "./speech/speech-runtime.js";
+import { createSpeechService } from "./speech/speech-runtime.js";
 import { AgentManager } from "./agent/agent-manager.js";
 import type { AgentSnapshotStore } from "./agent/agent-snapshot-store.js";
 import { createAgentMcpServer } from "./agent/mcp-server.js";
@@ -116,7 +116,6 @@ import { getOrCreateServerId } from "./server-id.js";
 import { resolveDaemonVersion } from "./daemon-version.js";
 import type { AgentClient, AgentProvider } from "./agent/agent-sdk-types.js";
 import type { AgentProviderRuntimeSettingsMap } from "./agent/provider-launch-config.js";
-import { acquirePidLock, releasePidLock } from "./pid-lock.js";
 import { isHostAllowed, type AllowedHostsConfig } from "./allowed-hosts.js";
 import {
   createVoiceMcpSocketBridgeManager,
@@ -187,10 +186,6 @@ export type PaseoDaemonConfig = {
   downloadTokenTtlMs?: number;
   agentProviderSettings?: AgentProviderRuntimeSettingsMap;
   onLifecycleIntent?: (intent: DaemonLifecycleIntent) => void;
-  pidLock?: {
-    mode?: "self" | "external";
-    ownerPid?: number;
-  };
 };
 
 export interface PaseoDaemon {
@@ -459,7 +454,6 @@ export async function createPaseoDaemon(
     logger.info({ elapsed: elapsed() }, "Preparing voice and MCP runtime");
     let wsServer: VoiceAssistantWebSocketServer | null = null;
     let voiceMcpBridgeManager: VoiceMcpSocketBridgeManager | null = null;
-    let unsubscribeSpeechReadiness: (() => void) | null = null;
 
     // Create in-memory transport for Session's Agent MCP client (voice assistant tools)
     const createInMemoryAgentMcpTransport = async (): Promise<InMemoryTransport> => {
@@ -622,21 +616,12 @@ export async function createPaseoDaemon(
         });
       },
     });
-    const {
-      resolveVoiceTurnDetection,
-      resolveVoiceStt,
-      resolveVoiceTts,
-      resolveDictationStt,
-      getSpeechReadiness,
-      subscribeSpeechReadiness,
-      cleanup: cleanupSpeechRuntime,
-      localModelConfig,
-    } = await initializeSpeechRuntime({
+    const speechService = createSpeechService({
       logger,
       openaiConfig: config.openai,
       speechConfig: config.speech,
     });
-    logger.info({ elapsed: elapsed() }, "Speech runtime initialized");
+    logger.info({ elapsed: elapsed() }, "Speech service created");
 
     wsServer = new VoiceAssistantWebSocketServer(
       httpServer,
@@ -648,7 +633,7 @@ export async function createPaseoDaemon(
       config.paseoHome,
       createInMemoryAgentMcpTransport,
       { allowedOrigins, allowedHosts: config.allowedHosts },
-      { turnDetection: resolveVoiceTurnDetection, stt: resolveVoiceStt, tts: resolveVoiceTts },
+      speechService,
       terminalManager,
       {
         voiceAgentMcpStdio: {
@@ -666,9 +651,6 @@ export async function createPaseoDaemon(
       },
       {
         finalTimeoutMs: config.dictationFinalTimeoutMs,
-        stt: resolveDictationStt,
-        localModels: localModelConfig ?? undefined,
-        getSpeechReadiness,
       },
       config.agentProviderSettings,
       daemonVersion,
@@ -686,9 +668,6 @@ export async function createPaseoDaemon(
       scheduleService,
       checkoutDiffManager,
     );
-    unsubscribeSpeechReadiness = subscribeSpeechReadiness((snapshot) => {
-      wsServer?.publishSpeechReadiness(snapshot);
-    });
 
     logger.info({ elapsed: elapsed() }, "Bootstrap complete, ready to start listening");
 
@@ -722,6 +701,16 @@ export async function createPaseoDaemon(
                 { path: boundListenTarget.path, elapsed: elapsed() },
                 `Server listening on ${boundListenTarget.path}`,
               );
+            }
+
+            if (typeof process.send === "function" && process.env.PASEO_SUPERVISED === "1") {
+              process.send({
+                type: "paseo:ready",
+                listen:
+                  boundListenTarget.type === "tcp"
+                    ? `${boundListenTarget.host}:${boundListenTarget.port}`
+                    : boundListenTarget.path,
+              });
             }
 
             if (relayEnabled) {
@@ -764,6 +753,10 @@ export async function createPaseoDaemon(
           httpServer.listen(listenTarget.path);
         }
       });
+
+      // Start speech service after listening so synchronous Sherpa native
+      // model loading doesn't block the server from accepting connections.
+      speechService.start();
     };
 
     const stop = async () => {
@@ -773,9 +766,7 @@ export async function createPaseoDaemon(
         runtimeSettings: config.agentProviderSettings,
       });
       terminalManager.killAll();
-      unsubscribeSpeechReadiness?.();
-      unsubscribeSpeechReadiness = null;
-      cleanupSpeechRuntime();
+      speechService.stop();
       await scheduleService.stop().catch(() => undefined);
       await relayTransport?.stop().catch(() => undefined);
       if (wsServer) {
@@ -791,12 +782,6 @@ export async function createPaseoDaemon(
       // Clean up socket files
       if (listenTarget.type === "socket" && existsSync(listenTarget.path)) {
         unlinkSync(listenTarget.path);
-      }
-      // Release PID lock
-      if (ownsPidLock) {
-        await releasePidLock(config.paseoHome, {
-          ownerPid: pidLockOwnerPid,
-        });
       }
     };
 

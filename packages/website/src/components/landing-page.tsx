@@ -300,8 +300,8 @@ function MultiProviderSection() {
 
   return (
     <FeatureSection
-      title="Multi-provider"
-      description="Escape the vendor lock, mix and match frontier models through a single interface."
+      title="Use the best agent for the job"
+      description="Run multiple providers from a single interface. Paseo runs the native agent harness as you'd normally run it, with your skills, config and MCP servers intact."
     >
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         {providers.map((p) => (
@@ -320,10 +320,10 @@ function MultiProviderSection() {
 
 function SelfHostedDiagram() {
   const clients = [
-    { name: "Desktop", icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-white/40"><rect x="2" y="3" width="20" height="14" rx="2" /><path d="M8 21h8M12 17v4" /></svg> },
-    { name: "Web", icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-white/40"><circle cx="12" cy="12" r="10" /><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" /></svg> },
-    { name: "Mobile", icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-white/40"><rect x="5" y="2" width="14" height="20" rx="2" /><path d="M12 18h.01" /></svg> },
-    { name: "CLI", icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-white/40"><polyline points="4 17 10 11 4 5" /><line x1="12" y1="19" x2="20" y2="19" /></svg> },
+    { name: "Desktop", icon: <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" /><path d="M8 21h8M12 17v4" /></svg> },
+    { name: "Web", icon: <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" /></svg> },
+    { name: "Mobile", icon: <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="5" y="2" width="14" height="20" rx="2" /><path d="M12 18h.01" /></svg> },
+    { name: "CLI", icon: <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="4 17 10 11 4 5" /><line x1="12" y1="19" x2="20" y2="19" /></svg> },
   ];
   const hosts = ["MacBook Pro", "Hetzner VM", "Dev server"];
   const containerRef = React.useRef<HTMLDivElement>(null);
@@ -376,9 +376,9 @@ function SelfHostedDiagram() {
     <div className="md:hidden flex flex-col items-center gap-4 py-4">
       <div className="space-y-2 w-full">
         {clients.map((c) => (
-          <div key={c.name} className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/[0.03] px-4 py-2.5 text-sm">
-            {c.icon}
-            {c.name}
+          <div key={c.name} className="flex items-center justify-center gap-3 rounded-xl border border-white/10 bg-white/[0.03] px-5 py-4">
+            <span className="text-white/80">{c.icon}</span>
+            <span className="font-medium">{c.name}</span>
           </div>
         ))}
       </div>
@@ -391,14 +391,14 @@ function SelfHostedDiagram() {
       <div className="w-px h-6 border-l border-dashed border-white/25" />
       <div className="space-y-2 w-full">
         {hosts.map((h) => (
-          <div key={h} className="flex items-center gap-3 rounded-lg border border-white/10 bg-white/[0.03] px-4 py-2.5 text-sm">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-white/40">
+          <div key={h} className="flex items-center justify-center gap-3 rounded-xl border border-white/10 bg-white/[0.03] px-5 py-4">
+            <span className="text-white/80"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
               <rect x="2" y="2" width="20" height="8" rx="2" />
               <rect x="2" y="14" width="20" height="8" rx="2" />
               <circle cx="6" cy="6" r="1" />
               <circle cx="6" cy="18" r="1" />
-            </svg>
-            {h}
+            </svg></span>
+            <span className="font-medium">{h}</span>
           </div>
         ))}
       </div>
@@ -419,10 +419,10 @@ function SelfHostedDiagram() {
           <div
             key={c.name}
             ref={(el) => { clientRefs.current[i] = el; }}
-            className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/[0.03] px-4 py-2.5 text-sm backdrop-blur-sm"
+            className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/[0.03] px-5 py-4 backdrop-blur-sm"
           >
-            {c.icon}
-            {c.name}
+            <span className="text-white/80">{c.icon}</span>
+            <span className="font-medium">{c.name}</span>
           </div>
         ))}
       </div>
@@ -431,10 +431,10 @@ function SelfHostedDiagram() {
       <div className="flex-1" />
 
       {/* Center label */}
-      <div ref={centerRef} className="flex-shrink-0 rounded-xl border border-white/10 bg-white/[0.03] px-6 py-5 text-center space-y-1 relative z-10 backdrop-blur-sm">
-        <p className="text-xs font-medium text-white/50">E2E Encrypted Relay</p>
-        <p className="text-[10px] text-white/25">or</p>
-        <p className="text-xs font-medium text-white/50">Direct Connection</p>
+      <div ref={centerRef} className="flex-shrink-0 rounded-xl border border-white/10 bg-white/[0.03] px-8 py-6 text-center space-y-1.5 relative z-10 backdrop-blur-sm">
+        <p className="text-sm font-medium text-white/50">E2E Encrypted Relay</p>
+        <p className="text-xs text-white/25">or</p>
+        <p className="text-sm font-medium text-white/50">Direct Connection</p>
       </div>
 
       {/* Spacer */}
@@ -446,15 +446,15 @@ function SelfHostedDiagram() {
           <div
             key={h}
             ref={(el) => { hostRefs.current[i] = el; }}
-            className="flex items-center gap-3 rounded-lg border border-white/10 bg-white/[0.03] px-4 py-2.5 text-sm backdrop-blur-sm"
+            className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/[0.03] px-5 py-4 backdrop-blur-sm"
           >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-white/40">
+            <span className="text-white/80"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
               <rect x="2" y="2" width="20" height="8" rx="2" />
               <rect x="2" y="14" width="20" height="8" rx="2" />
               <circle cx="6" cy="6" r="1" />
               <circle cx="6" cy="18" r="1" />
-            </svg>
-            {h}
+            </svg></span>
+            <span className="font-medium">{h}</span>
           </div>
         ))}
       </div>
@@ -466,8 +466,8 @@ function SelfHostedDiagram() {
 function SelfHostedSection() {
   return (
     <FeatureSection
-      title="Self-hosted"
-      description="Run the daemon wherever you want and connect however you want. Orchestrate agents in multiple hosts from a single interface."
+      title="Your agents, every surface"
+      description="Run agents on your laptop, a VM, or a dev server. Control them from any device with a direct connection or an E2E encrypted relay."
     >
       <SelfHostedDiagram />
     </FeatureSection>

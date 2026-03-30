@@ -1172,7 +1172,7 @@ export class HostRuntimeStore {
   async bootstrapDesktop(): Promise<HostRuntimeBootstrapResult> {
     try {
       const daemon = await startDesktopDaemon();
-      const listenAddress = daemon.listen.trim();
+      const listenAddress = daemon.listen?.trim() ?? "";
       const serverId = daemon.serverId.trim();
       if (!listenAddress) {
         return {

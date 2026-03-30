@@ -7,8 +7,7 @@ import {
   HEADER_INNER_HEIGHT_MOBILE,
   HEADER_TOP_PADDING_MOBILE,
 } from "@/constants/layout";
-import { useDesktopDragHandlers, useTrafficLightPadding } from "@/utils/desktop-window";
-import { usePanelStore } from "@/stores/panel-store";
+import { useDesktopDragHandlers, useWindowControlsPadding } from "@/utils/desktop-window";
 
 interface ScreenHeaderProps {
   left?: ReactNode;
@@ -26,15 +25,10 @@ export function ScreenHeader({ left, right, leftStyle, rightStyle, borderless }:
   const { theme } = useUnistyles();
   const insets = useSafeAreaInsets();
   const isMobile = UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
-  const desktopAgentListOpen = usePanelStore((state) => state.desktop.agentListOpen);
-  const trafficLightPadding = useTrafficLightPadding();
+  const padding = useWindowControlsPadding("header");
   // Only add extra padding on mobile for better touch targets; on desktop, only use safe area insets
   const topPadding = isMobile ? HEADER_TOP_PADDING_MOBILE : 0;
   const baseHorizontalPadding = theme.spacing[2];
-  const collapsedSidebarInset =
-    !isMobile && !desktopAgentListOpen && trafficLightPadding.side
-      ? trafficLightPadding
-      : { left: 0, right: 0 };
 
   const dragHandlers = useDesktopDragHandlers();
 
@@ -45,8 +39,8 @@ export function ScreenHeader({ left, right, leftStyle, rightStyle, borderless }:
           style={[
             styles.row,
             {
-              paddingLeft: baseHorizontalPadding + collapsedSidebarInset.left,
-              paddingRight: baseHorizontalPadding + collapsedSidebarInset.right,
+              paddingLeft: baseHorizontalPadding + padding.left,
+              paddingRight: baseHorizontalPadding + padding.right,
             },
             borderless && styles.borderless,
           ]}
@@ -90,6 +84,6 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[2],
   },
   borderless: {
-    borderBottomWidth: 0,
+    borderBottomColor: "transparent",
   },
 }));
