@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.1.39 - 2026-03-30
+
+### Added
+- **Terminal management from the CLI** — new `paseo terminal` command group lets you list, create, and interact with workspace terminals without leaving your terminal.
+- **Material file icons in the explorer** — the file explorer tree now shows language-specific icons (TypeScript, JSON, Markdown, etc.) so you can spot files at a glance.
+
+### Fixed
+- Fixed iOS sidebar scroll flicker caused by redundant overflow clipping.
+- Centralized window controls padding into a shared hook, eliminating layout inconsistencies across platforms.
+
 ## 0.1.38 - 2026-03-30
 
 ### Fixed
