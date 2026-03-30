@@ -35,7 +35,7 @@ import {
   type SidebarProjectEntry,
 } from "@/hooks/use-sidebar-workspaces-list";
 import { useSidebarAnimation } from "@/contexts/sidebar-animation-context";
-import { useDesktopDragHandlers, useTrafficLightPadding } from "@/utils/desktop-window";
+import { useDesktopDragHandlers, useWindowControlsPadding } from "@/utils/desktop-window";
 import { Combobox } from "@/components/ui/combobox";
 import { getHostRuntimeStore, useHosts } from "@/runtime/host-runtime";
 import { formatConnectionStatus } from "@/utils/daemons";
@@ -632,7 +632,7 @@ function DesktopSidebar({
 }: DesktopSidebarProps) {
   const newAgentKeys = useShortcutKeys("new-agent");
   const dragHandlers = useDesktopDragHandlers();
-  const trafficLightPadding = useTrafficLightPadding();
+  const padding = useWindowControlsPadding("sidebar");
   const sidebarWidth = usePanelStore((state) => state.sidebarWidth);
   const setSidebarWidth = usePanelStore((state) => state.setSidebarWidth);
   const { width: viewportWidth } = useWindowDimensions();
@@ -682,9 +682,7 @@ function DesktopSidebar({
 
   return (
     <Animated.View style={[styles.desktopSidebar, resizeAnimatedStyle]}>
-      {trafficLightPadding.side === 'left' ? (
-        <View style={{ height: trafficLightPadding.top }} {...dragHandlers} />
-      ) : null}
+      {padding.top > 0 ? <View style={{ height: padding.top }} {...dragHandlers} /> : null}
       <View style={styles.sidebarHeader} {...dragHandlers}>
         <View style={styles.sidebarHeaderRow}>
           <SessionsButton onPress={handleViewMore} />

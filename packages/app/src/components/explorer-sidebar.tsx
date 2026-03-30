@@ -17,6 +17,7 @@ import { HEADER_INNER_HEIGHT } from "@/constants/layout";
 import { GitDiffPane } from "./git-diff-pane";
 import { FileExplorerPane } from "./file-explorer-pane";
 import { useKeyboardShiftStyle } from "@/hooks/use-keyboard-shift-style";
+import { useWindowControlsPadding } from "@/utils/desktop-window";
 
 const MIN_CHAT_WIDTH = 400;
 function logExplorerSidebar(_event: string, _details: Record<string, unknown>): void {}
@@ -336,12 +337,13 @@ function SidebarContent({
   onOpenFile,
 }: SidebarContentProps) {
   const { theme } = useUnistyles();
+  const padding = useWindowControlsPadding("explorerSidebar");
   const resolvedTab: ExplorerTab = !isGit && activeTab === "changes" ? "files" : activeTab;
 
   return (
     <View style={styles.sidebarContent} pointerEvents="auto">
       {/* Header with tabs and close button */}
-      <View style={styles.header} testID="explorer-header">
+      <View style={[styles.header, { paddingRight: padding.right }]} testID="explorer-header">
         <View style={styles.tabsContainer}>
           {isGit && (
             <Pressable

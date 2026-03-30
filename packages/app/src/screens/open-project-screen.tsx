@@ -26,9 +26,9 @@ export function OpenProjectScreen({ serverId }: { serverId: string }) {
   }, [isMobile, openAgentList]);
 
   return (
-    <View style={styles.container} {...dragHandlers}>
+    <View style={styles.container}>
       <MenuHeader borderless />
-      <View style={styles.content}>
+      <View style={styles.content} {...dragHandlers}>
         <View style={styles.logo}>
           <PaseoLogo size={56} />
         </View>
