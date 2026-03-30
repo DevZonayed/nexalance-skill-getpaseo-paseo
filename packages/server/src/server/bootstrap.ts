@@ -691,7 +691,7 @@ export async function createPaseoDaemon(
               );
             }
 
-            if (typeof process.send === "function") {
+            if (typeof process.send === "function" && process.env.PASEO_SUPERVISED === "1") {
               process.send({
                 type: "paseo:ready",
                 listen:
