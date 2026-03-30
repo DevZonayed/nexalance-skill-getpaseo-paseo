@@ -8,6 +8,7 @@ import { createPermitCommand } from "./commands/permit/index.js";
 import { createProviderCommand } from "./commands/provider/index.js";
 import { createScheduleCommand } from "./commands/schedule/index.js";
 import { createSpeechCommand } from "./commands/speech/index.js";
+import { createTerminalCommand } from "./commands/terminal/index.js";
 import { createWorktreeCommand } from "./commands/worktree/index.js";
 import { startCommand as daemonStartCommand } from "./commands/daemon/start.js";
 import { runStatusCommand as runDaemonStatusCommand } from "./commands/daemon/status.js";
@@ -142,6 +143,9 @@ export function createCli(): Command {
 
   // Chat commands
   program.addCommand(createChatCommand());
+
+  // Terminal commands
+  program.addCommand(createTerminalCommand());
 
   // Loop commands
   program.addCommand(createLoopCommand());

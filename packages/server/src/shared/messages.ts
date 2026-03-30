@@ -1116,7 +1116,7 @@ export const RegisterPushTokenMessageSchema = z.object({
 
 export const ListTerminalsRequestSchema = z.object({
   type: z.literal("list_terminals_request"),
-  cwd: z.string(),
+  cwd: z.string().optional(),
   requestId: z.string(),
 });
 
@@ -1169,6 +1169,15 @@ export const TerminalInputSchema = z.object({
 export const KillTerminalRequestSchema = z.object({
   type: z.literal("kill_terminal_request"),
   terminalId: z.string(),
+  requestId: z.string(),
+});
+
+export const CaptureTerminalRequestSchema = z.object({
+  type: z.literal("capture_terminal_request"),
+  terminalId: z.string(),
+  start: z.number().int().optional(),
+  end: z.number().int().optional(),
+  stripAnsi: z.boolean().default(true),
   requestId: z.string(),
 });
 
@@ -1235,6 +1244,7 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   UnsubscribeTerminalRequestSchema,
   TerminalInputSchema,
   KillTerminalRequestSchema,
+  CaptureTerminalRequestSchema,
   ChatCreateRequestSchema,
   ChatListRequestSchema,
   ChatInspectRequestSchema,
@@ -2158,7 +2168,7 @@ export const TerminalStateSchema = z
 export const ListTerminalsResponseSchema = z.object({
   type: z.literal("list_terminals_response"),
   payload: z.object({
-    cwd: z.string(),
+    cwd: z.string().optional(),
     terminals: z.array(TerminalInfoSchema.omit({ cwd: true })),
     requestId: z.string(),
   }),
@@ -2203,6 +2213,16 @@ export const KillTerminalResponseSchema = z.object({
   payload: z.object({
     terminalId: z.string(),
     success: z.boolean(),
+    requestId: z.string(),
+  }),
+});
+
+export const CaptureTerminalResponseSchema = z.object({
+  type: z.literal("capture_terminal_response"),
+  payload: z.object({
+    terminalId: z.string(),
+    lines: z.array(z.string()),
+    totalLines: z.number().int().nonnegative(),
     requestId: z.string(),
   }),
 });
@@ -2276,6 +2296,7 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   CreateTerminalResponseSchema,
   SubscribeTerminalResponseSchema,
   KillTerminalResponseSchema,
+  CaptureTerminalResponseSchema,
   TerminalStreamExitSchema,
   ChatCreateResponseSchema,
   ChatListResponseSchema,
@@ -2468,6 +2489,8 @@ export type TerminalCursor = z.infer<typeof TerminalCursorSchema>;
 export type TerminalState = z.infer<typeof TerminalStateSchema>;
 export type KillTerminalRequest = z.infer<typeof KillTerminalRequestSchema>;
 export type KillTerminalResponse = z.infer<typeof KillTerminalResponseSchema>;
+export type CaptureTerminalRequest = z.infer<typeof CaptureTerminalRequestSchema>;
+export type CaptureTerminalResponse = z.infer<typeof CaptureTerminalResponseSchema>;
 export type TerminalStreamExit = z.infer<typeof TerminalStreamExitSchema>;
 
 // ============================================================================

@@ -23,6 +23,7 @@ import {
   type UnsubscribeTerminalRequest,
   type TerminalInput,
   type KillTerminalRequest,
+  type CaptureTerminalRequest,
   type SubscribeCheckoutDiffRequest,
   type UnsubscribeCheckoutDiffRequest,
   type DirectorySuggestionsRequest,
@@ -31,7 +32,7 @@ import {
   type WorkspaceStateBucket,
 } from "./messages.js";
 import type { TerminalManager, TerminalsChangedEvent } from "../terminal/terminal-manager.js";
-import type { TerminalSession } from "../terminal/terminal.js";
+import { captureTerminalLines, type TerminalSession } from "../terminal/terminal.js";
 import {
   TerminalStreamOpcode,
   encodeTerminalSnapshotPayload,
@@ -1695,6 +1696,10 @@ export class Session {
 
         case "kill_terminal_request":
           await this.handleKillTerminalRequest(msg);
+          break;
+
+        case "capture_terminal_request":
+          await this.handleCaptureTerminalRequest(msg);
           break;
 
         case "chat/create":
@@ -7283,7 +7288,7 @@ export class Session {
       this.emit({
         type: "list_terminals_response",
         payload: {
-          cwd: msg.cwd,
+          ...(msg.cwd ? { cwd: msg.cwd } : {}),
           terminals: [],
           requestId: msg.requestId,
         },
@@ -7292,14 +7297,17 @@ export class Session {
     }
 
     try {
-      const terminals = await this.terminalManager.getTerminals(msg.cwd);
+      const terminals =
+        typeof msg.cwd === "string"
+          ? await this.terminalManager.getTerminals(msg.cwd)
+          : await this.getAllTerminalSessions();
       for (const terminal of terminals) {
         this.ensureTerminalExitSubscription(terminal);
       }
       this.emit({
         type: "list_terminals_response",
         payload: {
-          cwd: msg.cwd,
+          ...(msg.cwd ? { cwd: msg.cwd } : {}),
           terminals: terminals.map((t) => ({ id: t.id, name: t.name })),
           requestId: msg.requestId,
         },
@@ -7309,12 +7317,24 @@ export class Session {
       this.emit({
         type: "list_terminals_response",
         payload: {
-          cwd: msg.cwd,
+          ...(msg.cwd ? { cwd: msg.cwd } : {}),
           terminals: [],
           requestId: msg.requestId,
         },
       });
     }
+  }
+
+  private async getAllTerminalSessions(): Promise<TerminalSession[]> {
+    if (!this.terminalManager) {
+      return [];
+    }
+
+    const directories = this.terminalManager.listDirectories();
+    const terminalsByDirectory = await Promise.all(
+      directories.map((cwd) => this.terminalManager!.getTerminals(cwd)),
+    );
+    return terminalsByDirectory.flat();
   }
 
   private async handleCreateTerminalRequest(msg: CreateTerminalRequest): Promise<void> {
@@ -7486,6 +7506,68 @@ export class Session {
         requestId: msg.requestId,
       },
     });
+  }
+
+  private async handleCaptureTerminalRequest(msg: CaptureTerminalRequest): Promise<void> {
+    if (!this.terminalManager) {
+      this.emit({
+        type: "capture_terminal_response",
+        payload: {
+          terminalId: msg.terminalId,
+          lines: [],
+          totalLines: 0,
+          requestId: msg.requestId,
+        },
+      });
+      return;
+    }
+
+    const session = this.terminalManager.getTerminal(msg.terminalId);
+    if (!session) {
+      this.emit({
+        type: "capture_terminal_response",
+        payload: {
+          terminalId: msg.terminalId,
+          lines: [],
+          totalLines: 0,
+          requestId: msg.requestId,
+        },
+      });
+      return;
+    }
+
+    this.ensureTerminalExitSubscription(session);
+
+    try {
+      const capture = captureTerminalLines(session, {
+        start: msg.start,
+        end: msg.end,
+        stripAnsi: msg.stripAnsi,
+      });
+      this.emit({
+        type: "capture_terminal_response",
+        payload: {
+          terminalId: msg.terminalId,
+          lines: capture.lines,
+          totalLines: capture.totalLines,
+          requestId: msg.requestId,
+        },
+      });
+    } catch (error: any) {
+      this.sessionLogger.error(
+        { err: error, terminalId: msg.terminalId },
+        "Failed to capture terminal",
+      );
+      this.emit({
+        type: "capture_terminal_response",
+        payload: {
+          terminalId: msg.terminalId,
+          lines: [],
+          totalLines: 0,
+          requestId: msg.requestId,
+        },
+      });
+    }
   }
 
   private bindActiveTerminalStream(terminal: TerminalSession): number | null {

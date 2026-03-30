@@ -415,12 +415,17 @@ async function subscribeRawTerminal(
 
 describe("daemon E2E terminal", () => {
   let ctx: DaemonTestContext;
+  let tempDirs: string[];
 
   beforeEach(async () => {
     ctx = await createDaemonTestContext();
+    tempDirs = [];
   });
 
   afterEach(async () => {
+    for (const dir of tempDirs) {
+      rmSync(dir, { recursive: true, force: true });
+    }
     await ctx.cleanup();
   }, 60000);
 
@@ -1055,4 +1060,161 @@ describe("daemon E2E terminal", () => {
       rmSync(cwd, { recursive: true, force: true });
     }
   }, 40000);
+
+  describe("capture", () => {
+    test("captures visible terminal output as plain text", async () => {
+      const cwd = tmpCwd();
+      tempDirs.push(cwd);
+      const created = await ctx.client.createTerminal(cwd);
+      const terminalId = created.terminal!.id;
+
+      await ctx.client.subscribeTerminal(terminalId);
+      ctx.client.sendTerminalInput(terminalId, {
+        type: "input",
+        data: "echo hello world\r",
+      });
+      await waitForTerminalOutput(ctx.client, terminalId, (text) => text.includes("hello world"), 15000);
+
+      const capture = await ctx.client.captureTerminal(terminalId);
+
+      expect(capture.lines.join("\n")).toContain("hello world");
+      expect(capture.totalLines).toBeGreaterThan(0);
+    }, 15000);
+
+    test("captures with start/end line range", async () => {
+      const cwd = tmpCwd();
+      tempDirs.push(cwd);
+      const created = await ctx.client.createTerminal(cwd);
+      const terminalId = created.terminal!.id;
+
+      await ctx.client.subscribeTerminal(terminalId);
+      ctx.client.sendTerminalInput(terminalId, {
+        type: "input",
+        data: "echo line1\r",
+      });
+      await waitForTerminalOutput(ctx.client, terminalId, (text) => text.includes("line1"), 15000);
+      ctx.client.sendTerminalInput(terminalId, {
+        type: "input",
+        data: "echo line2\r",
+      });
+      await waitForTerminalOutput(ctx.client, terminalId, (text) => text.includes("line2"), 15000);
+      ctx.client.sendTerminalInput(terminalId, {
+        type: "input",
+        data: "echo line3\r",
+      });
+      await waitForTerminalOutput(ctx.client, terminalId, (text) => text.includes("line3"), 15000);
+
+      const fullCapture = await ctx.client.captureTerminal(terminalId);
+      const rangedCapture = await ctx.client.captureTerminal(terminalId, {
+        start: 0,
+        end: 2,
+      });
+
+      expect(rangedCapture.lines).toHaveLength(3);
+      expect(rangedCapture.totalLines).toBe(fullCapture.totalLines);
+    }, 15000);
+
+    test("supports negative line indices", async () => {
+      const cwd = tmpCwd();
+      tempDirs.push(cwd);
+      const created = await ctx.client.createTerminal(cwd);
+      const terminalId = created.terminal!.id;
+
+      await ctx.client.subscribeTerminal(terminalId);
+      ctx.client.sendTerminalInput(terminalId, {
+        type: "input",
+        data: "echo alpha\r",
+      });
+      await waitForTerminalOutput(ctx.client, terminalId, (text) => text.includes("alpha"), 15000);
+      ctx.client.sendTerminalInput(terminalId, {
+        type: "input",
+        data: "echo beta\r",
+      });
+      await waitForTerminalOutput(ctx.client, terminalId, (text) => text.includes("beta"), 15000);
+      ctx.client.sendTerminalInput(terminalId, {
+        type: "input",
+        data: "echo gamma\r",
+      });
+      await waitForTerminalOutput(ctx.client, terminalId, (text) => text.includes("gamma"), 15000);
+
+      const capture = await ctx.client.captureTerminal(terminalId, {
+        start: -3,
+      });
+
+      expect(capture.lines).toHaveLength(3);
+    }, 15000);
+
+    test("strips ANSI by default", async () => {
+      const cwd = tmpCwd();
+      tempDirs.push(cwd);
+      const created = await ctx.client.createTerminal(cwd);
+      const terminalId = created.terminal!.id;
+
+      await ctx.client.subscribeTerminal(terminalId);
+      ctx.client.sendTerminalInput(terminalId, {
+        type: "input",
+        data: "printf '\\033[31mred text\\033[0m\\n'\r",
+      });
+      await waitForTerminalOutput(ctx.client, terminalId, (text) => text.includes("red text"), 15000);
+
+      const capture = await ctx.client.captureTerminal(terminalId);
+      const capturedText = capture.lines.join("\n");
+
+      expect(capturedText).toContain("red text");
+      expect(capturedText).not.toContain("\u001b[31m");
+    }, 15000);
+
+    test("returns empty for non-existent terminal", async () => {
+      const capture = await ctx.client.captureTerminal("terminal-does-not-exist");
+
+      expect(capture.lines).toEqual([]);
+      expect(capture.totalLines).toBe(0);
+    });
+  });
+
+  describe("list terminals across directories", () => {
+    test("lists terminals from all directories when cwd is omitted", async () => {
+      const cwd1 = tmpCwd();
+      const cwd2 = tmpCwd();
+      tempDirs.push(cwd1, cwd2);
+
+      const firstCreated = await ctx.client.createTerminal(cwd1, "first-terminal");
+      const secondCreated = await ctx.client.createTerminal(cwd2, "second-terminal");
+
+      const list = await ctx.client.listTerminals();
+
+      expect(list).not.toHaveProperty("cwd");
+      expect(list.terminals).toEqual(
+        expect.arrayContaining([
+          {
+            id: firstCreated.terminal!.id,
+            name: "first-terminal",
+          },
+          {
+            id: secondCreated.terminal!.id,
+            name: "second-terminal",
+          },
+        ]),
+      );
+    });
+
+    test("lists terminals for specific directory when cwd is provided", async () => {
+      const cwd1 = tmpCwd();
+      const cwd2 = tmpCwd();
+      tempDirs.push(cwd1, cwd2);
+
+      const firstCreated = await ctx.client.createTerminal(cwd1, "cwd-one-terminal");
+      await ctx.client.createTerminal(cwd2, "cwd-two-terminal");
+
+      const list = await ctx.client.listTerminals(cwd1);
+
+      expect(list.cwd).toBe(cwd1);
+      expect(list.terminals).toEqual([
+        {
+          id: firstCreated.terminal!.id,
+          name: "cwd-one-terminal",
+        },
+      ]);
+    });
+  });
 });
