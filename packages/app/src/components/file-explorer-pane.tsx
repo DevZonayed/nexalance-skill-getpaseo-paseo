@@ -26,18 +26,17 @@ import Animated, {
 import { WORKSPACE_SECONDARY_HEADER_HEIGHT } from "@/constants/layout";
 import { Fonts } from "@/constants/theme";
 import * as Clipboard from "expo-clipboard";
+import { SvgXml } from "react-native-svg";
 import {
+  ChevronDown,
+  ChevronRight,
   Copy,
   Download,
-  File,
-  FileText,
-  Folder,
-  FolderOpen,
-  Image as ImageIcon,
   MoreVertical,
   RotateCw,
   X,
 } from "lucide-react-native";
+import { getFileIconSvg } from "@/components/material-file-icons";
 import type { AgentFileExplorerState, ExplorerEntry } from "@/stores/session-store";
 import { useHosts } from "@/runtime/host-runtime";
 import { useSessionStore } from "@/stores/session-store";
@@ -65,7 +64,7 @@ const SORT_OPTIONS: { value: SortOption; label: string }[] = [
   { value: "size", label: "Size" },
 ];
 
-const INDENT_PER_LEVEL = 12;
+const INDENT_PER_LEVEL = 16;
 
 function formatFileSize({ size }: { size: number }): string {
   if (size < 1024) {
@@ -384,7 +383,6 @@ export function FileExplorerPane({
     ({ item }: ListRenderItemInfo<TreeRow>) => {
       const entry = item.entry;
       const depth = item.depth;
-      const displayKind = getEntryDisplayKind(entry);
       const isDirectory = entry.kind === "directory";
       const isExpanded = isDirectory && expandedPaths.has(entry.path);
       const isSelected = selectedEntryPath === entry.path;
@@ -399,16 +397,30 @@ export function FileExplorerPane({
             (hovered || pressed || isSelected) && styles.entryRowActive,
           ]}
         >
+          {depth > 0 &&
+            Array.from({ length: depth }, (_, i) => (
+              <View
+                key={i}
+                style={[
+                  styles.indentGuide,
+                  {
+                    left: theme.spacing[3] + i * INDENT_PER_LEVEL + 4,
+                  },
+                ]}
+              />
+            ))}
           <View style={styles.entryInfo}>
             <View style={styles.entryIcon}>
-              {loading ? (
-                <ActivityIndicator size="small" />
+              {isDirectory ? (
+                loading ? (
+                  <ActivityIndicator size="small" />
+                ) : (
+                  <View style={[styles.chevron, isExpanded && styles.chevronExpanded]}>
+                    <ChevronRight size={16} color={theme.colors.foregroundMuted} />
+                  </View>
+                )
               ) : (
-                renderEntryIcon(isDirectory ? "directory" : displayKind, {
-                  foreground: theme.colors.foregroundMuted,
-                  primary: theme.colors.primary,
-                  directoryOpen: isExpanded,
-                })
+                <SvgXml xml={getFileIconSvg(entry.name)} width={16} height={16} />
               )}
             </View>
             <Text style={styles.entryName} numberOfLines={1}>
@@ -552,27 +564,31 @@ export function FileExplorerPane({
       ) : (
         <View style={[styles.treePane, styles.treePaneFill]}>
           <View style={styles.paneHeader} testID="files-pane-header">
-            <View style={styles.paneHeaderLeft} />
-            <View style={styles.paneHeaderRight}>
-              <Pressable
-                onPress={handleRefresh}
-                disabled={isRefreshFetching}
-                hitSlop={8}
-                style={({ hovered, pressed }) => [
-                  styles.iconButton,
-                  (hovered || pressed) && styles.iconButtonHovered,
-                ]}
-                accessibilityRole="button"
-                accessibilityLabel="Refresh files"
-              >
-                <Animated.View style={[styles.refreshIcon, refreshIconAnimatedStyle]}>
-                  <RotateCw size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
-                </Animated.View>
-              </Pressable>
-              <Pressable style={styles.sortButton} onPress={handleSortCycle}>
-                <Text style={styles.sortButtonText}>{currentSortLabel}</Text>
-              </Pressable>
-            </View>
+            <Pressable
+              onPress={handleSortCycle}
+              style={({ hovered, pressed }) => [
+                styles.sortTrigger,
+                (hovered || pressed) && styles.sortTriggerHovered,
+              ]}
+            >
+              <Text style={styles.sortTriggerText}>{currentSortLabel}</Text>
+              <ChevronDown size={12} color={theme.colors.foregroundMuted} />
+            </Pressable>
+            <Pressable
+              onPress={handleRefresh}
+              disabled={isRefreshFetching}
+              hitSlop={8}
+              style={({ hovered, pressed }) => [
+                styles.iconButton,
+                (hovered || pressed) && styles.iconButtonHovered,
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel="Refresh files"
+            >
+              <Animated.View style={[styles.refreshIcon, refreshIconAnimatedStyle]}>
+                <RotateCw size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
+              </Animated.View>
+            </Pressable>
           </View>
           <FlatList
             ref={treeListRef}
@@ -607,99 +623,6 @@ export function FileExplorerPane({
       )}
     </View>
   );
-}
-
-type EntryDisplayKind = "directory" | "image" | "text" | "other";
-
-const IMAGE_EXTENSIONS = new Set(["png", "jpg", "jpeg", "gif", "bmp", "svg", "webp", "ico"]);
-
-const TEXT_EXTENSIONS = new Set([
-  "txt",
-  "md",
-  "markdown",
-  "ts",
-  "tsx",
-  "js",
-  "jsx",
-  "json",
-  "yml",
-  "yaml",
-  "toml",
-  "py",
-  "rb",
-  "go",
-  "rs",
-  "java",
-  "kt",
-  "c",
-  "cpp",
-  "cc",
-  "h",
-  "hpp",
-  "cs",
-  "swift",
-  "php",
-  "html",
-  "css",
-  "scss",
-  "less",
-  "xml",
-  "sh",
-  "bash",
-  "zsh",
-  "ini",
-  "cfg",
-  "conf",
-]);
-
-function renderEntryIcon(
-  kind: EntryDisplayKind,
-  colors: { foreground: string; primary: string; directoryOpen?: boolean },
-) {
-  const color = colors.foreground;
-  switch (kind) {
-    case "directory":
-      return colors.directoryOpen ? (
-        <FolderOpen size={18} color={colors.primary} />
-      ) : (
-        <Folder size={18} color={colors.primary} />
-      );
-    case "image":
-      return <ImageIcon size={18} color={color} />;
-    case "text":
-      return <FileText size={18} color={color} />;
-    default:
-      return <File size={18} color={color} />;
-  }
-}
-
-function getEntryDisplayKind(entry: ExplorerEntry): EntryDisplayKind {
-  if (entry.kind === "directory") {
-    return "directory";
-  }
-
-  const extension = getExtension(entry.name);
-  if (extension === null) {
-    return "other";
-  }
-
-  if (IMAGE_EXTENSIONS.has(extension)) {
-    return "image";
-  }
-
-  if (TEXT_EXTENSIONS.has(extension)) {
-    return "text";
-  }
-
-  return "other";
-}
-
-function getExtension(name: string): string | null {
-  const index = name.lastIndexOf(".");
-  if (index === -1 || index === name.length - 1) {
-    return null;
-  }
-  return name.slice(index + 1).toLowerCase();
 }
 
 function sortEntries(entries: ExplorerEntry[], sortOption: SortOption): ExplorerEntry[] {
@@ -842,50 +765,38 @@ const styles = StyleSheet.create((theme) => ({
     minWidth: 0,
   },
   paneHeader: {
+    height: WORKSPACE_SECONDARY_HEADER_HEIGHT,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    height: WORKSPACE_SECONDARY_HEADER_HEIGHT,
-    paddingHorizontal: theme.spacing[3],
+    paddingRight: theme.spacing[3],
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.border,
-    backgroundColor: theme.colors.surfaceSidebar,
   },
-  paneHeaderLeft: {
-    flex: 1,
-    minWidth: 0,
-  },
-  paneHeaderRight: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing[2],
-    flexShrink: 0,
-  },
-  previewHeaderRight: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing[2],
-    flexShrink: 0,
-  },
-  sortButton: {
-    height: 28,
+  sortTrigger: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: theme.spacing[2],
-    borderRadius: theme.borderRadius.md,
-    borderWidth: theme.borderWidth[1],
-    borderColor: theme.colors.border,
+    gap: theme.spacing[1],
+    marginLeft: theme.spacing[3] - theme.spacing[1],
+    paddingHorizontal: theme.spacing[1],
+    height: 24,
+    borderRadius: theme.borderRadius.base,
   },
-  sortButtonText: {
-    color: theme.colors.foregroundMuted,
+  sortTriggerHovered: {
+    backgroundColor: theme.colors.surface2,
+  },
+  sortTriggerText: {
     fontSize: theme.fontSize.xs,
+    color: theme.colors.foregroundMuted,
   },
   treeList: {
     flex: 1,
     minHeight: 0,
   },
   entriesContent: {
+    paddingHorizontal: theme.spacing[2],
+    paddingTop: theme.spacing[2],
     paddingBottom: theme.spacing[4],
   },
   centerState: {
@@ -936,8 +847,16 @@ const styles = StyleSheet.create((theme) => ({
     justifyContent: "space-between",
     paddingVertical: 2,
     paddingRight: theme.spacing[2],
+    borderRadius: theme.borderRadius.md,
   },
   entryRowActive: {
+    backgroundColor: theme.colors.surface1,
+  },
+  indentGuide: {
+    position: "absolute",
+    top: 0,
+    bottom: 0,
+    width: 1,
     backgroundColor: theme.colors.surface2,
   },
   entryInfo: {
@@ -946,6 +865,16 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     gap: theme.spacing[2],
     minWidth: 0,
+  },
+  chevron: {
+    width: 16,
+    height: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
+  chevronExpanded: {
+    transform: [{ rotate: "90deg" }],
   },
   entryIcon: {
     flexShrink: 0,
