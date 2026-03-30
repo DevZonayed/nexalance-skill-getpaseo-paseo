@@ -170,12 +170,7 @@ import {
   toCheckoutError,
 } from "./checkout-git-utils.js";
 import { CheckoutDiffManager } from "./checkout-diff-manager.js";
-import {
-  ensureLocalSpeechModels,
-  getLocalSpeechModelDir,
-  listLocalSpeechModels,
-  type LocalSpeechModelId,
-} from "./speech/providers/local/models.js";
+import type { LocalSpeechModelId } from "./speech/providers/local/models.js";
 import { toResolver, type Resolvable } from "./speech/provider-resolver.js";
 import type { SpeechReadinessSnapshot, SpeechReadinessState } from "./speech/speech-runtime.js";
 import type pino from "pino";
@@ -401,10 +396,6 @@ export type SessionOptions = {
   dictation?: {
     finalTimeoutMs?: number;
     stt?: Resolvable<SpeechToTextProvider | null>;
-    localModels?: {
-      modelsDir: string;
-      defaultModelIds: LocalSpeechModelId[];
-    };
     getSpeechReadiness?: () => SpeechReadinessSnapshot;
   };
   agentProviderRuntimeSettings?: AgentProviderRuntimeSettingsMap;
@@ -596,8 +587,6 @@ export class Session {
   private readonly checkoutDiffSubscriptions = new Map<string, () => void>();
   private readonly workspaceGitWatchTargets = new Map<string, WorkspaceGitWatchTarget>();
   private readonly voiceAgentMcpStdio: VoiceMcpStdioConfig | null;
-  private readonly localSpeechModelsDir: string;
-  private readonly defaultLocalSpeechModelIds: LocalSpeechModelId[];
   private readonly registerVoiceSpeakHandler?: (
     agentId: string,
     handler: VoiceSpeakHandler,
@@ -669,15 +658,6 @@ export class Session {
     }
     this.voiceAgentMcpStdio = voice?.voiceAgentMcpStdio ?? null;
     this.resolveVoiceTurnDetection = toResolver(voice?.turnDetection ?? null);
-    const configuredModelsDir = dictation?.localModels?.modelsDir?.trim();
-    this.localSpeechModelsDir =
-      configuredModelsDir && configuredModelsDir.length > 0
-        ? configuredModelsDir
-        : join(this.paseoHome, "models", "local-speech");
-    this.defaultLocalSpeechModelIds =
-      dictation?.localModels?.defaultModelIds && dictation.localModels.defaultModelIds.length > 0
-        ? [...new Set(dictation.localModels.defaultModelIds)]
-        : ["parakeet-tdt-0.6b-v2-int8", "kokoro-en-v0_19"];
     this.registerVoiceSpeakHandler = voiceBridge?.registerVoiceSpeakHandler;
     this.unregisterVoiceSpeakHandler = voiceBridge?.unregisterVoiceSpeakHandler;
     this.registerVoiceCallerContext = voiceBridge?.registerVoiceCallerContext;
@@ -1663,14 +1643,6 @@ export class Session {
 
         case "list_available_providers_request":
           await this.handleListAvailableProvidersRequest(msg);
-          break;
-
-        case "speech_models_list_request":
-          await this.handleSpeechModelsListRequest(msg);
-          break;
-
-        case "speech_models_download_request":
-          await this.handleSpeechModelsDownloadRequest(msg);
           break;
 
         case "clear_agent_attention":
@@ -3056,104 +3028,6 @@ export class Session {
           providers: [],
           error: (error as Error)?.message ?? String(error),
           fetchedAt,
-          requestId: msg.requestId,
-        },
-      });
-    }
-  }
-
-  private async handleSpeechModelsListRequest(
-    msg: Extract<SessionInboundMessage, { type: "speech_models_list_request" }>,
-  ): Promise<void> {
-    const modelsDir = this.localSpeechModelsDir;
-
-    const models = await Promise.all(
-      listLocalSpeechModels().map(async (model) => {
-        const modelDir = getLocalSpeechModelDir(modelsDir, model.id);
-        const missingFiles: string[] = [];
-        for (const rel of model.requiredFiles) {
-          const filePath = join(modelDir, rel);
-          try {
-            const fileStat = await stat(filePath);
-            if (fileStat.isDirectory()) {
-              continue;
-            }
-            if (!fileStat.isFile() || fileStat.size <= 0) {
-              missingFiles.push(rel);
-            }
-          } catch {
-            missingFiles.push(rel);
-          }
-        }
-
-        return {
-          id: model.id,
-          kind: model.kind,
-          description: model.description,
-          modelDir,
-          isDownloaded: missingFiles.length === 0,
-          ...(missingFiles.length > 0 ? { missingFiles } : {}),
-        };
-      }),
-    );
-
-    this.emit({
-      type: "speech_models_list_response",
-      payload: {
-        modelsDir,
-        models,
-        requestId: msg.requestId,
-      },
-    });
-  }
-
-  private async handleSpeechModelsDownloadRequest(
-    msg: Extract<SessionInboundMessage, { type: "speech_models_download_request" }>,
-  ): Promise<void> {
-    const modelsDir = this.localSpeechModelsDir;
-
-    const modelIdsRaw =
-      msg.modelIds && msg.modelIds.length > 0 ? msg.modelIds : this.defaultLocalSpeechModelIds;
-
-    const allModelIds = new Set(listLocalSpeechModels().map((m) => m.id));
-    const invalid = modelIdsRaw.filter((id) => !allModelIds.has(id as LocalSpeechModelId));
-    if (invalid.length > 0) {
-      this.emit({
-        type: "speech_models_download_response",
-        payload: {
-          modelsDir,
-          downloadedModelIds: [],
-          error: `Unknown speech model id(s): ${invalid.join(", ")}`,
-          requestId: msg.requestId,
-        },
-      });
-      return;
-    }
-
-    const modelIds = modelIdsRaw as LocalSpeechModelId[];
-    try {
-      await ensureLocalSpeechModels({
-        modelsDir,
-        modelIds,
-        logger: this.sessionLogger,
-      });
-      this.emit({
-        type: "speech_models_download_response",
-        payload: {
-          modelsDir,
-          downloadedModelIds: modelIds,
-          error: null,
-          requestId: msg.requestId,
-        },
-      });
-    } catch (error) {
-      this.sessionLogger.error({ err: error, modelIds }, "Failed to download speech models");
-      this.emit({
-        type: "speech_models_download_response",
-        payload: {
-          modelsDir,
-          downloadedModelIds: [],
-          error: error instanceof Error ? error.message : String(error),
           requestId: msg.requestId,
         },
       });

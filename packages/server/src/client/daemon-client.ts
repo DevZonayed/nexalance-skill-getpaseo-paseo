@@ -39,8 +39,6 @@ import type {
   ListCommandsResponse,
   ListProviderModelsResponseMessage,
   ListAvailableProvidersResponse,
-  SpeechModelsListResponse,
-  SpeechModelsDownloadResponse,
   ListTerminalsResponse,
   CreateTerminalResponse,
   SubscribeTerminalResponse,
@@ -217,8 +215,6 @@ type FileExplorerPayload = FileExplorerResponse["payload"];
 type FileDownloadTokenPayload = FileDownloadTokenResponse["payload"];
 type ListProviderModelsPayload = ListProviderModelsResponseMessage["payload"];
 type ListAvailableProvidersPayload = ListAvailableProvidersResponse["payload"];
-type SpeechModelsListPayload = SpeechModelsListResponse["payload"];
-type SpeechModelsDownloadPayload = SpeechModelsDownloadResponse["payload"];
 type ListCommandsPayload = ListCommandsResponse["payload"];
 type ListCommandsDraftConfig = Pick<
   AgentSessionConfig,
@@ -2484,32 +2480,6 @@ export class DaemonClient {
       },
       responseType: "list_available_providers_response",
       timeout: 30000,
-    });
-  }
-
-  async listSpeechModels(requestId?: string): Promise<SpeechModelsListPayload> {
-    return this.sendCorrelatedSessionRequest({
-      requestId,
-      message: {
-        type: "speech_models_list_request",
-      },
-      responseType: "speech_models_list_response",
-      timeout: 30000,
-    });
-  }
-
-  async downloadSpeechModels(options?: {
-    modelIds?: string[];
-    requestId?: string;
-  }): Promise<SpeechModelsDownloadPayload> {
-    return this.sendCorrelatedSessionRequest({
-      requestId: options?.requestId,
-      message: {
-        type: "speech_models_download_request",
-        modelIds: options?.modelIds,
-      },
-      responseType: "speech_models_download_response",
-      timeout: 30 * 60 * 1000,
     });
   }
 

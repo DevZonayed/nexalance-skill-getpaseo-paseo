@@ -5,7 +5,7 @@ import type { PaseoSpeechConfig } from "../bootstrap.js";
 import type { InitializedLocalSpeech } from "./providers/local/runtime.js";
 import type { SpeechToTextProvider, TextToSpeechProvider } from "./speech-provider.js";
 import type { TurnDetectionProvider } from "./turn-detection-provider.js";
-import { initializeSpeechRuntime } from "./speech-runtime.js";
+import { createSpeechService } from "./speech-runtime.js";
 
 const { initializeLocalSpeechServicesMock } = vi.hoisted(() => ({
   initializeLocalSpeechServicesMock: vi.fn<(args: unknown) => Promise<InitializedLocalSpeech>>(),
@@ -70,7 +70,7 @@ function createSpeechConfig(providers: PaseoSpeechConfig["providers"]): PaseoSpe
   return { providers };
 }
 
-describe("initializeSpeechRuntime readiness", () => {
+describe("createSpeechService readiness", () => {
   beforeEach(() => {
     initializeLocalSpeechServicesMock.mockReset();
   });
@@ -92,7 +92,7 @@ describe("initializeSpeechRuntime readiness", () => {
       cleanup: () => {},
     });
 
-    const runtime = await initializeSpeechRuntime({
+    const runtime = createSpeechService({
       logger: pino({ level: "silent" }),
       speechConfig: createSpeechConfig({
         dictationStt: { provider: "local", enabled: true, explicit: true },
@@ -101,14 +101,16 @@ describe("initializeSpeechRuntime readiness", () => {
         voiceTts: { provider: "local", enabled: false, explicit: true },
       }),
     });
+    runtime.start();
+    await runtime.ready;
 
-    const readiness = runtime.getSpeechReadiness();
+    const readiness = runtime.getReadiness();
     expect(readiness.dictation.available).toBe(true);
     expect(readiness.realtimeVoice.reasonCode).toBe("disabled");
     expect(readiness.voiceFeature.available).toBe(true);
     expect(readiness.voiceFeature.reasonCode).toBe("ready");
 
-    runtime.cleanup();
+    runtime.stop();
   });
 
   it("keeps voice feature available when only realtime voice is enabled and ready", async () => {
@@ -130,7 +132,7 @@ describe("initializeSpeechRuntime readiness", () => {
       cleanup: () => {},
     });
 
-    const runtime = await initializeSpeechRuntime({
+    const runtime = createSpeechService({
       logger: pino({ level: "silent" }),
       speechConfig: createSpeechConfig({
         dictationStt: { provider: "local", enabled: false, explicit: true },
@@ -139,13 +141,15 @@ describe("initializeSpeechRuntime readiness", () => {
         voiceTts: { provider: "local", enabled: true, explicit: true },
       }),
     });
+    runtime.start();
+    await runtime.ready;
 
-    const readiness = runtime.getSpeechReadiness();
+    const readiness = runtime.getReadiness();
     expect(readiness.realtimeVoice.available).toBe(true);
     expect(readiness.dictation.reasonCode).toBe("disabled");
     expect(readiness.voiceFeature.available).toBe(true);
     expect(readiness.voiceFeature.reasonCode).toBe("ready");
 
-    runtime.cleanup();
+    runtime.stop();
   });
 });

@@ -91,7 +91,7 @@ import { DownloadTokenStore } from "./file-download/token-store.js";
 import type { OpenAiSpeechProviderConfig } from "./speech/providers/openai/config.js";
 import type { LocalSpeechProviderConfig } from "./speech/providers/local/config.js";
 import type { RequestedSpeechProviders } from "./speech/speech-types.js";
-import { initializeSpeechRuntime } from "./speech/speech-runtime.js";
+import { createSpeechService } from "./speech/speech-runtime.js";
 import { AgentManager } from "./agent/agent-manager.js";
 import { AgentStorage } from "./agent/agent-storage.js";
 import { attachAgentStoragePersistence } from "./persistence-hooks.js";
@@ -426,7 +426,6 @@ export async function createPaseoDaemon(
     logger.info({ elapsed: elapsed() }, "Preparing voice and MCP runtime");
     let wsServer: VoiceAssistantWebSocketServer | null = null;
     let voiceMcpBridgeManager: VoiceMcpSocketBridgeManager | null = null;
-    let unsubscribeSpeechReadiness: (() => void) | null = null;
 
     // Create in-memory transport for Session's Agent MCP client (voice assistant tools)
     const createInMemoryAgentMcpTransport = async (): Promise<InMemoryTransport> => {
@@ -589,21 +588,12 @@ export async function createPaseoDaemon(
         });
       },
     });
-    const {
-      resolveVoiceTurnDetection,
-      resolveVoiceStt,
-      resolveVoiceTts,
-      resolveDictationStt,
-      getSpeechReadiness,
-      subscribeSpeechReadiness,
-      cleanup: cleanupSpeechRuntime,
-      localModelConfig,
-    } = await initializeSpeechRuntime({
+    const speechService = createSpeechService({
       logger,
       openaiConfig: config.openai,
       speechConfig: config.speech,
     });
-    logger.info({ elapsed: elapsed() }, "Speech runtime initialized");
+    logger.info({ elapsed: elapsed() }, "Speech service created");
 
     wsServer = new VoiceAssistantWebSocketServer(
       httpServer,
@@ -615,7 +605,7 @@ export async function createPaseoDaemon(
       config.paseoHome,
       createInMemoryAgentMcpTransport,
       { allowedOrigins, allowedHosts: config.allowedHosts },
-      { turnDetection: resolveVoiceTurnDetection, stt: resolveVoiceStt, tts: resolveVoiceTts },
+      speechService,
       terminalManager,
       {
         voiceAgentMcpStdio: {
@@ -633,9 +623,6 @@ export async function createPaseoDaemon(
       },
       {
         finalTimeoutMs: config.dictationFinalTimeoutMs,
-        stt: resolveDictationStt,
-        localModels: localModelConfig ?? undefined,
-        getSpeechReadiness,
       },
       config.agentProviderSettings,
       daemonVersion,
@@ -653,9 +640,6 @@ export async function createPaseoDaemon(
       scheduleService,
       checkoutDiffManager,
     );
-    unsubscribeSpeechReadiness = subscribeSpeechReadiness((snapshot) => {
-      wsServer?.publishSpeechReadiness(snapshot);
-    });
 
     logger.info({ elapsed: elapsed() }, "Bootstrap complete, ready to start listening");
 
@@ -741,6 +725,10 @@ export async function createPaseoDaemon(
           httpServer.listen(listenTarget.path);
         }
       });
+
+      // Start speech service after listening so synchronous Sherpa native
+      // model loading doesn't block the server from accepting connections.
+      speechService.start();
     };
 
     const stop = async () => {
@@ -752,9 +740,7 @@ export async function createPaseoDaemon(
         runtimeSettings: config.agentProviderSettings,
       });
       terminalManager.killAll();
-      unsubscribeSpeechReadiness?.();
-      unsubscribeSpeechReadiness = null;
-      cleanupSpeechRuntime();
+      speechService.stop();
       await scheduleService.stop().catch(() => undefined);
       await relayTransport?.stop().catch(() => undefined);
       if (wsServer) {

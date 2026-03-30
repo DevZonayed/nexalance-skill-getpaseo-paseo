@@ -33,11 +33,7 @@ import type { AgentProvider } from "./agent/agent-sdk-types.js";
 import type { AgentProviderRuntimeSettingsMap } from "./agent/provider-launch-config.js";
 import { PushTokenStore } from "./push/token-store.js";
 import { PushService } from "./push/push-service.js";
-import type { SpeechToTextProvider, TextToSpeechProvider } from "./speech/speech-provider.js";
-import type { TurnDetectionProvider } from "./speech/turn-detection-provider.js";
-import type { Resolvable } from "./speech/provider-resolver.js";
-import type { SpeechReadinessSnapshot } from "./speech/speech-runtime.js";
-import type { LocalSpeechModelId } from "./speech/providers/local/models.js";
+import type { SpeechReadinessSnapshot, SpeechService } from "./speech/speech-runtime.js";
 import type { VoiceCallerContext, VoiceMcpStdioConfig, VoiceSpeakHandler } from "./voice-types.js";
 import {
   computeShouldNotifyClient,
@@ -243,18 +239,10 @@ export class VoiceAssistantWebSocketServer {
   private readonly pushTokenStore: PushTokenStore;
   private readonly pushService: PushService;
   private readonly createAgentMcpTransport: AgentMcpTransportFactory;
-  private readonly stt: Resolvable<SpeechToTextProvider | null>;
-  private readonly tts: Resolvable<TextToSpeechProvider | null>;
-  private readonly turnDetection: Resolvable<TurnDetectionProvider | null>;
+  private readonly speech: SpeechService | null;
   private readonly terminalManager: TerminalManager | null;
   private readonly dictation: {
     finalTimeoutMs?: number;
-    stt?: Resolvable<SpeechToTextProvider | null>;
-    localModels?: {
-      modelsDir: string;
-      defaultModelIds: LocalSpeechModelId[];
-    };
-    getSpeechReadiness?: () => SpeechReadinessSnapshot;
   } | null;
   private readonly voice: {
     voiceAgentMcpStdio?: VoiceMcpStdioConfig | null;
@@ -288,6 +276,7 @@ export class VoiceAssistantWebSocketServer {
   private readonly inboundSessionRequestCounts = new Map<string, number>();
   private readonly requestLatencies = new Map<string, number[]>();
   private runtimeMetricsInterval: ReturnType<typeof setInterval> | null = null;
+  private unsubscribeSpeechReadiness: (() => void) | null = null;
 
   constructor(
     server: HTTPServer,
@@ -299,11 +288,7 @@ export class VoiceAssistantWebSocketServer {
     paseoHome: string,
     createAgentMcpTransport: AgentMcpTransportFactory,
     wsConfig: WebSocketServerConfig,
-    speech?: {
-      turnDetection: Resolvable<TurnDetectionProvider | null>;
-      stt: Resolvable<SpeechToTextProvider | null>;
-      tts: Resolvable<TextToSpeechProvider | null>;
-    },
+    speech?: SpeechService | null,
     terminalManager?: TerminalManager | null,
     voice?: {
       voiceAgentMcpStdio?: VoiceMcpStdioConfig | null;
@@ -312,12 +297,6 @@ export class VoiceAssistantWebSocketServer {
     },
     dictation?: {
       finalTimeoutMs?: number;
-      stt?: Resolvable<SpeechToTextProvider | null>;
-      localModels?: {
-        modelsDir: string;
-        defaultModelIds: LocalSpeechModelId[];
-      };
-      getSpeechReadiness?: () => SpeechReadinessSnapshot;
     },
     agentProviderRuntimeSettings?: AgentProviderRuntimeSettingsMap,
     daemonVersion?: string,
@@ -358,17 +337,18 @@ export class VoiceAssistantWebSocketServer {
     this.downloadTokenStore = downloadTokenStore;
     this.paseoHome = paseoHome;
     this.createAgentMcpTransport = createAgentMcpTransport;
-    this.turnDetection = speech?.turnDetection ?? null;
-    this.stt = speech?.stt ?? null;
-    this.tts = speech?.tts ?? null;
+    this.speech = speech ?? null;
     this.terminalManager = terminalManager ?? null;
     this.voice = voice ?? null;
     this.dictation = dictation ?? null;
     this.agentProviderRuntimeSettings = agentProviderRuntimeSettings;
     this.onLifecycleIntent = onLifecycleIntent ?? null;
     this.serverCapabilities = buildServerCapabilities({
-      readiness: this.dictation?.getSpeechReadiness?.() ?? null,
+      readiness: this.speech?.getReadiness() ?? null,
     });
+    this.unsubscribeSpeechReadiness = this.speech?.onReadinessChange((snapshot) => {
+      this.publishSpeechReadiness(snapshot);
+    }) ?? null;
 
     const pushLogger = this.logger.child({ module: "push" });
     this.pushTokenStore = new PushTokenStore(pushLogger, join(paseoHome, "push-tokens.json"));
@@ -457,6 +437,8 @@ export class VoiceAssistantWebSocketServer {
   }
 
   public async close(): Promise<void> {
+    this.unsubscribeSpeechReadiness?.();
+    this.unsubscribeSpeechReadiness = null;
     if (this.runtimeMetricsInterval) {
       clearInterval(this.runtimeMetricsInterval);
       this.runtimeMetricsInterval = null;
@@ -658,12 +640,12 @@ export class VoiceAssistantWebSocketServer {
       scheduleService: this.scheduleService,
       checkoutDiffManager: this.checkoutDiffManager,
       createAgentMcpTransport: this.createAgentMcpTransport,
-      stt: this.stt,
-      tts: this.tts,
+      stt: () => this.speech?.resolveStt() ?? null,
+      tts: () => this.speech?.resolveTts() ?? null,
       terminalManager: this.terminalManager,
       voice: {
         ...(this.voice ?? {}),
-        turnDetection: this.turnDetection,
+        turnDetection: () => this.speech?.resolveTurnDetection() ?? null,
       },
       voiceBridge: {
         registerVoiceSpeakHandler: (agentId, handler) => {
@@ -681,7 +663,14 @@ export class VoiceAssistantWebSocketServer {
         ensureVoiceMcpSocketForAgent: this.voice?.ensureVoiceMcpSocketForAgent,
         removeVoiceMcpSocketForAgent: this.voice?.removeVoiceMcpSocketForAgent,
       },
-      dictation: this.dictation ?? undefined,
+      dictation:
+        this.dictation || this.speech
+          ? {
+              finalTimeoutMs: this.dictation?.finalTimeoutMs,
+              stt: () => this.speech?.resolveDictationStt() ?? null,
+              getSpeechReadiness: () => this.speech!.getReadiness(),
+            }
+          : undefined,
       agentProviderRuntimeSettings: this.agentProviderRuntimeSettings,
     });
 
