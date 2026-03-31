@@ -96,7 +96,7 @@ describe("createPaseoWorktreeInBackground", () => {
     }
   });
 
-  test("emits a single completed snapshot for no-setup workspaces and then launches services", async () => {
+  test("emits running then completed snapshots for no-setup workspaces and then launches services", async () => {
     const { tempDir, repoDir } = createGitRepo({
       paseoConfig: {
         services: {
@@ -141,8 +141,20 @@ describe("createPaseoWorktreeInBackground", () => {
       (message): message is Extract<SessionOutboundMessage, { type: "workspace_setup_progress" }> =>
         message.type === "workspace_setup_progress",
     );
-    expect(progressMessages).toHaveLength(1);
+    expect(progressMessages).toHaveLength(2);
     expect(progressMessages[0]?.payload).toMatchObject({
+      workspaceId: worktreePath,
+      status: "running",
+      error: null,
+      detail: {
+        type: "worktree_setup",
+        worktreePath,
+        branchName: "feature-no-setup",
+        log: "",
+        commands: [],
+      },
+    });
+    expect(progressMessages[1]?.payload).toMatchObject({
       workspaceId: worktreePath,
       status: "completed",
       error: null,
@@ -200,10 +212,12 @@ describe("createPaseoWorktreeInBackground", () => {
       (message): message is Extract<SessionOutboundMessage, { type: "workspace_setup_progress" }> =>
         message.type === "workspace_setup_progress",
     );
-    expect(progressMessages).toHaveLength(1);
-    expect(progressMessages[0]?.payload.status).toBe("failed");
-    expect(progressMessages[0]?.payload.error).toContain("does-not-exist");
-    expect(progressMessages[0]?.payload.detail.commands).toEqual([]);
+    expect(progressMessages).toHaveLength(2);
+    expect(progressMessages[0]?.payload.status).toBe("running");
+    expect(progressMessages[0]?.payload.error).toBeNull();
+    expect(progressMessages[1]?.payload.status).toBe("failed");
+    expect(progressMessages[1]?.payload.error).toContain("does-not-exist");
+    expect(progressMessages[1]?.payload.detail.commands).toEqual([]);
     expect(archiveWorkspaceRecord).toHaveBeenCalledWith(worktreePath);
     expect(emitWorkspaceUpdateForCwd).toHaveBeenCalledWith(worktreePath);
   });
@@ -250,6 +264,18 @@ describe("createPaseoWorktreeInBackground", () => {
         message.type === "workspace_setup_progress",
     );
     expect(progressMessages.length).toBeGreaterThan(1);
+    expect(progressMessages[0]?.payload).toMatchObject({
+      workspaceId: worktreePath,
+      status: "running",
+      error: null,
+      detail: {
+        type: "worktree_setup",
+        worktreePath,
+        branchName: "feature-running-setup",
+        log: "",
+        commands: [],
+      },
+    });
     expect(progressMessages.at(-1)?.payload.status).toBe("completed");
 
     const runningMessages = progressMessages.filter((message) => message.payload.status === "running");
@@ -258,8 +284,11 @@ describe("createPaseoWorktreeInBackground", () => {
       progressMessages.findIndex((message) => message.payload.status === "completed"),
     );
 
-    expect(runningMessages[0]?.payload.detail.log).toContain("phase-one");
-    expect(runningMessages[0]?.payload.detail.commands[0]).toMatchObject({
+    const setupOutputMessage = runningMessages.find((message) =>
+      message.payload.detail.log.includes("phase-one"),
+    );
+    expect(setupOutputMessage?.payload.detail.log).toContain("phase-one");
+    expect(setupOutputMessage?.payload.detail.commands[0]).toMatchObject({
       index: 1,
       command: 'sh -c "printf \'phase-one\\\\n\'; sleep 0.1; printf \'phase-two\\\\n\'"',
       status: "running",
@@ -284,71 +313,7 @@ describe("createPaseoWorktreeInBackground", () => {
     });
   });
 
-  test("keeps setup completed when service launch fails afterward", async () => {
-    const { tempDir, repoDir } = createGitRepo({
-      paseoConfig: {
-        services: {
-          web: {
-            command: "npm run dev",
-          },
-        },
-      },
-    });
-    cleanupPaths.push(tempDir);
-
-    const paseoHome = path.join(tempDir, ".paseo");
-    const worktreePath = await computeWorktreePath(repoDir, "feature-service-failure", paseoHome);
-    const emitted: SessionOutboundMessage[] = [];
-    const routeStore = new ServiceRouteStore();
-    const logger = createLogger();
-    const terminalManager = createTerminalManagerStub({
-      createTerminal: async () => {
-        throw new Error("terminal spawn failed");
-      },
-    });
-    const emitWorkspaceUpdateForCwd = vi.fn(async () => {});
-    const archiveWorkspaceRecord = vi.fn(async () => {});
-
-    await createPaseoWorktreeInBackground(
-      {
-        paseoHome,
-        emitWorkspaceUpdateForCwd,
-        emit: (message) => emitted.push(message),
-        sessionLogger: logger,
-        terminalManager: terminalManager.manager,
-        archiveWorkspaceRecord,
-        serviceRouteStore: routeStore,
-        daemonPort: 6767,
-      },
-      {
-        requestCwd: repoDir,
-        repoRoot: repoDir,
-        baseBranch: "main",
-        slug: "feature-service-failure",
-        worktreePath,
-      },
-    );
-
-    const progressMessages = emitted.filter(
-      (message): message is Extract<SessionOutboundMessage, { type: "workspace_setup_progress" }> =>
-        message.type === "workspace_setup_progress",
-    );
-    expect(progressMessages).toHaveLength(1);
-    expect(progressMessages[0]?.payload.status).toBe("completed");
-    expect(progressMessages[0]?.payload.error).toBeNull();
-    expect(emitted.some((message) => message.type === "workspace_setup_progress" && message.payload.status === "failed")).toBe(false);
-    expect(logger.warn).toHaveBeenCalledWith(
-      expect.objectContaining({
-        err: expect.any(Error),
-        worktreePath,
-      }),
-      "Failed to spawn worktree services after workspace setup completed",
-    );
-    expect(archiveWorkspaceRecord).not.toHaveBeenCalled();
-    expect(emitWorkspaceUpdateForCwd).toHaveBeenCalledWith(worktreePath);
-  });
-
-  test("reused existing worktrees do not rerun setup or spawn services", async () => {
+  test("emits completed when reusing an existing worktree without bootstrapping", async () => {
     const { tempDir, repoDir } = createGitRepo({
       paseoConfig: {
         worktree: {
@@ -400,9 +365,28 @@ describe("createPaseoWorktreeInBackground", () => {
       },
     );
 
-    expect(
-      emitted.some((message) => message.type === "workspace_setup_progress"),
-    ).toBe(false);
+    const progressMessages = emitted.filter(
+      (message): message is Extract<SessionOutboundMessage, { type: "workspace_setup_progress" }> =>
+        message.type === "workspace_setup_progress",
+    );
+    expect(progressMessages).toHaveLength(2);
+    expect(progressMessages[0]?.payload).toMatchObject({
+      workspaceId: existingWorktree.worktreePath,
+      status: "running",
+      error: null,
+    });
+    expect(progressMessages[1]?.payload).toMatchObject({
+      workspaceId: existingWorktree.worktreePath,
+      status: "completed",
+      error: null,
+      detail: {
+        type: "worktree_setup",
+        worktreePath: existingWorktree.worktreePath,
+        branchName: "reused-worktree",
+        log: "",
+        commands: [],
+      },
+    });
     expect(routeStore.listRoutes()).toEqual([]);
     expect(terminalManager.terminals).toHaveLength(0);
     expect(
@@ -412,4 +396,71 @@ describe("createPaseoWorktreeInBackground", () => {
     expect(archiveWorkspaceRecord).not.toHaveBeenCalled();
     expect(emitWorkspaceUpdateForCwd).toHaveBeenCalledWith(existingWorktree.worktreePath);
   });
+
+  test("keeps setup completed when service launch fails afterward", async () => {
+    const { tempDir, repoDir } = createGitRepo({
+      paseoConfig: {
+        services: {
+          web: {
+            command: "npm run dev",
+          },
+        },
+      },
+    });
+    cleanupPaths.push(tempDir);
+
+    const paseoHome = path.join(tempDir, ".paseo");
+    const worktreePath = await computeWorktreePath(repoDir, "feature-service-failure", paseoHome);
+    const emitted: SessionOutboundMessage[] = [];
+    const routeStore = new ServiceRouteStore();
+    const logger = createLogger();
+    const terminalManager = createTerminalManagerStub({
+      createTerminal: async () => {
+        throw new Error("terminal spawn failed");
+      },
+    });
+    const emitWorkspaceUpdateForCwd = vi.fn(async () => {});
+    const archiveWorkspaceRecord = vi.fn(async () => {});
+
+    await createPaseoWorktreeInBackground(
+      {
+        paseoHome,
+        emitWorkspaceUpdateForCwd,
+        emit: (message) => emitted.push(message),
+        sessionLogger: logger,
+        terminalManager: terminalManager.manager,
+        archiveWorkspaceRecord,
+        serviceRouteStore: routeStore,
+        daemonPort: 6767,
+      },
+      {
+        requestCwd: repoDir,
+        repoRoot: repoDir,
+        baseBranch: "main",
+        slug: "feature-service-failure",
+        worktreePath,
+      },
+    );
+
+    const progressMessages = emitted.filter(
+      (message): message is Extract<SessionOutboundMessage, { type: "workspace_setup_progress" }> =>
+        message.type === "workspace_setup_progress",
+    );
+    expect(progressMessages).toHaveLength(2);
+    expect(progressMessages[0]?.payload.status).toBe("running");
+    expect(progressMessages[0]?.payload.error).toBeNull();
+    expect(progressMessages[1]?.payload.status).toBe("completed");
+    expect(progressMessages[1]?.payload.error).toBeNull();
+    expect(emitted.some((message) => message.type === "workspace_setup_progress" && message.payload.status === "failed")).toBe(false);
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        err: expect.any(Error),
+        worktreePath,
+      }),
+      "Failed to spawn worktree services after workspace setup completed",
+    );
+    expect(archiveWorkspaceRecord).not.toHaveBeenCalled();
+    expect(emitWorkspaceUpdateForCwd).toHaveBeenCalledWith(worktreePath);
+  });
+
 });

@@ -1,10 +1,14 @@
+import { rm, writeFile } from "node:fs/promises";
 import { test, expect } from "./fixtures";
 import { createTempGitRepo } from "./helpers/workspace";
+import { waitForWorkspaceTabsVisible } from "./helpers/workspace-tabs";
 import {
   connectWorkspaceSetupClient,
   createWorkspaceFromSidebar,
   createWorkspaceThroughDaemon,
+  expectSetupLogContains,
   expectSetupPanel,
+  expectSetupStatus,
   openHomeWithProject,
   seedProjectForWorkspaceSetup,
   waitForWorkspaceSetupProgress,
@@ -34,6 +38,58 @@ test.describe("Workspace setup streaming", () => {
     }
   });
 
+  test("runs setup through the sidebar and leaves the workspace usable", async ({ page }) => {
+    const setupTriggerPath = `/tmp/setup-trigger-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const client = await connectWorkspaceSetupClient();
+    const repo = await createTempGitRepo("setup-ui-flow-", {
+      paseoConfig: {
+        worktree: {
+          setup: [
+            `sh -c 'while [ ! -f "${setupTriggerPath}" ]; do sleep 0.2; done; echo starting setup; sleep 1; echo loading dependencies; sleep 1; echo setup complete'`,
+          ],
+        },
+      },
+      files: [{ path: "src/index.ts", content: "export const ready = true;\n" }],
+    });
+
+    try {
+      await seedProjectForWorkspaceSetup(client, repo.path);
+      await openHomeWithProject(page, repo.path);
+      await createWorkspaceFromSidebar(page, repo.path);
+
+      await expectSetupPanel(page);
+      await expectSetupStatus(page, "Running");
+      await writeFile(setupTriggerPath, "start\n");
+      await expectSetupLogContains(page, "starting setup");
+      await expectSetupLogContains(page, "loading dependencies");
+      await expectSetupStatus(page, "Completed");
+      await expectSetupLogContains(page, "setup complete");
+
+      await waitForWorkspaceTabsVisible(page);
+      await expect(page.getByRole("textbox", { name: "Message agent..." }).first()).toBeVisible({
+        timeout: 30_000,
+      });
+
+      const explorerToggle = page.getByTestId("workspace-explorer-toggle").first();
+      if ((await explorerToggle.getAttribute("aria-expanded")) !== "true") {
+        await explorerToggle.click();
+      }
+      await expect(explorerToggle).toHaveAttribute("aria-expanded", "true", { timeout: 30_000 });
+      await page.getByTestId("explorer-tab-files").click();
+      await expect(page.getByTestId("file-explorer-tree-scroll")).toBeVisible({ timeout: 30_000 });
+      await expect(page.getByText("README.md", { exact: true }).first()).toBeVisible({
+        timeout: 30_000,
+      });
+      await expect(page.getByText("src", { exact: true }).first()).toBeVisible({
+        timeout: 30_000,
+      });
+    } finally {
+      await rm(setupTriggerPath, { force: true });
+      await client.close();
+      await repo.cleanup();
+    }
+  });
+
   test("streams running and completed setup snapshots for a successful setup", async () => {
     const client = await connectWorkspaceSetupClient();
     const repo = await createTempGitRepo("setup-success-", {
@@ -46,7 +102,14 @@ test.describe("Workspace setup streaming", () => {
 
     try {
       await seedProjectForWorkspaceSetup(client, repo.path);
-      const running = waitForWorkspaceSetupProgress(client, (payload) => payload.status === "running");
+      const initialRunning = waitForWorkspaceSetupProgress(
+        client,
+        (payload) => payload.status === "running" && payload.detail.log === "",
+      );
+      const runningWithOutput = waitForWorkspaceSetupProgress(
+        client,
+        (payload) => payload.status === "running" && payload.detail.log.includes("starting setup"),
+      );
       const completed = waitForWorkspaceSetupProgress(
         client,
         (payload) => payload.status === "completed" && payload.detail.log.includes("setup complete"),
@@ -57,9 +120,11 @@ test.describe("Workspace setup streaming", () => {
         worktreeSlug: "workspace-setup-success",
       });
 
-      const runningPayload = await running;
+      const initialPayload = await initialRunning;
+      const runningPayload = await runningWithOutput;
       const completedPayload = await completed;
 
+      expect(initialPayload.detail.log).toBe("");
       expect(runningPayload.detail.log).toContain("starting setup");
       expect(completedPayload.detail.log).toContain("setup complete");
       expect(completedPayload.error).toBeNull();

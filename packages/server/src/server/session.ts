@@ -5557,9 +5557,8 @@ export class Session {
   private async createPaseoWorktreeInBackground(options: {
     requestCwd: string;
     repoRoot: string;
-    baseBranch: string;
-    slug: string;
-    worktreePath: string;
+    worktree: { branchName: string; worktreePath: string };
+    shouldBootstrap: boolean;
   }): Promise<void> {
     return createWorktreeInBackgroundSession(
       {
