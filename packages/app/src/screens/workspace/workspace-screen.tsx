@@ -8,7 +8,6 @@ import {
   Platform,
   Pressable,
   Text,
-  useColorScheme,
   View,
 } from "react-native";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -578,8 +577,7 @@ function useCloseTabs(): UseCloseTabsResult {
 function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps) {
   const { theme } = useUnistyles();
   const insets = useSafeAreaInsets();
-  const isDarkMode = useColorScheme() === "dark";
-  const mainBackgroundColor = isDarkMode ? theme.colors.surface1 : theme.colors.surface0;
+  const mainBackgroundColor = theme.colors.surfaceWorkspace;
   const toast = useToast();
   const isMobile = isCompactFormFactor();
   const isFocusModeEnabled = usePanelStore((state) => state.desktop.focusModeEnabled);

@@ -128,11 +128,7 @@ const styles = StyleSheet.create((theme) => ({
     paddingVertical: theme.spacing[3],
     paddingLeft: theme.spacing[4],
     paddingRight: theme.spacing[3],
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 12,
-    elevation: 8,
+    ...theme.shadow.md,
     maxWidth: 480,
   },
   closeButton: {

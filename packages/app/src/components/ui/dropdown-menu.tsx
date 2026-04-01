@@ -605,11 +605,7 @@ const styles = StyleSheet.create((theme) => ({
     borderColor: theme.colors.borderAccent,
     borderRadius: theme.borderRadius.lg,
     overflow: "hidden",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 8,
+    ...theme.shadow.md,
   },
   labelContainer: {
     paddingHorizontal: theme.spacing[3],

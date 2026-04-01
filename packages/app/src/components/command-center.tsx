@@ -268,10 +268,7 @@ const styles = StyleSheet.create((theme) => ({
     borderWidth: 1,
     borderRadius: theme.borderRadius.lg,
     overflow: "hidden",
-    shadowColor: "#000",
-    shadowOpacity: 0.4,
-    shadowRadius: 24,
-    shadowOffset: { width: 0, height: 12 },
+    ...theme.shadow.lg,
   },
   header: {
     paddingHorizontal: theme.spacing[4],

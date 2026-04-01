@@ -136,9 +136,11 @@ export function Button({
       return <View>{leftIcon}</View>;
     }
 
-    const color = variant === "ghost"
-      ? (isGhostHovered ? theme.colors.foreground : theme.colors.foregroundMuted)
-      : theme.colors.foreground;
+    const color = variant === "default"
+      ? theme.colors.accentForeground
+      : variant === "ghost"
+        ? (isGhostHovered ? theme.colors.foreground : theme.colors.foregroundMuted)
+        : theme.colors.foreground;
     const iconSize = ICON_SIZE[size];
 
     // Render function

@@ -350,8 +350,7 @@ export function WebDesktopScrollbarOverlay({
         ? HANDLE_OPACITY_VISIBLE
         : 0;
   const handleWidth = isDragging || isHandleHovered ? HANDLE_WIDTH_ACTIVE : HANDLE_WIDTH_IDLE;
-  const isDark = theme.colors.surface0 === "#181B1A";
-  const handleColor = isDark ? theme.colors.palette.zinc[500] : theme.colors.palette.zinc[700];
+  const handleColor = theme.colors.scrollbarHandle;
   const handleCursor = isDragging ? "grabbing" : "grab";
   const handleTravelDurationMs =
     isDragging || isScrollActive ? 0 : HANDLE_TRAVEL_TRANSITION_DURATION_MS;

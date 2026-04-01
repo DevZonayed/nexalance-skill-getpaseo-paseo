@@ -535,11 +535,7 @@ const styles = StyleSheet.create((theme) => ({
     backgroundColor: theme.colors.popover,
     borderWidth: theme.borderWidth[2],
     borderColor: theme.colors.border,
-    shadowColor: "#000",
-    shadowOpacity: 0.2,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 6,
+    ...theme.shadow.sm,
     zIndex: 1000,
   },
 }));

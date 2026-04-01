@@ -108,11 +108,7 @@ const styles = StyleSheet.create((theme) => ({
     borderColor: theme.colors.border,
     paddingVertical: theme.spacing[3],
     paddingHorizontal: theme.spacing[4],
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    elevation: 8,
+    ...theme.shadow.md,
   },
   textContainer: {
     flex: 1,

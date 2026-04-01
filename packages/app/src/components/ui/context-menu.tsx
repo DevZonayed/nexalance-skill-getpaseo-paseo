@@ -722,11 +722,7 @@ const styles = StyleSheet.create((theme) => ({
     borderWidth: 1,
     borderColor: theme.colors.border,
     borderRadius: theme.borderRadius.lg,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 8,
+    ...theme.shadow.md,
     overflow: "hidden",
   },
   sheetBackground: {

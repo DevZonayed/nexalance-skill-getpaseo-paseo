@@ -320,7 +320,7 @@ export function WelcomeScreen({ onHostAdded }: WelcomeScreenProps) {
       testID="welcome-screen"
     >
       <View style={styles.content}>
-        <PaseoLogo size={96} color={theme.colors.foreground} />
+        <PaseoLogo size={96} />
         <Text style={styles.title}>Welcome to Paseo</Text>
         <Text style={styles.subtitle}>
           {showHostList ? "Connecting to your hosts…" : "Connect to your host to start"}

@@ -112,10 +112,14 @@ const lightSemanticColors = {
   surface3: "#e4e4e7", // Highest elevation (was zinc-300, now zinc-200)
   surface4: "#d4d4d8", // Extra emphasis (was zinc-400, now zinc-300)
   surfaceSidebar: "#f4f4f5", // Sidebar background (darker than main)
+  surfaceWorkspace: "#ffffff", // Workspace main background
 
   // Text
   foreground: "#09090b",
   foregroundMuted: "#71717a",
+
+  // Controls
+  scrollbarHandle: "#3f3f46", // zinc-700
 
   // Borders - shifted one step lighter
   border: "#e4e4e7", // (was zinc-200, now zinc-200 - keep for contrast)
@@ -182,10 +186,14 @@ const darkSemanticColors = {
   surface3: "#434645", // Highest elevation
   surface4: "#595B5B", // Extra emphasis
   surfaceSidebar: "#141716", // Sidebar background (darker than main)
+  surfaceWorkspace: "#1E2120", // Workspace main background (surface1)
 
   // Text
   foreground: "#fafafa",
   foregroundMuted: "#A1A5A4",
+
+  // Controls
+  scrollbarHandle: "#71717a", // zinc-500
 
   // Borders
   border: "#252B2A",
@@ -310,17 +318,59 @@ const commonTheme = {
 } as const;
 
 export const darkTheme = {
+  colorScheme: "dark" as const,
   colors: {
     ...darkSemanticColors,
     palette: baseColors,
+  },
+  shadow: {
+    sm: {
+      shadowColor: "rgba(0, 0, 0, 0.25)",
+      shadowOffset: { width: 0, height: 2 },
+      shadowRadius: 4,
+      elevation: 2,
+    },
+    md: {
+      shadowColor: "rgba(0, 0, 0, 0.20)",
+      shadowOffset: { width: 0, height: 4 },
+      shadowRadius: 8,
+      elevation: 8,
+    },
+    lg: {
+      shadowColor: "rgba(0, 0, 0, 0.40)",
+      shadowOffset: { width: 0, height: 12 },
+      shadowRadius: 24,
+      elevation: 8,
+    },
   },
   ...commonTheme,
 } as const;
 
 export const lightTheme = {
+  colorScheme: "light" as const,
   colors: {
     ...lightSemanticColors,
     palette: baseColors,
+  },
+  shadow: {
+    sm: {
+      shadowColor: "rgba(0, 0, 0, 0.02)",
+      shadowOffset: { width: 0, height: 2 },
+      shadowRadius: 8,
+      elevation: 2,
+    },
+    md: {
+      shadowColor: "rgba(0, 0, 0, 0.04)",
+      shadowOffset: { width: 0, height: 4 },
+      shadowRadius: 16,
+      elevation: 4,
+    },
+    lg: {
+      shadowColor: "rgba(0, 0, 0, 0.08)",
+      shadowOffset: { width: 0, height: 8 },
+      shadowRadius: 24,
+      elevation: 8,
+    },
   },
   ...commonTheme,
 } as const;

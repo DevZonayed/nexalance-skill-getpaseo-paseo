@@ -17,7 +17,6 @@ import { useAppSettings } from "@/hooks/use-settings";
 import { useFaviconStatus } from "@/hooks/use-favicon-status";
 import { View, Text } from "react-native";
 import { UnistylesRuntime, useUnistyles } from "react-native-unistyles";
-import { darkTheme } from "@/styles/theme";
 import { QueryClientProvider } from "@tanstack/react-query";
 import {
   getHostRuntimeStore,
@@ -603,6 +602,7 @@ function FaviconStatusSync() {
 
 function RootStack() {
   const storeReady = useStoreReady();
+  const { theme } = useUnistyles();
 
   return (
     <Stack
@@ -610,7 +610,7 @@ function RootStack() {
         headerShown: false,
         animation: "none",
         contentStyle: {
-          backgroundColor: darkTheme.colors.surface0,
+          backgroundColor: theme.colors.surface0,
         },
       }}
     >
@@ -654,8 +654,10 @@ function NavigationActiveWorkspaceObserver() {
 }
 
 export default function RootLayout() {
+  const { theme } = useUnistyles();
+
   return (
-    <GestureHandlerRootView style={{ flex: 1, backgroundColor: darkTheme.colors.surface0 }}>
+    <GestureHandlerRootView style={{ flex: 1, backgroundColor: theme.colors.surface0 }}>
       <NavigationActiveWorkspaceObserver />
       <PortalProvider>
         <SafeAreaProvider>
