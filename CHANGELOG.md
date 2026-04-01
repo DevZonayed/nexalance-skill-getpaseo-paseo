@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.1.40 - 2026-04-01
+
+### Added
+- Workspace tabs can now be closed in batches.
+
+### Improved
+- Provider model lists are now cached per server and provider, reducing redundant model lookups in the UI.
+
+### Fixed
+- OpenCode reasoning content no longer appears duplicated as assistant text.
+- Daemon no longer crashes when a Codex binary is missing or fails to spawn.
+- Archive tab now correctly reconciles agent visibility after archiving.
+- File diff tracking in workspaces now works correctly on Linux.
+- iPad layout now renders correctly in desktop mode.
+- macOS auto-updater now correctly delivers both arm64 and x64 binaries — previously whichever architecture finished building last would overwrite the other's update manifest.
+
 ## 0.1.39 - 2026-03-30
 
 ### Added
