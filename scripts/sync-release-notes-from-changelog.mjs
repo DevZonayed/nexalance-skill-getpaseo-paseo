@@ -2,6 +2,11 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import {
+  getReleaseInfoFromSourceTag,
+  normalizeReleaseTag,
+  parseReleaseVersion,
+} from "./release-version-utils.mjs";
 
 const headingPattern = /^##\s+\[?([^\]\s]+)\]?\s*-\s*([0-9]{4}-[0-9]{2}-[0-9]{2})\s*$/;
 
@@ -13,7 +18,6 @@ Options:
   --repo <owner/repo>       Repository slug. Defaults to $GITHUB_REPOSITORY.
   --tag <tag>               Release tag (e.g. v0.1.14). Defaults to latest changelog entry.
   --create-if-missing       Create release if it does not already exist.
-  --draft                   Create missing release as draft.
 `;
   process.stderr.write(usage.trimStart());
   process.stderr.write("\n");
@@ -25,7 +29,6 @@ function parseArgs(argv) {
     repo: process.env.GITHUB_REPOSITORY || "",
     tag: "",
     createIfMissing: false,
-    draft: false,
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -54,12 +57,6 @@ function parseArgs(argv) {
       args.createIfMissing = true;
       continue;
     }
-
-    if (arg === "--draft") {
-      args.draft = true;
-      continue;
-    }
-
     usageAndExit();
   }
 
@@ -68,11 +65,6 @@ function parseArgs(argv) {
   }
 
   return args;
-}
-
-function normalizeTag(rawTag) {
-  const trimmed = rawTag.trim().replace(/^refs\/tags\//, "");
-  return trimmed.startsWith("v") ? trimmed : `v${trimmed}`;
 }
 
 function parseChangelog(changelogText) {
@@ -140,23 +132,51 @@ function runGh(args) {
   execFileSync("gh", args, { stdio: "inherit" });
 }
 
+function buildPrereleaseNotes({ releaseTag, version }) {
+  const today = new Date().toISOString().slice(0, 10);
+  const lines = [
+    `## ${version} - ${today}`,
+    "",
+    "Release candidate build for testing from `main`.",
+    "",
+    `- Tag: \`${releaseTag}\``,
+  ];
+
+  if (process.env.GITHUB_SHA) {
+    lines.push(`- Commit: \`${process.env.GITHUB_SHA}\``);
+  }
+
+  lines.push("- This prerelease does not replace the website's latest stable download.");
+  return `${lines.join("\n")}\n`;
+}
+
 function main() {
   const args = parseArgs(process.argv.slice(2));
   const changelogPath = path.resolve("CHANGELOG.md");
   const changelogText = readFileSync(changelogPath, "utf8");
   const entries = parseChangelog(changelogText);
 
-  const targetTag = args.tag ? normalizeTag(args.tag) : entries[0].tag;
+  const targetTag = args.tag ? normalizeReleaseTag(args.tag) : entries[0].tag;
+  const releaseInfo = getReleaseInfoFromSourceTag(targetTag);
   const targetEntry = entries.find((entry) => entry.tag === targetTag);
 
-  if (!targetEntry) {
+  let notes = targetEntry?.notes ?? null;
+
+  if (!notes && releaseInfo.isPrerelease) {
+    notes = buildPrereleaseNotes({
+      releaseTag: releaseInfo.releaseTag,
+      version: releaseInfo.version,
+    });
+  }
+
+  if (!notes) {
     console.log(`No matching changelog section found for ${targetTag}. Skipping.`);
     return;
   }
 
   const tempDir = mkdtempSync(path.join(tmpdir(), "paseo-release-notes-"));
   const notesPath = path.join(tempDir, `${targetTag}-notes.md`);
-  writeFileSync(notesPath, targetEntry.notes);
+  writeFileSync(notesPath, notes);
 
   try {
     if (hasRelease(targetTag, args.repo)) {
@@ -184,7 +204,7 @@ function main() {
         "--notes-file",
         notesPath,
         "--verify-tag",
-        ...(args.draft ? ["--draft"] : []),
+        ...(parseReleaseVersion(releaseInfo.version).isPrerelease ? ["--prerelease"] : []),
       ]);
       console.log(`Created release ${targetTag} with changelog notes.`);
     } catch (createError) {

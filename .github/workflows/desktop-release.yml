@@ -57,25 +57,7 @@ jobs:
           ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref }}
 
       - name: Resolve release metadata
-        shell: bash
-        run: |
-          set -euo pipefail
-          source_tag="${SOURCE_TAG}"
-          if [[ "$source_tag" =~ ^(desktop-(windows|linux|macos)-|desktop-)?v([0-9]+\.[0-9]+\.[0-9]+) ]]; then
-            release_tag="v${BASH_REMATCH[3]}"
-          else
-            release_tag="$source_tag"
-          fi
-          echo "RELEASE_TAG=$release_tag" >> "$GITHUB_ENV"
-
-          version="${release_tag#v}"
-          echo "DESKTOP_VERSION=$version" >> "$GITHUB_ENV"
-
-          if [[ "$source_tag" == *gha-smoke* ]]; then
-            echo "IS_SMOKE_TAG=true" >> "$GITHUB_ENV"
-          else
-            echo "IS_SMOKE_TAG=false" >> "$GITHUB_ENV"
-          fi
+        run: node scripts/emit-release-env.mjs --source-tag "$SOURCE_TAG" >> "$GITHUB_ENV"
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -109,24 +91,6 @@ jobs:
 
       - name: Build web app for desktop
         run: npm run build:web --workspace=@getpaseo/app
-
-      - name: Detect existing GitHub release state
-        if: env.IS_SMOKE_TAG != 'true'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          if release_draft="$(gh release view "$RELEASE_TAG" --repo "${{ github.repository }}" --json isDraft --jq '.isDraft' 2>/dev/null)"; then
-            if [[ "$release_draft" == "true" ]]; then
-              release_type="draft"
-            else
-              release_type="release"
-            fi
-          else
-            release_type="draft"
-          fi
-          echo "RELEASE_TYPE=$release_type" >> "$GITHUB_ENV"
 
       - name: Build desktop release
         shell: bash
@@ -166,22 +130,7 @@ jobs:
 
     steps:
       - name: Resolve release tag
-        shell: bash
-        run: |
-          set -euo pipefail
-          source_tag="${SOURCE_TAG}"
-          if [[ "$source_tag" =~ ^(desktop-(windows|linux|macos)-|desktop-)?v([0-9]+\.[0-9]+\.[0-9]+) ]]; then
-            release_tag="v${BASH_REMATCH[3]}"
-          else
-            release_tag="$source_tag"
-          fi
-          echo "RELEASE_TAG=$release_tag" >> "$GITHUB_ENV"
-
-          if [[ "$source_tag" == *gha-smoke* ]]; then
-            echo "IS_SMOKE_TAG=true" >> "$GITHUB_ENV"
-          else
-            echo "IS_SMOKE_TAG=false" >> "$GITHUB_ENV"
-          fi
+        run: node scripts/emit-release-env.mjs --source-tag "$SOURCE_TAG" >> "$GITHUB_ENV"
 
       - name: Download manifest artifacts
         if: env.IS_SMOKE_TAG != 'true'
@@ -276,25 +225,7 @@ jobs:
           ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref }}
 
       - name: Resolve release metadata
-        shell: bash
-        run: |
-          set -euo pipefail
-          source_tag="${SOURCE_TAG}"
-          if [[ "$source_tag" =~ ^(desktop-(windows|linux|macos)-|desktop-)?v([0-9]+\.[0-9]+\.[0-9]+) ]]; then
-            release_tag="v${BASH_REMATCH[3]}"
-          else
-            release_tag="$source_tag"
-          fi
-          echo "RELEASE_TAG=$release_tag" >> "$GITHUB_ENV"
-
-          version="${release_tag#v}"
-          echo "DESKTOP_VERSION=$version" >> "$GITHUB_ENV"
-
-          if [[ "$source_tag" == *gha-smoke* ]]; then
-            echo "IS_SMOKE_TAG=true" >> "$GITHUB_ENV"
-          else
-            echo "IS_SMOKE_TAG=false" >> "$GITHUB_ENV"
-          fi
+        run: node scripts/emit-release-env.mjs --source-tag "$SOURCE_TAG" >> "$GITHUB_ENV"
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -329,24 +260,6 @@ jobs:
       - name: Build web app for desktop
         run: npm run build:web --workspace=@getpaseo/app
 
-      - name: Detect existing GitHub release state
-        if: env.IS_SMOKE_TAG != 'true'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          if release_draft="$(gh release view "$RELEASE_TAG" --repo "${{ github.repository }}" --json isDraft --jq '.isDraft' 2>/dev/null)"; then
-            if [[ "$release_draft" == "true" ]]; then
-              release_type="draft"
-            else
-              release_type="release"
-            fi
-          else
-            release_type="draft"
-          fi
-          echo "RELEASE_TYPE=$release_type" >> "$GITHUB_ENV"
-
       - name: Build desktop release
         shell: bash
         env:
@@ -377,25 +290,7 @@ jobs:
           ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref }}
 
       - name: Resolve release metadata
-        shell: bash
-        run: |
-          set -euo pipefail
-          source_tag="${SOURCE_TAG}"
-          if [[ "$source_tag" =~ ^(desktop-(windows|linux|macos)-|desktop-)?v([0-9]+\.[0-9]+\.[0-9]+) ]]; then
-            release_tag="v${BASH_REMATCH[3]}"
-          else
-            release_tag="$source_tag"
-          fi
-          echo "RELEASE_TAG=$release_tag" >> "$GITHUB_ENV"
-
-          version="${release_tag#v}"
-          echo "DESKTOP_VERSION=$version" >> "$GITHUB_ENV"
-
-          if [[ "$source_tag" == *gha-smoke* ]]; then
-            echo "IS_SMOKE_TAG=true" >> "$GITHUB_ENV"
-          else
-            echo "IS_SMOKE_TAG=false" >> "$GITHUB_ENV"
-          fi
+        run: node scripts/emit-release-env.mjs --source-tag "$SOURCE_TAG" >> "$GITHUB_ENV"
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -437,24 +332,6 @@ jobs:
           $env:NODE_OPTIONS = "--require=$patchPath"
           npx expo export --platform web
         working-directory: packages/app
-
-      - name: Detect existing GitHub release state
-        if: env.IS_SMOKE_TAG != 'true'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          if release_draft="$(gh release view "$RELEASE_TAG" --repo "${{ github.repository }}" --json isDraft --jq '.isDraft' 2>/dev/null)"; then
-            if [[ "$release_draft" == "true" ]]; then
-              release_type="draft"
-            else
-              release_type="release"
-            fi
-          else
-            release_type="draft"
-          fi
-          echo "RELEASE_TYPE=$release_type" >> "$GITHUB_ENV"
 
       - name: Build desktop release
         shell: bash

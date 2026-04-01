@@ -19,11 +19,6 @@ on:
         required: false
         default: false
         type: boolean
-      draft:
-        description: "Create missing release as draft."
-        required: false
-        default: false
-        type: boolean
 
 concurrency:
   group: release-notes-sync-${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref }}
@@ -48,7 +43,6 @@ jobs:
           REF: ${{ github.ref }}
           INPUT_TAG: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/') && github.ref_name || github.event.inputs.tag }}
           INPUT_CREATE_IF_MISSING: ${{ github.event.inputs.create_if_missing }}
-          INPUT_DRAFT: ${{ github.event.inputs.draft }}
         shell: bash
         run: |
           set -euo pipefail
@@ -68,10 +62,6 @@ jobs:
 
           if [ "$create_if_missing" = "true" ]; then
             args+=(--create-if-missing)
-          fi
-
-          if [ "${INPUT_DRAFT:-false}" = "true" ]; then
-            args+=(--draft)
           fi
 
           node scripts/sync-release-notes-from-changelog.mjs "${args[@]}"

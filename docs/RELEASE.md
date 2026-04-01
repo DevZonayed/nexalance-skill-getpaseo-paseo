@@ -21,19 +21,20 @@ npm run release:publish      # Publish to npm
 npm run release:push         # Push HEAD + tag (triggers CI workflows)
 ```
 
-## Draft release flow
+## Release candidate flow
 
 ```bash
-npm run draft-release:patch    # Bump, push tag, create draft GitHub Release
-# ... test builds from the draft release assets ...
-npm run release:finalize       # Publish npm, promote draft to published
+npm run release:rc:patch       # Bump to X.Y.Z-rc.1, push commit + tag
+# ... test desktop and APK prerelease assets from GitHub Releases ...
+npm run release:rc:next        # Optional: cut X.Y.Z-rc.2, rc.3, ...
+npm run release:promote        # Promote X.Y.Z-rc.N to stable X.Y.Z
 ```
 
-- `draft-release:patch` creates the GitHub Release as a draft so desktop assets, APK uploads, and synced notes attach to it
-- `release:finalize` publishes npm and promotes the same draft release
-- Use the same semver tag for both; don't cut a second tag
+- RC tags are published GitHub prereleases like `v0.1.41-rc.1`
+- RCs publish desktop assets and APKs for testing, but they do not publish npm packages and do not trigger the production web/mobile release flows
+- `release:promote` creates a fresh stable tag like `v0.1.41`; the final release never reuses the RC tag
 - Desktop assets now come from the Electron package at `packages/desktop`
-- **Do NOT create a changelog entry for drafts.** The changelog entry is written only when finalizing. The website parses `CHANGELOG.md` to determine the latest published version for download links — adding an entry for a draft will point the homepage at untested assets.
+- **Do NOT create a changelog entry for RCs.** The changelog remains stable-only. RC release notes are generated automatically so the website stays pinned to the latest published stable release.
 
 ## Fixing a failed release build
 
@@ -54,6 +55,9 @@ git tag -f desktop-windows-v0.1.28 HEAD && git push origin desktop-windows-v0.1.
 
 # Android APK
 git tag -f android-v0.1.28 HEAD && git push origin android-v0.1.28 --force
+
+# RC
+git tag -f v0.1.29-rc.2 HEAD && git push origin v0.1.29-rc.2 --force
 ```
 
 This ensures the checkout ref matches the actual code on `main` with the fix included.
@@ -64,11 +68,11 @@ This ensures the checkout ref matches the actual code on `main` with the fix inc
 - `release:prepare` refreshes workspace `node_modules` links to prevent stale types
 - `npm run dev:desktop` and `npm run build:desktop` target the Electron desktop package in `packages/desktop`
 - If `release:publish` partially fails, re-run it — npm skips already-published versions
-- The website parses the first `## X.Y.Z` heading in `CHANGELOG.md` to determine the download version. This is why changelog entries must only be added at finalization, not during drafts.
+- The website uses GitHub's latest published release API for download links, so published RC prereleases do not replace the stable download target.
 
 ## Changelog format
 
-The website depends on the changelog to determine the latest download version. The heading format **must** be strictly followed:
+Stable release notes depend on the changelog heading format. The heading **must** be strictly followed:
 
 ```
 ## X.Y.Z - YYYY-MM-DD
@@ -80,7 +84,7 @@ No prefix (`v`), no extra text. The parser matches the first `## X.Y.Z` line to 
 
 - [ ] Update `CHANGELOG.md` with user-facing release notes (features, fixes — not refactors)
 - [ ] Verify the changelog heading follows strict `## X.Y.Z - YYYY-MM-DD` format
-- [ ] `npm run release:patch` (or `release:finalize` for drafts) completes successfully
+- [ ] `npm run release:patch` or `npm run release:promote` completes successfully
 - [ ] GitHub `Desktop Release` workflow for the `v*` tag is green
 - [ ] GitHub `Android APK Release` workflow for the same tag is green
 - [ ] EAS `release-mobile.yml` workflow for the same tag is green
