@@ -145,6 +145,7 @@ import {
   toCheckoutError,
 } from "./checkout-git-utils.js";
 import { CheckoutDiffManager } from "./checkout-diff-manager.js";
+import { detectWorkspaceGitMetadata } from "./workspace-git-metadata.js";
 import type { LocalSpeechModelId } from "./speech/providers/local/models.js";
 import { toResolver, type Resolvable } from "./speech/provider-resolver.js";
 import type { SpeechReadinessSnapshot, SpeechReadinessState } from "./speech/speech-runtime.js";
@@ -181,11 +182,13 @@ type DeleteFencedAgentSnapshotStore = AgentSnapshotStore & {
   beginDelete(agentId: string): void;
 };
 
+
 function beginAgentDeleteIfSupported(agentStorage: AgentSnapshotStore, agentId: string): void {
   if ("beginDelete" in agentStorage && typeof agentStorage.beginDelete === "function") {
     (agentStorage as DeleteFencedAgentSnapshotStore).beginDelete(agentId);
   }
 }
+
 
 function deriveInitialAgentTitle(prompt: string): string | null {
   const firstContentLine = prompt
@@ -4741,6 +4744,7 @@ export class Session {
       projectId: workspace.projectId,
       projectDisplayName: resolvedProjectRecord?.displayName ?? String(workspace.projectId),
       projectRootPath: resolvedProjectRecord?.directory ?? workspace.directory,
+      workspaceDirectory: workspace.directory,
       projectKind: resolvedProjectRecord?.kind ?? "directory",
       workspaceKind: workspace.kind,
       name: workspace.displayName,
@@ -5095,11 +5099,12 @@ export class Session {
 
     const timestamp = new Date().toISOString();
     const directoryName = normalizedCwd.split(/[\\/]/).filter(Boolean).at(-1) ?? normalizedCwd;
+    const gitMetadata = detectWorkspaceGitMetadata(normalizedCwd, directoryName);
     const projectId = await this.projectRegistry.insert({
       directory: normalizedCwd,
-      displayName: directoryName,
-      kind: "directory",
-      gitRemote: null,
+      displayName: gitMetadata.projectDisplayName,
+      kind: gitMetadata.projectKind,
+      gitRemote: gitMetadata.gitRemote,
       createdAt: timestamp,
       updatedAt: timestamp,
       archivedAt: null,
@@ -5107,7 +5112,7 @@ export class Session {
     const workspaceId = await this.workspaceRegistry.insert({
       projectId,
       directory: normalizedCwd,
-      displayName: directoryName,
+      displayName: gitMetadata.workspaceDisplayName,
       kind: "checkout",
       createdAt: timestamp,
       updatedAt: timestamp,

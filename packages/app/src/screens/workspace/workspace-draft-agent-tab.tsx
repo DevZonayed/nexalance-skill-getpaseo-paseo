@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useRef } from "react";
 import { Keyboard, Platform, ScrollView, Text, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
+import invariant from "tiny-invariant";
 import { Composer } from "@/components/composer";
 import { FileDropZone } from "@/components/file-drop-zone";
 import { AgentStreamView } from "@/components/agent-stream-view";
@@ -10,7 +11,7 @@ import { useDraftAgentCreateFlow } from "@/hooks/use-draft-agent-create-flow";
 import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
 import { buildWorkspaceDraftAgentConfig } from "@/screens/workspace/workspace-draft-agent-config";
 import { buildDraftStoreKey } from "@/stores/draft-keys";
-import type { Agent } from "@/stores/session-store";
+import { type Agent, useSessionStore } from "@/stores/session-store";
 import { encodeImages } from "@/utils/encode-images";
 import { shouldAutoFocusWorkspaceDraftComposer } from "@/screens/workspace/workspace-draft-pane-focus";
 import type { AgentCapabilityFlags } from "@server/server/agent/agent-sdk-types";
@@ -48,6 +49,11 @@ export function WorkspaceDraftAgentTab({
 }: WorkspaceDraftAgentTabProps) {
   const client = useHostRuntimeClient(serverId);
   const isConnected = useHostRuntimeIsConnected(serverId);
+  const workspaceDirectory = useSessionStore(
+    (state) =>
+      state.sessions[serverId]?.workspaces.get(workspaceId)?.workspaceDirectory ??
+      state.sessions[serverId]?.workspaces.get(workspaceId)?.projectRootPath,
+  );
   const addImagesRef = useRef<((images: ImageAttachment[]) => void) | null>(null);
   const draftStoreKey = useMemo(
     () =>
@@ -63,10 +69,10 @@ export function WorkspaceDraftAgentTab({
       draftKey: draftStoreKey,
       composer: {
         initialServerId: serverId,
-        initialValues: { workingDir: workspaceId },
+        initialValues: { workingDir: workspaceDirectory },
         isVisible: true,
         onlineServerIds: isConnected ? [serverId] : [],
-        lockedWorkingDir: workspaceId,
+        lockedWorkingDir: workspaceDirectory,
       },
     },
   );
@@ -97,6 +103,9 @@ export function WorkspaceDraftAgentTab({
       if (!composerState.effectiveModelId) {
         return "No model is available for the selected provider";
       }
+      if (!workspaceDirectory) {
+        return "Workspace directory not found";
+      }
       if (!client) {
         return "Host is not connected";
       }
@@ -110,6 +119,7 @@ export function WorkspaceDraftAgentTab({
       Keyboard.dismiss();
     },
     buildDraftAgent: (attempt) => {
+      invariant(workspaceDirectory, "Workspace directory is required");
       const now = attempt.timestamp;
       const model = composerState.effectiveModelId || null;
       const thinkingOptionId = composerState.effectiveThinkingOptionId || null;
@@ -134,20 +144,21 @@ export function WorkspaceDraftAgentTab({
         persistence: null,
         runtimeInfo: { provider: composerState.selectedProvider, sessionId: null, model, modeId },
         title: "Agent",
-        cwd: workspaceId,
+        cwd: workspaceDirectory,
         model,
         thinkingOptionId,
         labels: {},
       };
     },
     createRequest: async ({ attempt, text, images }) => {
+      invariant(workspaceDirectory, "Workspace directory is required");
       if (!client) {
         throw new Error("Host is not connected");
       }
 
       const config = buildWorkspaceDraftAgentConfig({
         provider: composerState.selectedProvider,
-        cwd: workspaceId,
+        cwd: workspaceDirectory,
         ...(composerState.modeOptions.length > 0 && composerState.selectedMode !== ""
           ? { modeId: composerState.selectedMode }
           : {}),

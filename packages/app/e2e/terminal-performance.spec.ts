@@ -24,6 +24,9 @@ test.describe("Terminal wire performance", () => {
   test.beforeAll(async () => {
     tempRepo = await createTempGitRepo("perf-");
     client = await connectTerminalClient();
+    // Seed the workspace in the daemon so the app can resolve the path
+    const seedResult = await client.openProject(tempRepo.path);
+    if (!seedResult.workspace) throw new Error(seedResult.error ?? "Failed to seed workspace");
   });
 
   test.afterAll(async () => {

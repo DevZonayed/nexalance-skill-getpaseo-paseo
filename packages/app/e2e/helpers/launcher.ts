@@ -30,7 +30,9 @@ export async function waitForTabBar(page: Page): Promise<void> {
 
 /** Return all tab test IDs currently in the tab bar. */
 export async function getTabTestIds(page: Page): Promise<string[]> {
-  const tabs = page.locator('[data-testid^="workspace-tab-"]');
+  const tabs = page.locator(
+    '[data-testid^="workspace-tab-"]:not([data-testid^="workspace-tab-context-"])',
+  );
   const count = await tabs.count();
   const ids: string[] = [];
   for (let i = 0; i < count; i++) {
@@ -49,7 +51,11 @@ export async function countTabsOfKind(page: Page, kind: string): Promise<number>
 /** Return the currently active tab's test ID (the one with aria-selected or focus styling). */
 export async function getActiveTabTestId(page: Page): Promise<string | null> {
   // Active tab has the focused highlight — check for the aria-selected or data-active attribute
-  const activeTab = page.locator('[data-testid^="workspace-tab-"][aria-selected="true"]').first();
+  const activeTab = page
+    .locator(
+      '[data-testid^="workspace-tab-"]:not([data-testid^="workspace-tab-context-"])[aria-selected="true"]',
+    )
+    .first();
   if (await activeTab.isVisible().catch(() => false)) {
     return activeTab.getAttribute("data-testid");
   }
@@ -111,7 +117,7 @@ export async function clickNewChat(page: Page): Promise<void> {
 
 /** Click the "Terminal" tile on the launcher panel. */
 export async function clickTerminal(page: Page): Promise<void> {
-  const button = page.getByRole("button", { name: "Terminal" }).first();
+  const button = page.getByRole("button", { name: "Terminal", exact: true }).first();
   await expect(button).toBeVisible({ timeout: 10_000 });
   await button.click();
 }
@@ -132,8 +138,12 @@ export async function waitForTabWithTitle(
   timeout = 30_000,
 ): Promise<void> {
   const matcher = typeof title === "string" ? new RegExp(title, "i") : title;
-  await expect(page.locator('[data-testid^="workspace-tab-"]').filter({ hasText: matcher }).first())
-    .toBeVisible({ timeout });
+  await expect(
+    page
+      .locator('[data-testid^="workspace-tab-"]:not([data-testid^="workspace-tab-context-"])')
+      .filter({ hasText: matcher })
+      .first(),
+  ).toBeVisible({ timeout });
 }
 
 /** Assert the new-tab '+' button is visible and there is only one. */

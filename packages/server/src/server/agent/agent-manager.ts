@@ -385,6 +385,7 @@ export class AgentManager {
   private readonly clients = new Map<AgentProvider, AgentClient>();
   private readonly agents = new Map<string, LiveManagedAgent>();
   private readonly timelineStore = new InMemoryAgentTimelineStore();
+  private readonly agentsAwaitingInitialSnapshotPersist = new Set<string>();
   private readonly sessionEventTails = new Map<string, Promise<void>>();
   private readonly pendingForegroundRuns = new Map<string, PendingForegroundRun>();
   private readonly subscribers = new Set<SubscriptionRecord>();
@@ -432,6 +433,10 @@ export class AgentManager {
 
       if (agent.activeForegroundTurnId !== null) {
         withActiveForegroundTurn++;
+      }
+
+      if (!this.timelineStore.has(agent.id)) {
+        continue;
       }
 
       const len = this.timelineStore.getItems(agent.id).length;
@@ -732,6 +737,7 @@ export class AgentManager {
         persistence,
         {
           labels: options?.labels,
+          workspaceId: options?.workspaceId,
         },
       );
     }
@@ -1035,6 +1041,13 @@ export class AgentManager {
     const agent = this.requireAgent(agentId);
     const normalizedTitle = title.trim();
     if (!normalizedTitle) {
+      return;
+    }
+    if (
+      this.agentsAwaitingInitialSnapshotPersist.has(agent.id) &&
+      this.registry &&
+      (await this.registry.get(agent.id)) === null
+    ) {
       return;
     }
     this.touchUpdatedAt(agent);
@@ -2110,6 +2123,7 @@ export class AgentManager {
     terminalCommand: TerminalCommand,
     persistence: AgentPersistenceHandle,
     options?: {
+      workspaceId?: number;
       createdAt?: Date;
       updatedAt?: Date;
       lastUserMessageAt?: Date | null;
@@ -2173,6 +2187,7 @@ export class AgentManager {
 
     this.agents.set(resolvedAgentId, managed);
     this.previousStatuses.set(resolvedAgentId, managed.lifecycle);
+    this.agentsAwaitingInitialSnapshotPersist.add(resolvedAgentId);
 
     let terminalSession: TerminalSession;
     try {
@@ -2187,12 +2202,14 @@ export class AgentManager {
     } catch (error) {
       this.agents.delete(resolvedAgentId);
       this.previousStatuses.delete(resolvedAgentId);
+      this.agentsAwaitingInitialSnapshotPersist.delete(resolvedAgentId);
       throw error;
     }
 
     if (terminalSession.id !== reservedTerminalId) {
       this.agents.delete(resolvedAgentId);
       this.previousStatuses.delete(resolvedAgentId);
+      this.agentsAwaitingInitialSnapshotPersist.delete(resolvedAgentId);
       throw new Error(
         `Reserved terminal id ${reservedTerminalId} but terminal manager returned ${terminalSession.id}`,
       );
@@ -2203,12 +2220,17 @@ export class AgentManager {
     });
     managed.unsubscribeTerminalExit = unsubscribeTerminalExit;
     const terminalSessionTitle = terminalSession.getTitle()?.trim();
-    await this.persistSnapshot(managed, {
-      title:
-        terminalSessionTitle && terminalSessionTitle.length > 0
-          ? terminalSessionTitle
-          : initialPersistedTitle,
-    });
+    try {
+      await this.persistSnapshot(managed, {
+        workspaceId: options?.workspaceId,
+        title:
+          terminalSessionTitle && terminalSessionTitle.length > 0
+            ? terminalSessionTitle
+            : initialPersistedTitle,
+      });
+    } finally {
+      this.agentsAwaitingInitialSnapshotPersist.delete(resolvedAgentId);
+    }
     this.emitState(managed);
     return { ...managed };
   }

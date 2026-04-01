@@ -554,8 +554,24 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
   const isFocusModeEnabled = usePanelStore((state) => state.desktop.focusModeEnabled);
 
   const normalizedServerId = trimNonEmpty(decodeSegment(serverId)) ?? "";
-  const normalizedWorkspaceId =
+  const rawWorkspaceIdentifier =
     normalizeWorkspaceIdentity(decodeWorkspaceIdFromPathSegment(workspaceId)) ?? "";
+
+  // Resolve the workspace ID: first try direct map key, then fall back to path-based lookup.
+  // This lets URLs that encode a filesystem path (e.g. from deep links or older bookmarks)
+  // resolve correctly even though the map is keyed by numeric DB IDs.
+  const normalizedWorkspaceId = useSessionStore((state) => {
+    if (!normalizedServerId || !rawWorkspaceIdentifier) return "";
+    const workspaces = state.sessions[normalizedServerId]?.workspaces;
+    if (!workspaces) return rawWorkspaceIdentifier;
+    if (workspaces.has(rawWorkspaceIdentifier)) return rawWorkspaceIdentifier;
+    for (const [id, ws] of workspaces.entries()) {
+      if (normalizeWorkspaceIdentity(ws.workspaceDirectory) === rawWorkspaceIdentifier) return id;
+      if (normalizeWorkspaceIdentity(ws.projectRootPath) === rawWorkspaceIdentifier) return id;
+    }
+    return rawWorkspaceIdentifier;
+  });
+
   const workspaceTerminalScopeKey =
     normalizedServerId && normalizedWorkspaceId
       ? `${normalizedServerId}:${normalizedWorkspaceId}`
@@ -567,43 +583,47 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
   const queryClient = useQueryClient();
   const client = useHostRuntimeClient(normalizedServerId);
   const isConnected = useHostRuntimeIsConnected(normalizedServerId);
+  const workspaceDescriptor = useSessionStore(
+    (state) => state.sessions[normalizedServerId]?.workspaces.get(normalizedWorkspaceId) ?? null,
+  );
+  const workspaceDirectory =
+    workspaceDescriptor?.workspaceDirectory ?? workspaceDescriptor?.projectRootPath ?? null;
 
   const workspaceAgentVisibility = useStoreWithEqualityFn(
     useSessionStore,
     (state) =>
       deriveWorkspaceAgentVisibility({
         sessionAgents: state.sessions[normalizedServerId]?.agents,
-        workspaceId: normalizedWorkspaceId,
+        workspaceDirectory,
       }),
     workspaceAgentVisibilityEqual,
   );
 
   const terminalsQueryKey = useMemo(
-    () => ["terminals", normalizedServerId, normalizedWorkspaceId] as const,
-    [normalizedServerId, normalizedWorkspaceId],
+    () => ["terminals", normalizedServerId, workspaceDirectory] as const,
+    [normalizedServerId, workspaceDirectory],
   );
   type ListTerminalsPayload = ListTerminalsResponse["payload"];
   const terminalsQuery = useQuery({
     queryKey: terminalsQueryKey,
     enabled:
       Boolean(client && isConnected) &&
-      normalizedWorkspaceId.length > 0 &&
-      normalizedWorkspaceId.startsWith("/"),
+      Boolean(workspaceDirectory),
     queryFn: async () => {
-      if (!client) {
+      if (!client || !workspaceDirectory) {
         throw new Error("Host is not connected");
       }
-      return await client.listTerminals(normalizedWorkspaceId);
+      return await client.listTerminals(workspaceDirectory);
     },
     staleTime: TERMINALS_QUERY_STALE_TIME,
   });
   const terminals = terminalsQuery.data?.terminals ?? [];
   const createTerminalMutation = useMutation({
     mutationFn: async (input?: { paneId?: string }) => {
-      if (!client) {
+      if (!client || !workspaceDirectory) {
         throw new Error("Host is not connected");
       }
-      return await client.createTerminal(normalizedWorkspaceId);
+      return await client.createTerminal(workspaceDirectory);
     },
     onSuccess: (payload, input) => {
       const createdTerminal = payload.terminal;
@@ -613,8 +633,9 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
             terminals: current?.terminals ?? [],
             terminal: createdTerminal,
           });
+          const cwd = current?.cwd ?? workspaceDirectory ?? undefined;
           return {
-            cwd: current?.cwd ?? normalizedWorkspaceId,
+            ...(cwd ? { cwd } : {}),
             terminals: nextTerminals,
             requestId: current?.requestId ?? `terminal-create-${createdTerminal.id}`,
           };
@@ -657,7 +678,7 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
   const { archiveAgent } = useArchiveAgent();
 
   useEffect(() => {
-    if (!client || !isConnected || !normalizedWorkspaceId.startsWith("/")) {
+    if (!client || !isConnected || !workspaceDirectory) {
       return;
     }
 
@@ -665,7 +686,7 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
       if (message.type !== "terminals_changed") {
         return;
       }
-      if (message.payload.cwd !== normalizedWorkspaceId) {
+      if (message.payload.cwd !== workspaceDirectory) {
         return;
       }
 
@@ -676,32 +697,27 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
       }));
     });
 
-    client.subscribeTerminals({ cwd: normalizedWorkspaceId });
+    client.subscribeTerminals({ cwd: workspaceDirectory });
 
     return () => {
       unsubscribeChanged();
-      client.unsubscribeTerminals({ cwd: normalizedWorkspaceId });
+      client.unsubscribeTerminals({ cwd: workspaceDirectory });
     };
-  }, [client, isConnected, normalizedWorkspaceId, queryClient, terminalsQueryKey]);
+  }, [client, isConnected, queryClient, terminalsQueryKey, workspaceDirectory]);
 
   const checkoutQuery = useQuery({
-    queryKey: checkoutStatusQueryKey(normalizedServerId, normalizedWorkspaceId),
+    queryKey: checkoutStatusQueryKey(normalizedServerId, workspaceDirectory ?? ""),
     enabled:
       Boolean(client && isConnected) &&
-      normalizedWorkspaceId.length > 0 &&
-      normalizedWorkspaceId.startsWith("/"),
+      Boolean(workspaceDirectory),
     queryFn: async () => {
-      if (!client) {
+      if (!client || !workspaceDirectory) {
         throw new Error("Host is not connected");
       }
-      return (await client.getCheckoutStatus(normalizedWorkspaceId)) as CheckoutStatusPayload;
+      return (await client.getCheckoutStatus(workspaceDirectory)) as CheckoutStatusPayload;
     },
     staleTime: 15_000,
   });
-
-  const workspaceDescriptor = useSessionStore(
-    (state) => state.sessions[normalizedServerId]?.workspaces.get(normalizedWorkspaceId) ?? null,
-  );
   const hasHydratedWorkspaces = useSessionStore(
     (state) => state.sessions[normalizedServerId]?.hasHydratedWorkspaces ?? false,
   );
@@ -731,15 +747,15 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
   const isExplorerOpen = isMobile ? mobileView === "file-explorer" : desktopFileExplorerOpen;
 
   const activeExplorerCheckout = useMemo<ExplorerCheckoutContext | null>(() => {
-    if (!normalizedServerId || !normalizedWorkspaceId.startsWith("/")) {
+    if (!normalizedServerId || !workspaceDirectory) {
       return null;
     }
     return {
       serverId: normalizedServerId,
-      cwd: normalizedWorkspaceId,
+      cwd: workspaceDirectory,
       isGit: isGitCheckout,
     };
-  }, [isGitCheckout, normalizedServerId, normalizedWorkspaceId]);
+  }, [isGitCheckout, normalizedServerId, workspaceDirectory]);
 
   useEffect(() => {
     setActiveExplorerCheckout(activeExplorerCheckout);
@@ -1081,12 +1097,12 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
       if (createTerminalMutation.isPending) {
         return;
       }
-      if (!normalizedWorkspaceId.startsWith("/")) {
+      if (!workspaceDirectory) {
         return;
       }
       createTerminalMutation.mutate(input);
     },
-    [createTerminalMutation, normalizedWorkspaceId],
+    [createTerminalMutation, workspaceDirectory],
   );
 
   const handleSelectSwitcherTab = useCallback(
@@ -1270,18 +1286,18 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
   );
 
   const handleCopyWorkspacePath = useCallback(async () => {
-    if (!normalizedWorkspaceId.startsWith("/")) {
+    if (!workspaceDirectory) {
       toast.error("Workspace path not available");
       return;
     }
 
     try {
-      await Clipboard.setStringAsync(normalizedWorkspaceId);
+      await Clipboard.setStringAsync(workspaceDirectory);
       toast.copied("Workspace path");
     } catch {
       toast.error("Copy failed");
     }
-  }, [normalizedWorkspaceId, toast]);
+  }, [toast, workspaceDirectory]);
 
   const handleCopyBranchName = useCallback(async () => {
     if (!currentBranchName) {
@@ -1927,7 +1943,7 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
                       <DropdownMenuItem
                         testID="workspace-header-copy-path"
                         leading={<Copy size={16} color={theme.colors.foregroundMuted} />}
-                        disabled={!normalizedWorkspaceId.startsWith("/")}
+                        disabled={!workspaceDirectory}
                         onSelect={handleCopyWorkspacePath}
                       >
                         Copy workspace path
@@ -1952,7 +1968,7 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
                   <>
                     <WorkspaceGitActions
                       serverId={normalizedServerId}
-                      cwd={normalizedWorkspaceId}
+                      cwd={workspaceDirectory ?? ""}
                     />
                     <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
                       <TooltipTrigger asChild>
@@ -2135,7 +2151,7 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
           <ExplorerSidebar
             serverId={normalizedServerId}
             workspaceId={normalizedWorkspaceId}
-            workspaceRoot={normalizedWorkspaceId}
+            workspaceRoot={workspaceDirectory ?? ""}
             isGit={isGitCheckout}
             onOpenFile={handleOpenFileFromExplorer}
           />

@@ -7,6 +7,12 @@ import { buildHostWorkspaceRoute } from "../../src/utils/host-routes";
 export type TerminalPerfDaemonClient = {
   connect(): Promise<void>;
   close(): Promise<void>;
+  openProject(
+    cwd: string,
+  ): Promise<{
+    workspace: { id: number; name: string; projectRootPath: string } | null;
+    error: string | null;
+  }>;
   createTerminal(
     cwd: string,
     name?: string,

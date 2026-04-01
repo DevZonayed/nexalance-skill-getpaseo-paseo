@@ -28,12 +28,19 @@ import {
 // ─── Shared state ──────────────────────────────────────────────────────────
 
 let tempRepo: { path: string; cleanup: () => Promise<void> };
+let workspaceId: string;
+let seedClient: TerminalPerfDaemonClient;
 
 test.beforeAll(async () => {
   tempRepo = await createTempGitRepo("launcher-e2e-");
+  seedClient = await connectTerminalClient();
+  const result = await seedClient.openProject(tempRepo.path);
+  if (!result.workspace) throw new Error(result.error ?? "Failed to seed workspace");
+  workspaceId = String(result.workspace.id);
 });
 
 test.afterAll(async () => {
+  if (seedClient) await seedClient.close();
   if (tempRepo) await tempRepo.cleanup();
 });
 
@@ -45,7 +52,7 @@ test.describe("Launcher tab", () => {
   test("Cmd+T opens launcher panel with New Chat, Terminal, and provider tiles", async ({
     page,
   }) => {
-    await gotoWorkspace(page, tempRepo.path);
+    await gotoWorkspace(page, workspaceId);
 
     await pressNewTabShortcut(page);
 
@@ -56,7 +63,7 @@ test.describe("Launcher tab", () => {
   });
 
   test("opening two new tabs creates two launcher tabs", async ({ page }) => {
-    await gotoWorkspace(page, tempRepo.path);
+    await gotoWorkspace(page, workspaceId);
 
     await pressNewTabShortcut(page);
     await waitForLauncherPanel(page);
@@ -70,7 +77,7 @@ test.describe("Launcher tab", () => {
   });
 
   test("clicking New Chat replaces launcher in-place with draft tab", async ({ page }) => {
-    await gotoWorkspace(page, tempRepo.path);
+    await gotoWorkspace(page, workspaceId);
 
     await clickNewTabButton(page);
     await waitForLauncherPanel(page);
@@ -97,7 +104,7 @@ test.describe("Launcher tab", () => {
 
   test("clicking Terminal replaces launcher with standalone terminal", async ({ page }) => {
     test.setTimeout(45_000);
-    await gotoWorkspace(page, tempRepo.path);
+    await gotoWorkspace(page, workspaceId);
 
     await clickNewTabButton(page);
     await waitForLauncherPanel(page);
@@ -121,7 +128,7 @@ test.describe("Launcher tab", () => {
 
   test("clicking a provider tile replaces launcher with terminal agent tab", async ({ page }) => {
     test.setTimeout(45_000);
-    await gotoWorkspace(page, tempRepo.path);
+    await gotoWorkspace(page, workspaceId);
 
     await clickNewTabButton(page);
     await waitForLauncherPanel(page);
@@ -175,7 +182,7 @@ test.describe("Launcher tab", () => {
   });
 
   test("tab bar shows a single + button per pane", async ({ page }) => {
-    await gotoWorkspace(page, tempRepo.path);
+    await gotoWorkspace(page, workspaceId);
     await assertSingleNewTabButton(page);
   });
 });
@@ -204,7 +211,7 @@ test.describe("Terminal title propagation", () => {
 
     try {
       // Navigate to workspace and open the terminal
-      await gotoWorkspace(page, tempRepo.path);
+      await gotoWorkspace(page, workspaceId);
       await clickNewTabButton(page);
       await waitForLauncherPanel(page);
       await clickTerminal(page);
@@ -236,7 +243,7 @@ test.describe("Terminal title propagation", () => {
     const terminalId = result.terminal.id;
 
     try {
-      await gotoWorkspace(page, tempRepo.path);
+      await gotoWorkspace(page, workspaceId);
       await clickNewTabButton(page);
       await waitForLauncherPanel(page);
       await clickTerminal(page);
@@ -272,7 +279,7 @@ test.describe("Terminal title propagation", () => {
 
 test.describe("Launcher transitions (no flash)", () => {
   test("New Chat transition has no blank intermediate tab state", async ({ page }) => {
-    await gotoWorkspace(page, tempRepo.path);
+    await gotoWorkspace(page, workspaceId);
 
     await clickNewTabButton(page);
     await waitForLauncherPanel(page);
@@ -301,7 +308,7 @@ test.describe("Launcher transitions (no flash)", () => {
 
   test("Terminal transition completes within visual budget", async ({ page }) => {
     test.setTimeout(30_000);
-    await gotoWorkspace(page, tempRepo.path);
+    await gotoWorkspace(page, workspaceId);
 
     await clickNewTabButton(page);
     await waitForLauncherPanel(page);
@@ -321,7 +328,7 @@ test.describe("Launcher transitions (no flash)", () => {
   });
 
   test("New Chat click → composer appears without launcher flash", async ({ page }) => {
-    await gotoWorkspace(page, tempRepo.path);
+    await gotoWorkspace(page, workspaceId);
 
     await clickNewTabButton(page);
     await waitForLauncherPanel(page);

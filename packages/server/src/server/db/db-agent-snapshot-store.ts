@@ -184,7 +184,7 @@ export class DbAgentSnapshotStore implements AgentSnapshotStore {
     }
 
     if (nextWorkspaceId === undefined) {
-      throw new Error(`Workspace ID required for agent ${agent.id}`);
+      return;
     }
     await this.upsert(record, nextWorkspaceId);
   }

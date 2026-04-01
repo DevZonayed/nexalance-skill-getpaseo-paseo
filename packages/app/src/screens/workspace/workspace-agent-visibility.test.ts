@@ -81,7 +81,7 @@ describe("workspace agent visibility", () => {
 
     const result = deriveWorkspaceAgentVisibility({
       sessionAgents,
-      workspaceId,
+      workspaceDirectory: workspaceId,
     });
 
     expect(result.activeAgentIds).toEqual(new Set(["visible-agent"]));
@@ -142,11 +142,31 @@ describe("workspace agent visibility", () => {
 
     const result = deriveWorkspaceAgentVisibility({
       sessionAgents,
-      workspaceId: "/Users/moboudra/.paseo/worktrees/1luy0po7/normal-squid",
+      workspaceDirectory: "/Users/moboudra/.paseo/worktrees/1luy0po7/normal-squid",
     });
 
     expect(result.activeAgentIds).toEqual(new Set(["slash-agent"]));
     expect(result.knownAgentIds.has("slash-agent")).toBe(true);
+  });
+
+  it("matches workspace agents using the workspace directory even when the route uses a numeric workspace id", () => {
+    const sessionAgents = new Map<string, Agent>([
+      [
+        "terminal-agent",
+        makeAgent({
+          id: "terminal-agent",
+          cwd: "/tmp/workspace-lifecycle-main",
+        }),
+      ],
+    ]);
+
+    const result = deriveWorkspaceAgentVisibility({
+      sessionAgents,
+      workspaceDirectory: "/tmp/workspace-lifecycle-main",
+    });
+
+    expect(result.activeAgentIds).toEqual(new Set(["terminal-agent"]));
+    expect(result.knownAgentIds).toEqual(new Set(["terminal-agent"]));
   });
 
   describe("workspaceAgentVisibilityEqual", () => {

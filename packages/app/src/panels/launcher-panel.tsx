@@ -36,6 +36,11 @@ function LauncherPanel() {
   const { serverId, workspaceId, target, retargetCurrentTab, isPaneFocused } = usePaneContext();
   const client = useHostRuntimeClient(serverId);
   const isConnected = useHostRuntimeIsConnected(serverId);
+  const workspaceDirectory = useSessionStore(
+    (state) =>
+      state.sessions[serverId]?.workspaces.get(workspaceId)?.workspaceDirectory ??
+      state.sessions[serverId]?.workspaces.get(workspaceId)?.projectRootPath,
+  );
   const { providers, recordUsage } = useProviderRecency();
   const setAgents = useSessionStore((state) => state.setAgents);
   const [pendingAction, setPendingAction] = useState<string | null>(null);
@@ -53,8 +58,8 @@ function LauncherPanel() {
 
   const launchTerminalAgent = useCallback(
     async (providerId: AgentProvider) => {
-      if (!client || !isConnected) {
-        setErrorMessage("Host is not connected");
+      if (!client || !isConnected || !workspaceDirectory) {
+        setErrorMessage(!workspaceDirectory ? "Workspace directory not found" : "Host is not connected");
         return;
       }
 
@@ -64,7 +69,7 @@ function LauncherPanel() {
       try {
         const agent = await client.createAgent({
           provider: providerId,
-          cwd: workspaceId,
+          cwd: workspaceDirectory,
           terminal: true,
         });
         recordUsage(providerId);
@@ -82,7 +87,7 @@ function LauncherPanel() {
         setPendingAction((current) => (current === providerId ? null : current));
       }
     },
-    [client, isConnected, recordUsage, retargetCurrentTab, serverId, setAgents, workspaceId],
+    [client, isConnected, recordUsage, retargetCurrentTab, serverId, setAgents, workspaceDirectory],
   );
 
   const openDraftTab = useCallback(() => {
@@ -96,8 +101,8 @@ function LauncherPanel() {
   }, [retargetCurrentTab]);
 
   const openTerminalTab = useCallback(async () => {
-    if (!client || !isConnected) {
-      setErrorMessage("Host is not connected");
+    if (!client || !isConnected || !workspaceDirectory) {
+      setErrorMessage(!workspaceDirectory ? "Workspace directory not found" : "Host is not connected");
       return;
     }
 
@@ -105,7 +110,7 @@ function LauncherPanel() {
     setErrorMessage(null);
 
     try {
-      const payload = await client.createTerminal(workspaceId);
+      const payload = await client.createTerminal(workspaceDirectory);
       if (payload.error || !payload.terminal) {
         throw new Error(payload.error ?? "Failed to open terminal");
       }
@@ -118,9 +123,19 @@ function LauncherPanel() {
     } finally {
       setPendingAction((current) => (current === "terminal" ? null : current));
     }
-  }, [client, isConnected, retargetCurrentTab, workspaceId]);
+  }, [client, isConnected, retargetCurrentTab, workspaceDirectory]);
 
   const actionsDisabled = pendingAction !== null;
+
+  if (!workspaceDirectory) {
+    return (
+      <View style={styles.container}>
+        <View style={[styles.content, styles.loadingContent]}>
+          <ActivityIndicator />
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -338,6 +353,9 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     paddingHorizontal: theme.spacing[4],
     paddingVertical: theme.spacing[8],
+  },
+  loadingContent: {
+    flex: 1,
   },
   contentUnfocused: {
     opacity: 0.96,

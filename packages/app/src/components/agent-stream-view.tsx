@@ -63,6 +63,7 @@ import { createMarkdownStyles } from "@/styles/markdown-styles";
 import { MAX_CONTENT_WIDTH } from "@/constants/layout";
 import { getMarkdownListMarker } from "@/utils/markdown-list";
 import { normalizeInlinePathTarget } from "@/utils/inline-path";
+import { resolveHydratedWorkspaceId } from "@/utils/resolve-hydrated-workspace-id";
 import { prepareWorkspaceTab } from "@/utils/workspace-navigation";
 import { useStableEvent } from "@/hooks/use-stable-event";
 import {
@@ -132,10 +133,14 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     );
 
     const workspaceRoot = agent.cwd?.trim() || "";
-    const workspaceId = agent.projectPlacement?.checkout?.cwd?.trim() || workspaceRoot;
+    const workspacePath = agent.projectPlacement?.checkout?.cwd?.trim() || workspaceRoot;
+    const workspaceId = resolveHydratedWorkspaceId({
+      workspaces: useSessionStore.getState().sessions[resolvedServerId]?.workspaces?.values(),
+      path: workspacePath,
+    });
     const { requestDirectoryListing } = useFileExplorerActions({
       serverId: resolvedServerId,
-      workspaceId,
+      workspaceId: workspaceId ?? undefined,
       workspaceRoot,
     });
     const openWorkspaceFile = useStableEvent(function openWorkspaceFile(input: {
@@ -175,12 +180,14 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
             return;
           }
 
-          const route = prepareWorkspaceTab({
-            serverId: resolvedServerId,
-            workspaceId,
-            target: { kind: "file", path: normalized.file },
-          });
-          router.navigate(route as any);
+          if (workspaceId) {
+            const route = prepareWorkspaceTab({
+              serverId: resolvedServerId,
+              workspaceId,
+              target: { kind: "file", path: normalized.file },
+            });
+            router.navigate(route as any);
+          }
           return;
         }
 

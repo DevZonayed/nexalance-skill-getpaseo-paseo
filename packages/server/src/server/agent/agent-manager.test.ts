@@ -610,6 +610,104 @@ describe("AgentManager", () => {
     unsubscribe();
   });
 
+  test("terminal agent creation ignores title propagation before the initial snapshot is persisted", async () => {
+    const workdir = mkdtempSync(join(tmpdir(), "agent-manager-terminal-title-race-"));
+    const dataDir = join(workdir, "db");
+    const database = await openPaseoDatabase(dataDir);
+    let manager: AgentManager | null = null;
+
+    try {
+      const workspaceId = await seedWorkspace(database, { directory: workdir });
+      const storage = new DbAgentSnapshotStore(database.db);
+      const terminalManager: TerminalManager = {
+        async getTerminals() {
+          return [];
+        },
+        async createTerminal(options) {
+          const exitListeners = new Set<(info: TerminalExitInfo) => void>();
+          const titleListeners = new Set<(title?: string) => void>();
+          const session: TerminalSession = {
+            id: options.id,
+            name: options.name ?? "Terminal",
+            cwd: options.cwd,
+            send: () => {},
+            subscribe: () => () => {},
+            onExit(listener) {
+              exitListeners.add(listener);
+              return () => {
+                exitListeners.delete(listener);
+              };
+            },
+            onTitleChange(listener) {
+              titleListeners.add(listener);
+              return () => {
+                titleListeners.delete(listener);
+              };
+            },
+            getSize: () => ({ rows: 24, cols: 80 }),
+            getState: () => ({
+              rows: 24,
+              cols: 80,
+              cursor: { row: 0, col: 0 },
+              scrollback: [],
+              grid: [],
+            }),
+            getTitle: () => "Agent Shell",
+            getExitInfo: () => null,
+            kill() {
+              for (const listener of Array.from(exitListeners)) {
+                listener({ exitCode: null, signal: null, lastOutputLines: [] });
+              }
+            },
+          };
+
+          const agentId = manager?.getAgentIdForTerminal(options.id) ?? null;
+          if (agentId) {
+            await manager?.setTitle(agentId, "Agent Shell");
+          }
+
+          return session;
+        },
+        registerCwdEnv() {},
+        getTerminal() {
+          return undefined;
+        },
+        killTerminal() {},
+        listDirectories() {
+          return [];
+        },
+        killAll() {},
+        subscribeTerminalsChanged() {
+          return () => {};
+        },
+      };
+
+      manager = new AgentManager({
+        clients: { codex: new TerminalTestAgentClient() },
+        registry: storage,
+        terminalManager,
+        logger,
+        idFactory: () => "00000000-0000-4000-8000-00000000aa13",
+      });
+
+      const snapshot = await manager.createAgent(
+        {
+          provider: "codex",
+          cwd: workdir,
+          terminal: true,
+        },
+        undefined,
+        { workspaceId },
+      );
+
+      const stored = await storage.get(snapshot.id);
+      expect(stored?.title).toBe("Agent Shell");
+    } finally {
+      await database.close();
+      rmSync(workdir, { recursive: true, force: true });
+    }
+  });
+
   test("terminal agent creation preserves titles propagated during terminal registration", async () => {
     const workdir = mkdtempSync(join(tmpdir(), "agent-manager-terminal-registration-title-"));
     const storage = new AgentStorage(join(workdir, "agents"), logger);
@@ -667,6 +765,35 @@ describe("AgentManager", () => {
     expect(storedTitle?.startsWith("npm --session-id ")).toBe(true);
 
     terminalManager.killAll();
+  });
+
+  test("getMetricsSnapshot skips agents without in-memory timeline state", async () => {
+    const workdir = mkdtempSync(join(tmpdir(), "agent-manager-terminal-metrics-"));
+    const storage = new AgentStorage(join(workdir, "agents"), logger);
+    const manager = new AgentManager({
+      clients: { codex: new TerminalTestAgentClient() },
+      registry: storage,
+      terminalManager: createStubTerminalManager(),
+      logger,
+      idFactory: () => "00000000-0000-4000-8000-00000000aa14",
+    });
+
+    const snapshot = await manager.createAgent({
+      provider: "codex",
+      cwd: workdir,
+      terminal: true,
+    });
+
+    expect(manager.getMetricsSnapshot()).toEqual({
+      total: 1,
+      byLifecycle: { idle: 1 },
+      withActiveForegroundTurn: 0,
+      timelineStats: {
+        totalItems: 0,
+        maxItemsPerAgent: 0,
+      },
+    });
+    expect(snapshot.terminal).toBe(true);
   });
 
   test("terminal agent closure preserves exit diagnostics for failed launches", async () => {

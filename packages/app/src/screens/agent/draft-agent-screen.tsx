@@ -26,6 +26,7 @@ import {
 import { useAllAgentsList } from "@/hooks/use-all-agents-list";
 import { useHosts } from "@/runtime/host-runtime";
 import { buildBranchComboOptions, normalizeBranchOptionName } from "@/utils/branch-suggestions";
+import { buildHostAgentDetailRoute } from "@/utils/host-routes";
 import { shortenPath } from "@/utils/shorten-path";
 import { collectAgentWorkingDirectorySuggestions } from "@/utils/agent-working-directory-suggestions";
 import { buildWorkingDirectorySuggestions } from "@/utils/working-directory-suggestions";
@@ -49,6 +50,7 @@ import type {
   AgentSessionConfig,
 } from "@server/server/agent/agent-sdk-types";
 import { AGENT_PROVIDER_DEFINITIONS } from "@server/server/agent/provider-manifest";
+import { resolveHydratedWorkspaceId } from "@/utils/resolve-hydrated-workspace-id";
 import { prepareWorkspaceTab } from "@/utils/workspace-navigation";
 import { useDesktopDragHandlers } from "@/utils/desktop-window";
 import { useKeyboardShiftStyle } from "@/hooks/use-keyboard-shift-style";
@@ -750,7 +752,7 @@ function DraftAgentScreenContent({
     optimisticStreamItems,
     draftAgent,
     handleCreateFromInput,
-  } = useDraftAgentCreateFlow<Agent, { id: string; cwd: string }>({
+  } = useDraftAgentCreateFlow<Agent, { id: string; workspaceId: string | null }>({
     draftId: draftIdRef.current,
     getPendingServerId: () => selectedServerId,
     validateBeforeSubmit: ({ text }) => {
@@ -908,20 +910,29 @@ function DraftAgentScreenContent({
 
       const createdWorkingDir = typeof result.cwd === "string" ? result.cwd.trim() : "";
       const configuredWorkingDir = config.cwd.trim();
-      const workspaceId = createdWorkingDir.length > 0 ? createdWorkingDir : configuredWorkingDir;
+      const workspaceId = resolveHydratedWorkspaceId({
+        workspaces: useSessionStore.getState().sessions[selectedServerId]?.workspaces?.values(),
+        path: createdWorkingDir.length > 0 ? createdWorkingDir : configuredWorkingDir,
+      });
 
       return {
         agentId: result.id,
         result: {
           id: result.id,
-          cwd: workspaceId,
+          workspaceId,
         },
       };
     },
     onCreateSuccess: ({ result }) => {
+      if (!result.workspaceId) {
+        router.replace(
+          buildHostAgentDetailRoute(selectedServerId as string, result.id) as any,
+        );
+        return;
+      }
       const route = prepareWorkspaceTab({
         serverId: selectedServerId as string,
-        workspaceId: result.cwd,
+        workspaceId: result.workspaceId,
         target: { kind: "agent", agentId: result.id },
       });
       router.replace(route as any);

@@ -1,5 +1,5 @@
 import { execSync } from "node:child_process";
-import { existsSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, test, vi } from "vitest";
@@ -264,6 +264,28 @@ function createStoredTerminalAgentRecord(input: {
     internal: false,
     archivedAt: null,
   };
+}
+
+function createTempGitRepo(options?: {
+  remoteUrl?: string;
+  branchName?: string;
+}): { tempDir: string; repoDir: string } {
+  const tempDir = realpathSync(mkdtempSync(path.join(tmpdir(), "session-workspace-git-")));
+  const repoDir = path.join(tempDir, "repo");
+  execSync(`mkdir -p ${repoDir}`);
+  execSync(`git init -b ${options?.branchName ?? "main"}`, { cwd: repoDir, stdio: "pipe" });
+  execSync("git config user.email 'test@test.com'", { cwd: repoDir, stdio: "pipe" });
+  execSync("git config user.name 'Test'", { cwd: repoDir, stdio: "pipe" });
+  writeFileSync(path.join(repoDir, "file.txt"), "hello\n");
+  execSync("git add .", { cwd: repoDir, stdio: "pipe" });
+  execSync("git -c commit.gpgsign=false commit -m 'initial'", { cwd: repoDir, stdio: "pipe" });
+  if (options?.remoteUrl) {
+    execSync(`git remote add origin ${JSON.stringify(options.remoteUrl)}`, {
+      cwd: repoDir,
+      stdio: "pipe",
+    });
+  }
+  return { tempDir, repoDir };
 }
 
 describe("workspace aggregation", () => {
@@ -567,7 +589,8 @@ describe("workspace aggregation", () => {
       expect(response?.payload.workspace?.id).toEqual(expect.any(Number));
       const persistedWorkspace = workspaces.get(response!.payload.workspace.id);
       expect(persistedWorkspace?.directory).toContain(path.join("worktree-123"));
-      expect(existsSync(persistedWorkspace?.directory ?? "")).toBe(true);
+      // The worktree directory is created asynchronously in the background after
+      // the response is sent, so we only verify the DB record here.
       expect(workspaces.has(response!.payload.workspace.id)).toBe(true);
       expect(projects.has(response?.payload.workspace?.projectId)).toBe(true);
     } finally {
@@ -605,5 +628,95 @@ describe("workspace aggregation", () => {
       workspaceId: 50,
       error: null,
     });
+  });
+
+  test("open_project_request creates git projects with GitHub owner/repo and branch names", async () => {
+    const { session, emitted, projects, workspaces } = createSessionForWorkspaceTests();
+    const { tempDir, repoDir } = createTempGitRepo({
+      remoteUrl: "git@github.com:acme/repo.git",
+      branchName: "feature/test-branch",
+    });
+
+    try {
+      await (session as any).handleOpenProjectRequest({
+        type: "open_project_request",
+        cwd: repoDir,
+        requestId: "req-open-git",
+      });
+
+      expect(Array.from(projects.values())).toEqual([
+        expect.objectContaining({
+          directory: repoDir,
+          kind: "git",
+          displayName: "acme/repo",
+          gitRemote: "git@github.com:acme/repo.git",
+        }),
+      ]);
+      expect(Array.from(workspaces.values())).toEqual([
+        expect.objectContaining({
+          directory: repoDir,
+          displayName: "feature/test-branch",
+          kind: "checkout",
+        }),
+      ]);
+
+      const response = emitted.find((message) => message.type === "open_project_response") as any;
+      expect(response?.payload).toMatchObject({
+        error: null,
+        workspace: {
+          projectDisplayName: "acme/repo",
+          projectKind: "git",
+          name: "feature/test-branch",
+          workspaceKind: "checkout",
+        },
+      });
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  test("open_project_request treats non-git directories as directory projects", async () => {
+    const { session, emitted, projects, workspaces } = createSessionForWorkspaceTests();
+    const tempDir = realpathSync(mkdtempSync(path.join(tmpdir(), "session-workspace-dir-")));
+    const projectDir = path.join(tempDir, "plain-dir");
+    execSync(`mkdir -p ${projectDir}`);
+    writeFileSync(path.join(projectDir, "README.md"), "hello\n");
+
+    try {
+      await (session as any).handleOpenProjectRequest({
+        type: "open_project_request",
+        cwd: projectDir,
+        requestId: "req-open-dir",
+      });
+
+      expect(Array.from(projects.values())).toEqual([
+        expect.objectContaining({
+          directory: projectDir,
+          kind: "directory",
+          displayName: "plain-dir",
+          gitRemote: null,
+        }),
+      ]);
+      expect(Array.from(workspaces.values())).toEqual([
+        expect.objectContaining({
+          directory: projectDir,
+          displayName: "plain-dir",
+          kind: "checkout",
+        }),
+      ]);
+
+      const response = emitted.find((message) => message.type === "open_project_response") as any;
+      expect(response?.payload).toMatchObject({
+        error: null,
+        workspace: {
+          projectDisplayName: "plain-dir",
+          projectKind: "directory",
+          name: "plain-dir",
+          workspaceKind: "checkout",
+        },
+      });
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
   });
 });

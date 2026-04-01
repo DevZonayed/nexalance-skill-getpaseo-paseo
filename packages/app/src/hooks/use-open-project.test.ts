@@ -69,6 +69,7 @@ describe("openProjectDirectly", () => {
             projectId: 1,
             projectDisplayName: "project",
             projectRootPath: WORKSPACE_ID,
+            workspaceDirectory: WORKSPACE_ID,
             projectKind: "git" as const,
             workspaceKind: "checkout" as const,
             name: "project",
@@ -87,7 +88,12 @@ describe("openProjectDirectly", () => {
     expect(result).toBe(true);
     expect(useSessionStore.getState().sessions[SERVER_ID]?.hasHydratedWorkspaces).toBe(true);
     expect(Array.from(useSessionStore.getState().sessions[SERVER_ID]?.workspaces.values() ?? [])).toEqual([
-      expect.objectContaining({ id: "1", projectId: "1", projectRootPath: WORKSPACE_ID }),
+      expect.objectContaining({
+        id: "1",
+        projectId: "1",
+        projectRootPath: WORKSPACE_ID,
+        workspaceDirectory: WORKSPACE_ID,
+      }),
     ]);
 
     const workspaceKey = buildWorkspaceTabPersistenceKey({

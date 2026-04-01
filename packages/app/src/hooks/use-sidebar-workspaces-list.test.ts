@@ -19,7 +19,11 @@ function workspace(
     Partial<
       Pick<
         WorkspaceDescriptor,
-        "projectDisplayName" | "projectRootPath" | "projectKind" | "workspaceKind"
+        | "projectDisplayName"
+        | "projectRootPath"
+        | "workspaceDirectory"
+        | "projectKind"
+        | "workspaceKind"
       >
     >,
 ): WorkspaceDescriptor {
@@ -28,6 +32,7 @@ function workspace(
     projectId: input.projectId,
     projectDisplayName: input.projectDisplayName ?? input.projectId,
     projectRootPath: input.projectRootPath ?? input.id,
+    workspaceDirectory: input.workspaceDirectory ?? input.projectRootPath ?? input.id,
     projectKind: input.projectKind ?? "git",
     workspaceKind: input.workspaceKind ?? "checkout",
     name: input.name,

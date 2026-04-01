@@ -78,6 +78,7 @@ import {
   parseServerIdFromPathname,
   parseHostAgentRouteFromPathname,
   parseWorkspaceOpenIntent,
+  decodeWorkspaceIdFromPathSegment,
 } from "@/utils/host-routes";
 import { syncNavigationActiveWorkspace } from "@/stores/navigation-active-workspace-store";
 
@@ -602,8 +603,6 @@ function FaviconStatusSync() {
 }
 
 function RootStack() {
-  const storeReady = useStoreReady();
-
   return (
     <Stack
       screenOptions={{
@@ -614,20 +613,32 @@ function RootStack() {
         },
       }}
     >
-      <Stack.Protected guard={storeReady}>
-        <Stack.Screen name="welcome" />
-        <Stack.Screen name="settings" />
-        <Stack.Screen name="h/[serverId]/workspace/[workspaceId]" />
-        <Stack.Screen
-          name="h/[serverId]/agent/[agentId]"
-          options={{ gestureEnabled: false }}
-        />
-        <Stack.Screen name="h/[serverId]/index" />
-        <Stack.Screen name="h/[serverId]/sessions" />
-        <Stack.Screen name="h/[serverId]/open-project" />
-        <Stack.Screen name="h/[serverId]/settings" />
-        <Stack.Screen name="pair-scan" />
-      </Stack.Protected>
+      <Stack.Screen name="welcome" />
+      <Stack.Screen name="settings" />
+      <Stack.Screen
+        name="h/[serverId]/workspace/[workspaceId]"
+        getId={({ params }) => {
+          const serverValue = Array.isArray(params?.serverId) ? params.serverId[0] : params?.serverId;
+          const workspaceValue = Array.isArray(params?.workspaceId)
+            ? params.workspaceId[0]
+            : params?.workspaceId;
+          const serverId = typeof serverValue === "string" ? serverValue.trim() : "";
+          const workspaceId =
+            typeof workspaceValue === "string"
+              ? (decodeWorkspaceIdFromPathSegment(workspaceValue) ?? workspaceValue.trim())
+              : "";
+          return `${serverId}:${workspaceId}`;
+        }}
+      />
+      <Stack.Screen
+        name="h/[serverId]/agent/[agentId]"
+        options={{ gestureEnabled: false }}
+      />
+      <Stack.Screen name="h/[serverId]/index" />
+      <Stack.Screen name="h/[serverId]/sessions" />
+      <Stack.Screen name="h/[serverId]/open-project" />
+      <Stack.Screen name="h/[serverId]/settings" />
+      <Stack.Screen name="pair-scan" />
       <Stack.Screen name="index" />
     </Stack>
   );

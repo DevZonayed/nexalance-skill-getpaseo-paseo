@@ -17,6 +17,8 @@ import { type AggregatedAgent } from "@/hooks/use-aggregated-agents";
 import { useSessionStore } from "@/stores/session-store";
 import { Archive, SquareTerminal } from "lucide-react-native";
 import { getProviderIcon } from "@/components/provider-icons";
+import { buildHostAgentDetailRoute } from "@/utils/host-routes";
+import { resolveHydratedWorkspaceId } from "@/utils/resolve-hydrated-workspace-id";
 import { prepareWorkspaceTab } from "@/utils/workspace-navigation";
 
 interface AgentListProps {
@@ -242,12 +244,21 @@ export function AgentList({
 
       const serverId = agent.serverId;
       const agentId = agent.id;
+      const workspaceId = resolveHydratedWorkspaceId({
+        workspaces: useSessionStore.getState().sessions[serverId]?.workspaces?.values(),
+        path: agent.cwd,
+      });
 
       onAgentSelect?.();
 
+      if (!workspaceId) {
+        router.navigate(buildHostAgentDetailRoute(serverId, agentId) as any);
+        return;
+      }
+
       const route = prepareWorkspaceTab({
         serverId,
-        workspaceId: agent.cwd,
+        workspaceId,
         target: { kind: "agent", agentId },
         pin: Boolean(agent.archivedAt),
         requestReopen: agent.terminal && agent.status === "closed",

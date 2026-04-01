@@ -1593,6 +1593,7 @@ export const WorkspaceDescriptorPayloadSchema = z.object({
   projectId: z.number().int(),
   projectDisplayName: z.string(),
   projectRootPath: z.string(),
+  workspaceDirectory: z.string(),
   projectKind: z.enum(["git", "directory"]),
   workspaceKind: z.enum(["checkout", "worktree"]),
   name: z.string(),

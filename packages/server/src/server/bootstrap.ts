@@ -100,6 +100,7 @@ import { DbAgentSnapshotStore } from "./db/db-agent-snapshot-store.js";
 import { DbAgentTimelineStore } from "./db/db-agent-timeline-store.js";
 import { DbProjectRegistry } from "./db/db-project-registry.js";
 import { DbWorkspaceRegistry } from "./db/db-workspace-registry.js";
+import { WorkspaceReconciliationService } from "./workspace-reconciliation-service.js";
 import { importLegacyAgentSnapshots } from "./db/legacy-agent-snapshot-import.js";
 import { importLegacyProjectWorkspaceJson } from "./db/legacy-project-workspace-import.js";
 import { openPaseoDatabase, type PaseoDatabaseHandle } from "./db/sqlite-database.js";
@@ -398,6 +399,15 @@ export async function createPaseoDaemon(
 
     const projectRegistry = new DbProjectRegistry(database.db);
     const workspaceRegistry = new DbWorkspaceRegistry(database.db);
+
+    const reconciliationService = new WorkspaceReconciliationService({
+      projectRegistry,
+      workspaceRegistry,
+      logger,
+    });
+    reconciliationService.start();
+    logger.info({ elapsed: elapsed() }, "Workspace reconciliation service started");
+
     await importLegacyProjectWorkspaceJson({
       db: database.db,
       paseoHome: config.paseoHome,
@@ -749,6 +759,7 @@ export async function createPaseoDaemon(
     };
 
     const stop = async () => {
+      reconciliationService.stop();
       await closeAllAgents(logger, agentManager);
       await agentManager.flush().catch(() => undefined);
       await shutdownProviders(logger, {

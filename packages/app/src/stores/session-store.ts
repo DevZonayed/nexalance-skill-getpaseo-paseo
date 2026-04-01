@@ -118,6 +118,7 @@ export interface WorkspaceDescriptor {
   projectId: string;
   projectDisplayName: string;
   projectRootPath: string;
+  workspaceDirectory: string;
   projectKind: WorkspaceDescriptorPayload["projectKind"];
   workspaceKind: WorkspaceDescriptorPayload["workspaceKind"];
   name: string;
@@ -135,6 +136,7 @@ export function normalizeWorkspaceDescriptor(
     projectId: String(payload.projectId),
     projectDisplayName: payload.projectDisplayName,
     projectRootPath: payload.projectRootPath,
+    workspaceDirectory: payload.workspaceDirectory,
     projectKind: payload.projectKind,
     workspaceKind: payload.workspaceKind,
     name: payload.name,

@@ -817,8 +817,8 @@ function WorkspaceRowInner({
   const isMobile = Platform.OS !== "web";
   const prHint = useWorkspacePrHint({
     serverId: workspace.serverId,
-    cwd: workspace.workspaceId,
-    enabled: workspace.projectKind === "git",
+    cwd: workspace.projectRootPath ?? "",
+    enabled: workspace.projectKind === "git" && Boolean(workspace.projectRootPath),
   });
   const interaction = useLongPressDragInteraction({
     drag,
@@ -985,7 +985,7 @@ function WorkspaceRowWithMenu({
   const archiveStatus = useCheckoutGitActionsStore((state) =>
     state.getStatus({
       serverId: workspace.serverId,
-      cwd: workspace.workspaceId,
+      cwd: workspace.workspaceDirectory ?? workspace.projectRootPath ?? "",
       actionId: "archive-worktree",
     }),
   );
@@ -1025,11 +1025,16 @@ function WorkspaceRowWithMenu({
       if (!confirmed) {
         return;
       }
+      const workspaceDirectory = workspace.workspaceDirectory ?? workspace.projectRootPath;
+      if (!workspaceDirectory) {
+        toast.error("Workspace path not available");
+        return;
+      }
 
       void archiveWorktree({
         serverId: workspace.serverId,
-        cwd: workspace.workspaceId,
-        worktreePath: workspace.workspaceId,
+        cwd: workspaceDirectory,
+        worktreePath: workspaceDirectory,
       })
         .then(() => {
           redirectAfterArchive();
@@ -1045,6 +1050,8 @@ function WorkspaceRowWithMenu({
     redirectAfterArchive,
     toast,
     workspace.name,
+    workspace.projectRootPath,
+    workspace.workspaceDirectory,
     workspace.serverId,
     workspace.workspaceId,
   ]);
@@ -1095,9 +1102,14 @@ function WorkspaceRowWithMenu({
   ]);
 
   const handleCopyPath = useCallback(() => {
-    void Clipboard.setStringAsync(workspace.workspaceId);
+    const workspaceDirectory = workspace.workspaceDirectory ?? workspace.projectRootPath;
+    if (!workspaceDirectory) {
+      toast.error("Workspace path not available");
+      return;
+    }
+    void Clipboard.setStringAsync(workspaceDirectory);
     toast.copied("Path copied");
-  }, [toast, workspace.workspaceId]);
+  }, [toast, workspace.projectRootPath, workspace.workspaceDirectory]);
 
   const handleCopyBranchName = useCallback(() => {
     void Clipboard.setStringAsync(workspace.name);

@@ -53,7 +53,7 @@ export function WorkspaceSetupDialog() {
       initialValues: projectPath ? { workingDir: projectPath } : undefined,
       isVisible: pendingWorkspaceSetup !== null,
       onlineServerIds: isConnected && serverId ? [serverId] : [],
-      lockedWorkingDir: workspace?.id ?? projectPath,
+      lockedWorkingDir: workspace?.projectRootPath ?? projectPath,
     },
   });
   const composerState = chatDraft.composerState;
@@ -170,9 +170,10 @@ export function WorkspaceSetupDialog() {
         }
 
         const encodedImages = await encodeImages(images);
+        const workspaceDirectory = workspace.projectRootPath ?? projectPath;
         const agent = await connectedClient.createAgent({
           provider: composerState.selectedProvider,
-          cwd: workspace.id,
+          cwd: workspaceDirectory,
           ...(composerState.modeOptions.length > 0 && composerState.selectedMode !== ""
             ? { modeId: composerState.selectedMode }
             : {}),
@@ -226,9 +227,10 @@ export function WorkspaceSetupDialog() {
         throw new Error("Workspace setup composer state is required");
       }
 
+      const workspaceDirectory = workspace.projectRootPath ?? projectPath;
       const agent = await connectedClient.createAgent({
         provider: composerState.selectedProvider,
-        cwd: workspace.id,
+        cwd: workspaceDirectory,
         terminal: true,
         ...(terminalPrompt.trim() ? { initialPrompt: terminalPrompt.trim() } : {}),
       });
@@ -272,8 +274,13 @@ export function WorkspaceSetupDialog() {
       setErrorMessage(null);
       const workspace = await ensureWorkspace();
       const connectedClient = withConnectedClient();
+      const workspaceDirectory = workspace.projectRootPath ?? projectPath;
 
-      const payload = await connectedClient.createTerminal(workspace.id);
+      if (!workspaceDirectory) {
+        throw new Error("Workspace directory not found");
+      }
+
+      const payload = await connectedClient.createTerminal(workspaceDirectory);
       if (payload.error || !payload.terminal) {
         throw new Error(payload.error ?? "Failed to open terminal");
       }

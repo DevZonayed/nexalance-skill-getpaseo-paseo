@@ -15,6 +15,8 @@ export interface SidebarWorkspaceEntry {
   workspaceKey: string;
   serverId: string;
   workspaceId: string;
+  projectRootPath?: string;
+  workspaceDirectory?: string;
   projectKind: WorkspaceDescriptor["projectKind"];
   workspaceKind: WorkspaceDescriptor["workspaceKind"];
   name: string;
@@ -119,7 +121,7 @@ export function buildSidebarProjectsFromWorkspaces(input: {
         projectName:
           workspace.projectDisplayName || projectDisplayNameFromProjectId(workspace.projectId),
         projectKind: workspace.projectKind,
-        iconWorkingDir: workspace.projectRootPath || workspace.id,
+        iconWorkingDir: workspace.projectRootPath,
         statusBucket: "done",
         activeCount: 0,
         totalWorkspaces: 0,
@@ -131,6 +133,8 @@ export function buildSidebarProjectsFromWorkspaces(input: {
       workspaceKey: `${input.serverId}:${workspace.id}`,
       serverId: input.serverId,
       workspaceId: workspace.id,
+      projectRootPath: workspace.projectRootPath,
+      workspaceDirectory: workspace.workspaceDirectory,
       projectKind: workspace.projectKind,
       workspaceKind: workspace.workspaceKind,
       name: workspace.name,
@@ -254,6 +258,7 @@ function toWorkspaceDescriptor(payload: {
   projectId: number;
   projectDisplayName: string;
   projectRootPath: string;
+  workspaceDirectory: string;
   projectKind: WorkspaceDescriptor["projectKind"];
   workspaceKind: WorkspaceDescriptor["workspaceKind"];
   name: string;

@@ -24,14 +24,20 @@ function useTerminalPanelDescriptor(
   context: { serverId: string; workspaceId: string },
 ): PanelDescriptor {
   const client = useSessionStore((state) => state.sessions[context.serverId]?.client ?? null);
+  const workspaceDirectory = useSessionStore(
+    (state) =>
+      state.sessions[context.serverId]?.workspaces.get(context.workspaceId)?.workspaceDirectory ??
+      state.sessions[context.serverId]?.workspaces.get(context.workspaceId)?.projectRootPath ??
+      null,
+  );
   const terminalsQuery = useQuery({
-    queryKey: ["terminals", context.serverId, context.workspaceId] as const,
-    enabled: Boolean(client && context.workspaceId),
+    queryKey: ["terminals", context.serverId, workspaceDirectory] as const,
+    enabled: Boolean(client && workspaceDirectory),
     queryFn: async (): Promise<ListTerminalsPayload> => {
-      if (!client) {
-        return { cwd: context.workspaceId, terminals: [], requestId: "missing-client" };
+      if (!client || !workspaceDirectory) {
+        return { cwd: workspaceDirectory ?? "", terminals: [], requestId: "missing-client" };
       }
-      return client.listTerminals(context.workspaceId);
+      return client.listTerminals(workspaceDirectory);
     },
     staleTime: 5_000,
   });
@@ -50,16 +56,22 @@ function useTerminalPanelDescriptor(
 function TerminalPanel() {
   const isFocused = useIsFocused();
   const { serverId, workspaceId, target, isPaneFocused } = usePaneContext();
+  const workspaceDirectory = useSessionStore(
+    (state) =>
+      state.sessions[serverId]?.workspaces.get(workspaceId)?.workspaceDirectory ??
+      state.sessions[serverId]?.workspaces.get(workspaceId)?.projectRootPath ??
+      null,
+  );
   invariant(target.kind === "terminal", "TerminalPanel requires terminal target");
 
-  if (!isFocused) {
+  if (!isFocused || !workspaceDirectory) {
     return <View style={{ flex: 1 }} />;
   }
 
   return (
     <TerminalPane
       serverId={serverId}
-      cwd={workspaceId}
+      cwd={workspaceDirectory}
       terminalId={target.terminalId}
       isPaneFocused={isPaneFocused}
     />
