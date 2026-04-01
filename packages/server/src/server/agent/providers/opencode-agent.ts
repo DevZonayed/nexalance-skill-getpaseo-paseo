@@ -32,6 +32,7 @@ import type {
 import {
   applyProviderEnv,
   findExecutable,
+  quoteWindowsCommand,
   resolveProviderCommandPrefix,
   type ProviderRuntimeSettings,
 } from "../provider-launch-config.js";
@@ -333,7 +334,7 @@ export class OpenCodeServerManager {
 
     return new Promise((resolve, reject) => {
       this.server = spawn(
-        launchPrefix.command,
+        quoteWindowsCommand(launchPrefix.command),
         [...launchPrefix.args, "serve", "--port", String(this.port)],
         {
           shell: process.platform === "win32",

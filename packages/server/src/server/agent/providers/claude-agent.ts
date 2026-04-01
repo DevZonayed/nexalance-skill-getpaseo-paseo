@@ -70,6 +70,7 @@ import type {
 import {
   applyProviderEnv,
   findExecutable,
+  quoteWindowsCommand,
   type ProviderRuntimeSettings,
 } from "../provider-launch-config.js";
 import { getOrchestratorModeInstructions } from "../orchestrator-instructions.js";
@@ -213,7 +214,7 @@ function applyRuntimeSettingsToClaudeOptions(
       const isDefaultRuntime =
         resolved.command === "node" || resolved.command === "bun";
       const command = isDefaultRuntime ? process.execPath : resolved.command;
-      const child = spawn(command, resolved.args, {
+      const child = spawn(quoteWindowsCommand(command), resolved.args, {
         cwd: spawnOptions.cwd,
         env: {
           ...applyProviderEnv(spawnOptions.env, runtimeSettings),

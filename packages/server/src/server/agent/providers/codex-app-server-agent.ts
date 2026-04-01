@@ -42,6 +42,7 @@ import {
 import {
   applyProviderEnv,
   findExecutable,
+  quoteWindowsCommand,
   resolveProviderCommandPrefix,
   type ProviderRuntimeSettings,
 } from "../provider-launch-config.js";
@@ -3419,7 +3420,7 @@ export class CodexAppServerAgentClient implements AgentClient {
       },
       "Spawning Codex app server",
     );
-    return spawn(launchPrefix.command, [...launchPrefix.args, "app-server"], {
+    return spawn(quoteWindowsCommand(launchPrefix.command), [...launchPrefix.args, "app-server"], {
       detached: process.platform !== "win32",
       shell: process.platform === "win32",
       stdio: ["pipe", "pipe", "pipe"],
