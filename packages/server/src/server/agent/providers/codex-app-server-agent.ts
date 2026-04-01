@@ -511,6 +511,18 @@ class CodexAppServerClient {
       }
     });
 
+    child.on("error", (err) => {
+      this.logger.error({ err }, "Codex app-server child process error");
+      for (const pending of this.pending.values()) {
+        clearTimeout(pending.timer);
+        pending.reject(err);
+      }
+      this.pending.clear();
+      this.disposed = true;
+      this.resolveExitPromise?.();
+      this.resolveExitPromise = null;
+    });
+
     child.on("exit", (code, signal) => {
       const message =
         code === 0 && !signal

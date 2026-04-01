@@ -158,6 +158,16 @@ async function main() {
 
   process.on("SIGTERM", () => beginShutdown("SIGTERM"));
   process.on("SIGINT", () => beginShutdown("SIGINT"));
+
+  process.on("uncaughtException", (err) => {
+    logger.fatal({ err }, "Uncaught exception — daemon crashing");
+    process.exit(1);
+  });
+
+  process.on("unhandledRejection", (reason) => {
+    logger.fatal({ err: reason }, "Unhandled promise rejection — daemon crashing");
+    process.exit(1);
+  });
 }
 
 main().catch((err) => {
