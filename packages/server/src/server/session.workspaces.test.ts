@@ -291,30 +291,31 @@ function createTempGitRepo(options?: {
 describe("workspace aggregation", () => {
   test("archive request emits agent_archived using the snapshot archive flow", async () => {
     const emitted: Array<{ type: string; payload: any }> = [];
-    const archivedAt = "2026-04-01T00:00:00.000Z";
-    const archivedRecord = {
-      id: "agent-1",
-      provider: "codex",
-      cwd: "/tmp/repo",
-      createdAt: "2026-03-30T15:00:00.000Z",
-      updatedAt: archivedAt,
-      lastActivityAt: "2026-03-30T15:00:00.000Z",
-      lastUserMessageAt: null,
-      lastStatus: "idle" as const,
-      lastModeId: null,
-      runtimeInfo: null,
-      config: {
+    const archiveSnapshot = vi.fn(async (_agentId: string, archivedAt: string) => {
+      return {
+        id: "agent-1",
         provider: "codex",
         cwd: "/tmp/repo",
-      },
-      persistence: null,
-      title: "Archive me",
-      labels: {},
-      requiresAttention: false,
-      attentionReason: null,
-      attentionTimestamp: null,
-      archivedAt,
-    };
+        createdAt: "2026-03-30T15:00:00.000Z",
+        updatedAt: archivedAt,
+        lastActivityAt: "2026-03-30T15:00:00.000Z",
+        lastUserMessageAt: null,
+        lastStatus: "idle" as const,
+        lastModeId: null,
+        runtimeInfo: null,
+        config: {
+          provider: "codex",
+          cwd: "/tmp/repo",
+        },
+        persistence: null,
+        title: "Archive me",
+        labels: {},
+        requiresAttention: false,
+        attentionReason: null,
+        attentionTimestamp: null,
+        archivedAt,
+      };
+    });
 
     const logger = {
       child: () => logger,
@@ -337,7 +338,7 @@ describe("workspace aggregation", () => {
         subscribe: () => () => {},
         listAgents: () => [],
         getAgent: (agentId: string) => (agentId === "agent-1" ? { id: agentId } : null),
-        archiveSnapshot: vi.fn(async () => archivedRecord),
+        archiveSnapshot,
         closeAgent,
         clearAgentAttention: async () => {},
       } as any,
@@ -391,18 +392,37 @@ describe("workspace aggregation", () => {
 
     expect(session.interruptAgentIfRunning).toHaveBeenCalledWith("agent-1");
     expect(closeAgent).toHaveBeenCalledWith("agent-1");
-    expect(
-      emitted.find((message) => message.type === "agent_archived")?.payload,
-    ).toMatchObject({
+    const archivedPayload = emitted.find((message) => message.type === "agent_archived")?.payload;
+    expect(archivedPayload).toMatchObject({
       agentId: "agent-1",
-      archivedAt,
+      archivedAt: expect.any(String),
       requestId: "req-archive",
     });
+    expect(archiveSnapshot).toHaveBeenCalledWith("agent-1", archivedPayload.archivedAt);
   });
 
   test("close_items_request archives agents and kills terminals in one batch", async () => {
     const emitted: Array<{ type: string; payload: any }> = [];
-    const archivedAt = "2026-04-01T00:00:00.000Z";
+    const archiveSnapshot = vi.fn(async (_agentId: string, archivedAt: string) => ({
+      id: "agent-1",
+      provider: "codex",
+      cwd: "/tmp/repo",
+      createdAt: "2026-03-01T12:00:00.000Z",
+      updatedAt: archivedAt,
+      lastActivityAt: "2026-03-01T12:00:00.000Z",
+      lastUserMessageAt: null,
+      lastStatus: "idle" as const,
+      lastModeId: null,
+      runtimeInfo: null,
+      config: null,
+      persistence: null,
+      title: null,
+      labels: {},
+      requiresAttention: false,
+      attentionReason: null,
+      attentionTimestamp: null,
+      archivedAt,
+    }));
     const sessionLogger = {
       child: () => sessionLogger,
       trace: vi.fn(),
@@ -423,26 +443,7 @@ describe("workspace aggregation", () => {
         subscribe: () => () => {},
         listAgents: () => [],
         getAgent: (agentId: string) => (agentId === "agent-1" ? { id: agentId } : null),
-        archiveSnapshot: async () => ({
-          id: "agent-1",
-          provider: "codex",
-          cwd: "/tmp/repo",
-          createdAt: "2026-03-01T12:00:00.000Z",
-          updatedAt: archivedAt,
-          lastActivityAt: "2026-03-01T12:00:00.000Z",
-          lastUserMessageAt: null,
-          lastStatus: "idle" as const,
-          lastModeId: null,
-          runtimeInfo: null,
-          config: null,
-          persistence: null,
-          title: null,
-          labels: {},
-          requiresAttention: false,
-          attentionReason: null,
-          attentionTimestamp: null,
-          archivedAt,
-        }),
+        archiveSnapshot,
         closeAgent: async () => undefined,
         clearAgentAttention: async () => {},
       } as any,
@@ -504,13 +505,13 @@ describe("workspace aggregation", () => {
 
     expect(session.interruptAgentIfRunning).toHaveBeenCalledWith("agent-1");
     expect(session.terminalManager.killTerminal).toHaveBeenCalledWith("term-1");
-    expect(
-      emitted.find((message) => message.type === "close_items_response")?.payload,
-    ).toEqual({
-      agents: [{ agentId: "agent-1", archivedAt }],
+    const closePayload = emitted.find((message) => message.type === "close_items_response")?.payload;
+    expect(closePayload).toEqual({
+      agents: [{ agentId: "agent-1", archivedAt: expect.any(String) }],
       terminals: [{ terminalId: "term-1", success: true }],
       requestId: "req-close-items",
     });
+    expect(archiveSnapshot).toHaveBeenCalledWith("agent-1", closePayload.agents[0].archivedAt);
   });
 
   test("close_items_request continues after an archive failure", async () => {
@@ -523,7 +524,31 @@ describe("workspace aggregation", () => {
       warn: vi.fn(),
       error: vi.fn(),
     };
-    const archivedAt = "2026-04-01T00:00:00.000Z";
+    const archiveSnapshot = vi.fn(async (agentId: string, archivedAt: string) => {
+      if (agentId === "agent-bad") {
+        throw new Error("archive failed");
+      }
+      return {
+        id: "agent-good",
+        provider: "codex",
+        cwd: "/tmp/repo",
+        createdAt: "2026-03-01T12:00:00.000Z",
+        updatedAt: archivedAt,
+        lastActivityAt: "2026-03-01T12:00:00.000Z",
+        lastUserMessageAt: null,
+        lastStatus: "idle" as const,
+        lastModeId: null,
+        runtimeInfo: null,
+        config: null,
+        persistence: null,
+        title: null,
+        labels: {},
+        requiresAttention: false,
+        attentionReason: null,
+        attentionTimestamp: null,
+        archivedAt,
+      };
+    });
 
     const session = new Session({
       clientId: "test-client",
@@ -537,31 +562,7 @@ describe("workspace aggregation", () => {
         listAgents: () => [],
         getAgent: (agentId: string) =>
           agentId === "agent-bad" || agentId === "agent-good" ? { id: agentId } : null,
-        archiveSnapshot: async (agentId: string) => {
-          if (agentId === "agent-bad") {
-            throw new Error("archive failed");
-          }
-          return {
-            id: "agent-good",
-            provider: "codex",
-            cwd: "/tmp/repo",
-            createdAt: "2026-03-01T12:00:00.000Z",
-            updatedAt: archivedAt,
-            lastActivityAt: "2026-03-01T12:00:00.000Z",
-            lastUserMessageAt: null,
-            lastStatus: "idle" as const,
-            lastModeId: null,
-            runtimeInfo: null,
-            config: null,
-            persistence: null,
-            title: null,
-            labels: {},
-            requiresAttention: false,
-            attentionReason: null,
-            attentionTimestamp: null,
-            archivedAt,
-          };
-        },
+        archiveSnapshot,
         closeAgent: async () => undefined,
         clearAgentAttention: async () => {},
       } as any,
@@ -624,13 +625,13 @@ describe("workspace aggregation", () => {
     expect(session.interruptAgentIfRunning).toHaveBeenCalledWith("agent-bad");
     expect(session.interruptAgentIfRunning).toHaveBeenCalledWith("agent-good");
     expect(session.terminalManager.killTerminal).toHaveBeenCalledWith("term-1");
-    expect(
-      emitted.find((message) => message.type === "close_items_response")?.payload,
-    ).toEqual({
-      agents: [{ agentId: "agent-good", archivedAt }],
+    const closePayload = emitted.find((message) => message.type === "close_items_response")?.payload;
+    expect(closePayload).toEqual({
+      agents: [{ agentId: "agent-good", archivedAt: expect.any(String) }],
       terminals: [{ terminalId: "term-1", success: true }],
       requestId: "req-close-best-effort",
     });
+    expect(archiveSnapshot).toHaveBeenCalledWith("agent-good", closePayload.agents[0].archivedAt);
     expect(sessionLogger.warn).toHaveBeenCalled();
   });
 

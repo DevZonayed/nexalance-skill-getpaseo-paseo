@@ -153,6 +153,7 @@ describe("voice runtime", () => {
 
     await runtime.startVoice("server-1", "agent-1");
     runtime.onTurnEvent("server-1", "agent-1", "turn_started");
+    vi.mocked(engine.play).mockClear();
 
     runtime.handleAudioOutput(
       "server-1",
@@ -204,6 +205,8 @@ describe("voice runtime", () => {
 
     await runtime.startVoice("server-1", "agent-1");
     runtime.onTurnEvent("server-1", "agent-1", "turn_started");
+    vi.mocked(engine.play).mockClear();
+    playResolvers.length = 0;
 
     runtime.handleAudioOutput(
       "server-1",
@@ -286,6 +289,8 @@ describe("voice runtime", () => {
 
     expect(runtime.getSnapshot().phase).toBe("waiting");
     expect(engine.play).toHaveBeenCalledTimes(1);
+    vi.mocked(engine.stop).mockClear();
+    vi.mocked(engine.clearQueue).mockClear();
 
     runtime.handleCaptureVolume(REALTIME_VOICE_VAD_CONFIG.volumeThreshold + 0.05);
     runtime.handleCaptureVolume(0);
@@ -325,6 +330,8 @@ describe("voice runtime", () => {
     await runtime.startVoice("server-1", "agent-1");
     runtime.onTurnEvent("server-1", "agent-1", "turn_started");
     runtime.onAssistantAudioStarted("server-1");
+    vi.mocked(engine.stop).mockClear();
+    vi.mocked(engine.clearQueue).mockClear();
 
     runtime.handleCaptureVolume(0.5);
     expect(runtime.getTelemetrySnapshot().isSpeaking).toBe(false);

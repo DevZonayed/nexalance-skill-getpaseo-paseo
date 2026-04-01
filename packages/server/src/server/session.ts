@@ -4857,7 +4857,7 @@ export class Session {
       services: this.serviceRouteStore
         ? buildWorkspaceServicePayloads(
             this.serviceRouteStore,
-            workspace.workspaceId,
+            workspace.directory,
             this.getDaemonTcpPort?.() ?? null,
             this.resolveServiceStatus ?? undefined,
           )
@@ -5574,6 +5574,7 @@ export class Session {
   private async createPaseoWorktreeInBackground(options: {
     requestCwd: string;
     repoRoot: string;
+    workspaceId: number;
     worktree: { branchName: string; worktreePath: string };
     shouldBootstrap: boolean;
   }): Promise<void> {

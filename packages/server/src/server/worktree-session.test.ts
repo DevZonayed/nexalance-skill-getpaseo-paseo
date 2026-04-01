@@ -237,6 +237,7 @@ describe("createPaseoWorktreeInBackground", () => {
     const logger = createLogger();
     const emitWorkspaceUpdateForCwd = vi.fn(async () => {});
     const archiveWorkspaceRecord = vi.fn(async () => {});
+    const workspaceId = 101;
 
     await createPaseoWorktreeInBackground(
       {
@@ -253,6 +254,7 @@ describe("createPaseoWorktreeInBackground", () => {
       {
         requestCwd: repoDir,
         repoRoot: repoDir,
+        workspaceId,
         worktree: {
           branchName: "broken-feature",
           worktreePath,
@@ -275,7 +277,7 @@ describe("createPaseoWorktreeInBackground", () => {
       status: "failed",
       error: expect.stringContaining("Failed to parse paseo.json"),
     });
-    expect(archiveWorkspaceRecord).toHaveBeenCalledWith(worktreePath);
+    expect(archiveWorkspaceRecord).toHaveBeenCalledWith(workspaceId);
     expect(emitWorkspaceUpdateForCwd).toHaveBeenCalledWith(worktreePath);
   });
 

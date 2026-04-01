@@ -540,44 +540,37 @@ describe("HostRuntimeController", () => {
     unsubscribe();
   });
 
-  it("logs typed reason codes for connection transitions", async () => {
-    const infoSpy = vi.spyOn(console, "info").mockImplementation(() => undefined);
-    try {
-      const host = makeHost({
-        connections: [
-          {
-            id: "direct:lan:6767",
-            type: "directTcp",
-            endpoint: "lan:6767",
-          },
-        ],
-      });
-      const clients: FakeDaemonClient[] = [];
-      const controller = new HostRuntimeController({
-        host,
-        deps: makeDeps(
-          {
-            "direct:lan:6767": 12,
-          },
-          clients,
-        ),
-      });
+  it("preserves transport disconnect reasons on the runtime snapshot", async () => {
+    const host = makeHost({
+      connections: [
+        {
+          id: "direct:lan:6767",
+          type: "directTcp",
+          endpoint: "lan:6767",
+        },
+      ],
+    });
+    const clients: FakeDaemonClient[] = [];
+    const controller = new HostRuntimeController({
+      host,
+      deps: makeDeps(
+        {
+          "direct:lan:6767": 12,
+        },
+        clients,
+      ),
+    });
 
-      await controller.start({ autoProbe: false });
-      clients[0]?.setConnectionState({
-        status: "disconnected",
-        reason: "transport closed",
-      });
+    await controller.start({ autoProbe: false });
+    clients[0]?.setConnectionState({
+      status: "disconnected",
+      reason: "transport closed",
+    });
 
-      const transitionPayloads = infoSpy.mock.calls
-        .filter((call) => call[0] === "[HostRuntimeTransition]")
-        .map((call) => call[1] as { reasonCode?: string | null });
-      const lastTransition = transitionPayloads[transitionPayloads.length - 1] ?? null;
-
-      expect(lastTransition?.reasonCode).toBe("transport_error");
-    } finally {
-      infoSpy.mockRestore();
-    }
+    expect(controller.getSnapshot()).toMatchObject({
+      connectionStatus: "error",
+      lastError: "transport closed",
+    });
   });
 
   it("marks directory loading on first connection before any directory sync succeeds", async () => {
@@ -1189,6 +1182,7 @@ describe("HostRuntimeStore", () => {
       const staleAgent: Agent = {
         ...stale,
         serverId: host.serverId,
+        terminal: false,
         createdAt: new Date(stale.createdAt),
         updatedAt: new Date(stale.updatedAt),
         lastUserMessageAt: null,

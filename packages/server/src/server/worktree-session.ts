@@ -109,7 +109,7 @@ type CreatePaseoWorktreeInBackgroundDependencies = {
   emit: EmitSessionMessage;
   sessionLogger: Logger;
   terminalManager: TerminalManager | null;
-  archiveWorkspaceRecord: (workspaceId: string) => Promise<void>;
+  archiveWorkspaceRecord: (workspaceId: number) => Promise<void>;
   serviceRouteStore: ServiceRouteStore | null;
   daemonPort?: number | null;
 };
@@ -134,6 +134,7 @@ type HandleCreatePaseoWorktreeRequestDependencies = {
   createPaseoWorktreeInBackground: (options: {
     requestCwd: string;
     repoRoot: string;
+    workspaceId: number;
     worktree: WorktreeConfig;
     shouldBootstrap: boolean;
   }) => Promise<void>;
@@ -625,6 +626,7 @@ export async function handleCreatePaseoWorktreeRequest(
     void dependencies.createPaseoWorktreeInBackground({
       requestCwd: request.cwd,
       repoRoot,
+      workspaceId: workspace.id,
       worktree: createdWorktree.worktree,
       shouldBootstrap: createdWorktree.shouldBootstrap,
     });
@@ -666,6 +668,7 @@ export async function createPaseoWorktreeInBackground(
   options: {
     requestCwd: string;
     repoRoot: string;
+    workspaceId: number;
     worktree: WorktreeConfig;
     shouldBootstrap: boolean;
   },
@@ -741,7 +744,7 @@ export async function createPaseoWorktreeInBackground(
       emitSetupProgress("failed", message);
 
       if (!setupStarted) {
-        await dependencies.archiveWorkspaceRecord(normalizePersistedWorkspaceId(worktree.worktreePath));
+        await dependencies.archiveWorkspaceRecord(options.workspaceId);
       }
 
       dependencies.sessionLogger.error(

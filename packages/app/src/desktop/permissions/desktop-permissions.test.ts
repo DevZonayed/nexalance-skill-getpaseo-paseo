@@ -5,15 +5,32 @@ type MockPlatform = "web" | "ios" | "android";
 type GlobalSnapshot = {
   Notification: unknown;
   navigatorDescriptor?: PropertyDescriptor;
+  windowDescriptor?: PropertyDescriptor;
   paseoDesktop: unknown;
 };
 
 const originalGlobals: GlobalSnapshot = {
   Notification: (globalThis as { Notification?: unknown }).Notification,
   navigatorDescriptor: Object.getOwnPropertyDescriptor(globalThis, "navigator"),
+  windowDescriptor: Object.getOwnPropertyDescriptor(globalThis, "window"),
   paseoDesktop:
     typeof window === "undefined" ? undefined : (window as { paseoDesktop?: unknown }).paseoDesktop,
 };
+
+function ensureWindow(): { paseoDesktop?: unknown } {
+  const existingWindow = (globalThis as { window?: { paseoDesktop?: unknown } }).window;
+  if (existingWindow) {
+    return existingWindow;
+  }
+
+  const nextWindow: { paseoDesktop?: unknown } = {};
+  Object.defineProperty(globalThis, "window", {
+    configurable: true,
+    writable: true,
+    value: nextWindow,
+  });
+  return nextWindow;
+}
 
 function setNavigator(value: unknown): void {
   Object.defineProperty(globalThis, "navigator", {
@@ -30,6 +47,12 @@ function restoreGlobals(): void {
     Object.defineProperty(globalThis, "navigator", originalGlobals.navigatorDescriptor);
   } else {
     delete (globalThis as { navigator?: unknown }).navigator;
+  }
+
+  if (originalGlobals.windowDescriptor) {
+    Object.defineProperty(globalThis, "window", originalGlobals.windowDescriptor);
+  } else {
+    delete (globalThis as { window?: unknown }).window;
   }
 
   if (typeof window !== "undefined") {
@@ -56,7 +79,7 @@ describe("desktop-permissions", () => {
 
     expect(shouldShowDesktopPermissionSection()).toBe(false);
 
-    (window as { paseoDesktop?: unknown }).paseoDesktop = {};
+    ensureWindow().paseoDesktop = {};
     expect(shouldShowDesktopPermissionSection()).toBe(true);
   });
 

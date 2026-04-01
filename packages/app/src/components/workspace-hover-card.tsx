@@ -205,7 +205,7 @@ function HoverCardStatusIndicator({
   }
 
   const KindIcon =
-    workspace.workspaceKind === "local_checkout"
+    workspace.workspaceKind === "checkout"
       ? Monitor
       : workspace.workspaceKind === "worktree"
         ? FolderGit2
@@ -251,7 +251,7 @@ function WorkspaceHoverCardContent({
   const prHint = useWorkspacePrHint({
     serverId: workspace.serverId,
     cwd: workspace.workspaceId,
-    enabled: workspace.workspaceKind !== "directory",
+    enabled: workspace.projectKind !== "directory",
   });
 
   // Measure trigger — same pattern as tooltip.tsx

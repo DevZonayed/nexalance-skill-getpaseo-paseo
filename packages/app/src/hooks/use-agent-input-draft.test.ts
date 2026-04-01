@@ -1,4 +1,49 @@
-import { beforeAll, describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
+
+vi.mock("@react-native-async-storage/async-storage", () => ({
+  default: {
+    getItem: async () => null,
+    setItem: async () => undefined,
+    removeItem: async () => undefined,
+  },
+}));
+
+vi.mock("@/attachments/service", () => ({
+  garbageCollectAttachments: async () => undefined,
+}));
+
+vi.mock("./use-agent-form-state", () => ({
+  useAgentFormState: () => ({
+    selectedServerId: "host-1",
+    setSelectedServerId: () => undefined,
+    setSelectedServerIdFromUser: () => undefined,
+    selectedProvider: "codex",
+    setProviderFromUser: () => undefined,
+    selectedMode: "auto",
+    setModeFromUser: () => undefined,
+    selectedModel: "",
+    setModelFromUser: () => undefined,
+    selectedThinkingOptionId: "",
+    setThinkingOptionFromUser: () => undefined,
+    workingDir: "/repo",
+    setWorkingDir: () => undefined,
+    setWorkingDirFromUser: () => undefined,
+    providerDefinitions: [{ id: "codex", label: "Codex", modes: [{ id: "auto", label: "Auto" }] }],
+    providerDefinitionMap: new Map(),
+    agentDefinition: undefined,
+    modeOptions: [{ id: "auto", label: "Auto" }],
+    availableModels: [],
+    allProviderModels: new Map(),
+    isAllModelsLoading: false,
+    availableThinkingOptions: [],
+    isModelLoading: false,
+    modelError: null,
+    refreshProviderModels: () => undefined,
+    setProviderAndModelFromUser: () => undefined,
+    workingDirIsEmpty: false,
+    persistFormPreferences: async () => undefined,
+  }),
+}));
 
 let __private__: typeof import("./use-agent-input-draft").__private__;
 

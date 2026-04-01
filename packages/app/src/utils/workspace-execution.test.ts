@@ -22,6 +22,7 @@ function createWorkspace(
     status: input.status ?? "running",
     activityAt: input.activityAt ?? null,
     diffStat: input.diffStat ?? null,
+    services: input.services ?? [],
   };
 }
 

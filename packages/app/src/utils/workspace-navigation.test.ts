@@ -1,5 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+vi.mock("expo-router", () => ({
+  router: {
+    navigate: vi.fn(),
+    replace: vi.fn(),
+  },
+}));
+
 vi.mock("@react-native-async-storage/async-storage", () => {
   const storage = new Map<string, string>();
   return {

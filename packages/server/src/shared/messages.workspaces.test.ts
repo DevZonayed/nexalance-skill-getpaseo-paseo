@@ -58,12 +58,13 @@ describe("workspace message schemas", () => {
       payload: {
         kind: "upsert",
         workspace: {
-          id: "/repo",
-          projectId: "/repo",
+          id: 1,
+          projectId: 1,
           projectDisplayName: "repo",
           projectRootPath: "/repo",
-          projectKind: "non_git",
-          workspaceKind: "directory",
+          workspaceDirectory: "/repo",
+          projectKind: "directory",
+          workspaceKind: "checkout",
           name: "repo",
           status: "done",
           activityAt: null,

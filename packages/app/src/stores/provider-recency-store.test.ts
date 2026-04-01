@@ -33,7 +33,12 @@ describe("provider-recency-store", () => {
   it("sorts used providers first and keeps unused providers in default order", () => {
     const sorted = sortProvidersByRecency(AGENT_PROVIDER_DEFINITIONS, ["codex"]);
 
-    expect(sorted.map((provider) => provider.id)).toEqual(["codex", "claude", "opencode"]);
+    expect(sorted.map((provider) => provider.id)).toEqual([
+      "codex",
+      ...AGENT_PROVIDER_DEFINITIONS.filter((provider) => provider.id !== "codex").map(
+        (provider) => provider.id,
+      ),
+    ]);
   });
 
   it("moves the latest provider to the front without duplicating prior entries", () => {
