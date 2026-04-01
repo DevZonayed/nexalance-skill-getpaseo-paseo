@@ -17,6 +17,7 @@ import {
   getWindowBackgroundColor,
   resolveSystemWindowTheme,
   setupWindowResizeEvents,
+  setupDefaultContextMenu,
   setupDragDropPrevention,
 } from "./window/window-manager.js";
 import { registerDialogHandlers } from "./features/dialogs.js";
@@ -108,6 +109,7 @@ async function createMainWindow(): Promise<void> {
   });
 
   setupWindowResizeEvents(mainWindow);
+  setupDefaultContextMenu(mainWindow);
   setupDragDropPrevention(mainWindow);
   mainWindow.once("ready-to-show", () => {
     mainWindow.show();

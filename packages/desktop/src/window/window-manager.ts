@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, nativeTheme } from "electron";
+import { app, BrowserWindow, Menu, ipcMain, nativeTheme } from "electron";
 
 export function readBadgeCount(input: unknown): number {
   if (typeof input !== "number" || !Number.isSafeInteger(input) || input < 0) {
@@ -214,6 +214,18 @@ export function setupWindowResizeEvents(win: BrowserWindow): void {
 
   win.on("leave-full-screen", () => {
     win.webContents.send("paseo:window:resized", {});
+  });
+}
+
+export function setupDefaultContextMenu(win: BrowserWindow): void {
+  win.webContents.on("context-menu", (_event, params) => {
+    const menu = Menu.buildFromTemplate([
+      { role: "copy", enabled: params.selectionText.length > 0 },
+      { role: "paste" },
+      { type: "separator" },
+      { role: "selectAll" },
+    ]);
+    menu.popup({ window: win });
   });
 }
 
