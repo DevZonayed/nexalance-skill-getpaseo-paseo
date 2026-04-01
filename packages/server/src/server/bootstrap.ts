@@ -119,6 +119,13 @@ import type { AgentClient, AgentProvider } from "./agent/agent-sdk-types.js";
 import type { AgentProviderRuntimeSettingsMap } from "./agent/provider-launch-config.js";
 import { isHostAllowed, type AllowedHostsConfig } from "./allowed-hosts.js";
 import {
+  ServiceRouteStore,
+  createServiceProxyMiddleware,
+  createServiceProxyUpgradeHandler,
+} from "./service-proxy.js";
+import { ServiceHealthMonitor } from "./service-health-monitor.js";
+import { createServiceStatusEmitter } from "./service-status-projection.js";
+import {
   createVoiceMcpSocketBridgeManager,
   type VoiceMcpSocketBridgeManager,
 } from "./voice-mcp-bridge.js";
@@ -194,6 +201,7 @@ export interface PaseoDaemon {
   agentManager: AgentManager;
   agentStorage: AgentSnapshotStore;
   terminalManager: TerminalManager;
+  serviceRouteStore: ServiceRouteStore;
   start(): Promise<void>;
   stop(): Promise<void>;
   getListenTarget(): ListenTarget | null;
@@ -224,6 +232,20 @@ export async function createPaseoDaemon(
     const app = express();
     let boundListenTarget: ListenTarget | null = null;
 
+    const serviceRouteStore = new ServiceRouteStore();
+    let wsServer: VoiceAssistantWebSocketServer | null = null;
+    const serviceHealthMonitor = new ServiceHealthMonitor({
+      routeStore: serviceRouteStore,
+      onChange: createServiceStatusEmitter({
+        sessions: () =>
+          wsServer?.listActiveSessions().map((session) => ({
+            emit: (message) => session.emitServerMessage(message),
+          })) ?? [],
+        routeStore: serviceRouteStore,
+        daemonPort: () => (boundListenTarget?.type === "tcp" ? boundListenTarget.port : null),
+      }),
+    });
+
     // Host allowlist / DNS rebinding protection (vite-like semantics).
     // For non-TCP (unix sockets), skip host validation.
     if (listenTarget.type === "tcp") {
@@ -236,6 +258,14 @@ export async function createPaseoDaemon(
         next();
       });
     }
+
+    // Service proxy — intercepts requests for registered *.localhost hostnames
+    // and forwards them to the corresponding local service port. Placed after
+    // the host allowlist (*.localhost is already allowed) but before CORS and
+    // the rest of the routes so proxied requests skip unnecessary middleware.
+    app.use(
+      createServiceProxyMiddleware({ routeStore: serviceRouteStore, logger }),
+    );
 
     // CORS - allow same-origin + configured origins
     const allowedOrigins = new Set([
@@ -361,6 +391,16 @@ export async function createPaseoDaemon(
     database = await openPaseoDatabase(path.join(config.paseoHome, "db"));
     logger.info({ elapsed: elapsed() }, "Paseo database opened");
 
+    // Service proxy WebSocket upgrade handler — must be registered before the
+    // VoiceAssistantWebSocketServer attaches its own "upgrade" listener so that
+    // service-bound upgrades are forwarded first. The handler is a no-op for
+    // requests that don't match a registered service route.
+    const serviceProxyUpgradeHandler = createServiceProxyUpgradeHandler({
+      routeStore: serviceRouteStore,
+      logger,
+    });
+    httpServer.on("upgrade", serviceProxyUpgradeHandler);
+
     const agentStorage = new DbAgentSnapshotStore(database.db);
     const chatService = new FileBackedChatService({
       paseoHome: config.paseoHome,
@@ -451,7 +491,6 @@ export async function createPaseoDaemon(
       "Voice mode configured for agent-scoped resume flow (no dedicated voice assistant provider)",
     );
     logger.info({ elapsed: elapsed() }, "Preparing voice and MCP runtime");
-    let wsServer: VoiceAssistantWebSocketServer | null = null;
     let voiceMcpBridgeManager: VoiceMcpSocketBridgeManager | null = null;
 
     // Create in-memory transport for Session's Agent MCP client (voice assistant tools)
@@ -460,6 +499,9 @@ export async function createPaseoDaemon(
         agentManager,
         agentStorage,
         terminalManager,
+        serviceRouteStore,
+        getDaemonTcpPort: () =>
+          boundListenTarget?.type === "tcp" ? boundListenTarget.port : null,
         paseoHome: config.paseoHome,
         enableVoiceTools: false,
         resolveSpeakHandler: (callerAgentId) =>
@@ -486,6 +528,9 @@ export async function createPaseoDaemon(
           agentManager,
           agentStorage,
           terminalManager,
+          serviceRouteStore,
+          getDaemonTcpPort: () =>
+            boundListenTarget?.type === "tcp" ? boundListenTarget.port : null,
           paseoHome: config.paseoHome,
           callerAgentId,
           enableVoiceTools: false,
@@ -606,6 +651,9 @@ export async function createPaseoDaemon(
           agentManager,
           agentStorage,
           terminalManager,
+          serviceRouteStore,
+          getDaemonTcpPort: () =>
+            boundListenTarget?.type === "tcp" ? boundListenTarget.port : null,
           paseoHome: config.paseoHome,
           callerAgentId,
           voiceOnly: true,
@@ -666,6 +714,9 @@ export async function createPaseoDaemon(
       loopService,
       scheduleService,
       checkoutDiffManager,
+      serviceRouteStore,
+      () => (boundListenTarget?.type === "tcp" ? boundListenTarget.port : null),
+      (hostname) => serviceHealthMonitor.getStatusForHostname(hostname),
     );
 
     logger.info({ elapsed: elapsed() }, "Bootstrap complete, ready to start listening");
@@ -756,10 +807,12 @@ export async function createPaseoDaemon(
       // Start speech service after listening so synchronous Sherpa native
       // model loading doesn't block the server from accepting connections.
       speechService.start();
+      serviceHealthMonitor.start();
     };
 
     const stop = async () => {
       reconciliationService.stop();
+      serviceHealthMonitor.stop();
       await closeAllAgents(logger, agentManager);
       await agentManager.flush().catch(() => undefined);
       await shutdownProviders(logger, {
@@ -790,6 +843,7 @@ export async function createPaseoDaemon(
       agentManager,
       agentStorage,
       terminalManager,
+      serviceRouteStore,
       start,
       stop,
       getListenTarget: () => boundListenTarget,

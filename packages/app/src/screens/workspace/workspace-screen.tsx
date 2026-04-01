@@ -149,6 +149,9 @@ function getFallbackTabOptionLabel(tab: WorkspaceTabDescriptor): string {
   if (tab.target.kind === "draft") {
     return "New Agent";
   }
+  if (tab.target.kind === "setup") {
+    return "Setup";
+  }
   if (tab.target.kind === "terminal") {
     return "Terminal";
   }
@@ -164,6 +167,9 @@ function getFallbackTabOptionDescription(tab: WorkspaceTabDescriptor): string {
   }
   if (tab.target.kind === "draft") {
     return "New Agent";
+  }
+  if (tab.target.kind === "setup") {
+    return "Workspace setup";
   }
   if (tab.target.kind === "agent") {
     return "Agent";

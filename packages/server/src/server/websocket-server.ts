@@ -33,6 +33,7 @@ import type { AgentProvider } from "./agent/agent-sdk-types.js";
 import type { AgentProviderRuntimeSettingsMap } from "./agent/provider-launch-config.js";
 import { PushTokenStore } from "./push/token-store.js";
 import { PushService } from "./push/push-service.js";
+import type { ServiceRouteStore } from "./service-proxy.js";
 import type { SpeechReadinessSnapshot, SpeechService } from "./speech/speech-runtime.js";
 import type { VoiceCallerContext, VoiceMcpStdioConfig, VoiceSpeakHandler } from "./voice-types.js";
 import {
@@ -242,6 +243,9 @@ export class VoiceAssistantWebSocketServer {
   private readonly createAgentMcpTransport: AgentMcpTransportFactory;
   private readonly speech: SpeechService | null;
   private readonly terminalManager: TerminalManager | null;
+  private readonly serviceRouteStore: ServiceRouteStore | null;
+  private readonly getDaemonTcpPort: (() => number | null) | null;
+  private readonly resolveServiceStatus: ((hostname: string) => "running" | "stopped" | null) | null;
   private readonly dictation: {
     finalTimeoutMs?: number;
   } | null;
@@ -308,6 +312,9 @@ export class VoiceAssistantWebSocketServer {
     loopService?: LoopService,
     scheduleService?: ScheduleService,
     checkoutDiffManager?: CheckoutDiffManager,
+    serviceRouteStore?: ServiceRouteStore | null,
+    getDaemonTcpPort?: () => number | null,
+    resolveServiceStatus?: (hostname: string) => "running" | "stopped" | null,
   ) {
     this.logger = logger.child({ module: "websocket-server" });
     this.serverId = serverId;
@@ -344,6 +351,9 @@ export class VoiceAssistantWebSocketServer {
     this.dictation = dictation ?? null;
     this.agentProviderRuntimeSettings = agentProviderRuntimeSettings;
     this.onLifecycleIntent = onLifecycleIntent ?? null;
+    this.serviceRouteStore = serviceRouteStore ?? null;
+    this.getDaemonTcpPort = getDaemonTcpPort ?? null;
+    this.resolveServiceStatus = resolveServiceStatus ?? null;
     this.serverCapabilities = buildServerCapabilities({
       readiness: this.speech?.getReadiness() ?? null,
     });
@@ -414,6 +424,16 @@ export class VoiceAssistantWebSocketServer {
         ws.send(payload);
       }
     }
+  }
+
+  public listActiveSessions(): Session[] {
+    return Array.from(
+      new Set(
+        [...this.sessions.values(), ...this.externalSessionsByKey.values()].map(
+          (connection) => connection.session,
+        ),
+      ),
+    );
   }
 
   public publishSpeechReadiness(readiness: SpeechReadinessSnapshot | null): void {
@@ -646,6 +666,9 @@ export class VoiceAssistantWebSocketServer {
       stt: () => this.speech?.resolveStt() ?? null,
       tts: () => this.speech?.resolveTts() ?? null,
       terminalManager: this.terminalManager,
+      serviceRouteStore: this.serviceRouteStore ?? undefined,
+      getDaemonTcpPort: this.getDaemonTcpPort ?? undefined,
+      resolveServiceStatus: this.resolveServiceStatus ?? undefined,
       voice: {
         ...(this.voice ?? {}),
         turnDetection: () => this.speech?.resolveTurnDetection() ?? null,

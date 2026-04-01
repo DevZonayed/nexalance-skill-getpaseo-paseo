@@ -36,6 +36,7 @@ import type {
   ProjectIconResponse,
   OpenProjectResponseMessage,
   ArchiveWorkspaceResponseMessage,
+  WorkspaceSetupStatusResponseMessage,
   ListCommandsResponse,
   ListProviderModelsResponseMessage,
   ListAvailableProvidersResponse,
@@ -123,6 +124,11 @@ export type DaemonEvent =
       type: "workspace_update";
       workspaceId: number;
       payload: Extract<SessionOutboundMessage, { type: "workspace_update" }>["payload"];
+    }
+  | {
+      type: "workspace_setup_progress";
+      workspaceId: string;
+      payload: Extract<SessionOutboundMessage, { type: "workspace_setup_progress" }>["payload"];
     }
   | {
       type: "agent_stream";
@@ -459,6 +465,7 @@ export type InspectScheduleOptions = {
 };
 type OpenProjectPayload = OpenProjectResponseMessage["payload"];
 type ArchiveWorkspacePayload = ArchiveWorkspaceResponseMessage["payload"];
+type WorkspaceSetupStatusPayload = WorkspaceSetupStatusResponseMessage["payload"];
 
 export type FetchAgentResult = {
   agent: AgentSnapshotPayload;
@@ -1311,6 +1318,21 @@ export class DaemonClient {
         workspaceId,
       },
       responseType: "archive_workspace_response",
+      timeout: 10000,
+    });
+  }
+
+  async fetchWorkspaceSetupStatus(
+    workspaceId: string,
+    requestId?: string,
+  ): Promise<WorkspaceSetupStatusPayload> {
+    return this.sendCorrelatedSessionRequest({
+      requestId,
+      message: {
+        type: "workspace_setup_status_request",
+        workspaceId,
+      },
+      responseType: "workspace_setup_status_response",
       timeout: 10000,
     });
   }
@@ -3547,6 +3569,12 @@ export class DaemonClient {
         return {
           type: "workspace_update",
           workspaceId: msg.payload.kind === "upsert" ? msg.payload.workspace.id : msg.payload.id,
+          payload: msg.payload,
+        };
+      case "workspace_setup_progress":
+        return {
+          type: "workspace_setup_progress",
+          workspaceId: msg.payload.workspaceId,
           payload: msg.payload,
         };
       case "agent_stream":

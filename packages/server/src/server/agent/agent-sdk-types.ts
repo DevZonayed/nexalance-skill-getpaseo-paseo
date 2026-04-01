@@ -179,6 +179,7 @@ export type ToolCallDetail =
         index: number;
         command: string;
         cwd: string;
+        log: string;
         status: "running" | "completed" | "failed";
         exitCode: number | null;
         durationMs?: number;

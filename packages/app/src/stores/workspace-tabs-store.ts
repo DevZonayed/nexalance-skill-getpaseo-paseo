@@ -13,7 +13,8 @@ export type WorkspaceTabTarget =
   | { kind: "agent"; agentId: string }
   | { kind: "terminal"; terminalId: string }
   | { kind: "file"; path: string }
-  | { kind: "launcher"; launcherId: string };
+  | { kind: "launcher"; launcherId: string }
+  | { kind: "setup"; workspaceId: string };
 
 export type WorkspaceTab = {
   tabId: string;

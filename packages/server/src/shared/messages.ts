@@ -197,7 +197,27 @@ const NonNullUnknownSchema = z.union([
   z.object({}).passthrough(),
 ]);
 
+const WorktreeSetupCommandSnapshotSchema = z.object({
+  index: z.number().int().positive(),
+  command: z.string(),
+  cwd: z.string(),
+  log: z.string(),
+  status: z.enum(["running", "completed", "failed"]),
+  exitCode: z.number().nullable(),
+  durationMs: z.number().nonnegative().optional(),
+});
+
+const WorktreeSetupDetailPayloadSchema = z.object({
+  type: z.literal("worktree_setup"),
+  worktreePath: z.string(),
+  branchName: z.string(),
+  log: z.string(),
+  commands: z.array(WorktreeSetupCommandSnapshotSchema),
+  truncated: z.boolean().optional(),
+});
+
 const ToolCallDetailPayloadSchema: z.ZodType<ToolCallDetail> = z.discriminatedUnion("type", [
+  WorktreeSetupDetailPayloadSchema,
   z.object({
     type: z.literal("shell"),
     command: z.string(),
@@ -255,23 +275,6 @@ const ToolCallDetailPayloadSchema: z.ZodType<ToolCallDetail> = z.discriminatedUn
     codeText: z.string().optional(),
     bytes: z.number().optional(),
     durationMs: z.number().optional(),
-  }),
-  z.object({
-    type: z.literal("worktree_setup"),
-    worktreePath: z.string(),
-    branchName: z.string(),
-    log: z.string(),
-    commands: z.array(
-      z.object({
-        index: z.number().int().positive(),
-        command: z.string(),
-        cwd: z.string(),
-        status: z.enum(["running", "completed", "failed"]),
-        exitCode: z.number().nullable(),
-        durationMs: z.number().nonnegative().optional(),
-      }),
-    ),
-    truncated: z.boolean().optional(),
   }),
   z.object({
     type: z.literal("sub_agent"),
@@ -1004,6 +1007,12 @@ export const CreatePaseoWorktreeRequestSchema = z.object({
   requestId: z.string(),
 });
 
+export const WorkspaceSetupStatusRequestSchema = z.object({
+  type: z.literal("workspace_setup_status_request"),
+  workspaceId: z.string(),
+  requestId: z.string(),
+});
+
 export const OpenProjectRequestSchema = z.object({
   type: z.literal("open_project_request"),
   cwd: z.string(),
@@ -1251,6 +1260,7 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   PaseoWorktreeListRequestSchema,
   PaseoWorktreeArchiveRequestSchema,
   CreatePaseoWorktreeRequestSchema,
+  WorkspaceSetupStatusRequestSchema,
   OpenProjectRequestSchema,
   ArchiveWorkspaceRequestSchema,
   FileExplorerRequestSchema,
@@ -1596,6 +1606,14 @@ export const ProjectPlacementPayloadSchema = z.object({
   checkout: ProjectCheckoutLitePayloadSchema,
 });
 
+export const WorkspaceServicePayloadSchema = z.object({
+  serviceName: z.string(),
+  hostname: z.string(),
+  port: z.number().int().positive(),
+  url: z.string().nullable(),
+  status: z.enum(["running", "stopped"]),
+});
+
 export const WorkspaceDescriptorPayloadSchema = z.object({
   id: z.number().int(),
   projectId: z.number().int(),
@@ -1614,6 +1632,7 @@ export const WorkspaceDescriptorPayloadSchema = z.object({
     })
     .nullable()
     .optional(),
+  services: z.array(WorkspaceServicePayloadSchema).default([]),
 });
 
 export const AgentUpdateMessageSchema = z.object({
@@ -1707,6 +1726,39 @@ export const WorkspaceUpdateMessageSchema = z.object({
       id: z.number().int(),
     }),
   ]),
+});
+
+export const ServiceStatusUpdateMessageSchema = z.object({
+  type: z.literal("service_status_update"),
+  payload: z.object({
+    workspaceId: z.string(),
+    services: z.array(WorkspaceServicePayloadSchema),
+  }),
+});
+
+export const WorkspaceSetupProgressMessageSchema = z.object({
+  type: z.literal("workspace_setup_progress"),
+  payload: z.object({
+    workspaceId: z.string(),
+    status: z.enum(["running", "completed", "failed"]),
+    detail: WorktreeSetupDetailPayloadSchema,
+    error: z.string().nullable(),
+  }),
+});
+
+export const WorkspaceSetupSnapshotSchema = z.object({
+  status: z.enum(["running", "completed", "failed"]),
+  detail: WorktreeSetupDetailPayloadSchema,
+  error: z.string().nullable(),
+});
+
+export const WorkspaceSetupStatusResponseMessageSchema = z.object({
+  type: z.literal("workspace_setup_status_response"),
+  payload: z.object({
+    requestId: z.string(),
+    workspaceId: z.string(),
+    snapshot: WorkspaceSetupSnapshotSchema.nullable(),
+  }),
 });
 
 export const OpenProjectResponseMessageSchema = z.object({
@@ -2289,6 +2341,9 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   ArtifactMessageSchema,
   AgentUpdateMessageSchema,
   WorkspaceUpdateMessageSchema,
+  ServiceStatusUpdateMessageSchema,
+  WorkspaceSetupProgressMessageSchema,
+  WorkspaceSetupStatusResponseMessageSchema,
   AgentStreamMessageSchema,
   AgentStatusMessageSchema,
   FetchAgentsResponseMessageSchema,
@@ -2373,14 +2428,21 @@ export type ServerInfoStatusPayload = z.infer<typeof ServerInfoStatusPayloadSche
 export type RpcErrorMessage = z.infer<typeof RpcErrorMessageSchema>;
 export type ArtifactMessage = z.infer<typeof ArtifactMessageSchema>;
 export type AgentUpdateMessage = z.infer<typeof AgentUpdateMessageSchema>;
+export type WorkspaceSetupProgressMessage = z.infer<typeof WorkspaceSetupProgressMessageSchema>;
+export type WorkspaceSetupSnapshot = z.infer<typeof WorkspaceSetupSnapshotSchema>;
+export type WorkspaceSetupStatusResponseMessage = z.infer<
+  typeof WorkspaceSetupStatusResponseMessageSchema
+>;
 export type AgentStreamMessage = z.infer<typeof AgentStreamMessageSchema>;
 export type AgentStatusMessage = z.infer<typeof AgentStatusMessageSchema>;
 export type ProjectCheckoutLitePayload = z.infer<typeof ProjectCheckoutLitePayloadSchema>;
 export type ProjectPlacementPayload = z.infer<typeof ProjectPlacementPayloadSchema>;
 export type WorkspaceStateBucket = z.infer<typeof WorkspaceStateBucketSchema>;
 export type WorkspaceDescriptorPayload = z.infer<typeof WorkspaceDescriptorPayloadSchema>;
+export type WorkspaceServicePayload = z.infer<typeof WorkspaceServicePayloadSchema>;
 export type FetchAgentsResponseMessage = z.infer<typeof FetchAgentsResponseMessageSchema>;
 export type FetchWorkspacesResponseMessage = z.infer<typeof FetchWorkspacesResponseMessageSchema>;
+export type ServiceStatusUpdateMessage = z.infer<typeof ServiceStatusUpdateMessageSchema>;
 export type OpenProjectResponseMessage = z.infer<typeof OpenProjectResponseMessageSchema>;
 export type ArchiveWorkspaceResponseMessage = z.infer<typeof ArchiveWorkspaceResponseMessageSchema>;
 export type FetchAgentResponseMessage = z.infer<typeof FetchAgentResponseMessageSchema>;
@@ -2493,6 +2555,7 @@ export type PaseoWorktreeListRequest = z.infer<typeof PaseoWorktreeListRequestSc
 export type PaseoWorktreeListResponse = z.infer<typeof PaseoWorktreeListResponseSchema>;
 export type PaseoWorktreeArchiveRequest = z.infer<typeof PaseoWorktreeArchiveRequestSchema>;
 export type PaseoWorktreeArchiveResponse = z.infer<typeof PaseoWorktreeArchiveResponseSchema>;
+export type WorkspaceSetupStatusRequest = z.infer<typeof WorkspaceSetupStatusRequestSchema>;
 export type OpenProjectRequest = z.infer<typeof OpenProjectRequestSchema>;
 export type ArchiveWorkspaceRequest = z.infer<typeof ArchiveWorkspaceRequestSchema>;
 export type FileExplorerRequest = z.infer<typeof FileExplorerRequestSchema>;

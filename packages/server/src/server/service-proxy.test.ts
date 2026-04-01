@@ -1,0 +1,478 @@
+import { describe, it, expect, afterEach } from "vitest";
+import http from "node:http";
+import net from "node:net";
+import express from "express";
+import WebSocket, { WebSocketServer } from "ws";
+import pino from "pino";
+import {
+  ServiceRouteStore,
+  createServiceProxyMiddleware,
+  createServiceProxyUpgradeHandler,
+  findFreePort,
+} from "./service-proxy.js";
+
+const logger = pino({ level: "silent" });
+
+// ---------------------------------------------------------------------------
+// Helpers for cleanup
+// ---------------------------------------------------------------------------
+
+function closeServer(server: http.Server): Promise<void> {
+  return new Promise((resolve) => {
+    server.close(() => resolve());
+  });
+}
+
+// ---------------------------------------------------------------------------
+// ServiceRouteStore
+// ---------------------------------------------------------------------------
+
+describe("ServiceRouteStore", () => {
+  it("registerRoute and findRoute with exact match", () => {
+    const store = new ServiceRouteStore();
+    store.registerRoute({
+      hostname: "editor.localhost",
+      port: 3000,
+      workspaceId: "/repo/.paseo/worktrees/feature-a",
+      serviceName: "editor",
+    });
+
+    const route = store.findRoute("editor.localhost");
+    expect(route).toEqual({ hostname: "editor.localhost", port: 3000 });
+  });
+
+  it("findRoute strips port from host header", () => {
+    const store = new ServiceRouteStore();
+    store.registerRoute({
+      hostname: "editor.localhost",
+      port: 3000,
+      workspaceId: "/repo/.paseo/worktrees/feature-a",
+      serviceName: "editor",
+    });
+
+    const route = store.findRoute("editor.localhost:6767");
+    expect(route).toEqual({ hostname: "editor.localhost", port: 3000 });
+  });
+
+  it("findRoute subdomain match", () => {
+    const store = new ServiceRouteStore();
+    store.registerRoute({
+      hostname: "editor.localhost",
+      port: 3000,
+      workspaceId: "/repo/.paseo/worktrees/feature-a",
+      serviceName: "editor",
+    });
+
+    const route = store.findRoute("fix-auth.editor.localhost");
+    expect(route).toEqual({ hostname: "editor.localhost", port: 3000 });
+  });
+
+  it("listRoutes returns enriched entries", () => {
+    const store = new ServiceRouteStore();
+    store.registerRoute({
+      hostname: "a.localhost",
+      port: 3000,
+      workspaceId: "/repo/.paseo/worktrees/feature-a",
+      serviceName: "web",
+    });
+    store.registerRoute({
+      hostname: "b.localhost",
+      port: 4000,
+      workspaceId: "/repo/.paseo/worktrees/feature-b",
+      serviceName: "docs",
+    });
+
+    const routes = store.listRoutes();
+    expect(routes).toHaveLength(2);
+    expect(routes).toContainEqual({
+      hostname: "a.localhost",
+      port: 3000,
+      workspaceId: "/repo/.paseo/worktrees/feature-a",
+      serviceName: "web",
+    });
+    expect(routes).toContainEqual({
+      hostname: "b.localhost",
+      port: 4000,
+      workspaceId: "/repo/.paseo/worktrees/feature-b",
+      serviceName: "docs",
+    });
+  });
+
+  it("listRoutesForWorkspace returns only routes for that workspace", () => {
+    const store = new ServiceRouteStore();
+    store.registerRoute({
+      hostname: "a.localhost",
+      port: 3000,
+      workspaceId: "/repo/.paseo/worktrees/feature-a",
+      serviceName: "web",
+    });
+    store.registerRoute({
+      hostname: "b.localhost",
+      port: 4000,
+      workspaceId: "/repo/.paseo/worktrees/feature-b",
+      serviceName: "docs",
+    });
+    store.registerRoute({
+      hostname: "c.localhost",
+      port: 5000,
+      workspaceId: "/repo/.paseo/worktrees/feature-a",
+      serviceName: "api",
+    });
+
+    expect(store.listRoutesForWorkspace("/repo/.paseo/worktrees/feature-a")).toEqual([
+      {
+        hostname: "a.localhost",
+        port: 3000,
+        workspaceId: "/repo/.paseo/worktrees/feature-a",
+        serviceName: "web",
+      },
+      {
+        hostname: "c.localhost",
+        port: 5000,
+        workspaceId: "/repo/.paseo/worktrees/feature-a",
+        serviceName: "api",
+      },
+    ]);
+  });
+
+  it("removeRoute works", () => {
+    const store = new ServiceRouteStore();
+    store.registerRoute({
+      hostname: "editor.localhost",
+      port: 3000,
+      workspaceId: "/repo/.paseo/worktrees/feature-a",
+      serviceName: "editor",
+    });
+    store.removeRoute("editor.localhost");
+
+    expect(store.findRoute("editor.localhost")).toBeNull();
+  });
+
+  it("removeRoute cleans up workspace index", () => {
+    const store = new ServiceRouteStore();
+    store.registerRoute({
+      hostname: "editor.localhost",
+      port: 3000,
+      workspaceId: "/repo/.paseo/worktrees/feature-a",
+      serviceName: "editor",
+    });
+
+    store.removeRoute("editor.localhost");
+
+    expect(store.listRoutesForWorkspace("/repo/.paseo/worktrees/feature-a")).toEqual([]);
+  });
+
+  it("removeRoutesForPort works", () => {
+    const store = new ServiceRouteStore();
+    store.registerRoute({
+      hostname: "a.localhost",
+      port: 3000,
+      workspaceId: "/repo/.paseo/worktrees/feature-a",
+      serviceName: "web",
+    });
+    store.registerRoute({
+      hostname: "b.localhost",
+      port: 3000,
+      workspaceId: "/repo/.paseo/worktrees/feature-a",
+      serviceName: "api",
+    });
+    store.registerRoute({
+      hostname: "c.localhost",
+      port: 4000,
+      workspaceId: "/repo/.paseo/worktrees/feature-b",
+      serviceName: "docs",
+    });
+
+    store.removeRoutesForPort(3000);
+
+    expect(store.findRoute("a.localhost")).toBeNull();
+    expect(store.findRoute("b.localhost")).toBeNull();
+    expect(store.findRoute("c.localhost")).toEqual({
+      hostname: "c.localhost",
+      port: 4000,
+    });
+  });
+
+  it("removeRoutesForPort cleans up workspace index", () => {
+    const store = new ServiceRouteStore();
+    store.registerRoute({
+      hostname: "a.localhost",
+      port: 3000,
+      workspaceId: "/repo/.paseo/worktrees/feature-a",
+      serviceName: "web",
+    });
+    store.registerRoute({
+      hostname: "b.localhost",
+      port: 3000,
+      workspaceId: "/repo/.paseo/worktrees/feature-a",
+      serviceName: "api",
+    });
+
+    store.removeRoutesForPort(3000);
+
+    expect(store.listRoutesForWorkspace("/repo/.paseo/worktrees/feature-a")).toEqual([]);
+  });
+
+  it("findRoute returns null for unknown hosts", () => {
+    const store = new ServiceRouteStore();
+    store.registerRoute({
+      hostname: "editor.localhost",
+      port: 3000,
+      workspaceId: "/repo/.paseo/worktrees/feature-a",
+      serviceName: "editor",
+    });
+
+    expect(store.findRoute("unknown.example.com")).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// HTTP proxy
+// ---------------------------------------------------------------------------
+
+describe("HTTP proxy", () => {
+  const servers: http.Server[] = [];
+
+  afterEach(async () => {
+    await Promise.all(servers.map(closeServer));
+    servers.length = 0;
+  });
+
+  /** Start a real HTTP server that echoes back a known body and records received headers. */
+  async function startUpstream(): Promise<{
+    port: number;
+    server: http.Server;
+    receivedHeaders: () => http.IncomingHttpHeaders;
+  }> {
+    const port = await findFreePort();
+    let lastHeaders: http.IncomingHttpHeaders = {};
+
+    const server = http.createServer((req, res) => {
+      lastHeaders = req.headers;
+      res.writeHead(200, { "content-type": "text/plain" });
+      res.end("upstream-ok");
+    });
+
+    await new Promise<void>((resolve) =>
+      server.listen(port, "127.0.0.1", resolve),
+    );
+    servers.push(server);
+
+    return {
+      port,
+      server,
+      receivedHeaders: () => lastHeaders,
+    };
+  }
+
+  /** Start an Express app with the service proxy middleware and an optional fallback. */
+  async function startProxy(
+    routeStore: ServiceRouteStore,
+    opts?: { fallback?: boolean },
+  ): Promise<{ port: number; server: http.Server }> {
+    const port = await findFreePort();
+    const app = express();
+    app.use(createServiceProxyMiddleware({ routeStore, logger }));
+
+    if (opts?.fallback) {
+      app.use((_req, res) => {
+        res.status(404).send("no route");
+      });
+    }
+
+    const server = http.createServer(app);
+    await new Promise<void>((resolve) =>
+      server.listen(port, "127.0.0.1", resolve),
+    );
+    servers.push(server);
+
+    return { port, server };
+  }
+
+  /** Simple HTTP GET helper that returns status code and body. */
+  function httpGet(
+    port: number,
+    host: string,
+    path = "/",
+  ): Promise<{ status: number; body: string }> {
+    return new Promise((resolve, reject) => {
+      const req = http.get(
+        { hostname: "127.0.0.1", port, path, headers: { host } },
+        (res) => {
+          let body = "";
+          res.on("data", (chunk: Buffer) => (body += chunk.toString()));
+          res.on("end", () =>
+            resolve({ status: res.statusCode ?? 0, body }),
+          );
+        },
+      );
+      req.on("error", reject);
+    });
+  }
+
+  it("proxies requests to the correct upstream based on Host header", async () => {
+    const upstream = await startUpstream();
+    const routeStore = new ServiceRouteStore();
+    routeStore.addRoute("test-service.localhost", upstream.port);
+
+    const proxy = await startProxy(routeStore);
+    const res = await httpGet(
+      proxy.port,
+      `test-service.localhost:${proxy.port}`,
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.body).toBe("upstream-ok");
+
+    const headers = upstream.receivedHeaders();
+    expect(headers["x-forwarded-for"]).toBeDefined();
+    expect(headers["x-forwarded-host"]).toBe("test-service.localhost");
+  });
+
+  it("falls through when no route matches", async () => {
+    const routeStore = new ServiceRouteStore();
+    const proxy = await startProxy(routeStore, { fallback: true });
+
+    const res = await httpGet(
+      proxy.port,
+      `unknown.localhost:${proxy.port}`,
+    );
+
+    expect(res.status).toBe(404);
+    expect(res.body).toBe("no route");
+  });
+
+  it("returns 502 when upstream is down", async () => {
+    // Get a port that nothing is listening on
+    const deadPort = await findFreePort();
+
+    const routeStore = new ServiceRouteStore();
+    routeStore.addRoute("dead-service.localhost", deadPort);
+
+    const proxy = await startProxy(routeStore);
+    const res = await httpGet(
+      proxy.port,
+      `dead-service.localhost:${proxy.port}`,
+    );
+
+    expect(res.status).toBe(502);
+    expect(res.body).toBe("502 Bad Gateway");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// WebSocket proxy
+// ---------------------------------------------------------------------------
+
+describe("WebSocket proxy", () => {
+  const httpServers: http.Server[] = [];
+  const wsServers: WebSocketServer[] = [];
+  const wsClients: WebSocket[] = [];
+
+  afterEach(async () => {
+    for (const ws of wsClients) {
+      if (ws.readyState === WebSocket.OPEN) ws.close();
+    }
+    wsClients.length = 0;
+
+    for (const wss of wsServers) {
+      wss.close();
+    }
+    wsServers.length = 0;
+
+    await Promise.all(httpServers.map(closeServer));
+    httpServers.length = 0;
+  });
+
+  it("proxies WebSocket connections to the correct upstream", async () => {
+    // 1. Start a real WebSocket echo server
+    const upstreamPort = await findFreePort();
+    const upstreamServer = http.createServer();
+    const wss = new WebSocketServer({ server: upstreamServer });
+    wsServers.push(wss);
+
+    wss.on("connection", (ws) => {
+      ws.on("message", (data) => {
+        ws.send(`echo: ${data.toString()}`);
+      });
+    });
+
+    await new Promise<void>((resolve) =>
+      upstreamServer.listen(upstreamPort, "127.0.0.1", resolve),
+    );
+    httpServers.push(upstreamServer);
+
+    // 2. Create the proxy server with the upgrade handler
+    const routeStore = new ServiceRouteStore();
+    routeStore.addRoute("ws-service.localhost", upstreamPort);
+
+    const proxyPort = await findFreePort();
+    const proxyServer = http.createServer((_req, res) => {
+      res.writeHead(404);
+      res.end();
+    });
+
+    const upgradeHandler = createServiceProxyUpgradeHandler({
+      routeStore,
+      logger,
+    });
+    proxyServer.on("upgrade", upgradeHandler);
+
+    await new Promise<void>((resolve) =>
+      proxyServer.listen(proxyPort, "127.0.0.1", resolve),
+    );
+    httpServers.push(proxyServer);
+
+    // 3. Connect a WebSocket client through the proxy
+    const ws = new WebSocket(`ws://127.0.0.1:${proxyPort}`, {
+      headers: { host: `ws-service.localhost:${proxyPort}` },
+    });
+    wsClients.push(ws);
+
+    await new Promise<void>((resolve, reject) => {
+      ws.on("open", resolve);
+      ws.on("error", reject);
+    });
+
+    // 4. Send a message and verify echo
+    const reply = await new Promise<string>((resolve, reject) => {
+      ws.on("message", (data) => resolve(data.toString()));
+      ws.on("error", reject);
+      ws.send("hello proxy");
+    });
+
+    expect(reply).toBe("echo: hello proxy");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// findFreePort
+// ---------------------------------------------------------------------------
+
+describe("findFreePort", () => {
+  it("returns a number", async () => {
+    const port = await findFreePort();
+    expect(typeof port).toBe("number");
+    expect(port).toBeGreaterThan(0);
+    expect(port).toBeLessThan(65536);
+  });
+
+  it("returns a port that is actually available", async () => {
+    const port = await findFreePort();
+
+    // Verify we can bind a server to it
+    const server = net.createServer();
+    await new Promise<void>((resolve, reject) => {
+      server.listen(port, "127.0.0.1", () => resolve());
+      server.on("error", reject);
+    });
+
+    const addr = server.address();
+    expect(addr).not.toBeNull();
+    expect(typeof addr === "object" && addr !== null ? addr.port : -1).toBe(
+      port,
+    );
+
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  });
+});

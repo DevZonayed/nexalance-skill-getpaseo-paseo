@@ -4,17 +4,7 @@ import { pathToFileURL } from "node:url";
 import { expect, type Page } from "@playwright/test";
 import { parseHostWorkspaceRouteFromPathname } from "../../src/utils/host-routes";
 import { gotoAppShell } from "./app";
-
-type WorkspaceSetupProgressPayload = {
-  status: "running" | "completed" | "failed";
-  detail: { commands: string[]; log: string };
-  error: string | null;
-};
-
-type WorkspaceSetupRawMessage = {
-  type: string;
-  payload?: WorkspaceSetupProgressPayload;
-};
+import type { SessionOutboundMessage } from "@server/shared/messages";
 
 type WorkspaceSetupDaemonClient = {
   connect(): Promise<void>;
@@ -67,9 +57,15 @@ type WorkspaceSetupDaemonClient = {
     terminals: Array<{ id: string; cwd: string; name: string }>;
     error?: string | null;
   }>;
-  subscribeRawMessages(handler: (message: WorkspaceSetupRawMessage) => void): () => void;
+  subscribeRawMessages(handler: (message: SessionOutboundMessage) => void): () => void;
 };
-export type { WorkspaceSetupDaemonClient, WorkspaceSetupProgressPayload };
+
+export type WorkspaceSetupProgressPayload = Extract<
+  SessionOutboundMessage,
+  { type: "workspace_setup_progress" }
+>["payload"];
+
+export type { WorkspaceSetupDaemonClient };
 
 function getDaemonWsUrl(): string {
   const daemonPort = process.env.E2E_DAEMON_PORT;
@@ -332,9 +328,6 @@ export async function waitForWorkspaceSetupProgress(
 
     const unsubscribe = client.subscribeRawMessages((message) => {
       if (message.type !== "workspace_setup_progress") {
-        return;
-      }
-      if (!message.payload) {
         return;
       }
       if (!predicate(message.payload)) {

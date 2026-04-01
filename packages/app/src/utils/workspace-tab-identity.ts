@@ -26,6 +26,10 @@ export function normalizeWorkspaceTabTarget(
     const launcherId = trimNonEmpty(value.launcherId);
     return launcherId ? { kind: "launcher", launcherId } : null;
   }
+  if (value.kind === "setup") {
+    const workspaceId = trimNonEmpty(value.workspaceId);
+    return workspaceId ? { kind: "setup", workspaceId: workspaceId.replace(/\\/g, "/") } : null;
+  }
   return null;
 }
 
@@ -52,6 +56,9 @@ export function workspaceTabTargetsEqual(
     // Launcher tabs are intentionally always unique, even when reopened repeatedly.
     return false;
   }
+  if (left.kind === "setup" && right.kind === "setup") {
+    return left.workspaceId === right.workspaceId;
+  }
   return false;
 }
 
@@ -67,6 +74,9 @@ export function buildDeterministicWorkspaceTabId(target: WorkspaceTabTarget): st
   }
   if (target.kind === "launcher") {
     return `launcher_${target.launcherId}`;
+  }
+  if (target.kind === "setup") {
+    return `setup_${target.workspaceId}`;
   }
   return `file_${target.path}`;
 }

@@ -48,11 +48,14 @@ import { scheduleAgentMetadataGeneration } from "./agent-metadata-generator.js";
 import { expandUserPath } from "../path-utils.js";
 import type { TerminalManager } from "../../terminal/terminal-manager.js";
 import { createAgentWorktree, runAsyncWorktreeBootstrap } from "../worktree-bootstrap.js";
+import type { ServiceRouteStore } from "../service-proxy.js";
 
 export interface AgentManagementMcpOptions {
   agentManager: AgentManager;
   agentStorage: AgentSnapshotStore;
   terminalManager?: TerminalManager | null;
+  serviceRouteStore?: ServiceRouteStore;
+  getDaemonTcpPort?: () => number | null;
   paseoHome?: string;
   logger: Logger;
 }
@@ -296,21 +299,25 @@ export async function createAgentManagementMcpServer(
       };
 
       let resolvedCwd = expandUserPath(cwd);
-      let worktreeConfig: WorktreeConfig | undefined;
+      let worktreeBootstrap:
+        | {
+            worktree: WorktreeConfig;
+            shouldBootstrap: boolean;
+          }
+        | undefined;
 
       if (worktreeName) {
         if (!baseBranch) {
           throw new Error("baseBranch is required when creating a worktree");
         }
-        const worktree = await createAgentWorktree({
+        worktreeBootstrap = await createAgentWorktree({
           branchName: worktreeName,
           cwd: resolvedCwd,
           baseBranch,
           worktreeSlug: worktreeName,
           paseoHome: options.paseoHome,
         });
-        resolvedCwd = worktree.worktreePath;
-        worktreeConfig = worktree;
+        resolvedCwd = worktreeBootstrap.worktree.worktreePath;
       }
 
       const provider: AgentProvider = agentType ?? "claude";
@@ -322,10 +329,11 @@ export async function createAgentManagementMcpServer(
         title: normalizedTitle ?? undefined,
       });
 
-      if (worktreeConfig) {
+      if (worktreeBootstrap) {
         void runAsyncWorktreeBootstrap({
           agentId: snapshot.id,
-          worktree: worktreeConfig,
+          worktree: worktreeBootstrap.worktree,
+          shouldBootstrap: worktreeBootstrap.shouldBootstrap,
           terminalManager: options.terminalManager ?? null,
           appendTimelineItem: (item) =>
             appendTimelineItemIfAgentKnown({
@@ -339,6 +347,8 @@ export async function createAgentManagementMcpServer(
               agentId: snapshot.id,
               item,
             }),
+          serviceRouteStore: options.serviceRouteStore,
+          daemonPort: options.getDaemonTcpPort?.() ?? null,
           logger: childLogger,
         });
       }

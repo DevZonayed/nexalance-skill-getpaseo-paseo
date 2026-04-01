@@ -11,6 +11,7 @@ import {
   type ProjectPlacementPayload,
   type SessionInboundMessage,
   type SessionOutboundMessage,
+  type WorkspaceSetupSnapshot,
   type WorkspaceDescriptorPayload,
 } from "./messages.js";
 import type {
@@ -19,8 +20,16 @@ import type {
   WorkspaceRegistry,
 } from "./workspace-registry.js";
 import { normalizeWorkspaceId as normalizePersistedWorkspaceId } from "./workspace-registry-model.js";
-import { createAgentWorktree } from "./worktree-bootstrap.js";
+import {
+  applyWorktreeSetupProgressEvent,
+  buildWorktreeSetupDetail,
+  createAgentWorktree,
+  createWorktreeSetupProgressAccumulator,
+  getWorktreeSetupProgressResults,
+  spawnWorktreeServices,
+} from "./worktree-bootstrap.js";
 import type { TerminalManager } from "../terminal/terminal-manager.js";
+import type { ServiceRouteStore } from "./service-proxy.js";
 import {
   getCheckoutStatusLite,
   resolveRepositoryDefaultBranch,
@@ -34,9 +43,12 @@ import {
   listPaseoWorktrees,
   resolvePaseoWorktreeRootForCwd,
   resolveWorktreeRuntimeEnv,
+  runWorktreeSetupCommands,
   slugify,
   validateBranchSlug,
   type WorktreeConfig,
+  type WorktreeSetupCommandResult,
+  WorktreeSetupError,
 } from "../utils/worktree.js";
 import { READ_ONLY_GIT_ENV, toCheckoutError } from "./checkout-git-utils.js";
 
@@ -93,8 +105,18 @@ type CreatePaseoWorktreeInBackgroundDependencies = {
     cwd: string,
     options?: { dedupeGitState?: boolean },
   ) => Promise<void>;
+  cacheWorkspaceSetupSnapshot: (workspaceId: string, snapshot: WorkspaceSetupSnapshot) => void;
+  emit: EmitSessionMessage;
   sessionLogger: Logger;
   terminalManager: TerminalManager | null;
+  archiveWorkspaceRecord: (workspaceId: string) => Promise<void>;
+  serviceRouteStore: ServiceRouteStore | null;
+  daemonPort?: number | null;
+};
+
+type HandleWorkspaceSetupStatusRequestDependencies = {
+  emit: EmitSessionMessage;
+  workspaceSetupSnapshots: ReadonlyMap<string, WorkspaceSetupSnapshot>;
 };
 
 type HandleCreatePaseoWorktreeRequestDependencies = {
@@ -112,9 +134,8 @@ type HandleCreatePaseoWorktreeRequestDependencies = {
   createPaseoWorktreeInBackground: (options: {
     requestCwd: string;
     repoRoot: string;
-    baseBranch: string;
-    slug: string;
-    worktreePath: string;
+    worktree: WorktreeConfig;
+    shouldBootstrap: boolean;
   }) => Promise<void>;
 };
 
@@ -131,10 +152,13 @@ export async function buildAgentSessionConfig(
   gitOptions?: GitSetupOptions,
   legacyWorktreeName?: string,
   _labels?: Record<string, string>,
-): Promise<{ sessionConfig: AgentSessionConfig; worktreeConfig?: WorktreeConfig }> {
+): Promise<{
+  sessionConfig: AgentSessionConfig;
+  worktreeBootstrap?: { worktree: WorktreeConfig; shouldBootstrap: boolean };
+}> {
   let cwd = expandTilde(config.cwd);
   const normalized = normalizeGitOptions(gitOptions, legacyWorktreeName);
-  let worktreeConfig: WorktreeConfig | undefined;
+  let worktreeBootstrap: { worktree: WorktreeConfig; shouldBootstrap: boolean } | undefined;
 
   if (!normalized) {
     return {
@@ -176,8 +200,8 @@ export async function buildAgentSessionConfig(
       worktreeSlug: normalized.worktreeSlug ?? targetBranch,
       paseoHome: dependencies.paseoHome,
     });
-    cwd = createdWorktree.worktreePath;
-    worktreeConfig = createdWorktree;
+    cwd = createdWorktree.worktree.worktreePath;
+    worktreeBootstrap = createdWorktree;
   } else if (normalized.createNewBranch) {
     const baseBranch =
       normalized.baseBranch ?? (await resolveGitCreateBaseBranch(cwd, dependencies.paseoHome));
@@ -195,7 +219,7 @@ export async function buildAgentSessionConfig(
       ...config,
       cwd,
     },
-    worktreeConfig,
+    worktreeBootstrap,
   };
 }
 
@@ -567,11 +591,18 @@ export async function handleCreatePaseoWorktreeRequest(
       throw new Error(`Invalid worktree name: ${validation.error}`);
     }
 
-    const worktreePath = await computeWorktreePath(repoRoot, normalizedSlug, dependencies.paseoHome);
+    await computeWorktreePath(repoRoot, normalizedSlug, dependencies.paseoHome);
+    const createdWorktree = await createAgentWorktree({
+      cwd: repoRoot,
+      branchName: normalizedSlug,
+      baseBranch,
+      worktreeSlug: normalizedSlug,
+      paseoHome: dependencies.paseoHome,
+    });
     const workspace = await dependencies.registerPendingWorktreeWorkspace({
       repoRoot,
-      worktreePath,
-      branchName: normalizedSlug,
+      worktreePath: createdWorktree.worktree.worktreePath,
+      branchName: createdWorktree.worktree.branchName,
     });
     await createAgentWorktree({
       cwd: repoRoot,
@@ -594,9 +625,8 @@ export async function handleCreatePaseoWorktreeRequest(
     void dependencies.createPaseoWorktreeInBackground({
       requestCwd: request.cwd,
       repoRoot,
-      baseBranch,
-      slug: normalizedSlug,
-      worktreePath,
+      worktree: createdWorktree.worktree,
+      shouldBootstrap: createdWorktree.shouldBootstrap,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to create worktree";
@@ -616,58 +646,146 @@ export async function handleCreatePaseoWorktreeRequest(
   }
 }
 
+export async function handleWorkspaceSetupStatusRequest(
+  dependencies: HandleWorkspaceSetupStatusRequestDependencies,
+  request: Extract<SessionInboundMessage, { type: "workspace_setup_status_request" }>,
+): Promise<void> {
+  const workspaceId = normalizePersistedWorkspaceId(request.workspaceId);
+  dependencies.emit({
+    type: "workspace_setup_status_response",
+    payload: {
+      requestId: request.requestId,
+      workspaceId,
+      snapshot: dependencies.workspaceSetupSnapshots.get(workspaceId) ?? null,
+    },
+  });
+}
+
 export async function createPaseoWorktreeInBackground(
   dependencies: CreatePaseoWorktreeInBackgroundDependencies,
   options: {
     requestCwd: string;
     repoRoot: string;
-    baseBranch: string;
-    slug: string;
-    worktreePath: string;
+    worktree: WorktreeConfig;
+    shouldBootstrap: boolean;
   },
 ): Promise<void> {
-  let setupTerminalId: string | null = null;
+  let worktree: WorktreeConfig = options.worktree;
+  let setupResults: WorktreeSetupCommandResult[] = [];
+  let setupStarted = false;
+  const progressAccumulator = createWorktreeSetupProgressAccumulator();
+  const workspaceId = normalizePersistedWorkspaceId(worktree.worktreePath);
+
+  const emitSetupProgress = (status: "running" | "completed" | "failed", error: string | null) => {
+    const snapshot: WorkspaceSetupSnapshot = {
+      status,
+      detail: buildWorktreeSetupDetail({
+        worktree,
+        results:
+          status === "running" ? getWorktreeSetupProgressResults(progressAccumulator) : setupResults,
+        outputAccumulatorsByIndex: progressAccumulator.outputAccumulatorsByIndex,
+      }),
+      error,
+    };
+    dependencies.cacheWorkspaceSetupSnapshot(workspaceId, snapshot);
+    dependencies.emit({
+      type: "workspace_setup_progress",
+      payload: {
+        workspaceId,
+        ...snapshot,
+      },
+    });
+  };
 
   try {
-    const setupCommands = getWorktreeSetupCommands(options.worktreePath);
-    if (setupCommands.length > 0 && dependencies.terminalManager) {
-      const runtimeEnv = await resolveWorktreeRuntimeEnv({
-        worktreePath: options.worktreePath,
-        branchName: options.slug,
-        repoRootPath: options.repoRoot,
-      });
-      dependencies.terminalManager.registerCwdEnv({
-        cwd: options.worktreePath,
-        env: runtimeEnv,
-      });
-      const terminal = await dependencies.terminalManager.createTerminal({
-        cwd: options.worktreePath,
-        name: `setup-${options.slug}`,
-        env: runtimeEnv,
-      });
-      setupTerminalId = terminal.id;
+    try {
+      emitSetupProgress("running", null);
 
-      for (const command of setupCommands) {
-        terminal.send({
-          type: "input",
-          data: `${command}\r`,
-        });
+      if (!options.shouldBootstrap) {
+        emitSetupProgress("completed", null);
+      } else {
+        const setupCommands = getWorktreeSetupCommands(worktree.worktreePath);
+        if (setupCommands.length === 0) {
+          setupStarted = true;
+          emitSetupProgress("completed", null);
+        } else {
+          const runtimeEnv = await resolveWorktreeRuntimeEnv({
+            worktreePath: worktree.worktreePath,
+            branchName: worktree.branchName,
+            repoRootPath: options.repoRoot,
+          });
+          dependencies.terminalManager?.registerCwdEnv({
+            cwd: worktree.worktreePath,
+            env: runtimeEnv,
+          });
+          setupStarted = true;
+          setupResults = await runWorktreeSetupCommands({
+            worktreePath: worktree.worktreePath,
+            branchName: worktree.branchName,
+            cleanupOnFailure: false,
+            repoRootPath: options.repoRoot,
+            runtimeEnv,
+            onEvent: (event) => {
+              applyWorktreeSetupProgressEvent(progressAccumulator, event);
+              emitSetupProgress("running", null);
+            },
+          });
+          emitSetupProgress("completed", null);
+        }
       }
+    } catch (error) {
+      if (error instanceof WorktreeSetupError) {
+        setupResults = error.results;
+      }
+      const message = error instanceof Error ? error.message : String(error);
+      emitSetupProgress("failed", message);
+
+      if (!setupStarted) {
+        await dependencies.archiveWorkspaceRecord(normalizePersistedWorkspaceId(worktree.worktreePath));
+      }
+
+      dependencies.sessionLogger.error(
+        {
+          err: error,
+          cwd: options.requestCwd,
+          repoRoot: options.repoRoot,
+          worktreeSlug: worktree.branchName,
+          worktreePath: worktree.worktreePath,
+          setupStarted,
+        },
+        "Background worktree creation failed",
+      );
+      return;
     }
-  } catch (error) {
-    dependencies.sessionLogger.error(
-      {
-        err: error,
-        cwd: options.requestCwd,
-        repoRoot: options.repoRoot,
-        worktreeSlug: options.slug,
-        worktreePath: options.worktreePath,
-        setupTerminalId,
-      },
-      "Background worktree creation failed",
-    );
+
+    if (!dependencies.terminalManager || !dependencies.serviceRouteStore) {
+      return;
+    }
+
+    try {
+      await spawnWorktreeServices({
+        repoRoot: worktree.worktreePath,
+        workspaceId: worktree.worktreePath,
+        branchName: worktree.branchName,
+        daemonPort: dependencies.daemonPort,
+        routeStore: dependencies.serviceRouteStore,
+        terminalManager: dependencies.terminalManager,
+        logger: dependencies.sessionLogger,
+      });
+    } catch (error) {
+      dependencies.sessionLogger.error(
+        {
+          err: error,
+          cwd: options.requestCwd,
+          repoRoot: options.repoRoot,
+          worktreeSlug: worktree.branchName,
+          worktreePath: worktree.worktreePath,
+        },
+        "Failed to spawn worktree services after workspace setup completed",
+      );
+    }
   } finally {
-    await dependencies.emitWorkspaceUpdateForCwd(options.worktreePath);
+    await dependencies.emitWorkspaceUpdateForCwd(worktree.worktreePath);
   }
 }
 

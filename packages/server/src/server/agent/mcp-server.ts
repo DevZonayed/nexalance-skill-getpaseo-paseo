@@ -28,11 +28,14 @@ import type { VoiceCallerContext, VoiceSpeakHandler } from "../voice-types.js";
 import { expandUserPath, resolvePathFromBase } from "../path-utils.js";
 import type { TerminalManager } from "../../terminal/terminal-manager.js";
 import { createAgentWorktree, runAsyncWorktreeBootstrap } from "../worktree-bootstrap.js";
+import type { ServiceRouteStore } from "../service-proxy.js";
 
 export interface AgentMcpServerOptions {
   agentManager: AgentManager;
   agentStorage: AgentSnapshotStore;
   terminalManager?: TerminalManager | null;
+  serviceRouteStore?: ServiceRouteStore;
+  getDaemonTcpPort?: () => number | null;
   paseoHome?: string;
   /**
    * ID of the agent that is connecting to this MCP server.
@@ -428,6 +431,7 @@ export async function createAgentMcpServer(options: AgentMcpServerOptions): Prom
       let resolvedCwd: string;
       let resolvedMode: string | undefined;
       let worktreeConfig: WorktreeConfig | undefined;
+      let shouldBootstrapWorktree: boolean | undefined;
 
       if (callerAgentId) {
         const callerArgs = agentToAgentCreateAgentArgsSchema.parse(args);
@@ -464,15 +468,16 @@ export async function createAgentMcpServer(options: AgentMcpServerOptions): Prom
           if (!baseBranch) {
             throw new Error("baseBranch is required when creating a worktree");
           }
-          const worktree = await createAgentWorktree({
+          const worktreeBootstrap = await createAgentWorktree({
             branchName: worktreeName,
             cwd: resolvedCwd,
             baseBranch,
             worktreeSlug: worktreeName,
             paseoHome: options.paseoHome,
           });
-          resolvedCwd = worktree.worktreePath;
-          worktreeConfig = worktree;
+          resolvedCwd = worktreeBootstrap.worktree.worktreePath;
+          worktreeConfig = worktreeBootstrap.worktree;
+          shouldBootstrapWorktree = worktreeBootstrap.shouldBootstrap;
         }
 
         resolvedMode = initialMode;
@@ -497,6 +502,7 @@ export async function createAgentMcpServer(options: AgentMcpServerOptions): Prom
         void runAsyncWorktreeBootstrap({
           agentId: snapshot.id,
           worktree: worktreeConfig,
+          shouldBootstrap: shouldBootstrapWorktree,
           terminalManager: terminalManager ?? null,
           appendTimelineItem: (item) =>
             appendTimelineItemIfAgentKnown({
@@ -510,6 +516,8 @@ export async function createAgentMcpServer(options: AgentMcpServerOptions): Prom
               agentId: snapshot.id,
               item,
             }),
+          serviceRouteStore: options.serviceRouteStore,
+          daemonPort: options.getDaemonTcpPort?.() ?? null,
           logger: childLogger,
         });
       }
