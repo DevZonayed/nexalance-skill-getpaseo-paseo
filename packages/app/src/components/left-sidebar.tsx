@@ -35,7 +35,8 @@ import {
   type SidebarProjectEntry,
 } from "@/hooks/use-sidebar-workspaces-list";
 import { useSidebarAnimation } from "@/contexts/sidebar-animation-context";
-import { useDesktopDragHandlers, useWindowControlsPadding } from "@/utils/desktop-window";
+import { useWindowControlsPadding } from "@/utils/desktop-window";
+import { TitlebarDragRegion, TitlebarNoDragContent } from "@/components/desktop/titlebar-drag-region";
 import { Combobox } from "@/components/ui/combobox";
 import { getHostRuntimeStore, useHosts } from "@/runtime/host-runtime";
 import { formatConnectionStatus } from "@/utils/daemons";
@@ -638,7 +639,6 @@ function DesktopSidebar({
   handleViewMore,
 }: DesktopSidebarProps) {
   const newAgentKeys = useShortcutKeys("new-agent");
-  const dragHandlers = useDesktopDragHandlers();
   const padding = useWindowControlsPadding("sidebar");
   const sidebarWidth = usePanelStore((state) => state.sidebarWidth);
   const setSidebarWidth = usePanelStore((state) => state.setSidebarWidth);
@@ -689,11 +689,14 @@ function DesktopSidebar({
 
   return (
     <Animated.View style={[styles.desktopSidebar, resizeAnimatedStyle, { paddingTop: insetsTop }]}>
-      {padding.top > 0 ? <View style={{ height: padding.top }} {...dragHandlers} /> : null}
-      <View style={styles.sidebarHeader} {...dragHandlers}>
-        <View style={styles.sidebarHeaderRow}>
-          <SessionsButton onPress={handleViewMore} />
-        </View>
+      {padding.top > 0 ? <View style={{ height: padding.top }} /> : null}
+      <View style={styles.sidebarHeader}>
+        <TitlebarDragRegion />
+        <TitlebarNoDragContent>
+          <View style={styles.sidebarHeaderRow}>
+            <SessionsButton onPress={handleViewMore} />
+          </View>
+        </TitlebarNoDragContent>
       </View>
 
       {isInitialLoad ? (
@@ -832,6 +835,7 @@ const styles = StyleSheet.create((theme) => ({
     zIndex: 10,
   },
   sidebarHeader: {
+    position: "relative",
     height: {
       xs: HEADER_INNER_HEIGHT_MOBILE,
       md: HEADER_INNER_HEIGHT,

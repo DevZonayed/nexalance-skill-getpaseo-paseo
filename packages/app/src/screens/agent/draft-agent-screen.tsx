@@ -51,7 +51,7 @@ import type {
 } from "@server/server/agent/agent-sdk-types";
 import { AGENT_PROVIDER_DEFINITIONS } from "@server/server/agent/provider-manifest";
 import { prepareWorkspaceTab } from "@/utils/workspace-navigation";
-import { useDesktopDragHandlers } from "@/utils/desktop-window";
+import { TitlebarDragRegion, TitlebarNoDragContent } from "@/components/desktop/titlebar-drag-region";
 import { useKeyboardShiftStyle } from "@/hooks/use-keyboard-shift-style";
 import { normalizeAgentSnapshot } from "@/utils/agent-snapshots";
 import { useAgentInputDraft } from "@/hooks/use-agent-input-draft";
@@ -243,7 +243,6 @@ function DraftAgentScreenContent({
   const activateExplorerTabForCheckout = usePanelStore(
     (state) => state.activateExplorerTabForCheckout,
   );
-  const dragHandlers = useDesktopDragHandlers();
   const isExplorerOpen = isMobile ? mobileView === "file-explorer" : desktopFileExplorerOpen;
   const draftIdRef = useRef(generateDraftId());
   const draftAgentIdRef = useRef(generateDraftId());
@@ -999,8 +998,10 @@ function DraftAgentScreenContent({
   const explorerServerId = draftExplorerCheckout?.serverId ?? null;
   const explorerIsGit = draftExplorerCheckout?.isGit ?? false;
   const mainContent = (
-    <View style={styles.container} {...dragHandlers}>
-      <View style={styles.outerContainer}>
+    <View style={styles.container}>
+      <TitlebarDragRegion />
+      <TitlebarNoDragContent direction="column">
+        <View style={styles.outerContainer}>
         <View style={styles.agentPanel}>
           <View
             style={[
@@ -1263,6 +1264,7 @@ function DraftAgentScreenContent({
           />
         ) : null}
       </View>
+      </TitlebarNoDragContent>
     </View>
   );
 
@@ -1292,6 +1294,7 @@ function DraftAgentScreenContent({
 
 const styles = StyleSheet.create((theme) => ({
   container: {
+    position: "relative",
     flex: 1,
     backgroundColor: theme.colors.surface0,
   },

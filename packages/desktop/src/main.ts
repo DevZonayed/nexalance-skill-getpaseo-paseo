@@ -13,7 +13,7 @@ import {
 import { closeAllTransportSessions } from "./daemon/local-transport.js";
 import {
   registerWindowManager,
-  getTitleBarOverlayOptions,
+  getMainWindowChromeOptions,
   resolveSystemWindowTheme,
   setupWindowResizeEvents,
   setupDragDropPrevention,
@@ -86,21 +86,18 @@ function applyAppIcon(): void {
 }
 
 async function createMainWindow(): Promise<void> {
-  const isMac = process.platform === "darwin";
   const iconPath = getWindowIconPath();
+  const systemTheme = resolveSystemWindowTheme();
 
   const mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
     show: false,
     ...(iconPath ? { icon: iconPath } : {}),
-    titleBarStyle: "hidden",
-    ...(isMac
-      ? { trafficLightPosition: { x: 16, y: 14 } }
-      : {
-          titleBarOverlay: getTitleBarOverlayOptions(resolveSystemWindowTheme()),
-          autoHideMenuBar: true,
-        }),
+    ...getMainWindowChromeOptions({
+      platform: process.platform,
+      theme: systemTheme,
+    }),
     webPreferences: {
       preload: getPreloadPath(),
       contextIsolation: true,
