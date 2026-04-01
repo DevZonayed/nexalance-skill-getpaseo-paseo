@@ -1889,6 +1889,10 @@ class ClaudeAgentSession implements AgentSession {
       cwd: this.config.cwd,
       includePartialMessages: true,
       permissionMode: this.currentMode,
+      // Dynamic mode switching can recreate the underlying Claude query. Keep the
+      // bypass launch capability available so later setPermissionMode("bypassPermissions")
+      // calls do not fail after a model/thinking/rewind-driven restart.
+      allowDangerouslySkipPermissions: true,
       agents: this.defaults?.agents,
       canUseTool: this.handlePermissionRequest,
       ...(claudeBinary ? { pathToClaudeCodeExecutable: claudeBinary } : {}),
