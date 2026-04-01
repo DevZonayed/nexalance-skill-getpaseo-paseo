@@ -14,6 +14,9 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as Clipboard from "expo-clipboard";
 import {
+  CopyX,
+  ArrowLeftToLine,
+  ArrowRightToLine,
   ChevronDown,
   Copy,
   Ellipsis,
@@ -21,6 +24,7 @@ import {
   PanelRight,
   SquarePen,
   SquareTerminal,
+  X,
 } from "lucide-react-native";
 import { GestureDetector } from "react-native-gesture-handler";
 import Animated from "react-native-reanimated";
@@ -73,7 +77,7 @@ import {
 import type { ListTerminalsResponse } from "@server/shared/messages";
 import { upsertTerminalListEntry } from "@/utils/terminal-list";
 import { confirmDialog } from "@/utils/confirm-dialog";
-import { useArchiveAgent } from "@/hooks/use-archive-agent";
+import { applyArchivedAgentCloseResults, useArchiveAgent } from "@/hooks/use-archive-agent";
 import { useStableEvent } from "@/hooks/use-stable-event";
 import { buildProviderCommand } from "@/utils/provider-command-templates";
 import { generateDraftId } from "@/stores/draft-keys";
@@ -103,6 +107,7 @@ import { useMountedTabSet } from "@/screens/workspace/use-mounted-tab-set";
 import {
   buildBulkCloseConfirmationMessage,
   classifyBulkClosableTabs,
+  closeBulkWorkspaceTabs,
 } from "@/screens/workspace/workspace-bulk-close";
 import { findAdjacentPane } from "@/utils/split-navigation";
 
@@ -332,6 +337,28 @@ function MobileWorkspaceTabOption({
                       disabled={entry.disabled}
                       destructive={entry.destructive}
                       onSelect={entry.onSelect}
+                      leading={(() => {
+                        const iconColor = theme.colors.foregroundMuted;
+                        switch (entry.icon) {
+                          case "copy":
+                            return <Copy size={16} color={iconColor} />;
+                          case "arrow-left-to-line":
+                            return <ArrowLeftToLine size={16} color={iconColor} />;
+                          case "arrow-right-to-line":
+                            return <ArrowRightToLine size={16} color={iconColor} />;
+                          case "copy-x":
+                            return <CopyX size={16} color={iconColor} />;
+                          case "x":
+                            return <X size={16} color={iconColor} />;
+                          default:
+                            return undefined;
+                        }
+                      })()}
+                      trailing={
+                        entry.hint ? (
+                          <Text style={styles.menuItemHint}>{entry.hint}</Text>
+                        ) : undefined
+                      }
                     >
                       {entry.label}
                     </DropdownMenuItem>
@@ -1381,62 +1408,45 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
         return;
       }
 
-      for (const { tabId, terminalId } of groups.terminalTabs) {
-        await closeTab(tabId, async () => {
-          try {
-            await killTerminalAsync(terminalId);
-            queryClient.setQueryData<ListTerminalsPayload>(terminalsQueryKey, (current) => {
-              if (!current) {
-                return current;
-              }
-              return {
-                ...current,
-                terminals: current.terminals.filter((terminal) => terminal.id !== terminalId),
-              };
-            });
-            if (persistenceKey) {
-              closeWorkspaceTabWithCleanup({
-                tabId,
-                target: { kind: "terminal", terminalId },
-              });
-            }
-          } catch (error) {
-            console.warn(`[WorkspaceScreen] Failed to close terminal tab ${logLabel}`, {
-              terminalId,
-              error,
-            });
+      const closeItemsPayload = await closeBulkWorkspaceTabs({
+        client,
+        groups,
+        closeTab,
+        closeWorkspaceTabWithCleanup: (cleanupInput) => {
+          if (!persistenceKey) {
+            return;
           }
-        });
-      }
+          closeWorkspaceTabWithCleanup(cleanupInput);
+        },
+        logLabel,
+        warn: (message, payload) => {
+          console.warn(message, payload);
+        },
+      });
 
-      for (const { tabId, agentId } of groups.agentTabs) {
-        if (!normalizedServerId) {
-          continue;
+      if (closeItemsPayload) {
+        for (const terminal of closeItemsPayload.terminals) {
+          if (!terminal.success) {
+            continue;
+          }
+          queryClient.setQueryData<ListTerminalsPayload>(terminalsQueryKey, (current) => {
+            if (!current) {
+              return current;
+            }
+            return {
+              ...current,
+              terminals: current.terminals.filter((entry) => entry.id !== terminal.terminalId),
+            };
+          });
         }
-        await closeTab(tabId, async () => {
-          try {
-            await archiveAgent({ serverId: normalizedServerId, agentId });
-            if (persistenceKey) {
-              closeWorkspaceTabWithCleanup({
-                tabId,
-                target: { kind: "agent", agentId },
-              });
-            }
-          } catch (error) {
-            console.warn(`[WorkspaceScreen] Failed to archive agent tab ${logLabel}`, {
-              agentId,
-              error,
-            });
-          }
-        });
-      }
 
-      for (const { tabId } of groups.otherTabs) {
-        await closeTab(tabId, async () => {
-          if (persistenceKey) {
-            closeWorkspaceTabWithCleanup({ tabId });
-          }
-        });
+        if (normalizedServerId) {
+          applyArchivedAgentCloseResults({
+            queryClient,
+            serverId: normalizedServerId,
+            results: closeItemsPayload.agents,
+          });
+        }
       }
 
       const closedKeys = new Set(tabsToClose.map((tab) => tab.key));
@@ -1444,10 +1454,9 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
       setHoveredCloseTabKey((current) => (current && closedKeys.has(current) ? null : current));
     },
     [
-      archiveAgent,
+      client,
       closeTab,
       closeWorkspaceTabWithCleanup,
-      killTerminalAsync,
       normalizedServerId,
       persistenceKey,
       queryClient,
@@ -2420,6 +2429,10 @@ const styles = StyleSheet.create((theme) => ({
   },
   mobileTabMenuTriggerActive: {
     backgroundColor: theme.colors.surface2,
+  },
+  menuItemHint: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.xs,
   },
   tabsContainer: {
     borderBottomWidth: 1,
