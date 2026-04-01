@@ -14,6 +14,7 @@ import { closeAllTransportSessions } from "./daemon/local-transport.js";
 import {
   registerWindowManager,
   getMainWindowChromeOptions,
+  getWindowBackgroundColor,
   resolveSystemWindowTheme,
   setupWindowResizeEvents,
   setupDragDropPrevention,
@@ -93,6 +94,7 @@ async function createMainWindow(): Promise<void> {
     width: 1200,
     height: 800,
     show: false,
+    backgroundColor: getWindowBackgroundColor(systemTheme),
     ...(iconPath ? { icon: iconPath } : {}),
     ...getMainWindowChromeOptions({
       platform: process.platform,

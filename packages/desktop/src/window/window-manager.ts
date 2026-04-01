@@ -33,6 +33,10 @@ export function resolveSystemWindowTheme(): WindowTheme {
   return nativeTheme.shouldUseDarkColors ? "dark" : "light";
 }
 
+export function getWindowBackgroundColor(theme: WindowTheme): string {
+  return theme === "dark" ? "#181B1A" : "#ffffff";
+}
+
 export function createWindowControlsOverlayState(theme: WindowTheme): WindowControlsOverlayState {
   const overlay = getTitleBarOverlayOptions(theme);
   return {
@@ -44,7 +48,7 @@ export function createWindowControlsOverlayState(theme: WindowTheme): WindowCont
 
 export function getTitleBarOverlayOptions(theme: WindowTheme): Electron.TitleBarOverlayOptions {
   if (theme === "dark") {
-    return { color: "#18181c", symbolColor: "#e4e4e7", height: 29 };
+    return { color: "#181B1A", symbolColor: "#e4e4e7", height: 29 };
   }
 
   return { color: "#ffffff", symbolColor: "#09090b", height: 29 };
@@ -171,12 +175,20 @@ export function registerWindowManager(): void {
 
   ipcMain.handle("paseo:window:updateWindowControls", (event, update?: unknown) => {
     const win = BrowserWindow.fromWebContents(event.sender);
-    if (!win || process.platform === "darwin") {
+    if (!win) {
       return;
     }
 
     const nextUpdate = readWindowControlsOverlayUpdate(update);
     if (!nextUpdate) {
+      return;
+    }
+
+    if (nextUpdate.backgroundColor) {
+      win.setBackgroundColor(nextUpdate.backgroundColor);
+    }
+
+    if (process.platform === "darwin") {
       return;
     }
 
