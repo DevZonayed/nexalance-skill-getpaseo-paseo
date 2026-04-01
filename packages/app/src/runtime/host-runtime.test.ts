@@ -134,6 +134,7 @@ function makeFetchAgentsEntry(input: {
         supportsMcpServers: true,
         supportsReasoningStream: true,
         supportsToolInvocations: true,
+        supportsTerminalMode: false,
       },
       currentModeId: null,
       availableModes: [],

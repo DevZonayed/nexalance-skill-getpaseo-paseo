@@ -1,22 +1,24 @@
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useMemo, useRef } from "react";
 import { Keyboard, Platform, ScrollView, Text, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
-import { AgentInputArea } from "@/components/agent-input-area";
+import invariant from "tiny-invariant";
+import { Composer } from "@/components/composer";
 import { FileDropZone } from "@/components/file-drop-zone";
 import { AgentStreamView } from "@/components/agent-stream-view";
 import type { ImageAttachment } from "@/components/message-input";
-import { useAgentFormState } from "@/hooks/use-agent-form-state";
 import { useAgentInputDraft } from "@/hooks/use-agent-input-draft";
 import { useDraftAgentCreateFlow } from "@/hooks/use-draft-agent-create-flow";
 import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
+import { buildWorkspaceDraftAgentConfig } from "@/screens/workspace/workspace-draft-agent-config";
 import { buildDraftStoreKey } from "@/stores/draft-keys";
-import type { Agent } from "@/stores/session-store";
+import { type Agent, useSessionStore } from "@/stores/session-store";
 import { encodeImages } from "@/utils/encode-images";
+import {
+  getWorkspaceExecutionAuthority,
+  requireWorkspaceRecordId,
+} from "@/utils/workspace-execution";
 import { shouldAutoFocusWorkspaceDraftComposer } from "@/screens/workspace/workspace-draft-pane-focus";
-import type {
-  AgentCapabilityFlags,
-  AgentSessionConfig,
-} from "@server/server/agent/agent-sdk-types";
+import type { AgentCapabilityFlags } from "@server/server/agent/agent-sdk-types";
 import type { AgentSnapshotPayload } from "@server/shared/messages";
 
 const EMPTY_PENDING_PERMISSIONS = new Map();
@@ -27,6 +29,7 @@ const DRAFT_CAPABILITIES: AgentCapabilityFlags = {
   supportsMcpServers: false,
   supportsReasoningStream: false,
   supportsToolInvocations: false,
+  supportsTerminalMode: false,
 };
 
 type WorkspaceDraftAgentTabProps = {
@@ -50,66 +53,36 @@ export function WorkspaceDraftAgentTab({
 }: WorkspaceDraftAgentTabProps) {
   const client = useHostRuntimeClient(serverId);
   const isConnected = useHostRuntimeIsConnected(serverId);
+  const workspaces = useSessionStore((state) => state.sessions[serverId]?.workspaces);
+  const workspaceAuthority = getWorkspaceExecutionAuthority({ workspaces, workspaceId });
+  const workspaceExecutionAuthority = workspaceAuthority.ok ? workspaceAuthority.authority : null;
+  const workspaceDirectory = workspaceExecutionAuthority?.workspaceDirectory ?? null;
   const addImagesRef = useRef<((images: ImageAttachment[]) => void) | null>(null);
-  const draftInput = useAgentInputDraft(
-    buildDraftStoreKey({
-      serverId,
-      agentId: tabId,
-      draftId,
-    }),
+  const draftStoreKey = useMemo(
+    () =>
+      buildDraftStoreKey({
+        serverId,
+        agentId: tabId,
+        draftId,
+      }),
+    [draftId, serverId, tabId],
   );
-
-  const {
-    selectedProvider,
-    setProviderFromUser,
-    selectedMode,
-    setModeFromUser,
-    selectedModel,
-    setModelFromUser,
-    selectedThinkingOptionId,
-    setThinkingOptionFromUser,
-    workingDir,
-    setWorkingDir,
-    providerDefinitions,
-    modeOptions,
-    availableModels,
-    allProviderModels,
-    isAllModelsLoading,
-    availableThinkingOptions,
-    isModelLoading,
-    setProviderAndModelFromUser,
-    persistFormPreferences,
-  } = useAgentFormState({
-    initialServerId: serverId,
-    initialValues: { workingDir: workspaceId },
-    isVisible: true,
-    isCreateFlow: true,
-    onlineServerIds: isConnected ? [serverId] : [],
-  });
-
-  // Lock working directory to workspace.
-  useEffect(() => {
-    if (workingDir.trim() === workspaceId.trim()) {
-      return;
-    }
-    setWorkingDir(workspaceId);
-  }, [setWorkingDir, workingDir, workspaceId]);
-
-  const effectiveDraftModelId = useMemo(() => {
-    if (selectedModel.trim()) {
-      return selectedModel.trim();
-    }
-    return availableModels.find((model) => model.isDefault)?.id ?? availableModels[0]?.id ?? "";
-  }, [availableModels, selectedModel]);
-
-  const effectiveDraftThinkingOptionId = useMemo(() => {
-    if (selectedThinkingOptionId.trim()) {
-      return selectedThinkingOptionId.trim();
-    }
-    const selectedModelDefinition =
-      availableModels.find((model) => model.id === effectiveDraftModelId) ?? null;
-    return selectedModelDefinition?.defaultThinkingOptionId ?? "";
-  }, [availableModels, effectiveDraftModelId, selectedThinkingOptionId]);
+  const draftInput = useAgentInputDraft(
+    {
+      draftKey: draftStoreKey,
+      composer: {
+        initialServerId: serverId,
+        initialValues: workspaceDirectory ? { workingDir: workspaceDirectory } : undefined,
+        isVisible: true,
+        onlineServerIds: isConnected ? [serverId] : [],
+        lockedWorkingDir: workspaceDirectory ?? undefined,
+      },
+    },
+  );
+  const composerState = draftInput.composerState;
+  if (!composerState) {
+    throw new Error("Workspace draft composer state is required");
+  }
 
   const {
     formErrorMessage,
@@ -124,14 +97,17 @@ export function WorkspaceDraftAgentTab({
       if (!text.trim()) {
         return "Initial prompt is required";
       }
-      if (providerDefinitions.length === 0) {
+      if (composerState.providerDefinitions.length === 0) {
         return "No available providers on the selected host";
       }
-      if (isModelLoading) {
+      if (composerState.isModelLoading) {
         return "Model defaults are still loading";
       }
-      if (!effectiveDraftModelId) {
+      if (!composerState.effectiveModelId) {
         return "No model is available for the selected provider";
+      }
+      if (!workspaceDirectory) {
+        return "Workspace directory not found";
       }
       if (!client) {
         return "Host is not connected";
@@ -139,21 +115,26 @@ export function WorkspaceDraftAgentTab({
       return null;
     },
     onBeforeSubmit: () => {
-      void persistFormPreferences();
+      void composerState.persistFormPreferences();
       if (Platform.OS === "web") {
         (document.activeElement as HTMLElement | null)?.blur?.();
       }
       Keyboard.dismiss();
     },
     buildDraftAgent: (attempt) => {
+      invariant(workspaceDirectory, "Workspace directory is required");
       const now = attempt.timestamp;
-      const model = effectiveDraftModelId || null;
-      const thinkingOptionId = effectiveDraftThinkingOptionId || null;
-      const modeId = modeOptions.length > 0 && selectedMode !== "" ? selectedMode : null;
+      const model = composerState.effectiveModelId || null;
+      const thinkingOptionId = composerState.effectiveThinkingOptionId || null;
+      const modeId =
+        composerState.modeOptions.length > 0 && composerState.selectedMode !== ""
+          ? composerState.selectedMode
+          : null;
       return {
         serverId,
         id: tabId,
-        provider: selectedProvider,
+        provider: composerState.selectedProvider,
+        terminal: false,
         status: "running",
         createdAt: now,
         updatedAt: now,
@@ -164,34 +145,36 @@ export function WorkspaceDraftAgentTab({
         availableModes: [],
         pendingPermissions: [],
         persistence: null,
-        runtimeInfo: { provider: selectedProvider, sessionId: null, model, modeId },
+        runtimeInfo: { provider: composerState.selectedProvider, sessionId: null, model, modeId },
         title: "Agent",
-        cwd: workspaceId,
+        cwd: workspaceDirectory,
         model,
         thinkingOptionId,
         labels: {},
       };
     },
     createRequest: async ({ attempt, text, images }) => {
+      invariant(workspaceDirectory, "Workspace directory is required");
+      invariant(workspaceExecutionAuthority, "Workspace authority is required");
       if (!client) {
         throw new Error("Host is not connected");
       }
 
-      const modeId = modeOptions.length > 0 && selectedMode !== "" ? selectedMode : undefined;
-      const config: AgentSessionConfig = {
-        provider: selectedProvider,
-        cwd: workspaceId,
-        ...(modeId ? { modeId } : {}),
-        ...(effectiveDraftModelId ? { model: effectiveDraftModelId } : {}),
-        ...(effectiveDraftThinkingOptionId
-          ? { thinkingOptionId: effectiveDraftThinkingOptionId }
+      const config = buildWorkspaceDraftAgentConfig({
+        provider: composerState.selectedProvider,
+        cwd: workspaceDirectory,
+        ...(composerState.modeOptions.length > 0 && composerState.selectedMode !== ""
+          ? { modeId: composerState.selectedMode }
           : {}),
-      };
+        model: composerState.effectiveModelId || undefined,
+        thinkingOptionId: composerState.effectiveThinkingOptionId || undefined,
+      });
 
       const imagesData = await encodeImages(images);
       const result = await client.createAgent({
         config,
-        initialPrompt: text,
+        workspaceId: requireWorkspaceRecordId(workspaceExecutionAuthority.workspaceId),
+        ...(text ? { initialPrompt: text } : {}),
         clientMessageId: attempt.clientMessageId,
         ...(imagesData && imagesData.length > 0 ? { images: imagesData } : {}),
       });
@@ -205,25 +188,6 @@ export function WorkspaceDraftAgentTab({
       onCreated(result);
     },
   });
-
-  const draftCommandConfig = useMemo(() => {
-    return {
-      provider: selectedProvider,
-      cwd: workspaceId,
-      ...(modeOptions.length > 0 && selectedMode !== "" ? { modeId: selectedMode } : {}),
-      ...(effectiveDraftModelId ? { model: effectiveDraftModelId } : {}),
-      ...(effectiveDraftThinkingOptionId
-        ? { thinkingOptionId: effectiveDraftThinkingOptionId }
-        : {}),
-    };
-  }, [
-    effectiveDraftModelId,
-    effectiveDraftThinkingOptionId,
-    modeOptions.length,
-    selectedMode,
-    selectedProvider,
-    workspaceId,
-  ]);
 
   const handleFilesDropped = useCallback((files: ImageAttachment[]) => {
     addImagesRef.current?.(files);
@@ -265,11 +229,12 @@ export function WorkspaceDraftAgentTab({
         </View>
 
         <View style={styles.inputAreaWrapper}>
-          <AgentInputArea
+          <Composer
             agentId={tabId}
             serverId={serverId}
             isInputActive={isPaneFocused}
             onSubmitMessage={handleCreateFromInput}
+            allowEmptySubmit={false}
             isSubmitLoading={isSubmitting}
             blurOnSubmit={true}
             value={draftInput.text}
@@ -279,24 +244,9 @@ export function WorkspaceDraftAgentTab({
             clearDraft={draftInput.clear}
             autoFocus={shouldAutoFocusWorkspaceDraftComposer({ isPaneFocused, isSubmitting })}
             onAddImages={handleAddImagesCallback}
-            commandDraftConfig={draftCommandConfig}
+            commandDraftConfig={composerState.commandDraftConfig}
             statusControls={{
-              providerDefinitions,
-              selectedProvider,
-              onSelectProvider: setProviderFromUser,
-              modeOptions,
-              selectedMode,
-              onSelectMode: setModeFromUser,
-              models: availableModels,
-              selectedModel,
-              onSelectModel: setModelFromUser,
-              isModelLoading,
-              allProviderModels,
-              isAllModelsLoading,
-              onSelectProviderAndModel: setProviderAndModelFromUser,
-              thinkingOptions: availableThinkingOptions,
-              selectedThinkingOptionId,
-              onSelectThinkingOption: setThinkingOptionFromUser,
+              ...composerState.statusControls,
               disabled: isSubmitting,
             }}
           />

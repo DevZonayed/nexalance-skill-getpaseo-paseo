@@ -1,10 +1,10 @@
 import { useEffect, useRef } from "react";
-import { useGlobalSearchParams, useLocalSearchParams, useRouter } from "expo-router";
+import { useGlobalSearchParams, usePathname, useRouter } from "expo-router";
 import type { WorkspaceTabTarget } from "@/stores/workspace-tabs-store";
 import { WorkspaceScreen } from "@/screens/workspace/workspace-screen";
 import {
   buildHostWorkspaceRoute,
-  decodeWorkspaceIdFromPathSegment,
+  parseHostWorkspaceRouteFromPathname,
   parseWorkspaceOpenIntent,
   type WorkspaceOpenIntent,
 } from "@/utils/host-routes";
@@ -37,18 +37,13 @@ function getOpenIntentTarget(openIntent: WorkspaceOpenIntent): WorkspaceTabTarge
 export default function HostWorkspaceLayout() {
   const router = useRouter();
   const consumedIntentRef = useRef<string | null>(null);
-  const params = useLocalSearchParams<{
-    serverId?: string | string[];
-    workspaceId?: string | string[];
-  }>();
+  const pathname = usePathname();
   const globalParams = useGlobalSearchParams<{
     open?: string | string[];
   }>();
-  const serverId = getParamValue(params.serverId);
-  const workspaceValue = getParamValue(params.workspaceId);
-  const workspaceId = workspaceValue
-    ? (decodeWorkspaceIdFromPathSegment(workspaceValue) ?? "")
-    : "";
+  const parsedWorkspaceRoute = parseHostWorkspaceRouteFromPathname(pathname);
+  const serverId = parsedWorkspaceRoute?.serverId ?? "";
+  const workspaceId = parsedWorkspaceRoute?.workspaceId ?? "";
   const openValue = getParamValue(globalParams.open);
 
   useEffect(() => {

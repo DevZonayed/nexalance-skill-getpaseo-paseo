@@ -14,6 +14,13 @@ import { buildHostRootRoute } from "@/utils/host-routes";
 
 const WELCOME_ROUTE = "/welcome";
 
+function getCurrentPathname(fallbackPathname: string): string {
+  if (typeof window === "undefined") {
+    return fallbackPathname;
+  }
+  return window.location.pathname || fallbackPathname;
+}
+
 function useAnyOnlineHostServerId(serverIds: string[]): string | null {
   const runtime = getHostRuntimeStore();
 
@@ -51,7 +58,8 @@ export default function Index() {
     if (!storeReady) {
       return;
     }
-    if (pathname !== "/" && pathname !== "") {
+    const currentPathname = getCurrentPathname(pathname);
+    if (currentPathname !== "/" && currentPathname !== "") {
       return;
     }
 

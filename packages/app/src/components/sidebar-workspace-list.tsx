@@ -10,7 +10,7 @@ import {
   type GestureResponderEvent,
 } from "react-native";
 import * as Haptics from "expo-haptics";
-import { useMutation, useQueries } from "@tanstack/react-query";
+import { useQueries } from "@tanstack/react-query";
 import {
   useCallback,
   useMemo,
@@ -45,7 +45,6 @@ import { getHostRuntimeStore, isHostRuntimeConnected } from "@/runtime/host-runt
 import { getIsElectronRuntime, isCompactFormFactor } from "@/constants/layout";
 import { projectIconQueryKey } from "@/hooks/use-project-icon-query";
 import { parseHostWorkspaceRouteFromPathname } from "@/utils/host-routes";
-import { prepareWorkspaceTab } from "@/utils/workspace-navigation";
 import {
   type SidebarProjectEntry,
   type SidebarWorkspaceEntry,
@@ -83,10 +82,14 @@ import { useKeyboardActionHandler } from "@/hooks/use-keyboard-action-handler";
 import { type PrHint, useWorkspacePrHint } from "@/hooks/use-checkout-pr-status-query";
 import { buildSidebarProjectRowModel } from "@/utils/sidebar-project-row-model";
 import { useNavigationActiveWorkspaceSelection } from "@/stores/navigation-active-workspace-store";
-import { normalizeWorkspaceDescriptor, useSessionStore } from "@/stores/session-store";
-import { createNameId } from "mnemonic-id";
+import { useSessionStore } from "@/stores/session-store";
+import { useWorkspaceSetupStore } from "@/stores/workspace-setup-store";
 import { buildWorkspaceArchiveRedirectRoute } from "@/utils/workspace-archive-navigation";
 import { openExternalUrl } from "@/utils/open-external-url";
+import {
+  requireWorkspaceExecutionDirectory,
+  resolveWorkspaceExecutionDirectory,
+} from "@/utils/workspace-execution";
 
 function toProjectIconDataUri(icon: { mimeType: string; data: string } | null): string | null {
   if (!icon) {
@@ -239,7 +242,7 @@ function WorkspaceStatusIndicator({
   }
 
   const KindIcon =
-    workspaceKind === "local_checkout"
+    workspaceKind === "checkout"
       ? Monitor
       : workspaceKind === "worktree"
         ? FolderGit2
@@ -654,7 +657,6 @@ function ProjectHeaderRow({
   canCreateWorktree,
   isProjectActive = false,
   onWorkspacePress,
-  onWorktreeCreated,
   shortcutNumber = null,
   showShortcutBadge = false,
   drag,
@@ -665,50 +667,30 @@ function ProjectHeaderRow({
 }: ProjectHeaderRowProps) {
   const [isHovered, setIsHovered] = useState(false);
   const isMobileBreakpoint = isCompactFormFactor();
-  const mergeWorkspaces = useSessionStore((state) => state.mergeWorkspaces);
-  const toast = useToast();
+  const beginWorkspaceSetup = useWorkspaceSetupStore((state) => state.beginWorkspaceSetup);
 
-  const createWorktreeMutation = useMutation({
-    mutationFn: async () => {
-      if (!serverId) {
-        throw new Error("No server");
-      }
-      const client = getHostRuntimeStore().getClient(serverId);
-      if (!client || !isHostRuntimeConnected(getHostRuntimeStore().getSnapshot(serverId))) {
-        throw new Error("Host is not connected");
-      }
-      const payload = await client.createPaseoWorktree({
-        cwd: project.iconWorkingDir,
-        worktreeSlug: createNameId(),
-      });
-      if (payload.error || !payload.workspace) {
-        throw new Error(payload.error ?? "Failed to create worktree");
-      }
-      return payload.workspace;
-    },
-    onSuccess: (workspace) => {
-      mergeWorkspaces(serverId!, [normalizeWorkspaceDescriptor(workspace)]);
-      onWorktreeCreated?.(workspace.id);
-      onWorkspacePress?.();
-      router.navigate(
-        prepareWorkspaceTab({
-          serverId: serverId!,
-          workspaceId: workspace.id,
-          target: { kind: "draft", draftId: "new" },
-        }) as any,
-      );
-    },
-    onError: (error) => {
-      toast.error(error instanceof Error ? error.message : String(error));
-    },
-  });
+  const handleBeginWorkspaceSetup = useCallback(() => {
+    if (!serverId) {
+      return;
+    }
+
+    onWorkspacePress?.();
+    beginWorkspaceSetup({
+      serverId,
+      sourceDirectory: project.iconWorkingDir,
+      displayName,
+      creationMethod: "create_worktree",
+      navigationMethod: "navigate",
+    });
+  }, [beginWorkspaceSetup, displayName, onWorkspacePress, project.iconWorkingDir, serverId]);
+
   useKeyboardActionHandler({
     handlerId: `worktree-new-${project.projectKey}`,
     actions: ["worktree.new"],
-    enabled: isProjectActive && canCreateWorktree && !createWorktreeMutation.isPending,
+    enabled: isProjectActive && canCreateWorktree,
     priority: 0,
     handle: () => {
-      createWorktreeMutation.mutate();
+      handleBeginWorkspaceSetup();
       return true;
     },
   });
@@ -752,9 +734,9 @@ function ProjectHeaderRow({
       {canCreateWorktree ? (
         <NewWorktreeButton
           displayName={displayName}
-          onPress={() => createWorktreeMutation.mutate()}
+          onPress={handleBeginWorkspaceSetup}
           visible={isHovered || isMobileBreakpoint}
-          loading={createWorktreeMutation.isPending}
+          loading={false}
           showShortcutHint={isProjectActive}
           testID={`sidebar-project-new-worktree-${project.projectKey}`}
         />
@@ -836,10 +818,13 @@ function WorkspaceRowInner({
   const { theme } = useUnistyles();
   const [isHovered, setIsHovered] = useState(false);
   const isTouchPlatform = Platform.OS !== "web";
+  const workspaceDirectory = resolveWorkspaceExecutionDirectory({
+    workspaceDirectory: workspace.workspaceDirectory,
+  });
   const prHint = useWorkspacePrHint({
     serverId: workspace.serverId,
-    cwd: workspace.workspaceId,
-    enabled: workspace.workspaceKind !== "directory",
+    cwd: workspaceDirectory ?? "",
+    enabled: workspace.projectKind === "git" && Boolean(workspaceDirectory),
   });
   const interaction = useLongPressDragInteraction({
     drag,
@@ -1003,12 +988,17 @@ function WorkspaceRowWithMenu({
     (state) => state.sessions[workspace.serverId]?.workspaces ?? EMPTY_WORKSPACES,
   );
   const [isArchivingWorkspace, setIsArchivingWorkspace] = useState(false);
+  const workspaceDirectory = resolveWorkspaceExecutionDirectory({
+    workspaceDirectory: workspace.workspaceDirectory,
+  });
   const archiveStatus = useCheckoutGitActionsStore((state) =>
-    state.getStatus({
-      serverId: workspace.serverId,
-      cwd: workspace.workspaceId,
-      actionId: "archive-worktree",
-    }),
+    workspaceDirectory
+      ? state.getStatus({
+          serverId: workspace.serverId,
+          cwd: workspaceDirectory,
+          actionId: "archive-worktree",
+        })
+      : "idle",
   );
   const isWorktree = workspace.workspaceKind === "worktree";
   const isArchiving = isWorktree ? archiveStatus === "pending" : isArchivingWorkspace;
@@ -1046,11 +1036,26 @@ function WorkspaceRowWithMenu({
       if (!confirmed) {
         return;
       }
+      let workspaceDirectory: string;
+      try {
+        workspaceDirectory = requireWorkspaceExecutionDirectory({
+          workspaceId: workspace.workspaceId,
+          workspaceDirectory: workspace.workspaceDirectory,
+        });
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Workspace path not available");
+        return;
+      }
+
+      if (!workspaceDirectory) {
+        toast.error("Workspace path not available");
+        return;
+      }
 
       void archiveWorktree({
         serverId: workspace.serverId,
-        cwd: workspace.workspaceId,
-        worktreePath: workspace.workspaceId,
+        cwd: workspaceDirectory,
+        worktreePath: workspaceDirectory,
       })
         .then(() => {
           redirectAfterArchive();
@@ -1066,6 +1071,7 @@ function WorkspaceRowWithMenu({
     redirectAfterArchive,
     toast,
     workspace.name,
+    workspace.workspaceDirectory,
     workspace.serverId,
     workspace.workspaceId,
   ]);
@@ -1095,7 +1101,7 @@ function WorkspaceRowWithMenu({
 
       setIsArchivingWorkspace(true);
       try {
-        const payload = await client.archiveWorkspace(workspace.workspaceId);
+        const payload = await client.archiveWorkspace(Number(workspace.workspaceId));
         if (payload.error) {
           throw new Error(payload.error);
         }
@@ -1116,9 +1122,19 @@ function WorkspaceRowWithMenu({
   ]);
 
   const handleCopyPath = useCallback(() => {
-    void Clipboard.setStringAsync(workspace.workspaceId);
+    let workspaceDirectory: string;
+    try {
+      workspaceDirectory = requireWorkspaceExecutionDirectory({
+        workspaceId: workspace.workspaceId,
+        workspaceDirectory: workspace.workspaceDirectory,
+      });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Workspace path not available");
+      return;
+    }
+    void Clipboard.setStringAsync(workspaceDirectory);
     toast.copied("Path copied");
-  }, [toast, workspace.workspaceId]);
+  }, [toast, workspace.workspaceDirectory, workspace.workspaceId]);
 
   const handleCopyBranchName = useCallback(() => {
     void Clipboard.setStringAsync(workspace.name);
@@ -1240,7 +1256,7 @@ function NonGitProjectRowWithMenuContent({
 
       setIsArchivingWorkspace(true);
       try {
-        const payload = await client.archiveWorkspace(workspace.workspaceId);
+        const payload = await client.archiveWorkspace(Number(workspace.workspaceId));
         if (payload.error) {
           throw new Error(payload.error);
         }
@@ -1351,7 +1367,7 @@ function FlattenedProjectRow({
   dragHandleProps?: DraggableListDragHandleProps;
   isProjectActive?: boolean;
 }) {
-  if (project.projectKind === "non_git") {
+  if (project.projectKind === "directory") {
     return (
       <NonGitProjectRowWithMenu
         project={project}

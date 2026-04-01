@@ -3,13 +3,22 @@ import { useLocalSearchParams, usePathname, useRouter } from "expo-router";
 import { useSessionStore } from "@/stores/session-store";
 import { useFormPreferences } from "@/hooks/use-form-preferences";
 import {
+  buildHostAgentDetailRoute,
   buildHostOpenProjectRoute,
   buildHostRootRoute,
-  buildHostWorkspaceRoute,
+  buildHostWorkspaceOpenRoute,
 } from "@/utils/host-routes";
+import { resolveWorkspaceIdByExecutionDirectory } from "@/utils/workspace-execution";
 import { prepareWorkspaceTab } from "@/utils/workspace-navigation";
 
 const HOST_ROOT_REDIRECT_DELAY_MS = 300;
+
+function getCurrentPathname(fallbackPathname: string): string {
+  if (typeof window === "undefined") {
+    return fallbackPathname;
+  }
+  return window.location.pathname || fallbackPathname;
+}
 
 export default function HostIndexRoute() {
   const router = useRouter();
@@ -32,11 +41,13 @@ export default function HostIndexRoute() {
       return;
     }
     const rootRoute = buildHostRootRoute(serverId);
-    if (pathname !== rootRoute && pathname !== `${rootRoute}/`) {
+    const currentPathname = getCurrentPathname(pathname);
+    if (currentPathname !== rootRoute && currentPathname !== `${rootRoute}/`) {
       return;
     }
     const timer = setTimeout(() => {
-      if (pathname !== rootRoute && pathname !== `${rootRoute}/`) {
+      const latestPathname = getCurrentPathname(pathname);
+      if (latestPathname !== rootRoute && latestPathname !== `${rootRoute}/`) {
         return;
       }
 
@@ -55,20 +66,30 @@ export default function HostIndexRoute() {
       });
 
       const primaryAgent = visibleAgents[0];
-      if (primaryAgent?.cwd?.trim()) {
+      const primaryAgentWorkspaceId = resolveWorkspaceIdByExecutionDirectory({
+        workspaces: sessionWorkspaces?.values(),
+        workspaceDirectory: primaryAgent?.cwd,
+      });
+      if (primaryAgent && primaryAgentWorkspaceId) {
         router.replace(
           prepareWorkspaceTab({
             serverId,
-            workspaceId: primaryAgent.cwd.trim(),
+            workspaceId: primaryAgentWorkspaceId,
             target: { kind: "agent", agentId: primaryAgent.id },
           }) as any,
         );
         return;
       }
+      if (primaryAgent) {
+        router.replace(buildHostAgentDetailRoute(serverId, primaryAgent.id) as any);
+        return;
+      }
 
       const primaryWorkspace = visibleWorkspaces[0];
       if (primaryWorkspace?.id?.trim()) {
-        router.replace(buildHostWorkspaceRoute(serverId, primaryWorkspace.id.trim()) as any);
+        router.replace(
+          buildHostWorkspaceOpenRoute(serverId, primaryWorkspace.id.trim(), "draft:new") as any,
+        );
         return;
       }
 

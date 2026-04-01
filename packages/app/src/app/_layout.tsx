@@ -60,6 +60,7 @@ import { getIsElectronRuntime, isCompactFormFactor } from "@/constants/layout";
 import { CommandCenter } from "@/components/command-center";
 import { ProjectPickerModal } from "@/components/project-picker-modal";
 import { KeyboardShortcutsDialog } from "@/components/keyboard-shortcuts-dialog";
+import { WorkspaceSetupDialog } from "@/components/workspace-setup-dialog";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { queryClient } from "@/query/query-client";
 import {
@@ -76,6 +77,7 @@ import {
   parseServerIdFromPathname,
   parseHostAgentRouteFromPathname,
   parseWorkspaceOpenIntent,
+  decodeWorkspaceIdFromPathSegment,
 } from "@/utils/host-routes";
 import { syncNavigationActiveWorkspace } from "@/stores/navigation-active-workspace-store";
 
@@ -372,6 +374,7 @@ function AppContainer({
       <UpdateBanner />
       <CommandCenter />
       <ProjectPickerModal />
+      <WorkspaceSetupDialog />
       <KeyboardShortcutsDialog />
     </View>
   );
@@ -607,7 +610,6 @@ function FaviconStatusSync() {
 function RootStack() {
   const storeReady = useStoreReady();
   const { theme } = useUnistyles();
-
   return (
     <Stack
       screenOptions={{
@@ -621,7 +623,23 @@ function RootStack() {
       <Stack.Protected guard={storeReady}>
         <Stack.Screen name="welcome" />
         <Stack.Screen name="settings" />
-        <Stack.Screen name="h/[serverId]/workspace/[workspaceId]" />
+        <Stack.Screen
+          name="h/[serverId]/workspace/[workspaceId]"
+          getId={({ params }) => {
+            const serverValue = Array.isArray(params?.serverId)
+              ? params.serverId[0]
+              : params?.serverId;
+            const workspaceValue = Array.isArray(params?.workspaceId)
+              ? params.workspaceId[0]
+              : params?.workspaceId;
+            const serverId = typeof serverValue === "string" ? serverValue.trim() : "";
+            const workspaceId =
+              typeof workspaceValue === "string"
+                ? (decodeWorkspaceIdFromPathSegment(workspaceValue) ?? workspaceValue.trim())
+                : "";
+            return `${serverId}:${workspaceId}`;
+          }}
+        />
         <Stack.Screen
           name="h/[serverId]/agent/[agentId]"
           options={{ gestureEnabled: false }}

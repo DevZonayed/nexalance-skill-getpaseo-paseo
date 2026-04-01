@@ -244,6 +244,11 @@ export function WelcomeScreen({ onHostAdded }: WelcomeScreenProps) {
   );
 
   useEffect(() => {
+    const currentPathname =
+      typeof window === "undefined" ? null : (window.location.pathname || null);
+    if (currentPathname && currentPathname !== "/welcome") {
+      return;
+    }
     if (!anyOnlineServerId) {
       return;
     }
