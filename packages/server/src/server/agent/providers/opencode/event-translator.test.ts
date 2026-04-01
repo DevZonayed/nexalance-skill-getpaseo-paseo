@@ -9,6 +9,7 @@ function createState(sessionId = "session-1"): OpenCodeEventTranslationState {
     accumulatedUsage: {},
     streamedPartKeys: new Set(),
     emittedStructuredMessageIds: new Set(),
+    partTypes: new Map(),
   };
 }
 
@@ -249,6 +250,70 @@ describe("translateOpenCodeEvent", () => {
         type: "timeline",
         provider: "opencode",
         item: { type: "reasoning", text: "The user said hello." },
+      },
+    ]);
+  });
+
+  it("emits reasoning (not assistant_message) when delta field is 'text' for a known reasoning part", () => {
+    const state = createState();
+
+    // Part created as reasoning (message.part.updated fires before deltas)
+    translateOpenCodeEvent(
+      {
+        type: "message.part.updated",
+        properties: {
+          part: {
+            id: "rp-2",
+            sessionID: "session-1",
+            messageID: "msg-r2",
+            type: "reasoning",
+            time: { start: 1 },
+          },
+        },
+      },
+      state,
+    );
+
+    // Deltas arrive with field="text" (the field name on ReasoningPart)
+    const delta1 = translateOpenCodeEvent(
+      {
+        type: "message.part.delta",
+        properties: {
+          sessionID: "session-1",
+          messageID: "msg-r2",
+          partID: "rp-2",
+          field: "text",
+          delta: "Thinking about this...",
+        },
+      },
+      state,
+    );
+
+    // Completed reasoning part should be deduped
+    const completed = translateOpenCodeEvent(
+      {
+        type: "message.part.updated",
+        properties: {
+          part: {
+            id: "rp-2",
+            sessionID: "session-1",
+            messageID: "msg-r2",
+            type: "reasoning",
+            text: "Thinking about this...",
+            time: { start: 1, end: 2 },
+          },
+        },
+      },
+      state,
+    );
+
+    const allEvents = [...delta1, ...completed];
+
+    expect(allEvents).toEqual([
+      {
+        type: "timeline",
+        provider: "opencode",
+        item: { type: "reasoning", text: "Thinking about this..." },
       },
     ]);
   });

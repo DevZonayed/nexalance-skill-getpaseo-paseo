@@ -580,6 +580,8 @@ export type OpenCodeEventTranslationState = {
   accumulatedUsage: AgentUsage;
   streamedPartKeys: Set<string>;
   emittedStructuredMessageIds: Set<string>;
+  /** Tracks the type of each part by ID, learned from message.part.updated events. */
+  partTypes: Map<string, string>;
 };
 
 function stringifyStructuredAssistantMessage(value: unknown): string | null {
@@ -705,10 +707,15 @@ export function translateOpenCodeEvent(
         break;
       }
 
+      const partId = part.id as string | undefined;
       const messageId = part.messageID as string | undefined;
       const messageRole = messageId ? state.messageRoles.get(messageId) : undefined;
       const partType = part.type as string | undefined;
       const partTime = part.time as { start?: number; end?: number } | undefined;
+
+      if (partId && partType) {
+        state.partTypes.set(partId, partType);
+      }
 
       if (partType === "text") {
         const partKey = resolvePartDedupeKey(part, "text");
@@ -809,22 +816,11 @@ export function translateOpenCodeEvent(
         break;
       }
 
-      if (deltaField === "text") {
-        if (deltaMessageRole === "user") {
-          break;
-        }
-        const partId = props.partID as string | undefined;
-        const partKey = partId ? `text:${partId}` : null;
-        if (partKey) {
-          state.streamedPartKeys.add(partKey);
-        }
-        events.push({
-          type: "timeline",
-          provider: "opencode",
-          item: { type: "assistant_message", text: deltaText },
-        });
-      } else if (deltaField === "reasoning") {
-        const partId = props.partID as string | undefined;
+      const partId = props.partID as string | undefined;
+      const knownPartType = partId ? state.partTypes.get(partId) : undefined;
+      const isReasoning = knownPartType === "reasoning" || deltaField === "reasoning";
+
+      if (isReasoning) {
         const partKey = partId ? `reasoning:${partId}` : null;
         if (partKey) {
           state.streamedPartKeys.add(partKey);
@@ -833,6 +829,19 @@ export function translateOpenCodeEvent(
           type: "timeline",
           provider: "opencode",
           item: { type: "reasoning", text: deltaText },
+        });
+      } else if (deltaField === "text") {
+        if (deltaMessageRole === "user") {
+          break;
+        }
+        const partKey = partId ? `text:${partId}` : null;
+        if (partKey) {
+          state.streamedPartKeys.add(partKey);
+        }
+        events.push({
+          type: "timeline",
+          provider: "opencode",
+          item: { type: "assistant_message", text: deltaText },
         });
       }
       break;
@@ -925,6 +934,7 @@ export function translateOpenCodeEvent(
       const sessionId = props.sessionID as string | undefined;
       if (sessionId === state.sessionId) {
         state.streamedPartKeys.clear();
+        state.partTypes.clear();
         events.push({
           type: "turn_completed",
           provider: "opencode",
@@ -938,6 +948,7 @@ export function translateOpenCodeEvent(
       const sessionId = props.sessionID as string | undefined;
       if (sessionId === state.sessionId) {
         state.streamedPartKeys.clear();
+        state.partTypes.clear();
         const error = props.error as string | undefined;
         events.push({
           type: "turn_failed",
@@ -971,6 +982,8 @@ class OpenCodeAgentSession implements AgentSession {
   private streamedPartKeys = new Set<string>();
   /** Tracks assistant messages already emitted from structured payloads. */
   private emittedStructuredMessageIds = new Set<string>();
+  /** Tracks the type of each part by ID, learned from message.part.updated events. */
+  private partTypes = new Map<string, string>();
   private availableModesCache: AgentMode[] | null = null;
   private readonly subscribers = new Set<(event: AgentStreamEvent) => void>();
   private nextTurnOrdinal = 0;
@@ -1485,6 +1498,7 @@ class OpenCodeAgentSession implements AgentSession {
       accumulatedUsage: this.accumulatedUsage,
       streamedPartKeys: this.streamedPartKeys,
       emittedStructuredMessageIds: this.emittedStructuredMessageIds,
+      partTypes: this.partTypes,
     });
 
     for (const translatedEvent of translated) {
