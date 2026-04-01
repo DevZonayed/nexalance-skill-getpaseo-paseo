@@ -1589,7 +1589,11 @@ class ClaudeAgentSession implements AgentSession {
     if (!commandMap.has(REWIND_COMMAND_NAME)) {
       commandMap.set(REWIND_COMMAND_NAME, REWIND_COMMAND);
     }
-    return Array.from(commandMap.values()).sort((a, b) => a.name.localeCompare(b.name));
+    const rewindCommand = commandMap.get(REWIND_COMMAND_NAME);
+    const remainingCommands = Array.from(commandMap.values())
+      .filter((command) => command.name !== REWIND_COMMAND_NAME)
+      .sort((a, b) => a.name.localeCompare(b.name));
+    return rewindCommand ? [rewindCommand, ...remainingCommands] : remainingCommands;
   }
 
   private resolveSlashCommandInvocation(prompt: AgentPromptInput): SlashCommandInvocation | null {

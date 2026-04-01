@@ -234,6 +234,7 @@ describe("ClaudeAgentSession history replay regression", () => {
     try {
       const commands = await session.listCommands?.();
       expect(commands?.some((command) => command.name === "rewind")).toBe(true);
+      expect(commands?.[0]?.name).toBe("rewind");
     } finally {
       await session.close();
     }

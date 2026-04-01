@@ -1,4 +1,6 @@
 import { watch, type FSWatcher } from "node:fs";
+import { readdir } from "node:fs/promises";
+import { join } from "node:path";
 import { exec } from "child_process";
 import { promisify } from "util";
 import type pino from "pino";
@@ -39,6 +41,10 @@ type CheckoutDiffWatchTarget = {
   refreshQueued: boolean;
   latestPayload: CheckoutDiffSnapshotPayload | null;
   latestFingerprint: string | null;
+  watchedPaths: Set<string>;
+  repoWatchPath: string | null;
+  linuxTreeRefreshPromise: Promise<void> | null;
+  linuxTreeRefreshQueued: boolean;
 };
 
 export class CheckoutDiffManager {
@@ -145,6 +151,7 @@ export class CheckoutDiffManager {
       watcher.close();
     }
     target.watchers = [];
+    target.watchedPaths.clear();
     target.listeners.clear();
   }
 
@@ -276,9 +283,14 @@ export class CheckoutDiffManager {
       refreshQueued: false,
       latestPayload: null,
       latestFingerprint: null,
+      watchedPaths: new Set<string>(),
+      repoWatchPath: null,
+      linuxTreeRefreshPromise: null,
+      linuxTreeRefreshQueued: false,
     };
 
     const repoWatchPath = watchRoot ?? cwd;
+    target.repoWatchPath = repoWatchPath;
     const watchPaths = new Set<string>([repoWatchPath]);
     const gitDir = await resolveCheckoutGitDir(cwd);
     if (gitDir) {
@@ -287,52 +299,15 @@ export class CheckoutDiffManager {
 
     let hasRecursiveRepoCoverage = false;
     const allowRecursiveRepoWatch = process.platform !== "linux";
+    if (process.platform === "linux") {
+      hasRecursiveRepoCoverage = await this.ensureLinuxRepoTreeWatchers(target, repoWatchPath);
+    }
     for (const watchPath of watchPaths) {
-      const shouldTryRecursive = watchPath === repoWatchPath && allowRecursiveRepoWatch;
-      const createWatcher = (recursive: boolean): FSWatcher =>
-        watch(watchPath, { recursive }, () => {
-          this.scheduleTargetRefresh(target);
-        });
-
-      let watcher: FSWatcher | null = null;
-      let watcherIsRecursive = false;
-      try {
-        if (shouldTryRecursive) {
-          watcher = createWatcher(true);
-          watcherIsRecursive = true;
-        } else {
-          watcher = createWatcher(false);
-        }
-      } catch (error) {
-        if (shouldTryRecursive) {
-          try {
-            watcher = createWatcher(false);
-            this.logger.warn(
-              { err: error, watchPath, cwd, compare },
-              "Checkout diff recursive watch unavailable; using non-recursive fallback",
-            );
-          } catch (fallbackError) {
-            this.logger.warn(
-              { err: fallbackError, watchPath, cwd, compare },
-              "Failed to start checkout diff watcher",
-            );
-          }
-        } else {
-          this.logger.warn(
-            { err: error, watchPath, cwd, compare },
-            "Failed to start checkout diff watcher",
-          );
-        }
-      }
-
-      if (!watcher) {
+      if (process.platform === "linux" && watchPath === repoWatchPath) {
         continue;
       }
-
-      watcher.on("error", (error) => {
-        this.logger.warn({ err: error, watchPath, cwd, compare }, "Checkout diff watcher error");
-      });
-      target.watchers.push(watcher);
+      const shouldTryRecursive = watchPath === repoWatchPath && allowRecursiveRepoWatch;
+      const watcherIsRecursive = this.addWatcher(target, watchPath, shouldTryRecursive);
       if (watchPath === repoWatchPath && watcherIsRecursive) {
         hasRecursiveRepoCoverage = true;
       }
@@ -357,5 +332,149 @@ export class CheckoutDiffManager {
 
     this.targets.set(targetKey, target);
     return target;
+  }
+
+  private addWatcher(
+    target: CheckoutDiffWatchTarget,
+    watchPath: string,
+    shouldTryRecursive: boolean,
+  ): boolean {
+    if (target.watchedPaths.has(watchPath)) {
+      return false;
+    }
+
+    const { cwd, compare } = target;
+    const onChange = () => {
+      if (process.platform === "linux" && target.repoWatchPath) {
+        void this.refreshLinuxRepoTreeWatchers(target);
+      }
+      this.scheduleTargetRefresh(target);
+    };
+    const createWatcher = (recursive: boolean): FSWatcher =>
+      watch(watchPath, { recursive }, () => {
+        onChange();
+      });
+
+    let watcher: FSWatcher | null = null;
+    let watcherIsRecursive = false;
+    try {
+      if (shouldTryRecursive) {
+        watcher = createWatcher(true);
+        watcherIsRecursive = true;
+      } else {
+        watcher = createWatcher(false);
+      }
+    } catch (error) {
+      if (shouldTryRecursive) {
+        try {
+          watcher = createWatcher(false);
+          this.logger.warn(
+            { err: error, watchPath, cwd, compare },
+            "Checkout diff recursive watch unavailable; using non-recursive fallback",
+          );
+        } catch (fallbackError) {
+          this.logger.warn(
+            { err: fallbackError, watchPath, cwd, compare },
+            "Failed to start checkout diff watcher",
+          );
+        }
+      } else {
+        this.logger.warn(
+          { err: error, watchPath, cwd, compare },
+          "Failed to start checkout diff watcher",
+        );
+      }
+    }
+
+    if (!watcher) {
+      return false;
+    }
+
+    watcher.on("error", (error) => {
+      this.logger.warn({ err: error, watchPath, cwd, compare }, "Checkout diff watcher error");
+    });
+    target.watchers.push(watcher);
+    target.watchedPaths.add(watchPath);
+    return watcherIsRecursive;
+  }
+
+  private async ensureLinuxRepoTreeWatchers(
+    target: CheckoutDiffWatchTarget,
+    rootPath: string,
+  ): Promise<boolean> {
+    const directories = await this.listLinuxWatchDirectories(rootPath);
+    let complete = true;
+    for (const directory of directories) {
+      const watcherWasRecursive = this.addWatcher(target, directory, false);
+      if (!watcherWasRecursive && !target.watchedPaths.has(directory)) {
+        complete = false;
+      }
+    }
+    return complete && target.watchedPaths.has(rootPath);
+  }
+
+  private async refreshLinuxRepoTreeWatchers(target: CheckoutDiffWatchTarget): Promise<void> {
+    if (process.platform !== "linux" || !target.repoWatchPath) {
+      return;
+    }
+    const rootPath = target.repoWatchPath;
+    if (target.linuxTreeRefreshPromise) {
+      target.linuxTreeRefreshQueued = true;
+      return;
+    }
+
+    target.linuxTreeRefreshPromise = (async () => {
+      do {
+        target.linuxTreeRefreshQueued = false;
+        try {
+          await this.ensureLinuxRepoTreeWatchers(target, rootPath);
+        } catch (error) {
+          this.logger.warn(
+            {
+              err: error,
+              cwd: target.cwd,
+              compare: target.compare,
+              rootPath,
+            },
+            "Failed to refresh Linux checkout diff tree watchers",
+          );
+        }
+      } while (target.linuxTreeRefreshQueued);
+    })();
+
+    try {
+      await target.linuxTreeRefreshPromise;
+    } finally {
+      target.linuxTreeRefreshPromise = null;
+    }
+  }
+
+  private async listLinuxWatchDirectories(rootPath: string): Promise<string[]> {
+    const directories: string[] = [];
+    const pending = [rootPath];
+
+    while (pending.length > 0) {
+      const directory = pending.pop();
+      if (!directory) {
+        continue;
+      }
+      directories.push(directory);
+
+      let entries;
+      try {
+        entries = await readdir(directory, { withFileTypes: true });
+      } catch {
+        continue;
+      }
+
+      for (const entry of entries) {
+        if (!entry.isDirectory() || entry.name === ".git") {
+          continue;
+        }
+        pending.push(join(directory, entry.name));
+      }
+    }
+
+    return directories;
   }
 }
