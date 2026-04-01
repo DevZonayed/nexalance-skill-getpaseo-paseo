@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AttemptCancelledError, AttemptGuard } from "@/utils/attempt-guard";
-import { isDesktop } from "@/desktop/host";
+import { isElectronRuntime } from "@/desktop/host";
 
 export interface AudioCaptureConfig {
   sampleRate?: number;
@@ -157,7 +157,7 @@ export function useAudioRecorder(config?: AudioCaptureConfig) {
         : true;
     const currentOrigin =
       typeof window !== "undefined" && window.location ? window.location.origin : "unknown";
-    const isDesktopApp = isDesktop();
+    const isDesktopApp = isElectronRuntime();
 
     if (missingNavigator) {
       throw new Error("Microphone capture is not supported in this environment");

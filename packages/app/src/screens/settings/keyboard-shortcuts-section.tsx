@@ -17,7 +17,7 @@ import {
 } from "@/keyboard/shortcut-string";
 import { useKeyboardShortcutsStore } from "@/stores/keyboard-shortcuts-store";
 import { getShortcutOs } from "@/utils/shortcut-platform";
-import { getIsDesktop } from "@/constants/layout";
+import { getIsElectronRuntime } from "@/constants/layout";
 
 function ShortcutSequence({ chord }: { chord: string[] | null }) {
   if (!chord || chord.length === 0) {
@@ -93,8 +93,8 @@ export function KeyboardShortcutsSection() {
   const setCapturingShortcut = useKeyboardShortcutsStore((s) => s.setCapturingShortcut);
 
   const isMac = getShortcutOs() === "mac";
-  const isDesktop = getIsDesktop();
-  const sections = buildKeyboardShortcutHelpSections({ isMac, isDesktop });
+  const isDesktopApp = getIsElectronRuntime();
+  const sections = buildKeyboardShortcutHelpSections({ isMac, isDesktop: isDesktopApp });
 
   function cancelCapture() {
     setCapturedCombos([]);
@@ -180,7 +180,10 @@ export function KeyboardShortcutsSection() {
             <Text style={styles.subsectionTitle}>{section.title}</Text>
             <View style={settingsStyles.card}>
               {section.rows.map(function (row, index) {
-                const bindingId = getBindingIdForAction(row.id, { isMac, isDesktop });
+                const bindingId = getBindingIdForAction(row.id, {
+                  isMac,
+                  isDesktop: isDesktopApp,
+                });
                 const overrideCombo = bindingId ? overrides[bindingId] : undefined;
 
                 return (

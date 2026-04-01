@@ -22,7 +22,7 @@ import {
 } from "react";
 import { router, usePathname } from "expo-router";
 import { navigateToWorkspace } from "@/hooks/use-workspace-navigation";
-import { StyleSheet, UnistylesRuntime, useUnistyles } from "react-native-unistyles";
+import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { type GestureType } from "react-native-gesture-handler";
 import * as Clipboard from "expo-clipboard";
 import {
@@ -42,7 +42,7 @@ import { NestableScrollContainer } from "react-native-draggable-flatlist";
 import { DraggableList, type DraggableRenderItemInfo } from "./draggable-list";
 import type { DraggableListDragHandleProps } from "./draggable-list.types";
 import { getHostRuntimeStore, isHostRuntimeConnected } from "@/runtime/host-runtime";
-import { getIsDesktop } from "@/constants/layout";
+import { getIsElectronRuntime, isCompactFormFactor } from "@/constants/layout";
 import { projectIconQueryKey } from "@/hooks/use-project-icon-query";
 import { parseHostWorkspaceRouteFromPathname } from "@/utils/host-routes";
 import { prepareWorkspaceTab } from "@/utils/workspace-navigation";
@@ -664,8 +664,7 @@ function ProjectHeaderRow({
   dragHandleProps,
 }: ProjectHeaderRowProps) {
   const [isHovered, setIsHovered] = useState(false);
-  const isMobileBreakpoint =
-    UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
+  const isMobileBreakpoint = isCompactFormFactor();
   const mergeWorkspaces = useSessionStore((state) => state.mergeWorkspaces);
   const toast = useToast();
 
@@ -836,7 +835,7 @@ function WorkspaceRowInner({
 }: WorkspaceRowInnerProps) {
   const { theme } = useUnistyles();
   const [isHovered, setIsHovered] = useState(false);
-  const isMobile = Platform.OS !== "web";
+  const isTouchPlatform = Platform.OS !== "web";
   const prHint = useWorkspacePrHint({
     serverId: workspace.serverId,
     cwd: workspace.workspaceId,
@@ -901,7 +900,7 @@ function WorkspaceRowInner({
           </View>
           <View style={styles.workspaceRowRight}>
             {isCreating ? <Text style={styles.workspaceCreatingText}>Creating...</Text> : null}
-            {onArchive && (isHovered || isMobile) ? (
+            {onArchive && (isHovered || isTouchPlatform) ? (
               <DropdownMenu>
                 <DropdownMenuTrigger
                   hitSlop={8}
@@ -1638,7 +1637,7 @@ export function SidebarWorkspaceList({
   listFooterComponent,
   parentGestureRef,
 }: SidebarWorkspaceListProps) {
-  const isMobile = UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
+  const isMobile = isCompactFormFactor();
   const isNative = Platform.OS !== "web";
   const pathname = usePathname();
   const activeWorkspaceSelection = useNavigationActiveWorkspaceSelection();
@@ -1646,7 +1645,7 @@ export function SidebarWorkspaceList({
   const creatingWorkspaceTimeoutsRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(
     new Map(),
   );
-  const isDesktopApp = getIsDesktop();
+  const isDesktopApp = getIsElectronRuntime();
   const altDown = useKeyboardShortcutsStore((state) => state.altDown);
   const cmdOrCtrlDown = useKeyboardShortcutsStore((state) => state.cmdOrCtrlDown);
   const showShortcutBadges = altDown || (isDesktopApp && cmdOrCtrlDown);

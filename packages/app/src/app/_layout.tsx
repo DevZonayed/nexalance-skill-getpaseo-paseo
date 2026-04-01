@@ -57,7 +57,7 @@ import {
   HorizontalScrollProvider,
   useHorizontalScrollOptional,
 } from "@/contexts/horizontal-scroll-context";
-import { getIsDesktop } from "@/constants/layout";
+import { getIsElectronRuntime, isCompactFormFactor } from "@/constants/layout";
 import { CommandCenter } from "@/components/command-center";
 import { ProjectPickerModal } from "@/components/project-picker-modal";
 import { KeyboardShortcutsDialog } from "@/components/keyboard-shortcuts-dialog";
@@ -103,7 +103,7 @@ function PushNotificationRouter() {
       let removeDesktopNotificationListener: (() => void) | null = null;
       let cancelled = false;
 
-      if (getIsDesktop()) {
+      if (getIsElectronRuntime()) {
         void ensureOsNotificationPermission();
 
         const unlistenResult = getDesktopHost()?.events?.on?.(
@@ -342,12 +342,12 @@ function AppContainer({
   const toggleFocusMode = usePanelStore((state) => state.toggleFocusMode);
   const isFocusModeEnabled = usePanelStore((state) => state.desktop.focusModeEnabled);
 
-  const isMobile = UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
+  const isCompactLayout = isCompactFormFactor();
   const chromeEnabled = chromeEnabledOverride ?? daemons.length > 0;
 
   useKeyboardShortcuts({
     enabled: chromeEnabled,
-    isMobile,
+    isMobile: isCompactLayout,
     toggleAgentList,
     selectedAgentId,
     toggleFileExplorer,
@@ -363,10 +363,12 @@ function AppContainer({
   const content = (
     <View style={containerStyle}>
       <View style={rowStyle}>
-        {!isMobile && chromeEnabled && !isFocusModeEnabled && <LeftSidebar selectedAgentId={selectedAgentId} />}
+        {!isCompactLayout && chromeEnabled && !isFocusModeEnabled && (
+          <LeftSidebar selectedAgentId={selectedAgentId} />
+        )}
         <View style={flexStyle}>{children}</View>
       </View>
-      {isMobile && chromeEnabled && <LeftSidebar selectedAgentId={selectedAgentId} />}
+      {isCompactLayout && chromeEnabled && <LeftSidebar selectedAgentId={selectedAgentId} />}
       <DownloadToast />
       <UpdateBanner />
       <CommandCenter />
@@ -375,7 +377,7 @@ function AppContainer({
     </View>
   );
 
-  if (!isMobile) {
+  if (!isCompactLayout) {
     return content;
   }
 

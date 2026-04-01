@@ -4,7 +4,7 @@ import { View, Text, ScrollView, Alert, Platform, Pressable } from "react-native
 import { router, useLocalSearchParams } from "expo-router";
 import { useFocusEffect } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { StyleSheet, UnistylesRuntime, useUnistyles } from "react-native-unistyles";
+import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { Buffer } from "buffer";
 import {
   Sun,
@@ -51,7 +51,7 @@ import {
 import { AdaptiveModalSheet, AdaptiveTextInput } from "@/components/adaptive-modal-sheet";
 import { DesktopPermissionsSection } from "@/desktop/components/desktop-permissions-section";
 import { LocalDaemonSection } from "@/desktop/components/desktop-updates-section";
-import { isDesktop as isDesktopHost } from "@/desktop/host";
+import { isElectronRuntime } from "@/desktop/host";
 import { useDesktopAppUpdater } from "@/desktop/updates/use-desktop-app-updater";
 import { formatVersionWithPrefix } from "@/desktop/updates/desktop-updates";
 import { resolveAppVersion } from "@/utils/app-version";
@@ -59,6 +59,7 @@ import { settingsStyles } from "@/styles/settings";
 import { THINKING_TONE_NATIVE_PCM_BASE64 } from "@/utils/thinking-tone.native-pcm";
 import { useVoiceAudioEngineOptional } from "@/contexts/voice-context";
 import { useIsLocalDaemon } from "@/hooks/use-is-local-daemon";
+import { isCompactFormFactor } from "@/constants/layout";
 
 // ---------------------------------------------------------------------------
 // Section definitions
@@ -79,7 +80,7 @@ interface SettingsSectionDef {
   icon: ComponentType<{ size: number; color: string }>;
 }
 
-function getSettingsSections(context: { isDesktop: boolean }): SettingsSectionDef[] {
+function getSettingsSections(context: { isDesktopApp: boolean }): SettingsSectionDef[] {
   const sections: SettingsSectionDef[] = [
     { id: "hosts", label: "Hosts", icon: Server },
     { id: "appearance", label: "Appearance", icon: Palette },
@@ -88,7 +89,7 @@ function getSettingsSections(context: { isDesktop: boolean }): SettingsSectionDe
     { id: "about", label: "About", icon: Info },
   ];
 
-  if (context.isDesktop) {
+  if (context.isDesktopApp) {
     sections.push(
       { id: "permissions", label: "Permissions", icon: Shield },
       { id: "daemon", label: "Daemon", icon: Settings },
@@ -174,7 +175,6 @@ interface HostsSectionProps {
   daemons: HostProfile[];
   settings: AppSettings;
   routeServerId: string;
-  isDesktop: boolean;
   theme: ReturnType<typeof useUnistyles>["theme"];
   handleEditDaemon: (profile: HostProfile) => void;
   setAddConnectionTargetServerId: (id: string | null) => void;
@@ -464,10 +464,10 @@ function DiagnosticsSection({
 
 interface AboutSectionProps {
   appVersionText: string;
-  isDesktop: boolean;
+  isDesktopApp: boolean;
 }
 
-function AboutSection({ appVersionText, isDesktop }: AboutSectionProps) {
+function AboutSection({ appVersionText, isDesktopApp }: AboutSectionProps) {
   return (
     <View style={settingsStyles.section}>
       <Text style={settingsStyles.sectionTitle}>About</Text>
@@ -478,7 +478,7 @@ function AboutSection({ appVersionText, isDesktop }: AboutSectionProps) {
           </View>
           <Text style={styles.aboutValue}>{appVersionText}</Text>
         </View>
-        {isDesktop ? <DesktopAppUpdateRow /> : null}
+        {isDesktopApp ? <DesktopAppUpdateRow /> : null}
       </View>
     </View>
   );
@@ -496,7 +496,7 @@ interface SettingsSectionContentProps {
   aboutProps: AboutSectionProps;
   appVersion: string | null;
   isLocalDaemon: boolean;
-  isDesktop: boolean;
+  isDesktopApp: boolean;
 }
 
 function SettingsSectionContent({
@@ -507,7 +507,7 @@ function SettingsSectionContent({
   aboutProps,
   appVersion,
   isLocalDaemon,
-  isDesktop,
+  isDesktopApp,
 }: SettingsSectionContentProps) {
   switch (sectionId) {
     case "hosts":
@@ -521,9 +521,9 @@ function SettingsSectionContent({
     case "about":
       return <AboutSection {...aboutProps} />;
     case "permissions":
-      return isDesktop ? <DesktopPermissionsSection /> : null;
+      return isDesktopApp ? <DesktopPermissionsSection /> : null;
     case "daemon":
-      return isDesktop ? (
+      return isDesktopApp ? (
         <LocalDaemonSection appVersion={appVersion} showLifecycleControls={isLocalDaemon} />
       ) : null;
   }
@@ -619,7 +619,7 @@ function SettingsDesktopLayout({ sections, sectionContentProps }: SettingsLayout
 
 function DesktopAppUpdateRow() {
   const {
-    isDesktop,
+    isDesktopApp,
     statusText,
     availableUpdate,
     errorMessage,
@@ -631,23 +631,23 @@ function DesktopAppUpdateRow() {
 
   useFocusEffect(
     useCallback(() => {
-      if (!isDesktop) {
+      if (!isDesktopApp) {
         return undefined;
       }
       void checkForUpdates({ silent: true });
       return undefined;
-    }, [checkForUpdates, isDesktop]),
+    }, [checkForUpdates, isDesktopApp]),
   );
 
   const handleCheckForUpdates = useCallback(() => {
-    if (!isDesktop) {
+    if (!isDesktopApp) {
       return;
     }
     void checkForUpdates();
-  }, [checkForUpdates, isDesktop]);
+  }, [checkForUpdates, isDesktopApp]);
 
   const handleInstallUpdate = useCallback(() => {
-    if (!isDesktop) {
+    if (!isDesktopApp) {
       return;
     }
 
@@ -667,9 +667,9 @@ function DesktopAppUpdateRow() {
         console.error("[Settings] Failed to open app update confirmation", error);
         Alert.alert("Error", "Unable to open the update confirmation dialog.");
       });
-  }, [installUpdate, isDesktop]);
+  }, [installUpdate, isDesktopApp]);
 
-  if (!isDesktop) {
+  if (!isDesktopApp) {
     return null;
   }
 
@@ -745,7 +745,7 @@ export default function SettingsScreen() {
   const isLoading = settingsLoading;
   const isMountedRef = useRef(true);
   const lastHandledEditHostRef = useRef<string | null>(null);
-  const isDesktop = isDesktopHost();
+  const isDesktopApp = isElectronRuntime();
   const isLocalDaemon = useIsLocalDaemon(routeServerId);
   const appVersion = resolveAppVersion();
   const appVersionText = formatVersionWithPrefix(appVersion);
@@ -929,14 +929,13 @@ export default function SettingsScreen() {
     }
   }, [isPlaybackTestRunning, voiceAudioEngine]);
 
-  const isMobile = UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
-  const sections = getSettingsSections({ isDesktop });
+  const isCompactLayout = isCompactFormFactor();
+  const sections = getSettingsSections({ isDesktopApp });
 
   const hostsProps: HostsSectionProps = {
     daemons,
     settings,
     routeServerId,
-    isDesktop,
     theme,
     handleEditDaemon,
     setAddConnectionTargetServerId,
@@ -985,7 +984,7 @@ export default function SettingsScreen() {
 
   const aboutProps: AboutSectionProps = {
     appVersionText,
-    isDesktop,
+    isDesktopApp,
   };
 
   const sectionContentProps: Omit<SettingsSectionContentProps, "sectionId"> = {
@@ -995,7 +994,7 @@ export default function SettingsScreen() {
     aboutProps,
     appVersion,
     isLocalDaemon,
-    isDesktop,
+    isDesktopApp,
   };
 
   if (isLoading) {
@@ -1009,7 +1008,7 @@ export default function SettingsScreen() {
   return (
     <View style={styles.container}>
       <MenuHeader title="Settings" />
-      {isMobile ? (
+      {isCompactLayout ? (
         <SettingsMobileLayout sections={sections} sectionContentProps={sectionContentProps} />
       ) : (
         <SettingsDesktopLayout sections={sections} sectionContentProps={sectionContentProps} />

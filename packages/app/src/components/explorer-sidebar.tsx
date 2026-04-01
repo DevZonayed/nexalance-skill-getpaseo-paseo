@@ -4,7 +4,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useIsFocused } from "@react-navigation/native";
 import Animated, { useAnimatedStyle, useSharedValue, runOnJS } from "react-native-reanimated";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
-import { StyleSheet, UnistylesRuntime, useUnistyles } from "react-native-unistyles";
+import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { X } from "lucide-react-native";
 import {
   usePanelStore,
@@ -13,7 +13,7 @@ import {
   type ExplorerTab,
 } from "@/stores/panel-store";
 import { useExplorerSidebarAnimation } from "@/contexts/explorer-sidebar-animation-context";
-import { HEADER_INNER_HEIGHT } from "@/constants/layout";
+import { HEADER_INNER_HEIGHT, isCompactFormFactor } from "@/constants/layout";
 import { GitDiffPane } from "./git-diff-pane";
 import { FileExplorerPane } from "./file-explorer-pane";
 import { useKeyboardShiftStyle } from "@/hooks/use-keyboard-shift-style";
@@ -40,7 +40,7 @@ export function ExplorerSidebar({
   const { theme } = useUnistyles();
   const isScreenFocused = useIsFocused();
   const insets = useSafeAreaInsets();
-  const isMobile = UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
+  const isMobile = isCompactFormFactor();
   const mobileView = usePanelStore((state) => state.mobileView);
   const desktopFileExplorerOpen = usePanelStore((state) => state.desktop.fileExplorerOpen);
   const closeToAgent = usePanelStore((state) => state.closeToAgent);

@@ -18,7 +18,7 @@ export type DesktopAppUpdateStatus =
   | "error";
 
 export interface UseDesktopAppUpdaterReturn {
-  isDesktop: boolean;
+  isDesktopApp: boolean;
   status: DesktopAppUpdateStatus;
   statusText: string;
   availableUpdate: DesktopAppUpdateCheckResult | null;
@@ -75,7 +75,7 @@ function formatStatusText(input: {
 }
 
 export function useDesktopAppUpdater(): UseDesktopAppUpdaterReturn {
-  const isDesktop = shouldShowDesktopUpdateSection();
+  const isDesktopApp = shouldShowDesktopUpdateSection();
   const requestVersionRef = useRef(0);
   const [status, setStatus] = useState<DesktopAppUpdateStatus>("idle");
   const [availableUpdate, setAvailableUpdate] = useState<DesktopAppUpdateCheckResult | null>(null);
@@ -85,7 +85,7 @@ export function useDesktopAppUpdater(): UseDesktopAppUpdaterReturn {
 
   const checkForUpdates = useCallback(
     async (options: { silent?: boolean } = {}) => {
-      if (!isDesktop) {
+      if (!isDesktopApp) {
         return null;
       }
 
@@ -130,11 +130,11 @@ export function useDesktopAppUpdater(): UseDesktopAppUpdaterReturn {
         return null;
       }
     },
-    [isDesktop],
+    [isDesktopApp],
   );
 
   const installUpdate = useCallback(async () => {
-    if (!isDesktop) {
+    if (!isDesktopApp) {
       return null;
     }
 
@@ -162,10 +162,10 @@ export function useDesktopAppUpdater(): UseDesktopAppUpdaterReturn {
       setErrorMessage(message);
       return null;
     }
-  }, [isDesktop]);
+  }, [isDesktopApp]);
 
   return {
-    isDesktop,
+    isDesktopApp,
     status,
     statusText: formatStatusText({
       status,

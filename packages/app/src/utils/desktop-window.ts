@@ -1,15 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Platform, type PointerEvent as RNPointerEvent, type ViewProps } from "react-native";
 import {
-  getIsDesktopMac,
-  getIsDesktop,
+  getIsElectronRuntimeMac,
+  getIsElectronRuntime,
   DESKTOP_TRAFFIC_LIGHT_WIDTH,
   DESKTOP_TRAFFIC_LIGHT_HEIGHT,
   DESKTOP_WINDOW_CONTROLS_WIDTH,
   DESKTOP_WINDOW_CONTROLS_HEIGHT,
 } from "@/constants/layout";
 import { getDesktopWindow } from "@/desktop/electron/window";
-import { isDesktop } from "@/desktop/host";
+import { isElectronRuntime } from "@/desktop/host";
 import { usePanelStore } from "@/stores/panel-store";
 import { readFiniteScreenPoint } from "./desktop-window-drag-coordinates";
 
@@ -56,7 +56,7 @@ export function isInteractiveDesktopDragTarget(target: unknown): boolean {
 export function useDesktopDragHandlers(): DesktopDragViewProps {
   const isDragging = useRef(false);
   const lastPointerDownAt = useRef(0);
-  const isActive = Platform.OS === "web" && isDesktop();
+  const isActive = Platform.OS === "web" && isElectronRuntime();
 
   useEffect(() => {
     if (!isActive) return;
@@ -136,7 +136,7 @@ function useRawWindowControlsPadding(): RawWindowControlsPadding {
   const [isFullscreen, setIsFullscreen] = useState(false);
 
   useEffect(() => {
-    if (Platform.OS !== "web" || !getIsDesktop()) return;
+    if (Platform.OS !== "web" || !getIsElectronRuntime()) return;
 
     let disposed = false;
     let cleanup: (() => void) | undefined;
@@ -188,11 +188,11 @@ function useRawWindowControlsPadding(): RawWindowControlsPadding {
   }, []);
 
   return useMemo((): RawWindowControlsPadding => {
-    if (!getIsDesktop() || isFullscreen) {
+    if (!getIsElectronRuntime() || isFullscreen) {
       return { left: 0, right: 0, top: 0 };
     }
 
-    if (getIsDesktopMac()) {
+    if (getIsElectronRuntimeMac()) {
       return {
         left: DESKTOP_TRAFFIC_LIGHT_WIDTH,
         right: 0,

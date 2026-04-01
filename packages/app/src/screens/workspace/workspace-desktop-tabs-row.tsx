@@ -83,6 +83,7 @@ type WorkspaceDesktopTabsRowProps = {
   externalDndContext?: boolean;
   activeDragTabId?: string | null;
   tabDropPreviewIndex?: number | null;
+  showPaneSplitActions?: boolean;
 };
 
 function getFallbackTabLabel(tab: WorkspaceTabDescriptor): string {
@@ -346,6 +347,7 @@ export function WorkspaceDesktopTabsRow({
   externalDndContext = false,
   activeDragTabId = null,
   tabDropPreviewIndex = null,
+  showPaneSplitActions = true,
 }: WorkspaceDesktopTabsRowProps) {
   const { theme } = useUnistyles();
   const newAgentTabKeys = useShortcutKeys("workspace-tab-new");
@@ -522,48 +524,52 @@ export function WorkspaceDesktopTabsRow({
             </View>
           </TooltipContent>
         </Tooltip>
-        <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
-          <TooltipTrigger
-            onPress={onSplitRight}
-            accessibilityRole="button"
-            accessibilityLabel="Split pane right"
-            style={({ hovered, pressed }) => [
-              styles.newTabActionButton,
-              (hovered || pressed) && styles.newTabActionButtonHovered,
-            ]}
-          >
-            <Columns2 size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
-          </TooltipTrigger>
-          <TooltipContent side="bottom" align="center" offset={8}>
-            <View style={styles.newTabTooltipRow}>
-              <Text style={styles.newTabTooltipText}>Split pane right</Text>
-              {splitRightKeys ? (
-                <Shortcut chord={splitRightKeys} style={styles.newTabTooltipShortcut} />
-              ) : null}
-            </View>
-          </TooltipContent>
-        </Tooltip>
-        <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
-          <TooltipTrigger
-            onPress={onSplitDown}
-            accessibilityRole="button"
-            accessibilityLabel="Split pane down"
-            style={({ hovered, pressed }) => [
-              styles.newTabActionButton,
-              (hovered || pressed) && styles.newTabActionButtonHovered,
-            ]}
-          >
-            <Rows2 size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
-          </TooltipTrigger>
-          <TooltipContent side="bottom" align="center" offset={8}>
-            <View style={styles.newTabTooltipRow}>
-              <Text style={styles.newTabTooltipText}>Split pane down</Text>
-              {splitDownKeys ? (
-                <Shortcut chord={splitDownKeys} style={styles.newTabTooltipShortcut} />
-              ) : null}
-            </View>
-          </TooltipContent>
-        </Tooltip>
+        {showPaneSplitActions ? (
+          <>
+            <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
+              <TooltipTrigger
+                onPress={onSplitRight}
+                accessibilityRole="button"
+                accessibilityLabel="Split pane right"
+                style={({ hovered, pressed }) => [
+                  styles.newTabActionButton,
+                  (hovered || pressed) && styles.newTabActionButtonHovered,
+                ]}
+              >
+                <Columns2 size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
+              </TooltipTrigger>
+              <TooltipContent side="bottom" align="center" offset={8}>
+                <View style={styles.newTabTooltipRow}>
+                  <Text style={styles.newTabTooltipText}>Split pane right</Text>
+                  {splitRightKeys ? (
+                    <Shortcut chord={splitRightKeys} style={styles.newTabTooltipShortcut} />
+                  ) : null}
+                </View>
+              </TooltipContent>
+            </Tooltip>
+            <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
+              <TooltipTrigger
+                onPress={onSplitDown}
+                accessibilityRole="button"
+                accessibilityLabel="Split pane down"
+                style={({ hovered, pressed }) => [
+                  styles.newTabActionButton,
+                  (hovered || pressed) && styles.newTabActionButtonHovered,
+                ]}
+              >
+                <Rows2 size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
+              </TooltipTrigger>
+              <TooltipContent side="bottom" align="center" offset={8}>
+                <View style={styles.newTabTooltipRow}>
+                  <Text style={styles.newTabTooltipText}>Split pane down</Text>
+                  {splitDownKeys ? (
+                    <Shortcut chord={splitDownKeys} style={styles.newTabTooltipShortcut} />
+                  ) : null}
+                </View>
+              </TooltipContent>
+            </Tooltip>
+          </>
+        ) : null}
       </View>
     </View>
   );

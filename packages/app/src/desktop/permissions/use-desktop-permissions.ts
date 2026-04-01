@@ -9,7 +9,7 @@ import {
 import { sendOsNotification } from "@/utils/os-notifications";
 
 export interface UseDesktopPermissionsReturn {
-  isDesktop: boolean;
+  isDesktopApp: boolean;
   snapshot: DesktopPermissionSnapshot | null;
   isRefreshing: boolean;
   requestingPermission: DesktopPermissionKind | null;
@@ -31,7 +31,7 @@ const EMPTY_MICROPHONE_STATUS = {
 };
 
 export function useDesktopPermissions(): UseDesktopPermissionsReturn {
-  const isDesktop = shouldShowDesktopPermissionSection();
+  const isDesktopApp = shouldShowDesktopPermissionSection();
   const isMountedRef = useRef(true);
   const [snapshot, setSnapshot] = useState<DesktopPermissionSnapshot | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -47,7 +47,7 @@ export function useDesktopPermissions(): UseDesktopPermissionsReturn {
   }, []);
 
   const refreshPermissions = useCallback(async () => {
-    if (!isDesktop) {
+    if (!isDesktopApp) {
       return;
     }
 
@@ -65,11 +65,11 @@ export function useDesktopPermissions(): UseDesktopPermissionsReturn {
         setIsRefreshing(false);
       }
     }
-  }, [isDesktop]);
+  }, [isDesktopApp]);
 
   const requestPermission = useCallback(
     async (kind: DesktopPermissionKind) => {
-      if (!isDesktop) {
+      if (!isDesktopApp) {
         return;
       }
 
@@ -110,13 +110,13 @@ export function useDesktopPermissions(): UseDesktopPermissionsReturn {
         await refreshPermissions();
       }
     },
-    [isDesktop, refreshPermissions],
+    [isDesktopApp, refreshPermissions],
   );
 
   const [testNotificationError, setTestNotificationError] = useState<string | null>(null);
 
   const sendTestNotification = useCallback(async () => {
-    if (!isDesktop) {
+    if (!isDesktopApp) {
       return;
     }
 
@@ -137,18 +137,18 @@ export function useDesktopPermissions(): UseDesktopPermissionsReturn {
         setIsSendingTestNotification(false);
       }
     }
-  }, [isDesktop]);
+  }, [isDesktopApp]);
 
   useEffect(() => {
-    if (!isDesktop) {
+    if (!isDesktopApp) {
       return;
     }
 
     void refreshPermissions();
-  }, [isDesktop, refreshPermissions]);
+  }, [isDesktopApp, refreshPermissions]);
 
   return {
-    isDesktop,
+    isDesktopApp,
     snapshot,
     isRefreshing,
     requestingPermission,

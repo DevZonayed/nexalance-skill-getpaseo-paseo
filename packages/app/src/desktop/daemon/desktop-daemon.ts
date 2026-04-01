@@ -1,4 +1,4 @@
-import { getDesktopHost, isDesktop } from "@/desktop/host";
+import { getDesktopHost, isElectronRuntime } from "@/desktop/host";
 import { invokeDesktopCommand } from "@/desktop/electron/invoke";
 
 export type DesktopDaemonState = "starting" | "running" | "stopped" | "errored";
@@ -123,7 +123,7 @@ function parseCliSymlinkInstructionsInternal(raw: unknown): CliSymlinkInstructio
 }
 
 export function shouldUseDesktopDaemon(): boolean {
-  return isDesktop();
+  return isElectronRuntime();
 }
 
 export async function getDesktopDaemonStatus(): Promise<DesktopDaemonStatus> {

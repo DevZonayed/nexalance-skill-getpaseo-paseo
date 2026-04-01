@@ -97,12 +97,12 @@ export function getDesktopHost(): DesktopHostBridge | null {
   return getElectronHost();
 }
 
-export function isDesktop(): boolean {
+export function isElectronRuntime(): boolean {
   return getDesktopHost() !== null;
 }
 
-export function isDesktopMac(): boolean {
-  if (!isDesktop()) {
+export function isElectronRuntimeMac(): boolean {
+  if (!isElectronRuntime()) {
     return false;
   }
   if (typeof navigator === "undefined") {

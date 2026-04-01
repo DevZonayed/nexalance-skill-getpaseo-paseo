@@ -2,7 +2,7 @@ import { useCallback, useRef } from "react";
 import { Alert } from "react-native";
 import { Platform } from "react-native";
 import * as ImagePicker from "expo-image-picker";
-import { isDesktop } from "@/desktop/host";
+import { isElectronRuntime } from "@/desktop/host";
 import {
   normalizePickedImageAssets,
   openImagePathsWithDesktopDialog,
@@ -45,7 +45,7 @@ export function useImageAttachmentPicker(): UseImageAttachmentPickerResult {
     isPickingRef.current = true;
 
     try {
-      if (Platform.OS === "web" && isDesktop()) {
+      if (Platform.OS === "web" && isElectronRuntime()) {
         const selectedPaths = await openImagePathsWithDesktopDialog();
         if (selectedPaths.length === 0) {
           return null;

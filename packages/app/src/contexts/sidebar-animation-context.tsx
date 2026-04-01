@@ -10,7 +10,7 @@ import {
 import { useWindowDimensions } from "react-native";
 import { useSharedValue, withTiming, Easing, type SharedValue } from "react-native-reanimated";
 import { type GestureType } from "react-native-gesture-handler";
-import { UnistylesRuntime } from "react-native-unistyles";
+import { isCompactFormFactor } from "@/constants/layout";
 import { usePanelStore } from "@/stores/panel-store";
 import {
   getLeftSidebarAnimationTargets,
@@ -34,12 +34,12 @@ const SidebarAnimationContext = createContext<SidebarAnimationContextValue | nul
 
 export function SidebarAnimationProvider({ children }: { children: ReactNode }) {
   const { width: windowWidth } = useWindowDimensions();
-  const isMobile = UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
+  const isCompactLayout = isCompactFormFactor();
   const mobileView = usePanelStore((state) => state.mobileView);
   const desktopAgentListOpen = usePanelStore((state) => state.desktop.agentListOpen);
 
   // Derive isOpen from the unified panel state
-  const isOpen = isMobile ? mobileView === "agent-list" : desktopAgentListOpen;
+  const isOpen = isCompactLayout ? mobileView === "agent-list" : desktopAgentListOpen;
 
   // Initialize based on current state
   const initialTargets = getLeftSidebarAnimationTargets({ isOpen, windowWidth });

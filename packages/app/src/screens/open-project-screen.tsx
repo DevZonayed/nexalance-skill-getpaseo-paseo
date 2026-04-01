@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { View, Text } from "react-native";
-import { StyleSheet, UnistylesRuntime } from "react-native-unistyles";
+import { StyleSheet } from "react-native-unistyles";
 import { FolderOpen } from "lucide-react-native";
 import { PaseoLogo } from "@/components/icons/paseo-logo";
 import { Button } from "@/components/ui/button";
@@ -8,6 +8,7 @@ import { MenuHeader } from "@/components/headers/menu-header";
 import { useOpenProjectPicker } from "@/hooks/use-open-project-picker";
 import { usePanelStore } from "@/stores/panel-store";
 import { useSessionStore } from "@/stores/session-store";
+import { isCompactFormFactor } from "@/constants/layout";
 import { useDesktopDragHandlers } from "@/utils/desktop-window";
 
 export function OpenProjectScreen({ serverId }: { serverId: string }) {
@@ -16,14 +17,14 @@ export function OpenProjectScreen({ serverId }: { serverId: string }) {
   const hasHydrated = useSessionStore((s) => s.sessions[serverId]?.hasHydratedWorkspaces ?? false);
   const hasProjects = useSessionStore((s) => (s.sessions[serverId]?.workspaces?.size ?? 0) > 0);
 
-  const isMobile = UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
+  const isCompactLayout = isCompactFormFactor();
   const dragHandlers = useDesktopDragHandlers();
 
   useEffect(() => {
-    if (!isMobile) {
+    if (!isCompactLayout) {
       openAgentList();
     }
-  }, [isMobile, openAgentList]);
+  }, [isCompactLayout, openAgentList]);
 
   return (
     <View style={styles.container}>

@@ -9,7 +9,7 @@ import { settingsStyles } from "@/styles/settings";
 export function DesktopPermissionsSection() {
   const { theme } = useUnistyles();
   const {
-    isDesktop,
+    isDesktopApp,
     snapshot,
     isRefreshing,
     requestingPermission,
@@ -20,7 +20,7 @@ export function DesktopPermissionsSection() {
     sendTestNotification,
   } = useDesktopPermissions();
 
-  if (!isDesktop) {
+  if (!isDesktopApp) {
     return null;
   }
 

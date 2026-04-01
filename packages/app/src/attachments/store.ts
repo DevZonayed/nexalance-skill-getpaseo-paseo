@@ -1,12 +1,12 @@
 import { Platform } from "react-native";
-import { isDesktop } from "@/desktop/host";
+import { isElectronRuntime } from "@/desktop/host";
 import type { AttachmentStore } from "@/attachments/types";
 
 let attachmentStorePromise: Promise<AttachmentStore> | null = null;
 
 async function createAttachmentStore(): Promise<AttachmentStore> {
   if (Platform.OS === "web") {
-    if (isDesktop()) {
+    if (isElectronRuntime()) {
       const { createDesktopAttachmentStore } = await import(
         "../desktop/attachments/desktop-attachment-store"
       );

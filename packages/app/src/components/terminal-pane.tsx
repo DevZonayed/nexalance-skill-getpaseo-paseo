@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useFocusEffect, useIsFocused } from "@react-navigation/native";
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
 import Animated, { runOnJS, useAnimatedReaction } from "react-native-reanimated";
-import { StyleSheet, UnistylesRuntime, useUnistyles } from "react-native-unistyles";
+import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { encodeTerminalKeyInput } from "@server/shared/terminal-key-input";
 import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
 import { useKeyboardShiftStyle } from "@/hooks/use-keyboard-shift-style";
@@ -21,6 +21,7 @@ import {
 import { usePanelStore } from "@/stores/panel-store";
 import { toXtermTheme } from "@/utils/to-xterm-theme";
 import TerminalEmulator, { type TerminalEmulatorHandle } from "./terminal-emulator";
+import { isCompactFormFactor } from "@/constants/layout";
 
 interface TerminalPaneProps {
   serverId: string;
@@ -91,7 +92,7 @@ export function TerminalPane({
   const isAppVisible = useAppVisible();
   const { theme } = useUnistyles();
   const xtermTheme = useMemo(() => toXtermTheme(theme.colors.terminal), [theme.colors.terminal]);
-  const isMobile = UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
+  const isMobile = isCompactFormFactor();
   const mobileView = usePanelStore((state) => state.mobileView);
   const openAgentList = usePanelStore((state) => state.openAgentList);
   const openFileExplorer = usePanelStore((state) => state.openFileExplorer);

@@ -4,7 +4,7 @@ import type { ImageAttachment } from "@/components/message-input";
 import { View, Text, Pressable, ScrollView, Keyboard, Platform } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useIsFocused } from "@react-navigation/native";
-import { StyleSheet, UnistylesRuntime, useUnistyles } from "react-native-unistyles";
+import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { GestureDetector } from "react-native-gesture-handler";
 import Animated from "react-native-reanimated";
@@ -40,7 +40,7 @@ import {
 } from "@/runtime/host-runtime";
 import { ExplorerSidebarAnimationProvider } from "@/contexts/explorer-sidebar-animation-context";
 import { usePanelStore, type ExplorerCheckoutContext } from "@/stores/panel-store";
-import { MAX_CONTENT_WIDTH } from "@/constants/layout";
+import { MAX_CONTENT_WIDTH, isCompactFormFactor } from "@/constants/layout";
 import { WelcomeScreen } from "@/components/welcome-screen";
 import type { Agent } from "@/contexts/session-context";
 import { encodeImages } from "@/utils/encode-images";
@@ -233,7 +233,7 @@ function DraftAgentScreenContent({
     isCreateFlow: true,
     onlineServerIds,
   });
-  const isMobile = UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
+  const isMobile = isCompactFormFactor();
   const mobileView = usePanelStore((state) => state.mobileView);
   const desktopFileExplorerOpen = usePanelStore((state) => state.desktop.fileExplorerOpen);
   const toggleFileExplorer = usePanelStore((state) => state.toggleFileExplorer);

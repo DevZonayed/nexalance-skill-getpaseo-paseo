@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { Text, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
-import { getIsDesktop } from "@/constants/layout";
+import { getIsElectronRuntime } from "@/constants/layout";
 import { AdaptiveModalSheet } from "@/components/adaptive-modal-sheet";
 import { Shortcut } from "@/components/ui/shortcut";
 import { useKeyboardShortcutsStore } from "@/stores/keyboard-shortcuts-store";
@@ -13,7 +13,7 @@ export function KeyboardShortcutsDialog() {
   const setOpen = useKeyboardShortcutsStore((s) => s.setShortcutsDialogOpen);
 
   const isMac = getShortcutOs() === "mac";
-  const isDesktopApp = getIsDesktop();
+  const isDesktopApp = getIsElectronRuntime();
   const sections = useMemo(
     () => buildKeyboardShortcutHelpSections({ isMac, isDesktop: isDesktopApp }),
     [isDesktopApp, isMac],

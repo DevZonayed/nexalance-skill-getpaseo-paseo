@@ -11,7 +11,7 @@ const CHANGELOG_URL = "https://paseo.sh/changelog";
 export function UpdateBanner() {
   const { theme } = useUnistyles();
   const {
-    isDesktop,
+    isDesktopApp,
     status,
     availableUpdate,
     errorMessage,
@@ -23,7 +23,7 @@ export function UpdateBanner() {
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
-    if (!isDesktop) return;
+    if (!isDesktopApp) return;
 
     void checkForUpdates({ silent: true });
 
@@ -36,9 +36,9 @@ export function UpdateBanner() {
         clearInterval(intervalRef.current);
       }
     };
-  }, [isDesktop, checkForUpdates]);
+  }, [isDesktopApp, checkForUpdates]);
 
-  if (!isDesktop) return null;
+  if (!isDesktopApp) return null;
   if (dismissed) return null;
   if (status !== "available" && status !== "installed" && status !== "installing" && status !== "error")
     return null;

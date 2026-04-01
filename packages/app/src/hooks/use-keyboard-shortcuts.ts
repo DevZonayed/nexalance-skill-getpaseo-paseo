@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef } from "react";
 import { Platform } from "react-native";
 import { usePathname } from "expo-router";
-import { getIsDesktop } from "@/constants/layout";
+import { getIsElectronRuntime } from "@/constants/layout";
 import { useHosts } from "@/runtime/host-runtime";
 import { useKeyboardShortcutsStore } from "@/stores/keyboard-shortcuts-store";
 import { setCommandCenterFocusRestoreElement } from "@/utils/command-center-focus-restore";
@@ -66,7 +66,7 @@ export function useKeyboardShortcuts({
     if (Platform.OS !== "web") return;
     if (isMobile) return;
 
-    const isDesktopApp = getIsDesktop();
+    const isDesktopApp = getIsElectronRuntime();
     const isMac = getShortcutOs() === "mac";
 
     const shouldHandle = () => {

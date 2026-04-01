@@ -1,11 +1,12 @@
 import type { ReactNode } from "react";
 import { View, type StyleProp, type ViewStyle } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { StyleSheet, UnistylesRuntime, useUnistyles } from "react-native-unistyles";
+import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import {
   HEADER_INNER_HEIGHT,
   HEADER_INNER_HEIGHT_MOBILE,
   HEADER_TOP_PADDING_MOBILE,
+  isCompactFormFactor,
 } from "@/constants/layout";
 import { useDesktopDragHandlers, useWindowControlsPadding } from "@/utils/desktop-window";
 
@@ -24,7 +25,7 @@ interface ScreenHeaderProps {
 export function ScreenHeader({ left, right, leftStyle, rightStyle, borderless }: ScreenHeaderProps) {
   const { theme } = useUnistyles();
   const insets = useSafeAreaInsets();
-  const isMobile = UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
+  const isMobile = isCompactFormFactor();
   const padding = useWindowControlsPadding("header");
   // Only add extra padding on mobile for better touch targets; on desktop, only use safe area insets
   const topPadding = isMobile ? HEADER_TOP_PADDING_MOBILE : 0;

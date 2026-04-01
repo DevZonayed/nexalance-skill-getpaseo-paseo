@@ -20,7 +20,7 @@ import Animated, {
   useSharedValue,
 } from "react-native-reanimated";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
-import { StyleSheet, UnistylesRuntime, useUnistyles } from "react-native-unistyles";
+import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { MessagesSquare, Plus, Settings } from "lucide-react-native";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Shortcut } from "@/components/ui/shortcut";
@@ -39,7 +39,11 @@ import { useDesktopDragHandlers, useWindowControlsPadding } from "@/utils/deskto
 import { Combobox } from "@/components/ui/combobox";
 import { getHostRuntimeStore, useHosts } from "@/runtime/host-runtime";
 import { formatConnectionStatus } from "@/utils/daemons";
-import { HEADER_INNER_HEIGHT, HEADER_INNER_HEIGHT_MOBILE } from "@/constants/layout";
+import {
+  HEADER_INNER_HEIGHT,
+  HEADER_INNER_HEIGHT_MOBILE,
+  isCompactFormFactor,
+} from "@/constants/layout";
 import {
   buildHostSessionsRoute,
   buildHostSettingsRoute,
@@ -94,6 +98,7 @@ interface MobileSidebarProps extends SidebarSharedProps {
 }
 
 interface DesktopSidebarProps extends SidebarSharedProps {
+  insetsTop: number;
   isOpen: boolean;
   handleViewMore: () => void;
 }
@@ -105,7 +110,7 @@ export const LeftSidebar = memo(function LeftSidebar({
 
   const { theme } = useUnistyles();
   const insets = useSafeAreaInsets();
-  const isMobile = UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
+  const isCompactLayout = isCompactFormFactor();
   const mobileView = usePanelStore((state) => state.mobileView);
   const desktopAgentListOpen = usePanelStore((state) => state.desktop.agentListOpen);
   const closeToAgent = usePanelStore((state) => state.closeToAgent);
@@ -175,7 +180,7 @@ export const LeftSidebar = memo(function LeftSidebar({
   const hostTriggerRef = useRef<View | null>(null);
   const [isHostPickerOpen, setIsHostPickerOpen] = useState(false);
 
-  const isOpen = isMobile ? mobileView === "agent-list" : desktopAgentListOpen;
+  const isOpen = isCompactLayout ? mobileView === "agent-list" : desktopAgentListOpen;
 
   const { projects, isInitialLoad, isRevalidating, refreshAll } = useSidebarWorkspacesList({
     serverId: activeServerId,
@@ -265,7 +270,7 @@ export const LeftSidebar = memo(function LeftSidebar({
     handleHostSelect,
   };
 
-  if (isMobile) {
+  if (isCompactLayout) {
     return (
       <MobileSidebar
         {...sharedProps}
@@ -283,6 +288,7 @@ export const LeftSidebar = memo(function LeftSidebar({
   return (
     <DesktopSidebar
       {...sharedProps}
+      insetsTop={insets.top}
       isOpen={isOpen}
       handleOpenProject={handleOpenProjectDesktop}
       handleSettings={handleSettingsDesktop}
@@ -627,6 +633,7 @@ function DesktopSidebar({
   handleHostSelect,
   handleOpenProject,
   handleSettings,
+  insetsTop,
   isOpen,
   handleViewMore,
 }: DesktopSidebarProps) {
@@ -681,7 +688,7 @@ function DesktopSidebar({
   }
 
   return (
-    <Animated.View style={[styles.desktopSidebar, resizeAnimatedStyle]}>
+    <Animated.View style={[styles.desktopSidebar, resizeAnimatedStyle, { paddingTop: insetsTop }]}>
       {padding.top > 0 ? <View style={{ height: padding.top }} {...dragHandlers} /> : null}
       <View style={styles.sidebarHeader} {...dragHandlers}>
         <View style={styles.sidebarHeaderRow}>

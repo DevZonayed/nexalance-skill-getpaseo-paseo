@@ -1,5 +1,5 @@
 import { Platform } from "react-native";
-import { isDesktop } from "@/desktop/host";
+import { isElectronRuntime } from "@/desktop/host";
 import { invokeDesktopCommand } from "@/desktop/electron/invoke";
 
 export interface DesktopAppUpdateCheckResult {
@@ -49,7 +49,7 @@ function toNumberOr(defaultValue: number, value: unknown): number {
 }
 
 export function shouldShowDesktopUpdateSection(): boolean {
-  return Platform.OS === "web" && isDesktop();
+  return Platform.OS === "web" && isElectronRuntime();
 }
 
 export function parseLocalDaemonVersionResult(raw: unknown): LocalDaemonVersionResult {

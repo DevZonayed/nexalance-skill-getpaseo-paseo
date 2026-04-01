@@ -1,5 +1,6 @@
 import { Platform } from "react-native";
-import { isDesktop, isDesktopMac } from "@/desktop/host";
+import { UnistylesRuntime } from "react-native-unistyles";
+import { isElectronRuntime, isElectronRuntimeMac } from "@/desktop/host";
 
 export const FOOTER_HEIGHT = 75;
 
@@ -23,40 +24,59 @@ export const DESKTOP_TRAFFIC_LIGHT_HEIGHT = 45;
 export const DESKTOP_WINDOW_CONTROLS_WIDTH = 140;
 export const DESKTOP_WINDOW_CONTROLS_HEIGHT = 48;
 
-// Check if running in desktop app (any OS)
-function isDesktopEnvironment(): boolean {
+// Check if running in the Electron desktop runtime (any OS)
+function isElectronDesktopRuntime(): boolean {
   if (Platform.OS !== "web") return false;
-  return isDesktop();
+  return isElectronRuntime();
 }
 
-// Check if running in desktop host on macOS
-function isDesktopEnvironmentMac(): boolean {
+// Check if running in the Electron desktop runtime on macOS
+function isElectronDesktopRuntimeMac(): boolean {
   if (Platform.OS !== "web") return false;
-  return isDesktopMac();
+  return isElectronRuntimeMac();
 }
 
 // Cached result - only cache true, keep checking if false (in case desktop globals load later)
-let _isDesktopMacCached: boolean | null = null;
-let _isDesktopCached: boolean | null = null;
+let _isElectronRuntimeMacCached: boolean | null = null;
+let _isElectronRuntimeCached: boolean | null = null;
 
-export function getIsDesktopMac(): boolean {
-  if (_isDesktopMacCached === true) {
+export function getIsElectronRuntimeMac(): boolean {
+  if (_isElectronRuntimeMacCached === true) {
     return true;
   }
-  const result = isDesktopEnvironmentMac();
+  const result = isElectronDesktopRuntimeMac();
   if (result) {
-    _isDesktopMacCached = true;
+    _isElectronRuntimeMacCached = true;
   }
   return result;
 }
 
-export function getIsDesktop(): boolean {
-  if (_isDesktopCached === true) {
+export function getIsElectronRuntime(): boolean {
+  if (_isElectronRuntimeCached === true) {
     return true;
   }
-  const result = isDesktopEnvironment();
+  const result = isElectronDesktopRuntime();
   if (result) {
-    _isDesktopCached = true;
+    _isElectronRuntimeCached = true;
   }
   return result;
+}
+
+export function isCompactFormFactor(): boolean {
+  return UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
+}
+
+export function isDesktopFormFactor(): boolean {
+  return !isCompactFormFactor();
+}
+
+export function isTouchDesktopFormFactor(): boolean {
+  return Platform.OS !== "web" && isDesktopFormFactor();
+}
+
+// SplitContainer relies on dnd-kit and DOM-backed accessibility helpers.
+// Keep that capability distinct from desktop-width layout so touch tablets
+// can use the desktop shell without entering web-only code paths.
+export function supportsDesktopPaneSplits(): boolean {
+  return Platform.OS === "web";
 }

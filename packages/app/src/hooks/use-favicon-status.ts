@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Platform } from "react-native";
-import { getIsDesktopMac } from "@/constants/layout";
+import { getIsElectronRuntimeMac } from "@/constants/layout";
 import { useAggregatedAgents } from "./use-aggregated-agents";
 import { getDesktopHost } from "@/desktop/host";
 
@@ -96,7 +96,7 @@ function getSystemColorScheme(): ColorScheme {
 }
 
 async function updateMacDockBadge(count?: number) {
-  if (Platform.OS !== "web" || !getIsDesktopMac()) return;
+  if (Platform.OS !== "web" || !getIsElectronRuntimeMac()) return;
 
   const desktopWindow = getDesktopHost()?.window?.getCurrentWindow?.();
   if (!desktopWindow || typeof desktopWindow.setBadgeCount !== "function") {

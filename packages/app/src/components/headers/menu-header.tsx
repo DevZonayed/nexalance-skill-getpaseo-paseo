@@ -1,10 +1,11 @@
 import type { ReactNode } from "react";
 import { Text, View, type StyleProp, type ViewStyle } from "react-native";
-import { StyleSheet, UnistylesRuntime, useUnistyles } from "react-native-unistyles";
+import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { PanelLeft } from "lucide-react-native";
 import { ScreenHeader } from "./screen-header";
 import { HeaderToggleButton } from "./header-toggle-button";
 import { usePanelStore } from "@/stores/panel-store";
+import { isCompactFormFactor } from "@/constants/layout";
 import { getShortcutOs } from "@/utils/shortcut-platform";
 
 interface MenuHeaderProps {
@@ -43,7 +44,7 @@ export function SidebarMenuToggle({
   nativeID = "menu-button",
 }: SidebarMenuToggleProps = {}) {
   const { theme } = useUnistyles();
-  const isMobile = UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
+  const isMobile = isCompactFormFactor();
   const mobileView = usePanelStore((state) => state.mobileView);
   const desktopAgentListOpen = usePanelStore((state) => state.desktop.agentListOpen);
   const toggleAgentList = usePanelStore((state) => state.toggleAgentList);

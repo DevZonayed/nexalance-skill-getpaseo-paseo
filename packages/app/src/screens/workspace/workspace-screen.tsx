@@ -29,7 +29,7 @@ import {
 import { GestureDetector } from "react-native-gesture-handler";
 import Animated from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { StyleSheet, UnistylesRuntime, useUnistyles } from "react-native-unistyles";
+import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import invariant from "tiny-invariant";
 import { SidebarMenuToggle } from "@/components/headers/menu-header";
 import { HeaderToggleButton } from "@/components/headers/header-toggle-button";
@@ -86,6 +86,10 @@ import {
   WorkspaceTabIcon,
   WorkspaceTabOptionRow,
 } from "@/screens/workspace/workspace-tab-presentation";
+import {
+  WorkspaceDesktopTabsRow,
+  type WorkspaceDesktopTabRowItem,
+} from "@/screens/workspace/workspace-desktop-tabs-row";
 import { buildWorkspaceTabMenuEntries } from "@/screens/workspace/workspace-tab-menu";
 import type { WorkspaceTabDescriptor } from "@/screens/workspace/workspace-tabs-types";
 import {
@@ -110,6 +114,7 @@ import {
   closeBulkWorkspaceTabs,
 } from "@/screens/workspace/workspace-bulk-close";
 import { findAdjacentPane } from "@/utils/split-navigation";
+import { isCompactFormFactor, supportsDesktopPaneSplits } from "@/constants/layout";
 
 const TERMINALS_QUERY_STALE_TIME = 5_000;
 const NEW_TAB_AGENT_OPTION_ID = "__new_tab_agent__";
@@ -576,7 +581,7 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
   const isDarkMode = useColorScheme() === "dark";
   const mainBackgroundColor = isDarkMode ? theme.colors.surface1 : theme.colors.surface0;
   const toast = useToast();
-  const isMobile = UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
+  const isMobile = isCompactFormFactor();
   const isFocusModeEnabled = usePanelStore((state) => state.desktop.focusModeEnabled);
 
   const normalizedServerId = trimNonEmpty(decodeSegment(serverId)) ?? "";
@@ -1703,6 +1708,8 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
   });
 
   const activeTabDescriptor = activeTab?.descriptor ?? null;
+  const canRenderDesktopPaneSplits = supportsDesktopPaneSplits();
+  const shouldRenderDesktopPaneFallback = !isMobile && !canRenderDesktopPaneSplits;
   useEffect(() => {
     if (Platform.OS !== "web" || typeof document === "undefined" || activeTabDescriptor) {
       return;
@@ -1881,6 +1888,17 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
     [buildPaneContentModel],
   );
 
+  const desktopTabRowItems = useMemo<WorkspaceDesktopTabRowItem[]>(
+    () =>
+      tabs.map((tab) => ({
+        tab,
+        isActive: tab.tabId === activeTabDescriptor?.tabId,
+        isCloseHovered: hoveredCloseTabKey === tab.key,
+        isClosingTab: closingTabIds.has(tab.tabId),
+      })),
+    [activeTabDescriptor?.tabId, closingTabIds, hoveredCloseTabKey, tabs],
+  );
+
   const handleFocusPane = useStableEvent(function handleFocusPane(paneId: string) {
     if (!persistenceKey || paneFocusSuppressedRef.current) {
       return;
@@ -1930,6 +1948,19 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
       reorderWorkspaceTabsInPane(persistenceKey, paneId, tabIds);
     },
     [persistenceKey, reorderWorkspaceTabsInPane],
+  );
+
+  const handleReorderTabsInFocusedPane = useCallback(
+    (nextTabs: WorkspaceTabDescriptor[]) => {
+      if (!focusedPaneId) {
+        return;
+      }
+      handleReorderTabsInPane(
+        focusedPaneId,
+        nextTabs.map((tab) => tab.tabId),
+      );
+    },
+    [focusedPaneId, handleReorderTabsInPane],
   );
 
   const renderSplitPaneEmptyState = useCallback(function renderSplitPaneEmptyState() {
@@ -2187,6 +2218,32 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
             />
           ) : null}
 
+          {shouldRenderDesktopPaneFallback ? (
+            <WorkspaceDesktopTabsRow
+              paneId={focusedPaneId ?? undefined}
+              isFocused
+              tabs={desktopTabRowItems}
+              normalizedServerId={normalizedServerId}
+              normalizedWorkspaceId={normalizedWorkspaceId}
+              setHoveredTabKey={setHoveredTabKey}
+              setHoveredCloseTabKey={setHoveredCloseTabKey}
+              onNavigateTab={navigateToTabId}
+              onCloseTab={handleCloseTabById}
+              onCopyResumeCommand={handleCopyResumeCommand}
+              onCopyAgentId={handleCopyAgentId}
+              onCloseTabsToLeft={handleCloseTabsToLeft}
+              onCloseTabsToRight={handleCloseTabsToRight}
+              onCloseOtherTabs={handleCloseOtherTabs}
+              onSelectNewTabOption={handleSelectNewTabOption}
+              newTabAgentOptionId={NEW_TAB_AGENT_OPTION_ID}
+              onReorderTabs={handleReorderTabsInFocusedPane}
+              onNewTerminalTab={handleCreateTerminal}
+              onSplitRight={() => {}}
+              onSplitDown={() => {}}
+              showPaneSplitActions={false}
+            />
+          ) : null}
+
           <View style={styles.centerContent}>
             {isMobile ? (
               <GestureDetector gesture={explorerOpenGesture} touchAction="pan-y">
@@ -2194,7 +2251,7 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
               </GestureDetector>
             ) : (
               <View style={styles.content}>
-                {workspaceLayout && persistenceKey ? (
+                {canRenderDesktopPaneSplits && workspaceLayout && persistenceKey ? (
                   <SplitContainer
                     layout={workspaceLayout}
                     focusModeEnabled={isFocusModeEnabled && !isMobile}
