@@ -9,7 +9,7 @@ import {
   isCompactFormFactor,
 } from "@/constants/layout";
 import { useWindowControlsPadding } from "@/utils/desktop-window";
-import { TitlebarDragRegion, TitlebarNoDragContent } from "@/components/desktop/titlebar-drag-region";
+import { TitlebarDragRegion } from "@/components/desktop/titlebar-drag-region";
 
 interface ScreenHeaderProps {
   left?: ReactNode;
@@ -46,10 +46,8 @@ export function ScreenHeader({ left, right, leftStyle, rightStyle, borderless }:
           ]}
         >
           <TitlebarDragRegion />
-          <TitlebarNoDragContent>
-            <View style={[styles.left, leftStyle]}>{left}</View>
-            <View style={[styles.right, rightStyle]}>{right}</View>
-          </TitlebarNoDragContent>
+          <View style={[styles.left, leftStyle]}>{left}</View>
+          <View style={[styles.right, rightStyle]}>{right}</View>
         </View>
       </View>
     </View>

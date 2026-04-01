@@ -2327,7 +2327,7 @@ const styles = StyleSheet.create((theme) => ({
     flexShrink: 1,
   },
   headerTitleContainer: {
-    flex: 1,
+    flexShrink: 1,
     minWidth: 0,
     flexDirection: "row",
     alignItems: "center",

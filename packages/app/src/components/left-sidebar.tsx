@@ -36,7 +36,7 @@ import {
 } from "@/hooks/use-sidebar-workspaces-list";
 import { useSidebarAnimation } from "@/contexts/sidebar-animation-context";
 import { useWindowControlsPadding } from "@/utils/desktop-window";
-import { TitlebarDragRegion, TitlebarNoDragContent } from "@/components/desktop/titlebar-drag-region";
+import { TitlebarDragRegion } from "@/components/desktop/titlebar-drag-region";
 import { Combobox } from "@/components/ui/combobox";
 import { getHostRuntimeStore, useHosts } from "@/runtime/host-runtime";
 import { formatConnectionStatus } from "@/utils/daemons";
@@ -689,14 +689,14 @@ function DesktopSidebar({
 
   return (
     <Animated.View style={[styles.desktopSidebar, resizeAnimatedStyle, { paddingTop: insetsTop }]}>
-      {padding.top > 0 ? <View style={{ height: padding.top }} /> : null}
-      <View style={styles.sidebarHeader}>
+      <View style={styles.sidebarDragArea}>
         <TitlebarDragRegion />
-        <TitlebarNoDragContent>
+        {padding.top > 0 ? <View style={{ height: padding.top }} /> : null}
+        <View style={styles.sidebarHeader}>
           <View style={styles.sidebarHeaderRow}>
             <SessionsButton onPress={handleViewMore} />
           </View>
-        </TitlebarNoDragContent>
+        </View>
       </View>
 
       {isInitialLoad ? (
@@ -834,8 +834,10 @@ const styles = StyleSheet.create((theme) => ({
     width: 10,
     zIndex: 10,
   },
-  sidebarHeader: {
+  sidebarDragArea: {
     position: "relative",
+  },
+  sidebarHeader: {
     height: {
       xs: HEADER_INNER_HEIGHT_MOBILE,
       md: HEADER_INNER_HEIGHT,

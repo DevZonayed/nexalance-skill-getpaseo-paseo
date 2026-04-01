@@ -51,7 +51,7 @@ import type {
 } from "@server/server/agent/agent-sdk-types";
 import { AGENT_PROVIDER_DEFINITIONS } from "@server/server/agent/provider-manifest";
 import { prepareWorkspaceTab } from "@/utils/workspace-navigation";
-import { TitlebarDragRegion, TitlebarNoDragContent } from "@/components/desktop/titlebar-drag-region";
+import { TitlebarDragRegion } from "@/components/desktop/titlebar-drag-region";
 import { useKeyboardShiftStyle } from "@/hooks/use-keyboard-shift-style";
 import { normalizeAgentSnapshot } from "@/utils/agent-snapshots";
 import { useAgentInputDraft } from "@/hooks/use-agent-input-draft";
@@ -1000,8 +1000,7 @@ function DraftAgentScreenContent({
   const mainContent = (
     <View style={styles.container}>
       <TitlebarDragRegion />
-      <TitlebarNoDragContent direction="column">
-        <View style={styles.outerContainer}>
+      <View style={styles.outerContainer}>
         <View style={styles.agentPanel}>
           <View
             style={[
@@ -1264,7 +1263,6 @@ function DraftAgentScreenContent({
           />
         ) : null}
       </View>
-      </TitlebarNoDragContent>
     </View>
   );
 

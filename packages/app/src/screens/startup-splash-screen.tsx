@@ -11,7 +11,7 @@ import {
   getDesktopDaemonLogs,
   type DesktopDaemonLogs,
 } from "@/desktop/daemon/desktop-daemon";
-import { TitlebarDragRegion, TitlebarNoDragContent } from "@/components/desktop/titlebar-drag-region";
+import { TitlebarDragRegion } from "@/components/desktop/titlebar-drag-region";
 
 type StartupSplashScreenProps = {
   bootstrapState?: {
@@ -224,10 +224,8 @@ export function StartupSplashScreen({ bootstrapState }: StartupSplashScreenProps
     return (
       <View style={styles.container}>
         <TitlebarDragRegion />
-        <TitlebarNoDragContent direction="column">
-          <PaseoLogo size={96} />
-          <Text style={styles.subtitle}>Starting up…</Text>
-        </TitlebarNoDragContent>
+        <PaseoLogo size={96} />
+        <Text style={styles.subtitle}>Starting up…</Text>
       </View>
     );
   }
@@ -236,24 +234,22 @@ export function StartupSplashScreen({ bootstrapState }: StartupSplashScreenProps
     return (
       <View style={styles.container}>
         <TitlebarDragRegion />
-        <TitlebarNoDragContent direction="column">
-          <View style={styles.centeredContent}>
-            <PaseoLogo size={96} />
-            <Text style={styles.title}>Welcome to Paseo</Text>
-            <View style={styles.progressSteps}>
-              {progressSteps.map((step) => (
-                <View key={step.key} style={styles.progressStepRow}>
-                  {step.status === "complete" ? (
-                    <Check size={18} color={theme.colors.success} />
-                  ) : (
-                    <ActivityIndicator color={theme.colors.accent} />
-                  )}
-                  <Text style={styles.subtitleInline}>{step.label}</Text>
-                </View>
-              ))}
-            </View>
+        <View style={styles.centeredContent}>
+          <PaseoLogo size={96} />
+          <Text style={styles.title}>Welcome to Paseo</Text>
+          <View style={styles.progressSteps}>
+            {progressSteps.map((step) => (
+              <View key={step.key} style={styles.progressStepRow}>
+                {step.status === "complete" ? (
+                  <Check size={18} color={theme.colors.success} />
+                ) : (
+                  <ActivityIndicator color={theme.colors.accent} />
+                )}
+                <Text style={styles.subtitleInline}>{step.label}</Text>
+              </View>
+            ))}
           </View>
-        </TitlebarNoDragContent>
+        </View>
       </View>
     );
   }
@@ -261,8 +257,7 @@ export function StartupSplashScreen({ bootstrapState }: StartupSplashScreenProps
   return (
     <View style={[styles.container, styles.containerError]}>
       <TitlebarDragRegion />
-      <TitlebarNoDragContent direction="column">
-        <View style={styles.errorContent}>
+      <View style={styles.errorContent}>
         <View style={styles.errorHeader}>
           <PaseoLogo size={64} />
           <Text style={[styles.title, styles.titleError]}>Something went wrong</Text>
@@ -321,7 +316,6 @@ export function StartupSplashScreen({ bootstrapState }: StartupSplashScreenProps
           </Button>
         </View>
       </View>
-      </TitlebarNoDragContent>
     </View>
   );
 }
