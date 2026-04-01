@@ -19,6 +19,10 @@ import { useProviderRecency } from "@/stores/provider-recency-store";
 import { useSessionStore } from "@/stores/session-store";
 import { normalizeAgentSnapshot } from "@/utils/agent-snapshots";
 import { toErrorMessage } from "@/utils/error-messages";
+import {
+  getWorkspaceExecutionAuthority,
+  requireWorkspaceRecordId,
+} from "@/utils/workspace-execution";
 
 const MAX_VISIBLE_PROVIDER_TILES = 4;
 
@@ -36,11 +40,11 @@ function LauncherPanel() {
   const { serverId, workspaceId, target, retargetCurrentTab, isPaneFocused } = usePaneContext();
   const client = useHostRuntimeClient(serverId);
   const isConnected = useHostRuntimeIsConnected(serverId);
-  const workspaceDirectory = useSessionStore(
-    (state) =>
-      state.sessions[serverId]?.workspaces.get(workspaceId)?.workspaceDirectory ??
-      state.sessions[serverId]?.workspaces.get(workspaceId)?.projectRootPath,
-  );
+  const workspaces = useSessionStore((state) => state.sessions[serverId]?.workspaces);
+  const workspaceAuthority = getWorkspaceExecutionAuthority({ workspaces, workspaceId });
+  const workspaceDirectory = workspaceAuthority.ok
+    ? workspaceAuthority.authority.workspaceDirectory
+    : null;
   const { providers, recordUsage } = useProviderRecency();
   const setAgents = useSessionStore((state) => state.setAgents);
   const [pendingAction, setPendingAction] = useState<string | null>(null);
@@ -62,6 +66,11 @@ function LauncherPanel() {
         setErrorMessage(!workspaceDirectory ? "Workspace directory not found" : "Host is not connected");
         return;
       }
+      if (!workspaceAuthority.ok) {
+        setErrorMessage(workspaceAuthority.message);
+        return;
+      }
+      const persistedWorkspaceId = requireWorkspaceRecordId(workspaceAuthority.authority.workspaceId);
 
       setPendingAction(providerId);
       setErrorMessage(null);
@@ -70,6 +79,7 @@ function LauncherPanel() {
         const agent = await client.createAgent({
           provider: providerId,
           cwd: workspaceDirectory,
+          workspaceId: persistedWorkspaceId,
           terminal: true,
         });
         recordUsage(providerId);
@@ -87,7 +97,16 @@ function LauncherPanel() {
         setPendingAction((current) => (current === providerId ? null : current));
       }
     },
-    [client, isConnected, recordUsage, retargetCurrentTab, serverId, setAgents, workspaceDirectory],
+    [
+      client,
+      isConnected,
+      recordUsage,
+      retargetCurrentTab,
+      serverId,
+      setAgents,
+      workspaceAuthority,
+      workspaceDirectory,
+    ],
   );
 
   const openDraftTab = useCallback(() => {
@@ -131,7 +150,9 @@ function LauncherPanel() {
     return (
       <View style={styles.container}>
         <View style={[styles.content, styles.loadingContent]}>
-          <ActivityIndicator />
+          <Text style={styles.errorText}>
+            {workspaceAuthority.ok ? "Workspace execution directory not found." : workspaceAuthority.message}
+          </Text>
         </View>
       </View>
     );

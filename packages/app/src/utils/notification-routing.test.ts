@@ -28,6 +28,20 @@ describe("resolveNotificationTarget", () => {
       workspaceId: null,
     });
   });
+
+  it("does not treat cwd as a workspace id alias", () => {
+    expect(
+      resolveNotificationTarget({
+        serverId: "srv-1",
+        agentId: "agent-1",
+        cwd: "/tmp/repo",
+      }),
+    ).toEqual({
+      serverId: "srv-1",
+      agentId: "agent-1",
+      workspaceId: null,
+    });
+  });
 });
 
 describe("buildNotificationRoute", () => {

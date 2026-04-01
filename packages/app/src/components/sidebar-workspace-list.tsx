@@ -86,6 +86,10 @@ import { useSessionStore } from "@/stores/session-store";
 import { useWorkspaceSetupStore } from "@/stores/workspace-setup-store";
 import { buildWorkspaceArchiveRedirectRoute } from "@/utils/workspace-archive-navigation";
 import { openExternalUrl } from "@/utils/open-external-url";
+import {
+  requireWorkspaceExecutionDirectory,
+  resolveWorkspaceExecutionDirectory,
+} from "@/utils/workspace-execution";
 
 function toProjectIconDataUri(icon: { mimeType: string; data: string } | null): string | null {
   if (!icon) {
@@ -674,8 +678,8 @@ function ProjectHeaderRow({
     onWorkspacePress?.();
     beginWorkspaceSetup({
       serverId,
-      projectPath: project.iconWorkingDir,
-      projectName: displayName,
+      sourceDirectory: project.iconWorkingDir,
+      displayName,
       creationMethod: "create_worktree",
       navigationMethod: "navigate",
     });
@@ -815,10 +819,13 @@ function WorkspaceRowInner({
   const { theme } = useUnistyles();
   const [isHovered, setIsHovered] = useState(false);
   const isMobile = Platform.OS !== "web";
+  const workspaceDirectory = resolveWorkspaceExecutionDirectory({
+    workspaceDirectory: workspace.workspaceDirectory,
+  });
   const prHint = useWorkspacePrHint({
     serverId: workspace.serverId,
-    cwd: workspace.projectRootPath ?? "",
-    enabled: workspace.projectKind === "git" && Boolean(workspace.projectRootPath),
+    cwd: workspaceDirectory ?? "",
+    enabled: workspace.projectKind === "git" && Boolean(workspaceDirectory),
   });
   const interaction = useLongPressDragInteraction({
     drag,
@@ -982,12 +989,17 @@ function WorkspaceRowWithMenu({
     (state) => state.sessions[workspace.serverId]?.workspaces ?? EMPTY_WORKSPACES,
   );
   const [isArchivingWorkspace, setIsArchivingWorkspace] = useState(false);
+  const workspaceDirectory = resolveWorkspaceExecutionDirectory({
+    workspaceDirectory: workspace.workspaceDirectory,
+  });
   const archiveStatus = useCheckoutGitActionsStore((state) =>
-    state.getStatus({
-      serverId: workspace.serverId,
-      cwd: workspace.workspaceDirectory ?? workspace.projectRootPath ?? "",
-      actionId: "archive-worktree",
-    }),
+    workspaceDirectory
+      ? state.getStatus({
+          serverId: workspace.serverId,
+          cwd: workspaceDirectory,
+          actionId: "archive-worktree",
+        })
+      : "idle",
   );
   const isWorktree = workspace.workspaceKind === "worktree";
   const isArchiving = isWorktree ? archiveStatus === "pending" : isArchivingWorkspace;
@@ -1025,7 +1037,17 @@ function WorkspaceRowWithMenu({
       if (!confirmed) {
         return;
       }
-      const workspaceDirectory = workspace.workspaceDirectory ?? workspace.projectRootPath;
+      let workspaceDirectory: string;
+      try {
+        workspaceDirectory = requireWorkspaceExecutionDirectory({
+          workspaceId: workspace.workspaceId,
+          workspaceDirectory: workspace.workspaceDirectory,
+        });
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Workspace path not available");
+        return;
+      }
+
       if (!workspaceDirectory) {
         toast.error("Workspace path not available");
         return;
@@ -1050,7 +1072,6 @@ function WorkspaceRowWithMenu({
     redirectAfterArchive,
     toast,
     workspace.name,
-    workspace.projectRootPath,
     workspace.workspaceDirectory,
     workspace.serverId,
     workspace.workspaceId,
@@ -1102,14 +1123,19 @@ function WorkspaceRowWithMenu({
   ]);
 
   const handleCopyPath = useCallback(() => {
-    const workspaceDirectory = workspace.workspaceDirectory ?? workspace.projectRootPath;
-    if (!workspaceDirectory) {
-      toast.error("Workspace path not available");
+    let workspaceDirectory: string;
+    try {
+      workspaceDirectory = requireWorkspaceExecutionDirectory({
+        workspaceId: workspace.workspaceId,
+        workspaceDirectory: workspace.workspaceDirectory,
+      });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Workspace path not available");
       return;
     }
     void Clipboard.setStringAsync(workspaceDirectory);
     toast.copied("Path copied");
-  }, [toast, workspace.projectRootPath, workspace.workspaceDirectory]);
+  }, [toast, workspace.workspaceDirectory, workspace.workspaceId]);
 
   const handleCopyBranchName = useCallback(() => {
     void Clipboard.setStringAsync(workspace.name);

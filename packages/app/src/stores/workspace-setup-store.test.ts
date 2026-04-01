@@ -6,19 +6,21 @@ describe("workspace-setup-store", () => {
     useWorkspaceSetupStore.setState({ pendingWorkspaceSetup: null });
   });
 
-  it("tracks deferred project setup by path instead of a created workspace", () => {
+  it("tracks deferred workspace setup by source directory and optional workspace id", () => {
     useWorkspaceSetupStore.getState().beginWorkspaceSetup({
       serverId: "server-1",
-      projectPath: "/Users/test/project",
-      projectName: "project",
+      sourceDirectory: "/Users/test/project",
+      sourceWorkspaceId: "42",
+      displayName: "project",
       creationMethod: "open_project",
       navigationMethod: "replace",
     });
 
     expect(useWorkspaceSetupStore.getState().pendingWorkspaceSetup).toEqual({
       serverId: "server-1",
-      projectPath: "/Users/test/project",
-      projectName: "project",
+      sourceDirectory: "/Users/test/project",
+      sourceWorkspaceId: "42",
+      displayName: "project",
       creationMethod: "open_project",
       navigationMethod: "replace",
     });
@@ -27,7 +29,7 @@ describe("workspace-setup-store", () => {
   it("clears pending setup state", () => {
     useWorkspaceSetupStore.getState().beginWorkspaceSetup({
       serverId: "server-1",
-      projectPath: "/Users/test/project",
+      sourceDirectory: "/Users/test/project",
       creationMethod: "create_worktree",
       navigationMethod: "navigate",
     });

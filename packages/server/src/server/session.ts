@@ -2522,7 +2522,7 @@ export class Session {
       );
       await this.forwardAgentUpdate(snapshot);
       if (sessionConfig.terminal) {
-        void this.emitInitialTerminalsChangedSnapshot(sessionConfig.cwd);
+        void this.emitInitialTerminalsChangedSnapshot(resolvedWorkspace.directory);
       }
 
       if (requestId) {

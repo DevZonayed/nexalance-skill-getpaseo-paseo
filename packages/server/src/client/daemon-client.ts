@@ -180,6 +180,7 @@ export type CreateAgentRequestOptions = {
   config?: AgentSessionConfig;
   provider?: AgentProvider;
   cwd?: string;
+  workspaceId?: number;
   initialPrompt?: string;
   clientMessageId?: string;
   outputSchema?: Record<string, unknown>;
@@ -1383,6 +1384,7 @@ export class DaemonClient {
       type: "create_agent_request",
       requestId,
       config,
+      ...(typeof options.workspaceId === "number" ? { workspaceId: options.workspaceId } : {}),
       ...(options.initialPrompt ? { initialPrompt: options.initialPrompt } : {}),
       ...(options.clientMessageId ? { clientMessageId: options.clientMessageId } : {}),
       ...(options.outputSchema ? { outputSchema: options.outputSchema } : {}),
@@ -3633,6 +3635,7 @@ function resolveAgentConfig(options: CreateAgentRequestOptions): AgentSessionCon
     config,
     provider,
     cwd,
+    workspaceId: _workspaceId,
     initialPrompt: _initialPrompt,
     images: _images,
     git: _git,

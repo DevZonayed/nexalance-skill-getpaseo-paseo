@@ -8,7 +8,7 @@ import {
   buildHostRootRoute,
   buildHostWorkspaceOpenRoute,
 } from "@/utils/host-routes";
-import { resolveHydratedWorkspaceId } from "@/utils/resolve-hydrated-workspace-id";
+import { resolveWorkspaceIdByExecutionDirectory } from "@/utils/workspace-execution";
 import { prepareWorkspaceTab } from "@/utils/workspace-navigation";
 
 const HOST_ROOT_REDIRECT_DELAY_MS = 300;
@@ -66,9 +66,9 @@ export default function HostIndexRoute() {
       });
 
       const primaryAgent = visibleAgents[0];
-      const primaryAgentWorkspaceId = resolveHydratedWorkspaceId({
+      const primaryAgentWorkspaceId = resolveWorkspaceIdByExecutionDirectory({
         workspaces: sessionWorkspaces?.values(),
-        path: primaryAgent?.cwd,
+        workspaceDirectory: primaryAgent?.cwd,
       });
       if (primaryAgent && primaryAgentWorkspaceId) {
         router.replace(

@@ -3,7 +3,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSessionStore } from "@/stores/session-store";
 import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
 import { buildHostRootRoute } from "@/utils/host-routes";
-import { resolveHydratedWorkspaceId } from "@/utils/resolve-hydrated-workspace-id";
+import { resolveWorkspaceIdByExecutionDirectory } from "@/utils/workspace-execution";
 import { prepareWorkspaceTab } from "@/utils/workspace-navigation";
 
 export default function HostAgentReadyRoute() {
@@ -33,9 +33,9 @@ export default function HostAgentReadyRoute() {
     if (!serverId || !agentId) {
       return null;
     }
-    return resolveHydratedWorkspaceId({
+    return resolveWorkspaceIdByExecutionDirectory({
       workspaces: state.sessions[serverId]?.workspaces?.values(),
-      path: state.sessions[serverId]?.agents?.get(agentId)?.cwd,
+      workspaceDirectory: state.sessions[serverId]?.agents?.get(agentId)?.cwd,
     });
   });
 
@@ -93,9 +93,9 @@ export default function HostAgentReadyRoute() {
           return;
         }
         const cwd = result?.agent?.cwd?.trim();
-        const workspaceId = resolveHydratedWorkspaceId({
+        const workspaceId = resolveWorkspaceIdByExecutionDirectory({
           workspaces: sessionWorkspaces?.values(),
-          path: cwd,
+          workspaceDirectory: cwd,
         });
         if (!workspaceId && !hasHydratedWorkspaces) {
           return;

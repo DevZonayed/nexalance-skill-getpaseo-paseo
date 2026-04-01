@@ -50,7 +50,7 @@ import type {
   AgentSessionConfig,
 } from "@server/server/agent/agent-sdk-types";
 import { AGENT_PROVIDER_DEFINITIONS } from "@server/server/agent/provider-manifest";
-import { resolveHydratedWorkspaceId } from "@/utils/resolve-hydrated-workspace-id";
+import { resolveWorkspaceIdByExecutionDirectory } from "@/utils/workspace-execution";
 import { prepareWorkspaceTab } from "@/utils/workspace-navigation";
 import { useDesktopDragHandlers } from "@/utils/desktop-window";
 import { useKeyboardShiftStyle } from "@/hooks/use-keyboard-shift-style";
@@ -634,6 +634,16 @@ function DraftAgentScreenContent({
       isGit: isAttachWorktree && selectedWorktreePath ? true : checkout?.isGit === true,
     };
   }, [selectedServerId, explorerCwd, isAttachWorktree, selectedWorktreePath, checkout?.isGit]);
+  const draftExplorerWorkspaceId = useSessionStore(
+    useCallback(
+      (state) =>
+        resolveWorkspaceIdByExecutionDirectory({
+          workspaces: selectedServerId ? state.sessions[selectedServerId]?.workspaces?.values() : null,
+          workspaceDirectory: explorerCwd,
+        }),
+      [explorerCwd, selectedServerId],
+    ),
+  );
   const canOpenExplorer = draftExplorerCheckout !== null;
   const openExplorerForDraftCheckout = useCallback(() => {
     if (!draftExplorerCheckout) {
@@ -910,9 +920,9 @@ function DraftAgentScreenContent({
 
       const createdWorkingDir = typeof result.cwd === "string" ? result.cwd.trim() : "";
       const configuredWorkingDir = config.cwd.trim();
-      const workspaceId = resolveHydratedWorkspaceId({
+      const workspaceId = resolveWorkspaceIdByExecutionDirectory({
         workspaces: useSessionStore.getState().sessions[selectedServerId]?.workspaces?.values(),
-        path: createdWorkingDir.length > 0 ? createdWorkingDir : configuredWorkingDir,
+        workspaceDirectory: createdWorkingDir.length > 0 ? createdWorkingDir : configuredWorkingDir,
       });
 
       return {
@@ -1218,7 +1228,7 @@ function DraftAgentScreenContent({
         {!isMobile && isExplorerOpen && explorerServerId && draftExplorerCheckout ? (
           <ExplorerSidebar
             serverId={explorerServerId}
-            workspaceId={draftExplorerCheckout.cwd}
+            workspaceId={draftExplorerWorkspaceId}
             workspaceRoot={draftExplorerCheckout.cwd}
             isGit={explorerIsGit}
           />
@@ -1241,7 +1251,7 @@ function DraftAgentScreenContent({
         {isMobile && explorerServerId && draftExplorerCheckout ? (
           <ExplorerSidebar
             serverId={explorerServerId}
-            workspaceId={draftExplorerCheckout.cwd}
+            workspaceId={draftExplorerWorkspaceId}
             workspaceRoot={draftExplorerCheckout.cwd}
             isGit={explorerIsGit}
           />

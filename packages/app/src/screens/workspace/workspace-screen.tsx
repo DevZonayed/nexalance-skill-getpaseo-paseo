@@ -59,7 +59,6 @@ import { useKeyboardActionHandler } from "@/hooks/use-keyboard-action-handler";
 import type { KeyboardActionDefinition } from "@/keyboard/keyboard-action-dispatcher";
 import { useCreateFlowStore } from "@/stores/create-flow-store";
 import { decodeWorkspaceIdFromPathSegment } from "@/utils/host-routes";
-import { normalizeWorkspaceIdentity } from "@/utils/workspace-identity";
 import {
   normalizeWorkspaceTabTarget,
   workspaceTabTargetsEqual,
@@ -77,6 +76,10 @@ import { useArchiveAgent } from "@/hooks/use-archive-agent";
 import { useStableEvent } from "@/hooks/use-stable-event";
 import { buildProviderCommand } from "@/utils/provider-command-templates";
 import { generateDraftId } from "@/stores/draft-keys";
+import {
+  resolveWorkspaceExecutionAuthority,
+  resolveWorkspaceRouteId,
+} from "@/utils/workspace-execution";
 import {
   WorkspaceTabPresentationResolver,
   WorkspaceTabIcon,
@@ -554,23 +557,13 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
   const isFocusModeEnabled = usePanelStore((state) => state.desktop.focusModeEnabled);
 
   const normalizedServerId = trimNonEmpty(decodeSegment(serverId)) ?? "";
-  const rawWorkspaceIdentifier =
-    normalizeWorkspaceIdentity(decodeWorkspaceIdFromPathSegment(workspaceId)) ?? "";
-
-  // Resolve the workspace ID: first try direct map key, then fall back to path-based lookup.
-  // This lets URLs that encode a filesystem path (e.g. from deep links or older bookmarks)
-  // resolve correctly even though the map is keyed by numeric DB IDs.
-  const normalizedWorkspaceId = useSessionStore((state) => {
-    if (!normalizedServerId || !rawWorkspaceIdentifier) return "";
-    const workspaces = state.sessions[normalizedServerId]?.workspaces;
-    if (!workspaces) return rawWorkspaceIdentifier;
-    if (workspaces.has(rawWorkspaceIdentifier)) return rawWorkspaceIdentifier;
-    for (const [id, ws] of workspaces.entries()) {
-      if (normalizeWorkspaceIdentity(ws.workspaceDirectory) === rawWorkspaceIdentifier) return id;
-      if (normalizeWorkspaceIdentity(ws.projectRootPath) === rawWorkspaceIdentifier) return id;
-    }
-    return rawWorkspaceIdentifier;
-  });
+  const normalizedWorkspaceId =
+    resolveWorkspaceRouteId({
+      routeWorkspaceId: decodeWorkspaceIdFromPathSegment(workspaceId),
+    }) ?? "";
+  const sessionWorkspaces = useSessionStore(
+    (state) => state.sessions[normalizedServerId]?.workspaces,
+  );
 
   const workspaceTerminalScopeKey =
     normalizedServerId && normalizedWorkspaceId
@@ -583,11 +576,17 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
   const queryClient = useQueryClient();
   const client = useHostRuntimeClient(normalizedServerId);
   const isConnected = useHostRuntimeIsConnected(normalizedServerId);
-  const workspaceDescriptor = useSessionStore(
-    (state) => state.sessions[normalizedServerId]?.workspaces.get(normalizedWorkspaceId) ?? null,
+  const workspaceDescriptor = sessionWorkspaces?.get(normalizedWorkspaceId) ?? null;
+  const workspaceAuthority = useMemo(
+    () =>
+      resolveWorkspaceExecutionAuthority({
+        workspaces: sessionWorkspaces,
+        workspaceId: normalizedWorkspaceId,
+      }),
+    [normalizedWorkspaceId, sessionWorkspaces],
   );
-  const workspaceDirectory =
-    workspaceDescriptor?.workspaceDirectory ?? workspaceDescriptor?.projectRootPath ?? null;
+  const workspaceDirectory = workspaceAuthority?.workspaceDirectory ?? null;
+  const isMissingWorkspaceExecutionAuthority = Boolean(workspaceDescriptor && !workspaceAuthority);
 
   const workspaceAgentVisibility = useStoreWithEqualityFn(
     useSessionStore,
@@ -633,7 +632,7 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
             terminals: current?.terminals ?? [],
             terminal: createdTerminal,
           });
-          const cwd = current?.cwd ?? workspaceDirectory ?? undefined;
+          const cwd = current?.cwd ?? workspaceDirectory;
           return {
             ...(cwd ? { cwd } : {}),
             terminals: nextTerminals,
@@ -706,7 +705,10 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
   }, [client, isConnected, queryClient, terminalsQueryKey, workspaceDirectory]);
 
   const checkoutQuery = useQuery({
-    queryKey: checkoutStatusQueryKey(normalizedServerId, workspaceDirectory ?? ""),
+    queryKey: checkoutStatusQueryKey(
+      normalizedServerId,
+      workspaceDirectory ?? `missing-workspace-directory:${normalizedWorkspaceId}`,
+    ),
     enabled:
       Boolean(client && isConnected) &&
       Boolean(workspaceDirectory),
@@ -1749,6 +1751,12 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
     <View style={styles.emptyState}>
       <ActivityIndicator color={theme.colors.foregroundMuted} />
     </View>
+  ) : isMissingWorkspaceExecutionAuthority ? (
+    <View style={styles.emptyState}>
+      <Text style={styles.emptyStateText}>
+        Workspace execution directory is missing. Reload workspace data before opening tabs.
+      </Text>
+    </View>
   ) : !activeTabDescriptor ? (
     !hasHydratedAgents ? (
       <View style={styles.emptyState}>
@@ -1966,10 +1974,12 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
               <View style={styles.headerRight}>
                 {!isMobile && isGitCheckout ? (
                   <>
-                    <WorkspaceGitActions
-                      serverId={normalizedServerId}
-                      cwd={workspaceDirectory ?? ""}
-                    />
+                    {workspaceDirectory ? (
+                      <WorkspaceGitActions
+                        serverId={normalizedServerId}
+                        cwd={workspaceDirectory}
+                      />
+                    ) : null}
                     <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
                       <TooltipTrigger asChild>
                         <Pressable
@@ -2148,13 +2158,15 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
         </View>
 
         {(!isFocusModeEnabled || isMobile) && (
-          <ExplorerSidebar
-            serverId={normalizedServerId}
-            workspaceId={normalizedWorkspaceId}
-            workspaceRoot={workspaceDirectory ?? ""}
-            isGit={isGitCheckout}
-            onOpenFile={handleOpenFileFromExplorer}
-          />
+          workspaceDirectory ? (
+            <ExplorerSidebar
+              serverId={normalizedServerId}
+              workspaceId={normalizedWorkspaceId}
+              workspaceRoot={workspaceDirectory}
+              isGit={isGitCheckout}
+              onOpenFile={handleOpenFileFromExplorer}
+            />
+          ) : null
         )}
       </View>
     </View>

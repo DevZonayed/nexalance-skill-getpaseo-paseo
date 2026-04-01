@@ -630,6 +630,108 @@ describe("workspace aggregation", () => {
     });
   });
 
+  test("create_agent_request uses workspaceId as the execution authority", async () => {
+    const { session, emitted, projects, workspaces } = createSessionForWorkspaceTests();
+    seedProject({
+      projects,
+      id: 5,
+      directory: "/tmp/repo",
+      displayName: "repo",
+      kind: "git",
+    });
+    seedWorkspace({
+      workspaces,
+      id: 50,
+      projectId: 5,
+      directory: "/tmp/repo/.paseo/worktrees/feature",
+      displayName: "feature",
+      kind: "worktree",
+    });
+
+    const createdAgent = makeAgent({
+      id: "agent-1",
+      cwd: "/tmp/repo/.paseo/worktrees/feature",
+      status: "idle",
+      updatedAt: "2026-03-01T12:00:00.000Z",
+    });
+    const createAgent = vi.fn(async () => createdAgent as any);
+
+    (session as any).agentManager = {
+      createAgent,
+      getAgent: vi.fn(() => createdAgent as any),
+    };
+    (session as any).forwardAgentUpdate = vi.fn(async () => undefined);
+    (session as any).getAgentPayloadById = vi.fn(async () => createdAgent);
+    (session as any).buildAgentSessionConfig = vi.fn(async (config: any) => ({
+      sessionConfig: config,
+      worktreeConfig: null,
+    }));
+
+    await (session as any).handleCreateAgentRequest({
+      type: "create_agent_request",
+      requestId: "req-create-agent",
+      workspaceId: 50,
+      config: {
+        provider: "codex",
+        cwd: "/tmp/repo",
+        modeId: "default",
+      },
+      labels: {},
+    });
+
+    expect(createAgent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        cwd: "/tmp/repo/.paseo/worktrees/feature",
+      }),
+      undefined,
+      expect.objectContaining({
+        workspaceId: 50,
+      }),
+    );
+    const response = emitted.find((message) => message.type === "status") as any;
+    expect(response?.payload).toMatchObject({
+      status: "agent_created",
+      requestId: "req-create-agent",
+      agent: {
+        cwd: "/tmp/repo/.paseo/worktrees/feature",
+      },
+    });
+  });
+
+  test("create_agent_request fails for an unknown workspaceId", async () => {
+    const { session, emitted } = createSessionForWorkspaceTests();
+    const createAgent = vi.fn();
+
+    (session as any).agentManager = {
+      createAgent,
+      getAgent: vi.fn(() => null),
+    };
+    (session as any).buildAgentSessionConfig = vi.fn(async (config: any) => ({
+      sessionConfig: config,
+      worktreeConfig: null,
+    }));
+
+    await (session as any).handleCreateAgentRequest({
+      type: "create_agent_request",
+      requestId: "req-create-agent-fail",
+      workspaceId: 999,
+      config: {
+        provider: "codex",
+        cwd: "/tmp/repo",
+        modeId: "default",
+      },
+      labels: {},
+    });
+
+    expect(createAgent).not.toHaveBeenCalled();
+    const response = emitted.find((message) => message.type === "status") as any;
+    expect(response?.payload).toMatchObject({
+      status: "agent_create_failed",
+      requestId: "req-create-agent-fail",
+    });
+    expect((response?.payload as any)?.error).toContain("Workspace not found: 999");
+  });
+
   test("open_project_request creates git projects with GitHub owner/repo and branch names", async () => {
     const { session, emitted, projects, workspaces } = createSessionForWorkspaceTests();
     const { tempDir, repoDir } = createTempGitRepo({

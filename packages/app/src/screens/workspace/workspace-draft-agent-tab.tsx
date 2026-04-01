@@ -13,6 +13,10 @@ import { buildWorkspaceDraftAgentConfig } from "@/screens/workspace/workspace-dr
 import { buildDraftStoreKey } from "@/stores/draft-keys";
 import { type Agent, useSessionStore } from "@/stores/session-store";
 import { encodeImages } from "@/utils/encode-images";
+import {
+  getWorkspaceExecutionAuthority,
+  requireWorkspaceRecordId,
+} from "@/utils/workspace-execution";
 import { shouldAutoFocusWorkspaceDraftComposer } from "@/screens/workspace/workspace-draft-pane-focus";
 import type { AgentCapabilityFlags } from "@server/server/agent/agent-sdk-types";
 import type { AgentSnapshotPayload } from "@server/shared/messages";
@@ -49,11 +53,10 @@ export function WorkspaceDraftAgentTab({
 }: WorkspaceDraftAgentTabProps) {
   const client = useHostRuntimeClient(serverId);
   const isConnected = useHostRuntimeIsConnected(serverId);
-  const workspaceDirectory = useSessionStore(
-    (state) =>
-      state.sessions[serverId]?.workspaces.get(workspaceId)?.workspaceDirectory ??
-      state.sessions[serverId]?.workspaces.get(workspaceId)?.projectRootPath,
-  );
+  const workspaces = useSessionStore((state) => state.sessions[serverId]?.workspaces);
+  const workspaceAuthority = getWorkspaceExecutionAuthority({ workspaces, workspaceId });
+  const workspaceExecutionAuthority = workspaceAuthority.ok ? workspaceAuthority.authority : null;
+  const workspaceDirectory = workspaceExecutionAuthority?.workspaceDirectory ?? null;
   const addImagesRef = useRef<((images: ImageAttachment[]) => void) | null>(null);
   const draftStoreKey = useMemo(
     () =>
@@ -69,10 +72,10 @@ export function WorkspaceDraftAgentTab({
       draftKey: draftStoreKey,
       composer: {
         initialServerId: serverId,
-        initialValues: { workingDir: workspaceDirectory },
+        initialValues: workspaceDirectory ? { workingDir: workspaceDirectory } : undefined,
         isVisible: true,
         onlineServerIds: isConnected ? [serverId] : [],
-        lockedWorkingDir: workspaceDirectory,
+        lockedWorkingDir: workspaceDirectory ?? undefined,
       },
     },
   );
@@ -152,6 +155,7 @@ export function WorkspaceDraftAgentTab({
     },
     createRequest: async ({ attempt, text, images }) => {
       invariant(workspaceDirectory, "Workspace directory is required");
+      invariant(workspaceExecutionAuthority, "Workspace authority is required");
       if (!client) {
         throw new Error("Host is not connected");
       }
@@ -169,6 +173,7 @@ export function WorkspaceDraftAgentTab({
       const imagesData = await encodeImages(images);
       const result = await client.createAgent({
         config,
+        workspaceId: requireWorkspaceRecordId(workspaceExecutionAuthority.workspaceId),
         ...(text ? { initialPrompt: text } : {}),
         clientMessageId: attempt.clientMessageId,
         ...(imagesData && imagesData.length > 0 ? { images: imagesData } : {}),

@@ -50,7 +50,10 @@ async function openProjectViaDaemon(
   if (!result.workspace || result.error) {
     throw new Error(result.error ?? `Failed to open project ${cwd}`);
   }
-  return result.workspace;
+  return {
+    id: String(result.workspace.id),
+    name: result.workspace.name,
+  };
 }
 
 async function openWorkspaceFromSidebar(page: import("@playwright/test").Page, workspaceId: string) {

@@ -18,7 +18,7 @@ import { useSessionStore } from "@/stores/session-store";
 import { Archive, SquareTerminal } from "lucide-react-native";
 import { getProviderIcon } from "@/components/provider-icons";
 import { buildHostAgentDetailRoute } from "@/utils/host-routes";
-import { resolveHydratedWorkspaceId } from "@/utils/resolve-hydrated-workspace-id";
+import { resolveWorkspaceIdByExecutionDirectory } from "@/utils/workspace-execution";
 import { prepareWorkspaceTab } from "@/utils/workspace-navigation";
 
 interface AgentListProps {
@@ -244,9 +244,9 @@ export function AgentList({
 
       const serverId = agent.serverId;
       const agentId = agent.id;
-      const workspaceId = resolveHydratedWorkspaceId({
+      const workspaceId = resolveWorkspaceIdByExecutionDirectory({
         workspaces: useSessionStore.getState().sessions[serverId]?.workspaces?.values(),
-        path: agent.cwd,
+        workspaceDirectory: agent.cwd,
       });
 
       onAgentSelect?.();

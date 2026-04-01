@@ -23,7 +23,7 @@ import { getBindingIdForAction, getDefaultKeysForAction } from "@/keyboard/keybo
 import { useKeyboardShortcutOverrides } from "@/hooks/use-keyboard-shortcut-overrides";
 import { getShortcutOs } from "@/utils/shortcut-platform";
 import { getIsDesktop } from "@/constants/layout";
-import { resolveHydratedWorkspaceId } from "@/utils/resolve-hydrated-workspace-id";
+import { resolveWorkspaceIdByExecutionDirectory } from "@/utils/workspace-execution";
 import { prepareWorkspaceTab } from "@/utils/workspace-navigation";
 import { focusWithRetries } from "@/utils/web-focus";
 
@@ -221,9 +221,9 @@ export function useCommandCenter() {
       // Don't restore focus back to the prior element after we navigate.
       clearCommandCenterFocusRestoreElement();
       setOpen(false);
-      const workspaceId = resolveHydratedWorkspaceId({
+      const workspaceId = resolveWorkspaceIdByExecutionDirectory({
         workspaces: useSessionStore.getState().sessions[agent.serverId]?.workspaces?.values(),
-        path: agent.cwd,
+        workspaceDirectory: agent.cwd,
       });
       if (!workspaceId) {
         router.navigate(buildHostAgentDetailRoute(agent.serverId, agent.id) as any);

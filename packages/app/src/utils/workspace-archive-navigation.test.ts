@@ -17,7 +17,7 @@ function workspace(
     projectKind: input.projectKind ?? "git",
     workspaceKind: input.workspaceKind ?? "worktree",
     name: input.name ?? input.id,
-    status: input.status ?? "done",
+    status: input.status ?? "running",
     activityAt: input.activityAt ?? null,
     diffStat: input.diffStat ?? null,
   };
@@ -38,7 +38,7 @@ describe("resolveWorkspaceArchiveRedirectWorkspaceId", () => {
     ).toBe("/repo");
   });
 
-  it("falls back to the project root path when the root checkout is not in the visible workspace list", () => {
+  it("falls back to the host root route when no sibling workspace target exists", () => {
     const workspaces = [
       workspace({
         id: "/repo/.paseo/worktrees/feature",
@@ -48,11 +48,12 @@ describe("resolveWorkspaceArchiveRedirectWorkspaceId", () => {
     ];
 
     expect(
-      resolveWorkspaceArchiveRedirectWorkspaceId({
+      buildWorkspaceArchiveRedirectRoute({
+        serverId: "server-1",
         archivedWorkspaceId: "/repo/.paseo/worktrees/feature",
         workspaces,
       }),
-    ).toBe("/repo");
+    ).toBe("/h/server-1");
   });
 
   it("falls back to the host root route when no alternate workspace target exists", () => {

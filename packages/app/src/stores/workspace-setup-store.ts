@@ -5,8 +5,9 @@ export type WorkspaceCreationMethod = "open_project" | "create_worktree";
 
 export interface PendingWorkspaceSetup {
   serverId: string;
-  projectPath: string;
-  projectName?: string;
+  sourceDirectory: string;
+  sourceWorkspaceId?: string;
+  displayName?: string;
   creationMethod: WorkspaceCreationMethod;
   navigationMethod: WorkspaceSetupNavigationMethod;
 }

@@ -17,6 +17,10 @@ import { useWorkspaceSetupStore } from "@/stores/workspace-setup-store";
 import { normalizeAgentSnapshot } from "@/utils/agent-snapshots";
 import { encodeImages } from "@/utils/encode-images";
 import { toErrorMessage } from "@/utils/error-messages";
+import {
+  requireWorkspaceExecutionAuthority,
+  requireWorkspaceRecordId,
+} from "@/utils/workspace-execution";
 import { navigateToPreparedWorkspaceTab } from "@/utils/workspace-navigation";
 import type { MessagePayload } from "./message-input";
 
@@ -41,19 +45,21 @@ export function WorkspaceSetupDialog() {
   );
 
   const serverId = pendingWorkspaceSetup?.serverId ?? "";
-  const projectPath = pendingWorkspaceSetup?.projectPath ?? "";
-  const projectName = pendingWorkspaceSetup?.projectName?.trim() ?? "";
+  const sourceDirectory = pendingWorkspaceSetup?.sourceDirectory ?? "";
+  const displayName = pendingWorkspaceSetup?.displayName?.trim() ?? "";
   const workspace = createdWorkspace;
   const client = useHostRuntimeClient(serverId);
   const isConnected = useHostRuntimeIsConnected(serverId);
   const chatDraft = useAgentInputDraft({
-    draftKey: `workspace-setup:${serverId}:${projectPath}`,
+    draftKey: `workspace-setup:${serverId}:${sourceDirectory}`,
     composer: {
       initialServerId: serverId || null,
-      initialValues: projectPath ? { workingDir: projectPath } : undefined,
+      initialValues: workspace?.workspaceDirectory
+        ? { workingDir: workspace.workspaceDirectory }
+        : undefined,
       isVisible: pendingWorkspaceSetup !== null,
       onlineServerIds: isConnected && serverId ? [serverId] : [],
-      lockedWorkingDir: workspace?.projectRootPath ?? projectPath,
+      lockedWorkingDir: workspace?.workspaceDirectory || undefined,
     },
   });
   const composerState = chatDraft.composerState;
@@ -70,7 +76,7 @@ export function WorkspaceSetupDialog() {
     setErrorMessage(null);
     setCreatedWorkspace(null);
     setPendingAction(null);
-  }, [pendingWorkspaceSetup?.creationMethod, projectPath, serverId]);
+  }, [pendingWorkspaceSetup?.creationMethod, serverId, sourceDirectory]);
 
   const handleClose = useCallback(() => {
     clearWorkspaceSetup();
@@ -116,10 +122,10 @@ export function WorkspaceSetupDialog() {
     const payload =
       pendingWorkspaceSetup.creationMethod === "create_worktree"
         ? await connectedClient.createPaseoWorktree({
-            cwd: pendingWorkspaceSetup.projectPath,
+            cwd: pendingWorkspaceSetup.sourceDirectory,
             worktreeSlug: createNameId(),
           })
-        : await connectedClient.openProject(pendingWorkspaceSetup.projectPath);
+        : await connectedClient.openProject(pendingWorkspaceSetup.sourceDirectory);
 
     if (payload.error || !payload.workspace) {
       throw new Error(
@@ -149,13 +155,13 @@ export function WorkspaceSetupDialog() {
     const current = useWorkspaceSetupStore.getState().pendingWorkspaceSetup;
     return (
       current?.serverId === pendingWorkspaceSetup?.serverId &&
-      current?.projectPath === pendingWorkspaceSetup?.projectPath &&
+      current?.sourceDirectory === pendingWorkspaceSetup?.sourceDirectory &&
       current?.creationMethod === pendingWorkspaceSetup?.creationMethod
     );
   }, [
     pendingWorkspaceSetup?.creationMethod,
-    pendingWorkspaceSetup?.projectPath,
     pendingWorkspaceSetup?.serverId,
+    pendingWorkspaceSetup?.sourceDirectory,
   ]);
 
   const handleCreateChatAgent = useCallback(
@@ -170,10 +176,11 @@ export function WorkspaceSetupDialog() {
         }
 
         const encodedImages = await encodeImages(images);
-        const workspaceDirectory = workspace.projectRootPath ?? projectPath;
+        const workspaceDirectory = requireWorkspaceExecutionAuthority({ workspace }).workspaceDirectory;
         const agent = await connectedClient.createAgent({
           provider: composerState.selectedProvider,
           cwd: workspaceDirectory,
+          workspaceId: requireWorkspaceRecordId(workspace.id),
           ...(composerState.modeOptions.length > 0 && composerState.selectedMode !== ""
             ? { modeId: composerState.selectedMode }
             : {}),
@@ -227,10 +234,11 @@ export function WorkspaceSetupDialog() {
         throw new Error("Workspace setup composer state is required");
       }
 
-      const workspaceDirectory = workspace.projectRootPath ?? projectPath;
+      const workspaceDirectory = requireWorkspaceExecutionAuthority({ workspace }).workspaceDirectory;
       const agent = await connectedClient.createAgent({
         provider: composerState.selectedProvider,
         cwd: workspaceDirectory,
+        workspaceId: requireWorkspaceRecordId(workspace.id),
         terminal: true,
         ...(terminalPrompt.trim() ? { initialPrompt: terminalPrompt.trim() } : {}),
       });
@@ -274,11 +282,7 @@ export function WorkspaceSetupDialog() {
       setErrorMessage(null);
       const workspace = await ensureWorkspace();
       const connectedClient = withConnectedClient();
-      const workspaceDirectory = workspace.projectRootPath ?? projectPath;
-
-      if (!workspaceDirectory) {
-        throw new Error("Workspace directory not found");
-      }
+      const workspaceDirectory = requireWorkspaceExecutionAuthority({ workspace }).workspaceDirectory;
 
       const payload = await connectedClient.createTerminal(workspaceDirectory);
       if (payload.error || !payload.terminal) {
@@ -304,12 +308,12 @@ export function WorkspaceSetupDialog() {
   const workspaceTitle =
     workspace?.name ||
     workspace?.projectDisplayName ||
-    projectName ||
-    projectPath.split(/[\\/]/).filter(Boolean).pop() ||
-    projectPath;
-  const workspacePath = workspace?.projectRootPath || projectPath;
+    displayName ||
+    sourceDirectory.split(/[\\/]/).filter(Boolean).pop() ||
+    sourceDirectory;
+  const workspacePath = workspace?.workspaceDirectory || "Workspace will be created before launch.";
 
-  if (!pendingWorkspaceSetup || !projectPath) {
+  if (!pendingWorkspaceSetup || !sourceDirectory) {
     return null;
   }
 
@@ -378,7 +382,7 @@ export function WorkspaceSetupDialog() {
           </Text>
           <View style={styles.composerCard}>
             <Composer
-              agentId={`workspace-setup:${serverId}:${projectPath}`}
+              agentId={`workspace-setup:${serverId}:${sourceDirectory}`}
               serverId={serverId}
               isInputActive={true}
               onSubmitMessage={handleCreateChatAgent}
