@@ -9,7 +9,7 @@ import {
   type AgentDefinition,
   type CanUseTool,
   type McpServerConfig as ClaudeSdkMcpServerConfig,
-  type ModelInfo,
+
   type Options,
   type PermissionMode,
   type PermissionResult,
@@ -34,9 +34,9 @@ import {
   mapTaskNotificationUserContentToToolCall,
 } from "./claude/task-notification-tool-call.js";
 import {
-  normalizeClaudeModelIdFromText,
-  resolveClaudeModelsFromSdkModels,
-} from "./claude/sdk-model-resolver.js";
+  getClaudeModels,
+  normalizeClaudeRuntimeModelId,
+} from "./claude/claude-models.js";
 import { parsePartialJsonObject } from "./claude/partial-json.js";
 import { ClaudeSidechainTracker } from "./claude/sidechain-tracker.js";
 
@@ -237,10 +237,6 @@ function applyRuntimeSettingsToClaudeOptions(
       return child;
     },
   };
-}
-
-function createEmptyClaudePrompt(): AsyncGenerator<SDKUserMessage, void, undefined> {
-  return (async function* empty() {})();
 }
 
 function isClaudeThinkingEffort(value: string | null | undefined): value is ClaudeThinkingEffort {
@@ -1050,33 +1046,8 @@ export class ClaudeAgentClient implements AgentClient {
     });
   }
 
-  async listModels(options?: ListModelsOptions): Promise<AgentModelDefinition[]> {
-    const claudeQuery = this.queryFactory({
-      prompt: createEmptyClaudePrompt(),
-      options: applyRuntimeSettingsToClaudeOptions(
-        {
-          cwd: options?.cwd ?? process.cwd(),
-          permissionMode: "plan",
-          includePartialMessages: false,
-          settingSources: CLAUDE_SETTING_SOURCES,
-        },
-        this.runtimeSettings,
-      ),
-    });
-
-    try {
-      const supportedModels = await claudeQuery.supportedModels();
-      return resolveClaudeModelsFromSdkModels(supportedModels as ModelInfo[]);
-    } catch (error) {
-      this.logger.warn({ err: error }, "Failed to query Claude supportedModels()");
-      throw error;
-    } finally {
-      try {
-        await claudeQuery.return?.();
-      } catch {
-        // ignore control-plane shutdown errors
-      }
-    }
+  async listModels(_options?: ListModelsOptions): Promise<AgentModelDefinition[]> {
+    return getClaudeModels();
 
   }
 
@@ -2698,7 +2669,7 @@ class ClaudeAgentSession implements AgentSession {
     this.currentMode = message.permissionMode;
     this.persistence = null;
     if (message.model) {
-      const normalizedRuntimeModel = normalizeClaudeModelIdFromText(message.model);
+      const normalizedRuntimeModel = normalizeClaudeRuntimeModelId(message.model);
       this.logger.debug(
         { runtimeModel: message.model, normalizedRuntimeModel },
         "Captured runtime model from SDK init",
