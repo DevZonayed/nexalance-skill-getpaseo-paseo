@@ -70,6 +70,8 @@ import type {
 import {
   applyProviderEnv,
   findExecutable,
+  quoteWindowsArgument,
+  quoteWindowsCommand,
   type ProviderRuntimeSettings,
 } from "../provider-launch-config.js";
 import { getOrchestratorModeInstructions } from "../orchestrator-instructions.js";
@@ -213,7 +215,10 @@ function applyRuntimeSettingsToClaudeOptions(
       const isDefaultRuntime =
         resolved.command === "node" || resolved.command === "bun";
       const command = isDefaultRuntime ? process.execPath : resolved.command;
-      const child = spawn(command, resolved.args, {
+      const child = spawn(
+        quoteWindowsCommand(command),
+        resolved.args.map((argument) => quoteWindowsArgument(argument)),
+        {
         cwd: spawnOptions.cwd,
         env: {
           ...applyProviderEnv(spawnOptions.env, runtimeSettings),
@@ -222,7 +227,8 @@ function applyRuntimeSettingsToClaudeOptions(
         shell: process.platform === "win32",
         signal: spawnOptions.signal,
         stdio: ["pipe", "pipe", "pipe"],
-      });
+        },
+      );
       if (typeof options.stderr === "function") {
         child.stderr?.on("data", (chunk: Buffer | string) => {
           options.stderr?.(chunk.toString());
@@ -1886,6 +1892,10 @@ class ClaudeAgentSession implements AgentSession {
       cwd: this.config.cwd,
       includePartialMessages: true,
       permissionMode: this.currentMode,
+      // Dynamic mode switching can recreate the underlying Claude query. Keep the
+      // bypass launch capability available so later setPermissionMode("bypassPermissions")
+      // calls do not fail after a model/thinking/rewind-driven restart.
+      allowDangerouslySkipPermissions: true,
       agents: this.defaults?.agents,
       canUseTool: this.handlePermissionRequest,
       ...(claudeBinary ? { pathToClaudeCodeExecutable: claudeBinary } : {}),
