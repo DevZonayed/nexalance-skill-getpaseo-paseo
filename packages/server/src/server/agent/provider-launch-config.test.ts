@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import {
   findExecutable,
+  quoteWindowsArgument,
   quoteWindowsCommand,
   resolveProviderCommandPrefix,
   applyProviderEnv,
@@ -253,5 +254,41 @@ describe("quoteWindowsCommand", () => {
   test("returns the command unchanged on non-Windows platforms", () => {
     setPlatform("darwin");
     expect(quoteWindowsCommand("/usr/local/bin/claude code")).toBe("/usr/local/bin/claude code");
+  });
+});
+
+describe("quoteWindowsArgument", () => {
+  const originalPlatform = process.platform;
+
+  function setPlatform(value: string) {
+    Object.defineProperty(process, "platform", { value, writable: true });
+  }
+
+  afterEach(() => {
+    setPlatform(originalPlatform);
+  });
+
+  test("quotes a Windows argument with spaces", () => {
+    setPlatform("win32");
+    expect(quoteWindowsArgument("C:\\Program Files\\Anthropic\\cli.js")).toBe(
+      '"C:\\Program Files\\Anthropic\\cli.js"',
+    );
+  });
+
+  test("does not double-quote an already-quoted argument", () => {
+    setPlatform("win32");
+    expect(quoteWindowsArgument('"C:\\Program Files\\Anthropic\\cli.js"')).toBe(
+      '"C:\\Program Files\\Anthropic\\cli.js"',
+    );
+  });
+
+  test("returns the argument unchanged when there are no spaces", () => {
+    setPlatform("win32");
+    expect(quoteWindowsArgument("--version")).toBe("--version");
+  });
+
+  test("returns the argument unchanged on non-Windows platforms", () => {
+    setPlatform("darwin");
+    expect(quoteWindowsArgument("/usr/local/bin/claude code")).toBe("/usr/local/bin/claude code");
   });
 });

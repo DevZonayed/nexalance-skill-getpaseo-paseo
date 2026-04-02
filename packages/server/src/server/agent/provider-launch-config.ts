@@ -286,6 +286,18 @@ export function quoteWindowsCommand(command: string): string {
   return `"${command}"`;
 }
 
+/**
+ * `spawn(..., { shell: true })` on Windows also passes argv through `cmd.exe`.
+ * Any argument containing spaces must be quoted or it will be split before the
+ * child process sees it.
+ */
+export function quoteWindowsArgument(argument: string): string {
+  if (process.platform !== "win32") return argument;
+  if (!argument.includes(" ")) return argument;
+  if (argument.startsWith('"') && argument.endsWith('"')) return argument;
+  return `"${argument}"`;
+}
+
 export function isCommandAvailable(command: string): boolean {
   return findExecutable(command) !== null;
 }

@@ -33,6 +33,7 @@ export {
 export {
   findExecutable,
   applyProviderEnv,
+  quoteWindowsArgument,
   quoteWindowsCommand,
 } from "./agent/provider-launch-config.js";
 

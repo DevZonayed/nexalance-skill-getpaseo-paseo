@@ -70,6 +70,7 @@ import type {
 import {
   applyProviderEnv,
   findExecutable,
+  quoteWindowsArgument,
   quoteWindowsCommand,
   type ProviderRuntimeSettings,
 } from "../provider-launch-config.js";
@@ -214,7 +215,10 @@ function applyRuntimeSettingsToClaudeOptions(
       const isDefaultRuntime =
         resolved.command === "node" || resolved.command === "bun";
       const command = isDefaultRuntime ? process.execPath : resolved.command;
-      const child = spawn(quoteWindowsCommand(command), resolved.args, {
+      const child = spawn(
+        quoteWindowsCommand(command),
+        resolved.args.map((argument) => quoteWindowsArgument(argument)),
+        {
         cwd: spawnOptions.cwd,
         env: {
           ...applyProviderEnv(spawnOptions.env, runtimeSettings),
@@ -223,7 +227,8 @@ function applyRuntimeSettingsToClaudeOptions(
         shell: process.platform === "win32",
         signal: spawnOptions.signal,
         stdio: ["pipe", "pipe", "pipe"],
-      });
+        },
+      );
       if (typeof options.stderr === "function") {
         child.stderr?.on("data", (chunk: Buffer | string) => {
           options.stderr?.(chunk.toString());
