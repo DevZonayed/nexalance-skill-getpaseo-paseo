@@ -9,6 +9,16 @@ import { z } from "zod";
 import type { PaseoDatabaseHandle } from "./sqlite-database.js";
 import { projects, workspaces } from "./schema.js";
 
+const LEGACY_REMOTE_PREFIX = "remote:";
+
+function deriveGitRemoteFromLegacyProjectId(projectId: string): string | null {
+  if (!projectId.startsWith(LEGACY_REMOTE_PREFIX)) {
+    return null;
+  }
+  const hostAndPath = projectId.slice(LEGACY_REMOTE_PREFIX.length);
+  return `git@${hostAndPath.replace("/", ":")}.git`;
+}
+
 // Legacy JSON schemas — these match the old pre-migration format
 const LegacyProjectSchema = z.object({
   projectId: z.string(),
@@ -91,24 +101,26 @@ export async function importLegacyProjectWorkspaceJson(options: {
     };
   }
 
-  const dedupedProjects = [...new Map(projectRows.map((project) => [project.rootPath, project])).values()];
-  const dedupedWorkspaces = [...new Map(workspaceRows.map((workspace) => [workspace.cwd, workspace])).values()];
-
-  options.logger.info(
-    { projects: dedupedProjects.length, workspaces: dedupedWorkspaces.length },
-    "Starting legacy project/workspace import",
-  );
+  // Deduplicate legacy projects by rootPath — prefer git over non_git
+  const deduplicatedProjects = new Map<string, (typeof projectRows)[number]>();
+  for (const legacy of projectRows) {
+    const existing = deduplicatedProjects.get(legacy.rootPath);
+    if (!existing || (legacy.kind === "git" && existing.kind !== "git")) {
+      deduplicatedProjects.set(legacy.rootPath, legacy);
+    }
+  }
 
   options.db.transaction((tx) => {
     // Insert projects, mapping old format to new schema
     const projectDirectoryToId = new Map<string, number>();
-    for (const legacy of dedupedProjects) {
+    for (const legacy of deduplicatedProjects.values()) {
       const row = tx
         .insert(projects)
         .values({
           directory: legacy.rootPath,
           displayName: legacy.displayName,
           kind: legacy.kind === "non_git" ? "directory" : legacy.kind,
+          gitRemote: deriveGitRemoteFromLegacyProjectId(legacy.projectId),
           createdAt: legacy.createdAt,
           updatedAt: legacy.updatedAt,
           archivedAt: legacy.archivedAt,
@@ -119,6 +131,7 @@ export async function importLegacyProjectWorkspaceJson(options: {
     }
 
     // Build a map from legacy projectId -> new integer id
+    // Uses original projectRows so all duplicate projectIds resolve to the same new id
     const legacyProjectIdToNewId = new Map<string, number>();
     for (const legacy of projectRows) {
       const newId = projectDirectoryToId.get(legacy.rootPath);
@@ -128,7 +141,7 @@ export async function importLegacyProjectWorkspaceJson(options: {
     }
 
     // Insert workspaces, resolving project FK
-    for (const legacy of dedupedWorkspaces) {
+    for (const legacy of workspaceRows) {
       const projectId = legacyProjectIdToNewId.get(legacy.projectId);
       if (projectId === undefined) {
         throw new Error(`Legacy workspace ${legacy.workspaceId} references unknown project ${legacy.projectId}`);
@@ -151,18 +164,20 @@ export async function importLegacyProjectWorkspaceJson(options: {
     }
   });
 
+  const importedProjects = deduplicatedProjects.size;
+
   options.logger.info(
     {
-      importedProjects: dedupedProjects.length,
-      importedWorkspaces: dedupedWorkspaces.length,
+      importedProjects,
+      importedWorkspaces: workspaceRows.length,
     },
     "Imported legacy project/workspace JSON into the database",
   );
 
   return {
     status: "imported",
-    importedProjects: dedupedProjects.length,
-    importedWorkspaces: dedupedWorkspaces.length,
+    importedProjects,
+    importedWorkspaces: workspaceRows.length,
   };
 }
 

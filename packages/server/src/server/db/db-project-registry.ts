@@ -42,6 +42,16 @@ export class DbProjectRegistry implements ProjectRegistry {
     const [row] = await this.db
       .insert(projects)
       .values(record)
+      .onConflictDoUpdate({
+        target: projects.directory,
+        set: {
+          kind: record.kind,
+          displayName: record.displayName,
+          gitRemote: record.gitRemote,
+          updatedAt: record.updatedAt,
+          archivedAt: record.archivedAt,
+        },
+      })
       .returning({ id: projects.id });
     return row!.id;
   }
@@ -52,13 +62,11 @@ export class DbProjectRegistry implements ProjectRegistry {
       .insert(projects)
       .values(nextRecord)
       .onConflictDoUpdate({
-        target: projects.id,
+        target: projects.directory,
         set: {
-          directory: nextRecord.directory,
           kind: nextRecord.kind,
           displayName: nextRecord.displayName,
           gitRemote: nextRecord.gitRemote,
-          createdAt: nextRecord.createdAt,
           updatedAt: nextRecord.updatedAt,
           archivedAt: nextRecord.archivedAt,
         },

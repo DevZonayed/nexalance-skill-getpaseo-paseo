@@ -1,10 +1,13 @@
 import path from "node:path";
+import { execSync } from "node:child_process";
 import { promises as fs } from "node:fs";
 
 import { count } from "drizzle-orm";
 import type { Logger } from "pino";
 
 import { parseStoredAgentRecord, type StoredAgentRecord } from "../agent/agent-storage.js";
+import { detectWorkspaceGitMetadata } from "../workspace-git-metadata.js";
+import { READ_ONLY_GIT_ENV } from "../checkout-git-utils.js";
 import { normalizeWorkspaceId } from "../workspace-registry-model.js";
 import type { PaseoDatabaseHandle } from "./sqlite-database.js";
 import { toAgentSnapshotRowValues } from "./db-agent-snapshot-store.js";
@@ -76,10 +79,15 @@ export async function importLegacyAgentSnapshots(options: {
       workspaceRows.map((row) => [row.directory, row.id] as const),
     );
     const projectRows = tx
-      .select({ id: projects.id, directory: projects.directory })
+      .select({ id: projects.id, directory: projects.directory, gitRemote: projects.gitRemote })
       .from(projects)
       .all();
     const projectIdsByDirectory = new Map(projectRows.map((row) => [row.directory, row.id] as const));
+    const projectIdsByRemote = new Map(
+      projectRows
+        .filter((row): row is typeof row & { gitRemote: string } => row.gitRemote !== null)
+        .map((row) => [row.gitRemote, row.id] as const),
+    );
     for (const record of records) {
       const normalizedDirectory = normalizeWorkspaceId(record.cwd);
       if (workspaceIdsByDirectory.has(normalizedDirectory)) {
@@ -87,17 +95,30 @@ export async function importLegacyAgentSnapshots(options: {
       }
 
       const timestamp = record.updatedAt ?? record.createdAt;
-      const displayName =
-        normalizedDirectory.split(/[\\/]/).filter(Boolean).at(-1) ?? normalizedDirectory;
-      let projectId = projectIdsByDirectory.get(normalizedDirectory);
+      const gitInfo = detectGitInfoForCwd(record.cwd);
+      const resolvedDirectory = gitInfo?.toplevel
+        ? normalizeWorkspaceId(gitInfo.toplevel)
+        : normalizedDirectory;
+      const projectDisplayName = gitInfo?.metadata.projectDisplayName
+        ?? resolvedDirectory.split(/[\\/]/).filter(Boolean).at(-1)
+        ?? resolvedDirectory;
+      const projectKind = gitInfo?.metadata.projectKind ?? "directory";
+      const gitRemote = gitInfo?.metadata.gitRemote ?? null;
+      const workspaceKind = gitInfo?.metadata.isWorktree ? "worktree" : "checkout";
+      const workspaceDisplayName = gitInfo?.metadata.workspaceDisplayName
+        ?? normalizedDirectory.split(/[\\/]/).filter(Boolean).at(-1)
+        ?? normalizedDirectory;
+
+      let projectId = projectIdsByDirectory.get(resolvedDirectory)
+        ?? (gitRemote !== null ? projectIdsByRemote.get(gitRemote) : undefined);
       if (projectId === undefined) {
         const projectRow = tx
           .insert(projects)
           .values({
-            directory: normalizedDirectory,
-            displayName,
-            kind: "directory",
-            gitRemote: null,
+            directory: resolvedDirectory,
+            displayName: projectDisplayName,
+            kind: projectKind,
+            gitRemote,
             createdAt: record.createdAt,
             updatedAt: timestamp,
             archivedAt: null,
@@ -105,7 +126,10 @@ export async function importLegacyAgentSnapshots(options: {
           .returning({ id: projects.id })
           .get();
         projectId = projectRow!.id;
-        projectIdsByDirectory.set(normalizedDirectory, projectId);
+        projectIdsByDirectory.set(resolvedDirectory, projectId);
+        if (gitRemote !== null) {
+          projectIdsByRemote.set(gitRemote, projectId);
+        }
       }
 
       const workspaceRow = tx
@@ -113,8 +137,8 @@ export async function importLegacyAgentSnapshots(options: {
         .values({
           projectId,
           directory: normalizedDirectory,
-          displayName,
-          kind: "checkout",
+          displayName: workspaceDisplayName,
+          kind: workspaceKind,
           createdAt: record.createdAt,
           updatedAt: timestamp,
           archivedAt: null,
@@ -125,7 +149,13 @@ export async function importLegacyAgentSnapshots(options: {
     }
     const rows = records.flatMap((record) => {
       const workspaceId = workspaceIdsByDirectory.get(normalizeWorkspaceId(record.cwd));
-      return workspaceId === undefined ? [] : [toAgentSnapshotRowValues({ record, workspaceId })];
+      if (workspaceId === undefined) {
+        return [];
+      }
+      const clampedRecord = (record.lastStatus === "running" || record.lastStatus === "initializing")
+        ? { ...record, lastStatus: "closed" as const }
+        : record;
+      return [toAgentSnapshotRowValues({ record: clampedRecord, workspaceId })];
     });
     const totalBatches = Math.ceil(rows.length / MAX_AGENT_SNAPSHOT_ROWS_PER_INSERT);
     for (let startIndex = 0; startIndex < rows.length; startIndex += MAX_AGENT_SNAPSHOT_ROWS_PER_INSERT) {
@@ -243,5 +273,26 @@ async function pathExists(targetPath: string): Promise<boolean> {
       return false;
     }
     throw error;
+  }
+}
+
+function detectGitInfoForCwd(
+  cwd: string,
+): { toplevel: string; metadata: ReturnType<typeof detectWorkspaceGitMetadata> } | null {
+  try {
+    const toplevel = execSync("git rev-parse --show-toplevel", {
+      cwd,
+      env: READ_ONLY_GIT_ENV,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+    if (!toplevel) {
+      return null;
+    }
+    const directoryName = toplevel.split(/[\\/]/).filter(Boolean).at(-1) ?? toplevel;
+    const metadata = detectWorkspaceGitMetadata(cwd, directoryName);
+    return { toplevel, metadata };
+  } catch {
+    return null;
   }
 }

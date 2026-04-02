@@ -403,6 +403,27 @@ export async function createPaseoDaemon(
     const projectRegistry = new DbProjectRegistry(database.db);
     const workspaceRegistry = new DbWorkspaceRegistry(database.db);
 
+    try {
+      await importLegacyProjectWorkspaceJson({
+        db: database.db,
+        paseoHome: config.paseoHome,
+        logger,
+      });
+      logger.info({ elapsed: elapsed() }, "Legacy project/workspace import checked");
+    } catch (err) {
+      logger.error({ err }, "Legacy project/workspace import failed (non-fatal)");
+    }
+    try {
+      await importLegacyAgentSnapshots({
+        db: database.db,
+        paseoHome: config.paseoHome,
+        logger,
+      });
+      logger.info({ elapsed: elapsed() }, "Legacy agent snapshot import checked");
+    } catch (err) {
+      logger.error({ err }, "Legacy agent snapshot import failed (non-fatal)");
+    }
+
     const reconciliationService = new WorkspaceReconciliationService({
       projectRegistry,
       workspaceRegistry,
@@ -410,19 +431,6 @@ export async function createPaseoDaemon(
     });
     reconciliationService.start();
     logger.info({ elapsed: elapsed() }, "Workspace reconciliation service started");
-
-    await importLegacyProjectWorkspaceJson({
-      db: database.db,
-      paseoHome: config.paseoHome,
-      logger,
-    });
-    logger.info({ elapsed: elapsed() }, "Legacy project/workspace import checked");
-    await importLegacyAgentSnapshots({
-      db: database.db,
-      paseoHome: config.paseoHome,
-      logger,
-    });
-    logger.info({ elapsed: elapsed() }, "Legacy agent snapshot import checked");
     await chatService.initialize();
     logger.info({ elapsed: elapsed() }, "Chat service initialized");
     const checkoutDiffManager = new CheckoutDiffManager({

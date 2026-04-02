@@ -46,6 +46,16 @@ export class DbWorkspaceRegistry implements WorkspaceRegistry {
     const [row] = await this.db
       .insert(workspaces)
       .values(record)
+      .onConflictDoUpdate({
+        target: workspaces.directory,
+        set: {
+          projectId: record.projectId,
+          kind: record.kind,
+          displayName: record.displayName,
+          updatedAt: record.updatedAt,
+          archivedAt: record.archivedAt,
+        },
+      })
       .returning({ id: workspaces.id });
     return row!.id;
   }
@@ -56,13 +66,11 @@ export class DbWorkspaceRegistry implements WorkspaceRegistry {
       .insert(workspaces)
       .values(nextRecord)
       .onConflictDoUpdate({
-        target: workspaces.id,
+        target: workspaces.directory,
         set: {
           projectId: nextRecord.projectId,
-          directory: nextRecord.directory,
           kind: nextRecord.kind,
           displayName: nextRecord.displayName,
-          createdAt: nextRecord.createdAt,
           updatedAt: nextRecord.updatedAt,
           archivedAt: nextRecord.archivedAt,
         },

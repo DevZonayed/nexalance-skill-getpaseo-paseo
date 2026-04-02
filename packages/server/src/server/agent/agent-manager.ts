@@ -575,6 +575,10 @@ export class AgentManager {
     options?: AgentTimelineFetchOptions,
   ): Promise<AgentTimelineFetchResult> {
     this.requireAgent(id);
+    const agent = this.agents.get(id);
+    if (agent && !agent.historyPrimed) {
+      await this.hydrateTimelineFromLegacyProviderHistory(agent);
+    }
     if (this.durableTimelineStore) {
       return await this.durableTimelineStore.fetchCommitted(id, options);
     }
@@ -1509,15 +1513,12 @@ export class AgentManager {
   }
 
   /**
-   * Test-only compatibility hook for managers constructed without a durable
-   * timeline store. Production loads committed history from the durable store
-   * during session registration instead of replaying provider history here.
+   * Hydrates the timeline from provider history if the agent's durable
+   * timeline is empty (e.g., imported agents that have provider history
+   * on disk but no persisted timeline rows). No-ops if already hydrated.
    */
   async hydrateTimelineFromProvider(agentId: string): Promise<void> {
     const agent = this.requireSessionAgent(agentId);
-    if (this.durableTimelineStore) {
-      return;
-    }
     await this.hydrateTimelineFromLegacyProviderHistory(agent);
   }
 
@@ -1820,6 +1821,7 @@ export class AgentManager {
     const durableTimelineSeed = shouldSeedFromDurable
       ? await this.loadCommittedTimelineSeed(resolvedAgentId, now)
       : null;
+    const durableTimelineHasRows = durableTimelineSeed != null && (durableTimelineSeed.nextSeq ?? 1) > 1;
     const timelineSeed = explicitTimelineSeed ?? durableTimelineSeed;
     if (timelineSeed || !this.timelineStore.has(resolvedAgentId)) {
       this.timelineStore.initialize(resolvedAgentId, timelineSeed ?? { timestamp: now.toISOString() });
@@ -1848,7 +1850,7 @@ export class AgentManager {
       unsubscribeSession: null,
       provisionalAssistantText: options?.provisionalAssistantText ?? null,
       persistence: attachPersistenceCwd(session.describePersistence(), config.cwd),
-      historyPrimed: options?.historyPrimed ?? shouldSeedFromDurable,
+      historyPrimed: options?.historyPrimed ?? durableTimelineHasRows,
       lastUserMessageAt: options?.lastUserMessageAt ?? null,
       lastUsage: options?.lastUsage,
       lastError: options?.lastError,
@@ -2576,7 +2578,7 @@ export class AgentManager {
       return;
     }
     const task = this.durableTimelineStore
-      .appendCommitted(agentId, row.item, { timestamp: row.timestamp })
+      .bulkInsert(agentId, [row])
       .then(() => undefined)
       .catch((err) => {
         this.logger.error(
