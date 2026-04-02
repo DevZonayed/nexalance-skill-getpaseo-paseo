@@ -5,7 +5,6 @@ import {
   connectWorkspaceSetupClient,
   createChatAgentFromWorkspaceSetup,
   createStandaloneTerminalFromWorkspaceSetup,
-  createTerminalAgentFromWorkspaceSetup,
   createWorkspaceFromSidebar,
   findWorktreeWorkspaceForProject,
   openHomeWithProject,
@@ -93,36 +92,6 @@ test.describe("Workspace setup runtime authority", () => {
 
       await createChatAgentFromWorkspaceSetup(page, {
         message: `workspace-setup-chat-${Date.now()}`,
-      });
-
-      const workspace = await expectCreatedWorkspaceRoute(client, repo.path);
-      const agent = await waitForNewWorkspaceAgent(
-        client,
-        workspace.workspaceDirectory,
-        agentIdsBefore,
-      );
-      expect(agent.cwd).toBe(workspace.workspaceDirectory);
-      expect(agent.cwd).not.toBe(repo.path);
-    } finally {
-      await client.close();
-      await repo.cleanup();
-    }
-  });
-
-  test("first terminal agent attaches to the created workspace", async ({ page }) => {
-    test.setTimeout(90_000);
-
-    const client = await connectWorkspaceSetupClient();
-    const repo = await createTempGitRepo("workspace-setup-terminal-agent-");
-
-    try {
-      await client.openProject(repo.path);
-      await openWorkspaceSetupDialogFromSidebar(page, repo.path);
-      const agentIdsBefore = new Set((await client.fetchAgents()).entries.map((entry) => entry.agent.id));
-
-      await createTerminalAgentFromWorkspaceSetup(page, {
-        providerLabel: "Claude",
-        prompt: `workspace-setup-terminal-agent-${Date.now()}`,
       });
 
       const workspace = await expectCreatedWorkspaceRoute(client, repo.path);

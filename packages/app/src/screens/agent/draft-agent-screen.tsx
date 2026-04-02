@@ -66,7 +66,6 @@ const DRAFT_CAPABILITIES: AgentCapabilityFlags = {
   supportsMcpServers: false,
   supportsReasoningStream: false,
   supportsToolInvocations: false,
-  supportsTerminalMode: false,
 };
 const PROVIDER_DEFINITION_MAP = new Map(
   AGENT_PROVIDER_DEFINITIONS.map((definition) => [definition.id, definition]),
@@ -832,7 +831,6 @@ function DraftAgentScreenContent({
         serverId,
         id: draftAgentIdRef.current,
         provider,
-        terminal: false,
         status: "running",
         createdAt: now,
         updatedAt: now,

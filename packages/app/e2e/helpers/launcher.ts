@@ -89,12 +89,6 @@ export async function waitForLauncherPanel(page: Page): Promise<void> {
   });
 }
 
-/** Assert that the launcher panel shows provider tiles under "Terminal Agents". */
-export async function assertProviderTilesVisible(page: Page): Promise<void> {
-  await expect(page.getByText("Terminal Agents", { exact: true }).first()).toBeVisible({
-    timeout: 10_000,
-  });
-}
 
 /** Assert the launcher panel has a "New Chat" tile. */
 export async function assertNewChatTileVisible(page: Page): Promise<void> {
@@ -122,12 +116,6 @@ export async function clickTerminal(page: Page): Promise<void> {
   await button.click();
 }
 
-/** Click a provider tile by label (e.g. "Claude Code", "Codex"). */
-export async function clickProviderTile(page: Page, providerLabel: string): Promise<void> {
-  const tile = page.getByRole("button", { name: providerLabel }).first();
-  await expect(tile).toBeVisible({ timeout: 10_000 });
-  await tile.click();
-}
 
 // ─── Tab title assertions ──────────────────────────────────────────────────
 

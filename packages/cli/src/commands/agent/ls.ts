@@ -25,7 +25,6 @@ export interface AgentListItem {
   shortId: string;
   name: string;
   provider: string;
-  terminal: boolean;
   thinking: string;
   status: string;
   cwd: string;
@@ -67,7 +66,6 @@ export const agentLsSchema: OutputSchema<AgentListItem> = {
     { header: "AGENT ID", field: "shortId", width: 12 },
     { header: "NAME", field: "name", width: 20 },
     { header: "PROVIDER", field: "provider", width: 15 },
-    { header: "TERM", field: "terminal", width: 6 },
     { header: "THINKING", field: "thinking", width: 12 },
     {
       header: "STATUS",
@@ -93,7 +91,6 @@ function toListItem(agent: AgentSnapshotPayload): AgentListItem {
     shortId: agent.id.slice(0, 7),
     name: agent.title ?? "-",
     provider: model ? `${agent.provider}/${model}` : agent.provider,
-    terminal: agent.terminal === true,
     thinking: agent.effectiveThinkingOptionId ?? "auto",
     status: agent.status,
     cwd: shortenPath(agent.cwd),

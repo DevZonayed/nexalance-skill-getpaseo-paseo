@@ -1,17 +1,13 @@
 import { useCallback, useEffect, useMemo, useState, type ComponentType } from "react";
 import { ActivityIndicator, Pressable, Text, View } from "react-native";
-import { Bot, ChevronLeft, MessagesSquare, SquareTerminal } from "lucide-react-native";
+import { ChevronLeft, MessagesSquare, SquareTerminal } from "lucide-react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
-import type { AgentProvider } from "@server/server/agent/agent-sdk-types";
 import { createNameId } from "mnemonic-id";
-import { AdaptiveModalSheet, AdaptiveTextInput } from "@/components/adaptive-modal-sheet";
+import { AdaptiveModalSheet } from "@/components/adaptive-modal-sheet";
 import { Composer } from "@/components/composer";
-import { getProviderIcon } from "@/components/provider-icons";
-import { Button } from "@/components/ui/button";
 import { useToast } from "@/contexts/toast-context";
 import { useAgentInputDraft } from "@/hooks/use-agent-input-draft";
 import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
-import { useProviderRecency } from "@/stores/provider-recency-store";
 import { normalizeWorkspaceDescriptor, useSessionStore } from "@/stores/session-store";
 import { useWorkspaceSetupStore } from "@/stores/workspace-setup-store";
 import { normalizeAgentSnapshot } from "@/utils/agent-snapshots";
@@ -24,8 +20,6 @@ import {
 import { navigateToPreparedWorkspaceTab } from "@/utils/workspace-navigation";
 import type { MessagePayload } from "./message-input";
 
-type SetupStep = "choose" | "chat" | "terminal-agent";
-
 export function WorkspaceSetupDialog() {
   const { theme } = useUnistyles();
   const toast = useToast();
@@ -34,15 +28,12 @@ export function WorkspaceSetupDialog() {
   const mergeWorkspaces = useSessionStore((state) => state.mergeWorkspaces);
   const setHasHydratedWorkspaces = useSessionStore((state) => state.setHasHydratedWorkspaces);
   const setAgents = useSessionStore((state) => state.setAgents);
-  const [step, setStep] = useState<SetupStep>("choose");
-  const [terminalPrompt, setTerminalPrompt] = useState("");
+  const [step, setStep] = useState<"choose" | "chat">("choose");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [createdWorkspace, setCreatedWorkspace] = useState<ReturnType<
     typeof normalizeWorkspaceDescriptor
   > | null>(null);
-  const [pendingAction, setPendingAction] = useState<"chat" | "terminal-agent" | "terminal" | null>(
-    null,
-  );
+  const [pendingAction, setPendingAction] = useState<"chat" | "terminal" | null>(null);
 
   const serverId = pendingWorkspaceSetup?.serverId ?? "";
   const sourceDirectory = pendingWorkspaceSetup?.sourceDirectory ?? "";
@@ -66,13 +57,9 @@ export function WorkspaceSetupDialog() {
   if (!composerState && pendingWorkspaceSetup) {
     throw new Error("Workspace setup composer state is required");
   }
-  const { providers: sortedProviders, recordUsage } = useProviderRecency(
-    composerState?.providerDefinitions ?? [],
-  );
 
   useEffect(() => {
     setStep("choose");
-    setTerminalPrompt("");
     setErrorMessage(null);
     setCreatedWorkspace(null);
     setPendingAction(null);
@@ -224,58 +211,6 @@ export function WorkspaceSetupDialog() {
     ],
   );
 
-  const handleCreateTerminalAgent = useCallback(async () => {
-    try {
-      setPendingAction("terminal-agent");
-      setErrorMessage(null);
-      const workspace = await ensureWorkspace();
-      const connectedClient = withConnectedClient();
-      if (!composerState) {
-        throw new Error("Workspace setup composer state is required");
-      }
-
-      const workspaceDirectory = requireWorkspaceExecutionAuthority({ workspace }).workspaceDirectory;
-      const agent = await connectedClient.createAgent({
-        provider: composerState.selectedProvider,
-        cwd: workspaceDirectory,
-        workspaceId: requireWorkspaceRecordId(workspace.id),
-        terminal: true,
-        ...(terminalPrompt.trim() ? { initialPrompt: terminalPrompt.trim() } : {}),
-      });
-
-      if (!getIsStillActive()) {
-        return;
-      }
-
-      recordUsage(composerState.selectedProvider);
-      setAgents(serverId, (previous) => {
-        const next = new Map(previous);
-        next.set(agent.id, normalizeAgentSnapshot(agent, serverId));
-        return next;
-      });
-      navigateAfterCreation(workspace.id, { kind: "agent", agentId: agent.id });
-    } catch (error) {
-      const message = toErrorMessage(error);
-      setErrorMessage(message);
-      toast.error(message);
-    } finally {
-      if (getIsStillActive()) {
-        setPendingAction(null);
-      }
-    }
-  }, [
-    composerState,
-    getIsStillActive,
-    navigateAfterCreation,
-    recordUsage,
-    serverId,
-    setAgents,
-    ensureWorkspace,
-    terminalPrompt,
-    toast,
-    withConnectedClient,
-  ]);
-
   const handleCreateTerminal = useCallback(async () => {
     try {
       setPendingAction("terminal");
@@ -345,16 +280,6 @@ export function WorkspaceSetupDialog() {
               }}
             />
             <ChoiceCard
-              title="Terminal Agent"
-              description="Launch an agent-backed terminal in an agent tab."
-              Icon={Bot}
-              disabled={pendingAction !== null}
-              onPress={() => {
-                setErrorMessage(null);
-                setStep("terminal-agent");
-              }}
-            />
-            <ChoiceCard
               title="Terminal"
               description="Create the workspace, then open a standalone terminal tab."
               Icon={SquareTerminal}
@@ -404,68 +329,6 @@ export function WorkspaceSetupDialog() {
                   : undefined
               }
             />
-          </View>
-        </View>
-      ) : null}
-
-      {step === "terminal-agent" ? (
-        <View style={styles.section}>
-          <StepHeader
-            title="Terminal Agent"
-            onBack={() => {
-              setErrorMessage(null);
-              setStep("choose");
-            }}
-          />
-          <Text style={styles.helper}>
-            Choose a provider and optionally send an initial prompt. The workspace is created before the terminal agent launches.
-          </Text>
-
-          <View style={styles.providerGrid}>
-            {sortedProviders.map((provider) => (
-              <ProviderOption
-                key={provider.id}
-                provider={provider}
-                selected={provider.id === composerState?.selectedProvider}
-                disabled={pendingAction !== null}
-                onPress={() => composerState?.setProviderFromUser(provider.id)}
-              />
-            ))}
-          </View>
-
-          <View style={styles.field}>
-            <Text style={styles.fieldLabel}>Initial prompt</Text>
-            <AdaptiveTextInput
-              value={terminalPrompt}
-              onChangeText={setTerminalPrompt}
-              placeholder="Optional"
-              placeholderTextColor={theme.colors.foregroundMuted}
-              style={styles.input}
-              multiline
-              autoCapitalize="sentences"
-              autoCorrect={false}
-            />
-          </View>
-
-          <View style={styles.actions}>
-            <Button
-              variant="secondary"
-              style={styles.actionButton}
-              disabled={pendingAction !== null}
-              onPress={handleClose}
-            >
-              Cancel
-            </Button>
-            <Button
-              variant="default"
-              style={styles.actionButton}
-              disabled={pendingAction !== null}
-              onPress={() => {
-                void handleCreateTerminalAgent();
-              }}
-            >
-              {pendingAction === "terminal-agent" ? "Launching..." : "Launch"}
-            </Button>
           </View>
         </View>
       ) : null}
@@ -526,42 +389,6 @@ function ChoiceCard({
       <View style={styles.choiceBody}>
         <Text style={styles.choiceTitle}>{title}</Text>
         <Text numberOfLines={1} style={styles.choiceDescription}>{description}</Text>
-      </View>
-    </Pressable>
-  );
-}
-
-function ProviderOption({
-  provider,
-  selected,
-  disabled,
-  onPress,
-}: {
-  provider: { id: AgentProvider; label: string; description: string };
-  selected: boolean;
-  disabled: boolean;
-  onPress: () => void;
-}) {
-  const { theme } = useUnistyles();
-  const Icon = getProviderIcon(provider.id);
-
-  return (
-    <Pressable
-      accessibilityRole="button"
-      disabled={disabled}
-      onPress={onPress}
-      style={({ hovered, pressed }) => [
-        styles.providerCard,
-        selected ? styles.providerCardSelected : null,
-        (hovered || pressed) && !disabled ? styles.choiceCardHovered : null,
-        disabled ? styles.cardDisabled : null,
-      ]}
-    >
-      <View style={styles.providerIconWrap}>
-        <Icon size={16} color={theme.colors.foreground} />
-      </View>
-      <View style={styles.providerBody}>
-        <Text style={styles.providerTitle}>{provider.label}</Text>
       </View>
     </Pressable>
   );
@@ -654,69 +481,6 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: theme.colors.surface2,
-  },
-  providerGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: theme.spacing[2],
-  },
-  providerCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing[2],
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    borderRadius: theme.borderRadius.lg,
-    backgroundColor: theme.colors.surface1,
-    paddingVertical: theme.spacing[2],
-    paddingHorizontal: theme.spacing[3],
-  },
-  providerCardSelected: {
-    borderColor: theme.colors.accent,
-    backgroundColor: theme.colors.surface2,
-  },
-  providerIconWrap: {
-    width: 28,
-    height: 28,
-    borderRadius: theme.borderRadius.md,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: theme.colors.surface2,
-  },
-  providerBody: {
-    flex: 1,
-  },
-  providerTitle: {
-    fontSize: theme.fontSize.sm,
-    fontWeight: theme.fontWeight.medium,
-    color: theme.colors.foreground,
-  },
-  field: {
-    gap: theme.spacing[2],
-  },
-  fieldLabel: {
-    fontSize: theme.fontSize.sm,
-    fontWeight: theme.fontWeight.medium,
-    color: theme.colors.foreground,
-  },
-  input: {
-    minHeight: 80,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    borderRadius: theme.borderRadius.lg,
-    backgroundColor: theme.colors.surface1,
-    color: theme.colors.foreground,
-    paddingHorizontal: theme.spacing[3],
-    paddingVertical: theme.spacing[3],
-    textAlignVertical: "top",
-    fontSize: theme.fontSize.sm,
-  },
-  actions: {
-    flexDirection: "row",
-    gap: theme.spacing[2],
-  },
-  actionButton: {
-    flex: 1,
   },
   errorText: {
     fontSize: theme.fontSize.sm,

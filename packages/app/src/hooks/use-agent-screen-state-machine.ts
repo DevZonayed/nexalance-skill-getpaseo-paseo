@@ -6,13 +6,6 @@ export interface AgentScreenAgent {
   status: "initializing" | "idle" | "running" | "error" | "closed";
   cwd: string;
   lastError?: string | null;
-  terminalExit?: {
-    command: string;
-    message: string;
-    exitCode: number | null;
-    signal: number | null;
-    outputLines: string[];
-  } | null;
   projectPlacement?: {
     checkout?: {
       cwd?: string;

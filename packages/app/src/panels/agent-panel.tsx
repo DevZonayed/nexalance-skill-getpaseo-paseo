@@ -26,7 +26,6 @@ import { useKeyboardShiftStyle } from "@/hooks/use-keyboard-shift-style";
 import { useStableEvent } from "@/hooks/use-stable-event";
 import { usePaneContext } from "@/panels/pane-context";
 import type { PanelDescriptor, PanelRegistration } from "@/panels/panel-registry";
-import { TerminalAgentPanel } from "@/panels/terminal-agent-panel";
 import {
   useHostRuntimeClient,
   useHostRuntimeConnectionStatus,
@@ -250,11 +249,9 @@ function AgentPanelBody({
       return {
         serverId: agent?.serverId ?? null,
         id: agent?.id ?? null,
-        terminal: agent?.terminal ?? false,
         status: agent?.status ?? null,
         cwd: agent?.cwd ?? null,
         lastError: agent?.lastError ?? null,
-        terminalExit: agent?.terminalExit ?? null,
         archivedAt: agent?.archivedAt ?? null,
       };
     }),
@@ -378,7 +375,6 @@ function AgentPanelBody({
           status: agentState.status,
           cwd: agentState.cwd,
           lastError: agentState.lastError ?? null,
-          terminalExit: agentState.terminalExit ?? null,
           projectPlacement,
         }
       : null;
@@ -394,27 +390,6 @@ function AgentPanelBody({
   }
 
   const isArchivingCurrentAgent = Boolean(agentId && isArchivingAgent({ serverId, agentId }));
-
-  if (agentState.terminal) {
-    return (
-      <View style={styles.root}>
-        <TerminalAgentPanel
-          serverId={serverId}
-          client={client}
-          agent={agent}
-          isPaneFocused={isPaneFocused}
-        />
-
-        {isArchivingCurrentAgent ? (
-          <View style={styles.archivingOverlay} testID="agent-archiving-overlay">
-            <ActivityIndicator size="large" color={theme.colors.foreground} />
-            <Text style={styles.archivingTitle}>Archiving agent...</Text>
-            <Text style={styles.archivingSubtitle}>Please wait while we archive this agent.</Text>
-          </View>
-        ) : null}
-      </View>
-    );
-  }
 
   return (
     <ChatAgentContent
@@ -480,11 +455,9 @@ function ChatAgentContent({
       return {
         serverId: agent?.serverId ?? null,
         id: agent?.id ?? null,
-        terminal: agent?.terminal ?? false,
         status: agent?.status ?? null,
         cwd: agent?.cwd ?? null,
         lastError: agent?.lastError ?? null,
-        terminalExit: agent?.terminalExit ?? null,
         archivedAt: agent?.archivedAt ?? null,
         requiresAttention: agent?.requiresAttention ?? false,
         attentionReason: agent?.attentionReason ?? null,
@@ -716,7 +689,6 @@ function ChatAgentContent({
           status: agentState.status,
           cwd: agentState.cwd,
           lastError: agentState.lastError ?? null,
-          terminalExit: agentState.terminalExit ?? null,
           projectPlacement,
         }
       : null;

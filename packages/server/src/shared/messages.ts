@@ -95,7 +95,6 @@ const AgentCapabilityFlagsSchema: z.ZodType<AgentCapabilityFlags> = z.object({
   supportsMcpServers: z.boolean(),
   supportsReasoningStream: z.boolean(),
   supportsToolInvocations: z.boolean(),
-  supportsTerminalMode: z.boolean(),
 });
 
 const AgentUsageSchema: z.ZodType<AgentUsage> = z.object({
@@ -133,7 +132,6 @@ const McpServerConfigSchema = z.discriminatedUnion("type", [
 const AgentSessionConfigSchema = z.object({
   provider: AgentProviderSchema,
   cwd: z.string(),
-  terminal: z.boolean().optional(),
   modeId: z.string().optional(),
   model: z.string().optional(),
   thinkingOptionId: z.string().optional(),
@@ -458,19 +456,10 @@ const AgentRuntimeInfoSchema: z.ZodType<AgentRuntimeInfo> = z.object({
   extra: z.record(z.unknown()).optional(),
 });
 
-const TerminalExitDetailsSchema = z.object({
-  command: z.string(),
-  message: z.string(),
-  exitCode: z.number().nullable(),
-  signal: z.number().nullable(),
-  outputLines: z.array(z.string()),
-});
-
 export const AgentSnapshotPayloadSchema = z.object({
   id: z.string(),
   provider: AgentProviderSchema,
   cwd: z.string(),
-  terminal: z.boolean().optional(),
   model: z.string().nullable(),
   thinkingOptionId: z.string().nullable().optional(),
   effectiveThinkingOptionId: z.string().nullable().optional(),
@@ -486,7 +475,6 @@ export const AgentSnapshotPayloadSchema = z.object({
   runtimeInfo: AgentRuntimeInfoSchema.optional(),
   lastUsage: AgentUsageSchema.optional(),
   lastError: z.string().optional(),
-  terminalExit: TerminalExitDetailsSchema.optional(),
   title: z.string().nullable(),
   labels: z.record(z.string()).default({}),
   requiresAttention: z.boolean().optional(),

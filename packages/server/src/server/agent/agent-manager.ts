@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { basename, resolve } from "node:path";
+import { resolve } from "node:path";
 import { stat } from "node:fs/promises";
 import {
   AGENT_LIFECYCLE_STATUSES,
@@ -8,7 +8,6 @@ import {
 import type { Logger } from "pino";
 import { z } from "zod";
 import type { TerminalManager } from "../../terminal/terminal-manager.js";
-import type { TerminalExitInfo, TerminalSession } from "../../terminal/terminal.js";
 
 import type {
   AgentCapabilityFlags,
@@ -31,7 +30,6 @@ import type {
   AgentRuntimeInfo,
   ListPersistedAgentsOptions,
   PersistedAgentDescriptor,
-  TerminalCommand,
 } from "./agent-sdk-types.js";
 import type { StoredAgentRecord } from "./agent-storage.js";
 import type { AgentSnapshotStore } from "./agent-snapshot-store.js";
@@ -114,13 +112,6 @@ export type WaitForAgentStartOptions = {
   signal?: AbortSignal;
 };
 
-export interface TerminalExitDetails {
-  command: string;
-  message: string;
-  exitCode: number | null;
-  signal: number | null;
-  outputLines: string[];
-}
 type AttentionState =
   | { requiresAttention: false }
   | {
@@ -149,7 +140,6 @@ type ManagedAgentBase = {
   id: string;
   provider: AgentProvider;
   cwd: string;
-  terminal: boolean;
   capabilities: AgentCapabilityFlags;
   config: AgentSessionConfig;
   runtimeInfo?: AgentRuntimeInfo;
@@ -165,7 +155,6 @@ type ManagedAgentBase = {
   lastUserMessageAt: Date | null;
   lastUsage?: AgentUsage;
   lastError?: string;
-  terminalExit?: TerminalExitDetails;
   attention: AttentionState;
   foregroundTurnWaiters: Set<ForegroundTurnWaiter>;
   unsubscribeSession: (() => void) | null;
@@ -181,7 +170,6 @@ type ManagedAgentBase = {
 
 type ManagedAgentWithSession = ManagedAgentBase & {
   session: AgentSession;
-  terminal: false;
 };
 
 type ManagedAgentInitializing = ManagedAgentWithSession & {
@@ -211,24 +199,11 @@ type ManagedAgentClosed = ManagedAgentBase & {
   activeForegroundTurnId: null;
 };
 
-type ManagedTerminalAgent = ManagedAgentBase & {
-  terminal: true;
-  lifecycle: "idle";
-  session: null;
-  activeForegroundTurnId: null;
-  terminalCommand: TerminalCommand;
-  terminalId: string | null;
-  unsubscribeTerminalExit: (() => void) | null;
-};
-
-export type AgentKind = "session" | "terminal";
-
 export type ManagedAgent =
   | ManagedAgentInitializing
   | ManagedAgentIdle
   | ManagedAgentRunning
   | ManagedAgentError
-  | ManagedTerminalAgent
   | ManagedAgentClosed;
 
 export interface AgentMetricsSnapshot {
@@ -247,7 +222,7 @@ type ActiveManagedAgent =
   | ManagedAgentRunning
   | ManagedAgentError;
 
-type LiveManagedAgent = ActiveManagedAgent | ManagedTerminalAgent;
+type LiveManagedAgent = ActiveManagedAgent;
 
 const SYSTEM_ERROR_PREFIX = "[System Error]";
 
@@ -298,73 +273,6 @@ function createAbortError(signal: AbortSignal | undefined, fallbackMessage: stri
   return Object.assign(new Error(message), { name: "AbortError" });
 }
 
-function formatTerminalExitSummary(input: {
-  command: string;
-  exitCode: number | null;
-  signal: number | null;
-  outputLines: string[];
-}): string {
-  const commandLabel = basename(input.command) || input.command;
-  const commandNotFoundLine = input.outputLines.find((line) =>
-    /command not found|not recognized|no such file or directory/i.test(line),
-  );
-
-  if (input.exitCode === 127) {
-    return commandNotFoundLine ?? `${commandLabel}: command not found`;
-  }
-  if (input.exitCode !== null) {
-    return `${commandLabel} exited with code ${input.exitCode}.`;
-  }
-  if (input.signal !== null) {
-    return `${commandLabel} exited with signal ${input.signal}.`;
-  }
-  return `${commandLabel} exited unexpectedly.`;
-}
-
-function buildTerminalExitDetails(input: {
-  command: string;
-  exit: TerminalExitInfo;
-}): TerminalExitDetails | null {
-  const outputLines = input.exit.lastOutputLines.map((line) => line.trimEnd());
-  while (outputLines[0]?.length === 0) {
-    outputLines.shift();
-  }
-  while (outputLines[outputLines.length - 1]?.length === 0) {
-    outputLines.pop();
-  }
-
-  if (input.exit.exitCode === null && input.exit.signal === null && outputLines.length === 0) {
-    return null;
-  }
-
-  return {
-    command: input.command,
-    message: formatTerminalExitSummary({
-      command: input.command,
-      exitCode: input.exit.exitCode,
-      signal: input.exit.signal,
-      outputLines,
-    }),
-    exitCode: input.exit.exitCode,
-    signal: input.exit.signal,
-    outputLines,
-  };
-}
-
-function buildTerminalExitErrorMessage(details: TerminalExitDetails): string {
-  const lines = [details.message];
-  if (details.exitCode !== null) {
-    lines.push(`Exit code: ${details.exitCode}`);
-  } else if (details.signal !== null) {
-    lines.push(`Signal: ${details.signal}`);
-  }
-  if (details.outputLines.length > 0) {
-    lines.push("Last output:");
-    lines.push(...details.outputLines);
-  }
-  return lines.join("\n");
-}
-
 function validateAgentId(agentId: string, source: string): string {
   const result = AgentIdSchema.safeParse(agentId);
   if (!result.success) {
@@ -396,14 +304,12 @@ export class AgentManager {
   private readonly backgroundTasks = new Set<Promise<void>>();
   private onAgentAttention?: AgentAttentionCallback;
   private logger: Logger;
-  private readonly terminalManager: TerminalManager | null;
 
   constructor(options: AgentManagerOptions) {
     this.idFactory = options?.idFactory ?? (() => randomUUID());
     this.registry = options?.registry;
     this.durableTimelineStore = options?.durableTimelineStore;
     this.onAgentAttention = options?.onAgentAttention;
-    this.terminalManager = options?.terminalManager ?? null;
     this.logger = options.logger.child({ module: "agent", component: "agent-manager" });
     if (options?.clients) {
       for (const [provider, client] of Object.entries(options.clients)) {
@@ -624,51 +530,6 @@ export class AgentManager {
     return agent ? { ...agent } : null;
   }
 
-  async getAgentKind(id: string): Promise<AgentKind | null> {
-    const normalizedId = validateAgentId(id, "getAgentKind");
-    const liveAgent = this.agents.get(normalizedId);
-    if (liveAgent) {
-      return liveAgent.terminal ? "terminal" : "session";
-    }
-    if (!this.registry) {
-      return null;
-    }
-    const stored = await this.registry.get(normalizedId);
-    if (!stored) {
-      return null;
-    }
-    return stored.config?.terminal === true ? "terminal" : "session";
-  }
-
-  async getStructuredSendRejection(id: string): Promise<string | null> {
-    const kind = await this.getAgentKind(id);
-    return kind === "terminal"
-      ? "Terminal agents do not support structured send operations"
-      : null;
-  }
-
-  getTerminalSessionForAgent(id: string): TerminalSession | null {
-    const agent = this.agents.get(id);
-    if (!agent || !agent.terminal || !("terminalId" in agent) || !agent.terminalId) {
-      return null;
-    }
-    return this.terminalManager?.getTerminal(agent.terminalId) ?? null;
-  }
-
-  getAgentIdForTerminal(terminalId: string): string | null {
-    for (const agent of this.agents.values()) {
-      if (!agent.terminal || !("terminalId" in agent) || agent.terminalId !== terminalId) {
-        continue;
-      }
-      return agent.id;
-    }
-    return null;
-  }
-
-  isTerminalBoundToAgent(terminalId: string): boolean {
-    return this.getAgentIdForTerminal(terminalId) !== null;
-  }
-
   getTimeline(id: string): AgentTimelineItem[] {
     this.requireAgent(id);
     return this.timelineStore.getItems(id);
@@ -713,124 +574,11 @@ export class AgentManager {
         `Provider '${normalizedConfig.provider}' is not available. Please ensure the CLI is installed.`,
       );
     }
-    if (normalizedConfig.terminal) {
-      const buildCommand = client.buildTerminalCreateCommand;
-      if (!buildCommand) {
-        throw new Error(`Provider '${normalizedConfig.provider}' does not support terminal mode`);
-      }
-      const persistence = this.buildTerminalPersistenceHandle(
-        resolvedAgentId,
-        normalizedConfig.provider,
-        normalizedConfig.cwd,
-      );
-      const command = buildCommand.call(
-        client,
-        normalizedConfig,
-        persistence,
-        options?.initialPrompt,
-      );
-      return this.registerTerminalAgent(
-        resolvedAgentId,
-        normalizedConfig,
-        client.capabilities,
-        command,
-        persistence,
-        {
-          labels: options?.labels,
-          workspaceId: options?.workspaceId,
-        },
-      );
-    }
     const session = await client.createSession(normalizedConfig, launchContext);
     return this.registerSession(session, normalizedConfig, resolvedAgentId, {
       labels: options?.labels,
       workspaceId: options?.workspaceId,
     });
-  }
-
-  // Reconstruct an agent from provider persistence. When a durable timeline
-  // store is configured, the live timeline buffer only seeds seq metadata from
-  // the durable store instead of loading committed history back into memory.
-  // Tests without a durable timeline store can still call
-  // hydrateTimelineFromProvider() for backward compatibility.
-  async launchTerminalAgent(
-    config: AgentSessionConfig,
-    agentId: string,
-    options?: {
-      persistence?: AgentPersistenceHandle | null;
-      createdAt?: Date;
-      updatedAt?: Date;
-      lastUserMessageAt?: Date | null;
-      labels?: Record<string, string>;
-      attention?: {
-        requiresAttention: boolean;
-        attentionReason?: "finished" | "error" | "permission" | null;
-        attentionTimestamp?: Date | null;
-      };
-    },
-  ): Promise<ManagedTerminalAgent> {
-    const resolvedAgentId = validateAgentId(agentId, "launchTerminalAgent");
-    const normalizedConfig = await this.normalizeConfig(config);
-    const client = this.requireClient(normalizedConfig.provider);
-    const available = await client.isAvailable();
-    if (!available) {
-      throw new Error(
-        `Provider '${normalizedConfig.provider}' is not available. Please ensure the CLI is installed.`,
-      );
-    }
-
-    const resumeCommand =
-      options?.persistence && client.buildTerminalResumeCommand
-        ? client.buildTerminalResumeCommand.call(client, options.persistence)
-        : null;
-    const createCommand = client.buildTerminalCreateCommand;
-    const terminalCommand =
-      resumeCommand ??
-      (createCommand
-        ? createCommand.call(
-            client,
-            normalizedConfig,
-            options?.persistence ??
-              this.buildTerminalPersistenceHandle(
-                resolvedAgentId,
-                normalizedConfig.provider,
-                normalizedConfig.cwd,
-              ),
-          )
-        : null);
-
-    if (!terminalCommand) {
-      throw new Error(`Provider '${normalizedConfig.provider}' does not support terminal mode`);
-    }
-
-    return this.registerTerminalAgent(
-      resolvedAgentId,
-      normalizedConfig,
-      client.capabilities,
-      terminalCommand,
-      options?.persistence ??
-        this.buildTerminalPersistenceHandle(
-          resolvedAgentId,
-          normalizedConfig.provider,
-          normalizedConfig.cwd,
-        ),
-      {
-        createdAt: options?.createdAt,
-        updatedAt: options?.updatedAt,
-        lastUserMessageAt: options?.lastUserMessageAt,
-        labels: options?.labels,
-        attention:
-          options?.attention?.requiresAttention &&
-          options.attention.attentionReason &&
-          options.attention.attentionTimestamp
-            ? {
-                requiresAttention: true,
-                attentionReason: options.attention.attentionReason,
-                attentionTimestamp: options.attention.attentionTimestamp,
-              }
-            : undefined,
-      },
-    );
   }
 
   // Reconstruct an agent from provider persistence. Callers should explicitly
@@ -941,13 +689,7 @@ export class AgentManager {
       "closeAgent: start",
     );
     const closedAgent = this.prepareAgentForClosure(agent, "agent closed");
-    if (agent.terminal) {
-      if (agent.terminalId) {
-        this.terminalManager?.killTerminal(agent.terminalId);
-      }
-    } else {
-      await agent.session.close();
-    }
+    await agent.session.close();
     this.timelineStore.delete(agentId);
     this.emitClosedAgent(closedAgent);
     this.logger.trace({ agentId }, "closeAgent: completed");
@@ -2050,7 +1792,6 @@ export class AgentManager {
       id: resolvedAgentId,
       provider: config.provider,
       cwd: config.cwd,
-      terminal: false,
       session,
       capabilities: session.capabilities,
       config,
@@ -2071,7 +1812,6 @@ export class AgentManager {
       lastUserMessageAt: options?.lastUserMessageAt ?? null,
       lastUsage: options?.lastUsage,
       lastError: options?.lastError,
-      terminalExit: undefined,
       attention:
         options?.attention != null
           ? options.attention.requiresAttention
@@ -2118,162 +1858,6 @@ export class AgentManager {
     };
   }
 
-  private async registerTerminalAgent(
-    agentId: string,
-    config: AgentSessionConfig,
-    capabilities: AgentCapabilityFlags,
-    terminalCommand: TerminalCommand,
-    persistence: AgentPersistenceHandle,
-    options?: {
-      workspaceId?: number;
-      createdAt?: Date;
-      updatedAt?: Date;
-      lastUserMessageAt?: Date | null;
-      labels?: Record<string, string>;
-      attention?: AttentionState;
-    },
-  ): Promise<ManagedTerminalAgent> {
-    if (!this.terminalManager) {
-      throw new Error("Terminal manager is not configured");
-    }
-    const resolvedAgentId = validateAgentId(agentId, "registerTerminalAgent");
-    if (this.agents.has(resolvedAgentId)) {
-      throw new Error(`Agent with id ${resolvedAgentId} already exists`);
-    }
-    const initialPersistedTitle = await this.resolveInitialPersistedTitle(resolvedAgentId, config);
-    const now = new Date();
-    const reservedTerminalId = randomUUID();
-
-    const managed: ManagedTerminalAgent = {
-      id: resolvedAgentId,
-      provider: config.provider,
-      cwd: config.cwd,
-      terminal: true,
-      session: null,
-      capabilities,
-      config,
-      runtimeInfo: undefined,
-      lifecycle: "idle",
-      createdAt: options?.createdAt ?? now,
-      updatedAt: options?.updatedAt ?? now,
-      availableModes: [],
-      currentModeId: config.modeId ?? null,
-      pendingPermissions: new Map<string, AgentPermissionRequest>(),
-      pendingReplacement: false,
-      activeForegroundTurnId: null,
-      foregroundTurnWaiters: new Set<ForegroundTurnWaiter>(),
-      unsubscribeSession: null,
-      provisionalAssistantText: null,
-      persistence: attachPersistenceCwd(persistence, config.cwd),
-      historyPrimed: false,
-      lastUserMessageAt: options?.lastUserMessageAt ?? null,
-      lastUsage: undefined,
-      lastError: undefined,
-      terminalExit: undefined,
-      attention:
-        options?.attention != null
-          ? options.attention.requiresAttention
-            ? {
-                requiresAttention: true,
-                attentionReason: options.attention.attentionReason,
-                attentionTimestamp: new Date(options.attention.attentionTimestamp),
-              }
-            : { requiresAttention: false }
-          : { requiresAttention: false },
-      internal: config.internal ?? false,
-      labels: options?.labels ?? {},
-      terminalCommand,
-      terminalId: reservedTerminalId,
-      unsubscribeTerminalExit: null,
-    };
-
-    this.agents.set(resolvedAgentId, managed);
-    this.previousStatuses.set(resolvedAgentId, managed.lifecycle);
-    this.agentsAwaitingInitialSnapshotPersist.add(resolvedAgentId);
-
-    let terminalSession: TerminalSession;
-    try {
-      terminalSession = await this.terminalManager.createTerminal({
-        id: reservedTerminalId,
-        cwd: config.cwd,
-        name: initialPersistedTitle ?? undefined,
-        command: terminalCommand.command,
-        args: terminalCommand.args,
-        env: terminalCommand.env,
-      });
-    } catch (error) {
-      this.agents.delete(resolvedAgentId);
-      this.previousStatuses.delete(resolvedAgentId);
-      this.agentsAwaitingInitialSnapshotPersist.delete(resolvedAgentId);
-      throw error;
-    }
-
-    if (terminalSession.id !== reservedTerminalId) {
-      this.agents.delete(resolvedAgentId);
-      this.previousStatuses.delete(resolvedAgentId);
-      this.agentsAwaitingInitialSnapshotPersist.delete(resolvedAgentId);
-      throw new Error(
-        `Reserved terminal id ${reservedTerminalId} but terminal manager returned ${terminalSession.id}`,
-      );
-    }
-
-    const unsubscribeTerminalExit = terminalSession.onExit((exit) => {
-      void this.handleTerminalAgentExited(resolvedAgentId, exit);
-    });
-    managed.unsubscribeTerminalExit = unsubscribeTerminalExit;
-    const terminalSessionTitle = terminalSession.getTitle()?.trim();
-    try {
-      await this.persistSnapshot(managed, {
-        workspaceId: options?.workspaceId,
-        title:
-          terminalSessionTitle && terminalSessionTitle.length > 0
-            ? terminalSessionTitle
-            : initialPersistedTitle,
-      });
-    } finally {
-      this.agentsAwaitingInitialSnapshotPersist.delete(resolvedAgentId);
-    }
-    this.emitState(managed);
-    return { ...managed };
-  }
-
-  private async handleTerminalAgentExited(agentId: string, exit: TerminalExitInfo): Promise<void> {
-    const agent = this.agents.get(agentId);
-    if (!agent || !agent.terminal) {
-      return;
-    }
-    const terminalExit = buildTerminalExitDetails({
-      command: agent.terminalCommand.command,
-      exit,
-    });
-    if (terminalExit) {
-      agent.terminalExit = terminalExit;
-      if (terminalExit.exitCode !== null && terminalExit.exitCode !== 0) {
-        agent.lastError = buildTerminalExitErrorMessage(terminalExit);
-      } else if (terminalExit.signal !== null) {
-        agent.lastError = buildTerminalExitErrorMessage(terminalExit);
-      }
-    }
-    const closedAgent = this.prepareAgentForClosure(agent, "agent terminal exited");
-    await this.persistSnapshot(closedAgent);
-    this.emitClosedAgent(closedAgent);
-  }
-
-  private buildTerminalPersistenceHandle(
-    agentId: string,
-    provider: AgentProvider,
-    cwd: string,
-  ): AgentPersistenceHandle {
-    return attachPersistenceCwd(
-      {
-        provider,
-        sessionId: agentId,
-        nativeHandle: agentId,
-      },
-      cwd,
-    )!;
-  }
-
   private prepareAgentForClosure(
     agent: LiveManagedAgent,
     cancelReason: string,
@@ -2283,10 +1867,6 @@ export class AgentManager {
     if (agent.unsubscribeSession) {
       agent.unsubscribeSession();
       agent.unsubscribeSession = null;
-    }
-    if (agent.terminal && agent.unsubscribeTerminalExit) {
-      agent.unsubscribeTerminalExit();
-      agent.unsubscribeTerminalExit = null;
     }
     for (const waiter of agent.foregroundTurnWaiters) {
       waiter.callback({
@@ -2330,7 +1910,7 @@ export class AgentManager {
         if (!current) {
           return;
         }
-        if (current.terminal || current.session == null) {
+        if (current.session == null) {
           return;
         }
         await this.dispatchSessionEvent(current, event);
@@ -3112,8 +2692,8 @@ export class AgentManager {
 
   private requireSessionAgent(id: string): ActiveManagedAgent {
     const agent = this.requireAgent(id);
-    if (agent.terminal || agent.session === null) {
-      throw new Error(`Agent '${agent.id}' is a terminal agent and has no managed session`);
+    if (agent.session === null) {
+      throw new Error(`Agent '${agent.id}' has no managed session`);
     }
     return agent;
   }

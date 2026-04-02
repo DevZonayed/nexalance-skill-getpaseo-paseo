@@ -63,7 +63,6 @@ export function toStoredAgentRecord(
     runtimeInfo,
     persistence,
     lastError: agent.lastError ?? undefined,
-    terminalExit: agent.terminalExit ?? undefined,
     requiresAttention: agent.attention.requiresAttention,
     attentionReason: agent.attention.requiresAttention ? agent.attention.attentionReason : null,
     attentionTimestamp: agent.attention.requiresAttention
@@ -88,7 +87,6 @@ export function toAgentPayload(
     id: agent.id,
     provider: agent.provider,
     cwd: agent.cwd,
-    terminal: agent.terminal,
     model: agent.config.model ?? null,
     thinkingOptionId,
     effectiveThinkingOptionId,
@@ -115,10 +113,6 @@ export function toAgentPayload(
     payload.lastError = agent.lastError;
   }
 
-  if (agent.terminalExit) {
-    payload.terminalExit = agent.terminalExit;
-  }
-
   // Handle attention state
   payload.requiresAttention = agent.attention.requiresAttention;
   if (agent.attention.requiresAttention) {
@@ -134,9 +128,6 @@ export function toAgentPayload(
 
 function buildSerializableConfig(config: AgentSessionConfig): SerializableAgentConfig | null {
   const serializable: SerializableAgentConfig = {};
-  if (config.terminal !== undefined) {
-    serializable.terminal = config.terminal;
-  }
   if (Object.prototype.hasOwnProperty.call(config, "title")) {
     serializable.title = config.title ?? null;
   }

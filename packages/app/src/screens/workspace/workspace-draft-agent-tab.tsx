@@ -29,7 +29,6 @@ const DRAFT_CAPABILITIES: AgentCapabilityFlags = {
   supportsMcpServers: false,
   supportsReasoningStream: false,
   supportsToolInvocations: false,
-  supportsTerminalMode: false,
 };
 
 type WorkspaceDraftAgentTabProps = {
@@ -134,7 +133,6 @@ export function WorkspaceDraftAgentTab({
         serverId,
         id: tabId,
         provider: composerState.selectedProvider,
-        terminal: false,
         status: "running",
         createdAt: now,
         updatedAt: now,

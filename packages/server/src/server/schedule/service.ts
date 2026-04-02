@@ -368,9 +368,6 @@ export class ScheduleService {
   private async executeSchedule(schedule: StoredSchedule): Promise<ScheduleExecutionResult> {
     if (schedule.target.type === "agent") {
       const agent = await this.ensureAgentLoaded(schedule.target.agentId);
-      if (agent.terminal) {
-        throw new Error(`Agent ${agent.id} is a terminal agent and cannot be targeted by schedules`);
-      }
       if (this.agentManager.hasInFlightRun(agent.id)) {
         throw new Error(`Agent ${agent.id} already has an active run`);
       }
@@ -401,7 +398,6 @@ export class ScheduleService {
       extra: schedule.target.config.extra,
       systemPrompt: schedule.target.config.systemPrompt,
       mcpServers: schedule.target.config.mcpServers as AgentSessionConfig["mcpServers"],
-      terminal: false,
     };
     const labels = {
       "paseo.schedule-id": schedule.id,

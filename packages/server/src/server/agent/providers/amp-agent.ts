@@ -9,14 +9,10 @@ import type {
   AgentSession,
   AgentSessionConfig,
   ListModelsOptions,
-  TerminalCommand,
 } from "../agent-sdk-types.js";
 import {
-  applyProviderEnv,
   findExecutable,
   isProviderCommandAvailable,
-  resolveProviderCommandPrefix,
-  sanitizeTerminalEnv,
   type ProviderRuntimeSettings,
 } from "../provider-launch-config.js";
 
@@ -29,10 +25,7 @@ const AMP_CAPABILITIES: AgentCapabilityFlags = {
   supportsMcpServers: false,
   supportsReasoningStream: false,
   supportsToolInvocations: false,
-  supportsTerminalMode: true,
 };
-
-type AmpAgentConfig = AgentSessionConfig & { provider: "amp" };
 
 function resolveAmpBinary(): string {
   const found = findExecutable("amp");
@@ -45,7 +38,7 @@ function resolveAmpBinary(): string {
 }
 
 function createUnsupportedSessionError(): Error {
-  return new Error("AMP currently supports terminal mode only in Paseo.");
+  return new Error("AMP does not support session-backed agents in Paseo.");
 }
 
 export class AmpAgentClient implements AgentClient {
@@ -73,37 +66,10 @@ export class AmpAgentClient implements AgentClient {
     return [];
   }
 
-  buildTerminalCreateCommand(
-    config: AgentSessionConfig,
-    _handle: AgentPersistenceHandle,
-    _initialPrompt?: string,
-  ): TerminalCommand {
-    this.assertConfig(config);
-    const launchPrefix = resolveProviderCommandPrefix(
-      this.runtimeSettings?.command,
-      resolveAmpBinary,
-    );
-    const terminalEnv = sanitizeTerminalEnv(
-      applyProviderEnv(process.env as Record<string, string | undefined>, this.runtimeSettings),
-    );
-    return {
-      command: launchPrefix.command,
-      args: [...launchPrefix.args],
-      env: terminalEnv,
-    };
-  }
-
   async isAvailable(): Promise<boolean> {
     if (this.runtimeSettings?.command?.mode === "replace") {
       return existsSync(this.runtimeSettings.command.argv[0]);
     }
     return isProviderCommandAvailable(this.runtimeSettings?.command, resolveAmpBinary);
-  }
-
-  private assertConfig(config: AgentSessionConfig): AmpAgentConfig {
-    if (config.provider !== AMP_PROVIDER) {
-      throw new Error(`AmpAgentClient received config for provider '${config.provider}'`);
-    }
-    return { ...config, provider: AMP_PROVIDER };
   }
 }

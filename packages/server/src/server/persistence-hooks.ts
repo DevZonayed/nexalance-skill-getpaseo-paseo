@@ -7,7 +7,6 @@ import { isValidAgentProvider } from "./agent/provider-manifest.js";
 export function buildConfigOverrides(record: StoredAgentRecord): Partial<AgentSessionConfig> {
   return {
     cwd: record.cwd,
-    terminal: record.config?.terminal ?? undefined,
     modeId: record.lastModeId ?? record.config?.modeId ?? undefined,
     model: record.config?.model ?? undefined,
     thinkingOptionId: record.config?.thinkingOptionId ?? undefined,
@@ -26,7 +25,6 @@ export function buildSessionConfig(record: StoredAgentRecord): AgentSessionConfi
   return {
     provider: record.provider,
     cwd: record.cwd,
-    terminal: overrides.terminal,
     modeId: overrides.modeId,
     model: overrides.model,
     thinkingOptionId: overrides.thinkingOptionId,

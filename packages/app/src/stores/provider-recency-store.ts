@@ -92,7 +92,7 @@ export const useProviderRecencyStore = create<ProviderRecencyStoreState>()(
       },
     }),
     {
-      name: "terminal-agent-provider-recency",
+      name: "agent-provider-recency",
       version: PROVIDER_RECENCY_STORE_VERSION,
       storage: createJSONStorage(() => AsyncStorage),
       partialize: (state) => ({

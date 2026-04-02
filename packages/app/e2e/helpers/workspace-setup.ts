@@ -186,26 +186,6 @@ export async function createChatAgentFromWorkspaceSetup(
   await dialog.getByRole("button", { name: "Send message" }).click();
 }
 
-export async function createTerminalAgentFromWorkspaceSetup(
-  page: Page,
-  input: { providerLabel: string; prompt?: string },
-): Promise<void> {
-  const dialog = workspaceSetupDialog(page);
-  await dialog.getByRole("button", { name: /Terminal Agent/i }).click();
-
-  const providerButton = dialog.getByRole("button", { name: new RegExp(`^${input.providerLabel}$`, "i") }).first();
-  await expect(providerButton).toBeVisible({ timeout: 15_000 });
-  await providerButton.click();
-
-  if (input.prompt) {
-    const promptInput = dialog.getByPlaceholder("Optional").first();
-    await expect(promptInput).toBeVisible({ timeout: 15_000 });
-    await promptInput.fill(input.prompt);
-  }
-
-  await dialog.getByRole("button", { name: "Launch" }).click();
-}
-
 export async function createStandaloneTerminalFromWorkspaceSetup(page: Page): Promise<void> {
   await workspaceSetupDialog(page)
     .getByRole("button", { name: /^Terminal Create the workspace/i })

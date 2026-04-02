@@ -71,7 +71,6 @@ export type AgentCapabilityFlags = {
   supportsMcpServers: boolean;
   supportsReasoningStream: boolean;
   supportsToolInvocations: boolean;
-  supportsTerminalMode: boolean;
 };
 
 export type AgentPersistenceHandle = {
@@ -358,16 +357,9 @@ export type PersistedAgentDescriptor = {
   timeline: AgentTimelineItem[];
 };
 
-export type TerminalCommand = {
-  command: string;
-  args: string[];
-  env?: Record<string, string>;
-};
-
 export type AgentSessionConfig = {
   provider: AgentProvider;
   cwd: string;
-  terminal?: boolean;
   /**
    * Provider-agnostic system/developer instruction string.
    * Mapped by each provider to its native instruction field.
@@ -437,12 +429,6 @@ export interface AgentClient {
   ): Promise<AgentSession>;
   listModels(options?: ListModelsOptions): Promise<AgentModelDefinition[]>;
   listPersistedAgents?(options?: ListPersistedAgentsOptions): Promise<PersistedAgentDescriptor[]>;
-  buildTerminalCreateCommand?(
-    config: AgentSessionConfig,
-    handle: AgentPersistenceHandle,
-    initialPrompt?: string,
-  ): TerminalCommand;
-  buildTerminalResumeCommand?(handle: AgentPersistenceHandle): TerminalCommand;
   /**
    * Check if this provider is available (CLI binary is installed).
    * Returns true if available, false otherwise.

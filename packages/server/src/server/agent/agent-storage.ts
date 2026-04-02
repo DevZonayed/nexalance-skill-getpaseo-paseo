@@ -12,7 +12,6 @@ import type { AgentSessionConfig } from "./agent-sdk-types.js";
 
 const SERIALIZABLE_CONFIG_SCHEMA = z
   .object({
-    terminal: z.boolean().optional(),
     title: z.string().nullable().optional(),
     modeId: z.string().nullable().optional(),
     model: z.string().nullable().optional(),
@@ -59,15 +58,6 @@ const STORED_AGENT_SCHEMA = z.object({
     .optional(),
   persistence: PERSISTENCE_HANDLE_SCHEMA,
   lastError: z.string().nullable().optional(),
-  terminalExit: z
-    .object({
-      command: z.string(),
-      message: z.string(),
-      exitCode: z.number().nullable(),
-      signal: z.number().nullable(),
-      outputLines: z.array(z.string()),
-    })
-    .optional(),
   requiresAttention: z.boolean().optional(),
   attentionReason: z.enum(["finished", "error", "permission"]).nullable().optional(),
   attentionTimestamp: z.string().nullable().optional(),
@@ -77,7 +67,6 @@ const STORED_AGENT_SCHEMA = z.object({
 
 export type SerializableAgentConfig = Pick<
   AgentSessionConfig,
-  | "terminal"
   | "title"
   | "modeId"
   | "model"

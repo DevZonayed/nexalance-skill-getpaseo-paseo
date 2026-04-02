@@ -9,7 +9,6 @@ import {
   createPersistedProjectRecord,
   createPersistedWorkspaceRecord,
 } from "./workspace-registry.js";
-import type { StoredAgentRecord } from "./agent/agent-storage.js";
 
 function makeAgent(input: {
   id: string;
@@ -39,7 +38,6 @@ function makeAgent(input: {
       supportsMcpServers: true,
       supportsReasoningStream: true,
       supportsToolInvocations: true,
-      supportsTerminalMode: false,
     },
     currentModeId: null,
     availableModes: [],
@@ -220,50 +218,6 @@ function seedWorkspace(options: {
   });
   options.workspaces.set(record.id, record);
   return record;
-}
-
-function createStoredTerminalAgentRecord(input: {
-  id: string;
-  cwd: string;
-}): StoredAgentRecord {
-  return {
-    id: input.id,
-    provider: "codex",
-    cwd: input.cwd,
-    createdAt: "2026-03-01T12:00:00.000Z",
-    updatedAt: "2026-03-01T12:00:00.000Z",
-    lastActivityAt: "2026-03-01T12:00:00.000Z",
-    lastUserMessageAt: null,
-    title: null,
-    labels: {},
-    lastStatus: "closed",
-    lastModeId: null,
-    config: {
-      terminal: true,
-    },
-    runtimeInfo: {
-      provider: "codex",
-      sessionId: null,
-    },
-    persistence: {
-      provider: "codex",
-      sessionId: input.id,
-      nativeHandle: input.id,
-    },
-    lastError: null,
-    terminalExit: {
-      command: "codex",
-      message: "Terminal session ended",
-      exitCode: 0,
-      signal: null,
-      outputLines: [],
-    },
-    requiresAttention: false,
-    attentionReason: null,
-    attentionTimestamp: null,
-    internal: false,
-    archivedAt: null,
-  };
 }
 
 function createTempGitRepo(options?: {
@@ -633,89 +587,6 @@ describe("workspace aggregation", () => {
     });
     expect(archiveSnapshot).toHaveBeenCalledWith("agent-good", closePayload.agents[0].archivedAt);
     expect(sessionLogger.warn).toHaveBeenCalled();
-  });
-
-  test("terminal agents reject timeline fetch without reloading as chat sessions", async () => {
-    const emitted: Array<{ type: string; payload: any }> = [];
-    const logger = {
-      child: () => logger,
-      trace: vi.fn(),
-      debug: vi.fn(),
-      info: vi.fn(),
-      warn: vi.fn(),
-      error: vi.fn(),
-    };
-    const resumeAgentFromPersistence = vi.fn();
-    const launchTerminalAgent = vi.fn();
-    const hydrateTimelineFromProvider = vi.fn();
-
-    const session = new Session({
-      clientId: "test-client",
-      onMessage: (message) => emitted.push(message as any),
-      logger: logger as any,
-      downloadTokenStore: {} as any,
-      pushTokenStore: {} as any,
-      paseoHome: "/tmp/paseo-test",
-      agentManager: {
-        subscribe: () => () => {},
-        listAgents: () => [],
-        getAgent: () => null,
-        resumeAgentFromPersistence,
-        launchTerminalAgent,
-        hydrateTimelineFromProvider,
-      } as any,
-      agentStorage: {
-        list: async () => [],
-        get: async (agentId: string) =>
-          agentId === "terminal-1"
-            ? createStoredTerminalAgentRecord({ id: agentId, cwd: "/tmp/repo" })
-            : null,
-      } as any,
-      projectRegistry: {
-        initialize: async () => {},
-        existsOnDisk: async () => true,
-        list: async () => [],
-        get: async () => null,
-        upsert: async () => {},
-        archive: async () => {},
-        remove: async () => {},
-      } as any,
-      workspaceRegistry: {
-        initialize: async () => {},
-        existsOnDisk: async () => true,
-        list: async () => [],
-        get: async () => null,
-        upsert: async () => {},
-        archive: async () => {},
-        remove: async () => {},
-      } as any,
-      createAgentMcpTransport: async () => {
-        throw new Error("not used");
-      },
-      stt: null,
-      tts: null,
-      terminalManager: null,
-    }) as any;
-
-    await session.handleMessage({
-      type: "fetch_agent_timeline_request",
-      requestId: "req-terminal-timeline",
-      agentId: "terminal-1",
-    });
-
-    expect(resumeAgentFromPersistence).not.toHaveBeenCalled();
-    expect(launchTerminalAgent).not.toHaveBeenCalled();
-    expect(hydrateTimelineFromProvider).not.toHaveBeenCalled();
-    expect(emitted).toContainEqual(
-      expect.objectContaining({
-        type: "fetch_agent_timeline_response",
-        payload: expect.objectContaining({
-          requestId: "req-terminal-timeline",
-          agentId: "terminal-1",
-          error: "Agent terminal-1 is a terminal agent and has no timeline history",
-        }),
-      }),
-    );
   });
 
   test("uses persisted workspace names and stable status aggregation", async () => {

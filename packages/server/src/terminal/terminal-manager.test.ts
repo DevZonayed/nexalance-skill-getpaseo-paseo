@@ -359,69 +359,6 @@ describe("TerminalManager", () => {
       10000,
     );
 
-    it("forwards bound terminal titles through the agent bridge without changing standalone lists", async () => {
-      await withShell("/bin/sh", async () => {
-        const onAgentBoundTerminalTitleChange = vi.fn();
-        manager = createTerminalManager({
-          resolveAgentIdForTerminal: () => "agent-1",
-          onAgentBoundTerminalTitleChange,
-        });
-
-        const snapshots: Array<Array<{ id: string; title?: string }>> = [];
-        const unsubscribe = manager.subscribeTerminalsChanged((input) => {
-          snapshots.push(
-            input.terminals.map((terminal) => ({
-              id: terminal.id,
-              ...(terminal.title ? { title: terminal.title } : {}),
-            })),
-          );
-        });
-
-        const session = await manager.createTerminal({ cwd: "/tmp" });
-        session.send({ type: "input", data: "printf '\\033]0;Agent Shell\\007'\r" });
-
-        await waitForCondition(() => onAgentBoundTerminalTitleChange.mock.calls.length > 0, 10000);
-
-        expect(onAgentBoundTerminalTitleChange).toHaveBeenCalledWith({
-          agentId: "agent-1",
-          title: "Agent Shell",
-        });
-        expect(
-          snapshots.some((snapshot) =>
-            snapshot.some((terminal) => terminal.id === session.id && terminal.title === "Agent Shell"),
-          ),
-        ).toBe(true);
-
-        unsubscribe();
-      });
-    });
-
-    it("forwards initial titles for agent-bound terminals created with command args", async () => {
-      const packageRoot = mkdtempSync(join(tmpdir(), "terminal-manager-title-script-"));
-      temporaryDirs.push(packageRoot);
-      const scriptPath = join(packageRoot, "npm-cli.js");
-      writeFileSync(scriptPath, "setTimeout(() => process.exit(0), 1000);\n");
-
-      const onAgentBoundTerminalTitleChange = vi.fn();
-      manager = createTerminalManager({
-        resolveAgentIdForTerminal: () => "agent-1",
-        onAgentBoundTerminalTitleChange,
-      });
-
-      await manager.createTerminal({
-        cwd: packageRoot,
-        command: process.execPath,
-        args: [scriptPath, "run", "dev"],
-      });
-
-      await waitForCondition(() => onAgentBoundTerminalTitleChange.mock.calls.length > 0, 10000);
-
-      expect(onAgentBoundTerminalTitleChange).toHaveBeenCalledWith({
-        agentId: "agent-1",
-        title: "npm run dev",
-      });
-    });
-
     it("emits empty snapshot when last terminal is removed", async () => {
       manager = createTerminalManager();
       const snapshots: Array<{ cwd: string; terminalCount: number }> = [];

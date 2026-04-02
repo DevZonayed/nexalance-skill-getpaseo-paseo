@@ -9,14 +9,10 @@ import type {
   AgentSession,
   AgentSessionConfig,
   ListModelsOptions,
-  TerminalCommand,
 } from "../agent-sdk-types.js";
 import {
-  applyProviderEnv,
   findExecutable,
   isProviderCommandAvailable,
-  resolveProviderCommandPrefix,
-  sanitizeTerminalEnv,
   type ProviderRuntimeSettings,
 } from "../provider-launch-config.js";
 
@@ -29,10 +25,7 @@ const GEMINI_CAPABILITIES: AgentCapabilityFlags = {
   supportsMcpServers: false,
   supportsReasoningStream: false,
   supportsToolInvocations: false,
-  supportsTerminalMode: true,
 };
-
-type GeminiAgentConfig = AgentSessionConfig & { provider: "gemini" };
 
 function resolveGeminiBinary(): string {
   const found = findExecutable("gemini");
@@ -45,7 +38,7 @@ function resolveGeminiBinary(): string {
 }
 
 function createUnsupportedSessionError(): Error {
-  return new Error("Gemini CLI currently supports terminal mode only in Paseo.");
+  return new Error("Gemini CLI does not support session-backed agents in Paseo.");
 }
 
 export class GeminiAgentClient implements AgentClient {
@@ -73,56 +66,10 @@ export class GeminiAgentClient implements AgentClient {
     return [];
   }
 
-  buildTerminalCreateCommand(
-    config: AgentSessionConfig,
-    _handle: AgentPersistenceHandle,
-    initialPrompt?: string,
-  ): TerminalCommand {
-    this.assertConfig(config);
-    const launchPrefix = resolveProviderCommandPrefix(
-      this.runtimeSettings?.command,
-      resolveGeminiBinary,
-    );
-    const terminalEnv = sanitizeTerminalEnv(
-      applyProviderEnv(process.env as Record<string, string | undefined>, this.runtimeSettings),
-    );
-    const args = [...launchPrefix.args];
-    if (initialPrompt?.trim()) {
-      args.push("-i", initialPrompt.trim());
-    }
-    return {
-      command: launchPrefix.command,
-      args,
-      env: terminalEnv,
-    };
-  }
-
-  buildTerminalResumeCommand(_handle: AgentPersistenceHandle): TerminalCommand {
-    const launchPrefix = resolveProviderCommandPrefix(
-      this.runtimeSettings?.command,
-      resolveGeminiBinary,
-    );
-    const terminalEnv = sanitizeTerminalEnv(
-      applyProviderEnv(process.env as Record<string, string | undefined>, this.runtimeSettings),
-    );
-    return {
-      command: launchPrefix.command,
-      args: [...launchPrefix.args, "--resume"],
-      env: terminalEnv,
-    };
-  }
-
   async isAvailable(): Promise<boolean> {
     if (this.runtimeSettings?.command?.mode === "replace") {
       return existsSync(this.runtimeSettings.command.argv[0]);
     }
     return isProviderCommandAvailable(this.runtimeSettings?.command, resolveGeminiBinary);
-  }
-
-  private assertConfig(config: AgentSessionConfig): GeminiAgentConfig {
-    if (config.provider !== GEMINI_PROVIDER) {
-      throw new Error(`GeminiAgentClient received config for provider '${config.provider}'`);
-    }
-    return { ...config, provider: GEMINI_PROVIDER };
   }
 }

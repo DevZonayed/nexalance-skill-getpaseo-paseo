@@ -19,7 +19,6 @@ function toAggregatedAgent(params: {
     serverId: params.serverId,
     serverLabel: params.serverLabel,
     title: source.title ?? null,
-    terminal: source.terminal,
     status: source.status,
     lastActivityAt: source.lastActivityAt,
     cwd: source.cwd,

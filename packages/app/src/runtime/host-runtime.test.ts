@@ -134,7 +134,6 @@ function makeFetchAgentsEntry(input: {
         supportsMcpServers: true,
         supportsReasoningStream: true,
         supportsToolInvocations: true,
-        supportsTerminalMode: false,
       },
       currentModeId: null,
       availableModes: [],
@@ -1182,7 +1181,6 @@ describe("HostRuntimeStore", () => {
       const staleAgent: Agent = {
         ...stale,
         serverId: host.serverId,
-        terminal: false,
         createdAt: new Date(stale.createdAt),
         updatedAt: new Date(stale.updatedAt),
         lastUserMessageAt: null,

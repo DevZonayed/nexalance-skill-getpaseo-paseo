@@ -19,7 +19,6 @@ function makeAgent(input: {
     serverId: "srv",
     id: input.id,
     provider: "codex",
-    terminal: false,
     status: "idle",
     createdAt,
     updatedAt: createdAt,
@@ -32,7 +31,6 @@ function makeAgent(input: {
       supportsMcpServers: true,
       supportsReasoningStream: true,
       supportsToolInvocations: true,
-      supportsTerminalMode: false,
     },
     currentModeId: null,
     availableModes: [],
@@ -163,9 +161,9 @@ describe("workspace agent visibility", () => {
   it("matches workspace agents using the workspace directory even when the route uses a numeric workspace id", () => {
     const sessionAgents = new Map<string, Agent>([
       [
-        "terminal-agent",
+        "recent-agent",
         makeAgent({
-          id: "terminal-agent",
+          id: "recent-agent",
           cwd: "/tmp/workspace-lifecycle-main",
         }),
       ],
@@ -176,8 +174,8 @@ describe("workspace agent visibility", () => {
       workspaceDirectory: "/tmp/workspace-lifecycle-main",
     });
 
-    expect(result.activeAgentIds).toEqual(new Set(["terminal-agent"]));
-    expect(result.knownAgentIds).toEqual(new Set(["terminal-agent"]));
+    expect(result.activeAgentIds).toEqual(new Set(["recent-agent"]));
+    expect(result.knownAgentIds).toEqual(new Set(["recent-agent"]));
   });
 
   describe("workspaceAgentVisibilityEqual", () => {

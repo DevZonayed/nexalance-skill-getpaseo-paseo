@@ -1,7 +1,6 @@
 import { router } from "expo-router";
 import { useWorkspaceLayoutStore } from "@/stores/workspace-layout-store";
 import { generateDraftId } from "@/stores/draft-keys";
-import { useTerminalAgentReopenStore } from "@/stores/terminal-agent-reopen-store";
 import {
   buildWorkspaceTabPersistenceKey,
   type WorkspaceTabTarget,
@@ -13,7 +12,6 @@ interface PrepareWorkspaceTabInput {
   workspaceId: string;
   target: WorkspaceTabTarget;
   pin?: boolean;
-  requestReopen?: boolean;
 }
 
 interface NavigateToPreparedWorkspaceTabInput extends PrepareWorkspaceTabInput {
@@ -43,13 +41,6 @@ export function prepareWorkspaceTab(input: PrepareWorkspaceTabInput): string {
 
   if (input.pin && target.kind === "agent") {
     useWorkspaceLayoutStore.getState().pinAgent(key, target.agentId);
-  }
-
-  if (input.requestReopen && target.kind === "agent") {
-    useTerminalAgentReopenStore.getState().requestReopen({
-      serverId: input.serverId,
-      agentId: target.agentId,
-    });
   }
 
   return buildHostWorkspaceRoute(input.serverId, input.workspaceId);

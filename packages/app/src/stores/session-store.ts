@@ -80,13 +80,10 @@ export interface AgentRuntimeInfo {
   extra?: Record<string, unknown>;
 }
 
-type TerminalExitDetails = NonNullable<AgentSnapshotPayload["terminalExit"]>;
-
 export interface Agent {
   serverId: string;
   id: string;
   provider: AgentProvider;
-  terminal: boolean;
   status: AgentLifecycleStatus;
   createdAt: Date;
   updatedAt: Date;
@@ -100,7 +97,6 @@ export interface Agent {
   runtimeInfo?: AgentRuntimeInfo;
   lastUsage?: AgentUsage;
   lastError?: string | null;
-  terminalExit?: TerminalExitDetails | null;
   title: string | null;
   cwd: string;
   model: string | null;
@@ -1127,7 +1123,6 @@ export const useSessionStore = create<SessionStore>()(
             id: agent.id,
             serverId,
             title: agent.title ?? null,
-            terminal: agent.terminal,
             status: agent.status,
             lastActivityAt,
             cwd: agent.cwd,

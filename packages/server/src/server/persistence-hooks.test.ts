@@ -95,22 +95,19 @@ describe("persistence hooks", () => {
     });
   });
 
-  test("buildSessionConfig accepts terminal-only providers from the canonical manifest", () => {
+  test("buildSessionConfig accepts providers from the canonical manifest", () => {
     const record = createRecord({
       provider: "gemini",
       persistence: {
         provider: "gemini",
         sessionId: "session-123",
       },
-      config: {
-        terminal: true,
-      },
+      config: {},
     });
 
     expect(buildSessionConfig(record)).toMatchObject({
       provider: "gemini",
       cwd: "/tmp/project",
-      terminal: true,
     });
   });
 });

@@ -3,7 +3,6 @@ import { createTempGitRepo } from "./helpers/workspace";
 import {
   gotoWorkspace,
   waitForLauncherPanel,
-  assertProviderTilesVisible,
   assertNewChatTileVisible,
   assertTerminalTileVisible,
   assertSingleNewTabButton,
@@ -11,7 +10,6 @@ import {
   pressNewTabShortcut,
   clickNewChat,
   clickTerminal,
-  clickProviderTile,
   countTabsOfKind,
   getTabTestIds,
   waitForTabWithTitle,
@@ -49,7 +47,7 @@ test.afterAll(async () => {
 // ═══════════════════════════════════════════════════════════════════════════
 
 test.describe("Launcher tab", () => {
-  test("Cmd+T opens launcher panel with New Chat, Terminal, and provider tiles", async ({
+  test("Cmd+T opens launcher panel with New Chat and Terminal tiles", async ({
     page,
   }) => {
     await gotoWorkspace(page, workspaceId);
@@ -59,7 +57,6 @@ test.describe("Launcher tab", () => {
     await waitForLauncherPanel(page);
     await assertNewChatTileVisible(page);
     await assertTerminalTileVisible(page);
-    await assertProviderTilesVisible(page);
   });
 
   test("opening two new tabs creates two launcher tabs", async ({ page }) => {
@@ -124,61 +121,6 @@ test.describe("Launcher tab", () => {
     // The launcher tab is gone, a terminal tab exists
     const terminalTabs = tabsAfter.filter((id) => id.includes("terminal"));
     expect(terminalTabs.length).toBeGreaterThanOrEqual(1);
-  });
-
-  test("clicking a provider tile replaces launcher with terminal agent tab", async ({ page }) => {
-    test.setTimeout(45_000);
-    await gotoWorkspace(page, workspaceId);
-
-    await clickNewTabButton(page);
-    await waitForLauncherPanel(page);
-
-    const tabsBefore = await getTabTestIds(page);
-
-    // Click the first visible provider tile under "Terminal Agents"
-    const providerTiles = page.locator('[role="button"]').filter({
-      has: page.locator("text=Terminal Agents").locator("..").locator(".."),
-    });
-
-    // Try clicking any provider tile — find the first one after the "Terminal Agents" label
-    const terminalAgentsLabel = page.getByText("Terminal Agents", { exact: true }).first();
-    await expect(terminalAgentsLabel).toBeVisible({ timeout: 10_000 });
-
-    // The provider grid follows the label. Click the first provider tile.
-    const providerGrid = terminalAgentsLabel.locator("~ *").first();
-    const firstProvider = providerGrid.getByRole("button").first();
-    if (await firstProvider.isVisible().catch(() => false)) {
-      await firstProvider.click();
-    } else {
-      // Fallback: look for any provider button after the section label
-      const allButtons = page.getByRole("button");
-      const count = await allButtons.count();
-      let clicked = false;
-      for (let i = 0; i < count; i++) {
-        const btn = allButtons.nth(i);
-        const text = await btn.innerText().catch(() => "");
-        // Skip known non-provider buttons
-        if (["New Chat", "Terminal", "More", "+"].includes(text.trim())) continue;
-        if (!text.trim()) continue;
-        await btn.click();
-        clicked = true;
-        break;
-      }
-      if (!clicked) {
-        test.skip(true, "No provider tiles available");
-        return;
-      }
-    }
-
-    // Should see an agent panel (terminal surface or agent stream)
-    const agentOrTerminal = page.locator(
-      '[data-testid="terminal-surface"], [data-testid^="agent-"]',
-    );
-    await expect(agentOrTerminal.first()).toBeVisible({ timeout: 30_000 });
-
-    // Tab count stays the same (replaced, not added)
-    const tabsAfter = await getTabTestIds(page);
-    expect(tabsAfter.length).toBe(tabsBefore.length);
   });
 
   test("tab bar shows a single + button per pane", async ({ page }) => {

@@ -77,7 +77,6 @@ function createSessionForOwnershipTests(options?: {
     hydrateTimelineFromProvider: vi.fn(async () => {
       throw new Error("Session should not call hydrateTimelineFromProvider directly");
     }),
-    getStructuredSendRejection: vi.fn(async () => null),
     fetchTimeline: vi.fn(async () => ({
       rows: options?.timelineRows ?? [],
       hasOlder: false,

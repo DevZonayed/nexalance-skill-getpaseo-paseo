@@ -33,12 +33,7 @@ export interface TerminalManager {
   subscribeTerminalsChanged(listener: TerminalsChangedListener): () => void;
 }
 
-type AgentBoundTerminalTitleHandler = (input: { agentId: string; title: string }) => Promise<void> | void;
-
-export function createTerminalManager(options?: {
-  resolveAgentIdForTerminal?: (terminalId: string) => string | null;
-  onAgentBoundTerminalTitleChange?: AgentBoundTerminalTitleHandler;
-}): TerminalManager {
+export function createTerminalManager(): TerminalManager {
   const terminalsByCwd = new Map<string, TerminalSession[]>();
   const terminalsById = new Map<string, TerminalSession>();
   const terminalExitUnsubscribeById = new Map<string, () => void>();
@@ -111,24 +106,8 @@ export function createTerminalManager(options?: {
     const unsubscribeExit = session.onExit(() => {
       removeSessionById(session.id, { kill: false });
     });
-    const unsubscribeTitle = session.onTitleChange((title) => {
+    const unsubscribeTitle = session.onTitleChange(() => {
       emitTerminalsChanged({ cwd: session.cwd });
-      const normalizedTitle = title?.trim();
-      if (!normalizedTitle) {
-        return;
-      }
-      const agentId = options?.resolveAgentIdForTerminal?.(session.id) ?? null;
-      if (!agentId) {
-        return;
-      }
-      void Promise.resolve(
-        options?.onAgentBoundTerminalTitleChange?.({
-          agentId,
-          title: normalizedTitle,
-        }),
-      ).catch(() => {
-        // no-op
-      });
     });
     terminalExitUnsubscribeById.set(session.id, unsubscribeExit);
     terminalTitleUnsubscribeById.set(session.id, unsubscribeTitle);

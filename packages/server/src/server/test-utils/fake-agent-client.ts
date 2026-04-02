@@ -30,7 +30,6 @@ const TEST_CAPABILITIES: AgentCapabilityFlags = {
   supportsMcpServers: false,
   supportsReasoningStream: true,
   supportsToolInvocations: true,
-  supportsTerminalMode: false,
 };
 
 type Deferred<T> = {

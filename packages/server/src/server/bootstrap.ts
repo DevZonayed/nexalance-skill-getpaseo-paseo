@@ -408,22 +408,7 @@ export async function createPaseoDaemon(
     });
     const durableTimelineStore = new DbAgentTimelineStore(database.db);
     let agentManager: AgentManager | null = null;
-    const terminalManager = createTerminalManager({
-      resolveAgentIdForTerminal: (terminalId) => agentManager?.getAgentIdForTerminal(terminalId) ?? null,
-      onAgentBoundTerminalTitleChange: async ({ agentId, title }) => {
-        if (!agentManager) {
-          return;
-        }
-        try {
-          await agentManager.setTitle(agentId, title);
-        } catch (error) {
-          logger.warn(
-            { err: error, agentId },
-            "Failed to propagate bound terminal title to agent state",
-          );
-        }
-      },
-    });
+    const terminalManager = createTerminalManager();
     agentManager = new AgentManager({
       clients: {
         ...createAllClients(logger, {

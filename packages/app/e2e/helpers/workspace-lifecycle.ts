@@ -1,11 +1,9 @@
 import { expect, type Page } from "@playwright/test";
 import {
   clickNewChat,
-  clickProviderTile,
   clickTerminal,
   countTabsOfKind,
   getTabTestIds,
-  waitForTabWithTitle,
 } from "./launcher";
 import { setupDeterministicPrompt, waitForTerminalContent } from "./terminal-perf";
 
@@ -33,13 +31,6 @@ export async function createStandaloneTerminalFromLauncher(page: Page): Promise<
   await expect(terminalSurface(page)).toBeVisible({ timeout: 20_000 });
   await expect.poll(() => countTabsOfKind(page, "launcher")).toBe(launcherCountBefore - 1);
   await expect.poll(async () => (await getTabTestIds(page)).length).toBe(tabIdsBefore.length);
-}
-
-export async function createTerminalAgentFromLauncher(page: Page, providerLabel: string): Promise<void> {
-  await clickProviderTile(page, providerLabel);
-  await expect(page.getByTestId("terminal-agent-loading")).toHaveCount(0, { timeout: 30_000 });
-  await expect(terminalSurface(page)).toBeVisible({ timeout: 30_000 });
-  await waitForTabWithTitle(page, /new agent/i);
 }
 
 export async function createAgentChatFromLauncher(page: Page): Promise<void> {

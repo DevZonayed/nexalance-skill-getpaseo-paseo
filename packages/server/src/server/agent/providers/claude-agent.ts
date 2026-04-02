@@ -66,12 +66,10 @@ import type {
   ListPersistedAgentsOptions,
   McpServerConfig,
   PersistedAgentDescriptor,
-  TerminalCommand,
 } from "../agent-sdk-types.js";
 import {
   applyProviderEnv,
   findExecutable,
-  sanitizeTerminalEnv,
   type ProviderRuntimeSettings,
 } from "../provider-launch-config.js";
 import { getOrchestratorModeInstructions } from "../orchestrator-instructions.js";
@@ -104,7 +102,6 @@ const CLAUDE_CAPABILITIES: AgentCapabilityFlags = {
   supportsMcpServers: true,
   supportsReasoningStream: true,
   supportsToolInvocations: true,
-  supportsTerminalMode: true,
 };
 
 const DEFAULT_MODES: AgentMode[] = [
@@ -1097,73 +1094,6 @@ export class ClaudeAgentClient implements AgentClient {
     }
 
     return descriptors;
-  }
-
-  buildTerminalCreateCommand(
-    config: AgentSessionConfig,
-    handle: AgentPersistenceHandle,
-    initialPrompt?: string,
-  ): TerminalCommand {
-    const claudeConfig = this.assertConfig(config);
-    const baseCommand = findExecutable("claude") ?? "claude";
-    const terminalEnv = sanitizeTerminalEnv(
-      applyProviderEnv(process.env as Record<string, string | undefined>, this.runtimeSettings),
-    );
-    const spawnCommand = resolveClaudeSpawnCommand(
-      {
-        command: baseCommand,
-        args: [],
-        cwd: claudeConfig.cwd,
-        env: terminalEnv,
-        signal: new AbortController().signal,
-      },
-      this.runtimeSettings,
-    );
-    const args = [...spawnCommand.args, "--session-id", handle.sessionId];
-    if (claudeConfig.modeId === "bypassPermissions") {
-      args.push("--dangerously-skip-permissions");
-    } else if (claudeConfig.modeId) {
-      args.push("--permission-mode", claudeConfig.modeId);
-    }
-    if (claudeConfig.model) {
-      args.push("--model", claudeConfig.model);
-    }
-    if (claudeConfig.thinkingOptionId && claudeConfig.thinkingOptionId !== "default") {
-      args.push("--effort", claudeConfig.thinkingOptionId);
-    }
-    if (claudeConfig.systemPrompt?.trim()) {
-      args.push("--append-system-prompt", claudeConfig.systemPrompt.trim());
-    }
-    if (initialPrompt?.trim()) {
-      args.push(initialPrompt.trim());
-    }
-    return {
-      command: spawnCommand.command,
-      args,
-      env: terminalEnv,
-    };
-  }
-
-  buildTerminalResumeCommand(handle: AgentPersistenceHandle): TerminalCommand {
-    const baseCommand = findExecutable("claude") ?? "claude";
-    const terminalEnv = sanitizeTerminalEnv(
-      applyProviderEnv(process.env as Record<string, string | undefined>, this.runtimeSettings),
-    );
-    const spawnCommand = resolveClaudeSpawnCommand(
-      {
-        command: baseCommand,
-        args: [],
-        cwd: process.cwd(),
-        env: terminalEnv,
-        signal: new AbortController().signal,
-      },
-      this.runtimeSettings,
-    );
-    return {
-      command: spawnCommand.command,
-      args: [...spawnCommand.args, "--resume", handle.sessionId],
-      env: terminalEnv,
-    };
   }
 
   async isAvailable(): Promise<boolean> {

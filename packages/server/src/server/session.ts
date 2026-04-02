@@ -57,8 +57,6 @@ import {
   type VoiceTurnController,
 } from "./voice/voice-turn-controller.js";
 import {
-  buildSessionConfig,
-  extractTimestamps,
   toAgentPersistenceHandle,
 } from "./persistence-hooks.js";
 import { experimental_createMCPClient } from "ai";
@@ -1005,7 +1003,6 @@ export class Session {
       supportsMcpServers: false,
       supportsReasoningStream: false,
       supportsToolInvocations: true,
-      supportsTerminalMode: false,
     } as const;
 
     const createdAt = new Date(record.createdAt);
@@ -1033,7 +1030,6 @@ export class Session {
       id: record.id,
       provider,
       cwd: record.cwd,
-      terminal: record.config?.terminal ?? false,
       model: record.config?.model ?? null,
       thinkingOptionId: record.config?.thinkingOptionId ?? null,
       effectiveThinkingOptionId: resolveEffectiveThinkingOptionId({
@@ -1052,7 +1048,6 @@ export class Session {
       persistence: toAgentPersistenceHandle(this.sessionLogger, record.persistence),
       lastUsage: undefined,
       lastError: record.lastError ?? undefined,
-      terminalExit: record.terminalExit,
       title: record.title ?? record.config?.title ?? null,
       requiresAttention: record.requiresAttention ?? false,
       attentionReason: record.attentionReason ?? null,
@@ -1091,10 +1086,7 @@ export class Session {
     }
 
     const initPromise = (async () => {
-      const record = await this.requireStoredAgentRecord(agentId);
-      if (record.config?.terminal) {
-        return this.ensureTerminalAgentLoaded(agentId, record);
-      }
+      await this.requireStoredAgentRecord(agentId);
       return this.agentLoadingService.ensureAgentLoaded({ agentId });
     })();
 
@@ -1116,39 +1108,6 @@ export class Session {
       throw new Error(`Agent not found: ${agentId}`);
     }
     return record;
-  }
-
-  private async getAgentMode(agentId: string): Promise<"chat" | "terminal"> {
-    const existing = this.agentManager.getAgent(agentId);
-    if (existing) {
-      return existing.terminal ? "terminal" : "chat";
-    }
-    const record = await this.requireStoredAgentRecord(agentId);
-    return record.config?.terminal ? "terminal" : "chat";
-  }
-
-  private async ensureTerminalAgentLoaded(
-    agentId: string,
-    record: StoredAgentRecord,
-  ): Promise<ManagedAgent> {
-    const timestamps = extractTimestamps(record);
-    const snapshot = await this.agentManager.launchTerminalAgent(buildSessionConfig(record), agentId, {
-      persistence: record.persistence ?? null,
-      createdAt: timestamps.createdAt,
-      updatedAt: timestamps.updatedAt,
-      lastUserMessageAt: timestamps.lastUserMessageAt,
-      labels: timestamps.labels,
-      attention: {
-        requiresAttention: record.requiresAttention ?? false,
-        attentionReason: record.attentionReason ?? null,
-        attentionTimestamp: record.attentionTimestamp ? new Date(record.attentionTimestamp) : null,
-      },
-    });
-    this.sessionLogger.info(
-      { agentId, provider: record.provider },
-      "Terminal agent loaded from stored config",
-    );
-    return this.agentManager.getAgent(agentId) ?? snapshot;
   }
 
   private matchesAgentFilter(options: {
@@ -2618,9 +2577,6 @@ export class Session {
         },
       );
       await this.forwardAgentUpdate(snapshot);
-      if (sessionConfig.terminal) {
-        void this.emitInitialTerminalsChangedSnapshot(resolvedWorkspace.directory);
-      }
 
       if (requestId) {
         const agentPayload = await this.getAgentPayloadById(snapshot.id);
@@ -2649,29 +2605,27 @@ export class Session {
           logger: this.sessionLogger,
         });
 
-        if (!sessionConfig.terminal) {
-          void this.handleSendAgentMessage(
-            snapshot.id,
-            trimmedPrompt,
-            resolveClientMessageId(clientMessageId),
-            images,
-            outputSchema ? { outputSchema } : undefined,
-          ).catch((promptError) => {
-            this.sessionLogger.error(
-              { err: promptError, agentId: snapshot.id },
-              `Failed to run initial prompt for agent ${snapshot.id}`,
-            );
-            this.emit({
-              type: "activity_log",
-              payload: {
-                id: uuidv4(),
-                timestamp: new Date(),
-                type: "error",
-                content: `Initial prompt failed: ${(promptError as Error)?.message ?? promptError}`,
-              },
-            });
+        void this.handleSendAgentMessage(
+          snapshot.id,
+          trimmedPrompt,
+          resolveClientMessageId(clientMessageId),
+          images,
+          outputSchema ? { outputSchema } : undefined,
+        ).catch((promptError) => {
+          this.sessionLogger.error(
+            { err: promptError, agentId: snapshot.id },
+            `Failed to run initial prompt for agent ${snapshot.id}`,
+          );
+          this.emit({
+            type: "activity_log",
+            payload: {
+              id: uuidv4(),
+              timestamp: new Date(),
+              type: "error",
+              content: `Initial prompt failed: ${(promptError as Error)?.message ?? promptError}`,
+            },
           });
-        }
+        });
       }
 
       if (worktreeBootstrap) {
@@ -5694,13 +5648,6 @@ export class Session {
       : undefined;
 
     try {
-      const agentMode = await this.getAgentMode(msg.agentId);
-      if (agentMode === "terminal") {
-        throw new SessionRequestError(
-          "unsupported_agent_kind",
-          `Agent ${msg.agentId} is a terminal agent and has no timeline history`,
-        );
-      }
       const snapshot = await this.ensureAgentLoaded(msg.agentId);
       const agentPayload = await this.buildAgentPayload(snapshot);
       const timeline = await this.agentManager.fetchTimeline(msg.agentId, {
@@ -5773,22 +5720,6 @@ export class Session {
     }
 
     try {
-      const structuredSendRejection = await this.agentManager.getStructuredSendRejection(
-        resolved.agentId,
-      );
-      if (structuredSendRejection) {
-        this.emit({
-          type: "send_agent_message_response",
-          payload: {
-            requestId: msg.requestId,
-            agentId: resolved.agentId,
-            accepted: false,
-            error: structuredSendRejection,
-          },
-        });
-        return;
-      }
-
       const agentId = resolved.agentId;
       await this.unarchiveAgentState(agentId);
 
@@ -7221,7 +7152,7 @@ export class Session {
   }
 
   private filterStandaloneTerminals<T extends { id: string }>(terminals: T[]): T[] {
-    return terminals.filter((terminal) => !this.agentManager.isTerminalBoundToAgent(terminal.id));
+    return terminals;
   }
 
   private toTerminalInfo(terminal: Pick<TerminalSession, "id" | "name" | "getTitle">): {
@@ -7328,46 +7259,6 @@ export class Session {
     }
   }
 
-  private async createOrResumeAgentTerminal(agentId: string): Promise<TerminalSession> {
-    if (!this.terminalManager) {
-      throw new Error("Terminal manager not available");
-    }
-
-    const existingTerminal = this.agentManager.getTerminalSessionForAgent(agentId);
-    if (existingTerminal) {
-      return existingTerminal;
-    }
-
-    const record = await this.agentStorage.get(agentId);
-    if (!record || record.internal) {
-      throw new Error(`Agent not found: ${agentId}`);
-    }
-    if (!record.config?.terminal) {
-      throw new Error(`Agent ${agentId} is not a terminal agent`);
-    }
-
-    const timestamps = extractTimestamps(record);
-    const launched = await this.agentManager.launchTerminalAgent(buildSessionConfig(record), agentId, {
-      persistence: record.persistence ?? null,
-      createdAt: timestamps.createdAt,
-      updatedAt: timestamps.updatedAt,
-      lastUserMessageAt: timestamps.lastUserMessageAt,
-      labels: timestamps.labels,
-      attention: {
-        requiresAttention: record.requiresAttention ?? false,
-        attentionReason: record.attentionReason ?? null,
-        attentionTimestamp: record.attentionTimestamp ? new Date(record.attentionTimestamp) : null,
-      },
-    });
-    const terminal = launched.terminalId
-      ? this.terminalManager.getTerminal(launched.terminalId)
-      : null;
-    if (!terminal) {
-      throw new Error(`Terminal not available for agent ${agentId}`);
-    }
-    return terminal;
-  }
-
   private async getAllTerminalSessions(): Promise<TerminalSession[]> {
     if (!this.terminalManager) {
       return [];
@@ -7395,18 +7286,11 @@ export class Session {
 
     try {
       if (msg.agentId) {
-        const terminal = await this.createOrResumeAgentTerminal(msg.agentId);
-        this.ensureTerminalExitSubscription(terminal);
         this.emit({
           type: "create_terminal_response",
           payload: {
-            terminal: {
-              id: terminal.id,
-              name: terminal.name,
-              cwd: terminal.cwd,
-              ...(terminal.getTitle() ? { title: terminal.getTitle() } : {}),
-            },
-            error: null,
+            terminal: null,
+            error: `Agent-backed terminals are no longer supported for agent ${msg.agentId}`,
             requestId: msg.requestId,
           },
         });
