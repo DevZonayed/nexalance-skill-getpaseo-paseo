@@ -106,7 +106,6 @@ import { ScheduleService } from "./schedule/service.js";
 import { createTerminalManager, type TerminalManager } from "../terminal/terminal-manager.js";
 import { createConnectionOfferV2, encodeOfferToFragmentUrl } from "./connection-offer.js";
 import { loadOrCreateDaemonKeyPair } from "./daemon-keypair.js";
-import { generateLocalPairingOffer } from "./pairing-offer.js";
 import { startRelayTransport, type RelayTransportController } from "./relay-transport.js";
 import { getOrCreateServerId } from "./server-id.js";
 import { resolveDaemonVersion } from "./daemon-version.js";
@@ -280,27 +279,6 @@ export async function createPaseoDaemon(
         version: daemonVersion,
         listen: formatListenTarget(boundListenTarget ?? listenTarget),
       });
-    });
-
-    app.get("/pairing", async (_req, res) => {
-      try {
-        const offer = await generateLocalPairingOffer({
-          paseoHome: config.paseoHome,
-          relayEnabled: config.relayEnabled,
-          relayEndpoint: config.relayEndpoint,
-          relayPublicEndpoint: config.relayPublicEndpoint,
-          appBaseUrl: config.appBaseUrl,
-          logger,
-        });
-        res.json(offer);
-      } catch (error) {
-        logger.error({ err: error }, "Failed to generate pairing offer");
-        res.status(500).json({
-          relayEnabled: false,
-          url: null,
-          qr: null,
-        });
-      }
     });
 
     app.get("/api/files/download", async (req, res) => {

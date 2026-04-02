@@ -17,7 +17,11 @@ import {
   sendLocalTransportMessage,
   closeLocalTransportSession,
 } from "./local-transport.js";
-import { createNodeEntrypointInvocation, resolveDaemonRunnerEntrypoint } from "./runtime-paths.js";
+import {
+  createNodeEntrypointInvocation,
+  resolveDaemonRunnerEntrypoint,
+  runCliJsonCommand,
+} from "./runtime-paths.js";
 
 const DAEMON_LOG_FILENAME = "daemon.log";
 const DAEMON_PID_FILENAME = "paseo.pid";
@@ -405,20 +409,7 @@ async function getDaemonPairing(): Promise<DesktopPairingOffer> {
   }
 
   try {
-    if (!status.listen) {
-      throw new Error("Daemon listen target is unavailable.");
-    }
-    const baseUrl = buildDaemonHttpBaseUrl(status.listen);
-    if (!baseUrl) {
-      throw new Error(`Daemon listen target is not a TCP endpoint: ${status.listen}`);
-    }
-
-    const response = await fetch(`${baseUrl}/pairing`);
-    if (!response.ok) {
-      throw new Error(`Daemon pairing request failed with ${response.status}`);
-    }
-
-    const payload = (await response.json()) as unknown;
+    const payload = runCliJsonCommand(["daemon", "pair", "--json"]);
     if (!isRecord(payload)) {
       throw new Error("Daemon pairing response was not an object.");
     }

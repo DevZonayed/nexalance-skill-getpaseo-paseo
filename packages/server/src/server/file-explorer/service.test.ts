@@ -96,4 +96,25 @@ describe("file explorer service", () => {
       await rm(root, { recursive: true, force: true });
     }
   });
+
+  it("rejects symlinked files that resolve outside the workspace", async () => {
+    const root = await createTempDir("paseo-file-explorer-");
+    const outsideRoot = await createTempDir("paseo-file-explorer-outside-");
+
+    try {
+      const externalFile = path.join(outsideRoot, "secret.txt");
+      await writeFile(externalFile, "top secret\n", "utf-8");
+      await symlink(externalFile, path.join(root, "secret-link.txt"));
+
+      await expect(
+        readExplorerFile({
+          root,
+          relativePath: "secret-link.txt",
+        }),
+      ).rejects.toThrow("Access outside of workspace is not allowed");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+      await rm(outsideRoot, { recursive: true, force: true });
+    }
+  });
 });

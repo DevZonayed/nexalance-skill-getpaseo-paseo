@@ -210,11 +210,25 @@ async function resolveScopedPath({ root, relativePath = "." }: ScopedPathParams)
   const requestedPath = path.resolve(normalizedRoot, relativePath);
   const relative = path.relative(normalizedRoot, requestedPath);
 
-  if (relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative))) {
-    return requestedPath;
+  if (relative !== "" && (relative.startsWith("..") || path.isAbsolute(relative))) {
+    throw new Error("Access outside of workspace is not allowed");
   }
 
-  throw new Error("Access outside of workspace is not allowed");
+  const realRoot = await fs.realpath(normalizedRoot);
+
+  try {
+    const realPath = await fs.realpath(requestedPath);
+    const realRelative = path.relative(realRoot, realPath);
+    if (realRelative !== "" && (realRelative.startsWith("..") || path.isAbsolute(realRelative))) {
+      throw new Error("Access outside of workspace is not allowed");
+    }
+    return requestedPath;
+  } catch (error) {
+    if (isMissingEntryError(error)) {
+      return requestedPath;
+    }
+    throw error;
+  }
 }
 
 async function buildEntryPayload({
