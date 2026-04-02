@@ -65,6 +65,7 @@ export interface ComboboxProps {
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
   enableDismissOnClose?: boolean;
+  stackBehavior?: "push" | "switch" | "replace";
   desktopPlacement?: "top-start" | "bottom-start";
   /**
    * Prevents an initial frame at 0,0 by hiding desktop content until floating
@@ -205,12 +206,10 @@ export function ComboboxItem({
       </View>
       {selected || trailingSlot ? (
         <View style={styles.comboboxItemTrailingContainer}>
+          <View style={styles.comboboxItemTrailingSlot}>
+            {selected ? <Check size={16} color={theme.colors.foregroundMuted} /> : null}
+          </View>
           {trailingSlot}
-          {selected ? (
-            <View style={styles.comboboxItemTrailingSlot}>
-              <Check size={16} color={theme.colors.foregroundMuted} />
-            </View>
-          ) : null}
         </View>
       ) : null}
     </Pressable>
@@ -244,6 +243,7 @@ export function Combobox({
   open,
   onOpenChange,
   enableDismissOnClose,
+  stackBehavior,
   desktopPlacement = "top-start",
   desktopPreventInitialFlash = true,
   anchorRef,
@@ -653,6 +653,7 @@ export function Combobox({
         backdropComponent={renderBackdrop}
         enablePanDownToClose
         enableDismissOnClose={enableDismissOnClose}
+        stackBehavior={stackBehavior}
         backgroundComponent={ComboboxSheetBackground}
         handleIndicatorStyle={styles.bottomSheetHandle}
         keyboardBehavior="extend"

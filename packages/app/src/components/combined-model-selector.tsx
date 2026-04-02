@@ -1,5 +1,12 @@
-import { useCallback, useMemo, useRef, useState } from "react";
-import { View, Text, Pressable, Platform, type GestureResponderEvent } from "react-native";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  View,
+  Text,
+  Pressable,
+  Platform,
+  ActivityIndicator,
+  type GestureResponderEvent,
+} from "react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import {
   ArrowLeft,
@@ -11,6 +18,7 @@ import {
 import type { AgentModelDefinition, AgentProvider } from "@server/server/agent/agent-sdk-types";
 import type { AgentProviderDefinition } from "@server/server/agent/provider-manifest";
 import { Combobox, ComboboxItem, SearchInput } from "@/components/ui/combobox";
+import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { getProviderIcon } from "@/components/provider-icons";
 import type { FavoriteModelRow } from "@/hooks/use-form-preferences";
 import {
@@ -130,6 +138,7 @@ function ModelRow({
 }) {
   const { theme } = useUnistyles();
   const ProviderIcon = getProviderIcon(row.provider);
+  const isWeb = Platform.OS === "web";
 
   const handleToggleFavorite = useCallback(
     (event: GestureResponderEvent) => {
@@ -139,16 +148,9 @@ function ModelRow({
     [onToggleFavorite, row.modelId, row.provider],
   );
 
-  return (
+  const item = (
     <ComboboxItem
       label={row.modelLabel}
-      description={
-        disabled
-          ? `${row.providerLabel} · Available when creating a ${row.providerLabel} agent`
-          : row.description
-            ? `${row.providerLabel} · ${row.description}`
-            : row.providerLabel
-      }
       selected={isSelected}
       disabled={disabled}
       onPress={onPress}
@@ -167,15 +169,38 @@ function ModelRow({
             accessibilityLabel={isFavorite ? "Unfavorite model" : "Favorite model"}
             testID={`favorite-model-${row.provider}-${row.modelId}`}
           >
-            <Star
-              size={16}
-              color={isFavorite ? theme.colors.palette.amber[500] : theme.colors.foregroundMuted}
-              fill={isFavorite ? theme.colors.palette.amber[500] : "transparent"}
-            />
+            {({ hovered }) => (
+              <Star
+                size={16}
+                color={
+                  isFavorite
+                    ? theme.colors.palette.amber[500]
+                    : hovered
+                      ? theme.colors.foregroundMuted
+                      : theme.colors.border
+                }
+                fill={isFavorite ? theme.colors.palette.amber[500] : "transparent"}
+              />
+            )}
           </Pressable>
         ) : null
       }
     />
+  );
+
+  if (!isWeb || !row.description) {
+    return item;
+  }
+
+  return (
+    <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
+      <TooltipTrigger asChild triggerRefProp="ref">
+        <View>{item}</View>
+      </TooltipTrigger>
+      <TooltipContent side="right" align="center" offset={4}>
+        <Text style={styles.tooltipText}>{row.description}</Text>
+      </TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -205,7 +230,6 @@ function FavoritesSection({
   return (
     <View>
       <View style={styles.sectionHeading}>
-        <Star size={14} color={theme.colors.palette.amber[500]} fill={theme.colors.palette.amber[500]} />
         <Text style={styles.sectionHeadingText}>Favorites</Text>
       </View>
       {favoriteRows.map((row) => (
@@ -260,7 +284,6 @@ function GroupedProviderRows({
             {isInline ? (
               <>
                 <View style={styles.sectionHeading}>
-                  <ProvIcon size={14} color={theme.colors.foregroundMuted} />
                   <Text style={styles.sectionHeadingText}>
                     {providerDefinition?.label ?? group.providerLabel}
                   </Text>
@@ -435,8 +458,10 @@ export function CombinedModelSelector({
   disabled = false,
 }: CombinedModelSelectorProps) {
   const { theme } = useUnistyles();
+  const isWeb = Platform.OS === "web";
   const anchorRef = useRef<View>(null);
   const [isOpen, setIsOpen] = useState(false);
+  const [isContentReady, setIsContentReady] = useState(isWeb);
   const [view, setView] = useState<SelectorView>({ kind: "all" });
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -484,6 +509,23 @@ export function CombinedModelSelector({
     return buildSelectedTriggerLabel(selectedProviderLabel, selectedModelLabel);
   }, [selectedModelLabel, selectedProviderLabel]);
 
+  useEffect(() => {
+    if (isWeb) {
+      return;
+    }
+
+    if (!isOpen) {
+      setIsContentReady(false);
+      return;
+    }
+
+    const frame = requestAnimationFrame(() => {
+      setIsContentReady(true);
+    });
+
+    return () => cancelAnimationFrame(frame);
+  }, [isOpen, isWeb]);
+
   return (
     <>
       <Pressable
@@ -523,33 +565,41 @@ export function CombinedModelSelector({
         onSelect={() => {}}
         open={isOpen}
         onOpenChange={handleOpenChange}
+        stackBehavior="push"
         anchorRef={anchorRef}
         desktopPlacement="top-start"
         title="Select model"
       >
-        <SelectorContent
-          view={view}
-          providerDefinitions={providerDefinitions}
-          allProviderModels={allProviderModels}
-          selectedProvider={selectedProvider}
-          selectedModel={selectedModel}
-          searchQuery={searchQuery}
-          onSearchChange={setSearchQuery}
-          favoriteKeys={favoriteKeys}
-          onSelect={handleSelect}
-          canSelectProvider={canSelectProvider}
-          onToggleFavorite={onToggleFavorite}
-          onDrillDown={(providerId, providerLabel) => {
-            setView({ kind: "provider", providerId, providerLabel });
-          }}
-          onBack={
-            view.kind === "provider"
-              ? () => {
-                  setView({ kind: "all" });
-                }
-              : undefined
-          }
-        />
+        {isContentReady ? (
+          <SelectorContent
+            view={view}
+            providerDefinitions={providerDefinitions}
+            allProviderModels={allProviderModels}
+            selectedProvider={selectedProvider}
+            selectedModel={selectedModel}
+            searchQuery={searchQuery}
+            onSearchChange={setSearchQuery}
+            favoriteKeys={favoriteKeys}
+            onSelect={handleSelect}
+            canSelectProvider={canSelectProvider}
+            onToggleFavorite={onToggleFavorite}
+            onDrillDown={(providerId, providerLabel) => {
+              setView({ kind: "provider", providerId, providerLabel });
+            }}
+            onBack={
+              view.kind === "provider"
+                ? () => {
+                    setView({ kind: "all" });
+                  }
+                : undefined
+            }
+          />
+        ) : (
+          <View style={styles.sheetLoadingState}>
+            <ActivityIndicator size="small" color={theme.colors.foregroundMuted} />
+            <Text style={styles.sheetLoadingText}>Loading model selector…</Text>
+          </View>
+        )}
       </Combobox>
     </>
   );
@@ -669,5 +719,19 @@ const styles = StyleSheet.create((theme) => ({
   },
   favoriteButtonPressed: {
     backgroundColor: theme.colors.surface1,
+  },
+  tooltipText: {
+    color: theme.colors.foreground,
+    fontSize: theme.fontSize.xs,
+  },
+  sheetLoadingState: {
+    minHeight: 160,
+    justifyContent: "center",
+    alignItems: "center",
+    gap: theme.spacing[2],
+  },
+  sheetLoadingText: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.sm,
   },
 }));

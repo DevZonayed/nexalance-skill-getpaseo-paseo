@@ -6,7 +6,7 @@ import { useStoreWithEqualityFn } from "zustand/traditional";
 import { Brain, ChevronDown, ShieldAlert, ShieldCheck, ShieldOff } from "lucide-react-native";
 import { getProviderIcon } from "@/components/provider-icons";
 import { CombinedModelSelector } from "@/components/combined-model-selector";
-import { useQueries, useQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useSessionStore } from "@/stores/session-store";
 import {
   buildFavoriteModelKey,
@@ -481,41 +481,6 @@ function ControlledStatusBar({
             stackBehavior="replace"
             testID="agent-preferences-sheet"
           >
-            {providerOptions && providerOptions.length > 0 ? (
-              <View style={styles.sheetSection}>
-                <DropdownMenu
-                  open={openSelector === "provider"}
-                  onOpenChange={handleOpenChange("provider")}
-                >
-                  <DropdownMenuTrigger
-                    disabled={disabled || !canSelectProvider}
-                    style={({ pressed }) => [
-                      styles.sheetSelect,
-                      pressed && styles.sheetSelectPressed,
-                      (disabled || !canSelectProvider) && styles.disabledSheetSelect,
-                    ]}
-                    accessibilityRole="button"
-                    accessibilityLabel="Select agent provider"
-                    testID="agent-preferences-provider"
-                  >
-                    <Text style={styles.sheetSelectText}>{displayProvider}</Text>
-                    <ChevronDown size={theme.iconSize.md} color={theme.colors.foregroundMuted} />
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent side="top" align="start">
-                    {providerOptions.map((provider) => (
-                      <DropdownMenuItem
-                        key={provider.id}
-                        selected={provider.id === selectedProviderId}
-                        onSelect={() => onSelectProvider?.(provider.id)}
-                      >
-                        {provider.label}
-                      </DropdownMenuItem>
-                    ))}
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </View>
-            ) : null}
-
             {canSelectModel ? (
               <View style={styles.sheetSection}>
                 <CombinedModelSelector
@@ -525,9 +490,10 @@ function ControlledStatusBar({
                   selectedModel={selectedModelId ?? ""}
                   canSelectProvider={canSelectProviderInModelMenu}
                   onSelect={(selectedProviderId, modelId) => {
-                    if (selectedProviderId === provider) {
-                      onSelectModel?.(modelId);
+                    if (selectedProviderId !== provider) {
+                      onSelectProvider?.(selectedProviderId);
                     }
+                    onSelectModel?.(modelId);
                   }}
                   favoriteKeys={favoriteKeys}
                   onToggleFavorite={onToggleFavoriteModel}
@@ -676,59 +642,34 @@ export function AgentStatusBar({ agentId, serverId }: AgentStatusBarProps) {
     },
   });
 
-  const availableProvidersQuery = useQuery({
-    queryKey: ["availableProviders", serverId],
-    enabled: Boolean(client),
-    staleTime: 60 * 1000,
+  const agentProviderDefinitions = useMemo(() => {
+    const definition = AGENT_PROVIDER_DEFINITIONS.find((d) => d.id === agent?.provider);
+    return definition ? [definition] : [];
+  }, [agent?.provider]);
+
+  const agentProviderModelQuery = useQuery({
+    queryKey: ["providerModels", serverId, agent?.provider, agent?.cwd ?? ""],
+    enabled: Boolean(client && agent?.cwd && agent?.provider),
+    staleTime: 5 * 60 * 1000,
     queryFn: async () => {
-      if (!client) {
+      if (!client || !agent) {
         throw new Error("Daemon client unavailable");
       }
-      const payload = await client.listAvailableProviders();
+      const payload = await client.listProviderModels(agent.provider, { cwd: agent.cwd });
       if (payload.error) {
         throw new Error(payload.error);
       }
-      return payload.providers.filter((entry) => entry.available).map((entry) => entry.provider);
+      return payload.models ?? [];
     },
   });
 
-  const availableProviderDefinitions = useMemo(() => {
-    const availableProviders = availableProvidersQuery.data;
-    if (!availableProviders) {
-      return [];
-    }
-    const available = new Set(availableProviders);
-    return AGENT_PROVIDER_DEFINITIONS.filter((definition) => available.has(definition.id));
-  }, [availableProvidersQuery.data]);
-
-  const allProviderModelQueries = useQueries({
-    queries: availableProviderDefinitions.map((definition) => ({
-      queryKey: ["providerModels", serverId, definition.id, agent?.cwd ?? ""],
-      enabled: Boolean(client && agent?.cwd),
-      staleTime: 5 * 60 * 1000,
-      queryFn: async () => {
-        if (!client || !agent) {
-          throw new Error("Daemon client unavailable");
-        }
-        const payload = await client.listProviderModels(definition.id, { cwd: agent.cwd });
-        if (payload.error) {
-          throw new Error(payload.error);
-        }
-        return payload.models ?? [];
-      },
-    })),
-  });
-
-  const liveAllProviderModels = useMemo(() => {
+  const agentProviderModels = useMemo(() => {
     const map = new Map<string, AgentModelDefinition[]>();
-    for (let i = 0; i < availableProviderDefinitions.length; i++) {
-      const query = allProviderModelQueries[i];
-      if (query?.data) {
-        map.set(availableProviderDefinitions[i]!.id, query.data);
-      }
+    if (agent?.provider && agentProviderModelQuery.data) {
+      map.set(agent.provider, agentProviderModelQuery.data);
     }
     return map;
-  }, [allProviderModelQueries, availableProviderDefinitions]);
+  }, [agent?.provider, agentProviderModelQuery.data]);
 
   const models = modelsQuery.data ?? null;
 
@@ -777,9 +718,8 @@ export function AgentStatusBar({ agentId, serverId }: AgentStatusBarProps) {
         modeOptions.length > 0 ? modeOptions : [{ id: agent.currentModeId ?? "", label: displayMode }]
       }
       selectedModeId={agent.currentModeId ?? undefined}
-      providerDefinitions={availableProviderDefinitions}
-      allProviderModels={liveAllProviderModels}
-      canSelectModelProvider={(providerId) => providerId === agent.provider}
+      providerDefinitions={agentProviderDefinitions}
+      allProviderModels={agentProviderModels}
       onSelectMode={(modeId) => {
         if (!client) {
           return;
@@ -924,29 +864,23 @@ export function DraftAgentStatusBar({
     );
   }
 
-  const providerOptions = providerDefinitions.map((definition) => ({
-    id: definition.id,
-    label: definition.label,
+  const modelOptions: StatusOption[] = models.map((model) => ({
+    id: model.id,
+    label: model.label,
   }));
-
-  const modelOptions: StatusOption[] = [];
-  for (const model of models) {
-    modelOptions.push({ id: model.id, label: model.label });
-  }
 
   return (
     <ControlledStatusBar
       provider={selectedProvider}
-      providerOptions={providerOptions}
-      selectedProviderId={selectedProvider}
-      onSelectProvider={(providerId) => onSelectProvider(providerId as AgentProvider)}
+      providerDefinitions={providerDefinitions}
+      allProviderModels={allProviderModels}
       modeOptions={mappedModeOptions}
       selectedModeId={effectiveSelectedMode}
       onSelectMode={onSelectMode}
       modelOptions={modelOptions}
       selectedModelId={selectedModel}
-      onSelectModel={onSelectModel}
-      isModelLoading={isModelLoading}
+      onSelectModel={(modelId) => onSelectModel(modelId)}
+      isModelLoading={isAllModelsLoading}
       favoriteKeys={favoriteKeys}
       onToggleFavoriteModel={(provider, modelId) => {
         void updatePreferences(toggleFavoriteModel({ preferences, provider, modelId })).catch((error) => {

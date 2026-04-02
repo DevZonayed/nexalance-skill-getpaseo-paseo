@@ -12,7 +12,7 @@ export function resolveProviderLabel(
 }
 
 export function buildSelectedTriggerLabel(providerLabel: string, modelLabel: string): string {
-  return `${providerLabel}: ${modelLabel}`;
+  return modelLabel;
 }
 
 export function buildModelRows(
