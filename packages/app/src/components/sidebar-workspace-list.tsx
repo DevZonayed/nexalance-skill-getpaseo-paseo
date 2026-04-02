@@ -27,6 +27,7 @@ import { type GestureType } from "react-native-gesture-handler";
 import * as Clipboard from "expo-clipboard";
 import {
   Archive,
+  CircleAlert,
   ChevronDown,
   ChevronRight,
   Copy,
@@ -73,7 +74,7 @@ import { decideLongPressMove } from "@/utils/sidebar-gesture-arbitration";
 import { confirmDialog } from "@/utils/confirm-dialog";
 import { projectIconPlaceholderLabelFromDisplayName } from "@/utils/project-display-name";
 import { shouldRenderSyncedStatusLoader } from "@/utils/status-loader";
-import { getStatusDotColor } from "@/utils/status-dot-color";
+import { getStatusDotColor, isEmphasizedStatusDotBucket } from "@/utils/status-dot-color";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Shortcut } from "@/components/ui/shortcut";
@@ -100,6 +101,10 @@ const workspaceKeyExtractor = (workspace: SidebarWorkspaceEntry) => workspace.wo
 const projectKeyExtractor = (project: SidebarProjectEntry) => project.projectKey;
 const EMPTY_WORKSPACES = new Map();
 const WORKSPACE_STATUS_DOT_WIDTH = 14;
+const DEFAULT_STATUS_DOT_SIZE = 7;
+const EMPHASIZED_STATUS_DOT_SIZE = 9;
+const DEFAULT_STATUS_DOT_OFFSET = 0;
+const EMPHASIZED_STATUS_DOT_OFFSET = -1;
 const GITHUB_PR_STATE_LABELS: Record<PrHint["state"], string> = {
   open: "Open",
   merged: "Merged",
@@ -238,6 +243,14 @@ function WorkspaceStatusIndicator({
     );
   }
 
+  if (bucket === "needs_input") {
+    return (
+      <View style={styles.workspaceStatusDot}>
+        <CircleAlert size={14} color={theme.colors.palette.amber[500]} />
+      </View>
+    );
+  }
+
   const KindIcon =
     workspaceKind === "local_checkout"
       ? Monitor
@@ -247,6 +260,13 @@ function WorkspaceStatusIndicator({
   if (!KindIcon) return null;
 
   const dotColor = getStatusDotColor({ theme, bucket, showDoneAsInactive: false });
+  const statusDotSize = isEmphasizedStatusDotBucket(bucket)
+    ? EMPHASIZED_STATUS_DOT_SIZE
+    : DEFAULT_STATUS_DOT_SIZE;
+  const statusDotOffset =
+    statusDotSize === EMPHASIZED_STATUS_DOT_SIZE
+      ? EMPHASIZED_STATUS_DOT_OFFSET
+      : DEFAULT_STATUS_DOT_OFFSET;
 
   return (
     <View style={styles.workspaceStatusDot}>
@@ -258,6 +278,10 @@ function WorkspaceStatusIndicator({
             {
               backgroundColor: dotColor,
               borderColor: theme.colors.surface0,
+              width: statusDotSize,
+              height: statusDotSize,
+              right: statusDotOffset,
+              bottom: statusDotOffset,
             },
           ]}
         />
@@ -327,11 +351,26 @@ function ProjectLeadingVisual({
     );
   }
 
+  if (activeWorkspace.statusBucket === "needs_input") {
+    return (
+      <View style={styles.projectLeadingVisualSlot}>
+        <CircleAlert size={14} color={theme.colors.palette.amber[500]} />
+      </View>
+    );
+  }
+
   const dotColor = getStatusDotColor({
     theme,
     bucket: activeWorkspace.statusBucket,
     showDoneAsInactive: false,
   });
+  const statusDotSize = isEmphasizedStatusDotBucket(activeWorkspace.statusBucket)
+    ? EMPHASIZED_STATUS_DOT_SIZE
+    : DEFAULT_STATUS_DOT_SIZE;
+  const statusDotOffset =
+    statusDotSize === EMPHASIZED_STATUS_DOT_SIZE
+      ? EMPHASIZED_STATUS_DOT_OFFSET
+      : DEFAULT_STATUS_DOT_OFFSET;
 
   return (
     <View style={styles.projectLeadingVisualSlot}>
@@ -343,6 +382,10 @@ function ProjectLeadingVisual({
             {
               backgroundColor: dotColor,
               borderColor: theme.colors.surface0,
+              width: statusDotSize,
+              height: statusDotSize,
+              right: statusDotOffset,
+              bottom: statusDotOffset,
             },
           ]}
         />
@@ -2184,10 +2227,10 @@ const styles = StyleSheet.create((theme) => ({
   },
   statusDotOverlay: {
     position: "absolute",
-    right: 0,
-    bottom: 0,
-    width: 7,
-    height: 7,
+    right: DEFAULT_STATUS_DOT_OFFSET,
+    bottom: DEFAULT_STATUS_DOT_OFFSET,
+    width: DEFAULT_STATUS_DOT_SIZE,
+    height: DEFAULT_STATUS_DOT_SIZE,
     borderRadius: theme.borderRadius.full,
     borderWidth: 1,
   },

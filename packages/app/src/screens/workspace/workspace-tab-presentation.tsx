@@ -8,7 +8,7 @@ import { ensurePanelsRegistered } from "@/panels/register-panels";
 import { getPanelRegistration } from "@/panels/panel-registry";
 import type { WorkspaceTabDescriptor } from "@/screens/workspace/workspace-tabs-types";
 import type { SidebarStateBucket } from "@/utils/sidebar-agent-state";
-import { getStatusDotColor } from "@/utils/status-dot-color";
+import { getStatusDotColor, isEmphasizedStatusDotBucket } from "@/utils/status-dot-color";
 import { shouldRenderSyncedStatusLoader } from "@/utils/status-loader";
 
 export interface WorkspaceTabPresentation {
@@ -20,6 +20,11 @@ export interface WorkspaceTabPresentation {
   icon: React.ComponentType<{ size: number; color: string }>;
   statusBucket: SidebarStateBucket | null;
 }
+
+const DEFAULT_STATUS_DOT_SIZE = 7;
+const EMPHASIZED_STATUS_DOT_SIZE = 9;
+const DEFAULT_STATUS_DOT_OFFSET = -2;
+const EMPHASIZED_STATUS_DOT_OFFSET = -3;
 
 type WorkspaceTabPresentationResolverProps = {
   tab: WorkspaceTabDescriptor;
@@ -114,6 +119,13 @@ export function WorkspaceTabIcon({
           bucket: presentation.statusBucket,
           showDoneAsInactive: false,
         });
+  const statusDotSize = isEmphasizedStatusDotBucket(presentation.statusBucket)
+    ? EMPHASIZED_STATUS_DOT_SIZE
+    : DEFAULT_STATUS_DOT_SIZE;
+  const statusDotOffset =
+    statusDotSize === EMPHASIZED_STATUS_DOT_SIZE
+      ? EMPHASIZED_STATUS_DOT_OFFSET
+      : DEFAULT_STATUS_DOT_OFFSET;
   const shouldShowLoader = shouldRenderSyncedStatusLoader({
     bucket: presentation.statusBucket,
   });
@@ -137,6 +149,10 @@ export function WorkspaceTabIcon({
             {
               backgroundColor: statusDotColor,
               borderColor: statusDotBorderColor ?? theme.colors.surface0,
+              width: statusDotSize,
+              height: statusDotSize,
+              right: statusDotOffset,
+              bottom: statusDotOffset,
             },
           ]}
         />
@@ -199,10 +215,10 @@ const styles = StyleSheet.create((theme) => ({
   },
   statusDot: {
     position: "absolute",
-    right: -2,
-    bottom: -2,
-    width: 7,
-    height: 7,
+    right: DEFAULT_STATUS_DOT_OFFSET,
+    bottom: DEFAULT_STATUS_DOT_OFFSET,
+    width: DEFAULT_STATUS_DOT_SIZE,
+    height: DEFAULT_STATUS_DOT_SIZE,
     borderRadius: theme.borderRadius.full,
     borderWidth: 1,
   },
