@@ -532,18 +532,19 @@ export class OpenCodeAgentClient implements AgentClient {
 
       for (const [modelId, model] of Object.entries(provider.models)) {
         const rawVariants = model.variants ? Object.keys(model.variants) : [];
-        const thinkingOptions = [
-          { id: "default", label: "Model default", isDefault: true },
-          ...rawVariants.map((id) => ({ id, label: id })),
-        ];
+        const thinkingOptions = rawVariants.map((id, index) => ({
+          id,
+          label: id,
+          isDefault: index === 0,
+        }));
 
         models.push({
           provider: "opencode",
           id: `${provider.id}/${modelId}`,
           label: model.name,
           description: `${provider.name} - ${model.family ?? ""}`.trim(),
-          thinkingOptions: thinkingOptions.length > 1 ? thinkingOptions : undefined,
-          defaultThinkingOptionId: "default",
+          thinkingOptions: thinkingOptions.length > 0 ? thinkingOptions : undefined,
+          defaultThinkingOptionId: thinkingOptions[0]?.id,
           metadata: {
             providerId: provider.id,
             providerName: provider.name,
@@ -1183,14 +1184,18 @@ class OpenCodeAgentSession implements AgentSession {
     const parts = this.buildPromptParts(prompt);
     const model = this.parseModel(this.config.model);
     const thinkingOptionId = this.config.thinkingOptionId;
-    const effectiveVariant =
-      thinkingOptionId && thinkingOptionId !== "default" ? thinkingOptionId : undefined;
+    const effectiveVariant = thinkingOptionId ?? undefined;
     const effectiveMode = normalizeOpenCodeModeId(this.currentMode);
 
-    let promptResponse;
+    const turnId = this.createTurnId();
+    this.activeForegroundTurnId = turnId;
+    void this.consumeEventStream(turnId, turnAbortController);
+
     const slashCommand = await this.resolveSlashCommandInvocation(prompt);
     if (slashCommand) {
-      promptResponse = await this.client.session.command({
+      // command() blocks until completion, but events stream via SSE in the
+      // background — fire without awaiting so the event stream isn't starved.
+      void this.client.session.command({
         sessionID: this.sessionId,
         directory: this.config.cwd,
         command: slashCommand.commandName,
@@ -1198,9 +1203,17 @@ class OpenCodeAgentSession implements AgentSession {
         ...(this.config.model ? { model: this.config.model } : {}),
         ...(effectiveMode ? { agent: effectiveMode } : {}),
         ...(effectiveVariant ? { variant: effectiveVariant } : {}),
+      }).then((response) => {
+        if (response.error) {
+          const errorMsg = normalizeTurnFailureError(response.error);
+          this.finishForegroundTurn(
+            { type: "turn_failed", provider: "opencode", error: errorMsg },
+            turnId,
+          );
+        }
       });
     } else {
-      promptResponse = await this.client.session.promptAsync({
+      const promptResponse = await this.client.session.promptAsync({
         sessionID: this.sessionId,
         directory: this.config.cwd,
         parts,
@@ -1217,21 +1230,17 @@ class OpenCodeAgentSession implements AgentSession {
         ...(effectiveMode ? { agent: effectiveMode } : {}),
         ...(effectiveVariant ? { variant: effectiveVariant } : {}),
       });
-    }
 
-    if (promptResponse.error) {
-      const errorMsg = normalizeTurnFailureError(promptResponse.error);
-      this.notifySubscribers({
-        type: "turn_failed",
-        provider: "opencode",
-        error: errorMsg,
-      });
-      throw new Error(errorMsg);
+      if (promptResponse.error) {
+        const errorMsg = normalizeTurnFailureError(promptResponse.error);
+        this.notifySubscribers({
+          type: "turn_failed",
+          provider: "opencode",
+          error: errorMsg,
+        });
+        throw new Error(errorMsg);
+      }
     }
-
-    const turnId = this.createTurnId();
-    this.activeForegroundTurnId = turnId;
-    void this.consumeEventStream(turnId, turnAbortController);
 
     return { turnId };
   }
