@@ -22,7 +22,7 @@ The relay is designed to be untrusted. All traffic between your phone and daemon
 1. The daemon generates a persistent ECDH keypair and stores it locally
 2. When you scan the QR code or click the pairing link, your phone receives the daemon's public key
 3. Your phone sends a handshake message with its own public key. The daemon will not accept any commands until this handshake completes.
-4. Both sides perform an ECDH key exchange to derive a shared secret. All subsequent messages are encrypted with AES-256-GCM.
+4. Both sides perform an ECDH key exchange to derive a shared secret. All subsequent messages are encrypted with XSalsa20-Poly1305 (NaCl box).
 
 The relay sees only: IP addresses, timing, message sizes, and session IDs. It cannot read message contents, forge messages, or derive encryption keys from observing the handshake.
 
@@ -31,13 +31,25 @@ The relay sees only: IP addresses, timing, message sizes, and session IDs. It ca
 The daemon requires a valid cryptographic handshake before processing any commands. A compromised relay cannot:
 
 - **Send commands** — Without your phone's private key, it cannot complete the handshake
-- **Read your traffic** — All messages are encrypted with AES-256-GCM after the handshake
-- **Forge messages** — GCM provides authenticated encryption; tampered messages are rejected
-- **Replay old messages** — Each session derives fresh encryption keys
+- **Read your traffic** — All messages are encrypted with XSalsa20-Poly1305 (NaCl box) after the handshake
+- **Forge messages** — NaCl box provides authenticated encryption; tampered messages are rejected
+- **Replay old messages across sessions** — Each session derives fresh encryption keys, so ciphertext from one session cannot be replayed into another session. Within a live session, replay protection is not yet implemented; the protocol uses random nonces and does not track nonce reuse or message counters.
 
 ### Trust model
 
 The QR code or pairing link is the trust anchor. It contains the daemon's public key, which is required to establish the encrypted connection. Treat it like a password — don't share it publicly.
+
+## Local daemon trust boundary
+
+By default, the daemon binds to `127.0.0.1`. The local control plane is trusted by network reachability, not by an additional authentication token.
+
+Anything that can reach the daemon socket can control the daemon. This is the same security model Docker documents for its daemon: the security boundary is access to the socket or listening address.
+
+If you expose the daemon beyond loopback, such as by binding to `0.0.0.0`, forwarding it through a tunnel or reverse proxy, or publishing it from a Docker container, you are responsible for restricting and securing that access.
+
+For remote access, use the relay connection. It is the supported path for reaching the daemon off-machine, and it adds end-to-end encryption plus a pairing handshake before commands are accepted.
+
+Host header validation and CORS origin checks are defense-in-depth controls for localhost exposure. They help block DNS rebinding and browser-based attacks, but they do not replace network isolation.
 
 ## DNS rebinding protection
 

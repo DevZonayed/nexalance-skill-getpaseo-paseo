@@ -11,6 +11,9 @@ export interface AgentModeVisuals {
 
 export interface AgentProviderModeDefinition extends AgentMode, AgentModeVisuals {}
 
+// TODO: `modes` should not be static. Providers (especially ACP) report their
+// own modes at runtime via session/new. We should fetch modes from the provider
+// as source of truth and enrich with UI metadata (icons, colorTier) on top.
 export interface AgentProviderDefinition {
   id: string;
   label: string;
@@ -80,6 +83,30 @@ const CODEX_MODES: AgentProviderModeDefinition[] = [
   },
 ];
 
+const COPILOT_MODES: AgentProviderModeDefinition[] = [
+  {
+    id: "https://agentclientprotocol.com/protocol/session-modes#agent",
+    label: "Agent",
+    description: "Default agent mode for conversational interactions",
+    icon: "ShieldAlert",
+    colorTier: "moderate",
+  },
+  {
+    id: "https://agentclientprotocol.com/protocol/session-modes#plan",
+    label: "Plan",
+    description: "Plan mode for creating and executing multi-step plans",
+    icon: "ShieldCheck",
+    colorTier: "planning",
+  },
+  {
+    id: "https://agentclientprotocol.com/protocol/session-modes#autopilot",
+    label: "Autopilot",
+    description: "Autonomous mode that runs until task completion without user interaction",
+    icon: "ShieldOff",
+    colorTier: "dangerous",
+  },
+];
+
 const OPENCODE_MODES: AgentProviderModeDefinition[] = [
   {
     id: "build",
@@ -102,6 +129,18 @@ export const AGENT_PROVIDER_DEFINITIONS: AgentProviderDefinition[] = [
     id: "claude",
     label: "Claude",
     description: "Anthropic's multi-tool assistant with MCP support, streaming, and deep reasoning",
+    defaultModeId: "default",
+    modes: CLAUDE_MODES,
+    voice: {
+      enabled: true,
+      defaultModeId: "default",
+      defaultModel: "haiku",
+    },
+  },
+  {
+    id: "claude-acp",
+    label: "Claude ACP",
+    description: "Claude Code via Agent Client Protocol with streaming, permissions, and session resume",
     defaultModeId: "default",
     modes: CLAUDE_MODES,
     voice: {
@@ -142,6 +181,13 @@ export const AGENT_PROVIDER_DEFINITIONS: AgentProviderDefinition[] = [
     description: "Paul Gauthier's coding assistant CLI",
     defaultModeId: null,
     modes: [],
+  },
+  {
+    id: "copilot",
+    label: "Copilot",
+    description: "GitHub Copilot via Agent Client Protocol with dynamic modes and session support",
+    defaultModeId: "https://agentclientprotocol.com/protocol/session-modes#agent",
+    modes: COPILOT_MODES,
   },
   {
     id: "opencode",

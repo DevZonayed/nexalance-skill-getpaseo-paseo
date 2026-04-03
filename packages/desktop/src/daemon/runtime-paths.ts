@@ -1,5 +1,5 @@
 import { existsSync, readFileSync } from "node:fs";
-import { spawnSync, type SpawnSyncReturns } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { app } from "electron";
@@ -219,23 +219,22 @@ export function createNodeEntrypointInvocation(input: {
   });
 }
 
-function spawnCliProcess(args: string[]): SpawnSyncReturns<Buffer> {
+function createCliInvocation(args: string[]): NodeEntrypointInvocation {
   const cli = resolveCliEntrypoint();
-  const invocation = createNodeEntrypointInvocation({
+  return createNodeEntrypointInvocation({
     entrypoint: cli,
     argvMode: "bare",
     args,
     baseEnv: process.env,
   });
-
-  return spawnSync(invocation.command, invocation.args, {
-    env: invocation.env,
-    stdio: "inherit",
-  });
 }
 
 export function runCliPassthroughCommand(args: string[]): number {
-  const result = spawnCliProcess(args);
+  const invocation = createCliInvocation(args);
+  const result = spawnSync(invocation.command, invocation.args, {
+    env: invocation.env,
+    stdio: "inherit",
+  });
   if (result.error) {
     throw result.error;
   }
@@ -245,4 +244,35 @@ export function runCliPassthroughCommand(args: string[]): number {
   }
 
   return result.signal ? 1 : 0;
+}
+
+export function runCliJsonCommand(args: string[]): unknown {
+  const invocation = createCliInvocation(args);
+  const result = spawnSync(invocation.command, invocation.args, {
+    env: invocation.env,
+    encoding: "utf-8",
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+
+  if (result.error) {
+    throw result.error;
+  }
+
+  if (result.status !== 0) {
+    const stderr = typeof result.stderr === "string" ? result.stderr.trim() : "";
+    throw new Error(stderr.length > 0 ? stderr : `CLI command failed with exit code ${result.status}`);
+  }
+
+  const stdout = typeof result.stdout === "string" ? result.stdout.trim() : "";
+  if (stdout.length === 0) {
+    throw new Error("CLI command did not produce JSON output.");
+  }
+
+  try {
+    return JSON.parse(stdout) as unknown;
+  } catch (error) {
+    throw new Error(
+      `CLI command returned invalid JSON: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
 }

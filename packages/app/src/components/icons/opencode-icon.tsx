@@ -8,7 +8,7 @@ interface OpenCodeIconProps {
 export function OpenCodeIcon({ size = 16, color = "currentColor" }: OpenCodeIconProps) {
   return (
     <Svg width={size} height={size} viewBox="96 64 288 384" fill={color}>
-      <Path d="M320 224V352H192V224H320Z" opacity="0.4" />
+      <Path d="M320 224V352H192V224H320Z" opacity={0.4} />
       <Path
         fillRule="evenodd"
         clipRule="evenodd"

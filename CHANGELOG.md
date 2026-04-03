@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.1.43 - 2026-04-02
+
+### Added
+- Copilot agent support via ACP base provider — connect GitHub Copilot as a new agent type.
+- Searchable model favorites — quickly find and pin preferred models.
+- Slash command support for OpenCode agents.
+
+### Improved
+- Refined model selector UX with better mobile sheet behavior.
+- Workspace status now uses amber alert styling for "needs input" state.
+- Themed scrollbar on message input for consistent styling.
+
+### Fixed
+- Ctrl+C/V copy and paste now works correctly in the terminal on Windows and Linux.
+- Shell arguments with spaces are now properly quoted on Windows.
+- Claude models with 1M context support are now correctly reported.
+
 ## 0.1.42 - 2026-04-01
 
 ### Fixed

@@ -49,16 +49,14 @@ import {
 } from "@/screens/agent/agent-ready-screen-bottom-anchor";
 
 function formatProviderLabel(provider: Agent["provider"]): string {
-  if (provider === "claude") {
-    return "Claude";
-  }
-  if (provider === "codex") {
-    return "Codex";
-  }
   if (!provider) {
     return "Agent";
   }
-  return provider.charAt(0).toUpperCase() + provider.slice(1);
+  return provider
+    .split(/[-_\s]+/)
+    .filter((part) => part.length > 0)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
 }
 
 function resolveWorkspaceAgentTabLabel(title: string | null | undefined): string | null {

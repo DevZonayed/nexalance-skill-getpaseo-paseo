@@ -1,8 +1,43 @@
 import type pino from "pino";
 
+import type { AgentManager } from "./agent/agent-manager.js";
 import type { AgentSessionConfig } from "./agent/agent-sdk-types.js";
-import type { StoredAgentRecord } from "./agent/agent-storage.js";
+import type { AgentStorage, StoredAgentRecord } from "./agent/agent-storage.js";
 import { isValidAgentProvider } from "./agent/provider-manifest.js";
+
+type LoggerLike = {
+  child(bindings: Record<string, unknown>): LoggerLike;
+  error(...args: any[]): void;
+};
+
+function getLogger(logger: LoggerLike): LoggerLike {
+  return logger.child({ module: "persistence" });
+}
+
+type AgentStoragePersistence = Pick<AgentStorage, "applySnapshot" | "list">;
+type AgentManagerStateSource = Pick<AgentManager, "subscribe">;
+
+/**
+ * Attach AgentStorage persistence to an AgentManager instance so every
+ * agent_state snapshot is flushed to disk.
+ */
+export function attachAgentStoragePersistence(
+  logger: LoggerLike,
+  agentManager: AgentManagerStateSource,
+  storage: AgentStoragePersistence,
+): () => void {
+  const log = getLogger(logger);
+  const unsubscribe = agentManager.subscribe((event) => {
+    if (event.type !== "agent_state") {
+      return;
+    }
+    void storage.applySnapshot(event.agent).catch((error) => {
+      log.error({ err: error, agentId: event.agent.id }, "Failed to persist agent snapshot");
+    });
+  });
+
+  return unsubscribe;
+}
 
 export function buildConfigOverrides(record: StoredAgentRecord): Partial<AgentSessionConfig> {
   return {

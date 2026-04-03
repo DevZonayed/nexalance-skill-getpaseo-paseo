@@ -65,7 +65,7 @@ export function loadConfig(
     options?.cli?.allowedHosts,
   ]);
 
-  const mcpEnabled = options?.cli?.mcpEnabled ?? persisted.daemon?.mcp?.enabled ?? true;
+  const mcpEnabled = options?.cli?.mcpEnabled ?? persisted.daemon?.mcp?.enabled ?? false;
 
   const relayEnabled = options?.cli?.relayEnabled ?? persisted.daemon?.relay?.enabled ?? true;
 

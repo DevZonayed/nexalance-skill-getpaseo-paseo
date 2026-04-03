@@ -1,7 +1,7 @@
 import { v4 as uuidv4 } from "uuid";
 import { watch, type FSWatcher } from "node:fs";
 import { readFile } from "fs/promises";
-import { exec } from "child_process";
+import { exec, execFile } from "node:child_process";
 import { promisify } from "util";
 import { join, resolve, sep } from "path";
 import { homedir } from "node:os";
@@ -172,6 +172,7 @@ import {
 } from "./worktree-session.js";
 
 const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 const MAX_INITIAL_AGENT_TITLE_CHARS = Math.min(60, MAX_EXPLICIT_AGENT_TITLE_CHARS);
 const DEFAULT_AGENT_PROVIDER = AGENT_PROVIDER_IDS[0];
 const WORKSPACE_GIT_WATCH_DEBOUNCE_MS = 500;
@@ -2877,6 +2878,9 @@ export class Session {
   }
 
   private assertSafeGitRef(ref: string, label: string): void {
+    if (!/^[A-Za-z0-9._/-]+$/.test(ref)) {
+      throw new Error(`Invalid ${label}: ${ref}`);
+    }
     assertWorktreeSafeGitRef(ref, label);
   }
 
@@ -3048,7 +3052,7 @@ export class Session {
   private async checkoutExistingBranch(cwd: string, branch: string): Promise<void> {
     this.assertSafeGitRef(branch, "branch");
     try {
-      await execAsync(`git rev-parse --verify ${branch}`, { cwd });
+      await execFileAsync("git", ["rev-parse", "--verify", branch], { cwd });
     } catch (error) {
       throw new Error(`Branch not found: ${branch}`);
     }
@@ -3062,7 +3066,7 @@ export class Session {
     }
 
     await this.ensureCleanWorkingTree(cwd);
-    await execAsync(`git checkout ${branch}`, { cwd });
+    await execFileAsync("git", ["checkout", branch], { cwd });
   }
 
   private async createBranchFromBase(params: {
@@ -3072,9 +3076,10 @@ export class Session {
   }): Promise<void> {
     const { cwd, baseBranch, newBranchName } = params;
     this.assertSafeGitRef(baseBranch, "base branch");
+    this.assertSafeGitRef(newBranchName, "new branch");
 
     try {
-      await execAsync(`git rev-parse --verify ${baseBranch}`, { cwd });
+      await execFileAsync("git", ["rev-parse", "--verify", baseBranch], { cwd });
     } catch (error) {
       throw new Error(`Base branch not found: ${baseBranch}`);
     }
@@ -3085,14 +3090,15 @@ export class Session {
     }
 
     await this.ensureCleanWorkingTree(cwd);
-    await execAsync(`git checkout -b ${newBranchName} ${baseBranch}`, {
+    await execFileAsync("git", ["checkout", "-b", newBranchName, baseBranch], {
       cwd,
     });
   }
 
   private async doesLocalBranchExist(cwd: string, branch: string): Promise<boolean> {
+    this.assertSafeGitRef(branch, "branch");
     try {
-      await execAsync(`git show-ref --verify --quiet refs/heads/${branch}`, {
+      await execFileAsync("git", ["show-ref", "--verify", "--quiet", `refs/heads/${branch}`], {
         cwd,
       });
       return true;
@@ -3495,10 +3501,11 @@ export class Session {
 
     try {
       const resolvedCwd = expandTilde(cwd);
+      this.assertSafeGitRef(branchName, "branch");
 
       // Try local branch first
       try {
-        await execAsync(`git rev-parse --verify ${branchName}`, {
+        await execFileAsync("git", ["rev-parse", "--verify", branchName], {
           cwd: resolvedCwd,
           env: READ_ONLY_GIT_ENV,
         });
@@ -3519,7 +3526,7 @@ export class Session {
 
       // Try remote branch (origin/{branchName})
       try {
-        await execAsync(`git rev-parse --verify origin/${branchName}`, {
+        await execFileAsync("git", ["rev-parse", "--verify", `origin/${branchName}`], {
           cwd: resolvedCwd,
           env: READ_ONLY_GIT_ENV,
         });
