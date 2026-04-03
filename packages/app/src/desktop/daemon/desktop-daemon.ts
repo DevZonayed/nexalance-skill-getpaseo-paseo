@@ -162,6 +162,14 @@ export async function getCliSymlinkInstructions(): Promise<CliSymlinkInstruction
   return parseCliSymlinkInstructions(await invokeDesktopCommand("cli_symlink_instructions"));
 }
 
+export async function getCliDaemonStatus(): Promise<string> {
+  const raw = await invokeDesktopCommand<unknown>("cli_daemon_status");
+  if (typeof raw !== "string") {
+    throw new Error("Unexpected CLI daemon status response.");
+  }
+  return raw;
+}
+
 export type LocalTransportEventUnlisten = () => void;
 export type LocalTransportEventHandler = (payload: LocalTransportEventPayload) => void;
 

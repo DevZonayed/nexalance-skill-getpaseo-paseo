@@ -21,6 +21,7 @@ import {
   createNodeEntrypointInvocation,
   resolveDaemonRunnerEntrypoint,
   runCliJsonCommand,
+  runCliTextCommand,
 } from "./runtime-paths.js";
 
 const DAEMON_LOG_FILENAME = "daemon.log";
@@ -398,6 +399,10 @@ function getDaemonLogs(): DesktopDaemonLogs {
   };
 }
 
+function getCliDaemonStatus(): string {
+  return runCliTextCommand(["daemon", "status"]);
+}
+
 async function getDaemonPairing(): Promise<DesktopPairingOffer> {
   const status = resolveStatus();
   if (status.status !== "running") {
@@ -521,6 +526,7 @@ export function createDaemonCommandHandlers(): Record<string, DesktopCommandHand
     desktop_daemon_logs: () => getDaemonLogs(),
     desktop_daemon_pairing: () => getDaemonPairing(),
     cli_symlink_instructions: () => getCliSymlinkInstructions(),
+    cli_daemon_status: () => getCliDaemonStatus(),
     write_attachment_base64: (args) => writeAttachmentBase64(args ?? {}),
     copy_attachment_file: (args) => copyAttachmentFileToManagedStorage(args ?? {}),
     read_file_base64: (args) => readManagedFileBase64(args ?? {}),

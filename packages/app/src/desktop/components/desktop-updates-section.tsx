@@ -14,6 +14,7 @@ import {
   Copy,
   FileText,
   Smartphone,
+  Activity,
 } from "lucide-react-native";
 import { AdaptiveModalSheet } from "@/components/adaptive-modal-sheet";
 import { Button } from "@/components/ui/button";
@@ -22,6 +23,7 @@ import { confirmDialog } from "@/utils/confirm-dialog";
 import { openExternalUrl } from "@/utils/open-external-url";
 import { getLocalDaemonVersion, isVersionMismatch } from "@/desktop/updates/desktop-updates";
 import {
+  getCliDaemonStatus,
   getCliSymlinkInstructions,
   getDesktopDaemonLogs,
   getDesktopDaemonPairing,
@@ -62,6 +64,9 @@ export function LocalDaemonSection({ appVersion, showLifecycleControls }: LocalD
   const [cliSymlinkInstructions, setCliSymlinkInstructions] =
     useState<CliSymlinkInstructions | null>(null);
   const [pairingStatusMessage, setPairingStatusMessage] = useState<string | null>(null);
+  const [cliStatusOutput, setCliStatusOutput] = useState<string | null>(null);
+  const [isCliStatusModalOpen, setIsCliStatusModalOpen] = useState(false);
+  const [isLoadingCliStatus, setIsLoadingCliStatus] = useState(false);
 
   const loadDaemonData = useCallback(() => {
     if (!showSection) {
@@ -315,6 +320,33 @@ export function LocalDaemonSection({ appVersion, showLifecycleControls }: LocalD
       });
   }, [pairingOffer?.url]);
 
+  const handleOpenCliStatus = useCallback(async () => {
+    setIsLoadingCliStatus(true);
+    try {
+      setCliStatusOutput(await getCliDaemonStatus());
+      setIsCliStatusModalOpen(true);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setCliStatusOutput(`Failed to fetch daemon status: ${message}`);
+      setIsCliStatusModalOpen(true);
+    } finally {
+      setIsLoadingCliStatus(false);
+    }
+  }, []);
+
+  const handleCopyCliStatus = useCallback(() => {
+    if (!cliStatusOutput) {
+      return;
+    }
+    void Clipboard.setStringAsync(cliStatusOutput)
+      .then(() => {
+        Alert.alert("Copied", "Status copied to clipboard.");
+      })
+      .catch((error) => {
+        console.error("[Settings] Failed to copy daemon status", error);
+      });
+  }, [cliStatusOutput]);
+
   if (!showSection) {
     return null;
   }
@@ -458,6 +490,23 @@ export function LocalDaemonSection({ appVersion, showLifecycleControls }: LocalD
             Pair device
           </Button>
         </View>
+        <View style={[styles.row, styles.rowBorder]}>
+          <View style={styles.rowContent}>
+            <Text style={styles.rowTitle}>Full status</Text>
+            <Text style={styles.hintText}>
+              Runs `paseo daemon status` and shows the output.
+            </Text>
+          </View>
+          <Button
+            variant="outline"
+            size="sm"
+            leftIcon={<Activity size={theme.iconSize.sm} color={theme.colors.foreground} />}
+            onPress={() => void handleOpenCliStatus()}
+            disabled={isLoadingCliStatus}
+          >
+            {isLoadingCliStatus ? "Loading..." : "View status"}
+          </Button>
+        </View>
       </View>
 
       {daemonVersionMismatch ? (
@@ -522,6 +571,28 @@ export function LocalDaemonSection({ appVersion, showLifecycleControls }: LocalD
           <Text style={styles.logOutput} selectable>
             {daemonLogs?.contents.length ? daemonLogs.contents : "(log file is empty)"}
           </Text>
+        </View>
+      </AdaptiveModalSheet>
+
+      <AdaptiveModalSheet
+        visible={isCliStatusModalOpen}
+        onClose={() => setIsCliStatusModalOpen(false)}
+        title="Daemon status"
+        testID="daemon-cli-status-dialog"
+        snapPoints={["60%", "85%"]}
+      >
+        <View style={styles.modalBody}>
+          <Text style={styles.logOutput} selectable>
+            {cliStatusOutput ?? ""}
+          </Text>
+          <View style={styles.modalActions}>
+            <Button variant="outline" size="sm" onPress={() => setIsCliStatusModalOpen(false)}>
+              Close
+            </Button>
+            <Button size="sm" onPress={handleCopyCliStatus}>
+              Copy
+            </Button>
+          </View>
         </View>
       </AdaptiveModalSheet>
     </View>

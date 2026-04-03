@@ -246,6 +246,26 @@ export function runCliPassthroughCommand(args: string[]): number {
   return result.signal ? 1 : 0;
 }
 
+export function runCliTextCommand(args: string[]): string {
+  const invocation = createCliInvocation(args);
+  const result = spawnSync(invocation.command, invocation.args, {
+    env: invocation.env,
+    encoding: "utf-8",
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+
+  if (result.error) {
+    throw result.error;
+  }
+
+  if (result.status !== 0) {
+    const stderr = typeof result.stderr === "string" ? result.stderr.trim() : "";
+    throw new Error(stderr.length > 0 ? stderr : `CLI command failed with exit code ${result.status}`);
+  }
+
+  return typeof result.stdout === "string" ? result.stdout.trimEnd() : "";
+}
+
 export function runCliJsonCommand(args: string[]): unknown {
   const invocation = createCliInvocation(args);
   const result = spawnSync(invocation.command, invocation.args, {
