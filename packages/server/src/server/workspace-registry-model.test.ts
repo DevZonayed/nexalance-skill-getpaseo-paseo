@@ -24,7 +24,6 @@ describe("detectStaleWorkspaces", () => {
         createWorkspaceRecord("/tmp/existing"),
         createWorkspaceRecord("/tmp/missing"),
       ],
-      agentRecords: [],
       checkDirectoryExists,
     });
 
@@ -32,40 +31,20 @@ describe("detectStaleWorkspaces", () => {
     expect(checkDirectoryExists.mock.calls).toEqual([["/tmp/existing"], ["/tmp/missing"]]);
   });
 
-  test("returns workspace ids when all matching agents are archived", async () => {
+  test("keeps workspaces whose directories exist even when all agents are archived", async () => {
     const staleWorkspaceIds = await detectStaleWorkspaces({
       activeWorkspaces: [createWorkspaceRecord("/tmp/repo"), createWorkspaceRecord("/tmp/other")],
-      agentRecords: [
-        {
-          cwd: "/tmp/repo",
-          archivedAt: "2026-03-02T00:00:00.000Z",
-        },
-        {
-          cwd: "/tmp/other",
-          archivedAt: null,
-        },
-      ],
       checkDirectoryExists: async () => true,
     });
 
-    expect(Array.from(staleWorkspaceIds)).toEqual(["/tmp/repo"]);
+    expect(Array.from(staleWorkspaceIds)).toEqual([]);
   });
 
-  test("keeps workspaces with no agents or at least one active agent", async () => {
+  test("keeps workspaces with no agents when directory exists", async () => {
     const staleWorkspaceIds = await detectStaleWorkspaces({
       activeWorkspaces: [
         createWorkspaceRecord("/tmp/active"),
         createWorkspaceRecord("/tmp/no-agents"),
-      ],
-      agentRecords: [
-        {
-          cwd: "/tmp/active",
-          archivedAt: "2026-03-02T00:00:00.000Z",
-        },
-        {
-          cwd: "/tmp/active/../active",
-          archivedAt: null,
-        },
       ],
       checkDirectoryExists: async () => true,
     });

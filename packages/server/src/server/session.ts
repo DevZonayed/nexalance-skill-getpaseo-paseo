@@ -1363,10 +1363,6 @@ export class Session {
     );
     const staleWorkspaceIds = await detectStaleWorkspaces({
       activeWorkspaces,
-      agentRecords: (await this.agentStorage.list()).map((agent) => ({
-        cwd: agent.cwd,
-        archivedAt: agent.archivedAt ?? null,
-      })),
       checkDirectoryExists: async (cwd) => {
         try {
           await stat(cwd);

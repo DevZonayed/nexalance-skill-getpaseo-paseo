@@ -38,6 +38,7 @@ import {
   Monitor,
   MoreVertical,
   Plus,
+  Trash2,
 } from "lucide-react-native";
 import { NestableScrollContainer } from "react-native-draggable-flatlist";
 import { DraggableList, type DraggableRenderItemInfo } from "./draggable-list";
@@ -53,13 +54,7 @@ import {
 } from "@/hooks/use-sidebar-workspaces-list";
 import { useSidebarOrderStore } from "@/stores/sidebar-order-store";
 import { useKeyboardShortcutsStore } from "@/stores/keyboard-shortcuts-store";
-import {
-  ContextMenu,
-  ContextMenuContent,
-  ContextMenuItem,
-  ContextMenuTrigger,
-  useContextMenu,
-} from "@/components/ui/context-menu";
+import { ContextMenuTrigger, useContextMenu } from "@/components/ui/context-menu";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -145,6 +140,8 @@ interface ProjectHeaderRowProps {
   isDragging: boolean;
   isArchiving?: boolean;
   menuController: ReturnType<typeof useContextMenu> | null;
+  onRemoveProject?: () => void;
+  removeProjectStatus?: "idle" | "pending";
   dragHandleProps?: DraggableListDragHandleProps;
 }
 
@@ -704,8 +701,11 @@ function ProjectHeaderRow({
   isDragging,
   isArchiving = false,
   menuController,
+  onRemoveProject,
+  removeProjectStatus = "idle",
   dragHandleProps,
 }: ProjectHeaderRowProps) {
+  const { theme } = useUnistyles();
   const [isHovered, setIsHovered] = useState(false);
   const isMobileBreakpoint = isCompactFormFactor();
   const mergeWorkspaces = useSessionStore((state) => state.mergeWorkspaces);
@@ -792,16 +792,55 @@ function ProjectHeaderRow({
           </Text>
         </View>
       </View>
-      {canCreateWorktree ? (
-        <NewWorktreeButton
-          displayName={displayName}
-          onPress={() => createWorktreeMutation.mutate()}
-          visible={isHovered || isMobileBreakpoint}
-          loading={createWorktreeMutation.isPending}
-          showShortcutHint={isProjectActive}
-          testID={`sidebar-project-new-worktree-${project.projectKey}`}
-        />
-      ) : null}
+      <View style={styles.projectTrailingActions}>
+        {canCreateWorktree ? (
+          <NewWorktreeButton
+            displayName={displayName}
+            onPress={() => createWorktreeMutation.mutate()}
+            visible={isHovered || isMobileBreakpoint}
+            loading={createWorktreeMutation.isPending}
+            showShortcutHint={isProjectActive}
+            testID={`sidebar-project-new-worktree-${project.projectKey}`}
+          />
+        ) : null}
+        {onRemoveProject ? (
+          <View
+            style={!(isHovered || isMobileBreakpoint) && styles.projectKebabButtonHidden}
+            pointerEvents={isHovered || isMobileBreakpoint ? "auto" : "none"}
+          >
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                hitSlop={8}
+                style={({ hovered = false }) => [
+                  styles.projectKebabButton,
+                  hovered && styles.projectKebabButtonHovered,
+                ]}
+                accessibilityRole="button"
+                accessibilityLabel="Project actions"
+                testID={`sidebar-project-kebab-${project.projectKey}`}
+              >
+                {({ hovered }) => (
+                  <MoreVertical
+                    size={14}
+                    color={hovered ? theme.colors.foreground : theme.colors.foregroundMuted}
+                  />
+                )}
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" width={220}>
+                <DropdownMenuItem
+                  testID={`sidebar-project-menu-remove-${project.projectKey}`}
+                  leading={<Trash2 size={14} color={theme.colors.foregroundMuted} />}
+                  status={removeProjectStatus}
+                  pendingLabel="Removing..."
+                  onSelect={onRemoveProject}
+                >
+                  Remove project
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </View>
+        ) : null}
+      </View>
       {showShortcutBadge && shortcutNumber !== null ? (
         <View style={styles.shortcutBadge}>
           <Text style={styles.shortcutBadgeText}>{shortcutNumber}</Text>
@@ -1209,160 +1248,6 @@ function WorkspaceRowWithMenu({
   );
 }
 
-function NonGitProjectRowWithMenuContent({
-  project,
-  displayName,
-  iconDataUri,
-  workspace,
-  selected,
-  onPress,
-  shortcutNumber,
-  showShortcutBadge,
-  drag,
-  isDragging,
-  dragHandleProps,
-}: {
-  project: SidebarProjectEntry;
-  displayName: string;
-  iconDataUri: string | null;
-  workspace: SidebarWorkspaceEntry;
-  selected: boolean;
-  onPress: () => void;
-  shortcutNumber: number | null;
-  showShortcutBadge: boolean;
-  drag: () => void;
-  isDragging: boolean;
-  dragHandleProps?: DraggableListDragHandleProps;
-}) {
-  const toast = useToast();
-  const contextMenu = useContextMenu();
-  const activeWorkspaceSelection = useNavigationActiveWorkspaceSelection();
-  const sessionWorkspaces = useSessionStore(
-    (state) => state.sessions[workspace.serverId]?.workspaces ?? EMPTY_WORKSPACES,
-  );
-  const [isArchivingWorkspace, setIsArchivingWorkspace] = useState(false);
-  const redirectAfterArchive = useCallback(() => {
-    if (
-      activeWorkspaceSelection?.serverId !== workspace.serverId ||
-      activeWorkspaceSelection.workspaceId !== workspace.workspaceId
-    ) {
-      return;
-    }
-
-    router.replace(
-      buildWorkspaceArchiveRedirectRoute({
-        serverId: workspace.serverId,
-        archivedWorkspaceId: workspace.workspaceId,
-        workspaces: sessionWorkspaces.values(),
-      }) as any,
-    );
-  }, [activeWorkspaceSelection, sessionWorkspaces, workspace.serverId, workspace.workspaceId]);
-
-  const handleArchiveWorkspace = useCallback(() => {
-    if (isArchivingWorkspace) {
-      return;
-    }
-
-    void (async () => {
-      const confirmed = await confirmDialog({
-        title: "Hide workspace?",
-        message: `Hide "${workspace.name}" from the sidebar?\n\nFiles on disk will not be changed.`,
-        confirmLabel: "Hide",
-        cancelLabel: "Cancel",
-        destructive: true,
-      });
-      if (!confirmed) {
-        return;
-      }
-
-      const client = getHostRuntimeStore().getClient(workspace.serverId);
-      if (!client) {
-        toast.error("Host is not connected");
-        return;
-      }
-
-      setIsArchivingWorkspace(true);
-      try {
-        const payload = await client.archiveWorkspace(workspace.workspaceId);
-        if (payload.error) {
-          throw new Error(payload.error);
-        }
-        redirectAfterArchive();
-      } catch (error) {
-        toast.error(error instanceof Error ? error.message : "Failed to hide workspace");
-      } finally {
-        setIsArchivingWorkspace(false);
-      }
-    })();
-  }, [
-    isArchivingWorkspace,
-    redirectAfterArchive,
-    toast,
-    workspace.name,
-    workspace.serverId,
-    workspace.workspaceId,
-  ]);
-
-  return (
-    <>
-      <ProjectHeaderRow
-        project={project}
-        displayName={displayName}
-        iconDataUri={iconDataUri}
-        workspace={workspace}
-        selected={selected}
-        chevron={null}
-        onPress={onPress}
-        serverId={null}
-        canCreateWorktree={false}
-        shortcutNumber={shortcutNumber}
-        showShortcutBadge={showShortcutBadge}
-        drag={drag}
-        isDragging={isDragging}
-        isArchiving={isArchivingWorkspace}
-        menuController={contextMenu}
-        dragHandleProps={dragHandleProps}
-      />
-      <ContextMenuContent
-        align="start"
-        width={220}
-        mobileMode="sheet"
-        testID={`sidebar-workspace-context-${workspace.workspaceKey}`}
-      >
-        <ContextMenuItem
-          testID={`sidebar-workspace-context-${workspace.workspaceKey}-archive`}
-          status={isArchivingWorkspace ? "pending" : "idle"}
-          pendingLabel="Hiding..."
-          destructive
-          onSelect={handleArchiveWorkspace}
-        >
-          Hide from sidebar
-        </ContextMenuItem>
-      </ContextMenuContent>
-    </>
-  );
-}
-
-function NonGitProjectRowWithMenu(props: {
-  project: SidebarProjectEntry;
-  displayName: string;
-  iconDataUri: string | null;
-  workspace: SidebarWorkspaceEntry;
-  selected: boolean;
-  onPress: () => void;
-  shortcutNumber: number | null;
-  showShortcutBadge: boolean;
-  drag: () => void;
-  isDragging: boolean;
-  dragHandleProps?: DraggableListDragHandleProps;
-}) {
-  return (
-    <ContextMenu>
-      <NonGitProjectRowWithMenuContent {...props} />
-    </ContextMenu>
-  );
-}
-
 function FlattenedProjectRow({
   project,
   displayName,
@@ -1378,6 +1263,8 @@ function FlattenedProjectRow({
   isDragging,
   dragHandleProps,
   isProjectActive = false,
+  onRemoveProject,
+  removeProjectStatus,
 }: {
   project: SidebarProjectEntry;
   displayName: string;
@@ -1393,25 +1280,9 @@ function FlattenedProjectRow({
   isDragging: boolean;
   dragHandleProps?: DraggableListDragHandleProps;
   isProjectActive?: boolean;
+  onRemoveProject?: () => void;
+  removeProjectStatus?: "idle" | "pending";
 }) {
-  if (project.projectKind === "non_git") {
-    return (
-      <NonGitProjectRowWithMenu
-        project={project}
-        displayName={displayName}
-        iconDataUri={iconDataUri}
-        workspace={rowModel.workspace}
-        selected={rowModel.selected}
-        onPress={onPress}
-        shortcutNumber={shortcutNumber}
-        showShortcutBadge={showShortcutBadge}
-        drag={drag}
-        isDragging={isDragging}
-        dragHandleProps={dragHandleProps}
-      />
-    );
-  }
-
   return (
     <ProjectHeaderRow
       project={project}
@@ -1431,6 +1302,8 @@ function FlattenedProjectRow({
       drag={drag}
       isDragging={isDragging}
       menuController={null}
+      onRemoveProject={onRemoveProject}
+      removeProjectStatus={removeProjectStatus}
       dragHandleProps={dragHandleProps}
     />
   );
@@ -1601,6 +1474,48 @@ function ProjectBlock({
     [onWorkspaceReorder, project.projectKey],
   );
 
+  const toast = useToast();
+  const [isRemovingProject, setIsRemovingProject] = useState(false);
+
+  const handleRemoveProject = useCallback(() => {
+    if (isRemovingProject || !serverId) {
+      return;
+    }
+
+    void (async () => {
+      const confirmed = await confirmDialog({
+        title: "Remove project?",
+        message: `Remove "${displayName}" from the sidebar?\n\nFiles on disk will not be changed.`,
+        confirmLabel: "Remove",
+        cancelLabel: "Cancel",
+        destructive: true,
+      });
+      if (!confirmed) {
+        return;
+      }
+
+      const client = getHostRuntimeStore().getClient(serverId);
+      if (!client) {
+        toast.error("Host is not connected");
+        return;
+      }
+
+      setIsRemovingProject(true);
+      try {
+        for (const ws of project.workspaces) {
+          const payload = await client.archiveWorkspace(ws.workspaceId);
+          if (payload.error) {
+            throw new Error(payload.error);
+          }
+        }
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Failed to remove project");
+      } finally {
+        setIsRemovingProject(false);
+      }
+    })();
+  }, [isRemovingProject, serverId, displayName, toast, project.workspaces]);
+
   return (
     <View style={styles.projectBlock}>
       {rowModel.kind === "workspace_link" ? (
@@ -1625,6 +1540,8 @@ function ProjectBlock({
           isDragging={isDragging}
           dragHandleProps={dragHandleProps}
           isProjectActive={isProjectActive}
+          onRemoveProject={handleRemoveProject}
+          removeProjectStatus={isRemovingProject ? "pending" : "idle"}
         />
       ) : (
         <>
@@ -1643,7 +1560,10 @@ function ProjectBlock({
             onWorktreeCreated={onWorktreeCreated}
             drag={drag}
             isDragging={isDragging}
+            isArchiving={isRemovingProject}
             menuController={null}
+            onRemoveProject={handleRemoveProject}
+            removeProjectStatus={isRemovingProject ? "pending" : "idle"}
             dragHandleProps={dragHandleProps}
           />
 
@@ -2143,6 +2063,26 @@ const styles = StyleSheet.create((theme) => ({
   },
   projectIconActionButtonHidden: {
     opacity: 0,
+  },
+  projectTrailingActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 2,
+    flexShrink: 0,
+  },
+  projectKebabButton: {
+    width: 24,
+    height: 24,
+    borderRadius: theme.borderRadius.md,
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
+  projectKebabButtonHidden: {
+    opacity: 0,
+  },
+  projectKebabButtonHovered: {
+    backgroundColor: theme.colors.surface2,
   },
   projectTrailingControlSlot: {
     width: 24,
