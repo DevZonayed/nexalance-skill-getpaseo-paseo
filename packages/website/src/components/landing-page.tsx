@@ -6,13 +6,14 @@ import {
   appStoreUrl,
   playStoreUrl,
   webAppUrl,
-  downloadOptions,
+  getDownloadOptions,
   useDetectedPlatform,
   AppleIcon,
   AndroidIcon,
   TerminalIcon,
   GlobeIcon,
 } from "~/downloads";
+import { useRelease } from "~/routes/__root";
 import { Mic } from "lucide-react";
 import { HeroMockup } from "~/components/hero-mockup";
 import { ClaudeIcon } from "~/components/mockup";
@@ -772,8 +773,9 @@ function GetStarted() {
 }
 
 function DownloadButton() {
+  const { version } = useRelease();
   const detectedPlatform = useDetectedPlatform();
-  const primary = downloadOptions.find((o) => o.platform === detectedPlatform)!;
+  const primary = getDownloadOptions(version).find((o) => o.platform === detectedPlatform)!;
   const PrimaryIcon = primary.icon;
 
   return (
