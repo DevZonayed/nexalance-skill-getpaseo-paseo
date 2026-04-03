@@ -2003,17 +2003,53 @@ export class Session {
     });
   }
 
+  private async archiveStoredAgentForClose(
+    agentId: string,
+  ): Promise<{ agentId: string; archivedAt: string }> {
+    const existing = await this.agentStorage.get(agentId);
+    if (!existing) {
+      throw new Error(`Agent not found: ${agentId}`);
+    }
+
+    if (existing.archivedAt) {
+      return {
+        agentId,
+        archivedAt: existing.archivedAt,
+      };
+    }
+
+    const archivedAt = new Date().toISOString();
+    const normalizedStatus =
+      existing.lastStatus === "running" || existing.lastStatus === "initializing"
+        ? "idle"
+        : existing.lastStatus;
+
+    await this.agentStorage.upsert({
+      ...existing,
+      archivedAt,
+      updatedAt: archivedAt,
+      lastStatus: normalizedStatus,
+      requiresAttention: false,
+      attentionReason: null,
+      attentionTimestamp: null,
+    });
+
+    return { agentId, archivedAt };
+  }
+
   private async archiveAgentForClose(
     agentId: string,
   ): Promise<{ agentId: string; archivedAt: string }> {
     this.sessionLogger.info({ agentId }, `Archiving agent ${agentId}`);
 
-    if (this.agentManager.getAgent(agentId)) {
+    const liveAgent = this.agentManager.getAgent(agentId);
+    if (liveAgent) {
       await this.interruptAgentIfRunning(agentId);
       await this.agentManager.clearAgentAttention(agentId).catch(() => undefined);
+      await this.agentManager.archiveAgent(agentId);
+    } else {
+      await this.archiveStoredAgentForClose(agentId);
     }
-
-    const { archivedAt } = await this.agentManager.archiveAgent(agentId);
     const archivedRecord = await this.agentStorage.get(agentId);
     if (!archivedRecord) {
       throw new Error(`Agent not found in storage after archive: ${agentId}`);
@@ -2043,7 +2079,11 @@ export class Session {
       await this.emitWorkspaceUpdateForCwd(payload.cwd);
     }
 
-    return { agentId, archivedAt };
+    if (!archivedRecord.archivedAt) {
+      throw new Error(`Agent missing archivedAt after archive: ${agentId}`);
+    }
+
+    return { agentId, archivedAt: archivedRecord.archivedAt };
   }
 
   private async handleCloseItemsRequest(msg: CloseItemsRequest): Promise<void> {

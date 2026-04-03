@@ -193,6 +193,9 @@ describe("workspace aggregation", () => {
       agentStorage: {
         list: async () => [archivedRecord],
         get: async (agentId: string) => (agentId === archivedRecord.id ? archivedRecord : null),
+        upsert: async (record: typeof archivedRecord) => {
+          Object.assign(archivedRecord, record);
+        },
       } as any,
       projectRegistry: {
         initialize: async () => {},
@@ -426,6 +429,165 @@ describe("workspace aggregation", () => {
         archivedAt,
       },
     });
+  });
+
+  test("close_items_request archives stored agents that are not currently loaded", async () => {
+    const emitted: Array<{ type: string; payload: any }> = [];
+    const sessionLogger = {
+      child: () => sessionLogger,
+      trace: vi.fn(),
+      debug: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+    };
+    const liveArchivedAt = "2026-04-01T00:00:00.000Z";
+    const storedAgentId = "agent-stored";
+    const liveRecord = {
+      ...makeAgent({
+        id: "agent-live",
+        cwd: "/tmp/repo",
+        status: "idle",
+        updatedAt: "2026-03-01T12:00:00.000Z",
+      }),
+      archivedAt: null as string | null,
+    };
+    const storedRecord = {
+      ...makeAgent({
+        id: storedAgentId,
+        cwd: "/tmp/repo",
+        status: "idle",
+        updatedAt: "2026-03-01T12:05:00.000Z",
+      }),
+      archivedAt: null as string | null,
+    };
+    const upsertStoredRecord = vi.fn(async (record: typeof storedRecord) => {
+      if (record.id === storedAgentId) {
+        storedRecord.archivedAt = record.archivedAt;
+        storedRecord.updatedAt = record.updatedAt;
+        storedRecord.status = record.status;
+        storedRecord.requiresAttention = record.requiresAttention;
+        storedRecord.attentionReason = record.attentionReason;
+        storedRecord.attentionTimestamp = record.attentionTimestamp;
+      }
+    });
+
+    const session = new Session({
+      clientId: "test-client",
+      onMessage: (message) => emitted.push(message as any),
+      logger: sessionLogger as any,
+      downloadTokenStore: {} as any,
+      pushTokenStore: {} as any,
+      paseoHome: "/tmp/paseo-test",
+      agentManager: {
+        subscribe: () => () => {},
+        listAgents: () => [],
+        getAgent: (agentId: string) => (agentId === "agent-live" ? { id: agentId } : null),
+        archiveAgent: async (agentId: string) => {
+          if (agentId !== "agent-live") {
+            throw new Error(`Unexpected live archive: ${agentId}`);
+          }
+          liveRecord.archivedAt = liveArchivedAt;
+          liveRecord.updatedAt = liveArchivedAt;
+          return { archivedAt: liveArchivedAt };
+        },
+        clearAgentAttention: async () => {},
+        notifyAgentState: () => {},
+      } as any,
+      agentStorage: {
+        list: async () => [],
+        get: async (agentId: string) => {
+          if (agentId === "agent-live") {
+            return liveRecord;
+          }
+          if (agentId === storedAgentId) {
+            return storedRecord;
+          }
+          return null;
+        },
+        upsert: upsertStoredRecord,
+      } as any,
+      projectRegistry: {
+        initialize: async () => {},
+        existsOnDisk: async () => true,
+        list: async () => [],
+        get: async () => null,
+        upsert: async () => {},
+        archive: async () => {},
+        remove: async () => {},
+      } as any,
+      workspaceRegistry: {
+        initialize: async () => {},
+        existsOnDisk: async () => true,
+        list: async () => [],
+        get: async () => null,
+        upsert: async () => {},
+        archive: async () => {},
+        remove: async () => {},
+      } as any,
+      checkoutDiffManager: {
+        subscribe: async () => ({
+          initial: { cwd: "/tmp", files: [], error: null },
+          unsubscribe: () => {},
+        }),
+        scheduleRefreshForCwd: () => {},
+        getMetrics: () => ({
+          checkoutDiffTargetCount: 0,
+          checkoutDiffSubscriptionCount: 0,
+          checkoutDiffWatcherCount: 0,
+          checkoutDiffFallbackRefreshTargetCount: 0,
+        }),
+        dispose: () => {},
+      } as any,
+      createAgentMcpTransport: async () => {
+        throw new Error("not used");
+      },
+      stt: null,
+      tts: null,
+      terminalManager: {
+        killTerminal: vi.fn(),
+        subscribeTerminalsChanged: () => () => {},
+      } as any,
+    }) as any;
+
+    session.agentUpdatesSubscription = {
+      subscriptionId: "sub-agents",
+      filter: { includeArchived: true },
+      isBootstrapping: false,
+      pendingUpdatesByAgentId: new Map(),
+    };
+    session.buildProjectPlacement = async (cwd: string) => ({
+      projectKey: cwd,
+      projectName: "repo",
+      checkout: {
+        cwd,
+        isGit: false,
+        currentBranch: null,
+        remoteUrl: null,
+        isPaseoOwnedWorktree: false,
+        mainRepoRoot: null,
+      },
+    });
+    session.interruptAgentIfRunning = vi.fn();
+
+    await session.handleMessage({
+      type: "close_items_request",
+      agentIds: ["agent-live", storedAgentId],
+      terminalIds: [],
+      requestId: "req-close-stored",
+    });
+
+    expect(upsertStoredRecord).toHaveBeenCalledTimes(1);
+    expect(storedRecord.archivedAt).toEqual(expect.any(String));
+    expect(emitted.find((message) => message.type === "close_items_response")?.payload).toEqual({
+      agents: [
+        { agentId: "agent-live", archivedAt: liveArchivedAt },
+        { agentId: storedAgentId, archivedAt: storedRecord.archivedAt },
+      ],
+      terminals: [],
+      requestId: "req-close-stored",
+    });
+    expect(sessionLogger.warn).not.toHaveBeenCalled();
   });
 
   test("close_items_request continues after an archive failure", async () => {
