@@ -1,3 +1,4 @@
+npmRebuild: false
 appId: sh.paseo.desktop
 productName: Paseo
 executableName: Paseo
