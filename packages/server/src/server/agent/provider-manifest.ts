@@ -83,30 +83,6 @@ const CODEX_MODES: AgentProviderModeDefinition[] = [
   },
 ];
 
-const COPILOT_MODES: AgentProviderModeDefinition[] = [
-  {
-    id: "https://agentclientprotocol.com/protocol/session-modes#agent",
-    label: "Agent",
-    description: "Default agent mode for conversational interactions",
-    icon: "ShieldAlert",
-    colorTier: "moderate",
-  },
-  {
-    id: "https://agentclientprotocol.com/protocol/session-modes#plan",
-    label: "Plan",
-    description: "Plan mode for creating and executing multi-step plans",
-    icon: "ShieldCheck",
-    colorTier: "planning",
-  },
-  {
-    id: "https://agentclientprotocol.com/protocol/session-modes#autopilot",
-    label: "Autopilot",
-    description: "Autonomous mode that runs until task completion without user interaction",
-    icon: "ShieldOff",
-    colorTier: "dangerous",
-  },
-];
-
 const OPENCODE_MODES: AgentProviderModeDefinition[] = [
   {
     id: "build",

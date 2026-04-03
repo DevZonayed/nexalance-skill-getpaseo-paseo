@@ -548,7 +548,9 @@ export function createDaemonCommandHandlers(): Record<string, DesktopCommandHand
     },
     install_app_update: async () => {
       const currentVersion = await resolveCurrentUpdateVersion();
-      return downloadAndInstallUpdate(currentVersion);
+      return downloadAndInstallUpdate(currentVersion, async () => {
+        await stopDaemon();
+      });
     },
     get_local_daemon_version: () => getLocalDaemonVersion(),
   };
