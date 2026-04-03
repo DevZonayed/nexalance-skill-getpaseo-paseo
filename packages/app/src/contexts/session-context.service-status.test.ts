@@ -49,6 +49,31 @@ describe("patchWorkspaceServices", () => {
     expect(next.get("/repo/other")).toBe(other);
   });
 
+  it("patches the matching workspace when the update uses workspace directory identity", () => {
+    const current = new Map<string, WorkspaceDescriptor>([
+      [
+        "42",
+        workspace({
+          id: "42",
+          services: [],
+        }),
+      ],
+    ]);
+
+    current.set("42", {
+      ...current.get("42")!,
+      workspaceDirectory: "C:\\repo\\main\\",
+    });
+
+    const next = patchWorkspaceServices(current, {
+      workspaceId: "C:/repo/main",
+      services: [runningService],
+    });
+
+    expect(next).not.toBe(current);
+    expect(next.get("42")?.services).toEqual([runningService]);
+  });
+
   it("ignores updates for unknown workspaces", () => {
     const current = new Map<string, WorkspaceDescriptor>([
       ["/repo/main", workspace({ id: "/repo/main", services: [] })],

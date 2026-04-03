@@ -6,6 +6,7 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 
 import type { SessionOutboundMessage } from "./messages.js";
 import { ServiceRouteStore } from "./service-proxy.js";
+import * as worktreeBootstrap from "./worktree-bootstrap.js";
 import {
   createPaseoWorktreeInBackground,
   handleCreatePaseoWorktreeRequest,
@@ -732,6 +733,55 @@ describe("createPaseoWorktreeInBackground", () => {
 });
 
 describe("handleCreatePaseoWorktreeRequest", () => {
+  test("invokes worktree creation once for a create request", async () => {
+    const { tempDir, repoDir } = createGitRepo();
+    const paseoHome = path.join(tempDir, ".paseo");
+    const emitted: SessionOutboundMessage[] = [];
+    const createAgentWorktreeSpy = vi.spyOn(worktreeBootstrap, "createAgentWorktree");
+
+    try {
+      await handleCreatePaseoWorktreeRequest(
+        {
+          paseoHome,
+          sessionLogger: createLogger(),
+          emit: (message) => emitted.push(message),
+          registerPendingWorktreeWorkspace: vi.fn(async (options) => ({
+            workspaceId: options.worktreePath,
+            projectId: options.repoRoot,
+          })),
+          describeWorkspaceRecord: vi.fn(async (workspace) => ({
+            id: workspace.workspaceId,
+            projectId: workspace.projectId,
+            projectDisplayName: path.basename(repoDir),
+            projectRootPath: repoDir,
+            projectKind: "git",
+            workspaceKind: "worktree",
+            name: path.basename(workspace.workspaceId),
+            status: "done",
+            activityAt: null,
+          })),
+          createPaseoWorktreeInBackground: vi.fn(async () => {}),
+        },
+        {
+          type: "create_paseo_worktree_request",
+          cwd: repoDir,
+          worktreeSlug: "single-call",
+          requestId: "req-single-call",
+        },
+      );
+
+      expect(createAgentWorktreeSpy).toHaveBeenCalledTimes(1);
+      const response = emitted.find(
+        (message): message is Extract<SessionOutboundMessage, { type: "create_paseo_worktree_response" }> =>
+          message.type === "create_paseo_worktree_response",
+      );
+      expect(response?.payload.error).toBeNull();
+    } finally {
+      createAgentWorktreeSpy.mockRestore();
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
   test("creates the worktree before emitting the response", async () => {
     const { tempDir, repoDir } = createGitRepo();
     const paseoHome = path.join(tempDir, ".paseo");

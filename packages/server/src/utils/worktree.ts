@@ -1,4 +1,4 @@
-import { exec, spawn } from "child_process";
+import { exec, execFile, spawn } from "child_process";
 import { promisify } from "util";
 import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, statSync } from "fs";
 import { join, basename, dirname, resolve, sep } from "path";
@@ -7,6 +7,7 @@ import { createHash } from "node:crypto";
 import * as pty from "node-pty";
 import { createNameId } from "mnemonic-id";
 import stripAnsi from "strip-ansi";
+import { buildStringCommandShellInvocation } from "./string-command-shell.js";
 import {
   normalizeBaseRefName,
   readPaseoWorktreeMetadata,
@@ -27,6 +28,7 @@ interface PaseoConfig {
 }
 
 const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 const READ_ONLY_GIT_ENV: NodeJS.ProcessEnv = {
   ...process.env,
   GIT_OPTIONAL_LOCKS: "0",
@@ -292,11 +294,11 @@ async function execSetupCommand(
   options: { cwd: string; env: NodeJS.ProcessEnv },
 ): Promise<WorktreeSetupCommandResult> {
   const startedAt = Date.now();
+  const shellInvocation = buildStringCommandShellInvocation({ command });
   try {
-    const { stdout, stderr } = await execAsync(command, {
+    const { stdout, stderr } = await execFileAsync(shellInvocation.shell, shellInvocation.args, {
       cwd: options.cwd,
       env: options.env,
-      shell: "/bin/bash",
     });
     return {
       command,
@@ -389,7 +391,8 @@ async function execSetupCommandStreamed(options: {
     });
 
     const spawnWithPipes = () => {
-      const child = spawn("/bin/bash", ["-lc", options.command], {
+      const shellInvocation = buildStringCommandShellInvocation({ command: options.command });
+      const child = spawn(shellInvocation.shell, shellInvocation.args, {
         cwd: options.cwd,
         env: options.env,
         stdio: ["ignore", "pipe", "pipe"],
@@ -415,7 +418,8 @@ async function execSetupCommandStreamed(options: {
 
     try {
       ensureNodePtySpawnHelperExecutableForCurrentPlatform();
-      const terminal = pty.spawn("/bin/bash", ["-lc", options.command], {
+      const shellInvocation = buildStringCommandShellInvocation({ command: options.command });
+      const terminal = pty.spawn(shellInvocation.shell, shellInvocation.args, {
         cwd: options.cwd,
         env: options.env,
         name: "xterm-color",

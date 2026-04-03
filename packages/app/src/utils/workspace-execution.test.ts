@@ -3,6 +3,7 @@ import type { WorkspaceDescriptor } from "@/stores/session-store";
 import {
   getWorkspaceExecutionAuthority,
   requireWorkspaceExecutionAuthority,
+  resolveWorkspaceMapKeyByIdentity,
   resolveWorkspaceIdByExecutionDirectory,
   resolveWorkspaceRouteId,
 } from "./workspace-execution";
@@ -69,6 +70,46 @@ describe("resolveWorkspaceIdByExecutionDirectory", () => {
         workspaceDirectory: "/repo",
       }),
     ).toBeNull();
+  });
+});
+
+describe("resolveWorkspaceMapKeyByIdentity", () => {
+  it("returns the existing map key when the identity already matches a key", () => {
+    const workspaces = new Map<string, WorkspaceDescriptor>([
+      [
+        "workspace-1",
+        createWorkspace({
+          id: "workspace-1",
+          workspaceDirectory: "/repo/.paseo/worktrees/feature",
+        }),
+      ],
+    ]);
+
+    expect(
+      resolveWorkspaceMapKeyByIdentity({
+        workspaces,
+        workspaceIdentity: "workspace-1",
+      }),
+    ).toBe("workspace-1");
+  });
+
+  it("resolves a workspace directory identity to the canonical map key", () => {
+    const workspaces = new Map<string, WorkspaceDescriptor>([
+      [
+        "workspace-1",
+        createWorkspace({
+          id: "workspace-1",
+          workspaceDirectory: "C:\\repo\\feature\\",
+        }),
+      ],
+    ]);
+
+    expect(
+      resolveWorkspaceMapKeyByIdentity({
+        workspaces,
+        workspaceIdentity: "C:/repo/feature",
+      }),
+    ).toBe("workspace-1");
   });
 });
 

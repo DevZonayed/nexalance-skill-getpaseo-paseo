@@ -44,6 +44,36 @@ export function resolveWorkspaceIdByExecutionDirectory(input: {
   return null;
 }
 
+export function resolveWorkspaceMapKeyByIdentity(input: {
+  workspaces: Map<string, WorkspaceDescriptor> | null | undefined;
+  workspaceIdentity: string | null | undefined;
+}): string | null {
+  const normalizedWorkspaceIdentity = normalizeWorkspaceIdentity(input.workspaceIdentity);
+  if (!normalizedWorkspaceIdentity) {
+    return null;
+  }
+
+  const workspaces = input.workspaces;
+  if (!workspaces) {
+    return null;
+  }
+
+  if (workspaces.has(normalizedWorkspaceIdentity)) {
+    return normalizedWorkspaceIdentity;
+  }
+
+  for (const [workspaceKey, workspace] of workspaces) {
+    if (
+      normalizeWorkspaceIdentity(workspace.id) === normalizedWorkspaceIdentity ||
+      normalizeWorkspaceIdentity(workspace.workspaceDirectory) === normalizedWorkspaceIdentity
+    ) {
+      return workspaceKey;
+    }
+  }
+
+  return null;
+}
+
 export function getWorkspaceExecutionAuthority(
   input:
     | {
@@ -58,11 +88,14 @@ export function getWorkspaceExecutionAuthority(
     "workspace" in input
       ? input.workspace
       : (() => {
-          const normalizedWorkspaceId = normalizeWorkspaceIdentity(input.workspaceId);
-          if (!normalizedWorkspaceId) {
+          const workspaceKey = resolveWorkspaceMapKeyByIdentity({
+            workspaces: input.workspaces,
+            workspaceIdentity: input.workspaceId,
+          });
+          if (!workspaceKey) {
             return null;
           }
-          return input.workspaces?.get(normalizedWorkspaceId) ?? null;
+          return input.workspaces?.get(workspaceKey) ?? null;
         })();
 
   if ("workspaces" in input) {
