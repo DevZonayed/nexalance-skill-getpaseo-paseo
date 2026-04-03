@@ -230,6 +230,7 @@ function HostRuntimeBootstrapProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let cancelled = false;
+    let cancelAnyOnline: (() => void) | null = null;
     const shouldManageDesktop = shouldUseDesktopDaemon();
     const store = getHostRuntimeStore();
 
@@ -240,28 +241,53 @@ function HostRuntimeBootstrapProvider({ children }: { children: ReactNode }) {
       if (isDesktopManaged) {
         setPhase("starting-daemon");
         setError(null);
-        const bootstrapResult = await store.bootstrapDesktop();
-        if (!bootstrapResult.ok) {
-          if (!cancelled) {
-            setPhase("error");
-            setError(bootstrapResult.error);
+
+        let raceSettled = false;
+
+        const anyOnline = store.waitForAnyConnectionOnline();
+        cancelAnyOnline = anyOnline.cancel;
+
+        const bootstrapPromise = (async (): Promise<
+          { type: "online" } | { type: "error"; error: string }
+        > => {
+          try {
+            const bootstrapResult = await store.bootstrapDesktop();
+            if (!bootstrapResult.ok) {
+              return { type: "error", error: bootstrapResult.error };
+            }
+            if (!cancelled && !raceSettled) {
+              setPhase("connecting");
+            }
+            await store.addConnectionFromListenAndWaitForOnline({
+              listenAddress: bootstrapResult.listenAddress,
+              serverId: bootstrapResult.serverId,
+              hostname: bootstrapResult.hostname,
+            });
+            return { type: "online" };
+          } catch (err) {
+            return {
+              type: "error",
+              error: err instanceof Error ? err.message : String(err),
+            };
           }
-          return;
-        }
+        })();
 
-        if (cancelled) {
-          return;
-        }
+        const result = await Promise.race([
+          anyOnline.promise.then((): { type: "online" } => ({ type: "online" })),
+          bootstrapPromise,
+        ]);
 
-        setPhase("connecting");
-        await store.addConnectionFromListenAndWaitForOnline({
-          listenAddress: bootstrapResult.listenAddress,
-          serverId: bootstrapResult.serverId,
-          hostname: bootstrapResult.hostname,
-        });
+        raceSettled = true;
+        anyOnline.cancel();
+
         if (!cancelled) {
-          setPhase("online");
-          setError(null);
+          if (result.type === "online") {
+            setPhase("online");
+            setError(null);
+          } else {
+            setPhase("error");
+            setError(result.error);
+          }
         }
       } else {
         void store.bootstrap({ manageBuiltInDaemon: settings.manageBuiltInDaemon });
@@ -288,6 +314,7 @@ function HostRuntimeBootstrapProvider({ children }: { children: ReactNode }) {
 
     return () => {
       cancelled = true;
+      cancelAnyOnline?.();
     };
   }, [retryToken]);
 

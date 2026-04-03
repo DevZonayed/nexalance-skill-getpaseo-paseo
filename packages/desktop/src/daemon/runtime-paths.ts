@@ -1,5 +1,5 @@
 import { existsSync, readFileSync } from "node:fs";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { app } from "electron";
@@ -246,44 +246,60 @@ export function runCliPassthroughCommand(args: string[]): number {
   return result.signal ? 1 : 0;
 }
 
-export function runCliTextCommand(args: string[]): string {
-  const invocation = createCliInvocation(args);
-  const result = spawnSync(invocation.command, invocation.args, {
-    env: invocation.env,
-    encoding: "utf-8",
-    stdio: ["ignore", "pipe", "pipe"],
+function spawnAsync(
+  command: string,
+  args: string[],
+  options: { env: NodeJS.ProcessEnv },
+): Promise<{ stdout: string; stderr: string; exitCode: number | null }> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, {
+      env: options.env,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+
+    let stdout = "";
+    let stderr = "";
+
+    child.stdout.on("data", (data: Buffer) => {
+      stdout += data.toString();
+    });
+    child.stderr.on("data", (data: Buffer) => {
+      stderr += data.toString();
+    });
+
+    child.on("error", reject);
+    child.on("close", (exitCode) => {
+      resolve({ stdout, stderr, exitCode });
+    });
   });
-
-  if (result.error) {
-    throw result.error;
-  }
-
-  if (result.status !== 0) {
-    const stderr = typeof result.stderr === "string" ? result.stderr.trim() : "";
-    throw new Error(stderr.length > 0 ? stderr : `CLI command failed with exit code ${result.status}`);
-  }
-
-  return typeof result.stdout === "string" ? result.stdout.trimEnd() : "";
 }
 
-export function runCliJsonCommand(args: string[]): unknown {
+export async function runCliTextCommand(args: string[]): Promise<string> {
   const invocation = createCliInvocation(args);
-  const result = spawnSync(invocation.command, invocation.args, {
+  const result = await spawnAsync(invocation.command, invocation.args, {
     env: invocation.env,
-    encoding: "utf-8",
-    stdio: ["ignore", "pipe", "pipe"],
   });
 
-  if (result.error) {
-    throw result.error;
+  if (result.exitCode !== 0) {
+    const stderr = result.stderr.trim();
+    throw new Error(stderr.length > 0 ? stderr : `CLI command failed with exit code ${result.exitCode}`);
   }
 
-  if (result.status !== 0) {
-    const stderr = typeof result.stderr === "string" ? result.stderr.trim() : "";
-    throw new Error(stderr.length > 0 ? stderr : `CLI command failed with exit code ${result.status}`);
+  return result.stdout.trimEnd();
+}
+
+export async function runCliJsonCommand(args: string[]): Promise<unknown> {
+  const invocation = createCliInvocation(args);
+  const result = await spawnAsync(invocation.command, invocation.args, {
+    env: invocation.env,
+  });
+
+  if (result.exitCode !== 0) {
+    const stderr = result.stderr.trim();
+    throw new Error(stderr.length > 0 ? stderr : `CLI command failed with exit code ${result.exitCode}`);
   }
 
-  const stdout = typeof result.stdout === "string" ? result.stdout.trim() : "";
+  const stdout = result.stdout.trim();
   if (stdout.length === 0) {
     throw new Error("CLI command did not produce JSON output.");
   }

@@ -186,11 +186,14 @@ function resolveDesktopAppVersion(): string {
 // Daemon lifecycle
 // ---------------------------------------------------------------------------
 
-function resolveStatus(): DesktopDaemonStatus {
+async function resolveStatus(): Promise<DesktopDaemonStatus> {
   const home = getPaseoHome();
 
   try {
-    const payload = runCliJsonCommand(["daemon", "status", "--json"]) as Record<string, unknown>;
+    const payload = (await runCliJsonCommand(["daemon", "status", "--json"])) as Record<
+      string,
+      unknown
+    >;
     const localDaemon = typeof payload.localDaemon === "string" ? payload.localDaemon : "stopped";
     const running = localDaemon === "running";
 
@@ -227,7 +230,7 @@ function normalizeVersion(version: string | null): string | null {
 }
 
 async function startDaemon(): Promise<DesktopDaemonStatus> {
-  const current = resolveStatus();
+  const current = await resolveStatus();
   if (current.status === "running") {
     const appVersion = normalizeVersion(resolveDesktopAppVersion());
     const daemonVersion = normalizeVersion(current.version);
@@ -320,7 +323,7 @@ async function startDaemon(): Promise<DesktopDaemonStatus> {
 
   // Poll for PID file with server ID
   for (let attempt = 0; attempt < STARTUP_POLL_MAX_ATTEMPTS; attempt++) {
-    const status = resolveStatus();
+    const status = await resolveStatus();
     if (attempt === 0 || attempt === STARTUP_POLL_MAX_ATTEMPTS - 1 || attempt % 10 === 9) {
       logDesktopDaemonLifecycle("polling daemon status after detached start", {
         attempt: attempt + 1,
@@ -334,11 +337,11 @@ async function startDaemon(): Promise<DesktopDaemonStatus> {
     await sleep(STARTUP_POLL_INTERVAL_MS);
   }
 
-  return resolveStatus();
+  return await resolveStatus();
 }
 
 async function stopDaemon(): Promise<DesktopDaemonStatus> {
-  const status = resolveStatus();
+  const status = await resolveStatus();
   if (status.status !== "running" || !status.pid) return status;
 
   const pid = status.pid;
@@ -354,7 +357,7 @@ async function stopDaemon(): Promise<DesktopDaemonStatus> {
     throw new Error(`Timed out waiting for daemon PID ${pid} to stop`);
   }
 
-  return resolveStatus();
+  return await resolveStatus();
 }
 
 async function restartDaemon(): Promise<DesktopDaemonStatus> {
@@ -370,12 +373,12 @@ function getDaemonLogs(): DesktopDaemonLogs {
   };
 }
 
-function getCliDaemonStatus(): string {
-  return runCliTextCommand(["daemon", "status"]);
+async function getCliDaemonStatus(): Promise<string> {
+  return await runCliTextCommand(["daemon", "status"]);
 }
 
 async function getDaemonPairing(): Promise<DesktopPairingOffer> {
-  const status = resolveStatus();
+  const status = await resolveStatus();
   if (status.status !== "running") {
     return {
       relayEnabled: false,
@@ -385,7 +388,7 @@ async function getDaemonPairing(): Promise<DesktopPairingOffer> {
   }
 
   try {
-    const payload = runCliJsonCommand(["daemon", "pair", "--json"]);
+    const payload = await runCliJsonCommand(["daemon", "pair", "--json"]);
     if (!isRecord(payload)) {
       throw new Error("Daemon pairing response was not an object.");
     }
@@ -404,8 +407,8 @@ async function getDaemonPairing(): Promise<DesktopPairingOffer> {
   }
 }
 
-function getLocalDaemonVersion(): { version: string | null; error: string | null } {
-  const status = resolveStatus();
+async function getLocalDaemonVersion(): Promise<{ version: string | null; error: string | null }> {
+  const status = await resolveStatus();
   if (status.status !== "running") {
     return { version: null, error: "Daemon is not running." };
   }

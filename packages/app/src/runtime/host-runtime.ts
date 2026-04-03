@@ -1681,6 +1681,41 @@ export class HostRuntimeStore {
     };
   }
 
+  waitForAnyConnectionOnline(): { promise: Promise<void>; cancel: () => void } {
+    let unsubscribe: (() => void) | null = null;
+
+    const isAnyOnline = (): boolean => {
+      for (const host of this.hosts) {
+        const snapshot = this.getSnapshot(host.serverId);
+        if (snapshot?.connectionStatus === "online") return true;
+      }
+      return false;
+    };
+
+    const promise = new Promise<void>((resolve) => {
+      if (isAnyOnline()) {
+        resolve();
+        return;
+      }
+
+      unsubscribe = this.subscribeAll(() => {
+        if (isAnyOnline()) {
+          unsubscribe?.();
+          unsubscribe = null;
+          resolve();
+        }
+      });
+    });
+
+    return {
+      promise,
+      cancel: () => {
+        unsubscribe?.();
+        unsubscribe = null;
+      },
+    };
+  }
+
   ensureConnectedAll(): void {
     for (const controller of this.controllers.values()) {
       controller.ensureConnected();
