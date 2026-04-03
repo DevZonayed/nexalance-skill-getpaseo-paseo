@@ -29,6 +29,7 @@ import type {
   ListPersistedAgentsOptions,
   McpServerConfig,
   PersistedAgentDescriptor,
+  ToolCallTimelineItem,
 } from "../agent-sdk-types.js";
 import {
   applyProviderEnv,
@@ -199,6 +200,11 @@ function stringifyUnknownError(error: unknown): string {
   } catch {
     return String(error);
   }
+}
+
+function normalizeTurnFailureError(error: unknown): string {
+  const normalized = stringifyUnknownError(error).trim();
+  return normalized.length > 0 ? normalized : "Unknown error";
 }
 
 function isAlreadyPresentMcpError(error: unknown): boolean {
@@ -955,11 +961,10 @@ export function translateOpenCodeEvent(
       if (sessionId === state.sessionId) {
         state.streamedPartKeys.clear();
         state.partTypes.clear();
-        const error = props.error as string | undefined;
         events.push({
           type: "turn_failed",
           provider: "opencode",
-          error: error ?? "Unknown error",
+          error: normalizeTurnFailureError(props.error),
         });
       }
       break;
@@ -995,6 +1000,7 @@ class OpenCodeAgentSession implements AgentSession {
   private readonly subscribers = new Set<(event: AgentStreamEvent) => void>();
   private nextTurnOrdinal = 0;
   private activeForegroundTurnId: string | null = null;
+  private readonly runningToolCalls = new Map<string, ToolCallTimelineItem>();
 
   constructor(
     config: OpenCodeAgentConfig,
@@ -1112,11 +1118,19 @@ class OpenCodeAgentSession implements AgentSession {
   }
 
   async interrupt(): Promise<void> {
-    this.abortController?.abort();
+    const turnId = this.activeForegroundTurnId;
+    const turnAbortController = this.abortController;
+    turnAbortController?.abort();
     await this.client.session.abort({
       sessionID: this.sessionId,
       directory: this.config.cwd,
     });
+    if (turnId) {
+      this.finishForegroundTurn(
+        { type: "turn_canceled", provider: "opencode", reason: "interrupted" },
+        turnId,
+      );
+    }
   }
 
   async startTurn(
@@ -1127,7 +1141,9 @@ class OpenCodeAgentSession implements AgentSession {
       throw new Error("A foreground turn is already active");
     }
 
-    this.abortController = new AbortController();
+    this.runningToolCalls.clear();
+    const turnAbortController = new AbortController();
+    this.abortController = turnAbortController;
     await this.ensureMcpServersConfigured();
 
     const parts = this.buildPromptParts(prompt);
@@ -1170,7 +1186,7 @@ class OpenCodeAgentSession implements AgentSession {
     }
 
     if (promptResponse.error) {
-      const errorMsg = JSON.stringify(promptResponse.error);
+      const errorMsg = normalizeTurnFailureError(promptResponse.error);
       this.notifySubscribers({
         type: "turn_failed",
         provider: "opencode",
@@ -1181,7 +1197,7 @@ class OpenCodeAgentSession implements AgentSession {
 
     const turnId = this.createTurnId();
     this.activeForegroundTurnId = turnId;
-    void this.consumeEventStream();
+    void this.consumeEventStream(turnId, turnAbortController);
 
     return { turnId };
   }
@@ -1193,40 +1209,118 @@ class OpenCodeAgentSession implements AgentSession {
     };
   }
 
-  private async consumeEventStream(): Promise<void> {
+  private async consumeEventStream(
+    turnId: string,
+    turnAbortController: AbortController,
+  ): Promise<void> {
     const eventsResult = await this.client.event.subscribe({
       directory: this.config.cwd,
     });
 
     try {
       for await (const event of eventsResult.stream) {
-        if (this.abortController?.signal.aborted) {
+        if (turnAbortController.signal.aborted || this.activeForegroundTurnId !== turnId) {
           break;
         }
 
         const translated = this.translateEvent(event);
         for (const e of translated) {
-          this.notifySubscribers(e);
-          if (e.type === "turn_completed" || e.type === "turn_failed") {
-            this.activeForegroundTurnId = null;
+          if (this.activeForegroundTurnId !== turnId) {
             return;
           }
+          if (e.type === "timeline" && e.item.type === "tool_call") {
+            this.trackToolCall(e.item);
+          }
+          if (e.type === "turn_completed" || e.type === "turn_failed" || e.type === "turn_canceled") {
+            if (e.type === "turn_failed") {
+              this.finishForegroundTurn(
+                {
+                  type: "turn_failed",
+                  provider: "opencode",
+                  error: normalizeTurnFailureError(e.error),
+                },
+                turnId,
+              );
+            } else {
+              this.finishForegroundTurn(e, turnId);
+            }
+            return;
+          }
+          this.notifySubscribers(e, turnId);
         }
       }
     } catch (error) {
-      if (!this.abortController?.signal.aborted) {
-        this.notifySubscribers({
-          type: "turn_failed",
-          provider: "opencode",
-          error: error instanceof Error ? error.message : "Stream error",
-        });
-        this.activeForegroundTurnId = null;
+      if (!turnAbortController.signal.aborted && this.activeForegroundTurnId === turnId) {
+        this.finishForegroundTurn(
+          {
+            type: "turn_failed",
+            provider: "opencode",
+            error: normalizeTurnFailureError(error),
+          },
+          turnId,
+        );
+      }
+    } finally {
+      if (turnAbortController.signal.aborted) {
+        this.finishForegroundTurn(
+          {
+            type: "turn_canceled",
+            provider: "opencode",
+            reason: "interrupted",
+          },
+          turnId,
+        );
+      }
+      if (this.abortController === turnAbortController && this.activeForegroundTurnId !== turnId) {
+        this.abortController = null;
       }
     }
   }
 
-  private notifySubscribers(event: AgentStreamEvent): void {
-    const turnId = this.activeForegroundTurnId;
+  private finishForegroundTurn(
+    event: Extract<AgentStreamEvent, { type: "turn_completed" | "turn_failed" | "turn_canceled" }>,
+    turnId: string,
+  ): void {
+    if (this.activeForegroundTurnId !== turnId) {
+      return;
+    }
+    if (event.type === "turn_canceled" || event.type === "turn_failed") {
+      this.synthesizeInterruptedToolCalls(turnId);
+    } else {
+      this.runningToolCalls.clear();
+    }
+    this.activeForegroundTurnId = null;
+    this.notifySubscribers(event, turnId);
+  }
+
+  private trackToolCall(item: ToolCallTimelineItem): void {
+    if (item.status === "running") {
+      this.runningToolCalls.set(item.callId, item);
+      return;
+    }
+    this.runningToolCalls.delete(item.callId);
+  }
+
+  private synthesizeInterruptedToolCalls(turnId: string): void {
+    for (const item of this.runningToolCalls.values()) {
+      this.notifySubscribers(
+        {
+          type: "timeline",
+          provider: "opencode",
+          item: {
+            ...item,
+            status: "failed",
+            error: { message: "Tool execution aborted" },
+          },
+        },
+        turnId,
+      );
+    }
+    this.runningToolCalls.clear();
+  }
+
+  private notifySubscribers(event: AgentStreamEvent, turnIdOverride?: string): void {
+    const turnId = turnIdOverride ?? this.activeForegroundTurnId;
     const tagged = turnId ? { ...event, turnId } : event;
     for (const callback of this.subscribers) {
       try {
