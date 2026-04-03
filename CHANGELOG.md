@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.44 - 2026-04-03
+
+### Fixed
+- Desktop app now stops the daemon cleanly before auto-update restarts.
+- Disabled claude-acp and copilot providers from the agent registry.
+- Keyboard focus scope resolution now checks multiple candidates for broader compatibility.
+- OpenCode interrupt now reaches correct terminal state parity with tool-call flows.
+- Shell injection, symlink escape, and pairing endpoint security hardening.
+
 ## 0.1.43 - 2026-04-02
 
 ### Added
