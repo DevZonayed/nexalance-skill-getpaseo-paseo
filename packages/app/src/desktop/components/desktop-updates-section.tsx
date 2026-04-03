@@ -21,7 +21,7 @@ import { Button } from "@/components/ui/button";
 import { useAppSettings } from "@/hooks/use-settings";
 import { confirmDialog } from "@/utils/confirm-dialog";
 import { openExternalUrl } from "@/utils/open-external-url";
-import { getLocalDaemonVersion, isVersionMismatch } from "@/desktop/updates/desktop-updates";
+import { isVersionMismatch } from "@/desktop/updates/desktop-updates";
 import {
   getCliDaemonStatus,
   getCliSymlinkInstructions,
@@ -72,11 +72,11 @@ export function LocalDaemonSection({ appVersion, showLifecycleControls }: LocalD
     if (!showSection) {
       return Promise.resolve();
     }
-    return Promise.all([getDesktopDaemonStatus(), getDesktopDaemonLogs(), getLocalDaemonVersion()])
-      .then(([status, logs, version]) => {
+    return Promise.all([getDesktopDaemonStatus(), getDesktopDaemonLogs()])
+      .then(([status, logs]) => {
         setDaemonStatus(status);
         setDaemonLogs(logs);
-        setDaemonVersion(version.version);
+        setDaemonVersion(status.version);
         setStatusError(null);
       })
       .catch((error) => {

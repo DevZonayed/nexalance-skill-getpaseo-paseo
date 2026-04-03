@@ -10,6 +10,8 @@ export type DesktopDaemonStatus = {
   hostname: string | null;
   pid: number | null;
   home: string;
+  version: string | null;
+  desktopManaged: boolean;
   error: string | null;
 };
 
@@ -86,6 +88,8 @@ function parseDesktopDaemonStatus(raw: unknown): DesktopDaemonStatus {
     hostname: toStringOrNull(raw.hostname),
     pid: toNumberOrNull(raw.pid),
     home: toStringOrNull(raw.home) ?? "",
+    version: toStringOrNull(raw.version),
+    desktopManaged: raw.desktopManaged === true,
     error: toStringOrNull(raw.error),
   };
 }
