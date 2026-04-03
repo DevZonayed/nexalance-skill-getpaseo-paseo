@@ -138,18 +138,6 @@ export const AGENT_PROVIDER_DEFINITIONS: AgentProviderDefinition[] = [
     },
   },
   {
-    id: "claude-acp",
-    label: "Claude ACP",
-    description: "Claude Code via Agent Client Protocol with streaming, permissions, and session resume",
-    defaultModeId: "default",
-    modes: CLAUDE_MODES,
-    voice: {
-      enabled: true,
-      defaultModeId: "default",
-      defaultModel: "haiku",
-    },
-  },
-  {
     id: "codex",
     label: "Codex",
     description: "OpenAI's Codex workspace agent with sandbox controls and optional network access",
@@ -160,13 +148,6 @@ export const AGENT_PROVIDER_DEFINITIONS: AgentProviderDefinition[] = [
       defaultModeId: "read-only",
       defaultModel: "gpt-5.1-codex-mini",
     },
-  },
-  {
-    id: "copilot",
-    label: "Copilot",
-    description: "GitHub Copilot via Agent Client Protocol with dynamic modes and session support",
-    defaultModeId: "https://agentclientprotocol.com/protocol/session-modes#agent",
-    modes: COPILOT_MODES,
   },
   {
     id: "opencode",

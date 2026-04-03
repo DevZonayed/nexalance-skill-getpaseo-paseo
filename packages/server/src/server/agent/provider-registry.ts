@@ -8,9 +8,7 @@ import type { AgentProviderRuntimeSettingsMap } from "./provider-launch-config.j
 import type { Logger } from "pino";
 
 import { ClaudeAgentClient } from "./providers/claude-agent.js";
-import { ClaudeACPAgentClient } from "./providers/claude-acp-agent.js";
 import { CodexAppServerAgentClient } from "./providers/codex-app-server-agent.js";
-import { CopilotACPAgentClient } from "./providers/copilot-acp-agent.js";
 import { OpenCodeAgentClient, OpenCodeServerManager } from "./providers/opencode-agent.js";
 
 import {
@@ -43,17 +41,7 @@ const PROVIDER_CLIENT_FACTORIES: Record<string, ProviderClientFactory> = {
       logger,
       runtimeSettings: runtimeSettings?.claude,
     }),
-  "claude-acp": (logger, runtimeSettings) =>
-    new ClaudeACPAgentClient({
-      logger,
-      runtimeSettings: runtimeSettings?.["claude-acp"],
-    }),
   codex: (logger, runtimeSettings) => new CodexAppServerAgentClient(logger, runtimeSettings?.codex),
-  copilot: (logger, runtimeSettings) =>
-    new CopilotACPAgentClient({
-      logger,
-      runtimeSettings: runtimeSettings?.copilot,
-    }),
   opencode: (logger, runtimeSettings) =>
     new OpenCodeAgentClient(logger, runtimeSettings?.opencode),
 };
