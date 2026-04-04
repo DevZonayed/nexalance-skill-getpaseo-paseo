@@ -550,7 +550,6 @@ function ProvidersWrapper({ children }: { children: ReactNode }) {
   return (
     <VoiceProvider>
       <OfferLinkListener upsertDaemonFromOfferUrl={upsertConnectionFromOfferUrl} />
-      <OpenProjectListener />
       <HostSessionManager />
       <FaviconStatusSync />
       {children}
@@ -781,6 +780,7 @@ export default function RootLayout() {
                     <SidebarAnimationProvider>
                       <HorizontalScrollProvider>
                         <ToastProvider>
+                          <OpenProjectListener />
                           <AppWithSidebar>
                             <RootStack />
                           </AppWithSidebar>
