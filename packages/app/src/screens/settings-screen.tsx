@@ -184,13 +184,10 @@ interface HostsSectionProps {
   routeServerId: string;
   theme: ReturnType<typeof useUnistyles>["theme"];
   handleEditDaemon: (profile: HostProfile) => void;
-  setAddConnectionTargetServerId: (id: string | null) => void;
-  setPendingEditReopenServerId: (id: string | null) => void;
   setIsAddHostMethodVisible: (visible: boolean) => void;
   isAddHostMethodVisible: boolean;
   isDirectHostVisible: boolean;
   isPasteLinkVisible: boolean;
-  addConnectionTargetServerId: string | null;
   closeAddConnectionFlow: () => void;
   goBackToAddConnectionMethods: () => void;
   setIsDirectHostVisible: (visible: boolean) => void;
@@ -210,7 +207,6 @@ interface HostsSectionProps {
   handleSaveEditDaemon: (label: string) => Promise<void>;
   handleRemoveConnection: (serverId: string, connectionId: string) => Promise<void>;
   handleRemoveDaemon: (profile: HostProfile) => void;
-  handleAddConnectionFromModal: () => void;
   restartConfirmationMessage: string;
   waitForCondition: (
     predicate: () => boolean,
@@ -250,8 +246,6 @@ function HostsSection(props: HostsSectionProps) {
           style={styles.addButton}
           textStyle={styles.addButtonText}
           onPress={() => {
-            props.setAddConnectionTargetServerId(null);
-            props.setPendingEditReopenServerId(null);
             props.setIsAddHostMethodVisible(true);
           }}
         >
@@ -271,22 +265,17 @@ function HostsSection(props: HostsSectionProps) {
           props.setIsPasteLinkVisible(true);
         }}
         onScanQr={() => {
-          const targetServerId = props.addConnectionTargetServerId;
-          const source = targetServerId ? "editHost" : "settings";
-          const sourceServerId = props.routeServerId || targetServerId || undefined;
+          const sourceServerId = props.routeServerId || undefined;
           props.closeAddConnectionFlow();
           router.push({
             pathname: "/pair-scan",
-            params: targetServerId
-              ? { source, targetServerId, sourceServerId }
-              : { source, sourceServerId },
+            params: { source: "settings", sourceServerId },
           });
         }}
       />
 
       <AddHostModal
         visible={props.isDirectHostVisible}
-        targetServerId={props.addConnectionTargetServerId ?? undefined}
         onClose={props.closeAddConnectionFlow}
         onCancel={props.goBackToAddConnectionMethods}
         onSaved={({ serverId, hostname, isNewHost }) => {
@@ -298,7 +287,6 @@ function HostsSection(props: HostsSectionProps) {
 
       <PairLinkModal
         visible={props.isPasteLinkVisible}
-        targetServerId={props.addConnectionTargetServerId ?? undefined}
         onClose={props.closeAddConnectionFlow}
         onCancel={props.goBackToAddConnectionMethods}
         onSaved={({ serverId, hostname, isNewHost }) => {
@@ -378,7 +366,6 @@ function HostsSection(props: HostsSectionProps) {
         onSave={(label) => void props.handleSaveEditDaemon(label)}
         onRemoveConnection={props.handleRemoveConnection}
         onRemoveHost={props.handleRemoveDaemon}
-        onAddConnection={props.handleAddConnectionFromModal}
         restartConfirmationMessage={props.restartConfirmationMessage}
         waitForCondition={props.waitForCondition}
         isScreenMountedRef={props.isMountedRef}
@@ -741,10 +728,6 @@ export default function SettingsScreen() {
   const [isAddHostMethodVisible, setIsAddHostMethodVisible] = useState(false);
   const [isDirectHostVisible, setIsDirectHostVisible] = useState(false);
   const [isPasteLinkVisible, setIsPasteLinkVisible] = useState(false);
-  const [addConnectionTargetServerId, setAddConnectionTargetServerId] = useState<string | null>(
-    null,
-  );
-  const [pendingEditReopenServerId, setPendingEditReopenServerId] = useState<string | null>(null);
   const [pendingNameHost, setPendingNameHost] = useState<{
     serverId: string;
     hostname: string | null;
@@ -823,7 +806,6 @@ export default function SettingsScreen() {
     setIsAddHostMethodVisible(false);
     setIsDirectHostVisible(false);
     setIsPasteLinkVisible(false);
-    setAddConnectionTargetServerId(null);
   }, []);
 
   const goBackToAddConnectionMethods = useCallback(() => {
@@ -841,24 +823,6 @@ export default function SettingsScreen() {
     lastHandledEditHostRef.current = editHost;
     handleEditDaemon(profile);
   }, [daemons, handleEditDaemon, params.editHost]);
-
-  useEffect(() => {
-    if (!pendingEditReopenServerId) return;
-    if (isAddHostMethodVisible || isDirectHostVisible || isPasteLinkVisible) return;
-    const profile = daemons.find((daemon) => daemon.serverId === pendingEditReopenServerId) ?? null;
-    setPendingEditReopenServerId(null);
-    setAddConnectionTargetServerId(null);
-    if (profile) {
-      handleEditDaemon(profile);
-    }
-  }, [
-    daemons,
-    handleEditDaemon,
-    isAddHostMethodVisible,
-    isDirectHostVisible,
-    isPasteLinkVisible,
-    pendingEditReopenServerId,
-  ]);
 
   const handleSaveEditDaemon = useCallback(
     async (nextLabelRaw: string) => {
@@ -896,15 +860,6 @@ export default function SettingsScreen() {
     setEditingDaemon(null);
     setPendingRemoveHost(profile);
   }, []);
-
-  const handleAddConnectionFromModal = useCallback(() => {
-    if (!editingServerId) return;
-    const serverId = editingServerId;
-    setEditingDaemon(null);
-    setAddConnectionTargetServerId(serverId);
-    setPendingEditReopenServerId(serverId);
-    setIsAddHostMethodVisible(true);
-  }, [editingServerId]);
 
   const handleThemeChange = useCallback(
     (newTheme: AppSettings["theme"]) => {
@@ -951,13 +906,10 @@ export default function SettingsScreen() {
     routeServerId,
     theme,
     handleEditDaemon,
-    setAddConnectionTargetServerId,
-    setPendingEditReopenServerId,
     setIsAddHostMethodVisible,
     isAddHostMethodVisible,
     isDirectHostVisible,
     isPasteLinkVisible,
-    addConnectionTargetServerId,
     closeAddConnectionFlow,
     goBackToAddConnectionMethods,
     setIsDirectHostVisible,
@@ -977,7 +929,6 @@ export default function SettingsScreen() {
     handleSaveEditDaemon,
     handleRemoveConnection,
     handleRemoveDaemon,
-    handleAddConnectionFromModal,
     restartConfirmationMessage: "This will restart the daemon. The app will reconnect automatically.",
     waitForCondition,
     isMountedRef,
@@ -1042,7 +993,6 @@ interface HostDetailModalProps {
   onSave: (label: string) => void;
   onRemoveConnection: (serverId: string, connectionId: string) => Promise<void>;
   onRemoveHost: (host: HostProfile) => void;
-  onAddConnection: () => void;
   restartConfirmationMessage: string;
   waitForCondition: (
     predicate: () => boolean,
@@ -1060,7 +1010,6 @@ function HostDetailModal({
   onSave,
   onRemoveConnection,
   onRemoveHost,
-  onAddConnection,
   restartConfirmationMessage,
   waitForCondition,
   isScreenMountedRef,
@@ -1291,15 +1240,6 @@ function HostDetailModal({
                   />
                 );
               })}
-              <Button
-                variant="outline"
-                size="md"
-                style={styles.addButton}
-                textStyle={styles.addButtonText}
-                onPress={onAddConnection}
-              >
-                + Add connection
-              </Button>
             </View>
           </View>
         ) : null}
