@@ -1,72 +1,7 @@
-import { existsSync, statSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { spawn } from "node:child_process";
 import { homedir } from "node:os";
 import path from "node:path";
-
-const DESKTOP_GUI_FLAG = "--open-project";
-
-export function isPathLikeArg(arg: string): boolean {
-  return (
-    arg === "." ||
-    arg === ".." ||
-    arg.startsWith("./") ||
-    arg.startsWith("../") ||
-    arg.startsWith("/") ||
-    arg === "~" ||
-    arg.startsWith("~/") ||
-    /^[A-Za-z]:[\\/]/.test(arg)
-  );
-}
-
-export function isExistingDirectoryArg(arg: string): boolean {
-  const absolutePath = path.resolve(expandUserPath(arg));
-
-  if (!existsSync(absolutePath)) {
-    return false;
-  }
-
-  return statSync(absolutePath).isDirectory();
-}
-
-export function shouldOpenProjectArg(input: {
-  arg: string;
-  knownCommands: ReadonlySet<string>;
-}): boolean {
-  if (input.arg.startsWith("-")) {
-    return false;
-  }
-
-  if (input.knownCommands.has(input.arg)) {
-    return false;
-  }
-
-  return isPathLikeArg(input.arg) || isExistingDirectoryArg(input.arg);
-}
-
-function expandUserPath(inputPath: string): string {
-  if (inputPath === "~") {
-    return homedir();
-  }
-  if (inputPath.startsWith("~/")) {
-    return path.join(homedir(), inputPath.slice(2));
-  }
-  return inputPath;
-}
-
-function resolveProjectDirectory(inputPath: string): string {
-  const absolutePath = path.resolve(expandUserPath(inputPath));
-
-  if (!existsSync(absolutePath)) {
-    throw new Error(`Path does not exist: ${absolutePath}`);
-  }
-
-  const stat = statSync(absolutePath);
-  if (!stat.isDirectory()) {
-    throw new Error(`Not a directory: ${absolutePath}`);
-  }
-
-  return absolutePath;
-}
 
 function findDesktopApp(): string | null {
   if (process.platform === "darwin") {
@@ -113,17 +48,25 @@ function findDesktopApp(): string | null {
   return null;
 }
 
+function cleanEnvForDesktopLaunch(): NodeJS.ProcessEnv {
+  const env = { ...process.env };
+  // The CLI runs via ELECTRON_RUN_AS_NODE=1. On Linux/Windows the spawned
+  // desktop process inherits the env directly, so we must strip it or the
+  // desktop app would start as a bare Node process instead of Electron.
+  delete env.ELECTRON_RUN_AS_NODE;
+  return env;
+}
+
 function spawnDetached(command: string, args: string[]): void {
   spawn(command, args, {
     detached: true,
     stdio: "ignore",
+    env: cleanEnvForDesktopLaunch(),
   }).unref();
 }
 
-export async function openDesktopWithProject(pathArg: string): Promise<void> {
+export async function openDesktopWithProject(projectPath: string): Promise<void> {
   try {
-    const projectPath = resolveProjectDirectory(pathArg);
-
     if (process.env.PASEO_DESKTOP_CLI === "1") {
       throw new Error(
         "Cannot open a desktop project while running in desktop CLI passthrough mode.",
@@ -138,11 +81,16 @@ export async function openDesktopWithProject(pathArg: string): Promise<void> {
     }
 
     if (process.platform === "darwin") {
-      spawnDetached("open", ["-a", desktopApp, "--args", DESKTOP_GUI_FLAG, projectPath]);
+      // -n forces a new instance even if the app is already running.
+      // The new instance hits requestSingleInstanceLock(), fails, and relays
+      // the argv to the first instance via the second-instance event.
+      // -g keeps the terminal in the foreground (better CLI UX).
+      // Without -n, macOS just activates the existing window and drops --args.
+      spawnDetached("open", ["-n", "-g", "-a", desktopApp, "--args", projectPath]);
       return;
     }
 
-    spawnDetached(desktopApp, [DESKTOP_GUI_FLAG, projectPath]);
+    spawnDetached(desktopApp, [projectPath]);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     process.stderr.write(`${message}\n`);

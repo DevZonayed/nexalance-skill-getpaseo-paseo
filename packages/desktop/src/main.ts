@@ -4,7 +4,7 @@ log.initialize({ spyRendererConsole: true });
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { existsSync } from "node:fs";
-import { app, BrowserWindow, nativeImage, net, protocol } from "electron";
+import { app, BrowserWindow, ipcMain, nativeImage, net, protocol } from "electron";
 import { registerDaemonManager } from "./daemon/daemon-manager.js";
 import {
   parseCliPassthroughArgsFromArgv,
@@ -34,10 +34,22 @@ const APP_SCHEME = "paseo";
 const OPEN_PROJECT_EVENT = "paseo:event:open-project";
 app.setName("Paseo");
 
-const pendingOpenProjectPath = parseOpenProjectPathFromArgv({
+let pendingOpenProjectPath = parseOpenProjectPathFromArgv({
   argv: process.argv,
   isDefaultApp: process.defaultApp,
-  cwd: process.cwd(),
+});
+
+log.info("[open-project] argv:", process.argv);
+log.info("[open-project] isDefaultApp:", process.defaultApp);
+log.info("[open-project] pendingOpenProjectPath:", pendingOpenProjectPath);
+
+// The renderer pulls the pending path on mount via IPC — this avoids
+// a race where the push event arrives before React registers its listener.
+ipcMain.handle("paseo:get-pending-open-project", () => {
+  log.info("[open-project] renderer requested pending path:", pendingOpenProjectPath);
+  const result = pendingOpenProjectPath;
+  pendingOpenProjectPath = null;
+  return result;
 });
 
 protocol.registerSchemesAsPrivileged([
@@ -136,10 +148,12 @@ async function createMainWindow(): Promise<void> {
 
 function sendOpenProjectEvent(win: BrowserWindow, projectPath: string): void {
   const send = () => {
+    log.info("[open-project] sending event to renderer:", projectPath);
     win.webContents.send(OPEN_PROJECT_EVENT, { path: projectPath });
   };
 
   if (win.webContents.isLoadingMainFrame()) {
+    log.info("[open-project] waiting for did-finish-load before sending event");
     win.webContents.once("did-finish-load", send);
     return;
   }
@@ -158,12 +172,13 @@ function setupSingleInstanceLock(): boolean {
     return false;
   }
 
-  app.on("second-instance", (_event, commandLine, workingDirectory) => {
+  app.on("second-instance", (_event, commandLine) => {
+    log.info("[open-project] second-instance commandLine:", commandLine);
     const openProjectPath = parseOpenProjectPathFromArgv({
       argv: commandLine,
       isDefaultApp: false,
-      cwd: workingDirectory || process.cwd(),
     });
+    log.info("[open-project] second-instance openProjectPath:", openProjectPath);
     const win = BrowserWindow.getAllWindows()[0];
     if (win) {
       win.show();
@@ -243,10 +258,6 @@ async function bootstrap(): Promise<void> {
   registerNotificationHandlers();
   registerOpenerHandlers();
   await createMainWindow();
-  const mainWindow = BrowserWindow.getAllWindows()[0];
-  if (mainWindow && pendingOpenProjectPath) {
-    sendOpenProjectEvent(mainWindow, pendingOpenProjectPath);
-  }
 
   app.on("activate", async () => {
     if (BrowserWindow.getAllWindows().length === 0) {

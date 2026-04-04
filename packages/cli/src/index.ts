@@ -1,15 +1,26 @@
 import { createCli } from "./cli.js";
-import { openDesktopWithProject, shouldOpenProjectArg } from "./commands/open.js";
+import { classifyInvocation } from "./classify.js";
+import { openDesktopWithProject } from "./commands/open.js";
 
 const program = createCli();
 const knownCommands = new Set(program.commands.map((command) => command.name()));
 
-const firstArg = process.argv[2];
-if (firstArg && shouldOpenProjectArg({ arg: firstArg, knownCommands })) {
-  await openDesktopWithProject(firstArg);
-} else {
-  if (process.argv.length <= 2) {
-    process.argv.push("onboard");
+const invocation = classifyInvocation({
+  argv: process.argv.slice(2),
+  knownCommands,
+  cwd: process.cwd(),
+});
+
+switch (invocation.kind) {
+  case "cli": {
+    const argv = [...process.argv.slice(0, 2), ...invocation.argv];
+    if (invocation.argv.length === 0) {
+      argv.push("onboard");
+    }
+    program.parse(argv, { from: "node" });
+    break;
   }
-  program.parse(process.argv, { from: "node" });
+  case "open-project":
+    await openDesktopWithProject(invocation.resolvedPath);
+    break;
 }

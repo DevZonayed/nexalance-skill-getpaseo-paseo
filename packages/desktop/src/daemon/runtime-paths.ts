@@ -76,7 +76,7 @@ function resolvePackagedAsarPath(): string {
 }
 
 function resolvePackagedNodeEntrypointRunnerPath(): string {
-  return path.join(resolvePackagedAsarPath(), "dist", "daemon", "node-entrypoint-runner.js");
+  return path.join(process.resourcesPath, "app.asar.unpacked", "dist", "daemon", "node-entrypoint-runner.js");
 }
 
 function assertPathExists(input: { label: string; filePath: string }): string {

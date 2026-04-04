@@ -634,6 +634,22 @@ function OpenProjectListener() {
       void openProject(pathToOpen).catch(() => undefined);
     };
 
+    // Pull any path that was passed on cold start (before the listener existed).
+    // Store in the ref even if this effect instance is disposed — the next
+    // effect run picks it up via maybeOpenProject(pendingPathRef.current).
+    void getDesktopHost()
+      ?.getPendingOpenProject?.()
+      ?.then((pending) => {
+        if (pending) {
+          pendingPathRef.current = pending;
+        }
+        if (!disposed && pending) {
+          maybeOpenProject(pending);
+        }
+      })
+      .catch(() => undefined);
+
+    // Listen for hot-start paths relayed via the second-instance event.
     void listenToDesktopEvent<OpenProjectEventPayload>("open-project", (payload) => {
       if (disposed) {
         return;
