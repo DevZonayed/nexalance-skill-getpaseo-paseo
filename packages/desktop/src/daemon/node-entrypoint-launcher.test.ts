@@ -102,6 +102,7 @@ describe("node-entrypoint-launcher", () => {
       ).toEqual({
         command: "/Applications/Paseo.app/Contents/MacOS/Paseo",
         args: [
+          "--disable-warning=DEP0040",
           "/Applications/Paseo.app/Contents/Resources/app.asar/dist/daemon/node-entrypoint-runner.js",
           "node-script",
           "/tmp/paseo-cli.js",
@@ -150,6 +151,7 @@ describe("node-entrypoint-launcher", () => {
       ).toEqual({
         command: "/Applications/Paseo.app/Contents/MacOS/Paseo",
         args: [
+          "--disable-warning=DEP0040",
           "/Applications/Paseo.app/Contents/Resources/app.asar/dist/daemon/node-entrypoint-runner.js",
           "node-script",
           "/tmp/paseo-cli.js",
