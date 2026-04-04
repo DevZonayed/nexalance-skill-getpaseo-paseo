@@ -1,9 +1,15 @@
 #!/usr/bin/env npx zx
 
 import assert from "node:assert/strict";
+import { mkdir, mkdtemp } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { isPathLikeArg, openDesktopWithProject } from "../src/commands/open.ts";
+import {
+  isExistingDirectoryArg,
+  isPathLikeArg,
+  openDesktopWithProject,
+  shouldOpenProjectArg,
+} from "../src/commands/open.ts";
 
 console.log("📋 Phase 32: Open Project CLI Tests\n");
 
@@ -15,6 +21,25 @@ assert.equal(isPathLikeArg("~/app"), true);
 assert.equal(isPathLikeArg("run"), false);
 assert.equal(isPathLikeArg("foo"), false);
 console.log("  ✅ path-like detection matches the expected prefixes");
+
+console.log("  Testing existing directory detection and command precedence...");
+const existingProject = join(await mkdtemp(join(tmpdir(), "paseo-open-project-")), "project");
+await mkdir(existingProject);
+const originalCwd = process.cwd();
+process.chdir(join(existingProject, ".."));
+
+assert.equal(isExistingDirectoryArg("project"), true);
+assert.equal(
+  shouldOpenProjectArg({ arg: "project", knownCommands: new Set(["run", "status"]) }),
+  true,
+);
+assert.equal(
+  shouldOpenProjectArg({ arg: "run", knownCommands: new Set(["run", "status"]) }),
+  false,
+);
+
+process.chdir(originalCwd);
+console.log("  ✅ existing directories open as projects, but known commands still win");
 
 console.log("  Testing nonexistent project path errors...");
 const missingProject = join(tmpdir(), "paseo-open-project-missing");

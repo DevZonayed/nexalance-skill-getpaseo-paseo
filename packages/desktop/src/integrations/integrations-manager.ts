@@ -3,6 +3,7 @@ import path from "node:path";
 import os from "node:os";
 import { app } from "electron";
 import log from "electron-log/main";
+import { resolveCliInstallSourcePath } from "./cli-install-path.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -184,6 +185,13 @@ async function ensurePathInShellRc(): Promise<{ shellUpdated: boolean }> {
 export async function installCli(): Promise<InstallStatus> {
   const targetPath = getCliTargetPath();
   const shimPath = getBundledCliShimPath();
+  const installSourcePath = resolveCliInstallSourcePath({
+    platform: process.platform,
+    isPackaged: app.isPackaged,
+    executablePath: app.getPath("exe"),
+    shimPath,
+    appImagePath: process.env.APPIMAGE,
+  });
   const binDir = getLocalBinDir();
 
   await fs.mkdir(binDir, { recursive: true });
@@ -192,12 +200,12 @@ export async function installCli(): Promise<InstallStatus> {
     if (await pathOrSymlinkExists(targetPath)) {
       await fs.unlink(targetPath);
     }
-    await fs.copyFile(shimPath, targetPath);
+    await fs.copyFile(installSourcePath, targetPath);
   } else {
     if (await pathOrSymlinkExists(targetPath)) {
       await fs.unlink(targetPath);
     }
-    await fs.symlink(shimPath, targetPath);
+    await fs.symlink(installSourcePath, targetPath);
   }
 
   const { shellUpdated } = await ensurePathInShellRc();

@@ -27,35 +27,18 @@ import {
 } from "./features/notifications.js";
 import { registerOpenerHandlers } from "./features/opener.js";
 import { setupApplicationMenu } from "./features/menu.js";
+import { parseOpenProjectPathFromArgv } from "./open-project-routing.js";
 
 const DEV_SERVER_URL = process.env.EXPO_DEV_URL ?? "http://localhost:8081";
 const APP_SCHEME = "paseo";
 const OPEN_PROJECT_EVENT = "paseo:event:open-project";
-const OPEN_PROJECT_FLAG = "--open-project";
-const OPEN_PROJECT_IGNORED_ARG_PREFIXES = ["-psn_", "--no-sandbox"];
 app.setName("Paseo");
 
-function parseOpenProjectPath(argv: string[]): string | null {
-  const startIndex = process.defaultApp ? 2 : 1;
-
-  for (let index = startIndex; index < argv.length; index += 1) {
-    const arg = argv[index];
-    if (OPEN_PROJECT_IGNORED_ARG_PREFIXES.some((prefix) => arg.startsWith(prefix))) {
-      continue;
-    }
-
-    if (arg !== OPEN_PROJECT_FLAG) {
-      return null;
-    }
-
-    const pathArg = argv[index + 1];
-    return pathArg ? pathArg : null;
-  }
-
-  return null;
-}
-
-const pendingOpenProjectPath = parseOpenProjectPath(process.argv);
+const pendingOpenProjectPath = parseOpenProjectPathFromArgv({
+  argv: process.argv,
+  isDefaultApp: process.defaultApp,
+  cwd: process.cwd(),
+});
 
 protocol.registerSchemesAsPrivileged([
   { scheme: APP_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true } },
@@ -175,8 +158,12 @@ function setupSingleInstanceLock(): boolean {
     return false;
   }
 
-  app.on("second-instance", (_event, commandLine) => {
-    const openProjectPath = parseOpenProjectPath(commandLine);
+  app.on("second-instance", (_event, commandLine, workingDirectory) => {
+    const openProjectPath = parseOpenProjectPathFromArgv({
+      argv: commandLine,
+      isDefaultApp: false,
+      cwd: workingDirectory || process.cwd(),
+    });
     const win = BrowserWindow.getAllWindows()[0];
     if (win) {
       win.show();

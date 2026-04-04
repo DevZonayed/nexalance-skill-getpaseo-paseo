@@ -18,6 +18,31 @@ export function isPathLikeArg(arg: string): boolean {
   );
 }
 
+export function isExistingDirectoryArg(arg: string): boolean {
+  const absolutePath = path.resolve(expandUserPath(arg));
+
+  if (!existsSync(absolutePath)) {
+    return false;
+  }
+
+  return statSync(absolutePath).isDirectory();
+}
+
+export function shouldOpenProjectArg(input: {
+  arg: string;
+  knownCommands: ReadonlySet<string>;
+}): boolean {
+  if (input.arg.startsWith("-")) {
+    return false;
+  }
+
+  if (input.knownCommands.has(input.arg)) {
+    return false;
+  }
+
+  return isPathLikeArg(input.arg) || isExistingDirectoryArg(input.arg);
+}
+
 function expandUserPath(inputPath: string): string {
   if (inputPath === "~") {
     return homedir();

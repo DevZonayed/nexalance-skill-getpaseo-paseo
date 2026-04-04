@@ -1,10 +1,11 @@
 import { createCli } from "./cli.js";
-import { isPathLikeArg, openDesktopWithProject } from "./commands/open.js";
+import { openDesktopWithProject, shouldOpenProjectArg } from "./commands/open.js";
 
 const program = createCli();
+const knownCommands = new Set(program.commands.map((command) => command.name()));
 
 const firstArg = process.argv[2];
-if (firstArg && isPathLikeArg(firstArg)) {
+if (firstArg && shouldOpenProjectArg({ arg: firstArg, knownCommands })) {
   await openDesktopWithProject(firstArg);
 } else {
   if (process.argv.length <= 2) {
