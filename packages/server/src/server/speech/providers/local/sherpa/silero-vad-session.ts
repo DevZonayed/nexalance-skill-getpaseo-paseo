@@ -34,7 +34,7 @@ type SherpaVadModule = {
   CircularBuffer: new (capacity: number) => SherpaCircularBufferHandle;
 };
 
-function resolveBundledSileroVadModelPath(): string {
+export function resolveBundledSileroVadModelPath(): string {
   return fileURLToPath(new URL("./assets/silero_vad.onnx", import.meta.url));
 }
 
