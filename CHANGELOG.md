@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.46 - 2026-04-04
+
+### Fixed
+- Voice activation in packaged builds — Silero VAD model is now copied out of the Electron asar archive so native code can read it.
+- App version sent in probe client hello so the daemon's version gate no longer hides Pi/Copilot from reconnected sessions.
+- `worktreeRoot` schema made backward-compatible for old clients and daemons that don't send the field.
+- Punycode deprecation warning (DEP0040) suppressed in CLI and desktop daemon entrypoints.
+
 ## 0.1.45 - 2026-04-04
 
 ### Added
