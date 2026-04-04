@@ -3,7 +3,6 @@ import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 import {
   buildDeterministicWorkspaceTabId,
-  createLauncherId,
   normalizeWorkspaceTabTarget,
   workspaceTabTargetsEqual,
 } from "@/utils/workspace-tab-identity";
@@ -13,7 +12,6 @@ export type WorkspaceTabTarget =
   | { kind: "agent"; agentId: string }
   | { kind: "terminal"; terminalId: string }
   | { kind: "file"; path: string }
-  | { kind: "launcher"; launcherId: string }
   | { kind: "setup"; workspaceId: string };
 
 export type WorkspaceTab = {
@@ -84,7 +82,6 @@ type WorkspaceTabsState = {
     workspaceId: string;
     target: WorkspaceTabTarget;
   }) => string | null;
-  openLauncherTab: (input: { serverId: string; workspaceId: string }) => string | null;
   openOrFocusTab: (input: {
     serverId: string;
     workspaceId: string;
@@ -170,13 +167,6 @@ export const useWorkspaceTabsStore = create<WorkspaceTabsState>()(
         });
 
         return resolvedTabId;
-      },
-      openLauncherTab: ({ serverId, workspaceId }) => {
-        return get().openOrFocusTab({
-          serverId,
-          workspaceId,
-          target: { kind: "launcher", launcherId: createLauncherId() },
-        });
       },
       openOrFocusTab: ({ serverId, workspaceId, target }) => {
         const tabId = get().ensureTab({ serverId, workspaceId, target });

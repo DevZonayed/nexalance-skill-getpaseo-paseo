@@ -7,6 +7,7 @@ import {
   buildWorkspaceTabPersistenceKey,
   useWorkspaceLayoutStore,
 } from "@/stores/workspace-layout-store";
+import { generateDraftId } from "@/stores/draft-keys";
 import { buildHostWorkspaceRoute } from "@/utils/host-routes";
 
 interface OpenProjectDirectlyInput {
@@ -16,7 +17,7 @@ interface OpenProjectDirectlyInput {
   client: Pick<DaemonClient, "openProject"> | null;
   mergeWorkspaces: (serverId: string, workspaces: Iterable<WorkspaceDescriptor>) => void;
   setHasHydratedWorkspaces: (serverId: string, hydrated: boolean) => void;
-  openLauncherTab: (workspaceKey: string) => string | null;
+  openDraftTab: (workspaceKey: string) => string | null;
   replaceRoute: (route: string) => void;
 }
 
@@ -44,7 +45,7 @@ export async function openProjectDirectly(input: OpenProjectDirectlyInput): Prom
     return false;
   }
 
-  input.openLauncherTab(workspaceKey);
+  input.openDraftTab(workspaceKey);
   input.replaceRoute(buildHostWorkspaceRoute(normalizedServerId, workspace.id));
   return true;
 }
@@ -65,7 +66,11 @@ export function useOpenProject(serverId: string | null): (path: string) => Promi
         client,
         mergeWorkspaces,
         setHasHydratedWorkspaces,
-        openLauncherTab: useWorkspaceLayoutStore.getState().openLauncherTab,
+        openDraftTab: (workspaceKey: string) =>
+          useWorkspaceLayoutStore.getState().openTab(workspaceKey, {
+            kind: "draft",
+            draftId: generateDraftId(),
+          }),
         replaceRoute: (route) => {
           router.replace(route as any);
         },

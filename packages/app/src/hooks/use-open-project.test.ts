@@ -32,9 +32,18 @@ import {
   collectAllTabs,
   useWorkspaceLayoutStore,
 } from "@/stores/workspace-layout-store";
+import { generateDraftId } from "@/stores/draft-keys";
 
 const SERVER_ID = "server-1";
 const WORKSPACE_ID = "/repo/project";
+
+function createOpenDraftTab() {
+  return (workspaceKey: string) =>
+    useWorkspaceLayoutStore.getState().openTab(workspaceKey, {
+      kind: "draft",
+      draftId: generateDraftId(),
+    });
+}
 
 describe("openProjectDirectly", () => {
   beforeEach(() => {
@@ -51,11 +60,7 @@ describe("openProjectDirectly", () => {
     vi.restoreAllMocks();
   });
 
-  it("opens the workspace directly, marks workspaces hydrated, and seeds a launcher tab", async () => {
-    vi.spyOn(globalThis.crypto, "randomUUID").mockReturnValue(
-      "11111111-1111-1111-1111-111111111111",
-    );
-
+  it("opens the workspace directly, marks workspaces hydrated, and seeds a draft tab", async () => {
     const result = await openProjectDirectly({
       serverId: SERVER_ID,
       projectPath: WORKSPACE_ID,
@@ -82,7 +87,7 @@ describe("openProjectDirectly", () => {
       },
       mergeWorkspaces: useSessionStore.getState().mergeWorkspaces,
       setHasHydratedWorkspaces: useSessionStore.getState().setHasHydratedWorkspaces,
-      openLauncherTab: useWorkspaceLayoutStore.getState().openLauncherTab,
+      openDraftTab: createOpenDraftTab(),
       replaceRoute,
     });
 
@@ -106,10 +111,7 @@ describe("openProjectDirectly", () => {
     expect(layout.root.kind).toBe("pane");
     const tabs = collectAllTabs(layout.root);
     expect(tabs).toHaveLength(1);
-    expect(tabs[0]?.target).toEqual({
-      kind: "launcher",
-      launcherId: "11111111-1111-1111-1111-111111111111",
-    });
+    expect(tabs[0]?.target.kind).toBe("draft");
     expect(replaceRoute).toHaveBeenCalledWith("/h/server-1/workspace/MQ");
   });
 
@@ -127,7 +129,7 @@ describe("openProjectDirectly", () => {
       },
       mergeWorkspaces: useSessionStore.getState().mergeWorkspaces,
       setHasHydratedWorkspaces: useSessionStore.getState().setHasHydratedWorkspaces,
-      openLauncherTab: useWorkspaceLayoutStore.getState().openLauncherTab,
+      openDraftTab: createOpenDraftTab(),
       replaceRoute,
     });
 

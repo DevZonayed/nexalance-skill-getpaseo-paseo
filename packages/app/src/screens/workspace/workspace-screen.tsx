@@ -67,6 +67,7 @@ import {
   workspaceTabTargetsEqual,
 } from "@/utils/workspace-tab-identity";
 import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
+import { useProviderModels } from "@/hooks/use-provider-models";
 import { useWorkspaceTerminalSessionRetention } from "@/terminal/hooks/use-workspace-terminal-session-retention";
 import {
   checkoutStatusQueryKey,
@@ -143,9 +144,6 @@ function decodeSegment(value: string): string {
 }
 
 function getFallbackTabOptionLabel(tab: WorkspaceTabDescriptor): string {
-  if (tab.target.kind === "launcher") {
-    return "New Tab";
-  }
   if (tab.target.kind === "draft") {
     return "New Agent";
   }
@@ -162,9 +160,6 @@ function getFallbackTabOptionLabel(tab: WorkspaceTabDescriptor): string {
 }
 
 function getFallbackTabOptionDescription(tab: WorkspaceTabDescriptor): string {
-  if (tab.target.kind === "launcher") {
-    return "New Tab";
-  }
   if (tab.target.kind === "draft") {
     return "New Agent";
   }
@@ -593,6 +588,10 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
   const isFocusModeEnabled = usePanelStore((state) => state.desktop.focusModeEnabled);
 
   const normalizedServerId = trimNonEmpty(decodeSegment(serverId)) ?? "";
+
+  // Prefetch provider models early so the model picker is warm by the time it opens
+  useProviderModels(normalizedServerId);
+
   const normalizedWorkspaceId =
     resolveWorkspaceRouteId({
       routeWorkspaceId: decodeWorkspaceIdFromPathSegment(workspaceId),
@@ -853,7 +852,6 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
     [workspaceLayout],
   );
   const openWorkspaceTab = useWorkspaceLayoutStore((state) => state.openTab);
-  const openWorkspaceLauncherTab = useWorkspaceLayoutStore((state) => state.openLauncherTab);
   const focusWorkspaceTab = useWorkspaceLayoutStore((state) => state.focusTab);
   const closeWorkspaceTab = useWorkspaceLayoutStore((state) => state.closeTab);
   const retargetWorkspaceTab = useWorkspaceLayoutStore((state) => state.retargetTab);
@@ -1107,27 +1105,14 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
     [tabs],
   );
 
-  const handleCreateDraftTab = useCallback(() => {
-    openWorkspaceDraftTab();
-  }, [openWorkspaceDraftTab]);
-
-  const handleCreateLauncherTab = useCallback(
+  const handleCreateDraftTab = useCallback(
     (input?: { paneId?: string }) => {
-      if (!persistenceKey) {
-        return null;
-      }
-
-      if (input?.paneId) {
+      if (input?.paneId && persistenceKey) {
         focusWorkspacePane(persistenceKey, input.paneId);
       }
-
-      const tabId = openWorkspaceLauncherTab(persistenceKey);
-      if (tabId) {
-        focusWorkspaceTab(persistenceKey, tabId);
-      }
-      return tabId;
+      openWorkspaceDraftTab();
     },
-    [focusWorkspacePane, focusWorkspaceTab, openWorkspaceLauncherTab, persistenceKey],
+    [focusWorkspacePane, openWorkspaceDraftTab, persistenceKey],
   );
 
   const handleCreateTerminal = useCallback(
@@ -1150,7 +1135,7 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
     [navigateToTabId],
   );
 
-  const handleCreateLauncherSplit = useCallback(
+  const handleCreateDraftSplit = useCallback(
     (input: { targetPaneId: string; position: "left" | "right" | "top" | "bottom" }) => {
       if (!persistenceKey) {
         return;
@@ -1161,9 +1146,9 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
         return;
       }
 
-      handleCreateLauncherTab({ paneId });
+      handleCreateDraftTab({ paneId });
     },
-    [handleCreateLauncherTab, persistenceKey, splitWorkspacePaneEmpty],
+    [handleCreateDraftTab, persistenceKey, splitWorkspacePaneEmpty],
   );
 
   const killTerminalAsync = killTerminalMutation.mutateAsync;
@@ -1493,7 +1478,7 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
     (action: KeyboardActionDefinition): boolean => {
       switch (action.id) {
         case "workspace.tab.new":
-          handleCreateLauncherTab();
+          handleCreateDraftTab();
           return true;
         case "workspace.terminal.new":
           handleCreateTerminal();
@@ -1529,7 +1514,7 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
     [
       activeTabId,
       handleCloseTabById,
-      handleCreateLauncherTab,
+      handleCreateDraftTab,
       handleCreateTerminal,
       navigateToTabId,
       tabs,
@@ -1548,7 +1533,7 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
       }
 
       if (action.id === "workspace.pane.split.right") {
-        handleCreateLauncherSplit({
+        handleCreateDraftSplit({
           targetPaneId: focusedPane.id,
           position: "right",
         });
@@ -1556,7 +1541,7 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
       }
 
       if (action.id === "workspace.pane.split.down") {
-        handleCreateLauncherSplit({
+        handleCreateDraftSplit({
           targetPaneId: focusedPane.id,
           position: "bottom",
         });
@@ -1626,7 +1611,7 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
       allTabDescriptorsById,
       closeWorkspaceTabWithCleanup,
       focusWorkspacePane,
-      handleCreateLauncherSplit,
+      handleCreateDraftSplit,
       moveWorkspaceTabToPane,
       persistenceKey,
       focusedPaneTabState.activeTabId,
@@ -2173,7 +2158,8 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
               onCloseTabsToLeft={handleCloseTabsToLeft}
               onCloseTabsToRight={handleCloseTabsToRight}
               onCloseOtherTabs={handleCloseOtherTabs}
-              onCreateLauncherTab={handleCreateLauncherTab}
+              onCreateDraftTab={handleCreateDraftTab}
+              onCreateTerminalTab={handleCreateTerminal}
               onReorderTabs={handleReorderTabsInFocusedPane}
               onSplitRight={() => {}}
               onSplitDown={() => {}}
@@ -2207,11 +2193,12 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
                     onCloseTabsToLeft={handleCloseTabsToLeftInPane}
                     onCloseTabsToRight={handleCloseTabsToRightInPane}
                     onCloseOtherTabs={handleCloseOtherTabsInPane}
-                    onCreateLauncherTab={handleCreateLauncherTab}
+                    onCreateDraftTab={handleCreateDraftTab}
+                    onCreateTerminalTab={handleCreateTerminal}
                     buildPaneContentModel={buildDesktopPaneContentModel}
                     onFocusPane={handleFocusPane}
                     onSplitPane={handleSplitPane}
-                    onSplitPaneEmpty={handleCreateLauncherSplit}
+                    onSplitPaneEmpty={handleCreateDraftSplit}
                     onMoveTabToPane={handleMoveTabToPane}
                     onResizeSplit={handleResizePaneSplit}
                     onReorderTabsInPane={handleReorderTabsInPane}

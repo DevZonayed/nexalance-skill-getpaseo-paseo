@@ -6,7 +6,7 @@ import { useStoreWithEqualityFn } from "zustand/traditional";
 import { Brain, ChevronDown, ShieldAlert, ShieldCheck, ShieldOff } from "lucide-react-native";
 import { getProviderIcon } from "@/components/provider-icons";
 import { CombinedModelSelector } from "@/components/combined-model-selector";
-import { useQuery } from "@tanstack/react-query";
+import { useProviderModels } from "@/hooks/use-provider-models";
 import { useSessionStore } from "@/stores/session-store";
 import {
   buildFavoriteModelKey,
@@ -39,7 +39,7 @@ import {
   getStatusSelectorHint,
   resolveAgentModelSelection,
 } from "@/components/agent-status-bar.utils";
-import { isProviderModelsQueryLoading } from "@/components/agent-status-bar.model-loading";
+
 
 type StatusOption = {
   id: string;
@@ -626,52 +626,15 @@ export function AgentStatusBar({ agentId, serverId }: AgentStatusBarProps) {
   );
   const client = useSessionStore((state) => state.sessions[serverId]?.client ?? null);
 
-  const modelsQuery = useQuery({
-    queryKey: ["providerModels", serverId, agent?.provider ?? "__missing_provider__"],
-    enabled: Boolean(client && agent?.provider),
-    staleTime: 5 * 60 * 1000,
-    queryFn: async () => {
-      if (!client || !agent) {
-        throw new Error("Daemon client unavailable");
-      }
-      const payload = await client.listProviderModels(agent.provider, { cwd: agent.cwd });
-      if (payload.error) {
-        throw new Error(payload.error);
-      }
-      return payload.models ?? [];
-    },
-  });
+  const { allProviderModels: providerModelsMap, isLoading: isProviderModelsLoading } =
+    useProviderModels(serverId);
 
   const agentProviderDefinitions = useMemo(() => {
     const definition = AGENT_PROVIDER_DEFINITIONS.find((d) => d.id === agent?.provider);
     return definition ? [definition] : [];
   }, [agent?.provider]);
 
-  const agentProviderModelQuery = useQuery({
-    queryKey: ["providerModels", serverId, agent?.provider, agent?.cwd ?? ""],
-    enabled: Boolean(client && agent?.cwd && agent?.provider),
-    staleTime: 5 * 60 * 1000,
-    queryFn: async () => {
-      if (!client || !agent) {
-        throw new Error("Daemon client unavailable");
-      }
-      const payload = await client.listProviderModels(agent.provider, { cwd: agent.cwd });
-      if (payload.error) {
-        throw new Error(payload.error);
-      }
-      return payload.models ?? [];
-    },
-  });
-
-  const agentProviderModels = useMemo(() => {
-    const map = new Map<string, AgentModelDefinition[]>();
-    if (agent?.provider && agentProviderModelQuery.data) {
-      map.set(agent.provider, agentProviderModelQuery.data);
-    }
-    return map;
-  }, [agent?.provider, agentProviderModelQuery.data]);
-
-  const models = modelsQuery.data ?? null;
+  const models = agent?.provider ? (providerModelsMap.get(agent.provider) ?? null) : null;
 
   const displayMode =
     availableModes.find((mode) => mode.id === agent?.currentModeId)?.label ||
@@ -719,7 +682,7 @@ export function AgentStatusBar({ agentId, serverId }: AgentStatusBarProps) {
       }
       selectedModeId={agent.currentModeId ?? undefined}
       providerDefinitions={agentProviderDefinitions}
-      allProviderModels={agentProviderModels}
+      allProviderModels={providerModelsMap}
       onSelectMode={(modeId) => {
         if (!client) {
           return;
@@ -782,7 +745,7 @@ export function AgentStatusBar({ agentId, serverId }: AgentStatusBarProps) {
           console.warn("[AgentStatusBar] setAgentThinkingOption failed", error);
         });
       }}
-      isModelLoading={isProviderModelsQueryLoading(modelsQuery)}
+      isModelLoading={isProviderModelsLoading}
       disabled={!client}
     />
   );

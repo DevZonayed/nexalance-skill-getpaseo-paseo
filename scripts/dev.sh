@@ -22,10 +22,17 @@ if [ -z "${PASEO_HOME}" ]; then
   fi
 fi
 
+# Share speech models with the main install to avoid duplicate downloads
+if [ -z "${PASEO_LOCAL_MODELS_DIR}" ]; then
+  export PASEO_LOCAL_MODELS_DIR="$HOME/.paseo/models/local-speech"
+  mkdir -p "$PASEO_LOCAL_MODELS_DIR"
+fi
+
 echo "══════════════════════════════════════════════════════"
 echo "  Paseo Dev"
 echo "══════════════════════════════════════════════════════"
 echo "  Home:    ${PASEO_HOME}"
+echo "  Models:  ${PASEO_LOCAL_MODELS_DIR}"
 echo "══════════════════════════════════════════════════════"
 
 # Configure the daemon for the Portless app origin and let the app bootstrap

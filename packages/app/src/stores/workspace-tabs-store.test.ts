@@ -140,36 +140,35 @@ describe("workspace-tabs-store retargetTab", () => {
     expect(order).toEqual([draftTabId]);
   });
 
-  it("openLauncherTab creates distinct launcher tabs without deduplicating", () => {
-    vi.spyOn(globalThis.crypto, "randomUUID")
-      .mockReturnValueOnce("11111111-1111-1111-1111-111111111111")
-      .mockReturnValueOnce("22222222-2222-2222-2222-222222222222");
+  it("openDraftTab creates a draft tab and deduplicates by draftId", () => {
     const key = buildWorkspaceTabPersistenceKey({ serverId: SERVER_ID, workspaceId: WORKSPACE_ID });
     expect(key).toBeTruthy();
     const workspaceKey = key as string;
 
-    const firstTabId = useWorkspaceTabsStore.getState().openLauncherTab({
+    const firstTabId = useWorkspaceTabsStore.getState().openDraftTab({
       serverId: SERVER_ID,
       workspaceId: WORKSPACE_ID,
+      draftId: "draft-1",
     });
-    const secondTabId = useWorkspaceTabsStore.getState().openLauncherTab({
+    const secondTabId = useWorkspaceTabsStore.getState().openDraftTab({
       serverId: SERVER_ID,
       workspaceId: WORKSPACE_ID,
+      draftId: "draft-2",
     });
 
     const state = useWorkspaceTabsStore.getState();
-    expect(firstTabId).toBe("launcher_11111111-1111-1111-1111-111111111111");
-    expect(secondTabId).toBe("launcher_22222222-2222-2222-2222-222222222222");
+    expect(firstTabId).toBe("draft-1");
+    expect(secondTabId).toBe("draft-2");
     expect(state.tabOrderByWorkspace[workspaceKey]).toEqual([firstTabId, secondTabId]);
     expect(state.uiTabsByWorkspace[workspaceKey]).toEqual([
       {
-        tabId: "launcher_11111111-1111-1111-1111-111111111111",
-        target: { kind: "launcher", launcherId: "11111111-1111-1111-1111-111111111111" },
+        tabId: "draft-1",
+        target: { kind: "draft", draftId: "draft-1" },
         createdAt: expect.any(Number),
       },
       {
-        tabId: "launcher_22222222-2222-2222-2222-222222222222",
-        target: { kind: "launcher", launcherId: "22222222-2222-2222-2222-222222222222" },
+        tabId: "draft-2",
+        target: { kind: "draft", draftId: "draft-2" },
         createdAt: expect.any(Number),
       },
     ]);

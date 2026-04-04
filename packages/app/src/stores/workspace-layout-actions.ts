@@ -2,7 +2,6 @@ import invariant from "tiny-invariant";
 import type { WorkspaceTab, WorkspaceTabTarget } from "@/stores/workspace-tabs-store";
 import {
   buildDeterministicWorkspaceTabId,
-  createLauncherId,
   normalizeWorkspaceTabTarget,
   workspaceTabTargetsEqual,
 } from "@/utils/workspace-tab-identity";
@@ -111,10 +110,6 @@ interface OpenTabInLayoutResult {
   tabId: string;
 }
 
-interface OpenLauncherTabInLayoutInput {
-  layout: WorkspaceLayout;
-  now: number;
-}
 
 interface RetargetTabInLayoutInput {
   layout: WorkspaceLayout;
@@ -1070,19 +1065,6 @@ export function openTabInLayout(input: OpenTabInLayoutInput): OpenTabInLayoutRes
   return insertNewTabIntoFocusedPane(input);
 }
 
-export function openLauncherTabInLayout(
-  input: OpenLauncherTabInLayoutInput,
-): OpenTabInLayoutResult {
-  return insertNewTabIntoFocusedPane({
-    layout: input.layout,
-    target: {
-      kind: "launcher",
-      launcherId: createLauncherId(),
-    },
-    now: input.now,
-  });
-}
-
 export function closeTabInLayout(input: CloseTabInLayoutInput): WorkspaceLayout | null {
   const internalLayout = asInternalLayout(input.layout);
   const pane = findPaneContainingTab(internalLayout.root, input.tabId);
@@ -1159,7 +1141,7 @@ export function retargetTabInLayout(
   }
 
   return {
-    // Preserve the existing tab id so launcher->entity transitions keep the same
+    // Preserve the existing tab id so draft->entity transitions keep the same
     // React key during the first render. Reconciliation can canonicalize later.
     tabId: input.tabId,
     layout: {

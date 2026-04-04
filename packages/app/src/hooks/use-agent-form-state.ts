@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useQuery, useQueries } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AGENT_PROVIDER_DEFINITIONS,
   type AgentProviderDefinition,
@@ -11,6 +11,7 @@ import type {
 } from "@server/server/agent/agent-sdk-types";
 import { useHosts } from "@/runtime/host-runtime";
 import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
+import { useProviderModels } from "@/hooks/use-provider-models";
 import {
   useFormPreferences,
   mergeProviderPreferences,
@@ -409,75 +410,11 @@ export function useAgentFormState(options: UseAgentFormStateOptions = {}): UseAg
     [providerDefinitions],
   );
 
-  const [debouncedCwd, setDebouncedCwd] = useState<string | undefined>(undefined);
-  useEffect(() => {
-    const trimmed = formState.workingDir.trim();
-    const next = trimmed.length > 0 ? trimmed : undefined;
-    const timer = setTimeout(() => setDebouncedCwd(next), 180);
-    return () => clearTimeout(timer);
-  }, [formState.workingDir]);
+  const { allProviderModels, isLoading: isAllModelsLoading } = useProviderModels(
+    formState.serverId ?? "",
+  );
 
-  const providerModelsQuery = useQuery({
-    queryKey: ["providerModels", formState.serverId, formState.provider],
-    enabled: Boolean(
-      isVisible &&
-        isTargetDaemonReady &&
-        formState.serverId &&
-        client &&
-        isConnected &&
-        providerDefinitionMap.has(formState.provider),
-    ),
-    staleTime: 5 * 60 * 1000,
-    queryFn: async () => {
-      if (!client) {
-        throw new Error("Host is not connected");
-      }
-      const payload = await client.listProviderModels(formState.provider, {
-        cwd: debouncedCwd,
-      });
-      if (payload.error) {
-        throw new Error(payload.error);
-      }
-      return payload.models ?? [];
-    },
-  });
-
-  const availableModels = providerModelsQuery.data ?? null;
-
-  const allProviderModelQueries = useQueries({
-    queries: providerDefinitions.map((def) => ({
-      queryKey: ["providerModels", formState.serverId, def.id],
-      enabled: Boolean(
-        isVisible && isTargetDaemonReady && formState.serverId && client && isConnected,
-      ),
-      staleTime: 5 * 60 * 1000,
-      queryFn: async () => {
-        if (!client) {
-          throw new Error("Host is not connected");
-        }
-        const payload = await client.listProviderModels(def.id as AgentProvider, {
-          cwd: debouncedCwd,
-        });
-        if (payload.error) {
-          throw new Error(payload.error);
-        }
-        return payload.models ?? [];
-      },
-    })),
-  });
-
-  const allProviderModels = useMemo(() => {
-    const map = new Map<string, AgentModelDefinition[]>();
-    for (let i = 0; i < providerDefinitions.length; i++) {
-      const query = allProviderModelQueries[i];
-      if (query?.data) {
-        map.set(providerDefinitions[i]!.id, query.data);
-      }
-    }
-    return map;
-  }, [allProviderModelQueries, providerDefinitions]);
-
-  const isAllModelsLoading = allProviderModelQueries.some((q) => q.isLoading);
+  const availableModels = allProviderModels.get(formState.provider) ?? null;
 
   // Combine initialValues with initialServerId for resolution
   const combinedInitialValues = useMemo((): FormInitialValues | undefined => {
@@ -687,9 +624,12 @@ export function useAgentFormState(options: UseAgentFormStateOptions = {}): UseAg
     setFormState((prev) => ({ ...prev, serverId: value }));
   }, []);
 
+  const queryClient = useQueryClient();
   const refreshProviderModels = useCallback(() => {
-    void providerModelsQuery.refetch();
-  }, [providerModelsQuery]);
+    void queryClient.invalidateQueries({
+      queryKey: ["providerModels", formState.serverId, formState.provider],
+    });
+  }, [queryClient, formState.serverId, formState.provider]);
 
   const persistFormPreferences = useCallback(async () => {
     const resolvedModel = resolveEffectiveModel(availableModels, formState.model);
@@ -726,9 +666,8 @@ export function useAgentFormState(options: UseAgentFormStateOptions = {}): UseAg
   const effectiveModel = resolveEffectiveModel(availableModels, formState.model);
   const resolvedModelId = effectiveModel?.id ?? formState.model;
   const availableThinkingOptions = effectiveModel?.thinkingOptions ?? [];
-  const isModelLoading = providerModelsQuery.isLoading || providerModelsQuery.isFetching;
-  const modelError =
-    providerModelsQuery.error instanceof Error ? providerModelsQuery.error.message : null;
+  const isModelLoading = !availableModels && isAllModelsLoading;
+  const modelError: string | null = null;
 
   const workingDirIsEmpty = !formState.workingDir.trim();
 

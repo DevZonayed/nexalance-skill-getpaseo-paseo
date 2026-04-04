@@ -84,6 +84,8 @@ interface ComposerProps {
   onAttentionPromptSend?: () => void;
   /** Controlled status controls rendered in input area (draft flows). */
   statusControls?: DraftAgentStatusBarProps;
+  /** Extra styles merged onto the message input wrapper (e.g. elevated background). */
+  inputWrapperStyle?: import("react-native").ViewStyle;
 }
 
 const EMPTY_ARRAY: readonly QueuedMessage[] = [];
@@ -111,6 +113,7 @@ export function Composer({
   onAttentionInputFocus,
   onAttentionPromptSend,
   statusControls,
+  inputWrapperStyle,
 }: ComposerProps) {
   markScrollInvestigationRender(`Composer:${serverId}:${agentId}`);
   const { theme } = useUnistyles();
@@ -711,6 +714,7 @@ export function Composer({
                 }
               }}
               onHeightChange={onComposerHeightChange}
+              inputWrapperStyle={inputWrapperStyle}
             />
           </View>
         </View>

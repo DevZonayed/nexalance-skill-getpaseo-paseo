@@ -96,6 +96,8 @@ export interface MessageInputProps {
   onSelectionChange?: (selection: { start: number; end: number }) => void;
   onFocusChange?: (focused: boolean) => void;
   onHeightChange?: (height: number) => void;
+  /** Extra styles merged onto the input wrapper (e.g. elevated background). */
+  inputWrapperStyle?: import("react-native").ViewStyle;
 }
 
 export interface MessageInputRef {
@@ -213,6 +215,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
     onSelectionChange: onSelectionChangeCallback,
     onFocusChange,
     onHeightChange,
+    inputWrapperStyle,
   },
   ref,
 ) {
@@ -902,7 +905,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
   return (
     <View ref={rootRef} style={styles.container} testID="message-input-root">
       {/* Regular input */}
-      <Animated.View ref={inputWrapperRef} style={[styles.inputWrapper, inputAnimatedStyle]}>
+      <Animated.View ref={inputWrapperRef} style={[styles.inputWrapper, inputWrapperStyle, inputAnimatedStyle]}>
         {/* Image preview pills */}
         {hasImages && (
           <View style={styles.imagePreviewContainer} testID="message-input-image-preview">

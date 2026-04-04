@@ -1,7 +1,7 @@
 import type { AgentStreamEventPayload } from "@server/shared/messages";
 import type { AgentLifecycleStatus } from "@server/shared/agent-lifecycle";
 import type { StreamItem } from "@/types/stream";
-import { hydrateStreamState, reduceStreamUpdate } from "@/types/stream";
+import { applyStreamEvent, hydrateStreamState, reduceStreamUpdate } from "@/types/stream";
 import {
   classifySessionTimelineSeq,
   type SessionTimelineSeqDecision,
@@ -289,10 +289,7 @@ export function processAgentStreamEvent(
 ): ProcessAgentStreamEventOutput {
   const { event, seq, currentTail, currentHead, currentCursor, currentAgent, timestamp } = input;
 
-  let nextTail = currentTail;
-  let nextHead = currentHead;
-  let changedTail = false;
-  let changedHead = false;
+  let shouldApplyStreamEvent = true;
   let nextTimelineCursor: TimelineCursor | null = null;
   let cursorChanged = false;
   const sideEffects: AgentStreamReducerSideEffect[] = [];
@@ -304,41 +301,38 @@ export function processAgentStreamEvent(
     });
 
     if (decision === "gap") {
+      shouldApplyStreamEvent = false;
       if (currentCursor) {
         sideEffects.push({
           type: "catch_up",
           cursor: { endSeq: currentCursor.endSeq },
         });
       }
-    } else if (decision !== "drop_stale") {
-      nextTail = reduceStreamUpdate(currentTail, event, timestamp, {
-        source: "canonical",
-      });
-      changedTail = nextTail !== currentTail;
-
-      nextHead = removeSupersededProvisionalItems(currentHead, event);
-      changedHead = nextHead !== currentHead;
-
+    } else if (decision === "drop_stale") {
+      shouldApplyStreamEvent = false;
+    } else {
       nextTimelineCursor =
         decision === "init"
           ? { startSeq: seq, endSeq: seq }
           : { ...(currentCursor ?? { startSeq: seq, endSeq: seq }), endSeq: seq };
       cursorChanged = !cursorsEqual(currentCursor, nextTimelineCursor);
     }
-  } else if (event.type === "timeline") {
-    nextHead = reduceStreamUpdate(currentHead, event, timestamp, {
-      source: "live",
-    });
-    changedHead = nextHead !== currentHead;
-  } else if (
-    (event.type === "turn_completed" ||
-      event.type === "turn_canceled" ||
-      event.type === "turn_failed") &&
-    currentHead.length > 0
-  ) {
-    nextHead = [];
-    changedHead = true;
   }
+
+  const { tail, head, changedTail, changedHead } = shouldApplyStreamEvent
+    ? applyStreamEvent({
+        tail: currentTail,
+        head: currentHead,
+        event,
+        timestamp,
+        source: "live",
+      })
+    : {
+        tail: currentTail,
+        head: currentHead,
+        changedTail: false,
+        changedHead: false,
+      };
 
   let agentPatch: AgentPatch | null = null;
   let agentChanged = false;
@@ -366,8 +360,8 @@ export function processAgentStreamEvent(
   }
 
   return {
-    tail: nextTail,
-    head: nextHead,
+    tail,
+    head,
     changedTail,
     changedHead,
     cursor: nextTimelineCursor,

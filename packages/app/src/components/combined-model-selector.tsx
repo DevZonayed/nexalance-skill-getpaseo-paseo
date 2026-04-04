@@ -68,6 +68,7 @@ interface SelectorContentProps {
   onToggleFavorite?: (provider: string, modelId: string) => void;
   onDrillDown: (providerId: string, providerLabel: string) => void;
   onBack?: () => void;
+  isLoading?: boolean;
 }
 
 function resolveDefaultModelLabel(models: AgentModelDefinition[] | undefined): string {
@@ -338,6 +339,7 @@ function SelectorContent({
   onToggleFavorite,
   onDrillDown,
   onBack,
+  isLoading,
 }: SelectorContentProps) {
   const allRows = useMemo(
     () => buildModelRows(providerDefinitions, allProviderModels),
@@ -404,8 +406,17 @@ function SelectorContent({
 
       {favoriteRows.length === 0 && groupedRegularRows.length === 0 ? (
         <View style={styles.emptyState}>
-          <Search size={16} color="#777" />
-          <Text style={styles.emptyStateText}>No models match your search</Text>
+          {isLoading ? (
+            <>
+              <ActivityIndicator size="small" color="#777" />
+              <Text style={styles.emptyStateText}>Loading models…</Text>
+            </>
+          ) : (
+            <>
+              <Search size={16} color="#777" />
+              <Text style={styles.emptyStateText}>No models match your search</Text>
+            </>
+          )}
         </View>
       ) : null}
     </View>
@@ -583,6 +594,7 @@ export function CombinedModelSelector({
             onSelect={handleSelect}
             canSelectProvider={canSelectProvider}
             onToggleFavorite={onToggleFavorite}
+            isLoading={isLoading}
             onDrillDown={(providerId, providerLabel) => {
               setView({ kind: "provider", providerId, providerLabel });
             }}

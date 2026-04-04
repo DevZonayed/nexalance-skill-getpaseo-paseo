@@ -21,7 +21,6 @@ import {
   insertSplit,
   moveTabToPaneInLayout,
   normalizeLayout,
-  openLauncherTabInLayout,
   openTabInLayout,
   reconcileWorkspaceTabs,
   removePaneFromTree,
@@ -67,7 +66,6 @@ interface WorkspaceLayoutStore {
   splitSizesByWorkspace: Record<string, Record<string, number[]>>;
   pinnedAgentIdsByWorkspace: Record<string, Set<string>>;
   openTab: (workspaceKey: string, target: WorkspaceTabTarget) => string | null;
-  openLauncherTab: (workspaceKey: string) => string | null;
   closeTab: (workspaceKey: string, tabId: string) => void;
   focusTab: (workspaceKey: string, tabId: string) => void;
   retargetTab: (workspaceKey: string, tabId: string, target: WorkspaceTabTarget) => string | null;
@@ -131,26 +129,6 @@ export const useWorkspaceLayoutStore = create<WorkspaceLayoutStore>()(
         const result = openTabInLayout({
           layout: getWorkspaceLayout(get().layoutByWorkspace, normalizedWorkspaceKey),
           target: normalizedTarget,
-          now: Date.now(),
-        });
-
-        set((state) => ({
-          layoutByWorkspace: {
-            ...state.layoutByWorkspace,
-            [normalizedWorkspaceKey]: result.layout,
-          },
-        }));
-
-        return result.tabId;
-      },
-      openLauncherTab: (workspaceKey) => {
-        const normalizedWorkspaceKey = trimNonEmpty(workspaceKey);
-        if (!normalizedWorkspaceKey) {
-          return null;
-        }
-
-        const result = openLauncherTabInLayout({
-          layout: getWorkspaceLayout(get().layoutByWorkspace, normalizedWorkspaceKey),
           now: Date.now(),
         });
 

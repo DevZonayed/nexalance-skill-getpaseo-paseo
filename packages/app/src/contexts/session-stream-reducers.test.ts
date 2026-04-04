@@ -279,52 +279,52 @@ describe("processAgentStreamEvent", () => {
     expect(result.cursorChanged).toBe(false);
   });
 
-  it("appends committed live rows to tail and clears superseded provisional assistant state", () => {
-    const currentHead: StreamItem[] = [
-      {
-        kind: "assistant_message",
-        id: "head-assistant",
-        text: "partial",
-        timestamp: new Date(1000),
-      },
-    ];
-    const currentCursor: TimelineCursor = { startSeq: 1, endSeq: 120 };
-
-    const result = processAgentStreamEvent({
-      ...baseStreamInput,
-      event: makeTimelineEvent("finalized reply"),
-      seq: 121,
-      currentHead,
-      currentCursor,
-    });
-
-    expect(result.changedTail).toBe(true);
-    expect(result.changedHead).toBe(true);
-    expect(result.head).toEqual([]);
-    expect(result.cursorChanged).toBe(true);
-    expect(result.cursor).toEqual({
-      startSeq: 1,
-      endSeq: 121,
-    });
-    expect(result.tail[result.tail.length - 1]).toMatchObject({
-      kind: "assistant_message",
-      text: "finalized reply",
-    });
-  });
-
-  it("replaces provisional tool progress when the committed tool row arrives", () => {
-    const provisional = processAgentStreamEvent({
+  it("keeps tool call rows anchored in tail across live and committed updates", () => {
+    const running = processAgentStreamEvent({
       ...baseStreamInput,
       event: makeToolCallEvent("running"),
       seq: undefined,
+    });
+    expect(running.head).toEqual([]);
+    expect(running.tail).toHaveLength(1);
+    expect(running.tail[0]).toMatchObject({
+      kind: "tool_call",
+      payload: {
+        source: "agent",
+        data: {
+          callId: "call-1",
+          status: "running",
+        },
+      },
+    });
+
+    const completedLive = processAgentStreamEvent({
+      ...baseStreamInput,
+      event: makeToolCallEvent("completed"),
+      seq: undefined,
+      currentHead: running.head,
+      currentTail: running.tail,
+      currentCursor: { startSeq: 1, endSeq: 7 },
+    });
+    expect(completedLive.head).toEqual([]);
+    expect(completedLive.tail).toHaveLength(1);
+    expect(completedLive.tail[0]).toMatchObject({
+      kind: "tool_call",
+      payload: {
+        source: "agent",
+        data: {
+          callId: "call-1",
+          status: "completed",
+        },
+      },
     });
 
     const committed = processAgentStreamEvent({
       ...baseStreamInput,
       event: makeToolCallEvent("completed"),
       seq: 8,
-      currentHead: provisional.head,
-      currentTail: provisional.tail,
+      currentHead: completedLive.head,
+      currentTail: completedLive.tail,
       currentCursor: { startSeq: 1, endSeq: 7 },
     });
 
@@ -340,6 +340,51 @@ describe("processAgentStreamEvent", () => {
         },
       },
     });
+  });
+
+  it("preserves assistant/tool interleaving while a turn is streaming", () => {
+    const assistantBeforeTool = processAgentStreamEvent({
+      ...baseStreamInput,
+      event: makeTimelineEvent("before"),
+      seq: undefined,
+    });
+
+    const runningTool = processAgentStreamEvent({
+      ...baseStreamInput,
+      event: makeToolCallEvent("running"),
+      seq: undefined,
+      currentHead: assistantBeforeTool.head,
+      currentTail: assistantBeforeTool.tail,
+    });
+
+    const assistantAfterTool = processAgentStreamEvent({
+      ...baseStreamInput,
+      event: makeTimelineEvent("after"),
+      seq: undefined,
+      currentHead: runningTool.head,
+      currentTail: runningTool.tail,
+    });
+
+    const completedTool = processAgentStreamEvent({
+      ...baseStreamInput,
+      event: makeToolCallEvent("completed"),
+      seq: undefined,
+      currentHead: assistantAfterTool.head,
+      currentTail: assistantAfterTool.tail,
+    });
+
+    expect(completedTool.head).toEqual([]);
+    expect(completedTool.tail.map((item) => item.kind)).toEqual([
+      "assistant_message",
+      "tool_call",
+      "assistant_message",
+    ]);
+    expect(
+      completedTool.tail[0]?.kind === "assistant_message" ? completedTool.tail[0].text : null,
+    ).toBe("before");
+    expect(
+      completedTool.tail[2]?.kind === "assistant_message" ? completedTool.tail[2].text : null,
+    ).toBe("after");
   });
 
   it("requests catch-up when a committed live row skips ahead", () => {
@@ -359,27 +404,30 @@ describe("processAgentStreamEvent", () => {
     });
   });
 
-  it("clears provisional head on terminal turn events without committing it to tail", () => {
+  it("flushes provisional head into tail on terminal turn events", () => {
+    const withHead = processAgentStreamEvent({
+      ...baseStreamInput,
+      event: makeTimelineEvent("streaming"),
+      seq: undefined,
+    });
+
     const result = processAgentStreamEvent({
       ...baseStreamInput,
       event: {
         type: "turn_completed",
         provider: "claude",
       },
-      currentHead: [
-        {
-          kind: "thought",
-          id: "reasoning-1",
-          text: "thinking",
-          timestamp: new Date(1000),
-          status: "loading",
-        },
-      ],
+      currentHead: withHead.head,
+      currentTail: withHead.tail,
     });
 
     expect(result.changedHead).toBe(true);
-    expect(result.changedTail).toBe(false);
+    expect(result.changedTail).toBe(true);
     expect(result.head).toEqual([]);
-    expect(result.tail).toEqual([]);
+    expect(result.tail).toHaveLength(1);
+    expect(result.tail[0]).toMatchObject({
+      kind: "assistant_message",
+      text: "streaming",
+    });
   });
 });

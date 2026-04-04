@@ -1,7 +1,6 @@
 import { agentPanelRegistration } from "@/panels/agent-panel";
 import { draftPanelRegistration } from "@/panels/draft-panel";
 import { filePanelRegistration } from "@/panels/file-panel";
-import { launcherPanelRegistration } from "@/panels/launcher-panel";
 import { registerPanel } from "@/panels/panel-registry";
 import { setupPanelRegistration } from "@/panels/setup-panel";
 import { terminalPanelRegistration } from "@/panels/terminal-panel";
@@ -17,6 +16,5 @@ export function ensurePanelsRegistered(): void {
   registerPanel(setupPanelRegistration);
   registerPanel(terminalPanelRegistration);
   registerPanel(filePanelRegistration);
-  registerPanel(launcherPanelRegistration);
   panelsRegistered = true;
 }

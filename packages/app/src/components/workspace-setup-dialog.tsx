@@ -1,23 +1,32 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Pressable, Text, View } from "react-native";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Image, Text, View } from "react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { createNameId } from "mnemonic-id";
 import { AdaptiveModalSheet } from "@/components/adaptive-modal-sheet";
 import { Composer } from "@/components/composer";
 import { useToast } from "@/contexts/toast-context";
 import { useAgentInputDraft } from "@/hooks/use-agent-input-draft";
+import { useProjectIconQuery } from "@/hooks/use-project-icon-query";
 import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
 import { normalizeWorkspaceDescriptor, useSessionStore } from "@/stores/session-store";
 import { useWorkspaceSetupStore } from "@/stores/workspace-setup-store";
 import { normalizeAgentSnapshot } from "@/utils/agent-snapshots";
 import { encodeImages } from "@/utils/encode-images";
 import { toErrorMessage } from "@/utils/error-messages";
+import { projectIconPlaceholderLabelFromDisplayName } from "@/utils/project-display-name";
 import {
   requireWorkspaceExecutionAuthority,
   requireWorkspaceRecordId,
 } from "@/utils/workspace-execution";
 import { navigateToPreparedWorkspaceTab } from "@/utils/workspace-navigation";
-import type { MessagePayload } from "./message-input";
+import type { ImageAttachment, MessagePayload } from "./message-input";
+
+function toProjectIconDataUri(icon: { mimeType: string; data: string } | null): string | null {
+  if (!icon) {
+    return null;
+  }
+  return `data:${icon.mimeType};base64,${icon.data}`;
+}
 
 export function WorkspaceSetupDialog() {
   const { theme } = useUnistyles();
@@ -31,7 +40,7 @@ export function WorkspaceSetupDialog() {
   const [createdWorkspace, setCreatedWorkspace] = useState<ReturnType<
     typeof normalizeWorkspaceDescriptor
   > | null>(null);
-  const [pendingAction, setPendingAction] = useState<"chat" | "terminal" | null>(null);
+  const [pendingAction, setPendingAction] = useState<"chat" | null>(null);
 
   const serverId = pendingWorkspaceSetup?.serverId ?? "";
   const sourceDirectory = pendingWorkspaceSetup?.sourceDirectory ?? "";
@@ -48,13 +57,19 @@ export function WorkspaceSetupDialog() {
         : undefined,
       isVisible: pendingWorkspaceSetup !== null,
       onlineServerIds: isConnected && serverId ? [serverId] : [],
-      lockedWorkingDir: workspace?.workspaceDirectory || undefined,
+      lockedWorkingDir: workspace?.workspaceDirectory || sourceDirectory || undefined,
     },
   });
   const composerState = chatDraft.composerState;
   if (!composerState && pendingWorkspaceSetup) {
     throw new Error("Workspace setup composer state is required");
   }
+
+  const { icon: projectIcon } = useProjectIconQuery({
+    serverId,
+    cwd: sourceDirectory,
+  });
+  const iconDataUri = toProjectIconDataUri(projectIcon);
 
   useEffect(() => {
     setErrorMessage(null);
@@ -208,34 +223,6 @@ export function WorkspaceSetupDialog() {
     ],
   );
 
-  const handleCreateTerminal = useCallback(async () => {
-    try {
-      setPendingAction("terminal");
-      setErrorMessage(null);
-      const workspace = await ensureWorkspace();
-      const connectedClient = withConnectedClient();
-      const workspaceDirectory = requireWorkspaceExecutionAuthority({ workspace }).workspaceDirectory;
-
-      const payload = await connectedClient.createTerminal(workspaceDirectory);
-      if (payload.error || !payload.terminal) {
-        throw new Error(payload.error ?? "Failed to open terminal");
-      }
-
-      if (!getIsStillActive()) {
-        return;
-      }
-
-      navigateAfterCreation(workspace.id, { kind: "terminal", terminalId: payload.terminal.id });
-    } catch (error) {
-      const message = toErrorMessage(error);
-      setErrorMessage(message);
-      toast.error(message);
-    } finally {
-      if (getIsStillActive()) {
-        setPendingAction(null);
-      }
-    }
-  }, [ensureWorkspace, getIsStillActive, navigateAfterCreation, toast, withConnectedClient]);
 
   const workspaceTitle =
     workspace?.name ||
@@ -243,25 +230,53 @@ export function WorkspaceSetupDialog() {
     displayName ||
     sourceDirectory.split(/[\\/]/).filter(Boolean).pop() ||
     sourceDirectory;
-  const workspacePath = workspace?.workspaceDirectory || "Workspace will be created before launch.";
+
+  const placeholderLabel = projectIconPlaceholderLabelFromDisplayName(workspaceTitle);
+  const placeholderInitial = placeholderLabel.charAt(0).toUpperCase();
+
+  const addImagesRef = useRef<((images: ImageAttachment[]) => void) | null>(null);
+  const handleFilesDropped = useCallback((files: ImageAttachment[]) => {
+    addImagesRef.current?.(files);
+  }, []);
+  const handleAddImagesCallback = useCallback((addImages: (images: ImageAttachment[]) => void) => {
+    addImagesRef.current = addImages;
+  }, []);
+
+  const composerInputWrapperStyle = useMemo(
+    () => ({ backgroundColor: theme.colors.surface2 }),
+    [theme.colors.surface2],
+  );
 
   if (!pendingWorkspaceSetup || !sourceDirectory) {
     return null;
   }
 
+  const subtitleContent = (
+    <View style={styles.subtitleRow}>
+      {iconDataUri ? (
+        <Image source={{ uri: iconDataUri }} style={styles.projectIcon} />
+      ) : (
+        <View style={styles.projectIconFallback}>
+          <Text style={styles.projectIconFallbackText}>{placeholderInitial}</Text>
+        </View>
+      )}
+      <Text style={styles.projectTitle} numberOfLines={1}>
+        {workspaceTitle}
+      </Text>
+    </View>
+  );
+
   return (
     <AdaptiveModalSheet
-      title="Set up workspace"
+      title="Create workspace"
+      subtitle={subtitleContent}
       visible={true}
       onClose={handleClose}
       snapPoints={["82%", "94%"]}
       testID="workspace-setup-dialog"
+      desktopMaxWidth={640}
+      onFilesDropped={handleFilesDropped}
     >
-      <View style={styles.header}>
-        <Text style={styles.workspaceTitle}>{workspaceTitle}</Text>
-        <Text style={styles.workspacePath}>{workspacePath}</Text>
-      </View>
-
       <View style={styles.section}>
         <Composer
           agentId={`workspace-setup:${serverId}:${sourceDirectory}`}
@@ -285,23 +300,10 @@ export function WorkspaceSetupDialog() {
                 }
               : undefined
           }
+          inputWrapperStyle={composerInputWrapperStyle}
+          onAddImages={handleAddImagesCallback}
         />
       </View>
-
-      <Pressable
-        accessibilityRole="button"
-        disabled={pendingAction !== null}
-        onPress={() => void handleCreateTerminal()}
-        style={[
-          styles.terminalLink,
-          pendingAction !== null && pendingAction !== "terminal" ? { opacity: 0.5 } : undefined,
-        ]}
-      >
-        {pendingAction === "terminal" ? (
-          <ActivityIndicator size="small" color={theme.colors.foregroundMuted} />
-        ) : null}
-        <Text style={styles.terminalLinkText}>{"\u2192"} Open terminal</Text>
-      </Pressable>
 
       {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
     </AdaptiveModalSheet>
@@ -309,31 +311,37 @@ export function WorkspaceSetupDialog() {
 }
 
 const styles = StyleSheet.create((theme) => ({
-  header: {
-    gap: theme.spacing[1],
+  subtitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[2],
   },
-  workspaceTitle: {
-    fontSize: theme.fontSize.base,
-    fontWeight: theme.fontWeight.medium,
-    color: theme.colors.foreground,
+  projectIcon: {
+    width: theme.iconSize.md,
+    height: theme.iconSize.md,
+    borderRadius: theme.borderRadius.sm,
   },
-  workspacePath: {
-    fontSize: theme.fontSize.xs,
+  projectIconFallback: {
+    width: theme.iconSize.md,
+    height: theme.iconSize.md,
+    borderRadius: theme.borderRadius.sm,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  projectIconFallbackText: {
+    color: theme.colors.foregroundMuted,
+    fontSize: 9,
+  },
+  projectTitle: {
+    fontSize: theme.fontSize.sm,
     color: theme.colors.foregroundMuted,
   },
   section: {
     gap: theme.spacing[3],
     marginHorizontal: -theme.spacing[6],
-  },
-  terminalLink: {
-    flexDirection: "row",
-    alignItems: "center",
-    alignSelf: "flex-end",
-    gap: theme.spacing[2],
-  },
-  terminalLinkText: {
-    fontSize: theme.fontSize.sm,
-    color: theme.colors.foregroundMuted,
+    marginVertical: -theme.spacing[2],
   },
   errorText: {
     fontSize: theme.fontSize.sm,

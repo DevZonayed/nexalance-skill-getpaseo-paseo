@@ -13,6 +13,8 @@ import {
   type BottomSheetBackgroundProps,
 } from "@gorhom/bottom-sheet";
 import { X } from "lucide-react-native";
+import { FileDropZone } from "@/components/file-drop-zone";
+import type { ImageAttachment } from "@/components/message-input";
 
 const styles = StyleSheet.create((theme) => ({
   desktopOverlay: {
@@ -32,16 +34,21 @@ const styles = StyleSheet.create((theme) => ({
     borderRadius: theme.borderRadius.xl,
     borderWidth: 1,
     borderColor: theme.colors.surface2,
-    overflow: "hidden",
   },
   header: {
     paddingHorizontal: theme.spacing[6],
     paddingVertical: theme.spacing[4],
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "flex-start",
     justifyContent: "space-between",
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.surface2,
+    gap: theme.spacing[3],
+  },
+  headerTitleGroup: {
+    flex: 1,
+    gap: theme.spacing[2],
+    minWidth: 0,
   },
   title: {
     color: theme.colors.foreground,
@@ -69,9 +76,10 @@ const styles = StyleSheet.create((theme) => ({
     paddingBottom: theme.spacing[3],
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "center",
+    alignItems: "flex-start",
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.surface2,
+    gap: theme.spacing[3],
   },
   bottomSheetContent: {
     padding: theme.spacing[6],
@@ -97,28 +105,50 @@ function SheetBackground({ style }: BottomSheetBackgroundProps) {
 
 export interface AdaptiveModalSheetProps {
   title: string;
+  /** Optional content rendered below the title in the header area. */
+  subtitle?: ReactNode;
   visible: boolean;
   onClose: () => void;
   children: ReactNode;
   snapPoints?: string[];
   stackBehavior?: "push" | "switch" | "replace";
   testID?: string;
+  /** Override the max width of the desktop card. */
+  desktopMaxWidth?: number;
+  /** When provided, wraps the card content in a FileDropZone. */
+  onFilesDropped?: (files: ImageAttachment[]) => void;
 }
 
 export function AdaptiveModalSheet({
   title,
+  subtitle,
   visible,
   onClose,
   children,
   snapPoints,
   stackBehavior,
   testID,
+  desktopMaxWidth,
+  onFilesDropped,
 }: AdaptiveModalSheetProps) {
   const { theme } = useUnistyles();
   const isMobile = UnistylesRuntime.breakpoint === "xs" || UnistylesRuntime.breakpoint === "sm";
   const sheetRef = useRef<BottomSheetModal>(null);
   const dismissingForVisibilityRef = useRef(false);
   const resolvedSnapPoints = useMemo(() => snapPoints ?? ["65%", "90%"], [snapPoints]);
+
+  useEffect(() => {
+    if (isMobile || !visible || Platform.OS !== "web" || typeof window === "undefined") return;
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        onClose();
+      }
+    }
+    // Capture phase: RN Web TextInput stops propagation, so bubbling listeners never fire.
+    window.addEventListener("keydown", handleKeyDown, true);
+    return () => window.removeEventListener("keydown", handleKeyDown, true);
+  }, [isMobile, visible, onClose]);
 
   useEffect(() => {
     if (!isMobile) return;
@@ -168,7 +198,10 @@ export function AdaptiveModalSheet({
         keyboardBlurBehavior="restore"
       >
         <View style={styles.bottomSheetHeader}>
-          <Text style={styles.title}>{title}</Text>
+          <View style={styles.headerTitleGroup}>
+            <Text style={styles.title}>{title}</Text>
+            {subtitle}
+          </View>
           <Pressable accessibilityLabel="Close" style={styles.closeButton} onPress={onClose}>
             <X size={16} color={theme.colors.foregroundMuted} />
           </Pressable>
@@ -184,6 +217,28 @@ export function AdaptiveModalSheet({
     );
   }
 
+  const cardInner = (
+    <>
+      <View style={styles.header}>
+        <View style={styles.headerTitleGroup}>
+          <Text style={styles.title}>{title}</Text>
+          {subtitle}
+        </View>
+        <Pressable accessibilityLabel="Close" style={styles.closeButton} onPress={onClose}>
+          <X size={16} color={theme.colors.foregroundMuted} />
+        </Pressable>
+      </View>
+      <ScrollView
+        style={styles.desktopScroll}
+        contentContainerStyle={styles.desktopContent}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+        {children}
+      </ScrollView>
+    </>
+  );
+
   const desktopContent = (
     <View style={styles.desktopOverlay} testID={testID}>
       <Pressable
@@ -191,21 +246,12 @@ export function AdaptiveModalSheet({
         style={{ ...StyleSheet.absoluteFillObject }}
         onPress={onClose}
       />
-      <View style={styles.desktopCard}>
-        <View style={styles.header}>
-          <Text style={styles.title}>{title}</Text>
-          <Pressable accessibilityLabel="Close" style={styles.closeButton} onPress={onClose}>
-            <X size={16} color={theme.colors.foregroundMuted} />
-          </Pressable>
-        </View>
-        <ScrollView
-          style={styles.desktopScroll}
-          contentContainerStyle={styles.desktopContent}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-        >
-          {children}
-        </ScrollView>
+      <View style={[styles.desktopCard, desktopMaxWidth != null && { maxWidth: desktopMaxWidth }]}>
+        {onFilesDropped ? (
+          <FileDropZone onFilesDropped={onFilesDropped}>
+            {cardInner}
+          </FileDropZone>
+        ) : cardInner}
       </View>
     </View>
   );
