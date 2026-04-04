@@ -529,7 +529,7 @@ function toAgentPersistenceHandle(
  */
 export class Session {
   private readonly clientId: string;
-  private readonly appVersion: string | null;
+  private appVersion: string | null;
   private readonly sessionId: string;
   private readonly onMessage: (msg: SessionOutboundMessage) => void;
   private readonly onBinaryMessage: ((frame: Uint8Array) => void) | null;
@@ -712,6 +712,12 @@ export class Session {
     this.subscribeToAgentEvents();
 
     this.sessionLogger.trace("Session created");
+  }
+
+  updateAppVersion(appVersion: string | null): void {
+    if (appVersion && appVersion !== this.appVersion) {
+      this.appVersion = appVersion;
+    }
   }
 
   /**

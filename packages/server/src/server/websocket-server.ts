@@ -745,6 +745,11 @@ export class VoiceAssistantWebSocketServer {
         clearTimeout(existing.externalDisconnectCleanupTimeout);
         existing.externalDisconnectCleanupTimeout = null;
       }
+      const newAppVersion = message.appVersion ?? null;
+      if (newAppVersion && newAppVersion !== existing.appVersion) {
+        existing.appVersion = newAppVersion;
+        existing.session.updateAppVersion(newAppVersion);
+      }
       existing.sockets.add(ws);
       this.sessions.set(ws, existing);
       this.sendToClient(ws, this.createServerInfoMessage());
