@@ -95,12 +95,15 @@ export class SherpaOnnxTTS implements TextToSpeechProvider {
     }
 
     const audio = this.tts.generate({ text: trimmed, sid: this.speakerId, speed: this.speed });
-    const samples: Float32Array | null =
+    const rawSamples: Float32Array | null =
       audio && audio.samples instanceof Float32Array
         ? audio.samples
         : audio && Array.isArray(audio.samples)
           ? Float32Array.from(audio.samples as number[])
           : null;
+    // Copy to avoid "External buffers are not allowed" when sherpa-onnx
+    // returns a Float32Array backed by native memory.
+    const samples = rawSamples ? Float32Array.from(rawSamples) : null;
     const sampleRate: number =
       audio &&
       typeof audio.sampleRate === "number" &&
