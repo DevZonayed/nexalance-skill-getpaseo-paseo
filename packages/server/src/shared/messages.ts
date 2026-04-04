@@ -2653,6 +2653,7 @@ export const WSHelloMessageSchema = z.object({
   clientId: z.string().min(1),
   clientType: z.enum(["mobile", "browser", "cli", "mcp"]),
   protocolVersion: z.number().int(),
+  appVersion: z.string().optional(),
   capabilities: z
     .object({
       voice: z.boolean().optional(),

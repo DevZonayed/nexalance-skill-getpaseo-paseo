@@ -14,6 +14,7 @@ import {
   type HostProfile,
 } from "@/types/host-connection";
 import { decodeOfferFragmentPayload, normalizeHostPort } from "@/utils/daemon-endpoints";
+import { resolveAppVersion } from "@/utils/app-version";
 import { ConnectionOfferSchema, type ConnectionOffer } from "@server/shared/connection-offer";
 import {
   shouldUseDesktopDaemon,
@@ -422,6 +423,7 @@ function createDefaultDeps(): HostRuntimeControllerDeps {
         suppressSendErrors: true,
         clientId,
         clientType: "mobile" as const,
+        appVersion: resolveAppVersion() ?? undefined,
         runtimeGeneration,
       };
       if (connection.type === "directSocket" || connection.type === "directPipe") {

@@ -155,6 +155,7 @@ export type DaemonClientConfig = {
   url: string;
   clientId: string;
   clientType?: "mobile" | "browser" | "cli" | "mcp";
+  appVersion?: string;
   runtimeGeneration?: number | null;
   authHeader?: string;
   suppressSendErrors?: boolean;
@@ -3285,6 +3286,7 @@ export class DaemonClient {
           clientId: this.config.clientId,
           clientType: this.config.clientType ?? "cli",
           protocolVersion: 1,
+          ...(this.config.appVersion ? { appVersion: this.config.appVersion } : {}),
         }),
       );
     } catch (error) {

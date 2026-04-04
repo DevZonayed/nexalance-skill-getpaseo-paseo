@@ -176,12 +176,9 @@ export function getAgentProviderDefinition(provider: string): AgentProviderDefin
   return definition;
 }
 
-export const AGENT_PROVIDER_IDS = AGENT_PROVIDER_DEFINITIONS.map((d) => d.id) as [
-  string,
-  ...string[],
-];
+export const AGENT_PROVIDER_IDS = AGENT_PROVIDER_DEFINITIONS.map((d) => d.id);
 
-export const AgentProviderSchema = z.enum(AGENT_PROVIDER_IDS);
+export const AgentProviderSchema = z.string();
 
 export function isValidAgentProvider(value: string): boolean {
   return AGENT_PROVIDER_IDS.includes(value);

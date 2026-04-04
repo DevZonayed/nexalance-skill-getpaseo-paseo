@@ -190,6 +190,28 @@ const execFileAsync = promisify(execFile);
 const MAX_INITIAL_AGENT_TITLE_CHARS = Math.min(60, MAX_EXPLICIT_AGENT_TITLE_CHARS);
 const pendingAgentInitializations = new Map<string, Promise<ManagedAgent>>();
 const DEFAULT_AGENT_PROVIDER = AGENT_PROVIDER_IDS[0];
+
+// TODO: Remove once all app store clients are on >=0.1.45 and understand arbitrary provider strings.
+// Clients before 0.1.45 validate providers with z.enum(["claude", "codex", "opencode"]) and reject
+// the entire session message if they encounter an unknown provider.
+const LEGACY_PROVIDER_IDS = new Set(["claude", "codex", "opencode"]);
+const MIN_VERSION_ALL_PROVIDERS = "0.1.45";
+
+function clientSupportsAllProviders(appVersion: string | null): boolean {
+  if (!appVersion) return false;
+  // Strip RC/prerelease suffix: "0.1.45-rc.4" → "0.1.45"
+  const base = appVersion.replace(/-.*$/, "");
+  const parts = base.split(".").map(Number);
+  const minParts = MIN_VERSION_ALL_PROVIDERS.split(".").map(Number);
+  for (let i = 0; i < minParts.length; i++) {
+    const a = parts[i] ?? 0;
+    const b = minParts[i] ?? 0;
+    if (a > b) return true;
+    if (a < b) return false;
+  }
+  return true;
+}
+
 const WORKSPACE_GIT_WATCH_DEBOUNCE_MS = 500;
 const WORKSPACE_GIT_WATCH_REMOVED_FINGERPRINT = "__removed__";
 const TERMINAL_STREAM_HIGH_WATER_BYTES = 256 * 1024;
@@ -355,6 +377,7 @@ type VoiceTranscriptionResultPayload = {
 
 export type SessionOptions = {
   clientId: string;
+  appVersion: string | null;
   onMessage: (msg: SessionOutboundMessage) => void;
   onBinaryMessage?: (frame: Uint8Array) => void;
   getBinaryBufferedAmount?: () => number;
@@ -506,6 +529,7 @@ function toAgentPersistenceHandle(
  */
 export class Session {
   private readonly clientId: string;
+  private readonly appVersion: string | null;
   private readonly sessionId: string;
   private readonly onMessage: (msg: SessionOutboundMessage) => void;
   private readonly onBinaryMessage: ((frame: Uint8Array) => void) | null;
@@ -601,6 +625,7 @@ export class Session {
   constructor(options: SessionOptions) {
     const {
       clientId,
+      appVersion,
       onMessage,
       onBinaryMessage,
       getBinaryBufferedAmount,
@@ -627,6 +652,7 @@ export class Session {
       agentProviderRuntimeSettings,
     } = options;
     this.clientId = clientId;
+    this.appVersion = appVersion;
     this.sessionId = uuidv4();
     this.onMessage = onMessage;
     this.onBinaryMessage = onBinaryMessage ?? null;
@@ -1130,6 +1156,12 @@ export class Session {
     }
   }
 
+  // TODO: Remove once all app store clients are on >=0.1.45.
+  private isProviderVisibleToClient(provider: string): boolean {
+    if (clientSupportsAllProviders(this.appVersion)) return true;
+    return LEGACY_PROVIDER_IDS.has(provider);
+  }
+
   private matchesAgentFilter(options: {
     agent: AgentSnapshotPayload;
     project: ProjectPlacementPayload;
@@ -1198,6 +1230,11 @@ export class Session {
     subscription: AgentUpdatesSubscriptionState,
     payload: AgentUpdatePayload,
   ): void {
+    // TODO: Remove once all app store clients are on >=0.1.45.
+    if (payload.kind === "upsert" && !this.isProviderVisibleToClient(payload.agent.provider)) {
+      return;
+    }
+
     if (subscription.isBootstrapping) {
       subscription.pendingUpdatesByAgentId.set(this.getAgentUpdateTargetId(payload), payload);
       return;
@@ -3179,7 +3216,11 @@ export class Session {
   ): Promise<void> {
     const fetchedAt = new Date().toISOString();
     try {
-      const providers = await this.agentManager.listProviderAvailability();
+      let providers = await this.agentManager.listProviderAvailability();
+
+      // TODO: Remove once all app store clients are on >=0.1.45.
+      providers = providers.filter((p) => this.isProviderVisibleToClient(p.provider));
+
       this.emit({
         type: "list_available_providers_response",
         payload: {
@@ -5691,6 +5732,12 @@ export class Session {
       }
 
       const payload = await this.listFetchAgentsEntries(request);
+
+      // TODO: Remove once all app store clients are on >=0.1.45.
+      payload.entries = payload.entries.filter((entry) =>
+        this.isProviderVisibleToClient(entry.agent.provider),
+      );
+
       const snapshotUpdatedAtByAgentId = new Map<string, number>();
       for (const entry of payload.entries) {
         const parsedUpdatedAt = Date.parse(entry.agent.updatedAt);
