@@ -9,7 +9,25 @@ import type {
   ToolKind,
 } from "@agentclientprotocol/sdk";
 
-import type { AgentCapabilityFlags, AgentModelDefinition } from "../agent-sdk-types.js";
+import type {
+  AgentLaunchContext,
+  AgentCapabilityFlags,
+  AgentFeature,
+  AgentMode,
+  AgentModelDefinition,
+  AgentPermissionRequest,
+  AgentPermissionResponse,
+  AgentPersistenceHandle,
+  AgentPromptInput,
+  AgentRunOptions,
+  AgentRunResult,
+  AgentRuntimeInfo,
+  AgentSession,
+  AgentSessionConfig,
+  AgentSlashCommand,
+  AgentStreamEvent,
+  AgentFeatureSelect,
+} from "../agent-sdk-types.js";
 import type { ProviderRuntimeSettings } from "../provider-launch-config.js";
 import { isCommandAvailable } from "../../../utils/executable.js";
 import {
@@ -108,6 +126,152 @@ export function transformPiSessionResponse(
   };
 }
 
+function isThoughtLevelFeature(feature: AgentFeature): feature is AgentFeatureSelect {
+  return feature.type === "select" && feature.id === "thought_level";
+}
+
+function normalizePiFeatures(
+  features: AgentFeature[] | undefined,
+  thinkingOptionId: string | null | undefined,
+): AgentFeature[] | undefined {
+  if (!features) {
+    return features;
+  }
+
+  return features.map((feature) => {
+    if (!isThoughtLevelFeature(feature)) {
+      return feature;
+    }
+
+    return {
+      ...feature,
+      value: thinkingOptionId ?? feature.value,
+    };
+  });
+}
+
+class PiACPAgentSession implements AgentSession {
+  readonly provider: AgentSession["provider"];
+  readonly capabilities: AgentSession["capabilities"];
+
+  get id(): string | null {
+    return this.inner.id;
+  }
+
+  get features(): AgentFeature[] | undefined {
+    return normalizePiFeatures(this.inner.features, this.thinkingOptionId);
+  }
+
+  private thinkingOptionId: string | null;
+
+  constructor(
+    private readonly inner: AgentSession,
+    config: AgentSessionConfig,
+  ) {
+    this.provider = inner.provider;
+    this.capabilities = inner.capabilities;
+    this.thinkingOptionId = config.thinkingOptionId ?? null;
+  }
+
+  async run(prompt: AgentPromptInput, options?: AgentRunOptions): Promise<AgentRunResult> {
+    return this.inner.run(prompt, options);
+  }
+
+  async startTurn(
+    prompt: AgentPromptInput,
+    options?: AgentRunOptions,
+  ): Promise<{ turnId: string }> {
+    return this.inner.startTurn(prompt, options);
+  }
+
+  subscribe(callback: (event: AgentStreamEvent) => void): () => void {
+    return this.inner.subscribe(callback);
+  }
+
+  async *streamHistory(): AsyncGenerator<AgentStreamEvent> {
+    yield* this.inner.streamHistory();
+  }
+
+  async getRuntimeInfo(): Promise<AgentRuntimeInfo> {
+    const runtimeInfo = await this.inner.getRuntimeInfo();
+    const thinkingOptionId =
+      runtimeInfo.modeId ?? runtimeInfo.thinkingOptionId ?? this.thinkingOptionId;
+    this.thinkingOptionId = thinkingOptionId ?? null;
+    return {
+      ...runtimeInfo,
+      modeId: null,
+      thinkingOptionId: thinkingOptionId ?? null,
+    };
+  }
+
+  async getAvailableModes(): Promise<AgentMode[]> {
+    return [];
+  }
+
+  async getCurrentMode(): Promise<string | null> {
+    return null;
+  }
+
+  async setMode(modeId: string): Promise<void> {
+    void modeId;
+    throw new Error("Pi does not expose selectable modes");
+  }
+
+  getPendingPermissions(): AgentPermissionRequest[] {
+    return this.inner.getPendingPermissions();
+  }
+
+  async respondToPermission(
+    requestId: string,
+    response: AgentPermissionResponse,
+  ): Promise<void> {
+    await this.inner.respondToPermission(requestId, response);
+  }
+
+  describePersistence(): AgentPersistenceHandle | null {
+    return this.inner.describePersistence();
+  }
+
+  async interrupt(): Promise<void> {
+    await this.inner.interrupt();
+  }
+
+  async close(): Promise<void> {
+    await this.inner.close();
+  }
+
+  async listCommands(): Promise<AgentSlashCommand[]> {
+    return this.inner.listCommands ? this.inner.listCommands() : [];
+  }
+
+  async setModel(modelId: string | null): Promise<void> {
+    if (this.inner.setModel) {
+      await this.inner.setModel(modelId);
+    }
+  }
+
+  async setThinkingOption(thinkingOptionId: string | null): Promise<void> {
+    this.thinkingOptionId = thinkingOptionId ?? null;
+    if (this.inner.setThinkingOption) {
+      await this.inner.setThinkingOption(thinkingOptionId);
+    }
+  }
+
+  async setFeature(featureId: string, value: unknown): Promise<void> {
+    if (!this.inner.setFeature) {
+      throw new Error("Agent session does not support setting features");
+    }
+    await this.inner.setFeature(featureId, value);
+  }
+}
+
+export function wrapPiSession(
+  session: AgentSession,
+  config: Pick<AgentSessionConfig, "provider" | "cwd" | "thinkingOptionId">,
+): AgentSession {
+  return new PiACPAgentSession(session, config);
+}
+
 export class PiACPAgentClient extends ACPAgentClient {
   constructor(options: PiACPAgentClientOptions) {
     super({
@@ -127,6 +291,27 @@ export class PiACPAgentClient extends ACPAgentClient {
         await connection.setSessionMode({ sessionId, modeId: thinkingOptionId });
       },
       capabilities: PI_CAPABILITIES,
+    });
+  }
+
+  override async createSession(
+    config: AgentSessionConfig,
+    launchContext?: AgentLaunchContext,
+  ): Promise<AgentSession> {
+    const session = await super.createSession(config, launchContext);
+    return wrapPiSession(session, config);
+  }
+
+  override async resumeSession(
+    handle: AgentPersistenceHandle,
+    overrides?: Partial<AgentSessionConfig>,
+    launchContext?: AgentLaunchContext,
+  ): Promise<AgentSession> {
+    const session = await super.resumeSession(handle, overrides, launchContext);
+    return wrapPiSession(session, {
+      provider: "pi",
+      cwd: overrides?.cwd ?? process.cwd(),
+      thinkingOptionId: overrides?.thinkingOptionId,
     });
   }
 

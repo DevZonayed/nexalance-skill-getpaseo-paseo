@@ -8,7 +8,7 @@ import {
   deriveModesFromACP,
   mapACPUsage,
 } from "./acp-agent.js";
-import { transformPiModels, transformPiSessionResponse } from "./pi-acp-agent.js";
+import { transformPiModels, transformPiSessionResponse, wrapPiSession } from "./pi-acp-agent.js";
 import { createTestLogger } from "../../../test-utils/test-logger.js";
 
 function createSession(): ACPAgentSession {
@@ -522,6 +522,84 @@ describe("ACPAgentSession", () => {
           },
         ],
         defaultThinkingOptionId: "medium",
+      },
+    ]);
+  });
+
+  test("Pi session wrapper hides synthetic modes and exposes them as thinking", async () => {
+    const wrapped = wrapPiSession(
+      {
+        provider: "pi",
+        id: "session-1",
+        capabilities: {
+          supportsStreaming: true,
+          supportsSessionPersistence: true,
+          supportsDynamicModes: true,
+          supportsMcpServers: false,
+          supportsReasoningStream: true,
+          supportsToolInvocations: true,
+        },
+        features: [
+          {
+            type: "select",
+            id: "thought_level",
+            label: "Thinking",
+            value: "medium",
+            options: [
+              { id: "low", label: "Low" },
+              { id: "medium", label: "Medium" },
+            ],
+          },
+        ],
+        run: vi.fn(),
+        startTurn: vi.fn(),
+        subscribe: vi.fn(() => () => {}),
+        streamHistory: async function* () {},
+        getRuntimeInfo: vi.fn(async () => ({
+          provider: "pi",
+          sessionId: "session-1",
+          model: "gpt-4.1-mini",
+          thinkingOptionId: null,
+          modeId: "xhigh",
+        })),
+        getAvailableModes: vi.fn(async () => [
+          { id: "xhigh", label: "xhigh" },
+        ]),
+        getCurrentMode: vi.fn(async () => "xhigh"),
+        setMode: vi.fn(),
+        getPendingPermissions: vi.fn(() => []),
+        respondToPermission: vi.fn(),
+        describePersistence: vi.fn(() => null),
+        interrupt: vi.fn(),
+        close: vi.fn(),
+        setThinkingOption: vi.fn(),
+      },
+      {
+        provider: "pi",
+        cwd: "/tmp/paseo-acp-test",
+        thinkingOptionId: "medium",
+      },
+    );
+
+    await expect(wrapped.getAvailableModes()).resolves.toEqual([]);
+    await expect(wrapped.getCurrentMode()).resolves.toBeNull();
+    await expect(wrapped.getRuntimeInfo()).resolves.toEqual({
+      provider: "pi",
+      sessionId: "session-1",
+      model: "gpt-4.1-mini",
+      thinkingOptionId: "xhigh",
+      modeId: null,
+    });
+    expect(wrapped.features).toEqual([
+      {
+        type: "select",
+        id: "thought_level",
+        label: "Thinking",
+        value: "xhigh",
+        options: [
+          { id: "low", label: "Low" },
+          { id: "medium", label: "Medium" },
+        ],
       },
     ]);
   });
