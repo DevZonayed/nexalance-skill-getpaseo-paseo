@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.47 - 2026-04-05
+
+### Fixed
+- Voice TTS in Electron — sherpa now requests copied buffers and the voice MCP bridge sets `ELECTRON_RUN_AS_NODE`, preventing "external buffers not allowed" crashes.
+- QR pairing in desktop — CLI JSON output parsing now tolerates Node deprecation warnings in stdout.
+- STT segment race condition — segment ID and audio buffer are snapshotted before the async transcription call, so rapid commits no longer interleave.
+- Per-host "Add connection" button removed — it blocked multi-host setups by scoping new connections to a single server.
+
 ## 0.1.46 - 2026-04-04
 
 ### Fixed
