@@ -1607,35 +1607,50 @@ export const ArtifactMessageSchema = z.object({
   }),
 });
 
-export const ProjectCheckoutLiteNotGitPayloadSchema = z.object({
-  cwd: z.string(),
-  isGit: z.literal(false),
-  currentBranch: z.null(),
-  remoteUrl: z.null(),
-  worktreeRoot: z.null(),
-  isPaseoOwnedWorktree: z.literal(false),
-  mainRepoRoot: z.null(),
-});
+export const ProjectCheckoutLiteNotGitPayloadSchema = z
+  .object({
+    cwd: z.string(),
+    isGit: z.literal(false),
+    currentBranch: z.null(),
+    remoteUrl: z.null(),
+    worktreeRoot: z.null().optional(),
+    isPaseoOwnedWorktree: z.literal(false),
+    mainRepoRoot: z.null(),
+  })
+  .transform((value) => ({
+    ...value,
+    worktreeRoot: null,
+  }));
 
-export const ProjectCheckoutLiteGitNonPaseoPayloadSchema = z.object({
-  cwd: z.string(),
-  isGit: z.literal(true),
-  currentBranch: z.string().nullable(),
-  remoteUrl: z.string().nullable(),
-  worktreeRoot: z.string(),
-  isPaseoOwnedWorktree: z.literal(false),
-  mainRepoRoot: z.null(),
-});
+export const ProjectCheckoutLiteGitNonPaseoPayloadSchema = z
+  .object({
+    cwd: z.string(),
+    isGit: z.literal(true),
+    currentBranch: z.string().nullable(),
+    remoteUrl: z.string().nullable(),
+    worktreeRoot: z.string().optional(),
+    isPaseoOwnedWorktree: z.literal(false),
+    mainRepoRoot: z.null(),
+  })
+  .transform((value) => ({
+    ...value,
+    worktreeRoot: value.worktreeRoot ?? value.cwd,
+  }));
 
-export const ProjectCheckoutLiteGitPaseoPayloadSchema = z.object({
-  cwd: z.string(),
-  isGit: z.literal(true),
-  currentBranch: z.string().nullable(),
-  remoteUrl: z.string().nullable(),
-  worktreeRoot: z.string(),
-  isPaseoOwnedWorktree: z.literal(true),
-  mainRepoRoot: z.string(),
-});
+export const ProjectCheckoutLiteGitPaseoPayloadSchema = z
+  .object({
+    cwd: z.string(),
+    isGit: z.literal(true),
+    currentBranch: z.string().nullable(),
+    remoteUrl: z.string().nullable(),
+    worktreeRoot: z.string().optional(),
+    isPaseoOwnedWorktree: z.literal(true),
+    mainRepoRoot: z.string(),
+  })
+  .transform((value) => ({
+    ...value,
+    worktreeRoot: value.worktreeRoot ?? value.cwd,
+  }));
 
 export const ProjectCheckoutLitePayloadSchema = z.union([
   ProjectCheckoutLiteNotGitPayloadSchema,
