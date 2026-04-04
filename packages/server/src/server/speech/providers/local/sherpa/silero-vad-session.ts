@@ -107,7 +107,7 @@ export class SherpaSileroVadSession extends EventEmitter implements TurnDetectio
       const samples = pcm16leToFloat32(pcm16le, 1);
       this.inputBuffer.push(samples);
       while (this.inputBuffer.size() > this.windowSize) {
-        const window = this.inputBuffer.get(this.inputBuffer.head(), this.windowSize);
+        const window = this.inputBuffer.get(this.inputBuffer.head(), this.windowSize, false);
         this.inputBuffer.pop(this.windowSize);
         this.vad.acceptWaveform(window);
         this.syncDetectionState();
