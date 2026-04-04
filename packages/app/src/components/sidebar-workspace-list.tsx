@@ -100,11 +100,16 @@ const DEFAULT_STATUS_DOT_SIZE = 7;
 const EMPHASIZED_STATUS_DOT_SIZE = 9;
 const DEFAULT_STATUS_DOT_OFFSET = 0;
 const EMPHASIZED_STATUS_DOT_OFFSET = -1;
-const GITHUB_PR_STATE_LABELS: Record<PrHint["state"], string> = {
-  open: "Open",
-  merged: "Merged",
-  closed: "Closed",
-};
+function getWorkspacePrIconColor(theme: ReturnType<typeof useUnistyles>["theme"], state: PrHint["state"]) {
+  switch (state) {
+    case "merged":
+      return theme.colors.palette.purple[500];
+    case "open":
+      return theme.colors.palette.green[500];
+    case "closed":
+      return theme.colors.palette.red[500];
+  }
+}
 
 interface SidebarWorkspaceListProps {
   projects: SidebarProjectEntry[];
@@ -169,7 +174,8 @@ interface WorkspaceRowInnerProps {
 function WorkspacePrBadge({ hint }: { hint: PrHint }) {
   const { theme } = useUnistyles();
   const [isHovered, setIsHovered] = useState(false);
-  const activeColor = isHovered ? theme.colors.foreground : theme.colors.foregroundMuted;
+  const textColor = isHovered ? theme.colors.foreground : theme.colors.foregroundMuted;
+  const iconColor = getWorkspacePrIconColor(theme, hint.state);
 
   const handlePressIn = useCallback((event: GestureResponderEvent) => {
     event.stopPropagation();
@@ -197,17 +203,17 @@ function WorkspacePrBadge({ hint }: { hint: PrHint }) {
         pressed && styles.workspacePrBadgePressed,
       ]}
     >
-      <GitPullRequest size={12} color={activeColor} />
+      <GitPullRequest size={12} color={iconColor} />
       <Text
         style={[
           styles.workspacePrBadgeText,
-          { color: activeColor },
+          { color: textColor },
         ]}
         numberOfLines={1}
       >
-        #{hint.number} · {GITHUB_PR_STATE_LABELS[hint.state]}
+        #{hint.number}
       </Text>
-      {isHovered && <ExternalLink size={10} color={activeColor} />}
+      {isHovered && <ExternalLink size={10} color={textColor} />}
     </Pressable>
   );
 }

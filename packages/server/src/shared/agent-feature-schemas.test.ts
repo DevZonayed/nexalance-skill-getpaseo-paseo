@@ -14,6 +14,7 @@ describe("agent feature schemas", () => {
       id: "fast_mode",
       label: "Fast mode",
       description: "Uses lower latency service tier",
+      tooltip: "Toggle fast mode",
       icon: "bolt",
       value: true,
     });
@@ -31,6 +32,7 @@ describe("agent feature schemas", () => {
       id: "service_tier",
       label: "Service tier",
       description: "Choose a processing tier",
+      tooltip: "Select service tier",
       icon: "gauge",
       value: "flex",
       options: [
@@ -112,6 +114,7 @@ describe("agent feature schemas", () => {
           type: "toggle",
           id: "fast_mode",
           label: "Fast mode",
+          tooltip: "Toggle fast mode",
           value: false,
         },
       ],

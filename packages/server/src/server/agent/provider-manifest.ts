@@ -60,17 +60,9 @@ const CLAUDE_MODES: AgentProviderModeDefinition[] = [
 
 const CODEX_MODES: AgentProviderModeDefinition[] = [
   {
-    id: "read-only",
-    label: "Read Only",
-    description:
-      "Read files and answer questions. Manual approval required for edits, commands, or network ops.",
-    icon: "ShieldCheck",
-    colorTier: "safe",
-  },
-  {
     id: "auto",
-    label: "Auto",
-    description: "Edit files and run commands but still request approval before escalating scope.",
+    label: "Default Permissions",
+    description: "Edit files and run commands with Codex's default approval flow.",
     icon: "ShieldAlert",
     colorTier: "moderate",
   },
@@ -145,7 +137,7 @@ export const AGENT_PROVIDER_DEFINITIONS: AgentProviderDefinition[] = [
     modes: CODEX_MODES,
     voice: {
       enabled: true,
-      defaultModeId: "read-only",
+      defaultModeId: "auto",
       defaultModel: "gpt-5.1-codex-mini",
     },
   },

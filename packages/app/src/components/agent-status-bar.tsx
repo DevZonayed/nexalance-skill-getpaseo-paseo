@@ -3,7 +3,16 @@ import { View, Text, Platform, Pressable, Keyboard } from "react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { useShallow } from "zustand/shallow";
 import { useStoreWithEqualityFn } from "zustand/traditional";
-import { Brain, ChevronDown, Settings2, ShieldAlert, ShieldCheck, ShieldOff, Zap } from "lucide-react-native";
+import {
+  Brain,
+  ChevronDown,
+  ListTodo,
+  Settings2,
+  ShieldAlert,
+  ShieldCheck,
+  ShieldOff,
+  Zap,
+} from "lucide-react-native";
 import { getProviderIcon } from "@/components/provider-icons";
 import { CombinedModelSelector } from "@/components/combined-model-selector";
 import { useQuery } from "@tanstack/react-query";
@@ -37,6 +46,8 @@ import {
   type AgentModeIcon,
 } from "@server/server/agent/provider-manifest";
 import {
+  getFeatureHighlightColor,
+  getFeatureTooltip,
   getStatusSelectorHint,
   resolveAgentModelSelection,
 } from "@/components/agent-status-bar.utils";
@@ -95,6 +106,8 @@ export interface DraftAgentStatusBarProps {
   thinkingOptions: NonNullable<AgentModelDefinition["thinkingOptions"]>;
   selectedThinkingOptionId: string;
   onSelectThinkingOption: (thinkingOptionId: string) => void;
+  features?: AgentFeature[];
+  onSetFeature?: (featureId: string, value: unknown) => void;
   disabled?: boolean;
 }
 
@@ -116,11 +129,35 @@ function findOptionLabel(
 }
 
 const FEATURE_ICONS: Record<string, typeof Zap> = {
+  "list-todo": ListTodo,
   zap: Zap,
 };
 
 function getFeatureIcon(icon?: string) {
   return (icon && FEATURE_ICONS[icon]) || Settings2;
+}
+
+function getFeatureIconColor(
+  featureId: string,
+  enabled: boolean,
+  palette: {
+    blue: { 400: string };
+    yellow: { 400: string };
+  },
+  foregroundMuted: string,
+): string {
+  if (!enabled) {
+    return foregroundMuted;
+  }
+
+  switch (getFeatureHighlightColor(featureId)) {
+    case "blue":
+      return palette.blue[400];
+    case "yellow":
+      return palette.yellow[400];
+    default:
+      return foregroundMuted;
+  }
 }
 
 const MODE_ICONS = {
@@ -216,7 +253,8 @@ function ControlledStatusBar({
     Boolean(providerOptions?.length) ||
     Boolean(modeOptions?.length) ||
     canSelectModel ||
-    Boolean(thinkingOptions?.length);
+    Boolean(thinkingOptions?.length) ||
+    Boolean(features?.length);
 
   if (!hasAnyControl) {
     return null;
@@ -420,106 +458,6 @@ function ControlledStatusBar({
             </>
           ) : null}
 
-          {features?.map((feature) => {
-            if (feature.type === "toggle") {
-              const FeatureIcon = getFeatureIcon(feature.icon);
-              return (
-                <Tooltip
-                  key={`feature-${feature.id}`}
-                  delayDuration={0}
-                  enabledOnDesktop
-                  enabledOnMobile={false}
-                >
-                  <TooltipTrigger asChild triggerRefProp="ref">
-                    <Pressable
-                      disabled={disabled}
-                      onPress={() => onSetFeature?.(feature.id, !feature.value)}
-                      style={({ pressed, hovered }) => [
-                        styles.modeIconBadge,
-                        hovered && styles.modeBadgeHovered,
-                        pressed && styles.modeBadgePressed,
-                        disabled && styles.disabledBadge,
-                      ]}
-                      accessibilityRole="button"
-                      accessibilityLabel={feature.label}
-                      testID={`agent-feature-${feature.id}`}
-                    >
-                      <FeatureIcon
-                        size={theme.iconSize.md}
-                        color={
-                          feature.value
-                            ? theme.colors.palette.yellow[400]
-                            : theme.colors.foregroundMuted
-                        }
-                      />
-                    </Pressable>
-                  </TooltipTrigger>
-                  <TooltipContent side="top" align="center" offset={8}>
-                    <Text style={styles.tooltipText}>{feature.label}</Text>
-                  </TooltipContent>
-                </Tooltip>
-              );
-            }
-            if (feature.type === "select") {
-              const FeatureIcon = getFeatureIcon(feature.icon);
-              const selectedOption = feature.options.find((o) => o.id === feature.value);
-              return (
-                <DropdownMenu
-                  key={`feature-${feature.id}`}
-                  open={openSelector === `feature-${feature.id}`}
-                  onOpenChange={(open) =>
-                    setOpenSelector(open ? `feature-${feature.id}` : null)
-                  }
-                >
-                  <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
-                    <TooltipTrigger asChild triggerRefProp="ref">
-                      <DropdownMenuTrigger
-                        disabled={disabled}
-                        style={({ pressed, hovered }) => [
-                          styles.modeBadge,
-                          hovered && styles.modeBadgeHovered,
-                          (pressed || openSelector === `feature-${feature.id}`) &&
-                            styles.modeBadgePressed,
-                          disabled && styles.disabledBadge,
-                        ]}
-                        accessibilityRole="button"
-                        accessibilityLabel={feature.label}
-                        testID={`agent-feature-${feature.id}`}
-                      >
-                        <FeatureIcon
-                          size={theme.iconSize.md}
-                          color={theme.colors.foregroundMuted}
-                        />
-                        <Text style={styles.modeBadgeText}>
-                          {selectedOption?.label ?? feature.label}
-                        </Text>
-                        <ChevronDown
-                          size={theme.iconSize.sm}
-                          color={theme.colors.foregroundMuted}
-                        />
-                      </DropdownMenuTrigger>
-                    </TooltipTrigger>
-                    <TooltipContent side="top" align="center" offset={8}>
-                      <Text style={styles.tooltipText}>{feature.label}</Text>
-                    </TooltipContent>
-                  </Tooltip>
-                  <DropdownMenuContent side="top" align="start">
-                    {feature.options.map((option) => (
-                      <DropdownMenuItem
-                        key={option.id}
-                        selected={option.id === feature.value}
-                        onSelect={() => onSetFeature?.(feature.id, option.id)}
-                      >
-                        {option.label}
-                      </DropdownMenuItem>
-                    ))}
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              );
-            }
-            return null;
-          })}
-
           {modeOptions && modeOptions.length > 0 ? (
             <>
               <Tooltip
@@ -568,6 +506,107 @@ function ControlledStatusBar({
               />
             </>
           ) : null}
+
+          {features?.map((feature) => {
+            if (feature.type === "toggle") {
+              const FeatureIcon = getFeatureIcon(feature.icon);
+              return (
+                <Tooltip
+                  key={`feature-${feature.id}`}
+                  delayDuration={0}
+                  enabledOnDesktop
+                  enabledOnMobile={false}
+                >
+                  <TooltipTrigger asChild triggerRefProp="ref">
+                    <Pressable
+                      disabled={disabled}
+                      onPress={() => onSetFeature?.(feature.id, !feature.value)}
+                      style={({ pressed, hovered }) => [
+                        styles.modeIconBadge,
+                        hovered && styles.modeBadgeHovered,
+                        pressed && styles.modeBadgePressed,
+                        disabled && styles.disabledBadge,
+                      ]}
+                      accessibilityRole="button"
+                      accessibilityLabel={getFeatureTooltip(feature)}
+                      testID={`agent-feature-${feature.id}`}
+                    >
+                      <FeatureIcon
+                        size={theme.iconSize.md}
+                        color={getFeatureIconColor(
+                          feature.id,
+                          feature.value,
+                          theme.colors.palette,
+                          theme.colors.foregroundMuted,
+                        )}
+                      />
+                    </Pressable>
+                  </TooltipTrigger>
+                  <TooltipContent side="top" align="center" offset={8}>
+                    <Text style={styles.tooltipText}>{getFeatureTooltip(feature)}</Text>
+                  </TooltipContent>
+                </Tooltip>
+              );
+            }
+            if (feature.type === "select") {
+              const FeatureIcon = getFeatureIcon(feature.icon);
+              const selectedOption = feature.options.find((o) => o.id === feature.value);
+              return (
+                <DropdownMenu
+                  key={`feature-${feature.id}`}
+                  open={openSelector === `feature-${feature.id}`}
+                  onOpenChange={(open) =>
+                    setOpenSelector(open ? `feature-${feature.id}` : null)
+                  }
+                >
+                  <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
+                    <TooltipTrigger asChild triggerRefProp="ref">
+                      <DropdownMenuTrigger
+                        disabled={disabled}
+                        style={({ pressed, hovered }) => [
+                          styles.modeBadge,
+                          hovered && styles.modeBadgeHovered,
+                          (pressed || openSelector === `feature-${feature.id}`) &&
+                            styles.modeBadgePressed,
+                          disabled && styles.disabledBadge,
+                        ]}
+                        accessibilityRole="button"
+                        accessibilityLabel={getFeatureTooltip(feature)}
+                        testID={`agent-feature-${feature.id}`}
+                      >
+                        <FeatureIcon
+                          size={theme.iconSize.md}
+                          color={theme.colors.foregroundMuted}
+                        />
+                        <Text style={styles.modeBadgeText}>
+                          {selectedOption?.label ?? feature.label}
+                        </Text>
+                        <ChevronDown
+                          size={theme.iconSize.sm}
+                          color={theme.colors.foregroundMuted}
+                        />
+                      </DropdownMenuTrigger>
+                    </TooltipTrigger>
+                    <TooltipContent side="top" align="center" offset={8}>
+                      <Text style={styles.tooltipText}>{getFeatureTooltip(feature)}</Text>
+                    </TooltipContent>
+                  </Tooltip>
+                  <DropdownMenuContent side="top" align="start">
+                    {feature.options.map((option) => (
+                      <DropdownMenuItem
+                        key={option.id}
+                        selected={option.id === feature.value}
+                        onSelect={() => onSetFeature?.(feature.id, option.id)}
+                      >
+                        {option.label}
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              );
+            }
+            return null;
+          })}
         </>
       ) : (
         <>
@@ -664,86 +703,6 @@ function ControlledStatusBar({
               </View>
             ) : null}
 
-            {features?.map((feature) => {
-              if (feature.type === "toggle") {
-                const FeatureIcon = getFeatureIcon(feature.icon);
-                return (
-                  <View key={`feature-${feature.id}`} style={styles.sheetSection}>
-                    <Pressable
-                      disabled={disabled}
-                      onPress={() => onSetFeature?.(feature.id, !feature.value)}
-                      style={({ pressed }) => [
-                        styles.sheetSelect,
-                        pressed && styles.sheetSelectPressed,
-                        disabled && styles.disabledSheetSelect,
-                      ]}
-                      accessibilityRole="button"
-                      accessibilityLabel={feature.label}
-                      testID={`agent-feature-${feature.id}`}
-                    >
-                      <FeatureIcon
-                        size={theme.iconSize.md}
-                        color={
-                          feature.value
-                            ? theme.colors.palette.yellow[400]
-                            : theme.colors.foregroundMuted
-                        }
-                      />
-                      <Text style={styles.sheetSelectText}>{feature.label}</Text>
-                      <Text style={styles.modeBadgeText}>
-                        {feature.value ? "On" : "Off"}
-                      </Text>
-                    </Pressable>
-                  </View>
-                );
-              }
-              if (feature.type === "select") {
-                const selectedOption = feature.options.find((o) => o.id === feature.value);
-                return (
-                  <View key={`feature-${feature.id}`} style={styles.sheetSection}>
-                    <DropdownMenu
-                      open={openSelector === `feature-${feature.id}`}
-                      onOpenChange={(open) =>
-                        setOpenSelector(open ? `feature-${feature.id}` : null)
-                      }
-                    >
-                      <DropdownMenuTrigger
-                        disabled={disabled}
-                        style={({ pressed }) => [
-                          styles.sheetSelect,
-                          pressed && styles.sheetSelectPressed,
-                          disabled && styles.disabledSheetSelect,
-                        ]}
-                        accessibilityRole="button"
-                        accessibilityLabel={feature.label}
-                        testID={`agent-feature-${feature.id}`}
-                      >
-                        <Text style={styles.sheetSelectText}>
-                          {selectedOption?.label ?? feature.label}
-                        </Text>
-                        <ChevronDown
-                          size={theme.iconSize.md}
-                          color={theme.colors.foregroundMuted}
-                        />
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent side="top" align="start">
-                        {feature.options.map((option) => (
-                          <DropdownMenuItem
-                            key={option.id}
-                            selected={option.id === feature.value}
-                            onSelect={() => onSetFeature?.(feature.id, option.id)}
-                          >
-                            {option.label}
-                          </DropdownMenuItem>
-                        ))}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </View>
-                );
-              }
-              return null;
-            })}
-
             {modeOptions && modeOptions.length > 0 ? (
               <View style={styles.sheetSection}>
                 <DropdownMenu
@@ -786,6 +745,85 @@ function ControlledStatusBar({
                 </DropdownMenu>
               </View>
             ) : null}
+
+            {features?.map((feature) => {
+              if (feature.type === "toggle") {
+                const FeatureIcon = getFeatureIcon(feature.icon);
+                return (
+                  <View key={`feature-${feature.id}`} style={styles.sheetSection}>
+                    <Pressable
+                      disabled={disabled}
+                      onPress={() => onSetFeature?.(feature.id, !feature.value)}
+                      style={({ pressed }) => [
+                        styles.sheetSelect,
+                        pressed && styles.sheetSelectPressed,
+                        disabled && styles.disabledSheetSelect,
+                      ]}
+                      accessibilityRole="button"
+                      accessibilityLabel={getFeatureTooltip(feature)}
+                      testID={`agent-feature-${feature.id}`}
+                    >
+                      <FeatureIcon
+                        size={theme.iconSize.md}
+                        color={getFeatureIconColor(
+                          feature.id,
+                          feature.value,
+                          theme.colors.palette,
+                          theme.colors.foregroundMuted,
+                        )}
+                      />
+                      <Text style={styles.sheetSelectText}>{feature.label}</Text>
+                      <Text style={styles.modeBadgeText}>{feature.value ? "On" : "Off"}</Text>
+                    </Pressable>
+                  </View>
+                );
+              }
+              if (feature.type === "select") {
+                const selectedOption = feature.options.find((o) => o.id === feature.value);
+                return (
+                  <View key={`feature-${feature.id}`} style={styles.sheetSection}>
+                    <DropdownMenu
+                      open={openSelector === `feature-${feature.id}`}
+                      onOpenChange={(open) =>
+                        setOpenSelector(open ? `feature-${feature.id}` : null)
+                      }
+                    >
+                      <DropdownMenuTrigger
+                        disabled={disabled}
+                        style={({ pressed }) => [
+                          styles.sheetSelect,
+                          pressed && styles.sheetSelectPressed,
+                          disabled && styles.disabledSheetSelect,
+                        ]}
+                        accessibilityRole="button"
+                        accessibilityLabel={getFeatureTooltip(feature)}
+                        testID={`agent-feature-${feature.id}`}
+                      >
+                        <Text style={styles.sheetSelectText}>
+                          {selectedOption?.label ?? feature.label}
+                        </Text>
+                        <ChevronDown
+                          size={theme.iconSize.md}
+                          color={theme.colors.foregroundMuted}
+                        />
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent side="top" align="start">
+                        {feature.options.map((option) => (
+                          <DropdownMenuItem
+                            key={option.id}
+                            selected={option.id === feature.value}
+                            onSelect={() => onSetFeature?.(feature.id, option.id)}
+                          >
+                            {option.label}
+                          </DropdownMenuItem>
+                        ))}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </View>
+                );
+              }
+              return null;
+            })}
           </AdaptiveModalSheet>
         </>
       )}
@@ -1008,6 +1046,8 @@ export function DraftAgentStatusBar({
   thinkingOptions,
   selectedThinkingOptionId,
   onSelectThinkingOption,
+  features,
+  onSetFeature,
   disabled = false,
 }: DraftAgentStatusBarProps) {
   const isWeb = Platform.OS === "web";
@@ -1061,6 +1101,8 @@ export function DraftAgentStatusBar({
           thinkingOptions={mappedThinkingOptions.length > 0 ? mappedThinkingOptions : undefined}
           selectedThinkingOptionId={effectiveSelectedThinkingOption}
           onSelectThinkingOption={onSelectThinkingOption}
+          features={features}
+          onSetFeature={onSetFeature}
           disabled={disabled}
         />
       </View>
@@ -1093,6 +1135,8 @@ export function DraftAgentStatusBar({
       thinkingOptions={mappedThinkingOptions.length > 0 ? mappedThinkingOptions : undefined}
       selectedThinkingOptionId={effectiveSelectedThinkingOption}
       onSelectThinkingOption={onSelectThinkingOption}
+      features={features}
+      onSetFeature={onSetFeature}
       disabled={disabled}
     />
   );

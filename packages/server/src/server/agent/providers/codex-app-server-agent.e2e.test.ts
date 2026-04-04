@@ -35,6 +35,7 @@ describe("Codex app-server provider (e2e)", () => {
         model: CODEX_TEST_MODEL,
         thinkingOptionId: CODEX_TEST_THINKING_OPTION_ID,
       });
+      expect(session.features?.some((feature) => feature.id === "plan_mode")).toBe(true);
 
       const result = await session.run("Say hello in one sentence.");
       expect(result.finalText.length).toBeGreaterThan(0);

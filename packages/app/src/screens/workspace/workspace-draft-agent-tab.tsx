@@ -8,6 +8,7 @@ import type { ImageAttachment } from "@/components/message-input";
 import { useAgentFormState } from "@/hooks/use-agent-form-state";
 import { useAgentInputDraft } from "@/hooks/use-agent-input-draft";
 import { useDraftAgentCreateFlow } from "@/hooks/use-draft-agent-create-flow";
+import { useDraftAgentFeatures } from "@/hooks/use-draft-agent-features";
 import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
 import { buildDraftStoreKey } from "@/stores/draft-keys";
 import type { Agent } from "@/stores/session-store";
@@ -110,6 +111,18 @@ export function WorkspaceDraftAgentTab({
       availableModels.find((model) => model.id === effectiveDraftModelId) ?? null;
     return selectedModelDefinition?.defaultThinkingOptionId ?? "";
   }, [availableModels, effectiveDraftModelId, selectedThinkingOptionId]);
+  const {
+    features: draftFeatures,
+    featureValues: draftFeatureValues,
+    setFeatureValue: setDraftFeatureValue,
+  } = useDraftAgentFeatures({
+    serverId,
+    provider: selectedProvider,
+    cwd: workspaceId,
+    modeId: selectedMode,
+    modelId: effectiveDraftModelId,
+    thinkingOptionId: effectiveDraftThinkingOptionId,
+  });
 
   const {
     formErrorMessage,
@@ -168,6 +181,7 @@ export function WorkspaceDraftAgentTab({
         title: "Agent",
         cwd: workspaceId,
         model,
+        features: draftFeatures,
         thinkingOptionId,
         labels: {},
       };
@@ -186,6 +200,7 @@ export function WorkspaceDraftAgentTab({
         ...(effectiveDraftThinkingOptionId
           ? { thinkingOptionId: effectiveDraftThinkingOptionId }
           : {}),
+        ...(draftFeatureValues ? { featureValues: draftFeatureValues } : {}),
       };
 
       const imagesData = await encodeImages(images);
@@ -215,8 +230,10 @@ export function WorkspaceDraftAgentTab({
       ...(effectiveDraftThinkingOptionId
         ? { thinkingOptionId: effectiveDraftThinkingOptionId }
         : {}),
+      ...(draftFeatureValues ? { featureValues: draftFeatureValues } : {}),
     };
   }, [
+    draftFeatureValues,
     effectiveDraftModelId,
     effectiveDraftThinkingOptionId,
     modeOptions.length,
@@ -297,6 +314,8 @@ export function WorkspaceDraftAgentTab({
               thinkingOptions: availableThinkingOptions,
               selectedThinkingOptionId,
               onSelectThinkingOption: setThinkingOptionFromUser,
+              features: draftFeatures,
+              onSetFeature: setDraftFeatureValue,
               disabled: isSubmitting,
             }}
           />

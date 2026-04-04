@@ -82,6 +82,7 @@ export const AgentFeatureToggleSchema = z.object({
   id: z.string(),
   label: z.string(),
   description: z.string().optional(),
+  tooltip: z.string().optional(),
   icon: z.string().optional(),
   value: z.boolean(),
 });
@@ -91,6 +92,7 @@ export const AgentFeatureSelectSchema = z.object({
   id: z.string(),
   label: z.string(),
   description: z.string().optional(),
+  tooltip: z.string().optional(),
   icon: z.string().optional(),
   value: z.string().nullable(),
   options: z.array(AgentSelectOptionSchema),
@@ -314,6 +316,10 @@ const ToolCallDetailPayloadSchema: z.ZodType<ToolCallDetail> = z.discriminatedUn
     label: z.string().optional(),
     text: z.string().optional(),
     icon: z.enum(TOOL_CALL_ICON_NAMES).optional(),
+  }),
+  z.object({
+    type: z.literal("plan"),
+    text: z.string(),
   }),
   z.object({
     type: z.literal("unknown"),
@@ -1154,6 +1160,13 @@ const ListCommandsDraftConfigSchema = z.object({
   modeId: z.string().optional(),
   model: z.string().optional(),
   thinkingOptionId: z.string().optional(),
+  featureValues: z.record(z.unknown()).optional(),
+});
+
+export const ListProviderFeaturesRequestMessageSchema = z.object({
+  type: z.literal("list_provider_features_request"),
+  draftConfig: ListCommandsDraftConfigSchema,
+  requestId: z.string(),
 });
 
 export const ListCommandsRequestSchema = z.object({
@@ -1260,6 +1273,7 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   CreateAgentRequestMessageSchema,
   ListProviderModelsRequestMessageSchema,
   ListProviderModesRequestMessageSchema,
+  ListProviderFeaturesRequestMessageSchema,
   ListAvailableProvidersRequestMessageSchema,
   ResumeAgentRequestMessageSchema,
   RefreshAgentRequestMessageSchema,
@@ -2179,6 +2193,17 @@ export const ListProviderModesResponseMessageSchema = z.object({
   }),
 });
 
+export const ListProviderFeaturesResponseMessageSchema = z.object({
+  type: z.literal("list_provider_features_response"),
+  payload: z.object({
+    provider: AgentProviderSchema,
+    features: z.array(AgentFeatureSchema).optional(),
+    error: z.string().nullable().optional(),
+    fetchedAt: z.string(),
+    requestId: z.string(),
+  }),
+});
+
 const ProviderAvailabilitySchema = z.object({
   provider: AgentProviderSchema,
   available: z.boolean(),
@@ -2386,6 +2411,7 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   FileDownloadTokenResponseSchema,
   ListProviderModelsResponseMessageSchema,
   ListProviderModesResponseMessageSchema,
+  ListProviderFeaturesResponseMessageSchema,
   ListAvailableProvidersResponseSchema,
   ListCommandsResponseSchema,
   ListTerminalsResponseSchema,
@@ -2462,6 +2488,9 @@ export type ListProviderModelsResponseMessage = z.infer<
 export type ListProviderModesResponseMessage = z.infer<
   typeof ListProviderModesResponseMessageSchema
 >;
+export type ListProviderFeaturesResponseMessage = z.infer<
+  typeof ListProviderFeaturesResponseMessageSchema
+>;
 export type ListAvailableProvidersResponse = z.infer<typeof ListAvailableProvidersResponseSchema>;
 export type ChatCreateResponse = z.infer<typeof ChatCreateResponseSchema>;
 export type ChatListResponse = z.infer<typeof ChatListResponseSchema>;
@@ -2503,6 +2532,9 @@ export type ListProviderModelsRequestMessage = z.infer<
 >;
 export type ListProviderModesRequestMessage = z.infer<
   typeof ListProviderModesRequestMessageSchema
+>;
+export type ListProviderFeaturesRequestMessage = z.infer<
+  typeof ListProviderFeaturesRequestMessageSchema
 >;
 export type ListAvailableProvidersRequestMessage = z.infer<
   typeof ListAvailableProvidersRequestMessageSchema

@@ -1700,6 +1700,10 @@ export class Session {
           await this.handleListProviderModesRequest(msg);
           break;
 
+        case "list_provider_features_request":
+          await this.handleListProviderFeaturesRequest(msg);
+          break;
+
         case "list_available_providers_request":
           await this.handleListAvailableProvidersRequest(msg);
           break;
@@ -3116,6 +3120,60 @@ export class Session {
     }
   }
 
+  private buildDraftAgentSessionConfig(draftConfig: {
+    provider: AgentProvider;
+    cwd: string;
+    modeId?: string;
+    model?: string;
+    thinkingOptionId?: string;
+    featureValues?: Record<string, unknown>;
+  }): AgentSessionConfig {
+    return {
+      provider: draftConfig.provider,
+      cwd: expandTilde(draftConfig.cwd),
+      ...(draftConfig.modeId ? { modeId: draftConfig.modeId } : {}),
+      ...(draftConfig.model ? { model: draftConfig.model } : {}),
+      ...(draftConfig.thinkingOptionId
+        ? { thinkingOptionId: draftConfig.thinkingOptionId }
+        : {}),
+      ...(draftConfig.featureValues ? { featureValues: draftConfig.featureValues } : {}),
+    };
+  }
+
+  private async handleListProviderFeaturesRequest(
+    msg: Extract<SessionInboundMessage, { type: "list_provider_features_request" }>,
+  ): Promise<void> {
+    const fetchedAt = new Date().toISOString();
+    try {
+      const sessionConfig = this.buildDraftAgentSessionConfig(msg.draftConfig);
+      const features = await this.agentManager.listDraftFeatures(sessionConfig);
+      this.emit({
+        type: "list_provider_features_response",
+        payload: {
+          provider: msg.draftConfig.provider,
+          features,
+          error: null,
+          fetchedAt,
+          requestId: msg.requestId,
+        },
+      });
+    } catch (error) {
+      this.sessionLogger.error(
+        { err: error, provider: msg.draftConfig.provider, draftConfig: msg.draftConfig },
+        `Failed to list features for ${msg.draftConfig.provider}`,
+      );
+      this.emit({
+        type: "list_provider_features_response",
+        payload: {
+          provider: msg.draftConfig.provider,
+          error: (error as Error)?.message ?? String(error),
+          fetchedAt,
+          requestId: msg.requestId,
+        },
+      });
+    }
+  }
+
   private async handleListAvailableProvidersRequest(
     msg: Extract<SessionInboundMessage, { type: "list_available_providers_request" }>,
   ): Promise<void> {
@@ -3632,16 +3690,7 @@ export class Session {
       }
 
       if (!agent && draftConfig) {
-        const sessionConfig: AgentSessionConfig = {
-          provider: draftConfig.provider,
-          cwd: expandTilde(draftConfig.cwd),
-          ...(draftConfig.modeId ? { modeId: draftConfig.modeId } : {}),
-          ...(draftConfig.model ? { model: draftConfig.model } : {}),
-          ...(draftConfig.thinkingOptionId
-            ? { thinkingOptionId: draftConfig.thinkingOptionId }
-            : {}),
-        };
-
+        const sessionConfig = this.buildDraftAgentSessionConfig(draftConfig);
         const commands = await this.agentManager.listDraftCommands(sessionConfig);
         this.emit({
           type: "list_commands_response",

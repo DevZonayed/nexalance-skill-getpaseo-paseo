@@ -37,6 +37,7 @@ import type {
   OpenProjectResponseMessage,
   ArchiveWorkspaceResponseMessage,
   ListCommandsResponse,
+  ListProviderFeaturesResponseMessage,
   ListProviderModelsResponseMessage,
   ListProviderModesResponseMessage,
   ListAvailableProvidersResponse,
@@ -216,13 +217,14 @@ type CreatePaseoWorktreePayload = Extract<
 >["payload"];
 type FileExplorerPayload = FileExplorerResponse["payload"];
 type FileDownloadTokenPayload = FileDownloadTokenResponse["payload"];
+type ListProviderFeaturesPayload = ListProviderFeaturesResponseMessage["payload"];
 type ListProviderModelsPayload = ListProviderModelsResponseMessage["payload"];
 type ListProviderModesPayload = ListProviderModesResponseMessage["payload"];
 type ListAvailableProvidersPayload = ListAvailableProvidersResponse["payload"];
 type ListCommandsPayload = ListCommandsResponse["payload"];
 type ListCommandsDraftConfig = Pick<
   AgentSessionConfig,
-  "provider" | "cwd" | "modeId" | "model" | "thinkingOptionId"
+  "provider" | "cwd" | "modeId" | "model" | "thinkingOptionId" | "featureValues"
 >;
 type ListCommandsOptions = {
   requestId?: string;
@@ -2517,6 +2519,21 @@ export class DaemonClient {
         cwd: options?.cwd,
       },
       responseType: "list_provider_modes_response",
+      timeout: 45000,
+    });
+  }
+
+  async listProviderFeatures(
+    draftConfig: ListCommandsDraftConfig,
+    options?: { requestId?: string },
+  ): Promise<ListProviderFeaturesPayload> {
+    return this.sendCorrelatedSessionRequest({
+      requestId: options?.requestId,
+      message: {
+        type: "list_provider_features_request",
+        draftConfig,
+      },
+      responseType: "list_provider_features_response",
       timeout: 45000,
     });
   }

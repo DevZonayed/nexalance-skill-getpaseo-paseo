@@ -550,6 +550,31 @@ export class AgentManager {
     }
   }
 
+  async listDraftFeatures(config: AgentSessionConfig): Promise<AgentFeature[]> {
+    const normalizedConfig = await this.normalizeConfig(config);
+    const client = this.requireClient(normalizedConfig.provider);
+    const available = await client.isAvailable();
+    if (!available) {
+      throw new Error(
+        `Provider '${normalizedConfig.provider}' is not available. Please ensure the CLI is installed.`,
+      );
+    }
+
+    const session = await client.createSession(normalizedConfig);
+    try {
+      return session.features ?? [];
+    } finally {
+      try {
+        await session.close();
+      } catch (error) {
+        this.logger.warn(
+          { err: error, provider: normalizedConfig.provider },
+          "Failed to close draft feature listing session",
+        );
+      }
+    }
+  }
+
   getAgent(id: string): ManagedAgent | null {
     const agent = this.agents.get(id);
     return agent ? { ...agent } : null;

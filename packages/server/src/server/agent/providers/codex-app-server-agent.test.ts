@@ -55,6 +55,25 @@ describe("Codex app-server provider", () => {
     }
   });
 
+  test("maps Codex plan markdown to a synthetic plan tool call", () => {
+    const item = __codexAppServerInternals.mapCodexPlanToToolCall({
+      callId: "plan-turn-1",
+      text: "### Login Screen\n- Build layout\n- Add validation",
+    });
+
+    expect(item).toEqual({
+      type: "tool_call",
+      callId: "plan-turn-1",
+      name: "plan",
+      status: "completed",
+      error: null,
+      detail: {
+        type: "plan",
+        text: "### Login Screen\n- Build layout\n- Add validation",
+      },
+    });
+  });
+
   test("maps patch notifications with object-style single change payloads", () => {
     const item = __codexAppServerInternals.mapCodexPatchNotificationToToolCall({
       callId: "patch-object-single",

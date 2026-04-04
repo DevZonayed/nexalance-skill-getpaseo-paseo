@@ -69,6 +69,7 @@ export type AgentFeatureToggle = {
   id: string;
   label: string;
   description?: string;
+  tooltip?: string;
   icon?: string;
   value: boolean;
 };
@@ -78,6 +79,7 @@ export type AgentFeatureSelect = {
   id: string;
   label: string;
   description?: string;
+  tooltip?: string;
   icon?: string;
   value: string | null;
   options: AgentSelectOption[];
@@ -221,6 +223,10 @@ export type ToolCallDetail =
       label?: string;
       text?: string;
       icon?: ToolCallIconName;
+    }
+  | {
+      type: "plan";
+      text: string;
     }
   | {
       type: "unknown";

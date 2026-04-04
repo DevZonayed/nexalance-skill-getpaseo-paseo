@@ -56,6 +56,7 @@ import { useKeyboardShiftStyle } from "@/hooks/use-keyboard-shift-style";
 import { normalizeAgentSnapshot } from "@/utils/agent-snapshots";
 import { useAgentInputDraft } from "@/hooks/use-agent-input-draft";
 import { useDraftAgentCreateFlow } from "@/hooks/use-draft-agent-create-flow";
+import { useDraftAgentFeatures } from "@/hooks/use-draft-agent-features";
 
 const EMPTY_PENDING_PERMISSIONS = new Map();
 const DRAFT_CAPABILITIES: AgentCapabilityFlags = {
@@ -757,6 +758,18 @@ function DraftAgentScreenContent({
       availableModels.find((model) => model.id === effectiveDraftModelId) ?? null;
     return selectedModelDefinition?.defaultThinkingOptionId ?? "";
   }, [availableModels, effectiveDraftModelId, selectedThinkingOptionId]);
+  const {
+    features: draftFeatures,
+    featureValues: draftFeatureValues,
+    setFeatureValue: setDraftFeatureValue,
+  } = useDraftAgentFeatures({
+    serverId: selectedServerId,
+    provider: selectedProvider,
+    cwd: workingDir,
+    modeId: selectedMode,
+    modelId: effectiveDraftModelId,
+    thinkingOptionId: effectiveDraftThinkingOptionId,
+  });
   const draftCommandConfig = useMemo<DraftCommandConfig | undefined>(() => {
     const cwd = (
       isAttachWorktree && selectedWorktreePath ? selectedWorktreePath : workingDir
@@ -773,8 +786,10 @@ function DraftAgentScreenContent({
       ...(effectiveDraftThinkingOptionId
         ? { thinkingOptionId: effectiveDraftThinkingOptionId }
         : {}),
+      ...(draftFeatureValues ? { featureValues: draftFeatureValues } : {}),
     };
   }, [
+    draftFeatureValues,
     effectiveDraftModelId,
     effectiveDraftThinkingOptionId,
     isAttachWorktree,
@@ -878,6 +893,7 @@ function DraftAgentScreenContent({
         title: "New agent",
         cwd,
         model,
+        features: draftFeatures,
         thinkingOptionId,
         labels: {},
       };
@@ -896,6 +912,7 @@ function DraftAgentScreenContent({
         ...(effectiveDraftThinkingOptionId
           ? { thinkingOptionId: effectiveDraftThinkingOptionId }
           : {}),
+        ...(draftFeatureValues ? { featureValues: draftFeatureValues } : {}),
       };
 
       const effectiveBaseBranch = baseBranch.trim();
@@ -1248,6 +1265,8 @@ function DraftAgentScreenContent({
                 thinkingOptions: availableThinkingOptions,
                 selectedThinkingOptionId,
                 onSelectThinkingOption: setThinkingOptionFromUser,
+                features: draftFeatures,
+                onSetFeature: setDraftFeatureValue,
                 disabled: isSubmitting,
               }}
             />

@@ -71,6 +71,7 @@ import { getMarkdownListMarker } from "@/utils/markdown-list";
 import { openExternalUrl } from "@/utils/open-external-url";
 import { markScrollInvestigationEvent } from "@/utils/scroll-jank-investigation";
 export type { InlinePathTarget } from "@/utils/inline-path";
+import { PlanCard } from "./plan-card";
 import { useToolCallSheet } from "./tool-call-sheet";
 import { ToolCallDetailsContent } from "./tool-call-details";
 import { useAttachmentPreviewUrl } from "@/attachments/use-attachment-preview-url";
@@ -1883,6 +1884,12 @@ export const ToolCall = memo(function ToolCall({
       />
     );
   }, [isMobile, effectiveDetail, errorText, isLoadingDetails]);
+
+  if (effectiveDetail?.type === "plan") {
+    return (
+      <PlanCard title="Plan" text={effectiveDetail.text} disableOuterSpacing={disableOuterSpacing} />
+    );
+  }
 
   return (
     <ExpandableBadge

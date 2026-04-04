@@ -2,7 +2,6 @@ import type {
   AgentCapabilityFlags,
   AgentClient,
   AgentFeature,
-  AgentFeatureToggle,
   AgentLaunchContext,
   AgentMode,
   AgentModelDefinition,
@@ -52,6 +51,7 @@ import {
   quoteWindowsCommand,
 } from "../../../utils/executable.js";
 import { extractCodexTerminalSessionId, nonEmptyString } from "./tool-call-mapper-utils.js";
+import { buildCodexFeatures, codexModelSupportsFastMode } from "./codex-feature-definitions.js";
 
 const DEFAULT_TIMEOUT_MS = 14 * 24 * 60 * 60 * 1000;
 const TURN_START_TIMEOUT_MS = 90 * 1000;
@@ -69,15 +69,9 @@ const CODEX_APP_SERVER_CAPABILITIES: AgentCapabilityFlags = {
 
 const CODEX_MODES: AgentMode[] = [
   {
-    id: "read-only",
-    label: "Read Only",
-    description:
-      "Read files and answer questions. Manual approval required for edits, commands, or network ops.",
-  },
-  {
     id: "auto",
-    label: "Auto",
-    description: "Edit files and run commands but still request approval before escalating scope.",
+    label: "Default Permissions",
+    description: "Edit files and run commands with Codex's default approval flow.",
   },
   {
     id: "full-access",
@@ -87,20 +81,6 @@ const CODEX_MODES: AgentMode[] = [
 ];
 
 const DEFAULT_CODEX_MODE_ID = "auto";
-const CODEX_FAST_MODE_SUPPORTED_MODE_PREFIXES = [
-  "gpt-5",
-  "gpt-4.1",
-  "o3",
-  "o4-mini",
-] as const;
-const CODEX_FAST_MODE_FEATURE: AgentFeatureToggle = {
-  type: "toggle",
-  id: "fast_mode",
-  label: "Fast",
-  description: "Priority inference at 2x usage",
-  icon: "zap",
-  value: false,
-};
 
 const MODE_PRESETS: Record<
   string,
@@ -154,16 +134,6 @@ function normalizeCodexModelId(modelId: string | null | undefined): string | und
 
 function normalizeCodexModelLabel(displayName: string): string {
   return displayName.replace(/\bgpt\b/gi, "GPT");
-}
-
-function codexModelSupportsFastMode(modelId: string | null | undefined): boolean {
-  const normalizedModelId = normalizeCodexModelId(modelId);
-  if (!normalizedModelId) {
-    return false;
-  }
-  return CODEX_FAST_MODE_SUPPORTED_MODE_PREFIXES.some(
-    (prefix) => normalizedModelId === prefix || normalizedModelId.startsWith(prefix),
-  );
 }
 
 type CodexConfiguredDefaults = {
@@ -714,28 +684,43 @@ function extractUserText(content: unknown): string | null {
   return parts.length > 0 ? parts.join("\n") : null;
 }
 
-function parsePlanTextToTodoItems(text: string): { text: string; completed: boolean }[] {
-  const lines = text
+function normalizePlanMarkdown(text: string): string {
+  return text
     .split("\n")
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0);
-  if (lines.length === 0) {
-    return [{ text, completed: false }];
-  }
-  return lines.map((line) => ({
-    text: line.replace(/^[-*]\s+/, ""),
-    completed: false,
-  }));
+    .map((line) => line.replace(/\s+$/, ""))
+    .join("\n")
+    .trim();
 }
 
-function planStepsToTodoItems(steps: Array<{ step: string; status: string }>): {
-  text: string;
-  completed: boolean;
-}[] {
-  return steps.map((entry) => ({
-    text: entry.step,
-    completed: entry.status === "completed",
-  }));
+function planStepsToMarkdown(steps: Array<{ step: string; status: string }>): string {
+  const lines = steps
+    .map((entry) => entry.step.trim())
+    .filter((step) => step.length > 0)
+    .map((step) => {
+      if (/^(#{1,6}\s|[-*+]\s|\d+\.\s)/.test(step)) {
+        return step;
+      }
+      return `- ${step}`;
+    });
+  return normalizePlanMarkdown(lines.join("\n"));
+}
+
+function mapCodexPlanToToolCall(params: { callId: string; text: string }): ToolCallTimelineItem | null {
+  const text = normalizePlanMarkdown(params.text);
+  if (!text) {
+    return null;
+  }
+  return {
+    type: "tool_call",
+    callId: params.callId,
+    name: "plan",
+    status: "completed",
+    error: null,
+    detail: {
+      type: "plan",
+      text,
+    },
+  };
 }
 
 type CodexPatchFileChange = {
@@ -1120,9 +1105,12 @@ function threadItemToTimeline(
       return { type: "assistant_message", text: normalizedItem.text ?? "" };
     }
     case "plan": {
-      const text = normalizedItem.text ?? "";
-      const items = parsePlanTextToTodoItems(text);
-      return { type: "todo", items };
+      return mapCodexPlanToToolCall({
+        callId:
+          nonEmptyString(normalizedItem.id ?? normalizedItem.itemId ?? undefined) ??
+          `plan:${normalizePlanMarkdown(normalizedItem.text ?? "")}`,
+        text: normalizedItem.text ?? "",
+      });
     }
     case "reasoning": {
       const summary = Array.isArray(normalizedItem.summary)
@@ -2045,6 +2033,22 @@ function buildCodexAppServerEnv(
   };
 }
 
+function buildCodexAppServerInitializeParams(): {
+  clientInfo: { name: string; title: string; version: string };
+  capabilities: { experimentalApi: true };
+} {
+  return {
+    clientInfo: {
+      name: "paseo",
+      title: "Paseo",
+      version: "0.0.0",
+    },
+    capabilities: {
+      experimentalApi: true,
+    },
+  };
+}
+
 class CodexAppServerAgentSession implements AgentSession {
   readonly provider = CODEX_PROVIDER;
   readonly capabilities = CODEX_APP_SERVER_CAPABILITIES;
@@ -2060,6 +2064,7 @@ class CodexAppServerAgentSession implements AgentSession {
   private activeForegroundTurnId: string | null = null;
   private cachedRuntimeInfo: AgentRuntimeInfo | null = null;
   private serviceTier: "fast" | null = null;
+  private planModeEnabled = false;
   private historyPending = false;
   private persistedHistory: AgentTimelineItem[] = [];
   private pendingPermissions = new Map<string, AgentPermissionRequest>();
@@ -2119,6 +2124,9 @@ class CodexAppServerAgentSession implements AgentSession {
     if (this.config.featureValues?.fast_mode) {
       this.serviceTier = "fast";
     }
+    if (this.config.featureValues?.plan_mode) {
+      this.planModeEnabled = true;
+    }
 
     if (this.resumeHandle?.sessionId) {
       this.currentThreadId = this.resumeHandle.sessionId;
@@ -2131,10 +2139,12 @@ class CodexAppServerAgentSession implements AgentSession {
   }
 
   get features(): AgentFeature[] {
-    if (!codexModelSupportsFastMode(this.config.model)) {
-      return [];
-    }
-    return [{ ...CODEX_FAST_MODE_FEATURE, value: this.serviceTier === "fast" }];
+    return buildCodexFeatures({
+      modelId: this.config.model,
+      fastModeEnabled: this.serviceTier === "fast",
+      planModeEnabled: this.planModeEnabled,
+      planModeAvailable: this.hasPlanCollaborationMode(),
+    });
   }
 
   async connect(): Promise<void> {
@@ -2144,13 +2154,7 @@ class CodexAppServerAgentSession implements AgentSession {
     this.client.setNotificationHandler((method, params) => this.handleNotification(method, params));
     this.registerRequestHandlers();
 
-    await this.client.request("initialize", {
-      clientInfo: {
-        name: "paseo",
-        title: "Paseo",
-        version: "0.0.0",
-      },
-    });
+    await this.client.request("initialize", buildCodexAppServerInitializeParams());
     this.client.notify("initialized", {});
 
     await this.loadCollaborationModes();
@@ -2182,7 +2186,7 @@ class CodexAppServerAgentSession implements AgentSession {
       this.logger.trace({ error }, "Failed to load collaboration modes");
       this.collaborationModes = [];
     }
-    this.resolvedCollaborationMode = this.resolveCollaborationMode(this.currentMode);
+    this.refreshResolvedCollaborationMode();
   }
 
   private async loadSkills(): Promise<void> {
@@ -2211,23 +2215,46 @@ class CodexAppServerAgentSession implements AgentSession {
     }
   }
 
-  private resolveCollaborationMode(
-    modeId: string,
-  ): { mode: string; settings: Record<string, unknown>; name: string } | null {
+  private findCollaborationMode(
+    target: "code" | "plan",
+  ): {
+    name: string;
+    mode?: string | null;
+    model?: string | null;
+    reasoning_effort?: string | null;
+    developer_instructions?: string | null;
+  } | null {
     if (this.collaborationModes.length === 0) return null;
-    const normalized = modeId.toLowerCase();
     const findByName = (predicate: (name: string) => boolean) =>
       this.collaborationModes.find((entry) => predicate(entry.name.toLowerCase()));
-    let match =
-      normalized === "read-only"
-        ? findByName((name) => name.includes("read") || name.includes("plan"))
-        : normalized === "full-access"
-          ? findByName((name) => name.includes("full") || name.includes("exec"))
-          : findByName((name) => name.includes("auto") || name.includes("code"));
-    if (!match) {
-      match = this.collaborationModes[0] ?? null;
+
+    if (target === "plan") {
+      return findByName((name) => name.includes("plan") || name.includes("read")) ?? null;
     }
+
+    return (
+      findByName((name) => name.includes("auto") || name.includes("code")) ??
+      this.collaborationModes.find((entry) => {
+        const name = entry.name.toLowerCase();
+        return !name.includes("plan") && !name.includes("read");
+      }) ??
+      this.collaborationModes[0] ??
+      null
+    );
+  }
+
+  private hasPlanCollaborationMode(): boolean {
+    return this.findCollaborationMode("plan") !== null;
+  }
+
+  private resolveCollaborationMode(): {
+    mode: string;
+    settings: Record<string, unknown>;
+    name: string;
+  } | null {
+    const match = this.findCollaborationMode(this.planModeEnabled ? "plan" : "code");
     if (!match) return null;
+
     const settings: Record<string, unknown> = {};
     if (match.model) settings.model = match.model;
     if (match.reasoning_effort) settings.reasoning_effort = match.reasoning_effort;
@@ -2242,6 +2269,10 @@ class CodexAppServerAgentSession implements AgentSession {
     const thinkingOptionId = normalizeCodexThinkingOptionId(this.config.thinkingOptionId);
     if (thinkingOptionId) settings.reasoning_effort = thinkingOptionId;
     return { mode: match.mode ?? "code", settings, name: match.name };
+  }
+
+  private refreshResolvedCollaborationMode(): void {
+    this.resolvedCollaborationMode = this.resolveCollaborationMode();
   }
 
   private registerRequestHandlers(): void {
@@ -2425,6 +2456,8 @@ class CodexAppServerAgentSession implements AgentSession {
         timeline.push(event.item);
         if (event.item.type === "assistant_message") {
           finalText = event.item.text;
+        } else if (event.item.type === "tool_call" && event.item.detail.type === "plan") {
+          finalText = event.item.detail.text;
         }
         return;
       }
@@ -2615,7 +2648,6 @@ class CodexAppServerAgentSession implements AgentSession {
   async setMode(modeId: string): Promise<void> {
     validateCodexMode(modeId);
     this.currentMode = modeId;
-    this.resolvedCollaborationMode = this.resolveCollaborationMode(modeId);
     this.cachedRuntimeInfo = null;
   }
 
@@ -2624,19 +2656,25 @@ class CodexAppServerAgentSession implements AgentSession {
     if (!codexModelSupportsFastMode(this.config.model)) {
       this.serviceTier = null;
     }
-    this.resolvedCollaborationMode = this.resolveCollaborationMode(this.currentMode);
+    this.refreshResolvedCollaborationMode();
     this.cachedRuntimeInfo = null;
   }
 
   async setThinkingOption(thinkingOptionId: string | null): Promise<void> {
     this.config.thinkingOptionId = normalizeCodexThinkingOptionId(thinkingOptionId);
-    this.resolvedCollaborationMode = this.resolveCollaborationMode(this.currentMode);
+    this.refreshResolvedCollaborationMode();
     this.cachedRuntimeInfo = null;
   }
 
   async setFeature(featureId: string, value: unknown): Promise<void> {
     if (featureId === "fast_mode") {
       this.serviceTier = value ? "fast" : null;
+      this.cachedRuntimeInfo = null;
+      return;
+    }
+    if (featureId === "plan_mode") {
+      this.planModeEnabled = Boolean(value);
+      this.refreshResolvedCollaborationMode();
       this.cachedRuntimeInfo = null;
       return;
     }
@@ -2966,17 +3004,22 @@ class CodexAppServerAgentSession implements AgentSession {
     }
 
     if (parsed.kind === "plan_updated") {
-      const items = planStepsToTodoItems(
-        parsed.plan.map((entry) => ({
-          step: entry.step ?? "",
-          status: entry.status ?? "pending",
-        })),
-      );
-      this.emitEvent({
-        type: "timeline",
-        provider: CODEX_PROVIDER,
-        item: { type: "todo", items },
+      const timelineItem = mapCodexPlanToToolCall({
+        callId: `plan:${this.currentTurnId ?? this.currentThreadId ?? "current"}`,
+        text: planStepsToMarkdown(
+          parsed.plan.map((entry) => ({
+            step: entry.step ?? "",
+            status: entry.status ?? "pending",
+          })),
+        ),
       });
+      if (timelineItem) {
+        this.emitEvent({
+          type: "timeline",
+          provider: CODEX_PROVIDER,
+          item: timelineItem,
+        });
+      }
       return;
     }
 
@@ -3520,9 +3563,7 @@ export class CodexAppServerAgentClient implements AgentClient {
     const client = new CodexAppServerClient(child, this.logger);
 
     try {
-      await client.request("initialize", {
-        clientInfo: { name: "paseo", title: "Paseo", version: "0.0.0" },
-      });
+      await client.request("initialize", buildCodexAppServerInitializeParams());
       client.notify("initialized", {});
 
       const limit = options?.limit ?? 20;
@@ -3592,13 +3633,7 @@ export class CodexAppServerAgentClient implements AgentClient {
     const client = new CodexAppServerClient(child, this.logger);
 
     try {
-      await client.request("initialize", {
-        clientInfo: {
-          name: "paseo",
-          title: "Paseo",
-          version: "0.0.0",
-        },
-      });
+      await client.request("initialize", buildCodexAppServerInitializeParams());
       client.notify("initialized", {});
 
       const response = (await client.request("model/list", {})) as { data?: Array<any> };
@@ -3689,4 +3724,7 @@ export const __codexAppServerInternals = {
   codexModelSupportsFastMode,
   CodexAppServerAgentSession,
   mapCodexPatchNotificationToToolCall,
+  planStepsToMarkdown,
+  mapCodexPlanToToolCall,
+  threadItemToTimeline,
 };
