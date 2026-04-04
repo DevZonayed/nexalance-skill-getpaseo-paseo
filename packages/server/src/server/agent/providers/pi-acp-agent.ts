@@ -11,7 +11,7 @@ import type {
 
 import type { AgentCapabilityFlags, AgentModelDefinition } from "../agent-sdk-types.js";
 import type { ProviderRuntimeSettings } from "../provider-launch-config.js";
-import { isCommandAvailable } from "../provider-launch-config.js";
+import { isCommandAvailable } from "../../../utils/executable.js";
 import {
   ACPAgentClient,
   type ACPToolSnapshot,
