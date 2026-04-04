@@ -223,7 +223,7 @@ function createCliInvocation(args: string[]): NodeEntrypointInvocation {
   const cli = resolveCliEntrypoint();
   return createNodeEntrypointInvocation({
     entrypoint: cli,
-    argvMode: "bare",
+    argvMode: "node-script",
     args,
     baseEnv: process.env,
   });
@@ -304,8 +304,16 @@ export async function runCliJsonCommand(args: string[]): Promise<unknown> {
     throw new Error("CLI command did not produce JSON output.");
   }
 
+  // The stdout may contain non-JSON preamble (e.g. Node deprecation warnings).
+  // Extract the first valid JSON object or array from the output.
+  const jsonStart = stdout.search(/[{[]/);
+  if (jsonStart < 0) {
+    throw new Error("CLI command output contained no JSON.");
+  }
+  const jsonText = stdout.slice(jsonStart);
+
   try {
-    return JSON.parse(stdout) as unknown;
+    return JSON.parse(jsonText) as unknown;
   } catch (error) {
     throw new Error(
       `CLI command returned invalid JSON: ${error instanceof Error ? error.message : String(error)}`,
