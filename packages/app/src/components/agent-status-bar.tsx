@@ -87,6 +87,7 @@ type ControlledAgentStatusBarProps = {
   onToggleFavoriteModel?: (provider: string, modelId: string) => void;
   features?: AgentFeature[];
   onSetFeature?: (featureId: string, value: unknown) => void;
+  onDropdownClose?: () => void;
 };
 
 export interface DraftAgentStatusBarProps {
@@ -108,6 +109,7 @@ export interface DraftAgentStatusBarProps {
   onSelectThinkingOption: (thinkingOptionId: string) => void;
   features?: AgentFeature[];
   onSetFeature?: (featureId: string, value: unknown) => void;
+  onDropdownClose?: () => void;
   disabled?: boolean;
 }
 
@@ -212,6 +214,7 @@ function ControlledStatusBar({
   onToggleFavoriteModel,
   features,
   onSetFeature,
+  onDropdownClose,
 }: ControlledAgentStatusBarProps) {
   const { theme } = useUnistyles();
   const isWeb = Platform.OS === "web";
@@ -331,8 +334,11 @@ function ControlledStatusBar({
   const handleOpenChange = useCallback(
     (selector: StatusSelector) => (nextOpen: boolean) => {
       setOpenSelector(nextOpen ? selector : null);
+      if (!nextOpen) {
+        onDropdownClose?.();
+      }
     },
-    [],
+    [onDropdownClose],
   );
 
   const handleSelectorPress = useCallback(
@@ -555,9 +561,7 @@ function ControlledStatusBar({
                 <DropdownMenu
                   key={`feature-${feature.id}`}
                   open={openSelector === `feature-${feature.id}`}
-                  onOpenChange={(open) =>
-                    setOpenSelector(open ? `feature-${feature.id}` : null)
-                  }
+                  onOpenChange={handleOpenChange(`feature-${feature.id}`)}
                 >
                   <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
                     <TooltipTrigger asChild triggerRefProp="ref">
@@ -784,9 +788,7 @@ function ControlledStatusBar({
                   <View key={`feature-${feature.id}`} style={styles.sheetSection}>
                     <DropdownMenu
                       open={openSelector === `feature-${feature.id}`}
-                      onOpenChange={(open) =>
-                        setOpenSelector(open ? `feature-${feature.id}` : null)
-                      }
+                      onOpenChange={handleOpenChange(`feature-${feature.id}`)}
                     >
                       <DropdownMenuTrigger
                         disabled={disabled}
@@ -1048,6 +1050,7 @@ export function DraftAgentStatusBar({
   onSelectThinkingOption,
   features,
   onSetFeature,
+  onDropdownClose,
   disabled = false,
 }: DraftAgentStatusBarProps) {
   const isWeb = Platform.OS === "web";
@@ -1092,6 +1095,7 @@ export function DraftAgentStatusBar({
           }}
           isLoading={isAllModelsLoading}
           disabled={disabled}
+          onClose={onDropdownClose}
         />
         <ControlledStatusBar
           provider={selectedProvider}
@@ -1103,6 +1107,7 @@ export function DraftAgentStatusBar({
           onSelectThinkingOption={onSelectThinkingOption}
           features={features}
           onSetFeature={onSetFeature}
+          onDropdownClose={onDropdownClose}
           disabled={disabled}
         />
       </View>
@@ -1115,30 +1120,32 @@ export function DraftAgentStatusBar({
   }));
 
   return (
-    <ControlledStatusBar
-      provider={selectedProvider}
-      providerDefinitions={providerDefinitions}
-      allProviderModels={allProviderModels}
-      modeOptions={mappedModeOptions}
-      selectedModeId={effectiveSelectedMode}
-      onSelectMode={onSelectMode}
-      modelOptions={modelOptions}
-      selectedModelId={selectedModel}
-      onSelectModel={(modelId) => onSelectModel(modelId)}
-      isModelLoading={isAllModelsLoading}
-      favoriteKeys={favoriteKeys}
-      onToggleFavoriteModel={(provider, modelId) => {
-        void updatePreferences(toggleFavoriteModel({ preferences, provider, modelId })).catch((error) => {
-          console.warn("[DraftAgentStatusBar] toggle favorite model failed", error);
-        });
-      }}
-      thinkingOptions={mappedThinkingOptions.length > 0 ? mappedThinkingOptions : undefined}
-      selectedThinkingOptionId={effectiveSelectedThinkingOption}
-      onSelectThinkingOption={onSelectThinkingOption}
-      features={features}
-      onSetFeature={onSetFeature}
-      disabled={disabled}
-    />
+    <>
+      <ControlledStatusBar
+        provider={selectedProvider}
+        providerDefinitions={providerDefinitions}
+        allProviderModels={allProviderModels}
+        modeOptions={mappedModeOptions}
+        selectedModeId={effectiveSelectedMode}
+        onSelectMode={onSelectMode}
+        modelOptions={modelOptions}
+        selectedModelId={selectedModel}
+        onSelectModel={(modelId) => onSelectModel(modelId)}
+        isModelLoading={isAllModelsLoading}
+        favoriteKeys={favoriteKeys}
+        onToggleFavoriteModel={(provider, modelId) => {
+          void updatePreferences(toggleFavoriteModel({ preferences, provider, modelId })).catch((error) => {
+            console.warn("[DraftAgentStatusBar] toggle favorite model failed", error);
+          });
+        }}
+        thinkingOptions={mappedThinkingOptions.length > 0 ? mappedThinkingOptions : undefined}
+        selectedThinkingOptionId={effectiveSelectedThinkingOption}
+        onSelectThinkingOption={onSelectThinkingOption}
+        features={features}
+        onSetFeature={onSetFeature}
+        disabled={disabled}
+      />
+    </>
   );
 }
 

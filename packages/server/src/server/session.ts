@@ -68,6 +68,7 @@ export type AgentMcpTransportFactory = () => Promise<Transport>;
 import { buildProviderRegistry } from "./agent/provider-registry.js";
 import type { AgentProviderRuntimeSettingsMap } from "./agent/provider-launch-config.js";
 import { AgentManager } from "./agent/agent-manager.js";
+import { ProviderSnapshotManager } from "./agent/provider-snapshot-manager.js";
 import type {
   AgentTimelineCursor,
   AgentTimelineFetchDirection,
@@ -101,6 +102,7 @@ import type {
   AgentStreamEvent,
   AgentProvider,
   AgentPersistenceHandle,
+  ProviderSnapshotEntry,
 } from "./agent/agent-sdk-types.js";
 import { AgentStorage, type StoredAgentRecord } from "./agent/agent-storage.js";
 import { isValidAgentProvider, AGENT_PROVIDER_IDS } from "./agent/provider-manifest.js";
@@ -398,6 +400,7 @@ export type SessionOptions = {
   stt: Resolvable<SpeechToTextProvider | null>;
   tts: Resolvable<TextToSpeechProvider | null>;
   terminalManager: TerminalManager | null;
+  providerSnapshotManager?: ProviderSnapshotManager;
   voice?: {
     voiceAgentMcpStdio?: VoiceMcpStdioConfig | null;
     turnDetection?: Resolvable<TurnDetectionProvider | null>;
@@ -594,6 +597,8 @@ export class Session {
   } | null = null;
   private readonly MOBILE_BACKGROUND_STREAM_GRACE_MS = 60_000;
   private readonly terminalManager: TerminalManager | null;
+  private readonly providerSnapshotManager: ProviderSnapshotManager | null;
+  private unsubscribeProviderSnapshotEvents: (() => void) | null = null;
   private readonly subscribedTerminalDirectories = new Set<string>();
   private unsubscribeTerminalsChanged: (() => void) | null = null;
   private terminalExitSubscriptions: Map<string, () => void> = new Map();
@@ -646,6 +651,7 @@ export class Session {
       stt,
       tts,
       terminalManager,
+      providerSnapshotManager,
       voice,
       voiceBridge,
       dictation,
@@ -671,10 +677,31 @@ export class Session {
     this.checkoutDiffManager = checkoutDiffManager;
     this.createAgentMcpTransport = createAgentMcpTransport;
     this.terminalManager = terminalManager;
+    this.providerSnapshotManager = providerSnapshotManager ?? null;
     if (this.terminalManager) {
       this.unsubscribeTerminalsChanged = this.terminalManager.subscribeTerminalsChanged((event) =>
         this.handleTerminalsChanged(event),
       );
+    }
+    if (this.providerSnapshotManager) {
+      const handleProviderSnapshotChange = (entries: ProviderSnapshotEntry[], cwd?: string) => {
+        // COMPAT(providersSnapshot): keep provider visibility gating for older clients.
+        const visibleEntries = entries.filter((entry) =>
+          this.isProviderVisibleToClient(entry.provider),
+        );
+        this.emit({
+          type: "providers_snapshot_update",
+          payload: {
+            cwd,
+            entries: visibleEntries,
+            generatedAt: new Date().toISOString(),
+          },
+        });
+      };
+      this.providerSnapshotManager.on("change", handleProviderSnapshotChange);
+      this.unsubscribeProviderSnapshotEvents = () => {
+        this.providerSnapshotManager?.off("change", handleProviderSnapshotChange);
+      };
     }
     this.voiceAgentMcpStdio = voice?.voiceAgentMcpStdio ?? null;
     this.resolveVoiceTurnDetection = toResolver(voice?.turnDetection ?? null);
@@ -1749,6 +1776,18 @@ export class Session {
 
         case "list_available_providers_request":
           await this.handleListAvailableProvidersRequest(msg);
+          break;
+
+        case "get_providers_snapshot_request":
+          await this.handleGetProvidersSnapshotRequest(msg);
+          break;
+
+        case "refresh_providers_snapshot_request":
+          await this.handleRefreshProvidersSnapshotRequest(msg);
+          break;
+
+        case "provider_diagnostic_request":
+          await this.handleProviderDiagnosticRequest(msg);
           break;
 
         case "clear_agent_attention":
@@ -3245,6 +3284,73 @@ export class Session {
           error: (error as Error)?.message ?? String(error),
           fetchedAt,
           requestId: msg.requestId,
+        },
+      });
+    }
+  }
+
+  private async handleGetProvidersSnapshotRequest(
+    msg: Extract<SessionInboundMessage, { type: "get_providers_snapshot_request" }>,
+  ): Promise<void> {
+    // COMPAT(providersSnapshot): keep legacy provider-list RPCs alongside snapshot flow.
+    const entries = this.providerSnapshotManager
+      ? this.providerSnapshotManager
+          .getSnapshot(msg.cwd ? expandTilde(msg.cwd) : undefined)
+          .filter((entry) => this.isProviderVisibleToClient(entry.provider))
+      : [];
+
+    this.emit({
+      type: "get_providers_snapshot_response",
+      payload: {
+        entries,
+        generatedAt: new Date().toISOString(),
+        requestId: msg.requestId,
+      },
+    });
+  }
+
+  private async handleRefreshProvidersSnapshotRequest(
+    msg: Extract<SessionInboundMessage, { type: "refresh_providers_snapshot_request" }>,
+  ): Promise<void> {
+    this.providerSnapshotManager?.refresh(msg.cwd ? expandTilde(msg.cwd) : undefined);
+    this.emit({
+      type: "refresh_providers_snapshot_response",
+      payload: {
+        acknowledged: true,
+        requestId: msg.requestId,
+      },
+    });
+  }
+
+  private async handleProviderDiagnosticRequest(
+    msg: Extract<SessionInboundMessage, { type: "provider_diagnostic_request" }>,
+  ): Promise<void> {
+    try {
+      const client = this.providerRegistry[msg.provider].createClient(this.sessionLogger);
+      const diagnostic = client.getDiagnostic
+        ? (await client.getDiagnostic()).diagnostic
+        : "No diagnostic available for this provider.";
+      this.emit({
+        type: "provider_diagnostic_response",
+        payload: {
+          provider: msg.provider,
+          diagnostic,
+          requestId: msg.requestId,
+        },
+      });
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error));
+      this.sessionLogger.error(
+        { err, provider: msg.provider },
+        `Failed to get provider diagnostic for ${msg.provider}`,
+      );
+      this.emit({
+        type: "rpc_error",
+        payload: {
+          requestId: msg.requestId,
+          requestType: msg.type,
+          error: `Failed to get provider diagnostic: ${err.message}`,
+          code: "provider_diagnostic_failed",
         },
       });
     }
@@ -7013,6 +7119,10 @@ export class Session {
     if (this.unsubscribeAgentEvents) {
       this.unsubscribeAgentEvents();
       this.unsubscribeAgentEvents = null;
+    }
+    if (this.unsubscribeProviderSnapshotEvents) {
+      this.unsubscribeProviderSnapshotEvents();
+      this.unsubscribeProviderSnapshotEvents = null;
     }
 
     // Abort any ongoing operations

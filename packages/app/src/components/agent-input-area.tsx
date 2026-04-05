@@ -213,7 +213,13 @@ export function AgentInputArea({
 
   const focusInput = useCallback(() => {
     if (Platform.OS !== "web") return;
-    messageInputRef.current?.focus();
+    focusWithRetries({
+      focus: () => messageInputRef.current?.focus(),
+      isFocused: () => {
+        const el = messageInputRef.current?.getNativeElement?.() ?? null;
+        return el != null && document.activeElement === el;
+      },
+    });
   }, []);
 
   useEffect(() => {

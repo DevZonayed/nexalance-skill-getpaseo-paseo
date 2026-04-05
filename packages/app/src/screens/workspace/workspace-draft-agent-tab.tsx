@@ -75,6 +75,7 @@ export function WorkspaceDraftAgentTab({
     modeOptions,
     availableModels,
     allProviderModels,
+    allProviderEntries,
     isAllModelsLoading,
     availableThinkingOptions,
     isModelLoading,
@@ -250,6 +251,60 @@ export function WorkspaceDraftAgentTab({
     addImagesRef.current = addImages;
   }, []);
 
+  const focusInputRef = useRef<(() => void) | null>(null);
+
+  const handleFocusInputCallback = useCallback((focus: () => void) => {
+    focusInputRef.current = focus;
+  }, []);
+
+  const handleProviderSelectWithFocus = useCallback(
+    (provider: string) => {
+      setProviderFromUser(provider);
+      focusInputRef.current?.();
+    },
+    [setProviderFromUser],
+  );
+
+  const handleModeSelectWithFocus = useCallback(
+    (modeId: string) => {
+      setModeFromUser(modeId);
+      focusInputRef.current?.();
+    },
+    [setModeFromUser],
+  );
+
+  const handleModelSelectWithFocus = useCallback(
+    (modelId: string) => {
+      setModelFromUser(modelId);
+      focusInputRef.current?.();
+    },
+    [setModelFromUser],
+  );
+
+  const handleProviderAndModelSelectWithFocus = useCallback(
+    (provider: string, modelId: string) => {
+      setProviderAndModelFromUser(provider, modelId);
+      focusInputRef.current?.();
+    },
+    [setProviderAndModelFromUser],
+  );
+
+  const handleThinkingOptionSelectWithFocus = useCallback(
+    (optionId: string) => {
+      setThinkingOptionFromUser(optionId);
+      focusInputRef.current?.();
+    },
+    [setThinkingOptionFromUser],
+  );
+
+  const handleSetFeatureWithFocus = useCallback(
+    (featureId: string, value: unknown) => {
+      setDraftFeatureValue(featureId, value);
+      focusInputRef.current?.();
+    },
+    [setDraftFeatureValue],
+  );
+
   return (
     <FileDropZone onFilesDropped={handleFilesDropped}>
       <View style={styles.container}>
@@ -296,26 +351,28 @@ export function WorkspaceDraftAgentTab({
             clearDraft={draftInput.clear}
             autoFocus={shouldAutoFocusWorkspaceDraftComposer({ isPaneFocused, isSubmitting })}
             onAddImages={handleAddImagesCallback}
+            onFocusInput={handleFocusInputCallback}
             commandDraftConfig={draftCommandConfig}
             statusControls={{
               providerDefinitions,
               selectedProvider,
-              onSelectProvider: setProviderFromUser,
+              onSelectProvider: handleProviderSelectWithFocus,
               modeOptions,
               selectedMode,
-              onSelectMode: setModeFromUser,
+              onSelectMode: handleModeSelectWithFocus,
               models: availableModels,
               selectedModel,
-              onSelectModel: setModelFromUser,
+              onSelectModel: handleModelSelectWithFocus,
               isModelLoading,
               allProviderModels,
               isAllModelsLoading,
-              onSelectProviderAndModel: setProviderAndModelFromUser,
+              onSelectProviderAndModel: handleProviderAndModelSelectWithFocus,
               thinkingOptions: availableThinkingOptions,
               selectedThinkingOptionId,
-              onSelectThinkingOption: setThinkingOptionFromUser,
+              onSelectThinkingOption: handleThinkingOptionSelectWithFocus,
               features: draftFeatures,
-              onSetFeature: setDraftFeatureValue,
+              onSetFeature: handleSetFeatureWithFocus,
+              onDropdownClose: () => focusInputRef.current?.(),
               disabled: isSubmitting,
             }}
           />

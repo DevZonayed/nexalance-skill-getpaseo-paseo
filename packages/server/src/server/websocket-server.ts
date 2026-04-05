@@ -31,6 +31,8 @@ import { isHostAllowed } from "./allowed-hosts.js";
 import { Session, type SessionLifecycleIntent, type SessionRuntimeMetrics } from "./session.js";
 import type { AgentProvider } from "./agent/agent-sdk-types.js";
 import type { AgentProviderRuntimeSettingsMap } from "./agent/provider-launch-config.js";
+import { ProviderSnapshotManager } from "./agent/provider-snapshot-manager.js";
+import { buildProviderRegistry } from "./agent/provider-registry.js";
 import { PushTokenStore } from "./push/token-store.js";
 import { PushService } from "./push/push-service.js";
 import type { SpeechReadinessSnapshot, SpeechService } from "./speech/speech-runtime.js";
@@ -253,6 +255,7 @@ export class VoiceAssistantWebSocketServer {
   private readonly voiceSpeakHandlers = new Map<string, VoiceSpeakHandler>();
   private readonly voiceCallerContexts = new Map<string, VoiceCallerContext>();
   private readonly agentProviderRuntimeSettings: AgentProviderRuntimeSettingsMap | undefined;
+  private readonly providerSnapshotManager: ProviderSnapshotManager;
   private readonly onLifecycleIntent: ((intent: SessionLifecycleIntent) => void) | null;
   private serverCapabilities: ServerCapabilities | undefined;
   private runtimeWindowStartedAt = Date.now();
@@ -343,6 +346,13 @@ export class VoiceAssistantWebSocketServer {
     this.voice = voice ?? null;
     this.dictation = dictation ?? null;
     this.agentProviderRuntimeSettings = agentProviderRuntimeSettings;
+    const providerSnapshotLogger = this.logger.child({ module: "provider-snapshot-manager" });
+    this.providerSnapshotManager = new ProviderSnapshotManager(
+      buildProviderRegistry(providerSnapshotLogger, {
+        runtimeSettings: this.agentProviderRuntimeSettings,
+      }),
+      providerSnapshotLogger,
+    );
     this.onLifecycleIntent = onLifecycleIntent ?? null;
     this.serverCapabilities = buildServerCapabilities({
       readiness: this.speech?.getReadiness() ?? null,
@@ -496,6 +506,7 @@ export class VoiceAssistantWebSocketServer {
     }
 
     await Promise.all(cleanupPromises);
+    this.providerSnapshotManager.destroy();
     this.checkoutDiffManager.dispose();
     this.pendingConnections.clear();
     this.sessions.clear();
@@ -646,6 +657,7 @@ export class VoiceAssistantWebSocketServer {
       stt: () => this.speech?.resolveStt() ?? null,
       tts: () => this.speech?.resolveTts() ?? null,
       terminalManager: this.terminalManager,
+      providerSnapshotManager: this.providerSnapshotManager,
       voice: {
         ...(this.voice ?? {}),
         turnDetection: () => this.speech?.resolveTurnDetection() ?? null,
@@ -792,6 +804,10 @@ export class VoiceAssistantWebSocketServer {
       hostname: getHostname(),
       version: this.daemonVersion,
       ...(this.serverCapabilities ? { capabilities: this.serverCapabilities } : {}),
+      features: {
+        // COMPAT(providersSnapshot): keep optional until all clients rely on snapshot flow.
+        providersSnapshot: true,
+      },
     };
   }
 

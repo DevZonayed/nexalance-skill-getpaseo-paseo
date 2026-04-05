@@ -220,6 +220,7 @@ function DraftAgentScreenContent({
     modeOptions,
     availableModels,
     allProviderModels,
+    allProviderEntries,
     isAllModelsLoading,
     availableThinkingOptions,
     isModelLoading,

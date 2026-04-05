@@ -29,12 +29,19 @@ import type {
   AgentFeatureSelect,
 } from "../agent-sdk-types.js";
 import type { ProviderRuntimeSettings } from "../provider-launch-config.js";
-import { isCommandAvailable } from "../../../utils/executable.js";
+import { findExecutable, isCommandAvailable } from "../../../utils/executable.js";
 import {
   ACPAgentClient,
   type ACPToolSnapshot,
   type SessionStateResponse,
 } from "./acp-agent.js";
+import {
+  formatDiagnosticStatus,
+  formatProviderDiagnostic,
+  formatProviderDiagnosticError,
+  resolveBinaryVersion,
+  toDiagnosticErrorMessage,
+} from "./diagnostic-utils.js";
 
 const require = createRequire(import.meta.url);
 const resolvedPiAcpPath = require.resolve("pi-acp");
@@ -328,5 +335,86 @@ export class PiACPAgentClient extends ACPAgentClient {
       Boolean(process.env.OPENROUTER_API_KEY) ||
       existsSync(join(homedir(), ".pi", "agent", "auth.json"))
     );
+  }
+
+  async getDiagnostic(): Promise<{ diagnostic: string }> {
+    try {
+      const piCommand = process.env.PI_ACP_PI_COMMAND ?? "pi";
+      const piCliPath = findExecutable(piCommand);
+      const piVersion = piCliPath ? resolveBinaryVersion(piCliPath) : "unknown";
+      const authConfigPath = join(homedir(), ".pi", "agent", "auth.json");
+      const available = await this.isAvailable();
+      let modelsValue = "Not checked";
+      let status = formatDiagnosticStatus(available);
+
+      if (available) {
+        try {
+          const models = await this.listModels();
+          modelsValue = String(models.length);
+        } catch (error) {
+          modelsValue = `Error - ${toDiagnosticErrorMessage(error)}`;
+          status = formatDiagnosticStatus(available, {
+            source: "model fetch",
+            cause: error,
+          });
+        }
+
+        if (!modelsValue.startsWith("Error -")) {
+          try {
+            await this.listModes();
+          } catch (error) {
+            status = formatDiagnosticStatus(available, {
+              source: "mode fetch",
+              cause: error,
+            });
+          }
+        }
+      }
+
+      return {
+        diagnostic: formatProviderDiagnostic("Pi", [
+          {
+            label: "pi-acp module",
+            value: existsSync(resolvedPiAcpPath) ? "found" : "not found",
+          },
+          {
+            label: "Binary",
+            value: piCliPath ?? "not found",
+          },
+          {
+            label: "Version",
+            value: piVersion,
+          },
+          {
+            label: "OPENAI_API_KEY",
+            value: process.env.OPENAI_API_KEY ? "set" : "not set",
+          },
+          {
+            label: "ANTHROPIC_API_KEY",
+            value: process.env.ANTHROPIC_API_KEY ? "set" : "not set",
+          },
+          {
+            label: "OPENROUTER_API_KEY",
+            value: process.env.OPENROUTER_API_KEY ? "set" : "not set",
+          },
+          {
+            label: "Auth config (~/.pi/agent/auth.json)",
+            value: existsSync(authConfigPath) ? "found" : "not found",
+          },
+          {
+            label: "Models",
+            value: modelsValue,
+          },
+          {
+            label: "Status",
+            value: status,
+          },
+        ]),
+      };
+    } catch (error) {
+      return {
+        diagnostic: formatProviderDiagnosticError("Pi", error),
+      };
+    }
   }
 }

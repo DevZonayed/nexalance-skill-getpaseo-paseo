@@ -1105,6 +1105,7 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
           hostname: serverInfo.hostname,
           version: serverInfo.version,
           ...(serverInfo.capabilities ? { capabilities: serverInfo.capabilities } : {}),
+          ...(serverInfo.features ? { features: serverInfo.features } : {}),
         });
         return;
       }

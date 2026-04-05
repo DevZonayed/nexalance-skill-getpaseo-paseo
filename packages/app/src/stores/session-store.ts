@@ -21,6 +21,7 @@ import type {
 import type {
   FileDownloadTokenResponse,
   GitSetupOptions,
+  ServerInfoStatusPayload,
   ProjectPlacementPayload,
   ServerCapabilities,
   WorkspaceDescriptorPayload,
@@ -190,6 +191,7 @@ export type DaemonServerInfo = {
   hostname: string | null;
   version: string | null;
   capabilities?: ServerCapabilities;
+  features?: ServerInfoStatusPayload["features"];
 };
 
 export interface AgentTimelineCursorState {
@@ -412,6 +414,13 @@ function areServerCapabilitiesEqual(
   return JSON.stringify(current ?? null) === JSON.stringify(next ?? null);
 }
 
+function areServerInfoFeaturesEqual(
+  current: ServerInfoStatusPayload["features"] | undefined,
+  next: ServerInfoStatusPayload["features"] | undefined,
+): boolean {
+  return JSON.stringify(current ?? null) === JSON.stringify(next ?? null);
+}
+
 export const useSessionStore = create<SessionStore>()(
   subscribeWithSelector((set, get) => {
     const commitActivityUpdates: AgentLastActivityCommitter = (updates) => {
@@ -527,12 +536,15 @@ export const useSessionStore = create<SessionStore>()(
           const prevVersion = session.serverInfo?.version?.trim() || null;
           const nextCapabilities = info.capabilities;
           const prevCapabilities = session.serverInfo?.capabilities;
+          const nextFeatures = info.features;
+          const prevFeatures = session.serverInfo?.features;
 
           if (
             session.serverInfo?.serverId === info.serverId &&
             prevHostname === nextHostname &&
             prevVersion === nextVersion &&
-            areServerCapabilitiesEqual(prevCapabilities, nextCapabilities)
+            areServerCapabilitiesEqual(prevCapabilities, nextCapabilities) &&
+            areServerInfoFeaturesEqual(prevFeatures, nextFeatures)
           ) {
             return prev;
           }
@@ -548,6 +560,7 @@ export const useSessionStore = create<SessionStore>()(
                   hostname: nextHostname,
                   version: nextVersion,
                   ...(nextCapabilities ? { capabilities: nextCapabilities } : {}),
+                  ...(nextFeatures ? { features: nextFeatures } : {}),
                 },
               },
             },

@@ -2,7 +2,15 @@ import type { Logger } from "pino";
 
 import type { AgentCapabilityFlags, AgentMode } from "../agent-sdk-types.js";
 import type { ProviderRuntimeSettings } from "../provider-launch-config.js";
+import { findExecutable } from "../../../utils/executable.js";
 import { ACPAgentClient } from "./acp-agent.js";
+import {
+  formatDiagnosticStatus,
+  formatProviderDiagnostic,
+  formatProviderDiagnosticError,
+  resolveBinaryVersion,
+  toDiagnosticErrorMessage,
+} from "./diagnostic-utils.js";
 
 const COPILOT_CAPABILITIES: AgentCapabilityFlags = {
   supportsStreaming: true,
@@ -50,5 +58,54 @@ export class CopilotACPAgentClient extends ACPAgentClient {
 
   override async isAvailable(): Promise<boolean> {
     return super.isAvailable();
+  }
+
+  async getDiagnostic(): Promise<{ diagnostic: string }> {
+    try {
+      const available = await this.isAvailable();
+      const resolvedBinary = findExecutable("copilot");
+      let modelsValue = "Not checked";
+      let status = formatDiagnosticStatus(available);
+
+      if (available) {
+        try {
+          const models = await this.listModels();
+          modelsValue = String(models.length);
+        } catch (error) {
+          modelsValue = `Error - ${toDiagnosticErrorMessage(error)}`;
+          status = formatDiagnosticStatus(available, {
+            source: "model fetch",
+            cause: error,
+          });
+        }
+
+        if (!modelsValue.startsWith("Error -")) {
+          try {
+            await this.listModes();
+          } catch (error) {
+            status = formatDiagnosticStatus(available, {
+              source: "mode fetch",
+              cause: error,
+            });
+          }
+        }
+      }
+
+      return {
+        diagnostic: formatProviderDiagnostic("Copilot", [
+          {
+            label: "Binary",
+            value: resolvedBinary ?? "not found",
+          },
+          { label: "Version", value: resolvedBinary ? resolveBinaryVersion(resolvedBinary) : "unknown" },
+          { label: "Models", value: modelsValue },
+          { label: "Status", value: status },
+        ]),
+      };
+    } catch (error) {
+      return {
+        diagnostic: formatProviderDiagnosticError("Copilot", error),
+      };
+    }
   }
 }
