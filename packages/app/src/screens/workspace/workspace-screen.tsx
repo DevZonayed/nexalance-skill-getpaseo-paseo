@@ -21,6 +21,7 @@ import {
   Ellipsis,
   EllipsisVertical,
   PanelRight,
+  RotateCw,
   SquarePen,
   SquareTerminal,
   X,
@@ -182,6 +183,7 @@ type MobileWorkspaceTabSwitcherProps = {
   onSelectSwitcherTab: (key: string) => void;
   onCopyResumeCommand: (agentId: string) => Promise<void> | void;
   onCopyAgentId: (agentId: string) => Promise<void> | void;
+  onReloadAgent: (agentId: string) => Promise<void> | void;
   onCloseTab: (tabId: string) => Promise<void> | void;
   onCloseTabsAbove: (tabId: string) => Promise<void> | void;
   onCloseTabsBelow: (tabId: string) => Promise<void> | void;
@@ -269,6 +271,7 @@ function MobileWorkspaceTabOption({
   onPress,
   onCopyResumeCommand,
   onCopyAgentId,
+  onReloadAgent,
   onCloseTab,
   onCloseTabsAbove,
   onCloseTabsBelow,
@@ -284,6 +287,7 @@ function MobileWorkspaceTabOption({
   onPress: () => void;
   onCopyResumeCommand: (agentId: string) => Promise<void> | void;
   onCopyAgentId: (agentId: string) => Promise<void> | void;
+  onReloadAgent: (agentId: string) => Promise<void> | void;
   onCloseTab: (tabId: string) => Promise<void> | void;
   onCloseTabsAbove: (tabId: string) => Promise<void> | void;
   onCloseTabsBelow: (tabId: string) => Promise<void> | void;
@@ -299,6 +303,7 @@ function MobileWorkspaceTabOption({
     menuTestIDBase,
     onCopyResumeCommand,
     onCopyAgentId,
+    onReloadAgent,
     onCloseTab,
     onCloseTabsBefore: onCloseTabsAbove,
     onCloseTabsAfter: onCloseTabsBelow,
@@ -342,11 +347,14 @@ function MobileWorkspaceTabOption({
                       disabled={entry.disabled}
                       destructive={entry.destructive}
                       onSelect={entry.onSelect}
+                      tooltip={entry.tooltip}
                       leading={(() => {
                         const iconColor = theme.colors.foregroundMuted;
                         switch (entry.icon) {
                           case "copy":
                             return <Copy size={16} color={iconColor} />;
+                          case "rotate-cw":
+                            return <RotateCw size={16} color={iconColor} />;
                           case "arrow-left-to-line":
                             return <ArrowLeftToLine size={16} color={iconColor} />;
                           case "arrow-right-to-line":
@@ -389,6 +397,7 @@ const MobileWorkspaceTabSwitcher = memo(function MobileWorkspaceTabSwitcher({
   onSelectSwitcherTab,
   onCopyResumeCommand,
   onCopyAgentId,
+  onReloadAgent,
   onCloseTab,
   onCloseTabsAbove,
   onCloseTabsBelow,
@@ -460,6 +469,7 @@ const MobileWorkspaceTabSwitcher = memo(function MobileWorkspaceTabSwitcher({
               onPress={onPress}
               onCopyResumeCommand={onCopyResumeCommand}
               onCopyAgentId={onCopyAgentId}
+              onReloadAgent={onReloadAgent}
               onCloseTab={onCloseTab}
               onCloseTabsAbove={onCloseTabsAbove}
               onCloseTabsBelow={onCloseTabsBelow}
@@ -1366,6 +1376,23 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
     [normalizedServerId, toast],
   );
 
+  const handleReloadAgent = useCallback(
+    async (agentId: string) => {
+      if (!client || !isConnected) {
+        toast.error("Host is not connected");
+        return;
+      }
+
+      try {
+        await client.refreshAgent(agentId);
+        toast.show("Reloaded agent", { variant: "success" });
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Failed to reload agent");
+      }
+    },
+    [client, isConnected, toast],
+  );
+
   const handleCopyWorkspacePath = useCallback(async () => {
     if (!isAbsolutePath(normalizedWorkspaceId)) {
       toast.error("Workspace path not available");
@@ -2211,6 +2238,7 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
               onSelectSwitcherTab={handleSelectSwitcherTab}
               onCopyResumeCommand={handleCopyResumeCommand}
               onCopyAgentId={handleCopyAgentId}
+              onReloadAgent={handleReloadAgent}
               onCloseTab={handleCloseTabById}
               onCloseTabsAbove={handleCloseTabsToLeft}
               onCloseTabsBelow={handleCloseTabsToRight}
@@ -2231,6 +2259,7 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
               onCloseTab={handleCloseTabById}
               onCopyResumeCommand={handleCopyResumeCommand}
               onCopyAgentId={handleCopyAgentId}
+              onReloadAgent={handleReloadAgent}
               onCloseTabsToLeft={handleCloseTabsToLeft}
               onCloseTabsToRight={handleCloseTabsToRight}
               onCloseOtherTabs={handleCloseOtherTabs}
@@ -2267,6 +2296,7 @@ function WorkspaceScreenContent({ serverId, workspaceId }: WorkspaceScreenProps)
                     onCloseTab={handleCloseTabById}
                     onCopyResumeCommand={handleCopyResumeCommand}
                     onCopyAgentId={handleCopyAgentId}
+                    onReloadAgent={handleReloadAgent}
                     onCloseTabsToLeft={handleCloseTabsToLeftInPane}
                     onCloseTabsToRight={handleCloseTabsToRightInPane}
                     onCloseOtherTabs={handleCloseOtherTabsInPane}

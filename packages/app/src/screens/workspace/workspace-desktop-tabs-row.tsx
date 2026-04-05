@@ -14,6 +14,7 @@ import {
   ArrowRightToLine,
   Columns2,
   Copy,
+  RotateCw,
   Rows2,
   SquarePen,
   SquareTerminal,
@@ -71,6 +72,7 @@ type WorkspaceDesktopTabsRowProps = {
   onCloseTab: (tabId: string) => Promise<void> | void;
   onCopyResumeCommand: (agentId: string) => Promise<void> | void;
   onCopyAgentId: (agentId: string) => Promise<void> | void;
+  onReloadAgent: (agentId: string) => Promise<void> | void;
   onCloseTabsToLeft: (tabId: string) => Promise<void> | void;
   onCloseTabsToRight: (tabId: string) => Promise<void> | void;
   onCloseOtherTabs: (tabId: string) => Promise<void> | void;
@@ -291,11 +293,14 @@ function TabChip({
               disabled={entry.disabled}
               destructive={entry.destructive}
               onSelect={entry.onSelect}
+              tooltip={entry.tooltip}
               leading={(() => {
                 const iconColor = theme.colors.foregroundMuted;
                 switch (entry.icon) {
                   case "copy":
                     return <Copy size={16} color={iconColor} />;
+                  case "rotate-cw":
+                    return <RotateCw size={16} color={iconColor} />;
                   case "arrow-left-to-line":
                     return <ArrowLeftToLine size={16} color={iconColor} />;
                   case "arrow-right-to-line":
@@ -335,6 +340,7 @@ export function WorkspaceDesktopTabsRow({
   onCloseTab,
   onCopyResumeCommand,
   onCopyAgentId,
+  onReloadAgent,
   onCloseTabsToLeft,
   onCloseTabsToRight,
   onCloseOtherTabs,
@@ -457,6 +463,7 @@ export function WorkspaceDesktopTabsRow({
                 normalizedWorkspaceId={normalizedWorkspaceId}
                 onCopyResumeCommand={onCopyResumeCommand}
                 onCopyAgentId={onCopyAgentId}
+                onReloadAgent={onReloadAgent}
                 onCloseTabsToLeft={onCloseTabsToLeft}
                 onCloseTabsToRight={onCloseTabsToRight}
                 onCloseOtherTabs={onCloseOtherTabs}
@@ -585,6 +592,7 @@ function ResolvedDesktopTabChip({
   normalizedWorkspaceId,
   onCopyResumeCommand,
   onCopyAgentId,
+  onReloadAgent,
   onCloseTabsToLeft,
   onCloseTabsToRight,
   onCloseOtherTabs,
@@ -608,6 +616,7 @@ function ResolvedDesktopTabChip({
   normalizedWorkspaceId: string;
   onCopyResumeCommand: (agentId: string) => Promise<void> | void;
   onCopyAgentId: (agentId: string) => Promise<void> | void;
+  onReloadAgent: (agentId: string) => Promise<void> | void;
   onCloseTabsToLeft: (tabId: string) => Promise<void> | void;
   onCloseTabsToRight: (tabId: string) => Promise<void> | void;
   onCloseOtherTabs: (tabId: string) => Promise<void> | void;
@@ -630,6 +639,7 @@ function ResolvedDesktopTabChip({
         tabCount,
         onCopyResumeCommand,
         onCopyAgentId,
+        onReloadAgent,
         onCloseTab,
         onCloseTabsToLeft,
         onCloseTabsToRight,
@@ -644,6 +654,7 @@ function ResolvedDesktopTabChip({
       onCloseTabsToRight,
       onCopyAgentId,
       onCopyResumeCommand,
+      onReloadAgent,
       tabCount,
     ],
   );
