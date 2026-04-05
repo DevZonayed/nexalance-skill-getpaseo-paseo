@@ -1290,6 +1290,7 @@ export class Session {
             isGit: false as const,
             currentBranch: null,
             remoteUrl: null,
+            worktreeRoot: null,
             isPaseoOwnedWorktree: false as const,
             mainRepoRoot: null,
           }
@@ -1299,6 +1300,7 @@ export class Session {
               isGit: true as const,
               currentBranch: workspace.displayName,
               remoteUrl: project.gitRemote,
+              worktreeRoot: workspace.directory,
               isPaseoOwnedWorktree: true as const,
               mainRepoRoot: project.directory,
             }
@@ -1307,6 +1309,7 @@ export class Session {
               isGit: true as const,
               currentBranch: workspace.displayName,
               remoteUrl: project.gitRemote,
+              worktreeRoot: workspace.directory,
               isPaseoOwnedWorktree: false as const,
               mainRepoRoot: null,
             };

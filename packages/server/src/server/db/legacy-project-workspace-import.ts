@@ -49,11 +49,7 @@ export async function importLegacyProjectWorkspaceJson(options: {
 }): Promise<LegacyProjectWorkspaceImportResult> {
   const projectsPath = path.join(options.paseoHome, "projects", "projects.json");
   const workspacesPath = path.join(options.paseoHome, "projects", "workspaces.json");
-  const [projectRows, workspaceRows, databaseHasRows] = await Promise.all([
-    readLegacyProjects(projectsPath),
-    readLegacyWorkspaces(workspacesPath),
-    hasAnyProjectWorkspaceRows(options.db),
-  ]);
+  const databaseHasRows = await hasAnyProjectWorkspaceRows(options.db);
 
   if (databaseHasRows) {
     options.logger.info("Skipping legacy project/workspace JSON import because the DB is not empty");
@@ -63,6 +59,30 @@ export async function importLegacyProjectWorkspaceJson(options: {
     };
   }
 
+  const [projectsExists, workspacesExists] = await Promise.all([
+    pathExists(projectsPath),
+    pathExists(workspacesPath),
+  ]);
+  if (!projectsExists && !workspacesExists) {
+    options.logger.info("Skipping legacy project/workspace JSON import because no legacy files exist");
+    return {
+      status: "skipped",
+      reason: "no-legacy-files",
+    };
+  }
+
+  await backupLegacyProjectWorkspaceJson({
+    projectsPath,
+    workspacesPath,
+    paseoHome: options.paseoHome,
+    logger: options.logger,
+  });
+
+  const [projectRows, workspaceRows] = await Promise.all([
+    readLegacyProjects(projectsPath),
+    readLegacyWorkspaces(workspacesPath),
+  ]);
+
   if (projectRows.length === 0 && workspaceRows.length === 0) {
     options.logger.info("Skipping legacy project/workspace JSON import because no legacy files exist");
     return {
@@ -71,10 +91,18 @@ export async function importLegacyProjectWorkspaceJson(options: {
     };
   }
 
+  const dedupedProjects = [...new Map(projectRows.map((project) => [project.rootPath, project])).values()];
+  const dedupedWorkspaces = [...new Map(workspaceRows.map((workspace) => [workspace.cwd, workspace])).values()];
+
+  options.logger.info(
+    { projects: dedupedProjects.length, workspaces: dedupedWorkspaces.length },
+    "Starting legacy project/workspace import",
+  );
+
   options.db.transaction((tx) => {
     // Insert projects, mapping old format to new schema
     const projectDirectoryToId = new Map<string, number>();
-    for (const legacy of projectRows) {
+    for (const legacy of dedupedProjects) {
       const row = tx
         .insert(projects)
         .values({
@@ -100,7 +128,7 @@ export async function importLegacyProjectWorkspaceJson(options: {
     }
 
     // Insert workspaces, resolving project FK
-    for (const legacy of workspaceRows) {
+    for (const legacy of dedupedWorkspaces) {
       const projectId = legacyProjectIdToNewId.get(legacy.projectId);
       if (projectId === undefined) {
         throw new Error(`Legacy workspace ${legacy.workspaceId} references unknown project ${legacy.projectId}`);
@@ -125,27 +153,49 @@ export async function importLegacyProjectWorkspaceJson(options: {
 
   options.logger.info(
     {
-      importedProjects: projectRows.length,
-      importedWorkspaces: workspaceRows.length,
+      importedProjects: dedupedProjects.length,
+      importedWorkspaces: dedupedWorkspaces.length,
     },
     "Imported legacy project/workspace JSON into the database",
   );
 
   return {
     status: "imported",
-    importedProjects: projectRows.length,
-    importedWorkspaces: workspaceRows.length,
+    importedProjects: dedupedProjects.length,
+    importedWorkspaces: dedupedWorkspaces.length,
   };
 }
 
 async function readLegacyProjects(filePath: string) {
   const raw = await readOptionalJsonFile(filePath);
-  return raw ? z.array(LegacyProjectSchema).parse(raw) : [];
+  if (!raw) {
+    return [];
+  }
+  try {
+    return z.array(LegacyProjectSchema).parse(raw);
+  } catch (error) {
+    throw new Error(
+      `Failed to parse ${filePath}. The file may be corrupted. ` +
+        `Check the file and fix or remove invalid entries. ` +
+        `Original error: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
 }
 
 async function readLegacyWorkspaces(filePath: string) {
   const raw = await readOptionalJsonFile(filePath);
-  return raw ? z.array(LegacyWorkspaceSchema).parse(raw) : [];
+  if (!raw) {
+    return [];
+  }
+  try {
+    return z.array(LegacyWorkspaceSchema).parse(raw);
+  } catch (error) {
+    throw new Error(
+      `Failed to parse ${filePath}. The file may be corrupted. ` +
+        `Check the file and fix or remove invalid entries. ` +
+        `Original error: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
 }
 
 async function readOptionalJsonFile(filePath: string): Promise<unknown | null> {
@@ -169,4 +219,35 @@ async function hasAnyProjectWorkspaceRows(db: PaseoDatabaseHandle["db"]): Promis
   const projectCount = projectCountRows[0]?.count ?? 0;
   const workspaceCount = workspaceCountRows[0]?.count ?? 0;
   return projectCount > 0 || workspaceCount > 0;
+}
+
+async function backupLegacyProjectWorkspaceJson(options: {
+  projectsPath: string;
+  workspacesPath: string;
+  paseoHome: string;
+  logger: Logger;
+}): Promise<void> {
+  const backupDir = path.join(options.paseoHome, "backup", "pre-migration");
+  await fs.mkdir(backupDir, { recursive: true });
+
+  if (await pathExists(options.projectsPath)) {
+    await fs.copyFile(options.projectsPath, path.join(backupDir, "projects.json"));
+  }
+  if (await pathExists(options.workspacesPath)) {
+    await fs.copyFile(options.workspacesPath, path.join(backupDir, "workspaces.json"));
+  }
+
+  options.logger.info({ backupPath: backupDir }, "Backed up legacy project/workspace JSON before migration");
+}
+
+async function pathExists(targetPath: string): Promise<boolean> {
+  try {
+    await fs.access(targetPath);
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return false;
+    }
+    throw error;
+  }
 }

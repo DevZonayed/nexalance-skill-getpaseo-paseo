@@ -1,6 +1,6 @@
 import os from "node:os";
 import path from "node:path";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 
@@ -172,6 +172,136 @@ describe("importLegacyProjectWorkspaceJson", () => {
 
     expect(await database.db.select().from(projects)).toEqual([]);
     expect(await database.db.select().from(workspaces)).toEqual([]);
+  });
+
+  test("deduplicates projects with the same rootPath", async () => {
+    writeLegacyJson({
+      paseoHome,
+      projectsJson: [
+        {
+          projectId: "project-1",
+          rootPath: "/tmp/project-1",
+          kind: "git",
+          displayName: "First Project",
+          createdAt: "2026-03-01T00:00:00.000Z",
+          updatedAt: "2026-03-01T00:00:00.000Z",
+          archivedAt: null,
+        },
+        {
+          projectId: "project-2",
+          rootPath: "/tmp/project-1",
+          kind: "git",
+          displayName: "Replacement Project",
+          createdAt: "2026-03-01T00:00:00.000Z",
+          updatedAt: "2026-03-03T00:00:00.000Z",
+          archivedAt: null,
+        },
+      ],
+      workspacesJson: [
+        {
+          workspaceId: "workspace-1",
+          projectId: "project-2",
+          cwd: "/tmp/project-1",
+          kind: "local_checkout",
+          displayName: "main",
+          createdAt: "2026-03-01T00:00:00.000Z",
+          updatedAt: "2026-03-03T00:00:00.000Z",
+          archivedAt: null,
+        },
+      ],
+    });
+
+    const result = await importLegacyProjectWorkspaceJson({
+      db: database.db,
+      paseoHome,
+      logger: createTestLogger(),
+    });
+
+    expect(result).toEqual({
+      status: "imported",
+      importedProjects: 1,
+      importedWorkspaces: 1,
+    });
+    const projectRows = await database.db.select().from(projects);
+    expect(projectRows).toHaveLength(1);
+    expect(projectRows[0]).toEqual(
+      expect.objectContaining({
+        directory: "/tmp/project-1",
+        displayName: "Replacement Project",
+      }),
+    );
+  });
+
+  test("creates backup of JSON files before import", async () => {
+    writeLegacyJson({
+      paseoHome,
+      projectsJson: [
+        {
+          projectId: "project-1",
+          rootPath: "/tmp/project-1",
+          kind: "git",
+          displayName: "Project One",
+          createdAt: "2026-03-01T00:00:00.000Z",
+          updatedAt: "2026-03-02T00:00:00.000Z",
+          archivedAt: null,
+        },
+      ],
+      workspacesJson: [
+        {
+          workspaceId: "workspace-1",
+          projectId: "project-1",
+          cwd: "/tmp/project-1",
+          kind: "local_checkout",
+          displayName: "main",
+          createdAt: "2026-03-01T00:00:00.000Z",
+          updatedAt: "2026-03-02T00:00:00.000Z",
+          archivedAt: null,
+        },
+      ],
+    });
+
+    await importLegacyProjectWorkspaceJson({
+      db: database.db,
+      paseoHome,
+      logger: createTestLogger(),
+    });
+
+    const backupDir = path.join(paseoHome, "backup", "pre-migration");
+    const projectsBackupPath = path.join(backupDir, "projects.json");
+    const workspacesBackupPath = path.join(backupDir, "workspaces.json");
+    expect(existsSync(projectsBackupPath)).toBe(true);
+    expect(existsSync(workspacesBackupPath)).toBe(true);
+    expect(JSON.parse(readFileSync(projectsBackupPath, "utf8"))).toHaveLength(1);
+    expect(JSON.parse(readFileSync(workspacesBackupPath, "utf8"))).toHaveLength(1);
+  });
+
+  test("produces clear error message for corrupt project JSON", async () => {
+    writeLegacyJson({
+      paseoHome,
+      projectsJson: [
+        {
+          projectId: "project-1",
+          rootPath: 123,
+          kind: "git",
+          displayName: "Project One",
+          createdAt: "2026-03-01T00:00:00.000Z",
+          updatedAt: "2026-03-02T00:00:00.000Z",
+          archivedAt: null,
+        },
+      ],
+      workspacesJson: [],
+    });
+
+    await expect(
+      importLegacyProjectWorkspaceJson({
+        db: database.db,
+        paseoHome,
+        logger: createTestLogger(),
+      }),
+    ).rejects.toThrow(
+      `Failed to parse ${path.join(paseoHome, "projects", "projects.json")}. ` +
+        "The file may be corrupted.",
+    );
   });
 });
 
