@@ -640,7 +640,7 @@ export function AgentInputArea({
     resolveStatusControlMode(statusControls) === "draft" && statusControls ? (
       <DraftAgentStatusBar {...statusControls} />
     ) : (
-      <AgentStatusBar agentId={agentId} serverId={serverId} />
+      <AgentStatusBar agentId={agentId} serverId={serverId} onDropdownClose={focusInput} />
     );
 
   return (

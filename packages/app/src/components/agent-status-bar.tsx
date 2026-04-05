@@ -116,6 +116,7 @@ export interface DraftAgentStatusBarProps {
 interface AgentStatusBarProps {
   agentId: string;
   serverId: string;
+  onDropdownClose?: () => void;
 }
 
 function findOptionLabel(
@@ -409,6 +410,7 @@ function ControlledStatusBar({
                     onToggleFavorite={onToggleFavoriteModel}
                     isLoading={isModelLoading}
                     disabled={modelDisabled}
+                    onClose={onDropdownClose}
                   />
                 </View>
               </TooltipTrigger>
@@ -655,6 +657,7 @@ function ControlledStatusBar({
                   onToggleFavorite={onToggleFavoriteModel}
                   isLoading={isModelLoading}
                   disabled={modelDisabled}
+                  onClose={onDropdownClose}
                   renderTrigger={({ selectedModelLabel }) => (
                     <View
                       style={[
@@ -835,7 +838,7 @@ function ControlledStatusBar({
 
 const EMPTY_MODES: AgentMode[] = [];
 
-export function AgentStatusBar({ agentId, serverId }: AgentStatusBarProps) {
+export function AgentStatusBar({ agentId, serverId, onDropdownClose }: AgentStatusBarProps) {
   const { preferences, updatePreferences } = useFormPreferences();
   const agent = useSessionStore(
     useShallow((state) => {
@@ -1026,6 +1029,7 @@ export function AgentStatusBar({ agentId, serverId }: AgentStatusBarProps) {
         });
       }}
       isModelLoading={isProviderModelsQueryLoading(modelsQuery)}
+      onDropdownClose={onDropdownClose}
       disabled={!client}
     />
   );

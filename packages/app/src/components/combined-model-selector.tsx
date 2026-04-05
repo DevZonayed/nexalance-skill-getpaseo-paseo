@@ -22,6 +22,8 @@ import type {
   AgentProvider,
 } from "@server/server/agent/agent-sdk-types";
 import type { AgentProviderDefinition } from "@server/server/agent/provider-manifest";
+const IS_WEB = Platform.OS === "web";
+
 import { Combobox, ComboboxItem } from "@/components/ui/combobox";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { getProviderIcon } from "@/components/provider-icons";
@@ -754,6 +756,7 @@ const styles = StyleSheet.create((theme) => ({
     paddingHorizontal: theme.spacing[3],
     paddingTop: theme.spacing[2],
     paddingBottom: theme.spacing[1],
+    ...(IS_WEB ? {} : { marginHorizontal: theme.spacing[1] }),
   },
   sectionHeadingText: {
     fontSize: theme.fontSize.xs,
@@ -767,6 +770,7 @@ const styles = StyleSheet.create((theme) => ({
     paddingHorizontal: theme.spacing[3],
     paddingVertical: theme.spacing[2],
     minHeight: 36,
+    ...(IS_WEB ? {} : { marginHorizontal: theme.spacing[1] }),
   },
   drillDownRowHovered: {
     backgroundColor: theme.colors.surface1,
@@ -801,6 +805,7 @@ const styles = StyleSheet.create((theme) => ({
     paddingVertical: theme.spacing[2],
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.border,
+    ...(IS_WEB ? {} : { marginHorizontal: theme.spacing[1] }),
   },
   backButtonHovered: {
     backgroundColor: theme.colors.surface2,
@@ -853,6 +858,7 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     paddingHorizontal: theme.spacing[3],
     gap: theme.spacing[2],
+    ...(IS_WEB ? {} : { marginHorizontal: theme.spacing[1] }),
   },
   providerSearchInput: {
     flex: 1,
